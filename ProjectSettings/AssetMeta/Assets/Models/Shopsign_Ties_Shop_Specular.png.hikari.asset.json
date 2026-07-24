@@ -1,0 +1,21 @@
+{
+  "displayName": "Shopsign_Ties_Shop_Specular",
+  "guid": "01b419f8b8a1b83e92688e2b7db6e9c8",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Auto"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Shopsign_Ties_Shop_Specular.png",
+  "type": "Texture"
+}

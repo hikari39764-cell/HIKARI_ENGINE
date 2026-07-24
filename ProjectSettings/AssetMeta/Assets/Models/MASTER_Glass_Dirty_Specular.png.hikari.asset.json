@@ -1,0 +1,21 @@
+{
+  "displayName": "MASTER_Glass_Dirty_Specular",
+  "guid": "052dca5f904a9371f317eec5eef8ad40",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Auto"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/MASTER_Glass_Dirty_Specular.png",
+  "type": "Texture"
+}

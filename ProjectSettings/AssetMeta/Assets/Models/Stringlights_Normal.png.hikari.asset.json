@@ -1,0 +1,21 @@
+{
+  "displayName": "Stringlights_Normal",
+  "guid": "bcc684c5da7db861df4a70a77ce3e519",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Stringlights_Normal.png",
+  "type": "Texture"
+}

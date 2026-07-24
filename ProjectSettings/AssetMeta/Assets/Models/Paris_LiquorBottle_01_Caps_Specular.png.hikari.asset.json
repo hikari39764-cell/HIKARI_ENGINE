@@ -1,0 +1,21 @@
+{
+  "displayName": "Paris_LiquorBottle_01_Caps_Specular",
+  "guid": "47e4e0bad108552490cf1f2d08220bd2",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Auto"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Paris_LiquorBottle_01_Caps_Specular.png",
+  "type": "Texture"
+}

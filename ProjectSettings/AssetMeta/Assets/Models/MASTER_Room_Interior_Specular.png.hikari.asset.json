@@ -1,0 +1,21 @@
+{
+  "displayName": "MASTER_Room_Interior_Specular",
+  "guid": "c79e025f1c2832e37c2743a896fbb5d8",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Auto"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/MASTER_Room_Interior_Specular.png",
+  "type": "Texture"
+}

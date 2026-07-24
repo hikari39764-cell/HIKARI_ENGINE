@@ -1,0 +1,21 @@
+{
+  "displayName": "Foliage_Leaves_BaseColor",
+  "guid": "98e0bdd6d8f0b0af6c6bef886c52f18a",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "BaseColor"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Foliage_Leaves_BaseColor.png",
+  "type": "Texture"
+}

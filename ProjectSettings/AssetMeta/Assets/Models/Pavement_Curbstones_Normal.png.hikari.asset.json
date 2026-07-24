@@ -1,0 +1,21 @@
+{
+  "displayName": "Pavement_Curbstones_Normal",
+  "guid": "e586fe978074e15cb61a344738a6b295",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Pavement_Curbstones_Normal.png",
+  "type": "Texture"
+}

@@ -1,0 +1,21 @@
+{
+  "displayName": "Foliage_Trunk_Normal",
+  "guid": "c6ffe8b031b016846108482e3fc2003a",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Foliage_Trunk_Normal.png",
+  "type": "Texture"
+}

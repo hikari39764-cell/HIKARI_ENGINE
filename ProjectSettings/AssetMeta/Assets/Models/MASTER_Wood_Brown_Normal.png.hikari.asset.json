@@ -1,0 +1,21 @@
+{
+  "displayName": "MASTER_Wood_Brown_Normal",
+  "guid": "3e4f09ff5c569f35c9789c6a54abf340",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/MASTER_Wood_Brown_Normal.png",
+  "type": "Texture"
+}

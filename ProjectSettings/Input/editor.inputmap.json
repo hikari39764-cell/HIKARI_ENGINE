@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "id": "Editor",
+  "displayName": "Editor Camera",
+  "priority": 500,
+  "consumeInput": true,
+  "enabledByDefault": true,
+  "bindings": [
+    { "action": "Editor.CameraMove", "source": "Keyboard", "control": "A", "scale": -1.0, "component": 0, "modifier": "Mouse:Right" },
+    { "action": "Editor.CameraMove", "source": "Keyboard", "control": "D", "scale": 1.0, "component": 0, "modifier": "Mouse:Right" },
+    { "action": "Editor.CameraMove", "source": "Keyboard", "control": "W", "scale": 1.0, "component": 1, "modifier": "Mouse:Right" },
+    { "action": "Editor.CameraMove", "source": "Keyboard", "control": "S", "scale": -1.0, "component": 1, "modifier": "Mouse:Right" },
+    { "action": "Editor.CameraMoveVertical", "source": "Keyboard", "control": "E", "scale": 1.0, "component": 0, "modifier": "Mouse:Right" },
+    { "action": "Editor.CameraMoveVertical", "source": "Keyboard", "control": "Q", "scale": -1.0, "component": 0, "modifier": "Mouse:Right" },
+    { "action": "Editor.CameraLook", "source": "MouseDeltaX", "control": "DeltaX", "scale": 1.0, "component": 0, "modifier": "Mouse:Right" },
+    { "action": "Editor.CameraLook", "source": "MouseDeltaY", "control": "DeltaY", "scale": 1.0, "component": 1, "modifier": "Mouse:Right" },
+    { "action": "Editor.CameraLookHeld", "source": "MouseButton", "control": "Right", "scale": 1.0, "component": 0 },
+    { "action": "Editor.CameraPan", "source": "MouseDeltaX", "control": "DeltaX", "scale": -1.0, "component": 0, "modifier": "Mouse:Middle" },
+    { "action": "Editor.CameraPan", "source": "MouseDeltaY", "control": "DeltaY", "scale": -1.0, "component": 1, "modifier": "Mouse:Middle" },
+    { "action": "Editor.CameraPanHeld", "source": "MouseButton", "control": "Middle", "scale": 1.0, "component": 0 },
+    { "action": "Editor.CameraZoom", "source": "MouseWheel", "control": "Wheel", "scale": 1.0, "component": 0 },
+    { "action": "Editor.CameraBoost", "source": "Keyboard", "control": "Shift", "scale": 1.0, "component": 0 },
+    { "action": "Editor.CameraReset", "source": "Keyboard", "control": "Home", "scale": 1.0, "component": 0 }
+  ]
+}

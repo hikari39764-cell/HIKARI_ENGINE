@@ -1,0 +1,21 @@
+{
+  "displayName": "MASTER_Bistro_Main_Door_Specular",
+  "guid": "d7492050276238dbdab50ebb19bd46e6",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Auto"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/MASTER_Bistro_Main_Door_Specular.png",
+  "type": "Texture"
+}

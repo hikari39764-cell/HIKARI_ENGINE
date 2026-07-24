@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "id": "Global",
+  "displayName": "Global",
+  "priority": 1000,
+  "consumeInput": false,
+  "enabledByDefault": true,
+  "bindings": [
+    { "action": "Global.ToggleEditorUI", "source": "Keyboard", "control": "F1", "scale": 1.0, "component": 0 },
+    { "action": "Global.StopPlay", "source": "Keyboard", "control": "Escape", "scale": 1.0, "component": 0 }
+  ]
+}

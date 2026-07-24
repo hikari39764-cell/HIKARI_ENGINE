@@ -1,0 +1,21 @@
+{
+  "displayName": "MASTER_Concrete_Smooth_Normal",
+  "guid": "04cd7c529f41924b777bd54e0487819a",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/MASTER_Concrete_Smooth_Normal.png",
+  "type": "Texture"
+}

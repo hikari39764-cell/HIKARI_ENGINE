@@ -1,0 +1,21 @@
+{
+  "displayName": "Antenna_Plastic_Blue_BaseColor",
+  "guid": "e81bf0bcbef1dfe5e1f6a990863f928f",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "BaseColor"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Antenna_Plastic_Blue_BaseColor.png",
+  "type": "Texture"
+}

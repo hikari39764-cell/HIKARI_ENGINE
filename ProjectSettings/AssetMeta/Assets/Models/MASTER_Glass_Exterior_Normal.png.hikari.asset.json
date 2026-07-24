@@ -1,0 +1,21 @@
+{
+  "displayName": "MASTER_Glass_Exterior_Normal",
+  "guid": "7f88fa7d4d4733331073954ea0b9bc17",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/MASTER_Glass_Exterior_Normal.png",
+  "type": "Texture"
+}

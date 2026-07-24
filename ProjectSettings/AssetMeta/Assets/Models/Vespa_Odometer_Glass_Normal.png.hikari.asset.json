@@ -1,0 +1,21 @@
+{
+  "displayName": "Vespa_Odometer_Glass_Normal",
+  "guid": "9d729fd0e07759a722e91d746d49a014",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Vespa_Odometer_Glass_Normal.png",
+  "type": "Texture"
+}

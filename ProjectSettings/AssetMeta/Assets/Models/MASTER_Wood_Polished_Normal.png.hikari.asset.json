@@ -1,0 +1,21 @@
+{
+  "displayName": "MASTER_Wood_Polished_Normal",
+  "guid": "c2476cac3408c6d38d1d09b51730bd47",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/MASTER_Wood_Polished_Normal.png",
+  "type": "Texture"
+}

@@ -1,0 +1,21 @@
+{
+  "displayName": "NapkinHolder_Normal",
+  "guid": "977a81caa4a7557c19aee740694ec057",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/NapkinHolder_Normal.png",
+  "type": "Texture"
+}

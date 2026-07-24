@@ -1,0 +1,21 @@
+{
+  "displayName": "MASTER_Trim_Cornice_Specular",
+  "guid": "c6abc316afe6054ed2fc1fc1b523c859",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Auto"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/MASTER_Trim_Cornice_Specular.png",
+  "type": "Texture"
+}

@@ -1,0 +1,21 @@
+{
+  "displayName": "Streetlight_Metal_Specular",
+  "guid": "5c54646cffa470083cc02adf4da2e9ff",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Auto"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Streetlight_Metal_Specular.png",
+  "type": "Texture"
+}

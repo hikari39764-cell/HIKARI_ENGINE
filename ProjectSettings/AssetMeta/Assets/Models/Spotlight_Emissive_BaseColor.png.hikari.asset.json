@@ -1,0 +1,21 @@
+{
+  "displayName": "Spotlight_Emissive_BaseColor",
+  "guid": "99c024d60a5bd3efcf9ba06b699a25cb",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "BaseColor"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Spotlight_Emissive_BaseColor.png",
+  "type": "Texture"
+}

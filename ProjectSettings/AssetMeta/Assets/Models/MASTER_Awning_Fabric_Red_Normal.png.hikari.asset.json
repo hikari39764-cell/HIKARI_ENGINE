@@ -1,0 +1,21 @@
+{
+  "displayName": "MASTER_Awning_Fabric_Red_Normal",
+  "guid": "e4dd1b76e5695cd8b4baeba097a53c52",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/MASTER_Awning_Fabric_Red_Normal.png",
+  "type": "Texture"
+}

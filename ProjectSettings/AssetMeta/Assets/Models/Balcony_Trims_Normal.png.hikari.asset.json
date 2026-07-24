@@ -1,0 +1,21 @@
+{
+  "displayName": "Balcony_Trims_Normal",
+  "guid": "9bc1c1a093a1895d5e233ca98bdda8f7",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Balcony_Trims_Normal.png",
+  "type": "Texture"
+}

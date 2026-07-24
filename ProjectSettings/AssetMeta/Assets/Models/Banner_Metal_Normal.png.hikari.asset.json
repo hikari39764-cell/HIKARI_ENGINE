@@ -1,0 +1,21 @@
+{
+  "displayName": "Banner_Metal_Normal",
+  "guid": "f00bae5e7d41b414fbd65300ab7bb72b",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Banner_Metal_Normal.png",
+  "type": "Texture"
+}

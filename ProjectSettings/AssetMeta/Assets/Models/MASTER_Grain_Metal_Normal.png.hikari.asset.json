@@ -1,0 +1,21 @@
+{
+  "displayName": "MASTER_Grain_Metal_Normal",
+  "guid": "af3c1a7637f3e818ba8540a852b15fe0",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/MASTER_Grain_Metal_Normal.png",
+  "type": "Texture"
+}

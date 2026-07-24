@@ -1,0 +1,21 @@
+{
+  "displayName": "Foliage_Linde_Tree_Large_Green_Leaves_BaseColor",
+  "guid": "1d59e5eed4068cda7074656184232e6d",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "BaseColor"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Foliage_Linde_Tree_Large_Green_Leaves_BaseColor.png",
+  "type": "Texture"
+}

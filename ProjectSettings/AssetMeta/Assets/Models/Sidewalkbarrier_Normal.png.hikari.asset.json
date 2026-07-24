@@ -1,0 +1,21 @@
+{
+  "displayName": "Sidewalkbarrier_Normal",
+  "guid": "d580e0d5d9c8f7e3d1f6592358fdeee6",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Sidewalkbarrier_Normal.png",
+  "type": "Texture"
+}

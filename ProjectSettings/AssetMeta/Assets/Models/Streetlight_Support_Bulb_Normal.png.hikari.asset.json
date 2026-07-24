@@ -1,0 +1,21 @@
+{
+  "displayName": "Streetlight_Support_Bulb_Normal",
+  "guid": "251955cf02e919991d2948c7159729b6",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Streetlight_Support_Bulb_Normal.png",
+  "type": "Texture"
+}

@@ -1,0 +1,21 @@
+{
+  "displayName": "Paris_StringLights_01_Orange_Color_Emissive_Normal",
+  "guid": "01abf56526d59ff4ea9016c7aa090ff7",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Paris_StringLights_01_Orange_Color_Emissive_Normal.png",
+  "type": "Texture"
+}

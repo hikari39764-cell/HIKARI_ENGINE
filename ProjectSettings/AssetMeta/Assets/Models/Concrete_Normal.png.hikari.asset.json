@@ -1,0 +1,21 @@
+{
+  "displayName": "Concrete_Normal",
+  "guid": "fad3860f3c4c0f8e6b8b7cfd0949fbbb",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Concrete_Normal.png",
+  "type": "Texture"
+}

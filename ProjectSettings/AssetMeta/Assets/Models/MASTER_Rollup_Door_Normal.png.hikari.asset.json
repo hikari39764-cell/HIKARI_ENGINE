@@ -1,0 +1,21 @@
+{
+  "displayName": "MASTER_Rollup_Door_Normal",
+  "guid": "57e795b7cc2adb7884385fd340d82220",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/MASTER_Rollup_Door_Normal.png",
+  "type": "Texture"
+}

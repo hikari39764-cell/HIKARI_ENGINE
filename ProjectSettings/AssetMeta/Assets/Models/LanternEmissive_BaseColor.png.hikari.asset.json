@@ -1,0 +1,21 @@
+{
+  "displayName": "LanternEmissive_BaseColor",
+  "guid": "d48b7764fd491cdef85635daa299bb26",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "BaseColor"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/LanternEmissive_BaseColor.png",
+  "type": "Texture"
+}

@@ -1,0 +1,21 @@
+{
+  "displayName": "MASTER_Awning_Fabric_Cyan_Normal",
+  "guid": "d4dce9d45786cd9f133f13564fc46c6e",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/MASTER_Awning_Fabric_Cyan_Normal.png",
+  "type": "Texture"
+}

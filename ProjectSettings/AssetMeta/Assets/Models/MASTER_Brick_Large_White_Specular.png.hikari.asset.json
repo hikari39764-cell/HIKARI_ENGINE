@@ -1,0 +1,21 @@
+{
+  "displayName": "MASTER_Brick_Large_White_Specular",
+  "guid": "5b5c6684ea50b5f34b4cb927dc11a789",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Auto"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/MASTER_Brick_Large_White_Specular.png",
+  "type": "Texture"
+}

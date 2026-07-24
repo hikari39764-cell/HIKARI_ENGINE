@@ -1,0 +1,21 @@
+{
+  "displayName": "MASTER_Plastic_Normal",
+  "guid": "0890081393a80b4ec2c53e8fcd2786d7",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/MASTER_Plastic_Normal.png",
+  "type": "Texture"
+}

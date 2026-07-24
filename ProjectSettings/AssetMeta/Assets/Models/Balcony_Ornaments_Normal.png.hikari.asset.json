@@ -1,0 +1,21 @@
+{
+  "displayName": "Balcony_Ornaments_Normal",
+  "guid": "654eef97dc3b44c7547624110d217758",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Balcony_Ornaments_Normal.png",
+  "type": "Texture"
+}

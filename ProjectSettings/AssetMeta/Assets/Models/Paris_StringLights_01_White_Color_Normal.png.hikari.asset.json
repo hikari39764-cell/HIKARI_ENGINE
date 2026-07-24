@@ -1,0 +1,21 @@
+{
+  "displayName": "Paris_StringLights_01_White_Color_Normal",
+  "guid": "4dade0798d938f092710b3706e355c16",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Paris_StringLights_01_White_Color_Normal.png",
+  "type": "Texture"
+}

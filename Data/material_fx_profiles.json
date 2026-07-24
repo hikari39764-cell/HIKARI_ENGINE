@@ -1,0 +1,582 @@
+{
+  "profiles": [
+    {
+      "id": "test",
+      "displayName": "Rim Dissolve Energy",
+      "shaderProfileId": "StaticFx",
+       "pixelShaderId": "Render3D_StaticFxPS",
+      "featureBits": 0,
+      "depthTest": true,
+      "depthWrite": true,
+      "doubleSided": false,
+      "composite": "Alpha",
+      "params": [
+        {
+          "key": "rimStrength",
+          "label": "Rim Strength",
+          "type": "Float",
+          "ref": { "slot": 0, "channel": 0 },
+          "defaultValues": [1.2, 0, 0, 0],
+          "minValues": [0.0, 0, 0, 0],
+          "maxValues": [8.0, 0, 0, 0],
+          "speed": 0.01
+        },
+        {
+          "key": "rimPower",
+          "label": "Rim Power",
+          "type": "Float",
+          "ref": { "slot": 0, "channel": 1 },
+          "defaultValues": [3.0, 0, 0, 0],
+          "minValues": [0.1, 0, 0, 0],
+          "maxValues": [16.0, 0, 0, 0],
+          "speed": 0.05
+        },
+        {
+          "key": "dissolve",
+          "label": "Dissolve",
+          "type": "Float",
+          "ref": { "slot": 0, "channel": 2 },
+          "defaultValues": [0.0, 0, 0, 0],
+          "minValues": [0.0, 0, 0, 0],
+          "maxValues": [1.0, 0, 0, 0],
+          "speed": 0.005
+        },
+        {
+          "key": "edgeWidth",
+          "label": "Edge Width",
+          "type": "Float",
+          "ref": { "slot": 0, "channel": 3 },
+          "defaultValues": [0.08, 0, 0, 0],
+          "minValues": [0.001, 0, 0, 0],
+          "maxValues": [0.3, 0, 0, 0],
+          "speed": 0.001
+        },
+        {
+          "key": "pulseSpeed",
+          "label": "Pulse Speed",
+          "type": "Float",
+          "ref": { "slot": 1, "channel": 0 },
+          "defaultValues": [2.0, 0, 0, 0],
+          "minValues": [0.0, 0, 0, 0],
+          "maxValues": [10.0, 0, 0, 0],
+          "speed": 0.01
+        },
+        {
+          "key": "edgeBoost",
+          "label": "Edge Boost",
+          "type": "Float",
+          "ref": { "slot": 1, "channel": 1 },
+          "defaultValues": [2.0, 0, 0, 0],
+          "minValues": [0.0, 0, 0, 0],
+          "maxValues": [8.0, 0, 0, 0],
+          "speed": 0.01
+        },
+        {
+          "key": "noiseScale",
+          "label": "Noise Scale",
+          "type": "Float",
+          "ref": { "slot": 1, "channel": 2 },
+          "defaultValues": [1.0, 0, 0, 0],
+          "minValues": [0.01, 0, 0, 0],
+          "maxValues": [10.0, 0, 0, 0],
+          "speed": 0.01
+        },
+        {
+          "key": "sceneColorDistortionStrength",
+          "label": "Scene Color Distortion",
+          "type": "Float",
+          "ref": { "slot": 2, "channel": 0 },
+          "defaultValues": [0.01, 0, 0, 0],
+          "minValues": [0.0, 0, 0, 0],
+          "maxValues": [0.1, 0, 0, 0],
+          "speed": 0.001
+        },
+        {
+          "key": "sceneColorMix",
+          "label": "Scene Color Mix",
+          "type": "Float",
+          "ref": { "slot": 2, "channel": 1 },
+          "defaultValues": [0.0, 0, 0, 0],
+          "minValues": [0.0, 0, 0, 0],
+          "maxValues": [1.0, 0, 0, 0],
+          "speed": 0.01
+        },
+        {
+          "key": "sceneColorNoiseScale",
+          "label": "Scene Color Noise Scale",
+          "type": "Float",
+          "ref": { "slot": 2, "channel": 2 },
+          "defaultValues": [1.0, 0, 0, 0],
+          "minValues": [0.01, 0, 0, 0],
+          "maxValues": [10.0, 0, 0, 0],
+          "speed": 0.01
+        }
+      ]
+    },
+    {
+      "id": "scene_scan_fx",
+      "displayName": "Scene Triangle Scan FX",
+      "shaderProfileId": "StaticFx",
+      "pixelShaderId": "Render3D_StaticFxPS",
+      "featureBits": 0,
+      "depthTest": true,
+      "depthWrite": true,
+      "doubleSided": false,
+      "composite": "Alpha",
+      "params": [
+        {
+          "key": "rimStrength",
+          "label": "Rim Strength",
+          "type": "Float",
+          "ref": { "slot": 0, "channel": 0 },
+          "defaultValues": [0.0, 0, 0, 0],
+          "minValues": [0.0, 0, 0, 0],
+          "maxValues": [8.0, 0, 0, 0],
+          "speed": 0.01
+        },
+        {
+          "key": "rimPower",
+          "label": "Rim Power",
+          "type": "Float",
+          "ref": { "slot": 0, "channel": 1 },
+          "defaultValues": [3.0, 0, 0, 0],
+          "minValues": [0.1, 0, 0, 0],
+          "maxValues": [16.0, 0, 0, 0],
+          "speed": 0.05
+        },
+        {
+          "key": "dissolve",
+          "label": "Dissolve",
+          "type": "Float",
+          "ref": { "slot": 0, "channel": 2 },
+          "defaultValues": [0.0, 0, 0, 0],
+          "minValues": [0.0, 0, 0, 0],
+          "maxValues": [1.0, 0, 0, 0],
+          "speed": 0.005
+        },
+        {
+          "key": "edgeWidth",
+          "label": "Edge Width",
+          "type": "Float",
+          "ref": { "slot": 0, "channel": 3 },
+          "defaultValues": [0.08, 0, 0, 0],
+          "minValues": [0.001, 0, 0, 0],
+          "maxValues": [0.3, 0, 0, 0],
+          "speed": 0.001
+        },
+        {
+          "key": "pulseSpeed",
+          "label": "Pulse Speed",
+          "type": "Float",
+          "ref": { "slot": 1, "channel": 0 },
+          "defaultValues": [0.0, 0, 0, 0],
+          "minValues": [0.0, 0, 0, 0],
+          "maxValues": [10.0, 0, 0, 0],
+          "speed": 0.01
+        },
+        {
+          "key": "edgeBoost",
+          "label": "Edge Boost",
+          "type": "Float",
+          "ref": { "slot": 1, "channel": 1 },
+          "defaultValues": [0.0, 0, 0, 0],
+          "minValues": [0.0, 0, 0, 0],
+          "maxValues": [8.0, 0, 0, 0],
+          "speed": 0.01
+        },
+        {
+          "key": "noiseScale",
+          "label": "Noise Scale",
+          "type": "Float",
+          "ref": { "slot": 1, "channel": 2 },
+          "defaultValues": [1.0, 0, 0, 0],
+          "minValues": [0.01, 0, 0, 0],
+          "maxValues": [10.0, 0, 0, 0],
+          "speed": 0.01
+        },
+        {
+          "key": "sceneColorDistortionStrength",
+          "label": "Scene Color Distortion",
+          "type": "Float",
+          "ref": { "slot": 2, "channel": 0 },
+          "defaultValues": [0.0, 0, 0, 0],
+          "minValues": [0.0, 0, 0, 0],
+          "maxValues": [0.1, 0, 0, 0],
+          "speed": 0.001
+        },
+        {
+          "key": "sceneColorMix",
+          "label": "Scene Color Mix",
+          "type": "Float",
+          "ref": { "slot": 2, "channel": 1 },
+          "defaultValues": [0.0, 0, 0, 0],
+          "minValues": [0.0, 0, 0, 0],
+          "maxValues": [1.0, 0, 0, 0],
+          "speed": 0.01
+        },
+        {
+          "key": "sceneColorNoiseScale",
+          "label": "Scene Color Noise Scale",
+          "type": "Float",
+          "ref": { "slot": 2, "channel": 2 },
+          "defaultValues": [1.0, 0, 0, 0],
+          "minValues": [0.01, 0, 0, 0],
+          "maxValues": [10.0, 0, 0, 0],
+          "speed": 0.01
+        },
+        {
+          "key": "scanOriginTime",
+          "label": "Scan Origin / Time",
+          "type": "Float4",
+          "ref": { "slot": 3, "channel": 0 },
+          "defaultValues": [0.0, 0.0, 0.0, 0.0]
+        },
+        {
+          "key": "scanParams",
+          "label": "Scan Radius / Band / Speed / Intensity",
+          "type": "Float4",
+          "ref": { "slot": 4, "channel": 0 },
+          "defaultValues": [28.0, 4.4, 16.0, 0.0]
+        },
+        {
+          "key": "scanColor",
+          "label": "Scan Color",
+          "type": "Color4",
+          "ref": { "slot": 5, "channel": 0 },
+          "defaultValues": [0.1, 1.0, 0.95, 0.94]
+        },
+        {
+          "key": "triangleParams",
+          "label": "Triangle Cell / Line / Noise / Flicker",
+          "type": "Float4",
+          "ref": { "slot": 6, "channel": 0 },
+          "defaultValues": [2.85, 0.15, 1.35, 0.68]
+        },
+        {
+          "key": "scanEnhanceParams",
+          "label": "Afterglow / Front Line / Edge / Distortion",
+          "type": "Float4",
+          "ref": { "slot": 7, "channel": 0 },
+          "defaultValues": [0.72, 1.35, 0.85, 0.004]
+        }
+      ]
+    },
+    {
+  "id": "water",
+  "displayName": "Procedural Water",
+  "shaderProfileId": "MaterialFx",
+  "vertexShaderId": "Render3D_FxWaterVS",
+  "pixelShaderId": "Render3D_FxWaterPS",
+  "featureBits": 1,
+  "depthTest": true,
+  "depthWrite": false,
+  "doubleSided": true,
+  "composite": "Alpha",
+  "renderPhase": "DepthAware",
+  "parameters": [
+    {
+      "key": "waveSpeed",
+      "displayName": "Wave Speed",
+      "type": "float",
+      "slot": 0,
+      "component": "x",
+      "default": 1.5,
+      "min": 0.0,
+      "max": 10.0,
+      "speed": 0.01
+    },
+    {
+      "key": "waveHeight",
+      "displayName": "Wave Height",
+      "type": "float",
+      "slot": 0,
+      "component": "y",
+      "default": 0.25,
+      "min": 0.0,
+      "max": 5.0,
+      "speed": 0.01
+    },
+    {
+      "key": "waveScale",
+      "displayName": "Wave Scale",
+      "type": "float",
+      "slot": 0,
+      "component": "z",
+      "default": 2.0,
+      "min": 0.1,
+      "max": 50.0,
+      "speed": 0.01
+    },
+    {
+      "key": "rimStrength",
+      "displayName": "Rim Strength",
+      "type": "float",
+      "slot": 0,
+      "component": "w",
+      "default": 0.35,
+      "min": 0.0,
+      "max": 5.0,
+      "speed": 0.01
+    },
+    {
+      "key": "waterColor",
+      "displayName": "Water Color",
+      "type": "color3",
+      "slot": 1,
+      "component": "xyz",
+      "default": [0.02, 0.22, 0.45]
+    },
+    {
+      "key": "drag",
+      "displayName": "Drag / Choppiness",
+      "type": "float",
+      "slot": 1,
+      "component": "w",
+      "default": 0.38,
+      "min": 0.0,
+      "max": 2.0,
+      "speed": 0.01
+    },
+    {
+      "key": "fresnelPower",
+      "displayName": "Fresnel Power",
+      "type": "float",
+      "slot": 2,
+      "component": "x",
+      "default": 5.0,
+      "min": 0.1,
+      "max": 12.0,
+      "speed": 0.05
+    },
+    {
+      "key": "reflectionStrength",
+      "displayName": "Reflection Strength",
+      "type": "float",
+      "slot": 2,
+      "component": "y",
+      "default": 0.85,
+      "min": 0.0,
+      "max": 3.0,
+      "speed": 0.01
+    },
+    {
+      "key": "specularStrength",
+      "displayName": "Specular Strength",
+      "type": "float",
+      "slot": 2,
+      "component": "z",
+      "default": 1.2,
+      "min": 0.0,
+      "max": 8.0,
+      "speed": 0.01
+    },
+    {
+      "key": "refractionStrength",
+      "displayName": "Refraction Strength",
+      "type": "float",
+      "slot": 2,
+      "component": "w",
+      "default": 0.015,
+      "min": 0.0,
+      "max": 0.08,
+      "speed": 0.001
+    },
+    {
+      "key": "shallowColor",
+      "displayName": "Shallow Color",
+      "type": "color3",
+      "slot": 3,
+      "component": "xyz",
+      "default": [0.08, 0.55, 0.68]
+    },
+    {
+      "key": "sceneColorMix",
+      "displayName": "SceneColor Mix",
+      "type": "float",
+      "slot": 3,
+      "component": "w",
+      "default": 0.35,
+      "min": 0.0,
+      "max": 1.0,
+      "speed": 0.01
+    },
+    {
+      "key": "depthScale",
+      "displayName": "Depth Scale",
+      "type": "float",
+      "slot": 4,
+      "component": "x",
+      "default": 80.0,
+      "min": 1.0,
+      "max": 500.0,
+      "speed": 1.0
+    },
+    {
+      "key": "depthBias",
+      "displayName": "Depth Bias",
+      "type": "float",
+      "slot": 4,
+      "component": "y",
+      "default": 0.0,
+      "min": -1.0,
+      "max": 1.0,
+      "speed": 0.01
+    },
+    {
+      "key": "depthPower",
+      "displayName": "Depth Power",
+      "type": "float",
+      "slot": 4,
+      "component": "z",
+      "default": 1.0,
+      "min": 0.1,
+      "max": 8.0,
+      "speed": 0.05
+    },
+    {
+      "key": "depthBlend",
+      "displayName": "Depth Blend",
+      "type": "float",
+      "slot": 4,
+      "component": "w",
+      "default": 1.0,
+      "min": 0.0,
+      "max": 1.0,
+      "speed": 0.01
+    },
+    {
+      "key": "alphaShallow",
+      "displayName": "Alpha Shallow",
+      "type": "float",
+      "slot": 5,
+      "component": "x",
+      "default": 0.35,
+      "min": 0.0,
+      "max": 1.0,
+      "speed": 0.01
+    },
+    {
+      "key": "alphaDeep",
+      "displayName": "Alpha Deep",
+      "type": "float",
+      "slot": 5,
+      "component": "y",
+      "default": 0.85,
+      "min": 0.0,
+      "max": 1.0,
+      "speed": 0.01
+    },
+    {
+      "key": "alphaFresnel",
+      "displayName": "Alpha Fresnel",
+      "type": "float",
+      "slot": 5,
+      "component": "z",
+      "default": 0.25,
+      "min": 0.0,
+      "max": 1.0,
+      "speed": 0.01
+    },
+    {
+      "key": "alphaMin",
+      "displayName": "Alpha Min",
+      "type": "float",
+      "slot": 5,
+      "component": "w",
+      "default": 0.12,
+      "min": 0.0,
+      "max": 1.0,
+      "speed": 0.01
+    },
+    {
+      "key": "detailStrength",
+      "displayName": "Detail Strength",
+      "type": "float",
+      "slot": 6,
+      "component": "x",
+      "default": 0.06,
+      "min": 0.0,
+      "max": 0.5,
+      "speed": 0.005
+    },
+    {
+      "key": "detailScale",
+      "displayName": "Detail Scale",
+      "type": "float",
+      "slot": 6,
+      "component": "y",
+      "default": 4.0,
+      "min": 0.1,
+      "max": 20.0,
+      "speed": 0.05
+    },
+    {
+      "key": "detailSpeed",
+      "displayName": "Detail Speed",
+      "type": "float",
+      "slot": 6,
+      "component": "z",
+      "default": 1.0,
+      "min": 0.0,
+      "max": 5.0,
+      "speed": 0.01
+    },
+    {
+      "key": "detailFadeDistance",
+      "displayName": "Detail Fade Distance",
+      "type": "float",
+      "slot": 6,
+      "component": "w",
+      "default": 120.0,
+      "min": 1.0,
+      "max": 500.0,
+      "speed": 1.0
+    },
+    {
+      "key": "foamWidth",
+      "displayName": "Foam Width",
+      "type": "float",
+      "slot": 7,
+      "component": "x",
+      "default": 0.003,
+      "min": 0.0001,
+      "max": 0.05,
+      "speed": 0.0001
+    },
+    {
+      "key": "foamStrength",
+      "displayName": "Foam Strength",
+      "type": "float",
+      "slot": 7,
+      "component": "y",
+      "default": 0.45,
+      "min": 0.0,
+      "max": 1.0,
+      "speed": 0.01
+    },
+    {
+      "key": "foamPower",
+      "displayName": "Foam Power",
+      "type": "float",
+      "slot": 7,
+      "component": "z",
+      "default": 1.5,
+      "min": 0.1,
+      "max": 8.0,
+      "speed": 0.05
+    },
+    {
+      "key": "foamNoise",
+      "displayName": "Foam Noise",
+      "type": "float",
+      "slot": 7,
+      "component": "w",
+      "default": 0.3,
+      "min": 0.0,
+      "max": 1.0,
+      "speed": 0.01
+    }
+  ]
+}
+  ]
+}

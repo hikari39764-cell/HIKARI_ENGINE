@@ -1,0 +1,21 @@
+{
+  "displayName": "Balcony_Green_Wood_Specular",
+  "guid": "f069779b0a118d24a21394caecda7df1",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Auto"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Balcony_Green_Wood_Specular.png",
+  "type": "Texture"
+}

@@ -1,0 +1,21 @@
+{
+  "displayName": "Paris_LiquorBottle_01_Caps_BaseColor",
+  "guid": "141d8491cc23bd2059e399a3186ff158",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "BaseColor"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Paris_LiquorBottle_01_Caps_BaseColor.png",
+  "type": "Texture"
+}

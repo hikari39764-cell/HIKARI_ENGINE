@@ -1,0 +1,21 @@
+{
+  "displayName": "Pavement_Cobblestone_Big_BLENDSHADER_Normal",
+  "guid": "66e08141fc94f1b8e3236edecbf2e0c1",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Pavement_Cobblestone_Big_BLENDSHADER_Normal.png",
+  "type": "Texture"
+}

@@ -1,0 +1,21 @@
+{
+  "displayName": "Bistro_Sign_Main_Normal",
+  "guid": "f49a6b5e00d776604b2e66b58619d8a3",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Bistro_Sign_Main_Normal.png",
+  "type": "Texture"
+}

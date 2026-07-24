@@ -1,0 +1,21 @@
+{
+  "displayName": "MASTER_Forge_Metal_Normal",
+  "guid": "29916e0a54a591d8f04c0976bc33dee1",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/MASTER_Forge_Metal_Normal.png",
+  "type": "Texture"
+}

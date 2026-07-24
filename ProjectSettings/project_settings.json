@@ -1,0 +1,12 @@
+{
+  "enabledRuntimeFeatures": [
+    "Rendering",
+    "Animation",
+    "Camera",
+    "Physics",
+    "GameplayBasic",
+    "Cinematics"
+  ],
+  "startupSceneGuid": "0e57344784ccdc09f8b1dbb3016e8477",
+  "version": 3
+}

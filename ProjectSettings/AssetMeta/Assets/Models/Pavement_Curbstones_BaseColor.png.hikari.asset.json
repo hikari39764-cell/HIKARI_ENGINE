@@ -1,0 +1,21 @@
+{
+  "displayName": "Pavement_Curbstones_BaseColor",
+  "guid": "111096461d02d69716cd06f2a9d49001",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "BaseColor"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Pavement_Curbstones_BaseColor.png",
+  "type": "Texture"
+}

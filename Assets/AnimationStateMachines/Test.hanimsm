@@ -1,0 +1,192 @@
+{
+  "assetType": "AnimationStateMachine",
+  "displayName": "Test",
+  "formatVersion": 2,
+  "guid": "7ec5b84321976180c7cbd7b4cb36d320",
+  "stateMachine": {
+    "entryStateId": 1,
+    "name": "Test",
+    "parameters": [
+      {
+        "default": 1.0,
+        "id": 1,
+        "name": "Speed",
+        "source": "CharacterHorizontalSpeed",
+        "type": "Float"
+      },
+      {
+        "default": false,
+        "id": 2,
+        "name": "Grounded",
+        "source": "CharacterGrounded",
+        "type": "Bool"
+      },
+      {
+        "default": 0.0,
+        "id": 3,
+        "name": "VerticalSpeed",
+        "source": "CharacterVerticalSpeed",
+        "type": "Float"
+      },
+      {
+        "default": false,
+        "id": 4,
+        "name": "Falling",
+        "source": "CharacterFalling",
+        "type": "Bool"
+      }
+    ],
+    "previewModelAssetId": "b5495438c8743f173e2cf1a7536224af",
+    "states": [
+      {
+        "editorX": 92.0,
+        "editorY": 86.0,
+        "id": 1,
+        "loop": true,
+        "motion": {
+          "parameterId": 1,
+          "samples": [
+            {
+              "clip": {
+                "clipId": 796133302757091679,
+                "fallbackName": "Idle_Loop",
+                "modelAssetId": "b5495438c8743f173e2cf1a7536224af"
+              },
+              "speedScale": 1.0,
+              "threshold": 0.0
+            },
+            {
+              "clip": {
+                "clipId": 18263376778778330500,
+                "fallbackName": "Walk_Loop",
+                "modelAssetId": "b5495438c8743f173e2cf1a7536224af"
+              },
+              "speedScale": 1.0,
+              "threshold": 2.0
+            }
+          ],
+          "type": "BlendTree1D"
+        },
+        "name": "Idle",
+        "speed": 1.0
+      },
+      {
+        "editorX": 91.0,
+        "editorY": 221.0,
+        "id": 2,
+        "loop": false,
+        "motion": {
+          "clip": {
+            "clipId": 5812267779221078891,
+            "fallbackName": "Jump_Start",
+            "modelAssetId": "b5495438c8743f173e2cf1a7536224af"
+          },
+          "type": "Clip"
+        },
+        "name": "Jump",
+        "speed": 1.7999999523162842
+      },
+      {
+        "editorX": 313.0,
+        "editorY": 224.0,
+        "id": 3,
+        "loop": true,
+        "motion": {
+          "clip": {
+            "clipId": 1870553278904525321,
+            "fallbackName": "Jump_Loop",
+            "modelAssetId": "b5495438c8743f173e2cf1a7536224af"
+          },
+          "type": "Clip"
+        },
+        "name": "Fall",
+        "speed": 1.0
+      },
+      {
+        "editorX": 319.0,
+        "editorY": 93.0,
+        "id": 4,
+        "loop": false,
+        "motion": {
+          "clip": {
+            "clipId": 12355253334671588088,
+            "fallbackName": "Jump_Land",
+            "modelAssetId": "b5495438c8743f173e2cf1a7536224af"
+          },
+          "type": "Clip"
+        },
+        "name": "Land",
+        "speed": 2.200000047683716
+      }
+    ],
+    "transitions": [
+      {
+        "allowSelfTransition": false,
+        "blendDurationSec": 0.20000000298023224,
+        "conditions": [
+          {
+            "comparison": "IsFalse",
+            "parameterId": 2,
+            "threshold": false
+          },
+          {
+            "comparison": "Greater",
+            "parameterId": 3,
+            "threshold": 0.10000000149011612
+          }
+        ],
+        "exitTimeNormalized": 0.8999999761581421,
+        "id": 1,
+        "priority": 0,
+        "requireExitTime": false,
+        "sourceStateId": 1,
+        "targetStateId": 2
+      },
+      {
+        "allowSelfTransition": false,
+        "blendDurationSec": 0.20000000298023224,
+        "conditions": [
+          {
+            "comparison": "IsTrue",
+            "parameterId": 4,
+            "threshold": false
+          }
+        ],
+        "exitTimeNormalized": 0.8999999761581421,
+        "id": 2,
+        "priority": 0,
+        "requireExitTime": false,
+        "sourceStateId": 2,
+        "targetStateId": 3
+      },
+      {
+        "allowSelfTransition": false,
+        "blendDurationSec": 0.05000000074505806,
+        "conditions": [
+          {
+            "comparison": "IsTrue",
+            "parameterId": 2,
+            "threshold": false
+          }
+        ],
+        "exitTimeNormalized": 0.8999999761581421,
+        "id": 3,
+        "priority": 0,
+        "requireExitTime": false,
+        "sourceStateId": 3,
+        "targetStateId": 4
+      },
+      {
+        "allowSelfTransition": false,
+        "blendDurationSec": 0.20000000298023224,
+        "conditions": [],
+        "exitTimeNormalized": 0.5239999890327454,
+        "id": 4,
+        "priority": 0,
+        "requireExitTime": true,
+        "sourceStateId": 4,
+        "targetStateId": 1
+      }
+    ]
+  }
+}

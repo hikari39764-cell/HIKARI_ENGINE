@@ -1,0 +1,21 @@
+{
+  "displayName": "Foliage_Flowers_Specular",
+  "guid": "d4a400410559f014a5ff18de3768e4eb",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Auto"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Foliage_Flowers_Specular.png",
+  "type": "Texture"
+}

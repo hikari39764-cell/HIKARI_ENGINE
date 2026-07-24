@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "assetsRoot": "Assets",
+  "libraryRoot": "Library",
+  "importedRoot": "Library/Imported",
+  "thumbnailRoot": "Library/Thumbnails",
+  "assetDatabaseRoot": "Library/AssetDatabase",
+  "shaderCacheRoot": "Library/ShaderCache",
+  "sourceMetaRoot": "ProjectSettings/AssetMeta"
+}

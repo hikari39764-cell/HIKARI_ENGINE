@@ -1,0 +1,21 @@
+{
+  "displayName": "Foliage_Linde_Tree_Large_Green_Leaves_Specular",
+  "guid": "fba14a92966063bfdc1c9d18cef0cb2e",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Auto"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Foliage_Linde_Tree_Large_Green_Leaves_Specular.png",
+  "type": "Texture"
+}

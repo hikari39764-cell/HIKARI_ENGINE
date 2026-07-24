@@ -1,0 +1,21 @@
+{
+  "displayName": "MASTER_Light_Bulb_Specular",
+  "guid": "d3756e2f4802a50737002f9bbb873231",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Auto"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/MASTER_Light_Bulb_Specular.png",
+  "type": "Texture"
+}

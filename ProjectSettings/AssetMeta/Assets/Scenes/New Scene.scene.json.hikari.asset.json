@@ -1,0 +1,15 @@
+{
+  "displayName": "New Scene.scene",
+  "guid": "0e57344784ccdc09f8b1dbb3016e8477",
+  "importSettings": {
+    "cookScene": false,
+    "outputFormat": "HSCENE",
+    "runtimeLoader": "SceneSerializer",
+    "sourceFormat": ".json"
+  },
+  "importerId": "SceneAssetImporter",
+  "importerVersion": 1,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Scenes/New Scene.scene.json",
+  "type": "Scene"
+}

@@ -1,0 +1,21 @@
+{
+  "displayName": "MASTER_Wood_Painted_Cyan_Normal",
+  "guid": "d34c6a75408553b8a2c795c74dbc8967",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/MASTER_Wood_Painted_Cyan_Normal.png",
+  "type": "Texture"
+}

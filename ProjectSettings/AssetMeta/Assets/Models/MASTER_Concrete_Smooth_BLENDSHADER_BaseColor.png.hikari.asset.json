@@ -1,0 +1,21 @@
+{
+  "displayName": "MASTER_Concrete_Smooth_BLENDSHADER_BaseColor",
+  "guid": "e3cf67ca00cec3b97c6d628b84e15f14",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "BaseColor"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/MASTER_Concrete_Smooth_BLENDSHADER_BaseColor.png",
+  "type": "Texture"
+}

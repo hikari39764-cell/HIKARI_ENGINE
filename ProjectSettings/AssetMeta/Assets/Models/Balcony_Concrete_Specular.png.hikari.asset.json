@@ -1,0 +1,21 @@
+{
+  "displayName": "Balcony_Concrete_Specular",
+  "guid": "9ec730cd9f4f3d9439cb6f1c2039e66d",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Auto"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Balcony_Concrete_Specular.png",
+  "type": "Texture"
+}

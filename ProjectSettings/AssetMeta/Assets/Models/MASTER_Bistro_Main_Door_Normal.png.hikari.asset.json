@@ -1,0 +1,21 @@
+{
+  "displayName": "MASTER_Bistro_Main_Door_Normal",
+  "guid": "fae328164bc007e754fbb872133d8678",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/MASTER_Bistro_Main_Door_Normal.png",
+  "type": "Texture"
+}

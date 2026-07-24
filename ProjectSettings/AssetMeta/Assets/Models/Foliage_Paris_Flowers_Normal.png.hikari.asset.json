@@ -1,0 +1,21 @@
+{
+  "displayName": "Foliage_Paris_Flowers_Normal",
+  "guid": "c6002d29dff18d7b499cd75830a4d0a4",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Foliage_Paris_Flowers_Normal.png",
+  "type": "Texture"
+}

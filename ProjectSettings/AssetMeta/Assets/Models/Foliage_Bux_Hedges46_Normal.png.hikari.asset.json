@@ -1,0 +1,21 @@
+{
+  "displayName": "Foliage_Bux_Hedges46_Normal",
+  "guid": "ecde21965f86c41f6338c2abba411714",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Foliage_Bux_Hedges46_Normal.png",
+  "type": "Texture"
+}

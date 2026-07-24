@@ -1,0 +1,21 @@
+{
+  "displayName": "Pavement_Brick_BLENDSHADER_Specular",
+  "guid": "e7b7ffddad313018b6a3de3ab3c4f824",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Auto"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Pavement_Brick_BLENDSHADER_Specular.png",
+  "type": "Texture"
+}

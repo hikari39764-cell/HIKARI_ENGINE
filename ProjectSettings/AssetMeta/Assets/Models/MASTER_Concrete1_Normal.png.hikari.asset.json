@@ -1,0 +1,21 @@
+{
+  "displayName": "MASTER_Concrete1_Normal",
+  "guid": "b53b82039373cca6c54240a1c5c51d05",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/MASTER_Concrete1_Normal.png",
+  "type": "Texture"
+}

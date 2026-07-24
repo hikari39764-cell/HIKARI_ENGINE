@@ -1,0 +1,21 @@
+{
+  "displayName": "Shopsign_Pharmacy_Emissive_BaseColor",
+  "guid": "3a43970c2b50f396e2c770503837814b",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "BaseColor"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Shopsign_Pharmacy_Emissive_BaseColor.png",
+  "type": "Texture"
+}

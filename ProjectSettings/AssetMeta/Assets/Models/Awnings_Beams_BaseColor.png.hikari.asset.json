@@ -1,0 +1,21 @@
+{
+  "displayName": "Awnings_Beams_BaseColor",
+  "guid": "825125b0e46d337c8ac61a8861abc760",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "BaseColor"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Awnings_Beams_BaseColor.png",
+  "type": "Texture"
+}

@@ -1,0 +1,21 @@
+{
+  "displayName": "MASTER_Awning_Fabric_Red_Specular",
+  "guid": "d8e41dbf56c4e7c7df67ea43d3707278",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Auto"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/MASTER_Awning_Fabric_Red_Specular.png",
+  "type": "Texture"
+}

@@ -1,0 +1,21 @@
+{
+  "displayName": "Emissive_StreetLight_Emissive",
+  "guid": "197570ab4663822961aa68215eac75f0",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Emissive"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Emissive_StreetLight_Emissive.png",
+  "type": "Texture"
+}

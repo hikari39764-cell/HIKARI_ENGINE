@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <HikariStreamlineSdkRoot Condition="'$(HikariStreamlineSdkRoot)'==''">$(MSBuildThisFileDirectory)sdk</HikariStreamlineSdkRoot>
+    <HikariStreamlineAvailable Condition="Exists('$(HikariStreamlineSdkRoot)\include\sl.h') And Exists('$(HikariStreamlineSdkRoot)\lib\x64\sl.interposer.lib')">true</HikariStreamlineAvailable>
+  </PropertyGroup>
+
+  <ItemDefinitionGroup Condition="'$(HikariStreamlineAvailable)'=='true'">
+    <ClCompile>
+      <PreprocessorDefinitions>HIKARI_WITH_STREAMLINE=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>$(HikariStreamlineSdkRoot)\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <AdditionalLibraryDirectories>$(HikariStreamlineSdkRoot)\lib\x64;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>sl.interposer.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+</Project>

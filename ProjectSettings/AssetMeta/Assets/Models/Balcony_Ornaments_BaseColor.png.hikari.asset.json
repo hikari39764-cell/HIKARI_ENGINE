@@ -1,0 +1,21 @@
+{
+  "displayName": "Balcony_Ornaments_BaseColor",
+  "guid": "293b5af9d1933520862a18ed62be885e",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "BaseColor"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Balcony_Ornaments_BaseColor.png",
+  "type": "Texture"
+}

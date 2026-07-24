@@ -1,0 +1,21 @@
+{
+  "displayName": "Pavement_Cobblestone_Big_BLENDSHADER_BaseColor",
+  "guid": "7f40216e8b4ccf1d68f08a8a2682058f",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "BaseColor"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Pavement_Cobblestone_Big_BLENDSHADER_BaseColor.png",
+  "type": "Texture"
+}

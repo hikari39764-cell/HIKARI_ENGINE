@@ -1,0 +1,21 @@
+{
+  "displayName": "Foliage_Ivy_branches_BaseColor",
+  "guid": "e6bbe01a73d2845bd93dc3d60848190b",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "BaseColor"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Foliage_Ivy_branches_BaseColor.png",
+  "type": "Texture"
+}

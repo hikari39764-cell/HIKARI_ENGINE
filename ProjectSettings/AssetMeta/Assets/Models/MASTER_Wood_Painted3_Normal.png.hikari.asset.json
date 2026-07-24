@@ -1,0 +1,21 @@
+{
+  "displayName": "MASTER_Wood_Painted3_Normal",
+  "guid": "42fefe99e8516cce36309a8a0f1202db",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/MASTER_Wood_Painted3_Normal.png",
+  "type": "Texture"
+}

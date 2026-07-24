@@ -1,0 +1,21 @@
+{
+  "displayName": "MASTER_Building_Details_BaseColor",
+  "guid": "731e65cbd466af4c657ba525a7201e8e",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "BaseColor"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/MASTER_Building_Details_BaseColor.png",
+  "type": "Texture"
+}

@@ -1,0 +1,21 @@
+{
+  "displayName": "MenuSign_02_Glass_Normal",
+  "guid": "8979c80c2263c91165df2cf5ad46d540",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/MenuSign_02_Glass_Normal.png",
+  "type": "Texture"
+}

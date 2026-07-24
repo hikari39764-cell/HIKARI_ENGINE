@@ -1,0 +1,21 @@
+{
+  "displayName": "MASTER_Room_Interior_Normal",
+  "guid": "e8c22c1f0c06f4f6257138fb45ad2879",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/MASTER_Room_Interior_Normal.png",
+  "type": "Texture"
+}

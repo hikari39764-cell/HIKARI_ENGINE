@@ -1,0 +1,21 @@
+{
+  "displayName": "Paris_TrafficSign_A_Normal",
+  "guid": "0400f85eadd0a6512dbfac46a2f256c2",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Paris_TrafficSign_A_Normal.png",
+  "type": "Texture"
+}

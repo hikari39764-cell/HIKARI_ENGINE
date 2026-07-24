@@ -1,0 +1,503 @@
+{
+  "modelAssetGuid": "b5495438c8743f173e2cf1a7536224af",
+  "nextShapeId": 17,
+  "shapes": [
+    {
+      "center": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "enabled": true,
+      "generated": true,
+      "generationError": 0.05000000074505806,
+      "generationMethod": "CoACDDecomposition",
+      "geometryIndexCount": 756,
+      "geometryVertexCount": 128,
+      "height": 1.0,
+      "id": 1,
+      "name": "Auto Convex Part 1",
+      "radius": 0.5,
+      "rotationEulerDegrees": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "sourceNodeIndices": [
+        65
+      ],
+      "type": "ConvexHull"
+    },
+    {
+      "center": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "enabled": true,
+      "generated": true,
+      "generationError": 0.05000000074505806,
+      "generationMethod": "CoACDDecomposition",
+      "geometryIndexCount": 756,
+      "geometryVertexCount": 128,
+      "height": 1.0,
+      "id": 2,
+      "name": "Auto Convex Part 2",
+      "radius": 0.5,
+      "rotationEulerDegrees": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "sourceNodeIndices": [
+        65
+      ],
+      "type": "ConvexHull"
+    },
+    {
+      "center": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "enabled": true,
+      "generated": true,
+      "generationError": 0.05000000074505806,
+      "generationMethod": "CoACDDecomposition",
+      "geometryIndexCount": 756,
+      "geometryVertexCount": 128,
+      "height": 1.0,
+      "id": 3,
+      "name": "Auto Convex Part 3",
+      "radius": 0.5,
+      "rotationEulerDegrees": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "sourceNodeIndices": [
+        65
+      ],
+      "type": "ConvexHull"
+    },
+    {
+      "center": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "enabled": true,
+      "generated": true,
+      "generationError": 0.05000000074505806,
+      "generationMethod": "CoACDDecomposition",
+      "geometryIndexCount": 204,
+      "geometryVertexCount": 36,
+      "height": 1.0,
+      "id": 4,
+      "name": "Auto Convex Part 4",
+      "radius": 0.5,
+      "rotationEulerDegrees": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "sourceNodeIndices": [
+        65
+      ],
+      "type": "ConvexHull"
+    },
+    {
+      "center": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "enabled": true,
+      "generated": true,
+      "generationError": 0.05000000074505806,
+      "generationMethod": "CoACDDecomposition",
+      "geometryIndexCount": 750,
+      "geometryVertexCount": 127,
+      "height": 1.0,
+      "id": 5,
+      "name": "Auto Convex Part 5",
+      "radius": 0.5,
+      "rotationEulerDegrees": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "sourceNodeIndices": [
+        65
+      ],
+      "type": "ConvexHull"
+    },
+    {
+      "center": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "enabled": true,
+      "generated": true,
+      "generationError": 0.05000000074505806,
+      "generationMethod": "CoACDDecomposition",
+      "geometryIndexCount": 756,
+      "geometryVertexCount": 128,
+      "height": 1.0,
+      "id": 6,
+      "name": "Auto Convex Part 6",
+      "radius": 0.5,
+      "rotationEulerDegrees": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "sourceNodeIndices": [
+        65
+      ],
+      "type": "ConvexHull"
+    },
+    {
+      "center": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "enabled": true,
+      "generated": true,
+      "generationError": 0.05000000074505806,
+      "generationMethod": "CoACDDecomposition",
+      "geometryIndexCount": 756,
+      "geometryVertexCount": 128,
+      "height": 1.0,
+      "id": 7,
+      "name": "Auto Convex Part 7",
+      "radius": 0.5,
+      "rotationEulerDegrees": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "sourceNodeIndices": [
+        65
+      ],
+      "type": "ConvexHull"
+    },
+    {
+      "center": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "enabled": true,
+      "generated": true,
+      "generationError": 0.05000000074505806,
+      "generationMethod": "CoACDDecomposition",
+      "geometryIndexCount": 750,
+      "geometryVertexCount": 127,
+      "height": 1.0,
+      "id": 8,
+      "name": "Auto Convex Part 8",
+      "radius": 0.5,
+      "rotationEulerDegrees": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "sourceNodeIndices": [
+        65
+      ],
+      "type": "ConvexHull"
+    },
+    {
+      "center": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "enabled": true,
+      "generated": true,
+      "generationError": 0.05000000074505806,
+      "generationMethod": "CoACDDecomposition",
+      "geometryIndexCount": 750,
+      "geometryVertexCount": 127,
+      "height": 1.0,
+      "id": 9,
+      "name": "Auto Convex Part 9",
+      "radius": 0.5,
+      "rotationEulerDegrees": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "sourceNodeIndices": [
+        65
+      ],
+      "type": "ConvexHull"
+    },
+    {
+      "center": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "enabled": true,
+      "generated": true,
+      "generationError": 0.05000000074505806,
+      "generationMethod": "CoACDDecomposition",
+      "geometryIndexCount": 756,
+      "geometryVertexCount": 128,
+      "height": 1.0,
+      "id": 10,
+      "name": "Auto Convex Part 10",
+      "radius": 0.5,
+      "rotationEulerDegrees": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "sourceNodeIndices": [
+        65
+      ],
+      "type": "ConvexHull"
+    },
+    {
+      "center": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "enabled": true,
+      "generated": true,
+      "generationError": 0.05000000074505806,
+      "generationMethod": "CoACDDecomposition",
+      "geometryIndexCount": 684,
+      "geometryVertexCount": 116,
+      "height": 1.0,
+      "id": 11,
+      "name": "Auto Convex Part 11",
+      "radius": 0.5,
+      "rotationEulerDegrees": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "sourceNodeIndices": [
+        65
+      ],
+      "type": "ConvexHull"
+    },
+    {
+      "center": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "enabled": true,
+      "generated": true,
+      "generationError": 0.05000000074505806,
+      "generationMethod": "CoACDDecomposition",
+      "geometryIndexCount": 282,
+      "geometryVertexCount": 49,
+      "height": 1.0,
+      "id": 12,
+      "name": "Auto Convex Part 12",
+      "radius": 0.5,
+      "rotationEulerDegrees": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "sourceNodeIndices": [
+        65
+      ],
+      "type": "ConvexHull"
+    },
+    {
+      "center": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "enabled": true,
+      "generated": true,
+      "generationError": 0.05000000074505806,
+      "generationMethod": "CoACDDecomposition",
+      "geometryIndexCount": 756,
+      "geometryVertexCount": 128,
+      "height": 1.0,
+      "id": 13,
+      "name": "Auto Convex Part 13",
+      "radius": 0.5,
+      "rotationEulerDegrees": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "sourceNodeIndices": [
+        65
+      ],
+      "type": "ConvexHull"
+    },
+    {
+      "center": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "enabled": true,
+      "generated": true,
+      "generationError": 0.05000000074505806,
+      "generationMethod": "CoACDDecomposition",
+      "geometryIndexCount": 564,
+      "geometryVertexCount": 96,
+      "height": 1.0,
+      "id": 14,
+      "name": "Auto Convex Part 14",
+      "radius": 0.5,
+      "rotationEulerDegrees": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "sourceNodeIndices": [
+        65
+      ],
+      "type": "ConvexHull"
+    },
+    {
+      "center": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "enabled": true,
+      "generated": true,
+      "generationError": 0.05000000074505806,
+      "generationMethod": "CoACDDecomposition",
+      "geometryIndexCount": 756,
+      "geometryVertexCount": 128,
+      "height": 1.0,
+      "id": 15,
+      "name": "Auto Convex Part 15",
+      "radius": 0.5,
+      "rotationEulerDegrees": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "sourceNodeIndices": [
+        65
+      ],
+      "type": "ConvexHull"
+    },
+    {
+      "center": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "enabled": true,
+      "generated": true,
+      "generationError": 0.05000000074505806,
+      "generationMethod": "CoACDDecomposition",
+      "geometryIndexCount": 756,
+      "geometryVertexCount": 128,
+      "height": 1.0,
+      "id": 16,
+      "name": "Auto Convex Part 16",
+      "radius": 0.5,
+      "rotationEulerDegrees": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "size": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "sourceNodeIndices": [
+        65
+      ],
+      "type": "ConvexHull"
+    }
+  ],
+  "version": 2
+}

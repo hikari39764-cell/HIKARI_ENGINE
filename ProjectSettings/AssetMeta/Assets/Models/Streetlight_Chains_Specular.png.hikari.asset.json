@@ -1,0 +1,21 @@
+{
+  "displayName": "Streetlight_Chains_Specular",
+  "guid": "f660dc33ccbec22e8f8cc0fd27a1b679",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Auto"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Streetlight_Chains_Specular.png",
+  "type": "Texture"
+}

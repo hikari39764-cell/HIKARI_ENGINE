@@ -1,0 +1,21 @@
+{
+  "displayName": "Pavement_Cobblestone_Wet_Leaves_BLENDSHADER_BaseColor",
+  "guid": "0369deee1b6e94e7bd00e6a8bcf24328",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "BaseColor"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Pavement_Cobblestone_Wet_Leaves_BLENDSHADER_BaseColor.png",
+  "type": "Texture"
+}

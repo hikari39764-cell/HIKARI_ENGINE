@@ -1,0 +1,21 @@
+{
+  "displayName": "Foliage_Ivy_leaf_a_Normal",
+  "guid": "bb271f07082bf90c89d6bdfeecaf6ad2",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Foliage_Ivy_leaf_a_Normal.png",
+  "type": "Texture"
+}

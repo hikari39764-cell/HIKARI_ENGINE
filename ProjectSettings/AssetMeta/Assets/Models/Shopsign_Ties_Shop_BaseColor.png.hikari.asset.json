@@ -1,0 +1,21 @@
+{
+  "displayName": "Shopsign_Ties_Shop_BaseColor",
+  "guid": "b836b7f752cff30a367eb68952cc0b0b",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "BaseColor"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Shopsign_Ties_Shop_BaseColor.png",
+  "type": "Texture"
+}

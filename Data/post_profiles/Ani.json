@@ -1,0 +1,103 @@
+{
+  "id": "Ani",
+  "displayName": "Ani",
+  "domain": "GlobalPost",
+  "passes": [
+    {
+      "passName": "Ani Resolve",
+      "shaderId": "Post_AniPS"
+    }
+  ],
+  "params": [
+    {
+      "key": "strength",
+      "label": "Strength",
+      "type": "Float",
+      "ref": { "slot": 0, "channel": 0 },
+      "defaultValues": [1.0, 0, 0, 0],
+      "minValues": [0.0, 0, 0, 0],
+      "maxValues": [1.0, 0, 0, 0],
+      "speed": 0.01
+    },
+    {
+      "key": "edgeSoftness",
+      "label": "Edge Softness",
+      "type": "Float",
+      "ref": { "slot": 0, "channel": 1 },
+      "defaultValues": [1.25, 0, 0, 0],
+      "minValues": [0.0, 0, 0, 0],
+      "maxValues": [3.0, 0, 0, 0],
+      "speed": 0.01
+    },
+    {
+      "key": "posterize",
+      "label": "Posterize",
+      "type": "Float",
+      "ref": { "slot": 0, "channel": 2 },
+      "defaultValues": [0.38, 0, 0, 0],
+      "minValues": [0.0, 0, 0, 0],
+      "maxValues": [1.0, 0, 0, 0],
+      "speed": 0.01
+    },
+    {
+      "key": "ink",
+      "label": "Ink",
+      "type": "Float",
+      "ref": { "slot": 0, "channel": 3 },
+      "defaultValues": [0.18, 0, 0, 0],
+      "minValues": [0.0, 0, 0, 0],
+      "maxValues": [0.7, 0, 0, 0],
+      "speed": 0.01
+    },
+    {
+      "key": "saturation",
+      "label": "Saturation",
+      "type": "Float",
+      "ref": { "slot": 1, "channel": 0 },
+      "defaultValues": [1.08, 0, 0, 0],
+      "minValues": [0.0, 0, 0, 0],
+      "maxValues": [2.0, 0, 0, 0],
+      "speed": 0.01
+    },
+    {
+      "key": "contrast",
+      "label": "Contrast",
+      "type": "Float",
+      "ref": { "slot": 1, "channel": 1 },
+      "defaultValues": [1.03, 0, 0, 0],
+      "minValues": [0.25, 0, 0, 0],
+      "maxValues": [2.0, 0, 0, 0],
+      "speed": 0.01
+    },
+    {
+      "key": "shadowLift",
+      "label": "Shadow Lift",
+      "type": "Float",
+      "ref": { "slot": 1, "channel": 2 },
+      "defaultValues": [0.015, 0, 0, 0],
+      "minValues": [0.0, 0, 0, 0],
+      "maxValues": [0.15, 0, 0, 0],
+      "speed": 0.001
+    },
+    {
+      "key": "edgeThreshold",
+      "label": "Edge Threshold",
+      "type": "Float",
+      "ref": { "slot": 1, "channel": 3 },
+      "defaultValues": [0.055, 0, 0, 0],
+      "minValues": [0.005, 0, 0, 0],
+      "maxValues": [0.25, 0, 0, 0],
+      "speed": 0.001
+    },
+    {
+      "key": "toneLevels",
+      "label": "Tone Levels",
+      "type": "Float",
+      "ref": { "slot": 2, "channel": 0 },
+      "defaultValues": [7.0, 0, 0, 0],
+      "minValues": [3.0, 0, 0, 0],
+      "maxValues": [16.0, 0, 0, 0],
+      "speed": 0.1
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "displayName": "Foliage_Linde_Tree_Large_Trunk_Specular",
+  "guid": "fd75b8fd922ee6739f5f17fc5e293aba",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Auto"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Foliage_Linde_Tree_Large_Trunk_Specular.png",
+  "type": "Texture"
+}

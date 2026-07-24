@@ -1,0 +1,21 @@
+{
+  "displayName": "Pavement_Manhole_Cover_Normal",
+  "guid": "f0dca50cc3399ec63e1b7e0d4576a317",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Pavement_Manhole_Cover_Normal.png",
+  "type": "Texture"
+}

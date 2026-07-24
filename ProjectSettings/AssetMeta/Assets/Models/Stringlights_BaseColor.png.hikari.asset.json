@@ -1,0 +1,21 @@
+{
+  "displayName": "Stringlights_BaseColor",
+  "guid": "0d1132f824ff7c870f1df573a82f7cbf",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "BaseColor"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Stringlights_BaseColor.png",
+  "type": "Texture"
+}

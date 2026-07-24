@@ -1,0 +1,21 @@
+{
+  "displayName": "Paris_LiquorBottle_01_Caps_Normal",
+  "guid": "31d5180e1c614f21f09b73efae41c199",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Paris_LiquorBottle_01_Caps_Normal.png",
+  "type": "Texture"
+}

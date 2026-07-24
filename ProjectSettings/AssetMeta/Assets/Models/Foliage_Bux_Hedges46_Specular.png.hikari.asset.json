@@ -1,0 +1,21 @@
+{
+  "displayName": "Foliage_Bux_Hedges46_Specular",
+  "guid": "075045d1641f4e5d218db22a39d11107",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Auto"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Foliage_Bux_Hedges46_Specular.png",
+  "type": "Texture"
+}

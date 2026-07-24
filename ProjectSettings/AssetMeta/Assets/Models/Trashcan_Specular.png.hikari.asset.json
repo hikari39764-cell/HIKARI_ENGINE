@@ -1,0 +1,21 @@
+{
+  "displayName": "Trashcan_Specular",
+  "guid": "1c4e01e7efe3fa711c7e4b85053c1b27",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Auto"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Trashcan_Specular.png",
+  "type": "Texture"
+}

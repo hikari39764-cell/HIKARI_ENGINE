@@ -1,0 +1,21 @@
+{
+  "displayName": "Bistro_Sign_Main_BaseColor",
+  "guid": "3f7716144258ae7a462c7c9f71d44d48",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "BaseColor"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Bistro_Sign_Main_BaseColor.png",
+  "type": "Texture"
+}

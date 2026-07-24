@@ -1,0 +1,21 @@
+{
+  "displayName": "Concrete_Striped_Normal",
+  "guid": "1b111b7ccee73911552cd5170dbc6100",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Concrete_Striped_Normal.png",
+  "type": "Texture"
+}

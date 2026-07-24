@@ -1,0 +1,21 @@
+{
+  "displayName": "MASTER_Forge_Metal_Specular",
+  "guid": "a99f6c05b80c99d7fb7df0524379f7f1",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Auto"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/MASTER_Forge_Metal_Specular.png",
+  "type": "Texture"
+}

@@ -1,0 +1,21 @@
+{
+  "displayName": "MASTER_Roofing_Shingle_Grey_BaseColor",
+  "guid": "c8f38a783fcda9ca54df0ec81c882173",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "BaseColor"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/MASTER_Roofing_Shingle_Grey_BaseColor.png",
+  "type": "Texture"
+}

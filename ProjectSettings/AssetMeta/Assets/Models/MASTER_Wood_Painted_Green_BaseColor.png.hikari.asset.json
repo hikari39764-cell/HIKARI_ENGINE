@@ -1,0 +1,21 @@
+{
+  "displayName": "MASTER_Wood_Painted_Green_BaseColor",
+  "guid": "9642237a3877d016a1ef3e100f168011",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "BaseColor"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/MASTER_Wood_Painted_Green_BaseColor.png",
+  "type": "Texture"
+}

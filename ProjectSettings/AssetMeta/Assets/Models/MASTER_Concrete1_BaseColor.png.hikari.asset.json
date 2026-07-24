@@ -1,0 +1,21 @@
+{
+  "displayName": "MASTER_Concrete1_BaseColor",
+  "guid": "83472a4a115c1f8b032c3292968a590b",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "BaseColor"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/MASTER_Concrete1_BaseColor.png",
+  "type": "Texture"
+}

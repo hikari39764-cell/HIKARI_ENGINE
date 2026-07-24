@@ -1,0 +1,21 @@
+{
+  "displayName": "MenuSign_02_Mesh_Specular",
+  "guid": "18e2a69b909e5c6e65ba2b708cb3cb88",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Auto"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/MenuSign_02_Mesh_Specular.png",
+  "type": "Texture"
+}

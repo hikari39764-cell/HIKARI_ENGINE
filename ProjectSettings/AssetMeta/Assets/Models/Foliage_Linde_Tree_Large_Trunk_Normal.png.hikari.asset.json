@@ -1,0 +1,21 @@
+{
+  "displayName": "Foliage_Linde_Tree_Large_Trunk_Normal",
+  "guid": "e6fe57b7f5c7849bbcb9c01856c41100",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Foliage_Linde_Tree_Large_Trunk_Normal.png",
+  "type": "Texture"
+}

@@ -1,0 +1,21 @@
+{
+  "displayName": "Shopsign_Book_Store_Emissive_Emissive",
+  "guid": "fd1845f62a94b84954d4ea4cb249a569",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Emissive"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Shopsign_Book_Store_Emissive_Emissive.png",
+  "type": "Texture"
+}

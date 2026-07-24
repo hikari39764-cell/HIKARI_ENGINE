@@ -1,0 +1,21 @@
+{
+  "displayName": "Pavement_Cobblestone_Wet_BLENDSHADER_Specular",
+  "guid": "13697f31926a535142bd5ac99e12a2e7",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Auto"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Pavement_Cobblestone_Wet_BLENDSHADER_Specular.png",
+  "type": "Texture"
+}

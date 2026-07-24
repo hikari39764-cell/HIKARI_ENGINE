@@ -1,0 +1,21 @@
+{
+  "displayName": "Paris_StringLights_01_Green_Color_Emissive_Normal",
+  "guid": "29f2ee8da64f08111a1d01e68241fa64",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Paris_StringLights_01_Green_Color_Emissive_Normal.png",
+  "type": "Texture"
+}

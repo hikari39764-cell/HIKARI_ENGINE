@@ -1,0 +1,13 @@
+{
+  "displayName": "Test",
+  "guid": "7ec5b84321976180c7cbd7b4cb36d320",
+  "importSettings": {
+    "runtimeLoader": "AnimationStateMachineAssetStore",
+    "sourceAuthoritative": true
+  },
+  "importerId": "AnimationStateMachineAssetImporter",
+  "importerVersion": 2,
+  "metaVersion": 1,
+  "sourcePath": "Assets/AnimationStateMachines/Test.hanimsm",
+  "type": "AnimationStateMachine"
+}

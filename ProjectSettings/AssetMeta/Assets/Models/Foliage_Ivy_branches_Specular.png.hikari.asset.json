@@ -1,0 +1,21 @@
+{
+  "displayName": "Foliage_Ivy_branches_Specular",
+  "guid": "d1069d65c67b05d0717338908350d5f2",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Auto"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Foliage_Ivy_branches_Specular.png",
+  "type": "Texture"
+}

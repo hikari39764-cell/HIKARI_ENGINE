@@ -1,0 +1,21 @@
+{
+  "displayName": "Bistro_Sign_Letters_BaseColor",
+  "guid": "6cbd6831e5b0786c09b0933158b2b572",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "BaseColor"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Bistro_Sign_Letters_BaseColor.png",
+  "type": "Texture"
+}

@@ -1,0 +1,21 @@
+{
+  "displayName": "Paris_TrafficSign_A_BaseColor",
+  "guid": "8671dba0db93fe6210e96bfae13f505a",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "BaseColor"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Paris_TrafficSign_A_BaseColor.png",
+  "type": "Texture"
+}

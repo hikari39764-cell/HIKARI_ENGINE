@@ -1,0 +1,21 @@
+{
+  "displayName": "Paris_StreetPivot_Specular",
+  "guid": "6a200713274773b520b27c93b0496fd9",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Auto"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Paris_StreetPivot_Specular.png",
+  "type": "Texture"
+}

@@ -1,0 +1,21 @@
+{
+  "displayName": "MASTER_Details_Dark_BaseColor",
+  "guid": "d1f26d296d4f65ccc2169433309d21da",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "BaseColor"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/MASTER_Details_Dark_BaseColor.png",
+  "type": "Texture"
+}

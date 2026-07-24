@@ -1,0 +1,21 @@
+{
+  "displayName": "MASTER_Awning_Fabric_Red_BaseColor",
+  "guid": "9979b7e9d5fe29666358d486fa4df10e",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "BaseColor"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/MASTER_Awning_Fabric_Red_BaseColor.png",
+  "type": "Texture"
+}

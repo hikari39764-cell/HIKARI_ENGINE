@@ -1,0 +1,21 @@
+{
+  "displayName": "Shopsign_Pharmacy_Emissive_Normal",
+  "guid": "3853ef33a74047f9aaef255d27c710bb",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Shopsign_Pharmacy_Emissive_Normal.png",
+  "type": "Texture"
+}

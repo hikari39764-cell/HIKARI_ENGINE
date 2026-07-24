@@ -1,0 +1,21 @@
+{
+  "displayName": "Pavement_Ground_Wet_Normal",
+  "guid": "2ed51b658949b221de04b44d6241d42f",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Pavement_Ground_Wet_Normal.png",
+  "type": "Texture"
+}

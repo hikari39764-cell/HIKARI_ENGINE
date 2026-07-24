@@ -1,0 +1,21 @@
+{
+  "displayName": "Vespa_Headlight_Normal",
+  "guid": "893e2263e3de62d7383f7ca278bfdd53",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Vespa_Headlight_Normal.png",
+  "type": "Texture"
+}

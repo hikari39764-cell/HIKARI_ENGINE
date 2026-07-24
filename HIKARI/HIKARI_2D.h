@@ -1,0 +1,16 @@
+#pragma once
+
+#include "Render2D/HIKARI_Renderer.h"
+#include "Render2D/HIKARI_Camera.h"
+#include "Render2D/HIKARI_Transform2D.h"
+#include "Render2D/HIKARI_Texture.h"
+#include "Render2D/HIKARI_DxRenderer.h"
+#include "Render2D/HIKARI_DxTexture.h"
+#include "Vfx/Post/HIKARI_PostSystem.h"
+#include "Vfx/Post/HIKARI_PostEffect.h"
+#include "Vfx/Post/HIKARI_PostQuadDrawer.h"
+#include "Vfx/Post/HIKARI_PostChain.h"
+#include "Vfx/Post/HIKARI_PostCommon.h"
+#include "Render2D/HIKARI_RenderTarget2D.h"
+#include "Render2D/HIKARI_SpineTextureLoader.h"
+#include "Render2D/HIKARI_SpineActor.h"

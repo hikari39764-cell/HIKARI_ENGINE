@@ -1,0 +1,43 @@
+{
+  "displayName": "action",
+  "guid": "b5495438c8743f173e2cf1a7536224af",
+  "importSettings": {
+    "clusterGeometry": {
+      "balancePlanarStaticSurfaces": true,
+      "clusterMergeNormalMinDot": 0.20000000298023224,
+      "compactUnderfilledClusters": true,
+      "enabled": true,
+      "largeSurfaceTargetExtent": 1.25,
+      "largeTriangleMaxEdgeLength": 3.0,
+      "largeTriangleMaxGeneratedTriangles": 16384,
+      "largeTriangleMaxSubdivisions": 4,
+      "lockPartitionBorders": true,
+      "lodQualityBias": 1.0,
+      "maxLodCount": 5,
+      "maxNormalBucketClusterOverhead": 1.100000023841858,
+      "meshletConeWeight": 0.3499999940395355,
+      "meshletSplitFactor": 1.0,
+      "minClusterOccupancyRatio": 0.75,
+      "normalBucketCoherentGroupMinDot": 0.3499999940395355,
+      "normalBucketQualityBonusRatio": 0.15000000596046448,
+      "partitionLargeSurfaces": true,
+      "partitionMinClusterEstimate": 16,
+      "planarSurfaceMaxDepth": 4,
+      "planarSurfaceMinPartitionExtent": 5.0,
+      "planarSurfaceMinTrianglesPerChunk": 1024,
+      "profile": "Character",
+      "subdivideLargeTriangles": false
+    },
+    "cookModel": true,
+    "loadMaterials": true,
+    "loadTextures": true,
+    "meshFormat": "HCMESH",
+    "outputFormat": "HMODEL",
+    "sourceFormat": ".gltf"
+  },
+  "importerId": "ModelImporter",
+  "importerVersion": 33,
+  "metaVersion": 1,
+  "sourcePath": "Assets/New Folder/action.gltf",
+  "type": "Model"
+}

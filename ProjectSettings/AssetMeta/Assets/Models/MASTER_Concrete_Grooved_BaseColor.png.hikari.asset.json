@@ -1,0 +1,21 @@
+{
+  "displayName": "MASTER_Concrete_Grooved_BaseColor",
+  "guid": "818498fe108a0a4695d0ac3c4a44d5f3",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "BaseColor"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/MASTER_Concrete_Grooved_BaseColor.png",
+  "type": "Texture"
+}

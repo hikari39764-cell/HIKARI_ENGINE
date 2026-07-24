@@ -1,0 +1,21 @@
+{
+  "displayName": "Shopsign_Bakery_BaseColor",
+  "guid": "cf7ee7a9d566e9b53f8d9e76cd5b4ca3",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "BaseColor"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Shopsign_Bakery_BaseColor.png",
+  "type": "Texture"
+}

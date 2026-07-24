@@ -1,0 +1,93 @@
+{
+  "id": "global_cinematic_grade",
+  "displayName": "Global Cinematic Grade",
+  "domain": "GlobalPost",
+  "passes": [
+    {
+      "passName": "Grade",
+      "shaderId": "Post_CinematicGradePS"
+    }
+  ],
+  "params": [
+    {
+      "key": "vignette",
+      "label": "Vignette",
+      "type": "Float",
+      "ref": { "slot": 0, "channel": 0 },
+      "defaultValues": [0.35, 0, 0, 0],
+      "minValues": [0.0, 0, 0, 0],
+      "maxValues": [2.0, 0, 0, 0],
+      "speed": 0.01
+    },
+    {
+      "key": "chroma",
+      "label": "Chromatic Offset",
+      "type": "Float",
+      "ref": { "slot": 0, "channel": 1 },
+      "defaultValues": [0.002, 0, 0, 0],
+      "minValues": [0.0, 0, 0, 0],
+      "maxValues": [0.01, 0, 0, 0],
+      "speed": 0.0001
+    },
+    {
+      "key": "saturation",
+      "label": "Saturation",
+      "type": "Float",
+      "ref": { "slot": 0, "channel": 2 },
+      "defaultValues": [1.0, 0, 0, 0],
+      "minValues": [0.0, 0, 0, 0],
+      "maxValues": [2.0, 0, 0, 0],
+      "speed": 0.01
+    },
+    {
+      "key": "contrast",
+      "label": "Contrast",
+      "type": "Float",
+      "ref": { "slot": 0, "channel": 3 },
+      "defaultValues": [1.1, 0, 0, 0],
+      "minValues": [0.0, 0, 0, 0],
+      "maxValues": [3.0, 0, 0, 0],
+      "speed": 0.01
+    },
+    {
+      "key": "gain",
+      "label": "Gain",
+      "type": "Float",
+      "ref": { "slot": 1, "channel": 0 },
+      "defaultValues": [1.0, 0, 0, 0],
+      "minValues": [0.0, 0, 0, 0],
+      "maxValues": [3.0, 0, 0, 0],
+      "speed": 0.01
+    },
+    {
+      "key": "grain",
+      "label": "Film Grain",
+      "type": "Float",
+      "ref": { "slot": 1, "channel": 1 },
+      "defaultValues": [0.02, 0, 0, 0],
+      "minValues": [0.0, 0, 0, 0],
+      "maxValues": [0.2, 0, 0, 0],
+      "speed": 0.001
+    },
+    {
+      "key": "scanlineAmp",
+      "label": "Scanline Amount",
+      "type": "Float",
+      "ref": { "slot": 1, "channel": 2 },
+      "defaultValues": [0.015, 0, 0, 0],
+      "minValues": [0.0, 0, 0, 0],
+      "maxValues": [0.2, 0, 0, 0],
+      "speed": 0.001
+    },
+    {
+      "key": "scanlineFreq",
+      "label": "Scanline Frequency",
+      "type": "Float",
+      "ref": { "slot": 1, "channel": 3 },
+      "defaultValues": [720.0, 0, 0, 0],
+      "minValues": [0.0, 0, 0, 0],
+      "maxValues": [4000.0, 0, 0, 0],
+      "speed": 1.0
+    }
+  ]
+}

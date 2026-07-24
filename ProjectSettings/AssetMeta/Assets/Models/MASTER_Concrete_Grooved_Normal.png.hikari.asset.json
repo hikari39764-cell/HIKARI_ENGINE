@@ -1,0 +1,21 @@
+{
+  "displayName": "MASTER_Concrete_Grooved_Normal",
+  "guid": "42f476c5a3751dff6ce93d1b8f56b71f",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/MASTER_Concrete_Grooved_Normal.png",
+  "type": "Texture"
+}

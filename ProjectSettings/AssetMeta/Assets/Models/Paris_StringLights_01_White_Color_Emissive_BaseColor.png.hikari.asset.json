@@ -1,0 +1,21 @@
+{
+  "displayName": "Paris_StringLights_01_White_Color_Emissive_BaseColor",
+  "guid": "4b208d53dfdb10aaf8adc03ce6cc63a0",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "BaseColor"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Paris_StringLights_01_White_Color_Emissive_BaseColor.png",
+  "type": "Texture"
+}

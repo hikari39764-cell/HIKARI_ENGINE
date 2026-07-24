@@ -1,0 +1,21 @@
+{
+  "displayName": "Streetlight_Chains_BaseColor",
+  "guid": "f52ece1ce85eeac89cbb156e5bc06f90",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "BaseColor"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Streetlight_Chains_BaseColor.png",
+  "type": "Texture"
+}

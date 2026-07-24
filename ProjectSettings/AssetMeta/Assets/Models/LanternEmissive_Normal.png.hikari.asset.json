@@ -1,0 +1,21 @@
+{
+  "displayName": "LanternEmissive_Normal",
+  "guid": "a33f842d37d134fbfcc02541c551d6e7",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/LanternEmissive_Normal.png",
+  "type": "Texture"
+}

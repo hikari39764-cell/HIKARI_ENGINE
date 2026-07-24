@@ -1,0 +1,21 @@
+{
+  "displayName": "Paris_StreetPivot_Normal",
+  "guid": "0f73fff0d6f8bd6e5c413bd2387edc83",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Paris_StreetPivot_Normal.png",
+  "type": "Texture"
+}

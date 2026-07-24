@@ -1,0 +1,21 @@
+{
+  "displayName": "Chimneys_Metal_Specular",
+  "guid": "b9e1764d0b69b3c3134a457d83c81a5b",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Auto"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Chimneys_Metal_Specular.png",
+  "type": "Texture"
+}

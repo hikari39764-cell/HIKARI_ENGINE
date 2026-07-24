@@ -1,0 +1,21 @@
+{
+  "displayName": "MenuSign_02_Glass_Specular",
+  "guid": "cc90178668f8d0f29b230885a5a9b4e9",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Auto"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/MenuSign_02_Glass_Specular.png",
+  "type": "Texture"
+}

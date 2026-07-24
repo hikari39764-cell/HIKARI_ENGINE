@@ -1,0 +1,21 @@
+{
+  "displayName": "Vespa_Odometer_Glass_BaseColor",
+  "guid": "f134f454cc3c2286992a3aa7bef4aacb",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "BaseColor"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Vespa_Odometer_Glass_BaseColor.png",
+  "type": "Texture"
+}

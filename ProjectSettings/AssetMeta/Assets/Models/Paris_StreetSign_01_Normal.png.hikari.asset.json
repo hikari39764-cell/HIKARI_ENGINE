@@ -1,0 +1,21 @@
+{
+  "displayName": "Paris_StreetSign_01_Normal",
+  "guid": "7e3064b31d2cdd68e779a1a82c515125",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Paris_StreetSign_01_Normal.png",
+  "type": "Texture"
+}

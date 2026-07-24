@@ -1,0 +1,21 @@
+{
+  "displayName": "Foliage_Ivy_branches_Normal",
+  "guid": "e3fcfb19b458e272679e52609aaa8fd2",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Foliage_Ivy_branches_Normal.png",
+  "type": "Texture"
+}

@@ -1,0 +1,21 @@
+{
+  "displayName": "Paris_StringLights_01_Blue_Color_Emissive_Emissive",
+  "guid": "5bc01f1b80bbda04461a587d36f5c00b",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "BaseColor"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Paris_StringLights_01_Blue_Color_Emissive_Emissive.png",
+  "type": "Texture"
+}

@@ -1,0 +1,19 @@
+{
+  "id": "noise_wipe",
+  "displayName": "Noise Wipe",
+  "shaderId": "Post_TransitionLinearWipePS",
+  "outDuration": 0.25,
+  "inDuration": 0.25,
+  "params": [
+    {
+      "key": "softness",
+      "label": "Softness",
+      "type": "Float",
+      "ref": { "slot": 0, "channel": 0 },
+      "defaultValues": [0.035, 0.0, 0.0, 0.0],
+      "minValues": [0.0001, 0.0, 0.0, 0.0],
+      "maxValues": [0.25, 0.0, 0.0, 0.0],
+      "speed": 0.001
+    }
+  ]
+}

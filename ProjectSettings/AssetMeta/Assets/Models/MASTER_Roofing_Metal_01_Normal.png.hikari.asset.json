@@ -1,0 +1,21 @@
+{
+  "displayName": "MASTER_Roofing_Metal_01_Normal",
+  "guid": "106a19e6be20188af1c821dddcfd1f41",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/MASTER_Roofing_Metal_01_Normal.png",
+  "type": "Texture"
+}

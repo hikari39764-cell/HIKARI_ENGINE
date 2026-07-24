@@ -1,0 +1,21 @@
+{
+  "displayName": "Foliage_Linde_Tree_Large_Green_Leaves_Normal",
+  "guid": "9b68bb9fb7711447e58d8f51245b6e66",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Foliage_Linde_Tree_Large_Green_Leaves_Normal.png",
+  "type": "Texture"
+}

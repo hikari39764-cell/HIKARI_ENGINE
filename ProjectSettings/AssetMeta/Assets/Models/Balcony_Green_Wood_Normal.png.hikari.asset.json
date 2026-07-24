@@ -1,0 +1,21 @@
+{
+  "displayName": "Balcony_Green_Wood_Normal",
+  "guid": "77b8a986bc70f780818374be700c9d76",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Linear",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Normal"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Balcony_Green_Wood_Normal.png",
+  "type": "Texture"
+}

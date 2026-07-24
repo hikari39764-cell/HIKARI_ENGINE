@@ -1,0 +1,21 @@
+{
+  "displayName": "Antenna_Metal_BaseColor",
+  "guid": "00fe6a61f1a86c3f773952fa2b7f2645",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "BaseColor"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Antenna_Metal_BaseColor.png",
+  "type": "Texture"
+}

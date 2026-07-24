@@ -1,0 +1,24 @@
+{
+  "renderQuality": {
+    "antiAliasingMode": "DLAA",
+    "dlssQualityMode": "Quality",
+    "forwardCostMode": "Full",
+    "frameGenerationMode": "Off",
+    "frameGenerationMultiplier": 2,
+    "geometryPipeline": "MeshShader",
+    "lightProbeVolumeSampling": "FastSmooth",
+    "sceneDepthPrepass": false,
+    "sceneResolution": "1440p",
+    "taaDepthRejection": 0.0024999999441206455,
+    "taaHistoryWeight": 0.9200000166893005,
+    "taaLuminanceRejection": 0.550000011920929,
+    "taaSharpness": 0.25,
+    "taaVarianceClipGamma": 1.25,
+    "vSync": false,
+    "viewportScale": 1.0,
+    "volumetricLightingQuality": "Balanced",
+    "windowMode": "Windowed",
+    "windowSize": "1440p"
+  },
+  "version": 1
+}

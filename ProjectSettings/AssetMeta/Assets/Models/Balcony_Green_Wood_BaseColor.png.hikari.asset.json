@@ -1,0 +1,21 @@
+{
+  "displayName": "Balcony_Green_Wood_BaseColor",
+  "guid": "5e3cbf22b2092ab4ce8f08ca98a3acf8",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "BaseColor"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Balcony_Green_Wood_BaseColor.png",
+  "type": "Texture"
+}

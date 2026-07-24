@@ -1,0 +1,21 @@
+{
+  "displayName": "Streetlight_Support_Bulb_Specular",
+  "guid": "883c10bf4715408dfcc3472acf312033",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Auto"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Streetlight_Support_Bulb_Specular.png",
+  "type": "Texture"
+}

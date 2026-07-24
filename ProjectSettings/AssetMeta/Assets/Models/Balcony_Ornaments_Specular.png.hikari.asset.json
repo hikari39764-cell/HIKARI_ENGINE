@@ -1,0 +1,21 @@
+{
+  "displayName": "Balcony_Ornaments_Specular",
+  "guid": "e435d6988cc47fad53d958bf37fc51b4",
+  "importSettings": {
+    "allowResize": false,
+    "colorSpace": "Srgb",
+    "compression": "BC7",
+    "debugOutputFormat": "DDS",
+    "dimension": "Texture2D",
+    "forcePowerOfTwo": false,
+    "maxSize": 4096,
+    "mipPolicy": "Generate",
+    "outputFormat": "HTEX",
+    "usage": "Auto"
+  },
+  "importerId": "TextureImporter",
+  "importerVersion": 5,
+  "metaVersion": 1,
+  "sourcePath": "Assets/Models/Balcony_Ornaments_Specular.png",
+  "type": "Texture"
+}

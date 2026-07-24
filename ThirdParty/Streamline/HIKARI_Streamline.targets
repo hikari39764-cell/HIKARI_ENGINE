@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Condition="'$(HikariStreamlineAvailable)'=='true'">
+    <HikariStreamlineRuntime Include="$(HikariStreamlineSdkRoot)\bin\x64\sl.interposer.dll" />
+    <HikariStreamlineRuntime Include="$(HikariStreamlineSdkRoot)\bin\x64\sl.common.dll" />
+    <HikariStreamlineRuntime Include="$(HikariStreamlineSdkRoot)\bin\x64\sl.dlss.dll" />
+    <HikariStreamlineRuntime Include="$(HikariStreamlineSdkRoot)\bin\x64\nvngx_dlss.dll" />
+    <HikariStreamlineRuntime Include="$(HikariStreamlineSdkRoot)\bin\x64\nvngx_dlss.license.txt" />
+    <HikariStreamlineRuntime Include="$(HikariStreamlineSdkRoot)\bin\x64\sl.dlss_g.dll" Condition="Exists('$(HikariStreamlineSdkRoot)\bin\x64\sl.dlss_g.dll')" />
+    <HikariStreamlineRuntime Include="$(HikariStreamlineSdkRoot)\bin\x64\sl.reflex.dll" Condition="Exists('$(HikariStreamlineSdkRoot)\bin\x64\sl.reflex.dll')" />
+    <HikariStreamlineRuntime Include="$(HikariStreamlineSdkRoot)\bin\x64\sl.pcl.dll" Condition="Exists('$(HikariStreamlineSdkRoot)\bin\x64\sl.pcl.dll')" />
+    <HikariStreamlineRuntime Include="$(HikariStreamlineSdkRoot)\bin\x64\nvngx_dlssg.dll" Condition="Exists('$(HikariStreamlineSdkRoot)\bin\x64\nvngx_dlssg.dll')" />
+    <HikariStreamlineRuntime Include="$(HikariStreamlineSdkRoot)\bin\x64\reflex.license.txt" Condition="Exists('$(HikariStreamlineSdkRoot)\bin\x64\reflex.license.txt')" />
+  </ItemGroup>
+
+  <Target Name="CopyHikariStreamlineRuntime" AfterTargets="Build" Condition="'$(HikariStreamlineAvailable)'=='true'">
+    <Copy SourceFiles="@(HikariStreamlineRuntime)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" />
+  </Target>
+</Project>
