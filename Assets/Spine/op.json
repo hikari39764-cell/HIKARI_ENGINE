@@ -1,0 +1,56 @@
+{
+"skeleton": {
+	"hash": "bXgR3YxN5Hc",
+	"spine": "4.2.43",
+	"x": -640,
+	"y": -360,
+	"width": 1280,
+	"height": 720,
+	"images": "../LOG连番/",
+	"audio": "./audio"
+},
+"bones": [
+	{ "name": "root" }
+],
+"slots": [
+	{ "name": "0", "bone": "root" },
+	{ "name": "1", "bone": "root", "attachment": "Log2/" }
+],
+"skins": [
+	{
+		"name": "default",
+		"attachments": {
+			"1": {
+				"Log2/": {
+					"width": 1280,
+					"height": 720,
+					"sequence": { "count": 54, "start": 0, "digits": 1 }
+				}
+			}
+		}
+	}
+],
+"animations": {
+	"op": {
+		"bones": {
+			"root": {
+				"translate": [
+					{ "curve": "stepped" },
+					{ "time": 1.7667 }
+				]
+			}
+		},
+		"attachments": {
+			"default": {
+				"1": {
+					"Log2/": {
+						"sequence": [
+							{ "mode": "loop", "delay": 0.0333 }
+						]
+					}
+				}
+			}
+		}
+	}
+}
+}
