@@ -2,8 +2,13 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdarg>
+#include <cstdio>
+#include <string>
 #include <thread>
 #include <utility>
+
+#include <Windows.h>
 
 #include <Jolt/Core/Factory.h>
 #include <Jolt/Core/Memory.h>
@@ -12,6 +17,7 @@
 #include <Jolt/Physics/EPhysicsUpdateError.h>
 #include <Jolt/RegisterTypes.h>
 
+#include "Core/HIKARI_Logger.h"
 #include "Physics/Backends/Jolt/HIKARI_JoltConversions.h"
 #include "Physics/Backends/Jolt/HIKARI_JoltShapeFactory.h"
 #include "Physics/HIKARI_PhysicsBodyValidator.h"
@@ -78,11 +84,72 @@ namespace HIKARI::PHYSICS::JOLT_BACKEND {
         ObjectLayerPairs gObjectLayerPairs{};
         std::mutex gJoltLifetimeMutex{};
         uint32_t gJoltWorldCount = 0;
+        JPH::TraceFunction gPreviousJoltTrace = nullptr;
+#ifdef JPH_ENABLE_ASSERTS
+        JPH::AssertFailedFunction gPreviousJoltAssertFailed = nullptr;
+#endif
+
+        void JoltTrace(const char* format, ...) {
+            if (format == nullptr) {
+                return;
+            }
+
+            char buffer[2048]{};
+            va_list arguments;
+            va_start(arguments, format);
+            std::vsnprintf(
+                buffer,
+                sizeof(buffer),
+                format,
+                arguments);
+            va_end(arguments);
+
+            std::string message(buffer);
+            while (!message.empty() &&
+                (message.back() == '\r' || message.back() == '\n')) {
+                message.pop_back();
+            }
+            if (!message.empty()) {
+                HIKARI_LOG_INFO("[Physics][Jolt] " + message);
+            }
+        }
+
+#ifdef JPH_ENABLE_ASSERTS
+        bool JoltAssertFailed(
+            const char* expression,
+            const char* message,
+            const char* file,
+            JPH::uint line) {
+            std::string diagnostic =
+                "[Physics][Jolt][Assert] " +
+                std::string(file != nullptr ? file : "<unknown>") +
+                ":" +
+                std::to_string(line) +
+                " (" +
+                std::string(
+                    expression != nullptr
+                        ? expression
+                        : "<unknown>") +
+                ")";
+            if (message != nullptr && message[0] != '\0') {
+                diagnostic += " ";
+                diagnostic += message;
+            }
+            HIKARI_LOG_ERROR(diagnostic);
+            return ::IsDebuggerPresent() != FALSE;
+        }
+#endif
 
         bool AcquireJoltRuntime() {
             std::scoped_lock lock(gJoltLifetimeMutex);
             if (gJoltWorldCount == 0) {
                 JPH::RegisterDefaultAllocator();
+                gPreviousJoltTrace = JPH::Trace;
+                JPH::Trace = JoltTrace;
+#ifdef JPH_ENABLE_ASSERTS
+                gPreviousJoltAssertFailed = JPH::AssertFailed;
+                JPH::AssertFailed = JoltAssertFailed;
+#endif
                 JPH::Factory::sInstance = new JPH::Factory();
                 JPH::RegisterTypes();
             }
@@ -98,6 +165,16 @@ namespace HIKARI::PHYSICS::JOLT_BACKEND {
             JPH::UnregisterTypes();
             delete JPH::Factory::sInstance;
             JPH::Factory::sInstance = nullptr;
+            if (JPH::Trace == JoltTrace) {
+                JPH::Trace = gPreviousJoltTrace;
+            }
+            gPreviousJoltTrace = nullptr;
+#ifdef JPH_ENABLE_ASSERTS
+            if (JPH::AssertFailed == JoltAssertFailed) {
+                JPH::AssertFailed = gPreviousJoltAssertFailed;
+            }
+            gPreviousJoltAssertFailed = nullptr;
+#endif
         }
 
         JPH::EMotionType ToJoltMotionType(
