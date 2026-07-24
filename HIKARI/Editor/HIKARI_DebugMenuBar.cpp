@@ -36,7 +36,6 @@ namespace HIKARI {
         constexpr size_t kExportPathBufferSize = 1024;
 
         bool g_showGameExportWindow = false;
-        EDITOR::GameExportTarget g_exportTarget = EDITOR::GameExportTarget::Game;
         std::array<char, kExportPathBufferSize> g_exportPathBuffer{};
         std::string g_exportStatus{};
         std::vector<EDITOR::GameExportSceneInfo> g_exportScenes{};
@@ -135,13 +134,8 @@ namespace HIKARI {
             }
         }
 
-        void SetExportTarget(EDITOR::GameExportTarget target) {
-            g_exportTarget = target;
-            CopyPathToExportPathBuffer(EDITOR::GameExporter::GetDefaultOutputDirectory(target));
-        }
-
-        void OpenGameExportWindow(EDITOR::GameExportTarget target) {
-            SetExportTarget(target);
+        void OpenGameExportWindow() {
+            CopyPathToExportPathBuffer(EDITOR::GameExporter::GetDefaultOutputDirectory());
             RefreshExportScenes();
             g_showGameExportWindow = true;
         }
@@ -345,23 +339,11 @@ namespace HIKARI {
             }
 
             if (g_exportPathBuffer[0] == '\0') {
-                CopyPathToExportPathBuffer(EDITOR::GameExporter::GetDefaultOutputDirectory(g_exportTarget));
+                CopyPathToExportPathBuffer(EDITOR::GameExporter::GetDefaultOutputDirectory());
             }
 
             ImGui::SetNextWindowSize(ImVec2(720.0f, 520.0f), ImGuiCond_FirstUseEver);
             if (ImGui::Begin("Export Game", &g_showGameExportWindow)) {
-                ImGui::TextUnformatted("Target");
-                if (ImGui::RadioButton("Game", g_exportTarget == EDITOR::GameExportTarget::Game)) {
-                    SetExportTarget(EDITOR::GameExportTarget::Game);
-                }
-                ImGui::SameLine();
-                if (ImGui::RadioButton(
-                    "Game + Object Tools",
-                    g_exportTarget == EDITOR::GameExportTarget::GameWithObjectTools)) {
-                    SetExportTarget(EDITOR::GameExportTarget::GameWithObjectTools);
-                }
-
-                ImGui::Spacing();
                 ImGui::TextUnformatted("Output Path");
                 ImGui::PushItemWidth(-110.0f);
                 ImGui::InputText("##GameExportOutputPath", g_exportPathBuffer.data(), g_exportPathBuffer.size());
@@ -374,7 +356,7 @@ namespace HIKARI {
                 }
 
                 if (ImGui::Button("Default Path")) {
-                    CopyPathToExportPathBuffer(EDITOR::GameExporter::GetDefaultOutputDirectory(g_exportTarget));
+                    CopyPathToExportPathBuffer(EDITOR::GameExporter::GetDefaultOutputDirectory());
                 }
 
                 DrawSceneExportControls();
@@ -388,7 +370,6 @@ namespace HIKARI {
                 }
                 if (ImGui::Button("Export")) {
                     EDITOR::GameExportOptions options{};
-                    options.target = g_exportTarget;
                     options.outputDirectory = ExportPathFromBuffer();
                     options.startupSceneGuid = g_startupSceneGuid;
                     options.sceneGuids = SelectedSceneGuidsInDisplayOrder();
@@ -570,10 +551,7 @@ namespace HIKARI {
 
         if (ImGui::BeginMenu("Build")) {
             if (ImGui::MenuItem("Export Game...")) {
-                OpenGameExportWindow(EDITOR::GameExportTarget::Game);
-            }
-            if (ImGui::MenuItem("Export Game With Object Tools...")) {
-                OpenGameExportWindow(EDITOR::GameExportTarget::GameWithObjectTools);
+                OpenGameExportWindow();
             }
 
             if (!g_exportStatus.empty()) {

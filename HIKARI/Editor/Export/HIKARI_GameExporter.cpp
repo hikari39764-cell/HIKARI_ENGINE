@@ -34,13 +34,8 @@ namespace HIKARI::EDITOR {
 
     namespace {
 #if defined(HIKARI_WITH_EDITOR)
-        struct ExportRecipe {
-            const char* outputFolderName = nullptr;
-            const char* sourceConfiguration = nullptr;
-            const char* hostMode = nullptr;
-            bool enableImGui = false;
-            bool enablePortableObjectTools = false;
-        };
+        constexpr const char* kExportOutputFolderName = "HIKARI_Game";
+        constexpr const char* kExportSourceConfiguration = "Shipping";
 
         struct ExportContentManifest {
             bool restrictToSelectedScenes = false;
@@ -48,29 +43,6 @@ namespace HIKARI::EDITOR {
             std::unordered_set<std::string> requiredAssetGuids{};
             std::vector<AssetMissingReference> missingReferences{};
         };
-
-        ExportRecipe RecipeFor(GameExportTarget target) {
-            switch (target) {
-            case GameExportTarget::GameWithObjectTools:
-                return {
-                    "HIKARI_Game_WithObjectTools",
-                    "Profile",
-                    RuntimeHostModeName(RuntimeHostMode::ExportedGameWithTools),
-                    true,
-                    true
-                };
-            case GameExportTarget::Game:
-            default:
-                return {
-                    "HIKARI_Game",
-                    "Shipping",
-                    RuntimeHostModeName(RuntimeHostMode::ExportedGame),
-                    false,
-                    false
-                };
-            }
-        }
-
 
         std::string RelativeFileKey(const std::filesystem::path& path) {
             return TEXT::ToLowerAsciiCopy(path.lexically_normal().generic_string());
@@ -121,10 +93,9 @@ namespace HIKARI::EDITOR {
 
         std::filesystem::path ResolveOutputDirectory(
             const std::filesystem::path& projectRoot,
-            const ExportRecipe& recipe,
             const std::filesystem::path& requestedDirectory) {
             if (requestedDirectory.empty()) {
-                return NormalizeExportPath(projectRoot / "Build" / "Exports" / recipe.outputFolderName);
+                return NormalizeExportPath(projectRoot / "Build" / "Exports" / kExportOutputFolderName);
             }
 
             std::filesystem::path outputDirectory = requestedDirectory;
@@ -794,7 +765,6 @@ namespace HIKARI::EDITOR {
 
         bool WriteRuntimeConfig(
             const std::filesystem::path& outputDirectory,
-            const ExportRecipe& recipe,
             const GameExportOptions& options,
             std::string& errorMessage) {
             const std::filesystem::path configPath = outputDirectory / "HIKARI" / "runtime_config.json";
@@ -814,10 +784,9 @@ namespace HIKARI::EDITOR {
             }
 
             nlohmann::json runtime{
-                    { "hostMode", recipe.hostMode },
-                    { "enableImGui", recipe.enableImGui },
+                    { "hostMode", RuntimeHostModeName(RuntimeHostMode::ExportedGame) },
+                    { "enableImGui", false },
                     { "enableEditorUI", false },
-                    { "enablePortableObjectTools", recipe.enablePortableObjectTools },
                     { "enableDebugLayer", false },
                     { "enableDebugCamera", false },
                     { "resizableWindow",
@@ -852,12 +821,8 @@ namespace HIKARI::EDITOR {
         bool CopyRuntimeContent(
             const std::filesystem::path& projectRoot,
             const std::filesystem::path& outputDirectory,
-            const ExportRecipe& recipe,
-            const GameExportOptions& options,
             const ExportContentManifest& contentManifest,
             std::string& errorMessage) {
-            (void)options;
-
             const std::vector<std::pair<std::filesystem::path, std::filesystem::path>> directories{
                 { "Data", "Data" },
                 { "ProjectSettings", "ProjectSettings" },
@@ -923,33 +888,16 @@ namespace HIKARI::EDITOR {
                 return false;
             }
 
-            if (recipe.enablePortableObjectTools) {
-                if (!CopyDirectoryChecked(
-                    projectRoot / "HIKARI/Icon",
-                    outputDirectory / "HIKARI/Icon",
-                    errorMessage)) {
-                    return false;
-                }
-
-                const std::filesystem::path pixRuntime =
-                    projectRoot / "ThirdParty/WinPixEventRuntime/bin/x64/WinPixEventRuntime.dll";
-                if (!CopyFileChecked(pixRuntime, outputDirectory / "WinPixEventRuntime.dll", errorMessage)) {
-                    return false;
-                }
-            }
-
             return true;
         }
 #endif
     }
 
-    std::filesystem::path GameExporter::GetDefaultOutputDirectory(GameExportTarget target) {
+    std::filesystem::path GameExporter::GetDefaultOutputDirectory() {
 #if defined(HIKARI_WITH_EDITOR)
-        const ExportRecipe recipe = RecipeFor(target);
         const std::filesystem::path projectRoot = FindProjectRoot();
-        return ResolveOutputDirectory(projectRoot, recipe, {});
+        return ResolveOutputDirectory(projectRoot, {});
 #else
-        (void)target;
         return {};
 #endif
     }
@@ -962,20 +910,17 @@ namespace HIKARI::EDITOR {
 #endif
     }
 
-    GameExportResult GameExporter::Export(GameExportTarget target) {
-        GameExportOptions options{};
-        options.target = target;
-        return Export(options);
+    GameExportResult GameExporter::Export() {
+        return Export(GameExportOptions{});
     }
 
     GameExportResult GameExporter::Export(const GameExportOptions& options) {
 #if defined(HIKARI_WITH_EDITOR)
-        const ExportRecipe recipe = RecipeFor(options.target);
         const std::filesystem::path projectRoot = FindProjectRoot();
         const std::filesystem::path sourceExe =
-            projectRoot.parent_path() / "Generated" / "Outputs" / recipe.sourceConfiguration / "HIKARI_UpdateTo3D.exe";
+            projectRoot.parent_path() / "Generated" / "Outputs" / kExportSourceConfiguration / "HIKARI_UpdateTo3D.exe";
         const std::filesystem::path outputDirectory =
-            ResolveOutputDirectory(projectRoot, recipe, options.outputDirectory);
+            ResolveOutputDirectory(projectRoot, options.outputDirectory);
         const std::filesystem::path outputExe = outputDirectory / "HIKARI_Game.exe";
         const RENDER3D::RenderQualitySettings& renderQuality =
             RENDER3D::GetRenderQualitySettings();
@@ -1017,8 +962,8 @@ namespace HIKARI::EDITOR {
                 outputDirectory,
                 streamlineDeployment,
                 errorMessage) ||
-            !WriteRuntimeConfig(outputDirectory, recipe, options, errorMessage) ||
-            !CopyRuntimeContent(projectRoot, outputDirectory, recipe, options, contentManifest, errorMessage)) {
+            !WriteRuntimeConfig(outputDirectory, options, errorMessage) ||
+            !CopyRuntimeContent(projectRoot, outputDirectory, contentManifest, errorMessage)) {
             if (errorMessage.empty() && !nativeRuntime.success) {
                 errorMessage = nativeRuntime.message;
             }

@@ -179,7 +179,6 @@ namespace HIKARI {
 
         cfg.enableImGui = ReadBool(runtime, "enableImGui");
         cfg.enableEditorUI = ReadBool(runtime, "enableEditorUI");
-        cfg.enablePortableObjectTools = ReadBool(runtime, "enablePortableObjectTools");
         cfg.enableDebugLayer = ReadBool(runtime, "enableDebugLayer");
         cfg.enableDebugCamera = ReadBool(runtime, "enableDebugCamera");
         cfg.resizableWindow = ReadBool(runtime, "resizableWindow");
@@ -270,9 +269,6 @@ namespace HIKARI {
         }
         if (runtimeCfg.enableEditorUI) {
             servicesCfg.enableEditorUI = *runtimeCfg.enableEditorUI;
-        }
-        if (runtimeCfg.enablePortableObjectTools) {
-            servicesCfg.enablePortableObjectTools = *runtimeCfg.enablePortableObjectTools;
         }
         if (runtimeCfg.enableDebugLayer) {
             servicesCfg.enableDebugLayer = *runtimeCfg.enableDebugLayer;

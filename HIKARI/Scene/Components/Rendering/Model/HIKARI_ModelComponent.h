@@ -60,10 +60,12 @@ namespace HIKARI {
         uint32_t GetMaxWireLines() const;
         bool GetWirePerPrimitiveColor() const;
 
+#if defined(HIKARI_WITH_EDITOR)
         void RenderImGui() override;
+        void BuildInspector(IInspectorBuilder& builder) override;
+#endif
         void Serialize(nlohmann::json& out) const override;
         void Deserialize(const nlohmann::json& in) override;
-        void BuildInspector(IInspectorBuilder& builder) override;
         bool QueryGeometryFit(
             GeometryFitDesc& outFit) const noexcept override;
 

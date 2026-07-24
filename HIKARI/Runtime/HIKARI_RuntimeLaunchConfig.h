@@ -22,7 +22,6 @@ namespace HIKARI {
         std::optional<RuntimeHostMode> hostMode{};
         std::optional<bool> enableImGui{};
         std::optional<bool> enableEditorUI{};
-        std::optional<bool> enablePortableObjectTools{};
         std::optional<bool> enableDebugLayer{};
         std::optional<bool> enableDebugCamera{};
         std::optional<bool> resizableWindow{};

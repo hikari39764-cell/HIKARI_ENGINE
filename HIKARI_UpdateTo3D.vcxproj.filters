@@ -1941,6 +1941,9 @@
     <ClCompile Include="HIKARI\Editor\Inspectors\HIKARI_PhysicsCollisionFilterInspector.cpp">
       <Filter>Source Files\Editor\Inspectors</Filter>
     </ClCompile>
+    <ClCompile Include="HIKARI\Editor\Inspectors\Physics\HIKARI_ColliderComponentInspector.cpp">
+      <Filter>Source Files\Editor\Inspectors</Filter>
+    </ClCompile>
     <ClCompile Include="HIKARI\Editor\Inspectors\Rendering\MaterialFx\HIKARI_MaterialFxComponentInspector.cpp">
       <Filter>Source Files\Editor\Inspectors\Rendering\MaterialFx</Filter>
     </ClCompile>
@@ -2791,9 +2794,6 @@
       <Filter>Source Files\Runtime</Filter>
     </ClCompile>
     <ClCompile Include="HIKARI\Runtime\HIKARI_GamePresentationController.cpp">
-      <Filter>Source Files\Runtime</Filter>
-    </ClCompile>
-    <ClCompile Include="HIKARI\RuntimeTools\HIKARI_PortableObjectToolsPanel.cpp">
       <Filter>Source Files\Runtime</Filter>
     </ClCompile>
     <ClCompile Include="HIKARI\Render3D\Core\MeshRenderer\Bindings\HIKARI_MeshResourceBindings.cpp">
@@ -4669,9 +4669,6 @@
       <Filter>Header Files\Runtime</Filter>
     </ClInclude>
     <ClInclude Include="HIKARI\Runtime\HIKARI_GamePresentationController.h">
-      <Filter>Header Files\Runtime</Filter>
-    </ClInclude>
-    <ClInclude Include="HIKARI\RuntimeTools\HIKARI_PortableObjectToolsPanel.h">
       <Filter>Header Files\Runtime</Filter>
     </ClInclude>
     <ClInclude Include="HIKARI\Editor\Export\HIKARI_GameExporter.h">

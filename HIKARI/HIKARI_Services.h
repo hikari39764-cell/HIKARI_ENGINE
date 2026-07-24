@@ -76,7 +76,6 @@ namespace HIKARI {
 #else
                 false;
 #endif
-            bool enablePortableObjectTools = false;
             int windowWidth = PRESENTATION::kDefaultLogicalWidth;
             int windowHeight = PRESENTATION::kDefaultLogicalHeight;
             std::string startupSceneGuid{};
@@ -95,7 +94,6 @@ namespace HIKARI {
         inline RuntimeHostMode gRuntimeHostMode = DefaultRuntimeHostMode();
         inline bool gEnableImGui = false;
         inline bool gEnableEditorUI = false;
-        inline bool gEnablePortableObjectTools = false;
         inline std::string gRuntimeStartupSceneGuid{};
         inline std::vector<std::string> gRuntimeExportedSceneGuids{};
         inline D3D12_CPU_DESCRIPTOR_HANDLE gImGuiFontSrvCpu{};
@@ -139,7 +137,6 @@ namespace HIKARI {
                 IsEditorUIEnabled() &&
                 !IsInProcessGamePresentationActive();
         }
-        inline bool ArePortableObjectToolsEnabled() { return gEnableImGui && gEnablePortableObjectTools; }
         inline const std::string& GetRuntimeStartupSceneGuid() { return gRuntimeStartupSceneGuid; }
         inline const std::vector<std::string>& GetRuntimeExportedSceneGuids() { return gRuntimeExportedSceneGuids; }
         inline bool IsRuntimeSceneGuidAllowed(const std::string& sceneGuid) {
@@ -424,8 +421,6 @@ namespace HIKARI {
             gRuntimeHostMode = cfg.hostMode;
             gEnableImGui = cfg.enableImGui;
             gEnableEditorUI = IsEditorHostMode(gRuntimeHostMode) && cfg.enableEditorUI;
-            gEnablePortableObjectTools =
-                AllowsPortableObjectTools(gRuntimeHostMode) && cfg.enablePortableObjectTools;
             gRuntimeStartupSceneGuid = cfg.startupSceneGuid;
             gRuntimeExportedSceneGuids = cfg.exportedSceneGuids;
             {
@@ -433,7 +428,6 @@ namespace HIKARI {
                 oss << "Runtime host mode=" << RuntimeHostModeName(gRuntimeHostMode)
                     << " imgui=" << (gEnableImGui ? "true" : "false")
                     << " editorUI=" << (gEnableEditorUI ? "true" : "false")
-                    << " portableObjectTools=" << (gEnablePortableObjectTools ? "true" : "false")
                     << " startupSceneGuid=" << (gRuntimeStartupSceneGuid.empty() ? "<project>" : gRuntimeStartupSceneGuid)
                     << " exportedSceneCount=" << gRuntimeExportedSceneGuids.size();
                 HIKARI_LOG_INFO(oss.str());
@@ -580,7 +574,6 @@ namespace HIKARI {
 #else
                 gEnableImGui = false;
                 gEnableEditorUI = false;
-                gEnablePortableObjectTools = false;
 #endif
             }
             if (gEnableImGui) {

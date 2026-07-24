@@ -9,7 +9,6 @@ namespace HIKARI {
         Editor,
         GamePreview,
         ExportedGame,
-        ExportedGameWithTools,
     };
 
     inline constexpr bool IsEditorHostMode(RuntimeHostMode mode) {
@@ -17,18 +16,13 @@ namespace HIKARI {
     }
 
     inline constexpr bool IsExportedGameHostMode(RuntimeHostMode mode) {
-        return mode == RuntimeHostMode::ExportedGame ||
-            mode == RuntimeHostMode::ExportedGameWithTools;
+        return mode == RuntimeHostMode::ExportedGame;
     }
 
     inline constexpr bool IsStandaloneGameHostMode(RuntimeHostMode mode) {
         return mode == RuntimeHostMode::Game ||
             mode == RuntimeHostMode::GamePreview ||
             IsExportedGameHostMode(mode);
-    }
-
-    inline constexpr bool AllowsPortableObjectTools(RuntimeHostMode mode) {
-        return mode == RuntimeHostMode::ExportedGameWithTools;
     }
 
     inline constexpr const char* RuntimeHostModeName(RuntimeHostMode mode) {
@@ -41,8 +35,6 @@ namespace HIKARI {
             return "GamePreview";
         case RuntimeHostMode::ExportedGame:
             return "ExportedGame";
-        case RuntimeHostMode::ExportedGameWithTools:
-            return "ExportedGameWithTools";
         default:
             return "Unknown";
         }
@@ -65,12 +57,6 @@ namespace HIKARI {
         }
         if (name == "ExportedGame" || name == "exportedGame" || name == "exported_game") {
             outMode = RuntimeHostMode::ExportedGame;
-            return true;
-        }
-        if (name == "ExportedGameWithTools" ||
-            name == "exportedGameWithTools" ||
-            name == "exported_game_with_tools") {
-            outMode = RuntimeHostMode::ExportedGameWithTools;
             return true;
         }
         return false;

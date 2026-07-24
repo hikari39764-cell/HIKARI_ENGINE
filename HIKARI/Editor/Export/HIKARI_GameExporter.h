@@ -6,11 +6,6 @@
 
 namespace HIKARI::EDITOR {
 
-    enum class GameExportTarget {
-        Game,
-        GameWithObjectTools,
-    };
-
     struct GameExportResult {
         bool success = false;
         std::filesystem::path outputDirectory{};
@@ -25,7 +20,6 @@ namespace HIKARI::EDITOR {
     };
 
     struct GameExportOptions {
-        GameExportTarget target = GameExportTarget::Game;
         std::filesystem::path outputDirectory{};
         std::string startupSceneGuid{};
         std::vector<std::string> sceneGuids{};
@@ -33,9 +27,9 @@ namespace HIKARI::EDITOR {
 
     class GameExporter {
     public:
-        static std::filesystem::path GetDefaultOutputDirectory(GameExportTarget target);
+        static std::filesystem::path GetDefaultOutputDirectory();
         static std::vector<GameExportSceneInfo> CollectSceneAssets();
-        static GameExportResult Export(GameExportTarget target);
+        static GameExportResult Export();
         static GameExportResult Export(const GameExportOptions& options);
     };
 

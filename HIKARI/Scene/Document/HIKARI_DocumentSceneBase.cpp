@@ -404,7 +404,7 @@ namespace HIKARI {
 #endif
     }
     void DocumentSceneBase::RenderImGui() {
-        if (!SERVICES::IsEditorUIEnabled() && !SERVICES::ArePortableObjectToolsEnabled()) {
+        if (!SERVICES::IsEditorUIEnabled()) {
             state_->runtime.world.RenderImGui();
         }
     }

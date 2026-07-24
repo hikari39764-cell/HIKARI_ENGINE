@@ -9,14 +9,6 @@
       <Configuration>EditorRelease</Configuration>
       <Platform>x64</Platform>
     </ProjectConfiguration>
-    <ProjectConfiguration Include="Profile|x64">
-      <Configuration>Profile</Configuration>
-      <Platform>x64</Platform>
-    </ProjectConfiguration>
-    <ProjectConfiguration Include="Release|x64">
-      <Configuration>Release</Configuration>
-      <Platform>x64</Platform>
-    </ProjectConfiguration>
     <ProjectConfiguration Include="Shipping|x64">
       <Configuration>Shipping</Configuration>
       <Platform>x64</Platform>
@@ -43,20 +35,6 @@
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Profile|x64'" Label="Configuration">
-    <ConfigurationType>Application</ConfigurationType>
-    <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v143</PlatformToolset>
-    <WholeProgramOptimization>true</WholeProgramOptimization>
-    <CharacterSet>Unicode</CharacterSet>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
-    <ConfigurationType>Application</ConfigurationType>
-    <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v143</PlatformToolset>
-    <WholeProgramOptimization>true</WholeProgramOptimization>
-    <CharacterSet>Unicode</CharacterSet>
-  </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Shipping|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
@@ -76,12 +54,6 @@
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='EditorRelease|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
-  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">
-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
-  </ImportGroup>
-  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
-  </ImportGroup>
   <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Shipping|x64'">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
   </ImportGroup>
@@ -93,18 +65,6 @@
     <LibraryPath>$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='EditorRelease|x64'">
-    <LinkIncremental>false</LinkIncremental>
-    <OutDir>$(ProjectDir)..\Generated\Outputs\$(Configuration)\</OutDir>
-    <IntDir>$(ProjectDir)..\Generated\Obj\$(ProjectName)\$(Configuration)\</IntDir>
-    <LibraryPath>$(LibraryPath)</LibraryPath>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">
-    <LinkIncremental>false</LinkIncremental>
-    <OutDir>$(ProjectDir)..\Generated\Outputs\$(Configuration)\</OutDir>
-    <IntDir>$(ProjectDir)..\Generated\Obj\$(ProjectName)\$(Configuration)\</IntDir>
-    <LibraryPath>$(LibraryPath)</LibraryPath>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
     <OutDir>$(ProjectDir)..\Generated\Outputs\$(Configuration)\</OutDir>
     <IntDir>$(ProjectDir)..\Generated\Obj\$(ProjectName)\$(Configuration)\</IntDir>
@@ -165,56 +125,6 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <AdditionalDependencies>DirectXTex.lib;Effekseer.lib;EffekseerRendererDX12.lib;LLGI.lib;dxguid.lib;xaudio2.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>$(SolutionDir)ThirdParty\DirectXTex\DirectXTex\Bin\Desktop_2022_Win10\$(Platform)\Release;$(ProjectDir)ThirdParty\Effekseer\Lib\Release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-    </Link>
-  </ItemDefinitionGroup>
-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">
-    <ClCompile>
-      <WarningLevel>Level4</WarningLevel>
-      <FunctionLevelLinking>true</FunctionLevelLinking>
-      <IntrinsicFunctions>true</IntrinsicFunctions>
-      <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>HIKARI_ENABLE_PIX;HIKARI_ENABLE_IMGUI;NDEBUG;_WINDOWS;_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_DEPRECATE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(ProjectDir)ThirdParty\spine\include;$(ProjectDir)ThirdParty\nlohmann;$(ProjectDir)include;$(ProjectDir)HIKARI;$(ProjectDir)ThirdParty\imgui;$(ProjectDir)ThirdParty\ImGuizmo;%(AdditionalIncludeDirectories);$(ProjectDir)ThirdParty\Effekseer\include;$(ProjectDir)ThirdParty$Effekseer$include$Effekseer;$(ProjectDir)ThirdParty$Effekseer$include$EffekseerRendererDX12;$(ProjectDir)ThirdParty$Effekseer$include$LLGI;$(ProjectDir)ThirdParty\Effekseer\include\Effekseer;$(ProjectDir)ThirdParty\Effekseer\include\EffekseerRendererDX12;$(ProjectDir)ThirdParty\Effekseer\include\LLGI;$(SolutionDir)ThirdParty\DirectXTex\DirectXTex;$(SolutionDir)ThirdParty\DirectXTex\Common</AdditionalIncludeDirectories>
-      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
-      <Optimization>MaxSpeed</Optimization>
-      <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
-      <TreatWarningAsError>false</TreatWarningAsError>
-      <MultiProcessorCompilation>true</MultiProcessorCompilation>
-    </ClCompile>
-    <Link>
-      <SubSystem>Windows</SubSystem>
-      <EnableCOMDATFolding>true</EnableCOMDATFolding>
-      <OptimizeReferences>true</OptimizeReferences>
-      <GenerateDebugInformation>false</GenerateDebugInformation>
-      <AdditionalDependencies>DirectXTex.lib;Effekseer.lib;EffekseerRendererDX12.lib;LLGI.lib;dxguid.lib;xaudio2.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(SolutionDir)ThirdParty\DirectXTex\DirectXTex\Bin\Desktop_2022_Win10\$(Platform)\Release;$(ProjectDir)ThirdParty\Effekseer\Lib\Release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
-    </Link>
-  </ItemDefinitionGroup>
-  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
-    <ClCompile>
-      <WarningLevel>Level4</WarningLevel>
-      <FunctionLevelLinking>true</FunctionLevelLinking>
-      <IntrinsicFunctions>true</IntrinsicFunctions>
-      <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>HIKARI_ENABLE_PIX;NDEBUG;_WINDOWS;_CRT_SECURE_NO_WARNINGS;_CRT_NONSTDC_NO_DEPRECATE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
-      <ConformanceMode>true</ConformanceMode>
-      <AdditionalIncludeDirectories>$(ProjectDir)ThirdParty\spine\include;$(ProjectDir)ThirdParty\nlohmann;$(ProjectDir)include;$(ProjectDir)HIKARI;$(ProjectDir)ThirdParty\imgui;$(ProjectDir)ThirdParty\ImGuizmo;%(AdditionalIncludeDirectories);$(ProjectDir)ThirdParty\Effekseer\include;$(ProjectDir)ThirdParty$Effekseer$include$Effekseer;$(ProjectDir)ThirdParty$Effekseer$include$EffekseerRendererDX12;$(ProjectDir)ThirdParty$Effekseer$include$LLGI;$(ProjectDir)ThirdParty\Effekseer\include\Effekseer;$(ProjectDir)ThirdParty\Effekseer\include\EffekseerRendererDX12;$(ProjectDir)ThirdParty\Effekseer\include\LLGI;$(SolutionDir)ThirdParty\DirectXTex\DirectXTex;$(SolutionDir)ThirdParty\DirectXTex\Common</AdditionalIncludeDirectories>
-      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
-      <Optimization>MinSpace</Optimization>
-      <LanguageStandard>stdcpp20</LanguageStandard>
-      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
-      <TreatWarningAsError>false</TreatWarningAsError>
-      <MultiProcessorCompilation>true</MultiProcessorCompilation>
-    </ClCompile>
-    <Link>
-      <SubSystem>Windows</SubSystem>
-      <EnableCOMDATFolding>true</EnableCOMDATFolding>
-      <OptimizeReferences>true</OptimizeReferences>
-      <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>DirectXTex.lib;Effekseer.lib;EffekseerRendererDX12.lib;LLGI.lib;dxguid.lib;xaudio2.lib;%(AdditionalDependencies)</AdditionalDependencies>
-      <AdditionalLibraryDirectories>$(SolutionDir)ThirdParty\DirectXTex\DirectXTex\Bin\Desktop_2022_Win10\$(Platform)\$(Configuration);$(ProjectDir)ThirdParty\Effekseer\Lib\Release;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Shipping|x64'">
@@ -529,8 +439,6 @@
     <ClCompile Include="HIKARI\Render3D\Debug\HIKARI_DebugCameraController3D.cpp" />
     <ClCompile Include="HIKARI\Render3D\Debug\HIKARI_RenderDebugOutput.cpp" />
     <ClCompile Include="HIKARI\Render3D\Views\HIKARI_EditorInteractiveViewRenderer.cpp">
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Shipping|x64'">true</ExcludedFromBuild>
     </ClCompile>
     <ClCompile Include="HIKARI\Editor\HIKARI_DebugMenuBar.cpp" />
@@ -710,7 +618,6 @@
     <ClCompile Include="HIKARI\Runtime\HIKARI_RuntimeResourceRefreshService.cpp" />
     <ClCompile Include="HIKARI\Runtime\HIKARI_RuntimeLaunchConfig.cpp" />
     <ClCompile Include="HIKARI\Runtime\HIKARI_GamePresentationController.cpp" />
-    <ClCompile Include="HIKARI\RuntimeTools\HIKARI_PortableObjectToolsPanel.cpp" />
     <ClCompile Include="HIKARI\Tools\Baking\HIKARI_LightingBakeService.cpp" />
     <ClCompile Include="HIKARI\Tools\Baking\HIKARI_LightProbeBaker.cpp" />
     <ClCompile Include="HIKARI\Tools\Baking\HIKARI_ProbeCubemapCaptureTarget.cpp" />
@@ -730,6 +637,7 @@
     <ClCompile Include="HIKARI\Scene\Prefab\HIKARI_PrefabRegistry.cpp" />
     <ClCompile Include="HIKARI\Editor\Inspectors\HIKARI_ImGuiInspectorBuilder.cpp" />
     <ClCompile Include="HIKARI\Editor\Inspectors\HIKARI_PhysicsCollisionFilterInspector.cpp" />
+    <ClCompile Include="HIKARI\Editor\Inspectors\Physics\HIKARI_ColliderComponentInspector.cpp" />
     <ClCompile Include="HIKARI\Editor\Inspectors\Rendering\MaterialFx\HIKARI_MaterialFxComponentInspector.cpp" />
     <ClCompile Include="HIKARI\Editor\Inspectors\Rendering\Model\HIKARI_ModelComponentDiagnostics.cpp" />
     <ClCompile Include="HIKARI\Editor\Inspectors\Rendering\Model\HIKARI_ModelComponentInspector.cpp" />
@@ -999,7 +907,6 @@
     <ClCompile Include="ThirdParty\ImGuizmo\ImGuizmo.cpp">
       <WarningLevel>TurnOffAllWarnings</WarningLevel>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Shipping|x64'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">true</ExcludedFromBuild>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -1010,7 +917,6 @@
   <ItemGroup>
     <ClCompile Update="HIKARI\Editor\**\*.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Shipping|x64'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Profile|x64'">true</ExcludedFromBuild>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -1440,7 +1346,6 @@
     <ClInclude Include="HIKARI\Runtime\HIKARI_RuntimeLaunchConfig.h" />
     <ClInclude Include="HIKARI\Runtime\HIKARI_GamePresentationController.h" />
     <ClInclude Include="HIKARI\Runtime\HIKARI_RuntimeResourceRefreshService.h" />
-    <ClInclude Include="HIKARI\RuntimeTools\HIKARI_PortableObjectToolsPanel.h" />
     <ClInclude Include="HIKARI\Scene\HIKARI_SceneDocument.h" />
     <ClInclude Include="HIKARI\Scene\Serialization\HIKARI_SceneSerializer.h" />
     <ClInclude Include="HIKARI\Scene\Serialization\Environment\HIKARI_SceneEnvironmentJson.h" />
