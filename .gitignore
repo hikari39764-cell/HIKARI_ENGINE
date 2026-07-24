@@ -392,3 +392,5 @@ Assets/Test/imgui.ini
 Library/
 vcpkg_installed/
 vcpkg_installed_static/
+/out/
+/CMakeUserPresets.json

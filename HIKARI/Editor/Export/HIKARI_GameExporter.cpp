@@ -35,7 +35,6 @@ namespace HIKARI::EDITOR {
     namespace {
 #if defined(HIKARI_WITH_EDITOR)
         constexpr const char* kExportOutputFolderName = "HIKARI_Game";
-        constexpr const char* kExportSourceConfiguration = "Shipping";
 
         struct ExportContentManifest {
             bool restrictToSelectedScenes = false;
@@ -50,7 +49,16 @@ namespace HIKARI::EDITOR {
 
         bool LooksLikeProjectRoot(const std::filesystem::path& path) {
             std::error_code ec{};
-            return std::filesystem::exists(path / "HIKARI_UpdateTo3D.vcxproj", ec) && !ec;
+            const bool hasCMakeProject =
+                std::filesystem::is_regular_file(path / "CMakeLists.txt", ec);
+            if (ec || !hasCMakeProject) {
+                return false;
+            }
+
+            ec.clear();
+            return std::filesystem::is_directory(
+                path / "ProjectSettings",
+                ec) && !ec;
         }
 
         std::filesystem::path FindProjectRoot() {
@@ -918,7 +926,7 @@ namespace HIKARI::EDITOR {
 #if defined(HIKARI_WITH_EDITOR)
         const std::filesystem::path projectRoot = FindProjectRoot();
         const std::filesystem::path sourceExe =
-            projectRoot.parent_path() / "Generated" / "Outputs" / kExportSourceConfiguration / "HIKARI_UpdateTo3D.exe";
+            projectRoot / "out" / "install" / "game-shipping" / "HIKARI_UpdateTo3D.exe";
         const std::filesystem::path outputDirectory =
             ResolveOutputDirectory(projectRoot, options.outputDirectory);
         const std::filesystem::path outputExe = outputDirectory / "HIKARI_Game.exe";
@@ -938,6 +946,18 @@ namespace HIKARI::EDITOR {
         result.outputDirectory = outputDirectory;
 
         std::string errorMessage{};
+        std::error_code sourceExeError{};
+        if (!std::filesystem::is_regular_file(sourceExe, sourceExeError) ||
+            sourceExeError) {
+            result.message =
+                "Installed Shipping runtime is missing: " +
+                sourceExe.string() +
+                ". Run .\\Tools\\Build\\Build-Hikari.ps1 "
+                "-Preset game-shipping -Install before exporting.";
+            HIKARI_LOG_WARN(std::string("[GameExporter] ") + result.message);
+            return result;
+        }
+
         ExportContentManifest contentManifest{};
         if (!BuildExportContentManifest(projectRoot, options, contentManifest, errorMessage)) {
             result.message = errorMessage;

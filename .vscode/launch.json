@@ -1,0 +1,21 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "HIKARI EditorRelease",
+      "type": "cppvsdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}\\out\\build\\editor-release\\bin\\HIKARI_UpdateTo3D.exe",
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "HIKARI: Build EditorRelease"
+    },
+    {
+      "name": "HIKARI Debug",
+      "type": "cppvsdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}\\out\\build\\debug\\bin\\HIKARI_UpdateTo3D.exe",
+      "cwd": "${workspaceFolder}",
+      "preLaunchTask": "HIKARI: Build Debug"
+    }
+  ]
+}

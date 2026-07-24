@@ -1,0 +1,245 @@
+{
+  "schemaVersion": 1,
+  "description": "Audited dependency inputs for the CMake compatibility build. This is an inventory and integrity boundary, not an assertion that every dependency is redistributable.",
+  "vcpkg": {
+    "builtinBaseline": "4bca8fd8654e5ba76f92661db7bfe954768ad8ef",
+    "installations": [
+      {
+        "name": "dynamic-runtime",
+        "manifest": "vcpkg.json",
+        "triplet": "x64-windows",
+        "installRoot": "vcpkg_installed",
+        "packages": [
+          "assimp",
+          "joltphysics"
+        ]
+      },
+      {
+        "name": "static-runtime",
+        "manifest": "Tools/Dependencies/vcpkg-static/vcpkg.json",
+        "triplet": "x64-windows-static",
+        "installRoot": "vcpkg_installed_static",
+        "packages": [
+          "joltphysics"
+        ]
+      }
+    ]
+  },
+  "dependencies": [
+    {
+      "name": "DirectXTex",
+      "version": "2.1.1",
+      "kind": "tracked-source",
+      "source": "ThirdParty/DirectXTex",
+      "versionEvidence": "ThirdParty/DirectXTex/CMakeLists.txt",
+      "licenseEvidence": "ThirdParty/DirectXTex/LICENSE",
+      "restore": "Built as a CMake target from the tracked source snapshot."
+    },
+    {
+      "name": "Spine C++ Runtime",
+      "version": "4.2",
+      "kind": "tracked-source",
+      "source": "ThirdParty/spine",
+      "versionEvidence": "ThirdParty/spine/include/spine/Version.h",
+      "licenseEvidence": null,
+      "restore": "Built as the HIKARI::Spine target from the tracked source snapshot."
+    },
+    {
+      "name": "meshoptimizer",
+      "version": "1.1",
+      "kind": "tracked-source",
+      "source": "ThirdParty/meshoptimizer",
+      "versionEvidence": "ThirdParty/meshoptimizer/src/meshoptimizer.h",
+      "licenseEvidence": "ThirdParty/meshoptimizer/LICENSE.md",
+      "restore": "Built as the HIKARI::Meshoptimizer target from the tracked source snapshot."
+    },
+    {
+      "name": "Dear ImGui",
+      "version": "1.90.9",
+      "kind": "tracked-source",
+      "source": "ThirdParty/imgui",
+      "versionEvidence": "ThirdParty/imgui/imgui.h",
+      "licenseEvidence": "ThirdParty/imgui/LICENSE.txt",
+      "restore": "Core sources are built as HIKARI::ImGui; HIKARI's custom DX12 backend remains in the editor compatibility source set."
+    },
+    {
+      "name": "ImGuizmo",
+      "version": "unrecorded-current-snapshot",
+      "kind": "tracked-source",
+      "source": "ThirdParty/ImGuizmo",
+      "versionEvidence": null,
+      "licenseEvidence": "ThirdParty/ImGuizmo/LICENSE",
+      "restore": "Built as the HIKARI::ImGuizmo target from the tracked source snapshot."
+    },
+    {
+      "name": "nlohmann-json",
+      "version": "3.12.0",
+      "kind": "tracked-source",
+      "source": "ThirdParty/nlohmann",
+      "versionEvidence": "ThirdParty/nlohmann/json.hpp",
+      "licenseEvidence": null,
+      "restore": "Exposed as the header-only HIKARI::Nlohmann target."
+    },
+    {
+      "name": "Effekseer-DX12-LLGI",
+      "version": "unrecorded-current-snapshot",
+      "kind": "local-prebuilt",
+      "source": "Local prebuilt snapshot; upstream release package and build recipe are not recorded.",
+      "licenseEvidence": null,
+      "restore": "Not yet reproducible. Configuration requires the six libraries below.",
+      "redistributionStatus": "blocked-pending-provenance",
+      "artifacts": [
+        {
+          "path": "ThirdParty/Effekseer/Lib/Debug/Effekseerd.lib",
+          "sha256": "26AD5F6CD60A78EB54FC52CE4223F15B5BE671B12FF6BFB7A4B72382D1AAC33C",
+          "required": true
+        },
+        {
+          "path": "ThirdParty/Effekseer/Lib/Debug/EffekseerRendererDX12d.lib",
+          "sha256": "39F1F375F484F8852AA2F5251BA4F687C874E9638BF1B72A56A37C1A81118DC8",
+          "required": true
+        },
+        {
+          "path": "ThirdParty/Effekseer/Lib/Debug/LLGId.lib",
+          "sha256": "5E438D2908F11186402C0703534F7127994975067412311B6F77474389DCEF11",
+          "required": true
+        },
+        {
+          "path": "ThirdParty/Effekseer/Lib/Release/Effekseer.lib",
+          "sha256": "E6549509C87A958E7A855AF76EAEA777040D6639757888F3626F5F66CD647402",
+          "required": true
+        },
+        {
+          "path": "ThirdParty/Effekseer/Lib/Release/EffekseerRendererDX12.lib",
+          "sha256": "2FFBD3DC83161176FA0110ACE83C64A35F4807F7B1FC4469128CBA555F1302FE",
+          "required": true
+        },
+        {
+          "path": "ThirdParty/Effekseer/Lib/Release/LLGI.lib",
+          "sha256": "3CC7ED94C758062D952DF5E75C8D46DF633983FAEB58FBC92AE638C3358948A6",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "CoACD",
+      "version": "1.0.11",
+      "kind": "tracked-editor-runtime",
+      "source": "https://github.com/SarahWeiii/CoACD/releases/tag/1.0.11",
+      "versionEvidence": "ThirdParty/CoACD/README.HIKARI.txt",
+      "licenseEvidence": "ThirdParty/CoACD/LICENSE.txt",
+      "restore": "Tracked editor-only runtime; cooked games do not require it.",
+      "artifacts": [
+        {
+          "path": "ThirdParty/CoACD/bin/win-x64/lib_coacd.dll",
+          "sha256": "4A19F9FA7E3B2975015BE14F566594B248B26452CC67338D486D1DA0B0309685",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "WinPixEventRuntime",
+      "version": "1.0.240308001",
+      "kind": "local-editor-package",
+      "source": "Microsoft WinPixEventRuntime NuGet package",
+      "versionEvidence": "ThirdParty/WinPixEventRuntime/WinPixEventRuntime.nuspec",
+      "licenseEvidence": "ThirdParty/WinPixEventRuntime/license.txt",
+      "restore": "Required by Debug and EditorRelease; binary payload is local and integrity-checked.",
+      "artifacts": [
+        {
+          "path": "ThirdParty/WinPixEventRuntime/bin/x64/WinPixEventRuntime.lib",
+          "sha256": "3ED035D81198CB0827C806B9C752E4F36DD0C824A903D3BFB09895F9B5655297",
+          "required": true
+        },
+        {
+          "path": "ThirdParty/WinPixEventRuntime/bin/x64/WinPixEventRuntime.dll",
+          "sha256": "81ADCFD8253C3489BE720DA7E30F16004DC9A1F02A8B418C6C3AEF4993032E6D",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "NVIDIA Streamline",
+      "version": "2.12.0",
+      "kind": "optional-local-sdk",
+      "source": "Official NVIDIA-RTX/Streamline streamline-sdk-v2.12.0.zip",
+      "versionEvidence": "ThirdParty/Streamline/sdk/include/sl_version.h",
+      "licenseEvidence": "Runtime license files supplied by the SDK package",
+      "restore": "Optional in AUTO mode. If installed, all present artifacts must match this validated snapshot.",
+      "artifacts": [
+        {
+          "path": "ThirdParty/Streamline/sdk/lib/x64/sl.interposer.lib",
+          "sha256": "197618C9DB7F4D4E4553AF5F33807958634D01CD68603B7EC5820A0D8CDBA7D5",
+          "required": false
+        },
+        {
+          "path": "ThirdParty/Streamline/sdk/bin/x64/sl.interposer.dll",
+          "sha256": "2A79DB6857AE8C75BBD871A9489C48BC6A39F7FCC88B9B02AFD53D0376CBEC66",
+          "required": false
+        },
+        {
+          "path": "ThirdParty/Streamline/sdk/bin/x64/sl.common.dll",
+          "sha256": "C57930EF5A8A3FE9BE85EFDF71A61D8107C1148E8A6AED456464547128F7F4AE",
+          "required": false
+        },
+        {
+          "path": "ThirdParty/Streamline/sdk/bin/x64/sl.dlss.dll",
+          "sha256": "A997022D2B93601E0EEFC3DDB3067C36DF386DD3163AE71E11095191FB14F8E4",
+          "required": false
+        },
+        {
+          "path": "ThirdParty/Streamline/sdk/bin/x64/nvngx_dlss.dll",
+          "sha256": "BE6E434A94CA32499515EB62CA0E6C274526055D568D0426E4C652DCDFB6EE6E",
+          "required": false
+        },
+        {
+          "path": "ThirdParty/Streamline/sdk/bin/x64/nvngx_dlss.license.txt",
+          "sha256": "3027F23CA5A46DD9CB8183FBD522983A86F64D7DAAC5982912BF9F214671F294",
+          "required": false
+        },
+        {
+          "path": "ThirdParty/Streamline/sdk/bin/x64/sl.dlss_g.dll",
+          "sha256": "1FEC3F8FDFC59D78C4445C276C1A0FB798BF251985F348597DC2B44D0C995E52",
+          "required": false
+        },
+        {
+          "path": "ThirdParty/Streamline/sdk/bin/x64/sl.reflex.dll",
+          "sha256": "7E6E4CCC4B561BD449FB0DA90709D9B96B08C3F6F4697362CAAA359E72A58A67",
+          "required": false
+        },
+        {
+          "path": "ThirdParty/Streamline/sdk/bin/x64/sl.pcl.dll",
+          "sha256": "699AB461E64E95189A7FE6A21C79AD237CF56B60EA748CB6C840CD5431BA91D1",
+          "required": false
+        },
+        {
+          "path": "ThirdParty/Streamline/sdk/bin/x64/nvngx_dlssg.dll",
+          "sha256": "135EAF0733C1E37381A8C28ABCF7A862404A54132B81787C04E35D09EFC5E36F",
+          "required": false
+        },
+        {
+          "path": "ThirdParty/Streamline/sdk/bin/x64/reflex.license.txt",
+          "sha256": "EBF83C07FB3B2939908C3795D887AFDE3161C89A28BA391724EFC784CE1BDABE",
+          "required": false
+        }
+      ]
+    }
+  ],
+  "knownGaps": [
+    {
+      "id": "effekseer-provenance",
+      "severity": "bootstrap-blocker",
+      "description": "Record the exact Effekseer release or source commit, license set, build options, and a deterministic restore/build path before claiming clean-clone reproducibility."
+    },
+    {
+      "id": "imguizmo-revision",
+      "severity": "maintenance",
+      "description": "Record the exact ImGuizmo upstream revision represented by the tracked source snapshot."
+    },
+    {
+      "id": "vendored-license-inventory",
+      "severity": "packaging",
+      "description": "Complete license evidence for every tracked vendor before a redistributable SDK or game package is declared complete."
+    }
+  ]
+}
