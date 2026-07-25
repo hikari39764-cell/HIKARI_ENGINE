@@ -10,18 +10,23 @@
 
 #include "Core/HIKARI_Logger.h"
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
+#include "Project/HIKARI_ProjectContext.h"
+#include "Project/Paths/HIKARI_ProjectPath.h"
 
 namespace HIKARI {
 
     bool ProjectSettingsService::Load(const std::filesystem::path& projectRoot) {
         std::error_code ec{};
-        projectRoot_ = projectRoot.empty()
-            ? std::filesystem::current_path(ec)
-            : projectRoot;
-        projectRoot_ = std::filesystem::absolute(projectRoot_, ec).lexically_normal();
-        if (ec) {
-            projectRoot_ = projectRoot.lexically_normal();
+        projectRoot_ = projectRoot;
+        if (projectRoot_.empty()) {
+            const ProjectContext& projectContext =
+                GetProjectContext();
+            projectRoot_ = projectContext.IsOpen()
+                ? projectContext.GetRoot()
+                : std::filesystem::current_path(ec);
         }
+        projectRoot_ =
+            PROJECT_PATHS::NormalizeProjectRoot(projectRoot_);
 
         settingsPath_ = projectRoot_ / "ProjectSettings" / "project_settings.json";
         if (!std::filesystem::exists(settingsPath_, ec)) {

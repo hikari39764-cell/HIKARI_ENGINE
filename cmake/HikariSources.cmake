@@ -1,7 +1,7 @@
 # Authoritative HIKARI compile-source manifest.
 # Add or remove translation units here and keep the source-closure test green.
 
-set(HIKARI_COMPILE_SOURCE_COUNT 686)
+set(HIKARI_COMPILE_SOURCE_COUNT 689)
 
 set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/External/WICTextureLoader.cpp"
@@ -324,6 +324,9 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Core/HIKARI_Logger.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Core/HIKARI_FixedStepClock.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Core/HIKARI_TimeService.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Project/HIKARI_ProjectContext.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Project/HIKARI_ProjectDescriptor.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Project/HIKARI_ProjectLaunch.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Project/HIKARI_ProjectSettings.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Project/Paths/HIKARI_ProjectPath.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/HIKARI_RuntimeResourceRefreshService.cpp"

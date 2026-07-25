@@ -12,6 +12,7 @@
 #include <d3d12.h>
 
 #include "Core/HIKARI_Logger.h"
+#include "Project/HIKARI_ProjectContext.h"
 
 #if defined(HIKARI_ENABLE_PIX)
 #ifndef USE_PIX
@@ -45,7 +46,13 @@ namespace HIKARI::GFX::PIX {
         constexpr std::uintmax_t kMinimumLikelyValidCaptureSize = 4096;
 
         std::filesystem::path MakeDefaultCaptureDirectory() {
-            return std::filesystem::current_path() / "Library" / "PIX";
+            const ProjectContext& projectContext =
+                GetProjectContext();
+            if (projectContext.IsOpen()) {
+                return projectContext.GetLibraryRoot() / "PIX";
+            }
+            return std::filesystem::current_path() /
+                "Library" / "PIX";
         }
 
         std::filesystem::path MakeCapturePath() {

@@ -24,7 +24,7 @@ namespace HIKARI {
             return false;
         }
         if (state_->assets.Database().GetProjectRoot().empty()) {
-            state_->assets.Database().Initialize(std::filesystem::current_path());
+            state_->assets.Database().Initialize({});
         }
 
         const AssetRecord* record = state_->assets.Database().FindByGuid(sceneGuid);
@@ -59,7 +59,7 @@ namespace HIKARI {
     }
     bool DocumentSceneBase::OpenStartupSceneAsset() {
         if (state_->assets.Database().GetProjectRoot().empty()) {
-            state_->assets.Database().Initialize(std::filesystem::current_path());
+            state_->assets.Database().Initialize({});
         }
 
         // ProjectSettings 邵ｺ・ｮ GUID 郢ｧ雋樞煤陷亥現・邵ｲ竏ｵ謔ｴ髫ｪ・ｭ陞ｳ螢ｹ竊醍ｹｧ逕ｻ諤呵崕譏ｴ繝ｻ Scene Asset 郢ｧ蜻域ｲｻ騾包ｽｨ邵ｺ蜷ｶ・狗ｸｲ繝ｻ
@@ -147,7 +147,7 @@ namespace HIKARI {
             return false;
         }
         if (state_->assets.Database().GetProjectRoot().empty()) {
-            state_->assets.Database().Initialize(std::filesystem::current_path());
+            state_->assets.Database().Initialize({});
         }
 
         const AssetRecord* record = state_->assets.Database().FindByGuid(sceneGuid);

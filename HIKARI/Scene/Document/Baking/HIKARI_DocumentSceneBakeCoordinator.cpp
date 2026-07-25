@@ -37,7 +37,7 @@ namespace HIKARI {
         SetBakeJobState(report, TOOLS::BAKING::LightingBakeJobState::Requested);
 
         if (scene.state_->assets.Database().GetProjectRoot().empty()) {
-            scene.state_->assets.Database().Initialize(std::filesystem::current_path());
+            scene.state_->assets.Database().Initialize({});
         }
 
         const std::filesystem::path projectRoot = scene.state_->assets.Database().GetProjectRoot();
@@ -136,7 +136,7 @@ namespace HIKARI {
         SetBakeJobState(report, TOOLS::BAKING::LightingBakeJobState::Requested);
 
         if (scene.state_->assets.Database().GetProjectRoot().empty()) {
-            scene.state_->assets.Database().Initialize(std::filesystem::current_path());
+            scene.state_->assets.Database().Initialize({});
         }
 
         const std::filesystem::path projectRoot = scene.state_->assets.Database().GetProjectRoot();

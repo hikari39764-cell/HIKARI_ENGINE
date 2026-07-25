@@ -5,6 +5,9 @@
 
 namespace HIKARI::PROJECT_PATHS {
 
+    std::filesystem::path NormalizeProjectRoot(
+        const std::filesystem::path& projectRoot);
+
     std::filesystem::path ResolveProjectPath(
         const std::filesystem::path& projectRoot,
         const std::filesystem::path& path);

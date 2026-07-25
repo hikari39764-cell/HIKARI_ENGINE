@@ -14,6 +14,7 @@
 
 #include "Core/HIKARI_Logger.h"
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
+#include "Project/HIKARI_ProjectContext.h"
 #include "Render3D/Settings/HIKARI_RenderQualityProfileStore.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettingsJson.h"
@@ -135,7 +136,9 @@ namespace HIKARI {
             return std::filesystem::path(buffer.data());
         }
 
-        std::optional<std::filesystem::path> CommandLineConfigPath() {
+        std::optional<std::filesystem::path> CommandLinePath(
+            std::wstring_view option) {
+
             int argumentCount = 0;
             LPWSTR* arguments = CommandLineToArgvW(
                 GetCommandLineW(),
@@ -146,7 +149,7 @@ namespace HIKARI {
 
             std::optional<std::filesystem::path> path{};
             for (int index = 1; index + 1 < argumentCount; ++index) {
-                if (std::wstring_view(arguments[index]) == L"--runtime-config") {
+                if (std::wstring_view(arguments[index]) == option) {
                     path = std::filesystem::path(arguments[index + 1]);
                     break;
                 }
@@ -217,18 +220,28 @@ namespace HIKARI {
     }
 
     RuntimeLaunchConfig LoadRuntimeLaunchConfig() {
+        const std::optional<std::filesystem::path>
+            requestedProjectPath =
+                CommandLinePath(L"--project");
+        const auto finalize =
+            [&requestedProjectPath](RuntimeLaunchConfig cfg) {
+                cfg.requestedProjectPath =
+                    requestedProjectPath;
+                return cfg;
+            };
+
         if (const std::optional<std::filesystem::path> commandLinePath =
-                CommandLineConfigPath()) {
+                CommandLinePath(L"--runtime-config")) {
             RuntimeLaunchConfig cfg = LoadRuntimeLaunchConfigFromFile(*commandLinePath);
             if (cfg.loaded) {
-                return cfg;
+                return finalize(std::move(cfg));
             }
         }
         if (const std::optional<std::filesystem::path> explicitPath =
                 ExplicitConfigPath()) {
             RuntimeLaunchConfig cfg = LoadRuntimeLaunchConfigFromFile(*explicitPath);
             if (cfg.loaded) {
-                return cfg;
+                return finalize(std::move(cfg));
             }
         }
 
@@ -241,22 +254,12 @@ namespace HIKARI {
             if (std::filesystem::exists(candidate, ec) && !ec) {
                 RuntimeLaunchConfig cfg = LoadRuntimeLaunchConfigFromFile(candidate);
                 if (cfg.loaded) {
-                    return cfg;
+                    return finalize(std::move(cfg));
                 }
             }
             ec.clear();
         }
-        return {};
-    }
-
-    bool ApplyRuntimeWorkingDirectory(const RuntimeLaunchConfig& runtimeCfg) {
-        if (!runtimeCfg.loaded || runtimeCfg.projectRoot.empty()) {
-            return false;
-        }
-
-        std::error_code ec{};
-        std::filesystem::current_path(runtimeCfg.projectRoot, ec);
-        return !ec;
+        return finalize({});
     }
 
     void ApplyRuntimeLaunchConfig(
@@ -285,9 +288,11 @@ namespace HIKARI {
         }
 
         RENDER3D::RenderQualitySettings quality{};
-        std::error_code rootError{};
-        const std::filesystem::path projectRoot = runtimeCfg.projectRoot.empty()
-            ? std::filesystem::current_path(rootError)
+        const ProjectContext& projectContext =
+            GetProjectContext();
+        const std::filesystem::path projectRoot =
+            projectContext.IsOpen()
+            ? projectContext.GetRoot()
             : runtimeCfg.projectRoot;
         std::string profileError{};
         const bool profileLoaded = !projectRoot.empty() &&

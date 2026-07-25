@@ -15,6 +15,7 @@ namespace HIKARI {
         bool loaded = false;
         std::filesystem::path sourcePath{};
         std::filesystem::path projectRoot{};
+        std::optional<std::filesystem::path> requestedProjectPath{};
 
         std::optional<RuntimeHostMode> hostMode{};
         std::optional<bool> enableImGui{};
@@ -37,7 +38,6 @@ namespace HIKARI {
 
     RuntimeLaunchConfig LoadRuntimeLaunchConfig();
     RuntimeLaunchConfig LoadRuntimeLaunchConfigFromFile(const std::filesystem::path& path);
-    bool ApplyRuntimeWorkingDirectory(const RuntimeLaunchConfig& runtimeCfg);
     void ApplyRuntimeLaunchConfig(
         const RuntimeLaunchConfig& runtimeCfg,
         RUNTIME::HostBootstrapConfig& servicesCfg);

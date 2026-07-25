@@ -21,6 +21,8 @@
 #include "Assets/HIKARI_AssetUsageAnalyzer.h"
 #include "Core/HIKARI_Logger.h"
 #include "Editor/Export/HIKARI_NativeRuntimeDeployment.h"
+#include "Project/HIKARI_ProjectContext.h"
+#include "Project/HIKARI_ProjectDescriptor.h"
 #include "Project/HIKARI_ProjectSettings.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettingsJson.h"
@@ -47,28 +49,20 @@ namespace HIKARI::EDITOR {
             return TEXT::ToLowerAsciiCopy(path.lexically_normal().generic_string());
         }
 
-        bool LooksLikeProjectRoot(const std::filesystem::path& path) {
-            std::error_code ec{};
-            const bool hasCMakeProject =
-                std::filesystem::is_regular_file(path / "CMakeLists.txt", ec);
-            if (ec || !hasCMakeProject) {
-                return false;
-            }
-
-            ec.clear();
-            return std::filesystem::is_directory(
-                path / "ProjectSettings",
-                ec) && !ec;
-        }
-
         std::filesystem::path FindProjectRoot() {
-            std::filesystem::path current = std::filesystem::current_path();
-            for (int i = 0; i < 6 && !current.empty(); ++i) {
-                if (LooksLikeProjectRoot(current)) {
-                    return current;
-                }
-                current = current.parent_path();
+            const ProjectContext& projectContext =
+                GetProjectContext();
+            if (projectContext.IsOpen()) {
+                return projectContext.GetRoot();
             }
+
+            const std::filesystem::path descriptorPath =
+                FindProjectDescriptor(
+                    std::filesystem::current_path());
+            if (!descriptorPath.empty()) {
+                return descriptorPath.parent_path();
+            }
+
             return std::filesystem::current_path();
         }
 
@@ -831,6 +825,14 @@ namespace HIKARI::EDITOR {
             const std::filesystem::path& outputDirectory,
             const ExportContentManifest& contentManifest,
             std::string& errorMessage) {
+
+            if (!CopyFileChecked(
+                    projectRoot / kProjectDescriptorFilename,
+                    outputDirectory / kProjectDescriptorFilename,
+                    errorMessage)) {
+                return false;
+            }
+
             const std::vector<std::pair<std::filesystem::path, std::filesystem::path>> directories{
                 { "Data", "Data" },
                 { "ProjectSettings", "ProjectSettings" },

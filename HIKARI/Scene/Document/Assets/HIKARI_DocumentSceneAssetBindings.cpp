@@ -51,7 +51,7 @@ namespace HIKARI {
 
     bool DocumentSceneAssetBindings::ReloadAssets() {
         if (database_.GetProjectRoot().empty()) {
-            database_.Initialize(std::filesystem::current_path());
+            database_.Initialize({});
         }
         const bool okDatabase = database_.ScanAssets(true);
 

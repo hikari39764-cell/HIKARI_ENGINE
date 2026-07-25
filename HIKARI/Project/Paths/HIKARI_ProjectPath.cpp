@@ -4,6 +4,25 @@
 
 namespace HIKARI::PROJECT_PATHS {
 
+    std::filesystem::path NormalizeProjectRoot(
+        const std::filesystem::path& projectRoot) {
+
+        if (projectRoot.empty()) {
+            return {};
+        }
+
+        std::error_code ec{};
+        std::filesystem::path normalized =
+            std::filesystem::weakly_canonical(projectRoot, ec);
+        if (ec || normalized.empty()) {
+            ec.clear();
+            normalized = std::filesystem::absolute(projectRoot, ec);
+        }
+        return ec || normalized.empty()
+            ? projectRoot.lexically_normal()
+            : normalized.lexically_normal();
+    }
+
     std::filesystem::path ResolveProjectPath(
         const std::filesystem::path& projectRoot,
         const std::filesystem::path& path) {

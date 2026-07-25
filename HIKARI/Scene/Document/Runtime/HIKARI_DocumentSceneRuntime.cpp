@@ -172,9 +172,7 @@ namespace HIKARI {
 
         ProjectSettingsService projectSettings{};
         const bool settingsLoaded = projectSettings.Load(
-            state_->assets.Database().GetProjectRoot().empty()
-                ? std::filesystem::current_path()
-                : state_->assets.Database().GetProjectRoot());
+            state_->assets.Database().GetProjectRoot());
         if (!settingsLoaded) {
             HIKARI_LOG_WARN(
                 "[RuntimeFeature] project settings could not be loaded; defaults are used");

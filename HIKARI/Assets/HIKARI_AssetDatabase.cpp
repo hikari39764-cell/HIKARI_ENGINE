@@ -15,6 +15,7 @@
 #include "Assets/Importers/Policy/HIKARI_MaterialImportPolicy.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
 #include "Assets/Semantics/HIKARI_AssetSourceSemantics.h"
+#include "Project/HIKARI_ProjectContext.h"
 #include "Core/HIKARI_Logger.h"
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
 #include "Project/Paths/HIKARI_ProjectPath.h"
@@ -171,8 +172,12 @@ namespace HIKARI {
 
     bool AssetDatabase::Initialize(const std::filesystem::path& projectRoot) {
         std::error_code ec{};
+        const ProjectContext& projectContext =
+            GetProjectContext();
         const std::filesystem::path root = projectRoot.empty()
-            ? std::filesystem::current_path(ec)
+            ? (projectContext.IsOpen()
+                ? projectContext.GetRoot()
+                : std::filesystem::current_path(ec))
             : projectRoot;
 
         projectRoot_ = std::filesystem::absolute(root, ec).lexically_normal();

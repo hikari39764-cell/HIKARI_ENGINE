@@ -3,8 +3,11 @@
 #include <Windows.h>
 
 #include "Core/HIKARI_TimeService.h"
+#include "Core/HIKARI_Logger.h"
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 #include "Input/Runtime/HIKARI_InputActionIds.h"
+#include "Project/HIKARI_ProjectContext.h"
+#include "Project/HIKARI_ProjectLaunch.h"
 #include "Render2D/HIKARI_Camera.h"
 #include "Render2D/HIKARI_Renderer.h"
 #include "Render2D/HIKARI_SpineActor.h"
@@ -45,6 +48,37 @@ namespace HIKARI::RUNTIME {
             return config;
         }
 
+        const char* ProjectContextSourceName(
+            ProjectContextSource source) {
+
+            switch (source) {
+            case ProjectContextSource::Descriptor:
+                return "Project.hikari";
+            case ProjectContextSource::
+                    RuntimeConfigCompatibility:
+                return "runtime_config compatibility";
+            case ProjectContextSource::
+                    WorkingDirectoryCompatibility:
+                return "working-directory compatibility";
+            }
+            return "unknown";
+        }
+
+        int ReportProjectLaunchFailure(
+            const std::string& message) {
+
+            const std::string displayMessage =
+                "HIKARI could not open the requested project.\n\n" +
+                message;
+            OutputDebugStringA(displayMessage.c_str());
+            MessageBoxA(
+                nullptr,
+                displayMessage.c_str(),
+                "HIKARI Project Error",
+                MB_OK | MB_ICONERROR);
+            return -2;
+        }
+
     } // namespace
 
     int RunEngineHost(
@@ -53,15 +87,45 @@ namespace HIKARI::RUNTIME {
 
         const RuntimeLaunchConfig runtimeConfig =
             LoadRuntimeLaunchConfig();
-        ApplyRuntimeWorkingDirectory(runtimeConfig);
+        ProjectLaunchOptions projectLaunchOptions{};
+        projectLaunchOptions.explicitProjectPath =
+            runtimeConfig.requestedProjectPath;
+        if (runtimeConfig.loaded &&
+            !runtimeConfig.projectRoot.empty()) {
+            projectLaunchOptions.runtimeConfigProjectRoot =
+                runtimeConfig.projectRoot;
+        }
+
+        std::string projectMessage{};
+        if (!OpenProjectForLaunch(
+                projectLaunchOptions,
+                &projectMessage) ||
+            !ApplyProjectWorkingDirectory(
+                &projectMessage)) {
+            GetProjectContext().Close();
+            return ReportProjectLaunchFailure(
+                projectMessage);
+        }
+
         const HostBootstrapConfig servicesConfig =
             ResolveBootstrapConfig(options.product, runtimeConfig);
 
         if (!SERVICES::Initialize(
                 options.windowTitle,
                 servicesConfig)) {
+            GetProjectContext().Close();
             return -1;
         }
+        const ProjectContext& projectContext =
+            GetProjectContext();
+        HIKARI_LOG_INFO(
+            "[Project] opened '" +
+            projectContext.GetDescriptor().name +
+            "' root=" +
+            projectContext.GetRoot().generic_string() +
+            " source=" +
+            ProjectContextSourceName(
+                projectContext.GetSource()));
         if (!SERVICES::IsEditorHost()) {
             (void)SERVICES::ApplyWindowPresentationSettings();
         }
@@ -69,13 +133,16 @@ namespace HIKARI::RUNTIME {
         MATH::RunMathConventionSelfCheck();
         SpineActor openingAnimation;
         openingAnimation.Load(
-            "./Assets/Spine/op.atlas",
-            "./Assets/Spine/op.json");
+            projectContext.Resolve(
+                "Assets/Spine/op.atlas").generic_string(),
+            projectContext.Resolve(
+                "Assets/Spine/op.json").generic_string());
         openingAnimation.enableCamera = false;
         openingAnimation.SetAnimation("op", false);
 
         if (!application.Initialize()) {
             SERVICES::FinalizeAll();
+            GetProjectContext().Close();
             return -1;
         }
 
@@ -189,6 +256,7 @@ namespace HIKARI::RUNTIME {
 
         application.Shutdown();
         SERVICES::FinalizeAll();
+        GetProjectContext().Close();
         return 0;
     }
 

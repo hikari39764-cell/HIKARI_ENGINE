@@ -3,6 +3,8 @@
 
 #include <objbase.h>
 
+#include "Project/HIKARI_ProjectContext.h"
+
 namespace HIKARI {
     namespace SERVICES {
         namespace {
@@ -218,7 +220,13 @@ namespace HIKARI {
             HIKARI::VFX::Initialize(gCtx);
             HIKARI_LOG_INFO("VFX initialized.");
 
-            if (!gInputService.Initialize(std::filesystem::current_path())) {
+            const ProjectContext& projectContext =
+                GetProjectContext();
+            const std::filesystem::path inputProjectRoot =
+                projectContext.IsOpen()
+                ? projectContext.GetRoot()
+                : std::filesystem::current_path();
+            if (!gInputService.Initialize(inputProjectRoot)) {
                 HIKARI_LOG_ERROR("Input service initialization failed.");
                 return false;
             }
