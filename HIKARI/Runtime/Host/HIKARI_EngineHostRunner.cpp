@@ -2,16 +2,19 @@
 
 #include <Windows.h>
 
-#include "HIKARI_Services.h"
 #include "Core/HIKARI_TimeService.h"
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 #include "Input/Runtime/HIKARI_InputActionIds.h"
 #include "Render2D/HIKARI_Camera.h"
 #include "Render2D/HIKARI_Renderer.h"
 #include "Render2D/HIKARI_SpineActor.h"
+#include "Render3D/HIKARI_Math3D.h"
+#include "Render3D/Upscaling/HIKARI_StreamlineReflex.h"
 #include "Runtime/App/HIKARI_IHostApplication.h"
 #include "Runtime/HIKARI_RuntimeLaunchConfig.h"
 #include "Runtime/Host/HIKARI_HostBootstrapConfig.h"
+#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
+#include "Runtime/Services/HIKARI_RuntimeServices.h"
 
 namespace HIKARI::RUNTIME {
 

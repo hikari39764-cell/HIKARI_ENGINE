@@ -7,7 +7,7 @@
 #include <unknwn.h>
 
 namespace HIKARI::SERVICES {
-    extern GFX::Context gCtx;
+    extern GFX::Context& gCtx;
 }
 
 namespace HIKARI::GFX {

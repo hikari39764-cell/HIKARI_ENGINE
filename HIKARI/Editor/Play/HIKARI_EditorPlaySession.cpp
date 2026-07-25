@@ -3,8 +3,9 @@
 #include <utility>
 
 #include "Core/HIKARI_TimeService.h"
-#include "HIKARI_Services.h"
 #include "Input/Runtime/HIKARI_InputService.h"
+#include "Runtime/Presentation/HIKARI_GamePresentationService.h"
+#include "Runtime/Services/HIKARI_RuntimeServices.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
 namespace HIKARI::EDITOR {
