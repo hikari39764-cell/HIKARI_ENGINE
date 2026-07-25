@@ -1,7 +1,7 @@
 # Authoritative HIKARI compile-source manifest.
 # Add or remove translation units here and keep the source-closure test green.
 
-set(HIKARI_COMPILE_SOURCE_COUNT 676)
+set(HIKARI_COMPILE_SOURCE_COUNT 679)
 
 set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/External/WICTextureLoader.cpp"
@@ -329,6 +329,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/HIKARI_RuntimeResourceRefreshService.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/HIKARI_RuntimeLaunchConfig.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/HIKARI_GamePresentationController.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Host/HIKARI_EditorUiServiceRegistry.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Tools/Baking/HIKARI_LightingBakeService.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Tools/Baking/HIKARI_LightProbeBaker.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Tools/Baking/HIKARI_ProbeCubemapCaptureTarget.cpp"
@@ -413,6 +414,7 @@ set(HIKARI_EDITOR_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Inspectors/Physics/HIKARI_PhysicsBodyComponentInspector.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Inspectors/Rendering/ProceduralMesh/HIKARI_ProceduralMeshComponentInspector.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Inspectors/Sequencing/HIKARI_SequencePlayerComponentInspector.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Host/HIKARI_EditorUiServices.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/HIKARI_TimePanel.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Views/HIKARI_EditorInteractiveViewRenderer.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/HIKARI_DebugMenuBar.cpp"
@@ -597,6 +599,7 @@ set(HIKARI_EDITOR_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/Camera/Overview/HIKARI_CameraOverviewSupport.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/AnimationStateMachine/HIKARI_AnimationStateMachineGraphSupport.cpp"
     "${HIKARI_SOURCE_ROOT}/ThirdParty/imgui/imgui_impl_dx12.cpp"
+    "${HIKARI_SOURCE_ROOT}/ThirdParty/imgui/imgui_impl_win32.cpp"
 )
 
 set(HIKARI_VENDOR_SPINE_SOURCES

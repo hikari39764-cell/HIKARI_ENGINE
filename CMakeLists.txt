@@ -70,8 +70,6 @@ if(HIKARI_WITH_EDITOR_BUILD)
     target_link_libraries(
         HIKARI_Runtime
         PRIVATE
-            HIKARI::ImGui
-            HIKARI::ImGuizmo
             HIKARI::WinPix)
 endif()
 if(HIKARI_STREAMLINE_ENABLED)

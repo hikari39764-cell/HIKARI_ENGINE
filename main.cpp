@@ -7,16 +7,28 @@
 #include "HIKARI/Render2D/HIKARI_SpineActor.h"
 #include "HIKARI/Runtime/HIKARI_RuntimeLaunchConfig.h"
 #include "HIKARI/Input/Runtime/HIKARI_InputActionIds.h"
+#if defined(HIKARI_WITH_EDITOR)
+#include "HIKARI/Editor/Host/HIKARI_EditorUiServices.h"
+#endif
 
 const char kWindowTitle[] = "HIKARI_Ver1.3";
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
+#if defined(HIKARI_WITH_EDITOR)
+	if (!HIKARI::EDITOR::InstallEditorUiServices()) {
+		return -1;
+	}
+#endif
+
 	HIKARI::SERVICES::BootstrapConfig servicesCfg{};
 	const HIKARI::RuntimeLaunchConfig runtimeCfg = HIKARI::LoadRuntimeLaunchConfig();
 	HIKARI::ApplyRuntimeWorkingDirectory(runtimeCfg);
 	HIKARI::ApplyRuntimeLaunchConfig(runtimeCfg, servicesCfg);
 
 	if (!HIKARI::SERVICES::Initialize(kWindowTitle, servicesCfg)) {
+#if defined(HIKARI_WITH_EDITOR)
+		HIKARI::EDITOR::UninstallEditorUiServices();
+#endif
 		return -1;
 	}
 	if (!HIKARI::SERVICES::IsEditorHost()) {
@@ -32,6 +44,9 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 	HIKARI::EngineApp app;
 	if (!app.Initialize()) {
 		HIKARI::SERVICES::FinalizeAll();
+#if defined(HIKARI_WITH_EDITOR)
+		HIKARI::EDITOR::UninstallEditorUiServices();
+#endif
 		return -1;
 	}
 
@@ -129,5 +144,8 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
 
 	app.Shutdown();
 	HIKARI::SERVICES::FinalizeAll();
+#if defined(HIKARI_WITH_EDITOR)
+	HIKARI::EDITOR::UninstallEditorUiServices();
+#endif
 	return 0;
 }

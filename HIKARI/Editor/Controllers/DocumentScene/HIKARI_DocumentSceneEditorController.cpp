@@ -10,6 +10,7 @@
 #include "Editor/SystemAuthoring/HIKARI_BuiltInSystemAuthoring.h"
 #include "Editor/Tools/HIKARI_BuiltInEditorTools.h"
 #include "Editor/Widgets/HIKARI_MaterialTextureSlotWidget.h"
+#include "Editor/HIKARI_EditorViewportInput.h"
 #include "HIKARI_Services.h"
 #include "Project/HIKARI_ProjectSettings.h"
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"

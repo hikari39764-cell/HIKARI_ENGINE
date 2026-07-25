@@ -12,6 +12,7 @@
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 #include "Runtime/HIKARI_RuntimeHost.h"
 #include "Runtime/HIKARI_GamePresentationController.h"
+#include "Runtime/Host/HIKARI_IEditorUiServices.h"
 #include "Vfx/Runtime/HIKARI_VfxSystem.h"
 
 #include "Platform/HIKARI_Win32Window.h"
@@ -23,9 +24,6 @@
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Render3D/Resources/HIKARI_ClusterGeometryResourceSystem.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
-#if defined(HIKARI_WITH_EDITOR)
-#include "Render3D/Views/HIKARI_EditorInteractiveViewRenderer.h"
-#endif
 #include "Render3D/Temporal/HIKARI_TaaResolvePass.h"
 #include "Render3D/Temporal/HIKARI_TemporalMotionVectorPass.h"
 #include "Render3D/Temporal/HIKARI_TemporalGeometryPass.h"
@@ -37,16 +35,6 @@
 #include "Render3D/Upscaling/HIKARI_StreamlineFrameGenerationPolicy.h"
 #include "Render3D/Upscaling/HIKARI_StreamlineReflex.h"
 #include "Audio/HIKARI_Audio.h"
-#if defined(HIKARI_WITH_EDITOR)
-#include "Editor/Style/HIKARI_EditorFontManager.h"
-#include "Editor/HIKARI_EditorStyle.h"
-#include "Editor/HIKARI_EditorViewportInput.h"
-#endif
-#if defined(HIKARI_ENABLE_IMGUI)
-#include "imgui.h"
-#include "../ThirdParty/imgui/imgui_impl_dx12.h"
-#include "../ThirdParty/imgui/imgui_impl_win32.h"
-#endif
 #include <objbase.h>
 #include <algorithm>
 #include <filesystem>
@@ -88,16 +76,11 @@ namespace HIKARI {
         inline GFX::Dx12Core gCore{};
         inline GFX::Context gCtx{};
         inline bool gComInitialized = false;
-        inline bool gImGuiInitialized = false;
-        inline bool gImGuiBackendInitialized = false;
-        inline bool gImGuiFrameBegun = false;
         inline RuntimeHostMode gRuntimeHostMode = DefaultRuntimeHostMode();
         inline bool gEnableImGui = false;
         inline bool gEnableEditorUI = false;
         inline std::string gRuntimeStartupSceneGuid{};
         inline std::vector<std::string> gRuntimeExportedSceneGuids{};
-        inline D3D12_CPU_DESCRIPTOR_HANDLE gImGuiFontSrvCpu{};
-        inline D3D12_GPU_DESCRIPTOR_HANDLE gImGuiFontSrvGpu{};
         inline bool gGpuFrameReady = false;
         inline bool gPresentationPrepared = false;
         inline bool gVfxFrameEnded = false;
@@ -332,67 +315,6 @@ namespace HIKARI {
                 plan.render.height);
         }
 
-        inline void ConfigureEditorImGuiContext() {
-#if defined(HIKARI_ENABLE_IMGUI)
-            ImGuiIO& io = ImGui::GetIO();
-            io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
-            io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
-            io.ConfigDockingWithShift = false;
-            io.ConfigDockingTransparentPayload = true;
-            io.ConfigViewportsNoAutoMerge = false;
-            io.ConfigViewportsNoTaskBarIcon = false;
-#if defined(HIKARI_WITH_EDITOR)
-            (void)EDITOR::EnsureEditorFonts();
-            EDITOR::ApplyEditorStyle();
-#endif
-#endif
-        }
-
-        inline void InitializeImGuiBackend() {
-#if !defined(HIKARI_ENABLE_IMGUI)
-            return;
-#else
-            if (gImGuiBackendInitialized) {
-                return;
-            }
-
-            auto* device = gCtx.device;
-            auto* srvHeap = gCtx.srvHeap;
-            if (!device || !srvHeap || !gWindow.GetHWND()) {
-                return;
-            }
-
-            const UINT descriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-
-            const UINT imguiFontSrvIndex =
-                GFX::DESCRIPTOR::ToIndex(GFX::DESCRIPTOR::SystemSrv::ImGuiFont);
-            gImGuiFontSrvCpu =
-                GFX::DESCRIPTOR::CpuAt(srvHeap, descriptorSize, imguiFontSrvIndex);
-            gImGuiFontSrvGpu =
-                GFX::DESCRIPTOR::GpuAt(srvHeap, descriptorSize, imguiFontSrvIndex);
-
-            if (!ImGui_ImplWin32_Init(gWindow.GetHWND())) {
-                HIKARI_LOG_ERROR("ImGui_ImplWin32_Init failed.");
-                return;
-            }
-
-            if (!ImGui_ImplDX12_Init(
-                device,
-                static_cast<int>(GFX::kFrameResourceCount),
-                DXGI_FORMAT_R8G8B8A8_UNORM,
-                srvHeap,
-                gImGuiFontSrvCpu,
-                gImGuiFontSrvGpu)) {
-                HIKARI_LOG_ERROR("ImGui_ImplDX12_Init failed.");
-                ImGui_ImplWin32_Shutdown();
-                return;
-            }
-
-            gImGuiBackendInitialized = true;
-            HIKARI_LOG_INFO("ImGui backend initialized.");
-#endif
-        }
-
         inline bool Initialize(const char* title, const BootstrapConfig& cfg = {}) {
             const bool enableFrameGenerationPlugins =
                 IsEditorHostMode(cfg.hostMode) ||
@@ -554,30 +476,21 @@ namespace HIKARI {
             HIKARI::CAMERA::EnableDebugControl(cfg.enableDebugCamera);
             HIKARI_LOG_INFO("Camera initialized.");
 
-            if (gEnableImGui && !gImGuiInitialized) {
-#if defined(HIKARI_ENABLE_IMGUI)
-                IMGUI_CHECKVERSION();
-                ImGui::CreateContext();
-                ConfigureEditorImGuiContext();
-
-                ImGuiIO& io = ImGui::GetIO();
-                if (io.Fonts && io.Fonts->Fonts.empty()) {
-#if defined(HIKARI_WITH_EDITOR)
-                    (void)EDITOR::EnsureEditorFonts();
-#else
-                    io.Fonts->AddFontDefault();
-                    io.Fonts->Build();
-#endif
+            if (gEnableImGui) {
+                RUNTIME::IEditorUiServices* editorUiServices =
+                    RUNTIME::GetEditorUiServices();
+                if (!IsEditorHost() ||
+                    editorUiServices == nullptr ||
+                    !editorUiServices->Initialize(gWindow, gCtx)) {
+                    HIKARI_LOG_WARN(
+                        "Editor UI services are unavailable; editor UI disabled.");
+                    gEnableImGui = false;
+                    gEnableEditorUI = false;
                 }
-                gImGuiInitialized = true;
-                HIKARI_LOG_INFO("ImGui context initialized.");
-#else
+            }
+            else {
                 gEnableImGui = false;
                 gEnableEditorUI = false;
-#endif
-            }
-            if (gEnableImGui) {
-                InitializeImGuiBackend();
             }
             HIKARI_LOG_INFO("HIKARI boot completed.");
             return true;
@@ -597,31 +510,14 @@ namespace HIKARI {
                     (void)gGamePresentationController.ReleaseGameSurface(gCore);
                 }
             }
-            if (gImGuiInitialized) {
-#if defined(HIKARI_ENABLE_IMGUI)
-                if (gImGuiBackendInitialized) {
-                    ImGui_ImplDX12_Shutdown();
-                    ImGui_ImplWin32_Shutdown();
-                    gImGuiBackendInitialized = false;
-                    HIKARI_LOG_INFO("ImGui backend shutdown.");
+            if (RUNTIME::IEditorUiServices* editorUiServices =
+                    RUNTIME::GetEditorUiServices()) {
+                if (!gCore.WaitForIdle()) {
+                    HIKARI_LOG_ERROR(
+                        "GPU idle wait failed before editor UI shutdown.");
                 }
-#if defined(HIKARI_WITH_EDITOR)
-                EDITOR::ResetEditorFonts();
-#endif
-                ImGui::DestroyContext();
-#endif
-                gImGuiInitialized = false;
-                HIKARI_LOG_INFO("ImGui shutdown.");
+                editorUiServices->Shutdown(gWindow);
             }
-            gImGuiFrameBegun = false;
-#if defined(HIKARI_WITH_EDITOR)
-            if (!gCore.WaitForIdle()) {
-                HIKARI_LOG_ERROR(
-                    "GPU idle wait failed before editor interactive view shutdown.");
-            }
-            HIKARI::RENDER3D::EDITORVIEW::Shutdown();
-            HIKARI_LOG_INFO("Editor interactive view renderer shutdown.");
-#endif
             HIKARI::POST::PostSystem::Shutdown();
             HIKARI_LOG_INFO("PostSystem shutdown.");
             DX::DxRenderer::Finalize();
@@ -981,11 +877,6 @@ namespace HIKARI {
             HIKARI::RENDERER::BeginFrame();
             ApplyFrameSceneCaptureSize();
             HIKARI::POST::PostSystem::UpdateCommonParams(frame.gameDt);
-#if defined(HIKARI_WITH_EDITOR)
-            if (!ShouldProduceEditorUiFrame()) {
-                HIKARI::EDITOR::ClearGameViewportInputRect();
-            }
-#endif
             HIKARI::POST::PostSystem::BeginSceneCapture();
 
             DX::DxRenderer::BeginFrame();
@@ -997,40 +888,13 @@ namespace HIKARI {
                     : gWindow.ConsumeMouseWheelDelta());
             gInputService.Update(frame.unscaledDt);
             HIKARI::VFX::BeginFrame(frame.gameDt);
-            if (gEnableImGui &&
-                gImGuiInitialized &&
-                ShouldProduceEditorUiFrame()) {
-#if defined(HIKARI_ENABLE_IMGUI)
-                if (!ImGui::GetCurrentContext()) {
-                    ImGui::CreateContext();
-                    ConfigureEditorImGuiContext();
-                }
-
-                ConfigureEditorImGuiContext();
-
-                if (!gImGuiBackendInitialized) {
-                    InitializeImGuiBackend();
-                }
-
-                if (gImGuiBackendInitialized) {
-                    ImGui_ImplDX12_NewFrame();
-                    ImGui_ImplWin32_NewFrame();
-                }
-
-                ImGuiIO& io = ImGui::GetIO();
-                io.DisplaySize = ImVec2(static_cast<float>(gWindow.Width()), static_cast<float>(gWindow.Height()));
-                io.DeltaTime = (frame.unscaledDt > 0.0f) ? frame.unscaledDt : (1.0f / 60.0f);
-                if (io.Fonts && io.Fonts->Fonts.empty()) {
-#if defined(HIKARI_WITH_EDITOR)
-                    (void)EDITOR::EnsureEditorFonts();
-#else
-                    io.Fonts->AddFontDefault();
-                    io.Fonts->Build();
-#endif
-                }
-                ImGui::NewFrame();
-                gImGuiFrameBegun = true;
-#endif
+            if (RUNTIME::IEditorUiServices* editorUiServices =
+                    RUNTIME::GetEditorUiServices()) {
+                editorUiServices->BeginFrame(
+                    gWindow,
+                    gCtx,
+                    frame.unscaledDt,
+                    ShouldProduceEditorUiFrame());
             }
             HIKARI::CAMERA::Update(
                 frame.gameDt,
@@ -1152,34 +1016,11 @@ namespace HIKARI {
             if (!PrepareFramePresentation()) {
                 HIKARI::RENDERER::ClearSubmittedCommands();
             }
-            if (gEnableImGui && gImGuiInitialized && gImGuiFrameBegun) {
-#if defined(HIKARI_ENABLE_IMGUI)
-                ImGui::Render();
-                gImGuiFrameBegun = false;
-#endif
-            }
-            if (gEnableImGui &&
-                gImGuiInitialized &&
-                gImGuiBackendInitialized &&
-                ShouldProduceEditorUiFrame()) {
-#if defined(HIKARI_ENABLE_IMGUI)
-                CPU_PROFILE::ScopedCpuTimer cpuImGui(
-                    CPU_PROFILE::Pass::ImGui);
-                GFX::PIX::ScopedGpuEvent pixImGui(gCtx.cmdList, GFX::PIX::kColorEditor, "ImGui");
-                GFX::GPU_PROFILE::ScopedGpuTimer gpuImGui(
-                    gCtx.cmdList,
-                    GFX::GPU_PROFILE::Pass::ImGui);
-                auto* cmd = gCtx.cmdList;
-                ID3D12DescriptorHeap* heaps[] = { gCtx.srvHeap };
-                cmd->SetDescriptorHeaps(1, heaps);
-                ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), cmd);
-
-                ImGuiIO& io = ImGui::GetIO();
-                if ((io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) != 0) {
-                    ImGui::UpdatePlatformWindows();
-                    ImGui::RenderPlatformWindowsDefault();
-                }
-#endif
+            if (RUNTIME::IEditorUiServices* editorUiServices =
+                    RUNTIME::GetEditorUiServices()) {
+                editorUiServices->RenderFrame(
+                    gCtx,
+                    ShouldProduceEditorUiFrame());
             }
 
             gCore.SetVSyncEnabled(RENDER3D::GetRenderQualitySettings().vSync);

@@ -21,6 +21,11 @@ enum class WindowMode {
 class Win32Window {
 public:
     using ResizeCallback = std::function<void(int, int)>;
+    using MessageHandler = std::function<bool(
+        HWND,
+        UINT,
+        WPARAM,
+        LPARAM)>;
 
     bool Initialize(
         const wchar_t* title,
@@ -28,7 +33,7 @@ public:
         int height,
         bool resizable = true,
         WindowCloseBehavior closeBehavior = WindowCloseBehavior::QuitApplication,
-        bool dispatchImGuiInput = true);
+        bool dispatchHostMessages = true);
     void Shutdown();
 
     bool PumpMessages();
@@ -47,6 +52,9 @@ public:
     WindowMode GetWindowMode() const { return windowMode_; }
 
     void SetResizeCallback(ResizeCallback cb) { onResize_ = std::move(cb); }
+    void SetMessageHandler(MessageHandler handler) {
+        messageHandler_ = std::move(handler);
+    }
     bool ApplyWindowMode(WindowMode mode, int clientWidth, int clientHeight);
 
 private:
@@ -63,9 +71,10 @@ private:
     bool running_{};
     bool closeRequested_{};
     WindowCloseBehavior closeBehavior_ = WindowCloseBehavior::QuitApplication;
-    bool dispatchImGuiInput_ = true;
+    bool dispatchHostMessages_ = true;
     float mouseWheelDelta_{};
     ResizeCallback onResize_{};
+    MessageHandler messageHandler_{};
     WindowMode windowMode_ = WindowMode::Windowed;
     DWORD windowedStyle_ = WS_OVERLAPPEDWINDOW;
     WINDOWPLACEMENT windowedPlacement_{ sizeof(WINDOWPLACEMENT) };

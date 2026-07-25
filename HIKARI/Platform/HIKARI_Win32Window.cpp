@@ -8,10 +8,6 @@
 #include <vector>
 
 #include "Core/HIKARI_Logger.h"
-#if defined(HIKARI_ENABLE_IMGUI)
-#include "../../ThirdParty/imgui/imgui_impl_win32.h"
-#include <imgui_impl_win32.cpp>
-#endif
 
 namespace HIKARI::PLATFORM {
 
@@ -31,7 +27,7 @@ bool Win32Window::Initialize(
     int height,
     bool resizable,
     WindowCloseBehavior closeBehavior,
-    bool dispatchImGuiInput) {
+    bool dispatchHostMessages) {
     HIKARI_LOG_INFO("Win32Window initialization started.");
 
     hInstance_ = GetModuleHandleW(nullptr);
@@ -39,7 +35,7 @@ bool Win32Window::Initialize(
     height_ = height;
     resizable_ = resizable;
     closeBehavior_ = closeBehavior;
-    dispatchImGuiInput_ = dispatchImGuiInput;
+    dispatchHostMessages_ = dispatchHostMessages;
     closeRequested_ = false;
 
     WNDCLASSW wc{};
@@ -254,6 +250,7 @@ bool Win32Window::ApplyWindowMode(WindowMode mode, int clientWidth, int clientHe
 }
 
 void Win32Window::Shutdown() {
+    messageHandler_ = {};
     if (hwnd_) {
         DragAcceptFiles(hwnd_, FALSE);
         DestroyWindow(hwnd_);
@@ -299,12 +296,11 @@ LRESULT CALLBACK Win32Window::StaticWndProc(HWND hwnd, UINT msg, WPARAM wparam, 
 }
 
 LRESULT Win32Window::WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
-#if defined(HIKARI_ENABLE_IMGUI)
-    if (dispatchImGuiInput_ &&
-        ImGui_ImplWin32_WndProcHandler(hwnd, msg, wparam, lparam)) {
+    if (dispatchHostMessages_ &&
+        messageHandler_ &&
+        messageHandler_(hwnd, msg, wparam, lparam)) {
         return TRUE;
     }
-#endif
 
     switch (msg) {
     case WM_CLOSE:
