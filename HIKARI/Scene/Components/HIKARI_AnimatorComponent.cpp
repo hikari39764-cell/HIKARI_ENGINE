@@ -6,29 +6,13 @@
 #include <utility>
 
 #include "Animation/Runtime/HIKARI_AnimationClipSampler.h"
-#include "Editor/Inspectors/HIKARI_IInspectorBuilder.h"
 #include "Assets/Models/HIKARI_ModelAsset.h"
-#include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
-#include "Scene/HIKARI_GameObject.h"
-
-#if defined(HIKARI_ENABLE_IMGUI)
-#include "imgui.h"
-#endif
 
 namespace HIKARI {
 
     namespace {
         float ClampTime(float value) {
             return (std::max)(0.0f, value);
-        }
-
-        const ModelAsset* FindOwnerModelAsset(const AnimatorComponent& animator) {
-            const GameObject* owner = animator.GetOwner();
-            if (owner == nullptr) {
-                return nullptr;
-            }
-            const ModelComponent* model = owner->GetComponent<ModelComponent>();
-            return model != nullptr ? model->GetModelAsset() : nullptr;
         }
 
         float ResolveDuration(
@@ -38,16 +22,6 @@ namespace HIKARI {
                 ANIMATION::ResolveAnimationClip(model, clip);
             return resolved != nullptr ? resolved->durationSec : 0.0f;
         }
-
-#if defined(HIKARI_ENABLE_IMGUI)
-        const AnimationClip* FindClip(
-            const ModelAsset* asset,
-            const ANIMATION::AnimationClipReference& reference) {
-            return asset != nullptr
-                ? ANIMATION::ResolveAnimationClip(*asset, reference)
-                : nullptr;
-        }
-#endif
     }
 
     void AnimatorComponent::Serialize(nlohmann::json& out) const {
@@ -84,116 +58,6 @@ namespace HIKARI {
         secondaryClip_ = {};
         secondaryWeight_ = 0.0f;
         ClearTransition();
-    }
-
-    void AnimatorComponent::BuildInspector(IInspectorBuilder& builder) {
-        if (builder.String("Clip", clip_.fallbackName)) {
-            // A hand-edited name is no longer guaranteed to describe the
-            // previously resolved asset/clip pair. The AnimationSystem will
-            // resolve and bind the new name on its next update.
-            clip_.modelAssetId = {};
-            clip_.clipId = {};
-            ClearTransition();
-        }
-        builder.Float("Time Sec", timeSec_);
-        builder.Float("Speed", speed_);
-        builder.Float("Default Blend Sec", defaultBlendDurationSec_);
-        builder.Bool("Loop", loop_);
-        builder.Bool("Auto Play", autoPlay_);
-        builder.Bool("Playing", playing_);
-        builder.Bool("Finished", finished_);
-        timeSec_ = ClampTime(timeSec_);
-        defaultBlendDurationSec_ = (std::max)(
-            0.0f,
-            defaultBlendDurationSec_);
-    }
-
-    void AnimatorComponent::RenderImGui() {
-#if defined(HIKARI_ENABLE_IMGUI)
-        const ModelAsset* modelAsset = FindOwnerModelAsset(*this);
-        const AnimationClip* currentClip = FindClip(modelAsset, clip_);
-        int currentIndex = -1;
-        if (modelAsset != nullptr) {
-            for (size_t i = 0; i < modelAsset->animations.size(); ++i) {
-                if (modelAsset->GetAnimationClipId(i) == clip_.clipId ||
-                    modelAsset->animations[i].name == clip_.fallbackName) {
-                    currentIndex = static_cast<int>(i);
-                    currentClip = &modelAsset->animations[i];
-                    break;
-                }
-            }
-        }
-
-        const char* preview = clip_.fallbackName.empty()
-            ? "<none>"
-            : clip_.fallbackName.c_str();
-        if (modelAsset != nullptr && !modelAsset->animations.empty()) {
-            if (ImGui::BeginCombo("Clip From Model", preview)) {
-                for (size_t i = 0; i < modelAsset->animations.size(); ++i) {
-                    const AnimationClip& clip = modelAsset->animations[i];
-                    const bool selected = static_cast<int>(i) == currentIndex;
-                    std::string label = clip.name + " (" + std::to_string(clip.durationSec) + "s)";
-                    if (ImGui::Selectable(label.c_str(), selected)) {
-                        CrossFade(
-                            ANIMATION::MakeAnimationClipReference(
-                                *modelAsset,
-                                i),
-                            defaultBlendDurationSec_,
-                            loop_,
-                            true);
-                    }
-                    if (selected) {
-                        ImGui::SetItemDefaultFocus();
-                    }
-                }
-                ImGui::EndCombo();
-            }
-        } else {
-            ImGui::TextUnformatted("Animation Clip: <no clips on current model>");
-        }
-
-        if (currentClip != nullptr) {
-            const float duration = currentClip->durationSec;
-            const float normalized = duration > 0.0f ? std::clamp(timeSec_ / duration, 0.0f, 1.0f) : 0.0f;
-            ImGui::Text("Current Clip Duration: %.2f", duration);
-            ImGui::Text("Progress: %.2f / %.2f", timeSec_, duration);
-            ImGui::Text("Normalized Time: %.3f", normalized);
-            ImGui::ProgressBar(normalized);
-        } else if (!clip_.fallbackName.empty()) {
-            ImGui::TextColored(ImVec4(1.0f, 0.5f, 0.5f, 1.0f), "Clip not found in current model");
-        }
-
-        if (IsTransitioning()) {
-            ImGui::Text(
-                "Blend: %.0f%%",
-                GetTransitionWeight() * 100.0f);
-            ImGui::ProgressBar(GetTransitionWeight());
-        }
-
-        if (ImGui::Button("Play")) {
-            PlayCurrent(true);
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Pause")) {
-            Pause();
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Resume")) {
-            Resume();
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Stop")) {
-            Stop();
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Reset Time")) {
-            ResetTime();
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Play Once")) {
-            PlayOnce(clip_.fallbackName, true);
-        }
-#endif
     }
 
     void AnimatorComponent::Play(std::string clip, bool loop, bool restart) {

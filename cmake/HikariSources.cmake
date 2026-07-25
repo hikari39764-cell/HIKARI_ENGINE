@@ -1,9 +1,9 @@
 # Authoritative HIKARI compile-source manifest.
 # Add or remove translation units here and keep the source-closure test green.
 
-set(HIKARI_COMPILE_SOURCE_COUNT 669)
+set(HIKARI_COMPILE_SOURCE_COUNT 676)
 
-set(HIKARI_COMPAT_SOURCES
+set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/External/WICTextureLoader.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/HIKARI_Anim.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/HIKARI_Bgm.cpp"
@@ -157,8 +157,6 @@ set(HIKARI_COMPAT_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/HIKARI_Mesh.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Core/HIKARI_Material.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Core/HIKARI_MeshRenderer.cpp"
-    "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Core/MeshRenderer/Editor/HIKARI_MeshEditorInteractiveRenderer.cpp"
-    "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Core/MeshRenderer/Editor/HIKARI_MeshEditorInteractiveResources.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Core/MeshRenderer/Execution/HIKARI_MeshGeometryBackendExecutor.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Core/MeshRenderer/Frame/HIKARI_MeshFrameCoordinator.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Core/MeshRenderer/Frame/HIKARI_MeshRendererInitialization.cpp"
@@ -374,7 +372,6 @@ set(HIKARI_COMPAT_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Document/Persistence/HIKARI_DocumentScenePersistence.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Document/Runtime/HIKARI_DocumentSceneRuntime.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Scenes/HIKARI_GameDocumentScene.cpp"
-    "${HIKARI_SOURCE_ROOT}/HIKARI/App/HIKARI_EngineApp.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Platform/HIKARI_Win32Window.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Gfx/HIKARI_Dx12Core.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Gfx/HIKARI_PresentationSurface.cpp"
@@ -394,12 +391,28 @@ set(HIKARI_COMPAT_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Material/HIKARI_DefaultPbrResources.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Material/HIKARI_GpuMaterialRegistry.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Lighting/HIKARI_LightingRuntimeLoader.cpp"
-    "${HIKARI_SOURCE_ROOT}/main.cpp"
     "${HIKARI_SOURCE_ROOT}/Matrix3x3.cpp"
     "${HIKARI_SOURCE_ROOT}/SpineDefaultExtensionShim.cpp"
 )
 
+set(HIKARI_HOST_SOURCES
+    "${HIKARI_SOURCE_ROOT}/HIKARI/App/HIKARI_EngineApp.cpp"
+    "${HIKARI_SOURCE_ROOT}/main.cpp"
+)
+
+set(HIKARI_GAME_HOST_SOURCES
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Host/HIKARI_RuntimeComponentToolingStubs.cpp"
+)
+
 set(HIKARI_EDITOR_SOURCES
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Core/MeshRenderer/Editor/HIKARI_MeshEditorInteractiveRenderer.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Core/MeshRenderer/Editor/HIKARI_MeshEditorInteractiveResources.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Inspectors/Animation/HIKARI_AnimationComponentInspectors.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Inspectors/Camera/HIKARI_CameraComponentInspectors.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Inspectors/Gameplay/HIKARI_GameplayComponentInspectors.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Inspectors/Physics/HIKARI_PhysicsBodyComponentInspector.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Inspectors/Rendering/ProceduralMesh/HIKARI_ProceduralMeshComponentInspector.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Inspectors/Sequencing/HIKARI_SequencePlayerComponentInspector.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/HIKARI_TimePanel.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Views/HIKARI_EditorInteractiveViewRenderer.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/HIKARI_DebugMenuBar.cpp"

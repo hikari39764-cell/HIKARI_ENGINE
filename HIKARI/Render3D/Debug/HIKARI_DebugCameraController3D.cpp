@@ -3,14 +3,12 @@
 #include <cmath>
 #include "Input/Runtime/HIKARI_InputActionIds.h"
 #include "Input/Runtime/HIKARI_InputTypes.h"
-#if defined(HIKARI_WITH_EDITOR)
-#include "Editor/HIKARI_EditorViewportInput.h"
-#include "imgui.h"
-#endif
 
 namespace HIKARI {
 
     namespace {
+        CameraControlCaptureQuery gCaptureQuery = nullptr;
+
         MATH::Vec3 ComputeForward(float yaw, float pitch) {
             const float cp = std::cos(pitch);
             const float sp = std::sin(pitch);
@@ -18,6 +16,11 @@ namespace HIKARI {
             const float sy = std::sin(yaw);
             return MATH::Normalize({ sy * cp, sp, cy * cp });
         }
+    }
+
+    void SetCameraControlCaptureQuery(
+        CameraControlCaptureQuery query) noexcept {
+        gCaptureQuery = query;
     }
 
     void DebugCameraController3D::SetEnabled(bool enabled) {
@@ -57,9 +60,6 @@ namespace HIKARI {
         Camera3D& camera,
         const INPUT::InputSnapshot& input,
         CameraControlInputContext inputContext) {
-#if !defined(HIKARI_WITH_EDITOR)
-        (void)inputContext;
-#endif
         if (!enabled_) {
             ApplyToCamera(camera);
             return;
@@ -68,25 +68,13 @@ namespace HIKARI {
         bool wantMouse = false;
         bool wantKeyboard = false;
         bool acceptWheel = true;
-#if defined(HIKARI_WITH_EDITOR)
         if (inputContext == CameraControlInputContext::EditorViewport &&
-            ImGui::GetCurrentContext() != nullptr) {
-            ImGuiIO& io = ImGui::GetIO();
-            wantMouse = io.WantCaptureMouse;
-            wantKeyboard = io.WantCaptureKeyboard;
-            acceptWheel = !wantMouse;
-
-            if (EDITOR::HasGameViewportInputRect()) {
-                const bool viewportMouseActive = EDITOR::IsGameViewportMouseInputActive();
-                const bool viewportKeyboardActive = EDITOR::IsGameViewportKeyboardInputActive();
-                const bool viewportWheelActive = EDITOR::IsGameViewportWheelInputActive();
-
-                wantMouse = !viewportMouseActive;
-                wantKeyboard = !viewportKeyboardActive;
-                acceptWheel = viewportWheelActive;
-            }
+            gCaptureQuery != nullptr) {
+            const CameraControlCaptureState capture = gCaptureQuery();
+            wantMouse = capture.wantMouse;
+            wantKeyboard = capture.wantKeyboard;
+            acceptWheel = capture.acceptWheel;
         }
-#endif
 
         // エディタ操作キー(W/E/R/Q)と衝突しないよう、カメラリセットは Home に寄せる。
         if (!wantKeyboard && input.IsDown(

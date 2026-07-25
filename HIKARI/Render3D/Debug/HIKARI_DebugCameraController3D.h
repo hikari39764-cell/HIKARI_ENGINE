@@ -9,6 +9,18 @@ namespace HIKARI {
         RuntimeWindow,
     };
 
+    struct CameraControlCaptureState {
+        bool wantMouse = false;
+        bool wantKeyboard = false;
+        bool acceptWheel = true;
+    };
+
+    using CameraControlCaptureQuery =
+        CameraControlCaptureState (*)();
+
+    void SetCameraControlCaptureQuery(
+        CameraControlCaptureQuery query) noexcept;
+
     struct DebugCamera3DSettings {
         float moveSpeed = 4.0f;
         float fastMultiplier = 3.0f;

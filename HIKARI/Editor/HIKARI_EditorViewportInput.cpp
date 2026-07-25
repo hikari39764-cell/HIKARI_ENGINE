@@ -1,6 +1,7 @@
 #include "HIKARI_EditorViewportInput.h"
 
 #include "Editor/Views/HIKARI_EditorViewInputGate.h"
+#include "Render3D/Debug/HIKARI_DebugCameraController3D.h"
 
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
@@ -55,6 +56,38 @@ namespace HIKARI::EDITOR {
                 ImGui::IsMouseClicked(ImGuiMouseButton_Right) ||
                 ImGui::IsMouseClicked(ImGuiMouseButton_Middle);
         }
+
+        CameraControlCaptureState QueryCameraControlCaptureState()
+        {
+            CameraControlCaptureState state{};
+            if (!HasImGuiContext()) {
+                return state;
+            }
+
+            const ImGuiIO& io = ImGui::GetIO();
+            state.wantMouse = io.WantCaptureMouse;
+            state.wantKeyboard = io.WantCaptureKeyboard;
+            state.acceptWheel = !state.wantMouse;
+            if (HasGameViewportInputRect()) {
+                state.wantMouse = !IsGameViewportMouseInputActive();
+                state.wantKeyboard =
+                    !IsGameViewportKeyboardInputActive();
+                state.acceptWheel =
+                    IsGameViewportWheelInputActive();
+            }
+            return state;
+        }
+
+        struct CameraControlCaptureRegistration {
+            CameraControlCaptureRegistration()
+            {
+                SetCameraControlCaptureQuery(
+                    &QueryCameraControlCaptureState);
+            }
+        };
+
+        CameraControlCaptureRegistration
+            gCameraControlCaptureRegistration{};
 #endif
     }
 

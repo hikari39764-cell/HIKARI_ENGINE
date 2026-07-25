@@ -39,28 +39,21 @@ endforeach()
 
 add_subdirectory(ThirdParty)
 
-add_executable(HIKARI_UpdateTo3D WIN32)
+add_library(HIKARI_Runtime STATIC)
+add_library(HIKARI::Runtime ALIAS HIKARI_Runtime)
 target_sources(
-    HIKARI_UpdateTo3D
+    HIKARI_Runtime
     PRIVATE
-        ${HIKARI_COMPAT_SOURCES})
-if(HIKARI_WITH_EDITOR_BUILD)
-    target_sources(
-        HIKARI_UpdateTo3D
-        PRIVATE
-            ${HIKARI_EDITOR_SOURCES})
-endif()
-
+        ${HIKARI_RUNTIME_SOURCES})
 target_include_directories(
-    HIKARI_UpdateTo3D
-    PRIVATE
+    HIKARI_Runtime
+    PUBLIC
         "${HIKARI_SOURCE_ROOT}"
         "${HIKARI_SOURCE_ROOT}/include"
         "${HIKARI_SOURCE_ROOT}/HIKARI")
-
 target_link_libraries(
-    HIKARI_UpdateTo3D
-    PRIVATE
+    HIKARI_Runtime
+    PUBLIC
         HIKARI::Spine
         HIKARI::Meshoptimizer
         HIKARI::Nlohmann
@@ -73,10 +66,9 @@ target_link_libraries(
         HIKARI::CoACD
         dxguid
         xaudio2)
-
 if(HIKARI_WITH_EDITOR_BUILD)
     target_link_libraries(
-        HIKARI_UpdateTo3D
+        HIKARI_Runtime
         PRIVATE
             HIKARI::ImGui
             HIKARI::ImGuizmo
@@ -84,21 +76,78 @@ if(HIKARI_WITH_EDITOR_BUILD)
 endif()
 if(HIKARI_STREAMLINE_ENABLED)
     target_link_libraries(
-        HIKARI_UpdateTo3D
+        HIKARI_Runtime
         PRIVATE
             HIKARI::Streamline)
 endif()
-
-hikari_configure_engine_target(HIKARI_UpdateTo3D)
-hikari_configure_runtime_deployment(HIKARI_UpdateTo3D)
+hikari_configure_engine_target(HIKARI_Runtime)
 
 source_group(
     TREE "${HIKARI_SOURCE_ROOT}"
     FILES
-        ${HIKARI_COMPAT_SOURCES}
-        ${HIKARI_EDITOR_SOURCES})
+        ${HIKARI_RUNTIME_SOURCES})
 
-set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT HIKARI_UpdateTo3D)
+if(HIKARI_WITH_EDITOR_BUILD)
+    add_library(HIKARI_Editor STATIC)
+    add_library(HIKARI::Editor ALIAS HIKARI_Editor)
+    target_sources(
+        HIKARI_Editor
+        PRIVATE
+            ${HIKARI_EDITOR_SOURCES})
+    target_link_libraries(
+        HIKARI_Editor
+        PUBLIC
+            HIKARI::Runtime
+            HIKARI::ImGui
+            HIKARI::ImGuizmo
+            HIKARI::WinPix)
+    hikari_configure_engine_target(HIKARI_Editor)
+    source_group(
+        TREE "${HIKARI_SOURCE_ROOT}"
+        FILES
+            ${HIKARI_EDITOR_SOURCES})
+
+    add_executable(HIKARI_EditorHost WIN32)
+    target_sources(
+        HIKARI_EditorHost
+        PRIVATE
+            ${HIKARI_HOST_SOURCES})
+    target_link_libraries(
+        HIKARI_EditorHost
+        PRIVATE
+            HIKARI::Editor)
+    hikari_configure_engine_target(HIKARI_EditorHost)
+    hikari_configure_runtime_deployment(HIKARI_EditorHost)
+    source_group(
+        TREE "${HIKARI_SOURCE_ROOT}"
+        FILES
+            ${HIKARI_HOST_SOURCES})
+    set(HIKARI_STARTUP_TARGET HIKARI_EditorHost)
+else()
+    add_executable(HIKARI_GameHost WIN32)
+    target_sources(
+        HIKARI_GameHost
+        PRIVATE
+            ${HIKARI_HOST_SOURCES}
+            ${HIKARI_GAME_HOST_SOURCES})
+    target_link_libraries(
+        HIKARI_GameHost
+        PRIVATE
+            HIKARI::Runtime)
+    hikari_configure_engine_target(HIKARI_GameHost)
+    hikari_configure_runtime_deployment(HIKARI_GameHost)
+    source_group(
+        TREE "${HIKARI_SOURCE_ROOT}"
+        FILES
+            ${HIKARI_HOST_SOURCES}
+            ${HIKARI_GAME_HOST_SOURCES})
+    set(HIKARI_STARTUP_TARGET HIKARI_GameHost)
+endif()
+
+set_property(
+    DIRECTORY
+    PROPERTY
+        VS_STARTUP_PROJECT "${HIKARI_STARTUP_TARGET}")
 
 find_program(
     HIKARI_POWERSHELL_EXECUTABLE

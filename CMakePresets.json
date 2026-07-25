@@ -39,7 +39,7 @@
     },
     {
       "name": "game-shipping",
-      "displayName": "HIKARI Game Shipping Compatibility Build",
+      "displayName": "HIKARI Game Shipping",
       "inherits": "hikari-vs2022-base",
       "binaryDir": "${sourceDir}/out/build/game-shipping",
       "cacheVariables": {
@@ -55,7 +55,7 @@
       "configurePreset": "debug",
       "configuration": "Debug",
       "targets": [
-        "HIKARI_UpdateTo3D"
+        "HIKARI_EditorHost"
       ]
     },
     {
@@ -63,7 +63,7 @@
       "configurePreset": "editor-release",
       "configuration": "EditorRelease",
       "targets": [
-        "HIKARI_UpdateTo3D"
+        "HIKARI_EditorHost"
       ]
     },
     {
@@ -71,7 +71,7 @@
       "configurePreset": "game-shipping",
       "configuration": "Shipping",
       "targets": [
-        "HIKARI_UpdateTo3D"
+        "HIKARI_GameHost"
       ]
     }
   ]

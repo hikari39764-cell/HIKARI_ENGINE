@@ -4,8 +4,6 @@
 
 #include "Core/HIKARI_JsonRead.h"
 #include "Core/Serialization/Json/HIKARI_JsonMath.h"
-#include "Editor/Inspectors/HIKARI_IInspectorBuilder.h"
-
 namespace HIKARI {
 
     namespace JsonMath = SERIALIZATION::JSON::MATH;
@@ -42,21 +40,6 @@ namespace HIKARI {
         affectsControlBasis_ = in.value(
             "affectsControlBasis",
             affectsControlBasis_);
-        ClampSettings();
-    }
-
-    void CameraActivationVolumeComponent::BuildInspector(
-        IInspectorBuilder& builder) {
-
-        builder.Bool("Enabled", enabled_);
-        builder.SceneObjectIdPicker("Subject", subjectObjectId_);
-        builder.SceneObjectIdPicker("Camera", cameraObjectId_);
-        builder.Float("Half Extent X", halfExtents_.x);
-        builder.Float("Half Extent Y", halfExtents_.y);
-        builder.Float("Half Extent Z", halfExtents_.z);
-        builder.Int("Activation Priority", priority_);
-        builder.Float("Blend Seconds", blendSeconds_);
-        builder.Bool("Affects Control Basis", affectsControlBasis_);
         ClampSettings();
     }
 

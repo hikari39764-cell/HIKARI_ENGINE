@@ -4,8 +4,6 @@
 #include <cmath>
 #include <numbers>
 
-#include "Editor/Inspectors/HIKARI_IInspectorBuilder.h"
-
 namespace HIKARI {
 
     namespace {
@@ -27,14 +25,6 @@ namespace HIKARI {
         verticalFovDegrees_ = in.value("verticalFovDegrees", verticalFovDegrees_);
         nearClip_ = in.value("nearClip", nearClip_);
         farClip_ = in.value("farClip", farClip_);
-        ClampLens();
-    }
-
-    void CameraComponent::BuildInspector(IInspectorBuilder& builder) {
-        builder.Bool("Enabled", enabled_);
-        builder.Float("Vertical FOV", verticalFovDegrees_);
-        builder.Float("Near Clip", nearClip_);
-        builder.Float("Far Clip", farClip_);
         ClampLens();
     }
 
