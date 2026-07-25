@@ -18,6 +18,9 @@ namespace HIKARI::RUNTIME {
         virtual bool IsHostTransitioning() const {
             return false;
         }
+        virtual bool ShouldExitHost() const {
+            return false;
+        }
         virtual void Shutdown() = 0;
     };
 

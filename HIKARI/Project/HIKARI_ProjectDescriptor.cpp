@@ -28,6 +28,20 @@ namespace HIKARI {
                 path.extension() == ".hikari";
         }
 
+        bool IsSafeProjectRelativePath(
+            const std::filesystem::path& path) {
+
+            if (path.empty() || path.is_absolute()) {
+                return false;
+            }
+            for (const std::filesystem::path& part : path) {
+                if (part == "..") {
+                    return false;
+                }
+            }
+            return true;
+        }
+
     } // namespace
 
     std::filesystem::path ResolveProjectDescriptorPath(
@@ -151,8 +165,31 @@ namespace HIKARI {
             return false;
         }
 
+        std::filesystem::path gameProjectManifest{
+            "CMakeLists.txt"
+        };
+        if (root.contains("gameProjectManifest")) {
+            if (!root["gameProjectManifest"].is_string()) {
+                SetMessage(
+                    outMessage,
+                    "Project.hikari gameProjectManifest must be a string");
+                return false;
+            }
+            gameProjectManifest =
+                root["gameProjectManifest"].get<std::string>();
+        }
+        if (!IsSafeProjectRelativePath(gameProjectManifest)) {
+            SetMessage(
+                outMessage,
+                "Project.hikari gameProjectManifest must be a safe "
+                "project-relative path");
+            return false;
+        }
+
         outDescriptor.formatVersion = formatVersion;
         outDescriptor.name = std::move(name);
+        outDescriptor.gameProjectManifest =
+            std::move(gameProjectManifest);
         SetMessage(outMessage, {});
         return true;
     }
@@ -176,9 +213,21 @@ namespace HIKARI {
                 "Project.hikari formatVersion is unsupported");
             return false;
         }
+        if (!IsSafeProjectRelativePath(
+                descriptor.gameProjectManifest)) {
+            SetMessage(
+                outMessage,
+                "Project.hikari gameProjectManifest must be a safe "
+                "project-relative path");
+            return false;
+        }
 
         const nlohmann::json root{
             { "formatVersion", descriptor.formatVersion },
+            {
+                "gameProjectManifest",
+                descriptor.gameProjectManifest.generic_string()
+            },
             { "name", descriptor.name },
         };
         return SERIALIZATION::JSON::WriteJsonFile(

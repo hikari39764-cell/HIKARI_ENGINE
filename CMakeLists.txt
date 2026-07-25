@@ -18,8 +18,20 @@ list(PREPEND CMAKE_MODULE_PATH "${HIKARI_SOURCE_ROOT}/cmake")
 include(HikariOptions)
 include(HikariCompiler)
 include(HikariSources)
+include(HikariGameProject)
 include(HikariDependencies)
 include(HikariRuntimeDeployment)
+
+set(
+    HIKARI_GAME_PROJECT_MANIFEST
+    "${HIKARI_SOURCE_ROOT}/GameProject/CMakeLists.txt"
+    CACHE FILEPATH
+    "CMake manifest for the GameProject module linked into the Host")
+hikari_load_game_project("${HIKARI_GAME_PROJECT_MANIFEST}")
+message(
+    STATUS
+    "HIKARI GameProject: ${HIKARI_SELECTED_GAME_PROJECT_NAME} "
+    "(${HIKARI_SELECTED_GAME_PROJECT_ROOT})")
 
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
@@ -90,16 +102,16 @@ add_library(HIKARI::GameProject ALIAS HIKARI_GameProject)
 target_sources(
     HIKARI_GameProject
     PRIVATE
-        ${HIKARI_GAME_PROJECT_SOURCES})
+        ${HIKARI_SELECTED_GAME_PROJECT_SOURCES})
 target_link_libraries(
     HIKARI_GameProject
     PUBLIC
         HIKARI::Runtime)
 hikari_configure_engine_target(HIKARI_GameProject)
 source_group(
-    TREE "${HIKARI_SOURCE_ROOT}"
+    TREE "${HIKARI_SELECTED_GAME_PROJECT_ROOT}"
     FILES
-        ${HIKARI_GAME_PROJECT_SOURCES})
+        ${HIKARI_SELECTED_GAME_PROJECT_SOURCES})
 
 if(HIKARI_WITH_EDITOR_BUILD)
     add_library(HIKARI_Editor STATIC)
@@ -137,7 +149,30 @@ if(HIKARI_WITH_EDITOR_BUILD)
         TREE "${HIKARI_SOURCE_ROOT}"
         FILES
             ${HIKARI_EDITOR_HOST_SOURCES})
-    set(HIKARI_STARTUP_TARGET HIKARI_EditorHost)
+
+    add_executable(HIKARI_ProjectLauncher WIN32)
+    target_sources(
+        HIKARI_ProjectLauncher
+        PRIVATE
+            ${HIKARI_PROJECT_LAUNCHER_HOST_SOURCES})
+    target_link_libraries(
+        HIKARI_ProjectLauncher
+        PRIVATE
+            HIKARI::Editor)
+    target_compile_definitions(
+        HIKARI_ProjectLauncher
+        PRIVATE
+            HIKARI_ENGINE_SOURCE_ROOT="${HIKARI_SOURCE_ROOT}")
+    hikari_configure_engine_target(HIKARI_ProjectLauncher)
+    hikari_configure_runtime_deployment(
+        HIKARI_ProjectLauncher
+        NO_INSTALL
+        OUTPUT_NAME "HIKARI_ProjectLauncher")
+    source_group(
+        TREE "${HIKARI_SOURCE_ROOT}"
+        FILES
+            ${HIKARI_PROJECT_LAUNCHER_HOST_SOURCES})
+    set(HIKARI_STARTUP_TARGET HIKARI_ProjectLauncher)
 else()
     add_executable(HIKARI_GameHost WIN32)
     target_sources(
@@ -157,84 +192,6 @@ else()
             ${HIKARI_GAME_HOST_SOURCES})
     set(HIKARI_STARTUP_TARGET HIKARI_GameHost)
 endif()
-
-add_library(HIKARI_EmptyGameProject STATIC EXCLUDE_FROM_ALL)
-target_sources(
-    HIKARI_EmptyGameProject
-    PRIVATE
-        ${HIKARI_EMPTY_GAME_PROJECT_SOURCES})
-target_link_libraries(
-    HIKARI_EmptyGameProject
-    PUBLIC
-        HIKARI::Runtime)
-hikari_configure_engine_target(HIKARI_EmptyGameProject)
-source_group(
-    TREE "${HIKARI_SOURCE_ROOT}"
-    FILES
-        ${HIKARI_EMPTY_GAME_PROJECT_SOURCES})
-
-add_executable(HIKARI_EmptyProjectHost WIN32 EXCLUDE_FROM_ALL)
-if(HIKARI_WITH_EDITOR_BUILD)
-    target_sources(
-        HIKARI_EmptyProjectHost
-        PRIVATE
-            ${HIKARI_EDITOR_HOST_SOURCES})
-    target_link_libraries(
-        HIKARI_EmptyProjectHost
-        PRIVATE
-            HIKARI::Editor
-            HIKARI_EmptyGameProject)
-    source_group(
-        TREE "${HIKARI_SOURCE_ROOT}"
-        FILES
-            ${HIKARI_EDITOR_HOST_SOURCES})
-else()
-    target_sources(
-        HIKARI_EmptyProjectHost
-        PRIVATE
-            ${HIKARI_GAME_HOST_SOURCES})
-    target_link_libraries(
-        HIKARI_EmptyProjectHost
-        PRIVATE
-            HIKARI::Runtime
-            HIKARI_EmptyGameProject)
-    source_group(
-        TREE "${HIKARI_SOURCE_ROOT}"
-        FILES
-            ${HIKARI_GAME_HOST_SOURCES})
-endif()
-hikari_configure_engine_target(HIKARI_EmptyProjectHost)
-hikari_configure_runtime_deployment(
-    HIKARI_EmptyProjectHost
-    NO_INSTALL
-    OUTPUT_NAME "HIKARI_EmptyProject")
-
-set(
-    HIKARI_EMPTY_PROJECT_TEMPLATE_ROOT
-    "${HIKARI_SOURCE_ROOT}/Tests/Fixtures/Projects/EmptyProject")
-set(
-    HIKARI_EMPTY_PROJECT_RUNTIME_ROOT
-    "${HIKARI_SOURCE_ROOT}/out/test-projects/EmptyProject")
-add_custom_command(
-    TARGET HIKARI_EmptyProjectHost
-    POST_BUILD
-    COMMAND
-        "${CMAKE_COMMAND}" -E make_directory
-        "${HIKARI_EMPTY_PROJECT_RUNTIME_ROOT}/ProjectSettings"
-    COMMAND
-        "${CMAKE_COMMAND}" -E copy_if_different
-        "${HIKARI_EMPTY_PROJECT_TEMPLATE_ROOT}/Project.hikari"
-        "${HIKARI_EMPTY_PROJECT_RUNTIME_ROOT}/Project.hikari"
-    COMMAND
-        "${CMAKE_COMMAND}" -E copy_if_different
-        "${HIKARI_EMPTY_PROJECT_TEMPLATE_ROOT}/ProjectSettings/project_settings.json"
-        "${HIKARI_EMPTY_PROJECT_RUNTIME_ROOT}/ProjectSettings/project_settings.json"
-    VERBATIM)
-set_target_properties(
-    HIKARI_EmptyProjectHost
-    PROPERTIES
-        VS_DEBUGGER_COMMAND_ARGUMENTS
-            "--project \"${HIKARI_EMPTY_PROJECT_RUNTIME_ROOT}\"")
 
 set_property(
     DIRECTORY

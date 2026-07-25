@@ -2,6 +2,7 @@
 #include "Editor/HIKARI_EditorContext.h"
 #include "Editor/Export/HIKARI_GameExporter.h"
 #include "Editor/Menus/HIKARI_EditorDocumentMenu.h"
+#include "Editor/Platform/HIKARI_EditorFileDialog.h"
 #include "Editor/Platform/HIKARI_EditorShellActions.h"
 #include "Editor/Tools/HIKARI_BuiltInEditorTools.h"
 #include "Editor/Tools/HIKARI_EditorToolHost.h"
@@ -16,15 +17,8 @@
 #include <filesystem>
 #include <optional>
 #include <string>
-#include <thread>
 #include <utility>
 #include <vector>
-
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <Windows.h>
-#include <shobjidl.h>
 
 #include "imgui.h"
 #endif
@@ -138,73 +132,6 @@ namespace HIKARI {
             CopyPathToExportPathBuffer(EDITOR::GameExporter::GetDefaultOutputDirectory());
             RefreshExportScenes();
             g_showGameExportWindow = true;
-        }
-
-        std::optional<std::filesystem::path> PickFolderWithInitializedCom(
-            const std::filesystem::path& initialPath) {
-            IFileDialog* dialog = nullptr;
-            HRESULT hr = CoCreateInstance(
-                CLSID_FileOpenDialog,
-                nullptr,
-                CLSCTX_INPROC_SERVER,
-                IID_PPV_ARGS(&dialog));
-            if (FAILED(hr) || dialog == nullptr) {
-                return std::nullopt;
-            }
-
-            DWORD options = 0;
-            if (SUCCEEDED(dialog->GetOptions(&options))) {
-                dialog->SetOptions(options | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM);
-            }
-
-            std::filesystem::path initialFolder = initialPath;
-            std::error_code ec{};
-            if (!initialFolder.empty() && !std::filesystem::exists(initialFolder, ec)) {
-                initialFolder = initialFolder.parent_path();
-            }
-            if (!initialFolder.empty()) {
-                IShellItem* folderItem = nullptr;
-                hr = SHCreateItemFromParsingName(initialFolder.wstring().c_str(), nullptr, IID_PPV_ARGS(&folderItem));
-                if (SUCCEEDED(hr) && folderItem != nullptr) {
-                    dialog->SetFolder(folderItem);
-                    folderItem->Release();
-                }
-            }
-
-            std::optional<std::filesystem::path> pickedPath{};
-            hr = dialog->Show(nullptr);
-            if (SUCCEEDED(hr)) {
-                IShellItem* resultItem = nullptr;
-                hr = dialog->GetResult(&resultItem);
-                if (SUCCEEDED(hr) && resultItem != nullptr) {
-                    PWSTR rawPath = nullptr;
-                    hr = resultItem->GetDisplayName(SIGDN_FILESYSPATH, &rawPath);
-                    if (SUCCEEDED(hr) && rawPath != nullptr) {
-                        pickedPath = std::filesystem::path(rawPath);
-                        CoTaskMemFree(rawPath);
-                    }
-                    resultItem->Release();
-                }
-            }
-
-            dialog->Release();
-            return pickedPath;
-        }
-
-        std::optional<std::filesystem::path> PickFolder(const std::filesystem::path& initialPath) {
-            std::optional<std::filesystem::path> pickedPath{};
-            std::thread pickerThread([initialPath, &pickedPath]() {
-                const HRESULT initResult =
-                    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
-                if (FAILED(initResult)) {
-                    return;
-                }
-
-                pickedPath = PickFolderWithInitializedCom(initialPath);
-                CoUninitialize();
-            });
-            pickerThread.join();
-            return pickedPath;
         }
 
         std::vector<std::string> SelectedSceneGuidsInDisplayOrder() {
@@ -350,7 +277,9 @@ namespace HIKARI {
                 ImGui::PopItemWidth();
                 ImGui::SameLine();
                 if (ImGui::Button("Browse...")) {
-                    if (const std::optional<std::filesystem::path> pickedPath = PickFolder(ExportPathFromBuffer())) {
+                    if (const std::optional<std::filesystem::path> pickedPath =
+                            EDITOR::FILE_DIALOG::PickFolder(
+                                ExportPathFromBuffer())) {
                         CopyPathToExportPathBuffer(*pickedPath);
                     }
                 }

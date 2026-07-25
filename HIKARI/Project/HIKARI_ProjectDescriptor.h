@@ -13,6 +13,7 @@ namespace HIKARI {
     struct ProjectDescriptor {
         uint32_t formatVersion = kProjectDescriptorFormatVersion;
         std::string name{};
+        std::filesystem::path gameProjectManifest{ "CMakeLists.txt" };
     };
 
     std::filesystem::path ResolveProjectDescriptorPath(

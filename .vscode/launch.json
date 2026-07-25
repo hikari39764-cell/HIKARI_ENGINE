@@ -5,24 +5,18 @@
       "name": "HIKARI EditorRelease",
       "type": "cppvsdbg",
       "request": "launch",
-      "program": "${workspaceFolder}\\out\\build\\editor-release\\bin\\HIKARI_UpdateTo3D.exe",
+      "program": "${workspaceFolder}\\out\\build\\editor-release\\bin\\HIKARI_ProjectLauncher.exe",
       "cwd": "${workspaceFolder}",
-      "args": [
-        "--project",
-        "${workspaceFolder}\\Project.hikari"
-      ],
+      "args": [],
       "preLaunchTask": "HIKARI: Build EditorRelease"
     },
     {
       "name": "HIKARI Debug",
       "type": "cppvsdbg",
       "request": "launch",
-      "program": "${workspaceFolder}\\out\\build\\debug\\bin\\HIKARI_UpdateTo3D.exe",
+      "program": "${workspaceFolder}\\out\\build\\debug\\bin\\HIKARI_ProjectLauncher.exe",
       "cwd": "${workspaceFolder}",
-      "args": [
-        "--project",
-        "${workspaceFolder}\\Project.hikari"
-      ],
+      "args": [],
       "preLaunchTask": "HIKARI: Build Debug"
     }
   ]

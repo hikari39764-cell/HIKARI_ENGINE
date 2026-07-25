@@ -96,26 +96,34 @@ namespace HIKARI::RUNTIME {
         }
 
         const RuntimeLaunchConfig runtimeConfig =
-            LoadRuntimeLaunchConfig();
-        ProjectLaunchOptions projectLaunchOptions{};
-        projectLaunchOptions.explicitProjectPath =
-            runtimeConfig.requestedProjectPath;
-        if (runtimeConfig.loaded &&
-            !runtimeConfig.projectRoot.empty()) {
-            projectLaunchOptions.runtimeConfigProjectRoot =
-                runtimeConfig.projectRoot;
-        }
+            options.loadRuntimeConfig
+                ? LoadRuntimeLaunchConfig()
+                : RuntimeLaunchConfig{};
+        if (options.projectPolicy ==
+            EngineHostProjectPolicy::Required) {
+            ProjectLaunchOptions projectLaunchOptions{};
+            projectLaunchOptions.explicitProjectPath =
+                runtimeConfig.requestedProjectPath;
+            if (runtimeConfig.loaded &&
+                !runtimeConfig.projectRoot.empty()) {
+                projectLaunchOptions.runtimeConfigProjectRoot =
+                    runtimeConfig.projectRoot;
+            }
 
-        std::string projectMessage{};
-        if (!OpenProjectForLaunch(
-                projectLaunchOptions,
-                &projectMessage) ||
-            !ApplyProjectWorkingDirectory(
-                &projectMessage)) {
+            std::string projectMessage{};
+            if (!OpenProjectForLaunch(
+                    projectLaunchOptions,
+                    &projectMessage) ||
+                !ApplyProjectWorkingDirectory(
+                    &projectMessage)) {
+                GetProjectContext().Close();
+                CONTENT::GetEngineContentContext().Close();
+                return ReportLaunchFailure(
+                    projectMessage);
+            }
+        }
+        else {
             GetProjectContext().Close();
-            CONTENT::GetEngineContentContext().Close();
-            return ReportLaunchFailure(
-                projectMessage);
         }
 
         const HostBootstrapConfig servicesConfig =
@@ -133,16 +141,21 @@ namespace HIKARI::RUNTIME {
         HIKARI_LOG_INFO(
             "[EngineContent] opened root=" +
             engineContent.GetRoot().generic_string());
-        const ProjectContext& projectContext =
-            GetProjectContext();
-        HIKARI_LOG_INFO(
-            "[Project] opened '" +
-            projectContext.GetDescriptor().name +
-            "' root=" +
-            projectContext.GetRoot().generic_string() +
-            " source=" +
-            ProjectContextSourceName(
-                projectContext.GetSource()));
+        const ProjectContext& projectContext = GetProjectContext();
+        if (projectContext.IsOpen()) {
+            HIKARI_LOG_INFO(
+                "[Project] opened '" +
+                projectContext.GetDescriptor().name +
+                "' root=" +
+                projectContext.GetRoot().generic_string() +
+                " source=" +
+                ProjectContextSourceName(
+                    projectContext.GetSource()));
+        }
+        else {
+            HIKARI_LOG_INFO(
+                "[Project] no active project; launcher mode");
+        }
         if (!SERVICES::IsEditorHost()) {
             (void)SERVICES::ApplyWindowPresentationSettings();
         }
@@ -150,9 +163,13 @@ namespace HIKARI::RUNTIME {
         MATH::RunMathConventionSelfCheck();
         SpineActor openingAnimation;
         const std::filesystem::path openingAtlas =
-            projectContext.Resolve("Assets/Spine/op.atlas");
+            projectContext.IsOpen()
+                ? projectContext.Resolve("Assets/Spine/op.atlas")
+                : std::filesystem::path{};
         const std::filesystem::path openingSkeleton =
-            projectContext.Resolve("Assets/Spine/op.json");
+            projectContext.IsOpen()
+                ? projectContext.Resolve("Assets/Spine/op.json")
+                : std::filesystem::path{};
         std::error_code openingError{};
         const bool hasOpeningAssets =
             std::filesystem::exists(openingAtlas, openingError) &&
@@ -181,6 +198,9 @@ namespace HIKARI::RUNTIME {
 
         while (SERVICES::PumpMessages()) {
             application.UpdateHostSessions();
+            if (application.ShouldExitHost()) {
+                break;
+            }
             if (application.IsHostTransitioning()) {
                 Sleep(1);
                 continue;
@@ -275,6 +295,9 @@ namespace HIKARI::RUNTIME {
             }
 
             if (!SERVICES::EndFrame()) {
+                break;
+            }
+            if (application.ShouldExitHost()) {
                 break;
             }
 
