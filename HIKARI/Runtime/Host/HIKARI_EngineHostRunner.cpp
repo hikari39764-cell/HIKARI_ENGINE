@@ -1,7 +1,10 @@
 #include "Runtime/Host/HIKARI_EngineHostRunner.h"
 
+#include <filesystem>
+
 #include <Windows.h>
 
+#include "Core/Content/HIKARI_EngineContentContext.h"
 #include "Core/HIKARI_TimeService.h"
 #include "Core/HIKARI_Logger.h"
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
@@ -64,17 +67,17 @@ namespace HIKARI::RUNTIME {
             return "unknown";
         }
 
-        int ReportProjectLaunchFailure(
+        int ReportLaunchFailure(
             const std::string& message) {
 
             const std::string displayMessage =
-                "HIKARI could not open the requested project.\n\n" +
+                "HIKARI could not start.\n\n" +
                 message;
             OutputDebugStringA(displayMessage.c_str());
             MessageBoxA(
                 nullptr,
                 displayMessage.c_str(),
-                "HIKARI Project Error",
+                "HIKARI Launch Error",
                 MB_OK | MB_ICONERROR);
             return -2;
         }
@@ -84,6 +87,13 @@ namespace HIKARI::RUNTIME {
     int RunEngineHost(
         IHostApplication& application,
         const EngineHostRunOptions& options) {
+
+        std::string engineContentMessage{};
+        if (!CONTENT::OpenEngineContentForLaunch(
+                &engineContentMessage)) {
+            return ReportLaunchFailure(
+                engineContentMessage);
+        }
 
         const RuntimeLaunchConfig runtimeConfig =
             LoadRuntimeLaunchConfig();
@@ -103,7 +113,8 @@ namespace HIKARI::RUNTIME {
             !ApplyProjectWorkingDirectory(
                 &projectMessage)) {
             GetProjectContext().Close();
-            return ReportProjectLaunchFailure(
+            CONTENT::GetEngineContentContext().Close();
+            return ReportLaunchFailure(
                 projectMessage);
         }
 
@@ -114,8 +125,14 @@ namespace HIKARI::RUNTIME {
                 options.windowTitle,
                 servicesConfig)) {
             GetProjectContext().Close();
+            CONTENT::GetEngineContentContext().Close();
             return -1;
         }
+        const CONTENT::EngineContentContext& engineContent =
+            CONTENT::GetEngineContentContext();
+        HIKARI_LOG_INFO(
+            "[EngineContent] opened root=" +
+            engineContent.GetRoot().generic_string());
         const ProjectContext& projectContext =
             GetProjectContext();
         HIKARI_LOG_INFO(
@@ -132,17 +149,33 @@ namespace HIKARI::RUNTIME {
 
         MATH::RunMathConventionSelfCheck();
         SpineActor openingAnimation;
-        openingAnimation.Load(
-            projectContext.Resolve(
-                "Assets/Spine/op.atlas").generic_string(),
-            projectContext.Resolve(
-                "Assets/Spine/op.json").generic_string());
-        openingAnimation.enableCamera = false;
-        openingAnimation.SetAnimation("op", false);
+        const std::filesystem::path openingAtlas =
+            projectContext.Resolve("Assets/Spine/op.atlas");
+        const std::filesystem::path openingSkeleton =
+            projectContext.Resolve("Assets/Spine/op.json");
+        std::error_code openingError{};
+        const bool hasOpeningAssets =
+            std::filesystem::exists(openingAtlas, openingError) &&
+            std::filesystem::exists(openingSkeleton, openingError);
+        const bool openingAnimationActive =
+            hasOpeningAssets &&
+            openingAnimation.Load(
+                openingAtlas.generic_string(),
+                openingSkeleton.generic_string());
+        if (openingAnimationActive) {
+            openingAnimation.enableCamera = false;
+            openingAnimation.SetAnimation("op", false);
+        }
+        else {
+            HIKARI_LOG_INFO(
+                "[Host] optional project opening animation is unavailable; "
+                "starting application immediately");
+        }
 
         if (!application.Initialize()) {
             SERVICES::FinalizeAll();
             GetProjectContext().Close();
+            CONTENT::GetEngineContentContext().Close();
             return -1;
         }
 
@@ -159,7 +192,8 @@ namespace HIKARI::RUNTIME {
                 TIME::GetFrameContext();
 
             bool renderHostUi = false;
-            if (!openingAnimation.IsAnimationFinished("op")) {
+            if (openingAnimationActive &&
+                !openingAnimation.IsAnimationFinished("op")) {
                 {
                     CPU_PROFILE::ScopedCpuTimer cpuUpdate(
                         CPU_PROFILE::Pass::AppUpdate);
@@ -257,6 +291,7 @@ namespace HIKARI::RUNTIME {
         application.Shutdown();
         SERVICES::FinalizeAll();
         GetProjectContext().Close();
+        CONTENT::GetEngineContentContext().Close();
         return 0;
     }
 

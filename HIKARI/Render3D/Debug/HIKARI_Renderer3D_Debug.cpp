@@ -4,6 +4,7 @@
 #include <array>
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
 #include <vector>
 
 #include <d3dcompiler.h>
@@ -12,6 +13,7 @@
 
 #include "Gfx/HIKARI_D3DBlobCompat.h"
 #include "Gfx/HIKARI_GfxContext.h"
+#include "Gfx/HIKARI_ShaderCompiler.h"
 #include "HIKARI_Services.h"
 
 #pragma comment(lib, "d3dcompiler.lib")
@@ -182,12 +184,36 @@ namespace HIKARI::RENDERER3D::DEBUG {
             ComPtr<ID3DBlob> vs;
             ComPtr<ID3DBlob> ps;
             ComPtr<ID3DBlob> err;
-            if (FAILED(D3DCompileFromFile(L"HIKARI/Shaders/Render3D_DebugLineVS.hlsl", nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "main", "vs_5_0", flags, 0, vs.GetAddressOf(), err.GetAddressOf()))) {
+            const std::filesystem::path vertexShaderPath =
+                GFX::ResolveShaderSourcePath(
+                    L"HIKARI/Shaders/Render3D_DebugLineVS.hlsl");
+            const std::filesystem::path pixelShaderPath =
+                GFX::ResolveShaderSourcePath(
+                    L"HIKARI/Shaders/Render3D_DebugLinePS.hlsl");
+            if (FAILED(D3DCompileFromFile(
+                    vertexShaderPath.c_str(),
+                    nullptr,
+                    D3D_COMPILE_STANDARD_FILE_INCLUDE,
+                    "main",
+                    "vs_5_0",
+                    flags,
+                    0,
+                    vs.GetAddressOf(),
+                    err.GetAddressOf()))) {
                 if (err) OutputDebugStringA(static_cast<const char*>(err->GetBufferPointer()));
                 return false;
             }
             err.Reset();
-            if (FAILED(D3DCompileFromFile(L"HIKARI/Shaders/Render3D_DebugLinePS.hlsl", nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "main", "ps_5_0", flags, 0, ps.GetAddressOf(), err.GetAddressOf()))) {
+            if (FAILED(D3DCompileFromFile(
+                    pixelShaderPath.c_str(),
+                    nullptr,
+                    D3D_COMPILE_STANDARD_FILE_INCLUDE,
+                    "main",
+                    "ps_5_0",
+                    flags,
+                    0,
+                    ps.GetAddressOf(),
+                    err.GetAddressOf()))) {
                 if (err) OutputDebugStringA(static_cast<const char*>(err->GetBufferPointer()));
                 return false;
             }

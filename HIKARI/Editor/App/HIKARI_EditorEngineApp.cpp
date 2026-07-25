@@ -5,6 +5,11 @@
 
 namespace HIKARI::EDITOR {
 
+    EditorEngineApp::EditorEngineApp(
+        RUNTIME::IGameProjectModule& gameProjectModule)
+        : runtimeApp_(gameProjectModule) {
+    }
+
     bool EditorEngineApp::Initialize() {
         return runtimeApp_.Initialize();
     }

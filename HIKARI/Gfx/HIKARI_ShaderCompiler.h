@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <filesystem>
 
 #include "Gfx/HIKARI_D3DBlobCompat.h"
 
@@ -21,6 +22,11 @@ namespace HIKARI::GFX {
 
     bool SupportsShaderModel6(ID3D12Device* device);
     bool SupportsShaderModel(ID3D12Device* device, D3D_SHADER_MODEL minimumModel);
+
+    // HIKARI/Shaders/... は EngineContent に固定し、
+    // その他の相対パスは Project 側の呼び出し規約を維持する。
+    std::filesystem::path ResolveShaderSourcePath(
+        const std::filesystem::path& path);
 
     bool CompileShaderFileSm6(
         const wchar_t* path,

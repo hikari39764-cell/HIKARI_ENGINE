@@ -1,6 +1,5 @@
 #include "Render3D/Upscaling/HIKARI_StreamlineRuntime.h"
 
-#include <array>
 #include <filesystem>
 #include <iterator>
 #include <sstream>
@@ -10,6 +9,7 @@
 #include <dxgi1_6.h>
 
 #include "Core/HIKARI_Logger.h"
+#include "Platform/Paths/HIKARI_ExecutablePath.h"
 #include "Render3D/Upscaling/HIKARI_StreamlineReflex.h"
 #include "Render3D/Upscaling/HIKARI_StreamlineInternal.h"
 
@@ -24,18 +24,6 @@ namespace HIKARI::RENDER3D::UPSCALING {
 
     namespace {
 #if defined(HIKARI_WITH_STREAMLINE)
-        std::filesystem::path ModuleDirectory() {
-            std::array<wchar_t, 32768> path{};
-            const DWORD length = GetModuleFileNameW(
-                nullptr,
-                path.data(),
-                static_cast<DWORD>(path.size()));
-            if (length == 0 || length >= static_cast<DWORD>(path.size())) {
-                return {};
-            }
-            return std::filesystem::path(path.data()).parent_path();
-        }
-
         void StreamlineLogCallback(sl::LogType type, const char* message) {
             if (message == nullptr || message[0] == '\0') {
                 return;
@@ -130,7 +118,8 @@ namespace HIKARI::RENDER3D::UPSCALING {
             return true;
         }
 
-        const std::filesystem::path moduleDirectory = ModuleDirectory();
+        const std::filesystem::path moduleDirectory =
+            PLATFORM::GetExecutableDirectory();
         const std::filesystem::path interposerPath =
             moduleDirectory / L"sl.interposer.dll";
         if (moduleDirectory.empty() ||

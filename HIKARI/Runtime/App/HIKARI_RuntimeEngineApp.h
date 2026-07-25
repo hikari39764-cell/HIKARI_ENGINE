@@ -7,9 +7,12 @@
 
 namespace HIKARI::RUNTIME {
 
+    class IGameProjectModule;
+
     class RuntimeEngineApp final : public IHostApplication {
     public:
-        RuntimeEngineApp();
+        explicit RuntimeEngineApp(
+            IGameProjectModule& gameProjectModule);
 
         bool Initialize() override;
         void Update(float deltaTime) override;
@@ -21,6 +24,7 @@ namespace HIKARI::RUNTIME {
         const IScene* GetCurrentScene() const;
 
     private:
+        IGameProjectModule* gameProjectModule_ = nullptr;
         SceneManager sceneManager_{};
         SceneTransitionBus sceneTransitionBus_;
     };

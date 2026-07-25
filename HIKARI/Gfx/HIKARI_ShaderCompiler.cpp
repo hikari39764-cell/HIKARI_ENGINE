@@ -13,6 +13,7 @@
 #include <dxcapi.h>
 #include <wrl/client.h>
 
+#include "Core/Content/HIKARI_EngineContentContext.h"
 #include "Core/HIKARI_Logger.h"
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Gfx/HIKARI_DXCheck.h"
@@ -38,6 +39,37 @@ namespace HIKARI::GFX {
         };
 
         DxcRuntime gDxc{};
+
+        bool IsEngineShaderLogicalPath(
+            const std::filesystem::path& path) {
+
+            const std::filesystem::path normalized =
+                path.lexically_normal();
+            auto part = normalized.begin();
+            if (part == normalized.end() || *part != L"HIKARI") {
+                return false;
+            }
+            ++part;
+            return part != normalized.end() &&
+                *part == L"Shaders";
+        }
+
+        std::filesystem::path MakeEngineContentRelativePath(
+            const std::filesystem::path& logicalPath) {
+
+            std::filesystem::path relative{};
+            const std::filesystem::path normalized =
+                logicalPath.lexically_normal();
+            auto part = normalized.begin();
+            const auto end = normalized.end();
+            if (part != end && *part == L"HIKARI") {
+                ++part;
+            }
+            for (; part != end; ++part) {
+                relative /= *part;
+            }
+            return relative;
+        }
 
         std::wstring WidenAscii(const char* text) {
             std::wstring out;
@@ -196,7 +228,9 @@ namespace HIKARI::GFX {
             owned.push_back(sourceName != nullptr ? std::wstring(sourceName) : L"HIKARI_RuntimeShader");
             owned.push_back(entryW);
             owned.push_back(profile != nullptr ? std::wstring(profile) : L"ps_6_0");
-            owned.push_back(L"HIKARI/Shaders");
+            owned.push_back(
+                ResolveShaderSourcePath(
+                    L"HIKARI/Shaders").wstring());
             if (filePath != nullptr) {
                 const std::filesystem::path sourcePath(filePath);
                 if (sourcePath.has_parent_path()) {
@@ -348,6 +382,25 @@ namespace HIKARI::GFX {
         return shaderModel.HighestShaderModel >= minimumModel;
     }
 
+    std::filesystem::path ResolveShaderSourcePath(
+        const std::filesystem::path& path) {
+
+        const std::filesystem::path normalized =
+            path.lexically_normal();
+        if (normalized.is_absolute() ||
+            !IsEngineShaderLogicalPath(normalized)) {
+            return normalized;
+        }
+
+        const CONTENT::EngineContentContext& content =
+            CONTENT::GetEngineContentContext();
+        if (!content.IsOpen()) {
+            return normalized;
+        }
+        return content.Resolve(
+            MakeEngineContentRelativePath(normalized));
+    }
+
     bool CompileShaderFileSm6(
         const wchar_t* path,
         const char* entry,
@@ -361,11 +414,21 @@ namespace HIKARI::GFX {
             return false;
         }
 
+        const std::filesystem::path resolvedPath =
+            ResolveShaderSourcePath(path);
+        if (resolvedPath.empty()) {
+            return false;
+        }
+
         ComPtr<IDxcBlobEncoding> sourceBlob;
-        HRESULT hr = gDxc.utils->LoadFile(path, nullptr, sourceBlob.GetAddressOf());
+        HRESULT hr = gDxc.utils->LoadFile(
+            resolvedPath.c_str(),
+            nullptr,
+            sourceBlob.GetAddressOf());
         if (!HIKARI_DX_CHECK(hr, "ShaderCompiler::LoadFile")) {
             std::ostringstream oss;
-            oss << "[ShaderCompiler][ERROR] Failed to load shader file: " << NarrowUtf8(path);
+            oss << "[ShaderCompiler][ERROR] Failed to load shader file: "
+                << resolvedPath.generic_string();
             ReportCompileError(oss.str());
             return false;
         }
@@ -374,7 +437,13 @@ namespace HIKARI::GFX {
         source.Ptr = sourceBlob->GetBufferPointer();
         source.Size = sourceBlob->GetBufferSize();
         source.Encoding = DXC_CP_UTF8;
-        return CompileDxcBuffer(source, path, entry, profile, path, outBlob);
+        return CompileDxcBuffer(
+            source,
+            resolvedPath.c_str(),
+            entry,
+            profile,
+            resolvedPath.c_str(),
+            outBlob);
     }
 
     bool CompileShaderFileSm6(

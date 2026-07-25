@@ -822,6 +822,7 @@ namespace HIKARI::EDITOR {
 
         bool CopyRuntimeContent(
             const std::filesystem::path& projectRoot,
+            const std::filesystem::path& runtimeRoot,
             const std::filesystem::path& outputDirectory,
             const ExportContentManifest& contentManifest,
             std::string& errorMessage) {
@@ -833,13 +834,31 @@ namespace HIKARI::EDITOR {
                 return false;
             }
 
+            const std::filesystem::path engineContentSource =
+                runtimeRoot / "EngineContent";
+            std::error_code engineContentError{};
+            if (!std::filesystem::is_directory(
+                    engineContentSource,
+                    engineContentError) ||
+                engineContentError) {
+                errorMessage =
+                    "Installed EngineContent is missing: " +
+                    engineContentSource.string();
+                return false;
+            }
+            if (!CopyDirectoryChecked(
+                    engineContentSource,
+                    outputDirectory / "EngineContent",
+                    errorMessage)) {
+                return false;
+            }
+
             const std::vector<std::pair<std::filesystem::path, std::filesystem::path>> directories{
                 { "Data", "Data" },
                 { "ProjectSettings", "ProjectSettings" },
                 { "Library/AssetDatabase", "Library/AssetDatabase" },
                 { "Library/ShaderCache", "Library/ShaderCache" },
                 { "Library/Generated/IBL", "Library/Generated/IBL" },
-                { "HIKARI/Shaders", "HIKARI/Shaders" },
             };
 
             if (contentManifest.restrictToSelectedScenes) {
@@ -985,7 +1004,12 @@ namespace HIKARI::EDITOR {
                 streamlineDeployment,
                 errorMessage) ||
             !WriteRuntimeConfig(outputDirectory, options, errorMessage) ||
-            !CopyRuntimeContent(projectRoot, outputDirectory, contentManifest, errorMessage)) {
+            !CopyRuntimeContent(
+                projectRoot,
+                sourceExe.parent_path(),
+                outputDirectory,
+                contentManifest,
+                errorMessage)) {
             if (errorMessage.empty() && !nativeRuntime.success) {
                 errorMessage = nativeRuntime.message;
             }

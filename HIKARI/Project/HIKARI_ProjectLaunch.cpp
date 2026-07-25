@@ -1,11 +1,9 @@
 #include "Project/HIKARI_ProjectLaunch.h"
 
-#include <Windows.h>
-
-#include <array>
 #include <system_error>
 #include <utility>
 
+#include "Platform/Paths/HIKARI_ExecutablePath.h"
 #include "Project/HIKARI_ProjectContext.h"
 
 namespace HIKARI {
@@ -18,20 +16,6 @@ namespace HIKARI {
             if (outMessage != nullptr) {
                 *outMessage = std::move(message);
             }
-        }
-
-        std::filesystem::path ExecutableDirectory() {
-            std::array<wchar_t, 32768> buffer{};
-            const DWORD length = GetModuleFileNameW(
-                nullptr,
-                buffer.data(),
-                static_cast<DWORD>(buffer.size()));
-            if (length == 0 || length >= buffer.size()) {
-                return {};
-            }
-            return std::filesystem::path(
-                buffer.data(),
-                buffer.data() + length).parent_path();
         }
 
     } // namespace
@@ -83,7 +67,7 @@ namespace HIKARI {
         }
 
         const std::filesystem::path executableDirectory =
-            ExecutableDirectory();
+            PLATFORM::GetExecutableDirectory();
         if (!executableDirectory.empty()) {
             const std::filesystem::path descriptorPath =
                 FindProjectDescriptor(executableDirectory);

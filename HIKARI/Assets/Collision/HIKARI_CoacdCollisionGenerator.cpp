@@ -1,7 +1,6 @@
 #include "Assets/Collision/HIKARI_CoacdCollisionGenerator.h"
 
 #include <algorithm>
-#include <array>
 #include <filesystem>
 #include <limits>
 #include <mutex>
@@ -9,6 +8,7 @@
 #define NOMINMAX
 #include <Windows.h>
 
+#include "Platform/Paths/HIKARI_ExecutablePath.h"
 #include "Render3D/Core/HIKARI_BoundsUtils.h"
 #include "coacd_c_api.h"
 
@@ -32,16 +32,12 @@ namespace HIKARI::ASSETS::COLLISION {
                     outMessage = "CoACD DLL has an incompatible C API";
                     return false;
                 }
-                std::array<wchar_t, 32768> executablePath{};
-                const DWORD length = GetModuleFileNameW(
-                    nullptr,
-                    executablePath.data(),
-                    static_cast<DWORD>(executablePath.size()));
                 std::vector<std::filesystem::path> candidates{};
-                if (length > 0u && length < executablePath.size()) {
+                const std::filesystem::path executableDirectory =
+                    PLATFORM::GetExecutableDirectory();
+                if (!executableDirectory.empty()) {
                     candidates.push_back(
-                        std::filesystem::path(executablePath.data())
-                            .parent_path() / "lib_coacd.dll");
+                        executableDirectory / "lib_coacd.dll");
                 }
                 candidates.emplace_back(
                     "ThirdParty/CoACD/bin/win-x64/lib_coacd.dll");

@@ -1,7 +1,7 @@
 # Authoritative HIKARI compile-source manifest.
 # Add or remove translation units here and keep the source-closure test green.
 
-set(HIKARI_COMPILE_SOURCE_COUNT 689)
+set(HIKARI_COMPILE_SOURCE_COUNT 693)
 
 set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/External/WICTextureLoader.cpp"
@@ -324,6 +324,8 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Core/HIKARI_Logger.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Core/HIKARI_FixedStepClock.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Core/HIKARI_TimeService.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Core/Content/HIKARI_EngineContentContext.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Platform/Paths/HIKARI_ExecutablePath.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Project/HIKARI_ProjectContext.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Project/HIKARI_ProjectDescriptor.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Project/HIKARI_ProjectLaunch.cpp"
@@ -412,6 +414,14 @@ set(HIKARI_EDITOR_HOST_SOURCES
 set(HIKARI_GAME_HOST_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Host/HIKARI_GameHostMain.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Host/HIKARI_RuntimeComponentToolingStubs.cpp"
+)
+
+set(HIKARI_GAME_PROJECT_SOURCES
+    "${HIKARI_SOURCE_ROOT}/GameProject/Source/HIKARI_DevelopmentGameProjectModule.cpp"
+)
+
+set(HIKARI_EMPTY_GAME_PROJECT_SOURCES
+    "${HIKARI_SOURCE_ROOT}/Tests/Fixtures/Projects/EmptyProject/Source/HIKARI_EmptyGameProjectModule.cpp"
 )
 
 set(HIKARI_EDITOR_SOURCES

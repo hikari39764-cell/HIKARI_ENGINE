@@ -9,6 +9,9 @@ namespace HIKARI::EDITOR {
 
     class EditorEngineApp final : public RUNTIME::IHostApplication {
     public:
+        explicit EditorEngineApp(
+            RUNTIME::IGameProjectModule& gameProjectModule);
+
         bool Initialize() override;
         void Update(float deltaTime) override;
         void Render() override;
@@ -20,7 +23,7 @@ namespace HIKARI::EDITOR {
         void Shutdown() override;
 
     private:
-        RUNTIME::RuntimeEngineApp runtimeApp_{};
+        RUNTIME::RuntimeEngineApp runtimeApp_;
         DocumentSceneEditorController documentSceneEditorController_{};
         EditorPlaySession editorPlaySession_{};
     };

@@ -14,6 +14,7 @@
 
 #include "Core/HIKARI_Logger.h"
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
+#include "Platform/Paths/HIKARI_ExecutablePath.h"
 #include "Project/HIKARI_ProjectContext.h"
 #include "Render3D/Settings/HIKARI_RenderQualityProfileStore.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
@@ -22,15 +23,6 @@
 namespace HIKARI {
 
     namespace {
-
-        std::filesystem::path ExeDirectory() {
-            std::array<wchar_t, MAX_PATH> buffer{};
-            const DWORD length = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
-            if (length == 0 || length >= buffer.size()) {
-                return std::filesystem::current_path();
-            }
-            return std::filesystem::path(buffer.data()).parent_path();
-        }
 
         const nlohmann::json& RuntimeNode(const nlohmann::json& root) {
             if (root.contains("runtime") && root["runtime"].is_object()) {
@@ -247,7 +239,9 @@ namespace HIKARI {
 
         std::vector<std::filesystem::path> candidates{};
         AddCandidate(candidates, std::filesystem::current_path());
-        AddCandidate(candidates, ExeDirectory());
+        AddCandidate(
+            candidates,
+            PLATFORM::GetExecutableDirectory());
 
         std::error_code ec{};
         for (const std::filesystem::path& candidate : candidates) {
