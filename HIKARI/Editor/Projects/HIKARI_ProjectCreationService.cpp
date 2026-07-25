@@ -196,6 +196,14 @@ namespace {
             "} // namespace HIKARI::RUNTIME\n";
     }
 
+    std::string MakeProjectGitAttributes() {
+        return
+            "* text=auto\n\n"
+            "Assets/**/*.bin filter=lfs diff=lfs merge=lfs -text\n"
+            "Assets/**/*.dds filter=lfs diff=lfs merge=lfs -text\n"
+            "Assets/**/*.png filter=lfs diff=lfs merge=lfs -text\n";
+    }
+
     void RemoveStagingDirectory(
         const std::filesystem::path& path) noexcept {
 
@@ -328,8 +336,12 @@ namespace {
                 outMessage) ||
             !WriteTextFile(
                 stagingRoot / ".gitignore",
-                "/Library/\n/logs/\n/out/\n/.vs/\n"
-                "*.user\n",
+                "/Library/\n/logs/\n/RendererLog/\n"
+                "/out/\n/.vs/\n/imgui.ini\n*.user\n",
+                outMessage) ||
+            !WriteTextFile(
+                stagingRoot / ".gitattributes",
+                MakeProjectGitAttributes(),
                 outMessage)) {
             RemoveStagingDirectory(stagingRoot);
             return false;

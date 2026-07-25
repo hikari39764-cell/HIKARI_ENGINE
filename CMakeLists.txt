@@ -24,7 +24,7 @@ include(HikariRuntimeDeployment)
 
 set(
     HIKARI_GAME_PROJECT_MANIFEST
-    "${HIKARI_SOURCE_ROOT}/GameProject/CMakeLists.txt"
+    "${HIKARI_SOURCE_ROOT}/Tests/Fixtures/Projects/EmptyProject/CMakeLists.txt"
     CACHE FILEPATH
     "CMake manifest for the GameProject module linked into the Host")
 hikari_load_game_project("${HIKARI_GAME_PROJECT_MANIFEST}")
