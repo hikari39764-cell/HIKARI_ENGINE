@@ -7,12 +7,9 @@
 
 #include "HIKARI_RuntimeHost.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
+#include "Runtime/Host/HIKARI_HostBootstrapConfig.h"
 
 namespace HIKARI {
-
-    namespace SERVICES {
-        struct BootstrapConfig;
-    }
 
     struct RuntimeLaunchConfig {
         bool loaded = false;
@@ -41,6 +38,8 @@ namespace HIKARI {
     RuntimeLaunchConfig LoadRuntimeLaunchConfig();
     RuntimeLaunchConfig LoadRuntimeLaunchConfigFromFile(const std::filesystem::path& path);
     bool ApplyRuntimeWorkingDirectory(const RuntimeLaunchConfig& runtimeCfg);
-    void ApplyRuntimeLaunchConfig(const RuntimeLaunchConfig& runtimeCfg, SERVICES::BootstrapConfig& servicesCfg);
+    void ApplyRuntimeLaunchConfig(
+        const RuntimeLaunchConfig& runtimeCfg,
+        RUNTIME::HostBootstrapConfig& servicesCfg);
 
 } // namespace HIKARI

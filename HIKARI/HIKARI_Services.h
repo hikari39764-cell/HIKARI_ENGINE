@@ -12,6 +12,7 @@
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 #include "Runtime/HIKARI_RuntimeHost.h"
 #include "Runtime/HIKARI_GamePresentationController.h"
+#include "Runtime/Host/HIKARI_HostBootstrapConfig.h"
 #include "Runtime/Host/HIKARI_IEditorUiServices.h"
 #include "Vfx/Runtime/HIKARI_VfxSystem.h"
 
@@ -47,36 +48,13 @@
 namespace HIKARI {
     namespace SERVICES {
 
-        struct BootstrapConfig {
-            RuntimeHostMode hostMode = DefaultRuntimeHostMode();
-            bool enableDebugCamera = false;
-            bool enableDebugLayer = true;
-            bool resizableWindow = true;
-            bool enableImGui =
-#if defined(HIKARI_ENABLE_IMGUI)
-                true;
-#else
-                false;
-#endif
-            bool enableEditorUI =
-#if defined(HIKARI_WITH_EDITOR)
-                true;
-#else
-                false;
-#endif
-            int windowWidth = PRESENTATION::kDefaultLogicalWidth;
-            int windowHeight = PRESENTATION::kDefaultLogicalHeight;
-            std::string startupSceneGuid{};
-            std::vector<std::string> exportedSceneGuids{};
-        };
-
         inline PLATFORM::Win32Window gWindow{};
         inline INPUT::InputService gInputService{};
         inline RUNTIME::GamePresentationController gGamePresentationController{};
         inline GFX::Dx12Core gCore{};
         inline GFX::Context gCtx{};
         inline bool gComInitialized = false;
-        inline RuntimeHostMode gRuntimeHostMode = DefaultRuntimeHostMode();
+        inline RuntimeHostMode gRuntimeHostMode = RuntimeHostMode::Game;
         inline bool gEnableImGui = false;
         inline bool gEnableEditorUI = false;
         inline std::string gRuntimeStartupSceneGuid{};
@@ -266,7 +244,6 @@ namespace HIKARI {
                 viewportWidth = gWindow.Width();
                 viewportHeight = gWindow.Height();
             }
-#if defined(HIKARI_WITH_EDITOR)
             if (ShouldProduceEditorUiFrame() &&
                 gEditorGameViewportVisible &&
                 gEditorGameViewportWidth > 0 &&
@@ -274,7 +251,6 @@ namespace HIKARI {
                 viewportWidth = gEditorGameViewportWidth;
                 viewportHeight = gEditorGameViewportHeight;
             }
-#endif
 
             FrameSceneResolutionPlan plan{};
             plan.output = RENDER3D::ResolveSceneOutputResolution(
@@ -315,7 +291,9 @@ namespace HIKARI {
                 plan.render.height);
         }
 
-        inline bool Initialize(const char* title, const BootstrapConfig& cfg = {}) {
+        inline bool Initialize(
+            const char* title,
+            const RUNTIME::HostBootstrapConfig& cfg = {}) {
             const bool enableFrameGenerationPlugins =
                 IsEditorHostMode(cfg.hostMode) ||
                 (IsStandaloneGameHostMode(cfg.hostMode) &&
@@ -850,7 +828,8 @@ namespace HIKARI {
             gPreviewTelemetryPresentedFrames = 0;
         }
 
-        inline bool BeginFrame(const BootstrapConfig& cfg = {}) {
+        inline bool BeginFrame(
+            const RUNTIME::HostBootstrapConfig& cfg = {}) {
             (void)cfg;
             gGpuFrameReady = false;
             gPresentationPrepared = false;

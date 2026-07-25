@@ -1,7 +1,7 @@
 # Authoritative HIKARI compile-source manifest.
 # Add or remove translation units here and keep the source-closure test green.
 
-set(HIKARI_COMPILE_SOURCE_COUNT 679)
+set(HIKARI_COMPILE_SOURCE_COUNT 682)
 
 set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/External/WICTextureLoader.cpp"
@@ -329,6 +329,8 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/HIKARI_RuntimeResourceRefreshService.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/HIKARI_RuntimeLaunchConfig.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/HIKARI_GamePresentationController.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/App/HIKARI_RuntimeEngineApp.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Host/HIKARI_EngineHostRunner.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Host/HIKARI_EditorUiServiceRegistry.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Tools/Baking/HIKARI_LightingBakeService.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Tools/Baking/HIKARI_LightProbeBaker.cpp"
@@ -396,16 +398,17 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/SpineDefaultExtensionShim.cpp"
 )
 
-set(HIKARI_HOST_SOURCES
-    "${HIKARI_SOURCE_ROOT}/HIKARI/App/HIKARI_EngineApp.cpp"
-    "${HIKARI_SOURCE_ROOT}/main.cpp"
+set(HIKARI_EDITOR_HOST_SOURCES
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Host/HIKARI_EditorHostMain.cpp"
 )
 
 set(HIKARI_GAME_HOST_SOURCES
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Host/HIKARI_GameHostMain.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Host/HIKARI_RuntimeComponentToolingStubs.cpp"
 )
 
 set(HIKARI_EDITOR_SOURCES
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/App/HIKARI_EditorEngineApp.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Core/MeshRenderer/Editor/HIKARI_MeshEditorInteractiveRenderer.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Core/MeshRenderer/Editor/HIKARI_MeshEditorInteractiveResources.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Inspectors/Animation/HIKARI_AnimationComponentInspectors.cpp"

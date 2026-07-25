@@ -12,7 +12,6 @@
 
 #include <json.hpp>
 
-#include "HIKARI_Services.h"
 #include "Core/HIKARI_Logger.h"
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
 #include "Render3D/Settings/HIKARI_RenderQualityProfileStore.h"
@@ -260,7 +259,9 @@ namespace HIKARI {
         return !ec;
     }
 
-    void ApplyRuntimeLaunchConfig(const RuntimeLaunchConfig& runtimeCfg, SERVICES::BootstrapConfig& servicesCfg) {
+    void ApplyRuntimeLaunchConfig(
+        const RuntimeLaunchConfig& runtimeCfg,
+        RUNTIME::HostBootstrapConfig& servicesCfg) {
         if (runtimeCfg.hostMode) {
             servicesCfg.hostMode = *runtimeCfg.hostMode;
         }

@@ -109,7 +109,7 @@ if(HIKARI_WITH_EDITOR_BUILD)
     target_sources(
         HIKARI_EditorHost
         PRIVATE
-            ${HIKARI_HOST_SOURCES})
+            ${HIKARI_EDITOR_HOST_SOURCES})
     target_link_libraries(
         HIKARI_EditorHost
         PRIVATE
@@ -119,14 +119,13 @@ if(HIKARI_WITH_EDITOR_BUILD)
     source_group(
         TREE "${HIKARI_SOURCE_ROOT}"
         FILES
-            ${HIKARI_HOST_SOURCES})
+            ${HIKARI_EDITOR_HOST_SOURCES})
     set(HIKARI_STARTUP_TARGET HIKARI_EditorHost)
 else()
     add_executable(HIKARI_GameHost WIN32)
     target_sources(
         HIKARI_GameHost
         PRIVATE
-            ${HIKARI_HOST_SOURCES}
             ${HIKARI_GAME_HOST_SOURCES})
     target_link_libraries(
         HIKARI_GameHost
@@ -137,7 +136,6 @@ else()
     source_group(
         TREE "${HIKARI_SOURCE_ROOT}"
         FILES
-            ${HIKARI_HOST_SOURCES}
             ${HIKARI_GAME_HOST_SOURCES})
     set(HIKARI_STARTUP_TARGET HIKARI_GameHost)
 endif()

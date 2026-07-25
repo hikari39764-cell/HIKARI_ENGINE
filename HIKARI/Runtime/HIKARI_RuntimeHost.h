@@ -62,12 +62,4 @@ namespace HIKARI {
         return false;
     }
 
-    inline constexpr RuntimeHostMode DefaultRuntimeHostMode() {
-#if defined(HIKARI_WITH_EDITOR)
-        return RuntimeHostMode::Editor;
-#else
-        return RuntimeHostMode::Game;
-#endif
-    }
-
 } // namespace HIKARI
