@@ -1,0 +1,32 @@
+@PACKAGE_INIT@
+
+set(_HIKARI_SDK_ROOT "${PACKAGE_PREFIX_DIR}/Sdk")
+
+if(NOT TARGET HIKARI::GameProjectHost)
+    add_library(HIKARI::GameProjectHost SHARED IMPORTED)
+    set_target_properties(
+        HIKARI::GameProjectHost
+        PROPERTIES
+            IMPORTED_IMPLIB
+                "${_HIKARI_SDK_ROOT}/lib/HIKARI_UpdateTo3D.lib"
+            IMPORTED_LOCATION
+                "${PACKAGE_PREFIX_DIR}/HIKARI_UpdateTo3D.exe")
+endif()
+
+if(NOT TARGET HIKARI::GameProjectSdk)
+    add_library(HIKARI::GameProjectSdk INTERFACE IMPORTED)
+    set_target_properties(
+        HIKARI::GameProjectSdk
+        PROPERTIES
+            INTERFACE_COMPILE_FEATURES "cxx_std_20"
+            INTERFACE_COMPILE_DEFINITIONS
+                "HIKARI_GAME_PROJECT_SDK_IMPORTS=1"
+            INTERFACE_INCLUDE_DIRECTORIES
+                "${_HIKARI_SDK_ROOT}/include"
+            INTERFACE_LINK_LIBRARIES
+                "HIKARI::GameProjectHost")
+endif()
+
+include("${CMAKE_CURRENT_LIST_DIR}/HIKARIGameProject.cmake")
+
+check_required_components(HIKARI)

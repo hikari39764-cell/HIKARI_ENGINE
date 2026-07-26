@@ -71,6 +71,14 @@ namespace HIKARI {
         return AddWithDestroy(feature, destroy);
     }
 
+    bool RegisterModuleOwnedRuntimeFeature(
+        RuntimeFeatureCatalog& catalog,
+        IRuntimeFeature* feature,
+        RuntimeFeatureDestroyFn destroy) {
+
+        return catalog.AddModuleOwned(feature, destroy);
+    }
+
     bool RuntimeFeatureCatalog::AddWithDestroy(
         IRuntimeFeature* feature,
         RuntimeFeatureDestroyFn destroy) {

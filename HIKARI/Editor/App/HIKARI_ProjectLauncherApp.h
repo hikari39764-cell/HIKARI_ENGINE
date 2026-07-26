@@ -14,7 +14,7 @@ namespace HIKARI::EDITOR {
         : public RUNTIME::IHostApplication {
     public:
         explicit ProjectLauncherApp(
-            std::filesystem::path engineRoot);
+            std::filesystem::path runtimeRoot);
 
         bool Initialize() override;
         void Update(float deltaTime) override;
@@ -36,7 +36,7 @@ namespace HIKARI::EDITOR {
         void BrowseForCreationLocation();
         void CreateAndOpenProject();
 
-        std::filesystem::path engineRoot_{};
+        std::filesystem::path runtimeRoot_{};
         RecentProjectStore recentProjects_{};
         ProjectOpenWorkflow openWorkflow_;
         std::array<char, 128u> projectName_{};

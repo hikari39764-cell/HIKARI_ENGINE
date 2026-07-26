@@ -54,12 +54,12 @@ namespace {
 } // namespace
 
     ProjectLauncherApp::ProjectLauncherApp(
-        std::filesystem::path engineRoot)
-        : engineRoot_(
+        std::filesystem::path runtimeRoot)
+        : runtimeRoot_(
             std::filesystem::absolute(
-                std::move(engineRoot))
+                std::move(runtimeRoot))
                 .lexically_normal()),
-          openWorkflow_(engineRoot_) {
+          openWorkflow_(runtimeRoot_) {
     }
 
     bool ProjectLauncherApp::Initialize() {

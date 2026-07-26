@@ -20,6 +20,7 @@ include(HikariCompiler)
 include(HikariSources)
 include(HikariDependencies)
 include(HikariRuntimeDeployment)
+include(HikariSdk)
 
 unset(HIKARI_GAME_PROJECT_MANIFEST CACHE)
 
@@ -46,7 +47,12 @@ add_library(HIKARI::Runtime ALIAS HIKARI_Runtime)
 target_sources(
     HIKARI_Runtime
     PRIVATE
-        ${HIKARI_RUNTIME_SOURCES})
+        ${HIKARI_RUNTIME_SOURCES}
+    PUBLIC
+        FILE_SET hikari_game_project_sdk_headers
+        TYPE HEADERS
+        BASE_DIRS "${HIKARI_SOURCE_ROOT}/include"
+        FILES ${HIKARI_GAME_PROJECT_SDK_HEADERS})
 target_include_directories(
     HIKARI_Runtime
     PUBLIC
@@ -129,6 +135,7 @@ if(HIKARI_WITH_EDITOR_BUILD)
         HIKARI_EditorHost
         PROPERTIES
             ENABLE_EXPORTS TRUE)
+    hikari_configure_game_project_sdk(HIKARI_EditorHost)
     source_group(
         TREE "${HIKARI_SOURCE_ROOT}"
         FILES
@@ -143,14 +150,12 @@ if(HIKARI_WITH_EDITOR_BUILD)
         HIKARI_ProjectLauncher
         PRIVATE
             HIKARI::Editor)
-    target_compile_definitions(
+    add_dependencies(
         HIKARI_ProjectLauncher
-        PRIVATE
-            HIKARI_ENGINE_SOURCE_ROOT="${HIKARI_SOURCE_ROOT}")
+        HIKARI_EditorHost)
     hikari_configure_engine_target(HIKARI_ProjectLauncher)
     hikari_configure_runtime_deployment(
         HIKARI_ProjectLauncher
-        NO_INSTALL
         OUTPUT_NAME "HIKARI_ProjectLauncher")
     source_group(
         TREE "${HIKARI_SOURCE_ROOT}"
@@ -173,6 +178,7 @@ else()
         HIKARI_GameHost
         PROPERTIES
             ENABLE_EXPORTS TRUE)
+    hikari_configure_game_project_sdk(HIKARI_GameHost)
     source_group(
         TREE "${HIKARI_SOURCE_ROOT}"
         FILES

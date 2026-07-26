@@ -16,7 +16,7 @@ namespace HIKARI::EDITOR {
     class ProjectOpenWorkflow {
     public:
         explicit ProjectOpenWorkflow(
-            std::filesystem::path engineRoot);
+            std::filesystem::path runtimeRoot);
         ~ProjectOpenWorkflow();
 
         ProjectOpenWorkflow(
@@ -40,7 +40,7 @@ namespace HIKARI::EDITOR {
         bool LaunchEditor(std::string& outMessage);
         void CloseBuildProcess() noexcept;
 
-        std::filesystem::path engineRoot_{};
+        std::filesystem::path runtimeRoot_{};
         std::filesystem::path projectRoot_{};
         std::filesystem::path descriptorPath_{};
         std::filesystem::path buildLogPath_{};

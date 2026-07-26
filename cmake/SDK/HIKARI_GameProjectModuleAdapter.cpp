@@ -1,11 +1,11 @@
-#include "Runtime/Project/HIKARI_GameProjectModuleApi.h"
+#include "HIKARI/Project/GameProjectModuleApi.h"
 
 #include <memory>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "Runtime/Project/HIKARI_IGameProjectModule.h"
+#include "HIKARI/Project/GameProjectModule.h"
 
 namespace HIKARI::RUNTIME {
 namespace {

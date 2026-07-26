@@ -2,11 +2,8 @@
 
 #include "Editor/App/HIKARI_ProjectLauncherApp.h"
 #include "Editor/Host/HIKARI_EditorUiServices.h"
+#include "Platform/Paths/HIKARI_ExecutablePath.h"
 #include "Runtime/Host/HIKARI_EngineHostRunner.h"
-
-#if !defined(HIKARI_ENGINE_SOURCE_ROOT)
-#error HIKARI_ENGINE_SOURCE_ROOT must identify the engine checkout
-#endif
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
     if (!HIKARI::EDITOR::InstallEditorUiServices()) {
@@ -14,7 +11,7 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
     }
 
     HIKARI::EDITOR::ProjectLauncherApp application{
-        HIKARI_ENGINE_SOURCE_ROOT
+        HIKARI::PLATFORM::GetExecutableDirectory()
     };
     HIKARI::RUNTIME::EngineHostRunOptions options{};
     options.product =

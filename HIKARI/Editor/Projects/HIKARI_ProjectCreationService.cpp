@@ -150,19 +150,101 @@ namespace {
         const std::string& identifier) {
 
         return
-            "hikari_declare_game_project(\n"
+            "cmake_minimum_required(VERSION 3.28)\n\n"
+            "project(" + identifier + " LANGUAGES CXX)\n\n"
+            "if(NOT WIN32 OR NOT MSVC OR "
+            "NOT CMAKE_SIZEOF_VOID_P EQUAL 8)\n"
+            "    message(FATAL_ERROR\n"
+            "        \"HIKARI GameProjects require x64 "
+            "Visual Studio 2022.\")\n"
+            "endif()\n\n"
+            "find_package(HIKARI 1 CONFIG REQUIRED)\n\n"
+            "hikari_add_game_project(\n"
             "    NAME \"" + identifier + "\"\n"
             "    SOURCES\n"
             "        Source/" + identifier +
             "GameProjectModule.cpp)\n";
     }
 
+    std::string MakeGameProjectCMakePresets() {
+        return R"json({
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 28,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "hikari-project-base",
+      "hidden": true,
+      "generator": "Visual Studio 17 2022",
+      "architecture": "x64",
+      "cacheVariables": {
+        "HIKARI_DIR": "$env{HIKARI_SDK_ROOT}/lib/cmake/HIKARI"
+      }
+    },
+    {
+      "name": "debug",
+      "displayName": "HIKARI GameProject Debug",
+      "inherits": "hikari-project-base",
+      "binaryDir": "${sourceDir}/Library/Build/CMake/sdk-v1/debug",
+      "cacheVariables": {
+        "CMAKE_CONFIGURATION_TYPES": "Debug",
+        "HIKARI_GAME_PROJECT_OUTPUT_ROOT": "${sourceDir}/Library/Build/debug"
+      }
+    },
+    {
+      "name": "editor-release",
+      "displayName": "HIKARI GameProject Editor Release",
+      "inherits": "hikari-project-base",
+      "binaryDir": "${sourceDir}/Library/Build/CMake/sdk-v1/editor-release",
+      "cacheVariables": {
+        "CMAKE_CONFIGURATION_TYPES": "EditorRelease",
+        "HIKARI_GAME_PROJECT_OUTPUT_ROOT": "${sourceDir}/Library/Build/editor-release"
+      }
+    },
+    {
+      "name": "game-shipping",
+      "displayName": "HIKARI GameProject Shipping",
+      "inherits": "hikari-project-base",
+      "binaryDir": "${sourceDir}/Library/Build/CMake/sdk-v1/game-shipping",
+      "cacheVariables": {
+        "CMAKE_CONFIGURATION_TYPES": "Shipping",
+        "HIKARI_GAME_PROJECT_OUTPUT_ROOT": "${sourceDir}/Library/Build/game-shipping"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "debug",
+      "configurePreset": "debug",
+      "configuration": "Debug",
+      "targets": [ "HIKARI_GameProjectModule" ]
+    },
+    {
+      "name": "editor-release",
+      "configurePreset": "editor-release",
+      "configuration": "EditorRelease",
+      "targets": [ "HIKARI_GameProjectModule" ]
+    },
+    {
+      "name": "game-shipping",
+      "configurePreset": "game-shipping",
+      "configuration": "Shipping",
+      "targets": [ "HIKARI_GameProjectModule" ]
+    }
+  ]
+}
+)json";
+    }
+
     std::string MakeGameProjectModule(
         const std::string& identifier) {
 
         return
-            "#include \"Runtime/Project/"
-            "HIKARI_IGameProjectModule.h\"\n\n"
+            "#include \"HIKARI/Project/"
+            "GameProjectModule.h\"\n\n"
             "#include <memory>\n"
             "#include <string_view>\n"
             "#include <vector>\n\n"
@@ -326,6 +408,10 @@ namespace {
             !WriteTextFile(
                 stagingRoot / "CMakeLists.txt",
                 MakeGameProjectCMake(identifier),
+                outMessage) ||
+            !WriteTextFile(
+                stagingRoot / "CMakePresets.json",
+                MakeGameProjectCMakePresets(),
                 outMessage) ||
             !WriteTextFile(
                 stagingRoot /

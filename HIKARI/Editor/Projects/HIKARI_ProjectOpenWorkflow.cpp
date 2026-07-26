@@ -77,10 +77,10 @@ namespace {
 } // namespace
 
     ProjectOpenWorkflow::ProjectOpenWorkflow(
-        std::filesystem::path engineRoot)
-        : engineRoot_(
+        std::filesystem::path runtimeRoot)
+        : runtimeRoot_(
             std::filesystem::absolute(
-                std::move(engineRoot))
+                std::move(runtimeRoot))
                 .lexically_normal()) {
     }
 
@@ -135,8 +135,8 @@ namespace {
         }
 
         const std::filesystem::path buildScript =
-            engineRoot_ / "Tools" / "Build" /
-            "Build-Hikari.ps1";
+            runtimeRoot_ / "Sdk" / "Tools" /
+            "Build-HikariProject.ps1";
         if (!std::filesystem::is_regular_file(
                 buildScript,
                 ec)) {
@@ -202,6 +202,10 @@ namespace {
         AppendArgument(
             commandLine,
             projectRoot_.wstring());
+        AppendArgument(commandLine, L"-SdkRoot");
+        AppendArgument(
+            commandLine,
+            (runtimeRoot_ / "Sdk").wstring());
 
         std::vector<wchar_t> mutableCommandLine(
             commandLine.begin(),
@@ -226,7 +230,7 @@ namespace {
             CREATE_NO_WINDOW |
                 CREATE_UNICODE_ENVIRONMENT,
             nullptr,
-            engineRoot_.c_str(),
+            runtimeRoot_.c_str(),
             &startupInfo,
             &processInformation);
         const DWORD createError = created
@@ -331,9 +335,7 @@ namespace {
         std::string& outMessage) {
 
         const std::filesystem::path executable =
-            engineRoot_ / "out" / "build" /
-            preset_ / "bin" /
-            "HIKARI_UpdateTo3D.exe";
+            runtimeRoot_ / "HIKARI_UpdateTo3D.exe";
         const std::filesystem::path projectModule =
             projectRoot_ / "Library" / "Build" /
             preset_ / "bin" /
