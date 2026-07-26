@@ -319,13 +319,20 @@ namespace HIKARI::SHADOW::INTERNAL {
         if (device == nullptr) {
             return false;
         }
-        gShadowRendererState.fallbackTextureResource = RENDER3D::LoadTextureResource(
+        gShadowRendererState.fallbackTextureResource =
+            RENDER3D::CreateSolidColorTextureResource(
             "shadow/fallback_white",
-            "HIKARI/white1x1.png");
+            0xffffffffu,
+            RENDER3D::TextureResourceColorSpace::Linear);
         gShadowRendererState.fallbackTextureHandle =
             RENDER3D::GetTextureResourceBackendHandle(gShadowRendererState.fallbackTextureResource);
+        if (!RENDER3D::IsTextureResourceValid(
+                gShadowRendererState.fallbackTextureResource)) {
+            DEBUGLOG::PushRenderError(
+                "[Shadow][ERROR] Failed to create generated fallback white texture.");
+            return false;
+        }
         gShadowRendererState.initialized =
-            RENDER3D::IsTextureResourceValid(gShadowRendererState.fallbackTextureResource) &&
             CreateShadowFrameResources(device) &&
             CreateShadowPipelineState(device);
         return gShadowRendererState.initialized;
