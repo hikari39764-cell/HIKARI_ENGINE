@@ -11,7 +11,7 @@ namespace HIKARI {
 
 namespace HIKARI::RUNTIME {
 
-    inline constexpr uint32_t kGameProjectModuleAbiVersion = 1u;
+    inline constexpr uint32_t kGameProjectModuleAbiVersion = 2u;
     inline constexpr char kGameProjectModuleApiEntryPoint[] =
         "HIKARI_GetGameProjectModuleApi";
 

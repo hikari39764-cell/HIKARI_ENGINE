@@ -12,6 +12,7 @@
 #include "Scene/Components/HIKARI_PhysicsBodyComponent.h"
 #include "Scene/Features/HIKARI_RuntimeFeature.h"
 #include "Scene/Features/HIKARI_RuntimeFeatureIds.h"
+#include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
 #include "Scene/HIKARI_ComponentRegistry.h"
 #include "Scene/HIKARI_ComponentSystemPolicy.h"
 #include "Scene/HIKARI_SystemTypeRegistry.h"
@@ -97,6 +98,12 @@ namespace HIKARI {
             }
 
             bool Register(RuntimeFeatureContext& context) override {
+                ComponentRegistry& componentRegistry =
+                    RuntimeFeatureContextAccess::Components(context);
+                SystemTypeRegistry& systemTypeRegistry =
+                    RuntimeFeatureContextAccess::Systems(context);
+                ComponentSystemPolicy& componentSystemPolicy =
+                    RuntimeFeatureContextAccess::Policy(context);
                 ComponentTypeInfo body{};
                 body.typeName = "PhysicsBodyComponent";
                 body.factory = []() -> std::unique_ptr<IComponent> {
@@ -169,11 +176,11 @@ namespace HIKARI {
                 };
                 settings.normalize = NormalizeSettings;
 
-                bool success = context.componentRegistry.Register(
+                bool success = componentRegistry.Register(
                     std::move(collider));
-                success = context.componentRegistry.Register(
+                success = componentRegistry.Register(
                     std::move(body)) && success;
-                success = context.systemTypeRegistry.Register(SystemTypeInfo{
+                success = systemTypeRegistry.Register(SystemTypeInfo{
                     "PhysicsSystem",
                     [](const nlohmann::json& systemSettings)
                         -> std::unique_ptr<ISystem> {
@@ -184,13 +191,13 @@ namespace HIKARI {
                     std::string(RuntimeFeatureIds::Physics),
                     std::move(settings)
                 }) && success;
-                success = context.componentSystemPolicy.Register(
+                success = componentSystemPolicy.Register(
                     ComponentSystemRule{
                         "ColliderComponent",
                         "PhysicsSystem",
                         120
                     }) && success;
-                success = context.componentSystemPolicy.Register(
+                success = componentSystemPolicy.Register(
                     ComponentSystemRule{
                         "PhysicsBodyComponent",
                         "PhysicsSystem",

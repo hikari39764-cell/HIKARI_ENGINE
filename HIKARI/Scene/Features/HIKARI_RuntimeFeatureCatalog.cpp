@@ -269,8 +269,18 @@ namespace HIKARI {
                 (!selectionResolved_ ||
                     IsFeatureActive(
                         entry.feature->GetFeatureId()))) {
-                entry.feature->AppendDefaultSceneSystems(
-                    systems);
+                for (const RuntimeSystemDefault& system :
+                        entry.feature->GetDefaultSystems()) {
+                    if (system.systemId.empty()) {
+                        continue;
+                    }
+                    systems.push_back(SceneSystemData{
+                        std::string(system.systemId),
+                        system.enabled,
+                        system.executionOrder,
+                        nlohmann::json::object()
+                    });
+                }
             }
         }
         std::vector<SceneSystemData> uniqueSystems;

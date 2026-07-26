@@ -11,6 +11,7 @@
 #include "Core/Math/HIKARI_MathValidation.h"
 #include "Physics/Backends/Jolt/HIKARI_JoltPhysicsBackend.h"
 #include "Project/HIKARI_ProjectSettings.h"
+#include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
 #include "Scene/Features/HIKARI_BuiltInRuntimeFeatures.h"
 #include "Scene/Features/HIKARI_RuntimeFeature.h"
 #include "Scene/Features/HIKARI_RuntimeFeatureIds.h"
@@ -225,12 +226,11 @@ namespace HIKARI {
                 "[RuntimeFeature] project settings could not be loaded; defaults are used");
         }
 
-        RuntimeFeatureContext context{
+        RuntimeFeatureContext context =
+            RuntimeFeatureContextAccess::Create(
             state_->runtime.componentRegistry,
             state_->runtime.systemTypeRegistry,
-            state_->runtime.componentSystemPolicy,
-            state_->runtime.world
-        };
+            state_->runtime.componentSystemPolicy);
         state_->runtime.featureInstallReport =
             state_->runtime.featureCatalog.RegisterEnabled(
                 context,

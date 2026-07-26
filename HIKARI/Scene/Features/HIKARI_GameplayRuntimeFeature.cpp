@@ -10,11 +10,13 @@
 #include "Scene/Components/HIKARI_SpawnPointComponent.h"
 #include "Scene/Features/HIKARI_RuntimeFeature.h"
 #include "Scene/Features/HIKARI_RuntimeFeatureIds.h"
+#include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
 #include "Scene/HIKARI_CharacterInputSystem.h"
 #include "Scene/HIKARI_CharacterLocomotionSystem.h"
 #include "Scene/HIKARI_CharacterMotionStateSystem.h"
 #include "Scene/HIKARI_ComponentRegistry.h"
 #include "Scene/HIKARI_ComponentSystemPolicy.h"
+#include "Scene/HIKARI_SceneDocument.h"
 #include "Scene/HIKARI_SystemTypeRegistry.h"
 
 namespace HIKARI {
@@ -92,6 +94,12 @@ namespace HIKARI {
             }
 
             bool Register(RuntimeFeatureContext& context) override {
+                ComponentRegistry& componentRegistry =
+                    RuntimeFeatureContextAccess::Components(context);
+                SystemTypeRegistry& systemTypeRegistry =
+                    RuntimeFeatureContextAccess::Systems(context);
+                ComponentSystemPolicy& componentSystemPolicy =
+                    RuntimeFeatureContextAccess::Policy(context);
                 ComponentTypeInfo input{};
                 input.typeName = "CharacterInputComponent";
                 input.factory = []() -> std::unique_ptr<IComponent> {
@@ -214,14 +222,14 @@ namespace HIKARI {
                     "Spawn Point",
                     "Names a reusable spawn location in the scene.");
 
-                bool success = context.componentRegistry.Register(
+                bool success = componentRegistry.Register(
                     std::move(locomotion));
-                success = context.componentRegistry.Register(
+                success = componentRegistry.Register(
                     std::move(input)) && success;
-                success = context.componentRegistry.Register(
+                success = componentRegistry.Register(
                     std::move(spawnPoint)) && success;
 
-                success = context.systemTypeRegistry.Register(
+                success = systemTypeRegistry.Register(
                     SystemTypeInfo{
                         "CharacterInputSystem",
                         [](const nlohmann::json&)
@@ -232,7 +240,7 @@ namespace HIKARI {
                         "Character Input",
                         std::string(RuntimeFeatureIds::GameplayBasic)
                     }) && success;
-                success = context.systemTypeRegistry.Register(
+                success = systemTypeRegistry.Register(
                     SystemTypeInfo{
                         "CharacterMotionStateSystem",
                         [](const nlohmann::json&)
@@ -243,7 +251,7 @@ namespace HIKARI {
                         "Character Motion State",
                         std::string(RuntimeFeatureIds::GameplayBasic)
                     }) && success;
-                success = context.systemTypeRegistry.Register(
+                success = systemTypeRegistry.Register(
                     SystemTypeInfo{
                         "CharacterLocomotionSystem",
                         [](const nlohmann::json&)
@@ -254,19 +262,19 @@ namespace HIKARI {
                         "Character Locomotion",
                         std::string(RuntimeFeatureIds::GameplayBasic)
                     }) && success;
-                success = context.componentSystemPolicy.Register(
+                success = componentSystemPolicy.Register(
                     ComponentSystemRule{
                         "CharacterInputComponent",
                         "CharacterInputSystem",
                         90
                     }) && success;
-                success = context.componentSystemPolicy.Register(
+                success = componentSystemPolicy.Register(
                     ComponentSystemRule{
                         "CharacterLocomotionComponent",
                         "CharacterLocomotionSystem",
                         110
                     }) && success;
-                success = context.componentSystemPolicy.Register(
+                success = componentSystemPolicy.Register(
                     ComponentSystemRule{
                         "CharacterLocomotionComponent",
                         "CharacterMotionStateSystem",

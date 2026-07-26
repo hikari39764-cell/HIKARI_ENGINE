@@ -11,6 +11,7 @@
 #include "Scene/Components/HIKARI_AnimatorComponent.h"
 #include "Scene/Features/HIKARI_RuntimeFeature.h"
 #include "Scene/Features/HIKARI_RuntimeFeatureIds.h"
+#include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
 #include "Scene/HIKARI_ComponentRegistry.h"
 #include "Scene/HIKARI_ComponentSystemPolicy.h"
 #include "Scene/HIKARI_SystemTypeRegistry.h"
@@ -58,6 +59,12 @@ namespace HIKARI {
             }
 
             bool Register(RuntimeFeatureContext& context) override {
+                ComponentRegistry& componentRegistry =
+                    RuntimeFeatureContextAccess::Components(context);
+                SystemTypeRegistry& systemTypeRegistry =
+                    RuntimeFeatureContextAccess::Systems(context);
+                ComponentSystemPolicy& componentSystemPolicy =
+                    RuntimeFeatureContextAccess::Policy(context);
                 ComponentTypeInfo animator{};
                 animator.typeName = "AnimatorComponent";
                 animator.factory = []() -> std::unique_ptr<IComponent> {
@@ -87,7 +94,7 @@ namespace HIKARI {
                     std::string(RuntimeFeatureIds::Animation)
                 };
 
-                bool success = context.componentRegistry.Register(
+                bool success = componentRegistry.Register(
                     std::move(animator));
                 ComponentTypeInfo stateMachine{};
                 stateMachine.typeName = "AnimationStateMachineComponent";
@@ -112,9 +119,9 @@ namespace HIKARI {
                     "Selects animation states from parameters without owning pose evaluation.",
                     std::string(RuntimeFeatureIds::Animation)
                 };
-                success = context.componentRegistry.Register(
+                success = componentRegistry.Register(
                     std::move(stateMachine)) && success;
-                success = context.systemTypeRegistry.Register(
+                success = systemTypeRegistry.Register(
                     SystemTypeInfo{
                         "AnimationStateMachineSystem",
                         [](const nlohmann::json&)
@@ -125,7 +132,7 @@ namespace HIKARI {
                         "Animation",
                         std::string(RuntimeFeatureIds::Animation)
                     }) && success;
-                success = context.systemTypeRegistry.Register(
+                success = systemTypeRegistry.Register(
                     SystemTypeInfo{
                         "AnimationSystem",
                         [](const nlohmann::json&)
@@ -135,13 +142,13 @@ namespace HIKARI {
                         "Animation",
                         std::string(RuntimeFeatureIds::Animation)
                     }) && success;
-                success = context.componentSystemPolicy.Register(
+                success = componentSystemPolicy.Register(
                     ComponentSystemRule{
                         "AnimationStateMachineComponent",
                         "AnimationStateMachineSystem",
                         140
                     }) && success;
-                success = context.componentSystemPolicy.Register(
+                success = componentSystemPolicy.Register(
                     ComponentSystemRule{
                         "AnimatorComponent",
                         "AnimationSystem",

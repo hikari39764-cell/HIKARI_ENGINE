@@ -8,6 +8,7 @@
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
 #include "Scene/Features/HIKARI_RuntimeFeature.h"
 #include "Scene/Features/HIKARI_RuntimeFeatureIds.h"
+#include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
 #include "Scene/HIKARI_ComponentRegistry.h"
 #include "Scene/HIKARI_ComponentSystemPolicy.h"
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
@@ -60,6 +61,10 @@ namespace HIKARI {
             }
 
             bool Register(RuntimeFeatureContext& context) override {
+                ComponentRegistry& componentRegistry =
+                    RuntimeFeatureContextAccess::Components(context);
+                SystemTypeRegistry& systemTypeRegistry =
+                    RuntimeFeatureContextAccess::Systems(context);
                 ComponentTypeInfo model{};
                 model.typeName = "ModelComponent";
                 model.factory = []() -> std::unique_ptr<IComponent> {
@@ -124,13 +129,13 @@ namespace HIKARI {
                     "Procedural Mesh",
                     "Generates editable plane, box, sphere, cylinder, or capsule geometry.");
 
-                bool success = context.componentRegistry.Register(
+                bool success = componentRegistry.Register(
                     std::move(model));
-                success = context.componentRegistry.Register(
+                success = componentRegistry.Register(
                     std::move(materialFx)) && success;
-                success = context.componentRegistry.Register(
+                success = componentRegistry.Register(
                     std::move(procedural)) && success;
-                success = context.systemTypeRegistry.Register(SystemTypeInfo{
+                success = systemTypeRegistry.Register(SystemTypeInfo{
                     "ModelRenderSystem",
                     [](const nlohmann::json&) -> std::unique_ptr<ISystem> {
                         return std::make_unique<RenderSubmissionSystem>();
@@ -141,14 +146,18 @@ namespace HIKARI {
                 return success;
             }
 
-            void AppendDefaultSceneSystems(
-                std::vector<SceneSystemData>& systems) const override {
-                systems.push_back(SceneSystemData{
-                    "ModelRenderSystem",
-                    true,
-                    100,
-                    nlohmann::json::object()
-                });
+            std::span<const RuntimeSystemDefault>
+                GetDefaultSystems() const noexcept override {
+                static constexpr std::array<
+                    RuntimeSystemDefault,
+                    1> defaults{
+                    RuntimeSystemDefault{
+                        "ModelRenderSystem",
+                        true,
+                        100
+                    }
+                };
+                return defaults;
             }
         };
     }
