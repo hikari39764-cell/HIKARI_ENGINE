@@ -1,7 +1,7 @@
 # Authoritative HIKARI compile-source manifest.
 # Add or remove translation units here and keep the source-closure test green.
 
-set(HIKARI_COMPILE_SOURCE_COUNT 699)
+set(HIKARI_COMPILE_SOURCE_COUNT 702)
 
 set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/External/WICTextureLoader.cpp"
@@ -266,6 +266,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Debug/HIKARI_ColliderGizmoProvider.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Debug/HIKARI_PhysicsShapeDebugDraw.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/HIKARI_AssetDatabase.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Cooking/HIKARI_CookedContentManifest.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Tasks/HIKARI_AssetImportQueue.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Tasks/HIKARI_AssetTaskService.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/HIKARI_AssetGuid.cpp"
@@ -495,6 +496,8 @@ set(HIKARI_EDITOR_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/AnimationStateMachine/HIKARI_AnimationStateMachineGraphPanel.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/AnimationStateMachine/HIKARI_AnimationStateMachineGraphMenu.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Export/HIKARI_GameExporter.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Cooking/HIKARI_AssetCooker.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Export/HIKARI_GamePackageManifest.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Export/HIKARI_NativeRuntimeDeployment.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Play/HIKARI_EditorPlaySession.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/HIKARI_EditorStyle.cpp"

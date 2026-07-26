@@ -11,6 +11,7 @@
 #include <json.hpp>
 
 #include "Assets/Collision/HIKARI_ModelCollisionArtifact.h"
+#include "Assets/Cooking/HIKARI_CookedContentManifest.h"
 #include "Assets/Geometry/HIKARI_HcmeshFormat.h"
 #include "Assets/Importers/Policy/HIKARI_MaterialImportPolicy.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
@@ -205,6 +206,30 @@ namespace HIKARI {
         libraryRoot_ = resolvePipelinePath("libraryRoot", "Library");
         sourceMetaRoot_ = resolvePipelinePath("sourceMetaRoot", "ProjectSettings/AssetMeta");
 
+        cookedManifestPath_ =
+            projectRoot_ /
+            ASSETS::COOKING::kCookedContentManifestFilename;
+        ec.clear();
+        cookedContent_ =
+            std::filesystem::is_regular_file(
+                cookedManifestPath_,
+                ec) &&
+            !ec;
+#if defined(HIKARI_SHIPPING)
+        if (!cookedContent_) {
+            HIKARI_LOG_ERROR(
+                "[AssetDatabase] Shipping requires " +
+                cookedManifestPath_.generic_string());
+            return false;
+        }
+#endif
+        if (cookedContent_) {
+            HIKARI_LOG_INFO(
+                "[AssetDatabase] cooked content mode: " +
+                cookedManifestPath_.generic_string());
+            return true;
+        }
+
         RegisterDefaultImporters();
         EnsureProjectDirectories();
         return true;
@@ -230,6 +255,10 @@ namespace HIKARI {
         return contentRevision_;
     }
 
+    bool AssetDatabase::IsCookedContent() const noexcept {
+        return cookedContent_;
+    }
+
     AssetImporterRegistry& AssetDatabase::GetImporterRegistry() {
         return importerRegistry_;
     }
@@ -239,6 +268,11 @@ namespace HIKARI {
     }
 
     bool AssetDatabase::ScanAssets(bool createMissingMeta) {
+        if (cookedContent_) {
+            (void)createMissingMeta;
+            return LoadCookedRecords();
+        }
+
         EnsureProjectDirectories();
 
         records_.clear();
@@ -335,7 +369,103 @@ namespace HIKARI {
         return true;
     }
 
+    bool AssetDatabase::LoadCookedRecords() {
+        ASSETS::COOKING::CookedContentManifest manifest{};
+        std::string message{};
+        if (!ASSETS::COOKING::ReadCookedContentManifest(
+                cookedManifestPath_,
+                manifest,
+                &message)) {
+            HIKARI_LOG_ERROR(
+                "[AssetDatabase] cooked manifest load failed: " +
+                message);
+            return false;
+        }
+
+        records_.clear();
+        directories_.clear();
+        recordsByGuid_.clear();
+        guidByNormalizedPath_.clear();
+        AddDirectoryToCache("RuntimePayload");
+
+        for (AssetRecord& record : manifest.assets) {
+            std::error_code ec{};
+            const bool payloadExists =
+                std::filesystem::is_regular_file(
+                    projectRoot_ / record.sourcePath,
+                    ec) &&
+                !ec;
+
+            bool artifactsReady = true;
+            for (const AssetArtifactDesc& artifact :
+                 record.artifactManifest.artifacts) {
+                ec.clear();
+                if (!std::filesystem::is_regular_file(
+                        projectRoot_ / artifact.path,
+                        ec) ||
+                    ec) {
+                    HIKARI_LOG_ERROR(
+                        "[AssetDatabase] cooked artifact missing: " +
+                        artifact.path);
+                    artifactsReady = false;
+                    break;
+                }
+            }
+            if (!artifactsReady ||
+                (!payloadExists &&
+                 record.artifactManifest.artifacts.empty())) {
+                if (!payloadExists &&
+                    record.artifactManifest.artifacts.empty()) {
+                    HIKARI_LOG_ERROR(
+                        "[AssetDatabase] cooked payload missing: " +
+                        record.sourcePath.generic_string());
+                }
+                records_.clear();
+                directories_.clear();
+                recordsByGuid_.clear();
+                guidByNormalizedPath_.clear();
+                return false;
+            }
+
+            record.metaPath.clear();
+            record.artifactManifestPath.clear();
+            record.importedDirectory =
+                GetImportedDirectory(record.guid);
+            record.sourceExists =
+                payloadExists ||
+                !record.artifactManifest.artifacts.empty();
+            record.metaExists = true;
+            record.importOutdated = false;
+            record.lastImportSucceeded = true;
+            record.duplicateGuid = false;
+            record.importerMissing = false;
+            record.artifactMissing = false;
+
+            const size_t index = records_.size();
+            recordsByGuid_[record.guid.value] = index;
+            guidByNormalizedPath_[
+                MakePathKey(record.sourcePath)] = index;
+            AddDirectoryToCache(
+                record.sourcePath.parent_path());
+            records_.push_back(std::move(record));
+        }
+
+        SortAndUniqueDirectories();
+        AdvanceContentRevision();
+        HIKARI_LOG_INFO(
+            "[AssetDatabase] loaded cooked asset registry. count=" +
+            std::to_string(records_.size()));
+        return true;
+    }
+
     bool AssetDatabase::ImportAsset(const AssetGuid& guid) {
+        if (cookedContent_) {
+            HIKARI_LOG_ERROR(
+                "[AssetDatabase] cooked content is read-only; "
+                "ImportAsset was rejected.");
+            return false;
+        }
+
         AssetRecord* record = FindByGuid(guid);
         if (!record) {
             HIKARI_LOG_ERROR("[AssetDatabase] ImportAsset failed: GUID not found " + guid.value);
@@ -471,6 +601,12 @@ namespace HIKARI {
     bool AssetDatabase::RebuildModelCollisionArtifact(
         const AssetGuid& guid,
         std::string& outMessage) {
+
+        if (cookedContent_) {
+            outMessage =
+                "cooked content is read-only";
+            return false;
+        }
 
         AssetRecord* record = FindByGuid(guid);
         if (record == nullptr || record->type != AssetType::Model) {
@@ -793,6 +929,13 @@ namespace HIKARI {
     }
 
     bool AssetDatabase::WriteMeta(const AssetRecord& record) {
+        if (cookedContent_) {
+            HIKARI_LOG_ERROR(
+                "[AssetDatabase] cooked content is read-only; "
+                "WriteMeta was rejected.");
+            return false;
+        }
+
         if (record.metaPath.empty()) {
             return false;
         }
@@ -856,6 +999,13 @@ namespace HIKARI {
     }
 
     bool AssetDatabase::RegenerateMeta(const std::filesystem::path& sourcePath) {
+        if (cookedContent_) {
+            HIKARI_LOG_ERROR(
+                "[AssetDatabase] cooked content is read-only; "
+                "RegenerateMeta was rejected.");
+            return false;
+        }
+
         AssetRecord* record = FindByPath(sourcePath);
         if (!record) {
             HIKARI_LOG_ERROR("[AssetDatabase] RegenerateMeta failed: source not found " + sourcePath.generic_string());

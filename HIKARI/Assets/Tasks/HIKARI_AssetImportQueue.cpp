@@ -11,6 +11,8 @@
 #include <utility>
 #include <vector>
 
+#include "Core/HIKARI_Logger.h"
+
 namespace HIKARI {
 
     struct AssetDatabase::QueuedImportBatch {
@@ -78,6 +80,13 @@ namespace HIKARI {
     bool AssetDatabase::QueueImportAssets(
         const std::vector<AssetGuid>& guids,
         std::string label) {
+
+        if (cookedContent_) {
+            HIKARI_LOG_ERROR(
+                "[AssetDatabase] cooked content is read-only; "
+                "queued import was rejected.");
+            return false;
+        }
 
         if (queuedImportBatch_ &&
             queuedImportBatch_->status.active) {

@@ -3,7 +3,6 @@
 
 #include <algorithm>
 #include <cctype>
-#include <deque>
 #include <fstream>
 #include <system_error>
 #include <unordered_set>
@@ -13,13 +12,12 @@
 #include <json.hpp>
 
 #if defined(HIKARI_WITH_EDITOR)
+#include "Assets/Cooking/HIKARI_AssetCooker.h"
 #include "Assets/HIKARI_AssetDatabase.h"
-#include "Assets/Semantics/HIKARI_AssetSourceSemantics.h"
-#include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
 #include "Assets/HIKARI_AssetRecord.h"
 #include "Assets/HIKARI_AssetTypes.h"
-#include "Assets/HIKARI_AssetUsageAnalyzer.h"
 #include "Core/HIKARI_Logger.h"
+#include "Editor/Export/HIKARI_GamePackageManifest.h"
 #include "Editor/Export/HIKARI_NativeRuntimeDeployment.h"
 #include "Project/HIKARI_ProjectContext.h"
 #include "Project/HIKARI_ProjectDescriptor.h"
@@ -28,8 +26,6 @@
 #include "Render3D/Settings/HIKARI_RenderQualitySettingsJson.h"
 #include "Render3D/Upscaling/HIKARI_StreamlineDeployment.h"
 #include "Runtime/HIKARI_RuntimeHost.h"
-#include "Scene/HIKARI_SceneDocument.h"
-#include "Scene/Serialization/HIKARI_SceneSerializer.h"
 #endif
 
 namespace HIKARI::EDITOR {
@@ -37,13 +33,6 @@ namespace HIKARI::EDITOR {
     namespace {
 #if defined(HIKARI_WITH_EDITOR)
         constexpr const char* kExportOutputFolderName = "HIKARI_Game";
-
-        struct ExportContentManifest {
-            bool restrictToSelectedScenes = false;
-            std::unordered_set<std::string> selectedSceneGuids{};
-            std::unordered_set<std::string> requiredAssetGuids{};
-            std::vector<AssetMissingReference> missingReferences{};
-        };
 
         std::string RelativeFileKey(const std::filesystem::path& path) {
             return TEXT::ToLowerAsciiCopy(path.lexically_normal().generic_string());
@@ -79,17 +68,6 @@ namespace HIKARI::EDITOR {
                 return normalized.lexically_normal();
             }
 
-            return path.lexically_normal();
-        }
-
-        std::filesystem::path MakeRelativePath(
-            const std::filesystem::path& root,
-            const std::filesystem::path& path) {
-            std::error_code ec{};
-            const std::filesystem::path relative = std::filesystem::relative(path, root, ec);
-            if (!ec && !relative.empty()) {
-                return relative.lexically_normal();
-            }
             return path.lexically_normal();
         }
 
@@ -317,73 +295,6 @@ namespace HIKARI::EDITOR {
             return true;
         }
 
-        bool FindDxcRuntimeDirectory(
-            const std::filesystem::path& projectRoot,
-            std::filesystem::path& outDirectory) {
-            std::vector<std::filesystem::path> candidateDirs{
-                projectRoot,
-                projectRoot / "ThirdParty" / "DXC" / "bin" / "x64",
-                projectRoot / "ThirdParty" / "DirectXShaderCompiler" / "bin" / "x64",
-            };
-
-            const std::filesystem::path kitsBin = L"C:\\Program Files (x86)\\Windows Kits\\10\\bin";
-            std::error_code ec{};
-            if (std::filesystem::exists(kitsBin, ec) && !ec) {
-                for (const auto& entry : std::filesystem::directory_iterator(kitsBin, ec)) {
-                    if (ec) {
-                        break;
-                    }
-                    if (!entry.is_directory(ec) || ec) {
-                        ec.clear();
-                        continue;
-                    }
-                    candidateDirs.push_back(entry.path() / L"x64");
-                }
-            }
-
-            std::sort(candidateDirs.begin(), candidateDirs.end(), [](const auto& lhs, const auto& rhs) {
-                return lhs.generic_string() > rhs.generic_string();
-            });
-
-            for (const std::filesystem::path& directory : candidateDirs) {
-                ec.clear();
-                if (std::filesystem::exists(directory / "dxcompiler.dll", ec) && !ec) {
-                    outDirectory = directory;
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        bool CopyDxcRuntime(
-            const std::filesystem::path& projectRoot,
-            const std::filesystem::path& outputDirectory,
-            std::string& errorMessage) {
-            std::filesystem::path dxcDirectory{};
-            if (!FindDxcRuntimeDirectory(projectRoot, dxcDirectory)) {
-                errorMessage = "Could not find dxcompiler.dll for export. Install Windows SDK or place DXC runtime under ThirdParty/DXC/bin/x64.";
-                return false;
-            }
-
-            if (!CopyFileChecked(
-                dxcDirectory / "dxcompiler.dll",
-                outputDirectory / "dxcompiler.dll",
-                errorMessage)) {
-                return false;
-            }
-
-            std::error_code ec{};
-            const std::filesystem::path dxil = dxcDirectory / "dxil.dll";
-            if (std::filesystem::exists(dxil, ec) && !ec) {
-                if (!CopyFileChecked(dxil, outputDirectory / "dxil.dll", errorMessage)) {
-                    return false;
-                }
-            }
-
-            HIKARI_LOG_INFO("[GameExporter] copied DXC runtime from " + dxcDirectory.string());
-            return true;
-        }
-
         std::vector<GameExportSceneInfo> CollectSceneAssetsFromProjectRoot(
             const std::filesystem::path& projectRoot) {
             AssetDatabase assetDatabase{};
@@ -423,348 +334,6 @@ namespace HIKARI::EDITOR {
             return scenes;
         }
 
-        bool BuildSelectedSceneSet(
-            const GameExportOptions& options,
-            std::unordered_set<std::string>& selectedSceneGuids,
-            std::string& errorMessage) {
-            selectedSceneGuids.clear();
-            for (const std::string& guid : options.sceneGuids) {
-                if (guid.empty()) {
-                    continue;
-                }
-                selectedSceneGuids.insert(guid);
-            }
-
-            if (selectedSceneGuids.empty()) {
-                if (!options.startupSceneGuid.empty()) {
-                    errorMessage = "Startup scene was set but no scenes were selected for export.";
-                    return false;
-                }
-                return true;
-            }
-
-            if (options.startupSceneGuid.empty()) {
-                errorMessage = "Startup scene is required when exporting selected scenes.";
-                return false;
-            }
-
-            if (selectedSceneGuids.find(options.startupSceneGuid) == selectedSceneGuids.end()) {
-                errorMessage = "Startup scene must be included in exported scenes: " + options.startupSceneGuid;
-                return false;
-            }
-
-            return true;
-        }
-
-        bool BuildExportContentManifest(
-            const std::filesystem::path& projectRoot,
-            const GameExportOptions& options,
-            ExportContentManifest& manifest,
-            std::string& errorMessage) {
-            manifest = {};
-
-            std::unordered_set<std::string> selectedSceneGuids{};
-            if (!BuildSelectedSceneSet(options, selectedSceneGuids, errorMessage)) {
-                return false;
-            }
-
-            manifest.selectedSceneGuids = selectedSceneGuids;
-            if (selectedSceneGuids.empty()) {
-                return true;
-            }
-            manifest.restrictToSelectedScenes = true;
-
-            AssetDatabase assetDatabase{};
-            if (!assetDatabase.Initialize(projectRoot)) {
-                errorMessage = "Could not initialize asset database for selected-scene export.";
-                return false;
-            }
-            if (!assetDatabase.ScanAssets(false)) {
-                errorMessage = "Could not scan assets for selected-scene export.";
-                return false;
-            }
-
-            std::deque<std::string> pendingGuids{};
-            auto appendMissing = [&](std::string assetId, std::string owner, std::string role) {
-                if (assetId.empty()) {
-                    return;
-                }
-                manifest.missingReferences.push_back(AssetMissingReference{
-                    std::move(assetId),
-                    std::move(owner),
-                    std::move(role)
-                });
-            };
-
-            auto queueRecord = [&](const AssetRecord* record, const std::string& owner, const std::string& role) {
-                if (!record || !record->guid.IsValid()) {
-                    appendMissing({}, owner, role);
-                    return;
-                }
-
-                if (record->type == AssetType::Scene &&
-                    selectedSceneGuids.find(record->guid.value) == selectedSceneGuids.end()) {
-                    return;
-                }
-
-                if (manifest.requiredAssetGuids.insert(record->guid.value).second) {
-                    pendingGuids.push_back(record->guid.value);
-                }
-            };
-
-            auto queueGuid = [&](const std::string& guid, const std::string& owner, const std::string& role) {
-                if (guid.empty()) {
-                    return;
-                }
-
-                const AssetRecord* record = assetDatabase.FindByGuid(AssetGuid{ guid });
-                if (!record) {
-                    appendMissing(guid, owner, role);
-                    return;
-                }
-                queueRecord(record, owner, role);
-            };
-
-            SceneSerializer sceneSerializer{};
-            for (const std::string& guid : selectedSceneGuids) {
-                const AssetRecord* sceneRecord = assetDatabase.FindByGuid(AssetGuid{ guid });
-                if (!sceneRecord || sceneRecord->type != AssetType::Scene) {
-                    errorMessage = "Selected scene was not found in the asset database: " + guid;
-                    return false;
-                }
-
-                queueRecord(sceneRecord, "Export Selection", "Scene");
-
-                const std::filesystem::path scenePath =
-                    (projectRoot / sceneRecord->sourcePath).lexically_normal();
-                SceneDocument document{};
-                if (!sceneSerializer.LoadFromFile(scenePath.string(), document)) {
-                    errorMessage = "Could not read selected scene: " + scenePath.string();
-                    return false;
-                }
-
-                AssetUsageSummary sceneUsage = AnalyzeAssetUsage(document, assetDatabase);
-                for (const std::string& usedGuid : sceneUsage.usedGuids) {
-                    queueGuid(
-                        usedGuid,
-                        sceneRecord->displayName.empty() ? sceneRecord->sourcePath.generic_string() : sceneRecord->displayName,
-                        "Scene Dependency");
-                }
-                for (AssetMissingReference& missing : sceneUsage.missingReferences) {
-                    manifest.missingReferences.push_back(std::move(missing));
-                }
-            }
-
-            while (!pendingGuids.empty()) {
-                const std::string guid = std::move(pendingGuids.front());
-                pendingGuids.pop_front();
-
-                const AssetRecord* record = assetDatabase.FindByGuid(AssetGuid{ guid });
-                if (!record) {
-                    continue;
-                }
-
-                for (const AssetDependencyDesc& dependency : record->artifactManifest.dependencies) {
-                    if (ASSETS::SEMANTICS::IsSourceOnlyAssetDependencyRole(
-                            dependency.role)) {
-                        continue;
-                    }
-                    const AssetRecord* dependencyRecord = nullptr;
-                    if (dependency.guid.IsValid()) {
-                        dependencyRecord = assetDatabase.FindByGuid(dependency.guid);
-                    } else if (!dependency.path.empty()) {
-                        dependencyRecord = assetDatabase.FindByPath(dependency.path);
-                    }
-
-                    if (!dependencyRecord) {
-                        appendMissing(
-                            dependency.guid.IsValid() ? dependency.guid.value : dependency.path,
-                            record->displayName.empty() ? record->sourcePath.generic_string() : record->displayName,
-                            dependency.role.empty() ? "Asset Dependency" : dependency.role);
-                        continue;
-                    }
-
-                    queueRecord(
-                        dependencyRecord,
-                        record->displayName.empty() ? record->sourcePath.generic_string() : record->displayName,
-                        dependency.role.empty() ? "Asset Dependency" : dependency.role);
-                }
-            }
-
-            return true;
-        }
-
-        bool IsRuntimeArtifactForExport(const AssetArtifactDesc& artifact) {
-            if (artifact.path.empty()) {
-                return false;
-            }
-
-            if (ASSETS::SEMANTICS::MatchesAssetArtifact(
-                artifact,
-                ASSETS::SEMANTICS::AssetArtifactKind::DebugTextureDds,
-                true)) {
-                return false;
-            }
-
-            const std::string path = TEXT::ToLowerAsciiCopy(artifact.path);
-            if (path.find("/captures/") != std::string::npos ||
-                path.ends_with("_capture.dds")) {
-                return false;
-            }
-
-            return true;
-        }
-
-        bool CopyProjectRelativeFile(
-            const std::filesystem::path& projectRoot,
-            const std::filesystem::path& outputDirectory,
-            const std::filesystem::path& projectRelativePath,
-            std::string& errorMessage) {
-            if (projectRelativePath.empty()) {
-                return true;
-            }
-
-            const std::filesystem::path sourcePath = projectRelativePath.is_absolute()
-                ? projectRelativePath.lexically_normal()
-                : (projectRoot / projectRelativePath).lexically_normal();
-            const std::filesystem::path targetRelativePath =
-                MakeRelativePath(projectRoot, sourcePath);
-            return CopyFileChecked(sourcePath, outputDirectory / targetRelativePath, errorMessage);
-        }
-
-        bool ShouldCopySourceForSelectedExport(const AssetRecord& record) {
-            switch (record.type) {
-            case AssetType::Texture:
-            case AssetType::Model:
-                return false;
-            default:
-                return true;
-            }
-        }
-
-        bool CopyAssetSourceAndMeta(
-            const AssetDatabase& assetDatabase,
-            const AssetRecord& record,
-            const std::filesystem::path& outputDirectory,
-            std::string& errorMessage) {
-            if (ShouldCopySourceForSelectedExport(record)) {
-                if (!CopyProjectRelativeFile(
-                    assetDatabase.GetProjectRoot(),
-                    outputDirectory,
-                    record.sourcePath,
-                    errorMessage)) {
-                    return false;
-                }
-            }
-
-            if (!record.metaPath.empty()) {
-                if (!CopyProjectRelativeFile(
-                    assetDatabase.GetProjectRoot(),
-                    outputDirectory,
-                    record.metaPath,
-                    errorMessage)) {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        bool CopyAssetArtifacts(
-            const AssetDatabase& assetDatabase,
-            const AssetRecord& record,
-            const std::filesystem::path& outputDirectory,
-            std::string& errorMessage) {
-            for (const AssetArtifactDesc& artifact : record.artifactManifest.artifacts) {
-                if (!IsRuntimeArtifactForExport(artifact)) {
-                    continue;
-                }
-
-                if (!CopyProjectRelativeFile(
-                    assetDatabase.GetProjectRoot(),
-                    outputDirectory,
-                    artifact.path,
-                    errorMessage)) {
-                    return false;
-                }
-            }
-            return true;
-        }
-
-        bool CopySelectedAssetContent(
-            const std::filesystem::path& projectRoot,
-            const std::filesystem::path& outputDirectory,
-            const ExportContentManifest& manifest,
-            std::string& errorMessage) {
-            AssetDatabase assetDatabase{};
-            if (!assetDatabase.Initialize(projectRoot)) {
-                errorMessage = "Could not initialize asset database for selected asset copy.";
-                return false;
-            }
-            if (!assetDatabase.ScanAssets(false)) {
-                errorMessage = "Could not scan assets for selected asset copy.";
-                return false;
-            }
-
-            std::vector<std::string> guids(
-                manifest.requiredAssetGuids.begin(),
-                manifest.requiredAssetGuids.end());
-            std::sort(guids.begin(), guids.end());
-
-            for (const std::string& guid : guids) {
-                const AssetRecord* record = assetDatabase.FindByGuid(AssetGuid{ guid });
-                if (!record) {
-                    errorMessage = "Required asset disappeared during export: " + guid;
-                    return false;
-                }
-
-                if (!CopyAssetSourceAndMeta(assetDatabase, *record, outputDirectory, errorMessage) ||
-                    !CopyAssetArtifacts(assetDatabase, *record, outputDirectory, errorMessage)) {
-                    return false;
-                }
-            }
-
-            HIKARI_LOG_INFO(
-                "[GameExporter] selected-scene content assets=" +
-                std::to_string(guids.size()) +
-                " missingReferences=" +
-                std::to_string(manifest.missingReferences.size()));
-            return true;
-        }
-
-        bool CopySelectedLightingContent(
-            const std::filesystem::path& projectRoot,
-            const std::filesystem::path& outputDirectory,
-            const ExportContentManifest& manifest,
-            std::string& errorMessage) {
-            std::vector<std::string> sceneGuids(
-                manifest.selectedSceneGuids.begin(),
-                manifest.selectedSceneGuids.end());
-            std::sort(sceneGuids.begin(), sceneGuids.end());
-
-            for (const std::string& sceneGuid : sceneGuids) {
-                if (!CopyDirectoryChecked(
-                    projectRoot / "Library" / "Generated" / "Lighting" / sceneGuid,
-                    outputDirectory / "Library" / "Generated" / "Lighting" / sceneGuid,
-                    errorMessage,
-                    true)) {
-                    return false;
-                }
-            }
-            return true;
-        }
-
-        bool CopyStartupSpineOpContent(
-            const std::filesystem::path& projectRoot,
-            const std::filesystem::path& outputDirectory,
-            std::string& errorMessage) {
-            const std::filesystem::path spineRoot = projectRoot / "Assets" / "Spine";
-            return CopyDirectoryChecked(
-                spineRoot,
-                outputDirectory / "Assets" / "Spine",
-                errorMessage);
-        }
-
         bool WriteRuntimeConfig(
             const std::filesystem::path& outputDirectory,
             const GameExportOptions& options,
@@ -787,6 +356,7 @@ namespace HIKARI::EDITOR {
 
             nlohmann::json runtime{
                     { "hostMode", RuntimeHostModeName(RuntimeHostMode::ExportedGame) },
+                    { "projectRoot", "../Content" },
                     { "enableImGui", false },
                     { "enableEditorUI", false },
                     { "enableDebugLayer", false },
@@ -820,19 +390,10 @@ namespace HIKARI::EDITOR {
             return true;
         }
 
-        bool CopyRuntimeContent(
-            const std::filesystem::path& projectRoot,
+        bool CopyInstalledEngineContent(
             const std::filesystem::path& runtimeRoot,
             const std::filesystem::path& outputDirectory,
-            const ExportContentManifest& contentManifest,
             std::string& errorMessage) {
-
-            if (!CopyFileChecked(
-                    projectRoot / kProjectDescriptorFilename,
-                    outputDirectory / kProjectDescriptorFilename,
-                    errorMessage)) {
-                return false;
-            }
 
             const std::filesystem::path engineContentSource =
                 runtimeRoot / "EngineContent";
@@ -852,71 +413,6 @@ namespace HIKARI::EDITOR {
                     errorMessage)) {
                 return false;
             }
-
-            const std::vector<std::pair<std::filesystem::path, std::filesystem::path>> directories{
-                { "Data", "Data" },
-                { "ProjectSettings", "ProjectSettings" },
-                { "Library/AssetDatabase", "Library/AssetDatabase" },
-                { "Library/ShaderCache", "Library/ShaderCache" },
-                { "Library/Generated/IBL", "Library/Generated/IBL" },
-            };
-
-            if (contentManifest.restrictToSelectedScenes) {
-                if (!CopySelectedAssetContent(
-                    projectRoot,
-                    outputDirectory,
-                    contentManifest,
-                    errorMessage)) {
-                    return false;
-                }
-            } else {
-                if (!CopyDirectoryChecked(
-                    projectRoot / "Assets",
-                    outputDirectory / "Assets",
-                    errorMessage)) {
-                    return false;
-                }
-                if (!CopyDirectoryChecked(
-                    projectRoot / "Library" / "Imported",
-                    outputDirectory / "Library" / "Imported",
-                    errorMessage)) {
-                    return false;
-                }
-            }
-
-            if (!CopyStartupSpineOpContent(projectRoot, outputDirectory, errorMessage)) {
-                return false;
-            }
-
-            for (const auto& [sourceRelative, targetRelative] : directories) {
-                if (!CopyDirectoryChecked(
-                    projectRoot / sourceRelative,
-                    outputDirectory / targetRelative,
-                    errorMessage)) {
-                    return false;
-                }
-            }
-
-            if (!CopyDxcRuntime(projectRoot, outputDirectory, errorMessage)) {
-                return false;
-            }
-
-            if (contentManifest.restrictToSelectedScenes) {
-                if (!CopySelectedLightingContent(
-                    projectRoot,
-                    outputDirectory,
-                    contentManifest,
-                    errorMessage)) {
-                    return false;
-                }
-            } else if (!CopyDirectoryChecked(
-                projectRoot / "Library" / "Generated" / "Lighting",
-                outputDirectory / "Library" / "Generated" / "Lighting",
-                errorMessage,
-                true)) {
-                return false;
-            }
-
             return true;
         }
 #endif
@@ -948,9 +444,15 @@ namespace HIKARI::EDITOR {
         const std::filesystem::path projectRoot = FindProjectRoot();
         const std::filesystem::path sourceExe =
             projectRoot / "out" / "install" / "game-shipping" / "HIKARI_UpdateTo3D.exe";
+        const std::filesystem::path sourceProjectModule =
+            sourceExe.parent_path() /
+            "HIKARI_GameProject.dll";
         const std::filesystem::path outputDirectory =
             ResolveOutputDirectory(projectRoot, options.outputDirectory);
         const std::filesystem::path outputExe = outputDirectory / "HIKARI_Game.exe";
+        const std::filesystem::path outputProjectModule =
+            outputDirectory /
+            "HIKARI_GameProject.dll";
         const RENDER3D::RenderQualitySettings& renderQuality =
             RENDER3D::GetRenderQualitySettings();
         const RENDER3D::UPSCALING::StreamlineDeploymentOptions
@@ -978,11 +480,21 @@ namespace HIKARI::EDITOR {
             HIKARI_LOG_WARN(std::string("[GameExporter] ") + result.message);
             return result;
         }
-
-        ExportContentManifest contentManifest{};
-        if (!BuildExportContentManifest(projectRoot, options, contentManifest, errorMessage)) {
-            result.message = errorMessage;
-            HIKARI_LOG_WARN(result.message);
+        sourceExeError.clear();
+        if (!std::filesystem::is_regular_file(
+                sourceProjectModule,
+                sourceExeError) ||
+            sourceExeError) {
+            result.message =
+                "Installed GameProject module is missing: " +
+                sourceProjectModule.string() +
+                ". Run .\\Tools\\Build\\Build-Hikari.ps1 "
+                "-Preset game-shipping -Project \"" +
+                projectRoot.string() +
+                "\" -Install before exporting.";
+            HIKARI_LOG_WARN(
+                std::string("[GameExporter] ") +
+                result.message);
             return result;
         }
 
@@ -996,37 +508,81 @@ namespace HIKARI::EDITOR {
             DeployNativeRuntimeDependencies(
                 sourceExe.parent_path(),
                 outputDirectory);
-        if (!CopyFileChecked(sourceExe, outputExe, errorMessage) ||
-            !nativeRuntime.success ||
+        if (!nativeRuntime.success) {
+            result.message = nativeRuntime.message;
+            HIKARI_LOG_WARN(
+                std::string("[GameExporter] ") +
+                result.message);
+            return result;
+        }
+        if (!CopyFileChecked(
+                sourceExe,
+                outputExe,
+                errorMessage) ||
+            !CopyFileChecked(
+                sourceProjectModule,
+                outputProjectModule,
+                errorMessage) ||
             !RENDER3D::UPSCALING::DeployStreamlineRuntime(
                 sourceExe.parent_path(),
                 outputDirectory,
                 streamlineDeployment,
                 errorMessage) ||
-            !WriteRuntimeConfig(outputDirectory, options, errorMessage) ||
-            !CopyRuntimeContent(
-                projectRoot,
+            !WriteRuntimeConfig(
+                outputDirectory,
+                options,
+                errorMessage) ||
+            !CopyInstalledEngineContent(
                 sourceExe.parent_path(),
                 outputDirectory,
-                contentManifest,
                 errorMessage)) {
-            if (errorMessage.empty() && !nativeRuntime.success) {
-                errorMessage = nativeRuntime.message;
-            }
             result.message = errorMessage;
             HIKARI_LOG_WARN(std::string("[GameExporter] ") + result.message);
             return result;
         }
 
-        result.success = true;
-        if (options.sceneGuids.empty()) {
-            result.message = "Exported to " + outputDirectory.string();
-        } else {
-            result.message =
-                "Exported " + std::to_string(options.sceneGuids.size()) +
-                " scene(s), " + std::to_string(contentManifest.requiredAssetGuids.size()) +
-                " asset(s) to " + outputDirectory.string();
+        const ASSETS::COOKING::AssetCookResult cookResult =
+            ASSETS::COOKING::AssetCooker{}.Cook({
+                projectRoot,
+                outputDirectory / "Content",
+                options.startupSceneGuid,
+                options.sceneGuids,
+            });
+        if (!cookResult.success) {
+            result.message = cookResult.message;
+            HIKARI_LOG_WARN(
+                std::string("[GameExporter] ") +
+                result.message);
+            return result;
         }
+
+        if (!ValidateGamePackageBoundary(
+                outputDirectory,
+                errorMessage) ||
+            !WriteGamePackageManifest(
+                outputDirectory,
+                {
+                    options.startupSceneGuid,
+                    options.sceneGuids,
+                },
+                errorMessage)) {
+            result.message = errorMessage;
+            HIKARI_LOG_WARN(
+                std::string("[GameExporter] ") +
+                result.message);
+            return result;
+        }
+
+        result.success = true;
+        result.message =
+            "Exported " +
+            std::to_string(options.sceneGuids.size()) +
+            " scene(s), " +
+            std::to_string(cookResult.assetCount) +
+            " cooked asset(s), and " +
+            std::to_string(cookResult.fileCount) +
+            " cooked file(s) to " +
+            outputDirectory.string();
         HIKARI_LOG_INFO(std::string("[GameExporter] ") + result.message);
         return result;
 #else

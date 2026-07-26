@@ -24,6 +24,14 @@ namespace HIKARI::EDITOR {
             return name.rfind("assimp-", 0) == 0 &&
                 TEXT::ToLowerAsciiCopy(path.extension().string()) == ".dll";
         }
+
+        bool IsGameProjectModule(
+            const std::filesystem::path& path) {
+
+            return TEXT::ToLowerAsciiCopy(
+                path.filename().string()) ==
+                "hikari_gameproject.dll";
+        }
     }
 
     NativeRuntimeDeploymentResult DeployNativeRuntimeDependencies(
@@ -57,7 +65,8 @@ namespace HIKARI::EDITOR {
 
             const std::filesystem::path source = it->path();
             if (TEXT::ToLowerAsciiCopy(source.extension().string()) != ".dll" ||
-                IsFeatureOwnedRuntime(source)) {
+                IsFeatureOwnedRuntime(source) ||
+                IsGameProjectModule(source)) {
                 continue;
             }
 

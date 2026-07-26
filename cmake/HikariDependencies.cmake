@@ -217,6 +217,34 @@ foreach(runtime_name IN LISTS hikari_vcpkg_runtime_names)
     list(APPEND HIKARI_RUNTIME_DEPENDENCIES "${runtime_file}")
 endforeach()
 
+find_program(
+    HIKARI_DXC_EXECUTABLE
+    NAMES dxc.exe
+    HINTS
+        "C:/Program Files (x86)/Windows Kits/10/bin/${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION}/x64"
+        "C:/Program Files (x86)/Windows Kits/10/bin/${CMAKE_SYSTEM_VERSION}/x64")
+if(NOT HIKARI_DXC_EXECUTABLE)
+    message(
+        FATAL_ERROR
+        "HIKARI requires the Windows SDK DXC runtime for reproducible "
+        "build/install/package deployment.")
+endif()
+get_filename_component(
+    HIKARI_DXC_RUNTIME_ROOT
+    "${HIKARI_DXC_EXECUTABLE}"
+    DIRECTORY)
+foreach(runtime_name IN ITEMS dxcompiler.dll dxil.dll)
+    set(
+        runtime_file
+        "${HIKARI_DXC_RUNTIME_ROOT}/${runtime_name}")
+    hikari_require_dependency_file(
+        "${runtime_file}"
+        "Windows SDK DXC runtime dependency")
+    list(APPEND
+        HIKARI_RUNTIME_DEPENDENCIES
+        "${runtime_file}")
+endforeach()
+
 if(HIKARI_WITH_EDITOR_BUILD)
     set(
         HIKARI_COACD_RUNTIME

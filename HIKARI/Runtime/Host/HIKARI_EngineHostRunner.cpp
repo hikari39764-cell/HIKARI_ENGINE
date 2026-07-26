@@ -4,6 +4,7 @@
 
 #include <Windows.h>
 
+#include "Assets/Cooking/HIKARI_CookedContentManifest.h"
 #include "Core/Content/HIKARI_EngineContentContext.h"
 #include "Core/HIKARI_TimeService.h"
 #include "Core/HIKARI_Logger.h"
@@ -128,6 +129,28 @@ namespace HIKARI::RUNTIME {
 
         const HostBootstrapConfig servicesConfig =
             ResolveBootstrapConfig(options.product, runtimeConfig);
+        const ProjectContext& projectContext =
+            GetProjectContext();
+
+#if defined(HIKARI_SHIPPING)
+        if (projectContext.IsOpen()) {
+            const std::filesystem::path cookedManifestPath =
+                projectContext.Resolve(
+                    ASSETS::COOKING::
+                        kCookedContentManifestFilename);
+            std::error_code cookedManifestError{};
+            if (!std::filesystem::is_regular_file(
+                    cookedManifestPath,
+                    cookedManifestError) ||
+                cookedManifestError) {
+                GetProjectContext().Close();
+                CONTENT::GetEngineContentContext().Close();
+                return ReportLaunchFailure(
+                    "Shipping builds require cooked content. Missing " +
+                    cookedManifestPath.generic_string());
+            }
+        }
+#endif
 
         if (!SERVICES::Initialize(
                 options.windowTitle,
@@ -141,7 +164,6 @@ namespace HIKARI::RUNTIME {
         HIKARI_LOG_INFO(
             "[EngineContent] opened root=" +
             engineContent.GetRoot().generic_string());
-        const ProjectContext& projectContext = GetProjectContext();
         if (projectContext.IsOpen()) {
             HIKARI_LOG_INFO(
                 "[Project] opened '" +
@@ -162,13 +184,22 @@ namespace HIKARI::RUNTIME {
 
         MATH::RunMathConventionSelfCheck();
         SpineActor openingAnimation;
+        const std::filesystem::path openingRoot =
+            IsExportedGameHostMode(
+                servicesConfig.hostMode)
+                ? std::filesystem::path(
+                    "RuntimePayload/Spine")
+                : std::filesystem::path(
+                    "Assets/Spine");
         const std::filesystem::path openingAtlas =
             projectContext.IsOpen()
-                ? projectContext.Resolve("Assets/Spine/op.atlas")
+                ? projectContext.Resolve(
+                    openingRoot / "op.atlas")
                 : std::filesystem::path{};
         const std::filesystem::path openingSkeleton =
             projectContext.IsOpen()
-                ? projectContext.Resolve("Assets/Spine/op.json")
+                ? projectContext.Resolve(
+                    openingRoot / "op.json")
                 : std::filesystem::path{};
         std::error_code openingError{};
         const bool hasOpeningAssets =

@@ -63,6 +63,7 @@ namespace HIKARI {
         const std::filesystem::path& GetLibraryRoot() const;
         const std::filesystem::path& GetSourceMetaRoot() const;
         uint64_t GetContentRevision() const noexcept;
+        bool IsCookedContent() const noexcept;
 
         AssetImporterRegistry& GetImporterRegistry();
         const AssetImporterRegistry& GetImporterRegistry() const;
@@ -126,6 +127,7 @@ namespace HIKARI {
 
         void RegisterDefaultImporters();
         void EnsureProjectDirectories() const;
+        bool LoadCookedRecords();
         void AddDirectoryToCache(const std::filesystem::path& directory);
         void SortAndUniqueDirectories();
         void RefreshRecordState(AssetRecord& record) const;
@@ -155,6 +157,8 @@ namespace HIKARI {
         std::filesystem::path libraryRoot_{};
         std::filesystem::path projectSettingsRoot_{};
         std::filesystem::path sourceMetaRoot_{};
+        std::filesystem::path cookedManifestPath_{};
+        bool cookedContent_ = false;
 
         AssetImporterRegistry importerRegistry_{};
         std::vector<AssetRecord> records_{};

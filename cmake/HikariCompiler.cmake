@@ -37,6 +37,7 @@ function(hikari_configure_engine_target target_name)
             _WINDOWS
             _CRT_SECURE_NO_WARNINGS
             _CRT_NONSTDC_NO_DEPRECATE
+            $<$<CONFIG:Shipping>:HIKARI_SHIPPING>
             HIKARI_ENABLE_ASSIMP_IMPORTER
             JPH_FLOATING_POINT_EXCEPTIONS_ENABLED
             JPH_USE_CPU_COMPUTE
