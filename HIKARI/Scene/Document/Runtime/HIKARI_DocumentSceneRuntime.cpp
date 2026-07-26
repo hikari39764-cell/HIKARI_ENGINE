@@ -44,36 +44,64 @@ namespace HIKARI {
         }
 
         EndEditorCameraPreview();
-        state_->camera.editorCameraSnapshot = state_->camera.editorCamera;
-        state_->camera.editorDebugCameraSnapshot = state_->camera.debugCamera;
-        state_->editor.componentGizmoSnapshot = state_->editor.componentGizmoState;
-        state_->editor.overlaySnapshot = state_->editor.viewportOverlayState;
-        state_->editor.performanceSnapshot = state_->editor.viewportPerformanceState;
-        state_->editor.debugViewSnapshot = state_->editor.viewportDebugViewState;
-        state_->editor.selectedGizmoObjectSnapshot = state_->editor.selectedGizmoObjectId;
-        state_->editor.documentSnapshot = state_->identity.document;
-        state_->editor.environmentSnapshot = state_->lighting.environment;
-        state_->runtime.editorDocumentDirtySnapshot = state_->identity.documentDirty;
-        state_->runtime.editorDocumentSnapshotValid = true;
+        const bool preserveEditorState =
+            SERVICES::IsEditorHost();
+        if (preserveEditorState) {
+            state_->camera.editorCameraSnapshot =
+                state_->camera.editorCamera;
+            state_->camera.editorDebugCameraSnapshot =
+                state_->camera.debugCamera;
+            state_->editor.componentGizmoSnapshot =
+                state_->editor.componentGizmoState;
+            state_->editor.overlaySnapshot =
+                state_->editor.viewportOverlayState;
+            state_->editor.performanceSnapshot =
+                state_->editor.viewportPerformanceState;
+            state_->editor.debugViewSnapshot =
+                state_->editor.viewportDebugViewState;
+            state_->editor.selectedGizmoObjectSnapshot =
+                state_->editor.selectedGizmoObjectId;
+            state_->editor.documentSnapshot = state_->identity.document;
+            state_->editor.environmentSnapshot =
+                state_->lighting.environment;
+            state_->runtime.editorDocumentDirtySnapshot =
+                state_->identity.documentDirty;
+            state_->runtime.editorDocumentSnapshotValid = true;
 
-        // In-process Play must test the document currently visible in the
-        // editor, including unsaved component changes. Rebuilding from disk
-        // here silently discarded the user's latest authoring state.
-        if (!RebuildRuntimeWorld()) {
-            state_->identity.document = std::move(state_->editor.documentSnapshot);
-            state_->lighting.environment = state_->editor.environmentSnapshot;
-            state_->identity.documentDirty = state_->runtime.editorDocumentDirtySnapshot;
-            state_->runtime.editorDocumentSnapshotValid = false;
-            (void)RebuildRuntimeWorld();
-            state_->camera.editorCamera = state_->camera.editorCameraSnapshot;
-            state_->camera.debugCamera = state_->camera.editorDebugCameraSnapshot;
-            HIKARI_LOG_ERROR("Runtime Play scene rebuild failed.");
-            return false;
+            // In-process Play must test the document currently visible in
+            // the editor, including unsaved component changes. Rebuilding
+            // from disk here silently discarded the latest authoring state.
+            if (!RebuildRuntimeWorld()) {
+                state_->identity.document =
+                    std::move(
+                        state_->editor.documentSnapshot);
+                state_->lighting.environment =
+                    state_->editor.environmentSnapshot;
+                state_->identity.documentDirty =
+                    state_->runtime.editorDocumentDirtySnapshot;
+                state_->runtime.editorDocumentSnapshotValid = false;
+                (void)RebuildRuntimeWorld();
+                state_->camera.editorCamera =
+                    state_->camera.editorCameraSnapshot;
+                state_->camera.debugCamera =
+                    state_->camera.editorDebugCameraSnapshot;
+                HIKARI_LOG_ERROR(
+                    "Runtime Play scene rebuild failed.");
+                return false;
+            }
+            ++state_->identity.documentRevision;
+            state_->camera.editorCamera =
+                state_->camera.editorCameraSnapshot;
         }
-        ++state_->identity.documentRevision;
+        else {
+            // Standalone hosts already own a freshly built runtime World.
+            // They must not retain an editor document snapshot or rebuild
+            // the same scene a second time.
+            state_->runtime.editorDocumentSnapshotValid = false;
+        }
 
-        state_->camera.editorCamera = state_->camera.editorCameraSnapshot;
-        state_->camera.gameplayCamera = state_->camera.editorCameraSnapshot;
+        state_->camera.gameplayCamera =
+            state_->camera.editorCamera;
         state_->camera.sequencePlayback.Reset();
         state_->camera.currentCameraSequenceHandle = {};
         state_->camera.rigService.Clear();
@@ -81,22 +109,32 @@ namespace HIKARI {
         state_->camera.director.SetBaseCamera(
             state_->identity.document.camera.defaultCameraObjectId.value_or(SceneObjectId{}));
         state_->camera.resolvedFrame = {};
-        state_->camera.runtimePreviewCamera = state_->camera.editorDebugCameraSnapshot;
-        state_->camera.runtimePreviewCamera.ResetFromCamera(state_->camera.gameplayCamera);
+        if (preserveEditorState) {
+            state_->camera.runtimePreviewCamera = state_->camera.editorDebugCameraSnapshot;
+        }
+        state_->camera.runtimePreviewCamera.ResetFromCamera(
+            state_->camera.gameplayCamera);
         state_->camera.runtimePreviewCamera.SetEnabled(true);
         state_->camera.runtimeSceneCameraActive = HasRuntimeSceneCameraDriver();
         state_->camera.runtimePreviewCameraActive = !state_->camera.runtimeSceneCameraActive;
-        state_->editor.componentGizmoState = {};
-        state_->editor.viewportOverlayState = {};
-        state_->editor.viewportDebugViewState = {};
-        state_->editor.selectedGizmoObjectId = {};
+        if (preserveEditorState) {
+            state_->editor.componentGizmoState = {};
+            state_->editor.viewportOverlayState = {};
+            state_->editor.viewportDebugViewState = {};
+            state_->editor.selectedGizmoObjectId = {};
+        }
         INPUT::InputContextStack& inputContexts =
             SERVICES::GetInputService().Contexts();
-        state_->runtime.editorInputContextWasActive =
-            inputContexts.IsActive("Editor");
-        state_->runtime.gameplayInputContextWasActive =
-            inputContexts.IsActive("Gameplay");
-        state_->runtime.inputContextSnapshotValid = true;
+        if (preserveEditorState) {
+            state_->runtime.editorInputContextWasActive =
+                inputContexts.IsActive("Editor");
+            state_->runtime.gameplayInputContextWasActive =
+                inputContexts.IsActive("Gameplay");
+            state_->runtime.inputContextSnapshotValid = true;
+        }
+        else {
+            state_->runtime.inputContextSnapshotValid = false;
+        }
         inputContexts.SetActive("Editor", false);
         inputContexts.SetActive("Gameplay", true);
         state_->runtime.playActive = true;
@@ -128,15 +166,24 @@ namespace HIKARI {
         state_->camera.currentCameraSequenceHandle = {};
         state_->camera.director.Reset();
         state_->camera.rigService.Clear();
-        bool restored = state_->runtime.editorDocumentSnapshotValid;
-        if (state_->runtime.editorDocumentSnapshotValid) {
-            state_->identity.document = std::move(state_->editor.documentSnapshot);
-            state_->lighting.environment = state_->editor.environmentSnapshot;
-            state_->identity.documentDirty = state_->runtime.editorDocumentDirtySnapshot;
-            state_->runtime.editorDocumentSnapshotValid = false;
-            restored = RebuildRuntimeWorld();
-            ++state_->identity.documentRevision;
+        if (!state_->runtime.editorDocumentSnapshotValid) {
+            // Standalone hosts do not own editor snapshots to restore.
+            // Their current scene and runtime state are destroyed by the
+            // host after leaving Play.
+            state_->camera.resolvedFrame = {};
+            HIKARI_LOG_INFO(
+                "Standalone document scene left runtime Play state.");
+            return true;
         }
+
+        state_->identity.document = std::move(state_->editor.documentSnapshot);
+        state_->lighting.environment =
+            state_->editor.environmentSnapshot;
+        state_->identity.documentDirty =
+            state_->runtime.editorDocumentDirtySnapshot;
+        state_->runtime.editorDocumentSnapshotValid = false;
+        const bool restored = RebuildRuntimeWorld();
+        ++state_->identity.documentRevision;
         state_->camera.editorCamera = state_->camera.editorCameraSnapshot;
         state_->camera.gameplayCamera = state_->camera.editorCamera;
         state_->camera.debugCamera = state_->camera.editorDebugCameraSnapshot;

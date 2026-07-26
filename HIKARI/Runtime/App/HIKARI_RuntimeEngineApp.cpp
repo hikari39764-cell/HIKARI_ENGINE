@@ -4,6 +4,7 @@
 #include <string>
 
 #include "Core/HIKARI_Logger.h"
+#include "Runtime/Services/HIKARI_RuntimeServices.h"
 #include "Scene/Scenes/HIKARI_GameDocumentScene.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
 
@@ -15,6 +16,7 @@ namespace HIKARI::RUNTIME {
 
     bool RuntimeEngineApp::Initialize() {
         HIKARI_LOG_INFO("RuntimeEngineApp initialization started.");
+        standaloneRuntimeEntryFailed_ = false;
 
         // 襍ｷ蜍・Scene 縺ｯ Scene Asset GUID 縺九ｉ DocumentSceneBase 縺瑚ｧ｣豎ｺ縺吶ｋ縲・
         auto initialScene =
@@ -62,6 +64,22 @@ namespace HIKARI::RUNTIME {
 
     void RuntimeEngineApp::Update(float deltaTime) {
         sceneManager_.Update(deltaTime);
+        if (SERVICES::IsStandaloneGameHost()) {
+            const auto* gameScene =
+                dynamic_cast<const GameDocumentScene*>(
+                    sceneManager_.GetCurrentScene());
+            if (gameScene != nullptr &&
+                !gameScene->IsRuntimePlayActive()) {
+                if (!standaloneRuntimeEntryFailed_) {
+                    HIKARI_LOG_ERROR(
+                        "[RuntimeLifecycle] standalone runtime entry "
+                        "failed; the host will stop.");
+                }
+                standaloneRuntimeEntryFailed_ = true;
+                return;
+            }
+        }
+
         sceneTransitionBus_.Update(deltaTime);
         const TransitionVisualState visualState =
             sceneTransitionBus_.GetVisualState();
@@ -74,6 +92,9 @@ namespace HIKARI::RUNTIME {
     }
 
     void RuntimeEngineApp::Render() {
+        if (standaloneRuntimeEntryFailed_) {
+            return;
+        }
         sceneManager_.Render();
     }
 
@@ -85,6 +106,11 @@ namespace HIKARI::RUNTIME {
         RuntimeSceneContext::SetTransitionBus(nullptr);
         sceneManager_.ChangeScene(nullptr);
         sceneManager_.Update(0.0f);
+        standaloneRuntimeEntryFailed_ = false;
+    }
+
+    bool RuntimeEngineApp::ShouldExitHost() const {
+        return standaloneRuntimeEntryFailed_;
     }
 
     IScene* RuntimeEngineApp::GetCurrentScene() {

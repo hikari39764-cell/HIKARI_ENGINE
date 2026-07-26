@@ -17,6 +17,7 @@ namespace HIKARI::RUNTIME {
         void Render() override;
         void RenderHostUi() override;
         void Shutdown() override;
+        bool ShouldExitHost() const override;
 
         IScene* GetCurrentScene();
         const IScene* GetCurrentScene() const;
@@ -25,6 +26,7 @@ namespace HIKARI::RUNTIME {
         GameProjectModuleLibrary gameProjectModule_{};
         SceneManager sceneManager_{};
         SceneTransitionBus sceneTransitionBus_;
+        bool standaloneRuntimeEntryFailed_ = false;
     };
 
 } // namespace HIKARI::RUNTIME

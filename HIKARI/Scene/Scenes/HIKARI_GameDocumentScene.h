@@ -10,6 +10,7 @@ namespace HIKARI {
     public:
         explicit GameDocumentScene(std::string sceneId);
 
+        void OnEnter() override;
         const char* GetSceneName() const override;
         void RenderImGui() override;
 
