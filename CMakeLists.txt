@@ -18,20 +18,10 @@ list(PREPEND CMAKE_MODULE_PATH "${HIKARI_SOURCE_ROOT}/cmake")
 include(HikariOptions)
 include(HikariCompiler)
 include(HikariSources)
-include(HikariGameProject)
 include(HikariDependencies)
 include(HikariRuntimeDeployment)
 
-set(
-    HIKARI_GAME_PROJECT_MANIFEST
-    "${HIKARI_SOURCE_ROOT}/Tests/Fixtures/Projects/EmptyProject/CMakeLists.txt"
-    CACHE FILEPATH
-    "CMake manifest for the GameProject module linked into the Host")
-hikari_load_game_project("${HIKARI_GAME_PROJECT_MANIFEST}")
-message(
-    STATUS
-    "HIKARI GameProject: ${HIKARI_SELECTED_GAME_PROJECT_NAME} "
-    "(${HIKARI_SELECTED_GAME_PROJECT_ROOT})")
+unset(HIKARI_GAME_PROJECT_MANIFEST CACHE)
 
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
@@ -90,28 +80,19 @@ if(HIKARI_STREAMLINE_ENABLED)
         PRIVATE
             HIKARI::Streamline)
 endif()
+set_property(
+    SOURCE
+        "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Features/HIKARI_RuntimeFeatureCatalog.cpp"
+    APPEND
+    PROPERTY
+        COMPILE_DEFINITIONS
+            HIKARI_GAME_PROJECT_SDK_EXPORTS=1)
 hikari_configure_engine_target(HIKARI_Runtime)
 
 source_group(
     TREE "${HIKARI_SOURCE_ROOT}"
     FILES
         ${HIKARI_RUNTIME_SOURCES})
-
-add_library(HIKARI_GameProject STATIC)
-add_library(HIKARI::GameProject ALIAS HIKARI_GameProject)
-target_sources(
-    HIKARI_GameProject
-    PRIVATE
-        ${HIKARI_SELECTED_GAME_PROJECT_SOURCES})
-target_link_libraries(
-    HIKARI_GameProject
-    PUBLIC
-        HIKARI::Runtime)
-hikari_configure_engine_target(HIKARI_GameProject)
-source_group(
-    TREE "${HIKARI_SELECTED_GAME_PROJECT_ROOT}"
-    FILES
-        ${HIKARI_SELECTED_GAME_PROJECT_SOURCES})
 
 if(HIKARI_WITH_EDITOR_BUILD)
     add_library(HIKARI_Editor STATIC)
@@ -141,10 +122,13 @@ if(HIKARI_WITH_EDITOR_BUILD)
     target_link_libraries(
         HIKARI_EditorHost
         PRIVATE
-            HIKARI::Editor
-            HIKARI::GameProject)
+            HIKARI::Editor)
     hikari_configure_engine_target(HIKARI_EditorHost)
     hikari_configure_runtime_deployment(HIKARI_EditorHost)
+    set_target_properties(
+        HIKARI_EditorHost
+        PROPERTIES
+            ENABLE_EXPORTS TRUE)
     source_group(
         TREE "${HIKARI_SOURCE_ROOT}"
         FILES
@@ -182,10 +166,13 @@ else()
     target_link_libraries(
         HIKARI_GameHost
         PRIVATE
-            HIKARI::Runtime
-            HIKARI::GameProject)
+            HIKARI::Runtime)
     hikari_configure_engine_target(HIKARI_GameHost)
     hikari_configure_runtime_deployment(HIKARI_GameHost)
+    set_target_properties(
+        HIKARI_GameHost
+        PROPERTIES
+            ENABLE_EXPORTS TRUE)
     source_group(
         TREE "${HIKARI_SOURCE_ROOT}"
         FILES

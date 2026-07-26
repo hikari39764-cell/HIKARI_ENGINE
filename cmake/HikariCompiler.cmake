@@ -72,6 +72,7 @@ function(hikari_configure_engine_target target_name)
                 "$<$<CONFIG:Debug>:/WX>"
                 "$<$<CONFIG:Debug>:/DEBUG:FULL>"
                 "$<$<CONFIG:EditorRelease>:/DEBUG:FULL>"
+                "$<$<OR:$<CONFIG:EditorRelease>,$<CONFIG:Shipping>>:/INCREMENTAL:NO>"
                 "$<$<OR:$<CONFIG:EditorRelease>,$<CONFIG:Shipping>>:/OPT:REF>"
                 "$<$<OR:$<CONFIG:EditorRelease>,$<CONFIG:Shipping>>:/OPT:ICF>"
                 "$<$<OR:$<CONFIG:EditorRelease>,$<CONFIG:Shipping>>:/LTCG>")

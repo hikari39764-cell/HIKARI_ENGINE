@@ -23,8 +23,7 @@
       "cacheVariables": {
         "CMAKE_CONFIGURATION_TYPES": "Debug",
         "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/debug",
-        "HIKARI_PRODUCT": "Debug",
-        "HIKARI_GAME_PROJECT_MANIFEST": "${sourceDir}/Tests/Fixtures/Projects/EmptyProject/CMakeLists.txt"
+        "HIKARI_PRODUCT": "Debug"
       }
     },
     {
@@ -35,8 +34,7 @@
       "cacheVariables": {
         "CMAKE_CONFIGURATION_TYPES": "EditorRelease",
         "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/editor-release",
-        "HIKARI_PRODUCT": "EditorRelease",
-        "HIKARI_GAME_PROJECT_MANIFEST": "${sourceDir}/Tests/Fixtures/Projects/EmptyProject/CMakeLists.txt"
+        "HIKARI_PRODUCT": "EditorRelease"
       }
     },
     {
@@ -47,8 +45,7 @@
       "cacheVariables": {
         "CMAKE_CONFIGURATION_TYPES": "Shipping",
         "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/game-shipping",
-        "HIKARI_PRODUCT": "Shipping",
-        "HIKARI_GAME_PROJECT_MANIFEST": "${sourceDir}/Tests/Fixtures/Projects/EmptyProject/CMakeLists.txt"
+        "HIKARI_PRODUCT": "Shipping"
       }
     }
   ],

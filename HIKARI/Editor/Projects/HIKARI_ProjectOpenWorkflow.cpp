@@ -334,6 +334,10 @@ namespace {
             engineRoot_ / "out" / "build" /
             preset_ / "bin" /
             "HIKARI_UpdateTo3D.exe";
+        const std::filesystem::path projectModule =
+            projectRoot_ / "Library" / "Build" /
+            preset_ / "bin" /
+            "HIKARI_GameProject.dll";
         std::error_code ec{};
         if (!std::filesystem::is_regular_file(
                 executable,
@@ -341,6 +345,14 @@ namespace {
             outMessage =
                 "The project editor executable was not produced: " +
                 TEXT::PathToUtf8(executable);
+            return false;
+        }
+        if (!std::filesystem::is_regular_file(
+                projectModule,
+                ec)) {
+            outMessage =
+                "The GameProject module was not produced: " +
+                TEXT::PathToUtf8(projectModule);
             return false;
         }
 
@@ -352,6 +364,12 @@ namespace {
         AppendArgument(
             commandLine,
             descriptorPath_.wstring());
+        AppendArgument(
+            commandLine,
+            L"--project-module");
+        AppendArgument(
+            commandLine,
+            projectModule.wstring());
         std::vector<wchar_t> mutableCommandLine(
             commandLine.begin(),
             commandLine.end());

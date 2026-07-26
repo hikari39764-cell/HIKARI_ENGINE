@@ -57,14 +57,28 @@ bool InputService::Initialize(const std::filesystem::path& projectRoot) {
         HIKARI_LOG_WARN(
             "[Input] project maps were missing or invalid; defaults were created.");
     }
+    ResetRuntimeState();
+    HIKARI_LOG_INFO(
+        "[Input] initialized from " + inputDirectory_.generic_string());
+    return true;
+}
+
+bool InputService::InitializeTransient() {
+    inputDirectory_.clear();
+    actionMap_ = CreateDefaultInputActionMap();
+    contexts_.ResetToDefaults(actionMap_);
+    lastError_.clear();
+    ResetRuntimeState();
+    HIKARI_LOG_INFO("[Input] initialized with transient defaults.");
+    return true;
+}
+
+void InputService::ResetRuntimeState() {
     snapshot_ = {};
     rebindOperation_.Reset();
     rebindPreviousDevices_ = {};
     suppressActionsUntilNeutral_ = false;
     if (backend_) backend_->Reset();
-    HIKARI_LOG_INFO(
-        "[Input] initialized from " + inputDirectory_.generic_string());
-    return true;
 }
 
 void InputService::Shutdown() {
@@ -145,6 +159,12 @@ void InputService::Update(float unscaledDeltaSeconds) {
 }
 
 bool InputService::SaveProject(std::string* errorMessage) {
+    if (inputDirectory_.empty()) {
+        lastError_ =
+            "Transient input maps do not have a project storage location.";
+        if (errorMessage) *errorMessage = lastError_;
+        return false;
+    }
     std::string error;
     if (!SaveInputActionMapProject(inputDirectory_, actionMap_, &error)) {
         lastError_ = error;
@@ -157,6 +177,12 @@ bool InputService::SaveProject(std::string* errorMessage) {
 }
 
 bool InputService::ReloadProject(std::string* errorMessage) {
+    if (inputDirectory_.empty()) {
+        lastError_ =
+            "Transient input maps do not have a project storage location.";
+        if (errorMessage) *errorMessage = lastError_;
+        return false;
+    }
     InputActionMap loaded{};
     std::string error;
     if (!LoadInputActionMapProject(inputDirectory_, loaded, &error)) {
@@ -174,6 +200,11 @@ bool InputService::ReloadProject(std::string* errorMessage) {
 bool InputService::RestoreDefaults(std::string* errorMessage) {
     actionMap_ = CreateDefaultInputActionMap();
     contexts_.ResetToDefaults(actionMap_);
+    if (inputDirectory_.empty()) {
+        lastError_.clear();
+        if (errorMessage) errorMessage->clear();
+        return true;
+    }
     return SaveProject(errorMessage);
 }
 

@@ -22,6 +22,7 @@ public:
     InputService& operator=(const InputService&) = delete;
 
     bool Initialize(const std::filesystem::path& projectRoot);
+    bool InitializeTransient();
     void Shutdown();
     void SetBackend(std::unique_ptr<IInputBackend> backend);
     void SetHostWindow(void* nativeWindow);
@@ -65,6 +66,7 @@ private:
     float ReadBindingValue(const InputBinding& binding) const;
     bool IsModifierDown(const std::string& modifier) const;
     uint32_t ResolveGamepadIndex() const;
+    void ResetRuntimeState();
     void EvaluateActions(float dt);
     void SuppressActions();
 

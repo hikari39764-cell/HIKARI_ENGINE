@@ -494,6 +494,17 @@ namespace HIKARI {
         }
         return state_->runtime.extensionHost.Add(std::move(extension));
     }
+    bool DocumentSceneBase::AddBorrowedRuntimeExtension(
+        IRuntimeExtension& extension) {
+
+        if (state_->runtime.initialized) {
+            HIKARI_LOG_WARN(
+                "[RuntimeExtension] extensions must be added before OnEnter");
+            return false;
+        }
+        return state_->runtime.extensionHost.AddBorrowed(
+            extension);
+    }
     std::vector<std::string>
         DocumentSceneBase::GetRuntimeExtensionIds() const {
         return state_->runtime.extensionHost.GetExtensionIds();

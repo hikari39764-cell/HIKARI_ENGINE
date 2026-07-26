@@ -1,18 +1,16 @@
 #pragma once
 
 #include "Runtime/App/HIKARI_IHostApplication.h"
+#include "Runtime/Project/HIKARI_GameProjectModuleLibrary.h"
 #include "Scene/HIKARI_RuntimeSceneContext.h"
 #include "Scene/HIKARI_SceneManager.h"
 #include "Scene/HIKARI_SceneTransitionBus.h"
 
 namespace HIKARI::RUNTIME {
 
-    class IGameProjectModule;
-
     class RuntimeEngineApp final : public IHostApplication {
     public:
-        explicit RuntimeEngineApp(
-            IGameProjectModule& gameProjectModule);
+        RuntimeEngineApp();
 
         bool Initialize() override;
         void Update(float deltaTime) override;
@@ -24,7 +22,7 @@ namespace HIKARI::RUNTIME {
         const IScene* GetCurrentScene() const;
 
     private:
-        IGameProjectModule* gameProjectModule_ = nullptr;
+        GameProjectModuleLibrary gameProjectModule_{};
         SceneManager sceneManager_{};
         SceneTransitionBus sceneTransitionBus_;
     };

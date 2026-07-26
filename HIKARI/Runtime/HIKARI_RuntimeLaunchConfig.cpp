@@ -128,27 +128,32 @@ namespace HIKARI {
             return std::filesystem::path(buffer.data());
         }
 
-        std::optional<std::filesystem::path> CommandLinePath(
+    }
+
+    std::optional<std::filesystem::path>
+        ReadRuntimeCommandLinePath(
             std::wstring_view option) {
 
-            int argumentCount = 0;
-            LPWSTR* arguments = CommandLineToArgvW(
-                GetCommandLineW(),
-                &argumentCount);
-            if (arguments == nullptr) {
-                return std::nullopt;
-            }
-
-            std::optional<std::filesystem::path> path{};
-            for (int index = 1; index + 1 < argumentCount; ++index) {
-                if (std::wstring_view(arguments[index]) == option) {
-                    path = std::filesystem::path(arguments[index + 1]);
-                    break;
-                }
-            }
-            LocalFree(arguments);
-            return path;
+        int argumentCount = 0;
+        LPWSTR* arguments = CommandLineToArgvW(
+            GetCommandLineW(),
+            &argumentCount);
+        if (arguments == nullptr) {
+            return std::nullopt;
         }
+
+        std::optional<std::filesystem::path> path{};
+        for (int index = 1;
+            index + 1 < argumentCount;
+            ++index) {
+            if (std::wstring_view(arguments[index]) == option) {
+                path = std::filesystem::path(
+                    arguments[index + 1]);
+                break;
+            }
+        }
+        LocalFree(arguments);
+        return path;
     }
 
     RuntimeLaunchConfig LoadRuntimeLaunchConfigFromFile(const std::filesystem::path& path) {
@@ -214,7 +219,7 @@ namespace HIKARI {
     RuntimeLaunchConfig LoadRuntimeLaunchConfig() {
         const std::optional<std::filesystem::path>
             requestedProjectPath =
-                CommandLinePath(L"--project");
+                ReadRuntimeCommandLinePath(L"--project");
         const auto finalize =
             [&requestedProjectPath](RuntimeLaunchConfig cfg) {
                 cfg.requestedProjectPath =
@@ -223,7 +228,8 @@ namespace HIKARI {
             };
 
         if (const std::optional<std::filesystem::path> commandLinePath =
-                CommandLinePath(L"--runtime-config")) {
+                ReadRuntimeCommandLinePath(
+                    L"--runtime-config")) {
             RuntimeLaunchConfig cfg = LoadRuntimeLaunchConfigFromFile(*commandLinePath);
             if (cfg.loaded) {
                 return finalize(std::move(cfg));

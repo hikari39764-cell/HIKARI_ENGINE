@@ -25,6 +25,7 @@ namespace HIKARI {
     class RuntimeExtensionHost {
     public:
         bool Add(std::unique_ptr<IRuntimeExtension> extension);
+        bool AddBorrowed(IRuntimeExtension& extension);
         void Clear() noexcept;
 
         bool RegisterWorldServices(
@@ -36,7 +37,14 @@ namespace HIKARI {
         size_t Size() const noexcept;
 
     private:
-        std::vector<std::unique_ptr<IRuntimeExtension>> extensions_{};
+        struct Entry {
+            std::unique_ptr<IRuntimeExtension> owned{};
+            IRuntimeExtension* extension = nullptr;
+        };
+
+        bool Contains(std::string_view extensionId) const noexcept;
+
+        std::vector<Entry> extensions_{};
     };
 
 } // namespace HIKARI

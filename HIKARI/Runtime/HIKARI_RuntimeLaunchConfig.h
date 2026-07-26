@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "HIKARI_RuntimeHost.h"
@@ -37,6 +38,9 @@ namespace HIKARI {
     };
 
     RuntimeLaunchConfig LoadRuntimeLaunchConfig();
+    std::optional<std::filesystem::path>
+        ReadRuntimeCommandLinePath(
+            std::wstring_view option);
     RuntimeLaunchConfig LoadRuntimeLaunchConfigFromFile(const std::filesystem::path& path);
     void ApplyRuntimeLaunchConfig(
         const RuntimeLaunchConfig& runtimeCfg,

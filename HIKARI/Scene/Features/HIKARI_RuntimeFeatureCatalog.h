@@ -2,10 +2,13 @@
 
 #include <memory>
 #include <string>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "Scene/Features/HIKARI_RuntimeFeature.h"
 #include "Scene/HIKARI_SceneDocument.h"
+#include "Runtime/Project/HIKARI_GameProjectSdk.h"
 
 namespace HIKARI {
 
@@ -48,6 +51,9 @@ namespace HIKARI {
 
     class RuntimeFeatureCatalog {
     public:
+        using RuntimeFeatureDestroyFn =
+            void (*)(IRuntimeFeature*) noexcept;
+
         RuntimeFeatureCatalog() = default;
         ~RuntimeFeatureCatalog();
 
@@ -57,6 +63,26 @@ namespace HIKARI {
         RuntimeFeatureCatalog& operator=(RuntimeFeatureCatalog&&) noexcept;
 
         bool Add(std::unique_ptr<IRuntimeFeature> feature);
+        template<class Feature, class... Arguments>
+        bool AddModuleOwned(Arguments&&... arguments) {
+            static_assert(
+                std::is_base_of_v<IRuntimeFeature, Feature>);
+            auto feature = std::make_unique<Feature>(
+                std::forward<Arguments>(arguments)...);
+            IRuntimeFeature* value = feature.get();
+            if (!AddModuleOwned(
+                    value,
+                    [](IRuntimeFeature* owned) noexcept {
+                        delete static_cast<Feature*>(owned);
+                    })) {
+                return false;
+            }
+            feature.release();
+            return true;
+        }
+        HIKARI_GAME_PROJECT_SDK_API bool AddModuleOwned(
+            IRuntimeFeature* feature,
+            RuntimeFeatureDestroyFn destroy);
         void Clear() noexcept;
         RuntimeFeatureInstallReport RegisterAll(
             RuntimeFeatureContext& context);
@@ -79,11 +105,19 @@ namespace HIKARI {
             const SceneDocument& document) const;
 
     private:
+        struct FeatureEntry {
+            IRuntimeFeature* feature = nullptr;
+            RuntimeFeatureDestroyFn destroy = nullptr;
+        };
+
+        bool AddWithDestroy(
+            IRuntimeFeature* feature,
+            RuntimeFeatureDestroyFn destroy);
         IRuntimeFeature* FindFeatureMutable(
             std::string_view featureId) noexcept;
         const IRuntimeFeature* FindFeature(
             std::string_view featureId) const noexcept;
-        std::vector<std::unique_ptr<IRuntimeFeature>> features_{};
+        std::vector<FeatureEntry> features_{};
         std::vector<std::string> activeFeatureIds_{};
         bool selectionResolved_ = false;
     };

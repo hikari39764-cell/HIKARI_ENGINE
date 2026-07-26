@@ -9,8 +9,7 @@ namespace HIKARI::EDITOR {
 
     class EditorEngineApp final : public RUNTIME::IHostApplication {
     public:
-        explicit EditorEngineApp(
-            RUNTIME::IGameProjectModule& gameProjectModule);
+        EditorEngineApp() = default;
 
         bool Initialize() override;
         void Update(float deltaTime) override;

@@ -11,33 +11,100 @@
 
 namespace HIKARI {
 
-    RuntimeFeatureCatalog::~RuntimeFeatureCatalog() = default;
+    namespace {
+
+        void DestroyEngineRuntimeFeature(
+            IRuntimeFeature* feature) noexcept {
+            delete feature;
+        }
+
+    } // namespace
+
+    RuntimeFeatureCatalog::~RuntimeFeatureCatalog() {
+        Clear();
+    }
     RuntimeFeatureCatalog::RuntimeFeatureCatalog(
-        RuntimeFeatureCatalog&&) noexcept = default;
+        RuntimeFeatureCatalog&& other) noexcept
+        : features_(std::move(other.features_)),
+          activeFeatureIds_(
+              std::move(other.activeFeatureIds_)),
+          selectionResolved_(other.selectionResolved_) {
+        other.features_.clear();
+        other.selectionResolved_ = false;
+    }
     RuntimeFeatureCatalog& RuntimeFeatureCatalog::operator=(
-        RuntimeFeatureCatalog&&) noexcept = default;
+        RuntimeFeatureCatalog&& other) noexcept {
+
+        if (this == &other) {
+            return *this;
+        }
+        Clear();
+        features_ = std::move(other.features_);
+        activeFeatureIds_ =
+            std::move(other.activeFeatureIds_);
+        selectionResolved_ = other.selectionResolved_;
+        other.features_.clear();
+        other.selectionResolved_ = false;
+        return *this;
+    }
 
     bool RuntimeFeatureCatalog::Add(
         std::unique_ptr<IRuntimeFeature> feature) {
 
-        if (!feature || feature->GetFeatureId().empty()) {
+        if (!feature) {
             return false;
         }
-        const std::string_view featureId = feature->GetFeatureId();
+        IRuntimeFeature* value = feature.get();
+        if (!AddWithDestroy(
+                value,
+                &DestroyEngineRuntimeFeature)) {
+            return false;
+        }
+        feature.release();
+        return true;
+    }
+
+    bool RuntimeFeatureCatalog::AddModuleOwned(
+        IRuntimeFeature* feature,
+        RuntimeFeatureDestroyFn destroy) {
+
+        return AddWithDestroy(feature, destroy);
+    }
+
+    bool RuntimeFeatureCatalog::AddWithDestroy(
+        IRuntimeFeature* feature,
+        RuntimeFeatureDestroyFn destroy) {
+
+        if (feature == nullptr ||
+            destroy == nullptr ||
+            feature->GetFeatureId().empty()) {
+            return false;
+        }
+        const std::string_view featureId =
+            feature->GetFeatureId();
         const bool duplicate = std::any_of(
             features_.begin(),
             features_.end(),
-            [featureId](const std::unique_ptr<IRuntimeFeature>& existing) {
-                return existing && existing->GetFeatureId() == featureId;
+            [featureId](const FeatureEntry& entry) {
+                return entry.feature != nullptr &&
+                    entry.feature->GetFeatureId() ==
+                        featureId;
             });
         if (duplicate) {
             return false;
         }
-        features_.push_back(std::move(feature));
+        features_.push_back(
+            FeatureEntry{ feature, destroy });
         return true;
     }
 
     void RuntimeFeatureCatalog::Clear() noexcept {
+        for (FeatureEntry& entry : features_) {
+            if (entry.feature != nullptr &&
+                entry.destroy != nullptr) {
+                entry.destroy(entry.feature);
+            }
+        }
         features_.clear();
         activeFeatureIds_.clear();
         selectionResolved_ = false;
@@ -189,11 +256,13 @@ namespace HIKARI {
     std::vector<SceneSystemData>
         RuntimeFeatureCatalog::CreateDefaultSceneSystems() const {
         std::vector<SceneSystemData> systems;
-        for (const std::unique_ptr<IRuntimeFeature>& feature : features_) {
-            if (feature &&
+        for (const FeatureEntry& entry : features_) {
+            if (entry.feature &&
                 (!selectionResolved_ ||
-                    IsFeatureActive(feature->GetFeatureId()))) {
-                feature->AppendDefaultSceneSystems(systems);
+                    IsFeatureActive(
+                        entry.feature->GetFeatureId()))) {
+                entry.feature->AppendDefaultSceneSystems(
+                    systems);
             }
         }
         std::vector<SceneSystemData> uniqueSystems;
@@ -218,9 +287,10 @@ namespace HIKARI {
     std::vector<std::string> RuntimeFeatureCatalog::GetFeatureIds() const {
         std::vector<std::string> ids;
         ids.reserve(features_.size());
-        for (const std::unique_ptr<IRuntimeFeature>& feature : features_) {
-            if (feature) {
-                ids.emplace_back(feature->GetFeatureId());
+        for (const FeatureEntry& entry : features_) {
+            if (entry.feature) {
+                ids.emplace_back(
+                    entry.feature->GetFeatureId());
             }
         }
         return ids;
@@ -235,8 +305,9 @@ namespace HIKARI {
         RuntimeFeatureCatalog::GetFeatureInfos() const {
         std::vector<RuntimeFeatureInfo> infos;
         infos.reserve(features_.size());
-        for (const std::unique_ptr<IRuntimeFeature>& feature : features_) {
-            if (!feature) {
+        for (const FeatureEntry& entry : features_) {
+            const IRuntimeFeature* feature = entry.feature;
+            if (feature == nullptr) {
                 continue;
             }
             RuntimeFeatureInfo info{};
@@ -274,8 +345,9 @@ namespace HIKARI {
 
     std::string RuntimeFeatureCatalog::FindOwningFeatureForComponent(
         std::string_view componentType) const {
-        for (const std::unique_ptr<IRuntimeFeature>& feature : features_) {
-            if (!feature) {
+        for (const FeatureEntry& entry : features_) {
+            const IRuntimeFeature* feature = entry.feature;
+            if (feature == nullptr) {
                 continue;
             }
             for (const std::string_view ownedType :
@@ -290,8 +362,9 @@ namespace HIKARI {
 
     std::string RuntimeFeatureCatalog::FindOwningFeatureForSystem(
         std::string_view systemId) const {
-        for (const std::unique_ptr<IRuntimeFeature>& feature : features_) {
-            if (!feature) {
+        for (const FeatureEntry& entry : features_) {
+            const IRuntimeFeature* feature = entry.feature;
+            if (feature == nullptr) {
                 continue;
             }
             for (const std::string_view ownedId : feature->GetSystemIds()) {
@@ -343,10 +416,13 @@ namespace HIKARI {
         const auto found = std::find_if(
             features_.begin(),
             features_.end(),
-            [featureId](const std::unique_ptr<IRuntimeFeature>& feature) {
-                return feature && feature->GetFeatureId() == featureId;
+            [featureId](const FeatureEntry& entry) {
+                return entry.feature != nullptr &&
+                    entry.feature->GetFeatureId() == featureId;
             });
-        return found != features_.end() ? found->get() : nullptr;
+        return found != features_.end()
+            ? found->feature
+            : nullptr;
     }
 
     IRuntimeFeature* RuntimeFeatureCatalog::FindFeatureMutable(
@@ -354,10 +430,13 @@ namespace HIKARI {
         const auto found = std::find_if(
             features_.begin(),
             features_.end(),
-            [featureId](const std::unique_ptr<IRuntimeFeature>& feature) {
-                return feature && feature->GetFeatureId() == featureId;
+            [featureId](const FeatureEntry& entry) {
+                return entry.feature != nullptr &&
+                    entry.feature->GetFeatureId() == featureId;
             });
-        return found != features_.end() ? found->get() : nullptr;
+        return found != features_.end()
+            ? found->feature
+            : nullptr;
     }
 
 } // namespace HIKARI

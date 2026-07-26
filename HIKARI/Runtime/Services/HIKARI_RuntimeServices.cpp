@@ -222,11 +222,10 @@ namespace HIKARI {
 
             const ProjectContext& projectContext =
                 GetProjectContext();
-            const std::filesystem::path inputProjectRoot =
-                projectContext.IsOpen()
-                ? projectContext.GetRoot()
-                : std::filesystem::current_path();
-            if (!gInputService.Initialize(inputProjectRoot)) {
+            const bool inputInitialized = projectContext.IsOpen()
+                ? gInputService.Initialize(projectContext.GetRoot())
+                : gInputService.InitializeTransient();
+            if (!inputInitialized) {
                 HIKARI_LOG_ERROR("Input service initialization failed.");
                 return false;
             }

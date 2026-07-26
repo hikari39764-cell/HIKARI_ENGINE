@@ -14,17 +14,26 @@ namespace HIKARI {
         if (!extension || extension->GetExtensionId().empty()) {
             return false;
         }
-        const std::string id(extension->GetExtensionId());
-        const bool duplicate = std::any_of(
-            extensions_.begin(),
-            extensions_.end(),
-            [&id](const std::unique_ptr<IRuntimeExtension>& existing) {
-                return existing && existing->GetExtensionId() == id;
-            });
-        if (duplicate) {
+        if (Contains(extension->GetExtensionId())) {
             return false;
         }
-        extensions_.push_back(std::move(extension));
+        Entry entry{};
+        entry.extension = extension.get();
+        entry.owned = std::move(extension);
+        extensions_.push_back(std::move(entry));
+        return true;
+    }
+
+    bool RuntimeExtensionHost::AddBorrowed(
+        IRuntimeExtension& extension) {
+
+        if (extension.GetExtensionId().empty() ||
+            Contains(extension.GetExtensionId())) {
+            return false;
+        }
+        Entry entry{};
+        entry.extension = &extension;
+        extensions_.push_back(std::move(entry));
         return true;
     }
 
@@ -36,9 +45,10 @@ namespace HIKARI {
         WorldServiceRegistry& services) {
 
         bool success = true;
-        for (const std::unique_ptr<IRuntimeExtension>& extension :
-            extensions_) {
-            success = extension->RegisterWorldServices(services) && success;
+        for (const Entry& entry : extensions_) {
+            success =
+                entry.extension->RegisterWorldServices(services) &&
+                success;
         }
         return success;
     }
@@ -47,9 +57,10 @@ namespace HIKARI {
         RuntimeFeatureCatalog& catalog) {
 
         bool success = true;
-        for (const std::unique_ptr<IRuntimeExtension>& extension :
-            extensions_) {
-            success = extension->RegisterRuntimeFeatures(catalog) && success;
+        for (const Entry& entry : extensions_) {
+            success =
+                entry.extension->RegisterRuntimeFeatures(catalog) &&
+                success;
         }
         return success;
     }
@@ -59,15 +70,28 @@ namespace HIKARI {
 
         std::vector<std::string> ids;
         ids.reserve(extensions_.size());
-        for (const std::unique_ptr<IRuntimeExtension>& extension :
-            extensions_) {
-            ids.emplace_back(extension->GetExtensionId());
+        for (const Entry& entry : extensions_) {
+            ids.emplace_back(
+                entry.extension->GetExtensionId());
         }
         return ids;
     }
 
     size_t RuntimeExtensionHost::Size() const noexcept {
         return extensions_.size();
+    }
+
+    bool RuntimeExtensionHost::Contains(
+        std::string_view extensionId) const noexcept {
+
+        return std::any_of(
+            extensions_.begin(),
+            extensions_.end(),
+            [extensionId](const Entry& entry) {
+                return entry.extension != nullptr &&
+                    entry.extension->GetExtensionId() ==
+                        extensionId;
+            });
     }
 
 } // namespace HIKARI

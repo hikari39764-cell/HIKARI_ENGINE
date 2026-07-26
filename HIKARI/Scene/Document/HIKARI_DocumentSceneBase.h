@@ -82,6 +82,8 @@ namespace HIKARI {
             GetRuntimeFeatureInstallReport() const noexcept;
         bool AddRuntimeExtension(
             std::unique_ptr<IRuntimeExtension> extension);
+        bool AddBorrowedRuntimeExtension(
+            IRuntimeExtension& extension);
         std::vector<std::string> GetRuntimeExtensionIds() const;
         bool IsRuntimeFeatureActive(
             std::string_view featureId) const noexcept;
