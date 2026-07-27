@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "authoredPhysicalLineCeiling": 200546,
+    "softLargeFileLineThreshold": 500,
+    "hardLargeFileLineThreshold": 1000,
+    "softLargeFileCountCeiling": 66,
+    "hardLargeFileCountCeiling": 9,
+    "runtimeModuleCompileUnitCeiling": 150,
+    "modulePhysicalLineCeilings": {
+      "Editor": 50772,
+      "Render3D": 49853,
+      "Assets": 25851,
+      "Scene": 22433
+    }
+  },
+  "build": {
+    "residentBuildTargetMiB": 4096,
+    "residentBuildDebtCeilingMiB": 8704,
+    "presetHardMiB": {
+      "debug": 3584,
+      "editor-release": 8704,
+      "game-shipping": 5632
+    },
+    "shippingInstallHardMiB": 250,
+    "visualStudioCacheHardMiB": 1024
+  }
+}

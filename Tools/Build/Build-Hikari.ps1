@@ -7,6 +7,8 @@ param(
 
     [switch]$Install,
 
+    [switch]$ReportBudget,
+
     [string]$Project
 )
 
@@ -14,6 +16,7 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $cmake = Get-Command cmake.exe -ErrorAction Stop
+$buildStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 
 $configuration = switch ($Preset) {
     'debug' { 'Debug' }
@@ -32,13 +35,12 @@ if (-not [string]::IsNullOrWhiteSpace($Project)) {
 
 Push-Location $repoRoot
 try {
-    $engineCache = Join-Path $buildDirectory 'CMakeCache.txt'
-    if ($ConfigureOnly -or
-        -not (Test-Path -LiteralPath $engineCache -PathType Leaf)) {
-        & $cmake.Source --preset $Preset
-        if ($LASTEXITCODE -ne 0) {
-            throw "CMake configure failed for preset '$Preset'."
-        }
+    # Configure is intentionally incremental and always precedes a build.
+    # A failed CMake generation can leave a valid-looking CMakeCache.txt while
+    # the selected target project is missing.
+    & $cmake.Source --preset $Preset
+    if ($LASTEXITCODE -ne 0) {
+        throw "CMake configure failed for preset '$Preset'."
     }
 
     if ($null -ne $projectRoot) {
@@ -114,6 +116,25 @@ try {
             throw "CMake install failed for preset '$Preset'."
         }
     }
+    $buildStopwatch.Stop()
+    $workflowSeconds = [math]::Round(
+        $buildStopwatch.Elapsed.TotalSeconds,
+        2)
+    Write-Host (
+        "HIKARI '$Preset' workflow completed in " +
+        "$workflowSeconds second(s).")
+    if ($ReportBudget) {
+        & (Join-Path $PSScriptRoot 'Measure-HikariBuildBudget.ps1') `
+            -Preset $Preset `
+            -WriteSnapshot `
+            -WorkflowSeconds $workflowSeconds
+        if ($LASTEXITCODE -ne 0) {
+            throw "HIKARI build budget reporting failed for '$Preset'."
+        }
+    }
 } finally {
+    if ($buildStopwatch.IsRunning) {
+        $buildStopwatch.Stop()
+    }
     Pop-Location
 }

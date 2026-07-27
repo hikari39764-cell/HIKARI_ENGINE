@@ -18,6 +18,7 @@ list(PREPEND CMAKE_MODULE_PATH "${HIKARI_SOURCE_ROOT}/cmake")
 include(HikariOptions)
 include(HikariCompiler)
 include(HikariSources)
+include(HikariRuntimeModules)
 include(HikariDependencies)
 include(HikariRuntimeDeployment)
 include(HikariSdk)
@@ -42,50 +43,58 @@ endforeach()
 
 add_subdirectory(ThirdParty)
 
-add_library(HIKARI_Runtime STATIC)
+set(
+    HIKARI_RUNTIME_PUBLIC_LINK_LIBRARIES
+    HIKARI::Spine
+    HIKARI::Meshoptimizer
+    HIKARI::Nlohmann
+    HIKARI::DirectXTex
+    HIKARI::Effekseer
+    HIKARI::EffekseerRendererDX12
+    HIKARI::LLGI
+    HIKARI::Assimp
+    HIKARI::Jolt
+    HIKARI::CoACD
+    dxguid
+    xaudio2)
+set(HIKARI_RUNTIME_PRIVATE_LINK_LIBRARIES)
+if(HIKARI_WITH_EDITOR_BUILD)
+    list(APPEND
+        HIKARI_RUNTIME_PRIVATE_LINK_LIBRARIES
+        HIKARI::WinPix)
+endif()
+if(HIKARI_STREAMLINE_ENABLED)
+    list(APPEND
+        HIKARI_RUNTIME_PRIVATE_LINK_LIBRARIES
+        HIKARI::Streamline)
+endif()
+set(
+    HIKARI_RUNTIME_BUILD_DEPENDENCIES
+    ${HIKARI_RUNTIME_PUBLIC_LINK_LIBRARIES}
+    ${HIKARI_RUNTIME_PRIVATE_LINK_LIBRARIES})
+hikari_define_runtime_modules(HIKARI_RUNTIME_MODULE_TARGETS)
+
+add_library(HIKARI_Runtime INTERFACE)
 add_library(HIKARI::Runtime ALIAS HIKARI_Runtime)
 target_sources(
     HIKARI_Runtime
-    PRIVATE
-        ${HIKARI_RUNTIME_SOURCES}
-    PUBLIC
+    INTERFACE
         FILE_SET hikari_game_project_sdk_headers
         TYPE HEADERS
         BASE_DIRS "${HIKARI_SOURCE_ROOT}/include"
         FILES ${HIKARI_GAME_PROJECT_SDK_HEADERS})
 target_include_directories(
     HIKARI_Runtime
-    PUBLIC
+    INTERFACE
         "${HIKARI_SOURCE_ROOT}"
         "${HIKARI_SOURCE_ROOT}/include"
         "${HIKARI_SOURCE_ROOT}/HIKARI")
 target_link_libraries(
     HIKARI_Runtime
-    PUBLIC
-        HIKARI::Spine
-        HIKARI::Meshoptimizer
-        HIKARI::Nlohmann
-        HIKARI::DirectXTex
-        HIKARI::Effekseer
-        HIKARI::EffekseerRendererDX12
-        HIKARI::LLGI
-        HIKARI::Assimp
-        HIKARI::Jolt
-        HIKARI::CoACD
-        dxguid
-        xaudio2)
-if(HIKARI_WITH_EDITOR_BUILD)
-    target_link_libraries(
-        HIKARI_Runtime
-        PRIVATE
-            HIKARI::WinPix)
-endif()
-if(HIKARI_STREAMLINE_ENABLED)
-    target_link_libraries(
-        HIKARI_Runtime
-        PRIVATE
-            HIKARI::Streamline)
-endif()
+    INTERFACE
+        ${HIKARI_RUNTIME_MODULE_TARGETS}
+        ${HIKARI_RUNTIME_PUBLIC_LINK_LIBRARIES}
+        ${HIKARI_RUNTIME_PRIVATE_LINK_LIBRARIES})
 set_property(
     SOURCE
         "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Features/HIKARI_RuntimeFeatureCatalog.cpp"
@@ -96,7 +105,6 @@ set_property(
     PROPERTY
         COMPILE_DEFINITIONS
             HIKARI_GAME_PROJECT_SDK_EXPORTS=1)
-hikari_configure_engine_target(HIKARI_Runtime)
 
 source_group(
     TREE "${HIKARI_SOURCE_ROOT}"
