@@ -23,7 +23,9 @@
 namespace HIKARI {
 
     namespace {
+        // JSON コンフィグファイル内の"runtime"ノードを抽出する補助関数群
 
+        // "runtime"キーを持つノードを取得、見つからなければ root 自体を返す
         const nlohmann::json& RuntimeNode(const nlohmann::json& root) {
             if (root.contains("runtime") && root["runtime"].is_object()) {
                 return root["runtime"];
@@ -31,6 +33,7 @@ namespace HIKARI {
             return root;
         }
 
+        // JSON ノードから指定キーの型付き値を安全に読み取る
         std::optional<bool> ReadBool(const nlohmann::json& node, const char* key) {
             if (!node.contains(key) || !node[key].is_boolean()) {
                 return std::nullopt;
@@ -70,6 +73,7 @@ namespace HIKARI {
             return values;
         }
 
+        // コンフィグファイルの検索候補パスを生成
         void AddCandidate(std::vector<std::filesystem::path>& candidates, const std::filesystem::path& root) {
             if (root.empty()) {
                 return;
@@ -78,6 +82,7 @@ namespace HIKARI {
             candidates.push_back(root / "runtime_config.json");
         }
 
+        // コンフィグファイルの位置からプロジェクトルートディレクトリを決定
         std::filesystem::path ResolveConfigProjectRoot(const std::filesystem::path& path) {
             std::error_code ec{};
             std::filesystem::path normalized = std::filesystem::weakly_canonical(path, ec);
@@ -96,6 +101,7 @@ namespace HIKARI {
             return configDirectory.lexically_normal();
         }
 
+        // コンフィグで明示的に指定されたプロジェクトルートを解決（相対パス対応）
         std::filesystem::path ResolveConfiguredProjectRoot(
             const std::filesystem::path& configPath,
             const std::string& configuredRoot) {
@@ -130,6 +136,7 @@ namespace HIKARI {
 
     }
 
+    // コマンドライン引数から指定されたオプション値を抽出
     std::optional<std::filesystem::path>
         ReadRuntimeCommandLinePath(
             std::wstring_view option) {
@@ -156,6 +163,7 @@ namespace HIKARI {
         return path;
     }
 
+    // JSON ファイルからランタイムコンフィグを読み込む
     RuntimeLaunchConfig LoadRuntimeLaunchConfigFromFile(const std::filesystem::path& path) {
         RuntimeLaunchConfig cfg{};
         nlohmann::json root{};
@@ -169,6 +177,7 @@ namespace HIKARI {
             return cfg;
         }
 
+        // ホストモード、UI フラグ、デバッグ設定を読み込む
         if (runtime.contains("hostMode") && runtime["hostMode"].is_string()) {
             RuntimeHostMode mode{};
             if (TryParseRuntimeHostMode(runtime["hostMode"].get<std::string>(), mode)) {
@@ -176,6 +185,7 @@ namespace HIKARI {
             }
         }
 
+        // UI・デバッグ・ウィンドウ設定を読み込む
         cfg.enableImGui = ReadBool(runtime, "enableImGui");
         cfg.enableEditorUI = ReadBool(runtime, "enableEditorUI");
         cfg.enableDebugLayer = ReadBool(runtime, "enableDebugLayer");
@@ -183,6 +193,7 @@ namespace HIKARI {
         cfg.resizableWindow = ReadBool(runtime, "resizableWindow");
         cfg.windowWidth = ReadInt(runtime, "windowWidth");
         cfg.windowHeight = ReadInt(runtime, "windowHeight");
+        // レンダリング品質プロファイルと関連設定を読み込む
         if (runtime.contains("renderQuality") &&
             runtime["renderQuality"].is_object()) {
             RENDER3D::RenderQualitySettings renderQuality{};
@@ -199,6 +210,7 @@ namespace HIKARI {
                     " Path: " + path.string());
             }
         }
+        // レガシー設定: グラフィックス効果とシーン情報
         cfg.antiAliasingMode = ReadString(runtime, "antiAliasingMode");
         cfg.dlssQualityMode = ReadString(runtime, "dlssQualityMode");
         cfg.frameGenerationMode = ReadString(runtime, "frameGenerationMode");
@@ -209,6 +221,7 @@ namespace HIKARI {
         cfg.loaded = true;
         cfg.sourcePath = path;
         cfg.projectRoot = ResolveConfigProjectRoot(path);
+        // 明示的に指定されたプロジェクトルートで上書き
         if (const std::optional<std::string> projectRoot =
                 ReadString(runtime, "projectRoot")) {
             cfg.projectRoot = ResolveConfiguredProjectRoot(path, *projectRoot);
@@ -216,6 +229,7 @@ namespace HIKARI {
         return cfg;
     }
 
+    // ランタイムコンフィグを探索して読み込む（優先順序: コマンドライン > 環境変数 > 候補パス）
     RuntimeLaunchConfig LoadRuntimeLaunchConfig() {
         const std::optional<std::filesystem::path>
             requestedProjectPath =
@@ -227,6 +241,7 @@ namespace HIKARI {
                 return cfg;
             };
 
+        // 1. コマンドライン引数 --runtime-config で明示的に指定されたパス
         if (const std::optional<std::filesystem::path> commandLinePath =
                 ReadRuntimeCommandLinePath(
                     L"--runtime-config")) {
@@ -235,6 +250,7 @@ namespace HIKARI {
                 return finalize(std::move(cfg));
             }
         }
+        // 2. 環境変数 HIKARI_RUNTIME_CONFIG で指定されたパス
         if (const std::optional<std::filesystem::path> explicitPath =
                 ExplicitConfigPath()) {
             RuntimeLaunchConfig cfg = LoadRuntimeLaunchConfigFromFile(*explicitPath);
@@ -243,6 +259,7 @@ namespace HIKARI {
             }
         }
 
+        // 3. 標準的な検索パス（カレントディレクトリ、実行ファイルディレクトリ）を走査
         std::vector<std::filesystem::path> candidates{};
         AddCandidate(candidates, std::filesystem::current_path());
         AddCandidate(
@@ -262,9 +279,11 @@ namespace HIKARI {
         return finalize({});
     }
 
+    // ランタイムコンフィグをホストサービス初期化設定に反映させる
     void ApplyRuntimeLaunchConfig(
         const RuntimeLaunchConfig& runtimeCfg,
         RUNTIME::HostBootstrapConfig& servicesCfg) {
+        // ランタイムコンフィグが設定した値をホストブートストラップ設定に適用
         if (runtimeCfg.hostMode) {
             servicesCfg.hostMode = *runtimeCfg.hostMode;
         }
@@ -287,6 +306,7 @@ namespace HIKARI {
             servicesCfg.exportedSceneGuids = *runtimeCfg.exportedSceneGuids;
         }
 
+        // レンダリング品質設定を適用（プロジェクト設定またはランタイムコンフィグから）
         RENDER3D::RenderQualitySettings quality{};
         const ProjectContext& projectContext =
             GetProjectContext();
@@ -304,9 +324,11 @@ namespace HIKARI {
             HIKARI_LOG_WARN("[RenderQualityProfile] " + profileError);
         }
 
+        // ランタイムコンフィグの設定で上書き
         if (runtimeCfg.renderQuality) {
             quality = *runtimeCfg.renderQuality;
         }
+        // レガシーグラフィックス設定の適用
         if (runtimeCfg.antiAliasingMode) {
             (void)RENDER3D::TryParseRenderAntiAliasingMode(
                 *runtimeCfg.antiAliasingMode,
@@ -328,6 +350,7 @@ namespace HIKARI {
         }
         RENDER3D::SetRenderQualitySettings(quality);
 
+        // エディタモード以外では、決定されたウィンドウサイズを適用
         if (!IsEditorHostMode(servicesCfg.hostMode)) {
             const RENDER3D::RenderQualitySettings& resolvedQuality =
                 RENDER3D::GetRenderQualitySettings();
@@ -344,6 +367,7 @@ namespace HIKARI {
             }
         }
 
+        // ウィンドウ設定の最終上書き（ユーザー設定を優先）
         if (runtimeCfg.resizableWindow) {
             servicesCfg.resizableWindow = *runtimeCfg.resizableWindow;
         }

@@ -4,27 +4,32 @@
 
 namespace HIKARI {
 
+    // ランタイムホストの実行モード
     enum class RuntimeHostMode {
-        Game,
-        Editor,
-        GamePreview,
-        ExportedGame,
+        Game,           // スタンドアロンゲーム実行
+        Editor,         // エディタ環境での実行
+        GamePreview,    // エディタ内ゲームプレビュー
+        ExportedGame,   // 出力されたゲーム実行
     };
 
+    // エディタモードかどうかを判定
     inline constexpr bool IsEditorHostMode(RuntimeHostMode mode) {
         return mode == RuntimeHostMode::Editor;
     }
 
+    // 出力されたゲームモードかどうかを判定
     inline constexpr bool IsExportedGameHostMode(RuntimeHostMode mode) {
         return mode == RuntimeHostMode::ExportedGame;
     }
 
+    // スタンドアロンゲーム実行モード（プレビューと出力も含む）かどうかを判定
     inline constexpr bool IsStandaloneGameHostMode(RuntimeHostMode mode) {
         return mode == RuntimeHostMode::Game ||
             mode == RuntimeHostMode::GamePreview ||
             IsExportedGameHostMode(mode);
     }
 
+    // ランタイムホストモードを文字列に変換
     inline constexpr const char* RuntimeHostModeName(RuntimeHostMode mode) {
         switch (mode) {
         case RuntimeHostMode::Game:
@@ -40,6 +45,7 @@ namespace HIKARI {
         }
     }
 
+    // 文字列からランタイムホストモードを解析（大文字小文字と表記揺れに対応）
     inline constexpr bool TryParseRuntimeHostMode(std::string_view name, RuntimeHostMode& outMode) {
         if (name == "Game" || name == "game") {
             outMode = RuntimeHostMode::Game;

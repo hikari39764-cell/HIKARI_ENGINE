@@ -4,6 +4,7 @@
 #include "Runtime/Host/HIKARI_EngineHostRunner.h"
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
+    // ランタイムエンジンホストを起動
     HIKARI::RUNTIME::RuntimeEngineApp application{};
     HIKARI::RUNTIME::EngineHostRunOptions options{};
     options.product =
