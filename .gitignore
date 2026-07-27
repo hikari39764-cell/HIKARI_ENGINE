@@ -394,3 +394,15 @@ vcpkg_installed/
 vcpkg_installed_static/
 /out/
 /CMakeUserPresets.json
+
+# The engine checkout is not a GameProject. Runtime-created project settings
+# belong to an opened external project, never to the engine repository root.
+/ProjectSettings/
+
+# EmptyProject intentionally validates first-run project bootstrapping.
+# Keep runtime-authored scene, metadata, input defaults, and pipeline settings
+# out of the versioned fixture.
+/Tests/Fixtures/Projects/EmptyProject/Assets/
+/Tests/Fixtures/Projects/EmptyProject/ProjectSettings/AssetMeta/
+/Tests/Fixtures/Projects/EmptyProject/ProjectSettings/Input/
+/Tests/Fixtures/Projects/EmptyProject/ProjectSettings/asset_pipeline.json
