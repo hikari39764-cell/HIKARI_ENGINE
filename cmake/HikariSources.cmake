@@ -1,7 +1,7 @@
 # Authoritative HIKARI compile-source manifest.
 # Add or remove translation units here and keep the source-closure test green.
 
-set(HIKARI_COMPILE_SOURCE_COUNT 705)
+set(HIKARI_COMPILE_SOURCE_COUNT 706)
 
 set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/External/WICTextureLoader.cpp"
@@ -427,6 +427,7 @@ set(HIKARI_GAME_HOST_SOURCES
 
 set(HIKARI_ENGINE_TEST_GAME_PROJECT_SOURCES
     "${HIKARI_SOURCE_ROOT}/Tests/Fixtures/Projects/EmptyProject/Source/HIKARI_EmptyGameProjectModule.cpp"
+    "${HIKARI_SOURCE_ROOT}/Tests/Fixtures/Projects/EmptyProject/Source/SampleMotion/HIKARI_EmptyProjectMotionFeature.cpp"
 )
 
 set(HIKARI_EDITOR_SOURCES

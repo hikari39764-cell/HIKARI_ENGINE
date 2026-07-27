@@ -161,9 +161,7 @@ namespace {
             "find_package(HIKARI 1 CONFIG REQUIRED)\n\n"
             "hikari_add_game_project(\n"
             "    NAME \"" + identifier + "\"\n"
-            "    SOURCES\n"
-            "        Source/" + identifier +
-            "GameProjectModule.cpp)\n";
+            "    SOURCE_DIR Source)\n";
     }
 
     std::string MakeGameProjectCMakePresets() {
