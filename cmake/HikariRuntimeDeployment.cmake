@@ -11,7 +11,7 @@ function(hikari_configure_runtime_deployment target_name)
         ${ARGN})
 
     if(NOT HIKARI_DEPLOY_OUTPUT_NAME)
-        set(HIKARI_DEPLOY_OUTPUT_NAME "HIKARI_UpdateTo3D")
+        set(HIKARI_DEPLOY_OUTPUT_NAME "HIKARI_Engine")
     endif()
     if(NOT HIKARI_DEPLOY_WORKING_DIRECTORY)
         set(HIKARI_DEPLOY_WORKING_DIRECTORY "${HIKARI_SOURCE_ROOT}")

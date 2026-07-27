@@ -443,7 +443,7 @@ namespace HIKARI::EDITOR {
 #if defined(HIKARI_WITH_EDITOR)
         const std::filesystem::path projectRoot = FindProjectRoot();
         const std::filesystem::path sourceExe =
-            projectRoot / "out" / "install" / "game-shipping" / "HIKARI_UpdateTo3D.exe";
+            projectRoot / "out" / "install" / "game-shipping" / "HIKARI_Engine.exe";
         const std::filesystem::path sourceProjectModule =
             sourceExe.parent_path() /
             "HIKARI_GameProject.dll";

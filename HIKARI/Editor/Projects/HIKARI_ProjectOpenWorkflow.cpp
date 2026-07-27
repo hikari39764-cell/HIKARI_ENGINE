@@ -335,7 +335,7 @@ namespace {
         std::string& outMessage) {
 
         const std::filesystem::path executable =
-            runtimeRoot_ / "HIKARI_UpdateTo3D.exe";
+            runtimeRoot_ / "HIKARI_Engine.exe";
         const std::filesystem::path projectModule =
             projectRoot_ / "Library" / "Build" /
             preset_ / "bin" /

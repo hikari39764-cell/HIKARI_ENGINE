@@ -8,9 +8,9 @@ if(NOT TARGET HIKARI::GameProjectHost)
         HIKARI::GameProjectHost
         PROPERTIES
             IMPORTED_IMPLIB
-                "${_HIKARI_SDK_ROOT}/lib/HIKARI_UpdateTo3D.lib"
+                "${_HIKARI_SDK_ROOT}/lib/HIKARI_Engine.lib"
             IMPORTED_LOCATION
-                "${PACKAGE_PREFIX_DIR}/HIKARI_UpdateTo3D.exe")
+                "${PACKAGE_PREFIX_DIR}/HIKARI_Engine.exe")
 endif()
 
 if(NOT TARGET HIKARI::GameProjectSdk)

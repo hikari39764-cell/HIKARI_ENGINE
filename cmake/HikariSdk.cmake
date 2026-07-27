@@ -66,7 +66,7 @@ function(hikari_configure_game_project_sdk host_target)
         COMMAND
             "${CMAKE_COMMAND}" -E copy_if_different
             "$<TARGET_LINKER_FILE:${host_target}>"
-            "${_sdk_root}/lib/HIKARI_UpdateTo3D.lib"
+            "${_sdk_root}/lib/HIKARI_Engine.lib"
         COMMAND
             "${CMAKE_COMMAND}" -E copy_if_different
             "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARIConfig.cmake"
@@ -90,7 +90,7 @@ function(hikari_configure_game_project_sdk host_target)
         FILES
             "$<TARGET_LINKER_FILE:${host_target}>"
         DESTINATION "Sdk/lib"
-        RENAME "HIKARI_UpdateTo3D.lib")
+        RENAME "HIKARI_Engine.lib")
     install(
         FILES
             "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARIConfig.cmake"
