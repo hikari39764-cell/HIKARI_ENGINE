@@ -10,8 +10,11 @@
 
 namespace HIKARI::SHADOW::INTERNAL {
 
-    bool CreateShadowMapResources(uint32_t resolution) {
-        auto* device = GFX::GetCurrentContext().device;
+    bool CreateShadowMapResources(
+        const GFX::Context& graphics,
+        uint32_t resolution) {
+
+        auto* device = graphics.device;
         if (device == nullptr || resolution == 0) {
             return false;
         }
@@ -103,21 +106,30 @@ namespace HIKARI::SHADOW::INTERNAL {
         ++gShadowRendererState.shadowMapRecreateCount;
         return RENDER3D::IsTextureResourceValid(gShadowRendererState.shadowSrvResource);
     }
-    void RestoreMainRenderTarget() {
+    void RestoreMainRenderTarget(const GFX::Context& graphics) {
         if (POST::PostSystem::RebindCurrentRenderTarget()) {
             return;
         }
 
-        auto* cmd = GFX::GetCurrentContext().cmdList;
+        auto* cmd = graphics.cmdList;
         if (cmd == nullptr) {
             return;
         }
-        cmd->OMSetRenderTargets(1, &GFX::GetCurrentContext().rtv, FALSE, &GFX::GetCurrentContext().dsv);
+        cmd->OMSetRenderTargets(
+            1,
+            &graphics.rtv,
+            FALSE,
+            &graphics.dsv);
         D3D12_VIEWPORT viewport{};
-        viewport.Width = static_cast<float>(GFX::GetCurrentContext().backBufferWidth);
-        viewport.Height = static_cast<float>(GFX::GetCurrentContext().backBufferHeight);
+        viewport.Width = static_cast<float>(graphics.backBufferWidth);
+        viewport.Height = static_cast<float>(graphics.backBufferHeight);
         viewport.MaxDepth = 1.0f;
-        D3D12_RECT scissor{ 0, 0, GFX::GetCurrentContext().backBufferWidth, GFX::GetCurrentContext().backBufferHeight };
+        D3D12_RECT scissor{
+            0,
+            0,
+            graphics.backBufferWidth,
+            graphics.backBufferHeight
+        };
         cmd->RSSetViewports(1, &viewport);
         cmd->RSSetScissorRects(1, &scissor);
     }
@@ -182,13 +194,15 @@ namespace HIKARI::SHADOW::INTERNAL {
         }
     }
 
-    void FinishFinalShadowMap(ID3D12GraphicsCommandList* cmd) {
+    void FinishFinalShadowMap(
+        const GFX::Context& graphics,
+        ID3D12GraphicsCommandList* cmd) {
         TransitionResource(
             cmd,
             gShadowRendererState.shadowMap.Get(),
             gShadowRendererState.shadowState,
             kShadowShaderReadState);
-        RestoreMainRenderTarget();
+        RestoreMainRenderTarget(graphics);
     }
 
     bool CopyStaticShadowCacheToFinal(ID3D12GraphicsCommandList* cmd) {

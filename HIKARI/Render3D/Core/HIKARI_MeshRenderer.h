@@ -4,6 +4,7 @@
 #include <vector>
 #include <d3d12.h>
 #include <DirectXMath.h>
+#include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/Core/HIKARI_Camera3D.h"
 #include "Render3D/Core/HIKARI_RenderView.h"
 #include "Assets/Models/HIKARI_ModelAsset.h"
@@ -47,10 +48,7 @@ namespace HIKARI::MESHRENDERER {
         const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource* source);
     bool HasSubmittedItems();
     bool BeginFrame(
-        const Camera3D& camera,
-        const SceneEnvironment& environment,
-        RenderDebugView debugView = RenderDebugView::None);
-    bool BeginFrame(
+        const GFX::Context& graphics,
         const Camera3D& camera,
         const SceneEnvironment& environment,
         uint32_t screenWidth,
@@ -62,26 +60,36 @@ namespace HIKARI::MESHRENDERER {
     const CameraCB* GetCameraConstants();
     const CameraCB* GetGpuDrivenCullingCameraConstants();
     bool RenderGeometryAuxPass(
+        const GFX::Context& graphics,
         RENDER3D::SCREENSPACE::ScreenSpaceGeometryAux& geometryAux,
         D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv);
     bool HasDepthPrepassWork();
-    bool RenderDepthPrepass(D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv);
-    bool FinalizeGpuDrivenVisibilityWithoutDepth();
+    bool RenderDepthPrepass(
+        const GFX::Context& graphics,
+        D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv);
+    bool FinalizeGpuDrivenVisibilityWithoutDepth(
+        const GFX::Context& graphics);
     bool FinalizeGpuDrivenVisibilityFromDepth(
+        const GFX::Context& graphics,
         const RENDER3D::GPUDRIVEN::GpuDepthVisibilityStats& depthVisibilityStats);
     bool RenderForwardOpaquePass(
+        const GFX::Context& graphics,
         const MeshPassResources& passResources);
     bool RenderForwardTransparentPass(
+        const GFX::Context& graphics,
         const MeshPassResources& passResources);
     bool HasDepthAwarePassWork();
     bool HasForwardTransparentPassWork();
     bool RenderDepthAwarePass(
+        const GFX::Context& graphics,
         const MeshPassResources& passResources);
     void GatherTemporalVelocityDraws(
+        const GFX::Context& graphics,
         std::vector<TemporalVelocityDraw>& outDraws);
     void SetAmbientOcclusionRuntimeEnabled(bool enabled);
     void EndFrame();
     void RenderAll(
+        const GFX::Context& graphics,
         const RENDER3D::RenderViewContext& view,
         const SceneEnvironment& environment,
         RenderDebugView debugView = RenderDebugView::None);

@@ -6,6 +6,7 @@
 #include <d3d12.h>
 #include <wrl/client.h>
 
+#include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/HIKARI_Math3D.h"
 #include "Render3D/Depth/HIKARI_DepthPyramidLayer.h"
 #include "Render3D/Resources/HIKARI_RenderResourcePool.h"
@@ -41,15 +42,18 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
 
         void RecordDepthPrepass(bool written);
         D3D12_CPU_DESCRIPTOR_HANDLE BeginDepthPrepass(
+            const GFX::Context& graphics,
             ID3D12GraphicsCommandList* cmd,
             uint32_t width,
             uint32_t height);
         bool BuildDepthPyramidFromVisibilityPrepass(
+            const GFX::Context& graphics,
             ID3D12GraphicsCommandList* cmd,
             uint32_t width,
             uint32_t height,
             const MATH::Mat4& viewProj);
         bool BuildDepthPyramidFromDepthSrv(
+            const GFX::Context& graphics,
             ID3D12GraphicsCommandList* cmd,
             uint32_t width,
             uint32_t height,
@@ -57,13 +61,12 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             const MATH::Mat4& viewProj);
 
         const GpuDepthVisibilityStats& GetStats() const { return stats_; }
-        D3D12_GPU_DESCRIPTOR_HANDLE GetVisibilityDepthSrv() const { return visibilityDepthSrv_.gpu; }
-        const HIKARI::RENDER3D::DEPTH::DepthPyramidView& GetDepthPyramidView() const {
-            return stats_.depthPyramid;
-        }
 
     private:
-        bool EnsureDepthResource(uint32_t width, uint32_t height);
+        bool EnsureDepthResource(
+            const GFX::Context& graphics,
+            uint32_t width,
+            uint32_t height);
         void ReleaseDepthResource();
         void TransitionDepth(
             ID3D12GraphicsCommandList* cmd,

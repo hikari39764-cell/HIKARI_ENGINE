@@ -2,6 +2,7 @@
 
 #include <cstdint>
 
+#include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/Depth/HIKARI_DepthPyramidLayer.h"
 
 namespace HIKARI::RENDER3D::DEPTH {
@@ -22,7 +23,7 @@ namespace HIKARI::RENDER3D::DEPTH {
             DepthPyramidViewKind requiredViewKind) const;
     };
 
-    void BeginDepthPyramidFrame(uint32_t frameIndex = 0);
+    void BeginDepthPyramidFrame(const GFX::Context& graphics);
     bool PublishFrameDepthPyramid(const DepthPyramidView& view);
     bool PublishFrameDepthPyramid(DepthPyramidView view, DepthPyramidViewKind viewKind);
     const DepthPyramidView* TryGetFrameDepthPyramidView();

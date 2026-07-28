@@ -352,7 +352,10 @@ namespace HIKARI::MESHRENDERER {
             return;
         }
 
-        const D3D12_GPU_DESCRIPTOR_HANDLE texturePoolSrv = RENDER3D::GetMaterialTexturePoolSrvGpuHandle(GFX::GetCurrentContext());
+        const D3D12_GPU_DESCRIPTOR_HANDLE texturePoolSrv =
+            ctx.graphics != nullptr
+                ? RENDER3D::GetMaterialTexturePoolSrvGpuHandle(*ctx.graphics)
+                : D3D12_GPU_DESCRIPTOR_HANDLE{};
         if (texturePoolSrv.ptr != 0) {
             BindDescriptorTableCached(ctx, ROOT_PARAM::TexturePool, texturePoolSrv);
         }
@@ -363,7 +366,10 @@ namespace HIKARI::MESHRENDERER {
             return;
         }
 
-        const D3D12_GPU_DESCRIPTOR_HANDLE clusterPoolSrv = RENDER3D::GetClusterGeometryPoolSrvGpuHandle(GFX::GetCurrentContext());
+        const D3D12_GPU_DESCRIPTOR_HANDLE clusterPoolSrv =
+            ctx.graphics != nullptr
+                ? RENDER3D::GetClusterGeometryPoolSrvGpuHandle(*ctx.graphics)
+                : D3D12_GPU_DESCRIPTOR_HANDLE{};
         if (clusterPoolSrv.ptr != 0) {
             BindDescriptorTableCached(ctx, ROOT_PARAM::ClusterGeometryPool, clusterPoolSrv);
         }

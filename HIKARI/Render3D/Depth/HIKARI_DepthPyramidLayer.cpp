@@ -42,16 +42,12 @@ namespace HIKARI::RENDER3D::DEPTH {
         uint32_t DivRoundUp(uint32_t value, uint32_t divisor) {
             return (value + divisor - 1u) / divisor;
         }
-        // 現在のフレームの退避フェンス値を取得する
-        uint64_t CurrentRetireFenceValue() {
-            return GFX::GetCurrentContext().currentFrameRetireFenceValue != 0
-                ? GFX::GetCurrentContext().currentFrameRetireFenceValue
-                : 0;
-        }
-
 		// デスクリプタアロケータの状態を保持する構造体
         struct DescriptorState {
-            GFX::Context context{};
+            ID3D12Device* device = nullptr;
+            ID3D12DescriptorHeap* srvHeap = nullptr;
+            GFX::GpuDeferredReleaseQueue* deferredReleaseQueue = nullptr;
+            uint64_t retireFenceValue = 0;
             GFX::DescriptorAllocator allocator{};
             UINT descriptorSize = 0;
             bool initialized = false;
@@ -64,16 +60,13 @@ namespace HIKARI::RENDER3D::DEPTH {
 		// デスクリプタアロケータを初期化する。すでに初期化済みの場合は何もしない。
         bool EnsureDescriptorAllocator() {
             DescriptorState& state = Descriptors();
-            ID3D12Device* device = GFX::GetCurrentContext().device;
-            ID3D12DescriptorHeap* heap = GFX::GetCurrentContext().srvHeap;
+            ID3D12Device* device = state.device;
+            ID3D12DescriptorHeap* heap = state.srvHeap;
             if (device == nullptr || heap == nullptr) {
                 return false;
             }
 
-            if (!state.initialized ||
-                state.context.device != device ||
-                state.context.srvHeap != heap) {
-                state.context = GFX::GetCurrentContext();
+            if (!state.initialized) {
                 state.descriptorSize = device->GetDescriptorHandleIncrementSize(
                     D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
                 state.allocator.Initialize(
@@ -123,7 +116,7 @@ namespace HIKARI::RENDER3D::DEPTH {
             srvDesc.Texture2D.MipLevels = mipLevels;
             srvDesc.Texture2D.PlaneSlice = 0;
             srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
-            GFX::GetCurrentContext().device->CreateShaderResourceView(resource, &srvDesc, view.cpu);
+            Descriptors().device->CreateShaderResourceView(resource, &srvDesc, view.cpu);
             return view;
         }
 		// テクスチャ 2D の UAV デスクリプタを作成する。リソースが nullptr の場合は無効な RenderResourceView を返す。
@@ -146,9 +139,27 @@ namespace HIKARI::RENDER3D::DEPTH {
             uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
             uavDesc.Texture2D.MipSlice = mipSlice;
             uavDesc.Texture2D.PlaneSlice = 0;
-            GFX::GetCurrentContext().device->CreateUnorderedAccessView(resource, nullptr, &uavDesc, view.cpu);
+            Descriptors().device->CreateUnorderedAccessView(
+                resource,
+                nullptr,
+                &uavDesc,
+                view.cpu);
             return view;
         }
+    }
+
+    void UpdateDepthPyramidContext(const GFX::Context& graphics) {
+        DescriptorState& state = Descriptors();
+        if (state.device != graphics.device ||
+            state.srvHeap != graphics.srvHeap) {
+            state.allocator = {};
+            state.descriptorSize = 0;
+            state.initialized = false;
+        }
+        state.device = graphics.device;
+        state.srvHeap = graphics.srvHeap;
+        state.deferredReleaseQueue = graphics.deferredReleaseQueue;
+        state.retireFenceValue = graphics.currentFrameRetireFenceValue;
     }
 
     RenderResourceView AllocateDepthPyramidTransientDescriptor() {
@@ -166,11 +177,11 @@ namespace HIKARI::RENDER3D::DEPTH {
 
         view.descriptorIndex = slot.index;
         view.cpu = GFX::DESCRIPTOR::CpuAt(
-            state.context.srvHeap,
+            state.srvHeap,
             state.descriptorSize,
             slot.index);
         view.gpu = GFX::DESCRIPTOR::GpuAt(
-            state.context.srvHeap,
+            state.srvHeap,
             state.descriptorSize,
             slot.index);
         return view;
@@ -184,8 +195,9 @@ namespace HIKARI::RENDER3D::DEPTH {
             return;
         }
 
-        GFX::GpuDeferredReleaseQueue* queue = GFX::GetCurrentContext().deferredReleaseQueue;
-        const uint64_t retireFence = CurrentRetireFenceValue();
+        DescriptorState& state = Descriptors();
+        GFX::GpuDeferredReleaseQueue* queue = state.deferredReleaseQueue;
+        const uint64_t retireFence = state.retireFenceValue;
         if (queue != nullptr && retireFence != 0) {
             queue->Enqueue(
                 retireFence,
@@ -234,7 +246,7 @@ namespace HIKARI::RENDER3D::DEPTH {
             return false;
         }
 
-        ID3D12DescriptorHeap* srvHeap = GFX::GetCurrentContext().srvHeap;
+        ID3D12DescriptorHeap* srvHeap = Descriptors().srvHeap;
         if (srvHeap == nullptr ||
             texture_ == nullptr ||
             pyramidSrv_.gpu.ptr == 0 ||
@@ -304,7 +316,7 @@ namespace HIKARI::RENDER3D::DEPTH {
             return true;
         }
 
-        ID3D12Device* device = GFX::GetCurrentContext().device;
+        ID3D12Device* device = Descriptors().device;
         if (device == nullptr) {
             return false;
         }
@@ -402,7 +414,7 @@ namespace HIKARI::RENDER3D::DEPTH {
             return true;
         }
 
-        ID3D12Device* device = GFX::GetCurrentContext().device;
+        ID3D12Device* device = Descriptors().device;
         if (device == nullptr) {
             return false;
         }

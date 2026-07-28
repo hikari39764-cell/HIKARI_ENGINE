@@ -62,8 +62,9 @@ namespace HIKARI::RENDER3D::DEPTH {
         return view->viewKind == requiredViewKind ? view : nullptr;
     }
 
-    void BeginDepthPyramidFrame(uint32_t frameIndex) {
-        gFrameResources.BeginFrame(frameIndex);
+    void BeginDepthPyramidFrame(const GFX::Context& graphics) {
+        UpdateDepthPyramidContext(graphics);
+        gFrameResources.BeginFrame(graphics.frameIndex);
     }
 
     bool PublishFrameDepthPyramid(const DepthPyramidView& view) {

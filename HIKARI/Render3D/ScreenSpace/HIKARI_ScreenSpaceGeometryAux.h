@@ -6,11 +6,16 @@
 #include <dxgiformat.h>
 #include <wrl/client.h>
 
+#include "Gfx/HIKARI_GfxContext.h"
+
 namespace HIKARI::RENDER3D::SCREENSPACE {
 
     class ScreenSpaceGeometryAux {
     public:
-        bool EnsureSize(uint32_t width, uint32_t height);
+        bool EnsureSize(
+            const GFX::Context& graphics,
+            uint32_t width,
+            uint32_t height);
         void Release();
 
         void BeginNormalRoughnessPass(ID3D12GraphicsCommandList* cmd, D3D12_CPU_DESCRIPTOR_HANDLE depthDsv);
@@ -24,7 +29,10 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         D3D12_GPU_DESCRIPTOR_HANDLE GetNormalRoughnessSrv() const { return normalRoughnessSrvGpu_; }
 
     private:
-        bool CreateResources(uint32_t width, uint32_t height);
+        bool CreateResources(
+            const GFX::Context& graphics,
+            uint32_t width,
+            uint32_t height);
 
         static constexpr DXGI_FORMAT kNormalRoughnessFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
 

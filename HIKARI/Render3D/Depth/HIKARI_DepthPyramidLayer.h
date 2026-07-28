@@ -6,6 +6,7 @@
 #include <d3d12.h>
 #include <wrl/client.h>
 
+#include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/HIKARI_Math3D.h"
 #include "Render3D/Resources/HIKARI_RenderResourcePool.h"
 
@@ -72,6 +73,7 @@ namespace HIKARI::RENDER3D::DEPTH {
     };
 
     RenderResourceView AllocateDepthPyramidTransientDescriptor();
+    void UpdateDepthPyramidContext(const GFX::Context& graphics);
     void RetireDepthPyramidTransientDescriptor(
         RenderResourceView view,
         const char* debugName);

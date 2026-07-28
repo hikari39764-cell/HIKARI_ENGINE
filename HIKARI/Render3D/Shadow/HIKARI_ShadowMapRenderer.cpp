@@ -18,7 +18,10 @@ namespace HIKARI::SHADOW {
         SetGpuDrivenSceneSource(nullptr);
     }
 
-    void BeginFrame(const SceneEnvironment& environment, const Camera3D& camera) {
+    void BeginFrame(
+        const GFX::Context& graphics,
+        const SceneEnvironment& environment,
+        const Camera3D& camera) {
         CPU_PROFILE::ScopedCpuTimer cpuTimer(
             CPU_PROFILE::Pass::ShadowPrepare);
         ClearShadowFrameSubmissions();
@@ -42,24 +45,25 @@ namespace HIKARI::SHADOW {
             PublishShadowCacheStats();
             return;
         }
-        gShadowRendererState.frameHasShadowWork = BuildShadowGpuDrivenSceneSources();
+        gShadowRendererState.frameHasShadowWork =
+            BuildShadowGpuDrivenSceneSources(graphics);
         if (!gShadowRendererState.frameHasShadowWork) {
             PublishShadowCacheStats();
             return;
         }
-        if (!EnsureShadowRendererInitialized()) {
+        if (!EnsureShadowRendererInitialized(graphics)) {
             gShadowRendererState.frameEnabled = false;
             gShadowRendererState.debugStats.enabled = false;
             gShadowRendererState.frameHasShadowWork = false;
             InvalidateShadowCache();
             return;
         }
-        ActivateShadowFrameResources(GFX::GetCurrentContext().frameIndex);
+        ActivateShadowFrameResources(graphics.frameIndex);
         UploadShadowMeshShaderJointPalettes();
 
         const uint32_t resolution = ResolveShadowResolution(environment.directionalShadow.resolution);
         if (gShadowRendererState.shadowMap == nullptr || gShadowRendererState.resolution != resolution) {
-            if (!CreateShadowMapResources(resolution)) {
+            if (!CreateShadowMapResources(graphics, resolution)) {
                 gShadowRendererState.frameEnabled = false;
                 gShadowRendererState.debugStats.enabled = false;
                 gShadowRendererState.frameHasShadowWork = false;
@@ -116,11 +120,11 @@ namespace HIKARI::SHADOW {
         InvalidateShadowSourceCache();
     }
 
-    void RenderDirectionalShadowMap() {
+    void RenderDirectionalShadowMap(const GFX::Context& graphics) {
         if (!gShadowRendererState.frameEnabled || !gShadowRendererState.frameHasShadowWork || gShadowRendererState.shadowMap == nullptr) {
             return;
         }
-        auto* cmd = GFX::GetCurrentContext().cmdList;
+        auto* cmd = graphics.cmdList;
         if (cmd == nullptr) {
             return;
         }
@@ -149,8 +153,11 @@ namespace HIKARI::SHADOW {
             gShadowRendererState.frameHasDynamicShadowWork && !finalHasDepth;
         if (needsUnifiedDynamicRender) {
             PrepareFinalShadowMapForDepthWrite(cmd, true);
-            if (PrepareShadowSourceForDraw(gShadowRendererState.shadowSceneSource)) {
+            if (PrepareShadowSourceForDraw(
+                    graphics,
+                    gShadowRendererState.shadowSceneSource)) {
                 unifiedRendered = ExecuteShadowGpuDrivenPass(
+                    graphics,
                     GFX::GPU_PROFILE::Pass::TraditionalDrawShadowFallback,
                     GFX::GPU_PROFILE::Pass::MeshletDrawShadowFallback);
             }
@@ -159,8 +166,11 @@ namespace HIKARI::SHADOW {
         } else {
             if (!finalHasDepth && gShadowRendererState.frameHasStaticShadowWork) {
                 PrepareFinalShadowMapForDepthWrite(cmd, true);
-                if (PrepareShadowSourceForDraw(gShadowRendererState.staticShadowSceneSource)) {
+                if (PrepareShadowSourceForDraw(
+                        graphics,
+                        gShadowRendererState.staticShadowSceneSource)) {
                     staticRendered = ExecuteShadowGpuDrivenPass(
+                        graphics,
                         GFX::GPU_PROFILE::Pass::TraditionalDrawShadowStatic,
                         GFX::GPU_PROFILE::Pass::MeshletDrawShadowStatic);
                 }
@@ -180,8 +190,11 @@ namespace HIKARI::SHADOW {
 
             if (!staticSplitFailed && gShadowRendererState.frameHasDynamicShadowWork) {
                 PrepareFinalShadowMapForDepthWrite(cmd, false);
-                if (PrepareShadowSourceForDraw(gShadowRendererState.dynamicShadowSceneSource)) {
+                if (PrepareShadowSourceForDraw(
+                        graphics,
+                        gShadowRendererState.dynamicShadowSceneSource)) {
                     dynamicRendered = ExecuteShadowGpuDrivenPass(
+                        graphics,
                         GFX::GPU_PROFILE::Pass::TraditionalDrawShadowDynamic,
                         GFX::GPU_PROFILE::Pass::MeshletDrawShadowDynamic);
                 }
@@ -196,8 +209,11 @@ namespace HIKARI::SHADOW {
 
             if (staticSplitFailed) {
                 PrepareFinalShadowMapForDepthWrite(cmd, true);
-                if (PrepareShadowSourceForDraw(gShadowRendererState.shadowSceneSource)) {
+                if (PrepareShadowSourceForDraw(
+                        graphics,
+                        gShadowRendererState.shadowSceneSource)) {
                     fallbackRendered = ExecuteShadowGpuDrivenPass(
+                        graphics,
                         GFX::GPU_PROFILE::Pass::TraditionalDrawShadowFallback,
                         GFX::GPU_PROFILE::Pass::MeshletDrawShadowFallback);
                 }
@@ -217,7 +233,7 @@ namespace HIKARI::SHADOW {
         gShadowRendererState.debugStats.shadowDynamicRendered = dynamicRendered;
         gShadowRendererState.debugStats.shadowUnifiedRendered = unifiedRendered;
         gShadowRendererState.debugStats.shadowFallbackRendered = fallbackRendered;
-        FinishFinalShadowMap(cmd);
+        FinishFinalShadowMap(graphics, cmd);
     }
 
     bool IsDirectionalShadowEnabled() {

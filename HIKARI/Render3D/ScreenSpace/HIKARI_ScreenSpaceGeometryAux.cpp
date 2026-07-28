@@ -16,7 +16,10 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
     namespace {
     }
 
-    bool ScreenSpaceGeometryAux::EnsureSize(uint32_t width, uint32_t height) {
+    bool ScreenSpaceGeometryAux::EnsureSize(
+        const GFX::Context& graphics,
+        uint32_t width,
+        uint32_t height) {
         width = std::max(1u, width);
         height = std::max(1u, height);
         if (IsValid() && width_ == width && height_ == height) {
@@ -24,7 +27,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         }
 
         Release();
-        return CreateResources(width, height);
+        return CreateResources(graphics, width, height);
     }
 
     void ScreenSpaceGeometryAux::Release() {
@@ -38,9 +41,13 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         normalRoughnessState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
     }
 
-    bool ScreenSpaceGeometryAux::CreateResources(uint32_t width, uint32_t height) {
-        ID3D12Device* device = GFX::GetCurrentContext().device;
-        ID3D12DescriptorHeap* srvHeap = GFX::GetCurrentContext().srvHeap;
+    bool ScreenSpaceGeometryAux::CreateResources(
+        const GFX::Context& graphics,
+        uint32_t width,
+        uint32_t height) {
+
+        ID3D12Device* device = graphics.device;
+        ID3D12DescriptorHeap* srvHeap = graphics.srvHeap;
         if (device == nullptr || srvHeap == nullptr) {
             return false;
         }

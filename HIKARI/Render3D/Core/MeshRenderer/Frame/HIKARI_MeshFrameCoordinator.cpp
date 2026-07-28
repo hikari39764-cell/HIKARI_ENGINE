@@ -69,10 +69,10 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
     }
 
     MeshRendererTraditionalIndirectHydrationContext
-    BuildTraditionalIndirectHydrationContext() {
+    BuildTraditionalIndirectHydrationContext(const GFX::Context& graphics) {
 
         MeshRendererTraditionalIndirectHydrationContext context{};
-        context.device = GFX::GetCurrentContext().device;
+        context.device = graphics.device;
         context.primitiveCache = &gMeshRendererState.primitiveCache;
         context.debugStats = &gMeshRendererState.debugStats;
         context.jointPaletteMapped =
@@ -106,6 +106,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
 
 
     bool PrepareMeshFrame(
+        const GFX::Context& graphics,
         const Camera3D& camera,
         const SceneEnvironment& environment,
         RenderDebugView debugView,
@@ -147,8 +148,8 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         int screenW = static_cast<int>(overrideScreenWidth);
         int screenH = static_cast<int>(overrideScreenHeight);
         if (screenW <= 0 || screenH <= 0) {
-            screenW = std::max(1, GFX::GetCurrentContext().backBufferWidth);
-            screenH = std::max(1, GFX::GetCurrentContext().backBufferHeight);
+            screenW = std::max(1, graphics.backBufferWidth);
+            screenH = std::max(1, graphics.backBufferHeight);
         }
         frameResources.cameraMapped->screenParams = {
             static_cast<float>(screenW),
@@ -196,6 +197,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
     }
 
     MeshDrawContext BuildDrawContext(
+        const GFX::Context& graphics,
         bool depthAwarePhase,
         MeshDrawPassKind passKind,
         const MeshPassResources& passResources
@@ -205,7 +207,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
     ) {
         MeshDrawContext ctx{};
         MeshFrameResources& frame = GetActiveMeshFrameResources();
-        ctx.cmd = GFX::GetCurrentContext().cmdList;
+        ctx.cmd = graphics.cmdList;
         ctx.staticRootSig = GetStaticRootSignature(gMeshRendererState.pipelines);
         ctx.skinnedRootSig = GetSkinnedRootSignature(gMeshRendererState.pipelines);
         ctx.objectCB = frame.objectCB.Get();
@@ -277,6 +279,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
 #endif
         ctx.passKind = passKind;
         ctx.binding.cmd = ctx.cmd;
+        ctx.binding.graphics = &graphics;
         ctx.binding.depthAwarePhase = depthAwarePhase;
         ctx.binding.fallbackTextureHandle = gMeshRendererState.fallbackTextureHandle;
         ctx.binding.fallbackNormalTextureHandle = gMeshRendererState.fallbackNormalTextureHandle;
@@ -291,7 +294,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         ctx.materialFill.fallbackNormalTextureHandle = gMeshRendererState.fallbackNormalTextureHandle;
         ctx.materialFill.fallbackBlackTextureHandle = gMeshRendererState.fallbackBlackTextureHandle;
         ctx.materialFill.stats = &gMeshRendererState.debugStats;
-        ctx.services.device = GFX::GetCurrentContext().device;
+        ctx.services.device = graphics.device;
         ctx.services.primitiveCache = &gMeshRendererState.primitiveCache;
         ctx.services.materialResolver = &gMeshRendererState.materialResolver;
         ctx.services.pipelines = &gMeshRendererState.pipelines;
@@ -305,6 +308,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
 
 
     bool BeginFrameInternal(
+        const GFX::Context& graphics,
         const Camera3D& camera,
         const SceneEnvironment& environment,
         uint32_t screenWidth,
@@ -312,15 +316,16 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         RenderDebugView debugView,
         const MeshFrameCameraOverrides* cameraOverrides) {
 
-        if (!EnsureInitialized()) {
+        if (!EnsureInitialized(graphics)) {
             return false;
         }
 
-        gMeshRendererState.frameResources.Activate(GFX::GetCurrentContext().frameIndex);
+        gMeshRendererState.frameResources.Activate(graphics.frameIndex);
         gMeshRendererState.materialResolver.BeginFrame(kMaxMaterialTextureGpuLoadsPerFrame);
         gMeshRendererState.gpuMaterialRegistry.BeginFrame();
         // Capture 逕ｨ縺ｮ蝗ｺ螳夊ｧ｣蜒丞ｺｦ繧・camera constants 縺ｫ蜿肴丐縺吶ｋ縲・
         if (!PrepareMeshFrame(
+                graphics,
                 camera,
                 environment,
                 debugView,
@@ -330,23 +335,23 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             return false;
         }
 
-        ID3D12GraphicsCommandList* cmd = GFX::GetCurrentContext().cmdList;
+        ID3D12GraphicsCommandList* cmd = graphics.cmdList;
         if (cmd == nullptr ||
             !gMeshRendererState.frameResources.HasActiveDrawResources()) {
             return false;
         }
 
         gMeshRendererState.frameObjectIndex = 0;
-        SyncSurfaceGpuSceneMaterialFrame();
+        SyncSurfaceGpuSceneMaterialFrame(graphics);
         CommitActiveMaterialDataFrame(cmd);
         if (HasGpuDrivenSceneSource()) {
             UploadMeshShaderJointPalettes();
             gMeshRendererState.traditionalIndirectOwner.RefreshForActivePipeline(
                 gMeshRendererState.gpuDrivenSceneSource,
-                BuildTraditionalIndirectHydrationContext());
-            PrepareGpuDrivenFrameState();
+                BuildTraditionalIndirectHydrationContext(graphics));
+            PrepareGpuDrivenFrameState(graphics);
         } else {
-            ResetGpuDrivenFrameState();
+            ResetGpuDrivenFrameState(graphics);
         }
 
         cmd->IASetPrimitiveTopology(

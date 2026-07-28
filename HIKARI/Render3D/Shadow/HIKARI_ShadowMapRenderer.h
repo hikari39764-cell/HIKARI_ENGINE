@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <d3d12.h>
 
+#include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/Core/HIKARI_Camera3D.h"
 #include "Render3D/HIKARI_Math3D.h"
 #include "Assets/Models/HIKARI_ModelAsset.h"
@@ -94,11 +95,14 @@ namespace HIKARI::SHADOW {
     };
 
     void Reset();
-    void BeginFrame(const SceneEnvironment& environment, const Camera3D& camera);
+    void BeginFrame(
+        const GFX::Context& graphics,
+        const SceneEnvironment& environment,
+        const Camera3D& camera);
     void SetGpuDrivenSceneSource(
         const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource* source);
     void InvalidateSceneCache();
-    void RenderDirectionalShadowMap();
+    void RenderDirectionalShadowMap(const GFX::Context& graphics);
 
     bool IsDirectionalShadowEnabled();
     const MATH::Mat4& GetDirectionalLightViewProj();

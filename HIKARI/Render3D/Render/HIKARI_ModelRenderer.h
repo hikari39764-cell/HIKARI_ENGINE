@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/Core/HIKARI_Camera3D.h"
 #include "Render3D/Core/HIKARI_RenderView.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
@@ -44,10 +45,12 @@ namespace HIKARI::MODELRENDERER {
     void ResetModelRendererFrameStats();
     void BeginModelRendererFrame(ModelRendererFrameKind kind);
     void RenderAll(
+        const GFX::Context& graphics,
         const RENDER3D::RenderViewContext& view,
         const SceneEnvironment& environment,
         RenderDebugView debugView = RenderDebugView::None);
     void RenderOpaqueForReflectionProbeCapture(
+        const GFX::Context& graphics,
         const Camera3D& camera,
         const SceneEnvironment& environment,
         uint32_t width,

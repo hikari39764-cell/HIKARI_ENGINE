@@ -9,13 +9,13 @@
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 
 namespace HIKARI::MESHRENDERER::INTERNAL {
-    void UploadGpuDrivenSceneFrame() {
+    void UploadGpuDrivenSceneFrame(const GFX::Context& graphics) {
         gMeshRendererState.gpuDrivenLayer.BeginFrame(&gMeshRendererState.gpuDrivenSceneSource);
 
         RENDER3D::GPUDRIVEN::GpuDrivenSceneUploadDesc uploadDesc{};
-        uploadDesc.commandList = GFX::GetCurrentContext().cmdList;
+        uploadDesc.commandList = graphics.cmdList;
         uploadDesc.residency = &gMeshRendererState.gpuDrivenSceneResidency;
-        uploadDesc.frameIndex = GFX::GetCurrentContext().frameIndex;
+        uploadDesc.frameIndex = graphics.frameIndex;
         const std::span<const uint32_t> materialBindings =
             gMeshRendererState.gpuMaterialRegistry.GetSourceBindings();
         uploadDesc.materialSlotBySourceRecord = materialBindings.data();
@@ -103,7 +103,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         gMeshRendererState.debugStats.materialDataCachedCount = stats.residentSlotCount;
     }
 
-    void SyncSurfaceGpuSceneMaterialFrame() {
+    void SyncSurfaceGpuSceneMaterialFrame(const GFX::Context& graphics) {
         CPU_PROFILE::ScopedCpuTimer cpuTimer(
             CPU_PROFILE::Pass::MaterialPrepare);
 
@@ -119,7 +119,8 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             return;
         }
 
-        MeshDrawContext drawCtx = BuildDrawContext(false, MeshDrawPassKind::Forward, {});
+        MeshDrawContext drawCtx =
+            BuildDrawContext(graphics, false, MeshDrawPassKind::Forward, {});
         const auto prepareMaterialSources =
             [&](uint32_t baseIndex,
                 const std::vector<RENDER3D::RUNTIME::SurfaceGpuSceneMaterialSource>* sources,

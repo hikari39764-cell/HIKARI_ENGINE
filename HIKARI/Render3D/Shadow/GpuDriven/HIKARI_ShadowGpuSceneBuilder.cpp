@@ -23,7 +23,9 @@ namespace HIKARI::SHADOW::INTERNAL {
         gShadowDynamicTraditionalIndirectStream.Clear();
     }
 
-    Mesh* GetOrCreatePrimitiveMesh(const MeshPrimitive& primitive) {
+    Mesh* GetOrCreatePrimitiveMesh(
+        const GFX::Context& graphics,
+        const MeshPrimitive& primitive) {
         auto found = gShadowRendererState.primitiveMeshCache.find(&primitive);
         if (found != gShadowRendererState.primitiveMeshCache.end()) {
             return found->second.get();
@@ -50,7 +52,7 @@ namespace HIKARI::SHADOW::INTERNAL {
         }
 
         auto mesh = std::make_unique<Mesh>();
-        if (!mesh->CreateStatic(GFX::GetCurrentContext().device, vertices, primitive.indices)) {
+        if (!mesh->CreateStatic(graphics.device, vertices, primitive.indices)) {
             return nullptr;
         }
         Mesh* raw = mesh.get();
@@ -58,7 +60,9 @@ namespace HIKARI::SHADOW::INTERNAL {
         return raw;
     }
 
-    Mesh* GetOrCreateSkinnedPrimitiveMesh(const MeshPrimitive& primitive) {
+    Mesh* GetOrCreateSkinnedPrimitiveMesh(
+        const GFX::Context& graphics,
+        const MeshPrimitive& primitive) {
         auto found = gShadowRendererState.primitiveSkinnedMeshCache.find(&primitive);
         if (found != gShadowRendererState.primitiveSkinnedMeshCache.end()) {
             return found->second.get();
@@ -86,7 +90,7 @@ namespace HIKARI::SHADOW::INTERNAL {
         }
 
         auto mesh = std::make_unique<Mesh>();
-        if (!mesh->CreateSkinned(GFX::GetCurrentContext().device, vertices, primitive.indices)) {
+        if (!mesh->CreateSkinned(graphics.device, vertices, primitive.indices)) {
             return nullptr;
         }
         Mesh* raw = mesh.get();
@@ -129,6 +133,7 @@ namespace HIKARI::SHADOW::INTERNAL {
     }
 
     void HydrateShadowTraditionalIndirectStream(
+        const GFX::Context& graphics,
         OwnedShadowTraditionalIndirectStream& stream) {
 
         if (stream.records.empty() ||
@@ -169,8 +174,8 @@ namespace HIKARI::SHADOW::INTERNAL {
                 !stream.jointPalettes[command.firstRecordIndex].empty();
             const bool skinnedCommand = record.skinned && hasJointPalette;
             Mesh* mesh = skinnedCommand
-                ? GetOrCreateSkinnedPrimitiveMesh(*primitive)
-                : GetOrCreatePrimitiveMesh(*primitive);
+                ? GetOrCreateSkinnedPrimitiveMesh(graphics, *primitive)
+                : GetOrCreatePrimitiveMesh(graphics, *primitive);
             if (mesh == nullptr || !mesh->IsValid()) {
                 continue;
             }
@@ -211,7 +216,7 @@ namespace HIKARI::SHADOW::INTERNAL {
             : nullptr;
     }
 
-    bool BuildShadowGpuDrivenSceneSources() {
+    bool BuildShadowGpuDrivenSceneSources(const GFX::Context& graphics) {
         CPU_PROFILE::ScopedCpuTimer cpuTimer(
             CPU_PROFILE::Pass::ShadowSourceSync);
 
@@ -342,6 +347,7 @@ namespace HIKARI::SHADOW::INTERNAL {
                 staticTraditionalCount,
                 false)) {
             HydrateShadowTraditionalIndirectStream(
+                graphics,
                 gShadowStaticTraditionalIndirectStream);
             gShadowStaticTraditionalIndirectStream.gpuSceneBaseIndex =
                 staticPass.gpuSceneInstanceCount;
@@ -371,6 +377,7 @@ namespace HIKARI::SHADOW::INTERNAL {
                 skinnedTraditionalCount,
                 true)) {
             HydrateShadowTraditionalIndirectStream(
+                graphics,
                 gShadowDynamicTraditionalIndirectStream);
             gShadowDynamicTraditionalIndirectStream.gpuSceneBaseIndex =
                 dynamicPass.gpuSceneInstanceCount;

@@ -39,6 +39,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
         }
 
         RenderFrameContext BuildRenderFrameContext(
+            const GFX::Context& graphics,
             const RenderViewContext& view,
             const SceneEnvironment& environment) {
 
@@ -46,7 +47,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
             context.viewId = view.viewId;
             context.purpose = view.purpose;
             context.cameraCut = view.cameraFrame->cameraCut;
-            context.cmd = GFX::GetCurrentContext().cmdList;
+            context.graphics = graphics;
             context.camera = &view.cameraFrame->camera;
             context.environment = &environment;
             context.scene.dsv = POST::PostSystem::GetCurrentRenderTargetDsv();
@@ -55,7 +56,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
             context.scene.depthSrv =
                 POST::PostSystem::GetCurrentRenderTargetDepthSrv();
             if (context.scene.depthSrv.ptr == 0) {
-                context.scene.depthSrv = GFX::GetCurrentContext().sceneDepthSrv;
+                context.scene.depthSrv = context.graphics.sceneDepthSrv;
             }
             context.scene.depthReadable = context.scene.depthSrv.ptr != 0;
             context.targetAccess.rebind = RebindPostRenderTarget;
@@ -88,7 +89,8 @@ namespace HIKARI::RENDER3D::PIPELINE {
             const RenderFrameContext& frame) {
 
             ScreenSpacePassContext context{};
-            context.cmd = frame.cmd;
+            context.cmd = frame.graphics.cmdList;
+            context.graphics = &frame.graphics;
             context.width = frame.renderWidth;
             context.height = frame.renderHeight;
             context.sceneDsv = frame.scene.dsv;
@@ -103,9 +105,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
             const ScreenSpacePassContext& context,
             const RENDER3D::SCREENSPACE::ScreenSpaceFrameResult& screenResult) {
             MESHRENDERER::MeshPassResources resources{};
-            resources.sceneDepthSrv = context.sceneDepthSrv.ptr != 0
-                ? context.sceneDepthSrv
-                : GFX::GetCurrentContext().sceneDepthSrv;
+            resources.sceneDepthSrv = context.sceneDepthSrv;
             resources.ssaoSrv = screenResult.aoSrv;
             if (screenResult.depthPyramid.valid) {
                 resources.depthPyramid = screenResult.depthPyramid;
@@ -136,6 +136,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
     }
 
     bool RenderMeshLightingFrame(
+        const GFX::Context& graphics,
         const RenderViewContext& view,
         const SceneEnvironment& environment,
         RenderDebugView debugView) {
@@ -152,9 +153,15 @@ namespace HIKARI::RENDER3D::PIPELINE {
             return true;
         }
 
-        GFX::PIX::ScopedGpuEvent pixFrame(GFX::GetCurrentContext().cmdList, GFX::PIX::kColorRender, "RenderFrame.MeshLighting");
         const RenderFrameContext frame =
-            BuildRenderFrameContext(view, environment);
+            BuildRenderFrameContext(graphics, view, environment);
+        if (frame.graphics.cmdList == nullptr) {
+            return false;
+        }
+        GFX::PIX::ScopedGpuEvent pixFrame(
+            frame.graphics.cmdList,
+            GFX::PIX::kColorRender,
+            "RenderFrame.MeshLighting");
         const ScreenSpacePassContext screenSpaceContext =
             BuildScreenSpaceContext(frame);
         const RENDER3D::RenderQualitySettings& renderQuality =
@@ -196,10 +203,10 @@ namespace HIKARI::RENDER3D::PIPELINE {
             temporalPipelineAllowed;
         const RENDER3D::TEMPORAL::TemporalFrameState temporalFrame =
             RENDER3D::TEMPORAL::BeginTemporalFrame(temporalDesc);
-        RENDER3D::TEMPORAL::UpdateTemporalResourceSystemContext(GFX::GetCurrentContext());
+        RENDER3D::TEMPORAL::UpdateTemporalResourceSystemContext(frame.graphics);
         (void)RENDER3D::TEMPORAL::BeginTemporalResources(temporalFrame);
         (void)RENDER3D::VOLUMETRIC::PrepareVolumetricLightingFrame(
-            GFX::GetCurrentContext(),
+            frame.graphics,
             temporalFrame,
             environment,
             renderQuality.volumetricLightingQuality,
@@ -227,6 +234,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
                 &temporalFrame.camera.invUnjitteredViewProj;
         }
         if (!MESHRENDERER::BeginFrame(
+            frame.graphics,
             camera,
             environment,
             screenSpaceContext.width,
@@ -253,11 +261,12 @@ namespace HIKARI::RENDER3D::PIPELINE {
                 environment);
         }
         else {
-            RENDER3D::DEPTH::BeginDepthPyramidFrame(GFX::GetCurrentContext().frameIndex);
+            RENDER3D::DEPTH::BeginDepthPyramidFrame(frame.graphics);
             RENDER3D::SCREENSPACE::EnsureScreenSpaceFallbacks(RENDER3D::SCREENSPACE::GetScreenSpaceRuntimeState());
             screenResult.fallbackAoTextureHandle =
                 RENDER3D::SCREENSPACE::GetScreenSpaceRuntimeState().fallbackAoTextureHandle;
-            (void)MESHRENDERER::FinalizeGpuDrivenVisibilityWithoutDepth();
+            (void)MESHRENDERER::FinalizeGpuDrivenVisibilityWithoutDepth(
+                frame.graphics);
         }
 
         // 不透明 mainline を先に scene DSV へ深度だけ描き、ForwardOpaque
@@ -271,14 +280,16 @@ namespace HIKARI::RENDER3D::PIPELINE {
             bool prepassExecuted = false;
             {
                 GFX::PIX::ScopedGpuEvent pixScenePrepass(
-                    GFX::GetCurrentContext().cmdList,
+                    frame.graphics.cmdList,
                     GFX::PIX::kColorRender,
                     "SceneDepthPrepass");
                 GFX::GPU_PROFILE::ScopedGpuTimer gpuScenePrepass(
-                    GFX::GetCurrentContext().cmdList,
+                    frame.graphics.cmdList,
                     GFX::GPU_PROFILE::Pass::DepthPrepass);
                 prepassExecuted =
-                    MESHRENDERER::RenderDepthPrepass(screenSpaceContext.sceneDsv);
+                    MESHRENDERER::RenderDepthPrepass(
+                        frame.graphics,
+                        screenSpaceContext.sceneDsv);
                 if (!POST::PostSystem::RebindCurrentRenderTarget()) {
                     MESHRENDERER::EndFrame();
                     return false;
@@ -320,11 +331,15 @@ namespace HIKARI::RENDER3D::PIPELINE {
 
         bool opaqueOk = false;
         {
-            GFX::PIX::ScopedGpuEvent pixForward(GFX::GetCurrentContext().cmdList, GFX::PIX::kColorRender, "ForwardOpaque");
+            GFX::PIX::ScopedGpuEvent pixForward(
+                frame.graphics.cmdList,
+                GFX::PIX::kColorRender,
+                "ForwardOpaque");
             GFX::GPU_PROFILE::ScopedGpuTimer gpuForward(
-                GFX::GetCurrentContext().cmdList,
+                frame.graphics.cmdList,
                 GFX::GPU_PROFILE::Pass::ForwardOpaque);
             opaqueOk = MESHRENDERER::RenderForwardOpaquePass(
+                frame.graphics,
                 opaqueResources);
         }
         if (opaqueOk && cameraCb != nullptr) {
@@ -353,10 +368,13 @@ namespace HIKARI::RENDER3D::PIPELINE {
                 screenSpaceContext.sceneDepthSrv.ptr != 0 &&
                 screenSpaceContext.renderTargetAccess.BeginDepthRead()) {
                 motionVectorsWritten =
-                    RENDER3D::TEMPORAL::ExecuteMotionVectorPass(temporalInputs);
+                    RENDER3D::TEMPORAL::ExecuteMotionVectorPass(
+                        frame.graphics,
+                        temporalInputs);
                 if (motionVectorsWritten &&
                     screenSpaceContext.readOnlySceneDsv.ptr != 0) {
                     (void)RENDER3D::TEMPORAL::ExecuteTemporalGeometryPass(
+                        frame.graphics,
                         temporalInputs,
                         screenSpaceContext.readOnlySceneDsv);
                 }
@@ -385,12 +403,16 @@ namespace HIKARI::RENDER3D::PIPELINE {
             }
         }
         if (opaqueOk && hasDepthAwareWork) {
-            GFX::PIX::ScopedGpuEvent pixDepthAware(GFX::GetCurrentContext().cmdList, GFX::PIX::kColorRender, "DepthAware");
+            GFX::PIX::ScopedGpuEvent pixDepthAware(
+                frame.graphics.cmdList,
+                GFX::PIX::kColorRender,
+                "DepthAware");
             GFX::GPU_PROFILE::ScopedGpuTimer gpuDepthAware(
-                GFX::GetCurrentContext().cmdList,
+                frame.graphics.cmdList,
                 GFX::GPU_PROFILE::Pass::DepthAware);
             if (POST::PostSystem::BeginCurrentRenderTargetDepthRead()) {
                 depthAwareOk = MESHRENDERER::RenderDepthAwarePass(
+                    frame.graphics,
                     postOpaqueResources);
                 POST::PostSystem::EndCurrentRenderTargetDepthRead();
             } else {
@@ -400,11 +422,15 @@ namespace HIKARI::RENDER3D::PIPELINE {
 
         bool transparentOk = true;
         if (opaqueOk && depthAwareOk && hasTransparentWork) {
-            GFX::PIX::ScopedGpuEvent pixTransparent(GFX::GetCurrentContext().cmdList, GFX::PIX::kColorRender, "ForwardTransparent");
+            GFX::PIX::ScopedGpuEvent pixTransparent(
+                frame.graphics.cmdList,
+                GFX::PIX::kColorRender,
+                "ForwardTransparent");
             GFX::GPU_PROFILE::ScopedGpuTimer gpuTransparent(
-                GFX::GetCurrentContext().cmdList,
+                frame.graphics.cmdList,
                 GFX::GPU_PROFILE::Pass::ForwardTransparent);
             transparentOk = MESHRENDERER::RenderForwardTransparentPass(
+                frame.graphics,
                 postOpaqueResources);
         }
 
@@ -412,23 +438,8 @@ namespace HIKARI::RENDER3D::PIPELINE {
         return opaqueOk && depthAwareOk && transparentOk;
     }
 
-    bool RenderMeshLightingFrame(
-        const Camera3D& camera,
-        const SceneEnvironment& environment,
-        RenderDebugView debugView) {
-
-        ResolvedCameraFrame cameraFrame{};
-        cameraFrame.camera = camera;
-        cameraFrame.valid = true;
-
-        RenderViewContext view{};
-        view.viewId = kPrimaryRenderViewId;
-        view.purpose = RenderViewPurpose::Game;
-        view.cameraFrame = &cameraFrame;
-        return RenderMeshLightingFrame(view, environment, debugView);
-    }
-
     bool RenderMeshCaptureOpaqueFrame(
+        const GFX::Context& graphics,
         const Camera3D& camera,
         const SceneEnvironment& environment,
         uint32_t width,
@@ -439,21 +450,27 @@ namespace HIKARI::RENDER3D::PIPELINE {
         }
 
         GFX::PIX::ScopedGpuEvent pixFrame(
-            GFX::GetCurrentContext().cmdList,
+            graphics.cmdList,
             GFX::PIX::kColorRender,
             "RenderFrame.ReflectionProbeCaptureOpaque");
 
-        if (!MESHRENDERER::BeginFrame(camera, environment, width, height)) {
+        if (!MESHRENDERER::BeginFrame(
+                graphics,
+                camera,
+                environment,
+                width,
+                height)) {
             MESHRENDERER::EndFrame();
             return false;
         }
-        (void)MESHRENDERER::FinalizeGpuDrivenVisibilityWithoutDepth();
+        (void)MESHRENDERER::FinalizeGpuDrivenVisibilityWithoutDepth(graphics);
 
         MESHRENDERER::SetAmbientOcclusionRuntimeEnabled(false);
 
         // Capture は後処理と depth-aware phase を含めない。
         const MESHRENDERER::MeshPassResources captureResources{};
-        const bool opaqueOk = MESHRENDERER::RenderForwardOpaquePass(captureResources);
+        const bool opaqueOk =
+            MESHRENDERER::RenderForwardOpaquePass(graphics, captureResources);
         MESHRENDERER::EndFrame();
         return opaqueOk;
     }

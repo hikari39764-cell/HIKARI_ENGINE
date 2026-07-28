@@ -61,14 +61,13 @@ namespace HIKARI {
                 scene.state_->runtime.world,
                 frame);
 
+            const GFX::Context graphics = GFX::GetCurrentContext();
             SKYRENDERER::Render(
-                faceCamera,
-                captureEnvironment,
+                graphics, faceCamera, captureEnvironment,
                 scene.state_->assets.Models(),
                 scene.state_->lighting.sky);
             MODELRENDERER::RenderOpaqueForReflectionProbeCapture(
-                faceCamera,
-                captureEnvironment,
+                graphics, faceCamera, captureEnvironment,
                 captureTarget.GetResolution(),
                 captureTarget.GetResolution(),
                 isLightProbe

@@ -225,11 +225,11 @@ namespace HIKARI::SKYRENDERER {
             return true;
         }
 
-        bool EnsureInitialized() {
+        bool EnsureInitialized(const GFX::Context& graphics) {
             if (g.initialized) {
                 return true;
             }
-            auto* device = GFX::GetCurrentContext().device;
+            auto* device = graphics.device;
             if (!device) {
                 return false;
             }
@@ -353,14 +353,21 @@ namespace HIKARI::SKYRENDERER {
         g.debug.activeTexturePath.clear();
     }
 
-    void Render(const Camera3D& camera, const SceneEnvironment& environment, ModelManager&, SkyManager& skyManager) {
+    void Render(
+        const GFX::Context& graphics,
+        const Camera3D& camera,
+        const SceneEnvironment& environment,
+        ModelManager&,
+        SkyManager& skyManager) {
         const SkySettings& settings = environment.sky;
         const DirectionalLight& sun = environment.directional;
         g.debug.initialized = g.initialized;
         g.debug.activeSkyAsset = settings.skyAsset;
         g.debug.activeTexturePath.clear();
 
-        if (!settings.enabled || settings.mode == SkyMode::None || !EnsureInitialized()) {
+        if (!settings.enabled ||
+            settings.mode == SkyMode::None ||
+            !EnsureInitialized(graphics)) {
             g.debug.initialized = g.initialized;
             return;
         }
@@ -385,7 +392,7 @@ namespace HIKARI::SKYRENDERER {
             }
         }
 
-        auto* cmd = GFX::GetCurrentContext().cmdList;
+        auto* cmd = graphics.cmdList;
         if (!cmd) {
             return;
         }

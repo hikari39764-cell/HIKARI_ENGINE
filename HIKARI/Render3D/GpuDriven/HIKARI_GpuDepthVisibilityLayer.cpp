@@ -16,6 +16,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
     namespace {
 		// 深度バッファの SRV デスクリプタを作成する。リソースが nullptr の場合は無効な RenderResourceView を返す。
         RenderResourceView CreateVisibilityDepthSrvDescriptor(
+            const GFX::Context& graphics,
             ID3D12Resource* resource,
             DXGI_FORMAT format) {
 
@@ -36,7 +37,10 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             srvDesc.Texture2D.MipLevels = 1;
             srvDesc.Texture2D.PlaneSlice = 0;
             srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
-            GFX::GetCurrentContext().device->CreateShaderResourceView(resource, &srvDesc, view.cpu);
+            graphics.device->CreateShaderResourceView(
+                resource,
+                &srvDesc,
+                view.cpu);
             return view;
         }
     }
@@ -75,11 +79,13 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
     }
 
     D3D12_CPU_DESCRIPTOR_HANDLE GpuDepthVisibilityLayer::BeginDepthPrepass(
+        const GFX::Context& graphics,
         ID3D12GraphicsCommandList* cmd,
         uint32_t width,
         uint32_t height) {
 
-        if (cmd == nullptr || !EnsureDepthResource(width, height)) {
+        if (cmd == nullptr ||
+            !EnsureDepthResource(graphics, width, height)) {
             return {};
         }
 
@@ -98,6 +104,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
     }
 	// 深度プリパスの結果から深度ピラミッドを構築する。視錐台行列を指定することで、深度ピラミッドのビュー行列を設定する、共有リリースキューを使用して、GPU による遅延解放を行う。
     bool GpuDepthVisibilityLayer::BuildDepthPyramidFromVisibilityPrepass(
+        const GFX::Context& graphics,
         ID3D12GraphicsCommandList* cmd,
         uint32_t width,
         uint32_t height,
@@ -130,7 +137,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         desc.viewProj = viewProj;
         desc.viewProjValid = true;
         desc.jitteredViewProj = false;
-        desc.frameIndex = GFX::GetCurrentContext().frameIndex;
+        desc.frameIndex = graphics.frameIndex;
         desc.pixEventName = "DepthPyramid.Build.VisibilityPrepass";
 
         const bool built = depthPyramid_.BuildFromDepthSrv(desc);
@@ -141,6 +148,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
     }
 	// 深度 SRV から深度ピラミッドを構築する。視錐台行列を指定することで、深度ピラミッドのビュー行列を設定する。
     bool GpuDepthVisibilityLayer::BuildDepthPyramidFromDepthSrv(
+        const GFX::Context& graphics,
         ID3D12GraphicsCommandList* cmd,
         uint32_t width,
         uint32_t height,
@@ -162,7 +170,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         desc.viewProj = viewProj;
         desc.viewProjValid = true;
         desc.jitteredViewProj = false;
-        desc.frameIndex = GFX::GetCurrentContext().frameIndex;
+        desc.frameIndex = graphics.frameIndex;
         desc.pixEventName = "DepthPyramid.Build.SceneDepth";
 
         if (!depthPyramid_.BuildFromDepthSrv(desc)) {
@@ -178,7 +186,10 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         return true;
     }
 	//  深度リソースを確保する。指定された幅と高さに基づいて、深度テクスチャ、DSV ヒープ、SRV デスクリプタを作成する。すでに同じサイズのリソースが存在する場合は、再利用する。
-    bool GpuDepthVisibilityLayer::EnsureDepthResource(uint32_t width, uint32_t height) {
+    bool GpuDepthVisibilityLayer::EnsureDepthResource(
+        const GFX::Context& graphics,
+        uint32_t width,
+        uint32_t height) {
         width = std::max(1u, width);
         height = std::max(1u, height);
         if (depthWidth_ == width &&
@@ -191,7 +202,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             return true;
         }
 
-        ID3D12Device* device = GFX::GetCurrentContext().device;
+        ID3D12Device* device = graphics.device;
         if (device == nullptr) {
             return false;
         }
@@ -251,6 +262,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         device->CreateDepthStencilView(visibilityDepth_.Get(), &dsvDesc, visibilityDsv_);
 
         visibilityDepthSrv_ = CreateVisibilityDepthSrvDescriptor(
+            graphics,
             visibilityDepth_.Get(),
             DXGI_FORMAT_R32_FLOAT);
         if (!visibilityDepthSrv_.IsValid()) {

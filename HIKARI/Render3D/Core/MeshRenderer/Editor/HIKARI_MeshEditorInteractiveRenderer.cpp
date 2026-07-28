@@ -20,6 +20,7 @@ namespace HIKARI::MESHRENDERER {
     namespace {
 
         bool RenderEditorInteractiveMainlineStatic(
+            const GFX::Context& graphics,
             const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource& sceneSource,
             const MeshPassResources& passResources,
             const MeshFrameBindingOverrides& overrides) {
@@ -30,7 +31,7 @@ namespace HIKARI::MESHRENDERER {
             if (pass.instances == nullptr ||
                 pass.materialSources == nullptr ||
                 pass.instances->empty() ||
-                GFX::GetCurrentContext().cmdList == nullptr) {
+                graphics.cmdList == nullptr) {
                 return false;
             }
 
@@ -39,6 +40,7 @@ namespace HIKARI::MESHRENDERER {
                 pass.materialSources->size());
             MeshBindingStateCache bindingCache{};
             MeshDrawContext drawContext = BuildDrawContext(
+                graphics,
                 false,
                 MeshDrawPassKind::Forward,
                 passResources,
@@ -103,6 +105,7 @@ namespace HIKARI::MESHRENDERER {
                         : materialAsset,
                     &primitive);
                 ID3D12PipelineState* pipelineState = ResolveTraditionalStaticPso(
+                    graphics,
                     MeshDrawPassKind::Forward,
                     RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardOpaque,
                     variant);
@@ -145,12 +148,13 @@ namespace HIKARI::MESHRENDERER {
         uint32_t screenHeight,
         const EditorInteractiveRenderSettings& settings) {
 
+        const GFX::Context graphics = GFX::GetCurrentContext();
         if (view.cameraFrame == nullptr ||
             !view.cameraFrame->valid ||
             screenWidth == 0 ||
             screenHeight == 0 ||
-            GFX::GetCurrentContext().cmdList == nullptr ||
-            !EnsureInitialized() ||
+            graphics.cmdList == nullptr ||
+            !EnsureInitialized(graphics) ||
             !gMeshRendererState.frameResources.HasActiveDrawResources() ||
             !EnsureEditorInteractiveResources()) {
             return false;
@@ -158,7 +162,7 @@ namespace HIKARI::MESHRENDERER {
 
         EditorInteractiveMeshFrameResources& editorFrame =
             gMeshRendererState.editorInteractive.frames[
-                GFX::GetCurrentContext().frameIndex % GFX::kFrameResourceCount];
+                graphics.frameIndex % GFX::kFrameResourceCount];
         if (!editorFrame.IsReady()) {
             return false;
         }
@@ -279,10 +283,12 @@ namespace HIKARI::MESHRENDERER {
             gMeshRendererState.fallbackTextureHandle;
         const bool mainlineRendered =
             RenderEditorInteractiveMainlineStatic(
+                graphics,
                 sceneSource,
                 passResources,
                 overrides);
         const bool sidecarRendered = ExecuteTraditionalDrawFrame(
+            graphics,
             passResources,
             RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardOpaque,
             MeshDrawPassKind::Forward,

@@ -164,10 +164,11 @@ namespace HIKARI::SHADOW::INTERNAL {
 
     void ClearShadowTraditionalIndirectStreams();
     void UploadShadowMeshShaderJointPalettes();
-    bool BuildShadowGpuDrivenSceneSources();
+    bool BuildShadowGpuDrivenSceneSources(const GFX::Context& graphics);
     void SyncShadowGpuDrivenBackendAvailability();
 
     void BindShadowGpuDrivenFrameResources(
+        const GFX::Context& graphics,
         ID3D12GraphicsCommandList* commandList,
         ID3D12Resource* meshletVisibleRangeBuffer,
         ID3D12Resource* meshletVisibleClusterListBuffer = nullptr,
@@ -205,21 +206,25 @@ namespace HIKARI::SHADOW::INTERNAL {
     void CommitShadowMaterialDataFrame(
         ID3D12GraphicsCommandList* commandList);
     void ActivateShadowFrameResources(uint32_t frameIndex);
-    bool CreateShadowFrameResources(ID3D12Device* device);
+    bool CreateShadowFrameResources(const GFX::Context& graphics);
 
-    bool CreateShadowMapResources(uint32_t resolution);
-    void RestoreMainRenderTarget();
+    bool CreateShadowMapResources(
+        const GFX::Context& graphics,
+        uint32_t resolution);
+    void RestoreMainRenderTarget(const GFX::Context& graphics);
     void PrepareFinalShadowMapForDepthWrite(
         ID3D12GraphicsCommandList* commandList,
         bool clearDepth);
-    void FinishFinalShadowMap(ID3D12GraphicsCommandList* commandList);
+    void FinishFinalShadowMap(
+        const GFX::Context& graphics,
+        ID3D12GraphicsCommandList* commandList);
     bool CopyStaticShadowCacheToFinal(
         ID3D12GraphicsCommandList* commandList);
     bool UpdateStaticShadowCacheFromFinal(
         ID3D12GraphicsCommandList* commandList);
 
-    bool CreateShadowPipelineState(ID3D12Device* device);
-    bool EnsureShadowRendererInitialized();
+    bool CreateShadowPipelineState(const GFX::Context& graphics);
+    bool EnsureShadowRendererInitialized(const GFX::Context& graphics);
 
     void UploadShadowCameraConstants(const ShadowLightFrame& frame);
     void SubmitShadowDebugFrustum(
@@ -227,11 +232,13 @@ namespace HIKARI::SHADOW::INTERNAL {
         const Camera3D& camera);
     void ClearShadowFrameSubmissions();
     bool PrepareShadowSourceForDraw(
+        const GFX::Context& graphics,
         const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource& source);
-    void ResetShadowGpuDrivenWorkFrame();
-    void BuildShadowGpuDrivenWorkFrame();
-    void UploadShadowIndirectDrawFrame();
+    void ResetShadowGpuDrivenWorkFrame(const GFX::Context& graphics);
+    void BuildShadowGpuDrivenWorkFrame(const GFX::Context& graphics);
+    void UploadShadowIndirectDrawFrame(const GFX::Context& graphics);
     bool ExecuteShadowGpuDrivenPass(
+        const GFX::Context& graphics,
         GFX::GPU_PROFILE::Pass traditionalProfilePass,
         GFX::GPU_PROFILE::Pass meshletProfilePass);
 

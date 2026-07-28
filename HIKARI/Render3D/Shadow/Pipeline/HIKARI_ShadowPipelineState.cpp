@@ -107,7 +107,8 @@ namespace HIKARI::SHADOW::INTERNAL {
 
     } // namespace
 
-    bool CreateShadowPipelineState(ID3D12Device* device) {
+    bool CreateShadowPipelineState(const GFX::Context& graphics) {
+        ID3D12Device* device = graphics.device;
         if (!GFX::SupportsShaderModel6(device)) {
             DEBUGLOG::PushRenderError("[Shadow][ERROR] Shader Model 6.0 is not supported by this device.");
             return false;
@@ -284,7 +285,7 @@ namespace HIKARI::SHADOW::INTERNAL {
             DEBUGLOG::PushRenderError("[ShadowMapRenderer][WARN] Shadow skinned indirect command signature initialization failed. Skinned GPU-driven shadow stream will be unavailable.");
         }
         if (!gShadowRendererState.clusterGpuCullingPass.Initialize(
-            device,
+            graphics,
             gShadowRendererState.rootSig.Get(),
             PIPELINE::kShadowStaticRootParamSurfaceGpuSceneControl,
             RENDER3D::GPUDRIVEN::kGpuTraditionalCommandStreamRootConstantCount)) {
@@ -311,11 +312,11 @@ namespace HIKARI::SHADOW::INTERNAL {
         return true;
     }
 
-    bool EnsureShadowRendererInitialized() {
+    bool EnsureShadowRendererInitialized(const GFX::Context& graphics) {
         if (gShadowRendererState.initialized) {
             return true;
         }
-        auto* device = GFX::GetCurrentContext().device;
+        auto* device = graphics.device;
         if (device == nullptr) {
             return false;
         }
@@ -333,8 +334,8 @@ namespace HIKARI::SHADOW::INTERNAL {
             return false;
         }
         gShadowRendererState.initialized =
-            CreateShadowFrameResources(device) &&
-            CreateShadowPipelineState(device);
+            CreateShadowFrameResources(graphics) &&
+            CreateShadowPipelineState(graphics);
         return gShadowRendererState.initialized;
     }
 

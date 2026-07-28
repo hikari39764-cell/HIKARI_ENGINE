@@ -177,7 +177,7 @@ namespace HIKARI::RENDER3D::CLUSTER {
     class ClusterGpuCullingPass final {
     public:
         bool Initialize(
-            ID3D12Device* device,
+            const GFX::Context& graphics,
             ID3D12RootSignature* drawRootSignature,
             UINT rootConstantParameterIndex,
             UINT rootConstantCount,
@@ -433,6 +433,7 @@ namespace HIKARI::RENDER3D::CLUSTER {
         Microsoft::WRL::ComPtr<ID3D12PipelineState> cullPageTasksPipelineState_;
         Microsoft::WRL::ComPtr<ID3D12CommandSignature> dispatchCommandSignature_;
         Microsoft::WRL::ComPtr<ID3D12CommandSignature> meshletDispatchCommandSignature_;
+        ID3D12DescriptorHeap* descriptorHeap_ = nullptr;
         struct FrameResources {
             Microsoft::WRL::ComPtr<ID3D12Resource> constantsUploadBuffer;
             Microsoft::WRL::ComPtr<ID3D12Resource> counterResetUploadBuffer;

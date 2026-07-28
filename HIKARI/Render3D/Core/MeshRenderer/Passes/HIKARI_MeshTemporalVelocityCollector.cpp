@@ -9,6 +9,7 @@ namespace HIKARI::MESHRENDERER {
 
     using namespace INTERNAL;
     void GatherTemporalVelocityDraws(
+        const GFX::Context& graphics,
         std::vector<TemporalVelocityDraw>& outDraws) {
 
         outDraws.clear();
@@ -48,7 +49,7 @@ namespace HIKARI::MESHRENDERER {
                     continue;
                 }
                 Mesh* mesh = gMeshRendererState.primitiveCache.GetOrCreateStatic(
-                    GFX::GetCurrentContext().device,
+                    graphics.device,
                     primitive,
                     &gMeshRendererState.debugStats);
                 if (mesh == nullptr || !mesh->IsValid()) {

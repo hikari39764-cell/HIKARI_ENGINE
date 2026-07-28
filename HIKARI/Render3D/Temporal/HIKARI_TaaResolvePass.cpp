@@ -181,13 +181,14 @@ namespace HIKARI::RENDER3D::TEMPORAL {
     }
 
     RenderTarget2D* ExecuteTaaResolvePass(
+        const GFX::Context& graphics,
         const TemporalInputs& inputs,
         const TaaResolveSettings& settings) {
 
         TaaResolvePassState& state = State();
-        ID3D12GraphicsCommandList* cmd = GFX::GetCurrentContext().cmdList;
-        ID3D12Device* device = GFX::GetCurrentContext().device;
-        ID3D12DescriptorHeap* srvHeap = GFX::GetCurrentContext().srvHeap;
+        ID3D12GraphicsCommandList* cmd = graphics.cmdList;
+        ID3D12Device* device = graphics.device;
+        ID3D12DescriptorHeap* srvHeap = graphics.srvHeap;
         RenderTarget2D* historyTarget = GetHistoryColorWriteRenderTarget();
         RenderTarget2D* historyDepthTarget = GetHistoryDepthWriteRenderTarget();
         RenderTarget2D* outputTarget = GetTaaResolvedColorRenderTarget();

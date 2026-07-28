@@ -7,6 +7,7 @@
 namespace HIKARI::SHADOW::INTERNAL {
 
     void BindShadowGpuDrivenFrameResources(
+        const GFX::Context& graphics,
         ID3D12GraphicsCommandList* cmd,
         ID3D12Resource* meshletVisibleRangeBuffer,
         ID3D12Resource* meshletVisibleClusterListBuffer,
@@ -41,14 +42,14 @@ namespace HIKARI::SHADOW::INTERNAL {
                 gShadowRendererState.surfaceGpuSceneBuffer.GetSrv());
         }
         const D3D12_GPU_DESCRIPTOR_HANDLE texturePoolSrv =
-            RENDER3D::GetMaterialTexturePoolSrvGpuHandle(GFX::GetCurrentContext());
+            RENDER3D::GetMaterialTexturePoolSrvGpuHandle(graphics);
         if (texturePoolSrv.ptr != 0) {
             cmd->SetGraphicsRootDescriptorTable(
                 PIPELINE::kShadowStaticRootParamTexturePool,
                 texturePoolSrv);
         }
         const D3D12_GPU_DESCRIPTOR_HANDLE clusterPoolSrv =
-            RENDER3D::GetClusterGeometryPoolSrvGpuHandle(GFX::GetCurrentContext());
+            RENDER3D::GetClusterGeometryPoolSrvGpuHandle(graphics);
         if (clusterPoolSrv.ptr != 0) {
             cmd->SetGraphicsRootDescriptorTable(
                 PIPELINE::kShadowStaticRootParamClusterGeometryPool,

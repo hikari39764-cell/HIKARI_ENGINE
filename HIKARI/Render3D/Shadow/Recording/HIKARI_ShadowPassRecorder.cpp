@@ -96,11 +96,8 @@ namespace HIKARI::SHADOW::INTERNAL {
         PublishShadowCacheStats();
     }
 
-    void ResetShadowGpuDrivenWorkFrame();
-    void BuildShadowGpuDrivenWorkFrame();
-    void UploadShadowIndirectDrawFrame();
-
     bool UploadShadowGpuSceneFrame(
+        const GFX::Context& graphics,
         const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource& source) {
 
         const bool hasShadowWork = source.HasAnyGpuSceneRanges();
@@ -110,8 +107,8 @@ namespace HIKARI::SHADOW::INTERNAL {
                 : nullptr);
 
         RENDER3D::GPUDRIVEN::GpuDrivenSceneUploadDesc uploadDesc{};
-        uploadDesc.commandList = GFX::GetCurrentContext().cmdList;
-        uploadDesc.frameIndex = GFX::GetCurrentContext().frameIndex;
+        uploadDesc.commandList = graphics.cmdList;
+        uploadDesc.frameIndex = graphics.frameIndex;
         uploadDesc.allowDirtyRangePatching = true;
         const RENDER3D::GPUDRIVEN::GpuDrivenSceneUploadStats& uploadStats =
             gShadowRendererState.gpuDrivenLayer.UploadSceneFrame(uploadDesc);
@@ -134,10 +131,11 @@ namespace HIKARI::SHADOW::INTERNAL {
     }
 
     bool PrepareShadowSourceForDraw(
+        const GFX::Context& graphics,
         const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource& source) {
 
         if (!source.HasAnyGpuSceneRanges()) {
-            ResetShadowGpuDrivenWorkFrame();
+            ResetShadowGpuDrivenWorkFrame(graphics);
             return false;
         }
 
@@ -146,18 +144,21 @@ namespace HIKARI::SHADOW::INTERNAL {
         // later frames and by the correctness fallback.
         gShadowRendererState.activeShadowSceneSource = source;
         ResetShadowMaterialFrame();
-        if (!UploadShadowGpuSceneFrame(gShadowRendererState.activeShadowSceneSource)) {
+        if (!UploadShadowGpuSceneFrame(
+                graphics,
+                gShadowRendererState.activeShadowSceneSource)) {
             return false;
         }
         PrepareShadowSurfaceGpuSceneMaterialFrame();
-        CommitShadowMaterialDataFrame(GFX::GetCurrentContext().cmdList);
-        gShadowRendererState.gpuDrivenLayer.CommitSurfaceGpuSceneMaterialFrame(GFX::GetCurrentContext().cmdList);
-        BuildShadowGpuDrivenWorkFrame();
-        UploadShadowIndirectDrawFrame();
+        CommitShadowMaterialDataFrame(graphics.cmdList);
+        gShadowRendererState.gpuDrivenLayer.CommitSurfaceGpuSceneMaterialFrame(
+            graphics.cmdList);
+        BuildShadowGpuDrivenWorkFrame(graphics);
+        UploadShadowIndirectDrawFrame(graphics);
         return true;
     }
 
-    void ResetShadowGpuDrivenWorkFrame() {
+    void ResetShadowGpuDrivenWorkFrame(const GFX::Context& graphics) {
         gShadowRendererState.gpuDrivenFrame.Reset();
         gShadowRendererState.clusterGpuDrivenProducer.BeginFrame(false);
         gShadowRendererState.gpuDrivenLayer.ImportProducerOutput(
@@ -165,13 +166,13 @@ namespace HIKARI::SHADOW::INTERNAL {
         gShadowRendererState.meshletRenderBackend.ResetFrame();
         SyncShadowGpuDrivenBackendAvailability();
         RENDER3D::GPUDRIVEN::GpuDrivenCommandFrameDesc commandFrameDesc{};
-        commandFrameDesc.commandList = GFX::GetCurrentContext().cmdList;
+        commandFrameDesc.commandList = graphics.cmdList;
         commandFrameDesc.cullViewProj = &gShadowRendererState.lightViewProj;
-        commandFrameDesc.frameIndex = GFX::GetCurrentContext().frameIndex;
+        commandFrameDesc.frameIndex = graphics.frameIndex;
         gShadowRendererState.gpuDrivenLayer.BuildCommandFrame(commandFrameDesc);
     }
 
-    void BuildShadowGpuDrivenWorkFrame() {
+    void BuildShadowGpuDrivenWorkFrame(const GFX::Context& graphics) {
         const RENDER3D::GPUDRIVEN::GpuDrivenFrameBuildInput input =
             RENDER3D::GPUDRIVEN::BuildGpuDrivenFrameInput(
                 gShadowRendererState.activeShadowSceneSource);
@@ -181,23 +182,24 @@ namespace HIKARI::SHADOW::INTERNAL {
         if (!gShadowRendererState.activeShadowSceneSource.HasAnyGpuSceneRanges() ||
             !gShadowRendererState.surfaceGpuSceneBuffer.GetStats().initialized ||
             gShadowRendererState.surfaceGpuSceneBuffer.GetStats().overflowInstanceCount != 0) {
-            ResetShadowGpuDrivenWorkFrame();
+            ResetShadowGpuDrivenWorkFrame(graphics);
             return;
         }
 
         ID3D12DescriptorHeap* srvHeap = RENDER3D::GetTextureResourceSrvHeap();
-        if (GFX::GetCurrentContext().cmdList != nullptr && srvHeap != nullptr) {
+        if (graphics.cmdList != nullptr && srvHeap != nullptr) {
             ID3D12DescriptorHeap* heaps[] = { srvHeap };
-            GFX::GetCurrentContext().cmdList->SetDescriptorHeaps(1, heaps);
+            graphics.cmdList->SetDescriptorHeaps(1, heaps);
         }
 
         gShadowRendererState.clusterGpuDrivenProducer.BeginFrame(false);
         RENDER3D::GPUDRIVEN::GpuDrivenWorkContext workContext{};
         workContext.producer = &gShadowRendererState.clusterGpuDrivenProducer;
-        workContext.commandList = GFX::GetCurrentContext().cmdList;
+        workContext.commandList = graphics.cmdList;
         workContext.viewProj = gShadowRendererState.lightViewProj;
         workContext.cameraPosition = gShadowRendererState.lightCullPosition;
-        workContext.geometryPoolSrv = RENDER3D::GetClusterGeometryPoolSrvGpuHandle(GFX::GetCurrentContext());
+        workContext.geometryPoolSrv =
+            RENDER3D::GetClusterGeometryPoolSrvGpuHandle(graphics);
         workContext.surfaceGpuSceneGpuAddress =
             gShadowRendererState.surfaceGpuSceneBuffer.GetGpuVirtualAddress();
         workContext.frame = &gShadowRendererState.gpuDrivenFrame;
@@ -209,17 +211,17 @@ namespace HIKARI::SHADOW::INTERNAL {
         gShadowRendererState.meshletRenderBackend.ResetFrame();
         SyncShadowGpuDrivenBackendAvailability();
         RENDER3D::GPUDRIVEN::GpuDrivenCommandFrameDesc commandFrameDesc{};
-        commandFrameDesc.commandList = GFX::GetCurrentContext().cmdList;
+        commandFrameDesc.commandList = graphics.cmdList;
         commandFrameDesc.cullViewProj = &gShadowRendererState.lightViewProj;
-        commandFrameDesc.frameIndex = GFX::GetCurrentContext().frameIndex;
+        commandFrameDesc.frameIndex = graphics.frameIndex;
         gShadowRendererState.gpuDrivenLayer.BuildCommandFrame(commandFrameDesc);
     }
 
-    void UploadShadowIndirectDrawFrame() {
+    void UploadShadowIndirectDrawFrame(const GFX::Context& graphics) {
         RENDER3D::GPUDRIVEN::GpuDrivenCommandFrameDesc commandFrameDesc{};
-        commandFrameDesc.commandList = GFX::GetCurrentContext().cmdList;
+        commandFrameDesc.commandList = graphics.cmdList;
         commandFrameDesc.cullViewProj = &gShadowRendererState.lightViewProj;
-        commandFrameDesc.frameIndex = GFX::GetCurrentContext().frameIndex;
+        commandFrameDesc.frameIndex = graphics.frameIndex;
         gShadowRendererState.gpuDrivenLayer.BuildCommandFrame(commandFrameDesc);
 
         const RENDER3D::GPUDRIVEN::GpuTraditionalCommandStreamStats& indirectStats =
@@ -234,11 +236,12 @@ namespace HIKARI::SHADOW::INTERNAL {
     }
 
     bool ExecuteShadowGpuDrivenBackend(
+        const GFX::Context& graphics,
         RENDER3D::GPUDRIVEN::GeometryBackendKind backend,
         GFX::GPU_PROFILE::Pass traditionalProfilePass,
         GFX::GPU_PROFILE::Pass meshletProfilePass) {
 
-        ID3D12GraphicsCommandList* cmd = GFX::GetCurrentContext().cmdList;
+        ID3D12GraphicsCommandList* cmd = graphics.cmdList;
         if (cmd == nullptr) {
             return false;
         }
@@ -303,7 +306,10 @@ namespace HIKARI::SHADOW::INTERNAL {
                 cmd,
                 traditionalProfilePass);
             if (hasStaticStream && gShadowRendererState.staticPso != nullptr) {
-                BindShadowGpuDrivenFrameResources(cmd, nullptr);
+                BindShadowGpuDrivenFrameResources(
+                    graphics,
+                    cmd,
+                    nullptr);
                 cmd->SetPipelineState(gShadowRendererState.staticPso.Get());
                 for (size_t bucketIndex = 0; bucketIndex < commandBucketCount; ++bucketIndex) {
                     cmd->ExecuteIndirect(
@@ -322,7 +328,12 @@ namespace HIKARI::SHADOW::INTERNAL {
             }
 
             if (hasSkinnedStream && gShadowRendererState.skinnedPso != nullptr) {
-                BindShadowGpuDrivenFrameResources(cmd, nullptr, nullptr, true);
+                BindShadowGpuDrivenFrameResources(
+                    graphics,
+                    cmd,
+                    nullptr,
+                    nullptr,
+                    true);
                 cmd->SetPipelineState(gShadowRendererState.skinnedPso.Get());
                 for (size_t bucketIndex = 0; bucketIndex < commandBucketCount; ++bucketIndex) {
                     cmd->ExecuteIndirect(
@@ -356,6 +367,7 @@ namespace HIKARI::SHADOW::INTERNAL {
                 ? backendContext.visibility->visibleMeshletClusterListBuffer
                 : nullptr;
         BindShadowGpuDrivenFrameResources(
+            graphics,
             cmd,
             visibleRangeBuffer,
             visibleClusterListBuffer);
@@ -387,6 +399,7 @@ namespace HIKARI::SHADOW::INTERNAL {
     }
 
     bool ExecuteShadowGpuDrivenPass(
+        const GFX::Context& graphics,
         GFX::GPU_PROFILE::Pass traditionalProfilePass,
         GFX::GPU_PROFILE::Pass meshletProfilePass) {
         const RENDER3D::GPUDRIVEN::GpuDrivenPassKind shadowPass =
@@ -401,6 +414,7 @@ namespace HIKARI::SHADOW::INTERNAL {
         bool executed = false;
         for (size_t i = 0; i < plan.gpuBackendCount; ++i) {
             if (ExecuteShadowGpuDrivenBackend(
+                    graphics,
                     plan.gpuBackends[i],
                     traditionalProfilePass,
                     meshletProfilePass)) {

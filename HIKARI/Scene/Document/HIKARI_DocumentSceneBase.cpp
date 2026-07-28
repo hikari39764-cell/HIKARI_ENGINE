@@ -363,7 +363,8 @@ namespace HIKARI {
             DrawDebugHelpers() && state_->editor.viewportDebugViewState.freezeCullingCamera);
         const Camera3D& renderCamera = state_->camera.editorCamera;
 
-        SKYRENDERER::Render(renderCamera, activeEnvironment, state_->assets.Models(), state_->lighting.sky);
+        const GFX::Context graphics = GFX::GetCurrentContext();
+        SKYRENDERER::Render(graphics, renderCamera, activeEnvironment, state_->assets.Models(), state_->lighting.sky);
         if (DrawDebugHelpers()) {
             if (state_->editor.viewportOverlayState.showLights) {
                 LIGHTDEBUGDRAW::SubmitDirectionalLightArrow(activeEnvironment.directional.direction, activeEnvironment);
@@ -392,7 +393,7 @@ namespace HIKARI {
             ? RENDER3D::RenderViewPurpose::Game
             : RENDER3D::RenderViewPurpose::EditorScene;
         primaryView.cameraFrame = &state_->camera.resolvedFrame;
-        MODELRENDERER::RenderAll(primaryView, activeEnvironment, state_->editor.viewportDebugViewState.renderView);
+        MODELRENDERER::RenderAll(graphics, primaryView, activeEnvironment, state_->editor.viewportDebugViewState.renderView);
         SubmitFrozenCullingCameraDebugFrustum();
         RENDERER3D::RenderAll(renderCamera, static_cast<float>(captureW), static_cast<float>(captureH));
         VFX::Render(renderCamera);

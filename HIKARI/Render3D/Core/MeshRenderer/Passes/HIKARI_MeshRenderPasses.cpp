@@ -10,6 +10,7 @@
 
 namespace HIKARI::MESHRENDERER::INTERNAL {
     bool RenderGeometryAuxPassInternal(
+        const GFX::Context& graphics,
         RENDER3D::SCREENSPACE::ScreenSpaceGeometryAux& geometryAux,
         D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv) {
         if (!HasGpuDrivenPassSource(
@@ -22,7 +23,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             std::max(1.0f, camera ? camera->screenParams.x : 1.0f));
         const uint32_t height = static_cast<uint32_t>(
             std::max(1.0f, camera ? camera->screenParams.y : 1.0f));
-        if (!geometryAux.EnsureSize(width, height)) {
+        if (!geometryAux.EnsureSize(graphics, width, height)) {
             return false;
         }
 
@@ -30,26 +31,32 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             return false;
         }
 
-        GFX::PIX::ScopedGpuEvent pixGeometry(GFX::GetCurrentContext().cmdList, GFX::PIX::kColorRender, "ScreenSpaceGeometryAux");
-        geometryAux.BeginNormalRoughnessPass(GFX::GetCurrentContext().cmdList, sceneDsv);
+        GFX::PIX::ScopedGpuEvent pixGeometry(
+            graphics.cmdList,
+            GFX::PIX::kColorRender,
+            "ScreenSpaceGeometryAux");
+        geometryAux.BeginNormalRoughnessPass(graphics.cmdList, sceneDsv);
         MeshPassResources passResources{};
         const GeometryBackendExecutionResult backendResult =
             ExecuteGeometryBackendPlan(
+                graphics,
                 RENDER3D::GPUDRIVEN::GpuDrivenPassKind::GeometryAux,
                 passResources,
                 MeshDrawPassKind::GeometryAux,
                 RENDER3D::MESHLET::MeshletPipelineKind::GeometryAux);
-        geometryAux.EndNormalRoughnessPass(GFX::GetCurrentContext().cmdList);
+        geometryAux.EndNormalRoughnessPass(graphics.cmdList);
         return backendResult.gpuBackendExecuted;
     }
 
-    bool RenderDepthPrepassInternal(D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv) {
+    bool RenderDepthPrepassInternal(
+        const GFX::Context& graphics,
+        D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv) {
         if (!HasGpuDrivenPassSource(
             RENDER3D::GPUDRIVEN::GpuDrivenPassKind::DepthPrepass)) {
             return false;
         }
 
-        ID3D12GraphicsCommandList* cmd = GFX::GetCurrentContext().cmdList;
+        ID3D12GraphicsCommandList* cmd = graphics.cmdList;
         if (cmd == nullptr || sceneDsv.ptr == 0) {
             return false;
         }
@@ -76,6 +83,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         const MeshPassResources passResources{};
         const GeometryBackendExecutionResult backendResult =
             ExecuteDepthVisibilityBackendPlan(
+                graphics,
                 RENDER3D::GPUDRIVEN::GpuDrivenPassKind::DepthPrepass,
                 passResources);
         return backendResult.gpuBackendExecuted;
@@ -88,9 +96,10 @@ namespace HIKARI::MESHRENDERER {
 
     using namespace INTERNAL;
     bool RenderGeometryAuxPass(
+        const GFX::Context& graphics,
         RENDER3D::SCREENSPACE::ScreenSpaceGeometryAux& geometryAux,
         D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv) {
-        return RenderGeometryAuxPassInternal(geometryAux, sceneDsv);
+        return RenderGeometryAuxPassInternal(graphics, geometryAux, sceneDsv);
     }
 
     bool HasDepthPrepassWork() {
@@ -98,30 +107,35 @@ namespace HIKARI::MESHRENDERER {
             RENDER3D::GPUDRIVEN::GpuDrivenPassKind::DepthPrepass);
     }
 
-    bool RenderDepthPrepass(D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv) {
-        return RenderDepthPrepassInternal(sceneDsv);
+    bool RenderDepthPrepass(
+        const GFX::Context& graphics,
+        D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv) {
+        return RenderDepthPrepassInternal(graphics, sceneDsv);
     }
 
-    bool FinalizeGpuDrivenVisibilityWithoutDepth() {
+    bool FinalizeGpuDrivenVisibilityWithoutDepth(
+        const GFX::Context& graphics) {
         if (!HasGpuDrivenSceneSource()) {
             return false;
         }
 
         GFX::PIX::ScopedGpuEvent pixFinalize(
-            GFX::GetCurrentContext().cmdList,
+            graphics.cmdList,
             GFX::PIX::kColorUpload,
             "GpuDepthVisibility.FinalizeVisibility.NoHZB");
         BuildGpuDrivenWorkFrame(
+            graphics,
             nullptr,
             MakeMainCameraGpuDrivenPassMask(),
             true);
         UpdateGpuDrivenWorkReadyDebugStats();
         UpdateGpuDrivenWorkOwnershipDebugStats();
-        BuildStrictGpuDrivenCommandFrame();
+        BuildStrictGpuDrivenCommandFrame(graphics);
         return true;
     }
 
     bool FinalizeGpuDrivenVisibilityFromDepth(
+        const GFX::Context& graphics,
         const RENDER3D::GPUDRIVEN::GpuDepthVisibilityStats& depthVisibilityStats) {
 
         const HIKARI::RENDER3D::DEPTH::DepthPyramidView& depthPyramid =
@@ -136,20 +150,22 @@ namespace HIKARI::MESHRENDERER {
         }
 
         GFX::PIX::ScopedGpuEvent pixFinalize(
-            GFX::GetCurrentContext().cmdList,
+            graphics.cmdList,
             GFX::PIX::kColorUpload,
             "GpuDepthVisibility.FinalizeVisibility");
         BuildGpuDrivenWorkFrame(
+            graphics,
             &depthPyramid,
             MakeMainCameraGpuDrivenPassMask(),
             true);
         UpdateGpuDrivenWorkReadyDebugStats();
         UpdateGpuDrivenWorkOwnershipDebugStats();
-        BuildStrictGpuDrivenCommandFrame();
+        BuildStrictGpuDrivenCommandFrame(graphics);
         return true;
     }
 
     bool RenderForwardOpaquePass(
+        const GFX::Context& graphics,
         const MeshPassResources& passResources) {
         if (!HasGpuDrivenPassSource(
             RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardOpaque)) {
@@ -157,6 +173,7 @@ namespace HIKARI::MESHRENDERER {
         }
         const GeometryBackendExecutionResult backendResult =
             ExecuteGeometryBackendPlan(
+                graphics,
                 RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardOpaque,
                 passResources,
                 MeshDrawPassKind::Forward,
@@ -165,6 +182,7 @@ namespace HIKARI::MESHRENDERER {
     }
 
     bool RenderForwardTransparentPass(
+        const GFX::Context& graphics,
         const MeshPassResources& passResources) {
         if (!HasGpuDrivenPassSource(
             RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardTransparent)) {
@@ -172,6 +190,7 @@ namespace HIKARI::MESHRENDERER {
         }
         const GeometryBackendExecutionResult backendResult =
             ExecuteGeometryBackendPlan(
+                graphics,
                 RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardTransparent,
                 passResources,
                 MeshDrawPassKind::Forward,
@@ -190,6 +209,7 @@ namespace HIKARI::MESHRENDERER {
     }
 
     bool RenderDepthAwarePass(
+        const GFX::Context& graphics,
         const MeshPassResources& passResources) {
         if (!HasGpuDrivenPassSource(
             RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardDepthAware)) {
@@ -197,6 +217,7 @@ namespace HIKARI::MESHRENDERER {
         }
         const GeometryBackendExecutionResult backendResult =
             ExecuteGeometryBackendPlan(
+                graphics,
                 RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardDepthAware,
                 passResources,
                 MeshDrawPassKind::Forward,

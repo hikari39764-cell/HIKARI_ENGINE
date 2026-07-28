@@ -142,10 +142,12 @@ namespace HIKARI::RENDER3D::TEMPORAL {
         }
     }
 
-    bool ExecuteTemporalMaskPass(const TemporalInputs& inputs) {
-        ID3D12GraphicsCommandList* cmd = GFX::GetCurrentContext().cmdList;
-        ID3D12Device* device = GFX::GetCurrentContext().device;
-        ID3D12DescriptorHeap* srvHeap = GFX::GetCurrentContext().srvHeap;
+    bool ExecuteTemporalMaskPass(
+        const GFX::Context& graphics,
+        const TemporalInputs& inputs) {
+        ID3D12GraphicsCommandList* cmd = graphics.cmdList;
+        ID3D12Device* device = graphics.device;
+        ID3D12DescriptorHeap* srvHeap = graphics.srvHeap;
         RenderTarget2D* reactive = GetReactiveMaskRenderTarget();
         RenderTarget2D* transparency = GetTransparencyMaskRenderTarget();
         RenderTarget2D* invalidDepthMotion =

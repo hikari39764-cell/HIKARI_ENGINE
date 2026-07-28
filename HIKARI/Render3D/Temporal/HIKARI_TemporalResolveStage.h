@@ -2,6 +2,8 @@
 
 #include <cstdint>
 
+#include "Gfx/HIKARI_GfxContext.h"
+
 namespace HIKARI {
     class RenderTarget2D;
 }
@@ -30,6 +32,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
     };
 
     TemporalResolveStageResult ExecuteTemporalResolveStage(
+        const GFX::Context& graphics,
         RenderTarget2D& sceneColorTarget,
         RenderTarget2D& sceneDepthTarget,
         const RenderQualitySettings& quality,

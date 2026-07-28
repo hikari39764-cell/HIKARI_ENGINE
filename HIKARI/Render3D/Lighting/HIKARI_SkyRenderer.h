@@ -3,6 +3,7 @@
 #include <d3d12.h>
 #include <string>
 
+#include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/Core/HIKARI_Camera3D.h"
 #include "Render3D/Models/HIKARI_ModelManager.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
@@ -53,7 +54,12 @@ namespace HIKARI::SKYRENDERER {
 
     void Reset();
     void InvalidateSkyTextureCache();
-    void Render(const Camera3D& camera, const SceneEnvironment& environment, ModelManager& modelManager, SkyManager& skyManager);
+    void Render(
+        const GFX::Context& graphics,
+        const Camera3D& camera,
+        const SceneEnvironment& environment,
+        ModelManager& modelManager,
+        SkyManager& skyManager);
     const SkyRendererDebugState& GetDebugState();
     const SkyEnvironmentData& GetEnvironmentData();
     D3D12_GPU_DESCRIPTOR_HANDLE GetActiveCubemapSrv();

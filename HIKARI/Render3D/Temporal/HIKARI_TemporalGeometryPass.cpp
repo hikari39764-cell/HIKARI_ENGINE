@@ -353,11 +353,12 @@ namespace HIKARI::RENDER3D::TEMPORAL {
     }
 
     bool ExecuteTemporalGeometryPass(
+        const GFX::Context& graphics,
         const TemporalInputs& inputs,
         D3D12_CPU_DESCRIPTOR_HANDLE readOnlyDepthDsv) {
 
-        ID3D12GraphicsCommandList* cmd = GFX::GetCurrentContext().cmdList;
-        ID3D12Device* device = GFX::GetCurrentContext().device;
+        ID3D12GraphicsCommandList* cmd = graphics.cmdList;
+        ID3D12Device* device = graphics.device;
         RenderTarget2D* motionTarget = GetMotionVectorRenderTarget();
         RenderTarget2D* metadataTarget = GetMotionMetadataRenderTarget();
         if (cmd == nullptr ||
@@ -371,7 +372,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
         }
 
         std::vector<MESHRENDERER::TemporalVelocityDraw> draws;
-        MESHRENDERER::GatherTemporalVelocityDraws(draws);
+        MESHRENDERER::GatherTemporalVelocityDraws(graphics, draws);
         uint32_t rigidDrawCount = 0;
         uint32_t skinnedDrawCount = 0;
         uint32_t alphaMaskedDrawCount = 0;

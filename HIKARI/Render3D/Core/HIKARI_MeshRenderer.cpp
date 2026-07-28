@@ -69,19 +69,7 @@ namespace HIKARI::MESHRENDERER {
     }
 
     bool BeginFrame(
-        const Camera3D& camera,
-        const SceneEnvironment& environment,
-        RenderDebugView debugView) {
-        return BeginFrameInternal(
-            camera,
-            environment,
-            0u,
-            0u,
-            debugView,
-            nullptr);
-    }
-
-    bool BeginFrame(
+        const GFX::Context& graphics,
         const Camera3D& camera,
         const SceneEnvironment& environment,
         uint32_t screenWidth,
@@ -89,6 +77,7 @@ namespace HIKARI::MESHRENDERER {
         RenderDebugView debugView,
         const MeshFrameCameraOverrides* cameraOverrides) {
         return BeginFrameInternal(
+            graphics,
             camera,
             environment,
             screenWidth,
@@ -131,6 +120,7 @@ namespace HIKARI::MESHRENDERER {
     }
 
     void RenderAll(
+        const GFX::Context& graphics,
         const RENDER3D::RenderViewContext& view,
         const SceneEnvironment& environment,
         RenderDebugView debugView) {
@@ -138,7 +128,11 @@ namespace HIKARI::MESHRENDERER {
         if (view.cameraFrame == nullptr || !view.cameraFrame->valid) {
             return;
         }
-        (void)RENDER3D::PIPELINE::RenderMeshLightingFrame(view, environment, debugView);
+        (void)RENDER3D::PIPELINE::RenderMeshLightingFrame(
+            graphics,
+            view,
+            environment,
+            debugView);
     }
 
     const MeshRendererDebugStats& GetDebugStats() {

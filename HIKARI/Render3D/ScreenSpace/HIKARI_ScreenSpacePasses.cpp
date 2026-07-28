@@ -143,12 +143,15 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
             if (MESHRENDERER::HasDepthPrepassWork()) {
                 const D3D12_CPU_DESCRIPTOR_HANDLE visibilityDsv =
                     state.depthVisibility.BeginDepthPrepass(
+                        *context.graphics,
                         context.cmd,
                         context.width,
                         context.height);
                 depthWritten =
                     visibilityDsv.ptr != 0 &&
-                    MESHRENDERER::RenderDepthPrepass(visibilityDsv);
+                    MESHRENDERER::RenderDepthPrepass(
+                        *context.graphics,
+                        visibilityDsv);
             }
             result.depthPrepassWritten = depthWritten;
             state.depthVisibility.RecordDepthPrepass(depthWritten);
@@ -156,6 +159,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
             if (depthWritten) {
                 result.hzbBuilt =
                     state.depthVisibility.BuildDepthPyramidFromVisibilityPrepass(
+                        *context.graphics,
                         context.cmd,
                         context.width,
                         context.height,
@@ -174,7 +178,8 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
             state.depthVisibilityViewProj = cullingCameraCb.viewProj;
             if (!state.depthVisibilityValid) {
                 RecordDepthVisibilityWithoutHzb();
-                (void)MESHRENDERER::FinalizeGpuDrivenVisibilityWithoutDepth();
+                (void)MESHRENDERER::FinalizeGpuDrivenVisibilityWithoutDepth(
+                    *context.graphics);
                 return false;
             }
 
@@ -185,6 +190,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
                 DEPTH::DepthPyramidViewKind::CurrentFrame);
             RecordDepthVisibilitySource(DepthVisibilitySource::CurrentPrepass);
             (void)MESHRENDERER::FinalizeGpuDrivenVisibilityFromDepth(
+                *context.graphics,
                 currentDepthStats);
             return true;
         }
@@ -257,7 +263,10 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         const SceneEnvironment& environment) {
 
         ScreenSpaceFrameResult result{};
-        DEPTH::BeginDepthPyramidFrame(GFX::GetCurrentContext().frameIndex);
+        if (context.graphics == nullptr) {
+            return result;
+        }
+        DEPTH::BeginDepthPyramidFrame(*context.graphics);
         const bool fallbackReady = EnsureScreenSpaceFallbacks(state);
         if (fallbackReady) {
             result.fallbackAoTextureResource = state.fallbackAoTextureResource;
@@ -282,7 +291,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
             historyDepthPyramidMatchesCullingView);
         BeginSsaoDebugFrame(context.width, context.height, environment.ambientOcclusion);
 
-        if (context.cmd == nullptr) {
+        if (context.graphics == nullptr || context.cmd == nullptr) {
             state.depthVisibilityValid = false;
             state.depthVisibilityViewProjValid = false;
             state.ssaoValid = false;
@@ -333,6 +342,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
                     DEPTH::DepthPyramidViewKind::History);
                 RecordDepthVisibilitySource(DepthVisibilitySource::Frozen);
                 (void)MESHRENDERER::FinalizeGpuDrivenVisibilityFromDepth(
+                    *context.graphics,
                     state.frozenCullingDepthStats);
             } else if (BuildDepthVisibilityFromOccluderPrepass(
                     state,
@@ -361,6 +371,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
                 DEPTH::DepthPyramidViewKind::History);
             RecordDepthVisibilitySource(DepthVisibilitySource::History);
             (void)MESHRENDERER::FinalizeGpuDrivenVisibilityFromDepth(
+                *context.graphics,
                 historyDepthStats);
         } else if (historyDepthPyramidReady) {
             // History pyramid は健在だが視点が動いて許容差を超えたフレーム。
@@ -370,7 +381,8 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
             state.depthVisibilityValid = false;
             state.depthVisibilityViewProjValid = false;
             RecordDepthVisibilityWithoutHzb();
-            (void)MESHRENDERER::FinalizeGpuDrivenVisibilityWithoutDepth();
+            (void)MESHRENDERER::FinalizeGpuDrivenVisibilityWithoutDepth(
+                *context.graphics);
         } else {
             // Pyramid が構造的に無い (初回 / resize 直後)。occluder prepass から
             // 当該フレームの pyramid を作って遮蔽剔除を確保する。
@@ -423,6 +435,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
             GFX::GPU_PROFILE::Pass::GeometryAux);
         const CpuClock::time_point geometryStart = CpuClock::now();
         result.geometryAuxWritten = MESHRENDERER::RenderGeometryAuxPass(
+            *context.graphics,
             state.geometryAux,
             context.sceneDsv);
         context.renderTargetAccess.Rebind();
@@ -442,6 +455,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         bool ssaoOk = false;
         if (context.renderTargetAccess.BeginDepthRead()) {
             ssaoOk = state.ssaoRenderer.Render(
+                *context.graphics,
                 context.cmd,
                 state.geometryAux,
                 context.sceneDepthSrv,
@@ -507,6 +521,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
             if (state.depthVisibilityBuildAllowedThisFrame &&
                 !MESHRENDERER::IsGpuDrivenCullingCameraFrozen()) {
                 result.hzbBuilt = state.depthVisibility.BuildDepthPyramidFromDepthSrv(
+                    *context.graphics,
                     context.cmd,
                     context.width,
                     context.height,
@@ -532,6 +547,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
 
             if (refreshBalancedSsao) {
                 const bool ssaoOk = state.ssaoRenderer.RenderDepthOnly(
+                    *context.graphics,
                     context.cmd,
                     context.width,
                     context.height,
@@ -567,7 +583,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
             ResolveEffectiveSsaoMode(environment.ambientOcclusion);
         if (ssaoMode != SsaoMode::Balanced ||
             environment.ambientOcclusion.editorViewportSuppressed ||
-            context.cmd == nullptr ||
+            context.graphics == nullptr || context.cmd == nullptr ||
             context.sceneDepthSrv.ptr == 0) {
             return false;
         }
@@ -581,6 +597,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
             GFX::PIX::kColorPost,
             "SSAO.BalancedFromScenePrepass");
         const bool ssaoOk = state.ssaoRenderer.RenderDepthOnly(
+            *context.graphics,
             context.cmd,
             context.width,
             context.height,

@@ -34,6 +34,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
     }
 
     TemporalResolveStageResult ExecuteTemporalResolveStage(
+        const GFX::Context& graphics,
         RenderTarget2D& sceneColorTarget,
         RenderTarget2D& sceneDepthTarget,
         const RenderQualitySettings& quality,
@@ -107,7 +108,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
         const TemporalInputs inputs = BuildTemporalInputs(
             sceneColorTarget,
             sceneDepthTarget);
-        const bool masksWritten = ExecuteTemporalMaskPass(inputs);
+        const bool masksWritten = ExecuteTemporalMaskPass(graphics, inputs);
         const TaaResolveSettings taaSettings = BuildTaaSettings(quality);
 
         RenderTarget2D* resolvedTarget = nullptr;
@@ -121,10 +122,10 @@ namespace HIKARI::RENDER3D::TEMPORAL {
 
         if (streamlineRequested && resolvedTarget == nullptr) {
             UPSCALING::MarkStreamlineDlssFallback();
-            resolvedTarget = ExecuteTaaResolvePass(inputs, taaSettings);
+            resolvedTarget = ExecuteTaaResolvePass(graphics, inputs, taaSettings);
             result.backend = TemporalResolveBackend::TaaFallback;
         } else if (nativeTaaRequested) {
-            resolvedTarget = ExecuteTaaResolvePass(inputs, taaSettings);
+            resolvedTarget = ExecuteTaaResolvePass(graphics, inputs, taaSettings);
             result.backend = TemporalResolveBackend::Taa;
         }
 

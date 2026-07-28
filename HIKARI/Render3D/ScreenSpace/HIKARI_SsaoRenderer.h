@@ -6,6 +6,7 @@
 #include <wrl/client.h>
 
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
+#include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/Core/HIKARI_MeshRendererTypes.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Render3D/ScreenSpace/HIKARI_ScreenSpaceGeometryAux.h"
@@ -44,12 +45,14 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
     class SsaoRenderer {
     public:
         bool Render(
+            const GFX::Context& graphics,
             ID3D12GraphicsCommandList* cmd,
             const ScreenSpaceGeometryAux& geometryAux,
             D3D12_GPU_DESCRIPTOR_HANDLE sceneDepthSrv,
             const MESHRENDERER::CameraCB& camera,
             const AmbientOcclusionSettings& settings);
         bool RenderDepthOnly(
+            const GFX::Context& graphics,
             ID3D12GraphicsCommandList* cmd,
             uint32_t width,
             uint32_t height,
@@ -67,9 +70,14 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         bool IsValid() const { return valid_; }
 
     private:
-        bool EnsureResources(uint32_t width, uint32_t height, bool halfResolution);
-        bool EnsurePipeline();
+        bool EnsureResources(
+            const GFX::Context& graphics,
+            uint32_t width,
+            uint32_t height,
+            bool halfResolution);
+        bool EnsurePipeline(const GFX::Context& graphics);
         bool CreateAoResource(
+            const GFX::Context& graphics,
             uint32_t width,
             uint32_t height,
             GFX::DESCRIPTOR::SystemSrv srvSlot,
@@ -82,6 +90,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         void Transition(ID3D12GraphicsCommandList* cmd, ID3D12Resource* resource, D3D12_RESOURCE_STATES& state, D3D12_RESOURCE_STATES nextState);
         void DrawFullscreen(ID3D12GraphicsCommandList* cmd);
         bool RenderInternal(
+            const GFX::Context& graphics,
             ID3D12GraphicsCommandList* cmd,
             uint32_t width,
             uint32_t height,

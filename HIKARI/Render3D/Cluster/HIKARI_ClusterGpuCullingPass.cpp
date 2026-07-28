@@ -47,9 +47,11 @@ namespace HIKARI::RENDER3D::CLUSTER {
         constexpr uint32_t kClusterMeshletFineCullingOwnerAmplificationShader = 1u;
 
 		// 固定サイズのSRV（Shader Resource View）ディスクリプタを取得します
-        RenderResourceView FixedSrvHeapView(ID3D12Device* device, UINT descriptorIndex) {
+        RenderResourceView FixedSrvHeapView(
+            ID3D12Device* device,
+            ID3D12DescriptorHeap* heap,
+            UINT descriptorIndex) {
             RenderResourceView view{};
-            ID3D12DescriptorHeap* heap = GFX::GetCurrentContext().srvHeap;
             if (device == nullptr ||
                 heap == nullptr ||
                 descriptorIndex >= GFX::DESCRIPTOR::kSrvHeapCapacity) {
@@ -66,6 +68,7 @@ namespace HIKARI::RENDER3D::CLUSTER {
 		// 固定サイズの2DテクスチャのSRV（Shader Resource View）ディスクリプタを作成します
         RenderResourceView CreateFixedTexture2DSrvDescriptor(
             ID3D12Device* device,
+            ID3D12DescriptorHeap* heap,
             ID3D12Resource* resource,
             DXGI_FORMAT format,
             UINT descriptorIndex) {
@@ -74,7 +77,8 @@ namespace HIKARI::RENDER3D::CLUSTER {
                 return {};
             }
 
-            RenderResourceView view = FixedSrvHeapView(device, descriptorIndex);
+            RenderResourceView view =
+                FixedSrvHeapView(device, heap, descriptorIndex);
             if (!view.IsValid() || view.cpu.ptr == 0 || view.gpu.ptr == 0) {
                 return {};
             }
@@ -162,7 +166,7 @@ namespace HIKARI::RENDER3D::CLUSTER {
     }
 	// ClusterGpuCullingPassの初期化を行います   
     bool ClusterGpuCullingPass::Initialize(
-        ID3D12Device* device,
+        const GFX::Context& graphics,
         ID3D12RootSignature* drawRootSignature,
         UINT rootConstantParameterIndex,
         UINT rootConstantCount,
@@ -171,7 +175,9 @@ namespace HIKARI::RENDER3D::CLUSTER {
         size_t candidateCommandCapacity) {
 
         Reset();
-        if (device == nullptr) {
+        ID3D12Device* device = graphics.device;
+        descriptorHeap_ = graphics.srvHeap;
+        if (device == nullptr || descriptorHeap_ == nullptr) {
             return false;
         }
         if (!EnsurePipeline(device)) {
@@ -204,6 +210,7 @@ namespace HIKARI::RENDER3D::CLUSTER {
     }
 	// ClusterGpuCullingPassのリソースをリセットし、関連するD3D12オブジェクトを解放します。
     void ClusterGpuCullingPass::Reset() {
+        descriptorHeap_ = nullptr;
         constantsMapped_ = nullptr;
         counterResetMapped_ = nullptr;
         for (FrameResources& frame : frameResources_) {
@@ -1001,6 +1008,7 @@ namespace HIKARI::RENDER3D::CLUSTER {
 
         fallbackHzbSrv_ = CreateFixedTexture2DSrvDescriptor(
             device,
+            descriptorHeap_,
             fallbackHzb_.Get(),
             kClusterCullHzbFallbackFormat,
             GFX::DESCRIPTOR::kClusterCullFallbackHzbSrv);

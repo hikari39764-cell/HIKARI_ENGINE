@@ -11,8 +11,9 @@
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
 
 namespace HIKARI::MESHRENDERER::INTERNAL {
-    bool CreateBuffers(ID3D12Device* device) {
-        ID3D12DescriptorHeap* srvHeap = GFX::GetCurrentContext().srvHeap;
+    bool CreateBuffers(const GFX::Context& graphics) {
+        ID3D12Device* device = graphics.device;
+        ID3D12DescriptorHeap* srvHeap = graphics.srvHeap;
         if (device == nullptr || srvHeap == nullptr) {
             return false;
         }
@@ -46,20 +47,20 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         if (!gMeshRendererState.frameResources.Initialize(device, srvHeap)) {
             return false;
         }
-        gMeshRendererState.frameResources.Activate(GFX::GetCurrentContext().frameIndex);
+        gMeshRendererState.frameResources.Activate(graphics.frameIndex);
         return true;
     }
 
-    bool EnsureInitialized() {
+    bool EnsureInitialized(const GFX::Context& graphics) {
         if (gMeshRendererState.initialized) {
             return true;
         }
-        auto* device = GFX::GetCurrentContext().device;
+        auto* device = graphics.device;
         if (!device) {
             return false;
         }
 
-        if (!CreateBuffers(device)) {
+        if (!CreateBuffers(graphics)) {
             return false;
         }
         if (!gMeshRendererState.gpuMaterialRegistry.Initialize(
@@ -86,7 +87,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             DEBUGLOG::PushRenderError("[MeshRenderer][WARN] Surface skinned indirect command signature initialization failed. Skinned GPU-driven indirect stream will be unavailable.");
         }
         if (!gMeshRendererState.clusterGpuCullingPass.Initialize(
-            device,
+            graphics,
             GetStaticRootSignature(gMeshRendererState.pipelines),
             ROOT_PARAM::SurfaceGpuSceneControl,
             4u)) {

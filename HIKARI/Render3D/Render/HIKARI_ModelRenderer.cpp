@@ -1,5 +1,6 @@
 #include "Render3D/Render/HIKARI_ModelRenderer.h"
 
+#include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Pipeline/HIKARI_RenderFramePipeline.h"
 #include "Render3D/Shadow/HIKARI_ShadowMapRenderer.h"
@@ -59,6 +60,7 @@ namespace HIKARI::MODELRENDERER {
     }
 
     void RenderAll(
+        const GFX::Context& graphics,
         const RENDER3D::RenderViewContext& view,
         const SceneEnvironment& environment,
         RenderDebugView debugView) {
@@ -69,12 +71,13 @@ namespace HIKARI::MODELRENDERER {
 
         const Camera3D& camera = view.cameraFrame->camera;
         BeginModelRendererFrame(ModelRendererFrameKind::MainView);
-        SHADOW::BeginFrame(environment, camera);
-        SHADOW::RenderDirectionalShadowMap();
-        MESHRENDERER::RenderAll(view, environment, debugView);
+        SHADOW::BeginFrame(graphics, environment, camera);
+        SHADOW::RenderDirectionalShadowMap(graphics);
+        MESHRENDERER::RenderAll(graphics, view, environment, debugView);
     }
 
     void RenderOpaqueForReflectionProbeCapture(
+        const GFX::Context& graphics,
         const Camera3D& camera,
         const SceneEnvironment& environment,
         uint32_t width,
@@ -83,6 +86,7 @@ namespace HIKARI::MODELRENDERER {
 
         BeginModelRendererFrame(kind);
         (void)RENDER3D::PIPELINE::RenderMeshCaptureOpaqueFrame(
+            graphics,
             camera,
             environment,
             width,

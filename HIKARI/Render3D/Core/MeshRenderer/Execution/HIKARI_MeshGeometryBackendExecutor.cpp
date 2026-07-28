@@ -12,6 +12,7 @@
 
 namespace HIKARI::MESHRENDERER::INTERNAL {
     bool ExecuteMeshletDrawFrame(
+        const GFX::Context& graphics,
         const MeshPassResources& passResources,
         RENDER3D::GPUDRIVEN::GpuDrivenPassKind gpuPass,
         MeshDrawPassKind passKind,
@@ -22,7 +23,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
 
         const RENDER3D::GPUDRIVEN::GeometryBackendContext backendContext =
             gMeshRendererState.gpuDrivenLayer.BuildGeometryBackendContext(
-                GFX::GetCurrentContext().cmdList,
+                graphics.cmdList,
                 gpuPass,
                 RENDER3D::GPUDRIVEN::GeometryBackendKind::GpuDrivenMeshShader);
         ID3D12Resource* visibleRangeBuffer =
@@ -41,7 +42,8 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         MeshBindingStateCache bindingCache{};
         const bool depthAwarePhase =
             gpuPass == RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardDepthAware;
-        MeshDrawContext drawCtx = BuildDrawContext(depthAwarePhase, passKind, passResources);
+        MeshDrawContext drawCtx =
+            BuildDrawContext(graphics, depthAwarePhase, passKind, passResources);
         drawCtx.binding.cache = &bindingCache;
         BindSurfaceRecordFrameResources(drawCtx);
         BindMeshletVisibleRanges(
@@ -70,6 +72,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
     }
 
     ID3D12PipelineState* ResolveTraditionalStaticPso(
+        const GFX::Context& graphics,
         MeshDrawPassKind passKind,
         RENDER3D::GPUDRIVEN::GpuDrivenPassKind gpuPass,
         const VFX::VariantKey& bucketVariant) {
@@ -83,13 +86,13 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             return gMeshRendererState.pipelines.depthPso.Get();
         }
         if (passKind != MeshDrawPassKind::Forward ||
-            GFX::GetCurrentContext().device == nullptr) {
+            graphics.device == nullptr) {
             return gMeshRendererState.pipelines.pso.Get();
         }
 
         return GetOrCreateVariantPso(
             gMeshRendererState.pipelines,
-            GFX::GetCurrentContext().device,
+            graphics.device,
             gMeshRendererState.debugStats,
             bucketVariant,
             false,
@@ -97,6 +100,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
     }
 
     ID3D12PipelineState* ResolveTraditionalSkinnedPso(
+        const GFX::Context& graphics,
         MeshDrawPassKind passKind,
         RENDER3D::GPUDRIVEN::GpuDrivenPassKind gpuPass,
         const VFX::VariantKey& bucketVariant) {
@@ -114,7 +118,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             return gMeshRendererState.pipelines.depthSkinnedPso.Get();
         }
         if (passKind != MeshDrawPassKind::Forward ||
-            GFX::GetCurrentContext().device == nullptr) {
+            graphics.device == nullptr) {
             return gMeshRendererState.pipelines.skinnedPso.Get();
         }
 
@@ -122,7 +126,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         key.vertexShaderId.clear();
         return GetOrCreateVariantPso(
             gMeshRendererState.pipelines,
-            GFX::GetCurrentContext().device,
+            graphics.device,
             gMeshRendererState.debugStats,
             key,
             true,
@@ -130,6 +134,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
     }
 
     bool ExecuteTraditionalDrawFrame(
+        const GFX::Context& graphics,
         const MeshPassResources& passResources,
         RENDER3D::GPUDRIVEN::GpuDrivenPassKind gpuPass,
         MeshDrawPassKind passKind
@@ -161,7 +166,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
 #else
             gMeshRendererState.gpuDrivenLayer.BuildGeometryBackendContext(
 #endif
-                GFX::GetCurrentContext().cmdList,
+                graphics.cmdList,
                 gpuPass,
                 RENDER3D::GPUDRIVEN::GeometryBackendKind::GpuDrivenTraditionalVsPs);
         const RENDER3D::GPUDRIVEN::GpuDrivenDrawCommandRange* range =
@@ -216,6 +221,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             gpuPass == RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardDepthAware;
         MeshDrawContext drawCtx =
             BuildDrawContext(
+                graphics,
                 depthAwarePhase,
                 passKind,
                 passResources
@@ -248,6 +254,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                     (*bucketVariants)[bucketIndex];
                 ID3D12PipelineState* bucketPso =
                     ResolveTraditionalStaticPso(
+                        graphics,
                         passKind,
                         gpuPass,
                         bucketVariant);
@@ -255,7 +262,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                     continue;
                 }
                 BindPipelineState(drawCtx.binding, bucketPso);
-                GFX::GetCurrentContext().cmdList->ExecuteIndirect(
+                graphics.cmdList->ExecuteIndirect(
                     range->commandSignature,
                     maxStaticCommandCount,
                     range->argumentBuffer,
@@ -301,6 +308,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                     (*bucketVariants)[bucketIndex];
                 ID3D12PipelineState* bucketPso =
                     ResolveTraditionalSkinnedPso(
+                        graphics,
                         passKind,
                         gpuPass,
                         bucketVariant);
@@ -308,7 +316,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                     continue;
                 }
                 BindPipelineState(drawCtx.binding, bucketPso);
-                GFX::GetCurrentContext().cmdList->ExecuteIndirect(
+                graphics.cmdList->ExecuteIndirect(
                     range->skinnedCommandSignature,
                     maxSkinnedCommandCount,
                     range->skinnedArgumentBuffer,
@@ -331,6 +339,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
     }
 
     bool ExecuteGeometryBackend(
+        const GFX::Context& graphics,
         RENDER3D::GPUDRIVEN::GeometryBackendKind backend,
         RENDER3D::GPUDRIVEN::GpuDrivenPassKind gpuPass,
         const MeshPassResources& passResources,
@@ -340,12 +349,14 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         switch (backend) {
         case RENDER3D::GPUDRIVEN::GeometryBackendKind::GpuDrivenMeshShader:
             return ExecuteMeshletDrawFrame(
+                graphics,
                 passResources,
                 gpuPass,
                 passKind,
                 meshletPipelineKind);
         case RENDER3D::GPUDRIVEN::GeometryBackendKind::GpuDrivenTraditionalVsPs:
             return ExecuteTraditionalDrawFrame(
+                graphics,
                 passResources,
                 gpuPass,
                 passKind);
@@ -355,6 +366,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
     }
 
     GeometryBackendExecutionResult ExecuteGeometryBackendPlan(
+        const GFX::Context& graphics,
         RENDER3D::GPUDRIVEN::GpuDrivenPassKind pass,
         const MeshPassResources& passResources,
         MeshDrawPassKind passKind,
@@ -368,6 +380,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             const RENDER3D::GPUDRIVEN::GeometryBackendKind backend =
                 plan.gpuBackends[i];
             if (!ExecuteGeometryBackend(
+                graphics,
                 backend,
                 pass,
                 passResources,
@@ -382,6 +395,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
     }
 
     GeometryBackendExecutionResult ExecuteDepthVisibilityBackendPlan(
+        const GFX::Context& graphics,
         RENDER3D::GPUDRIVEN::GpuDrivenPassKind pass,
         const MeshPassResources& passResources) {
 
@@ -393,6 +407,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             const RENDER3D::GPUDRIVEN::GeometryBackendKind backend =
                 plan.gpuBackends[i];
             if (!ExecuteGeometryBackend(
+                graphics,
                 backend,
                 pass,
                 passResources,

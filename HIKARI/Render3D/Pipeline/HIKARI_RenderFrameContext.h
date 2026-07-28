@@ -4,6 +4,7 @@
 
 #include <d3d12.h>
 
+#include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/Core/HIKARI_RenderView.h"
 
 namespace HIKARI {
@@ -51,7 +52,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
         RenderViewId viewId{ kPrimaryRenderViewId };
         RenderViewPurpose purpose = RenderViewPurpose::Game;
         bool cameraCut = false;
-        ID3D12GraphicsCommandList* cmd = nullptr;
+        GFX::Context graphics{};
         const Camera3D* camera = nullptr;
         const SceneEnvironment* environment = nullptr;
         uint32_t renderWidth = 1;
@@ -65,6 +66,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
     // Narrow view consumed by screen-space passes.
     struct ScreenSpacePassContext {
         ID3D12GraphicsCommandList* cmd = nullptr;
+        const GFX::Context* graphics = nullptr;
         uint32_t width = 1;
         uint32_t height = 1;
         D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv{};

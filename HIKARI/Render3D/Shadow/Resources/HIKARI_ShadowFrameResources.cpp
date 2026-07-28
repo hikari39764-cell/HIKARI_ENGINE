@@ -120,14 +120,15 @@ namespace HIKARI::SHADOW::INTERNAL {
         gShadowRendererState.activeFrameResourceIndex = frameIndex % GFX::kFrameResourceCount;
     }
 
-    bool CreateShadowFrameResources(ID3D12Device* device) {
+    bool CreateShadowFrameResources(const GFX::Context& graphics) {
+        ID3D12Device* device = graphics.device;
         const UINT cameraBytes = GFX::AlignD3D12ConstantBufferByteSize(sizeof(ShadowCameraCB));
         const UINT materialDataBytes =
             static_cast<UINT>(sizeof(MESHRENDERER::MaterialGpuData) * MESHRENDERER::kMaxMaterialDataCount);
         const UINT paletteBytes = GFX::AlignD3D12ConstantBufferByteSize(sizeof(ShadowJointPaletteCB)) * kMaxShadowCasterObjects;
 
-        ID3D12DescriptorHeap* srvHeap = GFX::GetCurrentContext().srvHeap;
-        if (srvHeap == nullptr) {
+        ID3D12DescriptorHeap* srvHeap = graphics.srvHeap;
+        if (device == nullptr || srvHeap == nullptr) {
             return false;
         }
         const UINT descriptorSize =
@@ -195,7 +196,7 @@ namespace HIKARI::SHADOW::INTERNAL {
             GFX::SetD3D12Name(frame.materialDataBuffer.Get(), L"Shadow MaterialData Buffer");
         }
 
-        ActivateShadowFrameResources(GFX::GetCurrentContext().frameIndex);
+        ActivateShadowFrameResources(graphics.frameIndex);
         return true;
     }
 

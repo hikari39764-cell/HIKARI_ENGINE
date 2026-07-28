@@ -227,6 +227,7 @@ namespace HIKARI::POST {
 
         const auto& quality = RENDER3D::GetRenderQualitySettings();
         auto temporal = RENDER3D::TEMPORAL::ExecuteTemporalResolveStage(
+            context_,
             *volumetric,
             *captured,
             quality,

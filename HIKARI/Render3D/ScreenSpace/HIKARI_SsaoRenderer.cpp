@@ -206,6 +206,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
     }
 
     bool SsaoRenderer::Render(
+        const GFX::Context& graphics,
         ID3D12GraphicsCommandList* cmd,
         const ScreenSpaceGeometryAux& geometryAux,
         D3D12_GPU_DESCRIPTOR_HANDLE sceneDepthSrv,
@@ -218,6 +219,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
             return false;
         }
         return RenderInternal(
+            graphics,
             cmd,
             geometryAux.GetWidth(),
             geometryAux.GetHeight(),
@@ -229,6 +231,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
     }
 
     bool SsaoRenderer::RenderDepthOnly(
+        const GFX::Context& graphics,
         ID3D12GraphicsCommandList* cmd,
         uint32_t width,
         uint32_t height,
@@ -237,6 +240,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         const AmbientOcclusionSettings& settings) {
 
         return RenderInternal(
+            graphics,
             cmd,
             width,
             height,
@@ -248,6 +252,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
     }
 
     bool SsaoRenderer::RenderInternal(
+        const GFX::Context& graphics,
         ID3D12GraphicsCommandList* cmd,
         uint32_t width,
         uint32_t height,
@@ -274,7 +279,8 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
             return false;
         }
         const bool useHalfResolution = modeParams.halfResolution;
-        if (!EnsurePipeline() || !EnsureResources(width, height, useHalfResolution)) {
+        if (!EnsurePipeline(graphics) ||
+            !EnsureResources(graphics, width, height, useHalfResolution)) {
             return false;
         }
         gDebugState.internalWidth = width_;
@@ -332,7 +338,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
             cmd->RSSetScissorRects(1, &scissor);
         };
 
-        ID3D12DescriptorHeap* heaps[] = { GFX::GetCurrentContext().srvHeap };
+        ID3D12DescriptorHeap* heaps[] = { graphics.srvHeap };
         cmd->SetDescriptorHeaps(1, heaps);
 
         // R8 AO target の optimized clear と完全一致させる。
@@ -507,7 +513,11 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         gDebugState.geometryAuxCpuMs = 0.0f;
     }
 
-    bool SsaoRenderer::EnsureResources(uint32_t width, uint32_t height, bool halfResolution) {
+    bool SsaoRenderer::EnsureResources(
+        const GFX::Context& graphics,
+        uint32_t width,
+        uint32_t height,
+        bool halfResolution) {
         const uint32_t screenWidth = std::max(1u, width);
         const uint32_t screenHeight = std::max(1u, height);
         // Optimized 系は AO の作業解像度だけを下げ、外部へ渡す SRV は全解像度に戻す。
@@ -525,7 +535,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
             return true;
         }
 
-        ID3D12Device* device = GFX::GetCurrentContext().device;
+        ID3D12Device* device = graphics.device;
         if (device == nullptr) {
             return false;
         }
@@ -568,13 +578,13 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         height_ = aoHeight;
         halfResolution_ = halfResolution;
 
-        if (!CreateAoResource(aoWidth, aoHeight, GFX::DESCRIPTOR::SystemSrv::SsaoRaw, rawAo_, rawRtv_, rawSrvCpu_, rawSrvGpu_, L"HIKARI.SSAO.Raw")) {
+        if (!CreateAoResource(graphics, aoWidth, aoHeight, GFX::DESCRIPTOR::SystemSrv::SsaoRaw, rawAo_, rawRtv_, rawSrvCpu_, rawSrvGpu_, L"HIKARI.SSAO.Raw")) {
             return false;
         }
-        if (!CreateAoResource(aoWidth, aoHeight, GFX::DESCRIPTOR::SystemSrv::SsaoBlurred, blurredAo_, blurredRtv_, blurredSrvCpu_, blurredSrvGpu_, L"HIKARI.SSAO.Blurred")) {
+        if (!CreateAoResource(graphics, aoWidth, aoHeight, GFX::DESCRIPTOR::SystemSrv::SsaoBlurred, blurredAo_, blurredRtv_, blurredSrvCpu_, blurredSrvGpu_, L"HIKARI.SSAO.Blurred")) {
             return false;
         }
-        if (!CreateAoResource(screenWidth, screenHeight, GFX::DESCRIPTOR::SystemSrv::SsaoResolved, resolvedAo_, resolvedRtv_, resolvedSrvCpu_, resolvedSrvGpu_, L"HIKARI.SSAO.Resolved")) {
+        if (!CreateAoResource(graphics, screenWidth, screenHeight, GFX::DESCRIPTOR::SystemSrv::SsaoResolved, resolvedAo_, resolvedRtv_, resolvedSrvCpu_, resolvedSrvGpu_, L"HIKARI.SSAO.Resolved")) {
             return false;
         }
 
@@ -612,6 +622,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
     }
 
     bool SsaoRenderer::CreateAoResource(
+        const GFX::Context& graphics,
         uint32_t width,
         uint32_t height,
         GFX::DESCRIPTOR::SystemSrv srvSlot,
@@ -621,8 +632,8 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         D3D12_GPU_DESCRIPTOR_HANDLE& outSrvGpu,
         const wchar_t* debugName) {
 
-        ID3D12Device* device = GFX::GetCurrentContext().device;
-        ID3D12DescriptorHeap* srvHeap = GFX::GetCurrentContext().srvHeap;
+        ID3D12Device* device = graphics.device;
+        ID3D12DescriptorHeap* srvHeap = graphics.srvHeap;
         if (device == nullptr || srvHeap == nullptr) {
             return false;
         }
@@ -666,7 +677,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         return true;
     }
 
-    bool SsaoRenderer::EnsurePipeline() {
+    bool SsaoRenderer::EnsurePipeline(const GFX::Context& graphics) {
         if (generatePso_ &&
             optimizedGeneratePso_ &&
             blurPso_ &&
@@ -677,7 +688,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
             return true;
         }
 
-        ID3D12Device* device = GFX::GetCurrentContext().device;
+        ID3D12Device* device = graphics.device;
         if (device == nullptr) {
             return false;
         }

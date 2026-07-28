@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
 
 namespace HIKARI {
@@ -18,6 +19,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
     };
 
     RenderTarget2D* ExecuteTaaResolvePass(
+        const GFX::Context& graphics,
         const TemporalInputs& inputs,
         const TaaResolveSettings& settings);
     void ShutdownTaaResolvePass();

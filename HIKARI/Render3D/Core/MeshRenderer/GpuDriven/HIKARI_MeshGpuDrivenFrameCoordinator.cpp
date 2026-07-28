@@ -35,12 +35,12 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             MakeGpuDrivenPassMask(GpuDrivenPassKind::DepthPrepass);
     }
 
-    void BuildStrictGpuDrivenCommandFrame() {
+    void BuildStrictGpuDrivenCommandFrame(const GFX::Context& graphics) {
         const MATH::Mat4 viewProj = ResolveGpuDrivenCullingViewProj();
         RENDER3D::GPUDRIVEN::GpuDrivenCommandFrameDesc commandFrameDesc{};
-        commandFrameDesc.commandList = GFX::GetCurrentContext().cmdList;
+        commandFrameDesc.commandList = graphics.cmdList;
         commandFrameDesc.cullViewProj = &viewProj;
-        commandFrameDesc.frameIndex = GFX::GetCurrentContext().frameIndex;
+        commandFrameDesc.frameIndex = graphics.frameIndex;
         gMeshRendererState.gpuDrivenLayer.BuildCommandFrame(commandFrameDesc);
         UpdateTraditionalCommandStreamStats();
         UpdateGpuDrivenCommandStreamDebugStats();
@@ -55,8 +55,8 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         UpdateGpuDrivenWorklistDebugStats();
     }
 
-    void ResetGpuDrivenFrameState() {
-        UploadGpuDrivenSceneFrame();
+    void ResetGpuDrivenFrameState(const GFX::Context& graphics) {
+        UploadGpuDrivenSceneFrame(graphics);
         gMeshRendererState.gpuDrivenFrame.Reset();
         UpdateGpuDrivenWorklistDebugStats();
         gMeshRendererState.clusterGpuDrivenProducer.BeginFrame(false);
@@ -67,17 +67,17 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         UpdateGpuDrivenWorkReadyDebugStats();
         UpdateGpuDrivenWorkOwnershipDebugStats();
         RENDER3D::GPUDRIVEN::GpuDrivenCommandFrameDesc commandFrameDesc{};
-        commandFrameDesc.commandList = GFX::GetCurrentContext().cmdList;
-        commandFrameDesc.frameIndex = GFX::GetCurrentContext().frameIndex;
+        commandFrameDesc.commandList = graphics.cmdList;
+        commandFrameDesc.frameIndex = graphics.frameIndex;
         gMeshRendererState.gpuDrivenLayer.BuildCommandFrame(commandFrameDesc);
         UpdateTraditionalCommandStreamStats();
         UpdateGpuDrivenCommandStreamDebugStats();
     }
 
-    void PrepareGpuDrivenFrameState() {
+    void PrepareGpuDrivenFrameState(const GFX::Context& graphics) {
         CPU_PROFILE::ScopedCpuTimer cpuTimer(
             CPU_PROFILE::Pass::MeshPrepare);
-        UploadGpuDrivenSceneFrame();
+        UploadGpuDrivenSceneFrame(graphics);
         if (!gMeshRendererState.gpuDrivenSceneResidency.resident) {
             gMeshRendererState.gpuDrivenFrame.Reset();
             UpdateGpuDrivenWorklistDebugStats();
@@ -89,8 +89,8 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             UpdateGpuDrivenWorkReadyDebugStats();
             UpdateGpuDrivenWorkOwnershipDebugStats();
             RENDER3D::GPUDRIVEN::GpuDrivenCommandFrameDesc commandFrameDesc{};
-            commandFrameDesc.commandList = GFX::GetCurrentContext().cmdList;
-            commandFrameDesc.frameIndex = GFX::GetCurrentContext().frameIndex;
+            commandFrameDesc.commandList = graphics.cmdList;
+            commandFrameDesc.frameIndex = graphics.frameIndex;
             gMeshRendererState.gpuDrivenLayer.BuildCommandFrame(commandFrameDesc);
             UpdateTraditionalCommandStreamStats();
             UpdateGpuDrivenCommandStreamDebugStats();
@@ -98,6 +98,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         }
         BuildGpuDrivenFrameState();
         BuildGpuDrivenWorkFrame(
+            graphics,
             nullptr,
             MakePreDepthGpuDrivenPassMask(),
             false);
@@ -105,26 +106,28 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         UpdateMeshletBackendDebugStats();
         UpdateGpuDrivenWorkReadyDebugStats();
         UpdateGpuDrivenWorkOwnershipDebugStats();
-        BuildStrictGpuDrivenCommandFrame();
+        BuildStrictGpuDrivenCommandFrame(graphics);
     }
 
     void BuildGpuDrivenWorkFrame(
+        const GFX::Context& graphics,
         const HIKARI::RENDER3D::DEPTH::DepthPyramidView* depthPyramid,
         uint32_t passMask,
         bool collectCounterReadback) {
         const MATH::Mat4 viewProj = ResolveGpuDrivenCullingViewProj();
         const MATH::Vec3 cameraPosition = ResolveGpuDrivenCullingCameraPosition();
         ID3D12DescriptorHeap* srvHeap = RENDER3D::GetTextureResourceSrvHeap();
-        if (GFX::GetCurrentContext().cmdList != nullptr && srvHeap != nullptr) {
+        if (graphics.cmdList != nullptr && srvHeap != nullptr) {
             ID3D12DescriptorHeap* heaps[] = { srvHeap };
-            GFX::GetCurrentContext().cmdList->SetDescriptorHeaps(1, heaps);
+            graphics.cmdList->SetDescriptorHeaps(1, heaps);
         }
         RENDER3D::GPUDRIVEN::GpuDrivenWorkContext workContext{};
         workContext.producer = &gMeshRendererState.clusterGpuDrivenProducer;
-        workContext.commandList = GFX::GetCurrentContext().cmdList;
+        workContext.commandList = graphics.cmdList;
         workContext.viewProj = viewProj;
         workContext.cameraPosition = cameraPosition;
-        workContext.geometryPoolSrv = RENDER3D::GetClusterGeometryPoolSrvGpuHandle(GFX::GetCurrentContext());
+        workContext.geometryPoolSrv =
+            RENDER3D::GetClusterGeometryPoolSrvGpuHandle(graphics);
         workContext.surfaceGpuSceneGpuAddress =
             gMeshRendererState.surfaceGpuSceneBuffer.GetGpuVirtualAddress();
         workContext.frame = &gMeshRendererState.gpuDrivenFrame;

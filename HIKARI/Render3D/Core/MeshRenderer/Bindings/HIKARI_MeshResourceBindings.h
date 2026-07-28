@@ -5,6 +5,7 @@
 
 #include <d3d12.h>
 
+#include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/Core/HIKARI_MeshPassResources.h"
 #include "Render3D/Core/MeshRenderer/Pipeline/HIKARI_MeshRootParameters.h"
 
@@ -34,6 +35,7 @@ namespace HIKARI::MESHRENDERER {
     };
 
     struct MeshBindingContext {
+        const GFX::Context* graphics = nullptr;
         ID3D12GraphicsCommandList* cmd = nullptr;
         bool depthAwarePhase = false;
         int fallbackTextureHandle = -1;
