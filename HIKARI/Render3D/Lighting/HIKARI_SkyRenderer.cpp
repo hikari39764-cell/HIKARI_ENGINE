@@ -14,7 +14,7 @@
 #include "Gfx/HIKARI_D3DBlobCompat.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
-#include "HIKARI_Services.h"
+#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
 
 namespace HIKARI::SKYRENDERER {

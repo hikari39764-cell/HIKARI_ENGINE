@@ -1,5 +1,32 @@
-#include "HIKARI_Services.h"
+#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
+#include "Runtime/Presentation/HIKARI_GamePresentationService.h"
+#include "Runtime/Services/HIKARI_RuntimeServices.h"
 #include "Runtime/Services/Internal/HIKARI_RuntimeServiceState.h"
+
+#include <string>
+
+#include "Core/HIKARI_Logger.h"
+#include "Core/HIKARI_TimeService.h"
+#include "Diagnostics/HIKARI_CpuFrameProfiler.h"
+#include "Gfx/HIKARI_GpuFrameProfiler.h"
+#include "Gfx/HIKARI_PixProfiler.h"
+#include "Render2D/HIKARI_Camera.h"
+#include "Render2D/HIKARI_DxRenderer.h"
+#include "Render2D/HIKARI_DxTexture.h"
+#include "Render2D/HIKARI_Renderer.h"
+#include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
+#include "Render3D/Resources/HIKARI_ClusterGeometryResourceSystem.h"
+#include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
+#include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
+#include "Render3D/Temporal/HIKARI_TemporalResourceSystem.h"
+#include "Render3D/Upscaling/HIKARI_StreamlineFrameGeneration.h"
+#include "Render3D/Upscaling/HIKARI_StreamlineFrameGenerationPolicy.h"
+#include "Render3D/Upscaling/HIKARI_StreamlineReflex.h"
+#include "Render3D/Upscaling/HIKARI_StreamlineRuntime.h"
+#include "Runtime/Host/HIKARI_HostBootstrapConfig.h"
+#include "Runtime/Host/HIKARI_IEditorUiServices.h"
+#include "Vfx/Post/HIKARI_PostSystem.h"
+#include "Vfx/Runtime/HIKARI_VfxSystem.h"
 
 namespace HIKARI {
     namespace SERVICES {

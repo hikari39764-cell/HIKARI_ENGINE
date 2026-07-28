@@ -4,7 +4,6 @@
 #include "Editor/Quality/HIKARI_QualityPanelSections.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 #include "Editor/Widgets/HIKARI_PostProfileParameterWidget.h"
-#include "HIKARI_Services.h"
 #include "Render3D/Diagnostics/HIKARI_EnvironmentDiagnostics.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Scene/HIKARI_RuntimeSceneContext.h"

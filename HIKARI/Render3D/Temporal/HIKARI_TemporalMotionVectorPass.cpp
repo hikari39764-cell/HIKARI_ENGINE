@@ -14,7 +14,7 @@
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
-#include "HIKARI_Services.h"
+#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Render3D/Temporal/HIKARI_TemporalResourceSystem.h"
 #include "Render3D/Temporal/Internal/HIKARI_TemporalConstantBufferSlots.h"
 

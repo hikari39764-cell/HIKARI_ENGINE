@@ -14,7 +14,7 @@
 #include "Gfx/HIKARI_D3DBlobCompat.h"
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
-#include "HIKARI_Services.h"
+#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 
 #pragma comment(lib, "d3dcompiler.lib")
 

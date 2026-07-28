@@ -7,7 +7,7 @@
 #include "Assets/Models/HIKARI_ModelAsset.h"
 #include "Render3D/Models/Runtime/HIKARI_ModelTextureResolver.h"
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
-#include "HIKARI_Services.h"
+#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 
 namespace HIKARI::RENDER3D::MODELS {
 

@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
-#include "HIKARI_Services.h"
+#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 
 namespace HIKARI::MESHRENDERER::INTERNAL {
     void UploadGpuDrivenSceneFrame() {

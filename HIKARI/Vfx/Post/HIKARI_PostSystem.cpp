@@ -3,11 +3,11 @@
 #include <algorithm>
 #include <sstream>
 
+#include "Core/Presentation/HIKARI_LogicalDisplayDefaults.h"
 #include "Core/HIKARI_TimeService.h"
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Gfx/HIKARI_D3D12DebugTools.h"
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
-#include "HIKARI_Core.h"
 #include "Render3D/Debug/HIKARI_RenderDebugOutput.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Render3D/Lighting/HIKARI_VolumetricLightingStage.h"

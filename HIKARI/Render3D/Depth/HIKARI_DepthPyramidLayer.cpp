@@ -15,7 +15,7 @@
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
-#include "HIKARI_Services.h"
+#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 
 namespace HIKARI::RENDER3D::DEPTH {
 

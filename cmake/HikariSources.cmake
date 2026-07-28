@@ -1,12 +1,10 @@
 # Authoritative HIKARI compile-source manifest.
 # Add or remove translation units here and keep the source-closure test green.
 
-set(HIKARI_COMPILE_SOURCE_COUNT 706)
+set(HIKARI_COMPILE_SOURCE_COUNT 703)
 
 set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/External/WICTextureLoader.cpp"
-    "${HIKARI_SOURCE_ROOT}/HIKARI/HIKARI_Anim.cpp"
-    "${HIKARI_SOURCE_ROOT}/HIKARI/HIKARI_Bgm.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render2D/HIKARI_Camera.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render2D/HIKARI_DxRenderer.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render2D/HIKARI_DxTexture.cpp"
@@ -124,7 +122,6 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Vfx/Post/HIKARI_SceneCaptureStage.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render2D/HIKARI_Renderer.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render2D/HIKARI_RenderTarget2D.cpp"
-    "${HIKARI_SOURCE_ROOT}/HIKARI/HIKARI_SE.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render2D/HIKARI_SpineActor.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render2D/HIKARI_SpineTextureLoader.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render2D/HIKARI_Texture.cpp"

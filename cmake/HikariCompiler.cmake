@@ -35,6 +35,7 @@ function(hikari_configure_engine_target target_name)
             UNICODE
             _UNICODE
             _WINDOWS
+            NOMINMAX
             _CRT_SECURE_NO_WARNINGS
             _CRT_NONSTDC_NO_DEPRECATE
             $<$<CONFIG:Shipping>:HIKARI_SHIPPING>

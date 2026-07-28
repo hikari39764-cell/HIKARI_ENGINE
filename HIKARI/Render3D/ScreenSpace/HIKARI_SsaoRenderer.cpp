@@ -16,7 +16,7 @@
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
-#include "HIKARI_Services.h"
+#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Render3D/Core/HIKARI_MeshRendererTypes.h"
 
 namespace HIKARI::RENDER3D::SCREENSPACE {

@@ -1,4 +1,4 @@
-﻿#include "HIKARI_ProbeCubemapCaptureTarget.h"
+#include "HIKARI_ProbeCubemapCaptureTarget.h"
 
 #include <algorithm>
 #include <cstring>
@@ -10,7 +10,7 @@
 
 #include "Core/HIKARI_Logger.h"
 #include "Gfx/HIKARI_DXCheck.h"
-#include "HIKARI_Services.h"
+#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 
 namespace HIKARI::TOOLS::BAKING {
 

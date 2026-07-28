@@ -5,7 +5,6 @@
 #include <limits>
 #include <mutex>
 
-#define NOMINMAX
 #include <Windows.h>
 
 #include "Platform/Paths/HIKARI_ExecutablePath.h"

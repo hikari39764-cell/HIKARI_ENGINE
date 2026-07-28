@@ -2,10 +2,10 @@
 
 #include <algorithm>
 
+#include "Core/Presentation/HIKARI_LogicalDisplayDefaults.h"
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Gfx/HIKARI_D3D12DebugTools.h"
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
-#include "HIKARI_Core.h"
 #include "Vfx/Post/HIKARI_PostQuadDrawer.h"
 
 namespace HIKARI::POST {

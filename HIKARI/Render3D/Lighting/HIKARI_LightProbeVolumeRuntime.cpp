@@ -20,7 +20,7 @@
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
-#include "HIKARI_Services.h"
+#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 
 namespace HIKARI::RENDER3D::LIGHTPROBE {
 

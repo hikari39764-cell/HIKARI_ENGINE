@@ -1,6 +1,6 @@
 #include "Render3D/Core/MeshRenderer/Bindings/HIKARI_MeshResourceBindings.h"
 
-#include "HIKARI_Services.h"
+
 #include "Render3D/Lighting/HIKARI_IblEnvironment.h"
 #include "Render3D/Lighting/HIKARI_LightProbeVolumeRuntime.h"
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"

@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "Assets/Models/HIKARI_ModelAsset.h"
-#include "HIKARI_Services.h"
+#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 
 namespace HIKARI::RENDER3D::MODELS {
 

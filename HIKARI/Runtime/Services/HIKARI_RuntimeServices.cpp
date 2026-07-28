@@ -1,9 +1,38 @@
-#include "HIKARI_Services.h"
+#include "Runtime/Services/HIKARI_RuntimeServices.h"
+#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
+#include "Runtime/Presentation/HIKARI_GamePresentationService.h"
 #include "Runtime/Services/Internal/HIKARI_RuntimeServiceState.h"
 
+#include <algorithm>
+#include <iomanip>
 #include <objbase.h>
+#include <sstream>
+#include <utility>
 
+#include "Audio/HIKARI_Audio.h"
+#include "Core/HIKARI_Logger.h"
+#include "Gfx/HIKARI_PixProfiler.h"
 #include "Project/HIKARI_ProjectContext.h"
+#include "Render2D/HIKARI_Camera.h"
+#include "Render2D/HIKARI_DxRenderer.h"
+#include "Render2D/HIKARI_DxTexture.h"
+#include "Render3D/Lighting/HIKARI_VolumetricLightingStage.h"
+#include "Render3D/Material/HIKARI_DefaultPbrResources.h"
+#include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
+#include "Render3D/Resources/HIKARI_ClusterGeometryResourceSystem.h"
+#include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
+#include "Render3D/Temporal/HIKARI_TaaResolvePass.h"
+#include "Render3D/Temporal/HIKARI_TemporalGeometryPass.h"
+#include "Render3D/Temporal/HIKARI_TemporalMaskPass.h"
+#include "Render3D/Temporal/HIKARI_TemporalMotionVectorPass.h"
+#include "Render3D/Temporal/HIKARI_TemporalResourceSystem.h"
+#include "Render3D/Upscaling/HIKARI_StreamlineFrameGeneration.h"
+#include "Render3D/Upscaling/HIKARI_StreamlineReflex.h"
+#include "Render3D/Upscaling/HIKARI_StreamlineRuntime.h"
+#include "Runtime/Host/HIKARI_HostBootstrapConfig.h"
+#include "Runtime/Host/HIKARI_IEditorUiServices.h"
+#include "Vfx/Post/HIKARI_PostSystem.h"
+#include "Vfx/Runtime/HIKARI_VfxSystem.h"
 
 namespace HIKARI {
     namespace SERVICES {

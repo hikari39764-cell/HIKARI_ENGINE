@@ -4,7 +4,7 @@
 #include <vector>
 
 #include "Core/HIKARI_TimeService.h"
-#include "HIKARI_Services.h"
+#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Render3D/Core/MeshRenderer/Bindings/HIKARI_MeshResourceBindings.h"
 #include "Render3D/Core/MeshRenderer/Pipeline/HIKARI_MeshPipelineStore.h"
 #include "Render3D/Core/MeshRenderer/Pipeline/HIKARI_MeshRootParameters.h"

@@ -31,7 +31,6 @@ foreach(runtime_source IN LISTS HIKARI_RUNTIME_SOURCES)
     if(
         runtime_relative_path MATCHES
         "^HIKARI/(Core|Diagnostics|Platform|Input|Audio)/" OR
-        runtime_relative_path MATCHES "^HIKARI/HIKARI_(Anim|Bgm|SE)\\.cpp$" OR
         runtime_relative_path STREQUAL "External/WICTextureLoader.cpp" OR
         runtime_relative_path STREQUAL "Matrix3x3.cpp" OR
         runtime_relative_path STREQUAL "SpineDefaultExtensionShim.cpp")

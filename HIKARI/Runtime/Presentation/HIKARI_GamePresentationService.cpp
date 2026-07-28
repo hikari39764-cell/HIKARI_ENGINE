@@ -1,5 +1,20 @@
-#include "HIKARI_Services.h"
+#include "Runtime/Presentation/HIKARI_GamePresentationService.h"
+#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
+#include "Runtime/Services/HIKARI_RuntimeServices.h"
 #include "Runtime/Services/Internal/HIKARI_RuntimeServiceState.h"
+
+#include <algorithm>
+#include <iomanip>
+#include <sstream>
+#include <string>
+
+#include "Core/HIKARI_Logger.h"
+#include "Core/HIKARI_TimeService.h"
+#include "Render2D/HIKARI_Camera.h"
+#include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
+#include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
+#include "Render3D/Upscaling/HIKARI_StreamlineFrameGeneration.h"
+#include "Render3D/Upscaling/HIKARI_StreamlineRuntime.h"
 
 namespace HIKARI {
     namespace SERVICES {
