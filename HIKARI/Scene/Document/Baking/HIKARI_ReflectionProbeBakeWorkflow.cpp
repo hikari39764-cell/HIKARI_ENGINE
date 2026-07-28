@@ -21,6 +21,16 @@ namespace HIKARI {
         if (!reflectionProbeJob_) {
             return false;
         }
+        if (reflectionProbeJob_->state ==
+            TOOLS::BAKING::LightingBakeJobState::Failed) {
+            queuedBakeItems_.clear();
+            reflectionProbeJob_.reset();
+            batchItemCount_ = 0u;
+            batchCompletedItemCount_ = 0u;
+            batchReusedItemCount_ = 0u;
+            batchForce_ = false;
+            return false;
+        }
 
         ReflectionProbeJob& job = *reflectionProbeJob_;
         if (job.state == TOOLS::BAKING::LightingBakeJobState::Requested) {
@@ -186,6 +196,9 @@ namespace HIKARI {
                     job.request.sceneGuid,
                     job.report.warnings);
             ReplaceReflectionProbeRecord(manifest, bake.record);
+            manifest.sceneHash = job.request.sceneHash;
+            manifest.dependencyHash = job.request.dependencyHash;
+            manifest.activeScenario = job.request.scenario;
 
             std::string manifestMessage{};
             if (!ASSETS::LIGHTING::SaveLightingBakeManifest(
@@ -218,10 +231,15 @@ namespace HIKARI {
 
             job.state = TOOLS::BAKING::LightingBakeJobState::Completed;
             SetBakeJobState(job.report, job.state);
+            ++batchCompletedItemCount_;
+            job.report.completedItemCount =
+                batchCompletedItemCount_ + batchReusedItemCount_;
             lastReport_ = job.report;
             HIKARI_LOG_INFO("[LightingBake] reflection probe scene capture finalized scene=" +
                 job.request.sceneGuid +
                 " manifest=" + job.report.manifestPath.generic_string());
+            reflectionProbeJob_.reset();
+            return StartNextQueuedBake(scene);
         }
 
         return false;

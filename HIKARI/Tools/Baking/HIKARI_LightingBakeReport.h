@@ -15,11 +15,10 @@ namespace HIKARI::TOOLS::BAKING {
     };
 
     enum class LightingBakeAction {
-        PrepareManifest,
         ClearBake,
         BakeReflectionProbes,
         BakeLightProbes,
-        ValidateOnly,
+        BakeLighting,
     };
 
     enum class LightingBakeJobState {
@@ -67,7 +66,7 @@ namespace HIKARI::TOOLS::BAKING {
         bool lightProbeVolumeWritten = false;
         bool lightProbeRecordWritten = false;
         bool lightProbeDebugJsonWritten = false;
-        LightingBakeAction action = LightingBakeAction::ValidateOnly;
+        LightingBakeAction action = LightingBakeAction::BakeLighting;
         LightingBakeTarget target = LightingBakeTarget::All;
         LightingBakeJobState jobState = LightingBakeJobState::Idle;
         std::filesystem::path bakeRoot{};
@@ -95,6 +94,12 @@ namespace HIKARI::TOOLS::BAKING {
         uint32_t lightProbeQueuedReadbackFaceCount = 0;
         uint32_t lightProbeCurrentProbeIndex = 0;
         uint32_t lightProbeCurrentFaceIndex = 0;
+        uint32_t bakeItemCount = 0;
+        uint32_t dirtyItemCount = 0;
+        uint32_t reusedItemCount = 0;
+        uint32_t completedItemCount = 0;
+        std::string currentItemName{};
+        std::vector<std::string> dirtyReasons{};
         std::vector<std::string> reflectionProbeFaceSummaries{};
         std::vector<std::string> lightProbeMessages{};
         std::vector<std::string> messages{};
@@ -119,16 +124,14 @@ namespace HIKARI::TOOLS::BAKING {
 
     inline const char* ToString(LightingBakeAction action) {
         switch (action) {
-        case LightingBakeAction::PrepareManifest:
-            return "PrepareManifest";
         case LightingBakeAction::ClearBake:
             return "ClearBake";
         case LightingBakeAction::BakeReflectionProbes:
             return "BakeReflectionProbes";
         case LightingBakeAction::BakeLightProbes:
             return "BakeLightProbes";
-        case LightingBakeAction::ValidateOnly:
-            return "ValidateOnly";
+        case LightingBakeAction::BakeLighting:
+            return "BakeLighting";
         default:
             return "Unknown";
         }

@@ -16,16 +16,45 @@ namespace HIKARI {
         constexpr unsigned int kColliderColor = 0x4DA6FFFF;
         constexpr unsigned int kSelectedColliderColor = 0xFFD166FF;
         constexpr unsigned int kTriggerColor = 0x55FF99FF;
+        constexpr unsigned int kSelectionHaloColor = 0x101820B8;
 
         unsigned int ResolveShapeColor(
-            bool isTrigger,
-            bool selected) noexcept {
-            if (isTrigger) {
-                return kTriggerColor;
+            bool isTrigger) noexcept {
+            return isTrigger ? kTriggerColor : kColliderColor;
+        }
+
+        void SubmitColliderShape(
+            const MATH::Mat4& bodyWorld,
+            const PHYSICS::PhysicsShapeDesc& shape,
+            bool selected) {
+
+            const unsigned int typeColor =
+                ResolveShapeColor(shape.isTrigger);
+            if (selected) {
+                DEBUG::DrawPhysicsShape(
+                    bodyWorld,
+                    shape,
+                    DEBUG::PhysicsShapeDebugStyle{
+                        kSelectionHaloColor,
+                        0u,
+                        5.4f,
+                        true
+                    });
             }
-            return selected
-                ? kSelectedColliderColor
-                : kColliderColor;
+            DEBUG::DrawPhysicsShape(
+                bodyWorld,
+                shape,
+                DEBUG::PhysicsShapeDebugStyle{
+                    selected
+                        ? kSelectedColliderColor
+                        : typeColor,
+                    shape.isTrigger
+                        ? (typeColor & 0xFFFFFF00u) |
+                            (selected ? 0x26u : 0x16u)
+                        : 0u,
+                    selected ? 2.8f : 1.6f,
+                    false
+                });
         }
 
         void DrawCollider(
@@ -67,10 +96,9 @@ namespace HIKARI {
                     if (shape.key.sourceShapeId == 0u) {
                         continue;
                     }
-                    DEBUG::DrawPhysicsShape(
+                    SubmitColliderShape(
                         bodyWorld,
                         shape,
-                        ResolveShapeColor(shape.isTrigger, selected),
                         selected);
                 }
             }
@@ -88,10 +116,9 @@ namespace HIKARI {
                             collider,
                             objectScale,
                             componentOrdinal);
-                    DEBUG::DrawPhysicsShape(
+                    SubmitColliderShape(
                         bodyWorld,
                         shape,
-                        ResolveShapeColor(shape.isTrigger, selected),
                         selected);
                 });
         }

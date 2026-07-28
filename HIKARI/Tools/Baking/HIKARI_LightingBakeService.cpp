@@ -1,21 +1,15 @@
 #include "HIKARI_LightingBakeService.h"
 
-#include "Assets/HIKARI_AssetRegistry.h"
-#include "Assets/HIKARI_AssetTypes.h"
+#include "Assets/HIKARI_AssetDatabase.h"
+#include "Assets/Lighting/HIKARI_LightingBakeDependencyHash.h"
 #include "Core/IO/HIKARI_PathNormalization.h"
 #include "Core/HIKARI_Logger.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
 #include "Project/Paths/HIKARI_ProjectPath.h"
 #include "Scene/HIKARI_SceneDocument.h"
+#include "Scene/Lighting/HIKARI_LightingAuthoringModel.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
-#include "Tools/Baking/HIKARI_ReflectionProbeBaker.h"
-
 #include <algorithm>
-#include <chrono>
-#include <cctype>
-#include <ctime>
-#include <iomanip>
-#include <sstream>
 #include <system_error>
 #include <utility>
 
@@ -45,21 +39,6 @@ namespace HIKARI::TOOLS::BAKING {
             return lhs.compare(0, rhs.size(), rhs) == 0 && lhs[rhs.size()] == '/';
         }
 
-        std::string MakeBakeGuid() {
-            const auto now = std::chrono::system_clock::now();
-            const std::time_t time = std::chrono::system_clock::to_time_t(now);
-            std::tm local{};
-#if defined(_WIN32)
-            localtime_s(&local, &time);
-#else
-            localtime_r(&time, &local);
-#endif
-
-            std::ostringstream oss{};
-            oss << "bake_" << std::put_time(&local, "%Y%m%d_%H%M%S");
-            return oss.str();
-        }
-
         void FillBakePaths(const LightingBakeRequest& request, LightingBakeReport& report) {
             if (!request.projectRoot.empty() && !request.sceneGuid.empty()) {
                 report.bakeRoot = ASSETS::LIGHTING::BuildLightingBakeRoot(
@@ -71,138 +50,198 @@ namespace HIKARI::TOOLS::BAKING {
             }
         }
 
-        bool ValidateStableSceneForPrepare(const LightingBakeRequest& request, LightingBakeReport& report) {
-            if (request.projectRoot.empty()) {
-                AddError(report, "Project root is empty.");
-            }
-            if (request.sceneGuid.empty()) {
-                AddError(report, "Current scene has no stable asset GUID. Save scene before preparing lighting bake.");
-            }
-            if (!request.sceneDocument) {
-                AddError(report, "SceneDocument is missing.");
-            }
-            return report.errors.empty();
-        }
+        bool ProjectRelativeOutputExists(
+            const std::filesystem::path& projectRoot,
+            const std::string& path) {
 
-        LightingBakeRequest BuildRequestFromScene(DocumentSceneBase& scene, LightingBakeTarget target) {
-            LightingBakeRequest request{};
-            request.projectRoot = scene.GetAssetDatabase().GetProjectRoot();
-            request.sceneGuid = scene.GetCurrentSceneAssetGuid().value;
-            request.sceneName = scene.GetCurrentSceneDisplayName();
-            request.scenePath = scene.GetScenePath();
-            request.sceneDocument = &scene.GetSceneDocument();
-            request.target = target;
-            return request;
+            if (path.empty()) {
+                return false;
+            }
+            std::error_code ec{};
+            return std::filesystem::exists(
+                PROJECT_PATHS::ResolveProjectPath(projectRoot, path),
+                ec) && !ec;
         }
 
     } // namespace
 
-    LightingBakeReport LightingBakeService::ValidateLightingBakeSetup(const LightingBakeRequest& request) const {
-        LightingBakeReport report{};
-        report.action = LightingBakeAction::ValidateOnly;
-        report.target = request.target;
-        FillBakePaths(request, report);
+    LightingBakeReport LightingBakeService::BakeDirtyLighting(
+        DocumentSceneBase& scene) const {
 
-        if (request.projectRoot.empty()) {
-            AddError(report, "Project root is empty.");
-        }
-        if (request.sceneGuid.empty()) {
-            AddError(report, "Current scene has no stable asset GUID. Save scene before preparing lighting bake.");
-        }
-        if (!request.sceneDocument) {
-            AddError(report, "SceneDocument is missing.");
-        }
-
-        AppendSceneAuthoringSummary(request, report);
-        report.messages.push_back("Lighting bake manifest can be prepared independently from GPU bake jobs.");
-
-        HIKARI_LOG_INFO("[LightingBake] validate scene=" + request.sceneGuid +
-            " success=" + std::string(report.success ? "true" : "false"));
-        return report;
+        (void)scene.RequestLightingBake(false);
+        return scene.HasLastLightingBakeReport()
+            ? scene.GetLastLightingBakeReport()
+            : LightingBakeReport{};
     }
 
-    LightingBakeReport LightingBakeService::PrepareLightingBakeManifest(const LightingBakeRequest& request) const {
-        LightingBakeReport report{};
-        report.action = LightingBakeAction::PrepareManifest;
-        report.target = request.target;
-        FillBakePaths(request, report);
+    LightingBakeReport LightingBakeService::BakeAllLighting(
+        DocumentSceneBase& scene) const {
 
-        // Scene capture bake は GPU job として Scene 側に委譲する。
-        if (!ValidateStableSceneForPrepare(request, report)) {
-            AppendSceneAuthoringSummary(request, report);
-            return report;
-        }
-
-        std::error_code ec{};
-        std::filesystem::create_directories(report.bakeRoot, ec);
-        if (ec) {
-            AddError(report, "Failed to create bake folder: " + ec.message());
-            return report;
-        }
-        report.bakeFolderCreated = true;
-
-        const ASSETS::LIGHTING::LightingBakeManifest manifest = BuildEmptyManifest(request);
-        std::string saveMessage{};
-        // 空の manifest を保存して bake 出力先を確定する。
-        if (!ASSETS::LIGHTING::SaveLightingBakeManifest(report.manifestPath, manifest, &saveMessage)) {
-            AddError(report, saveMessage);
-            return report;
-        }
-
-        report.manifestWritten = true;
-        report.messages.push_back(saveMessage);
-        report.messages.push_back("Lighting bake manifest prepared: " + report.manifestPath.generic_string());
-        AppendSceneAuthoringSummary(request, report);
-
-        HIKARI_LOG_INFO("[LightingBake] manifest prepared scene=" + request.sceneGuid +
-            " path=" + report.manifestPath.generic_string());
-        return report;
+        (void)scene.RequestLightingBake(true);
+        return scene.HasLastLightingBakeReport()
+            ? scene.GetLastLightingBakeReport()
+            : LightingBakeReport{};
     }
 
-    LightingBakeReport LightingBakeService::BakeReflectionProbesOnly(DocumentSceneBase& scene) const {
-        const LightingBakeRequest request =
-            BuildRequestFromScene(scene, LightingBakeTarget::ReflectionProbesOnly);
+    LightingBakeReport LightingBakeService::BakeSelectedLighting(
+        DocumentSceneBase& scene) const {
 
-        LightingBakeReport report{};
-        report.action = LightingBakeAction::BakeReflectionProbes;
-        report.target = request.target;
-        FillBakePaths(request, report);
+        (void)scene.RequestLightingBake(
+            true,
+            scene.GetSelectedGizmoObjectId());
+        return scene.HasLastLightingBakeReport()
+            ? scene.GetLastLightingBakeReport()
+            : LightingBakeReport{};
+    }
 
-        // Scene capture bake は GPU job として Scene 側に委譲する。
-        if (!scene.RequestReflectionProbeBake()) {
-            if (scene.HasLastLightingBakeReport()) {
-                return scene.GetLastLightingBakeReport();
+    LightingBakeStatus LightingBakeService::AnalyzeLightingBakeStatus(
+        const LightingBakeRequest& request) const {
+
+        LightingBakeStatus status{};
+        if (request.sceneDocument == nullptr ||
+            request.assetDatabase == nullptr ||
+            request.projectRoot.empty() ||
+            request.sceneGuid.empty()) {
+            status.warnings.push_back(
+                "Save the scene before analyzing lighting bake state.");
+            return status;
+        }
+
+        const ASSETS::LIGHTING::LightingBakeHashSnapshot hashes =
+            ASSETS::LIGHTING::BuildLightingBakeHashSnapshot(
+                *request.sceneDocument,
+                *request.assetDatabase);
+        status.sceneHash = hashes.sceneHash;
+        status.dependencyHash = hashes.dependencyHash;
+        for (const std::string& missing : hashes.missingAssetIds) {
+            status.warnings.push_back(
+                "Missing lighting dependency: " + missing);
+        }
+
+        ASSETS::LIGHTING::LightingBakeManifest manifest{};
+        const std::filesystem::path manifestPath =
+            ASSETS::LIGHTING::BuildLightingBakeManifestPath(
+                request.projectRoot,
+                request.sceneGuid);
+        std::string manifestMessage{};
+        const bool hasManifest =
+            std::filesystem::exists(manifestPath) &&
+            ASSETS::LIGHTING::LoadLightingBakeManifest(
+                manifestPath,
+                manifest,
+                &manifestMessage);
+
+        const auto classify = [&](
+            LightingBakeItemStatus& item,
+            const std::string& recordAuthoringHash,
+            const std::string& recordDependencyHash,
+            bool outputExists) {
+
+            if (!item.enabled) {
+                item.dirty = false;
+                item.dirtyReason = "Disabled";
+            } else if (!hasManifest) {
+                item.dirtyReason = "No bake manifest";
+            } else if (recordAuthoringHash.empty()) {
+                item.dirtyReason = "No baked record";
+            } else if (recordAuthoringHash != item.authoringHash) {
+                item.dirtyReason = "Authoring changed";
+            } else if (recordDependencyHash != hashes.dependencyHash) {
+                item.dirtyReason = "Scene or asset dependency changed";
+            } else if (!outputExists) {
+                item.dirtyReason = "Baked output missing";
+            } else {
+                item.dirty = false;
+                item.dirtyReason = "Ready";
             }
-            AddError(report, "Failed to request reflection probe scene capture.");
-            return report;
-        }
-        if (scene.HasLastLightingBakeReport()) {
-            return scene.GetLastLightingBakeReport();
-        }
-        return report;
-    }
-
-    LightingBakeReport LightingBakeService::BakeLightProbesOnly(DocumentSceneBase& scene) const {
-        const LightingBakeRequest request =
-            BuildRequestFromScene(scene, LightingBakeTarget::LightProbesOnly);
-
-        LightingBakeReport report{};
-        report.action = LightingBakeAction::BakeLightProbes;
-        report.target = request.target;
-        FillBakePaths(request, report);
-
-        // Scene capture bake は GPU job として Scene 側に委譲する。
-        if (!scene.RequestLightProbeBake()) {
-            if (scene.HasLastLightingBakeReport()) {
-                return scene.GetLastLightingBakeReport();
+            ++status.totalCount;
+            if (item.dirty) {
+                ++status.dirtyCount;
+            } else if (item.enabled) {
+                ++status.readyCount;
             }
-            AddError(report, "Failed to request light probe volume scene capture.");
-            return report;
+        };
+
+        for (const LIGHTING_AUTHORING::ReflectionProbeAuthoring& probe :
+            LIGHTING_AUTHORING::CollectReflectionProbes(
+                *request.sceneDocument)) {
+
+            LightingBakeItemStatus item{};
+            item.kind = LightingBakeItemKind::ReflectionProbe;
+            item.objectId = probe.objectId.value;
+            item.name = probe.name;
+            item.recordId = "reflection_probe_" +
+                std::to_string(probe.objectId.value);
+            item.enabled = probe.settings.enabled;
+            const auto hash = hashes.objectAuthoringHashes.find(
+                item.objectId);
+            if (hash != hashes.objectAuthoringHashes.end()) {
+                item.authoringHash = hash->second;
+            }
+            const auto record = std::find_if(
+                manifest.reflectionProbes.begin(),
+                manifest.reflectionProbes.end(),
+                [&item](
+                    const ASSETS::LIGHTING::
+                        ReflectionProbeBakeRecord& candidate) {
+                    return candidate.id == item.recordId;
+                });
+            classify(
+                item,
+                record == manifest.reflectionProbes.end()
+                    ? std::string{}
+                    : record->authoringHash,
+                record == manifest.reflectionProbes.end()
+                    ? std::string{}
+                    : record->dependencyHash,
+                record != manifest.reflectionProbes.end() &&
+                    ProjectRelativeOutputExists(
+                        request.projectRoot,
+                        record->prefilteredCubemapPath));
+            status.items.push_back(std::move(item));
         }
-        if (scene.HasLastLightingBakeReport()) {
-            return scene.GetLastLightingBakeReport();
+
+        for (const LIGHTING_AUTHORING::IrradianceVolumeAuthoring& volume :
+            LIGHTING_AUTHORING::CollectIrradianceVolumes(
+                *request.sceneDocument)) {
+
+            LightingBakeItemStatus item{};
+            item.kind = LightingBakeItemKind::IrradianceVolume;
+            item.objectId = volume.objectId.value;
+            item.name = volume.name;
+            item.recordId = "irradiance_volume_" +
+                std::to_string(volume.objectId.value);
+            item.enabled = volume.settings.enabled;
+            const auto hash = hashes.objectAuthoringHashes.find(
+                item.objectId);
+            if (hash != hashes.objectAuthoringHashes.end()) {
+                item.authoringHash = hash->second;
+            }
+            const auto record = std::find_if(
+                manifest.lightProbes.begin(),
+                manifest.lightProbes.end(),
+                [&item](
+                    const ASSETS::LIGHTING::
+                        LightProbeBakeRecord& candidate) {
+                    return candidate.id == item.recordId;
+                });
+            classify(
+                item,
+                record == manifest.lightProbes.end()
+                    ? std::string{}
+                    : record->authoringHash,
+                record == manifest.lightProbes.end()
+                    ? std::string{}
+                    : record->dependencyHash,
+                record != manifest.lightProbes.end() &&
+                    ProjectRelativeOutputExists(
+                        request.projectRoot,
+                        record->shDataPath));
+            status.items.push_back(std::move(item));
         }
-        return report;
+
+        status.valid = true;
+        return status;
     }
 
     LightingBakeReport LightingBakeService::ClearLightingBake(const LightingBakeRequest& request) const {
@@ -249,66 +288,6 @@ namespace HIKARI::TOOLS::BAKING {
         HIKARI_LOG_INFO("[LightingBake] clear bake folder scene=" + request.sceneGuid +
             " path=" + bakeRoot.generic_string());
         return report;
-    }
-
-    ASSETS::LIGHTING::LightingBakeManifest LightingBakeService::BuildEmptyManifest(
-        const LightingBakeRequest& request) const {
-
-        ASSETS::LIGHTING::LightingBakeManifest manifest{};
-        manifest.version = ASSETS::LIGHTING::kLightingBakeManifestVersion;
-        manifest.sceneGuid = request.sceneGuid;
-        manifest.bakeGuid = MakeBakeGuid();
-        manifest.bakeVersion = 1;
-        manifest.generatedRoot = PROJECT_PATHS::MakeProjectRelativeString(
-            request.projectRoot,
-            ASSETS::LIGHTING::BuildLightingBakeRoot(request.projectRoot, request.sceneGuid));
-        return manifest;
-    }
-
-    void LightingBakeService::AppendSceneAuthoringSummary(
-        const LightingBakeRequest& request,
-        LightingBakeReport& report) const {
-
-        if (!request.sceneDocument) {
-            return;
-        }
-
-        const SceneEnvironment& environment = request.sceneDocument->environment;
-        report.messages.push_back("Scene objects: " + std::to_string(request.sceneDocument->objects.size()));
-        report.messages.push_back("Scene systems: " + std::to_string(request.sceneDocument->systems.size()));
-
-        if (environment.sky.enabled && environment.sky.skyAsset.empty()) {
-            report.warnings.push_back("Sky is enabled but sky asset is empty.");
-        }
-        if (environment.reflectionProbe.enabled && environment.reflectionProbe.sourceCubemapAsset.empty()) {
-            report.messages.push_back("Reflection probe source cubemap override is empty; scene capture will be used.");
-        }
-        if (environment.reflectionProbe.enabled && environment.reflectionProbe.radius <= 0.0f) {
-            report.warnings.push_back("Reflection probe radius should be greater than zero.");
-        }
-
-        LightProbeVolumeSettings lightProbeVolume = request.sceneDocument->lightingBake.lightProbeVolume;
-        ClampLightProbeVolumeSettings(lightProbeVolume);
-        if (lightProbeVolume.enabled) {
-            report.messages.push_back("Light probe volume grid: " +
-                std::to_string(lightProbeVolume.countX) + "x" +
-                std::to_string(lightProbeVolume.countY) + "x" +
-                std::to_string(lightProbeVolume.countZ) +
-                " probes=" + std::to_string(GetLightProbeVolumeProbeCount(lightProbeVolume)));
-            report.messages.push_back("Light probe capture resolution: " +
-                std::to_string(lightProbeVolume.captureResolution));
-        } else {
-            report.warnings.push_back("Light probe volume is disabled.");
-        }
-
-        if (environment.ambientOcclusion.enabled) {
-            if (environment.ambientOcclusion.radius <= 0.0f) {
-                report.warnings.push_back("Ambient occlusion radius should be greater than zero.");
-            }
-            if (environment.ambientOcclusion.sampleCount < 8u) {
-                report.warnings.push_back("Ambient occlusion sample count is very low.");
-            }
-        }
     }
 
 } // namespace HIKARI::TOOLS::BAKING

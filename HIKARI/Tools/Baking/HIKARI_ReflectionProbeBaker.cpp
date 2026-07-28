@@ -15,9 +15,6 @@ namespace HIKARI::TOOLS::BAKING {
 
     namespace {
 
-        constexpr const char* kProbeId = "probe_000";
-        constexpr const char* kProbeName = "ReflectionProbe_000";
-
         void AddError(ReflectionProbeBakeResult& result, std::string message) {
             result.errors.push_back(std::move(message));
             result.success = false;
@@ -88,8 +85,10 @@ namespace HIKARI::TOOLS::BAKING {
 
         const std::filesystem::path outputDirectory =
             ReflectionProbeOutputDirectory(request.projectRoot, request.sceneGuid);
-        result.capturePath = outputDirectory / "probe_000_capture.dds";
-        result.prefilteredPath = outputDirectory / "probe_000_prefiltered.dds";
+        result.capturePath = outputDirectory /
+            (request.probeId + "_capture.dds");
+        result.prefilteredPath = outputDirectory /
+            (request.probeId + "_prefiltered.dds");
         result.brdfLutPath = (request.projectRoot / "Library" / "Generated" /
             "IBL" / "brdf_lut.dds").lexically_normal();
 
@@ -152,7 +151,8 @@ namespace HIKARI::TOOLS::BAKING {
 
         const std::filesystem::path outputDirectory =
             ReflectionProbeOutputDirectory(request.projectRoot, request.sceneGuid);
-        result.prefilteredPath = outputDirectory / "probe_000_prefiltered.dds";
+        result.prefilteredPath = outputDirectory /
+            (request.probeId + "_prefiltered.dds");
         result.brdfLutPath = (request.projectRoot / "Library" / "Generated" /
             "IBL" / "brdf_lut.dds").lexically_normal();
 
@@ -221,8 +221,8 @@ namespace HIKARI::TOOLS::BAKING {
         result.brdfReady = true;
         result.messages.push_back(message);
 
-        result.record.id = kProbeId;
-        result.record.name = kProbeName;
+        result.record.id = request.probeId;
+        result.record.name = request.probeName;
         result.record.position = request.position;
         result.record.radius = request.radius;
         result.record.intensity = request.intensity;
@@ -241,6 +241,10 @@ namespace HIKARI::TOOLS::BAKING {
         result.record.brdfLutPath =
             PROJECT_PATHS::MakeProjectRelativeString(request.projectRoot, result.brdfLutPath);
         result.record.prefilteredMipCount = mipCount;
+        result.record.authoringHash = request.authoringHash;
+        result.record.dependencyHash = request.dependencyHash;
+        result.record.bakeSet = request.bakeSet;
+        result.record.scenario = request.scenario;
         result.messages.push_back("Reflection probe influenceShape=" + result.record.influenceShape);
         result.messages.push_back("Reflection probe projectionShape=" + result.record.projectionShape);
         result.messages.push_back(

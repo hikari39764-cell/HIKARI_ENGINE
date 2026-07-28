@@ -43,59 +43,6 @@ size_t CountUploadablePointLights(const SceneEnvironment &environment) {
   return count;
 }
 
-MATH::Vec3 ReflectionProbeRadiusBoxSize(float radius) {
-  const float diameter = (std::max)(0.01f, radius * 2.0f);
-  return {diameter, diameter, diameter};
-}
-
-void ClampReflectionProbeBoxSize(MATH::Vec3 &size) {
-  size.x = (std::max)(0.001f, size.x);
-  size.y = (std::max)(0.001f, size.y);
-  size.z = (std::max)(0.001f, size.z);
-}
-
-void FitReflectionProbeBoxFromRadius(MATH::Vec3 &center, MATH::Vec3 &size,
-                                     const ReflectionProbeSettings &probe) {
-  center = probe.position;
-  size = ReflectionProbeRadiusBoxSize(probe.radius);
-}
-
-const char *
-ReflectionProbeInfluenceShapeName(ReflectionProbeInfluenceShape shape) {
-  return shape == ReflectionProbeInfluenceShape::Box ? "Box" : "Sphere";
-}
-
-const char *
-ReflectionProbeProjectionShapeName(ReflectionProbeProjectionShape shape) {
-  return shape == ReflectionProbeProjectionShape::Box ? "Box" : "Infinite";
-}
-
-bool DrawReflectionProbeInfluenceShapeCombo(
-    ReflectionProbeInfluenceShape &shape) {
-  const char *names[] = {"Sphere", "Box"};
-  int index = shape == ReflectionProbeInfluenceShape::Box ? 1 : 0;
-  if (!ImGui::Combo("Influence Shape", &index, names,
-                    static_cast<int>(std::size(names)))) {
-    return false;
-  }
-  shape = index == 1 ? ReflectionProbeInfluenceShape::Box
-                     : ReflectionProbeInfluenceShape::Sphere;
-  return true;
-}
-
-bool DrawReflectionProbeProjectionShapeCombo(
-    ReflectionProbeProjectionShape &shape) {
-  const char *names[] = {"Infinite", "Box"};
-  int index = shape == ReflectionProbeProjectionShape::Box ? 1 : 0;
-  if (!ImGui::Combo("Projection Shape", &index, names,
-                    static_cast<int>(std::size(names)))) {
-    return false;
-  }
-  shape = index == 1 ? ReflectionProbeProjectionShape::Box
-                     : ReflectionProbeProjectionShape::Infinite;
-  return true;
-}
-
 constexpr float kPi = 3.14159265358979323846f;
 
 float RadToDeg(float radians) { return radians * 180.0f / kPi; }
@@ -343,82 +290,16 @@ EnvironmentPanel::Draw(SceneEnvironment &environment,
     ImGui::TreePop();
   }
 
-  if (ImGui::TreeNode("Reflection Probe")) {
-    ReflectionProbeSettings &probe = environment.reflectionProbe;
-    ImGui::Checkbox("Enabled", &probe.enabled);
-    DrawReflectionProbeAssetPicker(assetRegistry, assetDatabase,
-                                   probe.sourceCubemapAsset);
-    ImGui::DragFloat3("Position", &probe.position.x, 0.02f);
-    ImGui::DragFloat("Radius", &probe.radius, 0.05f, 0.01f, 500.0f);
-    probe.radius = (std::max)(0.01f, probe.radius);
-    ImGui::DragFloat("Intensity", &probe.intensity, 0.01f, 0.0f, 8.0f);
-    probe.intensity = (std::max)(0.0f, probe.intensity);
-
-    const ReflectionProbeInfluenceShape previousInfluenceShape =
-        probe.influenceShape;
-    if (DrawReflectionProbeInfluenceShapeCombo(probe.influenceShape) &&
-        previousInfluenceShape != ReflectionProbeInfluenceShape::Box &&
-        probe.influenceShape == ReflectionProbeInfluenceShape::Box) {
-      // Shape 髯樊ｺｽ蛻､陝ｲ・ｩ髫ｴ蠑ｱ・・ｹ晢ｽｻ sphere
-      // 鬮ｫ・ｪ繝ｻ・ｭ髯橸ｽｳ陞｢・ｹ・ゑｽｰ驛｢・ｧ郢晢ｽｻbox
-      // 髯具ｽｻ隴弱・・・刹貊ゑｽｽ・､驛｢・ｧ陷代・・ｽ・ｽ隲帛･・ｽｽ迢暦ｽｸ・ｲ郢晢ｽｻ
-      FitReflectionProbeBoxFromRadius(probe.influenceBoxCenter,
-                                      probe.influenceBoxSize, probe);
-    }
-    if (probe.influenceShape == ReflectionProbeInfluenceShape::Box) {
-      ImGui::DragFloat3("Influence Box Center", &probe.influenceBoxCenter.x,
-                        0.02f);
-      ImGui::DragFloat3("Influence Box Size", &probe.influenceBoxSize.x, 0.02f,
-                        0.001f, 1000.0f);
-      ClampReflectionProbeBoxSize(probe.influenceBoxSize);
-    } else {
-      ImGui::TextDisabled(
-          "Influence Shape: %s radius %.2f",
-          ReflectionProbeInfluenceShapeName(probe.influenceShape),
-          probe.radius);
-    }
-
-    const ReflectionProbeProjectionShape previousProjectionShape =
-        probe.projectionShape;
-    if (DrawReflectionProbeProjectionShapeCombo(probe.projectionShape) &&
-        previousProjectionShape != ReflectionProbeProjectionShape::Box &&
-        probe.projectionShape == ReflectionProbeProjectionShape::Box) {
-      // Projection proxy 驛｢・ｧ郢晢ｽｻcapture
-      // 髣厄ｽｴ陷･・ｲ繝ｻ・ｽ繝ｻ・ｮ驍ｵ・ｺ闕ｵ譎｢・ｽ闃ｽ蟠戊ｭ弱・・・刹・ｹ隰費ｽｶ隨倥・・ｹ・ｧ闕ｵ謨鳴郢晢ｽｻ
-      FitReflectionProbeBoxFromRadius(probe.projectionBoxCenter,
-                                      probe.projectionBoxSize, probe);
-    }
-    if (probe.projectionShape == ReflectionProbeProjectionShape::Box) {
-      ImGui::DragFloat3("Projection Box Center", &probe.projectionBoxCenter.x,
-                        0.02f);
-      ImGui::DragFloat3("Projection Box Size", &probe.projectionBoxSize.x,
-                        0.02f, 0.001f, 1000.0f);
-      ClampReflectionProbeBoxSize(probe.projectionBoxSize);
-    } else {
-      ImGui::TextDisabled(
-          "Projection Shape: %s",
-          ReflectionProbeProjectionShapeName(probe.projectionShape));
-    }
-
-    ImGui::DragFloat("Blend Distance", &probe.blendDistance, 0.02f, 0.0f,
-                     500.0f);
-    probe.blendDistance = (std::max)(0.0f, probe.blendDistance);
-    ImGui::DragInt("Priority", &probe.priority, 1.0f, -1000, 1000);
-
-    if (ImGui::Button("Copy Position To Boxes")) {
-      probe.influenceBoxCenter = probe.position;
-      probe.projectionBoxCenter = probe.position;
-    }
-    ImGui::SameLine();
-    if (ImGui::Button("Fit Boxes From Radius")) {
-      probe.influenceBoxSize = ReflectionProbeRadiusBoxSize(probe.radius);
-      probe.projectionBoxSize = probe.influenceBoxSize;
-    }
+  if (ImGui::TreeNode("Lighting Objects")) {
+    ImGui::TextWrapped(
+        "Reflection probes and irradiance volumes are scene objects. "
+        "Create them from Add > Lighting, then edit their components "
+        "in the Inspector.");
     if (ImGui::Button("Open Lighting Bake Tool")) {
       openLightingBakeRequested = true;
     }
     ImGui::TextDisabled(
-        "Runtime Probe: %s",
+        "Primary runtime probe: %s",
         RENDER3D::DIAGNOSTICS::ResolveReflectionProbeSummaryLabel(
             runtimeSnapshot));
     ImGui::TreePop();

@@ -35,6 +35,11 @@ namespace HIKARI {
                 DocumentSceneBase& scene,
                 EditorContext& context,
                 const SelectionSyncService& selectionSync);
+            void CreateLightingObject(
+                DocumentSceneBase& scene,
+                EditorContext& context,
+                const SelectionSyncService& selectionSync,
+                bool reflectionProbe);
 
             PrimitiveCreationDialog primitiveCreationDialog_{};
             std::optional<SceneObjectAuthoringHistoryRequest>

@@ -19,18 +19,29 @@ namespace HIKARI::RENDERER3D::DEBUG {
         XRay
     };
 
-    struct WireCube {
+    struct Box3D {
         Transform3D transform{};
-        float size = 1.0f;
-        unsigned int rgba = 0xFFFFFFFF;
+        MATH::Vec3 size{ 1.0f, 1.0f, 1.0f };
+        unsigned int outlineRgba = 0xFFFFFFFF;
+        unsigned int fillRgba = 0x00000000;
+        float outlineThicknessPixels = 1.5f;
         DebugDepthMode depthMode = DebugDepthMode::DepthTest;
     };
 
-    struct Line3D {
+    struct Stroke3D {
         MATH::Vec3 from{};
         MATH::Vec3 to{};
         unsigned int rgba = 0xFFFFFFFF;
         DebugDepthMode depthMode = DebugDepthMode::DepthTest;
+        float thicknessPixels = 1.5f;
+    };
+
+    struct PointMarker3D {
+        MATH::Vec3 position{};
+        float radius = 0.08f;
+        unsigned int rgba = 0xFFFFFFFF;
+        DebugDepthMode depthMode = DebugDepthMode::DepthTest;
+        float thicknessPixels = 1.5f;
     };
 
     struct Axis3D {
@@ -40,6 +51,7 @@ namespace HIKARI::RENDERER3D::DEBUG {
         unsigned int yColor = 0x4CFF4CFF;
         unsigned int zColor = 0x4C4CFFFF;
         DebugDepthMode depthMode = DebugDepthMode::DepthTest;
+        float thicknessPixels = 1.5f;
     };
 
     struct Grid3D {
@@ -47,15 +59,18 @@ namespace HIKARI::RENDERER3D::DEBUG {
         float spacing = 1.0f;
         unsigned int rgba = 0x888888FF;
         DebugDepthMode depthMode = DebugDepthMode::DepthTest;
+        float thicknessPixels = 1.0f;
     };
 
     struct DebugRendererFrameStats {
-        size_t submittedLineCount = 0;
-        size_t submittedXRayLineCount = 0;
-        size_t expandedLineCount = 0;
-        size_t depthTestLineCount = 0;
-        size_t xrayLineCount = 0;
-        size_t wireCubeCount = 0;
+        size_t submittedStrokeCount = 0;
+        size_t submittedXRayStrokeCount = 0;
+        size_t expandedStrokeCount = 0;
+        size_t depthTestStrokeCount = 0;
+        size_t xrayStrokeCount = 0;
+        size_t boxCount = 0;
+        size_t pointMarkerCount = 0;
+        size_t solidTriangleCount = 0;
         size_t axisCount = 0;
         size_t gridCount = 0;
         uint32_t lightProbeGizmoTotalPointCount = 0;
@@ -65,11 +80,12 @@ namespace HIKARI::RENDERER3D::DEBUG {
     };
 
     void Reset();
-    void SubmitWireCube(const WireCube& cube);
-    void SubmitLine3D(const Line3D& line);
+    void SubmitBox3D(const Box3D& box);
+    void SubmitStroke3D(const Stroke3D& stroke);
+    void SubmitPointMarker3D(const PointMarker3D& marker);
     void SubmitAxis3D(const Axis3D& axis);
     void SubmitGrid3D(const Grid3D& grid);
-    void SetLightProbeVolumeGizmoStats(
+    void AccumulateLightProbeVolumeGizmoStats(
         uint32_t totalPointCount,
         uint32_t drawnPointCount,
         uint32_t mode,

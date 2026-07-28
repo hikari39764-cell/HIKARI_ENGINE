@@ -40,7 +40,11 @@ namespace HIKARI::LIGHTDEBUGDRAW {
         const MATH::Vec3 origin{ 0.0f, 1.5f, 0.0f };
         const MATH::Vec3 head = origin + (dir * kArrowLength);
 
-        RENDERER3D::DEBUG::SubmitLine3D({ origin, head, lightColor });
+        RENDERER3D::DEBUG::SubmitStroke3D({
+            origin, head, lightColor,
+            RENDERER3D::DEBUG::DebugDepthMode::DepthTest,
+            2.0f
+        });
 
         MATH::Vec3 right = MATH::Cross(dir, { 0.0f, 1.0f, 0.0f });
         if (MATH::Length(right) <= 1e-6f) {
@@ -51,16 +55,19 @@ namespace HIKARI::LIGHTDEBUGDRAW {
         const MATH::Vec3 up = MATH::Normalize(MATH::Cross(right, dir));
         const MATH::Vec3 neck = head - (dir * kHeadLength);
 
-        RENDERER3D::DEBUG::SubmitLine3D({ head, neck + (right * kHeadHalfWidth), lightColor });
-        RENDERER3D::DEBUG::SubmitLine3D({ head, neck - (right * kHeadHalfWidth), lightColor });
-        RENDERER3D::DEBUG::SubmitLine3D({ head, neck + (up * kHeadHalfWidth), lightColor });
-        RENDERER3D::DEBUG::SubmitLine3D({ head, neck - (up * kHeadHalfWidth), lightColor });
+        RENDERER3D::DEBUG::SubmitStroke3D({ head, neck + (right * kHeadHalfWidth), lightColor, RENDERER3D::DEBUG::DebugDepthMode::DepthTest, 2.0f });
+        RENDERER3D::DEBUG::SubmitStroke3D({ head, neck - (right * kHeadHalfWidth), lightColor, RENDERER3D::DEBUG::DebugDepthMode::DepthTest, 2.0f });
+        RENDERER3D::DEBUG::SubmitStroke3D({ head, neck + (up * kHeadHalfWidth), lightColor, RENDERER3D::DEBUG::DebugDepthMode::DepthTest, 2.0f });
+        RENDERER3D::DEBUG::SubmitStroke3D({ head, neck - (up * kHeadHalfWidth), lightColor, RENDERER3D::DEBUG::DebugDepthMode::DepthTest, 2.0f });
 
-        RENDERER3D::DEBUG::WireCube marker{};
+        RENDERER3D::DEBUG::Box3D marker{};
         marker.transform.position = origin;
-        marker.size = kMarkerSize;
-        marker.rgba = lightColor;
-        RENDERER3D::DEBUG::SubmitWireCube(marker);
+        marker.size = { kMarkerSize, kMarkerSize, kMarkerSize };
+        marker.outlineRgba = lightColor;
+        marker.fillRgba =
+            ToDebugColor(environment.directional.color, 0x28u);
+        marker.outlineThicknessPixels = 2.0f;
+        RENDERER3D::DEBUG::SubmitBox3D(marker);
     }
 
     void SubmitPointLightDebug(const SceneEnvironment& environment) {
@@ -79,11 +86,14 @@ namespace HIKARI::LIGHTDEBUGDRAW {
 
             const unsigned int pointLightColor = ToDebugColor(light.color, 0xFFu);
             const unsigned int rangeColor = ToDebugColor(light.color, 0x66u);
-            RENDERER3D::DEBUG::WireCube marker{};
+            RENDERER3D::DEBUG::Box3D marker{};
             marker.transform.position = light.position;
-            marker.size = 0.12f;
-            marker.rgba = pointLightColor;
-            RENDERER3D::DEBUG::SubmitWireCube(marker);
+            marker.size = { 0.12f, 0.12f, 0.12f };
+            marker.outlineRgba = pointLightColor;
+            marker.fillRgba =
+                ToDebugColor(light.color, 0x28u);
+            marker.outlineThicknessPixels = 2.0f;
+            RENDERER3D::DEBUG::SubmitBox3D(marker);
 
             if (rangeSphereCount >= kMaxRangeSphereCount) {
                 continue;
@@ -107,7 +117,11 @@ namespace HIKARI::LIGHTDEBUGDRAW {
                         p0 = { light.position.x + std::cos(t0) * light.range, light.position.y + std::sin(t0) * light.range, light.position.z };
                         p1 = { light.position.x + std::cos(t1) * light.range, light.position.y + std::sin(t1) * light.range, light.position.z };
                     }
-                    RENDERER3D::DEBUG::SubmitLine3D({ p0, p1, rangeColor });
+                    RENDERER3D::DEBUG::SubmitStroke3D({
+                        p0, p1, rangeColor,
+                        RENDERER3D::DEBUG::DebugDepthMode::DepthTest,
+                        1.2f
+                    });
                 }
             }
         }

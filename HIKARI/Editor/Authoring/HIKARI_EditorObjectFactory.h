@@ -39,5 +39,13 @@ namespace EDITOR {
         DocumentSceneBase& scene,
         const CreatePrimitiveRequest& request);
 
+    GameObject* CreateReflectionProbeObject(
+        DocumentSceneBase& scene,
+        const CreateObjectRequest& request);
+
+    GameObject* CreateIrradianceVolumeObject(
+        DocumentSceneBase& scene,
+        const CreateObjectRequest& request);
+
 } // namespace EDITOR
 } // namespace HIKARI

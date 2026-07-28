@@ -7,6 +7,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "Render3D/HIKARI_Math3D.h"
 #include "Scene/HIKARI_SceneObjectId.h"
 
 namespace HIKARI {
@@ -31,6 +32,7 @@ namespace HIKARI {
     struct ComponentGizmoDrawContext {
         SceneObjectId selectedObjectId{};
         float cameraAspect = 1.0f;
+        MATH::Vec3 viewportCameraPosition{};
         const World* world = nullptr;
     };
 

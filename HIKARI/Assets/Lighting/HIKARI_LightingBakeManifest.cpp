@@ -59,6 +59,10 @@ namespace HIKARI::ASSETS::LIGHTING {
             record.prefilteredCubemapPath = node.value("prefilteredCubemapPath", std::string{});
             record.brdfLutPath = node.value("brdfLutPath", std::string{});
             record.prefilteredMipCount = node.value("prefilteredMipCount", 1u);
+            record.authoringHash = node.value("authoringHash", std::string{});
+            record.dependencyHash = node.value("dependencyHash", std::string{});
+            record.bakeSet = node.value("bakeSet", std::string{ "Default" });
+            record.scenario = node.value("scenario", std::string{ "Default" });
             return record;
         }
 
@@ -79,7 +83,12 @@ namespace HIKARI::ASSETS::LIGHTING {
             record.countZ = node.value("countZ", 0u);
             record.shOrder = node.value("shOrder", 3u);
             record.probeCount = node.value("probeCount", 0u);
+            record.priority = node.value("priority", 0);
             record.shDataPath = node.value("shDataPath", std::string{});
+            record.authoringHash = node.value("authoringHash", std::string{});
+            record.dependencyHash = node.value("dependencyHash", std::string{});
+            record.bakeSet = node.value("bakeSet", std::string{ "Default" });
+            record.scenario = node.value("scenario", std::string{ "Default" });
             return record;
         }
 
@@ -123,6 +132,10 @@ namespace HIKARI::ASSETS::LIGHTING {
                 { "prefilteredCubemapPath", record.prefilteredCubemapPath },
                 { "brdfLutPath", record.brdfLutPath },
                 { "prefilteredMipCount", record.prefilteredMipCount },
+                { "authoringHash", record.authoringHash },
+                { "dependencyHash", record.dependencyHash },
+                { "bakeSet", record.bakeSet },
+                { "scenario", record.scenario },
             };
         }
 
@@ -139,7 +152,12 @@ namespace HIKARI::ASSETS::LIGHTING {
                 { "countZ", record.countZ },
                 { "shOrder", record.shOrder },
                 { "probeCount", record.probeCount },
+                { "priority", record.priority },
                 { "shDataPath", record.shDataPath },
+                { "authoringHash", record.authoringHash },
+                { "dependencyHash", record.dependencyHash },
+                { "bakeSet", record.bakeSet },
+                { "scenario", record.scenario },
             };
         }
 
@@ -187,6 +205,11 @@ namespace HIKARI::ASSETS::LIGHTING {
         manifest.bakeGuid = root.value("bakeGuid", std::string{});
         manifest.bakeVersion = root.value("bakeVersion", 1u);
         manifest.generatedRoot = root.value("generatedRoot", std::string{});
+        manifest.sceneHash = root.value("sceneHash", std::string{});
+        manifest.dependencyHash = root.value("dependencyHash", std::string{});
+        manifest.activeScenario = root.value(
+            "activeScenario",
+            std::string{ "Default" });
 
         for (const nlohmann::json& node : root.value("reflectionProbes", nlohmann::json::array())) {
             manifest.reflectionProbes.push_back(ReadReflectionProbe(node));
@@ -230,6 +253,9 @@ namespace HIKARI::ASSETS::LIGHTING {
             { "bakeGuid", manifest.bakeGuid },
             { "bakeVersion", manifest.bakeVersion },
             { "generatedRoot", manifest.generatedRoot },
+            { "sceneHash", manifest.sceneHash },
+            { "dependencyHash", manifest.dependencyHash },
+            { "activeScenario", manifest.activeScenario },
             { "reflectionProbes", reflectionProbes },
             { "lightProbes", lightProbes },
             { "lightmaps", lightmaps },

@@ -23,6 +23,16 @@ namespace HIKARI {
         if (!lightProbeJob_) {
             return false;
         }
+        if (lightProbeJob_->state ==
+            TOOLS::BAKING::LightingBakeJobState::Failed) {
+            queuedBakeItems_.clear();
+            lightProbeJob_.reset();
+            batchItemCount_ = 0u;
+            batchCompletedItemCount_ = 0u;
+            batchReusedItemCount_ = 0u;
+            batchForce_ = false;
+            return false;
+        }
 
         LightProbeJob& job = *lightProbeJob_;
         LightProbeVolumeSettings settings = job.request.settings;
@@ -203,6 +213,9 @@ namespace HIKARI {
                     job.request.sceneGuid,
                     job.report.warnings);
             ReplaceLightProbeVolumeRecord(manifest, bake.record);
+            manifest.sceneHash = job.request.sceneHash;
+            manifest.dependencyHash = job.request.dependencyHash;
+            manifest.activeScenario = job.request.scenario;
 
             std::string manifestMessage{};
             if (!ASSETS::LIGHTING::SaveLightingBakeManifest(
@@ -233,10 +246,15 @@ namespace HIKARI {
 
             job.state = TOOLS::BAKING::LightingBakeJobState::Completed;
             SetBakeJobState(job.report, job.state);
+            ++batchCompletedItemCount_;
+            job.report.completedItemCount =
+                batchCompletedItemCount_ + batchReusedItemCount_;
             lastReport_ = job.report;
             HIKARI_LOG_INFO("[LightingBake] light probe volume scene capture finalized scene=" +
                 job.request.sceneGuid +
                 " manifest=" + job.report.manifestPath.generic_string());
+            lightProbeJob_.reset();
+            return StartNextQueuedBake(scene);
         }
 
         return false;

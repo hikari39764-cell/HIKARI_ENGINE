@@ -1,7 +1,7 @@
 # Authoritative HIKARI compile-source manifest.
 # Add or remove translation units here and keep the source-closure test green.
 
-set(HIKARI_COMPILE_SOURCE_COUNT 703)
+set(HIKARI_COMPILE_SOURCE_COUNT 709)
 
 set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/External/WICTextureLoader.cpp"
@@ -47,6 +47,8 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Components/HIKARI_CameraComponent.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Components/HIKARI_CameraActivationVolumeComponent.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Components/HIKARI_CameraFollowComponent.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Components/Lighting/HIKARI_ReflectionProbeComponent.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Components/Lighting/HIKARI_IrradianceVolumeComponent.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Components/HIKARI_ColliderComponent.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Components/HIKARI_PhysicsBodyComponent.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Components/HIKARI_SequencePlayerComponent.cpp"
@@ -129,6 +131,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render2D/HIKARI_Transform2D.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/HIKARI_Renderer3D.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Debug/HIKARI_Renderer3D_Debug.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Debug/Internal/HIKARI_DebugPrimitiveRendererBackend.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Debug/HIKARI_MeshWireDebugRenderer.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/HIKARI_LightDebugDraw.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Core/HIKARI_Camera3D.cpp"
@@ -260,6 +263,8 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Debug/HIKARI_ComponentGizmoRenderer.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Debug/HIKARI_ComponentGizmoRegistry.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Debug/HIKARI_BuiltInComponentGizmoProviders.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Debug/Internal/HIKARI_CameraGizmoProviders.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Debug/Internal/HIKARI_LightingGizmoProviders.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Debug/HIKARI_ColliderGizmoProvider.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Debug/HIKARI_PhysicsShapeDebugDraw.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/HIKARI_AssetDatabase.cpp"
@@ -299,6 +304,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Geometry/HIKARI_HcmeshFormat.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Lighting/HIKARI_LightProbeVolumeFormat.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Lighting/HIKARI_LightingBakeManifest.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Lighting/HIKARI_LightingBakeDependencyHash.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Formats/HIKARI_HmatFormat.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Formats/HIKARI_HmodelFormat.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Formats/HIKARI_HtexFormat.cpp"
@@ -350,6 +356,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Tools/Baking/HIKARI_ReflectionProbeBaker.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Tools/Geometry/HIKARI_MeshLodGenerator.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Serialization/HIKARI_SceneSerializer.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Lighting/HIKARI_LightingAuthoringModel.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Serialization/Environment/HIKARI_SceneEnvironmentJson.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Serialization/Lighting/HIKARI_SceneLightingBakeJson.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Serialization/Objects/HIKARI_SceneObjectJson.cpp"
@@ -438,6 +445,7 @@ set(HIKARI_EDITOR_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Core/MeshRenderer/Editor/HIKARI_MeshEditorInteractiveResources.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Inspectors/Animation/HIKARI_AnimationComponentInspectors.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Inspectors/Camera/HIKARI_CameraComponentInspectors.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Inspectors/Lighting/HIKARI_LightingComponentInspectors.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Inspectors/Gameplay/HIKARI_GameplayComponentInspectors.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Inspectors/Physics/HIKARI_PhysicsBodyComponentInspector.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Inspectors/Rendering/ProceduralMesh/HIKARI_ProceduralMeshComponentInspector.cpp"
@@ -522,8 +530,6 @@ set(HIKARI_EDITOR_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/DragDrop/HIKARI_EditorAssetDragDrop.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Gizmos/HIKARI_EditorTransformGizmo.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Gizmos/HIKARI_EditorTransformGizmoShortcuts.cpp"
-    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Gizmos/HIKARI_LightProbeVolumeGizmoRenderer.cpp"
-    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Gizmos/HIKARI_ReflectionProbeGizmoRenderer.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Viewport/HIKARI_ViewportAuthoringToolbar.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Style/HIKARI_EditorAssetIcons.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Style/HIKARI_EditorFontManager.cpp"

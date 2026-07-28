@@ -19,70 +19,6 @@ namespace HIKARI {
         namespace DOCUMENT_SCENE {
 
 #if defined(HIKARI_WITH_EDITOR)
-        const char* LightProbeVolumeOverlayModeName(LightProbeVolumeOverlayMode mode) {
-            switch (mode) {
-            case LightProbeVolumeOverlayMode::BoundsOnly: return "Bounds Only";
-            case LightProbeVolumeOverlayMode::SampledPoints: return "Sampled Points";
-            case LightProbeVolumeOverlayMode::AllPoints: return "All Points";
-            case LightProbeVolumeOverlayMode::Off:
-            default:
-                return "Off";
-            }
-        }
-
-        const char* ReflectionProbeEditTargetName(ReflectionProbeEditTarget target) {
-            switch (target) {
-            case ReflectionProbeEditTarget::InfluenceBox: return "Influence Box";
-            case ReflectionProbeEditTarget::ProjectionBox: return "Projection Box";
-            case ReflectionProbeEditTarget::ProbePosition:
-            default:
-                return "Probe Center";
-            }
-        }
-
-        bool DrawLightProbeVolumeModeCombo(LightProbeVolumeOverlayMode& mode) {
-            bool changed = false;
-            if (ImGui::BeginCombo("Light Probe Volume Mode", LightProbeVolumeOverlayModeName(mode))) {
-                const LightProbeVolumeOverlayMode modes[] = {
-                    LightProbeVolumeOverlayMode::Off,
-                    LightProbeVolumeOverlayMode::BoundsOnly,
-                    LightProbeVolumeOverlayMode::SampledPoints,
-                    LightProbeVolumeOverlayMode::AllPoints,
-                };
-                for (LightProbeVolumeOverlayMode candidate : modes) {
-                    if (ImGui::Selectable(
-                            LightProbeVolumeOverlayModeName(candidate),
-                            mode == candidate)) {
-                        mode = candidate;
-                        changed = true;
-                    }
-                }
-                ImGui::EndCombo();
-            }
-            return changed;
-        }
-
-        bool DrawReflectionProbeEditTargetCombo(ReflectionProbeEditTarget& target) {
-            bool changed = false;
-            if (ImGui::BeginCombo("Reflection Probe Edit", ReflectionProbeEditTargetName(target))) {
-                const ReflectionProbeEditTarget targets[] = {
-                    ReflectionProbeEditTarget::ProbePosition,
-                    ReflectionProbeEditTarget::InfluenceBox,
-                    ReflectionProbeEditTarget::ProjectionBox,
-                };
-                for (ReflectionProbeEditTarget candidate : targets) {
-                    if (ImGui::Selectable(
-                            ReflectionProbeEditTargetName(candidate),
-                            target == candidate)) {
-                        target = candidate;
-                        changed = true;
-                    }
-                }
-                ImGui::EndCombo();
-            }
-            return changed;
-        }
-
         void DrawViewportDebugOptions(
             ViewportOverlayState& overlays,
             ViewportPerformanceState& performance) {
@@ -90,14 +26,10 @@ namespace HIKARI {
             ImGui::Checkbox("Grid", &overlays.showGrid);
             ImGui::Checkbox("Axis", &overlays.showAxis);
             ImGui::Checkbox("Lights", &overlays.showLights);
-            ImGui::Checkbox("Reflection Probe", &overlays.showReflectionProbe);
-            ImGui::Checkbox("Light Probe Volume", &overlays.showLightProbeVolume);
-            DrawLightProbeVolumeModeCombo(overlays.lightProbeVolumeMode);
             ImGui::Checkbox("Debug Labels", &overlays.showProbeLabels);
             ImGui::Checkbox("XRay Gizmos", &overlays.showXRayGizmos);
-            ImGui::Separator();
-            ImGui::Checkbox("Edit Reflection Probe", &overlays.editReflectionProbe);
-            DrawReflectionProbeEditTargetCombo(overlays.reflectionProbeEditTarget);
+            ImGui::TextDisabled(
+                "Lighting shapes are controlled by component gizmo providers.");
             ImGui::Separator();
             ImGui::Checkbox("Disable SSAO In Editor", &performance.disableSsaoInEditorViewport);
         }
@@ -237,59 +169,6 @@ namespace HIKARI {
             drawList->AddText(ImVec2(min.x + padding.x, min.y + padding.y), color, text);
         }
 
-        void DrawReflectionProbeLabels(
-            DocumentSceneBase& scene,
-            const ViewportOverlayState& overlays,
-            const ImVec2& viewportOrigin,
-            const ImVec2& viewportSize) {
-
-            const SceneEnvironment& environment = scene.GetSceneEnvironment();
-            const ReflectionProbeSettings& probe = environment.reflectionProbe;
-            if (!overlays.showReflectionProbe || !overlays.showProbeLabels || !probe.enabled) {
-                return;
-            }
-
-            const REFLECTION::ReflectionProbeRuntimeData& runtimeProbe = REFLECTION::GetActiveProbe();
-            const RENDER3D::LIGHTING::SceneLightingRuntimeData& lighting =
-                RENDER3D::LIGHTING::GetLastLightingRuntimeData();
-            const char* runtimeState = runtimeProbe.valid
-                ? (lighting.source == RENDER3D::LIGHTING::LightingRuntimeSource::BakedRuntime ? "Baked" : "Authoring")
-                : "Invalid";
-
-            ImDrawList* drawList = ImGui::GetWindowDrawList();
-            ImVec2 screen{};
-            if (ProjectWorldToViewport(scene.GetCamera(), probe.position, viewportOrigin, viewportSize, screen)) {
-                drawList->AddCircleFilled(screen, 4.0f, IM_COL32(97, 230, 168, 230));
-                char label[160]{};
-                std::snprintf(
-                    label,
-                    sizeof(label),
-                    "Reflection Probe\n%s\nInfluence: %s\nProjection: %s",
-                    runtimeState,
-                    probe.influenceShape == ReflectionProbeInfluenceShape::Box ? "Box" : "Sphere",
-                    probe.projectionShape == ReflectionProbeProjectionShape::Box ? "Box" : "Infinite");
-                DrawViewportLabel(drawList, screen, label, IM_COL32(150, 236, 205, 235));
-            }
-
-            if (probe.influenceShape == ReflectionProbeInfluenceShape::Box &&
-                ProjectWorldToViewport(scene.GetCamera(), probe.influenceBoxCenter, viewportOrigin, viewportSize, screen)) {
-                drawList->AddRectFilled(
-                    ImVec2(screen.x - 3.0f, screen.y - 3.0f),
-                    ImVec2(screen.x + 3.0f, screen.y + 3.0f),
-                    IM_COL32(94, 199, 255, 230));
-                DrawViewportLabel(drawList, screen, "Influence", IM_COL32(94, 199, 255, 230));
-            }
-
-            if (probe.projectionShape == ReflectionProbeProjectionShape::Box &&
-                ProjectWorldToViewport(scene.GetCamera(), probe.projectionBoxCenter, viewportOrigin, viewportSize, screen)) {
-                drawList->AddRectFilled(
-                    ImVec2(screen.x - 3.0f, screen.y - 3.0f),
-                    ImVec2(screen.x + 3.0f, screen.y + 3.0f),
-                    IM_COL32(255, 209, 102, 230));
-                DrawViewportLabel(drawList, screen, "Projection Proxy", IM_COL32(255, 209, 102, 230));
-            }
-        }
-
         ImU32 ToImGuiLightColor(const MATH::Vec3& color, int alpha) {
             const auto toByte = [](float value) -> int {
                 return static_cast<int>(std::clamp(value, 0.0f, 1.0f) * 255.0f);
@@ -392,84 +271,6 @@ namespace HIKARI {
             }
         }
 
-        void ClampReflectionProbeBoxSize(MATH::Vec3& size) {
-            size.x = (std::max)(0.001f, size.x);
-            size.y = (std::max)(0.001f, size.y);
-            size.z = (std::max)(0.001f, size.z);
-        }
-
-        bool CanEditReflectionProbeTarget(
-            const ReflectionProbeSettings& probe,
-            ReflectionProbeEditTarget target) {
-
-            if (!probe.enabled) {
-                return false;
-            }
-            if (target == ReflectionProbeEditTarget::InfluenceBox) {
-                return probe.influenceShape == ReflectionProbeInfluenceShape::Box;
-            }
-            if (target == ReflectionProbeEditTarget::ProjectionBox) {
-                return probe.projectionShape == ReflectionProbeProjectionShape::Box;
-            }
-            return true;
-        }
-
-        TransformData BuildReflectionProbeEditTransform(
-            const ReflectionProbeSettings& probe,
-            ReflectionProbeEditTarget target) {
-
-            TransformData transform{};
-            transform.scale = { 1.0f, 1.0f, 1.0f };
-            if (target == ReflectionProbeEditTarget::InfluenceBox) {
-                transform.position = probe.influenceBoxCenter;
-                transform.scale = probe.influenceBoxSize;
-                return transform;
-            }
-            if (target == ReflectionProbeEditTarget::ProjectionBox) {
-                transform.position = probe.projectionBoxCenter;
-                transform.scale = probe.projectionBoxSize;
-                return transform;
-            }
-            transform.position = probe.position;
-            return transform;
-        }
-
-        EditorTransformGizmoState BuildReflectionProbeGizmoState(
-            const EditorTransformGizmoState& source,
-            ReflectionProbeEditTarget target) {
-
-            EditorTransformGizmoState state = source;
-            if (target == ReflectionProbeEditTarget::ProbePosition ||
-                state.operation == EditorTransformGizmoOperation::Rotate) {
-                state.operation = EditorTransformGizmoOperation::Translate;
-            }
-            return state;
-        }
-
-        void ApplyReflectionProbeEditTransform(
-            ReflectionProbeSettings& probe,
-            ReflectionProbeEditTarget target,
-            const EDITOR::EditorTransformGizmoResult& result,
-            EditorTransformGizmoOperation operation) {
-
-            if (target == ReflectionProbeEditTarget::InfluenceBox) {
-                probe.influenceBoxCenter = result.transform.position;
-                if (operation == EditorTransformGizmoOperation::Scale) {
-                    probe.influenceBoxSize = result.transform.scale;
-                    ClampReflectionProbeBoxSize(probe.influenceBoxSize);
-                }
-                return;
-            }
-            if (target == ReflectionProbeEditTarget::ProjectionBox) {
-                probe.projectionBoxCenter = result.transform.position;
-                if (operation == EditorTransformGizmoOperation::Scale) {
-                    probe.projectionBoxSize = result.transform.scale;
-                    ClampReflectionProbeBoxSize(probe.projectionBoxSize);
-                }
-                return;
-            }
-            probe.position = result.transform.position;
-        }
 #endif
 
         } // namespace DOCUMENT_SCENE

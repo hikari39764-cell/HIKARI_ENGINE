@@ -3,65 +3,36 @@
 #include <algorithm>
 #include <array>
 #include <cstdint>
-#include <cstring>
-#include <filesystem>
+#include <limits>
 #include <vector>
 
-#include <d3dcompiler.h>
-#include <d3dx12.h>
-#include <wrl/client.h>
-
-#include "Gfx/HIKARI_D3DBlobCompat.h"
-#include "Gfx/HIKARI_GfxContext.h"
-#include "Gfx/HIKARI_ShaderCompiler.h"
-
-#pragma comment(lib, "d3dcompiler.lib")
+#include "Render3D/Debug/Internal/HIKARI_DebugPrimitiveRendererBackend.h"
 
 namespace HIKARI::RENDERER3D::DEBUG {
-
-    using Microsoft::WRL::ComPtr;
-
     namespace {
-        struct DebugLineVertex3D {
-            MATH::Vec3 position{};
-            MATH::Vec4 color{};
-        };
+        constexpr std::array<std::array<int, 2>, 12> kBoxEdges{ {
+            { 0, 1 }, { 1, 2 }, { 2, 3 }, { 3, 0 },
+            { 4, 5 }, { 5, 6 }, { 6, 7 }, { 7, 4 },
+            { 0, 4 }, { 1, 5 }, { 2, 6 }, { 3, 7 },
+        } };
+        constexpr std::array<int, 36> kBoxTriangleIndices{ {
+            0, 2, 1, 0, 3, 2,
+            4, 5, 6, 4, 6, 7,
+            0, 1, 5, 0, 5, 4,
+            3, 7, 6, 3, 6, 2,
+            0, 4, 7, 0, 7, 3,
+            1, 2, 6, 1, 6, 5,
+        } };
 
-        struct CameraCB {
-            MATH::Mat4 viewProj{};
-        };
-
-        struct FrameResources {
-            ComPtr<ID3D12Resource> cameraCB;
-            ComPtr<ID3D12Resource> vertexBuffer;
-            CameraCB* cameraMapped = nullptr;
-            DebugLineVertex3D* vertexMapped = nullptr;
-            size_t vertexCapacity = 0;
-        };
-
-        struct State {
-            bool initialized = false;
-#if defined(HIKARI_WITH_EDITOR)
-            bool editorViewResourcesInitialized = false;
-#endif
-            ComPtr<ID3D12RootSignature> rootSig;
-            ComPtr<ID3D12PipelineState> depthTestPso;
-            ComPtr<ID3D12PipelineState> xrayPso;
-            std::array<FrameResources, GFX::kFrameResourceCount> frameResources{};
-#if defined(HIKARI_WITH_EDITOR)
-            std::array<FrameResources, GFX::kFrameResourceCount>
-                editorViewFrameResources{};
-#endif
-        };
-
-        std::vector<WireCube> g_cubes;
-        std::vector<Line3D> g_lines;
+        std::vector<Box3D> g_boxes;
+        std::vector<Stroke3D> g_strokes;
+        std::vector<PointMarker3D> g_pointMarkers;
         std::vector<Axis3D> g_axes;
         std::vector<Grid3D> g_grids;
-        std::vector<Line3D> g_expandedScratch;
-        std::vector<Line3D> g_depthTestScratch;
-        std::vector<Line3D> g_xrayScratch;
-        State g_state;
+        std::vector<Stroke3D> g_expandedStrokes;
+        std::vector<Stroke3D> g_depthStrokes;
+        std::vector<Stroke3D> g_xrayStrokes;
+        std::vector<INTERNAL::SolidVertex3D> g_solidVertices;
         DebugRendererFrameStats g_submitStats{};
         DebugRendererFrameStats g_frameStats{};
 #if defined(HIKARI_WITH_EDITOR)
@@ -78,330 +49,192 @@ namespace HIKARI::RENDERER3D::DEBUG {
             };
         }
 
-        void PushLine(std::vector<Line3D>& lines, const MATH::Vec3& from, const MATH::Vec3& to, uint32_t rgba, DebugDepthMode depthMode) {
-            Line3D line{};
-            line.from = from;
-            line.to = to;
-            line.rgba = rgba;
-            line.depthMode = depthMode;
-            lines.push_back(line);
+        MATH::Vec3 TransformPoint(
+            const MATH::Mat4& world,
+            const MATH::Vec3& local) {
+            const MATH::Vec4 transformed = world.TransformPoint(
+                { local.x, local.y, local.z, 1.0f });
+            return { transformed.x, transformed.y, transformed.z };
         }
 
-        MATH::Vec3 TransformPoint3(const MATH::Mat4& m, const MATH::Vec3& p) {
-            const MATH::Vec4 out = m.TransformPoint({ p.x, p.y, p.z, 1.0f });
-            return { out.x, out.y, out.z };
+        void PushStroke(
+            const MATH::Vec3& from,
+            const MATH::Vec3& to,
+            uint32_t rgba,
+            DebugDepthMode depthMode,
+            float thicknessPixels) {
+            Stroke3D stroke{};
+            stroke.from = from;
+            stroke.to = to;
+            stroke.rgba = rgba;
+            stroke.depthMode = depthMode;
+            stroke.thicknessPixels =
+                (std::max)(thicknessPixels, 0.5f);
+            g_expandedStrokes.push_back(stroke);
         }
 
-        size_t EstimateExpandedLineCount() {
-            size_t count = g_lines.size();
+        size_t EstimateStrokeCount() {
+            size_t count = g_strokes.size();
             count += g_axes.size() * 3u;
-            count += g_cubes.size() * 12u;
-
+            count += g_boxes.size() * kBoxEdges.size();
+            count += g_pointMarkers.size() * 3u;
             for (const Grid3D& grid : g_grids) {
-                const int n = (grid.halfCount < 1) ? 1 : grid.halfCount;
-                count += static_cast<size_t>((n * 2 + 1) * 2);
+                const int halfCount = (std::max)(grid.halfCount, 1);
+                count += static_cast<size_t>((halfCount * 2 + 1) * 2);
             }
-
             return count;
         }
 
-        void ExpandSubmittedLines(std::vector<Line3D>& outLines) {
-            outLines.clear();
-            outLines.reserve(EstimateExpandedLineCount());
-            outLines.insert(outLines.end(), g_lines.begin(), g_lines.end());
+        std::array<MATH::Vec3, 8> BuildBoxCorners(const Box3D& box) {
+            const MATH::Vec3 extent = box.size * 0.5f;
+            const std::array<MATH::Vec3, 8> local{ {
+                { -extent.x, -extent.y, -extent.z },
+                {  extent.x, -extent.y, -extent.z },
+                {  extent.x,  extent.y, -extent.z },
+                { -extent.x,  extent.y, -extent.z },
+                { -extent.x, -extent.y,  extent.z },
+                {  extent.x, -extent.y,  extent.z },
+                {  extent.x,  extent.y,  extent.z },
+                { -extent.x,  extent.y,  extent.z },
+            } };
+            const MATH::Mat4 world = box.transform.GetWorldMatrix();
+            std::array<MATH::Vec3, 8> corners{};
+            for (size_t index = 0; index < corners.size(); ++index) {
+                corners[index] = TransformPoint(world, local[index]);
+            }
+            return corners;
+        }
 
+        void ExpandAxis(const Axis3D& axis) {
+            const MATH::Mat4 world = axis.transform.GetWorldMatrix();
+            const MATH::Vec3 origin = TransformPoint(world, {});
+            PushStroke(
+                origin,
+                TransformPoint(world, { axis.length, 0.0f, 0.0f }),
+                axis.xColor, axis.depthMode, axis.thicknessPixels);
+            PushStroke(
+                origin,
+                TransformPoint(world, { 0.0f, axis.length, 0.0f }),
+                axis.yColor, axis.depthMode, axis.thicknessPixels);
+            PushStroke(
+                origin,
+                TransformPoint(world, { 0.0f, 0.0f, axis.length }),
+                axis.zColor, axis.depthMode, axis.thicknessPixels);
+        }
+
+        void ExpandGrid(const Grid3D& grid) {
+            const int halfCount = (std::max)(grid.halfCount, 1);
+            const float spacing =
+                grid.spacing > 0.0f ? grid.spacing : 1.0f;
+            const float extent =
+                static_cast<float>(halfCount) * spacing;
+            for (int index = -halfCount; index <= halfCount; ++index) {
+                const float position =
+                    static_cast<float>(index) * spacing;
+                PushStroke(
+                    { -extent, 0.0f, position },
+                    { extent, 0.0f, position },
+                    grid.rgba, grid.depthMode, grid.thicknessPixels);
+                PushStroke(
+                    { position, 0.0f, -extent },
+                    { position, 0.0f, extent },
+                    grid.rgba, grid.depthMode, grid.thicknessPixels);
+            }
+        }
+
+        void ExpandBox(const Box3D& box) {
+            const std::array<MATH::Vec3, 8> corners =
+                BuildBoxCorners(box);
+            for (const auto& edge : kBoxEdges) {
+                PushStroke(
+                    corners[edge[0]], corners[edge[1]],
+                    box.outlineRgba, box.depthMode,
+                    box.outlineThicknessPixels);
+            }
+            if ((box.fillRgba & 0xFFu) == 0u) {
+                return;
+            }
+            const MATH::Vec4 fillColor = DecodeRgba(box.fillRgba);
+            for (int index : kBoxTriangleIndices) {
+                g_solidVertices.push_back({
+                    corners[static_cast<size_t>(index)], fillColor
+                });
+            }
+        }
+
+        void ExpandPointMarker(const PointMarker3D& marker) {
+            const float radius = (std::max)(marker.radius, 0.001f);
+            PushStroke(
+                marker.position - MATH::Vec3{ radius, 0.0f, 0.0f },
+                marker.position + MATH::Vec3{ radius, 0.0f, 0.0f },
+                marker.rgba, marker.depthMode, marker.thicknessPixels);
+            PushStroke(
+                marker.position - MATH::Vec3{ 0.0f, radius, 0.0f },
+                marker.position + MATH::Vec3{ 0.0f, radius, 0.0f },
+                marker.rgba, marker.depthMode, marker.thicknessPixels);
+            PushStroke(
+                marker.position - MATH::Vec3{ 0.0f, 0.0f, radius },
+                marker.position + MATH::Vec3{ 0.0f, 0.0f, radius },
+                marker.rgba, marker.depthMode, marker.thicknessPixels);
+        }
+
+        void ExpandPrimitives() {
+            g_expandedStrokes.clear();
+            g_solidVertices.clear();
+            g_expandedStrokes.reserve(EstimateStrokeCount());
+            g_solidVertices.reserve(g_boxes.size() * 36u);
+            g_expandedStrokes.insert(
+                g_expandedStrokes.end(),
+                g_strokes.begin(),
+                g_strokes.end());
             for (const Axis3D& axis : g_axes) {
-                const MATH::Mat4 world = axis.transform.GetWorldMatrix();
-                const MATH::Vec3 origin = TransformPoint3(world, { 0.0f, 0.0f, 0.0f });
-                PushLine(outLines, origin, TransformPoint3(world, { axis.length, 0.0f, 0.0f }), axis.xColor, axis.depthMode);
-                PushLine(outLines, origin, TransformPoint3(world, { 0.0f, axis.length, 0.0f }), axis.yColor, axis.depthMode);
-                PushLine(outLines, origin, TransformPoint3(world, { 0.0f, 0.0f, axis.length }), axis.zColor, axis.depthMode);
+                ExpandAxis(axis);
             }
-
             for (const Grid3D& grid : g_grids) {
-                const int n = (grid.halfCount < 1) ? 1 : grid.halfCount;
-                const float step = (grid.spacing <= 0.0f) ? 1.0f : grid.spacing;
-                const float extent = static_cast<float>(n) * step;
-                for (int i = -n; i <= n; ++i) {
-                    const float pos = static_cast<float>(i) * step;
-                    PushLine(outLines, { -extent, 0.0f, pos }, { extent, 0.0f, pos }, grid.rgba, grid.depthMode);
-                    PushLine(outLines, { pos, 0.0f, -extent }, { pos, 0.0f, extent }, grid.rgba, grid.depthMode);
-                }
+                ExpandGrid(grid);
             }
-
-            static constexpr int kEdges[12][2] = {
-                {0,1},{1,2},{2,3},{3,0},
-                {4,5},{5,6},{6,7},{7,4},
-                {0,4},{1,5},{2,6},{3,7}
-            };
-
-            for (const WireCube& cube : g_cubes) {
-                const float hs = cube.size * 0.5f;
-                const std::array<MATH::Vec3, 8> local = {{
-                    {-hs,-hs,-hs}, {hs,-hs,-hs}, {hs,hs,-hs}, {-hs,hs,-hs},
-                    {-hs,-hs, hs}, {hs,-hs, hs}, {hs,hs, hs}, {-hs,hs, hs}
-                }};
-
-                const MATH::Mat4 world = cube.transform.GetWorldMatrix();
-                std::array<MATH::Vec3, 8> worldPoints{};
-                for (size_t i = 0; i < local.size(); ++i) {
-                    worldPoints[i] = TransformPoint3(world, local[i]);
-                }
-
-                for (const auto& edge : kEdges) {
-                    PushLine(outLines, worldPoints[edge[0]], worldPoints[edge[1]], cube.rgba, cube.depthMode);
-                }
+            for (const Box3D& box : g_boxes) {
+                ExpandBox(box);
+            }
+            for (const PointMarker3D& marker : g_pointMarkers) {
+                ExpandPointMarker(marker);
             }
         }
 
-        bool CreateRootSignature(ID3D12Device* device) {
-            D3D12_ROOT_PARAMETER param{};
-            param.ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
-            param.ShaderVisibility = D3D12_SHADER_VISIBILITY_VERTEX;
-            param.Descriptor.ShaderRegister = 0;
-            param.Descriptor.RegisterSpace = 0;
-
-            D3D12_ROOT_SIGNATURE_DESC desc{};
-            desc.NumParameters = 1;
-            desc.pParameters = &param;
-            desc.Flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
-
-            ComPtr<ID3DBlob> blob;
-            ComPtr<ID3DBlob> err;
-            if (FAILED(D3D12SerializeRootSignature(&desc, D3D_ROOT_SIGNATURE_VERSION_1, blob.GetAddressOf(), err.GetAddressOf()))) {
-                if (err) OutputDebugStringA(static_cast<const char*>(err->GetBufferPointer()));
-                return false;
-            }
-            return SUCCEEDED(device->CreateRootSignature(0, blob->GetBufferPointer(), blob->GetBufferSize(), IID_PPV_ARGS(g_state.rootSig.GetAddressOf())));
-        }
-
-        bool CreatePipeline(ID3D12Device* device, bool xray, ID3D12PipelineState** outPso) {
-            UINT flags = 0;
-#if defined(_DEBUG)
-            flags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
-#endif
-            ComPtr<ID3DBlob> vs;
-            ComPtr<ID3DBlob> ps;
-            ComPtr<ID3DBlob> err;
-            const std::filesystem::path vertexShaderPath =
-                GFX::ResolveShaderSourcePath(
-                    L"HIKARI/Shaders/Render3D_DebugLineVS.hlsl");
-            const std::filesystem::path pixelShaderPath =
-                GFX::ResolveShaderSourcePath(
-                    L"HIKARI/Shaders/Render3D_DebugLinePS.hlsl");
-            if (FAILED(D3DCompileFromFile(
-                    vertexShaderPath.c_str(),
-                    nullptr,
-                    D3D_COMPILE_STANDARD_FILE_INCLUDE,
-                    "main",
-                    "vs_5_0",
-                    flags,
-                    0,
-                    vs.GetAddressOf(),
-                    err.GetAddressOf()))) {
-                if (err) OutputDebugStringA(static_cast<const char*>(err->GetBufferPointer()));
-                return false;
-            }
-            err.Reset();
-            if (FAILED(D3DCompileFromFile(
-                    pixelShaderPath.c_str(),
-                    nullptr,
-                    D3D_COMPILE_STANDARD_FILE_INCLUDE,
-                    "main",
-                    "ps_5_0",
-                    flags,
-                    0,
-                    ps.GetAddressOf(),
-                    err.GetAddressOf()))) {
-                if (err) OutputDebugStringA(static_cast<const char*>(err->GetBufferPointer()));
-                return false;
-            }
-
-            const D3D12_INPUT_ELEMENT_DESC inputElements[] = {
-                { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT,    0, static_cast<UINT>(offsetof(DebugLineVertex3D, position)), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-                { "COLOR",    0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, static_cast<UINT>(offsetof(DebugLineVertex3D, color)),    D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-            };
-
-            D3D12_GRAPHICS_PIPELINE_STATE_DESC desc{};
-            desc.pRootSignature = g_state.rootSig.Get();
-            desc.VS = { vs->GetBufferPointer(), vs->GetBufferSize() };
-            desc.PS = { ps->GetBufferPointer(), ps->GetBufferSize() };
-            desc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-            desc.BlendState.RenderTarget[0].BlendEnable = TRUE;
-            desc.BlendState.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
-            desc.BlendState.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
-            desc.BlendState.RenderTarget[0].BlendOp = D3D12_BLEND_OP_ADD;
-            desc.BlendState.RenderTarget[0].SrcBlendAlpha = D3D12_BLEND_ONE;
-            desc.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
-            desc.BlendState.RenderTarget[0].BlendOpAlpha = D3D12_BLEND_OP_ADD;
-            desc.SampleMask = UINT_MAX;
-            desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-            desc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
-            desc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
-            desc.DepthStencilState.DepthEnable = xray ? FALSE : TRUE;
-            desc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
-            desc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
-            desc.InputLayout = { inputElements, static_cast<UINT>(std::size(inputElements)) };
-            desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_LINE;
-            desc.NumRenderTargets = 1;
-            desc.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
-            desc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
-            desc.SampleDesc.Count = 1;
-            return SUCCEEDED(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(outPso)));
-        }
-
-        FrameResources& ActiveFrameResources(
+        bool ShouldWriteFrameStats() {
 #if defined(HIKARI_WITH_EDITOR)
-            bool editorView = false
-#endif
-        ) {
-            const uint32_t frameIndex = GFX::GetCurrentContext().frameIndex % GFX::kFrameResourceCount;
-#if defined(HIKARI_WITH_EDITOR)
-            return editorView
-                ? g_state.editorViewFrameResources[frameIndex]
-                : g_state.frameResources[frameIndex];
+            return !g_renderingEditorView;
 #else
-            return g_state.frameResources[frameIndex];
-#endif
-        }
-
-        bool CreateCameraBuffer(ID3D12Device* device, FrameResources& frame) {
-            const UINT bytes = (sizeof(CameraCB) + 255u) & ~255u;
-            const auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-            const auto desc = CD3DX12_RESOURCE_DESC::Buffer(bytes);
-            if (FAILED(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(frame.cameraCB.GetAddressOf())))) {
-                return false;
-            }
-            return SUCCEEDED(frame.cameraCB->Map(0, nullptr, reinterpret_cast<void**>(&frame.cameraMapped)));
-        }
-
-        bool EnsureVertexCapacity(ID3D12Device* device, FrameResources& frame, size_t requiredVertices) {
-            if (requiredVertices == 0) {
-                return true;
-            }
-            if (frame.vertexBuffer != nullptr && frame.vertexMapped != nullptr && frame.vertexCapacity >= requiredVertices) {
-                return true;
-            }
-
-            if (frame.vertexBuffer != nullptr) {
-                frame.vertexBuffer->Unmap(0, nullptr);
-            }
-            frame.vertexBuffer.Reset();
-            frame.vertexMapped = nullptr;
-            frame.vertexCapacity = std::max<size_t>(requiredVertices, 1024u);
-
-            const auto heap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-            const auto desc = CD3DX12_RESOURCE_DESC::Buffer(static_cast<UINT64>(frame.vertexCapacity * sizeof(DebugLineVertex3D)));
-            if (FAILED(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(frame.vertexBuffer.GetAddressOf())))) {
-                return false;
-            }
-            return SUCCEEDED(frame.vertexBuffer->Map(0, nullptr, reinterpret_cast<void**>(&frame.vertexMapped)));
-        }
-
-        bool EnsureInitialized() {
-            if (g_state.initialized) {
-                return true;
-            }
-
-            ID3D12Device* device = GFX::GetCurrentContext().device;
-            if (device == nullptr) {
-                return false;
-            }
-
-            if (!CreateRootSignature(device) ||
-                !CreatePipeline(device, false, g_state.depthTestPso.GetAddressOf()) ||
-                !CreatePipeline(device, true, g_state.xrayPso.GetAddressOf())) {
-                return false;
-            }
-            for (FrameResources& frame : g_state.frameResources) {
-                if (!CreateCameraBuffer(device, frame)) {
-                    return false;
-                }
-            }
-
-            g_state.initialized = true;
             return true;
-        }
-
-#if defined(HIKARI_WITH_EDITOR)
-        bool EnsureEditorViewResources() {
-            if (g_state.editorViewResourcesInitialized) {
-                return true;
-            }
-            if (!EnsureInitialized() || GFX::GetCurrentContext().device == nullptr) {
-                return false;
-            }
-            for (FrameResources& frame : g_state.editorViewFrameResources) {
-                if (frame.cameraCB != nullptr &&
-                    frame.cameraMapped != nullptr) {
-                    continue;
-                }
-                frame.cameraCB.Reset();
-                frame.cameraMapped = nullptr;
-                if (!CreateCameraBuffer(GFX::GetCurrentContext().device, frame)) {
-                    frame.cameraCB.Reset();
-                    frame.cameraMapped = nullptr;
-                    return false;
-                }
-            }
-            g_state.editorViewResourcesInitialized = true;
-            return true;
-        }
 #endif
-
-        size_t WriteLineVertices(DebugLineVertex3D* dst, size_t startVertex, const std::vector<Line3D>& lines) {
-            size_t vertexIndex = startVertex;
-            for (const Line3D& line : lines) {
-                const MATH::Vec4 color = DecodeRgba(line.rgba);
-                dst[vertexIndex++] = { line.from, color };
-                dst[vertexIndex++] = { line.to, color };
-            }
-            return vertexIndex - startVertex;
-        }
-
-        void RenderLineBatch(const FrameResources& frame, size_t firstVertex, size_t vertexCount, ID3D12PipelineState* pso) {
-            if (vertexCount == 0 || pso == nullptr || GFX::GetCurrentContext().cmdList == nullptr || !EnsureInitialized()) {
-                return;
-            }
-
-            if (frame.cameraCB == nullptr || frame.vertexBuffer == nullptr) {
-                return;
-            }
-
-            D3D12_VERTEX_BUFFER_VIEW vb{};
-            vb.BufferLocation = frame.vertexBuffer->GetGPUVirtualAddress() + firstVertex * sizeof(DebugLineVertex3D);
-            vb.SizeInBytes = static_cast<UINT>(vertexCount * sizeof(DebugLineVertex3D));
-            vb.StrideInBytes = sizeof(DebugLineVertex3D);
-
-            ID3D12GraphicsCommandList* cmd = GFX::GetCurrentContext().cmdList;
-            cmd->SetGraphicsRootSignature(g_state.rootSig.Get());
-            cmd->SetPipelineState(pso);
-            cmd->SetGraphicsRootConstantBufferView(0, frame.cameraCB->GetGPUVirtualAddress());
-            cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_LINELIST);
-            cmd->IASetVertexBuffers(0, 1, &vb);
-            cmd->DrawInstanced(static_cast<UINT>(vertexCount), 1, 0, 0);
         }
     }
 
     void Reset() {
-        g_cubes.clear();
-        g_lines.clear();
+        g_boxes.clear();
+        g_strokes.clear();
+        g_pointMarkers.clear();
         g_axes.clear();
         g_grids.clear();
         g_submitStats = {};
     }
 
-    void SubmitWireCube(const WireCube& cube) {
-        g_cubes.push_back(cube);
-        ++g_submitStats.wireCubeCount;
+    void SubmitBox3D(const Box3D& box) {
+        g_boxes.push_back(box);
+        ++g_submitStats.boxCount;
     }
 
-    void SubmitLine3D(const Line3D& line) {
-        g_lines.push_back(line);
-        ++g_submitStats.submittedLineCount;
-        if (line.depthMode == DebugDepthMode::XRay) {
-            ++g_submitStats.submittedXRayLineCount;
+    void SubmitStroke3D(const Stroke3D& stroke) {
+        g_strokes.push_back(stroke);
+        ++g_submitStats.submittedStrokeCount;
+        if (stroke.depthMode == DebugDepthMode::XRay) {
+            ++g_submitStats.submittedXRayStrokeCount;
         }
+    }
+
+    void SubmitPointMarker3D(const PointMarker3D& marker) {
+        g_pointMarkers.push_back(marker);
+        ++g_submitStats.pointMarkerCount;
     }
 
     void SubmitAxis3D(const Axis3D& axis) {
@@ -414,131 +247,93 @@ namespace HIKARI::RENDERER3D::DEBUG {
         ++g_submitStats.gridCount;
     }
 
-    void SetLightProbeVolumeGizmoStats(
+    void AccumulateLightProbeVolumeGizmoStats(
         uint32_t totalPointCount,
         uint32_t drawnPointCount,
         uint32_t mode,
         bool capped) {
-
-        g_submitStats.lightProbeGizmoTotalPointCount = totalPointCount;
-        g_submitStats.lightProbeGizmoDrawnPointCount = drawnPointCount;
-        g_submitStats.lightProbeGizmoMode = mode;
-        g_submitStats.lightProbeGizmoCapped = capped;
+        const auto saturatingAdd = [](
+            uint32_t left,
+            uint32_t right) {
+            return static_cast<uint32_t>((std::min)(
+                static_cast<uint64_t>(left) + right,
+                static_cast<uint64_t>(
+                    (std::numeric_limits<uint32_t>::max)())));
+        };
+        g_submitStats.lightProbeGizmoTotalPointCount = saturatingAdd(
+            g_submitStats.lightProbeGizmoTotalPointCount,
+            totalPointCount);
+        g_submitStats.lightProbeGizmoDrawnPointCount = saturatingAdd(
+            g_submitStats.lightProbeGizmoDrawnPointCount,
+            drawnPointCount);
+        g_submitStats.lightProbeGizmoMode = (std::max)(
+            g_submitStats.lightProbeGizmoMode, mode);
+        g_submitStats.lightProbeGizmoCapped =
+            g_submitStats.lightProbeGizmoCapped || capped;
     }
 
     const DebugRendererFrameStats& GetDebugRendererFrameStats() {
         return g_frameStats;
     }
 
-    void RenderAll(const Camera3D& camera, float screenW, float screenH) {
-        (void)screenW;
-        (void)screenH;
-
-        ExpandSubmittedLines(g_expandedScratch);
-#if defined(HIKARI_WITH_EDITOR)
-        if (!g_renderingEditorView) {
+    void RenderAll(
+        const Camera3D& camera,
+        float screenWidth,
+        float screenHeight) {
+        ExpandPrimitives();
+        g_depthStrokes.clear();
+        g_xrayStrokes.clear();
+        g_depthStrokes.reserve(g_expandedStrokes.size());
+        g_xrayStrokes.reserve(g_expandedStrokes.size());
+        for (const Stroke3D& stroke : g_expandedStrokes) {
+            (stroke.depthMode == DebugDepthMode::XRay
+                ? g_xrayStrokes
+                : g_depthStrokes).push_back(stroke);
+        }
+        if (ShouldWriteFrameStats()) {
             g_frameStats = g_submitStats;
-            g_frameStats.expandedLineCount = g_expandedScratch.size();
-        }
-#else
-        g_frameStats = g_submitStats;
-        g_frameStats.expandedLineCount = g_expandedScratch.size();
-#endif
-        if (g_expandedScratch.empty()) {
-            return;
-        }
-
-        // 毎フレームの一時 vector 確保を避ける。
-        g_depthTestScratch.clear();
-        g_xrayScratch.clear();
-        g_depthTestScratch.reserve(g_expandedScratch.size());
-        g_xrayScratch.reserve(g_expandedScratch.size());
-        for (const Line3D& line : g_expandedScratch) {
-            if (line.depthMode == DebugDepthMode::XRay) {
-                g_xrayScratch.push_back(line);
-            } else {
-                g_depthTestScratch.push_back(line);
-            }
+            g_frameStats.expandedStrokeCount =
+                g_expandedStrokes.size();
+            g_frameStats.depthTestStrokeCount =
+                g_depthStrokes.size();
+            g_frameStats.xrayStrokeCount =
+                g_xrayStrokes.size();
+            g_frameStats.solidTriangleCount =
+                g_solidVertices.size() / 3u;
         }
 #if defined(HIKARI_WITH_EDITOR)
-        if (!g_renderingEditorView) {
-            g_frameStats.depthTestLineCount = g_depthTestScratch.size();
-            g_frameStats.xrayLineCount = g_xrayScratch.size();
-        }
+        const bool editorView = g_renderingEditorView;
 #else
-        g_frameStats.depthTestLineCount = g_depthTestScratch.size();
-        g_frameStats.xrayLineCount = g_xrayScratch.size();
+        constexpr bool editorView = false;
 #endif
-
-#if defined(HIKARI_WITH_EDITOR)
-        if (!EnsureInitialized() ||
-            (g_renderingEditorView && !EnsureEditorViewResources())) {
-            return;
-        }
-#else
-        if (!EnsureInitialized()) {
-            return;
-        }
-#endif
-        ID3D12Device* device = GFX::GetCurrentContext().device;
-#if defined(HIKARI_WITH_EDITOR)
-        FrameResources& frame = ActiveFrameResources(g_renderingEditorView);
-#else
-        FrameResources& frame = ActiveFrameResources();
-#endif
-        const size_t depthVertexCount = g_depthTestScratch.size() * 2u;
-        const size_t xrayVertexCount = g_xrayScratch.size() * 2u;
-        const size_t totalVertexCount = depthVertexCount + xrayVertexCount;
-        if (device == nullptr || !EnsureVertexCapacity(device, frame, totalVertexCount) || frame.vertexMapped == nullptr) {
-            return;
-        }
-
-        if (frame.cameraMapped != nullptr) {
-            frame.cameraMapped->viewProj = camera.GetViewProj();
-        }
-
-        size_t vertexCursor = 0;
-        const size_t depthVertexStart = vertexCursor;
-        vertexCursor += WriteLineVertices(frame.vertexMapped, vertexCursor, g_depthTestScratch);
-        const size_t xrayVertexStart = vertexCursor;
-        vertexCursor += WriteLineVertices(frame.vertexMapped, vertexCursor, g_xrayScratch);
-
-        RenderLineBatch(frame, depthVertexStart, depthVertexCount, g_state.depthTestPso.Get());
-        RenderLineBatch(frame, xrayVertexStart, xrayVertexCount, g_state.xrayPso.Get());
+        INTERNAL::RenderPrimitiveBatches(
+            camera,
+            screenWidth,
+            screenHeight,
+            editorView,
+            g_xrayStrokes,
+            g_depthStrokes,
+            g_solidVertices);
     }
 
 #if defined(HIKARI_WITH_EDITOR)
     void RenderAllForView(
         RENDER3D::RenderViewId viewId,
         const Camera3D& camera,
-        float screenW,
-        float screenH) {
-
+        float screenWidth,
+        float screenHeight) {
         if (viewId == RENDER3D::kPrimaryRenderViewId) {
-            RenderAll(camera, screenW, screenH);
+            RenderAll(camera, screenWidth, screenHeight);
             return;
         }
         g_renderingEditorView = true;
-        RenderAll(camera, screenW, screenH);
+        RenderAll(camera, screenWidth, screenHeight);
         g_renderingEditorView = false;
     }
 
     void ShutdownEditorViewResources() {
         g_renderingEditorView = false;
-        for (FrameResources& frame : g_state.editorViewFrameResources) {
-            if (frame.cameraCB != nullptr && frame.cameraMapped != nullptr) {
-                frame.cameraCB->Unmap(0, nullptr);
-            }
-            if (frame.vertexBuffer != nullptr && frame.vertexMapped != nullptr) {
-                frame.vertexBuffer->Unmap(0, nullptr);
-            }
-            frame.cameraCB.Reset();
-            frame.vertexBuffer.Reset();
-            frame.cameraMapped = nullptr;
-            frame.vertexMapped = nullptr;
-            frame.vertexCapacity = 0;
-        }
-        g_state.editorViewResourcesInitialized = false;
+        INTERNAL::ShutdownEditorViewResources();
     }
 #endif
 

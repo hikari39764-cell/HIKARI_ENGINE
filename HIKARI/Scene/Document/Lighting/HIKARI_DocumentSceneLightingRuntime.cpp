@@ -4,8 +4,6 @@
 #include "Core/HIKARI_Logger.h"
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
 #include "Render3D/Lighting/HIKARI_LightProbeVolumeRuntime.h"
-#include "Render3D/Reflection/HIKARI_ReflectionProbeRuntime.h"
-#include "Render3D/Reflection/HIKARI_ReflectionProbeRuntimeConversion.h"
 
 namespace HIKARI {
     namespace {
@@ -42,31 +40,6 @@ namespace HIKARI {
 
     }
 
-    void DocumentSceneBase::SyncReflectionProbeRuntimeFromAuthoring() {
-        const ReflectionProbeSettings& probe = state_->lighting.environment.reflectionProbe;
-        const REFLECTION::ReflectionProbeRuntimeData runtime = REFLECTION::GetActiveProbe();
-
-        // Viewport 謫堺ｽ懊〒縺ｯ迴ｾ蝨ｨ縺ｮ texture resource 繧剃ｿ晄戟縺励∥uthoring 蛟､縺縺大酔譛溘☆繧九・
-        REFLECTION::SetActiveProbeResources(
-            probe.enabled,
-            runtime.prefilteredResource,
-            runtime.brdfLutResource,
-            runtime.prefilteredMipCount,
-            probe.position,
-            probe.radius,
-            probe.intensity,
-            REFLECTION::ToRuntimeInfluenceShape(probe.influenceShape),
-            REFLECTION::ToRuntimeProjectionShape(probe.projectionShape),
-            probe.influenceBoxCenter,
-            probe.influenceBoxSize,
-            probe.projectionBoxCenter,
-            probe.projectionBoxSize,
-            probe.blendDistance,
-            probe.priority,
-            runtime.sourceAssetId,
-            runtime.prefilteredPath,
-            runtime.brdfLutPath);
-    }
     bool DocumentSceneBase::ApplyEnvironmentRuntimeChanges()
     {
         const bool skyResourceBindingChanged =

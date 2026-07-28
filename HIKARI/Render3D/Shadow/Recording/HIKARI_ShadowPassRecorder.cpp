@@ -76,11 +76,12 @@ namespace HIKARI::SHADOW::INTERNAL {
         };
         constexpr uint32_t color = 0xFFD45CFF;
         const auto submit = [&](int a, int b) {
-            RENDERER3D::DEBUG::SubmitLine3D({
+            RENDERER3D::DEBUG::SubmitStroke3D({
                 corners[static_cast<size_t>(a)],
                 corners[static_cast<size_t>(b)],
                 color,
-                RENDERER3D::DEBUG::DebugDepthMode::XRay
+                RENDERER3D::DEBUG::DebugDepthMode::XRay,
+                1.8f
             });
         };
         submit(0, 1); submit(1, 2); submit(2, 3); submit(3, 0);

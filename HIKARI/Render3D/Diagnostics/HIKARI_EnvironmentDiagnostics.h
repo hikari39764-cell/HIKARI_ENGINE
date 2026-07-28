@@ -110,10 +110,10 @@ namespace HIKARI {
             float ssaoStrength = 0.0f;
             float ssaoPower = 0.0f;
 
-            size_t debugSubmittedLineCount = 0;
-            size_t debugExpandedLineCount = 0;
-            size_t debugDepthTestLineCount = 0;
-            size_t debugXRayLineCount = 0;
+            size_t debugSubmittedStrokeCount = 0;
+            size_t debugExpandedStrokeCount = 0;
+            size_t debugDepthTestStrokeCount = 0;
+            size_t debugXRayStrokeCount = 0;
             uint32_t debugLightProbeGizmoTotalPointCount = 0;
             uint32_t debugLightProbeGizmoDrawnPointCount = 0;
             uint32_t debugLightProbeGizmoMode = 0;

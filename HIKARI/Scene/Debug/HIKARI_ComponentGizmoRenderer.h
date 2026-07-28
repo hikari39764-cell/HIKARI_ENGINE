@@ -17,7 +17,8 @@ namespace HIKARI {
             const World& world,
             const ComponentGizmoState& state,
             SceneObjectId selectedObjectId,
-            float cameraAspect) const;
+            float cameraAspect,
+            const MATH::Vec3& viewportCameraPosition) const;
 
     private:
         ComponentGizmoRegistry registry_{};

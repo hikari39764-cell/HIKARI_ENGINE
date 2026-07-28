@@ -436,6 +436,55 @@ namespace HIKARI::EDITOR {
             canvas.Line(0.0f, 0.04f, 0.0f, 0.72f);
             break;
         }
+        case EditorGlyph::ReflectionProbe:
+            canvas.Circle(0.0f, 0.0f, 0.64f);
+            canvas.Arc(-1.20f, 1.20f, 0.34f);
+            canvas.Arc(1.94f, 4.34f, 0.34f);
+            canvas.Line(-0.64f, 0.0f, 0.64f, 0.0f);
+            canvas.Circle(0.42f, -0.42f, 0.11f, true);
+            break;
+        case EditorGlyph::IrradianceVolume: {
+            const ImVec2 front[] = {
+                { -0.62f, -0.44f }, { 0.22f, -0.62f },
+                { 0.62f, -0.26f }, { -0.20f, -0.06f }
+            };
+            const ImVec2 back[] = {
+                { -0.62f, 0.24f }, { 0.22f, 0.06f },
+                { 0.62f, 0.42f }, { -0.20f, 0.62f }
+            };
+            canvas.Polyline(front, 4, true);
+            canvas.Polyline(back, 4, true);
+            canvas.Line(-0.62f, -0.44f, -0.62f, 0.24f);
+            canvas.Line(0.22f, -0.62f, 0.22f, 0.06f);
+            canvas.Line(0.62f, -0.26f, 0.62f, 0.42f);
+            canvas.Line(-0.20f, -0.06f, -0.20f, 0.62f);
+            canvas.Circle(-0.18f, -0.24f, 0.08f, true);
+            canvas.Circle(0.25f, 0.24f, 0.08f, true);
+            break;
+        }
+        case EditorGlyph::Bake:
+            canvas.Circle(-0.18f, -0.20f, 0.30f);
+            for (int index = 0; index < 8; index += 2) {
+                const float angle = static_cast<float>(index) *
+                    3.14159265358979323846f * 0.25f;
+                canvas.Line(
+                    -0.18f + std::cos(angle) * 0.43f,
+                    -0.20f + std::sin(angle) * 0.43f,
+                    -0.18f + std::cos(angle) * 0.67f,
+                    -0.20f + std::sin(angle) * 0.67f);
+            }
+            canvas.Line(0.38f, 0.12f, 0.38f, 0.72f);
+            canvas.Line(0.12f, 0.46f, 0.38f, 0.72f);
+            canvas.Line(0.64f, 0.46f, 0.38f, 0.72f);
+            break;
+        case EditorGlyph::Ready:
+            canvas.Line(-0.66f, 0.02f, -0.18f, 0.50f);
+            canvas.Line(-0.18f, 0.50f, 0.68f, -0.48f);
+            break;
+        case EditorGlyph::Dirty:
+            DrawCircularArrow(canvas, true);
+            canvas.Circle(0.58f, -0.54f, 0.14f, true);
+            break;
         case EditorGlyph::Exit:
             canvas.Rect(-0.72f, -0.64f, 0.20f, 0.64f, 0.06f);
             canvas.Line(-0.12f, 0.0f, 0.76f, 0.0f);

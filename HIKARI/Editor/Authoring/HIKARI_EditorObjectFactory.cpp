@@ -6,6 +6,7 @@
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_SceneDocument.h"
+#include "Scene/Lighting/HIKARI_LightingAuthoringModel.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
 namespace HIKARI::EDITOR {
@@ -205,6 +206,53 @@ namespace HIKARI::EDITOR {
         }
 
         scene.GetSceneDocument().objects.push_back(std::move(object));
+        scene.RebuildRuntimeWorld();
+        return FindRuntimeObject(scene, id);
+    }
+
+    GameObject* CreateReflectionProbeObject(
+        DocumentSceneBase& scene,
+        const CreateObjectRequest& request) {
+
+        CreateObjectRequest objectRequest = request;
+        if (objectRequest.name.empty()) {
+            objectRequest.name = "Reflection Probe";
+        }
+        LIGHTING_AUTHORING::ReflectionProbeAuthoring probe{};
+        probe.name = objectRequest.name;
+        probe.position = objectRequest.position;
+        probe.settings.enabled = true;
+        probe.settings.position = probe.position;
+        probe.settings.influenceBoxCenter = probe.position;
+        probe.settings.projectionBoxCenter = probe.position;
+        const SceneObjectId id =
+            LIGHTING_AUTHORING::AddReflectionProbe(
+                scene.GetSceneDocument(),
+                probe);
+        scene.RebuildRuntimeWorld();
+        return FindRuntimeObject(scene, id);
+    }
+
+    GameObject* CreateIrradianceVolumeObject(
+        DocumentSceneBase& scene,
+        const CreateObjectRequest& request) {
+
+        CreateObjectRequest objectRequest = request;
+        if (objectRequest.name.empty()) {
+            objectRequest.name = "Irradiance Volume";
+        }
+        LIGHTING_AUTHORING::IrradianceVolumeAuthoring volume{};
+        volume.name = objectRequest.name;
+        volume.center = objectRequest.position;
+        volume.settings.origin = {
+            volume.center.x - volume.settings.size.x * 0.5f,
+            volume.center.y - volume.settings.size.y * 0.5f,
+            volume.center.z - volume.settings.size.z * 0.5f
+        };
+        const SceneObjectId id =
+            LIGHTING_AUTHORING::AddIrradianceVolume(
+                scene.GetSceneDocument(),
+                volume);
         scene.RebuildRuntimeWorld();
         return FindRuntimeObject(scene, id);
     }

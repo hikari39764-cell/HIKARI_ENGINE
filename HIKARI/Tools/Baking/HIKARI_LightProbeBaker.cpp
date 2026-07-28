@@ -18,9 +18,6 @@ namespace HIKARI::TOOLS::BAKING {
 
     namespace {
 
-        constexpr const char* kVolumeProbeId = "light_probe_volume_000";
-        constexpr const char* kVolumeProbeName = "LightProbeVolume_000";
-
         void AddError(LightProbeBakeResult& result, std::string message) {
             result.errors.push_back(std::move(message));
             result.success = false;
@@ -267,9 +264,11 @@ namespace HIKARI::TOOLS::BAKING {
             result.messages.push_back(message);
         }
 
-        result.volumePath = ASSETS::LIGHTING::BuildLightProbeVolumeOutputPath(
-            request.projectRoot,
-            request.sceneGuid);
+        result.volumePath =
+            (LightProbeOutputDirectory(
+                request.projectRoot,
+                request.sceneGuid) /
+                (request.volumeId + ".hlpv")).lexically_normal();
         std::string saveMessage{};
         if (!ASSETS::LIGHTING::SaveLightProbeVolumeFile(result.volumePath, volume, &saveMessage)) {
             AddError(result, saveMessage);
@@ -278,8 +277,11 @@ namespace HIKARI::TOOLS::BAKING {
         result.volumeWritten = true;
         result.messages.push_back(saveMessage);
 
-        result.debugJsonPath = LightProbeOutputDirectory(request.projectRoot, request.sceneGuid) /
-            "light_probe_volume_debug.json";
+        result.debugJsonPath =
+            LightProbeOutputDirectory(
+                request.projectRoot,
+                request.sceneGuid) /
+            (request.volumeId + "_debug.json");
         if (SaveDebugJson(result.debugJsonPath, request, probeCapturePaths, &saveMessage)) {
             result.debugJsonWritten = true;
             result.messages.push_back(saveMessage);
@@ -287,8 +289,8 @@ namespace HIKARI::TOOLS::BAKING {
             result.warnings.push_back(saveMessage);
         }
 
-        result.record.id = kVolumeProbeId;
-        result.record.name = kVolumeProbeName;
+        result.record.id = request.volumeId;
+        result.record.name = request.volumeName;
         result.record.type = "VolumeGrid";
         result.record.position = settings.origin + settings.size * 0.5f;
         result.record.origin = settings.origin;
@@ -298,7 +300,12 @@ namespace HIKARI::TOOLS::BAKING {
         result.record.countZ = settings.countZ;
         result.record.shOrder = settings.shOrder;
         result.record.probeCount = probeCount;
+        result.record.priority = request.priority;
         result.record.shDataPath = PROJECT_PATHS::MakeProjectRelativeString(request.projectRoot, result.volumePath);
+        result.record.authoringHash = request.authoringHash;
+        result.record.dependencyHash = request.dependencyHash;
+        result.record.bakeSet = request.bakeSet;
+        result.record.scenario = request.scenario;
 
         result.probeCount = probeCount;
         result.captureResolution = settings.captureResolution;

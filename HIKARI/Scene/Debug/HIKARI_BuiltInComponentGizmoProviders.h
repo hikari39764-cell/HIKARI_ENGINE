@@ -14,6 +14,10 @@ namespace HIKARI {
         "SpawnPoints";
     inline constexpr std::string_view kCameraActivationVolumeGizmoProviderId =
         "CameraActivationVolumes";
+    inline constexpr std::string_view kReflectionProbeGizmoProviderId =
+        "ReflectionProbes";
+    inline constexpr std::string_view kIrradianceVolumeGizmoProviderId =
+        "IrradianceVolumes";
     void RegisterBuiltInComponentGizmoProviders(
         ComponentGizmoRegistry& registry);
 

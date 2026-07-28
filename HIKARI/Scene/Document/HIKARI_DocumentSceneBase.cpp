@@ -98,11 +98,12 @@ namespace HIKARI {
             constexpr unsigned int kRayColor = 0x8F6AFFFFu;
             for (size_t i = 0; i < kEdges.size(); ++i) {
                 const auto& edge = kEdges[i];
-                RENDERER3D::DEBUG::SubmitLine3D({
+                RENDERER3D::DEBUG::SubmitStroke3D({
                     corners[static_cast<size_t>(edge[0])],
                     corners[static_cast<size_t>(edge[1])],
                     i < 4 ? kNearColor : kFrustumColor,
-                    RENDERER3D::DEBUG::DebugDepthMode::XRay
+                    RENDERER3D::DEBUG::DebugDepthMode::XRay,
+                    1.8f
                 });
             }
 
@@ -112,11 +113,12 @@ namespace HIKARI {
                 cullingCamera->cameraPos.z
             };
             for (size_t i = 0; i < 4; ++i) {
-                RENDERER3D::DEBUG::SubmitLine3D({
+                RENDERER3D::DEBUG::SubmitStroke3D({
                     cullingPosition,
                     corners[i],
                     kRayColor,
-                    RENDERER3D::DEBUG::DebugDepthMode::XRay
+                    RENDERER3D::DEBUG::DebugDepthMode::XRay,
+                    1.4f
                 });
             }
         }
@@ -370,14 +372,6 @@ namespace HIKARI {
                 LIGHTDEBUGDRAW::SubmitDirectionalLightArrow(activeEnvironment.directional.direction, activeEnvironment);
                 LIGHTDEBUGDRAW::SubmitPointLightDebug(activeEnvironment);
             }
-#if defined(HIKARI_WITH_EDITOR)
-            if (state_->editor.viewportOverlayState.showReflectionProbe) {
-                state_->editor.reflectionProbeGizmoRenderer.Submit(activeEnvironment, state_->editor.viewportOverlayState, renderCamera);
-            }
-            state_->editor.lightProbeVolumeGizmoRenderer.Submit(
-                state_->identity.document.lightingBake.lightProbeVolume,
-                state_->editor.viewportOverlayState);
-#endif
         }
 
         if (DrawDebugHelpers()) {
@@ -385,7 +379,8 @@ namespace HIKARI {
                 state_->runtime.world,
                 state_->editor.componentGizmoState,
                 state_->editor.selectedGizmoObjectId,
-                renderCamera.GetAspect());
+                renderCamera.GetAspect(),
+                renderCamera.GetPosition());
         }
         RENDER3D::RenderViewContext primaryView{};
         primaryView.viewId = RENDER3D::kPrimaryRenderViewId;
@@ -578,6 +573,28 @@ namespace HIKARI {
     }
     void DocumentSceneBase::SetSelectedGizmoObjectId(SceneObjectId id) {
         state_->editor.selectedGizmoObjectId = id;
+    }
+    SceneObjectId DocumentSceneBase::GetSelectedGizmoObjectId() const {
+        return state_->editor.selectedGizmoObjectId;
+    }
+    bool DocumentSceneBase::RequestLightingBake(
+        bool force,
+        SceneObjectId selectedObjectId) {
+        return state_->baking.RequestLightingBake(
+            *this,
+            force,
+            selectedObjectId);
+    }
+    TOOLS::BAKING::LightingBakeJobState
+        DocumentSceneBase::GetLightingBakeJobState() const {
+        return state_->baking.GetJobState();
+    }
+    bool DocumentSceneBase::HasLastLightingBakeReport() const {
+        return state_->baking.HasLastReport();
+    }
+    const TOOLS::BAKING::LightingBakeReport&
+        DocumentSceneBase::GetLastLightingBakeReport() const {
+        return state_->baking.GetLastReport();
     }
     bool DocumentSceneBase::UseDebugCamera() const {
         return !state_->runtime.playActive;

@@ -118,8 +118,26 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
             ASSETS::LIGHTING::LightingBakeManifest& manifest,
             const ASSETS::LIGHTING::ReflectionProbeBakeRecord& record) {
 
-            manifest.reflectionProbes.clear();
+            manifest.reflectionProbes.erase(
+                std::remove_if(
+                    manifest.reflectionProbes.begin(),
+                    manifest.reflectionProbes.end(),
+                    [&record](
+                        const ASSETS::LIGHTING::
+                            ReflectionProbeBakeRecord& existing) {
+                        return existing.id == record.id;
+                    }),
+                manifest.reflectionProbes.end());
             manifest.reflectionProbes.push_back(record);
+            std::stable_sort(
+                manifest.reflectionProbes.begin(),
+                manifest.reflectionProbes.end(),
+                [](const ASSETS::LIGHTING::
+                    ReflectionProbeBakeRecord& lhs,
+                   const ASSETS::LIGHTING::
+                    ReflectionProbeBakeRecord& rhs) {
+                    return lhs.priority > rhs.priority;
+                });
         }
 
         void ReplaceLightProbeVolumeRecord(
@@ -130,13 +148,20 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
                 std::remove_if(
                     manifest.lightProbes.begin(),
                     manifest.lightProbes.end(),
-                    [](const ASSETS::LIGHTING::LightProbeBakeRecord& existing) {
-                        return existing.type.empty() ||
-                            existing.type == "VolumeGrid" ||
-                            existing.id == "light_probe_volume_000";
+                    [&record](const ASSETS::LIGHTING::LightProbeBakeRecord& existing) {
+                        return existing.id == record.id;
                     }),
                 manifest.lightProbes.end());
             manifest.lightProbes.push_back(record);
+            std::stable_sort(
+                manifest.lightProbes.begin(),
+                manifest.lightProbes.end(),
+                [](const ASSETS::LIGHTING::
+                    LightProbeBakeRecord& lhs,
+                   const ASSETS::LIGHTING::
+                    LightProbeBakeRecord& rhs) {
+                    return lhs.priority > rhs.priority;
+                });
         }
 
         uint32_t GetLightProbeCaptureFaceCount(const LightProbeVolumeSettings& settings) {

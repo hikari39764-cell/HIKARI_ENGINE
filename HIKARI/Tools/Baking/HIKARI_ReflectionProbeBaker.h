@@ -18,6 +18,8 @@ namespace HIKARI {
             std::filesystem::path projectRoot{};
             std::string sceneGuid{};
             std::string sceneName{};
+            std::string probeId{ "probe_000" };
+            std::string probeName{ "ReflectionProbe_000" };
             MATH::Vec3 position{ 0.0f, 2.0f, 0.0f };
             float radius = 8.0f;
             float intensity = 1.0f;
@@ -36,6 +38,11 @@ namespace HIKARI {
             uint32_t brdfSampleCount = 256;
             bool forceRebake = false;
             std::filesystem::path sourceCubemapPath{};
+            std::string authoringHash{};
+            std::string sceneHash{};
+            std::string dependencyHash{};
+            std::string bakeSet{ "Default" };
+            std::string scenario{ "Default" };
         };
 
         struct ReflectionProbeBakeResult {

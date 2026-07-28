@@ -10,6 +10,7 @@
 
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
 #include "Scene/HIKARI_SceneDocument.h"
+#include "Scene/Lighting/HIKARI_LightingAuthoringModel.h"
 #include "Scene/Sequencer/Serialization/HIKARI_CinematicSequenceJson.h"
 #include "Scene/Serialization/Environment/HIKARI_SceneEnvironmentJson.h"
 #include "Scene/Serialization/Lighting/HIKARI_SceneLightingBakeJson.h"
@@ -178,6 +179,7 @@ namespace HIKARI {
 
         outDocument = SceneDocument{};
         outDocument.version = root.value("version", 1u);
+        const uint32_t sourceVersion = outDocument.version;
         outDocument.sceneName = root.value("sceneName", std::string("Untitled"));
 
         if (root.contains("environment") && root["environment"].is_object()) {
@@ -200,24 +202,33 @@ namespace HIKARI {
 
         MigrateLegacyProceduralModels(outDocument);
         MigrateEmbeddedModelMaterialFx(outDocument);
+        LIGHTING_AUTHORING::MigrateLegacyLightingAuthoring(
+            outDocument,
+            sourceVersion);
+        LIGHTING_AUTHORING::SynchronizeLegacyLightingViews(outDocument);
         outDocument.version = (std::max)(outDocument.version, kCurrentSceneDocumentVersion);
         return true;
     }
 
     bool SceneSerializer::SaveToFile(const std::string& path, const SceneDocument& document) const {
 
-        nlohmann::json root = nlohmann::json::object();
-        root["version"] = document.version;
-        root["sceneName"] = document.sceneName;
+        SceneDocument persisted = document;
+        persisted.version = kCurrentSceneDocumentVersion;
+        LIGHTING_AUTHORING::SynchronizeLegacyLightingViews(persisted);
 
-        SceneJson::SerializeSceneEnvironmentJson(document.environment, root["environment"]);
-        SceneJson::SerializeSceneLightingBakeJson(document.lightingBake, root["lightingBake"]);
-        SerializeCamera(document.camera, root["camera"]);
-        SerializeSceneCinematicsJson(document.cinematics, root["cinematics"]);
-        SceneJson::SerializeSceneSystemsJson(document.systems, root["systems"]);
+        nlohmann::json root = nlohmann::json::object();
+        root["version"] = persisted.version;
+        root["sceneName"] = persisted.sceneName;
+
+        SceneJson::SerializeSceneEnvironmentJson(persisted.environment, root["environment"]);
+        // Version 5 以场景组件为唯一 Probe Authoring 来源。
+        root["environment"].erase("reflectionProbe");
+        SerializeCamera(persisted.camera, root["camera"]);
+        SerializeSceneCinematicsJson(persisted.cinematics, root["cinematics"]);
+        SceneJson::SerializeSceneSystemsJson(persisted.systems, root["systems"]);
 
         root["objects"] = nlohmann::json::array();
-        for (const SceneObjectData& object : document.objects) {
+        for (const SceneObjectData& object : persisted.objects) {
             nlohmann::json objectNode{};
             SceneJson::SerializeSceneObjectJson(object, objectNode, SceneJson::SceneObjectJsonScope::SceneDocument);
             root["objects"].push_back(std::move(objectNode));

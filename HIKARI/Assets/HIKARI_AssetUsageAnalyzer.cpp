@@ -131,6 +131,16 @@ namespace HIKARI {
                         "Animation State Machine",
                         assetDatabase,
                         summary);
+                } else if (component.type ==
+                        "ReflectionProbeComponent") {
+                    AddReference(
+                        component.properties.value(
+                            "sourceCubemapAsset",
+                            std::string{}),
+                        owner,
+                        "Reflection Probe Cubemap",
+                        assetDatabase,
+                        summary);
                 } else if (component.type == "ColliderComponent" &&
                     component.properties.value(
                         "fitMode",

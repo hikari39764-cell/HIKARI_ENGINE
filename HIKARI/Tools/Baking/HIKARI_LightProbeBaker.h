@@ -14,8 +14,16 @@ namespace HIKARI::TOOLS::BAKING {
         std::filesystem::path projectRoot{};
         std::string sceneGuid{};
         std::string sceneName{};
+        std::string volumeId{ "light_probe_volume_000" };
+        std::string volumeName{ "LightProbeVolume_000" };
         LightProbeVolumeSettings settings{};
+        int priority = 0;
         bool forceRebake = false;
+        std::string authoringHash{};
+        std::string sceneHash{};
+        std::string dependencyHash{};
+        std::string bakeSet{ "Default" };
+        std::string scenario{ "Default" };
     };
 
     struct LightProbeBakeResult {

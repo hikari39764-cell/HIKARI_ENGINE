@@ -17,6 +17,7 @@
 #include "Scene/Features/HIKARI_RuntimeFeatureIds.h"
 #include "Scene/HIKARI_RuntimeSceneContext.h"
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
+#include "Scene/Lighting/HIKARI_LightingAuthoringModel.h"
 
 namespace HIKARI {
 
@@ -401,6 +402,8 @@ namespace HIKARI {
         return OpenStartupSceneAsset();
     }
     bool DocumentSceneBase::RebuildRuntimeWorld() {
+        LIGHTING_AUTHORING::SynchronizeLegacyLightingViews(
+            state_->identity.document);
         state_->runtime.systemScheduler.DetachWorld(state_->runtime.world);
         state_->runtime.systemScheduler.Clear();
         state_->runtime.fixedStepClock.Reset();

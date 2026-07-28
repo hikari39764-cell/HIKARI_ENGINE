@@ -184,11 +184,12 @@ namespace HIKARI::MESHWIREDEBUG {
                 {0,4},{1,5},{2,6},{3,7}
             };
             for (const auto& edge : edges) {
-                RENDERER3D::DEBUG::SubmitLine3D({
+                RENDERER3D::DEBUG::SubmitStroke3D({
                     TransformPoint(world, corners[edge[0]]),
                     TransformPoint(world, corners[edge[1]]),
                     color,
-                    RENDERER3D::DEBUG::DebugDepthMode::XRay
+                    RENDERER3D::DEBUG::DebugDepthMode::XRay,
+                    1.5f
                 });
                 ++gStats.submittedLineCount;
             }
@@ -214,11 +215,12 @@ namespace HIKARI::MESHWIREDEBUG {
                     ++gStats.truncatedModelCount;
                     return false;
                 }
-                RENDERER3D::DEBUG::SubmitLine3D({
+                RENDERER3D::DEBUG::SubmitStroke3D({
                     TransformPoint(worldMatrix, line.a),
                     TransformPoint(worldMatrix, line.b),
                     primitiveColor,
-                    RENDERER3D::DEBUG::DebugDepthMode::XRay
+                    RENDERER3D::DEBUG::DebugDepthMode::XRay,
+                    1.0f
                 });
                 ++gStats.submittedLineCount;
                 --remaining;

@@ -9,6 +9,7 @@
 #include "Tools/Baking/HIKARI_LightProbeBaker.h"
 #include "Tools/Baking/HIKARI_ProbeCubemapCaptureTarget.h"
 #include "Tools/Baking/HIKARI_ReflectionProbeBaker.h"
+#include "Scene/HIKARI_SceneObjectId.h"
 
 namespace HIKARI {
 
@@ -26,8 +27,16 @@ namespace HIKARI {
         DocumentSceneBakeCoordinator& operator=(
             const DocumentSceneBakeCoordinator&) = delete;
 
-        bool RequestReflectionProbeBake(DocumentSceneBase& scene);
-        bool RequestLightProbeBake(DocumentSceneBase& scene);
+        bool RequestReflectionProbeBake(
+            DocumentSceneBase& scene,
+            SceneObjectId targetObjectId = {});
+        bool RequestLightProbeBake(
+            DocumentSceneBase& scene,
+            SceneObjectId targetObjectId = {});
+        bool RequestLightingBake(
+            DocumentSceneBase& scene,
+            bool force,
+            SceneObjectId selectedObjectId);
         TOOLS::BAKING::LightingBakeJobState GetJobState() const;
         bool HasLastReport() const;
         const TOOLS::BAKING::LightingBakeReport& GetLastReport() const;
@@ -69,9 +78,19 @@ namespace HIKARI {
             const SceneEnvironment& captureEnvironment,
             uint32_t faceIndex,
             ProbeCaptureKind kind);
+        bool StartNextQueuedBake(DocumentSceneBase& scene);
 
         std::unique_ptr<ReflectionProbeJob> reflectionProbeJob_{};
         std::unique_ptr<LightProbeJob> lightProbeJob_{};
+        struct QueuedBakeItem {
+            bool reflectionProbe = true;
+            SceneObjectId objectId{};
+        };
+        std::vector<QueuedBakeItem> queuedBakeItems_{};
+        uint32_t batchItemCount_ = 0;
+        uint32_t batchCompletedItemCount_ = 0;
+        uint32_t batchReusedItemCount_ = 0;
+        bool batchForce_ = false;
         TOOLS::BAKING::LightingBakeReport lastReport_{};
         bool hasLastReport_ = false;
     };

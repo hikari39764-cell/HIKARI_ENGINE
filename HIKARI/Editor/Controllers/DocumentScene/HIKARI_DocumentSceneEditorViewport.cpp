@@ -27,12 +27,7 @@
 
 namespace HIKARI {
 
-    using EDITOR::DOCUMENT_SCENE::ApplyReflectionProbeEditTransform;
-    using EDITOR::DOCUMENT_SCENE::BuildReflectionProbeEditTransform;
-    using EDITOR::DOCUMENT_SCENE::BuildReflectionProbeGizmoState;
-    using EDITOR::DOCUMENT_SCENE::CanEditReflectionProbeTarget;
     using EDITOR::DOCUMENT_SCENE::DrawLightOverlayIcons;
-    using EDITOR::DOCUMENT_SCENE::DrawReflectionProbeLabels;
     using EDITOR::DOCUMENT_SCENE::DrawRenderDebugViewCombo;
     using EDITOR::DOCUMENT_SCENE::DrawViewportDebugOptions;
     using EDITOR::HandleTransformGizmoShortcuts;
@@ -292,8 +287,7 @@ namespace HIKARI {
                 imageSize.x,
                 imageSize.y
             };
-            if (!context_.overlays.editReflectionProbe &&
-                !ImGui::IsPopupOpen("SceneViewportContextMenu") &&
+            if (!ImGui::IsPopupOpen("SceneViewportContextMenu") &&
                 context_.selection.selectedObject != nullptr &&
                 !EDITOR::IsObjectEditorLocked(
                     scene.GetSceneDocument(),
@@ -347,41 +341,6 @@ namespace HIKARI {
                     context_.sceneDirty = true;
                     scene.SetUnsavedSceneChanges(true);
                     viewportTransformHistory_.MarkChanged();
-                }
-            }
-
-            if (context_.overlays.editReflectionProbe &&
-                context_.overlays.showReflectionProbe) {
-                ReflectionProbeSettings& probe = scene.GetSceneEnvironment().reflectionProbe;
-                const ReflectionProbeEditTarget target = context_.overlays.reflectionProbeEditTarget;
-                if (CanEditReflectionProbeTarget(probe, target)) {
-                    EditorTransformGizmoState gizmoState =
-                        BuildReflectionProbeGizmoState(context_.transformGizmo, target);
-                    if (ImGui::IsKeyDown(ImGuiKey_ModCtrl)) {
-                        gizmoState.snapEnabled = true;
-                    }
-
-                    const TransformData targetTransform =
-                        BuildReflectionProbeEditTransform(probe, target);
-                    const EDITOR::EditorTransformGizmoResult gizmoResult =
-                        transformGizmo_.DrawTransform(
-                            targetTransform,
-                            scene.GetCamera(),
-                            gizmoState,
-                            viewportRect);
-                    gizmoCapture = gizmoCapture || gizmoResult.interacting;
-
-                    if (gizmoResult.changed) {
-                        ApplyReflectionProbeEditTransform(
-                            probe,
-                            target,
-                            gizmoResult,
-                            gizmoState.operation);
-                        scene.GetSceneDocument().environment = scene.GetSceneEnvironment();
-                        scene.SetUnsavedSceneChanges(true);
-                        scene.SyncReflectionProbeRuntimeFromAuthoring();
-                        context_.sceneDirty = true;
-                    }
                 }
             }
 
@@ -447,8 +406,7 @@ namespace HIKARI {
         }
 
         const bool authoringInteractionEnabled =
-            !playSession.IsRunning() &&
-            !context_.overlays.editReflectionProbe;
+            !playSession.IsRunning();
         const EDITOR::SceneViewportRect blockedViewportRegion{
             -1.0f,
             -1.0f,
@@ -490,11 +448,6 @@ namespace HIKARI {
             }
             viewportSelectionService_.DrawMarquee(
                 ImGui::GetWindowDrawList());
-            DrawReflectionProbeLabels(
-                scene,
-                context_.overlays,
-                imageOrigin,
-                imageSize);
             DrawLightOverlayIcons(
                 scene,
                 context_.overlays,

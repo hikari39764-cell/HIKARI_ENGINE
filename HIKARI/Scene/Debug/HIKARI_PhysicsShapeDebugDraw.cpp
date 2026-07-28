@@ -32,16 +32,16 @@ namespace HIKARI::DEBUG {
             const MATH::Mat4& matrix,
             const MATH::Vec3& from,
             const MATH::Vec3& to,
-            unsigned int color,
-            bool xray) {
-            RENDERER3D::DEBUG::Line3D line{};
+            const PhysicsShapeDebugStyle& style) {
+            RENDERER3D::DEBUG::Stroke3D line{};
             line.from = TransformPoint(matrix, from);
             line.to = TransformPoint(matrix, to);
-            line.rgba = color;
-            line.depthMode = xray
+            line.rgba = style.outlineRgba;
+            line.depthMode = style.xray
                 ? RENDERER3D::DEBUG::DebugDepthMode::XRay
                 : RENDERER3D::DEBUG::DebugDepthMode::DepthTest;
-            RENDERER3D::DEBUG::SubmitLine3D(line);
+            line.thicknessPixels = style.thicknessPixels;
+            RENDERER3D::DEBUG::SubmitStroke3D(line);
         }
 
         void SubmitCircle(
@@ -49,8 +49,7 @@ namespace HIKARI::DEBUG {
             int axis,
             float radius,
             float axisOffset,
-            unsigned int color,
-            bool xray) {
+            const PhysicsShapeDebugStyle& style) {
             constexpr float kTwoPi = 6.2831853071795864769f;
             for (int i = 0; i < kCircleSegments; ++i) {
                 const float angleA = kTwoPi *
@@ -76,7 +75,7 @@ namespace HIKARI::DEBUG {
                 };
                 writePoint(angleA, a);
                 writePoint(angleB, b);
-                SubmitLine(matrix, a, b, color, xray);
+                SubmitLine(matrix, a, b, style);
             }
         }
 
@@ -86,8 +85,7 @@ namespace HIKARI::DEBUG {
             float radius,
             float cylinderHalfHeight,
             float side,
-            unsigned int color,
-            bool xray) {
+            const PhysicsShapeDebugStyle& style) {
             constexpr float kPi = 3.14159265358979323846f;
             const int segments = kCircleSegments / 2;
             for (int i = 0; i < segments; ++i) {
@@ -108,8 +106,7 @@ namespace HIKARI::DEBUG {
                     matrix,
                     makePoint(a0),
                     makePoint(a1),
-                    color,
-                    xray);
+                    style);
             }
         }
 
@@ -117,17 +114,16 @@ namespace HIKARI::DEBUG {
             const MATH::Mat4& shapeWorld,
             float radius,
             float height,
-            unsigned int color,
-            bool xray) {
+            const PhysicsShapeDebugStyle& style) {
             const float cylinderHalfHeight = (std::max)(
                 0.0f,
                 height * 0.5f - radius);
             SubmitCircle(
                 shapeWorld, 1, radius,
-                cylinderHalfHeight, color, xray);
+                cylinderHalfHeight, style);
             SubmitCircle(
                 shapeWorld, 1, radius,
-                -cylinderHalfHeight, color, xray);
+                -cylinderHalfHeight, style);
             for (const MATH::Vec3 radial :
                     std::array<MATH::Vec3, 4>{
                         MATH::Vec3{ radius, 0.0f, 0.0f },
@@ -140,28 +136,26 @@ namespace HIKARI::DEBUG {
                         0.0f, -cylinderHalfHeight, 0.0f },
                     radial + MATH::Vec3{
                         0.0f, cylinderHalfHeight, 0.0f },
-                    color,
-                    xray);
+                    style);
             }
             SubmitCapsuleArc(
                 shapeWorld, 0, radius,
-                cylinderHalfHeight, 1.0f, color, xray);
+                cylinderHalfHeight, 1.0f, style);
             SubmitCapsuleArc(
                 shapeWorld, 0, radius,
-                cylinderHalfHeight, -1.0f, color, xray);
+                cylinderHalfHeight, -1.0f, style);
             SubmitCapsuleArc(
                 shapeWorld, 1, radius,
-                cylinderHalfHeight, 1.0f, color, xray);
+                cylinderHalfHeight, 1.0f, style);
             SubmitCapsuleArc(
                 shapeWorld, 1, radius,
-                cylinderHalfHeight, -1.0f, color, xray);
+                cylinderHalfHeight, -1.0f, style);
         }
 
         void DrawGeometry(
             const MATH::Mat4& shapeWorld,
             const PHYSICS::PhysicsShapeDesc& shape,
-            unsigned int color,
-            bool xray) {
+            const PhysicsShapeDebugStyle& style) {
             if (shape.geometry == nullptr || shape.vertexCount < 3u) {
                 return;
             }
@@ -176,7 +170,8 @@ namespace HIKARI::DEBUG {
             if (vertexEnd > vertices.size() || indexEnd > indices.size()) {
                 return;
             }
-            const uint32_t maximumLines = xray ? 20000u : 4000u;
+            const uint32_t maximumLines =
+                style.xray ? 20000u : 4000u;
             uint32_t lineCount = 0u;
             const auto submitEdge = [&](uint32_t first, uint32_t second) {
                 if (lineCount >= maximumLines ||
@@ -192,8 +187,7 @@ namespace HIKARI::DEBUG {
                     Multiply(
                         vertices[shape.vertexOffset + second],
                         shape.localScale),
-                    color,
-                    xray);
+                    style);
                 ++lineCount;
             };
             for (uint32_t offset = 0u;
@@ -213,44 +207,45 @@ namespace HIKARI::DEBUG {
     void DrawPhysicsShape(
         const MATH::Mat4& bodyWorld,
         const PHYSICS::PhysicsShapeDesc& shape,
-        unsigned int color,
-        bool xray) {
+        const PhysicsShapeDebugStyle& style) {
         const MATH::Mat4 shapeWorld = bodyWorld *
             MATH::Mat4::Translate(shape.localCenter) *
             MATH::Mat4::Rotate(shape.localRotation);
         switch (shape.type) {
         case PHYSICS::PhysicsShapeType::Box: {
-            RENDERER3D::DEBUG::WireCube cube{};
+            RENDERER3D::DEBUG::Box3D cube{};
             cube.transform.useExplicitMatrix = true;
             cube.transform.explicitMatrix = shapeWorld *
                 MATH::Mat4::Scale(shape.halfExtents * 2.0f);
-            cube.size = 1.0f;
-            cube.rgba = color;
-            cube.depthMode = xray
+            cube.size = { 1.0f, 1.0f, 1.0f };
+            cube.outlineRgba = style.outlineRgba;
+            cube.fillRgba = style.fillRgba;
+            cube.outlineThicknessPixels =
+                style.thicknessPixels;
+            cube.depthMode = style.xray
                 ? RENDERER3D::DEBUG::DebugDepthMode::XRay
                 : RENDERER3D::DEBUG::DebugDepthMode::DepthTest;
-            RENDERER3D::DEBUG::SubmitWireCube(cube);
+            RENDERER3D::DEBUG::SubmitBox3D(cube);
             break;
         }
         case PHYSICS::PhysicsShapeType::Sphere:
             SubmitCircle(
-                shapeWorld, 0, shape.radius, 0.0f, color, xray);
+                shapeWorld, 0, shape.radius, 0.0f, style);
             SubmitCircle(
-                shapeWorld, 1, shape.radius, 0.0f, color, xray);
+                shapeWorld, 1, shape.radius, 0.0f, style);
             SubmitCircle(
-                shapeWorld, 2, shape.radius, 0.0f, color, xray);
+                shapeWorld, 2, shape.radius, 0.0f, style);
             break;
         case PHYSICS::PhysicsShapeType::Capsule:
             DrawCapsule(
                 shapeWorld,
                 shape.radius,
                 shape.height,
-                color,
-                xray);
+                style);
             break;
         case PHYSICS::PhysicsShapeType::ConvexHull:
         case PHYSICS::PhysicsShapeType::TriangleMesh:
-            DrawGeometry(shapeWorld, shape, color, xray);
+            DrawGeometry(shapeWorld, shape, style);
             break;
         }
     }

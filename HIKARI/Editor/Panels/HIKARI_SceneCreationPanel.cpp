@@ -75,6 +75,31 @@ namespace HIKARI::EDITOR {
             ImGui::EndMenu();
         }
 
+        const bool showReflectionProbe =
+            Matches("Reflection Probe", search);
+        const bool showIrradianceVolume =
+            Matches("Irradiance Volume", search);
+        if ((showReflectionProbe || showIrradianceVolume) &&
+            ImGui::BeginMenu("Lighting")) {
+            if (showReflectionProbe &&
+                ImGui::MenuItem("Reflection Probe")) {
+                CreateLightingObject(
+                    scene,
+                    context,
+                    selectionSync,
+                    true);
+            }
+            if (showIrradianceVolume &&
+                ImGui::MenuItem("Irradiance Volume")) {
+                CreateLightingObject(
+                    scene,
+                    context,
+                    selectionSync,
+                    false);
+            }
+            ImGui::EndMenu();
+        }
+
         const std::vector<std::string> prefabIds = commands.ListPrefabIds();
         if (!prefabIds.empty() &&
             (search.empty() || Matches("Prefab", search)) &&
@@ -163,6 +188,40 @@ namespace HIKARI::EDITOR {
             context.nextSceneObjectId);
         historyRequest_ = SceneObjectAuthoringHistoryRequest{
             "Create Empty Object",
+            beforeObjects,
+            scene.GetSceneDocument().objects,
+            beforeCamera,
+            scene.GetSceneDocument().camera,
+            dirtyBefore
+        };
+    }
+
+    void SceneCreationPanel::CreateLightingObject(
+        DocumentSceneBase& scene,
+        EditorContext& context,
+        const SelectionSyncService& selectionSync,
+        bool reflectionProbe) {
+
+        const bool dirtyBefore =
+            context.sceneDirty || scene.HasUnsavedSceneChanges();
+        const std::vector<SceneObjectData> beforeObjects =
+            scene.GetSceneDocument().objects;
+        const SceneCameraSettings beforeCamera =
+            scene.GetSceneDocument().camera;
+        CreateObjectRequest request{};
+        request.position = ComputeObjectPlacementInView(scene.GetCamera());
+        GameObject* object = reflectionProbe
+            ? EDITOR::CreateReflectionProbeObject(scene, request)
+            : EDITOR::CreateIrradianceVolumeObject(scene, request);
+        context.selection.SelectObject(scene.GetWorld(), object);
+        context.sceneDirty = true;
+        selectionSync.SyncNextSceneObjectId(
+            scene,
+            context.nextSceneObjectId);
+        historyRequest_ = SceneObjectAuthoringHistoryRequest{
+            reflectionProbe
+                ? "Create Reflection Probe"
+                : "Create Irradiance Volume",
             beforeObjects,
             scene.GetSceneDocument().objects,
             beforeCamera,

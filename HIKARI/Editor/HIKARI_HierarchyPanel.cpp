@@ -10,7 +10,10 @@
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
 #include "Editor/Style/HIKARI_EditorTheme.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
+#include "Scene/Components/HIKARI_CameraComponent.h"
 #include "Scene/HIKARI_GameObject.h"
+#include "Scene/Components/Lighting/HIKARI_IrradianceVolumeComponent.h"
+#include "Scene/Components/Lighting/HIKARI_ReflectionProbeComponent.h"
 #include "Scene/HIKARI_World.h"
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
@@ -27,6 +30,21 @@ namespace HIKARI {
             }
             return TEXT::ToLowerAsciiCopy(object.GetName()).find(lowerSearch) !=
                 std::string::npos;
+        }
+
+        EDITOR::EditorGlyph ResolveObjectGlyph(
+            const GameObject& object) {
+
+            if (object.GetComponent<CameraComponent>() != nullptr) {
+                return EDITOR::EditorGlyph::Camera;
+            }
+            if (object.GetComponent<ReflectionProbeComponent>() != nullptr) {
+                return EDITOR::EditorGlyph::ReflectionProbe;
+            }
+            if (object.GetComponent<IrradianceVolumeComponent>() != nullptr) {
+                return EDITOR::EditorGlyph::IrradianceVolume;
+            }
+            return EDITOR::EditorGlyph::Object;
         }
     }
 
@@ -123,7 +141,7 @@ namespace HIKARI {
                 ImGui::Dummy(ImVec2(16.0f, metrics.rowHeight));
                 EDITOR::DrawEditorGlyph(
                     *ImGui::GetWindowDrawList(),
-                    EDITOR::EditorGlyph::Object,
+                    ResolveObjectGlyph(*objectPtr),
                     ImVec2(
                         iconMin.x + 8.0f,
                         iconMin.y + metrics.rowHeight * 0.5f),

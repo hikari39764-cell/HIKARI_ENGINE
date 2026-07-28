@@ -157,7 +157,9 @@ namespace HIKARI::RENDER3D::LIGHTING {
         if (request.lightProbeVolumeEnabled && !manifest.lightProbes.empty()) {
             const ASSETS::LIGHTING::LightProbeBakeRecord* volumeRecord = nullptr;
             for (const ASSETS::LIGHTING::LightProbeBakeRecord& record : manifest.lightProbes) {
-                if (record.type.empty() || record.type == "VolumeGrid") {
+                if ((record.type.empty() || record.type == "VolumeGrid") &&
+                    (record.scenario.empty() ||
+                        record.scenario == manifest.activeScenario)) {
                     volumeRecord = &record;
                     break;
                 }
@@ -196,8 +198,20 @@ namespace HIKARI::RENDER3D::LIGHTING {
         }
 
         if (!manifest.reflectionProbes.empty()) {
+            const auto recordIt = std::find_if(
+                manifest.reflectionProbes.begin(),
+                manifest.reflectionProbes.end(),
+                [&manifest](
+                    const ASSETS::LIGHTING::
+                        ReflectionProbeBakeRecord& candidate) {
+                    return candidate.scenario.empty() ||
+                        candidate.scenario ==
+                            manifest.activeScenario;
+                });
             const ASSETS::LIGHTING::ReflectionProbeBakeRecord& record =
-                manifest.reflectionProbes.front();
+                recordIt == manifest.reflectionProbes.end()
+                    ? manifest.reflectionProbes.front()
+                    : *recordIt;
 
             if (record.prefilteredCubemapPath.empty()) {
                 AppendMessage(messages, "[LightingRuntimeLoader][BakeManifest] baked probe has no prefiltered cubemap.");

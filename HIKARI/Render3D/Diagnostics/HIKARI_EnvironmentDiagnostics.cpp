@@ -507,10 +507,10 @@ namespace HIKARI::RENDER3D::DIAGNOSTICS {
         snapshot.ssaoPower = ssao.power;
 
         const RENDERER3D::DEBUG::DebugRendererFrameStats& debugStats = RENDERER3D::DEBUG::GetDebugRendererFrameStats();
-        snapshot.debugSubmittedLineCount = debugStats.submittedLineCount;
-        snapshot.debugExpandedLineCount = debugStats.expandedLineCount;
-        snapshot.debugDepthTestLineCount = debugStats.depthTestLineCount;
-        snapshot.debugXRayLineCount = debugStats.xrayLineCount;
+        snapshot.debugSubmittedStrokeCount = debugStats.submittedStrokeCount;
+        snapshot.debugExpandedStrokeCount = debugStats.expandedStrokeCount;
+        snapshot.debugDepthTestStrokeCount = debugStats.depthTestStrokeCount;
+        snapshot.debugXRayStrokeCount = debugStats.xrayStrokeCount;
         snapshot.debugLightProbeGizmoTotalPointCount = debugStats.lightProbeGizmoTotalPointCount;
         snapshot.debugLightProbeGizmoDrawnPointCount = debugStats.lightProbeGizmoDrawnPointCount;
         snapshot.debugLightProbeGizmoMode = debugStats.lightProbeGizmoMode;
@@ -689,10 +689,10 @@ namespace HIKARI::RENDER3D::DIAGNOSTICS {
         {
             std::ostringstream oss;
             oss << "[EnvironmentDiagnostics][DebugOverlay]"
-                << " submittedLines=" << snapshot.debugSubmittedLineCount
-                << " expandedLines=" << snapshot.debugExpandedLineCount
-                << " depthLines=" << snapshot.debugDepthTestLineCount
-                << " xrayLines=" << snapshot.debugXRayLineCount
+                << " submittedStrokes=" << snapshot.debugSubmittedStrokeCount
+                << " expandedStrokes=" << snapshot.debugExpandedStrokeCount
+                << " depthStrokes=" << snapshot.debugDepthTestStrokeCount
+                << " xrayStrokes=" << snapshot.debugXRayStrokeCount
                 << " lightProbePoints=" << snapshot.debugLightProbeGizmoDrawnPointCount
                 << "/" << snapshot.debugLightProbeGizmoTotalPointCount
                 << " lightProbeMode=" << LightProbeGizmoModeText(snapshot.debugLightProbeGizmoMode)

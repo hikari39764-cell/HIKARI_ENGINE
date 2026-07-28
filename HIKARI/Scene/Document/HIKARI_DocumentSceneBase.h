@@ -182,8 +182,9 @@ namespace HIKARI {
         int ApplyRuntimeMaterialOverridePreview(
             const AssetGuid& materialGuid,
             const PbrMaterialAssetData& data);
-        bool RequestReflectionProbeBake();
-        bool RequestLightProbeBake();
+        bool RequestLightingBake(
+            bool force,
+            SceneObjectId selectedObjectId = {});
         TOOLS::BAKING::LightingBakeJobState GetLightingBakeJobState() const;
         bool HasLastLightingBakeReport() const;
         const TOOLS::BAKING::LightingBakeReport& GetLastLightingBakeReport() const;
@@ -201,7 +202,7 @@ namespace HIKARI {
         void SetViewportPerformanceState(const ViewportPerformanceState& state);
         void SetViewportDebugViewState(const ViewportDebugViewState& state);
         void SetSelectedGizmoObjectId(SceneObjectId id);
-        void SyncReflectionProbeRuntimeFromAuthoring();
+        SceneObjectId GetSelectedGizmoObjectId() const;
 
     protected:
         bool RegisterRuntimeFeatures();

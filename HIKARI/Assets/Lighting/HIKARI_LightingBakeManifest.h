@@ -9,7 +9,7 @@
 
 namespace HIKARI::ASSETS::LIGHTING {
 
-    constexpr uint32_t kLightingBakeManifestVersion = 1;
+    constexpr uint32_t kLightingBakeManifestVersion = 2;
 
     struct ReflectionProbeBakeRecord {
         std::string id{};
@@ -29,6 +29,10 @@ namespace HIKARI::ASSETS::LIGHTING {
         std::string prefilteredCubemapPath{};
         std::string brdfLutPath{};
         uint32_t prefilteredMipCount = 1;
+        std::string authoringHash{};
+        std::string dependencyHash{};
+        std::string bakeSet{ "Default" };
+        std::string scenario{ "Default" };
     };
 
     struct LightProbeBakeRecord {
@@ -43,7 +47,12 @@ namespace HIKARI::ASSETS::LIGHTING {
         uint32_t countZ = 0;
         uint32_t shOrder = 3;
         uint32_t probeCount = 0;
+        int priority = 0;
         std::string shDataPath{};
+        std::string authoringHash{};
+        std::string dependencyHash{};
+        std::string bakeSet{ "Default" };
+        std::string scenario{ "Default" };
     };
 
     struct LightmapBakeRecord {
@@ -59,6 +68,9 @@ namespace HIKARI::ASSETS::LIGHTING {
         std::string bakeGuid{};
         uint32_t bakeVersion = 1;
         std::string generatedRoot{};
+        std::string sceneHash{};
+        std::string dependencyHash{};
+        std::string activeScenario{ "Default" };
         std::vector<ReflectionProbeBakeRecord> reflectionProbes{};
         std::vector<LightProbeBakeRecord> lightProbes{};
         std::vector<LightmapBakeRecord> lightmaps{};

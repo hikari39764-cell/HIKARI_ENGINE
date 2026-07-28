@@ -10,6 +10,8 @@
 #include "Scene/Components/HIKARI_ProceduralMeshComponent.h"
 #include "Scene/Components/HIKARI_SequencePlayerComponent.h"
 #include "Scene/Components/HIKARI_SpawnPointComponent.h"
+#include "Scene/Components/Lighting/HIKARI_IrradianceVolumeComponent.h"
+#include "Scene/Components/Lighting/HIKARI_ReflectionProbeComponent.h"
 #include "Scene/Components/Rendering/MaterialFx/HIKARI_MaterialFxComponent.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
 
@@ -32,6 +34,8 @@ namespace HIKARI {
     void ColliderComponent::BuildInspector(IInspectorBuilder&) {}
     void PhysicsBodyComponent::BuildInspector(IInspectorBuilder&) {}
     void ProceduralMeshComponent::BuildInspector(IInspectorBuilder&) {}
+    void IrradianceVolumeComponent::BuildInspector(IInspectorBuilder&) {}
+    void ReflectionProbeComponent::BuildInspector(IInspectorBuilder&) {}
 
     void SequencePlayerComponent::BuildInspector(IInspectorBuilder&) {}
     void SequencePlayerComponent::RenderImGui() {}

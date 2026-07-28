@@ -4,6 +4,8 @@
 #include <memory>
 
 #include "Scene/Components/HIKARI_ProceduralMeshComponent.h"
+#include "Scene/Components/Lighting/HIKARI_IrradianceVolumeComponent.h"
+#include "Scene/Components/Lighting/HIKARI_ReflectionProbeComponent.h"
 #include "Scene/Components/Rendering/MaterialFx/HIKARI_MaterialFxComponent.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
 #include "Scene/Features/HIKARI_RuntimeFeature.h"
@@ -44,10 +46,12 @@ namespace HIKARI {
 
             std::span<const std::string_view>
                 GetComponentTypeNames() const noexcept override {
-                static constexpr std::array<std::string_view, 3> names{
+                static constexpr std::array<std::string_view, 5> names{
                     "ModelComponent",
                     "MaterialFxComponent",
-                    "ProceduralMeshComponent"
+                    "ProceduralMeshComponent",
+                    "ReflectionProbeComponent",
+                    "IrradianceVolumeComponent"
                 };
                 return names;
             }
@@ -129,12 +133,61 @@ namespace HIKARI {
                     "Procedural Mesh",
                     "Generates editable plane, box, sphere, cylinder, or capsule geometry.");
 
+                ComponentTypeInfo reflectionProbe{};
+                reflectionProbe.typeName = "ReflectionProbeComponent";
+                reflectionProbe.factory =
+                    []() -> std::unique_ptr<IComponent> {
+                    return std::make_unique<ReflectionProbeComponent>();
+                };
+                reflectionProbe.runtimeApplyPolicy =
+                    ComponentRuntimeApplyPolicy::OnEditCommit;
+                reflectionProbe.initializeDefaults = [](
+                    const SceneObjectData&,
+                    nlohmann::json& properties) {
+                    ReflectionProbeComponent defaults{};
+                    defaults.Serialize(properties);
+                };
+                reflectionProbe.presentation = ComponentTypePresentation{
+                    "Reflection Probe",
+                    "Lighting",
+                    "Captures and blends local specular environment lighting.",
+                    std::string(RuntimeFeatureIds::Rendering)
+                };
+
+                ComponentTypeInfo irradianceVolume{};
+                irradianceVolume.typeName =
+                    "IrradianceVolumeComponent";
+                irradianceVolume.factory =
+                    []() -> std::unique_ptr<IComponent> {
+                    return std::make_unique<
+                        IrradianceVolumeComponent>();
+                };
+                irradianceVolume.runtimeApplyPolicy =
+                    ComponentRuntimeApplyPolicy::OnEditCommit;
+                irradianceVolume.initializeDefaults = [](
+                    const SceneObjectData&,
+                    nlohmann::json& properties) {
+                    IrradianceVolumeComponent defaults{};
+                    defaults.Serialize(properties);
+                };
+                irradianceVolume.presentation =
+                    ComponentTypePresentation{
+                        "Irradiance Volume",
+                        "Lighting",
+                        "Defines a baked diffuse-light probe grid.",
+                        std::string(RuntimeFeatureIds::Rendering)
+                    };
+
                 bool success = componentRegistry.Register(
                     std::move(model));
                 success = componentRegistry.Register(
                     std::move(materialFx)) && success;
                 success = componentRegistry.Register(
                     std::move(procedural)) && success;
+                success = componentRegistry.Register(
+                    std::move(reflectionProbe)) && success;
+                success = componentRegistry.Register(
+                    std::move(irradianceVolume)) && success;
                 success = systemTypeRegistry.Register(SystemTypeInfo{
                     "ModelRenderSystem",
                     [](const nlohmann::json&) -> std::unique_ptr<ISystem> {

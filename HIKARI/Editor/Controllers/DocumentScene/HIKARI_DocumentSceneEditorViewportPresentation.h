@@ -19,30 +19,11 @@ namespace HIKARI {
                 const char* label,
                 ViewportDebugViewState& debugView,
                 float width);
-            void DrawReflectionProbeLabels(
-                DocumentSceneBase& scene,
-                const ViewportOverlayState& overlays,
-                const ImVec2& viewportOrigin,
-                const ImVec2& viewportSize);
             void DrawLightOverlayIcons(
                 DocumentSceneBase& scene,
                 const ViewportOverlayState& overlays,
                 const ImVec2& viewportOrigin,
                 const ImVec2& viewportSize);
-            bool CanEditReflectionProbeTarget(
-                const ReflectionProbeSettings& probe,
-                ReflectionProbeEditTarget target);
-            TransformData BuildReflectionProbeEditTransform(
-                const ReflectionProbeSettings& probe,
-                ReflectionProbeEditTarget target);
-            EditorTransformGizmoState BuildReflectionProbeGizmoState(
-                const EditorTransformGizmoState& source,
-                ReflectionProbeEditTarget target);
-            void ApplyReflectionProbeEditTransform(
-                ReflectionProbeSettings& probe,
-                ReflectionProbeEditTarget target,
-                const EditorTransformGizmoResult& result,
-                EditorTransformGizmoOperation operation);
 
         } // namespace DOCUMENT_SCENE
     } // namespace EDITOR
