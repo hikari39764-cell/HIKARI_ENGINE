@@ -9,6 +9,7 @@
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/Core/HIKARI_MeshRendererTypes.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
+#include "Render3D/Resources/HIKARI_RenderTextureView.h"
 #include "Render3D/ScreenSpace/HIKARI_ScreenSpaceGeometryAux.h"
 
 namespace HIKARI::RENDER3D::SCREENSPACE {
@@ -67,6 +68,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
             const AmbientOcclusionSettings& settings);
 
         D3D12_GPU_DESCRIPTOR_HANDLE GetAoSrv() const { return lastAoSrv_; }
+        RenderTextureView GetAoView() const;
         bool IsValid() const { return valid_; }
 
     private:

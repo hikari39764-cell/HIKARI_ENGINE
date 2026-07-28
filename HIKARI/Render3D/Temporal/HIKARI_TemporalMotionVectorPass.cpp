@@ -199,7 +199,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
         constants.screenParams = inputs.frame.camera.screenParams;
         constants.historyParams = {
             inputs.frame.historyValid ? 1.0f : 0.0f,
-            inputs.hasSceneDepth ? 1.0f : 0.0f,
+            inputs.sceneDepth.IsSampleable() ? 1.0f : 0.0f,
             (std::max)(inputs.frame.camera.farZ, 1.0f),
             0.0f
         };
@@ -215,7 +215,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             cmd,
             GFX::GPU_PROFILE::Pass::TemporalMotionVectors);
 
-        if (!inputs.hasSceneDepth || inputs.sceneDepthSrv.ptr == 0) {
+        if (!inputs.sceneDepth.IsSampleable()) {
             MarkMotionVectorsWritten(false);
             return false;
         }
@@ -254,7 +254,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
         cmd->SetGraphicsRootConstantBufferView(
             0,
             constantSlot.buffer->GetGPUVirtualAddress());
-        cmd->SetGraphicsRootDescriptorTable(1, inputs.sceneDepthSrv);
+        cmd->SetGraphicsRootDescriptorTable(1, inputs.sceneDepth.srv);
         cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         cmd->DrawInstanced(3, 1, 0, 0);
         motionTarget->TransitionColor(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);

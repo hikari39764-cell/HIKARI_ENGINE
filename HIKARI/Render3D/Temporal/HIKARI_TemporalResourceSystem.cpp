@@ -40,7 +40,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             GFX::Context context{};
             TemporalFrameState frame{};
             TemporalExternalTexture sceneColor{};
-            TemporalTextureView sceneDepth{};
+            RenderTextureView sceneDepth{};
             RenderTarget2D* sceneDepthOwner = nullptr;
             TemporalTarget motionVectors{};
             TemporalTarget motionMetadata{};
@@ -100,34 +100,22 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             target.ready = false;
         }
 
-        TemporalTextureView MakeTextureView(const TemporalTarget& target) {
-            TemporalTextureView view{};
-            view.resource = target.target.GetResource();
-            view.srv = target.srv.gpu;
-            view.format = target.format;
-            view.width = target.width;
-            view.height = target.height;
-            view.state = target.target.GetColorState();
-            view.valid =
-                target.ready &&
-                view.resource != nullptr &&
-                view.srv.ptr != 0;
-            return view;
+        RenderTextureView MakeTextureView(const TemporalTarget& target) {
+            return {
+                target.target.GetResource(), target.srv.gpu, target.format,
+                target.width, target.height, 1, target.target.GetColorState(),
+                target.ready && target.target.GetResource() != nullptr &&
+                    target.srv.gpu.ptr != 0
+            };
         }
 
-        TemporalTextureView MakeTextureView(const TemporalExternalTexture& texture) {
-            TemporalTextureView view{};
-            view.resource = texture.resource;
-            view.srv = texture.srv.gpu;
-            view.format = texture.format;
-            view.width = texture.width;
-            view.height = texture.height;
-            view.state = texture.state;
-            view.valid =
-                texture.ready &&
-                view.resource != nullptr &&
-                view.srv.ptr != 0;
-            return view;
+        RenderTextureView MakeTextureView(const TemporalExternalTexture& texture) {
+            return {
+                texture.resource, texture.srv.gpu, texture.format,
+                texture.width, texture.height, 1, texture.state,
+                texture.ready && texture.resource != nullptr &&
+                    texture.srv.gpu.ptr != 0
+            };
         }
 
         void ReleaseExternalTexture(TemporalExternalTexture& texture) {
@@ -587,18 +575,14 @@ namespace HIKARI::RENDER3D::TEMPORAL {
     }
 
     TemporalInputs BuildTemporalInputs(
-        D3D12_GPU_DESCRIPTOR_HANDLE sceneDepthSrv,
-        D3D12_GPU_DESCRIPTOR_HANDLE sceneColorSrv) {
+        const RenderTextureView& sceneDepth,
+        const RenderTextureView& sceneColor) {
 
         TemporalResourceState& state = State();
         TemporalInputs inputs{};
         inputs.frame = state.frame;
-        inputs.sceneDepthSrv = sceneDepthSrv;
-        inputs.sceneColorSrv = sceneColorSrv;
-        inputs.hasSceneDepth = sceneDepthSrv.ptr != 0;
-        inputs.hasSceneColor = sceneColorSrv.ptr != 0;
-        inputs.sceneColor = MakeTextureView(state.sceneColor);
-        inputs.sceneDepth = state.sceneDepth;
+        inputs.sceneDepth = sceneDepth;
+        inputs.sceneColor = sceneColor;
         inputs.motionVectors = MakeTextureView(state.motionVectors);
         inputs.motionMetadata = MakeTextureView(state.motionMetadata);
         if (state.historyColorValid) {
@@ -627,25 +611,24 @@ namespace HIKARI::RENDER3D::TEMPORAL {
         RenderTarget2D& sceneDepthTarget) {
 
         TemporalResourceState& state = State();
-        TemporalInputs inputs = BuildTemporalInputs(
-            sceneDepthTarget.GetDepthSrvGpu(),
-            state.sceneColor.srv.gpu);
-        inputs.hasSceneDepth =
-            sceneDepthTarget.GetDepthResource() != nullptr &&
-            inputs.sceneDepthSrv.ptr != 0;
-        inputs.hasSceneColor =
-            state.sceneColor.ready &&
-            state.sceneColor.resource == sceneColorTarget.GetResource();
-        inputs.sceneDepth.resource = sceneDepthTarget.GetDepthResource();
-        inputs.sceneDepth.srv = inputs.sceneDepthSrv;
-        inputs.sceneDepth.format = DXGI_FORMAT_R32_FLOAT;
-        inputs.sceneDepth.width =
+        RenderTextureView sceneDepth{};
+        sceneDepth.resource = sceneDepthTarget.GetDepthResource();
+        sceneDepth.srv = sceneDepthTarget.GetDepthSrvGpu();
+        sceneDepth.format = DXGI_FORMAT_R32_FLOAT;
+        sceneDepth.width =
             static_cast<uint32_t>((std::max)(1, sceneDepthTarget.GetWidth()));
-        inputs.sceneDepth.height =
+        sceneDepth.height =
             static_cast<uint32_t>((std::max)(1, sceneDepthTarget.GetHeight()));
-        inputs.sceneDepth.state = sceneDepthTarget.GetDepthState();
-        inputs.sceneDepth.valid = inputs.hasSceneDepth;
-        state.sceneDepth = inputs.sceneDepth;
+        sceneDepth.mipCount = 1;
+        sceneDepth.state = sceneDepthTarget.GetDepthState();
+        sceneDepth.valid =
+            sceneDepth.resource != nullptr && sceneDepth.srv.ptr != 0;
+        RenderTextureView sceneColor = MakeTextureView(state.sceneColor);
+        sceneColor.valid =
+            sceneColor.valid &&
+            state.sceneColor.resource == sceneColorTarget.GetResource();
+        TemporalInputs inputs = BuildTemporalInputs(sceneDepth, sceneColor);
+        state.sceneDepth = sceneDepth;
         state.sceneDepthOwner = &sceneDepthTarget;
         return inputs;
     }
@@ -657,14 +640,12 @@ namespace HIKARI::RENDER3D::TEMPORAL {
     TemporalInputs GetCurrentTemporalInputs() {
         TemporalResourceState& state = State();
         TemporalInputs inputs = BuildTemporalInputs(
-            state.sceneDepth.srv,
-            state.sceneColor.srv.gpu);
-        inputs.sceneDepth = state.sceneDepth;
+            state.sceneDepth,
+            MakeTextureView(state.sceneColor));
         if (state.sceneDepthOwner != nullptr) {
             inputs.sceneDepth.state =
                 state.sceneDepthOwner->GetDepthState();
         }
-        inputs.hasSceneDepth = state.sceneDepth.valid;
         return inputs;
     }
 

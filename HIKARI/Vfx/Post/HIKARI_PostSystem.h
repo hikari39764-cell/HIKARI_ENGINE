@@ -6,6 +6,7 @@
 
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
+#include "Render3D/Resources/HIKARI_RenderTextureView.h"
 #include "Scene/HIKARI_SceneTransitionBus.h"
 #include "Vfx/Post/HIKARI_PostProcessingTypes.h"
 #include "Vfx/Post/HIKARI_PostQuadDrawer.h"
@@ -59,7 +60,7 @@ namespace HIKARI::POST {
         static bool IsSceneCaptureActive();
         static bool HasCurrentRenderTarget();
         static bool RebindCurrentRenderTarget();
-        static D3D12_GPU_DESCRIPTOR_HANDLE GetCurrentRenderTargetDepthSrv();
+        static RENDER3D::RenderTextureView GetCurrentRenderTargetDepthView();
         static D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentRenderTargetDsv();
         static D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentRenderTargetReadOnlyDsv();
         static bool BeginCurrentRenderTargetDepthRead();
@@ -86,11 +87,8 @@ namespace HIKARI::POST {
         static int GetEditorViewportWidth();
         static int GetEditorViewportHeight();
 
-        static bool CaptureSceneColorSnapshot();
-        static bool IsSceneColorReady();
-        static D3D12_GPU_DESCRIPTOR_HANDLE GetSceneColorSrv();
-        static int GetSceneColorWidth();
-        static int GetSceneColorHeight();
+        static RENDER3D::RenderTextureView CaptureSceneColorSnapshot();
+        static RENDER3D::RenderTextureView GetSceneColorSnapshotView();
 
         static void SetAmbientColor(float r, float g, float b);
         static void BeginLightCapture();

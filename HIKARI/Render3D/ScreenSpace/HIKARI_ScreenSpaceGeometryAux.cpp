@@ -158,4 +158,12 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         return normalRoughness_ != nullptr && normalRoughnessSrvGpu_.ptr != 0 && normalRoughnessRtv_.ptr != 0;
     }
 
+    RenderTextureView ScreenSpaceGeometryAux::GetNormalRoughnessView() const {
+        return {
+            normalRoughness_.Get(), normalRoughnessSrvGpu_,
+            kNormalRoughnessFormat, width_, height_, 1,
+            normalRoughnessState_, IsValid()
+        };
+    }
+
 } // namespace HIKARI::RENDER3D::SCREENSPACE

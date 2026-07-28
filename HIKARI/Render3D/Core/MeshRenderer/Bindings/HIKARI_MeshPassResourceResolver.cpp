@@ -20,20 +20,20 @@ namespace HIKARI::MESHRENDERER {
 
     D3D12_GPU_DESCRIPTOR_HANDLE ResolveSceneDepthSrv(
         bool depthAwarePhase,
-        D3D12_GPU_DESCRIPTOR_HANDLE sceneDepthSrv,
+        const RENDER3D::RenderTextureView& sceneDepth,
         int fallbackTextureHandle) {
-        if (depthAwarePhase && sceneDepthSrv.ptr != 0) {
-            return sceneDepthSrv;
+        if (depthAwarePhase && sceneDepth.IsSampleable()) {
+            return sceneDepth.srv;
         }
 
         return RENDER3D::GetTextureResourceSrvGpuHandleFromBackendHandle(fallbackTextureHandle);
     }
 
     D3D12_GPU_DESCRIPTOR_HANDLE ResolveSceneColorSrv(
-        D3D12_GPU_DESCRIPTOR_HANDLE sceneColorSrv,
+        const RENDER3D::RenderTextureView& sceneColor,
         int fallbackTextureHandle) {
-        if (sceneColorSrv.ptr != 0) {
-            return sceneColorSrv;
+        if (sceneColor.IsSampleable()) {
+            return sceneColor.srv;
         }
 
         return RENDER3D::GetTextureResourceSrvGpuHandleFromBackendHandle(fallbackTextureHandle);
@@ -87,9 +87,11 @@ namespace HIKARI::MESHRENDERER {
         return RENDER3D::GetTextureResourceSrvGpuHandleFromBackendHandle(fallbackCubeTextureHandle);
     }
 
-    D3D12_GPU_DESCRIPTOR_HANDLE ResolveSsaoSrv(D3D12_GPU_DESCRIPTOR_HANDLE ssaoSrv, int fallbackAoTextureHandle) {
-        if (ssaoSrv.ptr != 0) {
-            return ssaoSrv;
+    D3D12_GPU_DESCRIPTOR_HANDLE ResolveSsaoSrv(
+        const RENDER3D::RenderTextureView& ambientOcclusion,
+        int fallbackAoTextureHandle) {
+        if (ambientOcclusion.IsSampleable()) {
+            return ambientOcclusion.srv;
         }
 
         return RENDER3D::GetTextureResourceSrvGpuHandleFromBackendHandle(fallbackAoTextureHandle);

@@ -6,6 +6,7 @@
 
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/Core/HIKARI_RenderView.h"
+#include "Render3D/Resources/HIKARI_RenderTextureView.h"
 
 namespace HIKARI {
     class Camera3D;
@@ -43,8 +44,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
     struct SceneFrameResources {
         D3D12_CPU_DESCRIPTOR_HANDLE dsv{};
         D3D12_CPU_DESCRIPTOR_HANDLE readOnlyDsv{};
-        D3D12_GPU_DESCRIPTOR_HANDLE depthSrv{};
-        bool depthReadable = false;
+        RenderTextureView depth{};
     };
 
     // Immutable per-frame contract shared by renderer stages.
@@ -52,6 +52,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
         RenderViewId viewId{ kPrimaryRenderViewId };
         RenderViewPurpose purpose = RenderViewPurpose::Game;
         bool cameraCut = false;
+        uint64_t frameIndex = 0;
         GFX::Context graphics{};
         const Camera3D* camera = nullptr;
         const SceneEnvironment* environment = nullptr;
@@ -71,8 +72,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
         uint32_t height = 1;
         D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv{};
         D3D12_CPU_DESCRIPTOR_HANDLE readOnlySceneDsv{};
-        D3D12_GPU_DESCRIPTOR_HANDLE sceneDepthSrv{};
-        bool depthReadable = false;
+        RenderTextureView sceneDepth{};
         RenderTargetAccess renderTargetAccess{};
     };
 

@@ -72,7 +72,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
             state.frozenCullingDepthStatsValid = false;
         }
 
-        void PublishFrameDepthPyramid(
+        void PublishVisibilityDepthPyramid(
             ScreenSpaceFrameResult& result,
             DEPTH::DepthPyramidView view,
             DEPTH::DepthPyramidViewKind viewKind) {
@@ -86,9 +86,45 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
 
             view.viewKind = viewKind;
             result.hzbBuilt = true;
-            result.depthPyramidBuilt = true;
-            result.depthPyramid = view;
-            DEPTH::PublishFrameDepthPyramid(view);
+            result.visibilityDepthPyramid = view;
+        }
+
+        void PublishCurrentSceneDepthPyramid(
+            ScreenSpaceFrameResult& result,
+            DEPTH::DepthPyramidView view) {
+
+            if (!view.valid ||
+                view.sourceKind != DEPTH::DepthPyramidSourceKind::SceneDepth ||
+                view.pyramidSrv.ptr == 0 ||
+                view.width == 0 ||
+                view.height == 0) {
+                return;
+            }
+
+            view.viewKind = DEPTH::DepthPyramidViewKind::CurrentFrame;
+            result.hzbBuilt = true;
+            result.currentSceneDepthPyramid = view;
+        }
+
+        RenderTextureView BuildTextureResourceView(
+            TextureResourceHandle handle) {
+            if (!IsTextureResourceValid(handle)) {
+                return {};
+            }
+            const RenderResourceRecord* record =
+                GetTextureResourceRecord(handle);
+            if (record == nullptr) {
+                return {};
+            }
+            const D3D12_GPU_DESCRIPTOR_HANDLE srv =
+                GetTextureResourceSrvGpuHandle(handle);
+            return {
+                record->GetResource(), srv, record->desc.format,
+                static_cast<uint32_t>(record->desc.width),
+                record->desc.height, record->desc.mipLevels,
+                D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+                record->GetResource() != nullptr && srv.ptr != 0
+            };
         }
 
         void BeginDepthVisibilityDebugFrame(
@@ -184,7 +220,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
             }
 
             RecordDepthPyramidSource(DepthVisibilitySource::CurrentPrepass);
-            PublishFrameDepthPyramid(
+            PublishVisibilityDepthPyramid(
                 result,
                 currentDepthStats.depthPyramid,
                 DEPTH::DepthPyramidViewKind::CurrentFrame);
@@ -266,11 +302,12 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         if (context.graphics == nullptr) {
             return result;
         }
-        DEPTH::BeginDepthPyramidFrame(*context.graphics);
+        DEPTH::UpdateDepthPyramidContext(*context.graphics);
         const bool fallbackReady = EnsureScreenSpaceFallbacks(state);
         if (fallbackReady) {
             result.fallbackAoTextureResource = state.fallbackAoTextureResource;
-            result.aoSrv = RENDER3D::GetTextureResourceSrvGpuHandle(state.fallbackAoTextureResource);
+            result.ambientOcclusion =
+                BuildTextureResourceView(state.fallbackAoTextureResource);
         }
         result.fallbackAoTextureHandle = state.fallbackAoTextureHandle;
         const RENDER3D::GPUDRIVEN::GpuDepthVisibilityStats historyDepthStats =
@@ -336,7 +373,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
                 state.depthVisibilityViewProjValid = true;
                 state.depthVisibilityViewProj =
                     state.frozenCullingDepthStats.depthPyramid.viewProj;
-                PublishFrameDepthPyramid(
+                PublishVisibilityDepthPyramid(
                     result,
                     state.frozenCullingDepthStats.depthPyramid,
                     DEPTH::DepthPyramidViewKind::History);
@@ -365,7 +402,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
             state.depthVisibilityValid = true;
             state.depthVisibilityViewProjValid = true;
             state.depthVisibilityViewProj = historyDepthStats.depthPyramid.viewProj;
-            PublishFrameDepthPyramid(
+            PublishVisibilityDepthPyramid(
                 result,
                 historyDepthStats.depthPyramid,
                 DEPTH::DepthPyramidViewKind::History);
@@ -419,7 +456,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
                 state.ssaoRenderer.IsValid() &&
                 state.ssaoRenderer.GetAoSrv().ptr != 0) {
                 result.ssaoRendered = true;
-                result.aoSrv = state.ssaoRenderer.GetAoSrv();
+                result.ambientOcclusion = state.ssaoRenderer.GetAoView();
                 GFX::PIX::SetGpuMarker(context.cmd, GFX::PIX::kColorPost, "SSAO.Composite");
                 RecordSsaoCompositeDebug(0.0f);
             } else {
@@ -445,9 +482,12 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
             state.geometryAux.GetFormat());
 
         state.geometryValid = result.geometryAuxWritten && state.geometryAux.IsValid();
+        if (state.geometryValid) {
+            result.normalRoughness =
+                state.geometryAux.GetNormalRoughnessView();
+        }
         if (!state.geometryValid ||
-            !context.depthReadable ||
-            context.sceneDepthSrv.ptr == 0) {
+            !context.sceneDepth.IsSampleable()) {
             state.ssaoValid = false;
             return result;
         }
@@ -458,7 +498,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
                 *context.graphics,
                 context.cmd,
                 state.geometryAux,
-                context.sceneDepthSrv,
+                context.sceneDepth.srv,
                 renderCameraCb,
                 environment.ambientOcclusion);
             context.renderTargetAccess.EndDepthRead();
@@ -469,7 +509,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         state.ssaoValid = ssaoOk;
         result.ssaoRendered = ssaoOk;
         if (ssaoOk && state.ssaoRenderer.GetAoSrv().ptr != 0) {
-            result.aoSrv = state.ssaoRenderer.GetAoSrv();
+            result.ambientOcclusion = state.ssaoRenderer.GetAoView();
             GFX::PIX::SetGpuMarker(context.cmd, GFX::PIX::kColorPost, "SSAO.Composite");
             RecordSsaoCompositeDebug(0.0f);
         }
@@ -488,8 +528,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         }
 
         const bool depthAvailable =
-            context.depthReadable &&
-            context.sceneDepthSrv.ptr != 0;
+            context.sceneDepth.IsSampleable();
         if (!depthAvailable) {
             state.depthVisibilityValid = false;
             state.depthVisibilityViewProjValid = false;
@@ -525,14 +564,13 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
                     context.cmd,
                     context.width,
                     context.height,
-                    context.sceneDepthSrv,
+                    context.sceneDepth.srv,
                     cameraCb.viewProj);
                 if (result.hzbBuilt) {
                     RecordDepthPyramidSource(DepthVisibilitySource::CurrentSceneDepth);
-                    PublishFrameDepthPyramid(
+                    PublishCurrentSceneDepthPyramid(
                         result,
-                        state.depthVisibility.GetStats().depthPyramid,
-                        DEPTH::DepthPyramidViewKind::CurrentFrame);
+                        state.depthVisibility.GetStats().depthPyramid);
                     state.depthVisibilityValid = true;
                     state.depthVisibilityViewProjValid = true;
                     state.depthVisibilityViewProj = cameraCb.viewProj;
@@ -551,13 +589,13 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
                     context.cmd,
                     context.width,
                     context.height,
-                    context.sceneDepthSrv,
+                    context.sceneDepth.srv,
                     cameraCb,
                     environment.ambientOcclusion);
                 state.ssaoValid = ssaoOk;
                 if (ssaoOk && state.ssaoRenderer.GetAoSrv().ptr != 0) {
                     result.ssaoRendered = true;
-                    result.aoSrv = state.ssaoRenderer.GetAoSrv();
+                    result.ambientOcclusion = state.ssaoRenderer.GetAoView();
                     GFX::PIX::SetGpuMarker(
                         context.cmd,
                         GFX::PIX::kColorPost,
@@ -584,7 +622,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         if (ssaoMode != SsaoMode::Balanced ||
             environment.ambientOcclusion.editorViewportSuppressed ||
             context.graphics == nullptr || context.cmd == nullptr ||
-            context.sceneDepthSrv.ptr == 0) {
+            !context.sceneDepth.IsSampleable()) {
             return false;
         }
 
@@ -601,7 +639,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
             context.cmd,
             context.width,
             context.height,
-            context.sceneDepthSrv,
+            context.sceneDepth.srv,
             renderCameraCb,
             environment.ambientOcclusion);
         context.renderTargetAccess.EndDepthRead();
@@ -616,7 +654,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
 
         state.balancedSsaoSameFrame = true;
         result.ssaoRendered = true;
-        result.aoSrv = state.ssaoRenderer.GetAoSrv();
+        result.ambientOcclusion = state.ssaoRenderer.GetAoView();
         return true;
     }
 

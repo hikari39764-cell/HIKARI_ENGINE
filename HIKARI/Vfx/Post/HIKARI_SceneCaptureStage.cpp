@@ -104,9 +104,16 @@ namespace HIKARI::POST {
         return true;
     }
 
-    D3D12_GPU_DESCRIPTOR_HANDLE SceneCaptureStage::GetCurrentDepthSrv() const {
+    RENDER3D::RenderTextureView SceneCaptureStage::GetCurrentDepthView() const {
         if (!HasCurrentTarget() || !layers_.top().target->HasDepth()) return {};
-        return layers_.top().target->GetDepthSrvGpu();
+        const RenderTarget2D& target = *layers_.top().target;
+        return {
+            target.GetDepthResource(), target.GetDepthSrvGpu(),
+            DXGI_FORMAT_R32_FLOAT, static_cast<uint32_t>(target.GetWidth()),
+            static_cast<uint32_t>(target.GetHeight()), 1,
+            target.GetDepthState(), target.GetDepthResource() != nullptr &&
+                target.GetDepthSrvGpu().ptr != 0
+        };
     }
 
     D3D12_CPU_DESCRIPTOR_HANDLE SceneCaptureStage::GetCurrentDsv() const {
@@ -163,8 +170,8 @@ namespace HIKARI::POST {
             sceneColorSnapshot_.GetResource(), &desc, sceneColorSrvCpu_);
     }
 
-    bool SceneCaptureStage::CaptureSceneColorSnapshot() {
-        if (!active_ || !EnsureSceneColorSnapshot() || !context_.cmdList) return false;
+    RENDER3D::RenderTextureView SceneCaptureStage::CaptureSceneColorSnapshot() {
+        if (!active_ || !EnsureSceneColorSnapshot() || !context_.cmdList) return {};
         sceneTarget_.TransitionColor(D3D12_RESOURCE_STATE_COPY_SOURCE);
         sceneColorSnapshot_.TransitionColor(D3D12_RESOURCE_STATE_COPY_DEST);
         GFX::PIX::ScopedGpuEvent event(
@@ -174,15 +181,20 @@ namespace HIKARI::POST {
         sceneColorSnapshot_.TransitionColor(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
         sceneTarget_.TransitionColor(D3D12_RESOURCE_STATE_RENDER_TARGET);
         sceneColorReady_ = true;
-        return true;
+        return GetSceneColorSnapshotView();
     }
 
-    bool SceneCaptureStage::IsSceneColorReady() const {
-        return sceneColorReady_ && sceneColorSnapshot_.GetResource() && sceneColorSrvGpu_.ptr;
+    RENDER3D::RenderTextureView SceneCaptureStage::GetSceneColorSnapshotView() const {
+        return {
+            sceneColorSnapshot_.GetResource(), sceneColorSrvGpu_,
+            sceneColorSnapshot_.GetFormat(),
+            static_cast<uint32_t>(sceneColorSnapshot_.GetWidth()),
+            static_cast<uint32_t>(sceneColorSnapshot_.GetHeight()), 1,
+            sceneColorSnapshot_.GetColorState(), sceneColorReady_ &&
+                sceneColorSnapshot_.GetResource() != nullptr &&
+                sceneColorSrvGpu_.ptr != 0
+        };
     }
-    D3D12_GPU_DESCRIPTOR_HANDLE SceneCaptureStage::GetSceneColorSrv() const { return sceneColorSrvGpu_; }
-    int SceneCaptureStage::GetSceneColorWidth() const { return sceneColorSnapshot_.GetWidth(); }
-    int SceneCaptureStage::GetSceneColorHeight() const { return sceneColorSnapshot_.GetHeight(); }
 
     void SceneCaptureStage::SetAmbientColor(float r, float g, float b) {
         ambientColor_[0] = r; ambientColor_[1] = g; ambientColor_[2] = b;

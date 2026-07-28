@@ -1,7 +1,7 @@
 # Authoritative HIKARI compile-source manifest.
 # Add or remove translation units here and keep the source-closure test green.
 
-set(HIKARI_COMPILE_SOURCE_COUNT 704)
+set(HIKARI_COMPILE_SOURCE_COUNT 703)
 
 set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/External/WICTextureLoader.cpp"
@@ -176,7 +176,6 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Core/MeshRenderer/Data/HIKARI_MeshDrawDataBuilder.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Core/MeshRenderer/Pipeline/HIKARI_MeshVariantResolver.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Core/MeshRenderer/Execution/HIKARI_MeshDrawExecutor.cpp"
-    "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Depth/HIKARI_DepthPyramidFrameResources.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Depth/HIKARI_DepthPyramidLayer.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Settings/HIKARI_RenderQualitySettings.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Settings/HIKARI_RenderQualitySettingsJson.cpp"

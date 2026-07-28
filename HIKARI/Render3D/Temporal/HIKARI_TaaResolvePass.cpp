@@ -207,8 +207,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             !inputs.sceneColor.valid ||
             !inputs.motionVectors.valid ||
             !inputs.motionMetadata.valid ||
-            !inputs.hasSceneDepth ||
-            inputs.sceneDepthSrv.ptr == 0 ||
+            !inputs.sceneDepth.IsSampleable() ||
             !inputs.historyColorWrite.valid ||
             !inputs.historyDepthWrite.valid ||
             !inputs.reactiveMask.valid ||
@@ -251,7 +250,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
         D3D12_GPU_DESCRIPTOR_HANDLE historySrv =
             historyValid ? inputs.historyColorRead.srv : inputs.sceneColor.srv;
         D3D12_GPU_DESCRIPTOR_HANDLE historyDepthSrv =
-            historyValid ? inputs.historyDepthRead.srv : inputs.sceneDepthSrv;
+            historyValid ? inputs.historyDepthRead.srv : inputs.sceneDepth.srv;
 
         GFX::PIX::ScopedGpuEvent pix(
             cmd,
@@ -310,7 +309,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
         cmd->SetGraphicsRootDescriptorTable(2, historySrv);
         cmd->SetGraphicsRootDescriptorTable(3, inputs.motionVectors.srv);
         cmd->SetGraphicsRootDescriptorTable(4, inputs.motionMetadata.srv);
-        cmd->SetGraphicsRootDescriptorTable(5, inputs.sceneDepthSrv);
+        cmd->SetGraphicsRootDescriptorTable(5, inputs.sceneDepth.srv);
         cmd->SetGraphicsRootDescriptorTable(6, historyDepthSrv);
         cmd->SetGraphicsRootDescriptorTable(7, inputs.reactiveMask.srv);
         cmd->SetGraphicsRootDescriptorTable(8, inputs.transparencyMask.srv);

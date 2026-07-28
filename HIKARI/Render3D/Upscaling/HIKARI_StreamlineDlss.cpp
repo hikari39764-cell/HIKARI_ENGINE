@@ -355,12 +355,13 @@ namespace HIKARI::RENDER3D::UPSCALING {
         }
 
         state.output.TransitionColor(D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-        TEMPORAL::TemporalTextureView outputView{};
+        RENDER3D::RenderTextureView outputView{};
         outputView.resource = state.output.GetResource();
         outputView.srv = state.output.GetSrvGpu();
         outputView.format = state.output.GetFormat();
         outputView.width = static_cast<uint32_t>(state.output.GetWidth());
         outputView.height = static_cast<uint32_t>(state.output.GetHeight());
+        outputView.mipCount = 1;
         outputView.state = state.output.GetColorState();
         outputView.valid = outputView.resource != nullptr;
 

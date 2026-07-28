@@ -188,17 +188,20 @@ namespace HIKARI::POST {
     bool PostSystem::IsSceneCaptureActive() { return captureStage_.IsActive(); }
     bool PostSystem::HasCurrentRenderTarget() { return initialized_ && captureStage_.HasCurrentTarget(); }
     bool PostSystem::RebindCurrentRenderTarget() { return captureStage_.RebindCurrentTarget(); }
-    D3D12_GPU_DESCRIPTOR_HANDLE PostSystem::GetCurrentRenderTargetDepthSrv() { return captureStage_.GetCurrentDepthSrv(); }
+    RENDER3D::RenderTextureView PostSystem::GetCurrentRenderTargetDepthView() {
+        return captureStage_.GetCurrentDepthView();
+    }
     D3D12_CPU_DESCRIPTOR_HANDLE PostSystem::GetCurrentRenderTargetDsv() { return captureStage_.GetCurrentDsv(); }
     D3D12_CPU_DESCRIPTOR_HANDLE PostSystem::GetCurrentRenderTargetReadOnlyDsv() { return captureStage_.GetCurrentReadOnlyDsv(); }
     bool PostSystem::BeginCurrentRenderTargetDepthRead() { return captureStage_.BeginCurrentDepthRead(); }
     void PostSystem::EndCurrentRenderTargetDepthRead() { captureStage_.EndCurrentDepthRead(); }
 
-    bool PostSystem::CaptureSceneColorSnapshot() { return captureStage_.CaptureSceneColorSnapshot(); }
-    bool PostSystem::IsSceneColorReady() { return captureStage_.IsSceneColorReady(); }
-    D3D12_GPU_DESCRIPTOR_HANDLE PostSystem::GetSceneColorSrv() { return captureStage_.GetSceneColorSrv(); }
-    int PostSystem::GetSceneColorWidth() { return captureStage_.GetSceneColorWidth(); }
-    int PostSystem::GetSceneColorHeight() { return captureStage_.GetSceneColorHeight(); }
+    RENDER3D::RenderTextureView PostSystem::CaptureSceneColorSnapshot() {
+        return captureStage_.CaptureSceneColorSnapshot();
+    }
+    RENDER3D::RenderTextureView PostSystem::GetSceneColorSnapshotView() {
+        return captureStage_.GetSceneColorSnapshotView();
+    }
 
     bool PostSystem::IsEditorViewportReady() {
         return presentationStage_.IsEditorOutputReady(

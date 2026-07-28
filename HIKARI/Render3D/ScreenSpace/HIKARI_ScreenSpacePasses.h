@@ -5,10 +5,11 @@
 #include <d3d12.h>
 
 #include "Render3D/Core/HIKARI_MeshRendererTypes.h"
-#include "Render3D/Depth/HIKARI_DepthPyramidFrameResources.h"
+#include "Render3D/Depth/HIKARI_DepthPyramidLayer.h"
 #include "Render3D/GpuDriven/HIKARI_GpuDepthVisibilityLayer.h"
 #include "Render3D/Pipeline/HIKARI_RenderFrameContext.h"
 #include "Render3D/Resources/HIKARI_RenderResourceHandle.h"
+#include "Render3D/Resources/HIKARI_RenderTextureView.h"
 #include "Render3D/ScreenSpace/HIKARI_ScreenSpaceGeometryAux.h"
 #include "Render3D/ScreenSpace/HIKARI_SsaoRenderer.h"
 
@@ -62,11 +63,12 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
     struct ScreenSpaceFrameResult {
         bool depthPrepassWritten = false;
         bool hzbBuilt = false;
-        bool depthPyramidBuilt = false;
         bool geometryAuxWritten = false;
         bool ssaoRendered = false;
-        RENDER3D::DEPTH::DepthPyramidView depthPyramid{};
-        D3D12_GPU_DESCRIPTOR_HANDLE aoSrv{};
+        RENDER3D::DEPTH::DepthPyramidView visibilityDepthPyramid{};
+        RENDER3D::DEPTH::DepthPyramidView currentSceneDepthPyramid{};
+        RENDER3D::RenderTextureView normalRoughness{};
+        RENDER3D::RenderTextureView ambientOcclusion{};
         RENDER3D::TextureResourceHandle fallbackAoTextureResource{};
         int fallbackAoTextureHandle = -1;
     };

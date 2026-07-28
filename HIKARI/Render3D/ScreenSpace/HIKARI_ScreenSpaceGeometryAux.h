@@ -7,6 +7,7 @@
 #include <wrl/client.h>
 
 #include "Gfx/HIKARI_GfxContext.h"
+#include "Render3D/Resources/HIKARI_RenderTextureView.h"
 
 namespace HIKARI::RENDER3D::SCREENSPACE {
 
@@ -27,6 +28,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         DXGI_FORMAT GetFormat() const { return kNormalRoughnessFormat; }
         ID3D12Resource* GetNormalRoughnessResource() const { return normalRoughness_.Get(); }
         D3D12_GPU_DESCRIPTOR_HANDLE GetNormalRoughnessSrv() const { return normalRoughnessSrvGpu_; }
+        RenderTextureView GetNormalRoughnessView() const;
 
     private:
         bool CreateResources(

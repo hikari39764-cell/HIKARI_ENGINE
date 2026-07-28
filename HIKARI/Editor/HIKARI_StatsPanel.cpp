@@ -84,10 +84,10 @@ namespace HIKARI {
             ImGui::Text(
                 "Deferred Releases Pending: %zu",
                 GFX::GetCurrentDeferredReleaseCount());
-            ImGui::Text("SceneColor Ready: %s", POST::PostSystem::IsSceneColorReady() ? "Yes" : "No");
-            ImGui::Text("SceneColor Size: %d x %d",
-                POST::PostSystem::GetSceneColorWidth(),
-                POST::PostSystem::GetSceneColorHeight());
+            const auto sceneColor = POST::PostSystem::GetSceneColorSnapshotView();
+            ImGui::Text("SceneColor Ready: %s",
+                sceneColor.IsSampleable() ? "Yes" : "No");
+            ImGui::Text("SceneColor Size: %u x %u", sceneColor.width, sceneColor.height);
             const IBL::IblEnvironmentData& iblData = IBL::GetEnvironmentData();
             ImGui::Text("IBL Valid: %s", iblData.valid ? "Yes" : "No");
             ImGui::Text("IBL Irradiance / Prefiltered / BRDF: %s / %s / %s",

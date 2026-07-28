@@ -77,8 +77,8 @@ namespace HIKARI::RENDER3D::TEMPORAL {
     void CommitTemporalHistory(bool written);
 
     TemporalInputs BuildTemporalInputs(
-        D3D12_GPU_DESCRIPTOR_HANDLE sceneDepthSrv,
-        D3D12_GPU_DESCRIPTOR_HANDLE sceneColorSrv);
+        const RenderTextureView& sceneDepth,
+        const RenderTextureView& sceneColor);
     TemporalInputs BuildTemporalInputs(
         RenderTarget2D& sceneColorTarget,
         RenderTarget2D& sceneDepthTarget);

@@ -621,6 +621,27 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         return true;
     }
 
+    RenderTextureView SsaoRenderer::GetAoView() const {
+        ID3D12Resource* resource = nullptr;
+        D3D12_RESOURCE_STATES resourceState =
+            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        if (lastAoSrv_.ptr == resolvedSrvGpu_.ptr) {
+            resource = resolvedAo_.Get();
+            resourceState = resolvedState_;
+        } else if (lastAoSrv_.ptr == blurredSrvGpu_.ptr) {
+            resource = blurredAo_.Get();
+            resourceState = blurredState_;
+        } else if (lastAoSrv_.ptr == rawSrvGpu_.ptr) {
+            resource = rawAo_.Get();
+            resourceState = rawState_;
+        }
+        return {
+            resource, lastAoSrv_, DXGI_FORMAT_R8_UNORM,
+            screenWidth_, screenHeight_, 1, resourceState,
+            valid_ && resource != nullptr && lastAoSrv_.ptr != 0
+        };
+    }
+
     bool SsaoRenderer::CreateAoResource(
         const GFX::Context& graphics,
         uint32_t width,

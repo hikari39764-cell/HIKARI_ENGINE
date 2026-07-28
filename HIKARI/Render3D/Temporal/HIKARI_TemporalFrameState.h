@@ -2,9 +2,8 @@
 
 #include <cstdint>
 
-#include <d3d12.h>
-
 #include "Render3D/HIKARI_Math3D.h"
+#include "Render3D/Resources/HIKARI_RenderTextureView.h"
 
 namespace HIKARI {
     class Camera3D;
@@ -79,38 +78,23 @@ namespace HIKARI::RENDER3D::TEMPORAL {
         bool jitterEnabled = false;
     };
 
-    struct TemporalTextureView {
-        ID3D12Resource* resource = nullptr;
-        D3D12_GPU_DESCRIPTOR_HANDLE srv{};
-        DXGI_FORMAT format = DXGI_FORMAT_UNKNOWN;
-        uint32_t width = 0;
-        uint32_t height = 0;
-        D3D12_RESOURCE_STATES state = D3D12_RESOURCE_STATE_COMMON;
-        bool valid = false;
-    };
-
     struct TemporalInputs {
         TemporalFrameState frame{};
-        D3D12_GPU_DESCRIPTOR_HANDLE sceneDepthSrv{};
-        D3D12_GPU_DESCRIPTOR_HANDLE sceneColorSrv{};
-        bool hasSceneDepth = false;
-        bool hasSceneColor = false;
-
-        TemporalTextureView sceneDepth{};
-        TemporalTextureView sceneColor{};
+        RenderTextureView sceneDepth{};
+        RenderTextureView sceneColor{};
         // Dense, unjittered current-to-previous motion in render pixels:
         // previousUv = currentUv + motionPixels / renderSize.
-        TemporalTextureView motionVectors{};
-        TemporalTextureView motionMetadata{};
-        TemporalTextureView historyColorRead{};
-        TemporalTextureView historyColorWrite{};
-        TemporalTextureView historyDepthRead{};
-        TemporalTextureView historyDepthWrite{};
-        TemporalTextureView exposure{};
-        TemporalTextureView reactiveMask{};
-        TemporalTextureView transparencyMask{};
-        TemporalTextureView invalidDepthMotionMask{};
-        TemporalTextureView debugOutput{};
+        RenderTextureView motionVectors{};
+        RenderTextureView motionMetadata{};
+        RenderTextureView historyColorRead{};
+        RenderTextureView historyColorWrite{};
+        RenderTextureView historyDepthRead{};
+        RenderTextureView historyDepthWrite{};
+        RenderTextureView exposure{};
+        RenderTextureView reactiveMask{};
+        RenderTextureView transparencyMask{};
+        RenderTextureView invalidDepthMotionMask{};
+        RenderTextureView debugOutput{};
     };
 
     const char* ToString(TemporalHistoryResetReason reason);

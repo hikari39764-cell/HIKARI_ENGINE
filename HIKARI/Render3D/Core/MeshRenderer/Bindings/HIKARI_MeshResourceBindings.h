@@ -114,16 +114,18 @@ namespace HIKARI::MESHRENDERER {
     D3D12_GPU_DESCRIPTOR_HANDLE ResolveSkyCubeSrv(int fallbackTextureHandle);
     D3D12_GPU_DESCRIPTOR_HANDLE ResolveSceneDepthSrv(
         bool depthAwarePhase,
-        D3D12_GPU_DESCRIPTOR_HANDLE sceneDepthSrv,
+        const RENDER3D::RenderTextureView& sceneDepth,
         int fallbackTextureHandle);
     D3D12_GPU_DESCRIPTOR_HANDLE ResolveSceneColorSrv(
-        D3D12_GPU_DESCRIPTOR_HANDLE sceneColorSrv,
+        const RENDER3D::RenderTextureView& sceneColor,
         int fallbackTextureHandle);
     D3D12_GPU_DESCRIPTOR_HANDLE ResolveIblIrradianceSrv(int fallbackTextureHandle);
     D3D12_GPU_DESCRIPTOR_HANDLE ResolveIblPrefilteredSrv(int fallbackTextureHandle);
     D3D12_GPU_DESCRIPTOR_HANDLE ResolveIblBrdfLutSrv(int fallbackTextureHandle);
     D3D12_GPU_DESCRIPTOR_HANDLE ResolveReflectionProbePrefilteredSrv(int fallbackCubeTextureHandle);
-    D3D12_GPU_DESCRIPTOR_HANDLE ResolveSsaoSrv(D3D12_GPU_DESCRIPTOR_HANDLE ssaoSrv, int fallbackAoTextureHandle);
+    D3D12_GPU_DESCRIPTOR_HANDLE ResolveSsaoSrv(
+        const RENDER3D::RenderTextureView& ambientOcclusion,
+        int fallbackAoTextureHandle);
     D3D12_GPU_DESCRIPTOR_HANDLE ResolveLightProbeShSrv();
 
 } // namespace HIKARI::MESHRENDERER

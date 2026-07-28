@@ -435,7 +435,7 @@ namespace HIKARI::MESHRENDERER {
         const D3D12_GPU_DESCRIPTOR_HANDLE sceneDepthSrv =
             ResolveSceneDepthSrv(
                 ctx.depthAwarePhase,
-                ctx.passResources.sceneDepthSrv,
+                ctx.passResources.sceneDepth,
                 ctx.fallbackTextureHandle);
         if (sceneDepthSrv.ptr != 0) {
             BindDescriptorTableCached(ctx, ROOT_PARAM::SceneDepth, sceneDepthSrv);
@@ -448,7 +448,9 @@ namespace HIKARI::MESHRENDERER {
         }
 
         const D3D12_GPU_DESCRIPTOR_HANDLE sceneColorSrv =
-            ResolveSceneColorSrv(ctx.passResources.sceneColorSrv, ctx.fallbackTextureHandle);
+            ResolveSceneColorSrv(
+                ctx.passResources.opaqueSceneColor,
+                ctx.fallbackTextureHandle);
         if (sceneColorSrv.ptr != 0) {
             BindDescriptorTableCached(ctx, ROOT_PARAM::SceneColor, sceneColorSrv);
         }
@@ -500,7 +502,7 @@ namespace HIKARI::MESHRENDERER {
 
         const D3D12_GPU_DESCRIPTOR_HANDLE aoSrv =
             ResolveSsaoSrv(
-                ctx.passResources.ssaoSrv,
+                ctx.passResources.ambientOcclusion,
                 ctx.passResources.fallbackAoTextureHandle);
         if (aoSrv.ptr != 0) {
             BindDescriptorTableCached(ctx, ROOT_PARAM::Ssao, aoSrv);

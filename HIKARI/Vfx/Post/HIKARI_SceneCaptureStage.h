@@ -5,6 +5,7 @@
 
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render2D/HIKARI_RenderTarget2D.h"
+#include "Render3D/Resources/HIKARI_RenderTextureView.h"
 #include "Vfx/Post/HIKARI_PostQuadDrawer.h"
 
 namespace HIKARI::POST {
@@ -22,17 +23,14 @@ namespace HIKARI::POST {
         bool IsActive() const;
         bool HasCurrentTarget() const;
         bool RebindCurrentTarget();
-        D3D12_GPU_DESCRIPTOR_HANDLE GetCurrentDepthSrv() const;
+        RENDER3D::RenderTextureView GetCurrentDepthView() const;
         D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentDsv() const;
         D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentReadOnlyDsv() const;
         bool BeginCurrentDepthRead();
         void EndCurrentDepthRead();
 
-        bool CaptureSceneColorSnapshot();
-        bool IsSceneColorReady() const;
-        D3D12_GPU_DESCRIPTOR_HANDLE GetSceneColorSrv() const;
-        int GetSceneColorWidth() const;
-        int GetSceneColorHeight() const;
+        RENDER3D::RenderTextureView CaptureSceneColorSnapshot();
+        RENDER3D::RenderTextureView GetSceneColorSnapshotView() const;
 
         void SetAmbientColor(float r, float g, float b);
         void BeginLightCapture();

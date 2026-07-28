@@ -11,10 +11,10 @@
 #include "Render3D/Core/HIKARI_MeshPassResources.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Debug/HIKARI_RenderDebugOutput.h"
-#include "Render3D/Depth/HIKARI_DepthPyramidFrameResources.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Render3D/Lighting/HIKARI_VolumetricLightingStage.h"
 #include "Render3D/Pipeline/HIKARI_RenderFrameContext.h"
+#include "Render3D/Pipeline/HIKARI_SceneTextureSet.h"
 #include "Render3D/ScreenSpace/HIKARI_ScreenSpacePasses.h"
 #include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
 #include "Render3D/Temporal/HIKARI_TemporalGeometryPass.h"
@@ -26,17 +26,9 @@
 namespace HIKARI::RENDER3D::PIPELINE {
 
     namespace {
-        bool RebindPostRenderTarget(void*) {
-            return POST::PostSystem::RebindCurrentRenderTarget();
-        }
-
-        bool BeginPostDepthRead(void*) {
-            return POST::PostSystem::BeginCurrentRenderTargetDepthRead();
-        }
-
-        void EndPostDepthRead(void*) {
-            POST::PostSystem::EndCurrentRenderTargetDepthRead();
-        }
+        bool RebindPostRenderTarget(void*) { return POST::PostSystem::RebindCurrentRenderTarget(); }
+        bool BeginPostDepthRead(void*) { return POST::PostSystem::BeginCurrentRenderTargetDepthRead(); }
+        void EndPostDepthRead(void*) { POST::PostSystem::EndCurrentRenderTargetDepthRead(); }
 
         RenderFrameContext BuildRenderFrameContext(
             const GFX::Context& graphics,
@@ -47,18 +39,13 @@ namespace HIKARI::RENDER3D::PIPELINE {
             context.viewId = view.viewId;
             context.purpose = view.purpose;
             context.cameraCut = view.cameraFrame->cameraCut;
+            context.frameIndex = TIME::GetFrameContext().frameIndex;
             context.graphics = graphics;
             context.camera = &view.cameraFrame->camera;
             context.environment = &environment;
             context.scene.dsv = POST::PostSystem::GetCurrentRenderTargetDsv();
             context.scene.readOnlyDsv =
                 POST::PostSystem::GetCurrentRenderTargetReadOnlyDsv();
-            context.scene.depthSrv =
-                POST::PostSystem::GetCurrentRenderTargetDepthSrv();
-            if (context.scene.depthSrv.ptr == 0) {
-                context.scene.depthSrv = context.graphics.sceneDepthSrv;
-            }
-            context.scene.depthReadable = context.scene.depthSrv.ptr != 0;
             context.targetAccess.rebind = RebindPostRenderTarget;
             context.targetAccess.beginDepthRead = BeginPostDepthRead;
             context.targetAccess.endDepthRead = EndPostDepthRead;
@@ -66,14 +53,23 @@ namespace HIKARI::RENDER3D::PIPELINE {
             int renderWidth = 0;
             int renderHeight = 0;
             POST::PostSystem::GetSceneCaptureSize(renderWidth, renderHeight);
-            if (renderWidth <= 0 || renderHeight <= 0) {
-                renderWidth = POST::PostSystem::GetSceneColorWidth();
-                renderHeight = POST::PostSystem::GetSceneColorHeight();
-            }
             context.renderWidth =
                 static_cast<uint32_t>((std::max)(1, renderWidth));
             context.renderHeight =
                 static_cast<uint32_t>((std::max)(1, renderHeight));
+            context.scene.depth =
+                POST::PostSystem::GetCurrentRenderTargetDepthView();
+            if (!context.scene.depth.IsSampleable() &&
+                context.graphics.sceneDepthSrv.ptr != 0) {
+                context.scene.depth.srv = context.graphics.sceneDepthSrv;
+                context.scene.depth.format = DXGI_FORMAT_R32_FLOAT;
+                context.scene.depth.width = context.renderWidth;
+                context.scene.depth.height = context.renderHeight;
+                context.scene.depth.mipCount = 1;
+                context.scene.depth.state =
+                    D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+                context.scene.depth.valid = true;
+            }
 
             int outputWidth = 0;
             int outputHeight = 0;
@@ -95,27 +91,22 @@ namespace HIKARI::RENDER3D::PIPELINE {
             context.height = frame.renderHeight;
             context.sceneDsv = frame.scene.dsv;
             context.readOnlySceneDsv = frame.scene.readOnlyDsv;
-            context.sceneDepthSrv = frame.scene.depthSrv;
-            context.depthReadable = frame.scene.depthReadable;
+            context.sceneDepth = frame.scene.depth;
             context.renderTargetAccess = frame.targetAccess;
             return context;
         }
 
         MESHRENDERER::MeshPassResources BuildMeshPassResources(
-            const ScreenSpacePassContext& context,
-            const RENDER3D::SCREENSPACE::ScreenSpaceFrameResult& screenResult) {
+            const SceneTextureSet& textures,
+            int fallbackAoTextureHandle) {
             MESHRENDERER::MeshPassResources resources{};
-            resources.sceneDepthSrv = context.sceneDepthSrv;
-            resources.ssaoSrv = screenResult.aoSrv;
-            if (screenResult.depthPyramid.valid) {
-                resources.depthPyramid = screenResult.depthPyramid;
-            } else if (const RENDER3D::DEPTH::DepthPyramidView* depthPyramid =
-                RENDER3D::DEPTH::TryGetFrameDepthPyramidView(
-                    RENDER3D::DEPTH::DepthPyramidSourceKind::SceneDepth,
-                    RENDER3D::DEPTH::DepthPyramidViewKind::CurrentFrame)) {
-                resources.depthPyramid = *depthPyramid;
-            }
-            resources.fallbackAoTextureHandle = screenResult.fallbackAoTextureHandle;
+            resources.sceneDepth = textures.sceneDepth;
+            resources.opaqueSceneColor = textures.opaqueSceneColor;
+            resources.ambientOcclusion = textures.ambientOcclusion;
+            resources.depthPyramid = textures.currentSceneDepthPyramid.valid
+                ? textures.currentSceneDepthPyramid
+                : textures.visibilityDepthPyramid;
+            resources.fallbackAoTextureHandle = fallbackAoTextureHandle;
             return resources;
         }
 
@@ -164,6 +155,10 @@ namespace HIKARI::RENDER3D::PIPELINE {
             "RenderFrame.MeshLighting");
         const ScreenSpacePassContext screenSpaceContext =
             BuildScreenSpaceContext(frame);
+        SceneTextureSet sceneTextures{};
+        sceneTextures.frameIndex = frame.frameIndex;
+        sceneTextures.viewId = frame.viewId;
+        sceneTextures.sceneDepth = frame.scene.depth;
         const RENDER3D::RenderQualitySettings& renderQuality =
             RENDER3D::GetRenderQualitySettings();
         const RENDER3D::RenderAntiAliasingMode antiAliasingMode =
@@ -261,7 +256,6 @@ namespace HIKARI::RENDER3D::PIPELINE {
                 environment);
         }
         else {
-            RENDER3D::DEPTH::BeginDepthPyramidFrame(frame.graphics);
             RENDER3D::SCREENSPACE::EnsureScreenSpaceFallbacks(RENDER3D::SCREENSPACE::GetScreenSpaceRuntimeState());
             screenResult.fallbackAoTextureHandle =
                 RENDER3D::SCREENSPACE::GetScreenSpaceRuntimeState().fallbackAoTextureHandle;
@@ -325,8 +319,16 @@ namespace HIKARI::RENDER3D::PIPELINE {
         }
 
         MESHRENDERER::SetAmbientOcclusionRuntimeEnabled(screenResult.ssaoRendered);
+        sceneTextures.normalRoughness = screenResult.normalRoughness;
+        sceneTextures.ambientOcclusion = screenResult.ambientOcclusion;
+        sceneTextures.currentSceneDepthPyramid =
+            screenResult.currentSceneDepthPyramid;
+        sceneTextures.visibilityDepthPyramid =
+            screenResult.visibilityDepthPyramid;
         MESHRENDERER::MeshPassResources opaqueResources =
-            BuildMeshPassResources(screenSpaceContext, screenResult);
+            BuildMeshPassResources(
+                sceneTextures,
+                screenResult.fallbackAoTextureHandle);
         MESHRENDERER::MeshPassResources postOpaqueResources = opaqueResources;
 
         bool opaqueOk = false;
@@ -355,17 +357,32 @@ namespace HIKARI::RENDER3D::PIPELINE {
                 return false;
             }
             MESHRENDERER::SetAmbientOcclusionRuntimeEnabled(screenResult.ssaoRendered);
-            postOpaqueResources = BuildMeshPassResources(screenSpaceContext, screenResult);
+            sceneTextures.normalRoughness = screenResult.normalRoughness;
+            sceneTextures.ambientOcclusion = screenResult.ambientOcclusion;
+            sceneTextures.currentSceneDepthPyramid =
+                screenResult.currentSceneDepthPyramid;
+            sceneTextures.visibilityDepthPyramid =
+                screenResult.visibilityDepthPyramid;
+            postOpaqueResources = BuildMeshPassResources(
+                sceneTextures,
+                screenResult.fallbackAoTextureHandle);
         }
         if (opaqueOk) {
             const RENDER3D::TEMPORAL::TemporalInputs temporalInputs =
                 RENDER3D::TEMPORAL::BuildTemporalInputs(
-                    screenSpaceContext.sceneDepthSrv,
-                    postOpaqueResources.sceneColorSrv);
+                    sceneTextures.sceneDepth,
+                    sceneTextures.opaqueSceneColor);
+            sceneTextures.motionVectors = temporalInputs.motionVectors;
+            sceneTextures.motionMetadata = temporalInputs.motionMetadata;
+            sceneTextures.reactiveMask = temporalInputs.reactiveMask;
+            sceneTextures.transparencyMask = temporalInputs.transparencyMask;
+            sceneTextures.invalidDepthMotionMask =
+                temporalInputs.invalidDepthMotionMask;
+            sceneTextures.historyColor = temporalInputs.historyColorRead;
+            sceneTextures.historyDepth = temporalInputs.historyDepthRead;
             bool motionVectorsWritten = false;
             if (temporalInputs.motionVectors.valid &&
-                screenSpaceContext.depthReadable &&
-                screenSpaceContext.sceneDepthSrv.ptr != 0 &&
+                sceneTextures.sceneDepth.IsSampleable() &&
                 screenSpaceContext.renderTargetAccess.BeginDepthRead()) {
                 motionVectorsWritten =
                     RENDER3D::TEMPORAL::ExecuteMotionVectorPass(
@@ -392,10 +409,13 @@ namespace HIKARI::RENDER3D::PIPELINE {
         const bool hasTransparentWork = MESHRENDERER::HasForwardTransparentPassWork();
         bool depthAwareOk = true;
         if (opaqueOk && (hasDepthAwareWork || hasTransparentWork)) {
-            if (POST::PostSystem::CaptureSceneColorSnapshot()) {
-                postOpaqueResources.sceneColorSrv = POST::PostSystem::GetSceneColorSrv();
+            const RenderTextureView opaqueSceneColor =
+                POST::PostSystem::CaptureSceneColorSnapshot();
+            if (opaqueSceneColor.IsSampleable()) {
+                sceneTextures.opaqueSceneColor = opaqueSceneColor;
+                postOpaqueResources.opaqueSceneColor = opaqueSceneColor;
                 RENDER3D::TEMPORAL::SetTemporalCompositionBase(
-                    postOpaqueResources.sceneColorSrv);
+                    opaqueSceneColor.srv);
                 if (!POST::PostSystem::RebindCurrentRenderTarget()) {
                     MESHRENDERER::EndFrame();
                     return false;
