@@ -128,8 +128,7 @@ namespace HIKARI::MESHRENDERER {
             nullptr,
             MakeMainCameraGpuDrivenPassMask(),
             true);
-        UpdateGpuDrivenWorkReadyDebugStats();
-        UpdateGpuDrivenWorkOwnershipDebugStats();
+        SyncGpuDrivenBackendAvailability();
         BuildStrictGpuDrivenCommandFrame(graphics);
         return true;
     }
@@ -158,8 +157,7 @@ namespace HIKARI::MESHRENDERER {
             &depthPyramid,
             MakeMainCameraGpuDrivenPassMask(),
             true);
-        UpdateGpuDrivenWorkReadyDebugStats();
-        UpdateGpuDrivenWorkOwnershipDebugStats();
+        SyncGpuDrivenBackendAvailability();
         BuildStrictGpuDrivenCommandFrame(graphics);
         return true;
     }

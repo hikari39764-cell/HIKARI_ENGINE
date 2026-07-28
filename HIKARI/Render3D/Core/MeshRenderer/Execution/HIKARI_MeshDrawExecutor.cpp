@@ -259,35 +259,6 @@ namespace HIKARI::MESHRENDERER {
             return data;
         }
 
-        void RecordMaterialTexturePoolStats(
-            const MeshDrawContext& ctx,
-            const MaterialGpuData& data) {
-
-            MeshRendererDebugStats* stats = ctx.services.stats;
-            if (stats == nullptr) {
-                return;
-            }
-
-            const uint32_t descriptorIndices[] = {
-                data.baseColorTextureDescriptorIndex,
-                data.normalTextureDescriptorIndex,
-                data.emissiveTextureDescriptorIndex,
-                data.metallicRoughnessTextureDescriptorIndex,
-                data.occlusionTextureDescriptorIndex,
-                data.specularTextureDescriptorIndex,
-                data.specularColorTextureDescriptorIndex,
-            };
-
-            for (uint32_t descriptorIndex : descriptorIndices) {
-                ++stats->materialTexturePoolSlotCount;
-                if (descriptorIndex == kInvalidTextureDescriptorIndex) {
-                    ++stats->materialTexturePoolInvalidSlotCount;
-                } else {
-                    ++stats->materialTexturePoolResolvedSlotCount;
-                }
-            }
-        }
-
         MaterialTextureHandles ResolveRuntimeMaterialTextureHandles(
             const Material* material,
             const MeshBindingContext& binding,
@@ -465,7 +436,6 @@ namespace HIKARI::MESHRENDERER {
                 textureHandles,
                 materialAsset,
                 source.materialOverride);
-            RecordMaterialTexturePoolStats(ctx, outData);
             outFinalized = textures.complete;
             return true;
         }

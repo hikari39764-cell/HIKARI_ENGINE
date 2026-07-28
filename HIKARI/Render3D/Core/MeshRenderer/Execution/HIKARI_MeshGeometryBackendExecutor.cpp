@@ -67,7 +67,6 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         ctx.pipelineKind = pipelineKind;
         const bool executed = gMeshRendererState.meshletRenderBackend.Execute(ctx);
         UpdateMeshletBackendDebugStats();
-        UpdateGpuDrivenWorkReadyDebugStats();
         return executed;
     }
 

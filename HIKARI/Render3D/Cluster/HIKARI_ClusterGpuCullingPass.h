@@ -172,6 +172,14 @@ namespace HIKARI::RENDER3D::CLUSTER {
         size_t dispatchCount = 0;
         size_t workgroupCount = 0;
         uint32_t threadGroupSize = 64;
+
+        bool IsReady() const noexcept {
+            return initialized &&
+                psoReady &&
+                inputBufferReady &&
+                visibleRangeBufferReady &&
+                counterBufferReady;
+        }
     };
 
     class ClusterGpuCullingPass final {

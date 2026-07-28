@@ -379,15 +379,9 @@ namespace HIKARI::MESHRENDERER {
         }
         if (metallicRoughnessTextureHandle >= 0 && metallicRoughnessTextureHandle != ctx.fallbackTextureHandle) {
             obj.hasMetallicRoughnessTexture = 1;
-            if (stats) {
-                ++stats->metallicRoughnessMappedPrimitiveCount;
-            }
         }
         if (occlusionTextureHandle >= 0 && occlusionTextureHandle != ctx.fallbackTextureHandle) {
             obj.hasOcclusionTexture = 1;
-            if (stats) {
-                ++stats->occlusionMappedPrimitiveCount;
-            }
         }
 
         if (materialAsset->alphaMode == AlphaMode::Mask) {
@@ -396,11 +390,6 @@ namespace HIKARI::MESHRENDERER {
         const bool isUnlit = (materialAsset->featureBits & MATERIAL_FEATURES::Unlit) != 0;
         if (isUnlit) {
             obj.materialFlags |= MATERIAL_FEATURES::Unlit;
-            if (stats) {
-                ++stats->unlitPrimitiveCount;
-            }
-        } else if (stats) {
-            ++stats->pbrPrimitiveCount;
         }
         if ((materialAsset->featureBits & MATERIAL_FEATURES::Emissive) != 0) {
             obj.materialFlags |= MATERIAL_FEATURES::Emissive;

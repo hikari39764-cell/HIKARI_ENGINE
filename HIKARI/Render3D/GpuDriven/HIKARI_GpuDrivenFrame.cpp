@@ -48,15 +48,6 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         return count;
     }
 	// GpuDrivenFrame内のパスの中で、クラスタリングが可能なパスの数をカウントして返します。
-    size_t GpuDrivenFrame::CountClusterEligiblePasses() const {
-        size_t count = 0;
-        for (const GpuDrivenPassFrame& pass : passes) {
-            if (pass.HasSource() && pass.clusterEligible) {
-                ++count;
-            }
-        }
-        return count;
-    }
 	// GPUドライブフレーム内のソースを持つインスタンスの総数をカウントする関数です。
     size_t GpuDrivenFrame::CountSourceInstances() const {
         size_t count = 0;
@@ -68,15 +59,6 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         return count;
     }
 	// GPUドライブフレーム内のクラスタリング可能なインスタンスの総数をカウントする関数です。
-    size_t GpuDrivenFrame::CountClusterEligibleInstances() const {
-        size_t count = 0;
-        for (const GpuDrivenPassFrame& pass : passes) {
-            if (pass.HasSource() && pass.clusterEligible) {
-                count += pass.gpuSceneRange.instanceCount;
-            }
-        }
-        return count;
-    }
 	// GpuDrivenFrameBuildInput構造体を使用してGpuDrivenFrameを構築する関数です。
     GpuDrivenFrame BuildGpuDrivenFrame(const GpuDrivenFrameBuildInput& input) {
         GpuDrivenFrame frame{};

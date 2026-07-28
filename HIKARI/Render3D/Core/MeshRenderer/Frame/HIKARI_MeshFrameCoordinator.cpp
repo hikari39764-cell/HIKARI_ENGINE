@@ -289,7 +289,6 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         if (ctx.binding.passResources.fallbackAoTextureHandle < 0) {
             ctx.binding.passResources.fallbackAoTextureHandle = gMeshRendererState.fallbackTextureHandle;
         }
-        ctx.binding.stats = &gMeshRendererState.debugStats;
         ctx.materialFill.fallbackTextureHandle = gMeshRendererState.fallbackTextureHandle;
         ctx.materialFill.fallbackNormalTextureHandle = gMeshRendererState.fallbackNormalTextureHandle;
         ctx.materialFill.fallbackBlackTextureHandle = gMeshRendererState.fallbackBlackTextureHandle;

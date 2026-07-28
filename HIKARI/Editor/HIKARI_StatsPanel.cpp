@@ -64,7 +64,10 @@ namespace HIKARI {
                 sceneRenderCacheStats.dynamicSurfaceInstanceCount,
                 sceneRenderCacheStats.skinnedSurfaceInstanceCount);
             ImGui::Text("GPU Scene: %s",
-                meshStats.surfaceGpuSceneSrvValid && meshStats.surfaceGpuSceneBufferReady ? "Ready" : "Missing");
+                meshStats.gpuSceneUpload.bufferStats.srv.ptr != 0 &&
+                    meshStats.gpuSceneUpload.bufferStats.initialized
+                    ? "Ready"
+                    : "Missing");
             ImGui::Text("Texture Loads Deferred: %zu", meshStats.materialTextureLoadDeferredCount);
             ImGui::TreePop();
         }

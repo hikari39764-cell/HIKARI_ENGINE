@@ -53,24 +53,6 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         bool visibleCommandCountKnown = false;
     };
 
-    struct GpuDrivenWorkOwnershipStats {
-        size_t ownedCommandCount = 0;
-        size_t ownedRecordCount = 0;
-        size_t geometryAuxCommandCount = 0;
-        size_t geometryAuxRecordCount = 0;
-
-        size_t eligibleCommandCount = 0;
-        size_t rejectContextCommandCount = 0;
-        size_t rejectMainlineCommandCount = 0;
-        size_t rejectBackendCommandCount = 0;
-        size_t rejectTransparentCommandCount = 0;
-        size_t rejectMaterialFxCommandCount = 0;
-        size_t rejectRangeCommandCount = 0;
-        size_t rejectInstanceResourceCommandCount = 0;
-        size_t rejectInstanceFlagCommandCount = 0;
-        size_t rejectMaterialPatchCommandCount = 0;
-    };
-
     struct GpuDrivenFrameContext {
         GpuSceneFrame scene{};
         GpuVisibilityResult visibility{};

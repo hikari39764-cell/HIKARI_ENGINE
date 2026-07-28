@@ -36,14 +36,15 @@ namespace HIKARI::EDITOR::PERFORMANCE_AUDIT {
 #if defined(HIKARI_WITH_EDITOR)
 void DrawFrameSummary(const RuntimePerformanceSnapshot &s) {
   const size_t mainlineSubmittedCount =
-      s.mesh.meshletBackendSubmittedDispatchCount > 0
-          ? s.mesh.meshletBackendSubmittedDispatchCount
-          : s.mesh.clusterGpuCullGpuDrawCommandCount;
+      s.mesh.meshletBackend.submittedDispatchCount > 0
+          ? s.mesh.meshletBackend.submittedDispatchCount
+          : s.mesh.clusterGpuCull.gpuDrawCommandCount;
   const bool clusterMainline =
-      s.mesh.clusterGpuCullSubmittedInstanceCount > 0 ||
+      s.mesh.clusterGpuCull.submittedInstanceCount > 0 ||
       mainlineSubmittedCount > 0;
   const bool gpuDrivenReady =
-      s.mesh.surfaceGpuSceneSrvValid && s.mesh.surfaceGpuSceneBufferReady;
+      s.mesh.gpuSceneUpload.bufferStats.srv.ptr != 0 &&
+      s.mesh.gpuSceneUpload.bufferStats.initialized;
   const double cpuFrameMs = GetCpuFrameMs(s.cpu);
   const double parentGpuMs = SumGpuMsByScope(s.gpu, false);
   const double nestedSubpassGpuMs = SumGpuMsByScope(s.gpu, true);
@@ -62,14 +63,14 @@ void DrawFrameSummary(const RuntimePerformanceSnapshot &s) {
     ImGui::TextColored(StatusColor(gpuDrivenReady), "GPU scene %s",
                        ReadyText(gpuDrivenReady));
     ImGui::Text("uploaded %zu / requested %zu",
-                s.mesh.surfaceGpuSceneUploadedInstanceCount,
-                s.mesh.surfaceGpuSceneRequestedInstanceCount);
+                s.mesh.gpuSceneUpload.bufferStats.uploadedInstanceCount,
+                s.mesh.gpuSceneUpload.bufferStats.requestedInstanceCount);
 
     ImGui::TableNextColumn();
     ImGui::TextColored(StatusColor(clusterMainline), "cluster %s",
                        clusterMainline ? "Active" : "Idle");
     ImGui::Text("dispatches %zu / draw args %zu", mainlineSubmittedCount,
-                s.mesh.clusterGpuCullGpuDrawCommandCount);
+                s.mesh.clusterGpuCull.gpuDrawCommandCount);
 
     ImGui::TableNextColumn();
     ImGui::Text("GPU parent %.3f ms", parentGpuMs);

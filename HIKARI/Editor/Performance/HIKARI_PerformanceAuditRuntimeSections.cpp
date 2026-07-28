@@ -302,22 +302,23 @@ void DrawReadiness(const RuntimePerformanceSnapshot &s) {
   if (ImGui::BeginTable("ReadinessTable", 3,
                         ImGuiTableFlags_SizingStretchSame)) {
     ImGui::TableNextColumn();
-    TextStatus("GPU Scene", s.mesh.surfaceGpuSceneSrvValid &&
-                                s.mesh.surfaceGpuSceneBufferReady);
+    TextStatus("GPU Scene",
+               s.mesh.gpuSceneUpload.bufferStats.srv.ptr != 0 &&
+                   s.mesh.gpuSceneUpload.bufferStats.initialized);
     TextStatus("Meshlet Args",
-               s.mesh.meshletBackendDispatchArgumentBufferReady &&
-                   s.mesh.meshletBackendDispatchCommandSignatureReady);
+               s.mesh.meshletDispatchArgumentBufferReady &&
+                   s.mesh.meshletDispatchCommandSignatureReady);
     ImGui::TableNextColumn();
-    TextStatus("Cluster Cull", s.mesh.clusterGpuCullReady);
+    TextStatus("Cluster Cull", s.mesh.clusterGpuCull.IsReady());
     TextStatus("Meshlet Draw",
-               s.mesh.meshletBackendPipelineReady &&
-                   s.mesh.meshletBackendDispatchArgumentBufferReady &&
-                   s.mesh.meshletBackendDispatchCommandSignatureReady);
+               s.mesh.meshletBackend.pipelineReady &&
+                   s.mesh.meshletDispatchArgumentBufferReady &&
+                   s.mesh.meshletDispatchCommandSignatureReady);
     ImGui::TableNextColumn();
     TextStatus("Cluster Resource",
                s.clusterResources.initialized &&
                    s.clusterResources.readyResourceCount > 0);
-    TextStatus("Meshlet Backend", s.mesh.meshletBackendPipelineReady);
+    TextStatus("Meshlet Backend", s.mesh.meshletBackend.pipelineReady);
     TextStatus("GPU Timing", s.gpu.gpuTimingAvailable);
     ImGui::EndTable();
   }

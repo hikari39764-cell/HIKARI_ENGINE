@@ -24,53 +24,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             gMeshRendererState.gpuMaterialRegistry.GetBindingVersion();
         const RENDER3D::GPUDRIVEN::GpuDrivenSceneUploadStats& uploadStats =
             gMeshRendererState.gpuDrivenLayer.UploadSceneFrame(uploadDesc);
-
-        gMeshRendererState.debugStats.surfaceGpuSceneOpaqueInstanceCount =
-            uploadStats.passInstanceCounts[
-                RENDER3D::GPUDRIVEN::ToPassIndex(
-                    RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardOpaque)];
-        gMeshRendererState.debugStats.surfaceGpuSceneDepthPrepassInstanceCount =
-            uploadStats.passInstanceCounts[
-                RENDER3D::GPUDRIVEN::ToPassIndex(
-                    RENDER3D::GPUDRIVEN::GpuDrivenPassKind::DepthPrepass)];
-        gMeshRendererState.debugStats.surfaceGpuSceneDepthAwareInstanceCount =
-            uploadStats.passInstanceCounts[
-                RENDER3D::GPUDRIVEN::ToPassIndex(
-                    RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardDepthAware)];
-        gMeshRendererState.debugStats.surfaceGpuSceneTransparentInstanceCount =
-            uploadStats.passInstanceCounts[
-                RENDER3D::GPUDRIVEN::ToPassIndex(
-                    RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardTransparent)];
-        gMeshRendererState.debugStats.surfaceGpuSceneShadowInstanceCount =
-            uploadStats.passInstanceCounts[
-                RENDER3D::GPUDRIVEN::ToPassIndex(
-                    RENDER3D::GPUDRIVEN::GpuDrivenPassKind::Shadow)];
-
-        const RENDER3D::GPUDRIVEN::SurfaceGpuSceneFrameBufferStats& gpuSceneStats =
-            uploadStats.bufferStats;
-        gMeshRendererState.debugStats.surfaceGpuSceneCapacity = gpuSceneStats.capacity;
-        gMeshRendererState.debugStats.surfaceGpuSceneRequestedInstanceCount = gpuSceneStats.requestedInstanceCount;
-        gMeshRendererState.debugStats.surfaceGpuSceneUploadedInstanceCount = gpuSceneStats.uploadedInstanceCount;
-        gMeshRendererState.debugStats.surfaceGpuSceneCommittedInstanceCount = gpuSceneStats.committedInstanceCount;
-        gMeshRendererState.debugStats.surfaceGpuSceneCommittedBytes = gpuSceneStats.committedBytes;
-        gMeshRendererState.debugStats.surfaceGpuSceneFullUploadCount =
-            uploadStats.uploadedFullScene ? 1u : 0u;
-        gMeshRendererState.debugStats.surfaceGpuSceneDirtyPatchCount =
-            uploadStats.patchedDirtyRanges ? 1u : 0u;
-        gMeshRendererState.debugStats.surfaceGpuSceneReuseCount =
-            uploadStats.reusedResidentFrame ? 1u : 0u;
-        gMeshRendererState.debugStats.surfaceGpuSceneOverflowInstanceCount = gpuSceneStats.overflowInstanceCount;
-        gMeshRendererState.debugStats.surfaceGpuSceneUploadCallCount = gpuSceneStats.uploadCallCount;
-        gMeshRendererState.debugStats.surfaceGpuSceneMaterialPatchCount =
-            gpuSceneStats.materialBindingVisitCount;
-        gMeshRendererState.debugStats.surfaceGpuSceneMaterialPatchChangedCount =
-            gpuSceneStats.materialPatchChangedCount;
-        gMeshRendererState.debugStats.surfaceGpuSceneMaterialPatchUnchangedCount =
-            gpuSceneStats.materialPatchUnchangedCount;
-        gMeshRendererState.debugStats.surfaceGpuSceneMaterialPatchFailCount =
-            gpuSceneStats.materialBindingMissingCount;
-        gMeshRendererState.debugStats.surfaceGpuSceneSrvValid = gpuSceneStats.srv.ptr != 0;
-        gMeshRendererState.debugStats.surfaceGpuSceneBufferReady = gpuSceneStats.initialized;
+        gMeshRendererState.debugStats.gpuSceneUpload = uploadStats;
     }
 
     void CommitActiveMaterialDataFrame(ID3D12GraphicsCommandList* commandList) {
@@ -89,18 +43,6 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             commandList,
             sizeof(MaterialGpuData),
             gMeshRendererState.materialUploadRanges);
-
-        const RENDER3D::MATERIAL::GpuMaterialRegistryStats& stats =
-            gMeshRendererState.gpuMaterialRegistry.GetStats();
-        gMeshRendererState.debugStats.materialDataGpuUploadBytes = stats.frameUploadBytes;
-        gMeshRendererState.debugStats.materialDataGpuUploadCallCount =
-            stats.frameUploadRangeCount;
-        gMeshRendererState.debugStats.materialDataWriteCount = stats.frameUpdatedSlotCount;
-        gMeshRendererState.debugStats.materialDataCacheHitCount = stats.frameSourceReuseCount;
-        gMeshRendererState.debugStats.materialDataCacheMissCount =
-            stats.frameCreatedSlotCount + stats.frameUpdatedSlotCount;
-        gMeshRendererState.debugStats.materialDataOverflowCount = stats.frameOverflowCount;
-        gMeshRendererState.debugStats.materialDataCachedCount = stats.residentSlotCount;
     }
 
     void SyncSurfaceGpuSceneMaterialFrame(const GFX::Context& graphics) {
@@ -197,33 +139,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
     void UpdateTraditionalCommandStreamStats() {
         const RENDER3D::GPUDRIVEN::GpuTraditionalCommandStreamStats& indirectStats =
             gMeshRendererState.gpuDrivenLayer.GetCommandFrameStats().traditionalCommandStreamStats;
-        gMeshRendererState.debugStats.traditionalCommandStreamCommandCapacity = indirectStats.capacity;
-        gMeshRendererState.debugStats.traditionalCommandStreamRequestedCommandCount = indirectStats.requestedCommandCount;
-        gMeshRendererState.debugStats.traditionalCommandStreamUploadedCommandCount = indirectStats.uploadedCommandCount;
-        gMeshRendererState.debugStats.traditionalCommandStreamOverflowCommandCount = indirectStats.overflowCommandCount;
-        gMeshRendererState.debugStats.traditionalCommandStreamMissingDrawArgsCommandCount = indirectStats.missingDrawArgsCommandCount;
-        gMeshRendererState.debugStats.traditionalCommandStreamUploadCallCount = indirectStats.uploadCallCount;
-        gMeshRendererState.debugStats.traditionalCommandStreamInputUploadBytes =
-            indirectStats.inputUploadBytes;
-        gMeshRendererState.debugStats.traditionalCommandStreamInputUploadCopyCount =
-            indirectStats.inputUploadCopyCount;
-        gMeshRendererState.debugStats.traditionalCommandStreamResidentInputReuseCount =
-            indirectStats.reusedResidentInput ? 1u : 0u;
-        gMeshRendererState.debugStats.traditionalCommandStreamCommandStride = indirectStats.commandStride;
-        gMeshRendererState.debugStats.traditionalCommandStreamArgumentBufferReady = indirectStats.initialized;
-        gMeshRendererState.debugStats.traditionalCommandStreamCommandSignatureReady = indirectStats.commandSignatureReady;
+        gMeshRendererState.debugStats.traditionalCommandStream = indirectStats;
     }
-
-    void UpdateGpuDrivenWorklistDebugStats() {
-        gMeshRendererState.debugStats.gpuDrivenWorklistPassCount =
-            gMeshRendererState.gpuDrivenFrame.CountActivePasses();
-        gMeshRendererState.debugStats.gpuDrivenWorklistClusterPassCount =
-            gMeshRendererState.gpuDrivenFrame.CountClusterEligiblePasses();
-        gMeshRendererState.debugStats.gpuDrivenWorklistSourceInstanceCount =
-            gMeshRendererState.gpuDrivenFrame.CountSourceInstances();
-        gMeshRendererState.debugStats.gpuDrivenWorklistClusterInstanceCount =
-            gMeshRendererState.gpuDrivenFrame.CountClusterEligibleInstances();
-    }
-
 
 } // namespace HIKARI::MESHRENDERER::INTERNAL

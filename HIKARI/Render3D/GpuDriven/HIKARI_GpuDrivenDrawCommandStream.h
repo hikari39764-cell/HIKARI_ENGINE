@@ -74,7 +74,6 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         GpuDrivenDrawCommandRange& GetOrCreateRange(GeometryBackendKind backend);
         const GpuDrivenDrawCommandRange* FindRange(GeometryBackendKind backend) const;
         GpuDrivenDrawCommandRange* FindRange(GeometryBackendKind backend);
-        size_t CountActiveRanges() const;
     };
 
     struct GpuDrivenDrawCommandStream {
@@ -87,13 +86,8 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         const GpuDrivenDrawCommandRange* FindRange(
             GpuDrivenPassKind pass,
             GeometryBackendKind backend) const;
-        size_t CountActivePasses() const;
-        size_t CountActiveRanges() const;
         size_t CountGpuAuthoredCommands() const;
         size_t CountTraditionalIndirectCommands() const;
-        size_t CountGpuCounterBackedRanges() const;
-        size_t CountKnownGpuVisibleCommands() const;
-        size_t CountKnownGpuVisibleCommandOverflows() const;
     };
 
 } // namespace HIKARI::RENDER3D::GPUDRIVEN

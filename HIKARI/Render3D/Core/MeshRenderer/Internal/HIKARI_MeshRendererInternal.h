@@ -41,7 +41,6 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
     void SyncSurfaceGpuSceneMaterialFrame(const GFX::Context& graphics);
     void UploadGpuDrivenSceneFrame(const GFX::Context& graphics);
     void UpdateTraditionalCommandStreamStats();
-    void UpdateGpuDrivenWorklistDebugStats();
     uint32_t MakePreDepthGpuDrivenPassMask();
     uint32_t MakeMainCameraGpuDrivenPassMask();
     void BuildStrictGpuDrivenCommandFrame(const GFX::Context& graphics);
@@ -54,9 +53,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         bool collectCounterReadback = true);
     void UpdateMeshletBackendDebugStats();
     void SyncGpuDrivenBackendAvailability();
-    void UpdateGpuDrivenWorkReadyDebugStats();
     void UpdateGpuDrivenCommandStreamDebugStats();
-    void UpdateGpuDrivenWorkOwnershipDebugStats();
     bool IsGpuDrivenWorkPreparedForPass(
         RENDER3D::GPUDRIVEN::GpuDrivenPassKind passKind);
     MeshDrawContext BuildDrawContext(

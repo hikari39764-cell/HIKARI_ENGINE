@@ -11,8 +11,6 @@
 
 namespace HIKARI::MESHRENDERER {
 
-    struct MeshRendererDebugStats;
-
     constexpr UINT kTrackedRootParamCount = ROOT_PARAM::Count;
 
     struct MeshBindingStateCache {
@@ -44,7 +42,6 @@ namespace HIKARI::MESHRENDERER {
         int fallbackCubeTextureHandle = -1;
         MeshPassResources passResources{};
         MeshBindingStateCache* cache = nullptr;
-        MeshRendererDebugStats* stats = nullptr;
     };
 
     void BindFrameCommonResources(

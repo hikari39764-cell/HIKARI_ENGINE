@@ -304,35 +304,23 @@ namespace HIKARI::MESHRENDERER {
         const MaterialAsset* materialAsset,
         MeshRendererDebugStats* stats) {
         if (materialAsset == nullptr) {
-            if (stats != nullptr) {
-                ++stats->metallicRoughnessFallbackCount;
-            }
             return fallbacks_.whiteTexture;
         }
 
         const int textureIndex = materialAsset->metallicRoughnessTexture.textureIndex;
         const TextureAsset3D* texture = FindTextureByIndex(asset, textureIndex);
         if (texture == nullptr) {
-            if (stats != nullptr) {
-                ++stats->metallicRoughnessFallbackCount;
-            }
             return fallbacks_.whiteTexture;
         }
 
         const std::string& texturePath = SelectRuntimeTexturePath(*texture);
         if (texturePath.empty()) {
-            if (stats != nullptr) {
-                ++stats->metallicRoughnessFallbackCount;
-            }
             return fallbacks_.whiteTexture;
         }
 
         const std::string cacheKey = "metallicRoughness:" + texturePath;
         auto found = materialTextureCache_.find(cacheKey);
         if (found != materialTextureCache_.end()) {
-            if (stats != nullptr) {
-                ++stats->metallicRoughnessTextureCacheHitCount;
-            }
             return BackendOrFallback(found->second, fallbacks_.whiteTexture);
         }
 
@@ -345,17 +333,11 @@ namespace HIKARI::MESHRENDERER {
                 RENDER3D::TextureResourceColorSpace::Linear,
                 fallbacks_.whiteTexture,
                 loadedHandle)) {
-            if (stats != nullptr) {
-                ++stats->metallicRoughnessTextureCacheHitCount;
-            }
             return loadedHandle;
         }
 
         if (!TryAcquireTextureLoadBudget(stats)) {
             return fallbacks_.whiteTexture;
-        }
-        if (stats != nullptr) {
-            ++stats->metallicRoughnessTextureCacheMissCount;
         }
         const RENDER3D::TextureResourceHandle resource = LoadMaterialTextureResource(
             "model_material/metallic_roughness/",
@@ -375,35 +357,23 @@ namespace HIKARI::MESHRENDERER {
         const MaterialAsset* materialAsset,
         MeshRendererDebugStats* stats) {
         if (materialAsset == nullptr) {
-            if (stats != nullptr) {
-                ++stats->occlusionFallbackCount;
-            }
             return fallbacks_.whiteTexture;
         }
 
         const int textureIndex = materialAsset->occlusionTexture.textureIndex;
         const TextureAsset3D* texture = FindTextureByIndex(asset, textureIndex);
         if (texture == nullptr) {
-            if (stats != nullptr) {
-                ++stats->occlusionFallbackCount;
-            }
             return fallbacks_.whiteTexture;
         }
 
         const std::string& texturePath = SelectRuntimeTexturePath(*texture);
         if (texturePath.empty()) {
-            if (stats != nullptr) {
-                ++stats->occlusionFallbackCount;
-            }
             return fallbacks_.whiteTexture;
         }
 
         const std::string cacheKey = "occlusion:" + texturePath;
         auto found = materialTextureCache_.find(cacheKey);
         if (found != materialTextureCache_.end()) {
-            if (stats != nullptr) {
-                ++stats->occlusionTextureCacheHitCount;
-            }
             return BackendOrFallback(found->second, fallbacks_.whiteTexture);
         }
 
@@ -416,17 +386,11 @@ namespace HIKARI::MESHRENDERER {
                 RENDER3D::TextureResourceColorSpace::Linear,
                 fallbacks_.whiteTexture,
                 loadedHandle)) {
-            if (stats != nullptr) {
-                ++stats->occlusionTextureCacheHitCount;
-            }
             return loadedHandle;
         }
 
         if (!TryAcquireTextureLoadBudget(stats)) {
             return fallbacks_.whiteTexture;
-        }
-        if (stats != nullptr) {
-            ++stats->occlusionTextureCacheMissCount;
         }
         const RENDER3D::TextureResourceHandle resource = LoadMaterialTextureResource(
             "model_material/occlusion/",

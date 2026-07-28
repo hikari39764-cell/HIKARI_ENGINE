@@ -358,15 +358,10 @@ namespace HIKARI {
 
         if (ImGui::TreeNode("Runtime Skinning")) {
             ImGui::Text("GPU Driven Skinned Commands: %zu", meshRendererStats.gpuDrivenSkinnedCommandCount);
-            ImGui::Text("GPU Driven Skinned Records: %zu / %zu / %zu",
-                meshRendererStats.gpuDrivenSkinnedSourceRecordCount,
-                meshRendererStats.gpuDrivenSkinnedSubmittedRecordCount,
-                meshRendererStats.gpuDrivenSkinnedSkippedRecordCount);
+            ImGui::Text("GPU Driven Skinned Source Records: %zu",
+                meshRendererStats.gpuDrivenSkinnedSourceRecordCount);
             ImGui::Text("Skinned GPU Draws: %zu", meshRendererStats.skinnedGpuDrawCount);
-            ImGui::Text("Skinned Fallbacks: %zu", meshRendererStats.skinnedFallbackCount);
             ImGui::Text("Uploaded Joints: %zu", meshRendererStats.uploadedJointCount);
-            ImGui::Text("Max Joint Count: %zu", meshRendererStats.maxJointCount);
-            ImGui::Text("Last Skinned Vertex Count: %zu", meshRendererStats.lastSkinnedVertexCount);
             ImGui::TreePop();
         }
 
@@ -380,7 +375,6 @@ namespace HIKARI {
 
             ImGui::Separator();
             ImGui::TextUnformatted("MeshRenderer:");
-            ImGui::Text("Wire GPU Draws: %zu", meshRendererStats.wireGpuDrawCount);
             ImGui::Text("Primitive Mesh Cache Hit / Miss: %zu / %zu",
                 meshRendererStats.primitiveMeshCacheHitCount,
                 meshRendererStats.primitiveMeshCacheMissCount);

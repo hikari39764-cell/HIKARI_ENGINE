@@ -93,10 +93,11 @@ namespace HIKARI {
             if (!s.submission.gpuDrivenMainRouteActive) {
                 score -= 15;
             }
-            if (!s.mesh.surfaceGpuSceneSrvValid || !s.mesh.surfaceGpuSceneBufferReady) {
+            if (s.mesh.gpuSceneUpload.bufferStats.srv.ptr == 0 ||
+                !s.mesh.gpuSceneUpload.bufferStats.initialized) {
                 score -= 35;
             }
-            if (s.mesh.surfaceGpuSceneOverflowInstanceCount > 0) {
+            if (s.mesh.gpuSceneUpload.bufferStats.overflowInstanceCount > 0) {
                 score -= 25;
             }
             if (s.registry.unsupportedForwardRecordCount > 0) {
@@ -110,18 +111,18 @@ namespace HIKARI {
 
         int ComputeMeshletScore(const RendererHealthSnapshot& s) {
             int score = 100;
-            if (!s.mesh.clusterGpuCullReady) {
+            if (!s.mesh.clusterGpuCull.IsReady()) {
                 score -= 25;
             }
-            if (!s.mesh.meshletBackendPipelineReady) {
+            if (!s.mesh.meshletBackend.pipelineReady) {
                 score -= 30;
             }
-            if (!s.mesh.meshletBackendDispatchArgumentBufferReady ||
-                !s.mesh.meshletBackendDispatchCommandSignatureReady) {
+            if (!s.mesh.meshletDispatchArgumentBufferReady ||
+                !s.mesh.meshletDispatchCommandSignatureReady) {
                 score -= 25;
             }
-            if (s.mesh.clusterGpuCullGpuOverflowCount +
-                    s.mesh.clusterGpuCullGpuDrawCommandOverflowCount >
+            if (s.mesh.clusterGpuCull.gpuOverflowCount +
+                    s.mesh.clusterGpuCull.gpuDrawCommandOverflowCount >
                 0) {
                 score -= 20;
             }
@@ -203,15 +204,15 @@ namespace HIKARI {
                     s.submission.gpuDrivenMainRouteActive ? "on" : "off");
                 MetricRow("GPU Scene Missing Resources / Overflow", "%u / %zu",
                     s.registry.forwardOpaqueGpuSceneStats.missingResourceHandleInstanceCount,
-                    s.mesh.surfaceGpuSceneOverflowInstanceCount);
+                    s.mesh.gpuSceneUpload.bufferStats.overflowInstanceCount);
                 MetricRow("Cluster Resources Ready / Failed / Missing SRV", "%u / %u / %u",
                     s.clusterResources.readyResourceCount,
                     s.clusterResources.failedCount,
                     s.clusterResources.missingDescriptorCount);
                 MetricRow("Meshlet Requested / Submitted / Empty Buckets", "%zu / %zu / %zu",
-                    s.mesh.meshletBackendRequestedDispatchCount,
-                    s.mesh.meshletBackendSubmittedDispatchCount,
-                    s.mesh.meshletBackendSkippedBucketCount);
+                    s.mesh.meshletBackend.requestedDispatchCount,
+                    s.mesh.meshletBackend.submittedDispatchCount,
+                    s.mesh.meshletBackend.skippedBucketCount);
                 MetricRow("Shadow Cache Valid / Hits / Misses / Updates", "%s / %zu / %zu / %zu",
                     s.shadow.shadowCacheValid ? "yes" : "no",
                     s.shadow.shadowCacheHitCount,

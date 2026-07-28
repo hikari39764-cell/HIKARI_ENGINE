@@ -52,20 +52,17 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                 gMeshRendererState.gpuDrivenSceneSource);
         gMeshRendererState.gpuDrivenFrame =
             RENDER3D::GPUDRIVEN::BuildGpuDrivenFrame(input);
-        UpdateGpuDrivenWorklistDebugStats();
     }
 
     void ResetGpuDrivenFrameState(const GFX::Context& graphics) {
         UploadGpuDrivenSceneFrame(graphics);
         gMeshRendererState.gpuDrivenFrame.Reset();
-        UpdateGpuDrivenWorklistDebugStats();
         gMeshRendererState.clusterGpuDrivenProducer.BeginFrame(false);
         gMeshRendererState.gpuDrivenLayer.ImportProducerOutput(
             gMeshRendererState.clusterGpuDrivenProducer.BuildFrameOutput());
         gMeshRendererState.meshletRenderBackend.ResetFrame();
         UpdateMeshletBackendDebugStats();
-        UpdateGpuDrivenWorkReadyDebugStats();
-        UpdateGpuDrivenWorkOwnershipDebugStats();
+        SyncGpuDrivenBackendAvailability();
         RENDER3D::GPUDRIVEN::GpuDrivenCommandFrameDesc commandFrameDesc{};
         commandFrameDesc.commandList = graphics.cmdList;
         commandFrameDesc.frameIndex = graphics.frameIndex;
@@ -80,14 +77,12 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         UploadGpuDrivenSceneFrame(graphics);
         if (!gMeshRendererState.gpuDrivenSceneResidency.resident) {
             gMeshRendererState.gpuDrivenFrame.Reset();
-            UpdateGpuDrivenWorklistDebugStats();
             gMeshRendererState.clusterGpuDrivenProducer.BeginFrame(false);
             gMeshRendererState.gpuDrivenLayer.ImportProducerOutput(
                 gMeshRendererState.clusterGpuDrivenProducer.BuildFrameOutput());
             gMeshRendererState.meshletRenderBackend.ResetFrame();
             UpdateMeshletBackendDebugStats();
-            UpdateGpuDrivenWorkReadyDebugStats();
-            UpdateGpuDrivenWorkOwnershipDebugStats();
+            SyncGpuDrivenBackendAvailability();
             RENDER3D::GPUDRIVEN::GpuDrivenCommandFrameDesc commandFrameDesc{};
             commandFrameDesc.commandList = graphics.cmdList;
             commandFrameDesc.frameIndex = graphics.frameIndex;
@@ -104,8 +99,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             false);
         gMeshRendererState.meshletRenderBackend.ResetFrame();
         UpdateMeshletBackendDebugStats();
-        UpdateGpuDrivenWorkReadyDebugStats();
-        UpdateGpuDrivenWorkOwnershipDebugStats();
+        SyncGpuDrivenBackendAvailability();
         BuildStrictGpuDrivenCommandFrame(graphics);
     }
 
@@ -163,180 +157,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             gMeshRendererState.clusterGpuDrivenProducer.BuildFrameOutput());
         gMeshRendererState.gpuDrivenLayer.BuildCommandBuffers();
         UpdateGpuDrivenCommandStreamDebugStats();
-        gMeshRendererState.debugStats.clusterGpuCullReady =
-            clusterCullStats.initialized &&
-            clusterCullStats.psoReady &&
-            clusterCullStats.inputBufferReady &&
-            clusterCullStats.visibleRangeBufferReady &&
-            clusterCullStats.counterBufferReady;
-        gMeshRendererState.debugStats.clusterGpuCullSourceInstanceCount =
-            clusterCullStats.sourceInstanceCount;
-        gMeshRendererState.debugStats.clusterGpuCullCandidateInstanceCount =
-            clusterCullStats.candidateInstanceCount;
-        gMeshRendererState.debugStats.clusterGpuCullSubmittedInstanceCount =
-            clusterCullStats.submittedInstanceCount;
-        gMeshRendererState.debugStats.clusterGpuCullSourcePageTaskCount =
-            clusterCullStats.sourcePageTaskCount;
-        gMeshRendererState.debugStats.clusterGpuCullSubmittedPageTaskCount =
-            clusterCullStats.submittedPageTaskCount;
-        gMeshRendererState.debugStats.clusterGpuCullDrawSeedCount =
-            clusterCullStats.submittedDrawSeedCount;
-        gMeshRendererState.debugStats.clusterGpuCullOverflowInstanceCount =
-            clusterCullStats.overflowInstanceCount;
-        gMeshRendererState.debugStats.clusterGpuCullCounterReadbackReady =
-            clusterCullStats.gpuCounterReadbackReady;
-        gMeshRendererState.debugStats.clusterGpuCullCounterReadbackValid =
-            clusterCullStats.gpuCounterReadbackValid;
-        gMeshRendererState.debugStats.clusterGpuCullDebugCountersEnabled =
-            clusterCullStats.debugCountersEnabled;
-        gMeshRendererState.debugStats.clusterGpuCullFineCullingOwnedByAmplificationShader =
-            clusterCullStats.meshletFineCullingDeferredToAmplificationShader;
-        gMeshRendererState.debugStats.clusterGpuCullOcclusionHistoryReady =
-            clusterCullStats.occlusionHistoryReady;
-        gMeshRendererState.debugStats.clusterGpuCullGpuInputCount =
-            clusterCullStats.gpuInputCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuPageTaskCount =
-            clusterCullStats.gpuPageTaskCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuPageTaskOverflowCount =
-            clusterCullStats.gpuPageTaskOverflowCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuVisibleRangeCount =
-            clusterCullStats.gpuVisibleRangeCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuVisibleClusterCount =
-            clusterCullStats.gpuVisibleClusterCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuOverflowCount =
-            clusterCullStats.gpuOverflowCount;
-        gMeshRendererState.debugStats.clusterGpuCullHzbOcclusionEnabled =
-            clusterCullStats.hzbOcclusionEnabled;
-        gMeshRendererState.debugStats.clusterGpuCullHzbOcclusionWidth =
-            clusterCullStats.hzbOcclusionWidth;
-        gMeshRendererState.debugStats.clusterGpuCullHzbOcclusionHeight =
-            clusterCullStats.hzbOcclusionHeight;
-        gMeshRendererState.debugStats.clusterGpuCullHzbOcclusionMipCount =
-            clusterCullStats.hzbOcclusionMipCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuInputFrustumCulledCount =
-            clusterCullStats.gpuInputFrustumCulledCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuPageTestedCount =
-            clusterCullStats.gpuPageTestedCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuPageFrustumCulledCount =
-            clusterCullStats.gpuPageFrustumCulledCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuPageOcclusionTestedCount =
-            clusterCullStats.gpuPageOcclusionTestedCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuPageOcclusionCulledCount =
-            clusterCullStats.gpuPageOcclusionCulledCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuClusterTestedCount =
-            clusterCullStats.gpuClusterTestedCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuClusterFrustumCulledCount =
-            clusterCullStats.gpuClusterFrustumCulledCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuClusterOcclusionTestedCount =
-            clusterCullStats.gpuClusterOcclusionTestedCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuClusterOcclusionCulledCount =
-            clusterCullStats.gpuClusterOcclusionCulledCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuHzbPassRejectedCount =
-            clusterCullStats.gpuHzbPassRejectedCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuHzbAabbRejectedCount =
-            clusterCullStats.gpuHzbAabbRejectedCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuHzbSphereRejectedCount =
-            clusterCullStats.gpuHzbSphereRejectedCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuHzbQueryAcceptedCount =
-            clusterCullStats.gpuHzbQueryAcceptedCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuHzbTryCount =
-            clusterCullStats.gpuHzbTryCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuHzbAllowedCount =
-            clusterCullStats.gpuHzbAllowedCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuHzbInvalidRejectedCount =
-            clusterCullStats.gpuHzbInvalidRejectedCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuHzbNearPlaneRejectedCount =
-            clusterCullStats.gpuHzbNearPlaneRejectedCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuHzbOffscreenRejectedCount =
-            clusterCullStats.gpuHzbOffscreenRejectedCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuHzbLargeRectCount =
-            clusterCullStats.gpuHzbLargeRectCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuHzbAabbAcceptedCount =
-            clusterCullStats.gpuHzbAabbAcceptedCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuHzbSphereAcceptedCount =
-            clusterCullStats.gpuHzbSphereAcceptedCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuHzbRawOccludedCount =
-            clusterCullStats.gpuHzbRawOccludedCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuHzbTemporalPendingCount =
-            clusterCullStats.gpuHzbTemporalPendingCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuHzbTemporalConfirmedCount =
-            clusterCullStats.gpuHzbTemporalConfirmedCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuHzbTemporalResetCount =
-            clusterCullStats.gpuHzbTemporalResetCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuHzbTemporalCollisionCount =
-            clusterCullStats.gpuHzbTemporalCollisionCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuHzbLargeRectSkippedCount =
-            clusterCullStats.gpuHzbLargeRectSkippedCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuPageHzbSmallScreenSkippedCount =
-            clusterCullStats.gpuPageHzbSmallScreenSkippedCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuClusterHzbSmallScreenSkippedCount =
-            clusterCullStats.gpuClusterHzbSmallScreenSkippedCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuConeSkippedDoubleSidedCount =
-            clusterCullStats.gpuConeSkippedDoubleSidedCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuConeSkippedMaterialCount =
-            clusterCullStats.gpuConeSkippedMaterialCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuClusterHzbLargeScreenSkippedCount =
-            clusterCullStats.gpuClusterHzbLargeScreenSkippedCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuHzbBudgetSkippedCount =
-            clusterCullStats.gpuHzbBudgetSkippedCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuClusterConeCulledCount =
-            clusterCullStats.gpuClusterConeCulledCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuClusterConeTestedCount =
-            clusterCullStats.gpuClusterConeTestedCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuDoubleSidedClusterCount =
-            clusterCullStats.gpuDoubleSidedClusterCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuDrawCommandCount =
-            clusterCullStats.gpuDrawCommandCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuBackFaceDrawCommandCount =
-            clusterCullStats.gpuBackFaceDrawCommandCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuDoubleSidedDrawCommandCount =
-            clusterCullStats.gpuDoubleSidedDrawCommandCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuDrawCommandOverflowCount =
-            clusterCullStats.gpuDrawCommandOverflowCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuBackFaceDrawCommandOverflowCount =
-            clusterCullStats.gpuBackFaceDrawCommandOverflowCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuDoubleSidedDrawCommandOverflowCount =
-            clusterCullStats.gpuDoubleSidedDrawCommandOverflowCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuMergedGapCount =
-            clusterCullStats.gpuMergedGapCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuMergedGapIndexCount =
-            clusterCullStats.gpuMergedGapIndexCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuPacketRangeCount =
-            clusterCullStats.gpuPacketRangeCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuPacketClusterCount =
-            clusterCullStats.gpuPacketClusterCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuVisibleClusterListReservedCount =
-            clusterCullStats.gpuVisibleClusterListReservedCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuVisibleClusterListOverflowCount =
-            clusterCullStats.gpuVisibleClusterListOverflowCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuLod0SelectedCount =
-            clusterCullStats.gpuLod0SelectedCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuLod1SelectedCount =
-            clusterCullStats.gpuLod1SelectedCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuLod2SelectedCount =
-            clusterCullStats.gpuLod2SelectedCount;
-        gMeshRendererState.debugStats.clusterGpuCullGpuLod3PlusSelectedCount =
-            clusterCullStats.gpuLod3PlusSelectedCount;
-        gMeshRendererState.debugStats.clusterGpuCullLodTargetErrorNdc =
-            clusterCullStats.lodTargetErrorNdc;
-        gMeshRendererState.debugStats.clusterGpuCullLodTransitionRelaxPerLevel =
-            clusterCullStats.lodTransitionRelaxPerLevel;
-        gMeshRendererState.debugStats.clusterGpuCullLodErrorRelaxPerLevel =
-            clusterCullStats.lodErrorRelaxPerLevel;
-        gMeshRendererState.debugStats.clusterGpuCullGpuCulledInstanceCount =
-            clusterCullStats.gpuInputFrustumCulledCount;
-        gMeshRendererState.debugStats.clusterGpuCullDispatchCount =
-            clusterCullStats.dispatchCount;
-        gMeshRendererState.debugStats.clusterGpuCullWorkgroupCount =
-            clusterCullStats.workgroupCount;
-        gMeshRendererState.debugStats.clusterGpuCullInputCapacity =
-            clusterCullStats.inputCapacity;
-        gMeshRendererState.debugStats.clusterGpuCullVisibleRangeCapacity =
-            clusterCullStats.visibleRangeCapacity;
-        gMeshRendererState.debugStats.clusterGpuCullCandidateCommandCapacity =
-            clusterCullStats.candidateCommandCapacity;
-        gMeshRendererState.debugStats.clusterGpuCullOcclusionHistoryCapacity =
-            clusterCullStats.occlusionHistoryCapacity;
+        gMeshRendererState.debugStats.clusterGpuCull = clusterCullStats;
     }
 
 } // namespace HIKARI::MESHRENDERER::INTERNAL

@@ -40,9 +40,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         GpuDrivenPassFrame& GetPass(GpuDrivenPassKind passKind);
         const GpuDrivenPassFrame& GetPass(GpuDrivenPassKind passKind) const;
         size_t CountActivePasses() const;
-        size_t CountClusterEligiblePasses() const;
         size_t CountSourceInstances() const;
-        size_t CountClusterEligibleInstances() const;
     };
 
     struct GpuDrivenPassBuildInput {

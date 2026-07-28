@@ -148,7 +148,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         gMeshRendererState.initialized = true;
         HIKARI_LOG_INFO(
             "[MeshRenderer][Initialize] ready meshlet=" +
-            std::string(gMeshRendererState.debugStats.meshletBackendPipelineReady ? "yes" : "no"));
+            std::string(gMeshRendererState.debugStats.meshletBackend.pipelineReady ? "yes" : "no"));
         return true;
     }
 

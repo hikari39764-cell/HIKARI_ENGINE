@@ -54,9 +54,9 @@ void DrawRenderPathTable(const RuntimePerformanceSnapshot &s) {
               s.gpuRegistry.forwardRoutedRecordCount,
               s.gpuRegistry.unsupportedForwardRecordCount);
     MetricRow("GPU Scene Upload Full / Dirty / Reuse", "%zu / %zu / %zu",
-              s.mesh.surfaceGpuSceneFullUploadCount,
-              s.mesh.surfaceGpuSceneDirtyPatchCount,
-              s.mesh.surfaceGpuSceneReuseCount);
+              static_cast<size_t>(s.mesh.gpuSceneUpload.uploadedFullScene),
+              static_cast<size_t>(s.mesh.gpuSceneUpload.patchedDirtyRanges),
+              static_cast<size_t>(s.mesh.gpuSceneUpload.reusedResidentFrame));
     MetricRow("GPU Scene Instances Opaque / DepthPre / Shadow", "%u / %u / %zu",
               s.gpuRegistry.forwardOpaqueGpuSceneStats.instanceCount,
               s.gpuRegistry.depthPrepassGpuSceneStats.instanceCount,
@@ -64,7 +64,7 @@ void DrawRenderPathTable(const RuntimePerformanceSnapshot &s) {
     MetricRow("Command Stream GPU / Traditional / Overflow", "%zu / %zu / %zu",
               s.mesh.gpuDrivenCommandStreamGpuCommandCount,
               s.mesh.gpuDrivenCommandStreamTraditionalCommandCount,
-              s.mesh.traditionalCommandStreamOverflowCommandCount);
+              s.mesh.traditionalCommandStream.overflowCommandCount);
     MetricRow("MaterialFX Mesh / Traditional / Blocked", "%u / %u / %u",
               s.gpuRegistry.forwardMaterialFxMeshShaderRecordCount,
               s.gpuRegistry.forwardMaterialFxTraditionalRecordCount,
@@ -79,11 +79,10 @@ void DrawRenderPathTable(const RuntimePerformanceSnapshot &s) {
               s.gpuRegistry.shadowSkinnedTraditionalRecordCount);
     MetricRow(
         "Traditional Input KB / Copies / Resident Reuse", "%.2f / %zu / %s",
-        static_cast<double>(s.mesh.traditionalCommandStreamInputUploadBytes) /
+        static_cast<double>(s.mesh.traditionalCommandStream.inputUploadBytes) /
             1024.0,
-        s.mesh.traditionalCommandStreamInputUploadCopyCount,
-        s.mesh.traditionalCommandStreamResidentInputReuseCount != 0u ? "yes"
-                                                                     : "no");
+        s.mesh.traditionalCommandStream.inputUploadCopyCount,
+        s.mesh.traditionalCommandStream.reusedResidentInput ? "yes" : "no");
     ImGui::EndTable();
   }
 }
@@ -100,7 +99,7 @@ void DrawGpuMaterialTable(const RuntimePerformanceSnapshot &s) {
               materials.residentSlotCount, materials.capacity);
     MetricRow("Sources Bound / Records / Missing", "%u / %u / %zu",
               materials.sourceBindingCount, s.gpuRegistry.sourceRecordCount,
-              s.mesh.surfaceGpuSceneMaterialPatchFailCount);
+              s.mesh.gpuSceneUpload.bufferStats.materialBindingMissingCount);
     MetricRow("Versions Data / Binding", "%llu / %llu",
               static_cast<unsigned long long>(materials.dataVersion),
               static_cast<unsigned long long>(materials.bindingVersion));
@@ -116,9 +115,9 @@ void DrawGpuMaterialTable(const RuntimePerformanceSnapshot &s) {
               materials.frameUploadedSlotCount, materials.frameUploadRangeCount,
               static_cast<double>(materials.frameUploadBytes) / 1024.0);
     MetricRow("Binding Visits / Changed / Reused", "%zu / %zu / %zu",
-              s.mesh.surfaceGpuSceneMaterialPatchCount,
-              s.mesh.surfaceGpuSceneMaterialPatchChangedCount,
-              s.mesh.surfaceGpuSceneMaterialPatchUnchangedCount);
+              s.mesh.gpuSceneUpload.bufferStats.materialBindingVisitCount,
+              s.mesh.gpuSceneUpload.bufferStats.materialPatchChangedCount,
+              s.mesh.gpuSceneUpload.bufferStats.materialPatchUnchangedCount);
     MetricRow("Pending Frame Copies / Stable Frames", "%u / %u",
               materials.pendingFrameSlotCount, materials.stableFrameReuseCount);
     MetricRow("Source Sync Full / Dirty / Retry", "%u / %u / %u",
@@ -201,18 +200,18 @@ void DrawGeometryPipelineTable(const RuntimePerformanceSnapshot &s) {
   ImGui::SeparatorText("Geometry Pipeline");
   if (BeginMetricTable("GeometryPipelineMetrics", 250.0f)) {
     MetricRow("Cluster Cull Source / Submitted / Overflow", "%zu / %zu / %zu",
-              s.mesh.clusterGpuCullSourceInstanceCount,
-              s.mesh.clusterGpuCullSubmittedInstanceCount,
-              s.mesh.clusterGpuCullOverflowInstanceCount);
+              s.mesh.clusterGpuCull.sourceInstanceCount,
+              s.mesh.clusterGpuCull.submittedInstanceCount,
+              s.mesh.clusterGpuCull.overflowInstanceCount);
     const bool asFineCull =
-        s.mesh.clusterGpuCullFineCullingOwnedByAmplificationShader;
+        s.mesh.clusterGpuCull.meshletFineCullingDeferredToAmplificationShader;
     MetricRow("Meshlet Fine Cull Owner / Coarse Owner", "%s / CS page + HZB",
               asFineCull ? "AS" : "CS");
     MetricRow(asFineCull ? "Candidate Ranges / Meshlets / Dispatch Args"
                          : "Visible Ranges / Clusters / Draw Args",
-              "%zu / %zu / %zu", s.mesh.clusterGpuCullGpuVisibleRangeCount,
-              s.mesh.clusterGpuCullGpuVisibleClusterCount,
-              s.mesh.clusterGpuCullGpuDrawCommandCount);
+              "%zu / %zu / %zu", s.mesh.clusterGpuCull.gpuVisibleRangeCount,
+              s.mesh.clusterGpuCull.gpuVisibleClusterCount,
+              s.mesh.clusterGpuCull.gpuDrawCommandCount);
     MetricRow("Culling Camera Frozen / HZB Used", "%s / %s",
               s.mesh.gpuDrivenCullingCameraFrozen ? "yes" : "no",
               s.depthVisibility.visibilityUsedHzb ? "yes" : "no");
@@ -223,47 +222,47 @@ void DrawGeometryPipelineTable(const RuntimePerformanceSnapshot &s) {
         s.depthVisibility.historyReady ? "ready" : "cold",
         s.depthVisibility.historyMatched ? "matched" : "moved");
     MetricRow("HZB Enabled / Size / Budget Skipped", "%s / %zu x %zu / %zu",
-              s.mesh.clusterGpuCullHzbOcclusionEnabled ? "yes" : "no",
-              s.mesh.clusterGpuCullHzbOcclusionWidth,
-              s.mesh.clusterGpuCullHzbOcclusionHeight,
-              s.mesh.clusterGpuCullGpuHzbBudgetSkippedCount);
+              s.mesh.clusterGpuCull.hzbOcclusionEnabled ? "yes" : "no",
+              s.mesh.clusterGpuCull.hzbOcclusionWidth,
+              s.mesh.clusterGpuCull.hzbOcclusionHeight,
+              s.mesh.clusterGpuCull.gpuHzbBudgetSkippedCount);
     MetricRow("HZB Page Tested / Culled | Cluster Tested / Culled",
               "%zu / %zu | %zu / %zu",
-              s.mesh.clusterGpuCullGpuPageOcclusionTestedCount,
-              s.mesh.clusterGpuCullGpuPageOcclusionCulledCount,
-              s.mesh.clusterGpuCullGpuClusterOcclusionTestedCount,
-              s.mesh.clusterGpuCullGpuClusterOcclusionCulledCount);
+              s.mesh.clusterGpuCull.gpuPageOcclusionTestedCount,
+              s.mesh.clusterGpuCull.gpuPageOcclusionCulledCount,
+              s.mesh.clusterGpuCull.gpuClusterOcclusionTestedCount,
+              s.mesh.clusterGpuCull.gpuClusterOcclusionCulledCount);
     MetricRow("HZB Raw / Confirmed / Pending / Reset", "%zu / %zu / %zu / %zu",
-              s.mesh.clusterGpuCullGpuHzbRawOccludedCount,
-              s.mesh.clusterGpuCullGpuHzbTemporalConfirmedCount,
-              s.mesh.clusterGpuCullGpuHzbTemporalPendingCount,
-              s.mesh.clusterGpuCullGpuHzbTemporalResetCount);
+              s.mesh.clusterGpuCull.gpuHzbRawOccludedCount,
+              s.mesh.clusterGpuCull.gpuHzbTemporalConfirmedCount,
+              s.mesh.clusterGpuCull.gpuHzbTemporalPendingCount,
+              s.mesh.clusterGpuCull.gpuHzbTemporalResetCount);
     MetricRow("GPU LOD Selected L0 / L1 / L2 / L3+", "%zu / %zu / %zu / %zu",
-              s.mesh.clusterGpuCullGpuLod0SelectedCount,
-              s.mesh.clusterGpuCullGpuLod1SelectedCount,
-              s.mesh.clusterGpuCullGpuLod2SelectedCount,
-              s.mesh.clusterGpuCullGpuLod3PlusSelectedCount);
+              s.mesh.clusterGpuCull.gpuLod0SelectedCount,
+              s.mesh.clusterGpuCull.gpuLod1SelectedCount,
+              s.mesh.clusterGpuCull.gpuLod2SelectedCount,
+              s.mesh.clusterGpuCull.gpuLod3PlusSelectedCount);
     MetricRow("Double Sided Clusters / Draw Args / Cone Skips",
               "%zu / %zu / %zu",
-              s.mesh.clusterGpuCullGpuDoubleSidedClusterCount,
-              s.mesh.clusterGpuCullGpuDoubleSidedDrawCommandCount,
-              s.mesh.clusterGpuCullGpuConeSkippedDoubleSidedCount);
+              s.mesh.clusterGpuCull.gpuDoubleSidedClusterCount,
+              s.mesh.clusterGpuCull.gpuDoubleSidedDrawCommandCount,
+              s.mesh.clusterGpuCull.gpuConeSkippedDoubleSidedCount);
     MetricRow("LOD Policy Error / Radius Relax / Error Relax",
-              "%.4f / %.2f / %.2f", s.mesh.clusterGpuCullLodTargetErrorNdc,
-              s.mesh.clusterGpuCullLodTransitionRelaxPerLevel,
-              s.mesh.clusterGpuCullLodErrorRelaxPerLevel);
+              "%.4f / %.2f / %.2f", s.mesh.clusterGpuCull.lodTargetErrorNdc,
+              s.mesh.clusterGpuCull.lodTransitionRelaxPerLevel,
+              s.mesh.clusterGpuCull.lodErrorRelaxPerLevel);
     MetricRow("Meshlet Dispatch Requested / Submitted / Calls / Empty",
               "%zu / %zu / %zu / %zu",
-              s.mesh.meshletBackendRequestedDispatchCount,
-              s.mesh.meshletBackendSubmittedDispatchCount,
-              s.mesh.meshletBackendSubmitCallCount,
-              s.mesh.meshletBackendSkippedBucketCount);
+              s.mesh.meshletBackend.requestedDispatchCount,
+              s.mesh.meshletBackend.submittedDispatchCount,
+              s.mesh.meshletBackend.submitCallCount,
+              s.mesh.meshletBackend.skippedBucketCount);
     MetricRow("Meshlet Passes Forward / DepthPre / Shadow / Geometry",
               "%zu / %zu / %zu / %zu",
-              s.mesh.meshletBackendForwardSubmittedDispatchCount,
-              s.mesh.meshletBackendDepthPrepassSubmittedDispatchCount,
-              s.mesh.meshletBackendShadowSubmittedDispatchCount,
-              s.mesh.meshletBackendGeometryAuxSubmittedDispatchCount);
+              s.mesh.meshletBackend.forwardSubmittedDispatchCount,
+              s.mesh.meshletBackend.depthPrepassSubmittedDispatchCount,
+              s.mesh.meshletBackend.shadowSubmittedDispatchCount,
+              s.mesh.meshletBackend.geometryAuxSubmittedDispatchCount);
     ImGui::EndTable();
   }
 }

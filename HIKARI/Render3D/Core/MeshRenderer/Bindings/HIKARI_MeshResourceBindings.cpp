@@ -33,18 +33,11 @@ namespace HIKARI::MESHRENDERER {
             }
 
             MeshBindingStateCache* cache = ctx.cache;
-            MeshRendererDebugStats* stats = ctx.stats;
             if (cache != nullptr && cache->rootSignature == rootSig) {
-                if (stats != nullptr) {
-                    ++stats->rootSignatureSkipCount;
-                }
                 return;
             }
 
             ctx.cmd->SetGraphicsRootSignature(rootSig);
-            if (stats != nullptr) {
-                ++stats->rootSignatureBindCount;
-            }
             if (cache != nullptr) {
                 cache->rootSignature = rootSig;
                 // root signature 変更時は root 引数を再設定する。
@@ -55,8 +48,7 @@ namespace HIKARI::MESHRENDERER {
         void BindCbvCached(
             const MeshBindingContext& ctx,
             UINT rootParam,
-            D3D12_GPU_VIRTUAL_ADDRESS address,
-            bool objectScoped) {
+            D3D12_GPU_VIRTUAL_ADDRESS address) {
 
             if (ctx.cmd == nullptr || rootParam >= kTrackedRootParamCount) {
                 return;
@@ -66,26 +58,11 @@ namespace HIKARI::MESHRENDERER {
             if (cache != nullptr && cache->rootSignature == nullptr) {
                 return;
             }
-            MeshRendererDebugStats* stats = ctx.stats;
             if (cache != nullptr && cache->cbvAddresses[rootParam] == address) {
-                if (stats != nullptr) {
-                    if (objectScoped) {
-                        ++stats->objectResourceSkipCount;
-                    } else {
-                        ++stats->frameResourceSkipCount;
-                    }
-                }
                 return;
             }
 
             ctx.cmd->SetGraphicsRootConstantBufferView(rootParam, address);
-            if (stats != nullptr) {
-                if (objectScoped) {
-                    ++stats->objectResourceBindCount;
-                } else {
-                    ++stats->frameResourceBindCount;
-                }
-            }
             if (cache != nullptr) {
                 cache->cbvAddresses[rootParam] = address;
             }
@@ -104,18 +81,11 @@ namespace HIKARI::MESHRENDERER {
             if (cache != nullptr && cache->rootSignature == nullptr) {
                 return false;
             }
-            MeshRendererDebugStats* stats = ctx.stats;
             if (cache != nullptr && cache->descriptorTables[rootParam].ptr == handle.ptr) {
-                if (stats != nullptr) {
-                    ++stats->descriptorTableSkipCount;
-                }
                 return false;
             }
 
             ctx.cmd->SetGraphicsRootDescriptorTable(rootParam, handle);
-            if (stats != nullptr) {
-                ++stats->descriptorTableBindCount;
-            }
             if (cache != nullptr) {
                 cache->descriptorTables[rootParam] = handle;
             }
@@ -134,19 +104,12 @@ namespace HIKARI::MESHRENDERER {
             if (cache != nullptr && cache->rootSignature == nullptr) {
                 return;
             }
-            MeshRendererDebugStats* stats = ctx.stats;
             if (cache != nullptr &&
                 cache->descriptorTables[ROOT_PARAM::ObjectData].ptr == handle.ptr) {
-                if (stats != nullptr) {
-                    ++stats->objectDataBufferSkipCount;
-                }
                 return;
             }
 
             ctx.cmd->SetGraphicsRootDescriptorTable(ROOT_PARAM::ObjectData, handle);
-            if (stats != nullptr) {
-                ++stats->objectDataBufferBindCount;
-            }
             if (cache != nullptr) {
                 cache->descriptorTables[ROOT_PARAM::ObjectData] = handle;
             }
@@ -164,19 +127,12 @@ namespace HIKARI::MESHRENDERER {
             if (cache != nullptr && cache->rootSignature == nullptr) {
                 return;
             }
-            MeshRendererDebugStats* stats = ctx.stats;
             if (cache != nullptr &&
                 cache->descriptorTables[ROOT_PARAM::MaterialData].ptr == handle.ptr) {
-                if (stats != nullptr) {
-                    ++stats->materialDataBufferSkipCount;
-                }
                 return;
             }
 
             ctx.cmd->SetGraphicsRootDescriptorTable(ROOT_PARAM::MaterialData, handle);
-            if (stats != nullptr) {
-                ++stats->materialDataBufferBindCount;
-            }
             if (cache != nullptr) {
                 cache->descriptorTables[ROOT_PARAM::MaterialData] = handle;
             }
@@ -196,19 +152,12 @@ namespace HIKARI::MESHRENDERER {
             if (cache != nullptr && cache->rootSignature == nullptr) {
                 return;
             }
-            MeshRendererDebugStats* stats = ctx.stats;
             if (cache != nullptr &&
                 cache->descriptorTables[ROOT_PARAM::SurfaceGpuScene].ptr == handle.ptr) {
-                if (stats != nullptr) {
-                    ++stats->surfaceGpuSceneBufferSkipCount;
-                }
                 return;
             }
 
             ctx.cmd->SetGraphicsRootDescriptorTable(ROOT_PARAM::SurfaceGpuScene, handle);
-            if (stats != nullptr) {
-                ++stats->surfaceGpuSceneBufferBindCount;
-            }
             if (cache != nullptr) {
                 cache->descriptorTables[ROOT_PARAM::SurfaceGpuScene] = handle;
             }
@@ -227,28 +176,13 @@ namespace HIKARI::MESHRENDERER {
             if (cache != nullptr && cache->rootSignature == nullptr) {
                 return;
             }
-            MeshRendererDebugStats* stats = ctx.stats;
             if (cache != nullptr &&
                 cache->rootConstantValid[rootParam] &&
                 cache->rootConstants[rootParam] == value) {
-                if (stats != nullptr) {
-                    if (rootParam == ROOT_PARAM::ObjectIndex) {
-                        ++stats->objectIndexSkipCount;
-                    } else if (rootParam == ROOT_PARAM::MaterialIndex) {
-                        ++stats->materialIndexSkipCount;
-                    }
-                }
                 return;
             }
 
             ctx.cmd->SetGraphicsRoot32BitConstant(rootParam, value, 0);
-            if (stats != nullptr) {
-                if (rootParam == ROOT_PARAM::ObjectIndex) {
-                    ++stats->objectIndexBindCount;
-                } else if (rootParam == ROOT_PARAM::MaterialIndex) {
-                    ++stats->materialIndexBindCount;
-                }
-            }
             if (cache != nullptr) {
                 cache->rootConstants[rootParam] = value;
                 cache->rootConstantValid[rootParam] = true;
@@ -270,11 +204,11 @@ namespace HIKARI::MESHRENDERER {
         }
 
         BindRootSignatureCached(ctx, rootSig);
-        BindCbvCached(ctx, ROOT_PARAM::Camera, cameraAddress, false);
-        BindCbvCached(ctx, ROOT_PARAM::CullingCamera, cullingCameraAddress, false);
-        BindCbvCached(ctx, ROOT_PARAM::Light, lightAddress, false);
-        BindCbvCached(ctx, ROOT_PARAM::ShadowCB, shadowAddress, false);
-        BindCbvCached(ctx, ROOT_PARAM::SkyEnvironment, skyEnvironmentAddress, false);
+        BindCbvCached(ctx, ROOT_PARAM::Camera, cameraAddress);
+        BindCbvCached(ctx, ROOT_PARAM::CullingCamera, cullingCameraAddress);
+        BindCbvCached(ctx, ROOT_PARAM::Light, lightAddress);
+        BindCbvCached(ctx, ROOT_PARAM::ShadowCB, shadowAddress);
+        BindCbvCached(ctx, ROOT_PARAM::SkyEnvironment, skyEnvironmentAddress);
         BindMaterialTexturePool(ctx);
         BindClusterGeometryPool(ctx);
     }
@@ -286,7 +220,7 @@ namespace HIKARI::MESHRENDERER {
             return;
         }
 
-        BindCbvCached(ctx, ROOT_PARAM::Object, objectAddress, true);
+        BindCbvCached(ctx, ROOT_PARAM::Object, objectAddress);
     }
 
     void BindObjectDataBuffer(
@@ -454,18 +388,11 @@ namespace HIKARI::MESHRENDERER {
         }
 
         MeshBindingStateCache* cache = ctx.cache;
-        MeshRendererDebugStats* stats = ctx.stats;
         if (cache != nullptr && cache->pipelineState == pso) {
-            if (stats != nullptr) {
-                ++stats->pipelineStateSkipCount;
-            }
             return;
         }
 
         ctx.cmd->SetPipelineState(pso);
-        if (stats != nullptr) {
-            ++stats->pipelineStateBindCount;
-        }
         if (cache != nullptr) {
             cache->pipelineState = pso;
         }

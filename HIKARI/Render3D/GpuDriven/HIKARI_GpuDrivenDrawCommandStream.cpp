@@ -84,16 +84,6 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             : nullptr;
     }
 
-    size_t GpuDrivenPassDrawCommandStream::CountActiveRanges() const {
-        size_t count = 0;
-        for (const GpuDrivenDrawCommandRange& range : ranges) {
-            if (range.IsActive()) {
-                ++count;
-            }
-        }
-        return count;
-    }
-
     void GpuDrivenDrawCommandStream::Reset() {
         for (size_t i = 0; i < passes.size(); ++i) {
             passes[i].Reset(PassFromIndex(i));
@@ -130,24 +120,6 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         return GetPass(pass).FindRange(backend);
     }
 
-    size_t GpuDrivenDrawCommandStream::CountActivePasses() const {
-        size_t count = 0;
-        for (const GpuDrivenPassDrawCommandStream& pass : passes) {
-            if (pass.CountActiveRanges() != 0) {
-                ++count;
-            }
-        }
-        return count;
-    }
-
-    size_t GpuDrivenDrawCommandStream::CountActiveRanges() const {
-        size_t count = 0;
-        for (const GpuDrivenPassDrawCommandStream& pass : passes) {
-            count += pass.CountActiveRanges();
-        }
-        return count;
-    }
-
     size_t GpuDrivenDrawCommandStream::CountGpuAuthoredCommands() const {
         size_t count = 0;
         for (const GpuDrivenPassDrawCommandStream& pass : passes) {
@@ -167,42 +139,6 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                 if (range.IsActive() &&
                     range.backend == GeometryBackendKind::GpuDrivenTraditionalVsPs) {
                     count += range.commandCount;
-                }
-            }
-        }
-        return count;
-    }
-
-    size_t GpuDrivenDrawCommandStream::CountGpuCounterBackedRanges() const {
-        size_t count = 0;
-        for (const GpuDrivenPassDrawCommandStream& pass : passes) {
-            for (const GpuDrivenDrawCommandRange& range : pass.ranges) {
-                if (range.IsActive() && range.gpuCounterBacked) {
-                    ++count;
-                }
-            }
-        }
-        return count;
-    }
-
-    size_t GpuDrivenDrawCommandStream::CountKnownGpuVisibleCommands() const {
-        size_t count = 0;
-        for (const GpuDrivenPassDrawCommandStream& pass : passes) {
-            for (const GpuDrivenDrawCommandRange& range : pass.ranges) {
-                if (range.IsActive() && range.visibleCommandCountKnown) {
-                    count += range.visibleCommandCount;
-                }
-            }
-        }
-        return count;
-    }
-
-    size_t GpuDrivenDrawCommandStream::CountKnownGpuVisibleCommandOverflows() const {
-        size_t count = 0;
-        for (const GpuDrivenPassDrawCommandStream& pass : passes) {
-            for (const GpuDrivenDrawCommandRange& range : pass.ranges) {
-                if (range.IsActive() && range.visibleCommandCountKnown) {
-                    count += range.visibleCommandOverflowCount;
                 }
             }
         }
