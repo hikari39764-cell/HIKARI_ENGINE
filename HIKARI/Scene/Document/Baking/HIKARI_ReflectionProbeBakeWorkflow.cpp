@@ -1,11 +1,11 @@
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
+#include "Gfx/HIKARI_GfxContext.h"
 #include "Scene/Document/Baking/HIKARI_DocumentSceneBakeCoordinator.h"
 #include "Scene/Document/Baking/Internal/HIKARI_DocumentSceneBakeSupport.h"
 #include "Scene/Document/Internal/HIKARI_DocumentSceneState.h"
 
 #include <algorithm>
 #include <string>
-#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Core/HIKARI_Logger.h"
 #include "Render3D/HIKARI_Renderer3D.h"
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
@@ -89,7 +89,7 @@ namespace HIKARI {
                 return true;
             }
 
-            job.fenceValue = SERVICES::gCtx.currentFrameRetireFenceValue;
+            job.fenceValue = GFX::GetCurrentContext().currentFrameRetireFenceValue;
             job.report.gpuFenceValue = job.fenceValue;
             job.report.reflectionProbeSceneCaptured = true;
             job.report.reflectionProbeUsedSourceOverride = false;
@@ -115,7 +115,7 @@ namespace HIKARI {
         }
 
         if (job.state == TOOLS::BAKING::LightingBakeJobState::WaitingGpu) {
-            if (!SERVICES::gCore.IsFenceComplete(job.fenceValue)) {
+            if (!GFX::IsCurrentFenceComplete(job.fenceValue)) {
                 lastReport_ = job.report;
                 return false;
             }

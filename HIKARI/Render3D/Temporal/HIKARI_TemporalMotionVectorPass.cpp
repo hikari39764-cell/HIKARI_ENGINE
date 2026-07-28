@@ -1,4 +1,5 @@
 #include "Render3D/Temporal/HIKARI_TemporalMotionVectorPass.h"
+#include "Gfx/HIKARI_GfxContext.h"
 
 #include <algorithm>
 #include <array>
@@ -14,7 +15,6 @@
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
-#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Render3D/Temporal/HIKARI_TemporalResourceSystem.h"
 #include "Render3D/Temporal/Internal/HIKARI_TemporalConstantBufferSlots.h"
 
@@ -163,9 +163,9 @@ namespace HIKARI::RENDER3D::TEMPORAL {
 
     bool ExecuteMotionVectorPass(const TemporalInputs& inputs) {
         MotionVectorPassState& state = State();
-        ID3D12GraphicsCommandList* cmd = SERVICES::gCtx.cmdList;
-        ID3D12Device* device = SERVICES::gCtx.device;
-        ID3D12DescriptorHeap* srvHeap = SERVICES::gCtx.srvHeap;
+        ID3D12GraphicsCommandList* cmd = GFX::GetCurrentContext().cmdList;
+        ID3D12Device* device = GFX::GetCurrentContext().device;
+        ID3D12DescriptorHeap* srvHeap = GFX::GetCurrentContext().srvHeap;
         RenderTarget2D* motionTarget = GetMotionVectorRenderTarget();
         RenderTarget2D* metadataTarget = GetMotionMetadataRenderTarget();
         if (cmd == nullptr ||

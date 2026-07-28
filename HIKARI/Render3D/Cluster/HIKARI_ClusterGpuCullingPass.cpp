@@ -1,4 +1,5 @@
 #include "Render3D/Cluster/HIKARI_ClusterGpuCullingPass.h"
+#include "Gfx/HIKARI_GfxContext.h"
 
 #include <algorithm>
 #include <array>
@@ -17,7 +18,6 @@
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
-#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 
 namespace HIKARI::RENDER3D::CLUSTER {
 
@@ -49,7 +49,7 @@ namespace HIKARI::RENDER3D::CLUSTER {
 		// 固定サイズのSRV（Shader Resource View）ディスクリプタを取得します
         RenderResourceView FixedSrvHeapView(ID3D12Device* device, UINT descriptorIndex) {
             RenderResourceView view{};
-            ID3D12DescriptorHeap* heap = SERVICES::gCtx.srvHeap;
+            ID3D12DescriptorHeap* heap = GFX::GetCurrentContext().srvHeap;
             if (device == nullptr ||
                 heap == nullptr ||
                 descriptorIndex >= GFX::DESCRIPTOR::kSrvHeapCapacity) {

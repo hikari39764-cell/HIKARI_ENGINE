@@ -1,11 +1,11 @@
 #include "Render3D/Shadow/Internal/HIKARI_ShadowRendererInternal.h"
+#include "Gfx/HIKARI_GfxContext.h"
 
 #include <iterator>
 
 #include <d3dcompiler.h>
 #include <d3dx12.h>
 
-#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
 #include "Gfx/HIKARI_DXCheck.h"
@@ -315,7 +315,7 @@ namespace HIKARI::SHADOW::INTERNAL {
         if (gShadowRendererState.initialized) {
             return true;
         }
-        auto* device = SERVICES::gCtx.device;
+        auto* device = GFX::GetCurrentContext().device;
         if (device == nullptr) {
             return false;
         }

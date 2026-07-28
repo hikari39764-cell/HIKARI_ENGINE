@@ -14,7 +14,6 @@
 #include "Gfx/HIKARI_D3DBlobCompat.h"
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
-#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 
 #pragma comment(lib, "d3dcompiler.lib")
 
@@ -256,7 +255,7 @@ namespace HIKARI::RENDERER3D::DEBUG {
             bool editorView = false
 #endif
         ) {
-            const uint32_t frameIndex = SERVICES::gCtx.frameIndex % GFX::kFrameResourceCount;
+            const uint32_t frameIndex = GFX::GetCurrentContext().frameIndex % GFX::kFrameResourceCount;
 #if defined(HIKARI_WITH_EDITOR)
             return editorView
                 ? g_state.editorViewFrameResources[frameIndex]
@@ -304,7 +303,7 @@ namespace HIKARI::RENDERER3D::DEBUG {
                 return true;
             }
 
-            ID3D12Device* device = SERVICES::gCtx.device;
+            ID3D12Device* device = GFX::GetCurrentContext().device;
             if (device == nullptr) {
                 return false;
             }
@@ -329,7 +328,7 @@ namespace HIKARI::RENDERER3D::DEBUG {
             if (g_state.editorViewResourcesInitialized) {
                 return true;
             }
-            if (!EnsureInitialized() || SERVICES::gCtx.device == nullptr) {
+            if (!EnsureInitialized() || GFX::GetCurrentContext().device == nullptr) {
                 return false;
             }
             for (FrameResources& frame : g_state.editorViewFrameResources) {
@@ -339,7 +338,7 @@ namespace HIKARI::RENDERER3D::DEBUG {
                 }
                 frame.cameraCB.Reset();
                 frame.cameraMapped = nullptr;
-                if (!CreateCameraBuffer(SERVICES::gCtx.device, frame)) {
+                if (!CreateCameraBuffer(GFX::GetCurrentContext().device, frame)) {
                     frame.cameraCB.Reset();
                     frame.cameraMapped = nullptr;
                     return false;
@@ -361,7 +360,7 @@ namespace HIKARI::RENDERER3D::DEBUG {
         }
 
         void RenderLineBatch(const FrameResources& frame, size_t firstVertex, size_t vertexCount, ID3D12PipelineState* pso) {
-            if (vertexCount == 0 || pso == nullptr || SERVICES::gCtx.cmdList == nullptr || !EnsureInitialized()) {
+            if (vertexCount == 0 || pso == nullptr || GFX::GetCurrentContext().cmdList == nullptr || !EnsureInitialized()) {
                 return;
             }
 
@@ -374,7 +373,7 @@ namespace HIKARI::RENDERER3D::DEBUG {
             vb.SizeInBytes = static_cast<UINT>(vertexCount * sizeof(DebugLineVertex3D));
             vb.StrideInBytes = sizeof(DebugLineVertex3D);
 
-            ID3D12GraphicsCommandList* cmd = SERVICES::gCtx.cmdList;
+            ID3D12GraphicsCommandList* cmd = GFX::GetCurrentContext().cmdList;
             cmd->SetGraphicsRootSignature(g_state.rootSig.Get());
             cmd->SetPipelineState(pso);
             cmd->SetGraphicsRootConstantBufferView(0, frame.cameraCB->GetGPUVirtualAddress());
@@ -481,7 +480,7 @@ namespace HIKARI::RENDERER3D::DEBUG {
             return;
         }
 #endif
-        ID3D12Device* device = SERVICES::gCtx.device;
+        ID3D12Device* device = GFX::GetCurrentContext().device;
 #if defined(HIKARI_WITH_EDITOR)
         FrameResources& frame = ActiveFrameResources(g_renderingEditorView);
 #else

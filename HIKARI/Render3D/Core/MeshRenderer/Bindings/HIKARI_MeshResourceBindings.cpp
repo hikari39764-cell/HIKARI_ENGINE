@@ -1,11 +1,11 @@
 #include "Render3D/Core/MeshRenderer/Bindings/HIKARI_MeshResourceBindings.h"
+#include "Gfx/HIKARI_GfxContext.h"
 
 #include <algorithm>
 
 #include "Core/HIKARI_Logger.h"
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
 #include "Gfx/HIKARI_PixProfiler.h"
-#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Render3D/Core/MeshRenderer/Pipeline/HIKARI_MeshRootParameters.h"
 #include "Render3D/Core/HIKARI_MeshRendererTypes.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorAccess.h"
@@ -352,7 +352,7 @@ namespace HIKARI::MESHRENDERER {
             return;
         }
 
-        const D3D12_GPU_DESCRIPTOR_HANDLE texturePoolSrv = RENDER3D::GetMaterialTexturePoolSrvGpuHandle(SERVICES::gCtx);
+        const D3D12_GPU_DESCRIPTOR_HANDLE texturePoolSrv = RENDER3D::GetMaterialTexturePoolSrvGpuHandle(GFX::GetCurrentContext());
         if (texturePoolSrv.ptr != 0) {
             BindDescriptorTableCached(ctx, ROOT_PARAM::TexturePool, texturePoolSrv);
         }
@@ -363,7 +363,7 @@ namespace HIKARI::MESHRENDERER {
             return;
         }
 
-        const D3D12_GPU_DESCRIPTOR_HANDLE clusterPoolSrv = RENDER3D::GetClusterGeometryPoolSrvGpuHandle(SERVICES::gCtx);
+        const D3D12_GPU_DESCRIPTOR_HANDLE clusterPoolSrv = RENDER3D::GetClusterGeometryPoolSrvGpuHandle(GFX::GetCurrentContext());
         if (clusterPoolSrv.ptr != 0) {
             BindDescriptorTableCached(ctx, ROOT_PARAM::ClusterGeometryPool, clusterPoolSrv);
         }

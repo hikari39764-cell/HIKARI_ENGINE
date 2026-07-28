@@ -1,4 +1,5 @@
 #include "Render3D/Core/MeshRenderer/Internal/HIKARI_MeshRendererInternal.h"
+#include "Gfx/HIKARI_GfxContext.h"
 
 #include <algorithm>
 #include <array>
@@ -6,16 +7,15 @@
 #include <vector>
 
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
-#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 
 namespace HIKARI::MESHRENDERER::INTERNAL {
     void UploadGpuDrivenSceneFrame() {
         gMeshRendererState.gpuDrivenLayer.BeginFrame(&gMeshRendererState.gpuDrivenSceneSource);
 
         RENDER3D::GPUDRIVEN::GpuDrivenSceneUploadDesc uploadDesc{};
-        uploadDesc.commandList = SERVICES::gCtx.cmdList;
+        uploadDesc.commandList = GFX::GetCurrentContext().cmdList;
         uploadDesc.residency = &gMeshRendererState.gpuDrivenSceneResidency;
-        uploadDesc.frameIndex = SERVICES::gCtx.frameIndex;
+        uploadDesc.frameIndex = GFX::GetCurrentContext().frameIndex;
         const std::span<const uint32_t> materialBindings =
             gMeshRendererState.gpuMaterialRegistry.GetSourceBindings();
         uploadDesc.materialSlotBySourceRecord = materialBindings.data();

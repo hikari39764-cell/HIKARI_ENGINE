@@ -1,8 +1,8 @@
 #include "HIKARI_StatsPanel.h"
 #include "Editor/HIKARI_EditorContext.h"
 #include "Render2D/HIKARI_DxTexture.h"
-#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
+#include "Gfx/HIKARI_GfxContext.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Render3D/Core/HIKARI_Camera3D.h"
 #include "Render3D/Core/HIKARI_Material.h"
@@ -80,7 +80,7 @@ namespace HIKARI {
             ImGui::Text("System SRV Reserved: %u", GFX::DESCRIPTOR::kSystemSrvReservedCount);
             ImGui::Text(
                 "Deferred Releases Pending: %zu",
-                SERVICES::gCore.GetPendingDeferredReleaseCount());
+                GFX::GetCurrentDeferredReleaseCount());
             ImGui::Text("SceneColor Ready: %s", POST::PostSystem::IsSceneColorReady() ? "Yes" : "No");
             ImGui::Text("SceneColor Size: %d x %d",
                 POST::PostSystem::GetSceneColorWidth(),

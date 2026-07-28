@@ -1,4 +1,5 @@
 #include "Render3D/GpuDriven/HIKARI_GpuDepthVisibilityLayer.h"
+#include "Gfx/HIKARI_GfxContext.h"
 
 #include <algorithm>
 #include <string>
@@ -9,7 +10,6 @@
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Gfx/HIKARI_PixProfiler.h"
-#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
 
@@ -36,7 +36,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             srvDesc.Texture2D.MipLevels = 1;
             srvDesc.Texture2D.PlaneSlice = 0;
             srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
-            SERVICES::gCtx.device->CreateShaderResourceView(resource, &srvDesc, view.cpu);
+            GFX::GetCurrentContext().device->CreateShaderResourceView(resource, &srvDesc, view.cpu);
             return view;
         }
     }
@@ -130,7 +130,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         desc.viewProj = viewProj;
         desc.viewProjValid = true;
         desc.jitteredViewProj = false;
-        desc.frameIndex = SERVICES::gCtx.frameIndex;
+        desc.frameIndex = GFX::GetCurrentContext().frameIndex;
         desc.pixEventName = "DepthPyramid.Build.VisibilityPrepass";
 
         const bool built = depthPyramid_.BuildFromDepthSrv(desc);
@@ -162,7 +162,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         desc.viewProj = viewProj;
         desc.viewProjValid = true;
         desc.jitteredViewProj = false;
-        desc.frameIndex = SERVICES::gCtx.frameIndex;
+        desc.frameIndex = GFX::GetCurrentContext().frameIndex;
         desc.pixEventName = "DepthPyramid.Build.SceneDepth";
 
         if (!depthPyramid_.BuildFromDepthSrv(desc)) {
@@ -191,7 +191,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             return true;
         }
 
-        ID3D12Device* device = SERVICES::gCtx.device;
+        ID3D12Device* device = GFX::GetCurrentContext().device;
         if (device == nullptr) {
             return false;
         }

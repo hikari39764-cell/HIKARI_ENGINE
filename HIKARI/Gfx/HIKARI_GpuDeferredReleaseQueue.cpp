@@ -6,10 +6,6 @@
 #include <utility>
 #include <unknwn.h>
 
-namespace HIKARI::SERVICES {
-    extern GFX::Context& gCtx;
-}
-
 namespace HIKARI::GFX {
     namespace {
         void RetireD3D12ObjectAfterFence(
@@ -104,7 +100,7 @@ namespace HIKARI::GFX {
 
         RetireD3D12ObjectForFrame(
             object,
-            SERVICES::gCtx,
+            GetCurrentContext(),
             std::move(debugName));
     }
 

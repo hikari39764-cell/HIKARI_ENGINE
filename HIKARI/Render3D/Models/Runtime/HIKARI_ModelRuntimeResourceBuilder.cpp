@@ -1,4 +1,5 @@
 #include "Render3D/Models/Runtime/HIKARI_ModelRuntimeResourceBuilder.h"
+#include "Gfx/HIKARI_GfxContext.h"
 
 #include <algorithm>
 #include <memory>
@@ -7,7 +8,6 @@
 #include "Assets/Models/HIKARI_ModelAsset.h"
 #include "Render3D/Models/Runtime/HIKARI_ModelTextureResolver.h"
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
-#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 
 namespace HIKARI::RENDER3D::MODELS {
 
@@ -113,7 +113,7 @@ namespace HIKARI::RENDER3D::MODELS {
         }
 
         auto mesh = std::make_unique<Mesh>();
-        if (!mesh->CreateStatic(SERVICES::gCtx.device, legacyVertices, legacyIndices)) {
+        if (!mesh->CreateStatic(GFX::GetCurrentContext().device, legacyVertices, legacyIndices)) {
             return false;
         }
 

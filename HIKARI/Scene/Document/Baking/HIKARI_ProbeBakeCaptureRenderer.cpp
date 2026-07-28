@@ -1,11 +1,11 @@
 #include "Scene/Document/Baking/HIKARI_DocumentSceneBakeCoordinator.h"
+#include "Gfx/HIKARI_GfxContext.h"
 
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/Document/Baking/Internal/HIKARI_DocumentSceneBakeSupport.h"
 #include "Scene/Document/Internal/HIKARI_DocumentSceneState.h"
 
 #include <string>
-#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Core/HIKARI_TimeService.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Render3D/Debug/HIKARI_Renderer3D_Debug.h"
@@ -44,7 +44,7 @@ namespace HIKARI {
                     : "ReflectionProbe.CaptureFace") +
             DOCUMENT_SCENE_BAKING::ProbeFaceName(faceIndex);
         GFX::PIX::ScopedGpuEvent pixFace(
-            SERVICES::gCtx.cmdList,
+            GFX::GetCurrentContext().cmdList,
             GFX::PIX::kColorRender,
             eventName.c_str());
 

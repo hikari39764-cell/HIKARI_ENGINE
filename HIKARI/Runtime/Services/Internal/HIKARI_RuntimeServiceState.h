@@ -17,7 +17,6 @@ namespace HIKARI::SERVICES::INTERNAL {
         INPUT::InputService inputService{};
         RUNTIME::GamePresentationController gamePresentationController{};
         GFX::Dx12Core core{};
-        GFX::Context context{};
         bool comInitialized = false;
         RuntimeHostMode runtimeHostMode = RuntimeHostMode::Game;
         bool enableImGui = false;

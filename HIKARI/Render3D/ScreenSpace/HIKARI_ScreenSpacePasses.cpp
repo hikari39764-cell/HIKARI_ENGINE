@@ -1,4 +1,5 @@
 #include "Render3D/ScreenSpace/HIKARI_ScreenSpacePasses.h"
+#include "Gfx/HIKARI_GfxContext.h"
 
 #include <algorithm>
 #include <chrono>
@@ -6,7 +7,6 @@
 
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Gfx/HIKARI_PixProfiler.h"
-#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
@@ -257,7 +257,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         const SceneEnvironment& environment) {
 
         ScreenSpaceFrameResult result{};
-        DEPTH::BeginDepthPyramidFrame(SERVICES::gCtx.frameIndex);
+        DEPTH::BeginDepthPyramidFrame(GFX::GetCurrentContext().frameIndex);
         const bool fallbackReady = EnsureScreenSpaceFallbacks(state);
         if (fallbackReady) {
             result.fallbackAoTextureResource = state.fallbackAoTextureResource;

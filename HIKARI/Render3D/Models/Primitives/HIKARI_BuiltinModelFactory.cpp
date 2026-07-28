@@ -1,11 +1,11 @@
 #include "Render3D/Models/Primitives/HIKARI_BuiltinModelFactory.h"
+#include "Gfx/HIKARI_GfxContext.h"
 
 #include <array>
 #include <memory>
 #include <vector>
 
 #include "Assets/Models/HIKARI_ModelAsset.h"
-#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 
 namespace HIKARI::RENDER3D::MODELS {
 
@@ -54,7 +54,7 @@ namespace HIKARI::RENDER3D::MODELS {
         pushTri(3, 2, 6, { 0, 1, 0 });  pushTri(3, 6, 7, { 0, 1, 0 });
         pushTri(4, 5, 1, { 0, -1, 0 }); pushTri(4, 1, 0, { 0, -1, 0 });
 
-        if (!mesh->CreateStatic(SERVICES::gCtx.device, vertices, indices)) {
+        if (!mesh->CreateStatic(GFX::GetCurrentContext().device, vertices, indices)) {
             return false;
         }
 

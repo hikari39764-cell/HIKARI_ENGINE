@@ -1,4 +1,5 @@
 #include "Render3D/ScreenSpace/HIKARI_ScreenSpaceGeometryAux.h"
+#include "Gfx/HIKARI_GfxContext.h"
 
 #include <algorithm>
 
@@ -9,7 +10,6 @@
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
-#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 
 namespace HIKARI::RENDER3D::SCREENSPACE {
 
@@ -39,8 +39,8 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
     }
 
     bool ScreenSpaceGeometryAux::CreateResources(uint32_t width, uint32_t height) {
-        ID3D12Device* device = SERVICES::gCtx.device;
-        ID3D12DescriptorHeap* srvHeap = SERVICES::gCtx.srvHeap;
+        ID3D12Device* device = GFX::GetCurrentContext().device;
+        ID3D12DescriptorHeap* srvHeap = GFX::GetCurrentContext().srvHeap;
         if (device == nullptr || srvHeap == nullptr) {
             return false;
         }

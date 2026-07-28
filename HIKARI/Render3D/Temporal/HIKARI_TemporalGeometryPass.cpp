@@ -1,4 +1,5 @@
 #include "Render3D/Temporal/HIKARI_TemporalGeometryPass.h"
+#include "Gfx/HIKARI_GfxContext.h"
 
 #include <algorithm>
 #include <array>
@@ -16,7 +17,6 @@
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
-#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Render2D/HIKARI_RenderTarget2D.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/HIKARI_Mesh.h"
@@ -356,8 +356,8 @@ namespace HIKARI::RENDER3D::TEMPORAL {
         const TemporalInputs& inputs,
         D3D12_CPU_DESCRIPTOR_HANDLE readOnlyDepthDsv) {
 
-        ID3D12GraphicsCommandList* cmd = SERVICES::gCtx.cmdList;
-        ID3D12Device* device = SERVICES::gCtx.device;
+        ID3D12GraphicsCommandList* cmd = GFX::GetCurrentContext().cmdList;
+        ID3D12Device* device = GFX::GetCurrentContext().device;
         RenderTarget2D* motionTarget = GetMotionVectorRenderTarget();
         RenderTarget2D* metadataTarget = GetMotionMetadataRenderTarget();
         if (cmd == nullptr ||

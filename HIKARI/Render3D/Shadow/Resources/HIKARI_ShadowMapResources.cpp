@@ -1,17 +1,17 @@
 #include "Render3D/Shadow/Internal/HIKARI_ShadowRendererInternal.h"
+#include "Gfx/HIKARI_GfxContext.h"
 
 #include <utility>
 
 #include <d3dx12.h>
 
-#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
 
 namespace HIKARI::SHADOW::INTERNAL {
 
     bool CreateShadowMapResources(uint32_t resolution) {
-        auto* device = SERVICES::gCtx.device;
+        auto* device = GFX::GetCurrentContext().device;
         if (device == nullptr || resolution == 0) {
             return false;
         }
@@ -108,16 +108,16 @@ namespace HIKARI::SHADOW::INTERNAL {
             return;
         }
 
-        auto* cmd = SERVICES::gCtx.cmdList;
+        auto* cmd = GFX::GetCurrentContext().cmdList;
         if (cmd == nullptr) {
             return;
         }
-        cmd->OMSetRenderTargets(1, &SERVICES::gCtx.rtv, FALSE, &SERVICES::gCtx.dsv);
+        cmd->OMSetRenderTargets(1, &GFX::GetCurrentContext().rtv, FALSE, &GFX::GetCurrentContext().dsv);
         D3D12_VIEWPORT viewport{};
-        viewport.Width = static_cast<float>(SERVICES::gCtx.backBufferWidth);
-        viewport.Height = static_cast<float>(SERVICES::gCtx.backBufferHeight);
+        viewport.Width = static_cast<float>(GFX::GetCurrentContext().backBufferWidth);
+        viewport.Height = static_cast<float>(GFX::GetCurrentContext().backBufferHeight);
         viewport.MaxDepth = 1.0f;
-        D3D12_RECT scissor{ 0, 0, SERVICES::gCtx.backBufferWidth, SERVICES::gCtx.backBufferHeight };
+        D3D12_RECT scissor{ 0, 0, GFX::GetCurrentContext().backBufferWidth, GFX::GetCurrentContext().backBufferHeight };
         cmd->RSSetViewports(1, &viewport);
         cmd->RSSetScissorRects(1, &scissor);
     }

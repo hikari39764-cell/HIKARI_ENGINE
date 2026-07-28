@@ -1,4 +1,5 @@
 #include "Render3D/Lighting/HIKARI_LightProbeVolumeRuntime.h"
+#include "Gfx/HIKARI_GfxContext.h"
 
 #include <algorithm>
 #include <cstring>
@@ -20,7 +21,6 @@
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
-#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 
 namespace HIKARI::RENDER3D::LIGHTPROBE {
 
@@ -66,8 +66,8 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
         }
 
         D3D12_CPU_DESCRIPTOR_HANDLE VolumeSrvCpuAt(uint32_t coeffIndex) {
-            ID3D12Device* device = SERVICES::gCtx.device;
-            ID3D12DescriptorHeap* heap = SERVICES::gCtx.srvHeap;
+            ID3D12Device* device = GFX::GetCurrentContext().device;
+            ID3D12DescriptorHeap* heap = GFX::GetCurrentContext().srvHeap;
             if (device == nullptr || heap == nullptr) {
                 return {};
             }
@@ -82,8 +82,8 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
         }
 
         D3D12_GPU_DESCRIPTOR_HANDLE VolumeSrvTableGpu() {
-            ID3D12Device* device = SERVICES::gCtx.device;
-            ID3D12DescriptorHeap* heap = SERVICES::gCtx.srvHeap;
+            ID3D12Device* device = GFX::GetCurrentContext().device;
+            ID3D12DescriptorHeap* heap = GFX::GetCurrentContext().srvHeap;
             if (device == nullptr || heap == nullptr) {
                 return {};
             }
@@ -131,7 +131,7 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
 
         bool HasGpuVolumes() {
             if (gVolumeCountX == 0u || gVolumeCountY == 0u || gVolumeCountZ == 0u ||
-                gVolumeDevice != SERVICES::gCtx.device) {
+                gVolumeDevice != GFX::GetCurrentContext().device) {
                 return false;
             }
             for (const Microsoft::WRL::ComPtr<ID3D12Resource>& volume : gShVolumes) {
@@ -143,8 +143,8 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
         }
 
         bool IsSrvContextCurrent() {
-            return gSrvDevice == SERVICES::gCtx.device &&
-                gSrvHeap == SERVICES::gCtx.srvHeap &&
+            return gSrvDevice == GFX::GetCurrentContext().device &&
+                gSrvHeap == GFX::GetCurrentContext().srvHeap &&
                 gShVolumeSrvTable.ptr != 0 &&
                 gHasValidSrvDescriptor;
         }
@@ -160,8 +160,8 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
         }
 
         bool WriteNullSrvs() {
-            ID3D12Device* device = SERVICES::gCtx.device;
-            ID3D12DescriptorHeap* heap = SERVICES::gCtx.srvHeap;
+            ID3D12Device* device = GFX::GetCurrentContext().device;
+            ID3D12DescriptorHeap* heap = GFX::GetCurrentContext().srvHeap;
             if (device == nullptr || heap == nullptr) {
                 ClearSrvDescriptorState();
                 return false;
@@ -186,8 +186,8 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
         }
 
         bool WriteVolumeSrvs() {
-            ID3D12Device* device = SERVICES::gCtx.device;
-            ID3D12DescriptorHeap* heap = SERVICES::gCtx.srvHeap;
+            ID3D12Device* device = GFX::GetCurrentContext().device;
+            ID3D12DescriptorHeap* heap = GFX::GetCurrentContext().srvHeap;
             if (device == nullptr || heap == nullptr || !HasGpuVolumes()) {
                 ClearSrvDescriptorState();
                 return false;
@@ -219,7 +219,7 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
             std::string* outMessage);
 
         bool EnsureLightProbeSrvDescriptor() {
-            if (SERVICES::gCtx.device == nullptr || SERVICES::gCtx.srvHeap == nullptr) {
+            if (GFX::GetCurrentContext().device == nullptr || GFX::GetCurrentContext().srvHeap == nullptr) {
                 ClearSrvDescriptorState();
                 return false;
             }
@@ -285,8 +285,8 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
             uint32_t countZ,
             std::string* outMessage) {
 
-            ID3D12Device* device = SERVICES::gCtx.device;
-            ID3D12CommandQueue* queue = SERVICES::gCtx.queue;
+            ID3D12Device* device = GFX::GetCurrentContext().device;
+            ID3D12CommandQueue* queue = GFX::GetCurrentContext().queue;
             const size_t probeCount =
                 static_cast<size_t>(countX) * countY * countZ;
             if (device == nullptr || queue == nullptr ||

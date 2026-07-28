@@ -1,6 +1,6 @@
 #include "Render3D/Shadow/Internal/HIKARI_ShadowRendererInternal.h"
+#include "Gfx/HIKARI_GfxContext.h"
 
-#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorAccess.h"
 #include "Render3D/Shadow/Pipeline/HIKARI_ShadowRootParameters.h"
 
@@ -41,14 +41,14 @@ namespace HIKARI::SHADOW::INTERNAL {
                 gShadowRendererState.surfaceGpuSceneBuffer.GetSrv());
         }
         const D3D12_GPU_DESCRIPTOR_HANDLE texturePoolSrv =
-            RENDER3D::GetMaterialTexturePoolSrvGpuHandle(SERVICES::gCtx);
+            RENDER3D::GetMaterialTexturePoolSrvGpuHandle(GFX::GetCurrentContext());
         if (texturePoolSrv.ptr != 0) {
             cmd->SetGraphicsRootDescriptorTable(
                 PIPELINE::kShadowStaticRootParamTexturePool,
                 texturePoolSrv);
         }
         const D3D12_GPU_DESCRIPTOR_HANDLE clusterPoolSrv =
-            RENDER3D::GetClusterGeometryPoolSrvGpuHandle(SERVICES::gCtx);
+            RENDER3D::GetClusterGeometryPoolSrvGpuHandle(GFX::GetCurrentContext());
         if (clusterPoolSrv.ptr != 0) {
             cmd->SetGraphicsRootDescriptorTable(
                 PIPELINE::kShadowStaticRootParamClusterGeometryPool,

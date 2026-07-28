@@ -1,4 +1,5 @@
 #include "Render3D/Shadow/Internal/HIKARI_ShadowRendererInternal.h"
+#include "Gfx/HIKARI_GfxContext.h"
 
 #include <algorithm>
 #include <limits>
@@ -6,7 +7,6 @@
 #include <utility>
 #include <vector>
 
-#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 #include "Render3D/GpuDriven/CommandStream/HIKARI_OwnedTraditionalIndirectStream.h"
 
@@ -50,7 +50,7 @@ namespace HIKARI::SHADOW::INTERNAL {
         }
 
         auto mesh = std::make_unique<Mesh>();
-        if (!mesh->CreateStatic(SERVICES::gCtx.device, vertices, primitive.indices)) {
+        if (!mesh->CreateStatic(GFX::GetCurrentContext().device, vertices, primitive.indices)) {
             return nullptr;
         }
         Mesh* raw = mesh.get();
@@ -86,7 +86,7 @@ namespace HIKARI::SHADOW::INTERNAL {
         }
 
         auto mesh = std::make_unique<Mesh>();
-        if (!mesh->CreateSkinned(SERVICES::gCtx.device, vertices, primitive.indices)) {
+        if (!mesh->CreateSkinned(GFX::GetCurrentContext().device, vertices, primitive.indices)) {
             return nullptr;
         }
         Mesh* raw = mesh.get();

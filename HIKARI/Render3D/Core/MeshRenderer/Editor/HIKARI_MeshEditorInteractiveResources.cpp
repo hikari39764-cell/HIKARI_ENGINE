@@ -1,10 +1,10 @@
 #include "Render3D/Core/MeshRenderer/Internal/HIKARI_MeshRendererInternal.h"
+#include "Gfx/HIKARI_GfxContext.h"
 
 #if defined(HIKARI_WITH_EDITOR)
 
 #include <array>
 
-#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Gfx/D3D12/HIKARI_D3D12BufferAlignment.h"
 #include "Gfx/D3D12/HIKARI_D3D12BufferFactory.h"
 #include "Render3D/Core/MeshRenderer/Pipeline/HIKARI_MeshPipelineStore.h"
@@ -70,7 +70,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             return true;
         }
 
-        ID3D12Device* device = SERVICES::gCtx.device;
+        ID3D12Device* device = GFX::GetCurrentContext().device;
         if (device == nullptr ||
             GetStaticRootSignature(gMeshRendererState.pipelines) == nullptr ||
             GetSkinnedRootSignature(gMeshRendererState.pipelines) == nullptr) {
@@ -102,7 +102,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             }
         }
 
-        RENDER3D::UpdateRenderResourceDescriptorPoolContext(SERVICES::gCtx);
+        RENDER3D::UpdateRenderResourceDescriptorPoolContext(GFX::GetCurrentContext());
         std::array<
             D3D12_CPU_DESCRIPTOR_HANDLE,
             GFX::kFrameResourceCount> sceneSrvCpu{};

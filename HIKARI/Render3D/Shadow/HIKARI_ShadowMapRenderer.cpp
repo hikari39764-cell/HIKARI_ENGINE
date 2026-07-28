@@ -1,8 +1,8 @@
 #include "Render3D/Shadow/HIKARI_ShadowMapRenderer.h"
+#include "Gfx/HIKARI_GfxContext.h"
 
 #include <algorithm>
 
-#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Render3D/Shadow/HIKARI_ShadowLightFrame.h"
@@ -54,7 +54,7 @@ namespace HIKARI::SHADOW {
             InvalidateShadowCache();
             return;
         }
-        ActivateShadowFrameResources(SERVICES::gCtx.frameIndex);
+        ActivateShadowFrameResources(GFX::GetCurrentContext().frameIndex);
         UploadShadowMeshShaderJointPalettes();
 
         const uint32_t resolution = ResolveShadowResolution(environment.directionalShadow.resolution);
@@ -120,7 +120,7 @@ namespace HIKARI::SHADOW {
         if (!gShadowRendererState.frameEnabled || !gShadowRendererState.frameHasShadowWork || gShadowRendererState.shadowMap == nullptr) {
             return;
         }
-        auto* cmd = SERVICES::gCtx.cmdList;
+        auto* cmd = GFX::GetCurrentContext().cmdList;
         if (cmd == nullptr) {
             return;
         }

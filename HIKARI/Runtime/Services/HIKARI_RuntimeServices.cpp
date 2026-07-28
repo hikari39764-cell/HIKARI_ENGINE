@@ -11,6 +11,7 @@
 
 #include "Audio/HIKARI_Audio.h"
 #include "Core/HIKARI_Logger.h"
+#include "Gfx/HIKARI_GfxContext.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Project/HIKARI_ProjectContext.h"
 #include "Render2D/HIKARI_Camera.h"
@@ -37,6 +38,7 @@
 namespace HIKARI {
     namespace SERVICES {
         namespace {
+            auto& gGraphicsCore = INTERNAL::GetRuntimeServiceState().core;
             auto& gWindow = INTERNAL::GetRuntimeServiceState().window;
             auto& gInputService = INTERNAL::GetRuntimeServiceState().inputService;
             auto& gGamePresentationController =
@@ -192,7 +194,7 @@ namespace HIKARI {
             graphicsCallbacks.swapChainCreated = [](IDXGISwapChain4* swapChain) {
                 RENDER3D::UPSCALING::InspectStreamlineSwapChain(swapChain);
             };
-            if (!gCore.Initialize(
+            if (!gGraphicsCore.Initialize(
                     gWindow.GetHWND(),
                     cfg.windowWidth,
                     cfg.windowHeight,
@@ -215,7 +217,7 @@ namespace HIKARI {
             submissionCallbacks.presentEnd = [] {
                 RENDER3D::UPSCALING::MarkStreamlineReflexPresentEnd();
             };
-            gCore.SetFrameSubmissionCallbacks(std::move(submissionCallbacks));
+            gGraphicsCore.SetFrameSubmissionCallbacks(std::move(submissionCallbacks));
             HIKARI_LOG_INFO("D3D12 core initialized.");
 
             const int logicalScreenW = cfg.windowWidth;
@@ -227,18 +229,19 @@ namespace HIKARI {
                 QueueWindowResize(w, h);
             });
 
-            gCtx = gCore.BuildContext();
-            RENDER3D::UPSCALING::UpdateStreamlineContext(gCtx);
+            GFX::PublishCurrentContext(gGraphicsCore.BuildContext());
+            const GFX::Context& graphicsContext = GFX::GetCurrentContext();
+            RENDER3D::UPSCALING::UpdateStreamlineContext(graphicsContext);
 
-            DXTEX::DxTextureManager::Init(gCtx);
+            DXTEX::DxTextureManager::Init(graphicsContext);
             HIKARI_LOG_INFO("TextureManager initialized.");
-            RENDER3D::UpdateRenderResourceDescriptorPoolContext(gCtx);
-            RENDER3D::UpdateClusterGeometryResourceContext(gCtx);
+            RENDER3D::UpdateRenderResourceDescriptorPoolContext(graphicsContext);
+            RENDER3D::UpdateClusterGeometryResourceContext(graphicsContext);
             HIKARI::DefaultPbrResources::Initialize();
             HIKARI_LOG_INFO("Default PBR resources initialized.");
-            DX::DxRenderer::Init(gCtx);
+            DX::DxRenderer::Init(graphicsContext);
             HIKARI_LOG_INFO("DxRenderer initialized.");
-            POST::PostSystem::Initialize(gCtx);
+            POST::PostSystem::Initialize(graphicsContext);
             HIKARI_LOG_INFO("PostSystem initialized.");
             if (AUDIO::Initialize(AUDIO::BackendType::XAudio2)) {
                 HIKARI_LOG_INFO("Audio initialized.");
@@ -246,7 +249,7 @@ namespace HIKARI {
             else {
                 HIKARI_LOG_WARN("Audio initialized with Null fallback.");
             }
-            HIKARI::VFX::Initialize(gCtx);
+            HIKARI::VFX::Initialize(graphicsContext);
             HIKARI_LOG_INFO("VFX initialized.");
 
             const ProjectContext& projectContext =
@@ -279,7 +282,7 @@ namespace HIKARI {
                     RUNTIME::GetEditorUiServices();
                 if (!IsEditorHost() ||
                     editorUiServices == nullptr ||
-                    !editorUiServices->Initialize(gWindow, gCtx)) {
+                    !editorUiServices->Initialize(gWindow, graphicsContext)) {
                     HIKARI_LOG_WARN(
                         "Editor UI services are unavailable; editor UI disabled.");
                     gEnableImGui = false;
@@ -304,13 +307,13 @@ namespace HIKARI {
                 (void)RENDER3D::UPSCALING::
                     DeactivateStreamlineFrameGeneration(true);
                 if (!gGamePresentationController.IsGameSurfaceReleased() &&
-                    gCore.WaitForIdle()) {
-                    (void)gGamePresentationController.ReleaseGameSurface(gCore);
+                    gGraphicsCore.WaitForIdle()) {
+                    (void)gGamePresentationController.ReleaseGameSurface(gGraphicsCore);
                 }
             }
             if (RUNTIME::IEditorUiServices* editorUiServices =
                     RUNTIME::GetEditorUiServices()) {
-                if (!gCore.WaitForIdle()) {
+                if (!gGraphicsCore.WaitForIdle()) {
                     HIKARI_LOG_ERROR(
                         "GPU idle wait failed before editor UI shutdown.");
                 }
@@ -339,7 +342,8 @@ namespace HIKARI {
             RENDER3D::UPSCALING::ShutdownStreamline();
             HIKARI_LOG_INFO("Streamline shutdown.");
             gGamePresentationController.Shutdown();
-            gCore.Shutdown();
+            gGraphicsCore.Shutdown();
+            GFX::ClearCurrentContext();
             HIKARI_LOG_INFO("D3D12 core shutdown.");
             GFX::PIX::Shutdown();
             gWindow.Shutdown();

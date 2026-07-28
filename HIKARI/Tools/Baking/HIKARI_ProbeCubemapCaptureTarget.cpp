@@ -1,4 +1,5 @@
 #include "HIKARI_ProbeCubemapCaptureTarget.h"
+#include "Gfx/HIKARI_GfxContext.h"
 
 #include <algorithm>
 #include <cstring>
@@ -10,7 +11,6 @@
 
 #include "Core/HIKARI_Logger.h"
 #include "Gfx/HIKARI_DXCheck.h"
-#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 
 namespace HIKARI::TOOLS::BAKING {
 
@@ -39,7 +39,7 @@ namespace HIKARI::TOOLS::BAKING {
         format_ = format;
 
         for (uint32_t face = 0; face < 6u; ++face) {
-            faces_[face].UpdateContext(SERVICES::gCtx);
+            faces_[face].UpdateContext(GFX::GetCurrentContext());
             if (!faces_[face].Init(
                     static_cast<int>(resolution_),
                     static_cast<int>(resolution_),
@@ -82,7 +82,7 @@ namespace HIKARI::TOOLS::BAKING {
             return false;
         }
 
-        faces_[faceIndex].UpdateContext(SERVICES::gCtx);
+        faces_[faceIndex].UpdateContext(GFX::GetCurrentContext());
         faces_[faceIndex].BeginCapture(r, g, b, a, depth);
         return true;
     }
@@ -104,7 +104,7 @@ namespace HIKARI::TOOLS::BAKING {
             return false;
         }
 
-        ID3D12Device* device = SERVICES::gCtx.device;
+        ID3D12Device* device = GFX::GetCurrentContext().device;
         ID3D12Resource* resource = faces_[faceIndex].GetResource();
         if (device == nullptr || resource == nullptr) {
             SetMessage(outMessage, "Capture face resource is missing.");
@@ -148,7 +148,7 @@ namespace HIKARI::TOOLS::BAKING {
             return false;
         }
 
-        ID3D12GraphicsCommandList* cmd = SERVICES::gCtx.cmdList;
+        ID3D12GraphicsCommandList* cmd = GFX::GetCurrentContext().cmdList;
         if (cmd == nullptr) {
             SetMessage(outMessage, "Command list is missing.");
             return false;
@@ -158,7 +158,7 @@ namespace HIKARI::TOOLS::BAKING {
             return false;
         }
 
-        faces_[faceIndex].UpdateContext(SERVICES::gCtx);
+        faces_[faceIndex].UpdateContext(GFX::GetCurrentContext());
         faces_[faceIndex].TransitionColor(D3D12_RESOURCE_STATE_COPY_SOURCE);
 
         D3D12_TEXTURE_COPY_LOCATION src{};

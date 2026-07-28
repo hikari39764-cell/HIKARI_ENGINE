@@ -1,10 +1,10 @@
 #include "Render3D/Core/MeshRenderer/Internal/HIKARI_MeshRendererInternal.h"
+#include "Gfx/HIKARI_GfxContext.h"
 
 #include <algorithm>
 #include <limits>
 #include <vector>
 
-#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Render3D/Core/MeshRenderer/Bindings/HIKARI_MeshResourceBindings.h"
 #include "Render3D/Core/MeshRenderer/Pipeline/HIKARI_MeshPipelineStore.h"
 #include "Render3D/Core/MeshRenderer/Pipeline/HIKARI_MeshVariantResolver.h"
@@ -22,7 +22,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
 
         const RENDER3D::GPUDRIVEN::GeometryBackendContext backendContext =
             gMeshRendererState.gpuDrivenLayer.BuildGeometryBackendContext(
-                SERVICES::gCtx.cmdList,
+                GFX::GetCurrentContext().cmdList,
                 gpuPass,
                 RENDER3D::GPUDRIVEN::GeometryBackendKind::GpuDrivenMeshShader);
         ID3D12Resource* visibleRangeBuffer =
@@ -83,13 +83,13 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             return gMeshRendererState.pipelines.depthPso.Get();
         }
         if (passKind != MeshDrawPassKind::Forward ||
-            SERVICES::gCtx.device == nullptr) {
+            GFX::GetCurrentContext().device == nullptr) {
             return gMeshRendererState.pipelines.pso.Get();
         }
 
         return GetOrCreateVariantPso(
             gMeshRendererState.pipelines,
-            SERVICES::gCtx.device,
+            GFX::GetCurrentContext().device,
             gMeshRendererState.debugStats,
             bucketVariant,
             false,
@@ -114,7 +114,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             return gMeshRendererState.pipelines.depthSkinnedPso.Get();
         }
         if (passKind != MeshDrawPassKind::Forward ||
-            SERVICES::gCtx.device == nullptr) {
+            GFX::GetCurrentContext().device == nullptr) {
             return gMeshRendererState.pipelines.skinnedPso.Get();
         }
 
@@ -122,7 +122,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         key.vertexShaderId.clear();
         return GetOrCreateVariantPso(
             gMeshRendererState.pipelines,
-            SERVICES::gCtx.device,
+            GFX::GetCurrentContext().device,
             gMeshRendererState.debugStats,
             key,
             true,
@@ -161,7 +161,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
 #else
             gMeshRendererState.gpuDrivenLayer.BuildGeometryBackendContext(
 #endif
-                SERVICES::gCtx.cmdList,
+                GFX::GetCurrentContext().cmdList,
                 gpuPass,
                 RENDER3D::GPUDRIVEN::GeometryBackendKind::GpuDrivenTraditionalVsPs);
         const RENDER3D::GPUDRIVEN::GpuDrivenDrawCommandRange* range =
@@ -255,7 +255,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                     continue;
                 }
                 BindPipelineState(drawCtx.binding, bucketPso);
-                SERVICES::gCtx.cmdList->ExecuteIndirect(
+                GFX::GetCurrentContext().cmdList->ExecuteIndirect(
                     range->commandSignature,
                     maxStaticCommandCount,
                     range->argumentBuffer,
@@ -308,7 +308,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                     continue;
                 }
                 BindPipelineState(drawCtx.binding, bucketPso);
-                SERVICES::gCtx.cmdList->ExecuteIndirect(
+                GFX::GetCurrentContext().cmdList->ExecuteIndirect(
                     range->skinnedCommandSignature,
                     maxSkinnedCommandCount,
                     range->skinnedArgumentBuffer,

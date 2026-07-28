@@ -1,9 +1,9 @@
 #include "Render3D/Core/MeshRenderer/Internal/HIKARI_MeshRendererInternal.h"
+#include "Gfx/HIKARI_GfxContext.h"
 
 #include <algorithm>
 
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
-#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Render3D/Depth/HIKARI_DepthPyramidLayer.h"
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenWorkBuilder.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorAccess.h"
@@ -38,9 +38,9 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
     void BuildStrictGpuDrivenCommandFrame() {
         const MATH::Mat4 viewProj = ResolveGpuDrivenCullingViewProj();
         RENDER3D::GPUDRIVEN::GpuDrivenCommandFrameDesc commandFrameDesc{};
-        commandFrameDesc.commandList = SERVICES::gCtx.cmdList;
+        commandFrameDesc.commandList = GFX::GetCurrentContext().cmdList;
         commandFrameDesc.cullViewProj = &viewProj;
-        commandFrameDesc.frameIndex = SERVICES::gCtx.frameIndex;
+        commandFrameDesc.frameIndex = GFX::GetCurrentContext().frameIndex;
         gMeshRendererState.gpuDrivenLayer.BuildCommandFrame(commandFrameDesc);
         UpdateTraditionalCommandStreamStats();
         UpdateGpuDrivenCommandStreamDebugStats();
@@ -67,8 +67,8 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         UpdateGpuDrivenWorkReadyDebugStats();
         UpdateGpuDrivenWorkOwnershipDebugStats();
         RENDER3D::GPUDRIVEN::GpuDrivenCommandFrameDesc commandFrameDesc{};
-        commandFrameDesc.commandList = SERVICES::gCtx.cmdList;
-        commandFrameDesc.frameIndex = SERVICES::gCtx.frameIndex;
+        commandFrameDesc.commandList = GFX::GetCurrentContext().cmdList;
+        commandFrameDesc.frameIndex = GFX::GetCurrentContext().frameIndex;
         gMeshRendererState.gpuDrivenLayer.BuildCommandFrame(commandFrameDesc);
         UpdateTraditionalCommandStreamStats();
         UpdateGpuDrivenCommandStreamDebugStats();
@@ -89,8 +89,8 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             UpdateGpuDrivenWorkReadyDebugStats();
             UpdateGpuDrivenWorkOwnershipDebugStats();
             RENDER3D::GPUDRIVEN::GpuDrivenCommandFrameDesc commandFrameDesc{};
-            commandFrameDesc.commandList = SERVICES::gCtx.cmdList;
-            commandFrameDesc.frameIndex = SERVICES::gCtx.frameIndex;
+            commandFrameDesc.commandList = GFX::GetCurrentContext().cmdList;
+            commandFrameDesc.frameIndex = GFX::GetCurrentContext().frameIndex;
             gMeshRendererState.gpuDrivenLayer.BuildCommandFrame(commandFrameDesc);
             UpdateTraditionalCommandStreamStats();
             UpdateGpuDrivenCommandStreamDebugStats();
@@ -115,16 +115,16 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         const MATH::Mat4 viewProj = ResolveGpuDrivenCullingViewProj();
         const MATH::Vec3 cameraPosition = ResolveGpuDrivenCullingCameraPosition();
         ID3D12DescriptorHeap* srvHeap = RENDER3D::GetTextureResourceSrvHeap();
-        if (SERVICES::gCtx.cmdList != nullptr && srvHeap != nullptr) {
+        if (GFX::GetCurrentContext().cmdList != nullptr && srvHeap != nullptr) {
             ID3D12DescriptorHeap* heaps[] = { srvHeap };
-            SERVICES::gCtx.cmdList->SetDescriptorHeaps(1, heaps);
+            GFX::GetCurrentContext().cmdList->SetDescriptorHeaps(1, heaps);
         }
         RENDER3D::GPUDRIVEN::GpuDrivenWorkContext workContext{};
         workContext.producer = &gMeshRendererState.clusterGpuDrivenProducer;
-        workContext.commandList = SERVICES::gCtx.cmdList;
+        workContext.commandList = GFX::GetCurrentContext().cmdList;
         workContext.viewProj = viewProj;
         workContext.cameraPosition = cameraPosition;
-        workContext.geometryPoolSrv = RENDER3D::GetClusterGeometryPoolSrvGpuHandle(SERVICES::gCtx);
+        workContext.geometryPoolSrv = RENDER3D::GetClusterGeometryPoolSrvGpuHandle(GFX::GetCurrentContext());
         workContext.surfaceGpuSceneGpuAddress =
             gMeshRendererState.surfaceGpuSceneBuffer.GetGpuVirtualAddress();
         workContext.frame = &gMeshRendererState.gpuDrivenFrame;

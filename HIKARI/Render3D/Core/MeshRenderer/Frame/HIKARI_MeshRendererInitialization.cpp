@@ -1,18 +1,18 @@
 #include "Render3D/Core/MeshRenderer/Internal/HIKARI_MeshRendererInternal.h"
+#include "Gfx/HIKARI_GfxContext.h"
 
 #include <string>
 
 #include "Core/HIKARI_Logger.h"
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
-#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Render3D/Core/MeshRenderer/Pipeline/HIKARI_MeshPipelineStore.h"
 #include "Render3D/Core/MeshRenderer/Pipeline/HIKARI_MeshRootParameters.h"
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
 
 namespace HIKARI::MESHRENDERER::INTERNAL {
     bool CreateBuffers(ID3D12Device* device) {
-        ID3D12DescriptorHeap* srvHeap = SERVICES::gCtx.srvHeap;
+        ID3D12DescriptorHeap* srvHeap = GFX::GetCurrentContext().srvHeap;
         if (device == nullptr || srvHeap == nullptr) {
             return false;
         }
@@ -46,7 +46,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         if (!gMeshRendererState.frameResources.Initialize(device, srvHeap)) {
             return false;
         }
-        gMeshRendererState.frameResources.Activate(SERVICES::gCtx.frameIndex);
+        gMeshRendererState.frameResources.Activate(GFX::GetCurrentContext().frameIndex);
         return true;
     }
 
@@ -54,7 +54,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         if (gMeshRendererState.initialized) {
             return true;
         }
-        auto* device = SERVICES::gCtx.device;
+        auto* device = GFX::GetCurrentContext().device;
         if (!device) {
             return false;
         }

@@ -1,4 +1,5 @@
 #include "Render3D/Temporal/HIKARI_TemporalMaskPass.h"
+#include "Gfx/HIKARI_GfxContext.h"
 
 #include <algorithm>
 #include <array>
@@ -12,7 +13,6 @@
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
-#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Render2D/HIKARI_RenderTarget2D.h"
 #include "Render3D/Temporal/HIKARI_TemporalResourceSystem.h"
 
@@ -143,9 +143,9 @@ namespace HIKARI::RENDER3D::TEMPORAL {
     }
 
     bool ExecuteTemporalMaskPass(const TemporalInputs& inputs) {
-        ID3D12GraphicsCommandList* cmd = SERVICES::gCtx.cmdList;
-        ID3D12Device* device = SERVICES::gCtx.device;
-        ID3D12DescriptorHeap* srvHeap = SERVICES::gCtx.srvHeap;
+        ID3D12GraphicsCommandList* cmd = GFX::GetCurrentContext().cmdList;
+        ID3D12Device* device = GFX::GetCurrentContext().device;
+        ID3D12DescriptorHeap* srvHeap = GFX::GetCurrentContext().srvHeap;
         RenderTarget2D* reactive = GetReactiveMaskRenderTarget();
         RenderTarget2D* transparency = GetTransparencyMaskRenderTarget();
         RenderTarget2D* invalidDepthMotion =

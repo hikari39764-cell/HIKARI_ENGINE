@@ -1,10 +1,10 @@
 #include "Render3D/Core/MeshRenderer/Internal/HIKARI_MeshRendererInternal.h"
+#include "Gfx/HIKARI_GfxContext.h"
 
 #include <algorithm>
 #include <vector>
 
 #include "Core/HIKARI_TimeService.h"
-#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Render3D/Core/MeshRenderer/Bindings/HIKARI_MeshResourceBindings.h"
 #include "Render3D/Core/MeshRenderer/Pipeline/HIKARI_MeshPipelineStore.h"
 #include "Render3D/Core/MeshRenderer/Pipeline/HIKARI_MeshRootParameters.h"
@@ -72,7 +72,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
     BuildTraditionalIndirectHydrationContext() {
 
         MeshRendererTraditionalIndirectHydrationContext context{};
-        context.device = SERVICES::gCtx.device;
+        context.device = GFX::GetCurrentContext().device;
         context.primitiveCache = &gMeshRendererState.primitiveCache;
         context.debugStats = &gMeshRendererState.debugStats;
         context.jointPaletteMapped =
@@ -147,8 +147,8 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         int screenW = static_cast<int>(overrideScreenWidth);
         int screenH = static_cast<int>(overrideScreenHeight);
         if (screenW <= 0 || screenH <= 0) {
-            screenW = std::max(1, SERVICES::gCtx.backBufferWidth);
-            screenH = std::max(1, SERVICES::gCtx.backBufferHeight);
+            screenW = std::max(1, GFX::GetCurrentContext().backBufferWidth);
+            screenH = std::max(1, GFX::GetCurrentContext().backBufferHeight);
         }
         frameResources.cameraMapped->screenParams = {
             static_cast<float>(screenW),
@@ -205,7 +205,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
     ) {
         MeshDrawContext ctx{};
         MeshFrameResources& frame = GetActiveMeshFrameResources();
-        ctx.cmd = SERVICES::gCtx.cmdList;
+        ctx.cmd = GFX::GetCurrentContext().cmdList;
         ctx.staticRootSig = GetStaticRootSignature(gMeshRendererState.pipelines);
         ctx.skinnedRootSig = GetSkinnedRootSignature(gMeshRendererState.pipelines);
         ctx.objectCB = frame.objectCB.Get();
@@ -291,7 +291,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         ctx.materialFill.fallbackNormalTextureHandle = gMeshRendererState.fallbackNormalTextureHandle;
         ctx.materialFill.fallbackBlackTextureHandle = gMeshRendererState.fallbackBlackTextureHandle;
         ctx.materialFill.stats = &gMeshRendererState.debugStats;
-        ctx.services.device = SERVICES::gCtx.device;
+        ctx.services.device = GFX::GetCurrentContext().device;
         ctx.services.primitiveCache = &gMeshRendererState.primitiveCache;
         ctx.services.materialResolver = &gMeshRendererState.materialResolver;
         ctx.services.pipelines = &gMeshRendererState.pipelines;
@@ -316,7 +316,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             return false;
         }
 
-        gMeshRendererState.frameResources.Activate(SERVICES::gCtx.frameIndex);
+        gMeshRendererState.frameResources.Activate(GFX::GetCurrentContext().frameIndex);
         gMeshRendererState.materialResolver.BeginFrame(kMaxMaterialTextureGpuLoadsPerFrame);
         gMeshRendererState.gpuMaterialRegistry.BeginFrame();
         // Capture 逕ｨ縺ｮ蝗ｺ螳夊ｧ｣蜒丞ｺｦ繧・camera constants 縺ｫ蜿肴丐縺吶ｋ縲・
@@ -330,7 +330,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             return false;
         }
 
-        ID3D12GraphicsCommandList* cmd = SERVICES::gCtx.cmdList;
+        ID3D12GraphicsCommandList* cmd = GFX::GetCurrentContext().cmdList;
         if (cmd == nullptr ||
             !gMeshRendererState.frameResources.HasActiveDrawResources()) {
             return false;

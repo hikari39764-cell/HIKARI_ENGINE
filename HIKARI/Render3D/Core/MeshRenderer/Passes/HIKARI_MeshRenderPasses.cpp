@@ -1,9 +1,9 @@
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
+#include "Gfx/HIKARI_GfxContext.h"
 
 #include <algorithm>
 
 #include "Gfx/HIKARI_PixProfiler.h"
-#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Render3D/Core/MeshRenderer/Internal/HIKARI_MeshRendererInternal.h"
 #include "Render3D/GpuDriven/HIKARI_GpuDepthVisibilityLayer.h"
 #include "Render3D/ScreenSpace/HIKARI_ScreenSpaceGeometryAux.h"
@@ -30,8 +30,8 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             return false;
         }
 
-        GFX::PIX::ScopedGpuEvent pixGeometry(SERVICES::gCtx.cmdList, GFX::PIX::kColorRender, "ScreenSpaceGeometryAux");
-        geometryAux.BeginNormalRoughnessPass(SERVICES::gCtx.cmdList, sceneDsv);
+        GFX::PIX::ScopedGpuEvent pixGeometry(GFX::GetCurrentContext().cmdList, GFX::PIX::kColorRender, "ScreenSpaceGeometryAux");
+        geometryAux.BeginNormalRoughnessPass(GFX::GetCurrentContext().cmdList, sceneDsv);
         MeshPassResources passResources{};
         const GeometryBackendExecutionResult backendResult =
             ExecuteGeometryBackendPlan(
@@ -39,7 +39,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                 passResources,
                 MeshDrawPassKind::GeometryAux,
                 RENDER3D::MESHLET::MeshletPipelineKind::GeometryAux);
-        geometryAux.EndNormalRoughnessPass(SERVICES::gCtx.cmdList);
+        geometryAux.EndNormalRoughnessPass(GFX::GetCurrentContext().cmdList);
         return backendResult.gpuBackendExecuted;
     }
 
@@ -49,7 +49,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             return false;
         }
 
-        ID3D12GraphicsCommandList* cmd = SERVICES::gCtx.cmdList;
+        ID3D12GraphicsCommandList* cmd = GFX::GetCurrentContext().cmdList;
         if (cmd == nullptr || sceneDsv.ptr == 0) {
             return false;
         }
@@ -108,7 +108,7 @@ namespace HIKARI::MESHRENDERER {
         }
 
         GFX::PIX::ScopedGpuEvent pixFinalize(
-            SERVICES::gCtx.cmdList,
+            GFX::GetCurrentContext().cmdList,
             GFX::PIX::kColorUpload,
             "GpuDepthVisibility.FinalizeVisibility.NoHZB");
         BuildGpuDrivenWorkFrame(
@@ -136,7 +136,7 @@ namespace HIKARI::MESHRENDERER {
         }
 
         GFX::PIX::ScopedGpuEvent pixFinalize(
-            SERVICES::gCtx.cmdList,
+            GFX::GetCurrentContext().cmdList,
             GFX::PIX::kColorUpload,
             "GpuDepthVisibility.FinalizeVisibility");
         BuildGpuDrivenWorkFrame(

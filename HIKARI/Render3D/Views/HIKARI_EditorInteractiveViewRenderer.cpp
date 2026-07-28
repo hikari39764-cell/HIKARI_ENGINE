@@ -8,7 +8,6 @@
 #include <unordered_map>
 
 #include "Gfx/HIKARI_GfxContext.h"
-#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Render2D/HIKARI_RenderTarget2D.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Debug/HIKARI_Renderer3D_Debug.h"
@@ -77,15 +76,15 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         }
 
         bool EnsureDisplayPipeline() {
-            POST::PostEffect::UpdateContext(SERVICES::gCtx);
+            POST::PostEffect::UpdateContext(GFX::GetCurrentContext());
             if (g_displayQuad == nullptr) {
                 auto quad = std::make_unique<POST::QuadDrawer>();
-                if (!quad->Init(SERVICES::gCtx)) {
+                if (!quad->Init(GFX::GetCurrentContext())) {
                     return false;
                 }
                 g_displayQuad = std::move(quad);
             } else {
-                g_displayQuad->UpdateContext(SERVICES::gCtx);
+                g_displayQuad->UpdateContext(GFX::GetCurrentContext());
             }
 
             if (g_displayEffect == nullptr) {
@@ -117,13 +116,13 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
                 state.displayTarget->GetFormat() == kInteractiveDisplayFormat &&
                 !state.displayTarget->HasDepth()) {
 
-                state.target->UpdateContext(SERVICES::gCtx);
-                state.displayTarget->UpdateContext(SERVICES::gCtx);
+                state.target->UpdateContext(GFX::GetCurrentContext());
+                state.displayTarget->UpdateContext(GFX::GetCurrentContext());
                 return true;
             }
 
             auto replacement = std::make_unique<RenderTarget2D>();
-            replacement->UpdateContext(SERVICES::gCtx);
+            replacement->UpdateContext(GFX::GetCurrentContext());
             if (!replacement->Init(
                     static_cast<int>(width),
                     static_cast<int>(height),
@@ -137,7 +136,7 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
             replacement->SetDebugName("EditorInteractiveView");
 
             auto displayReplacement = std::make_unique<RenderTarget2D>();
-            displayReplacement->UpdateContext(SERVICES::gCtx);
+            displayReplacement->UpdateContext(GFX::GetCurrentContext());
             if (!displayReplacement->Init(
                     static_cast<int>(width),
                     static_cast<int>(height),
@@ -164,13 +163,13 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
             D3D12_GPU_DESCRIPTOR_HANDLE output{};
             if (state.displayTarget == nullptr ||
                 state.displayTarget->GetResource() == nullptr ||
-                SERVICES::gCtx.device == nullptr) {
+                GFX::GetCurrentContext().device == nullptr) {
                 return output;
             }
 
-            UpdateRenderResourceDescriptorPoolContext(SERVICES::gCtx);
+            UpdateRenderResourceDescriptorPoolContext(GFX::GetCurrentContext());
             const uint32_t frameSlot =
-                SERVICES::gCtx.frameIndex % GFX::kFrameResourceCount;
+                GFX::GetCurrentContext().frameIndex % GFX::kFrameResourceCount;
             RenderResourceView& view = state.outputSrvs[frameSlot];
             if (!view.IsValid()) {
                 view = AllocateTexture2DSrvDescriptor(
@@ -193,7 +192,7 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
                 desc.Texture2D.MipLevels = 1;
                 desc.Texture2D.PlaneSlice = 0;
                 desc.Texture2D.ResourceMinLODClamp = 0.0f;
-                SERVICES::gCtx.device->CreateShaderResourceView(
+                GFX::GetCurrentContext().device->CreateShaderResourceView(
                     state.displayTarget->GetResource(),
                     &desc,
                     view.cpu);
@@ -332,8 +331,8 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
             }
         }
         if (selected == nullptr ||
-            SERVICES::gCtx.cmdList == nullptr ||
-            SERVICES::gCtx.device == nullptr) {
+            GFX::GetCurrentContext().cmdList == nullptr ||
+            GFX::GetCurrentContext().device == nullptr) {
             return false;
         }
 

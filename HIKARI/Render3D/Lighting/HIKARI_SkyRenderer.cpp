@@ -1,4 +1,5 @@
 #include "HIKARI_SkyRenderer.h"
+#include "Gfx/HIKARI_GfxContext.h"
 
 #include <algorithm>
 #include <array>
@@ -14,7 +15,6 @@
 #include "Gfx/HIKARI_D3DBlobCompat.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
-#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
 
 namespace HIKARI::SKYRENDERER {
@@ -229,7 +229,7 @@ namespace HIKARI::SKYRENDERER {
             if (g.initialized) {
                 return true;
             }
-            auto* device = SERVICES::gCtx.device;
+            auto* device = GFX::GetCurrentContext().device;
             if (!device) {
                 return false;
             }
@@ -385,7 +385,7 @@ namespace HIKARI::SKYRENDERER {
             }
         }
 
-        auto* cmd = SERVICES::gCtx.cmdList;
+        auto* cmd = GFX::GetCurrentContext().cmdList;
         if (!cmd) {
             return;
         }

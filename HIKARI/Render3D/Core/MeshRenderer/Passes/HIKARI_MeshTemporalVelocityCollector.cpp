@@ -1,8 +1,8 @@
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
+#include "Gfx/HIKARI_GfxContext.h"
 
 #include <algorithm>
 
-#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Render3D/Core/MeshRenderer/Internal/HIKARI_MeshRendererInternal.h"
 
 namespace HIKARI::MESHRENDERER {
@@ -48,7 +48,7 @@ namespace HIKARI::MESHRENDERER {
                     continue;
                 }
                 Mesh* mesh = gMeshRendererState.primitiveCache.GetOrCreateStatic(
-                    SERVICES::gCtx.device,
+                    GFX::GetCurrentContext().device,
                     primitive,
                     &gMeshRendererState.debugStats);
                 if (mesh == nullptr || !mesh->IsValid()) {

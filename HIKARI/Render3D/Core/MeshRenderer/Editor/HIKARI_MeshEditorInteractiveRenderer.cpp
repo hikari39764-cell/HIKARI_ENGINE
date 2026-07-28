@@ -1,11 +1,11 @@
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
+#include "Gfx/HIKARI_GfxContext.h"
 
 #if defined(HIKARI_WITH_EDITOR)
 
 #include <algorithm>
 
 #include "Core/HIKARI_TimeService.h"
-#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Render3D/Core/MeshRenderer/Bindings/HIKARI_MeshResourceBindings.h"
 #include "Render3D/Core/MeshRenderer/Data/HIKARI_MeshDrawDataBuilder.h"
 #include "Render3D/Core/MeshRenderer/Pipeline/HIKARI_MeshPipelineStore.h"
@@ -30,7 +30,7 @@ namespace HIKARI::MESHRENDERER {
             if (pass.instances == nullptr ||
                 pass.materialSources == nullptr ||
                 pass.instances->empty() ||
-                SERVICES::gCtx.cmdList == nullptr) {
+                GFX::GetCurrentContext().cmdList == nullptr) {
                 return false;
             }
 
@@ -74,7 +74,7 @@ namespace HIKARI::MESHRENDERER {
                 }
 
                 Mesh* mesh = gMeshRendererState.primitiveCache.GetOrCreateStatic(
-                    SERVICES::gCtx.device,
+                    GFX::GetCurrentContext().device,
                     primitive,
                     &gMeshRendererState.debugStats);
                 if (mesh == nullptr || !mesh->IsValid()) {
@@ -120,12 +120,12 @@ namespace HIKARI::MESHRENDERER {
                     mesh->GetVBView();
                 const D3D12_INDEX_BUFFER_VIEW indexBuffer =
                     mesh->GetIBView();
-                SERVICES::gCtx.cmdList->IASetVertexBuffers(
+                GFX::GetCurrentContext().cmdList->IASetVertexBuffers(
                     0,
                     1,
                     &vertexBuffer);
-                SERVICES::gCtx.cmdList->IASetIndexBuffer(&indexBuffer);
-                SERVICES::gCtx.cmdList->DrawIndexedInstanced(
+                GFX::GetCurrentContext().cmdList->IASetIndexBuffer(&indexBuffer);
+                GFX::GetCurrentContext().cmdList->DrawIndexedInstanced(
                     mesh->GetIndexCount(),
                     1u,
                     0u,
@@ -149,7 +149,7 @@ namespace HIKARI::MESHRENDERER {
             !view.cameraFrame->valid ||
             screenWidth == 0 ||
             screenHeight == 0 ||
-            SERVICES::gCtx.cmdList == nullptr ||
+            GFX::GetCurrentContext().cmdList == nullptr ||
             !EnsureInitialized() ||
             !gMeshRendererState.frameResources.HasActiveDrawResources() ||
             !EnsureEditorInteractiveResources()) {
@@ -158,7 +158,7 @@ namespace HIKARI::MESHRENDERER {
 
         EditorInteractiveMeshFrameResources& editorFrame =
             gMeshRendererState.editorInteractive.frames[
-                SERVICES::gCtx.frameIndex % GFX::kFrameResourceCount];
+                GFX::GetCurrentContext().frameIndex % GFX::kFrameResourceCount];
         if (!editorFrame.IsReady()) {
             return false;
         }
@@ -218,10 +218,10 @@ namespace HIKARI::MESHRENDERER {
             gMeshRendererState.editorInteractive.gpuDrivenLayer;
         layer.BeginFrame(&sceneSource);
         RENDER3D::GPUDRIVEN::GpuDrivenSceneUploadDesc uploadDescription{};
-        uploadDescription.commandList = SERVICES::gCtx.cmdList;
+        uploadDescription.commandList = GFX::GetCurrentContext().cmdList;
         uploadDescription.residency =
             &gMeshRendererState.editorInteractive.sceneResidency;
-        uploadDescription.frameIndex = SERVICES::gCtx.frameIndex;
+        uploadDescription.frameIndex = GFX::GetCurrentContext().frameIndex;
         const RENDER3D::GPUDRIVEN::GpuDrivenSceneUploadStats& uploadStats =
             layer.UploadSceneFrame(uploadDescription);
         if (sceneSource.CountGpuSceneInstances() != 0u &&
@@ -239,18 +239,18 @@ namespace HIKARI::MESHRENDERER {
 
         const MATH::Mat4 cullViewProj = cameraData.viewProj;
         RENDER3D::GPUDRIVEN::GpuDrivenCommandFrameDesc commandFrameDescription{};
-        commandFrameDescription.commandList = SERVICES::gCtx.cmdList;
+        commandFrameDescription.commandList = GFX::GetCurrentContext().cmdList;
         commandFrameDescription.cullViewProj = &cullViewProj;
-        commandFrameDescription.frameIndex = SERVICES::gCtx.frameIndex;
+        commandFrameDescription.frameIndex = GFX::GetCurrentContext().frameIndex;
         commandFrameDescription.enableSurfaceFrustumCull = true;
         layer.BuildCommandFrame(commandFrameDescription);
 
         ID3D12DescriptorHeap* srvHeap = RENDER3D::GetTextureResourceSrvHeap();
         if (srvHeap != nullptr) {
             ID3D12DescriptorHeap* heaps[] = { srvHeap };
-            SERVICES::gCtx.cmdList->SetDescriptorHeaps(1, heaps);
+            GFX::GetCurrentContext().cmdList->SetDescriptorHeaps(1, heaps);
         }
-        SERVICES::gCtx.cmdList->IASetPrimitiveTopology(
+        GFX::GetCurrentContext().cmdList->IASetPrimitiveTopology(
             D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
         if (!sceneSource.GetPass(

@@ -1,4 +1,5 @@
 #include "Render3D/Shadow/Internal/HIKARI_ShadowRendererInternal.h"
+#include "Gfx/HIKARI_GfxContext.h"
 
 #include <algorithm>
 #include <cstring>
@@ -6,7 +7,6 @@
 
 #include <d3dx12.h>
 
-#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Gfx/D3D12/HIKARI_D3D12BufferAlignment.h"
 #include "Gfx/D3D12/HIKARI_D3D12BufferFactory.h"
@@ -126,7 +126,7 @@ namespace HIKARI::SHADOW::INTERNAL {
             static_cast<UINT>(sizeof(MESHRENDERER::MaterialGpuData) * MESHRENDERER::kMaxMaterialDataCount);
         const UINT paletteBytes = GFX::AlignD3D12ConstantBufferByteSize(sizeof(ShadowJointPaletteCB)) * kMaxShadowCasterObjects;
 
-        ID3D12DescriptorHeap* srvHeap = SERVICES::gCtx.srvHeap;
+        ID3D12DescriptorHeap* srvHeap = GFX::GetCurrentContext().srvHeap;
         if (srvHeap == nullptr) {
             return false;
         }
@@ -195,7 +195,7 @@ namespace HIKARI::SHADOW::INTERNAL {
             GFX::SetD3D12Name(frame.materialDataBuffer.Get(), L"Shadow MaterialData Buffer");
         }
 
-        ActivateShadowFrameResources(SERVICES::gCtx.frameIndex);
+        ActivateShadowFrameResources(GFX::GetCurrentContext().frameIndex);
         return true;
     }
 

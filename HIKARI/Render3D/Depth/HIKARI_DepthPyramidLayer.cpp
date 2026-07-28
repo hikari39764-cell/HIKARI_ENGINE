@@ -1,4 +1,5 @@
 #include "Render3D/Depth/HIKARI_DepthPyramidLayer.h"
+#include "Gfx/HIKARI_GfxContext.h"
 
 #include <algorithm>
 #include <array>
@@ -15,7 +16,6 @@
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
-#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 
 namespace HIKARI::RENDER3D::DEPTH {
 
@@ -44,8 +44,8 @@ namespace HIKARI::RENDER3D::DEPTH {
         }
         // 現在のフレームの退避フェンス値を取得する
         uint64_t CurrentRetireFenceValue() {
-            return SERVICES::gCtx.currentFrameRetireFenceValue != 0
-                ? SERVICES::gCtx.currentFrameRetireFenceValue
+            return GFX::GetCurrentContext().currentFrameRetireFenceValue != 0
+                ? GFX::GetCurrentContext().currentFrameRetireFenceValue
                 : 0;
         }
 
@@ -64,8 +64,8 @@ namespace HIKARI::RENDER3D::DEPTH {
 		// デスクリプタアロケータを初期化する。すでに初期化済みの場合は何もしない。
         bool EnsureDescriptorAllocator() {
             DescriptorState& state = Descriptors();
-            ID3D12Device* device = SERVICES::gCtx.device;
-            ID3D12DescriptorHeap* heap = SERVICES::gCtx.srvHeap;
+            ID3D12Device* device = GFX::GetCurrentContext().device;
+            ID3D12DescriptorHeap* heap = GFX::GetCurrentContext().srvHeap;
             if (device == nullptr || heap == nullptr) {
                 return false;
             }
@@ -73,7 +73,7 @@ namespace HIKARI::RENDER3D::DEPTH {
             if (!state.initialized ||
                 state.context.device != device ||
                 state.context.srvHeap != heap) {
-                state.context = SERVICES::gCtx;
+                state.context = GFX::GetCurrentContext();
                 state.descriptorSize = device->GetDescriptorHandleIncrementSize(
                     D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
                 state.allocator.Initialize(
@@ -123,7 +123,7 @@ namespace HIKARI::RENDER3D::DEPTH {
             srvDesc.Texture2D.MipLevels = mipLevels;
             srvDesc.Texture2D.PlaneSlice = 0;
             srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
-            SERVICES::gCtx.device->CreateShaderResourceView(resource, &srvDesc, view.cpu);
+            GFX::GetCurrentContext().device->CreateShaderResourceView(resource, &srvDesc, view.cpu);
             return view;
         }
 		// テクスチャ 2D の UAV デスクリプタを作成する。リソースが nullptr の場合は無効な RenderResourceView を返す。
@@ -146,7 +146,7 @@ namespace HIKARI::RENDER3D::DEPTH {
             uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
             uavDesc.Texture2D.MipSlice = mipSlice;
             uavDesc.Texture2D.PlaneSlice = 0;
-            SERVICES::gCtx.device->CreateUnorderedAccessView(resource, nullptr, &uavDesc, view.cpu);
+            GFX::GetCurrentContext().device->CreateUnorderedAccessView(resource, nullptr, &uavDesc, view.cpu);
             return view;
         }
     }
@@ -184,7 +184,7 @@ namespace HIKARI::RENDER3D::DEPTH {
             return;
         }
 
-        GFX::GpuDeferredReleaseQueue* queue = SERVICES::gCtx.deferredReleaseQueue;
+        GFX::GpuDeferredReleaseQueue* queue = GFX::GetCurrentContext().deferredReleaseQueue;
         const uint64_t retireFence = CurrentRetireFenceValue();
         if (queue != nullptr && retireFence != 0) {
             queue->Enqueue(
@@ -234,7 +234,7 @@ namespace HIKARI::RENDER3D::DEPTH {
             return false;
         }
 
-        ID3D12DescriptorHeap* srvHeap = SERVICES::gCtx.srvHeap;
+        ID3D12DescriptorHeap* srvHeap = GFX::GetCurrentContext().srvHeap;
         if (srvHeap == nullptr ||
             texture_ == nullptr ||
             pyramidSrv_.gpu.ptr == 0 ||
@@ -304,7 +304,7 @@ namespace HIKARI::RENDER3D::DEPTH {
             return true;
         }
 
-        ID3D12Device* device = SERVICES::gCtx.device;
+        ID3D12Device* device = GFX::GetCurrentContext().device;
         if (device == nullptr) {
             return false;
         }
@@ -402,7 +402,7 @@ namespace HIKARI::RENDER3D::DEPTH {
             return true;
         }
 
-        ID3D12Device* device = SERVICES::gCtx.device;
+        ID3D12Device* device = GFX::GetCurrentContext().device;
         if (device == nullptr) {
             return false;
         }

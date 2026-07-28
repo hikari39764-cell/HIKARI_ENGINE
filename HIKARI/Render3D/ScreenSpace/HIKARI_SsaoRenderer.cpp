@@ -1,4 +1,5 @@
 #include "Render3D/ScreenSpace/HIKARI_SsaoRenderer.h"
+#include "Gfx/HIKARI_GfxContext.h"
 
 #include <algorithm>
 #include <array>
@@ -16,7 +17,6 @@
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
-#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Render3D/Core/HIKARI_MeshRendererTypes.h"
 
 namespace HIKARI::RENDER3D::SCREENSPACE {
@@ -332,7 +332,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
             cmd->RSSetScissorRects(1, &scissor);
         };
 
-        ID3D12DescriptorHeap* heaps[] = { SERVICES::gCtx.srvHeap };
+        ID3D12DescriptorHeap* heaps[] = { GFX::GetCurrentContext().srvHeap };
         cmd->SetDescriptorHeaps(1, heaps);
 
         // R8 AO target の optimized clear と完全一致させる。
@@ -525,7 +525,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
             return true;
         }
 
-        ID3D12Device* device = SERVICES::gCtx.device;
+        ID3D12Device* device = GFX::GetCurrentContext().device;
         if (device == nullptr) {
             return false;
         }
@@ -621,8 +621,8 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         D3D12_GPU_DESCRIPTOR_HANDLE& outSrvGpu,
         const wchar_t* debugName) {
 
-        ID3D12Device* device = SERVICES::gCtx.device;
-        ID3D12DescriptorHeap* srvHeap = SERVICES::gCtx.srvHeap;
+        ID3D12Device* device = GFX::GetCurrentContext().device;
+        ID3D12DescriptorHeap* srvHeap = GFX::GetCurrentContext().srvHeap;
         if (device == nullptr || srvHeap == nullptr) {
             return false;
         }
@@ -677,7 +677,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
             return true;
         }
 
-        ID3D12Device* device = SERVICES::gCtx.device;
+        ID3D12Device* device = GFX::GetCurrentContext().device;
         if (device == nullptr) {
             return false;
         }

@@ -1,7 +1,7 @@
 # Authoritative HIKARI compile-source manifest.
 # Add or remove translation units here and keep the source-closure test green.
 
-set(HIKARI_COMPILE_SOURCE_COUNT 703)
+set(HIKARI_COMPILE_SOURCE_COUNT 704)
 
 set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/External/WICTextureLoader.cpp"
@@ -13,6 +13,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Gfx/D3D12/HIKARI_DxgiFormatName.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Gfx/D3D12/HIKARI_D3D12BufferFactory.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Gfx/HIKARI_D3D12DebugTools.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Gfx/HIKARI_GfxContext.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Gfx/HIKARI_DescriptorAllocator.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Gfx/HIKARI_GpuDeferredReleaseQueue.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Gfx/HIKARI_DXCheck.cpp"

@@ -19,6 +19,7 @@
 namespace HIKARI {
     namespace SERVICES {
         namespace {
+            auto& gGraphicsCore = INTERNAL::GetRuntimeServiceState().core;
             auto& gWindow = INTERNAL::GetRuntimeServiceState().window;
             auto& gGamePresentationController =
                 INTERNAL::GetRuntimeServiceState().gamePresentationController;
@@ -70,7 +71,7 @@ namespace HIKARI {
             if (size.width <= 0 || size.height <= 0) {
                 size = { 1280, 720 };
             }
-            if (!gCore.WaitForIdle()) {
+            if (!gGraphicsCore.WaitForIdle()) {
                 HIKARI_LOG_ERROR(
                     "Could not flush GPU work before entering game presentation.");
                 return false;
@@ -111,7 +112,7 @@ namespace HIKARI {
                 }
             }
             if (!gGamePresentationController.Begin(
-                    gCore,
+                    gGraphicsCore,
                     gWindow,
                     config,
                     [](int width, int height) {
@@ -133,12 +134,12 @@ namespace HIKARI {
                 (void)RENDER3D::UPSCALING::
                     DeactivateStreamlineFrameGeneration(true);
                 if (gGamePresentationController.IsGameSurfaceActive()) {
-                    (void)gGamePresentationController.ReleaseGameSurface(gCore);
+                    (void)gGamePresentationController.ReleaseGameSurface(gGraphicsCore);
                 }
                 (void)RENDER3D::UPSCALING::
                     SetStreamlineFrameGenerationFeatureLoaded(false);
                 (void)gGamePresentationController.RestoreEditorSurface(
-                    gCore, gWindow);
+                    gGraphicsCore, gWindow);
                 UpdateGpuContexts();
                 return false;
             }
@@ -169,7 +170,7 @@ namespace HIKARI {
             gGamePresentationController.MarkStopping();
             gInputService.SetMouseCaptureMode(
                 INPUT::MouseCaptureMode::Free);
-            if (!gCore.WaitForIdle()) {
+            if (!gGraphicsCore.WaitForIdle()) {
                 gInputService.SetMouseCaptureMode(
                     INPUT::MouseCaptureMode::Relative);
                 HIKARI_LOG_ERROR(
@@ -192,12 +193,12 @@ namespace HIKARI {
                 gGamePresentationController.IsGameSurfaceReleased()) {
                 return true;
             }
-            if (gGpuFrameReady || !gCore.WaitForIdle()) {
+            if (gGpuFrameReady || !gGraphicsCore.WaitForIdle()) {
                 HIKARI_LOG_ERROR(
                     "Could not drain GPU work before releasing the game presentation surface.");
                 return false;
             }
-            return gGamePresentationController.ReleaseGameSurface(gCore);
+            return gGamePresentationController.ReleaseGameSurface(gGraphicsCore);
         }
 
         bool RestoreEditorPresentation() {
@@ -214,7 +215,7 @@ namespace HIKARI {
                     SetStreamlineFrameGenerationFeatureLoaded(false);
             const bool editorRestored =
                 gGamePresentationController.RestoreEditorSurface(
-                    gCore, gWindow);
+                    gGraphicsCore, gWindow);
             if (!editorRestored) {
                 return false;
             }

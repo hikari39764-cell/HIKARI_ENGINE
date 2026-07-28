@@ -7,7 +7,6 @@
 
 #include <array>
 #include <functional>
-#include <cstddef>
 #include <utility>
 #include <wrl.h>
 #include <dxgi1_6.h>
@@ -84,8 +83,6 @@ public:
     D3D12_GPU_DESCRIPTOR_HANDLE SceneDepthSrv() const;
     ID3D12Resource* SceneDepthResource() const;
     ID3D12Resource* CurrentBackBuffer();
-    size_t GetPendingDeferredReleaseCount() const;
-    bool IsFenceComplete(uint64_t fenceValue) const;
 
     // ── 状態 / 設定 ─────────────────────────────────────────────
 

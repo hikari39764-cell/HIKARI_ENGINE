@@ -8,6 +8,7 @@
 #include "Core/HIKARI_Logger.h"
 #include "Core/HIKARI_TimeService.h"
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
+#include "Gfx/HIKARI_GfxContext.h"
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Render2D/HIKARI_Camera.h"
@@ -30,10 +31,8 @@
 
 namespace HIKARI {
     namespace SERVICES {
-        GFX::Dx12Core& gCore = INTERNAL::GetRuntimeServiceState().core;
-        GFX::Context& gCtx = INTERNAL::GetRuntimeServiceState().context;
-
         namespace {
+            auto& gGraphicsCore = INTERNAL::GetRuntimeServiceState().core;
             auto& gWindow = INTERNAL::GetRuntimeServiceState().window;
             auto& gInputService = INTERNAL::GetRuntimeServiceState().inputService;
             auto& gGamePresentationController =
@@ -69,14 +68,15 @@ namespace HIKARI {
         }
 
         void UpdateGpuContexts() {
-            gCtx = gCore.BuildContext();
-            RENDER3D::UPSCALING::UpdateStreamlineContext(gCtx);
-            DXTEX::DxTextureManager::UpdateContext(gCtx);
-            RENDER3D::UpdateRenderResourceDescriptorPoolContext(gCtx);
-            RENDER3D::UpdateClusterGeometryResourceContext(gCtx);
-            DX::DxRenderer::UpdateContext(gCtx);
-            POST::PostSystem::UpdateContext(gCtx);
-            HIKARI::VFX::UpdateContext(gCtx);
+            GFX::PublishCurrentContext(gGraphicsCore.BuildContext());
+            const GFX::Context& context = GFX::GetCurrentContext();
+            RENDER3D::UPSCALING::UpdateStreamlineContext(context);
+            DXTEX::DxTextureManager::UpdateContext(context);
+            RENDER3D::UpdateRenderResourceDescriptorPoolContext(context);
+            RENDER3D::UpdateClusterGeometryResourceContext(context);
+            DX::DxRenderer::UpdateContext(context);
+            POST::PostSystem::UpdateContext(context);
+            HIKARI::VFX::UpdateContext(context);
         }
 
         void QueueWindowResize(int width, int height) {
@@ -106,8 +106,8 @@ namespace HIKARI {
                 ClearPendingWindowResize();
                 return true;
             }
-            if (width == static_cast<int>(gCtx.backBufferWidth) &&
-                height == static_cast<int>(gCtx.backBufferHeight)) {
+            if (width == static_cast<int>(GFX::GetCurrentContext().backBufferWidth) &&
+                height == static_cast<int>(GFX::GetCurrentContext().backBufferHeight)) {
                 ClearPendingWindowResize();
                 return true;
             }
@@ -118,7 +118,7 @@ namespace HIKARI {
                 RENDER3D::UPSCALING::
                     IsStreamlineFrameGenerationFeatureLoaded();
             if (deactivateFrameGeneration) {
-                if (!gCore.WaitForIdle()) {
+                if (!gGraphicsCore.WaitForIdle()) {
                     HIKARI_LOG_ERROR(
                         "Could not drain presentation work before DLSS-G resize suspension.");
                     return false;
@@ -130,7 +130,7 @@ namespace HIKARI {
                     return false;
                 }
             }
-            const bool resized = gCore.Resize(width, height);
+            const bool resized = gGraphicsCore.Resize(width, height);
             if (!resized) {
                 gGpuFrameReady = false;
                 HIKARI_LOG_ERROR("D3D12 deferred resize failed; GPU frame recording disabled.");
@@ -178,8 +178,8 @@ namespace HIKARI {
             const RENDER3D::RenderQualitySettings& settings =
                 RENDER3D::GetRenderQualitySettings();
 
-            int viewportWidth = static_cast<int>(gCtx.backBufferWidth);
-            int viewportHeight = static_cast<int>(gCtx.backBufferHeight);
+            int viewportWidth = static_cast<int>(GFX::GetCurrentContext().backBufferWidth);
+            int viewportHeight = static_cast<int>(GFX::GetCurrentContext().backBufferHeight);
             if (viewportWidth <= 0 || viewportHeight <= 0) {
                 viewportWidth = gWindow.Width();
                 viewportHeight = gWindow.Height();
@@ -250,7 +250,7 @@ namespace HIKARI {
             (void)RENDER3D::UPSCALING::BeginStreamlineFrame(frame.frameIndex);
             (void)RENDER3D::UPSCALING::BeginStreamlineReflexFrame();
 
-            if (!gCore.BeginFrame(0.05f, 0.08f, 0.12f, 1.0f)) {
+            if (!gGraphicsCore.BeginFrame(0.05f, 0.08f, 0.12f, 1.0f)) {
                 HIKARI_LOG_ERROR("D3D12 BeginFrame failed; skipping frame.");
                 return false;
             }
@@ -274,7 +274,7 @@ namespace HIKARI {
                     RUNTIME::GetEditorUiServices()) {
                 editorUiServices->BeginFrame(
                     gWindow,
-                    gCtx,
+                    GFX::GetCurrentContext(),
                     frame.unscaledDt,
                     ShouldProduceEditorUiFrame());
             }
@@ -313,11 +313,11 @@ namespace HIKARI {
 
             {
                 GFX::PIX::ScopedGpuEvent pixScene(
-                    gCtx.cmdList,
+                    GFX::GetCurrentContext().cmdList,
                     GFX::PIX::kColorRender,
                     "Scene Layers");
                 GFX::GPU_PROFILE::ScopedGpuTimer gpuScene(
-                    gCtx.cmdList,
+                    GFX::GetCurrentContext().cmdList,
                     GFX::GPU_PROFILE::Pass::SceneLayers);
                 HIKARI::RENDERER::RenderLayerRange(
                     HIKARI::RENDERER::RenderLayer::Background,
@@ -333,11 +333,11 @@ namespace HIKARI {
                 CPU_PROFILE::ScopedCpuTimer cpuPost(
                     CPU_PROFILE::Pass::PostResolve);
                 GFX::PIX::ScopedGpuEvent pixPost(
-                    gCtx.cmdList,
+                    GFX::GetCurrentContext().cmdList,
                     GFX::PIX::kColorPost,
                     "PostSystem");
                 GFX::GPU_PROFILE::ScopedGpuTimer gpuPost(
-                    gCtx.cmdList,
+                    GFX::GetCurrentContext().cmdList,
                     GFX::GPU_PROFILE::Pass::PostResolve);
                 if (!HIKARI::POST::PostSystem::PrepareGameUiComposition(
                         editorViewport,
@@ -352,11 +352,11 @@ namespace HIKARI {
                 CPU_PROFILE::ScopedCpuTimer cpuUi(
                     CPU_PROFILE::Pass::UiLayers);
                 GFX::PIX::ScopedGpuEvent pixUi(
-                    gCtx.cmdList,
+                    GFX::GetCurrentContext().cmdList,
                     GFX::PIX::kColorEditor,
                     "Game UI and Debug Layers");
                 GFX::GPU_PROFILE::ScopedGpuTimer gpuUi(
-                    gCtx.cmdList,
+                    GFX::GetCurrentContext().cmdList,
                     GFX::GPU_PROFILE::Pass::UiLayers);
                 HIKARI::RENDERER::RenderLayerRange(
                     HIKARI::RENDERER::RenderLayer::UI,
@@ -400,12 +400,12 @@ namespace HIKARI {
             if (RUNTIME::IEditorUiServices* editorUiServices =
                     RUNTIME::GetEditorUiServices()) {
                 editorUiServices->RenderFrame(
-                    gCtx,
+                    GFX::GetCurrentContext(),
                     ShouldProduceEditorUiFrame());
             }
 
-            gCore.SetVSyncEnabled(RENDER3D::GetRenderQualitySettings().vSync);
-            if (!gCore.EndFrame()) {
+            gGraphicsCore.SetVSyncEnabled(RENDER3D::GetRenderQualitySettings().vSync);
+            if (!gGraphicsCore.EndFrame()) {
                 gGpuFrameReady = false;
                 HIKARI_LOG_ERROR("D3D12 EndFrame failed; stopping GPU frame loop.");
                 CPU_PROFILE::EndFrame();
