@@ -10,6 +10,11 @@
 
 namespace HIKARI {
 
+    enum class ReflectionProbeViewportBoundsTarget : uint8_t {
+        Influence,
+        Projection,
+    };
+
     class ReflectionProbeComponent final : public IComponent {
     public:
         std::string_view GetTypeName() const override {
@@ -25,6 +30,7 @@ namespace HIKARI {
             return sourceCubemapAsset_;
         }
         float GetRadius() const noexcept { return radius_; }
+        bool SetRadius(float radius) noexcept;
         float GetIntensity() const noexcept { return intensity_; }
         ReflectionProbeInfluenceShape GetInfluenceShape() const noexcept {
             return influenceShape_;
@@ -35,6 +41,12 @@ namespace HIKARI {
         const MATH::Vec3& GetInfluenceBoxSize() const noexcept {
             return influenceBoxSize_;
         }
+        bool SetInfluenceBoxSize(
+            const MATH::Vec3& size) noexcept;
+        bool GetProjectionFollowsInfluence() const noexcept {
+            return projectionFollowsInfluence_;
+        }
+        void SetProjectionFollowsInfluence(bool enabled) noexcept;
         ReflectionProbeProjectionShape GetProjectionShape() const noexcept {
             return projectionShape_;
         }
@@ -43,6 +55,17 @@ namespace HIKARI {
         }
         const MATH::Vec3& GetProjectionBoxSize() const noexcept {
             return projectionBoxSize_;
+        }
+        bool SetProjectionBoxSize(
+            const MATH::Vec3& size) noexcept;
+        void AlignProjectionToInfluence() noexcept;
+        ReflectionProbeViewportBoundsTarget
+            GetViewportBoundsTarget() const noexcept {
+            return viewportBoundsTarget_;
+        }
+        void SetViewportBoundsTarget(
+            ReflectionProbeViewportBoundsTarget target) noexcept {
+            viewportBoundsTarget_ = target;
         }
         float GetBlendDistance() const noexcept { return blendDistance_; }
         int GetPriority() const noexcept { return priority_; }
@@ -67,6 +90,10 @@ namespace HIKARI {
             ReflectionProbeProjectionShape::Infinite;
         MATH::Vec3 projectionBoxOffset_{ 0.0f, 0.0f, 0.0f };
         MATH::Vec3 projectionBoxSize_{ 8.0f, 4.0f, 8.0f };
+        bool projectionFollowsInfluence_ = true;
+        // Authoring session state. It is intentionally not serialized.
+        ReflectionProbeViewportBoundsTarget viewportBoundsTarget_ =
+            ReflectionProbeViewportBoundsTarget::Influence;
         float blendDistance_ = 1.0f;
         int priority_ = 0;
         uint32_t captureResolution_ = 128;

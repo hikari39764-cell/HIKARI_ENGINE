@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "Assets/HIKARI_AssetRegistry.h"
+#include "Assets/Lighting/HIKARI_LightingBakeDependencyHash.h"
 #include "Assets/Models/HIKARI_ModelAssetLookup.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
 #include "Project/Paths/HIKARI_ProjectPath.h"
@@ -21,6 +22,7 @@
 #include "Render3D/Material/HIKARI_MaterialTextureUsage.h"
 #include "Render3D/Reflection/HIKARI_ReflectionProbeRuntime.h"
 #include "Render3D/Reflection/HIKARI_ReflectionProbeRuntimeConversion.h"
+#include "Scene/Lighting/HIKARI_SceneLightingSet.h"
 #include "Render3D/Resources/HIKARI_ClusterGeometryResourceSystem.h"
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
 #include "Scene/Components/HIKARI_IComponent.h"
@@ -297,26 +299,9 @@ namespace HIKARI {
         if (!document.environment.sky.skyAsset.empty()) {
             deps.skyAssetIds.insert(document.environment.sky.skyAsset);
         }
-        if (document.environment.reflectionProbe.enabled &&
-            !document.environment.reflectionProbe.sourceCubemapAsset.empty()) {
-            deps.reflectionProbeCubemapAssetIds.insert(document.environment.reflectionProbe.sourceCubemapAsset);
-            deps.reflectionProbeEnabled = true;
-            deps.reflectionProbePosition = document.environment.reflectionProbe.position;
-            deps.reflectionProbeRadius = document.environment.reflectionProbe.radius;
-            deps.reflectionProbeIntensity = document.environment.reflectionProbe.intensity;
-            deps.reflectionProbeInfluenceShape = document.environment.reflectionProbe.influenceShape;
-            deps.reflectionProbeProjectionShape = document.environment.reflectionProbe.projectionShape;
-            deps.reflectionProbeInfluenceBoxCenter = document.environment.reflectionProbe.influenceBoxCenter;
-            deps.reflectionProbeInfluenceBoxSize = document.environment.reflectionProbe.influenceBoxSize;
-            deps.reflectionProbeProjectionBoxCenter = document.environment.reflectionProbe.projectionBoxCenter;
-            deps.reflectionProbeProjectionBoxSize = document.environment.reflectionProbe.projectionBoxSize;
-            deps.reflectionProbeBlendDistance = document.environment.reflectionProbe.blendDistance;
-            deps.reflectionProbePriority = document.environment.reflectionProbe.priority;
-        }
-        LightProbeVolumeSettings lightProbe = document.lightingBake.lightProbeVolume;
-        ClampLightProbeVolumeSettings(lightProbe);
-        deps.lightProbeVolumeEnabled = lightProbe.enabled;
-        deps.lightProbeVolumeIntensity = lightProbe.intensity;
+        deps.lightingSceneHash =
+            ASSETS::LIGHTING::BuildLightingSceneHash(document);
+        deps.lighting = LIGHTING_AUTHORING::BuildSceneLightingSet(document);
 
         for (const SceneObjectData& object : document.objects) {
             for (const SceneComponentData& component : object.components) {
@@ -409,25 +394,9 @@ namespace HIKARI {
         request.sceneGuid = sceneGuid;
         request.projectRoot = projectRoot;
         request.skyAssetIds = dependencies.skyAssetIds;
-        request.reflectionProbeCubemapAssetIds = dependencies.reflectionProbeCubemapAssetIds;
-        request.reflectionProbeEnabled = dependencies.reflectionProbeEnabled;
-        request.reflectionProbePosition = dependencies.reflectionProbePosition;
-        request.reflectionProbeRadius = dependencies.reflectionProbeRadius;
-        request.reflectionProbeIntensity = dependencies.reflectionProbeIntensity;
-        request.reflectionProbeInfluenceShape =
-            REFLECTION::ToRuntimeInfluenceShape(
-                dependencies.reflectionProbeInfluenceShape);
-        request.reflectionProbeProjectionShape =
-            REFLECTION::ToRuntimeProjectionShape(
-                dependencies.reflectionProbeProjectionShape);
-        request.reflectionProbeInfluenceBoxCenter = dependencies.reflectionProbeInfluenceBoxCenter;
-        request.reflectionProbeInfluenceBoxSize = dependencies.reflectionProbeInfluenceBoxSize;
-        request.reflectionProbeProjectionBoxCenter = dependencies.reflectionProbeProjectionBoxCenter;
-        request.reflectionProbeProjectionBoxSize = dependencies.reflectionProbeProjectionBoxSize;
-        request.reflectionProbeBlendDistance = dependencies.reflectionProbeBlendDistance;
-        request.reflectionProbePriority = dependencies.reflectionProbePriority;
-        request.lightProbeVolumeEnabled = dependencies.lightProbeVolumeEnabled;
-        request.lightProbeVolumeIntensity = dependencies.lightProbeVolumeIntensity;
+        request.expectedSceneHash =
+            dependencies.lightingSceneHash;
+        request.lighting = dependencies.lighting;
 
         // 照明リソースは runtime loader に委譲する。
         RENDER3D::LIGHTING::LightingRuntimeLoader loader{};

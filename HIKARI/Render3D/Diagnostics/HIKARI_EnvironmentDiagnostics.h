@@ -77,8 +77,12 @@ namespace HIKARI {
             float reflectionProbeProjectionBoxSizeZ = 0.0f;
             float reflectionProbeBlendDistance = 0.0f;
             int reflectionProbePriority = 0;
+            uint32_t reflectionProbeResidentCount = 0;
+            uint32_t reflectionProbeSelectedCount = 0;
 
             bool lightingBakeManifestFound = false;
+            bool lightingBakeManifestStale = false;
+            std::string lightingBakeManifestStaleReason{};
             std::string lightingBakeManifestPath{};
             uint32_t bakedReflectionProbeCount = 0;
             uint32_t bakedLightProbeCount = 0;
@@ -87,6 +91,8 @@ namespace HIKARI {
             bool lightProbeVolumeValid = false;
             bool lightProbeVolumeSrvReady = false;
             bool lightProbeVolumeHasGpuBuffer = false;
+            uint32_t lightProbeVolumeResidentCount = 0;
+            uint32_t lightProbeVolumeSelectedCount = 0;
             uint32_t lightProbeVolumeProbeCount = 0;
             uint32_t lightProbeVolumeCountX = 0;
             uint32_t lightProbeVolumeCountY = 0;

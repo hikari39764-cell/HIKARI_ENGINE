@@ -13,8 +13,8 @@ cbuffer CommonParams : register(b0)
 Texture2D gSceneTex : register(t0);
 SamplerState gSamp : register(s0);
 
-// TODO: Add unified tone mapping / exposure / gamma correction pass.
-// Current lighting outputs are assumed to be consumed by the existing post pipeline.
+// Scene lighting stays linear HDR through the render pipeline. This pass
+// applies the selected tone curve and the single display gamma transform.
 
 struct PSInput
 {

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
-#include "Render3D/Reflection/HIKARI_ReflectionProbeRuntime.h"
+#include "Render3D/Reflection/HIKARI_ReflectionProbeContract.h"
 
 namespace HIKARI::REFLECTION {
 

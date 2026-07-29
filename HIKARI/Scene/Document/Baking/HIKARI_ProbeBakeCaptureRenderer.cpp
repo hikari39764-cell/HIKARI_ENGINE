@@ -14,9 +14,36 @@
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
 #include "Render3D/Reflection/HIKARI_ReflectionProbeRuntime.h"
 #include "Render3D/Render/HIKARI_ModelRenderer.h"
+#include "Render3D/Shadow/HIKARI_ShadowMapRenderer.h"
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
 
 namespace HIKARI {
+
+    namespace {
+        class ScopedRenderSubmissionPurpose final {
+        public:
+            explicit ScopedRenderSubmissionPurpose(
+                RENDER3D::RenderViewPurpose purpose)
+                : previous_(
+                    RenderSubmissionSystem::GetRenderViewPurpose()) {
+
+                RenderSubmissionSystem::SetRenderViewPurpose(purpose);
+            }
+
+            ~ScopedRenderSubmissionPurpose() {
+                RenderSubmissionSystem::SetRenderViewPurpose(previous_);
+            }
+
+            ScopedRenderSubmissionPurpose(
+                const ScopedRenderSubmissionPurpose&) = delete;
+            ScopedRenderSubmissionPurpose& operator=(
+                const ScopedRenderSubmissionPurpose&) = delete;
+
+        private:
+            RENDER3D::RenderViewPurpose previous_ =
+                RENDER3D::RenderViewPurpose::Game;
+        };
+    } // namespace
 
     bool DocumentSceneBakeCoordinator::RenderProbeCaptureFace(
         DocumentSceneBase& scene,
@@ -26,17 +53,12 @@ namespace HIKARI {
         uint32_t faceIndex,
         ProbeCaptureKind kind) {
 
-        if (!captureTarget.BeginFace(
-                faceIndex,
-                0.0f,
-                0.0f,
-                0.0f,
-                1.0f,
-                1.0f)) {
-            return false;
-        }
-
         const bool isLightProbe = kind == ProbeCaptureKind::LightProbe;
+        ScopedRenderSubmissionPurpose submissionPurpose{
+            isLightProbe
+                ? RENDER3D::RenderViewPurpose::LightProbeCapture
+                : RENDER3D::RenderViewPurpose::ReflectionProbeCapture
+        };
         const std::string eventName =
             std::string(
                 isLightProbe
@@ -48,6 +70,7 @@ namespace HIKARI {
             GFX::PIX::kColorRender,
             eventName.c_str());
 
+        bool faceBegun = false;
         const auto renderFace = [&]() {
             RENDERER3D::Reset();
             MODELRENDERER::Reset();
@@ -62,6 +85,21 @@ namespace HIKARI {
                 frame);
 
             const GFX::Context graphics = GFX::GetCurrentContext();
+            SHADOW::BeginFrame(
+                graphics,
+                captureEnvironment,
+                faceCamera);
+            SHADOW::RenderDirectionalShadowMap(graphics);
+            if (!captureTarget.BeginFace(
+                    faceIndex,
+                    0.0f,
+                    0.0f,
+                    0.0f,
+                    1.0f,
+                    1.0f)) {
+                return false;
+            }
+            faceBegun = true;
             SKYRENDERER::Render(
                 graphics, faceCamera, captureEnvironment,
                 scene.state_->assets.Models(),
@@ -73,20 +111,24 @@ namespace HIKARI {
                 isLightProbe
                     ? MODELRENDERER::ModelRendererFrameKind::LightProbeCapture
                     : MODELRENDERER::ModelRendererFrameKind::ReflectionProbeCapture);
+            return true;
         };
 
+        bool rendered = false;
         REFLECTION::ScopedReflectionProbeSamplingSuppress
             reflectionSuppress{};
         if (isLightProbe) {
             RENDER3D::LIGHTPROBE::ScopedLightProbeVolumeSamplingSuppress
                 lightProbeSuppress{};
-            renderFace();
+            rendered = renderFace();
         } else {
-            renderFace();
+            rendered = renderFace();
         }
 
-        captureTarget.EndFace(faceIndex);
-        return true;
+        if (faceBegun) {
+            captureTarget.EndFace(faceIndex);
+        }
+        return rendered;
     }
 
 } // namespace HIKARI

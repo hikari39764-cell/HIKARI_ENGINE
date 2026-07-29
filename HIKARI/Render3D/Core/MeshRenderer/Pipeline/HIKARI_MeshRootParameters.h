@@ -35,7 +35,7 @@ namespace HIKARI::MESHRENDERER::ROOT_PARAM {
     constexpr UINT ReflectionProbePrefiltered = 13;
     // SSAO texture -> t13
     constexpr UINT Ssao = 14;
-    // LightProbe SH buffer -> t14
+    // Primary LightProbe SH9 textures -> t0-t8, space2
     constexpr UINT LightProbeSh = 15;
     // Mesh object data buffer -> t15
     constexpr UINT ObjectData = 16;
@@ -60,7 +60,11 @@ namespace HIKARI::MESHRENDERER::ROOT_PARAM {
     // Mesh-shader deformation palettes -> t0, space3. The skinned VS/PS root signature
     // overrides this same slot as the legacy b3 CBV during migration.
     constexpr UINT JointPalette = 26;
+    // Secondary Reflection Probe Prefiltered Cubemap -> t14
+    constexpr UINT ReflectionProbePrefilteredSecondary = 27;
+    // Secondary LightProbe SH9 textures -> t0-t8, space4
+    constexpr UINT LightProbeShSecondary = 28;
 
-    constexpr UINT Count = JointPalette + 1;
+    constexpr UINT Count = LightProbeShSecondary + 1;
 
 } // namespace HIKARI::MESHRENDERER::ROOT_PARAM

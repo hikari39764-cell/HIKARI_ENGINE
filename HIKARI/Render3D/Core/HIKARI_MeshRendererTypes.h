@@ -136,24 +136,35 @@ namespace HIKARI::MESHRENDERER {
         float debugPadding[2]{};
     };
 
+    struct ReflectionProbeGpuData {
+        MATH::Vec4 positionRadius{};
+        MATH::Vec4 params{};
+        MATH::Vec4 intensity{};
+        MATH::Vec4 influenceBoxMin{};
+        MATH::Vec4 influenceBoxMax{};
+        MATH::Vec4 projectionBoxMin{};
+        MATH::Vec4 projectionBoxMax{};
+        MATH::Vec4 shapeParams{};
+    };
+
+    struct IrradianceVolumeGpuData {
+        MATH::Vec4 originSampling{};
+        MATH::Vec4 spacingIntensity{};
+        MATH::Vec4 countsProbeCount{};
+        MATH::Vec4 sizeBlendDistance{};
+        MATH::Vec4 selectionParams{};
+    };
+
     struct SkyEnvironmentCB {
         MATH::Vec4 skyZenithExposure{};
         MATH::Vec4 skyHorizonReflection{};
         MATH::Vec4 skyGroundAmbient{};
         MATH::Vec4 skyParams{};
+        MATH::Vec4 skyTintLighting{};
         MATH::Vec4 iblParams{};
-        MATH::Vec4 reflectionProbePositionRadius{};
-        MATH::Vec4 reflectionProbeParams{};
-        MATH::Vec4 reflectionProbeIntensity{};
-        MATH::Vec4 reflectionProbeInfluenceBoxMin{};
-        MATH::Vec4 reflectionProbeInfluenceBoxMax{};
-        MATH::Vec4 reflectionProbeProjectionBoxMin{};
-        MATH::Vec4 reflectionProbeProjectionBoxMax{};
-        MATH::Vec4 reflectionProbeShapeParams{};
+        ReflectionProbeGpuData reflectionProbes[2]{};
         MATH::Vec4 aoParams{};
-        MATH::Vec4 lightProbeVolumeOrigin{};
-        MATH::Vec4 lightProbeVolumeSpacing{};
-        MATH::Vec4 lightProbeVolumeCounts{};
+        IrradianceVolumeGpuData irradianceVolumes[2]{};
     };
 
     struct ShadowCB {

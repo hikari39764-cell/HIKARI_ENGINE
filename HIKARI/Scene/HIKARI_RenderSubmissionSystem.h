@@ -6,6 +6,7 @@
 #include <string_view>
 
 #include "Render3D/GpuDriven/HIKARI_GpuSceneRegistry.h"
+#include "Render3D/Core/HIKARI_RenderView.h"
 #include "Render3D/Runtime/HIKARI_SceneRenderCache.h"
 #include "Scene/HIKARI_SceneRenderCacheSync.h"
 #include "Scene/HIKARI_ISystem.h"
@@ -46,6 +47,9 @@ namespace HIKARI {
         static void SetAssetContext(
             const AssetRegistry* assetRegistry,
             std::filesystem::path projectRoot);
+        static void SetRenderViewPurpose(
+            RENDER3D::RenderViewPurpose purpose);
+        static RENDER3D::RenderViewPurpose GetRenderViewPurpose();
         static void InvalidateSceneResources(bool clearProceduralCache);
         static RenderSubmissionRouteMode GetRouteMode();
         static const RenderSubmissionDebugStats& GetDebugStats();
@@ -54,12 +58,15 @@ namespace HIKARI {
         static const RENDER3D::GPUDRIVEN::GpuSceneRegistryStats& GetGpuSceneRegistryStats();
 
     private:
+        static void InvalidateSubmissionRouting();
+
         static RenderSubmissionDebugStats sDebugStats_;
         static RENDER3D::RUNTIME::SceneRenderCache sSceneRenderCache_;
         static RENDER3D::GPUDRIVEN::GpuSceneRegistry sGpuSceneRegistry_;
         static SceneRenderCacheSync sSceneRenderCacheSync_;
         static bool sGpuSceneRegistryValid_;
         static bool sGpuDrivenSceneSyncInitialized_;
+        static RENDER3D::RenderViewPurpose sRenderViewPurpose_;
         static const AssetRegistry* sAssetRegistry_;
         static std::filesystem::path sProjectRoot_;
     };

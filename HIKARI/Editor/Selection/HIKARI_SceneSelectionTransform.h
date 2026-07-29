@@ -1,5 +1,6 @@
 #pragma once
 
+#include <string_view>
 #include <vector>
 
 #include "Editor/Gizmos/HIKARI_EditorTransformGizmo.h"
@@ -15,6 +16,8 @@ namespace HIKARI {
         struct SceneSelectionTransformResult {
             EditorTransformGizmoResult gizmo{};
             std::vector<SceneObjectId> changedObjectIds{};
+            bool lightingRuntimeRefreshRequired = false;
+            std::string_view historyLabelOverride{};
         };
 
         // Draws one active-object gizmo and applies its world-space delta to

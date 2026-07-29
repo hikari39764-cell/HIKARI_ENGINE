@@ -350,8 +350,16 @@ namespace HIKARI {
             sceneCreationPanel_.ConsumeHistoryRequest());
         recordSceneObjectHistory(
             sceneInspectorPanel_.ConsumeHistoryRequest());
+        std::optional<SceneObjectAuthoringHistoryRequest>
+            viewportTransformHistory =
+                viewportTransformHistory_.ConsumeHistoryRequest();
+        if (viewportTransformHistory &&
+            viewportLightingRefreshPending_) {
+            (void)scene.RefreshLightingRuntime();
+            viewportLightingRefreshPending_ = false;
+        }
         recordSceneObjectHistory(
-            viewportTransformHistory_.ConsumeHistoryRequest());
+            std::move(viewportTransformHistory));
         recordSceneObjectHistory(
             sceneObjectCommands_.ConsumeHistoryRequest());
         if (const std::optional<SceneObjectId> cameraRequest =

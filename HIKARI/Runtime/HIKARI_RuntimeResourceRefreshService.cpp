@@ -1,5 +1,6 @@
 #include "HIKARI_RuntimeResourceRefreshService.h"
 
+#include <unordered_set>
 #include <utility>
 
 #include "Assets/HIKARI_AssetRegistry.h"
@@ -112,7 +113,16 @@ namespace HIKARI {
                 AppendMessage(report, "Missing sky dependency: " + skyId);
             }
         }
-        for (const std::string& probeSourceId : dependencies.reflectionProbeCubemapAssetIds) {
+        std::unordered_set<std::string> refreshedProbeSources{};
+        for (const RENDER3D::LIGHTING::ReflectionProbeProvider&
+             provider : dependencies.lighting.reflectionProbes) {
+            const std::string& probeSourceId =
+                provider.sourceCubemapAssetId;
+            if (probeSourceId.empty() ||
+                !refreshedProbeSources.insert(
+                    probeSourceId).second) {
+                continue;
+            }
             if (dependencies.skyAssetIds.find(probeSourceId) != dependencies.skyAssetIds.end()) {
                 continue;
             }

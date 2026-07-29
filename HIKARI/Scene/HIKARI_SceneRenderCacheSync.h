@@ -3,6 +3,8 @@
 #include <cstdint>
 #include <filesystem>
 
+#include "Render3D/Core/HIKARI_RenderView.h"
+
 namespace HIKARI {
 
     class AssetRegistry;
@@ -21,7 +23,9 @@ namespace HIKARI {
             RENDER3D::RUNTIME::SceneRenderCache& sceneRenderCache,
             uint64_t frameIndex,
             const AssetRegistry* assetRegistry = nullptr,
-            std::filesystem::path projectRoot = {});
+            std::filesystem::path projectRoot = {},
+            RENDER3D::RenderViewPurpose purpose =
+                RENDER3D::RenderViewPurpose::Game);
 
         void SyncDirty(
             World& world,
@@ -29,7 +33,9 @@ namespace HIKARI {
             RENDER3D::RUNTIME::SceneRenderCache& sceneRenderCache,
             uint64_t frameIndex,
             const AssetRegistry* assetRegistry = nullptr,
-            std::filesystem::path projectRoot = {});
+            std::filesystem::path projectRoot = {},
+            RENDER3D::RenderViewPurpose purpose =
+                RENDER3D::RenderViewPurpose::Game);
     };
 
 }

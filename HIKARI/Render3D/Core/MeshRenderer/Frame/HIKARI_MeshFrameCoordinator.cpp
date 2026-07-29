@@ -192,6 +192,8 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         FillShadowCB(environment, *frameResources.shadowMapped);
         FillSkyEnvironmentCB(
             environment,
+            cameraPos,
+            camera.GetTarget(),
             *frameResources.skyEnvironmentMapped);
         return true;
     }

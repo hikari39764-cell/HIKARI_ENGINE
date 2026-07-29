@@ -4,6 +4,7 @@
 #include "Core/HIKARI_Logger.h"
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
 #include "Render3D/Lighting/HIKARI_LightProbeVolumeRuntime.h"
+#include "Scene/Lighting/HIKARI_SceneLightingSet.h"
 
 namespace HIKARI {
     namespace {
@@ -66,26 +67,8 @@ namespace HIKARI {
         if (!state_->lighting.environment.sky.skyAsset.empty()) {
             deps.skyAssetIds.insert(state_->lighting.environment.sky.skyAsset);
         }
-        if (state_->lighting.environment.reflectionProbe.enabled &&
-            !state_->lighting.environment.reflectionProbe.sourceCubemapAsset.empty()) {
-            deps.reflectionProbeCubemapAssetIds.insert(state_->lighting.environment.reflectionProbe.sourceCubemapAsset);
-            deps.reflectionProbeEnabled = true;
-            deps.reflectionProbePosition = state_->lighting.environment.reflectionProbe.position;
-            deps.reflectionProbeRadius = state_->lighting.environment.reflectionProbe.radius;
-            deps.reflectionProbeIntensity = state_->lighting.environment.reflectionProbe.intensity;
-            deps.reflectionProbeInfluenceShape = state_->lighting.environment.reflectionProbe.influenceShape;
-            deps.reflectionProbeProjectionShape = state_->lighting.environment.reflectionProbe.projectionShape;
-            deps.reflectionProbeInfluenceBoxCenter = state_->lighting.environment.reflectionProbe.influenceBoxCenter;
-            deps.reflectionProbeInfluenceBoxSize = state_->lighting.environment.reflectionProbe.influenceBoxSize;
-            deps.reflectionProbeProjectionBoxCenter = state_->lighting.environment.reflectionProbe.projectionBoxCenter;
-            deps.reflectionProbeProjectionBoxSize = state_->lighting.environment.reflectionProbe.projectionBoxSize;
-            deps.reflectionProbeBlendDistance = state_->lighting.environment.reflectionProbe.blendDistance;
-            deps.reflectionProbePriority = state_->lighting.environment.reflectionProbe.priority;
-        }
-        LightProbeVolumeSettings lightProbe = state_->identity.document.lightingBake.lightProbeVolume;
-        ClampLightProbeVolumeSettings(lightProbe);
-        deps.lightProbeVolumeEnabled = lightProbe.enabled;
-        deps.lightProbeVolumeIntensity = lightProbe.intensity;
+        deps.lighting = LIGHTING_AUTHORING::BuildSceneLightingSet(
+            state_->identity.document);
 
         const bool ok = state_->runtime.builder.PreloadDependencies(
             deps,

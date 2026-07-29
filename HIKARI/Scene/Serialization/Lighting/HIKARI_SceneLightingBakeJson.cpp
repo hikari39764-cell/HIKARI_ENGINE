@@ -35,6 +35,8 @@ namespace HIKARI::SCENE::SERIALIZATION {
         out["lightProbeVolume"]["size"] = JsonMath::ToJsonArray(lightProbe.size);
         out["lightProbeVolume"]["count"] = nlohmann::json::array({ lightProbe.countX, lightProbe.countY, lightProbe.countZ });
         out["lightProbeVolume"]["intensity"] = lightProbe.intensity;
+        out["lightProbeVolume"]["blendDistance"] =
+            lightProbe.blendDistance;
         out["lightProbeVolume"]["captureResolution"] = lightProbe.captureResolution;
         out["lightProbeVolume"]["shOrder"] = lightProbe.shOrder;
     }
@@ -65,6 +67,9 @@ namespace HIKARI::SCENE::SERIALIZATION {
             }
 
             out.intensity = lightProbe.value("intensity", out.intensity);
+            out.blendDistance = lightProbe.value(
+                "blendDistance",
+                out.blendDistance);
             out.captureResolution = lightProbe.value("captureResolution", out.captureResolution);
             out.shOrder = lightProbe.value("shOrder", out.shOrder);
         }

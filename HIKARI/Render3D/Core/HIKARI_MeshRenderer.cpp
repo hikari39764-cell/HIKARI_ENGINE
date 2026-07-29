@@ -11,11 +11,20 @@ namespace HIKARI::MESHRENDERER {
     using INTERNAL::gMeshRendererState;
     using INTERNAL::HasGpuDrivenSceneSource;
 
+    namespace {
+        void InvalidateGpuDrivenSceneResidency() {
+            gMeshRendererState.surfaceGpuSceneBuffer.InvalidateResidency();
+            gMeshRendererState.gpuDrivenSceneResidency.Reset();
+            gMeshRendererState.gpuDrivenLayer.ResetFrame();
+        }
+    }
+
     void Reset() {
         gMeshRendererState.frameObjectIndex = 0;
         gMeshRendererState.gpuMaterialRegistry.Clear();
         gMeshRendererState.gpuDrivenSceneSource.Reset();
         gMeshRendererState.gpuDrivenSceneSourceIdentity = nullptr;
+        InvalidateGpuDrivenSceneResidency();
         gMeshRendererState.freezeGpuDrivenCullingCamera = false;
         gMeshRendererState.frozenCullingCamera = {};
         gMeshRendererState.frozenCullingCameraValid = false;
@@ -55,6 +64,7 @@ namespace HIKARI::MESHRENDERER {
         gMeshRendererState.gpuDrivenSceneSourceIdentity = source;
         if (source == nullptr) {
             gMeshRendererState.gpuMaterialRegistry.Clear();
+            InvalidateGpuDrivenSceneResidency();
             return;
         }
         gMeshRendererState.gpuDrivenSceneSource = *source;

@@ -2,394 +2,422 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <sstream>
+#include <tuple>
 #include <utility>
 
 #include "Core/HIKARI_Logger.h"
-#include "Gfx/HIKARI_DXCheck.h"
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
-
-#ifdef max
-#undef max
-#endif
-#ifdef min
-#undef min
-#endif
 
 namespace HIKARI::REFLECTION {
 
     namespace {
-        ReflectionProbeRuntimeData gData{};
 
-        struct ReflectionProbeStateKey {
-            bool enabled = false;
-            bool valid = false;
-            bool hasPrefiltered = false;
-            bool hasBrdfLut = false;
-            RENDER3D::TextureResourceHandle prefilteredResource{};
-            RENDER3D::TextureResourceHandle brdfLutResource{};
-            int prefilteredHandle = -1;
-            int brdfLutHandle = -1;
-            uint32_t prefilteredMipCount = 1;
-            uint32_t prefilteredActualMipCount = 0;
-            uint32_t brdfLutMipCount = 0;
-            DXGI_FORMAT prefilteredFormat = DXGI_FORMAT_UNKNOWN;
-            DXGI_FORMAT brdfLutFormat = DXGI_FORMAT_UNKNOWN;
-            bool prefilteredMipMismatch = false;
-            std::string sourceAssetId{};
-            std::string prefilteredPath{};
-            std::string brdfLutPath{};
-            MATH::Vec3 position{};
-            float radius = 0.0f;
-            float intensity = 0.0f;
-            RuntimeReflectionProbeInfluenceShape influenceShape = RuntimeReflectionProbeInfluenceShape::Sphere;
-            RuntimeReflectionProbeProjectionShape projectionShape = RuntimeReflectionProbeProjectionShape::Infinite;
-            MATH::Vec3 influenceBoxCenter{};
-            MATH::Vec3 influenceBoxSize{};
-            MATH::Vec3 projectionBoxCenter{};
-            MATH::Vec3 projectionBoxSize{};
-            float blendDistance = 0.0f;
-            int priority = 0;
-        };
-
-        bool gHasLastKey = false;
-        ReflectionProbeStateKey gLastKey{};
-        uint32_t gRequestedMipCount = 1;
+        std::vector<ReflectionProbeRuntimeData> gProbes{};
+        ReflectionProbeViewSelection gViewSelection{};
         int gSamplingSuppressDepth = 0;
-
-        bool operator==(const ReflectionProbeStateKey& lhs, const ReflectionProbeStateKey& rhs) {
-            return lhs.enabled == rhs.enabled &&
-                lhs.valid == rhs.valid &&
-                lhs.hasPrefiltered == rhs.hasPrefiltered &&
-                lhs.hasBrdfLut == rhs.hasBrdfLut &&
-                lhs.prefilteredResource == rhs.prefilteredResource &&
-                lhs.brdfLutResource == rhs.brdfLutResource &&
-                lhs.prefilteredHandle == rhs.prefilteredHandle &&
-                lhs.brdfLutHandle == rhs.brdfLutHandle &&
-                lhs.prefilteredMipCount == rhs.prefilteredMipCount &&
-                lhs.prefilteredActualMipCount == rhs.prefilteredActualMipCount &&
-                lhs.brdfLutMipCount == rhs.brdfLutMipCount &&
-                lhs.prefilteredFormat == rhs.prefilteredFormat &&
-                lhs.brdfLutFormat == rhs.brdfLutFormat &&
-                lhs.prefilteredMipMismatch == rhs.prefilteredMipMismatch &&
-                lhs.sourceAssetId == rhs.sourceAssetId &&
-                lhs.prefilteredPath == rhs.prefilteredPath &&
-                lhs.brdfLutPath == rhs.brdfLutPath &&
-                lhs.position.x == rhs.position.x &&
-                lhs.position.y == rhs.position.y &&
-                lhs.position.z == rhs.position.z &&
-                lhs.radius == rhs.radius &&
-                lhs.intensity == rhs.intensity &&
-                lhs.influenceShape == rhs.influenceShape &&
-                lhs.projectionShape == rhs.projectionShape &&
-                lhs.influenceBoxCenter.x == rhs.influenceBoxCenter.x &&
-                lhs.influenceBoxCenter.y == rhs.influenceBoxCenter.y &&
-                lhs.influenceBoxCenter.z == rhs.influenceBoxCenter.z &&
-                lhs.influenceBoxSize.x == rhs.influenceBoxSize.x &&
-                lhs.influenceBoxSize.y == rhs.influenceBoxSize.y &&
-                lhs.influenceBoxSize.z == rhs.influenceBoxSize.z &&
-                lhs.projectionBoxCenter.x == rhs.projectionBoxCenter.x &&
-                lhs.projectionBoxCenter.y == rhs.projectionBoxCenter.y &&
-                lhs.projectionBoxCenter.z == rhs.projectionBoxCenter.z &&
-                lhs.projectionBoxSize.x == rhs.projectionBoxSize.x &&
-                lhs.projectionBoxSize.y == rhs.projectionBoxSize.y &&
-                lhs.projectionBoxSize.z == rhs.projectionBoxSize.z &&
-                lhs.blendDistance == rhs.blendDistance &&
-                lhs.priority == rhs.priority;
-        }
-
-        const char* BoolText(bool value) {
-            return value ? "true" : "false";
-        }
-
-        const char* ShapeText(RuntimeReflectionProbeInfluenceShape shape) {
-            return shape == RuntimeReflectionProbeInfluenceShape::Box ? "Box" : "Sphere";
-        }
-
-        const char* ShapeText(RuntimeReflectionProbeProjectionShape shape) {
-            return shape == RuntimeReflectionProbeProjectionShape::Box ? "Box" : "Infinite";
-        }
+        std::string gLastSelectionKey{};
 
         bool HasUsableBoxSize(const MATH::Vec3& size) {
-            return size.x > 0.001f && size.y > 0.001f && size.z > 0.001f;
+            return size.x > 0.001f &&
+                size.y > 0.001f &&
+                size.z > 0.001f;
         }
 
         MATH::Vec3 SanitizeBoxSize(const MATH::Vec3& size) {
             return {
-                std::max(0.0f, size.x),
-                std::max(0.0f, size.y),
-                std::max(0.0f, size.z)
+                (std::max)(0.0f, size.x),
+                (std::max)(0.0f, size.y),
+                (std::max)(0.0f, size.z)
             };
         }
 
-        bool IsValidSrv(D3D12_GPU_DESCRIPTOR_HANDLE handle) {
-            return handle.ptr != 0;
-        }
+        void RefreshResolvedHandles(ReflectionProbeRuntimeData& probe) {
+            probe.prefilteredHandle =
+                RENDER3D::GetTextureResourceBackendHandle(
+                    probe.prefilteredResource);
+            probe.brdfLutHandle =
+                RENDER3D::GetTextureResourceBackendHandle(
+                    probe.brdfLutResource);
+            probe.prefilteredSrv =
+                RENDER3D::GetTextureResourceSrvGpuHandle(
+                    probe.prefilteredResource);
+            probe.brdfLutSrv =
+                RENDER3D::GetTextureResourceSrvGpuHandle(
+                    probe.brdfLutResource);
+            probe.prefilteredActualMipCount =
+                RENDER3D::GetTextureResourceMipCount(
+                    probe.prefilteredResource);
+            probe.brdfLutMipCount =
+                RENDER3D::GetTextureResourceMipCount(
+                    probe.brdfLutResource);
+            probe.prefilteredFormat =
+                RENDER3D::GetTextureResourceFormat(
+                    probe.prefilteredResource);
+            probe.brdfLutFormat =
+                RENDER3D::GetTextureResourceFormat(
+                    probe.brdfLutResource);
 
-        ReflectionProbeStateKey MakeStateKey() {
-            ReflectionProbeStateKey key{};
-            key.enabled = gData.enabled;
-            key.valid = gData.valid;
-            key.hasPrefiltered = gData.hasPrefiltered;
-            key.hasBrdfLut = gData.hasBrdfLut;
-            key.prefilteredResource = gData.prefilteredResource;
-            key.brdfLutResource = gData.brdfLutResource;
-            key.prefilteredHandle = gData.prefilteredHandle;
-            key.brdfLutHandle = gData.brdfLutHandle;
-            key.prefilteredMipCount = gData.prefilteredMipCount;
-            key.prefilteredActualMipCount = gData.prefilteredActualMipCount;
-            key.brdfLutMipCount = gData.brdfLutMipCount;
-            key.prefilteredFormat = gData.prefilteredFormat;
-            key.brdfLutFormat = gData.brdfLutFormat;
-            key.prefilteredMipMismatch = gData.prefilteredMipMismatch;
-            key.sourceAssetId = gData.sourceAssetId;
-            key.prefilteredPath = gData.prefilteredPath;
-            key.brdfLutPath = gData.brdfLutPath;
-            key.position = gData.position;
-            key.radius = gData.radius;
-            key.intensity = gData.intensity;
-            key.influenceShape = gData.influenceShape;
-            key.projectionShape = gData.projectionShape;
-            key.influenceBoxCenter = gData.influenceBoxCenter;
-            key.influenceBoxSize = gData.influenceBoxSize;
-            key.projectionBoxCenter = gData.projectionBoxCenter;
-            key.projectionBoxSize = gData.projectionBoxSize;
-            key.blendDistance = gData.blendDistance;
-            key.priority = gData.priority;
-            return key;
-        }
-
-        void RefreshResolvedHandles() {
-            gData.prefilteredHandle =
-                RENDER3D::GetTextureResourceBackendHandle(gData.prefilteredResource);
-            gData.brdfLutHandle =
-                RENDER3D::GetTextureResourceBackendHandle(gData.brdfLutResource);
-
-            gData.prefilteredSrv =
-                RENDER3D::GetTextureResourceSrvGpuHandle(gData.prefilteredResource);
-            gData.brdfLutSrv =
-                RENDER3D::GetTextureResourceSrvGpuHandle(gData.brdfLutResource);
-
-            gData.prefilteredActualMipCount =
-                RENDER3D::GetTextureResourceMipCount(gData.prefilteredResource);
-            gData.brdfLutMipCount =
-                RENDER3D::GetTextureResourceMipCount(gData.brdfLutResource);
-            gData.prefilteredFormat =
-                RENDER3D::GetTextureResourceFormat(gData.prefilteredResource);
-            gData.brdfLutFormat =
-                RENDER3D::GetTextureResourceFormat(gData.brdfLutResource);
-
-            // Probe は prefiltered cubemap かつ mip 2 以上の時だけ有効にする。
-            gData.hasPrefiltered = IsValidSrv(gData.prefilteredSrv) &&
-                RENDER3D::GetTextureResourceDimension(gData.prefilteredResource) ==
+            probe.hasPrefiltered =
+                probe.prefilteredSrv.ptr != 0 &&
+                RENDER3D::GetTextureResourceDimension(
+                    probe.prefilteredResource) ==
                     RENDER3D::TextureResourceDimension::TextureCube &&
-                gData.prefilteredActualMipCount >= 2;
-            gData.hasBrdfLut = IsValidSrv(gData.brdfLutSrv) &&
-                RENDER3D::GetTextureResourceDimension(gData.brdfLutResource) ==
+                probe.prefilteredActualMipCount >= 2u;
+            probe.hasBrdfLut =
+                probe.brdfLutSrv.ptr != 0 &&
+                RENDER3D::GetTextureResourceDimension(
+                    probe.brdfLutResource) ==
                     RENDER3D::TextureResourceDimension::Texture2D &&
-                gData.brdfLutMipCount >= 1;
+                probe.brdfLutMipCount >= 1u;
 
-            const uint32_t requestedMipCount = std::max<uint32_t>(1u, gRequestedMipCount);
-            if (gData.hasPrefiltered) {
-                gData.prefilteredMipCount = std::max<uint32_t>(
+            const uint32_t requestedMipCount = (std::max)(
+                1u,
+                probe.requestedPrefilteredMipCount);
+            probe.prefilteredMipCount = probe.hasPrefiltered
+                ? (std::max)(
                     1u,
-                    std::min<uint32_t>(requestedMipCount, gData.prefilteredActualMipCount));
-                gData.prefilteredMipMismatch = requestedMipCount != gData.prefilteredActualMipCount;
-            }
-            else {
-                gData.prefilteredMipCount = 1;
-                gData.prefilteredMipMismatch = false;
-            }
+                    (std::min)(
+                        requestedMipCount,
+                        probe.prefilteredActualMipCount))
+                : 1u;
+            probe.prefilteredMipMismatch =
+                probe.hasPrefiltered &&
+                requestedMipCount != probe.prefilteredActualMipCount;
+
+            probe.radius = (std::max)(0.0f, probe.radius);
+            probe.intensity = (std::max)(0.0f, probe.intensity);
+            probe.influenceBoxSize =
+                SanitizeBoxSize(probe.influenceBoxSize);
+            probe.projectionBoxSize =
+                SanitizeBoxSize(probe.projectionBoxSize);
+            probe.blendDistance =
+                (std::max)(0.0f, probe.blendDistance);
 
             const bool influenceBoxValid =
-                gData.influenceShape != RuntimeReflectionProbeInfluenceShape::Box ||
-                HasUsableBoxSize(gData.influenceBoxSize);
+                probe.influenceShape !=
+                    RuntimeReflectionProbeInfluenceShape::Box ||
+                HasUsableBoxSize(probe.influenceBoxSize);
             const bool projectionBoxValid =
-                gData.projectionShape != RuntimeReflectionProbeProjectionShape::Box ||
-                HasUsableBoxSize(gData.projectionBoxSize);
-
-            gData.valid =
-                gData.enabled &&
-                gData.hasPrefiltered &&
-                gData.radius > 0.001f &&
-                gData.intensity > 0.0f &&
+                probe.projectionShape !=
+                    RuntimeReflectionProbeProjectionShape::Box ||
+                HasUsableBoxSize(probe.projectionBoxSize);
+            probe.valid =
+                probe.enabled &&
+                probe.hasPrefiltered &&
+                probe.radius > 0.001f &&
+                probe.intensity > 0.0f &&
                 influenceBoxValid &&
                 projectionBoxValid;
         }
 
-        void LogStateIfChanged() {
-            const ReflectionProbeStateKey key = MakeStateKey();
-            if (gHasLastKey && key == gLastKey) {
+        float SmoothWeight(float value) {
+            const float x = std::clamp(value, 0.0f, 1.0f);
+            return x * x * (3.0f - 2.0f * x);
+        }
+
+        float SphereInfluence(
+            const ReflectionProbeRuntimeData& probe,
+            const MATH::Vec3& point) {
+
+            const float dx = point.x - probe.position.x;
+            const float dy = point.y - probe.position.y;
+            const float dz = point.z - probe.position.z;
+            const float distance = std::sqrt(dx * dx + dy * dy + dz * dz);
+            const float radius = (std::max)(0.001f, probe.radius);
+            const float blend = (std::min)(
+                (std::max)(0.001f, probe.blendDistance),
+                radius);
+            return SmoothWeight((radius - distance) / blend);
+        }
+
+        float BoxInfluence(
+            const ReflectionProbeRuntimeData& probe,
+            const MATH::Vec3& point) {
+
+            const MATH::Vec3 half{
+                probe.influenceBoxSize.x * 0.5f,
+                probe.influenceBoxSize.y * 0.5f,
+                probe.influenceBoxSize.z * 0.5f
+            };
+            const float edgeDistance = (std::min)({
+                half.x - std::abs(point.x - probe.influenceBoxCenter.x),
+                half.y - std::abs(point.y - probe.influenceBoxCenter.y),
+                half.z - std::abs(point.z - probe.influenceBoxCenter.z)
+            });
+            const float blend = (std::max)(
+                0.001f,
+                (std::min)(
+                    probe.blendDistance,
+                    (std::min)({ half.x, half.y, half.z })));
+            return SmoothWeight(edgeDistance / blend);
+        }
+
+        float EvaluateInfluence(
+            const ReflectionProbeRuntimeData& probe,
+            const MATH::Vec3& point) {
+
+            return probe.influenceShape ==
+                    RuntimeReflectionProbeInfluenceShape::Box
+                ? BoxInfluence(probe, point)
+                : SphereInfluence(probe, point);
+        }
+
+        float DistanceSquared(
+            const ReflectionProbeRuntimeData& probe,
+            const MATH::Vec3& point) {
+
+            const MATH::Vec3 center =
+                probe.influenceShape ==
+                    RuntimeReflectionProbeInfluenceShape::Box
+                ? probe.influenceBoxCenter
+                : probe.position;
+            const float dx = point.x - center.x;
+            const float dy = point.y - center.y;
+            const float dz = point.z - center.z;
+            return dx * dx + dy * dy + dz * dz;
+        }
+
+        void LogSelectionIfChanged() {
+            std::ostringstream key{};
+            key << gProbes.size() << ":";
+            for (size_t slot = 0; slot < gViewSelection.count; ++slot) {
+                const size_t index = gViewSelection.providerIndices[slot];
+                key << gProbes[index].sourceAssetId << ";";
+            }
+            if (key.str() == gLastSelectionKey) {
                 return;
             }
-
-            gLastKey = key;
-            gHasLastKey = true;
-
-            std::ostringstream oss;
-            oss << "[Environment][ReflectionProbe] state changed"
-                << " enabled=" << BoolText(gData.enabled)
-                << " valid=" << BoolText(gData.valid)
-                << " prefiltered=" << BoolText(gData.hasPrefiltered)
-                << " brdf=" << BoolText(gData.hasBrdfLut)
-                << " handles=" << gData.prefilteredHandle << "/" << gData.brdfLutHandle
-                << " mips=" << gData.prefilteredMipCount
-                << " actualMips=" << gData.prefilteredActualMipCount << "/" << gData.brdfLutMipCount
-                << " formats=" << GFX::FormatToString(gData.prefilteredFormat) << "/"
-                << GFX::FormatToString(gData.brdfLutFormat)
-                << " position=" << gData.position.x << "," << gData.position.y << "," << gData.position.z
-                << " radius=" << gData.radius
-                << " intensity=" << gData.intensity
-                << " influenceShape=" << ShapeText(gData.influenceShape)
-                << " projectionShape=" << ShapeText(gData.projectionShape)
-                << " influenceBox=" << gData.influenceBoxCenter.x << "," << gData.influenceBoxCenter.y << "," << gData.influenceBoxCenter.z
-                << "/" << gData.influenceBoxSize.x << "," << gData.influenceBoxSize.y << "," << gData.influenceBoxSize.z
-                << " projectionBox=" << gData.projectionBoxCenter.x << "," << gData.projectionBoxCenter.y << "," << gData.projectionBoxCenter.z
-                << "/" << gData.projectionBoxSize.x << "," << gData.projectionBoxSize.y << "," << gData.projectionBoxSize.z
-                << " blendDistance=" << gData.blendDistance
-                << " priority=" << gData.priority
-                << " source=" << gData.sourceAssetId
-                << " prefilteredPath=" << gData.prefilteredPath
-                << " brdfPath=" << gData.brdfLutPath;
-            HIKARI_LOG_INFO(oss.str());
-
-            if (gData.enabled && !gData.hasPrefiltered) {
-                HIKARI_LOG_WARN("[Environment][ReflectionProbe] prefiltered cubemap is invalid or missing.");
-            }
-            if (gData.prefilteredMipMismatch) {
-                HIKARI_LOG_WARN(
-                    "[Environment][ReflectionProbe] prefiltered mip count mismatch. requested=" +
-                    std::to_string(std::max<uint32_t>(1u, gRequestedMipCount)) +
-                    " actual=" + std::to_string(gData.prefilteredActualMipCount));
-            }
+            gLastSelectionKey = key.str();
+            HIKARI_LOG_INFO(
+                "[Environment][ReflectionProbeSet] resident=" +
+                std::to_string(gProbes.size()) +
+                " selected=" +
+                std::to_string(gViewSelection.count) +
+                " key=" + gLastSelectionKey);
         }
-    }
+
+    } // namespace
 
     void Reset() {
-        gData = {};
-        gRequestedMipCount = 1;
-        RefreshResolvedHandles();
-        LogStateIfChanged();
+        gProbes.clear();
+        gViewSelection = {};
+        gLastSelectionKey.clear();
     }
 
-    void SetActiveProbeResources(
-        bool enabled,
-        RENDER3D::TextureResourceHandle prefilteredResource,
-        RENDER3D::TextureResourceHandle brdfLutResource,
-        uint32_t prefilteredMipCount,
-        const MATH::Vec3& position,
-        float radius,
-        float intensity,
-        RuntimeReflectionProbeInfluenceShape influenceShape,
-        RuntimeReflectionProbeProjectionShape projectionShape,
-        const MATH::Vec3& influenceBoxCenter,
-        const MATH::Vec3& influenceBoxSize,
-        const MATH::Vec3& projectionBoxCenter,
-        const MATH::Vec3& projectionBoxSize,
-        float blendDistance,
-        int priority,
-        std::string sourceAssetId,
-        std::string prefilteredPath,
-        std::string brdfLutPath) {
-
-        gData.enabled = enabled;
-        gData.prefilteredResource = prefilteredResource;
-        gData.brdfLutResource = brdfLutResource;
-        gRequestedMipCount = std::max<uint32_t>(1u, prefilteredMipCount);
-        gData.position = position;
-        gData.radius = std::max(0.0f, radius);
-        gData.intensity = std::max(0.0f, intensity);
-        gData.influenceShape = influenceShape;
-        gData.projectionShape = projectionShape;
-        gData.influenceBoxCenter = influenceBoxCenter;
-        gData.influenceBoxSize = SanitizeBoxSize(influenceBoxSize);
-        gData.projectionBoxCenter = projectionBoxCenter;
-        gData.projectionBoxSize = SanitizeBoxSize(projectionBoxSize);
-        gData.blendDistance = std::max(0.0f, blendDistance);
-        gData.priority = priority;
-        gData.sourceAssetId = std::move(sourceAssetId);
-        gData.prefilteredPath = std::move(prefilteredPath);
-        gData.brdfLutPath = std::move(brdfLutPath);
-
-        RefreshResolvedHandles();
-        LogStateIfChanged();
+    void SetProbeSet(std::vector<ReflectionProbeRuntimeData> probes) {
+        for (ReflectionProbeRuntimeData& probe : probes) {
+            RefreshResolvedHandles(probe);
+            if (probe.enabled && !probe.valid) {
+                HIKARI_LOG_WARN(
+                    "[Environment][ReflectionProbeSet] invalid provider id=" +
+                    probe.sourceAssetId +
+                    " path=" + probe.prefilteredPath);
+            }
+        }
+        std::stable_sort(
+            probes.begin(),
+            probes.end(),
+            [](const ReflectionProbeRuntimeData& lhs,
+               const ReflectionProbeRuntimeData& rhs) {
+                if (lhs.priority != rhs.priority) {
+                    return lhs.priority > rhs.priority;
+                }
+                return lhs.sourceAssetId < rhs.sourceAssetId;
+            });
+        gProbes = std::move(probes);
+        gViewSelection = {};
+        gLastSelectionKey.clear();
     }
 
-    void SetActiveProbe(
-        bool enabled,
-        int prefilteredHandle,
-        int brdfLutHandle,
-        uint32_t prefilteredMipCount,
-        const MATH::Vec3& position,
-        float radius,
-        float intensity,
-        RuntimeReflectionProbeInfluenceShape influenceShape,
-        RuntimeReflectionProbeProjectionShape projectionShape,
-        const MATH::Vec3& influenceBoxCenter,
-        const MATH::Vec3& influenceBoxSize,
-        const MATH::Vec3& projectionBoxCenter,
-        const MATH::Vec3& projectionBoxSize,
-        float blendDistance,
-        int priority,
-        std::string sourceAssetId,
-        std::string prefilteredPath,
-        std::string brdfLutPath) {
-
-        SetActiveProbeResources(
-            enabled,
-            RENDER3D::RegisterTextureResourceFromBackendHandle(prefilteredHandle),
-            RENDER3D::RegisterTextureResourceFromBackendHandle(brdfLutHandle),
-            prefilteredMipCount,
-            position,
-            radius,
-            intensity,
-            influenceShape,
-            projectionShape,
-            influenceBoxCenter,
-            influenceBoxSize,
-            projectionBoxCenter,
-            projectionBoxSize,
-            blendDistance,
-            priority,
-            std::move(sourceAssetId),
-            std::move(prefilteredPath),
-            std::move(brdfLutPath));
+    const std::vector<ReflectionProbeRuntimeData>& GetProbeSet() {
+        for (ReflectionProbeRuntimeData& probe : gProbes) {
+            RefreshResolvedHandles(probe);
+        }
+        return gProbes;
     }
 
-    const ReflectionProbeRuntimeData& GetActiveProbe() {
-        RefreshResolvedHandles();
-        LogStateIfChanged();
-        return gData;
+    void PrepareView(
+        const MATH::Vec3& cameraPosition,
+        const MATH::Vec3& viewFocusPosition) {
+        const ReflectionProbeViewSelection previousSelection =
+            gViewSelection;
+        gViewSelection = {};
+        if (IsReflectionProbeSamplingSuppressed()) {
+            LogSelectionIfChanged();
+            return;
+        }
+
+        struct Candidate {
+            size_t index = 0;
+            float influence = 0.0f;
+            float distanceSquared = std::numeric_limits<float>::max();
+        };
+
+        std::vector<Candidate> candidates{};
+        for (size_t index = 0; index < gProbes.size(); ++index) {
+            ReflectionProbeRuntimeData& probe = gProbes[index];
+            RefreshResolvedHandles(probe);
+            if (!probe.valid) {
+                continue;
+            }
+            candidates.push_back(Candidate{
+                index,
+                (std::max)(
+                    EvaluateInfluence(
+                        probe,
+                        cameraPosition),
+                    EvaluateInfluence(
+                        probe,
+                        viewFocusPosition)),
+                (std::min)(
+                    DistanceSquared(
+                        probe,
+                        cameraPosition),
+                    DistanceSquared(
+                        probe,
+                        viewFocusPosition))
+            });
+        }
+        std::stable_sort(
+            candidates.begin(),
+            candidates.end(),
+            [](const Candidate& lhs, const Candidate& rhs) {
+                const bool lhsAffectsView = lhs.influence > 0.0001f;
+                const bool rhsAffectsView = rhs.influence > 0.0001f;
+                if (lhsAffectsView != rhsAffectsView) {
+                    return lhsAffectsView;
+                }
+                const ReflectionProbeRuntimeData& lhsProbe =
+                    gProbes[lhs.index];
+                const ReflectionProbeRuntimeData& rhsProbe =
+                    gProbes[rhs.index];
+                if (lhsProbe.priority != rhsProbe.priority) {
+                    return lhsProbe.priority > rhsProbe.priority;
+                }
+                if (lhs.influence != rhs.influence) {
+                    return lhs.influence > rhs.influence;
+                }
+                if (lhs.distanceSquared != rhs.distanceSquared) {
+                    return lhs.distanceSquared < rhs.distanceSquared;
+                }
+                return lhsProbe.sourceAssetId <
+                    rhsProbe.sourceAssetId;
+            });
+
+        std::vector<Candidate> selected{};
+        selected.reserve(kReflectionProbeViewSlotCount);
+        if (!candidates.empty()) {
+            selected.push_back(candidates.front());
+        }
+        constexpr float kRetainInfluence = 0.05f;
+        for (size_t previousSlot = 0;
+             previousSlot < previousSelection.count &&
+                selected.size() <
+                    kReflectionProbeViewSlotCount;
+             ++previousSlot) {
+            const size_t previousIndex =
+                previousSelection.providerIndices[
+                    previousSlot];
+            const auto found = std::find_if(
+                candidates.begin(),
+                candidates.end(),
+                [previousIndex](const Candidate& candidate) {
+                    return candidate.index == previousIndex;
+                });
+            const bool alreadySelected =
+                std::any_of(
+                    selected.begin(),
+                    selected.end(),
+                    [previousIndex](
+                        const Candidate& candidate) {
+                        return candidate.index ==
+                            previousIndex;
+                    });
+            if (found != candidates.end() &&
+                found->influence >= kRetainInfluence &&
+                !alreadySelected) {
+                selected.push_back(*found);
+            }
+        }
+        for (const Candidate& candidate : candidates) {
+            if (selected.size() >=
+                kReflectionProbeViewSlotCount) {
+                break;
+            }
+            const bool alreadySelected =
+                std::any_of(
+                    selected.begin(),
+                    selected.end(),
+                    [&candidate](
+                        const Candidate& current) {
+                        return current.index ==
+                            candidate.index;
+                    });
+            if (!alreadySelected) {
+                selected.push_back(candidate);
+            }
+        }
+
+        gViewSelection.count = selected.size();
+        for (size_t slot = 0; slot < gViewSelection.count; ++slot) {
+            gViewSelection.providerIndices[slot] =
+                selected[slot].index;
+            gViewSelection.viewInfluences[slot] =
+                selected[slot].influence;
+        }
+        LogSelectionIfChanged();
+    }
+
+    const ReflectionProbeViewSelection& GetViewSelection() {
+        return gViewSelection;
+    }
+
+    const ReflectionProbeRuntimeData* GetViewProbe(size_t slot) {
+        if (slot >= gViewSelection.count) {
+            return nullptr;
+        }
+        const size_t index = gViewSelection.providerIndices[slot];
+        return index < gProbes.size() ? &gProbes[index] : nullptr;
     }
 
     bool IsReflectionProbeSamplingSuppressed() {
         return gSamplingSuppressDepth > 0;
     }
 
-    ScopedReflectionProbeSamplingSuppress::ScopedReflectionProbeSamplingSuppress() {
+    ScopedReflectionProbeSamplingSuppress::
+        ScopedReflectionProbeSamplingSuppress() {
         ++gSamplingSuppressDepth;
     }
 
-    ScopedReflectionProbeSamplingSuppress::~ScopedReflectionProbeSamplingSuppress() {
-        gSamplingSuppressDepth = std::max(0, gSamplingSuppressDepth - 1);
+    ScopedReflectionProbeSamplingSuppress::
+        ~ScopedReflectionProbeSamplingSuppress() {
+        gSamplingSuppressDepth =
+            (std::max)(0, gSamplingSuppressDepth - 1);
     }
 
-    D3D12_GPU_DESCRIPTOR_HANDLE GetPrefilteredSrv() {
+    D3D12_GPU_DESCRIPTOR_HANDLE GetViewPrefilteredSrv(size_t slot) {
         if (IsReflectionProbeSamplingSuppressed()) {
             return {};
         }
-        RefreshResolvedHandles();
-        LogStateIfChanged();
-        return gData.prefilteredSrv;
+        const ReflectionProbeRuntimeData* probe = GetViewProbe(slot);
+        return probe != nullptr && probe->valid
+            ? probe->prefilteredSrv
+            : D3D12_GPU_DESCRIPTOR_HANDLE{};
     }
 
-    D3D12_GPU_DESCRIPTOR_HANDLE GetBrdfLutSrv() {
+    D3D12_GPU_DESCRIPTOR_HANDLE GetSharedBrdfLutSrv() {
         if (IsReflectionProbeSamplingSuppressed()) {
             return {};
         }
-        RefreshResolvedHandles();
-        LogStateIfChanged();
-        return gData.brdfLutSrv;
+        for (const ReflectionProbeRuntimeData& probe : gProbes) {
+            if (probe.valid && probe.hasBrdfLut &&
+                probe.brdfLutSrv.ptr != 0) {
+                return probe.brdfLutSrv;
+            }
+        }
+        return {};
     }
 
 } // namespace HIKARI::REFLECTION

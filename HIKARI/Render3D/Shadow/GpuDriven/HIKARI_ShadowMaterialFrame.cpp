@@ -150,9 +150,12 @@ namespace HIKARI::SHADOW::INTERNAL {
         if (source.materialOverride != nullptr) {
             data.baseColor = source.materialOverride->GetBaseColor();
             data.materialFlags = source.materialOverride->GetFeatureBits();
-            if (source.materialOverride->HasBaseColorTexture()) {
+            const RuntimeTextureSlot& baseColorSlot =
+                source.materialOverride->GetTextureSlot(
+                    MaterialTextureUsage::BaseColor);
+            if (baseColorSlot.enabled) {
                 baseColorHandle =
-                    source.materialOverride->GetBaseColorTextureHandle();
+                    baseColorSlot.ResolveBackendHandle();
             }
         }
         if (baseColorHandle < 0) {

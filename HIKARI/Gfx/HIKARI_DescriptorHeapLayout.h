@@ -8,10 +8,15 @@
 namespace HIKARI::GFX::DESCRIPTOR {
 
     constexpr UINT kUserSrvCount = 3968;
-    constexpr UINT kSystemSrvFixedCount = 42;
     // Light probe volume の SH 係数 Texture3D。descriptor table として一括
     // バインドするため 9 スロットは必ず連続で確保する。
     constexpr UINT kLightProbeShVolumeTextureCount = 9;
+    constexpr UINT kLightProbeVolumeSetCount = 2;
+    constexpr UINT kLightProbeVolumeResidentSetCount = 8;
+    constexpr UINT kSystemSrvFixedCount =
+        33 +
+        kLightProbeVolumeResidentSetCount *
+            kLightProbeShVolumeTextureCount;
     constexpr UINT kSystemSrvDynamicCount = 111;
     constexpr UINT kDepthPyramidTransientDescriptorCount = 384;
     constexpr UINT kSystemSrvAuxUsedCount = kDepthPyramidTransientDescriptorCount + 1;
@@ -69,6 +74,16 @@ namespace HIKARI::GFX::DESCRIPTOR {
         LightProbeShVolume6 = kSystemSrvBegin + 39,
         LightProbeShVolume7 = kSystemSrvBegin + 40,
         LightProbeShVolume8 = kSystemSrvBegin + 41,
+
+        LightProbeShVolumeSecondary0 = kSystemSrvBegin + 42,
+        LightProbeShVolumeSecondary1 = kSystemSrvBegin + 43,
+        LightProbeShVolumeSecondary2 = kSystemSrvBegin + 44,
+        LightProbeShVolumeSecondary3 = kSystemSrvBegin + 45,
+        LightProbeShVolumeSecondary4 = kSystemSrvBegin + 46,
+        LightProbeShVolumeSecondary5 = kSystemSrvBegin + 47,
+        LightProbeShVolumeSecondary6 = kSystemSrvBegin + 48,
+        LightProbeShVolumeSecondary7 = kSystemSrvBegin + 49,
+        LightProbeShVolumeSecondary8 = kSystemSrvBegin + 50,
     };
 
     constexpr UINT kSystemSrvUsedCount = kSystemSrvFixedCount;
@@ -131,9 +146,9 @@ namespace HIKARI::GFX::DESCRIPTOR {
     static_assert(kUserSrvCount == 3968);
     // 絶対 index は HLSL 側 HIKARI_ShaderResourceBindings.hlsli の
     // HIKARI_SHADER_SYSTEM_SRV_DYNAMIC_BEGIN と同期させること。
-    static_assert(kSystemSrvDynamicBegin == 4010);
+    static_assert(kSystemSrvDynamicBegin == 4073);
     static_assert(kSystemSrvDynamicCount == 111);
-    static_assert(kSystemSrvAuxBegin == 4121);
+    static_assert(kSystemSrvAuxBegin == 4184);
     static_assert(kSystemSrvBegin < kSrvHeapCapacity);
     static_assert(kSystemSrvDynamicBegin < kSrvHeapCapacity);
     static_assert(kSystemSrvDynamicBegin + kSystemSrvDynamicCount <= kSrvHeapCapacity);
@@ -149,6 +164,14 @@ namespace HIKARI::GFX::DESCRIPTOR {
     static_assert(ToIndex(SystemSrv::IblIrradiance) < kSrvHeapCapacity);
     static_assert(ToIndex(SystemSrv::IblPrefiltered) < kSrvHeapCapacity);
     static_assert(ToIndex(SystemSrv::IblBrdfLut) < kSrvHeapCapacity);
+    static_assert(
+        ToIndex(SystemSrv::LightProbeShVolume8) -
+            ToIndex(SystemSrv::LightProbeShVolume0) + 1 ==
+        kLightProbeShVolumeTextureCount);
+    static_assert(
+        ToIndex(SystemSrv::LightProbeShVolumeSecondary8) -
+            ToIndex(SystemSrv::LightProbeShVolumeSecondary0) + 1 ==
+        kLightProbeShVolumeTextureCount);
     static_assert(ToIndex(SystemSrv::SceneNormalRoughness) < kSrvHeapCapacity);
     static_assert(ToIndex(SystemSrv::SsaoRaw) < kSrvHeapCapacity);
     static_assert(ToIndex(SystemSrv::SsaoBlurred) < kSrvHeapCapacity);
@@ -173,6 +196,21 @@ namespace HIKARI::GFX::DESCRIPTOR {
         ToIndex(SystemSrv::LightProbeShVolume8) ==
         ToIndex(SystemSrv::LightProbeShVolume0) + kLightProbeShVolumeTextureCount - 1,
         "SH volume texture slots must stay contiguous for the descriptor table");
-    static_assert(ToIndex(SystemSrv::LightProbeShVolume8) < kSystemSrvBegin + kSystemSrvFixedCount);
+    static_assert(
+        ToIndex(SystemSrv::LightProbeShVolumeSecondary8) ==
+        ToIndex(SystemSrv::LightProbeShVolume0) +
+            kLightProbeVolumeSetCount *
+                kLightProbeShVolumeTextureCount -
+            1,
+        "SH volume sets must stay contiguous for view selection");
+    static_assert(
+        ToIndex(SystemSrv::LightProbeShVolumeSecondary8) <
+            kSystemSrvBegin + kSystemSrvFixedCount);
+    static_assert(
+        ToIndex(SystemSrv::LightProbeShVolume0) +
+            kLightProbeVolumeResidentSetCount *
+                kLightProbeShVolumeTextureCount <=
+            kSystemSrvBegin + kSystemSrvFixedCount,
+        "Resident light probe descriptor tables must stay in the fixed range");
 
 } // namespace HIKARI::GFX::DESCRIPTOR

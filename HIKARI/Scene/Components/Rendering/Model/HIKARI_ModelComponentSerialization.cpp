@@ -55,6 +55,7 @@ namespace HIKARI {
         out["castShadow"] = castShadow_;
         out["receiveShadow"] = receiveShadow_;
         out["renderStatic"] = renderStatic_;
+        out["includeInLightingBake"] = includeInLightingBake_;
         out["debugRenderMode"] = ToString(debugRenderMode_);
         out["wireColor"] = wireColor_;
         out["maxWireLines"] = maxWireLines_;
@@ -84,6 +85,9 @@ namespace HIKARI {
         castShadow_ = in.value("castShadow", castShadow_);
         receiveShadow_ = in.value("receiveShadow", receiveShadow_);
         renderStatic_ = in.value("renderStatic", renderStatic_);
+        includeInLightingBake_ = in.value(
+            "includeInLightingBake",
+            includeInLightingBake_);
         debugRenderMode_ = ParseRenderDebugMode(
             in.value("debugRenderMode", nlohmann::json{}),
             debugRenderMode_);

@@ -1,8 +1,10 @@
 #include "Scene/Components/Lighting/HIKARI_IrradianceVolumeComponent.h"
 
 #include <algorithm>
+#include <cmath>
 
 #include "Core/HIKARI_JsonRead.h"
+#include "Core/Math/HIKARI_MathValidation.h"
 #include "Core/Serialization/Json/HIKARI_JsonMath.h"
 #include "Scene/HIKARI_SceneDocument.h"
 
@@ -18,6 +20,7 @@ namespace HIKARI {
             { "countY", countY_ },
             { "countZ", countZ_ },
             { "intensity", intensity_ },
+            { "blendDistance", blendDistance_ },
             { "captureResolution", captureResolution_ },
             { "shOrder", shOrder_ },
             { "priority", priority_ },
@@ -35,6 +38,9 @@ namespace HIKARI {
         countY_ = in.value("countY", countY_);
         countZ_ = in.value("countZ", countZ_);
         intensity_ = in.value("intensity", intensity_);
+        blendDistance_ = in.value(
+            "blendDistance",
+            blendDistance_);
         captureResolution_ = in.value(
             "captureResolution",
             captureResolution_);
@@ -45,6 +51,27 @@ namespace HIKARI {
         ClampSettings();
     }
 
+    bool IrradianceVolumeComponent::SetSize(
+        const MATH::Vec3& size) noexcept {
+
+        if (!MATH::IsFinite(size)) {
+            return false;
+        }
+        const MATH::Vec3 clamped{
+            (std::max)(size.x, 0.1f),
+            (std::max)(size.y, 0.1f),
+            (std::max)(size.z, 0.1f)
+        };
+        if (size_.x == clamped.x &&
+            size_.y == clamped.y &&
+            size_.z == clamped.z) {
+            return false;
+        }
+        size_ = clamped;
+        ClampSettings();
+        return true;
+    }
+
     void IrradianceVolumeComponent::ClampSettings() noexcept {
         LightProbeVolumeSettings settings{};
         settings.size = size_;
@@ -52,6 +79,7 @@ namespace HIKARI {
         settings.countY = countY_;
         settings.countZ = countZ_;
         settings.intensity = intensity_;
+        settings.blendDistance = blendDistance_;
         settings.captureResolution = captureResolution_;
         settings.shOrder = shOrder_;
         ClampLightProbeVolumeSettings(settings);
@@ -60,6 +88,7 @@ namespace HIKARI {
         countY_ = settings.countY;
         countZ_ = settings.countZ;
         intensity_ = settings.intensity;
+        blendDistance_ = settings.blendDistance;
         captureResolution_ = settings.captureResolution;
         shOrder_ = settings.shOrder;
         if (bakeSet_.empty()) {

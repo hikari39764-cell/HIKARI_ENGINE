@@ -18,9 +18,8 @@ namespace HIKARI {
         MATH::Vec2 uvOffset{ 0.0f, 0.0f };
         float uvRotation = 0.0f;
 
-        bool IsValid() const {
-            return resource.IsValid() || handle >= 0;
-        }
+        int ResolveBackendHandle() const;
+        bool IsValid() const;
 
         bool IsActive() const {
             return enabled && IsValid();

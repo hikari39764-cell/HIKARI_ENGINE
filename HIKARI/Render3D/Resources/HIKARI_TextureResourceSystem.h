@@ -112,8 +112,11 @@ namespace HIKARI::RENDER3D {
 
     TextureResourceHandle FindTextureResourceFromBackendHandle(int backendHandle);
 
+    // ImportedAsset resources are shared cache entries. Releasing a local
+    // consumer never evicts their backend descriptor.
     bool ReleaseTextureResource(TextureResourceHandle handle);
     bool IsTextureResourceValid(TextureResourceHandle handle);
+    bool IsTextureResourceBackendHandleValid(int backendHandle);
 
     int GetTextureResourceBackendHandle(TextureResourceHandle handle);
     ID3D12Resource* GetTextureResourceNative(TextureResourceHandle handle);

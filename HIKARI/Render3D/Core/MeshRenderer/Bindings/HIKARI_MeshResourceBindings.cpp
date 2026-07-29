@@ -489,9 +489,21 @@ namespace HIKARI::MESHRENDERER {
         GFX::PIX::ScopedGpuEvent pixProbe(ctx.cmd, GFX::PIX::kColorRender, "ReflectionProbe.BindResources");
 
         const D3D12_GPU_DESCRIPTOR_HANDLE prefilteredSrv =
-            ResolveReflectionProbePrefilteredSrv(ctx.fallbackCubeTextureHandle);
+            ResolveReflectionProbePrefilteredSrv(
+                0u,
+                ctx.fallbackCubeTextureHandle);
         if (prefilteredSrv.ptr != 0) {
             BindDescriptorTableCached(ctx, ROOT_PARAM::ReflectionProbePrefiltered, prefilteredSrv);
+        }
+        const D3D12_GPU_DESCRIPTOR_HANDLE secondarySrv =
+            ResolveReflectionProbePrefilteredSrv(
+                1u,
+                ctx.fallbackCubeTextureHandle);
+        if (secondarySrv.ptr != 0) {
+            BindDescriptorTableCached(
+                ctx,
+                ROOT_PARAM::ReflectionProbePrefilteredSecondary,
+                secondarySrv);
         }
     }
 
@@ -514,7 +526,8 @@ namespace HIKARI::MESHRENDERER {
             return;
         }
 
-        const D3D12_GPU_DESCRIPTOR_HANDLE shSrv = ResolveLightProbeShSrv();
+        const D3D12_GPU_DESCRIPTOR_HANDLE shSrv =
+            ResolveLightProbeShSrv(0u);
         if (shSrv.ptr != 0) {
             BindDescriptorTableCached(ctx, ROOT_PARAM::LightProbeSh, shSrv);
         } else {
@@ -523,6 +536,14 @@ namespace HIKARI::MESHRENDERER {
                 HIKARI_LOG_WARN("[LightProbe] missing SH volume SRV table.");
                 sWarnedMissingLightProbeSrv = true;
             }
+        }
+        const D3D12_GPU_DESCRIPTOR_HANDLE secondaryShSrv =
+            ResolveLightProbeShSrv(1u);
+        if (secondaryShSrv.ptr != 0) {
+            BindDescriptorTableCached(
+                ctx,
+                ROOT_PARAM::LightProbeShSecondary,
+                secondaryShSrv);
         }
     }
 

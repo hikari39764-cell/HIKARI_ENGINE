@@ -126,6 +126,7 @@ namespace HIKARI {
         EDITOR::EditorCommandRouter commandRouter_{};
         EDITOR::SceneObjectTransformHistorySession
             viewportTransformHistory_{};
+        bool viewportLightingRefreshPending_ = false;
         bool historyExternalDirty_ = false;
     };
 

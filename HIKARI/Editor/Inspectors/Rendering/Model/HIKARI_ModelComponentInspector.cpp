@@ -14,6 +14,8 @@ namespace HIKARI {
         const bool oldCastShadow = castShadow_;
         const bool oldReceiveShadow = receiveShadow_;
         const bool oldRenderStatic = renderStatic_;
+        const bool oldIncludeInLightingBake =
+            includeInLightingBake_;
         const std::string oldAssetId = assetId_;
         const uint32_t oldPostGroupMask = postGroupMask_;
 
@@ -21,6 +23,9 @@ namespace HIKARI {
         builder.Bool("Cast Shadow", castShadow_);
         builder.Bool("Receive Shadow", receiveShadow_);
         builder.Bool("Render Static", renderStatic_);
+        builder.Bool(
+            "Include In Lighting Bake",
+            includeInLightingBake_);
         builder.AssetIdPicker(
             "Model Asset",
             AssetType::Model,
@@ -63,6 +68,7 @@ namespace HIKARI {
             oldCastShadow != castShadow_ ||
             oldReceiveShadow != receiveShadow_ ||
             oldRenderStatic != renderStatic_ ||
+            oldIncludeInLightingBake != includeInLightingBake_ ||
             oldAssetId != assetId_ ||
             oldPostGroupMask != postGroupMask_) {
 

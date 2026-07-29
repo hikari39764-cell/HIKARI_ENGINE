@@ -62,6 +62,9 @@ namespace HIKARI {
             { RenderDebugView::VolumetricScattering, "Volumetric Scattering" },
             { RenderDebugView::VolumetricTransmittance, "Volumetric Transmittance" },
             { RenderDebugView::VolumetricDepthSlice, "Volumetric Depth Slice" },
+            { RenderDebugView::ReflectionProviderWeight, "Reflection Provider Weight" },
+            { RenderDebugView::IrradianceProviderWeight, "Irradiance Provider Weight" },
+            { RenderDebugView::LightingFallbackWeight, "Lighting Fallback Weight" },
             { RenderDebugView::MeshletId, "Meshlet ID" },
             { RenderDebugView::ClusterId, "Cluster ID" },
             { RenderDebugView::SurfaceId, "Surface ID" },
@@ -96,6 +99,9 @@ namespace HIKARI {
                     }
                     if (option == RenderDebugView::VolumetricScattering) {
                         ImGui::SeparatorText("Volumetric");
+                    }
+                    if (option == RenderDebugView::ReflectionProviderWeight) {
+                        ImGui::SeparatorText("Lighting Providers");
                     }
                     if (option == RenderDebugView::MeshletId) {
                         ImGui::SeparatorText("Meshlet");

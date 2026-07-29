@@ -187,7 +187,11 @@ namespace HIKARI::MESHRENDERER {
         out.edgeFade = 0.04f;
     }
 
-    void FillSkyEnvironmentCB(const SceneEnvironment& environment, SkyEnvironmentCB& out) {
+    void FillSkyEnvironmentCB(
+        const SceneEnvironment& environment,
+        const MATH::Vec3& cameraPosition,
+        const MATH::Vec3& viewFocusPosition,
+        SkyEnvironmentCB& out) {
         out = {};
         const IBL::IblEnvironmentData& iblData = IBL::GetEnvironmentData();
         out.iblParams = {
@@ -196,44 +200,58 @@ namespace HIKARI::MESHRENDERER {
             iblData.hasBrdfLut ? 1.0f : 0.0f,
             static_cast<float>(std::max<uint32_t>(1u, iblData.prefilteredMipCount))
         };
-        const bool probeSuppressed = REFLECTION::IsReflectionProbeSamplingSuppressed();
-        const REFLECTION::ReflectionProbeRuntimeData probeData =
-            probeSuppressed ? REFLECTION::ReflectionProbeRuntimeData{} : REFLECTION::GetActiveProbe();
-        const bool hasSharedBrdf = (!probeSuppressed && probeData.hasBrdfLut) || iblData.hasBrdfLut;
-        out.reflectionProbePositionRadius = {
-            probeData.position.x,
-            probeData.position.y,
-            probeData.position.z,
-            std::max(0.001f, probeData.radius)
-        };
-        out.reflectionProbeParams = {
-            probeData.valid ? 1.0f : 0.0f,
-            probeData.hasPrefiltered ? 1.0f : 0.0f,
-            hasSharedBrdf ? 1.0f : 0.0f,
-            static_cast<float>(std::max<uint32_t>(1u, probeData.prefilteredMipCount))
-        };
-        out.reflectionProbeIntensity = {
-            std::max(0.0f, probeData.intensity),
-            0.0f,
-            0.0f,
-            0.0f
-        };
-        WriteProbeBoxMinMax(
-            probeData.influenceBoxCenter,
-            probeData.influenceBoxSize,
-            out.reflectionProbeInfluenceBoxMin,
-            out.reflectionProbeInfluenceBoxMax);
-        WriteProbeBoxMinMax(
-            probeData.projectionBoxCenter,
-            probeData.projectionBoxSize,
-            out.reflectionProbeProjectionBoxMin,
-            out.reflectionProbeProjectionBoxMax);
-        out.reflectionProbeShapeParams = {
-            InfluenceShapeValue(probeData.influenceShape),
-            ProjectionShapeValue(probeData.projectionShape),
-            std::max(0.0f, probeData.blendDistance),
-            static_cast<float>(probeData.priority)
-        };
+        REFLECTION::PrepareView(
+            cameraPosition,
+            viewFocusPosition);
+        for (size_t slot = 0;
+             slot < REFLECTION::kReflectionProbeViewSlotCount;
+             ++slot) {
+            const REFLECTION::ReflectionProbeRuntimeData* probe =
+                REFLECTION::GetViewProbe(slot);
+            if (probe == nullptr) {
+                continue;
+            }
+            ReflectionProbeGpuData& gpu =
+                out.reflectionProbes[slot];
+            gpu.positionRadius = {
+                probe->position.x,
+                probe->position.y,
+                probe->position.z,
+                std::max(0.001f, probe->radius)
+            };
+            gpu.params = {
+                probe->valid ? 1.0f : 0.0f,
+                probe->hasPrefiltered ? 1.0f : 0.0f,
+                (probe->hasBrdfLut ||
+                    iblData.hasBrdfLut) ? 1.0f : 0.0f,
+                static_cast<float>(
+                    std::max<uint32_t>(
+                        1u,
+                        probe->prefilteredMipCount))
+            };
+            gpu.intensity = {
+                std::max(0.0f, probe->intensity),
+                0.0f,
+                0.0f,
+                0.0f
+            };
+            WriteProbeBoxMinMax(
+                probe->influenceBoxCenter,
+                probe->influenceBoxSize,
+                gpu.influenceBoxMin,
+                gpu.influenceBoxMax);
+            WriteProbeBoxMinMax(
+                probe->projectionBoxCenter,
+                probe->projectionBoxSize,
+                gpu.projectionBoxMin,
+                gpu.projectionBoxMax);
+            gpu.shapeParams = {
+                InfluenceShapeValue(probe->influenceShape),
+                ProjectionShapeValue(probe->projectionShape),
+                std::max(0.0f, probe->blendDistance),
+                static_cast<float>(probe->priority)
+            };
+        }
         const bool ssaoConfiguredEnabled =
             environment.ambientOcclusion.enabled &&
             environment.ambientOcclusion.mode != SsaoMode::Off;
@@ -243,44 +261,67 @@ namespace HIKARI::MESHRENDERER {
             std::clamp(environment.ambientOcclusion.specularStrength, 0.0f, 1.0f),
             0.0f
         };
-        const bool lightProbeValid = RENDER3D::LIGHTPROBE::IsValid();
         const RENDER3D::LightProbeVolumeSamplingMode lightProbeSampling =
             RENDER3D::GetRenderQualitySettings().lightProbeVolumeSampling;
         float lightProbeSamplingMode = 0.0f;
-        if (lightProbeValid) {
-            switch (lightProbeSampling) {
-            case RENDER3D::LightProbeVolumeSamplingMode::FullTrilinear:
-                lightProbeSamplingMode = 1.0f;
-                break;
-            case RENDER3D::LightProbeVolumeSamplingMode::FastSmooth:
-                lightProbeSamplingMode = 2.0f;
-                break;
-            case RENDER3D::LightProbeVolumeSamplingMode::Off:
-            default:
-                lightProbeSamplingMode = 0.0f;
-                break;
-            }
+        switch (lightProbeSampling) {
+        case RENDER3D::LightProbeVolumeSamplingMode::FullTrilinear:
+            lightProbeSamplingMode = 1.0f;
+            break;
+        case RENDER3D::LightProbeVolumeSamplingMode::FastSmooth:
+            lightProbeSamplingMode = 2.0f;
+            break;
+        case RENDER3D::LightProbeVolumeSamplingMode::Off:
+        default:
+            lightProbeSamplingMode = 0.0f;
+            break;
         }
-        const RENDER3D::LIGHTPROBE::LightProbeVolumeRuntimeData& lightProbe =
-            RENDER3D::LIGHTPROBE::GetRuntimeData();
-        out.lightProbeVolumeOrigin = {
-            lightProbe.origin.x,
-            lightProbe.origin.y,
-            lightProbe.origin.z,
-            lightProbeSamplingMode
-        };
-        out.lightProbeVolumeSpacing = {
-            std::max(0.0001f, lightProbe.spacing.x),
-            std::max(0.0001f, lightProbe.spacing.y),
-            std::max(0.0001f, lightProbe.spacing.z),
-            lightProbeValid ? std::max(0.0f, lightProbe.intensity) : 0.0f
-        };
-        out.lightProbeVolumeCounts = {
-            lightProbeValid ? static_cast<float>(lightProbe.countX) : 0.0f,
-            lightProbeValid ? static_cast<float>(lightProbe.countY) : 0.0f,
-            lightProbeValid ? static_cast<float>(lightProbe.countZ) : 0.0f,
-            lightProbeValid ? static_cast<float>(lightProbe.probeCount) : 0.0f
-        };
+        RENDER3D::LIGHTPROBE::PrepareView(
+            cameraPosition,
+            viewFocusPosition);
+        for (size_t slot = 0;
+             slot <
+                 RENDER3D::LIGHTPROBE::
+                     kLightProbeVolumeViewSlotCount;
+             ++slot) {
+            const auto* volume =
+                RENDER3D::LIGHTPROBE::GetViewVolume(slot);
+            if (volume == nullptr || !volume->valid) {
+                continue;
+            }
+            IrradianceVolumeGpuData& gpu =
+                out.irradianceVolumes[slot];
+            gpu.originSampling = {
+                volume->origin.x,
+                volume->origin.y,
+                volume->origin.z,
+                lightProbeSamplingMode
+            };
+            gpu.spacingIntensity = {
+                std::max(0.0001f, volume->spacing.x),
+                std::max(0.0001f, volume->spacing.y),
+                std::max(0.0001f, volume->spacing.z),
+                std::max(0.0f, volume->intensity)
+            };
+            gpu.countsProbeCount = {
+                static_cast<float>(volume->countX),
+                static_cast<float>(volume->countY),
+                static_cast<float>(volume->countZ),
+                static_cast<float>(volume->probeCount)
+            };
+            gpu.sizeBlendDistance = {
+                volume->size.x,
+                volume->size.y,
+                volume->size.z,
+                std::max(0.0f, volume->blendDistance)
+            };
+            gpu.selectionParams = {
+                static_cast<float>(volume->priority),
+                1.0f,
+                0.0f,
+                0.0f
+            };
+        }
 
         const SKYRENDERER::SkyEnvironmentData& skyData = SKYRENDERER::GetEnvironmentData();
         if (!skyData.valid) {
@@ -310,6 +351,12 @@ namespace HIKARI::MESHRENDERER {
             skyData.hasCubemap ? 1.0f : 0.0f,
             skyData.horizonPower,
             skyData.yaw
+        };
+        out.skyTintLighting = {
+            skyData.tint.x,
+            skyData.tint.y,
+            skyData.tint.z,
+            1.0f
         };
     }
 

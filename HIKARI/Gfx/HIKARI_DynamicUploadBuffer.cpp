@@ -40,7 +40,7 @@ void* DynamicUploadBuffer::Allocate(size_t size, D3D12_GPU_VIRTUAL_ADDRESS& gpuA
     size_t aligned = Align256(size);
 
     if (offset_ + aligned > bufferSize_) {
-        offset_ = 0; // ｻﾘｻｷ
+        offset_ = 0; // バッファが足りない場合は先頭に戻す
     }
 
     void* cpuAddr = cpuBase_ + offset_;

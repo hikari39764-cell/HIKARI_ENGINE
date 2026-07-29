@@ -388,6 +388,50 @@ float4 main(PSInput input) : SV_TARGET
     {
         return float4(normalize(input.tangentWS.xyz) * 0.5f + 0.5f, albedo.a);
     }
+    if (gDebugView == 23)
+    {
+        float2 providerWeights =
+            HikariEvaluateReflectionProviderWeights(
+                input.worldPosWS);
+        return float4(
+            providerWeights.x,
+            providerWeights.y,
+            0.0f,
+            albedo.a);
+    }
+    if (gDebugView == 24)
+    {
+        float2 providerWeights =
+            HikariEvaluateIrradianceProviderWeights(
+                input.worldPosWS);
+        return float4(
+            providerWeights.x,
+            providerWeights.y,
+            0.0f,
+            albedo.a);
+    }
+    if (gDebugView == 25)
+    {
+        float2 reflectionWeights =
+            HikariEvaluateReflectionProviderWeights(
+                input.worldPosWS);
+        float2 irradianceWeights =
+            HikariEvaluateIrradianceProviderWeights(
+                input.worldPosWS);
+        float reflectionFallback =
+            HikariEvaluateProviderFallbackWeight(
+                reflectionWeights);
+        float irradianceFallback =
+            HikariEvaluateProviderFallbackWeight(
+                irradianceWeights);
+        return float4(
+            reflectionFallback,
+            irradianceFallback,
+            max(
+                reflectionFallback,
+                irradianceFallback),
+            albedo.a);
+    }
 
     float3 l = normalize(-gDirectionalDir.xyz);
     float3 v = normalize(gCameraPos.xyz - input.worldPosWS);

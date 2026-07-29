@@ -19,6 +19,9 @@ namespace HIKARI::RENDER3D::LIGHTING {
         bool reflectionProbeLoaded = false;
         bool lightProbeVolumeLoaded = false;
         bool bakeManifestLoaded = false;
+        bool bakeManifestStale = false;
+        std::string bakeManifestStaleReason{};
+        std::string activeScenario{ "Default" };
         std::string activeSkyAssetId{};
         std::string activeReflectionProbeSourceAssetId{};
         std::string activeLightProbeVolumePath{};
@@ -26,6 +29,8 @@ namespace HIKARI::RENDER3D::LIGHTING {
         uint32_t bakedReflectionProbeCount = 0;
         uint32_t bakedLightProbeCount = 0;
         uint32_t bakedLightmapCount = 0;
+        uint32_t loadedReflectionProbeCount = 0;
+        uint32_t loadedIrradianceVolumeCount = 0;
     };
 
     const char* ToString(LightingRuntimeSource source);

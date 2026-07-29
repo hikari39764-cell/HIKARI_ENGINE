@@ -380,6 +380,10 @@ namespace HIKARI::RENDER3D {
     }
 
     TextureResourceHandle FindTextureResourceFromBackendHandle(int backendHandle) {
+        if (!DXTEX::DxTextureManager::IsTextureHandleValid(
+                backendHandle)) {
+            return {};
+        }
         const auto found = State().resourceByBackend.find(backendHandle);
         if (found == State().resourceByBackend.end()) {
             return {};
@@ -394,6 +398,16 @@ namespace HIKARI::RENDER3D {
 
         TextureResourceSystemState& state = State();
         const uint64_t packed = PackHandle(handle);
+        const RenderResourceRecord* record =
+            Pool().GetRecord(handle.ToUntyped());
+        if (record != nullptr &&
+            record->desc.lifetime ==
+                RenderResourceLifetime::ImportedAsset) {
+            // Imported textures are shared by normalized path. Their
+            // descriptor lifetime belongs to the central asset cache,
+            // not to an individual model, material, or scene instance.
+            return true;
+        }
         const auto found = state.backendByResource.find(packed);
         if (found == state.backendByResource.end()) {
             return Pool().Release(handle.ToUntyped());
@@ -411,13 +425,21 @@ namespace HIKARI::RENDER3D {
         return handle && Pool().IsAlive(handle.ToUntyped());
     }
 
+    bool IsTextureResourceBackendHandleValid(int backendHandle) {
+        return DXTEX::DxTextureManager::IsTextureHandleValid(
+            backendHandle);
+    }
+
     int GetTextureResourceBackendHandle(TextureResourceHandle handle) {
         if (!IsTextureResourceValid(handle)) {
             return -1;
         }
 
         const auto found = State().backendByResource.find(PackHandle(handle));
-        return found != State().backendByResource.end() ? found->second : -1;
+        return found != State().backendByResource.end() &&
+            IsTextureResourceBackendHandleValid(found->second)
+            ? found->second
+            : -1;
     }
 
     ID3D12Resource* GetTextureResourceNative(TextureResourceHandle handle) {
@@ -428,17 +450,26 @@ namespace HIKARI::RENDER3D {
 
     D3D12_CPU_DESCRIPTOR_HANDLE GetTextureResourceSrvCpuHandle(TextureResourceHandle handle) {
         D3D12_CPU_DESCRIPTOR_HANDLE nullHandle{};
+        if (GetTextureResourceBackendHandle(handle) < 0) {
+            return nullHandle;
+        }
         const RenderResourceView* srv = Pool().GetView(handle.ToUntyped(), RenderResourceViewKind::Srv);
         return srv != nullptr ? srv->cpu : nullHandle;
     }
 
     D3D12_GPU_DESCRIPTOR_HANDLE GetTextureResourceSrvGpuHandle(TextureResourceHandle handle) {
         D3D12_GPU_DESCRIPTOR_HANDLE nullHandle{};
+        if (GetTextureResourceBackendHandle(handle) < 0) {
+            return nullHandle;
+        }
         const RenderResourceView* srv = Pool().GetView(handle.ToUntyped(), RenderResourceViewKind::Srv);
         return srv != nullptr ? srv->gpu : nullHandle;
     }
 
     UINT GetTextureResourceSrvDescriptorIndex(TextureResourceHandle handle) {
+        if (GetTextureResourceBackendHandle(handle) < 0) {
+            return UINT32_MAX;
+        }
         const RenderResourceView* srv = Pool().GetView(handle.ToUntyped(), RenderResourceViewKind::Srv);
         return srv != nullptr ? srv->descriptorIndex : UINT32_MAX;
     }

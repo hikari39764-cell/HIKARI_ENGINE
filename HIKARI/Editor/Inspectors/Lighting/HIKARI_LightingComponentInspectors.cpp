@@ -56,7 +56,7 @@ namespace HIKARI {
         builder.Text("Capture");
         builder.Bool("Enabled", enabled_);
         builder.String("Source Cubemap Asset", sourceCubemapAsset_);
-        builder.Float("Radius", radius_);
+        builder.Float("Sphere / Capture Radius", radius_);
         builder.Float("Intensity", intensity_);
         if (builder.Button("Fit Influence Size To Scene")) {
             MATH::Vec3 sceneSize{};
@@ -102,26 +102,89 @@ namespace HIKARI {
         builder.Int("Priority", priority_);
 
         builder.Text("Projection");
-        int projectionShape = projectionShape_ ==
-            ReflectionProbeProjectionShape::Box ? 1 : 0;
-        static constexpr std::array<const char*, 2> projectionChoices{
-            "Infinite",
-            "Box"
-        };
-        if (builder.Choice(
-                "Projection Shape",
-                projectionShape,
-                projectionChoices)) {
-            projectionShape_ = projectionShape == 1
-                ? ReflectionProbeProjectionShape::Box
-                : ReflectionProbeProjectionShape::Infinite;
+        const bool wasLinked = projectionFollowsInfluence_;
+        builder.Bool(
+            "Link Projection To Influence",
+            projectionFollowsInfluence_);
+        if (!wasLinked && projectionFollowsInfluence_) {
+            SetProjectionFollowsInfluence(true);
         }
-        builder.Float("Projection Offset X", projectionBoxOffset_.x);
-        builder.Float("Projection Offset Y", projectionBoxOffset_.y);
-        builder.Float("Projection Offset Z", projectionBoxOffset_.z);
-        builder.Float("Projection Size X", projectionBoxSize_.x);
-        builder.Float("Projection Size Y", projectionBoxSize_.y);
-        builder.Float("Projection Size Z", projectionBoxSize_.z);
+
+        if (projectionFollowsInfluence_) {
+            AlignProjectionToInfluence();
+            viewportBoundsTarget_ =
+                ReflectionProbeViewportBoundsTarget::Influence;
+            builder.Text(
+                "Projection Shape: Box (linked)");
+            builder.Text(
+                "Viewport Bounds: Linked Influence + Projection");
+        } else {
+            int projectionShape = projectionShape_ ==
+                ReflectionProbeProjectionShape::Box ? 1 : 0;
+            static constexpr std::array<const char*, 2>
+                projectionChoices{
+                    "Infinite",
+                    "Box"
+                };
+            if (builder.Choice(
+                    "Projection Shape",
+                    projectionShape,
+                    projectionChoices)) {
+                projectionShape_ = projectionShape == 1
+                    ? ReflectionProbeProjectionShape::Box
+                    : ReflectionProbeProjectionShape::Infinite;
+            }
+            builder.Float(
+                "Projection Offset X",
+                projectionBoxOffset_.x);
+            builder.Float(
+                "Projection Offset Y",
+                projectionBoxOffset_.y);
+            builder.Float(
+                "Projection Offset Z",
+                projectionBoxOffset_.z);
+            builder.Float(
+                "Projection Size X",
+                projectionBoxSize_.x);
+            builder.Float(
+                "Projection Size Y",
+                projectionBoxSize_.y);
+            builder.Float(
+                "Projection Size Z",
+                projectionBoxSize_.z);
+            if (builder.Button("Match Projection To Influence")) {
+                AlignProjectionToInfluence();
+            }
+
+            if (projectionShape_ ==
+                ReflectionProbeProjectionShape::Box) {
+
+                int viewportTarget =
+                    viewportBoundsTarget_ ==
+                        ReflectionProbeViewportBoundsTarget::Projection
+                        ? 1
+                        : 0;
+                static constexpr std::array<const char*, 2>
+                    viewportTargetChoices{
+                        "Influence",
+                        "Projection"
+                    };
+                if (builder.Choice(
+                        "Viewport Bounds Target",
+                        viewportTarget,
+                        viewportTargetChoices)) {
+
+                    viewportBoundsTarget_ =
+                        viewportTarget == 1
+                            ? ReflectionProbeViewportBoundsTarget::Projection
+                            : ReflectionProbeViewportBoundsTarget::Influence;
+                }
+            } else {
+                viewportBoundsTarget_ =
+                    ReflectionProbeViewportBoundsTarget::Influence;
+                builder.Text("Viewport Bounds: Influence");
+            }
+        }
 
         builder.Text("Bake Routing");
         builder.String("Bake Set", bakeSet_);
@@ -138,6 +201,7 @@ namespace HIKARI {
         builder.Float("Size Y", size_.y);
         builder.Float("Size Z", size_.z);
         builder.Float("Intensity", intensity_);
+        builder.Float("Blend Distance", blendDistance_);
         builder.Int("Priority", priority_);
         if (builder.Button("Fit Size To Scene")) {
             MATH::Vec3 sceneSize{};

@@ -116,7 +116,8 @@ namespace HIKARI {
             RENDER3D::RUNTIME::RenderModelCache& renderModelCache,
             ClusteredGeometryPathResolver& clusteredGeometryPaths,
             const PresentationTransformService* presentationTransforms,
-            const ANIMATION::AnimationPoseService* animationPoses) {
+            const ANIMATION::AnimationPoseService* animationPoses,
+            RENDER3D::RenderViewPurpose purpose) {
 
             RENDER3D::RUNTIME::SceneRenderObjectDesc desc{};
             desc.id = ResolveSceneRenderObjectId(object);
@@ -124,7 +125,16 @@ namespace HIKARI {
             const bool debugOnly =
                 debugMode == ModelRenderDebugMode::WireOnly ||
                 debugMode == ModelRenderDebugMode::BoundsOnly;
-            desc.visible = model.IsVisible() && !debugOnly;
+            const bool lightingBakeCapture =
+                purpose ==
+                    RENDER3D::RenderViewPurpose::ReflectionProbeCapture ||
+                purpose ==
+                    RENDER3D::RenderViewPurpose::LightProbeCapture;
+            desc.visible =
+                model.IsVisible() &&
+                !debugOnly &&
+                (!lightingBakeCapture ||
+                    model.GetIncludeInLightingBake());
 
             const ModelAsset* asset =
                 ResolveRenderableModelAsset(object, model);
@@ -201,7 +211,8 @@ namespace HIKARI {
         RENDER3D::RUNTIME::SceneRenderCache& sceneRenderCache,
         uint64_t frameIndex,
         const AssetRegistry* assetRegistry,
-        std::filesystem::path projectRoot) {
+        std::filesystem::path projectRoot,
+        RENDER3D::RenderViewPurpose purpose) {
 
         sceneRenderCache.BeginSync(frameIndex);
         ClusteredGeometryPathResolver clusteredGeometryPaths(
@@ -219,7 +230,8 @@ namespace HIKARI {
                 renderModelCache,
                 clusteredGeometryPaths,
                 presentationTransforms,
-                animationPoses));
+                animationPoses,
+                purpose));
         });
 
         sceneRenderCache.EndSync();
@@ -233,7 +245,8 @@ namespace HIKARI {
         RENDER3D::RUNTIME::SceneRenderCache& sceneRenderCache,
         uint64_t frameIndex,
         const AssetRegistry* assetRegistry,
-        std::filesystem::path projectRoot) {
+        std::filesystem::path projectRoot,
+        RENDER3D::RenderViewPurpose purpose) {
 
         sceneRenderCache.BeginPatchSync(frameIndex);
         for (const uint64_t removedObjectId : world.GetRemovedRenderObjectIds()) {
@@ -266,7 +279,8 @@ namespace HIKARI {
                 renderModelCache,
                 clusteredGeometryPaths,
                 presentationTransforms,
-                animationPoses));
+                animationPoses,
+                purpose));
         }
 
         sceneRenderCache.EndPatchSync();

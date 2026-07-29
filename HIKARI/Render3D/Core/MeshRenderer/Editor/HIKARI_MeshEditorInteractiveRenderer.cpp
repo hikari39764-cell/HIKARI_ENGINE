@@ -200,6 +200,8 @@ namespace HIKARI::MESHRENDERER {
         FillShadowCB(environment, *editorFrame.shadowMapped);
         FillSkyEnvironmentCB(
             environment,
+            cameraPosition,
+            camera.GetTarget(),
             *editorFrame.skyEnvironmentMapped);
         if (settings.neutralLighting) {
             LightCB& light = *editorFrame.lightMapped;

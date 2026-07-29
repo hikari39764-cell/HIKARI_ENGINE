@@ -85,8 +85,12 @@ namespace HIKARI::RENDER3D::DIAGNOSTICS {
             float reflectionProbeProjectionBoxSizeZ = 0.0f;
             float reflectionProbeBlendDistance = 0.0f;
             int reflectionProbePriority = 0;
+            uint32_t reflectionProbeResidentCount = 0;
+            uint32_t reflectionProbeSelectedCount = 0;
 
             bool lightingBakeManifestFound = false;
+            bool lightingBakeManifestStale = false;
+            std::string lightingBakeManifestStaleReason{};
             std::string lightingBakeManifestPath{};
             uint32_t bakedReflectionProbeCount = 0;
             uint32_t bakedLightProbeCount = 0;
@@ -95,6 +99,8 @@ namespace HIKARI::RENDER3D::DIAGNOSTICS {
             bool lightProbeVolumeValid = false;
             bool lightProbeVolumeSrvReady = false;
             bool lightProbeVolumeHasGpuBuffer = false;
+            uint32_t lightProbeVolumeResidentCount = 0;
+            uint32_t lightProbeVolumeSelectedCount = 0;
             uint32_t lightProbeVolumeProbeCount = 0;
             uint32_t lightProbeVolumeCountX = 0;
             uint32_t lightProbeVolumeCountY = 0;
@@ -195,7 +201,11 @@ namespace HIKARI::RENDER3D::DIAGNOSTICS {
                 lhs.reflectionProbeProjectionBoxSizeZ == rhs.reflectionProbeProjectionBoxSizeZ &&
                 lhs.reflectionProbeBlendDistance == rhs.reflectionProbeBlendDistance &&
                 lhs.reflectionProbePriority == rhs.reflectionProbePriority &&
+                lhs.reflectionProbeResidentCount == rhs.reflectionProbeResidentCount &&
+                lhs.reflectionProbeSelectedCount == rhs.reflectionProbeSelectedCount &&
                 lhs.lightingBakeManifestFound == rhs.lightingBakeManifestFound &&
+                lhs.lightingBakeManifestStale == rhs.lightingBakeManifestStale &&
+                lhs.lightingBakeManifestStaleReason == rhs.lightingBakeManifestStaleReason &&
                 lhs.lightingBakeManifestPath == rhs.lightingBakeManifestPath &&
                 lhs.bakedReflectionProbeCount == rhs.bakedReflectionProbeCount &&
                 lhs.bakedLightProbeCount == rhs.bakedLightProbeCount &&
@@ -204,6 +214,8 @@ namespace HIKARI::RENDER3D::DIAGNOSTICS {
                 lhs.lightProbeVolumeValid == rhs.lightProbeVolumeValid &&
                 lhs.lightProbeVolumeSrvReady == rhs.lightProbeVolumeSrvReady &&
                 lhs.lightProbeVolumeHasGpuBuffer == rhs.lightProbeVolumeHasGpuBuffer &&
+                lhs.lightProbeVolumeResidentCount == rhs.lightProbeVolumeResidentCount &&
+                lhs.lightProbeVolumeSelectedCount == rhs.lightProbeVolumeSelectedCount &&
                 lhs.lightProbeVolumeProbeCount == rhs.lightProbeVolumeProbeCount &&
                 lhs.lightProbeVolumeCountX == rhs.lightProbeVolumeCountX &&
                 lhs.lightProbeVolumeCountY == rhs.lightProbeVolumeCountY &&
@@ -347,8 +359,13 @@ namespace HIKARI::RENDER3D::DIAGNOSTICS {
             key.reflectionProbeProjectionBoxSizeZ = snapshot.reflectionProbeProjectionBoxSizeZ;
             key.reflectionProbeBlendDistance = snapshot.reflectionProbeBlendDistance;
             key.reflectionProbePriority = snapshot.reflectionProbePriority;
+            key.reflectionProbeResidentCount = snapshot.reflectionProbeResidentCount;
+            key.reflectionProbeSelectedCount = snapshot.reflectionProbeSelectedCount;
 
             key.lightingBakeManifestFound = snapshot.lightingBakeManifestFound;
+            key.lightingBakeManifestStale = snapshot.lightingBakeManifestStale;
+            key.lightingBakeManifestStaleReason =
+                snapshot.lightingBakeManifestStaleReason;
             key.lightingBakeManifestPath = snapshot.lightingBakeManifestPath;
             key.bakedReflectionProbeCount = snapshot.bakedReflectionProbeCount;
             key.bakedLightProbeCount = snapshot.bakedLightProbeCount;
@@ -357,6 +374,8 @@ namespace HIKARI::RENDER3D::DIAGNOSTICS {
             key.lightProbeVolumeValid = snapshot.lightProbeVolumeValid;
             key.lightProbeVolumeSrvReady = snapshot.lightProbeVolumeSrvReady;
             key.lightProbeVolumeHasGpuBuffer = snapshot.lightProbeVolumeHasGpuBuffer;
+            key.lightProbeVolumeResidentCount = snapshot.lightProbeVolumeResidentCount;
+            key.lightProbeVolumeSelectedCount = snapshot.lightProbeVolumeSelectedCount;
             key.lightProbeVolumeProbeCount = snapshot.lightProbeVolumeProbeCount;
             key.lightProbeVolumeCountX = snapshot.lightProbeVolumeCountX;
             key.lightProbeVolumeCountY = snapshot.lightProbeVolumeCountY;
@@ -428,7 +447,30 @@ namespace HIKARI::RENDER3D::DIAGNOSTICS {
         snapshot.brdfLutFormat = ibl.brdfLutFormat;
         snapshot.prefilteredMipMismatch = ibl.prefilteredMipMismatch;
 
-        const REFLECTION::ReflectionProbeRuntimeData& probe = REFLECTION::GetActiveProbe();
+        const auto& reflectionProbeSet =
+            REFLECTION::GetProbeSet();
+        const REFLECTION::ReflectionProbeRuntimeData* selectedProbe =
+            REFLECTION::GetViewProbe(0u);
+        if (selectedProbe == nullptr) {
+            const auto firstValid = std::find_if(
+                reflectionProbeSet.begin(),
+                reflectionProbeSet.end(),
+                [](const REFLECTION::ReflectionProbeRuntimeData& candidate) {
+                    return candidate.valid;
+                });
+            selectedProbe = firstValid == reflectionProbeSet.end()
+                ? nullptr
+                : &*firstValid;
+        }
+        const REFLECTION::ReflectionProbeRuntimeData probe =
+            selectedProbe != nullptr
+                ? *selectedProbe
+                : REFLECTION::ReflectionProbeRuntimeData{};
+        snapshot.reflectionProbeResidentCount =
+            static_cast<uint32_t>(reflectionProbeSet.size());
+        snapshot.reflectionProbeSelectedCount =
+            static_cast<uint32_t>(
+                REFLECTION::GetViewSelection().count);
         snapshot.reflectionProbeEnabled = probe.enabled;
         snapshot.reflectionProbeValid = probe.valid;
         snapshot.reflectionProbeHasPrefiltered = probe.hasPrefiltered;
@@ -473,6 +515,10 @@ namespace HIKARI::RENDER3D::DIAGNOSTICS {
 
         const LIGHTING::SceneLightingRuntimeData& lighting = LIGHTING::GetLastLightingRuntimeData();
         snapshot.lightingBakeManifestFound = lighting.bakeManifestLoaded;
+        snapshot.lightingBakeManifestStale =
+            lighting.bakeManifestStale;
+        snapshot.lightingBakeManifestStaleReason =
+            lighting.bakeManifestStaleReason;
         snapshot.lightingBakeManifestPath = lighting.bakeManifestPath;
         snapshot.bakedReflectionProbeCount = lighting.bakedReflectionProbeCount;
         snapshot.bakedLightProbeCount = lighting.bakedLightProbeCount;
@@ -482,6 +528,10 @@ namespace HIKARI::RENDER3D::DIAGNOSTICS {
         snapshot.lightProbeVolumeValid = lightProbe.valid;
         snapshot.lightProbeVolumeSrvReady = lightProbe.srvReady;
         snapshot.lightProbeVolumeHasGpuBuffer = lightProbe.hasBuffer;
+        snapshot.lightProbeVolumeResidentCount =
+            lightProbe.residentCount;
+        snapshot.lightProbeVolumeSelectedCount =
+            lightProbe.selectedCount;
         snapshot.lightProbeVolumeProbeCount = lightProbe.probeCount;
         snapshot.lightProbeVolumeCountX = lightProbe.countX;
         snapshot.lightProbeVolumeCountY = lightProbe.countY;
@@ -639,6 +689,8 @@ namespace HIKARI::RENDER3D::DIAGNOSTICS {
                 << snapshot.reflectionProbeProjectionBoxSizeZ
                 << " blendDistance=" << snapshot.reflectionProbeBlendDistance
                 << " priority=" << snapshot.reflectionProbePriority
+                << " resident=" << snapshot.reflectionProbeResidentCount
+                << " selected=" << snapshot.reflectionProbeSelectedCount
                 << " source=" << snapshot.reflectionProbeSourceAssetId
                 << " prefilteredPath=" << snapshot.reflectionProbePrefilteredPath;
             LogInfoLine(oss.str());
@@ -648,6 +700,8 @@ namespace HIKARI::RENDER3D::DIAGNOSTICS {
             oss << "[EnvironmentDiagnostics][LightingRuntime]"
                 << " source=" << snapshot.lightingRuntimeSource
                 << " manifestFound=" << BoolText(snapshot.lightingBakeManifestFound)
+                << " manifestStale=" << BoolText(snapshot.lightingBakeManifestStale)
+                << " staleReason=" << snapshot.lightingBakeManifestStaleReason
                 << " manifest=" << snapshot.lightingBakeManifestPath
                 << " bakedProbes=" << snapshot.bakedReflectionProbeCount
                 << " bakedLightProbes=" << snapshot.bakedLightProbeCount
@@ -660,6 +714,8 @@ namespace HIKARI::RENDER3D::DIAGNOSTICS {
                 << " valid=" << BoolText(snapshot.lightProbeVolumeValid)
                 << " srvReady=" << BoolText(snapshot.lightProbeVolumeSrvReady)
                 << " hasBuffer=" << BoolText(snapshot.lightProbeVolumeHasGpuBuffer)
+                << " resident=" << snapshot.lightProbeVolumeResidentCount
+                << " selected=" << snapshot.lightProbeVolumeSelectedCount
                 << " probes=" << snapshot.lightProbeVolumeProbeCount
                 << " grid=" << snapshot.lightProbeVolumeCountX << "x"
                 << snapshot.lightProbeVolumeCountY << "x"

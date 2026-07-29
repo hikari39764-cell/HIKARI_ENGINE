@@ -65,7 +65,8 @@ namespace HIKARI::MESHRENDERER {
         }
 
         if (!REFLECTION::IsReflectionProbeSamplingSuppressed()) {
-            const D3D12_GPU_DESCRIPTOR_HANDLE probeSrv = REFLECTION::GetBrdfLutSrv();
+            const D3D12_GPU_DESCRIPTOR_HANDLE probeSrv =
+                REFLECTION::GetSharedBrdfLutSrv();
             if (probeSrv.ptr != 0) {
                 return probeSrv;
             }
@@ -74,14 +75,17 @@ namespace HIKARI::MESHRENDERER {
         return RENDER3D::GetTextureResourceSrvGpuHandleFromBackendHandle(fallbackTextureHandle);
     }
 
-    D3D12_GPU_DESCRIPTOR_HANDLE ResolveReflectionProbePrefilteredSrv(int fallbackCubeTextureHandle) {
+    D3D12_GPU_DESCRIPTOR_HANDLE ResolveReflectionProbePrefilteredSrv(
+        size_t slot,
+        int fallbackCubeTextureHandle) {
         if (REFLECTION::IsReflectionProbeSamplingSuppressed()) {
             return RENDER3D::GetTextureResourceSrvGpuHandleFromBackendHandle(fallbackCubeTextureHandle);
         }
 
-        const REFLECTION::ReflectionProbeRuntimeData& probe = REFLECTION::GetActiveProbe();
-        if (probe.valid && probe.hasPrefiltered && probe.prefilteredSrv.ptr != 0) {
-            return probe.prefilteredSrv;
+        const D3D12_GPU_DESCRIPTOR_HANDLE probeSrv =
+            REFLECTION::GetViewPrefilteredSrv(slot);
+        if (probeSrv.ptr != 0) {
+            return probeSrv;
         }
 
         return RENDER3D::GetTextureResourceSrvGpuHandleFromBackendHandle(fallbackCubeTextureHandle);
@@ -97,8 +101,10 @@ namespace HIKARI::MESHRENDERER {
         return RENDER3D::GetTextureResourceSrvGpuHandleFromBackendHandle(fallbackAoTextureHandle);
     }
 
-    D3D12_GPU_DESCRIPTOR_HANDLE ResolveLightProbeShSrv() {
-        return RENDER3D::LIGHTPROBE::GetShVolumeSrvTable();
+    D3D12_GPU_DESCRIPTOR_HANDLE ResolveLightProbeShSrv(
+        size_t slot) {
+        return RENDER3D::LIGHTPROBE::
+            GetViewShVolumeSrvTable(slot);
     }
 
 } // namespace HIKARI::MESHRENDERER

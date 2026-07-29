@@ -104,6 +104,8 @@ namespace HIKARI::SHADOW {
             gShadowRendererState.dynamicShadowPrimaryMaterialSources.clear();
             ClearShadowTraditionalIndirectStreams();
             InvalidateShadowSourceCache();
+            gShadowRendererState.surfaceGpuSceneBuffer.InvalidateResidency();
+            gShadowRendererState.gpuDrivenLayer.ResetFrame();
         }
     }
 

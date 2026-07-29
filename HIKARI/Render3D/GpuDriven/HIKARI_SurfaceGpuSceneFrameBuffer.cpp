@@ -209,18 +209,22 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         }
     }
 
+    void SurfaceGpuSceneFrameBuffer::ResetSlotResidency(FrameSlot& slot) {
+        slot.cursor = 0;
+        slot.resident = false;
+        slot.residentInstanceCount = 0;
+        slot.layoutVersion = 0;
+        slot.sourceVersion = 0;
+        slot.materialBindingVersion = 0;
+        slot.dirty = false;
+        slot.dirtyFirstInstance = 0;
+        slot.dirtyEndInstance = 0;
+    }
+
     void SurfaceGpuSceneFrameBuffer::ResetFrame() {
         FrameSlot* slot = ActiveSlot();
         if (slot != nullptr) {
-            slot->cursor = 0;
-            slot->resident = false;
-            slot->residentInstanceCount = 0;
-            slot->layoutVersion = 0;
-            slot->sourceVersion = 0;
-            slot->materialBindingVersion = 0;
-            slot->dirty = false;
-            slot->dirtyFirstInstance = 0;
-            slot->dirtyEndInstance = 0;
+            ResetSlotResidency(*slot);
         }
 
         const size_t capacity = stats_.capacity;
@@ -230,6 +234,13 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         stats_.capacity = capacity;
         stats_.initialized = initialized;
         stats_.srv = srv;
+    }
+
+    void SurfaceGpuSceneFrameBuffer::InvalidateResidency() {
+        for (FrameSlot& slot : slots_) {
+            ResetSlotResidency(slot);
+        }
+        ResetFrame();
     }
 
     bool SurfaceGpuSceneFrameBuffer::CanReuseFrame(
@@ -263,13 +274,20 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
     }
 
     void SurfaceGpuSceneFrameBuffer::ReuseFrame(size_t residentInstanceCount) {
-        const FrameSlot* slot = ActiveSlot();
+        FrameSlot* slot = ActiveSlot();
         const size_t residentCount =
             (std::min)(
                 residentInstanceCount,
                 (std::min)(
                     slot != nullptr ? slot->residentInstanceCount : 0u,
                     capacity_));
+        if (slot != nullptr) {
+            // BeginFrame はフレーム統計を初期化するため cursor を 0 に戻すが、
+            // resident reuse では mapped 側にも同じ論理範囲が残っている。
+            // 材質 binding version が変わった場合に全 resident instance を再 patch
+            // できるよう、論理的な使用範囲を復元する。
+            slot->cursor = residentCount;
+        }
 
         const size_t capacity = stats_.capacity;
         const bool initialized = stats_.initialized;

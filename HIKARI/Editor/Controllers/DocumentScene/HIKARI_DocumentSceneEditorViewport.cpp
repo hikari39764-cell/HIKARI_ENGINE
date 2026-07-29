@@ -325,6 +325,10 @@ namespace HIKARI {
                 default:
                     break;
                 }
+                if (!transformResult.historyLabelOverride.empty()) {
+                    historyLabel =
+                        transformResult.historyLabelOverride.data();
+                }
                 viewportTransformHistory_.ObserveBeforeApply(
                     scene.GetSceneDocument(),
                     context_.selection.selectedObject->GetDocumentId(),
@@ -338,6 +342,9 @@ namespace HIKARI {
                     EDITOR::CommitSceneSelectionTransforms(
                         scene,
                         transformResult);
+                    viewportLightingRefreshPending_ |=
+                        transformResult
+                            .lightingRuntimeRefreshRequired;
                     context_.sceneDirty = true;
                     scene.SetUnsavedSceneChanges(true);
                     viewportTransformHistory_.MarkChanged();

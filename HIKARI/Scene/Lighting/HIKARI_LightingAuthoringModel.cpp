@@ -138,6 +138,9 @@ namespace HIKARI::LIGHTING_AUTHORING {
             volume.settings.intensity = properties.value(
                 "intensity",
                 1.0f);
+            volume.settings.blendDistance = properties.value(
+                "blendDistance",
+                1.0f);
             volume.settings.captureResolution = properties.value(
                 "captureResolution",
                 32u);
@@ -334,6 +337,7 @@ namespace HIKARI::LIGHTING_AUTHORING {
                 { "countY", settings.countY },
                 { "countZ", settings.countZ },
                 { "intensity", settings.intensity },
+                { "blendDistance", settings.blendDistance },
                 { "captureResolution", settings.captureResolution },
                 { "shOrder", settings.shOrder },
                 { "priority", volume.priority },

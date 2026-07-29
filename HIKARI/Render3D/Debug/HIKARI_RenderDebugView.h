@@ -28,6 +28,9 @@ namespace HIKARI {
         VolumetricScattering = 20,
         VolumetricTransmittance = 21,
         VolumetricDepthSlice = 22,
+        ReflectionProviderWeight = 23,
+        IrradianceProviderWeight = 24,
+        LightingFallbackWeight = 25,
 
         MeshletId = 32,
         ClusterId = 33,
@@ -61,6 +64,9 @@ namespace HIKARI {
         case RenderDebugView::VolumetricScattering: return "Volumetric Scattering";
         case RenderDebugView::VolumetricTransmittance: return "Volumetric Transmittance";
         case RenderDebugView::VolumetricDepthSlice: return "Volumetric Depth Slice";
+        case RenderDebugView::ReflectionProviderWeight: return "Reflection Provider Weight";
+        case RenderDebugView::IrradianceProviderWeight: return "Irradiance Provider Weight";
+        case RenderDebugView::LightingFallbackWeight: return "Lighting Fallback Weight";
         case RenderDebugView::MeshletId: return "Meshlet ID";
         case RenderDebugView::ClusterId: return "Cluster ID";
         case RenderDebugView::SurfaceId: return "Surface ID";
@@ -103,6 +109,16 @@ namespace HIKARI {
             view == RenderDebugView::TemporalTransparencyMask ||
             view == RenderDebugView::TemporalDisocclusion ||
             view == RenderDebugView::TemporalInvalidDepthMotion;
+    }
+
+    inline bool IsLightingProviderRenderDebugView(
+        RenderDebugView view) {
+        return view ==
+                RenderDebugView::ReflectionProviderWeight ||
+            view ==
+                RenderDebugView::IrradianceProviderWeight ||
+            view ==
+                RenderDebugView::LightingFallbackWeight;
     }
 
     inline bool IsVolumetricRenderDebugView(RenderDebugView view) {

@@ -25,6 +25,20 @@ float4 main(PSInput input) : SV_TARGET
     float threshold = max(gUser[0].x, 0.0f);
     float intensity = max(gUser[0].y, 0.0f);
     float luminance = dot(color.rgb, float3(0.2126f, 0.7152f, 0.0722f));
-    float bloomAmount = saturate(luminance - threshold);
-    return float4(color.rgb * bloomAmount, intensity);
+    float softKnee = max(threshold * 0.5f, 0.0001f);
+    float softContribution = clamp(
+        luminance - threshold + softKnee,
+        0.0f,
+        softKnee * 2.0f);
+    softContribution =
+        softContribution * softContribution /
+        (softKnee * 4.0f + 0.0001f);
+    float contribution = max(
+        luminance - threshold,
+        softContribution);
+    float bloomWeight =
+        contribution / max(luminance, 0.0001f);
+    return float4(
+        color.rgb * bloomWeight * intensity,
+        1.0f);
 }

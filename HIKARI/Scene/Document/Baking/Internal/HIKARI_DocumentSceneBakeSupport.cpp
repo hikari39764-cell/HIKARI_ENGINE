@@ -234,7 +234,6 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
             captureEnvironment.bloom.enabled = false;
             captureEnvironment.toneMapping.enabled = false;
             captureEnvironment.post.enabled = false;
-            captureEnvironment.directionalShadow.enabled = false;
             captureEnvironment.showLightDebug = false;
             captureEnvironment.showPointLightMarkers = false;
             captureEnvironment.showSkyDebugInfo = false;

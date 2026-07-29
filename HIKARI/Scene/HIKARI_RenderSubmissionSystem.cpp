@@ -31,6 +31,9 @@ namespace HIKARI {
     SceneRenderCacheSync RenderSubmissionSystem::sSceneRenderCacheSync_{};
     bool RenderSubmissionSystem::sGpuSceneRegistryValid_ = false;
     bool RenderSubmissionSystem::sGpuDrivenSceneSyncInitialized_ = false;
+    RENDER3D::RenderViewPurpose
+        RenderSubmissionSystem::sRenderViewPurpose_ =
+            RENDER3D::RenderViewPurpose::Game;
 
     const char* ToString(RenderSubmissionRouteMode mode) {
         switch (mode) {
@@ -101,12 +104,32 @@ namespace HIKARI {
         InvalidateSceneResources(projectRootChanged);
     }
 
-    void RenderSubmissionSystem::InvalidateSceneResources(bool clearProceduralCache) {
-        MODELRENDERER::GetRenderModelCache().Clear();
+    void RenderSubmissionSystem::SetRenderViewPurpose(
+        RENDER3D::RenderViewPurpose purpose) {
+
+        if (sRenderViewPurpose_ == purpose) {
+            return;
+        }
+        sRenderViewPurpose_ = purpose;
+        InvalidateSubmissionRouting();
+    }
+
+    RENDER3D::RenderViewPurpose
+        RenderSubmissionSystem::GetRenderViewPurpose() {
+
+        return sRenderViewPurpose_;
+    }
+
+    void RenderSubmissionSystem::InvalidateSubmissionRouting() {
         sSceneRenderCache_.Clear();
         sGpuSceneRegistry_.Clear();
         sGpuSceneRegistryValid_ = false;
         sGpuDrivenSceneSyncInitialized_ = false;
+    }
+
+    void RenderSubmissionSystem::InvalidateSceneResources(bool clearProceduralCache) {
+        MODELRENDERER::GetRenderModelCache().Clear();
+        InvalidateSubmissionRouting();
         MESHRENDERER::InvalidateMaterialFxPipelineCache();
         MESHRENDERER::SetGpuDrivenSceneSource(nullptr);
         SHADOW::InvalidateSceneCache();
@@ -161,7 +184,8 @@ namespace HIKARI {
                 sSceneRenderCache_,
                 frame.frameIndex,
                 sAssetRegistry_,
-                sProjectRoot_);
+                sProjectRoot_,
+                sRenderViewPurpose_);
             sGpuDrivenSceneSyncInitialized_ = true;
         } else {
             sSceneRenderCacheSync_.SyncDirty(
@@ -170,7 +194,8 @@ namespace HIKARI {
                 sSceneRenderCache_,
                 frame.frameIndex,
                 sAssetRegistry_,
-                sProjectRoot_);
+                sProjectRoot_,
+                sRenderViewPurpose_);
         }
 
         RENDER3D::GPUDRIVEN::GpuSceneRegistrySyncInput gpuSceneInput{};
@@ -193,7 +218,14 @@ namespace HIKARI {
             SHADOW::SetGpuDrivenSceneSource(nullptr);
         }
 
-        SubmitDebugOverlays(world, sDebugStats_);
+        const bool lightingBakeCapture =
+            sRenderViewPurpose_ ==
+                RENDER3D::RenderViewPurpose::ReflectionProbeCapture ||
+            sRenderViewPurpose_ ==
+                RENDER3D::RenderViewPurpose::LightProbeCapture;
+        if (!lightingBakeCapture) {
+            SubmitDebugOverlays(world, sDebugStats_);
+        }
     }
 
 } // namespace HIKARI

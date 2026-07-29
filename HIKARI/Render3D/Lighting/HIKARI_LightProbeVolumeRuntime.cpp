@@ -1,11 +1,11 @@
 #include "Render3D/Lighting/HIKARI_LightProbeVolumeRuntime.h"
-#include "Gfx/HIKARI_GfxContext.h"
 
 #include <algorithm>
+#include <array>
+#include <cmath>
 #include <cstring>
-#include <sstream>
+#include <limits>
 #include <utility>
-#include <vector>
 
 #include <d3dx12.h>
 #include <DirectXPackedVector.h>
@@ -20,21 +20,27 @@
 #include "Core/HIKARI_Logger.h"
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
 #include "Gfx/HIKARI_DXCheck.h"
+#include "Gfx/HIKARI_GfxContext.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 
 namespace HIKARI::RENDER3D::LIGHTPROBE {
 
     namespace {
 
-        // SH9 係数は係数ごとに 1 枚の Texture3D (texel=probe, RGB=係数) に焼き、
-        // shader 側は hardware trilinear で係数を補間してから SH を評価する。
         constexpr uint32_t kShCoeffCount =
             GFX::DESCRIPTOR::kLightProbeShVolumeTextureCount;
-        constexpr DXGI_FORMAT kShVolumeFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
-
+        constexpr DXGI_FORMAT kShVolumeFormat =
+            DXGI_FORMAT_R16G16B16A16_FLOAT;
         static_assert(
-            kShCoeffCount == ASSETS::LIGHTING::kLightProbeShCoeffCount,
-            "SH volume texture count must match the baked SH coefficient count");
+            kShCoeffCount ==
+                ASSETS::LIGHTING::kLightProbeShCoeffCount);
+        static_assert(
+            kLightProbeVolumeViewSlotCount ==
+                GFX::DESCRIPTOR::kLightProbeVolumeSetCount);
+        static_assert(
+            kLightProbeVolumeResidentBudget ==
+                GFX::DESCRIPTOR::
+                    kLightProbeVolumeResidentSetCount);
 
         struct HalfTexel {
             uint16_t r = 0;
@@ -43,65 +49,110 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
             uint16_t a = 0;
         };
 
-        LightProbeVolumeRuntimeData gData{};
-        Microsoft::WRL::ComPtr<ID3D12Resource> gShVolumes[kShCoeffCount]{};
-        Microsoft::WRL::ComPtr<ID3D12Resource> gUploadBuffer{};
-        // device 再作成時に GPU volume を張り直すための CPU 側 SH (probe-major)。
-        std::vector<MATH::Vec3> gCpuShCoeffs{};
-        uint32_t gVolumeCountX = 0;
-        uint32_t gVolumeCountY = 0;
-        uint32_t gVolumeCountZ = 0;
-        D3D12_GPU_DESCRIPTOR_HANDLE gShVolumeSrvTable{};
-        ID3D12Device* gVolumeDevice = nullptr;
-        ID3D12Device* gSrvDevice = nullptr;
-        ID3D12DescriptorHeap* gSrvHeap = nullptr;
-        bool gHasValidSrvDescriptor = false;
-        bool gSrvDescriptorIsNull = false;
+        struct ResidentVolume {
+            LightProbeVolumeRuntimeData data{};
+            std::array<
+                Microsoft::WRL::ComPtr<ID3D12Resource>,
+                kShCoeffCount> shVolumes{};
+            Microsoft::WRL::ComPtr<ID3D12Resource> uploadBuffer{};
+            std::vector<MATH::Vec3> cpuShCoeffs{};
+            ID3D12Device* volumeDevice = nullptr;
+            ID3D12Device* srvDevice = nullptr;
+            ID3D12DescriptorHeap* srvHeap = nullptr;
+            D3D12_GPU_DESCRIPTOR_HANDLE srvTable{};
+            bool srvReady = false;
+        };
+
+        std::vector<ResidentVolume> gResidents{};
+        size_t gResidentCount = 0;
+        LightProbeVolumeViewSelection gViewSelection{};
         int gSamplingSuppressDepth = 0;
 
-        void SetMessage(std::string* outMessage, std::string message) {
-            if (outMessage != nullptr) {
-                *outMessage = std::move(message);
-            }
+        UINT DescriptorBaseIndex(size_t residentIndex) {
+            return GFX::DESCRIPTOR::ToIndex(
+                GFX::DESCRIPTOR::SystemSrv::LightProbeShVolume0) +
+                static_cast<UINT>(
+                    residentIndex * kShCoeffCount);
         }
 
-        D3D12_CPU_DESCRIPTOR_HANDLE VolumeSrvCpuAt(uint32_t coeffIndex) {
+        D3D12_CPU_DESCRIPTOR_HANDLE VolumeSrvCpuAt(
+            size_t residentIndex,
+            uint32_t coeffIndex) {
+
             ID3D12Device* device = GFX::GetCurrentContext().device;
-            ID3D12DescriptorHeap* heap = GFX::GetCurrentContext().srvHeap;
+            ID3D12DescriptorHeap* heap =
+                GFX::GetCurrentContext().srvHeap;
             if (device == nullptr || heap == nullptr) {
                 return {};
             }
-
             const UINT descriptorSize =
-                device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+                device->GetDescriptorHandleIncrementSize(
+                    D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
             return GFX::DESCRIPTOR::CpuAt(
                 heap,
                 descriptorSize,
-                GFX::DESCRIPTOR::ToIndex(GFX::DESCRIPTOR::SystemSrv::LightProbeShVolume0) +
-                    coeffIndex);
+                DescriptorBaseIndex(residentIndex) + coeffIndex);
         }
 
-        D3D12_GPU_DESCRIPTOR_HANDLE VolumeSrvTableGpu() {
+        D3D12_GPU_DESCRIPTOR_HANDLE VolumeSrvTableGpu(
+            size_t residentIndex) {
+
             ID3D12Device* device = GFX::GetCurrentContext().device;
-            ID3D12DescriptorHeap* heap = GFX::GetCurrentContext().srvHeap;
+            ID3D12DescriptorHeap* heap =
+                GFX::GetCurrentContext().srvHeap;
             if (device == nullptr || heap == nullptr) {
                 return {};
             }
-
             const UINT descriptorSize =
-                device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+                device->GetDescriptorHandleIncrementSize(
+                    D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
             return GFX::DESCRIPTOR::GpuAt(
                 heap,
                 descriptorSize,
-                GFX::DESCRIPTOR::ToIndex(GFX::DESCRIPTOR::SystemSrv::LightProbeShVolume0));
+                DescriptorBaseIndex(residentIndex));
         }
 
-        void ClearSrvDescriptorState() {
-            gShVolumeSrvTable = {};
-            gSrvDevice = nullptr;
-            gSrvHeap = nullptr;
-            gHasValidSrvDescriptor = false;
-            gSrvDescriptorIsNull = false;
+        D3D12_SHADER_RESOURCE_VIEW_DESC MakeVolumeSrvDesc() {
+            D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
+            srv.Format = kShVolumeFormat;
+            srv.ViewDimension =
+                D3D12_SRV_DIMENSION_TEXTURE3D;
+            srv.Shader4ComponentMapping =
+                D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+            srv.Texture3D.MostDetailedMip = 0;
+            srv.Texture3D.MipLevels = 1;
+            return srv;
+        }
+
+        void WriteNullSrvs(size_t residentIndex) {
+            ID3D12Device* device = GFX::GetCurrentContext().device;
+            if (device == nullptr ||
+                GFX::GetCurrentContext().srvHeap == nullptr) {
+                return;
+            }
+            const D3D12_SHADER_RESOURCE_VIEW_DESC srv =
+                MakeVolumeSrvDesc();
+            for (uint32_t coeff = 0;
+                 coeff < kShCoeffCount;
+                 ++coeff) {
+                device->CreateShaderResourceView(
+                    nullptr,
+                    &srv,
+                    VolumeSrvCpuAt(residentIndex, coeff));
+            }
+        }
+
+        bool HasGpuResources(const ResidentVolume& resident) {
+            if (resident.volumeDevice !=
+                    GFX::GetCurrentContext().device) {
+                return false;
+            }
+            return std::all_of(
+                resident.shVolumes.begin(),
+                resident.shVolumes.end(),
+                [](const auto& volume) {
+                    return volume != nullptr;
+                });
         }
 
         void RetireResource(
@@ -111,156 +162,78 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
             if (resource == nullptr) {
                 return;
             }
-
             IUnknown* raw = resource.Detach();
             GFX::RetireD3D12ObjectForCurrentFrame(
                 raw,
-                debugName != nullptr ? debugName : "LightProbeVolume resource");
+                debugName);
         }
 
-        void RetireGpuVolumes() {
-            for (Microsoft::WRL::ComPtr<ID3D12Resource>& volume : gShVolumes) {
-                RetireResource(volume, "LightProbeVolume SH volume texture");
+        void RetireResident(ResidentVolume& resident) {
+            for (auto& volume : resident.shVolumes) {
+                RetireResource(
+                    volume,
+                    "LightProbeVolume SH texture");
             }
-            RetireResource(gUploadBuffer, "LightProbeVolume upload buffer");
-            gVolumeCountX = 0;
-            gVolumeCountY = 0;
-            gVolumeCountZ = 0;
-            gVolumeDevice = nullptr;
+            RetireResource(
+                resident.uploadBuffer,
+                "LightProbeVolume upload buffer");
+            resident.volumeDevice = nullptr;
+            resident.srvDevice = nullptr;
+            resident.srvHeap = nullptr;
+            resident.srvTable = {};
+            resident.srvReady = false;
         }
 
-        bool HasGpuVolumes() {
-            if (gVolumeCountX == 0u || gVolumeCountY == 0u || gVolumeCountZ == 0u ||
-                gVolumeDevice != GFX::GetCurrentContext().device) {
-                return false;
-            }
-            for (const Microsoft::WRL::ComPtr<ID3D12Resource>& volume : gShVolumes) {
-                if (volume == nullptr) {
-                    return false;
-                }
-            }
-            return true;
-        }
+        bool WriteVolumeSrvs(
+            ResidentVolume& resident,
+            size_t residentIndex) {
 
-        bool IsSrvContextCurrent() {
-            return gSrvDevice == GFX::GetCurrentContext().device &&
-                gSrvHeap == GFX::GetCurrentContext().srvHeap &&
-                gShVolumeSrvTable.ptr != 0 &&
-                gHasValidSrvDescriptor;
-        }
-
-        D3D12_SHADER_RESOURCE_VIEW_DESC MakeVolumeSrvDesc() {
-            D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
-            srv.Format = kShVolumeFormat;
-            srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE3D;
-            srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-            srv.Texture3D.MostDetailedMip = 0;
-            srv.Texture3D.MipLevels = 1;
-            return srv;
-        }
-
-        bool WriteNullSrvs() {
             ID3D12Device* device = GFX::GetCurrentContext().device;
-            ID3D12DescriptorHeap* heap = GFX::GetCurrentContext().srvHeap;
-            if (device == nullptr || heap == nullptr) {
-                ClearSrvDescriptorState();
+            ID3D12DescriptorHeap* heap =
+                GFX::GetCurrentContext().srvHeap;
+            if (device == nullptr || heap == nullptr ||
+                !HasGpuResources(resident)) {
+                resident.srvReady = false;
                 return false;
             }
-
-            const D3D12_SHADER_RESOURCE_VIEW_DESC srv = MakeVolumeSrvDesc();
-            for (uint32_t i = 0; i < kShCoeffCount; ++i) {
-                const D3D12_CPU_DESCRIPTOR_HANDLE cpu = VolumeSrvCpuAt(i);
-                if (cpu.ptr == 0) {
-                    ClearSrvDescriptorState();
-                    return false;
-                }
-                device->CreateShaderResourceView(nullptr, &srv, cpu);
+            const D3D12_SHADER_RESOURCE_VIEW_DESC srv =
+                MakeVolumeSrvDesc();
+            for (uint32_t coeff = 0;
+                 coeff < kShCoeffCount;
+                 ++coeff) {
+                device->CreateShaderResourceView(
+                    resident.shVolumes[coeff].Get(),
+                    &srv,
+                    VolumeSrvCpuAt(residentIndex, coeff));
             }
-
-            gShVolumeSrvTable = VolumeSrvTableGpu();
-            gSrvDevice = device;
-            gSrvHeap = heap;
-            gHasValidSrvDescriptor = gShVolumeSrvTable.ptr != 0;
-            gSrvDescriptorIsNull = gHasValidSrvDescriptor;
-            return gHasValidSrvDescriptor;
+            resident.srvDevice = device;
+            resident.srvHeap = heap;
+            resident.srvTable =
+                VolumeSrvTableGpu(residentIndex);
+            resident.srvReady =
+                resident.srvTable.ptr != 0;
+            return resident.srvReady;
         }
 
-        bool WriteVolumeSrvs() {
-            ID3D12Device* device = GFX::GetCurrentContext().device;
-            ID3D12DescriptorHeap* heap = GFX::GetCurrentContext().srvHeap;
-            if (device == nullptr || heap == nullptr || !HasGpuVolumes()) {
-                ClearSrvDescriptorState();
-                return false;
-            }
-
-            const D3D12_SHADER_RESOURCE_VIEW_DESC srv = MakeVolumeSrvDesc();
-            for (uint32_t i = 0; i < kShCoeffCount; ++i) {
-                const D3D12_CPU_DESCRIPTOR_HANDLE cpu = VolumeSrvCpuAt(i);
-                if (cpu.ptr == 0) {
-                    ClearSrvDescriptorState();
-                    return false;
-                }
-                device->CreateShaderResourceView(gShVolumes[i].Get(), &srv, cpu);
-            }
-
-            gShVolumeSrvTable = VolumeSrvTableGpu();
-            gSrvDevice = device;
-            gSrvHeap = heap;
-            gHasValidSrvDescriptor = gShVolumeSrvTable.ptr != 0;
-            gSrvDescriptorIsNull = false;
-            return gHasValidSrvDescriptor;
-        }
-
-        bool UploadVolumes(
-            const std::vector<MATH::Vec3>& coeffs,
-            uint32_t countX,
-            uint32_t countY,
-            uint32_t countZ,
-            std::string* outMessage);
-
-        bool EnsureLightProbeSrvDescriptor() {
-            if (GFX::GetCurrentContext().device == nullptr || GFX::GetCurrentContext().srvHeap == nullptr) {
-                ClearSrvDescriptorState();
-                return false;
-            }
-
-            if (!gData.enabled) {
-                if (!IsSrvContextCurrent() || !gSrvDescriptorIsNull) {
-                    WriteNullSrvs();
-                }
-                return false;
-            }
-
-            if (!HasGpuVolumes()) {
-                if (!gCpuShCoeffs.empty() &&
-                    gData.countX > 0u && gData.countY > 0u && gData.countZ > 0u) {
-                    // device 再作成時は保持している SH から volume を張り直す。
-                    if (UploadVolumes(
-                        gCpuShCoeffs,
-                        gData.countX,
-                        gData.countY,
-                        gData.countZ,
-                        nullptr)) {
-                        return true;
-                    }
-                }
-                WriteNullSrvs();
-                return false;
-            }
-
-            if (!IsSrvContextCurrent()) {
-                return WriteVolumeSrvs();
-            }
-
-            return true;
+        HalfTexel ToHalfTexel(const MATH::Vec3& value) {
+            using DirectX::PackedVector::XMConvertFloatToHalf;
+            return HalfTexel{
+                XMConvertFloatToHalf(value.x),
+                XMConvertFloatToHalf(value.y),
+                XMConvertFloatToHalf(value.z),
+                0u
+            };
         }
 
         std::vector<MATH::Vec3> BuildCpuCoeffs(
-            const ASSETS::LIGHTING::LightProbeVolumeFileData& fileData) {
+            const ASSETS::LIGHTING::LightProbeVolumeFileData&
+                fileData) {
 
             std::vector<MATH::Vec3> coeffs{};
-            coeffs.reserve(fileData.probes.size() * kShCoeffCount);
-            for (const ASSETS::LIGHTING::LightProbeSh9& probe : fileData.probes) {
+            coeffs.reserve(
+                fileData.probes.size() * kShCoeffCount);
+            for (const ASSETS::LIGHTING::LightProbeSh9& probe :
+                 fileData.probes) {
                 for (const MATH::Vec3& coeff : probe.coeffs) {
                     coeffs.push_back(coeff);
                 }
@@ -268,80 +241,96 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
             return coeffs;
         }
 
-        HalfTexel ToHalfTexel(const MATH::Vec3& value) {
-            using DirectX::PackedVector::XMConvertFloatToHalf;
-            HalfTexel texel{};
-            texel.r = XMConvertFloatToHalf(value.x);
-            texel.g = XMConvertFloatToHalf(value.y);
-            texel.b = XMConvertFloatToHalf(value.z);
-            texel.a = 0;
-            return texel;
-        }
-
         bool UploadVolumes(
+            ResidentVolume& resident,
+            size_t residentIndex,
             const std::vector<MATH::Vec3>& coeffs,
             uint32_t countX,
             uint32_t countY,
             uint32_t countZ,
-            std::string* outMessage) {
+            std::string& outMessage) {
 
             ID3D12Device* device = GFX::GetCurrentContext().device;
-            ID3D12CommandQueue* queue = GFX::GetCurrentContext().queue;
+            ID3D12CommandQueue* queue =
+                GFX::GetCurrentContext().queue;
             const size_t probeCount =
-                static_cast<size_t>(countX) * countY * countZ;
+                static_cast<size_t>(countX) *
+                countY *
+                countZ;
             if (device == nullptr || queue == nullptr ||
                 probeCount == 0u ||
-                coeffs.size() != probeCount * kShCoeffCount) {
-                SetMessage(outMessage, "Light probe GPU upload context is missing.");
+                coeffs.size() !=
+                    probeCount * kShCoeffCount) {
+                outMessage =
+                    "Light probe GPU upload context is missing.";
                 return false;
             }
 
-            const CD3DX12_RESOURCE_DESC volumeDesc = CD3DX12_RESOURCE_DESC::Tex3D(
-                kShVolumeFormat,
-                countX,
-                countY,
-                static_cast<UINT16>(countZ),
-                1);
-
-            const CD3DX12_HEAP_PROPERTIES defaultHeap(D3D12_HEAP_TYPE_DEFAULT);
-            Microsoft::WRL::ComPtr<ID3D12Resource> volumes[kShCoeffCount]{};
-            for (uint32_t i = 0; i < kShCoeffCount; ++i) {
-                const HRESULT hr = device->CreateCommittedResource(
-                    &defaultHeap,
-                    D3D12_HEAP_FLAG_NONE,
-                    &volumeDesc,
-                    D3D12_RESOURCE_STATE_COMMON,
-                    nullptr,
-                    IID_PPV_ARGS(volumes[i].GetAddressOf()));
-                if (!HIKARI_DX_CHECK(hr, "LightProbeVolumeRuntime::CreateShVolume")) {
-                    SetMessage(outMessage, "Failed to create light probe SH volume texture.");
+            const CD3DX12_RESOURCE_DESC volumeDesc =
+                CD3DX12_RESOURCE_DESC::Tex3D(
+                    kShVolumeFormat,
+                    countX,
+                    countY,
+                    static_cast<UINT16>(countZ),
+                    1u);
+            const CD3DX12_HEAP_PROPERTIES defaultHeap(
+                D3D12_HEAP_TYPE_DEFAULT);
+            std::array<
+                Microsoft::WRL::ComPtr<ID3D12Resource>,
+                kShCoeffCount> volumes{};
+            for (uint32_t coeff = 0;
+                 coeff < kShCoeffCount;
+                 ++coeff) {
+                const HRESULT hr =
+                    device->CreateCommittedResource(
+                        &defaultHeap,
+                        D3D12_HEAP_FLAG_NONE,
+                        &volumeDesc,
+                        D3D12_RESOURCE_STATE_COMMON,
+                        nullptr,
+                        IID_PPV_ARGS(
+                            volumes[coeff].GetAddressOf()));
+                if (!HIKARI_DX_CHECK(
+                        hr,
+                        "LightProbeVolumeRuntime::CreateShVolume")) {
+                    outMessage =
+                        "Failed to create light probe SH volume.";
                     return false;
                 }
             }
 
-            // 9 枚分の footprint を 1 本の upload buffer に直列配置する。
-            D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprints[kShCoeffCount]{};
-            UINT rowCounts[kShCoeffCount]{};
-            UINT64 rowBytes[kShCoeffCount]{};
+            std::array<
+                D3D12_PLACED_SUBRESOURCE_FOOTPRINT,
+                kShCoeffCount> footprints{};
+            std::array<UINT, kShCoeffCount> rowCounts{};
+            std::array<UINT64, kShCoeffCount> rowBytes{};
             UINT64 uploadBytes = 0;
-            for (uint32_t i = 0; i < kShCoeffCount; ++i) {
+            for (uint32_t coeff = 0;
+                 coeff < kShCoeffCount;
+                 ++coeff) {
                 UINT64 total = 0;
                 device->GetCopyableFootprints(
                     &volumeDesc,
                     0,
                     1,
                     uploadBytes,
-                    &footprints[i],
-                    &rowCounts[i],
-                    &rowBytes[i],
+                    &footprints[coeff],
+                    &rowCounts[coeff],
+                    &rowBytes[coeff],
                     &total);
-                uploadBytes = footprints[i].Offset + total;
                 uploadBytes =
-                    (uploadBytes + D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT - 1u) &
-                    ~static_cast<UINT64>(D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT - 1u);
+                    footprints[coeff].Offset + total;
+                uploadBytes =
+                    (uploadBytes +
+                        D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT -
+                        1u) &
+                    ~static_cast<UINT64>(
+                        D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT -
+                        1u);
             }
 
-            const CD3DX12_HEAP_PROPERTIES uploadHeap(D3D12_HEAP_TYPE_UPLOAD);
+            const CD3DX12_HEAP_PROPERTIES uploadHeap(
+                D3D12_HEAP_TYPE_UPLOAD);
             const CD3DX12_RESOURCE_DESC uploadDesc =
                 CD3DX12_RESOURCE_DESC::Buffer(uploadBytes);
             Microsoft::WRL::ComPtr<ID3D12Resource> uploadBuffer{};
@@ -352,43 +341,70 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
                 D3D12_RESOURCE_STATE_GENERIC_READ,
                 nullptr,
                 IID_PPV_ARGS(uploadBuffer.GetAddressOf()));
-            if (!HIKARI_DX_CHECK(hr, "LightProbeVolumeRuntime::CreateUploadBuffer")) {
-                SetMessage(outMessage, "Failed to create light probe upload buffer.");
+            if (!HIKARI_DX_CHECK(
+                    hr,
+                    "LightProbeVolumeRuntime::CreateUploadBuffer")) {
+                outMessage =
+                    "Failed to create light probe upload buffer.";
                 return false;
             }
 
             uint8_t* mapped = nullptr;
-            hr = uploadBuffer->Map(0, nullptr, reinterpret_cast<void**>(&mapped));
+            hr = uploadBuffer->Map(
+                0,
+                nullptr,
+                reinterpret_cast<void**>(&mapped));
             if (FAILED(hr) || mapped == nullptr) {
-                SetMessage(outMessage, "Failed to map light probe upload buffer.");
+                outMessage =
+                    "Failed to map light probe upload buffer.";
                 return false;
             }
-            for (uint32_t coeff = 0; coeff < kShCoeffCount; ++coeff) {
-                const D3D12_PLACED_SUBRESOURCE_FOOTPRINT& fp = footprints[coeff];
+            for (uint32_t coeff = 0;
+                 coeff < kShCoeffCount;
+                 ++coeff) {
+                const auto& footprint =
+                    footprints[coeff];
                 for (uint32_t z = 0; z < countZ; ++z) {
                     for (uint32_t y = 0; y < countY; ++y) {
-                        HalfTexel* row = reinterpret_cast<HalfTexel*>(
-                            mapped + fp.Offset +
-                            (static_cast<UINT64>(z) * rowCounts[coeff] + y) *
-                                fp.Footprint.RowPitch);
-                        for (uint32_t x = 0; x < countX; ++x) {
+                        auto* row =
+                            reinterpret_cast<HalfTexel*>(
+                                mapped +
+                                footprint.Offset +
+                                (static_cast<UINT64>(z) *
+                                    rowCounts[coeff] +
+                                    y) *
+                                    footprint.Footprint.RowPitch);
+                        for (uint32_t x = 0;
+                             x < countX;
+                             ++x) {
                             const size_t probeIndex =
-                                (static_cast<size_t>(z) * countY + y) * countX + x;
+                                (static_cast<size_t>(z) *
+                                    countY +
+                                    y) *
+                                    countX +
+                                x;
                             row[x] = ToHalfTexel(
-                                coeffs[probeIndex * kShCoeffCount + coeff]);
+                                coeffs[
+                                    probeIndex *
+                                        kShCoeffCount +
+                                    coeff]);
                         }
                     }
                 }
             }
             uploadBuffer->Unmap(0, nullptr);
 
-            Microsoft::WRL::ComPtr<ID3D12CommandAllocator> allocator{};
-            Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> cmd{};
+            Microsoft::WRL::ComPtr<ID3D12CommandAllocator>
+                allocator{};
+            Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList>
+                commandList{};
             Microsoft::WRL::ComPtr<ID3D12Fence> fence{};
             hr = device->CreateCommandAllocator(
-                D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(allocator.GetAddressOf()));
+                D3D12_COMMAND_LIST_TYPE_DIRECT,
+                IID_PPV_ARGS(allocator.GetAddressOf()));
             if (FAILED(hr)) {
-                SetMessage(outMessage, "Failed to create light probe upload allocator.");
+                outMessage =
+                    "Failed to create light probe upload allocator.";
                 return false;
             }
             hr = device->CreateCommandList(
@@ -396,231 +412,581 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
                 D3D12_COMMAND_LIST_TYPE_DIRECT,
                 allocator.Get(),
                 nullptr,
-                IID_PPV_ARGS(cmd.GetAddressOf()));
+                IID_PPV_ARGS(commandList.GetAddressOf()));
             if (FAILED(hr)) {
-                SetMessage(outMessage, "Failed to create light probe upload command list.");
+                outMessage =
+                    "Failed to create light probe upload list.";
                 return false;
             }
 
-            D3D12_RESOURCE_BARRIER toCopyDest[kShCoeffCount]{};
-            for (uint32_t i = 0; i < kShCoeffCount; ++i) {
-                toCopyDest[i] = CD3DX12_RESOURCE_BARRIER::Transition(
-                    volumes[i].Get(),
-                    D3D12_RESOURCE_STATE_COMMON,
-                    D3D12_RESOURCE_STATE_COPY_DEST);
+            std::array<
+                D3D12_RESOURCE_BARRIER,
+                kShCoeffCount> toCopy{};
+            for (uint32_t coeff = 0;
+                 coeff < kShCoeffCount;
+                 ++coeff) {
+                toCopy[coeff] =
+                    CD3DX12_RESOURCE_BARRIER::Transition(
+                        volumes[coeff].Get(),
+                        D3D12_RESOURCE_STATE_COMMON,
+                        D3D12_RESOURCE_STATE_COPY_DEST);
             }
-            cmd->ResourceBarrier(kShCoeffCount, toCopyDest);
-
-            for (uint32_t i = 0; i < kShCoeffCount; ++i) {
-                const CD3DX12_TEXTURE_COPY_LOCATION dst(volumes[i].Get(), 0);
-                const CD3DX12_TEXTURE_COPY_LOCATION src(uploadBuffer.Get(), footprints[i]);
-                cmd->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
+            commandList->ResourceBarrier(
+                kShCoeffCount,
+                toCopy.data());
+            for (uint32_t coeff = 0;
+                 coeff < kShCoeffCount;
+                 ++coeff) {
+                const CD3DX12_TEXTURE_COPY_LOCATION dst(
+                    volumes[coeff].Get(),
+                    0);
+                const CD3DX12_TEXTURE_COPY_LOCATION src(
+                    uploadBuffer.Get(),
+                    footprints[coeff]);
+                commandList->CopyTextureRegion(
+                    &dst,
+                    0,
+                    0,
+                    0,
+                    &src,
+                    nullptr);
             }
-
-            D3D12_RESOURCE_BARRIER toShaderResource[kShCoeffCount]{};
-            for (uint32_t i = 0; i < kShCoeffCount; ++i) {
-                toShaderResource[i] = CD3DX12_RESOURCE_BARRIER::Transition(
-                    volumes[i].Get(),
-                    D3D12_RESOURCE_STATE_COPY_DEST,
-                    D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+            std::array<
+                D3D12_RESOURCE_BARRIER,
+                kShCoeffCount> toShader{};
+            for (uint32_t coeff = 0;
+                 coeff < kShCoeffCount;
+                 ++coeff) {
+                toShader[coeff] =
+                    CD3DX12_RESOURCE_BARRIER::Transition(
+                        volumes[coeff].Get(),
+                        D3D12_RESOURCE_STATE_COPY_DEST,
+                        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
             }
-            cmd->ResourceBarrier(kShCoeffCount, toShaderResource);
-
-            hr = cmd->Close();
+            commandList->ResourceBarrier(
+                kShCoeffCount,
+                toShader.data());
+            hr = commandList->Close();
             if (FAILED(hr)) {
-                SetMessage(outMessage, "Failed to close light probe upload command list.");
+                outMessage =
+                    "Failed to close light probe upload list.";
                 return false;
             }
-
-            ID3D12CommandList* lists[] = { cmd.Get() };
+            ID3D12CommandList* lists[] = {
+                commandList.Get()
+            };
             queue->ExecuteCommandLists(1, lists);
 
-            hr = device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(fence.GetAddressOf()));
-            if (FAILED(hr)) {
-                SetMessage(outMessage, "Failed to create light probe upload fence.");
+            hr = device->CreateFence(
+                0,
+                D3D12_FENCE_FLAG_NONE,
+                IID_PPV_ARGS(fence.GetAddressOf()));
+            if (FAILED(hr) ||
+                FAILED(queue->Signal(fence.Get(), 1u))) {
+                outMessage =
+                    "Failed to signal light probe upload.";
                 return false;
             }
-
-            constexpr uint64_t kFenceValue = 1;
-            hr = queue->Signal(fence.Get(), kFenceValue);
-            if (FAILED(hr)) {
-                SetMessage(outMessage, "Failed to signal light probe upload fence.");
-                return false;
-            }
-            if (fence->GetCompletedValue() < kFenceValue) {
-                HANDLE eventHandle = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+            if (fence->GetCompletedValue() < 1u) {
+                HANDLE eventHandle =
+                    CreateEvent(nullptr, FALSE, FALSE, nullptr);
                 if (eventHandle == nullptr) {
-                    SetMessage(outMessage, "Failed to create light probe upload fence event.");
+                    outMessage =
+                        "Failed to create light probe fence event.";
                     return false;
                 }
-                hr = fence->SetEventOnCompletion(kFenceValue, eventHandle);
+                hr = fence->SetEventOnCompletion(
+                    1u,
+                    eventHandle);
                 if (SUCCEEDED(hr)) {
-                    WaitForSingleObject(eventHandle, INFINITE);
+                    WaitForSingleObject(
+                        eventHandle,
+                        INFINITE);
                 }
                 CloseHandle(eventHandle);
                 if (FAILED(hr)) {
-                    SetMessage(outMessage, "Failed to wait light probe upload fence.");
+                    outMessage =
+                        "Failed to wait for light probe upload.";
                     return false;
                 }
             }
 
-            RetireGpuVolumes();
-            for (uint32_t i = 0; i < kShCoeffCount; ++i) {
-                gShVolumes[i] = std::move(volumes[i]);
-            }
-            gUploadBuffer = std::move(uploadBuffer);
-            gVolumeCountX = countX;
-            gVolumeCountY = countY;
-            gVolumeCountZ = countZ;
-            gVolumeDevice = device;
-            if (!WriteVolumeSrvs()) {
-                SetMessage(outMessage, "Light probe SRV descriptors are missing.");
+            RetireResident(resident);
+            resident.shVolumes = std::move(volumes);
+            resident.uploadBuffer = std::move(uploadBuffer);
+            resident.volumeDevice = device;
+            resident.cpuShCoeffs = coeffs;
+            if (!WriteVolumeSrvs(
+                    resident,
+                    residentIndex)) {
+                outMessage =
+                    "Light probe SRV descriptors are missing.";
                 return false;
             }
-            gCpuShCoeffs = coeffs;
             return true;
         }
 
-        void RefreshValidity() {
-            const bool srvReady = EnsureLightProbeSrvDescriptor();
-            gData.valid = gData.enabled &&
-                gSamplingSuppressDepth <= 0 &&
-                gData.probeCount > 0u &&
-                gData.countX >= 1u &&
-                gData.countY >= 1u &&
-                gData.countZ >= 1u &&
-                HasGpuVolumes() &&
-                srvReady &&
-                gData.intensity > 0.0f;
+        void RefreshValidity(
+            ResidentVolume& resident,
+            size_t residentIndex) {
+
+            if (resident.srvDevice !=
+                    GFX::GetCurrentContext().device ||
+                resident.srvHeap !=
+                    GFX::GetCurrentContext().srvHeap ||
+                resident.srvTable.ptr == 0) {
+                WriteVolumeSrvs(
+                    resident,
+                    residentIndex);
+            }
+            resident.data.valid =
+                resident.data.enabled &&
+                resident.data.probeCount > 0u &&
+                resident.data.countX > 0u &&
+                resident.data.countY > 0u &&
+                resident.data.countZ > 0u &&
+                resident.data.intensity > 0.0f &&
+                HasGpuResources(resident) &&
+                resident.srvReady;
         }
 
-        void LogState(const char* reason) {
-            std::ostringstream oss{};
-            oss << "[Environment][LightProbe]"
-                << " reason=" << (reason ? reason : "state")
-                << " enabled=" << (gData.enabled ? "true" : "false")
-                << " valid=" << (gData.valid ? "true" : "false")
-                << " probes=" << gData.probeCount
-                << " grid=" << gData.countX << "x" << gData.countY << "x" << gData.countZ
-                << " intensity=" << gData.intensity
-                << " path=" << gData.sourcePath;
-            HIKARI_LOG_INFO(oss.str());
+        bool LoadResident(
+            ResidentVolume& resident,
+            size_t residentIndex,
+            const LightProbeVolumeLoadRequest& request,
+            std::string& outMessage) {
+
+            ASSETS::LIGHTING::LightProbeVolumeFileData fileData{};
+            if (!ASSETS::LIGHTING::LoadLightProbeVolumeFile(
+                    request.path,
+                    fileData,
+                    &outMessage)) {
+                return false;
+            }
+            const std::vector<MATH::Vec3> coeffs =
+                BuildCpuCoeffs(fileData);
+            if (!UploadVolumes(
+                    resident,
+                    residentIndex,
+                    coeffs,
+                    fileData.countX,
+                    fileData.countY,
+                    fileData.countZ,
+                    outMessage)) {
+                return false;
+            }
+            resident.data.id = request.id;
+            resident.data.enabled = true;
+            resident.data.origin = fileData.origin;
+            resident.data.size = fileData.size;
+            resident.data.spacing = fileData.spacing;
+            resident.data.countX = fileData.countX;
+            resident.data.countY = fileData.countY;
+            resident.data.countZ = fileData.countZ;
+            resident.data.probeCount =
+                static_cast<uint32_t>(
+                    fileData.probes.size());
+            resident.data.intensity =
+                (std::max)(0.0f, request.intensity);
+            resident.data.blendDistance =
+                (std::max)(0.0f, request.blendDistance);
+            resident.data.priority = request.priority;
+            resident.data.sourcePath =
+                request.path.lexically_normal().generic_string();
+            RefreshValidity(
+                resident,
+                residentIndex);
+            return resident.data.valid;
+        }
+
+        float SmoothWeight(float value) {
+            const float x = std::clamp(value, 0.0f, 1.0f);
+            return x * x * (3.0f - 2.0f * x);
+        }
+
+        float EvaluateInfluence(
+            const LightProbeVolumeRuntimeData& volume,
+            const MATH::Vec3& point) {
+
+            const MATH::Vec3 maximum{
+                volume.origin.x + volume.size.x,
+                volume.origin.y + volume.size.y,
+                volume.origin.z + volume.size.z
+            };
+            const float edgeDistance = (std::min)({
+                point.x - volume.origin.x,
+                point.y - volume.origin.y,
+                point.z - volume.origin.z,
+                maximum.x - point.x,
+                maximum.y - point.y,
+                maximum.z - point.z
+            });
+            const float maximumBlend = (std::max)(
+                0.001f,
+                (std::min)({
+                    volume.size.x,
+                    volume.size.y,
+                    volume.size.z
+                }) * 0.5f);
+            const float blend = (std::max)(
+                0.001f,
+                (std::min)(
+                    volume.blendDistance,
+                    maximumBlend));
+            return SmoothWeight(edgeDistance / blend);
+        }
+
+        float DistanceSquared(
+            const LightProbeVolumeRuntimeData& volume,
+            const MATH::Vec3& point) {
+
+            const MATH::Vec3 center{
+                volume.origin.x + volume.size.x * 0.5f,
+                volume.origin.y + volume.size.y * 0.5f,
+                volume.origin.z + volume.size.z * 0.5f
+            };
+            const float dx = point.x - center.x;
+            const float dy = point.y - center.y;
+            const float dz = point.z - center.z;
+            return dx * dx + dy * dy + dz * dz;
         }
 
     } // namespace
 
     void Reset() {
-        gData = {};
-        RetireGpuVolumes();
-        gCpuShCoeffs.clear();
-        WriteNullSrvs();
-        RefreshValidity();
+        for (ResidentVolume& resident : gResidents) {
+            RetireResident(resident);
+        }
+        gResidents.clear();
+        for (size_t residentIndex = 0;
+             residentIndex <
+                kLightProbeVolumeResidentBudget;
+             ++residentIndex) {
+            WriteNullSrvs(residentIndex);
+        }
+        gResidentCount = 0;
+        gViewSelection = {};
     }
 
-    bool LoadLightProbeVolume(
-        const std::filesystem::path& path,
-        std::string* outMessage) {
+    bool LoadLightProbeVolumeSet(
+        std::vector<LightProbeVolumeLoadRequest> requests,
+        std::vector<std::string>* outMessages) {
 
-        ASSETS::LIGHTING::LightProbeVolumeFileData fileData{};
-        std::string loadMessage{};
-        if (!ASSETS::LIGHTING::LoadLightProbeVolumeFile(path, fileData, &loadMessage)) {
-            Reset();
-            SetMessage(outMessage, loadMessage);
-            return false;
+        std::stable_sort(
+            requests.begin(),
+            requests.end(),
+            [](const LightProbeVolumeLoadRequest& lhs,
+               const LightProbeVolumeLoadRequest& rhs) {
+                if (lhs.priority != rhs.priority) {
+                    return lhs.priority > rhs.priority;
+                }
+                return lhs.id < rhs.id;
+            });
+        Reset();
+
+        const size_t loadCount = (std::min)(
+            requests.size(),
+            kLightProbeVolumeResidentBudget);
+        gResidents.reserve(loadCount);
+        for (size_t index = 0; index < loadCount; ++index) {
+            std::string message{};
+            ResidentVolume resident{};
+            const size_t residentIndex =
+                gResidents.size();
+            if (LoadResident(
+                    resident,
+                    residentIndex,
+                    requests[index],
+                    message)) {
+                gResidents.push_back(std::move(resident));
+                ++gResidentCount;
+                HIKARI_LOG_INFO(
+                    "[Environment][IrradianceVolumeSet] loaded id=" +
+                    requests[index].id +
+                    " path=" +
+                    requests[index].path.generic_string());
+            } else {
+                RetireResident(resident);
+                HIKARI_LOG_WARN(
+                    "[Environment][IrradianceVolumeSet] failed id=" +
+                    requests[index].id +
+                    " message=" + message);
+            }
+            if (outMessages != nullptr && !message.empty()) {
+                outMessages->push_back(message);
+            }
         }
-
-        const std::vector<MATH::Vec3> coeffs = BuildCpuCoeffs(fileData);
-        if (!UploadVolumes(
-            coeffs,
-            fileData.countX,
-            fileData.countY,
-            fileData.countZ,
-            outMessage)) {
-            Reset();
-            return false;
+        if (outMessages != nullptr &&
+            requests.size() >
+                kLightProbeVolumeResidentBudget) {
+            outMessages->push_back(
+                "[IrradianceVolumeSet] resident budget=" +
+                std::to_string(
+                    kLightProbeVolumeResidentBudget) +
+                " requested=" +
+                std::to_string(requests.size()));
         }
-
-        gData.enabled = true;
-        gData.origin = fileData.origin;
-        gData.size = fileData.size;
-        gData.spacing = fileData.spacing;
-        gData.countX = fileData.countX;
-        gData.countY = fileData.countY;
-        gData.countZ = fileData.countZ;
-        gData.probeCount = static_cast<uint32_t>(fileData.probes.size());
-        gData.sourcePath = path.lexically_normal().generic_string();
-        RefreshValidity();
-        LogState("Load");
-        SetMessage(outMessage, loadMessage);
-        return gData.valid;
+        return IsValid();
     }
 
-    void SetLightProbeVolumeEnabled(bool enabled) {
-        gData.enabled = enabled;
-        if (!enabled) {
-            gData.valid = false;
-            WriteNullSrvs();
+    const std::vector<LightProbeVolumeRuntimeData>& GetVolumeSet() {
+        static std::vector<LightProbeVolumeRuntimeData> snapshot{};
+        snapshot.clear();
+        for (size_t index = 0;
+             index < gResidents.size();
+             ++index) {
+            RefreshValidity(
+                gResidents[index],
+                index);
+            if (!gResidents[index].data.id.empty()) {
+                snapshot.push_back(gResidents[index].data);
+            }
+        }
+        return snapshot;
+    }
+
+    void PrepareView(
+        const MATH::Vec3& cameraPosition,
+        const MATH::Vec3& viewFocusPosition) {
+        const LightProbeVolumeViewSelection previousSelection =
+            gViewSelection;
+        gViewSelection = {};
+        if (IsLightProbeVolumeSamplingSuppressed()) {
             return;
         }
-        RefreshValidity();
+
+        struct Candidate {
+            size_t index = 0;
+            float influence = 0.0f;
+            float distanceSquared =
+                std::numeric_limits<float>::max();
+        };
+        std::vector<Candidate> candidates{};
+        for (size_t index = 0;
+             index < gResidents.size();
+            ++index) {
+            ResidentVolume& resident = gResidents[index];
+            RefreshValidity(
+                resident,
+                index);
+            if (!resident.data.valid) {
+                continue;
+            }
+            candidates.push_back(Candidate{
+                index,
+                (std::max)(
+                    EvaluateInfluence(
+                        resident.data,
+                        cameraPosition),
+                    EvaluateInfluence(
+                        resident.data,
+                        viewFocusPosition)),
+                (std::min)(
+                    DistanceSquared(
+                        resident.data,
+                        cameraPosition),
+                    DistanceSquared(
+                        resident.data,
+                        viewFocusPosition))
+            });
+        }
+        std::stable_sort(
+            candidates.begin(),
+            candidates.end(),
+            [](const Candidate& lhs, const Candidate& rhs) {
+                const bool lhsAffects =
+                    lhs.influence > 0.0001f;
+                const bool rhsAffects =
+                    rhs.influence > 0.0001f;
+                if (lhsAffects != rhsAffects) {
+                    return lhsAffects;
+                }
+                const auto& lhsVolume =
+                    gResidents[lhs.index].data;
+                const auto& rhsVolume =
+                    gResidents[rhs.index].data;
+                if (lhsVolume.priority != rhsVolume.priority) {
+                    return lhsVolume.priority >
+                        rhsVolume.priority;
+                }
+                if (lhs.influence != rhs.influence) {
+                    return lhs.influence > rhs.influence;
+                }
+                if (lhs.distanceSquared !=
+                    rhs.distanceSquared) {
+                    return lhs.distanceSquared <
+                        rhs.distanceSquared;
+                }
+                return lhsVolume.id < rhsVolume.id;
+            });
+
+        std::vector<Candidate> selected{};
+        selected.reserve(kLightProbeVolumeViewSlotCount);
+        if (!candidates.empty()) {
+            selected.push_back(candidates.front());
+        }
+        constexpr float kRetainInfluence = 0.05f;
+        for (size_t previousSlot = 0;
+             previousSlot < previousSelection.count &&
+                selected.size() <
+                    kLightProbeVolumeViewSlotCount;
+             ++previousSlot) {
+            const size_t previousIndex =
+                previousSelection.providerIndices[
+                    previousSlot];
+            const auto found = std::find_if(
+                candidates.begin(),
+                candidates.end(),
+                [previousIndex](const Candidate& candidate) {
+                    return candidate.index == previousIndex;
+                });
+            const bool alreadySelected =
+                std::any_of(
+                    selected.begin(),
+                    selected.end(),
+                    [previousIndex](
+                        const Candidate& candidate) {
+                        return candidate.index ==
+                            previousIndex;
+                    });
+            if (found != candidates.end() &&
+                found->influence >= kRetainInfluence &&
+                !alreadySelected) {
+                selected.push_back(*found);
+            }
+        }
+        for (const Candidate& candidate : candidates) {
+            if (selected.size() >=
+                kLightProbeVolumeViewSlotCount) {
+                break;
+            }
+            const bool alreadySelected =
+                std::any_of(
+                    selected.begin(),
+                    selected.end(),
+                    [&candidate](
+                        const Candidate& current) {
+                        return current.index ==
+                            candidate.index;
+                    });
+            if (!alreadySelected) {
+                selected.push_back(candidate);
+            }
+        }
+
+        gViewSelection.count = selected.size();
+        for (size_t slot = 0;
+             slot < gViewSelection.count;
+             ++slot) {
+            gViewSelection.providerIndices[slot] =
+                selected[slot].index;
+            gViewSelection.viewInfluences[slot] =
+                selected[slot].influence;
+        }
     }
 
-    void SetLightProbeVolumeIntensity(float intensity) {
-        gData.intensity = (std::max)(0.0f, intensity);
-        RefreshValidity();
+    const LightProbeVolumeViewSelection& GetViewSelection() {
+        return gViewSelection;
     }
 
-    const LightProbeVolumeRuntimeData& GetRuntimeData() {
-        RefreshValidity();
-        return gData;
+    const LightProbeVolumeRuntimeData* GetViewVolume(
+        size_t slot) {
+
+        if (slot >= gViewSelection.count) {
+            return nullptr;
+        }
+        const size_t residentIndex =
+            gViewSelection.providerIndices[slot];
+        return residentIndex < gResidents.size()
+            ? &gResidents[residentIndex].data
+            : nullptr;
     }
 
     bool IsLightProbeVolumeSamplingSuppressed() {
         return gSamplingSuppressDepth > 0;
     }
 
-    ScopedLightProbeVolumeSamplingSuppress::ScopedLightProbeVolumeSamplingSuppress() {
+    ScopedLightProbeVolumeSamplingSuppress::
+        ScopedLightProbeVolumeSamplingSuppress() {
         ++gSamplingSuppressDepth;
     }
 
-    ScopedLightProbeVolumeSamplingSuppress::~ScopedLightProbeVolumeSamplingSuppress() {
-        gSamplingSuppressDepth = (std::max)(0, gSamplingSuppressDepth - 1);
+    ScopedLightProbeVolumeSamplingSuppress::
+        ~ScopedLightProbeVolumeSamplingSuppress() {
+        gSamplingSuppressDepth =
+            (std::max)(0, gSamplingSuppressDepth - 1);
     }
 
-    D3D12_GPU_DESCRIPTOR_HANDLE GetShVolumeSrvTable() {
-        EnsureLightProbeSrvDescriptor();
-        return gShVolumeSrvTable;
-    }
+    D3D12_GPU_DESCRIPTOR_HANDLE GetViewShVolumeSrvTable(
+        size_t slot) {
 
-    bool HasGpuBuffer() {
-        return HasGpuVolumes();
-    }
-
-    bool IsSrvReady() {
-        return EnsureLightProbeSrvDescriptor();
+        if (slot >= kLightProbeVolumeViewSlotCount) {
+            return {};
+        }
+        if (IsLightProbeVolumeSamplingSuppressed() ||
+            slot >= gViewSelection.count) {
+            return VolumeSrvTableGpu(slot);
+        }
+        const size_t residentIndex =
+            gViewSelection.providerIndices[slot];
+        if (residentIndex >= gResidents.size()) {
+            return {};
+        }
+        RefreshValidity(
+            gResidents[residentIndex],
+            residentIndex);
+        return gResidents[residentIndex].data.valid
+            ? gResidents[residentIndex].srvTable
+            : D3D12_GPU_DESCRIPTOR_HANDLE{};
     }
 
     LightProbeVolumeDebugState GetDebugState() {
-        const bool srvReady = EnsureLightProbeSrvDescriptor();
-        RefreshValidity();
-
         LightProbeVolumeDebugState state{};
-        state.valid = gData.valid;
-        state.srvReady = srvReady;
-        state.hasBuffer = HasGpuVolumes();
-        state.probeCount = gData.probeCount;
-        state.countX = gData.countX;
-        state.countY = gData.countY;
-        state.countZ = gData.countZ;
-        state.srvHeapPtr = reinterpret_cast<uint64_t>(gSrvHeap);
-        state.bufferPtr = reinterpret_cast<uint64_t>(gShVolumes[0].Get());
-        state.sourcePath = gData.sourcePath;
+        state.residentCount =
+            static_cast<uint32_t>(gResidentCount);
+        state.selectedCount =
+            static_cast<uint32_t>(gViewSelection.count);
+        const LightProbeVolumeRuntimeData* selected =
+            GetViewVolume(0u);
+        const size_t residentIndex =
+            gViewSelection.count > 0u
+            ? gViewSelection.providerIndices[0]
+            : 0u;
+        if (selected == nullptr ||
+            residentIndex >= gResidents.size()) {
+            return state;
+        }
+        const ResidentVolume& resident =
+            gResidents[residentIndex];
+        state.valid = selected->valid;
+        state.srvReady = resident.srvReady;
+        state.hasBuffer = HasGpuResources(resident);
+        state.probeCount = selected->probeCount;
+        state.countX = selected->countX;
+        state.countY = selected->countY;
+        state.countZ = selected->countZ;
+        state.srvHeapPtr = resident.srvTable.ptr;
+        state.bufferPtr =
+            resident.shVolumes[0] != nullptr
+            ? reinterpret_cast<uint64_t>(
+                resident.shVolumes[0].Get())
+            : 0u;
+        state.sourcePath = selected->sourcePath;
         return state;
     }
 
     bool IsValid() {
-        RefreshValidity();
-        return gData.valid;
+        for (size_t index = 0;
+             index < gResidents.size();
+             ++index) {
+            RefreshValidity(
+                gResidents[index],
+                index);
+            if (gResidents[index].data.valid) {
+                return true;
+            }
+        }
+        return false;
     }
 
 } // namespace HIKARI::RENDER3D::LIGHTPROBE

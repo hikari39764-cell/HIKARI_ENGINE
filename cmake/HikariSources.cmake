@@ -1,7 +1,7 @@
 # Authoritative HIKARI compile-source manifest.
 # Add or remove translation units here and keep the source-closure test green.
 
-set(HIKARI_COMPILE_SOURCE_COUNT 709)
+set(HIKARI_COMPILE_SOURCE_COUNT 710)
 
 set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/External/WICTextureLoader.cpp"
@@ -357,6 +357,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Tools/Geometry/HIKARI_MeshLodGenerator.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Serialization/HIKARI_SceneSerializer.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Lighting/HIKARI_LightingAuthoringModel.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Lighting/HIKARI_SceneLightingSet.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Serialization/Environment/HIKARI_SceneEnvironmentJson.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Serialization/Lighting/HIKARI_SceneLightingBakeJson.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Serialization/Objects/HIKARI_SceneObjectJson.cpp"

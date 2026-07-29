@@ -9,7 +9,7 @@
 
 namespace HIKARI::ASSETS::LIGHTING {
 
-    constexpr uint32_t kLightingBakeManifestVersion = 2;
+    constexpr uint32_t kLightingBakeManifestVersion = 3;
 
     struct ReflectionProbeBakeRecord {
         std::string id{};
@@ -47,6 +47,7 @@ namespace HIKARI::ASSETS::LIGHTING {
         uint32_t countZ = 0;
         uint32_t shOrder = 3;
         uint32_t probeCount = 0;
+        float blendDistance = 1.0f;
         int priority = 0;
         std::string shDataPath{};
         std::string authoringHash{};

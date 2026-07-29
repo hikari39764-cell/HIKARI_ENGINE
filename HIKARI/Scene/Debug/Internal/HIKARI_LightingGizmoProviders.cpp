@@ -18,8 +18,118 @@ namespace HIKARI {
         namespace DRAW = COMPONENT_GIZMO_DRAW;
 
         constexpr unsigned int kReflectionProbeColor = 0x78C7FFFF;
+        constexpr unsigned int kReflectionBlendCoreColor = 0x64D98AFF;
+        constexpr unsigned int kReflectionProjectionColor = 0xD493FFFF;
+        constexpr unsigned int kProbeCenterColor = 0xFFB45CFF;
         constexpr unsigned int kIrradianceVolumeColor = 0x9B8AFFFF;
+        constexpr unsigned int kIrradianceBlendCoreColor = 0x73D7C2FF;
         constexpr uint64_t kMaximumDisplayedProbePoints = 1024u;
+
+        MATH::Mat4 BuildTranslationOnlyWorld(
+            const GameObject& object) {
+            return MATH::Mat4::Translate(
+                object.GetTransform().position);
+        }
+
+        MATH::Vec3 BuildInnerBoxSize(
+            const MATH::Vec3& outerSize,
+            float blendDistance) noexcept {
+            const float inset =
+                (std::max)(0.0f, blendDistance) * 2.0f;
+            return {
+                (std::max)(0.0f, outerSize.x - inset),
+                (std::max)(0.0f, outerSize.y - inset),
+                (std::max)(0.0f, outerSize.z - inset)
+            };
+        }
+
+        bool HasDrawableBoxSize(
+            const MATH::Vec3& size) noexcept {
+            return size.x > 0.001f &&
+                size.y > 0.001f &&
+                size.z > 0.001f;
+        }
+
+        void SubmitProbeCenter(
+            const MATH::Vec3& position,
+            bool selected,
+            unsigned int color = kProbeCenterColor) {
+            RENDERER3D::DEBUG::PointMarker3D marker{};
+            marker.position = position;
+            marker.radius = selected ? 0.16f : 0.10f;
+            marker.rgba = selected
+                ? DRAW::kSelectionColor
+                : color;
+            marker.depthMode =
+                RENDERER3D::DEBUG::DebugDepthMode::XRay;
+            marker.thicknessPixels = selected ? 2.8f : 2.0f;
+            RENDERER3D::DEBUG::SubmitPointMarker3D(marker);
+        }
+
+        void SubmitSphereBoundary(
+            const MATH::Mat4& world,
+            float radius,
+            unsigned int color,
+            bool selected) {
+            if (radius <= 0.001f) {
+                return;
+            }
+            constexpr uint32_t segments = 32u;
+            constexpr float twoPi = 6.2831853071795864769f;
+            for (uint32_t axis = 0; axis < 3u; ++axis) {
+                for (uint32_t segment = 0;
+                    segment < segments;
+                    ++segment) {
+                    const float angle0 =
+                        static_cast<float>(segment) *
+                        twoPi / static_cast<float>(segments);
+                    const float angle1 =
+                        static_cast<float>(segment + 1u) *
+                        twoPi / static_cast<float>(segments);
+                    MATH::Vec3 point0{};
+                    MATH::Vec3 point1{};
+                    if (axis == 0u) {
+                        point0 = {
+                            0.0f,
+                            std::cos(angle0) * radius,
+                            std::sin(angle0) * radius
+                        };
+                        point1 = {
+                            0.0f,
+                            std::cos(angle1) * radius,
+                            std::sin(angle1) * radius
+                        };
+                    } else if (axis == 1u) {
+                        point0 = {
+                            std::cos(angle0) * radius,
+                            0.0f,
+                            std::sin(angle0) * radius
+                        };
+                        point1 = {
+                            std::cos(angle1) * radius,
+                            0.0f,
+                            std::sin(angle1) * radius
+                        };
+                    } else {
+                        point0 = {
+                            std::cos(angle0) * radius,
+                            std::sin(angle0) * radius,
+                            0.0f
+                        };
+                        point1 = {
+                            std::cos(angle1) * radius,
+                            std::sin(angle1) * radius,
+                            0.0f
+                        };
+                    }
+                    DRAW::SubmitStyledStroke(
+                        DRAW::TransformPoint(world, point0),
+                        DRAW::TransformPoint(world, point1),
+                        color,
+                        selected);
+                }
+            }
+        }
 
         void DrawReflectionProbe(
             const GameObject& object,
@@ -31,8 +141,20 @@ namespace HIKARI {
             }
             const bool selected =
                 object.GetDocumentId() == context.selectedObjectId;
+            const bool projectionSelected =
+                selected &&
+                (probe->GetProjectionFollowsInfluence() ||
+                    probe->GetViewportBoundsTarget() ==
+                        ReflectionProbeViewportBoundsTarget::Projection);
+            const bool influenceSelected =
+                selected &&
+                (!projectionSelected ||
+                    probe->GetProjectionFollowsInfluence());
             const MATH::Mat4 world =
-                object.GetTransform().GetWorldMatrix();
+                BuildTranslationOnlyWorld(object);
+            SubmitProbeCenter(
+                DRAW::TransformPoint(world, {}),
+                selected);
             if (probe->GetInfluenceShape() ==
                 ReflectionProbeInfluenceShape::Box) {
                 DRAW::SubmitStyledBox(
@@ -40,74 +162,47 @@ namespace HIKARI {
                     probe->GetInfluenceBoxOffset(),
                     probe->GetInfluenceBoxSize(),
                     kReflectionProbeColor,
-                    selected);
+                    influenceSelected);
+
+                const MATH::Vec3 innerSize =
+                    BuildInnerBoxSize(
+                        probe->GetInfluenceBoxSize(),
+                        probe->GetBlendDistance());
+                if (probe->GetBlendDistance() > 0.001f &&
+                    HasDrawableBoxSize(innerSize)) {
+                    DRAW::SubmitStyledBox(
+                        world,
+                        probe->GetInfluenceBoxOffset(),
+                        innerSize,
+                        kReflectionBlendCoreColor,
+                        false);
+                }
             } else {
-                constexpr uint32_t segments = 32u;
-                constexpr float twoPi = 6.2831853071795864769f;
-                for (uint32_t axis = 0; axis < 3u; ++axis) {
-                    for (uint32_t segment = 0;
-                        segment < segments;
-                        ++segment) {
-                        const float angle0 =
-                            static_cast<float>(segment) *
-                            twoPi / static_cast<float>(segments);
-                        const float angle1 =
-                            static_cast<float>(segment + 1u) *
-                            twoPi / static_cast<float>(segments);
-                        MATH::Vec3 point0{};
-                        MATH::Vec3 point1{};
-                        const float radius = probe->GetRadius();
-                        if (axis == 0u) {
-                            point0 = {
-                                0.0f,
-                                std::cos(angle0) * radius,
-                                std::sin(angle0) * radius
-                            };
-                            point1 = {
-                                0.0f,
-                                std::cos(angle1) * radius,
-                                std::sin(angle1) * radius
-                            };
-                        } else if (axis == 1u) {
-                            point0 = {
-                                std::cos(angle0) * radius,
-                                0.0f,
-                                std::sin(angle0) * radius
-                            };
-                            point1 = {
-                                std::cos(angle1) * radius,
-                                0.0f,
-                                std::sin(angle1) * radius
-                            };
-                        } else {
-                            point0 = {
-                                std::cos(angle0) * radius,
-                                std::sin(angle0) * radius,
-                                0.0f
-                            };
-                            point1 = {
-                                std::cos(angle1) * radius,
-                                std::sin(angle1) * radius,
-                                0.0f
-                            };
-                        }
-                        DRAW::SubmitStyledStroke(
-                            DRAW::TransformPoint(world, point0),
-                            DRAW::TransformPoint(world, point1),
-                            kReflectionProbeColor,
-                            selected);
-                    }
+                SubmitSphereBoundary(
+                    world,
+                    probe->GetRadius(),
+                    kReflectionProbeColor,
+                    influenceSelected);
+                const float innerRadius =
+                    probe->GetRadius() -
+                    probe->GetBlendDistance();
+                if (probe->GetBlendDistance() > 0.001f) {
+                    SubmitSphereBoundary(
+                        world,
+                        innerRadius,
+                        kReflectionBlendCoreColor,
+                        false);
                 }
             }
-            if (selected) {
-                RENDERER3D::DEBUG::PointMarker3D marker{};
-                marker.position = DRAW::TransformPoint(world, {});
-                marker.radius = 0.16f;
-                marker.rgba = DRAW::kSelectionColor;
-                marker.depthMode =
-                    RENDERER3D::DEBUG::DebugDepthMode::XRay;
-                marker.thicknessPixels = 2.4f;
-                RENDERER3D::DEBUG::SubmitPointMarker3D(marker);
+
+            if (probe->GetProjectionShape() ==
+                ReflectionProbeProjectionShape::Box) {
+                DRAW::SubmitStyledBox(
+                    world,
+                    probe->GetProjectionBoxOffset(),
+                    probe->GetProjectionBoxSize(),
+                    kReflectionProjectionColor,
+                    projectionSelected);
             }
         }
 
@@ -153,13 +248,30 @@ namespace HIKARI {
             const bool selected =
                 object.GetDocumentId() == context.selectedObjectId;
             const MATH::Mat4 world =
-                object.GetTransform().GetWorldMatrix();
+                BuildTranslationOnlyWorld(object);
+            SubmitProbeCenter(
+                DRAW::TransformPoint(world, {}),
+                selected,
+                kIrradianceVolumeColor);
             DRAW::SubmitStyledBox(
                 world,
                 {},
                 volume->GetSize(),
                 kIrradianceVolumeColor,
                 selected);
+            const MATH::Vec3 innerSize =
+                BuildInnerBoxSize(
+                    volume->GetSize(),
+                    volume->GetBlendDistance());
+            if (volume->GetBlendDistance() > 0.001f &&
+                HasDrawableBoxSize(innerSize)) {
+                DRAW::SubmitStyledBox(
+                    world,
+                    {},
+                    innerSize,
+                    kIrradianceBlendCoreColor,
+                    false);
+            }
 
             const uint64_t totalPointCount =
                 static_cast<uint64_t>(volume->GetCountX()) *

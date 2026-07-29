@@ -179,7 +179,16 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             MaterialTextureUsage usage) {
 
             const RuntimeTextureSlot& slot = material.GetTextureSlot(usage);
+            hash = HashAppend(
+                hash,
+                static_cast<uint64_t>(slot.resource.index));
+            hash = HashAppend(
+                hash,
+                static_cast<uint64_t>(slot.resource.generation));
             hash = HashAppend(hash, HashIntSlot(slot.handle));
+            hash = HashAppend(
+                hash,
+                slot.enabled ? uint64_t{ 1u } : uint64_t{ 0u });
             hash = HashAppend(hash, static_cast<uint64_t>(std::clamp(slot.texCoord, 0, 1)));
             hash = HashVec2(hash, slot.uvScale);
             hash = HashVec2(hash, slot.uvOffset);

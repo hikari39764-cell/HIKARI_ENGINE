@@ -300,6 +300,8 @@ namespace HIKARI::TOOLS::BAKING {
         result.record.countZ = settings.countZ;
         result.record.shOrder = settings.shOrder;
         result.record.probeCount = probeCount;
+        result.record.blendDistance =
+            settings.blendDistance;
         result.record.priority = request.priority;
         result.record.shDataPath = PROJECT_PATHS::MakeProjectRelativeString(request.projectRoot, result.volumePath);
         result.record.authoringHash = request.authoringHash;

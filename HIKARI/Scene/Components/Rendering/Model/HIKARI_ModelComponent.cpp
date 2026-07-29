@@ -117,6 +117,18 @@ namespace HIKARI {
         return renderStatic_;
     }
 
+    void ModelComponent::SetIncludeInLightingBake(bool enabled) {
+        if (includeInLightingBake_ == enabled) {
+            return;
+        }
+        includeInLightingBake_ = enabled;
+        NotifyRenderStateDirty();
+    }
+
+    bool ModelComponent::GetIncludeInLightingBake() const {
+        return includeInLightingBake_;
+    }
+
     void ModelComponent::SetRenderDebugMode(
         ModelRenderDebugMode mode) {
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 
 #include <d3d12.h>
@@ -122,10 +123,13 @@ namespace HIKARI::MESHRENDERER {
     D3D12_GPU_DESCRIPTOR_HANDLE ResolveIblIrradianceSrv(int fallbackTextureHandle);
     D3D12_GPU_DESCRIPTOR_HANDLE ResolveIblPrefilteredSrv(int fallbackTextureHandle);
     D3D12_GPU_DESCRIPTOR_HANDLE ResolveIblBrdfLutSrv(int fallbackTextureHandle);
-    D3D12_GPU_DESCRIPTOR_HANDLE ResolveReflectionProbePrefilteredSrv(int fallbackCubeTextureHandle);
+    D3D12_GPU_DESCRIPTOR_HANDLE ResolveReflectionProbePrefilteredSrv(
+        size_t slot,
+        int fallbackCubeTextureHandle);
     D3D12_GPU_DESCRIPTOR_HANDLE ResolveSsaoSrv(
         const RENDER3D::RenderTextureView& ambientOcclusion,
         int fallbackAoTextureHandle);
-    D3D12_GPU_DESCRIPTOR_HANDLE ResolveLightProbeShSrv();
+    D3D12_GPU_DESCRIPTOR_HANDLE ResolveLightProbeShSrv(
+        size_t slot);
 
 } // namespace HIKARI::MESHRENDERER

@@ -87,32 +87,50 @@ namespace HIKARI::ASSETS::LIGHTING {
             }
         }
 
+        std::string BuildSceneHashInternal(
+            const SceneDocument& document,
+            std::unordered_map<uint64_t, std::string>*
+                objectAuthoringHashes) {
+
+            StableHashBuilder sceneHash{};
+            nlohmann::json environment{};
+            SceneJson::SerializeSceneEnvironmentJson(
+                document.environment,
+                environment);
+            environment.erase("reflectionProbe");
+            sceneHash.Add(environment.dump());
+
+            for (const SceneObjectData& object : document.objects) {
+                const std::string objectJson =
+                    BuildObjectNode(object).dump();
+                sceneHash.Add(objectJson);
+                if (objectAuthoringHashes != nullptr) {
+                    StableHashBuilder objectHash{};
+                    objectHash.Add(objectJson);
+                    objectAuthoringHashes->emplace(
+                        object.id.value,
+                        objectHash.Finish());
+                }
+            }
+            return sceneHash.Finish();
+        }
+
     } // namespace
+
+    std::string BuildLightingSceneHash(
+        const SceneDocument& document) {
+
+        return BuildSceneHashInternal(document, nullptr);
+    }
 
     LightingBakeHashSnapshot BuildLightingBakeHashSnapshot(
         const SceneDocument& document,
         const AssetDatabase& assetDatabase) {
 
         LightingBakeHashSnapshot snapshot{};
-        StableHashBuilder sceneHash{};
-        nlohmann::json environment{};
-        SceneJson::SerializeSceneEnvironmentJson(
-            document.environment,
-            environment);
-        environment.erase("reflectionProbe");
-        sceneHash.Add(environment.dump());
-
-        for (const SceneObjectData& object : document.objects) {
-            const std::string objectJson =
-                BuildObjectNode(object).dump();
-            sceneHash.Add(objectJson);
-            StableHashBuilder objectHash{};
-            objectHash.Add(objectJson);
-            snapshot.objectAuthoringHashes.emplace(
-                object.id.value,
-                objectHash.Finish());
-        }
-        snapshot.sceneHash = sceneHash.Finish();
+        snapshot.sceneHash = BuildSceneHashInternal(
+            document,
+            &snapshot.objectAuthoringHashes);
 
         StableHashBuilder dependencyHash{};
         dependencyHash.Add(snapshot.sceneHash);

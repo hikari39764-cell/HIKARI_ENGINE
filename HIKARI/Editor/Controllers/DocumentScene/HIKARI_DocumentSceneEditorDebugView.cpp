@@ -113,6 +113,29 @@ namespace HIKARI {
             }
             ImGui::EndTable();
         }
+        ImGui::SeparatorText("Lighting Providers");
+        if (ImGui::BeginTable(
+                "DebugViewLightingProviderModes",
+                3,
+                ImGuiTableFlags_SizingStretchSame)) {
+            const RenderDebugView lightingProviderModes[] = {
+                RenderDebugView::ReflectionProviderWeight,
+                RenderDebugView::IrradianceProviderWeight,
+                RenderDebugView::LightingFallbackWeight,
+            };
+            for (RenderDebugView mode : lightingProviderModes) {
+                ImGui::TableNextColumn();
+                const bool selected =
+                    context_.viewportDebug.renderView == mode;
+                if (EDITOR::ModeButton(
+                        ToString(mode),
+                        ToString(mode),
+                        selected)) {
+                    context_.viewportDebug.renderView = mode;
+                }
+            }
+            ImGui::EndTable();
+        }
         ImGui::SeparatorText("Meshlet");
         if (ImGui::BeginTable("DebugViewMeshletModes", 3, ImGuiTableFlags_SizingStretchSame)) {
             const RenderDebugView meshletModes[] = {

@@ -479,6 +479,7 @@ namespace HIKARI::SKYRENDERER {
             settings.groundColor.y * settings.tint.y,
             settings.groundColor.z * settings.tint.z
         };
+        g.environmentData.tint = settings.tint;
         g.environmentData.exposure = std::max(0.0f, settings.exposure);
         g.environmentData.ambientFromSky = std::max(0.0f, settings.ambientFromSky);
         g.environmentData.reflectionIntensity = std::max(0.0f, settings.reflectionIntensity);

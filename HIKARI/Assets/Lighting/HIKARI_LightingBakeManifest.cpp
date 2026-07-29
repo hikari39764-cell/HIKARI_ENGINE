@@ -83,6 +83,8 @@ namespace HIKARI::ASSETS::LIGHTING {
             record.countZ = node.value("countZ", 0u);
             record.shOrder = node.value("shOrder", 3u);
             record.probeCount = node.value("probeCount", 0u);
+            record.blendDistance =
+                node.value("blendDistance", 1.0f);
             record.priority = node.value("priority", 0);
             record.shDataPath = node.value("shDataPath", std::string{});
             record.authoringHash = node.value("authoringHash", std::string{});
@@ -152,6 +154,7 @@ namespace HIKARI::ASSETS::LIGHTING {
                 { "countZ", record.countZ },
                 { "shOrder", record.shOrder },
                 { "probeCount", record.probeCount },
+                { "blendDistance", record.blendDistance },
                 { "priority", record.priority },
                 { "shDataPath", record.shDataPath },
                 { "authoringHash", record.authoringHash },

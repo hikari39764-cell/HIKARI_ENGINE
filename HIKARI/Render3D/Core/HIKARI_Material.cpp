@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <utility>
 
+#include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
+
 namespace HIKARI {
     namespace {
         RuntimeTextureSlot kEmptyTextureSlot{};
@@ -33,6 +35,20 @@ namespace HIKARI {
                 Equal(lhs.uvOffset, rhs.uvOffset) &&
                 lhs.uvRotation == rhs.uvRotation;
         }
+    }
+
+    int RuntimeTextureSlot::ResolveBackendHandle() const {
+        if (resource) {
+            return RENDER3D::GetTextureResourceBackendHandle(
+                resource);
+        }
+        return RENDER3D::IsTextureResourceBackendHandleValid(handle)
+            ? handle
+            : -1;
+    }
+
+    bool RuntimeTextureSlot::IsValid() const {
+        return ResolveBackendHandle() >= 0;
     }
 
     void Material::SetBaseColor(const MATH::Vec4& color) {
@@ -78,7 +94,7 @@ namespace HIKARI {
     }
 
     int Material::GetBaseColorTextureHandle() const {
-        return baseColorTexture_.handle;
+        return baseColorTexture_.ResolveBackendHandle();
     }
 
     bool Material::HasBaseColorTexture() const {

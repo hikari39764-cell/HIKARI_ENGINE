@@ -54,6 +54,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
 
         void BeginFrame(uint32_t frameIndex);
         void ResetFrame();
+        void InvalidateResidency();
         bool CanReuseFrame(
             size_t residentInstanceCount,
             uint64_t layoutVersion,
@@ -107,6 +108,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
 
         FrameSlot* ActiveSlot();
         const FrameSlot* ActiveSlot() const;
+        void ResetSlotResidency(FrameSlot& slot);
         void MarkDirtyRange(FrameSlot& slot, size_t firstInstance, size_t endInstance);
 
         std::array<FrameSlot, GFX::kFrameResourceCount> slots_{};

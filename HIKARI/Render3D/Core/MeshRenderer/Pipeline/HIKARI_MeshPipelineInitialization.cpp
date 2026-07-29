@@ -91,6 +91,16 @@ namespace HIKARI::MESHRENDERER {
         reflectionProbePrefilteredRange.RegisterSpace = 0;
         reflectionProbePrefilteredRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
+        D3D12_DESCRIPTOR_RANGE
+            reflectionProbePrefilteredSecondaryRange{};
+        reflectionProbePrefilteredSecondaryRange.RangeType =
+            D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+        reflectionProbePrefilteredSecondaryRange.NumDescriptors = 1;
+        reflectionProbePrefilteredSecondaryRange.BaseShaderRegister = 14;
+        reflectionProbePrefilteredSecondaryRange.RegisterSpace = 0;
+        reflectionProbePrefilteredSecondaryRange.OffsetInDescriptorsFromTableStart =
+            D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
         D3D12_DESCRIPTOR_RANGE ssaoRange{};
         ssaoRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
         ssaoRange.NumDescriptors = 1;
@@ -106,6 +116,16 @@ namespace HIKARI::MESHRENDERER {
         lightProbeShRange.BaseShaderRegister = 0;
         lightProbeShRange.RegisterSpace = 2;
         lightProbeShRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+        D3D12_DESCRIPTOR_RANGE lightProbeShSecondaryRange{};
+        lightProbeShSecondaryRange.RangeType =
+            D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+        lightProbeShSecondaryRange.NumDescriptors =
+            GFX::DESCRIPTOR::kLightProbeShVolumeTextureCount;
+        lightProbeShSecondaryRange.BaseShaderRegister = 0;
+        lightProbeShSecondaryRange.RegisterSpace = 4;
+        lightProbeShSecondaryRange.OffsetInDescriptorsFromTableStart =
+            D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
         D3D12_DESCRIPTOR_RANGE objectDataRange{};
         objectDataRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
@@ -224,6 +244,32 @@ namespace HIKARI::MESHRENDERER {
         params[ROOT_PARAM::LightProbeSh].DescriptorTable.NumDescriptorRanges = 1;
         params[ROOT_PARAM::LightProbeSh].DescriptorTable.pDescriptorRanges = &lightProbeShRange;
 
+        params[
+            ROOT_PARAM::ReflectionProbePrefilteredSecondary].
+            ParameterType =
+                D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        params[
+            ROOT_PARAM::ReflectionProbePrefilteredSecondary].
+            ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        params[
+            ROOT_PARAM::ReflectionProbePrefilteredSecondary].
+            DescriptorTable.NumDescriptorRanges = 1;
+        params[
+            ROOT_PARAM::ReflectionProbePrefilteredSecondary].
+            DescriptorTable.pDescriptorRanges =
+                &reflectionProbePrefilteredSecondaryRange;
+
+        params[ROOT_PARAM::LightProbeShSecondary].
+            ParameterType =
+                D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        params[ROOT_PARAM::LightProbeShSecondary].
+            ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        params[ROOT_PARAM::LightProbeShSecondary].
+            DescriptorTable.NumDescriptorRanges = 1;
+        params[ROOT_PARAM::LightProbeShSecondary].
+            DescriptorTable.pDescriptorRanges =
+                &lightProbeShSecondaryRange;
+
         params[ROOT_PARAM::ObjectData].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
         params[ROOT_PARAM::ObjectData].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
         params[ROOT_PARAM::ObjectData].DescriptorTable.NumDescriptorRanges = 1;
@@ -305,9 +351,21 @@ namespace HIKARI::MESHRENDERER {
         shadowSampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
         shadowSampler.MaxLOD = D3D12_FLOAT32_MAX;
 
+        D3D12_STATIC_SAMPLER_DESC linearClampSampler{};
+        linearClampSampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+        linearClampSampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        linearClampSampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        linearClampSampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        linearClampSampler.ShaderRegister = 2;
+        linearClampSampler.RegisterSpace = 0;
+        linearClampSampler.ShaderVisibility =
+            D3D12_SHADER_VISIBILITY_PIXEL;
+        linearClampSampler.MaxLOD = D3D12_FLOAT32_MAX;
+
         const D3D12_STATIC_SAMPLER_DESC staticSamplers[] = {
             linearWrapSampler,
-            shadowSampler
+            shadowSampler,
+            linearClampSampler
         };
 
         D3D12_ROOT_SIGNATURE_DESC rsDesc{};

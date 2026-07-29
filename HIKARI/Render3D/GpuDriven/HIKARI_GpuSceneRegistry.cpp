@@ -41,8 +41,13 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             return seed;
         }
 
-        uint64_t BuildSourceLayoutVersion(uint64_t layoutVersion, uint64_t routingVersion) {
+        uint64_t BuildSourceLayoutVersion(
+            uint64_t residencyEpoch,
+            uint64_t layoutVersion,
+            uint64_t routingVersion) {
+
             uint64_t value = 1469598103934665603ull;
+            value = HashAppend(value, residencyEpoch);
             value = HashAppend(value, layoutVersion);
             value = HashAppend(value, routingVersion);
             return value;
@@ -968,6 +973,10 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
     }
 
     void GpuSceneRegistry::Clear() {
+        ++residencyEpoch_;
+        if (residencyEpoch_ == 0u) {
+            ++residencyEpoch_;
+        }
         surfaceRecords_.clear();
         meshShaderJointPalettes_.clear();
         forwardOpaqueResidentRecordIndices_.clear();
@@ -1057,7 +1066,10 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
 
         dataVersion_ = dataVersion;
         sceneSource_.layoutVersion =
-            BuildSourceLayoutVersion(layoutVersion_, routingVersion_);
+            BuildSourceLayoutVersion(
+                residencyEpoch_,
+                layoutVersion_,
+                routingVersion_);
         sceneSource_.sourceVersion = dataVersion_;
         sceneSource_.dirtyBaseSourceVersion = patchBaseSourceVersion;
     }
@@ -1781,7 +1793,10 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         cursor += NUMERIC::SaturateToUint32(shadowTraditionalStream_.instances.size());
 
         sceneSource_.layoutVersion =
-            BuildSourceLayoutVersion(layoutVersion_, routingVersion_);
+            BuildSourceLayoutVersion(
+                residencyEpoch_,
+                layoutVersion_,
+                routingVersion_);
         sceneSource_.sourceVersion = dataVersion_;
         sceneSource_.dirtyBaseSourceVersion = dataVersion_;
         sceneSource_.sourceInstanceCount = cursor;

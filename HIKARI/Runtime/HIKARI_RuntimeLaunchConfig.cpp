@@ -210,12 +210,7 @@ namespace HIKARI {
                     " Path: " + path.string());
             }
         }
-        // レガシー設定: グラフィックス効果とシーン情報
-        cfg.antiAliasingMode = ReadString(runtime, "antiAliasingMode");
-        cfg.dlssQualityMode = ReadString(runtime, "dlssQualityMode");
-        cfg.frameGenerationMode = ReadString(runtime, "frameGenerationMode");
-        cfg.frameGenerationMultiplier =
-            ReadInt(runtime, "frameGenerationMultiplier");
+        // シーン情報
         cfg.startupSceneGuid = ReadString(runtime, "startupSceneGuid");
         cfg.exportedSceneGuids = ReadStringArray(runtime, "exportedSceneGuids");
         cfg.loaded = true;
@@ -327,26 +322,6 @@ namespace HIKARI {
         // ランタイムコンフィグの設定で上書き
         if (runtimeCfg.renderQuality) {
             quality = *runtimeCfg.renderQuality;
-        }
-        // レガシーグラフィックス設定の適用
-        if (runtimeCfg.antiAliasingMode) {
-            (void)RENDER3D::TryParseRenderAntiAliasingMode(
-                *runtimeCfg.antiAliasingMode,
-                quality.antiAliasingMode);
-        }
-        if (runtimeCfg.dlssQualityMode) {
-            (void)RENDER3D::TryParseDlssQualityMode(
-                *runtimeCfg.dlssQualityMode,
-                quality.dlssQualityMode);
-        }
-        if (runtimeCfg.frameGenerationMode) {
-            (void)RENDER3D::TryParseRenderFrameGenerationMode(
-                *runtimeCfg.frameGenerationMode,
-                quality.frameGenerationMode);
-        }
-        if (runtimeCfg.frameGenerationMultiplier) {
-            quality.frameGenerationMultiplier = static_cast<uint8_t>(
-                std::clamp(*runtimeCfg.frameGenerationMultiplier, 2, 6));
         }
         RENDER3D::SetRenderQualitySettings(quality);
 

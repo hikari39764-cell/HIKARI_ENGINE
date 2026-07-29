@@ -4,7 +4,7 @@
 // Shader-side view of the global descriptor layout. Keep these values in sync
 // with GFX::DESCRIPTOR in HIKARI_DescriptorHeapLayout.h.
 static const uint HIKARI_SHADER_USER_SRV_COUNT = 3968u;
-static const uint HIKARI_SHADER_SYSTEM_SRV_DYNAMIC_BEGIN = 4010u;
+static const uint HIKARI_SHADER_SYSTEM_SRV_DYNAMIC_BEGIN = 4073u;
 static const uint HIKARI_SHADER_SYSTEM_SRV_DYNAMIC_COUNT = 111u;
 
 // Forward / mesh draw root binding contract.

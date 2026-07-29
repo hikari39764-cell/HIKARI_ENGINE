@@ -54,6 +54,7 @@ namespace HIKARI {
         uint32_t countY = 2;
         uint32_t countZ = 4;
         float intensity = 1.0f;
+        float blendDistance = 1.0f;
         uint32_t captureResolution = 32;
         uint32_t shOrder = 3;
     };
@@ -83,6 +84,16 @@ namespace HIKARI {
         settings.captureResolution = NormalizeLightProbeCaptureResolution(settings.captureResolution);
         settings.shOrder = 3u;
         settings.intensity = std::clamp(settings.intensity, 0.0f, 4.0f);
+        settings.blendDistance = std::clamp(
+            settings.blendDistance,
+            0.0f,
+            (std::max)(
+                0.0f,
+                (std::min)({
+                    settings.size.x,
+                    settings.size.y,
+                    settings.size.z
+                }) * 0.5f));
         settings.size.x = (std::max)(settings.size.x, 0.1f);
         settings.size.y = (std::max)(settings.size.y, 0.1f);
         settings.size.z = (std::max)(settings.size.z, 0.1f);

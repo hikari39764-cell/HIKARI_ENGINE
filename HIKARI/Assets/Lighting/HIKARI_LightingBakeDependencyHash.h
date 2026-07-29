@@ -19,6 +19,9 @@ namespace HIKARI {
             std::vector<std::string> missingAssetIds{};
         };
 
+        std::string BuildLightingSceneHash(
+            const SceneDocument& document);
+
         LightingBakeHashSnapshot BuildLightingBakeHashSnapshot(
             const SceneDocument& document,
             const AssetDatabase& assetDatabase);

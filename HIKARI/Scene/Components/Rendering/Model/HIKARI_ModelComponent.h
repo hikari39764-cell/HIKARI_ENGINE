@@ -52,6 +52,8 @@ namespace HIKARI {
         bool GetReceiveShadow() const;
         void SetRenderStatic(bool enabled);
         bool IsRenderStatic() const;
+        void SetIncludeInLightingBake(bool enabled);
+        bool GetIncludeInLightingBake() const;
         void SetRenderDebugMode(ModelRenderDebugMode mode);
         ModelRenderDebugMode GetRenderDebugMode() const;
         void SetWireColor(uint32_t color);
@@ -97,6 +99,7 @@ namespace HIKARI {
         bool castShadow_ = true;
         bool receiveShadow_ = true;
         bool renderStatic_ = false;
+        bool includeInLightingBake_ = true;
         ModelRenderDebugMode debugRenderMode_ =
             ModelRenderDebugMode::Normal;
         uint32_t wireColor_ = 0x00FFAAFF;

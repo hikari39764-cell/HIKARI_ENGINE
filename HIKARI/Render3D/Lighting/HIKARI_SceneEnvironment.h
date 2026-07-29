@@ -126,7 +126,7 @@ namespace HIKARI {
     struct BloomSettings {
         bool enabled = true;
         float threshold = 1.0f;
-        float intensity = 0.6f;
+        float intensity = 0.2f;
         float radius = 1.0f;
         uint32_t downsampleCount = 3;
     };
@@ -148,7 +148,7 @@ namespace HIKARI {
         bool enabled = true;
         float exposure = 1.0f;
         float gamma = 2.2f;
-        int mode = 1; // 0=None, 1=Reinhard, 2=ACES approximate
+        int mode = 2; // 0=None, 1=Reinhard, 2=ACES approximate
     };
 
     struct ScenePostSettings {

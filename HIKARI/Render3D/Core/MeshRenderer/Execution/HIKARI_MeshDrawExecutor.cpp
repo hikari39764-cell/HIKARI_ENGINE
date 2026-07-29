@@ -262,8 +262,10 @@ namespace HIKARI::MESHRENDERER {
         MaterialTextureHandles ResolveRuntimeMaterialTextureHandles(
             const Material* material,
             const MeshBindingContext& binding,
-            const MeshMaterialFillContext& fill) {
+            const MeshMaterialFillContext& fill,
+            bool& outComplete) {
 
+            outComplete = true;
             MaterialTextureHandles textureHandles{};
             textureHandles.baseColor = binding.fallbackTextureHandle;
             textureHandles.normal = binding.fallbackNormalTextureHandle;
@@ -276,27 +278,51 @@ namespace HIKARI::MESHRENDERER {
             if (material == nullptr) {
                 return textureHandles;
             }
-            if (material->HasBaseColorTexture()) {
-                textureHandles.baseColor = material->GetBaseColorTextureHandle();
-            }
-            if (material->HasTextureSlot(MaterialTextureUsage::Normal)) {
-                textureHandles.normal = material->GetTextureSlot(MaterialTextureUsage::Normal).handle;
-            }
-            if (material->HasTextureSlot(MaterialTextureUsage::Emissive)) {
-                textureHandles.emissive = material->GetTextureSlot(MaterialTextureUsage::Emissive).handle;
-            }
-            if (material->HasTextureSlot(MaterialTextureUsage::MetallicRoughness)) {
-                textureHandles.metallicRoughness = material->GetTextureSlot(MaterialTextureUsage::MetallicRoughness).handle;
-            }
-            if (material->HasTextureSlot(MaterialTextureUsage::Occlusion)) {
-                textureHandles.occlusion = material->GetTextureSlot(MaterialTextureUsage::Occlusion).handle;
-            }
-            if (material->HasTextureSlot(MaterialTextureUsage::Specular)) {
-                textureHandles.specular = material->GetTextureSlot(MaterialTextureUsage::Specular).handle;
-            }
-            if (material->HasTextureSlot(MaterialTextureUsage::SpecularColor)) {
-                textureHandles.specularColor = material->GetTextureSlot(MaterialTextureUsage::SpecularColor).handle;
-            }
+
+            const auto resolveSlot =
+                [&outComplete](
+                    const RuntimeTextureSlot& slot,
+                    int fallbackHandle) {
+                    if (!slot.enabled) {
+                        return fallbackHandle;
+                    }
+                    const int resolved =
+                        slot.ResolveBackendHandle();
+                    if (resolved < 0) {
+                        outComplete = false;
+                        return fallbackHandle;
+                    }
+                    return resolved;
+                };
+
+            textureHandles.baseColor = resolveSlot(
+                material->GetTextureSlot(
+                    MaterialTextureUsage::BaseColor),
+                textureHandles.baseColor);
+            textureHandles.normal = resolveSlot(
+                material->GetTextureSlot(
+                    MaterialTextureUsage::Normal),
+                textureHandles.normal);
+            textureHandles.emissive = resolveSlot(
+                material->GetTextureSlot(
+                    MaterialTextureUsage::Emissive),
+                textureHandles.emissive);
+            textureHandles.metallicRoughness = resolveSlot(
+                material->GetTextureSlot(
+                    MaterialTextureUsage::MetallicRoughness),
+                textureHandles.metallicRoughness);
+            textureHandles.occlusion = resolveSlot(
+                material->GetTextureSlot(
+                    MaterialTextureUsage::Occlusion),
+                textureHandles.occlusion);
+            textureHandles.specular = resolveSlot(
+                material->GetTextureSlot(
+                    MaterialTextureUsage::Specular),
+                textureHandles.specular);
+            textureHandles.specularColor = resolveSlot(
+                material->GetTextureSlot(
+                    MaterialTextureUsage::SpecularColor),
+                textureHandles.specularColor);
             return textureHandles;
         }
 
@@ -329,8 +355,13 @@ namespace HIKARI::MESHRENDERER {
 
             ResolvedMaterialTextures textures{};
             if (source.materialOverride != nullptr) {
+                bool complete = true;
                 const MaterialTextureHandles handles =
-                    ResolveRuntimeMaterialTextureHandles(source.materialOverride, ctx.binding, ctx.materialFill);
+                    ResolveRuntimeMaterialTextureHandles(
+                        source.materialOverride,
+                        ctx.binding,
+                        ctx.materialFill,
+                        complete);
                 textures.baseColor = handles.baseColor;
                 textures.normal = handles.normal;
                 textures.emissive = handles.emissive;
@@ -338,6 +369,7 @@ namespace HIKARI::MESHRENDERER {
                 textures.occlusion = handles.occlusion;
                 textures.specular = handles.specular;
                 textures.specularColor = handles.specularColor;
+                textures.complete = complete;
                 return textures;
             }
 
@@ -424,6 +456,30 @@ namespace HIKARI::MESHRENDERER {
             }
             obj.hasBaseColorTexture =
                 (textures.baseColor >= 0 && textures.baseColor != ctx.binding.fallbackTextureHandle) ? 1u : 0u;
+            obj.hasNormalTexture =
+                (textures.normal >= 0 &&
+                    textures.normal !=
+                        ctx.binding.fallbackNormalTextureHandle)
+                ? 1u
+                : 0u;
+            obj.hasEmissiveTexture =
+                (textures.emissive >= 0 &&
+                    textures.emissive !=
+                        ctx.materialFill.fallbackBlackTextureHandle)
+                ? 1u
+                : 0u;
+            obj.hasMetallicRoughnessTexture =
+                (textures.metallicRoughness >= 0 &&
+                    textures.metallicRoughness !=
+                        ctx.binding.fallbackTextureHandle)
+                ? 1u
+                : 0u;
+            obj.hasOcclusionTexture =
+                (textures.occlusion >= 0 &&
+                    textures.occlusion !=
+                        ctx.binding.fallbackTextureHandle)
+                ? 1u
+                : 0u;
             obj.receiveShadow = source.receiveShadow ? 1u : 0u;
             obj.fxFlags = source.fxFlags;
             for (size_t i = 0; i < VFX::kMaterialFxUserCount; ++i) {

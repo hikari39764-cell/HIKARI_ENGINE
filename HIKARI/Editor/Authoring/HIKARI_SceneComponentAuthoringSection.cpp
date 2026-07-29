@@ -11,6 +11,7 @@
 #include "Scene/HIKARI_ComponentRegistry.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
+#include "Scene/Lighting/HIKARI_LightingAuthoringModel.h"
 
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
@@ -67,6 +68,17 @@ namespace HIKARI {
                 [typeName](const SceneComponentData& component) {
                     return component.type == typeName;
                 });
+        }
+
+        bool IsLightingRuntimeComponent(
+            std::string_view typeName) noexcept {
+
+            return typeName ==
+                    LIGHTING_AUTHORING::
+                        kReflectionProbeComponentType ||
+                typeName ==
+                    LIGHTING_AUTHORING::
+                        kIrradianceVolumeComponentType;
         }
     }
 #endif
@@ -298,6 +310,9 @@ namespace HIKARI {
                     } else if (component.type ==
                         "CameraComponent") {
                         (void)scene.ApplyCameraRuntimeChanges();
+                    } else if (IsLightingRuntimeComponent(
+                            component.type)) {
+                        (void)scene.RefreshLightingRuntime();
                     }
                 }
             }
@@ -324,6 +339,9 @@ namespace HIKARI {
                     needsRebuild = true;
                 } else if (component.type == "CameraComponent") {
                     (void)scene.ApplyCameraRuntimeChanges();
+                } else if (IsLightingRuntimeComponent(
+                        component.type)) {
+                    (void)scene.RefreshLightingRuntime();
                 }
             } else {
                 needsRebuild = true;

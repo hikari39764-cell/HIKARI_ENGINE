@@ -1,8 +1,10 @@
 #include "Scene/Components/Lighting/HIKARI_ReflectionProbeComponent.h"
 
 #include <algorithm>
+#include <cmath>
 
 #include "Core/HIKARI_JsonRead.h"
+#include "Core/Math/HIKARI_MathValidation.h"
 #include "Core/Serialization/Json/HIKARI_JsonMath.h"
 
 namespace HIKARI {
@@ -57,6 +59,7 @@ namespace HIKARI {
             { "projectionShape", ProjectionShapeName(projectionShape_) },
             { "projectionBoxOffset", JsonMath::ToJsonArray(projectionBoxOffset_) },
             { "projectionBoxSize", JsonMath::ToJsonArray(projectionBoxSize_) },
+            { "projectionFollowsInfluence", projectionFollowsInfluence_ },
             { "blendDistance", blendDistance_ },
             { "priority", priority_ },
             { "captureResolution", captureResolution_ },
@@ -86,6 +89,12 @@ namespace HIKARI {
         projectionBoxSize_ = JSONREAD::Vec3Or(
             in.value("projectionBoxSize", nlohmann::json::array()),
             projectionBoxSize_);
+        // Existing scenes predate linked authoring and must keep their two
+        // independently authored bounds until the user opts in.
+        projectionFollowsInfluence_ = in.contains(
+                "projectionFollowsInfluence")
+            ? in.value("projectionFollowsInfluence", false)
+            : false;
         blendDistance_ = in.value("blendDistance", blendDistance_);
         priority_ = in.value("priority", priority_);
         captureResolution_ = in.value(
@@ -94,6 +103,97 @@ namespace HIKARI {
         bakeSet_ = in.value("bakeSet", bakeSet_);
         scenario_ = in.value("scenario", scenario_);
         ClampSettings();
+    }
+
+    bool ReflectionProbeComponent::SetRadius(float radius) noexcept {
+        if (!std::isfinite(radius)) {
+            return false;
+        }
+        const float clamped = (std::max)(radius, 0.05f);
+        if (radius_ == clamped) {
+            return false;
+        }
+        radius_ = clamped;
+        if (projectionFollowsInfluence_ &&
+            projectionShape_ ==
+                ReflectionProbeProjectionShape::Box) {
+
+            AlignProjectionToInfluence();
+        }
+        return true;
+    }
+
+    bool ReflectionProbeComponent::SetInfluenceBoxSize(
+        const MATH::Vec3& size) noexcept {
+
+        if (!MATH::IsFinite(size)) {
+            return false;
+        }
+        const MATH::Vec3 clamped{
+            (std::max)(size.x, 0.05f),
+            (std::max)(size.y, 0.05f),
+            (std::max)(size.z, 0.05f)
+        };
+        if (influenceBoxSize_.x == clamped.x &&
+            influenceBoxSize_.y == clamped.y &&
+            influenceBoxSize_.z == clamped.z) {
+            return false;
+        }
+        influenceBoxSize_ = clamped;
+        if (projectionFollowsInfluence_) {
+            AlignProjectionToInfluence();
+        }
+        return true;
+    }
+
+    void ReflectionProbeComponent::SetProjectionFollowsInfluence(
+        bool enabled) noexcept {
+
+        projectionFollowsInfluence_ = enabled;
+        if (projectionFollowsInfluence_) {
+            viewportBoundsTarget_ =
+                ReflectionProbeViewportBoundsTarget::Influence;
+            AlignProjectionToInfluence();
+        }
+    }
+
+    bool ReflectionProbeComponent::SetProjectionBoxSize(
+        const MATH::Vec3& size) noexcept {
+
+        if (!MATH::IsFinite(size)) {
+            return false;
+        }
+        const MATH::Vec3 clamped{
+            (std::max)(size.x, 0.05f),
+            (std::max)(size.y, 0.05f),
+            (std::max)(size.z, 0.05f)
+        };
+        if (projectionBoxSize_.x == clamped.x &&
+            projectionBoxSize_.y == clamped.y &&
+            projectionBoxSize_.z == clamped.z) {
+            return false;
+        }
+        projectionBoxSize_ = clamped;
+        return true;
+    }
+
+    void ReflectionProbeComponent::AlignProjectionToInfluence() noexcept {
+        projectionShape_ = ReflectionProbeProjectionShape::Box;
+        if (influenceShape_ ==
+            ReflectionProbeInfluenceShape::Box) {
+
+            projectionBoxOffset_ = influenceBoxOffset_;
+            projectionBoxSize_ = influenceBoxSize_;
+            return;
+        }
+
+        projectionBoxOffset_ = { 0.0f, 0.0f, 0.0f };
+        const float diameter = radius_ * 2.0f;
+        projectionBoxSize_ = {
+            diameter,
+            diameter,
+            diameter
+        };
     }
 
     void ReflectionProbeComponent::ClampSettings() noexcept {
@@ -118,6 +218,9 @@ namespace HIKARI {
         }
         if (scenario_.empty()) {
             scenario_ = "Default";
+        }
+        if (projectionFollowsInfluence_) {
+            AlignProjectionToInfluence();
         }
     }
 

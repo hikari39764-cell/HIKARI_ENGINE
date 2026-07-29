@@ -21,10 +21,14 @@ namespace HIKARI {
 
         bool IsEnabled() const noexcept { return enabled_; }
         const MATH::Vec3& GetSize() const noexcept { return size_; }
+        bool SetSize(const MATH::Vec3& size) noexcept;
         uint32_t GetCountX() const noexcept { return countX_; }
         uint32_t GetCountY() const noexcept { return countY_; }
         uint32_t GetCountZ() const noexcept { return countZ_; }
         float GetIntensity() const noexcept { return intensity_; }
+        float GetBlendDistance() const noexcept {
+            return blendDistance_;
+        }
         uint32_t GetCaptureResolution() const noexcept {
             return captureResolution_;
         }
@@ -42,6 +46,7 @@ namespace HIKARI {
         uint32_t countY_ = 2;
         uint32_t countZ_ = 4;
         float intensity_ = 1.0f;
+        float blendDistance_ = 1.0f;
         uint32_t captureResolution_ = 32;
         uint32_t shOrder_ = 3;
         int priority_ = 0;

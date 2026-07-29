@@ -153,6 +153,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         TraditionalIndirectStream shadowTraditionalStream_{};
         GpuDrivenSceneSource sceneSource_{};
         GpuSceneRegistryStats stats_{};
+        uint64_t residencyEpoch_ = 0;
         uint64_t layoutVersion_ = 0;
         uint64_t routingVersion_ = 0;
         uint64_t dataVersion_ = 0;

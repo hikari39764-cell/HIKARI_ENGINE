@@ -93,25 +93,38 @@ cbuffer ShadowCB : register(b4)
     float3 gShadowPadding;
 };
 
+struct HikariReflectionProbeData
+{
+    float4 positionRadius;
+    float4 params;
+    float4 intensity;
+    float4 influenceBoxMin;
+    float4 influenceBoxMax;
+    float4 projectionBoxMin;
+    float4 projectionBoxMax;
+    float4 shapeParams;
+};
+
+struct HikariIrradianceVolumeData
+{
+    float4 originSampling;
+    float4 spacingIntensity;
+    float4 countsProbeCount;
+    float4 sizeBlendDistance;
+    float4 selectionParams;
+};
+
 cbuffer SkyEnvironmentCB : register(b5)
 {
     float4 gSkyZenithExposure;
     float4 gSkyHorizonReflection;
     float4 gSkyGroundAmbient;
     float4 gSkyParams;
+    float4 gSkyTintLighting;
     float4 gIblParams;
-    float4 gReflectionProbePositionRadius;
-    float4 gReflectionProbeParams;
-    float4 gReflectionProbeIntensity;
-    float4 gReflectionProbeInfluenceBoxMin;
-    float4 gReflectionProbeInfluenceBoxMax;
-    float4 gReflectionProbeProjectionBoxMin;
-    float4 gReflectionProbeProjectionBoxMax;
-    float4 gReflectionProbeShapeParams;
+    HikariReflectionProbeData gReflectionProbes[2];
     float4 gAoParams;
-    float4 gLightProbeVolumeOrigin;
-    float4 gLightProbeVolumeSpacing;
-    float4 gLightProbeVolumeCounts;
+    HikariIrradianceVolumeData gIrradianceVolumes[2];
 };
 
 #define gSkyZenithColor gSkyZenithExposure.rgb
@@ -124,33 +137,14 @@ cbuffer SkyEnvironmentCB : register(b5)
 #define gSkyHasCubemap gSkyParams.y
 #define gSkyHorizonPower gSkyParams.z
 #define gSkyYaw gSkyParams.w
+#define gSkyTint gSkyTintLighting.rgb
 #define gIblHasIrradiance gIblParams.x
 #define gIblHasPrefiltered gIblParams.y
 #define gIblHasBrdfLut gIblParams.z
 #define gIblPrefilteredMipCount gIblParams.w
-#define gReflectionProbePosition gReflectionProbePositionRadius.xyz
-#define gReflectionProbeRadius gReflectionProbePositionRadius.w
-#define gReflectionProbeEnabled gReflectionProbeParams.x
-#define gReflectionProbeHasPrefiltered gReflectionProbeParams.y
-#define gReflectionProbeHasBrdfLut gReflectionProbeParams.z
-#define gReflectionProbeMipCount gReflectionProbeParams.w
-#define gReflectionProbeSpecularIntensity gReflectionProbeIntensity.x
-#define gReflectionProbeInfluenceShape gReflectionProbeShapeParams.x
-#define gReflectionProbeProjectionShape gReflectionProbeShapeParams.y
-#define gReflectionProbeBlendDistance gReflectionProbeShapeParams.z
-#define gReflectionProbePriority gReflectionProbeShapeParams.w
 #define gSsaoEnabled gAoParams.x
 #define gSsaoDiffuseStrength gAoParams.y
 #define gSsaoSpecularStrength gAoParams.z
-#define gLightProbeSamplingMode gLightProbeVolumeOrigin.w
-#define gLightProbeEnabled ((gLightProbeSamplingMode > 0.5f) ? 1.0f : 0.0f)
-#define gLightProbeOrigin gLightProbeVolumeOrigin.xyz
-#define gLightProbeSpacing gLightProbeVolumeSpacing.xyz
-#define gLightProbeIntensity gLightProbeVolumeSpacing.w
-#define gLightProbeCountX ((uint)(gLightProbeVolumeCounts.x + 0.5f))
-#define gLightProbeCountY ((uint)(gLightProbeVolumeCounts.y + 0.5f))
-#define gLightProbeCountZ ((uint)(gLightProbeVolumeCounts.z + 0.5f))
-#define gLightProbeProbeCount ((uint)(gLightProbeVolumeCounts.w + 0.5f))
 
 Texture2D gShadowMap : register(t2);
 TextureCube gSkyCube : register(t6);
@@ -159,14 +153,17 @@ Texture2D gSceneColorTex : register(t8);
 TextureCube gIblIrradianceTex : register(t9);
 TextureCube gIblPrefilteredTex : register(t10);
 Texture2D gIblBrdfLutTex : register(t11);
-TextureCube gReflectionProbePrefilteredTex : register(t12);
+TextureCube gReflectionProbePrefilteredTex0 : register(t12);
 Texture2D gSsaoTex : register(t13);
+TextureCube gReflectionProbePrefilteredTex1 : register(t14);
 // Light probe volume: SH9 係数を係数ごとに 1 枚の Texture3D (RGB=係数) に
 // 焼き、hardware trilinear で係数を補間する。9 枚は root param LightProbeSh の
 // descriptor table として連続確保される。
-Texture3D<float4> gLightProbeShVolume[9] : register(t0, space2);
+Texture3D<float4> gLightProbeShVolume0[9] : register(t0, space2);
+Texture3D<float4> gLightProbeShVolume1[9] : register(t0, space4);
 SamplerState gLinearWrap : register(s0);
 SamplerComparisonState gShadowSampler : register(s1);
+SamplerState gLinearClamp : register(s2);
 
 #include "Include/HIKARI_PbrCommon.hlsli"
 #include "Include/HIKARI_SkyEnvironmentCommon.hlsli"
