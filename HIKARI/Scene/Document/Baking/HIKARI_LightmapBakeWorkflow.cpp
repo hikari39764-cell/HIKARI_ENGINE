@@ -149,6 +149,9 @@ namespace HIKARI {
             record.height = job.settings.outputResolution;
             record.uvSet =
                 ASSETS::LIGHTING::kSurfaceLightmapUvSet;
+            record.surfaceBindings =
+                job.transportScene.targets[
+                    job.targetIndex].surfaceBindings;
             record.encoding =
                 "RGB16F_DiffuseIrradiance";
             record.authoringHash = job.authoringHash;
@@ -184,9 +187,19 @@ namespace HIKARI {
             job.report.messages.push_back(manifestMessage);
 
             scene.RefreshLightingRuntime();
+            const auto& surfaceBindings =
+                job.transportScene.targets[
+                    job.targetIndex].surfaceBindings;
             job.report.lightmapRuntimeLoaded =
+                !surfaceBindings.empty() &&
                 RENDER3D::LIGHTMAP::Find(
-                    job.objectId.value) != nullptr;
+                    job.objectId.value,
+                    surfaceBindings.front().
+                        surface.nodeIndex,
+                    surfaceBindings.front().
+                        surface.meshIndex,
+                    surfaceBindings.front().
+                        surface.primitiveIndex) != nullptr;
             RenderSubmissionSystem::InvalidateSceneResources(false);
 
             job.state =

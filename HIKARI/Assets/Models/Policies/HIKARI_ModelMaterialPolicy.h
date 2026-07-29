@@ -17,6 +17,9 @@ namespace HIKARI {
 
     namespace MATERIAL_POLICY {
 
+        constexpr float kOpticalTransparencyFallbackOpacity =
+            0.35f;
+
         inline bool ContainsLowerAscii(std::string_view text, std::string_view needle) {
             if (needle.empty() || text.size() < needle.size()) {
                 return false;
@@ -37,18 +40,51 @@ namespace HIKARI {
             return false;
         }
 
+        inline bool ContainsLowerAsciiToken(
+            std::string_view text,
+            std::string_view token) {
+            if (token.empty() || text.size() < token.size()) {
+                return false;
+            }
+            const auto isTokenCharacter = [](char value) {
+                const char c = TEXT::ToLowerAscii(value);
+                return
+                    (c >= 'a' && c <= 'z') ||
+                    (c >= '0' && c <= '9');
+            };
+            for (size_t begin = 0u;
+                begin + token.size() <= text.size();
+                ++begin) {
+                if (begin > 0u &&
+                    isTokenCharacter(text[begin - 1u])) {
+                    continue;
+                }
+                if (begin + token.size() < text.size() &&
+                    isTokenCharacter(
+                        text[begin + token.size()])) {
+                    continue;
+                }
+                bool matched = true;
+                for (size_t i = 0u; i < token.size(); ++i) {
+                    if (TEXT::ToLowerAscii(text[begin + i]) !=
+                        token[i]) {
+                        matched = false;
+                        break;
+                    }
+                }
+                if (matched) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        inline bool HasOpticalTransparencyCue(
+            std::string_view text);
+
         inline bool HasThinTransparentCue(std::string_view text) {
             return
-                ContainsLowerAscii(text, "glass") ||
-                ContainsLowerAscii(text, "window") ||
-                ContainsLowerAscii(text, "pane") ||
-                ContainsLowerAscii(text, "fenetre") ||
-                ContainsLowerAscii(text, "fenster") ||
-                ContainsLowerAscii(text, "vitre") ||
-                ContainsLowerAscii(text, "headlight") ||
-                ContainsLowerAscii(text, "taillight") ||
-                ContainsLowerAscii(text, "lightbulb") ||
-                ContainsLowerAscii(text, "light_bulb") ||
+                HasOpticalTransparencyCue(text) ||
                 ContainsLowerAscii(text, "foliage") ||
                 ContainsLowerAscii(text, "leaf") ||
                 ContainsLowerAscii(text, "leaves") ||
@@ -61,6 +97,27 @@ namespace HIKARI {
                 ContainsLowerAscii(text, "fabric") ||
                 ContainsLowerAscii(text, "transparent") ||
                 ContainsLowerAscii(text, "translucent");
+        }
+
+        inline bool HasOpticalTransparencyCue(
+            std::string_view text) {
+            return
+                ContainsLowerAsciiToken(text, "glass") ||
+                ContainsLowerAsciiToken(text, "window") ||
+                ContainsLowerAsciiToken(text, "pane") ||
+                ContainsLowerAsciiToken(text, "fenetre") ||
+                ContainsLowerAsciiToken(text, "fenster") ||
+                ContainsLowerAsciiToken(text, "vitre") ||
+                ContainsLowerAsciiToken(text, "windshield") ||
+                ContainsLowerAsciiToken(text, "windscreen") ||
+                ContainsLowerAsciiToken(text, "lens") ||
+                ContainsLowerAsciiToken(text, "visor") ||
+                ContainsLowerAsciiToken(text, "headlight") ||
+                ContainsLowerAsciiToken(text, "taillight") ||
+                ContainsLowerAsciiToken(text, "lightbulb") ||
+                ContainsLowerAscii(text, "light_bulb") ||
+                ContainsLowerAsciiToken(text, "transparent") ||
+                ContainsLowerAsciiToken(text, "translucent");
         }
 
         inline bool HasExplicitAlphaSurface(const MaterialAsset& material) {

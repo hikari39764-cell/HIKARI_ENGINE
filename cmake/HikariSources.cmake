@@ -1,7 +1,7 @@
 # Authoritative HIKARI compile-source manifest.
 # Add or remove translation units here and keep the source-closure test green.
 
-set(HIKARI_COMPILE_SOURCE_COUNT 731)
+set(HIKARI_COMPILE_SOURCE_COUNT 732)
 
 set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/External/WICTextureLoader.cpp"
@@ -138,18 +138,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/HIKARI_Transform3D.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/HIKARI_Math3D.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Models/HIKARI_ModelAsset.cpp"
-    "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Models/Loading/HIKARI_AssimpModelLoader.cpp"
-    "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Models/Loading/Assimp/HIKARI_AssimpMaterialReader.cpp"
-    "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Models/Loading/Assimp/HIKARI_AssimpMeshReader.cpp"
-    "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Models/Loading/Assimp/HIKARI_AssimpSceneReader.cpp"
-    "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Models/Loading/HIKARI_GltfModelLoader.cpp"
-    "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Models/Loading/Gltf/HIKARI_GltfAccessorReader.cpp"
-    "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Models/Loading/Gltf/HIKARI_GltfAnimationReader.cpp"
-    "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Models/Loading/Gltf/HIKARI_GltfMaterialReader.cpp"
-    "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Models/Loading/Gltf/HIKARI_GltfSceneReader.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Models/Loading/HIKARI_ModelSourceLoader.cpp"
-    "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Models/Loading/HIKARI_ObjModelLoader.cpp"
-    "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Models/Loading/Obj/HIKARI_ObjMaterialLibrary.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Models/Processing/HIKARI_ModelGeometryPostprocess.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Models/HIKARI_ModelManager.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Models/Primitives/HIKARI_BuiltinModelFactory.cpp"
@@ -311,6 +300,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Lighting/HIKARI_LightProbeVolumeFormat.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Lighting/HIKARI_LightingBakeManifest.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Lighting/HIKARI_LightingBakeDependencyHash.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Lighting/HIKARI_LightmapSurfaceAnalysis.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Lighting/Transport/HIKARI_LightingTransportContract.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Formats/HIKARI_HmatFormat.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Formats/HIKARI_HmodelFormat.cpp"
@@ -454,6 +444,17 @@ set(HIKARI_ENGINE_TEST_GAME_PROJECT_SOURCES
 )
 
 set(HIKARI_EDITOR_SOURCES
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Models/Loading/HIKARI_AssimpModelLoader.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Models/Loading/Assimp/HIKARI_AssimpMaterialReader.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Models/Loading/Assimp/HIKARI_AssimpMeshReader.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Models/Loading/Assimp/HIKARI_AssimpSceneReader.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Models/Loading/HIKARI_GltfModelLoader.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Models/Loading/Gltf/HIKARI_GltfAccessorReader.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Models/Loading/Gltf/HIKARI_GltfAnimationReader.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Models/Loading/Gltf/HIKARI_GltfMaterialReader.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Models/Loading/Gltf/HIKARI_GltfSceneReader.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Models/Loading/HIKARI_ObjModelLoader.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Models/Loading/Obj/HIKARI_ObjMaterialLibrary.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/App/HIKARI_EditorEngineApp.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/App/HIKARI_ProjectLauncherApp.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Platform/HIKARI_EditorFileDialog.cpp"

@@ -147,6 +147,7 @@ namespace HIKARI {
             uint32_t normalizedToOpaqueCount = 0;
             uint32_t normalizedToMaskCount = 0;
             uint32_t normalizedToBlendCount = 0;
+            uint32_t opticalOpacityFallbackCount = 0;
             uint32_t opaqueDoubleSidedPreservedCount = 0;
         };
 
@@ -291,6 +292,7 @@ namespace HIKARI {
                 { "normalizedToOpaque", alphaPolicyStats.normalizedToOpaqueCount },
                 { "normalizedToMask", alphaPolicyStats.normalizedToMaskCount },
                 { "normalizedToBlend", alphaPolicyStats.normalizedToBlendCount },
+                { "opticalOpacityFallback", alphaPolicyStats.opticalOpacityFallbackCount },
                 { "opaqueDoubleSidedPreserved", alphaPolicyStats.opaqueDoubleSidedPreservedCount },
             };
 
@@ -663,6 +665,17 @@ namespace HIKARI {
                 SURFACE_POLICY::HasThinSurfaceCue(material.defaultMaterialFxProfileId);
         }
 
+        bool HasMaterialOpticalTransparencyCookHint(
+            const MaterialAsset& material) {
+            return
+                MATERIAL_POLICY::HasOpticalTransparencyCue(
+                    material.name) ||
+                MATERIAL_POLICY::HasOpticalTransparencyCue(
+                    material.shaderProfileId) ||
+                MATERIAL_POLICY::HasOpticalTransparencyCue(
+                    material.defaultMaterialFxProfileId);
+        }
+
         void SetMaterialAlphaMode(MaterialAsset& material, AlphaMode mode) {
             const bool sourceDoubleSided = material.doubleSided;
 
@@ -710,15 +723,26 @@ namespace HIKARI {
                     texture->sourceHasTranslucentAlpha &&
                     !textureCutout;
                 const bool explicitThinCue = HasMaterialThinSurfaceCookHint(material);
+                const bool opticalTransparencyCue =
+                    HasMaterialOpticalTransparencyCookHint(
+                        material);
                 const bool sourceRequestedMask = originalMode == AlphaMode::Mask;
                 const bool sourceRequestedBlend = originalMode == AlphaMode::Blend;
+                const bool needsOpticalOpacityFallback =
+                    sourceRequestedBlend &&
+                    opticalTransparencyCue &&
+                    !factorAlpha &&
+                    !textureAlpha;
 
                 const bool cutoutSurface =
                     textureCutout &&
                     (sourceRequestedMask || sourceRequestedBlend || explicitThinCue);
                 const bool translucentSurface =
                     factorAlpha ||
-                    (textureTranslucent && (sourceRequestedBlend || explicitThinCue));
+                    (textureTranslucent &&
+                        (sourceRequestedBlend || explicitThinCue)) ||
+                    (sourceRequestedBlend &&
+                        opticalTransparencyCue);
 
                 AlphaMode resolvedMode = AlphaMode::Opaque;
                 if (cutoutSurface && !factorAlpha) {
@@ -728,6 +752,13 @@ namespace HIKARI {
                 }
 
                 SetMaterialAlphaMode(material, resolvedMode);
+                if (resolvedMode == AlphaMode::Blend &&
+                    needsOpticalOpacityFallback) {
+                    material.baseColorFactor.w =
+                        MATERIAL_POLICY::
+                            kOpticalTransparencyFallbackOpacity;
+                    ++stats.opticalOpacityFallbackCount;
+                }
 
                 if (resolvedMode == AlphaMode::Opaque) {
                     ++stats.opaqueCount;

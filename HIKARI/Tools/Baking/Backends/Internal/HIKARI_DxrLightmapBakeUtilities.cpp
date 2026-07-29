@@ -276,7 +276,7 @@ namespace HIKARI::TOOLS::BAKING::INTERNAL {
             validTexels,
             width,
             height,
-            8u);
+            4u);
 
         DirectX::ScratchImage source{};
         HRESULT result = source.Initialize2D(

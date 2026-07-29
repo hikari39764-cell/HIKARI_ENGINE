@@ -116,7 +116,7 @@ void DrawModelDiagnostics(const AssetDatabase &assetDatabase,
   if (diagnostics.contains("formatReport") &&
       diagnostics["formatReport"].is_object()) {
     const nlohmann::json &formatReport = diagnostics["formatReport"];
-    ImGui::SeparatorText("OBJ / glTF Support Report");
+    ImGui::SeparatorText("Source Import Report");
     ImGui::Text("Source Format: %s",
                 formatReport.value("sourceFormat", "<unknown>").c_str());
     ImGui::Text("Object / Group / Triangulated: %d / %d / %d",
@@ -144,6 +144,40 @@ void DrawModelDiagnostics(const AssetDatabase &assetDatabase,
       }
       ImGui::TreePop();
     }
+  }
+
+  if (diagnostics.contains("materialAlphaPolicy") &&
+      diagnostics["materialAlphaPolicy"].is_object()) {
+    const nlohmann::json &alpha =
+        diagnostics["materialAlphaPolicy"];
+    ImGui::SeparatorText("Material Classification");
+    ImGui::Text("Opaque / Mask / Blend: %d / %d / %d",
+                alpha.value("opaque", 0), alpha.value("mask", 0),
+                alpha.value("blend", 0));
+    ImGui::Text("Normalized to O / M / B: %d / %d / %d",
+                alpha.value("normalizedToOpaque", 0),
+                alpha.value("normalizedToMask", 0),
+                alpha.value("normalizedToBlend", 0));
+    const int opticalFallback =
+        alpha.value("opticalOpacityFallback", 0);
+    if (opticalFallback > 0) {
+      ImGui::Text("Recovered Optical Surfaces: %d", opticalFallback);
+      ImGui::TextDisabled(
+          "Only explicit source Blend plus glass/window/lens cues are recovered.");
+    }
+  }
+
+  if (diagnostics.contains("importMessages") &&
+      diagnostics["importMessages"].is_array() &&
+      !diagnostics["importMessages"].empty() &&
+      ImGui::TreeNode("Advanced Import Diagnostics")) {
+    for (const nlohmann::json &message :
+         diagnostics["importMessages"]) {
+      if (message.is_string()) {
+        ImGui::BulletText("%s", message.get<std::string>().c_str());
+      }
+    }
+    ImGui::TreePop();
   }
 
   if (diagnostics.contains("clusteredGeometry") &&

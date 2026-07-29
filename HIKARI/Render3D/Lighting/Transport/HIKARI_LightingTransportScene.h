@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "Assets/Lighting/HIKARI_LightingBakePolicy.h"
+#include "Assets/Lighting/HIKARI_LightmapSurfaceContract.h"
 #include "Render3D/HIKARI_Math3D.h"
 
 namespace HIKARI::RENDER3D::LIGHTING::TRANSPORT {
@@ -31,6 +32,15 @@ namespace HIKARI::RENDER3D::LIGHTING::TRANSPORT {
         bool eligible = false;
         std::string eligibilityMessage{};
         std::vector<uint32_t> triangleIndices{};
+        std::vector<
+            ASSETS::LIGHTING::LightmapSurfaceBinding>
+                surfaceBindings{};
+        uint32_t analyzedSurfaceCount = 0u;
+        uint32_t eligibleSurfaceCount = 0u;
+        uint32_t unsupportedSurfaceCount = 0u;
+        uint32_t invalidUvSurfaceCount = 0u;
+        uint32_t alphaMaskedSurfaceCount = 0u;
+        uint32_t blendedSurfaceCount = 0u;
     };
 
     struct LightingTransportLight {

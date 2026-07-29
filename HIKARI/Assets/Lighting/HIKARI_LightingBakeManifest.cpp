@@ -113,6 +113,37 @@ namespace HIKARI::ASSETS::LIGHTING {
             record.width = node.value("width", 0u);
             record.height = node.value("height", 0u);
             record.uvSet = node.value("uvSet", 1u);
+            for (const nlohmann::json& bindingNode :
+                 node.value(
+                    "surfaceBindings",
+                    nlohmann::json::array())) {
+                if (!bindingNode.is_object()) {
+                    continue;
+                }
+                LightmapSurfaceBinding binding{};
+                binding.surface.nodeIndex =
+                    bindingNode.value(
+                        "nodeIndex",
+                        kInvalidLightmapSurfaceIndex);
+                binding.surface.meshIndex =
+                    bindingNode.value(
+                        "meshIndex",
+                        kInvalidLightmapSurfaceIndex);
+                binding.surface.primitiveIndex =
+                    bindingNode.value(
+                        "primitiveIndex",
+                        kInvalidLightmapSurfaceIndex);
+                binding.uvScaleBias =
+                    JSONREAD::Vec4Or(
+                        bindingNode.value(
+                            "uvScaleBias",
+                            nlohmann::json::array()),
+                        binding.uvScaleBias);
+                if (binding.surface.IsValid()) {
+                    record.surfaceBindings.push_back(
+                        binding);
+                }
+            }
             record.encoding = node.value(
                 "encoding",
                 std::string{ "RGB16F_Irradiance" });
@@ -191,6 +222,30 @@ namespace HIKARI::ASSETS::LIGHTING {
         }
 
         nlohmann::json ToJson(const LightmapBakeRecord& record) {
+            nlohmann::json surfaceBindings =
+                nlohmann::json::array();
+            for (const LightmapSurfaceBinding& binding :
+                 record.surfaceBindings) {
+                surfaceBindings.push_back({
+                    {
+                        "nodeIndex",
+                        binding.surface.nodeIndex
+                    },
+                    {
+                        "meshIndex",
+                        binding.surface.meshIndex
+                    },
+                    {
+                        "primitiveIndex",
+                        binding.surface.primitiveIndex
+                    },
+                    {
+                        "uvScaleBias",
+                        JsonMath::ToJsonArray(
+                            binding.uvScaleBias)
+                    }
+                });
+            }
             return nlohmann::json{
                 { "id", record.id },
                 { "name", record.name },
@@ -199,6 +254,7 @@ namespace HIKARI::ASSETS::LIGHTING {
                 { "width", record.width },
                 { "height", record.height },
                 { "uvSet", record.uvSet },
+                { "surfaceBindings", surfaceBindings },
                 { "encoding", record.encoding },
                 { "authoringHash", record.authoringHash },
                 { "captureSceneHash", record.captureSceneHash },

@@ -277,6 +277,7 @@ namespace HIKARI::RENDER3D::LIGHTING {
              record : manifest.lightmaps) {
             if (record.objectId == 0u ||
                 record.texturePath.empty() ||
+                record.surfaceBindings.empty() ||
                 record.uvSet !=
                     ASSETS::LIGHTING::
                         kSurfaceLightmapUvSet ||
@@ -322,16 +323,29 @@ namespace HIKARI::RENDER3D::LIGHTING {
                 continue;
             }
 
-            LIGHTMAP::LightmapRuntimeBinding binding{};
-            binding.objectId = record.objectId;
-            binding.recordId = record.id;
-            binding.sourcePath =
-                resolvedPath.generic_string();
-            binding.texture = texture;
-            binding.textureDescriptorIndex =
-                GetTextureResourceSrvDescriptorIndex(texture);
-            binding.uvSet = record.uvSet;
-            if (LIGHTMAP::Register(std::move(binding))) {
+            bool registered = false;
+            for (const ASSETS::LIGHTING::
+                     LightmapSurfaceBinding& surface :
+                 record.surfaceBindings) {
+                LIGHTMAP::LightmapRuntimeBinding binding{};
+                binding.objectId = record.objectId;
+                binding.surface = surface.surface;
+                binding.recordId = record.id;
+                binding.sourcePath =
+                    resolvedPath.generic_string();
+                binding.texture = texture;
+                binding.textureDescriptorIndex =
+                    GetTextureResourceSrvDescriptorIndex(
+                        texture);
+                binding.uvSet = record.uvSet;
+                binding.uvScaleBias =
+                    surface.uvScaleBias;
+                registered =
+                    LIGHTMAP::Register(
+                        std::move(binding)) ||
+                    registered;
+            }
+            if (registered) {
                 ++runtimeData.loadedLightmapCount;
             }
         }

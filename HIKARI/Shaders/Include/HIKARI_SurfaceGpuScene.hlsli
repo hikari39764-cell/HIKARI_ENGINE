@@ -50,6 +50,7 @@ struct HikariSurfaceGpuSceneInstance
     uint deformationFlags;
     uint lightmapTextureDescriptorIndex;
 
+    float4 lightmapUvScaleBias;
     float4 fxUser[8];
 };
 

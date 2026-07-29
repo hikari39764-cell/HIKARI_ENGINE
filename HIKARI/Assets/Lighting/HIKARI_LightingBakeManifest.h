@@ -6,12 +6,13 @@
 #include <vector>
 
 #include "Assets/Lighting/HIKARI_LightingBakePolicy.h"
+#include "Assets/Lighting/HIKARI_LightmapSurfaceContract.h"
 
 #include "Render3D/HIKARI_Math3D.h"
 
 namespace HIKARI::ASSETS::LIGHTING {
 
-    constexpr uint32_t kLightingBakeManifestVersion = 5;
+    constexpr uint32_t kLightingBakeManifestVersion = 6;
     constexpr uint32_t kReflectionProbeBakePolicyVersion = 2;
 
     struct ReflectionProbeBakeRecord {
@@ -69,6 +70,8 @@ namespace HIKARI::ASSETS::LIGHTING {
         uint32_t width = 0;
         uint32_t height = 0;
         uint32_t uvSet = kSurfaceLightmapUvSet;
+        std::vector<LightmapSurfaceBinding>
+            surfaceBindings{};
         std::string encoding{ "RGB16F_Irradiance" };
         std::string authoringHash{};
         std::string captureSceneHash{};

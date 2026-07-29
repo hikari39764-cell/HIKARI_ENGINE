@@ -204,6 +204,8 @@ namespace HIKARI {
         job->report.currentItemName = job->objectName;
         job->report.messages.push_back(
             "Surface lightmap uses UV1, static opaque geometry, RGB16F diffuse irradiance, and per-record runtime fallback.");
+        job->report.messages.push_back(
+            resolvedTarget.eligibilityMessage);
 
         lightmapJob_ = std::move(job);
         lastReport_ = lightmapJob_->report;

@@ -118,49 +118,53 @@ set(
     HIKARI_VCPKG_INCLUDE_DIR
     "${HIKARI_VCPKG_DYNAMIC_ROOT}/x64-windows/include")
 hikari_require_dependency_file(
-    "${HIKARI_VCPKG_INCLUDE_DIR}/assimp/Importer.hpp"
-    "Assimp headers")
-hikari_require_dependency_file(
     "${HIKARI_VCPKG_INCLUDE_DIR}/Jolt/Jolt.h"
     "Jolt headers")
 
-set(
-    HIKARI_ASSIMP_DEBUG_IMPLIB
-    "${HIKARI_VCPKG_DYNAMIC_ROOT}/x64-windows/debug/lib/assimp-vc143-mtd.lib")
-set(
-    HIKARI_ASSIMP_DEBUG_DLL
-    "${HIKARI_VCPKG_DYNAMIC_ROOT}/x64-windows/debug/bin/assimp-vc143-mtd.dll")
-set(
-    HIKARI_ASSIMP_RELEASE_IMPLIB
-    "${HIKARI_VCPKG_DYNAMIC_ROOT}/x64-windows/lib/assimp-vc143-mt.lib")
-set(
-    HIKARI_ASSIMP_RELEASE_DLL
-    "${HIKARI_VCPKG_DYNAMIC_ROOT}/x64-windows/bin/assimp-vc143-mt.dll")
-foreach(
-    assimp_file
-    IN ITEMS
-        "${HIKARI_ASSIMP_DEBUG_IMPLIB}"
-        "${HIKARI_ASSIMP_DEBUG_DLL}"
-        "${HIKARI_ASSIMP_RELEASE_IMPLIB}"
-        "${HIKARI_ASSIMP_RELEASE_DLL}")
-    hikari_require_dependency_file("${assimp_file}" "Assimp artifact")
-endforeach()
+if(HIKARI_WITH_EDITOR_BUILD)
+    hikari_require_dependency_file(
+        "${HIKARI_VCPKG_INCLUDE_DIR}/assimp/Importer.hpp"
+        "Assimp headers")
+    set(
+        HIKARI_ASSIMP_DEBUG_IMPLIB
+        "${HIKARI_VCPKG_DYNAMIC_ROOT}/x64-windows/debug/lib/assimp-vc143-mtd.lib")
+    set(
+        HIKARI_ASSIMP_DEBUG_DLL
+        "${HIKARI_VCPKG_DYNAMIC_ROOT}/x64-windows/debug/bin/assimp-vc143-mtd.dll")
+    set(
+        HIKARI_ASSIMP_RELEASE_IMPLIB
+        "${HIKARI_VCPKG_DYNAMIC_ROOT}/x64-windows/lib/assimp-vc143-mt.lib")
+    set(
+        HIKARI_ASSIMP_RELEASE_DLL
+        "${HIKARI_VCPKG_DYNAMIC_ROOT}/x64-windows/bin/assimp-vc143-mt.dll")
+    foreach(
+        assimp_file
+        IN ITEMS
+            "${HIKARI_ASSIMP_DEBUG_IMPLIB}"
+            "${HIKARI_ASSIMP_DEBUG_DLL}"
+            "${HIKARI_ASSIMP_RELEASE_IMPLIB}"
+            "${HIKARI_ASSIMP_RELEASE_DLL}")
+        hikari_require_dependency_file(
+            "${assimp_file}"
+            "Assimp artifact")
+    endforeach()
 
-add_library(HIKARI::Assimp SHARED IMPORTED GLOBAL)
-set_target_properties(
-    HIKARI::Assimp
-    PROPERTIES
-        IMPORTED_CONFIGURATIONS "Debug;EditorRelease;Shipping"
-        IMPORTED_IMPLIB_DEBUG "${HIKARI_ASSIMP_DEBUG_IMPLIB}"
-        IMPORTED_LOCATION_DEBUG "${HIKARI_ASSIMP_DEBUG_DLL}"
-        IMPORTED_IMPLIB_EDITORRELEASE "${HIKARI_ASSIMP_RELEASE_IMPLIB}"
-        IMPORTED_LOCATION_EDITORRELEASE "${HIKARI_ASSIMP_RELEASE_DLL}"
-        IMPORTED_IMPLIB_SHIPPING "${HIKARI_ASSIMP_RELEASE_IMPLIB}"
-        IMPORTED_LOCATION_SHIPPING "${HIKARI_ASSIMP_RELEASE_DLL}")
-target_include_directories(
-    HIKARI::Assimp
-    SYSTEM INTERFACE
-        "${HIKARI_VCPKG_INCLUDE_DIR}")
+    add_library(HIKARI::Assimp SHARED IMPORTED GLOBAL)
+    set_target_properties(
+        HIKARI::Assimp
+        PROPERTIES
+            IMPORTED_CONFIGURATIONS "Debug;EditorRelease;Shipping"
+            IMPORTED_IMPLIB_DEBUG "${HIKARI_ASSIMP_DEBUG_IMPLIB}"
+            IMPORTED_LOCATION_DEBUG "${HIKARI_ASSIMP_DEBUG_DLL}"
+            IMPORTED_IMPLIB_EDITORRELEASE "${HIKARI_ASSIMP_RELEASE_IMPLIB}"
+            IMPORTED_LOCATION_EDITORRELEASE "${HIKARI_ASSIMP_RELEASE_DLL}"
+            IMPORTED_IMPLIB_SHIPPING "${HIKARI_ASSIMP_RELEASE_IMPLIB}"
+            IMPORTED_LOCATION_SHIPPING "${HIKARI_ASSIMP_RELEASE_DLL}")
+    target_include_directories(
+        HIKARI::Assimp
+        SYSTEM INTERFACE
+            "${HIKARI_VCPKG_INCLUDE_DIR}")
+endif()
 
 hikari_add_imported_static(
     HIKARI::Jolt
@@ -184,38 +188,42 @@ target_include_directories(
         "${HIKARI_COACD_ROOT}/include")
 
 set(HIKARI_RUNTIME_DEPENDENCIES)
-if(HIKARI_PRODUCT STREQUAL "Debug")
-    set(
-        hikari_vcpkg_runtime_root
-        "${HIKARI_VCPKG_DYNAMIC_ROOT}/x64-windows/debug/bin")
-    set(
-        hikari_vcpkg_runtime_names
-        assimp-vc143-mtd.dll
-        kubazip.dll
-        minizipd.dll
-        poly2tri.dll
-        pugixml.dll
-        zd.dll)
-else()
-    set(
-        hikari_vcpkg_runtime_root
-        "${HIKARI_VCPKG_DYNAMIC_ROOT}/x64-windows/bin")
-    set(
-        hikari_vcpkg_runtime_names
-        assimp-vc143-mt.dll
-        kubazip.dll
-        minizip.dll
-        poly2tri.dll
-        pugixml.dll
-        z.dll)
+if(HIKARI_WITH_EDITOR_BUILD)
+    if(HIKARI_PRODUCT STREQUAL "Debug")
+        set(
+            hikari_vcpkg_runtime_root
+            "${HIKARI_VCPKG_DYNAMIC_ROOT}/x64-windows/debug/bin")
+        set(
+            hikari_vcpkg_runtime_names
+            assimp-vc143-mtd.dll
+            kubazip.dll
+            minizipd.dll
+            poly2tri.dll
+            pugixml.dll
+            zd.dll)
+    else()
+        set(
+            hikari_vcpkg_runtime_root
+            "${HIKARI_VCPKG_DYNAMIC_ROOT}/x64-windows/bin")
+        set(
+            hikari_vcpkg_runtime_names
+            assimp-vc143-mt.dll
+            kubazip.dll
+            minizip.dll
+            poly2tri.dll
+            pugixml.dll
+            z.dll)
+    endif()
+    foreach(runtime_name IN LISTS hikari_vcpkg_runtime_names)
+        set(
+            runtime_file
+            "${hikari_vcpkg_runtime_root}/${runtime_name}")
+        hikari_require_dependency_file(
+            "${runtime_file}"
+            "vcpkg runtime dependency")
+        list(APPEND HIKARI_RUNTIME_DEPENDENCIES "${runtime_file}")
+    endforeach()
 endif()
-foreach(runtime_name IN LISTS hikari_vcpkg_runtime_names)
-    set(runtime_file "${hikari_vcpkg_runtime_root}/${runtime_name}")
-    hikari_require_dependency_file(
-        "${runtime_file}"
-        "vcpkg runtime dependency")
-    list(APPEND HIKARI_RUNTIME_DEPENDENCIES "${runtime_file}")
-endforeach()
 
 find_program(
     HIKARI_DXC_EXECUTABLE

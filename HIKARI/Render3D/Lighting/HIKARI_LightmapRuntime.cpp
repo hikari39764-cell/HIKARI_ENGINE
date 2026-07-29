@@ -9,8 +9,41 @@ namespace HIKARI::RENDER3D::LIGHTMAP {
     namespace {
 
         struct LightmapRuntimeState {
+            struct SurfaceKey {
+                uint64_t objectId = 0u;
+                uint32_t nodeIndex = 0u;
+                uint32_t meshIndex = 0u;
+                uint32_t primitiveIndex = 0u;
+
+                bool operator==(
+                    const SurfaceKey&) const = default;
+            };
+
+            struct SurfaceKeyHash {
+                size_t operator()(
+                    const SurfaceKey& key) const noexcept {
+                    size_t hash =
+                        std::hash<uint64_t>{}(key.objectId);
+                    const auto combine =
+                        [&hash](uint32_t value) {
+                            hash ^=
+                                std::hash<uint32_t>{}(value) +
+                                0x9e3779b9u +
+                                (hash << 6u) +
+                                (hash >> 2u);
+                        };
+                    combine(key.nodeIndex);
+                    combine(key.meshIndex);
+                    combine(key.primitiveIndex);
+                    return hash;
+                }
+            };
+
             std::vector<LightmapRuntimeBinding> bindings{};
-            std::unordered_map<uint64_t, size_t> indexByObjectId{};
+            std::unordered_map<
+                SurfaceKey,
+                size_t,
+                SurfaceKeyHash> indexBySurface{};
         };
 
         LightmapRuntimeState& State() {
@@ -19,10 +52,16 @@ namespace HIKARI::RENDER3D::LIGHTMAP {
         }
 
         void RebuildIndex(LightmapRuntimeState& state) {
-            state.indexByObjectId.clear();
+            state.indexBySurface.clear();
             for (size_t i = 0; i < state.bindings.size(); ++i) {
-                state.indexByObjectId[
-                    state.bindings[i].objectId] = i;
+                const LightmapRuntimeBinding& binding =
+                    state.bindings[i];
+                state.indexBySurface[{
+                    binding.objectId,
+                    binding.surface.nodeIndex,
+                    binding.surface.meshIndex,
+                    binding.surface.primitiveIndex
+                }] = i;
             }
         }
 
@@ -34,6 +73,7 @@ namespace HIKARI::RENDER3D::LIGHTMAP {
 
     bool Register(LightmapRuntimeBinding binding) {
         if (binding.objectId == 0u ||
+            !binding.surface.IsValid() ||
             !binding.texture ||
             binding.textureDescriptorIndex ==
                 kInvalidLightmapTextureDescriptorIndex ||
@@ -44,9 +84,15 @@ namespace HIKARI::RENDER3D::LIGHTMAP {
 
         LightmapRuntimeState& state = State();
         const auto found =
-            state.indexByObjectId.find(binding.objectId);
-        if (found != state.indexByObjectId.end()) {
+            state.indexBySurface.find({
+                binding.objectId,
+                binding.surface.nodeIndex,
+                binding.surface.meshIndex,
+                binding.surface.primitiveIndex
+            });
+        if (found != state.indexBySurface.end()) {
             state.bindings[found->second] = std::move(binding);
+            RebuildIndex(state);
             return true;
         }
 
@@ -55,10 +101,19 @@ namespace HIKARI::RENDER3D::LIGHTMAP {
         return true;
     }
 
-    const LightmapRuntimeBinding* Find(uint64_t objectId) {
+    const LightmapRuntimeBinding* Find(
+        uint64_t objectId,
+        uint32_t nodeIndex,
+        uint32_t meshIndex,
+        uint32_t primitiveIndex) {
         const LightmapRuntimeState& state = State();
-        const auto found = state.indexByObjectId.find(objectId);
-        return found == state.indexByObjectId.end()
+        const auto found = state.indexBySurface.find({
+            objectId,
+            nodeIndex,
+            meshIndex,
+            primitiveIndex
+        });
+        return found == state.indexBySurface.end()
             ? nullptr
             : &state.bindings[found->second];
     }

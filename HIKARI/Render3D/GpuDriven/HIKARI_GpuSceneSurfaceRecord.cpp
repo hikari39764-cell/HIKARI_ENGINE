@@ -642,9 +642,14 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             if (const RENDER3D::LIGHTMAP::LightmapRuntimeBinding*
                     lightmap =
                         RENDER3D::LIGHTMAP::Find(
-                            record.objectId.value)) {
+                            record.objectId.value,
+                            record.nodeIndex,
+                            record.meshIndex,
+                            record.primitiveIndex)) {
                 instance.lightmapTextureDescriptorIndex =
                     lightmap->textureDescriptorIndex;
+                instance.lightmapUvScaleBias =
+                    lightmap->uvScaleBias;
             }
             instance.meshIndex = record.meshIndex;
             instance.primitiveIndex = record.primitiveIndex;

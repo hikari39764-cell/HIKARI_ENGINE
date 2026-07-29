@@ -48,11 +48,14 @@ void ResolveSurfaceLightmap(
     {
         return;
     }
+    const float2 lightmapUv =
+        uv1 * instance.lightmapUvScaleBias.xy +
+        instance.lightmapUvScaleBias.zw;
     irradiance =
         gMaterialTexturePool[
             NonUniformResourceIndex(descriptorIndex)].Sample(
                 gLinearClamp,
-                saturate(uv1)).rgb;
+                saturate(lightmapUv)).rgb;
     weight = 1.0f;
 #endif
 }

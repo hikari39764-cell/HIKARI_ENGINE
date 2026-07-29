@@ -5,18 +5,24 @@
 
 #include "Assets/Formats/HIKARI_HmodelFormat.h"
 #include "Assets/Models/HIKARI_ModelAsset.h"
+#if defined(HIKARI_WITH_EDITOR)
 #include "Assets/Models/Loading/HIKARI_AssimpModelLoader.h"
 #include "Assets/Models/Loading/HIKARI_GltfModelLoader.h"
 #include "Assets/Models/Loading/HIKARI_ObjModelLoader.h"
+#endif
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
+#if defined(HIKARI_WITH_EDITOR)
 #include "Core/Text/HIKARI_AsciiCase.h"
+#endif
 #include "Render3D/Core/HIKARI_BoundsUtils.h"
 
 namespace HIKARI::ASSETS::MODELS {
 
     namespace {
 
-        std::string GetLowerFileExtension(const std::string& path) {
+#if defined(HIKARI_WITH_EDITOR)
+        std::string GetLowerFileExtension(
+            const std::string& path) {
             const size_t dot = path.find_last_of('.');
             if (dot == std::string::npos) {
                 return {};
@@ -26,6 +32,7 @@ namespace HIKARI::ASSETS::MODELS {
             TEXT::ToLowerAsciiInPlace(extension);
             return extension;
         }
+#endif
 
         bool LoadCookedModel(ModelAsset& asset) {
             const std::string runtimePath = asset.GetSourcePath();
@@ -52,7 +59,9 @@ namespace HIKARI::ASSETS::MODELS {
         if (ASSETS::SEMANTICS::ClassifyCookedAssetFormat(sourcePath) ==
             CookedAssetFormat::HMODEL) {
             loaded = LoadCookedModel(asset);
-        } else {
+        }
+#if defined(HIKARI_WITH_EDITOR)
+        else {
             const std::string extension = GetLowerFileExtension(sourcePath);
             if (extension == ".gltf") {
                 loaded = LoadGltfModelSource(asset);
@@ -62,6 +71,7 @@ namespace HIKARI::ASSETS::MODELS {
                 loaded = LoadAssimpModelSource(asset);
             }
         }
+#endif
 
         if (loaded) {
             BOUNDS::EnsureModelBounds(asset);

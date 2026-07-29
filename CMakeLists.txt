@@ -52,7 +52,6 @@ set(
     HIKARI::Effekseer
     HIKARI::EffekseerRendererDX12
     HIKARI::LLGI
-    HIKARI::Assimp
     HIKARI::Jolt
     HIKARI::CoACD
     dxguid
@@ -124,6 +123,7 @@ if(HIKARI_WITH_EDITOR_BUILD)
             HIKARI::Runtime
             HIKARI::ImGui
             HIKARI::ImGuizmo
+            HIKARI::Assimp
             HIKARI::WinPix)
     hikari_configure_engine_target(HIKARI_Editor)
     source_group(

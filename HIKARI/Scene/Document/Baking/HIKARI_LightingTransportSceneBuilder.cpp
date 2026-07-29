@@ -3,9 +3,11 @@
 #include <algorithm>
 #include <cmath>
 #include <numbers>
+#include <sstream>
 #include <unordered_map>
 #include <utility>
 
+#include "Assets/Lighting/HIKARI_LightmapSurfaceAnalysis.h"
 #include "Assets/Models/HIKARI_ModelAsset.h"
 #include "Core/Math/HIKARI_NormalMatrix.h"
 #include "Render3D/Core/HIKARI_Material.h"
@@ -26,6 +28,12 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
             bool enabled = false;
             bool include = false;
             bool renderStatic = false;
+        };
+
+        struct PendingLightmapSurface {
+            ASSETS::LIGHTING::LightmapSurfaceIdentity
+                identity{};
+            std::vector<uint32_t> triangleIndices{};
         };
 
         const SceneComponentData* FindModelComponent(
@@ -104,34 +112,6 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
             });
         }
 
-        bool IsFiniteUv(const MATH::Vec2& uv) {
-            return std::isfinite(uv.x) &&
-                std::isfinite(uv.y) &&
-                uv.x >= -0.0001f &&
-                uv.y >= -0.0001f &&
-                uv.x <= 1.0001f &&
-                uv.y <= 1.0001f;
-        }
-
-        bool IsValidLightmapTriangle(
-            const TRANSPORT::LightingTransportTriangle& triangle) {
-            for (const MATH::Vec2& uv : triangle.lightmapUv) {
-                if (!IsFiniteUv(uv)) {
-                    return false;
-                }
-            }
-            const MATH::Vec2 edge0 =
-                triangle.lightmapUv[1] -
-                triangle.lightmapUv[0];
-            const MATH::Vec2 edge1 =
-                triangle.lightmapUv[2] -
-                triangle.lightmapUv[0];
-            const float area =
-                edge0.x * edge1.y -
-                edge0.y * edge1.x;
-            return std::abs(area) > 1.0e-8f;
-        }
-
         void ResolveMaterial(
             const RENDER3D::RUNTIME::SceneSurfaceInstance& surface,
             MATH::Vec3& outDiffuse,
@@ -141,60 +121,81 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
             outDiffuse = { 1.0f, 1.0f, 1.0f };
             outEmissive = {};
             outAlphaMode = AlphaMode::Opaque;
-            if (surface.materialOverride != nullptr) {
-                const MATH::Vec4 color =
-                    surface.materialOverride->GetBaseColor();
-                outDiffuse = { color.x, color.y, color.z };
-                const MATH::Vec3 emissive =
-                    surface.materialOverride->GetEmissiveFactor();
-                const float strength =
-                    surface.materialOverride->GetEmissiveStrength();
-                outEmissive = emissive * strength;
-                return;
-            }
-            if (surface.model == nullptr ||
-                surface.materialIndex >=
+            if (surface.model != nullptr &&
+                surface.materialIndex <
                     surface.model->materials.size()) {
+                const MaterialAsset& material =
+                    surface.model->materials[
+                        surface.materialIndex];
+                outDiffuse = {
+                    material.baseColorFactor.x,
+                    material.baseColorFactor.y,
+                    material.baseColorFactor.z
+                };
+                outEmissive =
+                    material.emissiveFactor *
+                    material.emissiveStrength;
+                outAlphaMode = material.alphaMode;
+            }
+
+            if (surface.materialOverride == nullptr) {
                 return;
             }
-            const MaterialAsset& material =
-                surface.model->materials[
-                    surface.materialIndex];
-            outDiffuse = {
-                material.baseColorFactor.x,
-                material.baseColorFactor.y,
-                material.baseColorFactor.z
-            };
-            outEmissive =
-                material.emissiveFactor *
-                material.emissiveStrength;
-            outAlphaMode = material.alphaMode;
+
+            const MATH::Vec4 color =
+                surface.materialOverride->GetBaseColor();
+            outDiffuse = { color.x, color.y, color.z };
+            const MATH::Vec3 emissive =
+                surface.materialOverride->GetEmissiveFactor();
+            const float strength =
+                surface.materialOverride->GetEmissiveStrength();
+            outEmissive = emissive * strength;
+            const uint32_t features =
+                surface.materialOverride->GetFeatureBits();
+            if ((features &
+                    MATERIAL_FEATURES::AlphaMask) != 0u) {
+                outAlphaMode = AlphaMode::Mask;
+            } else if (color.w < 0.999f ||
+                (features &
+                    MATERIAL_FEATURES::
+                        ThinTransparentSurface) != 0u) {
+                outAlphaMode = AlphaMode::Blend;
+            } else {
+                outAlphaMode = AlphaMode::Opaque;
+            }
         }
 
-        void AppendSurfaceTriangles(
+        ASSETS::LIGHTING::LightmapSurfaceAnalysis
+            AppendSurfaceTriangles(
             const RENDER3D::RUNTIME::SceneSurfaceInstance& surface,
             TRANSPORT::LightingTransportScene& scene,
-            TRANSPORT::LightingTransportSurfaceTarget& target,
-            bool& targetUvValid) {
+            PendingLightmapSurface& pendingSurface) {
 
             if (surface.model == nullptr ||
                 surface.meshIndex >= surface.model->meshes.size()) {
-                return;
+                ASSETS::LIGHTING::LightmapSurfaceAnalysis
+                    analysis{};
+                analysis.issueMask =
+                    static_cast<uint32_t>(
+                        ASSETS::LIGHTING::
+                            LightmapSurfaceIssue::
+                                MissingGeometry);
+                return analysis;
             }
             const MeshAsset& mesh =
                 surface.model->meshes[surface.meshIndex];
             if (surface.primitiveIndex >= mesh.primitives.size()) {
-                return;
+                ASSETS::LIGHTING::LightmapSurfaceAnalysis
+                    analysis{};
+                analysis.issueMask =
+                    static_cast<uint32_t>(
+                        ASSETS::LIGHTING::
+                            LightmapSurfaceIssue::
+                                MissingGeometry);
+                return analysis;
             }
             const MeshPrimitive& primitive =
                 mesh.primitives[surface.primitiveIndex];
-            if (primitive.layout != VertexLayoutKind::StaticPNTT ||
-                primitive.hasMorphTargets ||
-                primitive.staticVertices.empty() ||
-                primitive.indices.size() < 3u) {
-                targetUvValid = false;
-                return;
-            }
 
             MATH::Vec3 diffuse{};
             MATH::Vec3 emissive{};
@@ -204,9 +205,32 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
                 diffuse,
                 emissive,
                 alphaMode);
-            if (alphaMode != AlphaMode::Opaque) {
-                targetUvValid = false;
-                return;
+            const ASSETS::LIGHTING::LightmapSurfaceAnalysis
+                analysis =
+                    ASSETS::LIGHTING::AnalyzeLightmapSurface(
+                        primitive,
+                        alphaMode);
+            if (analysis.HasIssue(
+                    ASSETS::LIGHTING::
+                        LightmapSurfaceIssue::
+                            UnsupportedVertexLayout) ||
+                analysis.HasIssue(
+                    ASSETS::LIGHTING::
+                        LightmapSurfaceIssue::
+                            MorphTargetsUnsupported) ||
+                analysis.HasIssue(
+                    ASSETS::LIGHTING::
+                        LightmapSurfaceIssue::
+                            MissingGeometry) ||
+                analysis.HasIssue(
+                    ASSETS::LIGHTING::
+                        LightmapSurfaceIssue::
+                            AlphaMaskedSurface) ||
+                analysis.HasIssue(
+                    ASSETS::LIGHTING::
+                        LightmapSurfaceIssue::
+                            BlendedSurface)) {
+                return analysis;
             }
 
             const MATH::Mat4 normalMatrix =
@@ -223,7 +247,6 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
                 if (indices[0] >= primitive.staticVertices.size() ||
                     indices[1] >= primitive.staticVertices.size() ||
                     indices[2] >= primitive.staticVertices.size()) {
-                    targetUvValid = false;
                     continue;
                 }
 
@@ -248,14 +271,244 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
                     triangle.lightmapUv[corner] =
                         vertex.uv1;
                 }
-                targetUvValid =
-                    targetUvValid &&
-                    IsValidLightmapTriangle(triangle);
-                target.triangleIndices.push_back(
+                const uint32_t triangleIndex =
                     static_cast<uint32_t>(
-                        scene.triangles.size()));
+                        scene.triangles.size());
                 scene.triangles.push_back(std::move(triangle));
+                if (analysis.IsEligible()) {
+                    pendingSurface.triangleIndices.
+                        push_back(triangleIndex);
+                }
             }
+            return analysis;
+        }
+
+        uint32_t NextPowerOfTwo(uint32_t value) {
+            uint32_t result = 1u;
+            while (result < value && result < 1024u) {
+                result <<= 1u;
+            }
+            return (std::min)(result, 1024u);
+        }
+
+        void AccumulateSurfaceAnalysis(
+            TRANSPORT::LightingTransportSurfaceTarget& target,
+            const ASSETS::LIGHTING::LightmapSurfaceAnalysis&
+                analysis) {
+            ++target.analyzedSurfaceCount;
+            if (analysis.IsEligible()) {
+                ++target.eligibleSurfaceCount;
+                return;
+            }
+            if (analysis.HasIssue(
+                    ASSETS::LIGHTING::
+                        LightmapSurfaceIssue::
+                            AlphaMaskedSurface)) {
+                ++target.alphaMaskedSurfaceCount;
+            }
+            if (analysis.HasIssue(
+                    ASSETS::LIGHTING::
+                        LightmapSurfaceIssue::
+                            BlendedSurface)) {
+                ++target.blendedSurfaceCount;
+            }
+            if (analysis.HasIssue(
+                    ASSETS::LIGHTING::
+                        LightmapSurfaceIssue::UvNonFinite) ||
+                analysis.HasIssue(
+                    ASSETS::LIGHTING::
+                        LightmapSurfaceIssue::
+                            UvOutsideUnitRange) ||
+                analysis.HasIssue(
+                    ASSETS::LIGHTING::
+                        LightmapSurfaceIssue::UvDegenerate) ||
+                analysis.HasIssue(
+                    ASSETS::LIGHTING::
+                        LightmapSurfaceIssue::UvOverlap) ||
+                analysis.HasIssue(
+                    ASSETS::LIGHTING::
+                        LightmapSurfaceIssue::
+                            IndexOutOfRange)) {
+                ++target.invalidUvSurfaceCount;
+            }
+            if (analysis.HasIssue(
+                    ASSETS::LIGHTING::
+                        LightmapSurfaceIssue::
+                            UnsupportedVertexLayout) ||
+                analysis.HasIssue(
+                    ASSETS::LIGHTING::
+                        LightmapSurfaceIssue::
+                            MorphTargetsUnsupported) ||
+                analysis.HasIssue(
+                    ASSETS::LIGHTING::
+                        LightmapSurfaceIssue::
+                            MissingGeometry)) {
+                ++target.unsupportedSurfaceCount;
+            }
+        }
+
+        void FinalizeSurfaceAtlas(
+            TRANSPORT::LightingTransportScene& scene,
+            TRANSPORT::LightingTransportSurfaceTarget& target,
+            std::vector<PendingLightmapSurface>&
+                pendingSurfaces) {
+
+            std::sort(
+                pendingSurfaces.begin(),
+                pendingSurfaces.end(),
+                [](const PendingLightmapSurface& lhs,
+                   const PendingLightmapSurface& rhs) {
+                    if (lhs.identity.nodeIndex !=
+                        rhs.identity.nodeIndex) {
+                        return lhs.identity.nodeIndex <
+                            rhs.identity.nodeIndex;
+                    }
+                    if (lhs.identity.meshIndex !=
+                        rhs.identity.meshIndex) {
+                        return lhs.identity.meshIndex <
+                            rhs.identity.meshIndex;
+                    }
+                    return lhs.identity.primitiveIndex <
+                        rhs.identity.primitiveIndex;
+                });
+
+            if (pendingSurfaces.empty()) {
+                target.eligible = false;
+            } else {
+                const uint32_t surfaceCount =
+                    static_cast<uint32_t>(
+                        pendingSurfaces.size());
+                const uint32_t columns =
+                    static_cast<uint32_t>(
+                        std::ceil(std::sqrt(
+                            static_cast<float>(
+                                surfaceCount))));
+                const uint32_t rows =
+                    (surfaceCount + columns - 1u) /
+                    columns;
+                target.outputResolution =
+                    NextPowerOfTwo((std::max)(
+                        128u,
+                        (std::max)(columns, rows) *
+                            32u));
+
+                for (uint32_t surfaceIndex = 0u;
+                    surfaceIndex < surfaceCount;
+                    ++surfaceIndex) {
+                    PendingLightmapSurface& pending =
+                        pendingSurfaces[surfaceIndex];
+                    const uint32_t column =
+                        surfaceIndex % columns;
+                    const uint32_t row =
+                        surfaceIndex / columns;
+                    const uint32_t x0 =
+                        column *
+                        target.outputResolution /
+                        columns;
+                    const uint32_t x1 =
+                        (column + 1u) *
+                        target.outputResolution /
+                        columns;
+                    const uint32_t y0 =
+                        row *
+                        target.outputResolution /
+                        rows;
+                    const uint32_t y1 =
+                        (row + 1u) *
+                        target.outputResolution /
+                        rows;
+                    const uint32_t tileWidth = x1 - x0;
+                    const uint32_t tileHeight = y1 - y0;
+                    const uint32_t padding =
+                        (std::min)(
+                            4u,
+                            (std::min)(
+                                tileWidth,
+                                tileHeight) / 4u);
+                    const float inverseResolution =
+                        1.0f /
+                        static_cast<float>(
+                            target.outputResolution);
+                    const MATH::Vec4 uvScaleBias{
+                        static_cast<float>(
+                            tileWidth - padding * 2u) *
+                            inverseResolution,
+                        static_cast<float>(
+                            tileHeight - padding * 2u) *
+                            inverseResolution,
+                        static_cast<float>(x0 + padding) *
+                            inverseResolution,
+                        static_cast<float>(y0 + padding) *
+                            inverseResolution
+                    };
+
+                    for (const uint32_t triangleIndex :
+                         pending.triangleIndices) {
+                        TRANSPORT::LightingTransportTriangle&
+                            triangle =
+                                scene.triangles[
+                                    triangleIndex];
+                        for (MATH::Vec2& uv :
+                             triangle.lightmapUv) {
+                            uv = {
+                                uv.x * uvScaleBias.x +
+                                    uvScaleBias.z,
+                                uv.y * uvScaleBias.y +
+                                    uvScaleBias.w
+                            };
+                        }
+                        target.triangleIndices.push_back(
+                            triangleIndex);
+                    }
+
+                    ASSETS::LIGHTING::
+                        LightmapSurfaceBinding binding{};
+                    binding.surface = pending.identity;
+                    binding.uvScaleBias = uvScaleBias;
+                    target.surfaceBindings.push_back(
+                        binding);
+                }
+                target.eligible =
+                    !target.triangleIndices.empty();
+            }
+
+            std::ostringstream message{};
+            if (target.eligible) {
+                message
+                    << "Ready: "
+                    << target.eligibleSurfaceCount
+                    << " surface(s) packed into a "
+                    << target.outputResolution
+                    << " atlas.";
+            } else {
+                message
+                    << "No eligible opaque static surface.";
+            }
+            if (target.alphaMaskedSurfaceCount > 0u) {
+                message
+                    << " Mask skipped="
+                    << target.alphaMaskedSurfaceCount
+                    << " (DXR any-hit not implemented).";
+            }
+            if (target.blendedSurfaceCount > 0u) {
+                message
+                    << " Blend skipped="
+                    << target.blendedSurfaceCount
+                    << ".";
+            }
+            if (target.invalidUvSurfaceCount > 0u) {
+                message
+                    << " Invalid UV1 skipped="
+                    << target.invalidUvSurfaceCount
+                    << ".";
+            }
+            if (target.unsupportedSurfaceCount > 0u) {
+                message
+                    << " Unsupported skipped="
+                    << target.unsupportedSurfaceCount
+                    << ".";
+            }
+            target.eligibilityMessage = message.str();
         }
 
         TRANSPORT::LightingTransportLight ConvertLight(
@@ -321,6 +574,8 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
 
         const auto policies = BuildObjectPolicies(document);
         std::unordered_map<uint64_t, size_t> targetByObject{};
+        std::vector<std::vector<PendingLightmapSurface>>
+            pendingSurfacesByTarget{};
         for (const auto& surface :
              renderCache.GetSurfaceInstances()) {
             if (!surface.valid ||
@@ -346,8 +601,8 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
                 TRANSPORT::LightingTransportSurfaceTarget target{};
                 target.objectId = surface.objectId.value;
                 target.name = policy->second.name;
-                target.eligible = true;
                 scene.targets.push_back(std::move(target));
+                pendingSurfacesByTarget.emplace_back();
                 targetIndex = scene.targets.size() - 1u;
                 targetByObject[surface.objectId.value] =
                     targetIndex;
@@ -357,29 +612,36 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
 
             TRANSPORT::LightingTransportSurfaceTarget& target =
                 scene.targets[targetIndex];
-            bool uvValid = target.eligible;
-            AppendSurfaceTriangles(
-                surface,
-                scene,
+            PendingLightmapSurface pendingSurface{};
+            pendingSurface.identity.nodeIndex =
+                surface.nodeIndex;
+            pendingSurface.identity.meshIndex =
+                surface.meshIndex;
+            pendingSurface.identity.primitiveIndex =
+                surface.primitiveIndex;
+            const ASSETS::LIGHTING::
+                LightmapSurfaceAnalysis analysis =
+                    AppendSurfaceTriangles(
+                        surface,
+                        scene,
+                        pendingSurface);
+            AccumulateSurfaceAnalysis(
                 target,
-                uvValid);
-            target.eligible = uvValid;
+                analysis);
+            if (analysis.IsEligible() &&
+                !pendingSurface.triangleIndices.empty()) {
+                pendingSurfacesByTarget[targetIndex].
+                    push_back(std::move(pendingSurface));
+            }
         }
 
-        for (TRANSPORT::LightingTransportSurfaceTarget& target :
-             scene.targets) {
-            if (target.triangleIndices.empty()) {
-                target.eligible = false;
-                target.eligibilityMessage =
-                    "No supported opaque static triangles.";
-            } else if (!target.eligible) {
-                target.eligibilityMessage =
-                    "UV1 is missing, outside [0, 1], or degenerate. "
-                    "Bake-time rasterization also rejects excessive overlap.";
-            } else {
-                target.eligibilityMessage =
-                    "Ready for surface lightmap bake.";
-            }
+        for (size_t targetIndex = 0u;
+            targetIndex < scene.targets.size();
+            ++targetIndex) {
+            FinalizeSurfaceAtlas(
+                scene,
+                scene.targets[targetIndex],
+                pendingSurfacesByTarget[targetIndex]);
         }
         return scene;
     }

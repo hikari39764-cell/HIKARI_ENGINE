@@ -1,6 +1,7 @@
 #include "Assets/Models/Loading/HIKARI_AssimpModelLoader.h"
 
 #include <filesystem>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -16,6 +17,76 @@
 #include "Render3D/Core/HIKARI_BoundsUtils.h"
 
 namespace HIKARI::ASSETS::MODELS {
+
+    namespace {
+
+        void AppendFbxCapabilityDiagnostics(
+            const aiScene& scene,
+            ModelAsset& asset) {
+
+            uint32_t staticMeshCount = 0u;
+            uint32_t skinnedMeshCount = 0u;
+            uint32_t uv1MeshCount = 0u;
+            uint32_t morphMeshCount = 0u;
+            for (unsigned int meshIndex = 0u;
+                meshIndex < scene.mNumMeshes;
+                ++meshIndex) {
+                const aiMesh* mesh =
+                    scene.mMeshes[meshIndex];
+                if (mesh == nullptr) {
+                    continue;
+                }
+                if (mesh->HasBones()) {
+                    ++skinnedMeshCount;
+                } else {
+                    ++staticMeshCount;
+                }
+                if (mesh->HasTextureCoords(1u)) {
+                    ++uv1MeshCount;
+                }
+                if (mesh->mNumAnimMeshes > 0u) {
+                    ++morphMeshCount;
+                }
+            }
+
+            std::ostringstream summary{};
+            summary
+                << "[Assimp] FBX import summary meshes="
+                << scene.mNumMeshes
+                << " static="
+                << staticMeshCount
+                << " skinned="
+                << skinnedMeshCount
+                << " UV1="
+                << uv1MeshCount
+                << "/"
+                << scene.mNumMeshes
+                << " animations="
+                << scene.mNumAnimations;
+            asset.importDiagnostics.messages.push_back(
+                summary.str());
+
+            if (scene.mNumTextures > 0u) {
+                asset.importDiagnostics.unsupportedFeatureCount +=
+                    scene.mNumTextures;
+                asset.importDiagnostics.messages.push_back(
+                    "[Assimp] embedded FBX textures are not extracted; use external texture files before cooking.");
+            }
+            if (morphMeshCount > 0u) {
+                asset.importDiagnostics.skippedMorphPrimitiveCount +=
+                    morphMeshCount;
+                asset.importDiagnostics.unsupportedFeatureCount +=
+                    morphMeshCount;
+                asset.importDiagnostics.messages.push_back(
+                    "[Assimp] FBX morph targets are not imported; base meshes remain available.");
+            }
+            if (uv1MeshCount < scene.mNumMeshes) {
+                asset.importDiagnostics.messages.push_back(
+                    "[Assimp] meshes without UV1 can render normally but are excluded from surface-lightmap baking.");
+            }
+        }
+
+    } // namespace
 
     bool LoadAssimpModelSource(ModelAsset& asset) {
         const std::filesystem::path sourcePath(asset.GetSourcePath());
@@ -76,6 +147,7 @@ namespace HIKARI::ASSETS::MODELS {
             assimpMeshToModelMesh,
             asset);
         ASSIMP::ReadAnimations(*scene, nodeNameToIndex, asset);
+        AppendFbxCapabilityDiagnostics(*scene, asset);
 
         BOUNDS::EnsureModelBounds(asset);
 

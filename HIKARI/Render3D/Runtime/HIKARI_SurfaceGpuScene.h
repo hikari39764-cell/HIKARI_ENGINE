@@ -96,10 +96,13 @@ namespace HIKARI::RENDER3D::RUNTIME {
         uint32_t deformationFlags = 0;
         uint32_t lightmapTextureDescriptorIndex = 0xffffffffu;
 
+        MATH::Vec4 lightmapUvScaleBias{
+            1.0f, 1.0f, 0.0f, 0.0f
+        };
         MATH::Vec4 fxUser[VFX::kMaterialFxUserCount]{};
     };
 
-    static_assert(sizeof(SurfaceGpuSceneInstance) == 528u);
+    static_assert(sizeof(SurfaceGpuSceneInstance) == 544u);
     static_assert(kSurfaceGpuSceneJointPaletteStrideBytes == 8192u);
 
     struct SurfaceGpuSceneMaterialSource {
