@@ -18,7 +18,6 @@
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
 #include <algorithm>
-#include <cmath>
 #include <cstring>
 #include <filesystem>
 #include <utility>
@@ -32,37 +31,6 @@ using namespace EDITOR::ENVIRONMENT_PANEL;
 #if defined(HIKARI_WITH_EDITOR)
 namespace {
 constexpr const char *kDefaultGlobalPostProfileId = "Ani";
-
-size_t CountUploadablePointLights(const SceneEnvironment &environment) {
-  size_t count = 0;
-  for (const PointLight &pointLight : environment.pointLights) {
-    if (pointLight.enabled && pointLight.range > 0.0f) {
-      ++count;
-    }
-  }
-  return count;
-}
-
-constexpr float kPi = 3.14159265358979323846f;
-
-float RadToDeg(float radians) { return radians * 180.0f / kPi; }
-
-float DegToRad(float degrees) { return degrees * kPi / 180.0f; }
-
-MATH::Vec3 DirectionFromYawPitch(float yawDeg, float pitchDeg) {
-  const float yaw = DegToRad(yawDeg);
-  const float pitch = DegToRad(std::clamp(pitchDeg, -89.0f, 89.0f));
-  const float cp = std::cos(pitch);
-  return MATH::Normalize(
-      MATH::Vec3{std::sin(yaw) * cp, -std::sin(pitch), std::cos(yaw) * cp});
-}
-
-void YawPitchFromDirection(const MATH::Vec3 &direction, float &yawDeg,
-                           float &pitchDeg) {
-  const MATH::Vec3 dir = MATH::Normalize(direction);
-  yawDeg = RadToDeg(std::atan2(dir.x, dir.z));
-  pitchDeg = RadToDeg(std::asin(std::clamp(-dir.y, -1.0f, 1.0f)));
-}
 
 } // namespace
 
@@ -129,89 +97,7 @@ EnvironmentPanel::Draw(SceneEnvironment &environment,
     ImGui::TreePop();
   }
 
-  if (ImGui::TreeNodeEx("Ambient", ImGuiTreeNodeFlags_DefaultOpen)) {
-    ImGui::ColorEdit3("Ambient Color", &environment.ambient.color.x);
-    ImGui::DragFloat("Ambient Intensity", &environment.ambient.intensity, 0.01f,
-                     0.0f, 10.0f);
-    ImGui::Checkbox("Use Sky Color", &environment.ambient.useSkyColor);
-    ImGui::DragFloat("Sky Ambient Blend", &environment.ambient.skyBlend, 0.01f,
-                     0.0f, 1.0f);
-    ImGui::TreePop();
-  }
-
-  if (ImGui::TreeNodeEx("Directional Light", ImGuiTreeNodeFlags_DefaultOpen)) {
-    ImGui::Checkbox("Directional Enabled", &environment.directional.enabled);
-    float yawDeg = 0.0f;
-    float pitchDeg = 0.0f;
-    YawPitchFromDirection(environment.directional.direction, yawDeg, pitchDeg);
-    bool angleChanged = false;
-    angleChanged |= ImGui::DragFloat("Sun Yaw", &yawDeg, 0.5f, -180.0f, 180.0f);
-    angleChanged |=
-        ImGui::DragFloat("Sun Pitch", &pitchDeg, 0.5f, -89.0f, 89.0f);
-    if (angleChanged) {
-      environment.directional.direction =
-          DirectionFromYawPitch(yawDeg, pitchDeg);
-    }
-    if (ImGui::DragFloat3("Direction", &environment.directional.direction.x,
-                          0.01f, -1.0f, 1.0f)) {
-      NormalizeDirectionalLight(environment.directional);
-    }
-    NormalizeDirectionalLight(environment.directional);
-    ImGui::ColorEdit3("Color", &environment.directional.color.x);
-    ImGui::DragFloat("Intensity", &environment.directional.intensity, 0.01f,
-                     0.0f, 20.0f);
-    ImGui::TreePop();
-  }
-
-  if (ImGui::TreeNodeEx("Point Lights", ImGuiTreeNodeFlags_DefaultOpen)) {
-    constexpr size_t kMaxUploadedPointLights = 8u;
-    const size_t uploadableCount = CountUploadablePointLights(environment);
-    const size_t uploadedPreviewCount =
-        uploadableCount < kMaxUploadedPointLights ? uploadableCount
-                                                  : kMaxUploadedPointLights;
-    ImGui::Text("Total: %zu  Uploadable: %zu / %zu",
-                environment.pointLights.size(), uploadedPreviewCount,
-                kMaxUploadedPointLights);
-    if (uploadableCount > kMaxUploadedPointLights) {
-      ImGui::TextColored(ImVec4(1.0f, 0.72f, 0.25f, 1.0f),
-                         "Only first 8 enabled point lights are uploaded.");
-    }
-    if (ImGui::Button("Add Point Light")) {
-      environment.pointLights.push_back(PointLight{});
-    }
-    for (size_t i = 0; i < environment.pointLights.size(); ++i) {
-      ImGui::PushID(static_cast<int>(i));
-      PointLight &pointLight = environment.pointLights[i];
-      if (ImGui::TreeNode("PointLight", "Point Light %zu", i)) {
-        ImGui::Checkbox("Enabled", &pointLight.enabled);
-        ImGui::DragFloat3("Position", &pointLight.position.x, 0.02f);
-        ImGui::DragFloat("Range", &pointLight.range, 0.05f, 0.0f, 100.0f);
-        ImGui::ColorEdit3("Color", &pointLight.color.x);
-        ImGui::DragFloat("Intensity", &pointLight.intensity, 0.01f, 0.0f,
-                         20.0f);
-
-        if (ImGui::Button("Duplicate")) {
-          environment.pointLights.insert(environment.pointLights.begin() +
-                                             static_cast<long long>(i + 1),
-                                         pointLight);
-          ImGui::TreePop();
-          ImGui::PopID();
-          break;
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("Remove")) {
-          environment.pointLights.erase(environment.pointLights.begin() +
-                                        static_cast<long long>(i));
-          ImGui::TreePop();
-          ImGui::PopID();
-          break;
-        }
-        ImGui::TreePop();
-      }
-      ImGui::PopID();
-    }
-    ImGui::TreePop();
-  }
+  DrawEnvironmentLightingControls(environment);
 
   if (ImGui::TreeNode("Specular")) {
     ImGui::DragFloat("Specular Intensity", &environment.specularIntensity,
@@ -329,8 +215,8 @@ EnvironmentPanel::Draw(SceneEnvironment &environment,
 
   if (ImGui::TreeNode("Debug")) {
     ImGui::Checkbox("Show Light Debug", &environment.showLightDebug);
-    ImGui::Checkbox("Show Point Light Markers",
-                    &environment.showPointLightMarkers);
+    ImGui::Checkbox("Show Local Light Markers",
+                    &environment.showLocalLightMarkers);
     ImGui::Checkbox("Show Sky Debug Info", &environment.showSkyDebugInfo);
 
     ImGui::TextDisabled(

@@ -44,7 +44,8 @@ bool HikariResolveLocalLightSample(
 
     const uint lightType =
         (uint)round(light.outerCosFalloffTypeFlags.z);
-    if (lightType != HIKARI_LOCAL_LIGHT_TYPE_POINT)
+    if (lightType != HIKARI_LOCAL_LIGHT_TYPE_POINT &&
+        lightType != HIKARI_LOCAL_LIGHT_TYPE_SPOT)
     {
         return false;
     }
@@ -52,7 +53,7 @@ bool HikariResolveLocalLightSample(
     const float3 toLight =
         light.positionRange.xyz - worldPosition;
     const float distanceToLight = length(toLight);
-    const float attenuation = HikariLocalLightRangeAttenuation(
+    float attenuation = HikariLocalLightRangeAttenuation(
         distanceToLight,
         light.positionRange.w);
 
@@ -60,6 +61,25 @@ bool HikariResolveLocalLightSample(
         distanceToLight > 1e-5f
         ? toLight / distanceToLight
         : float3(0.0f, 1.0f, 0.0f);
+
+    if (lightType == HIKARI_LOCAL_LIGHT_TYPE_SPOT)
+    {
+        const float3 spotDirection =
+            normalize(light.directionInnerCos.xyz);
+        const float coneCos = dot(
+            spotDirection,
+            -sample.directionToLight);
+        const float innerCos = light.directionInnerCos.w;
+        const float outerCos =
+            light.outerCosFalloffTypeFlags.x;
+        const float coneWeight = saturate(
+            (coneCos - outerCos) /
+            max(innerCos - outerCos, 1e-4f));
+        attenuation *= pow(
+            coneWeight,
+            max(light.outerCosFalloffTypeFlags.y, 0.1f));
+    }
+
     sample.radiance =
         light.colorIntensity.rgb *
         light.colorIntensity.a *

@@ -94,9 +94,12 @@ void DrawEffectsTable(const RuntimePerformanceSnapshot &s) {
     MetricRow("Volumetric Working Set", "%.2f MB",
               static_cast<double>(s.volumetric.workingSetBytes) /
                   (1024.0 * 1024.0));
-    MetricRow("Volumetric Shadow / Points / History Weight", "%s / %u / %.2f",
+    MetricRow("Volumetric Shadow / Local (P/S) / History", "%s / %u (%u/%u) / %.2f",
               s.volumetric.shadowed ? "yes" : "no",
-              s.volumetric.pointLightCount, s.volumetric.temporalWeight);
+              s.volumetric.localLightCount,
+              s.volumetric.pointLightCount,
+              s.volumetric.spotLightCount,
+              s.volumetric.temporalWeight);
     MetricRow("Volumetric Dispatch / Resizes / Resets", "%u / %llu / %llu",
               s.volumetric.dispatchCount,
               static_cast<unsigned long long>(s.volumetric.resizeCount),

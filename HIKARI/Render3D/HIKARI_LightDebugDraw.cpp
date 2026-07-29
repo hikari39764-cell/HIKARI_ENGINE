@@ -1,10 +1,11 @@
 #include "HIKARI_LightDebugDraw.h"
 
 #include <algorithm>
-#include <cstddef>
 #include <cmath>
 #include <numbers>
 #include "Render3D/Debug/HIKARI_Renderer3D_Debug.h"
+#include "Render3D/Lighting/HIKARI_LocalLightFrame.h"
+#include "Render3D/Lighting/HIKARI_LocalLightSemantics.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 
 namespace HIKARI::LIGHTDEBUGDRAW {
@@ -19,6 +20,20 @@ namespace HIKARI::LIGHTDEBUGDRAW {
                 (toByte(color.z) << 8) |
                 (alpha & 0xFFu);
         }
+
+        void SubmitLightMarker(
+            const MATH::Vec3& position,
+            const MATH::Vec3& color) {
+
+            RENDERER3D::DEBUG::Box3D marker{};
+            marker.transform.position = position;
+            marker.size = { 0.12f, 0.12f, 0.12f };
+            marker.outlineRgba = ToDebugColor(color, 0xFFu);
+            marker.fillRgba = ToDebugColor(color, 0x28u);
+            marker.outlineThicknessPixels = 2.0f;
+            RENDERER3D::DEBUG::SubmitBox3D(marker);
+        }
+
     }
 
     void SubmitDirectionalLightArrow(const MATH::Vec3& directionalDir, const SceneEnvironment& environment) {
@@ -70,59 +85,95 @@ namespace HIKARI::LIGHTDEBUGDRAW {
         RENDERER3D::DEBUG::SubmitBox3D(marker);
     }
 
-    void SubmitPointLightDebug(const SceneEnvironment& environment) {
-        if (!environment.showLightDebug || !environment.showPointLightMarkers) {
+    void SubmitLocalLightDebug(const SceneEnvironment& environment) {
+        if (!environment.showLightDebug || !environment.showLocalLightMarkers) {
             return;
         }
 
-        constexpr size_t kMaxRangeSphereCount = 8u;
-        constexpr int kSegments = 16;
-        size_t rangeSphereCount = 0u;
-
         for (const PointLight& light : environment.pointLights) {
-            if (!light.enabled || light.range <= 0.0f) {
+            if (!RENDER3D::LIGHTING::IsLocalLightUploadable(light)) {
                 continue;
             }
-
-            const unsigned int pointLightColor = ToDebugColor(light.color, 0xFFu);
-            const unsigned int rangeColor = ToDebugColor(light.color, 0x66u);
-            RENDERER3D::DEBUG::Box3D marker{};
-            marker.transform.position = light.position;
-            marker.size = { 0.12f, 0.12f, 0.12f };
-            marker.outlineRgba = pointLightColor;
-            marker.fillRgba =
-                ToDebugColor(light.color, 0x28u);
-            marker.outlineThicknessPixels = 2.0f;
-            RENDERER3D::DEBUG::SubmitBox3D(marker);
-
-            if (rangeSphereCount >= kMaxRangeSphereCount) {
+            SubmitLightMarker(light.position, light.color);
+        }
+        for (const SpotLight& light : environment.spotLights) {
+            if (!RENDER3D::LIGHTING::IsLocalLightUploadable(light)) {
                 continue;
             }
-            ++rangeSphereCount;
+            SubmitLightMarker(light.position, light.color);
+            const MATH::Vec3 direction =
+                RENDER3D::LIGHTING::ResolveSpotLightDirection(light);
+            RENDERER3D::DEBUG::SubmitStroke3D({
+                light.position,
+                light.position + direction * 0.75f,
+                ToDebugColor(light.color, 0xFFu),
+                RENDERER3D::DEBUG::DebugDepthMode::DepthTest,
+                2.0f
+            });
+        }
 
-            // Limit range display to the upload budget.
-            for (int axis = 0; axis < 3; ++axis) {
-                for (int i = 0; i < kSegments; ++i) {
-                    const float t0 = (static_cast<float>(i) / static_cast<float>(kSegments)) * (2.0f * std::numbers::pi_v<float>);
-                    const float t1 = (static_cast<float>(i + 1) / static_cast<float>(kSegments)) * (2.0f * std::numbers::pi_v<float>);
-                    MATH::Vec3 p0{};
-                    MATH::Vec3 p1{};
-                    if (axis == 0) {
-                        p0 = { light.position.x, light.position.y + std::cos(t0) * light.range, light.position.z + std::sin(t0) * light.range };
-                        p1 = { light.position.x, light.position.y + std::cos(t1) * light.range, light.position.z + std::sin(t1) * light.range };
-                    } else if (axis == 1) {
-                        p0 = { light.position.x + std::cos(t0) * light.range, light.position.y, light.position.z + std::sin(t0) * light.range };
-                        p1 = { light.position.x + std::cos(t1) * light.range, light.position.y, light.position.z + std::sin(t1) * light.range };
-                    } else {
-                        p0 = { light.position.x + std::cos(t0) * light.range, light.position.y + std::sin(t0) * light.range, light.position.z };
-                        p1 = { light.position.x + std::cos(t1) * light.range, light.position.y + std::sin(t1) * light.range, light.position.z };
-                    }
-                    RENDERER3D::DEBUG::SubmitStroke3D({
-                        p0, p1, rangeColor,
-                        RENDERER3D::DEBUG::DebugDepthMode::DepthTest,
-                        1.2f
-                    });
-                }
+        const RENDER3D::LIGHTING::LocalLightFrame frame =
+            RENDER3D::LIGHTING::BuildLocalLightFrame(environment);
+        for (uint32_t index = 0u;
+             index < frame.uploadedCount;
+             ++index) {
+            const RENDER3D::LIGHTING::LocalLightGpuData& light =
+                frame.lights[index];
+            const MATH::Vec3 color{
+                light.colorIntensity.x,
+                light.colorIntensity.y,
+                light.colorIntensity.z
+            };
+            const auto type = static_cast<RENDER3D::LIGHTING::LocalLightType>(
+                static_cast<uint32_t>(
+                    std::round(light.outerCosFalloffTypeFlags.z)));
+            if (type == RENDER3D::LIGHTING::LocalLightType::Point) {
+                RENDERER3D::DEBUG::WireSphere3D sphere{};
+                sphere.center = {
+                    light.positionRange.x,
+                    light.positionRange.y,
+                    light.positionRange.z
+                };
+                sphere.radius = light.positionRange.w;
+                sphere.rgba = ToDebugColor(color, 0x66u);
+                RENDERER3D::DEBUG::SubmitWireSphere3D(sphere);
+            } else if (type ==
+                       RENDER3D::LIGHTING::LocalLightType::Spot) {
+                RENDERER3D::DEBUG::WireCone3D outerCone{};
+                outerCone.origin = {
+                    light.positionRange.x,
+                    light.positionRange.y,
+                    light.positionRange.z
+                };
+                outerCone.direction = {
+                    light.directionInnerCos.x,
+                    light.directionInnerCos.y,
+                    light.directionInnerCos.z
+                };
+                outerCone.length = light.positionRange.w;
+                outerCone.angleDegrees =
+                    std::acos(std::clamp(
+                        light.outerCosFalloffTypeFlags.x,
+                        0.0f,
+                        1.0f)) *
+                    180.0f /
+                    std::numbers::pi_v<float>;
+                outerCone.rgba = ToDebugColor(color, 0x66u);
+                outerCone.drawRadials = true;
+                RENDERER3D::DEBUG::SubmitWireCone3D(outerCone);
+
+                RENDERER3D::DEBUG::WireCone3D innerCone =
+                    outerCone;
+                innerCone.angleDegrees =
+                    std::acos(std::clamp(
+                        light.directionInnerCos.w,
+                        0.0f,
+                        1.0f)) *
+                    180.0f /
+                    std::numbers::pi_v<float>;
+                innerCone.rgba = ToDebugColor(color, 0x99u);
+                innerCone.drawRadials = false;
+                RENDERER3D::DEBUG::SubmitWireCone3D(innerCone);
             }
         }
     }

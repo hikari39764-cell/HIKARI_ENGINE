@@ -8,6 +8,7 @@
 
 #include "Core/HIKARI_JsonRead.h"
 #include "Core/Serialization/Json/HIKARI_JsonMath.h"
+#include "Render3D/Lighting/HIKARI_LocalLightSemantics.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironmentNames.h"
 
@@ -183,7 +184,24 @@ namespace HIKARI::SCENE::SERIALIZATION {
                                            { "position", JsonMath::ToJsonArray(pointLight.position) },
                                            { "range", pointLight.range },
                                            { "color", JsonMath::ToJsonArray(pointLight.color) },
-                                           { "intensity", pointLight.intensity } });
+                                           { "intensity", pointLight.intensity },
+                                           { "priority", pointLight.priority } });
+        }
+
+        out["spotLights"] = nlohmann::json::array();
+        for (const SpotLight& spotLight : environment.spotLights) {
+            out["spotLights"].push_back({
+                { "enabled", spotLight.enabled },
+                { "position", JsonMath::ToJsonArray(spotLight.position) },
+                { "range", spotLight.range },
+                { "direction", JsonMath::ToJsonArray(spotLight.direction) },
+                { "innerConeAngleDegrees", spotLight.innerConeAngleDegrees },
+                { "outerConeAngleDegrees", spotLight.outerConeAngleDegrees },
+                { "angularFalloff", spotLight.angularFalloff },
+                { "color", JsonMath::ToJsonArray(spotLight.color) },
+                { "intensity", spotLight.intensity },
+                { "priority", spotLight.priority }
+            });
         }
 
         out["sky"]["enabled"] = environment.sky.enabled;
@@ -256,7 +274,7 @@ namespace HIKARI::SCENE::SERIALIZATION {
         out["specularIntensity"] = environment.specularIntensity;
         out["specularPower"] = environment.specularPower;
         out["showLightDebug"] = environment.showLightDebug;
-        out["showPointLightMarkers"] = environment.showPointLightMarkers;
+        out["showLocalLightMarkers"] = environment.showLocalLightMarkers;
         out["showSkyDebugInfo"] = environment.showSkyDebugInfo;
 
         out["post"]["enabled"] = environment.post.enabled;
@@ -322,7 +340,43 @@ namespace HIKARI::SCENE::SERIALIZATION {
                 pointLight.range = pointNode.value("range", pointLight.range);
                 pointLight.color = JSONREAD::Vec3Or(pointNode.value("color", nlohmann::json::array()), pointLight.color);
                 pointLight.intensity = pointNode.value("intensity", pointLight.intensity);
+                pointLight.priority = pointNode.value("priority", pointLight.priority);
                 outEnvironment.pointLights.push_back(pointLight);
+            }
+        }
+
+        if (node.contains("spotLights") && node["spotLights"].is_array()) {
+            outEnvironment.spotLights.clear();
+            for (const nlohmann::json& spotNode : node["spotLights"]) {
+                SpotLight spotLight{};
+                spotLight.enabled =
+                    spotNode.value("enabled", spotLight.enabled);
+                spotLight.position = JSONREAD::Vec3Or(
+                    spotNode.value("position", nlohmann::json::array()),
+                    spotLight.position);
+                spotLight.range =
+                    spotNode.value("range", spotLight.range);
+                spotLight.direction = JSONREAD::Vec3Or(
+                    spotNode.value("direction", nlohmann::json::array()),
+                    spotLight.direction);
+                spotLight.innerConeAngleDegrees = spotNode.value(
+                    "innerConeAngleDegrees",
+                    spotLight.innerConeAngleDegrees);
+                spotLight.outerConeAngleDegrees = spotNode.value(
+                    "outerConeAngleDegrees",
+                    spotLight.outerConeAngleDegrees);
+                spotLight.angularFalloff = spotNode.value(
+                    "angularFalloff",
+                    spotLight.angularFalloff);
+                spotLight.color = JSONREAD::Vec3Or(
+                    spotNode.value("color", nlohmann::json::array()),
+                    spotLight.color);
+                spotLight.intensity =
+                    spotNode.value("intensity", spotLight.intensity);
+                spotLight.priority =
+                    spotNode.value("priority", spotLight.priority);
+                RENDER3D::LIGHTING::SanitizeSpotLight(spotLight);
+                outEnvironment.spotLights.push_back(spotLight);
             }
         }
 
@@ -446,7 +500,11 @@ namespace HIKARI::SCENE::SERIALIZATION {
         outEnvironment.specularIntensity = node.value("specularIntensity", outEnvironment.specularIntensity);
         outEnvironment.specularPower = node.value("specularPower", outEnvironment.specularPower);
         outEnvironment.showLightDebug = node.value("showLightDebug", outEnvironment.showLightDebug);
-        outEnvironment.showPointLightMarkers = node.value("showPointLightMarkers", outEnvironment.showPointLightMarkers);
+        outEnvironment.showLocalLightMarkers = node.value(
+            "showLocalLightMarkers",
+            node.value(
+                "showPointLightMarkers",
+                outEnvironment.showLocalLightMarkers));
         outEnvironment.showSkyDebugInfo = node.value("showSkyDebugInfo", outEnvironment.showSkyDebugInfo);
 
         if (node.contains("post") && node["post"].is_object()) {

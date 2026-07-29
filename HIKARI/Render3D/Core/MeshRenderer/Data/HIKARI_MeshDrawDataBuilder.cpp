@@ -145,11 +145,17 @@ namespace HIKARI::MESHRENDERER {
         stats.directionalEnabled = environment.directional.enabled;
         stats.directionalIntensity = out.directionalIntensity;
         stats.ambientIntensity = out.ambientIntensity;
-        stats.pointLightTotalCount = localLightFrame.sourceCount;
-        stats.pointLightUploadedCount =
+        stats.localLightSourceCount = localLightFrame.sourceCount;
+        stats.localLightUploadableCount =
+            localLightFrame.uploadableCount;
+        stats.localLightUploadedCount =
             localLightFrame.uploadedCount;
-        stats.pointLightClampedCount =
+        stats.localLightClampedCount =
             localLightFrame.clampedCount;
+        stats.pointLightUploadedCount =
+            localLightFrame.uploadedPointCount;
+        stats.spotLightUploadedCount =
+            localLightFrame.uploadedSpotCount;
         stats.specularIntensity = out.specularParams.x;
         stats.specularPower = out.specularParams.y;
     }

@@ -203,8 +203,9 @@ bool CreateEmptySceneAsset(AssetDatabase &assetDatabase,
                 {"direction", nlohmann::json::array(
                                   {0.26832816f, -0.89442718f, -0.35777089f})},
                 {"intensity", 1.0f},
-            }},
+           }},
            {"pointLights", nlohmann::json::array()},
+           {"spotLights", nlohmann::json::array()},
            {"sky",
             {
                 {"enabled", false},

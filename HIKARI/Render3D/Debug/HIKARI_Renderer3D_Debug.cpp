@@ -2,8 +2,10 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <limits>
+#include <numbers>
 #include <vector>
 
 #include "Render3D/Debug/Internal/HIKARI_DebugPrimitiveRendererBackend.h"
@@ -29,6 +31,8 @@ namespace HIKARI::RENDERER3D::DEBUG {
         std::vector<PointMarker3D> g_pointMarkers;
         std::vector<Axis3D> g_axes;
         std::vector<Grid3D> g_grids;
+        std::vector<WireSphere3D> g_wireSpheres;
+        std::vector<WireCone3D> g_wireCones;
         std::vector<Stroke3D> g_expandedStrokes;
         std::vector<Stroke3D> g_depthStrokes;
         std::vector<Stroke3D> g_xrayStrokes;
@@ -81,6 +85,15 @@ namespace HIKARI::RENDERER3D::DEBUG {
             for (const Grid3D& grid : g_grids) {
                 const int halfCount = (std::max)(grid.halfCount, 1);
                 count += static_cast<size_t>((halfCount * 2 + 1) * 2);
+            }
+            for (const WireSphere3D& sphere : g_wireSpheres) {
+                count += static_cast<size_t>(
+                    (std::max)(sphere.segments, 8) * 3);
+            }
+            for (const WireCone3D& cone : g_wireCones) {
+                count += static_cast<size_t>(
+                    (std::max)(cone.segments, 8) +
+                    (cone.drawRadials ? 4 : 0));
             }
             return count;
         }
@@ -178,6 +191,110 @@ namespace HIKARI::RENDERER3D::DEBUG {
                 marker.rgba, marker.depthMode, marker.thicknessPixels);
         }
 
+        void ExpandWireSphere(const WireSphere3D& sphere) {
+            const int segments = (std::max)(sphere.segments, 8);
+            const float radius = (std::max)(sphere.radius, 0.001f);
+            for (int axis = 0; axis < 3; ++axis) {
+                for (int index = 0; index < segments; ++index) {
+                    const float angle0 =
+                        (static_cast<float>(index) /
+                         static_cast<float>(segments)) *
+                        (2.0f * std::numbers::pi_v<float>);
+                    const float angle1 =
+                        (static_cast<float>(index + 1) /
+                         static_cast<float>(segments)) *
+                        (2.0f * std::numbers::pi_v<float>);
+                    MATH::Vec3 point0 = sphere.center;
+                    MATH::Vec3 point1 = sphere.center;
+                    if (axis == 0) {
+                        point0.y += std::cos(angle0) * radius;
+                        point0.z += std::sin(angle0) * radius;
+                        point1.y += std::cos(angle1) * radius;
+                        point1.z += std::sin(angle1) * radius;
+                    } else if (axis == 1) {
+                        point0.x += std::cos(angle0) * radius;
+                        point0.z += std::sin(angle0) * radius;
+                        point1.x += std::cos(angle1) * radius;
+                        point1.z += std::sin(angle1) * radius;
+                    } else {
+                        point0.x += std::cos(angle0) * radius;
+                        point0.y += std::sin(angle0) * radius;
+                        point1.x += std::cos(angle1) * radius;
+                        point1.y += std::sin(angle1) * radius;
+                    }
+                    PushStroke(
+                        point0,
+                        point1,
+                        sphere.rgba,
+                        sphere.depthMode,
+                        sphere.thicknessPixels);
+                }
+            }
+        }
+
+        void ExpandWireCone(const WireCone3D& cone) {
+            const int segments = (std::max)(cone.segments, 8);
+            MATH::Vec3 direction = MATH::Normalize(cone.direction);
+            if (MATH::Length(direction) <= 1e-6f) {
+                direction = { 0.0f, -1.0f, 0.0f };
+            }
+            MATH::Vec3 right = MATH::Cross(
+                direction,
+                { 0.0f, 1.0f, 0.0f });
+            if (MATH::Length(right) <= 1e-6f) {
+                right = MATH::Cross(
+                    direction,
+                    { 1.0f, 0.0f, 0.0f });
+            }
+            right = MATH::Normalize(right);
+            const MATH::Vec3 up =
+                MATH::Normalize(MATH::Cross(right, direction));
+            const float length = (std::max)(cone.length, 0.001f);
+            const float angleDegrees =
+                std::clamp(cone.angleDegrees, 0.0f, 89.0f);
+            const float radius =
+                std::tan(
+                    angleDegrees *
+                    std::numbers::pi_v<float> /
+                    180.0f) *
+                length;
+            const MATH::Vec3 center =
+                cone.origin + direction * length;
+
+            MATH::Vec3 previous{};
+            for (int index = 0; index <= segments; ++index) {
+                const float angle =
+                    (static_cast<float>(index % segments) /
+                     static_cast<float>(segments)) *
+                    (2.0f * std::numbers::pi_v<float>);
+                const MATH::Vec3 point =
+                    center +
+                    right * (std::cos(angle) * radius) +
+                    up * (std::sin(angle) * radius);
+                if (index > 0) {
+                    PushStroke(
+                        previous,
+                        point,
+                        cone.rgba,
+                        cone.depthMode,
+                        cone.thicknessPixels);
+                }
+                previous = point;
+                if (cone.drawRadials &&
+                    (index == 0 ||
+                     index == segments / 4 ||
+                     index == segments / 2 ||
+                     index == (segments * 3) / 4)) {
+                    PushStroke(
+                        cone.origin,
+                        point,
+                        cone.rgba,
+                        cone.depthMode,
+                        cone.thicknessPixels);
+                }
+            }
+        }
+
         void ExpandPrimitives() {
             g_expandedStrokes.clear();
             g_solidVertices.clear();
@@ -199,6 +316,12 @@ namespace HIKARI::RENDERER3D::DEBUG {
             for (const PointMarker3D& marker : g_pointMarkers) {
                 ExpandPointMarker(marker);
             }
+            for (const WireSphere3D& sphere : g_wireSpheres) {
+                ExpandWireSphere(sphere);
+            }
+            for (const WireCone3D& cone : g_wireCones) {
+                ExpandWireCone(cone);
+            }
         }
 
         bool ShouldWriteFrameStats() {
@@ -216,6 +339,8 @@ namespace HIKARI::RENDERER3D::DEBUG {
         g_pointMarkers.clear();
         g_axes.clear();
         g_grids.clear();
+        g_wireSpheres.clear();
+        g_wireCones.clear();
         g_submitStats = {};
     }
 
@@ -245,6 +370,16 @@ namespace HIKARI::RENDERER3D::DEBUG {
     void SubmitGrid3D(const Grid3D& grid) {
         g_grids.push_back(grid);
         ++g_submitStats.gridCount;
+    }
+
+    void SubmitWireSphere3D(const WireSphere3D& sphere) {
+        g_wireSpheres.push_back(sphere);
+        ++g_submitStats.wireSphereCount;
+    }
+
+    void SubmitWireCone3D(const WireCone3D& cone) {
+        g_wireCones.push_back(cone);
+        ++g_submitStats.wireConeCount;
     }
 
     void AccumulateLightProbeVolumeGizmoStats(

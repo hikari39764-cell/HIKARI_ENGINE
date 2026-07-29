@@ -359,6 +359,9 @@ namespace HIKARI {
             for (PointLight& pointLight : activeEnvironment.pointLights) {
                 pointLight.intensity = 0.0f;
             }
+            for (SpotLight& spotLight : activeEnvironment.spotLights) {
+                spotLight.intensity = 0.0f;
+            }
         }
 
         MESHRENDERER::SetGpuDrivenCullingCameraFreezeEnabled(
@@ -370,7 +373,7 @@ namespace HIKARI {
         if (DrawDebugHelpers()) {
             if (state_->editor.viewportOverlayState.showLights) {
                 LIGHTDEBUGDRAW::SubmitDirectionalLightArrow(activeEnvironment.directional.direction, activeEnvironment);
-                LIGHTDEBUGDRAW::SubmitPointLightDebug(activeEnvironment);
+                LIGHTDEBUGDRAW::SubmitLocalLightDebug(activeEnvironment);
             }
         }
 

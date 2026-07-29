@@ -62,6 +62,27 @@ namespace HIKARI::RENDERER3D::DEBUG {
         float thicknessPixels = 1.0f;
     };
 
+    struct WireSphere3D {
+        MATH::Vec3 center{};
+        float radius = 1.0f;
+        uint32_t rgba = 0xFFFFFFFF;
+        int segments = 16;
+        DebugDepthMode depthMode = DebugDepthMode::DepthTest;
+        float thicknessPixels = 1.2f;
+    };
+
+    struct WireCone3D {
+        MATH::Vec3 origin{};
+        MATH::Vec3 direction{ 0.0f, -1.0f, 0.0f };
+        float length = 1.0f;
+        float angleDegrees = 30.0f;
+        uint32_t rgba = 0xFFFFFFFF;
+        int segments = 20;
+        bool drawRadials = true;
+        DebugDepthMode depthMode = DebugDepthMode::DepthTest;
+        float thicknessPixels = 1.2f;
+    };
+
     struct DebugRendererFrameStats {
         size_t submittedStrokeCount = 0;
         size_t submittedXRayStrokeCount = 0;
@@ -73,6 +94,8 @@ namespace HIKARI::RENDERER3D::DEBUG {
         size_t solidTriangleCount = 0;
         size_t axisCount = 0;
         size_t gridCount = 0;
+        size_t wireSphereCount = 0;
+        size_t wireConeCount = 0;
         uint32_t lightProbeGizmoTotalPointCount = 0;
         uint32_t lightProbeGizmoDrawnPointCount = 0;
         uint32_t lightProbeGizmoMode = 0;
@@ -85,6 +108,8 @@ namespace HIKARI::RENDERER3D::DEBUG {
     void SubmitPointMarker3D(const PointMarker3D& marker);
     void SubmitAxis3D(const Axis3D& axis);
     void SubmitGrid3D(const Grid3D& grid);
+    void SubmitWireSphere3D(const WireSphere3D& sphere);
+    void SubmitWireCone3D(const WireCone3D& cone);
     void AccumulateLightProbeVolumeGizmoStats(
         uint32_t totalPointCount,
         uint32_t drawnPointCount,

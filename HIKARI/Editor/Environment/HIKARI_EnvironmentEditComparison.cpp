@@ -75,7 +75,17 @@ bool EqualDirectionalShadowSettings(const DirectionalShadowSettings &lhs,
 bool EqualPointLight(const PointLight &lhs, const PointLight &rhs) {
   return lhs.enabled == rhs.enabled && EqualVec3(lhs.position, rhs.position) &&
          lhs.range == rhs.range && EqualVec3(lhs.color, rhs.color) &&
-         lhs.intensity == rhs.intensity;
+         lhs.intensity == rhs.intensity && lhs.priority == rhs.priority;
+}
+
+bool EqualSpotLight(const SpotLight &lhs, const SpotLight &rhs) {
+  return lhs.enabled == rhs.enabled && EqualVec3(lhs.position, rhs.position) &&
+         lhs.range == rhs.range && EqualVec3(lhs.direction, rhs.direction) &&
+         lhs.innerConeAngleDegrees == rhs.innerConeAngleDegrees &&
+         lhs.outerConeAngleDegrees == rhs.outerConeAngleDegrees &&
+         lhs.angularFalloff == rhs.angularFalloff &&
+         EqualVec3(lhs.color, rhs.color) &&
+         lhs.intensity == rhs.intensity && lhs.priority == rhs.priority;
 }
 
 bool EqualPostSettings(const ScenePostSettings &lhs,
@@ -133,15 +143,21 @@ bool AreSceneEnvironmentValuesEqual(const SceneEnvironment &lhs,
       lhs.specularIntensity != rhs.specularIntensity ||
       lhs.specularPower != rhs.specularPower ||
       lhs.showLightDebug != rhs.showLightDebug ||
-      lhs.showPointLightMarkers != rhs.showPointLightMarkers ||
+      lhs.showLocalLightMarkers != rhs.showLocalLightMarkers ||
       lhs.showSkyDebugInfo != rhs.showSkyDebugInfo ||
       !EqualPostSettings(lhs.post, rhs.post) ||
-      lhs.pointLights.size() != rhs.pointLights.size()) {
+      lhs.pointLights.size() != rhs.pointLights.size() ||
+      lhs.spotLights.size() != rhs.spotLights.size()) {
     return false;
   }
 
   for (size_t i = 0; i < lhs.pointLights.size(); ++i) {
     if (!EqualPointLight(lhs.pointLights[i], rhs.pointLights[i])) {
+      return false;
+    }
+  }
+  for (size_t i = 0; i < lhs.spotLights.size(); ++i) {
+    if (!EqualSpotLight(lhs.spotLights[i], rhs.spotLights[i])) {
       return false;
     }
   }

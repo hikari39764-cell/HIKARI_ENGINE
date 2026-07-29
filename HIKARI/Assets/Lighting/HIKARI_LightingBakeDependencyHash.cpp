@@ -182,6 +182,7 @@ namespace HIKARI::ASSETS::LIGHTING {
             environment.erase("toneMapping");
             environment.erase("post");
             environment.erase("showLightDebug");
+            environment.erase("showLocalLightMarkers");
             environment.erase("showPointLightMarkers");
             environment.erase("showSkyDebugInfo");
             if (environment.contains("directionalShadow")) {

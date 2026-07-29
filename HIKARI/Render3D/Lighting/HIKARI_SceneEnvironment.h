@@ -45,6 +45,20 @@ namespace HIKARI {
         float range = 5.0f;
         MATH::Vec3 color{ 1.0f, 1.0f, 1.0f };
         float intensity = 1.0f;
+        int priority = 0;
+    };
+
+    struct SpotLight {
+        bool enabled = true;
+        MATH::Vec3 position{ 0.0f, 3.0f, 0.0f };
+        float range = 8.0f;
+        MATH::Vec3 direction{ 0.0f, -1.0f, 0.0f };
+        float innerConeAngleDegrees = 25.0f;
+        float outerConeAngleDegrees = 35.0f;
+        float angularFalloff = 1.0f;
+        MATH::Vec3 color{ 1.0f, 1.0f, 1.0f };
+        float intensity = 1.0f;
+        int priority = 0;
     };
 
     enum class SkyMode {
@@ -167,6 +181,7 @@ namespace HIKARI {
         DirectionalLight directional{};
         DirectionalShadowSettings directionalShadow{};
         std::vector<PointLight> pointLights{};
+        std::vector<SpotLight> spotLights{};
         SkySettings sky{};
         ReflectionProbeSettings reflectionProbe{};
         AmbientOcclusionSettings ambientOcclusion{};
@@ -176,7 +191,7 @@ namespace HIKARI {
         float specularIntensity = 0.2f;
         float specularPower = 32.0f;
         bool showLightDebug = true;
-        bool showPointLightMarkers = true;
+        bool showLocalLightMarkers = true;
         bool showSkyDebugInfo = false;
         ScenePostSettings post{};
     };

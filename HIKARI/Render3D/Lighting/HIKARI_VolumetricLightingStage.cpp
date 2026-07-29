@@ -477,8 +477,12 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
         state.stats.active = true;
         state.stats.historyValid = historyValid;
         state.stats.shadowed = shadowed;
-        state.stats.pointLightCount =
+        state.stats.localLightCount =
             localLightFrame.uploadedCount;
+        state.stats.pointLightCount =
+            localLightFrame.uploadedPointCount;
+        state.stats.spotLightCount =
+            localLightFrame.uploadedSpotCount;
         state.stats.qualityLevel = static_cast<uint32_t>(quality);
         state.stats.temporalWeight = constants.frameParams.x;
         state.prepared = true;

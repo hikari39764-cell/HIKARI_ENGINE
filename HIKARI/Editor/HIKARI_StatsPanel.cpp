@@ -132,10 +132,14 @@ namespace HIKARI {
             ImGui::Text("Directional Enabled: %s", meshStats.directionalEnabled ? "Yes" : "No");
             ImGui::Text("Directional Intensity: %.3f", meshStats.directionalIntensity);
             ImGui::Text("Ambient Intensity: %.3f", meshStats.ambientIntensity);
-            ImGui::Text("Point Lights Total / Uploaded / Clamped: %zu / %zu / %zu",
-                meshStats.pointLightTotalCount,
+            ImGui::Text("Local Lights Source / Uploadable / Uploaded / Clamped: %zu / %zu / %zu / %zu",
+                meshStats.localLightSourceCount,
+                meshStats.localLightUploadableCount,
+                meshStats.localLightUploadedCount,
+                meshStats.localLightClampedCount);
+            ImGui::Text("Uploaded Point / Spot: %zu / %zu",
                 meshStats.pointLightUploadedCount,
-                meshStats.pointLightClampedCount);
+                meshStats.spotLightUploadedCount);
             ImGui::TreePop();
         }
 #else

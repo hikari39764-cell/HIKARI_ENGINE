@@ -270,9 +270,12 @@ namespace HIKARI::MESHRENDERER {
         bool directionalEnabled = false;
         float directionalIntensity = 0.0f;
         float ambientIntensity = 0.0f;
-        size_t pointLightTotalCount = 0;
+        size_t localLightSourceCount = 0;
+        size_t localLightUploadableCount = 0;
+        size_t localLightUploadedCount = 0;
+        size_t localLightClampedCount = 0;
         size_t pointLightUploadedCount = 0;
-        size_t pointLightClampedCount = 0;
+        size_t spotLightUploadedCount = 0;
         float specularIntensity = 0.0f;
         float specularPower = 0.0f;
     };

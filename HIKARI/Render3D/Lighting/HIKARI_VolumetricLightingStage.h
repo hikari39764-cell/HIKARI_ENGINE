@@ -32,7 +32,9 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
         uint32_t froxelDepth = 0;
         uint32_t froxelPixelSize = 0;
         uint32_t qualityLevel = 0;
+        uint32_t localLightCount = 0;
         uint32_t pointLightCount = 0;
+        uint32_t spotLightCount = 0;
         uint32_t dispatchCount = 0;
         float temporalWeight = 0.0f;
         uint64_t workingSetBytes = 0;

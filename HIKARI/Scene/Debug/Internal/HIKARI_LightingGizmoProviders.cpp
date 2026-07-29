@@ -1,7 +1,6 @@
 #include "Scene/Debug/Internal/HIKARI_LightingGizmoProviders.h"
 
 #include <algorithm>
-#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <string>
@@ -74,61 +73,30 @@ namespace HIKARI {
             if (radius <= 0.001f) {
                 return;
             }
-            constexpr uint32_t segments = 32u;
-            constexpr float twoPi = 6.2831853071795864769f;
-            for (uint32_t axis = 0; axis < 3u; ++axis) {
-                for (uint32_t segment = 0;
-                    segment < segments;
-                    ++segment) {
-                    const float angle0 =
-                        static_cast<float>(segment) *
-                        twoPi / static_cast<float>(segments);
-                    const float angle1 =
-                        static_cast<float>(segment + 1u) *
-                        twoPi / static_cast<float>(segments);
-                    MATH::Vec3 point0{};
-                    MATH::Vec3 point1{};
-                    if (axis == 0u) {
-                        point0 = {
-                            0.0f,
-                            std::cos(angle0) * radius,
-                            std::sin(angle0) * radius
-                        };
-                        point1 = {
-                            0.0f,
-                            std::cos(angle1) * radius,
-                            std::sin(angle1) * radius
-                        };
-                    } else if (axis == 1u) {
-                        point0 = {
-                            std::cos(angle0) * radius,
-                            0.0f,
-                            std::sin(angle0) * radius
-                        };
-                        point1 = {
-                            std::cos(angle1) * radius,
-                            0.0f,
-                            std::sin(angle1) * radius
-                        };
-                    } else {
-                        point0 = {
-                            std::cos(angle0) * radius,
-                            std::sin(angle0) * radius,
-                            0.0f
-                        };
-                        point1 = {
-                            std::cos(angle1) * radius,
-                            std::sin(angle1) * radius,
-                            0.0f
-                        };
-                    }
-                    DRAW::SubmitStyledStroke(
-                        DRAW::TransformPoint(world, point0),
-                        DRAW::TransformPoint(world, point1),
-                        color,
-                        selected);
-                }
+            const MATH::Vec3 center =
+                DRAW::TransformPoint(world, {});
+            if (selected) {
+                RENDERER3D::DEBUG::WireSphere3D halo{};
+                halo.center = center;
+                halo.radius = radius;
+                halo.rgba = DRAW::kSelectionHaloColor;
+                halo.segments = 32;
+                halo.depthMode =
+                    RENDERER3D::DEBUG::DebugDepthMode::XRay;
+                halo.thicknessPixels = DRAW::kSelectionHaloPixels;
+                RENDERER3D::DEBUG::SubmitWireSphere3D(halo);
             }
+            RENDERER3D::DEBUG::WireSphere3D sphere{};
+            sphere.center = center;
+            sphere.radius = radius;
+            sphere.rgba = selected
+                ? DRAW::kSelectionColor
+                : color;
+            sphere.segments = 32;
+            sphere.thicknessPixels = selected
+                ? DRAW::kSelectedStrokePixels
+                : DRAW::kNormalStrokePixels;
+            RENDERER3D::DEBUG::SubmitWireSphere3D(sphere);
         }
 
         void DrawReflectionProbe(

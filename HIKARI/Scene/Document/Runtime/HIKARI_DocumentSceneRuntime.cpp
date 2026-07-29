@@ -443,7 +443,8 @@ namespace HIKARI {
 
         state_->lighting.environment = state_->identity.document.environment;
         state_->lighting.environment.directional.direction = MATH::Normalize(state_->lighting.environment.directional.direction);
-        if (state_->lighting.environment.pointLights.empty()) {
+        if (state_->lighting.environment.pointLights.empty() &&
+            state_->lighting.environment.spotLights.empty()) {
             state_->lighting.environment.pointLights.push_back(PointLight{});
         }
 

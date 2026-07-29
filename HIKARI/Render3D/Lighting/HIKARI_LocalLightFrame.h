@@ -34,13 +34,20 @@ namespace HIKARI::RENDER3D::LIGHTING {
     struct LocalLightFrame {
         std::array<LocalLightGpuData, kLocalLightFrameCapacity> lights{};
         uint32_t sourceCount = 0u;
+        uint32_t sourcePointCount = 0u;
+        uint32_t sourceSpotCount = 0u;
         uint32_t uploadableCount = 0u;
         uint32_t uploadedCount = 0u;
         uint32_t clampedCount = 0u;
+        uint32_t uploadedPointCount = 0u;
+        uint32_t uploadedSpotCount = 0u;
+        uint32_t clampedPointCount = 0u;
+        uint32_t clampedSpotCount = 0u;
     };
 
     // Scene authoring semantics を GPU レコードへ変換する唯一の入口。
-    // 現段階では既存 Point Light の見た目と 8 灯上限を維持する。
+    // 同一 priority では既存 Point Light 順序を維持し、Point / Spot を
+    // 一つのフレーム予算へ統合する。
     LocalLightFrame BuildLocalLightFrame(
         const SceneEnvironment& environment);
 

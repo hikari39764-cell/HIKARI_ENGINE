@@ -1,7 +1,7 @@
 # Authoritative HIKARI compile-source manifest.
 # Add or remove translation units here and keep the source-closure test green.
 
-set(HIKARI_COMPILE_SOURCE_COUNT 713)
+set(HIKARI_COMPILE_SOURCE_COUNT 715)
 
 set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/External/WICTextureLoader.cpp"
@@ -250,6 +250,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Lighting/HIKARI_IblEnvironment.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Lighting/HIKARI_LightProbeVolumeRuntime.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Lighting/HIKARI_LocalLightFrame.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Lighting/HIKARI_LocalLightSemantics.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Reflection/HIKARI_ReflectionProbeRuntime.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/ScreenSpace/HIKARI_ScreenSpaceGeometryAux.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/ScreenSpace/HIKARI_ScreenSpacePasses.cpp"
@@ -540,6 +541,7 @@ set(HIKARI_EDITOR_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Style/HIKARI_EditorGlyphs.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Style/HIKARI_EditorTheme.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Style/HIKARI_EditorWidgets.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Environment/HIKARI_EnvironmentLightControls.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Environment/HIKARI_EnvironmentPanel.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Quality/HIKARI_QualityPanel.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Panels/HIKARI_LightingBakePanel.cpp"
