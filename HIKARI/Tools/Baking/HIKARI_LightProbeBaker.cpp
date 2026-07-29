@@ -305,6 +305,7 @@ namespace HIKARI::TOOLS::BAKING {
         result.record.priority = request.priority;
         result.record.shDataPath = PROJECT_PATHS::MakeProjectRelativeString(request.projectRoot, result.volumePath);
         result.record.authoringHash = request.authoringHash;
+        result.record.captureSceneHash = request.sceneHash;
         result.record.dependencyHash = request.dependencyHash;
         result.record.bakeSet = request.bakeSet;
         result.record.scenario = request.scenario;

@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -21,6 +22,8 @@ namespace HIKARI {
             std::filesystem::path projectRoot{};
             std::unordered_set<std::string> skyAssetIds{};
             std::string expectedSceneHash{};
+            std::unordered_map<std::string, std::string>
+                expectedBakeAuthoringHashes{};
             SceneLightingSet lighting{};
             bool allowAuthoringReflectionProbeFallback = true;
             bool preferBakeManifest = true;

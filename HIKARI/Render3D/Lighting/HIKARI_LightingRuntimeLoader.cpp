@@ -83,6 +83,27 @@ namespace HIKARI::RENDER3D::LIGHTING {
                 });
         }
 
+        bool IsBakeRecordCaptureCurrent(
+            const std::string& recordId,
+            const std::string& authoringHash,
+            const std::string& captureSceneHash,
+            const LightingRuntimeLoadRequest& request) {
+
+            if (!request.expectedSceneHash.empty() &&
+                captureSceneHash != request.expectedSceneHash) {
+                return false;
+            }
+            if (request.expectedBakeAuthoringHashes.empty()) {
+                return true;
+            }
+            const auto expected =
+                request.expectedBakeAuthoringHashes.find(recordId);
+            return expected !=
+                    request.expectedBakeAuthoringHashes.end() &&
+                !authoringHash.empty() &&
+                authoringHash == expected->second;
+        }
+
         REFLECTION::ReflectionProbeRuntimeData
             BuildBakedReflectionProbe(
                 const ASSETS::LIGHTING::
@@ -234,22 +255,6 @@ namespace HIKARI::RENDER3D::LIGHTING {
         }
 
         runtimeData.bakeManifestLoaded = true;
-        if (!request.expectedSceneHash.empty() &&
-            manifest.sceneHash != request.expectedSceneHash) {
-            runtimeData.bakeManifestStale = true;
-            runtimeData.bakeManifestStaleReason =
-                manifest.sceneHash.empty()
-                ? "Bake manifest has no scene hash"
-                : "Scene authoring changed after bake";
-            runtimeData.source =
-                LightingRuntimeSource::BakeManifestDiscovered;
-            AppendMessage(
-                messages,
-                "[LightingRuntimeLoader][BakeManifest][STALE] " +
-                    runtimeData.bakeManifestStaleReason +
-                    "; baked providers are disabled until rebake.");
-            return false;
-        }
         runtimeData.activeScenario =
             manifest.activeScenario.empty()
             ? "Default"
@@ -284,6 +289,19 @@ namespace HIKARI::RENDER3D::LIGHTING {
                 (!authored->scenario.empty() &&
                     authored->scenario !=
                         runtimeData.activeScenario)) {
+                continue;
+            }
+            if (!IsBakeRecordCaptureCurrent(
+                    record.id,
+                    record.authoringHash,
+                    record.captureSceneHash,
+                    request)) {
+                ++runtimeData.staleIrradianceVolumeCount;
+                AppendMessage(
+                    messages,
+                    "[LightingRuntimeLoader][BakeManifest][STALE] " +
+                        record.id +
+                        " ignored because its capture inputs changed.");
                 continue;
             }
             lightProbeRequests.push_back(
@@ -330,6 +348,19 @@ namespace HIKARI::RENDER3D::LIGHTING {
                         runtimeData.activeScenario)) {
                 continue;
             }
+            if (!IsBakeRecordCaptureCurrent(
+                    record.id,
+                    record.authoringHash,
+                    record.captureSceneHash,
+                    request)) {
+                ++runtimeData.staleReflectionProbeCount;
+                AppendMessage(
+                    messages,
+                    "[LightingRuntimeLoader][BakeManifest][STALE] " +
+                        record.id +
+                        " ignored because its capture inputs changed.");
+                continue;
+            }
             bakedProbes.push_back(
                 BuildBakedReflectionProbe(
                     record,
@@ -361,6 +392,16 @@ namespace HIKARI::RENDER3D::LIGHTING {
             runtimeData.source =
                 LightingRuntimeSource::BakeManifestDiscovered;
         }
+        const uint32_t staleProviderCount =
+            runtimeData.staleReflectionProbeCount +
+            runtimeData.staleIrradianceVolumeCount;
+        runtimeData.bakeManifestStale =
+            staleProviderCount > 0u;
+        if (runtimeData.bakeManifestStale) {
+            runtimeData.bakeManifestStaleReason =
+                std::to_string(staleProviderCount) +
+                " baked provider(s) have changed capture inputs";
+        }
 
         AppendMessage(
             messages,
@@ -369,7 +410,9 @@ namespace HIKARI::RENDER3D::LIGHTING {
                     runtimeData.loadedReflectionProbeCount) +
                 " irradiance=" +
                 std::to_string(
-                    runtimeData.loadedIrradianceVolumeCount));
+                    runtimeData.loadedIrradianceVolumeCount) +
+                " stale=" +
+                std::to_string(staleProviderCount));
         return true;
     }
 

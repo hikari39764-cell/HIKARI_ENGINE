@@ -301,6 +301,9 @@ namespace HIKARI {
         }
         deps.lightingSceneHash =
             ASSETS::LIGHTING::BuildLightingSceneHash(document);
+        deps.lightingBakeAuthoringHashes =
+            ASSETS::LIGHTING::
+                BuildLightingBakeRecordAuthoringHashes(document);
         deps.lighting = LIGHTING_AUTHORING::BuildSceneLightingSet(document);
 
         for (const SceneObjectData& object : document.objects) {
@@ -396,6 +399,8 @@ namespace HIKARI {
         request.skyAssetIds = dependencies.skyAssetIds;
         request.expectedSceneHash =
             dependencies.lightingSceneHash;
+        request.expectedBakeAuthoringHashes =
+            dependencies.lightingBakeAuthoringHashes;
         request.lighting = dependencies.lighting;
 
         // 照明リソースは runtime loader に委譲する。

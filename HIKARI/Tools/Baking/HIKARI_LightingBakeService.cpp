@@ -134,6 +134,7 @@ namespace HIKARI::TOOLS::BAKING {
         const auto classify = [&](
             LightingBakeItemStatus& item,
             const std::string& recordAuthoringHash,
+            const std::string& recordCaptureSceneHash,
             const std::string& recordDependencyHash,
             bool outputExists) {
 
@@ -145,9 +146,15 @@ namespace HIKARI::TOOLS::BAKING {
             } else if (recordAuthoringHash.empty()) {
                 item.dirtyReason = "No baked record";
             } else if (recordAuthoringHash != item.authoringHash) {
-                item.dirtyReason = "Authoring changed";
+                item.dirtyReason =
+                    "Capture settings changed";
+            } else if (recordCaptureSceneHash !=
+                    hashes.sceneHash) {
+                item.dirtyReason =
+                    "Lighting capture scene changed";
             } else if (recordDependencyHash != hashes.dependencyHash) {
-                item.dirtyReason = "Scene or asset dependency changed";
+                item.dirtyReason =
+                    "Lighting capture asset changed";
             } else if (!outputExists) {
                 item.dirtyReason = "Baked output missing";
             } else {
@@ -173,9 +180,11 @@ namespace HIKARI::TOOLS::BAKING {
             item.recordId = "reflection_probe_" +
                 std::to_string(probe.objectId.value);
             item.enabled = probe.settings.enabled;
-            const auto hash = hashes.objectAuthoringHashes.find(
-                item.objectId);
-            if (hash != hashes.objectAuthoringHashes.end()) {
+            const auto hash =
+                hashes.recordAuthoringHashes.find(
+                    item.recordId);
+            if (hash !=
+                hashes.recordAuthoringHashes.end()) {
                 item.authoringHash = hash->second;
             }
             const auto record = std::find_if(
@@ -191,6 +200,9 @@ namespace HIKARI::TOOLS::BAKING {
                 record == manifest.reflectionProbes.end()
                     ? std::string{}
                     : record->authoringHash,
+                record == manifest.reflectionProbes.end()
+                    ? std::string{}
+                    : record->captureSceneHash,
                 record == manifest.reflectionProbes.end()
                     ? std::string{}
                     : record->dependencyHash,
@@ -212,9 +224,11 @@ namespace HIKARI::TOOLS::BAKING {
             item.recordId = "irradiance_volume_" +
                 std::to_string(volume.objectId.value);
             item.enabled = volume.settings.enabled;
-            const auto hash = hashes.objectAuthoringHashes.find(
-                item.objectId);
-            if (hash != hashes.objectAuthoringHashes.end()) {
+            const auto hash =
+                hashes.recordAuthoringHashes.find(
+                    item.recordId);
+            if (hash !=
+                hashes.recordAuthoringHashes.end()) {
                 item.authoringHash = hash->second;
             }
             const auto record = std::find_if(
@@ -230,6 +244,9 @@ namespace HIKARI::TOOLS::BAKING {
                 record == manifest.lightProbes.end()
                     ? std::string{}
                     : record->authoringHash,
+                record == manifest.lightProbes.end()
+                    ? std::string{}
+                    : record->captureSceneHash,
                 record == manifest.lightProbes.end()
                     ? std::string{}
                     : record->dependencyHash,

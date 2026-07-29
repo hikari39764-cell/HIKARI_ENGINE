@@ -142,10 +142,10 @@ namespace HIKARI {
         job->request.brdfLutSize = 256;
         job->request.brdfSampleCount = 256;
         job->request.forceRebake = batchForce_;
-        const auto objectHash = hashes.objectAuthoringHashes.find(
-            probe->objectId.value);
+        const auto objectHash =
+            hashes.recordAuthoringHashes.find(probeId);
         job->request.authoringHash =
-            objectHash == hashes.objectAuthoringHashes.end()
+            objectHash == hashes.recordAuthoringHashes.end()
                 ? std::string{}
                 : objectHash->second;
         job->request.sceneHash = hashes.sceneHash;
@@ -281,10 +281,11 @@ namespace HIKARI {
         job->request.settings = settings;
         job->request.priority = volume->priority;
         job->request.forceRebake = batchForce_;
-        const auto objectHash = hashes.objectAuthoringHashes.find(
-            volume->objectId.value);
+        const auto objectHash =
+            hashes.recordAuthoringHashes.find(
+                job->request.volumeId);
         job->request.authoringHash =
-            objectHash == hashes.objectAuthoringHashes.end()
+            objectHash == hashes.recordAuthoringHashes.end()
                 ? std::string{}
                 : objectHash->second;
         job->request.sceneHash = hashes.sceneHash;

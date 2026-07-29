@@ -9,7 +9,7 @@
 
 namespace HIKARI::ASSETS::LIGHTING {
 
-    constexpr uint32_t kLightingBakeManifestVersion = 3;
+    constexpr uint32_t kLightingBakeManifestVersion = 4;
 
     struct ReflectionProbeBakeRecord {
         std::string id{};
@@ -30,6 +30,7 @@ namespace HIKARI::ASSETS::LIGHTING {
         std::string brdfLutPath{};
         uint32_t prefilteredMipCount = 1;
         std::string authoringHash{};
+        std::string captureSceneHash{};
         std::string dependencyHash{};
         std::string bakeSet{ "Default" };
         std::string scenario{ "Default" };
@@ -51,6 +52,7 @@ namespace HIKARI::ASSETS::LIGHTING {
         int priority = 0;
         std::string shDataPath{};
         std::string authoringHash{};
+        std::string captureSceneHash{};
         std::string dependencyHash{};
         std::string bakeSet{ "Default" };
         std::string scenario{ "Default" };

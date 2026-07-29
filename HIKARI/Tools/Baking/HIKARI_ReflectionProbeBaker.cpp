@@ -242,6 +242,7 @@ namespace HIKARI::TOOLS::BAKING {
             PROJECT_PATHS::MakeProjectRelativeString(request.projectRoot, result.brdfLutPath);
         result.record.prefilteredMipCount = mipCount;
         result.record.authoringHash = request.authoringHash;
+        result.record.captureSceneHash = request.sceneHash;
         result.record.dependencyHash = request.dependencyHash;
         result.record.bakeSet = request.bakeSet;
         result.record.scenario = request.scenario;

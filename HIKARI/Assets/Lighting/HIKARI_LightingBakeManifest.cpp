@@ -60,6 +60,9 @@ namespace HIKARI::ASSETS::LIGHTING {
             record.brdfLutPath = node.value("brdfLutPath", std::string{});
             record.prefilteredMipCount = node.value("prefilteredMipCount", 1u);
             record.authoringHash = node.value("authoringHash", std::string{});
+            record.captureSceneHash = node.value(
+                "captureSceneHash",
+                std::string{});
             record.dependencyHash = node.value("dependencyHash", std::string{});
             record.bakeSet = node.value("bakeSet", std::string{ "Default" });
             record.scenario = node.value("scenario", std::string{ "Default" });
@@ -88,6 +91,9 @@ namespace HIKARI::ASSETS::LIGHTING {
             record.priority = node.value("priority", 0);
             record.shDataPath = node.value("shDataPath", std::string{});
             record.authoringHash = node.value("authoringHash", std::string{});
+            record.captureSceneHash = node.value(
+                "captureSceneHash",
+                std::string{});
             record.dependencyHash = node.value("dependencyHash", std::string{});
             record.bakeSet = node.value("bakeSet", std::string{ "Default" });
             record.scenario = node.value("scenario", std::string{ "Default" });
@@ -135,6 +141,8 @@ namespace HIKARI::ASSETS::LIGHTING {
                 { "brdfLutPath", record.brdfLutPath },
                 { "prefilteredMipCount", record.prefilteredMipCount },
                 { "authoringHash", record.authoringHash },
+                { "captureSceneHash",
+                    record.captureSceneHash },
                 { "dependencyHash", record.dependencyHash },
                 { "bakeSet", record.bakeSet },
                 { "scenario", record.scenario },
@@ -158,6 +166,8 @@ namespace HIKARI::ASSETS::LIGHTING {
                 { "priority", record.priority },
                 { "shDataPath", record.shDataPath },
                 { "authoringHash", record.authoringHash },
+                { "captureSceneHash",
+                    record.captureSceneHash },
                 { "dependencyHash", record.dependencyHash },
                 { "bakeSet", record.bakeSet },
                 { "scenario", record.scenario },
@@ -204,6 +214,16 @@ namespace HIKARI::ASSETS::LIGHTING {
 
         LightingBakeManifest manifest{};
         manifest.version = root.value("version", kLightingBakeManifestVersion);
+        if (manifest.version != kLightingBakeManifestVersion) {
+            SetMessage(
+                outMessage,
+                "manifest version " +
+                    std::to_string(manifest.version) +
+                    " is unsupported; rebake lighting for version " +
+                    std::to_string(
+                        kLightingBakeManifestVersion));
+            return false;
+        }
         manifest.sceneGuid = root.value("sceneGuid", std::string{});
         manifest.bakeGuid = root.value("bakeGuid", std::string{});
         manifest.bakeVersion = root.value("bakeVersion", 1u);

@@ -15,12 +15,17 @@ namespace HIKARI {
         struct LightingBakeHashSnapshot {
             std::string sceneHash{};
             std::string dependencyHash{};
-            std::unordered_map<uint64_t, std::string> objectAuthoringHashes{};
+            std::unordered_map<std::string, std::string>
+                recordAuthoringHashes{};
             std::vector<std::string> missingAssetIds{};
         };
 
         std::string BuildLightingSceneHash(
             const SceneDocument& document);
+
+        std::unordered_map<std::string, std::string>
+            BuildLightingBakeRecordAuthoringHashes(
+                const SceneDocument& document);
 
         LightingBakeHashSnapshot BuildLightingBakeHashSnapshot(
             const SceneDocument& document,

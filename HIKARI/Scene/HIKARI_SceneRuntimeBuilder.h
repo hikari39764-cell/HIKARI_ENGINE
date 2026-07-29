@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 
 #include "Render3D/HIKARI_Math3D.h"
@@ -25,6 +26,8 @@ namespace HIKARI {
         std::unordered_set<std::string> textureAssetIds{};
         std::unordered_set<std::string> materialAssetIds{};
         std::string lightingSceneHash{};
+        std::unordered_map<std::string, std::string>
+            lightingBakeAuthoringHashes{};
         RENDER3D::LIGHTING::SceneLightingSet lighting{};
     };
 
