@@ -10,28 +10,30 @@ StructuredBuffer<uint2>
 StructuredBuffer<uint>
     gHikariLocalLightClusterIndices : register(t2, space5);
 
-uint HikariResolveLocalLightDepthSlice(float3 worldPosition)
+uint HikariResolveLocalLightDepthSliceFromLogDistance(
+    float logDistance)
 {
-    const float nearDistance = max(gLocalLightNearDistance, 0.01f);
-    const float farDistance = max(
-        gLocalLightFarDistance,
-        nearDistance + 0.01f);
-    const float distanceToCamera = clamp(
-        length(worldPosition - gCameraPos.xyz),
-        nearDistance,
-        farDistance);
-    const float denominator = log(farDistance / nearDistance);
-    const float normalized = denominator > 0.0001f
-        ? log(distanceToCamera / nearDistance) / denominator
-        : 0.0f;
+    if (gLocalLightClusterCountZ == 0u)
+    {
+        return 0u;
+    }
+    const float normalized = saturate(
+        logDistance * gLocalLightDepthScale +
+            gLocalLightDepthBias);
     return min(
         (uint)(normalized * (float)gLocalLightClusterCountZ),
         gLocalLightClusterCountZ - 1u);
 }
 
+uint HikariResolveLocalLightDepthSlice(float distanceToCamera)
+{
+    return HikariResolveLocalLightDepthSliceFromLogDistance(
+        log(max(distanceToCamera, 0.0001f)));
+}
+
 uint HikariResolveLocalLightClusterIndex(
     float2 pixelPosition,
-    float3 worldPosition)
+    uint depthSlice)
 {
     const uint tileSize = max(gLocalLightTileSizePixels, 1u);
     const uint tileX = min(
@@ -40,15 +42,16 @@ uint HikariResolveLocalLightClusterIndex(
     const uint tileY = min(
         (uint)pixelPosition.y / tileSize,
         gLocalLightClusterCountY - 1u);
-    const uint tileZ =
-        HikariResolveLocalLightDepthSlice(worldPosition);
+    const uint tileZ = min(
+        depthSlice,
+        gLocalLightClusterCountZ - 1u);
     return (tileZ * gLocalLightClusterCountY + tileY) *
         gLocalLightClusterCountX + tileX;
 }
 
-uint2 HikariResolveLocalLightCluster(
+uint2 HikariResolveLocalLightClusterFromDepthSlice(
     float2 pixelPosition,
-    float3 worldPosition)
+    uint depthSlice)
 {
     if (gLocalLightCount == 0u ||
         gLocalLightClusterCountX == 0u ||
@@ -60,7 +63,17 @@ uint2 HikariResolveLocalLightCluster(
     return gHikariLocalLightClusterHeaders[
         HikariResolveLocalLightClusterIndex(
             pixelPosition,
-            worldPosition)];
+            depthSlice)];
+}
+
+uint2 HikariResolveLocalLightCluster(
+    float2 pixelPosition,
+    float distanceToCamera)
+{
+    return HikariResolveLocalLightClusterFromDepthSlice(
+        pixelPosition,
+        HikariResolveLocalLightDepthSlice(
+            distanceToCamera));
 }
 
 #endif

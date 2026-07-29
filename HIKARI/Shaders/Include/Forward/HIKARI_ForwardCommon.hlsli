@@ -65,6 +65,8 @@ cbuffer LightCB : register(b2)
     uint gLocalLightClusterIndexCount;
     float gLocalLightNearDistance;
     float gLocalLightFarDistance;
+    float gLocalLightDepthScale;
+    float gLocalLightDepthBias;
     float4 gFogColorDensity;
     float4 gFogParams;
     uint gDebugView;

@@ -154,6 +154,10 @@ namespace HIKARI::MESHRENDERER {
             localLightList.nearDistance;
         out.localLightFarDistance =
             localLightList.farDistance;
+        out.localLightDepthScale =
+            localLightList.depthScale;
+        out.localLightDepthBias =
+            localLightList.depthBias;
 
         stats.directionalEnabled = environment.directional.enabled;
         stats.directionalIntensity = out.directionalIntensity;

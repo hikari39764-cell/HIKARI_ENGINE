@@ -80,18 +80,19 @@ namespace HIKARI::RENDER3D::LIGHTING {
         uint32_t ResolveDepthSlice(
             float distance,
             float nearDistance,
-            float farDistance) {
+            float farDistance,
+            float depthScale,
+            float depthBias) {
 
             const float clampedDistance = std::clamp(
                 distance,
                 nearDistance,
                 farDistance);
-            const float denominator = std::log(
-                farDistance / nearDistance);
-            const float normalized = denominator > 0.0001f
-                ? std::log(clampedDistance / nearDistance) /
-                    denominator
-                : 0.0f;
+            const float normalized = std::clamp(
+                std::log(clampedDistance) * depthScale +
+                    depthBias,
+                0.0f,
+                1.0f);
             return (std::min)(
                 static_cast<uint32_t>(
                     normalized *
@@ -115,6 +116,19 @@ namespace HIKARI::RENDER3D::LIGHTING {
             ClusterBounds clusters{};
         };
 
+        struct LocalLightListScratch {
+            std::vector<uint8_t> clusterCounts{};
+            std::vector<uint8_t> clusterWriteCounts{};
+            std::vector<UploadedLightBounds> uploadedBounds{};
+        };
+
+        LocalLightListScratch& GetLocalLightListScratch() {
+            // 一時配列はスレッド単位で再利用し、
+            // フレームごとのヒープ確保を避ける。
+            thread_local LocalLightListScratch scratch{};
+            return scratch;
+        }
+
         ClusterBounds ProjectLightBounds(
             const SceneLightProvider& light,
             const Camera3D& camera,
@@ -124,7 +138,9 @@ namespace HIKARI::RENDER3D::LIGHTING {
             uint32_t clusterCountX,
             uint32_t clusterCountY,
             float nearDistance,
-            float farDistance) {
+            float farDistance,
+            float depthScale,
+            float depthBias) {
 
             ClusterBounds bounds{};
             const MATH::Vec4 viewPosition =
@@ -217,11 +233,15 @@ namespace HIKARI::RENDER3D::LIGHTING {
             bounds.minZ = ResolveDepthSlice(
                 (std::max)(cameraDistance - range, nearDistance),
                 nearDistance,
-                farDistance);
+                farDistance,
+                depthScale,
+                depthBias);
             bounds.maxZ = ResolveDepthSlice(
                 (std::min)(cameraDistance + range, farDistance),
                 nearDistance,
-                farDistance);
+                farDistance,
+                depthScale,
+                depthBias);
             bounds.visible = true;
             return bounds;
         }
@@ -272,6 +292,13 @@ namespace HIKARI::RENDER3D::LIGHTING {
         view.farDistance = (std::max)(
             camera.GetFarZ(),
             view.nearDistance + 0.01f);
+        const float depthLogRange = std::log(
+            view.farDistance / view.nearDistance);
+        view.depthScale = depthLogRange > 0.0001f
+            ? 1.0f / depthLogRange
+            : 0.0f;
+        view.depthBias =
+            -std::log(view.nearDistance) * view.depthScale;
         view.clusterCountZ = kLocalLightClusterDepthSliceCount;
         view.tileSizePixels = 64u;
         for (;;) {
@@ -303,8 +330,21 @@ namespace HIKARI::RENDER3D::LIGHTING {
             view.tileSizePixels *= 2u;
         }
 
-        std::vector<uint8_t> clusterCounts(view.clusterCount, 0u);
-        std::vector<UploadedLightBounds> uploadedBounds{};
+        LocalLightListScratch& scratch =
+            GetLocalLightListScratch();
+        scratch.clusterCounts.assign(
+            view.clusterCount,
+            0u);
+        scratch.clusterWriteCounts.assign(
+            view.clusterCount,
+            0u);
+        scratch.uploadedBounds.clear();
+        std::vector<uint8_t>& clusterCounts =
+            scratch.clusterCounts;
+        std::vector<uint8_t>& clusterWriteCounts =
+            scratch.clusterWriteCounts;
+        std::vector<UploadedLightBounds>& uploadedBounds =
+            scratch.uploadedBounds;
         uploadedBounds.reserve((std::min)(
             output.lightCapacity,
             kMaximumLocalLightCount));
@@ -342,7 +382,9 @@ namespace HIKARI::RENDER3D::LIGHTING {
                 view.clusterCountX,
                 view.clusterCountY,
                 view.nearDistance,
-                view.farDistance);
+                view.farDistance,
+                view.depthScale,
+                view.depthBias);
             if (!bounds.visible) {
                 continue;
             }
@@ -391,9 +433,6 @@ namespace HIKARI::RENDER3D::LIGHTING {
             view.clusterIndexCount += header.count;
         }
 
-        std::vector<uint8_t> clusterWriteCounts(
-            view.clusterCount,
-            0u);
         for (const UploadedLightBounds& uploaded :
              uploadedBounds) {
             const ClusterBounds& bounds =

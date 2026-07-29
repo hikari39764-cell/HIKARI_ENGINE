@@ -41,7 +41,7 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
             MATH::Vec4 ambientColorIntensity{};
             MATH::Vec4 volumeSize{};
             MATH::Vec4 frameParams{};
-            MATH::Vec4 debugParams{};
+            MATH::Vec4 debugAndLocalLightDepth{};
             uint32_t localLightCount = 0u;
             uint32_t localLightClusterCountX = 0u;
             uint32_t localLightClusterCountY = 0u;
@@ -51,6 +51,9 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
             float localLightNearDistance = 0.1f;
             float localLightFarDistance = 100.0f;
         };
+
+        static_assert(
+            sizeof(VolumetricConstants) == 384u);
 
         struct VolumeResource {
             ComPtr<ID3D12Resource> texture{};
@@ -493,10 +496,10 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
             localLights.view.nearDistance;
         constants.localLightFarDistance =
             localLights.view.farDistance;
-        constants.debugParams = {
+        constants.debugAndLocalLightDepth = {
             static_cast<float>(ResolveDebugMode(debugView)),
-            0.0f,
-            0.0f,
+            localLights.view.depthScale,
+            localLights.view.depthBias,
             0.0f
         };
         state.constants = constants;

@@ -64,7 +64,7 @@ bool HikariResolveLocalLightSample(
     if (lightType == HIKARI_LOCAL_LIGHT_TYPE_SPOT)
     {
         const float3 spotDirection =
-            normalize(light.directionInnerCos.xyz);
+            light.directionInnerCos.xyz;
         const float coneCos = dot(
             spotDirection,
             -sample.directionToLight);

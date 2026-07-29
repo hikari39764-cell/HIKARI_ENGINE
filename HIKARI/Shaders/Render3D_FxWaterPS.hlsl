@@ -74,6 +74,8 @@ cbuffer LightCB : register(b2)
     uint gLocalLightClusterIndexCount;
     float gLocalLightNearDistance;
     float gLocalLightFarDistance;
+    float gLocalLightDepthScale;
+    float gLocalLightDepthBias;
     float4 gFogColorDensity;
     float4 gFogParams;
     uint gDebugView;
@@ -592,6 +594,7 @@ float3 SampleSkyEnvironment(float3 dir)
 void EvaluateWaterLocalLights(
     float3 worldPosition,
     float2 pixelPosition,
+    float distanceToCamera,
     float3 normalWS,
     float3 viewDirection,
     float specularStrength,
@@ -602,7 +605,7 @@ void EvaluateWaterLocalLights(
     specularLighting = 0.0f.xxx;
     const uint2 cluster = HikariResolveLocalLightCluster(
         pixelPosition,
-        worldPosition);
+        distanceToCamera);
     [loop]
     for (uint slot = 0u; slot < cluster.y; ++slot)
     {
@@ -654,7 +657,9 @@ float4 HikariShadeWaterSurface(
 
     float3 n = normalize(input.normalWS);
 
-    float distToCamera = length(gCameraPos.xyz - input.worldPosWS);
+    const float3 toCamera =
+        gCameraPos.xyz - input.worldPosWS;
+    float distToCamera = length(toCamera);
 
     n = ApplyWaterDetailNormal(n, input.worldPosWS, distToCamera, waterObjectData);
 
@@ -664,7 +669,9 @@ float4 HikariShadeWaterSurface(
 
     n = normalize(lerp(n, flatNormal, farNormalFade * 0.85f));
 
-    float3 v = normalize(gCameraPos.xyz - input.worldPosWS);
+    float3 v =
+        toCamera /
+        max(distToCamera, 0.00001f);
 
     float3 l = normalize(-gDirectionalDir.xyz);
     float3 h = normalize(l + v);
@@ -739,6 +746,7 @@ float4 HikariShadeWaterSurface(
     EvaluateWaterLocalLights(
         input.worldPosWS,
         input.position.xy,
+        distToCamera,
         n,
         v,
         specularStrength,

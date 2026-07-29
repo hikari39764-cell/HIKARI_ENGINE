@@ -133,7 +133,8 @@ namespace HIKARI::MESHRENDERER {
         uint32_t localLightClusterIndexCount = 0u;
         float localLightNearDistance = 0.1f;
         float localLightFarDistance = 100.0f;
-        float localLightPadding[2]{};
+        float localLightDepthScale = 1.0f;
+        float localLightDepthBias = 0.0f;
         MATH::Vec4 fogColorDensity{};
         MATH::Vec4 fogParams{};
         uint32_t debugView = 0;
@@ -141,7 +142,11 @@ namespace HIKARI::MESHRENDERER {
         float debugPadding[2]{};
     };
 
-    static_assert(sizeof(LightCB) % 16u == 0u);
+    static_assert(
+        offsetof(LightCB, localLightDepthScale) == 104u);
+    static_assert(
+        offsetof(LightCB, fogColorDensity) == 112u);
+    static_assert(sizeof(LightCB) == 160u);
 
     struct ReflectionProbeGpuData {
         MATH::Vec4 positionRadius{};

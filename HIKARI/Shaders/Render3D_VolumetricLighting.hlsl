@@ -14,7 +14,10 @@ cbuffer VolumetricCB : register(b0)
     float4 gAmbientColorIntensity;
     float4 gVolumeSize;
     float4 gFrameParams;
-    float4 gDebugParams;
+    float gVolumetricDebugMode;
+    float gLocalLightDepthScale;
+    float gLocalLightDepthBias;
+    float gVolumetricPadding;
     uint gLocalLightCount;
     uint gLocalLightClusterCountX;
     uint gLocalLightClusterCountY;
@@ -33,13 +36,6 @@ Texture3D<float4> gHistoryVolume : register(t2);
 RWTexture3D<float4> gOutputVolume : register(u0);
 SamplerState gLinearClamp : register(s0);
 SamplerComparisonState gShadowSampler : register(s1);
-
-float SliceDistance(float slice)
-{
-    const float nearDistance = max(0.01f, gFogDistances.x);
-    const float farDistance = max(nearDistance + 0.01f, gFogDistances.y);
-    return nearDistance * pow(farDistance / nearDistance, saturate(slice));
-}
 
 float DistanceToSlice(float distanceToCamera)
 {
@@ -84,17 +80,21 @@ float HenyeyGreenstein(float cosTheta, float anisotropy)
 float3 EvaluateLighting(
     float3 worldPosition,
     float3 viewRay,
-    float2 pixelPosition)
+    float2 pixelPosition,
+    uint localLightDepthSlice,
+    float3 directionalRadiance)
 {
-    const float3 toDirectionalLight = normalize(-gDirectionalDirIntensity.xyz);
-    const float phase = HenyeyGreenstein(dot(viewRay, toDirectionalLight), gFogDistances.w);
     float3 lighting = gAmbientColorIntensity.rgb * gAmbientColorIntensity.a;
-    lighting += gDirectionalColorShadow.rgb * gDirectionalDirIntensity.w *
-        phase * lerp(1.0f, ShadowVisibility(worldPosition), gDirectionalColorShadow.a);
+    lighting += directionalRadiance *
+        lerp(
+            1.0f,
+            ShadowVisibility(worldPosition),
+            gDirectionalColorShadow.a);
 
-    const uint2 localLightCluster = HikariResolveLocalLightCluster(
+    const uint2 localLightCluster =
+        HikariResolveLocalLightClusterFromDepthSlice(
         pixelPosition,
-        worldPosition);
+        localLightDepthSlice);
     [loop]
     for (uint clusterSlot = 0u;
          clusterSlot < localLightCluster.y;
@@ -144,24 +144,49 @@ void InjectAndIntegrateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     const float2 pixelPosition =
         uv * float2(sceneWidth, sceneHeight);
     const float3 ray = ReconstructRay(uv);
+    const float3 toDirectionalLight =
+        normalize(-gDirectionalDirIntensity.xyz);
+    const float directionalPhase = HenyeyGreenstein(
+        dot(ray, toDirectionalLight),
+        gFogDistances.w);
+    const float3 directionalRadiance =
+        gDirectionalColorShadow.rgb *
+        gDirectionalDirIntensity.w *
+        directionalPhase;
     float3 integratedScattering = 0.0f.xxx;
     float integratedTransmittance = 1.0f;
-    float previousDistance = max(0.01f, gFogDistances.x);
+    const float nearDistance =
+        max(0.01f, gFogDistances.x);
+    const float farDistance =
+        max(nearDistance + 0.01f, gFogDistances.y);
+    const float fogLogStep =
+        log(farDistance / nearDistance) /
+        max((float)volumeSize.z, 1.0f);
+    const float sliceDistanceMultiplier =
+        exp(fogLogStep);
+    float distanceToCamera =
+        nearDistance * exp(fogLogStep * 0.5f);
+    float logDistanceToCamera =
+        log(nearDistance) + fogLogStep * 0.5f;
+    float previousDistance = nearDistance;
 
     [loop]
     for (uint slice = 0; slice < volumeSize.z; ++slice)
     {
-        const float sliceCoord = (float(slice) + 0.5f) / float(volumeSize.z);
-        const float distanceToCamera = SliceDistance(sliceCoord);
         const float stepLength = max(0.001f, distanceToCamera - previousDistance);
         const float3 worldPosition = gCameraPos.xyz + ray * distanceToCamera;
         const float heightDensity = exp(-max(worldPosition.y, 0.0f) * gFogDistances.z);
         const float extinction = max(0.0f, gFogColorDensity.a) * heightDensity;
         const float stepTransmittance = exp(-extinction * stepLength);
+        const uint localLightDepthSlice =
+            HikariResolveLocalLightDepthSliceFromLogDistance(
+                logDistanceToCamera);
         const float3 lighting = EvaluateLighting(
             worldPosition,
             ray,
-            pixelPosition);
+            pixelPosition,
+            localLightDepthSlice,
+            directionalRadiance);
         const float3 stepScattering = lighting * gFogColorDensity.rgb *
             (1.0f - stepTransmittance);
         integratedScattering += integratedTransmittance * stepScattering;
@@ -197,6 +222,8 @@ void InjectAndIntegrateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         }
         gOutputVolume[uint3(dispatchThreadId.xy, slice)] = integrated;
         previousDistance = distanceToCamera;
+        distanceToCamera *= sliceDistanceMultiplier;
+        logDistanceToCamera += fogLogStep;
     }
 }
 
@@ -234,7 +261,8 @@ void CompositeCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     const float4 fog = gIntegratedVolume.SampleLevel(
         gLinearClamp, float3(uv, slice), 0.0f);
 
-    const uint debugMode = (uint)(gDebugParams.x + 0.5f);
+    const uint debugMode =
+        (uint)(gVolumetricDebugMode + 0.5f);
     float3 outputColor = 0.0f.xxx;
     if (debugMode == 1u)
     {

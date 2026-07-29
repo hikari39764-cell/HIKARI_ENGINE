@@ -45,6 +45,8 @@ namespace HIKARI::RENDER3D::LIGHTING {
         uint32_t clusterIndexCount = 0u;
         float nearDistance = 0.1f;
         float farDistance = 100.0f;
+        float depthScale = 1.0f;
+        float depthBias = 0.0f;
         uint32_t sourceCount = 0u;
         uint32_t uploadableCount = 0u;
         uint32_t rejectedCount = 0u;

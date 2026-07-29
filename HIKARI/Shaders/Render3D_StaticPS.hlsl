@@ -69,12 +69,13 @@ float3 AccumulateLocalLights(
     float3 normalWS,
     float3 worldPosWS,
     float3 viewDir,
+    float distanceToCamera,
     float2 pixelPosition)
 {
     float3 sum = 0.0f.xxx;
     const uint2 cluster = HikariResolveLocalLightCluster(
         pixelPosition,
-        worldPosWS);
+        distanceToCamera);
     [loop]
     for (uint slot = 0u; slot < cluster.y; ++slot)
     {
@@ -101,20 +102,15 @@ float3 AccumulateLocalLights(
 }
 
 float3 AccumulateLocalLightsPbr(
-    float3 baseColor,
-    float metallic,
-    float roughness,
-    float3 specularColor,
-    float specularFactor,
-    float3 normalWS,
+    HikariPbrShadingContext pbrContext,
     float3 worldPosWS,
-    float3 viewDir,
+    float distanceToCamera,
     float2 pixelPosition)
 {
     float3 sum = 0.0f.xxx;
     const uint2 cluster = HikariResolveLocalLightCluster(
         pixelPosition,
-        worldPosWS);
+        distanceToCamera);
     [loop]
     for (uint slot = 0u; slot < cluster.y; ++slot)
     {
@@ -130,13 +126,7 @@ float3 AccumulateLocalLightsPbr(
         }
 
         sum += HikariEvaluateDirectPbr(
-            baseColor,
-            metallic,
-            roughness,
-            specularColor,
-            specularFactor,
-            normalWS,
-            viewDir,
+            pbrContext,
             lightSample.directionToLight,
             lightSample.radiance,
             1.0f);
@@ -435,7 +425,12 @@ float4 main(PSInput input) : SV_TARGET
     }
 
     float3 l = normalize(-gDirectionalDir.xyz);
-    float3 v = normalize(gCameraPos.xyz - input.worldPosWS);
+    const float3 toCamera =
+        gCameraPos.xyz - input.worldPosWS;
+    const float distanceToCamera = length(toCamera);
+    float3 v =
+        toCamera /
+        max(distanceToCamera, 0.00001f);
 #if !HIKARI_USE_COOK_TORRANCE_PBR
     float3 h = normalize(l + v);
 #endif
@@ -506,41 +501,33 @@ float4 main(PSInput input) : SV_TARGET
     if ((materialData.materialFlags & MATERIAL_UNLIT) == 0)
     {
 #if HIKARI_USE_COOK_TORRANCE_PBR
-        float3 direct =
-            HikariEvaluateDirectPbr(
+        HikariPbrShadingContext pbrContext =
+            HikariBuildPbrShadingContext(
                 albedo.rgb,
                 metallic,
                 roughness,
                 specularColor,
                 specularFactor,
                 n,
-                v,
+                v);
+        float3 direct =
+            HikariEvaluateDirectPbr(
+                pbrContext,
                 l,
                 gDirectionalColor.rgb,
                 gDirectionalIntensity);
         direct *= shadowFactor;
 
         float3 pointDirect = AccumulateLocalLightsPbr(
-            albedo.rgb,
-            metallic,
-            roughness,
-            specularColor,
-            specularFactor,
-            n,
+            pbrContext,
             input.worldPosWS,
-            v,
+            distanceToCamera,
             input.position.xy);
 
         float3 ambient = HikariEvaluateAmbientIbl(
-            albedo.rgb,
-            metallic,
-            roughness,
-            specularColor,
-            specularFactor,
+            pbrContext,
             occlusion,
             screenAo,
-            n,
-            v,
             input.worldPosWS);
 
         shadedColor = direct + pointDirect + ambient;
@@ -556,6 +543,7 @@ float4 main(PSInput input) : SV_TARGET
             n,
             input.worldPosWS,
             v,
+            distanceToCamera,
             input.position.xy);
     float3 lit = ambient + (diffuse + specular) * shadowFactor + pointLightContribution;
         shadedColor = albedo.rgb * lit;

@@ -2,23 +2,18 @@
 #define HIKARI_AMBIENT_IBL_COMMON_HLSLI
 
 float3 HikariEvaluateAmbientIblApprox(
-    float3 baseColor,
-    float metallic,
-    float roughness,
-    float3 specularColor,
-    float specularFactor,
+    HikariPbrShadingContext context,
     float occlusion,
     float screenAo,
-    float3 n,
-    float3 v,
     float3 worldPos)
 {
-    float3 F0 = HikariSpecularF0(
-        baseColor,
-        metallic,
-        specularColor,
-        specularFactor);
-    float ndotv = saturate(dot(n, v));
+    const float3 baseColor = context.baseColor;
+    const float metallic = context.metallic;
+    const float roughness = context.roughness;
+    const float3 n = context.normal;
+    const float3 v = context.view;
+    const float3 F0 = context.specularF0;
+    const float ndotv = context.ndotView;
     float3 F =
         HikariFresnelSchlickRoughness(ndotv, F0, roughness);
 
@@ -96,17 +91,16 @@ float3 HikariSampleReflectionProbePrefiltered(
 }
 
 float3 HikariEvaluateAmbientIbl(
-    float3 baseColor,
-    float metallic,
-    float roughness,
-    float3 specularColor,
-    float specularFactor,
+    HikariPbrShadingContext context,
     float occlusion,
     float screenAo,
-    float3 n,
-    float3 v,
     float3 worldPos)
 {
+    const float3 baseColor = context.baseColor;
+    const float metallic = context.metallic;
+    const float roughness = context.roughness;
+    const float3 n = context.normal;
+    const float3 v = context.view;
     bool hasLocalProbe =
         (gReflectionProbes[0].params.x > 0.5f &&
             gReflectionProbes[0].params.y > 0.5f) ||
@@ -117,24 +111,14 @@ float3 HikariEvaluateAmbientIbl(
         !hasLocalProbe)
     {
         return HikariEvaluateAmbientIblApprox(
-            baseColor,
-            metallic,
-            roughness,
-            specularColor,
-            specularFactor,
+            context,
             occlusion,
             screenAo,
-            n,
-            v,
             worldPos);
     }
 
-    float3 F0 = HikariSpecularF0(
-        baseColor,
-        metallic,
-        specularColor,
-        specularFactor);
-    float ndotv = saturate(dot(n, v));
+    const float3 F0 = context.specularF0;
+    const float ndotv = context.ndotView;
     float3 F =
         HikariFresnelSchlickRoughness(ndotv, F0, roughness);
     float3 kS = F;
@@ -221,13 +205,18 @@ float3 HikariEvaluateAmbientIbl(
     {
         HikariReflectionProbeData probe =
             gReflectionProbes[slot];
+        if (probe.params.x < 0.5f ||
+            probe.params.y < 0.5f)
+        {
+            probeWeights[slot] = 0.0f;
+            probeSpecular[slot] = 0.0f.xxx;
+            continue;
+        }
         probeWeights[slot] =
             HikariEvaluateReflectionProbeInfluence(
                 probe,
                 worldPos);
-        if (probe.params.x < 0.5f ||
-            probe.params.y < 0.5f ||
-            probeWeights[slot] <= 0.0001f)
+        if (probeWeights[slot] <= 0.0001f)
         {
             probeWeights[slot] = 0.0f;
             probeSpecular[slot] = 0.0f.xxx;

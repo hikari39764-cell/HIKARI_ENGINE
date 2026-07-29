@@ -33,71 +33,130 @@ float3 HikariSpecularF0(
     return lerp(dielectricF0, baseColor, saturate(metallic));
 }
 
-float HikariDistributionGGX(float3 n, float3 h, float roughness)
+struct HikariPbrShadingContext
 {
-    float a = roughness * roughness;
-    float a2 = a * a;
-    float ndoth = saturate(dot(n, h));
-    float ndoth2 = ndoth * ndoth;
+    float3 baseColor;
+    float metallic;
+    float3 specularF0;
+    float roughness;
+    float3 normal;
+    float ndotView;
+    float3 view;
+    float distributionAlphaSquared;
+    float geometryK;
+    float geometryView;
+};
 
-    float denom = ndoth2 * (a2 - 1.0f) + 1.0f;
-    denom = HIKARI_PI * denom * denom;
-
-    return a2 / max(denom, 0.00001f);
-}
-
-float HikariGeometrySchlickGGX(float ndotv, float roughness)
-{
-    float r = roughness + 1.0f;
-    float k = (r * r) / 8.0f;
-
-    return ndotv / max(ndotv * (1.0f - k) + k, 0.00001f);
-}
-
-float HikariGeometrySmith(float3 n, float3 v, float3 l, float roughness)
-{
-    float ndotv = saturate(dot(n, v));
-    float ndotl = saturate(dot(n, l));
-    float ggxV = HikariGeometrySchlickGGX(ndotv, roughness);
-    float ggxL = HikariGeometrySchlickGGX(ndotl, roughness);
-    return ggxV * ggxL;
-}
-
-float3 HikariEvaluateDirectPbr(
+HikariPbrShadingContext HikariBuildPbrShadingContext(
     float3 baseColor,
     float metallic,
     float roughness,
     float3 specularColor,
     float specularFactor,
-    float3 n,
-    float3 v,
+    float3 normal,
+    float3 view)
+{
+    HikariPbrShadingContext context;
+    context.baseColor = baseColor;
+    context.metallic = metallic;
+    context.specularF0 = HikariSpecularF0(
+        baseColor,
+        metallic,
+        specularColor,
+        specularFactor);
+    context.roughness = roughness;
+    context.normal = normal;
+    context.view = view;
+
+    const float ndotView = saturate(dot(normal, view));
+    context.ndotView = ndotView;
+    const float alpha = roughness * roughness;
+    context.distributionAlphaSquared = alpha * alpha;
+    const float geometryRoughness = roughness + 1.0f;
+    context.geometryK =
+        (geometryRoughness * geometryRoughness) / 8.0f;
+    context.geometryView =
+        ndotView /
+        max(
+            ndotView * (1.0f - context.geometryK) +
+                context.geometryK,
+            0.00001f);
+    return context;
+}
+
+float HikariDistributionGGX(
+    HikariPbrShadingContext context,
+    float3 halfVector)
+{
+    float ndoth = saturate(
+        dot(context.normal, halfVector));
+    float ndoth2 = ndoth * ndoth;
+
+    float denom =
+        ndoth2 *
+            (context.distributionAlphaSquared - 1.0f) +
+        1.0f;
+    denom = HIKARI_PI * denom * denom;
+
+    return context.distributionAlphaSquared /
+        max(denom, 0.00001f);
+}
+
+float HikariGeometrySchlickGGX(
+    float ndotDirection,
+    float geometryK)
+{
+    return ndotDirection /
+        max(
+            ndotDirection * (1.0f - geometryK) +
+                geometryK,
+            0.00001f);
+}
+
+float3 HikariEvaluateDirectPbr(
+    HikariPbrShadingContext context,
     float3 l,
     float3 lightColor,
     float lightIntensity)
 {
-    float3 h = normalize(v + l);
-    float ndotv = max(saturate(dot(n, v)), 0.0001f);
-    float ndotl = saturate(dot(n, l));
+    float ndotl = saturate(
+        dot(context.normal, l));
 
     if (ndotl <= 0.0f)
     {
         return 0.0f.xxx;
     }
 
-    float3 F0 = HikariSpecularF0(baseColor, metallic, specularColor, specularFactor);
-    float3 F = HikariFresnelSchlick(saturate(dot(h, v)), F0);
-    float D = HikariDistributionGGX(n, h, roughness);
-    float G = HikariGeometrySmith(n, v, l, roughness);
+    float3 h = normalize(context.view + l);
+    float3 F = HikariFresnelSchlick(
+        saturate(dot(h, context.view)),
+        context.specularF0);
+    float D = HikariDistributionGGX(
+        context,
+        h);
+    float G =
+        context.geometryView *
+        HikariGeometrySchlickGGX(
+            ndotl,
+            context.geometryK);
 
     float3 numerator = D * G * F;
-    float denominator = max(4.0f * ndotv * ndotl, 0.0001f);
+    float denominator = max(
+        4.0f * max(context.ndotView, 0.0001f) * ndotl,
+        0.0001f);
     float3 specular = numerator / denominator;
 
     float3 kS = F;
-    float3 kD = (1.0f.xxx - kS) * (1.0f - metallic);
-    float3 diffuse = kD * baseColor / HIKARI_PI;
+    float3 kD =
+        (1.0f.xxx - kS) *
+        (1.0f - context.metallic);
+    float3 diffuse =
+        kD * context.baseColor / HIKARI_PI;
 
-    return (diffuse + specular) * lightColor * lightIntensity * ndotl;
+    return (diffuse + specular) *
+        lightColor *
+        lightIntensity *
+        ndotl;
 }
 
 #endif
