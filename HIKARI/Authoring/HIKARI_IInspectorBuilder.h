@@ -45,6 +45,34 @@ namespace HIKARI {
             float minimum,
             float maximum,
             float speed = 0.1f) = 0;
+        virtual bool Color3(
+            std::string_view label,
+            float& red,
+            float& green,
+            float& blue) {
+
+            bool changed = false;
+            const std::string prefix(label);
+            changed = FloatRange(
+                prefix + " Red",
+                red,
+                0.0f,
+                1.0f,
+                0.01f) || changed;
+            changed = FloatRange(
+                prefix + " Green",
+                green,
+                0.0f,
+                1.0f,
+                0.01f) || changed;
+            changed = FloatRange(
+                prefix + " Blue",
+                blue,
+                0.0f,
+                1.0f,
+                0.01f) || changed;
+            return changed;
+        }
         virtual bool String(std::string_view label, std::string& value) = 0;
         virtual bool InputActionIdPicker(
             std::string_view label,

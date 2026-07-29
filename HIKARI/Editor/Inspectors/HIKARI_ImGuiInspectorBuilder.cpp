@@ -213,6 +213,37 @@ namespace HIKARI {
 #endif
     }
 
+    bool ImGuiInspectorBuilder::Color3(
+        std::string_view label,
+        float& red,
+        float& green,
+        float& blue) {
+#if defined(HIKARI_WITH_EDITOR)
+        float values[3]{ red, green, blue };
+        EDITOR::InspectorPropertyRow row(label);
+        if (!row.IsVisible() ||
+            !ImGui::ColorEdit3(
+                "##Value",
+                values,
+                ImGuiColorEditFlags_Float |
+                    ImGuiColorEditFlags_DisplayRGB |
+                    ImGuiColorEditFlags_InputRGB)) {
+            return false;
+        }
+
+        red = values[0];
+        green = values[1];
+        blue = values[2];
+        return true;
+#else
+        (void)label;
+        (void)red;
+        (void)green;
+        (void)blue;
+        return false;
+#endif
+    }
+
     bool ImGuiInspectorBuilder::Choice(
         std::string_view label,
         int& selectedIndex,

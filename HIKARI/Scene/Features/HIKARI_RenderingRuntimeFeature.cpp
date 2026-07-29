@@ -142,7 +142,7 @@ namespace HIKARI {
                     return std::make_unique<LightComponent>();
                 };
                 light.runtimeApplyPolicy =
-                    ComponentRuntimeApplyPolicy::OnEditCommit;
+                    ComponentRuntimeApplyPolicy::Immediate;
                 light.initializeDefaults = [](
                     const SceneObjectData&,
                     nlohmann::json& properties) {
@@ -163,7 +163,7 @@ namespace HIKARI {
                     return std::make_unique<ReflectionProbeComponent>();
                 };
                 reflectionProbe.runtimeApplyPolicy =
-                    ComponentRuntimeApplyPolicy::OnEditCommit;
+                    ComponentRuntimeApplyPolicy::Immediate;
                 reflectionProbe.initializeDefaults = [](
                     const SceneObjectData&,
                     nlohmann::json& properties) {
@@ -186,7 +186,7 @@ namespace HIKARI {
                         IrradianceVolumeComponent>();
                 };
                 irradianceVolume.runtimeApplyPolicy =
-                    ComponentRuntimeApplyPolicy::OnEditCommit;
+                    ComponentRuntimeApplyPolicy::Immediate;
                 irradianceVolume.initializeDefaults = [](
                     const SceneObjectData&,
                     nlohmann::json& properties) {

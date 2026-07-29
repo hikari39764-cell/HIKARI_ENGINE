@@ -66,10 +66,7 @@ namespace HIKARI {
                 std::clamp(lightType, 0, 2));
         }
 
-        builder.Text("Scene-linear Color");
-        builder.FloatRange("Red", color_.x, 0.0f, 1.0f, 0.01f);
-        builder.FloatRange("Green", color_.y, 0.0f, 1.0f, 0.01f);
-        builder.FloatRange("Blue", color_.z, 0.0f, 1.0f, 0.01f);
+        builder.Color3("Color", color_.x, color_.y, color_.z);
         builder.FloatRange("Intensity", intensity_, 0.0f, 100.0f, 0.05f);
         builder.Int("Priority", priority_);
 
