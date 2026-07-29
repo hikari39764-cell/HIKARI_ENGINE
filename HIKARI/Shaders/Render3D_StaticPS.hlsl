@@ -65,38 +65,41 @@ float3 ResolveShadingNormal(
     return normalize(normalTS.x * t + normalTS.y * b + normalTS.z * n);
 }
 
-float3 AccumulatePointLight(float3 normalWS, float3 worldPosWS, float3 viewDir)
+float3 AccumulateLocalLights(
+    float3 normalWS,
+    float3 worldPosWS,
+    float3 viewDir)
 {
     float3 sum = 0.0f.xxx;
     [unroll]
-    for (uint i = 0; i < 8; ++i)
+    for (uint i = 0; i < HIKARI_LOCAL_LIGHT_FRAME_CAPACITY; ++i)
     {
-        if (i >= gPointLightCount)
+        if (i >= gLocalLightCount)
         {
             break;
         }
 
-        float3 lightPos = gPointLightPosRange[i].xyz;
-        float range = max(gPointLightPosRange[i].w, 0.001f);
-        float3 toLight = lightPos - worldPosWS;
-        float dist = length(toLight);
-        float3 l = (dist > 1e-5f) ? (toLight / dist) : float3(0.0f, 1.0f, 0.0f);
+        HikariLocalLightSample lightSample;
+        if (!HikariResolveLocalLightSample(
+                gLocalLights[i],
+                worldPosWS,
+                lightSample))
+        {
+            continue;
+        }
 
-        float atten = saturate(1.0f - dist / range);
-        atten *= atten;
-
-        float ndotl = saturate(dot(normalWS, l));
-        float3 h = normalize(l + viewDir);
+        float ndotl =
+            saturate(dot(normalWS, lightSample.directionToLight));
+        float3 h =
+            normalize(lightSample.directionToLight + viewDir);
         float spec = pow(saturate(dot(normalWS, h)), gSpecularParams.y);
-
-        float3 color = gPointLightColorIntensity[i].rgb;
-        float intensity = gPointLightColorIntensity[i].w;
-        sum += color * (atten * intensity) * (ndotl + gSpecularParams.x * spec);
+        sum += lightSample.radiance *
+            (ndotl + gSpecularParams.x * spec);
     }
     return sum;
 }
 
-float3 AccumulatePointLightPbr(
+float3 AccumulateLocalLightsPbr(
     float3 baseColor,
     float metallic,
     float roughness,
@@ -109,24 +112,21 @@ float3 AccumulatePointLightPbr(
     float3 sum = 0.0f.xxx;
 
     [unroll]
-    for (uint i = 0; i < 8; ++i)
+    for (uint i = 0; i < HIKARI_LOCAL_LIGHT_FRAME_CAPACITY; ++i)
     {
-        if (i >= gPointLightCount)
+        if (i >= gLocalLightCount)
         {
             break;
         }
 
-        float3 lightPos = gPointLightPosRange[i].xyz;
-        float range = max(gPointLightPosRange[i].w, 0.001f);
-        float3 toLight = lightPos - worldPosWS;
-        float dist = length(toLight);
-        float3 l = (dist > 1e-5f) ? (toLight / dist) : float3(0.0f, 1.0f, 0.0f);
-
-        float atten = saturate(1.0f - dist / range);
-        atten *= atten;
-
-        float3 color = gPointLightColorIntensity[i].rgb;
-        float intensity = gPointLightColorIntensity[i].w;
+        HikariLocalLightSample lightSample;
+        if (!HikariResolveLocalLightSample(
+                gLocalLights[i],
+                worldPosWS,
+                lightSample))
+        {
+            continue;
+        }
 
         sum += HikariEvaluateDirectPbr(
             baseColor,
@@ -136,9 +136,9 @@ float3 AccumulatePointLightPbr(
             specularFactor,
             normalWS,
             viewDir,
-            l,
-            color,
-            intensity * atten);
+            lightSample.directionToLight,
+            lightSample.radiance,
+            1.0f);
     }
 
     return sum;
@@ -519,7 +519,7 @@ float4 main(PSInput input) : SV_TARGET
                 gDirectionalIntensity);
         direct *= shadowFactor;
 
-        float3 pointDirect = AccumulatePointLightPbr(
+        float3 pointDirect = AccumulateLocalLightsPbr(
             albedo.rgb,
             metallic,
             roughness,
@@ -549,7 +549,8 @@ float4 main(PSInput input) : SV_TARGET
     float3 ambient = gAmbientColor.rgb * gAmbientIntensity * occlusion;
     float3 diffuse = gDirectionalColor.rgb * (gDirectionalIntensity * ndotl) * (1.0f - metallic * 0.65f);
     float3 specular = gDirectionalColor.rgb * (gDirectionalIntensity * gSpecularParams.x * spec) * lerp(1.0f, 1.8f, metallic);
-    float3 pointLightContribution = AccumulatePointLight(n, input.worldPosWS, v);
+    float3 pointLightContribution =
+        AccumulateLocalLights(n, input.worldPosWS, v);
     float3 lit = ambient + (diffuse + specular) * shadowFactor + pointLightContribution;
         shadedColor = albedo.rgb * lit;
 #endif

@@ -43,6 +43,8 @@
 #define gWaterSceneColorMix      gFxUser3.w
 
 #if !HIKARI_WATER_EMBEDDED
+#include "Include/Lighting/HIKARI_LocalLightContract.hlsli"
+
 cbuffer CameraCB : register(b0)
 {
     float4x4 gViewProj;
@@ -62,11 +64,11 @@ cbuffer LightCB : register(b2)
     float4 gDirectionalColor;
     float4 gAmbientColor;
     float4 gSpecularParams;
-    float4 gPointLightPosRange[8];
-    float4 gPointLightColorIntensity[8];
+    HikariLocalLightGpuData
+        gLocalLights[HIKARI_LOCAL_LIGHT_FRAME_CAPACITY];
     float gDirectionalIntensity;
     float gAmbientIntensity;
-    uint gPointLightCount;
+    uint gLocalLightCount;
     float gLightPadding;
     float4 gFogColorDensity;
     float4 gFogParams;

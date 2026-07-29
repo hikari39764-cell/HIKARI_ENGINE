@@ -43,6 +43,8 @@ $entries = @(
     @{ Shader = "HIKARI/Shaders/Render3D_FxWaterPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
     @{ Shader = "HIKARI/Shaders/Render3D_SkyVS.hlsl"; Entry = "main"; Target = "vs_6_0" },
     @{ Shader = "HIKARI/Shaders/Render3D_SkyPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
+    @{ Shader = "HIKARI/Shaders/Render3D_VolumetricLighting.hlsl"; Entry = "InjectAndIntegrateCS"; Target = "cs_6_0" },
+    @{ Shader = "HIKARI/Shaders/Render3D_VolumetricLighting.hlsl"; Entry = "CompositeCS"; Target = "cs_6_0" },
     @{ Shader = "HIKARI/Shaders/Render3D_DebugStrokeVS.hlsl"; Entry = "main"; Target = "vs_6_0" },
     @{ Shader = "HIKARI/Shaders/Render3D_DebugStrokeGS.hlsl"; Entry = "main"; Target = "gs_6_0" },
     @{ Shader = "HIKARI/Shaders/Render3D_DebugStrokePS.hlsl"; Entry = "main"; Target = "ps_6_0" },

@@ -70,6 +70,7 @@ namespace HIKARI::RENDER3D::UPSCALING::INTERNAL {
         sl::ViewportHandle viewport{ 0u };
         bool optionsConfigured = false;
         StreamlineDlssMode configuredMode = StreamlineDlssMode::Off;
+        float configuredPreExposure = 1.0f;
         uint32_t configuredOutputWidth = 0;
         uint32_t configuredOutputHeight = 0;
         bool optimalSettingsCached = false;

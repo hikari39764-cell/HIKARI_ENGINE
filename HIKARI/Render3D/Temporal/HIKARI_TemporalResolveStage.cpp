@@ -38,7 +38,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
         RenderTarget2D& sceneColorTarget,
         RenderTarget2D& sceneDepthTarget,
         const RenderQualitySettings& quality,
-        float exposure) {
+        const COLOR::ExposureFrameState& exposureState) {
 
         TemporalResolveStageResult result{};
         result.output = &sceneColorTarget;
@@ -104,7 +104,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             return result;
         }
 
-        (void)UpdateTemporalExposure(exposure);
+        (void)UpdateTemporalExposure(exposureState);
         const TemporalInputs inputs = BuildTemporalInputs(
             sceneColorTarget,
             sceneDepthTarget);

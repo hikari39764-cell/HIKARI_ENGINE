@@ -170,10 +170,13 @@ void DrawBloom(SceneEnvironment &environment) {
 }
 
 void DrawToneMapping(SceneEnvironment &environment) {
-  ImGui::Checkbox("Tone Mapping Enabled", &environment.toneMapping.enabled);
-  ImGui::DragFloat("Exposure", &environment.toneMapping.exposure, 0.01f, 0.0f,
-                   8.0f);
-  ImGui::DragFloat("Gamma", &environment.toneMapping.gamma, 0.01f, 0.1f, 4.0f);
+  ImGui::Checkbox("Tone Curve Enabled", &environment.toneMapping.enabled);
+  ImGui::TextDisabled(
+      "Exposure and SDR display transfer remain active when the curve is off.");
+  ImGui::DragFloat("Manual Exposure", &environment.toneMapping.exposure, 0.01f,
+                   0.0f, 8.0f);
+  ImGui::DragFloat("SDR Display Gamma", &environment.toneMapping.gamma, 0.01f,
+                   0.1f, 4.0f);
   const char *modes[] = {"None", "Reinhard", "ACES Approx"};
   int mode = std::clamp(environment.toneMapping.mode, 0, 2);
   if (ImGui::Combo("Mode", &mode, modes, static_cast<int>(std::size(modes)))) {

@@ -1,3 +1,5 @@
+#include "Include/Lighting/HIKARI_LocalLightContract.hlsli"
+
 cbuffer VolumetricCB : register(b0)
 {
     float4x4 gInvViewProj;
@@ -13,8 +15,8 @@ cbuffer VolumetricCB : register(b0)
     float4 gVolumeSize;
     float4 gFrameParams;
     float4 gDebugParams;
-    float4 gPointLightPosRange[8];
-    float4 gPointLightColorIntensity[8];
+    HikariLocalLightGpuData
+        gLocalLights[HIKARI_LOCAL_LIGHT_FRAME_CAPACITY];
 };
 
 Texture2D<float> gSceneDepth : register(t0);
@@ -79,20 +81,24 @@ float3 EvaluateLighting(float3 worldPosition, float3 viewRay)
     lighting += gDirectionalColorShadow.rgb * gDirectionalDirIntensity.w *
         phase * lerp(1.0f, ShadowVisibility(worldPosition), gDirectionalColorShadow.a);
 
-    const uint pointLightCount = min((uint)(gFrameParams.w + 0.5f), 8u);
+    const uint localLightCount = min(
+        (uint)(gFrameParams.w + 0.5f),
+        HIKARI_LOCAL_LIGHT_FRAME_CAPACITY);
     [loop]
-    for (uint index = 0; index < pointLightCount; ++index)
+    for (uint index = 0; index < localLightCount; ++index)
     {
-        float3 toLight = gPointLightPosRange[index].xyz - worldPosition;
-        const float distanceToLight = length(toLight);
-        const float range = max(0.001f, gPointLightPosRange[index].w);
-        float attenuation = saturate(1.0f - distanceToLight / range);
-        attenuation *= attenuation;
+        HikariLocalLightSample lightSample;
+        if (!HikariResolveLocalLightSample(
+                gLocalLights[index],
+                worldPosition,
+                lightSample))
+        {
+            continue;
+        }
         const float pointPhase = HenyeyGreenstein(
-            dot(viewRay, toLight / max(distanceToLight, 1e-4f)),
+            dot(viewRay, lightSample.directionToLight),
             gFogDistances.w);
-        lighting += gPointLightColorIntensity[index].rgb *
-            gPointLightColorIntensity[index].a * attenuation * pointPhase;
+        lighting += lightSample.radiance * pointPhase;
     }
     return lighting;
 }

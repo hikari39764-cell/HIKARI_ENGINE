@@ -2,6 +2,7 @@
 #define HIKARI_FORWARD_COMMON_INCLUDED
 
 #include "Include/Contracts/HIKARI_ShaderResourceBindings.hlsli"
+#include "Include/Lighting/HIKARI_LocalLightContract.hlsli"
 
 #ifndef HIKARI_FORWARD_ENABLE_MATERIAL_FX
 #define HIKARI_FORWARD_ENABLE_MATERIAL_FX 0
@@ -54,11 +55,11 @@ cbuffer LightCB : register(b2)
     float4 gDirectionalColor;
     float4 gAmbientColor;
     float4 gSpecularParams;
-    float4 gPointLightPosRange[8];
-    float4 gPointLightColorIntensity[8];
+    HikariLocalLightGpuData
+        gLocalLights[HIKARI_LOCAL_LIGHT_FRAME_CAPACITY];
     float gDirectionalIntensity;
     float gAmbientIntensity;
-    uint gPointLightCount;
+    uint gLocalLightCount;
     float gLightPadding;
     float4 gFogColorDensity;
     float4 gFogParams;

@@ -41,12 +41,14 @@ namespace HIKARI::RENDER3D::UPSCALING {
         sl::DLSSOptions BuildDlssOptions(
             StreamlineDlssMode mode,
             uint32_t outputWidth,
-            uint32_t outputHeight) {
+            uint32_t outputHeight,
+            float preExposure = 1.0f) {
             sl::DLSSOptions options{};
             options.mode = ToSlDlssMode(mode);
             options.outputWidth = outputWidth;
             options.outputHeight = outputHeight;
-            options.preExposure = 1.0f;
+            options.preExposure =
+                (std::max)(preExposure, 1e-4f);
             options.exposureScale = 1.0f;
             options.colorBuffersHDR = sl::Boolean::eTrue;
             options.useAutoExposure = sl::Boolean::eFalse;
@@ -331,12 +333,15 @@ namespace HIKARI::RENDER3D::UPSCALING {
 
         if (!state.optionsConfigured ||
             state.configuredMode != mode ||
+            state.configuredPreExposure !=
+                inputs.exposureState.preExposure ||
             state.configuredOutputWidth != inputs.frame.outputWidth ||
             state.configuredOutputHeight != inputs.frame.outputHeight) {
             const sl::DLSSOptions options = BuildDlssOptions(
                 mode,
                 inputs.frame.outputWidth,
-                inputs.frame.outputHeight);
+                inputs.frame.outputHeight,
+                inputs.exposureState.preExposure);
             const sl::Result optionsResult =
                 slDLSSSetOptions(state.viewport, options);
             if (optionsResult != sl::Result::eOk) {
@@ -350,6 +355,8 @@ namespace HIKARI::RENDER3D::UPSCALING {
             }
             state.optionsConfigured = true;
             state.configuredMode = mode;
+            state.configuredPreExposure =
+                inputs.exposureState.preExposure;
             state.configuredOutputWidth = inputs.frame.outputWidth;
             state.configuredOutputHeight = inputs.frame.outputHeight;
         }

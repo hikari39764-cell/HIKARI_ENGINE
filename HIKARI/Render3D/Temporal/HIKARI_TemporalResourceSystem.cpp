@@ -52,6 +52,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             TemporalTarget transparencyMask{};
             TemporalTarget invalidDepthMotionMask{};
             TemporalTarget debugOutput{};
+            COLOR::ExposureFrameState exposureState{};
             D3D12_GPU_DESCRIPTOR_HANDLE compositionBaseSrv{};
             RenderDebugView debugView = RenderDebugView::None;
             uint32_t historyReadIndex = 0;
@@ -316,6 +317,11 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             state.stats.historyDepthValid = state.historyDepthValid;
             state.stats.taaResolvedColorReady = state.taaResolvedColor.ready;
             state.stats.exposureReady = state.exposure.ready;
+            state.stats.exposureMode = state.exposureState.mode;
+            state.stats.exposureMultiplier =
+                state.exposureState.exposureMultiplier;
+            state.stats.preExposure =
+                state.exposureState.preExposure;
             state.stats.reactiveMaskReady = state.reactiveMask.ready;
             state.stats.transparencyMaskReady = state.transparencyMask.ready;
             state.stats.invalidDepthMotionMaskReady =
@@ -454,13 +460,18 @@ namespace HIKARI::RENDER3D::TEMPORAL {
         return State().debugView;
     }
 
-    bool UpdateTemporalExposure(float exposure) {
+    bool UpdateTemporalExposure(
+        const COLOR::ExposureFrameState& exposureState) {
+
         TemporalResourceState& state = State();
+        state.exposureState = exposureState;
         if (!state.exposure.ready || state.context.cmdList == nullptr) {
             state.stats.exposureWritten = false;
+            RefreshStats(state);
             return false;
         }
-        const float safeExposure = (std::max)(exposure, 1e-4f);
+        const float safeExposure =
+            COLOR::ResolveTemporalExposure(exposureState);
         state.exposure.target.TransitionColor(D3D12_RESOURCE_STATE_RENDER_TARGET);
         const float clearValue[4] = {
             safeExposure,
@@ -476,6 +487,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
         state.exposure.target.TransitionColor(
             D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
         state.stats.exposureWritten = true;
+        RefreshStats(state);
         return true;
     }
 
@@ -581,6 +593,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
         TemporalResourceState& state = State();
         TemporalInputs inputs{};
         inputs.frame = state.frame;
+        inputs.exposureState = state.exposureState;
         inputs.sceneDepth = sceneDepth;
         inputs.sceneColor = sceneColor;
         inputs.motionVectors = MakeTextureView(state.motionVectors);

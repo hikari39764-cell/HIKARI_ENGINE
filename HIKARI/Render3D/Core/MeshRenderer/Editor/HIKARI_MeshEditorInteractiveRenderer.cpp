@@ -211,7 +211,7 @@ namespace HIKARI::MESHRENDERER {
             light.ambientColor = { 0.92f, 0.96f, 1.0f, 1.0f };
             light.ambientIntensity = 0.55f;
             light.specularParams.x = 0.12f;
-            light.pointLightCount = 0;
+            light.localLightCount = 0;
             light.fogParams.x = 0.0f;
             editorFrame.shadowMapped->enabled = 0;
         }

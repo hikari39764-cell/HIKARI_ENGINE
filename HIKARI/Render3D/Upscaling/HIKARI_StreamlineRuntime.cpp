@@ -418,6 +418,7 @@ namespace HIKARI::RENDER3D::UPSCALING {
         state.stats.constantsSubmitted = false;
         state.optionsConfigured = false;
         state.configuredMode = StreamlineDlssMode::Off;
+        state.configuredPreExposure = 1.0f;
         state.optimalSettingsCached = false;
         state.plugins = {};
         state.reflex = {};
@@ -440,6 +441,7 @@ namespace HIKARI::RENDER3D::UPSCALING {
         }
         state.optionsConfigured = false;
         state.configuredMode = StreamlineDlssMode::Off;
+        state.configuredPreExposure = 1.0f;
         state.stats.retryFrameIndex = 0;
         state.stats.consecutiveFailureCount = 0;
         state.stats.retryPending = false;

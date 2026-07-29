@@ -234,7 +234,7 @@ namespace HIKARI::POST {
             *volumetric,
             *captured,
             quality,
-            processingStage_.GetExposure());
+            processingStage_.GetExposureState());
         RenderTarget2D* output = temporal.output ? temporal.output : volumetric;
         if (temporal.requiresOutputNormalization) {
             RenderTarget2D* normalized = processingStage_.NormalizeTemporalOutput(

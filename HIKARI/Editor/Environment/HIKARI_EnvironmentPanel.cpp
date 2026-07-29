@@ -233,7 +233,7 @@ EnvironmentPanel::Draw(SceneEnvironment &environment,
     ImGui::DragFloat("Sky Scale", &environment.sky.scale, 0.01f, 0.0001f,
                      1000.0f);
     ImGui::DragFloat("Sky Yaw", &environment.sky.yaw, 0.01f);
-    ImGui::DragFloat("Sky Exposure", &environment.sky.exposure, 0.01f, 0.0f,
+    ImGui::DragFloat("Sky Intensity", &environment.sky.exposure, 0.01f, 0.0f,
                      16.0f);
     ImGui::ColorEdit3("Sky Tint", &environment.sky.tint.x);
     ImGui::Checkbox("Follow Camera", &environment.sky.followCamera);

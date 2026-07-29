@@ -40,13 +40,13 @@ float3 ApplyACESApprox(float3 x)
 float4 main(PSInput input) : SV_TARGET
 {
     float4 sceneColor = gSceneTex.Sample(gSamp, input.uv);
-    const bool enabled = gUser[0].x >= 0.5f;
+    const bool toneCurveEnabled = gUser[0].x >= 0.5f;
     const float exposure = max(gUser[0].y, 0.0f);
     const float gamma = max(gUser[0].z, 0.01f);
     const int mode = (int)round(gUser[0].w);
 
     float3 color = sceneColor.rgb * exposure;
-    if (enabled)
+    if (toneCurveEnabled)
     {
         if (mode == 1)
         {

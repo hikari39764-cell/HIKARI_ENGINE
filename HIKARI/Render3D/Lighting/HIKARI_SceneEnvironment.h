@@ -60,6 +60,8 @@ namespace HIKARI {
         std::string skyAsset = "DefaultSky";
         float scale = 1.0f;
         float yaw = 0.0f;
+        // Scene-linear sky radiance multiplier. Kept as "exposure" in serialized
+        // data for compatibility; this is not the camera/display exposure.
         float exposure = 1.0f;
         MATH::Vec3 tint{ 1.0f, 1.0f, 1.0f };
         bool followCamera = true;
@@ -145,9 +147,11 @@ namespace HIKARI {
     };
 
     struct ToneMappingSettings {
+        // enabled は Tone Curve のみを制御する。
+        // Exposure と Display Transfer は SDR 出力時に常に適用する。
         bool enabled = true;
-        float exposure = 1.0f;
-        float gamma = 2.2f;
+        float exposure = 1.0f; // Manual scene exposure multiplier.
+        float gamma = 2.2f; // SDR display transfer approximation.
         int mode = 2; // 0=None, 1=Reinhard, 2=ACES approximate
     };
 

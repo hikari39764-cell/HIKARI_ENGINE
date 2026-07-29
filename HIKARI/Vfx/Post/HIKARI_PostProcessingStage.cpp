@@ -21,11 +21,13 @@ namespace HIKARI::POST {
         PostEffect::UpdateContext(context);
         globalChain_.UpdateContext(context);
         bloomChain_.UpdateContext(context);
+        transitionChain_.UpdateContext(context);
         fxaaChain_.UpdateContext(context);
         ldrTarget_.UpdateContext(context);
         temporalOutput_.UpdateContext(context);
         globalChain_.SetDebugName("PostProcessing.Global");
         bloomChain_.SetDebugName("PostProcessing.Bloom");
+        transitionChain_.SetDebugName("PostProcessing.TransitionHDR");
         fxaaChain_.SetDebugName("PostProcessing.FXAA");
     }
 
@@ -34,6 +36,7 @@ namespace HIKARI::POST {
         ClearTransitionState();
         globalChain_.Finalize();
         bloomChain_.Finalize();
+        transitionChain_.Finalize();
         fxaaChain_.Finalize();
         activeBloomEffects_.clear();
         toneMappingEffect_.reset();
@@ -128,6 +131,9 @@ namespace HIKARI::POST {
     void PostProcessingStage::SetToneMappingSettings(
         const ToneMappingSettings& settings) {
         toneMappingSettings_ = settings;
+        exposureState_ =
+            RENDER3D::COLOR::BuildManualExposureFrame(
+                settings.exposure);
     }
 
     void PostProcessingStage::SetFxaaSettings(const FxaaSettings& settings) {
@@ -169,6 +175,8 @@ namespace HIKARI::POST {
             activeTransitionProfile_ = std::move(profile);
             activeTransitionProfileId_ = profileId;
             transitionEffect_ = std::move(effect);
+            transitionChain_.Clear();
+            transitionChain_.Add(transitionEffect_.get());
         }
         transitionActive_ = true;
         transitionParams_ = commonParams_;
@@ -185,6 +193,7 @@ namespace HIKARI::POST {
         transitionActive_ = false;
         activeTransitionProfileId_.clear();
         activeTransitionProfile_ = TransitionProfile{};
+        transitionChain_.Clear();
         transitionEffect_.reset();
         transitionParams_ = CommonParams{};
     }
@@ -201,8 +210,10 @@ namespace HIKARI::POST {
         return commonParams_;
     }
 
-    float PostProcessingStage::GetExposure() const {
-        return toneMappingSettings_.exposure;
+    const RENDER3D::COLOR::ExposureFrameState&
+        PostProcessingStage::GetExposureState() const {
+
+        return exposureState_;
     }
 
     bool PostProcessingStage::IsDumpRequested() const {
@@ -400,6 +411,15 @@ namespace HIKARI::POST {
             }
             output->EndCapture();
         }
+        // Scene transitions operate in scene-linear HDR. The single LDR resolve below
+        // remains the owner of exposure, tone curve, and display transfer.
+        if (!debugOutput && transitionActive_ && transitionEffect_) {
+            transitionParams_.resolutionX =
+                static_cast<float>((std::max)(1, output->GetWidth()));
+            transitionParams_.resolutionY =
+                static_cast<float>((std::max)(1, output->GetHeight()));
+            output = transitionChain_.Execute(*output, quad, transitionParams_);
+        }
         if (dumpNextFrame_ || GFX::GetGfxDebugConfig().verbosePostLog) {
             const auto& quality = RENDER3D::GetRenderQualitySettings();
             HIKARI_LOG_INFO(std::string("[PostProcessing][HDR] global=") +
@@ -435,30 +455,22 @@ namespace HIKARI::POST {
         QuadDrawer& quad,
         RenderTarget2D* lightTarget) {
         if (!EnsureLdrTarget(source.GetWidth(), source.GetHeight(), outputFormat)) return nullptr;
-        const bool useTransition = transitionActive_ && transitionEffect_;
-        if (!useTransition && !EnsureToneMappingEffect()) return nullptr;
+        if (!EnsureToneMappingEffect()) return nullptr;
         ldrTarget_.BeginCapture(0, 0, 0, 1);
         if (!quad.SetOutputFormat(ldrTarget_.GetFormat())) {
             ldrTarget_.EndCapture();
             return nullptr;
         }
         quad.SetInputTexture(source.GetSrvHeap(), source.GetSrvGpu());
-        PostEffect* effect = nullptr;
-        if (useTransition) {
-            transitionEffect_->ApplyCommonParams(transitionParams_);
-            effect = transitionEffect_.get();
-        } else {
-            toneMappingParams_ = commonParams_;
-            toneMappingParams_.user[0] = {
-                toneMappingSettings_.enabled ? 1.0f : 0.0f,
-                (std::max)(0.0f, toneMappingSettings_.exposure),
-                (std::max)(0.01f, toneMappingSettings_.gamma),
-                static_cast<float>(toneMappingSettings_.mode)
-            };
-            toneMappingEffect_->ApplyCommonParams(toneMappingParams_);
-            effect = toneMappingEffect_.get();
-        }
-        if (!effect->BindAndDraw(quad)) {
+        toneMappingParams_ = commonParams_;
+        toneMappingParams_.user[0] = {
+            toneMappingSettings_.enabled ? 1.0f : 0.0f,
+            exposureState_.exposureMultiplier,
+            (std::max)(0.01f, toneMappingSettings_.gamma),
+            static_cast<float>(toneMappingSettings_.mode)
+        };
+        toneMappingEffect_->ApplyCommonParams(toneMappingParams_);
+        if (!toneMappingEffect_->BindAndDraw(quad)) {
             ldrTarget_.EndCapture();
             return nullptr;
         }
@@ -484,12 +496,17 @@ namespace HIKARI::POST {
         stream << "[PostProcessingStage] global=" << globalChain_.HasAny()
             << " bloom=" << bloomSettings_.enabled
             << " bloomPasses=" << bloomDebugStats_.passCount
-            << " toneMapping=" << toneMappingSettings_.enabled
+            << " toneCurve=" << toneMappingSettings_.enabled
+            << " exposureMode="
+            << RENDER3D::COLOR::ToString(exposureState_.mode)
+            << " exposure=" << exposureState_.exposureMultiplier
+            << " preExposure=" << exposureState_.preExposure
             << " transition=" << transitionActive_
             << "\n  " << ldrTarget_.DumpState()
             << "\n  " << temporalOutput_.DumpState()
             << "\n  " << globalChain_.DumpState()
             << "\n  " << bloomChain_.DumpState()
+            << "\n  " << transitionChain_.DumpState()
             << "\n  " << fxaaChain_.DumpState();
         return stream.str();
     }

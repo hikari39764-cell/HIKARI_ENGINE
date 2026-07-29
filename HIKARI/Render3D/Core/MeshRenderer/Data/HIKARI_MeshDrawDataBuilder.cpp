@@ -9,6 +9,7 @@
 #include "Assets/Models/HIKARI_ModelAsset.h"
 #include "Render3D/Lighting/HIKARI_IblEnvironment.h"
 #include "Render3D/Lighting/HIKARI_LightProbeVolumeRuntime.h"
+#include "Render3D/Lighting/HIKARI_LocalLightFrame.h"
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
 #include "Render3D/Reflection/HIKARI_ReflectionProbeRuntime.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
@@ -133,41 +134,22 @@ namespace HIKARI::MESHRENDERER {
                 static_cast<uint8_t>(
                     RENDER3D::GetRenderQualitySettings().forwardCostMode));
 
-        constexpr uint32_t kMaxPointLights = 8;
-        uint32_t uploadedCount = 0;
-        uint32_t uploadableCount = 0;
-        for (const PointLight& pointLight : environment.pointLights) {
-            if (!pointLight.enabled || pointLight.range <= 0.0f) {
-                continue;
-            }
-
-            ++uploadableCount;
-            if (uploadedCount >= kMaxPointLights) {
-                continue;
-            }
-
-            out.pointLightPosRange[uploadedCount] = {
-                pointLight.position.x,
-                pointLight.position.y,
-                pointLight.position.z,
-                pointLight.range
-            };
-            out.pointLightColorIntensity[uploadedCount] = {
-                pointLight.color.x,
-                pointLight.color.y,
-                pointLight.color.z,
-                std::max(0.0f, pointLight.intensity)
-            };
-            ++uploadedCount;
-        }
-        out.pointLightCount = uploadedCount;
+        const RENDER3D::LIGHTING::LocalLightFrame localLightFrame =
+            RENDER3D::LIGHTING::BuildLocalLightFrame(environment);
+        std::copy(
+            localLightFrame.lights.begin(),
+            localLightFrame.lights.end(),
+            std::begin(out.localLights));
+        out.localLightCount = localLightFrame.uploadedCount;
 
         stats.directionalEnabled = environment.directional.enabled;
         stats.directionalIntensity = out.directionalIntensity;
         stats.ambientIntensity = out.ambientIntensity;
-        stats.pointLightTotalCount = environment.pointLights.size();
-        stats.pointLightUploadedCount = uploadedCount;
-        stats.pointLightClampedCount = (uploadableCount > uploadedCount) ? (uploadableCount - uploadedCount) : 0u;
+        stats.pointLightTotalCount = localLightFrame.sourceCount;
+        stats.pointLightUploadedCount =
+            localLightFrame.uploadedCount;
+        stats.pointLightClampedCount =
+            localLightFrame.clampedCount;
         stats.specularIntensity = out.specularParams.x;
         stats.specularPower = out.specularParams.y;
     }

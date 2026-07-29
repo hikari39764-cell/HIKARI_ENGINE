@@ -5,6 +5,7 @@
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Gfx/HIKARI_GpuPipelineStatsProfiler.h"
+#include "Render3D/Color/HIKARI_ExposureState.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Lighting/HIKARI_VolumetricLightingStage.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironmentNames.h"
@@ -189,6 +190,11 @@ void DrawTemporalTable(const RuntimePerformanceSnapshot &s) {
     MetricRow("Exposure Ready / Written", "%s / %s",
               s.temporalResources.exposureReady ? "yes" : "no",
               s.temporalResources.exposureWritten ? "yes" : "no");
+    MetricRow("Exposure Mode / Multiplier / Pre", "%s / %.3f / %.3f",
+              RENDER3D::COLOR::ToString(
+                  s.temporalResources.exposureMode),
+              s.temporalResources.exposureMultiplier,
+              s.temporalResources.preExposure);
     MetricRow("Masks R/T/Invalid Ready / Valid / Source", "%s / %s / %s",
               (s.temporalResources.reactiveMaskReady &&
                s.temporalResources.transparencyMaskReady &&

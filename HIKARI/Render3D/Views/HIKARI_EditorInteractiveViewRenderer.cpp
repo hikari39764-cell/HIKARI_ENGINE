@@ -9,6 +9,7 @@
 
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render2D/HIKARI_RenderTarget2D.h"
+#include "Render3D/Color/HIKARI_ExposureState.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Debug/HIKARI_Renderer3D_Debug.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
@@ -250,13 +251,14 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
                 0.25f,
                 4.0f);
             bool toneMappingEnabled = true;
-            float exposure = userExposure;
+            float sceneExposure = 1.0f;
             float gamma = 2.2f;
             int toneMappingMode = 2;
             if (state.request.shadingMode ==
                     EditorInteractiveShadingMode::Lit) {
                 toneMappingEnabled = environment.toneMapping.enabled;
-                exposure *= (std::max)(0.0f, environment.toneMapping.exposure);
+                sceneExposure =
+                    (std::max)(0.0f, environment.toneMapping.exposure);
                 gamma = (std::max)(0.01f, environment.toneMapping.gamma);
                 toneMappingMode = environment.toneMapping.mode;
             } else if (state.request.shadingMode ==
@@ -265,12 +267,16 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
                 toneMappingMode = 0;
             }
 
+            const COLOR::ExposureFrameState exposureState =
+                COLOR::BuildManualExposureFrame(
+                    sceneExposure,
+                    userExposure);
             POST::CommonParams parameters{};
             parameters.resolutionX = static_cast<float>(state.target->GetWidth());
             parameters.resolutionY = static_cast<float>(state.target->GetHeight());
             parameters.user[0] = {
                 toneMappingEnabled ? 1.0f : 0.0f,
-                exposure,
+                exposureState.exposureMultiplier,
                 gamma,
                 static_cast<float>(toneMappingMode)
             };

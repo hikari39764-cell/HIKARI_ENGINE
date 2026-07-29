@@ -15,6 +15,7 @@
 #include "Gfx/HIKARI_ShaderCompiler.h"
 #include "Render2D/HIKARI_RenderTarget2D.h"
 #include "Render3D/Debug/HIKARI_RenderDebugView.h"
+#include "Render3D/Lighting/HIKARI_LocalLightFrame.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
@@ -41,8 +42,8 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
             MATH::Vec4 volumeSize{};
             MATH::Vec4 frameParams{};
             MATH::Vec4 debugParams{};
-            MATH::Vec4 pointLightPosRange[8]{};
-            MATH::Vec4 pointLightColorIntensity[8]{};
+            LIGHTING::LocalLightGpuData
+                localLights[LIGHTING::kLocalLightFrameCapacity]{};
         };
 
         struct VolumeResource {
@@ -450,23 +451,17 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
         const bool shadowed = SHADOW::IsDirectionalShadowEnabled() &&
             environment.directionalShadow.enabled &&
             SHADOW::GetDirectionalShadowSrv().ptr != 0;
-        uint32_t pointCount = 0;
-        for (const PointLight& light : environment.pointLights) {
-            if (!light.enabled || light.range <= 0.0f || pointCount >= 8u) continue;
-            constants.pointLightPosRange[pointCount] = {
-                light.position.x, light.position.y, light.position.z, light.range
-            };
-            constants.pointLightColorIntensity[pointCount] = {
-                light.color.x, light.color.y, light.color.z,
-                (std::max)(0.0f, light.intensity)
-            };
-            ++pointCount;
-        }
+        const LIGHTING::LocalLightFrame localLightFrame =
+            LIGHTING::BuildLocalLightFrame(environment);
+        std::copy(
+            localLightFrame.lights.begin(),
+            localLightFrame.lights.end(),
+            std::begin(constants.localLights));
         constants.frameParams = {
             historyValid ? std::clamp(environment.fog.temporalWeight, 0.0f, 0.98f) : 0.0f,
             static_cast<float>(frame.frameIndex & 0xffffu),
             shadowed ? 1.0f : 0.0f,
-            static_cast<float>(pointCount)
+            static_cast<float>(localLightFrame.uploadedCount)
         };
         constants.debugParams = {
             static_cast<float>(ResolveDebugMode(debugView)),
@@ -482,7 +477,8 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
         state.stats.active = true;
         state.stats.historyValid = historyValid;
         state.stats.shadowed = shadowed;
-        state.stats.pointLightCount = pointCount;
+        state.stats.pointLightCount =
+            localLightFrame.uploadedCount;
         state.stats.qualityLevel = static_cast<uint32_t>(quality);
         state.stats.temporalWeight = constants.frameParams.x;
         state.prepared = true;

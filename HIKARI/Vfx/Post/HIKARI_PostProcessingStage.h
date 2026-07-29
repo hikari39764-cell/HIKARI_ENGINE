@@ -8,6 +8,7 @@
 
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render2D/HIKARI_RenderTarget2D.h"
+#include "Render3D/Color/HIKARI_ExposureState.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Scene/HIKARI_SceneTransitionBus.h"
 #include "Vfx/Post/HIKARI_PostChain.h"
@@ -47,7 +48,8 @@ namespace HIKARI::POST {
         const FxaaSettings& GetFxaaSettings() const;
         const BloomDebugStats& GetBloomDebugStats() const;
         const CommonParams& GetCommonParams() const;
-        float GetExposure() const;
+        const RENDER3D::COLOR::ExposureFrameState&
+            GetExposureState() const;
         bool IsDumpRequested() const;
         void RequestFrameDump();
 
@@ -87,6 +89,7 @@ namespace HIKARI::POST {
         GFX::Context context_{};
         PostChain globalChain_{};
         PostChain bloomChain_{};
+        PostChain transitionChain_{};
         PostChain fxaaChain_{};
         RenderTarget2D ldrTarget_{};
         RenderTarget2D temporalOutput_{};
@@ -99,6 +102,7 @@ namespace HIKARI::POST {
         std::vector<std::unique_ptr<PostEffect>> activeBloomEffects_{};
         BloomSettings bloomSettings_{};
         ToneMappingSettings toneMappingSettings_{};
+        RENDER3D::COLOR::ExposureFrameState exposureState_{};
         FxaaSettings fxaaSettings_{};
         BloomDebugStats bloomDebugStats_{};
         uint32_t activeBloomBlurPairCount_ = 0;

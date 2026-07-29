@@ -12,6 +12,10 @@ namespace HIKARI::RENDER3D {
     struct RenderQualitySettings;
 }
 
+namespace HIKARI::RENDER3D::COLOR {
+    struct ExposureFrameState;
+}
+
 namespace HIKARI::RENDER3D::TEMPORAL {
 
     enum class TemporalResolveBackend : uint8_t {
@@ -36,7 +40,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
         RenderTarget2D& sceneColorTarget,
         RenderTarget2D& sceneDepthTarget,
         const RenderQualitySettings& quality,
-        float exposure);
+        const COLOR::ExposureFrameState& exposureState);
 
     const char* ToString(TemporalResolveBackend backend);
 

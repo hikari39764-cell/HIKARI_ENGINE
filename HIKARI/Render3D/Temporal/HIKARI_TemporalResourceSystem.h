@@ -37,6 +37,10 @@ namespace HIKARI::RENDER3D::TEMPORAL {
         bool masksWritten = false;
         bool masksCompositionDerived = false;
         bool exposureWritten = false;
+        COLOR::ExposureMode exposureMode =
+            COLOR::ExposureMode::Manual;
+        float exposureMultiplier = 1.0f;
+        float preExposure = 1.0f;
         bool debugOutputReady = false;
         RenderDebugView debugView = RenderDebugView::None;
         uint32_t rigidVelocityDrawCount = 0;
@@ -66,7 +70,8 @@ namespace HIKARI::RENDER3D::TEMPORAL {
     D3D12_GPU_DESCRIPTOR_HANDLE GetTemporalCompositionBase();
     void SetTemporalDebugView(RenderDebugView view);
     RenderDebugView GetTemporalDebugView();
-    bool UpdateTemporalExposure(float exposure);
+    bool UpdateTemporalExposure(
+        const COLOR::ExposureFrameState& exposureState);
     void MarkTemporalMasksWritten(bool written, bool compositionDerived);
     void SetTemporalGeometryDrawCounts(
         uint32_t rigid,

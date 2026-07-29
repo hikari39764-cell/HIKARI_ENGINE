@@ -2,6 +2,7 @@
 
 #include <cstdint>
 
+#include "Render3D/Color/HIKARI_ExposureState.h"
 #include "Render3D/HIKARI_Math3D.h"
 #include "Render3D/Resources/HIKARI_RenderTextureView.h"
 
@@ -80,6 +81,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
 
     struct TemporalInputs {
         TemporalFrameState frame{};
+        COLOR::ExposureFrameState exposureState{};
         RenderTextureView sceneDepth{};
         RenderTextureView sceneColor{};
         // Dense, unjittered current-to-previous motion in render pixels:

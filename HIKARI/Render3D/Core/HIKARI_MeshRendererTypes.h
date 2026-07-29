@@ -14,6 +14,7 @@
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenLayer.h"
 #include "Render3D/HIKARI_Math3D.h"
 #include "Render3D/HIKARI_Transform3D.h"
+#include "Render3D/Lighting/HIKARI_LocalLightFrame.h"
 #include "Render3D/Material/HIKARI_GpuMaterialTypes.h"
 #include "Render3D/Meshlet/HIKARI_MeshletRenderBackend.h"
 #include "Vfx/Common/HIKARI_FxTypes.h"
@@ -123,11 +124,11 @@ namespace HIKARI::MESHRENDERER {
         MATH::Vec4 directionalColor{};
         MATH::Vec4 ambientColor{};
         MATH::Vec4 specularParams{};
-        MATH::Vec4 pointLightPosRange[8]{};
-        MATH::Vec4 pointLightColorIntensity[8]{};
+        RENDER3D::LIGHTING::LocalLightGpuData
+            localLights[RENDER3D::LIGHTING::kLocalLightFrameCapacity]{};
         float directionalIntensity = 1.0f;
         float ambientIntensity = 0.25f;
-        uint32_t pointLightCount = 0;
+        uint32_t localLightCount = 0;
         float lightPadding = 0.0f;
         MATH::Vec4 fogColorDensity{};
         MATH::Vec4 fogParams{};
@@ -135,6 +136,8 @@ namespace HIKARI::MESHRENDERER {
         float forwardCostMode = 0.0f;
         float debugPadding[2]{};
     };
+
+    static_assert(sizeof(LightCB) % 16u == 0u);
 
     struct ReflectionProbeGpuData {
         MATH::Vec4 positionRadius{};
