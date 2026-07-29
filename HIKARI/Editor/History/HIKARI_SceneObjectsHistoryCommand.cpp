@@ -13,13 +13,13 @@ namespace HIKARI::EDITOR {
                 std::vector<SceneObjectData> afterObjects,
                 SceneCameraSettings beforeCamera,
                 SceneCameraSettings afterCamera,
-                bool runtimeWorldAffected)
+                EditorDocumentImpact impact)
                 : label_(std::move(label)),
                   beforeObjects_(std::move(beforeObjects)),
                   afterObjects_(std::move(afterObjects)),
                   beforeCamera_(std::move(beforeCamera)),
                   afterCamera_(std::move(afterCamera)),
-                  runtimeWorldAffected_(runtimeWorldAffected) {
+                  impact_(impact) {
             }
 
             const std::string& GetLabel() const noexcept override {
@@ -27,9 +27,7 @@ namespace HIKARI::EDITOR {
             }
 
             EditorDocumentImpact GetImpact() const noexcept override {
-                return runtimeWorldAffected_
-                    ? EditorDocumentImpact::RuntimeWorld
-                    : EditorDocumentImpact::None;
+                return impact_;
             }
 
             void Undo(SceneDocument& document) const override {
@@ -53,7 +51,8 @@ namespace HIKARI::EDITOR {
             std::vector<SceneObjectData> afterObjects_{};
             SceneCameraSettings beforeCamera_{};
             SceneCameraSettings afterCamera_{};
-            bool runtimeWorldAffected_ = true;
+            EditorDocumentImpact impact_ =
+                EditorDocumentImpact::RuntimeWorld;
         };
     }
 
@@ -64,7 +63,7 @@ namespace HIKARI::EDITOR {
         std::vector<SceneObjectData> afterObjects,
         SceneCameraSettings beforeCamera,
         SceneCameraSettings afterCamera,
-        bool runtimeWorldAffected) {
+        EditorDocumentImpact impact) {
 
         return std::make_unique<SceneObjectsHistoryCommand>(
             std::move(label),
@@ -72,7 +71,7 @@ namespace HIKARI::EDITOR {
             std::move(afterObjects),
             std::move(beforeCamera),
             std::move(afterCamera),
-            runtimeWorldAffected);
+            impact);
     }
 
 } // namespace HIKARI::EDITOR

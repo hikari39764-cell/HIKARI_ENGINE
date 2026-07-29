@@ -1,6 +1,7 @@
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/Document/Internal/HIKARI_DocumentSceneState.h"
 
+#include "Assets/Lighting/HIKARI_LightingBakeDependencyHash.h"
 #include "Core/HIKARI_Logger.h"
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
 #include "Render3D/Lighting/HIKARI_LightProbeVolumeRuntime.h"
@@ -41,18 +42,19 @@ namespace HIKARI {
 
     }
 
-    bool DocumentSceneBase::ApplyEnvironmentRuntimeChanges()
+    bool DocumentSceneBase::ApplyDocumentEnvironmentRuntimeChanges()
     {
         const bool skyResourceBindingChanged =
             IsSkyRuntimeResourceBindingChanged(
-                state_->identity.document.environment.sky,
-                state_->lighting.environment.sky);
+                state_->lighting.environment.sky,
+                state_->identity.document.environment.sky);
         const bool reflectionProbeBindingChanged =
             IsReflectionProbeRuntimeBindingChanged(
-                state_->identity.document.environment.reflectionProbe,
-                state_->lighting.environment.reflectionProbe);
+                state_->lighting.environment.reflectionProbe,
+                state_->identity.document.environment.reflectionProbe);
 
-        state_->identity.document.environment = state_->lighting.environment;
+        state_->lighting.environment =
+            state_->identity.document.environment;
         state_->identity.documentDirty = true;
 
         if (!skyResourceBindingChanged && !reflectionProbeBindingChanged) {
@@ -67,6 +69,13 @@ namespace HIKARI {
         if (!state_->lighting.environment.sky.skyAsset.empty()) {
             deps.skyAssetIds.insert(state_->lighting.environment.sky.skyAsset);
         }
+        deps.lightingSceneHash =
+            ASSETS::LIGHTING::BuildLightingSceneHash(
+                state_->identity.document);
+        deps.lightingBakeAuthoringHashes =
+            ASSETS::LIGHTING::
+                BuildLightingBakeRecordAuthoringHashes(
+                    state_->identity.document);
         deps.lighting = LIGHTING_AUTHORING::BuildSceneLightingSet(
             state_->identity.document);
 

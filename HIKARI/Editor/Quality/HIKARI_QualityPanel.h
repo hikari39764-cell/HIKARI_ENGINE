@@ -7,6 +7,7 @@ namespace HIKARI {
 struct QualityPanelResult {
   bool environmentChanged = false;
   bool renderQualityChanged = false;
+  bool editActive = false;
 };
 
 class QualityPanel {

@@ -197,8 +197,14 @@ namespace HIKARI::LIGHTING_AUTHORING {
     std::vector<ReflectionProbeAuthoring> CollectReflectionProbes(
         const SceneDocument& document) {
 
+        return CollectReflectionProbes(document.objects);
+    }
+
+    std::vector<ReflectionProbeAuthoring> CollectReflectionProbes(
+        std::span<const SceneObjectData> objects) {
+
         std::vector<ReflectionProbeAuthoring> probes{};
-        for (const SceneObjectData& object : document.objects) {
+        for (const SceneObjectData& object : objects) {
             const SceneComponentData* component = FindLightingComponent(
                 object,
                 kReflectionProbeComponentType);
@@ -222,8 +228,14 @@ namespace HIKARI::LIGHTING_AUTHORING {
     std::vector<IrradianceVolumeAuthoring> CollectIrradianceVolumes(
         const SceneDocument& document) {
 
+        return CollectIrradianceVolumes(document.objects);
+    }
+
+    std::vector<IrradianceVolumeAuthoring> CollectIrradianceVolumes(
+        std::span<const SceneObjectData> objects) {
+
         std::vector<IrradianceVolumeAuthoring> volumes{};
-        for (const SceneObjectData& object : document.objects) {
+        for (const SceneObjectData& object : objects) {
             const SceneComponentData* component = FindLightingComponent(
                 object,
                 kIrradianceVolumeComponentType);

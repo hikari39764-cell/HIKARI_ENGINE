@@ -5,17 +5,9 @@
 
 #include "Editor/History/HIKARI_CinematicsHistoryCommand.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
+#include "Scene/Lighting/HIKARI_SceneLightingSet.h"
 
 namespace HIKARI {
-    namespace {
-        bool HasImpact(
-            EDITOR::EditorDocumentImpact value,
-            EDITOR::EditorDocumentImpact flag) noexcept {
-
-            return (static_cast<uint32_t>(value) &
-                static_cast<uint32_t>(flag)) != 0;
-        }
-    }
 
     void DocumentSceneEditorController::SyncDocumentHistory(
         DocumentSceneBase& scene) {
@@ -174,27 +166,7 @@ namespace HIKARI {
                 : "Nothing to undo";
             return;
         }
-        if (HasImpact(
-                result.impact,
-                EDITOR::EditorDocumentImpact::Cinematics)) {
-            cinematicsWorkspaceController_.OnCinematicsDocumentRestored(
-                scene,
-                workspaceHost_);
-        }
-        if (HasImpact(
-                result.impact,
-                EDITOR::EditorDocumentImpact::Systems)) {
-            sceneAuthoringUtilityWindows_.SetSystemsRuntimeApplyStatus(
-                scene.ApplySystemRuntimeChanges());
-        }
-        if (HasImpact(
-                result.impact,
-                EDITOR::EditorDocumentImpact::RuntimeWorld)) {
-            selectionSync_.RebuildRuntimeWorldWithSelectionSync(
-                scene,
-                context_.selection,
-                context_.nextSceneObjectId);
-        }
+        ApplyDocumentImpact(scene, result.impact);
 
         const bool dirty =
             historyExternalDirty_ || documentHistory_.IsDirty();
@@ -204,21 +176,82 @@ namespace HIKARI {
             result.label;
     }
 
+    void DocumentSceneEditorController::ApplyDocumentImpact(
+        DocumentSceneBase& scene,
+        EDITOR::EditorDocumentImpact impact) {
+
+        if (EDITOR::HasEditorDocumentImpact(
+                impact,
+                EDITOR::EditorDocumentImpact::Cinematics)) {
+            cinematicsWorkspaceController_.OnCinematicsDocumentRestored(
+                scene,
+                workspaceHost_);
+        }
+        if (EDITOR::HasEditorDocumentImpact(
+                impact,
+                EDITOR::EditorDocumentImpact::Systems)) {
+            sceneAuthoringUtilityWindows_.SetSystemsRuntimeApplyStatus(
+                scene.ApplySystemRuntimeChanges());
+        }
+        if (EDITOR::HasEditorDocumentImpact(
+                impact,
+                EDITOR::EditorDocumentImpact::RuntimeWorld)) {
+            selectionSync_.RebuildRuntimeWorldWithSelectionSync(
+                scene,
+                context_.selection,
+                context_.nextSceneObjectId);
+        }
+        if (EDITOR::HasEditorDocumentImpact(
+                impact,
+                EDITOR::EditorDocumentImpact::Environment)) {
+            if (!scene.ApplyDocumentEnvironmentRuntimeChanges()) {
+                viewportDropMessage_ =
+                    "Environment runtime refresh failed";
+            }
+        }
+        if (EDITOR::HasEditorDocumentImpact(
+                impact,
+                EDITOR::EditorDocumentImpact::Lighting)) {
+            if (!scene.RefreshLightingRuntime()) {
+                viewportDropMessage_ =
+                    "Lighting runtime refresh failed";
+            }
+        }
+    }
+
+    void DocumentSceneEditorController::CommitAppliedDocumentCommand(
+        DocumentSceneBase& scene,
+        std::unique_ptr<EDITOR::IEditorDocumentCommand> command,
+        uint64_t mergeGroup,
+        bool externalDirtyBefore,
+        EDITOR::EditorDocumentImpact immediateImpact) {
+
+        if (!command) {
+            return;
+        }
+        historyExternalDirty_ |= externalDirtyBefore;
+        documentHistory_.RecordApplied(
+            std::move(command),
+            mergeGroup);
+        context_.sceneDirty = true;
+        scene.SetUnsavedSceneChanges(true);
+        ApplyDocumentImpact(scene, immediateImpact);
+    }
+
     void DocumentSceneEditorController::RecordCinematicsHistory(
         DocumentSceneBase& scene,
         SceneCinematicsSettings before,
         uint64_t mergeGroup,
         bool externalDirtyBefore) {
 
-        historyExternalDirty_ |= externalDirtyBefore;
-        documentHistory_.RecordApplied(
+        CommitAppliedDocumentCommand(
+            scene,
             EDITOR::MakeCinematicsHistoryCommand(
                 "Edit Camera Timeline",
                 std::move(before),
                 scene.GetSceneDocument().cinematics),
-            mergeGroup);
-        context_.sceneDirty = true;
-        scene.SetUnsavedSceneChanges(true);
+            mergeGroup,
+            externalDirtyBefore);
     }
 
 } // namespace HIKARI

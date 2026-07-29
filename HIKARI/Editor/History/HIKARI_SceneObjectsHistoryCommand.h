@@ -15,6 +15,7 @@ namespace HIKARI::EDITOR {
             std::vector<SceneObjectData> afterObjects,
             SceneCameraSettings beforeCamera,
             SceneCameraSettings afterCamera,
-            bool runtimeWorldAffected = true);
+            EditorDocumentImpact impact =
+                EditorDocumentImpact::RuntimeWorld);
 
 } // namespace HIKARI::EDITOR

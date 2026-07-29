@@ -1,7 +1,7 @@
 # Authoritative HIKARI compile-source manifest.
 # Add or remove translation units here and keep the source-closure test green.
 
-set(HIKARI_COMPILE_SOURCE_COUNT 710)
+set(HIKARI_COMPILE_SOURCE_COUNT 711)
 
 set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/External/WICTextureLoader.cpp"
@@ -458,6 +458,7 @@ set(HIKARI_EDITOR_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/History/HIKARI_EditorDocumentHistory.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/History/HIKARI_SceneObjectTransformHistorySession.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/History/HIKARI_CinematicsHistoryCommand.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/History/HIKARI_EnvironmentHistoryCommand.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/History/HIKARI_SceneObjectsHistoryCommand.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/History/HIKARI_SceneSystemsHistoryCommand.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/SystemAuthoring/HIKARI_SystemAuthoringTypes.cpp"

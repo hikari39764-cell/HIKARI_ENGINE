@@ -342,9 +342,6 @@ namespace HIKARI {
                     EDITOR::CommitSceneSelectionTransforms(
                         scene,
                         transformResult);
-                    viewportLightingRefreshPending_ |=
-                        transformResult
-                            .lightingRuntimeRefreshRequired;
                     context_.sceneDirty = true;
                     scene.SetUnsavedSceneChanges(true);
                     viewportTransformHistory_.MarkChanged();

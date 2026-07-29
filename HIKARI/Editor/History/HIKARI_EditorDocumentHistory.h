@@ -17,7 +17,25 @@ namespace HIKARI::EDITOR {
         RuntimeWorld = 1u << 1u,
         Environment = 1u << 2u,
         Systems = 1u << 3u,
+        Lighting = 1u << 4u,
     };
+
+    constexpr EditorDocumentImpact operator|(
+        EditorDocumentImpact lhs,
+        EditorDocumentImpact rhs) noexcept {
+
+        return static_cast<EditorDocumentImpact>(
+            static_cast<uint32_t>(lhs) |
+            static_cast<uint32_t>(rhs));
+    }
+
+    constexpr bool HasEditorDocumentImpact(
+        EditorDocumentImpact value,
+        EditorDocumentImpact flag) noexcept {
+
+        return (static_cast<uint32_t>(value) &
+            static_cast<uint32_t>(flag)) != 0u;
+    }
 
     struct EditorHistoryResult {
         EditorDocumentImpact impact = EditorDocumentImpact::None;

@@ -64,11 +64,15 @@ QualityPanelResult QualityPanel::Draw(SceneEnvironment &environment) const {
     ImGui::TreePop();
   }
 
+  const bool editActive =
+      ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
+      ImGui::IsAnyItemActive();
   ImGui::End();
   return {
       !EDITOR::ENVIRONMENT_EDIT::AreQualityEnvironmentValuesEqual(beforeEdit,
                                                                   environment),
       renderQualityChanged,
+      editActive,
   };
 }
 #else

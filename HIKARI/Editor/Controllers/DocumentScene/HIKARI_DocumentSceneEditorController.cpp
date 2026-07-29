@@ -3,6 +3,7 @@
 #include "Assets/Material/HIKARI_MaterialAssetData.h"
 #include "Core/HIKARI_Logger.h"
 #include "Editor/Authoring/HIKARI_EditorObjectState.h"
+#include "Editor/History/HIKARI_EnvironmentHistoryCommand.h"
 #include "Editor/History/HIKARI_SceneObjectsHistoryCommand.h"
 #include "Editor/History/HIKARI_SceneSystemsHistoryCommand.h"
 #include "Editor/Menus/HIKARI_EditorDocumentMenu.h"
@@ -17,6 +18,7 @@
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
 #include "Runtime/HIKARI_RuntimeResourceRefreshService.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
+#include "Scene/Lighting/HIKARI_SceneLightingSet.h"
 
 #include <utility>
 
@@ -28,6 +30,11 @@
 namespace HIKARI {
 
     namespace {
+        constexpr uint64_t kEnvironmentPanelMergeGroup =
+            0x454e5649524f4e4dull;
+        constexpr uint64_t kQualityPanelMergeGroup =
+            0x5155414c49545945ull;
+
         std::string SummarizeRuntimeRefreshReport(const RuntimeResourceRefreshReport& report) {
             return "Runtime refresh: texture " + std::to_string(report.textureInvalidatedCount) +
                 ", sky " + std::to_string(report.skyInvalidatedCount) +
@@ -307,17 +314,20 @@ namespace HIKARI {
                 systemAuthoringRegistry_,
                 toolHost_);
         if (systemsResult.changed) {
-            historyExternalDirty_ |=
-                context_.sceneDirty || scene.HasUnsavedSceneChanges();
-            documentHistory_.RecordApplied(
+            const bool externalDirtyBefore =
+                historyExternalDirty_ ||
+                ((context_.sceneDirty ||
+                    scene.HasUnsavedSceneChanges()) &&
+                    !documentHistory_.IsDirty());
+            CommitAppliedDocumentCommand(
+                scene,
                 EDITOR::MakeSceneSystemsHistoryCommand(
                     systemsResult.label,
                     systemsResult.before,
-                    scene.GetSceneDocument().systems));
-            context_.sceneDirty = true;
-            scene.SetUnsavedSceneChanges(true);
-            sceneAuthoringUtilityWindows_.SetSystemsRuntimeApplyStatus(
-                scene.ApplySystemRuntimeChanges());
+                    scene.GetSceneDocument().systems),
+                0,
+                externalDirtyBefore,
+                EDITOR::EditorDocumentImpact::Systems);
         }
         sceneCreationPanel_.DrawDeferredDialogs(
             scene,
@@ -333,33 +343,49 @@ namespace HIKARI {
             if (!history) {
                 return;
             }
-            historyExternalDirty_ |=
-                history->dirtyBefore && !documentHistory_.IsDirty();
-            documentHistory_.RecordApplied(
+            EDITOR::EditorDocumentImpact impact =
+                history->runtimeWorldAffected
+                ? EDITOR::EditorDocumentImpact::RuntimeWorld
+                : EDITOR::EditorDocumentImpact::None;
+            const auto beforeLighting =
+                LIGHTING_AUTHORING::BuildSceneLightingSet(
+                    std::span<const SceneObjectData>(
+                        history->beforeObjects));
+            const auto afterLighting =
+                LIGHTING_AUTHORING::BuildSceneLightingSet(
+                    std::span<const SceneObjectData>(
+                        history->afterObjects));
+            const bool lightingChanged =
+                !LIGHTING_AUTHORING::
+                    AreSceneLightingSetsEquivalent(
+                        beforeLighting,
+                        afterLighting);
+            if (lightingChanged) {
+                impact = impact |
+                    EDITOR::EditorDocumentImpact::Lighting;
+            }
+            CommitAppliedDocumentCommand(
+                scene,
                 EDITOR::MakeSceneObjectsHistoryCommand(
                     std::move(history->label),
                     std::move(history->beforeObjects),
                     std::move(history->afterObjects),
                     std::move(history->beforeCamera),
                     std::move(history->afterCamera),
-                    history->runtimeWorldAffected));
-            context_.sceneDirty = true;
-            scene.SetUnsavedSceneChanges(true);
+                    impact),
+                0,
+                history->dirtyBefore &&
+                    !documentHistory_.IsDirty(),
+                lightingChanged
+                    ? EDITOR::EditorDocumentImpact::Lighting
+                    : EDITOR::EditorDocumentImpact::None);
         };
         recordSceneObjectHistory(
             sceneCreationPanel_.ConsumeHistoryRequest());
         recordSceneObjectHistory(
             sceneInspectorPanel_.ConsumeHistoryRequest());
-        std::optional<SceneObjectAuthoringHistoryRequest>
-            viewportTransformHistory =
-                viewportTransformHistory_.ConsumeHistoryRequest();
-        if (viewportTransformHistory &&
-            viewportLightingRefreshPending_) {
-            (void)scene.RefreshLightingRuntime();
-            viewportLightingRefreshPending_ = false;
-        }
         recordSceneObjectHistory(
-            std::move(viewportTransformHistory));
+            viewportTransformHistory_.ConsumeHistoryRequest());
         recordSceneObjectHistory(
             sceneObjectCommands_.ConsumeHistoryRequest());
         if (const std::optional<SceneObjectId> cameraRequest =
@@ -480,16 +506,38 @@ namespace HIKARI {
                 applyRefreshReport(refreshService.RefreshAsset(scene, AssetId{ refreshRuntimeMaterialGuid }));
             }
         }
+        bool environmentEditActive = false;
         if (context_.windows.resources.showEnvironment) {
+            const SceneEnvironment beforeEnvironment =
+                scene.GetSceneDocument().environment;
+            SceneEnvironment editedEnvironment =
+                beforeEnvironment;
             const EnvironmentPanelResult environmentResult =
                 environmentPanel_.Draw(
-                    scene.GetSceneEnvironment(),
+                    editedEnvironment,
                     &SKYRENDERER::GetDebugState(),
                     &scene.GetAssetRegistry(),
                     &scene.GetAssetDatabase());
+            environmentEditActive |= environmentResult.editActive;
             if (environmentResult.environmentChanged) {
-                scene.ApplyEnvironmentRuntimeChanges();
-                context_.sceneDirty = true;
+                const bool externalDirtyBefore =
+                    historyExternalDirty_ ||
+                    ((context_.sceneDirty ||
+                        scene.HasUnsavedSceneChanges()) &&
+                        !documentHistory_.IsDirty());
+                scene.GetSceneDocument().environment =
+                    editedEnvironment;
+                CommitAppliedDocumentCommand(
+                    scene,
+                    EDITOR::MakeEnvironmentHistoryCommand(
+                        "Edit Environment",
+                        beforeEnvironment,
+                        std::move(editedEnvironment)),
+                    environmentResult.editActive
+                        ? kEnvironmentPanelMergeGroup
+                        : 0u,
+                    externalDirtyBefore,
+                    EDITOR::EditorDocumentImpact::Environment);
             }
             if (environmentResult.openLightingBakeRequested) {
                 EDITOR::EditorToolOpenRequest request{};
@@ -502,13 +550,37 @@ namespace HIKARI {
             }
         }
         if (context_.windows.resources.showQuality) {
+            const SceneEnvironment beforeEnvironment =
+                scene.GetSceneDocument().environment;
+            SceneEnvironment editedEnvironment =
+                beforeEnvironment;
             const QualityPanelResult qualityResult =
-                qualityPanel_.Draw(scene.GetSceneEnvironment());
+                qualityPanel_.Draw(editedEnvironment);
+            environmentEditActive |= qualityResult.editActive;
             if (qualityResult.environmentChanged) {
-                scene.ApplyEnvironmentRuntimeChanges();
-                context_.sceneDirty = true;
+                const bool externalDirtyBefore =
+                    historyExternalDirty_ ||
+                    ((context_.sceneDirty ||
+                        scene.HasUnsavedSceneChanges()) &&
+                        !documentHistory_.IsDirty());
+                scene.GetSceneDocument().environment =
+                    editedEnvironment;
+                CommitAppliedDocumentCommand(
+                    scene,
+                    EDITOR::MakeEnvironmentHistoryCommand(
+                        "Edit Quality Environment",
+                        beforeEnvironment,
+                        std::move(editedEnvironment)),
+                    qualityResult.editActive
+                        ? kQualityPanelMergeGroup
+                        : 0u,
+                    externalDirtyBefore,
+                    EDITOR::EditorDocumentImpact::Environment);
             }
             renderQualitySavePending_ |= qualityResult.renderQualityChanged;
+        }
+        if (!environmentEditActive) {
+            documentHistory_.SealMerge();
         }
         EDITOR::EditorToolContext toolContext{ scene, context_ };
         toolHost_.Draw(toolContext);

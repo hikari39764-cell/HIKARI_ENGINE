@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -36,8 +37,12 @@ namespace HIKARI::LIGHTING_AUTHORING {
 
     std::vector<ReflectionProbeAuthoring> CollectReflectionProbes(
         const SceneDocument& document);
+    std::vector<ReflectionProbeAuthoring> CollectReflectionProbes(
+        std::span<const SceneObjectData> objects);
     std::vector<IrradianceVolumeAuthoring> CollectIrradianceVolumes(
         const SceneDocument& document);
+    std::vector<IrradianceVolumeAuthoring> CollectIrradianceVolumes(
+        std::span<const SceneObjectData> objects);
 
     SceneObjectId AddReflectionProbe(
         SceneDocument& document,

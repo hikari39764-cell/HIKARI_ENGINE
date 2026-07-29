@@ -13,6 +13,7 @@ struct SkyRendererDebugState;
 struct EnvironmentPanelResult {
   bool environmentChanged = false;
   bool openLightingBakeRequested = false;
+  bool editActive = false;
 };
 
 class EnvironmentPanel {

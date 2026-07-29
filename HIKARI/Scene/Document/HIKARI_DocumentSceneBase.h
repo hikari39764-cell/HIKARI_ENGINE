@@ -170,7 +170,7 @@ namespace HIKARI {
         bool CreateTransientEmptySceneDocument();
         bool HasUnsavedSceneChanges() const;
         void SetUnsavedSceneChanges(bool dirty);
-        bool ApplyEnvironmentRuntimeChanges();
+        bool ApplyDocumentEnvironmentRuntimeChanges();
         bool RefreshLightingRuntime();
         bool RefreshSkyRuntime();
         bool RefreshCurrentSkyRuntime();

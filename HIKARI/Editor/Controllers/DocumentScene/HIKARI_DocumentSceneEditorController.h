@@ -113,6 +113,16 @@ namespace HIKARI {
             DocumentSceneBase& scene,
             const EDITOR::EditorHistoryResult& result,
             bool redo);
+        void ApplyDocumentImpact(
+            DocumentSceneBase& scene,
+            EDITOR::EditorDocumentImpact impact);
+        void CommitAppliedDocumentCommand(
+            DocumentSceneBase& scene,
+            std::unique_ptr<EDITOR::IEditorDocumentCommand> command,
+            uint64_t mergeGroup,
+            bool externalDirtyBefore,
+            EDITOR::EditorDocumentImpact immediateImpact =
+                EDITOR::EditorDocumentImpact::None);
         void RecordCinematicsHistory(
             DocumentSceneBase& scene,
             SceneCinematicsSettings before,
@@ -126,7 +136,6 @@ namespace HIKARI {
         EDITOR::EditorCommandRouter commandRouter_{};
         EDITOR::SceneObjectTransformHistorySession
             viewportTransformHistory_{};
-        bool viewportLightingRefreshPending_ = false;
         bool historyExternalDirty_ = false;
     };
 

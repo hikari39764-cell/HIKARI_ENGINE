@@ -360,8 +360,14 @@ EnvironmentPanel::Draw(SceneEnvironment &environment,
   const bool changed =
       !EDITOR::ENVIRONMENT_EDIT::AreSceneEnvironmentValuesEqual(beforeEdit,
                                                                 environment);
+  const bool editActive =
+      ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
+      ImGui::IsAnyItemActive();
   ImGui::End();
-  return EnvironmentPanelResult{changed, openLightingBakeRequested};
+  return EnvironmentPanelResult{
+      changed,
+      openLightingBakeRequested,
+      editActive};
 }
 #else
 EnvironmentPanelResult
