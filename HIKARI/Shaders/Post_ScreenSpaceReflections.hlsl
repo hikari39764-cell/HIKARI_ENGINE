@@ -58,6 +58,15 @@ float3 ReconstructWorldPosition(float2 uv, float depth)
     return world.xyz / max(abs(world.w), 1e-6f);
 }
 
+float ReconstructViewDepth(float2 uv, float depth)
+{
+    float2 ndc = uv * 2.0f - 1.0f;
+    ndc.y = -ndc.y;
+    const float4 world =
+        mul(gInvViewProj, float4(ndc, depth, 1.0f));
+    return rcp(max(abs(world.w), 1e-6f));
+}
+
 bool ProjectWorldPosition(
     float3 worldPosition,
     out float2 uv,
@@ -101,7 +110,7 @@ bool EvaluateRayDepth(
     }
 
     const float surfaceDepth =
-        gSceneDepth.SampleLevel(
+        gCurrentHzb.SampleLevel(
             gPointClamp,
             candidateUv,
             0.0f);
@@ -118,6 +127,47 @@ bool EvaluateRayDepth(
         mul(
             gViewProj,
             float4(surfaceWorldPosition, 1.0f)).w;
+    depthDelta = candidateViewDepth - surfaceViewDepth;
+    return surfaceViewDepth > 0.0f;
+}
+
+bool EvaluateProjectedDepth(
+    float3 candidatePosition,
+    out float2 candidateUv,
+    out float candidateDepth,
+    out float candidateViewDepth,
+    out float surfaceDepth,
+    out float surfaceViewDepth,
+    out float depthDelta)
+{
+    if (!ProjectWorldPosition(
+            candidatePosition,
+            candidateUv,
+            candidateDepth,
+            candidateViewDepth))
+    {
+        surfaceDepth = 1.0f;
+        surfaceViewDepth = 0.0f;
+        depthDelta = 0.0f;
+        return false;
+    }
+
+    // HZB mip zero is the current full-resolution SceneDepth. Recover only
+    // homogeneous view depth while marching; full receiver reconstruction and
+    // reprojection remain deferred until a hit candidate.
+    surfaceDepth =
+        gCurrentHzb.SampleLevel(
+            gPointClamp,
+            candidateUv,
+            0.0f);
+    if (surfaceDepth >= 0.99999f)
+    {
+        surfaceViewDepth = 0.0f;
+        depthDelta = 0.0f;
+        return false;
+    }
+    surfaceViewDepth =
+        ReconstructViewDepth(candidateUv, surfaceDepth);
     depthDelta = candidateViewDepth - surfaceViewDepth;
     return surfaceViewDepth > 0.0f;
 }
@@ -245,14 +295,18 @@ float4 PSMain(FullscreenVertex input) : SV_TARGET
             reflectionDirection * travel;
         float2 candidateUv;
         float candidateDepth;
+        float candidateViewDepth;
+        float surfaceDepth;
+        float surfaceViewDepth;
         float depthDelta;
-        float3 surfaceWorldPosition;
-        if (!EvaluateRayDepth(
+        if (!EvaluateProjectedDepth(
                 candidatePosition,
                 candidateUv,
                 candidateDepth,
-                depthDelta,
-                surfaceWorldPosition))
+                candidateViewDepth,
+                surfaceDepth,
+                surfaceViewDepth,
+                depthDelta))
         {
             previousDepthValid = false;
             travel += max(gStride, travel * 0.035f);
@@ -266,25 +320,29 @@ float4 PSMain(FullscreenVertex input) : SV_TARGET
                         roughness * 2.0f,
                     0.0f),
                 max(gHzbMipCount - 1.0f, 0.0f));
-        const float hierarchyDepth =
-            gCurrentHzb.SampleLevel(
-                gPointClamp,
-                candidateUv,
-                adaptiveMip);
+        float hierarchyDepth = surfaceDepth;
+        if (adaptiveMip >= 1.0f &&
+            (stepIndex & 3u) == 0u)
+        {
+            hierarchyDepth =
+                gCurrentHzb.SampleLevel(
+                    gPointClamp,
+                    candidateUv,
+                    adaptiveMip);
+        }
 
         // The shared HZB is a standard-Z max hierarchy. It can identify a
         // coarse crossing, but it cannot prove the first visible intersection
         // when a tile contains both foreground geometry and background.
         // Full-resolution linear view depth therefore owns hit correctness.
         const bool hierarchyCrossing =
+            adaptiveMip >= 1.0f &&
+            (stepIndex & 3u) == 0u &&
             candidateDepth + gThickness >= hierarchyDepth;
-        const float candidateViewDepth =
-            mul(
-                gViewProj,
-                float4(candidatePosition, 1.0f)).w;
         const float viewThickness =
             max(
-                gThickness * max(candidateViewDepth, 1.0f),
+                gThickness *
+                    max(candidateViewDepth, 1.0f),
                 0.0025f);
         const bool crossedSurface =
             previousDepthValid &&
@@ -293,8 +351,14 @@ float4 PSMain(FullscreenVertex input) : SV_TARGET
         const bool closeToSurface =
             depthDelta >= -viewThickness &&
             depthDelta <= viewThickness * 2.0f;
-        if (closeToSurface || crossedSurface || hierarchyCrossing)
+        if (closeToSurface ||
+            crossedSurface ||
+            hierarchyCrossing)
         {
+            const float3 surfaceWorldPosition =
+                ReconstructWorldPosition(
+                    candidateUv,
+                    surfaceDepth);
             float refinedTravel = travel;
             float2 refinedUv = candidateUv;
             float refinedDepthDelta = depthDelta;
