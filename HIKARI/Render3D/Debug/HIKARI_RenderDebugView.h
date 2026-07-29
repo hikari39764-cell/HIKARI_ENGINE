@@ -33,6 +33,7 @@ namespace HIKARI {
         LightingFallbackWeight = 25,
         SsrConfidence = 26,
         SsrHit = 27,
+        SurfaceLightmap = 28,
 
         MeshletId = 32,
         ClusterId = 33,
@@ -71,6 +72,7 @@ namespace HIKARI {
         case RenderDebugView::LightingFallbackWeight: return "Lighting Fallback Weight";
         case RenderDebugView::SsrConfidence: return "SSR Confidence";
         case RenderDebugView::SsrHit: return "SSR Hit";
+        case RenderDebugView::SurfaceLightmap: return "Surface Lightmap";
         case RenderDebugView::MeshletId: return "Meshlet ID";
         case RenderDebugView::ClusterId: return "Cluster ID";
         case RenderDebugView::SurfaceId: return "Surface ID";
@@ -124,7 +126,8 @@ namespace HIKARI {
             view ==
                 RenderDebugView::IrradianceProviderWeight ||
             view ==
-                RenderDebugView::LightingFallbackWeight;
+                RenderDebugView::LightingFallbackWeight ||
+            view == RenderDebugView::SurfaceLightmap;
     }
 
     inline bool IsVolumetricRenderDebugView(RenderDebugView view) {

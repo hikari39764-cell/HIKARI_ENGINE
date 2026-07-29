@@ -107,9 +107,25 @@ namespace HIKARI::ASSETS::LIGHTING {
             }
 
             record.id = node.value("id", std::string{});
+            record.name = node.value("name", std::string{});
+            record.objectId = node.value("objectId", uint64_t{ 0u });
             record.texturePath = node.value("texturePath", std::string{});
             record.width = node.value("width", 0u);
             record.height = node.value("height", 0u);
+            record.uvSet = node.value("uvSet", 1u);
+            record.encoding = node.value(
+                "encoding",
+                std::string{ "RGB16F_Irradiance" });
+            record.authoringHash =
+                node.value("authoringHash", std::string{});
+            record.captureSceneHash =
+                node.value("captureSceneHash", std::string{});
+            record.dependencyHash =
+                node.value("dependencyHash", std::string{});
+            record.bakeSet =
+                node.value("bakeSet", std::string{ "Default" });
+            record.scenario =
+                node.value("scenario", std::string{ "Default" });
             return record;
         }
 
@@ -177,9 +193,18 @@ namespace HIKARI::ASSETS::LIGHTING {
         nlohmann::json ToJson(const LightmapBakeRecord& record) {
             return nlohmann::json{
                 { "id", record.id },
+                { "name", record.name },
+                { "objectId", record.objectId },
                 { "texturePath", record.texturePath },
                 { "width", record.width },
                 { "height", record.height },
+                { "uvSet", record.uvSet },
+                { "encoding", record.encoding },
+                { "authoringHash", record.authoringHash },
+                { "captureSceneHash", record.captureSceneHash },
+                { "dependencyHash", record.dependencyHash },
+                { "bakeSet", record.bakeSet },
+                { "scenario", record.scenario },
             };
         }
 

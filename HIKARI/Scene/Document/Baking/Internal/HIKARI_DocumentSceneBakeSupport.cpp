@@ -72,6 +72,17 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
                 filename.str()).lexically_normal();
         }
 
+        std::filesystem::path LightmapOutputDirectory(
+            const std::filesystem::path& projectRoot,
+            const std::string& sceneGuid) {
+
+            return (
+                ASSETS::LIGHTING::BuildLightingBakeRoot(
+                    projectRoot,
+                    sceneGuid) /
+                "lightmaps").lexically_normal();
+        }
+
         static std::string MakeBakeGuid() {
             const auto now = std::chrono::system_clock::now();
             const std::time_t time = std::chrono::system_clock::to_time_t(now);
@@ -161,6 +172,33 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
                    const ASSETS::LIGHTING::
                     LightProbeBakeRecord& rhs) {
                     return lhs.priority > rhs.priority;
+                });
+        }
+
+        void ReplaceLightmapRecord(
+            ASSETS::LIGHTING::LightingBakeManifest& manifest,
+            const ASSETS::LIGHTING::LightmapBakeRecord& record) {
+
+            manifest.lightmaps.erase(
+                std::remove_if(
+                    manifest.lightmaps.begin(),
+                    manifest.lightmaps.end(),
+                    [&record](
+                        const ASSETS::LIGHTING::
+                            LightmapBakeRecord& existing) {
+                        return existing.id == record.id ||
+                            existing.objectId == record.objectId;
+                    }),
+                manifest.lightmaps.end());
+            manifest.lightmaps.push_back(record);
+            std::stable_sort(
+                manifest.lightmaps.begin(),
+                manifest.lightmaps.end(),
+                [](const ASSETS::LIGHTING::
+                        LightmapBakeRecord& lhs,
+                   const ASSETS::LIGHTING::
+                        LightmapBakeRecord& rhs) {
+                    return lhs.objectId < rhs.objectId;
                 });
         }
 

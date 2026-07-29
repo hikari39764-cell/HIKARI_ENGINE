@@ -48,7 +48,7 @@ struct HikariSurfaceGpuSceneInstance
     uint jointPaletteOffsetBytes;
     uint jointPaletteMatrixCount;
     uint deformationFlags;
-    uint deformationReserved;
+    uint lightmapTextureDescriptorIndex;
 
     float4 fxUser[8];
 };

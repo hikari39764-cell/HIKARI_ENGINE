@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <memory>
@@ -9,6 +10,8 @@
 #include "Tools/Baking/HIKARI_LightProbeBaker.h"
 #include "Tools/Baking/HIKARI_ProbeCubemapCaptureTarget.h"
 #include "Tools/Baking/HIKARI_ReflectionProbeBaker.h"
+#include "Tools/Baking/Backends/HIKARI_DxrProgressiveLightmapBaker.h"
+#include "Render3D/Lighting/Transport/HIKARI_LightingTransportScene.h"
 #include "Scene/HIKARI_SceneObjectId.h"
 
 namespace HIKARI {
@@ -33,6 +36,9 @@ namespace HIKARI {
         bool RequestLightProbeBake(
             DocumentSceneBase& scene,
             SceneObjectId targetObjectId = {});
+        bool RequestLightmapBake(
+            DocumentSceneBase& scene,
+            SceneObjectId targetObjectId = {});
         bool RequestLightingBake(
             DocumentSceneBase& scene,
             bool force,
@@ -42,13 +48,9 @@ namespace HIKARI {
         const TOOLS::BAKING::LightingBakeReport& GetLastReport() const;
         bool ProcessReflectionProbeBakeJob(DocumentSceneBase& scene);
         bool ProcessLightProbeBakeJob(DocumentSceneBase& scene);
+        bool ProcessLightmapBakeJob(DocumentSceneBase& scene);
 
     private:
-        enum class ProbeCaptureKind {
-            ReflectionProbe,
-            LightProbe,
-        };
-
         struct ReflectionProbeJob {
             TOOLS::BAKING::LightingBakeJobState state =
                 TOOLS::BAKING::LightingBakeJobState::Idle;
@@ -71,19 +73,42 @@ namespace HIKARI {
             std::vector<std::filesystem::path> probeCapturePaths{};
         };
 
-        bool RenderProbeCaptureFace(
-            DocumentSceneBase& scene,
-            TOOLS::BAKING::ProbeCubemapCaptureTarget& captureTarget,
-            const Camera3D& faceCamera,
-            const SceneEnvironment& captureEnvironment,
-            uint32_t faceIndex,
-            ProbeCaptureKind kind);
+        struct LightmapJob {
+            TOOLS::BAKING::LightingBakeJobState state =
+                TOOLS::BAKING::LightingBakeJobState::Idle;
+            TOOLS::BAKING::LightingBakeReport report{};
+            RENDER3D::LIGHTING::TRANSPORT::
+                LightingTransportScene transportScene{};
+            TOOLS::BAKING::DxrProgressiveLightmapBaker baker{};
+            RENDER3D::LIGHTING::TRANSPORT::
+                LightingTransportBakeSettings settings{};
+            SceneObjectId objectId{};
+            size_t targetIndex = 0u;
+            std::filesystem::path projectRoot{};
+            std::filesystem::path outputPath{};
+            std::string sceneGuid{};
+            std::string sceneHash{};
+            std::string authoringHash{};
+            std::string dependencyHash{};
+            std::string recordId{};
+            std::string objectName{};
+            std::string bakeSet{ "Default" };
+            std::string scenario{ "Default" };
+        };
+
         bool StartNextQueuedBake(DocumentSceneBase& scene);
 
         std::unique_ptr<ReflectionProbeJob> reflectionProbeJob_{};
         std::unique_ptr<LightProbeJob> lightProbeJob_{};
+        std::unique_ptr<LightmapJob> lightmapJob_{};
+        enum class QueuedBakeKind : uint8_t {
+            ReflectionProbe,
+            IrradianceVolume,
+            LightmapObject,
+        };
         struct QueuedBakeItem {
-            bool reflectionProbe = true;
+            QueuedBakeKind kind =
+                QueuedBakeKind::ReflectionProbe;
             SceneObjectId objectId{};
         };
         std::vector<QueuedBakeItem> queuedBakeItems_{};

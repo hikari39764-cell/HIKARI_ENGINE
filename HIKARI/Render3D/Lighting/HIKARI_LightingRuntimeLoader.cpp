@@ -8,7 +8,9 @@
 #include "Assets/HIKARI_AssetTypes.h"
 #include "Assets/Lighting/HIKARI_LightingBakeManifest.h"
 #include "Core/HIKARI_Logger.h"
+#include "Project/Paths/HIKARI_ProjectPath.h"
 #include "Render3D/Lighting/HIKARI_IblEnvironment.h"
+#include "Render3D/Lighting/HIKARI_LightmapRuntime.h"
 #include "Render3D/Lighting/HIKARI_LightProbeVolumeRuntime.h"
 #include "Render3D/Lighting/HIKARI_SkyManager.h"
 #include "Render3D/Reflection/HIKARI_ReflectionProbeRuntime.h"
@@ -34,7 +36,8 @@ namespace HIKARI::RENDER3D::LIGHTING {
             return data.skyLoaded ||
                 data.globalIblLoaded ||
                 data.reflectionProbeLoaded ||
-                data.lightProbeVolumeLoaded;
+                data.lightProbeVolumeLoaded ||
+                data.lightmapLoaded;
         }
 
         std::string ResolveSharedBrdfPath(
@@ -178,6 +181,7 @@ namespace HIKARI::RENDER3D::LIGHTING {
         LightingRuntimeLoadResult result{};
         REFLECTION::Reset();
         LIGHTPROBE::Reset();
+        LIGHTMAP::Reset();
         result.runtimeData.activeScenario =
             request.lighting.activeScenario.empty()
             ? "Default"
@@ -268,6 +272,71 @@ namespace HIKARI::RENDER3D::LIGHTING {
         runtimeData.bakedLightmapCount =
             static_cast<uint32_t>(
                 manifest.lightmaps.size());
+
+        for (const ASSETS::LIGHTING::LightmapBakeRecord&
+             record : manifest.lightmaps) {
+            if (record.objectId == 0u ||
+                record.texturePath.empty() ||
+                record.uvSet !=
+                    ASSETS::LIGHTING::
+                        kSurfaceLightmapUvSet ||
+                (!record.scenario.empty() &&
+                    record.scenario !=
+                        runtimeData.activeScenario)) {
+                continue;
+            }
+            const bool captureCurrent =
+                IsBakeRecordCaptureCurrent(
+                    record.id,
+                    record.authoringHash,
+                    record.captureSceneHash,
+                    request);
+            const bool dependencyCurrent =
+                manifest.dependencyHash.empty() ||
+                record.dependencyHash.empty() ||
+                record.dependencyHash ==
+                    manifest.dependencyHash;
+            if (!captureCurrent || !dependencyCurrent) {
+                ++runtimeData.staleLightmapCount;
+                AppendMessage(
+                    messages,
+                    "[LightingRuntimeLoader][BakeManifest][STALE] " +
+                        record.id +
+                        " lightmap ignored because its transport inputs changed.");
+                continue;
+            }
+
+            const std::filesystem::path resolvedPath =
+                PROJECT_PATHS::ResolveProjectPath(
+                    request.projectRoot,
+                    record.texturePath);
+            const TextureResourceHandle texture =
+                LoadTextureResourceLinear(
+                    "lightmap/" + record.id,
+                    resolvedPath.generic_string());
+            if (!IsTextureResourceValid(texture)) {
+                AppendMessage(
+                    messages,
+                    "[LightingRuntimeLoader][Lightmap] failed to load " +
+                        record.texturePath);
+                continue;
+            }
+
+            LIGHTMAP::LightmapRuntimeBinding binding{};
+            binding.objectId = record.objectId;
+            binding.recordId = record.id;
+            binding.sourcePath =
+                resolvedPath.generic_string();
+            binding.texture = texture;
+            binding.textureDescriptorIndex =
+                GetTextureResourceSrvDescriptorIndex(texture);
+            binding.uvSet = record.uvSet;
+            if (LIGHTMAP::Register(std::move(binding))) {
+                ++runtimeData.loadedLightmapCount;
+            }
+        }
+        runtimeData.lightmapLoaded =
+            runtimeData.loadedLightmapCount > 0u;
 
         std::vector<
             LIGHTPROBE::LightProbeVolumeLoadRequest>
@@ -386,7 +455,8 @@ namespace HIKARI::RENDER3D::LIGHTING {
         }
 
         if (runtimeData.reflectionProbeLoaded ||
-            runtimeData.lightProbeVolumeLoaded) {
+            runtimeData.lightProbeVolumeLoaded ||
+            runtimeData.lightmapLoaded) {
             runtimeData.source =
                 LightingRuntimeSource::BakedRuntime;
         } else {
@@ -395,7 +465,8 @@ namespace HIKARI::RENDER3D::LIGHTING {
         }
         const uint32_t staleProviderCount =
             runtimeData.staleReflectionProbeCount +
-            runtimeData.staleIrradianceVolumeCount;
+            runtimeData.staleIrradianceVolumeCount +
+            runtimeData.staleLightmapCount;
         runtimeData.bakeManifestStale =
             staleProviderCount > 0u;
         if (runtimeData.bakeManifestStale) {
@@ -412,6 +483,9 @@ namespace HIKARI::RENDER3D::LIGHTING {
                 " irradiance=" +
                 std::to_string(
                     runtimeData.loadedIrradianceVolumeCount) +
+                " lightmap=" +
+                std::to_string(
+                    runtimeData.loadedLightmapCount) +
                 " stale=" +
                 std::to_string(staleProviderCount));
         return true;

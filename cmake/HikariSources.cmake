@@ -1,7 +1,7 @@
 # Authoritative HIKARI compile-source manifest.
 # Add or remove translation units here and keep the source-closure test green.
 
-set(HIKARI_COMPILE_SOURCE_COUNT 719)
+set(HIKARI_COMPILE_SOURCE_COUNT 731)
 
 set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/External/WICTextureLoader.cpp"
@@ -311,6 +311,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Lighting/HIKARI_LightProbeVolumeFormat.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Lighting/HIKARI_LightingBakeManifest.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Lighting/HIKARI_LightingBakeDependencyHash.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Lighting/Transport/HIKARI_LightingTransportContract.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Formats/HIKARI_HmatFormat.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Formats/HIKARI_HmodelFormat.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Formats/HIKARI_HtexFormat.cpp"
@@ -356,6 +357,9 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Host/HIKARI_EngineHostRunner.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Host/HIKARI_EditorUiServiceRegistry.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Tools/Baking/HIKARI_LightingBakeService.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Tools/Baking/Backends/HIKARI_DxrProgressiveLightmapBakeWorkflow.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Tools/Baking/Backends/HIKARI_DxrProgressiveLightmapBaker.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Tools/Baking/Backends/Internal/HIKARI_DxrLightmapBakeUtilities.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Tools/Baking/HIKARI_LightProbeBaker.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Tools/Baking/HIKARI_ProbeCubemapCaptureTarget.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Tools/Baking/HIKARI_ReflectionProbeCaptureValidator.cpp"
@@ -392,8 +396,12 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Document/HIKARI_DocumentSceneBase.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Document/Assets/HIKARI_DocumentSceneAssetBindings.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Document/Baking/HIKARI_DocumentSceneBakeCoordinator.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Document/Baking/HIKARI_LightingBakeQueueWorkflow.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Document/Baking/HIKARI_LightmapBakeRequest.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Document/Baking/HIKARI_LightingTransportSceneBuilder.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Document/Baking/Backends/HIKARI_RasterLightingTransportBackend.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Document/Baking/HIKARI_LightProbeBakeWorkflow.cpp"
-    "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Document/Baking/HIKARI_ProbeBakeCaptureRenderer.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Document/Baking/HIKARI_LightmapBakeWorkflow.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Document/Baking/HIKARI_ReflectionProbeBakeWorkflow.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Document/Baking/Internal/HIKARI_DocumentSceneBakeSupport.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Document/Camera/HIKARI_DocumentSceneCameraRuntime.cpp"
@@ -403,6 +411,8 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Scenes/HIKARI_GameDocumentScene.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Platform/HIKARI_Win32Window.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Gfx/HIKARI_Dx12Core.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Gfx/RayTracing/HIKARI_DxrCapabilities.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Gfx/RayTracing/HIKARI_DxrAccelerationStructure.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Gfx/HIKARI_PresentationSurface.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Audio/HIKARI_Audio.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Audio/Backends/HIKARI_AudioBackend_XAudio2.cpp"
@@ -420,6 +430,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Material/HIKARI_DefaultPbrResources.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Material/HIKARI_GpuMaterialRegistry.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Lighting/HIKARI_LightingRuntimeLoader.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Lighting/HIKARI_LightmapRuntime.cpp"
     "${HIKARI_SOURCE_ROOT}/Matrix3x3.cpp"
     "${HIKARI_SOURCE_ROOT}/SpineDefaultExtensionShim.cpp"
 )
@@ -549,6 +560,7 @@ set(HIKARI_EDITOR_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Environment/HIKARI_EnvironmentPanel.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Quality/HIKARI_QualityPanel.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Panels/HIKARI_LightingBakePanel.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Panels/Internal/HIKARI_LightingBakePanelSummary.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/HIKARI_DebugCameraPanel.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorController.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorGamePreview.cpp"

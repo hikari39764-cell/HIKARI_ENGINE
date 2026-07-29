@@ -38,6 +38,9 @@ namespace HIKARI {
     class DocumentSceneAssetBindings;
     class DocumentSceneBakeCoordinator;
     struct DocumentSceneState;
+    namespace DOCUMENT_SCENE_BAKING {
+        class RasterLightingTransportBackend;
+    }
 
     struct PbrMaterialAssetData;
 
@@ -217,6 +220,8 @@ namespace HIKARI {
     private:
         friend class DocumentSceneAssetBindings;
         friend class DocumentSceneBakeCoordinator;
+        friend class DOCUMENT_SCENE_BAKING::
+            RasterLightingTransportBackend;
         std::unique_ptr<DocumentSceneState> state_;
     };
 

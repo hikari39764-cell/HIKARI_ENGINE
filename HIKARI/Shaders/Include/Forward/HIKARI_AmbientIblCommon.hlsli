@@ -5,7 +5,9 @@ float3 HikariEvaluateAmbientIblApprox(
     HikariPbrShadingContext context,
     float occlusion,
     float screenAo,
-    float3 worldPos)
+    float3 worldPos,
+    float3 surfaceLightmapIrradiance,
+    float surfaceLightmapWeight)
 {
     const float3 baseColor = context.baseColor;
     const float metallic = context.metallic;
@@ -40,6 +42,10 @@ float3 HikariEvaluateAmbientIblApprox(
         diffuseAmbient,
         worldPos,
         n);
+    diffuseAmbient = lerp(
+        diffuseAmbient,
+        surfaceLightmapIrradiance,
+        saturate(surfaceLightmapWeight));
     float3 diffuse =
         kD * baseColor * diffuseAmbient;
 
@@ -94,7 +100,9 @@ float3 HikariEvaluateAmbientIbl(
     HikariPbrShadingContext context,
     float occlusion,
     float screenAo,
-    float3 worldPos)
+    float3 worldPos,
+    float3 surfaceLightmapIrradiance,
+    float surfaceLightmapWeight)
 {
     const float3 baseColor = context.baseColor;
     const float metallic = context.metallic;
@@ -114,7 +122,9 @@ float3 HikariEvaluateAmbientIbl(
             context,
             occlusion,
             screenAo,
-            worldPos);
+            worldPos,
+            surfaceLightmapIrradiance,
+            surfaceLightmapWeight);
     }
 
     const float3 F0 = context.specularF0;
@@ -149,6 +159,10 @@ float3 HikariEvaluateAmbientIbl(
         diffuseIbl,
         worldPos,
         n);
+    diffuseIbl = lerp(
+        diffuseIbl,
+        surfaceLightmapIrradiance,
+        saturate(surfaceLightmapWeight));
     float3 diffuse =
         kD * baseColor * diffuseIbl;
 

@@ -94,7 +94,7 @@ namespace HIKARI::RENDER3D::RUNTIME {
         uint32_t jointPaletteOffsetBytes = 0;
         uint32_t jointPaletteMatrixCount = 0;
         uint32_t deformationFlags = 0;
-        uint32_t deformationReserved = 0;
+        uint32_t lightmapTextureDescriptorIndex = 0xffffffffu;
 
         MATH::Vec4 fxUser[VFX::kMaterialFxUserCount]{};
     };

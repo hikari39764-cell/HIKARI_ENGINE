@@ -18,6 +18,7 @@ namespace HIKARI::TOOLS::BAKING {
         ClearBake,
         BakeReflectionProbes,
         BakeLightProbes,
+        BakeLightmaps,
         BakeLighting,
     };
 
@@ -25,6 +26,7 @@ namespace HIKARI::TOOLS::BAKING {
         Idle,
         Requested,
         Capturing,
+        Tracing,
         WaitingGpu,
         ProjectingSH,
         Saving,
@@ -39,6 +41,7 @@ namespace HIKARI::TOOLS::BAKING {
         switch (state) {
         case LightingBakeJobState::Requested:
         case LightingBakeJobState::Capturing:
+        case LightingBakeJobState::Tracing:
         case LightingBakeJobState::WaitingGpu:
         case LightingBakeJobState::ProjectingSH:
         case LightingBakeJobState::Saving:
@@ -66,6 +69,10 @@ namespace HIKARI::TOOLS::BAKING {
         bool lightProbeVolumeWritten = false;
         bool lightProbeRecordWritten = false;
         bool lightProbeDebugJsonWritten = false;
+        bool lightmapBaked = false;
+        bool lightmapRecordWritten = false;
+        bool lightmapRuntimeLoaded = false;
+        bool dxrBackendAvailable = false;
         LightingBakeAction action = LightingBakeAction::BakeLighting;
         LightingBakeTarget target = LightingBakeTarget::All;
         LightingBakeJobState jobState = LightingBakeJobState::Idle;
@@ -76,6 +83,7 @@ namespace HIKARI::TOOLS::BAKING {
         std::filesystem::path reflectionProbeBrdfLutPath{};
         std::filesystem::path lightProbeVolumePath{};
         std::filesystem::path lightProbeDebugJsonPath{};
+        std::filesystem::path lightmapPath{};
         std::string reflectionProbeCaptureMode{};
         uint64_t gpuFenceValue = 0;
         uint32_t reflectionProbeCapturedFaceCount = 0;
@@ -94,11 +102,17 @@ namespace HIKARI::TOOLS::BAKING {
         uint32_t lightProbeQueuedReadbackFaceCount = 0;
         uint32_t lightProbeCurrentProbeIndex = 0;
         uint32_t lightProbeCurrentFaceIndex = 0;
+        uint32_t lightmapResolution = 0;
+        uint32_t lightmapCompletedSamples = 0;
+        uint32_t lightmapRequestedSamples = 0;
+        uint32_t lightmapCoveredTexelCount = 0;
+        uint32_t lightmapOverlapTexelCount = 0;
         uint32_t bakeItemCount = 0;
         uint32_t dirtyItemCount = 0;
         uint32_t reusedItemCount = 0;
         uint32_t completedItemCount = 0;
         std::string currentItemName{};
+        std::string lightingTransportBackend{};
         std::vector<std::string> dirtyReasons{};
         std::vector<std::string> reflectionProbeFaceSummaries{};
         std::vector<std::string> lightProbeMessages{};
@@ -130,6 +144,8 @@ namespace HIKARI::TOOLS::BAKING {
             return "BakeReflectionProbes";
         case LightingBakeAction::BakeLightProbes:
             return "BakeLightProbes";
+        case LightingBakeAction::BakeLightmaps:
+            return "BakeLightmaps";
         case LightingBakeAction::BakeLighting:
             return "BakeLighting";
         default:
@@ -145,6 +161,8 @@ namespace HIKARI::TOOLS::BAKING {
             return "Requested";
         case LightingBakeJobState::Capturing:
             return "Capturing";
+        case LightingBakeJobState::Tracing:
+            return "Tracing";
         case LightingBakeJobState::WaitingGpu:
             return "WaitingGpu";
         case LightingBakeJobState::ProjectingSH:

@@ -35,6 +35,9 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
         const std::filesystem::path& projectRoot,
         const std::string& sceneGuid,
         uint32_t probeIndex);
+    std::filesystem::path LightmapOutputDirectory(
+        const std::filesystem::path& projectRoot,
+        const std::string& sceneGuid);
 
     ASSETS::LIGHTING::LightingBakeManifest LoadOrCreateLightingBakeManifest(
         const std::filesystem::path& manifestPath,
@@ -47,6 +50,9 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
     void ReplaceLightProbeVolumeRecord(
         ASSETS::LIGHTING::LightingBakeManifest& manifest,
         const ASSETS::LIGHTING::LightProbeBakeRecord& record);
+    void ReplaceLightmapRecord(
+        ASSETS::LIGHTING::LightingBakeManifest& manifest,
+        const ASSETS::LIGHTING::LightmapBakeRecord& record);
 
     uint32_t GetLightProbeCaptureFaceCount(
         const LightProbeVolumeSettings& settings);

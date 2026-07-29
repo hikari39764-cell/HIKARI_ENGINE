@@ -257,6 +257,77 @@ namespace HIKARI::TOOLS::BAKING {
             status.items.push_back(std::move(item));
         }
 
+        for (const SceneObjectData& object :
+             request.sceneDocument->objects) {
+            const auto component = std::find_if(
+                object.components.begin(),
+                object.components.end(),
+                [](const SceneComponentData& candidate) {
+                    return candidate.type == "ModelComponent";
+                });
+            if (component == object.components.end()) {
+                continue;
+            }
+
+            LightingBakeItemStatus item{};
+            item.kind = LightingBakeItemKind::LightmapObject;
+            item.objectId = object.id.value;
+            item.name = object.name;
+            item.recordId = "lightmap_object_" +
+                std::to_string(object.id.value);
+            const bool authoredLightmapTarget =
+                component->properties.value(
+                    "renderStatic",
+                    false) &&
+                component->properties.value(
+                    "includeInLightingBake",
+                    true);
+            item.enabled =
+                object.enabled &&
+                component->properties.value("visible", true) &&
+                authoredLightmapTarget;
+            const auto hash =
+                hashes.recordAuthoringHashes.find(
+                    item.recordId);
+            if (hash !=
+                hashes.recordAuthoringHashes.end()) {
+                item.authoringHash = hash->second;
+            }
+            const auto record = std::find_if(
+                manifest.lightmaps.begin(),
+                manifest.lightmaps.end(),
+                [&item](
+                    const ASSETS::LIGHTING::
+                        LightmapBakeRecord& candidate) {
+                    return candidate.id == item.recordId ||
+                        candidate.objectId == item.objectId;
+                });
+            if (!authoredLightmapTarget &&
+                record == manifest.lightmaps.end()) {
+                continue;
+            }
+            classify(
+                item,
+                record == manifest.lightmaps.end()
+                    ? std::string{}
+                    : record->authoringHash,
+                record == manifest.lightmaps.end()
+                    ? std::string{}
+                    : record->captureSceneHash,
+                record == manifest.lightmaps.end()
+                    ? std::string{}
+                    : record->dependencyHash,
+                record != manifest.lightmaps.end() &&
+                    ProjectRelativeOutputExists(
+                        request.projectRoot,
+                        record->texturePath));
+            if (!item.enabled) {
+                item.dirtyReason =
+                    "Surface target disabled or no longer Static";
+            }
+            status.items.push_back(std::move(item));
+        }
+
         status.valid = true;
         return status;
     }

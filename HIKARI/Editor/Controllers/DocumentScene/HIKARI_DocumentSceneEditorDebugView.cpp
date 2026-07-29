@@ -124,6 +124,7 @@ namespace HIKARI {
                 RenderDebugView::ReflectionProviderWeight,
                 RenderDebugView::IrradianceProviderWeight,
                 RenderDebugView::LightingFallbackWeight,
+                RenderDebugView::SurfaceLightmap,
             };
             for (RenderDebugView mode : lightingProviderModes) {
                 ImGui::TableNextColumn();

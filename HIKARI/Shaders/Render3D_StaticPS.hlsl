@@ -25,6 +25,38 @@ struct PSInput
 #endif
 };
 
+void ResolveSurfaceLightmap(
+    uint surfaceGpuSceneIndex,
+    float2 uv1,
+    out float3 irradiance,
+    out float weight)
+{
+    irradiance = 0.0f.xxx;
+    weight = 0.0f;
+#if HIKARI_SURFACE_GPU_SCENE_CONSUME
+    if (gUseSurfaceGpuScene == 0u)
+    {
+        return;
+    }
+    const HikariSurfaceGpuSceneInstance instance =
+        HikariGetSurfaceGpuSceneInstanceAt(
+            surfaceGpuSceneIndex);
+    const uint descriptorIndex =
+        instance.lightmapTextureDescriptorIndex;
+    if (descriptorIndex == 0xffffffffu ||
+        descriptorIndex >= HIKARI_MATERIAL_TEXTURE_POOL_COUNT)
+    {
+        return;
+    }
+    irradiance =
+        gMaterialTexturePool[
+            NonUniformResourceIndex(descriptorIndex)].Sample(
+                gLinearClamp,
+                saturate(uv1)).rgb;
+    weight = 1.0f;
+#endif
+}
+
 float3 AccumulateLocalLights(
     float3 normalWS,
     float3 worldPosWS,
@@ -490,11 +522,29 @@ float4 main(PSInput input) : SV_TARGET
             distanceToCamera,
             input.position.xy);
 
+        float3 surfaceLightmapIrradiance = 0.0f.xxx;
+        float surfaceLightmapWeight = 0.0f;
+        ResolveSurfaceLightmap(
+            input.surfaceGpuSceneIndex,
+            input.uv1,
+            surfaceLightmapIrradiance,
+            surfaceLightmapWeight);
+        if (gDebugView == 28)
+        {
+            return float4(
+                surfaceLightmapWeight > 0.0f
+                    ? surfaceLightmapIrradiance
+                    : float3(1.0f, 0.0f, 1.0f),
+                albedo.a);
+        }
+
         float3 ambient = HikariEvaluateAmbientIbl(
             pbrContext,
             occlusion,
             screenAo,
-            input.worldPosWS);
+            input.worldPosWS,
+            surfaceLightmapIrradiance,
+            surfaceLightmapWeight);
 
         shadedColor = direct + pointDirect + ambient;
 #else

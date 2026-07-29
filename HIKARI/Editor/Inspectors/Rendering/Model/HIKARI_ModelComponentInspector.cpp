@@ -26,6 +26,11 @@ namespace HIKARI {
         builder.Bool(
             "Include In Lighting Bake",
             includeInLightingBake_);
+        if (renderStatic_ && includeInLightingBake_) {
+            builder.Text(
+                "Surface GI: UV1 must be unique and inside 0-1. "
+                "If invalid, Probe / Sky fallback remains active.");
+        }
         builder.AssetIdPicker(
             "Model Asset",
             AssetType::Model,

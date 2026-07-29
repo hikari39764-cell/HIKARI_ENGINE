@@ -1,6 +1,7 @@
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Scene/Document/Baking/HIKARI_DocumentSceneBakeCoordinator.h"
+#include "Scene/Document/Baking/Backends/HIKARI_RasterLightingTransportBackend.h"
 #include "Scene/Document/Baking/Internal/HIKARI_DocumentSceneBakeSupport.h"
 #include "Scene/Document/Internal/HIKARI_DocumentSceneState.h"
 
@@ -78,13 +79,17 @@ namespace HIKARI {
                     GetLightProbePositionByIndex(settings, probe),
                     face,
                     GetLightProbeCaptureFarPlane(settings));
-                bool captureOk = RenderProbeCaptureFace(
+                const DOCUMENT_SCENE_BAKING::
+                    RasterLightingTransportBackend transportBackend{};
+                bool captureOk = transportBackend.RenderProbeFace(
                     scene,
                     job.captureTarget,
                     faceCamera,
                     captureEnvironment,
                     face,
-                    ProbeCaptureKind::LightProbe);
+                    RENDER3D::LIGHTING::TRANSPORT::
+                        LightingTransportProductKind::
+                            DiffuseIrradiance);
 
                 std::string readbackMessage{};
                 if (captureOk) {

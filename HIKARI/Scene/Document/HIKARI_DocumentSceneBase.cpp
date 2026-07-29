@@ -303,6 +303,9 @@ namespace HIKARI {
         if (state_->baking.ProcessLightProbeBakeJob(*this)) {
             return;
         }
+        if (state_->baking.ProcessLightmapBakeJob(*this)) {
+            return;
+        }
 
         RENDERER3D::Reset();
         MODELRENDERER::ResetFrame();

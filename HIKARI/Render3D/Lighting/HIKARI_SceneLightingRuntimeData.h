@@ -18,6 +18,7 @@ namespace HIKARI::RENDER3D::LIGHTING {
         bool globalIblLoaded = false;
         bool reflectionProbeLoaded = false;
         bool lightProbeVolumeLoaded = false;
+        bool lightmapLoaded = false;
         bool bakeManifestLoaded = false;
         bool bakeManifestStale = false;
         std::string bakeManifestStaleReason{};
@@ -31,8 +32,10 @@ namespace HIKARI::RENDER3D::LIGHTING {
         uint32_t bakedLightmapCount = 0;
         uint32_t loadedReflectionProbeCount = 0;
         uint32_t loadedIrradianceVolumeCount = 0;
+        uint32_t loadedLightmapCount = 0;
         uint32_t staleReflectionProbeCount = 0;
         uint32_t staleIrradianceVolumeCount = 0;
+        uint32_t staleLightmapCount = 0;
     };
 
     const char* ToString(LightingRuntimeSource source);

@@ -1,12 +1,9 @@
-#include "Scene/Document/Baking/HIKARI_DocumentSceneBakeCoordinator.h"
-#include "Gfx/HIKARI_GfxContext.h"
-
-#include "Scene/Document/HIKARI_DocumentSceneBase.h"
-#include "Scene/Document/Baking/Internal/HIKARI_DocumentSceneBakeSupport.h"
-#include "Scene/Document/Internal/HIKARI_DocumentSceneState.h"
+#include "Scene/Document/Baking/Backends/HIKARI_RasterLightingTransportBackend.h"
 
 #include <string>
+
 #include "Core/HIKARI_TimeService.h"
+#include "Gfx/HIKARI_GfxContext.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Render3D/Debug/HIKARI_Renderer3D_Debug.h"
 #include "Render3D/HIKARI_Renderer3D.h"
@@ -16,12 +13,20 @@
 #include "Render3D/Reflection/HIKARI_ReflectionProbeRuntime.h"
 #include "Render3D/Render/HIKARI_ModelRenderer.h"
 #include "Render3D/Shadow/HIKARI_ShadowMapRenderer.h"
+#include "Scene/Document/HIKARI_DocumentSceneBase.h"
+#include "Scene/Document/Baking/Internal/HIKARI_DocumentSceneBakeSupport.h"
+#include "Scene/Document/Internal/HIKARI_DocumentSceneState.h"
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
 #include "Scene/Lighting/HIKARI_SceneLightingSet.h"
+#include "Tools/Baking/HIKARI_ProbeCubemapCaptureTarget.h"
 
-namespace HIKARI {
+namespace HIKARI::DOCUMENT_SCENE_BAKING {
+
+    namespace TRANSPORT =
+        RENDER3D::LIGHTING::TRANSPORT;
 
     namespace {
+
         class ScopedRenderSubmissionPurpose final {
         public:
             explicit ScopedRenderSubmissionPurpose(
@@ -45,17 +50,39 @@ namespace HIKARI {
             RENDER3D::RenderViewPurpose previous_ =
                 RENDER3D::RenderViewPurpose::Game;
         };
+
     } // namespace
 
-    bool DocumentSceneBakeCoordinator::RenderProbeCaptureFace(
+    TRANSPORT::LightingTransportBackendCapabilities
+        RasterLightingTransportBackend::GetCapabilities() const noexcept {
+
+        TRANSPORT::LightingTransportBackendCapabilities capabilities{};
+        capabilities.backend =
+            TRANSPORT::LightingTransportBackendKind::RasterCapture;
+        capabilities.available = true;
+        capabilities.supportsSpecularReflection = true;
+        capabilities.supportsDiffuseIrradiance = true;
+        return capabilities;
+    }
+
+    bool RasterLightingTransportBackend::RenderProbeFace(
         DocumentSceneBase& scene,
         TOOLS::BAKING::ProbeCubemapCaptureTarget& captureTarget,
         const Camera3D& faceCamera,
         const SceneEnvironment& captureEnvironment,
         uint32_t faceIndex,
-        ProbeCaptureKind kind) {
+        TRANSPORT::LightingTransportProductKind product) const {
 
-        const bool isLightProbe = kind == ProbeCaptureKind::LightProbe;
+        const bool isLightProbe =
+            product ==
+            TRANSPORT::LightingTransportProductKind::DiffuseIrradiance;
+        if (!isLightProbe &&
+            product !=
+                TRANSPORT::LightingTransportProductKind::
+                    SpecularReflection) {
+            return false;
+        }
+
         ScopedRenderSubmissionPurpose submissionPurpose{
             isLightProbe
                 ? RENDER3D::RenderViewPurpose::LightProbeCapture
@@ -66,7 +93,7 @@ namespace HIKARI {
                 isLightProbe
                     ? "LightProbe.CaptureFace"
                     : "ReflectionProbe.CaptureFace") +
-            DOCUMENT_SCENE_BAKING::ProbeFaceName(faceIndex);
+            ProbeFaceName(faceIndex);
         GFX::PIX::ScopedGpuEvent pixFace(
             GFX::GetCurrentContext().cmdList,
             GFX::PIX::kColorRender,
@@ -93,12 +120,14 @@ namespace HIKARI {
         } else {
             resolvedCaptureEnvironment.directional.intensity = 0.0f;
         }
+
         const auto renderFace = [&]() {
             RENDERER3D::Reset();
             MODELRENDERER::Reset();
             SKYRENDERER::Reset();
 
-            const FrameContext& frame = HIKARI::TIME::GetFrameContext();
+            const FrameContext& frame =
+                HIKARI::TIME::GetFrameContext();
             RenderSubmissionSystem::SetAssetContext(
                 &scene.state_->assets.Registry(),
                 scene.state_->assets.Database().GetProjectRoot());
@@ -106,7 +135,8 @@ namespace HIKARI {
                 scene.state_->runtime.world,
                 frame);
 
-            const GFX::Context graphics = GFX::GetCurrentContext();
+            const GFX::Context graphics =
+                GFX::GetCurrentContext();
             SHADOW::BeginFrame(
                 graphics,
                 resolvedCaptureEnvironment,
@@ -123,7 +153,9 @@ namespace HIKARI {
             }
             faceBegun = true;
             SKYRENDERER::Render(
-                graphics, faceCamera, resolvedCaptureEnvironment,
+                graphics,
+                faceCamera,
+                resolvedCaptureEnvironment,
                 scene.state_->assets.Models(),
                 scene.state_->lighting.sky);
             MODELRENDERER::RenderOpaqueForReflectionProbeCapture(
@@ -134,8 +166,10 @@ namespace HIKARI {
                 captureTarget.GetResolution(),
                 captureTarget.GetResolution(),
                 isLightProbe
-                    ? MODELRENDERER::ModelRendererFrameKind::LightProbeCapture
-                    : MODELRENDERER::ModelRendererFrameKind::ReflectionProbeCapture);
+                    ? MODELRENDERER::ModelRendererFrameKind::
+                        LightProbeCapture
+                    : MODELRENDERER::ModelRendererFrameKind::
+                        ReflectionProbeCapture);
             return true;
         };
 
@@ -143,8 +177,9 @@ namespace HIKARI {
         REFLECTION::ScopedReflectionProbeSamplingSuppress
             reflectionSuppress{};
         if (isLightProbe) {
-            RENDER3D::LIGHTPROBE::ScopedLightProbeVolumeSamplingSuppress
-                lightProbeSuppress{};
+            RENDER3D::LIGHTPROBE::
+                ScopedLightProbeVolumeSamplingSuppress
+                    lightProbeSuppress{};
             rendered = renderFace();
         } else {
             rendered = renderFace();
@@ -156,4 +191,4 @@ namespace HIKARI {
         return rendered;
     }
 
-} // namespace HIKARI
+} // namespace HIKARI::DOCUMENT_SCENE_BAKING

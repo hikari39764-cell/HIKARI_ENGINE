@@ -30,6 +30,7 @@ namespace HIKARI {
         enum class LightingBakeItemKind {
             ReflectionProbe,
             IrradianceVolume,
+            LightmapObject,
         };
 
         struct LightingBakeItemStatus {

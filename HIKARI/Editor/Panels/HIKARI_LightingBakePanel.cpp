@@ -8,6 +8,7 @@
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/Lighting/HIKARI_LightingBakeManifest.h"
 #include "Core/HIKARI_Logger.h"
+#include "Editor/Panels/Internal/HIKARI_LightingBakePanelSummary.h"
 #include "Editor/Platform/HIKARI_EditorShellActions.h"
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
 #include "Editor/Style/HIKARI_EditorTheme.h"
@@ -63,11 +64,18 @@ namespace HIKARI {
         EDITOR::EditorGlyph ItemGlyph(
             TOOLS::BAKING::LightingBakeItemKind kind) {
 
-            return kind ==
-                TOOLS::BAKING::LightingBakeItemKind::
-                    ReflectionProbe
-                ? EDITOR::EditorGlyph::ReflectionProbe
-                : EDITOR::EditorGlyph::IrradianceVolume;
+            switch (kind) {
+            case TOOLS::BAKING::LightingBakeItemKind::
+                    ReflectionProbe:
+                return EDITOR::EditorGlyph::ReflectionProbe;
+            case TOOLS::BAKING::LightingBakeItemKind::
+                    IrradianceVolume:
+                return EDITOR::EditorGlyph::IrradianceVolume;
+            case TOOLS::BAKING::LightingBakeItemKind::
+                    LightmapObject:
+            default:
+                return EDITOR::EditorGlyph::Model;
+            }
         }
 
         void DrawInlineGlyph(
@@ -112,6 +120,14 @@ namespace HIKARI {
                         0.0f,
                         1.0f)
                     : 0.0f;
+            } else if (report.lightmapRequestedSamples > 0u) {
+                current = std::clamp(
+                    static_cast<float>(
+                        report.lightmapCompletedSamples) /
+                    static_cast<float>(
+                        report.lightmapRequestedSamples),
+                    0.0f,
+                    1.0f);
             }
             return std::clamp(
                 (static_cast<float>(report.completedItemCount) +
@@ -139,94 +155,6 @@ namespace HIKARI {
             ImGui::TreePop();
         }
 
-        uint32_t CountEnabledItems(
-            const TOOLS::BAKING::LightingBakeStatus& status,
-            TOOLS::BAKING::LightingBakeItemKind kind) {
-
-            return static_cast<uint32_t>(std::count_if(
-                status.items.begin(),
-                status.items.end(),
-                [kind](
-                    const TOOLS::BAKING::LightingBakeItemStatus& item) {
-                    return item.enabled && item.kind == kind;
-                }));
-        }
-
-        void DrawLightingWorkflowSummary(
-            const TOOLS::BAKING::LightingBakeStatus& status,
-            const EDITOR::EditorThemePalette& palette) {
-
-            const uint32_t reflectionCount = CountEnabledItems(
-                status,
-                TOOLS::BAKING::LightingBakeItemKind::ReflectionProbe);
-            const uint32_t irradianceCount = CountEnabledItems(
-                status,
-                TOOLS::BAKING::LightingBakeItemKind::IrradianceVolume);
-
-            ImGui::SeparatorText("Lighting Foundation");
-            if (ImGui::BeginTable(
-                    "LightingFoundationSummary",
-                    3,
-                    ImGuiTableFlags_SizingStretchSame |
-                        ImGuiTableFlags_BordersInnerV)) {
-                ImGui::TableNextColumn();
-                ImGui::TextDisabled("DIFFUSE GI");
-                ImGui::Text(
-                    "%u Irradiance Volume%s",
-                    irradianceCount,
-                    irradianceCount == 1u ? "" : "s");
-                ImGui::TextDisabled(
-                    "Fallback: Sky / Ambient");
-
-                ImGui::TableNextColumn();
-                ImGui::TextDisabled("SPECULAR");
-                ImGui::Text(
-                    "%u Reflection Probe%s",
-                    reflectionCount,
-                    reflectionCount == 1u ? "" : "s");
-                ImGui::TextDisabled(
-                    "Fallback: Sky IBL");
-
-                ImGui::TableNextColumn();
-                ImGui::TextDisabled("BAKE STATE");
-                if (!status.valid) {
-                    EDITOR::StatusBadge(
-                        "Unavailable",
-                        EDITOR::EditorStatusTone::Error);
-                } else if (status.dirtyCount > 0u) {
-                    EDITOR::StatusBadge(
-                        "Needs Bake",
-                        EDITOR::EditorStatusTone::Warning);
-                } else {
-                    EDITOR::StatusBadge(
-                        "Ready",
-                        EDITOR::EditorStatusTone::Ready);
-                }
-                ImGui::TextDisabled(
-                    "Bake only capture changes");
-                ImGui::EndTable();
-            }
-
-            if (!status.valid) {
-                ImGui::TextColored(
-                    palette.warning,
-                    "Save the scene before creating persistent lighting outputs.");
-            } else if (status.dirtyCount > 0u) {
-                ImGui::TextColored(
-                    palette.warning,
-                    "%u provider%s changed. Runtime keeps the last valid "
-                    "result or its environment fallback until Bake Dirty completes.",
-                    status.dirtyCount,
-                    status.dirtyCount == 1u ? "" : "s");
-            } else if (status.totalCount > 0u) {
-                ImGui::TextColored(
-                    palette.success,
-                    "Local GI and reflection data are ready for runtime blending.");
-            }
-            ImGui::TextDisabled(
-                "Residency follows the camera-to-focus view segment; "
-                "final influence is evaluated per shaded surface.");
-        }
 #endif
 
     } // namespace
@@ -288,7 +216,9 @@ namespace HIKARI {
         }
 
         ImGui::Spacing();
-        DrawLightingWorkflowSummary(status, palette);
+        EDITOR::LIGHTING_BAKE_PANEL::DrawWorkflowSummary(
+            status,
+            palette);
 
         ImGui::Spacing();
         const bool bakeBusy =
@@ -359,7 +289,7 @@ namespace HIKARI {
         if (status.items.empty()) {
             EDITOR::EmptyState(
                 "No lighting objects",
-                "Use Add > Lighting to create a Reflection Probe or Irradiance Volume.");
+                "Create a probe, or mark an opaque model Static and enable Include in Lighting Bake.");
         } else if (ImGui::BeginTable(
                 "LightingBakeItems",
                 4,

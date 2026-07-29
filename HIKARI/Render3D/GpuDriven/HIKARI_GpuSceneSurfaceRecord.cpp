@@ -1,4 +1,5 @@
 #include "Render3D/GpuDriven/HIKARI_GpuSceneSurfaceRecord.h"
+#include "Render3D/Lighting/HIKARI_LightmapRuntime.h"
 
 #include <algorithm>
 #include <cmath>
@@ -638,6 +639,13 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             instance.sourceSurfaceInstanceIndex = record.sourceSurfaceInstanceIndex;
             instance.objectIdLow = static_cast<uint32_t>(record.objectId.value & 0xffffffffull);
             instance.objectIdHigh = static_cast<uint32_t>((record.objectId.value >> 32) & 0xffffffffull);
+            if (const RENDER3D::LIGHTMAP::LightmapRuntimeBinding*
+                    lightmap =
+                        RENDER3D::LIGHTMAP::Find(
+                            record.objectId.value)) {
+                instance.lightmapTextureDescriptorIndex =
+                    lightmap->textureDescriptorIndex;
+            }
             instance.meshIndex = record.meshIndex;
             instance.primitiveIndex = record.primitiveIndex;
             instance.sourceMaterialIndex = record.materialIndex;

@@ -14,6 +14,7 @@
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/HIKARI_AssetUsageAnalyzer.h"
 #include "Assets/Lighting/HIKARI_LightingBakeManifest.h"
+#include "Assets/Lighting/HIKARI_LightingBakePolicy.h"
 #include "Core/Serialization/Json/HIKARI_JsonMath.h"
 #include "Scene/HIKARI_SceneDocument.h"
 #include "Scene/Lighting/HIKARI_LightingAuthoringModel.h"
@@ -275,6 +276,33 @@ namespace HIKARI::ASSETS::LIGHTING {
             };
         }
 
+        nlohmann::json BuildSurfaceLightmapCaptureNode(
+            const SceneObjectData& object,
+            const SceneComponentData& model) {
+
+            return {
+                { "kind", "SurfaceLightmap" },
+                { "bakePolicyVersion",
+                    kSurfaceLightmapBakePolicyVersion },
+                { "objectId", object.id.value },
+                { "uvSet", kSurfaceLightmapUvSet },
+                { "outputResolution",
+                    kSurfaceLightmapDefaultResolution },
+                { "sampleCount",
+                    kSurfaceLightmapDefaultSampleCount },
+                { "bounceCount",
+                    kSurfaceLightmapDefaultBounceCount },
+                { "renderStatic",
+                    model.properties.value(
+                        "renderStatic",
+                        false) },
+                { "includeInLightingBake",
+                    model.properties.value(
+                        "includeInLightingBake",
+                        true) }
+            };
+        }
+
         std::string HashJson(const nlohmann::json& node) {
             StableHashBuilder hash{};
             hash.Add(node.dump());
@@ -518,6 +546,27 @@ namespace HIKARI::ASSETS::LIGHTING {
                     std::to_string(volume.objectId.value),
                 HashJson(
                     BuildIrradianceVolumeCaptureNode(volume)));
+        }
+        for (const SceneObjectData& object : document.objects) {
+            const SceneComponentData* model =
+                FindComponent(object, "ModelComponent");
+            if (model == nullptr ||
+                !model->properties.is_object() ||
+                !model->properties.value(
+                    "renderStatic",
+                    false) ||
+                !model->properties.value(
+                    "includeInLightingBake",
+                    true)) {
+                continue;
+            }
+            hashes.emplace(
+                "lightmap_object_" +
+                    std::to_string(object.id.value),
+                HashJson(
+                    BuildSurfaceLightmapCaptureNode(
+                        object,
+                        *model)));
         }
         return hashes;
     }
