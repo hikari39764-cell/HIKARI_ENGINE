@@ -173,11 +173,67 @@ void DrawToneMapping(SceneEnvironment &environment) {
   ImGui::Checkbox("Tone Curve Enabled", &environment.toneMapping.enabled);
   ImGui::TextDisabled(
       "Exposure and SDR display transfer remain active when the curve is off.");
-  ImGui::DragFloat("Manual Exposure", &environment.toneMapping.exposure, 0.01f,
-                   0.0f, 8.0f);
+  int exposureMode =
+      environment.toneMapping.exposureMode ==
+              RENDER3D::COLOR::ExposureMode::Automatic
+          ? 1
+          : 0;
+  const char *exposureModes[] = {"Manual", "Automatic"};
+  if (ImGui::Combo("Exposure Mode", &exposureMode, exposureModes,
+                   static_cast<int>(std::size(exposureModes)))) {
+    environment.toneMapping.exposureMode =
+        exposureMode == 1 ? RENDER3D::COLOR::ExposureMode::Automatic
+                          : RENDER3D::COLOR::ExposureMode::Manual;
+  }
+  const char *exposureLabel =
+      environment.toneMapping.exposureMode ==
+              RENDER3D::COLOR::ExposureMode::Automatic
+          ? "Exposure Seed"
+          : "Manual Exposure";
+  ImGui::DragFloat(exposureLabel, &environment.toneMapping.exposure, 0.01f,
+                   0.01f, 16.0f);
+  if (environment.toneMapping.exposureMode ==
+      RENDER3D::COLOR::ExposureMode::Automatic) {
+    auto &automatic = environment.toneMapping.automaticExposure;
+    ImGui::Indent();
+    ImGui::DragFloat("Target Grey", &automatic.targetLuminance, 0.001f, 0.02f,
+                     0.5f, "%.3f");
+    ImGui::DragFloat("Exposure Compensation (EV)", &automatic.compensationEv,
+                     0.05f, -8.0f, 8.0f, "%+.2f");
+    ImGui::DragFloat("Minimum Exposure (EV)", &automatic.minExposureEv, 0.05f,
+                     -16.0f, automatic.maxExposureEv);
+    ImGui::DragFloat("Maximum Exposure (EV)", &automatic.maxExposureEv, 0.05f,
+                     automatic.minExposureEv, 16.0f);
+    ImGui::DragFloat("Bright Adapt Speed", &automatic.speedUp, 0.05f, 0.0f,
+                     20.0f);
+    ImGui::DragFloat("Dark Adapt Speed", &automatic.speedDown, 0.05f, 0.0f,
+                     20.0f);
+    const auto &runtimeExposure =
+        POST::PostSystem::GetAutomaticExposureDebugState();
+    if (runtimeExposure.measurementValid) {
+      ImGui::TextDisabled("Meter %.3f | Exposure %.3f -> %.3f",
+                          runtimeExposure.meteredLuminance,
+                          runtimeExposure.currentExposure,
+                          runtimeExposure.targetExposure);
+    } else {
+      ImGui::TextDisabled("Waiting for the first HDR luminance sample...");
+    }
+    ImGui::Unindent();
+  }
+  ImGui::SeparatorText("Display Color");
+  ImGui::DragFloat("White Balance (K)",
+                   &environment.toneMapping.whiteBalanceTemperature, 25.0f,
+                   2000.0f, 15000.0f, "%.0f K");
+  ImGui::DragFloat("White Balance Tint",
+                   &environment.toneMapping.whiteBalanceTint, 0.01f, -1.0f,
+                   1.0f);
+  ImGui::DragFloat("Contrast", &environment.toneMapping.contrast, 0.01f, 0.25f,
+                   2.0f);
+  ImGui::DragFloat("Saturation", &environment.toneMapping.saturation, 0.01f,
+                   0.0f, 2.0f);
   ImGui::DragFloat("SDR Display Gamma", &environment.toneMapping.gamma, 0.01f,
                    0.1f, 4.0f);
-  const char *modes[] = {"None", "Reinhard", "ACES Approx"};
+  const char *modes[] = {"None", "Reinhard", "ACES Fitted"};
   int mode = std::clamp(environment.toneMapping.mode, 0, 2);
   if (ImGui::Combo("Mode", &mode, modes, static_cast<int>(std::size(modes)))) {
     environment.toneMapping.mode = mode;

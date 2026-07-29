@@ -8,6 +8,7 @@
 
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render2D/HIKARI_RenderTarget2D.h"
+#include "Render3D/Color/HIKARI_AutomaticExposure.h"
 #include "Render3D/Color/HIKARI_ExposureState.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Scene/HIKARI_SceneTransitionBus.h"
@@ -50,6 +51,8 @@ namespace HIKARI::POST {
         const CommonParams& GetCommonParams() const;
         const RENDER3D::COLOR::ExposureFrameState&
             GetExposureState() const;
+        const RENDER3D::COLOR::AutomaticExposureDebugState&
+            GetAutomaticExposureDebugState() const;
         bool IsDumpRequested() const;
         void RequestFrameDump();
 
@@ -102,6 +105,7 @@ namespace HIKARI::POST {
         std::vector<std::unique_ptr<PostEffect>> activeBloomEffects_{};
         BloomSettings bloomSettings_{};
         ToneMappingSettings toneMappingSettings_{};
+        RENDER3D::COLOR::AutomaticExposureMeter automaticExposureMeter_{};
         RENDER3D::COLOR::ExposureFrameState exposureState_{};
         FxaaSettings fxaaSettings_{};
         BloomDebugStats bloomDebugStats_{};

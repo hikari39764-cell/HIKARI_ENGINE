@@ -25,6 +25,7 @@ namespace HIKARI::POST {
         fxaaChain_.UpdateContext(context);
         ldrTarget_.UpdateContext(context);
         temporalOutput_.UpdateContext(context);
+        automaticExposureMeter_.UpdateContext(context);
         globalChain_.SetDebugName("PostProcessing.Global");
         bloomChain_.SetDebugName("PostProcessing.Bloom");
         transitionChain_.SetDebugName("PostProcessing.TransitionHDR");
@@ -43,6 +44,7 @@ namespace HIKARI::POST {
         fxaaEffect_.reset();
         ldrTarget_.Finalize();
         temporalOutput_.Finalize();
+        automaticExposureMeter_.Shutdown();
         bloomDebugStats_ = {};
         activeBloomBlurPairCount_ = 0;
         dumpNextFrame_ = false;
@@ -57,6 +59,11 @@ namespace HIKARI::POST {
         commonParams_.deltaTime = deltaTime;
         elapsedTime_ += deltaTime;
         commonParams_.time = elapsedTime_;
+        exposureState_ = automaticExposureMeter_.BeginFrame(
+            toneMappingSettings_.exposureMode,
+            toneMappingSettings_.exposure,
+            toneMappingSettings_.automaticExposure,
+            deltaTime);
     }
 
     void PostProcessingStage::SetIntensity(float intensity) {
@@ -130,10 +137,18 @@ namespace HIKARI::POST {
 
     void PostProcessingStage::SetToneMappingSettings(
         const ToneMappingSettings& settings) {
+        const bool exposureModeChanged =
+            toneMappingSettings_.exposureMode != settings.exposureMode;
         toneMappingSettings_ = settings;
-        exposureState_ =
-            RENDER3D::COLOR::BuildManualExposureFrame(
-                settings.exposure);
+        if (exposureModeChanged) {
+            automaticExposureMeter_.Reset(settings.exposure);
+        }
+        if (settings.exposureMode ==
+            RENDER3D::COLOR::ExposureMode::Manual) {
+            exposureState_ =
+                RENDER3D::COLOR::BuildManualExposureFrame(
+                    settings.exposure);
+        }
     }
 
     void PostProcessingStage::SetFxaaSettings(const FxaaSettings& settings) {
@@ -214,6 +229,12 @@ namespace HIKARI::POST {
         PostProcessingStage::GetExposureState() const {
 
         return exposureState_;
+    }
+
+    const RENDER3D::COLOR::AutomaticExposureDebugState&
+        PostProcessingStage::GetAutomaticExposureDebugState() const {
+
+        return automaticExposureMeter_.GetDebugState();
     }
 
     bool PostProcessingStage::IsDumpRequested() const {
@@ -403,6 +424,9 @@ namespace HIKARI::POST {
         if (!debugOutput && globalChain_.HasAny()) {
             output = globalChain_.Execute(*output, quad, commonParams_);
         }
+        if (!debugOutput) {
+            (void)automaticExposureMeter_.QueueMeasurement(*output);
+        }
         RenderTarget2D* bloom = debugOutput ? nullptr : ApplyBloom(*output, quad);
         if (bloom && bloom->GetResource()) {
             output->Rebind();
@@ -469,6 +493,24 @@ namespace HIKARI::POST {
             (std::max)(0.01f, toneMappingSettings_.gamma),
             static_cast<float>(toneMappingSettings_.mode)
         };
+        const auto displayColor =
+            RENDER3D::COLOR::BuildDisplayColorFrame(
+                toneMappingSettings_.whiteBalanceTemperature,
+                toneMappingSettings_.whiteBalanceTint,
+                toneMappingSettings_.contrast,
+                toneMappingSettings_.saturation);
+        toneMappingParams_.user[1] = {
+            displayColor.whiteBalanceR,
+            displayColor.whiteBalanceG,
+            displayColor.whiteBalanceB,
+            displayColor.contrast
+        };
+        toneMappingParams_.user[2] = {
+            displayColor.saturation,
+            0.0f,
+            0.0f,
+            0.0f
+        };
         toneMappingEffect_->ApplyCommonParams(toneMappingParams_);
         if (!toneMappingEffect_->BindAndDraw(quad)) {
             ldrTarget_.EndCapture();
@@ -500,6 +542,11 @@ namespace HIKARI::POST {
             << " exposureMode="
             << RENDER3D::COLOR::ToString(exposureState_.mode)
             << " exposure=" << exposureState_.exposureMultiplier
+            << " exposureTarget="
+            << exposureState_.targetExposureMultiplier
+            << " meteredLuminance="
+            << exposureState_.meteredLuminance
+            << " meteringValid=" << exposureState_.meteringValid
             << " preExposure=" << exposureState_.preExposure
             << " transition=" << transitionActive_
             << "\n  " << ldrTarget_.DumpState()

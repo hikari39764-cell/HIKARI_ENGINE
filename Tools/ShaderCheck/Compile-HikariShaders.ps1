@@ -73,6 +73,7 @@ $entries = @(
     @{ Shader = "HIKARI/Shaders/Render3D_GpuDrivenOpaqueNoSsaoPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
     @{ Shader = "HIKARI/Shaders/Render3D_GpuDrivenOpaqueNoMaterialExtrasPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
     @{ Shader = "HIKARI/Shaders/Post_ToneMappingPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
+    @{ Shader = "HIKARI/Shaders/Color_AutomaticExposureCS.hlsl"; Entry = "main"; Target = "cs_6_0" },
     @{ Shader = "HIKARI/Shaders/Post_FXAA.hlsl"; Entry = "main"; Target = "ps_6_0" },
     @{ Shader = "HIKARI/Shaders/Post_BloomExtractPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
     @{ Shader = "HIKARI/Shaders/Post_BloomBlurHPS.hlsl"; Entry = "main"; Target = "ps_6_0" },

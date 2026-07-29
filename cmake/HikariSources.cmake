@@ -1,7 +1,7 @@
 # Authoritative HIKARI compile-source manifest.
 # Add or remove translation units here and keep the source-closure test green.
 
-set(HIKARI_COMPILE_SOURCE_COUNT 716)
+set(HIKARI_COMPILE_SOURCE_COUNT 717)
 
 set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/External/WICTextureLoader.cpp"
@@ -213,6 +213,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Cluster/HIKARI_ClusteredGeometryAsset.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Cluster/HIKARI_ClusteredGeometryManager.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Color/HIKARI_ExposureState.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Color/HIKARI_AutomaticExposure.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/GpuDriven/HIKARI_GpuDrivenFrame.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/GpuDriven/HIKARI_GpuDrivenSceneSource.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/GpuDriven/HIKARI_GpuSceneSurfaceRecord.cpp"

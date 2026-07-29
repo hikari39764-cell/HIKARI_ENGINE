@@ -1,0 +1,95 @@
+cbuffer MeteringConstants : register(b0)
+{
+    uint gWidth;
+    uint gHeight;
+    uint2 gPadding;
+};
+
+Texture2D<float4> gSceneColor : register(t0);
+RWStructuredBuffer<float4> gMeasurement : register(u0);
+
+groupshared float gLogLuminance[64];
+groupshared float gLinearLuminance[64];
+groupshared float gSampleWeight[64];
+
+float HikariMeteringWeight(float logLuminance)
+{
+    float shadowWeight = smoothstep(-12.0f, -6.0f, logLuminance);
+    float highlightWeight =
+        1.0f - 0.85f * smoothstep(8.0f, 14.0f, logLuminance);
+    return max(0.001f, shadowWeight * highlightWeight);
+}
+
+[numthreads(64, 1, 1)]
+void main(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+    const uint threadIndex = dispatchThreadId.x;
+    const uint gridWidth = 32u;
+    const uint gridHeight = 18u;
+    const uint sampleCount = gridWidth * gridHeight;
+
+    float logSum = 0.0f;
+    float linearSum = 0.0f;
+    float weightSum = 0.0f;
+    for (uint sampleIndex = threadIndex;
+        sampleIndex < sampleCount;
+        sampleIndex += 64u)
+    {
+        uint2 gridCoord = uint2(
+            sampleIndex % gridWidth,
+            sampleIndex / gridWidth);
+        uint2 pixelCoord = uint2(
+            min(
+                gWidth - 1u,
+                (gridCoord.x * gWidth + gWidth / 2u) /
+                    gridWidth),
+            min(
+                gHeight - 1u,
+                (gridCoord.y * gHeight + gHeight / 2u) /
+                    gridHeight));
+        float3 color = max(
+            gSceneColor.Load(int3(pixelCoord, 0)).rgb,
+            0.0f.xxx);
+        float luminance = max(
+            dot(color, float3(0.2126f, 0.7152f, 0.0722f)),
+            1e-6f);
+        float logLuminance = clamp(
+            log2(luminance),
+            -16.0f,
+            16.0f);
+        float weight = HikariMeteringWeight(logLuminance);
+        logSum += logLuminance * weight;
+        linearSum += luminance * weight;
+        weightSum += weight;
+    }
+
+    gLogLuminance[threadIndex] = logSum;
+    gLinearLuminance[threadIndex] = linearSum;
+    gSampleWeight[threadIndex] = weightSum;
+    GroupMemoryBarrierWithGroupSync();
+
+    [unroll]
+    for (uint stride = 32u; stride > 0u; stride >>= 1u)
+    {
+        if (threadIndex < stride)
+        {
+            gLogLuminance[threadIndex] +=
+                gLogLuminance[threadIndex + stride];
+            gLinearLuminance[threadIndex] +=
+                gLinearLuminance[threadIndex + stride];
+            gSampleWeight[threadIndex] +=
+                gSampleWeight[threadIndex + stride];
+        }
+        GroupMemoryBarrierWithGroupSync();
+    }
+
+    if (threadIndex == 0u)
+    {
+        float weight = max(gSampleWeight[0], 1e-4f);
+        gMeasurement[0] = float4(
+            exp2(gLogLuminance[0] / weight),
+            gLinearLuminance[0] / weight,
+            weight,
+            0.0f);
+    }
+}

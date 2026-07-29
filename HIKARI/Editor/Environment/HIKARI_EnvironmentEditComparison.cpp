@@ -137,7 +137,26 @@ bool AreSceneEnvironmentValuesEqual(const SceneEnvironment &lhs,
       lhs.fog.temporalWeight != rhs.fog.temporalWeight ||
       lhs.fog.useSkyHorizonColor != rhs.fog.useSkyHorizonColor ||
       lhs.toneMapping.enabled != rhs.toneMapping.enabled ||
+      lhs.toneMapping.exposureMode != rhs.toneMapping.exposureMode ||
       lhs.toneMapping.exposure != rhs.toneMapping.exposure ||
+      lhs.toneMapping.automaticExposure.targetLuminance !=
+          rhs.toneMapping.automaticExposure.targetLuminance ||
+      lhs.toneMapping.automaticExposure.compensationEv !=
+          rhs.toneMapping.automaticExposure.compensationEv ||
+      lhs.toneMapping.automaticExposure.minExposureEv !=
+          rhs.toneMapping.automaticExposure.minExposureEv ||
+      lhs.toneMapping.automaticExposure.maxExposureEv !=
+          rhs.toneMapping.automaticExposure.maxExposureEv ||
+      lhs.toneMapping.automaticExposure.speedUp !=
+          rhs.toneMapping.automaticExposure.speedUp ||
+      lhs.toneMapping.automaticExposure.speedDown !=
+          rhs.toneMapping.automaticExposure.speedDown ||
+      lhs.toneMapping.whiteBalanceTemperature !=
+          rhs.toneMapping.whiteBalanceTemperature ||
+      lhs.toneMapping.whiteBalanceTint !=
+          rhs.toneMapping.whiteBalanceTint ||
+      lhs.toneMapping.contrast != rhs.toneMapping.contrast ||
+      lhs.toneMapping.saturation != rhs.toneMapping.saturation ||
       lhs.toneMapping.gamma != rhs.toneMapping.gamma ||
       lhs.toneMapping.mode != rhs.toneMapping.mode ||
       lhs.specularIntensity != rhs.specularIntensity ||
@@ -175,7 +194,26 @@ bool AreQualityEnvironmentValuesEqual(const SceneEnvironment &lhs,
          lhs.bloom.radius == rhs.bloom.radius &&
          lhs.bloom.downsampleCount == rhs.bloom.downsampleCount &&
          lhs.toneMapping.enabled == rhs.toneMapping.enabled &&
+         lhs.toneMapping.exposureMode == rhs.toneMapping.exposureMode &&
          lhs.toneMapping.exposure == rhs.toneMapping.exposure &&
+         lhs.toneMapping.automaticExposure.targetLuminance ==
+             rhs.toneMapping.automaticExposure.targetLuminance &&
+         lhs.toneMapping.automaticExposure.compensationEv ==
+             rhs.toneMapping.automaticExposure.compensationEv &&
+         lhs.toneMapping.automaticExposure.minExposureEv ==
+             rhs.toneMapping.automaticExposure.minExposureEv &&
+         lhs.toneMapping.automaticExposure.maxExposureEv ==
+             rhs.toneMapping.automaticExposure.maxExposureEv &&
+         lhs.toneMapping.automaticExposure.speedUp ==
+             rhs.toneMapping.automaticExposure.speedUp &&
+         lhs.toneMapping.automaticExposure.speedDown ==
+             rhs.toneMapping.automaticExposure.speedDown &&
+         lhs.toneMapping.whiteBalanceTemperature ==
+             rhs.toneMapping.whiteBalanceTemperature &&
+         lhs.toneMapping.whiteBalanceTint ==
+             rhs.toneMapping.whiteBalanceTint &&
+         lhs.toneMapping.contrast == rhs.toneMapping.contrast &&
+         lhs.toneMapping.saturation == rhs.toneMapping.saturation &&
          lhs.toneMapping.gamma == rhs.toneMapping.gamma &&
          lhs.toneMapping.mode == rhs.toneMapping.mode &&
          EqualPostSettings(lhs.post, rhs.post);

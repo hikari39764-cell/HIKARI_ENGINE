@@ -97,6 +97,14 @@ namespace HIKARI::POST {
     void PostSystem::SetFxaaSettings(const FxaaSettings& settings) { processingStage_.SetFxaaSettings(settings); }
     const PostSystem::FxaaSettings& PostSystem::GetFxaaSettings() { return processingStage_.GetFxaaSettings(); }
     const PostSystem::BloomDebugStats& PostSystem::GetBloomDebugStats() { return processingStage_.GetBloomDebugStats(); }
+    const RENDER3D::COLOR::ExposureFrameState&
+        PostSystem::GetExposureState() {
+        return processingStage_.GetExposureState();
+    }
+    const RENDER3D::COLOR::AutomaticExposureDebugState&
+        PostSystem::GetAutomaticExposureDebugState() {
+        return processingStage_.GetAutomaticExposureDebugState();
+    }
     void PostSystem::SetTransitionState(const TransitionVisualState& state) { processingStage_.SetTransitionState(state); }
     void PostSystem::ClearTransitionState() { processingStage_.ClearTransitionState(); }
     void PostSystem::RequestFrameDump() { processingStage_.RequestFrameDump(); }

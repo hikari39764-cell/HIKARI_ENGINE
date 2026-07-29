@@ -254,23 +254,43 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
             float sceneExposure = 1.0f;
             float gamma = 2.2f;
             int toneMappingMode = 2;
+            COLOR::DisplayColorFrameState displayColor{};
+            COLOR::ExposureMode exposureMode =
+                COLOR::ExposureMode::Manual;
             if (state.request.shadingMode ==
                     EditorInteractiveShadingMode::Lit) {
                 toneMappingEnabled = environment.toneMapping.enabled;
+                exposureMode = environment.toneMapping.exposureMode;
                 sceneExposure =
                     (std::max)(0.0f, environment.toneMapping.exposure);
                 gamma = (std::max)(0.01f, environment.toneMapping.gamma);
                 toneMappingMode = environment.toneMapping.mode;
+                displayColor = COLOR::BuildDisplayColorFrame(
+                    environment.toneMapping.whiteBalanceTemperature,
+                    environment.toneMapping.whiteBalanceTint,
+                    environment.toneMapping.contrast,
+                    environment.toneMapping.saturation);
             } else if (state.request.shadingMode ==
                     EditorInteractiveShadingMode::Unlit) {
                 toneMappingEnabled = false;
                 toneMappingMode = 0;
             }
 
-            const COLOR::ExposureFrameState exposureState =
+            COLOR::ExposureFrameState exposureState =
                 COLOR::BuildManualExposureFrame(
                     sceneExposure,
                     userExposure);
+            if (exposureMode == COLOR::ExposureMode::Automatic) {
+                exposureState = POST::PostSystem::GetExposureState();
+                if (!exposureState.valid ||
+                    exposureState.mode !=
+                        COLOR::ExposureMode::Automatic) {
+                    exposureState =
+                        COLOR::BuildManualExposureFrame(sceneExposure);
+                }
+                exposureState.exposureMultiplier *= userExposure;
+                exposureState.exposureCompensation *= userExposure;
+            }
             POST::CommonParams parameters{};
             parameters.resolutionX = static_cast<float>(state.target->GetWidth());
             parameters.resolutionY = static_cast<float>(state.target->GetHeight());
@@ -279,6 +299,18 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
                 exposureState.exposureMultiplier,
                 gamma,
                 static_cast<float>(toneMappingMode)
+            };
+            parameters.user[1] = {
+                displayColor.whiteBalanceR,
+                displayColor.whiteBalanceG,
+                displayColor.whiteBalanceB,
+                displayColor.contrast
+            };
+            parameters.user[2] = {
+                displayColor.saturation,
+                0.0f,
+                0.0f,
+                0.0f
             };
 
             state.displayTarget->BeginCapture(0.0f, 0.0f, 0.0f, 1.0f);

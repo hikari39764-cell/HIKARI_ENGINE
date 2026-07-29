@@ -5,6 +5,8 @@
 #include <DirectXMath.h>
 
 #include "Gfx/HIKARI_GfxContext.h"
+#include "Render3D/Color/HIKARI_AutomaticExposure.h"
+#include "Render3D/Color/HIKARI_ExposureState.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Render3D/Resources/HIKARI_RenderTextureView.h"
 #include "Scene/HIKARI_SceneTransitionBus.h"
@@ -49,6 +51,10 @@ namespace HIKARI::POST {
         static void SetFxaaSettings(const FxaaSettings& settings);
         static const FxaaSettings& GetFxaaSettings();
         static const BloomDebugStats& GetBloomDebugStats();
+        static const RENDER3D::COLOR::ExposureFrameState&
+            GetExposureState();
+        static const RENDER3D::COLOR::AutomaticExposureDebugState&
+            GetAutomaticExposureDebugState();
         static void SetTransitionState(const TransitionVisualState& state);
         static void ClearTransitionState();
 

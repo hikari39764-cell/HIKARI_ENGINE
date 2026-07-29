@@ -61,6 +61,41 @@ namespace HIKARI::SCENE::SERIALIZATION {
             return fallback;
         }
 
+        const char* ExposureModeName(
+            RENDER3D::COLOR::ExposureMode mode) {
+            switch (mode) {
+            case RENDER3D::COLOR::ExposureMode::Automatic:
+                return "Automatic";
+            case RENDER3D::COLOR::ExposureMode::Manual:
+            default:
+                return "Manual";
+            }
+        }
+
+        RENDER3D::COLOR::ExposureMode ParseExposureMode(
+            const nlohmann::json& node,
+            RENDER3D::COLOR::ExposureMode fallback) {
+
+            if (node.is_number_integer()) {
+                return node.get<int>() ==
+                        static_cast<int>(
+                            RENDER3D::COLOR::ExposureMode::Automatic)
+                    ? RENDER3D::COLOR::ExposureMode::Automatic
+                    : RENDER3D::COLOR::ExposureMode::Manual;
+            }
+            if (!node.is_string()) {
+                return fallback;
+            }
+            const std::string value = node.get<std::string>();
+            if (value == "Automatic" || value == "automatic") {
+                return RENDER3D::COLOR::ExposureMode::Automatic;
+            }
+            if (value == "Manual" || value == "manual") {
+                return RENDER3D::COLOR::ExposureMode::Manual;
+            }
+            return fallback;
+        }
+
         const char* ToString(ReflectionProbeInfluenceShape shape) {
 
             switch (shape) {
@@ -267,7 +302,27 @@ namespace HIKARI::SCENE::SERIALIZATION {
         out["fog"]["useSkyHorizonColor"] = environment.fog.useSkyHorizonColor;
 
         out["toneMapping"]["enabled"] = environment.toneMapping.enabled;
+        out["toneMapping"]["exposureMode"] =
+            ExposureModeName(environment.toneMapping.exposureMode);
         out["toneMapping"]["exposure"] = environment.toneMapping.exposure;
+        out["toneMapping"]["automaticExposure"]["targetLuminance"] =
+            environment.toneMapping.automaticExposure.targetLuminance;
+        out["toneMapping"]["automaticExposure"]["compensationEv"] =
+            environment.toneMapping.automaticExposure.compensationEv;
+        out["toneMapping"]["automaticExposure"]["minExposureEv"] =
+            environment.toneMapping.automaticExposure.minExposureEv;
+        out["toneMapping"]["automaticExposure"]["maxExposureEv"] =
+            environment.toneMapping.automaticExposure.maxExposureEv;
+        out["toneMapping"]["automaticExposure"]["speedUp"] =
+            environment.toneMapping.automaticExposure.speedUp;
+        out["toneMapping"]["automaticExposure"]["speedDown"] =
+            environment.toneMapping.automaticExposure.speedDown;
+        out["toneMapping"]["whiteBalanceTemperature"] =
+            environment.toneMapping.whiteBalanceTemperature;
+        out["toneMapping"]["whiteBalanceTint"] =
+            environment.toneMapping.whiteBalanceTint;
+        out["toneMapping"]["contrast"] = environment.toneMapping.contrast;
+        out["toneMapping"]["saturation"] = environment.toneMapping.saturation;
         out["toneMapping"]["gamma"] = environment.toneMapping.gamma;
         out["toneMapping"]["mode"] = environment.toneMapping.mode;
 
@@ -491,7 +546,52 @@ namespace HIKARI::SCENE::SERIALIZATION {
         if (node.contains("toneMapping") && node["toneMapping"].is_object()) {
             const nlohmann::json& toneMapping = node["toneMapping"];
             outEnvironment.toneMapping.enabled = toneMapping.value("enabled", outEnvironment.toneMapping.enabled);
+            if (toneMapping.contains("exposureMode")) {
+                outEnvironment.toneMapping.exposureMode =
+                    ParseExposureMode(
+                        toneMapping["exposureMode"],
+                        outEnvironment.toneMapping.exposureMode);
+            }
             outEnvironment.toneMapping.exposure = toneMapping.value("exposure", outEnvironment.toneMapping.exposure);
+            if (toneMapping.contains("automaticExposure") &&
+                toneMapping["automaticExposure"].is_object()) {
+                const nlohmann::json& automaticExposure =
+                    toneMapping["automaticExposure"];
+                auto& settings =
+                    outEnvironment.toneMapping.automaticExposure;
+                settings.targetLuminance = automaticExposure.value(
+                    "targetLuminance",
+                    settings.targetLuminance);
+                settings.compensationEv = automaticExposure.value(
+                    "compensationEv",
+                    settings.compensationEv);
+                settings.minExposureEv = automaticExposure.value(
+                    "minExposureEv",
+                    settings.minExposureEv);
+                settings.maxExposureEv = automaticExposure.value(
+                    "maxExposureEv",
+                    settings.maxExposureEv);
+                settings.speedUp = automaticExposure.value(
+                    "speedUp",
+                    settings.speedUp);
+                settings.speedDown = automaticExposure.value(
+                    "speedDown",
+                    settings.speedDown);
+            }
+            outEnvironment.toneMapping.whiteBalanceTemperature =
+                toneMapping.value(
+                    "whiteBalanceTemperature",
+                    outEnvironment.toneMapping.whiteBalanceTemperature);
+            outEnvironment.toneMapping.whiteBalanceTint =
+                toneMapping.value(
+                    "whiteBalanceTint",
+                    outEnvironment.toneMapping.whiteBalanceTint);
+            outEnvironment.toneMapping.contrast = toneMapping.value(
+                "contrast",
+                outEnvironment.toneMapping.contrast);
+            outEnvironment.toneMapping.saturation = toneMapping.value(
+                "saturation",
+                outEnvironment.toneMapping.saturation);
             outEnvironment.toneMapping.gamma = toneMapping.value("gamma", outEnvironment.toneMapping.gamma);
             outEnvironment.toneMapping.mode = toneMapping.value("mode", outEnvironment.toneMapping.mode);
         }

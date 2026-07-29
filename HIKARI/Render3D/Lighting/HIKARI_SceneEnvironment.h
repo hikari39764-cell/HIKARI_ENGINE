@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include <DirectXMath.h>
+#include "Render3D/Color/HIKARI_ExposureState.h"
 #include "Render3D/Debug/HIKARI_RenderDebugView.h"
 #include "Render3D/HIKARI_Math3D.h"
 
@@ -164,9 +165,16 @@ namespace HIKARI {
         // enabled は Tone Curve のみを制御する。
         // Exposure と Display Transfer は SDR 出力時に常に適用する。
         bool enabled = true;
-        float exposure = 1.0f; // Manual scene exposure multiplier.
+        RENDER3D::COLOR::ExposureMode exposureMode =
+            RENDER3D::COLOR::ExposureMode::Manual;
+        float exposure = 1.0f; // Manual exposure and automatic-mode seed.
+        RENDER3D::COLOR::AutomaticExposureSettings automaticExposure{};
+        float whiteBalanceTemperature = 6500.0f;
+        float whiteBalanceTint = 0.0f;
+        float contrast = 1.0f;
+        float saturation = 1.0f;
         float gamma = 2.2f; // SDR display transfer approximation.
-        int mode = 2; // 0=None, 1=Reinhard, 2=ACES approximate
+        int mode = 2; // 0=None, 1=Reinhard, 2=ACES fitted
     };
 
     struct ScenePostSettings {
