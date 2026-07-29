@@ -55,13 +55,20 @@ float3 ReconstructRay(float2 uv)
     return normalize(world.xyz - gCameraPos.xyz);
 }
 
-float ShadowVisibility(float3 worldPosition)
+float ShadowVisibility(
+    float3 worldPosition,
+    float3 cameraForward)
 {
     if (gFrameParams.z < 0.5f)
     {
         return 1.0f;
     }
-    const float viewDistance = length(worldPosition - gCameraPos.xyz);
+    const float viewDistance =
+        max(
+            dot(
+                worldPosition - gCameraPos.xyz,
+                cameraForward),
+            0.0f);
     const uint cascadeCount =
         clamp((uint)round(gShadowCascadeParams.x), 1u, 4u);
     uint cascadeIndex = 0u;
@@ -103,6 +110,7 @@ float HenyeyGreenstein(float cosTheta, float anisotropy)
 float3 EvaluateLighting(
     float3 worldPosition,
     float3 viewRay,
+    float3 cameraForward,
     float2 pixelPosition,
     uint localLightDepthSlice,
     float3 directionalRadiance)
@@ -111,7 +119,7 @@ float3 EvaluateLighting(
     lighting += directionalRadiance *
         lerp(
             1.0f,
-            ShadowVisibility(worldPosition),
+            ShadowVisibility(worldPosition, cameraForward),
             gDirectionalColorShadow.a);
 
     const uint2 localLightCluster =
@@ -167,6 +175,8 @@ void InjectAndIntegrateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     const float2 pixelPosition =
         uv * float2(sceneWidth, sceneHeight);
     const float3 ray = ReconstructRay(uv);
+    const float3 cameraForward =
+        ReconstructRay(float2(0.5f, 0.5f));
     const float3 toDirectionalLight =
         normalize(-gDirectionalDirIntensity.xyz);
     const float directionalPhase = HenyeyGreenstein(
@@ -207,6 +217,7 @@ void InjectAndIntegrateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         const float3 lighting = EvaluateLighting(
             worldPosition,
             ray,
+            cameraForward,
             pixelPosition,
             localLightDepthSlice,
             directionalRadiance);

@@ -48,12 +48,6 @@ void DrawDirectionalShadow(SceneEnvironment &environment) {
   ImGui::DragFloat("Shadow Distance",
                    &environment.directionalShadow.shadowDistance,
                    0.1f, 1.0f, 200.0f);
-  float acneFix = (std::max)(environment.directionalShadow.depthBias * 1000.0f,
-                             environment.directionalShadow.normalBias * 25.0f);
-  if (ImGui::DragFloat("Shadow Acne Fix", &acneFix, 0.01f, 0.0f, 10.0f)) {
-    environment.directionalShadow.depthBias = acneFix * 0.001f;
-    environment.directionalShadow.normalBias = acneFix * 0.04f;
-  }
 
   if (ImGui::TreeNode("Advanced Shadow Parameters")) {
     const int resolutions[] = {1024, 2048, 4096};
@@ -127,10 +121,12 @@ void DrawScreenSpaceReflections(SceneEnvironment &environment) {
   ImGui::DragFloat("Maximum Roughness", &settings.maxRoughness, 0.01f, 0.05f,
                    1.0f);
   ImGui::TextDisabled("Fallback: SSR -> Local Reflection Probe -> Sky IBL");
+  ImGui::TextDisabled(
+      "SSR only resolves screen-visible hits; off-screen rays keep fallback.");
 
   if (ImGui::TreeNode("Advanced Ray Marching")) {
-    ImGui::DragFloat("Depth Thickness", &settings.thickness, 0.0001f, 0.0001f,
-                     0.05f, "%.5f");
+    ImGui::DragFloat("Relative Depth Thickness", &settings.thickness, 0.0001f,
+                     0.0001f, 0.05f, "%.5f");
     ImGui::DragFloat("Ray Stride", &settings.stride, 0.01f, 0.02f, 2.0f);
     ImGui::DragFloat("Screen Edge Fade", &settings.edgeFade, 0.005f, 0.01f,
                      0.35f);

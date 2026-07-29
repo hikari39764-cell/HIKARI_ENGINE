@@ -61,7 +61,8 @@ float3 ReconstructWorldPosition(float2 uv, float depth)
 bool ProjectWorldPosition(
     float3 worldPosition,
     out float2 uv,
-    out float projectedDepth)
+    out float projectedDepth,
+    out float viewDepth)
 {
     const float4 clip =
         mul(gViewProj, float4(worldPosition, 1.0f));
@@ -69,13 +70,105 @@ bool ProjectWorldPosition(
     {
         uv = 0.0f;
         projectedDepth = 1.0f;
+        viewDepth = 0.0f;
         return false;
     }
     const float3 ndc = clip.xyz / clip.w;
     uv = float2(ndc.x * 0.5f + 0.5f, -ndc.y * 0.5f + 0.5f);
     projectedDepth = ndc.z;
+    viewDepth = clip.w;
     return all(uv > 0.0f) && all(uv < 1.0f) &&
         projectedDepth > 0.0f && projectedDepth < 1.0f;
+}
+
+bool EvaluateRayDepth(
+    float3 candidatePosition,
+    out float2 candidateUv,
+    out float candidateDepth,
+    out float depthDelta,
+    out float3 surfaceWorldPosition)
+{
+    float candidateViewDepth;
+    if (!ProjectWorldPosition(
+            candidatePosition,
+            candidateUv,
+            candidateDepth,
+            candidateViewDepth))
+    {
+        depthDelta = 0.0f;
+        surfaceWorldPosition = 0.0f.xxx;
+        return false;
+    }
+
+    const float surfaceDepth =
+        gSceneDepth.SampleLevel(
+            gPointClamp,
+            candidateUv,
+            0.0f);
+    if (surfaceDepth >= 0.99999f)
+    {
+        depthDelta = 0.0f;
+        surfaceWorldPosition = 0.0f.xxx;
+        return false;
+    }
+
+    surfaceWorldPosition =
+        ReconstructWorldPosition(candidateUv, surfaceDepth);
+    const float surfaceViewDepth =
+        mul(
+            gViewProj,
+            float4(surfaceWorldPosition, 1.0f)).w;
+    depthDelta = candidateViewDepth - surfaceViewDepth;
+    return surfaceViewDepth > 0.0f;
+}
+
+bool RefineRayIntersection(
+    float3 rayOrigin,
+    float3 rayDirection,
+    float frontTravel,
+    float backTravel,
+    out float refinedTravel,
+    out float2 refinedUv,
+    out float refinedDepthDelta,
+    out float3 refinedSurfaceWorldPosition)
+{
+    float lowTravel = frontTravel;
+    float highTravel = backTravel;
+
+    [unroll]
+    for (uint refinementStep = 0u; refinementStep < 5u; ++refinementStep)
+    {
+        const float middleTravel =
+            (lowTravel + highTravel) * 0.5f;
+        float2 middleUv;
+        float middleDepth;
+        float middleDelta;
+        float3 middleSurfaceWorldPosition;
+        const bool middleValid =
+            EvaluateRayDepth(
+                rayOrigin + rayDirection * middleTravel,
+                middleUv,
+                middleDepth,
+                middleDelta,
+                middleSurfaceWorldPosition);
+        if (!middleValid || middleDelta < 0.0f)
+        {
+            lowTravel = middleTravel;
+        }
+        else
+        {
+            highTravel = middleTravel;
+        }
+    }
+
+    float refinedDepth;
+    refinedTravel = highTravel;
+    return EvaluateRayDepth(
+        rayOrigin + rayDirection * refinedTravel,
+        refinedUv,
+        refinedDepth,
+        refinedDepthDelta,
+        refinedSurfaceWorldPosition);
 }
 
 float ScreenEdgeConfidence(float2 uv)
@@ -122,10 +215,23 @@ float4 PSMain(FullscreenVertex input) : SV_TARGET
         return baseSceneColor;
     }
 
+    // March spacing and receiver separation are distinct controls. Keeping the
+    // origin bias small avoids skipping nearby feet and thin props.
+    const float originBias =
+        clamp(gStride * 0.10f, 0.005f, 0.025f);
+    const float3 rayOrigin =
+        worldPosition + normal * originBias;
+
     bool hit = false;
     float2 hitUv = input.uv;
     float hitTravel = 0.0f;
-    float travel = max(gStride, 0.01f);
+    float hitDepthDelta = 0.0f;
+    float hitFrontFacing = 0.0f;
+    float hitRefinementWindow = 1.0f;
+    float previousTravel = 0.0f;
+    float previousDepthDelta = -1.0f;
+    bool previousDepthValid = true;
+    float travel = max(gStride * 0.25f, 0.01f);
     [loop]
     for (uint stepIndex = 0u; stepIndex < 96u; ++stepIndex)
     {
@@ -135,16 +241,22 @@ float4 PSMain(FullscreenVertex input) : SV_TARGET
         }
 
         const float3 candidatePosition =
-            worldPosition + normal * max(gStride, 0.01f) +
+            rayOrigin +
             reflectionDirection * travel;
         float2 candidateUv;
         float candidateDepth;
-        if (!ProjectWorldPosition(
+        float depthDelta;
+        float3 surfaceWorldPosition;
+        if (!EvaluateRayDepth(
                 candidatePosition,
                 candidateUv,
-                candidateDepth))
+                candidateDepth,
+                depthDelta,
+                surfaceWorldPosition))
         {
-            break;
+            previousDepthValid = false;
+            travel += max(gStride, travel * 0.035f);
+            continue;
         }
 
         const float adaptiveMip =
@@ -160,26 +272,97 @@ float4 PSMain(FullscreenVertex input) : SV_TARGET
                 candidateUv,
                 adaptiveMip);
 
-        // A max-reduction HZB can reject candidates still in front of every
-        // surface in the tile. Full-resolution depth confirms the crossing.
-        if (candidateDepth + gThickness >= hierarchyDepth)
+        // The shared HZB is a standard-Z max hierarchy. It can identify a
+        // coarse crossing, but it cannot prove the first visible intersection
+        // when a tile contains both foreground geometry and background.
+        // Full-resolution linear view depth therefore owns hit correctness.
+        const bool hierarchyCrossing =
+            candidateDepth + gThickness >= hierarchyDepth;
+        const float candidateViewDepth =
+            mul(
+                gViewProj,
+                float4(candidatePosition, 1.0f)).w;
+        const float viewThickness =
+            max(
+                gThickness * max(candidateViewDepth, 1.0f),
+                0.0025f);
+        const bool crossedSurface =
+            previousDepthValid &&
+            previousDepthDelta < 0.0f &&
+            depthDelta >= 0.0f;
+        const bool closeToSurface =
+            depthDelta >= -viewThickness &&
+            depthDelta <= viewThickness * 2.0f;
+        if (closeToSurface || crossedSurface || hierarchyCrossing)
         {
-            const float surfaceDepth =
-                gSceneDepth.SampleLevel(
+            float refinedTravel = travel;
+            float2 refinedUv = candidateUv;
+            float refinedDepthDelta = depthDelta;
+            float3 refinedSurfaceWorldPosition =
+                surfaceWorldPosition;
+            bool refinedValid = true;
+            if (crossedSurface)
+            {
+                refinedValid = RefineRayIntersection(
+                    rayOrigin,
+                    reflectionDirection,
+                    previousTravel,
+                    travel,
+                    refinedTravel,
+                    refinedUv,
+                    refinedDepthDelta,
+                    refinedSurfaceWorldPosition);
+            }
+            if (!refinedValid)
+            {
+                previousDepthValid = false;
+                travel += max(gStride, travel * 0.035f);
+                continue;
+            }
+
+            float3 hitNormal;
+            float hitRoughness;
+            float hitMetallic;
+            HikariUnpackSceneSurface(
+                gSceneSurface.SampleLevel(
                     gPointClamp,
-                    candidateUv,
-                    0.0f);
-            const float depthDelta = candidateDepth - surfaceDepth;
-            if (surfaceDepth < 0.99999f &&
-                depthDelta >= -gThickness &&
-                depthDelta <= gThickness * 4.0f)
+                    refinedUv,
+                    0.0f),
+                hitNormal,
+                hitRoughness,
+                hitMetallic);
+            const float frontFacing =
+                dot(hitNormal, -reflectionDirection);
+            const float planeSeparation =
+                abs(
+                    dot(
+                        refinedSurfaceWorldPosition - worldPosition,
+                        normal));
+            const bool sameReceiverPlane =
+                dot(hitNormal, normal) > 0.96f &&
+                planeSeparation < max(originBias * 2.0f, 0.01f);
+            const float refinementWindow =
+                max(
+                    viewThickness * 4.0f,
+                    (travel - previousTravel) * 0.75f);
+            if (frontFacing > 0.05f &&
+                !sameReceiverPlane &&
+                refinedDepthDelta >= -viewThickness &&
+                refinedDepthDelta <= refinementWindow)
             {
                 hit = true;
-                hitUv = candidateUv;
-                hitTravel = travel;
+                hitUv = refinedUv;
+                hitTravel = refinedTravel;
+                hitDepthDelta = refinedDepthDelta;
+                hitFrontFacing = frontFacing;
+                hitRefinementWindow = refinementWindow;
                 break;
             }
         }
+
+        previousDepthValid = true;
+        previousTravel = travel;
+        previousDepthDelta = depthDelta;
         travel += max(gStride, travel * 0.035f);
     }
 
@@ -194,11 +377,19 @@ float4 PSMain(FullscreenVertex input) : SV_TARGET
             roughness);
     const float facingConfidence =
         saturate(1.0f - abs(dot(-incident, normal)));
+    const float intersectionConfidence =
+        hit
+            ? saturate(
+                hitFrontFacing *
+                (1.0f - abs(hitDepthDelta) /
+                    max(hitRefinementWindow, 0.01f)))
+            : 0.0f;
     const float confidence =
         edgeConfidence *
         distanceConfidence *
         roughnessConfidence *
-        lerp(0.35f, 1.0f, facingConfidence);
+        lerp(0.35f, 1.0f, facingConfidence) *
+        lerp(0.35f, 1.0f, intersectionConfidence);
 
     if (gDebugMode == 1u)
     {
