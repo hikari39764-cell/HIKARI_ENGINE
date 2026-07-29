@@ -143,6 +143,9 @@ namespace HIKARI::LIGHTING_AUTHORING {
             volume.settings.blendDistance = properties.value(
                 "blendDistance",
                 1.0f);
+            volume.settings.normalBias = properties.value(
+                "normalBias",
+                0.2f);
             volume.settings.captureResolution = properties.value(
                 "captureResolution",
                 32u);
@@ -352,6 +355,7 @@ namespace HIKARI::LIGHTING_AUTHORING {
                 { "countZ", settings.countZ },
                 { "intensity", settings.intensity },
                 { "blendDistance", settings.blendDistance },
+                { "normalBias", settings.normalBias },
                 { "captureResolution", settings.captureResolution },
                 { "shOrder", settings.shOrder },
                 { "priority", volume.priority },

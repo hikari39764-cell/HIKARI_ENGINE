@@ -36,8 +36,18 @@ float3 HikariEvaluateLightProbeVolumeDiffuse(
     }
 
     float3 floatCounts = (float3)counts;
+    float spacingMinimum = min(
+        min(
+            volume.spacingIntensity.x,
+            volume.spacingIntensity.y),
+        volume.spacingIntensity.z);
+    float normalBiasDistance =
+        spacingMinimum *
+        clamp(volume.selectionParams.z, 0.0f, 0.5f);
+    float3 sampleWorldPosition =
+        worldPos + normalize(n) * normalBiasDistance;
     float3 gridCoord =
-        (worldPos - volume.originSampling.xyz) /
+        (sampleWorldPosition - volume.originSampling.xyz) /
         max(
             volume.spacingIntensity.xyz,
             0.0001f.xxx);

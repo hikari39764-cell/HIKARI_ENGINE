@@ -27,6 +27,7 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
         std::filesystem::path path{};
         float intensity = 1.0f;
         float blendDistance = 1.0f;
+        float normalBias = 0.2f;
         int priority = 0;
     };
 
@@ -43,6 +44,7 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
         uint32_t probeCount = 0;
         float intensity = 1.0f;
         float blendDistance = 1.0f;
+        float normalBias = 0.2f;
         int priority = 0;
         std::string sourcePath{};
     };

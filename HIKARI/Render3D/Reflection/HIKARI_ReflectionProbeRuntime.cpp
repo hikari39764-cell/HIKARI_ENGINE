@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "Core/HIKARI_Logger.h"
+#include "Render3D/Lighting/HIKARI_LightingProviderViewSelection.h"
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
 
 namespace HIKARI::REFLECTION {
@@ -112,73 +113,6 @@ namespace HIKARI::REFLECTION {
                 projectionBoxValid;
         }
 
-        float SmoothWeight(float value) {
-            const float x = std::clamp(value, 0.0f, 1.0f);
-            return x * x * (3.0f - 2.0f * x);
-        }
-
-        float SphereInfluence(
-            const ReflectionProbeRuntimeData& probe,
-            const MATH::Vec3& point) {
-
-            const float dx = point.x - probe.position.x;
-            const float dy = point.y - probe.position.y;
-            const float dz = point.z - probe.position.z;
-            const float distance = std::sqrt(dx * dx + dy * dy + dz * dz);
-            const float radius = (std::max)(0.001f, probe.radius);
-            const float blend = (std::min)(
-                (std::max)(0.001f, probe.blendDistance),
-                radius);
-            return SmoothWeight((radius - distance) / blend);
-        }
-
-        float BoxInfluence(
-            const ReflectionProbeRuntimeData& probe,
-            const MATH::Vec3& point) {
-
-            const MATH::Vec3 half{
-                probe.influenceBoxSize.x * 0.5f,
-                probe.influenceBoxSize.y * 0.5f,
-                probe.influenceBoxSize.z * 0.5f
-            };
-            const float edgeDistance = (std::min)({
-                half.x - std::abs(point.x - probe.influenceBoxCenter.x),
-                half.y - std::abs(point.y - probe.influenceBoxCenter.y),
-                half.z - std::abs(point.z - probe.influenceBoxCenter.z)
-            });
-            const float blend = (std::max)(
-                0.001f,
-                (std::min)(
-                    probe.blendDistance,
-                    (std::min)({ half.x, half.y, half.z })));
-            return SmoothWeight(edgeDistance / blend);
-        }
-
-        float EvaluateInfluence(
-            const ReflectionProbeRuntimeData& probe,
-            const MATH::Vec3& point) {
-
-            return probe.influenceShape ==
-                    RuntimeReflectionProbeInfluenceShape::Box
-                ? BoxInfluence(probe, point)
-                : SphereInfluence(probe, point);
-        }
-
-        float DistanceSquared(
-            const ReflectionProbeRuntimeData& probe,
-            const MATH::Vec3& point) {
-
-            const MATH::Vec3 center =
-                probe.influenceShape ==
-                    RuntimeReflectionProbeInfluenceShape::Box
-                ? probe.influenceBoxCenter
-                : probe.position;
-            const float dx = point.x - center.x;
-            const float dy = point.y - center.y;
-            const float dz = point.z - center.z;
-            return dx * dx + dy * dy + dz * dz;
-        }
-
         void LogSelectionIfChanged() {
             std::ostringstream key{};
             key << gProbes.size() << ":";
@@ -254,6 +188,10 @@ namespace HIKARI::REFLECTION {
             float influence = 0.0f;
             float distanceSquared = std::numeric_limits<float>::max();
         };
+        const RENDER3D::LIGHTING::LightingProviderViewSegment view{
+            cameraPosition,
+            viewFocusPosition
+        };
 
         std::vector<Candidate> candidates{};
         for (size_t index = 0; index < gProbes.size(); ++index) {
@@ -262,22 +200,33 @@ namespace HIKARI::REFLECTION {
             if (!probe.valid) {
                 continue;
             }
+            const MATH::Vec3 providerCenter =
+                probe.influenceShape ==
+                    RuntimeReflectionProbeInfluenceShape::Box
+                ? probe.influenceBoxCenter
+                : probe.position;
+            const float viewInfluence =
+                probe.influenceShape ==
+                    RuntimeReflectionProbeInfluenceShape::Box
+                ? RENDER3D::LIGHTING::
+                    EvaluateBoxInfluenceAlongView(
+                        view,
+                        probe.influenceBoxCenter,
+                        probe.influenceBoxSize,
+                        probe.blendDistance)
+                : RENDER3D::LIGHTING::
+                    EvaluateSphereInfluenceAlongView(
+                        view,
+                        probe.position,
+                        probe.radius,
+                        probe.blendDistance);
             candidates.push_back(Candidate{
                 index,
-                (std::max)(
-                    EvaluateInfluence(
-                        probe,
-                        cameraPosition),
-                    EvaluateInfluence(
-                        probe,
-                        viewFocusPosition)),
-                (std::min)(
-                    DistanceSquared(
-                        probe,
-                        cameraPosition),
-                    DistanceSquared(
-                        probe,
-                        viewFocusPosition))
+                viewInfluence,
+                RENDER3D::LIGHTING::
+                    DistanceSquaredToViewSegment(
+                        view,
+                        providerCenter)
             });
         }
         std::stable_sort(

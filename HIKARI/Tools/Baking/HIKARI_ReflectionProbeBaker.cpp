@@ -13,6 +13,18 @@
 
 namespace HIKARI::TOOLS::BAKING {
 
+    ReflectionProbeBakeQuality ResolveReflectionProbeBakeQuality(
+        uint32_t requestedResolution) noexcept {
+
+        if (requestedResolution <= 64u) {
+            return { 64u, 7u, 128u };
+        }
+        if (requestedResolution <= 128u) {
+            return { 128u, 8u, 192u };
+        }
+        return { 256u, 9u, 256u };
+    }
+
     namespace {
 
         void AddError(ReflectionProbeBakeResult& result, std::string message) {
@@ -180,9 +192,14 @@ namespace HIKARI::TOOLS::BAKING {
             return result;
         }
 
-        const uint32_t resolution = std::clamp(request.resolution, 32u, 256u);
-        const uint32_t mipCount = std::clamp(request.prefilteredMipCount, 1u, 9u);
-        const uint32_t sampleCount = std::clamp(request.prefilteredSampleCount, 32u, 256u);
+        const ReflectionProbeBakeQuality quality =
+            ResolveReflectionProbeBakeQuality(
+                request.resolution);
+        const uint32_t resolution = quality.resolution;
+        const uint32_t mipCount =
+            quality.prefilteredMipCount;
+        const uint32_t sampleCount =
+            quality.prefilteredSampleCount;
 
         std::string message{};
         if (!IblBaker::BakePrefilteredCubemapOnly(
@@ -211,8 +228,8 @@ namespace HIKARI::TOOLS::BAKING {
 
         if (!IblBaker::EnsureSharedBrdfLut(
                 result.brdfLutPath,
-                request.brdfLutSize,
-                request.brdfSampleCount,
+                256u,
+                256u,
                 request.forceRebake,
                 &message)) {
             AddError(result, "Failed to prepare shared BRDF LUT: " + message);

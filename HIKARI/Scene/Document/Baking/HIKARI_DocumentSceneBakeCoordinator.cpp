@@ -137,10 +137,6 @@ namespace HIKARI {
         job->request.blendDistance = probe->settings.blendDistance;
         job->request.priority = probe->settings.priority;
         job->request.resolution = probe->captureResolution;
-        job->request.prefilteredMipCount = 7;
-        job->request.prefilteredSampleCount = 128;
-        job->request.brdfLutSize = 256;
-        job->request.brdfSampleCount = 256;
         job->request.forceRebake = batchForce_;
         const auto objectHash =
             hashes.recordAuthoringHashes.find(probeId);

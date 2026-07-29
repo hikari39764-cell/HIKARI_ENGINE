@@ -14,6 +14,15 @@ namespace HIKARI {
 
     namespace TOOLS::BAKING {
 
+        struct ReflectionProbeBakeQuality {
+            uint32_t resolution = 128;
+            uint32_t prefilteredMipCount = 8;
+            uint32_t prefilteredSampleCount = 192;
+        };
+
+        ReflectionProbeBakeQuality ResolveReflectionProbeBakeQuality(
+            uint32_t requestedResolution) noexcept;
+
         struct ReflectionProbeBakeRequest {
             std::filesystem::path projectRoot{};
             std::string sceneGuid{};
@@ -32,10 +41,6 @@ namespace HIKARI {
             float blendDistance = 1.0f;
             int priority = 0;
             uint32_t resolution = 128;
-            uint32_t prefilteredMipCount = 7;
-            uint32_t prefilteredSampleCount = 128;
-            uint32_t brdfLutSize = 256;
-            uint32_t brdfSampleCount = 256;
             bool forceRebake = false;
             std::filesystem::path sourceCubemapPath{};
             std::string authoringHash{};

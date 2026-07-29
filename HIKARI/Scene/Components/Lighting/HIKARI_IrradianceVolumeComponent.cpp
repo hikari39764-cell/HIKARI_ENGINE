@@ -21,6 +21,7 @@ namespace HIKARI {
             { "countZ", countZ_ },
             { "intensity", intensity_ },
             { "blendDistance", blendDistance_ },
+            { "normalBias", normalBias_ },
             { "captureResolution", captureResolution_ },
             { "shOrder", shOrder_ },
             { "priority", priority_ },
@@ -41,6 +42,9 @@ namespace HIKARI {
         blendDistance_ = in.value(
             "blendDistance",
             blendDistance_);
+        normalBias_ = in.value(
+            "normalBias",
+            normalBias_);
         captureResolution_ = in.value(
             "captureResolution",
             captureResolution_);
@@ -80,6 +84,7 @@ namespace HIKARI {
         settings.countZ = countZ_;
         settings.intensity = intensity_;
         settings.blendDistance = blendDistance_;
+        settings.normalBias = normalBias_;
         settings.captureResolution = captureResolution_;
         settings.shOrder = shOrder_;
         ClampLightProbeVolumeSettings(settings);
@@ -89,6 +94,7 @@ namespace HIKARI {
         countZ_ = settings.countZ;
         intensity_ = settings.intensity;
         blendDistance_ = settings.blendDistance;
+        normalBias_ = settings.normalBias;
         captureResolution_ = settings.captureResolution;
         shOrder_ = settings.shOrder;
         if (bakeSet_.empty()) {

@@ -118,11 +118,29 @@ namespace HIKARI {
                     sceneSize.z * sceneSize.z);
             }
         }
-        int captureResolution = static_cast<int>(captureResolution_);
-        if (builder.Int("Capture Resolution", captureResolution)) {
-            captureResolution_ = static_cast<uint32_t>(
-                (std::max)(captureResolution, 1));
+        int captureQuality = captureResolution_ <= 64u
+            ? 0
+            : (captureResolution_ <= 128u ? 1 : 2);
+        static constexpr std::array<const char*, 3>
+            reflectionCaptureChoices{
+                "64 - Preview",
+                "128 - Standard",
+                "256 - High"
+            };
+        if (builder.Choice(
+                "Capture Quality",
+                captureQuality,
+                reflectionCaptureChoices)) {
+            static constexpr uint32_t resolutions[] = {
+                64u,
+                128u,
+                256u
+            };
+            captureResolution_ =
+                resolutions[std::clamp(captureQuality, 0, 2)];
         }
+        builder.Text(
+            "Higher quality uses a full roughness mip chain and more samples.");
 
         builder.Text("Influence");
         int influenceShape = influenceShape_ ==
@@ -249,6 +267,14 @@ namespace HIKARI {
         builder.Float("Size Z", size_.z);
         builder.Float("Intensity", intensity_);
         builder.Float("Blend Distance", blendDistance_);
+        builder.FloatRange(
+            "Surface Normal Bias",
+            normalBias_,
+            0.0f,
+            0.5f,
+            0.01f);
+        builder.Text(
+            "Normal bias samples GI slightly away from walls to reduce leaks.");
         builder.Int("Priority", priority_);
         if (builder.Button("Fit Size To Scene")) {
             MATH::Vec3 sceneSize{};
@@ -263,16 +289,33 @@ namespace HIKARI {
         int countX = static_cast<int>(countX_);
         int countY = static_cast<int>(countY_);
         int countZ = static_cast<int>(countZ_);
-        int captureResolution = static_cast<int>(captureResolution_);
         builder.Int("Count X", countX);
         builder.Int("Count Y", countY);
         builder.Int("Count Z", countZ);
-        builder.Int("Capture Resolution", captureResolution);
         countX_ = static_cast<uint32_t>((std::max)(countX, 1));
         countY_ = static_cast<uint32_t>((std::max)(countY, 1));
         countZ_ = static_cast<uint32_t>((std::max)(countZ, 1));
-        captureResolution_ = static_cast<uint32_t>(
-            (std::max)(captureResolution, 1));
+        int captureQuality = captureResolution_ <= 16u
+            ? 0
+            : (captureResolution_ <= 32u ? 1 : 2);
+        static constexpr std::array<const char*, 3>
+            irradianceCaptureChoices{
+                "16 - Preview",
+                "32 - Standard",
+                "64 - High"
+            };
+        if (builder.Choice(
+                "Capture Quality",
+                captureQuality,
+                irradianceCaptureChoices)) {
+            static constexpr uint32_t resolutions[] = {
+                16u,
+                32u,
+                64u
+            };
+            captureResolution_ =
+                resolutions[std::clamp(captureQuality, 0, 2)];
+        }
 
         builder.Text("Bake Routing");
         builder.String("Bake Set", bakeSet_);

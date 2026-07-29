@@ -80,6 +80,7 @@ namespace HIKARI::LIGHTING_AUTHORING {
                 lhs.countZ == rhs.countZ &&
                 lhs.intensity == rhs.intensity &&
                 lhs.blendDistance == rhs.blendDistance &&
+                lhs.normalBias == rhs.normalBias &&
                 lhs.priority == rhs.priority &&
                 lhs.bakeSet == rhs.bakeSet &&
                 lhs.scenario == rhs.scenario;
@@ -273,6 +274,8 @@ namespace HIKARI::LIGHTING_AUTHORING {
             provider.intensity = authored.settings.intensity;
             provider.blendDistance =
                 authored.settings.blendDistance;
+            provider.normalBias =
+                authored.settings.normalBias;
             provider.priority = authored.priority;
             provider.bakeSet = authored.bakeSet;
             provider.scenario = authored.scenario;

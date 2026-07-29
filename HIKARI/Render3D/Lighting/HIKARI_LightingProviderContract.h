@@ -69,6 +69,7 @@ namespace HIKARI::RENDER3D::LIGHTING {
         uint32_t countZ = 0;
         float intensity = 1.0f;
         float blendDistance = 1.0f;
+        float normalBias = 0.2f;
         int priority = 0;
         std::string bakeSet{ "Default" };
         std::string scenario{ "Default" };

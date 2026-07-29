@@ -13,6 +13,7 @@
 
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/HIKARI_AssetUsageAnalyzer.h"
+#include "Assets/Lighting/HIKARI_LightingBakeManifest.h"
 #include "Core/Serialization/Json/HIKARI_JsonMath.h"
 #include "Scene/HIKARI_SceneDocument.h"
 #include "Scene/Lighting/HIKARI_LightingAuthoringModel.h"
@@ -236,6 +237,8 @@ namespace HIKARI::ASSETS::LIGHTING {
 
             return {
                 { "kind", "ReflectionProbe" },
+                { "bakePolicyVersion",
+                    kReflectionProbeBakePolicyVersion },
                 { "position",
                     JsonMath::ToJsonArray(probe.position) },
                 { "captureRadius", probe.settings.radius },

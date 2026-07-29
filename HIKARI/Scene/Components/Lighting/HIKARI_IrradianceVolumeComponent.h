@@ -29,6 +29,9 @@ namespace HIKARI {
         float GetBlendDistance() const noexcept {
             return blendDistance_;
         }
+        float GetNormalBias() const noexcept {
+            return normalBias_;
+        }
         uint32_t GetCaptureResolution() const noexcept {
             return captureResolution_;
         }
@@ -47,6 +50,7 @@ namespace HIKARI {
         uint32_t countZ_ = 4;
         float intensity_ = 1.0f;
         float blendDistance_ = 1.0f;
+        float normalBias_ = 0.2f;
         uint32_t captureResolution_ = 32;
         uint32_t shOrder_ = 3;
         int priority_ = 0;

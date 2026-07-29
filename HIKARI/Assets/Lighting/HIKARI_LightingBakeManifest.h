@@ -10,6 +10,7 @@
 namespace HIKARI::ASSETS::LIGHTING {
 
     constexpr uint32_t kLightingBakeManifestVersion = 4;
+    constexpr uint32_t kReflectionProbeBakePolicyVersion = 2;
 
     struct ReflectionProbeBakeRecord {
         std::string id{};

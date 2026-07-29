@@ -37,6 +37,8 @@ namespace HIKARI::SCENE::SERIALIZATION {
         out["lightProbeVolume"]["intensity"] = lightProbe.intensity;
         out["lightProbeVolume"]["blendDistance"] =
             lightProbe.blendDistance;
+        out["lightProbeVolume"]["normalBias"] =
+            lightProbe.normalBias;
         out["lightProbeVolume"]["captureResolution"] = lightProbe.captureResolution;
         out["lightProbeVolume"]["shOrder"] = lightProbe.shOrder;
     }
@@ -70,6 +72,9 @@ namespace HIKARI::SCENE::SERIALIZATION {
             out.blendDistance = lightProbe.value(
                 "blendDistance",
                 out.blendDistance);
+            out.normalBias = lightProbe.value(
+                "normalBias",
+                out.normalBias);
             out.captureResolution = lightProbe.value("captureResolution", out.captureResolution);
             out.shOrder = lightProbe.value("shOrder", out.shOrder);
         }

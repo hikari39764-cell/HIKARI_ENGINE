@@ -22,6 +22,7 @@
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
+#include "Render3D/Lighting/HIKARI_LightingProviderViewSelection.h"
 
 namespace HIKARI::RENDER3D::LIGHTPROBE {
 
@@ -590,6 +591,8 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
                 (std::max)(0.0f, request.intensity);
             resident.data.blendDistance =
                 (std::max)(0.0f, request.blendDistance);
+            resident.data.normalBias =
+                std::clamp(request.normalBias, 0.0f, 0.5f);
             resident.data.priority = request.priority;
             resident.data.sourcePath =
                 request.path.lexically_normal().generic_string();
@@ -597,58 +600,6 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
                 resident,
                 residentIndex);
             return resident.data.valid;
-        }
-
-        float SmoothWeight(float value) {
-            const float x = std::clamp(value, 0.0f, 1.0f);
-            return x * x * (3.0f - 2.0f * x);
-        }
-
-        float EvaluateInfluence(
-            const LightProbeVolumeRuntimeData& volume,
-            const MATH::Vec3& point) {
-
-            const MATH::Vec3 maximum{
-                volume.origin.x + volume.size.x,
-                volume.origin.y + volume.size.y,
-                volume.origin.z + volume.size.z
-            };
-            const float edgeDistance = (std::min)({
-                point.x - volume.origin.x,
-                point.y - volume.origin.y,
-                point.z - volume.origin.z,
-                maximum.x - point.x,
-                maximum.y - point.y,
-                maximum.z - point.z
-            });
-            const float maximumBlend = (std::max)(
-                0.001f,
-                (std::min)({
-                    volume.size.x,
-                    volume.size.y,
-                    volume.size.z
-                }) * 0.5f);
-            const float blend = (std::max)(
-                0.001f,
-                (std::min)(
-                    volume.blendDistance,
-                    maximumBlend));
-            return SmoothWeight(edgeDistance / blend);
-        }
-
-        float DistanceSquared(
-            const LightProbeVolumeRuntimeData& volume,
-            const MATH::Vec3& point) {
-
-            const MATH::Vec3 center{
-                volume.origin.x + volume.size.x * 0.5f,
-                volume.origin.y + volume.size.y * 0.5f,
-                volume.origin.z + volume.size.z * 0.5f
-            };
-            const float dx = point.x - center.x;
-            const float dy = point.y - center.y;
-            const float dz = point.z - center.z;
-            return dx * dx + dy * dy + dz * dz;
         }
 
     } // namespace
@@ -761,6 +712,10 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
             float distanceSquared =
                 std::numeric_limits<float>::max();
         };
+        const LIGHTING::LightingProviderViewSegment view{
+            cameraPosition,
+            viewFocusPosition
+        };
         std::vector<Candidate> candidates{};
         for (size_t index = 0;
              index < gResidents.size();
@@ -772,22 +727,24 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
             if (!resident.data.valid) {
                 continue;
             }
+            const MATH::Vec3 center{
+                resident.data.origin.x +
+                    resident.data.size.x * 0.5f,
+                resident.data.origin.y +
+                    resident.data.size.y * 0.5f,
+                resident.data.origin.z +
+                    resident.data.size.z * 0.5f
+            };
             candidates.push_back(Candidate{
                 index,
-                (std::max)(
-                    EvaluateInfluence(
-                        resident.data,
-                        cameraPosition),
-                    EvaluateInfluence(
-                        resident.data,
-                        viewFocusPosition)),
-                (std::min)(
-                    DistanceSquared(
-                        resident.data,
-                        cameraPosition),
-                    DistanceSquared(
-                        resident.data,
-                        viewFocusPosition))
+                LIGHTING::EvaluateBoxInfluenceAlongView(
+                    view,
+                    center,
+                    resident.data.size,
+                    resident.data.blendDistance),
+                LIGHTING::DistanceSquaredToViewSegment(
+                    view,
+                    center)
             });
         }
         std::stable_sort(

@@ -329,7 +329,10 @@ namespace HIKARI::MESHRENDERER {
             gpu.selectionParams = {
                 static_cast<float>(volume->priority),
                 1.0f,
-                0.0f,
+                std::clamp(
+                    volume->normalBias,
+                    0.0f,
+                    0.5f),
                 0.0f
             };
         }

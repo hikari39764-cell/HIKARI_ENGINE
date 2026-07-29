@@ -311,6 +311,7 @@ namespace HIKARI::RENDER3D::LIGHTING {
                         record.shDataPath).lexically_normal(),
                     authored->intensity,
                     authored->blendDistance,
+                    authored->normalBias,
                     authored->priority
                 });
         }

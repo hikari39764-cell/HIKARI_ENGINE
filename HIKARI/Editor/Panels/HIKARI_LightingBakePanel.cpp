@@ -138,6 +138,95 @@ namespace HIKARI {
             }
             ImGui::TreePop();
         }
+
+        uint32_t CountEnabledItems(
+            const TOOLS::BAKING::LightingBakeStatus& status,
+            TOOLS::BAKING::LightingBakeItemKind kind) {
+
+            return static_cast<uint32_t>(std::count_if(
+                status.items.begin(),
+                status.items.end(),
+                [kind](
+                    const TOOLS::BAKING::LightingBakeItemStatus& item) {
+                    return item.enabled && item.kind == kind;
+                }));
+        }
+
+        void DrawLightingWorkflowSummary(
+            const TOOLS::BAKING::LightingBakeStatus& status,
+            const EDITOR::EditorThemePalette& palette) {
+
+            const uint32_t reflectionCount = CountEnabledItems(
+                status,
+                TOOLS::BAKING::LightingBakeItemKind::ReflectionProbe);
+            const uint32_t irradianceCount = CountEnabledItems(
+                status,
+                TOOLS::BAKING::LightingBakeItemKind::IrradianceVolume);
+
+            ImGui::SeparatorText("Lighting Foundation");
+            if (ImGui::BeginTable(
+                    "LightingFoundationSummary",
+                    3,
+                    ImGuiTableFlags_SizingStretchSame |
+                        ImGuiTableFlags_BordersInnerV)) {
+                ImGui::TableNextColumn();
+                ImGui::TextDisabled("DIFFUSE GI");
+                ImGui::Text(
+                    "%u Irradiance Volume%s",
+                    irradianceCount,
+                    irradianceCount == 1u ? "" : "s");
+                ImGui::TextDisabled(
+                    "Fallback: Sky / Ambient");
+
+                ImGui::TableNextColumn();
+                ImGui::TextDisabled("SPECULAR");
+                ImGui::Text(
+                    "%u Reflection Probe%s",
+                    reflectionCount,
+                    reflectionCount == 1u ? "" : "s");
+                ImGui::TextDisabled(
+                    "Fallback: Sky IBL");
+
+                ImGui::TableNextColumn();
+                ImGui::TextDisabled("BAKE STATE");
+                if (!status.valid) {
+                    EDITOR::StatusBadge(
+                        "Unavailable",
+                        EDITOR::EditorStatusTone::Error);
+                } else if (status.dirtyCount > 0u) {
+                    EDITOR::StatusBadge(
+                        "Needs Bake",
+                        EDITOR::EditorStatusTone::Warning);
+                } else {
+                    EDITOR::StatusBadge(
+                        "Ready",
+                        EDITOR::EditorStatusTone::Ready);
+                }
+                ImGui::TextDisabled(
+                    "Bake only capture changes");
+                ImGui::EndTable();
+            }
+
+            if (!status.valid) {
+                ImGui::TextColored(
+                    palette.warning,
+                    "Save the scene before creating persistent lighting outputs.");
+            } else if (status.dirtyCount > 0u) {
+                ImGui::TextColored(
+                    palette.warning,
+                    "%u provider%s changed. Runtime keeps the last valid "
+                    "result or its environment fallback until Bake Dirty completes.",
+                    status.dirtyCount,
+                    status.dirtyCount == 1u ? "" : "s");
+            } else if (status.totalCount > 0u) {
+                ImGui::TextColored(
+                    palette.success,
+                    "Local GI and reflection data are ready for runtime blending.");
+            }
+            ImGui::TextDisabled(
+                "Residency follows the camera-to-focus view segment; "
+                "final influence is evaluated per shaded surface.");
+        }
 #endif
 
     } // namespace
@@ -197,6 +286,9 @@ namespace HIKARI {
                     : EDITOR::EditorStatusTone::Warning);
             ImGui::EndTable();
         }
+
+        ImGui::Spacing();
+        DrawLightingWorkflowSummary(status, palette);
 
         ImGui::Spacing();
         const bool bakeBusy =
