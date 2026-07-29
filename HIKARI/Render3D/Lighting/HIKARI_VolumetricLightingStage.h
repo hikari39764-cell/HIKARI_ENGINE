@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include "Gfx/HIKARI_GfxContext.h"
+#include "Render3D/Lighting/HIKARI_LocalLightList.h"
 
 namespace HIKARI {
     class RenderTarget2D;
@@ -46,6 +47,7 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
         const GFX::Context& context,
         const TEMPORAL::TemporalFrameState& temporalFrame,
         const SceneEnvironment& environment,
+        const LIGHTING::LocalLightListGpuBindings& localLights,
         VolumetricLightingQuality quality,
         RenderDebugView debugView);
 

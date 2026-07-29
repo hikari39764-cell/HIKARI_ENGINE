@@ -28,6 +28,20 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                 reinterpret_cast<void**>(&mapped));
         }
 
+        template <typename T>
+        bool CreateMappedArrayBuffer(
+            ID3D12Device* device,
+            uint32_t count,
+            Microsoft::WRL::ComPtr<ID3D12Resource>& resource,
+            T*& mapped) {
+
+            return GFX::D3D12_BUFFER::CreateMappedUploadBuffer(
+                device,
+                static_cast<UINT64>(sizeof(T)) * count,
+                resource,
+                reinterpret_cast<void**>(&mapped));
+        }
+
     } // namespace
 
     void ResetEditorInteractiveResources() {
@@ -39,6 +53,22 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             }
             if (frame.lightCB != nullptr && frame.lightMapped != nullptr) {
                 frame.lightCB->Unmap(0, nullptr);
+            }
+            if (frame.localLightBuffer != nullptr &&
+                frame.localLightMapped != nullptr) {
+                frame.localLightBuffer->Unmap(0, nullptr);
+            }
+            if (frame.localLightClusterHeaderBuffer != nullptr &&
+                frame.localLightClusterHeaderMapped != nullptr) {
+                frame.localLightClusterHeaderBuffer->Unmap(
+                    0,
+                    nullptr);
+            }
+            if (frame.localLightClusterIndexBuffer != nullptr &&
+                frame.localLightClusterIndexMapped != nullptr) {
+                frame.localLightClusterIndexBuffer->Unmap(
+                    0,
+                    nullptr);
             }
             if (frame.shadowCB != nullptr && frame.shadowMapped != nullptr) {
                 frame.shadowCB->Unmap(0, nullptr);
@@ -88,6 +118,23 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                     device,
                     frame.lightCB,
                     frame.lightMapped) ||
+                !CreateMappedArrayBuffer(
+                    device,
+                    RENDER3D::LIGHTING::kMaximumLocalLightCount,
+                    frame.localLightBuffer,
+                    frame.localLightMapped) ||
+                !CreateMappedArrayBuffer(
+                    device,
+                    RENDER3D::LIGHTING::
+                        kMaximumLocalLightClusterCount,
+                    frame.localLightClusterHeaderBuffer,
+                    frame.localLightClusterHeaderMapped) ||
+                !CreateMappedArrayBuffer(
+                    device,
+                    RENDER3D::LIGHTING::
+                        kMaximumLocalLightClusterIndexCount,
+                    frame.localLightClusterIndexBuffer,
+                    frame.localLightClusterIndexMapped) ||
                 !CreateMappedConstantBuffer(
                     device,
                     frame.shadowCB,

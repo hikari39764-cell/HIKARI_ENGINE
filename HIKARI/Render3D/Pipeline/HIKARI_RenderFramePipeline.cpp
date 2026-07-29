@@ -130,6 +130,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
         const GFX::Context& graphics,
         const RenderViewContext& view,
         const SceneEnvironment& environment,
+        const LIGHTING::SceneLightingSet& lighting,
         RenderDebugView debugView) {
 
         if (view.cameraFrame == nullptr || !view.cameraFrame->valid) {
@@ -200,12 +201,6 @@ namespace HIKARI::RENDER3D::PIPELINE {
             RENDER3D::TEMPORAL::BeginTemporalFrame(temporalDesc);
         RENDER3D::TEMPORAL::UpdateTemporalResourceSystemContext(frame.graphics);
         (void)RENDER3D::TEMPORAL::BeginTemporalResources(temporalFrame);
-        (void)RENDER3D::VOLUMETRIC::PrepareVolumetricLightingFrame(
-            frame.graphics,
-            temporalFrame,
-            environment,
-            renderQuality.volumetricLightingQuality,
-            volumetricDebugView ? debugView : RenderDebugView::None);
         RENDER3D::TEMPORAL::SetTemporalDebugView(
             temporalDebugView ? debugView : RenderDebugView::None);
         const RENDER3D::UPSCALING::StreamlineDlssMode streamlineMode =
@@ -232,6 +227,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
             frame.graphics,
             camera,
             environment,
+            lighting,
             screenSpaceContext.width,
             screenSpaceContext.height,
             (temporalDebugView || volumetricDebugView)
@@ -241,6 +237,13 @@ namespace HIKARI::RENDER3D::PIPELINE {
             MESHRENDERER::EndFrame();
             return false;
         }
+        (void)RENDER3D::VOLUMETRIC::PrepareVolumetricLightingFrame(
+            frame.graphics,
+            temporalFrame,
+            environment,
+            MESHRENDERER::GetLocalLightListGpuBindings(),
+            renderQuality.volumetricLightingQuality,
+            volumetricDebugView ? debugView : RenderDebugView::None);
 
         const MESHRENDERER::CameraCB* cameraCb = MESHRENDERER::GetCameraConstants();
         const MESHRENDERER::CameraCB* cullingCameraCb =
@@ -462,6 +465,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
         const GFX::Context& graphics,
         const Camera3D& camera,
         const SceneEnvironment& environment,
+        const LIGHTING::SceneLightingSet& lighting,
         uint32_t width,
         uint32_t height) {
 
@@ -478,6 +482,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
                 graphics,
                 camera,
                 environment,
+                lighting,
                 width,
                 height)) {
             MESHRENDERER::EndFrame();

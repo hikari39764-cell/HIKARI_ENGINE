@@ -6,6 +6,7 @@
 #include <string>
 
 #include "Scene/Components/Lighting/HIKARI_IrradianceVolumeComponent.h"
+#include "Scene/Components/Lighting/HIKARI_LightComponent.h"
 #include "Scene/Components/Lighting/HIKARI_ReflectionProbeComponent.h"
 #include "Scene/Debug/HIKARI_BuiltInComponentGizmoProviders.h"
 #include "Scene/Debug/HIKARI_ComponentGizmoRegistry.h"
@@ -22,12 +23,100 @@ namespace HIKARI {
         constexpr unsigned int kProbeCenterColor = 0xFFB45CFF;
         constexpr unsigned int kIrradianceVolumeColor = 0x9B8AFFFF;
         constexpr unsigned int kIrradianceBlendCoreColor = 0x73D7C2FF;
+        constexpr unsigned int kLightColor = 0xFFD36AFF;
         constexpr uint64_t kMaximumDisplayedProbePoints = 1024u;
 
         MATH::Mat4 BuildTranslationOnlyWorld(
             const GameObject& object) {
             return MATH::Mat4::Translate(
                 object.GetTransform().position);
+        }
+
+        MATH::Vec3 WorldForward(const MATH::Mat4& world) {
+            return MATH::Normalize({
+                world.m[2][0],
+                world.m[2][1],
+                world.m[2][2]
+            });
+        }
+
+        void SubmitProbeCenter(
+            const MATH::Vec3& position,
+            bool selected,
+            unsigned int color);
+        void SubmitSphereBoundary(
+            const MATH::Mat4& world,
+            float radius,
+            unsigned int color,
+            bool selected);
+
+        void DrawLight(
+            const GameObject& object,
+            const ComponentGizmoDrawContext& context) {
+
+            const LightComponent* light =
+                object.GetComponent<LightComponent>();
+            if (light == nullptr || !light->IsEnabled()) {
+                return;
+            }
+            const bool selected =
+                object.GetDocumentId() == context.selectedObjectId;
+            const MATH::Mat4 world =
+                object.GetTransform().GetWorldMatrix();
+            const MATH::Vec3 position =
+                DRAW::TransformPoint(world, {});
+            const MATH::Vec3 direction = WorldForward(world);
+            SubmitProbeCenter(position, selected, kLightColor);
+
+            if (light->GetLightType() ==
+                LightComponentType::Point) {
+                SubmitSphereBoundary(
+                    MATH::Mat4::Translate(position),
+                    light->GetRange(),
+                    kLightColor,
+                    selected);
+                return;
+            }
+
+            if (light->GetLightType() ==
+                LightComponentType::Spot) {
+                const auto submitCone =
+                    [&](float angle, unsigned int color) {
+                        RENDERER3D::DEBUG::WireCone3D cone{};
+                        cone.origin = position;
+                        cone.direction = direction;
+                        cone.length = light->GetRange();
+                        cone.angleDegrees = angle;
+                        cone.rgba = color;
+                        cone.segments = 32;
+                        cone.depthMode =
+                            RENDERER3D::DEBUG::DebugDepthMode::XRay;
+                        cone.thicknessPixels = selected
+                            ? DRAW::kSelectedStrokePixels
+                            : DRAW::kNormalStrokePixels;
+                        RENDERER3D::DEBUG::SubmitWireCone3D(cone);
+                    };
+                submitCone(
+                    light->GetOuterConeAngleDegrees(),
+                    selected ? DRAW::kSelectionColor : kLightColor);
+                submitCone(
+                    light->GetInnerConeAngleDegrees(),
+                    0xFFF0A0B8u);
+                return;
+            }
+
+            RENDERER3D::DEBUG::Stroke3D stroke{};
+            stroke.from = position;
+            stroke.to = position + direction * 2.0f;
+            stroke.rgba = selected
+                ? DRAW::kSelectionColor
+                : kLightColor;
+            stroke.depthMode =
+                RENDERER3D::DEBUG::DebugDepthMode::XRay;
+            stroke.thicknessPixels = selected
+                ? DRAW::kSelectedStrokePixels
+                : DRAW::kNormalStrokePixels;
+            RENDERER3D::DEBUG::SubmitStroke3D(stroke);
         }
 
         MATH::Vec3 BuildInnerBoxSize(
@@ -308,6 +397,12 @@ namespace HIKARI {
 
     void RegisterLightingGizmoProviders(
         ComponentGizmoRegistry& registry) {
+        (void)registry.Register(ComponentGizmoProvider{
+            "scene.light",
+            "Lights",
+            true,
+            DrawLight
+        });
         (void)registry.Register(ComponentGizmoProvider{
             std::string(kReflectionProbeGizmoProviderId),
             "Reflection Probes",

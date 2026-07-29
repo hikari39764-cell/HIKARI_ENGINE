@@ -10,6 +10,7 @@
 #include "Core/HIKARI_Logger.h"
 #include "Project/HIKARI_ProjectSettings.h"
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
+#include "Scene/Lighting/HIKARI_LightingAuthoringModel.h"
 
 namespace HIKARI {
     bool DocumentSceneBase::RequestOpenSceneAsset(const AssetGuid& sceneGuid) {
@@ -115,6 +116,9 @@ namespace HIKARI {
         state_->identity.document.sceneName = "Untitled Scene";
         state_->identity.document.systems =
             state_->runtime.featureCatalog.CreateDefaultSceneSystems();
+        LIGHTING_AUTHORING::MigrateLegacyLightingAuthoring(
+            state_->identity.document,
+            5u);
         state_->lighting.environment = state_->identity.document.environment;
         state_->identity.scenePath.clear();
         state_->identity.sceneId = "TransientScene";

@@ -64,18 +64,24 @@ cbuffer LightCB : register(b2)
     float4 gDirectionalColor;
     float4 gAmbientColor;
     float4 gSpecularParams;
-    HikariLocalLightGpuData
-        gLocalLights[HIKARI_LOCAL_LIGHT_FRAME_CAPACITY];
     float gDirectionalIntensity;
     float gAmbientIntensity;
     uint gLocalLightCount;
-    float gLightPadding;
+    uint gLocalLightClusterCountX;
+    uint gLocalLightClusterCountY;
+    uint gLocalLightClusterCountZ;
+    uint gLocalLightTileSizePixels;
+    uint gLocalLightClusterIndexCount;
+    float gLocalLightNearDistance;
+    float gLocalLightFarDistance;
     float4 gFogColorDensity;
     float4 gFogParams;
     uint gDebugView;
     float gForwardCostMode;
     float2 gDebugPadding;
 };
+
+#include "Include/Lighting/HIKARI_LocalLightList.hlsli"
 
 cbuffer ShadowCB : register(b4)
 {
@@ -583,6 +589,51 @@ float3 SampleSkyEnvironment(float3 dir)
 #define SampleSkyEnvironment HikariSampleSkyEnvironment
 #endif
 
+void EvaluateWaterLocalLights(
+    float3 worldPosition,
+    float2 pixelPosition,
+    float3 normalWS,
+    float3 viewDirection,
+    float specularStrength,
+    out float3 diffuseLighting,
+    out float3 specularLighting)
+{
+    diffuseLighting = 0.0f.xxx;
+    specularLighting = 0.0f.xxx;
+    const uint2 cluster = HikariResolveLocalLightCluster(
+        pixelPosition,
+        worldPosition);
+    [loop]
+    for (uint slot = 0u; slot < cluster.y; ++slot)
+    {
+        const uint lightIndex =
+            gHikariLocalLightClusterIndices[
+                cluster.x + slot];
+        HikariLocalLightSample lightSample;
+        if (!HikariResolveLocalLightSample(
+                gHikariLocalLights[lightIndex],
+                worldPosition,
+                lightSample))
+        {
+            continue;
+        }
+
+        const float localNdotL = saturate(dot(
+            normalWS,
+            lightSample.directionToLight));
+        diffuseLighting +=
+            lightSample.radiance * localNdotL;
+        const float3 localHalf = normalize(
+            lightSample.directionToLight +
+            viewDirection);
+        const float localSpecular = pow(
+            saturate(dot(normalWS, localHalf)),
+            96.0f) * specularStrength;
+        specularLighting +=
+            lightSample.radiance * localSpecular;
+    }
+}
+
 float4 HikariShadeWaterSurface(
     PSInput input,
     HikariMeshObjectData waterObjectData)
@@ -683,6 +734,16 @@ float4 HikariShadeWaterSurface(
     float specular = pow(saturate(dot(n, h)), 96.0f) * specularStrength;
     specular *= (1.0f - farNormalFade * 0.75f);
     float3 specularColor = gDirectionalColor.rgb * gDirectionalIntensity * specular * shadowFactor;
+    float3 localDiffuse = 0.0f.xxx;
+    float3 localSpecular = 0.0f.xxx;
+    EvaluateWaterLocalLights(
+        input.worldPosWS,
+        input.position.xy,
+        n,
+        v,
+        specularStrength,
+        localDiffuse,
+        localSpecular);
 
     float reflectionShadow = lerp(0.05f, 1.0f, shadowFactor);
 
@@ -696,10 +757,12 @@ float4 HikariShadeWaterSurface(
     reflection *= max(0.0f, gSkyReflectionIntensity);
     reflection *= reflectionShadow;
     
-    float3 color = baseWater * (ambient + sun * 0.55f);
+    float3 color = baseWater * (
+        ambient +
+        (sun + localDiffuse) * 0.55f);
     float reflectionMix = saturate(fresnel * 0.75f);
     color = lerp(color, reflection, reflectionMix);
-    color += specularColor;
+    color += specularColor + localSpecular;
 
     float rim = pow(1.0f - saturate(dot(n, v)), 2.0f) * rimStrength;
     color += float3(0.25f, 0.75f, 1.0f) * rim;

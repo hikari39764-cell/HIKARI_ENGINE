@@ -15,7 +15,7 @@
 #include "Gfx/HIKARI_ShaderCompiler.h"
 #include "Render2D/HIKARI_RenderTarget2D.h"
 #include "Render3D/Debug/HIKARI_RenderDebugView.h"
-#include "Render3D/Lighting/HIKARI_LocalLightFrame.h"
+#include "Render3D/Lighting/HIKARI_LocalLightList.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
@@ -42,8 +42,14 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
             MATH::Vec4 volumeSize{};
             MATH::Vec4 frameParams{};
             MATH::Vec4 debugParams{};
-            LIGHTING::LocalLightGpuData
-                localLights[LIGHTING::kLocalLightFrameCapacity]{};
+            uint32_t localLightCount = 0u;
+            uint32_t localLightClusterCountX = 0u;
+            uint32_t localLightClusterCountY = 0u;
+            uint32_t localLightClusterCountZ = 0u;
+            uint32_t localLightTileSizePixels = 64u;
+            uint32_t localLightClusterIndexCount = 0u;
+            float localLightNearDistance = 0.1f;
+            float localLightFarDistance = 100.0f;
         };
 
         struct VolumeResource {
@@ -73,6 +79,7 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
             uint32_t writeIndex = 0;
             uint64_t preparedFrameIndex = 0;
             RenderDebugView debugView = RenderDebugView::None;
+            LIGHTING::LocalLightListGpuBindings localLights{};
             bool pipelineReady = false;
             bool resourcesReady = false;
             bool prepared = false;
@@ -173,7 +180,7 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
                 ranges[index].OffsetInDescriptorsFromTableStart = 0;
             }
 
-            std::array<D3D12_ROOT_PARAMETER, 5> params{};
+            std::array<D3D12_ROOT_PARAMETER, 8> params{};
             params[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
             params[0].Descriptor.ShaderRegister = 0;
             params[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
@@ -182,6 +189,18 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
                 params[index + 1].DescriptorTable.NumDescriptorRanges = 1;
                 params[index + 1].DescriptorTable.pDescriptorRanges = &ranges[index];
                 params[index + 1].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+            }
+            if (injection) {
+                for (uint32_t index = 0u; index < 3u; ++index) {
+                    D3D12_ROOT_PARAMETER& parameter =
+                        params[1u + tableCount + index];
+                    parameter.ParameterType =
+                        D3D12_ROOT_PARAMETER_TYPE_SRV;
+                    parameter.Descriptor.ShaderRegister = index;
+                    parameter.Descriptor.RegisterSpace = 5u;
+                    parameter.ShaderVisibility =
+                        D3D12_SHADER_VISIBILITY_ALL;
+                }
             }
 
             std::array<D3D12_STATIC_SAMPLER_DESC, 2> samplers{};
@@ -203,7 +222,8 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
             samplers[1].ShaderRegister = 1;
 
             D3D12_ROOT_SIGNATURE_DESC desc{};
-            desc.NumParameters = 1u + tableCount;
+            desc.NumParameters =
+                1u + tableCount + (injection ? 3u : 0u);
             desc.pParameters = params.data();
             desc.NumStaticSamplers = injection ? 2u : 1u;
             desc.pStaticSamplers = samplers.data();
@@ -378,6 +398,7 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
         const GFX::Context& context,
         const TEMPORAL::TemporalFrameState& frame,
         const SceneEnvironment& environment,
+        const LIGHTING::LocalLightListGpuBindings& localLights,
         VolumetricLightingQuality quality,
         RenderDebugView debugView) {
         StageState& state = State();
@@ -451,18 +472,27 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
         const bool shadowed = SHADOW::IsDirectionalShadowEnabled() &&
             environment.directionalShadow.enabled &&
             SHADOW::GetDirectionalShadowSrv().ptr != 0;
-        const LIGHTING::LocalLightFrame localLightFrame =
-            LIGHTING::BuildLocalLightFrame(environment);
-        std::copy(
-            localLightFrame.lights.begin(),
-            localLightFrame.lights.end(),
-            std::begin(constants.localLights));
         constants.frameParams = {
             historyValid ? std::clamp(environment.fog.temporalWeight, 0.0f, 0.98f) : 0.0f,
             static_cast<float>(frame.frameIndex & 0xffffu),
             shadowed ? 1.0f : 0.0f,
-            static_cast<float>(localLightFrame.uploadedCount)
+            static_cast<float>(localLights.view.lightCount)
         };
+        constants.localLightCount = localLights.view.lightCount;
+        constants.localLightClusterCountX =
+            localLights.view.clusterCountX;
+        constants.localLightClusterCountY =
+            localLights.view.clusterCountY;
+        constants.localLightClusterCountZ =
+            localLights.view.clusterCountZ;
+        constants.localLightTileSizePixels =
+            localLights.view.tileSizePixels;
+        constants.localLightClusterIndexCount =
+            localLights.view.clusterIndexCount;
+        constants.localLightNearDistance =
+            localLights.view.nearDistance;
+        constants.localLightFarDistance =
+            localLights.view.farDistance;
         constants.debugParams = {
             static_cast<float>(ResolveDebugMode(debugView)),
             0.0f,
@@ -474,15 +504,16 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
         state.constantFrameSlot = static_cast<uint32_t>(frame.frameIndex % GFX::kFrameResourceCount);
         state.writeIndex = static_cast<uint32_t>(frame.frameIndex & 1u);
         state.debugView = debugView;
+        state.localLights = localLights;
         state.stats.active = true;
         state.stats.historyValid = historyValid;
         state.stats.shadowed = shadowed;
         state.stats.localLightCount =
-            localLightFrame.uploadedCount;
+            localLights.view.lightCount;
         state.stats.pointLightCount =
-            localLightFrame.uploadedPointCount;
+            localLights.view.pointLightCount;
         state.stats.spotLightCount =
-            localLightFrame.uploadedSpotCount;
+            localLights.view.spotLightCount;
         state.stats.qualityLevel = static_cast<uint32_t>(quality);
         state.stats.temporalWeight = constants.frameParams.x;
         state.prepared = true;
@@ -526,6 +557,17 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
         cmd->SetComputeRootDescriptorTable(2, shadow);
         cmd->SetComputeRootDescriptorTable(3, history.srv.gpu);
         cmd->SetComputeRootDescriptorTable(4, output.uav.gpu);
+        if (state.localLights.IsValid()) {
+            cmd->SetComputeRootShaderResourceView(
+                5,
+                state.localLights.lights);
+            cmd->SetComputeRootShaderResourceView(
+                6,
+                state.localLights.clusterHeaders);
+            cmd->SetComputeRootShaderResourceView(
+                7,
+                state.localLights.clusterIndices);
+        }
         cmd->Dispatch(
             (state.stats.froxelWidth + 7u) / 8u,
             (state.stats.froxelHeight + 7u) / 8u,

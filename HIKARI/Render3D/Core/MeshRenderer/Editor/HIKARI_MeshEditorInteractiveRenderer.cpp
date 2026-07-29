@@ -144,6 +144,7 @@ namespace HIKARI::MESHRENDERER {
     bool RenderEditorInteractiveOpaque(
         const RENDER3D::RenderViewContext& view,
         const SceneEnvironment& environment,
+        const RENDER3D::LIGHTING::SceneLightingSet& lighting,
         uint32_t screenWidth,
         uint32_t screenHeight,
         const EditorInteractiveRenderSettings& settings) {
@@ -192,8 +193,25 @@ namespace HIKARI::MESHRENDERER {
             1.0f / static_cast<float>(screenWidth),
             1.0f / static_cast<float>(screenHeight)
         };
+        editorFrame.localLightListView =
+            RENDER3D::LIGHTING::BuildLocalLightList(
+                lighting,
+                camera,
+                screenWidth,
+                screenHeight,
+                {
+                    editorFrame.localLightMapped,
+                    RENDER3D::LIGHTING::kMaximumLocalLightCount,
+                    editorFrame.localLightClusterHeaderMapped,
+                    RENDER3D::LIGHTING::
+                        kMaximumLocalLightClusterCount,
+                    editorFrame.localLightClusterIndexMapped,
+                    RENDER3D::LIGHTING::
+                        kMaximumLocalLightClusterIndexCount
+                });
         FillLightCB(
             environment,
+            editorFrame.localLightListView,
             settings.debugView,
             *editorFrame.lightMapped,
             gMeshRendererState.debugStats);
@@ -271,6 +289,14 @@ namespace HIKARI::MESHRENDERER {
         overrides.cullingCameraAddress = overrides.cameraAddress;
         overrides.lightAddress =
             editorFrame.lightCB->GetGPUVirtualAddress();
+        overrides.localLightsAddress =
+            editorFrame.localLightBuffer->GetGPUVirtualAddress();
+        overrides.localLightClusterHeadersAddress =
+            editorFrame.localLightClusterHeaderBuffer->
+                GetGPUVirtualAddress();
+        overrides.localLightClusterIndicesAddress =
+            editorFrame.localLightClusterIndexBuffer->
+                GetGPUVirtualAddress();
         overrides.shadowAddress =
             editorFrame.shadowCB->GetGPUVirtualAddress();
         overrides.skyEnvironmentAddress =

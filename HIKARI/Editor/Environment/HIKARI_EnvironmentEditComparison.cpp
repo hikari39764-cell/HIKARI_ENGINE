@@ -143,7 +143,6 @@ bool AreSceneEnvironmentValuesEqual(const SceneEnvironment &lhs,
       lhs.specularIntensity != rhs.specularIntensity ||
       lhs.specularPower != rhs.specularPower ||
       lhs.showLightDebug != rhs.showLightDebug ||
-      lhs.showLocalLightMarkers != rhs.showLocalLightMarkers ||
       lhs.showSkyDebugInfo != rhs.showSkyDebugInfo ||
       !EqualPostSettings(lhs.post, rhs.post) ||
       lhs.pointLights.size() != rhs.pointLights.size() ||

@@ -13,6 +13,7 @@
 #include "Scene/Components/HIKARI_CameraComponent.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/Components/Lighting/HIKARI_IrradianceVolumeComponent.h"
+#include "Scene/Components/Lighting/HIKARI_LightComponent.h"
 #include "Scene/Components/Lighting/HIKARI_ReflectionProbeComponent.h"
 #include "Scene/HIKARI_World.h"
 #if defined(HIKARI_WITH_EDITOR)
@@ -37,6 +38,9 @@ namespace HIKARI {
 
             if (object.GetComponent<CameraComponent>() != nullptr) {
                 return EDITOR::EditorGlyph::Camera;
+            }
+            if (object.GetComponent<LightComponent>() != nullptr) {
+                return EDITOR::EditorGlyph::Light;
             }
             if (object.GetComponent<ReflectionProbeComponent>() != nullptr) {
                 return EDITOR::EditorGlyph::ReflectionProbe;

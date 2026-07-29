@@ -1,11 +1,16 @@
 #pragma once
 
+#include <cstdint>
 #include <optional>
 
 #include "Editor/Authoring/HIKARI_PrimitiveCreationDialog.h"
 #include "Editor/Authoring/HIKARI_SceneObjectAuthoringTypes.h"
 
 namespace HIKARI {
+
+    namespace RENDER3D::LIGHTING {
+        enum class SceneLightType : uint8_t;
+    }
 
     struct EditorContext;
     class DocumentSceneBase;
@@ -40,6 +45,11 @@ namespace HIKARI {
                 EditorContext& context,
                 const SelectionSyncService& selectionSync,
                 bool reflectionProbe);
+            void CreateLightObject(
+                DocumentSceneBase& scene,
+                EditorContext& context,
+                const SelectionSyncService& selectionSync,
+                RENDER3D::LIGHTING::SceneLightType lightType);
 
             PrimitiveCreationDialog primitiveCreationDialog_{};
             std::optional<SceneObjectAuthoringHistoryRequest>

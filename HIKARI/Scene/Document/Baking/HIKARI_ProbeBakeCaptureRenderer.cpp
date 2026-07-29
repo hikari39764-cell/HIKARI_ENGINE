@@ -11,11 +11,13 @@
 #include "Render3D/Debug/HIKARI_Renderer3D_Debug.h"
 #include "Render3D/HIKARI_Renderer3D.h"
 #include "Render3D/Lighting/HIKARI_LightProbeVolumeRuntime.h"
+#include "Render3D/Lighting/HIKARI_LocalLightList.h"
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
 #include "Render3D/Reflection/HIKARI_ReflectionProbeRuntime.h"
 #include "Render3D/Render/HIKARI_ModelRenderer.h"
 #include "Render3D/Shadow/HIKARI_ShadowMapRenderer.h"
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
+#include "Scene/Lighting/HIKARI_SceneLightingSet.h"
 
 namespace HIKARI {
 
@@ -71,6 +73,26 @@ namespace HIKARI {
             eventName.c_str());
 
         bool faceBegun = false;
+        const RENDER3D::LIGHTING::SceneLightingSet lighting =
+            LIGHTING_AUTHORING::BuildRuntimeSceneLightingSet(
+                scene.GetSceneDocument(),
+                scene.GetWorld());
+        SceneEnvironment resolvedCaptureEnvironment =
+            captureEnvironment;
+        const RENDER3D::LIGHTING::SceneLightProvider* directional =
+            RENDER3D::LIGHTING::SelectDirectionalLight(lighting);
+        resolvedCaptureEnvironment.directional.enabled =
+            directional != nullptr;
+        if (directional != nullptr) {
+            resolvedCaptureEnvironment.directional.direction =
+                directional->direction;
+            resolvedCaptureEnvironment.directional.color =
+                directional->color;
+            resolvedCaptureEnvironment.directional.intensity =
+                directional->intensity;
+        } else {
+            resolvedCaptureEnvironment.directional.intensity = 0.0f;
+        }
         const auto renderFace = [&]() {
             RENDERER3D::Reset();
             MODELRENDERER::Reset();
@@ -87,7 +109,7 @@ namespace HIKARI {
             const GFX::Context graphics = GFX::GetCurrentContext();
             SHADOW::BeginFrame(
                 graphics,
-                captureEnvironment,
+                resolvedCaptureEnvironment,
                 faceCamera);
             SHADOW::RenderDirectionalShadowMap(graphics);
             if (!captureTarget.BeginFace(
@@ -101,11 +123,14 @@ namespace HIKARI {
             }
             faceBegun = true;
             SKYRENDERER::Render(
-                graphics, faceCamera, captureEnvironment,
+                graphics, faceCamera, resolvedCaptureEnvironment,
                 scene.state_->assets.Models(),
                 scene.state_->lighting.sky);
             MODELRENDERER::RenderOpaqueForReflectionProbeCapture(
-                graphics, faceCamera, captureEnvironment,
+                graphics,
+                faceCamera,
+                resolvedCaptureEnvironment,
+                lighting,
                 captureTarget.GetResolution(),
                 captureTarget.GetResolution(),
                 isLightProbe

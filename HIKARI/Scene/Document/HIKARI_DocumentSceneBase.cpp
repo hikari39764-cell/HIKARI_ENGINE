@@ -12,7 +12,6 @@
 #include "Core/Math/HIKARI_MathValidation.h"
 #include "Core/Presentation/HIKARI_LogicalDisplayDefaults.h"
 #include "Core/HIKARI_TimeService.h"
-#include "Render3D/HIKARI_LightDebugDraw.h"
 #include "Render3D/HIKARI_Renderer3D.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Debug/HIKARI_Renderer3D_Debug.h"
@@ -21,6 +20,7 @@
 #include "Render3D/Views/HIKARI_EditorInteractiveViewRenderer.h"
 #endif
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
+#include "Render3D/Lighting/HIKARI_LocalLightList.h"
 #include "Scene/Features/HIKARI_RuntimeFeatureIds.h"
 #include "Scene/Sequencer/Drivers/HIKARI_CameraSequenceTrackDriver.h"
 #include "Vfx/Runtime/HIKARI_VfxAsset.h"
@@ -29,6 +29,7 @@
 #include "Vfx/Post/HIKARI_PostProfile.h"
 #include "Scene/HIKARI_RuntimeSceneContext.h"
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
+#include "Scene/Lighting/HIKARI_SceneLightingSet.h"
 
 namespace HIKARI {
     namespace {
@@ -347,21 +348,34 @@ namespace HIKARI {
         state_->runtime.systemScheduler.Render(state_->runtime.world, frame);
         state_->runtime.systemScheduler.PostRender(state_->runtime.world, frame);
         SceneEnvironment activeEnvironment = state_->lighting.environment;
-        activeEnvironment.directional.direction = MATH::Normalize(activeEnvironment.directional.direction);
+        RENDER3D::LIGHTING::SceneLightingSet sceneLighting =
+            LIGHTING_AUTHORING::BuildRuntimeSceneLightingSet(
+                state_->identity.document,
+                state_->runtime.world);
         const bool editorSsaoSuppressed =
             DrawDebugHelpers() &&
             state_->editor.viewportPerformanceState.disableSsaoInEditorViewport;
         activeEnvironment.ambientOcclusion.editorViewportSuppressed = editorSsaoSuppressed;
         if (!UseEnvironmentLighting()) {
-            activeEnvironment.directional.intensity = 0.0f;
             activeEnvironment.ambient.intensity = 0.0f;
             activeEnvironment.specularIntensity = 0.0f;
-            for (PointLight& pointLight : activeEnvironment.pointLights) {
-                pointLight.intensity = 0.0f;
+            for (auto& light : sceneLighting.lights) {
+                light.intensity = 0.0f;
             }
-            for (SpotLight& spotLight : activeEnvironment.spotLights) {
-                spotLight.intensity = 0.0f;
-            }
+        }
+        const auto* directional =
+            RENDER3D::LIGHTING::SelectDirectionalLight(sceneLighting);
+        activeEnvironment.directional.enabled =
+            directional != nullptr;
+        if (directional != nullptr) {
+            activeEnvironment.directional.direction =
+                directional->direction;
+            activeEnvironment.directional.color =
+                directional->color;
+            activeEnvironment.directional.intensity =
+                directional->intensity;
+        } else {
+            activeEnvironment.directional.intensity = 0.0f;
         }
 
         MESHRENDERER::SetGpuDrivenCullingCameraFreezeEnabled(
@@ -370,13 +384,6 @@ namespace HIKARI {
 
         const GFX::Context graphics = GFX::GetCurrentContext();
         SKYRENDERER::Render(graphics, renderCamera, activeEnvironment, state_->assets.Models(), state_->lighting.sky);
-        if (DrawDebugHelpers()) {
-            if (state_->editor.viewportOverlayState.showLights) {
-                LIGHTDEBUGDRAW::SubmitDirectionalLightArrow(activeEnvironment.directional.direction, activeEnvironment);
-                LIGHTDEBUGDRAW::SubmitLocalLightDebug(activeEnvironment);
-            }
-        }
-
         if (DrawDebugHelpers()) {
             state_->editor.componentGizmoRenderer.SubmitWorldGizmos(
                 state_->runtime.world,
@@ -391,13 +398,19 @@ namespace HIKARI {
             ? RENDER3D::RenderViewPurpose::Game
             : RENDER3D::RenderViewPurpose::EditorScene;
         primaryView.cameraFrame = &state_->camera.resolvedFrame;
-        MODELRENDERER::RenderAll(graphics, primaryView, activeEnvironment, state_->editor.viewportDebugViewState.renderView);
+        MODELRENDERER::RenderAll(
+            graphics,
+            primaryView,
+            activeEnvironment,
+            sceneLighting,
+            state_->editor.viewportDebugViewState.renderView);
         SubmitFrozenCullingCameraDebugFrustum();
         RENDERER3D::RenderAll(renderCamera, static_cast<float>(captureW), static_cast<float>(captureH));
         VFX::Render(renderCamera);
 #if defined(HIKARI_WITH_EDITOR)
         (void)RENDER3D::EDITORVIEW::RenderPending(
             activeEnvironment,
+            sceneLighting,
             state_->identity.documentRevision);
 #endif
     }

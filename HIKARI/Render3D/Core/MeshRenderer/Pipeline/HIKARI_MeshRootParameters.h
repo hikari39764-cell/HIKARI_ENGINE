@@ -64,7 +64,13 @@ namespace HIKARI::MESHRENDERER::ROOT_PARAM {
     constexpr UINT ReflectionProbePrefilteredSecondary = 27;
     // Secondary LightProbe SH9 textures -> t0-t8, space4
     constexpr UINT LightProbeShSecondary = 28;
+    // Per-view local light records -> t0, space5
+    constexpr UINT LocalLights = 29;
+    // Per-view clustered light headers -> t1, space5
+    constexpr UINT LocalLightClusterHeaders = 30;
+    // Per-view compact clustered light indices -> t2, space5
+    constexpr UINT LocalLightClusterIndices = 31;
 
-    constexpr UINT Count = LightProbeShSecondary + 1;
+    constexpr UINT Count = LocalLightClusterIndices + 1;
 
 } // namespace HIKARI::MESHRENDERER::ROOT_PARAM

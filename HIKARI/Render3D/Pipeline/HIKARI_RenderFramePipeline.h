@@ -9,6 +9,9 @@
 namespace HIKARI {
     class Camera3D;
     struct SceneEnvironment;
+    namespace RENDER3D::LIGHTING {
+        struct SceneLightingSet;
+    }
 }
 
 namespace HIKARI::RENDER3D::PIPELINE {
@@ -17,12 +20,14 @@ namespace HIKARI::RENDER3D::PIPELINE {
         const GFX::Context& graphics,
         const RenderViewContext& view,
         const SceneEnvironment& environment,
+        const LIGHTING::SceneLightingSet& lighting,
         RenderDebugView debugView = RenderDebugView::None);
 
     bool RenderMeshCaptureOpaqueFrame(
         const GFX::Context& graphics,
         const Camera3D& camera,
         const SceneEnvironment& environment,
+        const LIGHTING::SceneLightingSet& lighting,
         uint32_t width,
         uint32_t height);
 

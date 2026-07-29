@@ -70,6 +70,9 @@ namespace HIKARI::MESHRENDERER {
         D3D12_GPU_VIRTUAL_ADDRESS cameraAddress = 0;
         D3D12_GPU_VIRTUAL_ADDRESS cullingCameraAddress = 0;
         D3D12_GPU_VIRTUAL_ADDRESS lightAddress = 0;
+        D3D12_GPU_VIRTUAL_ADDRESS localLightsAddress = 0;
+        D3D12_GPU_VIRTUAL_ADDRESS localLightClusterHeadersAddress = 0;
+        D3D12_GPU_VIRTUAL_ADDRESS localLightClusterIndicesAddress = 0;
         D3D12_GPU_VIRTUAL_ADDRESS shadowAddress = 0;
         D3D12_GPU_VIRTUAL_ADDRESS skyEnvironmentAddress = 0;
         MeshDrawPassKind passKind = MeshDrawPassKind::Forward;

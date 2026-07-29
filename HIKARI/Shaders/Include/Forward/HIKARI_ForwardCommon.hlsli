@@ -55,12 +55,16 @@ cbuffer LightCB : register(b2)
     float4 gDirectionalColor;
     float4 gAmbientColor;
     float4 gSpecularParams;
-    HikariLocalLightGpuData
-        gLocalLights[HIKARI_LOCAL_LIGHT_FRAME_CAPACITY];
     float gDirectionalIntensity;
     float gAmbientIntensity;
     uint gLocalLightCount;
-    float gLightPadding;
+    uint gLocalLightClusterCountX;
+    uint gLocalLightClusterCountY;
+    uint gLocalLightClusterCountZ;
+    uint gLocalLightTileSizePixels;
+    uint gLocalLightClusterIndexCount;
+    float gLocalLightNearDistance;
+    float gLocalLightFarDistance;
     float4 gFogColorDensity;
     float4 gFogParams;
     uint gDebugView;
@@ -105,6 +109,8 @@ struct HikariReflectionProbeData
     float4 projectionBoxMax;
     float4 shapeParams;
 };
+
+#include "Include/Lighting/HIKARI_LocalLightList.hlsli"
 
 struct HikariIrradianceVolumeData
 {

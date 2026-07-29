@@ -274,7 +274,6 @@ namespace HIKARI::SCENE::SERIALIZATION {
         out["specularIntensity"] = environment.specularIntensity;
         out["specularPower"] = environment.specularPower;
         out["showLightDebug"] = environment.showLightDebug;
-        out["showLocalLightMarkers"] = environment.showLocalLightMarkers;
         out["showSkyDebugInfo"] = environment.showSkyDebugInfo;
 
         out["post"]["enabled"] = environment.post.enabled;
@@ -500,11 +499,6 @@ namespace HIKARI::SCENE::SERIALIZATION {
         outEnvironment.specularIntensity = node.value("specularIntensity", outEnvironment.specularIntensity);
         outEnvironment.specularPower = node.value("specularPower", outEnvironment.specularPower);
         outEnvironment.showLightDebug = node.value("showLightDebug", outEnvironment.showLightDebug);
-        outEnvironment.showLocalLightMarkers = node.value(
-            "showLocalLightMarkers",
-            node.value(
-                "showPointLightMarkers",
-                outEnvironment.showLocalLightMarkers));
         outEnvironment.showSkyDebugInfo = node.value("showSkyDebugInfo", outEnvironment.showSkyDebugInfo);
 
         if (node.contains("post") && node["post"].is_object()) {

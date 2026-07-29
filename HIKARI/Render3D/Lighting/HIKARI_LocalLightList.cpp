@@ -1,0 +1,431 @@
+#include "Render3D/Lighting/HIKARI_LocalLightList.h"
+
+#include <algorithm>
+#include <cmath>
+#include <limits>
+#include <vector>
+
+#include "Render3D/Core/HIKARI_Camera3D.h"
+
+namespace HIKARI::RENDER3D::LIGHTING {
+    namespace {
+
+        constexpr float kPi = 3.14159265358979323846f;
+
+        bool IsUploadable(const SceneLightProvider& light) {
+            return light.enabled &&
+                light.type != SceneLightType::Directional &&
+                std::isfinite(light.intensity) &&
+                std::isfinite(light.range) &&
+                light.intensity > 0.0f &&
+                light.range > 0.0f;
+        }
+
+        LocalLightGpuData ToGpuData(
+            const SceneLightProvider& light) {
+
+            LocalLightGpuData gpu{};
+            gpu.positionRange = {
+                light.position.x,
+                light.position.y,
+                light.position.z,
+                light.range
+            };
+            gpu.colorIntensity = {
+                light.color.x,
+                light.color.y,
+                light.color.z,
+                (std::max)(0.0f, light.intensity)
+            };
+            if (light.type == SceneLightType::Spot) {
+                const MATH::Vec3 direction =
+                    MATH::Normalize(light.direction);
+                const float innerAngle = std::clamp(
+                    light.innerConeAngleDegrees,
+                    0.1f,
+                    89.0f);
+                const float outerAngle = std::clamp(
+                    light.outerConeAngleDegrees,
+                    innerAngle,
+                    89.0f);
+                gpu.directionInnerCos = {
+                    direction.x,
+                    direction.y,
+                    direction.z,
+                    std::cos(innerAngle * kPi / 180.0f)
+                };
+                gpu.outerCosFalloffTypeFlags = {
+                    std::cos(outerAngle * kPi / 180.0f),
+                    std::clamp(light.angularFalloff, 0.05f, 8.0f),
+                    static_cast<float>(LocalLightType::Spot),
+                    0.0f
+                };
+            } else {
+                gpu.directionInnerCos = {
+                    0.0f,
+                    0.0f,
+                    1.0f,
+                    1.0f
+                };
+                gpu.outerCosFalloffTypeFlags = {
+                    -1.0f,
+                    1.0f,
+                    static_cast<float>(LocalLightType::Point),
+                    0.0f
+                };
+            }
+            return gpu;
+        }
+
+        uint32_t ResolveDepthSlice(
+            float distance,
+            float nearDistance,
+            float farDistance) {
+
+            const float clampedDistance = std::clamp(
+                distance,
+                nearDistance,
+                farDistance);
+            const float denominator = std::log(
+                farDistance / nearDistance);
+            const float normalized = denominator > 0.0001f
+                ? std::log(clampedDistance / nearDistance) /
+                    denominator
+                : 0.0f;
+            return (std::min)(
+                static_cast<uint32_t>(
+                    normalized *
+                    static_cast<float>(
+                        kLocalLightClusterDepthSliceCount)),
+                kLocalLightClusterDepthSliceCount - 1u);
+        }
+
+        struct ClusterBounds {
+            uint32_t minX = 0u;
+            uint32_t maxX = 0u;
+            uint32_t minY = 0u;
+            uint32_t maxY = 0u;
+            uint32_t minZ = 0u;
+            uint32_t maxZ = 0u;
+            bool visible = false;
+        };
+
+        struct UploadedLightBounds {
+            uint32_t lightIndex = 0u;
+            ClusterBounds clusters{};
+        };
+
+        ClusterBounds ProjectLightBounds(
+            const SceneLightProvider& light,
+            const Camera3D& camera,
+            uint32_t screenWidth,
+            uint32_t screenHeight,
+            uint32_t tileSize,
+            uint32_t clusterCountX,
+            uint32_t clusterCountY,
+            float nearDistance,
+            float farDistance) {
+
+            ClusterBounds bounds{};
+            const MATH::Vec4 viewPosition =
+                camera.GetView().TransformPoint({
+                    light.position.x,
+                    light.position.y,
+                    light.position.z,
+                    1.0f
+                });
+            const float viewDepth = -viewPosition.z;
+            const float range = (std::max)(light.range, 0.05f);
+            if (viewDepth + range < nearDistance ||
+                viewDepth - range > farDistance) {
+                return bounds;
+            }
+
+            float minimumNdcX = -1.0f;
+            float maximumNdcX = 1.0f;
+            float minimumNdcY = -1.0f;
+            float maximumNdcY = 1.0f;
+            if (viewDepth > range + nearDistance) {
+                const float inverseNearestDepth =
+                    1.0f / (std::max)(
+                        viewDepth - range,
+                        nearDistance);
+                const MATH::Mat4& projection = camera.GetProj();
+                const float centerNdcX =
+                    viewPosition.x * projection.m[0][0] /
+                    viewDepth;
+                const float centerNdcY =
+                    viewPosition.y * projection.m[1][1] /
+                    viewDepth;
+                const float radiusNdcX =
+                    range * projection.m[0][0] *
+                    inverseNearestDepth;
+                const float radiusNdcY =
+                    range * projection.m[1][1] *
+                    inverseNearestDepth;
+                minimumNdcX = centerNdcX - radiusNdcX;
+                maximumNdcX = centerNdcX + radiusNdcX;
+                minimumNdcY = centerNdcY - radiusNdcY;
+                maximumNdcY = centerNdcY + radiusNdcY;
+                if (maximumNdcX < -1.0f ||
+                    minimumNdcX > 1.0f ||
+                    maximumNdcY < -1.0f ||
+                    minimumNdcY > 1.0f) {
+                    return bounds;
+                }
+            }
+
+            const auto pixelX = [screenWidth](float ndc) {
+                return (ndc * 0.5f + 0.5f) *
+                    static_cast<float>(screenWidth);
+            };
+            const auto pixelY = [screenHeight](float ndc) {
+                return (1.0f - (ndc * 0.5f + 0.5f)) *
+                    static_cast<float>(screenHeight);
+            };
+            const float minimumPixelX = std::clamp(
+                pixelX(minimumNdcX),
+                0.0f,
+                static_cast<float>(screenWidth - 1u));
+            const float maximumPixelX = std::clamp(
+                pixelX(maximumNdcX),
+                0.0f,
+                static_cast<float>(screenWidth - 1u));
+            const float minimumPixelY = std::clamp(
+                pixelY(maximumNdcY),
+                0.0f,
+                static_cast<float>(screenHeight - 1u));
+            const float maximumPixelY = std::clamp(
+                pixelY(minimumNdcY),
+                0.0f,
+                static_cast<float>(screenHeight - 1u));
+            bounds.minX = (std::min)(
+                static_cast<uint32_t>(minimumPixelX) / tileSize,
+                clusterCountX - 1u);
+            bounds.maxX = (std::min)(
+                static_cast<uint32_t>(maximumPixelX) / tileSize,
+                clusterCountX - 1u);
+            bounds.minY = (std::min)(
+                static_cast<uint32_t>(minimumPixelY) / tileSize,
+                clusterCountY - 1u);
+            bounds.maxY = (std::min)(
+                static_cast<uint32_t>(maximumPixelY) / tileSize,
+                clusterCountY - 1u);
+
+            const float cameraDistance =
+                MATH::Length(light.position - camera.GetPosition());
+            bounds.minZ = ResolveDepthSlice(
+                (std::max)(cameraDistance - range, nearDistance),
+                nearDistance,
+                farDistance);
+            bounds.maxZ = ResolveDepthSlice(
+                (std::min)(cameraDistance + range, farDistance),
+                nearDistance,
+                farDistance);
+            bounds.visible = true;
+            return bounds;
+        }
+
+    } // namespace
+
+    const SceneLightProvider* SelectDirectionalLight(
+        const SceneLightingSet& lighting) noexcept {
+
+        for (const SceneLightProvider& light : lighting.lights) {
+            if (light.enabled &&
+                light.type == SceneLightType::Directional &&
+                light.intensity > 0.0f) {
+                return &light;
+            }
+        }
+        return nullptr;
+    }
+
+    LocalLightListView BuildLocalLightList(
+        const SceneLightingSet& lighting,
+        const Camera3D& camera,
+        uint32_t screenWidth,
+        uint32_t screenHeight,
+        const LocalLightListBuildOutput& output) {
+
+        LocalLightListView view{};
+        view.sourceCount = static_cast<uint32_t>(
+            std::count_if(
+                lighting.lights.begin(),
+                lighting.lights.end(),
+                [](const SceneLightProvider& light) {
+                    return light.type !=
+                        SceneLightType::Directional;
+                }));
+        if (screenWidth == 0u || screenHeight == 0u ||
+            output.lights == nullptr ||
+            output.clusterHeaders == nullptr ||
+            output.clusterIndices == nullptr ||
+            output.lightCapacity == 0u ||
+            output.clusterHeaderCapacity == 0u ||
+            output.clusterIndexCapacity == 0u) {
+            view.rejectedCount = view.sourceCount;
+            return view;
+        }
+
+        view.nearDistance = (std::max)(camera.GetNearZ(), 0.01f);
+        view.farDistance = (std::max)(
+            camera.GetFarZ(),
+            view.nearDistance + 0.01f);
+        view.clusterCountZ = kLocalLightClusterDepthSliceCount;
+        view.tileSizePixels = 64u;
+        for (;;) {
+            view.clusterCountX =
+                (screenWidth + view.tileSizePixels - 1u) /
+                view.tileSizePixels;
+            view.clusterCountY =
+                (screenHeight + view.tileSizePixels - 1u) /
+                view.tileSizePixels;
+            const uint64_t clusterCount =
+                static_cast<uint64_t>(view.clusterCountX) *
+                static_cast<uint64_t>(view.clusterCountY) *
+                static_cast<uint64_t>(view.clusterCountZ);
+            if (clusterCount <=
+                    (std::min)(
+                        output.clusterHeaderCapacity,
+                        kMaximumLocalLightClusterCount)) {
+                view.clusterCount =
+                    static_cast<uint32_t>(clusterCount);
+                break;
+            }
+            if (view.tileSizePixels >= 1024u) {
+                view.clusterCountX = 0u;
+                view.clusterCountY = 0u;
+                view.clusterCountZ = 0u;
+                view.rejectedCount = view.sourceCount;
+                return view;
+            }
+            view.tileSizePixels *= 2u;
+        }
+
+        std::vector<uint8_t> clusterCounts(view.clusterCount, 0u);
+        std::vector<UploadedLightBounds> uploadedBounds{};
+        uploadedBounds.reserve((std::min)(
+            output.lightCapacity,
+            kMaximumLocalLightCount));
+
+        for (const SceneLightProvider& light : lighting.lights) {
+            if (light.type == SceneLightType::Directional) {
+                continue;
+            }
+            if (!IsUploadable(light)) {
+                ++view.rejectedCount;
+                continue;
+            }
+            ++view.uploadableCount;
+            if (view.lightCount >=
+                (std::min)(
+                    output.lightCapacity,
+                    kMaximumLocalLightCount)) {
+                ++view.rejectedCount;
+                continue;
+            }
+
+            const uint32_t lightIndex = view.lightCount++;
+            output.lights[lightIndex] = ToGpuData(light);
+            if (light.type == SceneLightType::Spot) {
+                ++view.spotLightCount;
+            } else {
+                ++view.pointLightCount;
+            }
+            const ClusterBounds bounds = ProjectLightBounds(
+                light,
+                camera,
+                screenWidth,
+                screenHeight,
+                view.tileSizePixels,
+                view.clusterCountX,
+                view.clusterCountY,
+                view.nearDistance,
+                view.farDistance);
+            if (!bounds.visible) {
+                continue;
+            }
+            uploadedBounds.push_back({
+                lightIndex,
+                bounds
+            });
+
+            for (uint32_t z = bounds.minZ; z <= bounds.maxZ; ++z) {
+                for (uint32_t y = bounds.minY; y <= bounds.maxY; ++y) {
+                    for (uint32_t x = bounds.minX; x <= bounds.maxX; ++x) {
+                        const uint32_t clusterIndex =
+                            (z * view.clusterCountY + y) *
+                            view.clusterCountX + x;
+                        uint8_t& count =
+                            clusterCounts[clusterIndex];
+                        if (count >=
+                            kMaximumLocalLightsPerCluster) {
+                            ++view.overflowCount;
+                            continue;
+                        }
+                        ++count;
+                    }
+                }
+            }
+        }
+
+        for (uint32_t clusterIndex = 0u;
+             clusterIndex < view.clusterCount;
+             ++clusterIndex) {
+            const uint32_t count =
+                clusterCounts[clusterIndex];
+            LocalLightClusterHeader& header =
+                output.clusterHeaders[clusterIndex];
+            header.offset = view.clusterIndexCount;
+            const uint32_t remainingCapacity =
+                view.clusterIndexCount <
+                    output.clusterIndexCapacity
+                ? output.clusterIndexCapacity -
+                    view.clusterIndexCount
+                : 0u;
+            header.count = (std::min)(
+                count,
+                remainingCapacity);
+            view.overflowCount += count - header.count;
+            view.clusterIndexCount += header.count;
+        }
+
+        std::vector<uint8_t> clusterWriteCounts(
+            view.clusterCount,
+            0u);
+        for (const UploadedLightBounds& uploaded :
+             uploadedBounds) {
+            const ClusterBounds& bounds =
+                uploaded.clusters;
+            for (uint32_t z = bounds.minZ;
+                 z <= bounds.maxZ;
+                 ++z) {
+                for (uint32_t y = bounds.minY;
+                     y <= bounds.maxY;
+                     ++y) {
+                    for (uint32_t x = bounds.minX;
+                         x <= bounds.maxX;
+                         ++x) {
+                        const uint32_t clusterIndex =
+                            (z * view.clusterCountY + y) *
+                            view.clusterCountX + x;
+                        const LocalLightClusterHeader& header =
+                            output.clusterHeaders[clusterIndex];
+                        uint8_t& writeCount =
+                            clusterWriteCounts[clusterIndex];
+                        if (writeCount >= header.count) {
+                            continue;
+                        }
+                        output.clusterIndices[
+                            header.offset + writeCount] =
+                            uploaded.lightIndex;
+                        ++writeCount;
+                    }
+                }
+            }
+        }
+        return view;
+    }
+
+} // namespace HIKARI::RENDER3D::LIGHTING

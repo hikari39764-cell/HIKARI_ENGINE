@@ -1,11 +1,13 @@
 #include "Scene/Lighting/HIKARI_LightingAuthoringModel.h"
 
 #include <algorithm>
+#include <cmath>
 #include <string>
 #include <utility>
 
 #include "Core/HIKARI_JsonRead.h"
 #include "Core/Serialization/Json/HIKARI_JsonMath.h"
+#include "Scene/Lighting/Internal/HIKARI_LightAuthoringInternal.h"
 
 namespace HIKARI::LIGHTING_AUTHORING {
 
@@ -366,11 +368,8 @@ namespace HIKARI::LIGHTING_AUTHORING {
         SceneDocument& document,
         uint32_t sourceVersion) {
 
-        if (sourceVersion >= 5u) {
-            return;
-        }
-
-        if (!HasLightingComponent(
+        if (sourceVersion < 5u &&
+            !HasLightingComponent(
                 document,
                 kReflectionProbeComponentType) &&
             document.environment.reflectionProbe.enabled) {
@@ -384,7 +383,8 @@ namespace HIKARI::LIGHTING_AUTHORING {
             (void)AddReflectionProbe(document, probe);
         }
 
-        if (!HasLightingComponent(
+        if (sourceVersion < 5u &&
+            !HasLightingComponent(
                 document,
                 kIrradianceVolumeComponentType) &&
             document.lightingBake.lightProbeVolume.enabled) {
@@ -402,6 +402,10 @@ namespace HIKARI::LIGHTING_AUTHORING {
             volume.settings = legacy;
             (void)AddIrradianceVolume(document, volume);
         }
+
+        INTERNAL::MigrateLegacyLights(
+            document,
+            sourceVersion);
     }
 
     void SynchronizeLegacyLightingViews(SceneDocument& document) {

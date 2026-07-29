@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
+#include "Render3D/Lighting/HIKARI_LocalLightList.h"
 #include "Render3D/HIKARI_Transform3D.h"
 #include "Render3D/Core/HIKARI_MeshRendererTypes.h"
 
@@ -22,6 +23,7 @@ namespace HIKARI::MESHRENDERER {
 
     void FillLightCB(
         const SceneEnvironment& environment,
+        const RENDER3D::LIGHTING::LocalLightListView& localLightList,
         RenderDebugView debugView,
         LightCB& out,
         MeshRendererDebugStats& stats);

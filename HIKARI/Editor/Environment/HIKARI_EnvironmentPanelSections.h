@@ -12,8 +12,6 @@ class AssetRegistry;
 namespace HIKARI::EDITOR::ENVIRONMENT_PANEL {
 
 #if defined(HIKARI_WITH_EDITOR)
-void NormalizeDirectionalLight(DirectionalLight &light);
-void DrawEnvironmentLightingControls(SceneEnvironment &environment);
 void DrawEnvironmentLightingControls(SceneEnvironment &environment);
 
 bool DrawSkyAssetPicker(const AssetRegistry *assetRegistry,

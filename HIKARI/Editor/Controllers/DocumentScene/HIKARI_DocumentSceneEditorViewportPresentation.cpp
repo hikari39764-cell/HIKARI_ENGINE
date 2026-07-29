@@ -2,12 +2,16 @@
 
 #include "Render3D/Lighting/HIKARI_SceneLightingRuntimeData.h"
 #include "Render3D/Reflection/HIKARI_ReflectionProbeRuntime.h"
+#include "Scene/Components/Lighting/HIKARI_LightComponent.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
+#include "Scene/HIKARI_GameObject.h"
+#include "Scene/HIKARI_World.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <iterator>
+#include <unordered_set>
 
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
@@ -238,98 +242,107 @@ namespace HIKARI {
             const ImVec2& viewportOrigin,
             const ImVec2& viewportSize) {
 
-            const SceneEnvironment& environment = scene.GetSceneEnvironment();
-            if (!overlays.showLights || !environment.showLightDebug) {
+            if (!overlays.showLights ||
+                !scene.GetSceneEnvironment().showLightDebug) {
                 return;
             }
 
             ImDrawList* drawList = ImGui::GetWindowDrawList();
             const Camera3D& camera = scene.GetCamera();
-
-            if (environment.directional.enabled) {
-                const MATH::Vec3 origin{ 0.0f, 1.5f, 0.0f };
-                ImVec2 screen{};
-                if (ProjectWorldToViewport(camera, origin, viewportOrigin, viewportSize, screen)) {
-                    const ImU32 color = ToImGuiLightColor(environment.directional.color, 235);
-                    DrawDirectionalLightIcon(drawList, screen, color);
-                    if (overlays.showProbeLabels) {
-                        DrawViewportLabel(drawList, screen, "Directional Light", color);
-                    }
+            std::unordered_set<uint64_t> hiddenLightObjectIds{};
+            for (const SceneObjectData& object :
+                 scene.GetSceneDocument().objects) {
+                if (!object.enabled || !object.editorVisible) {
+                    hiddenLightObjectIds.insert(object.id.value);
                 }
             }
-
-            if (!environment.showLocalLightMarkers) {
-                return;
-            }
-
-            constexpr size_t kMaxLocalLightIcons = 32u;
-            constexpr size_t kMaxLocalLightLabels = 8u;
+            constexpr size_t kMaxLightIcons = 64u;
+            constexpr size_t kMaxLightLabels = 12u;
             size_t iconCount = 0u;
             size_t labelCount = 0u;
-            for (size_t i = 0; i < environment.pointLights.size(); ++i) {
-                const PointLight& light = environment.pointLights[i];
-                if (!light.enabled || light.range <= 0.0f) {
+            for (const std::unique_ptr<GameObject>& object :
+                 scene.GetWorld().GetObjects()) {
+                if (!object || iconCount >= kMaxLightIcons) {
                     continue;
                 }
-                if (iconCount >= kMaxLocalLightIcons) {
-                    break;
-                }
-
-                ImVec2 screen{};
-                if (!ProjectWorldToViewport(camera, light.position, viewportOrigin, viewportSize, screen)) {
+                if (hiddenLightObjectIds.contains(
+                        object->GetDocumentId().value)) {
                     continue;
                 }
-
-                const ImU32 color = ToImGuiLightColor(light.color, 235);
-                DrawPointLightIcon(drawList, screen, color);
-                ++iconCount;
-                if (overlays.showProbeLabels && labelCount < kMaxLocalLightLabels) {
-                    char label[96]{};
-                    std::snprintf(
-                        label,
-                        sizeof(label),
-                        "Point Light %zu\nRange %.1f / Int %.1f",
-                        i,
-                        light.range,
-                        light.intensity);
-                    DrawViewportLabel(drawList, screen, label, color);
-                    ++labelCount;
-                }
-            }
-
-            for (size_t i = 0; i < environment.spotLights.size(); ++i) {
-                const SpotLight& light = environment.spotLights[i];
-                if (!light.enabled || light.range <= 0.0f ||
-                    iconCount >= kMaxLocalLightIcons) {
+                const LightComponent* light =
+                    object->GetComponent<LightComponent>();
+                if (light == nullptr || !light->IsEnabled()) {
                     continue;
                 }
 
+                const MATH::Mat4 worldMatrix =
+                    object->GetTransform().GetWorldMatrix();
+                const MATH::Vec4 worldOrigin =
+                    worldMatrix.TransformPoint(
+                        { 0.0f, 0.0f, 0.0f, 1.0f });
+                const MATH::Vec3 worldPosition{
+                    worldOrigin.x,
+                    worldOrigin.y,
+                    worldOrigin.z
+                };
                 ImVec2 screen{};
                 if (!ProjectWorldToViewport(
                         camera,
-                        light.position,
+                        worldPosition,
                         viewportOrigin,
                         viewportSize,
                         screen)) {
                     continue;
                 }
 
-                const ImU32 color = ToImGuiLightColor(light.color, 235);
-                DrawSpotLightIcon(drawList, screen, color);
+                const ImU32 color =
+                    ToImGuiLightColor(light->GetColor(), 235);
+                switch (light->GetLightType()) {
+                case LightComponentType::Directional:
+                    DrawDirectionalLightIcon(drawList, screen, color);
+                    break;
+                case LightComponentType::Spot:
+                    DrawSpotLightIcon(drawList, screen, color);
+                    break;
+                case LightComponentType::Point:
+                default:
+                    DrawPointLightIcon(drawList, screen, color);
+                    break;
+                }
                 ++iconCount;
-                if (overlays.showProbeLabels &&
-                    labelCount < kMaxLocalLightLabels) {
-                    char label[112]{};
+                if (!overlays.showProbeLabels ||
+                    labelCount >= kMaxLightLabels) {
+                    continue;
+                }
+                char label[144]{};
+                if (light->GetLightType() ==
+                    LightComponentType::Directional) {
                     std::snprintf(
                         label,
                         sizeof(label),
-                        "Spot Light %zu\nRange %.1f / Cone %.1f deg",
-                        i,
-                        light.range,
-                        light.outerConeAngleDegrees);
-                    DrawViewportLabel(drawList, screen, label, color);
-                    ++labelCount;
+                        "%s\nDirectional / Int %.1f",
+                        object->GetName().c_str(),
+                        light->GetIntensity());
+                } else if (light->GetLightType() ==
+                           LightComponentType::Spot) {
+                    std::snprintf(
+                        label,
+                        sizeof(label),
+                        "%s\nRange %.1f / Cone %.1f deg",
+                        object->GetName().c_str(),
+                        light->GetRange(),
+                        light->GetOuterConeAngleDegrees());
+                } else {
+                    std::snprintf(
+                        label,
+                        sizeof(label),
+                        "%s\nRange %.1f / Int %.1f",
+                        object->GetName().c_str(),
+                        light->GetRange(),
+                        light->GetIntensity());
                 }
+                DrawViewportLabel(drawList, screen, label, color);
+                ++labelCount;
             }
         }
 

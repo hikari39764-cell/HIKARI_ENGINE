@@ -316,6 +316,7 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
 
     bool RenderPending(
         const SceneEnvironment& environment,
+        const LIGHTING::SceneLightingSet& lighting,
         uint64_t currentSceneRevision) {
 
         InteractiveViewState* selected = nullptr;
@@ -368,6 +369,7 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         (void)MESHRENDERER::RenderEditorInteractiveOpaque(
             view,
             environment,
+            lighting,
             width,
             height,
             renderSettings);

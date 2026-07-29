@@ -63,6 +63,7 @@ namespace HIKARI::MODELRENDERER {
         const GFX::Context& graphics,
         const RENDER3D::RenderViewContext& view,
         const SceneEnvironment& environment,
+        const RENDER3D::LIGHTING::SceneLightingSet& lighting,
         RenderDebugView debugView) {
 
         if (view.cameraFrame == nullptr || !view.cameraFrame->valid) {
@@ -73,13 +74,19 @@ namespace HIKARI::MODELRENDERER {
         BeginModelRendererFrame(ModelRendererFrameKind::MainView);
         SHADOW::BeginFrame(graphics, environment, camera);
         SHADOW::RenderDirectionalShadowMap(graphics);
-        MESHRENDERER::RenderAll(graphics, view, environment, debugView);
+        MESHRENDERER::RenderAll(
+            graphics,
+            view,
+            environment,
+            lighting,
+            debugView);
     }
 
     void RenderOpaqueForReflectionProbeCapture(
         const GFX::Context& graphics,
         const Camera3D& camera,
         const SceneEnvironment& environment,
+        const RENDER3D::LIGHTING::SceneLightingSet& lighting,
         uint32_t width,
         uint32_t height,
         ModelRendererFrameKind kind) {
@@ -89,6 +96,7 @@ namespace HIKARI::MODELRENDERER {
             graphics,
             camera,
             environment,
+            lighting,
             width,
             height);
     }

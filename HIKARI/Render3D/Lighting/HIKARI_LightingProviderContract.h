@@ -14,6 +14,28 @@ namespace HIKARI::RENDER3D::LIGHTING {
     // GPU に同時公開する Provider 数だけをこの固定予算で制限する。
     inline constexpr size_t kLightingProviderViewSlotCount = 2u;
 
+    enum class SceneLightType : uint8_t {
+        Directional = 0,
+        Point,
+        Spot,
+    };
+
+    struct SceneLightProvider {
+        std::string id{};
+        std::string name{};
+        bool enabled = false;
+        SceneLightType type = SceneLightType::Point;
+        MATH::Vec3 position{};
+        MATH::Vec3 direction{ 0.0f, 0.0f, 1.0f };
+        MATH::Vec3 color{ 1.0f, 1.0f, 1.0f };
+        float intensity = 1.0f;
+        float range = 5.0f;
+        float innerConeAngleDegrees = 25.0f;
+        float outerConeAngleDegrees = 35.0f;
+        float angularFalloff = 1.0f;
+        int priority = 0;
+    };
+
     struct ReflectionProbeProvider {
         std::string id{};
         std::string name{};
@@ -54,6 +76,7 @@ namespace HIKARI::RENDER3D::LIGHTING {
 
     struct SceneLightingSet {
         std::string activeScenario{ "Default" };
+        std::vector<SceneLightProvider> lights{};
         std::vector<ReflectionProbeProvider> reflectionProbes{};
         std::vector<IrradianceVolumeProvider> irradianceVolumes{};
     };

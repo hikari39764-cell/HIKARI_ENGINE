@@ -257,4 +257,38 @@ namespace HIKARI::EDITOR {
         return FindRuntimeObject(scene, id);
     }
 
+    GameObject* CreateLightObject(
+        DocumentSceneBase& scene,
+        const CreateObjectRequest& request,
+        RENDER3D::LIGHTING::SceneLightType lightType) {
+
+        LIGHTING_AUTHORING::LightAuthoring light{};
+        light.name = request.name;
+        light.position = request.position;
+        light.rotationEulerDeg = request.rotation;
+        light.type = lightType;
+        if (light.name.empty()) {
+            switch (lightType) {
+            case RENDER3D::LIGHTING::SceneLightType::Directional:
+                light.name = "Directional Light";
+                light.priority = 100;
+                break;
+            case RENDER3D::LIGHTING::SceneLightType::Spot:
+                light.name = "Spot Light";
+                light.range = 8.0f;
+                break;
+            case RENDER3D::LIGHTING::SceneLightType::Point:
+            default:
+                light.name = "Point Light";
+                break;
+            }
+        }
+        const SceneObjectId id =
+            LIGHTING_AUTHORING::AddLight(
+                scene.GetSceneDocument(),
+                light);
+        scene.RebuildRuntimeWorld();
+        return FindRuntimeObject(scene, id);
+    }
+
 } // namespace HIKARI::EDITOR

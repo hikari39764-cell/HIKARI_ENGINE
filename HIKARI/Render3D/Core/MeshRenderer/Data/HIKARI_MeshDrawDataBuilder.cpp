@@ -9,7 +9,7 @@
 #include "Assets/Models/HIKARI_ModelAsset.h"
 #include "Render3D/Lighting/HIKARI_IblEnvironment.h"
 #include "Render3D/Lighting/HIKARI_LightProbeVolumeRuntime.h"
-#include "Render3D/Lighting/HIKARI_LocalLightFrame.h"
+#include "Render3D/Lighting/HIKARI_LocalLightList.h"
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
 #include "Render3D/Reflection/HIKARI_ReflectionProbeRuntime.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
@@ -68,6 +68,7 @@ namespace HIKARI::MESHRENDERER {
 
     void FillLightCB(
         const SceneEnvironment& environment,
+        const RENDER3D::LIGHTING::LocalLightListView& localLightList,
         RenderDebugView debugView,
         LightCB& out,
         MeshRendererDebugStats& stats) {
@@ -121,9 +122,13 @@ namespace HIKARI::MESHRENDERER {
             fogColor.z,
             std::max(0.0f, environment.fog.density)
         };
+        const bool volumetricFogRequested =
+            environment.fog.enabled &&
+            environment.fog.volumetric &&
+            environment.fog.density > 0.0f;
         out.fogParams = {
             (environment.fog.enabled &&
-                !RENDER3D::VOLUMETRIC::IsVolumetricLightingActive()) ? 1.0f : 0.0f,
+                !volumetricFogRequested) ? 1.0f : 0.0f,
             std::max(0.0f, environment.fog.startDistance),
             std::max(0.1f, environment.fog.endDistance),
             std::max(0.0f, environment.fog.heightFalloff)
@@ -134,28 +139,42 @@ namespace HIKARI::MESHRENDERER {
                 static_cast<uint8_t>(
                     RENDER3D::GetRenderQualitySettings().forwardCostMode));
 
-        const RENDER3D::LIGHTING::LocalLightFrame localLightFrame =
-            RENDER3D::LIGHTING::BuildLocalLightFrame(environment);
-        std::copy(
-            localLightFrame.lights.begin(),
-            localLightFrame.lights.end(),
-            std::begin(out.localLights));
-        out.localLightCount = localLightFrame.uploadedCount;
+        out.localLightCount = localLightList.lightCount;
+        out.localLightClusterCountX =
+            localLightList.clusterCountX;
+        out.localLightClusterCountY =
+            localLightList.clusterCountY;
+        out.localLightClusterCountZ =
+            localLightList.clusterCountZ;
+        out.localLightTileSizePixels =
+            localLightList.tileSizePixels;
+        out.localLightClusterIndexCount =
+            localLightList.clusterIndexCount;
+        out.localLightNearDistance =
+            localLightList.nearDistance;
+        out.localLightFarDistance =
+            localLightList.farDistance;
 
         stats.directionalEnabled = environment.directional.enabled;
         stats.directionalIntensity = out.directionalIntensity;
         stats.ambientIntensity = out.ambientIntensity;
-        stats.localLightSourceCount = localLightFrame.sourceCount;
+        stats.localLightSourceCount = localLightList.sourceCount;
         stats.localLightUploadableCount =
-            localLightFrame.uploadableCount;
+            localLightList.uploadableCount;
         stats.localLightUploadedCount =
-            localLightFrame.uploadedCount;
+            localLightList.lightCount;
         stats.localLightClampedCount =
-            localLightFrame.clampedCount;
+            localLightList.rejectedCount;
         stats.pointLightUploadedCount =
-            localLightFrame.uploadedPointCount;
+            localLightList.pointLightCount;
         stats.spotLightUploadedCount =
-            localLightFrame.uploadedSpotCount;
+            localLightList.spotLightCount;
+        stats.localLightClusterCount =
+            localLightList.clusterCount;
+        stats.localLightClusterIndexCount =
+            localLightList.clusterIndexCount;
+        stats.localLightClusterOverflowCount =
+            localLightList.overflowCount;
         stats.specularIntensity = out.specularParams.x;
         stats.specularPower = out.specularParams.y;
     }

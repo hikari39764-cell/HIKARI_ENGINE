@@ -79,8 +79,44 @@ namespace HIKARI::EDITOR {
             Matches("Reflection Probe", search);
         const bool showIrradianceVolume =
             Matches("Irradiance Volume", search);
-        if ((showReflectionProbe || showIrradianceVolume) &&
+        const bool showDirectionalLight =
+            Matches("Directional Light", search);
+        const bool showPointLight =
+            Matches("Point Light", search);
+        const bool showSpotLight =
+            Matches("Spot Light", search);
+        if ((showReflectionProbe || showIrradianceVolume ||
+             showDirectionalLight || showPointLight || showSpotLight) &&
             ImGui::BeginMenu("Lighting")) {
+            if (showDirectionalLight &&
+                ImGui::MenuItem("Directional Light")) {
+                CreateLightObject(
+                    scene,
+                    context,
+                    selectionSync,
+                    RENDER3D::LIGHTING::SceneLightType::Directional);
+            }
+            if (showPointLight &&
+                ImGui::MenuItem("Point Light")) {
+                CreateLightObject(
+                    scene,
+                    context,
+                    selectionSync,
+                    RENDER3D::LIGHTING::SceneLightType::Point);
+            }
+            if (showSpotLight &&
+                ImGui::MenuItem("Spot Light")) {
+                CreateLightObject(
+                    scene,
+                    context,
+                    selectionSync,
+                    RENDER3D::LIGHTING::SceneLightType::Spot);
+            }
+            if ((showDirectionalLight || showPointLight ||
+                 showSpotLight) &&
+                (showReflectionProbe || showIrradianceVolume)) {
+                ImGui::Separator();
+            }
             if (showReflectionProbe &&
                 ImGui::MenuItem("Reflection Probe")) {
                 CreateLightingObject(
@@ -222,6 +258,47 @@ namespace HIKARI::EDITOR {
             reflectionProbe
                 ? "Create Reflection Probe"
                 : "Create Irradiance Volume",
+            beforeObjects,
+            scene.GetSceneDocument().objects,
+            beforeCamera,
+            scene.GetSceneDocument().camera,
+            dirtyBefore
+        };
+    }
+
+    void SceneCreationPanel::CreateLightObject(
+        DocumentSceneBase& scene,
+        EditorContext& context,
+        const SelectionSyncService& selectionSync,
+        RENDER3D::LIGHTING::SceneLightType lightType) {
+
+        const bool dirtyBefore =
+            context.sceneDirty || scene.HasUnsavedSceneChanges();
+        const std::vector<SceneObjectData> beforeObjects =
+            scene.GetSceneDocument().objects;
+        const SceneCameraSettings beforeCamera =
+            scene.GetSceneDocument().camera;
+        CreateObjectRequest request{};
+        request.position = ComputeObjectPlacementInView(scene.GetCamera());
+        GameObject* object = EDITOR::CreateLightObject(
+            scene,
+            request,
+            lightType);
+        context.selection.SelectObject(scene.GetWorld(), object);
+        context.sceneDirty = true;
+        selectionSync.SyncNextSceneObjectId(
+            scene,
+            context.nextSceneObjectId);
+        const char* label = "Point Light";
+        if (lightType ==
+            RENDER3D::LIGHTING::SceneLightType::Directional) {
+            label = "Directional Light";
+        } else if (lightType ==
+            RENDER3D::LIGHTING::SceneLightType::Spot) {
+            label = "Spot Light";
+        }
+        historyRequest_ = SceneObjectAuthoringHistoryRequest{
+            std::string("Create ") + label,
             beforeObjects,
             scene.GetSceneDocument().objects,
             beforeCamera,

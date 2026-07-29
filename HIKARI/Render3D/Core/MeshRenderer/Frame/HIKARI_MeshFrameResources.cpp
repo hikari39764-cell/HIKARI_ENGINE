@@ -80,6 +80,16 @@ namespace HIKARI::MESHRENDERER {
         const UINT materialDataBytes =
             static_cast<UINT>(sizeof(MaterialGpuData) * kMaxMaterialDataCount);
         const UINT lightBytes = GFX::AlignD3D12ConstantBufferByteSize(sizeof(LightCB));
+        const UINT localLightBytes = static_cast<UINT>(
+            sizeof(RENDER3D::LIGHTING::LocalLightGpuData) *
+            RENDER3D::LIGHTING::kMaximumLocalLightCount);
+        const UINT localLightClusterHeaderBytes = static_cast<UINT>(
+            sizeof(RENDER3D::LIGHTING::LocalLightClusterHeader) *
+            RENDER3D::LIGHTING::kMaximumLocalLightClusterCount);
+        const UINT localLightClusterIndexBytes = static_cast<UINT>(
+            sizeof(uint32_t) *
+            RENDER3D::LIGHTING::
+                kMaximumLocalLightClusterIndexCount);
         const UINT shadowBytes = GFX::AlignD3D12ConstantBufferByteSize(sizeof(ShadowCB));
         const UINT skyEnvironmentBytes =
             GFX::AlignD3D12ConstantBufferByteSize(sizeof(SkyEnvironmentCB));
@@ -147,6 +157,24 @@ namespace HIKARI::MESHRENDERER {
                     lightBytes,
                     frame.lightCB,
                     reinterpret_cast<void**>(&frame.lightMapped)) ||
+                !GFX::D3D12_BUFFER::CreateMappedUploadBuffer(
+                    device,
+                    localLightBytes,
+                    frame.localLightBuffer,
+                    reinterpret_cast<void**>(
+                        &frame.localLightMapped)) ||
+                !GFX::D3D12_BUFFER::CreateMappedUploadBuffer(
+                    device,
+                    localLightClusterHeaderBytes,
+                    frame.localLightClusterHeaderBuffer,
+                    reinterpret_cast<void**>(
+                        &frame.localLightClusterHeaderMapped)) ||
+                !GFX::D3D12_BUFFER::CreateMappedUploadBuffer(
+                    device,
+                    localLightClusterIndexBytes,
+                    frame.localLightClusterIndexBuffer,
+                    reinterpret_cast<void**>(
+                        &frame.localLightClusterIndexMapped)) ||
                 !GFX::D3D12_BUFFER::CreateMappedUploadBuffer(
                     device,
                     shadowBytes,

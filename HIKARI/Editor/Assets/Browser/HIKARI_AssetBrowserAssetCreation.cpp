@@ -33,6 +33,9 @@
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 #include "Platform/HIKARI_Win32Window.h"
 #include "Project/HIKARI_ProjectSettings.h"
+#include "Scene/HIKARI_SceneDocument.h"
+#include "Scene/Lighting/HIKARI_LightingAuthoringModel.h"
+#include "Scene/Serialization/HIKARI_SceneSerializer.h"
 #include "Project/Paths/HIKARI_ProjectPath.h"
 
 #if defined(HIKARI_WITH_EDITOR)
@@ -179,52 +182,23 @@ bool CreateEmptySceneAsset(AssetDatabase &assetDatabase,
   }
 
   const std::string sceneName = absoluteScenePath.stem().stem().string();
-  const nlohmann::json sceneJson{
-      {"version", 1},
-      {"sceneName", sceneName.empty() ? "New Scene" : sceneName},
-      {"systems", nlohmann::json::array({
-                      {{"systemId", "ModelRenderSystem"},
-                       {"enabled", true},
-                       {"executionOrder", 100},
-                       {"settings", nlohmann::json::object()}},
-                  })},
-      {"objects", nlohmann::json::array()},
-      {"environment",
-       {
-           {"ambient",
-            {
-                {"color", nlohmann::json::array({1.0f, 1.0f, 1.0f})},
-                {"intensity", 0.2f},
-            }},
-           {"directional",
-            {
-                {"enabled", true},
-                {"color", nlohmann::json::array({1.0f, 1.0f, 1.0f})},
-                {"direction", nlohmann::json::array(
-                                  {0.26832816f, -0.89442718f, -0.35777089f})},
-                {"intensity", 1.0f},
-           }},
-           {"pointLights", nlohmann::json::array()},
-           {"spotLights", nlohmann::json::array()},
-           {"sky",
-            {
-                {"enabled", false},
-                {"skyAsset", ""},
-                {"exposure", 1.0f},
-                {"followCamera", true},
-                {"scale", 0.05f},
-                {"tint", nlohmann::json::array({1.0f, 1.0f, 1.0f})},
-                {"yaw", 0.0f},
-            }},
-           {"specularIntensity", 0.2f},
-           {"specularPower", 32.0f},
-       }},
-  };
-
-  std::string writeMessage{};
-  if (!SERIALIZATION::JSON::WriteJsonFile(absoluteScenePath, sceneJson,
-                                          &writeMessage)) {
-    outError = "Failed to write scene file: " + writeMessage;
+  SceneDocument document{};
+  document.sceneName =
+      sceneName.empty() ? "New Scene" : sceneName;
+  document.systems.push_back(SceneSystemData{
+      "ModelRenderSystem",
+      true,
+      100,
+      nlohmann::json::object()
+  });
+  LIGHTING_AUTHORING::MigrateLegacyLightingAuthoring(
+      document,
+      5u);
+  const SceneSerializer serializer{};
+  if (!serializer.SaveToFile(
+          absoluteScenePath.string(),
+          document)) {
+    outError = "Failed to write scene file.";
     return false;
   }
 

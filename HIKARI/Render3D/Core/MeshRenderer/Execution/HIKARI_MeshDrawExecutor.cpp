@@ -407,6 +407,9 @@ namespace HIKARI::MESHRENDERER {
                 ctx.cameraAddress,
                 ctx.cullingCameraAddress,
                 ctx.lightAddress,
+                ctx.localLightsAddress,
+                ctx.localLightClusterHeadersAddress,
+                ctx.localLightClusterIndicesAddress,
                 ctx.shadowAddress,
                 ctx.skyEnvironmentAddress);
             BindObjectDataBuffer(ctx.binding, ctx.objectDataSrv);

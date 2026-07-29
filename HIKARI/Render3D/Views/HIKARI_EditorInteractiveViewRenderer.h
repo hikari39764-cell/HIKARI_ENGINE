@@ -7,6 +7,7 @@
 #include <d3d12.h>
 
 #include "Render3D/Core/HIKARI_RenderView.h"
+#include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
 
 namespace HIKARI {
     struct SceneEnvironment;
@@ -52,6 +53,7 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
     void ClearRequest(RenderViewId viewId);
     bool RenderPending(
         const SceneEnvironment& environment,
+        const LIGHTING::SceneLightingSet& lighting,
         uint64_t currentSceneRevision);
     EditorInteractiveViewOutput GetOutput(RenderViewId viewId);
     void Shutdown();

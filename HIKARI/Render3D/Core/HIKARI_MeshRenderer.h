@@ -9,6 +9,8 @@
 #include "Render3D/Core/HIKARI_RenderView.h"
 #include "Assets/Models/HIKARI_ModelAsset.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
+#include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
+#include "Render3D/Lighting/HIKARI_LocalLightList.h"
 #include "Render3D/HIKARI_Transform3D.h"
 #include "Render3D/Core/HIKARI_MeshPassResources.h"
 #include "Render3D/Core/HIKARI_MeshRendererTypes.h"
@@ -51,6 +53,7 @@ namespace HIKARI::MESHRENDERER {
         const GFX::Context& graphics,
         const Camera3D& camera,
         const SceneEnvironment& environment,
+        const RENDER3D::LIGHTING::SceneLightingSet& lighting,
         uint32_t screenWidth,
         uint32_t screenHeight,
         RenderDebugView debugView = RenderDebugView::None,
@@ -59,6 +62,8 @@ namespace HIKARI::MESHRENDERER {
     bool IsGpuDrivenCullingCameraFrozen();
     const CameraCB* GetCameraConstants();
     const CameraCB* GetGpuDrivenCullingCameraConstants();
+    RENDER3D::LIGHTING::LocalLightListGpuBindings
+        GetLocalLightListGpuBindings();
     bool RenderGeometryAuxPass(
         const GFX::Context& graphics,
         RENDER3D::SCREENSPACE::ScreenSpaceGeometryAux& geometryAux,
@@ -92,6 +97,7 @@ namespace HIKARI::MESHRENDERER {
         const GFX::Context& graphics,
         const RENDER3D::RenderViewContext& view,
         const SceneEnvironment& environment,
+        const RENDER3D::LIGHTING::SceneLightingSet& lighting,
         RenderDebugView debugView = RenderDebugView::None);
 #if defined(HIKARI_WITH_EDITOR)
     namespace EDITOR_DETAIL {
@@ -107,6 +113,7 @@ namespace HIKARI::MESHRENDERER {
     bool RenderEditorInteractiveOpaque(
         const RENDER3D::RenderViewContext& view,
         const SceneEnvironment& environment,
+        const RENDER3D::LIGHTING::SceneLightingSet& lighting,
         uint32_t screenWidth,
         uint32_t screenHeight,
         const EditorInteractiveRenderSettings& settings);

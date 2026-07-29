@@ -51,6 +51,9 @@ namespace HIKARI::MESHRENDERER {
         D3D12_GPU_VIRTUAL_ADDRESS cameraAddress,
         D3D12_GPU_VIRTUAL_ADDRESS cullingCameraAddress,
         D3D12_GPU_VIRTUAL_ADDRESS lightAddress,
+        D3D12_GPU_VIRTUAL_ADDRESS localLightsAddress,
+        D3D12_GPU_VIRTUAL_ADDRESS localLightClusterHeadersAddress,
+        D3D12_GPU_VIRTUAL_ADDRESS localLightClusterIndicesAddress,
         D3D12_GPU_VIRTUAL_ADDRESS shadowAddress,
         D3D12_GPU_VIRTUAL_ADDRESS skyEnvironmentAddress);
 

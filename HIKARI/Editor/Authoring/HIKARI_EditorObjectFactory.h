@@ -4,6 +4,7 @@
 
 #include "Assets/HIKARI_AssetGuid.h"
 #include "Render3D/HIKARI_Math3D.h"
+#include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
 #include "Render3D/Procedural/HIKARI_ProceduralMeshTypes.h"
 
 namespace HIKARI {
@@ -46,6 +47,11 @@ namespace EDITOR {
     GameObject* CreateIrradianceVolumeObject(
         DocumentSceneBase& scene,
         const CreateObjectRequest& request);
+
+    GameObject* CreateLightObject(
+        DocumentSceneBase& scene,
+        const CreateObjectRequest& request,
+        RENDER3D::LIGHTING::SceneLightType lightType);
 
 } // namespace EDITOR
 } // namespace HIKARI

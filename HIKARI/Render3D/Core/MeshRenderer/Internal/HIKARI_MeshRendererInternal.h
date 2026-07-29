@@ -32,6 +32,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         const GFX::Context& graphics,
         const Camera3D& camera,
         const SceneEnvironment& environment,
+        const RENDER3D::LIGHTING::SceneLightingSet& lighting,
         uint32_t screenWidth,
         uint32_t screenHeight,
         RenderDebugView debugView,
@@ -97,6 +98,9 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         D3D12_GPU_VIRTUAL_ADDRESS cameraAddress = 0;
         D3D12_GPU_VIRTUAL_ADDRESS cullingCameraAddress = 0;
         D3D12_GPU_VIRTUAL_ADDRESS lightAddress = 0;
+        D3D12_GPU_VIRTUAL_ADDRESS localLightsAddress = 0;
+        D3D12_GPU_VIRTUAL_ADDRESS localLightClusterHeadersAddress = 0;
+        D3D12_GPU_VIRTUAL_ADDRESS localLightClusterIndicesAddress = 0;
         D3D12_GPU_VIRTUAL_ADDRESS shadowAddress = 0;
         D3D12_GPU_VIRTUAL_ADDRESS skyEnvironmentAddress = 0;
         RENDER3D::GPUDRIVEN::SurfaceGpuSceneFrameBuffer*

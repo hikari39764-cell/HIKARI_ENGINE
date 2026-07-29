@@ -68,20 +68,21 @@ float3 ResolveShadingNormal(
 float3 AccumulateLocalLights(
     float3 normalWS,
     float3 worldPosWS,
-    float3 viewDir)
+    float3 viewDir,
+    float2 pixelPosition)
 {
     float3 sum = 0.0f.xxx;
-    [unroll]
-    for (uint i = 0; i < HIKARI_LOCAL_LIGHT_FRAME_CAPACITY; ++i)
+    const uint2 cluster = HikariResolveLocalLightCluster(
+        pixelPosition,
+        worldPosWS);
+    [loop]
+    for (uint slot = 0u; slot < cluster.y; ++slot)
     {
-        if (i >= gLocalLightCount)
-        {
-            break;
-        }
-
+        const uint i = gHikariLocalLightClusterIndices[
+            cluster.x + slot];
         HikariLocalLightSample lightSample;
         if (!HikariResolveLocalLightSample(
-                gLocalLights[i],
+                gHikariLocalLights[i],
                 worldPosWS,
                 lightSample))
         {
@@ -107,21 +108,21 @@ float3 AccumulateLocalLightsPbr(
     float specularFactor,
     float3 normalWS,
     float3 worldPosWS,
-    float3 viewDir)
+    float3 viewDir,
+    float2 pixelPosition)
 {
     float3 sum = 0.0f.xxx;
-
-    [unroll]
-    for (uint i = 0; i < HIKARI_LOCAL_LIGHT_FRAME_CAPACITY; ++i)
+    const uint2 cluster = HikariResolveLocalLightCluster(
+        pixelPosition,
+        worldPosWS);
+    [loop]
+    for (uint slot = 0u; slot < cluster.y; ++slot)
     {
-        if (i >= gLocalLightCount)
-        {
-            break;
-        }
-
+        const uint i = gHikariLocalLightClusterIndices[
+            cluster.x + slot];
         HikariLocalLightSample lightSample;
         if (!HikariResolveLocalLightSample(
-                gLocalLights[i],
+                gHikariLocalLights[i],
                 worldPosWS,
                 lightSample))
         {
@@ -527,7 +528,8 @@ float4 main(PSInput input) : SV_TARGET
             specularFactor,
             n,
             input.worldPosWS,
-            v);
+            v,
+            input.position.xy);
 
         float3 ambient = HikariEvaluateAmbientIbl(
             albedo.rgb,
@@ -550,7 +552,11 @@ float4 main(PSInput input) : SV_TARGET
     float3 diffuse = gDirectionalColor.rgb * (gDirectionalIntensity * ndotl) * (1.0f - metallic * 0.65f);
     float3 specular = gDirectionalColor.rgb * (gDirectionalIntensity * gSpecularParams.x * spec) * lerp(1.0f, 1.8f, metallic);
     float3 pointLightContribution =
-        AccumulateLocalLights(n, input.worldPosWS, v);
+        AccumulateLocalLights(
+            n,
+            input.worldPosWS,
+            v,
+            input.position.xy);
     float3 lit = ambient + (diffuse + specular) * shadowFactor + pointLightContribution;
         shadedColor = albedo.rgb * lit;
 #endif

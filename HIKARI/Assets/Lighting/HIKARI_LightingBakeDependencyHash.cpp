@@ -177,12 +177,14 @@ namespace HIKARI::ASSETS::LIGHTING {
                 source,
                 environment);
             environment.erase("reflectionProbe");
+            environment.erase("directional");
+            environment.erase("pointLights");
+            environment.erase("spotLights");
             environment.erase("ambientOcclusion");
             environment.erase("bloom");
             environment.erase("toneMapping");
             environment.erase("post");
             environment.erase("showLightDebug");
-            environment.erase("showLocalLightMarkers");
             environment.erase("showPointLightMarkers");
             environment.erase("showSkyDebugInfo");
             if (environment.contains("directionalShadow")) {
@@ -444,6 +446,38 @@ namespace HIKARI::ASSETS::LIGHTING {
             for (const std::string& object :
                 captureObjects) {
                 sceneHash.Add(object);
+            }
+            std::vector<std::string> captureLights{};
+            for (const SceneObjectData& object :
+                 document.objects) {
+                const SceneComponentData* light =
+                    FindComponent(
+                        object,
+                        LIGHTING_AUTHORING::
+                            kLightComponentType);
+                if (!object.enabled ||
+                    light == nullptr ||
+                    !light->properties.is_object()) {
+                    continue;
+                }
+                captureLights.push_back(
+                    nlohmann::json{
+                        { "kind", "Light" },
+                        {
+                            "transformChain",
+                            BuildTransformChain(
+                                document,
+                                object)
+                        },
+                        { "properties", light->properties }
+                    }.dump());
+            }
+            std::sort(
+                captureLights.begin(),
+                captureLights.end());
+            for (const std::string& light :
+                 captureLights) {
+                sceneHash.Add(light);
             }
             return sceneHash.Finish();
         }

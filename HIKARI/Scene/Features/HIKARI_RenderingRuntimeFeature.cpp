@@ -5,6 +5,7 @@
 
 #include "Scene/Components/HIKARI_ProceduralMeshComponent.h"
 #include "Scene/Components/Lighting/HIKARI_IrradianceVolumeComponent.h"
+#include "Scene/Components/Lighting/HIKARI_LightComponent.h"
 #include "Scene/Components/Lighting/HIKARI_ReflectionProbeComponent.h"
 #include "Scene/Components/Rendering/MaterialFx/HIKARI_MaterialFxComponent.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
@@ -46,10 +47,11 @@ namespace HIKARI {
 
             std::span<const std::string_view>
                 GetComponentTypeNames() const noexcept override {
-                static constexpr std::array<std::string_view, 5> names{
+                static constexpr std::array<std::string_view, 6> names{
                     "ModelComponent",
                     "MaterialFxComponent",
                     "ProceduralMeshComponent",
+                    "LightComponent",
                     "ReflectionProbeComponent",
                     "IrradianceVolumeComponent"
                 };
@@ -133,6 +135,27 @@ namespace HIKARI {
                     "Procedural Mesh",
                     "Generates editable plane, box, sphere, cylinder, or capsule geometry.");
 
+                ComponentTypeInfo light{};
+                light.typeName = "LightComponent";
+                light.factory =
+                    []() -> std::unique_ptr<IComponent> {
+                    return std::make_unique<LightComponent>();
+                };
+                light.runtimeApplyPolicy =
+                    ComponentRuntimeApplyPolicy::OnEditCommit;
+                light.initializeDefaults = [](
+                    const SceneObjectData&,
+                    nlohmann::json& properties) {
+                    LightComponent defaults{};
+                    defaults.Serialize(properties);
+                };
+                light.presentation = ComponentTypePresentation{
+                    "Light",
+                    "Lighting",
+                    "Provides a directional, point, or spot light using the owning object's transform.",
+                    std::string(RuntimeFeatureIds::Rendering)
+                };
+
                 ComponentTypeInfo reflectionProbe{};
                 reflectionProbe.typeName = "ReflectionProbeComponent";
                 reflectionProbe.factory =
@@ -184,6 +207,8 @@ namespace HIKARI {
                     std::move(materialFx)) && success;
                 success = componentRegistry.Register(
                     std::move(procedural)) && success;
+                success = componentRegistry.Register(
+                    std::move(light)) && success;
                 success = componentRegistry.Register(
                     std::move(reflectionProbe)) && success;
                 success = componentRegistry.Register(

@@ -68,8 +68,6 @@ EnvironmentPanel::Draw(SceneEnvironment &environment,
   }
 
   if (ImGui::TreeNodeEx("Quick Controls", ImGuiTreeNodeFlags_DefaultOpen)) {
-    ImGui::DragFloat("Sun Intensity", &environment.directional.intensity, 0.01f,
-                     0.0f, 20.0f);
     ImGui::DragFloat("Ambient Intensity", &environment.ambient.intensity, 0.01f,
                      0.0f, 10.0f);
     ImGui::DragFloat("Fog Amount", &environment.fog.density, 0.001f, 0.0f,
@@ -215,8 +213,6 @@ EnvironmentPanel::Draw(SceneEnvironment &environment,
 
   if (ImGui::TreeNode("Debug")) {
     ImGui::Checkbox("Show Light Debug", &environment.showLightDebug);
-    ImGui::Checkbox("Show Local Light Markers",
-                    &environment.showLocalLightMarkers);
     ImGui::Checkbox("Show Sky Debug Info", &environment.showSkyDebugInfo);
 
     ImGui::TextDisabled(
@@ -240,7 +236,6 @@ EnvironmentPanel::Draw(SceneEnvironment &environment,
 
   if (ImGui::Button("Reset Environment Defaults")) {
     environment = SceneEnvironment{};
-    NormalizeDirectionalLight(environment.directional);
   }
 
   const bool changed =

@@ -14,7 +14,6 @@
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenLayer.h"
 #include "Render3D/HIKARI_Math3D.h"
 #include "Render3D/HIKARI_Transform3D.h"
-#include "Render3D/Lighting/HIKARI_LocalLightFrame.h"
 #include "Render3D/Material/HIKARI_GpuMaterialTypes.h"
 #include "Render3D/Meshlet/HIKARI_MeshletRenderBackend.h"
 #include "Vfx/Common/HIKARI_FxTypes.h"
@@ -124,12 +123,17 @@ namespace HIKARI::MESHRENDERER {
         MATH::Vec4 directionalColor{};
         MATH::Vec4 ambientColor{};
         MATH::Vec4 specularParams{};
-        RENDER3D::LIGHTING::LocalLightGpuData
-            localLights[RENDER3D::LIGHTING::kLocalLightFrameCapacity]{};
         float directionalIntensity = 1.0f;
         float ambientIntensity = 0.25f;
         uint32_t localLightCount = 0;
-        float lightPadding = 0.0f;
+        uint32_t localLightClusterCountX = 0u;
+        uint32_t localLightClusterCountY = 0u;
+        uint32_t localLightClusterCountZ = 0u;
+        uint32_t localLightTileSizePixels = 64u;
+        uint32_t localLightClusterIndexCount = 0u;
+        float localLightNearDistance = 0.1f;
+        float localLightFarDistance = 100.0f;
+        float localLightPadding[2]{};
         MATH::Vec4 fogColorDensity{};
         MATH::Vec4 fogParams{};
         uint32_t debugView = 0;
@@ -276,6 +280,9 @@ namespace HIKARI::MESHRENDERER {
         size_t localLightClampedCount = 0;
         size_t pointLightUploadedCount = 0;
         size_t spotLightUploadedCount = 0;
+        size_t localLightClusterCount = 0;
+        size_t localLightClusterIndexCount = 0;
+        size_t localLightClusterOverflowCount = 0;
         float specularIntensity = 0.0f;
         float specularPower = 0.0f;
     };

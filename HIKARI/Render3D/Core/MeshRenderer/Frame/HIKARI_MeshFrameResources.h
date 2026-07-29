@@ -10,6 +10,7 @@
 
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/Core/HIKARI_MeshRendererTypes.h"
+#include "Render3D/Lighting/HIKARI_LocalLightList.h"
 #include "Render3D/Material/HIKARI_GpuMaterialRegistry.h"
 
 namespace HIKARI::MESHRENDERER {
@@ -23,6 +24,9 @@ namespace HIKARI::MESHRENDERER {
         Microsoft::WRL::ComPtr<ID3D12Resource> materialDataUploadBuffer;
         Microsoft::WRL::ComPtr<ID3D12Resource> materialDataBuffer;
         Microsoft::WRL::ComPtr<ID3D12Resource> lightCB;
+        Microsoft::WRL::ComPtr<ID3D12Resource> localLightBuffer;
+        Microsoft::WRL::ComPtr<ID3D12Resource> localLightClusterHeaderBuffer;
+        Microsoft::WRL::ComPtr<ID3D12Resource> localLightClusterIndexBuffer;
         Microsoft::WRL::ComPtr<ID3D12Resource> shadowCB;
         Microsoft::WRL::ComPtr<ID3D12Resource> skyEnvironmentCB;
         Microsoft::WRL::ComPtr<ID3D12Resource> jointPaletteCB;
@@ -33,6 +37,11 @@ namespace HIKARI::MESHRENDERER {
         ObjectGpuData* objectDataMapped = nullptr;
         MaterialGpuData* materialDataMapped = nullptr;
         LightCB* lightMapped = nullptr;
+        RENDER3D::LIGHTING::LocalLightGpuData* localLightMapped = nullptr;
+        RENDER3D::LIGHTING::LocalLightClusterHeader*
+            localLightClusterHeaderMapped = nullptr;
+        uint32_t* localLightClusterIndexMapped = nullptr;
+        RENDER3D::LIGHTING::LocalLightListView localLightListView{};
         ShadowCB* shadowMapped = nullptr;
         SkyEnvironmentCB* skyEnvironmentMapped = nullptr;
         JointPaletteCB* jointPaletteMapped = nullptr;

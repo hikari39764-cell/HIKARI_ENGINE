@@ -197,6 +197,9 @@ namespace HIKARI::MESHRENDERER {
         D3D12_GPU_VIRTUAL_ADDRESS cameraAddress,
         D3D12_GPU_VIRTUAL_ADDRESS cullingCameraAddress,
         D3D12_GPU_VIRTUAL_ADDRESS lightAddress,
+        D3D12_GPU_VIRTUAL_ADDRESS localLightsAddress,
+        D3D12_GPU_VIRTUAL_ADDRESS localLightClusterHeadersAddress,
+        D3D12_GPU_VIRTUAL_ADDRESS localLightClusterIndicesAddress,
         D3D12_GPU_VIRTUAL_ADDRESS shadowAddress,
         D3D12_GPU_VIRTUAL_ADDRESS skyEnvironmentAddress) {
         if (ctx.cmd == nullptr || rootSig == nullptr) {
@@ -207,6 +210,21 @@ namespace HIKARI::MESHRENDERER {
         BindCbvCached(ctx, ROOT_PARAM::Camera, cameraAddress);
         BindCbvCached(ctx, ROOT_PARAM::CullingCamera, cullingCameraAddress);
         BindCbvCached(ctx, ROOT_PARAM::Light, lightAddress);
+        if (localLightsAddress != 0u) {
+            ctx.cmd->SetGraphicsRootShaderResourceView(
+                ROOT_PARAM::LocalLights,
+                localLightsAddress);
+        }
+        if (localLightClusterHeadersAddress != 0u) {
+            ctx.cmd->SetGraphicsRootShaderResourceView(
+                ROOT_PARAM::LocalLightClusterHeaders,
+                localLightClusterHeadersAddress);
+        }
+        if (localLightClusterIndicesAddress != 0u) {
+            ctx.cmd->SetGraphicsRootShaderResourceView(
+                ROOT_PARAM::LocalLightClusterIndices,
+                localLightClusterIndicesAddress);
+        }
         BindCbvCached(ctx, ROOT_PARAM::ShadowCB, shadowAddress);
         BindCbvCached(ctx, ROOT_PARAM::SkyEnvironment, skyEnvironmentAddress);
         BindMaterialTexturePool(ctx);

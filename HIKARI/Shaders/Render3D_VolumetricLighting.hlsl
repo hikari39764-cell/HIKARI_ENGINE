@@ -15,9 +15,17 @@ cbuffer VolumetricCB : register(b0)
     float4 gVolumeSize;
     float4 gFrameParams;
     float4 gDebugParams;
-    HikariLocalLightGpuData
-        gLocalLights[HIKARI_LOCAL_LIGHT_FRAME_CAPACITY];
+    uint gLocalLightCount;
+    uint gLocalLightClusterCountX;
+    uint gLocalLightClusterCountY;
+    uint gLocalLightClusterCountZ;
+    uint gLocalLightTileSizePixels;
+    uint gLocalLightClusterIndexCount;
+    float gLocalLightNearDistance;
+    float gLocalLightFarDistance;
 };
+
+#include "Include/Lighting/HIKARI_LocalLightList.hlsli"
 
 Texture2D<float> gSceneDepth : register(t0);
 Texture2D<float> gShadowMap : register(t1);
@@ -73,7 +81,10 @@ float HenyeyGreenstein(float cosTheta, float anisotropy)
         max(4.0f * 3.14159265f * pow(1.0f + g2 - 2.0f * g * cosTheta, 1.5f), 1e-4f);
 }
 
-float3 EvaluateLighting(float3 worldPosition, float3 viewRay)
+float3 EvaluateLighting(
+    float3 worldPosition,
+    float3 viewRay,
+    float2 pixelPosition)
 {
     const float3 toDirectionalLight = normalize(-gDirectionalDirIntensity.xyz);
     const float phase = HenyeyGreenstein(dot(viewRay, toDirectionalLight), gFogDistances.w);
@@ -81,15 +92,29 @@ float3 EvaluateLighting(float3 worldPosition, float3 viewRay)
     lighting += gDirectionalColorShadow.rgb * gDirectionalDirIntensity.w *
         phase * lerp(1.0f, ShadowVisibility(worldPosition), gDirectionalColorShadow.a);
 
-    const uint localLightCount = min(
-        (uint)(gFrameParams.w + 0.5f),
-        HIKARI_LOCAL_LIGHT_FRAME_CAPACITY);
+    const uint2 localLightCluster = HikariResolveLocalLightCluster(
+        pixelPosition,
+        worldPosition);
     [loop]
-    for (uint index = 0; index < localLightCount; ++index)
+    for (uint clusterSlot = 0u;
+         clusterSlot < localLightCluster.y;
+         ++clusterSlot)
     {
+        const uint compactIndex =
+            localLightCluster.x + clusterSlot;
+        if (compactIndex >= gLocalLightClusterIndexCount)
+        {
+            break;
+        }
+        const uint lightIndex =
+            gHikariLocalLightClusterIndices[compactIndex];
+        if (lightIndex >= gLocalLightCount)
+        {
+            continue;
+        }
         HikariLocalLightSample lightSample;
         if (!HikariResolveLocalLightSample(
-                gLocalLights[index],
+                gHikariLocalLights[lightIndex],
                 worldPosition,
                 lightSample))
         {
@@ -113,6 +138,11 @@ void InjectAndIntegrateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     }
 
     const float2 uv = (float2(dispatchThreadId.xy) + 0.5f) / float2(volumeSize.xy);
+    uint sceneWidth = 0u;
+    uint sceneHeight = 0u;
+    gSceneDepth.GetDimensions(sceneWidth, sceneHeight);
+    const float2 pixelPosition =
+        uv * float2(sceneWidth, sceneHeight);
     const float3 ray = ReconstructRay(uv);
     float3 integratedScattering = 0.0f.xxx;
     float integratedTransmittance = 1.0f;
@@ -128,7 +158,10 @@ void InjectAndIntegrateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         const float heightDensity = exp(-max(worldPosition.y, 0.0f) * gFogDistances.z);
         const float extinction = max(0.0f, gFogColorDensity.a) * heightDensity;
         const float stepTransmittance = exp(-extinction * stepLength);
-        const float3 lighting = EvaluateLighting(worldPosition, ray);
+        const float3 lighting = EvaluateLighting(
+            worldPosition,
+            ray,
+            pixelPosition);
         const float3 stepScattering = lighting * gFogColorDensity.rgb *
             (1.0f - stepTransmittance);
         integratedScattering += integratedTransmittance * stepScattering;

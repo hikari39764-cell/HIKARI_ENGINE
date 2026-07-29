@@ -1,3 +1,4 @@
+#include "Scene/Components/Lighting/HIKARI_LightComponent.h"
 #include "Scene/Components/Lighting/HIKARI_IrradianceVolumeComponent.h"
 #include "Scene/Components/Lighting/HIKARI_ReflectionProbeComponent.h"
 
@@ -49,6 +50,55 @@ namespace HIKARI {
         }
 
     } // namespace
+
+    void LightComponent::BuildInspector(IInspectorBuilder& builder) {
+        builder.Text("Light");
+        builder.Bool("Enabled", enabled_);
+
+        int lightType = static_cast<int>(type_);
+        static constexpr std::array<const char*, 3> typeChoices{
+            "Directional",
+            "Point",
+            "Spot"
+        };
+        if (builder.Choice("Type", lightType, typeChoices)) {
+            type_ = static_cast<LightComponentType>(
+                std::clamp(lightType, 0, 2));
+        }
+
+        builder.Text("Scene-linear Color");
+        builder.FloatRange("Red", color_.x, 0.0f, 1.0f, 0.01f);
+        builder.FloatRange("Green", color_.y, 0.0f, 1.0f, 0.01f);
+        builder.FloatRange("Blue", color_.z, 0.0f, 1.0f, 0.01f);
+        builder.FloatRange("Intensity", intensity_, 0.0f, 100.0f, 0.05f);
+        builder.Int("Priority", priority_);
+
+        if (type_ != LightComponentType::Directional) {
+            builder.FloatRange("Range", range_, 0.05f, 1000.0f, 0.1f);
+        }
+        if (type_ == LightComponentType::Spot) {
+            builder.Text("Spot Cone (+Z forward)");
+            builder.FloatRange(
+                "Inner Cone Angle",
+                innerConeAngleDegrees_,
+                0.1f,
+                89.0f,
+                0.1f);
+            builder.FloatRange(
+                "Outer Cone Angle",
+                outerConeAngleDegrees_,
+                0.1f,
+                89.0f,
+                0.1f);
+            builder.FloatRange(
+                "Angular Falloff",
+                angularFalloff_,
+                0.05f,
+                8.0f,
+                0.05f);
+        }
+        ClampSettings();
+    }
 
     void ReflectionProbeComponent::BuildInspector(
         IInspectorBuilder& builder) {

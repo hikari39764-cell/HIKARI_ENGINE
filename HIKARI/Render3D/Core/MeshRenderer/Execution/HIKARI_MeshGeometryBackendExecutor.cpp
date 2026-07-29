@@ -284,6 +284,9 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                 drawCtx.cameraAddress,
                 drawCtx.cullingCameraAddress,
                 drawCtx.lightAddress,
+                drawCtx.localLightsAddress,
+                drawCtx.localLightClusterHeadersAddress,
+                drawCtx.localLightClusterIndicesAddress,
                 drawCtx.shadowAddress,
                 drawCtx.skyEnvironmentAddress);
             BindObjectDataBuffer(drawCtx.binding, drawCtx.objectDataSrv);

@@ -31,20 +31,37 @@ namespace HIKARI::MESHRENDERER {
     struct EditorInteractiveMeshFrameResources {
         Microsoft::WRL::ComPtr<ID3D12Resource> cameraCB{};
         Microsoft::WRL::ComPtr<ID3D12Resource> lightCB{};
+        Microsoft::WRL::ComPtr<ID3D12Resource> localLightBuffer{};
+        Microsoft::WRL::ComPtr<ID3D12Resource>
+            localLightClusterHeaderBuffer{};
+        Microsoft::WRL::ComPtr<ID3D12Resource>
+            localLightClusterIndexBuffer{};
         Microsoft::WRL::ComPtr<ID3D12Resource> shadowCB{};
         Microsoft::WRL::ComPtr<ID3D12Resource> skyEnvironmentCB{};
         CameraCB* cameraMapped = nullptr;
         LightCB* lightMapped = nullptr;
+        RENDER3D::LIGHTING::LocalLightGpuData*
+            localLightMapped = nullptr;
+        RENDER3D::LIGHTING::LocalLightClusterHeader*
+            localLightClusterHeaderMapped = nullptr;
+        uint32_t* localLightClusterIndexMapped = nullptr;
+        RENDER3D::LIGHTING::LocalLightListView localLightListView{};
         ShadowCB* shadowMapped = nullptr;
         SkyEnvironmentCB* skyEnvironmentMapped = nullptr;
 
         bool IsReady() const {
             return cameraCB != nullptr &&
                 lightCB != nullptr &&
+                localLightBuffer != nullptr &&
+                localLightClusterHeaderBuffer != nullptr &&
+                localLightClusterIndexBuffer != nullptr &&
                 shadowCB != nullptr &&
                 skyEnvironmentCB != nullptr &&
                 cameraMapped != nullptr &&
                 lightMapped != nullptr &&
+                localLightMapped != nullptr &&
+                localLightClusterHeaderMapped != nullptr &&
+                localLightClusterIndexMapped != nullptr &&
                 shadowMapped != nullptr &&
                 skyEnvironmentMapped != nullptr;
         }

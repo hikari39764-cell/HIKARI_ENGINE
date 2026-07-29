@@ -82,6 +82,7 @@ namespace HIKARI::MESHRENDERER {
         const GFX::Context& graphics,
         const Camera3D& camera,
         const SceneEnvironment& environment,
+        const RENDER3D::LIGHTING::SceneLightingSet& lighting,
         uint32_t screenWidth,
         uint32_t screenHeight,
         RenderDebugView debugView,
@@ -90,6 +91,7 @@ namespace HIKARI::MESHRENDERER {
             graphics,
             camera,
             environment,
+            lighting,
             screenWidth,
             screenHeight,
             debugView,
@@ -125,6 +127,29 @@ namespace HIKARI::MESHRENDERER {
             : frame.cameraMapped;
     }
 
+    RENDER3D::LIGHTING::LocalLightListGpuBindings
+        GetLocalLightListGpuBindings() {
+
+        const MeshFrameResources& frame =
+            GetActiveMeshFrameResources();
+        RENDER3D::LIGHTING::LocalLightListGpuBindings bindings{};
+        bindings.lights = frame.localLightBuffer
+            ? frame.localLightBuffer->GetGPUVirtualAddress()
+            : 0u;
+        bindings.clusterHeaders =
+            frame.localLightClusterHeaderBuffer
+                ? frame.localLightClusterHeaderBuffer->
+                    GetGPUVirtualAddress()
+                : 0u;
+        bindings.clusterIndices =
+            frame.localLightClusterIndexBuffer
+                ? frame.localLightClusterIndexBuffer->
+                    GetGPUVirtualAddress()
+                : 0u;
+        bindings.view = frame.localLightListView;
+        return bindings;
+    }
+
     void EndFrame() {
         gMeshRendererState.frameObjectIndex = 0;
     }
@@ -133,6 +158,7 @@ namespace HIKARI::MESHRENDERER {
         const GFX::Context& graphics,
         const RENDER3D::RenderViewContext& view,
         const SceneEnvironment& environment,
+        const RENDER3D::LIGHTING::SceneLightingSet& lighting,
         RenderDebugView debugView) {
 
         if (view.cameraFrame == nullptr || !view.cameraFrame->valid) {
@@ -142,6 +168,7 @@ namespace HIKARI::MESHRENDERER {
             graphics,
             view,
             environment,
+            lighting,
             debugView);
     }
 

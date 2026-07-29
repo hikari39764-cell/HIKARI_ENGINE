@@ -328,6 +328,31 @@ namespace HIKARI::MESHRENDERER {
         params[ROOT_PARAM::MeshletVisibleClusterList].Descriptor.ShaderRegister = 19;
         params[ROOT_PARAM::MeshletVisibleClusterList].Descriptor.RegisterSpace = 0;
 
+        params[ROOT_PARAM::LocalLights].ParameterType =
+            D3D12_ROOT_PARAMETER_TYPE_SRV;
+        params[ROOT_PARAM::LocalLights].ShaderVisibility =
+            D3D12_SHADER_VISIBILITY_PIXEL;
+        params[ROOT_PARAM::LocalLights].Descriptor.ShaderRegister = 0;
+        params[ROOT_PARAM::LocalLights].Descriptor.RegisterSpace = 5;
+
+        params[ROOT_PARAM::LocalLightClusterHeaders].ParameterType =
+            D3D12_ROOT_PARAMETER_TYPE_SRV;
+        params[ROOT_PARAM::LocalLightClusterHeaders].ShaderVisibility =
+            D3D12_SHADER_VISIBILITY_PIXEL;
+        params[ROOT_PARAM::LocalLightClusterHeaders].
+            Descriptor.ShaderRegister = 1;
+        params[ROOT_PARAM::LocalLightClusterHeaders].
+            Descriptor.RegisterSpace = 5;
+
+        params[ROOT_PARAM::LocalLightClusterIndices].ParameterType =
+            D3D12_ROOT_PARAMETER_TYPE_SRV;
+        params[ROOT_PARAM::LocalLightClusterIndices].ShaderVisibility =
+            D3D12_SHADER_VISIBILITY_PIXEL;
+        params[ROOT_PARAM::LocalLightClusterIndices].
+            Descriptor.ShaderRegister = 2;
+        params[ROOT_PARAM::LocalLightClusterIndices].
+            Descriptor.RegisterSpace = 5;
+
         D3D12_STATIC_SAMPLER_DESC linearWrapSampler{};
         linearWrapSampler.Filter = D3D12_FILTER_ANISOTROPIC;
         linearWrapSampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;

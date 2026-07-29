@@ -109,6 +109,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         const GFX::Context& graphics,
         const Camera3D& camera,
         const SceneEnvironment& environment,
+        const RENDER3D::LIGHTING::SceneLightingSet& lighting,
         RenderDebugView debugView,
         uint32_t overrideScreenWidth = 0,
         uint32_t overrideScreenHeight = 0,
@@ -184,8 +185,25 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         gMeshRendererState.debugStats.gpuDrivenCullingCameraFrozen =
             gMeshRendererState.freezeGpuDrivenCullingCamera && gMeshRendererState.frozenCullingCameraValid;
 
+        frameResources.localLightListView =
+            RENDER3D::LIGHTING::BuildLocalLightList(
+                lighting,
+                camera,
+                static_cast<uint32_t>(screenW),
+                static_cast<uint32_t>(screenH),
+                {
+                    frameResources.localLightMapped,
+                    RENDER3D::LIGHTING::kMaximumLocalLightCount,
+                    frameResources.localLightClusterHeaderMapped,
+                    RENDER3D::LIGHTING::
+                        kMaximumLocalLightClusterCount,
+                    frameResources.localLightClusterIndexMapped,
+                    RENDER3D::LIGHTING::
+                        kMaximumLocalLightClusterIndexCount
+                });
         FillLightCB(
             environment,
+            frameResources.localLightListView,
             debugView,
             *frameResources.lightMapped,
             gMeshRendererState.debugStats);
@@ -250,6 +268,30 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                 : (frame.lightCB
                     ? frame.lightCB->GetGPUVirtualAddress()
                     : 0);
+        ctx.localLightsAddress =
+            overrides != nullptr &&
+                overrides->localLightsAddress != 0
+                ? overrides->localLightsAddress
+                : (frame.localLightBuffer
+                    ? frame.localLightBuffer->
+                        GetGPUVirtualAddress()
+                    : 0);
+        ctx.localLightClusterHeadersAddress =
+            overrides != nullptr &&
+                overrides->localLightClusterHeadersAddress != 0
+                ? overrides->localLightClusterHeadersAddress
+                : (frame.localLightClusterHeaderBuffer
+                    ? frame.localLightClusterHeaderBuffer->
+                        GetGPUVirtualAddress()
+                    : 0);
+        ctx.localLightClusterIndicesAddress =
+            overrides != nullptr &&
+                overrides->localLightClusterIndicesAddress != 0
+                ? overrides->localLightClusterIndicesAddress
+                : (frame.localLightClusterIndexBuffer
+                    ? frame.localLightClusterIndexBuffer->
+                        GetGPUVirtualAddress()
+                    : 0);
         ctx.shadowAddress =
             overrides != nullptr && overrides->shadowAddress != 0
                 ? overrides->shadowAddress
@@ -272,6 +314,19 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         ctx.lightAddress = frame.lightCB
             ? frame.lightCB->GetGPUVirtualAddress()
             : 0;
+        ctx.localLightsAddress = frame.localLightBuffer
+            ? frame.localLightBuffer->GetGPUVirtualAddress()
+            : 0;
+        ctx.localLightClusterHeadersAddress =
+            frame.localLightClusterHeaderBuffer
+                ? frame.localLightClusterHeaderBuffer->
+                    GetGPUVirtualAddress()
+                : 0;
+        ctx.localLightClusterIndicesAddress =
+            frame.localLightClusterIndexBuffer
+                ? frame.localLightClusterIndexBuffer->
+                    GetGPUVirtualAddress()
+                : 0;
         ctx.shadowAddress = frame.shadowCB
             ? frame.shadowCB->GetGPUVirtualAddress()
             : 0;
@@ -312,6 +367,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         const GFX::Context& graphics,
         const Camera3D& camera,
         const SceneEnvironment& environment,
+        const RENDER3D::LIGHTING::SceneLightingSet& lighting,
         uint32_t screenWidth,
         uint32_t screenHeight,
         RenderDebugView debugView,
@@ -329,6 +385,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                 graphics,
                 camera,
                 environment,
+                lighting,
                 debugView,
                 screenWidth,
                 screenHeight,

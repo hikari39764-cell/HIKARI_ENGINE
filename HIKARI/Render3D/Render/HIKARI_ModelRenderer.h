@@ -6,6 +6,7 @@
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/Core/HIKARI_Camera3D.h"
 #include "Render3D/Core/HIKARI_RenderView.h"
+#include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Render3D/Core/HIKARI_MeshRendererTypes.h"
 #include "Render3D/Runtime/HIKARI_RenderModelCache.h"
@@ -48,11 +49,13 @@ namespace HIKARI::MODELRENDERER {
         const GFX::Context& graphics,
         const RENDER3D::RenderViewContext& view,
         const SceneEnvironment& environment,
+        const RENDER3D::LIGHTING::SceneLightingSet& lighting,
         RenderDebugView debugView = RenderDebugView::None);
     void RenderOpaqueForReflectionProbeCapture(
         const GFX::Context& graphics,
         const Camera3D& camera,
         const SceneEnvironment& environment,
+        const RENDER3D::LIGHTING::SceneLightingSet& lighting,
         uint32_t width,
         uint32_t height,
         ModelRendererFrameKind kind = ModelRendererFrameKind::ReflectionProbeCapture);

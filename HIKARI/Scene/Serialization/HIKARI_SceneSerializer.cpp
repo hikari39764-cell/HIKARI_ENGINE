@@ -221,8 +221,11 @@ namespace HIKARI {
         root["sceneName"] = persisted.sceneName;
 
         SceneJson::SerializeSceneEnvironmentJson(persisted.environment, root["environment"]);
-        // Version 5 以场景组件为唯一 Probe Authoring 来源。
+        // Version 6 以场景组件为唯一 Probe / Light Authoring 来源。
         root["environment"].erase("reflectionProbe");
+        root["environment"].erase("directional");
+        root["environment"].erase("pointLights");
+        root["environment"].erase("spotLights");
         SerializeCamera(persisted.camera, root["camera"]);
         SerializeSceneCinematicsJson(persisted.cinematics, root["cinematics"]);
         SceneJson::SerializeSceneSystemsJson(persisted.systems, root["systems"]);

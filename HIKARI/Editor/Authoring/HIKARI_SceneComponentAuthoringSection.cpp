@@ -75,6 +75,9 @@ namespace HIKARI {
 
             return typeName ==
                     LIGHTING_AUTHORING::
+                        kLightComponentType ||
+                typeName ==
+                    LIGHTING_AUTHORING::
                         kReflectionProbeComponentType ||
                 typeName ==
                     LIGHTING_AUTHORING::
