@@ -91,8 +91,19 @@ namespace HIKARI::SHADOW {
         if (key_.sourceInstanceCount != input.key.sourceInstanceCount) {
             reason |= ShadowCacheMissReasonInstanceCount;
         }
-        if (!AlmostEqualMat4(key_.lightViewProj, input.key.lightViewProj)) {
+        if (key_.cascadeCount != input.key.cascadeCount) {
             reason |= ShadowCacheMissReasonMatrix;
+        } else {
+            for (uint32_t cascadeIndex = 0;
+                 cascadeIndex < input.key.cascadeCount;
+                 ++cascadeIndex) {
+                if (!AlmostEqualMat4(
+                        key_.lightViewProj[cascadeIndex],
+                        input.key.lightViewProj[cascadeIndex])) {
+                    reason |= ShadowCacheMissReasonMatrix;
+                    break;
+                }
+            }
         }
         if (input.hasStaticDirtyRanges) {
             reason |= ShadowCacheMissReasonStaticDirty;

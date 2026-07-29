@@ -185,7 +185,25 @@ namespace HIKARI::MESHRENDERER {
 
     void FillShadowCB(const SceneEnvironment& environment, ShadowCB& out) {
         out = {};
-        out.lightViewProj = SHADOW::GetDirectionalLightViewProj();
+        const auto& cascadeMatrices =
+            SHADOW::GetDirectionalCascadeLightViewProj();
+        for (uint32_t cascadeIndex = 0;
+             cascadeIndex < SHADOW::kMaxDirectionalShadowCascades;
+             ++cascadeIndex) {
+            out.lightViewProj[cascadeIndex] =
+                cascadeMatrices[cascadeIndex];
+        }
+        out.cascadeSplitDistances =
+            SHADOW::GetDirectionalCascadeSplitDistances();
+        out.cascadeParams = {
+            static_cast<float>(SHADOW::GetDirectionalCascadeCount()),
+            std::clamp(
+                environment.directionalShadow.cascadeBlend,
+                0.0f,
+                0.3f),
+            0.5f,
+            0.5f
+        };
         out.enabled = (SHADOW::IsDirectionalShadowEnabled() && environment.directionalShadow.enabled) ? 1u : 0u;
         out.depthBias = std::max(0.0f, environment.directionalShadow.depthBias);
         out.normalBias = std::max(0.0f, environment.directionalShadow.normalBias);
@@ -193,8 +211,8 @@ namespace HIKARI::MESHRENDERER {
         out.pcfEnabled = environment.directionalShadow.pcfEnabled ? 1u : 0u;
         out.pcfRadius = std::clamp(environment.directionalShadow.pcfRadius, 0.0f, 4.0f);
         const float resolution = static_cast<float>(std::max(1u, SHADOW::GetShadowResolution()));
-        out.texelSizeX = 1.0f / resolution;
-        out.texelSizeY = 1.0f / resolution;
+        out.texelSizeX = 1.0f / (resolution * 2.0f);
+        out.texelSizeY = 1.0f / (resolution * 2.0f);
         out.edgeFade = 0.04f;
     }
 

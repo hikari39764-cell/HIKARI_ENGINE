@@ -87,6 +87,8 @@ namespace HIKARI {
                 RenderDebugView::TemporalTransparencyMask,
                 RenderDebugView::TemporalDisocclusion,
                 RenderDebugView::TemporalInvalidDepthMotion,
+                RenderDebugView::SsrConfidence,
+                RenderDebugView::SsrHit,
             };
             for (RenderDebugView mode : screenSpaceModes) {
                 ImGui::TableNextColumn();

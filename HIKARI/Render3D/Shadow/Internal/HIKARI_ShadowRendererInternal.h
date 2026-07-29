@@ -83,9 +83,17 @@ namespace HIKARI::SHADOW::INTERNAL {
         bool frameHasStaticShadowWork = false;
         bool frameHasDynamicShadowWork = false;
         uint32_t resolution = 0;
+        uint32_t atlasResolution = 0;
+        uint32_t activeCascadeIndex = 0;
+        uint32_t cascadeCount = 1;
         D3D12_RESOURCE_STATES shadowState = kShadowShaderReadState;
         D3D12_RESOURCE_STATES staticShadowState = D3D12_RESOURCE_STATE_COMMON;
         MATH::Mat4 lightViewProj = MATH::Mat4::Identity();
+        std::array<MATH::Mat4, kMaxDirectionalShadowCascades>
+            cascadeLightViewProj{};
+        MATH::Vec4 cascadeSplitDistances{};
+        std::array<ShadowLightFrame, kMaxDirectionalShadowCascades>
+            cascadeFrames{};
         MATH::Vec3 lightCullPosition{};
         MATH::Vec3 lightAnchor{};
         float lightAnchorGrid = 0.0f;
@@ -148,6 +156,19 @@ namespace HIKARI::SHADOW::INTERNAL {
         return gShadowRendererState.frameResources[
             gShadowRendererState.activeFrameResourceIndex %
             GFX::kFrameResourceCount];
+    }
+
+    inline UINT ShadowCameraConstantStride() {
+        return (sizeof(ShadowCameraCB) + 255u) & ~255u;
+    }
+
+    inline D3D12_GPU_VIRTUAL_ADDRESS GetActiveShadowCameraGpuAddress() {
+        ShadowFrameResources& frame = GetActiveShadowFrameResources();
+        return frame.cameraCB != nullptr
+            ? frame.cameraCB->GetGPUVirtualAddress() +
+                static_cast<UINT64>(ShadowCameraConstantStride()) *
+                    gShadowRendererState.activeCascadeIndex
+            : 0u;
     }
 
     void InvalidateShadowSourceCache();
@@ -226,7 +247,9 @@ namespace HIKARI::SHADOW::INTERNAL {
     bool CreateShadowPipelineState(const GFX::Context& graphics);
     bool EnsureShadowRendererInitialized(const GFX::Context& graphics);
 
-    void UploadShadowCameraConstants(const ShadowLightFrame& frame);
+    void UploadShadowCameraConstants(
+        const ShadowLightFrame& frame,
+        uint32_t cascadeIndex);
     void SubmitShadowDebugFrustum(
         const SceneEnvironment& environment,
         const Camera3D& camera);

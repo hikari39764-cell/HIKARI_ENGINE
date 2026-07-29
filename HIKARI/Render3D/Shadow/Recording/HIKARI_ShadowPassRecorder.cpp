@@ -14,14 +14,23 @@
 
 namespace HIKARI::SHADOW::INTERNAL {
 
-    void UploadShadowCameraConstants(const ShadowLightFrame& frame) {
-        ShadowCameraCB* camera = GetActiveShadowFrameResources().cameraMapped;
-        if (camera == nullptr) {
+    void UploadShadowCameraConstants(
+        const ShadowLightFrame& frame,
+        uint32_t cascadeIndex) {
+        ShadowCameraCB* mapped = GetActiveShadowFrameResources().cameraMapped;
+        if (mapped == nullptr ||
+            cascadeIndex >= kMaxDirectionalShadowCascades) {
             return;
         }
+        ShadowCameraCB* camera = reinterpret_cast<ShadowCameraCB*>(
+            reinterpret_cast<uint8_t*>(mapped) +
+            static_cast<size_t>(ShadowCameraConstantStride()) * cascadeIndex);
 
         const FrameContext& frameContext = TIME::GetFrameContext();
-        gShadowRendererState.elapsedTimeSec += std::max(0.0f, frameContext.unscaledDt);
+        if (cascadeIndex == 0u) {
+            gShadowRendererState.elapsedTimeSec +=
+                std::max(0.0f, frameContext.unscaledDt);
+        }
         const float resolution =
             static_cast<float>((std::max)(1u, gShadowRendererState.resolution));
         camera->lightViewProj = frame.viewProj;
@@ -50,43 +59,48 @@ namespace HIKARI::SHADOW::INTERNAL {
         if (!environment.directionalShadow.showDebugFrustum) {
             return;
         }
-
-        const ShadowLightFrame frame =
-            BuildShadowLightFrame(environment, camera, gShadowRendererState.resolution);
-        const MATH::Vec3 lightPos = frame.lightPosition;
-        const MATH::Vec3 forward = frame.lightDirection;
-        const MATH::Vec3 right = frame.right;
-        const MATH::Vec3 actualUp = frame.up;
-        const float half = std::max(1.0f, environment.directionalShadow.orthoSize) * 0.5f;
-        const float nearPlane = std::max(0.001f, environment.directionalShadow.nearPlane);
-        const float farPlane =
-            std::max(nearPlane + 0.01f, ResolveShadowDepthSpan(environment, half * 2.0f));
-        const MATH::Vec3 nearCenter = lightPos + forward * nearPlane;
-        const MATH::Vec3 farCenter = lightPos + forward * farPlane;
-
-        const std::array<MATH::Vec3, 8> corners = {
-            nearCenter - right * half - actualUp * half,
-            nearCenter + right * half - actualUp * half,
-            nearCenter + right * half + actualUp * half,
-            nearCenter - right * half + actualUp * half,
-            farCenter - right * half - actualUp * half,
-            farCenter + right * half - actualUp * half,
-            farCenter + right * half + actualUp * half,
-            farCenter - right * half + actualUp * half,
+        (void)camera;
+        constexpr uint32_t colors[] = {
+            0xFF57D6FFu,
+            0xFF65E58Au,
+            0xFFFFC857u,
+            0xFFFF6B8Au
         };
-        constexpr uint32_t color = 0xFFD45CFF;
-        const auto submit = [&](int a, int b) {
-            RENDERER3D::DEBUG::SubmitStroke3D({
-                corners[static_cast<size_t>(a)],
-                corners[static_cast<size_t>(b)],
-                color,
-                RENDERER3D::DEBUG::DebugDepthMode::XRay,
-                1.8f
-            });
-        };
-        submit(0, 1); submit(1, 2); submit(2, 3); submit(3, 0);
-        submit(4, 5); submit(5, 6); submit(6, 7); submit(7, 4);
-        submit(0, 4); submit(1, 5); submit(2, 6); submit(3, 7);
+        for (uint32_t cascadeIndex = 0;
+             cascadeIndex < gShadowRendererState.cascadeCount;
+             ++cascadeIndex) {
+            const ShadowLightFrame& frame =
+                gShadowRendererState.cascadeFrames[cascadeIndex];
+            const float half = frame.orthoSize * 0.5f;
+            const MATH::Vec3 nearCenter =
+                frame.lightPosition +
+                frame.lightDirection * frame.lightNear;
+            const MATH::Vec3 farCenter =
+                frame.lightPosition +
+                frame.lightDirection * frame.lightFar;
+            const std::array<MATH::Vec3, 8> corners = {
+                nearCenter - frame.right * half - frame.up * half,
+                nearCenter + frame.right * half - frame.up * half,
+                nearCenter + frame.right * half + frame.up * half,
+                nearCenter - frame.right * half + frame.up * half,
+                farCenter - frame.right * half - frame.up * half,
+                farCenter + frame.right * half - frame.up * half,
+                farCenter + frame.right * half + frame.up * half,
+                farCenter - frame.right * half + frame.up * half,
+            };
+            const auto submit = [&](int a, int b) {
+                RENDERER3D::DEBUG::SubmitStroke3D({
+                    corners[static_cast<size_t>(a)],
+                    corners[static_cast<size_t>(b)],
+                    colors[cascadeIndex],
+                    RENDERER3D::DEBUG::DebugDepthMode::XRay,
+                    1.8f
+                });
+            };
+            submit(0, 1); submit(1, 2); submit(2, 3); submit(3, 0);
+            submit(4, 5); submit(5, 6); submit(6, 7); submit(7, 4);
+            submit(0, 4); submit(1, 5); submit(2, 6); submit(3, 7);
+        }
     }
     void ClearShadowFrameSubmissions() {
         gShadowRendererState.debugStats = {};

@@ -1,7 +1,7 @@
 # Authoritative HIKARI compile-source manifest.
 # Add or remove translation units here and keep the source-closure test green.
 
-set(HIKARI_COMPILE_SOURCE_COUNT 718)
+set(HIKARI_COMPILE_SOURCE_COUNT 719)
 
 set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/External/WICTextureLoader.cpp"
@@ -254,7 +254,8 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Lighting/HIKARI_LocalLightList.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Lighting/HIKARI_LocalLightSemantics.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Reflection/HIKARI_ReflectionProbeRuntime.cpp"
-    "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/ScreenSpace/HIKARI_ScreenSpaceGeometryAux.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Reflection/HIKARI_ScreenSpaceReflectionRenderer.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Surface/HIKARI_SceneSurfaceBuffer.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/ScreenSpace/HIKARI_ScreenSpacePasses.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/ScreenSpace/HIKARI_SsaoRenderer.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Lighting/HIKARI_SkyRenderer.cpp"

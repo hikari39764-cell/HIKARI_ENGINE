@@ -87,7 +87,9 @@ static const uint HIKARI_FORWARD_COST_NO_MATERIAL_EXTRAS = 5u;
 
 cbuffer ShadowCB : register(b4)
 {
-    float4x4 gShadowLightViewProj;
+    float4x4 gShadowLightViewProj[4];
+    float4 gShadowCascadeSplits;
+    float4 gShadowCascadeParams;
     uint gShadowEnabled;
     float gShadowDepthBias;
     float gShadowNormalBias;

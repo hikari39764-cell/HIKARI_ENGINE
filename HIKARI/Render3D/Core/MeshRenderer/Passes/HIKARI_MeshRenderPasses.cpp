@@ -6,12 +6,12 @@
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Render3D/Core/MeshRenderer/Internal/HIKARI_MeshRendererInternal.h"
 #include "Render3D/GpuDriven/HIKARI_GpuDepthVisibilityLayer.h"
-#include "Render3D/ScreenSpace/HIKARI_ScreenSpaceGeometryAux.h"
+#include "Render3D/Surface/HIKARI_SceneSurfaceBuffer.h"
 
 namespace HIKARI::MESHRENDERER::INTERNAL {
     bool RenderGeometryAuxPassInternal(
         const GFX::Context& graphics,
-        RENDER3D::SCREENSPACE::ScreenSpaceGeometryAux& geometryAux,
+        RENDER3D::SURFACE::SceneSurfaceBuffer& surfaceBuffer,
         D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv) {
         if (!HasGpuDrivenPassSource(
             RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardOpaque)) {
@@ -23,7 +23,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             std::max(1.0f, camera ? camera->screenParams.x : 1.0f));
         const uint32_t height = static_cast<uint32_t>(
             std::max(1.0f, camera ? camera->screenParams.y : 1.0f));
-        if (!geometryAux.EnsureSize(graphics, width, height)) {
+        if (!surfaceBuffer.EnsureSize(graphics, width, height)) {
             return false;
         }
 
@@ -34,8 +34,8 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         GFX::PIX::ScopedGpuEvent pixGeometry(
             graphics.cmdList,
             GFX::PIX::kColorRender,
-            "ScreenSpaceGeometryAux");
-        geometryAux.BeginNormalRoughnessPass(graphics.cmdList, sceneDsv);
+            "SceneSurface");
+        surfaceBuffer.BeginWrite(graphics.cmdList, sceneDsv);
         MeshPassResources passResources{};
         const GeometryBackendExecutionResult backendResult =
             ExecuteGeometryBackendPlan(
@@ -44,7 +44,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                 passResources,
                 MeshDrawPassKind::GeometryAux,
                 RENDER3D::MESHLET::MeshletPipelineKind::GeometryAux);
-        geometryAux.EndNormalRoughnessPass(graphics.cmdList);
+        surfaceBuffer.EndWrite(graphics.cmdList);
         return backendResult.gpuBackendExecuted;
     }
 
@@ -97,9 +97,9 @@ namespace HIKARI::MESHRENDERER {
     using namespace INTERNAL;
     bool RenderGeometryAuxPass(
         const GFX::Context& graphics,
-        RENDER3D::SCREENSPACE::ScreenSpaceGeometryAux& geometryAux,
+        RENDER3D::SURFACE::SceneSurfaceBuffer& surfaceBuffer,
         D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv) {
-        return RenderGeometryAuxPassInternal(graphics, geometryAux, sceneDsv);
+        return RenderGeometryAuxPassInternal(graphics, surfaceBuffer, sceneDsv);
     }
 
     bool HasDepthPrepassWork() {

@@ -4,7 +4,9 @@ cbuffer VolumetricCB : register(b0)
 {
     float4x4 gInvViewProj;
     float4x4 gPrevViewProj;
-    float4x4 gLightViewProj;
+    float4x4 gLightViewProj[4];
+    float4 gShadowCascadeSplits;
+    float4 gShadowCascadeParams;
     float4 gCameraPos;
     float4 gPrevCameraPos;
     float4 gFogColorDensity;
@@ -59,14 +61,35 @@ float ShadowVisibility(float3 worldPosition)
     {
         return 1.0f;
     }
-    float4 lightClip = mul(gLightViewProj, float4(worldPosition, 1.0f));
+    const float viewDistance = length(worldPosition - gCameraPos.xyz);
+    const uint cascadeCount =
+        clamp((uint)round(gShadowCascadeParams.x), 1u, 4u);
+    uint cascadeIndex = 0u;
+    [unroll]
+    for (uint index = 0u; index < 3u; ++index)
+    {
+        if (index + 1u < cascadeCount &&
+            viewDistance > gShadowCascadeSplits[index])
+        {
+            cascadeIndex = index + 1u;
+        }
+    }
+    float4 lightClip =
+        mul(gLightViewProj[cascadeIndex], float4(worldPosition, 1.0f));
     float3 lightNdc = lightClip.xyz / max(abs(lightClip.w), 1e-6f);
     float2 uv = float2(lightNdc.x * 0.5f + 0.5f, 0.5f - lightNdc.y * 0.5f);
     if (any(uv < 0.0f) || any(uv > 1.0f) || lightNdc.z <= 0.0f || lightNdc.z >= 1.0f)
     {
         return 1.0f;
     }
-    return gShadowMap.SampleCmpLevelZero(gShadowSampler, uv, lightNdc.z - 0.0005f);
+    const float2 tile =
+        float2((float)(cascadeIndex & 1u), (float)(cascadeIndex >> 1u));
+    const float2 atlasUv =
+        uv * gShadowCascadeParams.zw + tile * 0.5f;
+    return gShadowMap.SampleCmpLevelZero(
+        gShadowSampler,
+        atlasUv,
+        lightNdc.z - 0.0005f);
 }
 
 float HenyeyGreenstein(float cosTheta, float anisotropy)

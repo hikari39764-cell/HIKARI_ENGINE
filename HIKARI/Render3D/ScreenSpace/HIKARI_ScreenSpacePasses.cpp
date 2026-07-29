@@ -259,7 +259,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
     }
 
     void ReleaseScreenSpaceRuntimeState() {
-        gScreenSpaceState.geometryAux.Release();
+        gScreenSpaceState.surfaceBuffer.Release();
         gScreenSpaceState.ssaoRenderer.Release();
         gScreenSpaceState.depthVisibility.Release();
         RENDER3D::ReleaseTextureResource(gScreenSpaceState.fallbackAoTextureResource);
@@ -432,10 +432,17 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
 
         const float depthVisibilityMs =
             ElapsedMs(depthVisibilityStart, CpuClock::now());
+        const bool ssrNeedsSurface =
+            environment.screenSpaceReflections.enabled &&
+            environment.screenSpaceReflections.quality !=
+                ScreenSpaceReflectionQuality::Off;
 
         // Off 時は GeometryAux も作らない。
         if (ssaoMode == SsaoMode::Off ||
             environment.ambientOcclusion.editorViewportSuppressed) {
+            if (ssrNeedsSurface) {
+                // Continue to the shared surface write; SSAO remains disabled.
+            } else {
             state.ssaoRenderer.RecordSkipped(
                 context.width,
                 context.height,
@@ -443,9 +450,10 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
             state.geometryValid = false;
             state.ssaoValid = false;
             return result;
+            }
         }
 
-        if (ssaoMode == SsaoMode::Balanced) {
+        if (ssaoMode == SsaoMode::Balanced && !ssrNeedsSurface) {
             RecordSsaoGeometryAuxDebug(
                 false,
                 depthVisibilityMs,
@@ -473,22 +481,45 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         const CpuClock::time_point geometryStart = CpuClock::now();
         result.geometryAuxWritten = MESHRENDERER::RenderGeometryAuxPass(
             *context.graphics,
-            state.geometryAux,
+            state.surfaceBuffer,
             context.sceneDsv);
         context.renderTargetAccess.Rebind();
         RecordSsaoGeometryAuxDebug(
             result.geometryAuxWritten,
             ElapsedMs(geometryStart, CpuClock::now()),
-            state.geometryAux.GetFormat());
+            state.surfaceBuffer.GetFormat());
 
-        state.geometryValid = result.geometryAuxWritten && state.geometryAux.IsValid();
+        state.geometryValid =
+            result.geometryAuxWritten && state.surfaceBuffer.IsValid();
         if (state.geometryValid) {
-            result.normalRoughness =
-                state.geometryAux.GetNormalRoughnessView();
+            result.packedSurface =
+                state.surfaceBuffer.GetPackedSurfaceView();
         }
         if (!state.geometryValid ||
             !context.sceneDepth.IsSampleable()) {
             state.ssaoValid = false;
+            return result;
+        }
+
+        if (ssaoMode == SsaoMode::Off ||
+            environment.ambientOcclusion.editorViewportSuppressed) {
+            state.ssaoRenderer.RecordSkipped(
+                context.width,
+                context.height,
+                environment.ambientOcclusion);
+            state.ssaoValid = false;
+            return result;
+        }
+
+        if (ssaoMode == SsaoMode::Balanced) {
+            result.ssaoRendered =
+                state.ssaoValid &&
+                state.ssaoRenderer.IsValid() &&
+                state.ssaoRenderer.GetAoSrv().ptr != 0;
+            if (result.ssaoRendered) {
+                result.ambientOcclusion =
+                    state.ssaoRenderer.GetAoView();
+            }
             return result;
         }
 
@@ -497,7 +528,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
             ssaoOk = state.ssaoRenderer.Render(
                 *context.graphics,
                 context.cmd,
-                state.geometryAux,
+                state.surfaceBuffer,
                 context.sceneDepth.srv,
                 renderCameraCb,
                 environment.ambientOcclusion);

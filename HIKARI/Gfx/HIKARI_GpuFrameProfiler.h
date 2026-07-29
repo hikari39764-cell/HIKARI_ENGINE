@@ -29,6 +29,7 @@ namespace HIKARI::GFX::GPU_PROFILE {
         MeshletDrawShadowFallback,
         SsaoMain,
         SsaoBlur,
+        ScreenSpaceReflections,
         TemporalMotionVectors,
         TemporalTaaResolve,
         TemporalDlaaResolve,

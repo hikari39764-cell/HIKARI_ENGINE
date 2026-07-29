@@ -10,7 +10,7 @@
 #include "Render3D/Core/HIKARI_MeshRendererTypes.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Render3D/Resources/HIKARI_RenderTextureView.h"
-#include "Render3D/ScreenSpace/HIKARI_ScreenSpaceGeometryAux.h"
+#include "Render3D/Surface/HIKARI_SceneSurfaceBuffer.h"
 
 namespace HIKARI::RENDER3D::SCREENSPACE {
 
@@ -48,7 +48,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         bool Render(
             const GFX::Context& graphics,
             ID3D12GraphicsCommandList* cmd,
-            const ScreenSpaceGeometryAux& geometryAux,
+            const SURFACE::SceneSurfaceBuffer& surfaceBuffer,
             D3D12_GPU_DESCRIPTOR_HANDLE sceneDepthSrv,
             const MESHRENDERER::CameraCB& camera,
             const AmbientOcclusionSettings& settings);

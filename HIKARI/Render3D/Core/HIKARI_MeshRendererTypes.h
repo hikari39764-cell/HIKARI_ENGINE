@@ -16,6 +16,7 @@
 #include "Render3D/HIKARI_Transform3D.h"
 #include "Render3D/Material/HIKARI_GpuMaterialTypes.h"
 #include "Render3D/Meshlet/HIKARI_MeshletRenderBackend.h"
+#include "Render3D/Shadow/HIKARI_ShadowLightFrame.h"
 #include "Vfx/Common/HIKARI_FxTypes.h"
 #include "Vfx/MaterialFx/HIKARI_MaterialFxProfile.h"
 
@@ -180,7 +181,9 @@ namespace HIKARI::MESHRENDERER {
     };
 
     struct ShadowCB {
-        MATH::Mat4 lightViewProj{};
+        MATH::Mat4 lightViewProj[SHADOW::kMaxDirectionalShadowCascades]{};
+        MATH::Vec4 cascadeSplitDistances{};
+        MATH::Vec4 cascadeParams{};
         uint32_t enabled = 0;
         float depthBias = 0.001f;
         float normalBias = 0.02f;

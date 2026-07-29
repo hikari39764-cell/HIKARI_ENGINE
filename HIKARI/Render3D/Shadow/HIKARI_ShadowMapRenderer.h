@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <array>
 #include <cstdint>
 #include <d3d12.h>
 
@@ -10,6 +11,7 @@
 #include "Assets/Models/HIKARI_ModelAsset.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Render3D/Shadow/HIKARI_ShadowCacheTypes.h"
+#include "Render3D/Shadow/HIKARI_ShadowLightFrame.h"
 #include "Render3D/HIKARI_Transform3D.h"
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
@@ -21,6 +23,7 @@ namespace HIKARI::SHADOW {
     struct ShadowMapDebugStats {
         bool enabled = false;
         uint32_t resolution = 0;
+        uint32_t cascadeCount = 0;
         float worldTexelSize = 0.0f;
         size_t submittedCasterCount = 0;
         size_t shadowRecordCasterDrawCount = 0;
@@ -106,11 +109,12 @@ namespace HIKARI::SHADOW {
 
     bool IsDirectionalShadowEnabled();
     const MATH::Mat4& GetDirectionalLightViewProj();
+    const std::array<MATH::Mat4, kMaxDirectionalShadowCascades>&
+        GetDirectionalCascadeLightViewProj();
+    const MATH::Vec4& GetDirectionalCascadeSplitDistances();
+    uint32_t GetDirectionalCascadeCount();
     D3D12_GPU_DESCRIPTOR_HANDLE GetDirectionalShadowSrv();
     uint32_t GetShadowResolution();
-    float GetShadowStrength();
-    float GetDepthBias();
-    float GetNormalBias();
     const ShadowMapDebugStats& GetDebugStats();
 
 } // namespace HIKARI::SHADOW

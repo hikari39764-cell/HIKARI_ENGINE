@@ -122,7 +122,8 @@ namespace HIKARI::SHADOW::INTERNAL {
 
     bool CreateShadowFrameResources(const GFX::Context& graphics) {
         ID3D12Device* device = graphics.device;
-        const UINT cameraBytes = GFX::AlignD3D12ConstantBufferByteSize(sizeof(ShadowCameraCB));
+        const UINT cameraBytes =
+            ShadowCameraConstantStride() * kMaxDirectionalShadowCascades;
         const UINT materialDataBytes =
             static_cast<UINT>(sizeof(MESHRENDERER::MaterialGpuData) * MESHRENDERER::kMaxMaterialDataCount);
         const UINT paletteBytes = GFX::AlignD3D12ConstantBufferByteSize(sizeof(ShadowJointPaletteCB)) * kMaxShadowCasterObjects;

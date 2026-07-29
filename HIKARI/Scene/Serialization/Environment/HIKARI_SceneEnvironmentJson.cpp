@@ -10,6 +10,7 @@
 #include "Core/Serialization/Json/HIKARI_JsonMath.h"
 #include "Render3D/Lighting/HIKARI_LocalLightSemantics.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
+#include "Render3D/Shadow/HIKARI_ShadowLightFrame.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironmentNames.h"
 
 namespace HIKARI::SCENE::SERIALIZATION {
@@ -178,6 +179,48 @@ namespace HIKARI::SCENE::SERIALIZATION {
             return fallback;
         }
 
+        const char* ToString(ScreenSpaceReflectionQuality quality) {
+            switch (quality) {
+            case ScreenSpaceReflectionQuality::Off:
+                return "Off";
+            case ScreenSpaceReflectionQuality::Low:
+                return "Low";
+            case ScreenSpaceReflectionQuality::High:
+                return "High";
+            case ScreenSpaceReflectionQuality::Medium:
+            default:
+                return "Medium";
+            }
+        }
+
+        ScreenSpaceReflectionQuality ParseSsrQuality(
+            const nlohmann::json& node,
+            ScreenSpaceReflectionQuality fallback) {
+            if (node.is_number_integer()) {
+                const int value = node.get<int>();
+                if (value >=
+                        static_cast<int>(
+                            ScreenSpaceReflectionQuality::Off) &&
+                    value <=
+                        static_cast<int>(
+                            ScreenSpaceReflectionQuality::High)) {
+                    return static_cast<ScreenSpaceReflectionQuality>(value);
+                }
+                return fallback;
+            }
+            if (!node.is_string()) {
+                return fallback;
+            }
+            const std::string value = node.get<std::string>();
+            if (value == "Off") return ScreenSpaceReflectionQuality::Off;
+            if (value == "Low") return ScreenSpaceReflectionQuality::Low;
+            if (value == "Medium") {
+                return ScreenSpaceReflectionQuality::Medium;
+            }
+            if (value == "High") return ScreenSpaceReflectionQuality::High;
+            return fallback;
+        }
+
         MATH::Vec3 ReflectionProbeRadiusBoxSize(float radius) {
             const float diameter = std::max(0.01f, radius * 2.0f);
             return { diameter, diameter, diameter };
@@ -200,7 +243,12 @@ namespace HIKARI::SCENE::SERIALIZATION {
 
         out["directionalShadow"]["enabled"] = environment.directionalShadow.enabled;
         out["directionalShadow"]["resolution"] = environment.directionalShadow.resolution;
-        out["directionalShadow"]["orthoSize"] = environment.directionalShadow.orthoSize;
+        out["directionalShadow"]["cascadeCount"] =
+            environment.directionalShadow.cascadeCount;
+        out["directionalShadow"]["cascadeSplitLambda"] =
+            environment.directionalShadow.cascadeSplitLambda;
+        out["directionalShadow"]["cascadeBlend"] =
+            environment.directionalShadow.cascadeBlend;
         out["directionalShadow"]["nearPlane"] = environment.directionalShadow.nearPlane;
         out["directionalShadow"]["farPlane"] = environment.directionalShadow.farPlane;
         out["directionalShadow"]["depthBias"] = environment.directionalShadow.depthBias;
@@ -283,6 +331,18 @@ namespace HIKARI::SCENE::SERIALIZATION {
         out["ambientOcclusion"]["specularStrength"] = environment.ambientOcclusion.specularStrength;
         out["ambientOcclusion"]["sampleCount"] = environment.ambientOcclusion.sampleCount;
         out["ambientOcclusion"]["blurIterations"] = environment.ambientOcclusion.blurIterations;
+
+        const ScreenSpaceReflectionSettings& ssr =
+            environment.screenSpaceReflections;
+        out["screenSpaceReflections"]["enabled"] = ssr.enabled;
+        out["screenSpaceReflections"]["quality"] =
+            ToString(ssr.quality);
+        out["screenSpaceReflections"]["intensity"] = ssr.intensity;
+        out["screenSpaceReflections"]["maxDistance"] = ssr.maxDistance;
+        out["screenSpaceReflections"]["thickness"] = ssr.thickness;
+        out["screenSpaceReflections"]["maxRoughness"] = ssr.maxRoughness;
+        out["screenSpaceReflections"]["edgeFade"] = ssr.edgeFade;
+        out["screenSpaceReflections"]["stride"] = ssr.stride;
 
         out["bloom"]["enabled"] = environment.bloom.enabled;
         out["bloom"]["threshold"] = environment.bloom.threshold;
@@ -368,7 +428,27 @@ namespace HIKARI::SCENE::SERIALIZATION {
             const nlohmann::json& shadow = node["directionalShadow"];
             outEnvironment.directionalShadow.enabled = shadow.value("enabled", outEnvironment.directionalShadow.enabled);
             outEnvironment.directionalShadow.resolution = shadow.value("resolution", outEnvironment.directionalShadow.resolution);
-            outEnvironment.directionalShadow.orthoSize = shadow.value("orthoSize", outEnvironment.directionalShadow.orthoSize);
+            outEnvironment.directionalShadow.cascadeCount =
+                std::clamp(
+                    shadow.value(
+                        "cascadeCount",
+                        outEnvironment.directionalShadow.cascadeCount),
+                    1u,
+                    SHADOW::kMaxDirectionalShadowCascades);
+            outEnvironment.directionalShadow.cascadeSplitLambda =
+                std::clamp(
+                    shadow.value(
+                        "cascadeSplitLambda",
+                        outEnvironment.directionalShadow.cascadeSplitLambda),
+                    0.0f,
+                    1.0f);
+            outEnvironment.directionalShadow.cascadeBlend =
+                std::clamp(
+                    shadow.value(
+                        "cascadeBlend",
+                        outEnvironment.directionalShadow.cascadeBlend),
+                    0.0f,
+                    0.3f);
             outEnvironment.directionalShadow.nearPlane = shadow.value("nearPlane", outEnvironment.directionalShadow.nearPlane);
             outEnvironment.directionalShadow.farPlane = shadow.value("farPlane", outEnvironment.directionalShadow.farPlane);
             outEnvironment.directionalShadow.depthBias = shadow.value("depthBias", outEnvironment.directionalShadow.depthBias);
@@ -518,6 +598,41 @@ namespace HIKARI::SCENE::SERIALIZATION {
             outEnvironment.ambientOcclusion.blurIterations = ao.value("blurIterations", outEnvironment.ambientOcclusion.blurIterations);
             outEnvironment.ambientOcclusion.sampleCount = std::clamp<uint32_t>(outEnvironment.ambientOcclusion.sampleCount, 8u, 32u);
             outEnvironment.ambientOcclusion.blurIterations = std::clamp<uint32_t>(outEnvironment.ambientOcclusion.blurIterations, 0u, 4u);
+        }
+
+        if (node.contains("screenSpaceReflections") &&
+            node["screenSpaceReflections"].is_object()) {
+            const nlohmann::json& ssr = node["screenSpaceReflections"];
+            ScreenSpaceReflectionSettings& settings =
+                outEnvironment.screenSpaceReflections;
+            settings.enabled = ssr.value("enabled", settings.enabled);
+            settings.quality = ParseSsrQuality(
+                ssr.value("quality", nlohmann::json{}),
+                settings.quality);
+            settings.intensity = std::clamp(
+                ssr.value("intensity", settings.intensity),
+                0.0f,
+                2.0f);
+            settings.maxDistance = std::clamp(
+                ssr.value("maxDistance", settings.maxDistance),
+                1.0f,
+                200.0f);
+            settings.thickness = std::clamp(
+                ssr.value("thickness", settings.thickness),
+                0.0001f,
+                0.05f);
+            settings.maxRoughness = std::clamp(
+                ssr.value("maxRoughness", settings.maxRoughness),
+                0.05f,
+                1.0f);
+            settings.edgeFade = std::clamp(
+                ssr.value("edgeFade", settings.edgeFade),
+                0.01f,
+                0.35f);
+            settings.stride = std::clamp(
+                ssr.value("stride", settings.stride),
+                0.02f,
+                2.0f);
         }
 
         if (node.contains("bloom") && node["bloom"].is_object()) {

@@ -214,6 +214,7 @@ namespace HIKARI::GFX::GPU_PROFILE {
         case Pass::MeshletDrawShadowFallback: return "Meshlet Draw Shadow Fallback";
         case Pass::SsaoMain: return "SSAO Main";
         case Pass::SsaoBlur: return "SSAO Blur";
+        case Pass::ScreenSpaceReflections: return "Screen Space Reflections";
         case Pass::TemporalMotionVectors: return "Temporal MotionVectors";
         case Pass::TemporalTaaResolve: return "Temporal TAA";
         case Pass::TemporalDlaaResolve: return "Temporal DLAA";

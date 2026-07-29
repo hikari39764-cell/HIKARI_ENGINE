@@ -59,10 +59,24 @@ bool EqualAmbientOcclusionSettings(const AmbientOcclusionSettings &lhs,
           lhs.editorViewportSuppressed == rhs.editorViewportSuppressed);
 }
 
+bool EqualScreenSpaceReflectionSettings(
+    const ScreenSpaceReflectionSettings &lhs,
+    const ScreenSpaceReflectionSettings &rhs) {
+  return lhs.enabled == rhs.enabled && lhs.quality == rhs.quality &&
+         lhs.intensity == rhs.intensity &&
+         lhs.maxDistance == rhs.maxDistance &&
+         lhs.thickness == rhs.thickness &&
+         lhs.maxRoughness == rhs.maxRoughness &&
+         lhs.edgeFade == rhs.edgeFade && lhs.stride == rhs.stride;
+}
+
 bool EqualDirectionalShadowSettings(const DirectionalShadowSettings &lhs,
                                     const DirectionalShadowSettings &rhs) {
   return lhs.enabled == rhs.enabled && lhs.resolution == rhs.resolution &&
-         lhs.orthoSize == rhs.orthoSize && lhs.nearPlane == rhs.nearPlane &&
+         lhs.cascadeCount == rhs.cascadeCount &&
+         lhs.cascadeSplitLambda == rhs.cascadeSplitLambda &&
+         lhs.cascadeBlend == rhs.cascadeBlend &&
+         lhs.nearPlane == rhs.nearPlane &&
          lhs.farPlane == rhs.farPlane && lhs.depthBias == rhs.depthBias &&
          lhs.normalBias == rhs.normalBias && lhs.strength == rhs.strength &&
          lhs.pcfEnabled == rhs.pcfEnabled && lhs.pcfRadius == rhs.pcfRadius &&
@@ -120,7 +134,9 @@ bool AreSceneEnvironmentValuesEqual(const SceneEnvironment &lhs,
       !EqualSkySettings(lhs.sky, rhs.sky) ||
       !EqualReflectionProbeSettings(lhs.reflectionProbe, rhs.reflectionProbe) ||
       !EqualAmbientOcclusionSettings(lhs.ambientOcclusion, rhs.ambientOcclusion,
-                                     false) ||
+                                    false) ||
+      !EqualScreenSpaceReflectionSettings(
+          lhs.screenSpaceReflections, rhs.screenSpaceReflections) ||
       lhs.bloom.enabled != rhs.bloom.enabled ||
       lhs.bloom.threshold != rhs.bloom.threshold ||
       lhs.bloom.intensity != rhs.bloom.intensity ||
@@ -188,6 +204,8 @@ bool AreQualityEnvironmentValuesEqual(const SceneEnvironment &lhs,
                                         rhs.directionalShadow) &&
          EqualAmbientOcclusionSettings(lhs.ambientOcclusion,
                                        rhs.ambientOcclusion, true) &&
+         EqualScreenSpaceReflectionSettings(
+             lhs.screenSpaceReflections, rhs.screenSpaceReflections) &&
          lhs.bloom.enabled == rhs.bloom.enabled &&
          lhs.bloom.threshold == rhs.bloom.threshold &&
          lhs.bloom.intensity == rhs.bloom.intensity &&

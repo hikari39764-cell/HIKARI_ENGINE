@@ -5,6 +5,7 @@ struct HikariMeshletGeometryAuxVertexOut
 {
     float4 position : SV_POSITION;
     float3 normalWS : NORMAL;
+    float4 tangentWS : TANGENT;
     float2 uv : TEXCOORD0;
     float2 uv1 : TEXCOORD1;
     nointerpolation uint materialDataIndex : TEXCOORD2;
@@ -18,6 +19,7 @@ HikariMeshletGeometryAuxVertexOut HikariBuildEmptyMeshletGeometryAuxVertex()
     HikariMeshletGeometryAuxVertexOut output = (HikariMeshletGeometryAuxVertexOut)0;
     output.position = float4(2.0f, 2.0f, 2.0f, 1.0f);
     output.normalWS = float3(0.0f, 1.0f, 0.0f);
+    output.tangentWS = float4(1.0f, 0.0f, 0.0f, 1.0f);
     output.materialDataIndex = 0xffffffffu;
     return output;
 }
@@ -30,11 +32,14 @@ HikariMeshletGeometryAuxVertexOut HikariBuildMeshletGeometryAuxVertex(
 {
     HikariMeshletGeometryAuxVertexOut output =
         HikariBuildEmptyMeshletGeometryAuxVertex();
-    float3 localPosition =
-        HikariLoadClusterVertexPosition(geometry, resolved.header, vertexIndex).xyz;
-    float3 localNormal =
-        HikariLoadClusterVertexNormal(geometry, resolved.header, vertexIndex).xyz;
-    float3 localTangent = float3(1.0f, 0.0f, 0.0f);
+    HikariClusterVertex vertex =
+        HikariLoadClusterVertexShading(
+            geometry,
+            resolved.header,
+            vertexIndex);
+    float3 localPosition = vertex.position.xyz;
+    float3 localNormal = vertex.normal.xyz;
+    float3 localTangent = vertex.tangent.xyz;
     HikariApplyGpuDrivenSkinning(
         geometry,
         instance,
@@ -56,6 +61,11 @@ HikariMeshletGeometryAuxVertexOut HikariBuildMeshletGeometryAuxVertex(
     output.position = clipPosition;
     output.normalWS =
         normalize(mul((float3x3)instance.clusterNormalMatrix, localNormal));
+    output.tangentWS = float4(
+        normalize(mul(
+            (float3x3)instance.clusterNormalMatrix,
+            localTangent)),
+        vertex.tangent.w);
     output.uv = uv01.xy;
     output.uv1 = uv01.zw;
     output.materialDataIndex = instance.materialDataIndex;

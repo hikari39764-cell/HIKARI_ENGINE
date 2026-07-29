@@ -36,7 +36,7 @@ namespace HIKARI::GFX::DESCRIPTOR {
         IblIrradiance = kSystemSrvBegin + 4,
         IblPrefiltered = kSystemSrvBegin + 5,
         IblBrdfLut = kSystemSrvBegin + 6,
-        SceneNormalRoughness = kSystemSrvBegin + 7,
+        SceneSurface = kSystemSrvBegin + 7,
         SsaoRaw = kSystemSrvBegin + 8,
         SsaoBlurred = kSystemSrvBegin + 9,
         SsaoResolved = kSystemSrvBegin + 10,
@@ -172,7 +172,7 @@ namespace HIKARI::GFX::DESCRIPTOR {
         ToIndex(SystemSrv::LightProbeShVolumeSecondary8) -
             ToIndex(SystemSrv::LightProbeShVolumeSecondary0) + 1 ==
         kLightProbeShVolumeTextureCount);
-    static_assert(ToIndex(SystemSrv::SceneNormalRoughness) < kSrvHeapCapacity);
+    static_assert(ToIndex(SystemSrv::SceneSurface) < kSrvHeapCapacity);
     static_assert(ToIndex(SystemSrv::SsaoRaw) < kSrvHeapCapacity);
     static_assert(ToIndex(SystemSrv::SsaoBlurred) < kSrvHeapCapacity);
     static_assert(ToIndex(SystemSrv::SsaoResolved) < kSrvHeapCapacity);

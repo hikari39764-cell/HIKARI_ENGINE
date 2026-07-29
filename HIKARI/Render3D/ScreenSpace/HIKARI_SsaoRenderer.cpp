@@ -208,12 +208,12 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
     bool SsaoRenderer::Render(
         const GFX::Context& graphics,
         ID3D12GraphicsCommandList* cmd,
-        const ScreenSpaceGeometryAux& geometryAux,
+        const SURFACE::SceneSurfaceBuffer& surfaceBuffer,
         D3D12_GPU_DESCRIPTOR_HANDLE sceneDepthSrv,
         const MESHRENDERER::CameraCB& camera,
         const AmbientOcclusionSettings& settings) {
 
-        if (!geometryAux.IsValid()) {
+        if (!surfaceBuffer.IsValid()) {
             valid_ = false;
             lastAoSrv_ = {};
             return false;
@@ -221,10 +221,10 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         return RenderInternal(
             graphics,
             cmd,
-            geometryAux.GetWidth(),
-            geometryAux.GetHeight(),
+            surfaceBuffer.GetWidth(),
+            surfaceBuffer.GetHeight(),
             sceneDepthSrv,
-            geometryAux.GetNormalRoughnessSrv(),
+            surfaceBuffer.GetPackedSurfaceSrv(),
             camera,
             settings,
             false);

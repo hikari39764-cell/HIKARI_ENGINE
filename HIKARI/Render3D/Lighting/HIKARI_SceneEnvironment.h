@@ -26,7 +26,9 @@ namespace HIKARI {
     struct DirectionalShadowSettings {
         bool enabled = true;
         uint32_t resolution = 2048;
-        float orthoSize = 30.0f;
+        uint32_t cascadeCount = 3;
+        float cascadeSplitLambda = 0.65f;
+        float cascadeBlend = 0.10f;
         float nearPlane = 0.1f;
         float farPlane = 80.0f;
         float depthBias = 0.001f;
@@ -140,6 +142,25 @@ namespace HIKARI {
         bool editorViewportSuppressed = false;
     };
 
+    enum class ScreenSpaceReflectionQuality {
+        Off = 0,
+        Low,
+        Medium,
+        High,
+    };
+
+    struct ScreenSpaceReflectionSettings {
+        bool enabled = true;
+        ScreenSpaceReflectionQuality quality =
+            ScreenSpaceReflectionQuality::Medium;
+        float intensity = 0.75f;
+        float maxDistance = 24.0f;
+        float thickness = 0.0025f;
+        float maxRoughness = 0.72f;
+        float edgeFade = 0.08f;
+        float stride = 0.18f;
+    };
+
     struct BloomSettings {
         bool enabled = true;
         float threshold = 1.0f;
@@ -193,6 +214,7 @@ namespace HIKARI {
         SkySettings sky{};
         ReflectionProbeSettings reflectionProbe{};
         AmbientOcclusionSettings ambientOcclusion{};
+        ScreenSpaceReflectionSettings screenSpaceReflections{};
         BloomSettings bloom{};
         FogSettings fog{};
         ToneMappingSettings toneMapping{};

@@ -14,7 +14,8 @@
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Render3D/Lighting/HIKARI_VolumetricLightingStage.h"
 #include "Render3D/Pipeline/HIKARI_RenderFrameContext.h"
-#include "Render3D/Pipeline/HIKARI_SceneTextureSet.h"
+#include "Render3D/Reflection/HIKARI_ScreenSpaceReflectionRenderer.h"
+#include "Render3D/Surface/HIKARI_SceneSurfaceSet.h"
 #include "Render3D/ScreenSpace/HIKARI_ScreenSpacePasses.h"
 #include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
 #include "Render3D/Temporal/HIKARI_TemporalGeometryPass.h"
@@ -26,6 +27,8 @@
 namespace HIKARI::RENDER3D::PIPELINE {
 
     namespace {
+        REFLECTION::ScreenSpaceReflectionRenderer gSsrRenderer{};
+
         bool RebindPostRenderTarget(void*) { return POST::PostSystem::RebindCurrentRenderTarget(); }
         bool BeginPostDepthRead(void*) { return POST::PostSystem::BeginCurrentRenderTargetDepthRead(); }
         void EndPostDepthRead(void*) { POST::PostSystem::EndCurrentRenderTargetDepthRead(); }
@@ -97,7 +100,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
         }
 
         MESHRENDERER::MeshPassResources BuildMeshPassResources(
-            const SceneTextureSet& textures,
+            const SURFACE::SceneSurfaceSet& textures,
             int fallbackAoTextureHandle) {
             MESHRENDERER::MeshPassResources resources{};
             resources.sceneDepth = textures.sceneDepth;
@@ -156,7 +159,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
             "RenderFrame.MeshLighting");
         const ScreenSpacePassContext screenSpaceContext =
             BuildScreenSpaceContext(frame);
-        SceneTextureSet sceneTextures{};
+        SURFACE::SceneSurfaceSet sceneTextures{};
         sceneTextures.frameIndex = frame.frameIndex;
         sceneTextures.viewId = frame.viewId;
         sceneTextures.sceneDepth = frame.scene.depth;
@@ -322,7 +325,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
         }
 
         MESHRENDERER::SetAmbientOcclusionRuntimeEnabled(screenResult.ssaoRendered);
-        sceneTextures.normalRoughness = screenResult.normalRoughness;
+        sceneTextures.packedSurface = screenResult.packedSurface;
         sceneTextures.ambientOcclusion = screenResult.ambientOcclusion;
         sceneTextures.currentSceneDepthPyramid =
             screenResult.currentSceneDepthPyramid;
@@ -360,7 +363,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
                 return false;
             }
             MESHRENDERER::SetAmbientOcclusionRuntimeEnabled(screenResult.ssaoRendered);
-            sceneTextures.normalRoughness = screenResult.normalRoughness;
+            sceneTextures.packedSurface = screenResult.packedSurface;
             sceneTextures.ambientOcclusion = screenResult.ambientOcclusion;
             sceneTextures.currentSceneDepthPyramid =
                 screenResult.currentSceneDepthPyramid;
@@ -410,8 +413,13 @@ namespace HIKARI::RENDER3D::PIPELINE {
         }
         const bool hasDepthAwareWork = MESHRENDERER::HasDepthAwarePassWork();
         const bool hasTransparentWork = MESHRENDERER::HasForwardTransparentPassWork();
+        const bool hasSsrWork =
+            environment.screenSpaceReflections.enabled &&
+            environment.screenSpaceReflections.quality !=
+                ScreenSpaceReflectionQuality::Off;
         bool depthAwareOk = true;
-        if (opaqueOk && (hasDepthAwareWork || hasTransparentWork)) {
+        if (opaqueOk &&
+            (hasDepthAwareWork || hasTransparentWork || hasSsrWork)) {
             const RenderTextureView opaqueSceneColor =
                 POST::PostSystem::CaptureSceneColorSnapshot();
             if (opaqueSceneColor.IsSampleable()) {
@@ -424,6 +432,15 @@ namespace HIKARI::RENDER3D::PIPELINE {
                     return false;
                 }
             }
+        }
+        if (opaqueOk && hasSsrWork && cameraCb != nullptr) {
+            (void)gSsrRenderer.Render(
+                frame.graphics,
+                frame.targetAccess,
+                sceneTextures,
+                *cameraCb,
+                environment.screenSpaceReflections,
+                debugView);
         }
         if (opaqueOk && hasDepthAwareWork) {
             GFX::PIX::ScopedGpuEvent pixDepthAware(

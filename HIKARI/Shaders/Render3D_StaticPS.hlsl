@@ -1,4 +1,5 @@
 #include "Include/Forward/HIKARI_ForwardCommon.hlsli"
+#include "Include/Surface/HIKARI_SurfaceShadingNormal.hlsli"
 
 #if HIKARI_FORWARD_ENABLE_MATERIAL_FX
 #include "Include/Forward/HIKARI_SurfaceFeatureShading.hlsli"
@@ -23,47 +24,6 @@ struct PSInput
     nointerpolation uint surfaceFeatureFlags : TEXCOORD7;
 #endif
 };
-
-float3 ResolveShadingNormal(
-    HikariMeshMaterialData materialData,
-    float3 normalWS,
-    float4 tangentWS,
-    float2 uv0,
-    float2 uv1)
-{
-    float3 n = normalize(normalWS);
-    if (materialData.hasNormalTexture == 0)
-    {
-        return n;
-    }
-
-    float3 t = tangentWS.xyz;
-    if (dot(t, t) < 1e-5f)
-    {
-        return n;
-    }
-
-    t = normalize(t);
-    t = t - n * dot(n, t);
-    if (dot(t, t) < 1e-5f)
-    {
-        return n;
-    }
-    t = normalize(t);
-    float3 b = normalize(cross(n, t) * tangentWS.w);
-
-    const float2 normalUv =
-        HikariResolveMaterialUv(materialData, HIKARI_MATERIAL_UV_NORMAL, uv0, uv1);
-    float3 normalTS =
-        HikariSampleMaterialTexture(
-            materialData.normalTextureDescriptorIndex,
-            gLinearWrap,
-            normalUv,
-            float4(0.5f, 0.5f, 1.0f, 1.0f)).xyz * 2.0f - 1.0f;
-    normalTS.xy *= materialData.normalScale;
-    normalTS = normalize(normalTS);
-    return normalize(normalTS.x * t + normalTS.y * b + normalTS.z * n);
-}
 
 float3 AccumulateLocalLights(
     float3 normalWS,
@@ -370,7 +330,13 @@ float4 main(PSInput input) : SV_TARGET
     float3 geometricNormal = normalize(input.normalWS);
     float3 n = costNoNormalMap
         ? geometricNormal
-        : ResolveShadingNormal(materialData, input.normalWS, input.tangentWS, input.uv, input.uv1);
+        : HikariResolveSurfaceShadingNormal(
+            materialData,
+            input.normalWS,
+            input.tangentWS,
+            input.uv,
+            input.uv1,
+            gLinearWrap);
     if (gDebugView == 1)
     {
         return float4(normalize(n) * 0.5f + 0.5f, albedo.a);

@@ -1,6 +1,7 @@
 #include "Render3D/Shadow/HIKARI_ShadowLightFrame.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 
 namespace HIKARI::SHADOW {
@@ -35,6 +36,113 @@ namespace HIKARI::SHADOW {
             }
             return lightDir;
         }
+
+        MATH::Vec3 SafeCameraForward(const Camera3D& camera) {
+            MATH::Vec3 forward =
+                MATH::Normalize(camera.GetTarget() - camera.GetPosition());
+            if (MATH::Length(forward) <= 1e-6f) {
+                forward = { 0.0f, 0.0f, 1.0f };
+            }
+            return forward;
+        }
+
+        ShadowLightFrame BuildCascadeFrame(
+            const SceneEnvironment& environment,
+            const Camera3D& camera,
+            uint32_t resolution,
+            float splitNear,
+            float splitFar) {
+
+            const MATH::Vec3 cameraForward = SafeCameraForward(camera);
+            MATH::Vec3 cameraRight =
+                MATH::Normalize(MATH::Cross(cameraForward, camera.GetUp()));
+            if (MATH::Length(cameraRight) <= 1e-6f) {
+                cameraRight = { 1.0f, 0.0f, 0.0f };
+            }
+            const MATH::Vec3 cameraUp =
+                MATH::Normalize(MATH::Cross(cameraRight, cameraForward));
+            const float tanHalfFov =
+                std::tan((std::max)(0.01f, camera.GetFovYRad()) * 0.5f);
+            const float nearHalfHeight = splitNear * tanHalfFov;
+            const float farHalfHeight = splitFar * tanHalfFov;
+            const float nearHalfWidth = nearHalfHeight * camera.GetAspect();
+            const float farHalfWidth = farHalfHeight * camera.GetAspect();
+            const MATH::Vec3 nearCenter =
+                camera.GetPosition() + cameraForward * splitNear;
+            const MATH::Vec3 farCenter =
+                camera.GetPosition() + cameraForward * splitFar;
+            const std::array<MATH::Vec3, 8> corners = {
+                nearCenter - cameraRight * nearHalfWidth - cameraUp * nearHalfHeight,
+                nearCenter + cameraRight * nearHalfWidth - cameraUp * nearHalfHeight,
+                nearCenter + cameraRight * nearHalfWidth + cameraUp * nearHalfHeight,
+                nearCenter - cameraRight * nearHalfWidth + cameraUp * nearHalfHeight,
+                farCenter - cameraRight * farHalfWidth - cameraUp * farHalfHeight,
+                farCenter + cameraRight * farHalfWidth - cameraUp * farHalfHeight,
+                farCenter + cameraRight * farHalfWidth + cameraUp * farHalfHeight,
+                farCenter - cameraRight * farHalfWidth + cameraUp * farHalfHeight,
+            };
+
+            MATH::Vec3 center{};
+            for (const MATH::Vec3& corner : corners) {
+                center = center + corner;
+            }
+            center = center * (1.0f / static_cast<float>(corners.size()));
+
+            float radius = 1.0f;
+            for (const MATH::Vec3& corner : corners) {
+                radius = (std::max)(radius, MATH::Length(corner - center));
+            }
+            radius = std::ceil(radius * 16.0f) / 16.0f;
+
+            const MATH::Vec3 lightDir = ResolveLightDirection(environment);
+            MATH::Vec3 up{ 0.0f, 1.0f, 0.0f };
+            if (std::abs(MATH::Dot(lightDir, up)) > 0.95f) {
+                up = { 1.0f, 0.0f, 0.0f };
+            }
+            MATH::Vec3 right = MATH::Normalize(MATH::Cross(up, lightDir));
+            MATH::Vec3 actualUp = MATH::Normalize(MATH::Cross(lightDir, right));
+
+            const float orthoSize = radius * 2.0f;
+            const float anchorGrid =
+                ResolveShadowAnchorGrid(environment, orthoSize, resolution);
+            MATH::Vec3 anchor = center;
+            if (anchorGrid > 0.0f) {
+                anchor =
+                    right * SnapShadowAnchorValue(
+                        MATH::Dot(center, right), anchorGrid) +
+                    actualUp * SnapShadowAnchorValue(
+                        MATH::Dot(center, actualUp), anchorGrid) +
+                    lightDir * MATH::Dot(center, lightDir);
+            }
+
+            const float depthPadding =
+                (std::max)(radius, environment.directionalShadow.farPlane * 0.25f);
+            const float lightDistance = radius + depthPadding;
+            const float nearPlane =
+                (std::max)(0.01f, environment.directionalShadow.nearPlane);
+            const float farPlane =
+                (std::max)(nearPlane + 1.0f, lightDistance * 2.0f + radius);
+            const MATH::Vec3 lightPos = anchor - lightDir * lightDistance;
+
+            ShadowLightFrame frame{};
+            frame.view = MATH::Mat4::LookAtRH(lightPos, anchor, actualUp);
+            frame.viewProj =
+                MATH::Mat4::OrthoRH_ZO(
+                    orthoSize, orthoSize, nearPlane, farPlane) *
+                frame.view;
+            frame.anchor = anchor;
+            frame.lightPosition = lightPos;
+            frame.lightDirection = lightDir;
+            frame.right = right;
+            frame.up = actualUp;
+            frame.anchorGrid = anchorGrid;
+            frame.splitNear = splitNear;
+            frame.splitFar = splitFar;
+            frame.orthoSize = orthoSize;
+            frame.lightNear = nearPlane;
+            frame.lightFar = farPlane;
+            return frame;
+        }
     }
 
     uint32_t ResolveShadowResolution(uint32_t resolution) {
@@ -47,79 +155,59 @@ namespace HIKARI::SHADOW {
         return 4096;
     }
 
-    float ResolveShadowDepthSpan(
-        const SceneEnvironment& environment,
-        float orthoSize) {
-
-        const float configuredFar =
-            (std::max)(0.01f, environment.directionalShadow.farPlane);
-        const float configuredDistance =
-            (std::max)(1.0f, environment.directionalShadow.shadowDistance);
-        return (std::max)(
-            configuredFar,
-            (std::max)(configuredDistance * 2.0f, orthoSize * 1.5f));
-    }
-
-    ShadowLightFrame BuildShadowLightFrame(
+    DirectionalShadowFrameSet BuildDirectionalShadowFrameSet(
         const SceneEnvironment& environment,
         const Camera3D& camera,
-        uint32_t resolution) {
+        uint32_t cascadeResolution) {
 
-        ShadowLightFrame frame{};
-        const MATH::Vec3 lightDir = ResolveLightDirection(environment);
-        MATH::Vec3 up{ 0.0f, 1.0f, 0.0f };
-        if (std::abs(MATH::Dot(lightDir, up)) > 0.95f) {
-            up = { 1.0f, 0.0f, 0.0f };
+        DirectionalShadowFrameSet result{};
+        result.cascadeCount = std::clamp(
+            environment.directionalShadow.cascadeCount,
+            1u,
+            kMaxDirectionalShadowCascades);
+        const float nearDistance = (std::max)(0.01f, camera.GetNearZ());
+        const float farDistance = (std::max)(
+            nearDistance + 0.01f,
+            (std::min)(
+                camera.GetFarZ(),
+                environment.directionalShadow.shadowDistance));
+        const float lambda = std::clamp(
+            environment.directionalShadow.cascadeSplitLambda,
+            0.0f,
+            1.0f);
+
+        float splitNear = nearDistance;
+        for (uint32_t cascadeIndex = 0;
+             cascadeIndex < result.cascadeCount;
+             ++cascadeIndex) {
+            const float ratio =
+                static_cast<float>(cascadeIndex + 1u) /
+                static_cast<float>(result.cascadeCount);
+            const float logarithmic =
+                nearDistance * std::pow(farDistance / nearDistance, ratio);
+            const float uniform =
+                nearDistance + (farDistance - nearDistance) * ratio;
+            const float splitFar =
+                cascadeIndex + 1u == result.cascadeCount
+                    ? farDistance
+                    : uniform * (1.0f - lambda) + logarithmic * lambda;
+            result.cascades[cascadeIndex] = BuildCascadeFrame(
+                environment,
+                camera,
+                cascadeResolution,
+                splitNear,
+                splitFar);
+            (&result.splitDistances.x)[cascadeIndex] = splitFar;
+            splitNear = splitFar;
         }
-
-        MATH::Vec3 right = MATH::Normalize(MATH::Cross(up, lightDir));
-        if (MATH::Length(right) <= 1e-6f) {
-            right = { 1.0f, 0.0f, 0.0f };
+        for (uint32_t cascadeIndex = result.cascadeCount;
+             cascadeIndex < kMaxDirectionalShadowCascades;
+             ++cascadeIndex) {
+            result.cascades[cascadeIndex] =
+                result.cascades[result.cascadeCount - 1u];
+            (&result.splitDistances.x)[cascadeIndex] = farDistance;
         }
-        MATH::Vec3 actualUp = MATH::Normalize(MATH::Cross(lightDir, right));
-        if (MATH::Length(actualUp) <= 1e-6f) {
-            actualUp = up;
-        }
-
-        const float orthoSize =
-            (std::max)(1.0f, environment.directionalShadow.orthoSize);
-        const float nearPlane =
-            (std::max)(0.001f, environment.directionalShadow.nearPlane);
-        const float depthSpan = ResolveShadowDepthSpan(environment, orthoSize);
-        const float farPlane = (std::max)(nearPlane + 0.01f, depthSpan);
-        const float anchorGrid =
-            ResolveShadowAnchorGrid(environment, orthoSize, resolution);
-
-        const MATH::Vec3 cameraCenter = camera.GetPosition();
-        MATH::Vec3 anchor = cameraCenter;
-        if (anchorGrid > 0.0f) {
-            const float depthAnchorGrid =
-                (std::max)(anchorGrid * 32.0f, depthSpan / 16.0f);
-            const float snappedX =
-                SnapShadowAnchorValue(MATH::Dot(cameraCenter, right), anchorGrid);
-            const float snappedY =
-                SnapShadowAnchorValue(MATH::Dot(cameraCenter, actualUp), anchorGrid);
-            const float snappedZ =
-                SnapShadowAnchorValue(MATH::Dot(cameraCenter, lightDir), depthAnchorGrid);
-            anchor =
-                right * snappedX +
-                actualUp * snappedY +
-                lightDir * snappedZ;
-        }
-
-        const float lightDistance = (std::max)(1.0f, farPlane * 0.5f);
-        const MATH::Vec3 lightPos = anchor - lightDir * lightDistance;
-        frame.view = MATH::Mat4::LookAtRH(lightPos, anchor, actualUp);
-        frame.viewProj =
-            MATH::Mat4::OrthoRH_ZO(orthoSize, orthoSize, nearPlane, farPlane) *
-            frame.view;
-        frame.anchor = anchor;
-        frame.lightPosition = lightPos;
-        frame.lightDirection = lightDir;
-        frame.right = right;
-        frame.up = actualUp;
-        frame.anchorGrid = anchorGrid;
-        return frame;
+        return result;
     }
 
 } // namespace HIKARI::SHADOW

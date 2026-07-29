@@ -58,7 +58,9 @@ namespace HIKARI::SHADOW::INTERNAL {
         input.key.sourceInstanceCount =
             gShadowRendererState.staticShadowSceneSource.sourceInstanceCount;
         input.key.resolution = resolution;
-        input.key.lightViewProj = gShadowRendererState.lightViewProj;
+        input.key.lightViewProj =
+            gShadowRendererState.cascadeLightViewProj;
+        input.key.cascadeCount = gShadowRendererState.cascadeCount;
         input.hasStaticWork = gShadowRendererState.frameHasStaticShadowWork;
         input.resourcesReady =
             gShadowRendererState.staticShadowMap != nullptr &&
@@ -117,7 +119,8 @@ namespace HIKARI::SHADOW::INTERNAL {
         key.sourceInstanceCount =
             gShadowRendererState.staticShadowSceneSource.sourceInstanceCount;
         key.resolution = gShadowRendererState.resolution;
-        key.lightViewProj = gShadowRendererState.lightViewProj;
+        key.lightViewProj = gShadowRendererState.cascadeLightViewProj;
+        key.cascadeCount = gShadowRendererState.cascadeCount;
         gShadowRendererState.shadowCache.MarkValid(key);
         PublishShadowCacheStats();
     }

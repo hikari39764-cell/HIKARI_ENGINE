@@ -1,5 +1,7 @@
 #define HIKARI_MATERIAL_TEXTURE_POOL_SAMPLING 1
 #include "Include/HIKARI_MeshObjectData.hlsli"
+#include "Include/Surface/HIKARI_SceneSurfaceContract.hlsli"
+#include "Include/Surface/HIKARI_SurfaceShadingNormal.hlsli"
 
 static const uint MATERIAL_ALPHA_MASK = 1u << 1;
 
@@ -42,20 +44,31 @@ float4 main(PSInput input) : SV_TARGET
     }
 
     float roughness = clamp(materialData.pbrParams.y, 0.04f, 1.0f);
+    float metallic = saturate(materialData.pbrParams.x);
     if (materialData.hasMetallicRoughnessTexture != 0)
     {
         const float2 metallicRoughnessUv =
             HikariResolveMaterialUv(materialData, HIKARI_MATERIAL_UV_METALLIC_ROUGHNESS, input.uv, input.uv1);
-        roughness = clamp(
-            roughness * HikariSampleMaterialTexture(
+        const float4 metallicRoughness =
+            HikariSampleMaterialTexture(
                 materialData.metallicRoughnessTextureDescriptorIndex,
                 gLinearWrap,
                 metallicRoughnessUv,
-                float4(1.0f, 1.0f, 1.0f, 1.0f)).g,
+                float4(1.0f, 1.0f, 1.0f, 1.0f));
+        roughness = clamp(
+            roughness * metallicRoughness.g,
             0.04f,
             1.0f);
+        metallic = saturate(metallic * metallicRoughness.b);
     }
 
-    float3 n = normalize(input.normalWS);
-    return float4(n * 0.5f + 0.5f, roughness);
+    const float3 n =
+        HikariResolveSurfaceShadingNormal(
+            materialData,
+            input.normalWS,
+            input.tangentWS,
+            input.uv,
+            input.uv1,
+            gLinearWrap);
+    return HikariPackSceneSurface(n, roughness, metallic);
 }

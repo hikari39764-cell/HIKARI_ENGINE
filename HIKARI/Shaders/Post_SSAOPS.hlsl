@@ -1,3 +1,5 @@
+#include "Include/Surface/HIKARI_SceneSurfaceContract.hlsli"
+
 cbuffer SsaoPassCB : register(b0)
 {
     float4x4 gViewProj;
@@ -43,7 +45,7 @@ VSOut VSMain(uint vertexId : SV_VertexID)
 
 float3 DecodeNormal(float4 packed)
 {
-    return normalize(packed.xyz * 2.0f - 1.0f);
+    return HikariDecodeOctahedralNormal(packed.rg);
 }
 
 float3 ReconstructWorld(float2 uv, float depth)

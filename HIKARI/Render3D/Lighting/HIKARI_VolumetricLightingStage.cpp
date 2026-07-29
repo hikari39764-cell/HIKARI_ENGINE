@@ -31,7 +31,10 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
         struct alignas(16) VolumetricConstants {
             MATH::Mat4 invViewProj{};
             MATH::Mat4 prevViewProj{};
-            MATH::Mat4 lightViewProj{};
+            MATH::Mat4 lightViewProj[
+                SHADOW::kMaxDirectionalShadowCascades]{};
+            MATH::Vec4 shadowCascadeSplits{};
+            MATH::Vec4 shadowCascadeParams{};
             MATH::Vec4 cameraPos{};
             MATH::Vec4 prevCameraPos{};
             MATH::Vec4 fogColorDensity{};
@@ -53,7 +56,7 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
         };
 
         static_assert(
-            sizeof(VolumetricConstants) == 384u);
+            sizeof(VolumetricConstants) == 608u);
 
         struct VolumeResource {
             ComPtr<ID3D12Resource> texture{};
@@ -431,7 +434,25 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
         // reconstruction and history reprojection must use that same grid.
         constants.invViewProj = frame.camera.invViewProj;
         constants.prevViewProj = frame.camera.prevViewProj;
-        constants.lightViewProj = SHADOW::GetDirectionalLightViewProj();
+        const auto& cascadeMatrices =
+            SHADOW::GetDirectionalCascadeLightViewProj();
+        for (uint32_t cascadeIndex = 0;
+             cascadeIndex < SHADOW::kMaxDirectionalShadowCascades;
+             ++cascadeIndex) {
+            constants.lightViewProj[cascadeIndex] =
+                cascadeMatrices[cascadeIndex];
+        }
+        constants.shadowCascadeSplits =
+            SHADOW::GetDirectionalCascadeSplitDistances();
+        constants.shadowCascadeParams = {
+            static_cast<float>(SHADOW::GetDirectionalCascadeCount()),
+            std::clamp(
+                environment.directionalShadow.cascadeBlend,
+                0.0f,
+                0.3f),
+            0.5f,
+            0.5f
+        };
         constants.cameraPos = frame.camera.cameraPos;
         constants.prevCameraPos = frame.camera.prevCameraPos;
         MATH::Vec3 fogColor = environment.fog.useSkyHorizonColor

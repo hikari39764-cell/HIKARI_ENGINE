@@ -1,10 +1,12 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 
 #include "Render3D/HIKARI_Math3D.h"
 #include "Render3D/Shadow/HIKARI_ShadowCacheTypes.h"
+#include "Render3D/Shadow/HIKARI_ShadowLightFrame.h"
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
     struct GpuDrivenSceneSource;
@@ -36,7 +38,9 @@ namespace HIKARI::SHADOW {
         uint64_t sourceVersion = 0;
         size_t sourceInstanceCount = 0;
         uint32_t resolution = 0;
-        MATH::Mat4 lightViewProj = MATH::Mat4::Identity();
+        std::array<MATH::Mat4, kMaxDirectionalShadowCascades>
+            lightViewProj{};
+        uint32_t cascadeCount = 1u;
     };
 
     struct ShadowCacheReuseInput {

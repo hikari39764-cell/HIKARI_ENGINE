@@ -182,6 +182,7 @@ namespace HIKARI::ASSETS::LIGHTING {
             environment.erase("pointLights");
             environment.erase("spotLights");
             environment.erase("ambientOcclusion");
+            environment.erase("screenSpaceReflections");
             environment.erase("bloom");
             environment.erase("toneMapping");
             environment.erase("post");

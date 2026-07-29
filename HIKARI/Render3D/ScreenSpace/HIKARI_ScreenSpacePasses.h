@@ -10,7 +10,7 @@
 #include "Render3D/Pipeline/HIKARI_RenderFrameContext.h"
 #include "Render3D/Resources/HIKARI_RenderResourceHandle.h"
 #include "Render3D/Resources/HIKARI_RenderTextureView.h"
-#include "Render3D/ScreenSpace/HIKARI_ScreenSpaceGeometryAux.h"
+#include "Render3D/Surface/HIKARI_SceneSurfaceBuffer.h"
 #include "Render3D/ScreenSpace/HIKARI_SsaoRenderer.h"
 
 namespace HIKARI {
@@ -42,7 +42,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
     };
 
     struct ScreenSpaceRuntimeState {
-        ScreenSpaceGeometryAux geometryAux{};
+        SURFACE::SceneSurfaceBuffer surfaceBuffer{};
         SsaoRenderer ssaoRenderer{};
         RENDER3D::GPUDRIVEN::GpuDepthVisibilityLayer depthVisibility{};
         RENDER3D::GPUDRIVEN::GpuDepthVisibilityStats frozenCullingDepthStats{};
@@ -67,7 +67,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         bool ssaoRendered = false;
         RENDER3D::DEPTH::DepthPyramidView visibilityDepthPyramid{};
         RENDER3D::DEPTH::DepthPyramidView currentSceneDepthPyramid{};
-        RENDER3D::RenderTextureView normalRoughness{};
+        RENDER3D::RenderTextureView packedSurface{};
         RENDER3D::RenderTextureView ambientOcclusion{};
         RENDER3D::TextureResourceHandle fallbackAoTextureResource{};
         int fallbackAoTextureHandle = -1;

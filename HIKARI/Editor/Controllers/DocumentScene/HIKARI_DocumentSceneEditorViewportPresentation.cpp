@@ -69,6 +69,8 @@ namespace HIKARI {
             { RenderDebugView::ReflectionProviderWeight, "Reflection Provider Weight" },
             { RenderDebugView::IrradianceProviderWeight, "Irradiance Provider Weight" },
             { RenderDebugView::LightingFallbackWeight, "Lighting Fallback Weight" },
+            { RenderDebugView::SsrConfidence, "SSR Confidence" },
+            { RenderDebugView::SsrHit, "SSR Hit" },
             { RenderDebugView::MeshletId, "Meshlet ID" },
             { RenderDebugView::ClusterId, "Cluster ID" },
             { RenderDebugView::SurfaceId, "Surface ID" },

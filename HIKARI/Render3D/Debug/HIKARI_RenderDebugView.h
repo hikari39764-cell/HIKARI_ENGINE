@@ -31,6 +31,8 @@ namespace HIKARI {
         ReflectionProviderWeight = 23,
         IrradianceProviderWeight = 24,
         LightingFallbackWeight = 25,
+        SsrConfidence = 26,
+        SsrHit = 27,
 
         MeshletId = 32,
         ClusterId = 33,
@@ -67,6 +69,8 @@ namespace HIKARI {
         case RenderDebugView::ReflectionProviderWeight: return "Reflection Provider Weight";
         case RenderDebugView::IrradianceProviderWeight: return "Irradiance Provider Weight";
         case RenderDebugView::LightingFallbackWeight: return "Lighting Fallback Weight";
+        case RenderDebugView::SsrConfidence: return "SSR Confidence";
+        case RenderDebugView::SsrHit: return "SSR Hit";
         case RenderDebugView::MeshletId: return "Meshlet ID";
         case RenderDebugView::ClusterId: return "Cluster ID";
         case RenderDebugView::SurfaceId: return "Surface ID";
@@ -98,7 +102,9 @@ namespace HIKARI {
             view == RenderDebugView::TemporalInvalidDepthMotion ||
             view == RenderDebugView::VolumetricScattering ||
             view == RenderDebugView::VolumetricTransmittance ||
-            view == RenderDebugView::VolumetricDepthSlice;
+            view == RenderDebugView::VolumetricDepthSlice ||
+            view == RenderDebugView::SsrConfidence ||
+            view == RenderDebugView::SsrHit;
     }
 
     inline bool IsTemporalRenderDebugView(RenderDebugView view) {

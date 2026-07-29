@@ -38,10 +38,11 @@ namespace HIKARI::SHADOW::INTERNAL {
         }
 
         auto heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+        const uint32_t atlasResolution = resolution * 2u;
         auto texDesc = CD3DX12_RESOURCE_DESC::Tex2D(
             DXGI_FORMAT_R32_TYPELESS,
-            resolution,
-            resolution,
+            atlasResolution,
+            atlasResolution,
             1,
             1,
             1,
@@ -90,8 +91,8 @@ namespace HIKARI::SHADOW::INTERNAL {
         shadowSrvDesc.lifetime = RENDER3D::RenderResourceLifetime::External;
         shadowSrvDesc.debugName = "directional_shadow_map_srv";
         shadowSrvDesc.sourceKey = "shadow/directional_map";
-        shadowSrvDesc.width = resolution;
-        shadowSrvDesc.height = resolution;
+        shadowSrvDesc.width = atlasResolution;
+        shadowSrvDesc.height = atlasResolution;
         shadowSrvDesc.mipLevels = 1;
         shadowSrvDesc.depthOrArraySize = 1;
         shadowSrvDesc.format = DXGI_FORMAT_R32_FLOAT;
@@ -101,6 +102,7 @@ namespace HIKARI::SHADOW::INTERNAL {
             std::move(shadowSrvDesc));
         gShadowRendererState.shadowSrvHandle = RENDER3D::GetTextureResourceBackendHandle(gShadowRendererState.shadowSrvResource);
         gShadowRendererState.resolution = resolution;
+        gShadowRendererState.atlasResolution = atlasResolution;
         gShadowRendererState.shadowState = kShadowShaderReadState;
         gShadowRendererState.staticShadowState = D3D12_RESOURCE_STATE_COMMON;
         ++gShadowRendererState.shadowMapRecreateCount;
@@ -164,15 +166,25 @@ namespace HIKARI::SHADOW::INTERNAL {
             D3D12_RESOURCE_STATE_DEPTH_WRITE);
 
         D3D12_VIEWPORT viewport{};
+        const uint32_t cascadeIndex =
+            gShadowRendererState.activeCascadeIndex %
+            kMaxDirectionalShadowCascades;
+        const uint32_t tileX = cascadeIndex & 1u;
+        const uint32_t tileY = cascadeIndex >> 1u;
+        const LONG left =
+            static_cast<LONG>(tileX * gShadowRendererState.resolution);
+        const LONG top =
+            static_cast<LONG>(tileY * gShadowRendererState.resolution);
+        const LONG right =
+            left + static_cast<LONG>(gShadowRendererState.resolution);
+        const LONG bottom =
+            top + static_cast<LONG>(gShadowRendererState.resolution);
+        viewport.TopLeftX = static_cast<float>(left);
+        viewport.TopLeftY = static_cast<float>(top);
         viewport.Width = static_cast<float>(gShadowRendererState.resolution);
         viewport.Height = static_cast<float>(gShadowRendererState.resolution);
         viewport.MaxDepth = 1.0f;
-        D3D12_RECT scissor{
-            0,
-            0,
-            static_cast<LONG>(gShadowRendererState.resolution),
-            static_cast<LONG>(gShadowRendererState.resolution)
-        };
+        D3D12_RECT scissor{ left, top, right, bottom };
         cmd->RSSetViewports(1, &viewport);
         cmd->RSSetScissorRects(1, &scissor);
         cmd->OMSetRenderTargets(0, nullptr, FALSE, &gShadowRendererState.dsv);
@@ -182,8 +194,8 @@ namespace HIKARI::SHADOW::INTERNAL {
                 D3D12_CLEAR_FLAG_DEPTH,
                 1.0f,
                 0,
-                0,
-                nullptr);
+                1,
+                &scissor);
         }
         cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 

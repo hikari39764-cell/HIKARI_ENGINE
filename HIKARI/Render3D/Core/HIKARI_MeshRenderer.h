@@ -20,8 +20,8 @@ namespace HIKARI::RENDER3D {
         struct GpuDrivenSceneSource;
         struct GpuDepthVisibilityStats;
     }
-    namespace SCREENSPACE {
-        class ScreenSpaceGeometryAux;
+    namespace SURFACE {
+        class SceneSurfaceBuffer;
     }
     namespace MATERIAL {
         struct GpuMaterialRegistryStats;
@@ -66,7 +66,7 @@ namespace HIKARI::MESHRENDERER {
         GetLocalLightListGpuBindings();
     bool RenderGeometryAuxPass(
         const GFX::Context& graphics,
-        RENDER3D::SCREENSPACE::ScreenSpaceGeometryAux& geometryAux,
+        RENDER3D::SURFACE::SceneSurfaceBuffer& surfaceBuffer,
         D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv);
     bool HasDepthPrepassWork();
     bool RenderDepthPrepass(

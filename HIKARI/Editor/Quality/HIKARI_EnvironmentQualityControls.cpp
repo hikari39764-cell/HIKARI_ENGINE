@@ -37,9 +37,16 @@ void DrawDirectionalShadow(SceneEnvironment &environment) {
     environment.directionalShadow.resolution =
         shadowQuality == 0 ? 1024u : (shadowQuality == 2 ? 4096u : 2048u);
   }
+  int cascadeCount =
+      static_cast<int>(environment.directionalShadow.cascadeCount);
+  if (ImGui::SliderInt("Cascades", &cascadeCount, 1, 4)) {
+    environment.directionalShadow.cascadeCount =
+        static_cast<uint32_t>(std::clamp(cascadeCount, 1, 4));
+  }
   ImGui::DragFloat("Shadow Softness", &environment.directionalShadow.pcfRadius,
                    0.05f, 0.0f, 4.0f);
-  ImGui::DragFloat("Shadow Range", &environment.directionalShadow.orthoSize,
+  ImGui::DragFloat("Shadow Distance",
+                   &environment.directionalShadow.shadowDistance,
                    0.1f, 1.0f, 200.0f);
   float acneFix = (std::max)(environment.directionalShadow.depthBias * 1000.0f,
                              environment.directionalShadow.normalBias * 25.0f);
@@ -70,8 +77,12 @@ void DrawDirectionalShadow(SceneEnvironment &environment) {
       }
       ImGui::EndCombo();
     }
-    ImGui::DragFloat("Ortho Size", &environment.directionalShadow.orthoSize,
-                     0.1f, 1.0f, 200.0f);
+    ImGui::DragFloat("Cascade Split Balance",
+                     &environment.directionalShadow.cascadeSplitLambda,
+                     0.01f, 0.0f, 1.0f);
+    ImGui::DragFloat("Cascade Blend",
+                     &environment.directionalShadow.cascadeBlend,
+                     0.005f, 0.0f, 0.3f);
     ImGui::DragFloat("Near Plane", &environment.directionalShadow.nearPlane,
                      0.01f, 0.001f, 50.0f);
     ImGui::DragFloat("Far Plane", &environment.directionalShadow.farPlane, 0.1f,
@@ -86,13 +97,43 @@ void DrawDirectionalShadow(SceneEnvironment &environment) {
     ImGui::DragFloat("PCF Radius", &environment.directionalShadow.pcfRadius,
                      0.05f, 0.0f, 4.0f);
     ImGui::Checkbox("Stabilize", &environment.directionalShadow.stabilize);
-    ImGui::Checkbox("Show Debug Texture",
-                    &environment.directionalShadow.showDebugTexture);
-    ImGui::DragFloat("Shadow Distance",
-                     &environment.directionalShadow.shadowDistance, 0.1f, 1.0f,
-                     200.0f);
-    ImGui::Checkbox("Show Debug Frustum",
-                    &environment.directionalShadow.showDebugFrustum);
+    if (ImGui::TreeNode("Debug Visualization")) {
+      ImGui::Checkbox("Show Debug Texture",
+                      &environment.directionalShadow.showDebugTexture);
+      ImGui::Checkbox("Show Cascade Frusta",
+                      &environment.directionalShadow.showDebugFrustum);
+      ImGui::TreePop();
+    }
+    ImGui::TreePop();
+  }
+}
+
+void DrawScreenSpaceReflections(SceneEnvironment &environment) {
+  ScreenSpaceReflectionSettings &settings =
+      environment.screenSpaceReflections;
+  ImGui::Checkbox("SSR Enabled", &settings.enabled);
+  int quality = static_cast<int>(settings.quality);
+  const char *qualityNames[] = {"Off", "Low", "Medium", "High"};
+  if (ImGui::Combo("Quality", &quality, qualityNames,
+                   static_cast<int>(std::size(qualityNames)))) {
+    settings.quality = static_cast<ScreenSpaceReflectionQuality>(
+        std::clamp(quality, 0, 3));
+    settings.enabled =
+        settings.quality != ScreenSpaceReflectionQuality::Off;
+  }
+  ImGui::DragFloat("Intensity", &settings.intensity, 0.01f, 0.0f, 2.0f);
+  ImGui::DragFloat("Trace Distance", &settings.maxDistance, 0.25f, 1.0f,
+                   200.0f);
+  ImGui::DragFloat("Maximum Roughness", &settings.maxRoughness, 0.01f, 0.05f,
+                   1.0f);
+  ImGui::TextDisabled("Fallback: SSR -> Local Reflection Probe -> Sky IBL");
+
+  if (ImGui::TreeNode("Advanced Ray Marching")) {
+    ImGui::DragFloat("Depth Thickness", &settings.thickness, 0.0001f, 0.0001f,
+                     0.05f, "%.5f");
+    ImGui::DragFloat("Ray Stride", &settings.stride, 0.01f, 0.02f, 2.0f);
+    ImGui::DragFloat("Screen Edge Fade", &settings.edgeFade, 0.005f, 0.01f,
+                     0.35f);
     ImGui::TreePop();
   }
 }

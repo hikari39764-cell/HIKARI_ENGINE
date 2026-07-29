@@ -2,6 +2,8 @@
 #include "Include/HIKARI_MeshMaterialData.hlsli"
 #include "Include/HIKARI_SurfaceGpuScene.hlsli"
 #include "Include/Forward/HIKARI_SurfaceFeatureCoverage.hlsli"
+#include "Include/Surface/HIKARI_SceneSurfaceContract.hlsli"
+#include "Include/Surface/HIKARI_SurfaceShadingNormal.hlsli"
 
 static const uint MATERIAL_ALPHA_MASK = 1u << 1;
 
@@ -11,6 +13,7 @@ struct PSInput
 {
     float4 position : SV_POSITION;
     float3 normalWS : NORMAL;
+    float4 tangentWS : TANGENT;
     float2 uv : TEXCOORD0;
     float2 uv1 : TEXCOORD1;
     nointerpolation uint materialDataIndex : TEXCOORD2;
@@ -54,6 +57,7 @@ float4 main(PSInput input) : SV_TARGET
     }
 
     float roughness = clamp(materialData.pbrParams.y, 0.04f, 1.0f);
+    float metallic = saturate(materialData.pbrParams.x);
     if (materialData.hasMetallicRoughnessTexture != 0)
     {
         const float2 metallicRoughnessUv =
@@ -62,17 +66,26 @@ float4 main(PSInput input) : SV_TARGET
                 HIKARI_MATERIAL_UV_METALLIC_ROUGHNESS,
                 input.uv,
                 input.uv1);
-        roughness = clamp(
-            roughness *
-                HikariSampleMaterialTexture(
+        const float4 metallicRoughness =
+            HikariSampleMaterialTexture(
                     materialData.metallicRoughnessTextureDescriptorIndex,
                     gLinearWrap,
                     metallicRoughnessUv,
-                    float4(1.0f, 1.0f, 1.0f, 1.0f)).g,
+                    float4(1.0f, 1.0f, 1.0f, 1.0f));
+        roughness = clamp(
+            roughness * metallicRoughness.g,
             0.04f,
             1.0f);
+        metallic = saturate(metallic * metallicRoughness.b);
     }
 
-    float3 n = normalize(input.normalWS);
-    return float4(n * 0.5f + 0.5f, roughness);
+    const float3 n =
+        HikariResolveSurfaceShadingNormal(
+            materialData,
+            input.normalWS,
+            input.tangentWS,
+            input.uv,
+            input.uv1,
+            gLinearWrap);
+    return HikariPackSceneSurface(n, roughness, metallic);
 }
