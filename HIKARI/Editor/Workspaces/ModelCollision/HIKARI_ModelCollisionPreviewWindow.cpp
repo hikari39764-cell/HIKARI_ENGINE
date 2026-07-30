@@ -378,7 +378,7 @@ void ModelCollisionWorkspaceController::DrawPreviewWindow(
     request.visible = canvasVisible;
     request.drawDebug = false;
     request.shadingMode =
-        RENDER3D::EDITORVIEW::EditorInteractiveShadingMode::Neutral;
+        RENDER3D::EDITORVIEW::EditorInteractiveShadingMode::NeutralClay;
     request.displayExposure = 1.0f;
     request.sceneSourceOverride = previewScene_.GetSceneSource();
     RENDER3D::EDITORVIEW::SubmitRequest(request);

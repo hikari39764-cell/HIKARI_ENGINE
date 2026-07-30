@@ -193,22 +193,25 @@ namespace HIKARI::MESHRENDERER {
             1.0f / static_cast<float>(screenWidth),
             1.0f / static_cast<float>(screenHeight)
         };
-        editorFrame.localLightListView =
-            RENDER3D::LIGHTING::BuildLocalLightList(
-                lighting,
-                camera,
-                screenWidth,
-                screenHeight,
-                {
-                    editorFrame.localLightMapped,
-                    RENDER3D::LIGHTING::kMaximumLocalLightCount,
-                    editorFrame.localLightClusterHeaderMapped,
-                    RENDER3D::LIGHTING::
-                        kMaximumLocalLightClusterCount,
-                    editorFrame.localLightClusterIndexMapped,
-                    RENDER3D::LIGHTING::
-                        kMaximumLocalLightClusterIndexCount
-                });
+        editorFrame.localLightListView = {};
+        if (!settings.neutralLighting) {
+            editorFrame.localLightListView =
+                RENDER3D::LIGHTING::BuildLocalLightList(
+                    lighting,
+                    camera,
+                    screenWidth,
+                    screenHeight,
+                    {
+                        editorFrame.localLightMapped,
+                        RENDER3D::LIGHTING::kMaximumLocalLightCount,
+                        editorFrame.localLightClusterHeaderMapped,
+                        RENDER3D::LIGHTING::
+                            kMaximumLocalLightClusterCount,
+                        editorFrame.localLightClusterIndexMapped,
+                        RENDER3D::LIGHTING::
+                            kMaximumLocalLightClusterIndexCount
+                    });
+        }
         FillLightCB(
             environment,
             editorFrame.localLightListView,
@@ -232,6 +235,9 @@ namespace HIKARI::MESHRENDERER {
             light.localLightCount = 0;
             light.fogParams.x = 0.0f;
             editorFrame.shadowMapped->enabled = 0;
+        }
+        if (settings.neutralClayMaterial) {
+            *editorFrame.skyEnvironmentMapped = {};
         }
 
         const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource& sceneSource =

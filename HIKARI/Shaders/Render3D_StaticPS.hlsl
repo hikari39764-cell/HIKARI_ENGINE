@@ -276,8 +276,11 @@ float3 ApplyFog(float3 color, float3 worldPosWS)
 
 float4 main(PSInput input) : SV_TARGET
 {
+    const bool neutralClay =
+        gDebugView == HIKARI_DEBUG_VIEW_NEUTRAL_CLAY;
 #if defined(HIKARI_FORWARD_MESHLET_SURFACE_FEATURES) && HIKARI_FORWARD_MESHLET_SURFACE_FEATURES
-    if (HikariSurfaceHasWaterMaterialFx(input.surfaceFeatureFlags))
+    if (!neutralClay &&
+        HikariSurfaceHasWaterMaterialFx(input.surfaceFeatureFlags))
     {
         const HikariMeshObjectData waterObjectData =
             HikariGetMeshObjectDataForPixel(
@@ -318,8 +321,10 @@ float4 main(PSInput input) : SV_TARGET
     const bool costNoMaterialExtras =
         forwardCostMode == HIKARI_FORWARD_COST_NO_MATERIAL_EXTRAS;
 
-    float4 albedo = materialData.baseColor;
-    if (materialData.hasBaseColorTexture != 0)
+    float4 albedo = neutralClay
+        ? float4(0.72f, 0.74f, 0.77f, 1.0f)
+        : materialData.baseColor;
+    if (!neutralClay && materialData.hasBaseColorTexture != 0)
     {
         const float2 baseColorUv =
             HikariResolveMaterialUv(materialData, HIKARI_MATERIAL_UV_BASE_COLOR, input.uv, input.uv1);
@@ -329,7 +334,9 @@ float4 main(PSInput input) : SV_TARGET
             baseColorUv,
             float4(1.0f, 1.0f, 1.0f, 1.0f));
     }
-    if ((materialData.materialFlags & MATERIAL_ALPHA_MASK) != 0 && albedo.a < materialData.pbrParams.w)
+    if (!neutralClay &&
+        (materialData.materialFlags & MATERIAL_ALPHA_MASK) != 0 &&
+        albedo.a < materialData.pbrParams.w)
     {
         discard;
     }
@@ -363,7 +370,9 @@ float4 main(PSInput input) : SV_TARGET
     }
 
     float3 geometricNormal = normalize(input.normalWS);
-    float3 n = costNoNormalMap
+    float3 n = neutralClay
+        ? geometricNormal
+        : costNoNormalMap
         ? geometricNormal
         : HikariResolveSurfaceShadingNormal(
             materialData,
@@ -447,7 +456,15 @@ float4 main(PSInput input) : SV_TARGET
     float occlusion = 1.0f;
     float3 specularColor = 1.0f.xxx;
     float specularFactor = 1.0f;
-    if (costNoMaterialExtras)
+    if (neutralClay)
+    {
+        metallic = 0.0f;
+        roughness = 1.0f;
+        occlusion = 1.0f;
+        specularColor = 0.0f.xxx;
+        specularFactor = 0.0f;
+    }
+    else if (costNoMaterialExtras)
     {
         metallic = saturate(materialData.pbrParams.x);
         roughness = clamp(materialData.pbrParams.y, 0.04f, 1.0f);
@@ -490,7 +507,9 @@ float4 main(PSInput input) : SV_TARGET
         return float4(shadowFactor.xxx, albedo.a);
     }
 
-    float3 emissive = (!costNoMaterialExtras && (materialData.materialFlags & MATERIAL_EMISSIVE) != 0)
+    float3 emissive = (!neutralClay &&
+        !costNoMaterialExtras &&
+        (materialData.materialFlags & MATERIAL_EMISSIVE) != 0)
         ? ResolveEmissive(materialData, input.uv, input.uv1)
         : 0.0f.xxx;
     if (gDebugView == 10)
@@ -499,7 +518,8 @@ float4 main(PSInput input) : SV_TARGET
     }
 
     float3 shadedColor = albedo.rgb;
-    if ((materialData.materialFlags & MATERIAL_UNLIT) == 0)
+    if (neutralClay ||
+        (materialData.materialFlags & MATERIAL_UNLIT) == 0)
     {
 #if HIKARI_USE_COOK_TORRANCE_PBR
         HikariPbrShadingContext pbrContext =
@@ -576,7 +596,9 @@ float4 main(PSInput input) : SV_TARGET
     float3 finalColor = shadedColor + emissive;
     finalColor = ApplyFog(finalColor, input.worldPosWS);
 #if HIKARI_FORWARD_ENABLE_MATERIAL_FX
-    if (!costNoMaterialExtras && hasStaticMaterialFx)
+    if (!neutralClay &&
+        !costNoMaterialExtras &&
+        hasStaticMaterialFx)
     {
         finalColor = HikariApplyStaticMaterialFx(
             finalColor,

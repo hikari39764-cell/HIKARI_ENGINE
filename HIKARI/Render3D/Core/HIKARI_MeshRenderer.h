@@ -106,6 +106,7 @@ namespace HIKARI::MESHRENDERER {
     struct EditorInteractiveRenderSettings {
         RenderDebugView debugView = RenderDebugView::None;
         bool neutralLighting = false;
+        bool neutralClayMaterial = false;
         const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource*
             sceneSourceOverride = nullptr;
     };

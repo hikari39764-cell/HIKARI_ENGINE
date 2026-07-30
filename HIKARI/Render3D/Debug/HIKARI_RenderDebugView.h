@@ -34,6 +34,7 @@ namespace HIKARI {
         SsrConfidence = 26,
         SsrHit = 27,
         SurfaceLightmap = 28,
+        NeutralClay = 29,
 
         MeshletId = 32,
         ClusterId = 33,
@@ -73,6 +74,7 @@ namespace HIKARI {
         case RenderDebugView::SsrConfidence: return "SSR Confidence";
         case RenderDebugView::SsrHit: return "SSR Hit";
         case RenderDebugView::SurfaceLightmap: return "Surface Lightmap";
+        case RenderDebugView::NeutralClay: return "Neutral Clay";
         case RenderDebugView::MeshletId: return "Meshlet ID";
         case RenderDebugView::ClusterId: return "Cluster ID";
         case RenderDebugView::SurfaceId: return "Surface ID";

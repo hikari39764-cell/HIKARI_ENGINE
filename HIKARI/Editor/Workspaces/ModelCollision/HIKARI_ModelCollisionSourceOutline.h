@@ -27,7 +27,6 @@ private:
     MATH::Vec3 firstFaceNormal{};
     MATH::Vec3 secondFaceNormal{};
     uint8_t faceCount = 0;
-    bool crease = false;
   };
 
   struct NodeOutline {

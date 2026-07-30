@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
+#include <limits>
 #include <unordered_map>
 
 #if defined(HIKARI_WITH_EDITOR)
@@ -13,7 +15,76 @@ namespace {
 
 constexpr size_t kMaximumTopologyEdges = 250000u;
 constexpr float kNormalEpsilon = 1.0e-10f;
-constexpr float kCreaseCosine = 0.7660444431f;
+
+struct QuantizedPosition {
+  int64_t x = 0;
+  int64_t y = 0;
+  int64_t z = 0;
+
+  bool operator==(const QuantizedPosition &other) const noexcept {
+    return x == other.x && y == other.y && z == other.z;
+  }
+};
+
+bool PositionLess(const QuantizedPosition &left,
+                  const QuantizedPosition &right) noexcept {
+  if (left.x != right.x) {
+    return left.x < right.x;
+  }
+  if (left.y != right.y) {
+    return left.y < right.y;
+  }
+  return left.z < right.z;
+}
+
+struct WeldedEdgeKey {
+  QuantizedPosition first{};
+  QuantizedPosition second{};
+
+  bool operator==(const WeldedEdgeKey &other) const noexcept {
+    return first == other.first && second == other.second;
+  }
+};
+
+size_t HashCoordinate(int64_t value) noexcept {
+  uint64_t hash = static_cast<uint64_t>(value);
+  hash ^= hash >> 30u;
+  hash *= 0xbf58476d1ce4e5b9ull;
+  hash ^= hash >> 27u;
+  hash *= 0x94d049bb133111ebull;
+  hash ^= hash >> 31u;
+  return static_cast<size_t>(hash);
+}
+
+struct WeldedEdgeKeyHash {
+  size_t operator()(const WeldedEdgeKey &key) const noexcept {
+    size_t hash = HashCoordinate(key.first.x);
+    const auto combine = [&hash](int64_t value) {
+      hash ^= HashCoordinate(value) + static_cast<size_t>(0x9e3779b9u) +
+              (hash << 6u) + (hash >> 2u);
+    };
+    combine(key.first.y);
+    combine(key.first.z);
+    combine(key.second.x);
+    combine(key.second.y);
+    combine(key.second.z);
+    return hash;
+  }
+};
+
+QuantizedPosition QuantizePosition(const MATH::Vec3 &position,
+                                   double inverseStep) noexcept {
+  constexpr double kCoordinateLimit =
+      static_cast<double>((std::numeric_limits<int64_t>::max)() / 2);
+  const auto quantize = [inverseStep](float coordinate) {
+    const double scaled = std::clamp(
+        static_cast<double>(coordinate) * inverseStep,
+        -kCoordinateLimit,
+        kCoordinateLimit);
+    return static_cast<int64_t>(std::llround(scaled));
+  };
+  return {quantize(position.x), quantize(position.y), quantize(position.z)};
+}
 
 MATH::Vec3 TransformPoint(const MATH::Mat4 &matrix,
                           const MATH::Vec3 &point) noexcept {
@@ -83,6 +154,54 @@ ModelCollisionSourceOutlineCache::Build(
   }
 
   const MeshAsset &mesh = model.meshes[static_cast<size_t>(node.meshIndex)];
+  struct EdgeAccumulator {
+    MATH::Vec3 first{};
+    MATH::Vec3 second{};
+    MATH::Vec3 normal1{};
+    MATH::Vec3 normal2{};
+    uint8_t faceCount = 0;
+  };
+
+  const MATH::Vec3 boundsExtent = node.bounds.max - node.bounds.min;
+  const float boundsDiagonal = MATH::Length(boundsExtent);
+  const double weldStep = static_cast<double>(
+      (std::max)(1.0e-5f, boundsDiagonal * 1.0e-6f));
+  const double inverseWeldStep = 1.0 / weldStep;
+  std::unordered_map<WeldedEdgeKey, EdgeAccumulator, WeldedEdgeKeyHash>
+      topology{};
+  topology.reserve(4096u);
+
+  const auto addEdge = [&](const MATH::Vec3 &first,
+                           const MATH::Vec3 &second,
+                           const MATH::Vec3 &normal) {
+    QuantizedPosition firstKey =
+        QuantizePosition(first, inverseWeldStep);
+    QuantizedPosition secondKey =
+        QuantizePosition(second, inverseWeldStep);
+    if (firstKey == secondKey) {
+      return;
+    }
+    if (PositionLess(secondKey, firstKey)) {
+      std::swap(firstKey, secondKey);
+    }
+
+    const WeldedEdgeKey key{firstKey, secondKey};
+    auto [found, inserted] = topology.try_emplace(key);
+    EdgeAccumulator &edge = found->second;
+    if (inserted) {
+      edge.first = first;
+      edge.second = second;
+      edge.normal1 = normal;
+      edge.faceCount = 1u;
+    } else {
+      if (edge.faceCount == 1u) {
+        edge.normal2 = normal;
+      }
+      edge.faceCount = static_cast<uint8_t>(
+          (std::min)(255, static_cast<int>(edge.faceCount) + 1));
+    }
+  };
+
   for (const MeshPrimitive &primitive : mesh.primitives) {
     const size_t vertexCount =
         primitive.layout == VertexLayoutKind::SkinnedPNTTJW
@@ -102,38 +221,6 @@ ModelCollisionSourceOutlineCache::Build(
           TransformPoint(node.globalTransform, localPosition);
     }
 
-    struct EdgeAccumulator {
-      MATH::Vec3 first{};
-      MATH::Vec3 second{};
-      MATH::Vec3 normal1{};
-      MATH::Vec3 normal2{};
-      uint8_t faceCount = 0;
-    };
-    std::unordered_map<uint64_t, EdgeAccumulator> topology{};
-    topology.reserve(
-        (std::min)(primitive.indices.size(), kMaximumTopologyEdges));
-
-    const auto addEdge = [&](uint32_t firstIndex, uint32_t secondIndex,
-                             const MATH::Vec3 &normal) {
-      const uint32_t minimum = (std::min)(firstIndex, secondIndex);
-      const uint32_t maximum = (std::max)(firstIndex, secondIndex);
-      const uint64_t key = (static_cast<uint64_t>(minimum) << 32u) | maximum;
-      auto [found, inserted] = topology.try_emplace(key);
-      EdgeAccumulator &edge = found->second;
-      if (inserted) {
-        edge.first = positions[firstIndex];
-        edge.second = positions[secondIndex];
-        edge.normal1 = normal;
-        edge.faceCount = 1u;
-      } else {
-        if (edge.faceCount == 1u) {
-          edge.normal2 = normal;
-        }
-        edge.faceCount = static_cast<uint8_t>(
-            (std::min)(255, static_cast<int>(edge.faceCount) + 1));
-      }
-    };
-
     for (size_t index = 0; index + 2u < primitive.indices.size(); index += 3u) {
       const uint32_t index0 = primitive.indices[index];
       const uint32_t index1 = primitive.indices[index + 1u];
@@ -148,30 +235,29 @@ ModelCollisionSourceOutlineCache::Build(
       if (MATH::Dot(normal, normal) <= kNormalEpsilon) {
         continue;
       }
-      addEdge(index0, index1, normal);
-      addEdge(index1, index2, normal);
-      addEdge(index2, index0, normal);
+      addEdge(positions[index0], positions[index1], normal);
+      addEdge(positions[index1], positions[index2], normal);
+      addEdge(positions[index2], positions[index0], normal);
       if (topology.size() >= kMaximumTopologyEdges) {
         outline.truncated = true;
         break;
       }
     }
 
-    outline.edges.reserve(outline.edges.size() + topology.size());
-    for (const auto &[_, source] : topology) {
-      Edge edge{};
-      edge.first = source.first;
-      edge.second = source.second;
-      edge.firstFaceNormal = source.normal1;
-      edge.secondFaceNormal = source.normal2;
-      edge.faceCount = source.faceCount;
-      edge.crease = source.faceCount != 2u ||
-                    MATH::Dot(source.normal1, source.normal2) < kCreaseCosine;
-      outline.edges.push_back(edge);
-    }
     if (outline.truncated) {
       break;
     }
+  }
+
+  outline.edges.reserve(topology.size());
+  for (const auto &[_, source] : topology) {
+    Edge edge{};
+    edge.first = source.first;
+    edge.second = source.second;
+    edge.firstFaceNormal = source.normal1;
+    edge.secondFaceNormal = source.normal2;
+    edge.faceCount = source.faceCount;
+    outline.edges.push_back(edge);
   }
   return outline;
 }
@@ -202,9 +288,7 @@ bool ModelCollisionSourceOutlineCache::Draw(
     const bool boundary = edge.faceCount == 1u;
     const bool silhouette = edge.faceCount == 2u &&
                             ((firstFacing >= 0.0f) != (secondFacing >= 0.0f));
-    const bool visibleCrease =
-        edge.crease && (firstFacing >= 0.0f || secondFacing >= 0.0f);
-    if (!boundary && !silhouette && !visibleCrease) {
+    if (!boundary && !silhouette) {
       continue;
     }
 

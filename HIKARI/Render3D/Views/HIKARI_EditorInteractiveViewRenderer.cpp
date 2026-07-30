@@ -213,6 +213,7 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
 
             switch (mode) {
             case EditorInteractiveShadingMode::Neutral:
+            case EditorInteractiveShadingMode::NeutralClay:
                 return { 0.095f, 0.115f, 0.145f, 1.0f };
             case EditorInteractiveShadingMode::Unlit:
                 return { 0.075f, 0.090f, 0.115f, 1.0f };
@@ -227,11 +228,19 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
 
             MESHRENDERER::EditorInteractiveRenderSettings settings{};
             settings.neutralLighting =
-                request.shadingMode == EditorInteractiveShadingMode::Neutral;
-            settings.debugView = request.shadingMode ==
-                    EditorInteractiveShadingMode::Unlit
-                ? RenderDebugView::BaseColor
-                : RenderDebugView::None;
+                request.shadingMode ==
+                    EditorInteractiveShadingMode::Neutral ||
+                request.shadingMode ==
+                    EditorInteractiveShadingMode::NeutralClay;
+            settings.neutralClayMaterial =
+                request.shadingMode ==
+                    EditorInteractiveShadingMode::NeutralClay;
+            if (request.shadingMode ==
+                EditorInteractiveShadingMode::Unlit) {
+                settings.debugView = RenderDebugView::BaseColor;
+            } else if (settings.neutralClayMaterial) {
+                settings.debugView = RenderDebugView::NeutralClay;
+            }
             settings.sceneSourceOverride = request.sceneSourceOverride;
             return settings;
         }

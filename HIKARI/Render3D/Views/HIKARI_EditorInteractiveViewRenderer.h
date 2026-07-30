@@ -22,6 +22,7 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
     enum class EditorInteractiveShadingMode : uint8_t {
         Lit,
         Neutral,
+        NeutralClay,
         Unlit,
     };
 

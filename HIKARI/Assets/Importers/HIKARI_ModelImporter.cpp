@@ -676,6 +676,40 @@ namespace HIKARI {
                     material.defaultMaterialFxProfileId);
         }
 
+        std::vector<bool> BuildMaterialOpticalTransparencyUsageHints(
+            const ModelAsset& model) {
+
+            std::vector<bool> hints(model.materials.size(), false);
+            for (const ModelNode& node : model.nodes) {
+                if (node.meshIndex < 0 ||
+                    static_cast<size_t>(node.meshIndex) >=
+                        model.meshes.size()) {
+                    continue;
+                }
+
+                const MeshAsset& mesh =
+                    model.meshes[static_cast<size_t>(node.meshIndex)];
+                const bool nodeHasOpticalCue =
+                    MATERIAL_POLICY::HasOpticalTransparencyCue(node.name);
+                const bool meshHasOpticalCue =
+                    MATERIAL_POLICY::HasOpticalTransparencyCue(mesh.name);
+                for (const MeshPrimitive& primitive : mesh.primitives) {
+                    if (primitive.materialIndex >= hints.size()) {
+                        continue;
+                    }
+                    const bool primitiveHasOpticalCue =
+                        MATERIAL_POLICY::HasOpticalTransparencyCue(
+                            primitive.name);
+                    if (nodeHasOpticalCue ||
+                        meshHasOpticalCue ||
+                        primitiveHasOpticalCue) {
+                        hints[primitive.materialIndex] = true;
+                    }
+                }
+            }
+            return hints;
+        }
+
         void SetMaterialAlphaMode(MaterialAsset& material, AlphaMode mode) {
             const bool sourceDoubleSided = material.doubleSided;
 
@@ -703,8 +737,13 @@ namespace HIKARI {
             const std::vector<TextureCookDiagnostic>& textureDiagnostics) {
 
             MaterialAlphaPolicyStats stats{};
+            const std::vector<bool> opticalUsageHints =
+                BuildMaterialOpticalTransparencyUsageHints(model);
 
-            for (MaterialAsset& material : model.materials) {
+            for (size_t materialIndex = 0;
+                 materialIndex < model.materials.size();
+                 ++materialIndex) {
+                MaterialAsset& material = model.materials[materialIndex];
                 const AlphaMode originalMode = material.alphaMode;
                 const bool originalDoubleSided = material.doubleSided;
 
@@ -725,7 +764,8 @@ namespace HIKARI {
                 const bool explicitThinCue = HasMaterialThinSurfaceCookHint(material);
                 const bool opticalTransparencyCue =
                     HasMaterialOpticalTransparencyCookHint(
-                        material);
+                        material) ||
+                    opticalUsageHints[materialIndex];
                 const bool sourceRequestedMask = originalMode == AlphaMode::Mask;
                 const bool sourceRequestedBlend = originalMode == AlphaMode::Blend;
                 const bool needsOpticalOpacityFallback =

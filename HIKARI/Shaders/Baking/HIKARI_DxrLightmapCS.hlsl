@@ -219,7 +219,7 @@ bool TraceSurface(
     {
         return false;
     }
-    TransportTriangle triangle = gTriangles[primitiveIndex];
+    TransportTriangle surfaceTriangle = gTriangles[primitiveIndex];
     float2 barycentrics =
         query.CommittedTriangleBarycentrics();
     float3 barycentricWeights = float3(
@@ -229,15 +229,15 @@ bool TraceSurface(
     float distance = query.CommittedRayT();
     position = origin + direction * distance;
     normal = normalize(
-        triangle.normal0.xyz * barycentricWeights.x +
-        triangle.normal1.xyz * barycentricWeights.y +
-        triangle.normal2.xyz * barycentricWeights.z);
+        surfaceTriangle.normal0.xyz * barycentricWeights.x +
+        surfaceTriangle.normal1.xyz * barycentricWeights.y +
+        surfaceTriangle.normal2.xyz * barycentricWeights.z);
     if (dot(normal, direction) > 0.0f)
     {
         normal = -normal;
     }
-    diffuse = saturate(triangle.diffuse.rgb);
-    emissive = max(triangle.emissive.rgb, 0.0f.xxx);
+    diffuse = saturate(surfaceTriangle.diffuse.rgb);
+    emissive = max(surfaceTriangle.emissive.rgb, 0.0f.xxx);
     return true;
 }
 

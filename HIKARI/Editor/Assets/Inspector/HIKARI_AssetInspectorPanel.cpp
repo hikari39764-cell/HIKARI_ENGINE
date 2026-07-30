@@ -393,12 +393,16 @@ void AssetInspectorPanel::Draw(AssetDatabase &assetDatabase,
         ImGui::TableSetupColumn("Path");
         ImGui::TableHeadersRow();
 
-        for (const AssetArtifactDesc &artifact :
-             record->artifactManifest.artifacts) {
+        for (size_t artifactIndex = 0;
+             artifactIndex < record->artifactManifest.artifacts.size();
+             ++artifactIndex) {
+          const AssetArtifactDesc &artifact =
+              record->artifactManifest.artifacts[artifactIndex];
           const std::filesystem::path artifactPath =
               assetDatabase.GetProjectRoot() / artifact.path;
           const bool exists = std::filesystem::exists(artifactPath);
 
+          ImGui::PushID(static_cast<int>(artifactIndex));
           ImGui::TableNextRow();
           ImGui::TableSetColumnIndex(0);
           ImGui::TextUnformatted(artifact.role.c_str());
@@ -408,7 +412,7 @@ void AssetInspectorPanel::Draw(AssetDatabase &assetDatabase,
           ImGui::TextUnformatted(exists ? "Yes" : "No");
           ImGui::TableSetColumnIndex(3);
           ImGui::TextUnformatted(artifact.path.c_str());
-          if (ImGui::BeginPopupContextItem()) {
+          if (ImGui::BeginPopupContextItem("ArtifactContext")) {
             if (ImGui::MenuItem("Open Folder")) {
               EDITOR::SHELL::OpenFolderInExplorer(artifactPath.parent_path());
             }
@@ -417,6 +421,7 @@ void AssetInspectorPanel::Draw(AssetDatabase &assetDatabase,
             }
             ImGui::EndPopup();
           }
+          ImGui::PopID();
         }
 
         ImGui::EndTable();
