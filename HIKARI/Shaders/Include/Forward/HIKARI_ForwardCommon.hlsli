@@ -134,7 +134,7 @@ cbuffer SkyEnvironmentCB : register(b5)
     float4 gSkyTintLighting;
     float4 gIblParams;
     HikariReflectionProbeData gReflectionProbes[2];
-    float4 gAoParams;
+    float4 gAmbientSamplingParams;
     HikariIrradianceVolumeData gIrradianceVolumes[2];
 };
 
@@ -153,9 +153,10 @@ cbuffer SkyEnvironmentCB : register(b5)
 #define gIblHasPrefiltered gIblParams.y
 #define gIblHasBrdfLut gIblParams.z
 #define gIblPrefilteredMipCount gIblParams.w
-#define gSsaoEnabled gAoParams.x
-#define gSsaoDiffuseStrength gAoParams.y
-#define gSsaoSpecularStrength gAoParams.z
+#define gSsaoEnabled gAmbientSamplingParams.x
+#define gSsaoDiffuseStrength gAmbientSamplingParams.y
+#define gSsaoSpecularStrength gAmbientSamplingParams.z
+#define gSurfaceLightmapEnabled gAmbientSamplingParams.w
 
 Texture2D gShadowMap : register(t2);
 TextureCube gSkyCube : register(t6);

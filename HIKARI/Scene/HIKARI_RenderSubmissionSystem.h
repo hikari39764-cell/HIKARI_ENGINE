@@ -50,6 +50,7 @@ namespace HIKARI {
         static void SetRenderViewPurpose(
             RENDER3D::RenderViewPurpose purpose);
         static RENDER3D::RenderViewPurpose GetRenderViewPurpose();
+        static void InvalidateSurfaceResourceBindings();
         static void InvalidateSceneResources(bool clearProceduralCache);
         static RenderSubmissionRouteMode GetRouteMode();
         static const RenderSubmissionDebugStats& GetDebugStats();

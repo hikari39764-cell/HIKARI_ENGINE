@@ -91,7 +91,8 @@ $entries = @(
     @{ Shader = "HIKARI/Shaders/Post_SSAOBlurPS.hlsl"; Entry = "PSMainDepthOnly"; Target = "ps_6_0" },
     @{ Shader = "HIKARI/Shaders/Post_SSAOBlurPS.hlsl"; Entry = "PSMainUpsampleDepthOnly"; Target = "ps_6_0" },
     @{ Shader = "HIKARI/Shaders/Post_ScreenSpaceReflections.hlsl"; Entry = "VSMain"; Target = "vs_6_0" },
-    @{ Shader = "HIKARI/Shaders/Post_ScreenSpaceReflections.hlsl"; Entry = "PSMain"; Target = "ps_6_0" }
+    @{ Shader = "HIKARI/Shaders/Post_ScreenSpaceReflections.hlsl"; Entry = "PSTrace"; Target = "ps_6_0" },
+    @{ Shader = "HIKARI/Shaders/Post_ScreenSpaceReflections.hlsl"; Entry = "PSResolve"; Target = "ps_6_0" }
 )
 
 $failures = New-Object System.Collections.Generic.List[object]

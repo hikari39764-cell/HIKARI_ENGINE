@@ -161,6 +161,10 @@ namespace HIKARI {
         float stride = 0.18f;
     };
 
+    struct SurfaceLightmapSettings {
+        bool enabled = true;
+    };
+
     struct BloomSettings {
         bool enabled = true;
         float threshold = 1.0f;
@@ -214,6 +218,7 @@ namespace HIKARI {
         SkySettings sky{};
         ReflectionProbeSettings reflectionProbe{};
         AmbientOcclusionSettings ambientOcclusion{};
+        SurfaceLightmapSettings surfaceLightmaps{};
         ScreenSpaceReflectionSettings screenSpaceReflections{};
         BloomSettings bloom{};
         FogSettings fog{};

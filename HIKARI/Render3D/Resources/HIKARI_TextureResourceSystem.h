@@ -63,6 +63,13 @@ namespace HIKARI::RENDER3D {
         const std::string& path,
         TextureResourceColorSpace colorSpace);
 
+    // 指定した Imported Texture のみを Cache から除外する。
+    // 古い GPU Resource と Descriptor は現在 Frame の Fence 完了まで保持する。
+    bool EvictImportedTextureResourceWithColorSpace(
+        const std::string& name,
+        const std::string& path,
+        TextureResourceColorSpace colorSpace);
+
     std::vector<TextureResourceHandle> PreloadTextureResourcesWithColorSpace(
         const std::vector<TextureResourceLoadRequest>& requests,
         TextureResourceBatchLoadStats* outStats = nullptr);

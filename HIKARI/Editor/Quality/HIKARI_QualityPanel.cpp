@@ -47,6 +47,11 @@ QualityPanelResult QualityPanel::Draw(SceneEnvironment &environment) const {
     DrawAmbientOcclusion(environment, runtimeSnapshot);
     ImGui::TreePop();
   }
+  if (ImGui::TreeNodeEx("Baked Indirect Lighting",
+                        ImGuiTreeNodeFlags_DefaultOpen)) {
+    DrawSurfaceLightmaps(environment);
+    ImGui::TreePop();
+  }
   if (ImGui::TreeNodeEx("Screen Space Reflections",
                         ImGuiTreeNodeFlags_DefaultOpen)) {
     DrawScreenSpaceReflections(environment);

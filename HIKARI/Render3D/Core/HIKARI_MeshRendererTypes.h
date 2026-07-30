@@ -176,7 +176,7 @@ namespace HIKARI::MESHRENDERER {
         MATH::Vec4 skyTintLighting{};
         MATH::Vec4 iblParams{};
         ReflectionProbeGpuData reflectionProbes[2]{};
-        MATH::Vec4 aoParams{};
+        MATH::Vec4 ambientSamplingParams{};
         IrradianceVolumeGpuData irradianceVolumes[2]{};
     };
 

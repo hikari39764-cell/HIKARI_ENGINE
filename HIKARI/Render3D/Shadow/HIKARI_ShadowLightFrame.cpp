@@ -23,7 +23,7 @@ namespace HIKARI::SHADOW {
                 return 0.0f;
             }
 
-            constexpr float kSnapTexels = 8.0f;
+            constexpr float kSnapTexels = 1.0f;
             const float texelWorldSize =
                 orthoSize / static_cast<float>((std::max)(1u, resolution));
             return (std::max)(texelWorldSize * kSnapTexels, 0.0001f);
@@ -102,7 +102,23 @@ namespace HIKARI::SHADOW {
             MATH::Vec3 right = MATH::Normalize(MATH::Cross(up, lightDir));
             MATH::Vec3 actualUp = MATH::Normalize(MATH::Cross(lightDir, right));
 
-            const float orthoSize = radius * 2.0f;
+            const float baseOrthoSize = radius * 2.0f;
+            const float baseTexelWorldSize =
+                baseOrthoSize /
+                static_cast<float>((std::max)(1u, resolution));
+            const float guardTexels =
+                (std::max)(
+                    2.0f,
+                    std::ceil(std::clamp(
+                        environment.directionalShadow.pcfRadius,
+                        0.0f,
+                        4.0f)) +
+                        1.0f);
+            // Snap による最大半 Texel の移動と PCF 範囲を含む Guard を確保し、
+            // Frustum 端の Receiver が Cascade 外へ抜けないようにする。
+            const float orthoSize =
+                baseOrthoSize +
+                baseTexelWorldSize * guardTexels * 2.0f;
             const float anchorGrid =
                 ResolveShadowAnchorGrid(environment, orthoSize, resolution);
             MATH::Vec3 anchor = center;

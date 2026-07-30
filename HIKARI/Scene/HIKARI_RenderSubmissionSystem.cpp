@@ -127,6 +127,10 @@ namespace HIKARI {
         sGpuDrivenSceneSyncInitialized_ = false;
     }
 
+    void RenderSubmissionSystem::InvalidateSurfaceResourceBindings() {
+        InvalidateSubmissionRouting();
+    }
+
     void RenderSubmissionSystem::InvalidateSceneResources(bool clearProceduralCache) {
         MODELRENDERER::GetRenderModelCache().Clear();
         InvalidateSubmissionRouting();

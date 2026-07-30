@@ -332,6 +332,9 @@ namespace HIKARI::SCENE::SERIALIZATION {
         out["ambientOcclusion"]["sampleCount"] = environment.ambientOcclusion.sampleCount;
         out["ambientOcclusion"]["blurIterations"] = environment.ambientOcclusion.blurIterations;
 
+        out["surfaceLightmaps"]["enabled"] =
+            environment.surfaceLightmaps.enabled;
+
         const ScreenSpaceReflectionSettings& ssr =
             environment.screenSpaceReflections;
         out["screenSpaceReflections"]["enabled"] = ssr.enabled;
@@ -598,6 +601,16 @@ namespace HIKARI::SCENE::SERIALIZATION {
             outEnvironment.ambientOcclusion.blurIterations = ao.value("blurIterations", outEnvironment.ambientOcclusion.blurIterations);
             outEnvironment.ambientOcclusion.sampleCount = std::clamp<uint32_t>(outEnvironment.ambientOcclusion.sampleCount, 8u, 32u);
             outEnvironment.ambientOcclusion.blurIterations = std::clamp<uint32_t>(outEnvironment.ambientOcclusion.blurIterations, 0u, 4u);
+        }
+
+        if (node.contains("surfaceLightmaps") &&
+            node["surfaceLightmaps"].is_object()) {
+            const nlohmann::json& lightmaps =
+                node["surfaceLightmaps"];
+            outEnvironment.surfaceLightmaps.enabled =
+                lightmaps.value(
+                    "enabled",
+                    outEnvironment.surfaceLightmaps.enabled);
         }
 
         if (node.contains("screenSpaceReflections") &&

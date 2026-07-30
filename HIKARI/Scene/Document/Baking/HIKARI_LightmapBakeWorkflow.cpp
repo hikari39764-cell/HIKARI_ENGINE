@@ -7,6 +7,7 @@
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Project/Paths/HIKARI_ProjectPath.h"
 #include "Render3D/Lighting/HIKARI_LightmapRuntime.h"
+#include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
 #include "Scene/Document/Baking/Internal/HIKARI_DocumentSceneBakeSupport.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
@@ -186,6 +187,13 @@ namespace HIKARI {
                     manifest.lightmaps.size());
             job.report.messages.push_back(manifestMessage);
 
+            // Bake は同一 Project Path の DDS を置換する。Runtime Binding を
+            // 再構築する前に対象 Texture のみを除外し、古い Descriptor は
+            // Frame Fence 完了まで Backend 側で保持する。
+            RENDER3D::EvictImportedTextureResourceWithColorSpace(
+                "lightmap/" + record.id,
+                job.outputPath.generic_string(),
+                RENDER3D::TextureResourceColorSpace::Linear);
             scene.RefreshLightingRuntime();
             const auto& surfaceBindings =
                 job.transportScene.targets[
@@ -200,7 +208,9 @@ namespace HIKARI {
                         surface.meshIndex,
                     surfaceBindings.front().
                         surface.primitiveIndex) != nullptr;
-            RenderSubmissionSystem::InvalidateSceneResources(false);
+            // Lightmap Descriptor は Surface Record のみに影響する。
+            // Model / MaterialFx / Procedural / Shadow Cache は破棄しない。
+            RenderSubmissionSystem::InvalidateSurfaceResourceBindings();
 
             job.state =
                 TOOLS::BAKING::LightingBakeJobState::Completed;

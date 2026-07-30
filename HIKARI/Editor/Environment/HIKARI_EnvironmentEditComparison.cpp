@@ -135,6 +135,8 @@ bool AreSceneEnvironmentValuesEqual(const SceneEnvironment &lhs,
       !EqualReflectionProbeSettings(lhs.reflectionProbe, rhs.reflectionProbe) ||
       !EqualAmbientOcclusionSettings(lhs.ambientOcclusion, rhs.ambientOcclusion,
                                     false) ||
+      lhs.surfaceLightmaps.enabled !=
+          rhs.surfaceLightmaps.enabled ||
       !EqualScreenSpaceReflectionSettings(
           lhs.screenSpaceReflections, rhs.screenSpaceReflections) ||
       lhs.bloom.enabled != rhs.bloom.enabled ||
@@ -204,6 +206,8 @@ bool AreQualityEnvironmentValuesEqual(const SceneEnvironment &lhs,
                                         rhs.directionalShadow) &&
          EqualAmbientOcclusionSettings(lhs.ambientOcclusion,
                                        rhs.ambientOcclusion, true) &&
+         lhs.surfaceLightmaps.enabled ==
+             rhs.surfaceLightmaps.enabled &&
          EqualScreenSpaceReflectionSettings(
              lhs.screenSpaceReflections, rhs.screenSpaceReflections) &&
          lhs.bloom.enabled == rhs.bloom.enabled &&

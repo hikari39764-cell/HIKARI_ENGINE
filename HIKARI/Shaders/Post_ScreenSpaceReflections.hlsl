@@ -6,6 +6,7 @@ cbuffer ScreenSpaceReflectionCB : register(b0)
     float4x4 gInvViewProj;
     float4 gCameraPosition;
     float4 gScreenParams;
+    float4 gTraceScreenParams;
     float4 gTraceParams;
     float4 gResolveParams;
     float4 gFrameParams;
@@ -25,6 +26,7 @@ Texture2D<float4> gSceneColor : register(t0);
 Texture2D<float> gSceneDepth : register(t1);
 Texture2D<float4> gSceneSurface : register(t2);
 Texture2D<float> gCurrentHzb : register(t3);
+Texture2D<float4> gSsrTrace : register(t4);
 SamplerState gLinearClamp : register(s0);
 SamplerState gPointClamp : register(s1);
 
@@ -228,15 +230,13 @@ float ScreenEdgeConfidence(float2 uv)
     return smoothstep(0.0f, max(gEdgeFade, 1e-4f), edgeDistance);
 }
 
-float4 PSMain(FullscreenVertex input) : SV_TARGET
+float4 PSTrace(FullscreenVertex input) : SV_TARGET
 {
-    const float4 baseSceneColor =
-        gSceneColor.SampleLevel(gLinearClamp, input.uv, 0.0f);
     const float depth =
         gSceneDepth.SampleLevel(gPointClamp, input.uv, 0.0f);
     if (depth >= 0.99999f)
     {
-        return baseSceneColor;
+        return 0.0f.xxxx;
     }
 
     float3 normal;
@@ -249,9 +249,7 @@ float4 PSMain(FullscreenVertex input) : SV_TARGET
         metallic);
     if (roughness >= gMaxRoughness)
     {
-        return gDebugMode == 1u
-            ? float4(0.0f, 0.0f, 0.0f, 1.0f)
-            : baseSceneColor;
+        return 0.0f.xxxx;
     }
 
     const float3 worldPosition =
@@ -262,7 +260,7 @@ float4 PSMain(FullscreenVertex input) : SV_TARGET
         normalize(reflect(incident, normal));
     if (dot(reflectionDirection, normal) <= 0.0001f)
     {
-        return baseSceneColor;
+        return 0.0f.xxxx;
     }
 
     // March spacing and receiver separation are distinct controls. Keeping the
@@ -457,7 +455,7 @@ float4 PSMain(FullscreenVertex input) : SV_TARGET
 
     if (gDebugMode == 1u)
     {
-        return float4(confidence.xxx, 1.0f);
+        return float4(confidence.xxx, confidence);
     }
     if (gDebugMode == 2u)
     {
@@ -465,7 +463,7 @@ float4 PSMain(FullscreenVertex input) : SV_TARGET
     }
     if (!hit || confidence <= 0.0001f)
     {
-        return baseSceneColor;
+        return 0.0f.xxxx;
     }
 
     const float3 reflectedRadiance =
@@ -477,13 +475,183 @@ float4 PSMain(FullscreenVertex input) : SV_TARGET
         saturate(lerp(dielectricFresnel, 0.85f, metallic));
     const float replacementWeight =
         saturate(confidence * reflectivity * gIntensity);
+    return float4(reflectedRadiance, replacementWeight);
+}
 
-    // The forward path already contains probe/sky specular. Remove the
-    // estimated fallback lobe before applying the higher-confidence screen hit.
+float4 ResolveHalfResolutionTrace(
+    float2 uv,
+    float centerDepth,
+    float3 centerNormal)
+{
+    const float2 tracePosition =
+        uv * gTraceScreenParams.xy - 0.5f;
+    const int2 basePixel = int2(floor(tracePosition));
+    const float2 fraction = frac(tracePosition);
+    const int2 maximumPixel =
+        int2(gTraceScreenParams.xy) - 1;
+    const float centerViewDepth =
+        ReconstructViewDepth(uv, centerDepth);
+
+    float4 accumulated = 0.0f.xxxx;
+    float accumulatedWeight = 0.0f;
+    [unroll]
+    for (int y = 0; y < 2; ++y)
+    {
+        [unroll]
+        for (int x = 0; x < 2; ++x)
+        {
+            const int2 tracePixel =
+                clamp(
+                    basePixel + int2(x, y),
+                    int2(0, 0),
+                    maximumPixel);
+            const float2 sampleUv =
+                (float2(tracePixel) + 0.5f) *
+                gTraceScreenParams.zw;
+            const float sampleDepth =
+                gSceneDepth.SampleLevel(
+                    gPointClamp,
+                    sampleUv,
+                    0.0f);
+            if (sampleDepth >= 0.99999f)
+            {
+                continue;
+            }
+
+            float3 sampleNormal;
+            float sampleRoughness;
+            float sampleMetallic;
+            HikariUnpackSceneSurface(
+                gSceneSurface.SampleLevel(
+                    gPointClamp,
+                    sampleUv,
+                    0.0f),
+                sampleNormal,
+                sampleRoughness,
+                sampleMetallic);
+            const float sampleViewDepth =
+                ReconstructViewDepth(
+                    sampleUv,
+                    sampleDepth);
+            const float relativeDepthDifference =
+                abs(sampleViewDepth - centerViewDepth) /
+                max(centerViewDepth * 0.02f, 0.05f);
+            const float depthWeight =
+                pow(
+                    saturate(
+                        1.0f - relativeDepthDifference),
+                    2.0f);
+            const float normalWeight =
+                pow(
+                    saturate(
+                        dot(centerNormal, sampleNormal)),
+                    12.0f);
+            const float2 axisWeight =
+                float2(
+                    x == 0 ? 1.0f - fraction.x : fraction.x,
+                    y == 0 ? 1.0f - fraction.y : fraction.y);
+            const float weight =
+                axisWeight.x *
+                axisWeight.y *
+                depthWeight *
+                normalWeight;
+            accumulated +=
+                gSsrTrace.Load(
+                    int3(tracePixel, 0)) *
+                weight;
+            accumulatedWeight += weight;
+        }
+    }
+
+    if (accumulatedWeight <= 1.0e-5f)
+    {
+        return 0.0f.xxxx;
+    }
+    return accumulated / accumulatedWeight;
+}
+
+float4 PSResolve(FullscreenVertex input) : SV_TARGET
+{
+    const float4 baseSceneColor =
+        gSceneColor.SampleLevel(
+            gLinearClamp,
+            input.uv,
+            0.0f);
+    const float depth =
+        gSceneDepth.SampleLevel(
+            gPointClamp,
+            input.uv,
+            0.0f);
+    if (depth >= 0.99999f)
+    {
+        return baseSceneColor;
+    }
+
+    float3 normal;
+    float roughness;
+    float metallic;
+    HikariUnpackSceneSurface(
+        gSceneSurface.SampleLevel(
+            gPointClamp,
+            input.uv,
+            0.0f),
+        normal,
+        roughness,
+        metallic);
+    const float4 trace =
+        ResolveHalfResolutionTrace(
+            input.uv,
+            depth,
+            normal);
+    if (gDebugMode == 1u)
+    {
+        return float4(trace.aaa, 1.0f);
+    }
+    if (gDebugMode == 2u)
+    {
+        return gSsrTrace.SampleLevel(
+            gPointClamp,
+            input.uv,
+            0.0f);
+    }
+
+    const float replacementWeight =
+        saturate(trace.a);
+    if (replacementWeight <= 0.0001f)
+    {
+        return baseSceneColor;
+    }
+
+    const float3 worldPosition =
+        ReconstructWorldPosition(input.uv, depth);
+    const float3 incident =
+        normalize(
+            worldPosition - gCameraPosition.xyz);
+    const float viewNormal =
+        saturate(dot(-incident, normal));
+    const float dielectricFresnel =
+        0.04f +
+        0.96f *
+            pow(1.0f - viewNormal, 5.0f);
+    const float reflectivity =
+        saturate(
+            lerp(
+                dielectricFresnel,
+                0.85f,
+                metallic));
+
+    // Forward 已经包含 Probe/Sky 镜面回退。SSR 只按命中置信度替换
+    // 对应能量，不能把完整反射再次叠加到基础颜色上。
     const float3 estimatedFallback =
-        baseSceneColor.rgb * reflectivity * 0.25f;
+        baseSceneColor.rgb *
+        reflectivity *
+        0.25f;
     const float3 resolved =
-        max(baseSceneColor.rgb - estimatedFallback * replacementWeight, 0.0f) +
-        reflectedRadiance * replacementWeight;
+        max(
+            baseSceneColor.rgb -
+                estimatedFallback *
+                    replacementWeight,
+            0.0f) +
+        trace.rgb * replacementWeight;
     return float4(resolved, baseSceneColor.a);
 }

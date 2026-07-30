@@ -123,6 +123,8 @@ void DrawScreenSpaceReflections(SceneEnvironment &environment) {
   ImGui::TextDisabled("Fallback: SSR -> Local Reflection Probe -> Sky IBL");
   ImGui::TextDisabled(
       "SSR only resolves screen-visible hits; off-screen rays keep fallback.");
+  ImGui::TextDisabled(
+      "Trace resolution: 50%%; Quality controls the ray-step budget.");
 
   if (ImGui::TreeNode("Advanced Ray Marching")) {
     ImGui::DragFloat("Relative Depth Thickness", &settings.thickness, 0.0001f,
@@ -132,6 +134,15 @@ void DrawScreenSpaceReflections(SceneEnvironment &environment) {
                      0.35f);
     ImGui::TreePop();
   }
+}
+
+void DrawSurfaceLightmaps(SceneEnvironment &environment) {
+  ImGui::Checkbox("Use Surface Lightmaps",
+                  &environment.surfaceLightmaps.enabled);
+  ImGui::TextDisabled(
+      "Uses baked DXR diffuse irradiance when a valid surface record exists.");
+  ImGui::TextDisabled(
+      "Disabled or missing records fall back to Light Probes and Sky/Ambient.");
 }
 
 void DrawAmbientOcclusion(

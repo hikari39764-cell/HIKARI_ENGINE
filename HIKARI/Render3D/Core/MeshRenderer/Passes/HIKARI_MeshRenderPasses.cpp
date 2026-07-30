@@ -227,7 +227,8 @@ namespace HIKARI::MESHRENDERER {
         SkyEnvironmentCB* skyEnvironment =
             GetActiveMeshFrameResources().skyEnvironmentMapped;
         if (skyEnvironment != nullptr) {
-            skyEnvironment->aoParams.x = enabled ? 1.0f : 0.0f;
+            skyEnvironment->ambientSamplingParams.x =
+                enabled ? 1.0f : 0.0f;
         }
     }
 

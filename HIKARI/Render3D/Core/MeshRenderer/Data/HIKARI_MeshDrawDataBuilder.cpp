@@ -284,11 +284,11 @@ namespace HIKARI::MESHRENDERER {
         const bool ssaoConfiguredEnabled =
             environment.ambientOcclusion.enabled &&
             environment.ambientOcclusion.mode != SsaoMode::Off;
-        out.aoParams = {
+        out.ambientSamplingParams = {
             ssaoConfiguredEnabled ? 1.0f : 0.0f,
             std::clamp(environment.ambientOcclusion.diffuseStrength, 0.0f, 1.0f),
             std::clamp(environment.ambientOcclusion.specularStrength, 0.0f, 1.0f),
-            0.0f
+            environment.surfaceLightmaps.enabled ? 1.0f : 0.0f
         };
         const RENDER3D::LightProbeVolumeSamplingMode lightProbeSampling =
             RENDER3D::GetRenderQualitySettings().lightProbeVolumeSampling;
