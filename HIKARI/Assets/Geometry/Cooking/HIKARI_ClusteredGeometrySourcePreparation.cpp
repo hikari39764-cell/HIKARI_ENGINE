@@ -714,6 +714,8 @@ namespace HIKARI::ASSETS::GEOMETRY::COOKING {
         outWork.primitiveIndex = primitiveIndex;
         outWork.materialIndex = primitive.materialIndex;
         outWork.flags = BuildSurfaceFlags(model, primitive, nodeSkinIndex);
+        outWork.preserveLightmapUvSeams =
+            primitive.hasLightmapUv;
 
         if (primitive.hasMorphTargets ||
             RENDER3D::CLUSTER::HasFlag(outWork.flags, ClusterSurfaceFlags::Unsupported)) {

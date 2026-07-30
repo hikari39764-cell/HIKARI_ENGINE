@@ -33,6 +33,7 @@ namespace HIKARI::ASSETS::GEOMETRY::COOKING {
         uint32_t primitiveIndex = 0;
         uint32_t materialIndex = 0;
         uint32_t flags = 0;
+        bool preserveLightmapUvSeams = false;
         std::vector<ClusterVertex> vertices{};
         std::vector<uint32_t> indices{};
     };

@@ -314,12 +314,22 @@ void CollectDroppedFiles(
 }
 
 void ProcessDroppedFiles(AssetDatabase &assetDatabase,
-                         const std::filesystem::path &currentDirectory,
-                         EditorSelection &selection,
-                         std::string &lastOperationMessage) {
+                          const std::filesystem::path &currentDirectory,
+                          EditorSelection &selection,
+                          std::string &lastOperationMessage,
+                          float targetScreenLeft,
+                          float targetScreenTop,
+                          float targetScreenRight,
+                          float targetScreenBottom) {
 
+  const RECT targetScreenRect{
+      static_cast<LONG>(targetScreenLeft),
+      static_cast<LONG>(targetScreenTop),
+      static_cast<LONG>(targetScreenRight),
+      static_cast<LONG>(targetScreenBottom),
+  };
   std::vector<std::filesystem::path> droppedFiles =
-      PLATFORM::ConsumeDroppedFiles();
+      PLATFORM::ConsumeDroppedFilesInScreenRect(targetScreenRect);
   if (droppedFiles.empty()) {
     return;
   }

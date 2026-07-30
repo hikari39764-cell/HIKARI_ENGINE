@@ -48,6 +48,41 @@ namespace HIKARI::ASSETS::MODELS::ASSIMP {
             return Clamp01(std::sqrt(2.0f / (shininess + 2.0f)));
         }
 
+        void SetCanonicalUvTransform(
+            const aiUVTransform& source,
+            TextureSlot& destination) {
+
+            const float cosine =
+                std::cos(source.mRotation);
+            const float sine =
+                std::sin(source.mRotation);
+            const float scaledCenterX =
+                source.mScaling.x * 0.5f;
+            const float scaledCenterY =
+                source.mScaling.y * 0.5f;
+            const float rotatedCenterX =
+                scaledCenterX * cosine -
+                scaledCenterY * sine;
+            const float rotatedCenterY =
+                scaledCenterX * sine +
+                scaledCenterY * cosine;
+
+            destination.uvScale = {
+                source.mScaling.x,
+                source.mScaling.y
+            };
+            destination.uvOffset = {
+                source.mTranslation.x +
+                    0.5f -
+                    rotatedCenterX,
+                source.mTranslation.y +
+                    0.5f -
+                    rotatedCenterY
+            };
+            destination.uvRotation =
+                source.mRotation;
+        }
+
         int AddTexture(
             ModelAsset& asset,
             std::unordered_map<std::string, int>& textureToIndex,
@@ -118,6 +153,17 @@ namespace HIKARI::ASSETS::MODELS::ASSIMP {
                     continue;
                 }
 
+                if (uvIndex > 1u) {
+                    ++asset.importDiagnostics.unsupportedFeatureCount;
+                    asset.importDiagnostics.messages.push_back(
+                        "[Assimp] texture UV set is unsupported and was not bound. material=" +
+                        materialName +
+                        " usage=" + std::string(usageName) +
+                        " texCoord=" +
+                        std::to_string(uvIndex));
+                    return false;
+                }
+
                 const int textureIndex = AddTexture(
                     asset,
                     textureToIndex,
@@ -129,15 +175,8 @@ namespace HIKARI::ASSETS::MODELS::ASSIMP {
                 }
 
                 outSlot.textureIndex = textureIndex;
-                outSlot.texCoord = static_cast<int>((std::min)(uvIndex, 1u));
-                if (uvIndex > 1u) {
-                    ++asset.importDiagnostics.unsupportedFeatureCount;
-                    asset.importDiagnostics.messages.push_back(
-                        "[Assimp] texture uses UV set above 1; HIKARI currently keeps UV0/UV1 only. material=" +
-                        materialName +
-                        " usage=" + std::string(usageName) +
-                        " texCoord=" + std::to_string(uvIndex));
-                }
+                outSlot.texCoord =
+                    static_cast<int>(uvIndex);
 
                 aiUVTransform uvTransform{};
                 if (material.Get(AI_MATKEY_UVTRANSFORM(textureType, 0), uvTransform) == AI_SUCCESS) {
@@ -148,9 +187,9 @@ namespace HIKARI::ASSETS::MODELS::ASSIMP {
                         std::abs(uvTransform.mScaling.y - 1.0f) > 1.0e-6f ||
                         std::abs(uvTransform.mRotation) > 1.0e-6f;
                     if (hasUvTransform) {
-                        outSlot.uvScale = { uvTransform.mScaling.x, uvTransform.mScaling.y };
-                        outSlot.uvOffset = { uvTransform.mTranslation.x, uvTransform.mTranslation.y };
-                        outSlot.uvRotation = uvTransform.mRotation;
+                        SetCanonicalUvTransform(
+                            uvTransform,
+                            outSlot);
                     }
                 }
                 if (material.GetTextureCount(textureType) > 1u) {
@@ -173,6 +212,8 @@ namespace HIKARI::ASSETS::MODELS::ASSIMP {
 
             std::unordered_map<std::string, int> textureToIndex;
             asset.materials.reserve(scene.mNumMaterials);
+            asset.materialImportSources.reserve(
+                scene.mNumMaterials);
 
             for (unsigned int i = 0; i < scene.mNumMaterials; ++i) {
                 const aiMaterial* source = scene.mMaterials[i];
@@ -181,6 +222,7 @@ namespace HIKARI::ASSETS::MODELS::ASSIMP {
                 }
 
                 MaterialAsset material{};
+                MaterialImportSourceSlots importSources{};
 
                 aiString materialName{};
                 if (source->Get(AI_MATKEY_NAME, materialName) == AI_SUCCESS) {
@@ -258,7 +300,7 @@ namespace HIKARI::ASSETS::MODELS::ASSIMP {
                     sourceDirectory,
                     *source,
                     material.name,
-                    { aiTextureType_NORMALS, aiTextureType_NORMAL_CAMERA, aiTextureType_HEIGHT },
+                    { aiTextureType_NORMALS, aiTextureType_NORMAL_CAMERA },
                     material.normalTexture,
                     "Normal");
                 ReadTextureSlot(
@@ -270,13 +312,47 @@ namespace HIKARI::ASSETS::MODELS::ASSIMP {
                     { aiTextureType_GLTF_METALLIC_ROUGHNESS },
                     material.metallicRoughnessTexture,
                     "MetallicRoughness");
-                if (source->GetTextureCount(aiTextureType_METALNESS) > 0u ||
-                    source->GetTextureCount(aiTextureType_DIFFUSE_ROUGHNESS) > 0u ||
-                    source->GetTextureCount(aiTextureType_SHININESS) > 0u ||
-                    source->GetTextureCount(aiTextureType_MAYA_SPECULAR_ROUGHNESS) > 0u) {
-                    ++asset.importDiagnostics.unsupportedFeatureCount;
+                ReadTextureSlot(
+                    asset,
+                    textureToIndex,
+                    sourceDirectory,
+                    *source,
+                    material.name,
+                    { aiTextureType_METALNESS },
+                    importSources.metalnessTexture,
+                    "MetalnessSource");
+                ReadTextureSlot(
+                    asset,
+                    textureToIndex,
+                    sourceDirectory,
+                    *source,
+                    material.name,
+                    {
+                        aiTextureType_DIFFUSE_ROUGHNESS,
+                        aiTextureType_MAYA_SPECULAR_ROUGHNESS
+                    },
+                    importSources.roughnessTexture,
+                    "RoughnessSource");
+                ReadTextureSlot(
+                    asset,
+                    textureToIndex,
+                    sourceDirectory,
+                    *source,
+                    material.name,
+                    { aiTextureType_SHININESS },
+                    importSources.glossinessTexture,
+                    "GlossinessSource");
+                if (ReadTextureSlot(
+                        asset,
+                        textureToIndex,
+                        sourceDirectory,
+                        *source,
+                        material.name,
+                        { aiTextureType_HEIGHT },
+                        importSources.heightTexture,
+                        "HeightSource")) {
                     asset.importDiagnostics.messages.push_back(
-                        "[Assimp] separate metal/roughness/gloss maps are preserved as diagnostics; HIKARI currently expects glTF packed metallicRoughness texture. material=" +
+                        "[Assimp] height texture is preserved as a source diagnostic and is not bound as a tangent-space normal. material=" +
                         material.name);
                 }
                 ReadTextureSlot(
@@ -334,12 +410,15 @@ namespace HIKARI::ASSETS::MODELS::ASSIMP {
                 }
 
                 asset.materials.push_back(std::move(material));
+                asset.materialImportSources.push_back(
+                    std::move(importSources));
             }
 
             if (asset.materials.empty()) {
                 MaterialAsset fallback{};
                 fallback.name = "DefaultAssimpMaterial";
                 asset.materials.push_back(std::move(fallback));
+                asset.materialImportSources.emplace_back();
             }
         }
 

@@ -1,7 +1,7 @@
 # Authoritative HIKARI compile-source manifest.
 # Add or remove translation units here and keep the source-closure test green.
 
-set(HIKARI_COMPILE_SOURCE_COUNT 732)
+set(HIKARI_COMPILE_SOURCE_COUNT 738)
 
 set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/External/WICTextureLoader.cpp"
@@ -300,7 +300,11 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Lighting/HIKARI_LightProbeVolumeFormat.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Lighting/HIKARI_LightingBakeManifest.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Lighting/HIKARI_LightingBakeDependencyHash.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Lighting/HIKARI_LightmapAtlasLayout.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Lighting/Internal/HIKARI_LightmapAtlasPacking.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Lighting/HIKARI_LightmapSurfaceAnalysis.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Lighting/HIKARI_LightmapUvGeneration.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Lighting/HIKARI_LightmapUvGenerationInput.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Lighting/Transport/HIKARI_LightingTransportContract.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Formats/HIKARI_HmatFormat.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Formats/HIKARI_HmodelFormat.cpp"
@@ -308,6 +312,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Importers/HIKARI_AssetImporterRegistry.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Importers/HIKARI_IblBaker.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Importers/HIKARI_MaterialImporter.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Importers/HIKARI_MaterialTexturePacking_DirectXTex.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Material/HIKARI_MaterialAssetData.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Importers/HIKARI_ModelImporter.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Importers/HIKARI_SceneAssetImporter.cpp"
@@ -752,6 +757,10 @@ set(HIKARI_VENDOR_MESHOPTIMIZER_SOURCES
     "${HIKARI_SOURCE_ROOT}/ThirdParty/meshoptimizer/src/vertexcodec.cpp"
     "${HIKARI_SOURCE_ROOT}/ThirdParty/meshoptimizer/src/vertexfilter.cpp"
     "${HIKARI_SOURCE_ROOT}/ThirdParty/meshoptimizer/src/vfetchoptimizer.cpp"
+)
+
+set(HIKARI_VENDOR_XATLAS_SOURCES
+    "${HIKARI_SOURCE_ROOT}/ThirdParty/xatlas/source/xatlas.cpp"
 )
 
 set(HIKARI_VENDOR_IMGUI_SOURCES

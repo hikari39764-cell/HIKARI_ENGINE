@@ -30,6 +30,21 @@ Texture2D<float4> gSsrTrace : register(t4);
 SamplerState gLinearClamp : register(s0);
 SamplerState gPointClamp : register(s1);
 
+static const float kHikariMaximumHalfFloat = 65504.0f;
+static const float kHikariFloatMaximum = 3.402823e+38f;
+
+bool HikariIsValidSceneRadiance(float3 radiance)
+{
+    return
+        all(radiance == radiance) &&
+        all(abs(radiance) <= kHikariFloatMaximum) &&
+        all(radiance >= 0.0f.xxx) &&
+        max(
+            radiance.x,
+            max(radiance.y, radiance.z)) <
+                kHikariMaximumHalfFloat;
+}
+
 struct FullscreenVertex
 {
     float4 position : SV_POSITION;
@@ -468,6 +483,10 @@ float4 PSTrace(FullscreenVertex input) : SV_TARGET
 
     const float3 reflectedRadiance =
         gSceneColor.SampleLevel(gLinearClamp, hitUv, 0.0f).rgb;
+    if (!HikariIsValidSceneRadiance(reflectedRadiance))
+    {
+        return 0.0f.xxxx;
+    }
     const float viewNormal = saturate(dot(-incident, normal));
     const float dielectricFresnel =
         0.04f + 0.96f * pow(1.0f - viewNormal, 5.0f);
@@ -555,10 +574,18 @@ float4 ResolveHalfResolutionTrace(
                 axisWeight.y *
                 depthWeight *
                 normalWeight;
-            accumulated +=
+            const float4 traceSample =
                 gSsrTrace.Load(
-                    int3(tracePixel, 0)) *
-                weight;
+                    int3(tracePixel, 0));
+            if (!HikariIsValidSceneRadiance(
+                    traceSample.rgb) ||
+                traceSample.a != traceSample.a ||
+                traceSample.a < 0.0f ||
+                traceSample.a > 1.0f)
+            {
+                continue;
+            }
+            accumulated += traceSample * weight;
             accumulatedWeight += weight;
         }
     }
@@ -603,6 +630,11 @@ float4 PSResolve(FullscreenVertex input) : SV_TARGET
             input.uv,
             depth,
             normal);
+    if (!HikariIsValidSceneRadiance(trace.rgb) ||
+        trace.a != trace.a)
+    {
+        return baseSceneColor;
+    }
     if (gDebugMode == 1u)
     {
         return float4(trace.aaa, 1.0f);

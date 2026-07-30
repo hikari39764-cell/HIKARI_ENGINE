@@ -34,7 +34,7 @@ void ResolveSurfaceLightmap(
     irradiance = 0.0f.xxx;
     weight = 0.0f;
 #if HIKARI_SURFACE_GPU_SCENE_CONSUME
-    if (gUseSurfaceGpuScene == 0u ||
+    if (!HikariCanConsumeSurfaceGpuSceneForPixel() ||
         gSurfaceLightmapEnabled < 0.5f)
     {
         return;

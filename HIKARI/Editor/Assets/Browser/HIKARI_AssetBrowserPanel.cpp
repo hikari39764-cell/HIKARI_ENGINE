@@ -91,8 +91,20 @@ void AssetBrowserPanel::DrawContents(AssetDatabase &assetDatabase,
       pendingReimportAndRefreshRuntimeAssetGuid_.clear();
     }
   }
-  ProcessDroppedFiles(assetDatabase, currentDirectory_, selection,
-                      lastOperationMessage_);
+  const ImVec2 dropTargetMin = ImGui::GetWindowPos();
+  const ImVec2 dropTargetMax{
+      dropTargetMin.x + ImGui::GetWindowSize().x,
+      dropTargetMin.y + ImGui::GetWindowSize().y,
+  };
+  ProcessDroppedFiles(
+      assetDatabase,
+      currentDirectory_,
+      selection,
+      lastOperationMessage_,
+      dropTargetMin.x,
+      dropTargetMin.y,
+      dropTargetMax.x,
+      dropTargetMax.y);
 
   ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(6.0f, 4.0f));
   if (scope == AssetBrowserScope::Scenes) {

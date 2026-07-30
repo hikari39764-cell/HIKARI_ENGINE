@@ -272,6 +272,8 @@ namespace HIKARI::TOOLS::BAKING {
         outputBuffer_.Reset();
         texelBuffer_.Reset();
         validTexels_.clear();
+        texelOwnerIndices_.clear();
+        atlasAllocations_.clear();
         status_ = {};
         width_ = 0u;
         height_ = 0u;
@@ -476,8 +478,11 @@ namespace HIKARI::TOOLS::BAKING {
                 outputPath,
                 width_,
                 height_,
+                status_.requestedSamples,
                 accumulation,
                 validTexels_,
+                texelOwnerIndices_,
+                atlasAllocations_,
                 outMessage);
         readbackBuffer_->Unmap(0u, nullptr);
         return saved;

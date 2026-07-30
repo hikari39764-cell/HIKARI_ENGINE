@@ -11,6 +11,10 @@ endfunction()
 function(hikari_configure_vendor_target target_name)
     target_compile_features("${target_name}" PUBLIC cxx_std_20)
     hikari_set_msvc_runtime("${target_name}")
+    target_compile_definitions(
+        "${target_name}"
+        PRIVATE
+            $<$<NOT:$<CONFIG:Debug>>:NDEBUG>)
     if(MSVC)
         target_compile_options(
             "${target_name}"

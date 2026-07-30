@@ -80,6 +80,14 @@ private:
     WINDOWPLACEMENT windowedPlacement_{ sizeof(WINDOWPLACEMENT) };
 };
 
-std::vector<std::filesystem::path> ConsumeDroppedFiles();
+// Enables shell file drops for an auxiliary native editor window.
+// The main HIKARI window registers itself during initialization.
+void RegisterExternalFileDropWindow(HWND hwnd);
+void UnregisterExternalFileDropWindow(HWND hwnd);
+
+// Consumes only drops whose screen position is inside the authoring surface.
+// This prevents one docked/floating panel from stealing another panel's drop.
+std::vector<std::filesystem::path> ConsumeDroppedFilesInScreenRect(
+    const RECT& screenRect);
 
 } // namespace HIKARI::PLATFORM

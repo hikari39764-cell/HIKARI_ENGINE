@@ -38,13 +38,19 @@ float3 HikariResolveSurfaceShadingNormal(
             HIKARI_MATERIAL_UV_NORMAL,
             uv0,
             uv1);
-    float3 normalTS =
+    float2 normalXY =
         HikariSampleMaterialTexture(
             materialData.normalTextureDescriptorIndex,
             materialSampler,
             normalUv,
-            float4(0.5f, 0.5f, 1.0f, 1.0f)).xyz * 2.0f - 1.0f;
-    normalTS.xy *= materialData.normalScale;
+            float4(0.5f, 0.5f, 1.0f, 1.0f)).xy * 2.0f - 1.0f;
+    normalXY *= materialData.normalScale;
+    // Tangent-space normals belong to the positive hemisphere. Reconstructing
+    // Z keeps RGB normal maps and two-channel BC5/ATI2 sources on one contract;
+    // BC5 returns no authored blue channel and must not be decoded as Z = -1.
+    const float normalZ =
+        sqrt(saturate(1.0f - dot(normalXY, normalXY)));
+    float3 normalTS = float3(normalXY, normalZ);
     normalTS = normalize(normalTS);
     return normalize(normalTS.x * t + normalTS.y * b + normalTS.z * n);
 }

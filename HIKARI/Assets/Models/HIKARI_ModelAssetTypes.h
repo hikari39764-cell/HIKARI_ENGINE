@@ -65,6 +65,13 @@ namespace HIKARI {
         uint32_t featureBits = 0;
     };
 
+    struct MaterialImportSourceSlots {
+        TextureSlot metalnessTexture{};
+        TextureSlot roughnessTexture{};
+        TextureSlot glossinessTexture{};
+        TextureSlot heightTexture{};
+    };
+
     struct Vertex3D {
         MATH::Vec3 position{};
         MATH::Vec3 normal{};
@@ -85,6 +92,18 @@ namespace HIKARI {
         float weights[4]{};
     };
 
+    struct LightmapUvLayoutMetadata {
+        uint32_t referenceWidth = 0u;
+        uint32_t referenceHeight = 0u;
+        uint32_t chartPadding = 0u;
+
+        bool HasGeneratedLayout() const noexcept {
+            return referenceWidth > 0u &&
+                referenceHeight > 0u &&
+                chartPadding > 0u;
+        }
+    };
+
     struct MeshPrimitive {
         std::string name;
         VertexLayoutKind layout = VertexLayoutKind::StaticPNTT;
@@ -94,6 +113,8 @@ namespace HIKARI {
         uint32_t materialIndex = 0;
         Bounds bounds{};
         bool hasMorphTargets = false;
+        bool hasLightmapUv = false;
+        LightmapUvLayoutMetadata lightmapUvLayout{};
     };
 
     struct ModelImportDiagnostics {
@@ -109,6 +130,11 @@ namespace HIKARI {
         uint32_t skippedMorphPrimitiveCount = 0;
         uint32_t unsupportedPrimitiveModeCount = 0;
         uint32_t unsupportedFeatureCount = 0;
+        uint32_t lightmapUvAuthoredValidCount = 0;
+        uint32_t lightmapUvMissingCount = 0;
+        uint32_t lightmapUvInvalidCount = 0;
+        uint32_t lightmapUvGeneratedCount = 0;
+        uint32_t lightmapUvGenerationFailedCount = 0;
         std::vector<std::string> unsupportedExtensions{};
         std::vector<std::string> messages{};
     };

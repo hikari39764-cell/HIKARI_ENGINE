@@ -57,7 +57,8 @@ namespace HIKARI::TOOLS::BAKING {
         width_ = std::clamp(
             settings.outputResolution,
             32u,
-            1024u);
+            ASSETS::LIGHTING::
+                kSurfaceLightmapMaximumAtlasResolution);
         height_ = width_;
         bounceCount_ = std::clamp(
             settings.bounceCount,
@@ -75,11 +76,16 @@ namespace HIKARI::TOOLS::BAKING {
                 height_);
         validTexels_ =
             std::move(rasterization.validTexels);
+        texelOwnerIndices_ =
+            std::move(rasterization.ownerIndices);
+        atlasAllocations_ =
+            target.atlasAllocations;
         status_.coveredTexelCount =
             rasterization.coveredTexelCount;
         status_.overlapTexelCount =
             rasterization.overlapTexelCount;
         if (status_.coveredTexelCount == 0u ||
+            rasterization.uncoveredAllocationCount > 0u ||
             status_.overlapTexelCount >
                 status_.coveredTexelCount / 100u + 8u) {
             status_.state =
@@ -87,6 +93,9 @@ namespace HIKARI::TOOLS::BAKING {
             status_.message =
                 status_.coveredTexelCount == 0u
                 ? "UV1 rasterization covered no texels."
+                : rasterization.uncoveredAllocationCount > 0u
+                ? "One or more Lightmap surface allocations "
+                  "covered no texels."
                 : "UV1 contains overlapping islands.";
             SetMessage(outMessage, status_.message);
             return false;

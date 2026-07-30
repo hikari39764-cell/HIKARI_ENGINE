@@ -189,6 +189,12 @@ namespace HIKARI::ASSETS::LIGHTING {
                 LightmapSurfaceIssue::
                     MorphTargetsUnsupported);
         }
+        if (!primitive.hasLightmapUv) {
+            AddIssue(
+                analysis,
+                LightmapSurfaceIssue::
+                    MissingLightmapUv);
+        }
         if (primitive.staticVertices.empty() ||
             primitive.indices.size() < 3u) {
             AddIssue(
@@ -212,6 +218,9 @@ namespace HIKARI::ASSETS::LIGHTING {
             analysis.HasIssue(
                 LightmapSurfaceIssue::
                     MissingGeometry) ||
+            analysis.HasIssue(
+                LightmapSurfaceIssue::
+                    MissingLightmapUv) ||
             analysis.HasIssue(
                 LightmapSurfaceIssue::
                     AlphaMaskedSurface) ||
@@ -323,6 +332,12 @@ namespace HIKARI::ASSETS::LIGHTING {
             analysis.HasIssue(
                 LightmapSurfaceIssue::MissingGeometry),
             "missing triangle geometry");
+        AppendIssue(
+            issues,
+            analysis.HasIssue(
+                LightmapSurfaceIssue::
+                    MissingLightmapUv),
+            "lightmap UV is missing");
         AppendIssue(
             issues,
             analysis.HasIssue(

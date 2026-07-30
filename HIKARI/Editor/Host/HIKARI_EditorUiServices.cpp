@@ -223,6 +223,21 @@ namespace HIKARI::EDITOR {
             if ((io.ConfigFlags &
                  ImGuiConfigFlags_ViewportsEnable) != 0) {
                 ImGui::UpdatePlatformWindows();
+                ImGuiPlatformIO& platformIo =
+                    ImGui::GetPlatformIO();
+                for (ImGuiViewport* viewport :
+                    platformIo.Viewports) {
+                    if (viewport == nullptr ||
+                        viewport == ImGui::GetMainViewport()) {
+                        continue;
+                    }
+                    HWND hwnd = reinterpret_cast<HWND>(
+                        viewport->PlatformHandleRaw != nullptr
+                            ? viewport->PlatformHandleRaw
+                            : viewport->PlatformHandle);
+                    PLATFORM::RegisterExternalFileDropWindow(
+                        hwnd);
+                }
                 ImGui::RenderPlatformWindowsDefault();
             }
         }
@@ -234,6 +249,21 @@ namespace HIKARI::EDITOR {
             frameBegun_ = false;
 
             if (backendInitialized_) {
+                ImGuiPlatformIO& platformIo =
+                    ImGui::GetPlatformIO();
+                for (ImGuiViewport* viewport :
+                    platformIo.Viewports) {
+                    if (viewport == nullptr ||
+                        viewport == ImGui::GetMainViewport()) {
+                        continue;
+                    }
+                    HWND hwnd = reinterpret_cast<HWND>(
+                        viewport->PlatformHandleRaw != nullptr
+                            ? viewport->PlatformHandleRaw
+                            : viewport->PlatformHandle);
+                    PLATFORM::UnregisterExternalFileDropWindow(
+                        hwnd);
+                }
                 ImGui_ImplDX12_Shutdown();
                 ImGui_ImplWin32_Shutdown();
                 backendInitialized_ = false;

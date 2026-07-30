@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "Assets/Lighting/HIKARI_LightingBakePolicy.h"
+#include "Assets/Lighting/HIKARI_LightmapAtlasLayout.h"
 #include "Assets/Lighting/HIKARI_LightmapSurfaceContract.h"
 #include "Render3D/HIKARI_Math3D.h"
 
@@ -19,6 +20,9 @@ namespace HIKARI::RENDER3D::LIGHTING::TRANSPORT {
         };
         MATH::Vec3 emissiveRadiance{};
         uint64_t objectId = 0u;
+        uint32_t lightmapAllocationIndex =
+            ASSETS::LIGHTING::
+                kInvalidLightmapSurfaceIndex;
     };
 
     struct LightingTransportSurfaceTarget {
@@ -35,6 +39,12 @@ namespace HIKARI::RENDER3D::LIGHTING::TRANSPORT {
         std::vector<
             ASSETS::LIGHTING::LightmapSurfaceBinding>
                 surfaceBindings{};
+        std::vector<
+            ASSETS::LIGHTING::LightmapAtlasAllocation>
+                atlasAllocations{};
+        float requestedTexelsPerWorldUnit = 0.0f;
+        float resolvedTexelsPerWorldUnit = 0.0f;
+        bool atlasDensityReduced = false;
         uint32_t analyzedSurfaceCount = 0u;
         uint32_t eligibleSurfaceCount = 0u;
         uint32_t unsupportedSurfaceCount = 0u;

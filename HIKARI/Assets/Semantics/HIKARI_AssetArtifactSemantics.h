@@ -15,6 +15,7 @@ namespace HIKARI::ASSETS::SEMANTICS {
         MainModel,
         ClusteredGeometry,
         CollisionGeometry,
+        ModelMaterialTexture,
         Material,
         SkyCubemap,
         IblIrradiance,

@@ -1,6 +1,7 @@
 #include "HIKARI_HmodelFormat.h"
 
 #include <algorithm>
+#include <cmath>
 #include <fstream>
 #include <utility>
 
@@ -10,7 +11,7 @@ namespace HIKARI {
 
     namespace {
         constexpr uint32_t kHmodelMagic = 0x4C444D48u; // 'HMDL'
-        constexpr uint32_t kHmodelVersion = 4;
+        constexpr uint32_t kHmodelVersion = 6;
         constexpr uint32_t kMaxStringBytes = 16u * 1024u * 1024u;
         constexpr uint32_t kMaxVectorCount = 16u * 1024u * 1024u;
 
@@ -169,24 +170,122 @@ namespace HIKARI {
                 ReadTrivial(ifs, material.featureBits);
         }
 
+        bool IsValidLightmapUvLayoutMetadata(
+            const MeshPrimitive& primitive);
+
         bool WritePrimitive(std::ofstream& ofs, const MeshPrimitive& primitive) {
-            return WriteLengthPrefixedString32<kMaxStringBytes>(ofs, primitive.name) &&
+            return IsValidLightmapUvLayoutMetadata(primitive) &&
+                WriteLengthPrefixedString32<kMaxStringBytes>(ofs, primitive.name) &&
                 WriteTrivial(ofs, primitive.layout) &&
                 WriteLengthPrefixedTrivialVector32<kMaxVectorCount>(ofs, primitive.staticVertices) &&
                 WriteLengthPrefixedTrivialVector32<kMaxVectorCount>(ofs, primitive.skinnedVertices) &&
                 WriteLengthPrefixedTrivialVector32<kMaxVectorCount>(ofs, primitive.indices) &&
                 WriteTrivial(ofs, primitive.materialIndex) &&
-                WriteTrivial(ofs, primitive.bounds);
+                WriteTrivial(ofs, primitive.bounds) &&
+                WriteBoolean8(ofs, primitive.hasMorphTargets) &&
+                WriteBoolean8(ofs, primitive.hasLightmapUv) &&
+                WriteTrivial(
+                    ofs,
+                    primitive.lightmapUvLayout.referenceWidth) &&
+                WriteTrivial(
+                    ofs,
+                    primitive.lightmapUvLayout.referenceHeight) &&
+                WriteTrivial(
+                    ofs,
+                    primitive.lightmapUvLayout.chartPadding);
         }
 
-        bool ReadPrimitive(std::ifstream& ifs, MeshPrimitive& primitive) {
-            return ReadLengthPrefixedString32<kMaxStringBytes>(ifs, primitive.name) &&
+        bool HasLegacyLightmapUv(
+            const MeshPrimitive& primitive) {
+
+            const auto hasNonZeroUv = [](const auto& vertex) {
+                return std::abs(vertex.uv1.x) > 1.0e-7f ||
+                    std::abs(vertex.uv1.y) > 1.0e-7f;
+            };
+            return std::any_of(
+                primitive.staticVertices.begin(),
+                primitive.staticVertices.end(),
+                hasNonZeroUv) ||
+                std::any_of(
+                    primitive.skinnedVertices.begin(),
+                    primitive.skinnedVertices.end(),
+                hasNonZeroUv);
+        }
+
+        bool IsValidLightmapUvLayoutMetadata(
+            const MeshPrimitive& primitive) {
+
+            const LightmapUvLayoutMetadata& metadata =
+                primitive.lightmapUvLayout;
+            const bool hasAnyMetadata =
+                metadata.referenceWidth > 0u ||
+                metadata.referenceHeight > 0u ||
+                metadata.chartPadding > 0u;
+            if (!hasAnyMetadata) {
+                return true;
+            }
+            return primitive.hasLightmapUv &&
+                metadata.HasGeneratedLayout() &&
+                static_cast<uint64_t>(
+                    metadata.chartPadding) * 2u <
+                    metadata.referenceWidth &&
+                static_cast<uint64_t>(
+                    metadata.chartPadding) * 2u <
+                    metadata.referenceHeight;
+        }
+
+        bool ReadPrimitive(
+            std::ifstream& ifs,
+            MeshPrimitive& primitive,
+            uint32_t version) {
+
+            const bool readCore =
+                ReadLengthPrefixedString32<kMaxStringBytes>(ifs, primitive.name) &&
                 ReadTrivial(ifs, primitive.layout) &&
                 ReadLengthPrefixedTrivialVector32<kMaxVectorCount>(ifs, primitive.staticVertices) &&
                 ReadLengthPrefixedTrivialVector32<kMaxVectorCount>(ifs, primitive.skinnedVertices) &&
                 ReadLengthPrefixedTrivialVector32<kMaxVectorCount>(ifs, primitive.indices) &&
                 ReadTrivial(ifs, primitive.materialIndex) &&
                 ReadTrivial(ifs, primitive.bounds);
+            if (!readCore) {
+                return false;
+            }
+            if (version >= 5u) {
+                const bool readLightmapState =
+                    ReadBoolean8(
+                        ifs,
+                        primitive.hasMorphTargets) &&
+                    ReadBoolean8(
+                        ifs,
+                        primitive.hasLightmapUv);
+                if (!readLightmapState) {
+                    return false;
+                }
+                if (version >= 6u) {
+                    const bool readLayout =
+                        ReadTrivial(
+                            ifs,
+                            primitive.lightmapUvLayout.
+                                referenceWidth) &&
+                        ReadTrivial(
+                            ifs,
+                            primitive.lightmapUvLayout.
+                                referenceHeight) &&
+                        ReadTrivial(
+                            ifs,
+                            primitive.lightmapUvLayout.
+                                chartPadding);
+                    return readLayout &&
+                        IsValidLightmapUvLayoutMetadata(
+                            primitive);
+                }
+                primitive.lightmapUvLayout = {};
+                return true;
+            }
+            primitive.hasLightmapUv =
+                HasLegacyLightmapUv(primitive);
+            primitive.lightmapUvLayout = {};
+            return true;
         }
 
         bool WriteMesh(std::ofstream& ofs, const MeshAsset& mesh) {
@@ -208,7 +307,10 @@ namespace HIKARI {
             return true;
         }
 
-        bool ReadMesh(std::ifstream& ifs, MeshAsset& mesh) {
+        bool ReadMesh(
+            std::ifstream& ifs,
+            MeshAsset& mesh,
+            uint32_t version) {
             uint32_t primitiveCount = 0;
             if (!ReadLengthPrefixedString32<kMaxStringBytes>(ifs, mesh.name) ||
                 !ReadTrivial(ifs, mesh.bounds) ||
@@ -218,7 +320,10 @@ namespace HIKARI {
             }
             mesh.primitives.resize(primitiveCount);
             for (MeshPrimitive& primitive : mesh.primitives) {
-                if (!ReadPrimitive(ifs, primitive)) {
+                if (!ReadPrimitive(
+                        ifs,
+                        primitive,
+                        version)) {
                     return false;
                 }
             }
@@ -470,7 +575,17 @@ namespace HIKARI {
 
         const bool ok =
             ReadObjectVector(ifs, model.nodes, ReadNode) &&
-            ReadObjectVector(ifs, model.meshes, ReadMesh) &&
+            ReadObjectVector(
+                ifs,
+                model.meshes,
+                [version = header.version](
+                    std::ifstream& stream,
+                    MeshAsset& mesh) {
+                    return ReadMesh(
+                        stream,
+                        mesh,
+                        version);
+                }) &&
             ReadObjectVector(ifs, model.materials, [version = header.version](std::ifstream& stream, MaterialAsset& material) {
                 return ReadMaterial(stream, material, version);
             }) &&

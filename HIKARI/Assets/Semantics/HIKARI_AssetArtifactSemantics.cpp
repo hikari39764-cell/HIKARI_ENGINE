@@ -46,6 +46,13 @@ namespace HIKARI::ASSETS::SEMANTICS {
                 false,
             },
             {
+                AssetArtifactKind::ModelMaterialTexture,
+                AssetType::Model,
+                CookedAssetFormat::DDS,
+                "ModelMaterialTexture",
+                false,
+            },
+            {
                 AssetArtifactKind::Material,
                 AssetType::Material,
                 CookedAssetFormat::HMAT,

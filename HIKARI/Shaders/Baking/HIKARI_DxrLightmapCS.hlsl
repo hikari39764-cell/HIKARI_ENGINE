@@ -47,6 +47,42 @@ StructuredBuffer<TransportLight> gLights : register(t3);
 RWStructuredBuffer<float4> gOutput : register(u0);
 
 static const float HIKARI_PI = 3.14159265359f;
+static const float HIKARI_FLOAT_MAX = 3.402823e+38f;
+
+bool IsFiniteFloat(float value)
+{
+    return value == value && abs(value) <= HIKARI_FLOAT_MAX;
+}
+
+bool IsFiniteFloat3(float3 value)
+{
+    return
+        all(value == value) &&
+        all(abs(value) <= HIKARI_FLOAT_MAX);
+}
+
+bool IsValidRadiance(float3 value)
+{
+    return
+        IsFiniteFloat3(value) &&
+        all(value >= 0.0f.xxx);
+}
+
+bool TryNormalizeVector(
+    float3 value,
+    out float3 normalizedValue)
+{
+    const float lengthSquared = dot(value, value);
+    if (!IsFiniteFloat3(value) ||
+        !IsFiniteFloat(lengthSquared) ||
+        lengthSquared <= 1.0e-12f)
+    {
+        normalizedValue = 0.0f.xxx;
+        return false;
+    }
+    normalizedValue = value * rsqrt(lengthSquared);
+    return IsFiniteFloat3(normalizedValue);
+}
 
 uint HashPcg(uint value)
 {
@@ -77,19 +113,30 @@ float3 EvaluateSky(float3 direction)
         saturate(gAmbientSkyStrength.w));
 }
 
-void BuildBasis(float3 normal, out float3 tangent, out float3 bitangent)
+bool BuildBasis(
+    float3 normal,
+    out float3 tangent,
+    out float3 bitangent)
 {
     float3 helper =
         abs(normal.z) < 0.999f
         ? float3(0.0f, 0.0f, 1.0f)
         : float3(1.0f, 0.0f, 0.0f);
-    tangent = normalize(cross(helper, normal));
+    if (!TryNormalizeVector(
+            cross(helper, normal),
+            tangent))
+    {
+        bitangent = 0.0f.xxx;
+        return false;
+    }
     bitangent = cross(normal, tangent);
+    return IsFiniteFloat3(bitangent);
 }
 
-float3 SampleCosineHemisphere(
+bool SampleCosineHemisphere(
     float3 normal,
-    inout uint randomState)
+    inout uint randomState,
+    out float3 direction)
 {
     float r0 = Random01(randomState);
     float r1 = Random01(randomState);
@@ -97,11 +144,16 @@ float3 SampleCosineHemisphere(
     float angle = 2.0f * HIKARI_PI * r1;
     float3 tangent;
     float3 bitangent;
-    BuildBasis(normal, tangent, bitangent);
-    return normalize(
+    if (!BuildBasis(normal, tangent, bitangent))
+    {
+        direction = 0.0f.xxx;
+        return false;
+    }
+    return TryNormalizeVector(
         tangent * (radius * cos(angle)) +
-        bitangent * (radius * sin(angle)) +
-        normal * sqrt(max(0.0f, 1.0f - r0)));
+            bitangent * (radius * sin(angle)) +
+            normal * sqrt(max(0.0f, 1.0f - r0)),
+        direction);
 }
 
 bool TraceAny(float3 origin, float3 direction, float maximumDistance)
@@ -121,9 +173,17 @@ bool TraceAny(float3 origin, float3 direction, float maximumDistance)
     return query.CommittedStatus() == COMMITTED_TRIANGLE_HIT;
 }
 
-float3 EvaluateDirect(float3 position, float3 normal)
+bool EvaluateDirect(
+    float3 position,
+    float3 normal,
+    out float3 result)
 {
-    float3 result = 0.0f.xxx;
+    result = 0.0f.xxx;
+    if (!IsFiniteFloat3(position) ||
+        !IsFiniteFloat3(normal))
+    {
+        return false;
+    }
     [loop]
     for (uint lightIndex = 0u;
         lightIndex < gLightCount;
@@ -135,13 +195,25 @@ float3 EvaluateDirect(float3 position, float3 normal)
         float attenuation = 1.0f;
         if (light.type == 0u)
         {
-            directionToLight =
-                normalize(-light.directionOuterCone.xyz);
+            if (!TryNormalizeVector(
+                    -light.directionOuterCone.xyz,
+                    directionToLight))
+            {
+                return false;
+            }
         }
         else
         {
             float3 offset = light.positionRange.xyz - position;
-            float distanceSquared = max(dot(offset, offset), 0.0001f);
+            float distanceSquared = dot(offset, offset);
+            if (!IsFiniteFloat3(offset) ||
+                !IsFiniteFloat(distanceSquared) ||
+                !IsFiniteFloat(light.positionRange.w) ||
+                light.positionRange.w <= 0.0f)
+            {
+                return false;
+            }
+            distanceSquared = max(distanceSquared, 0.0001f);
             distanceToLight = sqrt(distanceSquared);
             if (distanceToLight >= light.positionRange.w)
             {
@@ -157,9 +229,16 @@ float3 EvaluateDirect(float3 position, float3 normal)
                 max(distanceSquared, 0.01f);
             if (light.type == 2u)
             {
+                float3 spotDirection;
+                if (!TryNormalizeVector(
+                        light.directionOuterCone.xyz,
+                        spotDirection))
+                {
+                    return false;
+                }
                 float cone =
                     dot(
-                        normalize(light.directionOuterCone.xyz),
+                        spotDirection,
                         -directionToLight);
                 float coneWeight = saturate(
                     (cone - light.directionOuterCone.w) /
@@ -169,6 +248,12 @@ float3 EvaluateDirect(float3 position, float3 normal)
                         0.0001f));
                 attenuation *= coneWeight * coneWeight;
             }
+        }
+        if (!IsValidRadiance(
+                light.radianceInnerCone.rgb) ||
+            !IsFiniteFloat(attenuation))
+        {
+            return false;
         }
         float ndotl = saturate(dot(normal, directionToLight));
         if (ndotl <= 0.0f ||
@@ -184,8 +269,12 @@ float3 EvaluateDirect(float3 position, float3 normal)
             attenuation *
             ndotl /
             HIKARI_PI;
+        if (!IsValidRadiance(result))
+        {
+            return false;
+        }
     }
-    return result;
+    return true;
 }
 
 bool TraceSurface(
@@ -194,8 +283,15 @@ bool TraceSurface(
     out float3 position,
     out float3 normal,
     out float3 diffuse,
-    out float3 emissive)
+    out float3 emissive,
+    out bool surfaceValid)
 {
+    position = 0.0f.xxx;
+    normal = 0.0f.xxx;
+    diffuse = 0.0f.xxx;
+    emissive = 0.0f.xxx;
+    surfaceValid = true;
+
     RayDesc ray;
     ray.Origin = origin;
     ray.Direction = direction;
@@ -217,6 +313,7 @@ bool TraceSurface(
     uint primitiveIndex = query.CommittedPrimitiveIndex();
     if (primitiveIndex >= gTriangleCount)
     {
+        surfaceValid = false;
         return false;
     }
     TransportTriangle surfaceTriangle = gTriangles[primitiveIndex];
@@ -228,16 +325,42 @@ bool TraceSurface(
         barycentrics.y);
     float distance = query.CommittedRayT();
     position = origin + direction * distance;
-    normal = normalize(
+    float3 interpolatedNormal =
         surfaceTriangle.normal0.xyz * barycentricWeights.x +
         surfaceTriangle.normal1.xyz * barycentricWeights.y +
-        surfaceTriangle.normal2.xyz * barycentricWeights.z);
+        surfaceTriangle.normal2.xyz * barycentricWeights.z;
+    if (!TryNormalizeVector(
+            interpolatedNormal,
+            normal))
+    {
+        const float3 edge01 =
+            surfaceTriangle.position1.xyz -
+            surfaceTriangle.position0.xyz;
+        const float3 edge02 =
+            surfaceTriangle.position2.xyz -
+            surfaceTriangle.position0.xyz;
+        if (!TryNormalizeVector(
+                cross(edge01, edge02),
+                normal))
+        {
+            surfaceValid = false;
+            return false;
+        }
+    }
     if (dot(normal, direction) > 0.0f)
     {
         normal = -normal;
     }
-    diffuse = saturate(surfaceTriangle.diffuse.rgb);
-    emissive = max(surfaceTriangle.emissive.rgb, 0.0f.xxx);
+    if (!IsFiniteFloat3(position) ||
+        !IsValidRadiance(surfaceTriangle.diffuse.rgb) ||
+        !IsValidRadiance(surfaceTriangle.emissive.rgb))
+    {
+        surfaceValid = false;
+        return false;
+    }
+    diffuse = saturate(
+        surfaceTriangle.diffuse.rgb);
+    emissive = surfaceTriangle.emissive.rgb;
     return true;
 }
 
@@ -263,36 +386,79 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
         texelIndex ^
         ((gSampleIndex + 1u) * 0x9e3779b9u));
     float3 position = texel.position.xyz;
-    float3 normal = normalize(texel.normal.xyz);
-    float3 radiance = EvaluateDirect(position, normal);
+    float3 normal;
+    if (!IsFiniteFloat3(position) ||
+        !TryNormalizeVector(
+            texel.normal.xyz,
+            normal))
+    {
+        return;
+    }
+
+    // Surface Lightmaps store indirect diffuse transport only. Direct
+    // lighting remains live so moving lights and shadow maps are not counted
+    // twice at runtime.
+    float3 radiance = 0.0f.xxx;
     float3 throughput = 1.0f.xxx;
+    bool sampleValid = true;
 
     [loop]
     for (uint bounce = 0u; bounce < gBounceCount; ++bounce)
     {
-        float3 direction =
-            SampleCosineHemisphere(normal, randomState);
+        float3 direction;
+        if (!SampleCosineHemisphere(
+                normal,
+                randomState,
+                direction))
+        {
+            sampleValid = false;
+            break;
+        }
         float3 hitPosition;
         float3 hitNormal;
         float3 hitDiffuse;
         float3 hitEmissive;
-        if (!TraceSurface(
+        bool surfaceValid;
+        const bool hit = TraceSurface(
                 position + normal * 0.002f,
                 direction,
                 hitPosition,
                 hitNormal,
                 hitDiffuse,
-                hitEmissive))
+                hitEmissive,
+                surfaceValid);
+        if (!surfaceValid)
         {
-            radiance += throughput * EvaluateSky(direction);
+            sampleValid = false;
+            break;
+        }
+        if (!hit)
+        {
+            const float3 skyRadiance =
+                EvaluateSky(direction);
+            if (!IsValidRadiance(skyRadiance))
+            {
+                sampleValid = false;
+                break;
+            }
+            radiance += throughput * skyRadiance;
             break;
         }
 
         throughput *= hitDiffuse;
         radiance += throughput * hitEmissive;
-        radiance +=
-            throughput *
-            EvaluateDirect(hitPosition, hitNormal);
+        float3 directRadiance;
+        if (!IsValidRadiance(throughput) ||
+            !IsValidRadiance(radiance) ||
+            !EvaluateDirect(
+                hitPosition,
+                hitNormal,
+                directRadiance))
+        {
+            sampleValid = false;
+            break;
+        }
+        radiance += throughput * directRadiance;
         position = hitPosition;
         normal = hitNormal;
 
@@ -313,7 +479,25 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
         }
     }
 
-    gOutput[texelIndex] += float4(
-        min(radiance, 65504.0f.xxx),
-        1.0f);
+    if (!sampleValid ||
+        !IsValidRadiance(radiance))
+    {
+        return;
+    }
+
+    const float4 accumulation =
+        gOutput[texelIndex];
+    const float3 nextRadiance =
+        accumulation.rgb + radiance;
+    if (!IsValidRadiance(accumulation.rgb) ||
+        !IsFiniteFloat(accumulation.w) ||
+        accumulation.w < 0.0f ||
+        !IsValidRadiance(nextRadiance))
+    {
+        return;
+    }
+    gOutput[texelIndex] =
+        float4(
+            nextRadiance,
+            accumulation.w + 1.0f);
 }

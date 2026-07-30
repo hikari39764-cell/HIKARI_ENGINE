@@ -92,6 +92,9 @@ namespace HIKARI::ASSETS::MODELS::ASSIMP {
             primitive.layout = source->HasBones()
                 ? VertexLayoutKind::SkinnedPNTTJW
                 : VertexLayoutKind::StaticPNTT;
+            primitive.hasLightmapUv =
+                source->HasTextureCoords(1u) &&
+                source->mTextureCoords[1] != nullptr;
 
             primitive.staticVertices.resize(source->mNumVertices);
             for (unsigned int i = 0; i < source->mNumVertices; ++i) {

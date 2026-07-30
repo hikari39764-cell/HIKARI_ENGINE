@@ -83,21 +83,28 @@ HikariMeshObjectData HikariBuildMeshObjectDataFromSurfaceGpuScene(
     return data;
 }
 
+bool HikariCanConsumeSurfaceGpuSceneForPixel()
+{
+#if defined(HIKARI_FORCE_SURFACE_GPU_SCENE_PIXEL) && HIKARI_FORCE_SURFACE_GPU_SCENE_PIXEL
+    // Meshlet draws reuse b8 for MeshletDrawControlCB. Their pixel input already
+    // carries an absolute GPU-scene index, so gUseSurfaceGpuScene is not valid
+    // on this route.
+    return true;
+#else
+    return gUseSurfaceGpuScene != 0u;
+#endif
+}
+
 HikariMeshObjectData HikariGetMeshObjectDataForPixel(
     uint objectDataIndex,
     uint surfaceGpuSceneIndex)
 {
-#if defined(HIKARI_FORCE_SURFACE_GPU_SCENE_PIXEL) && HIKARI_FORCE_SURFACE_GPU_SCENE_PIXEL
-    return HikariBuildMeshObjectDataFromSurfaceGpuScene(
-        HikariGetSurfaceGpuSceneInstanceAt(surfaceGpuSceneIndex));
-#else
-    if (gUseSurfaceGpuScene != 0)
+    if (HikariCanConsumeSurfaceGpuSceneForPixel())
     {
         return HikariBuildMeshObjectDataFromSurfaceGpuScene(
             HikariGetSurfaceGpuSceneInstanceAt(surfaceGpuSceneIndex));
     }
     return HikariGetMeshObjectData(objectDataIndex);
-#endif
 }
 
 HikariMeshObjectData HikariGetMeshObjectDataForSurfaceIndex(

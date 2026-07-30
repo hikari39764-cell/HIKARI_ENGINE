@@ -22,6 +22,20 @@ target_include_directories(
 hikari_configure_vendor_target(hikari_vendor_meshoptimizer)
 add_library(HIKARI::Meshoptimizer ALIAS hikari_vendor_meshoptimizer)
 
+if(HIKARI_WITH_EDITOR_BUILD)
+    add_library(hikari_vendor_xatlas STATIC)
+    target_sources(
+        hikari_vendor_xatlas
+        PRIVATE
+            ${HIKARI_VENDOR_XATLAS_SOURCES})
+    target_include_directories(
+        hikari_vendor_xatlas
+        SYSTEM PUBLIC
+            "${HIKARI_SOURCE_ROOT}/ThirdParty/xatlas/source")
+    hikari_configure_vendor_target(hikari_vendor_xatlas)
+    add_library(HIKARI::Xatlas ALIAS hikari_vendor_xatlas)
+endif()
+
 add_library(hikari_vendor_nlohmann INTERFACE)
 target_include_directories(
     hikari_vendor_nlohmann

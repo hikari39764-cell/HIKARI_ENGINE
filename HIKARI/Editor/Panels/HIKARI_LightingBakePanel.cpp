@@ -171,8 +171,38 @@ namespace HIKARI {
         TOOLS::BAKING::LightingBakeService service{};
         const TOOLS::BAKING::LightingBakeRequest request =
             BuildRequest(scene);
-        const TOOLS::BAKING::LightingBakeStatus status =
-            service.AnalyzeLightingBakeStatus(request);
+        const bool bakeBusy =
+            TOOLS::BAKING::IsLightingBakeJobRunning(
+                scene.GetLightingBakeJobState());
+        const uint64_t sceneRevision =
+            scene.GetSceneDocumentRevision();
+        const uint64_t assetRevision =
+            scene.GetAssetDatabase().GetContentRevision();
+        const bool cacheIdentityChanged =
+            cachedSceneGuid_ != request.sceneGuid;
+        const bool cacheRevisionChanged =
+            cachedSceneRevision_ != sceneRevision ||
+            cachedAssetRevision_ != assetRevision;
+        const bool bakeCompleted =
+            wasBakeBusy_ && !bakeBusy;
+        const bool needsStatusRefresh =
+            !hasCachedStatus_ ||
+            cacheIdentityChanged ||
+            statusRefreshRequested_ ||
+            bakeCompleted ||
+            (!bakeBusy && cacheRevisionChanged);
+        if (needsStatusRefresh &&
+            (!bakeBusy || !hasCachedStatus_)) {
+            cachedStatus_ =
+                service.AnalyzeLightingBakeStatus(request);
+            cachedSceneGuid_ = request.sceneGuid;
+            cachedSceneRevision_ = sceneRevision;
+            cachedAssetRevision_ = assetRevision;
+            hasCachedStatus_ = true;
+            statusRefreshRequested_ = false;
+        }
+        const TOOLS::BAKING::LightingBakeStatus& status =
+            cachedStatus_;
         const std::filesystem::path bakeRoot =
             ASSETS::LIGHTING::BuildLightingBakeRoot(
                 request.projectRoot,
@@ -191,6 +221,16 @@ namespace HIKARI {
             request.sceneGuid.empty()
                 ? "Save scene to enable bake"
                 : request.sceneGuid.c_str());
+        ImGui::SameLine();
+        if (EDITOR::IconTextButton(
+                EDITOR::EditorGlyph::Refresh,
+                "Refresh",
+                "LightingBakeRefreshStatus",
+                EDITOR::EditorButtonTone::Quiet,
+                {},
+                "Re-scan authoring hashes and bake artifacts.")) {
+            statusRefreshRequested_ = true;
+        }
 
         ImGui::Spacing();
         if (ImGui::BeginTable(
@@ -221,9 +261,6 @@ namespace HIKARI {
             palette);
 
         ImGui::Spacing();
-        const bool bakeBusy =
-            TOOLS::BAKING::IsLightingBakeJobRunning(
-                scene.GetLightingBakeJobState());
         if (bakeBusy || !status.valid) {
             ImGui::BeginDisabled();
         }
@@ -238,6 +275,7 @@ namespace HIKARI {
                 "Bake only objects whose authoring or dependencies changed.")) {
             lastReport_ = service.BakeDirtyLighting(scene);
             hasReport_ = true;
+            statusRefreshRequested_ = true;
         }
         ImGui::SameLine();
         if (EDITOR::IconTextButton(
@@ -249,6 +287,7 @@ namespace HIKARI {
                 "Force bake the selected lighting object.")) {
             lastReport_ = service.BakeSelectedLighting(scene);
             hasReport_ = true;
+            statusRefreshRequested_ = true;
         }
         ImGui::SameLine();
         if (EDITOR::IconTextButton(
@@ -260,6 +299,7 @@ namespace HIKARI {
                 "Force bake every enabled lighting object.")) {
             lastReport_ = service.BakeAllLighting(scene);
             hasReport_ = true;
+            statusRefreshRequested_ = true;
         }
         if (bakeBusy || !status.valid) {
             ImGui::EndDisabled();
@@ -408,6 +448,7 @@ namespace HIKARI {
                 lastReport_ = service.ClearLightingBake(request);
                 hasReport_ = true;
                 scene.RefreshLightingRuntime();
+                statusRefreshRequested_ = true;
             }
             if (!lastOpenFolderMessage_.empty()) {
                 ImGui::TextDisabled(
@@ -416,6 +457,7 @@ namespace HIKARI {
             }
         }
 
+        wasBakeBusy_ = bakeBusy;
         ImGui::End();
 #else
         (void)scene;

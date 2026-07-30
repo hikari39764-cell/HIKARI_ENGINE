@@ -19,6 +19,7 @@ namespace HIKARI::ASSETS::LIGHTING {
         AlphaMaskedSurface = 1u << 7,
         BlendedSurface = 1u << 8,
         UvOverlap = 1u << 9,
+        MissingLightmapUv = 1u << 10,
     };
 
     struct LightmapSurfaceAnalysis {

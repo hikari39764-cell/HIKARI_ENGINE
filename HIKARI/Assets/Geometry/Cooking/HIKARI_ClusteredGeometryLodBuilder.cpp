@@ -111,9 +111,15 @@ namespace HIKARI::ASSETS::GEOMETRY::COOKING {
         const bool permissiveOpaqueLod = ShouldUsePermissiveOpaqueLods(source.flags);
         // 通常 opaque は seam 越しの簡略化を許可し、section 境界だけは裂け防止で固定する。
         lodSettings.preserveAttributes = true;
-        lodSettings.lockOpenBorders = lockSectionBorders || !permissiveOpaqueLod;
+        lodSettings.lockOpenBorders =
+            lockSectionBorders ||
+            !permissiveOpaqueLod ||
+            source.preserveLightmapUvSeams;
         lodSettings.optimizeVertexCache = true;
-        lodSettings.allowAttributeSeamCollapse = permissiveOpaqueLod && !lockSectionBorders;
+        lodSettings.allowAttributeSeamCollapse =
+            permissiveOpaqueLod &&
+            !lockSectionBorders &&
+            !source.preserveLightmapUvSeams;
         lodSettings.protectGeometricBorders = permissiveOpaqueLod || lockSectionBorders;
         lodSettings.pruneIsolatedComponents = false;
 

@@ -117,6 +117,9 @@ namespace HIKARI::TOOLS::BAKING {
         RENDER3D::LIGHTING::TRANSPORT::
             LightingTransportEnvironment environment_{};
         std::vector<uint8_t> validTexels_{};
+        std::vector<uint32_t> texelOwnerIndices_{};
+        std::vector<ASSETS::LIGHTING::
+            LightmapAtlasAllocation> atlasAllocations_{};
         ProgressiveLightmapBakeStatus status_{};
         uint32_t width_ = 0u;
         uint32_t height_ = 0u;

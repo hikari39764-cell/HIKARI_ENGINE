@@ -72,6 +72,16 @@ set(
     ${HIKARI_RUNTIME_PUBLIC_LINK_LIBRARIES}
     ${HIKARI_RUNTIME_PRIVATE_LINK_LIBRARIES})
 hikari_define_runtime_modules(HIKARI_RUNTIME_MODULE_TARGETS)
+if(HIKARI_WITH_EDITOR_BUILD)
+    target_link_libraries(
+        hikari_runtime_assets
+        PRIVATE
+            HIKARI::Xatlas)
+    target_link_libraries(
+        hikari_runtime_foundation
+        PRIVATE
+            Comctl32)
+endif()
 
 add_library(HIKARI_Runtime INTERFACE)
 add_library(HIKARI::Runtime ALIAS HIKARI_Runtime)

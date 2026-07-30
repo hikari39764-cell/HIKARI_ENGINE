@@ -1,5 +1,6 @@
 #include "HIKARI_ModelImporter.h"
 
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <unordered_set>
@@ -14,6 +15,7 @@
 #include "Assets/Geometry/HIKARI_HcmeshFormat.h"
 #include "Assets/Formats/HIKARI_HmodelFormat.h"
 #include "Assets/Importers/Policy/HIKARI_ModelImportPolicy.h"
+#include "Assets/Lighting/HIKARI_LightmapUvGeneration.h"
 #include "Assets/Models/HIKARI_ModelAsset.h"
 #include "Assets/Models/Loading/HIKARI_ModelSourceLoader.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
@@ -283,6 +285,11 @@ namespace HIKARI {
                 { "skippedMorphPrimitiveCount", model.importDiagnostics.skippedMorphPrimitiveCount },
                 { "clusteredStaticPrimitiveCount", model.importDiagnostics.clusteredStaticPrimitiveCount },
                 { "fallbackPrimitiveCount", model.importDiagnostics.fallbackPrimitiveCount },
+                { "lightmapUvAuthoredValidCount", model.importDiagnostics.lightmapUvAuthoredValidCount },
+                { "lightmapUvMissingCount", model.importDiagnostics.lightmapUvMissingCount },
+                { "lightmapUvInvalidCount", model.importDiagnostics.lightmapUvInvalidCount },
+                { "lightmapUvGeneratedCount", model.importDiagnostics.lightmapUvGeneratedCount },
+                { "lightmapUvGenerationFailedCount", model.importDiagnostics.lightmapUvGenerationFailedCount },
             };
 
             nlohmann::json alphaPolicyReport = {
@@ -322,6 +329,11 @@ namespace HIKARI {
                     { "skippedMorphPrimitives", model.importDiagnostics.skippedMorphPrimitiveCount },
                     { "unsupportedPrimitiveModes", model.importDiagnostics.unsupportedPrimitiveModeCount },
                     { "unsupportedFeatures", model.importDiagnostics.unsupportedFeatureCount },
+                    { "lightmapUvAuthoredValid", model.importDiagnostics.lightmapUvAuthoredValidCount },
+                    { "lightmapUvMissing", model.importDiagnostics.lightmapUvMissingCount },
+                    { "lightmapUvInvalid", model.importDiagnostics.lightmapUvInvalidCount },
+                    { "lightmapUvGenerated", model.importDiagnostics.lightmapUvGeneratedCount },
+                    { "lightmapUvGenerationFailed", model.importDiagnostics.lightmapUvGenerationFailedCount },
                 } },
                 { "importMessages", std::move(importMessages) },
                 { "formatReport", std::move(formatReport) },
@@ -831,49 +843,242 @@ namespace HIKARI {
                 material.metallicFactor <= 0.001f;
         }
 
-        float ClampFloat(float value, float minValue, float maxValue) {
-            if (value < minValue) {
-                return minValue;
-            }
-            if (value > maxValue) {
-                return maxValue;
-            }
-            return value;
+        bool NearlyEqual(float lhs, float rhs) {
+            return std::abs(lhs - rhs) <= 1.0e-5f;
         }
 
-        void ApplySpecularGlossCompatibilityPolicy(ModelAsset& model) {
-            for (MaterialAsset& material : model.materials) {
-                if (!ShouldUseSpecularGlossCompatibility(material)) {
+        bool HaveMatchingUvSemantics(
+            const TextureSlot& lhs,
+            const TextureSlot& rhs) {
+
+            return
+                lhs.texCoord == rhs.texCoord &&
+                NearlyEqual(lhs.uvScale.x, rhs.uvScale.x) &&
+                NearlyEqual(lhs.uvScale.y, rhs.uvScale.y) &&
+                NearlyEqual(lhs.uvOffset.x, rhs.uvOffset.x) &&
+                NearlyEqual(lhs.uvOffset.y, rhs.uvOffset.y) &&
+                NearlyEqual(lhs.uvRotation, rhs.uvRotation);
+        }
+
+        const TextureAsset3D* FindTexture(
+            const ModelAsset& model,
+            const TextureSlot& slot) {
+
+            if (slot.textureIndex < 0 ||
+                static_cast<size_t>(slot.textureIndex) >=
+                    model.textures.size()) {
+                return nullptr;
+            }
+            return &model.textures[
+                static_cast<size_t>(slot.textureIndex)];
+        }
+
+        std::filesystem::path ResolveTextureSourcePath(
+            const ModelAsset& model,
+            const TextureSlot& slot,
+            const std::filesystem::path& projectRoot) {
+
+            const TextureAsset3D* texture =
+                FindTexture(model, slot);
+            if (texture == nullptr ||
+                texture->sourcePath.empty()) {
+                return {};
+            }
+            return PROJECT_PATHS::ResolveProjectPath(
+                projectRoot,
+                texture->sourcePath);
+        }
+
+        void BuildCanonicalMetallicRoughnessTextures(
+            ModelAsset& model,
+            const AssetImportContext& context,
+            std::vector<AssetArtifactDesc>& artifacts) {
+
+            const size_t materialCount = (std::min)(
+                model.materials.size(),
+                model.materialImportSources.size());
+            for (size_t materialIndex = 0u;
+                materialIndex < materialCount;
+                ++materialIndex) {
+
+                MaterialAsset& material =
+                    model.materials[materialIndex];
+                if (material.metallicRoughnessTexture.textureIndex >= 0) {
                     continue;
                 }
 
-                material.featureBits |= MATERIAL_FEATURES::SpecularGlossCompatibility;
+                const MaterialImportSourceSlots& sources =
+                    model.materialImportSources[materialIndex];
+                const TextureSlot* canonicalSlot = nullptr;
+                const TextureSlot* sourceSlots[] = {
+                    &sources.metalnessTexture,
+                    &sources.roughnessTexture,
+                    &sources.glossinessTexture,
+                };
+                bool incompatibleUvSemantics = false;
+                for (const TextureSlot* slot : sourceSlots) {
+                    if (slot->textureIndex < 0) {
+                        continue;
+                    }
+                    if (canonicalSlot == nullptr) {
+                        canonicalSlot = slot;
+                    } else if (!HaveMatchingUvSemantics(
+                            *canonicalSlot,
+                            *slot)) {
+                        incompatibleUvSemantics = true;
+                        break;
+                    }
+                }
+                if (canonicalSlot == nullptr) {
+                    continue;
+                }
+                if (incompatibleUvSemantics) {
+                    ++model.importDiagnostics.unsupportedFeatureCount;
+                    model.importDiagnostics.messages.push_back(
+                        "[MaterialImport] separate metallic and roughness maps use different UV semantics; canonical packing was skipped. material=" +
+                        material.name);
+                    continue;
+                }
 
-                const bool alphaMasked =
-                    material.alphaMode == AlphaMode::Mask ||
-                    (material.featureBits & MATERIAL_FEATURES::AlphaMask) != 0u;
-                const float minRoughness = alphaMasked ? 0.86f : 0.72f;
-                const float maxSpecularFactor = alphaMasked ? 0.45f : 0.65f;
-                const float maxSpecularColor = alphaMasked ? 0.70f : 0.85f;
+                MetallicRoughnessPackRequest request{};
+                request.metalnessSource =
+                    ResolveTextureSourcePath(
+                        model,
+                        sources.metalnessTexture,
+                        context.projectRoot);
+                request.roughnessSource =
+                    ResolveTextureSourcePath(
+                        model,
+                        sources.roughnessTexture,
+                        context.projectRoot);
+                if (request.roughnessSource.empty()) {
+                    request.glossinessSource =
+                        ResolveTextureSourcePath(
+                            model,
+                            sources.glossinessTexture,
+                            context.projectRoot);
+                } else if (
+                    sources.glossinessTexture.textureIndex >= 0) {
+                    model.importDiagnostics.messages.push_back(
+                        "[MaterialImport] roughness map takes precedence over glossiness map. material=" +
+                        material.name);
+                }
 
-                const float roughness = material.roughnessFactor < minRoughness
-                    ? minRoughness
-                    : material.roughnessFactor;
-                const float specularFactor = material.specularFactor > maxSpecularFactor
-                    ? maxSpecularFactor
-                    : material.specularFactor;
+                const std::filesystem::path finalPath =
+                    context.importedDirectory /
+                    "MaterialTextures" /
+                    ("material_" +
+                        std::to_string(materialIndex) +
+                        "_metallic_roughness.dds");
+                const std::filesystem::path stagedPath =
+                    finalPath.parent_path() /
+                    (finalPath.stem().string() +
+                        ".importing.dds");
+                std::error_code removeEc{};
+                std::filesystem::remove(stagedPath, removeEc);
 
-                material.roughnessFactor = ClampFloat(roughness, 0.04f, 1.0f);
-                material.specularFactor = ClampFloat(specularFactor, 0.0f, 1.0f);
-                material.specularColorFactor.x = material.specularColorFactor.x > maxSpecularColor
-                    ? maxSpecularColor
-                    : material.specularColorFactor.x;
-                material.specularColorFactor.y = material.specularColorFactor.y > maxSpecularColor
-                    ? maxSpecularColor
-                    : material.specularColorFactor.y;
-                material.specularColorFactor.z = material.specularColorFactor.z > maxSpecularColor
-                    ? maxSpecularColor
-                    : material.specularColorFactor.z;
+                std::string packMessage{};
+                if (!WritePackedMetallicRoughnessDdsWithDirectXTex(
+                        request,
+                        stagedPath,
+                        packMessage)) {
+                    ++model.importDiagnostics.unsupportedFeatureCount;
+                    model.importDiagnostics.messages.push_back(
+                        "[MaterialImport] failed to pack metallic-roughness texture. material=" +
+                        material.name +
+                        " reason=" + packMessage);
+                    continue;
+                }
+
+                std::string commitMessage{};
+                if (!IO::CommitStagedFile(
+                        stagedPath,
+                        finalPath,
+                        commitMessage)) {
+                    std::error_code cleanupEc{};
+                    std::filesystem::remove(
+                        stagedPath,
+                        cleanupEc);
+                    ++model.importDiagnostics.unsupportedFeatureCount;
+                    model.importDiagnostics.messages.push_back(
+                        "[MaterialImport] failed to install packed metallic-roughness texture. material=" +
+                        material.name +
+                        " reason=" + commitMessage);
+                    continue;
+                }
+
+                TextureAsset3D packedTexture{};
+                packedTexture.name =
+                    material.name +
+                    "_MetallicRoughness";
+                packedTexture.sourcePath =
+                    PROJECT_PATHS::MakeProjectRelativeString(
+                        context.projectRoot,
+                        finalPath);
+                material.metallicRoughnessTexture =
+                    *canonicalSlot;
+                material.metallicRoughnessTexture.textureIndex =
+                    static_cast<int>(model.textures.size());
+                model.textures.push_back(
+                    std::move(packedTexture));
+
+                artifacts.push_back(
+                    ASSETS::SEMANTICS::MakeAssetArtifact(
+                        ASSETS::SEMANTICS::AssetArtifactKind::
+                            ModelMaterialTexture,
+                        PROJECT_PATHS::MakeProjectRelativeString(
+                            context.projectRoot,
+                            finalPath)));
+                model.importDiagnostics.messages.push_back(
+                    "[MaterialImport] packed canonical metallic-roughness texture. material=" +
+                    material.name);
+            }
+        }
+
+        float FiniteOr(float value, float fallback) {
+            return std::isfinite(value) ? value : fallback;
+        }
+
+        void ApplyCanonicalSpecularPolicy(ModelAsset& model) {
+            for (MaterialAsset& material : model.materials) {
+                material.featureBits &=
+                    ~MATERIAL_FEATURES::SpecularGlossCompatibility;
+                if (ShouldUseSpecularGlossCompatibility(material)) {
+                    material.featureBits |=
+                        MATERIAL_FEATURES::
+                            SpecularGlossCompatibility;
+                }
+
+                material.roughnessFactor = std::clamp(
+                    FiniteOr(material.roughnessFactor, 1.0f),
+                    0.04f,
+                    1.0f);
+                material.metallicFactor = std::clamp(
+                    FiniteOr(material.metallicFactor, 0.0f),
+                    0.0f,
+                    1.0f);
+                material.specularFactor = std::clamp(
+                    FiniteOr(material.specularFactor, 1.0f),
+                    0.0f,
+                    1.0f);
+                material.specularColorFactor.x = std::clamp(
+                    FiniteOr(
+                        material.specularColorFactor.x,
+                        1.0f),
+                    0.0f,
+                    1.0f);
+                material.specularColorFactor.y = std::clamp(
+                    FiniteOr(
+                        material.specularColorFactor.y,
+                        1.0f),
+                    0.0f,
+                    1.0f);
+                material.specularColorFactor.z = std::clamp(
+                    FiniteOr(
+                        material.specularColorFactor.z,
+                        1.0f),
+                    0.0f,
+                    1.0f);
             }
         }
 
@@ -965,6 +1170,11 @@ namespace HIKARI {
                 result.dependencies);
         }
 
+        BuildCanonicalMetallicRoughnessTextures(
+            model,
+            context,
+            result.artifacts);
+
         int htexReferenceCount = 0;
         int fallbackTextureCount = 0;
         std::vector<TextureCookDiagnostic> textureDiagnostics;
@@ -1016,7 +1226,101 @@ namespace HIKARI {
 
         const MaterialAlphaPolicyStats alphaPolicyStats =
             ApplyCanonicalBaseColorAlphaMaterialPolicy(model, textureDiagnostics);
-        ApplySpecularGlossCompatibilityPolicy(model);
+        ApplyCanonicalSpecularPolicy(model);
+
+        reportStage(
+            "Preparing lightmap UVs",
+            0.34f,
+            false);
+        ASSETS::LIGHTING::LightmapUvGenerationReport
+            lightmapUvReport{};
+        ASSETS::LIGHTING::LightmapUvGenerationCallbacks
+            lightmapUvCallbacks{};
+        lightmapUvCallbacks.isCancellationRequested =
+            canceled;
+        lightmapUvCallbacks.reportProgress =
+            [&](uint32_t currentPrimitive,
+                uint32_t primitiveCount,
+                std::string_view primitiveName) {
+                if (context.task == nullptr) {
+                    return;
+                }
+
+                AssetTaskProgress progress{};
+                progress.stage =
+                    "Preparing lightmap UVs";
+                progress.currentItem = taskItem;
+                if (!primitiveName.empty()) {
+                    progress.currentItem +=
+                        " :: " +
+                        std::string(primitiveName);
+                }
+                progress.determinate =
+                    primitiveCount > 0u;
+                progress.completedUnits =
+                    currentPrimitive;
+                progress.totalUnits =
+                    primitiveCount;
+                const float uvProgress =
+                    primitiveCount > 0u
+                    ? static_cast<float>(
+                        currentPrimitive) /
+                        static_cast<float>(
+                            primitiveCount)
+                    : 1.0f;
+                progress.normalized =
+                    0.34f + uvProgress * 0.02f;
+                context.task->Report(
+                    std::move(progress));
+            };
+        ASSETS::LIGHTING::PrepareModelLightmapUvs(
+            model,
+            importPolicy.lightmapUv,
+            lightmapUvReport,
+            &lightmapUvCallbacks);
+        if (lightmapUvReport.canceled ||
+            canceled()) {
+            result.message =
+                "[AssetImporter] model import canceled during lightmap UV generation";
+            return result;
+        }
+        model.importDiagnostics.
+            lightmapUvAuthoredValidCount =
+                lightmapUvReport.authoredValidCount;
+        model.importDiagnostics.lightmapUvMissingCount =
+            lightmapUvReport.missingCount;
+        model.importDiagnostics.lightmapUvInvalidCount =
+            lightmapUvReport.invalidCount;
+        model.importDiagnostics.lightmapUvGeneratedCount =
+            lightmapUvReport.generatedCount;
+        model.importDiagnostics.
+            lightmapUvGenerationFailedCount =
+                lightmapUvReport.generationFailedCount;
+        model.importDiagnostics.messages.push_back(
+            "[LightmapUV] mode=" +
+            std::string(
+                ASSETS::LIGHTING::ToString(
+                    importPolicy.lightmapUv.mode)) +
+            " authoredValid=" +
+            std::to_string(
+                lightmapUvReport.authoredValidCount) +
+            " missing=" +
+            std::to_string(
+                lightmapUvReport.missingCount) +
+            " invalid=" +
+            std::to_string(
+                lightmapUvReport.invalidCount) +
+            " generated=" +
+            std::to_string(
+                lightmapUvReport.generatedCount) +
+            " failed=" +
+            std::to_string(
+                lightmapUvReport.generationFailedCount));
+        for (const std::string& message :
+            lightmapUvReport.messages) {
+            model.importDiagnostics.messages.push_back(
+                "[LightmapUV] " + message);
+        }
 
         const std::filesystem::path finalPath = context.importedDirectory / "model.hmodel";
         const std::filesystem::path tempPath = context.importedDirectory / "model.importing.hmodel";

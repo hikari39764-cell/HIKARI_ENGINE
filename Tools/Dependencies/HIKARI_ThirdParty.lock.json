@@ -54,6 +54,16 @@
       "restore": "Built as the HIKARI::Meshoptimizer target from the tracked source snapshot."
     },
     {
+      "name": "xatlas",
+      "version": "f700c7790aaa030e794b52ba7791a05c085faf0c",
+      "kind": "tracked-editor-source",
+      "source": "https://github.com/jpcy/xatlas",
+      "archiveSha256": "8A704882E4BA826FC8E78E803197D299DDE830CFFA6CEEE17F0F1BCC76E5C5E1",
+      "versionEvidence": "Tools/Dependencies/HIKARI_ThirdParty.lock.json",
+      "licenseEvidence": "ThirdParty/xatlas/LICENSE",
+      "restore": "The pinned source/xatlas.cpp and source/xatlas.h snapshot is built as HIKARI::Xatlas for Editor/Cook only; GameShipping does not link it."
+    },
+    {
       "name": "Dear ImGui",
       "version": "1.90.9",
       "kind": "tracked-source",

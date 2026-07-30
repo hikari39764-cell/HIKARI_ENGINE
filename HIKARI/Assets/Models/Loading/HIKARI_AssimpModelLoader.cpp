@@ -102,6 +102,7 @@ namespace HIKARI::ASSETS::MODELS {
             aiProcess_JoinIdenticalVertices |
             aiProcess_LimitBoneWeights |
             aiProcess_ImproveCacheLocality |
+            aiProcess_FlipUVs |
             aiProcess_SortByPType |
             aiProcess_FindInvalidData |
             aiProcess_ValidateDataStructure;
@@ -117,6 +118,7 @@ namespace HIKARI::ASSETS::MODELS {
         asset.nodes.clear();
         asset.meshes.clear();
         asset.materials.clear();
+        asset.materialImportSources.clear();
         asset.textures.clear();
         asset.skins.clear();
         asset.animations.clear();

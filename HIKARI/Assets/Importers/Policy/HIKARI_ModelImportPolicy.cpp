@@ -38,6 +38,52 @@ namespace HIKARI::ASSETS::IMPORT_POLICY {
                 : ModelGeometryCookProfile::Scene;
         }
 
+        LIGHTING::LightmapUvGenerationSettings
+            ParseLightmapUvSettings(
+                const nlohmann::json& settings,
+                ModelGeometryCookProfile profile) {
+
+            LIGHTING::LightmapUvGenerationSettings result{};
+            result.mode =
+                profile ==
+                    ModelGeometryCookProfile::Character
+                ? LIGHTING::LightmapUvGenerationMode::
+                    Preserve
+                : LIGHTING::LightmapUvGenerationMode::
+                    GenerateIfMissingOrInvalid;
+
+            if (!settings.contains("lightmapUv") ||
+                !settings["lightmapUv"].is_object()) {
+                return result;
+            }
+            const nlohmann::json& lightmapUv =
+                settings["lightmapUv"];
+            const std::string mode = lightmapUv.value(
+                "mode",
+                std::string(
+                    LIGHTING::ToString(result.mode)));
+            if (mode == "Preserve") {
+                result.mode =
+                    LIGHTING::LightmapUvGenerationMode::
+                        Preserve;
+            } else if (mode == "ForceRegenerate") {
+                result.mode =
+                    LIGHTING::LightmapUvGenerationMode::
+                        ForceRegenerate;
+            }
+            result.resolution = std::clamp(
+                lightmapUv.value(
+                    "resolution",
+                    64u),
+                64u,
+                8192u);
+            result.padding = std::clamp(
+                lightmapUv.value("padding", 8u),
+                1u,
+                64u);
+            return result;
+        }
+
         bool ReadClusterBool(
             const nlohmann::json& settings,
             const nlohmann::json& cluster,
@@ -500,6 +546,10 @@ namespace HIKARI::ASSETS::IMPORT_POLICY {
         policy.clusterOptions = BuildClusterOptions(settings, profile);
         policy.clusteredGeometryCookSettings =
             BuildClusteredGeometryCookSettings(settings, profile);
+        policy.lightmapUv =
+            ParseLightmapUvSettings(
+                settings,
+                profile);
         return policy;
     }
 
@@ -513,6 +563,11 @@ namespace HIKARI::ASSETS::IMPORT_POLICY {
             { "meshFormat", "HCMESH" },
             { "loadMaterials", true },
             { "loadTextures", true },
+            { "lightmapUv", {
+                { "mode", "GenerateIfMissingOrInvalid" },
+                { "resolution", 64 },
+                { "padding", 8 },
+            } },
             { "clusterGeometry", {
                 { "enabled", true },
                 { "profile", "Scene" },

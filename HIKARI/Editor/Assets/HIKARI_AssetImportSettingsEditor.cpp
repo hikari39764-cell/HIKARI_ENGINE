@@ -27,15 +27,24 @@ namespace HIKARI::EDITOR::ASSET_IMPORT_SETTINGS {
             return settings["clusterGeometry"];
         }
 
+        nlohmann::json& EnsureLightmapUvSettings(
+            nlohmann::json& settings) {
+
+            if (!settings.contains("lightmapUv") ||
+                !settings["lightmapUv"].is_object()) {
+                settings["lightmapUv"] =
+                    nlohmann::json::object();
+            }
+            return settings["lightmapUv"];
+        }
+
     } // namespace
 
-    bool DrawModelClusteredGeometryCookSettings(
-        nlohmann::json& settings,
-        bool drawSectionHeader) {
+    bool DrawModelImportSettings(
+        nlohmann::json& settings) {
 
 #if !defined(HIKARI_WITH_EDITOR)
         (void)settings;
-        (void)drawSectionHeader;
         return false;
 #else
         const std::array profileItems = {
@@ -48,10 +57,90 @@ namespace HIKARI::EDITOR::ASSET_IMPORT_SETTINGS {
             EnsureClusterGeometrySettings(settings);
         bool dirty = false;
 
-        if (drawSectionHeader) {
-            ImGui::SeparatorText("Cluster Geometry");
+        nlohmann::json& lightmapUv =
+            EnsureLightmapUvSettings(settings);
+        const std::array<const char*, 3> uvModes{
+            "Preserve",
+            "GenerateIfMissingOrInvalid",
+            "ForceRegenerate",
+        };
+        const std::string currentUvMode =
+            lightmapUv.value(
+                "mode",
+                std::string(uvModes[1]));
+        int selectedUvMode = 1;
+        for (size_t index = 0u;
+            index < uvModes.size();
+            ++index) {
+            if (currentUvMode == uvModes[index]) {
+                selectedUvMode =
+                    static_cast<int>(index);
+                break;
+            }
         }
 
+        ImGui::SeparatorText("Lightmap UV");
+        if (ImGui::Combo(
+                "UV1 Policy",
+                &selectedUvMode,
+                uvModes.data(),
+                static_cast<int>(uvModes.size()))) {
+            lightmapUv["mode"] =
+                uvModes[
+                    static_cast<size_t>(
+                        selectedUvMode)];
+            dirty = true;
+        }
+        ImGui::TextDisabled(
+            selectedUvMode == 0
+            ? "Keep authored UV1 and report invalid surfaces."
+            : "Generate non-overlapping UV1 during Editor/Cook import.");
+        if (selectedUvMode != 0 &&
+            ImGui::TreeNode(
+                "Advanced Lightmap UV")) {
+            int resolution = lightmapUv.value(
+                "resolution",
+                64);
+            if (ImGui::InputInt(
+                    "UV Layout Reference Resolution",
+                    &resolution)) {
+                lightmapUv["resolution"] =
+                    std::clamp(
+                        resolution,
+                        64,
+                        8192);
+                dirty = true;
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip(
+                    "Reference extent used by UV generation. "
+                    "The final Lightmap allocator preserves its "
+                    "chart padding instead of shrinking it "
+                    "arbitrarily.");
+            }
+            int padding = lightmapUv.value(
+                "padding",
+                8);
+            if (ImGui::InputInt(
+                    "Chart Padding",
+                    &padding)) {
+                lightmapUv["padding"] =
+                    std::clamp(
+                        padding,
+                        1,
+                        64);
+                dirty = true;
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip(
+                    "Final texel padding between UV charts. "
+                    "Eight texels protects bilinear sampling "
+                    "and the bounded Lightmap mip chain.");
+            }
+            ImGui::TreePop();
+        }
+
+        ImGui::SeparatorText("Cluster Geometry");
         bool enabled = cluster.value("enabled", true);
         if (ImGui::Checkbox("Build HCMESH", &enabled)) {
             cluster["enabled"] = enabled;
@@ -78,6 +167,10 @@ namespace HIKARI::EDITOR::ASSET_IMPORT_SETTINGS {
             cluster["clusterMergeNormalMinDot"] = 0.20f;
             cluster["normalBucketCoherentGroupMinDot"] = 0.35f;
             cluster["normalBucketQualityBonusRatio"] = 0.15f;
+            lightmapUv["mode"] =
+                profile == 1
+                ? "Preserve"
+                : "GenerateIfMissingOrInvalid";
             dirty = true;
         }
 

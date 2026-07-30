@@ -6,6 +6,7 @@
 
 #include "Assets/Geometry/HIKARI_ClusteredGeometryCooker.h"
 #include "Assets/HIKARI_AssetTypes.h"
+#include "Assets/Lighting/HIKARI_LightmapUvGeneration.h"
 
 namespace HIKARI::ASSETS::IMPORT_POLICY {
 
@@ -16,6 +17,7 @@ namespace HIKARI::ASSETS::IMPORT_POLICY {
         ModelImporterKind importer = ModelImporterKind::Gltf;
         ModelClusterCookOptions clusterOptions{};
         GEOMETRY::ClusteredGeometryCookSettings clusteredGeometryCookSettings{};
+        LIGHTING::LightmapUvGenerationSettings lightmapUv{};
     };
 
     ModelImportPolicy ResolveModelImportPolicy(

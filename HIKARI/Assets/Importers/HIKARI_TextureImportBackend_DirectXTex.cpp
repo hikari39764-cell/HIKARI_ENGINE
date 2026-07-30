@@ -586,6 +586,7 @@ namespace HIKARI {
                 static_cast<float>(static_cast<double>(cutoutCount) / static_cast<double>(pixelCount));
             return result;
         }
+
     }
 
     bool InspectTextureAlphaWithDirectXTex(

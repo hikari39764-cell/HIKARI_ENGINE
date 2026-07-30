@@ -99,7 +99,11 @@ void CollectDroppedFiles(
 void ProcessDroppedFiles(AssetDatabase &assetDatabase,
                          const std::filesystem::path &currentDirectory,
                          EditorSelection &selection,
-                         std::string &lastOperationMessage);
+                         std::string &lastOperationMessage,
+                         float targetScreenLeft,
+                         float targetScreenTop,
+                         float targetScreenRight,
+                         float targetScreenBottom);
 
 AssetType TypeFromFilterIndex(int index);
 

@@ -143,6 +143,7 @@ namespace HIKARI::ASSETS::MODELS {
         asset.nodes.clear();
         asset.meshes.clear();
         asset.materials.clear();
+        asset.materialImportSources.clear();
         asset.textures.clear();
         asset.skins.clear();
         asset.animations.clear();
@@ -223,7 +224,16 @@ namespace HIKARI::ASSETS::MODELS {
                 if (!GLTF::ReadNormalizedFloatAccessor(accessors, bufferViews, loadedBuffers, attributes.value("TEXCOORD_0", -1), 2, texcoords, nullptr)) {
                     texcoords.assign(static_cast<size_t>(vertexCount) * 2u, 0.0f);
                 }
-                if (!GLTF::ReadNormalizedFloatAccessor(accessors, bufferViews, loadedBuffers, attributes.value("TEXCOORD_1", -1), 2, texcoords1, nullptr)) {
+                const bool hasLightmapUv =
+                    GLTF::ReadNormalizedFloatAccessor(
+                        accessors,
+                        bufferViews,
+                        loadedBuffers,
+                        attributes.value("TEXCOORD_1", -1),
+                        2,
+                        texcoords1,
+                        nullptr);
+                if (!hasLightmapUv) {
                     texcoords1.assign(static_cast<size_t>(vertexCount) * 2u, 0.0f);
                 }
                 GLTF::ReadFloatAccessor(accessors, bufferViews, loadedBuffers, attributes.value("TANGENT", -1), 4, tangents, nullptr);
@@ -275,6 +285,7 @@ namespace HIKARI::ASSETS::MODELS {
                     primitive.contains("targets") &&
                     primitive["targets"].is_array() &&
                     !primitive["targets"].empty();
+                primitiveAsset.hasLightmapUv = hasLightmapUv;
                 if (primitiveAsset.hasMorphTargets) {
                     ++asset.importDiagnostics.skippedMorphPrimitiveCount;
                     ++asset.importDiagnostics.fallbackPrimitiveCount;

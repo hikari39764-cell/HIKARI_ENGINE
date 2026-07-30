@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "Assets/Lighting/HIKARI_LightmapSurfaceAnalysis.h"
+#include "Assets/Lighting/HIKARI_LightmapAtlasLayout.h"
 #include "Assets/Models/HIKARI_ModelAsset.h"
 #include "Core/Math/HIKARI_NormalMatrix.h"
 #include "Render3D/Core/HIKARI_Material.h"
@@ -34,6 +35,14 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
             ASSETS::LIGHTING::LightmapSurfaceIdentity
                 identity{};
             std::vector<uint32_t> triangleIndices{};
+            float worldArea = 0.0f;
+            float uvArea = 0.0f;
+            uint32_t minimumInteriorWidth =
+                ASSETS::LIGHTING::
+                    kSurfaceLightmapMinimumAuthoredUvExtent;
+            uint32_t minimumInteriorHeight =
+                ASSETS::LIGHTING::
+                    kSurfaceLightmapMinimumAuthoredUvExtent;
         };
 
         const SceneComponentData* FindModelComponent(
@@ -196,6 +205,33 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
             }
             const MeshPrimitive& primitive =
                 mesh.primitives[surface.primitiveIndex];
+            if (primitive.lightmapUvLayout.
+                    HasGeneratedLayout()) {
+                const auto preservePadding =
+                    [](uint32_t referenceExtent,
+                       uint32_t sourcePadding) {
+                        const uint64_t numerator =
+                            static_cast<uint64_t>(
+                                ASSETS::LIGHTING::
+                                    kSurfaceLightmapMinimumChartPaddingTexels) *
+                            referenceExtent;
+                        return static_cast<uint32_t>(
+                            (numerator + sourcePadding - 1u) /
+                            sourcePadding);
+                    };
+                pendingSurface.minimumInteriorWidth =
+                    preservePadding(
+                        primitive.lightmapUvLayout.
+                            referenceWidth,
+                        primitive.lightmapUvLayout.
+                            chartPadding);
+                pendingSurface.minimumInteriorHeight =
+                    preservePadding(
+                        primitive.lightmapUvLayout.
+                            referenceHeight,
+                        primitive.lightmapUvLayout.
+                            chartPadding);
+            }
 
             MATH::Vec3 diffuse{};
             MATH::Vec3 emissive{};
@@ -278,17 +314,36 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
                 if (analysis.IsEligible()) {
                     pendingSurface.triangleIndices.
                         push_back(triangleIndex);
+                    const TRANSPORT::LightingTransportTriangle&
+                        appended = scene.triangles.back();
+                    const MATH::Vec3 worldCross =
+                        MATH::Cross(
+                            appended.position[1] -
+                                appended.position[0],
+                            appended.position[2] -
+                                appended.position[0]);
+                    pendingSurface.worldArea +=
+                        0.5f *
+                        std::sqrt(
+                            (std::max)(
+                                0.0f,
+                                MATH::Dot(
+                                    worldCross,
+                                    worldCross)));
+                    const MATH::Vec2 uvEdge0 =
+                        appended.lightmapUv[1] -
+                        appended.lightmapUv[0];
+                    const MATH::Vec2 uvEdge1 =
+                        appended.lightmapUv[2] -
+                        appended.lightmapUv[0];
+                    pendingSurface.uvArea +=
+                        0.5f *
+                        std::abs(
+                            uvEdge0.x * uvEdge1.y -
+                            uvEdge0.y * uvEdge1.x);
                 }
             }
             return analysis;
-        }
-
-        uint32_t NextPowerOfTwo(uint32_t value) {
-            uint32_t result = 1u;
-            while (result < value && result < 1024u) {
-                result <<= 1u;
-            }
-            return (std::min)(result, 1024u);
         }
 
         void AccumulateSurfaceAnalysis(
@@ -375,114 +430,138 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
             if (pendingSurfaces.empty()) {
                 target.eligible = false;
             } else {
-                const uint32_t surfaceCount =
-                    static_cast<uint32_t>(
-                        pendingSurfaces.size());
-                const uint32_t columns =
-                    static_cast<uint32_t>(
-                        std::ceil(std::sqrt(
-                            static_cast<float>(
-                                surfaceCount))));
-                const uint32_t rows =
-                    (surfaceCount + columns - 1u) /
-                    columns;
-                target.outputResolution =
-                    NextPowerOfTwo((std::max)(
-                        128u,
-                        (std::max)(columns, rows) *
-                            32u));
-
-                for (uint32_t surfaceIndex = 0u;
-                    surfaceIndex < surfaceCount;
-                    ++surfaceIndex) {
-                    PendingLightmapSurface& pending =
-                        pendingSurfaces[surfaceIndex];
-                    const uint32_t column =
-                        surfaceIndex % columns;
-                    const uint32_t row =
-                        surfaceIndex / columns;
-                    const uint32_t x0 =
-                        column *
-                        target.outputResolution /
-                        columns;
-                    const uint32_t x1 =
-                        (column + 1u) *
-                        target.outputResolution /
-                        columns;
-                    const uint32_t y0 =
-                        row *
-                        target.outputResolution /
-                        rows;
-                    const uint32_t y1 =
-                        (row + 1u) *
-                        target.outputResolution /
-                        rows;
-                    const uint32_t tileWidth = x1 - x0;
-                    const uint32_t tileHeight = y1 - y0;
-                    const uint32_t padding =
-                        (std::min)(
-                            4u,
-                            (std::min)(
-                                tileWidth,
-                                tileHeight) / 4u);
-                    const float inverseResolution =
-                        1.0f /
-                        static_cast<float>(
-                            target.outputResolution);
-                    const MATH::Vec4 uvScaleBias{
-                        static_cast<float>(
-                            tileWidth - padding * 2u) *
-                            inverseResolution,
-                        static_cast<float>(
-                            tileHeight - padding * 2u) *
-                            inverseResolution,
-                        static_cast<float>(x0 + padding) *
-                            inverseResolution,
-                        static_cast<float>(y0 + padding) *
-                            inverseResolution
-                    };
-
-                    for (const uint32_t triangleIndex :
-                         pending.triangleIndices) {
-                        TRANSPORT::LightingTransportTriangle&
-                            triangle =
-                                scene.triangles[
-                                    triangleIndex];
-                        for (MATH::Vec2& uv :
-                             triangle.lightmapUv) {
-                            uv = {
-                                uv.x * uvScaleBias.x +
-                                    uvScaleBias.z,
-                                uv.y * uvScaleBias.y +
-                                    uvScaleBias.w
-                            };
-                        }
-                        target.triangleIndices.push_back(
-                            triangleIndex);
-                    }
-
+                std::vector<ASSETS::LIGHTING::
+                    LightmapAtlasSurfaceMetrics> metrics{};
+                metrics.reserve(pendingSurfaces.size());
+                for (const PendingLightmapSurface& pending :
+                     pendingSurfaces) {
                     ASSETS::LIGHTING::
-                        LightmapSurfaceBinding binding{};
-                    binding.surface = pending.identity;
-                    binding.uvScaleBias = uvScaleBias;
-                    target.surfaceBindings.push_back(
-                        binding);
+                        LightmapAtlasSurfaceMetrics item{};
+                    item.surface = pending.identity;
+                    item.worldArea = pending.worldArea;
+                    item.uvArea = pending.uvArea;
+                    item.minimumInteriorWidth =
+                        pending.minimumInteriorWidth;
+                    item.minimumInteriorHeight =
+                        pending.minimumInteriorHeight;
+                    metrics.push_back(item);
                 }
-                target.eligible =
-                    !target.triangleIndices.empty();
+
+                ASSETS::LIGHTING::LightmapAtlasLayout
+                    layout{};
+                if (!ASSETS::LIGHTING::
+                        BuildLightmapAtlasLayout(
+                            metrics,
+                            {},
+                            layout)) {
+                    target.eligible = false;
+                    target.eligibilityMessage =
+                        layout.message;
+                } else {
+                    target.outputResolution =
+                        layout.resolution;
+                    target.requestedTexelsPerWorldUnit =
+                        layout.requestedTexelsPerWorldUnit;
+                    target.resolvedTexelsPerWorldUnit =
+                        layout.resolvedTexelsPerWorldUnit;
+                    target.atlasDensityReduced =
+                        layout.densityReduced;
+                    target.atlasAllocations =
+                        layout.allocations;
+
+                    for (uint32_t surfaceIndex = 0u;
+                         surfaceIndex <
+                             layout.allocations.size();
+                         ++surfaceIndex) {
+                        const ASSETS::LIGHTING::
+                            LightmapAtlasAllocation&
+                                allocation =
+                                    layout.allocations[
+                                        surfaceIndex];
+                        const auto pendingFound =
+                            std::find_if(
+                                pendingSurfaces.begin(),
+                                pendingSurfaces.end(),
+                                [&allocation](
+                                    const PendingLightmapSurface&
+                                        pending) {
+                                    return
+                                        pending.identity.nodeIndex ==
+                                            allocation.surface.
+                                                nodeIndex &&
+                                        pending.identity.meshIndex ==
+                                            allocation.surface.
+                                                meshIndex &&
+                                        pending.identity.
+                                                primitiveIndex ==
+                                            allocation.surface.
+                                                primitiveIndex;
+                                });
+                        if (pendingFound ==
+                            pendingSurfaces.end()) {
+                            continue;
+                        }
+                        for (const uint32_t triangleIndex :
+                             pendingFound->triangleIndices) {
+                            TRANSPORT::
+                                LightingTransportTriangle&
+                                    triangle =
+                                        scene.triangles[
+                                            triangleIndex];
+                            triangle.
+                                lightmapAllocationIndex =
+                                    surfaceIndex;
+                            for (MATH::Vec2& uv :
+                                 triangle.lightmapUv) {
+                                uv = {
+                                    uv.x *
+                                        allocation.
+                                            uvScaleBias.x +
+                                        allocation.
+                                            uvScaleBias.z,
+                                    uv.y *
+                                        allocation.
+                                            uvScaleBias.y +
+                                        allocation.
+                                            uvScaleBias.w
+                                };
+                            }
+                            target.triangleIndices.
+                                push_back(
+                                    triangleIndex);
+                        }
+
+                        ASSETS::LIGHTING::
+                            LightmapSurfaceBinding binding{};
+                        binding.surface =
+                            allocation.surface;
+                        binding.uvScaleBias =
+                            allocation.uvScaleBias;
+                        target.surfaceBindings.push_back(
+                            binding);
+                    }
+                    target.eligible =
+                        target.triangleIndices.size() > 0u &&
+                        target.surfaceBindings.size() ==
+                            layout.allocations.size();
+                    target.eligibilityMessage =
+                        target.eligible
+                        ? layout.message
+                        : "Lightmap atlas surface identity "
+                          "resolution failed.";
+                }
             }
 
             std::ostringstream message{};
             if (target.eligible) {
                 message
                     << "Ready: "
-                    << target.eligibleSurfaceCount
-                    << " surface(s) packed into a "
-                    << target.outputResolution
-                    << " atlas.";
+                    << target.eligibilityMessage;
             } else {
                 message
-                    << "No eligible opaque static surface.";
+                    << (target.eligibilityMessage.empty()
+                        ? "No eligible opaque static surface."
+                        : target.eligibilityMessage);
             }
             if (target.alphaMaskedSurfaceCount > 0u) {
                 message

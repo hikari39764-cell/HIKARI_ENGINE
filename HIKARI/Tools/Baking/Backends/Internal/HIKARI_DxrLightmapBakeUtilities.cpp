@@ -8,9 +8,15 @@
 
 #include <DirectXTex.h>
 
+#include "Core/Math/HIKARI_MathValidation.h"
+
 namespace HIKARI::TOOLS::BAKING::INTERNAL {
 
     namespace {
+
+        constexpr float kMinimumNormalLengthSquared =
+            1.0e-12f;
+        constexpr float kMaximumHalfFloat = 65504.0f;
 
         float Edge(
             const MATH::Vec2& a,
@@ -28,80 +34,125 @@ namespace HIKARI::TOOLS::BAKING::INTERNAL {
             }
         }
 
-        void DilateLightmap(
+        bool TryNormalize(
+            const MATH::Vec3& value,
+            MATH::Vec3& outNormal) {
+
+            const float lengthSquared =
+                MATH::Dot(value, value);
+            if (!MATH::IsFinite(value) ||
+                !MATH::IsFinite(lengthSquared) ||
+                lengthSquared <=
+                    kMinimumNormalLengthSquared) {
+                outNormal = {};
+                return false;
+            }
+
+            const float inverseLength =
+                1.0f / std::sqrt(lengthSquared);
+            outNormal = value * inverseLength;
+            return MATH::IsFinite(outNormal);
+        }
+
+        bool DilateLightmapAllocations(
             std::vector<MATH::Vec4>& pixels,
             std::vector<uint8_t>& valid,
+            std::vector<uint32_t>& ownerIndices,
+            const std::vector<ASSETS::LIGHTING::
+                LightmapAtlasAllocation>& allocations,
             uint32_t width,
-            uint32_t height,
-            uint32_t passCount) {
+            uint32_t height) {
 
-            std::vector<MATH::Vec4> sourcePixels = pixels;
-            std::vector<uint8_t> sourceValid = valid;
-            for (uint32_t pass = 0u; pass < passCount; ++pass) {
-                bool changed = false;
-                for (uint32_t y = 0u; y < height; ++y) {
-                    for (uint32_t x = 0u; x < width; ++x) {
+            constexpr uint32_t kInvalidOwner =
+                ASSETS::LIGHTING::
+                    kInvalidLightmapSurfaceIndex;
+            for (uint32_t allocationIndex = 0u;
+                 allocationIndex < allocations.size();
+                 ++allocationIndex) {
+                const ASSETS::LIGHTING::LightmapAtlasRect&
+                    rect =
+                        allocations[allocationIndex].outerRect;
+                if (rect.width == 0u ||
+                    rect.height == 0u ||
+                    rect.x + rect.width > width ||
+                    rect.y + rect.height > height) {
+                    return false;
+                }
+
+                std::vector<size_t> frontier{};
+                frontier.reserve(
+                    static_cast<size_t>(rect.width) *
+                    rect.height);
+                for (uint32_t y = rect.y;
+                     y < rect.y + rect.height;
+                     ++y) {
+                    for (uint32_t x = rect.x;
+                         x < rect.x + rect.width;
+                         ++x) {
                         const size_t index =
                             static_cast<size_t>(y) * width + x;
-                        if (sourceValid[index] != 0u) {
-                            continue;
+                        if (valid[index] != 0u &&
+                            ownerIndices[index] ==
+                                allocationIndex) {
+                            frontier.push_back(index);
                         }
-
-                        MATH::Vec3 sum{};
-                        uint32_t count = 0u;
-                        constexpr int neighbors[4][2]{
-                            { -1, 0 },
-                            { 1, 0 },
-                            { 0, -1 },
-                            { 0, 1 }
-                        };
-                        for (const auto& neighbor : neighbors) {
-                            const int nx =
-                                static_cast<int>(x) + neighbor[0];
-                            const int ny =
-                                static_cast<int>(y) + neighbor[1];
-                            if (nx < 0 || ny < 0 ||
-                                nx >= static_cast<int>(width) ||
-                                ny >= static_cast<int>(height)) {
-                                continue;
-                            }
-                            const size_t neighborIndex =
-                                static_cast<size_t>(ny) * width +
-                                static_cast<size_t>(nx);
-                            if (sourceValid[neighborIndex] == 0u) {
-                                continue;
-                            }
-                            const MATH::Vec4& color =
-                                sourcePixels[neighborIndex];
-                            sum = sum + MATH::Vec3{
-                                color.x,
-                                color.y,
-                                color.z
-                            };
-                            ++count;
-                        }
-                        if (count == 0u) {
-                            continue;
-                        }
-
-                        const float inverseCount =
-                            1.0f / static_cast<float>(count);
-                        pixels[index] = {
-                            sum.x * inverseCount,
-                            sum.y * inverseCount,
-                            sum.z * inverseCount,
-                            1.0f
-                        };
-                        valid[index] = 1u;
-                        changed = true;
                     }
                 }
-                if (!changed) {
-                    break;
+                if (frontier.empty()) {
+                    return false;
                 }
-                sourcePixels = pixels;
-                sourceValid = valid;
+
+                for (size_t read = 0u;
+                     read < frontier.size();
+                     ++read) {
+                    const size_t sourceIndex =
+                        frontier[read];
+                    const uint32_t sourceX =
+                        static_cast<uint32_t>(
+                            sourceIndex % width);
+                    const uint32_t sourceY =
+                        static_cast<uint32_t>(
+                            sourceIndex / width);
+                    constexpr int neighbors[4][2]{
+                        { -1, 0 },
+                        { 1, 0 },
+                        { 0, -1 },
+                        { 0, 1 }
+                    };
+                    for (const auto& neighbor : neighbors) {
+                        const int x =
+                            static_cast<int>(sourceX) +
+                            neighbor[0];
+                        const int y =
+                            static_cast<int>(sourceY) +
+                            neighbor[1];
+                        if (x < static_cast<int>(rect.x) ||
+                            y < static_cast<int>(rect.y) ||
+                            x >= static_cast<int>(
+                                rect.x + rect.width) ||
+                            y >= static_cast<int>(
+                                rect.y + rect.height)) {
+                            continue;
+                        }
+                        const size_t destinationIndex =
+                            static_cast<size_t>(y) * width +
+                            static_cast<size_t>(x);
+                        if (ownerIndices[destinationIndex] !=
+                            kInvalidOwner) {
+                            continue;
+                        }
+                        pixels[destinationIndex] =
+                            pixels[sourceIndex];
+                        pixels[destinationIndex].w = 1.0f;
+                        valid[destinationIndex] = 1u;
+                        ownerIndices[destinationIndex] =
+                            allocationIndex;
+                        frontier.push_back(
+                            destinationIndex);
+                    }
+                }
             }
+            return true;
         }
 
     } // namespace
@@ -120,6 +171,13 @@ namespace HIKARI::TOOLS::BAKING::INTERNAL {
         result.validTexels.assign(
             result.texels.size(),
             0u);
+        result.ownerIndices.assign(
+            result.texels.size(),
+            ASSETS::LIGHTING::
+                kInvalidLightmapSurfaceIndex);
+        std::vector<uint32_t> allocationCoverage(
+            target.atlasAllocations.size(),
+            0u);
 
         for (const uint32_t triangleIndex :
              target.triangleIndices) {
@@ -129,12 +187,44 @@ namespace HIKARI::TOOLS::BAKING::INTERNAL {
             const RENDER3D::LIGHTING::TRANSPORT::
                 LightingTransportTriangle& triangle =
                     scene.triangles[triangleIndex];
+            if (triangle.lightmapAllocationIndex >=
+                target.atlasAllocations.size()) {
+                continue;
+            }
+            if (!MATH::IsFinite(triangle.position[0]) ||
+                !MATH::IsFinite(triangle.position[1]) ||
+                !MATH::IsFinite(triangle.position[2])) {
+                continue;
+            }
+
+            MATH::Vec3 geometricNormal{};
+            if (!TryNormalize(
+                    MATH::Cross(
+                        triangle.position[1] -
+                            triangle.position[0],
+                        triangle.position[2] -
+                            triangle.position[0]),
+                    geometricNormal)) {
+                continue;
+            }
+            const MATH::Vec3 summedVertexNormal =
+                triangle.normal[0] +
+                triangle.normal[1] +
+                triangle.normal[2];
+            if (MATH::IsFinite(summedVertexNormal) &&
+                MATH::Dot(
+                    geometricNormal,
+                    summedVertexNormal) < 0.0f) {
+                geometricNormal =
+                    geometricNormal * -1.0f;
+            }
+
             MATH::Vec2 pixelUv[3]{};
             for (uint32_t corner = 0u; corner < 3u; ++corner) {
                 pixelUv[corner] = {
                     triangle.lightmapUv[corner].x *
                         static_cast<float>(width),
-                    (1.0f - triangle.lightmapUv[corner].y) *
+                    triangle.lightmapUv[corner].y *
                         static_cast<float>(height)
                 };
             }
@@ -204,11 +294,13 @@ namespace HIKARI::TOOLS::BAKING::INTERNAL {
                         static_cast<size_t>(y) * width +
                         static_cast<size_t>(x);
                     if (result.validTexels[texelIndex] != 0u) {
-                        ++result.overlapTexelCount;
+                        if (result.ownerIndices[texelIndex] !=
+                            triangle.
+                                lightmapAllocationIndex) {
+                            ++result.overlapTexelCount;
+                        }
                         continue;
                     }
-                    result.validTexels[texelIndex] = 1u;
-                    ++result.coveredTexelCount;
 
                     MATH::Vec3 position{};
                     MATH::Vec3 normal{};
@@ -222,7 +314,26 @@ namespace HIKARI::TOOLS::BAKING::INTERNAL {
                             triangle.normal[corner] *
                                 weights[corner];
                     }
-                    normal = MATH::Normalize(normal);
+                    if (!MATH::IsFinite(position)) {
+                        continue;
+                    }
+                    MATH::Vec3 normalizedNormal{};
+                    if (!TryNormalize(
+                            normal,
+                            normalizedNormal)) {
+                        normalizedNormal =
+                            geometricNormal;
+                    }
+                    if (!MATH::IsFinite(normalizedNormal)) {
+                        continue;
+                    }
+
+                    result.validTexels[texelIndex] = 1u;
+                    result.ownerIndices[texelIndex] =
+                        triangle.lightmapAllocationIndex;
+                    ++result.coveredTexelCount;
+                    ++allocationCoverage[
+                        triangle.lightmapAllocationIndex];
                     result.texels[texelIndex].position = {
                         position.x,
                         position.y,
@@ -230,14 +341,19 @@ namespace HIKARI::TOOLS::BAKING::INTERNAL {
                         1.0f
                     };
                     result.texels[texelIndex].normal = {
-                        normal.x,
-                        normal.y,
-                        normal.z,
+                        normalizedNormal.x,
+                        normalizedNormal.y,
+                        normalizedNormal.z,
                         1.0f
                     };
                 }
             }
         }
+        result.uncoveredAllocationCount =
+            static_cast<uint32_t>(std::count(
+                allocationCoverage.begin(),
+                allocationCoverage.end(),
+                0u));
         return result;
     }
 
@@ -245,13 +361,20 @@ namespace HIKARI::TOOLS::BAKING::INTERNAL {
         const std::filesystem::path& outputPath,
         uint32_t width,
         uint32_t height,
+        uint32_t expectedSampleCount,
         const MATH::Vec4* accumulation,
         std::vector<uint8_t> validTexels,
+        std::vector<uint32_t> ownerIndices,
+        const std::vector<ASSETS::LIGHTING::
+            LightmapAtlasAllocation>& allocations,
         std::string* outMessage) {
 
         if (accumulation == nullptr ||
+            expectedSampleCount == 0u ||
             validTexels.size() !=
-                static_cast<size_t>(width) * height) {
+                static_cast<size_t>(width) * height ||
+            ownerIndices.size() != validTexels.size() ||
+            allocations.empty()) {
             SetMessage(
                 outMessage,
                 "Lightmap readback data does not match its extent.");
@@ -261,22 +384,100 @@ namespace HIKARI::TOOLS::BAKING::INTERNAL {
         const size_t pixelCount =
             static_cast<size_t>(width) * height;
         std::vector<MATH::Vec4> pixels(pixelCount);
+        uint32_t incompleteSampleTexelCount = 0u;
+        uint32_t nonFiniteTexelCount = 0u;
+        uint32_t negativeTexelCount = 0u;
+        uint32_t halfFloatOverflowTexelCount = 0u;
+        float maximumRadiance = 0.0f;
         for (size_t i = 0u; i < pixelCount; ++i) {
-            const float samples =
-                (std::max)(1.0f, accumulation[i].w);
+            if (validTexels[i] == 0u) {
+                continue;
+            }
+
+            const MATH::Vec4& accumulated =
+                accumulation[i];
+            if (!MATH::IsFinite(accumulated)) {
+                ++nonFiniteTexelCount;
+                continue;
+            }
+            const float expectedSamples =
+                static_cast<float>(expectedSampleCount);
+            if (std::abs(
+                    accumulated.w -
+                    expectedSamples) > 0.25f) {
+                ++incompleteSampleTexelCount;
+                continue;
+            }
+
             pixels[i] = {
-                (std::max)(0.0f, accumulation[i].x / samples),
-                (std::max)(0.0f, accumulation[i].y / samples),
-                (std::max)(0.0f, accumulation[i].z / samples),
+                accumulated.x / expectedSamples,
+                accumulated.y / expectedSamples,
+                accumulated.z / expectedSamples,
                 1.0f
             };
+            const MATH::Vec4& pixel = pixels[i];
+            if (!MATH::IsFinite(pixel)) {
+                ++nonFiniteTexelCount;
+                continue;
+            }
+            if (pixel.x < -1.0e-5f ||
+                pixel.y < -1.0e-5f ||
+                pixel.z < -1.0e-5f) {
+                ++negativeTexelCount;
+                continue;
+            }
+            if (pixel.x >= kMaximumHalfFloat ||
+                pixel.y >= kMaximumHalfFloat ||
+                pixel.z >= kMaximumHalfFloat) {
+                ++halfFloatOverflowTexelCount;
+                continue;
+            }
+            pixels[i] = {
+                (std::max)(0.0f, pixel.x),
+                (std::max)(0.0f, pixel.y),
+                (std::max)(0.0f, pixel.z),
+                1.0f
+            };
+            maximumRadiance = (std::max)(
+                maximumRadiance,
+                (std::max)(
+                    pixels[i].x,
+                    (std::max)(
+                        pixels[i].y,
+                        pixels[i].z)));
         }
-        DilateLightmap(
-            pixels,
-            validTexels,
-            width,
-            height,
-            4u);
+
+        if (incompleteSampleTexelCount > 0u ||
+            nonFiniteTexelCount > 0u ||
+            negativeTexelCount > 0u ||
+            halfFloatOverflowTexelCount > 0u) {
+            std::ostringstream stream{};
+            stream
+                << "DXR lightmap rejected invalid transport output:"
+                << " incomplete-sample texels="
+                << incompleteSampleTexelCount
+                << ", non-finite texels="
+                << nonFiniteTexelCount
+                << ", negative texels="
+                << negativeTexelCount
+                << ", RGB16F overflow texels="
+                << halfFloatOverflowTexelCount
+                << ". No artifact was written.";
+            SetMessage(outMessage, stream.str());
+            return false;
+        }
+        if (!DilateLightmapAllocations(
+                pixels,
+                validTexels,
+                ownerIndices,
+                allocations,
+                width,
+                height)) {
+            SetMessage(
+                outMessage,
+                "Lightmap owner-aware dilation failed.");
+            return false;
+        }
 
         DirectX::ScratchImage source{};
         HRESULT result = source.Initialize2D(
@@ -313,7 +514,8 @@ namespace HIKARI::TOOLS::BAKING::INTERNAL {
             source.GetImageCount(),
             source.GetMetadata(),
             DirectX::TEX_FILTER_DEFAULT,
-            0u,
+            ASSETS::LIGHTING::
+                kSurfaceLightmapSafeMipCount,
             mipChain);
         const DirectX::ScratchImage* mipSource =
             SUCCEEDED(result) ? &mipChain : &source;
@@ -361,8 +563,11 @@ namespace HIKARI::TOOLS::BAKING::INTERNAL {
         }
         SetMessage(
             outMessage,
-            "DXR lightmap saved: " +
-                outputPath.generic_string());
+            "DXR indirect lightmap saved: " +
+                outputPath.generic_string() +
+                " (maximum radiance=" +
+                std::to_string(maximumRadiance) +
+                ").");
         return true;
     }
 

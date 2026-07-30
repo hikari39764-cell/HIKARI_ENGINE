@@ -58,6 +58,8 @@ namespace HIKARI {
         std::vector<ModelNode> nodes;
         std::vector<MeshAsset> meshes;
         std::vector<MaterialAsset> materials;
+        std::vector<MaterialImportSourceSlots>
+            materialImportSources;
         std::vector<TextureAsset3D> textures;
         std::vector<SkeletonAsset> skins;
         std::vector<AnimationClip> animations;

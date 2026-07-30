@@ -1,6 +1,7 @@
 #include "HIKARI_Win32Window.h"
 
 #include <algorithm>
+#include <commctrl.h>
 #include <cstdio>
 #include <filesystem>
 #include <shellapi.h>
@@ -12,12 +13,157 @@
 namespace HIKARI::PLATFORM {
 
 namespace {
-    std::vector<std::filesystem::path> gDroppedFiles{};
+    struct ExternalFileDrop {
+        HWND window = nullptr;
+        POINT screenPosition{};
+        ULONGLONG queuedAtMilliseconds = 0u;
+        std::vector<std::filesystem::path> files{};
+    };
+
+    std::vector<ExternalFileDrop> gExternalFileDrops{};
+
+    void QueueExternalFileDrop(HWND hwnd, HDROP drop) {
+        if (drop == nullptr) {
+            return;
+        }
+
+        ExternalFileDrop queued{};
+        queued.window = hwnd;
+        POINT clientPosition{};
+        if (DragQueryPoint(drop, &clientPosition) != FALSE) {
+            queued.screenPosition = clientPosition;
+            ClientToScreen(hwnd, &queued.screenPosition);
+        } else {
+            GetCursorPos(&queued.screenPosition);
+        }
+        queued.queuedAtMilliseconds = GetTickCount64();
+
+        const UINT fileCount =
+            DragQueryFileW(
+                drop,
+                0xFFFFFFFF,
+                nullptr,
+                0);
+        queued.files.reserve(fileCount);
+        for (UINT i = 0; i < fileCount; ++i) {
+            const UINT length =
+                DragQueryFileW(drop, i, nullptr, 0);
+            if (length == 0) {
+                continue;
+            }
+            std::wstring path(
+                static_cast<size_t>(length) + 1u,
+                L'\0');
+            DragQueryFileW(
+                drop,
+                i,
+                path.data(),
+                length + 1u);
+            path.resize(static_cast<size_t>(length));
+            queued.files.emplace_back(std::move(path));
+        }
+        DragFinish(drop);
+
+        if (!queued.files.empty()) {
+            gExternalFileDrops.push_back(
+                std::move(queued));
+        }
+    }
+
+#if defined(HIKARI_WITH_EDITOR)
+    constexpr UINT_PTR kExternalFileDropSubclassId =
+        0x48494B41u;
+
+    LRESULT CALLBACK ExternalFileDropSubclassProc(
+        HWND hwnd,
+        UINT message,
+        WPARAM wparam,
+        LPARAM lparam,
+        UINT_PTR subclassId,
+        DWORD_PTR) {
+
+        if (message == WM_DROPFILES) {
+            QueueExternalFileDrop(
+                hwnd,
+                reinterpret_cast<HDROP>(wparam));
+            return 0;
+        }
+        if (message == WM_NCDESTROY) {
+            DragAcceptFiles(hwnd, FALSE);
+            RemoveWindowSubclass(
+                hwnd,
+                ExternalFileDropSubclassProc,
+                subclassId);
+        }
+        return DefSubclassProc(
+            hwnd,
+            message,
+            wparam,
+            lparam);
+    }
+#endif
 }
 
-std::vector<std::filesystem::path> ConsumeDroppedFiles() {
-    std::vector<std::filesystem::path> files = std::move(gDroppedFiles);
-    gDroppedFiles.clear();
+void RegisterExternalFileDropWindow(HWND hwnd) {
+#if defined(HIKARI_WITH_EDITOR)
+    if (hwnd == nullptr) {
+        return;
+    }
+    if (SetWindowSubclass(
+            hwnd,
+            ExternalFileDropSubclassProc,
+            kExternalFileDropSubclassId,
+            0u) != FALSE) {
+        DragAcceptFiles(hwnd, TRUE);
+    }
+#else
+    (void)hwnd;
+#endif
+}
+
+void UnregisterExternalFileDropWindow(HWND hwnd) {
+#if defined(HIKARI_WITH_EDITOR)
+    if (hwnd == nullptr) {
+        return;
+    }
+    DragAcceptFiles(hwnd, FALSE);
+    RemoveWindowSubclass(
+        hwnd,
+        ExternalFileDropSubclassProc,
+        kExternalFileDropSubclassId);
+#else
+    (void)hwnd;
+#endif
+}
+
+std::vector<std::filesystem::path>
+ConsumeDroppedFilesInScreenRect(
+    const RECT& screenRect) {
+
+    std::vector<std::filesystem::path> files{};
+    const ULONGLONG now = GetTickCount64();
+    for (auto it = gExternalFileDrops.begin();
+        it != gExternalFileDrops.end();) {
+
+        const bool expired =
+            now - it->queuedAtMilliseconds > 10000u;
+        const bool inside =
+            it->screenPosition.x >= screenRect.left &&
+            it->screenPosition.x < screenRect.right &&
+            it->screenPosition.y >= screenRect.top &&
+            it->screenPosition.y < screenRect.bottom;
+        if (inside) {
+            files.insert(
+                files.end(),
+                std::make_move_iterator(it->files.begin()),
+                std::make_move_iterator(it->files.end()));
+        }
+        if (inside || expired) {
+            it = gExternalFileDrops.erase(it);
+        } else {
+            ++it;
+        }
+    }
     return files;
 }
 
@@ -327,20 +473,9 @@ LRESULT Win32Window::WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
         mouseWheelDelta_ += static_cast<float>(GET_WHEEL_DELTA_WPARAM(wparam)) / static_cast<float>(WHEEL_DELTA);
         return 0;
     case WM_DROPFILES: {
-        HDROP drop = reinterpret_cast<HDROP>(wparam);
-        const UINT fileCount = DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0);
-        for (UINT i = 0; i < fileCount; ++i) {
-            const UINT length = DragQueryFileW(drop, i, nullptr, 0);
-            if (length == 0) {
-                continue;
-            }
-            std::wstring path;
-            path.resize(static_cast<size_t>(length) + 1u);
-            DragQueryFileW(drop, i, path.data(), length + 1);
-            path.resize(static_cast<size_t>(length));
-            gDroppedFiles.emplace_back(path);
-        }
-        DragFinish(drop);
+        QueueExternalFileDrop(
+            hwnd,
+            reinterpret_cast<HDROP>(wparam));
         return 0;
     }
     default:
