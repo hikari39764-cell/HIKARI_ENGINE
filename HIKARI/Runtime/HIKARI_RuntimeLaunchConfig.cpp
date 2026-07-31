@@ -122,6 +122,26 @@ namespace HIKARI {
                 : normalized.lexically_normal();
         }
 
+        std::vector<std::wstring> ReadCommandLineArguments() {
+            int argumentCount = 0;
+            LPWSTR* arguments = CommandLineToArgvW(
+                GetCommandLineW(),
+                &argumentCount);
+            if (arguments == nullptr) {
+                return {};
+            }
+
+            std::vector<std::wstring> values{};
+            values.reserve(static_cast<size_t>(argumentCount));
+            for (int index = 0;
+                index < argumentCount;
+                ++index) {
+                values.emplace_back(arguments[index]);
+            }
+            LocalFree(arguments);
+            return values;
+        }
+
         std::optional<std::filesystem::path> ExplicitConfigPath() {
             std::array<wchar_t, 32768> buffer{};
             const DWORD length = GetEnvironmentVariableW(
@@ -141,26 +161,32 @@ namespace HIKARI {
         ReadRuntimeCommandLinePath(
             std::wstring_view option) {
 
-        int argumentCount = 0;
-        LPWSTR* arguments = CommandLineToArgvW(
-            GetCommandLineW(),
-            &argumentCount);
-        if (arguments == nullptr) {
-            return std::nullopt;
-        }
-
-        std::optional<std::filesystem::path> path{};
-        for (int index = 1;
-            index + 1 < argumentCount;
+        const std::vector<std::wstring> arguments =
+            ReadCommandLineArguments();
+        for (size_t index = 1u;
+            index + 1u < arguments.size();
             ++index) {
-            if (std::wstring_view(arguments[index]) == option) {
-                path = std::filesystem::path(
-                    arguments[index + 1]);
-                break;
+            if (arguments[index] == option) {
+                return std::filesystem::path(
+                    arguments[index + 1u]);
             }
         }
-        LocalFree(arguments);
-        return path;
+        return std::nullopt;
+    }
+
+    bool HasRuntimeCommandLineFlag(
+        std::wstring_view option) {
+
+        const std::vector<std::wstring> arguments =
+            ReadCommandLineArguments();
+        for (size_t index = 1u;
+            index < arguments.size();
+            ++index) {
+            if (arguments[index] == option) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // JSON ファイルからランタイムコンフィグを読み込む

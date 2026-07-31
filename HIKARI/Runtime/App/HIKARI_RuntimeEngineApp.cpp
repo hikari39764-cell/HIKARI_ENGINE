@@ -4,6 +4,7 @@
 #include <string>
 
 #include "Core/HIKARI_Logger.h"
+#include "Runtime/HIKARI_RuntimeLaunchConfig.h"
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
 #include "Scene/Scenes/HIKARI_GameDocumentScene.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
@@ -22,38 +23,49 @@ namespace HIKARI::RUNTIME {
         auto initialScene =
             std::make_unique<GameDocumentScene>("StartupSceneAsset");
         std::string moduleMessage{};
+        const bool allowMissingProjectModule =
+            SERVICES::IsEditorHost() &&
+            HasRuntimeCommandLineFlag(
+                L"--allow-missing-project-module");
         if (!gameProjectModule_.LoadForLaunch(
+                allowMissingProjectModule,
                 moduleMessage)) {
             HIKARI_LOG_ERROR(
                 "[GameProject] " + moduleMessage);
             return false;
         }
 
-        const std::string moduleId(
-            gameProjectModule_.GetModuleId());
-        const size_t extensionCount =
-            gameProjectModule_.
-                GetRuntimeExtensionCount();
-        for (size_t index = 0u;
-            index < extensionCount;
-            ++index) {
-            IRuntimeExtension* extension =
-                gameProjectModule_.GetRuntimeExtension(
-                    index);
-            if (extension == nullptr ||
-                !initialScene->
-                    AddBorrowedRuntimeExtension(
-                        *extension)) {
-                HIKARI_LOG_ERROR(
-                    "[GameProject] invalid or duplicate runtime extension: " +
-                    moduleId);
-                return false;
+        if (gameProjectModule_.IsLoaded()) {
+            const std::string moduleId(
+                gameProjectModule_.GetModuleId());
+            const size_t extensionCount =
+                gameProjectModule_.
+                    GetRuntimeExtensionCount();
+            for (size_t index = 0u;
+                index < extensionCount;
+                ++index) {
+                IRuntimeExtension* extension =
+                    gameProjectModule_.GetRuntimeExtension(
+                        index);
+                if (extension == nullptr ||
+                    !initialScene->
+                        AddBorrowedRuntimeExtension(
+                            *extension)) {
+                    HIKARI_LOG_ERROR(
+                        "[GameProject] invalid or duplicate runtime extension: " +
+                        moduleId);
+                    return false;
+                }
             }
+            HIKARI_LOG_INFO(
+                "[GameProject] composed module=" + moduleId +
+                " extensions=" +
+                std::to_string(extensionCount));
         }
-        HIKARI_LOG_INFO(
-            "[GameProject] composed module=" + moduleId +
-            " extensions=" +
-            std::to_string(extensionCount));
+        else {
+            HIKARI_LOG_WARN(
+                "[GameProject] " + moduleMessage);
+        }
 
         RuntimeSceneContext::SetTransitionBus(&sceneTransitionBus_);
         sceneManager_.ChangeScene(std::move(initialScene));

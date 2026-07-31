@@ -278,25 +278,28 @@ namespace {
         }
 
         CloseBuildProcess();
-        if (exitCode != 0u) {
-            state_ = ProjectOpenWorkflowState::Failed;
-            statusMessage_ =
-                "Project build failed with exit code " +
-                std::to_string(exitCode) +
-                ". See " +
-                TEXT::PathToUtf8(buildLogPath_);
-            return;
-        }
-
+        const bool useProjectModule = exitCode == 0u;
         std::string launchMessage{};
-        if (!LaunchEditor(launchMessage)) {
+        if (!LaunchEditor(
+                useProjectModule,
+                launchMessage)) {
             state_ = ProjectOpenWorkflowState::Failed;
             statusMessage_ = std::move(launchMessage);
             return;
         }
         state_ = ProjectOpenWorkflowState::Idle;
-        statusMessage_ =
-            "Project editor started.";
+        if (useProjectModule) {
+            statusMessage_ =
+                "Project editor started.";
+        }
+        else {
+            statusMessage_ =
+                "Project editor started in module-less authoring mode "
+                "after build exit code " +
+                std::to_string(exitCode) +
+                ". See " +
+                TEXT::PathToUtf8(buildLogPath_);
+        }
         shouldExitLauncher_ = true;
     }
 
@@ -332,6 +335,7 @@ namespace {
     }
 
     bool ProjectOpenWorkflow::LaunchEditor(
+        bool useProjectModule,
         std::string& outMessage) {
 
         const std::filesystem::path executable =
@@ -349,7 +353,8 @@ namespace {
                 TEXT::PathToUtf8(executable);
             return false;
         }
-        if (!std::filesystem::is_regular_file(
+        if (useProjectModule &&
+            !std::filesystem::is_regular_file(
                 projectModule,
                 ec)) {
             outMessage =
@@ -366,12 +371,19 @@ namespace {
         AppendArgument(
             commandLine,
             descriptorPath_.wstring());
-        AppendArgument(
-            commandLine,
-            L"--project-module");
-        AppendArgument(
-            commandLine,
-            projectModule.wstring());
+        if (useProjectModule) {
+            AppendArgument(
+                commandLine,
+                L"--project-module");
+            AppendArgument(
+                commandLine,
+                projectModule.wstring());
+        }
+        else {
+            AppendArgument(
+                commandLine,
+                L"--allow-missing-project-module");
+        }
         std::vector<wchar_t> mutableCommandLine(
             commandLine.begin(),
             commandLine.end());

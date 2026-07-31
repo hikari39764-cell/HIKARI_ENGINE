@@ -24,6 +24,49 @@ set(
     "${CMAKE_BINARY_DIR}/generated/HIKARISdk")
 file(MAKE_DIRECTORY "${HIKARI_SDK_GENERATED_DIRECTORY}")
 
+if(HIKARI_WITH_EDITOR_BUILD)
+    get_filename_component(
+        HIKARI_CMAKE_MODULE_DIRECTORY_NAME
+        "${CMAKE_ROOT}"
+        NAME)
+    get_filename_component(
+        _hikari_cmake_bin_directory
+        "${CMAKE_COMMAND}"
+        DIRECTORY)
+    get_filename_component(
+        HIKARI_CMAKE_DISTRIBUTION_ROOT
+        "${_hikari_cmake_bin_directory}"
+        DIRECTORY)
+    set(
+        HIKARI_CMAKE_LICENSE_FILE
+        "${HIKARI_CMAKE_DISTRIBUTION_ROOT}/doc/cmake/LICENSE.rst")
+    if(NOT EXISTS "${CMAKE_COMMAND}" OR
+       NOT IS_DIRECTORY "${CMAKE_ROOT}" OR
+       NOT EXISTS "${HIKARI_CMAKE_LICENSE_FILE}")
+        message(
+            FATAL_ERROR
+            "The selected CMake installation cannot be redistributed by "
+            "the HIKARI Editor SDK. Expected cmake.exe, CMAKE_ROOT, and "
+            "doc/cmake/LICENSE.rst under ${HIKARI_CMAKE_DISTRIBUTION_ROOT}.")
+    endif()
+
+    file(SHA256 "${CMAKE_COMMAND}" HIKARI_CMAKE_EXECUTABLE_SHA256)
+    set(
+        HIKARI_CMAKE_TOOL_MANIFEST
+        "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARI_CMakeTool.json")
+    file(
+        WRITE
+        "${HIKARI_CMAKE_TOOL_MANIFEST}"
+        "{\n"
+        "  \"schemaVersion\": 1,\n"
+        "  \"name\": \"CMake\",\n"
+        "  \"version\": \"${CMAKE_VERSION}\",\n"
+        "  \"executableSha256\": \"${HIKARI_CMAKE_EXECUTABLE_SHA256}\",\n"
+        "  \"moduleDirectory\": \"${HIKARI_CMAKE_MODULE_DIRECTORY_NAME}\",\n"
+        "  \"license\": \"licenses/CMake-LICENSE.rst\"\n"
+        "}\n")
+endif()
+
 configure_package_config_file(
     "${HIKARI_SOURCE_ROOT}/cmake/SDK/HIKARIConfig.cmake.in"
     "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARIConfig.cmake"
@@ -45,6 +88,14 @@ function(hikari_configure_game_project_sdk host_target)
         "${HIKARI_SOURCE_ROOT}/Tools/Build/Build-HikariProject.ps1"
         "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARIConfig.cmake"
         "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARIConfigVersion.cmake")
+    if(HIKARI_WITH_EDITOR_BUILD)
+        list(
+            APPEND
+            _sdk_inputs
+            "${CMAKE_COMMAND}"
+            "${HIKARI_CMAKE_LICENSE_FILE}"
+            "${HIKARI_CMAKE_TOOL_MANIFEST}")
+    endif()
     set_property(
         TARGET "${host_target}"
         APPEND
@@ -83,6 +134,34 @@ function(hikari_configure_game_project_sdk host_target)
             "${_sdk_root}/Tools/Build-HikariProject.ps1"
         VERBATIM)
 
+    if(HIKARI_WITH_EDITOR_BUILD)
+        add_custom_command(
+            TARGET "${host_target}"
+            POST_BUILD
+            COMMAND
+                "${CMAKE_COMMAND}" -E make_directory
+                "${_sdk_root}/Tools/CMake/bin"
+                "${_sdk_root}/Tools/CMake/share/${HIKARI_CMAKE_MODULE_DIRECTORY_NAME}"
+                "${_sdk_root}/Tools/CMake/licenses"
+            COMMAND
+                "${CMAKE_COMMAND}" -E copy_if_different
+                "${CMAKE_COMMAND}"
+                "${_sdk_root}/Tools/CMake/bin/cmake.exe"
+            COMMAND
+                "${CMAKE_COMMAND}" -E copy_directory_if_different
+                "${CMAKE_ROOT}"
+                "${_sdk_root}/Tools/CMake/share/${HIKARI_CMAKE_MODULE_DIRECTORY_NAME}"
+            COMMAND
+                "${CMAKE_COMMAND}" -E copy_if_different
+                "${HIKARI_CMAKE_LICENSE_FILE}"
+                "${_sdk_root}/Tools/CMake/licenses/CMake-LICENSE.rst"
+            COMMAND
+                "${CMAKE_COMMAND}" -E copy_if_different
+                "${HIKARI_CMAKE_TOOL_MANIFEST}"
+                "${_sdk_root}/Tools/CMake/HIKARI_CMakeTool.json"
+            VERBATIM)
+    endif()
+
     install(
         DIRECTORY "${HIKARI_SOURCE_ROOT}/include/HIKARI"
         DESTINATION "Sdk/include")
@@ -105,4 +184,20 @@ function(hikari_configure_game_project_sdk host_target)
         FILES
             "${HIKARI_SOURCE_ROOT}/Tools/Build/Build-HikariProject.ps1"
         DESTINATION "Sdk/Tools")
+    if(HIKARI_WITH_EDITOR_BUILD)
+        install(
+            PROGRAMS "${CMAKE_COMMAND}"
+            DESTINATION "Sdk/Tools/CMake/bin")
+        install(
+            DIRECTORY "${CMAKE_ROOT}/"
+            DESTINATION
+                "Sdk/Tools/CMake/share/${HIKARI_CMAKE_MODULE_DIRECTORY_NAME}")
+        install(
+            FILES "${HIKARI_CMAKE_LICENSE_FILE}"
+            DESTINATION "Sdk/Tools/CMake/licenses"
+            RENAME "CMake-LICENSE.rst")
+        install(
+            FILES "${HIKARI_CMAKE_TOOL_MANIFEST}"
+            DESTINATION "Sdk/Tools/CMake")
+    endif()
 endfunction()

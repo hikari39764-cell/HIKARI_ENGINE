@@ -39,16 +39,6 @@ namespace {
         return message;
     }
 
-    std::filesystem::path ResolveModulePathForLaunch() {
-        if (const auto explicitPath =
-                ReadRuntimeCommandLinePath(
-                    L"--project-module")) {
-            return *explicitPath;
-        }
-        return PLATFORM::GetExecutableDirectory() /
-            "HIKARI_GameProject.dll";
-    }
-
 } // namespace
 
     GameProjectModuleLibrary::~GameProjectModuleLibrary() {
@@ -56,10 +46,24 @@ namespace {
     }
 
     bool GameProjectModuleLibrary::LoadForLaunch(
+        bool allowMissing,
         std::string& outMessage) {
 
+        if (const auto explicitPath =
+                ReadRuntimeCommandLinePath(
+                    L"--project-module")) {
+            return Load(*explicitPath, outMessage);
+        }
+        if (allowMissing) {
+            Reset();
+            outMessage =
+                "GameProject module is unavailable; "
+                "authoring fallback is active.";
+            return true;
+        }
         return Load(
-            ResolveModulePathForLaunch(),
+            PLATFORM::GetExecutableDirectory() /
+                "HIKARI_GameProject.dll",
             outMessage);
     }
 

@@ -37,7 +37,9 @@ namespace HIKARI::EDITOR {
         const std::filesystem::path& GetBuildLogPath() const noexcept;
 
     private:
-        bool LaunchEditor(std::string& outMessage);
+        bool LaunchEditor(
+            bool useProjectModule,
+            std::string& outMessage);
         void CloseBuildProcess() noexcept;
 
         std::filesystem::path runtimeRoot_{};

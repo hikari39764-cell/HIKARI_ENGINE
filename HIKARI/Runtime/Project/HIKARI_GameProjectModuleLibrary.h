@@ -24,7 +24,9 @@ namespace HIKARI::RUNTIME {
         GameProjectModuleLibrary& operator=(
             const GameProjectModuleLibrary&) = delete;
 
-        bool LoadForLaunch(std::string& outMessage);
+        bool LoadForLaunch(
+            bool allowMissing,
+            std::string& outMessage);
         bool Load(
             const std::filesystem::path& modulePath,
             std::string& outMessage);

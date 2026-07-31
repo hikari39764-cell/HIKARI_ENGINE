@@ -76,6 +76,10 @@ namespace HIKARI {
         ReadRuntimeCommandLinePath(
             std::wstring_view option);
 
+    // 値を伴わない内部起動フラグが指定されているかを確認する。
+    bool HasRuntimeCommandLineFlag(
+        std::wstring_view option);
+
     // 指定された JSON ファイルから起動設定を読み込む
     RuntimeLaunchConfig LoadRuntimeLaunchConfigFromFile(const std::filesystem::path& path);
 
