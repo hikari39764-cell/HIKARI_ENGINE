@@ -57,8 +57,15 @@ namespace HIKARI::ASSETS::SEMANTICS {
                 AssetImporterKind::Material,
                 AssetType::Material,
                 "MaterialImporter",
-                4u,
+                5u,
                 ".material.json",
+            },
+            {
+                AssetImporterKind::ModelMaterialBinding,
+                AssetType::ModelMaterialBinding,
+                "ModelMaterialBindingImporter",
+                1u,
+                ".hmodelmaterial",
             },
             {
                 AssetImporterKind::VfxEffect,
@@ -125,6 +132,7 @@ namespace HIKARI::ASSETS::SEMANTICS {
         case AssetType::VfxEffect: return "VfxEffect";
         case AssetType::Sequence: return "Sequence";
         case AssetType::AnimationStateMachine: return "AnimationStateMachine";
+        case AssetType::ModelMaterialBinding: return "ModelMaterialBinding";
         case AssetType::Unknown:
         default: return "Unknown";
         }
@@ -142,6 +150,9 @@ namespace HIKARI::ASSETS::SEMANTICS {
         if (text == "Sequence") return AssetType::Sequence;
         if (text == "AnimationStateMachine") {
             return AssetType::AnimationStateMachine;
+        }
+        if (text == "ModelMaterialBinding") {
+            return AssetType::ModelMaterialBinding;
         }
         return AssetType::Unknown;
     }
@@ -204,6 +215,8 @@ namespace HIKARI::ASSETS::SEMANTICS {
             kind = AssetImporterKind::AnimationStateMachine;
         } else if (EndsWith(genericPath, ".material.json")) {
             kind = AssetImporterKind::Material;
+        } else if (extension == ".hmodelmaterial") {
+            kind = AssetImporterKind::ModelMaterialBinding;
         } else if (extension == ".efk" || extension == ".efkefc") {
             kind = AssetImporterKind::VfxEffect;
         }

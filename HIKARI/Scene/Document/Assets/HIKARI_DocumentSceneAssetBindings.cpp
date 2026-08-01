@@ -10,6 +10,9 @@
 
 #include "Render2D/HIKARI_DxTexture.h"
 #include "Assets/HIKARI_AssetRegistryBuilder.h"
+#include "Assets/Models/HIKARI_ModelAsset.h"
+#include "Assets/Models/HIKARI_ModelMaterialSlot.h"
+#include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingResolver.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
 #include "Core/HIKARI_Logger.h"
 #include "Render3D/Core/HIKARI_Material.h"
@@ -19,6 +22,20 @@
 
 namespace HIKARI {
     namespace {
+        ASSETS::MODELS::MaterialSlotResolution ResolveOverrideSlot(
+            const ModelComponent& component,
+            const ModelMaterialOverrideSlot& slot) {
+
+            const ModelAsset* model = component.GetModelAsset();
+            if (model == nullptr) {
+                return {};
+            }
+            return ASSETS::MODELS::ResolveMaterialSlot(
+                model->materials,
+                slot.slotId,
+                slot.slotIndex);
+        }
+
         bool HasMissingAssetDescriptors(
             const AssetRegistry& registry,
             AssetType expectedType,
@@ -256,9 +273,49 @@ namespace HIKARI {
         // Material override 邵ｺ・ｯ scene load / refresh 隴弱ｅ笆｡邵ｺ螟ｧ繝ｻ隶堤距・ｯ蟲ｨ笘・ｹｧ荵敖繝ｻ
         scene.state_->runtime.world.ForEachObjectWith<ModelComponent>(
             [this, &rebuiltCount, &materialBuilder](GameObject&, ModelComponent& modelComponent) {
-                modelComponent.ClearRuntimeMaterialOverride();
+                modelComponent.ClearRuntimeMaterialOverrides();
+
+                auto& programRegistry =
+                    RENDER3D::MATERIAL::GetRuntimeMaterialProgramRegistry();
+                const ModelAsset* modelAsset = modelComponent.GetModelAsset();
+                if (modelAsset != nullptr) {
+                    const auto defaults =
+                        ASSETS::MODELS::ResolveDefaultModelMaterialBindings(
+                            registry_,
+                            AssetGuid{modelComponent.GetAssetId()},
+                            modelAsset->materials);
+                    for (const std::string& diagnostic : defaults.diagnostics) {
+                        HIKARI_LOG_WARN(
+                            "[MaterialRuntime][ModelDefault] " + diagnostic);
+                    }
+                    for (const auto& binding : defaults.bindings) {
+                        if (binding.materialDescriptor == nullptr) {
+                            continue;
+                        }
+                        auto runtimeMaterial = std::make_unique<Material>();
+                        if (materialBuilder.BuildRuntimeMaterial(
+                                binding.materialDescriptor->sourceData,
+                                registry_,
+                                programRegistry,
+                                *runtimeMaterial,
+                                binding.materialDescriptor->id.value)) {
+                            modelComponent.SetRuntimeMaterialOverride(
+                                binding.materialIndex,
+                                std::move(runtimeMaterial));
+                            ++rebuiltCount;
+                        }
+                    }
+                }
+
                 for (const ModelMaterialOverrideSlot& slot : modelComponent.GetMaterialOverrides()) {
-                    if (slot.slotIndex != 0 || !slot.materialAssetGuid.IsValid()) {
+                    if (!slot.materialAssetGuid.IsValid()) {
+                        continue;
+                    }
+
+                    const auto resolution = ResolveOverrideSlot(
+                        modelComponent,
+                        slot);
+                    if (!resolution.IsValid()) {
                         continue;
                     }
 
@@ -272,16 +329,16 @@ namespace HIKARI {
 
                     auto runtimeMaterial = std::make_unique<Material>();
                     if (materialBuilder.BuildRuntimeMaterial(
-                            descriptor->data,
+                            descriptor->sourceData,
                             registry_,
+                            programRegistry,
                             *runtimeMaterial,
                             descriptor->id.value)) {
                         modelComponent.SetRuntimeMaterialOverride(
-                            std::move(runtimeMaterial),
-                            slot.materialAssetGuid);
+                            resolution.materialIndex,
+                            std::move(runtimeMaterial));
                         ++rebuiltCount;
                     }
-                    break;
                 }
             });
 
@@ -295,38 +352,10 @@ namespace HIKARI {
             return 0;
         }
 
-        const auto* descriptor = registry_.FindAs<MaterialAssetDescriptor>(
-            AssetId{ materialGuid.value });
-        if (!descriptor) {
-            HIKARI_LOG_WARN("[MaterialRuntime] material asset not registered: " + materialGuid.value);
-            return 0;
-        }
-
-        int rebuiltCount = 0;
-        MaterialRuntimeBuilder materialBuilder{};
-        scene.state_->runtime.world.ForEachObjectWith<ModelComponent>(
-            [this, &rebuiltCount, &materialBuilder, &materialGuid, descriptor](GameObject&, ModelComponent& modelComponent) {
-                for (const ModelMaterialOverrideSlot& slot : modelComponent.GetMaterialOverrides()) {
-                    if (slot.slotIndex != 0 || slot.materialAssetGuid != materialGuid) {
-                        continue;
-                    }
-
-                    auto runtimeMaterial = std::make_unique<Material>();
-                    if (materialBuilder.BuildRuntimeMaterial(
-                            descriptor->data,
-                            registry_,
-                            *runtimeMaterial,
-                            descriptor->id.value)) {
-                        modelComponent.SetRuntimeMaterialOverride(
-                            std::move(runtimeMaterial),
-                            materialGuid);
-                        ++rebuiltCount;
-                    }
-                    break;
-                }
-            });
-
-        return rebuiltCount;
+        // A material can be consumed by a model-level default binding as well
+        // as a scene instance override. Rebuild the canonical chain so both
+        // consumers update together and unavailable assets fall back per slot.
+        return RebuildMaterialOverrides(scene);
     }
 
     int DocumentSceneAssetBindings::ApplyMaterialOverridePreview(
@@ -343,7 +372,14 @@ namespace HIKARI {
         scene.state_->runtime.world.ForEachObjectWith<ModelComponent>(
             [this, &rebuiltCount, &materialBuilder, &materialGuid, &data](GameObject&, ModelComponent& modelComponent) {
                 for (const ModelMaterialOverrideSlot& slot : modelComponent.GetMaterialOverrides()) {
-                    if (slot.slotIndex != 0 || slot.materialAssetGuid != materialGuid) {
+                    if (slot.materialAssetGuid != materialGuid) {
+                        continue;
+                    }
+
+                    const auto resolution = ResolveOverrideSlot(
+                        modelComponent,
+                        slot);
+                    if (!resolution.IsValid()) {
                         continue;
                     }
 
@@ -354,11 +390,13 @@ namespace HIKARI {
                             *runtimeMaterial,
                             materialGuid.value + "/preview")) {
                         modelComponent.SetRuntimeMaterialOverride(
-                            std::move(runtimeMaterial),
-                            materialGuid);
+                            resolution.materialIndex,
+                            std::move(runtimeMaterial));
                         ++rebuiltCount;
+                    } else {
+                        modelComponent.ClearRuntimeMaterialOverride(
+                            resolution.materialIndex);
                     }
-                    break;
                 }
             });
 

@@ -2,6 +2,8 @@
 
 #include "HIKARI_AssetDatabase.h"
 #include "Assets/Material/HIKARI_MaterialAssetData.h"
+#include "Assets/Material/HIKARI_MaterialDependencies.h"
+#include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingAsset.h"
 #include "Scene/HIKARI_SceneDocument.h"
 
 namespace HIKARI {
@@ -30,44 +32,110 @@ namespace HIKARI {
             });
         }
 
-        void AddMaterialTextureReference(
-            const MaterialTextureSlotData& slot,
-            const std::string& owner,
-            const std::string& role,
-            const AssetDatabase& assetDatabase,
-            AssetUsageSummary& summary) {
-
-            if (!slot.useTexture || !slot.textureAssetGuid.IsValid()) {
-                return;
-            }
-            AddReference(slot.textureAssetGuid.value, owner, role, assetDatabase, summary);
-        }
-
-        void AddMaterialTextureReferences(
+        void AddMaterialReferences(
             const std::string& materialGuid,
             const std::string& owner,
             const AssetDatabase& assetDatabase,
-            AssetUsageSummary& summary) {
+            AssetUsageSummary& summary,
+            std::unordered_set<std::string>& visitedMaterials) {
+
+            if (materialGuid.empty()) {
+                return;
+            }
+
+            // A material graph can be shared by multiple scene owners.  Keep
+            // cycle protection local to each owner so every owner's package
+            // closure still records the material's transitive dependencies.
+            std::string visitKey = owner;
+            visitKey.push_back('\x1f');
+            visitKey += materialGuid;
+            if (!visitedMaterials.emplace(visitKey).second) {
+                return;
+            }
 
             const AssetRecord* materialRecord = assetDatabase.FindByGuid(AssetGuid{ materialGuid });
             if (!materialRecord || materialRecord->type != AssetType::Material) {
                 return;
             }
 
-            PbrMaterialAssetData data{};
+            MaterialAssetData data{};
             std::string error{};
-            if (!LoadPbrMaterialAssetData(assetDatabase.GetProjectRoot() / materialRecord->sourcePath, data, error)) {
+            if (!LoadMaterialAssetData(
+                    assetDatabase.GetProjectRoot() / materialRecord->sourcePath,
+                    data,
+                    error)) {
                 return;
             }
 
-            // Material Asset が参照する Texture も scene usage に含める。
-            AddMaterialTextureReference(data.baseColorTexture, owner, "Material BaseColor", assetDatabase, summary);
-            AddMaterialTextureReference(data.normalTexture, owner, "Material Normal", assetDatabase, summary);
-            AddMaterialTextureReference(data.metallicRoughnessTexture, owner, "Material MetallicRoughness", assetDatabase, summary);
-            AddMaterialTextureReference(data.occlusionTexture, owner, "Material Occlusion", assetDatabase, summary);
-            AddMaterialTextureReference(data.emissiveTexture, owner, "Material Emissive", assetDatabase, summary);
-            AddMaterialTextureReference(data.specularTexture, owner, "Material Specular", assetDatabase, summary);
-            AddMaterialTextureReference(data.specularColorTexture, owner, "Material SpecularColor", assetDatabase, summary);
+            // Material v4 の Texture / Function / Ramp / Profile / Parent を同じ依存契約で辿る。
+            for (const MaterialAssetDependency& dependency :
+                CollectMaterialAssetDependencies(data)) {
+                AddReference(
+                    dependency.assetGuid.value,
+                    owner,
+                    "Material " + dependency.role,
+                    assetDatabase,
+                    summary);
+                if (dependency.kind != MaterialDependencyKind::Texture) {
+                    AddMaterialReferences(
+                        dependency.assetGuid.value,
+                        owner,
+                        assetDatabase,
+                        summary,
+                        visitedMaterials);
+                }
+            }
+        }
+
+        void AddModelMaterialBindingReferences(
+            const std::string& modelGuid,
+            const std::string& owner,
+            const AssetDatabase& assetDatabase,
+            AssetUsageSummary& summary,
+            std::unordered_set<std::string>& visitedMaterials) {
+
+            if (modelGuid.empty()) {
+                return;
+            }
+            for (const AssetRecord* record :
+                assetDatabase.CollectByType(
+                    AssetType::ModelMaterialBinding)) {
+                if (record == nullptr || !record->guid.IsValid()) {
+                    continue;
+                }
+                const std::filesystem::path sourcePath =
+                    record->sourcePath.is_absolute()
+                        ? record->sourcePath
+                        : (assetDatabase.GetProjectRoot() /
+                            record->sourcePath).lexically_normal();
+                ASSETS::MODELS::ModelMaterialBindingAssetData data{};
+                std::string error{};
+                if (!ASSETS::MODELS::LoadModelMaterialBindingAsset(
+                        sourcePath, data, error) ||
+                    data.modelAssetGuid.value != modelGuid) {
+                    continue;
+                }
+                AddReference(
+                    record->guid.value,
+                    owner,
+                    "Model Material Bindings",
+                    assetDatabase,
+                    summary);
+                for (const auto& binding : data.bindings) {
+                    AddReference(
+                        binding.materialAssetGuid.value,
+                        owner,
+                        "Model Default Material",
+                        assetDatabase,
+                        summary);
+                    AddMaterialReferences(
+                        binding.materialAssetGuid.value,
+                        owner,
+                        assetDatabase,
+                        summary,
+                        visitedMaterials);
+                }
+            }
         }
     }
 
@@ -76,6 +144,7 @@ namespace HIKARI {
         const AssetDatabase& assetDatabase) {
 
         AssetUsageSummary summary{};
+        std::unordered_set<std::string> visitedMaterials{};
 
         AddReference(
             document.environment.sky.skyAsset,
@@ -97,18 +166,32 @@ namespace HIKARI {
 
             for (const SceneComponentData& component : object.components) {
                 if (component.type == "ModelComponent") {
+                    const std::string modelGuid =
+                        component.properties.value(
+                            "assetId", std::string{});
                     AddReference(
-                        component.properties.value("assetId", std::string{}),
+                        modelGuid,
                         owner,
                         "Model",
                         assetDatabase,
                         summary);
+                    AddModelMaterialBindingReferences(
+                        modelGuid,
+                        owner,
+                        assetDatabase,
+                        summary,
+                        visitedMaterials);
                     if (component.properties.contains("materialOverrides") &&
                         component.properties["materialOverrides"].is_array()) {
                         for (const nlohmann::json& slot : component.properties["materialOverrides"]) {
                             const std::string materialGuid = slot.value("materialAssetGuid", std::string{});
                             AddReference(materialGuid, owner, "Material Override", assetDatabase, summary);
-                            AddMaterialTextureReferences(materialGuid, owner, assetDatabase, summary);
+                            AddMaterialReferences(
+                                materialGuid,
+                                owner,
+                                assetDatabase,
+                                summary,
+                                visitedMaterials);
                         }
                     }
                 } else if (component.type ==

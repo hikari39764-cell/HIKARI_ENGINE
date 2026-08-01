@@ -103,6 +103,13 @@ namespace HIKARI::RENDER3D {
         uint32_t colorB,
         TextureResourceColorSpace colorSpace = TextureResourceColorSpace::Linear);
 
+    TextureResourceHandle CreateRgbaTextureResource(
+        const std::string& name,
+        uint32_t width,
+        uint32_t height,
+        const std::vector<uint8_t>& rgbaPixels,
+        TextureResourceColorSpace colorSpace = TextureResourceColorSpace::Linear);
+
     TextureResourceHandle RegisterTextureResourceFromNative(
         ID3D12Resource* resource,
         DXGI_FORMAT srvFormat,

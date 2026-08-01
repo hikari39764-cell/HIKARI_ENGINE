@@ -13,7 +13,9 @@ namespace HIKARI::EDITOR {
         Scene,
         Cinematics,
         ModelCollision,
+        ModelMaterial,
         AnimationStateMachine,
+        Count,
     };
 
 	// エディタワークスペースのオープンリクエストを表す構造体
@@ -22,6 +24,7 @@ namespace HIKARI::EDITOR {
         std::optional<SceneObjectId> targetCameraObjectId{};
         std::optional<AssetGuid> sequenceAssetGuid{};
         std::optional<AssetGuid> modelAssetGuid{};
+        std::optional<AssetGuid> materialAssetGuid{};
         std::optional<AssetGuid> animationStateMachineAssetGuid{};
     };
     
@@ -32,6 +35,7 @@ namespace HIKARI::EDITOR {
         std::optional<SceneObjectId> targetCameraObjectId{};
         std::optional<AssetGuid> sequenceAssetGuid{};
         std::optional<AssetGuid> modelAssetGuid{};
+        std::optional<AssetGuid> materialAssetGuid{};
         std::optional<AssetGuid> animationStateMachineAssetGuid{};
     };
 

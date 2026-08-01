@@ -272,7 +272,7 @@ void ModelCollisionWorkspaceController::FocusSelection() {
   if (selectionMode_ == ModelCollisionSelectionMode::SourceNodes &&
       !selectedSourceNodes_.empty()) {
     for (int32_t nodeIndex : selectedSourceNodes_) {
-      const ModelCollisionPreviewNode *node =
+      const ModelPreviewNode *node =
           previewScene_.FindSourceNode(nodeIndex);
       if (node == nullptr) {
         continue;
@@ -491,7 +491,7 @@ void ModelCollisionWorkspaceController::AddShape(
       !selectedSourceNodes_.empty()) {
     Bounds selectedBounds = BOUNDS::EmptyBounds();
     for (int32_t nodeIndex : selectedSourceNodes_) {
-      const ModelCollisionPreviewNode *node =
+      const ModelPreviewNode *node =
           previewScene_.FindSourceNode(nodeIndex);
       if (node == nullptr) {
         continue;

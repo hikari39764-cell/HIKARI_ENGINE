@@ -48,6 +48,8 @@ namespace HIKARI::MESHRENDERER {
     void InvalidateMaterialFxPipelineCache();
     void SetGpuDrivenSceneSource(
         const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource* source);
+    const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource&
+        GetActiveGpuDrivenSceneSource();
     bool HasSubmittedItems();
     bool BeginFrame(
         const GFX::Context& graphics,
@@ -67,7 +69,16 @@ namespace HIKARI::MESHRENDERER {
     bool RenderGeometryAuxPass(
         const GFX::Context& graphics,
         RENDER3D::SURFACE::SceneSurfaceBuffer& surfaceBuffer,
-        D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv);
+        D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv,
+        bool writeFeatureMask = false);
+    bool HasGeometryOutlineFeatureBackend();
+    bool HasVisibilityOverlayFeatureBackend();
+    bool RenderGeometryOutlineFeaturePass(
+        const GFX::Context& graphics,
+        const MeshPassResources& passResources);
+    bool RenderVisibilityOverlayFeaturePass(
+        const GFX::Context& graphics,
+        const MeshPassResources& passResources);
     bool HasDepthPrepassWork();
     bool RenderDepthPrepass(
         const GFX::Context& graphics,
@@ -104,9 +115,18 @@ namespace HIKARI::MESHRENDERER {
         struct SceneSourceTag;
     }
     struct EditorInteractiveRenderSettings {
+        using RebindTargetCallback = bool (*)(void* userData);
+
         RenderDebugView debugView = RenderDebugView::None;
         bool neutralLighting = false;
         bool neutralClayMaterial = false;
+        bool writeStylizedFeatureMask = false;
+        bool renderGeometryOutline = false;
+        bool renderVisibilityOverlay = false;
+        RENDER3D::SURFACE::SceneSurfaceBuffer* stylizedSurfaceBuffer = nullptr;
+        D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv{};
+        void* renderTargetUserData = nullptr;
+        RebindTargetCallback rebindTarget = nullptr;
         const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource*
             sceneSourceOverride = nullptr;
     };
@@ -118,6 +138,8 @@ namespace HIKARI::MESHRENDERER {
         uint32_t screenWidth,
         uint32_t screenHeight,
         const EditorInteractiveRenderSettings& settings);
+    void ReleaseEditorInteractiveSceneSource(
+        const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource* source);
     void ShutdownEditorInteractiveResources();
 #endif
     const MeshRendererDebugStats& GetDebugStats();

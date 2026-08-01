@@ -49,6 +49,13 @@ namespace HIKARI {
         }
 
         if (workspaceHost_.IsActive(
+                EDITOR::EditorWorkspaceId::ModelMaterial)) {
+            modelMaterialWorkspaceController_.BindWorkspaceCommands(
+                commandRouter_, scene);
+            return;
+        }
+
+        if (workspaceHost_.IsActive(
                 EDITOR::EditorWorkspaceId::Cinematics) &&
             cinematicsWorkspaceController_.IsEditingSequenceAsset()) {
             cinematicsWorkspaceController_.BindDocumentCommands(

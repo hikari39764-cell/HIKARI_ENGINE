@@ -36,6 +36,19 @@ struct EditorDirectorCameraSettings {
   float minimumOrbitDistance = 0.05f;
 };
 
+struct EditorDirectorCameraState {
+  MATH::Vec3 position{};
+  MATH::Vec3 orbitPivot{};
+  float orbitDistance = 5.0f;
+  float yaw = 0.0f;
+  float pitch = 0.0f;
+  float fovYRad = 1.0471975512f;
+  float aspect = 16.0f / 9.0f;
+  float nearZ = 0.1f;
+  float farZ = 100.0f;
+  EditorDirectorCameraSettings settings{};
+};
+
 enum class EditorDirectorCameraViewPreset : uint8_t {
   Perspective,
   Top,
@@ -52,6 +65,8 @@ public:
   void ResetFromCamera(const Camera3D &camera);
   void SetPose(const DirectorCameraPose &pose);
   DirectorCameraPose GetPose() const noexcept;
+  EditorDirectorCameraState CaptureState() const noexcept;
+  bool RestoreState(const EditorDirectorCameraState &state) noexcept;
 
   bool Update(const EditorDirectorCameraInput &input, float deltaTime,
               float aspect);

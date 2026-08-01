@@ -1,6 +1,8 @@
 #include "HIKARI_MaterialRuntimeBuilder.h"
 
+#include <algorithm>
 #include <string>
+#include <vector>
 
 #include "Assets/HIKARI_AssetRegistry.h"
 #include "Assets/HIKARI_AssetTypes.h"
@@ -8,7 +10,9 @@
 #include "Render3D/Core/HIKARI_Material.h"
 #include "Assets/Models/HIKARI_ModelAsset.h"
 #include "Render3D/Material/HIKARI_DefaultPbrResources.h"
+#include "Render3D/Material/HIKARI_GpuMaterialTypes.h"
 #include "Render3D/Material/HIKARI_MaterialTextureUsage.h"
+#include "Render3D/Material/Program/HIKARI_MaterialProgramRuntimeDataBuilder.h"
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
 
 namespace HIKARI {
@@ -81,6 +85,92 @@ namespace HIKARI {
             slot.enabled = true;
             return slot;
         }
+
+        void ApplyPbrCompatibilityData(
+            const PbrMaterialAssetData& data,
+            const AssetRegistry& assetRegistry,
+            Material& outMaterial,
+            std::string_view debugName) {
+            outMaterial.SetBaseColor(data.baseColorFactor);
+            outMaterial.SetMetallicFactor(data.metallicFactor);
+            outMaterial.SetRoughnessFactor(data.roughnessFactor);
+            outMaterial.SetSpecularFactor(data.specularFactor);
+            outMaterial.SetSpecularColorFactor(data.specularColorFactor);
+            outMaterial.SetNormalScale(data.normalScale);
+            outMaterial.SetOcclusionStrength(data.occlusionStrength);
+            outMaterial.SetEmissiveFactor(data.emissiveFactor);
+            outMaterial.SetEmissiveStrength(data.emissiveStrength);
+
+            outMaterial.SetTextureSlot(MaterialTextureUsage::BaseColor,
+                BuildSlot(data.baseColorTexture, MaterialTextureUsage::BaseColor, assetRegistry, debugName));
+            outMaterial.SetTextureSlot(MaterialTextureUsage::Normal,
+                BuildSlot(data.normalTexture, MaterialTextureUsage::Normal, assetRegistry, debugName));
+            outMaterial.SetTextureSlot(MaterialTextureUsage::MetallicRoughness,
+                BuildSlot(data.metallicRoughnessTexture, MaterialTextureUsage::MetallicRoughness, assetRegistry, debugName));
+            outMaterial.SetTextureSlot(MaterialTextureUsage::Occlusion,
+                BuildSlot(data.occlusionTexture, MaterialTextureUsage::Occlusion, assetRegistry, debugName));
+            outMaterial.SetTextureSlot(MaterialTextureUsage::Emissive,
+                BuildSlot(data.emissiveTexture, MaterialTextureUsage::Emissive, assetRegistry, debugName));
+            outMaterial.SetTextureSlot(MaterialTextureUsage::Specular,
+                BuildSlot(data.specularTexture, MaterialTextureUsage::Specular, assetRegistry, debugName));
+            outMaterial.SetTextureSlot(MaterialTextureUsage::SpecularColor,
+                BuildSlot(data.specularColorTexture, MaterialTextureUsage::SpecularColor, assetRegistry, debugName));
+        }
+
+        RuntimeMaterialAlphaMode ToRuntimeAlphaMode(
+            MaterialAlphaMode alphaMode) noexcept {
+            switch (alphaMode) {
+            case MaterialAlphaMode::Mask:
+                return RuntimeMaterialAlphaMode::Mask;
+            case MaterialAlphaMode::Blend:
+                return RuntimeMaterialAlphaMode::Blend;
+            default:
+                return RuntimeMaterialAlphaMode::Opaque;
+            }
+        }
+
+        void ApplyProgramResolution(
+            const PbrMaterialAssetData& pbr,
+            const AssetRegistry& assetRegistry,
+            const RENDER3D::MATERIAL::MaterialProgramResolution& resolution,
+            Material& outMaterial,
+            std::string_view debugName) {
+            const MaterialProgramIR& program = resolution.effectiveProgram;
+            const RENDER3D::MATERIAL::MaterialProgramRuntimeData runtimeData =
+                RENDER3D::MATERIAL::BuildMaterialProgramRuntimeData(
+                    program,
+                    resolution.kind,
+                    assetRegistry,
+                    debugName);
+            outMaterial.SetShaderProfileId("PBR");
+            outMaterial.SetMaterialProgram(resolution.id);
+            outMaterial.SetMaterialProgramParameterBlock(
+                runtimeData.parameters);
+            outMaterial.SetMaterialProgramResourceBlock(
+                runtimeData.resources);
+            outMaterial.SetMaterialProgramInstanceFlags(
+                runtimeData.instanceFlags);
+            outMaterial.SetMaterialAlphaMode(
+                ToRuntimeAlphaMode(program.surface.alphaMode));
+            outMaterial.SetAlphaCutoff(program.surface.alphaCutoff);
+            outMaterial.SetDoubleSided(program.surface.doubleSided);
+            outMaterial.SetUnlit(program.surface.unlit);
+
+            uint32_t featureBits = 0u;
+            if (program.surface.unlit) {
+                featureBits |= MATERIAL_FEATURES::Unlit;
+            }
+            if (program.surface.alphaMode == MaterialAlphaMode::Mask) {
+                featureBits |= MATERIAL_FEATURES::AlphaMask;
+            } else if (program.surface.alphaMode == MaterialAlphaMode::Blend) {
+                featureBits |= MATERIAL_FEATURES::ThinTransparentSurface;
+            }
+            if (pbr.emissiveTexture.useTexture ||
+                pbr.emissiveStrength > 0.0f) {
+                featureBits |= MATERIAL_FEATURES::Emissive;
+            }
+            outMaterial.SetFeatureBits(featureBits);
+        }
     }
 
     bool MaterialRuntimeBuilder::BuildRuntimeMaterial(
@@ -125,7 +215,54 @@ namespace HIKARI {
         outMaterial.SetTextureSlot(MaterialTextureUsage::SpecularColor,
             BuildSlot(data.specularColorTexture, MaterialTextureUsage::SpecularColor, assetRegistry, debugName));
 
+        const MaterialAssetData source = MakeStandardPbrMaterialAssetData(data);
+        const MaterialCompileResult compileResult = CompileMaterialAsset(source);
+        const MaterialProgramIR effectiveProgram = compileResult.success
+            ? compileResult.program
+            : BuildStandardPbrMaterialProgramFallback();
+        const RENDER3D::MATERIAL::MaterialProgramResolution resolution{
+            RENDER3D::MATERIAL::kStandardPbrMaterialProgramId,
+            compileResult.success
+                ? RENDER3D::MATERIAL::MaterialProgramResolutionKind::Reused
+                : RENDER3D::MATERIAL::MaterialProgramResolutionKind::StandardPbrFallback,
+            effectiveProgram,
+            compileResult.diagnostics
+        };
+        ApplyProgramResolution(
+            data,
+            assetRegistry,
+            resolution,
+            outMaterial,
+            debugName);
+
         return true;
+    }
+
+    bool MaterialRuntimeBuilder::BuildRuntimeMaterial(
+        const MaterialAssetData& data,
+        const AssetRegistry& assetRegistry,
+        RENDER3D::MATERIAL::MaterialProgramRegistry& programRegistry,
+        Material& outMaterial,
+        std::string_view debugName,
+        RENDER3D::MATERIAL::MaterialProgramResolution* outResolution) const {
+        const RENDER3D::MATERIAL::MaterialProgramResolution resolution =
+            programRegistry.ResolveMaterialAsset(debugName, data);
+        const PbrMaterialAssetData pbr = ProjectPbrMaterialAssetData(data);
+        ApplyPbrCompatibilityData(
+            pbr,
+            assetRegistry,
+            outMaterial,
+            debugName);
+        ApplyProgramResolution(
+            pbr,
+            assetRegistry,
+            resolution,
+            outMaterial,
+            debugName);
+        if (outResolution != nullptr) {
+            *outResolution = resolution;
+        }
+        return resolution.id.IsValid();
     }
 
 } // namespace HIKARI

@@ -81,6 +81,9 @@ namespace HIKARI::MESHRENDERER {
             surfaceGpuSceneBuffer{};
         RENDER3D::GPUDRIVEN::GpuDrivenSceneResidency
             sceneResidency{};
+        RENDER3D::CLUSTER::ClusterGpuCullingPass clusterGpuCullingPass{};
+        RENDER3D::GPUDRIVEN::ClusterGpuDrivenProducerAdapter
+            clusterGpuDrivenProducer{};
         RENDER3D::GPUDRIVEN::GpuDrivenLayer gpuDrivenLayer{};
     };
 #endif

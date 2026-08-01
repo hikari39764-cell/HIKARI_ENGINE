@@ -23,6 +23,10 @@ namespace HIKARI::MESHRENDERER {
         Microsoft::WRL::ComPtr<ID3D12Resource> objectDataBuffer;
         Microsoft::WRL::ComPtr<ID3D12Resource> materialDataUploadBuffer;
         Microsoft::WRL::ComPtr<ID3D12Resource> materialDataBuffer;
+        Microsoft::WRL::ComPtr<ID3D12Resource> materialProgramParameterUploadBuffer;
+        Microsoft::WRL::ComPtr<ID3D12Resource> materialProgramParameterBuffer;
+        Microsoft::WRL::ComPtr<ID3D12Resource> materialProgramResourceUploadBuffer;
+        Microsoft::WRL::ComPtr<ID3D12Resource> materialProgramResourceBuffer;
         Microsoft::WRL::ComPtr<ID3D12Resource> lightCB;
         Microsoft::WRL::ComPtr<ID3D12Resource> localLightBuffer;
         Microsoft::WRL::ComPtr<ID3D12Resource> localLightClusterHeaderBuffer;
@@ -36,6 +40,8 @@ namespace HIKARI::MESHRENDERER {
         ObjectCB* objectMapped = nullptr;
         ObjectGpuData* objectDataMapped = nullptr;
         MaterialGpuData* materialDataMapped = nullptr;
+        MATH::Vec4* materialProgramParameterMapped = nullptr;
+        uint32_t* materialProgramResourceMapped = nullptr;
         LightCB* lightMapped = nullptr;
         RENDER3D::LIGHTING::LocalLightGpuData* localLightMapped = nullptr;
         RENDER3D::LIGHTING::LocalLightClusterHeader*
@@ -52,6 +58,10 @@ namespace HIKARI::MESHRENDERER {
         D3D12_GPU_DESCRIPTOR_HANDLE materialDataSrvGpu{};
         D3D12_RESOURCE_STATES objectDataState = D3D12_RESOURCE_STATE_COMMON;
         D3D12_RESOURCE_STATES materialDataState = D3D12_RESOURCE_STATE_COMMON;
+        D3D12_RESOURCE_STATES materialProgramParameterState =
+            D3D12_RESOURCE_STATE_COMMON;
+        D3D12_RESOURCE_STATES materialProgramResourceState =
+            D3D12_RESOURCE_STATE_COMMON;
     };
 
     class MeshFrameResourceStore final {
@@ -79,6 +89,10 @@ namespace HIKARI::MESHRENDERER {
         void CommitActiveMaterialRanges(
             ID3D12GraphicsCommandList* commandList,
             size_t elementStride,
+            const std::vector<RENDER3D::MATERIAL::GpuMaterialUploadRange>& ranges);
+
+        void CommitActiveMaterialProgramBlockRanges(
+            ID3D12GraphicsCommandList* commandList,
             const std::vector<RENDER3D::MATERIAL::GpuMaterialUploadRange>& ranges);
 
     private:

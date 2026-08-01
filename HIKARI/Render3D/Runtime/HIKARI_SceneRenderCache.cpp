@@ -55,6 +55,44 @@ namespace HIKARI::RENDER3D::RUNTIME {
             return true;
         }
 
+        bool EqualMaterialOverrides(
+            const std::vector<SceneRenderMaterialOverride>& lhs,
+            const std::vector<SceneRenderMaterialOverride>& rhs) {
+
+            if (lhs.size() != rhs.size()) {
+                return false;
+            }
+            for (size_t index = 0; index < lhs.size(); ++index) {
+                if (lhs[index].materialIndex != rhs[index].materialIndex ||
+                    lhs[index].material != rhs[index].material ||
+                    lhs[index].materialRevision !=
+                        rhs[index].materialRevision) {
+
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        const SceneRenderMaterialOverride* FindMaterialOverride(
+            const SceneRenderObjectDesc& desc,
+            uint32_t materialIndex) {
+
+            const auto found = std::find_if(
+                desc.materialOverrides.begin(),
+                desc.materialOverrides.end(),
+                [materialIndex](
+                    const SceneRenderMaterialOverride& overrideSlot) {
+                    return
+                        overrideSlot.materialIndex == materialIndex &&
+                        overrideSlot.material != nullptr;
+                });
+            if (found == desc.materialOverrides.end()) {
+                return nullptr;
+            }
+            return &*found;
+        }
+
         struct DirtyFlags {
             bool any = false;
             bool transform = false;
@@ -77,8 +115,9 @@ namespace HIKARI::RENDER3D::RUNTIME {
                 !EqualBounds(oldDesc.worldBounds, newDesc.worldBounds);
 
             flags.material =
-                oldDesc.materialOverride != newDesc.materialOverride ||
-                oldDesc.materialOverrideRevision != newDesc.materialOverrideRevision ||
+                !EqualMaterialOverrides(
+                    oldDesc.materialOverrides,
+                    newDesc.materialOverrides) ||
                 oldDesc.materialFxProfileId != newDesc.materialFxProfileId ||
                 oldDesc.postGroupMask != newDesc.postGroupMask ||
                 oldDesc.materialFxValuesInitialized != newDesc.materialFxValuesInitialized ||
@@ -175,9 +214,15 @@ namespace HIKARI::RENDER3D::RUNTIME {
             instance.allowStaticCachedForward = object.desc.allowStaticCachedForward;
             instance.skinned = surface.IsSkinned();
             instance.clusteredGeometryPath = object.desc.clusteredGeometryPath;
-            instance.materialOverride = object.desc.materialOverride;
-            instance.materialOverrideRevision =
-                object.desc.materialOverrideRevision;
+            const SceneRenderMaterialOverride* materialOverride =
+                FindMaterialOverride(
+                    object.desc,
+                    surface.materialIndex);
+            if (materialOverride != nullptr) {
+                instance.materialOverride = materialOverride->material;
+                instance.materialOverrideRevision =
+                    materialOverride->materialRevision;
+            }
             instance.materialFxProfileId = object.desc.materialFxProfileId;
             instance.postGroupMask = object.desc.postGroupMask;
             instance.materialFxValuesInitialized = object.desc.materialFxValuesInitialized;

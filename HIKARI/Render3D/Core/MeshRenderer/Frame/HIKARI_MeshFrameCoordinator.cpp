@@ -237,6 +237,14 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         ctx.objectMapped = frame.objectMapped;
         ctx.objectDataMapped = frame.objectDataMapped;
         ctx.materialDataMapped = frame.materialDataMapped;
+        ctx.materialProgramParametersAddress =
+            frame.materialProgramParameterBuffer
+                ? frame.materialProgramParameterBuffer->GetGPUVirtualAddress()
+                : 0u;
+        ctx.materialProgramResourcesAddress =
+            frame.materialProgramResourceBuffer
+                ? frame.materialProgramResourceBuffer->GetGPUVirtualAddress()
+                : 0u;
         ctx.jointPaletteMapped = frame.jointPaletteMapped;
         ctx.gpuMaterialRegistry = &gMeshRendererState.gpuMaterialRegistry;
         ctx.objectDataSrv = frame.objectDataSrvGpu;

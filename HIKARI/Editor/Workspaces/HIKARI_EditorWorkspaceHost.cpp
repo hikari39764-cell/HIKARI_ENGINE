@@ -5,42 +5,67 @@
 namespace HIKARI::EDITOR {
 
     EditorWorkspaceHost::EditorWorkspaceHost() {
-        cinematicsGameView_.renderViewId = RENDER3D::kPrimaryRenderViewId;
-        cinematicsGameView_.role = EditorViewRole::Game;
-        cinematicsGameView_.purpose = RENDER3D::RenderViewPurpose::Game;
-        cinematicsGameView_.cameraBinding.kind = EditorViewCameraSourceKind::SceneDirector;
-        cinematicsGameView_.execution = EditorViewExecutionMode::PrimaryFullQuality;
+        EditorViewInstance& game = View(BuiltInViewSlot::CinematicsGame);
+        game.renderViewId = RENDER3D::kPrimaryRenderViewId;
+        game.role = EditorViewRole::Game;
+        game.purpose = RENDER3D::RenderViewPurpose::Game;
+        game.cameraBinding.kind = EditorViewCameraSourceKind::SceneDirector;
+        game.execution = EditorViewExecutionMode::PrimaryFullQuality;
 
-        cinematicsDirectorView_.renderViewId = kEditorDirectorRenderViewId;
-        cinematicsDirectorView_.role = EditorViewRole::Director;
-        cinematicsDirectorView_.purpose = RENDER3D::RenderViewPurpose::EditorScene;
-        cinematicsDirectorView_.cameraBinding.kind = EditorViewCameraSourceKind::OwnedEditorCamera;
-        cinematicsDirectorView_.execution = EditorViewExecutionMode::SecondaryEditorScene;
-        cinematicsDirectorView_.visualization.shadingMode =
-            EditorViewShadingMode::Neutral;
-        cinematicsDirectorView_.visualization.displayExposure = 1.25f;
-
-        cinematicsOverviewView_.renderViewId = kEditorOverviewRenderViewId;
-        cinematicsOverviewView_.role = EditorViewRole::Overview;
-        cinematicsOverviewView_.purpose = RENDER3D::RenderViewPurpose::EditorScene;
-        cinematicsOverviewView_.cameraBinding.kind = EditorViewCameraSourceKind::OwnedEditorCamera;
-        cinematicsOverviewView_.execution = EditorViewExecutionMode::LightweightEditorOverview;
-
-        modelCollisionPreviewView_.renderViewId =
-            kModelCollisionPreviewRenderViewId;
-        modelCollisionPreviewView_.role = EditorViewRole::Director;
-        modelCollisionPreviewView_.purpose =
-            RENDER3D::RenderViewPurpose::EditorScene;
-        modelCollisionPreviewView_.cameraBinding.kind =
+        EditorViewInstance& director =
+            View(BuiltInViewSlot::CinematicsDirector);
+        director.renderViewId = kEditorDirectorRenderViewId;
+        director.role = EditorViewRole::Director;
+        director.purpose = RENDER3D::RenderViewPurpose::EditorScene;
+        director.cameraBinding.kind =
             EditorViewCameraSourceKind::OwnedEditorCamera;
-        modelCollisionPreviewView_.execution =
-            EditorViewExecutionMode::SecondaryEditorScene;
-        modelCollisionPreviewView_.visualization.shadingMode =
+        director.execution = EditorViewExecutionMode::SecondaryEditorScene;
+        director.visualization.shadingMode =
             EditorViewShadingMode::Neutral;
-        modelCollisionPreviewView_.visualization.displayExposure = 1.0f;
+        director.visualization.displayExposure = 1.25f;
+
+        EditorViewInstance& overview =
+            View(BuiltInViewSlot::CinematicsOverview);
+        overview.renderViewId = kEditorOverviewRenderViewId;
+        overview.role = EditorViewRole::Overview;
+        overview.purpose = RENDER3D::RenderViewPurpose::EditorScene;
+        overview.cameraBinding.kind =
+            EditorViewCameraSourceKind::OwnedEditorCamera;
+        overview.execution =
+            EditorViewExecutionMode::LightweightEditorOverview;
+
+        EditorViewInstance& collision =
+            View(BuiltInViewSlot::ModelCollisionPreview);
+        collision.renderViewId =
+            kModelCollisionPreviewRenderViewId;
+        collision.role = EditorViewRole::Preview;
+        collision.purpose =
+            RENDER3D::RenderViewPurpose::EditorScene;
+        collision.cameraBinding.kind =
+            EditorViewCameraSourceKind::OwnedEditorCamera;
+        collision.execution =
+            EditorViewExecutionMode::SecondaryEditorScene;
+        collision.visualization.shadingMode =
+            EditorViewShadingMode::Neutral;
+        collision.visualization.displayExposure = 1.0f;
+
+        EditorViewInstance& material =
+            View(BuiltInViewSlot::ModelMaterialPreview);
+        material.renderViewId = kModelMaterialPreviewRenderViewId;
+        material.role = EditorViewRole::Preview;
+        material.purpose = RENDER3D::RenderViewPurpose::ToolPreview;
+        material.cameraBinding.kind =
+            EditorViewCameraSourceKind::OwnedEditorCamera;
+        material.execution =
+            EditorViewExecutionMode::RuntimeParityToolPreview;
+        material.visualization.shadingMode = EditorViewShadingMode::Lit;
+        material.visualization.displayExposure = 1.0f;
     }
 
     bool EditorWorkspaceHost::RequestOpen(EditorWorkspaceOpenRequest request) {
+        if (request.workspaceId == EditorWorkspaceId::Count) {
+            return false;
+        }
         if (request.targetCameraObjectId &&
             request.targetCameraObjectId->value == 0) {
             request.targetCameraObjectId.reset();
@@ -63,6 +88,7 @@ namespace HIKARI::EDITOR {
         activation.targetCameraObjectId = request.targetCameraObjectId;
         activation.sequenceAssetGuid = request.sequenceAssetGuid;
         activation.modelAssetGuid = request.modelAssetGuid;
+        activation.materialAssetGuid = request.materialAssetGuid;
         activation.animationStateMachineAssetGuid =
             request.animationStateMachineAssetGuid;
         activeWorkspace_ = request.workspaceId;
@@ -79,63 +105,98 @@ namespace HIKARI::EDITOR {
     }
 
     void EditorWorkspaceHost::RequestResetActiveLayout() noexcept {
-        if (activeWorkspace_ == EditorWorkspaceId::ModelCollision) {
-            resetModelCollisionLayoutRequested_ = true;
-        } else if (activeWorkspace_ ==
-                EditorWorkspaceId::AnimationStateMachine) {
-            resetAnimationStateMachineLayoutRequested_ = true;
-        } else if (activeWorkspace_ == EditorWorkspaceId::Cinematics) {
-            resetCinematicsLayoutRequested_ = true;
-        } else {
-            resetSceneLayoutRequested_ = true;
+        const size_t index = static_cast<size_t>(activeWorkspace_);
+        if (index < resetLayoutRequests_.size()) {
+            resetLayoutRequests_[index] = true;
         }
     }
 
     bool EditorWorkspaceHost::ConsumeReset(EditorWorkspaceId workspaceId) noexcept {
-        bool* requested = &resetSceneLayoutRequested_;
-        if (workspaceId == EditorWorkspaceId::Cinematics) {
-            requested = &resetCinematicsLayoutRequested_;
-        } else if (workspaceId == EditorWorkspaceId::ModelCollision) {
-            requested = &resetModelCollisionLayoutRequested_;
-        } else if (workspaceId ==
-                EditorWorkspaceId::AnimationStateMachine) {
-            requested = &resetAnimationStateMachineLayoutRequested_;
+        const size_t index = static_cast<size_t>(workspaceId);
+        if (index >= resetLayoutRequests_.size()) {
+            return false;
         }
-        const bool result = *requested;
-        *requested = false;
+        const bool result = resetLayoutRequests_[index];
+        resetLayoutRequests_[index] = false;
         return result;
     }
 
     EditorViewInstance& EditorWorkspaceHost::GetCinematicsGameView() noexcept {
-        return cinematicsGameView_;
+        return View(BuiltInViewSlot::CinematicsGame);
     }
 
     const EditorViewInstance& EditorWorkspaceHost::GetCinematicsGameView() const noexcept {
-        return cinematicsGameView_;
+        return View(BuiltInViewSlot::CinematicsGame);
     }
 
     EditorViewInstance& EditorWorkspaceHost::GetCinematicsDirectorView() noexcept {
-        return cinematicsDirectorView_;
+        return View(BuiltInViewSlot::CinematicsDirector);
     }
 
     const EditorViewInstance& EditorWorkspaceHost::GetCinematicsDirectorView() const noexcept {
-        return cinematicsDirectorView_;
+        return View(BuiltInViewSlot::CinematicsDirector);
     }
 
     EditorViewInstance& EditorWorkspaceHost::GetCinematicsOverviewView() noexcept {
-        return cinematicsOverviewView_;
+        return View(BuiltInViewSlot::CinematicsOverview);
     }
 
     const EditorViewInstance& EditorWorkspaceHost::GetCinematicsOverviewView() const noexcept {
-        return cinematicsOverviewView_;
+        return View(BuiltInViewSlot::CinematicsOverview);
     }
 
     EditorViewInstance& EditorWorkspaceHost::GetModelCollisionPreviewView() noexcept {
-        return modelCollisionPreviewView_;
+        return View(BuiltInViewSlot::ModelCollisionPreview);
     }
 
     const EditorViewInstance& EditorWorkspaceHost::GetModelCollisionPreviewView() const noexcept {
-        return modelCollisionPreviewView_;
+        return View(BuiltInViewSlot::ModelCollisionPreview);
+    }
+
+    EditorViewInstance&
+        EditorWorkspaceHost::GetModelMaterialPreviewView() noexcept {
+
+        return View(BuiltInViewSlot::ModelMaterialPreview);
+    }
+
+    const EditorViewInstance&
+        EditorWorkspaceHost::GetModelMaterialPreviewView() const noexcept {
+
+        return View(BuiltInViewSlot::ModelMaterialPreview);
+    }
+
+    EditorViewInstance* EditorWorkspaceHost::FindView(
+        RENDER3D::RenderViewId renderViewId) noexcept {
+
+        for (EditorViewInstance& view : views_) {
+            if (view.renderViewId == renderViewId) {
+                return &view;
+            }
+        }
+        return nullptr;
+    }
+
+    const EditorViewInstance* EditorWorkspaceHost::FindView(
+        RENDER3D::RenderViewId renderViewId) const noexcept {
+
+        for (const EditorViewInstance& view : views_) {
+            if (view.renderViewId == renderViewId) {
+                return &view;
+            }
+        }
+        return nullptr;
+    }
+
+    EditorViewInstance& EditorWorkspaceHost::View(
+        BuiltInViewSlot slot) noexcept {
+
+        return views_[static_cast<size_t>(slot)];
+    }
+
+    const EditorViewInstance& EditorWorkspaceHost::View(
+        BuiltInViewSlot slot) const noexcept {
+
+        return views_[static_cast<size_t>(slot)];
     }
 
 } // namespace HIKARI::EDITOR

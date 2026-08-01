@@ -16,6 +16,7 @@ namespace HIKARI::RENDER3D::SURFACE {
         RenderTextureView sceneDepth{};
         RenderTextureView opaqueSceneColor{};
         RenderTextureView packedSurface{};
+        RenderTextureView surfaceFeatureMask{};
         RenderTextureView ambientOcclusion{};
         RenderTextureView motionVectors{};
         RenderTextureView motionMetadata{};
@@ -32,6 +33,10 @@ namespace HIKARI::RENDER3D::SURFACE {
             return sceneDepth.IsSampleable() &&
                 opaqueSceneColor.IsSampleable() &&
                 packedSurface.IsSampleable();
+        }
+
+        bool HasStylizedFeatureMask() const noexcept {
+            return surfaceFeatureMask.IsSampleable();
         }
 
         bool HasCurrentDepthHierarchy() const noexcept {

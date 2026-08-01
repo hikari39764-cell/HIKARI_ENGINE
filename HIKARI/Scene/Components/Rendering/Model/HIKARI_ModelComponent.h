@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "Assets/HIKARI_AssetGuid.h"
+#include "Assets/Models/HIKARI_ModelAssetTypes.h"
 #include "Scene/Components/HIKARI_IComponent.h"
 #include "Scene/Geometry/HIKARI_GeometryFitProvider.h"
 
@@ -24,6 +25,12 @@ namespace HIKARI {
     struct ModelMaterialOverrideSlot {
         uint32_t slotIndex = 0;
         AssetGuid materialAssetGuid{};
+        MaterialSlotId slotId{};
+    };
+
+    struct RuntimeMaterialOverrideSlot {
+        uint32_t materialIndex = 0;
+        std::unique_ptr<Material> material{};
     };
 
     class ModelComponent final :
@@ -80,16 +87,25 @@ namespace HIKARI {
         void SetMaterialOverride(
             uint32_t slotIndex,
             AssetGuid materialGuid);
+        void SetMaterialOverride(
+            MaterialSlotId slotId,
+            uint32_t legacySlotIndex,
+            AssetGuid materialGuid);
         void ClearMaterialOverride(uint32_t slotIndex);
-        const Material* GetRuntimeMaterialOverride() const;
+        const Material* GetRuntimeMaterialOverride(
+            uint32_t slotIndex) const;
         void SetRuntimeMaterialOverride(
-            std::unique_ptr<Material> material,
-            AssetGuid guid);
-        void ClearRuntimeMaterialOverride();
-        const AssetGuid& GetRuntimeMaterialOverrideGuid() const;
+            uint32_t slotIndex,
+            std::unique_ptr<Material> material);
+        void ClearRuntimeMaterialOverride(uint32_t slotIndex);
+        void ClearRuntimeMaterialOverrides();
+        const std::vector<RuntimeMaterialOverrideSlot>&
+            GetRuntimeMaterialOverrides() const noexcept;
 
     private:
         void NotifyRenderStateDirty();
+        MaterialSlotId ResolveCurrentSlotId(
+            uint32_t slotIndex) const noexcept;
 
         ModelAsset* asset_ = nullptr;
         std::string assetId_{};
@@ -107,8 +123,8 @@ namespace HIKARI {
         bool wirePerPrimitiveColor_ = true;
         uint32_t postGroupMask_ = 0;
         std::vector<ModelMaterialOverrideSlot> materialOverrides_{};
-        std::unique_ptr<Material> runtimeMaterialOverride_{};
-        AssetGuid runtimeMaterialOverrideGuid_{};
+        std::vector<RuntimeMaterialOverrideSlot>
+            runtimeMaterialOverrides_{};
     };
 
 } // namespace HIKARI

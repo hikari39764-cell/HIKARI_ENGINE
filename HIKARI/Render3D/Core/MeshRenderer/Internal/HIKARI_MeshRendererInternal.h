@@ -40,6 +40,10 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
     void CommitActiveMaterialDataFrame(
         ID3D12GraphicsCommandList* commandList);
     void SyncSurfaceGpuSceneMaterialFrame(const GFX::Context& graphics);
+    void SyncGpuDrivenSceneMaterialSources(
+        const GFX::Context& graphics,
+        uintptr_t sourceIdentity,
+        const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource& source);
     void UploadGpuDrivenSceneFrame(const GFX::Context& graphics);
     void UpdateTraditionalCommandStreamStats();
     uint32_t MakePreDepthGpuDrivenPassMask();
@@ -108,6 +112,30 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         RENDER3D::GPUDRIVEN::GpuTraditionalCommandStreamBuffer*
             traditionalCommandStreamBuffer = nullptr;
     };
+
+    GeometryBackendExecutionResult ExecuteEditorInteractiveGeometryBackendPlan(
+        const GFX::Context& graphics,
+        RENDER3D::GPUDRIVEN::GpuDrivenPassKind pass,
+        const MeshPassResources& passResources,
+        MeshDrawPassKind passKind,
+        RENDER3D::MESHLET::MeshletPipelineKind meshletPipelineKind,
+        RENDER3D::GPUDRIVEN::GpuDrivenLayer& layer,
+        const MeshFrameBindingOverrides& bindingOverrides);
+
+    bool ExecuteEditorInteractiveStylizedSurfacePass(
+        const GFX::Context& graphics,
+        uint32_t screenWidth,
+        uint32_t screenHeight,
+        const EditorInteractiveRenderSettings& settings,
+        const MeshPassResources& passResources,
+        RENDER3D::GPUDRIVEN::GpuDrivenLayer& layer,
+        const MeshFrameBindingOverrides& bindingOverrides);
+    bool ExecuteEditorInteractiveStylizedGeometryPasses(
+        const GFX::Context& graphics,
+        const EditorInteractiveRenderSettings& settings,
+        const MeshPassResources& passResources,
+        RENDER3D::GPUDRIVEN::GpuDrivenLayer& layer,
+        const MeshFrameBindingOverrides& bindingOverrides);
 
     void ResetEditorInteractiveResources();
     bool EnsureEditorInteractiveResources();

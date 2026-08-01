@@ -7,6 +7,7 @@
 #include "Animation/Runtime/HIKARI_AnimationPoseService.h"
 #include "Assets/HIKARI_AssetRegistry.h"
 #include "Render3D/Core/HIKARI_BoundsUtils.h"
+#include "Render3D/Core/HIKARI_Material.h"
 #include "Render3D/Procedural/HIKARI_ProceduralModelFactory.h"
 #include "Render3D/Runtime/HIKARI_RenderModelCache.h"
 #include "Render3D/Runtime/HIKARI_SceneRenderCache.h"
@@ -180,11 +181,26 @@ namespace HIKARI {
             desc.hasSpecialRenderDebug = false;
             desc.allowStaticCachedForward =
                 !desc.hasRuntimeAnimation;
-            desc.materialOverride = model.GetRuntimeMaterialOverride();
-            desc.materialOverrideRevision =
-                desc.materialOverride != nullptr
-                    ? desc.materialOverride->GetRevision()
-                    : 0u;
+            for (const RuntimeMaterialOverrideSlot& slot :
+                model.GetRuntimeMaterialOverrides()) {
+
+                const Material* runtimeMaterial = slot.material.get();
+                if (runtimeMaterial == nullptr) {
+                    continue;
+                }
+                desc.materialOverrides.push_back(
+                    RENDER3D::RUNTIME::SceneRenderMaterialOverride{
+                        slot.materialIndex,
+                        runtimeMaterial,
+                        runtimeMaterial->GetRevision()
+                    });
+            }
+            std::sort(
+                desc.materialOverrides.begin(),
+                desc.materialOverrides.end(),
+                [](const auto& lhs, const auto& rhs) {
+                    return lhs.materialIndex < rhs.materialIndex;
+                });
             desc.postGroupMask = model.GetPostGroupMask();
             if (const MaterialFxComponent* materialFx =
                 object.GetComponent<MaterialFxComponent>()) {

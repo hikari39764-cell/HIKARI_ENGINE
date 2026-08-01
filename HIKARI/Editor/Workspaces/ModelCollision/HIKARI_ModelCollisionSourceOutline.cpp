@@ -130,7 +130,7 @@ void ModelCollisionSourceOutlineCache::Reset() noexcept {
 
 const ModelCollisionSourceOutlineCache::NodeOutline *
 ModelCollisionSourceOutlineCache::GetOrBuild(
-    const ModelAsset &model, const ModelCollisionPreviewNode &node,
+    const ModelAsset &model, const ModelPreviewNode &node,
     uint64_t modelRevision) {
   if (modelRevision_ != modelRevision) {
     nodes_.clear();
@@ -146,7 +146,7 @@ ModelCollisionSourceOutlineCache::GetOrBuild(
 
 ModelCollisionSourceOutlineCache::NodeOutline
 ModelCollisionSourceOutlineCache::Build(
-    const ModelAsset &model, const ModelCollisionPreviewNode &node) const {
+    const ModelAsset &model, const ModelPreviewNode &node) const {
   NodeOutline outline{};
   if (node.meshIndex < 0 ||
       static_cast<size_t>(node.meshIndex) >= model.meshes.size()) {
@@ -265,7 +265,7 @@ ModelCollisionSourceOutlineCache::Build(
 bool ModelCollisionSourceOutlineCache::Draw(
     ImDrawList *drawList, const Camera3D &camera, float viewportX,
     float viewportY, float viewportWidth, float viewportHeight,
-    const ModelAsset &model, const ModelCollisionPreviewNode &node,
+    const ModelAsset &model, const ModelPreviewNode &node,
     uint64_t modelRevision, uint32_t color, float thickness) {
 #if defined(HIKARI_WITH_EDITOR)
   if (drawList == nullptr || viewportWidth <= 0.0f || viewportHeight <= 0.0f) {

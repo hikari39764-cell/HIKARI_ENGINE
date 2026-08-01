@@ -378,6 +378,18 @@ namespace HIKARI {
                 (void)workspaceHost.RequestOpen(std::move(request));
             }
 
+            const bool modelMaterialWorkspaceActive = workspaceHost.IsActive(
+                EDITOR::EditorWorkspaceId::ModelMaterial);
+            if (ImGui::MenuItem(
+                    "Model Material",
+                    nullptr,
+                    modelMaterialWorkspaceActive)) {
+                EDITOR::EditorWorkspaceOpenRequest request{};
+                request.workspaceId =
+                    EDITOR::EditorWorkspaceId::ModelMaterial;
+                (void)workspaceHost.RequestOpen(std::move(request));
+            }
+
             const bool animationStateMachineWorkspaceActive =
                 workspaceHost.IsActive(
                     EDITOR::EditorWorkspaceId::AnimationStateMachine);

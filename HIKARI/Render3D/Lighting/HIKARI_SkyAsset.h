@@ -11,6 +11,7 @@ namespace HIKARI {
         std::string meshAssetName;
         std::string texturePath;
         SkyMode preferredMode = SkyMode::Gradient;
+        bool textureIsLinear = false;
     };
 
 } // namespace HIKARI

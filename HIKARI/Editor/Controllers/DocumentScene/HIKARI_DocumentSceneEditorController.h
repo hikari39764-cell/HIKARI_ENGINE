@@ -26,6 +26,7 @@
 #include "Editor/Workspaces/Cinematics/HIKARI_CinematicsWorkspaceController.h"
 #include "Editor/Workspaces/HIKARI_EditorWorkspaceHost.h"
 #include "Editor/Workspaces/ModelCollision/HIKARI_ModelCollisionWorkspaceController.h"
+#include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
 #include "Editor/Workspaces/AnimationStateMachine/HIKARI_AnimationStateMachineWorkspaceController.h"
 #include "Editor/HIKARI_SelectionSyncService.h"
 #include "Editor/HIKARI_StatsPanel.h"
@@ -73,6 +74,7 @@ namespace HIKARI {
         EDITOR::EditorWorkspaceHost workspaceHost_{};
         EDITOR::CinematicsWorkspaceController cinematicsWorkspaceController_{};
         EDITOR::ModelCollisionWorkspaceController modelCollisionWorkspaceController_{};
+        EDITOR::ModelMaterialWorkspaceController modelMaterialWorkspaceController_{};
         EDITOR::AnimationStateMachineWorkspaceController
             animationStateMachineWorkspaceController_{};
         DebugCameraPanel debugCameraPanel_{};

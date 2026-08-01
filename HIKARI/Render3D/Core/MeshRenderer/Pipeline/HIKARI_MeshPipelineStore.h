@@ -26,10 +26,21 @@ namespace HIKARI::MESHRENDERER {
         Microsoft::WRL::ComPtr<ID3D12PipelineState> depthSkinnedPso;
         Microsoft::WRL::ComPtr<ID3D12PipelineState> geometryPso;
         Microsoft::WRL::ComPtr<ID3D12PipelineState> geometrySkinnedPso;
+        Microsoft::WRL::ComPtr<ID3D12PipelineState> geometryFeatureMaskPso;
+        Microsoft::WRL::ComPtr<ID3D12PipelineState> geometryFeatureMaskSkinnedPso;
+        Microsoft::WRL::ComPtr<ID3D12PipelineState> geometryOutlinePso;
+        Microsoft::WRL::ComPtr<ID3D12PipelineState> geometryOutlineSkinnedPso;
+        Microsoft::WRL::ComPtr<ID3D12PipelineState> visibilityOverlayPso;
+        Microsoft::WRL::ComPtr<ID3D12PipelineState> visibilityOverlaySkinnedPso;
         Microsoft::WRL::ComPtr<ID3DBlob> vsBlob;
         Microsoft::WRL::ComPtr<ID3DBlob> skinnedVsBlob;
         Microsoft::WRL::ComPtr<ID3DBlob> psBlob;
         Microsoft::WRL::ComPtr<ID3DBlob> geometryPsBlob;
+        Microsoft::WRL::ComPtr<ID3DBlob> geometryFeatureMaskPsBlob;
+        Microsoft::WRL::ComPtr<ID3DBlob> geometryOutlineVsBlob;
+        Microsoft::WRL::ComPtr<ID3DBlob> geometryOutlineSkinnedVsBlob;
+        Microsoft::WRL::ComPtr<ID3DBlob> geometryOutlinePsBlob;
+        Microsoft::WRL::ComPtr<ID3DBlob> visibilityOverlayPsBlob;
         std::unordered_map<VFX::VariantKey, Microsoft::WRL::ComPtr<ID3D12PipelineState>, VariantKeyHasher> variantPsoCache;
         std::unordered_map<VFX::VariantKey, Microsoft::WRL::ComPtr<ID3D12PipelineState>, VariantKeyHasher> skinnedVariantPsoCache;
         std::unordered_map<VFX::VariantKey, Microsoft::WRL::ComPtr<ID3D12PipelineState>, VariantKeyHasher> wireVariantPsoCache;
@@ -45,7 +56,16 @@ namespace HIKARI::MESHRENDERER {
     ID3D12RootSignature* GetStaticRootSignature(MeshPipelineStore& store);
     ID3D12RootSignature* GetSkinnedRootSignature(MeshPipelineStore& store);
     ID3D12PipelineState* GetDepthPso(MeshPipelineStore& store, bool skinned);
-    ID3D12PipelineState* GetGeometryPso(MeshPipelineStore& store, bool skinned);
+    ID3D12PipelineState* GetGeometryPso(
+        MeshPipelineStore& store,
+        bool skinned,
+        bool featureMask = false);
+    ID3D12PipelineState* GetGeometryOutlinePso(
+        MeshPipelineStore& store,
+        bool skinned);
+    ID3D12PipelineState* GetVisibilityOverlayPso(
+        MeshPipelineStore& store,
+        bool skinned);
 
     ID3D12PipelineState* GetOrCreateVariantPso(
         MeshPipelineStore& store,

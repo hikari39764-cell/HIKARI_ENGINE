@@ -50,6 +50,11 @@ cbuffer MaterialIndexCB : register(b7)
 
 #include "Include/HIKARI_SurfaceGpuScene.hlsli"
 #include "Include/Forward/HIKARI_ForwardVertexMeta.hlsli"
+#if defined(HIKARI_GEOMETRY_OUTLINE_VERTEX)
+#define HIKARI_MESH_MATERIAL_DATA_EXTERNAL_INDEX_CB 1
+#include "Include/HIKARI_MeshMaterialData.hlsli"
+#include "Include/Features/HIKARI_GeometryOutlineVertex.hlsli"
+#endif
 
 struct VSInput
 {
@@ -130,9 +135,16 @@ VSOutput main(VSInput input)
     }
 
     float4 worldPos = mul(world, float4(localPos.xyz, 1.0f));
-    output.position = mul(gViewProj, worldPos);
     output.worldPosWS = worldPos.xyz;
     output.normalWS = normalize(mul((float3x3)normalMatrix, normalize(localNormal)));
+#if defined(HIKARI_GEOMETRY_OUTLINE_VERTEX)
+    output.position = HikariExpandGeometryOutlineVertex(
+        worldPos,
+        output.normalWS,
+        materialDataIndex);
+#else
+    output.position = mul(gViewProj, worldPos);
+#endif
     output.tangentWS = float4(normalize(mul((float3x3)normalMatrix, normalize(localTangent))), input.tangent.w);
     output.uv = input.uv0;
     output.uv1 = input.uv1;

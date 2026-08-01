@@ -9,7 +9,10 @@
 #include "Assets/Formats/HIKARI_HmatFormat.h"
 #include "Assets/Importers/Policy/HIKARI_ModelImportPolicy.h"
 #include "Assets/Importers/Policy/HIKARI_TextureImportPolicy.h"
+#include "Assets/Material/Compiler/HIKARI_MaterialCompiler.h"
+#include "Assets/Material/Authoring/HIKARI_MaterialInstanceResolver.h"
 #include "Assets/Material/HIKARI_MaterialAssetData.h"
+#include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingAsset.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
 #include "Core/HIKARI_Logger.h"
 
@@ -20,12 +23,14 @@ namespace HIKARI {
         bool LoadMaterialSourceJson(
             const AssetDatabase& assetDatabase,
             const AssetRecord& record,
-            PbrMaterialAssetData& outData) {
+            MaterialAssetData& outData,
+            MaterialCompileResult& outCompileResult) {
 
             const std::filesystem::path sourcePath =
                 (assetDatabase.GetProjectRoot() / record.sourcePath).lexically_normal();
             std::string loadError{};
-            if (LoadPbrMaterialAssetData(sourcePath, outData, loadError)) {
+            if (LoadMaterialAssetData(sourcePath, outData, loadError)) {
+                outCompileResult = CompileMaterialAsset(outData);
                 return true;
             }
 
@@ -33,10 +38,11 @@ namespace HIKARI {
             return false;
         }
 
-        bool LoadMaterialDataForRegistry(
+        bool LoadRawMaterialDataForRegistry(
             const AssetDatabase& assetDatabase,
             const AssetRecord& record,
-            PbrMaterialAssetData& outData) {
+            MaterialAssetData& outData,
+            MaterialCompileResult& outCompileResult) {
 
             // Cook 済み HMAT を優先し、無い場合だけ source JSON を読む。
             const std::string hmatArtifact =
@@ -48,19 +54,80 @@ namespace HIKARI {
                     (assetDatabase.GetProjectRoot() / hmatArtifact).lexically_normal();
 
                 std::string readMessage{};
-                if (ReadHmatFile(hmatPath, outData, readMessage)) {
+                if (ReadHmatFile(
+                        hmatPath,
+                        outData,
+                        outCompileResult,
+                        readMessage)) {
                     HIKARI_LOG_INFO("[AssetRegistryBuilder][Material] loaded HMAT: " + hmatArtifact);
                     return true;
                 }
 
                 HIKARI_LOG_WARN("[AssetRegistryBuilder][Material][WARN] HMAT read failed: " + readMessage);
-                return LoadMaterialSourceJson(assetDatabase, record, outData);
+                return LoadMaterialSourceJson(
+                    assetDatabase, record, outData, outCompileResult);
             }
 
             // 旧 asset 互換のため JSON 読み込み経路は残す。
             HIKARI_LOG_WARN("[AssetRegistryBuilder][Material] HMAT artifact missing, fallback to source JSON: " +
                 record.sourcePath.generic_string());
-            return LoadMaterialSourceJson(assetDatabase, record, outData);
+            return LoadMaterialSourceJson(
+                assetDatabase, record, outData, outCompileResult);
+        }
+
+        bool LoadMaterialDataForRegistry(
+            const AssetDatabase& assetDatabase,
+            const AssetRecord& record,
+            MaterialAssetData& outData,
+            MaterialCompileResult& outCompileResult) {
+
+            MaterialAssetData source{};
+            MaterialCompileResult sourceCompile{};
+            if (!LoadRawMaterialDataForRegistry(
+                    assetDatabase, record, source, sourceCompile)) {
+                return false;
+            }
+            if (source.kind != MaterialAssetKind::Instance) {
+                outData = std::move(source);
+                outCompileResult = std::move(sourceCompile);
+                return true;
+            }
+
+            const ASSETS::MATERIAL::MaterialInstanceResolveResult resolved =
+                ASSETS::MATERIAL::ResolveMaterialInstance(
+                    source,
+                    [&assetDatabase](
+                        const AssetGuid& guid,
+                        MaterialAssetData& outParent,
+                        std::string& outError) {
+                        const AssetRecord* parent =
+                            assetDatabase.FindByGuid(guid);
+                        if (parent == nullptr ||
+                            parent->type != AssetType::Material) {
+                            outError =
+                                "parent Material asset record was not found";
+                            return false;
+                        }
+                        MaterialCompileResult ignoredCompile{};
+                        if (!LoadRawMaterialDataForRegistry(
+                                assetDatabase, *parent,
+                                outParent, ignoredCompile)) {
+                            outError =
+                                "parent Material asset data could not be loaded";
+                            return false;
+                        }
+                        outError.clear();
+                        return true;
+                    });
+            if (!resolved.success) {
+                HIKARI_LOG_WARN(
+                    "[AssetRegistryBuilder][Material] Material Instance "
+                    "composition failed: " + record.guid.value);
+                return false;
+            }
+            outData = resolved.resolvedMaterial;
+            outCompileResult = resolved.compile;
+            return true;
         }
 
         std::string FindSharedBrdfLutPath(const AssetDatabase& assetDatabase) {
@@ -201,14 +268,51 @@ namespace HIKARI {
                 }
                 descriptor->version = record->meta.importerVersion;
 
-                if (!LoadMaterialDataForRegistry(assetDatabase, *record, descriptor->data)) {
-                    descriptor->data.materialName = record->displayName.empty()
+                if (!LoadMaterialDataForRegistry(
+                        assetDatabase,
+                        *record,
+                        descriptor->sourceData,
+                        descriptor->compileResult)) {
+                    PbrMaterialAssetData fallback{};
+                    fallback.materialName = record->displayName.empty()
                         ? record->sourcePath.stem().string()
                         : record->displayName;
+                    descriptor->sourceData =
+                        MakeStandardPbrMaterialAssetData(fallback);
+                    descriptor->compileResult =
+                        CompileMaterialAsset(descriptor->sourceData);
                     HIKARI_LOG_WARN("[AssetRegistryBuilder][Material] using fallback material data: " +
-                        descriptor->data.materialName);
+                        fallback.materialName);
                 }
+                descriptor->data =
+                    ProjectPbrMaterialAssetData(descriptor->sourceData);
                 ok = registry.RegisterDescriptor(std::move(descriptor)) && ok;
+            } else if (record->type ==
+                AssetType::ModelMaterialBinding) {
+                auto descriptor = std::make_unique<
+                    ModelMaterialBindingAssetDescriptor>();
+                descriptor->id.value = record->guid.value;
+                descriptor->type = AssetType::ModelMaterialBinding;
+                descriptor->sourcePath =
+                    record->sourcePath.generic_string();
+                descriptor->version = record->meta.importerVersion;
+                const std::filesystem::path sourcePath =
+                    record->sourcePath.is_absolute()
+                        ? record->sourcePath
+                        : (assetDatabase.GetProjectRoot() /
+                            record->sourcePath).lexically_normal();
+                std::string loadError{};
+                if (!ASSETS::MODELS::
+                    LoadModelMaterialBindingAsset(
+                        sourcePath, descriptor->data, loadError)) {
+                    HIKARI_LOG_WARN(
+                        "[AssetRegistryBuilder][ModelMaterialBinding] "
+                        "source read failed: " + loadError);
+                    ok = false;
+                    continue;
+                }
+                ok = registry.RegisterDescriptor(
+                    std::move(descriptor)) && ok;
             } else if (record->type == AssetType::VfxEffect) {
                 auto descriptor = std::make_unique<VfxAssetDescriptor>();
                 descriptor->id.value = record->guid.value;

@@ -144,19 +144,61 @@ namespace HIKARI {
         }
 
 
-        if (ImGui::TreeNodeEx("Material Override", ImGuiTreeNodeFlags_DefaultOpen)) {
-            const ModelMaterialOverrideSlot* slot0 = nullptr;
-            for (const ModelMaterialOverrideSlot& slot : materialOverrides_) {
-                if (slot.slotIndex == 0) {
-                    slot0 = &slot;
-                    break;
-                }
+        if (ImGui::TreeNodeEx("Material Overrides", ImGuiTreeNodeFlags_DefaultOpen)) {
+            const size_t materialCount =
+                asset_ != nullptr ? asset_->materials.size() : 0u;
+            if (materialCount == 0u) {
+                ImGui::TextDisabled(
+                    "No imported material slots are currently available.");
             }
-            ImGui::Text("Slot 0: %s",
-                (slot0 && slot0->materialAssetGuid.IsValid()) ? ShortGuid(slot0->materialAssetGuid.value).c_str() : "<none>");
-            ImGui::Text("Runtime Override: %s",
-                runtimeMaterialOverride_ ? "Ready" : "Default model material");
-            if (runtimeMaterialOverride_ && ImGui::TreeNode("Runtime Texture Debug")) {
+
+            for (size_t materialIndex = 0u;
+                materialIndex < materialCount;
+                ++materialIndex) {
+
+                const MaterialAsset& imported =
+                    asset_->materials[materialIndex];
+                const ModelMaterialOverrideSlot* authoredOverride = nullptr;
+                for (const ModelMaterialOverrideSlot& slot :
+                    materialOverrides_) {
+
+                    const bool stableMatch =
+                        imported.slotId.IsValid() &&
+                        slot.slotId == imported.slotId;
+                    const bool legacyMatch =
+                        !slot.slotId.IsValid() &&
+                        slot.slotIndex == materialIndex;
+                    if (stableMatch || legacyMatch) {
+                        authoredOverride = &slot;
+                        break;
+                    }
+                }
+
+                const Material* runtimeOverride =
+                    GetRuntimeMaterialOverride(
+                        static_cast<uint32_t>(materialIndex));
+                ImGui::PushID(static_cast<int>(materialIndex));
+                ImGui::Text(
+                    "Slot %zu: %s",
+                    materialIndex,
+                    imported.name.empty()
+                        ? "Unnamed"
+                        : imported.name.c_str());
+                ImGui::TextDisabled(
+                    "  Binding: %s",
+                    authoredOverride != nullptr &&
+                        authoredOverride->materialAssetGuid.IsValid()
+                        ? ShortGuid(
+                            authoredOverride->materialAssetGuid.value)
+                            .c_str()
+                        : "Imported model material");
+                ImGui::TextDisabled(
+                    "  Runtime: %s",
+                    runtimeOverride != nullptr
+                        ? "Override ready"
+                        : "Imported fallback");
+                if (runtimeOverride != nullptr &&
+                    ImGui::TreeNode("Runtime Texture Debug")) {
                 auto drawRuntimeSlot = [](const char* label, const RuntimeTextureSlot& slot) {
                     ImGui::Text("%s: handle=%d active=%s",
                         label,
@@ -164,14 +206,16 @@ namespace HIKARI {
                         slot.IsActive() ? "true" : "false");
                     ImGui::TextDisabled("  resolved=%s", slot.resolvedPath.empty() ? "<none>" : slot.resolvedPath.c_str());
                 };
-                drawRuntimeSlot("BaseColor", runtimeMaterialOverride_->GetTextureSlot(MaterialTextureUsage::BaseColor));
-                drawRuntimeSlot("Normal", runtimeMaterialOverride_->GetTextureSlot(MaterialTextureUsage::Normal));
-                drawRuntimeSlot("MetallicRoughness", runtimeMaterialOverride_->GetTextureSlot(MaterialTextureUsage::MetallicRoughness));
-                drawRuntimeSlot("Occlusion", runtimeMaterialOverride_->GetTextureSlot(MaterialTextureUsage::Occlusion));
-                drawRuntimeSlot("Emissive", runtimeMaterialOverride_->GetTextureSlot(MaterialTextureUsage::Emissive));
-                drawRuntimeSlot("Specular", runtimeMaterialOverride_->GetTextureSlot(MaterialTextureUsage::Specular));
-                drawRuntimeSlot("SpecularColor", runtimeMaterialOverride_->GetTextureSlot(MaterialTextureUsage::SpecularColor));
-                ImGui::TreePop();
+                    drawRuntimeSlot("BaseColor", runtimeOverride->GetTextureSlot(MaterialTextureUsage::BaseColor));
+                    drawRuntimeSlot("Normal", runtimeOverride->GetTextureSlot(MaterialTextureUsage::Normal));
+                    drawRuntimeSlot("MetallicRoughness", runtimeOverride->GetTextureSlot(MaterialTextureUsage::MetallicRoughness));
+                    drawRuntimeSlot("Occlusion", runtimeOverride->GetTextureSlot(MaterialTextureUsage::Occlusion));
+                    drawRuntimeSlot("Emissive", runtimeOverride->GetTextureSlot(MaterialTextureUsage::Emissive));
+                    drawRuntimeSlot("Specular", runtimeOverride->GetTextureSlot(MaterialTextureUsage::Specular));
+                    drawRuntimeSlot("SpecularColor", runtimeOverride->GetTextureSlot(MaterialTextureUsage::SpecularColor));
+                    ImGui::TreePop();
+                }
+                ImGui::PopID();
             }
             ImGui::TreePop();
         }

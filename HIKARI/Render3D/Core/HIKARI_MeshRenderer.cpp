@@ -74,6 +74,11 @@ namespace HIKARI::MESHRENDERER {
             gMeshRendererState.gpuDrivenSceneSource);
     }
 
+    const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource&
+        GetActiveGpuDrivenSceneSource() {
+        return gMeshRendererState.gpuDrivenSceneSource;
+    }
+
     bool HasSubmittedItems() {
         return HasGpuDrivenSceneSource();
     }

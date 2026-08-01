@@ -16,13 +16,37 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         const MeshPassResources& passResources,
         RENDER3D::GPUDRIVEN::GpuDrivenPassKind gpuPass,
         MeshDrawPassKind passKind,
-        RENDER3D::MESHLET::MeshletPipelineKind pipelineKind) {
+        RENDER3D::MESHLET::MeshletPipelineKind pipelineKind
+#if defined(HIKARI_WITH_EDITOR)
+        ,
+        RENDER3D::GPUDRIVEN::GpuDrivenLayer* layerOverride = nullptr,
+        const MeshFrameBindingOverrides* bindingOverrides = nullptr
+#endif
+    ) {
+#if defined(HIKARI_WITH_EDITOR)
+        RENDER3D::GPUDRIVEN::GpuDrivenLayer& layer =
+            layerOverride != nullptr
+                ? *layerOverride
+                : gMeshRendererState.gpuDrivenLayer;
+        if (layerOverride != nullptr) {
+            if (!layer.IsPassGpuReady(gpuPass)) {
+                return false;
+            }
+        } else if (!IsGpuDrivenWorkPreparedForPass(gpuPass)) {
+            return false;
+        }
+#else
         if (!IsGpuDrivenWorkPreparedForPass(gpuPass)) {
             return false;
         }
+#endif
 
         const RENDER3D::GPUDRIVEN::GeometryBackendContext backendContext =
+#if defined(HIKARI_WITH_EDITOR)
+            layer.BuildGeometryBackendContext(
+#else
             gMeshRendererState.gpuDrivenLayer.BuildGeometryBackendContext(
+#endif
                 graphics.cmdList,
                 gpuPass,
                 RENDER3D::GPUDRIVEN::GeometryBackendKind::GpuDrivenMeshShader);
@@ -43,7 +67,16 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         const bool depthAwarePhase =
             gpuPass == RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardDepthAware;
         MeshDrawContext drawCtx =
-            BuildDrawContext(graphics, depthAwarePhase, passKind, passResources);
+            BuildDrawContext(
+                graphics,
+                depthAwarePhase,
+                passKind,
+                passResources
+#if defined(HIKARI_WITH_EDITOR)
+                ,
+                bindingOverrides
+#endif
+            );
         drawCtx.binding.cache = &bindingCache;
         BindSurfaceRecordFrameResources(drawCtx);
         BindMeshletVisibleRanges(
@@ -81,6 +114,15 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         if (passKind == MeshDrawPassKind::GeometryAux) {
             return gMeshRendererState.pipelines.geometryPso.Get();
         }
+        if (passKind == MeshDrawPassKind::GeometryAuxFeatureMask) {
+            return gMeshRendererState.pipelines.geometryFeatureMaskPso.Get();
+        }
+        if (passKind == MeshDrawPassKind::GeometryOutline) {
+            return gMeshRendererState.pipelines.geometryOutlinePso.Get();
+        }
+        if (passKind == MeshDrawPassKind::VisibilityOverlay) {
+            return gMeshRendererState.pipelines.visibilityOverlayPso.Get();
+        }
         if (passKind == MeshDrawPassKind::DepthPrepass) {
             return gMeshRendererState.pipelines.depthPso.Get();
         }
@@ -112,6 +154,16 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         }
         if (passKind == MeshDrawPassKind::GeometryAux) {
             return gMeshRendererState.pipelines.geometrySkinnedPso.Get();
+        }
+        if (passKind == MeshDrawPassKind::GeometryAuxFeatureMask) {
+            return gMeshRendererState.pipelines.
+                geometryFeatureMaskSkinnedPso.Get();
+        }
+        if (passKind == MeshDrawPassKind::GeometryOutline) {
+            return gMeshRendererState.pipelines.geometryOutlineSkinnedPso.Get();
+        }
+        if (passKind == MeshDrawPassKind::VisibilityOverlay) {
+            return gMeshRendererState.pipelines.visibilityOverlaySkinnedPso.Get();
         }
         if (passKind == MeshDrawPassKind::DepthPrepass) {
             return gMeshRendererState.pipelines.depthSkinnedPso.Get();
@@ -287,6 +339,8 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                 drawCtx.localLightsAddress,
                 drawCtx.localLightClusterHeadersAddress,
                 drawCtx.localLightClusterIndicesAddress,
+                drawCtx.materialProgramParametersAddress,
+                drawCtx.materialProgramResourcesAddress,
                 drawCtx.shadowAddress,
                 drawCtx.skyEnvironmentAddress);
             BindObjectDataBuffer(drawCtx.binding, drawCtx.objectDataSrv);
@@ -346,7 +400,13 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         RENDER3D::GPUDRIVEN::GpuDrivenPassKind gpuPass,
         const MeshPassResources& passResources,
         MeshDrawPassKind passKind,
-        RENDER3D::MESHLET::MeshletPipelineKind meshletPipelineKind) {
+        RENDER3D::MESHLET::MeshletPipelineKind meshletPipelineKind
+#if defined(HIKARI_WITH_EDITOR)
+        ,
+        RENDER3D::GPUDRIVEN::GpuDrivenLayer* layerOverride = nullptr,
+        const MeshFrameBindingOverrides* bindingOverrides = nullptr
+#endif
+    ) {
 
         switch (backend) {
         case RENDER3D::GPUDRIVEN::GeometryBackendKind::GpuDrivenMeshShader:
@@ -355,13 +415,25 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                 passResources,
                 gpuPass,
                 passKind,
-                meshletPipelineKind);
+                meshletPipelineKind
+#if defined(HIKARI_WITH_EDITOR)
+                ,
+                layerOverride,
+                bindingOverrides
+#endif
+            );
         case RENDER3D::GPUDRIVEN::GeometryBackendKind::GpuDrivenTraditionalVsPs:
             return ExecuteTraditionalDrawFrame(
                 graphics,
                 passResources,
                 gpuPass,
-                passKind);
+                passKind
+#if defined(HIKARI_WITH_EDITOR)
+                ,
+                layerOverride,
+                bindingOverrides
+#endif
+            );
         default:
             return false;
         }
@@ -395,6 +467,40 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         }
         return result;
     }
+
+#if defined(HIKARI_WITH_EDITOR)
+    GeometryBackendExecutionResult ExecuteEditorInteractiveGeometryBackendPlan(
+        const GFX::Context& graphics,
+        RENDER3D::GPUDRIVEN::GpuDrivenPassKind pass,
+        const MeshPassResources& passResources,
+        MeshDrawPassKind passKind,
+        RENDER3D::MESHLET::MeshletPipelineKind meshletPipelineKind,
+        RENDER3D::GPUDRIVEN::GpuDrivenLayer& layer,
+        const MeshFrameBindingOverrides& bindingOverrides) {
+
+        GeometryBackendExecutionResult result{};
+        const RENDER3D::GPUDRIVEN::GeometryBackendExecutionPlan plan =
+            layer.GetPassExecutionPlan(pass);
+        for (size_t i = 0; i < plan.gpuBackendCount; ++i) {
+            const RENDER3D::GPUDRIVEN::GeometryBackendKind backend =
+                plan.gpuBackends[i];
+            if (!ExecuteGeometryBackend(
+                    graphics,
+                    backend,
+                    pass,
+                    passResources,
+                    passKind,
+                    meshletPipelineKind,
+                    &layer,
+                    &bindingOverrides)) {
+                continue;
+            }
+            result.gpuBackendExecuted = true;
+            result.executedGpuBackend = backend;
+        }
+        return result;
+    }
+#endif
 
     GeometryBackendExecutionResult ExecuteDepthVisibilityBackendPlan(
         const GFX::Context& graphics,

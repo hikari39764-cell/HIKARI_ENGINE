@@ -414,7 +414,9 @@ namespace HIKARI {
         (void)RENDER3D::EDITORVIEW::RenderPending(
             activeEnvironment,
             sceneLighting,
-            state_->identity.documentRevision);
+            state_->identity.documentRevision,
+            state_->assets.Models(),
+            state_->lighting.sky);
 #endif
     }
     void DocumentSceneBase::RenderImGui() {

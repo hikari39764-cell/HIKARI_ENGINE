@@ -67,6 +67,8 @@ namespace HIKARI {
                 return 3;
             case AssetType::Model:
                 return 4;
+            case AssetType::ModelMaterialBinding:
+                return 5;
             case AssetType::Scene:
             case AssetType::Sequence:
             case AssetType::AnimationStateMachine:

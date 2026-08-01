@@ -657,6 +657,11 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             instance.nodeIndex = record.nodeIndex;
             instance.flags = BuildInstanceFlags(record);
             instance.geometryBackend = static_cast<uint32_t>(record.key.geometryBackend);
+            if (record.materialOverride != nullptr) {
+                instance.materialProgramFlags =
+                    record.materialOverride->GetMaterialProgramInstanceFlags();
+            }
+            instance.postGroupMask = record.postGroupMask;
             if (record.skinned &&
                 record.jointPaletteSlot != RUNTIME::kInvalidRenderSurfaceIndex) {
                 instance.jointPaletteOffsetBytes =
@@ -892,6 +897,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         source.world = instance.world;
         source.normalMatrix = instance.normalMatrix;
         source.receiveShadow = record.receiveShadow;
+        source.postGroupMask = record.postGroupMask;
         source.fxFlags = instance.fxFlags;
         for (size_t i = 0; i < VFX::kMaterialFxUserCount; ++i) {
             source.fxUser[i] = instance.fxUser[i];

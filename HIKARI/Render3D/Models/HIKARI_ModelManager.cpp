@@ -15,6 +15,7 @@ namespace HIKARI {
             asset.nodes.clear();
             asset.meshes.clear();
             asset.materials.clear();
+            asset.materialImportSources.clear();
             asset.textures.clear();
             asset.skins.clear();
             asset.animations.clear();

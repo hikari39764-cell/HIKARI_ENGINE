@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "Assets/Models/HIKARI_ModelAsset.h"
+#include "Assets/Models/HIKARI_ModelMaterialSlot.h"
 #include "Assets/Models/Loading/HIKARI_ModelSourcePath.h"
 #include "Assets/Models/Loading/Obj/HIKARI_ObjText.h"
 
@@ -199,6 +200,10 @@ namespace HIKARI::ASSETS::MODELS::OBJ {
 
         MaterialAsset material{};
         material.name = description.name.empty() ? name : description.name;
+        material.slotId = MakeMaterialSlotId(
+            MaterialSlotImporterSemantic::Obj,
+            name,
+            0u);
         material.baseColorFactor = description.baseColor;
         material.roughnessFactor = description.roughness;
         material.metallicFactor = description.metallic;

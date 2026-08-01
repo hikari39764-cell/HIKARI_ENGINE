@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "Render3D/Material/HIKARI_GpuMaterialProgramBlockStore.h"
 #include "Render3D/Material/HIKARI_GpuMaterialTypes.h"
 #include "Render3D/Resources/HIKARI_RenderResourceHandle.h"
 
@@ -39,11 +40,6 @@ namespace HIKARI::RENDER3D::MATERIAL {
                 lhs.materialRevision == rhs.materialRevision &&
                 lhs.materialIndex == rhs.materialIndex;
         }
-    };
-
-    struct GpuMaterialUploadRange {
-        uint32_t firstSlot = 0;
-        uint32_t slotCount = 0;
     };
 
     struct GpuMaterialRegistryStats {
@@ -95,6 +91,20 @@ namespace HIKARI::RENDER3D::MATERIAL {
             const GpuMaterialData& data,
             bool finalized);
 
+        // Updates only the five program indirection dwords and reuses the
+        // existing per-frame dirty range upload. Parameter/resource values are
+        // owned by their independent block buffers.
+        bool UpdateProgramBinding(
+            uint32_t materialSlot,
+            const GpuMaterialProgramBinding& binding);
+
+        bool UpdateProgramBlocks(
+            uint32_t materialSlot,
+            MaterialProgramId programId,
+            std::span<const MATH::Vec4> parameters,
+            std::span<const uint32_t> resources,
+            uint32_t instanceFlags);
+
         void EndSourceSync();
 
         bool StageFrame(
@@ -103,8 +113,22 @@ namespace HIKARI::RENDER3D::MATERIAL {
             size_t targetCapacity,
             std::vector<GpuMaterialUploadRange>& outRanges);
 
+        bool StageProgramBlocksFrame(
+            uint32_t frameResourceIndex,
+            MATH::Vec4* parameterTarget,
+            uint32_t* resourceTarget,
+            size_t targetMaterialCapacity,
+            std::vector<GpuMaterialUploadRange>& outRanges);
+
         std::span<const uint32_t> GetSourceBindings() const;
+        std::span<const uint32_t> GetSourceBindings(
+            uintptr_t sourceIdentity) const;
+        bool TryGetResidentData(
+            uint32_t materialSlot,
+            GpuMaterialData& outData) const;
         uint64_t GetBindingVersion() const;
+        uint64_t GetBindingVersion(uintptr_t sourceIdentity) const;
+        void ReleaseSourceBindings(uintptr_t sourceIdentity);
         const GpuMaterialRegistryStats& GetStats() const;
 
     private:
@@ -141,6 +165,15 @@ namespace HIKARI::RENDER3D::MATERIAL {
             bool seenInFullSync = false;
         };
 
+        struct SourceState {
+            uint64_t layoutVersion = 0;
+            uint64_t sourceVersion = 0;
+            uint64_t bindingVersion = 0;
+            bool valid = false;
+            std::vector<SourceBinding> bindings{};
+            std::vector<uint32_t> slotTable{};
+        };
+
         uint32_t ResolveSlot(
             const MaterialIdentity& identity,
             const GpuMaterialData& data);
@@ -148,31 +181,29 @@ namespace HIKARI::RENDER3D::MATERIAL {
         void MarkSlotDirty(uint32_t slotIndex);
         void MarkSourceSeen(uint32_t sourceRecordIndex, uint32_t materialSlot);
         void ReleaseSourceReference(uint32_t materialSlot);
+        void ReleaseSourceReferences(SourceState& source);
         void RetireUnusedSlots();
         void RefreshStats();
         void RecreateDefaultSlot();
+        SourceState* FindSourceState(uintptr_t sourceIdentity);
+        const SourceState* FindSourceState(uintptr_t sourceIdentity) const;
 
         uint32_t capacity_ = 0;
         uint32_t frameResourceCount_ = 0;
         uint64_t dataVersion_ = 0;
-        uint64_t bindingVersion_ = 0;
-        uintptr_t sourceIdentity_ = 0;
-        uint64_t sourceLayoutVersion_ = 0;
-        uint64_t sourceVersion_ = 0;
-        bool sourceStateValid_ = false;
+        uint64_t bindingVersionCounter_ = 0;
+        SourceState* activeSourceState_ = nullptr;
         bool initialized_ = false;
         GpuMaterialSourceSyncMode syncMode_ = GpuMaterialSourceSyncMode::None;
         uint32_t residentSlotCount_ = 0;
-        uint32_t sourceBindingCount_ = 0;
-        uint32_t pendingSourceResolveCount_ = 0;
         uint32_t pendingFrameSlotCount_ = 0;
 
         std::vector<Slot> slots_{};
         std::vector<uint32_t> freeSlots_{};
         std::unordered_map<MaterialIdentity, uint32_t, MaterialIdentityHash> slotByIdentity_{};
-        std::vector<SourceBinding> sourceBindings_{};
-        std::vector<uint32_t> sourceSlotTable_{};
+        std::unordered_map<uintptr_t, SourceState> sourceStates_{};
         std::vector<std::vector<uint32_t>> pendingSlotsByFrame_{};
+        GpuMaterialProgramBlockStore programBlockStore_{};
         GpuMaterialRegistryStats stats_{};
     };
 

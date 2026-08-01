@@ -210,12 +210,23 @@ namespace HIKARI::MESHRENDERER {
         GFX::RetireD3D12ObjectForCurrentFrame(store.depthSkinnedPso, "MeshRenderer.DepthSkinnedPSO");
         GFX::RetireD3D12ObjectForCurrentFrame(store.geometryPso, "MeshRenderer.GeometryPSO");
         GFX::RetireD3D12ObjectForCurrentFrame(store.geometrySkinnedPso, "MeshRenderer.GeometrySkinnedPSO");
+        GFX::RetireD3D12ObjectForCurrentFrame(store.geometryFeatureMaskPso, "MeshRenderer.GeometryFeatureMaskPSO");
+        GFX::RetireD3D12ObjectForCurrentFrame(store.geometryFeatureMaskSkinnedPso, "MeshRenderer.GeometryFeatureMaskSkinnedPSO");
+        GFX::RetireD3D12ObjectForCurrentFrame(store.geometryOutlinePso, "MeshRenderer.GeometryOutlinePSO");
+        GFX::RetireD3D12ObjectForCurrentFrame(store.geometryOutlineSkinnedPso, "MeshRenderer.GeometryOutlineSkinnedPSO");
+        GFX::RetireD3D12ObjectForCurrentFrame(store.visibilityOverlayPso, "MeshRenderer.VisibilityOverlayPSO");
+        GFX::RetireD3D12ObjectForCurrentFrame(store.visibilityOverlaySkinnedPso, "MeshRenderer.VisibilityOverlaySkinnedPSO");
         GFX::RetireD3D12ObjectForCurrentFrame(store.rootSig, "MeshRenderer.StaticRootSignature");
         GFX::RetireD3D12ObjectForCurrentFrame(store.skinnedRootSig, "MeshRenderer.SkinnedRootSignature");
         store.vsBlob.Reset();
         store.skinnedVsBlob.Reset();
         store.psBlob.Reset();
         store.geometryPsBlob.Reset();
+        store.geometryFeatureMaskPsBlob.Reset();
+        store.geometryOutlineVsBlob.Reset();
+        store.geometryOutlineSkinnedVsBlob.Reset();
+        store.geometryOutlinePsBlob.Reset();
+        store.visibilityOverlayPsBlob.Reset();
     }
 
     void InvalidateMeshPipelineVariants(MeshPipelineStore& store) {
@@ -242,8 +253,35 @@ namespace HIKARI::MESHRENDERER {
         return skinned ? store.depthSkinnedPso.Get() : store.depthPso.Get();
     }
 
-    ID3D12PipelineState* GetGeometryPso(MeshPipelineStore& store, bool skinned) {
+    ID3D12PipelineState* GetGeometryPso(
+        MeshPipelineStore& store,
+        bool skinned,
+        bool featureMask) {
+
+        if (featureMask) {
+            return skinned
+                ? store.geometryFeatureMaskSkinnedPso.Get()
+                : store.geometryFeatureMaskPso.Get();
+        }
         return skinned ? store.geometrySkinnedPso.Get() : store.geometryPso.Get();
+    }
+
+    ID3D12PipelineState* GetGeometryOutlinePso(
+        MeshPipelineStore& store,
+        bool skinned) {
+
+        return skinned
+            ? store.geometryOutlineSkinnedPso.Get()
+            : store.geometryOutlinePso.Get();
+    }
+
+    ID3D12PipelineState* GetVisibilityOverlayPso(
+        MeshPipelineStore& store,
+        bool skinned) {
+
+        return skinned
+            ? store.visibilityOverlaySkinnedPso.Get()
+            : store.visibilityOverlayPso.Get();
     }
 
     ID3D12PipelineState* GetOrCreateVariantPso(

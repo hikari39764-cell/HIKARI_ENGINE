@@ -2,17 +2,52 @@
 #include "Gfx/HIKARI_GfxContext.h"
 
 #include <algorithm>
+#include <array>
 
 #include "Gfx/HIKARI_PixProfiler.h"
+#include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Render3D/Core/MeshRenderer/Internal/HIKARI_MeshRendererInternal.h"
 #include "Render3D/GpuDriven/HIKARI_GpuDepthVisibilityLayer.h"
 #include "Render3D/Surface/HIKARI_SceneSurfaceBuffer.h"
 
 namespace HIKARI::MESHRENDERER::INTERNAL {
+    namespace {
+        constexpr std::array kMaterialFeaturePasses{
+            RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardOpaque,
+            RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardDepthAware,
+            RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardTransparent,
+        };
+
+        bool ExecuteMaterialScopedFeaturePasses(
+            const GFX::Context& graphics,
+            const MeshPassResources& passResources,
+            MeshDrawPassKind drawPass,
+            RENDER3D::MESHLET::MeshletPipelineKind meshletPipeline) {
+
+            bool hasSource = false;
+            bool allSourcesExecuted = true;
+            for (const RENDER3D::GPUDRIVEN::GpuDrivenPassKind sourcePass :
+                 kMaterialFeaturePasses) {
+                if (!HasGpuDrivenPassSource(sourcePass)) {
+                    continue;
+                }
+                hasSource = true;
+                allSourcesExecuted &= ExecuteGeometryBackendPlan(
+                    graphics,
+                    sourcePass,
+                    passResources,
+                    drawPass,
+                    meshletPipeline).gpuBackendExecuted;
+            }
+            return hasSource && allSourcesExecuted;
+        }
+    }
+
     bool RenderGeometryAuxPassInternal(
         const GFX::Context& graphics,
         RENDER3D::SURFACE::SceneSurfaceBuffer& surfaceBuffer,
-        D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv) {
+        D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv,
+        bool writeFeatureMask) {
         if (!HasGpuDrivenPassSource(
             RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardOpaque)) {
             return false;
@@ -20,10 +55,11 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
 
         const CameraCB* camera = GetActiveMeshFrameResources().cameraMapped;
         const uint32_t width = static_cast<uint32_t>(
-            std::max(1.0f, camera ? camera->screenParams.x : 1.0f));
+            (std::max)(1.0f, camera ? camera->screenParams.x : 1.0f));
         const uint32_t height = static_cast<uint32_t>(
-            std::max(1.0f, camera ? camera->screenParams.y : 1.0f));
-        if (!surfaceBuffer.EnsureSize(graphics, width, height)) {
+            (std::max)(1.0f, camera ? camera->screenParams.y : 1.0f));
+        if (!surfaceBuffer.EnsureSize(
+                graphics, width, height, writeFeatureMask)) {
             return false;
         }
 
@@ -42,8 +78,13 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                 graphics,
                 RENDER3D::GPUDRIVEN::GpuDrivenPassKind::GeometryAux,
                 passResources,
-                MeshDrawPassKind::GeometryAux,
-                RENDER3D::MESHLET::MeshletPipelineKind::GeometryAux);
+                writeFeatureMask
+                    ? MeshDrawPassKind::GeometryAuxFeatureMask
+                    : MeshDrawPassKind::GeometryAux,
+                writeFeatureMask
+                    ? RENDER3D::MESHLET::MeshletPipelineKind::
+                        GeometryAuxFeatureMask
+                    : RENDER3D::MESHLET::MeshletPipelineKind::GeometryAux);
         surfaceBuffer.EndWrite(graphics.cmdList);
         return backendResult.gpuBackendExecuted;
     }
@@ -63,9 +104,9 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
 
         const CameraCB* camera = GetActiveMeshFrameResources().cameraMapped;
         const uint32_t width = static_cast<uint32_t>(
-            std::max(1.0f, camera ? camera->screenParams.x : 1.0f));
+            (std::max)(1.0f, camera ? camera->screenParams.x : 1.0f));
         const uint32_t height = static_cast<uint32_t>(
-            std::max(1.0f, camera ? camera->screenParams.y : 1.0f));
+            (std::max)(1.0f, camera ? camera->screenParams.y : 1.0f));
         D3D12_VIEWPORT viewport{};
         viewport.Width = static_cast<float>(width);
         viewport.Height = static_cast<float>(height);
@@ -98,8 +139,66 @@ namespace HIKARI::MESHRENDERER {
     bool RenderGeometryAuxPass(
         const GFX::Context& graphics,
         RENDER3D::SURFACE::SceneSurfaceBuffer& surfaceBuffer,
-        D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv) {
-        return RenderGeometryAuxPassInternal(graphics, surfaceBuffer, sceneDsv);
+        D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv,
+        bool writeFeatureMask) {
+        return RenderGeometryAuxPassInternal(
+            graphics, surfaceBuffer, sceneDsv, writeFeatureMask);
+    }
+
+    bool HasGeometryOutlineFeatureBackend() {
+        const auto& meshletStats =
+            gMeshRendererState.meshletRenderBackend.GetStats();
+        return
+            gMeshRendererState.pipelines.geometryOutlinePso != nullptr &&
+            gMeshRendererState.pipelines.geometryOutlineSkinnedPso != nullptr &&
+            (!meshletStats.meshShaderSupported ||
+                meshletStats.geometryOutlinePipelineReady);
+    }
+
+    bool HasVisibilityOverlayFeatureBackend() {
+        const auto& meshletStats =
+            gMeshRendererState.meshletRenderBackend.GetStats();
+        return
+            gMeshRendererState.pipelines.visibilityOverlayPso != nullptr &&
+            gMeshRendererState.pipelines.visibilityOverlaySkinnedPso != nullptr &&
+            (!meshletStats.meshShaderSupported ||
+                meshletStats.visibilityOverlayPipelineReady);
+    }
+
+    bool RenderGeometryOutlineFeaturePass(
+        const GFX::Context& graphics,
+        const MeshPassResources& passResources) {
+
+        GFX::PIX::ScopedGpuEvent event(
+            graphics.cmdList,
+            GFX::PIX::kColorRender,
+            "RenderFeature.GeometryOutline");
+        GFX::GPU_PROFILE::ScopedGpuTimer timer(
+            graphics.cmdList,
+            GFX::GPU_PROFILE::Pass::StylizedGeometryOutline);
+        return ExecuteMaterialScopedFeaturePasses(
+            graphics,
+            passResources,
+            MeshDrawPassKind::GeometryOutline,
+            RENDER3D::MESHLET::MeshletPipelineKind::GeometryOutline);
+    }
+
+    bool RenderVisibilityOverlayFeaturePass(
+        const GFX::Context& graphics,
+        const MeshPassResources& passResources) {
+
+        GFX::PIX::ScopedGpuEvent event(
+            graphics.cmdList,
+            GFX::PIX::kColorRender,
+            "RenderFeature.VisibilityOverlay");
+        GFX::GPU_PROFILE::ScopedGpuTimer timer(
+            graphics.cmdList,
+            GFX::GPU_PROFILE::Pass::StylizedVisibilityOverlay);
+        return ExecuteMaterialScopedFeaturePasses(
+            graphics,
+            passResources,
+            MeshDrawPassKind::VisibilityOverlay,
+            RENDER3D::MESHLET::MeshletPipelineKind::VisibilityOverlay);
     }
 
     bool HasDepthPrepassWork() {

@@ -39,6 +39,11 @@ $entries = @(
     @{ Shader = "HIKARI/Shaders/Render3D_StaticPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
     @{ Shader = "HIKARI/Shaders/Render3D_StaticFxPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
     @{ Shader = "HIKARI/Shaders/Render3D_GeometryAuxPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
+    @{ Shader = "HIKARI/Shaders/Render3D_GeometryAuxFeaturePS.hlsl"; Entry = "main"; Target = "ps_6_0" },
+    @{ Shader = "HIKARI/Shaders/Render3D_GeometryOutlineVS.hlsl"; Entry = "main"; Target = "vs_6_0" },
+    @{ Shader = "HIKARI/Shaders/Render3D_SkinnedGeometryOutlineVS.hlsl"; Entry = "main"; Target = "vs_6_0" },
+    @{ Shader = "HIKARI/Shaders/Render3D_GeometryOutlinePS.hlsl"; Entry = "main"; Target = "ps_6_0" },
+    @{ Shader = "HIKARI/Shaders/Render3D_VisibilityOverlayPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
     @{ Shader = "HIKARI/Shaders/Render3D_FxWaterVS.hlsl"; Entry = "main"; Target = "vs_6_0" },
     @{ Shader = "HIKARI/Shaders/Render3D_FxWaterPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
     @{ Shader = "HIKARI/Shaders/Render3D_SkyVS.hlsl"; Entry = "main"; Target = "vs_6_0" },
@@ -65,6 +70,8 @@ $entries = @(
     @{ Shader = "HIKARI/Shaders/Render3D_MeshletDepthPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
     @{ Shader = "HIKARI/Shaders/Render3D_MeshletGeometryAuxMS.hlsl"; Entry = "main"; Target = "ms_6_5" },
     @{ Shader = "HIKARI/Shaders/Render3D_MeshletGeometryAuxPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
+    @{ Shader = "HIKARI/Shaders/Render3D_MeshletGeometryAuxFeaturePS.hlsl"; Entry = "main"; Target = "ps_6_0" },
+    @{ Shader = "HIKARI/Shaders/Render3D_MeshletGeometryOutlineMS.hlsl"; Entry = "main"; Target = "ms_6_5" },
     @{ Shader = "HIKARI/Shaders/Render3D_MeshletShadowPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
     @{ Shader = "HIKARI/Shaders/Render3D_GpuDrivenOpaqueFullPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
     @{ Shader = "HIKARI/Shaders/Render3D_GpuDrivenOpaqueAlbedoOnlyPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
@@ -93,6 +100,8 @@ $entries = @(
     @{ Shader = "HIKARI/Shaders/Post_ScreenSpaceReflections.hlsl"; Entry = "VSMain"; Target = "vs_6_0" },
     @{ Shader = "HIKARI/Shaders/Post_ScreenSpaceReflections.hlsl"; Entry = "PSTrace"; Target = "ps_6_0" },
     @{ Shader = "HIKARI/Shaders/Post_ScreenSpaceReflections.hlsl"; Entry = "PSResolve"; Target = "ps_6_0" }
+    @{ Shader = "HIKARI/Shaders/Post_StylizedScreenFeatures.hlsl"; Entry = "VSMain"; Target = "vs_6_0" }
+    @{ Shader = "HIKARI/Shaders/Post_StylizedScreenFeatures.hlsl"; Entry = "PSMain"; Target = "ps_6_0" }
 )
 
 $failures = New-Object System.Collections.Generic.List[object]

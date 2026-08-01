@@ -31,6 +31,12 @@ namespace HIKARI::RENDER3D::RUNTIME {
         }
     };
 
+    struct SceneRenderMaterialOverride {
+        uint32_t materialIndex = 0;
+        const Material* material = nullptr;
+        uint64_t materialRevision = 0;
+    };
+
     struct SceneRenderObjectDesc {
         SceneRenderObjectId id{};
 
@@ -54,8 +60,7 @@ namespace HIKARI::RENDER3D::RUNTIME {
         bool allowStaticCachedForward = true;
         std::string clusteredGeometryPath{};
 
-        const Material* materialOverride = nullptr;
-        uint64_t materialOverrideRevision = 0;
+        std::vector<SceneRenderMaterialOverride> materialOverrides{};
 
         std::string materialFxProfileId{};
         uint32_t postGroupMask = 0;

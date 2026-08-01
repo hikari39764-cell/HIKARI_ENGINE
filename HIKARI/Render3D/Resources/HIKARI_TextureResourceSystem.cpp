@@ -389,6 +389,27 @@ namespace HIKARI::RENDER3D {
             RenderResourceLifetime::Persistent);
     }
 
+    TextureResourceHandle CreateRgbaTextureResource(
+        const std::string& name,
+        uint32_t width,
+        uint32_t height,
+        const std::vector<uint8_t>& rgbaPixels,
+        TextureResourceColorSpace colorSpace) {
+
+        const int backendHandle = DXTEX::DxTextureManager::CreateRgbaTexture(
+            name,
+            width,
+            height,
+            rgbaPixels,
+            ToBackendColorSpace(colorSpace));
+
+        return RegisterLoadedTexture(
+            backendHandle,
+            name,
+            name,
+            RenderResourceLifetime::Persistent);
+    }
+
     TextureResourceHandle RegisterTextureResourceFromNative(
         ID3D12Resource* resource,
         DXGI_FORMAT srvFormat,

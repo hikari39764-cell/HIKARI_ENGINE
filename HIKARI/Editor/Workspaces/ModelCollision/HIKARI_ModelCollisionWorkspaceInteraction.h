@@ -5,7 +5,7 @@
 #include <vector>
 
 #include "Assets/Collision/HIKARI_ModelCollisionSetup.h"
-#include "Editor/Workspaces/ModelCollision/HIKARI_ModelCollisionPreviewScene.h"
+#include "Editor/Preview/HIKARI_ModelPreviewScene.h"
 #include "Editor/Workspaces/ModelCollision/HIKARI_ModelCollisionRaycast.h"
 #include "Render3D/Core/HIKARI_Camera3D.h"
 
@@ -27,7 +27,7 @@ PickModelCollisionShape(const ModelCollisionPointerRay &ray,
 
 int32_t PickModelCollisionSourceNode(
     const ModelCollisionPointerRay &ray,
-    const std::vector<ModelCollisionPreviewNode> &nodes,
+    const std::vector<ModelPreviewNode> &nodes,
     const ModelAsset &model) noexcept;
 
 } // namespace HIKARI::EDITOR

@@ -11,7 +11,11 @@
 #include "Render3D/Core/HIKARI_MeshPassResources.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Debug/HIKARI_RenderDebugOutput.h"
+#include "Render3D/Features/HIKARI_RenderFeaturePlanner.h"
+#include "Render3D/Features/HIKARI_RenderFeatureSceneAnalysis.h"
+#include "Render3D/Features/HIKARI_StylizedScreenFeatureRenderer.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
+#include "Render3D/Lighting/HIKARI_LocalLightList.h"
 #include "Render3D/Lighting/HIKARI_VolumetricLightingStage.h"
 #include "Render3D/Pipeline/HIKARI_RenderFrameContext.h"
 #include "Render3D/Reflection/HIKARI_ScreenSpaceReflectionRenderer.h"
@@ -28,6 +32,8 @@ namespace HIKARI::RENDER3D::PIPELINE {
 
     namespace {
         REFLECTION::ScreenSpaceReflectionRenderer gSsrRenderer{};
+        FEATURES::StylizedScreenFeatureRenderer gStylizedScreenFeatures{};
+        FEATURES::RenderFeaturePlan gLastRenderFeaturePlan{};
 
         bool RebindPostRenderTarget(void*) { return POST::PostSystem::RebindCurrentRenderTarget(); }
         bool BeginPostDepthRead(void*) { return POST::PostSystem::BeginCurrentRenderTargetDepthRead(); }
@@ -240,6 +246,27 @@ namespace HIKARI::RENDER3D::PIPELINE {
             MESHRENDERER::EndFrame();
             return false;
         }
+        const FEATURES::RenderFeatureRequestSet featureRequests =
+            FEATURES::AnalyzeRenderFeatureRequests(
+                MESHRENDERER::GetActiveGpuDrivenSceneSource());
+        const bool geometryOutlineBackendReady =
+            MESHRENDERER::HasGeometryOutlineFeatureBackend();
+        const bool visibilityOverlayBackendReady =
+            MESHRENDERER::HasVisibilityOverlayFeatureBackend();
+        const bool stylizedScreenMaskRequired = !debugRoute.active &&
+            (featureRequests.RequestsOpaqueSurface(
+                 FEATURES::RenderFeatureKind::ScreenOutline) ||
+             featureRequests.RequestsOpaqueSurface(
+                 FEATURES::RenderFeatureKind::FaceHairShadow) ||
+             (featureRequests.RequestsOpaqueSurface(
+                  FEATURES::RenderFeatureKind::GeometryOutline) &&
+              !geometryOutlineBackendReady));
+        RENDER3D::SCREENSPACE::ScreenSpaceSurfaceRequirements
+            screenSurfaceRequirements{};
+        screenSurfaceRequirements.requirePackedSurface =
+            stylizedScreenMaskRequired;
+        screenSurfaceRequirements.requireFeatureMask =
+            stylizedScreenMaskRequired;
         (void)RENDER3D::VOLUMETRIC::PrepareVolumetricLightingFrame(
             frame.graphics,
             temporalFrame,
@@ -259,7 +286,8 @@ namespace HIKARI::RENDER3D::PIPELINE {
                 screenSpaceContext,
                 *cameraCb,
                 *cullingCameraCb,
-                environment);
+                environment,
+                screenSurfaceRequirements);
         }
         else {
             RENDER3D::SCREENSPACE::EnsureScreenSpaceFallbacks(RENDER3D::SCREENSPACE::GetScreenSpaceRuntimeState());
@@ -326,6 +354,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
 
         MESHRENDERER::SetAmbientOcclusionRuntimeEnabled(screenResult.ssaoRendered);
         sceneTextures.packedSurface = screenResult.packedSurface;
+        sceneTextures.surfaceFeatureMask = screenResult.surfaceFeatureMask;
         sceneTextures.ambientOcclusion = screenResult.ambientOcclusion;
         sceneTextures.currentSceneDepthPyramid =
             screenResult.currentSceneDepthPyramid;
@@ -364,6 +393,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
             }
             MESHRENDERER::SetAmbientOcclusionRuntimeEnabled(screenResult.ssaoRendered);
             sceneTextures.packedSurface = screenResult.packedSurface;
+            sceneTextures.surfaceFeatureMask = screenResult.surfaceFeatureMask;
             sceneTextures.ambientOcclusion = screenResult.ambientOcclusion;
             sceneTextures.currentSceneDepthPyramid =
                 screenResult.currentSceneDepthPyramid;
@@ -474,8 +504,102 @@ namespace HIKARI::RENDER3D::PIPELINE {
                 postOpaqueResources);
         }
 
+        FEATURES::RenderFeatureAvailability featureAvailability{};
+        featureAvailability.width = frame.renderWidth;
+        featureAvailability.height = frame.renderHeight;
+        featureAvailability.enabledMask = debugRoute.active ? 0u : 0xffffffffu;
+        featureAvailability.inputMask = 0u;
+        if (geometryOutlineBackendReady) {
+            featureAvailability.inputMask |=
+                FEATURES::RenderFeatureInputBit(
+                    FEATURES::RenderFeatureInput::GeometryBackend);
+        }
+        if (visibilityOverlayBackendReady) {
+            featureAvailability.inputMask |=
+                FEATURES::RenderFeatureInputBit(
+                    FEATURES::RenderFeatureInput::VisibilityBackend);
+        }
+        if (frame.targetAccess.rebind != nullptr) {
+            featureAvailability.inputMask |=
+                FEATURES::RenderFeatureInputBit(
+                    FEATURES::RenderFeatureInput::SceneColor);
+        }
+        if (sceneTextures.sceneDepth.IsSampleable()) {
+            featureAvailability.inputMask |=
+                FEATURES::RenderFeatureInputBit(
+                    FEATURES::RenderFeatureInput::SceneDepth);
+        }
+        if (sceneTextures.packedSurface.IsSampleable()) {
+            featureAvailability.inputMask |=
+                FEATURES::RenderFeatureInputBit(
+                    FEATURES::RenderFeatureInput::SurfaceNormals);
+        }
+        if (sceneTextures.surfaceFeatureMask.IsSampleable()) {
+            featureAvailability.inputMask |=
+                FEATURES::RenderFeatureInputBit(
+                    FEATURES::RenderFeatureInput::SurfaceFeatureMask);
+        }
+        gLastRenderFeaturePlan = FEATURES::BuildRenderFeaturePlan(
+            featureRequests,
+            featureAvailability);
+        bool featurePassesOk = true;
+        const auto& geometryFeature = gLastRenderFeaturePlan.entries[
+            static_cast<size_t>(FEATURES::RenderFeatureKind::GeometryOutline)];
+        if (opaqueOk && depthAwareOk && transparentOk &&
+            geometryFeature.scheduled &&
+            !geometryFeature.compatibilityFallback) {
+            featurePassesOk = frame.targetAccess.Rebind() &&
+                MESHRENDERER::RenderGeometryOutlineFeaturePass(
+                    frame.graphics,
+                    postOpaqueResources);
+        }
+        const auto& visibilityFeature = gLastRenderFeaturePlan.entries[
+            static_cast<size_t>(FEATURES::RenderFeatureKind::VisibilityOverlay)];
+        if (featurePassesOk && opaqueOk && depthAwareOk && transparentOk &&
+            visibilityFeature.scheduled) {
+            featurePassesOk = frame.targetAccess.Rebind() &&
+                MESHRENDERER::RenderVisibilityOverlayFeaturePass(
+                    frame.graphics,
+                    postOpaqueResources);
+        }
+        if (opaqueOk && depthAwareOk && transparentOk &&
+            featurePassesOk &&
+            gLastRenderFeaturePlan.screenCompositePassRequired) {
+            const RenderTextureView finalSceneColor =
+                POST::PostSystem::CaptureSceneColorSnapshot();
+            if (finalSceneColor.IsSampleable()) {
+                sceneTextures.opaqueSceneColor = finalSceneColor;
+                FEATURES::StylizedScreenFeatureSettings featureSettings{};
+                if (cameraCb != nullptr) {
+                    featureSettings.viewProj = cameraCb->viewProj;
+                }
+                if (const LIGHTING::SceneLightProvider* directional =
+                        LIGHTING::SelectDirectionalLight(lighting)) {
+                    featureSettings.directionalLightWS[0] =
+                        directional->direction.x;
+                    featureSettings.directionalLightWS[1] =
+                        directional->direction.y;
+                    featureSettings.directionalLightWS[2] =
+                        directional->direction.z;
+                } else {
+                    featureSettings.directionalLightWS[0] =
+                        environment.directional.direction.x;
+                    featureSettings.directionalLightWS[1] =
+                        environment.directional.direction.y;
+                    featureSettings.directionalLightWS[2] =
+                        environment.directional.direction.z;
+                }
+                featurePassesOk = gStylizedScreenFeatures.Render(
+                    frame.graphics,
+                    frame.targetAccess,
+                    sceneTextures,
+                    gLastRenderFeaturePlan,
+                    featureSettings);
+            }
+        }
+
         MESHRENDERER::EndFrame();
-        return opaqueOk && depthAwareOk && transparentOk;
+        return opaqueOk && depthAwareOk && transparentOk && featurePassesOk;
     }
 
     bool RenderMeshCaptureOpaqueFrame(
@@ -515,6 +639,10 @@ namespace HIKARI::RENDER3D::PIPELINE {
             MESHRENDERER::RenderForwardOpaquePass(graphics, captureResources);
         MESHRENDERER::EndFrame();
         return opaqueOk;
+    }
+
+    const FEATURES::RenderFeaturePlan& GetLastRenderFeaturePlan() {
+        return gLastRenderFeaturePlan;
     }
 
 } // namespace HIKARI::RENDER3D::PIPELINE

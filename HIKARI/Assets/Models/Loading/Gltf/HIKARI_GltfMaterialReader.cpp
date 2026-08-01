@@ -8,6 +8,7 @@
 
 #include "Assets/Models/HIKARI_ModelAsset.h"
 #include "Assets/Models/HIKARI_ModelAssetLookup.h"
+#include "Assets/Models/HIKARI_ModelMaterialSlot.h"
 #include "Assets/Models/Loading/HIKARI_ModelSourcePath.h"
 
 namespace HIKARI::ASSETS::MODELS::GLTF {
@@ -33,6 +34,10 @@ namespace HIKARI::ASSETS::MODELS::GLTF {
         const std::filesystem::path& gltfPath,
         const nlohmann::json& root,
         ModelAsset& asset) {
+
+        MaterialSlotIdBuilder slotIds(
+            MaterialSlotImporterSemantic::Gltf);
+        size_t unnamedMaterialCount = 0u;
 
         if (root.contains("images") && root["images"].is_array()) {
             for (const auto& img : root["images"]) {
@@ -84,6 +89,10 @@ namespace HIKARI::ASSETS::MODELS::GLTF {
             for (const auto& matNode : root["materials"]) {
                 MaterialAsset mat{};
                 mat.name = matNode.value("name", "");
+                if (mat.name.empty()) {
+                    ++unnamedMaterialCount;
+                }
+                mat.slotId = slotIds.Next(mat.name);
                 if (matNode.contains("pbrMetallicRoughness")) {
                     const json& pbr = matNode["pbrMetallicRoughness"];
                     if (pbr.contains("baseColorFactor") && pbr["baseColorFactor"].is_array() && pbr["baseColorFactor"].size() >= 4) {
@@ -199,7 +208,13 @@ namespace HIKARI::ASSETS::MODELS::GLTF {
             }
         }
         if (asset.materials.empty()) {
-            asset.materials.push_back(MaterialAsset{});
+            MaterialAsset fallback{};
+            fallback.slotId = slotIds.Next("DefaultGltfMaterial");
+            asset.materials.push_back(std::move(fallback));
+        } else if (unnamedMaterialCount > 0u) {
+            asset.importDiagnostics.messages.push_back(
+                "[MaterialSlot] glTF materials without source names use the unnamed-material duplicate ordinal. count=" +
+                std::to_string(unnamedMaterialCount));
         }
     }
 

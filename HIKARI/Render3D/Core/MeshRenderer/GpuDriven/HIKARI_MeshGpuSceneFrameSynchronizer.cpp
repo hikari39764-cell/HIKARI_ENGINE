@@ -16,12 +16,16 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         uploadDesc.commandList = graphics.cmdList;
         uploadDesc.residency = &gMeshRendererState.gpuDrivenSceneResidency;
         uploadDesc.frameIndex = graphics.frameIndex;
+        const uintptr_t sourceIdentity = reinterpret_cast<uintptr_t>(
+            gMeshRendererState.gpuDrivenSceneSourceIdentity);
         const std::span<const uint32_t> materialBindings =
-            gMeshRendererState.gpuMaterialRegistry.GetSourceBindings();
+            gMeshRendererState.gpuMaterialRegistry.GetSourceBindings(
+                sourceIdentity);
         uploadDesc.materialSlotBySourceRecord = materialBindings.data();
         uploadDesc.materialSourceRecordCount = materialBindings.size();
         uploadDesc.materialBindingVersion =
-            gMeshRendererState.gpuMaterialRegistry.GetBindingVersion();
+            gMeshRendererState.gpuMaterialRegistry.GetBindingVersion(
+                sourceIdentity);
         const RENDER3D::GPUDRIVEN::GpuDrivenSceneUploadStats& uploadStats =
             gMeshRendererState.gpuDrivenLayer.UploadSceneFrame(uploadDesc);
         gMeshRendererState.debugStats.gpuSceneUpload = uploadStats;
@@ -43,19 +47,32 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             commandList,
             sizeof(MaterialGpuData),
             gMeshRendererState.materialUploadRanges);
+
+        if (!gMeshRendererState.gpuMaterialRegistry.StageProgramBlocksFrame(
+                gMeshRendererState.frameResources.GetActiveFrameIndex(),
+                frame.materialProgramParameterMapped,
+                frame.materialProgramResourceMapped,
+                kMaxMaterialDataCount,
+                gMeshRendererState.materialUploadRanges)) {
+            return;
+        }
+        gMeshRendererState.frameResources.
+            CommitActiveMaterialProgramBlockRanges(
+                commandList,
+                gMeshRendererState.materialUploadRanges);
     }
 
-    void SyncSurfaceGpuSceneMaterialFrame(const GFX::Context& graphics) {
-        CPU_PROFILE::ScopedCpuTimer cpuTimer(
-            CPU_PROFILE::Pass::MaterialPrepare);
-
+    void SyncGpuDrivenSceneMaterialSources(
+        const GFX::Context& graphics,
+        uintptr_t sourceIdentity,
+        const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource& source) {
         const RENDER3D::MATERIAL::GpuMaterialSourceSyncMode syncMode =
             gMeshRendererState.gpuMaterialRegistry.BeginSourceSync(
-                reinterpret_cast<uintptr_t>(gMeshRendererState.gpuDrivenSceneSourceIdentity),
-                gMeshRendererState.gpuDrivenSceneSource.layoutVersion,
-                gMeshRendererState.gpuDrivenSceneSource.sourceVersion,
-                gMeshRendererState.gpuDrivenSceneSource.dirtyBaseSourceVersion,
-                gMeshRendererState.gpuDrivenSceneSource.sourceRecordCount);
+                sourceIdentity,
+                source.layoutVersion,
+                source.sourceVersion,
+                source.dirtyBaseSourceVersion,
+                source.sourceRecordCount);
         if (syncMode ==
             RENDER3D::MATERIAL::GpuMaterialSourceSyncMode::None) {
             return;
@@ -94,7 +111,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             for (const RENDER3D::GPUDRIVEN::GpuDrivenPassKind passKind :
                 kMaterialPasses) {
                 const RENDER3D::GPUDRIVEN::GpuDrivenPassSource& pass =
-                    GetSceneSourcePass(passKind);
+                    source.GetPass(passKind);
                 for (const RENDER3D::GPUDRIVEN::GpuSceneDirtyRange& range :
                     pass.dirtyRanges) {
                     prepareMaterialSources(
@@ -110,7 +127,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             for (const RENDER3D::GPUDRIVEN::GpuDrivenPassKind passKind :
                 kMaterialPasses) {
                 const RENDER3D::GPUDRIVEN::GpuDrivenPassSource& pass =
-                    GetSceneSourcePass(passKind);
+                    source.GetPass(passKind);
                 if (pass.materialSources != nullptr &&
                     std::find(
                         visitedPrimarySources.begin(),
@@ -134,6 +151,16 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         }
 
         gMeshRendererState.gpuMaterialRegistry.EndSourceSync();
+    }
+
+    void SyncSurfaceGpuSceneMaterialFrame(const GFX::Context& graphics) {
+        CPU_PROFILE::ScopedCpuTimer cpuTimer(
+            CPU_PROFILE::Pass::MaterialPrepare);
+        SyncGpuDrivenSceneMaterialSources(
+            graphics,
+            reinterpret_cast<uintptr_t>(
+                gMeshRendererState.gpuDrivenSceneSourceIdentity),
+            gMeshRendererState.gpuDrivenSceneSource);
     }
 
     void UpdateTraditionalCommandStreamStats() {

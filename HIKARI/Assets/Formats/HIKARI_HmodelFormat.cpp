@@ -5,13 +5,14 @@
 #include <fstream>
 #include <utility>
 
+#include "Assets/Models/HIKARI_ModelMaterialSlot.h"
 #include "Core/Serialization/Binary/HIKARI_BinaryStream.h"
 
 namespace HIKARI {
 
     namespace {
         constexpr uint32_t kHmodelMagic = 0x4C444D48u; // 'HMDL'
-        constexpr uint32_t kHmodelVersion = 6;
+        constexpr uint32_t kHmodelVersion = 7;
         constexpr uint32_t kMaxStringBytes = 16u * 1024u * 1024u;
         constexpr uint32_t kMaxVectorCount = 16u * 1024u * 1024u;
 
@@ -117,6 +118,7 @@ namespace HIKARI {
 
         bool WriteMaterial(std::ofstream& ofs, const MaterialAsset& material) {
             return WriteLengthPrefixedString32<kMaxStringBytes>(ofs, material.name) &&
+                WriteTrivial(ofs, material.slotId.value) &&
                 WriteTrivial(ofs, material.baseColorFactor) &&
                 WriteTrivial(ofs, material.metallicFactor) &&
                 WriteTrivial(ofs, material.roughnessFactor) &&
@@ -140,8 +142,14 @@ namespace HIKARI {
         }
 
         bool ReadMaterial(std::ifstream& ifs, MaterialAsset& material, uint32_t version) {
-            if (!ReadLengthPrefixedString32<kMaxStringBytes>(ifs, material.name) ||
-                !ReadTrivial(ifs, material.baseColorFactor) ||
+            if (!ReadLengthPrefixedString32<kMaxStringBytes>(ifs, material.name)) {
+                return false;
+            }
+            if (version >= 7u &&
+                !ReadTrivial(ifs, material.slotId.value)) {
+                return false;
+            }
+            if (!ReadTrivial(ifs, material.baseColorFactor) ||
                 !ReadTrivial(ifs, material.metallicFactor) ||
                 !ReadTrivial(ifs, material.roughnessFactor)) {
                 return false;
@@ -495,7 +503,9 @@ namespace HIKARI {
         const ModelAsset& model,
         std::string& outMessage) {
 
-        if (model.meshes.empty()) {
+        if (model.meshes.empty() ||
+            !ASSETS::MODELS::HaveValidUniqueMaterialSlotIds(
+                model.materials)) {
             outMessage = "[HMODEL] invalid model data";
             return false;
         }
@@ -607,8 +617,28 @@ namespace HIKARI {
             return false;
         }
 
+        const bool migratedLegacyMaterialSlots =
+            header.version < 7u;
+        if (migratedLegacyMaterialSlots) {
+            ASSETS::MODELS::AssignMaterialSlotIds(
+                model.materials,
+                ASSETS::MODELS::ResolveMaterialSlotImporterSemantic(
+                    model.sourcePath));
+        }
+        if (!ASSETS::MODELS::HaveValidUniqueMaterialSlotIds(
+                model.materials)) {
+            outMessage =
+                "[HMODEL] invalid material slot identity table: " +
+                path.generic_string();
+            return false;
+        }
+
         outModel = std::move(model);
         outMessage = "[HMODEL] read " + path.generic_string();
+        if (migratedLegacyMaterialSlots) {
+            outMessage +=
+                " (migrated v1-v6 material slots from source identity)";
+        }
         return true;
     }
 

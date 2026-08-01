@@ -19,7 +19,9 @@ struct HikariMeshMaterialData
     uint hasSpecularTexture;
     uint hasSpecularColorTexture;
     float normalScale;
-    float3 materialPadding0;
+    uint materialProgramIndex;
+    uint parameterBlockOffset;
+    uint resourceTableOffset;
     int baseColorTextureHandle;
     int normalTextureHandle;
     int emissiveTextureHandle;
@@ -34,7 +36,8 @@ struct HikariMeshMaterialData
     uint occlusionTextureDescriptorIndex;
     uint specularTextureDescriptorIndex;
     uint specularColorTextureDescriptorIndex;
-    uint2 materialPadding1;
+    uint parameterBlockCount;
+    uint instanceFlags;
     float4 baseColorUvTransform;
     float4 normalUvTransform;
     float4 emissiveUvTransform;
@@ -50,11 +53,13 @@ struct HikariMeshMaterialData
 
 StructuredBuffer<HikariMeshMaterialData> gMaterialDataBuffer : register(t16);
 
+#if !defined(HIKARI_MESH_MATERIAL_DATA_EXTERNAL_INDEX_CB)
 cbuffer MaterialIndexCB : register(b7)
 {
     uint gMaterialDataIndex;
     uint3 gMaterialDataPadding;
 };
+#endif
 
 // instance ごとの material index から MaterialData を読む。
 static const uint HIKARI_INVALID_MESH_MATERIAL_DATA_INDEX = 0xffffffffu;
@@ -66,6 +71,11 @@ HikariMeshMaterialData HikariBuildDefaultMeshMaterialData()
     data.pbrParams = float4(0.0f, 1.0f, 1.0f, 0.5f);
     data.specularParams = float4(1.0f, 1.0f, 1.0f, 1.0f);
     data.normalScale = 1.0f;
+    data.materialProgramIndex = 0u;
+    data.parameterBlockOffset = 0u;
+    data.resourceTableOffset = 0u;
+    data.parameterBlockCount = 0u;
+    data.instanceFlags = 0u;
     data.baseColorTextureHandle = -1;
     data.normalTextureHandle = -1;
     data.emissiveTextureHandle = -1;
@@ -189,9 +199,10 @@ float2 HikariResolveMaterialUv(HikariMeshMaterialData materialData, uint slot, f
         HikariGetMaterialUvRotation(materialData, slot));
 }
 
-#if defined(HIKARI_MATERIAL_TEXTURE_POOL_SAMPLING)
 static const uint HIKARI_INVALID_TEXTURE_DESCRIPTOR_INDEX = 0xffffffffu;
 static const uint HIKARI_MATERIAL_TEXTURE_POOL_COUNT = HIKARI_SHADER_USER_SRV_COUNT;
+
+#if defined(HIKARI_MATERIAL_TEXTURE_POOL_SAMPLING)
 
 // 材質テクスチャは descriptor index で SRV プールから参照する。
 Texture2D gMaterialTexturePool[HIKARI_MATERIAL_TEXTURE_POOL_COUNT] : register(t20);

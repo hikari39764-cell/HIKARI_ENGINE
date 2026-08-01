@@ -12,6 +12,7 @@ namespace HIKARI::EDITOR {
         Game,
         Director,
         Overview,
+        Preview,
     };
 
     enum class EditorViewCameraSourceKind : uint8_t {
@@ -24,6 +25,7 @@ namespace HIKARI::EDITOR {
         PrimaryFullQuality,
         SecondaryEditorScene,
         LightweightEditorOverview,
+        RuntimeParityToolPreview,
     };
 
     enum class EditorViewShadingMode : uint8_t {
@@ -119,5 +121,6 @@ namespace HIKARI::EDITOR {
     inline constexpr RENDER3D::RenderViewId kEditorDirectorRenderViewId{ 2 };
     inline constexpr RENDER3D::RenderViewId kEditorOverviewRenderViewId{ 3 };
     inline constexpr RENDER3D::RenderViewId kModelCollisionPreviewRenderViewId{ 4 };
+    inline constexpr RENDER3D::RenderViewId kModelMaterialPreviewRenderViewId{ 5 };
 
 } // namespace HIKARI::EDITOR

@@ -3,6 +3,7 @@
 #include <string>
 
 #include "Assets/HIKARI_AssetTypes.h"
+#include "Assets/Models/HIKARI_ModelAsset.h"
 #include "Editor/Inspectors/HIKARI_IInspectorBuilder.h"
 
 namespace HIKARI {
@@ -36,31 +37,58 @@ namespace HIKARI {
             AssetType::Model,
             assetId_);
 
-        std::string materialOverrideGuid{};
-        for (const ModelMaterialOverrideSlot& slot :
-            materialOverrides_) {
+        if (asset_ != nullptr && !asset_->materials.empty()) {
+            builder.Text(
+                "Material slots use imported material until an explicit "
+                "override is assigned.");
+            for (size_t materialIndex = 0u;
+                materialIndex < asset_->materials.size();
+                ++materialIndex) {
 
-            if (slot.slotIndex == 0 &&
-                slot.materialAssetGuid.IsValid()) {
+                const uint32_t slotIndex =
+                    static_cast<uint32_t>(materialIndex);
+                const MaterialAsset& imported =
+                    asset_->materials[materialIndex];
+                std::string materialOverrideGuid{};
+                for (const ModelMaterialOverrideSlot& slot :
+                    materialOverrides_) {
 
-                materialOverrideGuid =
-                    slot.materialAssetGuid.value;
-                break;
+                    const bool stableMatch =
+                        imported.slotId.IsValid() &&
+                        slot.slotId == imported.slotId;
+                    const bool legacyMatch =
+                        !slot.slotId.IsValid() &&
+                        slot.slotIndex == slotIndex;
+                    if (stableMatch || legacyMatch) {
+                        materialOverrideGuid =
+                            slot.materialAssetGuid.value;
+                        break;
+                    }
+                }
+
+                const std::string label =
+                    "Material [" + std::to_string(slotIndex) + "] " +
+                    (imported.name.empty()
+                        ? std::string("Unnamed")
+                        : imported.name);
+                if (!builder.AssetIdPicker(
+                        label,
+                        AssetType::Material,
+                        materialOverrideGuid)) {
+                    continue;
+                }
+                if (materialOverrideGuid.empty()) {
+                    ClearMaterialOverride(slotIndex);
+                } else {
+                    SetMaterialOverride(
+                        imported.slotId,
+                        slotIndex,
+                        AssetGuid{ materialOverrideGuid });
+                }
             }
-        }
-
-        if (builder.AssetIdPicker(
-            "Material",
-            AssetType::Material,
-            materialOverrideGuid)) {
-
-            if (materialOverrideGuid.empty()) {
-                ClearMaterialOverride(0);
-            } else {
-                SetMaterialOverride(
-                    0,
-                    AssetGuid{ materialOverrideGuid });
-            }
+        } else {
+            builder.Text(
+                "Load a model asset to inspect and bind its material slots.");
         }
 
         int postMask = static_cast<int>(postGroupMask_);

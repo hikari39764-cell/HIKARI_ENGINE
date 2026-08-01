@@ -45,6 +45,9 @@ namespace HIKARI::MESHRENDERER {
     enum class MeshDrawPassKind {
         Forward,
         GeometryAux,
+        GeometryAuxFeatureMask,
+        GeometryOutline,
+        VisibilityOverlay,
         DepthPrepass,
     };
 
@@ -73,6 +76,8 @@ namespace HIKARI::MESHRENDERER {
         D3D12_GPU_VIRTUAL_ADDRESS localLightsAddress = 0;
         D3D12_GPU_VIRTUAL_ADDRESS localLightClusterHeadersAddress = 0;
         D3D12_GPU_VIRTUAL_ADDRESS localLightClusterIndicesAddress = 0;
+        D3D12_GPU_VIRTUAL_ADDRESS materialProgramParametersAddress = 0;
+        D3D12_GPU_VIRTUAL_ADDRESS materialProgramResourcesAddress = 0;
         D3D12_GPU_VIRTUAL_ADDRESS shadowAddress = 0;
         D3D12_GPU_VIRTUAL_ADDRESS skyEnvironmentAddress = 0;
         MeshDrawPassKind passKind = MeshDrawPassKind::Forward;

@@ -206,7 +206,7 @@ void ModelCollisionWorkspaceController::DrawPreviewWindow(
   if (showModel_) {
     const ModelAsset *previewModel = previewScene_.GetModel();
     size_t highlightedNodeCount = 0u;
-    for (const ModelCollisionPreviewNode &node :
+    for (const ModelPreviewNode &node :
          previewScene_.GetSourceNodes()) {
       const bool selectedNode = selectedSourceNodes_.contains(node.nodeIndex);
       const bool hoveredNode = node.nodeIndex == hoveredSourceNodeIndex_;
@@ -235,7 +235,7 @@ void ModelCollisionWorkspaceController::DrawPreviewWindow(
       }
     }
     if (hoveredSourceNodeIndex_ >= 0) {
-      const ModelCollisionPreviewNode *hoveredNode =
+      const ModelPreviewNode *hoveredNode =
           previewScene_.FindSourceNode(hoveredSourceNodeIndex_);
       if (hoveredNode != nullptr) {
         drawList->AddText({io.MousePos.x + 14.0f, io.MousePos.y + 12.0f},

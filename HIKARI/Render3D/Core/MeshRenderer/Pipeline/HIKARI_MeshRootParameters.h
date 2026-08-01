@@ -70,7 +70,11 @@ namespace HIKARI::MESHRENDERER::ROOT_PARAM {
     constexpr UINT LocalLightClusterHeaders = 30;
     // Per-view compact clustered light indices -> t2, space5
     constexpr UINT LocalLightClusterIndices = 31;
+    // Fixed material-program float4 parameter blocks -> t0, space6
+    constexpr UINT MaterialProgramParameters = 32;
+    // Fixed material-program descriptor-index tables -> t1, space6
+    constexpr UINT MaterialProgramResources = 33;
 
-    constexpr UINT Count = LocalLightClusterIndices + 1;
+    constexpr UINT Count = MaterialProgramResources + 1;
 
 } // namespace HIKARI::MESHRENDERER::ROOT_PARAM

@@ -50,6 +50,10 @@ function(hikari_configure_runtime_deployment target_name)
             "$<TARGET_FILE_DIR:${target_name}>/EngineContent/Shaders"
         COMMAND
             "${CMAKE_COMMAND}" -E copy_directory_if_different
+            "${HIKARI_SOURCE_ROOT}/HIKARI/EngineContent"
+            "$<TARGET_FILE_DIR:${target_name}>/EngineContent"
+        COMMAND
+            "${CMAKE_COMMAND}" -E copy_directory_if_different
             "${HIKARI_SOURCE_ROOT}/HIKARI/Shaders"
             "$<TARGET_FILE_DIR:${target_name}>/EngineContent/Shaders"
         VERBATIM)
@@ -63,6 +67,11 @@ function(hikari_configure_runtime_deployment target_name)
                 FILES ${HIKARI_RUNTIME_DEPENDENCIES}
                 DESTINATION ".")
         endif()
+        install(
+            DIRECTORY
+                "${HIKARI_SOURCE_ROOT}/HIKARI/EngineContent/"
+            DESTINATION
+                "EngineContent")
         install(
             DIRECTORY
                 "${HIKARI_SOURCE_ROOT}/HIKARI/Shaders"

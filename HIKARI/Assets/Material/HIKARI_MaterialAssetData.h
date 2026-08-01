@@ -3,8 +3,11 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <vector>
 
 #include "Assets/HIKARI_AssetGuid.h"
+#include "Assets/Material/Graph/HIKARI_MaterialGraphData.h"
+#include "Assets/Material/HIKARI_MaterialAssetTypes.h"
 #include "Render3D/HIKARI_Math3D.h"
 
 namespace HIKARI {
@@ -44,6 +47,93 @@ namespace HIKARI {
         bool unlit = false;
     };
 
+    struct MaterialSurfaceData {
+        MaterialAlphaMode alphaMode = MaterialAlphaMode::Opaque;
+        float alphaCutoff = 0.5f;
+        bool doubleSided = false;
+        bool unlit = false;
+    };
+
+    struct MaterialFunctionData {
+        std::vector<MaterialGraphParameterData> inputs{};
+        std::vector<MaterialGraphParameterData> outputs{};
+        MaterialGraphData graph{};
+    };
+
+    struct MaterialInstanceParameterOverrideData {
+        std::string parameterId{};
+        MaterialValueData value{};
+    };
+
+    struct MaterialInstanceResourceOverrideData {
+        std::string resourceId{};
+        AssetGuid assetGuid{};
+    };
+
+    struct MaterialInstanceData {
+        AssetGuid parentMaterialGuid{};
+        std::vector<MaterialInstanceParameterOverrideData> parameterOverrides{};
+        std::vector<MaterialInstanceResourceOverrideData> resourceOverrides{};
+    };
+
+    struct MaterialProfileData {
+        MaterialTemplateId baseTemplate = MaterialTemplateId::GenericToon;
+        std::vector<AssetGuid> functionAssetGuids{};
+        std::vector<AssetGuid> rampAssetGuids{};
+        std::vector<MaterialFeatureRequest> featureRequests{};
+    };
+
+    struct MaterialRampPointData {
+        std::string id{};
+        MATH::Vec2 position{ 0.0f, 0.0f };
+        MATH::Vec4 color{ 1.0f, 1.0f, 1.0f, 1.0f };
+    };
+
+    struct MaterialRampData {
+        MaterialRampDimension dimension = MaterialRampDimension::OneD;
+        MaterialRampInterpolation interpolation = MaterialRampInterpolation::Linear;
+        uint32_t width = 256u;
+        uint32_t height = 1u;
+        std::vector<MaterialRampPointData> points{};
+    };
+
+    struct MaterialAssetData {
+        uint32_t version = kMaterialAssetSourceVersion;
+        uint32_t sourceVersion = kMaterialAssetSourceVersion;
+        bool migratedFromLegacy = false;
+        MaterialAssetKind kind = MaterialAssetKind::Material;
+        std::string materialName = "New Material";
+        MaterialDomain domain = MaterialDomain::Surface;
+        MaterialTemplateId templateId = MaterialTemplateId::StandardPbr;
+        AssetGuid profileAssetGuid{};
+        std::vector<MaterialFeatureRequest> featureRequests{};
+        MaterialSurfaceData surface{};
+        PbrMaterialAssetData pbr{};
+        MaterialGraphData graph{};
+        MaterialFunctionData function{};
+        MaterialInstanceData instance{};
+        MaterialProfileData profile{};
+        MaterialRampData ramp{};
+    };
+
+    MaterialAssetData MakeStandardPbrMaterialAssetData(
+        const PbrMaterialAssetData& legacyData = {});
+
+    PbrMaterialAssetData ProjectPbrMaterialAssetData(
+        const MaterialAssetData& data);
+
+    bool LoadMaterialAssetData(
+        const std::filesystem::path& path,
+        MaterialAssetData& outData,
+        std::string& outError,
+        std::vector<std::string>* outDiagnostics = nullptr);
+
+    bool SaveMaterialAssetData(
+        const std::filesystem::path& path,
+        const MaterialAssetData& data,
+        std::string& outError);
+
+    // v1-v3 の固定 PBR API は既存 consumer の移行窓口として保持する。
     bool LoadPbrMaterialAssetData(
         const std::filesystem::path& path,
         PbrMaterialAssetData& outData,

@@ -303,7 +303,9 @@ namespace HIKARI::SKYRENDERER {
                 g.cubemapResource = RENDER3D::LoadCubemapResource(
                     "sky_renderer/scene_sky_cube",
                     path,
-                    RENDER3D::TextureResourceColorSpace::Srgb);
+                    skyAsset->textureIsLinear
+                        ? RENDER3D::TextureResourceColorSpace::Linear
+                        : RENDER3D::TextureResourceColorSpace::Srgb);
                 g.cubemapHandle = RENDER3D::GetTextureResourceBackendHandle(g.cubemapResource);
                 if (g.cubemapHandle < 0) {
                     std::ostringstream oss;

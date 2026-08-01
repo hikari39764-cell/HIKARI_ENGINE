@@ -9,7 +9,10 @@
 
 #include "Assets/HIKARI_AssetRegistry.h"
 #include "Assets/Lighting/HIKARI_LightingBakeDependencyHash.h"
+#include "Assets/Models/HIKARI_ModelAsset.h"
 #include "Assets/Models/HIKARI_ModelAssetLookup.h"
+#include "Assets/Models/HIKARI_ModelMaterialSlot.h"
+#include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingResolver.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
 #include "Project/Paths/HIKARI_ProjectPath.h"
 #include "Core/HIKARI_Logger.h"
@@ -257,13 +260,62 @@ namespace HIKARI {
             return modelManager.FindAsset(assetId);
         }
 
-        void BuildModelMaterialOverride(
+        void BuildModelMaterialOverrides(
             ModelComponent& modelComponent,
             const AssetRegistry& assetRegistry) {
 
-            modelComponent.ClearRuntimeMaterialOverride();
+            modelComponent.ClearRuntimeMaterialOverrides();
+            const ModelAsset* modelAsset =
+                modelComponent.GetModelAsset();
+            if (modelAsset == nullptr) {
+                return;
+            }
+
+            MaterialRuntimeBuilder builder{};
+            auto& programRegistry =
+                RENDER3D::MATERIAL::GetRuntimeMaterialProgramRegistry();
+            const auto applyMaterial = [&modelComponent,
+                &assetRegistry,
+                &builder,
+                &programRegistry](
+                    uint32_t materialIndex,
+                    const MaterialAssetDescriptor& descriptor) {
+
+                auto runtimeMaterial = std::make_unique<Material>();
+                if (!builder.BuildRuntimeMaterial(
+                        descriptor.sourceData,
+                        assetRegistry,
+                        programRegistry,
+                        *runtimeMaterial,
+                        descriptor.id.value)) {
+                    return false;
+                }
+                modelComponent.SetRuntimeMaterialOverride(
+                    materialIndex,
+                    std::move(runtimeMaterial));
+                return true;
+            };
+
+            // imported -> model default binding
+            const auto defaults =
+                ASSETS::MODELS::ResolveDefaultModelMaterialBindings(
+                    assetRegistry,
+                    AssetGuid{modelComponent.GetAssetId()},
+                    modelAsset->materials);
+            for (const std::string& diagnostic : defaults.diagnostics) {
+                HIKARI_LOG_WARN("[MaterialRuntime][ModelDefault] " + diagnostic);
+            }
+            for (const auto& binding : defaults.bindings) {
+                if (binding.materialDescriptor != nullptr) {
+                    (void)applyMaterial(
+                        binding.materialIndex,
+                        *binding.materialDescriptor);
+                }
+            }
+
+            // model default binding -> scene instance override
             for (const ModelMaterialOverrideSlot& slot : modelComponent.GetMaterialOverrides()) {
-                if (slot.slotIndex != 0 || !slot.materialAssetGuid.IsValid()) {
+                if (!slot.materialAssetGuid.IsValid()) {
                     continue;
                 }
 
@@ -273,19 +325,27 @@ namespace HIKARI {
                     continue;
                 }
 
-                auto runtimeMaterial = std::make_unique<Material>();
-                MaterialRuntimeBuilder builder{};
-                // 現段階では slot 0 をモデル全体に適用する。
-                if (builder.BuildRuntimeMaterial(
-                        descriptor->data,
-                        assetRegistry,
-                        *runtimeMaterial,
-                        descriptor->id.value)) {
-                    modelComponent.SetRuntimeMaterialOverride(
-                        std::move(runtimeMaterial),
-                        slot.materialAssetGuid);
+                const ASSETS::MODELS::MaterialSlotResolution resolution =
+                    ASSETS::MODELS::ResolveMaterialSlot(
+                        modelAsset->materials,
+                        slot.slotId,
+                        slot.slotIndex);
+                if (!resolution.IsValid()) {
+                    HIKARI_LOG_WARN(
+                        "[MaterialRuntime] model material slot is no longer present; "
+                        "keeping imported material");
+                    continue;
                 }
-                return;
+                if (resolution.source ==
+                    ASSETS::MODELS::MaterialSlotResolutionSource::LegacyIndex &&
+                    slot.slotId.IsValid()) {
+
+                    HIKARI_LOG_WARN(
+                        "[MaterialRuntime] stable material slot was not found; "
+                        "using legacy slot index fallback");
+                }
+
+                (void)applyMaterial(resolution.materialIndex, *descriptor);
             }
         }
 
@@ -364,6 +424,23 @@ namespace HIKARI {
                 continue;
             }
             addModelToLoadPlan(modelId, *descriptor);
+            const ModelAsset* modelAsset = modelManager.FindAsset(modelId);
+            if (modelAsset == nullptr) {
+                continue;
+            }
+            const auto defaults =
+                ASSETS::MODELS::ResolveDefaultModelMaterialBindings(
+                    assetRegistry,
+                    AssetGuid{modelId},
+                    modelAsset->materials);
+            for (const auto& binding : defaults.bindings) {
+                if (binding.materialDescriptor != nullptr) {
+                    CollectMaterialTextureRequests(
+                        loadPlan,
+                        assetRegistry,
+                        *binding.materialDescriptor);
+                }
+            }
         }
 
         for (const std::string& skyId : dependencies.skyAssetIds) {
@@ -452,7 +529,7 @@ namespace HIKARI {
                         modelManager,
                         assetRegistry,
                         modelComponent->GetAssetId()));
-                    BuildModelMaterialOverride(*modelComponent, assetRegistry);
+                    BuildModelMaterialOverrides(*modelComponent, assetRegistry);
                 }
             }
         }

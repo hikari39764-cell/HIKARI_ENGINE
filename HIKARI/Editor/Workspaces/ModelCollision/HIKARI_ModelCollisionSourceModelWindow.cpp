@@ -23,7 +23,7 @@ void ModelCollisionWorkspaceController::DrawSourceModelWindow() {
     ImGui::End();
     return;
   }
-  const std::vector<ModelCollisionPreviewNode> &sourceNodes =
+  const std::vector<ModelPreviewNode> &sourceNodes =
       previewScene_.GetSourceNodes();
   ImGui::Text("%d mesh nodes | %d selected",
               static_cast<int>(sourceNodes.size()),
@@ -34,7 +34,7 @@ void ModelCollisionWorkspaceController::DrawSourceModelWindow() {
   ImGui::SameLine();
   if (ImGui::SmallButton("Select Filtered")) {
     const std::string_view query(sourceSearch_.data());
-    for (const ModelCollisionPreviewNode &node : sourceNodes) {
+    for (const ModelPreviewNode &node : sourceNodes) {
       if (MODEL_COLLISION_PRESENTATION::MatchesSearch(node.name, query)) {
         selectedSourceNodes_.insert(node.nodeIndex);
         primarySourceNodeIndex_ = node.nodeIndex;
@@ -54,7 +54,7 @@ void ModelCollisionWorkspaceController::DrawSourceModelWindow() {
   ImGui::Separator();
   if (ImGui::BeginChild("##SourceNodeList")) {
     const std::string_view query(sourceSearch_.data());
-    for (const ModelCollisionPreviewNode &node : sourceNodes) {
+    for (const ModelPreviewNode &node : sourceNodes) {
       if (!MODEL_COLLISION_PRESENTATION::MatchesSearch(node.name, query)) {
         continue;
       }

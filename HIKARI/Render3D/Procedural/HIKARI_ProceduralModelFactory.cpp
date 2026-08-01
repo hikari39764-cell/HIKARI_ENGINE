@@ -12,8 +12,9 @@
 
 #include "Assets/Geometry/HIKARI_ClusteredGeometryCooker.h"
 #include "Assets/Geometry/HIKARI_HcmeshFormat.h"
-#include "Core/HIKARI_Logger.h"
 #include "Assets/Models/HIKARI_ModelAsset.h"
+#include "Assets/Models/HIKARI_ModelMaterialSlot.h"
+#include "Core/HIKARI_Logger.h"
 #include "Render3D/Procedural/HIKARI_ProceduralMeshBuilder.h"
 
 namespace HIKARI::PROCEDURAL {
@@ -271,6 +272,10 @@ namespace HIKARI::PROCEDURAL {
 
             MaterialAsset material{};
             material.name = "Procedural Default";
+            material.slotId = ASSETS::MODELS::MakeMaterialSlotId(
+                ASSETS::MODELS::MaterialSlotImporterSemantic::Procedural,
+                material.name,
+                0u);
             material.shaderProfileId = "PBR";
             material.doubleSided = key.doubleSided;
             material.baseColorFactor = { 1, 1, 1, 1 };

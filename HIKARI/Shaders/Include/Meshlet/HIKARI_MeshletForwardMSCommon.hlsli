@@ -7,6 +7,10 @@
 #define HIKARI_GPU_DRIVEN_ENABLE_WATER_DEFORM HIKARI_MESHLET_ENABLE_WATER_DEFORM
 #include "Include/Meshlet/HIKARI_GpuDrivenWaterDeform.hlsli"
 #include "Include/Forward/HIKARI_ForwardVertexMeta.hlsli"
+#if defined(HIKARI_GEOMETRY_OUTLINE_VERTEX)
+#include "Include/HIKARI_MeshMaterialData.hlsli"
+#include "Include/Features/HIKARI_GeometryOutlineVertex.hlsli"
+#endif
 
 struct HikariMeshletVertexOut
 {
@@ -52,9 +56,16 @@ HikariMeshletVertexOut HikariBuildMeshletVertex(
     // clip 位置の計算は各 MS で同一式 + precise に固定する。
     float4 worldPos = mul(instance.clusterWorld, float4(localPosition, 1.0f));
     precise float4 clipPosition = mul(gViewProj, worldPos);
-    output.position = clipPosition;
     output.worldPosWS = worldPos.xyz;
     output.normalWS = normalize(mul((float3x3)instance.clusterNormalMatrix, localNormal));
+#if defined(HIKARI_GEOMETRY_OUTLINE_VERTEX)
+    output.position = HikariExpandGeometryOutlineVertex(
+        worldPos,
+        output.normalWS,
+        instance.materialDataIndex);
+#else
+    output.position = clipPosition;
+#endif
     output.tangentWS = float4(
         normalize(mul((float3x3)instance.clusterNormalMatrix, vertex.tangent.xyz)),
         vertex.tangent.w);

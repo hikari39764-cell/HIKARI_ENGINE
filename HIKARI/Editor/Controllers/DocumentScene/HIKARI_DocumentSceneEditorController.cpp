@@ -186,6 +186,10 @@ namespace HIKARI {
                 scene,
                 *activation,
                 workspaceHost_);
+            modelMaterialWorkspaceController_.ApplyWorkspaceActivation(
+                scene,
+                *activation,
+                workspaceHost_);
             animationStateMachineWorkspaceController_.ApplyWorkspaceActivation(
                 scene,
                 *activation);
@@ -199,6 +203,31 @@ namespace HIKARI {
             const EDITOR::AnimationStateMachineWorkspaceResult result =
                 animationStateMachineWorkspaceController_.Draw(
                     scene,
+                    commandRouter_);
+            if (result.exitToSceneRequested) {
+                EDITOR::EditorWorkspaceOpenRequest request{};
+                request.workspaceId = EDITOR::EditorWorkspaceId::Scene;
+                (void)workspaceHost_.RequestOpen(std::move(request));
+            }
+            if (!result.statusMessage.empty()) {
+                viewportDropMessage_ = result.statusMessage;
+            }
+            DrawPendingSceneOpenModal(scene);
+            if (renderQualitySavePending_ && !ImGui::IsAnyItemActive()) {
+                (void)SaveRenderQualityProfile(scene);
+            }
+            return;
+        }
+
+        if (workspaceHost_.IsActive(
+                EDITOR::EditorWorkspaceId::ModelMaterial)) {
+            modelMaterialWorkspaceController_.DrawDockSpace(
+                workspaceHost_.ConsumeReset(
+                    EDITOR::EditorWorkspaceId::ModelMaterial));
+            const EDITOR::ModelMaterialWorkspaceResult result =
+                modelMaterialWorkspaceController_.Draw(
+                    scene,
+                    workspaceHost_,
                     commandRouter_);
             if (result.exitToSceneRequested) {
                 EDITOR::EditorWorkspaceOpenRequest request{};

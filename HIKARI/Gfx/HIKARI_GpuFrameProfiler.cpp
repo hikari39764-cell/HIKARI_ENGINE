@@ -204,6 +204,8 @@ namespace HIKARI::GFX::GPU_PROFILE {
         case Pass::MeshletDrawForward: return "Meshlet Draw Forward";
         case Pass::MeshletDrawDepthAware: return "Meshlet Draw DepthAware";
         case Pass::MeshletDrawTransparent: return "Meshlet Draw Transparent";
+        case Pass::MeshletDrawGeometryOutline: return "Meshlet Draw Geometry Outline";
+        case Pass::MeshletDrawVisibilityOverlay: return "Meshlet Draw Visibility Overlay";
         case Pass::TraditionalDrawShadow: return "Traditional Draw Shadow";
         case Pass::MeshletDrawShadow: return "Meshlet Draw Shadow";
         case Pass::TraditionalDrawShadowStatic: return "Traditional Draw Shadow Static";
@@ -223,6 +225,9 @@ namespace HIKARI::GFX::GPU_PROFILE {
         case Pass::DepthAware: return "DepthAware";
         case Pass::ForwardTransparent: return "ForwardTransparent";
         case Pass::VolumetricLighting: return "Volumetric Lighting";
+        case Pass::StylizedGeometryOutline: return "Stylized Geometry Outline";
+        case Pass::StylizedVisibilityOverlay: return "Stylized Visibility Overlay";
+        case Pass::StylizedScreenFeatures: return "Stylized Screen Features";
         case Pass::PostResolve: return "Post Resolve";
         case Pass::GameViewResolve: return "GameView Resolve";
         case Pass::SceneLayers: return "Scene Layers";

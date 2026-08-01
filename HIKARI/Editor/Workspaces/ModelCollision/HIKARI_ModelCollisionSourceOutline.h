@@ -4,7 +4,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "Editor/Workspaces/ModelCollision/HIKARI_ModelCollisionPreviewScene.h"
+#include "Editor/Preview/HIKARI_ModelPreviewScene.h"
 #include "Render3D/Core/HIKARI_Camera3D.h"
 
 struct ImDrawList;
@@ -17,7 +17,7 @@ public:
 
   bool Draw(ImDrawList *drawList, const Camera3D &camera, float viewportX,
             float viewportY, float viewportWidth, float viewportHeight,
-            const ModelAsset &model, const ModelCollisionPreviewNode &node,
+            const ModelAsset &model, const ModelPreviewNode &node,
             uint64_t modelRevision, uint32_t color, float thickness);
 
 private:
@@ -35,10 +35,9 @@ private:
   };
 
   const NodeOutline *GetOrBuild(const ModelAsset &model,
-                                const ModelCollisionPreviewNode &node,
+                                const ModelPreviewNode &node,
                                 uint64_t modelRevision);
-  NodeOutline Build(const ModelAsset &model,
-                    const ModelCollisionPreviewNode &node) const;
+  NodeOutline Build(const ModelAsset &model, const ModelPreviewNode &node) const;
 
   uint64_t modelRevision_ = 0u;
   std::unordered_map<int32_t, NodeOutline> nodes_{};

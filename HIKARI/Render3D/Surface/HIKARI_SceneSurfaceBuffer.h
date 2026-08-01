@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 
 #include <d3d12.h>
@@ -7,6 +8,7 @@
 #include <wrl/client.h>
 
 #include "Gfx/HIKARI_GfxContext.h"
+#include "Render3D/Resources/HIKARI_RenderResourcePool.h"
 #include "Render3D/Resources/HIKARI_RenderTextureView.h"
 
 namespace HIKARI::RENDER3D::SURFACE {
@@ -16,7 +18,14 @@ namespace HIKARI::RENDER3D::SURFACE {
         bool EnsureSize(
             const GFX::Context& graphics,
             uint32_t width,
-            uint32_t height);
+            uint32_t height,
+            bool enableFeatureMask = false);
+        bool SetFeatureMaskEnabled(
+            const GFX::Context& graphics,
+            bool enabled);
+        // Retire transient render targets while preserving descriptor slots for
+        // a later re-enable of the same view.
+        void DiscardResources();
         void Release();
 
         void BeginWrite(
@@ -32,26 +41,50 @@ namespace HIKARI::RENDER3D::SURFACE {
             return packedSurface_.Get();
         }
         D3D12_GPU_DESCRIPTOR_HANDLE GetPackedSurfaceSrv() const {
-            return packedSurfaceSrvGpu_;
+            return packedSurfaceSrvs_[activeFrameSlot_].gpu;
         }
         RenderTextureView GetPackedSurfaceView() const;
+        bool HasFeatureMask() const;
+        RenderTextureView GetFeatureMaskView() const;
 
     private:
         bool CreateResources(
             const GFX::Context& graphics,
             uint32_t width,
-            uint32_t height);
+            uint32_t height,
+            bool enableFeatureMask);
+        bool EnsureFeatureMask(
+            const GFX::Context& graphics,
+            bool enabled);
+        bool PublishPackedSurfaceSrv(const GFX::Context& graphics);
+        bool PublishFeatureMaskSrv(const GFX::Context& graphics);
+        void ResetResources(bool releaseDescriptors);
 
         static constexpr DXGI_FORMAT kNormalRoughnessFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        static constexpr DXGI_FORMAT kFeatureMaskFormat = DXGI_FORMAT_R32G32_UINT;
 
         Microsoft::WRL::ComPtr<ID3D12Resource> packedSurface_{};
+        Microsoft::WRL::ComPtr<ID3D12Resource> featureMask_{};
         Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> rtvHeap_{};
         D3D12_CPU_DESCRIPTOR_HANDLE packedSurfaceRtv_{};
-        D3D12_CPU_DESCRIPTOR_HANDLE packedSurfaceSrvCpu_{};
-        D3D12_GPU_DESCRIPTOR_HANDLE packedSurfaceSrvGpu_{};
+        D3D12_CPU_DESCRIPTOR_HANDLE featureMaskRtv_{};
+        std::array<RenderResourceView, GFX::kFrameResourceCount>
+            packedSurfaceSrvs_{};
+        std::array<RenderResourceView, GFX::kFrameResourceCount>
+            featureMaskSrvs_{};
+        std::array<uint64_t, GFX::kFrameResourceCount>
+            packedSurfaceSrvGenerations_{};
+        std::array<uint64_t, GFX::kFrameResourceCount>
+            featureMaskSrvGenerations_{};
+        uint64_t packedSurfaceGeneration_ = 0u;
+        uint64_t featureMaskGeneration_ = 0u;
+        uint32_t activeFrameSlot_ = 0u;
+        UINT rtvDescriptorSize_ = 0u;
         uint32_t width_ = 0;
         uint32_t height_ = 0;
         D3D12_RESOURCE_STATES packedSurfaceState_ =
+            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        D3D12_RESOURCE_STATES featureMaskState_ =
             D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
     };
 

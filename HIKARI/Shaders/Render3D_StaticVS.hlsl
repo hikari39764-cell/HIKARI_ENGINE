@@ -19,6 +19,9 @@ cbuffer CameraCB : register(b0)
 
 #include "Include/HIKARI_MeshObjectData.hlsli"
 #include "Include/Forward/HIKARI_ForwardVertexMeta.hlsli"
+#if defined(HIKARI_GEOMETRY_OUTLINE_VERTEX)
+#include "Include/Features/HIKARI_GeometryOutlineVertex.hlsli"
+#endif
 
 struct VSInput
 {
@@ -52,9 +55,16 @@ VSOutput main(VSInput input)
     HikariMeshObjectData objectData =
         HikariGetMeshObjectDataForInstance(objectDataIndex, input.instanceId);
     float4 worldPos = mul(objectData.world, float4(input.position, 1.0f));
-    output.position = mul(gViewProj, worldPos);
     output.worldPosWS = worldPos.xyz;
     output.normalWS = normalize(mul((float3x3)objectData.normalMatrix, input.normal));
+#if defined(HIKARI_GEOMETRY_OUTLINE_VERTEX)
+    output.position = HikariExpandGeometryOutlineVertex(
+        worldPos,
+        output.normalWS,
+        objectData.materialDataIndex);
+#else
+    output.position = mul(gViewProj, worldPos);
+#endif
     output.tangentWS = float4(normalize(mul((float3x3)objectData.normalMatrix, input.tangent.xyz)), input.tangent.w);
     output.uv = input.uv;
     output.uv1 = input.uv1;

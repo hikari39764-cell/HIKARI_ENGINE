@@ -21,6 +21,7 @@
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
 #include "Project/Paths/HIKARI_ProjectPath.h"
 #include "Importers/HIKARI_MaterialImporter.h"
+#include "Importers/HIKARI_ModelMaterialBindingImporter.h"
 #include "Importers/HIKARI_ModelImporter.h"
 #include "Importers/HIKARI_AnimationStateMachineAssetImporter.h"
 #include "Importers/HIKARI_SceneAssetImporter.h"
@@ -159,6 +160,8 @@ namespace HIKARI {
                 return 3;
             case AssetType::Model:
                 return 4;
+            case AssetType::ModelMaterialBinding:
+                return 5;
             case AssetType::Scene:
                 return 5;
             case AssetType::Sequence:
@@ -1257,6 +1260,8 @@ namespace HIKARI {
         importerRegistry_.Register(
             std::make_unique<AnimationStateMachineAssetImporter>());
         importerRegistry_.Register(std::make_unique<MaterialImporter>());
+        importerRegistry_.Register(
+            std::make_unique<ModelMaterialBindingImporter>());
         importerRegistry_.Register(std::make_unique<VfxAssetImporter>());
     }
 

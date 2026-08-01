@@ -16,6 +16,7 @@ namespace HIKARI::ASSETS::SEMANTICS {
         Sequence,
         AnimationStateMachine,
         Material,
+        ModelMaterialBinding,
         VfxEffect,
         Count,
     };

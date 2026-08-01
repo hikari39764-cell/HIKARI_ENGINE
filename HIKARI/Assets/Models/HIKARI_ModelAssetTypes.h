@@ -41,8 +41,19 @@ namespace HIKARI {
         float strength = 1.0f;
     };
 
+    struct MaterialSlotId {
+        uint64_t value = 0u;
+
+        bool IsValid() const noexcept { return value != 0u; }
+
+        friend bool operator==(
+            const MaterialSlotId&,
+            const MaterialSlotId&) = default;
+    };
+
     struct MaterialAsset {
         std::string name;
+        MaterialSlotId slotId{};
         MATH::Vec4 baseColorFactor{ 1, 1, 1, 1 };
         float metallicFactor = 0.0f;
         float roughnessFactor = 1.0f;

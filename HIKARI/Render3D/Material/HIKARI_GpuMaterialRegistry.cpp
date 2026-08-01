@@ -60,6 +60,9 @@ namespace HIKARI::RENDER3D::MATERIAL {
                 frameResourceCount_ == frameResourceCount;
         }
 
+        if (!programBlockStore_.Initialize(capacity, frameResourceCount)) {
+            return false;
+        }
         capacity_ = capacity;
         frameResourceCount_ = frameResourceCount;
         initialized_ = true;
@@ -74,19 +77,14 @@ namespace HIKARI::RENDER3D::MATERIAL {
         slots_.clear();
         freeSlots_.clear();
         slotByIdentity_.clear();
-        sourceBindings_.clear();
-        sourceSlotTable_.clear();
+        sourceStates_.clear();
         pendingSlotsByFrame_.assign(frameResourceCount_, {});
+        programBlockStore_.Clear();
         dataVersion_ = 0;
-        bindingVersion_ = 0;
-        sourceIdentity_ = 0;
-        sourceLayoutVersion_ = 0;
-        sourceVersion_ = 0;
-        sourceStateValid_ = false;
+        bindingVersionCounter_ = 0;
+        activeSourceState_ = nullptr;
         syncMode_ = GpuMaterialSourceSyncMode::None;
         residentSlotCount_ = 0;
-        sourceBindingCount_ = 0;
-        pendingSourceResolveCount_ = 0;
         pendingFrameSlotCount_ = 0;
         stats_ = {};
         if (initialized_) {
@@ -121,46 +119,49 @@ namespace HIKARI::RENDER3D::MATERIAL {
             return syncMode_;
         }
 
+        auto [sourceIt, inserted] = sourceStates_.try_emplace(sourceIdentity);
+        SourceState& source = sourceIt->second;
         const bool topologyChanged =
-            !sourceStateValid_ ||
-            sourceIdentity_ != sourceIdentity ||
-            sourceLayoutVersion_ != layoutVersion ||
-            sourceBindings_.size() != sourceRecordCount ||
-            sourceSlotTable_.size() != sourceRecordCount;
+            inserted ||
+            !source.valid ||
+            source.layoutVersion != layoutVersion ||
+            source.bindings.size() != sourceRecordCount ||
+            source.slotTable.size() != sourceRecordCount;
 
         if (topologyChanged) {
             syncMode_ = GpuMaterialSourceSyncMode::Full;
-        } else if (sourceVersion_ != sourceVersion) {
+        } else if (source.sourceVersion != sourceVersion) {
             syncMode_ =
-                dirtyBaseSourceVersion == sourceVersion_
+                dirtyBaseSourceVersion == source.sourceVersion
                     ? GpuMaterialSourceSyncMode::Incremental
                     : GpuMaterialSourceSyncMode::Full;
-        } else if (pendingSourceResolveCount_ != 0u) {
+        } else if (std::any_of(
+                source.bindings.begin(),
+                source.bindings.end(),
+                [](const SourceBinding& binding) {
+                    return binding.active && !binding.finalized;
+                })) {
             syncMode_ = GpuMaterialSourceSyncMode::Retry;
         } else {
             syncMode_ = GpuMaterialSourceSyncMode::None;
         }
 
-        sourceIdentity_ = sourceIdentity;
-        sourceLayoutVersion_ = layoutVersion;
-        sourceVersion_ = sourceVersion;
-        sourceStateValid_ = true;
+        activeSourceState_ = &source;
+        source.layoutVersion = layoutVersion;
+        source.sourceVersion = sourceVersion;
+        source.valid = true;
         stats_.sourceSyncMode = syncMode_;
 
         if (syncMode_ == GpuMaterialSourceSyncMode::Full) {
+            ReleaseSourceReferences(source);
             if (topologyChanged) {
-                sourceBindings_.assign(sourceRecordCount, {});
-                sourceSlotTable_.assign(
+                source.bindings.assign(sourceRecordCount, {});
+                source.slotTable.assign(
                     sourceRecordCount,
                     kInvalidGpuMaterialIndex);
-                ++bindingVersion_;
+                source.bindingVersion = ++bindingVersionCounter_;
             }
-            for (Slot& slot : slots_) {
-                slot.sourceReferenceCount = 0u;
-            }
-            sourceBindingCount_ = 0u;
-            pendingSourceResolveCount_ = 0u;
-            for (SourceBinding& binding : sourceBindings_) {
+            for (SourceBinding& binding : source.bindings) {
                 binding.seenInFullSync = false;
             }
             ++stats_.fullSourceSyncCount;
@@ -182,12 +183,14 @@ namespace HIKARI::RENDER3D::MATERIAL {
         uint32_t& outMaterialSlot) {
 
         outMaterialSlot = kInvalidGpuMaterialIndex;
-        if (sourceRecordIndex >= sourceBindings_.size()) {
+        if (activeSourceState_ == nullptr ||
+            sourceRecordIndex >= activeSourceState_->bindings.size()) {
             return false;
         }
 
-        SourceBinding& binding = sourceBindings_[sourceRecordIndex];
-        const uint32_t materialSlot = sourceSlotTable_[sourceRecordIndex];
+        SourceBinding& binding = activeSourceState_->bindings[sourceRecordIndex];
+        const uint32_t materialSlot =
+            activeSourceState_->slotTable[sourceRecordIndex];
         if (!binding.active ||
             !binding.finalized ||
             materialSlot == kInvalidGpuMaterialIndex ||
@@ -210,20 +213,18 @@ namespace HIKARI::RENDER3D::MATERIAL {
         bool finalized) {
 
         ++stats_.frameResolveRequestCount;
-        if (sourceRecordIndex >= sourceBindings_.size()) {
+        if (activeSourceState_ == nullptr ||
+            sourceRecordIndex >= activeSourceState_->bindings.size()) {
             ++stats_.frameOverflowCount;
             return kInvalidGpuMaterialIndex;
         }
 
-        SourceBinding& binding = sourceBindings_[sourceRecordIndex];
+        SourceBinding& binding = activeSourceState_->bindings[sourceRecordIndex];
         const uint32_t oldSlot =
-            sourceSlotTable_[sourceRecordIndex] < slots_.size() &&
-                slots_[sourceSlotTable_[sourceRecordIndex]].alive
-                ? sourceSlotTable_[sourceRecordIndex]
+            activeSourceState_->slotTable[sourceRecordIndex] < slots_.size() &&
+                slots_[activeSourceState_->slotTable[sourceRecordIndex]].alive
+                ? activeSourceState_->slotTable[sourceRecordIndex]
                 : kInvalidGpuMaterialIndex;
-        const bool oldBound =
-            binding.active && oldSlot != kInvalidGpuMaterialIndex;
-        const bool oldPending = binding.active && !binding.finalized;
         const MaterialIdentity identity{
             sourceKey.resource,
             sourceKey.stableMaterialKey
@@ -232,19 +233,15 @@ namespace HIKARI::RENDER3D::MATERIAL {
         if (newSlot == kInvalidGpuMaterialIndex) {
             if (syncMode_ != GpuMaterialSourceSyncMode::Full) {
                 ReleaseSourceReference(oldSlot);
-                if (oldBound && sourceBindingCount_ != 0u) {
-                    --sourceBindingCount_;
-                }
-                if (!oldPending) {
-                    ++pendingSourceResolveCount_;
-                }
             }
             binding.key = sourceKey;
             binding.active = true;
             binding.finalized = false;
-            sourceSlotTable_[sourceRecordIndex] = kInvalidGpuMaterialIndex;
+            activeSourceState_->slotTable[sourceRecordIndex] =
+                kInvalidGpuMaterialIndex;
             if (oldSlot != kInvalidGpuMaterialIndex) {
-                ++bindingVersion_;
+                activeSourceState_->bindingVersion =
+                    ++bindingVersionCounter_;
             }
             MarkSourceSeen(sourceRecordIndex, kInvalidGpuMaterialIndex);
             return newSlot;
@@ -257,55 +254,99 @@ namespace HIKARI::RENDER3D::MATERIAL {
         }
 
         if (oldSlot != newSlot) {
-            ++bindingVersion_;
+            activeSourceState_->bindingVersion =
+                ++bindingVersionCounter_;
         }
         binding.key = sourceKey;
-        sourceSlotTable_[sourceRecordIndex] = newSlot;
+        activeSourceState_->slotTable[sourceRecordIndex] = newSlot;
         binding.active = true;
         binding.finalized = finalized;
         if (syncMode_ == GpuMaterialSourceSyncMode::Full) {
             MarkSourceSeen(sourceRecordIndex, newSlot);
-        } else {
-            const bool newPending = !finalized;
-            if (!oldBound) {
-                ++sourceBindingCount_;
-            }
-            if (oldPending != newPending) {
-                if (newPending) {
-                    ++pendingSourceResolveCount_;
-                } else if (pendingSourceResolveCount_ != 0u) {
-                    --pendingSourceResolveCount_;
-                }
-            }
         }
         return newSlot;
     }
 
     void GpuMaterialRegistry::EndSourceSync() {
-        if (syncMode_ == GpuMaterialSourceSyncMode::Full) {
+        if (syncMode_ == GpuMaterialSourceSyncMode::Full &&
+            activeSourceState_ != nullptr) {
             bool bindingsChanged = false;
             for (size_t sourceIndex = 0;
-                sourceIndex < sourceBindings_.size();
+                sourceIndex < activeSourceState_->bindings.size();
                 ++sourceIndex) {
 
-                SourceBinding& binding = sourceBindings_[sourceIndex];
+                SourceBinding& binding =
+                    activeSourceState_->bindings[sourceIndex];
                 if (binding.seenInFullSync) {
                     continue;
                 }
-                if (sourceSlotTable_[sourceIndex] != kInvalidGpuMaterialIndex) {
+                if (activeSourceState_->slotTable[sourceIndex] !=
+                    kInvalidGpuMaterialIndex) {
                     bindingsChanged = true;
                 }
                 binding = {};
-                sourceSlotTable_[sourceIndex] = kInvalidGpuMaterialIndex;
+                activeSourceState_->slotTable[sourceIndex] =
+                    kInvalidGpuMaterialIndex;
             }
             if (bindingsChanged) {
-                ++bindingVersion_;
+                activeSourceState_->bindingVersion =
+                    ++bindingVersionCounter_;
             }
         }
 
         RetireUnusedSlots();
         syncMode_ = GpuMaterialSourceSyncMode::None;
         RefreshStats();
+    }
+
+    bool GpuMaterialRegistry::UpdateProgramBinding(
+        uint32_t materialSlot,
+        const GpuMaterialProgramBinding& binding) {
+        if (materialSlot >= slots_.size() ||
+            !slots_[materialSlot].alive) {
+            return false;
+        }
+
+        Slot& slot = slots_[materialSlot];
+        GpuMaterialData& data = slot.data;
+        const GpuMaterialProgramBinding current{
+            data.materialProgramIndex,
+            data.parameterBlockOffset,
+            data.resourceTableOffset,
+            data.parameterBlockCount,
+            data.instanceFlags
+        };
+        if (current == binding) {
+            return true;
+        }
+
+        data.materialProgramIndex = binding.materialProgramIndex;
+        data.parameterBlockOffset = binding.parameterBlockOffset;
+        data.resourceTableOffset = binding.resourceTableOffset;
+        data.parameterBlockCount = binding.parameterBlockCount;
+        data.instanceFlags = binding.instanceFlags;
+        MarkSlotDirty(materialSlot);
+        ++dataVersion_;
+        ++stats_.frameUpdatedSlotCount;
+        RefreshStats();
+        return true;
+    }
+
+    bool GpuMaterialRegistry::UpdateProgramBlocks(
+        uint32_t materialSlot,
+        MaterialProgramId programId,
+        std::span<const MATH::Vec4> parameters,
+        std::span<const uint32_t> resources,
+        uint32_t instanceFlags) {
+        GpuMaterialProgramBinding binding{};
+        return programBlockStore_.Update(
+                materialSlot,
+                programId,
+                parameters,
+                resources,
+                instanceFlags,
+                binding) &&
+            UpdateProgramBinding(materialSlot, binding);
     }
 
     bool GpuMaterialRegistry::StageFrame(
@@ -384,11 +425,79 @@ namespace HIKARI::RENDER3D::MATERIAL {
     }
 
     std::span<const uint32_t> GpuMaterialRegistry::GetSourceBindings() const {
-        return { sourceSlotTable_.data(), sourceSlotTable_.size() };
+        return activeSourceState_ != nullptr
+            ? std::span<const uint32_t>{
+                activeSourceState_->slotTable.data(),
+                activeSourceState_->slotTable.size() }
+            : std::span<const uint32_t>{};
+    }
+
+    std::span<const uint32_t> GpuMaterialRegistry::GetSourceBindings(
+        uintptr_t sourceIdentity) const {
+
+        const SourceState* source = FindSourceState(sourceIdentity);
+        return source != nullptr
+            ? std::span<const uint32_t>{
+                source->slotTable.data(),
+                source->slotTable.size() }
+            : std::span<const uint32_t>{};
+    }
+
+    bool GpuMaterialRegistry::TryGetResidentData(
+        uint32_t materialSlot,
+        GpuMaterialData& outData) const {
+        if (materialSlot >= slots_.size() ||
+            !slots_[materialSlot].alive) {
+            return false;
+        }
+        outData = slots_[materialSlot].data;
+        return true;
+    }
+
+    bool GpuMaterialRegistry::StageProgramBlocksFrame(
+        uint32_t frameResourceIndex,
+        MATH::Vec4* parameterTarget,
+        uint32_t* resourceTarget,
+        size_t targetMaterialCapacity,
+        std::vector<GpuMaterialUploadRange>& outRanges) {
+        return programBlockStore_.StageFrame(
+            frameResourceIndex,
+            parameterTarget,
+            resourceTarget,
+            targetMaterialCapacity,
+            outRanges);
     }
 
     uint64_t GpuMaterialRegistry::GetBindingVersion() const {
-        return bindingVersion_;
+        return activeSourceState_ != nullptr
+            ? activeSourceState_->bindingVersion
+            : 0u;
+    }
+
+    uint64_t GpuMaterialRegistry::GetBindingVersion(
+        uintptr_t sourceIdentity) const {
+
+        const SourceState* source = FindSourceState(sourceIdentity);
+        return source != nullptr ? source->bindingVersion : 0u;
+    }
+
+    void GpuMaterialRegistry::ReleaseSourceBindings(
+        uintptr_t sourceIdentity) {
+
+        auto found = sourceStates_.find(sourceIdentity);
+        if (found == sourceStates_.end()) {
+            return;
+        }
+        const bool wasActive = activeSourceState_ == &found->second;
+        ReleaseSourceReferences(found->second);
+        sourceStates_.erase(found);
+        ++bindingVersionCounter_;
+        if (wasActive) {
+            activeSourceState_ = nullptr;
+            syncMode_ = GpuMaterialSourceSyncMode::None;
+        }
+        RetireUnusedSlots();
+        RefreshStats();
     }
 
     const GpuMaterialRegistryStats& GpuMaterialRegistry::GetStats() const {
@@ -422,6 +531,7 @@ namespace HIKARI::RENDER3D::MATERIAL {
 
         Slot& slot = slots_[slotIndex];
         slot = {};
+        programBlockStore_.ResetSlot(slotIndex);
         slot.identity = identity;
         slot.data = data;
         slot.alive = true;
@@ -471,19 +581,17 @@ namespace HIKARI::RENDER3D::MATERIAL {
         uint32_t sourceRecordIndex,
         uint32_t materialSlot) {
 
-        if (sourceRecordIndex >= sourceBindings_.size()) {
+        if (activeSourceState_ == nullptr ||
+            sourceRecordIndex >= activeSourceState_->bindings.size()) {
             return;
         }
-        SourceBinding& binding = sourceBindings_[sourceRecordIndex];
+        SourceBinding& binding =
+            activeSourceState_->bindings[sourceRecordIndex];
         if (syncMode_ == GpuMaterialSourceSyncMode::Full &&
             !binding.seenInFullSync) {
             binding.seenInFullSync = true;
             if (materialSlot < slots_.size() && slots_[materialSlot].alive) {
                 ++slots_[materialSlot].sourceReferenceCount;
-                ++sourceBindingCount_;
-            }
-            if (binding.active && !binding.finalized) {
-                ++pendingSourceResolveCount_;
             }
         }
     }
@@ -496,6 +604,18 @@ namespace HIKARI::RENDER3D::MATERIAL {
         Slot& slot = slots_[materialSlot];
         if (slot.sourceReferenceCount != 0u) {
             --slot.sourceReferenceCount;
+        }
+    }
+
+    void GpuMaterialRegistry::ReleaseSourceReferences(SourceState& source) {
+        for (size_t sourceIndex = 0;
+            sourceIndex < source.bindings.size() &&
+            sourceIndex < source.slotTable.size();
+            ++sourceIndex) {
+
+            if (source.bindings[sourceIndex].active) {
+                ReleaseSourceReference(source.slotTable[sourceIndex]);
+            }
         }
     }
 
@@ -517,6 +637,7 @@ namespace HIKARI::RENDER3D::MATERIAL {
             slot.alive = false;
             slot.identity = {};
             slot.data = {};
+            programBlockStore_.ResetSlot(slotIndex);
             freeSlots_.push_back(slotIndex);
             if (residentSlotCount_ != 0u) {
                 --residentSlotCount_;
@@ -526,26 +647,54 @@ namespace HIKARI::RENDER3D::MATERIAL {
     }
 
     void GpuMaterialRegistry::RefreshStats() {
+        uint32_t sourceBindingCount = 0u;
+        uint32_t pendingSourceResolveCount = 0u;
+        for (const auto& [sourceIdentity, source] : sourceStates_) {
+            (void)sourceIdentity;
+            for (const SourceBinding& binding : source.bindings) {
+                if (!binding.active) {
+                    continue;
+                }
+                ++sourceBindingCount;
+                if (!binding.finalized) {
+                    ++pendingSourceResolveCount;
+                }
+            }
+        }
         stats_.initialized = initialized_;
         stats_.capacity = capacity_;
         stats_.residentSlotCount = residentSlotCount_;
-        stats_.sourceBindingCount = sourceBindingCount_;
-        stats_.pendingSourceResolveCount = pendingSourceResolveCount_;
+        stats_.sourceBindingCount = sourceBindingCount;
+        stats_.pendingSourceResolveCount = pendingSourceResolveCount;
         stats_.pendingFrameSlotCount = pendingFrameSlotCount_;
         stats_.dataVersion = dataVersion_;
-        stats_.bindingVersion = bindingVersion_;
+        stats_.bindingVersion = bindingVersionCounter_;
+    }
+
+    GpuMaterialRegistry::SourceState* GpuMaterialRegistry::FindSourceState(
+        uintptr_t sourceIdentity) {
+
+        const auto found = sourceStates_.find(sourceIdentity);
+        return found != sourceStates_.end() ? &found->second : nullptr;
+    }
+
+    const GpuMaterialRegistry::SourceState*
+    GpuMaterialRegistry::FindSourceState(uintptr_t sourceIdentity) const {
+        const auto found = sourceStates_.find(sourceIdentity);
+        return found != sourceStates_.end() ? &found->second : nullptr;
     }
 
     void GpuMaterialRegistry::RecreateDefaultSlot() {
         slots_.push_back({});
         Slot& slot = slots_.front();
+        programBlockStore_.ResetSlot(0u);
         slot.data = BuildDefaultMaterialData();
         slot.alive = true;
         slot.pinned = true;
         residentSlotCount_ = 1u;
         MarkSlotDirty(0u);
         dataVersion_ = 1u;
-        bindingVersion_ = 1u;
+        bindingVersionCounter_ = 1u;
     }
 
 } // namespace HIKARI::RENDER3D::MATERIAL

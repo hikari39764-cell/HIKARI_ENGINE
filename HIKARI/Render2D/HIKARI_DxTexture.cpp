@@ -896,6 +896,49 @@ namespace HIKARI {
             return handle;
         }
 
+        int DxTextureManager::CreateRgbaTexture(
+            const std::string& name,
+            uint32_t width,
+            uint32_t height,
+            const std::vector<uint8_t>& rgbaPixels,
+            TextureColorSpace colorSpace)
+        {
+            EnsureInit();
+            const size_t requiredByteCount =
+                static_cast<size_t>(width) * height * 4u;
+            if (width == 0u || height == 0u ||
+                rgbaPixels.size() != requiredByteCount) {
+                HIKARI_LOG_ERROR(
+                    "[DxTextureManager][Generated][ERROR] invalid RGBA texture payload: " +
+                    name);
+                return -1;
+            }
+
+            const std::string syntheticPath =
+                "generated://rgba/" + std::to_string(width) + "x" +
+                std::to_string(height) + "/" + name;
+            const std::string cacheKey = MakeTextureCacheKey(
+                name,
+                syntheticPath,
+                colorSpace);
+            const auto cached = nameToHandle_.find(cacheKey);
+            if (cached != nameToHandle_.end()) {
+                return cached->second;
+            }
+
+            const int handle = CreateTextureFromRgbaPixels(
+                syntheticPath,
+                width,
+                height,
+                rgbaPixels.data(),
+                colorSpace,
+                "GeneratedRgba");
+            if (handle >= 0) {
+                nameToHandle_[cacheKey] = handle;
+            }
+            return handle;
+        }
+
         void DxTextureManager::InvalidateTextureCacheByName(const std::string& name)
         {
             const std::string normalizedName = TEXT::ToLowerAsciiCopy(name);

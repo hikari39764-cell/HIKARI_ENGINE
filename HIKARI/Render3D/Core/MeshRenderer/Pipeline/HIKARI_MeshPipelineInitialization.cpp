@@ -34,6 +34,13 @@ namespace HIKARI::MESHRENDERER {
         if (!GFX::CompileShaderFileSm6(L"HIKARI/Shaders/Render3D_GeometryAuxPS.hlsl", "main", GFX::ShaderStage::Pixel, store.geometryPsBlob.GetAddressOf())) {
             return false;
         }
+        if (!GFX::CompileShaderFileSm6(L"HIKARI/Shaders/Render3D_GeometryAuxFeaturePS.hlsl", "main", GFX::ShaderStage::Pixel, store.geometryFeatureMaskPsBlob.GetAddressOf()) ||
+            !GFX::CompileShaderFileSm6(L"HIKARI/Shaders/Render3D_GeometryOutlineVS.hlsl", "main", GFX::ShaderStage::Vertex, store.geometryOutlineVsBlob.GetAddressOf()) ||
+            !GFX::CompileShaderFileSm6(L"HIKARI/Shaders/Render3D_SkinnedGeometryOutlineVS.hlsl", "main", GFX::ShaderStage::Vertex, store.geometryOutlineSkinnedVsBlob.GetAddressOf()) ||
+            !GFX::CompileShaderFileSm6(L"HIKARI/Shaders/Render3D_GeometryOutlinePS.hlsl", "main", GFX::ShaderStage::Pixel, store.geometryOutlinePsBlob.GetAddressOf()) ||
+            !GFX::CompileShaderFileSm6(L"HIKARI/Shaders/Render3D_VisibilityOverlayPS.hlsl", "main", GFX::ShaderStage::Pixel, store.visibilityOverlayPsBlob.GetAddressOf())) {
+            return false;
+        }
 
         D3D12_DESCRIPTOR_RANGE shadowTextureRange{};
         shadowTextureRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
@@ -353,6 +360,20 @@ namespace HIKARI::MESHRENDERER {
         params[ROOT_PARAM::LocalLightClusterIndices].
             Descriptor.RegisterSpace = 5;
 
+        params[ROOT_PARAM::MaterialProgramParameters].ParameterType =
+            D3D12_ROOT_PARAMETER_TYPE_SRV;
+        params[ROOT_PARAM::MaterialProgramParameters].ShaderVisibility =
+            D3D12_SHADER_VISIBILITY_PIXEL;
+        params[ROOT_PARAM::MaterialProgramParameters].Descriptor.ShaderRegister = 0;
+        params[ROOT_PARAM::MaterialProgramParameters].Descriptor.RegisterSpace = 6;
+
+        params[ROOT_PARAM::MaterialProgramResources].ParameterType =
+            D3D12_ROOT_PARAMETER_TYPE_SRV;
+        params[ROOT_PARAM::MaterialProgramResources].ShaderVisibility =
+            D3D12_SHADER_VISIBILITY_PIXEL;
+        params[ROOT_PARAM::MaterialProgramResources].Descriptor.ShaderRegister = 1;
+        params[ROOT_PARAM::MaterialProgramResources].Descriptor.RegisterSpace = 6;
+
         D3D12_STATIC_SAMPLER_DESC linearWrapSampler{};
         linearWrapSampler.Filter = D3D12_FILTER_ANISOTROPIC;
         linearWrapSampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
@@ -509,6 +530,109 @@ namespace HIKARI::MESHRENDERER {
         geometrySkinnedPsoDesc.VS = { store.skinnedVsBlob->GetBufferPointer(), store.skinnedVsBlob->GetBufferSize() };
         geometrySkinnedPsoDesc.InputLayout = { skinnedInputElements.data(), static_cast<UINT>(skinnedInputElements.size()) };
         if (FAILED(device->CreateGraphicsPipelineState(&geometrySkinnedPsoDesc, IID_PPV_ARGS(store.geometrySkinnedPso.GetAddressOf())))) {
+            return false;
+        }
+
+        D3D12_GRAPHICS_PIPELINE_STATE_DESC geometryFeatureMaskPsoDesc =
+            geometryPsoDesc;
+        geometryFeatureMaskPsoDesc.PS = {
+            store.geometryFeatureMaskPsBlob->GetBufferPointer(),
+            store.geometryFeatureMaskPsBlob->GetBufferSize()
+        };
+        geometryFeatureMaskPsoDesc.NumRenderTargets = 2u;
+        geometryFeatureMaskPsoDesc.RTVFormats[1] = DXGI_FORMAT_R32G32_UINT;
+        if (FAILED(device->CreateGraphicsPipelineState(
+                &geometryFeatureMaskPsoDesc,
+                IID_PPV_ARGS(store.geometryFeatureMaskPso.GetAddressOf())))) {
+            return false;
+        }
+
+        D3D12_GRAPHICS_PIPELINE_STATE_DESC geometryFeatureMaskSkinnedPsoDesc =
+            geometryFeatureMaskPsoDesc;
+        geometryFeatureMaskSkinnedPsoDesc.pRootSignature =
+            store.skinnedRootSig.Get();
+        geometryFeatureMaskSkinnedPsoDesc.VS = {
+            store.skinnedVsBlob->GetBufferPointer(),
+            store.skinnedVsBlob->GetBufferSize()
+        };
+        geometryFeatureMaskSkinnedPsoDesc.InputLayout = {
+            skinnedInputElements.data(),
+            static_cast<UINT>(skinnedInputElements.size())
+        };
+        if (FAILED(device->CreateGraphicsPipelineState(
+                &geometryFeatureMaskSkinnedPsoDesc,
+                IID_PPV_ARGS(
+                    store.geometryFeatureMaskSkinnedPso.GetAddressOf())))) {
+            return false;
+        }
+
+        D3D12_GRAPHICS_PIPELINE_STATE_DESC outlinePsoDesc = psoDesc;
+        outlinePsoDesc.VS = {
+            store.geometryOutlineVsBlob->GetBufferPointer(),
+            store.geometryOutlineVsBlob->GetBufferSize()
+        };
+        outlinePsoDesc.PS = {
+            store.geometryOutlinePsBlob->GetBufferPointer(),
+            store.geometryOutlinePsBlob->GetBufferSize()
+        };
+        outlinePsoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_FRONT;
+        outlinePsoDesc.DepthStencilState.DepthWriteMask =
+            D3D12_DEPTH_WRITE_MASK_ZERO;
+        if (FAILED(device->CreateGraphicsPipelineState(
+                &outlinePsoDesc,
+                IID_PPV_ARGS(store.geometryOutlinePso.GetAddressOf())))) {
+            return false;
+        }
+
+        D3D12_GRAPHICS_PIPELINE_STATE_DESC outlineSkinnedPsoDesc =
+            outlinePsoDesc;
+        outlineSkinnedPsoDesc.pRootSignature = store.skinnedRootSig.Get();
+        outlineSkinnedPsoDesc.VS = {
+            store.geometryOutlineSkinnedVsBlob->GetBufferPointer(),
+            store.geometryOutlineSkinnedVsBlob->GetBufferSize()
+        };
+        outlineSkinnedPsoDesc.InputLayout = {
+            skinnedInputElements.data(),
+            static_cast<UINT>(skinnedInputElements.size())
+        };
+        if (FAILED(device->CreateGraphicsPipelineState(
+                &outlineSkinnedPsoDesc,
+                IID_PPV_ARGS(store.geometryOutlineSkinnedPso.GetAddressOf())))) {
+            return false;
+        }
+
+        D3D12_GRAPHICS_PIPELINE_STATE_DESC visibilityPsoDesc = psoDesc;
+        visibilityPsoDesc.PS = {
+            store.visibilityOverlayPsBlob->GetBufferPointer(),
+            store.visibilityOverlayPsBlob->GetBufferSize()
+        };
+        ApplyCompositeBlendState(
+            visibilityPsoDesc.BlendState,
+            VFX::CompositeMode::Alpha);
+        visibilityPsoDesc.DepthStencilState.DepthWriteMask =
+            D3D12_DEPTH_WRITE_MASK_ZERO;
+        visibilityPsoDesc.DepthStencilState.DepthFunc =
+            D3D12_COMPARISON_FUNC_GREATER;
+        if (FAILED(device->CreateGraphicsPipelineState(
+                &visibilityPsoDesc,
+                IID_PPV_ARGS(store.visibilityOverlayPso.GetAddressOf())))) {
+            return false;
+        }
+
+        D3D12_GRAPHICS_PIPELINE_STATE_DESC visibilitySkinnedPsoDesc =
+            visibilityPsoDesc;
+        visibilitySkinnedPsoDesc.pRootSignature = store.skinnedRootSig.Get();
+        visibilitySkinnedPsoDesc.VS = {
+            store.skinnedVsBlob->GetBufferPointer(),
+            store.skinnedVsBlob->GetBufferSize()
+        };
+        visibilitySkinnedPsoDesc.InputLayout = {
+            skinnedInputElements.data(),
+            static_cast<UINT>(skinnedInputElements.size())
+        };
+        if (FAILED(device->CreateGraphicsPipelineState(
+                &visibilitySkinnedPsoDesc,
+                IID_PPV_ARGS(store.visibilityOverlaySkinnedPso.GetAddressOf())))) {
             return false;
         }
 

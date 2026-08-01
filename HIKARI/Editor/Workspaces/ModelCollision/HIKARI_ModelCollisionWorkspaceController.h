@@ -14,11 +14,11 @@
 #include "Assets/Tasks/HIKARI_AssetTaskService.h"
 #include "Editor/Commands/HIKARI_EditorCommandRouter.h"
 #include "Editor/Gizmos/HIKARI_EditorTransformGizmo.h"
+#include "Editor/Preview/HIKARI_ModelPreviewScene.h"
 #include "Editor/Views/Director/HIKARI_EditorDirectorCameraController.h"
 #include "Editor/Views/HIKARI_EditorViewInputRouter.h"
 #include "Editor/Workspaces/HIKARI_EditorWorkspace.h"
 #include "Editor/Workspaces/ModelCollision/HIKARI_ModelCollisionHistory.h"
-#include "Editor/Workspaces/ModelCollision/HIKARI_ModelCollisionPreviewScene.h"
 #include "Editor/Workspaces/ModelCollision/HIKARI_ModelCollisionSourceOutline.h"
 
 namespace HIKARI {
@@ -131,7 +131,7 @@ private:
   std::filesystem::path setupPath_{};
   ASSETS::COLLISION::ModelCollisionSetup setup_{};
   ModelCollisionHistory history_{};
-  ModelCollisionPreviewScene previewScene_{};
+  ModelPreviewScene previewScene_{};
   ModelCollisionSourceOutlineCache sourceOutlineCache_{};
 
   EditorDirectorCameraController cameraController_{};

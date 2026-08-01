@@ -15,6 +15,10 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
 
     namespace {
 
+        constexpr size_t kEditorPreviewClusterPageTaskCapacity = 131072u;
+        constexpr size_t kEditorPreviewVisibleRangeCapacity = 131072u;
+        constexpr size_t kEditorPreviewCandidateCommandCapacity = 131072u;
+
         template <typename T>
         bool CreateMappedConstantBuffer(
             ID3D12Device* device,
@@ -81,6 +85,9 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         }
 
         gMeshRendererState.editorInteractive.gpuDrivenLayer = {};
+        gMeshRendererState.editorInteractive.clusterGpuDrivenProducer.Attach(
+            nullptr);
+        gMeshRendererState.editorInteractive.clusterGpuCullingPass.Reset();
         gMeshRendererState.editorInteractive.traditionalCommandStreamBuffer = {};
         gMeshRendererState.editorInteractive.surfaceGpuSceneBuffer = {};
         gMeshRendererState.editorInteractive.sceneResidency.Reset();
@@ -196,10 +203,20 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             return false;
         }
 
+        (void)gMeshRendererState.editorInteractive.clusterGpuCullingPass.Initialize(
+            GFX::GetCurrentContext(),
+            GetStaticRootSignature(gMeshRendererState.pipelines),
+            ROOT_PARAM::SurfaceGpuSceneControl,
+            4u,
+            kEditorPreviewClusterPageTaskCapacity,
+            kEditorPreviewVisibleRangeCapacity,
+            kEditorPreviewCandidateCommandCapacity);
+        gMeshRendererState.editorInteractive.clusterGpuDrivenProducer.Attach(
+            &gMeshRendererState.editorInteractive.clusterGpuCullingPass);
         gMeshRendererState.editorInteractive.gpuDrivenLayer.Attach(
             &gMeshRendererState.editorInteractive.surfaceGpuSceneBuffer,
             &gMeshRendererState.editorInteractive.traditionalCommandStreamBuffer,
-            nullptr);
+            &gMeshRendererState.editorInteractive.clusterGpuDrivenProducer);
         if (!gMeshRendererState.editorInteractive.gpuDrivenLayer.Initialize(
                 device,
                 GetStaticRootSignature(gMeshRendererState.pipelines),

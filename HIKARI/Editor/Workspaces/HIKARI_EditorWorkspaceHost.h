@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+#include <cstddef>
 #include <optional>
 
 #include "Editor/Views/HIKARI_EditorViewInstance.h"
@@ -28,18 +30,33 @@ namespace HIKARI::EDITOR {
         const EditorViewInstance& GetCinematicsOverviewView() const noexcept;
         EditorViewInstance& GetModelCollisionPreviewView() noexcept;
         const EditorViewInstance& GetModelCollisionPreviewView() const noexcept;
+        EditorViewInstance& GetModelMaterialPreviewView() noexcept;
+        const EditorViewInstance& GetModelMaterialPreviewView() const noexcept;
+        EditorViewInstance* FindView(
+            RENDER3D::RenderViewId renderViewId) noexcept;
+        const EditorViewInstance* FindView(
+            RENDER3D::RenderViewId renderViewId) const noexcept;
 
     private:
+        enum class BuiltInViewSlot : size_t {
+            CinematicsGame,
+            CinematicsDirector,
+            CinematicsOverview,
+            ModelCollisionPreview,
+            ModelMaterialPreview,
+            Count,
+        };
+
+        EditorViewInstance& View(BuiltInViewSlot slot) noexcept;
+        const EditorViewInstance& View(BuiltInViewSlot slot) const noexcept;
+
         EditorWorkspaceId activeWorkspace_ = EditorWorkspaceId::Scene;
         std::optional<EditorWorkspaceOpenRequest> pendingOpenRequest_{};
-        bool resetSceneLayoutRequested_ = false;
-        bool resetCinematicsLayoutRequested_ = false;
-        bool resetModelCollisionLayoutRequested_ = false;
-        bool resetAnimationStateMachineLayoutRequested_ = false;
-        EditorViewInstance cinematicsGameView_{};
-        EditorViewInstance cinematicsDirectorView_{};
-        EditorViewInstance cinematicsOverviewView_{};
-        EditorViewInstance modelCollisionPreviewView_{};
+        std::array<bool,
+            static_cast<size_t>(EditorWorkspaceId::Count)>
+            resetLayoutRequests_{};
+        std::array<EditorViewInstance,
+            static_cast<size_t>(BuiltInViewSlot::Count)> views_{};
     };
 
 } // namespace HIKARI::EDITOR

@@ -409,7 +409,7 @@ bool RenderTarget2D::CreateResources()
 
     bool RenderTarget2D::BeginDepthShaderRead()
     {
-        if (!initialized_ || !hasDepth_ || !depthTex_ || depthSrvGpuHandle_.ptr == 0) {
+        if (!initialized_ || !hasDepth_ || !depthTex_) {
             return false;
         }
 

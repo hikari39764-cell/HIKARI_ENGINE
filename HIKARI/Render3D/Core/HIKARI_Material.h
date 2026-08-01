@@ -1,11 +1,21 @@
 #pragma once
-#include <string>
 #include <cstdint>
+#include <span>
+#include <string>
+#include <vector>
+
 #include "Render3D/HIKARI_Math3D.h"
+#include "Render3D/Material/Program/HIKARI_MaterialProgramTypes.h"
 #include "Render3D/Material/HIKARI_MaterialTextureUsage.h"
 #include "Render3D/Resources/HIKARI_RenderResourceHandle.h"
 
 namespace HIKARI {
+
+    enum class RuntimeMaterialAlphaMode : uint8_t {
+        Opaque,
+        Mask,
+        Blend,
+    };
 
     struct RuntimeTextureSlot {
         std::string sourcePath{};
@@ -40,6 +50,25 @@ namespace HIKARI {
         const std::string& GetShaderProfileId() const;
         void SetFeatureBits(uint32_t featureBits);
         uint32_t GetFeatureBits() const;
+
+        void SetMaterialProgram(
+            RENDER3D::MATERIAL::MaterialProgramId programId);
+        RENDER3D::MATERIAL::MaterialProgramId GetMaterialProgramId() const;
+        void SetMaterialProgramParameterBlock(std::vector<MATH::Vec4> values);
+        std::span<const MATH::Vec4> GetMaterialProgramParameterBlock() const;
+        void SetMaterialProgramResourceBlock(std::vector<RuntimeTextureSlot> values);
+        std::span<const RuntimeTextureSlot> GetMaterialProgramResourceBlock() const;
+        void SetMaterialProgramInstanceFlags(uint32_t flags);
+        uint32_t GetMaterialProgramInstanceFlags() const;
+
+        void SetMaterialAlphaMode(RuntimeMaterialAlphaMode alphaMode);
+        RuntimeMaterialAlphaMode GetMaterialAlphaMode() const;
+        void SetAlphaCutoff(float alphaCutoff);
+        float GetAlphaCutoff() const;
+        void SetDoubleSided(bool doubleSided);
+        bool IsDoubleSided() const;
+        void SetUnlit(bool unlit);
+        bool IsUnlit() const;
 
         void SetTextureSlot(MaterialTextureUsage usage, RuntimeTextureSlot slot);
         const RuntimeTextureSlot& GetTextureSlot(MaterialTextureUsage usage) const;
@@ -82,6 +111,17 @@ namespace HIKARI {
         float emissiveStrength_ = 1.0f;
         std::string shaderProfileId_{};
         uint32_t featureBits_ = 0;
+        RENDER3D::MATERIAL::MaterialProgramId materialProgramId_{
+            RENDER3D::MATERIAL::kStandardPbrMaterialProgramId
+        };
+        std::vector<MATH::Vec4> materialProgramParameterBlock_{};
+        std::vector<RuntimeTextureSlot> materialProgramResourceBlock_{};
+        uint32_t materialProgramInstanceFlags_ = 0u;
+        RuntimeMaterialAlphaMode materialAlphaMode_ =
+            RuntimeMaterialAlphaMode::Opaque;
+        float alphaCutoff_ = 0.5f;
+        bool doubleSided_ = false;
+        bool unlit_ = false;
         uint64_t revision_ = 1;
     };
 

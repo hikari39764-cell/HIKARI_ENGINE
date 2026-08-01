@@ -79,6 +79,14 @@ namespace HIKARI::MESHRENDERER {
             static_cast<UINT>(sizeof(ObjectGpuData) * kMaxObjectCount);
         const UINT materialDataBytes =
             static_cast<UINT>(sizeof(MaterialGpuData) * kMaxMaterialDataCount);
+        const UINT materialProgramParameterBytes = static_cast<UINT>(
+            sizeof(MATH::Vec4) *
+            RENDER3D::MATERIAL::kGpuMaterialProgramParameterSlotCount *
+            kMaxMaterialDataCount);
+        const UINT materialProgramResourceBytes = static_cast<UINT>(
+            sizeof(uint32_t) *
+            RENDER3D::MATERIAL::kGpuMaterialProgramResourceSlotCount *
+            kMaxMaterialDataCount);
         const UINT lightBytes = GFX::AlignD3D12ConstantBufferByteSize(sizeof(LightCB));
         const UINT localLightBytes = static_cast<UINT>(
             sizeof(RENDER3D::LIGHTING::LocalLightGpuData) *
@@ -152,6 +160,20 @@ namespace HIKARI::MESHRENDERER {
                     frame.materialDataUploadBuffer,
                     frame.materialDataBuffer,
                     reinterpret_cast<void**>(&frame.materialDataMapped)) ||
+                !GFX::D3D12_BUFFER::CreateGpuResidentMappedBuffer(
+                    device,
+                    materialProgramParameterBytes,
+                    frame.materialProgramParameterUploadBuffer,
+                    frame.materialProgramParameterBuffer,
+                    reinterpret_cast<void**>(
+                        &frame.materialProgramParameterMapped)) ||
+                !GFX::D3D12_BUFFER::CreateGpuResidentMappedBuffer(
+                    device,
+                    materialProgramResourceBytes,
+                    frame.materialProgramResourceUploadBuffer,
+                    frame.materialProgramResourceBuffer,
+                    reinterpret_cast<void**>(
+                        &frame.materialProgramResourceMapped)) ||
                 !GFX::D3D12_BUFFER::CreateMappedUploadBuffer(
                     device,
                     lightBytes,
@@ -195,6 +217,10 @@ namespace HIKARI::MESHRENDERER {
 
             frame.objectDataState = D3D12_RESOURCE_STATE_COMMON;
             frame.materialDataState = D3D12_RESOURCE_STATE_COMMON;
+            frame.materialProgramParameterState =
+                D3D12_RESOURCE_STATE_COMMON;
+            frame.materialProgramResourceState =
+                D3D12_RESOURCE_STATE_COMMON;
 
             const UINT objectDataSrvIndex = GFX::DESCRIPTOR::ToFrameIndex(
                 GFX::DESCRIPTOR::SystemSrv::MeshObjectDataFrame0,
@@ -245,7 +271,11 @@ namespace HIKARI::MESHRENDERER {
             frame.objectDataMapped != nullptr &&
             frame.objectDataBuffer != nullptr &&
             frame.materialDataMapped != nullptr &&
-            frame.materialDataBuffer != nullptr;
+            frame.materialDataBuffer != nullptr &&
+            frame.materialProgramParameterMapped != nullptr &&
+            frame.materialProgramParameterBuffer != nullptr &&
+            frame.materialProgramResourceMapped != nullptr &&
+            frame.materialProgramResourceBuffer != nullptr;
     }
 
     void MeshFrameResourceStore::CommitActiveMaterialRanges(
@@ -260,6 +290,28 @@ namespace HIKARI::MESHRENDERER {
             frame.materialDataBuffer.Get(),
             frame.materialDataState,
             elementStride,
+            ranges);
+    }
+
+    void MeshFrameResourceStore::CommitActiveMaterialProgramBlockRanges(
+        ID3D12GraphicsCommandList* commandList,
+        const std::vector<RENDER3D::MATERIAL::GpuMaterialUploadRange>& ranges) {
+        MeshFrameResources& frame = Active();
+        CommitMappedBufferRangesToGpu(
+            commandList,
+            frame.materialProgramParameterUploadBuffer.Get(),
+            frame.materialProgramParameterBuffer.Get(),
+            frame.materialProgramParameterState,
+            sizeof(MATH::Vec4) *
+                RENDER3D::MATERIAL::kGpuMaterialProgramParameterSlotCount,
+            ranges);
+        CommitMappedBufferRangesToGpu(
+            commandList,
+            frame.materialProgramResourceUploadBuffer.Get(),
+            frame.materialProgramResourceBuffer.Get(),
+            frame.materialProgramResourceState,
+            sizeof(uint32_t) *
+                RENDER3D::MATERIAL::kGpuMaterialProgramResourceSlotCount,
             ranges);
     }
 

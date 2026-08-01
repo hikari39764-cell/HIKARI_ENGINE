@@ -296,11 +296,17 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         const RENDER3D::PIPELINE::ScreenSpacePassContext& context,
         const MESHRENDERER::CameraCB& renderCameraCb,
         const MESHRENDERER::CameraCB& cullingCameraCb,
-        const SceneEnvironment& environment) {
+        const SceneEnvironment& environment,
+        const ScreenSpaceSurfaceRequirements& requirements) {
 
         ScreenSpaceFrameResult result{};
         if (context.graphics == nullptr) {
             return result;
+        }
+        if (!requirements.requireFeatureMask) {
+            (void)state.surfaceBuffer.SetFeatureMaskEnabled(
+                *context.graphics,
+                false);
         }
         DEPTH::UpdateDepthPyramidContext(*context.graphics);
         const bool fallbackReady = EnsureScreenSpaceFallbacks(state);
@@ -440,7 +446,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         // Off 時は GeometryAux も作らない。
         if (ssaoMode == SsaoMode::Off ||
             environment.ambientOcclusion.editorViewportSuppressed) {
-            if (ssrNeedsSurface) {
+            if (ssrNeedsSurface || requirements.requirePackedSurface) {
                 // Continue to the shared surface write; SSAO remains disabled.
             } else {
             state.ssaoRenderer.RecordSkipped(
@@ -453,7 +459,8 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
             }
         }
 
-        if (ssaoMode == SsaoMode::Balanced && !ssrNeedsSurface) {
+        if (ssaoMode == SsaoMode::Balanced && !ssrNeedsSurface &&
+            !requirements.requirePackedSurface) {
             RecordSsaoGeometryAuxDebug(
                 false,
                 depthVisibilityMs,
@@ -482,7 +489,8 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         result.geometryAuxWritten = MESHRENDERER::RenderGeometryAuxPass(
             *context.graphics,
             state.surfaceBuffer,
-            context.sceneDsv);
+            context.sceneDsv,
+            requirements.requireFeatureMask);
         context.renderTargetAccess.Rebind();
         RecordSsaoGeometryAuxDebug(
             result.geometryAuxWritten,
@@ -494,6 +502,11 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         if (state.geometryValid) {
             result.packedSurface =
                 state.surfaceBuffer.GetPackedSurfaceView();
+            if (requirements.requireFeatureMask &&
+                state.surfaceBuffer.HasFeatureMask()) {
+                result.surfaceFeatureMask =
+                    state.surfaceBuffer.GetFeatureMaskView();
+            }
         }
         if (!state.geometryValid ||
             !context.sceneDepth.IsSampleable()) {

@@ -4,7 +4,9 @@
 #include <string>
 #include <vector>
 
+#include "Assets/Material/Compiler/HIKARI_MaterialCompiler.h"
 #include "Assets/Material/HIKARI_MaterialAssetData.h"
+#include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingAsset.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 
 namespace HIKARI {
@@ -20,6 +22,7 @@ namespace HIKARI {
         VfxEffect,
         Sequence,
         AnimationStateMachine,
+        ModelMaterialBinding,
         Unknown
     };
 
@@ -207,7 +210,14 @@ namespace HIKARI {
     };
 
     struct MaterialAssetDescriptor final : AssetDescriptor {
+        MaterialAssetData sourceData{};
+        MaterialCompileResult compileResult{};
+        // 既存 runtime builder が v4 へ移行するまで保持する投影 adapter。
         PbrMaterialAssetData data{};
+    };
+
+    struct ModelMaterialBindingAssetDescriptor final : AssetDescriptor {
+        ASSETS::MODELS::ModelMaterialBindingAssetData data{};
     };
 
     struct VfxAssetDescriptor final : AssetDescriptor {

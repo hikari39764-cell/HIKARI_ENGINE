@@ -12,7 +12,9 @@
 #include "Render3D/Color/HIKARI_ExposureState.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Debug/HIKARI_Renderer3D_Debug.h"
+#include "Render3D/Lighting/HIKARI_SkyRenderer.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
+#include "Render3D/Views/HIKARI_EditorInteractiveStylizedView.h"
 #include "Vfx/Post/HIKARI_PostCommon.h"
 #include "Vfx/Post/HIKARI_PostEffect.h"
 #include "Vfx/Post/HIKARI_PostQuadDrawer.h"
@@ -33,12 +35,14 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
             EditorInteractiveViewOutput output{};
             std::unique_ptr<RenderTarget2D> target{};
             std::unique_ptr<RenderTarget2D> displayTarget{};
+            EditorInteractiveStylizedView stylizedView{};
             std::array<
                 RenderResourceView,
                 GFX::kFrameResourceCount> outputSrvs{};
             std::array<uint64_t, GFX::kFrameResourceCount>
                 outputSrvGenerations{};
             uint64_t targetGeneration = 0;
+            uint64_t lastRenderedSerial = 0;
             bool hasRequest = false;
         };
 
@@ -46,6 +50,8 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
             g_views{};
         std::unique_ptr<POST::QuadDrawer> g_displayQuad{};
         std::unique_ptr<POST::PostEffect> g_displayEffect{};
+        uint64_t g_scheduleSerial = 0u;
+        EditorInteractiveSchedulerStats g_schedulerStats{};
 
         InteractiveViewState& FindOrCreateState(RenderViewId viewId) {
             auto found = g_views.find(viewId.value);
@@ -75,6 +81,7 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         uint32_t ClampExtent(uint32_t value) {
             return (std::min)(value, kMaxInteractiveViewExtent);
         }
+
 
         bool EnsureDisplayPipeline() {
             POST::PostEffect::UpdateContext(GFX::GetCurrentContext());
@@ -224,7 +231,9 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         }
 
         MESHRENDERER::EditorInteractiveRenderSettings ResolveRenderSettings(
-            const EditorInteractiveViewRequest& request) {
+            InteractiveViewState& state,
+            const EditorInteractiveViewRequest& request,
+            const EditorInteractiveStylizedPreparation& stylized) {
 
             MESHRENDERER::EditorInteractiveRenderSettings settings{};
             settings.neutralLighting =
@@ -241,13 +250,34 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
             } else if (settings.neutralClayMaterial) {
                 settings.debugView = RenderDebugView::NeutralClay;
             }
+            settings.renderGeometryOutline =
+                stylized.renderGeometryOutline;
+            settings.renderVisibilityOverlay =
+                stylized.renderVisibilityOverlay;
+            settings.writeStylizedFeatureMask =
+                stylized.writeFeatureMask;
+            settings.stylizedSurfaceBuffer =
+                &state.stylizedView.GetSurfaceBuffer();
+            settings.sceneDsv = state.target != nullptr
+                ? state.target->GetDsvHandle()
+                : D3D12_CPU_DESCRIPTOR_HANDLE{};
+            settings.renderTargetUserData = state.target.get();
+            settings.rebindTarget = [](void* userData) {
+                auto* target = static_cast<RenderTarget2D*>(userData);
+                if (target == nullptr || !target->IsInitialized()) {
+                    return false;
+                }
+                target->Rebind();
+                return true;
+            };
             settings.sceneSourceOverride = request.sceneSourceOverride;
             return settings;
         }
 
         bool ResolveDisplayTarget(
             InteractiveViewState& state,
-            const SceneEnvironment& environment) {
+            const SceneEnvironment& environment,
+            RenderTarget2D& sourceTarget) {
 
             if (state.target == nullptr ||
                 state.displayTarget == nullptr ||
@@ -301,8 +331,8 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
                 exposureState.exposureCompensation *= userExposure;
             }
             POST::CommonParams parameters{};
-            parameters.resolutionX = static_cast<float>(state.target->GetWidth());
-            parameters.resolutionY = static_cast<float>(state.target->GetHeight());
+            parameters.resolutionX = static_cast<float>(sourceTarget.GetWidth());
+            parameters.resolutionY = static_cast<float>(sourceTarget.GetHeight());
             parameters.user[0] = {
                 toneMappingEnabled ? 1.0f : 0.0f,
                 exposureState.exposureMultiplier,
@@ -318,8 +348,15 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
             parameters.user[2] = {
                 displayColor.saturation,
                 0.0f,
-                0.0f,
-                0.0f
+                1.25f,
+                0.92f
+            };
+            parameters.user[2].y = 0.0f;
+            parameters.user[3] = {
+                0.025f,
+                0.030f,
+                0.045f,
+                1.0f
             };
 
             state.displayTarget->BeginCapture(0.0f, 0.0f, 0.0f, 1.0f);
@@ -328,8 +365,8 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
             bool resolved = false;
             if (outputReady) {
                 g_displayQuad->SetInputTexture(
-                    state.target->GetSrvHeap(),
-                    state.target->GetSrvGpu());
+                    sourceTarget.GetSrvHeap(),
+                    sourceTarget.GetSrvGpu());
                 g_displayEffect->ApplyCommonParams(parameters);
                 resolved = g_displayEffect->BindAndDraw(*g_displayQuad);
             }
@@ -341,6 +378,11 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
 
     void SubmitRequest(const EditorInteractiveViewRequest& request) {
         InteractiveViewState& state = FindOrCreateState(request.viewId);
+        if (state.hasRequest &&
+            state.request.sceneSourceOverride != request.sceneSourceOverride) {
+            MESHRENDERER::ReleaseEditorInteractiveSceneSource(
+                state.request.sceneSourceOverride);
+        }
         state.request = request;
         state.output.viewId = request.viewId;
         state.hasRequest = true;
@@ -351,6 +393,8 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         if (found == g_views.end()) {
             return;
         }
+        MESHRENDERER::ReleaseEditorInteractiveSceneSource(
+            found->second->request.sceneSourceOverride);
         found->second->hasRequest = false;
         InvalidateOutput(*found->second);
     }
@@ -358,9 +402,12 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
     bool RenderPending(
         const SceneEnvironment& environment,
         const LIGHTING::SceneLightingSet& lighting,
-        uint64_t currentSceneRevision) {
+        uint64_t currentSceneRevision,
+        ModelManager& modelManager,
+        SkyManager& skyManager) {
 
         InteractiveViewState* selected = nullptr;
+        uint32_t renderableViewCount = 0u;
         for (auto& [viewValue, state] : g_views) {
             (void)viewValue;
             if (!state->hasRequest) {
@@ -372,17 +419,40 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
                 InvalidateOutput(*state);
                 continue;
             }
-            if (selected == nullptr ||
-                state->request.viewId.value <
-                    selected->request.viewId.value) {
+            ++renderableViewCount;
+            const bool olderThanSelected =
+                selected == nullptr ||
+                state->lastRenderedSerial < selected->lastRenderedSerial;
+            const bool sameAgeHigherPriority =
+                selected != nullptr &&
+                state->lastRenderedSerial == selected->lastRenderedSerial &&
+                state->request.schedulingPriority >
+                    selected->request.schedulingPriority;
+            const bool sameAgeAndPriorityLowerId =
+                selected != nullptr &&
+                state->lastRenderedSerial == selected->lastRenderedSerial &&
+                state->request.schedulingPriority ==
+                    selected->request.schedulingPriority &&
+                state->request.viewId.value < selected->request.viewId.value;
+            if (olderThanSelected || sameAgeHigherPriority ||
+                sameAgeAndPriorityLowerId) {
                 selected = state.get();
             }
         }
+        g_schedulerStats.renderableViewCount = renderableViewCount;
         if (selected == nullptr ||
             GFX::GetCurrentContext().cmdList == nullptr ||
             GFX::GetCurrentContext().device == nullptr) {
             return false;
         }
+
+        ++g_scheduleSerial;
+        if (g_scheduleSerial == 0u) {
+            g_scheduleSerial = 1u;
+        }
+        selected->lastRenderedSerial = g_scheduleSerial;
+        g_schedulerStats.scheduleSerial = g_scheduleSerial;
+        g_schedulerStats.renderedViewId = selected->request.viewId.value;
 
         const uint32_t width = ClampExtent(selected->request.width);
         const uint32_t height = ClampExtent(selected->request.height);
@@ -403,17 +473,41 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
 
         RenderViewContext view{};
         view.viewId = selected->request.viewId;
-        view.purpose = RenderViewPurpose::EditorScene;
+        view.purpose = selected->request.purpose;
         view.cameraFrame = &selected->request.cameraFrame;
+        const SceneEnvironment& effectiveEnvironment =
+            selected->request.environmentOverride != nullptr
+                ? *selected->request.environmentOverride
+                : environment;
+        const LIGHTING::SceneLightingSet& effectiveLighting =
+            selected->request.lightingOverride != nullptr
+                ? *selected->request.lightingOverride
+                : lighting;
+        const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource& sceneSource =
+            selected->request.sceneSourceOverride != nullptr
+                ? *selected->request.sceneSourceOverride
+                : MESHRENDERER::GetActiveGpuDrivenSceneSource();
+        const EditorInteractiveStylizedPreparation stylizedPreparation =
+            selected->stylizedView.Prepare(sceneSource);
+        SKYRENDERER::Render(
+            GFX::GetCurrentContext(),
+            selected->request.cameraFrame.camera,
+            effectiveEnvironment,
+            modelManager,
+            skyManager);
         const MESHRENDERER::EditorInteractiveRenderSettings renderSettings =
-            ResolveRenderSettings(selected->request);
-        (void)MESHRENDERER::RenderEditorInteractiveOpaque(
-            view,
-            environment,
-            lighting,
-            width,
-            height,
-            renderSettings);
+            ResolveRenderSettings(
+                *selected,
+                selected->request,
+                stylizedPreparation);
+        const bool meshRendered =
+            MESHRENDERER::RenderEditorInteractiveOpaque(
+                view,
+                effectiveEnvironment,
+                effectiveLighting,
+                width,
+                height,
+                renderSettings);
         if (selected->request.drawDebug) {
             RENDERER3D::DEBUG::RenderAllForView(
                 selected->request.viewId,
@@ -423,7 +517,34 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         }
         selected->target->EndCapture();
 
-        if (!ResolveDisplayTarget(*selected, environment)) {
+        if (!meshRendered) {
+            (void)POST::PostSystem::RebindCurrentRenderTarget();
+            InvalidateOutput(*selected);
+            return false;
+        }
+
+        RenderTarget2D* displaySource = selected->target.get();
+        if (!selected->stylizedView.Resolve(
+                *selected->target,
+                selected->targetGeneration,
+                selected->request.viewId,
+                selected->request.cameraFrame.camera,
+                effectiveEnvironment,
+                effectiveLighting,
+                width,
+                height,
+                stylizedPreparation,
+                displaySource)) {
+            (void)POST::PostSystem::RebindCurrentRenderTarget();
+            InvalidateOutput(*selected);
+            return false;
+        }
+
+        if (displaySource == nullptr ||
+            !ResolveDisplayTarget(
+                *selected,
+                effectiveEnvironment,
+                *displaySource)) {
             (void)POST::PostSystem::RebindCurrentRenderTarget();
             InvalidateOutput(*selected);
             return false;
@@ -464,23 +585,33 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         return found->second->output;
     }
 
+    EditorInteractiveSchedulerStats GetSchedulerStats() {
+        return g_schedulerStats;
+    }
+
     void Shutdown() {
         RENDERER3D::DEBUG::ShutdownEditorViewResources();
-        MESHRENDERER::ShutdownEditorInteractiveResources();
         for (auto& [viewValue, state] : g_views) {
             (void)viewValue;
+            MESHRENDERER::ReleaseEditorInteractiveSceneSource(
+                state->request.sceneSourceOverride);
             for (RenderResourceView& view : state->outputSrvs) {
                 if (view.IsValid()) {
                     (void)ReleaseRenderResourceDescriptor(view);
                     view = {};
                 }
             }
+            state->stylizedView.Shutdown();
             state->target.reset();
             state->displayTarget.reset();
         }
+        MESHRENDERER::ShutdownEditorInteractiveResources();
         g_views.clear();
         g_displayEffect.reset();
         g_displayQuad.reset();
+        ShutdownEditorInteractiveStylizedSharedResources();
+        g_scheduleSerial = 0u;
+        g_schedulerStats = {};
     }
 
 } // namespace HIKARI::RENDER3D::EDITORVIEW

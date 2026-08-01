@@ -96,13 +96,18 @@ namespace HIKARI::RENDER3D::RUNTIME {
         uint32_t deformationFlags = 0;
         uint32_t lightmapTextureDescriptorIndex = 0xffffffffu;
 
+        uint32_t materialProgramFlags = 0u;
+        uint32_t postGroupMask = 0u;
+        uint32_t stylizedFeaturePadding0 = 0u;
+        uint32_t stylizedFeaturePadding1 = 0u;
+
         MATH::Vec4 lightmapUvScaleBias{
             1.0f, 1.0f, 0.0f, 0.0f
         };
         MATH::Vec4 fxUser[VFX::kMaterialFxUserCount]{};
     };
 
-    static_assert(sizeof(SurfaceGpuSceneInstance) == 544u);
+    static_assert(sizeof(SurfaceGpuSceneInstance) == 560u);
     static_assert(kSurfaceGpuSceneJointPaletteStrideBytes == 8192u);
 
     struct SurfaceGpuSceneMaterialSource {
@@ -120,6 +125,7 @@ namespace HIKARI::RENDER3D::RUNTIME {
         MATH::Mat4 world{};
         MATH::Mat4 normalMatrix{};
         bool receiveShadow = true;
+        uint32_t postGroupMask = 0u;
 
         uint32_t fxFlags = 0;
         MATH::Vec4 fxUser[VFX::kMaterialFxUserCount]{};

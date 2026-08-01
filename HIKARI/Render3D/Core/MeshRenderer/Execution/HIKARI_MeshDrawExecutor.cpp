@@ -1,6 +1,7 @@
 #include "Render3D/Core/MeshRenderer/Execution/HIKARI_MeshDrawExecutor.h"
 
 #include <algorithm>
+#include <vector>
 
 #include "Render3D/Core/HIKARI_Material.h"
 #include "Render3D/Core/MeshRenderer/Data/HIKARI_MeshMaterialResolver.h"
@@ -33,6 +34,54 @@ namespace HIKARI::MESHRENDERER {
             return descriptorIndex == UINT32_MAX
                 ? kInvalidTextureDescriptorIndex
                 : static_cast<uint32_t>(descriptorIndex);
+        }
+
+        std::vector<uint32_t> ResolveMaterialProgramResourceIndices(
+            const Material& material) {
+            const std::span<const RuntimeTextureSlot> resources =
+                material.GetMaterialProgramResourceBlock();
+            std::vector<uint32_t> descriptors(
+                resources.size(),
+                kInvalidTextureDescriptorIndex);
+            for (size_t index = 0u; index < resources.size(); ++index) {
+                const RuntimeTextureSlot& resource = resources[index];
+                if (!resource.IsActive()) {
+                    continue;
+                }
+                const UINT descriptorIndex = resource.resource.IsValid()
+                    ? RENDER3D::GetTextureResourceSrvDescriptorIndex(
+                        resource.resource)
+                    : RENDER3D::GetTextureResourceSrvDescriptorIndexFromBackendHandle(
+                        resource.ResolveBackendHandle());
+                if (descriptorIndex != UINT32_MAX) {
+                    descriptors[index] =
+                        static_cast<uint32_t>(descriptorIndex);
+                }
+            }
+            return descriptors;
+        }
+
+        void UpdateMaterialProgramBlocks(
+            RENDER3D::MATERIAL::GpuMaterialRegistry& registry,
+            uint32_t materialSlot,
+            const Material& material) {
+            const std::vector<uint32_t> resources =
+                ResolveMaterialProgramResourceIndices(material);
+            if (registry.UpdateProgramBlocks(
+                    materialSlot,
+                    material.GetMaterialProgramId(),
+                    material.GetMaterialProgramParameterBlock(),
+                    resources,
+                    material.GetMaterialProgramInstanceFlags())) {
+                return;
+            }
+            registry.UpdateProgramBlocks(
+                materialSlot,
+                RENDER3D::MATERIAL::kStandardPbrMaterialProgramId,
+                {},
+                {},
+                material.GetMaterialProgramInstanceFlags() |
+                    RENDER3D::MATERIAL::GPU_MATERIAL_PROGRAM_FLAGS::UsedFallback);
         }
 
         MaterialTextureDescriptorIndices ResolveMaterialTextureDescriptorIndices(
@@ -410,6 +459,8 @@ namespace HIKARI::MESHRENDERER {
                 ctx.localLightsAddress,
                 ctx.localLightClusterHeadersAddress,
                 ctx.localLightClusterIndicesAddress,
+                ctx.materialProgramParametersAddress,
+                ctx.materialProgramResourcesAddress,
                 ctx.shadowAddress,
                 ctx.skyEnvironmentAddress);
             BindObjectDataBuffer(ctx.binding, ctx.objectDataSrv);
@@ -559,6 +610,13 @@ namespace HIKARI::MESHRENDERER {
                     sourceKey,
                     materialData,
                     finalized);
+            if (materialSlot != kInvalidMaterialDataIndex &&
+                source.materialOverride != nullptr) {
+                UpdateMaterialProgramBlocks(
+                    *ctx.gpuMaterialRegistry,
+                    materialSlot,
+                    *source.materialOverride);
+            }
             resolvedAny =
                 materialSlot != kInvalidMaterialDataIndex || resolvedAny;
         }

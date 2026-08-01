@@ -4,6 +4,7 @@
 #include <string>
 #include <utility>
 
+#include "Assets/Models/HIKARI_ModelMaterialSlot.h"
 #include "Render3D/Core/HIKARI_Material.h"
 
 namespace HIKARI {
@@ -68,10 +69,16 @@ namespace HIKARI {
             if (!slot.materialAssetGuid.IsValid()) {
                 continue;
             }
-            out["materialOverrides"].push_back({
+            nlohmann::json node{
                 { "slot", slot.slotIndex },
+                { "legacySlotIndex", slot.slotIndex },
                 { "materialAssetGuid", slot.materialAssetGuid.value }
-            });
+            };
+            if (slot.slotId.IsValid()) {
+                node["slotId"] =
+                    ASSETS::MODELS::MaterialSlotIdToString(slot.slotId);
+            }
+            out["materialOverrides"].push_back(std::move(node));
         }
     }
 
@@ -109,18 +116,52 @@ namespace HIKARI {
                     continue;
                 }
 
-                ModelMaterialOverrideSlot slot{};
-                slot.slotIndex = node.value("slot", 0u);
-                slot.materialAssetGuid.value =
+                const uint32_t slotIndex = node.value(
+                    "legacySlotIndex",
+                    node.value("slot", 0u));
+                MaterialSlotId slotId{};
+                if (const auto parsedSlotId =
+                        ASSETS::MODELS::ParseMaterialSlotId(
+                            node.value("slotId", std::string{}))) {
+
+                    slotId = *parsedSlotId;
+                }
+                AssetGuid materialGuid{};
+                materialGuid.value =
                     node.value("materialAssetGuid", std::string{});
-                if (slot.materialAssetGuid.IsValid()) {
-                    materialOverrides_.push_back(std::move(slot));
+                if (!materialGuid.IsValid()) {
+                    continue;
+                }
+
+                const auto existing = std::find_if(
+                    materialOverrides_.begin(),
+                    materialOverrides_.end(),
+                    [slotIndex, slotId](
+                        const ModelMaterialOverrideSlot& slot) {
+
+                        if (slotId.IsValid() && slot.slotId.IsValid()) {
+                            return slot.slotId == slotId;
+                        }
+                        return !slotId.IsValid() &&
+                            !slot.slotId.IsValid() &&
+                            slot.slotIndex == slotIndex;
+                    });
+                if (existing != materialOverrides_.end()) {
+                    existing->slotId = slotId;
+                    existing->slotIndex = slotIndex;
+                    existing->materialAssetGuid = std::move(materialGuid);
+                } else {
+                    materialOverrides_.push_back(
+                        ModelMaterialOverrideSlot{
+                            slotIndex,
+                            std::move(materialGuid),
+                            slotId
+                        });
                 }
             }
         }
 
-        runtimeMaterialOverride_.reset();
-        runtimeMaterialOverrideGuid_ = {};
+        runtimeMaterialOverrides_.clear();
         NotifyRenderStateDirty();
     }
 

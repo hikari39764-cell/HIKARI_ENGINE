@@ -13,6 +13,7 @@
 
 #include "Assets/Models/HIKARI_ModelAsset.h"
 #include "Assets/Models/HIKARI_ModelAssetLookup.h"
+#include "Assets/Models/HIKARI_ModelMaterialSlot.h"
 #include "Assets/Models/Loading/Assimp/HIKARI_AssimpTypeConversion.h"
 #include "Assets/Models/Loading/HIKARI_ModelSourcePath.h"
 
@@ -211,6 +212,9 @@ namespace HIKARI::ASSETS::MODELS::ASSIMP {
             ModelAsset& asset) {
 
             std::unordered_map<std::string, int> textureToIndex;
+            MaterialSlotIdBuilder slotIds(
+                MaterialSlotImporterSemantic::Assimp);
+            size_t unnamedMaterialCount = 0u;
             asset.materials.reserve(scene.mNumMaterials);
             asset.materialImportSources.reserve(
                 scene.mNumMaterials);
@@ -225,9 +229,15 @@ namespace HIKARI::ASSETS::MODELS::ASSIMP {
                 MaterialImportSourceSlots importSources{};
 
                 aiString materialName{};
+                std::string sourceMaterialIdentity{};
                 if (source->Get(AI_MATKEY_NAME, materialName) == AI_SUCCESS) {
-                    material.name = ToString(materialName);
+                    sourceMaterialIdentity = ToString(materialName);
+                    material.name = sourceMaterialIdentity;
                 }
+                if (sourceMaterialIdentity.empty()) {
+                    ++unnamedMaterialCount;
+                }
+                material.slotId = slotIds.Next(sourceMaterialIdentity);
                 if (material.name.empty()) {
                     material.name = "AssimpMaterial" + std::to_string(i);
                 }
@@ -417,8 +427,13 @@ namespace HIKARI::ASSETS::MODELS::ASSIMP {
             if (asset.materials.empty()) {
                 MaterialAsset fallback{};
                 fallback.name = "DefaultAssimpMaterial";
+                fallback.slotId = slotIds.Next(fallback.name);
                 asset.materials.push_back(std::move(fallback));
                 asset.materialImportSources.emplace_back();
+            } else if (unnamedMaterialCount > 0u) {
+                asset.importDiagnostics.messages.push_back(
+                    "[MaterialSlot] Assimp materials without source names use the unnamed-material duplicate ordinal. count=" +
+                    std::to_string(unnamedMaterialCount));
             }
         }
 

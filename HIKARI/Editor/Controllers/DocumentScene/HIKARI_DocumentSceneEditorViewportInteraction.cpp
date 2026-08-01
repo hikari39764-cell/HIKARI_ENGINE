@@ -4,6 +4,7 @@
 #include "Editor/Authoring/HIKARI_EditorObjectPlacement.h"
 #include "Editor/DragDrop/HIKARI_EditorAssetDragDrop.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
+#include "Assets/Models/HIKARI_ModelAsset.h"
 #include "Render3D/Core/HIKARI_BoundsUtils.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
 #include "Scene/HIKARI_GameObject.h"
@@ -212,7 +213,28 @@ namespace HIKARI {
                 break;
             }
             if (auto* modelComponent = context_.selection.selectedObject->GetComponent<ModelComponent>()) {
-                modelComponent->SetMaterialOverride(0, payload.guid);
+                const ModelAsset* modelAsset =
+                    modelComponent->GetModelAsset();
+                if (modelAsset == nullptr ||
+                    modelAsset->materials.empty()) {
+
+                    viewportDropMessage_ =
+                        "The selected model has no resolved material slots";
+                    break;
+                }
+                if (modelAsset->materials.size() != 1u) {
+                    viewportDropMessage_ =
+                        "This model has multiple material slots; assign the "
+                        "material to a selected slot in Model Material workspace";
+                    break;
+                }
+
+                const MaterialAsset& importedMaterial =
+                    modelAsset->materials.front();
+                modelComponent->SetMaterialOverride(
+                    importedMaterial.slotId,
+                    0u,
+                    payload.guid);
                 scene.RebuildMaterialOverrides();
                 if (SceneObjectData* documentObject =
                     selectionSync_.FindDocumentObjectByRuntime(scene, context_.selection.selectedObject)) {
@@ -220,12 +242,11 @@ namespace HIKARI {
                         if (component.type != "ModelComponent") {
                             continue;
                         }
-                        component.properties["materialOverrides"] = nlohmann::json::array({
-                            {
-                                { "slot", 0u },
-                                { "materialAssetGuid", payload.guid.value }
-                            }
-                        });
+
+                        nlohmann::json serializedComponent{};
+                        modelComponent->Serialize(serializedComponent);
+                        component.properties["materialOverrides"] =
+                            serializedComponent["materialOverrides"];
                         break;
                     }
                 }

@@ -261,7 +261,7 @@ bool IntersectModelCollisionShapeExact(
 }
 
 bool IntersectModelCollisionSourceNodeExact(
-    const ModelCollisionPointerRay &ray, const ModelCollisionPreviewNode &node,
+    const ModelCollisionPointerRay &ray, const ModelPreviewNode &node,
     const ModelAsset &model, float &outDistance) noexcept {
   if (node.meshIndex < 0 ||
       static_cast<size_t>(node.meshIndex) >= model.meshes.size()) {

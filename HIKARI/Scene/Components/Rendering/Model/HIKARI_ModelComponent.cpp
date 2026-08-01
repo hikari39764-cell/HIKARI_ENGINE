@@ -190,53 +190,137 @@ namespace HIKARI {
         uint32_t slotIndex,
         AssetGuid materialGuid) {
 
-        for (ModelMaterialOverrideSlot& slot : materialOverrides_) {
-            if (slot.slotIndex == slotIndex) {
-                slot.materialAssetGuid = std::move(materialGuid);
-                ClearRuntimeMaterialOverride();
+        SetMaterialOverride(
+            ResolveCurrentSlotId(slotIndex),
+            slotIndex,
+            std::move(materialGuid));
+    }
+
+    void ModelComponent::SetMaterialOverride(
+        MaterialSlotId slotId,
+        uint32_t legacySlotIndex,
+        AssetGuid materialGuid) {
+
+        auto existing = materialOverrides_.end();
+        if (slotId.IsValid()) {
+            existing = std::find_if(
+                materialOverrides_.begin(),
+                materialOverrides_.end(),
+                [slotId](const ModelMaterialOverrideSlot& slot) {
+                    return slot.slotId == slotId;
+                });
+        }
+        if (existing == materialOverrides_.end()) {
+            existing = std::find_if(
+                materialOverrides_.begin(),
+                materialOverrides_.end(),
+                [legacySlotIndex](
+                    const ModelMaterialOverrideSlot& slot) {
+
+                    return !slot.slotId.IsValid() &&
+                        slot.slotIndex == legacySlotIndex;
+                });
+        }
+        if (existing != materialOverrides_.end()) {
+            existing->slotId = slotId;
+            existing->slotIndex = legacySlotIndex;
+            existing->materialAssetGuid = std::move(materialGuid);
+            ClearRuntimeMaterialOverride(legacySlotIndex);
+            return;
+        }
+
+        materialOverrides_.push_back(ModelMaterialOverrideSlot{
+            legacySlotIndex,
+            std::move(materialGuid),
+            slotId
+        });
+        ClearRuntimeMaterialOverride(legacySlotIndex);
+    }
+
+    void ModelComponent::ClearMaterialOverride(uint32_t slotIndex) {
+        const MaterialSlotId slotId = ResolveCurrentSlotId(slotIndex);
+        std::erase_if(
+            materialOverrides_,
+            [slotIndex, slotId](const ModelMaterialOverrideSlot& slot) {
+                if (slotId.IsValid()) {
+                    return slot.slotId == slotId ||
+                        (!slot.slotId.IsValid() &&
+                            slot.slotIndex == slotIndex);
+                }
+                return slot.slotIndex == slotIndex;
+            });
+        ClearRuntimeMaterialOverride(slotIndex);
+    }
+
+    const Material* ModelComponent::GetRuntimeMaterialOverride(
+        uint32_t slotIndex) const {
+
+        for (const RuntimeMaterialOverrideSlot& slot :
+            runtimeMaterialOverrides_) {
+
+            if (slot.materialIndex == slotIndex) {
+                return slot.material.get();
+            }
+        }
+        return nullptr;
+    }
+
+    void ModelComponent::SetRuntimeMaterialOverride(
+        uint32_t slotIndex,
+        std::unique_ptr<Material> material) {
+
+        if (material == nullptr) {
+            ClearRuntimeMaterialOverride(slotIndex);
+            return;
+        }
+
+        for (RuntimeMaterialOverrideSlot& slot :
+            runtimeMaterialOverrides_) {
+
+            if (slot.materialIndex == slotIndex) {
+                slot.material = std::move(material);
+                NotifyRenderStateDirty();
                 return;
             }
         }
 
-        materialOverrides_.push_back(ModelMaterialOverrideSlot{
-            slotIndex,
-            std::move(materialGuid)
-        });
-        ClearRuntimeMaterialOverride();
-    }
-
-    void ModelComponent::ClearMaterialOverride(uint32_t slotIndex) {
-        std::erase_if(
-            materialOverrides_,
-            [slotIndex](const ModelMaterialOverrideSlot& slot) {
-                return slot.slotIndex == slotIndex;
+        runtimeMaterialOverrides_.push_back(
+            RuntimeMaterialOverrideSlot{
+                slotIndex,
+                std::move(material)
             });
-        ClearRuntimeMaterialOverride();
-    }
-
-    const Material* ModelComponent::GetRuntimeMaterialOverride() const {
-        return runtimeMaterialOverride_.get();
-    }
-
-    void ModelComponent::SetRuntimeMaterialOverride(
-        std::unique_ptr<Material> material,
-        AssetGuid guid) {
-
-        runtimeMaterialOverride_ = std::move(material);
-        runtimeMaterialOverrideGuid_ = std::move(guid);
         NotifyRenderStateDirty();
     }
 
-    void ModelComponent::ClearRuntimeMaterialOverride() {
-        runtimeMaterialOverride_.reset();
-        runtimeMaterialOverrideGuid_ = {};
+    void ModelComponent::ClearRuntimeMaterialOverride(
+        uint32_t slotIndex) {
+
+        std::erase_if(
+            runtimeMaterialOverrides_,
+            [slotIndex](const RuntimeMaterialOverrideSlot& slot) {
+                return slot.materialIndex == slotIndex;
+            });
         NotifyRenderStateDirty();
     }
 
-    const AssetGuid&
-        ModelComponent::GetRuntimeMaterialOverrideGuid() const {
+    void ModelComponent::ClearRuntimeMaterialOverrides() {
+        runtimeMaterialOverrides_.clear();
+        NotifyRenderStateDirty();
+    }
 
-        return runtimeMaterialOverrideGuid_;
+    const std::vector<RuntimeMaterialOverrideSlot>&
+        ModelComponent::GetRuntimeMaterialOverrides() const noexcept {
+
+        return runtimeMaterialOverrides_;
+    }
+
+    MaterialSlotId ModelComponent::ResolveCurrentSlotId(
+        uint32_t slotIndex) const noexcept {
+
+        if (asset_ == nullptr || slotIndex >= asset_->materials.size()) {
+            return {};
+        }
+        return asset_->materials[slotIndex].slotId;
     }
 
 } // namespace HIKARI

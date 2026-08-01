@@ -57,7 +57,12 @@ namespace HIKARI::RENDER3D::MESHLET {
             case MeshletPipelineKind::Shadow:
                 return MeshletPipelineMask::Shadow;
             case MeshletPipelineKind::GeometryAux:
+            case MeshletPipelineKind::GeometryAuxFeatureMask:
                 return MeshletPipelineMask::GeometryAux;
+            case MeshletPipelineKind::GeometryOutline:
+                return MeshletPipelineMask::GeometryOutline;
+            case MeshletPipelineKind::VisibilityOverlay:
+                return MeshletPipelineMask::VisibilityOverlay;
             case MeshletPipelineKind::DepthPrepass:
                 return MeshletPipelineMask::DepthPrepass;
             case MeshletPipelineKind::ForwardOpaque:
@@ -133,6 +138,9 @@ namespace HIKARI::RENDER3D::MESHLET {
             const MeshletRenderBackend::PipelineBucketArray& transparent,
             const MeshletRenderBackend::PipelineBucketArray& shadow,
             const MeshletRenderBackend::PipelineBucketArray& geometryAux,
+            const MeshletRenderBackend::PipelineBucketArray& geometryFeatureMask,
+            const MeshletRenderBackend::PipelineBucketArray& geometryOutline,
+            const MeshletRenderBackend::PipelineBucketArray& visibilityOverlay,
             const MeshletRenderBackend::PipelineBucketArray& depthPrepass) {
 
             bool ready = true;
@@ -149,7 +157,14 @@ namespace HIKARI::RENDER3D::MESHLET {
                 ready = ready && ArePipelinesReady(shadow);
             }
             if (IsPipelineRequested(pipelineMask, MeshletPipelineKind::GeometryAux)) {
-                ready = ready && ArePipelinesReady(geometryAux);
+                ready = ready && ArePipelinesReady(geometryAux) &&
+                    ArePipelinesReady(geometryFeatureMask);
+            }
+            if (IsPipelineRequested(pipelineMask, MeshletPipelineKind::GeometryOutline)) {
+                ready = ready && ArePipelinesReady(geometryOutline);
+            }
+            if (IsPipelineRequested(pipelineMask, MeshletPipelineKind::VisibilityOverlay)) {
+                ready = ready && ArePipelinesReady(visibilityOverlay);
             }
             if (IsPipelineRequested(pipelineMask, MeshletPipelineKind::DepthPrepass)) {
                 ready = ready && ArePipelinesReady(depthPrepass);
@@ -227,6 +242,27 @@ namespace HIKARI::RENDER3D::MESHLET {
                 : L"Meshlet GeometryAux BackFace PSO";
         }
 
+        const wchar_t* GeometryFeatureMaskDebugName(
+            GPUDRIVEN::GpuDrivenCommandBucket bucket) {
+            return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided
+                ? L"Meshlet GeometryFeatureMask DoubleSided PSO"
+                : L"Meshlet GeometryFeatureMask BackFace PSO";
+        }
+
+        const wchar_t* GeometryOutlineDebugName(
+            GPUDRIVEN::GpuDrivenCommandBucket bucket) {
+            return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided
+                ? L"Meshlet GeometryOutline DoubleSided PSO"
+                : L"Meshlet GeometryOutline BackFace PSO";
+        }
+
+        const wchar_t* VisibilityOverlayDebugName(
+            GPUDRIVEN::GpuDrivenCommandBucket bucket) {
+            return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided
+                ? L"Meshlet VisibilityOverlay DoubleSided PSO"
+                : L"Meshlet VisibilityOverlay BackFace PSO";
+        }
+
         const wchar_t* DepthPrepassDebugName(GPUDRIVEN::GpuDrivenCommandBucket bucket) {
             return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided
                 ? L"Meshlet DepthPrepass DoubleSided PSO"
@@ -246,6 +282,18 @@ namespace HIKARI::RENDER3D::MESHLET {
                 return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided
                     ? "MeshletDraw.GeometryAux.DoubleSided"
                     : "MeshletDraw.GeometryAux.BackFace";
+            case MeshletPipelineKind::GeometryAuxFeatureMask:
+                return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided
+                    ? "MeshletDraw.GeometryFeatureMask.DoubleSided"
+                    : "MeshletDraw.GeometryFeatureMask.BackFace";
+            case MeshletPipelineKind::GeometryOutline:
+                return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided
+                    ? "MeshletDraw.GeometryOutline.DoubleSided"
+                    : "MeshletDraw.GeometryOutline.BackFace";
+            case MeshletPipelineKind::VisibilityOverlay:
+                return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided
+                    ? "MeshletDraw.VisibilityOverlay.DoubleSided"
+                    : "MeshletDraw.VisibilityOverlay.BackFace";
             case MeshletPipelineKind::ForwardDepthAware:
                 return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided
                     ? "MeshletDraw.DepthAware.DoubleSided"
@@ -269,7 +317,12 @@ namespace HIKARI::RENDER3D::MESHLET {
         GFX::GPU_PROFILE::Pass ProfilePassForPipelineKind(MeshletPipelineKind kind) {
             switch (kind) {
             case MeshletPipelineKind::GeometryAux:
+            case MeshletPipelineKind::GeometryAuxFeatureMask:
                 return GFX::GPU_PROFILE::Pass::MeshletDrawGeometryAux;
+            case MeshletPipelineKind::GeometryOutline:
+                return GFX::GPU_PROFILE::Pass::MeshletDrawGeometryOutline;
+            case MeshletPipelineKind::VisibilityOverlay:
+                return GFX::GPU_PROFILE::Pass::MeshletDrawVisibilityOverlay;
             case MeshletPipelineKind::DepthPrepass:
                 return GFX::GPU_PROFILE::Pass::MeshletDrawDepthPrepass;
             case MeshletPipelineKind::ForwardDepthAware:
@@ -359,7 +412,10 @@ namespace HIKARI::RENDER3D::MESHLET {
             bool depthWrite,
             bool hasRenderTarget,
             const wchar_t* debugName,
-            ID3D12PipelineState** outPipelineState) {
+            ID3D12PipelineState** outPipelineState,
+            DXGI_FORMAT secondaryRenderTargetFormat = DXGI_FORMAT_UNKNOWN,
+            D3D12_COMPARISON_FUNC depthFunction =
+                D3D12_COMPARISON_FUNC_LESS_EQUAL) {
 
             if (device == nullptr ||
                 rootSignature == nullptr ||
@@ -371,9 +427,14 @@ namespace HIKARI::RENDER3D::MESHLET {
             }
 
             D3D12_RT_FORMAT_ARRAY renderTargets{};
-            renderTargets.NumRenderTargets = hasRenderTarget ? 1u : 0u;
+            renderTargets.NumRenderTargets = hasRenderTarget
+                ? (secondaryRenderTargetFormat != DXGI_FORMAT_UNKNOWN
+                    ? 2u
+                    : 1u)
+                : 0u;
             if (hasRenderTarget) {
                 renderTargets.RTFormats[0] = renderTargetFormat;
+                renderTargets.RTFormats[1] = secondaryRenderTargetFormat;
             }
 
             CD3DX12_RASTERIZER_DESC rasterizer(D3D12_DEFAULT);
@@ -385,7 +446,7 @@ namespace HIKARI::RENDER3D::MESHLET {
                 depthWrite
                     ? D3D12_DEPTH_WRITE_MASK_ALL
                     : D3D12_DEPTH_WRITE_MASK_ZERO;
-            depthStencil.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
+            depthStencil.DepthFunc = depthFunction;
             CD3DX12_BLEND_DESC blend(D3D12_DEFAULT);
             if (alphaBlend && hasRenderTarget) {
                 D3D12_RENDER_TARGET_BLEND_DESC& rt0 = blend.RenderTarget[0];
@@ -494,6 +555,7 @@ namespace HIKARI::RENDER3D::MESHLET {
         Microsoft::WRL::ComPtr<ID3DBlob> forwardMeshShader;
         Microsoft::WRL::ComPtr<ID3DBlob> depthMeshShader;
         Microsoft::WRL::ComPtr<ID3DBlob> geometryMeshShader;
+        Microsoft::WRL::ComPtr<ID3DBlob> geometryOutlineMeshShader;
         std::array<
             Microsoft::WRL::ComPtr<ID3DBlob>,
             kForwardOpaquePipelineVariantCount> forwardPixelShaders{};
@@ -501,15 +563,22 @@ namespace HIKARI::RENDER3D::MESHLET {
         Microsoft::WRL::ComPtr<ID3DBlob> transparentPixelShader;
         Microsoft::WRL::ComPtr<ID3DBlob> shadowPixelShader;
         Microsoft::WRL::ComPtr<ID3DBlob> geometryPixelShader;
+        Microsoft::WRL::ComPtr<ID3DBlob> geometryFeatureMaskPixelShader;
+        Microsoft::WRL::ComPtr<ID3DBlob> geometryOutlinePixelShader;
+        Microsoft::WRL::ComPtr<ID3DBlob> visibilityOverlayPixelShader;
         const bool needsForwardMeshShader =
             IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardOpaque) ||
             IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardDepthAware) ||
-            IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardTransparent);
+            IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardTransparent) ||
+            IsPipelineRequested(pipelineMask_, MeshletPipelineKind::VisibilityOverlay);
         const bool needsDepthMeshShader =
             IsPipelineRequested(pipelineMask_, MeshletPipelineKind::Shadow) ||
             IsPipelineRequested(pipelineMask_, MeshletPipelineKind::DepthPrepass);
         const bool needsGeometryMeshShader =
             IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryAux);
+        const bool needsGeometryOutlineMeshShader =
+            IsPipelineRequested(
+                pipelineMask_, MeshletPipelineKind::GeometryOutline);
         if (!GFX::CompileShaderFileSm6(
             L"HIKARI/Shaders/Render3D_MeshletAS.hlsl",
             "main",
@@ -539,6 +608,14 @@ namespace HIKARI::RENDER3D::MESHLET {
                 "main",
                 GFX::ShaderStage::Mesh,
                 geometryMeshShader.GetAddressOf())) {
+            return false;
+        }
+        if (needsGeometryOutlineMeshShader &&
+            !GFX::CompileShaderFileSm6(
+                L"HIKARI/Shaders/Render3D_MeshletGeometryOutlineMS.hlsl",
+                "main",
+                GFX::ShaderStage::Mesh,
+                geometryOutlineMeshShader.GetAddressOf())) {
             return false;
         }
         if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardOpaque)) {
@@ -585,6 +662,30 @@ namespace HIKARI::RENDER3D::MESHLET {
                 "main",
                 GFX::ShaderStage::Pixel,
                 geometryPixelShader.GetAddressOf())) {
+            return false;
+        }
+        if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryAux) &&
+            !GFX::CompileShaderFileSm6(
+                L"HIKARI/Shaders/Render3D_MeshletGeometryAuxFeaturePS.hlsl",
+                "main",
+                GFX::ShaderStage::Pixel,
+                geometryFeatureMaskPixelShader.GetAddressOf())) {
+            return false;
+        }
+        if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryOutline) &&
+            !GFX::CompileShaderFileSm6(
+                L"HIKARI/Shaders/Render3D_GeometryOutlinePS.hlsl",
+                "main",
+                GFX::ShaderStage::Pixel,
+                geometryOutlinePixelShader.GetAddressOf())) {
+            return false;
+        }
+        if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::VisibilityOverlay) &&
+            !GFX::CompileShaderFileSm6(
+                L"HIKARI/Shaders/Render3D_VisibilityOverlayPS.hlsl",
+                "main",
+                GFX::ShaderStage::Pixel,
+                visibilityOverlayPixelShader.GetAddressOf())) {
             return false;
         }
         stats_.shaderCompileReady = true;
@@ -693,6 +794,66 @@ namespace HIKARI::RENDER3D::MESHLET {
                     geometryAuxPipelineStates_[bucketIndex].GetAddressOf())) {
                     ++stats_.pipelineCreateReadyCount;
                 }
+
+                ++stats_.pipelineCreateRequestCount;
+                if (CreateMeshletPipelineState(
+                    device,
+                    rootSignature,
+                    amplificationShader.Get(),
+                    geometryMeshShader.Get(),
+                    geometryFeatureMaskPixelShader.Get(),
+                    DXGI_FORMAT_R16G16B16A16_FLOAT,
+                    CullModeForBucket(bucket),
+                    false,
+                    true,
+                    true,
+                    GeometryFeatureMaskDebugName(bucket),
+                    geometryFeatureMaskPipelineStates_[bucketIndex].GetAddressOf(),
+                    DXGI_FORMAT_R32G32_UINT)) {
+                    ++stats_.pipelineCreateReadyCount;
+                }
+            }
+
+            if (IsPipelineRequested(
+                    pipelineMask_, MeshletPipelineKind::GeometryOutline)) {
+                ++stats_.pipelineCreateRequestCount;
+                if (CreateMeshletPipelineState(
+                    device,
+                    rootSignature,
+                    amplificationShader.Get(),
+                    geometryOutlineMeshShader.Get(),
+                    geometryOutlinePixelShader.Get(),
+                    DXGI_FORMAT_R16G16B16A16_FLOAT,
+                    D3D12_CULL_MODE_FRONT,
+                    false,
+                    false,
+                    true,
+                    GeometryOutlineDebugName(bucket),
+                    geometryOutlinePipelineStates_[bucketIndex].GetAddressOf())) {
+                    ++stats_.pipelineCreateReadyCount;
+                }
+            }
+
+            if (IsPipelineRequested(
+                    pipelineMask_, MeshletPipelineKind::VisibilityOverlay)) {
+                ++stats_.pipelineCreateRequestCount;
+                if (CreateMeshletPipelineState(
+                    device,
+                    rootSignature,
+                    amplificationShader.Get(),
+                    forwardMeshShader.Get(),
+                    visibilityOverlayPixelShader.Get(),
+                    DXGI_FORMAT_R16G16B16A16_FLOAT,
+                    CullModeForBucket(bucket),
+                    true,
+                    false,
+                    true,
+                    VisibilityOverlayDebugName(bucket),
+                    visibilityOverlayPipelineStates_[bucketIndex].GetAddressOf(),
+                    DXGI_FORMAT_UNKNOWN,
+                    D3D12_COMPARISON_FUNC_GREATER)) {
+                    ++stats_.pipelineCreateReadyCount;
+                }
             }
 
             if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::DepthPrepass)) {
@@ -737,6 +898,15 @@ namespace HIKARI::RENDER3D::MESHLET {
         for (auto& pipeline : geometryAuxPipelineStates_) {
             pipeline.Reset();
         }
+        for (auto& pipeline : geometryFeatureMaskPipelineStates_) {
+            pipeline.Reset();
+        }
+        for (auto& pipeline : geometryOutlinePipelineStates_) {
+            pipeline.Reset();
+        }
+        for (auto& pipeline : visibilityOverlayPipelineStates_) {
+            pipeline.Reset();
+        }
         for (auto& pipeline : depthPrepassPipelineStates_) {
             pipeline.Reset();
         }
@@ -774,6 +944,17 @@ namespace HIKARI::RENDER3D::MESHLET {
         const bool geometryReady =
             IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryAux) &&
             ArePipelinesReady(geometryAuxPipelineStates_);
+        const bool geometryFeatureMaskReady =
+            IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryAux) &&
+            ArePipelinesReady(geometryFeatureMaskPipelineStates_);
+        const bool geometryOutlineReady =
+            IsPipelineRequested(
+                pipelineMask_, MeshletPipelineKind::GeometryOutline) &&
+            ArePipelinesReady(geometryOutlinePipelineStates_);
+        const bool visibilityOverlayReady =
+            IsPipelineRequested(
+                pipelineMask_, MeshletPipelineKind::VisibilityOverlay) &&
+            ArePipelinesReady(visibilityOverlayPipelineStates_);
         const bool depthPrepassReady =
             IsPipelineRequested(pipelineMask_, MeshletPipelineKind::DepthPrepass) &&
             ArePipelinesReady(depthPrepassPipelineStates_);
@@ -782,6 +963,9 @@ namespace HIKARI::RENDER3D::MESHLET {
         stats_.transparentPipelineReady = transparentReady;
         stats_.shadowPipelineReady = shadowReady;
         stats_.geometryAuxPipelineReady = geometryReady;
+        stats_.geometryFeatureMaskPipelineReady = geometryFeatureMaskReady;
+        stats_.geometryOutlinePipelineReady = geometryOutlineReady;
+        stats_.visibilityOverlayPipelineReady = visibilityOverlayReady;
         stats_.depthPrepassPipelineReady = depthPrepassReady;
         stats_.pipelineReady = AreRequestedPipelinesReady(
             pipelineMask_,
@@ -790,6 +974,9 @@ namespace HIKARI::RENDER3D::MESHLET {
             transparentPipelineStates_,
             shadowPipelineStates_,
             geometryAuxPipelineStates_,
+            geometryFeatureMaskPipelineStates_,
+            geometryOutlinePipelineStates_,
+            visibilityOverlayPipelineStates_,
             depthPrepassPipelineStates_);
     }
 
@@ -826,6 +1013,17 @@ namespace HIKARI::RENDER3D::MESHLET {
         stats_.geometryAuxPipelineReady =
             IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryAux) &&
             ArePipelinesReady(geometryAuxPipelineStates_);
+        stats_.geometryFeatureMaskPipelineReady =
+            IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryAux) &&
+            ArePipelinesReady(geometryFeatureMaskPipelineStates_);
+        stats_.geometryOutlinePipelineReady =
+            IsPipelineRequested(
+                pipelineMask_, MeshletPipelineKind::GeometryOutline) &&
+            ArePipelinesReady(geometryOutlinePipelineStates_);
+        stats_.visibilityOverlayPipelineReady =
+            IsPipelineRequested(
+                pipelineMask_, MeshletPipelineKind::VisibilityOverlay) &&
+            ArePipelinesReady(visibilityOverlayPipelineStates_);
         stats_.depthPrepassPipelineReady =
             IsPipelineRequested(pipelineMask_, MeshletPipelineKind::DepthPrepass) &&
             ArePipelinesReady(depthPrepassPipelineStates_);
@@ -836,10 +1034,19 @@ namespace HIKARI::RENDER3D::MESHLET {
             transparentPipelineStates_,
             shadowPipelineStates_,
             geometryAuxPipelineStates_,
+            geometryFeatureMaskPipelineStates_,
+            geometryOutlinePipelineStates_,
+            visibilityOverlayPipelineStates_,
             depthPrepassPipelineStates_);
         const bool requestedPipelineReady =
-            ctx.pipelineKind == MeshletPipelineKind::GeometryAux
+            ctx.pipelineKind == MeshletPipelineKind::GeometryAuxFeatureMask
+                ? stats_.geometryFeatureMaskPipelineReady
+                : ctx.pipelineKind == MeshletPipelineKind::GeometryAux
                 ? stats_.geometryAuxPipelineReady
+                : ctx.pipelineKind == MeshletPipelineKind::GeometryOutline
+                    ? stats_.geometryOutlinePipelineReady
+                    : ctx.pipelineKind == MeshletPipelineKind::VisibilityOverlay
+                        ? stats_.visibilityOverlayPipelineReady
                 : ctx.pipelineKind == MeshletPipelineKind::DepthPrepass
                     ? stats_.depthPrepassPipelineReady
                     : ctx.pipelineKind == MeshletPipelineKind::ForwardDepthAware
@@ -933,8 +1140,13 @@ namespace HIKARI::RENDER3D::MESHLET {
         }
 
         stats_.submittedDispatchCount += requestedDispatchCount;
-        if (ctx.pipelineKind == MeshletPipelineKind::GeometryAux) {
+        if (ctx.pipelineKind == MeshletPipelineKind::GeometryAux ||
+            ctx.pipelineKind == MeshletPipelineKind::GeometryAuxFeatureMask) {
             stats_.geometryAuxSubmittedDispatchCount += requestedDispatchCount;
+        } else if (ctx.pipelineKind == MeshletPipelineKind::GeometryOutline) {
+            stats_.geometryOutlineSubmittedDispatchCount += requestedDispatchCount;
+        } else if (ctx.pipelineKind == MeshletPipelineKind::VisibilityOverlay) {
+            stats_.visibilityOverlaySubmittedDispatchCount += requestedDispatchCount;
         } else if (ctx.pipelineKind == MeshletPipelineKind::DepthPrepass) {
             stats_.depthPrepassSubmittedDispatchCount += requestedDispatchCount;
         } else if (ctx.pipelineKind == MeshletPipelineKind::Shadow) {
@@ -962,6 +1174,12 @@ namespace HIKARI::RENDER3D::MESHLET {
             return depthPrepassPipelineStates_[index].Get();
         case MeshletPipelineKind::GeometryAux:
             return geometryAuxPipelineStates_[index].Get();
+        case MeshletPipelineKind::GeometryAuxFeatureMask:
+            return geometryFeatureMaskPipelineStates_[index].Get();
+        case MeshletPipelineKind::GeometryOutline:
+            return geometryOutlinePipelineStates_[index].Get();
+        case MeshletPipelineKind::VisibilityOverlay:
+            return visibilityOverlayPipelineStates_[index].Get();
         case MeshletPipelineKind::ForwardDepthAware:
             return depthAwarePipelineStates_[index].Get();
         case MeshletPipelineKind::ForwardTransparent:

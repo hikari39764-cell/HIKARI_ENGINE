@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Assets/Collision/HIKARI_ModelCollisionSetup.h"
-#include "Editor/Workspaces/ModelCollision/HIKARI_ModelCollisionPreviewScene.h"
+#include "Editor/Preview/HIKARI_ModelPreviewScene.h"
 
 namespace HIKARI::EDITOR {
 
@@ -24,7 +24,7 @@ bool IntersectModelCollisionShapeExact(
     float &outDistance) noexcept;
 
 bool IntersectModelCollisionSourceNodeExact(
-    const ModelCollisionPointerRay &ray, const ModelCollisionPreviewNode &node,
+    const ModelCollisionPointerRay &ray, const ModelPreviewNode &node,
     const ModelAsset &model, float &outDistance) noexcept;
 
 } // namespace DETAIL

@@ -71,6 +71,12 @@ namespace HIKARI {
             static int CreateSolidColorTexture(const std::string& name, uint32_t rgba, TextureColorSpace colorSpace = TextureColorSpace::Linear);
             static int CreateSolidColorCubemap(const std::string& name, uint32_t rgba, TextureColorSpace colorSpace = TextureColorSpace::Linear);
             static int CreateCheckerTexture(const std::string& name, uint32_t colorA, uint32_t colorB, TextureColorSpace colorSpace = TextureColorSpace::Linear);
+            static int CreateRgbaTexture(
+                const std::string& name,
+                uint32_t width,
+                uint32_t height,
+                const std::vector<uint8_t>& rgbaPixels,
+                TextureColorSpace colorSpace = TextureColorSpace::Linear);
             static int RegisterFromResource(ID3D12Resource* resource);
             static int RegisterFromResourceAs(ID3D12Resource* resource, DXGI_FORMAT srvFormat);
             static int RegisterCubeFromResourceAs(ID3D12Resource* resource, DXGI_FORMAT srvFormat);

@@ -17,6 +17,25 @@ MATH::Vec3 RotationForward(const MATH::Quat &rotation) {
   return MATH::Length(forward) > 1.0e-5f ? MATH::Normalize(forward)
                                          : MATH::Vec3{0.0f, 0.0f, 1.0f};
 }
+
+bool IsFiniteVec3(const MATH::Vec3 &value) {
+  return std::isfinite(value.x) && std::isfinite(value.y) &&
+         std::isfinite(value.z);
+}
+
+bool IsFiniteSettings(const EditorDirectorCameraSettings &settings) {
+  return std::isfinite(settings.moveSpeed) &&
+         std::isfinite(settings.fastMultiplier) &&
+         std::isfinite(settings.lookSensitivity) &&
+         std::isfinite(settings.orbitSensitivity) &&
+         std::isfinite(settings.panSensitivity) &&
+         std::isfinite(settings.wheelMoveStep) &&
+         std::isfinite(settings.pitchLimitRad) &&
+         std::isfinite(settings.minimumOrbitDistance) &&
+         settings.moveSpeed >= 0.0f && settings.fastMultiplier >= 1.0f &&
+         settings.pitchLimitRad > 0.0f &&
+         settings.minimumOrbitDistance > 0.0f;
+}
 } // namespace
 
 EditorDirectorCameraController::EditorDirectorCameraController() { Reset(); }
@@ -67,6 +86,52 @@ DirectorCameraPose EditorDirectorCameraController::GetPose() const noexcept {
   pose.position = position_;
   pose.rotation = MATH::Quat::FromEulerXYZ(-pitch_, yaw_, 0.0f);
   return pose;
+}
+
+EditorDirectorCameraState
+EditorDirectorCameraController::CaptureState() const noexcept {
+  EditorDirectorCameraState state{};
+  state.position = position_;
+  state.orbitPivot = orbitPivot_;
+  state.orbitDistance = orbitDistance_;
+  state.yaw = yaw_;
+  state.pitch = pitch_;
+  state.fovYRad = camera_.GetFovYRad();
+  state.aspect = camera_.GetAspect();
+  state.nearZ = camera_.GetNearZ();
+  state.farZ = camera_.GetFarZ();
+  state.settings = settings_;
+  return state;
+}
+
+bool EditorDirectorCameraController::RestoreState(
+    const EditorDirectorCameraState &state) noexcept {
+  const bool projectionValid =
+      std::isfinite(state.fovYRad) && state.fovYRad > 0.01f &&
+      state.fovYRad < 3.13f && std::isfinite(state.aspect) &&
+      state.aspect >= kMinimumAspect && std::isfinite(state.nearZ) &&
+      state.nearZ > 0.0f && std::isfinite(state.farZ) &&
+      state.farZ > state.nearZ;
+  if (!IsFiniteVec3(state.position) ||
+      !IsFiniteVec3(state.orbitPivot) ||
+      !std::isfinite(state.orbitDistance) ||
+      !std::isfinite(state.yaw) || !std::isfinite(state.pitch) ||
+      state.orbitDistance <= 0.0f || !projectionValid ||
+      !IsFiniteSettings(state.settings)) {
+    return false;
+  }
+
+  settings_ = state.settings;
+  position_ = state.position;
+  orbitPivot_ = state.orbitPivot;
+  orbitDistance_ =
+      (std::max)(state.orbitDistance, settings_.minimumOrbitDistance);
+  yaw_ = state.yaw;
+  pitch_ = ClampPitch(state.pitch);
+  camera_.SetPerspective(
+      state.fovYRad, state.aspect, state.nearZ, state.farZ);
+  ApplyToCamera(state.aspect);
+  return true;
 }
 
 bool EditorDirectorCameraController::Update(

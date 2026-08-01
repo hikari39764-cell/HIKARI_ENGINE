@@ -130,12 +130,12 @@ PickModelCollisionShape(const ModelCollisionPointerRay &ray,
 
 int32_t PickModelCollisionSourceNode(
     const ModelCollisionPointerRay &ray,
-    const std::vector<ModelCollisionPreviewNode> &nodes,
+    const std::vector<ModelPreviewNode> &nodes,
     const ModelAsset &model) noexcept {
   float bestDistance = (std::numeric_limits<float>::max)();
   float bestVolume = (std::numeric_limits<float>::max)();
   int32_t bestNodeIndex = -1;
-  for (const ModelCollisionPreviewNode &node : nodes) {
+  for (const ModelPreviewNode &node : nodes) {
     float distance = 0.0f;
     if (!DETAIL::IntersectModelCollisionBounds(ray, node.bounds, distance) ||
         !DETAIL::IntersectModelCollisionSourceNodeExact(ray, node, model,

@@ -35,6 +35,33 @@ namespace HIKARI {
                 Equal(lhs.uvOffset, rhs.uvOffset) &&
                 lhs.uvRotation == rhs.uvRotation;
         }
+
+        bool Equal(
+            const std::vector<MATH::Vec4>& lhs,
+            const std::vector<MATH::Vec4>& rhs) {
+            return lhs.size() == rhs.size() &&
+                std::equal(
+                    lhs.begin(),
+                    lhs.end(),
+                    rhs.begin(),
+                    [](const MATH::Vec4& lhsValue, const MATH::Vec4& rhsValue) {
+                        return Equal(lhsValue, rhsValue);
+                    });
+        }
+
+        bool Equal(
+            const std::vector<RuntimeTextureSlot>& lhs,
+            const std::vector<RuntimeTextureSlot>& rhs) {
+            return lhs.size() == rhs.size() &&
+                std::equal(
+                    lhs.begin(),
+                    lhs.end(),
+                    rhs.begin(),
+                    [](const RuntimeTextureSlot& lhsValue,
+                       const RuntimeTextureSlot& rhsValue) {
+                        return Equal(lhsValue, rhsValue);
+                    });
+        }
     }
 
     int RuntimeTextureSlot::ResolveBackendHandle() const {
@@ -125,6 +152,108 @@ namespace HIKARI {
         return featureBits_;
     }
 
+    void Material::SetMaterialProgram(
+        RENDER3D::MATERIAL::MaterialProgramId programId) {
+        if (materialProgramId_ == programId) {
+            return;
+        }
+        materialProgramId_ = programId;
+        ++revision_;
+    }
+
+    RENDER3D::MATERIAL::MaterialProgramId Material::GetMaterialProgramId() const {
+        return materialProgramId_;
+    }
+
+    void Material::SetMaterialProgramParameterBlock(
+        std::vector<MATH::Vec4> values) {
+        if (Equal(materialProgramParameterBlock_, values)) {
+            return;
+        }
+        materialProgramParameterBlock_ = std::move(values);
+        ++revision_;
+    }
+
+    std::span<const MATH::Vec4>
+    Material::GetMaterialProgramParameterBlock() const {
+        return materialProgramParameterBlock_;
+    }
+
+    void Material::SetMaterialProgramResourceBlock(
+        std::vector<RuntimeTextureSlot> values) {
+        if (Equal(materialProgramResourceBlock_, values)) {
+            return;
+        }
+        materialProgramResourceBlock_ = std::move(values);
+        ++revision_;
+    }
+
+    std::span<const RuntimeTextureSlot>
+    Material::GetMaterialProgramResourceBlock() const {
+        return materialProgramResourceBlock_;
+    }
+
+    void Material::SetMaterialProgramInstanceFlags(uint32_t flags) {
+        if (materialProgramInstanceFlags_ == flags) {
+            return;
+        }
+        materialProgramInstanceFlags_ = flags;
+        ++revision_;
+    }
+
+    uint32_t Material::GetMaterialProgramInstanceFlags() const {
+        return materialProgramInstanceFlags_;
+    }
+
+    void Material::SetMaterialAlphaMode(RuntimeMaterialAlphaMode alphaMode) {
+        if (materialAlphaMode_ == alphaMode) {
+            return;
+        }
+        materialAlphaMode_ = alphaMode;
+        ++revision_;
+    }
+
+    RuntimeMaterialAlphaMode Material::GetMaterialAlphaMode() const {
+        return materialAlphaMode_;
+    }
+
+    void Material::SetAlphaCutoff(float alphaCutoff) {
+        const float next = std::clamp(alphaCutoff, 0.0f, 1.0f);
+        if (alphaCutoff_ == next) {
+            return;
+        }
+        alphaCutoff_ = next;
+        ++revision_;
+    }
+
+    float Material::GetAlphaCutoff() const {
+        return alphaCutoff_;
+    }
+
+    void Material::SetDoubleSided(bool doubleSided) {
+        if (doubleSided_ == doubleSided) {
+            return;
+        }
+        doubleSided_ = doubleSided;
+        ++revision_;
+    }
+
+    bool Material::IsDoubleSided() const {
+        return doubleSided_;
+    }
+
+    void Material::SetUnlit(bool unlit) {
+        if (unlit_ == unlit) {
+            return;
+        }
+        unlit_ = unlit;
+        ++revision_;
+    }
+
+    bool Material::IsUnlit() const {
+        return unlit_;
+    }
+
     void Material::SetTextureSlot(MaterialTextureUsage usage, RuntimeTextureSlot slot) {
         RuntimeTextureSlot* destination = nullptr;
         switch (usage) {
@@ -211,7 +340,7 @@ namespace HIKARI {
     }
 
     void Material::SetSpecularFactor(float value) {
-        const float next = std::max(0.0f, value);
+        const float next = (std::max)(0.0f, value);
         if (specularFactor_ == next) {
             return;
         }

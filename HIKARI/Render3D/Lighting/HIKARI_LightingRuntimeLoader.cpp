@@ -9,6 +9,7 @@
 #include "Assets/Lighting/HIKARI_LightingBakeManifest.h"
 #include "Core/HIKARI_Logger.h"
 #include "Project/Paths/HIKARI_ProjectPath.h"
+#include "Render3D/Lighting/HIKARI_DefaultSkyEnvironment.h"
 #include "Render3D/Lighting/HIKARI_IblEnvironment.h"
 #include "Render3D/Lighting/HIKARI_LightmapRuntime.h"
 #include "Render3D/Lighting/HIKARI_LightProbeVolumeRuntime.h"
@@ -513,7 +514,18 @@ namespace HIKARI::RENDER3D::LIGHTING {
         std::vector<std::string>& messages) const {
 
         if (request.skyAssetIds.empty()) {
-            IBL::Reset();
+            const DefaultSkyEnvironmentResult defaultSky =
+                ActivateDefaultSkyEnvironment(skyManager);
+            runtimeData.skyLoaded = defaultSky.skyRegistered;
+            runtimeData.globalIblLoaded = defaultSky.iblLoaded;
+            runtimeData.activeSkyAssetId =
+                defaultSky.skyRegistered
+                    ? kDefaultSkyAssetName
+                    : std::string{};
+            AppendMessage(
+                messages,
+                "[LightingRuntimeLoader][DefaultSky] " +
+                    defaultSky.message);
             return;
         }
 
@@ -523,6 +535,23 @@ namespace HIKARI::RENDER3D::LIGHTING {
                 assetRegistry.FindAs<SkyAssetDescriptor>(
                     AssetId{ skyId });
             if (descriptor == nullptr) {
+                if (skyId == kDefaultSkyAssetName) {
+                    const DefaultSkyEnvironmentResult defaultSky =
+                        ActivateDefaultSkyEnvironment(skyManager);
+                    runtimeData.skyLoaded =
+                        defaultSky.skyRegistered;
+                    runtimeData.globalIblLoaded =
+                        defaultSky.iblLoaded;
+                    runtimeData.activeSkyAssetId =
+                        defaultSky.skyRegistered
+                            ? kDefaultSkyAssetName
+                            : std::string{};
+                    AppendMessage(
+                        messages,
+                        "[LightingRuntimeLoader][DefaultSky] " +
+                            defaultSky.message);
+                    continue;
+                }
                 IBL::Reset();
                 AppendMessage(
                     messages,
@@ -547,7 +576,8 @@ namespace HIKARI::RENDER3D::LIGHTING {
                 descriptor->id.value,
                 descriptor->meshAssetId,
                 texturePath,
-                descriptor->preferredMode
+                descriptor->preferredMode,
+                false
             });
             runtimeData.skyLoaded = true;
             runtimeData.activeSkyAssetId =

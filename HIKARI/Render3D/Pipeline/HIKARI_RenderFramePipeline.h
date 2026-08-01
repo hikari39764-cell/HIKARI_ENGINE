@@ -5,6 +5,7 @@
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/Core/HIKARI_RenderView.h"
 #include "Render3D/Debug/HIKARI_RenderDebugView.h"
+#include "Render3D/Features/HIKARI_RenderFeatureTypes.h"
 
 namespace HIKARI {
     class Camera3D;
@@ -30,5 +31,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
         const LIGHTING::SceneLightingSet& lighting,
         uint32_t width,
         uint32_t height);
+
+    const FEATURES::RenderFeaturePlan& GetLastRenderFeaturePlan();
 
 } // namespace HIKARI::RENDER3D::PIPELINE

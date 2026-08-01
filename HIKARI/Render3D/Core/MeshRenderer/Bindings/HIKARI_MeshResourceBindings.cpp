@@ -68,6 +68,28 @@ namespace HIKARI::MESHRENDERER {
             }
         }
 
+        void BindSrvCached(
+            const MeshBindingContext& ctx,
+            UINT rootParam,
+            D3D12_GPU_VIRTUAL_ADDRESS address) {
+            if (ctx.cmd == nullptr ||
+                rootParam >= kTrackedRootParamCount ||
+                address == 0u) {
+                return;
+            }
+            MeshBindingStateCache* cache = ctx.cache;
+            if (cache != nullptr && cache->rootSignature == nullptr) {
+                return;
+            }
+            if (cache != nullptr && cache->cbvAddresses[rootParam] == address) {
+                return;
+            }
+            ctx.cmd->SetGraphicsRootShaderResourceView(rootParam, address);
+            if (cache != nullptr) {
+                cache->cbvAddresses[rootParam] = address;
+            }
+        }
+
         bool BindDescriptorTableCached(
             const MeshBindingContext& ctx,
             UINT rootParam,
@@ -200,6 +222,8 @@ namespace HIKARI::MESHRENDERER {
         D3D12_GPU_VIRTUAL_ADDRESS localLightsAddress,
         D3D12_GPU_VIRTUAL_ADDRESS localLightClusterHeadersAddress,
         D3D12_GPU_VIRTUAL_ADDRESS localLightClusterIndicesAddress,
+        D3D12_GPU_VIRTUAL_ADDRESS materialProgramParametersAddress,
+        D3D12_GPU_VIRTUAL_ADDRESS materialProgramResourcesAddress,
         D3D12_GPU_VIRTUAL_ADDRESS shadowAddress,
         D3D12_GPU_VIRTUAL_ADDRESS skyEnvironmentAddress) {
         if (ctx.cmd == nullptr || rootSig == nullptr) {
@@ -210,21 +234,23 @@ namespace HIKARI::MESHRENDERER {
         BindCbvCached(ctx, ROOT_PARAM::Camera, cameraAddress);
         BindCbvCached(ctx, ROOT_PARAM::CullingCamera, cullingCameraAddress);
         BindCbvCached(ctx, ROOT_PARAM::Light, lightAddress);
-        if (localLightsAddress != 0u) {
-            ctx.cmd->SetGraphicsRootShaderResourceView(
-                ROOT_PARAM::LocalLights,
-                localLightsAddress);
-        }
-        if (localLightClusterHeadersAddress != 0u) {
-            ctx.cmd->SetGraphicsRootShaderResourceView(
-                ROOT_PARAM::LocalLightClusterHeaders,
-                localLightClusterHeadersAddress);
-        }
-        if (localLightClusterIndicesAddress != 0u) {
-            ctx.cmd->SetGraphicsRootShaderResourceView(
-                ROOT_PARAM::LocalLightClusterIndices,
-                localLightClusterIndicesAddress);
-        }
+        BindSrvCached(ctx, ROOT_PARAM::LocalLights, localLightsAddress);
+        BindSrvCached(
+            ctx,
+            ROOT_PARAM::LocalLightClusterHeaders,
+            localLightClusterHeadersAddress);
+        BindSrvCached(
+            ctx,
+            ROOT_PARAM::LocalLightClusterIndices,
+            localLightClusterIndicesAddress);
+        BindSrvCached(
+            ctx,
+            ROOT_PARAM::MaterialProgramParameters,
+            materialProgramParametersAddress);
+        BindSrvCached(
+            ctx,
+            ROOT_PARAM::MaterialProgramResources,
+            materialProgramResourcesAddress);
         BindCbvCached(ctx, ROOT_PARAM::ShadowCB, shadowAddress);
         BindCbvCached(ctx, ROOT_PARAM::SkyEnvironment, skyEnvironmentAddress);
         BindMaterialTexturePool(ctx);

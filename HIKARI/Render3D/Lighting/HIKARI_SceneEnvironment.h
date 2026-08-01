@@ -73,7 +73,7 @@ namespace HIKARI {
 
     struct SkySettings {
         bool enabled = true;
-        SkyMode mode = SkyMode::Gradient;
+        SkyMode mode = SkyMode::Cubemap;
         std::string skyAsset = "DefaultSky";
         float scale = 1.0f;
         float yaw = 0.0f;

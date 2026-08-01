@@ -1,0 +1,122 @@
+#pragma once
+
+#include <cstddef>
+#include <filesystem>
+#include <optional>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+#include "Assets/HIKARI_AssetGuid.h"
+#include "Assets/Material/Compiler/HIKARI_MaterialCompiler.h"
+#include "Assets/Material/HIKARI_MaterialAssetData.h"
+
+namespace HIKARI::EDITOR {
+
+class ModelMaterialWorkspaceDocument {
+public:
+  using BindingMap = std::unordered_map<uint64_t, AssetGuid>;
+
+  enum class ChangedDomain : uint8_t {
+    None,
+    Binding,
+    Material,
+  };
+
+  void OpenBindings(const AssetGuid &modelGuid, const AssetGuid &assetGuid,
+                    std::filesystem::path sourcePath, BindingMap bindings,
+                    bool saved);
+  void OpenMaterial(const AssetGuid &assetGuid,
+                    std::filesystem::path sourcePath,
+                    MaterialAssetData source,
+                    const MaterialCompileResult &compile,
+                    const MaterialProgramIR *lastGoodProgram, bool saved);
+  void CloseMaterial();
+
+  bool HasBindings() const noexcept;
+  bool HasMaterial() const noexcept;
+  const AssetGuid &GetModelGuid() const noexcept;
+  const AssetGuid &GetBindingAssetGuid() const noexcept;
+  const AssetGuid &GetMaterialAssetGuid() const noexcept;
+  const std::filesystem::path &GetBindingSourcePath() const noexcept;
+  const std::filesystem::path &GetMaterialSourcePath() const noexcept;
+
+  BindingMap &EditBindings() noexcept;
+  const BindingMap &GetBindings() const noexcept;
+  MaterialAssetData &EditMaterial() noexcept;
+  const MaterialAssetData &GetMaterial() const noexcept;
+  const MaterialCompileResult &GetCompileResult() const noexcept;
+  const MaterialProgramIR *GetLastGoodProgram() const noexcept;
+  uint64_t GetMaterialRevision() const noexcept;
+  uint64_t GetCompileRevision() const noexcept;
+  bool IsCompileCurrent() const noexcept;
+
+  bool CommitBindings(BindingMap before, std::string label);
+  bool CommitMaterial(MaterialAssetData before, std::string label);
+  void RestoreMaterial(MaterialAssetData source);
+
+  bool CanUndo() const noexcept;
+  bool CanRedo() const noexcept;
+  bool Undo(ChangedDomain &outDomain, std::string &outLabel);
+  bool Redo(ChangedDomain &outDomain, std::string &outLabel);
+  const std::string *GetUndoLabel() const noexcept;
+  const std::string *GetRedoLabel() const noexcept;
+
+  bool IsBindingDirty() const noexcept;
+  bool IsMaterialDirty() const noexcept;
+  void MarkBindingsSaved(const AssetGuid &assetGuid,
+                         std::filesystem::path sourcePath) noexcept;
+  void MarkMaterialSaved(const AssetGuid &assetGuid,
+                         std::filesystem::path sourcePath) noexcept;
+
+  bool BeginAbPreview(MaterialAssetData candidate, std::string &outMessage);
+  bool IsAbPreviewActive() const noexcept;
+  bool KeepAbPreview(std::string &outMessage);
+  bool DiscardAbPreview(std::string &outMessage);
+
+private:
+  struct HistoryEntry {
+    ChangedDomain domain = ChangedDomain::None;
+    BindingMap beforeBindings{};
+    BindingMap afterBindings{};
+    MaterialAssetData beforeMaterial{};
+    MaterialAssetData afterMaterial{};
+    uint64_t beforeToken = 0u;
+    uint64_t afterToken = 0u;
+    std::string label{};
+  };
+
+  static constexpr size_t kMaximumHistoryEntries = 128u;
+  static bool AreBindingsEquivalent(const BindingMap &left,
+                                    const BindingMap &right) noexcept;
+  static bool AreMaterialsEquivalent(const MaterialAssetData &left,
+                                     const MaterialAssetData &right);
+  void TruncateRedo();
+  void PushHistory(HistoryEntry entry);
+  void RefreshCompile();
+  void ClearHistory() noexcept;
+
+  AssetGuid modelGuid_{};
+  AssetGuid bindingAssetGuid_{};
+  AssetGuid materialAssetGuid_{};
+  std::filesystem::path bindingSourcePath_{};
+  std::filesystem::path materialSourcePath_{};
+  BindingMap bindings_{};
+  MaterialAssetData material_{};
+  MaterialCompileResult compile_{};
+  std::optional<MaterialProgramIR> lastGoodProgram_{};
+  std::optional<MaterialAssetData> abBefore_{};
+  std::vector<HistoryEntry> history_{};
+  size_t historyCursor_ = 0u;
+  uint64_t nextStateToken_ = 1u;
+  uint64_t bindingStateToken_ = 0u;
+  uint64_t materialStateToken_ = 0u;
+  uint64_t savedBindingStateToken_ = 0u;
+  uint64_t savedMaterialStateToken_ = 0u;
+  bool bindingsOpen_ = false;
+  bool materialOpen_ = false;
+  uint64_t materialRevision_ = 0u;
+  uint64_t compileRevision_ = 0u;
+};
+
+} // namespace HIKARI::EDITOR
