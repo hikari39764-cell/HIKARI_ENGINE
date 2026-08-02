@@ -103,32 +103,23 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(DocumentSceneBase &scene)
   struct NodeLayout {
     ImVec2 position{};
     ImVec2 size{};
-    std::vector<std::string_view> inputs{};
-    std::vector<std::string_view> outputs{};
-    float inlineHeight = 0.0f;
-    bool collapsed = false;
+    NodeCardPresentation card{};
   };
   std::unordered_map<std::string, NodeLayout> layouts{};
   std::unordered_map<std::string, ImVec2> inputPositions{}, outputPositions{};
   for (const MaterialGraphNodeData &node : graph->nodes) {
     NodeLayout layout{};
-    layout.inputs = InputPins(node.kind);
-    layout.outputs = OutputPins(node.kind);
-    layout.collapsed = collapsedGraphNodeIds_.contains(node.id);
-    if (layout.collapsed) {
-      std::erase_if(layout.inputs, [&](std::string_view pin) {
-        return !PinHasConnection(*graph, node.id, pin, false);
-      });
-      std::erase_if(layout.outputs, [&](std::string_view pin) {
-        return !PinHasConnection(*graph, node.id, pin, true);
-      });
-    } else if (graphCanvas_.zoom >= kInlineControlsMinimumZoom) {
-      layout.inlineHeight = NodeInlineHeight(node.kind);
-    }
+    layout.card = ResolveNodeCardPresentation(
+        *graph, node, graphCanvas_.zoom,
+        collapsedGraphNodeIds_.contains(node.id));
+    const bool authoringControls =
+        layout.card.detail == NodeCardDetail::Authoring;
+    const float contentHeight =
+        layout.card.inlineHeight + layout.card.compactSummaryHeight;
     const size_t rowInputCount = CountNodeInputRows(
-        node.kind, layout.inputs, layout.inlineHeight > 0.0f);
+        node.kind, layout.card.inputs, authoringControls);
     const size_t rows = (std::max)(size_t{1u},
-        (std::max)(rowInputCount, layout.outputs.size()));
+        (std::max)(rowInputCount, layout.card.outputs.size()));
     const MATH::Vec2 screenPosition = NodeGraphCanvas::CanvasToScreen(
         graphCanvas_, {origin.x, origin.y}, node.position);
     layout.position = {screenPosition.x, screenPosition.y};
@@ -136,22 +127,23 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(DocumentSceneBase &scene)
         kNodeWidth * graphCanvas_.zoom,
         (kHeaderHeight + kNodePadding + rows * kPinRowHeight) *
                 graphCanvas_.zoom +
-            layout.inlineHeight};
+            contentHeight};
     const std::vector<float> inputOffsets =
         BuildNodeInputVerticalOffsets(
-            node.kind, layout.inputs, layout.inlineHeight,
+            node.kind, layout.card.inputs, contentHeight,
+            authoringControls,
             graphCanvas_.zoom);
-    for (size_t index = 0u; index < layout.inputs.size(); ++index) {
-      inputPositions[PinKey(node.id, layout.inputs[index])] = {
+    for (size_t index = 0u; index < layout.card.inputs.size(); ++index) {
+      inputPositions[PinKey(node.id, layout.card.inputs[index])] = {
           layout.position.x, layout.position.y + inputOffsets[index]};
     }
-    for (size_t index = 0; index < layout.outputs.size(); ++index) {
-      outputPositions[PinKey(node.id, layout.outputs[index])] = {
+    for (size_t index = 0; index < layout.card.outputs.size(); ++index) {
+      outputPositions[PinKey(node.id, layout.card.outputs[index])] = {
           layout.position.x + layout.size.x,
           layout.position.y +
               (kHeaderHeight + kNodePadding +
                (static_cast<float>(index) + 0.5f) * kPinRowHeight) *
-                  graphCanvas_.zoom + layout.inlineHeight};
+                  graphCanvas_.zoom + contentHeight};
     }
     layouts.emplace(node.id, std::move(layout));
   }
@@ -222,7 +214,7 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(DocumentSceneBase &scene)
         continue;
       }
       const std::vector<std::string_view> &pins =
-          output ? layout->second.outputs : layout->second.inputs;
+          output ? layout->second.card.outputs : layout->second.card.inputs;
       const auto &positions = output ? outputPositions : inputPositions;
       for (const std::string_view pin : pins) {
         const auto position = positions.find(PinKey(node->id, pin));
@@ -266,7 +258,7 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(DocumentSceneBase &scene)
           {hoveredLayout->second.position.x + hoveredLayout->second.size.x,
            hoveredLayout->second.position.y + hoveredLayout->second.size.y},
           kHeaderHeight * graphCanvas_.zoom,
-          hoveredLayout->second.inlineHeight);
+          hoveredLayout->second.card.inlineHeight);
   const bool pointerOverNodeHeader = hoveredLayout != layouts.end() &&
       pointer.y >= hoveredLayout->second.position.y &&
       pointer.y <= hoveredLayout->second.position.y +
@@ -400,8 +392,8 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(DocumentSceneBase &scene)
         {nodeMax.x - 25.0f, layout.position.y + 5.0f});
     if (ImGui::ArrowButton(
             "##CollapseNode",
-            layout.collapsed ? ImGuiDir_Right : ImGuiDir_Down)) {
-      if (layout.collapsed) {
+            layout.card.collapsed ? ImGuiDir_Right : ImGuiDir_Down)) {
+      if (layout.card.collapsed) {
         collapsedGraphNodeIds_.erase(node.id);
       } else {
         collapsedGraphNodeIds_.insert(node.id);
@@ -411,7 +403,7 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(DocumentSceneBase &scene)
                             ImGui::IsItemHovered() ||
                             ImGui::IsItemActive();
     ImGui::PopID();
-    if (!layout.collapsed && layout.inlineHeight > 0.0f) {
+    if (!layout.card.collapsed && layout.card.inlineHeight > 0.0f) {
       inlineControlsCapture =
           DrawMaterialGraphNodeInlineControls(
               scene, source, *graph, node,
@@ -420,16 +412,25 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(DocumentSceneBase &scene)
                   kHeaderHeight * graphCanvas_.zoom + 5.0f,
               layout.size.x - 20.0f) ||
           inlineControlsCapture;
+    } else if (layout.card.detail == NodeCardDetail::Compact) {
+      drawList->AddText(
+          ImGui::GetFont(), nodeFontSize,
+          {layout.position.x + 10.0f * graphCanvas_.zoom,
+           layout.position.y + kHeaderHeight * graphCanvas_.zoom +
+               6.0f * graphCanvas_.zoom},
+          IM_COL32(155, 176, 194, 255),
+          "Zoom in to edit", nullptr);
     }
-    for (size_t index = 0; index < layout.inputs.size(); ++index) {
-      const std::string_view pin = layout.inputs[index];
+    for (size_t index = 0; index < layout.card.inputs.size(); ++index) {
+      const std::string_view pin = layout.card.inputs[index];
       const ImVec2 port = inputPositions.at(PinKey(node.id, pin));
       const bool hovered = hoveredInput && hoveredInput->nodeId == node.id &&
                            hoveredInput->pin == pin;
       drawList->AddCircleFilled(
           port, (hovered ? 7.0f : 5.5f) * graphCanvas_.zoom,
           PinColor(pin));
-      const bool inlineOwned = layout.inlineHeight > 0.0f &&
+      const bool inlineOwned =
+          layout.card.detail == NodeCardDetail::Authoring &&
           MATERIAL_GRAPH_UI::IsInlineOwnedInput(node.kind, pin);
       if (!inlineOwned && graphCanvas_.zoom >= 0.55f) {
         drawList->AddText(
@@ -439,8 +440,8 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(DocumentSceneBase &scene)
             IM_COL32(204, 213, 222, 255), pin.data(), nullptr);
       }
     }
-    for (size_t index = 0; index < layout.outputs.size(); ++index) {
-      const std::string_view pin = layout.outputs[index];
+    for (size_t index = 0; index < layout.card.outputs.size(); ++index) {
+      const std::string_view pin = layout.card.outputs[index];
       const ImVec2 port = outputPositions.at(PinKey(node.id, pin));
       const bool hovered = hoveredOutput &&
                            hoveredOutput->nodeId == node.id &&
@@ -495,5 +496,4 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(DocumentSceneBase &scene)
   (void)scene;
 #endif
 }
-
 } // namespace HIKARI::EDITOR

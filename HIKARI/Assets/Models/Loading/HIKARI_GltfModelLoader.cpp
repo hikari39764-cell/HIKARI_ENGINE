@@ -331,7 +331,10 @@ namespace HIKARI::ASSETS::MODELS {
                     GenerateModelPrimitiveNormals(primitiveAsset);
                     ++asset.importDiagnostics.missingNormalGeneratedCount;
                 }
-                if (tangents.empty() && ModelMaterialHasNormalTexture(asset, primitiveAsset.materialIndex)) {
+                // Tangent-space authoring is allowed after import. Generate a
+                // stable basis from geometry/UVs even when the imported
+                // material did not initially bind a normal or hair-flow map.
+                if (tangents.empty()) {
                     GenerateModelPrimitiveTangents(primitiveAsset);
                     ++asset.importDiagnostics.missingTangentGeneratedCount;
                 }

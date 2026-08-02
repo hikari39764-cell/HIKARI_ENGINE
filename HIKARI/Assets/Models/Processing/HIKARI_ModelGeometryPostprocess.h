@@ -10,10 +10,6 @@ namespace HIKARI {
 
 namespace HIKARI::ASSETS::MODELS {
 
-    bool ModelMaterialHasNormalTexture(
-        const ModelAsset& asset,
-        uint32_t materialIndex) noexcept;
-
     void GenerateModelPrimitiveNormals(MeshPrimitive& primitive);
     void GenerateModelPrimitiveTangents(MeshPrimitive& primitive);
 

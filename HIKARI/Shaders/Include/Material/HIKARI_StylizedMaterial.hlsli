@@ -306,6 +306,28 @@ HikariStylizedDirectLobes HikariEvaluateStylizedDirectLobes(
         lobes.diffuse += surface.baseColor * scatterTint * radiance *
             (backLight * skin.y * mask.g);
     }
+    if ((materialData.instanceFlags & HIKARI_PROGRAM_FLAG_HAIR_SHADOW) != 0u)
+    {
+        const uint hairShadowDescriptor = HikariLoadMaterialProgramResource(
+            materialData,
+            HIKARI_PROGRAM_RESOURCE_HAIR_SHADOW);
+        if (hairShadowDescriptor != HIKARI_INVALID_TEXTURE_DESCRIPTOR_INDEX)
+        {
+            // R is light visibility: 1 keeps the upstream diffuse response,
+            // 0 applies the authored hair shadow. The compiler guarantees the
+            // texture exists whenever this connected node is active.
+            const float visibility = HikariSampleMaterialTexture(
+                hairShadowDescriptor,
+                gLinearClamp,
+                uv,
+                1.0f.xxxx).r;
+            const float strength = saturate(HikariLoadMaterialProgramParameter(
+                materialData,
+                10u,
+                float4(0.04f, 0.0f, 0.65f, 0.0f)).z);
+            lobes.diffuse *= lerp(1.0f, visibility, strength);
+        }
+    }
 
     if (usesStylizedSpecular)
     {
@@ -477,8 +499,6 @@ float3 HikariEvaluateStylizedViewAdditive(
         const uint eyeDescriptor = HikariLoadMaterialProgramResource(
             materialData,
             HIKARI_PROGRAM_RESOURCE_EYE);
-        if (eyeDescriptor != HIKARI_INVALID_TEXTURE_DESCRIPTOR_INDEX)
-        {
         float3 tangent = tangentWS.xyz;
         if (dot(tangent, tangent) < 1.0e-5f)
         {
@@ -493,16 +513,30 @@ float3 HikariEvaluateStylizedViewAdditive(
         const float2 parallax = float2(
             dot(surface.viewWS, tangent),
             dot(surface.viewWS, bitangent)) * eye.x * 0.05f;
-        const float4 eyeControl = HikariSampleMaterialTexture(
-            eyeDescriptor,
-            gLinearClamp,
-            saturate(uv + parallax),
-            0.0f.xxxx);
-        const float facing = saturate(dot(surface.normalWS, surface.viewWS));
-        const float sparkle = pow(facing, max(1.0f, eye.z));
-        if ((materialData.instanceFlags &
+        float3 catchlightLight = directionalLight;
+        if (dot(catchlightLight, catchlightLight) < 1.0e-5f)
+        {
+            catchlightLight = surface.normalWS;
+        }
+        catchlightLight = normalize(catchlightLight);
+        float3 catchlightHalf = surface.viewWS + catchlightLight;
+        if (dot(catchlightHalf, catchlightHalf) < 1.0e-5f)
+        {
+            catchlightHalf = surface.normalWS;
+        }
+        catchlightHalf = normalize(catchlightHalf);
+        const float sparkle = pow(
+            saturate(dot(surface.normalWS, catchlightHalf)),
+            max(1.0f, eye.z));
+        if (eyeDescriptor != HIKARI_INVALID_TEXTURE_DESCRIPTOR_INDEX &&
+            (materialData.instanceFlags &
              HIKARI_PROGRAM_FLAG_EYE_CONTROL_MAP) != 0u)
         {
+            const float4 eyeControl = HikariSampleMaterialTexture(
+                eyeDescriptor,
+                gLinearClamp,
+                saturate(uv + parallax),
+                0.0f.xxxx);
             const float depthMask = lerp(0.35f, 1.0f, eyeControl.a);
             const float3 cornea = float3(0.72f, 0.84f, 1.0f) *
                 eyeControl.g * sparkle * 0.12f;
@@ -512,9 +546,10 @@ float3 HikariEvaluateStylizedViewAdditive(
         }
         else
         {
-            additive += surface.baseColor * eye.y * eye.w *
-                sparkle * eyeControl.r;
-        }
+            // Eye Catchlight has a deterministic analytic default. A control
+            // texture specializes iris/cornea/catchlight placement but is not
+            // required to make the connected node visibly meaningful.
+            additive += 1.0f.xxx * eye.y * eye.w * sparkle;
         }
     }
     if ((materialData.instanceFlags & HIKARI_PROGRAM_FLAG_TEMPLATE_CLOTH) != 0u)

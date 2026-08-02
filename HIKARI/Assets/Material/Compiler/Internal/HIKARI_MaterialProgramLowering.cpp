@@ -38,6 +38,7 @@ MaterialProgramOpcode ToProgramOpcode(MaterialNodeKind kind) noexcept {
   case MaterialNodeKind::FabricSheen: return MaterialProgramOpcode::FabricSheen;
   case MaterialNodeKind::HybridLighting: return MaterialProgramOpcode::HybridLighting;
   case MaterialNodeKind::Outline: return MaterialProgramOpcode::Outline;
+  case MaterialNodeKind::HairShadow: return MaterialProgramOpcode::HairShadow;
   }
   return MaterialProgramOpcode::Constant;
 }
@@ -84,6 +85,8 @@ std::vector<std::string_view> InputPins(MaterialNodeKind kind) {
             "DirectSpecularBlend", "IndirectBlend"};
   case MaterialNodeKind::Outline:
     return {"Color", "Thickness"};
+  case MaterialNodeKind::HairShadow:
+    return {"DiffuseResponse", "ShadowMask", "Strength"};
   case MaterialNodeKind::SurfaceOutput: return {"Surface"};
   case MaterialNodeKind::FunctionCall: return {"Input"};
   default: return {};
@@ -109,6 +112,7 @@ std::vector<std::string_view> OutputPins(MaterialNodeKind kind) {
   case MaterialNodeKind::EyeLighting: return {"Color"};
   case MaterialNodeKind::FabricSheen: return {"Color"};
   case MaterialNodeKind::Outline: return {"Response"};
+  case MaterialNodeKind::HairShadow: return {"Response"};
   case MaterialNodeKind::SurfaceOutput: return {};
   case MaterialNodeKind::NormalUnpack: return {"Normal"};
   default: return {"Result"};

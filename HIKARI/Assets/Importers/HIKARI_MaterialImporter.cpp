@@ -1,5 +1,7 @@
 #include "HIKARI_MaterialImporter.h"
 
+#include <algorithm>
+
 #include "Assets/Formats/HIKARI_HmatFormat.h"
 #include "Assets/Importers/Policy/HIKARI_MaterialImportPolicy.h"
 #include "Assets/Material/Compiler/HIKARI_MaterialCompiler.h"
@@ -58,15 +60,6 @@ namespace HIKARI {
             return result;
         }
 
-        for (const MaterialAssetDependency& dependency :
-            CollectMaterialAssetDependencies(data)) {
-            result.dependencies.push_back(AssetDependencyDesc{
-                dependency.assetGuid,
-                {},
-                dependency.role
-            });
-        }
-
         const std::filesystem::path outputPath =
             (context.importedDirectory / "material.hmat").lexically_normal();
         MaterialAssetData previousSource{};
@@ -91,15 +84,49 @@ namespace HIKARI {
             result.diagnosticsJson = std::move(compileJson);
         }
 
+        if (!compileResult.success) {
+            // Never publish a new HMAT while the source graph is invalid.
+            // AssetDatabase keeps the previous artifact available as the
+            // explicit last-good runtime result and exposes this import
+            // failure to the Editor instead of disguising it as a successful
+            // fallback cook.
+            result.success = false;
+            result.message = compileResult.usedLastGood
+                ? "[MaterialImporter][ERROR] Material graph is invalid; previous last-good HMAT was preserved: " +
+                    record.sourcePath.generic_string()
+                : "[MaterialImporter][ERROR] Material graph is invalid and no runtime HMAT was published: " +
+                    record.sourcePath.generic_string();
+            HIKARI_LOG_ERROR(result.message);
+            return result;
+        }
+
+        for (const MaterialAssetDependency& dependency :
+             CollectMaterialAssetDependencies(data)) {
+            const bool compiledDependency = data.kind !=
+                    MaterialAssetKind::Material &&
+                    data.kind != MaterialAssetKind::Function ||
+                std::any_of(
+                    compileResult.program.dependencyGuids.begin(),
+                    compileResult.program.dependencyGuids.end(),
+                    [&dependency](const AssetGuid& guid) {
+                        return guid == dependency.assetGuid;
+                    });
+            if (compiledDependency) {
+                result.dependencies.push_back(AssetDependencyDesc{
+                    dependency.assetGuid,
+                    {},
+                    dependency.role
+                });
+            }
+        }
+
         const ASSETS::IMPORT_POLICY::MaterialImportPolicy importPolicy =
             ASSETS::IMPORT_POLICY::ResolveMaterialImportPolicy(
                 record.meta.importSettingsJson);
         if (!importPolicy.ShouldCookHmat()) {
             result.success = true;
-            result.message = compileResult.success
-                ? "[MaterialImporter] Material v4 validated without cook: " + record.sourcePath.generic_string()
-                : "[MaterialImporter][WARN] Material v4 compiled with last-good/fallback without cook: " +
-                    record.sourcePath.generic_string();
+            result.message = "[MaterialImporter] Material v4 validated without cook: " +
+                record.sourcePath.generic_string();
             HIKARI_LOG_INFO("[MaterialImporter] validate only: " + record.sourcePath.generic_string());
             return result;
         }
@@ -119,10 +146,8 @@ namespace HIKARI {
                 relativeOutput.generic_string()));
 
         result.success = true;
-        result.message = compileResult.success
-            ? "[MaterialImporter] Material v4 cooked HMAT: " + relativeOutput.generic_string()
-            : "[MaterialImporter][WARN] Material v4 cooked HMAT with last-good/fallback: " +
-                relativeOutput.generic_string();
+        result.message = "[MaterialImporter] Material v4 cooked HMAT: " +
+            relativeOutput.generic_string();
         HIKARI_LOG_INFO("[MaterialImporter] cooked HMAT: " + relativeOutput.generic_string());
         return result;
     }

@@ -91,6 +91,7 @@ namespace HIKARI {
             std::pair{ MaterialResourceSemantic::Ramp, std::string_view{ "Ramp" } },
             std::pair{ MaterialResourceSemantic::MatCap, std::string_view{ "MatCap" } },
             std::pair{ MaterialResourceSemantic::FaceSdf, std::string_view{ "FaceSDF" } },
+            std::pair{ MaterialResourceSemantic::HairShadow, std::string_view{ "HairShadow" } },
         };
         constexpr std::array kNodeKinds{
             std::pair{ MaterialNodeKind::Constant, std::string_view{ "Constant" } },
@@ -120,6 +121,7 @@ namespace HIKARI {
             std::pair{ MaterialNodeKind::FabricSheen, std::string_view{ "FabricSheen" } },
             std::pair{ MaterialNodeKind::HybridLighting, std::string_view{ "HybridLighting" } },
             std::pair{ MaterialNodeKind::Outline, std::string_view{ "Outline" } },
+            std::pair{ MaterialNodeKind::HairShadow, std::string_view{ "HairShadow" } },
         };
         constexpr std::array kFeatureRequests{
             std::pair{ MaterialFeatureRequest::GeometryOutline, std::string_view{ "GeometryOutline" } },

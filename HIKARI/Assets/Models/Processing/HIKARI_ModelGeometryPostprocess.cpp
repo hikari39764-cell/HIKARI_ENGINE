@@ -3,8 +3,6 @@
 #include <cmath>
 #include <vector>
 
-#include "Assets/Models/HIKARI_ModelAsset.h"
-
 namespace HIKARI::ASSETS::MODELS {
 
     namespace {
@@ -18,15 +16,6 @@ namespace HIKARI::ASSETS::MODELS {
         }
 
     } // namespace
-
-    bool ModelMaterialHasNormalTexture(
-        const ModelAsset& asset,
-        uint32_t materialIndex) noexcept {
-
-        return
-            materialIndex < asset.materials.size() &&
-            asset.materials[materialIndex].normalTexture.textureIndex >= 0;
-    }
 
     void GenerateModelPrimitiveNormals(MeshPrimitive& primitive) {
         for (Vertex3D& vertex : primitive.staticVertices) {

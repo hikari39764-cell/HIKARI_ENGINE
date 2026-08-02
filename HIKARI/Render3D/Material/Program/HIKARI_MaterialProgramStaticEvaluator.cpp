@@ -67,8 +67,7 @@ void ApplyNamedParameter(
   else if (id == "parameterhairintensity") values[9].w = value.x;
   else if (id == "parameterfaceshadowsoftness") values[10].x = value.x;
   else if (id == "parameterfaceshadowoffset") values[10].y = value.x;
-  else if (id == "parameterfacehairshadowstrength") values[10].z = value.x;
-  else if (id == "parameterfacehairshadowoffset") values[10].w = value.x;
+  else if (id == "parameterhairshadowstrength") values[10].z = value.x;
   else if (id == "parameterfaceright") SetRgb(values[17], value);
   else if (id == "parameterfaceforward") SetRgb(values[18], value);
   else if (id == "parameteririsdepth") values[11].x = value.x;
@@ -283,6 +282,8 @@ void ApplyConnectedMaterialResponseParameters(
     } else if (instruction.opcode == MaterialProgramOpcode::Outline) {
       rgb("Color", parameters[19]);
       scalar("Thickness", parameters[19].w);
+    } else if (instruction.opcode == MaterialProgramOpcode::HairShadow) {
+      scalar("Strength", parameters[10].z);
     }
   }
 }

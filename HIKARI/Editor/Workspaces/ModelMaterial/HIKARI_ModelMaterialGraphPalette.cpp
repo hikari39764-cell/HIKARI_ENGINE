@@ -26,7 +26,7 @@ void ModelMaterialWorkspaceController::DrawMaterialGraphNodePalette(
       continue;
     }
     for (uint32_t value = static_cast<uint32_t>(MaterialNodeKind::Constant);
-         value <= static_cast<uint32_t>(MaterialNodeKind::Outline);
+         value <= static_cast<uint32_t>(MaterialNodeKind::HairShadow);
          ++value) {
       const auto kind = static_cast<MaterialNodeKind>(value);
       if (kind == MaterialNodeKind::FunctionCall) {

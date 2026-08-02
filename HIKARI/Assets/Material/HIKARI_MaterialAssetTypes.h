@@ -70,6 +70,7 @@ namespace HIKARI {
         Ramp,
         MatCap,
         FaceSdf,
+        HairShadow,
     };
 
     enum class MaterialNodeKind : uint8_t {
@@ -100,6 +101,7 @@ namespace HIKARI {
         FabricSheen,
         HybridLighting,
         Outline,
+        HairShadow,
     };
 
     enum class MaterialFeatureRequest : uint8_t {

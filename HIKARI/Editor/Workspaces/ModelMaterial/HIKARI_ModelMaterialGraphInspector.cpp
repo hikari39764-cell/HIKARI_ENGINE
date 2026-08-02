@@ -1,8 +1,7 @@
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
-
 #include <algorithm>
 #include <string>
-
+#include "Assets/Material/Authoring/HIKARI_MaterialSemanticNodeFactory.h"
 #include "Editor/Widgets/HIKARI_AssetFieldWidget.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialGraphUi.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
@@ -10,10 +9,8 @@
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
 #endif
-
 namespace HIKARI::EDITOR {
 namespace {
-
 const char *ValueTypeLabel(MaterialValueType type) noexcept {
   switch (type) {
   case MaterialValueType::Bool:
@@ -107,6 +104,25 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphInspector(
                         MATERIAL_GRAPH_UI::NodeCategory(node->kind).data(),
                         ToString(node->kind).data());
     ImGui::TextDisabled("%s", node->id.c_str());
+    if (ImGui::CollapsingHeader(
+            "Node Contract", ImGuiTreeNodeFlags_DefaultOpen)) {
+      const auto &contract =
+          ASSETS::MATERIAL::GetMaterialNodeSemanticContract(node->kind);
+      ImGui::TextDisabled("CONNECT TO");
+      ImGui::TextWrapped("%.*s", static_cast<int>(contract.connectsTo.size()),
+                         contract.connectsTo.data());
+      ImGui::TextDisabled("AFFECTED BY");
+      ImGui::TextWrapped("%.*s", static_cast<int>(contract.affectedBy.size()),
+                         contract.affectedBy.data());
+      ImGui::TextDisabled("PROVIDES");
+      ImGui::TextWrapped("%.*s", static_cast<int>(contract.provides.size()),
+                         contract.provides.data());
+      ImGui::TextDisabled("DEFAULT / FAILURE");
+      ImGui::TextWrapped("%.*s", static_cast<int>(contract.defaultBehavior.size()),
+                         contract.defaultBehavior.data());
+      ImGui::TextWrapped("%.*s", static_cast<int>(contract.failureBehavior.size()),
+                         contract.failureBehavior.data());
+    }
     const bool editableType =
         node->kind == MaterialNodeKind::Constant ||
         node->kind == MaterialNodeKind::Add ||
@@ -309,7 +325,7 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphInspector(
           for (uint32_t value =
                    static_cast<uint32_t>(MaterialResourceSemantic::Custom);
                value <=
-                   static_cast<uint32_t>(MaterialResourceSemantic::FaceSdf);
+                   static_cast<uint32_t>(MaterialResourceSemantic::HairShadow);
                ++value) {
             const auto semantic =
                 static_cast<MaterialResourceSemantic>(value);
@@ -385,7 +401,8 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphInspector(
     } else if (node->kind == MaterialNodeKind::RampDiffuse ||
                node->kind == MaterialNodeKind::MultiRampDiffuse ||
                node->kind == MaterialNodeKind::MatCap ||
-               node->kind == MaterialNodeKind::FaceSdf) {
+               node->kind == MaterialNodeKind::FaceSdf ||
+               node->kind == MaterialNodeKind::HairShadow) {
       DrawMaterialGraphResponseResourceInspector(
           scene, source, graph, *node);
     } else if (node->kind == MaterialNodeKind::FunctionCall) {
@@ -435,12 +452,29 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphInspector(
   ImGui::EndDisabled();
 
   const MaterialCompileResult &compile = authoringDocument_.GetCompileResult();
-  if (ImGui::CollapsingHeader("Compile & Diagnostics")) {
-    ImGui::Text("Revision %llu / %llu",
-                static_cast<unsigned long long>(
-                    authoringDocument_.GetMaterialRevision()),
-                static_cast<unsigned long long>(
-                    authoringDocument_.GetCompileRevision()));
+  const uint64_t materialRevision = authoringDocument_.GetMaterialRevision();
+  const uint64_t compileRevision = authoringDocument_.GetCompileRevision();
+  const bool currentProgram = compile.success &&
+      materialRevision == compileRevision;
+  const ImVec4 statusColor = currentProgram
+      ? ImVec4{0.28f, 0.82f, 0.48f, 1.0f}
+      : compile.usedLastGood
+          ? ImVec4{1.0f, 0.68f, 0.18f, 1.0f}
+          : ImVec4{1.0f, 0.30f, 0.30f, 1.0f};
+  ImGui::SeparatorText("Runtime Preview Status");
+  ImGui::TextColored(
+      statusColor, "%s",
+      currentProgram ? "CURRENT GRAPH IS LIVE"
+      : compile.usedLastGood ? "STALE LAST-GOOD IS DISPLAYED"
+      : compile.usedFallback ? "DIAGNOSTIC PBR FALLBACK IS DISPLAYED"
+                             : "CURRENT GRAPH IS NOT LIVE");
+  ImGui::Text("Source revision %llu | compiled revision %llu",
+              static_cast<unsigned long long>(materialRevision),
+              static_cast<unsigned long long>(compileRevision));
+  if (ImGui::CollapsingHeader(
+          "Compile & Diagnostics",
+          currentProgram ? ImGuiTreeNodeFlags_None
+                         : ImGuiTreeNodeFlags_DefaultOpen)) {
     ImGui::TextWrapped("%s%s%s",
                        compile.success ? "Compiled" : "Compile failed",
                        compile.usedLastGood ? " | last-good" : "",

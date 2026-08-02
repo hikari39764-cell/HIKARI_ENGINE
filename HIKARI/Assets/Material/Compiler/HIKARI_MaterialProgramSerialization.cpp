@@ -307,7 +307,7 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
                         "opcode",
                         (std::numeric_limits<uint32_t>::max)());
                     if (opcode > static_cast<uint32_t>(
-                            MaterialProgramOpcode::Outline) ||
+                            MaterialProgramOpcode::HairShadow) ||
                         !TryParseMaterialValueType(
                             item.value("valueType", std::string{}),
                             instruction.valueType)) {

@@ -27,6 +27,7 @@ static const uint HIKARI_PROGRAM_FLAG_FEATURE_FACE_HAIR_SHADOW = 1u << 26u;
 static const uint HIKARI_PROGRAM_FLAG_EDITOR_SELECTION_OUTLINE = 1u << 27u;
 static const uint HIKARI_PROGRAM_FLAG_HAIR_CONTROL_MAP = 1u << 28u;
 static const uint HIKARI_PROGRAM_FLAG_EYE_CONTROL_MAP = 1u << 29u;
+static const uint HIKARI_PROGRAM_FLAG_HAIR_SHADOW = 1u << 30u;
 
 static const uint HIKARI_PROGRAM_RESOURCE_RAMP0 = 0u;
 static const uint HIKARI_PROGRAM_RESOURCE_RAMP1 = 1u;
@@ -36,6 +37,7 @@ static const uint HIKARI_PROGRAM_RESOURCE_MASK = 4u;
 static const uint HIKARI_PROGRAM_RESOURCE_HAIR = 5u;
 static const uint HIKARI_PROGRAM_RESOURCE_EYE = 6u;
 static const uint HIKARI_PROGRAM_RESOURCE_DETAIL = 7u;
+static const uint HIKARI_PROGRAM_RESOURCE_HAIR_SHADOW = 7u;
 
 StructuredBuffer<float4> gMaterialProgramParameters : register(t0, space6);
 StructuredBuffer<uint> gMaterialProgramResources : register(t1, space6);

@@ -55,6 +55,7 @@ namespace HIKARI::RENDER3D::MATERIAL {
         inline constexpr uint32_t EditorSelectionOutline = 1u << 27u;
         inline constexpr uint32_t HairControlMap = 1u << 28u;
         inline constexpr uint32_t EyeControlMap = 1u << 29u;
+        inline constexpr uint32_t HairShadow = 1u << 30u;
     }
 
     struct GpuMaterialProgramBinding {

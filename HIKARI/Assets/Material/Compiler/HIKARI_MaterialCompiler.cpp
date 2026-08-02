@@ -9,6 +9,7 @@
 
 #include "Assets/Material/Compiler/Internal/HIKARI_MaterialCompilerValidation.h"
 #include "Assets/Material/Compiler/Internal/HIKARI_MaterialProgramLowering.h"
+#include "Assets/Material/Authoring/HIKARI_MaterialSemanticNodeFactory.h"
 #include "Assets/Material/HIKARI_MaterialDependencies.h"
 #include "Assets/Material/Serialization/HIKARI_MaterialSourceJson.h"
 
@@ -74,6 +75,56 @@ namespace HIKARI {
             return reachable;
         }
 
+        struct ReachableBindingIds {
+            std::unordered_set<std::string> parameters{};
+            std::unordered_set<std::string> resources{};
+        };
+
+        ReachableBindingIds CollectReachableBindingIds(
+            const MaterialGraphData& graph,
+            const std::unordered_set<std::string>& reachable) {
+            ReachableBindingIds bindings{};
+            for (const MaterialGraphNodeData& node : graph.nodes) {
+                if (!reachable.contains(node.id)) {
+                    continue;
+                }
+                if (node.kind == MaterialNodeKind::Parameter &&
+                    !node.referenceId.empty()) {
+                    bindings.parameters.emplace(node.referenceId);
+                }
+                if (node.kind == MaterialNodeKind::TextureSample &&
+                    !node.referenceId.empty()) {
+                    bindings.resources.emplace(node.referenceId);
+                }
+                for (const std::string_view id :
+                     ASSETS::MATERIAL::GetMaterialNodeOwnedParameterIds(
+                         node.kind)) {
+                    bindings.parameters.emplace(id);
+                }
+                for (const std::string_view id :
+                     ASSETS::MATERIAL::GetMaterialNodeOwnedResourceIds(
+                         node.kind)) {
+                    bindings.resources.emplace(id);
+                }
+            }
+            return bindings;
+        }
+
+        void RetainReachableBindings(
+            const MaterialGraphData& graph,
+            const std::unordered_set<std::string>& reachable,
+            std::vector<MaterialGraphParameterData>& parameters,
+            std::vector<MaterialGraphResourceData>& resources) {
+            const ReachableBindingIds bindings =
+                CollectReachableBindingIds(graph, reachable);
+            std::erase_if(parameters, [&bindings](const auto& parameter) {
+                return !bindings.parameters.contains(parameter.id);
+            });
+            std::erase_if(resources, [&bindings](const auto& resource) {
+                return !bindings.resources.contains(resource.id);
+            });
+        }
+
         void AddNodeCapabilities(
             const MaterialGraphData& graph,
             uint64_t& capabilities) {
@@ -125,6 +176,9 @@ namespace HIKARI {
                 case MaterialNodeKind::Outline:
                     AddCapability(capabilities, MaterialProgramCapability::Outline);
                     break;
+                case MaterialNodeKind::HairShadow:
+                    AddCapability(capabilities, MaterialProgramCapability::HairShadow);
+                    break;
                 case MaterialNodeKind::FunctionCall:
                     AddCapability(capabilities, MaterialProgramCapability::FunctionCalls);
                     break;
@@ -145,13 +199,18 @@ namespace HIKARI {
                     return node.kind == MaterialNodeKind::Outline &&
                         reachable.contains(node.id);
                 });
+            std::erase_if(requests, [](MaterialFeatureRequest request) {
+                return request == MaterialFeatureRequest::GeometryOutline ||
+                    request == MaterialFeatureRequest::ScreenOutline ||
+                    // The legacy screen-space FaceHairShadow flag has no
+                    // authored texture node and therefore cannot be inferred
+                    // from the connected graph. Do not retain it as hidden
+                    // template behavior.
+                    request == MaterialFeatureRequest::FaceHairShadow;
+            });
             if (!hasOutline) {
                 return;
             }
-            std::erase_if(requests, [](MaterialFeatureRequest request) {
-                return request == MaterialFeatureRequest::GeometryOutline ||
-                    request == MaterialFeatureRequest::ScreenOutline;
-            });
             float mode = 1.0f;
             const auto parameter = std::find_if(
                 graph.parameters.begin(), graph.parameters.end(),
@@ -210,6 +269,8 @@ namespace HIKARI {
                     return !reachable.contains(edge.sourceNodeId) ||
                         !reachable.contains(edge.targetNodeId);
                 });
+                RetainReachableBindings(
+                    *graph, reachable, parameters, resources);
                 std::sort(nodes.begin(), nodes.end(), [](const auto& left, const auto& right) {
                     return left.id < right.id;
                 });
@@ -292,6 +353,8 @@ namespace HIKARI {
 
             const MaterialGraphData* graph = SelectGraph(source);
             if (graph) {
+                const std::unordered_set<std::string> reachable =
+                    CollectReachableNodeIds(*graph);
                 AddNodeCapabilities(*graph, program.capabilities);
                 AddReachableOutlineFeatureRequests(
                     *graph, program.featureRequests);
@@ -305,6 +368,8 @@ namespace HIKARI {
                     program.featureRequests.end());
                 auto parameters = graph->parameters;
                 auto resources = graph->resources;
+                RetainReachableBindings(
+                    *graph, reachable, parameters, resources);
                 std::sort(parameters.begin(), parameters.end(), [](const auto& left, const auto& right) {
                     return left.id < right.id;
                 });
@@ -384,10 +449,29 @@ namespace HIKARI {
             }
 
             std::set<std::string> dependencyIds{};
-            for (const MaterialAssetDependency& dependency :
-                CollectMaterialAssetDependencies(source)) {
-                if (dependencyIds.emplace(dependency.assetGuid.value).second) {
-                    program.dependencyGuids.push_back(dependency.assetGuid);
+            const auto addDependency = [&](const AssetGuid& guid) {
+                if (guid.IsValid() &&
+                    dependencyIds.emplace(guid.value).second) {
+                    program.dependencyGuids.push_back(guid);
+                }
+            };
+            if (graph) {
+                addDependency(source.profileAssetGuid);
+                for (const MaterialProgramResourceBinding& resource :
+                     program.resources) {
+                    addDependency(resource.assetGuid);
+                }
+                for (const MaterialProgramInstruction& instruction :
+                     program.instructions) {
+                    if (instruction.opcode ==
+                        MaterialProgramOpcode::FunctionCall) {
+                        addDependency(instruction.assetReference);
+                    }
+                }
+            } else {
+                for (const MaterialAssetDependency& dependency :
+                     CollectMaterialAssetDependencies(source)) {
+                    addDependency(dependency.assetGuid);
                 }
             }
 

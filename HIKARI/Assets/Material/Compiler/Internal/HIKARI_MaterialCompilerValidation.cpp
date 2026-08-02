@@ -1,5 +1,6 @@
 #include "HIKARI_MaterialCompilerValidation.h"
 
+#include <algorithm>
 #include <cmath>
 #include <string_view>
 #include <unordered_map>
@@ -8,6 +9,7 @@
 
 #include "Assets/Material/Compiler/HIKARI_MaterialRampRasterizer.h"
 #include "Assets/Material/Graph/HIKARI_MaterialGraphValidation.h"
+#include "Assets/Material/Authoring/HIKARI_MaterialSemanticNodeFactory.h"
 
 namespace HIKARI::MATERIAL_COMPILER_INTERNAL {
 
@@ -131,6 +133,103 @@ namespace HIKARI::MATERIAL_COMPILER_INTERNAL {
             std::string_view pin) noexcept {
             const auto found = view.inputs.find(InputKey(nodeId, pin));
             return found == view.inputs.end() ? nullptr : found->second;
+        }
+
+        const MaterialGraphResourceData* FindRuntimeResource(
+            const MaterialGraphData& graph,
+            std::string_view resourceId) noexcept {
+            const auto found = std::find_if(
+                graph.resources.begin(), graph.resources.end(),
+                [resourceId](const MaterialGraphResourceData& resource) {
+                    return resource.id == resourceId;
+                });
+            return found == graph.resources.end() ? nullptr : &*found;
+        }
+
+        bool HasValidAuthoredResource(
+            const MaterialGraphData& graph,
+            std::string_view resourceId) noexcept {
+            const MaterialGraphResourceData* resource =
+                FindRuntimeResource(graph, resourceId);
+            return resource != nullptr && resource->enabled &&
+                resource->assetGuid.IsValid();
+        }
+
+        std::string_view ResolveRequiredResourceId(
+            const MaterialGraphData& graph,
+            const RuntimeGraphView& view,
+            const MaterialGraphNodeData& node,
+            const ASSETS::MATERIAL::MaterialNodeSemanticContract& contract) {
+            if (node.kind == MaterialNodeKind::TextureSample) {
+                return node.referenceId;
+            }
+            const std::string_view requiredInput =
+                node.kind == MaterialNodeKind::FaceSdf ? "SDF" :
+                node.kind == MaterialNodeKind::HairShadow ? "ShadowMask" :
+                std::string_view{};
+            if (!requiredInput.empty()) {
+                if (const MaterialGraphEdgeData* sdf =
+                        FindRuntimeInput(view, node.id, requiredInput)) {
+                    if (const MaterialGraphNodeData* sample =
+                            FindRuntimeNode(view, sdf->sourceNodeId);
+                        sample != nullptr &&
+                        sample->kind == MaterialNodeKind::TextureSample) {
+                        return sample->referenceId;
+                    }
+                }
+            }
+            if (!node.referenceId.empty() &&
+                FindRuntimeResource(graph, node.referenceId) != nullptr) {
+                return node.referenceId;
+            }
+            return contract.primaryResourceId;
+        }
+
+        bool ValidateRequiredResources(
+            const MaterialAssetData& source,
+            const RuntimeGraphView& view,
+            MaterialCompileResult& result) {
+            bool valid = true;
+            for (const std::string& nodeId : view.reachable) {
+                const MaterialGraphNodeData* node =
+                    FindRuntimeNode(view, nodeId);
+                if (node == nullptr) {
+                    continue;
+                }
+                const auto& contract =
+                    ASSETS::MATERIAL::GetMaterialNodeSemanticContract(
+                        node->kind);
+                const bool required =
+                    node->kind == MaterialNodeKind::TextureSample ||
+                    contract.resourcePolicy ==
+                        ASSETS::MATERIAL::MaterialNodeResourcePolicy::
+                            AuthoredRequired;
+                if (!required) {
+                    continue;
+                }
+                const std::string_view resourceId = ResolveRequiredResourceId(
+                    source.graph, view, *node, contract);
+                if (!resourceId.empty() &&
+                    HasValidAuthoredResource(source.graph, resourceId)) {
+                    continue;
+                }
+                std::string message = contract.failureBehavior.empty()
+                    ? "A reachable node requires a valid authored resource."
+                    : std::string{contract.failureBehavior};
+                if (!resourceId.empty()) {
+                    message += " Required binding: ";
+                    message += resourceId;
+                    message += '.';
+                }
+                AddDiagnostic(
+                    result,
+                    MaterialCompileDiagnosticSeverity::Error,
+                    "Material.RequiredResourceMissing",
+                    std::move(message),
+                    node->id);
+                valid = false;
+            }
+            return valid;
         }
 
         bool IsStaticRuntimeExpression(
@@ -313,6 +412,8 @@ namespace HIKARI::MATERIAL_COMPILER_INTERNAL {
                     pin == "DirectSpecularBlend" || pin == "IndirectBlend";
             case MaterialNodeKind::Outline:
                 return pin == "Color" || pin == "Thickness";
+            case MaterialNodeKind::HairShadow:
+                return pin == "Strength";
             default:
                 return false;
             }
@@ -328,6 +429,7 @@ namespace HIKARI::MATERIAL_COMPILER_INTERNAL {
 
             const RuntimeGraphView view =
                 BuildRuntimeGraphView(source.graph);
+            valid = ValidateRequiredResources(source, view, result) && valid;
             for (const std::string& nodeId : view.reachable) {
                 const MaterialGraphNodeData* node =
                     FindRuntimeNode(view, nodeId);
@@ -382,7 +484,8 @@ namespace HIKARI::MATERIAL_COMPILER_INTERNAL {
                                  response->kind == MaterialNodeKind::MultiRampDiffuse ||
                                   response->kind == MaterialNodeKind::FaceSdf ||
                                   response->kind == MaterialNodeKind::SkinLighting ||
-                                  response->kind == MaterialNodeKind::HybridLighting);
+                                  response->kind == MaterialNodeKind::HybridLighting ||
+                                  response->kind == MaterialNodeKind::HairShadow);
                         } else if (edge.targetPin == "SpecularResponse") {
                             const MaterialGraphNodeData* response =
                                 FindRuntimeNode(view, edge.sourceNodeId);
@@ -423,9 +526,27 @@ namespace HIKARI::MATERIAL_COMPILER_INTERNAL {
                     node->kind == MaterialNodeKind::SkinLighting ||
                     node->kind == MaterialNodeKind::FabricSheen ||
                     node->kind == MaterialNodeKind::HybridLighting ||
-                    node->kind == MaterialNodeKind::Outline;
+                    node->kind == MaterialNodeKind::Outline ||
+                    node->kind == MaterialNodeKind::HairShadow;
                 if (!responseNode) {
                     continue;
+                }
+                if ((node->kind == MaterialNodeKind::SkinLighting ||
+                     node->kind == MaterialNodeKind::HybridLighting ||
+                     node->kind == MaterialNodeKind::HairShadow) &&
+                    FindRuntimeInput(
+                        view, node->id, "DiffuseResponse") == nullptr) {
+                    AddDiagnostic(
+                        result,
+                        MaterialCompileDiagnosticSeverity::Error,
+                        "Material.RequiredResponseMissing",
+                        node->kind == MaterialNodeKind::HybridLighting
+                            ? "PBR + NPR Hybrid requires an upstream NPR Diffuse Response before its blend controls have a defined meaning."
+                        : node->kind == MaterialNodeKind::HairShadow
+                            ? "Hair Shadow Mask requires an upstream Diffuse Response."
+                            : "Skin Lighting requires an upstream Diffuse Response.",
+                        node->id);
+                    valid = false;
                 }
                 for (const MaterialGraphEdgeData& edge :
                     source.graph.edges) {
@@ -440,8 +561,9 @@ namespace HIKARI::MATERIAL_COMPILER_INTERNAL {
                         (inputNode->kind == MaterialNodeKind::RampDiffuse ||
                          inputNode->kind == MaterialNodeKind::MultiRampDiffuse ||
                          inputNode->kind == MaterialNodeKind::FaceSdf ||
-                         (node->kind == MaterialNodeKind::HybridLighting &&
-                          inputNode->kind == MaterialNodeKind::SkinLighting));
+                         inputNode->kind == MaterialNodeKind::HairShadow ||
+                         inputNode->kind == MaterialNodeKind::SkinLighting ||
+                         inputNode->kind == MaterialNodeKind::HybridLighting);
                     const auto expectedMaskChannel =
                         [node]() -> std::string_view {
                         switch (node->kind) {
@@ -457,6 +579,8 @@ namespace HIKARI::MATERIAL_COMPILER_INTERNAL {
                             return "B";
                         case MaterialNodeKind::MatCap:
                             return "A";
+                        case MaterialNodeKind::HairShadow:
+                            return "R";
                         default:
                             return {};
                         }
@@ -464,6 +588,12 @@ namespace HIKARI::MATERIAL_COMPILER_INTERNAL {
                     const bool maskInput = edge.targetPin == "Mask" &&
                         !expectedMaskChannel.empty() &&
                         edge.sourcePin == expectedMaskChannel &&
+                        IsTextureRuntimeExpression(
+                            view, edge.sourceNodeId, false);
+                    const bool hairShadowInput =
+                        node->kind == MaterialNodeKind::HairShadow &&
+                        edge.targetPin == "ShadowMask" &&
+                        edge.sourcePin == "R" &&
                         IsTextureRuntimeExpression(
                             view, edge.sourceNodeId, false);
                     const bool faceSdfInput =
@@ -475,7 +605,8 @@ namespace HIKARI::MATERIAL_COMPILER_INTERNAL {
                         IsAllowedResponseParameterPin(
                             node->kind, edge.targetPin) &&
                         IsStaticRuntimeExpression(view, edge.sourceNodeId);
-                    if (!responseInput && !maskInput && !faceSdfInput &&
+                    if (!responseInput && !maskInput && !hairShadowInput &&
+                        !faceSdfInput &&
                         !parameterInput) {
                         AddDiagnostic(
                             result,

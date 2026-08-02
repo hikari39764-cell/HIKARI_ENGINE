@@ -28,8 +28,11 @@ bool IsCompatibleResource(const MaterialGraphNodeData &node,
   if (node.kind == MaterialNodeKind::MatCap) {
     return resource.semantic == MaterialResourceSemantic::MatCap;
   }
-  return node.kind == MaterialNodeKind::FaceSdf &&
-         resource.semantic == MaterialResourceSemantic::FaceSdf;
+  if (node.kind == MaterialNodeKind::FaceSdf) {
+    return resource.semantic == MaterialResourceSemantic::FaceSdf;
+  }
+  return node.kind == MaterialNodeKind::HairShadow &&
+         resource.semantic == MaterialResourceSemantic::HairShadow;
 }
 
 MaterialGraphResourceData *FindResource(MaterialGraphData &graph,
@@ -122,10 +125,14 @@ void ModelMaterialWorkspaceController::
   const MaterialResourceSemantic requiredSemantic =
       node.kind == MaterialNodeKind::MatCap
           ? MaterialResourceSemantic::MatCap
-          : MaterialResourceSemantic::FaceSdf;
+      : node.kind == MaterialNodeKind::FaceSdf
+          ? MaterialResourceSemantic::FaceSdf
+          : MaterialResourceSemantic::HairShadow;
   const char *requiredLabel = node.kind == MaterialNodeKind::MatCap
                                   ? "MatCap Texture"
-                                  : "Face SDF Texture";
+                              : node.kind == MaterialNodeKind::FaceSdf
+                                  ? "Face SDF Texture"
+                                  : "Hair Shadow Texture (linear R)";
   MaterialGraphResourceData *resource = FindResource(graph, node.referenceId);
   if (resource == nullptr || !IsCompatibleResource(node, *resource)) {
     resource = nullptr;
@@ -143,7 +150,9 @@ void ModelMaterialWorkspaceController::
       MaterialGraphResourceData created{};
       created.id = node.kind == MaterialNodeKind::MatCap
                        ? "resource.matCap"
-                       : "resource.faceSdf";
+                   : node.kind == MaterialNodeKind::FaceSdf
+                       ? "resource.faceSdf"
+                       : "resource.hairShadow";
       created.displayName = requiredLabel;
       created.type = MaterialResourceType::Texture2D;
       created.semantic = requiredSemantic;

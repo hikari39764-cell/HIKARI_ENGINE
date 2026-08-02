@@ -19,6 +19,21 @@ inline constexpr float kCanvasMinimumZoom = 0.35f;
 inline constexpr float kCanvasMaximumZoom = 1.35f;
 inline constexpr float kInlineControlsMinimumZoom = 0.90f;
 
+enum class NodeCardDetail : uint8_t {
+  Overview,
+  Compact,
+  Authoring,
+};
+
+struct NodeCardPresentation {
+  std::vector<std::string_view> inputs{};
+  std::vector<std::string_view> outputs{};
+  float inlineHeight = 0.0f;
+  float compactSummaryHeight = 0.0f;
+  NodeCardDetail detail = NodeCardDetail::Overview;
+  bool collapsed = false;
+};
+
 std::vector<std::string_view> OutputPins(MaterialNodeKind kind);
 std::vector<std::string_view> InputPins(MaterialNodeKind kind);
 MaterialGraphData *EditableGraph(MaterialAssetData &source) noexcept;
@@ -42,13 +57,19 @@ bool IsRuntimeDrivenInput(MaterialNodeKind kind,
                           std::string_view pin) noexcept;
 bool IsInlineOwnedInput(MaterialNodeKind kind,
                         std::string_view pin) noexcept;
+NodeCardPresentation ResolveNodeCardPresentation(
+    const MaterialGraphData& graph,
+    const MaterialGraphNodeData& node,
+    float zoom,
+    bool collapsed);
 size_t CountNodeInputRows(MaterialNodeKind kind,
                           const std::vector<std::string_view>& inputs,
                           bool inlineControls) noexcept;
 std::vector<float> BuildNodeInputVerticalOffsets(
     MaterialNodeKind kind,
     const std::vector<std::string_view>& inputs,
-    float inlineHeight,
+    float contentHeight,
+    bool inlineControls,
     float zoom);
 uint32_t NodeHeaderColor(MaterialNodeKind kind) noexcept;
 uint32_t PinColor(std::string_view pin) noexcept;

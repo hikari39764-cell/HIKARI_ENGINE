@@ -296,10 +296,8 @@ namespace HIKARI::ASSETS::MODELS {
                 GenerateModelPrimitiveNormals(primitive);
                 ++asset.importDiagnostics.missingNormalGeneratedCount;
             }
-            if (ModelMaterialHasNormalTexture(asset, primitive.materialIndex)) {
-                GenerateModelPrimitiveTangents(primitive);
-                ++asset.importDiagnostics.missingTangentGeneratedCount;
-            }
+            GenerateModelPrimitiveTangents(primitive);
+            ++asset.importDiagnostics.missingTangentGeneratedCount;
             primitive.bounds = BOUNDS::ComputePrimitiveBounds(primitive);
 
             meshAsset.primitives.push_back(std::move(primitive));

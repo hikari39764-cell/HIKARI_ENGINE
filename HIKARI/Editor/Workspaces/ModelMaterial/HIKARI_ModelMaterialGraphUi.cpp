@@ -37,6 +37,7 @@ std::vector<std::string_view> OutputPins(MaterialNodeKind kind) {
   case MaterialNodeKind::FaceSdf:
   case MaterialNodeKind::SkinLighting:
   case MaterialNodeKind::HybridLighting:
+  case MaterialNodeKind::HairShadow:
     return {"Response"};
   case MaterialNodeKind::Outline:
     return {"Response"};
@@ -103,6 +104,8 @@ std::vector<std::string_view> InputPins(MaterialNodeKind kind) {
             "DirectSpecularBlend", "IndirectBlend"};
   case MaterialNodeKind::Outline:
     return {"Color", "Thickness"};
+  case MaterialNodeKind::HairShadow:
+    return {"DiffuseResponse", "ShadowMask", "Strength"};
   case MaterialNodeKind::SurfaceOutput:
     return {"Surface"};
   case MaterialNodeKind::FunctionCall:
@@ -196,6 +199,7 @@ uint32_t NodeHeaderColor(MaterialNodeKind kind) noexcept {
   case MaterialNodeKind::FabricSheen:
   case MaterialNodeKind::HybridLighting:
   case MaterialNodeKind::Outline:
+  case MaterialNodeKind::HairShadow:
     return PackColor(40u, 112u, 126u);
   case MaterialNodeKind::TextureSample:
   case MaterialNodeKind::Parameter:
@@ -261,6 +265,8 @@ float NodeInlineHeight(MaterialNodeKind kind) noexcept {
     return 84.0f;
   case MaterialNodeKind::Outline:
     return 112.0f;
+  case MaterialNodeKind::HairShadow:
+    return 96.0f;
   default:
     return 0.0f;
   }
@@ -389,6 +395,7 @@ MaterialValueType DefaultNodeValueType(MaterialNodeKind kind) noexcept {
   case MaterialNodeKind::FaceSdf:
   case MaterialNodeKind::SkinLighting:
   case MaterialNodeKind::HybridLighting:
+  case MaterialNodeKind::HairShadow:
     return MaterialValueType::DiffuseResponse;
   case MaterialNodeKind::Outline:
     return MaterialValueType::OutlineResponse;
@@ -439,6 +446,7 @@ std::string_view NodeCategory(MaterialNodeKind kind) noexcept {
   case MaterialNodeKind::FabricSheen:
   case MaterialNodeKind::HybridLighting:
   case MaterialNodeKind::Outline:
+  case MaterialNodeKind::HairShadow:
     return "Ready-made Shading";
   case MaterialNodeKind::FunctionCall:
     return "Functions";

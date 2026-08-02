@@ -4,6 +4,7 @@
 #include <array>
 #include <cctype>
 #include <iomanip>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -54,7 +55,7 @@ namespace HIKARI::RENDER3D::MATERIAL {
             values[7] = { 4.0f, 0.22f, 1.0f, 0.0f };
             values[8] = { 1.0f, 1.0f, 1.0f, 1.0f };
             values[9] = { 0.08f, 0.18f, -0.10f, 1.0f };
-            values[10] = { 0.04f, 0.0f, 0.42f, 3.0f };
+            values[10] = { 0.04f, 0.0f, 0.65f, 0.0f };
             values[11] = { 0.12f, 0.35f, 64.0f, 1.0f };
             values[12] = { 0.55f, 0.55f, 1.0f, 0.25f };
             values[13] = { 0.28f, 0.72f, 4.0f, 1.0f };
@@ -214,7 +215,7 @@ namespace HIKARI::RENDER3D::MATERIAL {
             return slot;
         }
 
-        uint32_t ResolveResourceSlot(
+        std::optional<uint32_t> ResolveResourceSlot(
             const MaterialProgramResourceBinding& resource,
             uint32_t rampIndex) {
             if (resource.semantic == MaterialResourceSemantic::Ramp) {
@@ -222,13 +223,17 @@ namespace HIKARI::RENDER3D::MATERIAL {
             }
             if (resource.semantic == MaterialResourceSemantic::MatCap) return 2u;
             if (resource.semantic == MaterialResourceSemantic::FaceSdf) return 3u;
+            if (resource.semantic == MaterialResourceSemantic::HairShadow) return 7u;
             const std::string id = NormalizeId(resource.resourceId);
             if (id.find("hair") != std::string::npos ||
                 id.find("strand") != std::string::npos) return 5u;
             if (id.find("eye") != std::string::npos ||
                 id.find("iris") != std::string::npos) return 6u;
             if (resource.semantic == MaterialResourceSemantic::Mask) return 4u;
-            return 7u;
+            // Standard PBR textures are already projected into
+            // GpuMaterialData. They must not occupy or overwrite the bounded
+            // response-node resource table.
+            return std::nullopt;
         }
 
         uint32_t BuildFlags(
@@ -254,6 +259,7 @@ namespace HIKARI::RENDER3D::MATERIAL {
             if (has(MaterialProgramCapability::AnisotropicHair)) flags |= AnisotropicHair;
             if (has(MaterialProgramCapability::FaceSdf)) flags |= FaceSdf;
             if (has(MaterialProgramCapability::EyeLighting)) flags |= EyeLighting;
+            if (has(MaterialProgramCapability::HairShadow)) flags |= HairShadow;
             if (has(MaterialProgramCapability::SkinLighting)) flags |= TemplateSkin;
             if (has(MaterialProgramCapability::FabricSheen)) flags |= TemplateCloth;
             if (has(MaterialProgramCapability::HybridLighting)) flags |= TemplateHybrid;
@@ -304,7 +310,10 @@ namespace HIKARI::RENDER3D::MATERIAL {
                 MaterialCapabilityBit(MaterialProgramCapability::SkinLighting) |
                 MaterialCapabilityBit(MaterialProgramCapability::FabricSheen) |
                 MaterialCapabilityBit(MaterialProgramCapability::HybridLighting);
+            constexpr uint64_t kHairShadowCapability =
+                MaterialCapabilityBit(MaterialProgramCapability::HairShadow);
             return (program.capabilities & kRuntimeResponseCapabilities) != 0u ||
+                (program.capabilities & kHairShadowCapability) != 0u ||
                 !program.featureRequests.empty();
         }
     }
@@ -325,11 +334,15 @@ namespace HIKARI::RENDER3D::MATERIAL {
         data.resources.resize(kGpuMaterialProgramResourceSlotCount);
         uint32_t rampIndex = 0u;
         for (const MaterialProgramResourceBinding& resource : program.resources) {
-            const uint32_t slot = ResolveResourceSlot(resource, rampIndex);
+            const std::optional<uint32_t> slot =
+                ResolveResourceSlot(resource, rampIndex);
             if (resource.semantic == MaterialResourceSemantic::Ramp) {
                 ++rampIndex;
             }
-            data.resources[slot] = BuildResourceSlot(
+            if (!slot.has_value()) {
+                continue;
+            }
+            data.resources[*slot] = BuildResourceSlot(
                 resource,
                 assetRegistry,
                 debugName);

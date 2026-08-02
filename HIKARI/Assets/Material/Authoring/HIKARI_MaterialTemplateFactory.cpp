@@ -240,7 +240,6 @@ namespace HIKARI::ASSETS::MATERIAL {
             AddRamp(data);
             AddSpecularBand(data);
             AddFresnelRim(data);
-            AddMaskResource(data, "resource.stylizationMask", "Stylization Mask");
             AddOutline(data, 1.0f);
             data.featureRequests.clear();
         }
@@ -266,10 +265,6 @@ namespace HIKARI::ASSETS::MATERIAL {
                 MakeValue(MaterialValueType::Float1, 0.04f));
             AddParameter(data, "parameter.faceShadowOffset", "Face Shadow Offset",
                 MakeValue(MaterialValueType::Float1, 0.0f));
-            AddParameter(data, "parameter.faceHairShadowStrength", "Hair Shadow Strength",
-                MakeValue(MaterialValueType::Float1, 0.42f));
-            AddParameter(data, "parameter.faceHairShadowOffset", "Hair Shadow Offset (px)",
-                MakeValue(MaterialValueType::Float1, 3.0f));
             AddParameter(data, "parameter.faceRight", "Face Local Right",
                 MakeValue(MaterialValueType::Float3, 1.0f, 0.0f, 0.0f));
             AddParameter(data, "parameter.faceForward", "Face Local Forward",
@@ -281,10 +276,30 @@ namespace HIKARI::ASSETS::MATERIAL {
                 -320.0f, 420.0f, "resource.faceSdf");
             Connect(data, "edge.faceSdf.response", "node.faceSdf",
                 "Response", "DiffuseResponse");
+            AddParameter(data, "parameter.hairShadowStrength",
+                "Hair Shadow Strength",
+                MakeValue(MaterialValueType::Float1, 0.65f));
+            AddResource(data, "resource.hairShadow",
+                "Hair Shadow Visibility (linear R)",
+                MaterialResourceType::Texture2D,
+                MaterialResourceSemantic::HairShadow);
+            AddNode(data, "node.hairShadow", "Hair Shadow Mask",
+                MaterialNodeKind::HairShadow,
+                MaterialValueType::DiffuseResponse,
+                20.0f, 420.0f, "resource.hairShadow");
+            const auto faceResponse = std::find_if(
+                data.graph.edges.begin(), data.graph.edges.end(),
+                [](const MaterialGraphEdgeData& edge) {
+                    return edge.id == "edge.faceSdf.response";
+                });
+            if (faceResponse != data.graph.edges.end()) {
+                faceResponse->targetNodeId = "node.hairShadow";
+                faceResponse->targetPin = "DiffuseResponse";
+            }
+            Connect(data, "edge.hairShadow.response", "node.hairShadow",
+                "Response", "DiffuseResponse");
             AddOutline(data, 1.0f);
-            data.featureRequests = {
-                MaterialFeatureRequest::FaceHairShadow
-            };
+            data.featureRequests.clear();
         }
 
         void ConfigureHair(MaterialAssetData& data) {
@@ -307,9 +322,7 @@ namespace HIKARI::ASSETS::MATERIAL {
                 MaterialValueType::SpecularResponse, -320.0f, 760.0f);
             Connect(data, "edge.hair.response", "node.anisotropicHair",
                 "Response", "SpecularResponse");
-            data.featureRequests = {
-                MaterialFeatureRequest::FaceHairShadow
-            };
+            data.featureRequests.clear();
         }
 
         void ConfigureEye(MaterialAssetData& data) {

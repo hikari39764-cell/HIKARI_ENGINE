@@ -44,8 +44,43 @@ bool IsInlineOwnedInput(MaterialNodeKind kind,
   case MaterialNodeKind::SkinLighting:
   case MaterialNodeKind::HybridLighting:
     return pin != "DiffuseResponse";
+  case MaterialNodeKind::HairShadow:
+    return pin != "DiffuseResponse";
   default: return false;
   }
+}
+
+NodeCardPresentation ResolveNodeCardPresentation(
+    const MaterialGraphData& graph,
+    const MaterialGraphNodeData& node,
+    float zoom,
+    bool collapsed) {
+  NodeCardPresentation result{};
+  result.inputs = InputPins(node.kind);
+  result.outputs = OutputPins(node.kind);
+  result.collapsed = collapsed;
+  result.detail = collapsed || zoom < 0.55f
+      ? NodeCardDetail::Overview
+      : zoom >= kInlineControlsMinimumZoom
+          ? NodeCardDetail::Authoring
+          : NodeCardDetail::Compact;
+  if (result.detail == NodeCardDetail::Overview) {
+    std::erase_if(result.inputs, [&](std::string_view pin) {
+      return !PinHasConnection(graph, node.id, pin, false);
+    });
+    std::erase_if(result.outputs, [&](std::string_view pin) {
+      return !PinHasConnection(graph, node.id, pin, true);
+    });
+  } else if (result.detail == NodeCardDetail::Compact) {
+    std::erase_if(result.inputs, [&](std::string_view pin) {
+      return IsInlineOwnedInput(node.kind, pin) &&
+             !PinHasConnection(graph, node.id, pin, false);
+    });
+    result.compactSummaryHeight = 28.0f * zoom;
+  } else {
+    result.inlineHeight = NodeInlineHeight(node.kind);
+  }
+  return result;
 }
 
 size_t CountNodeInputRows(MaterialNodeKind kind,
@@ -63,11 +98,11 @@ size_t CountNodeInputRows(MaterialNodeKind kind,
 std::vector<float> BuildNodeInputVerticalOffsets(
     MaterialNodeKind kind,
     const std::vector<std::string_view>& inputs,
-    float inlineHeight,
+    float contentHeight,
+    bool inlineControls,
     float zoom) {
   std::vector<float> offsets{};
   offsets.reserve(inputs.size());
-  const bool inlineControls = inlineHeight > 0.0f;
   const size_t inlineCount = inputs.size() -
       CountNodeInputRows(kind, inputs, inlineControls);
   size_t inlineIndex = 0u;
@@ -77,11 +112,11 @@ std::vector<float> BuildNodeInputVerticalOffsets(
     offsets.push_back(inlineOwned
         ? kHeaderHeight * zoom + 8.0f +
             (static_cast<float>(inlineIndex++) + 0.5f) *
-            ((std::max)(inlineHeight - 12.0f, 1.0f) /
+            ((std::max)(contentHeight - 12.0f, 1.0f) /
              static_cast<float>((std::max)(inlineCount, size_t{1u})))
         : (kHeaderHeight + kNodePadding +
            (static_cast<float>(rowIndex++) + 0.5f) * kPinRowHeight) *
-              zoom + inlineHeight);
+              zoom + contentHeight);
   }
   return offsets;
 }

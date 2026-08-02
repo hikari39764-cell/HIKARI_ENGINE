@@ -1,11 +1,98 @@
 #include "Assets/Material/Authoring/HIKARI_MaterialSemanticNodeFactory.h"
 
 #include <algorithm>
+#include <array>
 #include <string>
 #include <string_view>
 
 namespace HIKARI::ASSETS::MATERIAL {
 namespace {
+
+using namespace std::literals;
+
+constexpr std::array kNoBindings{std::string_view{}};
+constexpr std::array kPbrParameters{
+    "parameter.baseColor"sv, "parameter.metallic"sv,
+    "parameter.roughness"sv, "parameter.specular"sv,
+    "parameter.specularColor"sv, "parameter.normalScale"sv,
+    "parameter.occlusionStrength"sv, "parameter.emissive"sv,
+    "parameter.emissiveStrength"sv};
+constexpr std::array kPbrResources{
+    "resource.baseColor"sv, "resource.normal"sv,
+    "resource.metallicRoughness"sv, "resource.occlusion"sv,
+    "resource.emissive"sv, "resource.specular"sv,
+    "resource.specularColor"sv};
+constexpr std::array kRampParameters{
+    "parameter.shadowThreshold"sv, "parameter.shadowSoftness"sv,
+    "parameter.midThreshold"sv, "parameter.shadowTint"sv,
+    "parameter.midTint"sv, "parameter.litTint"sv,
+    "parameter.rampRow"sv, "parameter.rampMaskInfluence"sv,
+    "parameter.rampBlend"sv, "parameter.rampIntensity"sv,
+    "parameter.toonDirectGain"sv};
+constexpr std::array kRampResources{"resource.diffuseRamp"sv};
+constexpr std::array kMultiRampResources{
+    "resource.diffuseRamp"sv, "resource.secondaryRamp"sv};
+constexpr std::array kSpecularBandParameters{
+    "parameter.specularBandWidth"sv,
+    "parameter.specularBandSoftness"sv,
+    "parameter.specularIntensity"sv, "parameter.specularPower"sv,
+    "parameter.specularTint"sv};
+constexpr std::array kFresnelParameters{
+    "parameter.rimColor"sv, "parameter.rimPower"sv,
+    "parameter.rimWidth"sv, "parameter.rimIntensity"sv,
+    "parameter.rimLightAlignment"sv};
+constexpr std::array kMatCapParameters{
+    "parameter.matCapTint"sv, "parameter.matCapIntensity"sv};
+constexpr std::array kMatCapResources{"resource.matCap"sv};
+constexpr std::array kHairParameters{
+    "parameter.hairShift"sv, "parameter.hairWidth"sv,
+    "parameter.hairSecondaryShift"sv, "parameter.hairIntensity"sv,
+    "parameter.hairHighlightTint"sv};
+constexpr std::array kHairResources{"resource.hairControl"sv};
+constexpr std::array kFaceParameters{
+    "parameter.shadowThreshold"sv, "parameter.shadowSoftness"sv,
+    "parameter.midThreshold"sv, "parameter.shadowTint"sv,
+    "parameter.midTint"sv, "parameter.litTint"sv,
+    "parameter.rampRow"sv, "parameter.rampMaskInfluence"sv,
+    "parameter.rampBlend"sv, "parameter.rampIntensity"sv,
+    "parameter.toonDirectGain"sv, "parameter.faceShadowSoftness"sv,
+    "parameter.faceShadowOffset"sv, "parameter.faceRight"sv,
+    "parameter.faceForward"sv};
+constexpr std::array kFaceResources{
+    "resource.diffuseRamp"sv, "resource.faceSdf"sv};
+constexpr std::array kEyeParameters{
+    "parameter.irisDepth"sv, "parameter.eyeSparkle"sv,
+    "parameter.eyeSparklePower"sv};
+constexpr std::array kEyeResources{"resource.eyeControl"sv};
+constexpr std::array kSkinParameters{
+    "parameter.skinWrap"sv, "parameter.skinSubsurface"sv,
+    "parameter.skinTint"sv};
+constexpr std::array kSkinResources{"resource.thicknessMask"sv};
+constexpr std::array kFabricParameters{
+    "parameter.fabricSheen"sv, "parameter.fiberRoughness"sv,
+    "parameter.fabricSheenPower"sv,
+    "parameter.fabricSheenIntensity"sv};
+constexpr std::array kFabricResources{"resource.fabricMask"sv};
+constexpr std::array kHybridParameters{
+    "parameter.directDiffusePbrBlend"sv,
+    "parameter.directSpecularPbrBlend"sv,
+    "parameter.indirectPbrBlend"sv};
+constexpr std::array kOutlineParameters{
+    "parameter.outlineMode"sv, "parameter.outlineColor"sv,
+    "parameter.outlineThickness"sv};
+constexpr std::array kHairShadowParameters{
+    "parameter.hairShadowStrength"sv};
+constexpr std::array kHairShadowResources{"resource.hairShadow"sv};
+
+template <size_t Size>
+std::span<const std::string_view> AsSpan(
+    const std::array<std::string_view, Size>& values) noexcept {
+    return values;
+}
+
+std::span<const std::string_view> EmptyBindings() noexcept {
+    return {kNoBindings.data(), 0u};
+}
 
 MaterialValueData Value(MaterialValueType type, float x,
                         float y = 0.0f, float z = 0.0f,
@@ -82,6 +169,202 @@ void EnsureRamp(MaterialGraphData& graph, bool multiRamp) {
 
 } // namespace
 
+const MaterialNodeSemanticContract& GetMaterialNodeSemanticContract(
+    MaterialNodeKind kind) noexcept {
+    static constexpr MaterialNodeSemanticContract kConstant{
+        "Any compatible numeric input", "The literal value on this node",
+        "A constant numeric value", "Uses the displayed literal",
+        "Type-incompatible links are rejected"};
+    static constexpr MaterialNodeSemanticContract kParameter{
+        "Any compatible numeric input", "The referenced material parameter",
+        "An exposed editable value", "Uses the parameter default",
+        "A missing parameter reference is a compile error"};
+    static constexpr MaterialNodeSemanticContract kTexture{
+        "PBR texture inputs or documented feature mask inputs",
+        "The selected texture, UV set and UV transform",
+        "Color and individual sampled channels", "No generated image",
+        "A reachable Texture Sample without a valid asset fails compilation",
+        MaterialNodeResourcePolicy::AuthoredRequired};
+    static constexpr MaterialNodeSemanticContract kMath{
+        "Any compatible numeric input", "Its connected numeric operands",
+        "A statically evaluable numeric result", "All required inputs must link",
+        "Unsupported dynamic expressions fail compilation"};
+    static constexpr MaterialNodeSemanticContract kNormalUnpack{
+        "PBR Surface / Normal", "A connected packed tangent-space normal",
+        "An unpacked tangent-space normal", "No normal texture is generated",
+        "A missing or non-texture input fails compilation"};
+    static constexpr MaterialNodeSemanticContract kPbr{
+        "Surface Output / Surface",
+        "Base color, normal, metal, roughness, occlusion, emissive and connected lighting responses",
+        "The final bounded game surface", "Uses its displayed factors and optional imported textures",
+        "Unsupported response routes fail compilation",
+        MaterialNodeResourcePolicy::OptionalAuthoredOverride};
+    static constexpr MaterialNodeSemanticContract kRamp{
+        "PBR Surface / Diffuse Response",
+        "NdotL, scene shadows, Ramp colors, thresholds, mask and direct-light gain",
+        "A stepped diffuse lighting response",
+        "Uses an editable analytic Ramp until a Ramp asset is assigned",
+        "Invalid connected masks or Ramp assets are diagnosed",
+        MaterialNodeResourcePolicy::GeneratedDefault,
+        "resource.diffuseRamp"};
+    static constexpr MaterialNodeSemanticContract kSpecularBand{
+        "PBR Surface / Specular Response",
+        "Normal, view/light half-vector, width, softness, power, intensity and tint",
+        "A quantized specular highlight", "Uses the displayed analytic band",
+        "Unsupported dynamic inputs fail compilation",
+        MaterialNodeResourcePolicy::GeneratedDefault};
+    static constexpr MaterialNodeSemanticContract kFresnel{
+        "PBR Surface / Additive, directly or through Add",
+        "Normal, view direction, light alignment, color, width and power",
+        "An additive Fresnel rim", "Uses the displayed analytic rim",
+        "Non-additive destinations fail compilation",
+        MaterialNodeResourcePolicy::GeneratedDefault};
+    static constexpr MaterialNodeSemanticContract kMatCap{
+        "PBR Surface / Additive, directly or through Add",
+        "View-space normal, mask, MatCap image, tint and intensity",
+        "An additive view-space MatCap lobe", "No style image is invented",
+        "A reachable MatCap without a valid MatCap texture fails compilation",
+        MaterialNodeResourcePolicy::AuthoredRequired,
+        "resource.matCap"};
+    static constexpr MaterialNodeSemanticContract kHair{
+        "PBR Surface / Specular Response",
+        "Generated mesh tangent, light/view directions, shifts, width, tint and optional flow map",
+        "A two-band anisotropic hair highlight",
+        "Uses generated mesh tangents; RGBA hair control is an optional override",
+        "Degenerate UVs receive a stable normal-derived tangent fallback",
+        MaterialNodeResourcePolicy::OptionalAuthoredOverride,
+        "resource.hairControl"};
+    static constexpr MaterialNodeSemanticContract kFace{
+        "PBR Surface / Diffuse Response",
+        "Face SDF, character right/forward axes, main light and Ramp controls",
+        "A face-oriented toon diffuse response", "No face-specific field is generated",
+        "A reachable Face SDF without a valid linear Face SDF texture fails compilation",
+        MaterialNodeResourcePolicy::AuthoredRequired,
+        "resource.faceSdf"};
+    static constexpr MaterialNodeSemanticContract kEye{
+        "PBR Surface / Additive, directly or through Add",
+        "View direction, iris depth, catchlight intensity/power and optional eye-control map",
+        "A procedural eye/cornea catchlight lobe",
+        "Uses a procedural catchlight; RGBA eye control optionally specializes it",
+        "Invalid connected masks fail compilation",
+        MaterialNodeResourcePolicy::GeneratedDefault,
+        "resource.eyeControl"};
+    static constexpr MaterialNodeSemanticContract kSkin{
+        "PBR Surface or Hybrid / Diffuse Response",
+        "Upstream diffuse response, wrap, subsurface tint and optional thickness mask",
+        "A wrapped skin diffuse response", "Uses a neutral thickness mask",
+        "Unsupported response or mask routes fail compilation",
+        MaterialNodeResourcePolicy::OptionalAuthoredOverride,
+        "resource.thicknessMask"};
+    static constexpr MaterialNodeSemanticContract kFabric{
+        "PBR Surface / Additive, directly or through Add",
+        "View angle, sheen, fiber roughness, tint and optional fabric mask",
+        "An additive fabric sheen", "Uses a neutral fabric mask",
+        "Non-additive destinations fail compilation",
+        MaterialNodeResourcePolicy::OptionalAuthoredOverride,
+        "resource.fabricMask"};
+    static constexpr MaterialNodeSemanticContract kHybrid{
+        "PBR Surface / Diffuse Response",
+        "Upstream NPR diffuse plus direct diffuse/specular and indirect PBR blend weights",
+        "A controlled PBR + NPR lighting response", "Uses the displayed blend weights",
+        "Missing or unsupported upstream response links fail compilation",
+        MaterialNodeResourcePolicy::GeneratedDefault};
+    static constexpr MaterialNodeSemanticContract kOutline{
+        "PBR Surface / Outline",
+        "Mode, color, thickness and the selected outline backend",
+        "A material outline feature request", "Uses the displayed outline profile",
+        "An unavailable backend is reported instead of changing base shading",
+        MaterialNodeResourcePolicy::GeneratedDefault};
+    static constexpr MaterialNodeSemanticContract kHairShadow{
+        "PBR Surface, Skin or Hybrid / Diffuse Response",
+        "An upstream toon diffuse response, linear R hair-shadow visibility and strength",
+        "A texture-authored hair-shadow-modulated diffuse response",
+        "No character hair-shadow shape is invented",
+        "A reachable Hair Shadow Mask without a valid linear R texture fails compilation",
+        MaterialNodeResourcePolicy::AuthoredRequired,
+        "resource.hairShadow"};
+    static constexpr MaterialNodeSemanticContract kOutput{
+        "Graph root", "The connected Surface", "The material's only runtime output",
+        "Requires exactly one Surface connection",
+        "Missing or multiple output ownership fails compilation"};
+    static constexpr MaterialNodeSemanticContract kFunction{
+        "A compatible function destination", "The referenced Material Function",
+        "The function result", "No fallback function is inserted",
+        "Runtime Material Functions are currently rejected explicitly"};
+
+    switch (kind) {
+    case MaterialNodeKind::Constant: return kConstant;
+    case MaterialNodeKind::Parameter: return kParameter;
+    case MaterialNodeKind::TextureSample: return kTexture;
+    case MaterialNodeKind::Add:
+    case MaterialNodeKind::Multiply:
+    case MaterialNodeKind::Lerp:
+    case MaterialNodeKind::Clamp:
+    case MaterialNodeKind::Saturate:
+    case MaterialNodeKind::OneMinus:
+    case MaterialNodeKind::Power:
+    case MaterialNodeKind::Dot:
+        return kMath;
+    case MaterialNodeKind::NormalUnpack: return kNormalUnpack;
+    case MaterialNodeKind::PbrSurface: return kPbr;
+    case MaterialNodeKind::RampDiffuse:
+    case MaterialNodeKind::MultiRampDiffuse:
+        return kRamp;
+    case MaterialNodeKind::SpecularBand: return kSpecularBand;
+    case MaterialNodeKind::FresnelRim: return kFresnel;
+    case MaterialNodeKind::MatCap: return kMatCap;
+    case MaterialNodeKind::AnisotropicHair: return kHair;
+    case MaterialNodeKind::FaceSdf: return kFace;
+    case MaterialNodeKind::EyeLighting: return kEye;
+    case MaterialNodeKind::SkinLighting: return kSkin;
+    case MaterialNodeKind::FabricSheen: return kFabric;
+    case MaterialNodeKind::HybridLighting: return kHybrid;
+    case MaterialNodeKind::Outline: return kOutline;
+    case MaterialNodeKind::HairShadow: return kHairShadow;
+    case MaterialNodeKind::SurfaceOutput: return kOutput;
+    case MaterialNodeKind::FunctionCall: return kFunction;
+    }
+    return kConstant;
+}
+
+std::span<const std::string_view> GetMaterialNodeOwnedParameterIds(
+    MaterialNodeKind kind) noexcept {
+    switch (kind) {
+    case MaterialNodeKind::PbrSurface: return AsSpan(kPbrParameters);
+    case MaterialNodeKind::RampDiffuse:
+    case MaterialNodeKind::MultiRampDiffuse: return AsSpan(kRampParameters);
+    case MaterialNodeKind::SpecularBand: return AsSpan(kSpecularBandParameters);
+    case MaterialNodeKind::FresnelRim: return AsSpan(kFresnelParameters);
+    case MaterialNodeKind::MatCap: return AsSpan(kMatCapParameters);
+    case MaterialNodeKind::AnisotropicHair: return AsSpan(kHairParameters);
+    case MaterialNodeKind::FaceSdf: return AsSpan(kFaceParameters);
+    case MaterialNodeKind::EyeLighting: return AsSpan(kEyeParameters);
+    case MaterialNodeKind::SkinLighting: return AsSpan(kSkinParameters);
+    case MaterialNodeKind::FabricSheen: return AsSpan(kFabricParameters);
+    case MaterialNodeKind::HybridLighting: return AsSpan(kHybridParameters);
+    case MaterialNodeKind::Outline: return AsSpan(kOutlineParameters);
+    case MaterialNodeKind::HairShadow: return AsSpan(kHairShadowParameters);
+    default: return EmptyBindings();
+    }
+}
+
+std::span<const std::string_view> GetMaterialNodeOwnedResourceIds(
+    MaterialNodeKind kind) noexcept {
+    switch (kind) {
+    case MaterialNodeKind::PbrSurface: return AsSpan(kPbrResources);
+    case MaterialNodeKind::RampDiffuse: return AsSpan(kRampResources);
+    case MaterialNodeKind::MultiRampDiffuse: return AsSpan(kMultiRampResources);
+    case MaterialNodeKind::MatCap: return AsSpan(kMatCapResources);
+    case MaterialNodeKind::AnisotropicHair: return AsSpan(kHairResources);
+    case MaterialNodeKind::FaceSdf: return AsSpan(kFaceResources);
+    case MaterialNodeKind::EyeLighting: return AsSpan(kEyeResources);
+    case MaterialNodeKind::SkinLighting: return AsSpan(kSkinResources);
+    case MaterialNodeKind::FabricSheen: return AsSpan(kFabricResources);
+    case MaterialNodeKind::HairShadow: return AsSpan(kHairShadowResources);
+    default: return EmptyBindings();
+    }
+}
+
 bool IsReadyMadeMaterialNode(MaterialNodeKind kind) noexcept {
     switch (kind) {
     case MaterialNodeKind::PbrSurface:
@@ -97,6 +380,7 @@ bool IsReadyMadeMaterialNode(MaterialNodeKind kind) noexcept {
     case MaterialNodeKind::FabricSheen:
     case MaterialNodeKind::HybridLighting:
     case MaterialNodeKind::Outline:
+    case MaterialNodeKind::HairShadow:
         return true;
     default:
         return false;
@@ -124,6 +408,7 @@ std::string_view ReadyMadeMaterialNodeDisplayName(
     case MaterialNodeKind::FabricSheen: return "Fabric Sheen";
     case MaterialNodeKind::HybridLighting: return "PBR + NPR Hybrid";
     case MaterialNodeKind::Outline: return "Outline";
+    case MaterialNodeKind::HairShadow: return "Hair Shadow Mask";
     default: return ToString(kind);
     }
 }
@@ -269,10 +554,6 @@ void InitializeReadyMadeMaterialNode(MaterialAssetData& material,
                         Value(MaterialValueType::Float1, 0.04f));
         EnsureParameter(graph, "parameter.faceShadowOffset", "Shadow Offset",
                         Value(MaterialValueType::Float1, 0.0f));
-        EnsureParameter(graph, "parameter.faceHairShadowStrength", "Hair Shadow Strength",
-                        Value(MaterialValueType::Float1, 0.42f));
-        EnsureParameter(graph, "parameter.faceHairShadowOffset", "Hair Shadow Offset",
-                        Value(MaterialValueType::Float1, 3.0f));
         EnsureParameter(graph, "parameter.faceRight", "Face Local Right",
                         Value(MaterialValueType::Float3, 1.0f, 0.0f, 0.0f));
         EnsureParameter(graph, "parameter.faceForward", "Face Local Forward",
@@ -345,6 +626,18 @@ void InitializeReadyMadeMaterialNode(MaterialAssetData& material,
                         Value(MaterialValueType::Float3, 0.025f, 0.030f, 0.045f));
         EnsureParameter(graph, "parameter.outlineThickness", "Geometry Thickness",
                         Value(MaterialValueType::Float1, 1.25f));
+        break;
+    case MaterialNodeKind::HairShadow:
+        node.displayName = ReadyMadeMaterialNodeDisplayName(node.kind);
+        node.valueType = MaterialValueType::DiffuseResponse;
+        EnsureParameter(graph, "parameter.hairShadowStrength",
+                        "Hair Shadow Strength",
+                        Value(MaterialValueType::Float1, 0.65f));
+        EnsureResource(graph, "resource.hairShadow",
+                       "Hair Shadow Visibility (linear R)",
+                       MaterialResourceType::Texture2D,
+                       MaterialResourceSemantic::HairShadow);
+        node.referenceId = "resource.hairShadow";
         break;
     default:
         break;

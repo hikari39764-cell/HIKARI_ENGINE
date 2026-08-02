@@ -376,13 +376,11 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
   } else if (node.kind == MaterialNodeKind::FaceSdf) {
     capturesPointer = DrawFaceRampNodeControl(
         scene, source, graph, width) || capturesPointer;
-    drawTexture("resource.faceSdf", "Face SDF");
+    drawTexture("resource.faceSdf", "Face SDF", "SDF");
     ImGui::TextDisabled("Linear mirrored SDF in R; face basis is model-local.");
     drawParameter("parameter.faceShadowSoftness", "Softness", "Softness");
     drawParameter("parameter.toonDirectGain", "Direct Gain", "DirectGain");
     drawParameter("parameter.faceShadowOffset", "Offset");
-    drawParameter("parameter.faceHairShadowStrength", "Hair Shadow");
-    drawParameter("parameter.faceHairShadowOffset", "Hair Offset");
   } else if (node.kind == MaterialNodeKind::AnisotropicHair) {
     const char* hairResource =
         MATERIAL_GRAPH_UI::FindGraphResource(graph, "resource.hairControl")
@@ -452,6 +450,11 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
         ImGui::TextDisabled("Screen style: View Outline Profile");
       }
     }
+  } else if (node.kind == MaterialNodeKind::HairShadow) {
+    drawTexture("resource.hairShadow", "Hair Shadow R", "ShadowMask");
+    ImGui::TextDisabled("Linear R: 1 lit visibility | 0 hair shadow");
+    drawParameter(
+        "parameter.hairShadowStrength", "Strength", "Strength");
   }
 
   ImGui::PopItemWidth();

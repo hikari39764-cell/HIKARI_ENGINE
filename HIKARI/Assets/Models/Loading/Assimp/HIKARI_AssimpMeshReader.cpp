@@ -147,9 +147,10 @@ namespace HIKARI::ASSETS::MODELS::ASSIMP {
                 GenerateModelPrimitiveNormals(primitive);
                 ++asset.importDiagnostics.missingNormalGeneratedCount;
             }
-            if (!source->HasTangentsAndBitangents() &&
-                primitive.materialIndex < asset.materials.size() &&
-                asset.materials[primitive.materialIndex].normalTexture.textureIndex >= 0) {
+            // Tangents belong to the mesh authoring surface, not to the
+            // material that happened to be imported with it. This keeps later
+            // normal-map and anisotropic-hair bindings correct.
+            if (!source->HasTangentsAndBitangents()) {
                 GenerateModelPrimitiveTangents(primitive);
                 ++asset.importDiagnostics.missingTangentGeneratedCount;
             }

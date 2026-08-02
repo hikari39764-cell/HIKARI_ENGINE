@@ -33,6 +33,7 @@ namespace HIKARI {
         FabricSheen = 1ull << 19u,
         HybridLighting = 1ull << 20u,
         Outline = 1ull << 21u,
+        HairShadow = 1ull << 22u,
     };
 
     constexpr uint64_t MaterialCapabilityBit(
@@ -104,6 +105,7 @@ namespace HIKARI {
         FabricSheen,
         HybridLighting,
         Outline,
+        HairShadow,
     };
 
     // Deterministic SSA-like instruction. The pin arrays preserve the bounded

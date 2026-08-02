@@ -220,6 +220,12 @@ namespace HIKARI {
                     { "Color", MaterialValueType::Float3 },
                     { "Thickness", MaterialValueType::Float1 }
                 }, { { "Response", MaterialValueType::OutlineResponse } } };
+            case MaterialNodeKind::HairShadow:
+                return { {
+                    { "DiffuseResponse", MaterialValueType::DiffuseResponse },
+                    { "ShadowMask", MaterialValueType::Float1 },
+                    { "Strength", MaterialValueType::Float1 }
+                }, { { "Response", MaterialValueType::DiffuseResponse } } };
             case MaterialNodeKind::SurfaceOutput:
                 return { { { "Surface", MaterialValueType::Surface } }, {} };
             case MaterialNodeKind::FunctionCall:
@@ -528,6 +534,7 @@ namespace HIKARI {
             MaterialNodeKind kind,
             std::string_view pin) noexcept {
             return pin == "Mask" ||
+                pin == "ShadowMask" ||
                 (kind == MaterialNodeKind::FaceSdf && pin == "SDF");
         }
 
@@ -535,6 +542,10 @@ namespace HIKARI {
             MaterialNodeKind kind,
             std::string_view pin) noexcept {
             if (kind == MaterialNodeKind::FaceSdf && pin == "SDF") {
+                return "R";
+            }
+            if (pin == "ShadowMask" &&
+                kind == MaterialNodeKind::HairShadow) {
                 return "R";
             }
             if (pin != "Mask") {
@@ -576,7 +587,8 @@ namespace HIKARI {
                 kind == MaterialNodeKind::SkinLighting ||
                 kind == MaterialNodeKind::FabricSheen ||
                 kind == MaterialNodeKind::HybridLighting ||
-                kind == MaterialNodeKind::Outline;
+                kind == MaterialNodeKind::Outline ||
+                kind == MaterialNodeKind::HairShadow;
         }
 
         bool IsCanonicalStylizedOutputEdge(
@@ -585,19 +597,23 @@ namespace HIKARI {
             std::string_view targetPin) noexcept {
             if (source == MaterialNodeKind::RampDiffuse ||
                 source == MaterialNodeKind::MultiRampDiffuse ||
-                source == MaterialNodeKind::FaceSdf) {
+                source == MaterialNodeKind::FaceSdf ||
+                source == MaterialNodeKind::HairShadow) {
                 return targetPin == "DiffuseResponse" &&
                     (target == MaterialNodeKind::PbrSurface ||
                      target == MaterialNodeKind::SkinLighting ||
-                     target == MaterialNodeKind::HybridLighting);
+                     target == MaterialNodeKind::HybridLighting ||
+                     target == MaterialNodeKind::HairShadow);
             }
             if (source == MaterialNodeKind::SkinLighting) {
                 return targetPin == "DiffuseResponse" &&
                     (target == MaterialNodeKind::PbrSurface ||
-                     target == MaterialNodeKind::HybridLighting);
+                     target == MaterialNodeKind::HybridLighting ||
+                     target == MaterialNodeKind::HairShadow);
             }
             if (source == MaterialNodeKind::HybridLighting) {
-                return target == MaterialNodeKind::PbrSurface &&
+                return (target == MaterialNodeKind::PbrSurface ||
+                        target == MaterialNodeKind::HairShadow) &&
                     targetPin == "DiffuseResponse";
             }
             if (source == MaterialNodeKind::SpecularBand ||
