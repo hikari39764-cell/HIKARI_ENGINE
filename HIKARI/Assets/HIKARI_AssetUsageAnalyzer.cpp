@@ -89,6 +89,8 @@ namespace HIKARI {
 
         void AddModelMaterialBindingReferences(
             const std::string& modelGuid,
+            const std::string& materialSetGuid,
+            bool explicitSelection,
             const std::string& owner,
             const AssetDatabase& assetDatabase,
             AssetUsageSummary& summary,
@@ -97,10 +99,17 @@ namespace HIKARI {
             if (modelGuid.empty()) {
                 return;
             }
+            if (explicitSelection && materialSetGuid.empty()) {
+                return;
+            }
             for (const AssetRecord* record :
                 assetDatabase.CollectByType(
                     AssetType::ModelMaterialBinding)) {
                 if (record == nullptr || !record->guid.IsValid()) {
+                    continue;
+                }
+                if (explicitSelection &&
+                    record->guid.value != materialSetGuid) {
                     continue;
                 }
                 const std::filesystem::path sourcePath =
@@ -118,14 +127,14 @@ namespace HIKARI {
                 AddReference(
                     record->guid.value,
                     owner,
-                    "Model Material Bindings",
+                    "Material Set",
                     assetDatabase,
                     summary);
                 for (const auto& binding : data.bindings) {
                     AddReference(
                         binding.materialAssetGuid.value,
                         owner,
-                        "Model Default Material",
+                        "Material Set Part",
                         assetDatabase,
                         summary);
                     AddMaterialReferences(
@@ -175,8 +184,15 @@ namespace HIKARI {
                         "Model",
                         assetDatabase,
                         summary);
+                    const bool hasMaterialSetSelection =
+                        component.properties.contains(
+                            "materialSetAssetGuid");
                     AddModelMaterialBindingReferences(
                         modelGuid,
+                        component.properties.value(
+                            "materialSetAssetGuid",
+                            std::string{}),
+                        hasMaterialSetSelection,
                         owner,
                         assetDatabase,
                         summary,

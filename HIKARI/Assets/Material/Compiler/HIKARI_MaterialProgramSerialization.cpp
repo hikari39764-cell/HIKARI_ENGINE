@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <exception>
+#include <limits>
 #include <utility>
 
 #include <json.hpp>
@@ -43,6 +44,32 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
                 return true;
             }
             return false;
+        }
+
+        void UpgradeLegacyProgramInstructions(MaterialProgramIR& program) {
+            if (program.sourceKind != MaterialAssetKind::Material) {
+                return;
+            }
+            MaterialProgramInstruction surface{};
+            surface.opcode = MaterialProgramOpcode::PbrSurface;
+            surface.valueType = MaterialValueType::Surface;
+            surface.outputPins = { "Surface" };
+            surface.outputRegisters = { 0u };
+            surface.sourceNodeId = "legacy.program.surface";
+
+            MaterialProgramInstruction output{};
+            output.opcode = MaterialProgramOpcode::SurfaceOutput;
+            output.valueType = MaterialValueType::Surface;
+            output.inputPins = { "Surface" };
+            output.inputRegisters = { 0u };
+            output.sourceNodeId = "legacy.program.output";
+
+            program.instructions = {
+                std::move(surface),
+                std::move(output)
+            };
+            program.registerCount = 1u;
+            program.surfaceOutputRegister = 0u;
         }
 
         nlohmann::json WriteProgram(const MaterialProgramIR& program) {
@@ -87,6 +114,31 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
                     { "uvRotation", resource.uvRotation },
                 });
             }
+            nlohmann::json instructionArray = nlohmann::json::array();
+            for (const MaterialProgramInstruction& instruction :
+                program.instructions) {
+                nlohmann::json propertyArray = nlohmann::json::array();
+                for (const MaterialNodePropertyData& property :
+                    instruction.properties) {
+                    propertyArray.push_back(nlohmann::json{
+                        { "id", property.id },
+                        { "value", WriteMaterialValueJson(property.value) },
+                    });
+                }
+                instructionArray.push_back(nlohmann::json{
+                    { "opcode", static_cast<uint32_t>(instruction.opcode) },
+                    { "valueType", std::string(ToString(instruction.valueType)) },
+                    { "inputPins", instruction.inputPins },
+                    { "inputRegisters", instruction.inputRegisters },
+                    { "outputPins", instruction.outputPins },
+                    { "outputRegisters", instruction.outputRegisters },
+                    { "bindingIndex", instruction.bindingIndex },
+                    { "immediate", WriteMaterialValueJson(instruction.immediate) },
+                    { "properties", std::move(propertyArray) },
+                    { "assetReference", instruction.assetReference.value },
+                    { "sourceNodeId", instruction.sourceNodeId },
+                });
+            }
             nlohmann::json dependencyArray = nlohmann::json::array();
             for (const AssetGuid& dependency : dependencies) {
                 dependencyArray.push_back(dependency.value);
@@ -116,6 +168,9 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
                 { "featureRequests", std::move(featureArray) },
                 { "parameters", std::move(parameterArray) },
                 { "resources", std::move(resourceArray) },
+                { "instructions", std::move(instructionArray) },
+                { "registerCount", program.registerCount },
+                { "surfaceOutputRegister", program.surfaceOutputRegister },
                 { "dependencyGuids", std::move(dependencyArray) },
                 { "parentMaterialGuid", program.parentMaterialGuid.value },
                 { "profileAssetGuid", program.profileAssetGuid.value },
@@ -133,12 +188,14 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
                 return false;
             }
             MaterialProgramIR program{};
-            program.version = node.value("version", 0u);
-            if (program.version != kMaterialProgramIrVersion) {
+            const uint32_t storedVersion = node.value("version", 0u);
+            if (storedVersion != 1u &&
+                storedVersion != kMaterialProgramIrVersion) {
                 outError = "unsupported MaterialProgram IR version " +
-                    std::to_string(program.version);
+                    std::to_string(storedVersion);
                 return false;
             }
+            program.version = kMaterialProgramIrVersion;
             if (!TryParseMaterialAssetKind(
                     node.value("sourceKind", std::string{}), program.sourceKind) ||
                 !TryParseMaterialDomain(
@@ -233,6 +290,74 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
                     resource.uvRotation = item.value("uvRotation", resource.uvRotation);
                     program.resources.push_back(std::move(resource));
                 }
+            }
+            if (storedVersion >= 2u) {
+                program.registerCount = node.value("registerCount", 0u);
+                program.surfaceOutputRegister = node.value(
+                    "surfaceOutputRegister",
+                    kInvalidMaterialProgramRegister);
+                const auto instructions = node.find("instructions");
+                if (instructions == node.end() || !instructions->is_array()) {
+                    outError = "compiled MaterialProgram v2 instructions must be an array";
+                    return false;
+                }
+                for (const nlohmann::json& item : *instructions) {
+                    MaterialProgramInstruction instruction{};
+                    const uint32_t opcode = item.value(
+                        "opcode",
+                        (std::numeric_limits<uint32_t>::max)());
+                    if (opcode > static_cast<uint32_t>(
+                            MaterialProgramOpcode::Outline) ||
+                        !TryParseMaterialValueType(
+                            item.value("valueType", std::string{}),
+                            instruction.valueType)) {
+                        outError = "compiled MaterialProgram contains an unknown instruction opcode or type";
+                        return false;
+                    }
+                    instruction.opcode =
+                        static_cast<MaterialProgramOpcode>(opcode);
+                    instruction.inputPins = item.value(
+                        "inputPins", std::vector<std::string>{});
+                    instruction.inputRegisters = item.value(
+                        "inputRegisters", std::vector<uint32_t>{});
+                    instruction.outputPins = item.value(
+                        "outputPins", std::vector<std::string>{});
+                    instruction.outputRegisters = item.value(
+                        "outputRegisters", std::vector<uint32_t>{});
+                    instruction.bindingIndex = item.value(
+                        "bindingIndex", kInvalidMaterialProgramRegister);
+                    if (!ReadMaterialValueJson(
+                            item.value("immediate", nlohmann::json{}),
+                            instruction.immediate,
+                            outError)) {
+                        return false;
+                    }
+                    instruction.assetReference.value = item.value(
+                        "assetReference", std::string{});
+                    instruction.sourceNodeId = item.value(
+                        "sourceNodeId", std::string{});
+                    if (const auto properties = item.find("properties");
+                        properties != item.end()) {
+                        if (!properties->is_array()) {
+                            outError = "compiled MaterialProgram instruction properties must be an array";
+                            return false;
+                        }
+                        for (const nlohmann::json& propertyNode : *properties) {
+                            MaterialNodePropertyData property{};
+                            property.id = propertyNode.value("id", std::string{});
+                            if (!ReadMaterialValueJson(
+                                    propertyNode.value("value", nlohmann::json{}),
+                                    property.value,
+                                    outError)) {
+                                return false;
+                            }
+                            instruction.properties.push_back(std::move(property));
+                        }
+                    }
+                    program.instructions.push_back(std::move(instruction));
+                }
+            } else {
+                UpgradeLegacyProgramInstructions(program);
             }
             if (const auto dependencies = node.find("dependencyGuids");
                 dependencies != node.end()) {

@@ -1,6 +1,7 @@
 #define HIKARI_MATERIAL_TEXTURE_POOL_SAMPLING 1
 #include "Include/HIKARI_MeshMaterialData.hlsli"
 #include "Include/Material/HIKARI_MaterialProgramData.hlsli"
+#include "Include/HIKARI_SurfaceGpuScene.hlsli"
 
 struct PSInput
 {
@@ -8,6 +9,7 @@ struct PSInput
     float2 uv : TEXCOORD0;
     float2 uv1 : TEXCOORD10;
     nointerpolation uint materialDataIndex : TEXCOORD2;
+    nointerpolation uint surfaceGpuSceneIndex : TEXCOORD5;
 };
 
 static const uint MATERIAL_ALPHA_MASK = 1u << 1u;
@@ -17,8 +19,20 @@ float4 main(PSInput input) : SV_TARGET
 {
     const HikariMeshMaterialData materialData =
         HikariGetMeshMaterialData(input.materialDataIndex);
-    if ((materialData.instanceFlags &
-         HIKARI_PROGRAM_FLAG_FEATURE_GEOMETRY_OUTLINE) == 0u)
+    uint surfaceMaterialProgramFlags = 0u;
+    if (gUseSurfaceGpuScene != 0u)
+    {
+        surfaceMaterialProgramFlags =
+            HikariGetSurfaceGpuSceneInstanceAt(
+                input.surfaceGpuSceneIndex).materialProgramFlags;
+    }
+    const bool authoredOutline =
+        (materialData.instanceFlags &
+         HIKARI_PROGRAM_FLAG_FEATURE_GEOMETRY_OUTLINE) != 0u;
+    const bool editorSelection =
+        (surfaceMaterialProgramFlags &
+         HIKARI_PROGRAM_FLAG_EDITOR_SELECTION_OUTLINE) != 0u;
+    if (!authoredOutline && !editorSelection)
     {
         discard;
     }
@@ -43,9 +57,11 @@ float4 main(PSInput input) : SV_TARGET
             discard;
         }
     }
-    const float4 outline = HikariLoadMaterialProgramParameter(
-        materialData,
-        19u,
-        float4(0.025f, 0.030f, 0.045f, 1.25f));
+    const float4 outline = editorSelection
+        ? float4(0.08f, 0.82f, 1.0f, 2.4f)
+        : HikariLoadMaterialProgramParameter(
+            materialData,
+            19u,
+            float4(0.025f, 0.030f, 0.045f, 1.25f));
     return float4(max(outline.rgb, 0.0f.xxx), 1.0f);
 }

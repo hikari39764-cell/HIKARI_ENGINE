@@ -33,4 +33,14 @@ namespace HIKARI {
         const MaterialGraphValidationOptions& options,
         std::vector<MaterialGraphDiagnostic>& outDiagnostics);
 
+    // Validates one editor connection independently from unrelated compile
+    // errors in the graph. Existing input ownership is treated as replaceable.
+    bool CanConnectMaterialGraphPins(
+        const MaterialGraphData& graph,
+        std::string_view sourceNodeId,
+        std::string_view sourcePin,
+        std::string_view targetNodeId,
+        std::string_view targetPin,
+        std::string& outReason);
+
 } // namespace HIKARI

@@ -15,6 +15,20 @@ namespace HIKARI::ASSETS::MATERIAL {
         std::string_view description{};
     };
 
+    enum class MaterialRampPresetId : uint8_t {
+        ToonHard,
+        ToonSoft,
+        SkinWarm,
+        CoolShadow,
+    };
+
+    struct MaterialRampPresetInfo {
+        MaterialRampPresetId id = MaterialRampPresetId::ToonSoft;
+        std::string_view displayName{};
+        std::string_view fileStem{};
+        std::string_view description{};
+    };
+
     struct CharacterMaterialSetEntry {
         std::string roleId{};
         std::string displayName{};
@@ -30,6 +44,13 @@ namespace HIKARI::ASSETS::MATERIAL {
 
     const std::array<MaterialTemplateInfo, 8u>&
         GetBuiltInMaterialTemplates() noexcept;
+
+    const std::array<MaterialRampPresetInfo, 4u>&
+        GetBuiltInMaterialRampPresets() noexcept;
+
+    MaterialAssetData CreateMaterialRampFromPreset(
+        MaterialRampPresetId presetId,
+        std::string_view displayName = {});
 
     bool IsBuiltInMaterialTemplate(
         MaterialTemplateId templateId) noexcept;

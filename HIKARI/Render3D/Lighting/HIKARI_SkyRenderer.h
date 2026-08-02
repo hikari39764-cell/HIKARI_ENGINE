@@ -24,8 +24,13 @@ namespace HIKARI::SKYRENDERER {
         RENDER3D::TextureResourceHandle textureResource{};
         int cubemapHandle = -1;
         int textureHandle = -1;
+        uint32_t constantFrameSlot = 0;
+        uint32_t constantDrawSlot = 0;
+        uint32_t constantDrawCountThisFrame = 0;
+        uint32_t constantCapacityPerFrame = 0;
         size_t psoCreateCount = 0;
         size_t drawCount = 0;
+        size_t constantOverflowCount = 0;
         std::string activeSkyAsset{};
         std::string activeTexturePath{};
     };

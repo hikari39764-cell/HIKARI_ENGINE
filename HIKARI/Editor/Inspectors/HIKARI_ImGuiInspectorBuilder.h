@@ -10,6 +10,9 @@ namespace HIKARI {
         const InspectorContext& GetContext() const noexcept override;
 
         void Text(std::string_view text) override;
+        bool Section(
+            std::string_view label,
+            bool defaultOpen = false) override;
         bool Button(std::string_view label) override;
         bool Bool(std::string_view label, bool& value) override;
         bool Int(std::string_view label, int& value) override;

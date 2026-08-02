@@ -12,7 +12,9 @@ namespace HIKARI::EDITOR {
         switch (type) {
         case AssetType::Texture: return EditorGlyph::Texture;
         case AssetType::Model: return EditorGlyph::Model;
-        case AssetType::Material: return EditorGlyph::Material;
+        case AssetType::Material:
+        case AssetType::ModelMaterialBinding:
+            return EditorGlyph::Material;
         case AssetType::Scene: return EditorGlyph::Scene;
         case AssetType::Sky: return EditorGlyph::Sky;
         case AssetType::Animation: return EditorGlyph::Animation;
@@ -33,7 +35,9 @@ namespace HIKARI::EDITOR {
         switch (type) {
         case AssetType::Texture: return ImVec4(0.32f, 0.76f, 0.92f, 1.0f);
         case AssetType::Model: return ImVec4(0.68f, 0.60f, 0.95f, 1.0f);
-        case AssetType::Material: return ImVec4(0.94f, 0.70f, 0.34f, 1.0f);
+        case AssetType::Material:
+        case AssetType::ModelMaterialBinding:
+            return ImVec4(0.94f, 0.70f, 0.34f, 1.0f);
         case AssetType::Scene: return ImVec4(0.42f, 0.82f, 0.56f, 1.0f);
         case AssetType::Sky: return ImVec4(0.40f, 0.82f, 0.88f, 1.0f);
         case AssetType::Animation: return ImVec4(0.94f, 0.56f, 0.72f, 1.0f);

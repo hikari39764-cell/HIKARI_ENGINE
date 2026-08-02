@@ -34,6 +34,7 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
 
     struct EditorInteractiveStylizedPreparation {
         FEATURES::RenderFeatureRequestSet requests{};
+        bool featureMaskBackendReady = false;
         bool geometryOutlineBackendReady = false;
         bool visibilityOverlayBackendReady = false;
         bool writeFeatureMask = false;

@@ -71,6 +71,11 @@ namespace HIKARI::RENDER3D::MATERIAL {
         const MaterialProgramRegistryStats& GetStats() const noexcept;
 
     private:
+        struct LastGoodSourceProgram {
+            MaterialProgramId residentId{};
+            MaterialProgramIR effectiveProgram{};
+        };
+
         struct InternResult {
             MaterialProgramId id{};
             bool created = false;
@@ -91,7 +96,12 @@ namespace HIKARI::RENDER3D::MATERIAL {
             MaterialProgramKey,
             MaterialProgramId,
             MaterialProgramKeyHasher> programByKey_{};
-        std::unordered_map<std::string, MaterialProgramId> lastGoodBySource_{};
+        // Structural programs may share one resident ID, but authored values
+        // and resource GUIDs are source-versioned. Keep the complete last-good
+        // IR per source so a failed edit never jumps back to the first values
+        // that happened to intern the shared layout.
+        std::unordered_map<std::string, LastGoodSourceProgram>
+            lastGoodBySource_{};
         std::unordered_map<
             std::string,
             std::vector<MaterialCompileDiagnostic>> diagnosticsBySource_{};

@@ -44,6 +44,9 @@
 namespace HIKARI::EDITOR::ASSET_BROWSER {
 
 const char *ToAssetTypeText(AssetType type) {
+  if (type == AssetType::ModelMaterialBinding) {
+    return "Material Set";
+  }
   return ASSETS::SEMANTICS::ToString(type).data();
 }
 

@@ -3,6 +3,7 @@
 #include <optional>
 
 #include "Editor/Authoring/HIKARI_SceneObjectAuthoringTypes.h"
+#include "Editor/Assets/Models/HIKARI_ModelMaterialSlotCatalog.h"
 #include "Editor/HIKARI_ComponentDocumentEditor.h"
 #include "Editor/HIKARI_DocumentComponentAuthoringService.h"
 #include "Editor/Inspectors/HIKARI_ImGuiInspectorBuilder.h"
@@ -37,6 +38,7 @@ namespace HIKARI {
         ComponentDocumentEditor componentDocumentEditor_{};
         DocumentComponentAuthoringService componentAuthoringService_{};
         ImGuiInspectorBuilder componentInspectorBuilder_{};
+        EDITOR::ModelMaterialSlotCatalog modelMaterialSlotCatalog_{};
         std::optional<DeferredRuntimeComponentApply>
             deferredRuntimeComponentApply_{};
         std::optional<PendingComponentHistory>

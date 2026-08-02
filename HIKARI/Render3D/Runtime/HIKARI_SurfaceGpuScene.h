@@ -125,6 +125,7 @@ namespace HIKARI::RENDER3D::RUNTIME {
         MATH::Mat4 world{};
         MATH::Mat4 normalMatrix{};
         bool receiveShadow = true;
+        uint32_t materialProgramFlags = 0u;
         uint32_t postGroupMask = 0u;
 
         uint32_t fxFlags = 0;

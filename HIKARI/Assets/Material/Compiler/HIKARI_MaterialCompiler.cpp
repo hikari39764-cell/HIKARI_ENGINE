@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "Assets/Material/Compiler/Internal/HIKARI_MaterialCompilerValidation.h"
+#include "Assets/Material/Compiler/Internal/HIKARI_MaterialProgramLowering.h"
 #include "Assets/Material/HIKARI_MaterialDependencies.h"
 #include "Assets/Material/Serialization/HIKARI_MaterialSourceJson.h"
 
@@ -49,48 +50,6 @@ namespace HIKARI {
             uint64_t& mask,
             MaterialProgramCapability capability) noexcept {
             mask |= MaterialCapabilityBit(capability);
-        }
-
-        void AddTemplateCapabilities(
-            MaterialTemplateId templateId,
-            uint64_t& capabilities) noexcept {
-
-            switch (templateId) {
-            case MaterialTemplateId::StandardPbr:
-                AddCapability(capabilities, MaterialProgramCapability::StandardPbr);
-                break;
-            case MaterialTemplateId::GenericToon:
-                AddCapability(capabilities, MaterialProgramCapability::RampDiffuse);
-                AddCapability(capabilities, MaterialProgramCapability::SpecularBand);
-                break;
-            case MaterialTemplateId::Skin:
-                AddCapability(capabilities, MaterialProgramCapability::RampDiffuse);
-                AddCapability(capabilities, MaterialProgramCapability::FresnelRim);
-                break;
-            case MaterialTemplateId::Face:
-                AddCapability(capabilities, MaterialProgramCapability::RampDiffuse);
-                AddCapability(capabilities, MaterialProgramCapability::FaceSdf);
-                break;
-            case MaterialTemplateId::Hair:
-                AddCapability(capabilities, MaterialProgramCapability::RampDiffuse);
-                AddCapability(capabilities, MaterialProgramCapability::AnisotropicHair);
-                break;
-            case MaterialTemplateId::Eye:
-                AddCapability(capabilities, MaterialProgramCapability::EyeLighting);
-                break;
-            case MaterialTemplateId::Cloth:
-                AddCapability(capabilities, MaterialProgramCapability::RampDiffuse);
-                AddCapability(capabilities, MaterialProgramCapability::FresnelRim);
-                break;
-            case MaterialTemplateId::HybridMetal:
-                AddCapability(capabilities, MaterialProgramCapability::StandardPbr);
-                AddCapability(capabilities, MaterialProgramCapability::RampDiffuse);
-                AddCapability(capabilities, MaterialProgramCapability::SpecularBand);
-                AddCapability(capabilities, MaterialProgramCapability::FresnelRim);
-                break;
-            case MaterialTemplateId::Custom:
-                break;
-            }
         }
 
         std::unordered_set<std::string> CollectReachableNodeIds(
@@ -154,12 +113,59 @@ namespace HIKARI {
                 case MaterialNodeKind::EyeLighting:
                     AddCapability(capabilities, MaterialProgramCapability::EyeLighting);
                     break;
+                case MaterialNodeKind::SkinLighting:
+                    AddCapability(capabilities, MaterialProgramCapability::SkinLighting);
+                    break;
+                case MaterialNodeKind::FabricSheen:
+                    AddCapability(capabilities, MaterialProgramCapability::FabricSheen);
+                    break;
+                case MaterialNodeKind::HybridLighting:
+                    AddCapability(capabilities, MaterialProgramCapability::HybridLighting);
+                    break;
+                case MaterialNodeKind::Outline:
+                    AddCapability(capabilities, MaterialProgramCapability::Outline);
+                    break;
                 case MaterialNodeKind::FunctionCall:
                     AddCapability(capabilities, MaterialProgramCapability::FunctionCalls);
                     break;
                 default:
                     break;
                 }
+            }
+        }
+
+        void AddReachableOutlineFeatureRequests(
+            const MaterialGraphData& graph,
+            std::vector<MaterialFeatureRequest>& requests) {
+            const std::unordered_set<std::string> reachable =
+                CollectReachableNodeIds(graph);
+            const bool hasOutline = std::any_of(
+                graph.nodes.begin(), graph.nodes.end(),
+                [&reachable](const MaterialGraphNodeData& node) {
+                    return node.kind == MaterialNodeKind::Outline &&
+                        reachable.contains(node.id);
+                });
+            if (!hasOutline) {
+                return;
+            }
+            std::erase_if(requests, [](MaterialFeatureRequest request) {
+                return request == MaterialFeatureRequest::GeometryOutline ||
+                    request == MaterialFeatureRequest::ScreenOutline;
+            });
+            float mode = 1.0f;
+            const auto parameter = std::find_if(
+                graph.parameters.begin(), graph.parameters.end(),
+                [](const MaterialGraphParameterData& value) {
+                    return value.id == "parameter.outlineMode";
+                });
+            if (parameter != graph.parameters.end()) {
+                mode = parameter->defaultValue.numeric.x;
+            }
+            if (mode < 0.5f || mode >= 1.5f) {
+                requests.push_back(MaterialFeatureRequest::GeometryOutline);
+            }
+            if (mode >= 0.5f) {
+                requests.push_back(MaterialFeatureRequest::ScreenOutline);
             }
         }
 
@@ -186,6 +192,10 @@ namespace HIKARI {
                 << source.surface.doubleSided << ':'
                 << source.surface.unlit << ':'
                 << program.capabilities;
+            for (const MaterialFeatureRequest feature :
+                 program.featureRequests) {
+                stream << "|F:" << ToString(feature);
+            }
             if (const MaterialGraphData* graph = SelectGraph(source)) {
                 const std::unordered_set<std::string> reachable =
                     CollectReachableNodeIds(*graph);
@@ -283,6 +293,16 @@ namespace HIKARI {
             const MaterialGraphData* graph = SelectGraph(source);
             if (graph) {
                 AddNodeCapabilities(*graph, program.capabilities);
+                AddReachableOutlineFeatureRequests(
+                    *graph, program.featureRequests);
+                std::sort(program.featureRequests.begin(), program.featureRequests.end(),
+                    [](const auto left, const auto right) {
+                        return ToString(left) < ToString(right);
+                    });
+                program.featureRequests.erase(
+                    std::unique(program.featureRequests.begin(),
+                                program.featureRequests.end()),
+                    program.featureRequests.end());
                 auto parameters = graph->parameters;
                 auto resources = graph->resources;
                 std::sort(parameters.begin(), parameters.end(), [](const auto& left, const auto& right) {
@@ -316,8 +336,9 @@ namespace HIKARI {
                         resource.uvRotation,
                     });
                 }
+                MATERIAL_COMPILER_INTERNAL::BuildMaterialProgramInstructions(
+                    *graph, program);
             } else if (source.kind == MaterialAssetKind::Instance) {
-                AddTemplateCapabilities(program.templateId, program.capabilities);
                 AddCapability(program.capabilities, MaterialProgramCapability::MaterialInstance);
                 program.parentMaterialGuid = source.instance.parentMaterialGuid;
                 auto parameters = source.instance.parameterOverrides;
@@ -354,7 +375,6 @@ namespace HIKARI {
                     });
                 }
             } else if (source.kind == MaterialAssetKind::Profile) {
-                AddTemplateCapabilities(program.templateId, program.capabilities);
                 AddCapability(program.capabilities, MaterialProgramCapability::MaterialProfile);
                 program.featureRequests = source.profile.featureRequests;
                 std::sort(program.featureRequests.begin(), program.featureRequests.end(),

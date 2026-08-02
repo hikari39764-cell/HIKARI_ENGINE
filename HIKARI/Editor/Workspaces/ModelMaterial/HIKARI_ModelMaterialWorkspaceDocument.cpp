@@ -14,10 +14,12 @@ void ModelMaterialWorkspaceDocument::OpenBindings(
   bindingAssetGuid_ = assetGuid;
   bindingSourcePath_ = std::move(sourcePath);
   bindings_ = std::move(bindings);
+  savedBindings_ = bindings_;
   bindingsOpen_ = modelGuid_.IsValid();
   bindingStateToken_ = nextStateToken_++;
   savedBindingStateToken_ = saved ? bindingStateToken_ : 0u;
-  ClearHistory();
+  ClearHistory(ChangedDomain::Binding);
+  activeHistoryDomain_ = ChangedDomain::Binding;
 }
 
 void ModelMaterialWorkspaceDocument::OpenMaterial(
@@ -27,6 +29,7 @@ void ModelMaterialWorkspaceDocument::OpenMaterial(
   materialAssetGuid_ = assetGuid;
   materialSourcePath_ = std::move(sourcePath);
   material_ = std::move(source);
+  savedMaterial_ = material_;
   compile_ = compile;
   lastGoodProgram_.reset();
   if (lastGoodProgram != nullptr) {
@@ -40,13 +43,15 @@ void ModelMaterialWorkspaceDocument::OpenMaterial(
   abBefore_.reset();
   materialStateToken_ = nextStateToken_++;
   savedMaterialStateToken_ = saved ? materialStateToken_ : 0u;
-  ClearHistory();
+  ClearHistory(ChangedDomain::Material);
+  activeHistoryDomain_ = ChangedDomain::Material;
 }
 
 void ModelMaterialWorkspaceDocument::CloseMaterial() {
   materialAssetGuid_ = {};
   materialSourcePath_.clear();
   material_ = {};
+  savedMaterial_ = {};
   compile_ = {};
   lastGoodProgram_.reset();
   abBefore_.reset();
@@ -55,7 +60,10 @@ void ModelMaterialWorkspaceDocument::CloseMaterial() {
   compileRevision_ = 0u;
   materialStateToken_ = 0u;
   savedMaterialStateToken_ = 0u;
-  ClearHistory();
+  ClearHistory(ChangedDomain::Material);
+  activeHistoryDomain_ = bindingsOpen_
+      ? ChangedDomain::Binding
+      : ChangedDomain::None;
 }
 
 bool ModelMaterialWorkspaceDocument::HasBindings() const noexcept {
@@ -144,6 +152,7 @@ bool ModelMaterialWorkspaceDocument::CommitBindings(BindingMap before,
   entry.afterToken = nextStateToken_++;
   entry.label = std::move(label);
   bindingStateToken_ = entry.afterToken;
+  activeHistoryDomain_ = ChangedDomain::Binding;
   PushHistory(std::move(entry));
   return true;
 }
@@ -166,6 +175,7 @@ bool ModelMaterialWorkspaceDocument::CommitMaterial(MaterialAssetData before,
   entry.afterToken = nextStateToken_++;
   entry.label = std::move(label);
   materialStateToken_ = entry.afterToken;
+  activeHistoryDomain_ = ChangedDomain::Material;
   PushHistory(std::move(entry));
   ++materialRevision_;
   RefreshCompile();
@@ -183,11 +193,19 @@ void ModelMaterialWorkspaceDocument::RestoreMaterial(
 }
 
 bool ModelMaterialWorkspaceDocument::CanUndo() const noexcept {
-  return historyCursor_ > 0u && !abBefore_;
+  if (activeHistoryDomain_ == ChangedDomain::Binding) {
+    return bindingHistoryCursor_ > 0u;
+  }
+  return activeHistoryDomain_ == ChangedDomain::Material && !abBefore_ &&
+      materialHistoryCursor_ > 0u;
 }
 
 bool ModelMaterialWorkspaceDocument::CanRedo() const noexcept {
-  return historyCursor_ < history_.size() && !abBefore_;
+  if (activeHistoryDomain_ == ChangedDomain::Binding) {
+    return bindingHistoryCursor_ < bindingHistory_.size();
+  }
+  return activeHistoryDomain_ == ChangedDomain::Material && !abBefore_ &&
+      materialHistoryCursor_ < materialHistory_.size();
 }
 
 bool ModelMaterialWorkspaceDocument::Undo(ChangedDomain &outDomain,
@@ -195,7 +213,14 @@ bool ModelMaterialWorkspaceDocument::Undo(ChangedDomain &outDomain,
   if (!CanUndo()) {
     return false;
   }
-  HistoryEntry &entry = history_[--historyCursor_];
+  std::vector<HistoryEntry> &history =
+      activeHistoryDomain_ == ChangedDomain::Binding
+          ? bindingHistory_
+          : materialHistory_;
+  size_t &cursor = activeHistoryDomain_ == ChangedDomain::Binding
+      ? bindingHistoryCursor_
+      : materialHistoryCursor_;
+  HistoryEntry &entry = history[--cursor];
   outDomain = entry.domain;
   outLabel = entry.label;
   if (entry.domain == ChangedDomain::Binding) {
@@ -215,7 +240,14 @@ bool ModelMaterialWorkspaceDocument::Redo(ChangedDomain &outDomain,
   if (!CanRedo()) {
     return false;
   }
-  HistoryEntry &entry = history_[historyCursor_++];
+  std::vector<HistoryEntry> &history =
+      activeHistoryDomain_ == ChangedDomain::Binding
+          ? bindingHistory_
+          : materialHistory_;
+  size_t &cursor = activeHistoryDomain_ == ChangedDomain::Binding
+      ? bindingHistoryCursor_
+      : materialHistoryCursor_;
+  HistoryEntry &entry = history[cursor++];
   outDomain = entry.domain;
   outLabel = entry.label;
   if (entry.domain == ChangedDomain::Binding) {
@@ -232,12 +264,22 @@ bool ModelMaterialWorkspaceDocument::Redo(ChangedDomain &outDomain,
 
 const std::string *
 ModelMaterialWorkspaceDocument::GetUndoLabel() const noexcept {
-  return CanUndo() ? &history_[historyCursor_ - 1u].label : nullptr;
+  if (!CanUndo()) {
+    return nullptr;
+  }
+  return activeHistoryDomain_ == ChangedDomain::Binding
+      ? &bindingHistory_[bindingHistoryCursor_ - 1u].label
+      : &materialHistory_[materialHistoryCursor_ - 1u].label;
 }
 
 const std::string *
 ModelMaterialWorkspaceDocument::GetRedoLabel() const noexcept {
-  return CanRedo() ? &history_[historyCursor_].label : nullptr;
+  if (!CanRedo()) {
+    return nullptr;
+  }
+  return activeHistoryDomain_ == ChangedDomain::Binding
+      ? &bindingHistory_[bindingHistoryCursor_].label
+      : &materialHistory_[materialHistoryCursor_].label;
 }
 
 bool ModelMaterialWorkspaceDocument::IsBindingDirty() const noexcept {
@@ -248,11 +290,37 @@ bool ModelMaterialWorkspaceDocument::IsMaterialDirty() const noexcept {
   return materialOpen_ && materialStateToken_ != savedMaterialStateToken_;
 }
 
+bool ModelMaterialWorkspaceDocument::DiscardBindingChanges() noexcept {
+  if (!bindingsOpen_ || !IsBindingDirty()) {
+    return false;
+  }
+  bindings_ = savedBindings_;
+  bindingStateToken_ = savedBindingStateToken_;
+  ClearHistory(ChangedDomain::Binding);
+  activeHistoryDomain_ = ChangedDomain::Binding;
+  return true;
+}
+
+bool ModelMaterialWorkspaceDocument::DiscardMaterialChanges() {
+  if (!materialOpen_ || (!IsMaterialDirty() && !abBefore_)) {
+    return false;
+  }
+  material_ = savedMaterial_;
+  materialStateToken_ = savedMaterialStateToken_;
+  abBefore_.reset();
+  ClearHistory(ChangedDomain::Material);
+  activeHistoryDomain_ = ChangedDomain::Material;
+  ++materialRevision_;
+  RefreshCompile();
+  return true;
+}
+
 void ModelMaterialWorkspaceDocument::MarkBindingsSaved(
     const AssetGuid &assetGuid, std::filesystem::path sourcePath) noexcept {
   bindingAssetGuid_ = assetGuid;
   bindingSourcePath_ = std::move(sourcePath);
   savedBindingStateToken_ = bindingStateToken_;
+  savedBindings_ = bindings_;
 }
 
 void ModelMaterialWorkspaceDocument::MarkMaterialSaved(
@@ -260,6 +328,7 @@ void ModelMaterialWorkspaceDocument::MarkMaterialSaved(
   materialAssetGuid_ = assetGuid;
   materialSourcePath_ = std::move(sourcePath);
   savedMaterialStateToken_ = materialStateToken_;
+  savedMaterial_ = material_;
 }
 
 bool ModelMaterialWorkspaceDocument::BeginAbPreview(
@@ -337,23 +406,35 @@ bool ModelMaterialWorkspaceDocument::AreMaterialsEquivalent(
          leftText == rightText;
 }
 
-void ModelMaterialWorkspaceDocument::TruncateRedo() {
-  if (historyCursor_ < history_.size()) {
-    history_.erase(history_.begin() +
-                       static_cast<std::ptrdiff_t>(historyCursor_),
-                   history_.end());
+void ModelMaterialWorkspaceDocument::TruncateRedo(ChangedDomain domain) {
+  std::vector<HistoryEntry> &history = domain == ChangedDomain::Binding
+      ? bindingHistory_
+      : materialHistory_;
+  size_t &cursor = domain == ChangedDomain::Binding
+      ? bindingHistoryCursor_
+      : materialHistoryCursor_;
+  if (cursor < history.size()) {
+    history.erase(history.begin() + static_cast<std::ptrdiff_t>(cursor),
+                  history.end());
   }
 }
 
 void ModelMaterialWorkspaceDocument::PushHistory(HistoryEntry entry) {
-  TruncateRedo();
-  history_.push_back(std::move(entry));
-  historyCursor_ = history_.size();
-  if (history_.size() <= kMaximumHistoryEntries) {
+  const ChangedDomain domain = entry.domain;
+  TruncateRedo(domain);
+  std::vector<HistoryEntry> &history = domain == ChangedDomain::Binding
+      ? bindingHistory_
+      : materialHistory_;
+  size_t &cursor = domain == ChangedDomain::Binding
+      ? bindingHistoryCursor_
+      : materialHistoryCursor_;
+  history.push_back(std::move(entry));
+  cursor = history.size();
+  if (history.size() <= kMaximumHistoryEntries) {
     return;
   }
-  history_.erase(history_.begin());
-  --historyCursor_;
+  history.erase(history.begin());
+  --cursor;
 }
 
 void ModelMaterialWorkspaceDocument::RefreshCompile() {
@@ -364,9 +445,15 @@ void ModelMaterialWorkspaceDocument::RefreshCompile() {
   compileRevision_ = materialRevision_;
 }
 
-void ModelMaterialWorkspaceDocument::ClearHistory() noexcept {
-  history_.clear();
-  historyCursor_ = 0u;
+void ModelMaterialWorkspaceDocument::ClearHistory(
+    ChangedDomain domain) noexcept {
+  if (domain == ChangedDomain::Binding) {
+    bindingHistory_.clear();
+    bindingHistoryCursor_ = 0u;
+    return;
+  }
+  materialHistory_.clear();
+  materialHistoryCursor_ = 0u;
 }
 
 } // namespace HIKARI::EDITOR

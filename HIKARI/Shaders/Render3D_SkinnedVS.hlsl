@@ -82,6 +82,8 @@ struct VSOutput
     nointerpolation uint objectDataIndex : TEXCOORD4;
     nointerpolation uint surfaceGpuSceneIndex : TEXCOORD5;
     nointerpolation uint debugSurfaceId : TEXCOORD6;
+    float3 characterRightWS : TEXCOORD8;
+    float3 characterForwardWS : TEXCOORD9;
 };
 
 float4x4 ResolveJointMatrix(uint jointIndex)
@@ -111,11 +113,23 @@ VSOutput main(VSInput input)
         mul((float3x3)ResolveJointMatrix(input.joints.z), input.tangent.xyz) * input.weights.z +
         mul((float3x3)ResolveJointMatrix(input.joints.w), input.tangent.xyz) * input.weights.w;
 
+    float3 localCharacterRight =
+        mul((float3x3)ResolveJointMatrix(input.joints.x), float3(1.0f, 0.0f, 0.0f)) * input.weights.x +
+        mul((float3x3)ResolveJointMatrix(input.joints.y), float3(1.0f, 0.0f, 0.0f)) * input.weights.y +
+        mul((float3x3)ResolveJointMatrix(input.joints.z), float3(1.0f, 0.0f, 0.0f)) * input.weights.z +
+        mul((float3x3)ResolveJointMatrix(input.joints.w), float3(1.0f, 0.0f, 0.0f)) * input.weights.w;
+    float3 localCharacterForward =
+        mul((float3x3)ResolveJointMatrix(input.joints.x), float3(0.0f, 0.0f, 1.0f)) * input.weights.x +
+        mul((float3x3)ResolveJointMatrix(input.joints.y), float3(0.0f, 0.0f, 1.0f)) * input.weights.y +
+        mul((float3x3)ResolveJointMatrix(input.joints.z), float3(0.0f, 0.0f, 1.0f)) * input.weights.z +
+        mul((float3x3)ResolveJointMatrix(input.joints.w), float3(0.0f, 0.0f, 1.0f)) * input.weights.w;
+
     float4x4 world = gWorld;
     float4x4 normalMatrix = gNormalMatrix;
     uint materialDataIndex = gMaterialDataIndex;
     uint receiveShadow = gReceiveShadow;
     uint surfaceGpuSceneIndex = 0u;
+    uint surfaceMaterialProgramFlags = 0u;
     uint debugSurfaceId = 0u;
     uint debugDrawBucket = 0u;
     if (gUseSurfaceGpuScene != 0u)
@@ -126,6 +140,7 @@ VSOutput main(VSInput input)
         world = instance.world;
         normalMatrix = instance.normalMatrix;
         materialDataIndex = instance.materialDataIndex;
+        surfaceMaterialProgramFlags = instance.materialProgramFlags;
         receiveShadow =
             (instance.flags & HIKARI_SURFACE_GPU_SCENE_FLAG_RECEIVE_SHADOW) != 0u
                 ? 1u
@@ -141,7 +156,8 @@ VSOutput main(VSInput input)
     output.position = HikariExpandGeometryOutlineVertex(
         worldPos,
         output.normalWS,
-        materialDataIndex);
+        materialDataIndex,
+        surfaceMaterialProgramFlags);
 #else
     output.position = mul(gViewProj, worldPos);
 #endif
@@ -154,5 +170,15 @@ VSOutput main(VSInput input)
     output.objectDataIndex = 0u;
     output.surfaceGpuSceneIndex = surfaceGpuSceneIndex;
     output.debugSurfaceId = debugSurfaceId;
+    output.characterRightWS = normalize(
+        mul((float3x3)normalMatrix,
+            dot(localCharacterRight, localCharacterRight) > 1.0e-6f
+                ? localCharacterRight
+                : float3(1.0f, 0.0f, 0.0f)));
+    output.characterForwardWS = normalize(
+        mul((float3x3)normalMatrix,
+            dot(localCharacterForward, localCharacterForward) > 1.0e-6f
+                ? localCharacterForward
+                : float3(0.0f, 0.0f, 1.0f)));
     return output;
 }

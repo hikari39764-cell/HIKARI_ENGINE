@@ -25,7 +25,9 @@ void HikariApplyGpuDrivenSkinning(
     uint vertexIndex,
     inout float3 localPosition,
     inout float3 localNormal,
-    inout float3 localTangent)
+    inout float3 localTangent,
+    inout float3 localCharacterRight,
+    inout float3 localCharacterForward)
 {
     if ((instance.flags & HIKARI_SURFACE_GPU_SCENE_FLAG_SKINNED) == 0u ||
         instance.jointPaletteMatrixCount == 0u)
@@ -46,6 +48,8 @@ void HikariApplyGpuDrivenSkinning(
     float4 position = 0.0f;
     float3 normal = 0.0f;
     float3 tangent = 0.0f;
+    float3 characterRight = 0.0f;
+    float3 characterForward = 0.0f;
     float appliedWeight = 0.0f;
 
     [unroll]
@@ -63,6 +67,10 @@ void HikariApplyGpuDrivenSkinning(
         position += mul(jointMatrix, float4(localPosition, 1.0f)) * weight;
         normal += mul((float3x3)jointMatrix, localNormal) * weight;
         tangent += mul((float3x3)jointMatrix, localTangent) * weight;
+        characterRight +=
+            mul((float3x3)jointMatrix, localCharacterRight) * weight;
+        characterForward +=
+            mul((float3x3)jointMatrix, localCharacterForward) * weight;
         appliedWeight += weight;
     }
 
@@ -71,7 +79,35 @@ void HikariApplyGpuDrivenSkinning(
         localPosition = position.xyz / appliedWeight;
         localNormal = HikariNormalizeOrDefault(normal, localNormal);
         localTangent = HikariNormalizeOrDefault(tangent, localTangent);
+        localCharacterRight = HikariNormalizeOrDefault(
+            characterRight, localCharacterRight);
+        localCharacterForward = HikariNormalizeOrDefault(
+            characterForward, localCharacterForward);
     }
+}
+
+// Passes that do not consume a character shading basis still share the exact
+// same deformation function. Keep their compact call surface while forwarding
+// to the basis-aware path used by the forward material pass.
+void HikariApplyGpuDrivenSkinning(
+    ByteAddressBuffer geometry,
+    HikariSurfaceGpuSceneInstance instance,
+    uint vertexIndex,
+    inout float3 localPosition,
+    inout float3 localNormal,
+    inout float3 localTangent)
+{
+    float3 localCharacterRight = float3(1.0f, 0.0f, 0.0f);
+    float3 localCharacterForward = float3(0.0f, 0.0f, 1.0f);
+    HikariApplyGpuDrivenSkinning(
+        geometry,
+        instance,
+        vertexIndex,
+        localPosition,
+        localNormal,
+        localTangent,
+        localCharacterRight,
+        localCharacterForward);
 }
 
 #endif

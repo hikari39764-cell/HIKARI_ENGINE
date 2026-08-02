@@ -313,6 +313,18 @@ namespace HIKARI {
         return GetTextureSlot(usage).IsActive();
     }
 
+    void Material::SetInheritModelTextures(bool inherit) {
+        if (inheritModelTextures_ == inherit) {
+            return;
+        }
+        inheritModelTextures_ = inherit;
+        ++revision_;
+    }
+
+    bool Material::InheritsModelTextures() const {
+        return inheritModelTextures_;
+    }
+
     void Material::SetMetallicFactor(float value) {
         const float next = std::clamp(value, 0.0f, 1.0f);
         if (metallicFactor_ == next) {

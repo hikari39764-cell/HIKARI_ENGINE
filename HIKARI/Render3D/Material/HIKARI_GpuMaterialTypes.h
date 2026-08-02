@@ -51,6 +51,10 @@ namespace HIKARI::RENDER3D::MATERIAL {
         inline constexpr uint32_t RenderFeatureScreenOutline = 1u << 24u;
         inline constexpr uint32_t RenderFeatureVisibilityOverlay = 1u << 25u;
         inline constexpr uint32_t RenderFeatureFaceHairShadow = 1u << 26u;
+        // Editor-only transient preview flag. Never serialized by Material assets.
+        inline constexpr uint32_t EditorSelectionOutline = 1u << 27u;
+        inline constexpr uint32_t HairControlMap = 1u << 28u;
+        inline constexpr uint32_t EyeControlMap = 1u << 29u;
     }
 
     struct GpuMaterialProgramBinding {

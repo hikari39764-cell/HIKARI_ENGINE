@@ -300,6 +300,8 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
 
         const uint64_t layoutVersion = source.layoutVersion;
         const uint64_t sourceVersion = source.sourceVersion;
+        const uintptr_t sourceIdentity =
+            reinterpret_cast<uintptr_t>(frameSource_);
         const size_t sourceInstanceCount =
             sceneUploadStats_.sourceInstanceCount;
         if (!SceneSourceLayoutTilesInstanceBuffer(source, sourceInstanceCount)) {
@@ -314,6 +316,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         }
         const bool activeFrameResidentMatches =
             sceneBuffer_->CanReuseFrame(
+                sourceIdentity,
                 sourceInstanceCount,
                 layoutVersion,
                 sourceVersion);
@@ -321,6 +324,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             desc.allowDirtyRangePatching &&
             source.HasAnyDirtyGpuSceneRanges() &&
             sceneBuffer_->CanPatchFrame(
+                sourceIdentity,
                 sourceInstanceCount,
                 layoutVersion,
                 source.dirtyBaseSourceVersion);
@@ -356,7 +360,11 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                     },
                     desc.materialBindingVersion);
             }
-            sceneBuffer_->MarkResident(layoutVersion, sourceVersion, sourceInstanceCount);
+            sceneBuffer_->MarkResident(
+                sourceIdentity,
+                layoutVersion,
+                sourceVersion,
+                sourceInstanceCount);
             sceneBuffer_->CommitFrame(desc.commandList);
         }
 

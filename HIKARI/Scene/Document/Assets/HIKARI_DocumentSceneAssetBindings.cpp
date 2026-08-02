@@ -5,11 +5,14 @@
 
 #include <filesystem>
 #include <memory>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
 #include "Render2D/HIKARI_DxTexture.h"
 #include "Assets/HIKARI_AssetRegistryBuilder.h"
+#include "Assets/Material/Authoring/HIKARI_MaterialAssetAuthoringService.h"
+#include "Assets/Material/HIKARI_MaterialAssetData.h"
 #include "Assets/Models/HIKARI_ModelAsset.h"
 #include "Assets/Models/HIKARI_ModelMaterialSlot.h"
 #include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingResolver.h"
@@ -205,6 +208,10 @@ namespace HIKARI {
                 dependencies.materialAssetIds) ||
             HasMissingAssetDescriptors(
                 registry_,
+                AssetType::ModelMaterialBinding,
+                dependencies.modelMaterialSetAssetIds) ||
+            HasMissingAssetDescriptors(
+                registry_,
                 AssetType::Sky,
                 dependencies.skyAssetIds);
     }
@@ -280,10 +287,12 @@ namespace HIKARI {
                 const ModelAsset* modelAsset = modelComponent.GetModelAsset();
                 if (modelAsset != nullptr) {
                     const auto defaults =
-                        ASSETS::MODELS::ResolveDefaultModelMaterialBindings(
+                        ASSETS::MODELS::ResolveModelMaterialBindings(
                             registry_,
                             AssetGuid{modelComponent.GetAssetId()},
-                            modelAsset->materials);
+                            modelComponent.GetMaterialSetAssetGuid(),
+                            modelAsset->materials,
+                            !modelComponent.HasAuthoredMaterialSetSelection());
                     for (const std::string& diagnostic : defaults.diagnostics) {
                         HIKARI_LOG_WARN(
                             "[MaterialRuntime][ModelDefault] " + diagnostic);
@@ -299,6 +308,7 @@ namespace HIKARI {
                                 programRegistry,
                                 *runtimeMaterial,
                                 binding.materialDescriptor->id.value)) {
+                            runtimeMaterial->SetInheritModelTextures(true);
                             modelComponent.SetRuntimeMaterialOverride(
                                 binding.materialIndex,
                                 std::move(runtimeMaterial));
@@ -361,16 +371,81 @@ namespace HIKARI {
     int DocumentSceneAssetBindings::ApplyMaterialOverridePreview(
         DocumentSceneBase& scene,
         const AssetGuid& materialGuid,
-        const PbrMaterialAssetData& data) {
+        const MaterialAssetData& data) {
 
         if (!materialGuid.IsValid()) {
             return 0;
         }
 
+        MaterialAssetData effectiveData = data;
+        if (effectiveData.kind == MaterialAssetKind::Instance) {
+            ASSETS::MATERIAL::MaterialAssetAuthoringService service(database_);
+            const ASSETS::MATERIAL::MaterialInstanceResolveResult resolved =
+                service.ResolveInstance(effectiveData);
+            if (!resolved.success) {
+                HIKARI_LOG_WARN(
+                    "[MaterialRuntime][HotPreview] instance composition failed: " +
+                    materialGuid.value);
+                return 0;
+            }
+            effectiveData = resolved.resolvedMaterial;
+        }
+
         int rebuiltCount = 0;
         MaterialRuntimeBuilder materialBuilder{};
+        auto& programRegistry =
+            RENDER3D::MATERIAL::GetRuntimeMaterialProgramRegistry();
         scene.state_->runtime.world.ForEachObjectWith<ModelComponent>(
-            [this, &rebuiltCount, &materialBuilder, &materialGuid, &data](GameObject&, ModelComponent& modelComponent) {
+            [this, &rebuiltCount, &materialBuilder, &programRegistry,
+             &materialGuid, &effectiveData](GameObject&, ModelComponent& modelComponent) {
+                const auto applyPreview = [this, &rebuiltCount,
+                    &materialBuilder, &programRegistry, &materialGuid,
+                    &effectiveData,
+                    &modelComponent](uint32_t materialIndex,
+                                     bool inheritModelTextures) {
+                    auto runtimeMaterial = std::make_unique<Material>();
+                    if (materialBuilder.BuildRuntimeMaterial(
+                            effectiveData,
+                            registry_,
+                            programRegistry,
+                            *runtimeMaterial,
+                            materialGuid.value)) {
+                        runtimeMaterial->SetInheritModelTextures(
+                            inheritModelTextures);
+                        modelComponent.SetRuntimeMaterialOverride(
+                            materialIndex,
+                            std::move(runtimeMaterial));
+                        ++rebuiltCount;
+                    } else {
+                        modelComponent.ClearRuntimeMaterialOverride(
+                            materialIndex);
+                    }
+                };
+
+                struct EffectiveMaterialBinding {
+                    AssetGuid guid{};
+                    bool inheritModelTextures = false;
+                };
+                std::unordered_map<uint32_t, EffectiveMaterialBinding>
+                    effectiveMaterialByIndex{};
+                if (const ModelAsset* modelAsset =
+                        modelComponent.GetModelAsset()) {
+                    const auto materialSet =
+                        ASSETS::MODELS::ResolveModelMaterialBindings(
+                            registry_,
+                            AssetGuid{modelComponent.GetAssetId()},
+                            modelComponent.GetMaterialSetAssetGuid(),
+                            modelAsset->materials,
+                            !modelComponent.HasAuthoredMaterialSetSelection());
+                    for (const auto& binding : materialSet.bindings) {
+                        if (binding.materialAssetGuid.IsValid()) {
+                            effectiveMaterialByIndex[binding.materialIndex] =
+                                EffectiveMaterialBinding{
+                                    binding.materialAssetGuid, true};
+                        }
+                    }
+                }
+
                 for (const ModelMaterialOverrideSlot& slot : modelComponent.GetMaterialOverrides()) {
                     if (slot.materialAssetGuid != materialGuid) {
                         continue;
@@ -383,24 +458,33 @@ namespace HIKARI {
                         continue;
                     }
 
-                    auto runtimeMaterial = std::make_unique<Material>();
-                    if (materialBuilder.BuildRuntimeMaterial(
-                            data,
-                            registry_,
-                            *runtimeMaterial,
-                            materialGuid.value + "/preview")) {
-                        modelComponent.SetRuntimeMaterialOverride(
-                            resolution.materialIndex,
-                            std::move(runtimeMaterial));
-                        ++rebuiltCount;
-                    } else {
-                        modelComponent.ClearRuntimeMaterialOverride(
-                            resolution.materialIndex);
+                    effectiveMaterialByIndex[resolution.materialIndex] =
+                        EffectiveMaterialBinding{
+                            slot.materialAssetGuid, false};
+                }
+
+                for (const auto& [materialIndex, effectiveBinding] :
+                        effectiveMaterialByIndex) {
+                    if (effectiveBinding.guid == materialGuid) {
+                        applyPreview(
+                            materialIndex,
+                            effectiveBinding.inheritModelTextures);
                     }
                 }
             });
 
         return rebuiltCount;
+    }
+
+    int DocumentSceneAssetBindings::ApplyMaterialOverridePreview(
+        DocumentSceneBase& scene,
+        const AssetGuid& materialGuid,
+        const PbrMaterialAssetData& data) {
+
+        return ApplyMaterialOverridePreview(
+            scene,
+            materialGuid,
+            MakeStandardPbrMaterialAssetData(data));
     }
 
     bool DocumentSceneBase::ReloadAssets() {
@@ -429,6 +513,15 @@ namespace HIKARI {
         return state_->assets.RebuildMaterialOverridesForMaterial(
             *this,
             materialGuid);
+    }
+
+    int DocumentSceneBase::ApplyRuntimeMaterialOverridePreview(
+        const AssetGuid& materialGuid,
+        const MaterialAssetData& data) {
+        return state_->assets.ApplyMaterialOverridePreview(
+            *this,
+            materialGuid,
+            data);
     }
 
     int DocumentSceneBase::ApplyRuntimeMaterialOverridePreview(

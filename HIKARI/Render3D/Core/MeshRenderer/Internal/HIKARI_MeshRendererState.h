@@ -38,6 +38,7 @@ namespace HIKARI::MESHRENDERER {
             localLightClusterIndexBuffer{};
         Microsoft::WRL::ComPtr<ID3D12Resource> shadowCB{};
         Microsoft::WRL::ComPtr<ID3D12Resource> skyEnvironmentCB{};
+        Microsoft::WRL::ComPtr<ID3D12Resource> jointPaletteCB{};
         CameraCB* cameraMapped = nullptr;
         LightCB* lightMapped = nullptr;
         RENDER3D::LIGHTING::LocalLightGpuData*
@@ -48,6 +49,7 @@ namespace HIKARI::MESHRENDERER {
         RENDER3D::LIGHTING::LocalLightListView localLightListView{};
         ShadowCB* shadowMapped = nullptr;
         SkyEnvironmentCB* skyEnvironmentMapped = nullptr;
+        JointPaletteCB* jointPaletteMapped = nullptr;
 
         bool IsReady() const {
             return cameraCB != nullptr &&
@@ -57,13 +59,15 @@ namespace HIKARI::MESHRENDERER {
                 localLightClusterIndexBuffer != nullptr &&
                 shadowCB != nullptr &&
                 skyEnvironmentCB != nullptr &&
+                jointPaletteCB != nullptr &&
                 cameraMapped != nullptr &&
                 lightMapped != nullptr &&
                 localLightMapped != nullptr &&
                 localLightClusterHeaderMapped != nullptr &&
                 localLightClusterIndexMapped != nullptr &&
                 shadowMapped != nullptr &&
-                skyEnvironmentMapped != nullptr;
+                skyEnvironmentMapped != nullptr &&
+                jointPaletteMapped != nullptr;
         }
     };
 
@@ -72,8 +76,6 @@ namespace HIKARI::MESHRENDERER {
         std::array<
             EditorInteractiveMeshFrameResources,
             GFX::kFrameResourceCount> frames{};
-        RENDER3D::GPUDRIVEN::GpuTraditionalCommandStreamBuffer
-            traditionalCommandStreamBuffer{};
         std::array<
             RENDER3D::RenderResourceView,
             GFX::kFrameResourceCount> surfaceGpuSceneViews{};
@@ -90,6 +92,7 @@ namespace HIKARI::MESHRENDERER {
 
     struct MeshRendererState {
         bool initialized = false;
+        bool initializationFailed = false;
 
         MeshPipelineStore pipelines;
         MeshFrameResourceStore frameResources{};

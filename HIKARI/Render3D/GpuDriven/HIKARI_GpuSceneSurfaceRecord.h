@@ -99,6 +99,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
 
         const Material* materialOverride = nullptr;
         uint64_t materialOverrideRevision = 0;
+        bool editorSelectionOutline = false;
         std::string materialFxProfileId{};
         uint32_t postGroupMask = 0;
         DirectX::XMFLOAT4 materialFxParamValues[VFX::kMaterialFxUserCount]{};

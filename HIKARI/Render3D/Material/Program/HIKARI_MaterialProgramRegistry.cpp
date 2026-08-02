@@ -82,6 +82,90 @@ namespace HIKARI::RENDER3D::MATERIAL {
                     valid = false;
                 }
             }
+
+            constexpr uint32_t kMaxMaterialProgramRegisters = 2048u;
+            if (program.registerCount > kMaxMaterialProgramRegisters) {
+                diagnostics.push_back(MakeRegistryDiagnostic(
+                    MaterialCompileDiagnosticSeverity::Error,
+                    "Material.RuntimeRegisterLimitExceeded",
+                    "Material program exceeds the bounded SSA register limit."));
+                valid = false;
+            }
+            std::unordered_set<std::string> instructionNodeIds{};
+            std::unordered_set<uint32_t> producedRegisters{};
+            for (const MaterialProgramInstruction& instruction :
+                program.instructions) {
+                if (instruction.sourceNodeId.empty() ||
+                    !instructionNodeIds.insert(
+                        instruction.sourceNodeId).second ||
+                    instruction.inputPins.size() !=
+                        instruction.inputRegisters.size() ||
+                    instruction.outputPins.size() !=
+                        instruction.outputRegisters.size() ||
+                    static_cast<uint32_t>(instruction.opcode) >
+                        static_cast<uint32_t>(
+                            MaterialProgramOpcode::FunctionCall)) {
+                    diagnostics.push_back(MakeRegistryDiagnostic(
+                        MaterialCompileDiagnosticSeverity::Error,
+                        "Material.RuntimeInstructionShapeInvalid",
+                        "Material instructions require unique source nodes and matching typed pin/register arrays.",
+                        instruction.sourceNodeId));
+                    valid = false;
+                    continue;
+                }
+                for (const uint32_t input : instruction.inputRegisters) {
+                    if (input != kInvalidMaterialProgramRegister &&
+                        !producedRegisters.contains(input)) {
+                        diagnostics.push_back(MakeRegistryDiagnostic(
+                            MaterialCompileDiagnosticSeverity::Error,
+                            "Material.RuntimeInstructionOrderInvalid",
+                            "Material instruction reads a register before it is produced.",
+                            instruction.sourceNodeId));
+                        valid = false;
+                    }
+                }
+                for (const uint32_t output : instruction.outputRegisters) {
+                    if (output >= program.registerCount ||
+                        !producedRegisters.insert(output).second) {
+                        diagnostics.push_back(MakeRegistryDiagnostic(
+                            MaterialCompileDiagnosticSeverity::Error,
+                            "Material.RuntimeInstructionRegisterInvalid",
+                            "Material instruction output registers must be unique and in range.",
+                            instruction.sourceNodeId));
+                        valid = false;
+                    }
+                }
+                if (instruction.opcode == MaterialProgramOpcode::Parameter &&
+                    instruction.bindingIndex >= program.parameters.size()) {
+                    diagnostics.push_back(MakeRegistryDiagnostic(
+                        MaterialCompileDiagnosticSeverity::Error,
+                        "Material.RuntimeParameterInstructionInvalid",
+                        "Parameter instruction references an invalid parameter binding.",
+                        instruction.sourceNodeId));
+                    valid = false;
+                }
+                if (instruction.opcode == MaterialProgramOpcode::TextureSample &&
+                    instruction.bindingIndex >= program.resources.size()) {
+                    diagnostics.push_back(MakeRegistryDiagnostic(
+                        MaterialCompileDiagnosticSeverity::Error,
+                        "Material.RuntimeTextureInstructionInvalid",
+                        "TextureSample instruction references an invalid resource binding.",
+                        instruction.sourceNodeId));
+                    valid = false;
+                }
+            }
+            if (program.sourceKind == MaterialAssetKind::Material &&
+                (program.instructions.empty() ||
+                 program.surfaceOutputRegister ==
+                    kInvalidMaterialProgramRegister ||
+                 !producedRegisters.contains(
+                    program.surfaceOutputRegister))) {
+                diagnostics.push_back(MakeRegistryDiagnostic(
+                    MaterialCompileDiagnosticSeverity::Error,
+                    "Material.RuntimeSurfaceOutputInvalid",
+                    "Surface MaterialProgram requires a compiled SSA output register."));
+                valid = false;
+            }
             return valid;
         }
     }
@@ -111,11 +195,14 @@ namespace HIKARI::RENDER3D::MATERIAL {
     MaterialProgramResolution MaterialProgramRegistry::ResolveMaterialAsset(
         std::string_view sourceIdentity,
         const MaterialAssetData& source) {
-        const MaterialProgramId lastGoodId = FindLastGood(sourceIdentity);
-        const RuntimeMaterialProgram* lastGood = Find(lastGoodId);
+        const auto lastGood = sourceIdentity.empty()
+            ? lastGoodBySource_.end()
+            : lastGoodBySource_.find(std::string{ sourceIdentity });
         const MaterialCompileResult compileResult = CompileMaterialAsset(
             source,
-            lastGood != nullptr ? &lastGood->ir : nullptr);
+            lastGood != lastGoodBySource_.end()
+                ? &lastGood->second.effectiveProgram
+                : nullptr);
         return ResolveCompileResult(sourceIdentity, compileResult);
     }
 
@@ -125,18 +212,20 @@ namespace HIKARI::RENDER3D::MATERIAL {
         ++stats_.compileResolveCount;
         std::vector<MaterialCompileDiagnostic> diagnostics =
             compileResult.diagnostics;
-        const MaterialProgramId currentLastGood = FindLastGood(sourceIdentity);
+        const auto currentLastGood = sourceIdentity.empty()
+            ? lastGoodBySource_.end()
+            : lastGoodBySource_.find(std::string{ sourceIdentity });
 
-        if (compileResult.usedLastGood && currentLastGood) {
-            const RuntimeMaterialProgram* program = Find(currentLastGood);
-            if (program != nullptr) {
+        if (compileResult.usedLastGood &&
+            currentLastGood != lastGoodBySource_.end()) {
+            if (Find(currentLastGood->second.residentId) != nullptr) {
                 StoreDiagnostics(sourceIdentity, diagnostics);
                 ++stats_.lastGoodResolveCount;
                 RefreshStats();
                 return MaterialProgramResolution{
-                    currentLastGood,
+                    currentLastGood->second.residentId,
                     MaterialProgramResolutionKind::LastGood,
-                    program->ir,
+                    currentLastGood->second.effectiveProgram,
                     std::move(diagnostics)
                 };
             }
@@ -160,7 +249,11 @@ namespace HIKARI::RENDER3D::MATERIAL {
         }
 
         if (!sourceIdentity.empty()) {
-            lastGoodBySource_[std::string{ sourceIdentity }] = interned.id;
+            lastGoodBySource_[std::string{ sourceIdentity }] =
+                LastGoodSourceProgram{
+                    interned.id,
+                    compileResult.program
+                };
         }
         StoreDiagnostics(sourceIdentity, diagnostics);
         if (interned.created) {
@@ -199,7 +292,7 @@ namespace HIKARI::RENDER3D::MATERIAL {
         }
         const auto found = lastGoodBySource_.find(std::string{ sourceIdentity });
         return found != lastGoodBySource_.end()
-            ? found->second
+            ? found->second.residentId
             : kInvalidMaterialProgramId;
     }
 
@@ -246,16 +339,18 @@ namespace HIKARI::RENDER3D::MATERIAL {
     MaterialProgramResolution MaterialProgramRegistry::ResolveFailure(
         std::string_view sourceIdentity,
         std::vector<MaterialCompileDiagnostic> diagnostics) {
-        const MaterialProgramId lastGoodId = FindLastGood(sourceIdentity);
-        const RuntimeMaterialProgram* lastGood = Find(lastGoodId);
-        if (lastGood != nullptr) {
+        const auto lastGood = sourceIdentity.empty()
+            ? lastGoodBySource_.end()
+            : lastGoodBySource_.find(std::string{ sourceIdentity });
+        if (lastGood != lastGoodBySource_.end() &&
+            Find(lastGood->second.residentId) != nullptr) {
             StoreDiagnostics(sourceIdentity, diagnostics);
             ++stats_.lastGoodResolveCount;
             RefreshStats();
             return MaterialProgramResolution{
-                lastGoodId,
+                lastGood->second.residentId,
                 MaterialProgramResolutionKind::LastGood,
-                lastGood->ir,
+                lastGood->second.effectiveProgram,
                 std::move(diagnostics)
             };
         }
@@ -300,10 +395,6 @@ namespace HIKARI::RENDER3D::MATERIAL {
 
     MaterialProgramRegistry& GetRuntimeMaterialProgramRegistry() {
         return gRuntimeMaterialProgramRegistry;
-    }
-
-    void ResetRuntimeMaterialProgramRegistry() {
-        gRuntimeMaterialProgramRegistry.Reset();
     }
 
 } // namespace HIKARI::RENDER3D::MATERIAL

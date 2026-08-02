@@ -1,6 +1,8 @@
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <string>
 #include <utility>
 
 #include "Editor/Workspaces/HIKARI_EditorWorkspaceHost.h"
@@ -10,7 +12,8 @@
 namespace HIKARI::EDITOR {
 
 void ModelMaterialWorkspaceController::SaveActiveCameraState() {
-  if (modelGuid_.IsValid()) {
+  if (authoringMode_ == AuthoringMode::ModelMaterials &&
+      modelGuid_.IsValid()) {
     (void)cameraStateStore_.Save(EditorWorkspaceId::ModelMaterial, modelGuid_,
                                  cameraController_);
   }
@@ -27,7 +30,7 @@ void ModelMaterialWorkspaceController::ClosePreviewRequest(
 }
 
 void ModelMaterialWorkspaceController::FitPreviewCamera() {
-  const Bounds &bounds = previewScene_.GetBounds();
+  const Bounds &bounds = GetActivePreviewScene().GetBounds();
   if (!BOUNDS::IsUsable(bounds)) {
     return;
   }
@@ -51,10 +54,81 @@ void ModelMaterialWorkspaceController::FitPreviewCamera() {
 }
 
 void ModelMaterialWorkspaceController::ResetPreviewCamera() {
-  if (modelGuid_.IsValid()) {
+  if (authoringMode_ == AuthoringMode::ModelMaterials &&
+      modelGuid_.IsValid()) {
     cameraStateStore_.Erase(EditorWorkspaceId::ModelMaterial, modelGuid_);
   }
   FitPreviewCamera();
+}
+
+void ModelMaterialWorkspaceController::ResetPreviewKeyLight() {
+  if (previewLighting_.lights.empty()) {
+    return;
+  }
+
+  MATH::Vec3 center{};
+  float radius = 3.5f;
+  const Bounds &bounds = GetActivePreviewScene().GetBounds();
+  if (BOUNDS::IsUsable(bounds)) {
+    center = (bounds.min + bounds.max) * 0.5f;
+    radius = (std::max)(
+        MATH::Length(bounds.max - bounds.min) * 0.5f, 0.5f);
+  }
+
+  const size_t lightIndex =
+      selectedPreviewLightIndex_.has_value() &&
+              *selectedPreviewLightIndex_ < previewLighting_.lights.size()
+          ? *selectedPreviewLightIndex_
+          : 0u;
+  auto &key = previewLighting_.lights[lightIndex];
+  key.enabled = true;
+  key.position =
+      center + MATH::Vec3{radius * 0.8f, radius * 1.15f, -radius * 0.8f};
+  key.color = {1.0f, 0.93f, 0.82f};
+  if (key.type == RENDER3D::LIGHTING::SceneLightType::Directional) {
+    key.direction = MATH::Normalize(center - key.position);
+    key.intensity = 3.0f;
+  } else {
+    key.intensity = 18.0f;
+    key.range = (std::max)(radius * 4.0f, 14.0f);
+  }
+}
+
+void ModelMaterialWorkspaceController::AddPreviewLight(
+    RENDER3D::LIGHTING::SceneLightType type) {
+  previewLightRangeDragActive_ = false;
+  InitializePreviewLighting();
+  RENDER3D::LIGHTING::SceneLightProvider light{};
+  light.id = "ModelMaterialStudioInspect.Light." +
+             std::to_string(previewLightIdCounter_++);
+  light.name = type == RENDER3D::LIGHTING::SceneLightType::Directional
+                   ? "Directional Light"
+                   : "Point Light";
+  light.enabled = true;
+  light.type = type;
+  light.color = {1.0f, 0.96f, 0.90f};
+  light.priority = 100;
+  previewLighting_.lights.push_back(std::move(light));
+  selectedPreviewLightIndex_ = previewLighting_.lights.size() - 1u;
+  ResetPreviewKeyLight();
+  previewEnvironmentMode_ = PreviewEnvironmentMode::StudioInspect;
+}
+
+void ModelMaterialWorkspaceController::DeleteSelectedPreviewLight() {
+  previewLightRangeDragActive_ = false;
+  if (!selectedPreviewLightIndex_.has_value() ||
+      *selectedPreviewLightIndex_ >= previewLighting_.lights.size()) {
+    return;
+  }
+  previewLighting_.lights.erase(
+      previewLighting_.lights.begin() +
+      static_cast<std::ptrdiff_t>(*selectedPreviewLightIndex_));
+  if (previewLighting_.lights.empty()) {
+    selectedPreviewLightIndex_.reset();
+  } else {
+    selectedPreviewLightIndex_ = (std::min)(
+        *selectedPreviewLightIndex_, previewLighting_.lights.size() - 1u);
+  }
 }
 
 void ModelMaterialWorkspaceController::FocusSelectedSlot() {
@@ -109,12 +183,12 @@ void ModelMaterialWorkspaceController::InitializePreviewLighting() {
   previewEnvironment_.sky.exposure = 1.0f;
   previewEnvironment_.sky.reflectionIntensity = 1.0f;
   previewEnvironment_.screenSpaceReflections.enabled = false;
-  previewEnvironment_.surfaceLightmaps.enabled = true;
+  previewEnvironment_.surfaceLightmaps.enabled = false;
 
   previewLighting_ = {};
   RENDER3D::LIGHTING::SceneLightProvider key{};
-  key.id = "ModelMaterialPreview.Key";
-  key.name = "Movable Key";
+  key.id = "ModelMaterialStudioInspect.Key";
+  key.name = "Studio Movable Key";
   key.enabled = true;
   key.type = RENDER3D::LIGHTING::SceneLightType::Point;
   key.position = {2.5f, 3.5f, -2.5f};

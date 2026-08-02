@@ -10,6 +10,26 @@
 
 namespace HIKARI::EDITOR {
 
+void ModelMaterialWorkspaceController::RefreshSelectedSlotPresentation() {
+  if (!previewScene_.IsReady()) {
+    return;
+  }
+  // Selection is preview-session surface state. It must never replace or
+  // mutate the imported/authored material bound to a slot.
+  if (!selectedMaterialIndex_.has_value()) {
+    previewScene_.ClearEditorSelectionOutline();
+    return;
+  }
+  const SlotState *selected =
+      FindSlotByMaterialIndex(*selectedMaterialIndex_);
+  if (selected == nullptr) {
+    previewScene_.ClearEditorSelectionOutline();
+    return;
+  }
+  (void)previewScene_.SetEditorSelectionOutline(
+      selected->view.materialIndex);
+}
+
 std::shared_ptr<Material>
 ModelMaterialWorkspaceController::BuildPreviewMaterial(
     const AssetGuid &materialGuid, const AssetDatabase &assetDatabase,
@@ -36,6 +56,7 @@ ModelMaterialWorkspaceController::BuildPreviewMaterial(
     outMessage = "runtime material projection failed; imported fallback kept";
     return {};
   }
+  material->SetInheritModelTextures(true);
   return material;
 }
 
@@ -91,6 +112,7 @@ ModelMaterialWorkspaceController::ExecuteBindingCommand(
     }
     result.message = "restored imported model material; save bindings to persist";
     UpdatePublicSlotViews();
+    RefreshSelectedSlotPresentation();
     return result;
   }
 
@@ -134,6 +156,7 @@ ModelMaterialWorkspaceController::ExecuteBindingCommand(
   }
   result.message = "material binding changed; save bindings to persist";
   UpdatePublicSlotViews();
+  RefreshSelectedSlotPresentation();
   return result;
 }
 

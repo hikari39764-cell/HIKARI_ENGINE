@@ -46,12 +46,23 @@ struct VSOutput
     nointerpolation uint objectDataIndex : TEXCOORD4;
     nointerpolation uint surfaceGpuSceneIndex : TEXCOORD5;
     nointerpolation uint debugSurfaceId : TEXCOORD6;
+    float3 characterRightWS : TEXCOORD8;
+    float3 characterForwardWS : TEXCOORD9;
 };
 
 VSOutput main(VSInput input)
 {
     VSOutput output;
     uint objectDataIndex = HikariGetObjectDataAbsoluteIndex(gObjectDataIndex, input.instanceId);
+    uint surfaceGpuSceneIndex =
+        HikariGetSurfaceGpuSceneAbsoluteIndex(input.instanceId);
+    uint surfaceMaterialProgramFlags = 0u;
+    if (gUseSurfaceGpuScene != 0u)
+    {
+        surfaceMaterialProgramFlags =
+            HikariGetSurfaceGpuSceneInstanceAt(
+                surfaceGpuSceneIndex).materialProgramFlags;
+    }
     HikariMeshObjectData objectData =
         HikariGetMeshObjectDataForInstance(objectDataIndex, input.instanceId);
     float4 worldPos = mul(objectData.world, float4(input.position, 1.0f));
@@ -61,7 +72,8 @@ VSOutput main(VSInput input)
     output.position = HikariExpandGeometryOutlineVertex(
         worldPos,
         output.normalWS,
-        objectData.materialDataIndex);
+        objectData.materialDataIndex,
+        surfaceMaterialProgramFlags);
 #else
     output.position = mul(gViewProj, worldPos);
 #endif
@@ -72,7 +84,11 @@ VSOutput main(VSInput input)
     output.forwardMeta = HikariPackForwardVertexMeta(
         objectData.receiveShadow, 0u, 0u, 0u);
     output.objectDataIndex = objectDataIndex;
-    output.surfaceGpuSceneIndex = HikariGetSurfaceGpuSceneAbsoluteIndex(input.instanceId);
+    output.surfaceGpuSceneIndex = surfaceGpuSceneIndex;
     output.debugSurfaceId = 0u;
+    output.characterRightWS = normalize(
+        mul((float3x3)objectData.normalMatrix, float3(1.0f, 0.0f, 0.0f)));
+    output.characterForwardWS = normalize(
+        mul((float3x3)objectData.normalMatrix, float3(0.0f, 0.0f, 1.0f)));
     return output;
 }

@@ -42,6 +42,8 @@ class ModelPreviewScene {
 public:
   bool Load(const AssetRecord &record, const std::filesystem::path &projectRoot,
             std::string &outMessage);
+  bool LoadMaterialSphere(const std::filesystem::path &projectRoot,
+                          std::string &outMessage);
   void Clear();
 
   void SetRenderPolicy(const ModelPreviewRenderPolicy &policy);
@@ -53,6 +55,9 @@ public:
                                   const Material *material);
   bool ClearPreviewMaterialOverride(uint32_t materialIndex);
   void ClearPreviewMaterialOverrides();
+
+  bool SetEditorSelectionOutline(uint32_t materialIndex);
+  void ClearEditorSelectionOutline();
 
   bool IsReady() const noexcept;
   const AssetGuid &GetAssetGuid() const noexcept;
@@ -81,6 +86,8 @@ private:
   RENDER3D::GPUDRIVEN::GpuSceneRegistry gpuSceneRegistry_{};
   std::vector<RENDER3D::RUNTIME::SceneRenderMaterialOverride>
       materialOverrides_{};
+  uint32_t editorSelectionMaterialIndex_ =
+      RENDER3D::RUNTIME::kInvalidRenderSurfaceIndex;
   std::vector<ModelPreviewNode> sourceNodes_{};
   std::string clusteredGeometryPath_{};
   ModelPreviewRenderPolicy renderPolicy_{};

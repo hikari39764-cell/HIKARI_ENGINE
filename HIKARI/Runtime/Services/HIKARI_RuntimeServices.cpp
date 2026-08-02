@@ -19,6 +19,7 @@
 #include "Render2D/HIKARI_DxTexture.h"
 #include "Render3D/Lighting/HIKARI_VolumetricLightingStage.h"
 #include "Render3D/Material/HIKARI_DefaultPbrResources.h"
+#include "Render3D/Material/Program/HIKARI_MaterialProgramRegistry.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 #include "Render3D/Resources/HIKARI_ClusterGeometryResourceSystem.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
@@ -323,6 +324,8 @@ namespace HIKARI {
             HIKARI_LOG_INFO("PostSystem shutdown.");
             DX::DxRenderer::Finalize();
             HIKARI_LOG_INFO("DxRenderer finalized.");
+            RENDER3D::MATERIAL::ResetRuntimeMaterialProgramRegistry();
+            HIKARI_LOG_INFO("Runtime material programs finalized.");
             HIKARI::DefaultPbrResources::Shutdown();
             HIKARI_LOG_INFO("Default PBR resources finalized.");
             RENDER3D::TEMPORAL::ShutdownTaaResolvePass();

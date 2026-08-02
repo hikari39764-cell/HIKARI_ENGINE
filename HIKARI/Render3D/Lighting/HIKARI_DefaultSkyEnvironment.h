@@ -2,6 +2,8 @@
 
 #include <string>
 
+#include "Render3D/Lighting/HIKARI_IblEnvironment.h"
+
 namespace HIKARI {
     class SkyManager;
 }
@@ -18,7 +20,12 @@ namespace HIKARI::RENDER3D::LIGHTING {
         std::string message{};
     };
 
+    DefaultSkyEnvironmentResult EnsureDefaultSkyEnvironmentAvailable(
+        SkyManager& skyManager);
+
     DefaultSkyEnvironmentResult ActivateDefaultSkyEnvironment(
         SkyManager& skyManager);
+
+    const IBL::IblEnvironmentSource& GetDefaultSkyIblSource() noexcept;
 
 } // namespace HIKARI::RENDER3D::LIGHTING

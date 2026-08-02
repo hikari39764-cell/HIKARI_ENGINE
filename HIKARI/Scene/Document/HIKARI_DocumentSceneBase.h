@@ -42,6 +42,7 @@ namespace HIKARI {
         class RasterLightingTransportBackend;
     }
 
+    struct MaterialAssetData;
     struct PbrMaterialAssetData;
 
     class DocumentSceneBase : public IScene {
@@ -182,6 +183,9 @@ namespace HIKARI {
         int RebindModelComponents();
         int RebuildMaterialOverrides();
         int RebuildMaterialOverridesForMaterial(const AssetGuid& materialGuid);
+        int ApplyRuntimeMaterialOverridePreview(
+            const AssetGuid& materialGuid,
+            const MaterialAssetData& data);
         int ApplyRuntimeMaterialOverridePreview(
             const AssetGuid& materialGuid,
             const PbrMaterialAssetData& data);

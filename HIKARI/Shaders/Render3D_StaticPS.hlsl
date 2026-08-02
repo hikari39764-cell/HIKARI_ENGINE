@@ -22,6 +22,8 @@ struct PSInput
     nointerpolation uint objectDataIndex : TEXCOORD4;
     nointerpolation uint surfaceGpuSceneIndex : TEXCOORD5;
     nointerpolation uint debugSurfaceId : TEXCOORD6;
+    float3 characterRightWS : TEXCOORD8;
+    float3 characterForwardWS : TEXCOORD9;
 #if defined(HIKARI_FORWARD_MESHLET_SURFACE_FEATURES) && HIKARI_FORWARD_MESHLET_SURFACE_FEATURES
     nointerpolation uint surfaceFeatureFlags : TEXCOORD7;
 #endif
@@ -370,10 +372,6 @@ float4 main(PSInput input) : SV_TARGET
             surface.specularFactor = specularFactor;
             surface.emissive = emissive;
             surface.occlusion = occlusion;
-            const HikariMeshObjectData stylizedObjectData =
-                HikariGetMeshObjectDataForPixel(
-                    input.objectDataIndex,
-                    input.surfaceGpuSceneIndex);
             const HikariMaterialLightingResponse response =
                 HikariEvaluateStylizedMaterial(
                     materialData,
@@ -383,7 +381,8 @@ float4 main(PSInput input) : SV_TARGET
                     distanceToCamera,
                     input.position.xy,
                     input.tangentWS,
-                    stylizedObjectData.normalMatrix,
+                    input.characterRightWS,
+                    input.characterForwardWS,
                     input.uv,
                     l,
                     gDirectionalColor.rgb * gDirectionalIntensity,

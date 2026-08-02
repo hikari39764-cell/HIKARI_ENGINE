@@ -94,6 +94,22 @@ namespace HIKARI {
 #endif
     }
 
+    bool ImGuiInspectorBuilder::Section(
+        std::string_view label,
+        bool defaultOpen) {
+#if defined(HIKARI_WITH_EDITOR)
+        const ImGuiTreeNodeFlags flags = defaultOpen
+            ? ImGuiTreeNodeFlags_DefaultOpen
+            : ImGuiTreeNodeFlags_None;
+        const std::string labelText(label);
+        return ImGui::CollapsingHeader(labelText.c_str(), flags);
+#else
+        (void)label;
+        (void)defaultOpen;
+        return true;
+#endif
+    }
+
     bool ImGuiInspectorBuilder::Button(std::string_view label) {
 #if defined(HIKARI_WITH_EDITOR)
         return ImGui::Button(

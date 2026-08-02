@@ -278,8 +278,9 @@ namespace HIKARI::ASSETS::GEOMETRY::COOKING {
         int nodeSkinIndex) {
 
         const uint32_t flags = BuildSurfaceFlags(model, primitive, nodeSkinIndex);
-        return !primitive.hasMorphTargets &&
-            !RENDER3D::CLUSTER::HasFlag(flags, ClusterSurfaceFlags::Unsupported);
+        return !RENDER3D::CLUSTER::HasFlag(
+            flags,
+            ClusterSurfaceFlags::Unsupported);
     }
 
     void AccumulateSourcePrimitiveCounts(
@@ -717,8 +718,9 @@ namespace HIKARI::ASSETS::GEOMETRY::COOKING {
         outWork.preserveLightmapUvSeams =
             primitive.hasLightmapUv;
 
-        if (primitive.hasMorphTargets ||
-            RENDER3D::CLUSTER::HasFlag(outWork.flags, ClusterSurfaceFlags::Unsupported)) {
+        if (RENDER3D::CLUSTER::HasFlag(
+                outWork.flags,
+                ClusterSurfaceFlags::Unsupported)) {
             return false;
         }
 

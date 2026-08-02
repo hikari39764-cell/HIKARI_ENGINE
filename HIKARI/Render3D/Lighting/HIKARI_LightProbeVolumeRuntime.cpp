@@ -865,6 +865,7 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
 
     ScopedLightProbeVolumeSamplingSuppress::
         ScopedLightProbeVolumeSamplingSuppress() {
+        previousSelection_ = gViewSelection;
         ++gSamplingSuppressDepth;
     }
 
@@ -872,6 +873,7 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
         ~ScopedLightProbeVolumeSamplingSuppress() {
         gSamplingSuppressDepth =
             (std::max)(0, gSamplingSuppressDepth - 1);
+        gViewSelection = previousSelection_;
     }
 
     D3D12_GPU_DESCRIPTOR_HANDLE GetViewShVolumeSrvTable(

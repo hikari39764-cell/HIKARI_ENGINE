@@ -27,6 +27,32 @@ namespace HIKARI::RENDER3D::MATERIAL {
                 lhs.semantic == rhs.semantic &&
                 lhs.resourceIndex == rhs.resourceIndex;
         }
+
+        bool InstructionLayoutsMatch(
+            const MaterialProgramInstruction& lhs,
+            const MaterialProgramInstruction& rhs) noexcept {
+            if (lhs.opcode != rhs.opcode ||
+                lhs.valueType != rhs.valueType ||
+                lhs.inputPins != rhs.inputPins ||
+                lhs.inputRegisters != rhs.inputRegisters ||
+                lhs.outputPins != rhs.outputPins ||
+                lhs.outputRegisters != rhs.outputRegisters ||
+                lhs.bindingIndex != rhs.bindingIndex ||
+                lhs.immediate.type != rhs.immediate.type ||
+                lhs.assetReference != rhs.assetReference ||
+                lhs.sourceNodeId != rhs.sourceNodeId ||
+                lhs.properties.size() != rhs.properties.size()) {
+                return false;
+            }
+            for (size_t index = 0u; index < lhs.properties.size(); ++index) {
+                if (lhs.properties[index].id != rhs.properties[index].id ||
+                    lhs.properties[index].value.type !=
+                        rhs.properties[index].value.type) {
+                    return false;
+                }
+            }
+            return true;
+        }
     }
 
     bool MaterialProgramRuntimeCapabilities::Supports(
@@ -121,7 +147,10 @@ namespace HIKARI::RENDER3D::MATERIAL {
             lhs.domain != rhs.domain ||
             lhs.capabilities != rhs.capabilities ||
             lhs.parameters.size() != rhs.parameters.size() ||
-            lhs.resources.size() != rhs.resources.size()) {
+            lhs.resources.size() != rhs.resources.size() ||
+            lhs.instructions.size() != rhs.instructions.size() ||
+            lhs.registerCount != rhs.registerCount ||
+            lhs.surfaceOutputRegister != rhs.surfaceOutputRegister) {
             return false;
         }
         for (size_t index = 0u; index < lhs.parameters.size(); ++index) {
@@ -135,6 +164,13 @@ namespace HIKARI::RENDER3D::MATERIAL {
             if (!ResourceLayoutsMatch(
                     lhs.resources[index],
                     rhs.resources[index])) {
+                return false;
+            }
+        }
+        for (size_t index = 0u; index < lhs.instructions.size(); ++index) {
+            if (!InstructionLayoutsMatch(
+                    lhs.instructions[index],
+                    rhs.instructions[index])) {
                 return false;
             }
         }

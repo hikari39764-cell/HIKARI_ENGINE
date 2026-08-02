@@ -6,21 +6,29 @@
 float4 HikariExpandGeometryOutlineVertex(
     float4 worldPosition,
     float3 normalWS,
-    uint materialDataIndex)
+    uint materialDataIndex,
+    uint surfaceMaterialProgramFlags)
 {
     const float4 clipPosition = mul(gViewProj, worldPosition);
     const HikariMeshMaterialData materialData =
         HikariGetMeshMaterialData(materialDataIndex);
-    if ((materialData.instanceFlags &
-         HIKARI_PROGRAM_FLAG_FEATURE_GEOMETRY_OUTLINE) == 0u)
+    const bool authoredOutline =
+        (materialData.instanceFlags &
+         HIKARI_PROGRAM_FLAG_FEATURE_GEOMETRY_OUTLINE) != 0u;
+    const bool editorSelection =
+        (surfaceMaterialProgramFlags &
+         HIKARI_PROGRAM_FLAG_EDITOR_SELECTION_OUTLINE) != 0u;
+    if (!authoredOutline && !editorSelection)
     {
         return clipPosition;
     }
 
-    const float4 outline = HikariLoadMaterialProgramParameter(
-        materialData,
-        19u,
-        float4(0.025f, 0.030f, 0.045f, 1.25f));
+    const float4 outline = editorSelection
+        ? float4(0.08f, 0.82f, 1.0f, 2.4f)
+        : HikariLoadMaterialProgramParameter(
+            materialData,
+            19u,
+            float4(0.025f, 0.030f, 0.045f, 1.25f));
     const float4 projectedNormal = mul(
         gViewProj,
         float4(worldPosition.xyz + normalize(normalWS), 1.0f));

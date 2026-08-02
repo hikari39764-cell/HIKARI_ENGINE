@@ -145,6 +145,16 @@ namespace HIKARI::MESHRENDERER {
             graphics, surfaceBuffer, sceneDsv, writeFeatureMask);
     }
 
+    bool HasStylizedFeatureMaskBackend() {
+        const auto& meshletStats =
+            gMeshRendererState.meshletRenderBackend.GetStats();
+        return
+            gMeshRendererState.pipelines.geometryFeatureMaskPso != nullptr &&
+            gMeshRendererState.pipelines.geometryFeatureMaskSkinnedPso != nullptr &&
+            (!meshletStats.meshShaderSupported ||
+                meshletStats.geometryFeatureMaskPipelineReady);
+    }
+
     bool HasGeometryOutlineFeatureBackend() {
         const auto& meshletStats =
             gMeshRendererState.meshletRenderBackend.GetStats();

@@ -94,6 +94,9 @@ namespace HIKARI::RENDER3D::LIGHTPROBE {
             const ScopedLightProbeVolumeSamplingSuppress&) = delete;
         ScopedLightProbeVolumeSamplingSuppress& operator=(
             const ScopedLightProbeVolumeSamplingSuppress&) = delete;
+
+    private:
+        LightProbeVolumeViewSelection previousSelection_{};
     };
 
     // View slot に選ばれた SH9 Texture3D descriptor table を返す。

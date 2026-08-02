@@ -139,6 +139,8 @@ void ModelMaterialWorkspaceController::DrawInstanceWindow(
       } else if (isBoolean) {
         CommitMaterialMutation(std::move(before), "Edit instance parameter",
                                scene);
+      } else {
+        PreviewMaterialGesture(scene);
       }
     }
     if (!isBoolean && ImGui::IsItemDeactivatedAfterEdit()) {

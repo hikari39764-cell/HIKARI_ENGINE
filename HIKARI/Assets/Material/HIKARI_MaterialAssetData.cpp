@@ -2,46 +2,12 @@
 
 #include <algorithm>
 #include <string_view>
-#include <utility>
 
 #include "Assets/Material/Serialization/HIKARI_MaterialSourceJson.h"
 
 namespace HIKARI {
 
     namespace {
-
-        MaterialGraphParameterData MakeParameter(
-            std::string id,
-            std::string displayName,
-            MaterialValueType type,
-            const MATH::Vec4& numeric) {
-
-            MaterialGraphParameterData parameter{};
-            parameter.id = std::move(id);
-            parameter.displayName = std::move(displayName);
-            parameter.defaultValue.type = type;
-            parameter.defaultValue.numeric = numeric;
-            return parameter;
-        }
-
-        MaterialGraphResourceData MakeResource(
-            std::string id,
-            std::string displayName,
-            MaterialResourceSemantic semantic,
-            const MaterialTextureSlotData& slot) {
-
-            MaterialGraphResourceData resource{};
-            resource.id = std::move(id);
-            resource.displayName = std::move(displayName);
-            resource.semantic = semantic;
-            resource.assetGuid = slot.textureAssetGuid;
-            resource.enabled = slot.useTexture;
-            resource.texCoord = static_cast<uint32_t>(slot.texCoord < 0 ? 0 : slot.texCoord);
-            resource.uvScale = slot.uvScale;
-            resource.uvOffset = slot.uvOffset;
-            resource.uvRotation = slot.uvRotation;
-            return resource;
-        }
 
         void UpdateParameter(
             MaterialGraphData& graph,
@@ -139,209 +105,13 @@ namespace HIKARI {
                 pbr.specularColorTexture);
         }
 
-        const MaterialGraphParameterData* FindParameter(
-            const MaterialGraphData& graph,
-            std::string_view id) noexcept {
-
-            const auto found = std::find_if(
-                graph.parameters.begin(),
-                graph.parameters.end(),
-                [id](const MaterialGraphParameterData& parameter) {
-                    return parameter.id == id;
-                });
-            return found == graph.parameters.end() ? nullptr : &*found;
-        }
-
-        const MaterialGraphResourceData* FindResource(
-            const MaterialGraphData& graph,
-            MaterialResourceSemantic semantic) noexcept {
-
-            const auto found = std::find_if(
-                graph.resources.begin(),
-                graph.resources.end(),
-                [semantic](const MaterialGraphResourceData& resource) {
-                    return resource.semantic == semantic;
-                });
-            return found == graph.resources.end() ? nullptr : &*found;
-        }
-
-        void ProjectParameter(
-            const MaterialGraphData& graph,
-            std::string_view id,
-            MATH::Vec4& outValue) noexcept {
-
-            if (const MaterialGraphParameterData* parameter =
-                    FindParameter(graph, id)) {
-                outValue = parameter->defaultValue.numeric;
-            }
-        }
-
-        void ProjectResource(
-            const MaterialGraphData& graph,
-            MaterialResourceSemantic semantic,
-            MaterialTextureSlotData& outSlot) noexcept {
-
-            const MaterialGraphResourceData* resource =
-                FindResource(graph, semantic);
-            if (resource == nullptr) {
-                return;
-            }
-            outSlot.useTexture = resource->enabled;
-            outSlot.textureAssetGuid = resource->assetGuid;
-            outSlot.texCoord = static_cast<int>(resource->texCoord);
-            outSlot.uvScale = resource->uvScale;
-            outSlot.uvOffset = resource->uvOffset;
-            outSlot.uvRotation = resource->uvRotation;
-        }
-
     } // namespace
 
-    MaterialAssetData MakeStandardPbrMaterialAssetData(
-        const PbrMaterialAssetData& legacyData) {
+    void ApplyPbrMaterialAssetData(
+        MaterialAssetData& material,
+        const PbrMaterialAssetData& pbr) {
 
-        MaterialAssetData data{};
-        data.version = kMaterialAssetSourceVersion;
-        data.sourceVersion = legacyData.version;
-        data.migratedFromLegacy = legacyData.version < kMaterialAssetSourceVersion;
-        data.materialName = legacyData.materialName;
-        data.templateId = MaterialTemplateId::StandardPbr;
-        data.surface.doubleSided = legacyData.doubleSided;
-        data.surface.unlit = legacyData.unlit;
-        data.pbr = legacyData;
-        data.pbr.version = kMaterialAssetSourceVersion;
-
-        data.graph.parameters = {
-            MakeParameter("parameter.baseColor", "Base Color", MaterialValueType::Float4,
-                legacyData.baseColorFactor),
-            MakeParameter("parameter.metallic", "Metallic", MaterialValueType::Float1,
-                { legacyData.metallicFactor, 0.0f, 0.0f, 0.0f }),
-            MakeParameter("parameter.roughness", "Roughness", MaterialValueType::Float1,
-                { legacyData.roughnessFactor, 0.0f, 0.0f, 0.0f }),
-            MakeParameter("parameter.specular", "Specular", MaterialValueType::Float1,
-                { legacyData.specularFactor, 0.0f, 0.0f, 0.0f }),
-            MakeParameter("parameter.specularColor", "Specular Color", MaterialValueType::Float3,
-                { legacyData.specularColorFactor.x, legacyData.specularColorFactor.y,
-                    legacyData.specularColorFactor.z, 0.0f }),
-            MakeParameter("parameter.normalScale", "Normal Scale", MaterialValueType::Float1,
-                { legacyData.normalScale, 0.0f, 0.0f, 0.0f }),
-            MakeParameter("parameter.occlusionStrength", "Occlusion Strength", MaterialValueType::Float1,
-                { legacyData.occlusionStrength, 0.0f, 0.0f, 0.0f }),
-            MakeParameter("parameter.emissive", "Emissive", MaterialValueType::Float3,
-                { legacyData.emissiveFactor.x, legacyData.emissiveFactor.y,
-                    legacyData.emissiveFactor.z, 0.0f }),
-            MakeParameter("parameter.emissiveStrength", "Emissive Strength", MaterialValueType::Float1,
-                { legacyData.emissiveStrength, 0.0f, 0.0f, 0.0f }),
-        };
-
-        data.graph.resources = {
-            MakeResource("resource.baseColor", "Base Color", MaterialResourceSemantic::BaseColor,
-                legacyData.baseColorTexture),
-            MakeResource("resource.normal", "Normal", MaterialResourceSemantic::Normal,
-                legacyData.normalTexture),
-            MakeResource("resource.metallicRoughness", "Metallic Roughness",
-                MaterialResourceSemantic::MetallicRoughness, legacyData.metallicRoughnessTexture),
-            MakeResource("resource.occlusion", "Occlusion", MaterialResourceSemantic::Occlusion,
-                legacyData.occlusionTexture),
-            MakeResource("resource.emissive", "Emissive", MaterialResourceSemantic::Emissive,
-                legacyData.emissiveTexture),
-            MakeResource("resource.specular", "Specular", MaterialResourceSemantic::Specular,
-                legacyData.specularTexture),
-            MakeResource("resource.specularColor", "Specular Color",
-                MaterialResourceSemantic::SpecularColor, legacyData.specularColorTexture),
-        };
-
-        MaterialGraphNodeData pbrNode{};
-        pbrNode.id = "node.standardPbr";
-        pbrNode.kind = MaterialNodeKind::PbrSurface;
-        pbrNode.displayName = "Standard PBR";
-        pbrNode.position = { 0.0f, 0.0f };
-        pbrNode.valueType = MaterialValueType::Surface;
-
-        MaterialGraphNodeData outputNode{};
-        outputNode.id = "node.surfaceOutput";
-        outputNode.kind = MaterialNodeKind::SurfaceOutput;
-        outputNode.displayName = "Surface Output";
-        outputNode.position = { 320.0f, 0.0f };
-        outputNode.valueType = MaterialValueType::Surface;
-
-        data.graph.nodes = { std::move(pbrNode), std::move(outputNode) };
-        data.graph.edges = { MaterialGraphEdgeData{
-            "edge.standardPbr.surfaceOutput",
-            "node.standardPbr",
-            "Surface",
-            "node.surfaceOutput",
-            "Surface"
-        } };
-        data.graph.outputNodeId = "node.surfaceOutput";
-        return data;
-    }
-
-    PbrMaterialAssetData ProjectPbrMaterialAssetData(
-        const MaterialAssetData& data) {
-
-        PbrMaterialAssetData projected = data.pbr;
-        projected.version = data.version;
-        projected.materialName = data.materialName;
-        projected.doubleSided = data.surface.doubleSided;
-        projected.unlit = data.surface.unlit;
-        if (data.kind != MaterialAssetKind::Material) {
-            return projected;
-        }
-
-        MATH::Vec4 value{};
-        value = projected.baseColorFactor;
-        ProjectParameter(data.graph, "parameter.baseColor", value);
-        projected.baseColorFactor = value;
-        value = { projected.metallicFactor, 0.0f, 0.0f, 0.0f };
-        ProjectParameter(data.graph, "parameter.metallic", value);
-        projected.metallicFactor = value.x;
-        value = { projected.roughnessFactor, 0.0f, 0.0f, 0.0f };
-        ProjectParameter(data.graph, "parameter.roughness", value);
-        projected.roughnessFactor = value.x;
-        value = { projected.specularFactor, 0.0f, 0.0f, 0.0f };
-        ProjectParameter(data.graph, "parameter.specular", value);
-        projected.specularFactor = value.x;
-        value = {
-            projected.specularColorFactor.x,
-            projected.specularColorFactor.y,
-            projected.specularColorFactor.z,
-            0.0f
-        };
-        ProjectParameter(data.graph, "parameter.specularColor", value);
-        projected.specularColorFactor = { value.x, value.y, value.z };
-        value = { projected.normalScale, 0.0f, 0.0f, 0.0f };
-        ProjectParameter(data.graph, "parameter.normalScale", value);
-        projected.normalScale = value.x;
-        value = { projected.occlusionStrength, 0.0f, 0.0f, 0.0f };
-        ProjectParameter(data.graph, "parameter.occlusionStrength", value);
-        projected.occlusionStrength = value.x;
-        value = {
-            projected.emissiveFactor.x,
-            projected.emissiveFactor.y,
-            projected.emissiveFactor.z,
-            0.0f
-        };
-        ProjectParameter(data.graph, "parameter.emissive", value);
-        projected.emissiveFactor = { value.x, value.y, value.z };
-        value = { projected.emissiveStrength, 0.0f, 0.0f, 0.0f };
-        ProjectParameter(data.graph, "parameter.emissiveStrength", value);
-        projected.emissiveStrength = value.x;
-
-        ProjectResource(data.graph, MaterialResourceSemantic::BaseColor,
-            projected.baseColorTexture);
-        ProjectResource(data.graph, MaterialResourceSemantic::Normal,
-            projected.normalTexture);
-        ProjectResource(data.graph, MaterialResourceSemantic::MetallicRoughness,
-            projected.metallicRoughnessTexture);
-        ProjectResource(data.graph, MaterialResourceSemantic::Occlusion,
-            projected.occlusionTexture);
-        ProjectResource(data.graph, MaterialResourceSemantic::Emissive,
-            projected.emissiveTexture);
-        ProjectResource(data.graph, MaterialResourceSemantic::Specular,
-            projected.specularTexture);
-        ProjectResource(data.graph, MaterialResourceSemantic::SpecularColor,
-            projected.specularColorTexture);
-        return projected;
+        ApplyPbrAdapterEdits(pbr, material);
     }
 
     bool LoadMaterialAssetData(

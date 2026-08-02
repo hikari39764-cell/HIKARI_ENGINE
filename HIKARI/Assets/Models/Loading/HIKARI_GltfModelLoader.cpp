@@ -287,10 +287,9 @@ namespace HIKARI::ASSETS::MODELS {
                     !primitive["targets"].empty();
                 primitiveAsset.hasLightmapUv = hasLightmapUv;
                 if (primitiveAsset.hasMorphTargets) {
-                    ++asset.importDiagnostics.skippedMorphPrimitiveCount;
-                    ++asset.importDiagnostics.fallbackPrimitiveCount;
                     asset.importDiagnostics.messages.push_back(
-                        "[glTF] morph target primitive uses legacy fallback only: mesh=" +
+                        "[glTF] morph target deformation is not imported; "
+                        "base-pose geometry remains Mesh Shader cookable: mesh=" +
                         std::to_string(meshIndex) +
                         " primitive=" + std::to_string(primitiveIndex));
                 }

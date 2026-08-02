@@ -86,11 +86,19 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             drawCtx.binding,
             visibleClusterListBuffer->GetGPUVirtualAddress());
         const MeshFrameResources& frame = GetActiveMeshFrameResources();
-        BindMeshletDeformationPalettes(
-            drawCtx.binding,
+        D3D12_GPU_VIRTUAL_ADDRESS jointPaletteAddress =
             frame.jointPaletteCB != nullptr
                 ? frame.jointPaletteCB->GetGPUVirtualAddress()
-                : 0u);
+                : 0u;
+#if defined(HIKARI_WITH_EDITOR)
+        if (bindingOverrides != nullptr &&
+            bindingOverrides->jointPaletteAddress != 0u) {
+            jointPaletteAddress = bindingOverrides->jointPaletteAddress;
+        }
+#endif
+        BindMeshletDeformationPalettes(
+            drawCtx.binding,
+            jointPaletteAddress);
 
         RENDER3D::MESHLET::MeshletRenderExecutionContext ctx{};
         ctx.commandList = backendContext.commandList;

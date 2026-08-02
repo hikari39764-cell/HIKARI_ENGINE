@@ -72,7 +72,8 @@ float HikariEvaluateFaceSdf(
     float3 lightDirection,
     float3 normal,
     float4 tangentWS,
-    float4x4 objectNormalMatrix,
+    float3 characterRightWS,
+    float3 characterForwardWS,
     float analyticFallback)
 {
     if ((materialData.instanceFlags & HIKARI_PROGRAM_FLAG_FACE_SDF) == 0u)
@@ -94,24 +95,74 @@ float HikariEvaluateFaceSdf(
         materialData,
         18u,
         float4(0.0f, 0.0f, 1.0f, 0.0f)).xyz;
-    float3 tangent = mul((float3x3)objectNormalMatrix, localRight);
-    float3 forward = mul((float3x3)objectNormalMatrix, localForward);
+    float3 referenceRight = characterRightWS;
+    float3 referenceForward = characterForwardWS;
+    if (dot(referenceRight, referenceRight) < 1.0e-5f ||
+        dot(referenceForward, referenceForward) < 1.0e-5f)
+    {
+        referenceRight = tangentWS.xyz;
+        if (dot(referenceRight, referenceRight) < 1.0e-5f)
+        {
+            referenceRight = cross(
+                float3(0.0f, 1.0f, 0.0f), normal);
+        }
+        referenceForward = cross(
+            float3(0.0f, 1.0f, 0.0f), referenceRight);
+        if (dot(referenceForward, referenceForward) < 1.0e-5f)
+        {
+            referenceForward = normal;
+        }
+    }
+    referenceRight = normalize(referenceRight);
+    referenceForward -=
+        referenceRight * dot(referenceRight, referenceForward);
+    if (dot(referenceForward, referenceForward) < 1.0e-5f)
+    {
+        referenceForward = normal;
+    }
+    referenceForward = normalize(referenceForward);
+    float3 referenceUp = cross(referenceForward, referenceRight);
+    if (dot(referenceUp, referenceUp) < 1.0e-5f)
+    {
+        referenceUp = float3(0.0f, 1.0f, 0.0f);
+    }
+    referenceUp = normalize(referenceUp);
+    float3 tangent =
+        referenceRight * localRight.x +
+        referenceUp * localRight.y +
+        referenceForward * localRight.z;
+    float3 forward =
+        referenceRight * localForward.x +
+        referenceUp * localForward.y +
+        referenceForward * localForward.z;
     if (dot(tangent, tangent) < 1.0e-5f ||
         dot(forward, forward) < 1.0e-5f)
     {
-        tangent = tangentWS.xyz;
-        if (dot(tangent, tangent) < 1.0e-5f)
-        {
-            tangent = cross(float3(0.0f, 1.0f, 0.0f), normal);
-        }
-        forward = cross(normal, tangent) * tangentWS.w;
+        tangent = referenceRight;
+        forward = referenceForward;
     }
-    tangent = normalize(tangent - normal * dot(normal, tangent));
-    forward = normalize(
-        forward - normal * dot(normal, forward) -
-        tangent * dot(tangent, forward));
-    const float side = dot(lightDirection, tangent);
-    const float forwardLight = dot(lightDirection, forward);
+    tangent = normalize(tangent);
+    forward -= tangent * dot(tangent, forward);
+    if (dot(forward, forward) < 1.0e-5f)
+    {
+        forward = referenceForward;
+    }
+    forward = normalize(forward);
+    float3 headUp = cross(forward, tangent);
+    if (dot(headUp, headUp) < 1.0e-5f)
+    {
+        headUp = referenceUp;
+    }
+    headUp = normalize(headUp);
+    float3 planarLight = lightDirection -
+        headUp * dot(lightDirection, headUp);
+    if (dot(planarLight, planarLight) < 1.0e-5f)
+    {
+        planarLight = forward;
+    }
+    planarLight = normalize(planarLight);
+    const float side = dot(planarLight, tangent);
+    const float forwardLight = dot(planarLight, forward);
     float2 faceUv = uv;
     faceUv.x = side < 0.0f ? 1.0f - faceUv.x : faceUv.x;
     const float sdf = HikariSampleMaterialTexture(
@@ -187,11 +238,25 @@ HikariStylizedDirectLobes HikariEvaluateStylizedDirectLobes(
     float3 lightDirection,
     float3 radiance,
     float4 tangentWS,
-    float4x4 objectNormalMatrix,
+    float3 characterRightWS,
+    float3 characterForwardWS,
     float2 uv,
     float4 mask)
 {
-    HikariStylizedDirectLobes lobes = (HikariStylizedDirectLobes)0;
+    const HikariStylizedDirectLobes pbr = HikariEvaluatePbrDirectLobes(
+        pbrContext,
+        lightDirection,
+        radiance);
+    HikariStylizedDirectLobes lobes = pbr;
+    const bool usesStylizedDiffuse =
+        (materialData.instanceFlags &
+            (HIKARI_PROGRAM_FLAG_RAMP_DIFFUSE |
+             HIKARI_PROGRAM_FLAG_MULTI_RAMP |
+             HIKARI_PROGRAM_FLAG_FACE_SDF)) != 0u;
+    const bool usesStylizedSpecular =
+        (materialData.instanceFlags &
+            (HIKARI_PROGRAM_FLAG_SPECULAR_BAND |
+             HIKARI_PROGRAM_FLAG_ANISOTROPIC_HAIR)) != 0u;
     float ndotl = saturate(dot(surface.normalWS, lightDirection));
     if ((materialData.instanceFlags & HIKARI_PROGRAM_FLAG_TEMPLATE_SKIN) != 0u)
     {
@@ -202,21 +267,30 @@ HikariStylizedDirectLobes HikariEvaluateStylizedDirectLobes(
         ndotl = saturate((dot(surface.normalWS, lightDirection) + skin.x) /
                          max(1.0f + skin.x, 0.0001f));
     }
-    const float faceLight = HikariEvaluateFaceSdf(
-        materialData,
-        uv,
-        lightDirection,
-        surface.normalWS,
-        tangentWS,
-        objectNormalMatrix,
-        ndotl);
-    const float3 rampColor = HikariResolveRampColor(
-        materialData,
-        uv,
-        ndotl,
-        faceLight,
-        mask.r);
-    lobes.diffuse = surface.baseColor * rampColor * radiance;
+    if (usesStylizedDiffuse)
+    {
+        const float faceLight = HikariEvaluateFaceSdf(
+            materialData,
+            uv,
+            lightDirection,
+            surface.normalWS,
+            tangentWS,
+            characterRightWS,
+            characterForwardWS,
+            ndotl);
+        const float3 rampColor = HikariResolveRampColor(
+            materialData,
+            uv,
+            ndotl,
+            faceLight,
+            mask.r);
+        const float directGain = HikariLoadMaterialProgramParameter(
+            materialData,
+            0u,
+            float4(0.50f, 0.08f, 0.72f, 1.0f)).w;
+        lobes.diffuse = surface.baseColor * rampColor * radiance *
+            max(0.0f, directGain) / HIKARI_PI;
+    }
     if ((materialData.instanceFlags & HIKARI_PROGRAM_FLAG_TEMPLATE_SKIN) != 0u)
     {
         const float4 skin = HikariLoadMaterialProgramParameter(
@@ -233,6 +307,10 @@ HikariStylizedDirectLobes HikariEvaluateStylizedDirectLobes(
             (backLight * skin.y * mask.g);
     }
 
+    if (usesStylizedSpecular)
+    {
+        lobes.specular = 0.0f.xxx;
+    }
     if ((materialData.instanceFlags & HIKARI_PROGRAM_FLAG_SPECULAR_BAND) != 0u)
     {
         const float4 control = HikariLoadMaterialProgramParameter(
@@ -262,24 +340,58 @@ HikariStylizedDirectLobes HikariEvaluateStylizedDirectLobes(
             materialData,
             9u,
             float4(0.08f, 0.18f, -0.10f, 1.0f));
-        const float3 tangent = normalize(tangentWS.xyz);
+        float3 tangent = tangentWS.xyz;
+        if (dot(tangent, tangent) < 1.0e-5f)
+        {
+            tangent = cross(float3(0.0f, 1.0f, 0.0f), surface.normalWS);
+        }
+        if (dot(tangent, tangent) < 1.0e-5f)
+        {
+            tangent = float3(1.0f, 0.0f, 0.0f);
+        }
+        tangent = normalize(tangent);
+        const float3 bitangent = normalize(
+            cross(surface.normalWS, tangent) * tangentWS.w);
+        const uint hairDescriptor = HikariLoadMaterialProgramResource(
+            materialData,
+            HIKARI_PROGRAM_RESOURCE_HAIR);
+        float hairMask = 1.0f;
+        float mapShift = 0.0f;
+        if (hairDescriptor != HIKARI_INVALID_TEXTURE_DESCRIPTOR_INDEX)
+        {
+            const float4 hairControl = HikariSampleMaterialTexture(
+                hairDescriptor,
+                gLinearWrap,
+                uv,
+                float4(0.5f, 0.5f, 1.0f, 0.5f));
+            if ((materialData.instanceFlags &
+                 HIKARI_PROGRAM_FLAG_HAIR_CONTROL_MAP) != 0u)
+            {
+                const float2 flow = hairControl.rg * 2.0f - 1.0f;
+                if (dot(flow, flow) > 1.0e-4f)
+                {
+                    tangent = normalize(
+                        tangent * flow.x + bitangent * flow.y);
+                }
+                hairMask = hairControl.b;
+                mapShift = (hairControl.a * 2.0f - 1.0f) * 0.25f;
+            }
+            else
+            {
+                hairMask = hairControl.r;
+            }
+        }
         const float3 halfVector = normalize(surface.viewWS + lightDirection);
         const float strand = sqrt(saturate(
             1.0f - dot(tangent, halfVector) * dot(tangent, halfVector)));
         const float primary = smoothstep(
             1.0f - max(0.001f, hair.y),
             1.0f,
-            saturate(strand + hair.x));
+            saturate(strand + hair.x + mapShift));
         const float secondary = smoothstep(
             1.0f - max(0.001f, hair.y * 1.5f),
             1.0f,
-            saturate(strand + hair.z));
-        const float hairMask = HikariSampleMaterialProgramTexture(
-            materialData,
-            HIKARI_PROGRAM_RESOURCE_HAIR,
-            gLinearWrap,
-            uv,
-            mask).r;
+            saturate(strand + hair.z + mapShift));
         const float3 hairTint = HikariLoadMaterialProgramParameter(
             materialData,
             5u,
@@ -290,10 +402,6 @@ HikariStylizedDirectLobes HikariEvaluateStylizedDirectLobes(
 
     if ((materialData.instanceFlags & HIKARI_PROGRAM_FLAG_TEMPLATE_HYBRID) != 0u)
     {
-        const HikariStylizedDirectLobes pbr = HikariEvaluatePbrDirectLobes(
-            pbrContext,
-            lightDirection,
-            radiance);
         const float4 blend = HikariLoadMaterialProgramParameter(
             materialData,
             12u,
@@ -366,20 +474,48 @@ float3 HikariEvaluateStylizedViewAdditive(
             materialData,
             11u,
             float4(0.12f, 0.35f, 64.0f, 1.0f));
-        float3 tangent = normalize(tangentWS.xyz);
+        const uint eyeDescriptor = HikariLoadMaterialProgramResource(
+            materialData,
+            HIKARI_PROGRAM_RESOURCE_EYE);
+        if (eyeDescriptor != HIKARI_INVALID_TEXTURE_DESCRIPTOR_INDEX)
+        {
+        float3 tangent = tangentWS.xyz;
+        if (dot(tangent, tangent) < 1.0e-5f)
+        {
+            tangent = cross(float3(0.0f, 1.0f, 0.0f), surface.normalWS);
+        }
+        if (dot(tangent, tangent) < 1.0e-5f)
+        {
+            tangent = float3(1.0f, 0.0f, 0.0f);
+        }
+        tangent = normalize(tangent);
         float3 bitangent = normalize(cross(surface.normalWS, tangent) * tangentWS.w);
         const float2 parallax = float2(
             dot(surface.viewWS, tangent),
             dot(surface.viewWS, bitangent)) * eye.x * 0.05f;
-        const float4 iris = HikariSampleMaterialProgramTexture(
-            materialData,
-            HIKARI_PROGRAM_RESOURCE_EYE,
+        const float4 eyeControl = HikariSampleMaterialTexture(
+            eyeDescriptor,
             gLinearClamp,
             saturate(uv + parallax),
-            mask);
+            0.0f.xxxx);
         const float facing = saturate(dot(surface.normalWS, surface.viewWS));
         const float sparkle = pow(facing, max(1.0f, eye.z));
-        additive += surface.baseColor * eye.y * eye.w * sparkle * iris.g;
+        if ((materialData.instanceFlags &
+             HIKARI_PROGRAM_FLAG_EYE_CONTROL_MAP) != 0u)
+        {
+            const float depthMask = lerp(0.35f, 1.0f, eyeControl.a);
+            const float3 cornea = float3(0.72f, 0.84f, 1.0f) *
+                eyeControl.g * sparkle * 0.12f;
+            const float3 catchlight = 1.0f.xxx * eyeControl.b * sparkle;
+            additive += (surface.baseColor * eyeControl.r * 0.08f +
+                         cornea + catchlight) * eye.y * eye.w * depthMask;
+        }
+        else
+        {
+            additive += surface.baseColor * eye.y * eye.w *
+                sparkle * eyeControl.r;
+        }
+        }
     }
     if ((materialData.instanceFlags & HIKARI_PROGRAM_FLAG_TEMPLATE_CLOTH) != 0u)
     {
@@ -406,7 +542,8 @@ HikariMaterialLightingResponse HikariEvaluateStylizedMaterial(
     float distanceToCamera,
     float2 pixelPosition,
     float4 tangentWS,
-    float4x4 objectNormalMatrix,
+    float3 characterRightWS,
+    float3 characterForwardWS,
     float2 uv,
     float3 directionalLight,
     float3 directionalRadiance,
@@ -429,7 +566,8 @@ HikariMaterialLightingResponse HikariEvaluateStylizedMaterial(
             directionalLight,
             directionalRadiance,
             tangentWS,
-            objectNormalMatrix,
+            characterRightWS,
+            characterForwardWS,
             uv,
             mask);
     response.directDiffuse = directional.diffuse * shadowFactor;
@@ -459,17 +597,27 @@ HikariMaterialLightingResponse HikariEvaluateStylizedMaterial(
                 lightSample.directionToLight,
                 lightSample.radiance,
                 tangentWS,
-                objectNormalMatrix,
+                characterRightWS,
+                characterForwardWS,
                 uv,
                 mask);
         response.directDiffuse += local.diffuse;
         response.directSpecular += local.specular;
     }
 
-    const float3 indirectTint = HikariEvaluateAnalyticRamp(
-        materialData,
-        0.65f);
-    response.indirect = pbrIndirect * indirectTint;
+    const bool usesStylizedDiffuse =
+        (materialData.instanceFlags &
+            (HIKARI_PROGRAM_FLAG_RAMP_DIFFUSE |
+             HIKARI_PROGRAM_FLAG_MULTI_RAMP |
+             HIKARI_PROGRAM_FLAG_FACE_SDF)) != 0u;
+    response.indirect = pbrIndirect;
+    if (usesStylizedDiffuse)
+    {
+        const float3 indirectTint = HikariEvaluateAnalyticRamp(
+            materialData,
+            0.65f);
+        response.indirect *= indirectTint;
+    }
     if ((materialData.instanceFlags & HIKARI_PROGRAM_FLAG_TEMPLATE_HYBRID) != 0u)
     {
         const float4 blend = HikariLoadMaterialProgramParameter(

@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <sstream>
 #include <unordered_set>
+#include <utility>
 
 #include <json.hpp>
 
@@ -890,6 +891,38 @@ namespace HIKARI {
             return nullptr;
         }
         return &records_[it->second];
+    }
+
+    const AssetRecord* AssetDatabase::FindByArtifactPath(
+        const std::filesystem::path& path) const {
+
+        const std::string requestedKey = MakePathKey(path);
+        if (requestedKey.empty()) {
+            return nullptr;
+        }
+
+        const AssetRecord* match = nullptr;
+        for (const AssetRecord& record : records_) {
+            for (const AssetArtifactDesc& artifact :
+                record.artifactManifest.artifacts) {
+                if (MakePathKey(artifact.path) != requestedKey) {
+                    continue;
+                }
+                // Ambiguous artifact ownership is an invalid database state.
+                // Do not silently select one source asset by scan order.
+                if (match != nullptr && match != &record) {
+                    return nullptr;
+                }
+                match = &record;
+            }
+        }
+        return match;
+    }
+
+    AssetRecord* AssetDatabase::FindByArtifactPath(
+        const std::filesystem::path& path) {
+        return const_cast<AssetRecord*>(
+            std::as_const(*this).FindByArtifactPath(path));
     }
 
     std::vector<const AssetRecord*> AssetDatabase::CollectByType(AssetType type) const {

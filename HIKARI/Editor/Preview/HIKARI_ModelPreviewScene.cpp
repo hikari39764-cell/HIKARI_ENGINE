@@ -8,6 +8,8 @@
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
 #include "Render3D/Core/HIKARI_BoundsUtils.h"
 #include "Render3D/Core/HIKARI_Material.h"
+#include "Render3D/Models/Runtime/HIKARI_ModelTextureResolver.h"
+#include "Render3D/Procedural/HIKARI_ProceduralModelFactory.h"
 
 namespace HIKARI::EDITOR {
 namespace {
@@ -28,6 +30,54 @@ ResolveArtifactPath(const AssetRecord &record,
       ASSETS::SEMANTICS::FindAssetArtifactPath(record, kind, true);
   return path.empty() ? std::filesystem::path{}
                       : ResolvePath(projectRoot, path);
+}
+
+std::filesystem::path ResolvePreviewTexturePath(
+    const std::filesystem::path &projectRoot,
+    const std::filesystem::path &modelSourceDirectory,
+    const std::filesystem::path &path) {
+  if (path.empty() || path.is_absolute()) {
+    return path.lexically_normal();
+  }
+
+  // Cooked artifacts and database paths are always project-relative. Source
+  // texture references from glTF/FBX are normally model-file-relative.
+  if (ASSETS::SEMANTICS::ClassifyCookedAssetFormat(path) ==
+          CookedAssetFormat::HTEX ||
+      path.begin() != path.end() &&
+          (path.begin()->string() == "Assets" ||
+           path.begin()->string() == "Library")) {
+    return ResolvePath(projectRoot, path);
+  }
+
+  const std::filesystem::path sourceRelative =
+      (modelSourceDirectory / path).lexically_normal();
+  std::error_code ec{};
+  if (std::filesystem::exists(sourceRelative, ec) && !ec) {
+    return sourceRelative;
+  }
+  return ResolvePath(projectRoot, path);
+}
+
+std::shared_ptr<ModelAsset> CloneProceduralModel(const ModelAsset &source) {
+  auto result = std::make_shared<ModelAsset>();
+  result->id = source.id;
+  result->sourcePath = source.sourcePath;
+  result->state = source.state;
+  result->nodes = source.nodes;
+  result->meshes = source.meshes;
+  result->materials = source.materials;
+  result->materialImportSources = source.materialImportSources;
+  result->textures = source.textures;
+  result->skins = source.skins;
+  result->animations = source.animations;
+  result->importDiagnostics = source.importDiagnostics;
+  result->defaultSceneRootNode = source.defaultSceneRootNode;
+  result->bounds = source.bounds;
+  result->SetName(source.GetName());
+  result->SetSourcePath(source.GetSourcePath());
+  result->SetState(source.GetState());
+  return result;
 }
 
 } // namespace
@@ -68,6 +118,32 @@ bool ModelPreviewScene::Load(const AssetRecord &record,
   model_->SetState(ModelAsset::State::Loaded);
   clusteredGeometryPath_ = clusteredGeometryPath.generic_string();
 
+  const std::filesystem::path modelSourceDirectory =
+      ResolvePath(projectRoot, record.sourcePath).parent_path();
+
+  // Tool Preview は HMODEL を直接読むため、Runtime の ModelManager が行う
+  // texture hydration を明示的に共有する。Cooked HTEX はプロジェクト相対で
+  // 保存されるので、描画スレッドへ渡す前に絶対パスへ正規化する。
+  RENDER3D::MODELS::ModelTextureResolver textureResolver{};
+  textureResolver.SetPathResolver(
+      [projectRoot, modelSourceDirectory](
+          const std::string &sourceTexturePath,
+          MaterialTextureUsage) -> std::string {
+        return ResolvePreviewTexturePath(
+                   projectRoot, modelSourceDirectory,
+                   std::filesystem::path(sourceTexturePath))
+            .generic_string();
+      });
+  for (TextureAsset3D &texture : model_->textures) {
+    if (!texture.resolvedPath.empty()) {
+      texture.resolvedPath = ResolvePreviewTexturePath(
+                                 projectRoot, modelSourceDirectory,
+                                 std::filesystem::path(texture.resolvedPath))
+                                 .generic_string();
+    }
+  }
+  textureResolver.ResolveAssetTexturePaths(*model_);
+
   BOUNDS::EnsureModelBounds(*model_);
   bounds_ = model_->bounds;
   const std::vector<MATH::Mat4> nodeGlobals =
@@ -106,6 +182,72 @@ bool ModelPreviewScene::Load(const AssetRecord &record,
     return false;
   }
   outMessage = "model preview ready";
+  return true;
+}
+
+bool ModelPreviewScene::LoadMaterialSphere(
+    const std::filesystem::path &projectRoot,
+    std::string &outMessage) {
+  Clear();
+
+  ProceduralMeshSettings settings{};
+  settings.kind = ProceduralMeshKind::Sphere;
+  settings.width = 2.0f;
+  settings.height = 2.0f;
+  settings.depth = 2.0f;
+  settings.sphereSlices = 64u;
+  settings.sphereStacks = 32u;
+  settings.generateTangents = true;
+
+  const ModelAsset *source = PROCEDURAL::GetOrCreateModel(settings);
+  if (source == nullptr) {
+    outMessage = "material sphere generation failed";
+    return false;
+  }
+  model_ = CloneProceduralModel(*source);
+  clusteredGeometryPath_ =
+      PROCEDURAL::GetOrCreateClusteredGeometryPath(settings, projectRoot);
+  if (clusteredGeometryPath_.empty()) {
+    outMessage = "material sphere clustered geometry is unavailable";
+    ResetState();
+    return false;
+  }
+
+  BOUNDS::EnsureModelBounds(*model_);
+  bounds_ = model_->bounds;
+  const std::vector<MATH::Mat4> nodeGlobals =
+      BOUNDS::BuildModelNodeGlobals(*model_);
+  sourceNodes_.reserve(model_->nodes.size());
+  for (size_t nodeIndex = 0; nodeIndex < model_->nodes.size(); ++nodeIndex) {
+    const ModelNode &node = model_->nodes[nodeIndex];
+    const Bounds nodeBounds =
+        BOUNDS::ComputeModelNodeBounds(*model_, nodeIndex, nodeGlobals);
+    if (!BOUNDS::IsUsable(nodeBounds)) {
+      continue;
+    }
+    ModelPreviewNode previewNode{};
+    previewNode.nodeIndex = static_cast<int32_t>(nodeIndex);
+    previewNode.meshIndex = node.meshIndex;
+    previewNode.name = "Material Sphere";
+    previewNode.bounds = nodeBounds;
+    previewNode.globalTransform = nodeGlobals[nodeIndex];
+    sourceNodes_.push_back(std::move(previewNode));
+  }
+
+  if (!RENDER3D::RUNTIME::BuildRenderModelAsset(*model_, renderModel_,
+                                                &outMessage)) {
+    ResetState();
+    return false;
+  }
+  AdvanceRevision();
+  RebuildSceneSource();
+  ready_ = gpuSceneRegistry_.GetSceneSource().HasAnyGpuSceneInstances();
+  if (!ready_) {
+    outMessage = "material sphere has no renderable surface";
+    ResetState();
+    return false;
+  }
+  outMessage = "material sphere preview ready";
   return true;
 }
 
@@ -203,6 +345,32 @@ void ModelPreviewScene::ClearPreviewMaterialOverrides() {
   }
 }
 
+bool ModelPreviewScene::SetEditorSelectionOutline(uint32_t materialIndex) {
+  if (!ready_ || !HasSurfaceMaterialIndex(materialIndex)) {
+    return false;
+  }
+  if (editorSelectionMaterialIndex_ == materialIndex) {
+    return true;
+  }
+  editorSelectionMaterialIndex_ = materialIndex;
+  AdvanceRevision();
+  RebuildSceneSource();
+  return true;
+}
+
+void ModelPreviewScene::ClearEditorSelectionOutline() {
+  if (editorSelectionMaterialIndex_ ==
+      RENDER3D::RUNTIME::kInvalidRenderSurfaceIndex) {
+    return;
+  }
+  editorSelectionMaterialIndex_ =
+      RENDER3D::RUNTIME::kInvalidRenderSurfaceIndex;
+  if (ready_) {
+    AdvanceRevision();
+    RebuildSceneSource();
+  }
+}
+
 bool ModelPreviewScene::IsReady() const noexcept { return ready_; }
 
 const AssetGuid &ModelPreviewScene::GetAssetGuid() const noexcept {
@@ -276,6 +444,8 @@ void ModelPreviewScene::ResetState() {
   model_.reset();
   bounds_ = {};
   materialOverrides_.clear();
+  editorSelectionMaterialIndex_ =
+      RENDER3D::RUNTIME::kInvalidRenderSurfaceIndex;
   sourceNodes_.clear();
   clusteredGeometryPath_.clear();
   assetGuid_ = {};
@@ -292,12 +462,13 @@ void ModelPreviewScene::RebuildSceneSource() {
   object.worldBounds = bounds_;
   object.clusteredGeometryPath = clusteredGeometryPath_;
   object.visible = true;
-  object.isStatic = true;
+  object.isStatic = !renderModel_.hasSkinnedSurfaces;
   object.castShadow = renderPolicy_.castShadow;
   object.receiveShadow = renderPolicy_.receiveShadow;
   object.allowStaticCachedForward =
-      renderPolicy_.allowStaticCachedForward;
+      object.isStatic && renderPolicy_.allowStaticCachedForward;
   object.materialOverrides = materialOverrides_;
+  object.editorSelectionMaterialIndex = editorSelectionMaterialIndex_;
   sceneCache_.Upsert(object);
   sceneCache_.EndSync();
   sceneCache_.PreRenderSync();

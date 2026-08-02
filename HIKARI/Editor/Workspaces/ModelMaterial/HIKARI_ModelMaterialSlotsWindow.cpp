@@ -5,7 +5,11 @@
 #include <string_view>
 
 #include "Assets/HIKARI_AssetDatabase.h"
+#include "Assets/HIKARI_AssetRecord.h"
+#include "Assets/Material/Authoring/HIKARI_MaterialTemplateFactory.h"
 #include "Assets/Models/HIKARI_ModelMaterialSlot.h"
+#include "Editor/Assets/HIKARI_AssetTrashService.h"
+#include "Editor/Widgets/HIKARI_AssetFieldWidget.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
 #if defined(HIKARI_WITH_EDITOR)
@@ -43,7 +47,107 @@ const char *BindingLabel(ModelMaterialBindingSource source) noexcept {
 void ModelMaterialWorkspaceController::DrawModelAndSlotsWindow(
     DocumentSceneBase &scene) {
 #if defined(HIKARI_WITH_EDITOR)
-  if (!ImGui::Begin("Models & Material Slots###ModelMaterial/Slots")) {
+  if (!ImGui::Begin("Materials & Parts###ModelMaterial/Slots")) {
+    ImGui::End();
+    return;
+  }
+
+  const float modeButtonWidth =
+      (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) *
+      0.5f;
+  const auto workflowButton = [&](const char *label, AuthoringMode mode) {
+    const bool selected = authoringMode_ == mode;
+    if (selected) {
+      ImGui::PushStyleColor(ImGuiCol_Button,
+                            ImVec4(0.18f, 0.43f, 0.49f, 1.0f));
+      ImGui::PushStyleColor(ImGuiCol_ButtonHovered,
+                            ImVec4(0.22f, 0.51f, 0.58f, 1.0f));
+    }
+    const bool pressed = ImGui::Button(label, ImVec2(modeButtonWidth, 0.0f));
+    if (selected) {
+      ImGui::PopStyleColor(2);
+    }
+    if (pressed && !selected) {
+      (void)SwitchAuthoringMode(scene, mode, statusMessage_);
+    }
+  };
+  workflowButton("Model Materials", AuthoringMode::ModelMaterials);
+  ImGui::SameLine();
+  workflowButton("Material Asset", AuthoringMode::MaterialAsset);
+  ImGui::Separator();
+
+  if (authoringMode_ == AuthoringMode::MaterialAsset) {
+    ImGui::TextDisabled("STANDALONE MATERIAL");
+    ImGui::TextWrapped(
+        "Create or open one Material Asset. It is previewed on the neutral "
+        "material sphere and can later be assigned to a model part.");
+
+    std::string openGuid = candidateAuthoringAssetGuid_.value;
+    AssetFieldOptions openOptions{};
+    openOptions.label = "Open Material";
+    openOptions.requiredType = AssetType::Material;
+    if (DrawAssetField(&scene.GetAssetDatabase(), openOptions, openGuid)) {
+      const AssetGuid selectedGuid{openGuid};
+      if (selectedGuid.IsValid()) {
+        candidateAuthoringAssetGuid_ = selectedGuid;
+        (void)OpenMaterialAsset(scene, selectedGuid, statusMessage_);
+      }
+    }
+
+    const auto &templates = ASSETS::MATERIAL::GetBuiltInMaterialTemplates();
+    const auto selectedTemplate = std::find_if(
+        templates.begin(), templates.end(), [this](const auto &entry) {
+          return entry.id == selectedTemplate_;
+        });
+    const char *templateLabel = selectedTemplate != templates.end()
+                                    ? selectedTemplate->displayName.data()
+                                    : "Material Template";
+    ImGui::SetNextItemWidth(-1.0f);
+    ImGui::InputTextWithHint("##StandaloneMaterialName", "New material name",
+                             newMaterialName_.data(), newMaterialName_.size());
+    ImGui::SetNextItemWidth(-1.0f);
+    if (ImGui::BeginCombo("##StandaloneMaterialTemplate", templateLabel)) {
+      for (const auto &entry : templates) {
+        if (ImGui::Selectable(entry.displayName.data(),
+                              selectedTemplate_ == entry.id)) {
+          selectedTemplate_ = entry.id;
+        }
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
+          ImGui::SetTooltip("%s", entry.description.data());
+        }
+      }
+      ImGui::EndCombo();
+    }
+    if (ImGui::Button("Create Material", ImVec2(-1.0f, 0.0f))) {
+      (void)CreateMaterial(scene, selectedTemplate_, false, statusMessage_);
+    }
+
+    ImGui::SeparatorText("Project Materials");
+    ImGui::SetNextItemWidth(-1.0f);
+    ImGui::InputTextWithHint("##StandaloneMaterialSearch",
+                             "Filter materials...", materialSearch_.data(),
+                             materialSearch_.size());
+    const std::string_view query(materialSearch_.data());
+    if (ImGui::BeginChild("##StandaloneMaterialList", ImVec2(0.0f, 0.0f),
+                          ImGuiChildFlags_Border)) {
+      for (const AssetChoice &choice : materialChoices_) {
+        if (choice.materialKind != MaterialAssetKind::Material &&
+            choice.materialKind != MaterialAssetKind::Instance) {
+          continue;
+        }
+        if (!ContainsText(choice.label, query) &&
+            !ContainsText(choice.guid.value, query)) {
+          continue;
+        }
+        const bool selected =
+            choice.guid == authoringDocument_.GetMaterialAssetGuid();
+        if (ImGui::Selectable(choice.label.c_str(), selected)) {
+          candidateAuthoringAssetGuid_ = choice.guid;
+          (void)OpenMaterialAsset(scene, choice.guid, statusMessage_);
+        }
+      }
+    }
+    ImGui::EndChild();
     ImGui::End();
     return;
   }
@@ -86,6 +190,123 @@ void ModelMaterialWorkspaceController::DrawModelAndSlotsWindow(
     return;
   }
 
+  const AssetGuid activeSetGuid =
+      authoringDocument_.GetBindingAssetGuid();
+  const AssetChoice *activeSet = nullptr;
+  for (const AssetChoice &choice : materialSetChoices_) {
+    if (choice.guid == activeSetGuid) {
+      activeSet = &choice;
+      break;
+    }
+  }
+  const char *setPreview = activeSet != nullptr
+      ? activeSet->label.c_str()
+      : "Unsaved Material Set";
+  ImGui::SetNextItemWidth(-1.0f);
+  if (ImGui::BeginCombo("##ModelMaterialSet", setPreview)) {
+    for (const AssetChoice &choice : materialSetChoices_) {
+      if (choice.ownerModelGuid != modelGuid_) {
+        continue;
+      }
+      if (ImGui::Selectable(
+              choice.label.c_str(), choice.guid == activeSetGuid)) {
+        (void)OpenMaterialSet(scene, choice.guid, statusMessage_);
+      }
+    }
+    ImGui::Separator();
+    if (ImGui::Selectable("+ New Material Set")) {
+      (void)CreateMaterialSet(scene, statusMessage_);
+    }
+    ImGui::EndCombo();
+  }
+  ImGui::BeginDisabled(!authoringDocument_.IsBindingDirty());
+  if (ImGui::Button("Save Set")) {
+    (void)SaveBindings(scene, false, statusMessage_);
+  }
+  ImGui::EndDisabled();
+  ImGui::SameLine();
+  if (ImGui::Button("Save Set As...")) {
+    ImGui::OpenPopup("SaveBindingAsPopupFromParts");
+  }
+  if (ImGui::BeginPopup("SaveBindingAsPopupFromParts")) {
+    ImGui::TextUnformatted("Path under Assets");
+    ImGui::SetNextItemWidth(300.0f);
+    ImGui::InputText("##BindingSaveAsPath", bindingSaveAsPath_.data(),
+                     bindingSaveAsPath_.size());
+    if (ImGui::Button("Save Copy") &&
+        SaveBindings(scene, true, statusMessage_)) {
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
+  }
+  ImGui::SameLine();
+  if (ImGui::SmallButton("+##NewMaterialSet")) {
+    (void)CreateMaterialSet(scene, statusMessage_);
+  }
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip("Create another Material Set for this model");
+  }
+  ImGui::SameLine();
+  ImGui::BeginDisabled(
+      !authoringDocument_.GetBindingAssetGuid().IsValid());
+  if (ImGui::SmallButton("Trash##DeleteMaterialSet")) {
+    ImGui::OpenPopup("DeleteCurrentMaterialSetPopup");
+  }
+  ImGui::EndDisabled();
+  if (ImGui::BeginPopupModal(
+          "DeleteCurrentMaterialSetPopup", nullptr,
+          ImGuiWindowFlags_AlwaysAutoResize)) {
+    const AssetGuid setGuid =
+        authoringDocument_.GetBindingAssetGuid();
+    const AssetRecord* setRecord = setGuid.IsValid()
+        ? scene.GetAssetDatabase().FindByGuid(setGuid)
+        : nullptr;
+    ImGui::TextUnformatted("Move this model Material Set to project trash?");
+    if (setRecord != nullptr) {
+      ImGui::TextWrapped("%s", setRecord->sourcePath.generic_string().c_str());
+    }
+    if (authoringDocument_.IsBindingDirty()) {
+      ImGui::TextColored(
+          ImVec4(1.0f, 0.65f, 0.25f, 1.0f),
+          "Unsaved set edits will be discarded.");
+    }
+    const AssetTrashReferenceAnalysis references =
+        AnalyzeAssetTrashReferences(scene.GetAssetDatabase(), setGuid);
+    if (references.IsReferenced()) {
+      ImGui::SeparatorText("References");
+      ImGui::TextColored(
+          ImVec4(1.0f, 0.48f, 0.34f, 1.0f),
+          "This Material Set is still selected by a Scene and cannot be deleted.");
+      for (size_t index = 0u;
+           index < (std::min)(references.references.size(), size_t{3u});
+           ++index) {
+        const AssetTrashReference& reference = references.references[index];
+        ImGui::BulletText("%s (%s)",
+            reference.ownerSourcePath.generic_string().c_str(),
+            reference.role.c_str());
+      }
+    }
+    ImGui::BeginDisabled(references.IsReferenced());
+    if (ImGui::Button("Move to Trash", ImVec2(120.0f, 0.0f))) {
+      const AssetTrashResult deleted = MoveAssetToProjectTrash(
+          scene.GetAssetDatabase(), setGuid);
+      statusMessage_ = deleted.message;
+      if (deleted.success) {
+        (void)scene.ReloadAssets();
+        assetChoiceRevision_ = 0u;
+        (void)LoadOrCreateBindings(scene, statusMessage_);
+        RebuildSlotState(scene.GetAssetDatabase(), scene.GetAssetRegistry());
+      }
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndDisabled();
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel", ImVec2(100.0f, 0.0f))) {
+      ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
+  }
+
   ImGui::Text("%u material slots", stats_.materialSlotCount);
   ImGui::SameLine();
   if (authoringDocument_.IsBindingDirty()) {
@@ -125,7 +346,13 @@ void ModelMaterialWorkspaceController::DrawModelAndSlotsWindow(
       if (ImGui::Selectable(id.c_str(), selected,
                             ImGuiSelectableFlags_SpanAllColumns |
                                 ImGuiSelectableFlags_AllowOverlap)) {
-        (void)SelectSlot(slot.view.materialIndex);
+        (void)SelectSlotForEditing(scene, slot.view.materialIndex,
+                                   statusMessage_);
+      }
+      if (selected) {
+        ImGui::GetWindowDrawList()->AddRect(
+            ImGui::GetItemRectMin(), ImGui::GetItemRectMax(),
+            IM_COL32(80, 220, 232, 255), 3.0f, 0, 2.0f);
       }
       if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayNormal)) {
         ImGui::SetTooltip("Stable slotId: %s",

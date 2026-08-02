@@ -55,23 +55,36 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         if (gMeshRendererState.initialized) {
             return true;
         }
+        if (gMeshRendererState.initializationFailed) {
+            return false;
+        }
         auto* device = graphics.device;
-        if (!device) {
+        if (!device || !graphics.srvHeap) {
             return false;
         }
 
-        if (!CreateBuffers(graphics)) {
+        const auto failInitialization = [](const char* message) {
+            DEBUGLOG::PushRenderError(message);
+            gMeshRendererState.initializationFailed = true;
             return false;
+        };
+
+        if (!CreateBuffers(graphics)) {
+            return failInitialization(
+                "[MeshRenderer][ERROR] Required frame-resource initialization "
+                "failed. Rendering is disabled until process restart.");
         }
         if (!gMeshRendererState.gpuMaterialRegistry.Initialize(
                 kMaxMaterialDataCount,
                 GFX::kFrameResourceCount)) {
-            DEBUGLOG::PushRenderError(
-                "[MeshRenderer][ERROR] GPU material registry initialization failed.");
-            return false;
+            return failInitialization(
+                "[MeshRenderer][ERROR] GPU material registry initialization "
+                "failed. Rendering is disabled until process restart.");
         }
         if (!InitializeMeshPipelines(device, gMeshRendererState.pipelines)) {
-            return false;
+            return failInitialization(
+                "[MeshRenderer][ERROR] Required mesh pipeline initialization "
+                "failed. Rendering is disabled until process restart.");
         }
         if (!gMeshRendererState.traditionalCommandStreamBuffer.Initialize(
             device,

@@ -61,6 +61,7 @@ namespace HIKARI::RENDER3D::RUNTIME {
         std::string clusteredGeometryPath{};
 
         std::vector<SceneRenderMaterialOverride> materialOverrides{};
+        uint32_t editorSelectionMaterialIndex = kInvalidRenderSurfaceIndex;
 
         std::string materialFxProfileId{};
         uint32_t postGroupMask = 0;
@@ -120,6 +121,7 @@ namespace HIKARI::RENDER3D::RUNTIME {
 
         const Material* materialOverride = nullptr;
         uint64_t materialOverrideRevision = 0;
+        bool editorSelectionOutline = false;
         std::string materialFxProfileId{};
         uint32_t postGroupMask = 0;
         DirectX::XMFLOAT4 materialFxParamValues[VFX::kMaterialFxUserCount]{};

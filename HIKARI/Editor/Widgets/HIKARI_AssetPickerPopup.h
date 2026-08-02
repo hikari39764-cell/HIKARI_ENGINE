@@ -13,6 +13,7 @@ namespace HIKARI {
 
         struct AssetPickerPopupState {
             std::array<char, 160> searchBuffer{};
+            std::string selectedFolder{};
         };
 
         bool DrawAssetPickerPopup(

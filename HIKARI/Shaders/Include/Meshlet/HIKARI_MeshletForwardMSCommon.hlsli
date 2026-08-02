@@ -26,6 +26,8 @@ struct HikariMeshletVertexOut
     nointerpolation uint surfaceGpuSceneIndex : TEXCOORD5;
     nointerpolation uint debugSurfaceId : TEXCOORD6;
     nointerpolation uint surfaceFeatureFlags : TEXCOORD7;
+    float3 characterRightWS : TEXCOORD8;
+    float3 characterForwardWS : TEXCOORD9;
 };
 
 HikariMeshletVertexOut HikariBuildEmptyMeshletVertex()
@@ -41,6 +43,8 @@ HikariMeshletVertexOut HikariBuildMeshletVertex(
     HikariSurfaceGpuSceneInstance instance,
     HikariMeshletResolvedCluster resolved,
     HikariClusterVertex vertex,
+    float3 localCharacterRight,
+    float3 localCharacterForward,
     uint surfaceGpuSceneIndex)
 {
     HikariMeshletVertexOut output = HikariBuildEmptyMeshletVertex();
@@ -62,7 +66,8 @@ HikariMeshletVertexOut HikariBuildMeshletVertex(
     output.position = HikariExpandGeometryOutlineVertex(
         worldPos,
         output.normalWS,
-        instance.materialDataIndex);
+        instance.materialDataIndex,
+        instance.materialProgramFlags);
 #else
     output.position = clipPosition;
 #endif
@@ -82,6 +87,10 @@ HikariMeshletVertexOut HikariBuildMeshletVertex(
     output.debugSurfaceId =
         resolved.visible.clusterSurfaceIndex * 4099u + resolved.visible.sectionIndex;
     output.surfaceFeatureFlags = instance.flags;
+    output.characterRightWS = normalize(
+        mul((float3x3)instance.clusterNormalMatrix, localCharacterRight));
+    output.characterForwardWS = normalize(
+        mul((float3x3)instance.clusterNormalMatrix, localCharacterForward));
     return output;
 }
 
@@ -116,18 +125,24 @@ void main(
         {
             HikariClusterVertex vertex =
                 HikariLoadClusterVertexShading(geometry, resolved.header, vertexIndex);
+            float3 localCharacterRight = float3(1.0f, 0.0f, 0.0f);
+            float3 localCharacterForward = float3(0.0f, 0.0f, 1.0f);
             HikariApplyGpuDrivenSkinning(
                 geometry,
                 instance,
                 vertexIndex,
                 vertex.position.xyz,
                 vertex.normal.xyz,
-                vertex.tangent.xyz);
+                vertex.tangent.xyz,
+                localCharacterRight,
+                localCharacterForward);
             vertices[vertexSlot] =
                 HikariBuildMeshletVertex(
                     instance,
                     resolved,
                     vertex,
+                    localCharacterRight,
+                    localCharacterForward,
                     resolved.visible.gpuSceneInstanceIndex);
         }
         else

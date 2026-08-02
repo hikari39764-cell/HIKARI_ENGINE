@@ -33,9 +33,13 @@ bool ModelMaterialWorkspaceController::OpenMaterialAsset(
     outMessage = "material is already open";
     return true;
   }
-  if (authoringDocument_.IsMaterialDirty() ||
-      authoringDocument_.IsAbPreviewActive()) {
-    outMessage = "save, undo, or discard the current material changes first";
+  if (!executingPendingTransition_ &&
+      (authoringDocument_.IsMaterialDirty() ||
+       authoringDocument_.IsAbPreviewActive())) {
+    PendingTransition transition{};
+    transition.kind = PendingTransitionKind::OpenMaterial;
+    transition.assetGuid = guid;
+    QueuePendingTransition(std::move(transition), outMessage);
     return false;
   }
 
@@ -45,10 +49,22 @@ bool ModelMaterialWorkspaceController::OpenMaterialAsset(
   if (!service.Load(guid, loaded, outMessage)) {
     return false;
   }
+  EnsureBuiltInRampPresets(scene);
+  RefreshAssetChoices(scene.GetAssetDatabase());
+  const bool addedDefaultRampBindings =
+      BindBuiltInRampPresets(loaded.source);
+  if (addedDefaultRampBindings) {
+    loaded.compile = CompileMaterialAsset(
+        loaded.source,
+        loaded.hasLastGoodProgram ? &loaded.lastGoodProgram : nullptr);
+  }
   authoringDocument_.OpenMaterial(
       loaded.assetGuid, loaded.sourcePath, std::move(loaded.source),
       loaded.compile,
-      loaded.hasLastGoodProgram ? &loaded.lastGoodProgram : nullptr, true);
+      addedDefaultRampBindings && loaded.compile.success
+          ? &loaded.compile.program
+          : loaded.hasLastGoodProgram ? &loaded.lastGoodProgram : nullptr,
+      !addedDefaultRampBindings);
   candidateAuthoringAssetGuid_ = guid;
   if (IsRenderableMaterialAsset(authoringDocument_.GetMaterial().kind)) {
     candidateMaterialGuid_ = guid;
@@ -63,6 +79,9 @@ bool ModelMaterialWorkspaceController::OpenMaterialAsset(
   if (IsRenderableMaterialAsset(authoringDocument_.GetMaterial().kind)) {
     (void)RebuildAuthoredPreview(scene.GetAssetDatabase(),
                                  scene.GetAssetRegistry(), outMessage);
+    if (addedDefaultRampBindings) {
+      outMessage += "; missing Ramp slots received project defaults (Save to persist)";
+    }
   } else {
     outMessage = std::string(ToString(authoringDocument_.GetMaterial().kind)) +
                  " asset opened for authoring";
@@ -73,9 +92,14 @@ bool ModelMaterialWorkspaceController::OpenMaterialAsset(
 bool ModelMaterialWorkspaceController::CreateMaterial(
     DocumentSceneBase &scene, MaterialTemplateId templateId, bool instance,
     std::string &outMessage) {
-  if (authoringDocument_.IsMaterialDirty() ||
-      authoringDocument_.IsAbPreviewActive()) {
-    outMessage = "save, undo, or discard the current material changes first";
+  if (!executingPendingTransition_ &&
+      (authoringDocument_.IsMaterialDirty() ||
+       authoringDocument_.IsAbPreviewActive())) {
+    PendingTransition transition{};
+    transition.kind = PendingTransitionKind::CreateMaterial;
+    transition.templateId = templateId;
+    transition.instance = instance;
+    QueuePendingTransition(std::move(transition), outMessage);
     return false;
   }
 
@@ -98,7 +122,18 @@ bool ModelMaterialWorkspaceController::CreateMaterial(
   } else {
     source = ASSETS::MATERIAL::CreateMaterialFromTemplate(templateId,
                                                           displayName);
+    EnsureBuiltInRampPresets(scene);
+    RefreshAssetChoices(scene.GetAssetDatabase());
+    BindBuiltInRampPresets(source);
   }
+
+  return CreateAndBindRenderableMaterial(
+      scene, std::move(source), outMessage);
+}
+
+bool ModelMaterialWorkspaceController::CreateAndBindRenderableMaterial(
+    DocumentSceneBase &scene, MaterialAssetData source,
+    std::string &outMessage) {
 
   ASSETS::MATERIAL::MaterialAssetAuthoringService service(
       scene.GetAssetDatabase());
@@ -118,7 +153,10 @@ bool ModelMaterialWorkspaceController::CreateMaterial(
   instanceParentCacheRevision_ = 0u;
   (void)scene.ReloadAssets();
 
-  const ModelMaterialSlotView *slot = GetSelectedSlot();
+  const ModelMaterialSlotView *slot =
+      authoringMode_ == AuthoringMode::ModelMaterials
+          ? GetSelectedSlot()
+          : nullptr;
   if (slot != nullptr && slot->slotId.IsValid()) {
     ModelMaterialBindingCommand command{};
     command.type = ModelMaterialBindingCommandType::BindMaterialAsset;
@@ -145,9 +183,13 @@ bool ModelMaterialWorkspaceController::CreateAuxiliaryMaterialAsset(
     outMessage = "unsupported auxiliary material asset kind";
     return false;
   }
-  if (authoringDocument_.IsMaterialDirty() ||
-      authoringDocument_.IsAbPreviewActive()) {
-    outMessage = "save, undo, or discard the current material changes first";
+  if (!executingPendingTransition_ &&
+      (authoringDocument_.IsMaterialDirty() ||
+       authoringDocument_.IsAbPreviewActive())) {
+    PendingTransition transition{};
+    transition.kind = PendingTransitionKind::CreateAuxiliaryMaterial;
+    transition.materialKind = kind;
+    QueuePendingTransition(std::move(transition), outMessage);
     return false;
   }
 
@@ -162,19 +204,9 @@ bool ModelMaterialWorkspaceController::CreateAuxiliaryMaterialAsset(
                                   std::string(ToString(kind))
                             : requestedName;
   if (kind == MaterialAssetKind::Ramp) {
-    source.ramp.dimension = MaterialRampDimension::OneD;
-    source.ramp.interpolation = MaterialRampInterpolation::Smooth;
-    source.ramp.width = 256u;
-    source.ramp.height = 1u;
-    MaterialRampPointData shadow{};
-    shadow.id = "ramp.shadow";
-    shadow.position = {0.0f, 0.0f};
-    shadow.color = {0.42f, 0.48f, 0.66f, 1.0f};
-    MaterialRampPointData light{};
-    light.id = "ramp.light";
-    light.position = {1.0f, 0.0f};
-    light.color = {1.0f, 1.0f, 1.0f, 1.0f};
-    source.ramp.points = {std::move(shadow), std::move(light)};
+    source = ASSETS::MATERIAL::CreateMaterialRampFromPreset(
+        ASSETS::MATERIAL::MaterialRampPresetId::ToonSoft,
+        source.materialName);
   } else if (kind == MaterialAssetKind::Profile) {
     source.profile.baseTemplate = selectedTemplate_;
   }
@@ -200,41 +232,6 @@ bool ModelMaterialWorkspaceController::CreateAuxiliaryMaterialAsset(
   outMessage = std::string(ToString(kind)) +
                " asset created and opened";
   return true;
-}
-
-bool ModelMaterialWorkspaceController::CreateCharacterMaterialSet(
-    DocumentSceneBase &scene, std::string &outMessage) {
-  const std::string prefix = newMaterialName_[0] != '\0'
-                                 ? std::string(newMaterialName_.data())
-                                 : std::string("Character");
-  const ASSETS::MATERIAL::DefaultCharacterMaterialSet defaults =
-      ASSETS::MATERIAL::CreateDefaultCharacterMaterialSet(prefix);
-  ASSETS::MATERIAL::MaterialAssetAuthoringService service(
-      scene.GetAssetDatabase());
-  size_t createdCount = 0u;
-  AssetGuid firstGuid{};
-  for (const ASSETS::MATERIAL::CharacterMaterialSetEntry &entry :
-       defaults.entries) {
-    const ASSETS::MATERIAL::MaterialAuthoringResult created =
-        service.Create(entry.source);
-    if (!created.success) {
-      outMessage = "created " + std::to_string(createdCount) +
-                   " character materials; " + created.message;
-      return false;
-    }
-    if (!firstGuid.IsValid()) {
-      firstGuid = created.assetGuid;
-    }
-    ++createdCount;
-  }
-  (void)scene.ReloadAssets();
-  candidateMaterialGuid_ = firstGuid;
-  outMessage = "created " + std::to_string(createdCount) +
-               " role-based character materials; bind slots manually";
-  if (!defaults.diagnostics.empty()) {
-    outMessage += "; " + defaults.diagnostics.front();
-  }
-  return createdCount == defaults.entries.size();
 }
 
 bool ModelMaterialWorkspaceController::SaveMaterial(
@@ -295,6 +292,22 @@ bool ModelMaterialWorkspaceController::SaveMaterial(
       (void)ExecuteBindingCommand(command, scene.GetAssetDatabase(),
                                   scene.GetAssetRegistry());
     }
+  } else if (!previousGuid.IsValid() &&
+             authoringMode_ == AuthoringMode::ModelMaterials) {
+    const ModelMaterialSlotView *slot = GetSelectedSlot();
+    if (slot != nullptr && slot->slotId.IsValid()) {
+      ModelMaterialBindingCommand command{};
+      command.type = ModelMaterialBindingCommandType::BindMaterialAsset;
+      command.slotId = slot->slotId;
+      command.materialIndexHint = slot->materialIndex;
+      command.materialAssetGuid = saved.assetGuid;
+      const ModelMaterialBindingCommandResult binding =
+          ExecuteBindingCommand(command, scene.GetAssetDatabase(),
+                                scene.GetAssetRegistry());
+      if (!binding.message.empty()) {
+        outMessage += "; " + binding.message;
+      }
+    }
   }
   if (IsRenderableMaterialAsset(authoringDocument_.GetMaterial().kind)) {
     (void)RebuildAuthoredPreview(scene.GetAssetDatabase(),
@@ -314,17 +327,6 @@ bool ModelMaterialWorkspaceController::RebuildAuthoredPreview(
                  " saved; auxiliary assets do not replace slot preview";
     return true;
   }
-  const ModelMaterialSlotView *selected = GetSelectedSlot();
-  if (selected == nullptr) {
-    outMessage = "select a model material slot to preview this material";
-    return false;
-  }
-  SlotState *slot = FindSlot(selected->slotId);
-  if (slot == nullptr) {
-    outMessage = "selected model material slot is no longer available";
-    return false;
-  }
-
   MaterialAssetData effective = authoringDocument_.GetMaterial();
   if (effective.kind == MaterialAssetKind::Instance) {
     ASSETS::MATERIAL::MaterialAssetAuthoringService service(assetDatabase);
@@ -351,15 +353,50 @@ bool ModelMaterialWorkspaceController::RebuildAuthoredPreview(
     outMessage = "material preview projection failed; last preview kept";
     return false;
   }
+  previewMaterial->SetInheritModelTextures(
+      authoringMode_ == AuthoringMode::ModelMaterials);
+  if (authoringMode_ == AuthoringMode::MaterialAsset) {
+    if (!materialSphereScene_.IsReady() ||
+        !materialSphereScene_.SetPreviewMaterialOverride(
+            0u, previewMaterial.get())) {
+      outMessage = "material sphere rejected the authored material";
+      return false;
+    }
+    standalonePreviewMaterial_ = std::move(previewMaterial);
+    outMessage = resolution.UsedLastGood()
+                     ? "material sphere uses the last-good material program"
+                 : resolution.UsedFallback()
+                     ? "material sphere uses the Standard PBR fallback"
+                     : "standalone material preview updated";
+    return true;
+  }
+
+  const ModelMaterialSlotView *selected = GetSelectedSlot();
+  if (selected == nullptr) {
+    outMessage = "select a model part to preview this material";
+    return false;
+  }
+  SlotState *slot = FindSlot(selected->slotId);
+  if (slot == nullptr) {
+    outMessage = "selected model material slot is no longer available";
+    return false;
+  }
   if (!previewScene_.SetPreviewMaterialOverride(slot->view.materialIndex,
                                                 previewMaterial.get())) {
     outMessage = "preview rejected the authored material slot";
     return false;
   }
   slot->previewMaterial = std::move(previewMaterial);
-  slot->view.source = ModelMaterialBindingSource::AuthoredOverride;
-  slot->view.diagnostic.clear();
+  const bool savedAsset =
+      authoringDocument_.GetMaterialAssetGuid().IsValid();
+  slot->view.source = savedAsset
+                          ? ModelMaterialBindingSource::AuthoredOverride
+                          : ModelMaterialBindingSource::ImportedFallback;
+  slot->view.diagnostic = savedAsset
+                              ? std::string{}
+                              : "unsaved editable copy of imported material";
   UpdatePublicSlotViews();
+  RefreshSelectedSlotPresentation();
   outMessage = resolution.UsedLastGood()
                    ? "preview uses the last-good material program"
                : resolution.UsedFallback()
@@ -368,62 +405,25 @@ bool ModelMaterialWorkspaceController::RebuildAuthoredPreview(
   return true;
 }
 
-void ModelMaterialWorkspaceController::BeginMaterialGesture(
-    std::string label) {
-  if (!authoringDocument_.HasMaterial() || materialGesture_) {
-    return;
+bool ModelMaterialWorkspaceController::RefreshMaterialPreviews(
+    DocumentSceneBase &scene, std::string &outMessage) {
+  materialPreviewRefreshPending_ = false;
+  const bool authoredPreviewUpdated = RebuildAuthoredPreview(
+      scene.GetAssetDatabase(), scene.GetAssetRegistry(), outMessage);
+  if (!authoringDocument_.HasMaterial() ||
+      !authoringDocument_.GetMaterialAssetGuid().IsValid() ||
+      !IsRenderableMaterialAsset(authoringDocument_.GetMaterial().kind)) {
+    return authoredPreviewUpdated;
   }
-  materialGesture_ = MaterialEditGesture{authoringDocument_.GetMaterial(),
-                                         std::move(label)};
-}
 
-void ModelMaterialWorkspaceController::CommitMaterialGesture(
-    DocumentSceneBase &scene) {
-  if (!materialGesture_) {
-    return;
+  const int runtimeBindingCount = scene.ApplyRuntimeMaterialOverridePreview(
+      authoringDocument_.GetMaterialAssetGuid(),
+      authoringDocument_.GetMaterial());
+  if (runtimeBindingCount > 0) {
+    outMessage += "; runtime hot preview updated " +
+                  std::to_string(runtimeBindingCount) + " binding(s)";
   }
-  MaterialEditGesture gesture = std::move(*materialGesture_);
-  materialGesture_.reset();
-  if (authoringDocument_.CommitMaterial(std::move(gesture.before),
-                                        std::move(gesture.label))) {
-    (void)RebuildAuthoredPreview(scene.GetAssetDatabase(),
-                                 scene.GetAssetRegistry(), statusMessage_);
-  }
-}
-
-void ModelMaterialWorkspaceController::CancelMaterialGesture(
-    DocumentSceneBase &scene) {
-  if (!materialGesture_) {
-    return;
-  }
-  authoringDocument_.RestoreMaterial(std::move(materialGesture_->before));
-  materialGesture_.reset();
-  (void)RebuildAuthoredPreview(scene.GetAssetDatabase(),
-                               scene.GetAssetRegistry(), statusMessage_);
-  statusMessage_ = "material edit canceled";
-}
-
-void ModelMaterialWorkspaceController::CommitMaterialMutation(
-    MaterialAssetData before, std::string label,
-    DocumentSceneBase &scene) {
-  if (authoringDocument_.CommitMaterial(std::move(before), std::move(label))) {
-    (void)RebuildAuthoredPreview(scene.GetAssetDatabase(),
-                                 scene.GetAssetRegistry(), statusMessage_);
-  }
-}
-
-bool ModelMaterialWorkspaceController::ApplyHistoryProjection(
-    ModelMaterialWorkspaceDocument::ChangedDomain domain,
-    AssetDatabase &assetDatabase, const AssetRegistry &assetRegistry,
-    std::string &outMessage) {
-  if (domain == ModelMaterialWorkspaceDocument::ChangedDomain::Binding) {
-    RebuildSlotState(assetDatabase, assetRegistry);
-    return true;
-  }
-  if (domain == ModelMaterialWorkspaceDocument::ChangedDomain::Material) {
-    return RebuildAuthoredPreview(assetDatabase, assetRegistry, outMessage);
-  }
-  return true;
+  return authoredPreviewUpdated;
 }
 
 } // namespace HIKARI::EDITOR

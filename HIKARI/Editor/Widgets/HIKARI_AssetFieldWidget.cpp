@@ -109,9 +109,12 @@ namespace HIKARI::EDITOR {
         }
         ImGui::PushID(labelText.c_str());
         const float menuButtonWidth = ImGui::GetFrameHeight();
+        const float availableWidth = options.width > 0.0f
+            ? options.width
+            : ImGui::GetContentRegionAvail().x;
         const float buttonWidth = (std::max)(
             40.0f,
-            ImGui::GetContentRegionAvail().x -
+            availableWidth -
                 menuButtonWidth - ImGui::GetStyle().ItemSpacing.x);
         if (ImGui::Button(preview.c_str(), ImVec2(buttonWidth, 0.0f))) {
             ImGui::OpenPopup(popupId.c_str());

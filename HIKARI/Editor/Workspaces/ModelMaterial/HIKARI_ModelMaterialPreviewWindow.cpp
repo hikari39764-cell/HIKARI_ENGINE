@@ -3,6 +3,7 @@
 #include <algorithm>
 
 #include "Core/HIKARI_TimeService.h"
+#include "Editor/Preview/HIKARI_ModelPreviewPicking.h"
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 #include "Editor/Views/HIKARI_EditorViewInputGate.h"
@@ -49,6 +50,17 @@ const char *DebugModeLabel(
   return "Lit";
 }
 
+const char *EnvironmentModeLabel(
+    ModelMaterialWorkspaceController::PreviewEnvironmentMode mode) noexcept {
+  switch (mode) {
+  case ModelMaterialWorkspaceController::PreviewEnvironmentMode::RuntimeMatch:
+    return "Runtime Asset Lighting";
+  case ModelMaterialWorkspaceController::PreviewEnvironmentMode::StudioInspect:
+    return "Studio Inspect";
+  }
+  return "Runtime Asset Lighting";
+}
+
 } // namespace
 
 void ModelMaterialWorkspaceController::DrawPreviewToolbar(
@@ -56,21 +68,97 @@ void ModelMaterialWorkspaceController::DrawPreviewToolbar(
     EditorCommandRouter &commandRouter) {
 #if defined(HIKARI_WITH_EDITOR)
   constexpr ImVec2 kIconSize{28.0f, 28.0f};
-  ToolbarLabel(IsEditingModel() ? modelDisplayName_.c_str() : "No model open");
+  ToolbarLabel(authoringMode_ == AuthoringMode::MaterialAsset
+                   ? "Material Sphere"
+               : IsEditingModel() ? modelDisplayName_.c_str()
+                                  : "No model open");
   ImGui::SameLine();
-  const size_t overrideCount = static_cast<size_t>(std::count_if(
-      slots_.begin(), slots_.end(), [](const SlotState &slot) {
-        return slot.view.overrideMaterialGuid.IsValid();
-      }));
-  const std::string bindingLabel =
-      overrideCount == 0u ? "Imported materials"
-                          : std::to_string(overrideCount) + " override(s)";
-  StatusBadge(bindingLabel.c_str(), overrideCount == 0u
-                                        ? EditorStatusTone::Normal
-                                        : EditorStatusTone::Ready);
+  if (authoringMode_ == AuthoringMode::MaterialAsset) {
+    StatusBadge("Standalone Material", EditorStatusTone::Ready);
+  } else {
+    const size_t overrideCount = static_cast<size_t>(std::count_if(
+        slots_.begin(), slots_.end(), [](const SlotState &slot) {
+          return slot.view.overrideMaterialGuid.IsValid();
+        }));
+    const std::string bindingLabel =
+        overrideCount == 0u ? "Imported materials"
+                            : std::to_string(overrideCount) + " override(s)";
+    StatusBadge(bindingLabel.c_str(), overrideCount == 0u
+                                          ? EditorStatusTone::Normal
+                                          : EditorStatusTone::Ready);
+    if (const ModelMaterialSlotView *selected = GetSelectedSlot()) {
+      ImGui::SameLine();
+      const std::string selectedLabel = "Part: " + selected->displayName;
+      StatusBadge(selectedLabel.c_str(), EditorStatusTone::Ready);
+    }
+  }
 
   ImGui::SameLine(0.0f, 12.0f);
-  ImGui::BeginDisabled(!IsEditingModel());
+  if (ImGui::RadioButton(
+          "Runtime Asset Lighting",
+          previewEnvironmentMode_ == PreviewEnvironmentMode::RuntimeMatch)) {
+    previewEnvironmentMode_ = PreviewEnvironmentMode::RuntimeMatch;
+    previewDebugMode_ = PreviewDebugMode::Lit;
+  }
+  ImGui::SameLine();
+  if (ImGui::RadioButton(
+          "Studio Inspect",
+          previewEnvironmentMode_ == PreviewEnvironmentMode::StudioInspect)) {
+    previewEnvironmentMode_ = PreviewEnvironmentMode::StudioInspect;
+  }
+
+  const bool studioInspect =
+      previewEnvironmentMode_ == PreviewEnvironmentMode::StudioInspect;
+  ImGui::SameLine(0.0f, 6.0f);
+  if (IconButton(EditorGlyph::Add, "ModelMaterialAddStudioLight",
+                 studioInspect ? EditorButtonTone::Primary
+                               : EditorButtonTone::Quiet,
+                 kIconSize,
+                 "Create a Studio point or directional light")) {
+    previewEnvironmentMode_ = PreviewEnvironmentMode::StudioInspect;
+    ImGui::OpenPopup("ModelMaterialAddStudioLightPopup");
+  }
+  if (ImGui::BeginPopup("ModelMaterialAddStudioLightPopup")) {
+    if (ImGui::MenuItem("Point Light")) {
+      AddPreviewLight(RENDER3D::LIGHTING::SceneLightType::Point);
+    }
+    if (ImGui::MenuItem("Directional Light")) {
+      AddPreviewLight(RENDER3D::LIGHTING::SceneLightType::Directional);
+    }
+    ImGui::EndPopup();
+  }
+  if (selectedPreviewLightIndex_.has_value()) {
+    const bool selectedDirectional =
+        *selectedPreviewLightIndex_ < previewLighting_.lights.size() &&
+        previewLighting_.lights[*selectedPreviewLightIndex_].type ==
+            RENDER3D::LIGHTING::SceneLightType::Directional;
+    ImGui::SameLine();
+    if (IconButton(EditorGlyph::Translate, "ModelMaterialLightTranslate",
+                   previewLightGizmoState_.operation ==
+                           EditorTransformGizmoOperation::Translate
+                       ? EditorButtonTone::Primary
+                       : EditorButtonTone::Quiet,
+                   kIconSize, "Move the selected light in the viewport")) {
+      previewLightGizmoState_.operation =
+          EditorTransformGizmoOperation::Translate;
+    }
+    if (selectedDirectional) {
+      ImGui::SameLine();
+      if (IconButton(EditorGlyph::Rotate, "ModelMaterialLightRotate",
+                     previewLightGizmoState_.operation ==
+                             EditorTransformGizmoOperation::Rotate
+                         ? EditorButtonTone::Primary
+                         : EditorButtonTone::Quiet,
+                     kIconSize,
+                     "Rotate the selected directional light")) {
+        previewLightGizmoState_.operation =
+            EditorTransformGizmoOperation::Rotate;
+      }
+    }
+  }
+
+  ImGui::SameLine(0.0f, 12.0f);
+  ImGui::BeginDisabled(!IsPreviewReady());
   if (IconButton(EditorGlyph::Focus, "ModelMaterialFit",
                  EditorButtonTone::Quiet, kIconSize,
                  "Frame the complete model (F)")) {
@@ -87,9 +175,11 @@ void ModelMaterialWorkspaceController::DrawPreviewToolbar(
     ResetPreviewCamera();
   }
   ImGui::SameLine();
+  ImGui::BeginDisabled(authoringMode_ != AuthoringMode::ModelMaterials);
   if (ImGui::SmallButton("Focus Slot")) {
     FocusSelectedSlot();
   }
+  ImGui::EndDisabled();
   ImGui::EndDisabled();
 
   ImGui::SameLine(0.0f, 8.0f);
@@ -109,15 +199,17 @@ void ModelMaterialWorkspaceController::DrawPreviewToolbar(
     ImGui::TextWrapped(
         "Camera state is kept per model and per workspace for this Editor "
         "session.");
-    ImGui::SeparatorText("Runtime Preview Lighting");
-    if (!previewLighting_.lights.empty()) {
-      auto &key = previewLighting_.lights.front();
-      ImGui::Checkbox("Key Light", &key.enabled);
-      ImGui::DragFloat3("Position", &key.position.x, 0.05f);
-      ImGui::ColorEdit3("Color", &key.color.x);
-      ImGui::DragFloat("Intensity", &key.intensity, 0.1f, 0.0f, 1000.0f);
-      ImGui::DragFloat("Range", &key.range, 0.1f, 0.1f, 1000.0f);
-    }
+    ImGui::SeparatorText("Preview Environment");
+    ImGui::Text("Mode: %s", EnvironmentModeLabel(previewEnvironmentMode_));
+    ImGui::TextWrapped(
+        previewEnvironmentMode_ == PreviewEnvironmentMode::RuntimeMatch
+            ? "Uses the active scene environment and lights passed to the "
+              "same runtime renderer."
+            : "Uses the material workspace sky and movable inspection light.");
+    ImGui::BeginDisabled(!studioInspect);
+    ImGui::SeparatorText("Studio Inspect Environment");
+    ImGui::TextDisabled(
+        "Create lights with the + icon, then select their viewport glyph.");
     if (ImGui::Checkbox("Sky", &previewSkyEnabled_)) {
       previewEnvironment_.sky.enabled = previewSkyEnabled_;
     }
@@ -126,6 +218,9 @@ void ModelMaterialWorkspaceController::DrawPreviewToolbar(
                      0.01f, 0.0f, 32.0f);
     ImGui::DragFloat("Ambient", &previewEnvironment_.ambient.intensity,
                      0.01f, 0.0f, 8.0f);
+    ImGui::EndDisabled();
+    ImGui::Checkbox("Preview anti-aliasing (FXAA)",
+                    &previewSpatialAaEnabled_);
     ImGui::SeparatorText("Debug View");
     if (ImGui::BeginCombo("##MaterialPreviewDebugMode",
                           DebugModeLabel(previewDebugMode_))) {
@@ -195,9 +290,10 @@ void ModelMaterialWorkspaceController::DrawPreviewWindow(
   previewOutputWidth_ = output.width;
   previewOutputHeight_ = output.height;
   previewOutputRevision_ = output.outputRevision;
-  previewOutputReady_ = IsEditingModel() && output.ready &&
+  const ModelPreviewScene &activePreview = GetActivePreviewScene();
+  previewOutputReady_ = IsPreviewReady() && output.ready &&
                         output.colorSrv.ptr != 0u &&
-                        output.sceneRevision == previewScene_.GetRevision();
+                        output.sceneRevision == activePreview.GetRevision();
 
   ImGui::SetCursorScreenPos(origin);
   if (previewOutputReady_) {
@@ -209,9 +305,11 @@ void ModelMaterialWorkspaceController::DrawPreviewWindow(
                            ImGuiButtonFlags_MouseButtonLeft |
                                ImGuiButtonFlags_MouseButtonRight |
                                ImGuiButtonFlags_MouseButtonMiddle);
-    const char *message = IsEditingModel()
+    const char *message = IsPreviewReady()
                               ? "Preparing runtime-sourced material preview..."
-                              : "Choose a model from Models & Material Slots";
+                          : authoringMode_ == AuthoringMode::MaterialAsset
+                              ? "Preparing the material sphere..."
+                              : "Choose a model from Materials & Parts";
     const ImVec2 textSize = ImGui::CalcTextSize(message);
     drawList->AddText({origin.x + (canvasSize.x - textSize.x) * 0.5f,
                        origin.y + (canvasSize.y - textSize.y) * 0.5f},
@@ -220,6 +318,13 @@ void ModelMaterialWorkspaceController::DrawPreviewWindow(
 
   const bool canvasVisible = ImGui::IsItemVisible();
   const bool hovered = ImGui::IsItemHovered();
+  const bool studioInspect =
+      previewEnvironmentMode_ == PreviewEnvironmentMode::StudioInspect;
+  const PreviewLightViewportInteraction lightInteraction =
+      studioInspect && IsPreviewReady()
+          ? DrawPreviewLightViewportInteraction(
+                origin.x, origin.y, canvasSize.x, canvasSize.y)
+          : PreviewLightViewportInteraction{};
   if (hovered) {
     ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY,
                            ImGuiInputFlags_LockThisFrame);
@@ -244,9 +349,12 @@ void ModelMaterialWorkspaceController::DrawPreviewWindow(
   submission.leftMouseDown = ImGui::IsMouseDown(ImGuiMouseButton_Left);
   submission.leftMouseClicked = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
   submission.altDown = io.KeyAlt;
-  submission.pointerBlocked = block.pointer;
+  submission.pointerBlocked = block.pointer ||
+                              lightInteraction.glyphHovered ||
+                              lightInteraction.gizmoInteracting;
   submission.keyboardBlocked = block.keyboard;
-  inputRouter_.SetGizmoCapture(view.renderViewId, false);
+  inputRouter_.SetGizmoCapture(view.renderViewId,
+                               lightInteraction.gizmoInteracting);
   const EditorViewInputState &input =
       inputRouter_.Submit(view.renderViewId, submission);
   view.interaction.visible = canvasVisible;
@@ -256,7 +364,7 @@ void ModelMaterialWorkspaceController::DrawPreviewWindow(
                                    input.middleMouseCaptured ||
                                    input.orbitMouseCaptured;
   view.interaction.keyboardActive = input.AcceptsKeyboard();
-  view.interaction.gizmoCaptured = false;
+  view.interaction.gizmoCaptured = lightInteraction.gizmoInteracting;
 
   EditorDirectorCameraInput cameraInput{};
   cameraInput.lookActive = input.rightMouseCaptured;
@@ -282,11 +390,33 @@ void ModelMaterialWorkspaceController::DrawPreviewWindow(
     ++cameraRevision_;
     SaveActiveCameraState();
   }
+  const bool requestSurfaceSelection =
+      authoringMode_ == AuthoringMode::ModelMaterials &&
+      previewOutputReady_ && hovered && submission.leftMouseClicked &&
+      !submission.pointerBlocked && !io.KeyAlt &&
+      !input.rightMouseCaptured && !input.middleMouseCaptured &&
+      !input.orbitMouseCaptured;
+  if (requestSurfaceSelection) {
+    ModelPreviewPointerRay ray{};
+    const float normalizedX =
+        (io.MousePos.x - origin.x) / canvasSize.x;
+    const float normalizedY =
+        (io.MousePos.y - origin.y) / canvasSize.y;
+    if (BuildModelPreviewPointerRay(
+            cameraController_.GetCamera(), normalizedX, normalizedY, ray)) {
+      const ModelPreviewSurfacePick pick =
+          PickModelPreviewSurface(ray, previewScene_);
+      if (pick.valid) {
+        (void)SelectSlotForEditing(scene, pick.materialIndex,
+                                   statusMessage_);
+      }
+    }
+  }
   if (input.AcceptsKeyboard() && hovered && !io.WantTextInput) {
     (void)commandRouter.ProcessViewportShortcuts(true);
   }
 
-  if (IsEditingModel()) {
+  if (IsPreviewReady()) {
     RENDER3D::EDITORVIEW::EditorInteractiveViewRequest request{};
     request.viewId = view.renderViewId;
     request.purpose = RENDER3D::RenderViewPurpose::ToolPreview;
@@ -296,15 +426,19 @@ void ModelMaterialWorkspaceController::DrawPreviewWindow(
     request.cameraFrame.valid = true;
     request.width = view.extent.width;
     request.height = view.extent.height;
-    request.sceneRevision = previewScene_.GetRevision();
+    request.sceneRevision = activePreview.GetRevision();
     request.visible = canvasVisible;
     request.drawDebug = false;
     request.schedulingPriority = 100u;
     request.shadingMode = ResolveShadingMode(previewDebugMode_);
     request.displayExposure = view.visualization.displayExposure;
-    request.sceneSourceOverride = previewScene_.GetSceneSource();
-    request.environmentOverride = &previewEnvironment_;
-    request.lightingOverride = &previewLighting_;
+    request.sceneSourceOverride = activePreview.GetSceneSource();
+    request.environmentOverride =
+        studioInspect ? &previewEnvironment_ : nullptr;
+    request.lightingOverride = studioInspect ? &previewLighting_ : nullptr;
+    request.suppressSpatialLightingProviders = true;
+    request.useDefaultSkyIbl = studioInspect;
+    request.spatialAntiAliasing = previewSpatialAaEnabled_;
     RENDER3D::EDITORVIEW::SubmitRequest(request);
     previewRequestSubmitted_ = true;
   } else {
@@ -312,6 +446,35 @@ void ModelMaterialWorkspaceController::DrawPreviewWindow(
     previewRequestSubmitted_ = false;
   }
   cameraCutPending_ = false;
+
+  bool showingStaleCompile = false;
+  if (previewOutputReady_ && authoringDocument_.HasMaterial()) {
+    const MaterialCompileResult &compile =
+        authoringDocument_.GetCompileResult();
+    showingStaleCompile = !compile.success;
+    if (showingStaleCompile) {
+      const char *warning = compile.usedLastGood
+          ? "Current graph is invalid - previewing LAST-GOOD graph"
+          : "Current graph is invalid - previewing STANDARD PBR fallback";
+      const ImVec2 warningSize = ImGui::CalcTextSize(warning);
+      drawList->AddRectFilled(
+          {origin.x + 8.0f, origin.y + 8.0f},
+          {origin.x + warningSize.x + 24.0f,
+           origin.y + warningSize.y + 18.0f},
+          IM_COL32(118, 58, 18, 238), 5.0f);
+      drawList->AddText(
+          {origin.x + 16.0f, origin.y + 13.0f},
+          IM_COL32(255, 213, 133, 255), warning);
+    }
+  }
+  if (authoringMode_ == AuthoringMode::ModelMaterials &&
+      previewOutputReady_ && hovered && !io.KeyAlt) {
+    drawList->AddText(
+        {origin.x + 10.0f,
+         origin.y + (showingStaleCompile ? 42.0f : 10.0f)},
+        IM_COL32(214, 228, 238, 220),
+        "Click a visible surface to edit its material");
+  }
 
   ImGui::SetCursorScreenPos({origin.x, origin.y + canvasSize.y});
   ImGui::Dummy(ImVec2(1.0f, 1.0f));

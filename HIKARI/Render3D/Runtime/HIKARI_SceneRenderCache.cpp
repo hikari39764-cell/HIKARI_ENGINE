@@ -118,6 +118,8 @@ namespace HIKARI::RENDER3D::RUNTIME {
                 !EqualMaterialOverrides(
                     oldDesc.materialOverrides,
                     newDesc.materialOverrides) ||
+                oldDesc.editorSelectionMaterialIndex !=
+                    newDesc.editorSelectionMaterialIndex ||
                 oldDesc.materialFxProfileId != newDesc.materialFxProfileId ||
                 oldDesc.postGroupMask != newDesc.postGroupMask ||
                 oldDesc.materialFxValuesInitialized != newDesc.materialFxValuesInitialized ||
@@ -223,6 +225,9 @@ namespace HIKARI::RENDER3D::RUNTIME {
                 instance.materialOverrideRevision =
                     materialOverride->materialRevision;
             }
+            instance.editorSelectionOutline =
+                object.desc.editorSelectionMaterialIndex ==
+                surface.materialIndex;
             instance.materialFxProfileId = object.desc.materialFxProfileId;
             instance.postGroupMask = object.desc.postGroupMask;
             instance.materialFxValuesInitialized = object.desc.materialFxValuesInitialized;

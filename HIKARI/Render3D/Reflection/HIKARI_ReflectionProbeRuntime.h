@@ -88,6 +88,9 @@ namespace HIKARI::REFLECTION {
             const ScopedReflectionProbeSamplingSuppress&) = delete;
         ScopedReflectionProbeSamplingSuppress& operator=(
             const ScopedReflectionProbeSamplingSuppress&) = delete;
+
+    private:
+        ReflectionProbeViewSelection previousSelection_{};
     };
 
     D3D12_GPU_DESCRIPTOR_HANDLE GetViewPrefilteredSrv(size_t slot);

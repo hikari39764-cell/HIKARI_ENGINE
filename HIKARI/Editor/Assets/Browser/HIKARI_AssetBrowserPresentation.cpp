@@ -179,6 +179,7 @@ ImVec4 TypeBadgeColor(AssetType type) {
   case AssetType::Scene:
     return ImVec4(0.66f, 0.88f, 0.68f, 1.0f);
   case AssetType::Material:
+  case AssetType::ModelMaterialBinding:
     return ImVec4(1.0f, 0.78f, 0.48f, 1.0f);
   case AssetType::Sky:
     return ImVec4(0.54f, 0.90f, 0.92f, 1.0f);

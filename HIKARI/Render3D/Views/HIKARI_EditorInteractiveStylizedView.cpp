@@ -42,6 +42,8 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         EditorInteractiveStylizedPreparation result{};
         result.requests =
             FEATURES::AnalyzeRenderFeatureRequests(sceneSource);
+        result.featureMaskBackendReady =
+            MESHRENDERER::HasStylizedFeatureMaskBackend();
         result.geometryOutlineBackendReady =
             MESHRENDERER::HasGeometryOutlineFeatureBackend();
         result.visibilityOverlayBackendReady =
@@ -54,14 +56,14 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
             result.visibilityOverlayBackendReady &&
             result.requests.Requests(
                 FEATURES::RenderFeatureKind::VisibilityOverlay);
-        result.writeFeatureMask =
-            result.requests.RequestsOpaqueSurface(
-                FEATURES::RenderFeatureKind::ScreenOutline) ||
-            result.requests.RequestsOpaqueSurface(
-                FEATURES::RenderFeatureKind::FaceHairShadow) ||
+        result.writeFeatureMask = result.featureMaskBackendReady &&
             (result.requests.RequestsOpaqueSurface(
-                 FEATURES::RenderFeatureKind::GeometryOutline) &&
-             !result.geometryOutlineBackendReady);
+                 FEATURES::RenderFeatureKind::ScreenOutline) ||
+             result.requests.RequestsOpaqueSurface(
+                 FEATURES::RenderFeatureKind::FaceHairShadow) ||
+             (result.requests.RequestsOpaqueSurface(
+                  FEATURES::RenderFeatureKind::GeometryOutline) &&
+              !result.geometryOutlineBackendReady));
         return result;
     }
 

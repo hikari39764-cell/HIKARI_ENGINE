@@ -1,0 +1,290 @@
+#include "Render3D/Material/Program/HIKARI_MaterialProgramStaticEvaluator.h"
+
+#include <algorithm>
+#include <cctype>
+#include <cmath>
+#include <optional>
+#include <string>
+#include <vector>
+
+namespace HIKARI::RENDER3D::MATERIAL {
+namespace {
+
+std::string NormalizeId(std::string_view id) {
+  std::string normalized{};
+  normalized.reserve(id.size());
+  for (const unsigned char value : id) {
+    if (std::isalnum(value) != 0) {
+      normalized.push_back(
+          static_cast<char>(std::tolower(value)));
+    }
+  }
+  return normalized;
+}
+
+void SetRgb(MATH::Vec4 &target, const MATH::Vec4 &value) {
+  target.x = value.x;
+  target.y = value.y;
+  target.z = value.z;
+}
+
+void ApplyNamedParameter(
+    std::span<MATH::Vec4> values,
+    const MaterialProgramParameterBinding &parameter) {
+  const std::string id = NormalizeId(parameter.parameterId);
+  MATH::Vec4 value = parameter.defaultValue.numeric;
+  if (parameter.type == MaterialValueType::Bool) {
+    value = {parameter.defaultValue.boolean ? 1.0f : 0.0f,
+             0.0f, 0.0f, 0.0f};
+  }
+  if (id == "parametershadowthreshold") values[0].x = value.x;
+  else if (id == "parametershadowsoftness") values[0].y = value.x;
+  else if (id == "parametermidthreshold") values[0].z = value.x;
+  else if (id == "parameterramprow") values[16].x = value.x;
+  else if (id == "parameterrampmaskinfluence") values[16].y = value.x;
+  else if (id == "parameterrampblend") values[16].z = value.x;
+  else if (id == "parameterrampintensity") values[16].w = value.x;
+  else if (id == "parametertoondirectgain") values[0].w = value.x;
+  else if (id == "parametershadowtint") SetRgb(values[1], value);
+  else if (id == "parametermidtint") SetRgb(values[2], value);
+  else if (id == "parameterlittint") SetRgb(values[3], value);
+  else if (id == "parameterspecularbandwidth") values[4].x = value.x;
+  else if (id == "parameterspecularbandsoftness") values[4].y = value.x;
+  else if (id == "parameterspecularintensity") values[4].z = value.x;
+  else if (id == "parameterspecularpower") values[4].w = value.x;
+  else if (id == "parameterspeculartint") SetRgb(values[5], value);
+  else if (id == "parameterhairhighlighttint") SetRgb(values[5], value);
+  else if (id == "parameterrimcolor") SetRgb(values[6], value);
+  else if (id == "parameterrimintensity") values[6].w = value.x;
+  else if (id == "parameterrimpower") values[7].x = value.x;
+  else if (id == "parameterrimwidth") values[7].y = value.x;
+  else if (id == "parameterrimlightalignment") values[7].z = value.x;
+  else if (id == "parametermatcaptint") SetRgb(values[8], value);
+  else if (id == "parametermatcapintensity") values[8].w = value.x;
+  else if (id == "parameterhairshift") values[9].x = value.x;
+  else if (id == "parameterhairwidth") values[9].y = value.x;
+  else if (id == "parameterhairsecondaryshift") values[9].z = value.x;
+  else if (id == "parameterhairintensity") values[9].w = value.x;
+  else if (id == "parameterfaceshadowsoftness") values[10].x = value.x;
+  else if (id == "parameterfaceshadowoffset") values[10].y = value.x;
+  else if (id == "parameterfacehairshadowstrength") values[10].z = value.x;
+  else if (id == "parameterfacehairshadowoffset") values[10].w = value.x;
+  else if (id == "parameterfaceright") SetRgb(values[17], value);
+  else if (id == "parameterfaceforward") SetRgb(values[18], value);
+  else if (id == "parameteririsdepth") values[11].x = value.x;
+  else if (id == "parametereyesparkle") values[11].y = value.x;
+  else if (id == "parametereyesparklepower") values[11].z = value.x;
+  else if (id == "parameterpbrnprblend") {
+    values[12].x = value.x;
+    values[12].y = value.x;
+    values[12].z = value.x;
+  } else if (id == "parameterdirectdiffusepbrblend") values[12].x = value.x;
+  else if (id == "parameterdirectspecularpbrblend") values[12].y = value.x;
+  else if (id == "parameterindirectpbrblend") values[12].z = value.x;
+  else if (id == "parameterfabricsheen") values[13].x = value.x;
+  else if (id == "parameterfiberroughness") values[13].y = value.x;
+  else if (id == "parameterfabricsheenpower") values[13].z = value.x;
+  else if (id == "parameterfabricsheenintensity") values[13].w = value.x;
+  else if (id == "parameterskinwrap") values[14].x = value.x;
+  else if (id == "parameterskinsubsurface") values[14].y = value.x;
+  else if (id == "parameterskintint") SetRgb(values[15], value);
+  else if (id == "parameteroutlinecolor") SetRgb(values[19], value);
+  else if (id == "parameteroutlinethickness") values[19].w = value.x;
+}
+
+float ReadComponent(const MaterialValueData& value,
+                    uint32_t component) noexcept {
+  const float values[]{value.numeric.x, value.numeric.y, value.numeric.z,
+                       value.numeric.w};
+  const uint32_t count = GetMaterialValueComponentCount(value.type);
+  return values[count <= 1u ? 0u : (std::min)(component, count - 1u)];
+}
+
+using StaticRegisterFile =
+    std::vector<std::optional<MaterialValueData>>;
+
+const MaterialValueData* ReadStaticInput(
+    const MaterialProgramInstruction& instruction, std::string_view pin,
+    const StaticRegisterFile& registers) noexcept {
+  const auto found = std::find(instruction.inputPins.begin(),
+                               instruction.inputPins.end(), pin);
+  if (found == instruction.inputPins.end()) {
+    return nullptr;
+  }
+  const size_t index = static_cast<size_t>(
+      std::distance(instruction.inputPins.begin(), found));
+  const uint32_t registerIndex = instruction.inputRegisters[index];
+  if (registerIndex == kInvalidMaterialProgramRegister ||
+      registerIndex >= registers.size() ||
+      !registers[registerIndex].has_value()) {
+    return nullptr;
+  }
+  return &*registers[registerIndex];
+}
+
+StaticRegisterFile EvaluateStaticValues(const MaterialProgramIR& program) {
+  StaticRegisterFile registers(program.registerCount);
+  for (const MaterialProgramInstruction& instruction : program.instructions) {
+    std::optional<MaterialValueData> result{};
+    if (instruction.opcode == MaterialProgramOpcode::Constant) {
+      result = instruction.immediate;
+    } else if (instruction.opcode == MaterialProgramOpcode::Parameter &&
+               instruction.bindingIndex < program.parameters.size()) {
+      result = program.parameters[instruction.bindingIndex].defaultValue;
+    } else {
+      const MaterialValueData* a = ReadStaticInput(
+          instruction,
+          instruction.opcode == MaterialProgramOpcode::Power
+              ? "Base"
+          : instruction.opcode == MaterialProgramOpcode::Clamp ||
+                  instruction.opcode == MaterialProgramOpcode::Saturate ||
+                  instruction.opcode == MaterialProgramOpcode::OneMinus
+              ? "Value"
+              : "A",
+          registers);
+      const MaterialValueData* b = ReadStaticInput(
+          instruction,
+          instruction.opcode == MaterialProgramOpcode::Power
+              ? "Exponent"
+          : instruction.opcode == MaterialProgramOpcode::Clamp ? "Min" : "B",
+          registers);
+      const MaterialValueData* c = ReadStaticInput(
+          instruction,
+          instruction.opcode == MaterialProgramOpcode::Lerp ? "Alpha" : "Max",
+          registers);
+      const bool unary = instruction.opcode == MaterialProgramOpcode::Saturate ||
+                         instruction.opcode == MaterialProgramOpcode::OneMinus;
+      const bool ternary = instruction.opcode == MaterialProgramOpcode::Lerp ||
+                           instruction.opcode == MaterialProgramOpcode::Clamp;
+      const bool numericOpcode =
+          instruction.opcode >= MaterialProgramOpcode::Add &&
+          instruction.opcode <= MaterialProgramOpcode::Dot;
+      if (numericOpcode && a != nullptr && (unary || b != nullptr) &&
+          (!ternary || c != nullptr)) {
+        MaterialValueData value{};
+        value.type = instruction.opcode == MaterialProgramOpcode::Dot
+                         ? MaterialValueType::Float1
+                         : instruction.valueType;
+        float* output = &value.numeric.x;
+        const uint32_t componentCount =
+            GetMaterialValueComponentCount(value.type);
+        for (uint32_t component = 0u; component < componentCount; ++component) {
+          const float left = ReadComponent(*a, component);
+          const float right =
+              b != nullptr ? ReadComponent(*b, component) : 0.0f;
+          if (instruction.opcode == MaterialProgramOpcode::Add) {
+            output[component] = left + right;
+          } else if (instruction.opcode == MaterialProgramOpcode::Multiply) {
+            output[component] = left * right;
+          } else if (instruction.opcode == MaterialProgramOpcode::Lerp) {
+            const float alpha = ReadComponent(*c, component);
+            output[component] = left + (right - left) * alpha;
+          } else if (instruction.opcode == MaterialProgramOpcode::Clamp) {
+            output[component] =
+                std::clamp(left, right, ReadComponent(*c, component));
+          } else if (instruction.opcode == MaterialProgramOpcode::Saturate) {
+            output[component] = std::clamp(left, 0.0f, 1.0f);
+          } else if (instruction.opcode == MaterialProgramOpcode::OneMinus) {
+            output[component] = 1.0f - left;
+          } else if (instruction.opcode == MaterialProgramOpcode::Power) {
+            output[component] = std::pow((std::max)(left, 0.0f), right);
+          } else if (instruction.opcode == MaterialProgramOpcode::Dot) {
+            output[0] = ReadComponent(*a, 0u) * ReadComponent(*b, 0u) +
+                        ReadComponent(*a, 1u) * ReadComponent(*b, 1u) +
+                        ReadComponent(*a, 2u) * ReadComponent(*b, 2u);
+            break;
+          }
+        }
+        result = value;
+      }
+    }
+    if (!result.has_value() || instruction.outputRegisters.empty()) {
+      continue;
+    }
+    const uint32_t outputRegister = instruction.outputRegisters.front();
+    if (outputRegister < registers.size()) {
+      registers[outputRegister] = *result;
+    }
+  }
+  return registers;
+}
+
+} // namespace
+
+void ApplyConnectedMaterialResponseParameters(
+    const MaterialProgramIR& program, std::span<MATH::Vec4> parameters) {
+  if (parameters.size() < 20u) {
+    return;
+  }
+  for (const MaterialProgramParameterBinding &parameter :
+       program.parameters) {
+    ApplyNamedParameter(parameters, parameter);
+  }
+  const StaticRegisterFile registers = EvaluateStaticValues(program);
+  for (const MaterialProgramInstruction& instruction : program.instructions) {
+    const auto scalar = [&](std::string_view pin, float& target) {
+      if (const MaterialValueData* value =
+              ReadStaticInput(instruction, pin, registers)) {
+        target = ReadComponent(*value, 0u);
+      }
+    };
+    const auto rgb = [&](std::string_view pin, MATH::Vec4& target) {
+      if (const MaterialValueData* value =
+              ReadStaticInput(instruction, pin, registers)) {
+        target.x = ReadComponent(*value, 0u);
+        target.y = ReadComponent(*value, 1u);
+        target.z = ReadComponent(*value, 2u);
+      }
+    };
+    if (instruction.opcode == MaterialProgramOpcode::RampDiffuse ||
+        instruction.opcode == MaterialProgramOpcode::MultiRampDiffuse) {
+      scalar("ShadowThreshold", parameters[0].x);
+      scalar("ShadowSoftness", parameters[0].y);
+      scalar("MidThreshold", parameters[0].z);
+      rgb("ShadowTint", parameters[1]);
+      rgb("MidTint", parameters[2]);
+      rgb("LitTint", parameters[3]);
+      scalar("RampRow", parameters[16].x);
+      scalar("MaskInfluence", parameters[16].y);
+      scalar("RampBlend", parameters[16].z);
+      scalar("Intensity", parameters[16].w);
+      scalar("DirectGain", parameters[0].w);
+    } else if (instruction.opcode == MaterialProgramOpcode::SpecularBand) {
+      scalar("Width", parameters[4].x);
+      scalar("Softness", parameters[4].y);
+      scalar("Intensity", parameters[4].z);
+      scalar("Power", parameters[4].w);
+      rgb("Tint", parameters[5]);
+    } else if (instruction.opcode == MaterialProgramOpcode::FresnelRim) {
+      scalar("Power", parameters[7].x);
+      scalar("Width", parameters[7].y);
+      rgb("Color", parameters[6]);
+      scalar("Intensity", parameters[6].w);
+      scalar("LightAlignment", parameters[7].z);
+    } else if (instruction.opcode == MaterialProgramOpcode::AnisotropicHair) {
+      scalar("Shift", parameters[9].x);
+      scalar("Width", parameters[9].y);
+    } else if (instruction.opcode == MaterialProgramOpcode::FaceSdf) {
+      scalar("Softness", parameters[10].x);
+      scalar("DirectGain", parameters[0].w);
+    } else if (instruction.opcode == MaterialProgramOpcode::SkinLighting) {
+      scalar("Wrap", parameters[14].x);
+      scalar("Subsurface", parameters[14].y);
+      rgb("Tint", parameters[15]);
+    } else if (instruction.opcode == MaterialProgramOpcode::FabricSheen) {
+      scalar("Sheen", parameters[13].x);
+      scalar("FiberRoughness", parameters[13].y);
+      scalar("Power", parameters[13].z);
+      scalar("Intensity", parameters[13].w);
+    } else if (instruction.opcode == MaterialProgramOpcode::HybridLighting) {
+      scalar("DirectDiffuseBlend", parameters[12].x);
+      scalar("DirectSpecularBlend", parameters[12].y);
+      scalar("IndirectBlend", parameters[12].z);
+    } else if (instruction.opcode == MaterialProgramOpcode::Outline) {
+      rgb("Color", parameters[19]);
+      scalar("Thickness", parameters[19].w);
+    }
+  }
+}
+
+} // namespace HIKARI::RENDER3D::MATERIAL

@@ -279,7 +279,8 @@ namespace HIKARI {
                 &builder,
                 &programRegistry](
                     uint32_t materialIndex,
-                    const MaterialAssetDescriptor& descriptor) {
+                    const MaterialAssetDescriptor& descriptor,
+                    bool inheritModelTextures) {
 
                 auto runtimeMaterial = std::make_unique<Material>();
                 if (!builder.BuildRuntimeMaterial(
@@ -290,18 +291,23 @@ namespace HIKARI {
                         descriptor.id.value)) {
                     return false;
                 }
+                runtimeMaterial->SetInheritModelTextures(
+                    inheritModelTextures);
                 modelComponent.SetRuntimeMaterialOverride(
                     materialIndex,
                     std::move(runtimeMaterial));
                 return true;
             };
 
-            // imported -> model default binding
+            // imported -> explicit model-owned Material Set (legacy scenes
+            // without one retain deterministic model-default lookup)
             const auto defaults =
-                ASSETS::MODELS::ResolveDefaultModelMaterialBindings(
+                ASSETS::MODELS::ResolveModelMaterialBindings(
                     assetRegistry,
                     AssetGuid{modelComponent.GetAssetId()},
-                    modelAsset->materials);
+                    modelComponent.GetMaterialSetAssetGuid(),
+                    modelAsset->materials,
+                    !modelComponent.HasAuthoredMaterialSetSelection());
             for (const std::string& diagnostic : defaults.diagnostics) {
                 HIKARI_LOG_WARN("[MaterialRuntime][ModelDefault] " + diagnostic);
             }
@@ -309,7 +315,8 @@ namespace HIKARI {
                 if (binding.materialDescriptor != nullptr) {
                     (void)applyMaterial(
                         binding.materialIndex,
-                        *binding.materialDescriptor);
+                        *binding.materialDescriptor,
+                        true);
                 }
             }
 
@@ -345,7 +352,8 @@ namespace HIKARI {
                         "using legacy slot index fallback");
                 }
 
-                (void)applyMaterial(resolution.materialIndex, *descriptor);
+                (void)applyMaterial(
+                    resolution.materialIndex, *descriptor, false);
             }
         }
 
@@ -376,6 +384,14 @@ namespace HIKARI {
                     const std::string assetId = component.properties.value("assetId", std::string{});
                     if (!assetId.empty()) {
                         deps.modelAssetIds.insert(assetId);
+                    }
+                    const std::string materialSetGuid =
+                        component.properties.value(
+                            "materialSetAssetGuid",
+                            std::string{});
+                    if (!materialSetGuid.empty()) {
+                        deps.modelMaterialSetAssetIds.insert(
+                            materialSetGuid);
                     }
                     if (component.properties.contains("materialOverrides") &&
                         component.properties["materialOverrides"].is_array()) {
@@ -439,6 +455,27 @@ namespace HIKARI {
                         loadPlan,
                         assetRegistry,
                         *binding.materialDescriptor);
+                }
+            }
+        }
+
+        for (const std::string& materialSetId :
+            dependencies.modelMaterialSetAssetIds) {
+            const auto* materialSet =
+                assetRegistry.FindAs<ModelMaterialBindingAssetDescriptor>(
+                    AssetId{materialSetId});
+            if (materialSet == nullptr) {
+                continue;
+            }
+            for (const auto& binding : materialSet->data.bindings) {
+                const auto* material =
+                    assetRegistry.FindAs<MaterialAssetDescriptor>(
+                        AssetId{binding.materialAssetGuid.value});
+                if (material != nullptr) {
+                    CollectMaterialTextureRequests(
+                        loadPlan,
+                        assetRegistry,
+                        *material);
                 }
             }
         }

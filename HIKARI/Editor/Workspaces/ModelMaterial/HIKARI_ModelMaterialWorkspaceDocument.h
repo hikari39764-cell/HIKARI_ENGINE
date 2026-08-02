@@ -64,6 +64,8 @@ public:
 
   bool IsBindingDirty() const noexcept;
   bool IsMaterialDirty() const noexcept;
+  bool DiscardBindingChanges() noexcept;
+  bool DiscardMaterialChanges();
   void MarkBindingsSaved(const AssetGuid &assetGuid,
                          std::filesystem::path sourcePath) noexcept;
   void MarkMaterialSaved(const AssetGuid &assetGuid,
@@ -91,10 +93,10 @@ private:
                                     const BindingMap &right) noexcept;
   static bool AreMaterialsEquivalent(const MaterialAssetData &left,
                                      const MaterialAssetData &right);
-  void TruncateRedo();
+  void TruncateRedo(ChangedDomain domain);
   void PushHistory(HistoryEntry entry);
   void RefreshCompile();
-  void ClearHistory() noexcept;
+  void ClearHistory(ChangedDomain domain) noexcept;
 
   AssetGuid modelGuid_{};
   AssetGuid bindingAssetGuid_{};
@@ -102,12 +104,17 @@ private:
   std::filesystem::path bindingSourcePath_{};
   std::filesystem::path materialSourcePath_{};
   BindingMap bindings_{};
+  BindingMap savedBindings_{};
   MaterialAssetData material_{};
+  MaterialAssetData savedMaterial_{};
   MaterialCompileResult compile_{};
   std::optional<MaterialProgramIR> lastGoodProgram_{};
   std::optional<MaterialAssetData> abBefore_{};
-  std::vector<HistoryEntry> history_{};
-  size_t historyCursor_ = 0u;
+  std::vector<HistoryEntry> bindingHistory_{};
+  std::vector<HistoryEntry> materialHistory_{};
+  size_t bindingHistoryCursor_ = 0u;
+  size_t materialHistoryCursor_ = 0u;
+  ChangedDomain activeHistoryDomain_ = ChangedDomain::None;
   uint64_t nextStateToken_ = 1u;
   uint64_t bindingStateToken_ = 0u;
   uint64_t materialStateToken_ = 0u;

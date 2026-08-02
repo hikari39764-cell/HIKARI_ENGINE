@@ -119,6 +119,10 @@ namespace HIKARI {
     MaterialAssetData MakeStandardPbrMaterialAssetData(
         const PbrMaterialAssetData& legacyData = {});
 
+    void ApplyPbrMaterialAssetData(
+        MaterialAssetData& material,
+        const PbrMaterialAssetData& pbr);
+
     PbrMaterialAssetData ProjectPbrMaterialAssetData(
         const MaterialAssetData& data);
 

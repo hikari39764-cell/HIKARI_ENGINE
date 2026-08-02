@@ -41,4 +41,13 @@ namespace HIKARI::ASSETS::MODELS {
         const AssetGuid& modelAssetGuid,
         const std::vector<MaterialAsset>& importedMaterials);
 
+    // An explicit Material Set is exact-model-only. Passing an empty set GUID
+    // preserves the legacy deterministic model-default lookup.
+    DefaultModelMaterialBindingResolution ResolveModelMaterialBindings(
+        const AssetRegistry& registry,
+        const AssetGuid& modelAssetGuid,
+        const AssetGuid& materialSetAssetGuid,
+        const std::vector<MaterialAsset>& importedMaterials,
+        bool allowLegacyDefault = true);
+
 } // namespace HIKARI::ASSETS::MODELS

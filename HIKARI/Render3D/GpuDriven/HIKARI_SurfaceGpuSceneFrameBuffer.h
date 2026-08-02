@@ -56,10 +56,12 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         void ResetFrame();
         void InvalidateResidency();
         bool CanReuseFrame(
+            uintptr_t sourceIdentity,
             size_t residentInstanceCount,
             uint64_t layoutVersion,
             uint64_t sourceVersion) const;
         bool CanPatchFrame(
+            uintptr_t sourceIdentity,
             size_t residentInstanceCount,
             uint64_t layoutVersion,
             uint64_t baseSourceVersion) const;
@@ -80,7 +82,11 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             std::span<const uint32_t> materialSlotBySourceRecord,
             uint64_t bindingVersion);
         bool HasMaterialDataIndex(size_t instanceIndex) const;
-        void MarkResident(uint64_t layoutVersion, uint64_t sourceVersion, size_t instanceCount);
+        void MarkResident(
+            uintptr_t sourceIdentity,
+            uint64_t layoutVersion,
+            uint64_t sourceVersion,
+            size_t instanceCount);
         void CommitFrame(ID3D12GraphicsCommandList* commandList);
 
         D3D12_GPU_DESCRIPTOR_HANDLE GetSrv() const;
@@ -101,6 +107,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             size_t dirtyEndInstance = 0;
             uint64_t layoutVersion = 0;
             uint64_t sourceVersion = 0;
+            uintptr_t sourceIdentity = 0;
             uint64_t materialBindingVersion = 0;
             bool resident = false;
             bool dirty = false;

@@ -167,8 +167,43 @@ namespace HIKARI {
     }
 
     void ModelComponent::SetAssetId(std::string assetId) {
+        if (assetId_ != assetId) {
+            materialSetAssetGuid_ = {};
+            materialSetSelectionAuthored_ = true;
+            materialOverrides_.clear();
+            ClearRuntimeMaterialOverrides();
+        }
         assetId_ = std::move(assetId);
         NotifyRenderStateDirty();
+    }
+
+    const AssetGuid& ModelComponent::GetMaterialSetAssetGuid() const noexcept {
+        return materialSetAssetGuid_;
+    }
+
+    bool ModelComponent::HasAuthoredMaterialSetSelection() const noexcept {
+        return materialSetSelectionAuthored_;
+    }
+
+    void ModelComponent::SetMaterialSetAssetGuid(
+        AssetGuid materialSetGuid) {
+
+        if (materialSetAssetGuid_ == materialSetGuid &&
+            materialSetSelectionAuthored_) {
+            return;
+        }
+        materialSetAssetGuid_ = std::move(materialSetGuid);
+        materialSetSelectionAuthored_ = true;
+        ClearRuntimeMaterialOverrides();
+        NotifyRenderStateDirty();
+    }
+
+    void ModelComponent::ClearMaterialSetAssetGuid() {
+        SetMaterialSetAssetGuid({});
+    }
+
+    void ModelComponent::UseImportedModelMaterials() {
+        ClearMaterialSetAssetGuid();
     }
 
     void ModelComponent::SetPostGroupMask(uint32_t mask) {

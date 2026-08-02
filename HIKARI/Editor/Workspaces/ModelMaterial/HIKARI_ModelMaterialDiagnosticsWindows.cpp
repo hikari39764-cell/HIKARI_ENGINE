@@ -94,6 +94,10 @@ void ModelMaterialWorkspaceController::DrawDiagnosticsWindow(
               policy.castShadow ? "cast" : "off",
               policy.receiveShadow ? "receive" : "off",
               policy.allowStaticCachedForward ? "on" : "off");
+  ImGui::Text("Environment: %s",
+              previewEnvironmentMode_ == PreviewEnvironmentMode::RuntimeMatch
+                  ? "Runtime Asset Lighting (active scene, no spatial bake)"
+                  : "Studio Inspect (workspace overrides)");
   const RENDER3D::EDITORVIEW::EditorInteractiveSchedulerStats scheduler =
       RENDER3D::EDITORVIEW::GetSchedulerStats();
   ImGui::Text("Scheduler: serial %llu | rendered view %llu | candidates %u",
@@ -124,8 +128,11 @@ void ModelMaterialWorkspaceController::DrawDiagnosticsWindow(
   }
   ImGui::TextWrapped(
       "The preview request uses ToolPreview purpose, the shared runtime scene "
-      "source, runtime material projection, per-view environment and lighting "
-      "overrides, shadows, cached forward, LOD and GPU-scene culling.");
+      "source, runtime material projection, shadows, cached forward, LOD and "
+      "GPU-scene culling. Runtime Asset Lighting inherits the active scene "
+      "global environment and lights, but intentionally excludes placement-"
+      "specific Lightmaps and probes. Studio Inspect changes only per-view "
+      "lighting overrides.");
   ImGui::End();
 #else
   (void)scene;

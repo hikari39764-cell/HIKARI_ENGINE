@@ -62,6 +62,9 @@ namespace HIKARI {
         out["maxWireLines"] = maxWireLines_;
         out["wirePerPrimitiveColor"] = wirePerPrimitiveColor_;
         out["postGroupMask"] = postGroupMask_;
+        if (materialSetSelectionAuthored_) {
+            out["materialSetAssetGuid"] = materialSetAssetGuid_.value;
+        }
         out["materialOverrides"] = nlohmann::json::array();
         for (const ModelMaterialOverrideSlot& slot :
             materialOverrides_) {
@@ -104,6 +107,11 @@ namespace HIKARI {
             in.value("wirePerPrimitiveColor", wirePerPrimitiveColor_);
         postGroupMask_ =
             in.value("postGroupMask", postGroupMask_);
+        materialSetSelectionAuthored_ =
+            in.contains("materialSetAssetGuid");
+        materialSetAssetGuid_.value = materialSetSelectionAuthored_
+            ? in.value("materialSetAssetGuid", std::string{})
+            : std::string{};
 
         materialOverrides_.clear();
         if (in.contains("materialOverrides") &&

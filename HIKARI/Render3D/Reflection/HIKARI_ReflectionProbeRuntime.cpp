@@ -337,6 +337,7 @@ namespace HIKARI::REFLECTION {
 
     ScopedReflectionProbeSamplingSuppress::
         ScopedReflectionProbeSamplingSuppress() {
+        previousSelection_ = gViewSelection;
         ++gSamplingSuppressDepth;
     }
 
@@ -344,6 +345,8 @@ namespace HIKARI::REFLECTION {
         ~ScopedReflectionProbeSamplingSuppress() {
         gSamplingSuppressDepth =
             (std::max)(0, gSamplingSuppressDepth - 1);
+        gViewSelection = previousSelection_;
+        LogSelectionIfChanged();
     }
 
     D3D12_GPU_DESCRIPTOR_HANDLE GetViewPrefilteredSrv(size_t slot) {

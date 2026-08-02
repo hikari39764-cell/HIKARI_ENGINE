@@ -249,11 +249,14 @@ namespace HIKARI::RENDER3D::PIPELINE {
         const FEATURES::RenderFeatureRequestSet featureRequests =
             FEATURES::AnalyzeRenderFeatureRequests(
                 MESHRENDERER::GetActiveGpuDrivenSceneSource());
+        const bool stylizedFeatureMaskBackendReady =
+            MESHRENDERER::HasStylizedFeatureMaskBackend();
         const bool geometryOutlineBackendReady =
             MESHRENDERER::HasGeometryOutlineFeatureBackend();
         const bool visibilityOverlayBackendReady =
             MESHRENDERER::HasVisibilityOverlayFeatureBackend();
         const bool stylizedScreenMaskRequired = !debugRoute.active &&
+            stylizedFeatureMaskBackendReady &&
             (featureRequests.RequestsOpaqueSurface(
                  FEATURES::RenderFeatureKind::ScreenOutline) ||
              featureRequests.RequestsOpaqueSurface(

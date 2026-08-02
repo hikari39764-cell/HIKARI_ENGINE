@@ -81,6 +81,10 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                 frame.skyEnvironmentMapped != nullptr) {
                 frame.skyEnvironmentCB->Unmap(0, nullptr);
             }
+            if (frame.jointPaletteCB != nullptr &&
+                frame.jointPaletteMapped != nullptr) {
+                frame.jointPaletteCB->Unmap(0, nullptr);
+            }
             frame = {};
         }
 
@@ -88,7 +92,6 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         gMeshRendererState.editorInteractive.clusterGpuDrivenProducer.Attach(
             nullptr);
         gMeshRendererState.editorInteractive.clusterGpuCullingPass.Reset();
-        gMeshRendererState.editorInteractive.traditionalCommandStreamBuffer = {};
         gMeshRendererState.editorInteractive.surfaceGpuSceneBuffer = {};
         gMeshRendererState.editorInteractive.sceneResidency.Reset();
         for (RENDER3D::RenderResourceView& view :
@@ -109,8 +112,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
 
         ID3D12Device* device = GFX::GetCurrentContext().device;
         if (device == nullptr ||
-            GetStaticRootSignature(gMeshRendererState.pipelines) == nullptr ||
-            GetSkinnedRootSignature(gMeshRendererState.pipelines) == nullptr) {
+            GetStaticRootSignature(gMeshRendererState.pipelines) == nullptr) {
             return false;
         }
 
@@ -149,7 +151,16 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                 !CreateMappedConstantBuffer(
                     device,
                     frame.skyEnvironmentCB,
-                    frame.skyEnvironmentMapped)) {
+                    frame.skyEnvironmentMapped) ||
+                !GFX::D3D12_BUFFER::CreateMappedUploadBuffer(
+                    device,
+                    static_cast<UINT64>(
+                        GFX::AlignD3D12ConstantBufferByteSize(
+                            sizeof(JointPaletteCB))) *
+                        kMaxObjectCount,
+                    frame.jointPaletteCB,
+                    reinterpret_cast<void**>(
+                        &frame.jointPaletteMapped))) {
 
                 ResetEditorInteractiveResources();
                 return false;
@@ -187,22 +198,6 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             return false;
         }
 
-        if (!gMeshRendererState.editorInteractive.traditionalCommandStreamBuffer.Initialize(
-                device,
-                GetStaticRootSignature(gMeshRendererState.pipelines),
-                ROOT_PARAM::SurfaceGpuSceneControl,
-                4u) ||
-            !gMeshRendererState.editorInteractive.traditionalCommandStreamBuffer
-                .InitializeSkinnedCommandStream(
-                    device,
-                    GetSkinnedRootSignature(gMeshRendererState.pipelines),
-                    ROOT_PARAM::SurfaceGpuSceneControl,
-                    ROOT_PARAM::JointPalette)) {
-
-            ResetEditorInteractiveResources();
-            return false;
-        }
-
         (void)gMeshRendererState.editorInteractive.clusterGpuCullingPass.Initialize(
             GFX::GetCurrentContext(),
             GetStaticRootSignature(gMeshRendererState.pipelines),
@@ -215,7 +210,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             &gMeshRendererState.editorInteractive.clusterGpuCullingPass);
         gMeshRendererState.editorInteractive.gpuDrivenLayer.Attach(
             &gMeshRendererState.editorInteractive.surfaceGpuSceneBuffer,
-            &gMeshRendererState.editorInteractive.traditionalCommandStreamBuffer,
+            nullptr,
             &gMeshRendererState.editorInteractive.clusterGpuDrivenProducer);
         if (!gMeshRendererState.editorInteractive.gpuDrivenLayer.Initialize(
                 device,

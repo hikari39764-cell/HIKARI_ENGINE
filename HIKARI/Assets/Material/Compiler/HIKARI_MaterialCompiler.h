@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -28,6 +29,10 @@ namespace HIKARI {
         MaterialInstance = 1ull << 15u,
         MaterialProfile = 1ull << 16u,
         RampAsset = 1ull << 17u,
+        SkinLighting = 1ull << 18u,
+        FabricSheen = 1ull << 19u,
+        HybridLighting = 1ull << 20u,
+        Outline = 1ull << 21u,
     };
 
     constexpr uint64_t MaterialCapabilityBit(
@@ -67,6 +72,56 @@ namespace HIKARI {
         float uvRotation = 0.0f;
     };
 
+    inline constexpr uint32_t kInvalidMaterialProgramRegister =
+        (std::numeric_limits<uint32_t>::max)();
+
+    // Values are serialized in cooked MaterialProgram IR. Append only.
+    enum class MaterialProgramOpcode : uint8_t {
+        Constant,
+        Parameter,
+        TextureSample,
+        Add,
+        Multiply,
+        Lerp,
+        Clamp,
+        Saturate,
+        OneMinus,
+        Power,
+        Dot,
+        NormalUnpack,
+        PbrSurface,
+        RampDiffuse,
+        MultiRampDiffuse,
+        SpecularBand,
+        FresnelRim,
+        MatCap,
+        AnisotropicHair,
+        FaceSdf,
+        EyeLighting,
+        SurfaceOutput,
+        FunctionCall,
+        SkinLighting,
+        FabricSheen,
+        HybridLighting,
+        Outline,
+    };
+
+    // Deterministic SSA-like instruction. The pin arrays preserve the bounded
+    // node catalogue order so shader generation never needs the Editor graph.
+    struct MaterialProgramInstruction {
+        MaterialProgramOpcode opcode = MaterialProgramOpcode::Constant;
+        MaterialValueType valueType = MaterialValueType::Float1;
+        std::vector<std::string> inputPins{};
+        std::vector<uint32_t> inputRegisters{};
+        std::vector<std::string> outputPins{};
+        std::vector<uint32_t> outputRegisters{};
+        uint32_t bindingIndex = kInvalidMaterialProgramRegister;
+        MaterialValueData immediate{};
+        std::vector<MaterialNodePropertyData> properties{};
+        AssetGuid assetReference{};
+        std::string sourceNodeId{};
+    };
+
     struct MaterialProgramIR {
         uint32_t version = kMaterialProgramIrVersion;
         MaterialProgramKey key{};
@@ -78,6 +133,9 @@ namespace HIKARI {
         std::vector<MaterialFeatureRequest> featureRequests{};
         std::vector<MaterialProgramParameterBinding> parameters{};
         std::vector<MaterialProgramResourceBinding> resources{};
+        std::vector<MaterialProgramInstruction> instructions{};
+        uint32_t registerCount = 0u;
+        uint32_t surfaceOutputRegister = kInvalidMaterialProgramRegister;
         std::vector<AssetGuid> dependencyGuids{};
         AssetGuid parentMaterialGuid{};
         AssetGuid profileAssetGuid{};

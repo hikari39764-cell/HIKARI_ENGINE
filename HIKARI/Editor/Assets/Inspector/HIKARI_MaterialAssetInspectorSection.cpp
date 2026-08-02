@@ -163,6 +163,9 @@ bool DrawMaterialAssetEditor(AssetDatabase &assetDatabase,
 
   if (changed) {
     materialDirty = true;
+    outApplyRuntimeGuid = record.guid;
+    outApplyRuntimeData = editData;
+    materialStatus = "Runtime preview updated live";
   }
 
   if (materialDirty) {
@@ -172,10 +175,12 @@ bool DrawMaterialAssetEditor(AssetDatabase &assetDatabase,
     ImGui::TextDisabled("Material file is clean");
   }
 
-  if (ImGui::Button("Apply Runtime")) {
+  ImGui::TextDisabled(
+      "Runtime preview updates live. Saving publishes the imported asset.");
+  if (ImGui::Button("Refresh Runtime Now")) {
     outApplyRuntimeGuid = record.guid;
     outApplyRuntimeData = editData;
-    materialStatus = "Applied to runtime preview";
+    materialStatus = "Runtime preview refreshed";
   }
   ImGui::SameLine();
   if (ImGui::Button("Save Material")) {
@@ -200,6 +205,8 @@ bool DrawMaterialAssetEditor(AssetDatabase &assetDatabase,
       materialStatus.clear();
       materialDirty = false;
       EDITOR::ClearMaterialTextureSlotPreviewCache();
+      outApplyRuntimeGuid = record.guid;
+      outApplyRuntimeData = editData;
     } else {
       materialStatus = error;
     }

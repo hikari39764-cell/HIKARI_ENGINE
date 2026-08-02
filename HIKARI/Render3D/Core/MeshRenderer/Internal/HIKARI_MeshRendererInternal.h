@@ -107,6 +107,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         D3D12_GPU_VIRTUAL_ADDRESS localLightClusterIndicesAddress = 0;
         D3D12_GPU_VIRTUAL_ADDRESS shadowAddress = 0;
         D3D12_GPU_VIRTUAL_ADDRESS skyEnvironmentAddress = 0;
+        D3D12_GPU_VIRTUAL_ADDRESS jointPaletteAddress = 0;
         RENDER3D::GPUDRIVEN::SurfaceGpuSceneFrameBuffer*
             surfaceGpuSceneFrameBuffer = nullptr;
         RENDER3D::GPUDRIVEN::GpuTraditionalCommandStreamBuffer*

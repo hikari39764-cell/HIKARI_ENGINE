@@ -202,7 +202,7 @@ void AssetBrowserPanel::DrawContents(AssetDatabase &assetDatabase,
     static const char *TypeFilterItems[] = {
         "All",   "Texture",  "Model",
         "Scene", "Sky",      "Material",
-        "VFX",   "Sequence", "Animation State Machine"};
+        "VFX",   "Sequence", "Animation State Machine", "Material Set"};
     ImGui::TextUnformatted("Type");
     ImGui::SameLine();
     ImGui::SetNextItemWidth(120.0f);

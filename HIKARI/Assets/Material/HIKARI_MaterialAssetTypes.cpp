@@ -70,6 +70,7 @@ namespace HIKARI {
             std::pair{ MaterialValueType::Surface, std::string_view{ "Surface" } },
             std::pair{ MaterialValueType::DiffuseResponse, std::string_view{ "DiffuseResponse" } },
             std::pair{ MaterialValueType::SpecularResponse, std::string_view{ "SpecularResponse" } },
+            std::pair{ MaterialValueType::OutlineResponse, std::string_view{ "OutlineResponse" } },
         };
         constexpr std::array kResourceTypes{
             std::pair{ MaterialResourceType::Texture2D, std::string_view{ "Texture2D" } },
@@ -115,6 +116,10 @@ namespace HIKARI {
             std::pair{ MaterialNodeKind::EyeLighting, std::string_view{ "EyeLighting" } },
             std::pair{ MaterialNodeKind::SurfaceOutput, std::string_view{ "SurfaceOutput" } },
             std::pair{ MaterialNodeKind::FunctionCall, std::string_view{ "FunctionCall" } },
+            std::pair{ MaterialNodeKind::SkinLighting, std::string_view{ "SkinLighting" } },
+            std::pair{ MaterialNodeKind::FabricSheen, std::string_view{ "FabricSheen" } },
+            std::pair{ MaterialNodeKind::HybridLighting, std::string_view{ "HybridLighting" } },
+            std::pair{ MaterialNodeKind::Outline, std::string_view{ "Outline" } },
         };
         constexpr std::array kFeatureRequests{
             std::pair{ MaterialFeatureRequest::GeometryOutline, std::string_view{ "GeometryOutline" } },

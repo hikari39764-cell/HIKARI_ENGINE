@@ -12,6 +12,8 @@ namespace HIKARI::RENDER3D::LIGHTING {
 
     namespace {
 
+        IBL::IblEnvironmentSource gDefaultSkyIblSource{};
+
         std::filesystem::path ResolveEngineSkyPath(
             const std::filesystem::path& relativePath) {
 
@@ -28,7 +30,7 @@ namespace HIKARI::RENDER3D::LIGHTING {
 
     } // namespace
 
-    DefaultSkyEnvironmentResult ActivateDefaultSkyEnvironment(
+    DefaultSkyEnvironmentResult EnsureDefaultSkyEnvironmentAvailable(
         SkyManager& skyManager) {
 
         DefaultSkyEnvironmentResult result{};
@@ -42,57 +44,88 @@ namespace HIKARI::RENDER3D::LIGHTING {
             ResolveEngineSkyPath("IBL/brdf_lut.dds");
 
         if (!Exists(skyPath)) {
-            IBL::Reset();
+            gDefaultSkyIblSource = {};
             result.message =
                 "Engine default sky is unavailable: " +
                 skyPath.generic_string();
             return result;
         }
 
-        skyManager.RegisterOrUpdateAsset(SkyAsset{
-            kDefaultSkyAssetName,
-            {},
-            skyPath.generic_string(),
-            SkyMode::Cubemap,
-            true
-        });
+        const std::string skyTexturePath = skyPath.generic_string();
+        const SkyAsset* registeredSky =
+            skyManager.FindAsset(kDefaultSkyAssetName);
+        if (registeredSky == nullptr ||
+            registeredSky->texturePath != skyTexturePath ||
+            registeredSky->preferredMode != SkyMode::Cubemap ||
+            !registeredSky->textureIsLinear) {
+            skyManager.RegisterOrUpdateAsset(SkyAsset{
+                kDefaultSkyAssetName,
+                {},
+                skyTexturePath,
+                SkyMode::Cubemap,
+                true
+            });
+        }
         result.skyRegistered = true;
-        result.skyPath = skyPath.generic_string();
+        result.skyPath = skyTexturePath;
 
-        TextureResourceHandle irradiance{};
-        TextureResourceHandle prefiltered{};
-        TextureResourceHandle brdf{};
-        if (Exists(irradiancePath)) {
-            irradiance = LoadCubemapResource(
+        if (Exists(irradiancePath) &&
+            !IsTextureResourceValid(
+                gDefaultSkyIblSource.irradianceResource)) {
+            gDefaultSkyIblSource.irradianceResource = LoadCubemapResource(
                 "ibl/default_sky/irradiance",
                 irradiancePath.generic_string(),
                 TextureResourceColorSpace::Linear);
         }
-        if (Exists(prefilteredPath)) {
-            prefiltered = LoadCubemapResource(
+        if (Exists(prefilteredPath) &&
+            !IsTextureResourceValid(
+                gDefaultSkyIblSource.prefilteredResource)) {
+            gDefaultSkyIblSource.prefilteredResource = LoadCubemapResource(
                 "ibl/default_sky/prefiltered",
                 prefilteredPath.generic_string(),
                 TextureResourceColorSpace::Linear);
         }
-        if (Exists(brdfPath)) {
-            brdf = LoadTextureResourceLinear(
+        if (Exists(brdfPath) &&
+            !IsTextureResourceValid(
+                gDefaultSkyIblSource.brdfLutResource)) {
+            gDefaultSkyIblSource.brdfLutResource = LoadTextureResourceLinear(
                 "ibl/default_sky/brdf_lut",
                 brdfPath.generic_string());
         }
-
-        IBL::SetFromTextureResources(
-            irradiance,
-            prefiltered,
-            brdf,
-            7u);
+        gDefaultSkyIblSource.prefilteredMipCount = 7u;
         result.iblLoaded =
-            IsTextureResourceValid(irradiance) ||
-            IsTextureResourceValid(prefiltered) ||
-            IsTextureResourceValid(brdf);
+            IsTextureResourceValid(
+                gDefaultSkyIblSource.irradianceResource) ||
+            IsTextureResourceValid(
+                gDefaultSkyIblSource.prefilteredResource) ||
+            IsTextureResourceValid(
+                gDefaultSkyIblSource.brdfLutResource);
         result.message = result.iblLoaded
             ? "Engine DefaultSky Cubemap and IBL loaded."
             : "Engine DefaultSky Cubemap registered; IBL resources are unavailable.";
         return result;
+    }
+
+    DefaultSkyEnvironmentResult ActivateDefaultSkyEnvironment(
+        SkyManager& skyManager) {
+
+        DefaultSkyEnvironmentResult result =
+            EnsureDefaultSkyEnvironmentAvailable(skyManager);
+        if (!result.skyRegistered) {
+            IBL::Reset();
+            return result;
+        }
+
+        IBL::SetFromTextureResources(
+            gDefaultSkyIblSource.irradianceResource,
+            gDefaultSkyIblSource.prefilteredResource,
+            gDefaultSkyIblSource.brdfLutResource,
+            gDefaultSkyIblSource.prefilteredMipCount);
+        return result;
+    }
+
+    const IBL::IblEnvironmentSource& GetDefaultSkyIblSource() noexcept {
+        return gDefaultSkyIblSource;
     }
 
 } // namespace HIKARI::RENDER3D::LIGHTING

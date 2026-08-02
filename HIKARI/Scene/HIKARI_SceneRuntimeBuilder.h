@@ -25,6 +25,7 @@ namespace HIKARI {
         std::unordered_set<std::string> skyAssetIds{};
         std::unordered_set<std::string> textureAssetIds{};
         std::unordered_set<std::string> materialAssetIds{};
+        std::unordered_set<std::string> modelMaterialSetAssetIds{};
         std::string lightingSceneHash{};
         std::unordered_map<std::string, std::string>
             lightingBakeAuthoringHashes{};

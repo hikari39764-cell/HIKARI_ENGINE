@@ -14,6 +14,7 @@ namespace HIKARI {
     enum class AssetType;
     class AssetDatabase;
     class AssetRegistry;
+    class IModelMaterialSlotProvider;
     class WorldServiceRegistry;
     struct RuntimeObjectHandle;
     struct SceneDocument;
@@ -25,6 +26,7 @@ namespace HIKARI {
         const SceneDocument* sceneDocument = nullptr;
         const WorldServiceRegistry* worldServices = nullptr;
         const RuntimeObjectHandle* runtimeObject = nullptr;
+        IModelMaterialSlotProvider* modelMaterialSlotProvider = nullptr;
     };
 
     class IInspectorBuilder {
@@ -35,6 +37,14 @@ namespace HIKARI {
         virtual const InspectorContext& GetContext() const noexcept = 0;
 
         virtual void Text(std::string_view text) = 0;
+        virtual bool Section(
+            std::string_view label,
+            bool defaultOpen = false) {
+
+            (void)defaultOpen;
+            Text(label);
+            return true;
+        }
         virtual bool Button(std::string_view label) = 0;
         virtual bool Bool(std::string_view label, bool& value) = 0;
         virtual bool Int(std::string_view label, int& value) = 0;

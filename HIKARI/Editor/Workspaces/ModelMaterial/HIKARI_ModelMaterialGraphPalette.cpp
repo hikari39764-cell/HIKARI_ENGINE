@@ -1,8 +1,10 @@
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
 
 #include <array>
+#include <algorithm>
 #include <string_view>
 
+#include "Assets/Material/Authoring/HIKARI_MaterialSemanticNodeFactory.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialGraphUi.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
@@ -16,21 +18,33 @@ void ModelMaterialWorkspaceController::DrawMaterialGraphNodePalette(
     DocumentSceneBase &scene, MaterialAssetData &source,
     MaterialGraphData &graph, MATH::Vec2 position) {
 #if defined(HIKARI_WITH_EDITOR)
-  constexpr std::array<std::string_view, 5u> categories{
-      "Inputs", "Math & Masks", "Surface", "Lighting Responses", "Functions"};
+  constexpr std::array<std::string_view, 4u> categories{
+      "Ready-made Shading", "Surface", "Advanced / Inputs",
+      "Advanced / Math & Masks"};
   for (const std::string_view category : categories) {
-    ImGui::SeparatorText(category.data());
+    if (!ImGui::BeginMenu(category.data())) {
+      continue;
+    }
     for (uint32_t value = static_cast<uint32_t>(MaterialNodeKind::Constant);
-         value <= static_cast<uint32_t>(MaterialNodeKind::FunctionCall);
+         value <= static_cast<uint32_t>(MaterialNodeKind::Outline);
          ++value) {
       const auto kind = static_cast<MaterialNodeKind>(value);
+      if (kind == MaterialNodeKind::FunctionCall) {
+        continue;
+      }
       if (MATERIAL_GRAPH_UI::NodeCategory(kind) != category) {
         continue;
       }
-      const bool duplicateOutput =
-          kind == MaterialNodeKind::SurfaceOutput && !graph.outputNodeId.empty();
-      ImGui::BeginDisabled(duplicateOutput);
-      if (ImGui::MenuItem(ToString(kind).data())) {
+      const bool duplicateSingleton =
+          ASSETS::MATERIAL::IsSingletonReadyMadeMaterialNode(kind) &&
+          std::any_of(graph.nodes.begin(), graph.nodes.end(),
+                      [kind](const auto& node) { return node.kind == kind; });
+      ImGui::BeginDisabled(duplicateSingleton);
+      const std::string_view label =
+          ASSETS::MATERIAL::IsReadyMadeMaterialNode(kind)
+              ? ASSETS::MATERIAL::ReadyMadeMaterialNodeDisplayName(kind)
+              : ToString(kind);
+      if (ImGui::MenuItem(label.data())) {
         MaterialAssetData before = source;
         MaterialGraphNodeData node{};
         node.id = "Node_" + std::to_string(authoringIdCounter_++);
@@ -39,6 +53,12 @@ void ModelMaterialWorkspaceController::DrawMaterialGraphNodePalette(
         node.position = position;
         node.valueType = MATERIAL_GRAPH_UI::DefaultNodeValueType(kind);
         node.value.type = node.valueType;
+        ASSETS::MATERIAL::InitializeReadyMadeMaterialNode(source, node);
+        if (kind == MaterialNodeKind::RampDiffuse ||
+            kind == MaterialNodeKind::MultiRampDiffuse ||
+            kind == MaterialNodeKind::FaceSdf) {
+          (void)BindBuiltInRampPresets(source);
+        }
         if (kind == MaterialNodeKind::Parameter && !graph.parameters.empty()) {
           node.referenceId = graph.parameters.front().id;
         } else if (kind == MaterialNodeKind::TextureSample &&
@@ -55,6 +75,7 @@ void ModelMaterialWorkspaceController::DrawMaterialGraphNodePalette(
       }
       ImGui::EndDisabled();
     }
+    ImGui::EndMenu();
   }
 #else
   (void)scene;

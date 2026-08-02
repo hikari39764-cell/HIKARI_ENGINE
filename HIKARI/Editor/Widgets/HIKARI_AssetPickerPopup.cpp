@@ -31,6 +31,8 @@ namespace HIKARI::EDITOR {
             case AssetType::Sequence: return "Sequence";
             case AssetType::AnimationStateMachine:
                 return "Animation State Machine";
+            case AssetType::ModelMaterialBinding:
+                return "Material Set";
             case AssetType::Unknown:
             default: return "Asset";
             }
@@ -46,6 +48,7 @@ namespace HIKARI::EDITOR {
             case AssetType::VfxEffect: return "[V]";
             case AssetType::Sequence: return "[Seq]";
             case AssetType::AnimationStateMachine: return "[ASM]";
+            case AssetType::ModelMaterialBinding: return "[Set]";
             default: return "[?]";
             }
         }
@@ -105,12 +108,21 @@ namespace HIKARI::EDITOR {
             : assetDatabase.CollectByType(requiredType);
 
         std::vector<PickerEntry> entries;
+        std::vector<std::string> folders{};
         entries.reserve(records.size());
         for (const AssetRecord* record : records) {
             if (record && record->guid.IsValid()) {
                 entries.push_back(BuildEntry(*record));
+                const std::string folder =
+                    record->sourcePath.parent_path().generic_string();
+                if (!folder.empty()) {
+                    folders.push_back(folder);
+                }
             }
         }
+        std::sort(folders.begin(), folders.end());
+        folders.erase(std::unique(folders.begin(), folders.end()),
+                      folders.end());
         std::sort(entries.begin(), entries.end(), [](const PickerEntry& lhs, const PickerEntry& rhs) {
             const std::string lhsName = lhs.record ? lhs.record->displayName : std::string{};
             const std::string rhsName = rhs.record ? rhs.record->displayName : std::string{};
@@ -119,13 +131,37 @@ namespace HIKARI::EDITOR {
 
         const std::string search = TEXT::ToLowerAsciiCopy(state.searchBuffer.data());
         int visibleCount = 0;
-        if (ImGui::BeginChild("##AssetPickerList", ImVec2(520.0f, 310.0f), true)) {
+        if (ImGui::BeginChild(
+                "##AssetPickerFolders", ImVec2(190.0f, 310.0f), true)) {
+            ImGui::TextDisabled("FOLDERS");
+            if (ImGui::Selectable("All Assets", state.selectedFolder.empty())) {
+                state.selectedFolder.clear();
+            }
+            for (const std::string& folder : folders) {
+                if (ImGui::Selectable(
+                        folder.c_str(), state.selectedFolder == folder)) {
+                    state.selectedFolder = folder;
+                }
+            }
+        }
+        ImGui::EndChild();
+        ImGui::SameLine();
+        if (ImGui::BeginChild("##AssetPickerList", ImVec2(460.0f, 310.0f), true)) {
             for (const PickerEntry& entry : entries) {
                 if (!entry.record) {
                     continue;
                 }
                 if (!search.empty() && entry.searchText.find(search) == std::string::npos) {
                     continue;
+                }
+                if (!state.selectedFolder.empty()) {
+                    const std::string folder =
+                        entry.record->sourcePath.parent_path().generic_string();
+                    const std::string prefix = state.selectedFolder + "/";
+                    if (folder != state.selectedFolder &&
+                        !folder.starts_with(prefix)) {
+                        continue;
+                    }
                 }
 
                 ++visibleCount;

@@ -19,10 +19,12 @@ namespace HIKARI::ASSETS::MODELS {
         }
     }
 
-    DefaultModelMaterialBindingResolution ResolveDefaultModelMaterialBindings(
+    DefaultModelMaterialBindingResolution ResolveModelMaterialBindings(
         const AssetRegistry& registry,
         const AssetGuid& modelAssetGuid,
-        const std::vector<MaterialAsset>& importedMaterials) {
+        const AssetGuid& materialSetAssetGuid,
+        const std::vector<MaterialAsset>& importedMaterials,
+        bool allowLegacyDefault) {
 
         DefaultModelMaterialBindingResolution result{};
         if (!modelAssetGuid.IsValid() || importedMaterials.empty()) {
@@ -30,29 +32,50 @@ namespace HIKARI::ASSETS::MODELS {
         }
 
         std::vector<const ModelMaterialBindingAssetDescriptor*> candidates{};
-        for (const AssetDescriptor* descriptor :
-            registry.CollectByType(AssetType::ModelMaterialBinding)) {
-
-            const auto* binding =
-                dynamic_cast<const ModelMaterialBindingAssetDescriptor*>(
-                    descriptor);
-            if (binding != nullptr &&
-                binding->data.modelAssetGuid == modelAssetGuid) {
-                candidates.push_back(binding);
+        if (materialSetAssetGuid.IsValid()) {
+            const auto* explicitSet =
+                registry.FindAs<ModelMaterialBindingAssetDescriptor>(
+                    AssetId{materialSetAssetGuid.value});
+            if (explicitSet == nullptr) {
+                result.diagnostics.push_back(
+                    "selected Material Set is unavailable: " +
+                    materialSetAssetGuid.value);
+                return result;
             }
+            if (explicitSet->data.modelAssetGuid != modelAssetGuid) {
+                result.diagnostics.push_back(
+                    "selected Material Set belongs to model " +
+                    explicitSet->data.modelAssetGuid.value +
+                    " and was rejected for model " + modelAssetGuid.value);
+                return result;
+            }
+            candidates.push_back(explicitSet);
+        } else if (allowLegacyDefault) {
+            for (const AssetDescriptor* descriptor :
+                registry.CollectByType(AssetType::ModelMaterialBinding)) {
+
+                const auto* binding =
+                    dynamic_cast<const ModelMaterialBindingAssetDescriptor*>(
+                        descriptor);
+                if (binding != nullptr &&
+                    binding->data.modelAssetGuid == modelAssetGuid) {
+                    candidates.push_back(binding);
+                }
+            }
+            std::sort(candidates.begin(), candidates.end(), BindingDescriptorLess);
         }
-        std::sort(candidates.begin(), candidates.end(), BindingDescriptorLess);
         result.matchingAssetCount = static_cast<uint32_t>(candidates.size());
         if (candidates.empty()) {
             return result;
         }
 
-        result.bindingDescriptor = candidates.front();
-        if (candidates.size() > 1u) {
+        if (!materialSetAssetGuid.IsValid() && candidates.size() > 1u) {
             result.diagnostics.push_back(
-                "multiple model material binding assets matched; selected " +
-                result.bindingDescriptor->sourcePath);
+                "multiple Material Sets match this model; an explicit component selection is required");
+            return result;
         }
+
+        result.bindingDescriptor = candidates.front();
 
         result.bindings.reserve(result.bindingDescriptor->data.bindings.size());
         for (const ModelMaterialBindingEntry& authored :
@@ -90,6 +113,18 @@ namespace HIKARI::ASSETS::MODELS {
                 return left.materialIndex < right.materialIndex;
             });
         return result;
+    }
+
+    DefaultModelMaterialBindingResolution ResolveDefaultModelMaterialBindings(
+        const AssetRegistry& registry,
+        const AssetGuid& modelAssetGuid,
+        const std::vector<MaterialAsset>& importedMaterials) {
+
+        return ResolveModelMaterialBindings(
+            registry,
+            modelAssetGuid,
+            {},
+            importedMaterials);
     }
 
 } // namespace HIKARI::ASSETS::MODELS

@@ -6,17 +6,28 @@
 #include <iomanip>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 
 #include "Assets/HIKARI_AssetRegistry.h"
 #include "Assets/HIKARI_AssetTypes.h"
 #include "Assets/Material/Compiler/HIKARI_MaterialRampRasterizer.h"
 #include "Core/HIKARI_Logger.h"
 #include "Render3D/Material/HIKARI_GpuMaterialTypes.h"
+#include "Render3D/Material/Program/HIKARI_MaterialProgramStaticEvaluator.h"
+#include "Render3D/Material/Program/HIKARI_MaterialProgramRegistry.h"
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
 
 namespace HIKARI::RENDER3D::MATERIAL {
 
     namespace {
+        struct CachedRampResource {
+            uint64_t contentHash = 0u;
+            TextureResourceHandle resource{};
+        };
+
+        std::unordered_map<std::string, CachedRampResource>
+            gRampResourcesByAsset{};
+
         std::string NormalizeId(std::string_view id) {
             std::string normalized{};
             normalized.reserve(id.size());
@@ -29,17 +40,11 @@ namespace HIKARI::RENDER3D::MATERIAL {
             return normalized;
         }
 
-        void SetRgb(MATH::Vec4& target, const MATH::Vec4& value) {
-            target.x = value.x;
-            target.y = value.y;
-            target.z = value.z;
-        }
-
         std::vector<MATH::Vec4> BuildDefaultParameters() {
             std::vector<MATH::Vec4> values(
                 kGpuMaterialProgramParameterSlotCount,
                 MATH::Vec4{ 0.0f, 0.0f, 0.0f, 0.0f });
-            values[0] = { 0.50f, 0.08f, 0.72f, 0.50f };
+            values[0] = { 0.50f, 0.08f, 0.72f, 1.0f };
             values[1] = { 0.56f, 0.62f, 0.78f, 1.0f };
             values[2] = { 0.82f, 0.86f, 0.94f, 1.0f };
             values[3] = { 1.0f, 1.0f, 1.0f, 1.0f };
@@ -62,76 +67,12 @@ namespace HIKARI::RENDER3D::MATERIAL {
             return values;
         }
 
-        void ApplyParameter(
-            std::vector<MATH::Vec4>& values,
-            const MaterialProgramParameterBinding& parameter) {
-            const std::string id = NormalizeId(parameter.parameterId);
-            MATH::Vec4 value = parameter.defaultValue.numeric;
-            if (parameter.type == MaterialValueType::Bool) {
-                value = {
-                    parameter.defaultValue.boolean ? 1.0f : 0.0f,
-                    0.0f,
-                    0.0f,
-                    0.0f
-                };
-            }
-            if (id == "parametershadowthreshold") values[0].x = value.x;
-            else if (id == "parametershadowsoftness") values[0].y = value.x;
-            else if (id == "parametermidthreshold") values[0].z = value.x;
-            else if (id == "parameterramprow") values[16].x = value.x;
-            else if (id == "parameterrampmaskinfluence") values[16].y = value.x;
-            else if (id == "parameterrampblend") values[16].z = value.x;
-            else if (id == "parameterrampintensity") values[16].w = value.x;
-            else if (id == "parametershadowtint") SetRgb(values[1], value);
-            else if (id == "parametermidtint") SetRgb(values[2], value);
-            else if (id == "parameterlittint") SetRgb(values[3], value);
-            else if (id == "parameterspecularbandwidth") values[4].x = value.x;
-            else if (id == "parameterspecularbandsoftness") values[4].y = value.x;
-            else if (id == "parameterspecularintensity") values[4].z = value.x;
-            else if (id == "parameterspecularpower") values[4].w = value.x;
-            else if (id == "parameterspeculartint") SetRgb(values[5], value);
-            else if (id == "parameterrimcolor") SetRgb(values[6], value);
-            else if (id == "parameterrimintensity") values[6].w = value.x;
-            else if (id == "parameterrimpower") values[7].x = value.x;
-            else if (id == "parameterrimwidth") values[7].y = value.x;
-            else if (id == "parameterrimlightalignment") values[7].z = value.x;
-            else if (id == "parametermatcaptint") SetRgb(values[8], value);
-            else if (id == "parametermatcapintensity") values[8].w = value.x;
-            else if (id == "parameterhairshift") values[9].x = value.x;
-            else if (id == "parameterhairwidth") values[9].y = value.x;
-            else if (id == "parameterhairsecondaryshift") values[9].z = value.x;
-            else if (id == "parameterhairintensity") values[9].w = value.x;
-            else if (id == "parameterfaceshadowsoftness") values[10].x = value.x;
-            else if (id == "parameterfaceshadowoffset") values[10].y = value.x;
-            else if (id == "parameterfacehairshadowstrength") values[10].z = value.x;
-            else if (id == "parameterfacehairshadowoffset") values[10].w = value.x;
-            else if (id == "parameterfaceright") SetRgb(values[17], value);
-            else if (id == "parameterfaceforward") SetRgb(values[18], value);
-            else if (id == "parameteririsdepth") values[11].x = value.x;
-            else if (id == "parametereyesparkle") values[11].y = value.x;
-            else if (id == "parametereyesparklepower") values[11].z = value.x;
-            else if (id == "parameterpbrnprblend") {
-                values[12].x = value.x;
-                values[12].y = value.x;
-                values[12].z = value.x;
-            }
-            else if (id == "parameterdirectdiffusepbrblend") values[12].x = value.x;
-            else if (id == "parameterdirectspecularpbrblend") values[12].y = value.x;
-            else if (id == "parameterindirectpbrblend") values[12].z = value.x;
-            else if (id == "parameterfabricsheen") values[13].x = value.x;
-            else if (id == "parameterfiberroughness") values[13].y = value.x;
-            else if (id == "parameterfabricsheenpower") values[13].z = value.x;
-            else if (id == "parameterfabricsheenintensity") values[13].w = value.x;
-            else if (id == "parameterskinwrap") values[14].x = value.x;
-            else if (id == "parameterskinsubsurface") values[14].y = value.x;
-            else if (id == "parameterskintint") SetRgb(values[15], value);
-            else if (id == "parameteroutlinecolor") SetRgb(values[19], value);
-            else if (id == "parameteroutlinethickness") values[19].w = value.x;
-        }
-
         TextureResourceColorSpace ResolveColorSpace(
             MaterialResourceSemantic semantic) {
-            return semantic == MaterialResourceSemantic::Ramp ||
+            return semantic == MaterialResourceSemantic::BaseColor ||
+                    semantic == MaterialResourceSemantic::Emissive ||
+                    semantic == MaterialResourceSemantic::SpecularColor ||
+                    semantic == MaterialResourceSemantic::Ramp ||
                     semantic == MaterialResourceSemantic::MatCap
                 ? TextureResourceColorSpace::Srgb
                 : TextureResourceColorSpace::Linear;
@@ -152,8 +93,7 @@ namespace HIKARI::RENDER3D::MATERIAL {
 
         RuntimeTextureSlot BuildRampResourceSlot(
             const MaterialProgramResourceBinding& binding,
-            const AssetRegistry& assetRegistry,
-            std::string_view debugName) {
+            const AssetRegistry& assetRegistry) {
             RuntimeTextureSlot slot{};
             slot.texCoord = static_cast<int>(binding.texCoord);
             slot.uvScale = binding.uvScale;
@@ -181,12 +121,21 @@ namespace HIKARI::RENDER3D::MATERIAL {
                     binding.assetGuid.value + ": " + error);
                 return slot;
             }
+            const std::string cacheKey = binding.assetGuid.value;
             const std::string name =
-                "material_ramp/" + std::string{ debugName } + "/" +
-                binding.assetGuid.value + "/" +
+                "material_ramp/" + cacheKey + "/" +
                 ToHex(image.contentHash);
             slot.sourcePath = rampAsset->sourcePath;
             slot.resolvedPath = "generated://" + name;
+            if (const auto cached = gRampResourcesByAsset.find(cacheKey);
+                cached != gRampResourcesByAsset.end() &&
+                cached->second.contentHash == image.contentHash &&
+                cached->second.resource) {
+                slot.resource = cached->second.resource;
+                slot.handle = GetTextureResourceBackendHandle(slot.resource);
+                slot.enabled = slot.handle >= 0;
+                return slot;
+            }
             // Ramp colors are stored as linear material values. Keeping the
             // generated SRV linear avoids applying an unintended second gamma
             // transform; imported image ramps still follow their SRGB policy.
@@ -202,7 +151,17 @@ namespace HIKARI::RENDER3D::MATERIAL {
                 HIKARI_LOG_WARN(
                     "[MaterialProgram] failed to create GPU Ramp texture: " +
                     binding.assetGuid.value);
+                return slot;
             }
+            if (auto previous = gRampResourcesByAsset.find(cacheKey);
+                previous != gRampResourcesByAsset.end() &&
+                previous->second.resource != slot.resource) {
+                (void)ReleaseTextureResource(previous->second.resource);
+            }
+            gRampResourcesByAsset[cacheKey] = CachedRampResource{
+                image.contentHash,
+                slot.resource
+            };
             return slot;
         }
 
@@ -221,8 +180,7 @@ namespace HIKARI::RENDER3D::MATERIAL {
             if (IsRampResource(binding)) {
                 return BuildRampResourceSlot(
                     binding,
-                    assetRegistry,
-                    debugName);
+                    assetRegistry);
             }
             const auto* texture = assetRegistry.FindAs<TextureAssetDescriptor>(
                 AssetId{ binding.assetGuid.value });
@@ -296,15 +254,21 @@ namespace HIKARI::RENDER3D::MATERIAL {
             if (has(MaterialProgramCapability::AnisotropicHair)) flags |= AnisotropicHair;
             if (has(MaterialProgramCapability::FaceSdf)) flags |= FaceSdf;
             if (has(MaterialProgramCapability::EyeLighting)) flags |= EyeLighting;
-            switch (program.templateId) {
-            case MaterialTemplateId::GenericToon: flags |= TemplateGenericToon; break;
-            case MaterialTemplateId::Skin: flags |= TemplateSkin; break;
-            case MaterialTemplateId::Face: flags |= TemplateFace; break;
-            case MaterialTemplateId::Hair: flags |= TemplateHair; break;
-            case MaterialTemplateId::Eye: flags |= TemplateEye; break;
-            case MaterialTemplateId::Cloth: flags |= TemplateCloth; break;
-            case MaterialTemplateId::HybridMetal: flags |= TemplateHybrid; break;
-            default: break;
+            if (has(MaterialProgramCapability::SkinLighting)) flags |= TemplateSkin;
+            if (has(MaterialProgramCapability::FabricSheen)) flags |= TemplateCloth;
+            if (has(MaterialProgramCapability::HybridLighting)) flags |= TemplateHybrid;
+            if (has(MaterialProgramCapability::FaceSdf)) flags |= TemplateFace;
+            if (has(MaterialProgramCapability::AnisotropicHair)) flags |= TemplateHair;
+            if (has(MaterialProgramCapability::EyeLighting)) flags |= TemplateEye;
+            for (const MaterialProgramResourceBinding& resource :
+                 program.resources) {
+                const std::string id = NormalizeId(resource.resourceId);
+                if (id.find("haircontrol") != std::string::npos) {
+                    flags |= HairControlMap;
+                }
+                if (id.find("eyecontrol") != std::string::npos) {
+                    flags |= EyeControlMap;
+                }
             }
             for (MaterialFeatureRequest request : program.featureRequests) {
                 switch (request) {
@@ -336,9 +300,11 @@ namespace HIKARI::RENDER3D::MATERIAL {
                 MaterialCapabilityBit(MaterialProgramCapability::MatCap) |
                 MaterialCapabilityBit(MaterialProgramCapability::AnisotropicHair) |
                 MaterialCapabilityBit(MaterialProgramCapability::FaceSdf) |
-                MaterialCapabilityBit(MaterialProgramCapability::EyeLighting);
-            return program.templateId != MaterialTemplateId::StandardPbr ||
-                (program.capabilities & kRuntimeResponseCapabilities) != 0u ||
+                MaterialCapabilityBit(MaterialProgramCapability::EyeLighting) |
+                MaterialCapabilityBit(MaterialProgramCapability::SkinLighting) |
+                MaterialCapabilityBit(MaterialProgramCapability::FabricSheen) |
+                MaterialCapabilityBit(MaterialProgramCapability::HybridLighting);
+            return (program.capabilities & kRuntimeResponseCapabilities) != 0u ||
                 !program.featureRequests.empty();
         }
     }
@@ -354,9 +320,8 @@ namespace HIKARI::RENDER3D::MATERIAL {
             return data;
         }
         data.parameters = BuildDefaultParameters();
-        for (const MaterialProgramParameterBinding& parameter : program.parameters) {
-            ApplyParameter(data.parameters, parameter);
-        }
+        ApplyConnectedMaterialResponseParameters(
+            program, data.parameters);
         data.resources.resize(kGpuMaterialProgramResourceSlotCount);
         uint32_t rampIndex = 0u;
         for (const MaterialProgramResourceBinding& resource : program.resources) {
@@ -370,6 +335,21 @@ namespace HIKARI::RENDER3D::MATERIAL {
                 debugName);
         }
         return data;
+    }
+
+    void ResetGeneratedMaterialRuntimeResources() {
+        for (const auto& [assetGuid, cached] : gRampResourcesByAsset) {
+            (void)assetGuid;
+            if (cached.resource) {
+                (void)ReleaseTextureResource(cached.resource);
+            }
+        }
+        gRampResourcesByAsset.clear();
+    }
+
+    void ResetRuntimeMaterialProgramRegistry() {
+        ResetGeneratedMaterialRuntimeResources();
+        GetRuntimeMaterialProgramRegistry().Reset();
     }
 
 } // namespace HIKARI::RENDER3D::MATERIAL

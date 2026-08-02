@@ -15,6 +15,10 @@
 #include "Render3D/Core/HIKARI_MeshPassResources.h"
 #include "Render3D/Core/HIKARI_MeshRendererTypes.h"
 
+namespace HIKARI::IBL {
+    struct IblEnvironmentSource;
+}
+
 namespace HIKARI::RENDER3D {
     namespace GPUDRIVEN {
         struct GpuDrivenSceneSource;
@@ -71,6 +75,7 @@ namespace HIKARI::MESHRENDERER {
         RENDER3D::SURFACE::SceneSurfaceBuffer& surfaceBuffer,
         D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv,
         bool writeFeatureMask = false);
+    bool HasStylizedFeatureMaskBackend();
     bool HasGeometryOutlineFeatureBackend();
     bool HasVisibilityOverlayFeatureBackend();
     bool RenderGeometryOutlineFeaturePass(
@@ -129,6 +134,8 @@ namespace HIKARI::MESHRENDERER {
         RebindTargetCallback rebindTarget = nullptr;
         const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource*
             sceneSourceOverride = nullptr;
+        const IBL::IblEnvironmentSource* iblEnvironmentOverride = nullptr;
+        bool suppressSpatialLightingProviders = false;
     };
 
     bool RenderEditorInteractiveOpaque(

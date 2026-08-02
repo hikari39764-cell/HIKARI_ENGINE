@@ -13,6 +13,7 @@
 namespace HIKARI {
 
     class DocumentSceneBase;
+    struct MaterialAssetData;
     struct PbrMaterialAssetData;
     struct SceneDependencySet;
 
@@ -44,6 +45,10 @@ namespace HIKARI {
         int RebuildMaterialOverridesForMaterial(
             DocumentSceneBase& scene,
             const AssetGuid& materialGuid);
+        int ApplyMaterialOverridePreview(
+            DocumentSceneBase& scene,
+            const AssetGuid& materialGuid,
+            const MaterialAssetData& data);
         int ApplyMaterialOverridePreview(
             DocumentSceneBase& scene,
             const AssetGuid& materialGuid,

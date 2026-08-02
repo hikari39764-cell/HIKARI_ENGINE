@@ -25,4 +25,9 @@ namespace HIKARI::RENDER3D::MATERIAL {
         const AssetRegistry& assetRegistry,
         std::string_view debugName);
 
+    // Releases content-addressed generated Ramp textures through the renderer's
+    // deferred resource retirement path. The runtime program registry owns the
+    // matching reset boundary.
+    void ResetGeneratedMaterialRuntimeResources();
+
 } // namespace HIKARI::RENDER3D::MATERIAL

@@ -103,6 +103,13 @@ namespace HIKARI {
         const AssetRecord* FindByPath(const std::filesystem::path& path) const;
         AssetRecord* FindByPath(const std::filesystem::path& path);
 
+        // Cooked artifact paths are not source paths. Authoring workflows that
+        // need the owning source asset must resolve them through the manifest
+        // owner instead of guessing a GUID from a Library path.
+        const AssetRecord* FindByArtifactPath(
+            const std::filesystem::path& path) const;
+        AssetRecord* FindByArtifactPath(const std::filesystem::path& path);
+
         std::vector<const AssetRecord*> CollectByType(AssetType type) const;
         std::vector<const AssetRecord*> CollectAll() const;
         std::vector<std::filesystem::path> CollectDirectories() const;

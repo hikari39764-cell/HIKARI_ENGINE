@@ -61,6 +61,8 @@ AssetType TypeFromFilterIndex(int index) {
     return AssetType::Sequence;
   case 8:
     return AssetType::AnimationStateMachine;
+  case 9:
+    return AssetType::ModelMaterialBinding;
   default:
     return AssetType::Unknown;
   }
@@ -135,7 +137,8 @@ bool MatchesScope(const AssetRecord &record,
   case AssetBrowserScope::Scenes:
     return record.type == AssetType::Scene;
   case AssetBrowserScope::Materials:
-    return record.type == AssetType::Material;
+    return record.type == AssetType::Material ||
+           record.type == AssetType::ModelMaterialBinding;
   case AssetBrowserScope::Skies:
     return record.type == AssetType::Sky;
   case AssetBrowserScope::Vfx:
@@ -235,6 +238,8 @@ const char *ToCompactTypeBadge(AssetType type) {
     return "SCN";
   case AssetType::Material:
     return "MAT";
+  case AssetType::ModelMaterialBinding:
+    return "MSET";
   case AssetType::Sky:
     return "SKY";
   case AssetType::VfxEffect:

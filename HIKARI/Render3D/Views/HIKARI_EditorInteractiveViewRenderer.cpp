@@ -12,6 +12,7 @@
 #include "Render3D/Color/HIKARI_ExposureState.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Debug/HIKARI_Renderer3D_Debug.h"
+#include "Render3D/Lighting/HIKARI_DefaultSkyEnvironment.h"
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 #include "Render3D/Views/HIKARI_EditorInteractiveStylizedView.h"
@@ -35,12 +36,15 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
             EditorInteractiveViewOutput output{};
             std::unique_ptr<RenderTarget2D> target{};
             std::unique_ptr<RenderTarget2D> displayTarget{};
+            std::unique_ptr<RenderTarget2D> antialiasedTarget{};
             EditorInteractiveStylizedView stylizedView{};
             std::array<
                 RenderResourceView,
                 GFX::kFrameResourceCount> outputSrvs{};
             std::array<uint64_t, GFX::kFrameResourceCount>
                 outputSrvGenerations{};
+            std::array<ID3D12Resource*, GFX::kFrameResourceCount>
+                outputSrvResources{};
             uint64_t targetGeneration = 0;
             uint64_t lastRenderedSerial = 0;
             bool hasRequest = false;
@@ -50,6 +54,7 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
             g_views{};
         std::unique_ptr<POST::QuadDrawer> g_displayQuad{};
         std::unique_ptr<POST::PostEffect> g_displayEffect{};
+        std::unique_ptr<POST::PostEffect> g_fxaaEffect{};
         uint64_t g_scheduleSerial = 0u;
         EditorInteractiveSchedulerStats g_schedulerStats{};
 
@@ -106,12 +111,28 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
             return true;
         }
 
+        bool EnsureFxaaPipeline() {
+            if (!EnsureDisplayPipeline()) {
+                return false;
+            }
+            if (g_fxaaEffect == nullptr) {
+                auto effect = std::make_unique<POST::PostEffect>();
+                if (!effect->LoadPixelShader(
+                        L"HIKARI/Shaders/Post_FXAA.hlsl")) {
+                    return false;
+                }
+                g_fxaaEffect = std::move(effect);
+            }
+            return true;
+        }
+
         bool EnsureTarget(
             InteractiveViewState& state,
             uint32_t width,
-            uint32_t height) {
+            uint32_t height,
+            bool spatialAntiAliasing) {
 
-            if (state.target != nullptr &&
+            const bool primaryTargetsReady = state.target != nullptr &&
                 state.target->IsInitialized() &&
                 state.target->GetWidth() == static_cast<int>(width) &&
                 state.target->GetHeight() == static_cast<int>(height) &&
@@ -122,10 +143,26 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
                 state.displayTarget->GetWidth() == static_cast<int>(width) &&
                 state.displayTarget->GetHeight() == static_cast<int>(height) &&
                 state.displayTarget->GetFormat() == kInteractiveDisplayFormat &&
-                !state.displayTarget->HasDepth()) {
+                !state.displayTarget->HasDepth();
+            const bool aaTargetReady = !spatialAntiAliasing ||
+                (state.antialiasedTarget != nullptr &&
+                 state.antialiasedTarget->IsInitialized() &&
+                 state.antialiasedTarget->GetWidth() ==
+                     static_cast<int>(width) &&
+                 state.antialiasedTarget->GetHeight() ==
+                     static_cast<int>(height) &&
+                 state.antialiasedTarget->GetFormat() ==
+                     kInteractiveDisplayFormat &&
+                 !state.antialiasedTarget->HasDepth());
+
+            if (primaryTargetsReady && aaTargetReady) {
 
                 state.target->UpdateContext(GFX::GetCurrentContext());
                 state.displayTarget->UpdateContext(GFX::GetCurrentContext());
+                if (state.antialiasedTarget != nullptr) {
+                    state.antialiasedTarget->UpdateContext(
+                        GFX::GetCurrentContext());
+                }
                 return true;
             }
 
@@ -156,8 +193,26 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
                 return false;
             }
             displayReplacement->SetDebugName("EditorInteractiveView.Display");
+            std::unique_ptr<RenderTarget2D> aaReplacement{};
+            if (spatialAntiAliasing) {
+                aaReplacement = std::make_unique<RenderTarget2D>();
+                aaReplacement->UpdateContext(GFX::GetCurrentContext());
+                if (!aaReplacement->Init(
+                        static_cast<int>(width),
+                        static_cast<int>(height),
+                        kInteractiveDisplayFormat,
+                        false,
+                        { 0.0f, 0.0f, 0.0f, 1.0f },
+                        false,
+                        false)) {
+                    return false;
+                }
+                aaReplacement->SetDebugName(
+                    "EditorInteractiveView.SpatialAA");
+            }
             state.target = std::move(replacement);
             state.displayTarget = std::move(displayReplacement);
+            state.antialiasedTarget = std::move(aaReplacement);
             ++state.targetGeneration;
             if (state.targetGeneration == 0) {
                 state.targetGeneration = 1;
@@ -166,11 +221,11 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         }
 
         D3D12_GPU_DESCRIPTOR_HANDLE PublishOutputSrv(
-            InteractiveViewState& state) {
+            InteractiveViewState& state,
+            RenderTarget2D& publishedTarget) {
 
             D3D12_GPU_DESCRIPTOR_HANDLE output{};
-            if (state.displayTarget == nullptr ||
-                state.displayTarget->GetResource() == nullptr ||
+            if (publishedTarget.GetResource() == nullptr ||
                 GFX::GetCurrentContext().device == nullptr) {
                 return output;
             }
@@ -181,31 +236,37 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
             RenderResourceView& view = state.outputSrvs[frameSlot];
             if (!view.IsValid()) {
                 view = AllocateTexture2DSrvDescriptor(
-                    state.displayTarget->GetResource(),
-                    state.displayTarget->GetFormat());
+                    publishedTarget.GetResource(),
+                    publishedTarget.GetFormat());
                 if (!view.IsValid()) {
                     return output;
                 }
                 state.outputSrvGenerations[frameSlot] =
                     state.targetGeneration;
+                state.outputSrvResources[frameSlot] =
+                    publishedTarget.GetResource();
             } else if (state.outputSrvGenerations[frameSlot] !=
-                state.targetGeneration) {
+                           state.targetGeneration ||
+                       state.outputSrvResources[frameSlot] !=
+                           publishedTarget.GetResource()) {
 
                 D3D12_SHADER_RESOURCE_VIEW_DESC desc{};
                 desc.Shader4ComponentMapping =
                     D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-                desc.Format = state.displayTarget->GetFormat();
+                desc.Format = publishedTarget.GetFormat();
                 desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
                 desc.Texture2D.MostDetailedMip = 0;
                 desc.Texture2D.MipLevels = 1;
                 desc.Texture2D.PlaneSlice = 0;
                 desc.Texture2D.ResourceMinLODClamp = 0.0f;
                 GFX::GetCurrentContext().device->CreateShaderResourceView(
-                    state.displayTarget->GetResource(),
+                    publishedTarget.GetResource(),
                     &desc,
                     view.cpu);
                 state.outputSrvGenerations[frameSlot] =
                     state.targetGeneration;
+                state.outputSrvResources[frameSlot] =
+                    publishedTarget.GetResource();
             }
             return view.gpu;
         }
@@ -271,6 +332,8 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
                 return true;
             };
             settings.sceneSourceOverride = request.sceneSourceOverride;
+            settings.suppressSpatialLightingProviders =
+                request.suppressSpatialLightingProviders;
             return settings;
         }
 
@@ -374,6 +437,43 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
             return resolved;
         }
 
+        bool ResolveSpatialAntiAliasing(
+            InteractiveViewState& state,
+            RenderTarget2D& sourceTarget) {
+            if (!state.request.spatialAntiAliasing ||
+                state.antialiasedTarget == nullptr ||
+                !EnsureFxaaPipeline()) {
+                return false;
+            }
+
+            const float width = static_cast<float>(
+                (std::max)(1, sourceTarget.GetWidth()));
+            const float height = static_cast<float>(
+                (std::max)(1, sourceTarget.GetHeight()));
+            POST::CommonParams parameters{};
+            parameters.resolutionX = width;
+            parameters.resolutionY = height;
+            parameters.user[0] = {
+                width, height, 1.0f / width, 1.0f / height
+            };
+            parameters.user[1] = {
+                1.0f, 0.125f, 0.0312f, 0.75f
+            };
+
+            state.antialiasedTarget->BeginCapture(0.0f, 0.0f, 0.0f, 1.0f);
+            const bool outputReady =
+                g_displayQuad->SetOutputFormat(kInteractiveDisplayFormat);
+            bool resolved = false;
+            if (outputReady) {
+                g_displayQuad->SetInputTexture(
+                    sourceTarget.GetSrvHeap(), sourceTarget.GetSrvGpu());
+                g_fxaaEffect->ApplyCommonParams(parameters);
+                resolved = g_fxaaEffect->BindAndDraw(*g_displayQuad);
+            }
+            state.antialiasedTarget->EndCapture();
+            return resolved;
+        }
+
     } // namespace
 
     void SubmitRequest(const EditorInteractiveViewRequest& request) {
@@ -383,7 +483,16 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
             MESHRENDERER::ReleaseEditorInteractiveSceneSource(
                 state.request.sceneSourceOverride);
         }
+        const bool outputRouteChanged = state.hasRequest &&
+            state.request.spatialAntiAliasing !=
+                request.spatialAntiAliasing;
         state.request = request;
+        if (outputRouteChanged) {
+            ++state.targetGeneration;
+            if (state.targetGeneration == 0u) {
+                state.targetGeneration = 1u;
+            }
+        }
         state.output.viewId = request.viewId;
         state.hasRequest = true;
     }
@@ -458,7 +567,8 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         const uint32_t height = ClampExtent(selected->request.height);
         if (width == 0 ||
             height == 0 ||
-            !EnsureTarget(*selected, width, height)) {
+            !EnsureTarget(*selected, width, height,
+                          selected->request.spatialAntiAliasing)) {
             InvalidateOutput(*selected);
             return false;
         }
@@ -489,17 +599,26 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
                 : MESHRENDERER::GetActiveGpuDrivenSceneSource();
         const EditorInteractiveStylizedPreparation stylizedPreparation =
             selected->stylizedView.Prepare(sceneSource);
+        const IBL::IblEnvironmentSource* iblEnvironmentOverride = nullptr;
+        if (selected->request.useDefaultSkyIbl) {
+            (void)LIGHTING::EnsureDefaultSkyEnvironmentAvailable(
+                skyManager);
+            iblEnvironmentOverride =
+                &LIGHTING::GetDefaultSkyIblSource();
+        }
         SKYRENDERER::Render(
             GFX::GetCurrentContext(),
             selected->request.cameraFrame.camera,
             effectiveEnvironment,
             modelManager,
             skyManager);
-        const MESHRENDERER::EditorInteractiveRenderSettings renderSettings =
+        MESHRENDERER::EditorInteractiveRenderSettings renderSettings =
             ResolveRenderSettings(
                 *selected,
                 selected->request,
                 stylizedPreparation);
+        renderSettings.iblEnvironmentOverride =
+            iblEnvironmentOverride;
         const bool meshRendered =
             MESHRENDERER::RenderEditorInteractiveOpaque(
                 view,
@@ -550,8 +669,15 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
             return false;
         }
 
+        RenderTarget2D* publishedTarget = selected->displayTarget.get();
+        if (ResolveSpatialAntiAliasing(
+                *selected, *selected->displayTarget)) {
+            publishedTarget = selected->antialiasedTarget.get();
+        }
         const D3D12_GPU_DESCRIPTOR_HANDLE colorSrv =
-            PublishOutputSrv(*selected);
+            publishedTarget != nullptr
+                ? PublishOutputSrv(*selected, *publishedTarget)
+                : D3D12_GPU_DESCRIPTOR_HANDLE{};
         (void)POST::PostSystem::RebindCurrentRenderTarget();
 
         if (colorSrv.ptr == 0) {
@@ -601,12 +727,15 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
                     view = {};
                 }
             }
+            state->outputSrvResources.fill(nullptr);
             state->stylizedView.Shutdown();
             state->target.reset();
             state->displayTarget.reset();
+            state->antialiasedTarget.reset();
         }
         MESHRENDERER::ShutdownEditorInteractiveResources();
         g_views.clear();
+        g_fxaaEffect.reset();
         g_displayEffect.reset();
         g_displayQuad.reset();
         ShutdownEditorInteractiveStylizedSharedResources();

@@ -11,6 +11,7 @@
 #include "Core/Numeric/HIKARI_IntegerConversion.h"
 #include "Render3D/Core/HIKARI_BoundsUtils.h"
 #include "Render3D/Core/HIKARI_Material.h"
+#include "Render3D/Material/HIKARI_GpuMaterialTypes.h"
 #include "Render3D/Resources/HIKARI_ClusterGeometryResourceSystem.h"
 #include "Render3D/Resources/HIKARI_RenderResourceSystem.h"
 #include "Render3D/Runtime/HIKARI_SurfaceDrawRoute.h"
@@ -661,6 +662,10 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                 instance.materialProgramFlags =
                     record.materialOverride->GetMaterialProgramInstanceFlags();
             }
+            if (record.editorSelectionOutline) {
+                using namespace MATERIAL::GPU_MATERIAL_PROGRAM_FLAGS;
+                instance.materialProgramFlags |= EditorSelectionOutline;
+            }
             instance.postGroupMask = record.postGroupMask;
             if (record.skinned &&
                 record.jointPaletteSlot != RUNTIME::kInvalidRenderSurfaceIndex) {
@@ -770,6 +775,8 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         record.materialOverride = surfaceInstance.materialOverride;
         record.materialOverrideRevision =
             surfaceInstance.materialOverrideRevision;
+        record.editorSelectionOutline =
+            surfaceInstance.editorSelectionOutline;
         record.materialFxProfileId = surfaceInstance.materialFxProfileId;
         record.postGroupMask = surfaceInstance.postGroupMask;
         record.materialFxValuesInitialized = surfaceInstance.materialFxValuesInitialized;
@@ -894,6 +901,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         source.materialResource = record.key.resources.material;
         source.materialRevision =
             record.materialOverrideRevision;
+        source.materialProgramFlags = instance.materialProgramFlags;
         source.world = instance.world;
         source.normalMatrix = instance.normalMatrix;
         source.receiveShadow = record.receiveShadow;

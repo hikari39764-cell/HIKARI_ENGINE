@@ -79,6 +79,12 @@ namespace HIKARI {
         const std::string& GetAssetId() const;
         void SetAssetId(std::string assetId);
 
+        const AssetGuid& GetMaterialSetAssetGuid() const noexcept;
+        bool HasAuthoredMaterialSetSelection() const noexcept;
+        void SetMaterialSetAssetGuid(AssetGuid materialSetGuid);
+        void UseImportedModelMaterials();
+        void ClearMaterialSetAssetGuid();
+
         void SetPostGroupMask(uint32_t mask);
         uint32_t GetPostGroupMask() const;
 
@@ -122,6 +128,8 @@ namespace HIKARI {
         uint32_t maxWireLines_ = 20000;
         bool wirePerPrimitiveColor_ = true;
         uint32_t postGroupMask_ = 0;
+        AssetGuid materialSetAssetGuid_{};
+        bool materialSetSelectionAuthored_ = false;
         std::vector<ModelMaterialOverrideSlot> materialOverrides_{};
         std::vector<RuntimeMaterialOverrideSlot>
             runtimeMaterialOverrides_{};

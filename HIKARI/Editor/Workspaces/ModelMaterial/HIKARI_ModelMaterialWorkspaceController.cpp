@@ -7,6 +7,9 @@
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/HIKARI_AssetRegistry.h"
 #include "Assets/Material/HIKARI_MaterialAssetData.h"
+#include "Assets/Material/Authoring/HIKARI_MaterialAssetAuthoringService.h"
+#include "Assets/Material/Authoring/HIKARI_MaterialTemplateFactory.h"
+#include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingAsset.h"
 #include "Render3D/Core/HIKARI_BoundsUtils.h"
 #include "Render3D/Views/HIKARI_EditorInteractiveViewRenderer.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
@@ -19,6 +22,10 @@ void ModelMaterialWorkspaceController::ApplyWorkspaceActivation(
     EditorWorkspaceHost &workspaceHost) {
   if (activation.previous == EditorWorkspaceId::ModelMaterial &&
       activation.current != EditorWorkspaceId::ModelMaterial) {
+    if (materialGesture_) {
+      CancelMaterialGesture(scene);
+    }
+    materialPreviewRefreshPending_ = false;
     SaveActiveCameraState();
     ClosePreviewRequest(workspaceHost);
     return;
@@ -27,11 +34,19 @@ void ModelMaterialWorkspaceController::ApplyWorkspaceActivation(
     return;
   }
 
+  EnsureBuiltInRampPresets(scene);
+
   if (activation.materialAssetGuid.has_value() &&
       activation.materialAssetGuid->IsValid()) {
     candidateMaterialGuid_ = *activation.materialAssetGuid;
+    if (SwitchAuthoringMode(scene, AuthoringMode::MaterialAsset,
+                            statusMessage_)) {
+      (void)OpenMaterialAsset(scene, *activation.materialAssetGuid,
+                              statusMessage_);
+    }
   }
   if (activation.modelAssetGuid.has_value()) {
+    authoringMode_ = AuthoringMode::ModelMaterials;
     (void)OpenModel(scene, *activation.modelAssetGuid, statusMessage_);
   } else if (IsEditingModel()) {
     cameraCutPending_ = true;
@@ -41,7 +56,7 @@ void ModelMaterialWorkspaceController::ApplyWorkspaceActivation(
 void ModelMaterialWorkspaceController::BindWorkspaceCommands(
     EditorCommandRouter &commandRouter, DocumentSceneBase &scene) {
   commandRouter.Bind(EditorCommandId::FocusSelection, "Frame Material Model",
-                     IsEditingModel(), [this]() { FitPreviewCamera(); });
+                     IsPreviewReady(), [this]() { FitPreviewCamera(); });
   std::string undoLabel = "Undo Material Edit";
   if (const std::string *label = authoringDocument_.GetUndoLabel()) {
     undoLabel = "Undo " + *label;
@@ -88,8 +103,7 @@ bool ModelMaterialWorkspaceController::Undo(DocumentSceneBase &scene,
                      : "nothing to undo";
     return false;
   }
-  if (!ApplyHistoryProjection(domain, scene.GetAssetDatabase(),
-                              scene.GetAssetRegistry(), outMessage)) {
+  if (!ApplyHistoryProjection(domain, scene, outMessage)) {
     return false;
   }
   outMessage = "undid " + label;
@@ -106,8 +120,7 @@ bool ModelMaterialWorkspaceController::Redo(DocumentSceneBase &scene,
                      : "nothing to redo";
     return false;
   }
-  if (!ApplyHistoryProjection(domain, scene.GetAssetDatabase(),
-                              scene.GetAssetRegistry(), outMessage)) {
+  if (!ApplyHistoryProjection(domain, scene, outMessage)) {
     return false;
   }
   outMessage = "redid " + label;
@@ -165,12 +178,15 @@ bool ModelMaterialWorkspaceController::OpenModel(DocumentSceneBase &scene,
     outMessage = "model is already open";
     return true;
   }
-  if (modelGuid_.IsValid() && guid != modelGuid_ &&
+  if (guid != modelGuid_ &&
+      !executingPendingTransition_ &&
       (authoringDocument_.IsBindingDirty() ||
        authoringDocument_.IsMaterialDirty() ||
        authoringDocument_.IsAbPreviewActive())) {
-    outMessage =
-        "save or undo the current material workspace changes before switching models";
+    PendingTransition transition{};
+    transition.kind = PendingTransitionKind::OpenModel;
+    transition.assetGuid = guid;
+    QueuePendingTransition(std::move(transition), outMessage);
     return false;
   }
 
@@ -182,6 +198,7 @@ bool ModelMaterialWorkspaceController::OpenModel(DocumentSceneBase &scene,
   }
 
   SaveActiveCameraState();
+  authoringMode_ = AuthoringMode::ModelMaterials;
   InitializePreviewLighting();
   previewScene_.SetRenderPolicy(ModelPreviewRenderPolicy{
       .castShadow = true,
@@ -192,6 +209,7 @@ bool ModelMaterialWorkspaceController::OpenModel(DocumentSceneBase &scene,
   publicSlotViews_.clear();
   selectedMaterialIndex_.reset();
   stats_ = {};
+  materialPreviewRefreshPending_ = false;
   modelGuid_ = {};
   modelDisplayName_.clear();
   if (!previewScene_.Load(*record, assetDatabase.GetProjectRoot(), outMessage)) {
@@ -228,6 +246,13 @@ bool ModelMaterialWorkspaceController::OpenModel(DocumentSceneBase &scene,
   if (unavailableCount != 0u) {
     outMessage += "; " + std::to_string(unavailableCount) +
                   " authored binding override(s) use imported fallback";
+  }
+  if (selectedMaterialIndex_.has_value()) {
+    std::string materialMessage{};
+    if (SelectSlotForEditing(scene, *selectedMaterialIndex_, materialMessage) &&
+        !materialMessage.empty()) {
+      outMessage += "; " + materialMessage;
+    }
   }
   return true;
 }
@@ -343,97 +368,6 @@ ModelMaterialWorkspaceController::FindSlotByMaterialIndex(
         return slot.view.materialIndex == materialIndex;
       });
   return found != slots_.end() ? &*found : nullptr;
-}
-
-void ModelMaterialWorkspaceController::RefreshAssetChoices(
-    const AssetDatabase &assetDatabase) {
-  const uint64_t revision = assetDatabase.GetContentRevision();
-  if (assetChoiceRevision_ == revision) {
-    return;
-  }
-  assetChoiceRevision_ = revision;
-  modelChoices_.clear();
-  materialChoices_.clear();
-  textureChoices_.clear();
-
-  const auto collect = [&assetDatabase](AssetType type,
-                                        std::vector<AssetChoice> &out) {
-    for (const AssetRecord *record : assetDatabase.CollectByType(type)) {
-      if (record == nullptr || !record->guid.IsValid()) {
-        continue;
-      }
-      AssetChoice choice{};
-      choice.guid = record->guid;
-      choice.label = GetAssetRecordDisplayName(*record);
-      choice.ready = record->lastImportSucceeded && !record->artifactMissing;
-      out.push_back(std::move(choice));
-    }
-    std::sort(out.begin(), out.end(),
-              [](const AssetChoice &left, const AssetChoice &right) {
-                if (left.label != right.label) {
-                  return left.label < right.label;
-                }
-                return left.guid.value < right.guid.value;
-              });
-  };
-  collect(AssetType::Model, modelChoices_);
-  collect(AssetType::Texture, textureChoices_);
-  for (AssetChoice &choice : textureChoices_) {
-    choice.textureAsset = true;
-  }
-  for (const AssetRecord *record :
-       assetDatabase.CollectByType(AssetType::Material)) {
-    if (record == nullptr || !record->guid.IsValid()) {
-      continue;
-    }
-    AssetChoice choice{};
-    choice.guid = record->guid;
-    choice.label = GetAssetRecordDisplayName(*record);
-    choice.ready = record->lastImportSucceeded && !record->artifactMissing;
-    MaterialAssetData source{};
-    std::string error{};
-    const std::filesystem::path sourcePath = record->sourcePath.is_absolute()
-        ? record->sourcePath
-        : assetDatabase.GetProjectRoot() / record->sourcePath;
-    if (LoadMaterialAssetData(sourcePath.lexically_normal(), source, error)) {
-      choice.materialKind = source.kind;
-    } else {
-      choice.ready = false;
-    }
-    materialChoices_.push_back(std::move(choice));
-  }
-  std::sort(materialChoices_.begin(), materialChoices_.end(),
-            [](const AssetChoice &left, const AssetChoice &right) {
-              if (left.materialKind != right.materialKind) {
-                return static_cast<uint8_t>(left.materialKind) <
-                       static_cast<uint8_t>(right.materialKind);
-              }
-              if (left.label != right.label) {
-                return left.label < right.label;
-              }
-              return left.guid.value < right.guid.value;
-            });
-}
-
-const ModelMaterialWorkspaceController::AssetChoice *
-ModelMaterialWorkspaceController::FindMaterialChoice(
-    const AssetGuid &guid) const noexcept {
-  const auto found = std::find_if(
-      materialChoices_.begin(), materialChoices_.end(),
-      [&guid](const AssetChoice &choice) { return choice.guid == guid; });
-  return found != materialChoices_.end() ? &*found : nullptr;
-}
-
-const ModelMaterialWorkspaceController::AssetChoice *
-ModelMaterialWorkspaceController::FindResourceChoice(
-    const AssetGuid &guid) const noexcept {
-  if (const AssetChoice *material = FindMaterialChoice(guid)) {
-    return material;
-  }
-  const auto found = std::find_if(
-      textureChoices_.begin(), textureChoices_.end(),
-      [&guid](const AssetChoice &choice) { return choice.guid == guid; });
-  return found != textureChoices_.end() ? &*found : nullptr;
 }
 
 void ModelMaterialWorkspaceController::UpdatePublicSlotViews() {

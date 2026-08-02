@@ -150,6 +150,9 @@ namespace HIKARI::SHADOW::INTERNAL {
         if (source.materialOverride != nullptr) {
             data.baseColor = source.materialOverride->GetBaseColor();
             data.materialFlags = source.materialOverride->GetFeatureBits();
+            if (!source.materialOverride->InheritsModelTextures()) {
+                baseColorHandle = gShadowRendererState.fallbackTextureHandle;
+            }
             const RuntimeTextureSlot& baseColorSlot =
                 source.materialOverride->GetTextureSlot(
                     MaterialTextureUsage::BaseColor);

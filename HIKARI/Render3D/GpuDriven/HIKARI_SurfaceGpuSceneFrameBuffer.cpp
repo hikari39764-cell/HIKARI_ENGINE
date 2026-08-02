@@ -215,6 +215,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         slot.residentInstanceCount = 0;
         slot.layoutVersion = 0;
         slot.sourceVersion = 0;
+        slot.sourceIdentity = 0;
         slot.materialBindingVersion = 0;
         slot.dirty = false;
         slot.dirtyFirstInstance = 0;
@@ -244,6 +245,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
     }
 
     bool SurfaceGpuSceneFrameBuffer::CanReuseFrame(
+        uintptr_t sourceIdentity,
         size_t residentInstanceCount,
         uint64_t layoutVersion,
         uint64_t sourceVersion) const {
@@ -252,6 +254,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         return
             slot != nullptr &&
             slot->resident &&
+            slot->sourceIdentity == sourceIdentity &&
             slot->residentInstanceCount == residentInstanceCount &&
             slot->layoutVersion == layoutVersion &&
             slot->sourceVersion == sourceVersion &&
@@ -259,6 +262,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
     }
 
     bool SurfaceGpuSceneFrameBuffer::CanPatchFrame(
+        uintptr_t sourceIdentity,
         size_t residentInstanceCount,
         uint64_t layoutVersion,
         uint64_t baseSourceVersion) const {
@@ -267,6 +271,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         return
             slot != nullptr &&
             slot->resident &&
+            slot->sourceIdentity == sourceIdentity &&
             slot->residentInstanceCount == residentInstanceCount &&
             slot->layoutVersion == layoutVersion &&
             slot->sourceVersion == baseSourceVersion &&
@@ -513,6 +518,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
     }
 
     void SurfaceGpuSceneFrameBuffer::MarkResident(
+        uintptr_t sourceIdentity,
         uint64_t layoutVersion,
         uint64_t sourceVersion,
         size_t instanceCount) {
@@ -523,6 +529,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         }
 
         slot->resident = true;
+        slot->sourceIdentity = sourceIdentity;
         slot->residentInstanceCount = instanceCount;
         slot->layoutVersion = layoutVersion;
         slot->sourceVersion = sourceVersion;

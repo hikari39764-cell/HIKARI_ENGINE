@@ -14,7 +14,8 @@ namespace HIKARI::RENDER3D::FEATURES {
         uint32_t ResolveRequestMask(uint32_t flags) noexcept {
             using namespace MATERIAL::GPU_MATERIAL_PROGRAM_FLAGS;
             uint32_t mask = 0u;
-            if ((flags & RenderFeatureGeometryOutline) != 0u) {
+            if ((flags & (RenderFeatureGeometryOutline |
+                          EditorSelectionOutline)) != 0u) {
                 mask |= RenderFeatureBit(RenderFeatureKind::GeometryOutline);
             }
             if ((flags & RenderFeatureScreenOutline) != 0u) {
@@ -54,13 +55,11 @@ namespace HIKARI::RENDER3D::FEATURES {
             }
             for (const RUNTIME::SurfaceGpuSceneMaterialSource& materialSource :
                  *pass.materialSources) {
-                if (!visited.emplace(BuildSurfaceKey(materialSource)).second ||
-                    materialSource.materialOverride == nullptr) {
+                if (!visited.emplace(BuildSurfaceKey(materialSource)).second) {
                     continue;
                 }
                 const uint32_t mask = ResolveRequestMask(
-                    materialSource.materialOverride->
-                        GetMaterialProgramInstanceFlags());
+                    materialSource.materialProgramFlags);
                 requests.requestedMask |= mask;
                 if (passKind ==
                     GPUDRIVEN::GpuDrivenPassKind::ForwardOpaque) {

@@ -8,6 +8,19 @@
 
 namespace HIKARI::IBL {
 
+    struct IblEnvironmentSource {
+        RENDER3D::TextureResourceHandle irradianceResource{};
+        RENDER3D::TextureResourceHandle prefilteredResource{};
+        RENDER3D::TextureResourceHandle brdfLutResource{};
+        uint32_t prefilteredMipCount = 1;
+
+        constexpr bool IsConfigured() const noexcept {
+            return irradianceResource.IsValid() ||
+                prefilteredResource.IsValid() ||
+                brdfLutResource.IsValid();
+        }
+    };
+
     struct IblEnvironmentData {
         bool valid = false;
         bool hasIrradiance = false;
@@ -49,6 +62,25 @@ namespace HIKARI::IBL {
         int prefilteredHandle,
         int brdfLutHandle,
         uint32_t prefilteredMipCount);
+
+    class ScopedEnvironmentOverride final {
+    public:
+        explicit ScopedEnvironmentOverride(
+            IblEnvironmentSource source) noexcept;
+        ~ScopedEnvironmentOverride();
+
+        ScopedEnvironmentOverride(
+            const ScopedEnvironmentOverride&) = delete;
+        ScopedEnvironmentOverride& operator=(
+            const ScopedEnvironmentOverride&) = delete;
+
+    private:
+        friend const IblEnvironmentData& GetEnvironmentData();
+
+        IblEnvironmentSource source_{};
+        IblEnvironmentData resolved_{};
+        ScopedEnvironmentOverride* previous_ = nullptr;
+    };
 
     const IblEnvironmentData& GetEnvironmentData();
 

@@ -1,87 +1,18 @@
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
-
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <optional>
-#include <string_view>
 #include <unordered_map>
+#include <utility>
 #include <vector>
-
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialGraphUi.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
-
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
 #endif
-
 namespace HIKARI::EDITOR {
-namespace {
-
-MaterialGraphData *EditableGraph(MaterialAssetData &source) noexcept {
-  if (source.kind == MaterialAssetKind::Material) {
-    return &source.graph;
-  }
-  if (source.kind == MaterialAssetKind::Function) {
-    return &source.function.graph;
-  }
-  return nullptr;
-}
-
-#if defined(HIKARI_WITH_EDITOR)
-ImU32 NodeHeaderColor(MaterialNodeKind kind) noexcept {
-  switch (kind) {
-  case MaterialNodeKind::PbrSurface:
-  case MaterialNodeKind::SurfaceOutput:
-    return IM_COL32(92, 66, 142, 255);
-  case MaterialNodeKind::RampDiffuse:
-  case MaterialNodeKind::MultiRampDiffuse:
-  case MaterialNodeKind::SpecularBand:
-  case MaterialNodeKind::FresnelRim:
-  case MaterialNodeKind::MatCap:
-  case MaterialNodeKind::AnisotropicHair:
-  case MaterialNodeKind::FaceSdf:
-  case MaterialNodeKind::EyeLighting:
-    return IM_COL32(40, 112, 126, 255);
-  case MaterialNodeKind::TextureSample:
-  case MaterialNodeKind::Parameter:
-  case MaterialNodeKind::Constant:
-    return IM_COL32(86, 94, 108, 255);
-  default:
-    return IM_COL32(83, 74, 56, 255);
-  }
-}
-
-ImU32 PinColor(std::string_view pin) noexcept {
-  if (pin == "Surface") return IM_COL32(186, 128, 255, 255);
-  if (pin.find("Response") != std::string_view::npos) {
-    return IM_COL32(255, 166, 76, 255);
-  }
-  if (pin == "Color" || pin == "RGB" || pin == "Additive" ||
-      pin == "Emissive" || pin == "BaseColor" || pin == "SpecularColor") {
-    return IM_COL32(109, 208, 232, 255);
-  }
-  return IM_COL32(188, 205, 214, 255);
-}
-
-std::string PinKey(std::string_view nodeId, std::string_view pin) {
-  std::string key{};
-  key.reserve(nodeId.size() + pin.size() + 1u);
-  key.append(nodeId);
-  key.push_back(':');
-  key.append(pin);
-  return key;
-}
-#endif
-
-} // namespace
-
-using MATERIAL_GRAPH_UI::FindNode;
-using MATERIAL_GRAPH_UI::InputPins;
-using MATERIAL_GRAPH_UI::OutputPins;
-
-void ModelMaterialWorkspaceController::DrawGraphWindow(
-    DocumentSceneBase &scene) {
+using namespace MATERIAL_GRAPH_UI;
+void ModelMaterialWorkspaceController::DrawGraphWindow(DocumentSceneBase &scene) {
 #if defined(HIKARI_WITH_EDITOR)
   constexpr ImGuiWindowFlags flags =
       ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
@@ -101,36 +32,22 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(
     ImGui::End();
     return;
   }
-
-  bool requestFrameAll = false;
-  bool requestFocusSelection = false;
-  bool requestDeleteNode = false;
-  bool requestDeleteEdge = false;
-  if (ImGui::Button("Add Node...")) {
-    ImGui::OpenPopup("##MaterialGraphAddNode");
+  std::string graphDocumentKey = authoringDocument_.GetMaterialAssetGuid().value + "|" +
+      authoringDocument_.GetMaterialSourcePath().generic_string() + "|" + source.materialName;
+  const bool graphDocumentChanged = graphCanvasDocumentKey_ != graphDocumentKey;
+  if (graphDocumentChanged) {
+    graphCanvasDocumentKey_ = std::move(graphDocumentKey);
+    graphCanvas_ = {};
+    collapsedGraphNodeIds_.clear();
   }
-  ImGui::SameLine();
-  requestFrameAll = ImGui::Button("Frame All");
-  ImGui::SameLine();
-  ImGui::BeginDisabled(selectedGraphNodeId_.empty());
-  requestFocusSelection = ImGui::Button("Focus Selection");
-  ImGui::SameLine();
-  requestDeleteNode = ImGui::Button("Delete Node");
-  ImGui::EndDisabled();
-  ImGui::SameLine();
-  ImGui::TextDisabled("Drag output to input | MMB pan | wheel zoom | Del remove");
-
-  if (ImGui::BeginPopup("##MaterialGraphAddNode")) {
-    const MATH::Vec2 position{
-        (360.0f - graphPanX_) / graphZoom_,
-        (180.0f - graphPanY_) / graphZoom_};
-    DrawMaterialGraphNodePalette(scene, source, *graph, position);
-    ImGui::EndPopup();
+  bool requestFrameAll = graphDocumentChanged;
+  bool requestFocusSelection = false, requestDeleteNode = false, requestDeleteEdge = false;
+  if (DrawMaterialGraphToolbar(
+          scene, source, *graph, requestFrameAll, requestFocusSelection,
+          requestDeleteNode, requestDeleteEdge)) {
+    ImGui::End();
+    return;
   }
-
-  requestDeleteEdge = DrawMaterialGraphInspector(scene, source, *graph);
-  ImGui::SameLine();
-
   const ImVec2 origin = ImGui::GetCursorScreenPos();
   ImVec2 size = ImGui::GetContentRegionAvail();
   size.x = (std::max)(size.x, 320.0f);
@@ -139,59 +56,94 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(
   ImDrawList *drawList = ImGui::GetWindowDrawList();
   drawList->AddRectFilled(origin, canvasMax, IM_COL32(15, 18, 23, 255));
   ImGui::SetCursorScreenPos(origin);
-  ImGui::InvisibleButton("##MaterialGraphCanvas", size,
-                         ImGuiButtonFlags_MouseButtonMiddle |
-                             ImGuiButtonFlags_MouseButtonRight);
-  const bool canvasHovered = ImGui::IsItemHovered();
+  ImGui::Dummy(size);
   ImGuiIO &io = ImGui::GetIO();
+  graphCanvas_.zoom = std::clamp(
+      graphCanvas_.zoom, kCanvasMinimumZoom, kCanvasMaximumZoom);
+  const bool mouseInsideCanvas = io.MousePos.x >= origin.x &&
+      io.MousePos.x <= canvasMax.x &&
+      io.MousePos.y >= origin.y && io.MousePos.y <= canvasMax.y;
+  const bool canvasHovered = mouseInsideCanvas && ImGui::IsWindowHovered();
   if (canvasHovered && io.MouseWheel != 0.0f) {
-    const float oldZoom = graphZoom_;
-    const float newZoom = std::clamp(
-        graphZoom_ * std::pow(1.12f, io.MouseWheel), 0.35f, 2.5f);
-    const ImVec2 mouse = io.MousePos;
-    const float worldX = (mouse.x - origin.x - graphPanX_) / oldZoom;
-    const float worldY = (mouse.y - origin.y - graphPanY_) / oldZoom;
-    graphZoom_ = newZoom;
-    graphPanX_ = mouse.x - origin.x - worldX * graphZoom_;
-    graphPanY_ = mouse.y - origin.y - worldY * graphZoom_;
+    NodeGraphCanvas::ZoomAt(graphCanvas_, {io.MousePos.x, io.MousePos.y},
+        {origin.x, origin.y},
+        io.MouseWheel, kCanvasMinimumZoom, kCanvasMaximumZoom);
   }
   if (canvasHovered && ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
-    graphPanX_ += io.MouseDelta.x;
-    graphPanY_ += io.MouseDelta.y;
+    NodeGraphCanvas::Pan(graphCanvas_, {io.MouseDelta.x, io.MouseDelta.y});
   }
-
-  constexpr float kNodeWidth = 220.0f;
-  constexpr float kHeaderHeight = 34.0f;
-  constexpr float kPinRowHeight = 22.0f;
-  constexpr float kNodePadding = 9.0f;
+  if (requestFrameAll && !graph->nodes.empty()) {
+    float minX = graph->nodes.front().position.x;
+    float minY = graph->nodes.front().position.y;
+    float maxX = minX + kNodeWidth;
+    float maxY = minY + 120.0f;
+    for (const MaterialGraphNodeData &node : graph->nodes) {
+      const float nodeHeight = NodeLogicalHeight(
+          *graph, node, collapsedGraphNodeIds_.contains(node.id));
+      minX = (std::min)(minX, node.position.x);
+      minY = (std::min)(minY, node.position.y);
+      maxX = (std::max)(maxX, node.position.x + kNodeWidth);
+      maxY = (std::max)(maxY, node.position.y + nodeHeight);
+    }
+    NodeGraphCanvas::FrameBounds(graphCanvas_, {size.x, size.y},
+        {minX, minY}, {maxX, maxY},
+        80.0f, kCanvasMinimumZoom, kCanvasMaximumZoom);
+  } else if (requestFocusSelection) {
+    if (const MaterialGraphNodeData *node =
+            FindNode(*graph, selectedGraphNodeId_)) {
+      graphCanvas_.zoom = (std::max)(graphCanvas_.zoom, 1.0f);
+      graphCanvas_.pan.x = size.x * 0.5f -
+          (node->position.x + kNodeWidth * 0.5f) * graphCanvas_.zoom;
+      graphCanvas_.pan.y = size.y * 0.5f -
+          (node->position.y + NodeLogicalHeight(
+              *graph, *node, collapsedGraphNodeIds_.contains(node->id)) *
+                                  0.5f) * graphCanvas_.zoom;
+    }
+  }
   struct NodeLayout {
     ImVec2 position{};
     ImVec2 size{};
     std::vector<std::string_view> inputs{};
     std::vector<std::string_view> outputs{};
+    float inlineHeight = 0.0f;
+    bool collapsed = false;
   };
   std::unordered_map<std::string, NodeLayout> layouts{};
-  std::unordered_map<std::string, ImVec2> inputPositions{};
-  std::unordered_map<std::string, ImVec2> outputPositions{};
+  std::unordered_map<std::string, ImVec2> inputPositions{}, outputPositions{};
   for (const MaterialGraphNodeData &node : graph->nodes) {
     NodeLayout layout{};
     layout.inputs = InputPins(node.kind);
     layout.outputs = OutputPins(node.kind);
-    const size_t rows = (std::max)(
-        size_t{1u}, (std::max)(layout.inputs.size(), layout.outputs.size()));
-    layout.position = {
-        origin.x + graphPanX_ + node.position.x * graphZoom_,
-        origin.y + graphPanY_ + node.position.y * graphZoom_};
+    layout.collapsed = collapsedGraphNodeIds_.contains(node.id);
+    if (layout.collapsed) {
+      std::erase_if(layout.inputs, [&](std::string_view pin) {
+        return !PinHasConnection(*graph, node.id, pin, false);
+      });
+      std::erase_if(layout.outputs, [&](std::string_view pin) {
+        return !PinHasConnection(*graph, node.id, pin, true);
+      });
+    } else if (graphCanvas_.zoom >= kInlineControlsMinimumZoom) {
+      layout.inlineHeight = NodeInlineHeight(node.kind);
+    }
+    const size_t rowInputCount = CountNodeInputRows(
+        node.kind, layout.inputs, layout.inlineHeight > 0.0f);
+    const size_t rows = (std::max)(size_t{1u},
+        (std::max)(rowInputCount, layout.outputs.size()));
+    const MATH::Vec2 screenPosition = NodeGraphCanvas::CanvasToScreen(
+        graphCanvas_, {origin.x, origin.y}, node.position);
+    layout.position = {screenPosition.x, screenPosition.y};
     layout.size = {
-        kNodeWidth * graphZoom_,
-        (kHeaderHeight + kNodePadding + rows * kPinRowHeight) * graphZoom_};
-    for (size_t index = 0; index < layout.inputs.size(); ++index) {
+        kNodeWidth * graphCanvas_.zoom,
+        (kHeaderHeight + kNodePadding + rows * kPinRowHeight) *
+                graphCanvas_.zoom +
+            layout.inlineHeight};
+    const std::vector<float> inputOffsets =
+        BuildNodeInputVerticalOffsets(
+            node.kind, layout.inputs, layout.inlineHeight,
+            graphCanvas_.zoom);
+    for (size_t index = 0u; index < layout.inputs.size(); ++index) {
       inputPositions[PinKey(node.id, layout.inputs[index])] = {
-          layout.position.x,
-          layout.position.y +
-              (kHeaderHeight + kNodePadding +
-               (static_cast<float>(index) + 0.5f) * kPinRowHeight) *
-                  graphZoom_};
+          layout.position.x, layout.position.y + inputOffsets[index]};
     }
     for (size_t index = 0; index < layout.outputs.size(); ++index) {
       outputPositions[PinKey(node.id, layout.outputs[index])] = {
@@ -199,61 +151,28 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(
           layout.position.y +
               (kHeaderHeight + kNodePadding +
                (static_cast<float>(index) + 0.5f) * kPinRowHeight) *
-                  graphZoom_};
+                  graphCanvas_.zoom + layout.inlineHeight};
     }
     layouts.emplace(node.id, std::move(layout));
   }
-
-  if (requestFrameAll && !graph->nodes.empty()) {
-    float minX = graph->nodes.front().position.x;
-    float minY = graph->nodes.front().position.y;
-    float maxX = minX + kNodeWidth;
-    float maxY = minY + 120.0f;
-    for (const MaterialGraphNodeData &node : graph->nodes) {
-      const auto layout = layouts.find(node.id);
-      const float nodeWidth = kNodeWidth;
-      const float nodeHeight = layout != layouts.end()
-                                   ? layout->second.size.y / graphZoom_
-                                   : 120.0f;
-      minX = (std::min)(minX, node.position.x);
-      minY = (std::min)(minY, node.position.y);
-      maxX = (std::max)(maxX, node.position.x + nodeWidth);
-      maxY = (std::max)(maxY, node.position.y + nodeHeight);
-    }
-    const float width = (std::max)(maxX - minX, 1.0f);
-    const float height = (std::max)(maxY - minY, 1.0f);
-    graphZoom_ = std::clamp(
-        (std::min)((size.x - 80.0f) / width, (size.y - 80.0f) / height),
-        0.35f, 2.5f);
-    graphPanX_ = (size.x - width * graphZoom_) * 0.5f - minX * graphZoom_;
-    graphPanY_ = (size.y - height * graphZoom_) * 0.5f - minY * graphZoom_;
-  } else if (requestFocusSelection) {
-    if (const MaterialGraphNodeData *node =
-            FindNode(*graph, selectedGraphNodeId_)) {
-      graphPanX_ = size.x * 0.5f -
-                   (node->position.x + kNodeWidth * 0.5f) * graphZoom_;
-      graphPanY_ = size.y * 0.5f -
-                   (node->position.y + 60.0f) * graphZoom_;
-    }
-  }
-
   drawList->PushClipRect(origin, canvasMax, true);
-  const float gridStep = 32.0f * graphZoom_;
+  const float gridStep = 32.0f * graphCanvas_.zoom;
   if (gridStep >= 10.0f) {
-    for (float x = std::fmod(graphPanX_, gridStep); x < size.x;
+    for (float x = std::fmod(graphCanvas_.pan.x, gridStep); x < size.x;
          x += gridStep) {
       drawList->AddLine({origin.x + x, origin.y},
                         {origin.x + x, canvasMax.y},
                         IM_COL32(35, 40, 48, 160));
     }
-    for (float y = std::fmod(graphPanY_, gridStep); y < size.y;
+    for (float y = std::fmod(graphCanvas_.pan.y, gridStep); y < size.y;
          y += gridStep) {
       drawList->AddLine({origin.x, origin.y + y},
                         {canvasMax.x, origin.y + y},
                         IM_COL32(35, 40, 48, 160));
     }
   }
-
+  const MATH::Vec2 pointer{io.MousePos.x, io.MousePos.y};
+  std::string hoveredEdgeId{};
   for (const MaterialGraphEdgeData &edge : graph->edges) {
     const auto start = outputPositions.find(PinKey(edge.sourceNodeId,
                                                    edge.sourcePin));
@@ -262,24 +181,185 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(
     if (start == outputPositions.end() || end == inputPositions.end()) {
       continue;
     }
-    const float tangent = (std::max)(60.0f * graphZoom_,
+    const float tangent = (std::max)(60.0f * graphCanvas_.zoom,
                                      std::abs(end->second.x - start->second.x) *
                                          0.45f);
+    const ImVec2 controlA{start->second.x + tangent, start->second.y};
+    const ImVec2 controlB{end->second.x - tangent, end->second.y};
+    if (mouseInsideCanvas && NodeGraphCanvas::HitBezierCubic(
+            pointer,
+            {start->second.x, start->second.y},
+            {controlA.x, controlA.y},
+            {controlB.x, controlB.y},
+            {end->second.x, end->second.y},
+            8.0f)) {
+      hoveredEdgeId = edge.id;
+    }
+    const bool selected = selectedGraphEdgeId_ == edge.id;
+    const bool hovered = hoveredEdgeId == edge.id;
     drawList->AddBezierCubic(
-        start->second, {start->second.x + tangent, start->second.y},
-        {end->second.x - tangent, end->second.y}, end->second,
-        selectedGraphEdgeId_ == edge.id ? IM_COL32(255, 190, 78, 255)
-                                        : PinColor(edge.sourcePin),
-        selectedGraphEdgeId_ == edge.id ? 3.5f : 2.25f);
+        start->second, controlA, controlB, end->second,
+        selected ? IM_COL32(255, 190, 78, 255)
+                 : hovered ? IM_COL32(225, 235, 242, 255)
+                           : PinColor(edge.sourcePin),
+        selected ? 3.5f : hovered ? 3.0f : 2.25f);
   }
-
   struct CompletedLink {
     std::string targetNode{};
     std::string targetPin{};
   };
   std::optional<CompletedLink> completedLink{};
-  bool pointerOverNode = false;
-  bool nodeGestureEnded = false;
+  const float pinHitRadius = (std::max)(12.0f, 10.0f * graphCanvas_.zoom);
+  struct PinHit {
+    std::string nodeId{};
+    std::string pin{};
+  };
+  const auto findPinHit = [&](bool output) -> std::optional<PinHit> {
+    for (auto node = graph->nodes.rbegin(); node != graph->nodes.rend();
+         ++node) {
+      const auto layout = layouts.find(node->id);
+      if (layout == layouts.end()) {
+        continue;
+      }
+      const std::vector<std::string_view> &pins =
+          output ? layout->second.outputs : layout->second.inputs;
+      const auto &positions = output ? outputPositions : inputPositions;
+      for (const std::string_view pin : pins) {
+        const auto position = positions.find(PinKey(node->id, pin));
+        if (position != positions.end() &&
+            NodeGraphCanvas::HitPoint(
+                pointer, {position->second.x, position->second.y},
+                pinHitRadius)) {
+          return PinHit{node->id, std::string(pin)};
+        }
+      }
+    }
+    return std::nullopt;
+  };
+  const auto findNodeHit = [&]() -> std::string {
+    for (auto node = graph->nodes.rbegin(); node != graph->nodes.rend();
+         ++node) {
+      const auto layout = layouts.find(node->id);
+      if (layout == layouts.end()) {
+        continue;
+      }
+      const ImVec2 maximum{
+          layout->second.position.x + layout->second.size.x,
+          layout->second.position.y + layout->second.size.y};
+      if (NodeGraphCanvas::HitRect(
+              pointer,
+              {layout->second.position.x, layout->second.position.y},
+              {maximum.x, maximum.y})) {
+        return node->id;
+      }
+    }
+    return {};
+  };
+  const std::optional<PinHit> hoveredOutput = findPinHit(true);
+  const std::optional<PinHit> hoveredInput = findPinHit(false);
+  const std::string hoveredNodeId = findNodeHit();
+  const auto hoveredLayout = layouts.find(hoveredNodeId);
+  const bool pointerOverNodeControl = hoveredLayout != layouts.end() &&
+      MATERIAL_GRAPH_UI::HitNodeAuthoringControls(
+          pointer, {hoveredLayout->second.position.x,
+                    hoveredLayout->second.position.y},
+          {hoveredLayout->second.position.x + hoveredLayout->second.size.x,
+           hoveredLayout->second.position.y + hoveredLayout->second.size.y},
+          kHeaderHeight * graphCanvas_.zoom,
+          hoveredLayout->second.inlineHeight);
+  const bool pointerOverNodeHeader = hoveredLayout != layouts.end() &&
+      pointer.y >= hoveredLayout->second.position.y &&
+      pointer.y <= hoveredLayout->second.position.y +
+          kHeaderHeight * graphCanvas_.zoom;
+  const bool pointerOverNode = !hoveredNodeId.empty() ||
+                               hoveredOutput.has_value() ||
+                               hoveredInput.has_value();
+  if (mouseInsideCanvas && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+    if (hoveredOutput) {
+      selectedGraphNodeId_ = hoveredOutput->nodeId;
+      selectedGraphEdgeId_.clear();
+      edgeSourceNodeId_ = hoveredOutput->nodeId;
+      edgeSourcePin_ = hoveredOutput->pin;
+      edgeTargetNodeId_.clear();
+      edgeTargetPin_.clear();
+      rewiredGraphEdgeId_.clear();
+      graphLinkDragActive_ = true;
+      draggedGraphNodeId_.clear();
+    } else if (hoveredInput) {
+      selectedGraphNodeId_ = hoveredInput->nodeId;
+      draggedGraphNodeId_.clear();
+      graphNodeDragStarted_ = false;
+      const auto incoming = std::find_if(
+          graph->edges.begin(), graph->edges.end(),
+          [&](const MaterialGraphEdgeData &edge) {
+            return edge.targetNodeId == hoveredInput->nodeId &&
+                   edge.targetPin == hoveredInput->pin;
+          });
+      if (incoming != graph->edges.end()) {
+        selectedGraphEdgeId_ = incoming->id;
+        edgeSourceNodeId_ = incoming->sourceNodeId;
+        edgeSourcePin_ = incoming->sourcePin;
+        edgeTargetNodeId_ = incoming->targetNodeId;
+        edgeTargetPin_ = incoming->targetPin;
+        rewiredGraphEdgeId_ = incoming->id;
+        graphLinkDragActive_ = true;
+      } else {
+        selectedGraphEdgeId_.clear();
+        graphLinkDragActive_ = false;
+        rewiredGraphEdgeId_.clear();
+      }
+    } else if (!hoveredNodeId.empty()) {
+      selectedGraphNodeId_ = hoveredNodeId;
+      selectedGraphEdgeId_.clear();
+      draggedGraphNodeId_ = pointerOverNodeHeader && !pointerOverNodeControl
+          ? hoveredNodeId : std::string{};
+      graphNodeDragStarted_ = false;
+      graphLinkDragActive_ = false;
+      rewiredGraphEdgeId_.clear();
+    } else if (!hoveredEdgeId.empty()) {
+      selectedGraphNodeId_.clear();
+      selectedGraphEdgeId_ = hoveredEdgeId;
+      draggedGraphNodeId_.clear();
+      graphNodeDragStarted_ = false;
+      graphLinkDragActive_ = false;
+      rewiredGraphEdgeId_.clear();
+    } else {
+      selectedGraphNodeId_.clear();
+      selectedGraphEdgeId_.clear();
+      draggedGraphNodeId_.clear();
+      graphNodeDragStarted_ = false;
+      graphLinkDragActive_ = false;
+      rewiredGraphEdgeId_.clear();
+    }
+  }
+  if (!draggedGraphNodeId_.empty() &&
+      ImGui::IsMouseDragging(ImGuiMouseButton_Left, 4.0f)) {
+    if (!graphNodeDragStarted_) {
+      graphNodeDragStarted_ = true;
+      if (!materialGesture_) {
+        materialGesture_ =
+            MaterialEditGesture{source, "Move material graph node"};
+      }
+    }
+    if (MaterialGraphNodeData *dragged =
+            FindNode(*graph, draggedGraphNodeId_)) {
+      NodeGraphCanvas::MoveNode(
+          graphCanvas_, dragged->position,
+          {io.MouseDelta.x, io.MouseDelta.y});
+    }
+  }
+  if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+    if (graphLinkDragActive_ && hoveredInput) {
+      completedLink =
+          CompletedLink{hoveredInput->nodeId, hoveredInput->pin};
+    }
+    if (graphNodeDragStarted_ && materialGesture_) {
+      CommitMaterialGesture(scene);
+    }
+    draggedGraphNodeId_.clear();
+    graphNodeDragStarted_ = false;
+  }
+  bool inlineControlsCapture = false;
   for (MaterialGraphNodeData &node : graph->nodes) {
     const auto foundLayout = layouts.find(node.id);
     if (foundLayout == layouts.end()) {
@@ -293,95 +373,100 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(
                             IM_COL32(29, 35, 43, 248), 7.0f);
     drawList->AddRectFilled(
         layout.position,
-        {nodeMax.x, layout.position.y + kHeaderHeight * graphZoom_},
+        {nodeMax.x, layout.position.y + kHeaderHeight * graphCanvas_.zoom},
         NodeHeaderColor(node.kind), 7.0f,
         ImDrawFlags_RoundCornersTop);
+    if (selected) {
+      drawList->AddRect(
+          {layout.position.x - 2.0f, layout.position.y - 2.0f},
+          {nodeMax.x + 2.0f, nodeMax.y + 2.0f},
+          IM_COL32(255, 139, 56, 150), 9.0f, 0, 3.0f);
+    }
     drawList->AddRect(layout.position, nodeMax,
-                      selected ? IM_COL32(116, 226, 235, 255)
+                      selected ? IM_COL32(255, 171, 72, 255)
                                : IM_COL32(69, 82, 96, 255),
-                      7.0f, 0, selected ? 2.5f : 1.5f);
+                      7.0f, 0, selected ? 3.0f : 1.5f);
+    const float textScale = std::clamp(graphCanvas_.zoom, 0.72f, 1.15f);
+    const float nodeFontSize = ImGui::GetFontSize() * textScale;
     drawList->AddText(
-        {layout.position.x + 10.0f * graphZoom_,
-         layout.position.y + 8.0f * graphZoom_},
+        ImGui::GetFont(), nodeFontSize,
+        {layout.position.x + 10.0f * graphCanvas_.zoom,
+         layout.position.y + 8.0f * graphCanvas_.zoom},
         IM_COL32(244, 247, 250, 255),
         node.displayName.empty() ? ToString(node.kind).data()
-                                 : node.displayName.c_str());
-
+                                 : node.displayName.c_str(), nullptr);
     ImGui::PushID(node.id.c_str());
-    ImGui::SetCursorScreenPos(layout.position);
-    ImGui::InvisibleButton(
-        "Header",
-        {layout.size.x, kHeaderHeight * graphZoom_},
-        ImGuiButtonFlags_MouseButtonLeft);
-    pointerOverNode = pointerOverNode || ImGui::IsItemHovered();
-    if (ImGui::IsItemClicked()) {
-      selectedGraphNodeId_ = node.id;
-      selectedGraphEdgeId_.clear();
+    ImGui::SetCursorScreenPos(
+        {nodeMax.x - 25.0f, layout.position.y + 5.0f});
+    if (ImGui::ArrowButton(
+            "##CollapseNode",
+            layout.collapsed ? ImGuiDir_Right : ImGuiDir_Down)) {
+      if (layout.collapsed) {
+        collapsedGraphNodeIds_.erase(node.id);
+      } else {
+        collapsedGraphNodeIds_.insert(node.id);
+      }
     }
-    if (ImGui::IsItemActivated() && !materialGesture_) {
-      materialGesture_ = MaterialEditGesture{source, "Move material graph node"};
+    inlineControlsCapture = inlineControlsCapture ||
+                            ImGui::IsItemHovered() ||
+                            ImGui::IsItemActive();
+    ImGui::PopID();
+    if (!layout.collapsed && layout.inlineHeight > 0.0f) {
+      inlineControlsCapture =
+          DrawMaterialGraphNodeInlineControls(
+              scene, source, *graph, node,
+              layout.position.x + 10.0f,
+              layout.position.y +
+                  kHeaderHeight * graphCanvas_.zoom + 5.0f,
+              layout.size.x - 20.0f) ||
+          inlineControlsCapture;
     }
-    if (ImGui::IsItemActive() &&
-        ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
-      node.position.x += io.MouseDelta.x / graphZoom_;
-      node.position.y += io.MouseDelta.y / graphZoom_;
-    }
-    nodeGestureEnded = nodeGestureEnded ||
-                       (ImGui::IsItemDeactivated() && materialGesture_.has_value());
-
     for (size_t index = 0; index < layout.inputs.size(); ++index) {
       const std::string_view pin = layout.inputs[index];
       const ImVec2 port = inputPositions.at(PinKey(node.id, pin));
-      drawList->AddCircleFilled(port, 5.5f * graphZoom_, PinColor(pin));
-      drawList->AddText({port.x + 10.0f * graphZoom_,
-                         port.y - 7.0f * graphZoom_},
-                        IM_COL32(204, 213, 222, 255), pin.data());
-      ImGui::PushID(static_cast<int>(index));
-      ImGui::SetCursorScreenPos(
-          {port.x - 9.0f * graphZoom_, port.y - 9.0f * graphZoom_});
-      ImGui::InvisibleButton("InputPin",
-                             {18.0f * graphZoom_, 18.0f * graphZoom_});
-      const bool hovered = ImGui::IsItemHovered(
-          ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
-      pointerOverNode = pointerOverNode || hovered;
-      if (graphLinkDragActive_ && hovered &&
-          ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
-        completedLink = CompletedLink{node.id, std::string(pin)};
+      const bool hovered = hoveredInput && hoveredInput->nodeId == node.id &&
+                           hoveredInput->pin == pin;
+      drawList->AddCircleFilled(
+          port, (hovered ? 7.0f : 5.5f) * graphCanvas_.zoom,
+          PinColor(pin));
+      const bool inlineOwned = layout.inlineHeight > 0.0f &&
+          MATERIAL_GRAPH_UI::IsInlineOwnedInput(node.kind, pin);
+      if (!inlineOwned && graphCanvas_.zoom >= 0.55f) {
+        drawList->AddText(
+            ImGui::GetFont(), nodeFontSize,
+            {port.x + 10.0f * graphCanvas_.zoom,
+             port.y - nodeFontSize * 0.5f},
+            IM_COL32(204, 213, 222, 255), pin.data(), nullptr);
       }
-      ImGui::PopID();
     }
     for (size_t index = 0; index < layout.outputs.size(); ++index) {
       const std::string_view pin = layout.outputs[index];
       const ImVec2 port = outputPositions.at(PinKey(node.id, pin));
-      drawList->AddCircleFilled(port, 5.5f * graphZoom_, PinColor(pin));
-      const ImVec2 labelSize = ImGui::CalcTextSize(pin.data());
-      drawList->AddText({port.x - labelSize.x - 10.0f * graphZoom_,
-                         port.y - 7.0f * graphZoom_},
-                        IM_COL32(204, 213, 222, 255), pin.data());
-      ImGui::PushID(static_cast<int>(layout.inputs.size() + index));
-      ImGui::SetCursorScreenPos(
-          {port.x - 9.0f * graphZoom_, port.y - 9.0f * graphZoom_});
-      ImGui::InvisibleButton("OutputPin",
-                             {18.0f * graphZoom_, 18.0f * graphZoom_});
-      const bool hovered = ImGui::IsItemHovered(
-          ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
-      pointerOverNode = pointerOverNode || hovered;
-      if (ImGui::IsItemActivated()) {
-        graphLinkDragActive_ = true;
-        edgeSourceNodeId_ = node.id;
-        edgeSourcePin_ = pin;
+      const bool hovered = hoveredOutput &&
+                           hoveredOutput->nodeId == node.id &&
+                           hoveredOutput->pin == pin;
+      drawList->AddCircleFilled(
+          port, (hovered ? 7.0f : 5.5f) * graphCanvas_.zoom,
+          PinColor(pin));
+      if (graphCanvas_.zoom >= 0.55f) {
+        const ImVec2 labelSize = ImGui::CalcTextSize(pin.data());
+        drawList->AddText(
+            ImGui::GetFont(), nodeFontSize,
+            {port.x - labelSize.x * textScale - 10.0f * graphCanvas_.zoom,
+             port.y - nodeFontSize * 0.5f},
+            IM_COL32(204, 213, 222, 255), pin.data(), nullptr);
       }
-      ImGui::PopID();
     }
-    ImGui::PopID();
   }
-
+  if (inlineControlsCapture && !graphNodeDragStarted_) {
+    draggedGraphNodeId_.clear();
+  }
   if (graphLinkDragActive_) {
     const auto start = outputPositions.find(
         PinKey(edgeSourceNodeId_, edgeSourcePin_));
     if (start != outputPositions.end()) {
       const ImVec2 mouse = io.MousePos;
-      const float tangent = (std::max)(60.0f * graphZoom_,
+      const float tangent = (std::max)(60.0f * graphCanvas_.zoom,
                                        std::abs(mouse.x - start->second.x) *
                                            0.45f);
       drawList->AddBezierCubic(
@@ -392,82 +477,19 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(
     }
   }
   drawList->PopClipRect();
-
-  if (nodeGestureEnded) {
-    CommitMaterialGesture(scene);
-  }
-  if (completedLink && edgeSourceNodeId_ != completedLink->targetNode) {
-    MaterialAssetData before = source;
-    std::erase_if(graph->edges, [&](const MaterialGraphEdgeData &edge) {
-      return edge.targetNodeId == completedLink->targetNode &&
-             edge.targetPin == completedLink->targetPin;
-    });
-    MaterialGraphEdgeData edge{};
-    edge.id = "Edge_" + std::to_string(authoringIdCounter_++);
-    edge.sourceNodeId = edgeSourceNodeId_;
-    edge.sourcePin = edgeSourcePin_;
-    edge.targetNodeId = completedLink->targetNode;
-    edge.targetPin = completedLink->targetPin;
-    selectedGraphEdgeId_ = edge.id;
-    graph->edges.push_back(std::move(edge));
-    CommitMaterialMutation(std::move(before), "Connect material graph nodes",
-                           scene);
-  }
-  if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
-    graphLinkDragActive_ = false;
-  }
-
-  static MATH::Vec2 contextNodePosition{};
-  const bool mouseInsideCanvas =
-      io.MousePos.x >= origin.x && io.MousePos.x <= canvasMax.x &&
-      io.MousePos.y >= origin.y && io.MousePos.y <= canvasMax.y;
-  if (mouseInsideCanvas && !pointerOverNode &&
-      ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
-    contextNodePosition = {
-        (io.MousePos.x - origin.x - graphPanX_) / graphZoom_,
-        (io.MousePos.y - origin.y - graphPanY_) / graphZoom_};
-    ImGui::OpenPopup("##MaterialGraphCanvasContext");
-  }
-  if (ImGui::BeginPopup("##MaterialGraphCanvasContext")) {
-    ImGui::TextDisabled("Add node at cursor");
-    DrawMaterialGraphNodePalette(scene, source, *graph, contextNodePosition);
-    ImGui::EndPopup();
-  }
-
-  if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
-      !io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Delete)) {
-    requestDeleteNode = !selectedGraphNodeId_.empty();
-    requestDeleteEdge = !selectedGraphEdgeId_.empty();
-  }
-  if (requestDeleteNode && !selectedGraphNodeId_.empty()) {
-    MaterialAssetData before = source;
-    const std::string deletedId = selectedGraphNodeId_;
-    std::erase_if(graph->nodes, [&deletedId](const auto &node) {
-      return node.id == deletedId;
-    });
-    std::erase_if(graph->edges, [&deletedId](const auto &edge) {
-      return edge.sourceNodeId == deletedId || edge.targetNodeId == deletedId;
-    });
-    if (graph->outputNodeId == deletedId) {
-      graph->outputNodeId.clear();
-    }
-    selectedGraphNodeId_.clear();
-    graphLinkDragActive_ = false;
-    CommitMaterialMutation(std::move(before), "Delete material graph node",
-                           scene);
-  } else if (requestDeleteEdge && !selectedGraphEdgeId_.empty()) {
-    MaterialAssetData before = source;
-    const std::string deletedId = selectedGraphEdgeId_;
-    std::erase_if(graph->edges, [&deletedId](const auto &edge) {
-      return edge.id == deletedId;
-    });
-    selectedGraphEdgeId_.clear();
-    CommitMaterialMutation(std::move(before), "Delete material graph edge",
-                           scene);
-  }
-
+  const bool linkReleased = graphLinkDragActive_ &&
+      ImGui::IsMouseReleased(ImGuiMouseButton_Left);
+  FinishMaterialGraphCanvasInteraction(
+      scene, source, *graph,
+      completedLink ? completedLink->targetNode : std::string{},
+      completedLink ? completedLink->targetPin : std::string{},
+      linkReleased, mouseInsideCanvas, pointerOverNode,
+      hoveredNodeId, hoveredEdgeId,
+      {origin.x, origin.y}, pointer,
+      requestDeleteNode, requestDeleteEdge);
+  DrawInlineRampEditorPopup(scene);
   ImGui::SetCursorScreenPos({origin.x, origin.y + size.y});
-  ImGui::Dummy(ImVec2(1.0f, 1.0f));
+  ImGui::Dummy({1.0f, 1.0f});
   ImGui::End();
 #else
   (void)scene;

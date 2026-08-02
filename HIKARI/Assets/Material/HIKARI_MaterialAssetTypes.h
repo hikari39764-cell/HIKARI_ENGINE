@@ -6,7 +6,7 @@
 namespace HIKARI {
 
     inline constexpr uint32_t kMaterialAssetSourceVersion = 4u;
-    inline constexpr uint32_t kMaterialProgramIrVersion = 1u;
+    inline constexpr uint32_t kMaterialProgramIrVersion = 2u;
 
     enum class MaterialAssetKind : uint8_t {
         Material,
@@ -47,6 +47,7 @@ namespace HIKARI {
         Surface,
         DiffuseResponse,
         SpecularResponse,
+        OutlineResponse,
     };
 
     enum class MaterialResourceType : uint8_t {
@@ -95,6 +96,10 @@ namespace HIKARI {
         EyeLighting,
         SurfaceOutput,
         FunctionCall,
+        SkinLighting,
+        FabricSheen,
+        HybridLighting,
+        Outline,
     };
 
     enum class MaterialFeatureRequest : uint8_t {

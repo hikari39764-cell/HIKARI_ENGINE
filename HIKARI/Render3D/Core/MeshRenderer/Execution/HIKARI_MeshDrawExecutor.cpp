@@ -152,7 +152,12 @@ namespace HIKARI::MESHRENDERER {
             MaterialTextureUsage usage) {
 
             if (runtimeMaterial != nullptr) {
-                return ToUvTransform(runtimeMaterial->GetTextureSlot(usage));
+                const RuntimeTextureSlot& runtimeSlot =
+                    runtimeMaterial->GetTextureSlot(usage);
+                if (!runtimeMaterial->InheritsModelTextures() ||
+                    runtimeSlot.enabled) {
+                    return ToUvTransform(runtimeSlot);
+                }
             }
             if (materialAsset == nullptr) {
                 return DefaultUvTransform();
@@ -175,7 +180,12 @@ namespace HIKARI::MESHRENDERER {
             MaterialTextureUsage usage) {
 
             if (runtimeMaterial != nullptr) {
-                return runtimeMaterial->GetTextureSlot(usage).uvRotation;
+                const RuntimeTextureSlot& runtimeSlot =
+                    runtimeMaterial->GetTextureSlot(usage);
+                if (!runtimeMaterial->InheritsModelTextures() ||
+                    runtimeSlot.enabled) {
+                    return runtimeSlot.uvRotation;
+                }
             }
             if (materialAsset == nullptr) {
                 return 0.0f;
@@ -198,7 +208,12 @@ namespace HIKARI::MESHRENDERER {
             MaterialTextureUsage usage) {
 
             if (runtimeMaterial != nullptr) {
-                return ToUvSet(runtimeMaterial->GetTextureSlot(usage).texCoord);
+                const RuntimeTextureSlot& runtimeSlot =
+                    runtimeMaterial->GetTextureSlot(usage);
+                if (!runtimeMaterial->InheritsModelTextures() ||
+                    runtimeSlot.enabled) {
+                    return ToUvSet(runtimeSlot.texCoord);
+                }
             }
             if (materialAsset == nullptr) {
                 return 0u;
@@ -221,7 +236,12 @@ namespace HIKARI::MESHRENDERER {
             MaterialTextureUsage usage) {
 
             if (runtimeMaterial != nullptr) {
-                return runtimeMaterial->HasTextureSlot(usage);
+                if (runtimeMaterial->HasTextureSlot(usage)) {
+                    return true;
+                }
+                if (!runtimeMaterial->InheritsModelTextures()) {
+                    return false;
+                }
             }
             if (materialAsset == nullptr) {
                 return false;
@@ -310,19 +330,8 @@ namespace HIKARI::MESHRENDERER {
 
         MaterialTextureHandles ResolveRuntimeMaterialTextureHandles(
             const Material* material,
-            const MeshBindingContext& binding,
-            const MeshMaterialFillContext& fill,
+            MaterialTextureHandles textureHandles,
             bool& outComplete) {
-
-            outComplete = true;
-            MaterialTextureHandles textureHandles{};
-            textureHandles.baseColor = binding.fallbackTextureHandle;
-            textureHandles.normal = binding.fallbackNormalTextureHandle;
-            textureHandles.emissive = fill.fallbackBlackTextureHandle;
-            textureHandles.metallicRoughness = binding.fallbackTextureHandle;
-            textureHandles.occlusion = binding.fallbackTextureHandle;
-            textureHandles.specular = binding.fallbackTextureHandle;
-            textureHandles.specularColor = binding.fallbackTextureHandle;
 
             if (material == nullptr) {
                 return textureHandles;
@@ -331,15 +340,15 @@ namespace HIKARI::MESHRENDERER {
             const auto resolveSlot =
                 [&outComplete](
                     const RuntimeTextureSlot& slot,
-                    int fallbackHandle) {
+                    int inheritedHandle) {
                     if (!slot.enabled) {
-                        return fallbackHandle;
+                        return inheritedHandle;
                     }
                     const int resolved =
                         slot.ResolveBackendHandle();
                     if (resolved < 0) {
                         outComplete = false;
-                        return fallbackHandle;
+                        return inheritedHandle;
                     }
                     return resolved;
                 };
@@ -404,12 +413,38 @@ namespace HIKARI::MESHRENDERER {
 
             ResolvedMaterialTextures textures{};
             if (source.materialOverride != nullptr) {
-                bool complete = true;
+                if (source.materialOverride->InheritsModelTextures() &&
+                    ctx.services.materialResolver != nullptr &&
+                    source.model != nullptr) {
+                    textures = ctx.services.materialResolver->Resolve(
+                        *source.model, materialAsset, ctx.services.stats);
+                } else {
+                    textures.baseColor = ctx.binding.fallbackTextureHandle;
+                    textures.normal = ctx.binding.fallbackNormalTextureHandle;
+                    textures.emissive =
+                        ctx.materialFill.fallbackBlackTextureHandle;
+                    textures.metallicRoughness =
+                        ctx.binding.fallbackTextureHandle;
+                    textures.occlusion = ctx.binding.fallbackTextureHandle;
+                    textures.specular = ctx.binding.fallbackTextureHandle;
+                    textures.specularColor =
+                        ctx.binding.fallbackTextureHandle;
+                    textures.complete = true;
+                }
+                bool complete = textures.complete;
+                const MaterialTextureHandles inherited{
+                    textures.baseColor,
+                    textures.normal,
+                    textures.emissive,
+                    textures.metallicRoughness,
+                    textures.occlusion,
+                    textures.specular,
+                    textures.specularColor
+                };
                 const MaterialTextureHandles handles =
                     ResolveRuntimeMaterialTextureHandles(
                         source.materialOverride,
-                        ctx.binding,
-                        ctx.materialFill,
+                        inherited,
                         complete);
                 textures.baseColor = handles.baseColor;
                 textures.normal = handles.normal;

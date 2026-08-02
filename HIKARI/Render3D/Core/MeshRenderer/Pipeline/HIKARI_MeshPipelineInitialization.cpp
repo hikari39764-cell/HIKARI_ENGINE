@@ -34,12 +34,41 @@ namespace HIKARI::MESHRENDERER {
         if (!GFX::CompileShaderFileSm6(L"HIKARI/Shaders/Render3D_GeometryAuxPS.hlsl", "main", GFX::ShaderStage::Pixel, store.geometryPsBlob.GetAddressOf())) {
             return false;
         }
-        if (!GFX::CompileShaderFileSm6(L"HIKARI/Shaders/Render3D_GeometryAuxFeaturePS.hlsl", "main", GFX::ShaderStage::Pixel, store.geometryFeatureMaskPsBlob.GetAddressOf()) ||
-            !GFX::CompileShaderFileSm6(L"HIKARI/Shaders/Render3D_GeometryOutlineVS.hlsl", "main", GFX::ShaderStage::Vertex, store.geometryOutlineVsBlob.GetAddressOf()) ||
-            !GFX::CompileShaderFileSm6(L"HIKARI/Shaders/Render3D_SkinnedGeometryOutlineVS.hlsl", "main", GFX::ShaderStage::Vertex, store.geometryOutlineSkinnedVsBlob.GetAddressOf()) ||
-            !GFX::CompileShaderFileSm6(L"HIKARI/Shaders/Render3D_GeometryOutlinePS.hlsl", "main", GFX::ShaderStage::Pixel, store.geometryOutlinePsBlob.GetAddressOf()) ||
-            !GFX::CompileShaderFileSm6(L"HIKARI/Shaders/Render3D_VisibilityOverlayPS.hlsl", "main", GFX::ShaderStage::Pixel, store.visibilityOverlayPsBlob.GetAddressOf())) {
-            return false;
+        const bool geometryFeatureMaskShaderReady =
+            GFX::CompileShaderFileSm6(
+                L"HIKARI/Shaders/Render3D_GeometryAuxFeaturePS.hlsl",
+                "main",
+                GFX::ShaderStage::Pixel,
+                store.geometryFeatureMaskPsBlob.GetAddressOf());
+        const bool geometryOutlineShadersReady =
+            GFX::CompileShaderFileSm6(
+                L"HIKARI/Shaders/Render3D_GeometryOutlineVS.hlsl",
+                "main",
+                GFX::ShaderStage::Vertex,
+                store.geometryOutlineVsBlob.GetAddressOf()) &&
+            GFX::CompileShaderFileSm6(
+                L"HIKARI/Shaders/Render3D_SkinnedGeometryOutlineVS.hlsl",
+                "main",
+                GFX::ShaderStage::Vertex,
+                store.geometryOutlineSkinnedVsBlob.GetAddressOf()) &&
+            GFX::CompileShaderFileSm6(
+                L"HIKARI/Shaders/Render3D_GeometryOutlinePS.hlsl",
+                "main",
+                GFX::ShaderStage::Pixel,
+                store.geometryOutlinePsBlob.GetAddressOf());
+        const bool visibilityOverlayShaderReady =
+            GFX::CompileShaderFileSm6(
+                L"HIKARI/Shaders/Render3D_VisibilityOverlayPS.hlsl",
+                "main",
+                GFX::ShaderStage::Pixel,
+                store.visibilityOverlayPsBlob.GetAddressOf());
+        if (!geometryFeatureMaskShaderReady ||
+            !geometryOutlineShadersReady ||
+            !visibilityOverlayShaderReady) {
+            DEBUGLOG::PushRenderError(
+                "[MeshRenderer][WARN] One or more optional stylized feature "
+                "shaders failed to compile. Core Forward rendering remains "
+                "available and the affected feature will be skipped.");
         }
 
         D3D12_DESCRIPTOR_RANGE shadowTextureRange{};
@@ -363,14 +392,14 @@ namespace HIKARI::MESHRENDERER {
         params[ROOT_PARAM::MaterialProgramParameters].ParameterType =
             D3D12_ROOT_PARAMETER_TYPE_SRV;
         params[ROOT_PARAM::MaterialProgramParameters].ShaderVisibility =
-            D3D12_SHADER_VISIBILITY_PIXEL;
+            D3D12_SHADER_VISIBILITY_ALL;
         params[ROOT_PARAM::MaterialProgramParameters].Descriptor.ShaderRegister = 0;
         params[ROOT_PARAM::MaterialProgramParameters].Descriptor.RegisterSpace = 6;
 
         params[ROOT_PARAM::MaterialProgramResources].ParameterType =
             D3D12_ROOT_PARAMETER_TYPE_SRV;
         params[ROOT_PARAM::MaterialProgramResources].ShaderVisibility =
-            D3D12_SHADER_VISIBILITY_PIXEL;
+            D3D12_SHADER_VISIBILITY_ALL;
         params[ROOT_PARAM::MaterialProgramResources].Descriptor.ShaderRegister = 1;
         params[ROOT_PARAM::MaterialProgramResources].Descriptor.RegisterSpace = 6;
 
@@ -533,107 +562,142 @@ namespace HIKARI::MESHRENDERER {
             return false;
         }
 
-        D3D12_GRAPHICS_PIPELINE_STATE_DESC geometryFeatureMaskPsoDesc =
-            geometryPsoDesc;
-        geometryFeatureMaskPsoDesc.PS = {
-            store.geometryFeatureMaskPsBlob->GetBufferPointer(),
-            store.geometryFeatureMaskPsBlob->GetBufferSize()
-        };
-        geometryFeatureMaskPsoDesc.NumRenderTargets = 2u;
-        geometryFeatureMaskPsoDesc.RTVFormats[1] = DXGI_FORMAT_R32G32_UINT;
-        if (FAILED(device->CreateGraphicsPipelineState(
-                &geometryFeatureMaskPsoDesc,
-                IID_PPV_ARGS(store.geometryFeatureMaskPso.GetAddressOf())))) {
-            return false;
+        if (geometryFeatureMaskShaderReady) {
+            D3D12_GRAPHICS_PIPELINE_STATE_DESC geometryFeatureMaskPsoDesc =
+                geometryPsoDesc;
+            geometryFeatureMaskPsoDesc.PS = {
+                store.geometryFeatureMaskPsBlob->GetBufferPointer(),
+                store.geometryFeatureMaskPsBlob->GetBufferSize()
+            };
+            geometryFeatureMaskPsoDesc.NumRenderTargets = 2u;
+            geometryFeatureMaskPsoDesc.RTVFormats[1] = DXGI_FORMAT_R32G32_UINT;
+            const bool staticPipelineReady = SUCCEEDED(
+                device->CreateGraphicsPipelineState(
+                    &geometryFeatureMaskPsoDesc,
+                    IID_PPV_ARGS(store.geometryFeatureMaskPso.GetAddressOf())));
+
+            bool skinnedPipelineReady = false;
+            if (staticPipelineReady) {
+                D3D12_GRAPHICS_PIPELINE_STATE_DESC
+                    geometryFeatureMaskSkinnedPsoDesc =
+                        geometryFeatureMaskPsoDesc;
+                geometryFeatureMaskSkinnedPsoDesc.pRootSignature =
+                    store.skinnedRootSig.Get();
+                geometryFeatureMaskSkinnedPsoDesc.VS = {
+                    store.skinnedVsBlob->GetBufferPointer(),
+                    store.skinnedVsBlob->GetBufferSize()
+                };
+                geometryFeatureMaskSkinnedPsoDesc.InputLayout = {
+                    skinnedInputElements.data(),
+                    static_cast<UINT>(skinnedInputElements.size())
+                };
+                skinnedPipelineReady = SUCCEEDED(
+                    device->CreateGraphicsPipelineState(
+                        &geometryFeatureMaskSkinnedPsoDesc,
+                        IID_PPV_ARGS(
+                            store.geometryFeatureMaskSkinnedPso.GetAddressOf())));
+            }
+            if (!staticPipelineReady || !skinnedPipelineReady) {
+                store.geometryFeatureMaskPso.Reset();
+                store.geometryFeatureMaskSkinnedPso.Reset();
+                DEBUGLOG::PushRenderError(
+                    "[MeshRenderer][WARN] Optional stylized feature-mask "
+                    "pipeline is unavailable. Core Forward rendering remains "
+                    "available.");
+            }
         }
 
-        D3D12_GRAPHICS_PIPELINE_STATE_DESC geometryFeatureMaskSkinnedPsoDesc =
-            geometryFeatureMaskPsoDesc;
-        geometryFeatureMaskSkinnedPsoDesc.pRootSignature =
-            store.skinnedRootSig.Get();
-        geometryFeatureMaskSkinnedPsoDesc.VS = {
-            store.skinnedVsBlob->GetBufferPointer(),
-            store.skinnedVsBlob->GetBufferSize()
-        };
-        geometryFeatureMaskSkinnedPsoDesc.InputLayout = {
-            skinnedInputElements.data(),
-            static_cast<UINT>(skinnedInputElements.size())
-        };
-        if (FAILED(device->CreateGraphicsPipelineState(
-                &geometryFeatureMaskSkinnedPsoDesc,
-                IID_PPV_ARGS(
-                    store.geometryFeatureMaskSkinnedPso.GetAddressOf())))) {
-            return false;
+        if (geometryOutlineShadersReady) {
+            D3D12_GRAPHICS_PIPELINE_STATE_DESC outlinePsoDesc = psoDesc;
+            outlinePsoDesc.VS = {
+                store.geometryOutlineVsBlob->GetBufferPointer(),
+                store.geometryOutlineVsBlob->GetBufferSize()
+            };
+            outlinePsoDesc.PS = {
+                store.geometryOutlinePsBlob->GetBufferPointer(),
+                store.geometryOutlinePsBlob->GetBufferSize()
+            };
+            outlinePsoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_FRONT;
+            outlinePsoDesc.DepthStencilState.DepthWriteMask =
+                D3D12_DEPTH_WRITE_MASK_ZERO;
+            const bool staticPipelineReady = SUCCEEDED(
+                device->CreateGraphicsPipelineState(
+                    &outlinePsoDesc,
+                    IID_PPV_ARGS(store.geometryOutlinePso.GetAddressOf())));
+
+            bool skinnedPipelineReady = false;
+            if (staticPipelineReady) {
+                D3D12_GRAPHICS_PIPELINE_STATE_DESC outlineSkinnedPsoDesc =
+                    outlinePsoDesc;
+                outlineSkinnedPsoDesc.pRootSignature = store.skinnedRootSig.Get();
+                outlineSkinnedPsoDesc.VS = {
+                    store.geometryOutlineSkinnedVsBlob->GetBufferPointer(),
+                    store.geometryOutlineSkinnedVsBlob->GetBufferSize()
+                };
+                outlineSkinnedPsoDesc.InputLayout = {
+                    skinnedInputElements.data(),
+                    static_cast<UINT>(skinnedInputElements.size())
+                };
+                skinnedPipelineReady = SUCCEEDED(
+                    device->CreateGraphicsPipelineState(
+                        &outlineSkinnedPsoDesc,
+                        IID_PPV_ARGS(
+                            store.geometryOutlineSkinnedPso.GetAddressOf())));
+            }
+            if (!staticPipelineReady || !skinnedPipelineReady) {
+                store.geometryOutlinePso.Reset();
+                store.geometryOutlineSkinnedPso.Reset();
+                DEBUGLOG::PushRenderError(
+                    "[MeshRenderer][WARN] Optional geometry-outline pipeline "
+                    "is unavailable. Core Forward rendering remains available.");
+            }
         }
 
-        D3D12_GRAPHICS_PIPELINE_STATE_DESC outlinePsoDesc = psoDesc;
-        outlinePsoDesc.VS = {
-            store.geometryOutlineVsBlob->GetBufferPointer(),
-            store.geometryOutlineVsBlob->GetBufferSize()
-        };
-        outlinePsoDesc.PS = {
-            store.geometryOutlinePsBlob->GetBufferPointer(),
-            store.geometryOutlinePsBlob->GetBufferSize()
-        };
-        outlinePsoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_FRONT;
-        outlinePsoDesc.DepthStencilState.DepthWriteMask =
-            D3D12_DEPTH_WRITE_MASK_ZERO;
-        if (FAILED(device->CreateGraphicsPipelineState(
-                &outlinePsoDesc,
-                IID_PPV_ARGS(store.geometryOutlinePso.GetAddressOf())))) {
-            return false;
-        }
+        if (visibilityOverlayShaderReady) {
+            D3D12_GRAPHICS_PIPELINE_STATE_DESC visibilityPsoDesc = psoDesc;
+            visibilityPsoDesc.PS = {
+                store.visibilityOverlayPsBlob->GetBufferPointer(),
+                store.visibilityOverlayPsBlob->GetBufferSize()
+            };
+            ApplyCompositeBlendState(
+                visibilityPsoDesc.BlendState,
+                VFX::CompositeMode::Alpha);
+            visibilityPsoDesc.DepthStencilState.DepthWriteMask =
+                D3D12_DEPTH_WRITE_MASK_ZERO;
+            visibilityPsoDesc.DepthStencilState.DepthFunc =
+                D3D12_COMPARISON_FUNC_GREATER;
+            const bool staticPipelineReady = SUCCEEDED(
+                device->CreateGraphicsPipelineState(
+                    &visibilityPsoDesc,
+                    IID_PPV_ARGS(store.visibilityOverlayPso.GetAddressOf())));
 
-        D3D12_GRAPHICS_PIPELINE_STATE_DESC outlineSkinnedPsoDesc =
-            outlinePsoDesc;
-        outlineSkinnedPsoDesc.pRootSignature = store.skinnedRootSig.Get();
-        outlineSkinnedPsoDesc.VS = {
-            store.geometryOutlineSkinnedVsBlob->GetBufferPointer(),
-            store.geometryOutlineSkinnedVsBlob->GetBufferSize()
-        };
-        outlineSkinnedPsoDesc.InputLayout = {
-            skinnedInputElements.data(),
-            static_cast<UINT>(skinnedInputElements.size())
-        };
-        if (FAILED(device->CreateGraphicsPipelineState(
-                &outlineSkinnedPsoDesc,
-                IID_PPV_ARGS(store.geometryOutlineSkinnedPso.GetAddressOf())))) {
-            return false;
-        }
-
-        D3D12_GRAPHICS_PIPELINE_STATE_DESC visibilityPsoDesc = psoDesc;
-        visibilityPsoDesc.PS = {
-            store.visibilityOverlayPsBlob->GetBufferPointer(),
-            store.visibilityOverlayPsBlob->GetBufferSize()
-        };
-        ApplyCompositeBlendState(
-            visibilityPsoDesc.BlendState,
-            VFX::CompositeMode::Alpha);
-        visibilityPsoDesc.DepthStencilState.DepthWriteMask =
-            D3D12_DEPTH_WRITE_MASK_ZERO;
-        visibilityPsoDesc.DepthStencilState.DepthFunc =
-            D3D12_COMPARISON_FUNC_GREATER;
-        if (FAILED(device->CreateGraphicsPipelineState(
-                &visibilityPsoDesc,
-                IID_PPV_ARGS(store.visibilityOverlayPso.GetAddressOf())))) {
-            return false;
-        }
-
-        D3D12_GRAPHICS_PIPELINE_STATE_DESC visibilitySkinnedPsoDesc =
-            visibilityPsoDesc;
-        visibilitySkinnedPsoDesc.pRootSignature = store.skinnedRootSig.Get();
-        visibilitySkinnedPsoDesc.VS = {
-            store.skinnedVsBlob->GetBufferPointer(),
-            store.skinnedVsBlob->GetBufferSize()
-        };
-        visibilitySkinnedPsoDesc.InputLayout = {
-            skinnedInputElements.data(),
-            static_cast<UINT>(skinnedInputElements.size())
-        };
-        if (FAILED(device->CreateGraphicsPipelineState(
-                &visibilitySkinnedPsoDesc,
-                IID_PPV_ARGS(store.visibilityOverlaySkinnedPso.GetAddressOf())))) {
-            return false;
+            bool skinnedPipelineReady = false;
+            if (staticPipelineReady) {
+                D3D12_GRAPHICS_PIPELINE_STATE_DESC visibilitySkinnedPsoDesc =
+                    visibilityPsoDesc;
+                visibilitySkinnedPsoDesc.pRootSignature =
+                    store.skinnedRootSig.Get();
+                visibilitySkinnedPsoDesc.VS = {
+                    store.skinnedVsBlob->GetBufferPointer(),
+                    store.skinnedVsBlob->GetBufferSize()
+                };
+                visibilitySkinnedPsoDesc.InputLayout = {
+                    skinnedInputElements.data(),
+                    static_cast<UINT>(skinnedInputElements.size())
+                };
+                skinnedPipelineReady = SUCCEEDED(
+                    device->CreateGraphicsPipelineState(
+                        &visibilitySkinnedPsoDesc,
+                        IID_PPV_ARGS(
+                            store.visibilityOverlaySkinnedPso.GetAddressOf())));
+            }
+            if (!staticPipelineReady || !skinnedPipelineReady) {
+                store.visibilityOverlayPso.Reset();
+                store.visibilityOverlaySkinnedPso.Reset();
+                DEBUGLOG::PushRenderError(
+                    "[MeshRenderer][WARN] Optional visibility-overlay pipeline "
+                    "is unavailable. Core Forward rendering remains available.");
+            }
         }
 
         store.psBlobCache["StaticLit"] = store.psBlob;

@@ -28,8 +28,7 @@ void ModelMaterialWorkspaceController::DrawMaterialFeatureControls(
     candidate.surface = source.surface;
     if (authoringDocument_.BeginAbPreview(
             std::move(candidate), statusMessage_)) {
-      (void)RebuildAuthoredPreview(scene.GetAssetDatabase(),
-                                   scene.GetAssetRegistry(), statusMessage_);
+      (void)RefreshMaterialPreviews(scene, statusMessage_);
     }
   };
   ImGui::BeginDisabled(authoringDocument_.IsAbPreviewActive());
@@ -46,8 +45,6 @@ void ModelMaterialWorkspaceController::DrawMaterialFeatureControls(
 
   ImGui::SeparatorText("Render Features");
   for (MaterialFeatureRequest feature : {
-           MaterialFeatureRequest::GeometryOutline,
-           MaterialFeatureRequest::ScreenOutline,
            MaterialFeatureRequest::VisibilityOverlay,
            MaterialFeatureRequest::FaceHairShadow}) {
     const auto found = std::find(source.featureRequests.begin(),
@@ -65,8 +62,8 @@ void ModelMaterialWorkspaceController::DrawMaterialFeatureControls(
     }
   }
   ImGui::TextDisabled(
-      "Features are planned per view. Disabled or missing inputs allocate no "
-      "pass or target; isolated post groups never fall back globally.");
+      "Outline is authored by connecting an Outline node to PBR Surface. "
+      "View overlays remain explicit runtime features here.");
 #else
   (void)scene;
   (void)source;

@@ -73,6 +73,8 @@ namespace HIKARI {
         void SetTextureSlot(MaterialTextureUsage usage, RuntimeTextureSlot slot);
         const RuntimeTextureSlot& GetTextureSlot(MaterialTextureUsage usage) const;
         bool HasTextureSlot(MaterialTextureUsage usage) const;
+        void SetInheritModelTextures(bool inherit);
+        bool InheritsModelTextures() const;
 
         void SetMetallicFactor(float value);
         float GetMetallicFactor() const;
@@ -101,6 +103,7 @@ namespace HIKARI {
         RuntimeTextureSlot emissiveTexture_{};
         RuntimeTextureSlot specularTexture_{};
         RuntimeTextureSlot specularColorTexture_{};
+        bool inheritModelTextures_ = false;
         float metallicFactor_ = 0.0f;
         float roughnessFactor_ = 1.0f;
         float specularFactor_ = 1.0f;

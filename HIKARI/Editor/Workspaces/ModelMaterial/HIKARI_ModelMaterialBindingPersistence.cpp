@@ -2,6 +2,7 @@
 
 #include <filesystem>
 #include <string>
+#include <utility>
 
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingAuthoringService.h"
@@ -15,8 +16,8 @@ ASSETS::MODELS::ModelMaterialBindingAssetData BuildBindingAssetData(
     std::string_view displayName) {
   ASSETS::MODELS::ModelMaterialBindingAssetData result{};
   result.displayName = displayName.empty()
-                           ? "Model Material Bindings"
-                           : std::string(displayName) + " Materials";
+                           ? "Model Material Set"
+                           : std::string(displayName) + " Material Set";
   result.modelAssetGuid = document.GetModelGuid();
   result.bindings.reserve(document.GetBindings().size());
   for (const auto &[slotId, materialGuid] : document.GetBindings()) {
@@ -68,24 +69,88 @@ bool ModelMaterialWorkspaceController::LoadOrCreateBindings(
         modelGuid_, selected.assetGuid, selected.sourcePath,
         ToBindingMap(selected.data), true);
     outMessage = matchCount > 1u
-                     ? "loaded the first matching binding asset; duplicates need review"
-                     : "loaded model material bindings";
+                     ? "opened the first compatible Material Set; choose another from Character Parts if needed"
+                     : "opened the model Material Set";
     return true;
   }
 
   const ASSETS::MODELS::ModelMaterialBindingAuthoringResult created =
-      service.Create(modelGuid_, modelDisplayName_ + " Materials");
+      service.Create(modelGuid_, modelDisplayName_ + " Material Set");
   if (!created.success) {
     authoringDocument_.OpenBindings(modelGuid_, {}, {}, {}, false);
     outMessage = created.message.empty()
-                     ? "binding asset could not be created; unsaved document remains editable"
-                     : created.message + "; unsaved document remains editable";
+                     ? "Material Set could not be created; an unsaved set remains editable"
+                     : created.message + "; an unsaved set remains editable";
     return false;
   }
   authoringDocument_.OpenBindings(modelGuid_, created.assetGuid,
                                   created.sourcePath, {}, true);
   (void)scene.ReloadAssets();
-  outMessage = "created the model's default material binding asset";
+  outMessage = "created a model-owned Material Set";
+  return true;
+}
+
+bool ModelMaterialWorkspaceController::OpenMaterialSet(
+    DocumentSceneBase &scene, const AssetGuid &guid,
+    std::string &outMessage) {
+  if (!executingPendingTransition_ &&
+      authoringDocument_.IsBindingDirty()) {
+    PendingTransition transition{};
+    transition.kind = PendingTransitionKind::OpenMaterialSet;
+    transition.assetGuid = guid;
+    QueuePendingTransition(std::move(transition), outMessage);
+    return false;
+  }
+  if (!modelGuid_.IsValid() || !guid.IsValid()) {
+    outMessage = "select a model and Material Set first";
+    return false;
+  }
+  ASSETS::MODELS::ModelMaterialBindingAuthoringService service(
+      scene.GetAssetDatabase());
+  ASSETS::MODELS::ModelMaterialBindingAuthoringDocument selected{};
+  if (!service.Load(guid, selected, outMessage)) {
+    return false;
+  }
+  if (selected.data.modelAssetGuid != modelGuid_) {
+    outMessage = "Material Set belongs to a different model and was rejected";
+    return false;
+  }
+  authoringDocument_.OpenBindings(
+      modelGuid_, selected.assetGuid, selected.sourcePath,
+      ToBindingMap(selected.data), true);
+  RebuildSlotState(scene.GetAssetDatabase(), scene.GetAssetRegistry());
+  outMessage = "opened Material Set " + selected.data.displayName;
+  return true;
+}
+
+bool ModelMaterialWorkspaceController::CreateMaterialSet(
+    DocumentSceneBase &scene, std::string &outMessage) {
+  if (!executingPendingTransition_ &&
+      authoringDocument_.IsBindingDirty()) {
+    PendingTransition transition{};
+    transition.kind = PendingTransitionKind::CreateMaterialSet;
+    QueuePendingTransition(std::move(transition), outMessage);
+    return false;
+  }
+  if (!modelGuid_.IsValid()) {
+    outMessage = "select a model before creating a Material Set";
+    return false;
+  }
+  ASSETS::MODELS::ModelMaterialBindingAuthoringService service(
+      scene.GetAssetDatabase());
+  const auto created = service.Create(
+      modelGuid_, modelDisplayName_ + " Material Set");
+  outMessage = created.message;
+  if (!created.success) {
+    return false;
+  }
+  authoringDocument_.OpenBindings(
+      modelGuid_, created.assetGuid, created.sourcePath, {}, true);
+  if (!scene.ReloadAssets()) {
+    outMessage += "; editor registry refresh failed";
+  }
+  assetChoiceRevision_ = 0u;
+  RebuildSlotState(scene.GetAssetDatabase(), scene.GetAssetRegistry());
   return true;
 }
 
@@ -93,23 +158,28 @@ bool ModelMaterialWorkspaceController::SaveBindings(
     DocumentSceneBase &scene, bool saveAs, std::string &outMessage) {
   if (!authoringDocument_.HasBindings() ||
       !authoringDocument_.GetModelGuid().IsValid()) {
-    outMessage = "open a model before saving material bindings";
+    outMessage = "open a model before saving its Material Set";
     return false;
   }
 
   AssetDatabase &database = scene.GetAssetDatabase();
   ASSETS::MODELS::ModelMaterialBindingAuthoringService service(database);
-  const ASSETS::MODELS::ModelMaterialBindingAssetData source =
+  ASSETS::MODELS::ModelMaterialBindingAssetData source =
       BuildBindingAssetData(authoringDocument_, modelDisplayName_);
   ASSETS::MODELS::ModelMaterialBindingAuthoringResult saved{};
   if (!saveAs && authoringDocument_.GetBindingAssetGuid().IsValid()) {
+    if (!authoringDocument_.GetBindingSourcePath().empty()) {
+      source.displayName =
+          authoringDocument_.GetBindingSourcePath().stem().string();
+    }
     saved = service.Save(authoringDocument_.GetBindingAssetGuid(), source);
   } else {
     std::filesystem::path destination(bindingSaveAsPath_.data());
     if (destination.empty()) {
       destination = std::filesystem::path("Materials") /
-                    (modelDisplayName_ + "_Bindings");
+                    (modelDisplayName_ + "_MaterialSet");
     }
+    source.displayName = destination.stem().string();
     saved = service.SaveAs(source, destination);
   }
   outMessage = saved.message;

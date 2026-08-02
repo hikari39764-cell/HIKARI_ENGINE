@@ -109,7 +109,8 @@ namespace HIKARI {
             &scene.GetAssetDatabase(),
             &scene.GetSceneDocument(),
             &scene.GetWorld().Services(),
-            runtimeObject.IsValid() ? &runtimeObject : nullptr
+            runtimeObject.IsValid() ? &runtimeObject : nullptr,
+            &modelMaterialSlotCatalog_
         };
 
         ImGui::SeparatorText("Document Components");
@@ -316,6 +317,8 @@ namespace HIKARI {
                     } else if (IsLightingRuntimeComponent(
                             component.type)) {
                         (void)scene.RefreshLightingRuntime();
+                    } else if (component.type == "ModelComponent") {
+                        (void)scene.RebuildMaterialOverrides();
                     }
                 }
             }
@@ -345,6 +348,8 @@ namespace HIKARI {
                 } else if (IsLightingRuntimeComponent(
                         component.type)) {
                     (void)scene.RefreshLightingRuntime();
+                } else if (component.type == "ModelComponent") {
+                    (void)scene.RebuildMaterialOverrides();
                 }
             } else {
                 needsRebuild = true;

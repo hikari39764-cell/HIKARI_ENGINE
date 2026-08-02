@@ -4,13 +4,16 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <d3dcompiler.h>
 #include <d3dx12.h>
+#include <limits>
 #include <sstream>
 #include <wrl/client.h>
 
 #include "Core/HIKARI_Logger.h"
+#include "Core/HIKARI_TimeService.h"
 #include "Gfx/D3D12/HIKARI_D3D12BufferAlignment.h"
 #include "Gfx/HIKARI_D3DBlobCompat.h"
 #include "Gfx/HIKARI_PixProfiler.h"
@@ -22,6 +25,10 @@ namespace HIKARI::SKYRENDERER {
     using Microsoft::WRL::ComPtr;
 
     namespace {
+        constexpr uint32_t kSkyConstantDrawCapacityPerFrame = 64u;
+        constexpr uint64_t kInvalidSkyConstantFrameSerial =
+            (std::numeric_limits<uint64_t>::max)();
+
         struct SkyVertex {
             MATH::Vec3 position{};
         };
@@ -48,7 +55,12 @@ namespace HIKARI::SKYRENDERER {
             D3D12_VERTEX_BUFFER_VIEW vbView{};
             D3D12_INDEX_BUFFER_VIEW ibView{};
             UINT indexCount = 0;
-            SkyCB* mapped = nullptr;
+            UINT constantStride = 0;
+            uint8_t* constantMapped = nullptr;
+            std::array<uint64_t, GFX::kFrameResourceCount>
+                constantFrameSerials{};
+            std::array<uint32_t, GFX::kFrameResourceCount>
+                constantDrawCursors{};
             std::string loadedTexturePath{};
             std::string loadedCubemapPath{};
             RENDER3D::TextureResourceHandle textureResource{};
@@ -63,18 +75,41 @@ namespace HIKARI::SKYRENDERER {
 
         State g;
 
+        struct SkyConstantAllocation {
+            SkyCB* cpu = nullptr;
+            D3D12_GPU_VIRTUAL_ADDRESS gpu = 0;
+            uint32_t frameSlot = 0;
+            uint32_t drawSlot = 0;
+
+            bool IsValid() const noexcept {
+                return cpu != nullptr && gpu != 0;
+            }
+        };
+
         bool CreateBuffers(ID3D12Device* device) {
-            const UINT cbBytes = GFX::AlignD3D12ConstantBufferByteSize(sizeof(SkyCB));
+            g.constantStride =
+                GFX::AlignD3D12ConstantBufferByteSize(sizeof(SkyCB));
+            const UINT64 cbBytes =
+                static_cast<UINT64>(g.constantStride) *
+                kSkyConstantDrawCapacityPerFrame *
+                GFX::kFrameResourceCount;
             auto uploadHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
             auto cbDesc = CD3DX12_RESOURCE_DESC::Buffer(cbBytes);
             if (FAILED(device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &cbDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(g.cb.GetAddressOf())))) {
                 HIKARI_LOG_ERROR("[SkyRenderer][ERROR] Create constant buffer failed.");
                 return false;
             }
-            if (FAILED(g.cb->Map(0, nullptr, reinterpret_cast<void**>(&g.mapped)))) {
+            if (FAILED(g.cb->Map(
+                    0,
+                    nullptr,
+                    reinterpret_cast<void**>(&g.constantMapped)))) {
                 HIKARI_LOG_ERROR("[SkyRenderer][ERROR] Map constant buffer failed.");
                 return false;
             }
+            g.constantFrameSerials.fill(kInvalidSkyConstantFrameSerial);
+            g.constantDrawCursors.fill(0u);
+            g.debug.constantCapacityPerFrame =
+                kSkyConstantDrawCapacityPerFrame;
 
             const std::array<SkyVertex, 8> vertices = {
                 SkyVertex{{ -1.0f, -1.0f, -1.0f }},
@@ -126,6 +161,58 @@ namespace HIKARI::SKYRENDERER {
             g.ibView.SizeInBytes = static_cast<UINT>(sizeof(indices));
             g.ibView.Format = DXGI_FORMAT_R32_UINT;
             return true;
+        }
+
+        SkyConstantAllocation AllocateSkyConstants(
+            const GFX::Context& graphics) {
+
+            if (g.cb == nullptr ||
+                g.constantMapped == nullptr ||
+                g.constantStride == 0u) {
+                return {};
+            }
+
+            const uint32_t frameSlot =
+                graphics.frameIndex % GFX::kFrameResourceCount;
+            const uint64_t frameSerial =
+                TIME::GetFrameContext().frameIndex;
+            if (g.constantFrameSerials[frameSlot] != frameSerial) {
+                g.constantFrameSerials[frameSlot] = frameSerial;
+                g.constantDrawCursors[frameSlot] = 0u;
+            }
+
+            const uint32_t drawSlot = g.constantDrawCursors[frameSlot];
+            if (drawSlot >= kSkyConstantDrawCapacityPerFrame) {
+                ++g.debug.constantOverflowCount;
+                HIKARI_LOG_ERROR(
+                    "[SkyRenderer][ERROR] Per-frame constant draw capacity exhausted; "
+                    "additional sky draw was skipped to preserve GPU resource lifetime.");
+                return {};
+            }
+            ++g.constantDrawCursors[frameSlot];
+
+            const UINT64 allocationIndex =
+                static_cast<UINT64>(frameSlot) *
+                    kSkyConstantDrawCapacityPerFrame +
+                drawSlot;
+            const UINT64 byteOffset =
+                allocationIndex * g.constantStride;
+
+            g.debug.constantFrameSlot = frameSlot;
+            g.debug.constantDrawSlot = drawSlot;
+            g.debug.constantDrawCountThisFrame =
+                g.constantDrawCursors[frameSlot];
+            g.debug.constantCapacityPerFrame =
+                kSkyConstantDrawCapacityPerFrame;
+
+            SkyConstantAllocation allocation{};
+            allocation.cpu = reinterpret_cast<SkyCB*>(
+                g.constantMapped + static_cast<size_t>(byteOffset));
+            allocation.gpu =
+                g.cb->GetGPUVirtualAddress() + byteOffset;
+            allocation.frameSlot = frameSlot;
+            allocation.drawSlot = drawSlot;
+            return allocation;
         }
 
         bool CreatePipeline(ID3D12Device* device) {
@@ -398,6 +485,11 @@ namespace HIKARI::SKYRENDERER {
         if (!cmd) {
             return;
         }
+        const SkyConstantAllocation constants =
+            AllocateSkyConstants(graphics);
+        if (!constants.IsValid()) {
+            return;
+        }
         // PIX 上で sky pass の境界を追いやすくする。
         GFX::PIX::ScopedGpuEvent pixSky(cmd, GFX::PIX::kColorRender, "SkyRenderer.Render");
 
@@ -412,18 +504,18 @@ namespace HIKARI::SKYRENDERER {
         sunDir = MATH::Normalize(sunDir);
         const float sunIntensity = sun.enabled ? std::max(0.0f, sun.intensity) : 0.0f;
 
-        g.mapped->worldViewProj = camera.GetViewProj() * world;
-        g.mapped->zenithExposure = { settings.zenithColor.x, settings.zenithColor.y, settings.zenithColor.z, std::max(0.0f, settings.exposure) };
-        g.mapped->horizonPower = { settings.horizonColor.x, settings.horizonColor.y, settings.horizonColor.z, std::max(0.01f, settings.horizonPower) };
-        g.mapped->groundYaw = { settings.groundColor.x, settings.groundColor.y, settings.groundColor.z, settings.yaw };
-        g.mapped->tintMode = { settings.tint.x, settings.tint.y, settings.tint.z, static_cast<float>(renderMode) };
-        g.mapped->sunDirectionIntensity = { sunDir.x, sunDir.y, sunDir.z, settings.showSunDisk ? settings.sunDiskIntensity * sunIntensity : 0.0f };
-        g.mapped->sunSizeParams = { std::max(0.0001f, settings.sunDiskSize), settings.ambientFromSky, settings.reflectionIntensity, 0.0f };
+        constants.cpu->worldViewProj = camera.GetViewProj() * world;
+        constants.cpu->zenithExposure = { settings.zenithColor.x, settings.zenithColor.y, settings.zenithColor.z, std::max(0.0f, settings.exposure) };
+        constants.cpu->horizonPower = { settings.horizonColor.x, settings.horizonColor.y, settings.horizonColor.z, std::max(0.01f, settings.horizonPower) };
+        constants.cpu->groundYaw = { settings.groundColor.x, settings.groundColor.y, settings.groundColor.z, settings.yaw };
+        constants.cpu->tintMode = { settings.tint.x, settings.tint.y, settings.tint.z, static_cast<float>(renderMode) };
+        constants.cpu->sunDirectionIntensity = { sunDir.x, sunDir.y, sunDir.z, settings.showSunDisk ? settings.sunDiskIntensity * sunIntensity : 0.0f };
+        constants.cpu->sunSizeParams = { std::max(0.0001f, settings.sunDiskSize), settings.ambientFromSky, settings.reflectionIntensity, 0.0f };
 
         cmd->SetGraphicsRootSignature(g.rootSig.Get());
         cmd->SetPipelineState(g.pso.Get());
         cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-        cmd->SetGraphicsRootConstantBufferView(0, g.cb->GetGPUVirtualAddress());
+        cmd->SetGraphicsRootConstantBufferView(0, constants.gpu);
 
         ID3D12DescriptorHeap* srvHeap = RENDER3D::GetTextureResourceSrvHeap();
         if (srvHeap != nullptr) {

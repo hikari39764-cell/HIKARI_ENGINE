@@ -44,6 +44,11 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         const GPUDRIVEN::GpuDrivenSceneSource* sceneSourceOverride = nullptr;
         const SceneEnvironment* environmentOverride = nullptr;
         const LIGHTING::SceneLightingSet* lightingOverride = nullptr;
+        bool suppressSpatialLightingProviders = false;
+        bool useDefaultSkyIbl = false;
+        // Spatial AA is applied after the shared display resolve. It is
+        // intentionally opt-in so Scene views keep their product AA policy.
+        bool spatialAntiAliasing = false;
     };
 
     struct EditorInteractiveViewOutput {
