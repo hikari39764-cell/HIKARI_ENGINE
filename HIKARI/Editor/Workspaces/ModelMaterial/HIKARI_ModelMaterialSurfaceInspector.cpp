@@ -192,6 +192,22 @@ void ModelMaterialWorkspaceController::DrawMaterialSurfaceControls(
               "The sampled emission texture is multiplied by Color and Intensity.");
 
   ImGui::SeparatorText("Rendering");
+  if (ImGui::Button("Apply Eye Highlight Layer")) {
+    MaterialAssetData before = source;
+    pbr.metallicFactor = 0.0f;
+    pbr.roughnessFactor = 1.0f;
+    pbr.doubleSided = true;
+    pbr.unlit = true;
+    source.surface.alphaMode = MaterialAlphaMode::Blend;
+    commitPbr(std::move(before), "Apply eye highlight layer surface");
+  }
+  DrawHelp(
+      "Sets visible surface properties for an overlaid eye highlight: "
+      "Transparent Blend, Unlit, double-sided, non-metallic and rough. "
+      "The Base Color texture must contain a useful alpha channel.");
+  ImGui::TextDisabled(
+      "Eye layer: Base Color alpha controls transparency; black RGB alone "
+      "does not create alpha.");
   {
     MaterialAssetData before = source;
     if (ImGui::Checkbox("Double-sided", &pbr.doubleSided)) {
@@ -240,6 +256,10 @@ void ModelMaterialWorkspaceController::DrawMaterialSurfaceControls(
     if (ImGui::IsItemDeactivatedAfterEdit()) {
       CommitMaterialGesture(scene);
     }
+  } else if (source.surface.alphaMode == MaterialAlphaMode::Blend) {
+    ImGui::TextDisabled(
+        "Blend uses Base Color Texture alpha x Tint alpha and disables "
+        "depth writes in the runtime transparent pass.");
   }
 #else
   (void)scene;

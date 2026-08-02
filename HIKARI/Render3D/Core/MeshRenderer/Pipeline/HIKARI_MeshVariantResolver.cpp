@@ -90,14 +90,16 @@ namespace HIKARI::MESHRENDERER {
         const MaterialAsset* materialAsset,
         const MeshPrimitive* primitiveAsset) {
         VFX::VariantKey variant = item.variant;
-        const bool materialAlphaBlend =
-            item.materialOverride == nullptr &&
-            materialAsset != nullptr &&
-            materialAsset->alphaMode == AlphaMode::Blend;
+        const bool materialAlphaBlend = item.materialOverride != nullptr
+            ? item.materialOverride->GetMaterialAlphaMode() ==
+                RuntimeMaterialAlphaMode::Blend
+            : materialAsset != nullptr &&
+                materialAsset->alphaMode == AlphaMode::Blend;
 
         if (item.materialOverride != nullptr) {
             variant.shaderId = item.materialOverride->GetShaderProfileId();
             variant.featureBits = item.materialOverride->GetFeatureBits();
+            variant.doubleSided = item.materialOverride->IsDoubleSided();
         } else if (materialAsset != nullptr) {
             variant.shaderId = materialAsset->shaderProfileId;
             variant.featureBits = materialAsset->featureBits;

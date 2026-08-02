@@ -5,6 +5,22 @@
 
 namespace HIKARI::RENDER3D::RUNTIME {
 
+    namespace {
+
+        AlphaMode ToAssetAlphaMode(
+            RuntimeMaterialAlphaMode mode) noexcept {
+            switch (mode) {
+            case RuntimeMaterialAlphaMode::Mask:
+                return AlphaMode::Mask;
+            case RuntimeMaterialAlphaMode::Blend:
+                return AlphaMode::Blend;
+            default:
+                return AlphaMode::Opaque;
+            }
+        }
+
+    } // namespace
+
     bool IsSurfaceObjectDataVertexShader(std::string_view vertexShaderId) {
         return
             vertexShaderId.empty() ||
@@ -37,6 +53,9 @@ namespace HIKARI::RENDER3D::RUNTIME {
                 route.shaderProfileId = "PBR";
             }
             route.featureBits = materialOverride->GetFeatureBits();
+            route.alphaMode = ToAssetAlphaMode(
+                materialOverride->GetMaterialAlphaMode());
+            route.doubleSided = materialOverride->IsDoubleSided();
         } else if (materialAsset != nullptr) {
             route.shaderProfileId = materialAsset->shaderProfileId.empty() ? "PBR" : materialAsset->shaderProfileId;
             route.featureBits = materialAsset->featureBits;
