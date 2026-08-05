@@ -31,6 +31,8 @@ namespace HIKARI::EDITOR::AI_ASSISTANT {
     std::string ExtractJsonField(
         std::string_view json,
         std::string_view field);
+    std::vector<std::string> ExtractAllActionJson(
+        const std::string& reply);
     bool RunChatCompletions(
         const AiChatConfig& config,
         const std::vector<AiChatMessage>& messages,

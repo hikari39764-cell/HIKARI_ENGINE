@@ -56,15 +56,25 @@ namespace HIKARI {
             std::string_view json) {
             const std::string action =
                 EDITOR::AI_ASSISTANT::ExtractJsonField(json, "action");
-            if (action != "procedural.create_primitive") {
+            if (action != "procedural.create_primitive" &&
+                action != "scene.list_objects" &&
+                action != "scene.set_transform" &&
+                action != "scene.create_object" &&
+                action != "asset.list_models") {
                 EDITOR::AI_ASSISTANT::AiRequestResult result{};
                 result.ok = false;
                 result.message = "不支持的场景动作：" + action;
                 result.details = {
                     "supported: procedural.create_primitive",
+                    "supported: scene.list_objects",
+                    "supported: scene.set_transform",
+                    "supported: scene.create_object",
+                    "supported: asset.list_models",
                 };
                 return result;
             }
+
+            EDITOR::AI_ASSISTANT::AiRequestResult result{};
             const auto floatField =
                 [&json](const char* name, float fallback) {
                     const std::string value =
@@ -78,6 +88,185 @@ namespace HIKARI {
                         return fallback;
                     }
                 };
+            const auto hasField = [&json](const char* name) {
+                return json.find(std::string("\"") + name + "\"") !=
+                    std::string_view::npos;
+            };
+
+            if (action == "scene.list_objects") {
+                result.ok = true;
+                result.message = "场景对象：";
+                const auto& objects = scene.GetWorld().GetObjects();
+                size_t count = 0u;
+                for (const auto& object : objects) {
+                    if (count >= 200u) {
+                        result.details.push_back("...（已截断）");
+                        break;
+                    }
+                    const MATH::Vec3& position =
+                        object->GetTransform().position;
+                    const MATH::Vec3& scale =
+                        object->GetTransform().scale;
+                    char line[192];
+                    std::snprintf(
+                        line, sizeof(line),
+                        "%s | pos(%.2f, %.2f, %.2f) | "
+                        "scale(%.2f, %.2f, %.2f)",
+                        object->GetName().c_str(),
+                        position.x, position.y, position.z,
+                        scale.x, scale.y, scale.z);
+                    result.details.push_back(line);
+                    ++count;
+                }
+                if (result.details.empty()) {
+                    result.message = "场景为空";
+                }
+                return result;
+            }
+
+            if (action == "scene.set_transform") {
+                const std::string name =
+                    EDITOR::AI_ASSISTANT::ExtractJsonField(json, "name");
+                if (name.empty()) {
+                    result.message = "缺少 name 字段（目标物体名）";
+                    return result;
+                }
+                GameObject* target = nullptr;
+                for (const auto& object : scene.GetWorld().GetObjects()) {
+                    if (object->GetName() == name) {
+                        target = object.get();
+                        break;
+                    }
+                }
+                if (target == nullptr) {
+                    result.message = "找不到物体：" + name;
+                    return result;
+                }
+                bool changed = false;
+                if (hasField("positionX") || hasField("positionY") ||
+                    hasField("positionZ")) {
+                    changed |= target->SetLocalPosition({
+                        floatField(
+                            "positionX",
+                            target->GetTransform().position.x),
+                        floatField(
+                            "positionY",
+                            target->GetTransform().position.y),
+                        floatField(
+                            "positionZ",
+                            target->GetTransform().position.z),
+                    });
+                }
+                if (hasField("scaleX") || hasField("scaleY") ||
+                    hasField("scaleZ")) {
+                    changed |= target->SetLocalScale({
+                        floatField(
+                            "scaleX",
+                            target->GetTransform().scale.x),
+                        floatField(
+                            "scaleY",
+                            target->GetTransform().scale.y),
+                        floatField(
+                            "scaleZ",
+                            target->GetTransform().scale.z),
+                    });
+                }
+                if (hasField("rotationX") || hasField("rotationY") ||
+                    hasField("rotationZ")) {
+                    constexpr float kDegreesToRadians =
+                        0.0174532925f;
+                    changed |= target->SetLocalRotation(
+                        MATH::Quat::FromEulerXYZ(
+                            floatField("rotationX", 0.0f) *
+                                kDegreesToRadians,
+                            floatField("rotationY", 0.0f) *
+                                kDegreesToRadians,
+                            floatField("rotationZ", 0.0f) *
+                                kDegreesToRadians));
+                }
+                result.ok = true;
+                result.message = changed
+                    ? "已更新物体 " + name
+                    : "物体 " + name +
+                        " 未变化（需要 positionX/scaleX/rotationX 等字段）";
+                return result;
+            }
+
+            if (action == "scene.create_object") {
+                const std::string model =
+                    EDITOR::AI_ASSISTANT::ExtractJsonField(json, "model");
+                if (model.empty()) {
+                    result.message =
+                        "缺少 model 字段（资产 id 或路径片段，"
+                        "可用 asset.list_models 查询）";
+                    return result;
+                }
+                const AssetRegistry& registry =
+                    scene.GetAssetRegistry();
+                const AssetDescriptor* descriptor =
+                    registry.FindDescriptor(model);
+                if (descriptor == nullptr) {
+                    for (const AssetDescriptor* candidate :
+                         registry.CollectByType(AssetType::Model)) {
+                        if (candidate->sourcePath.find(model) !=
+                                std::string::npos ||
+                            candidate->id.value.find(model) !=
+                                std::string::npos) {
+                            descriptor = candidate;
+                            break;
+                        }
+                    }
+                }
+                if (descriptor == nullptr) {
+                    result.message = "找不到模型资产：" + model;
+                    return result;
+                }
+                EDITOR::CreateObjectRequest request{};
+                request.name =
+                    EDITOR::AI_ASSISTANT::ExtractJsonField(json, "name");
+                if (request.name.empty()) {
+                    request.name = "AI Model";
+                }
+                request.position = {
+                    floatField("positionX", 0.0f),
+                    floatField("positionY", 0.0f),
+                    floatField("positionZ", 0.0f),
+                };
+                request.scale = {
+                    floatField("scaleX", 1.0f),
+                    floatField("scaleY", 1.0f),
+                    floatField("scaleZ", 1.0f),
+                };
+                GameObject* object = EDITOR::CreateModelObject(
+                    scene,
+                    AssetGuid{ descriptor->id.value },
+                    request);
+                if (object == nullptr) {
+                    result.message = "创建模型物体失败：" + request.name;
+                    return result;
+                }
+                result.ok = true;
+                result.message = "已创建模型 " + request.name +
+                    "（" + descriptor->sourcePath + "）";
+                return result;
+            }
+
+            if (action == "asset.list_models") {
+                result.ok = true;
+                result.message = "模型资产：";
+                for (const AssetDescriptor* descriptor :
+                     scene.GetAssetRegistry().CollectByType(
+                         AssetType::Model)) {
+                    result.details.push_back(
+                        descriptor->id.value + " | " +
+                        descriptor->sourcePath);
+                }
+                if (result.details.empty()) {
+                    result.message = "没有已注册的模型资产";
+                }
+                return result;
+            }
+
             const std::string kind =
                 EDITOR::AI_ASSISTANT::ExtractJsonField(json, "kind");
             ProceduralMeshKind meshKind = ProceduralMeshKind::Box;
@@ -118,7 +307,6 @@ namespace HIKARI {
                 SanitizeProceduralMeshSettings(request.mesh);
             GameObject* object =
                 EDITOR::CreatePrimitiveObject(scene, request);
-            EDITOR::AI_ASSISTANT::AiRequestResult result{};
             if (object == nullptr) {
                 result.message =
                     "创建程序化物体失败：" + request.object.name;

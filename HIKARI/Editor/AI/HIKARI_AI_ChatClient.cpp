@@ -372,7 +372,7 @@ bool RunApiRequest(
         return false;
     }
 
-    HINTERNET session = WinHttpOpen(
+    static HINTERNET session = WinHttpOpen(
         L"HIKARI AI Assistant",
         WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
         WINHTTP_NO_PROXY_NAME,
@@ -382,10 +382,11 @@ bool RunApiRequest(
         outError = "WinHttpOpen 失败";
         return false;
     }
+    (void)WinHttpSetTimeouts(
+        session, 5000, 5000, 30000, 90000);
     HINTERNET connection = WinHttpConnect(
         session, host.c_str(), INTERNET_DEFAULT_HTTPS_PORT, 0);
     if (connection == nullptr) {
-        WinHttpCloseHandle(session);
         outError = "WinHttpConnect 失败";
         return false;
     }
@@ -399,7 +400,6 @@ bool RunApiRequest(
         WINHTTP_FLAG_SECURE);
     if (request == nullptr) {
         WinHttpCloseHandle(connection);
-        WinHttpCloseHandle(session);
         outError = "WinHttpOpenRequest 失败";
         return false;
     }
@@ -421,7 +421,6 @@ bool RunApiRequest(
         const DWORD error = GetLastError();
         WinHttpCloseHandle(request);
         WinHttpCloseHandle(connection);
-        WinHttpCloseHandle(session);
         outError = "WinHttpSendRequest 失败 (error " +
             std::to_string(error) + ")";
         return false;
@@ -430,7 +429,6 @@ bool RunApiRequest(
         const DWORD error = GetLastError();
         WinHttpCloseHandle(request);
         WinHttpCloseHandle(connection);
-        WinHttpCloseHandle(session);
         outError = "WinHttpReceiveResponse 失败 (error " +
             std::to_string(error) + ")";
         return false;
@@ -456,7 +454,6 @@ bool RunApiRequest(
         WINHTTP_NO_HEADER_INDEX);
     WinHttpCloseHandle(request);
     WinHttpCloseHandle(connection);
-    WinHttpCloseHandle(session);
 
     const std::string statusText =
         "HTTP " + std::to_string(statusCode) + " ";
@@ -502,6 +499,27 @@ std::string ExtractActionJson(const std::string& reply) {
         return {};
     }
     return reply.substr(start, end - start + 1u);
+}
+
+std::vector<std::string> ExtractAllActionJson(
+    const std::string& reply) {
+    std::vector<std::string> actions;
+    size_t searchFrom = 0u;
+    const std::string marker = "{\"action\"";
+    while (searchFrom < reply.size()) {
+        const auto start = reply.find(marker, searchFrom);
+        if (start == std::string::npos) {
+            break;
+        }
+        const auto end = reply.find('}', start + 1u);
+        if (end == std::string::npos) {
+            break;
+        }
+        actions.push_back(
+            reply.substr(start, end - start + 1u));
+        searchFrom = end + 1u;
+    }
+    return actions;
 }
 
 } // namespace HIKARI::EDITOR::AI_ASSISTANT

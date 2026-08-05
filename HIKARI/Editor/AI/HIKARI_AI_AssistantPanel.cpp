@@ -63,6 +63,18 @@ const std::vector<AiCapability>& QueryCapabilities() {
         { "procedural.create_primitive",
           "Create a procedural primitive (box/sphere/plane/cylinder/capsule) with position, scale and size.",
           "stable" },
+        { "scene.list_objects",
+          "List scene objects with position and scale.",
+          "stable" },
+        { "scene.set_transform",
+          "Set an existing object's position/rotation/scale by name.",
+          "stable" },
+        { "scene.create_object",
+          "Create a scene object from a registered model asset.",
+          "stable" },
+        { "asset.list_models",
+          "List registered model assets (id and source path).",
+          "stable" },
         { "query.capabilities",
           "List the current AI-accessible capabilities and boundaries.",
           "stable" },
@@ -202,7 +214,8 @@ AiAssistantPanel::~AiAssistantPanel() {
 std::string AiAssistantPanel::BuildSystemPrompt() const {
     std::string prompt =
         "你是 HIKARI 引擎的 AI 编辑助手。你可以通过单独输出一行 JSON 调用引擎能力，"
-        "例如 {\"action\":\"list_capabilities\"}。\n"
+        "例如 {\"action\":\"list_capabilities\"}；一次可以输出多行 JSON，"
+        "每行一个动作，引擎会一起执行。\n"
         "当前能力清单：\n";
     for (const AI_ASSISTANT::AiCapability& capability :
          AI_ASSISTANT::QueryCapabilities()) {
@@ -244,20 +257,24 @@ void AiAssistantPanel::RunConversation(const std::string& userText) {
             AppendMessage({ "assistant", "（调用失败）" + error });
             return;
         }
-        const std::string actionJson =
-            AI_ASSISTANT::ExtractActionJson(reply);
-        if (actionJson.empty()) {
+        const std::vector<std::string> actionJsons =
+            AI_ASSISTANT::ExtractAllActionJson(reply);
+        if (actionJsons.empty()) {
             AppendMessage({ "assistant", reply });
             return;
         }
-        const AI_ASSISTANT::AiRequestResult result =
-            ExecuteRequest(actionJson);
-        conversation.push_back({ "assistant", actionJson });
-        std::string resultText =
-            result.ok ? "ACTION OK：" : "ACTION NOT SUPPORTED：";
-        resultText += result.message;
-        for (const std::string& detail : result.details) {
-            resultText += "\n- " + detail;
+        conversation.push_back({ "assistant", reply });
+        std::string resultText;
+        for (const std::string& actionJson : actionJsons) {
+            const AI_ASSISTANT::AiRequestResult result =
+                ExecuteRequest(actionJson);
+            resultText +=
+                result.ok ? "ACTION OK：" : "ACTION NOT SUPPORTED：";
+            resultText += actionJson + "\n";
+            resultText += result.message + "\n";
+            for (const std::string& detail : result.details) {
+                resultText += "- " + detail + "\n";
+            }
         }
         conversation.push_back({ "user", resultText });
     }
