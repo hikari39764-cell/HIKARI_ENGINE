@@ -239,8 +239,21 @@ float4 main(PSInput input) : SV_TARGET
         const float3 expressionNormal = normalLengthSquared > 1.0e-10f
             ? materialExpression.normalTS * rsqrt(normalLengthSquared)
             : float3(0.0f, 0.0f, 1.0f);
+        // Expression-authored tangent-space normals follow the same strength
+        // contract as PBR normal maps: scale XY by normalScale, then rebuild
+        // Z so steep inputs never flatten.
+        const float2 scaledNormalXY = expressionNormal.xy *
+            max(materialData.normalScale, 0.0f);
+        const float scaledNormalLengthSquared =
+            dot(scaledNormalXY, scaledNormalXY);
+        const float3 scaledExpressionNormal =
+            scaledNormalLengthSquared < 1.0f
+                ? float3(
+                    scaledNormalXY,
+                    sqrt(1.0f - scaledNormalLengthSquared))
+                : normalize(float3(scaledNormalXY, 0.0f));
         n = HikariTransformTangentNormalToWorld(
-            expressionNormal,
+            scaledExpressionNormal,
             geometricNormal,
             input.tangentWS);
     }

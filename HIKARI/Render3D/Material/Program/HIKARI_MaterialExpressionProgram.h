@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "Assets/Material/Compiler/HIKARI_MaterialCompiler.h"
@@ -79,13 +80,39 @@ namespace HIKARI::RENDER3D::MATERIAL {
 
     struct MaterialExpressionRuntimeProgram {
         bool active = false;
+        uint32_t instructionCount = 0u;
+        uint32_t registerCount = 0u;
+        uint32_t valueCount = 0u;
         std::vector<MATH::Vec4> parameters{};
         std::vector<uint32_t> resourceBindingIndices{};
+        std::vector<std::pair<std::string, uint32_t>> nodeInstructionCounts{};
+    };
+
+    struct MaterialExpressionBudget {
+        bool active = false;
+        uint32_t instructionCount = 0u;
+        uint32_t registerCount = 0u;
+        uint32_t valueCount = 0u;
+        uint32_t parameterSlotCount = 0u;
+        uint32_t resourceCount = 0u;
+        uint32_t maxInstructionCount = kGpuMaterialExpressionInstructionCount;
+        uint32_t maxRegisterCount = kGpuMaterialExpressionRegisterCount;
+        uint32_t maxValueCount = kGpuMaterialExpressionValueSlotCount;
+        uint32_t maxParameterSlotCount =
+            kGpuMaterialProgramParameterSlotCount;
+        uint32_t maxResourceSlotCount =
+            kGpuMaterialProgramResourceSlotCount;
+        std::vector<std::pair<std::string, uint32_t>> nodeInstructionCounts{};
     };
 
     bool BuildMaterialExpressionRuntimeProgram(
         const MaterialProgramIR& program,
         MaterialExpressionRuntimeProgram& outProgram,
+        std::string& outError);
+
+    bool ResolveMaterialExpressionBudget(
+        const MaterialProgramIR& program,
+        MaterialExpressionBudget& outBudget,
         std::string& outError);
 
     bool MaterialProgramHasRuntimeExpression(

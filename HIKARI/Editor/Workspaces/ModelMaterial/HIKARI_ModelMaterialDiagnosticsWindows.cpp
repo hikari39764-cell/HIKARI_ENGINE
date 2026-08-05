@@ -4,6 +4,7 @@
 
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 #include "Render3D/Features/HIKARI_RenderFeatureSceneAnalysis.h"
+#include "Render3D/Material/Program/HIKARI_MaterialExpressionProgram.h"
 #include "Render3D/Views/HIKARI_EditorInteractiveViewRenderer.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
@@ -79,6 +80,22 @@ void ModelMaterialWorkspaceController::DrawDiagnosticsWindow(
               : ImVec4(0.62f, 0.76f, 0.9f, 1.0f);
       ImGui::TextColored(color, "%s: %s", diagnostic.code.c_str(),
                          diagnostic.message.c_str());
+    }
+    if (compile.success) {
+      RENDER3D::MATERIAL::MaterialExpressionBudget budget{};
+      std::string budgetError{};
+      if (RENDER3D::MATERIAL::ResolveMaterialExpressionBudget(
+              compile.program, budget, budgetError) &&
+          budget.active) {
+        ImGui::Text(
+            "Expression budget: %u/%u instr | %u/%u reg | %u/%u values | "
+            "%u/%u params | %u/%u resources",
+            budget.instructionCount, budget.maxInstructionCount,
+            budget.registerCount, budget.maxRegisterCount,
+            budget.valueCount, budget.maxValueCount,
+            budget.parameterSlotCount, budget.maxParameterSlotCount,
+            budget.resourceCount, budget.maxResourceSlotCount);
+      }
     }
   }
 

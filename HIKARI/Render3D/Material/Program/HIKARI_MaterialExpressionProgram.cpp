@@ -423,6 +423,8 @@ bool BuildMaterialExpressionRuntimeProgram(
     std::vector<MATH::Vec4> values{};
     std::vector<MATH::Vec4> instructions{};
     std::unordered_set<uint32_t> resourceBindings{};
+    std::unordered_map<std::string, uint32_t> nodeCounts{};
+    std::vector<std::pair<std::string, uint32_t>> nodeOrder{};
     instructions.reserve(required.size());
     for (size_t index = 0u; index < program.instructions.size(); ++index) {
         if (!required.contains(index)) {
@@ -430,6 +432,13 @@ bool BuildMaterialExpressionRuntimeProgram(
         }
         const MaterialProgramInstruction& instruction =
             program.instructions[index];
+        const auto [nodeIt, nodeInserted] = nodeCounts.emplace(
+            instruction.sourceNodeId, 1u);
+        if (nodeInserted) {
+            nodeOrder.emplace_back(instruction.sourceNodeId, 0u);
+        } else {
+            ++nodeIt->second;
+        }
         const auto runtimeOpcode = ToRuntimeOpcode(instruction.opcode);
         if (!runtimeOpcode.has_value() ||
             instruction.outputRegisters.empty()) {
@@ -553,7 +562,44 @@ bool BuildMaterialExpressionRuntimeProgram(
     std::sort(
         outProgram.resourceBindingIndices.begin(),
         outProgram.resourceBindingIndices.end());
+    outProgram.instructionCount =
+        static_cast<uint32_t>(instructions.size());
+    outProgram.registerCount = nextRegister;
+    outProgram.valueCount = static_cast<uint32_t>(values.size());
+    outProgram.nodeInstructionCounts.reserve(nodeOrder.size());
+    for (const auto& [nodeId, unused] : nodeOrder) {
+        (void)unused;
+        outProgram.nodeInstructionCounts.emplace_back(
+            nodeId, nodeCounts[nodeId]);
+    }
     outProgram.active = true;
+    return true;
+}
+
+bool ResolveMaterialExpressionBudget(
+    const MaterialProgramIR& program,
+    MaterialExpressionBudget& outBudget,
+    std::string& outError) {
+    outBudget = {};
+    outError.clear();
+    MaterialExpressionRuntimeProgram expression{};
+    if (!BuildMaterialExpressionRuntimeProgram(
+            program, expression, outError)) {
+        return false;
+    }
+    if (!expression.active) {
+        return true;
+    }
+    outBudget.active = true;
+    outBudget.instructionCount = expression.instructionCount;
+    outBudget.registerCount = expression.registerCount;
+    outBudget.valueCount = expression.valueCount;
+    outBudget.parameterSlotCount =
+        static_cast<uint32_t>(expression.parameters.size());
+    outBudget.resourceCount =
+        static_cast<uint32_t>(expression.resourceBindingIndices.size());
+    outBudget.nodeInstructionCounts =
+        std::move(expression.nodeInstructionCounts);
     return true;
 }
 

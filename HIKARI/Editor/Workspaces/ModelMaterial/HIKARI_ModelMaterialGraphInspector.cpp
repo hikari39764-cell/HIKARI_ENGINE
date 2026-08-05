@@ -4,6 +4,7 @@
 
 #include "Assets/Material/Authoring/HIKARI_MaterialSemanticNodeFactory.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialGraphUi.h"
+#include "Render3D/Material/Program/HIKARI_MaterialExpressionProgram.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
 #if defined(HIKARI_WITH_EDITOR)
@@ -102,6 +103,54 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphInspector(
     for (const MaterialCompileDiagnostic &diagnostic : compile.diagnostics) {
       ImGui::BulletText("%s: %s", diagnostic.code.c_str(),
                         diagnostic.message.c_str());
+    }
+    ImGui::SeparatorText("Expression Budget");
+    if (!compile.success) {
+      ImGui::TextUnformatted("Not evaluated: current graph does not compile.");
+    } else {
+      RENDER3D::MATERIAL::MaterialExpressionBudget budget{};
+      std::string budgetError{};
+      if (!RENDER3D::MATERIAL::ResolveMaterialExpressionBudget(
+              compile.program, budget, budgetError)) {
+        ImGui::TextColored(ImVec4(1.0f, 0.42f, 0.35f, 1.0f),
+                           "Budget resolve failed: %s",
+                           budgetError.c_str());
+      } else if (!budget.active) {
+        ImGui::TextUnformatted(
+            "Fixed stylized response only; no pixel-expression graph.");
+      } else {
+        const auto budgetBar = [](const char *label,
+                                  uint32_t used, uint32_t maxValue) {
+          ImGui::Text("%s: %u / %u", label, used, maxValue);
+          ImGui::SameLine();
+          ImGui::ProgressBar(
+              maxValue > 0u
+                  ? static_cast<float>(used) /
+                        static_cast<float>(maxValue)
+                  : 0.0f,
+              ImVec2(-1.0f, 0.0f), "");
+        };
+        budgetBar("Instructions", budget.instructionCount,
+                  budget.maxInstructionCount);
+        budgetBar("Registers", budget.registerCount,
+                  budget.maxRegisterCount);
+        budgetBar("Constant values", budget.valueCount,
+                  budget.maxValueCount);
+        budgetBar("Parameter slots", budget.parameterSlotCount,
+                  budget.maxParameterSlotCount);
+        budgetBar("Expression resources", budget.resourceCount,
+                  budget.maxResourceSlotCount);
+        if (!budget.nodeInstructionCounts.empty()) {
+          ImGui::TextDisabled("Per-node instruction cost:");
+          for (const auto &[nodeId, instructionCount] :
+               budget.nodeInstructionCounts) {
+            if (instructionCount > 0u) {
+              ImGui::BulletText("%s: %u", nodeId.c_str(),
+                                instructionCount);
+            }
+          }
+        }
+      }
     }
   }
   return requestDeleteEdge;
