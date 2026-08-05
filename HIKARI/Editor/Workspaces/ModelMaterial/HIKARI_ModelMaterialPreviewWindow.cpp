@@ -44,17 +44,6 @@ const char *DebugModeLabel(
   return "Lit";
 }
 
-const char *EnvironmentModeLabel(
-    ModelMaterialWorkspaceController::PreviewEnvironmentMode mode) noexcept {
-  switch (mode) {
-  case ModelMaterialWorkspaceController::PreviewEnvironmentMode::RuntimeMatch:
-    return "Runtime Asset Lighting";
-  case ModelMaterialWorkspaceController::PreviewEnvironmentMode::StudioInspect:
-    return "Studio Inspect";
-  }
-  return "Runtime Asset Lighting";
-}
-
 } // namespace
 
 void ModelMaterialWorkspaceController::DrawPreviewToolbar(
@@ -176,6 +165,14 @@ void ModelMaterialWorkspaceController::DrawPreviewToolbar(
   ImGui::EndDisabled();
 
   ImGui::SameLine(0.0f, 8.0f);
+  if (IconButton(EditorGlyph::Light, "ModelMaterialLightingPanel",
+                 previewLightingPanelOpen_ ? EditorButtonTone::Primary
+                                           : EditorButtonTone::Quiet,
+                 kIconSize,
+                 "Open the Preview Lighting panel")) {
+    previewLightingPanelOpen_ = !previewLightingPanelOpen_;
+  }
+  ImGui::SameLine(0.0f, 8.0f);
   if (IconButton(EditorGlyph::More, "ModelMaterialPreviewControls",
                  EditorButtonTone::Quiet, kIconSize, "Preview controls")) {
     ImGui::OpenPopup("ModelMaterialPreviewControlsPopup");
@@ -189,37 +186,14 @@ void ModelMaterialWorkspaceController::DrawPreviewToolbar(
     ImGui::TextDisabled("Mouse Wheel     Zoom");
     ImGui::TextDisabled("F               Frame model");
     ImGui::Separator();
+    ImGui::SeparatorText("Camera");
+    DrawPreviewCameraControls();
+    ImGui::Separator();
     ImGui::TextWrapped(
         "Camera state is kept per model and per workspace for this Editor "
         "session.");
     ImGui::SeparatorText("Preview Environment");
-    ImGui::Text("Mode: %s", EnvironmentModeLabel(previewEnvironmentMode_));
-    ImGui::TextWrapped(
-        previewEnvironmentMode_ == PreviewEnvironmentMode::RuntimeMatch
-            ? "Uses the active scene environment and lights passed to the "
-              "same runtime renderer."
-            : "Uses the material workspace sky and movable inspection light.");
-    ImGui::BeginDisabled(!studioInspect);
-    ImGui::SeparatorText("Studio Inspect Environment");
-    ImGui::TextDisabled(
-        "Create lights with the + icon, then select their viewport glyph.");
-    if (ImGui::Checkbox("Sky", &previewSkyEnabled_)) {
-      previewEnvironment_.sky.enabled = previewSkyEnabled_;
-    }
-    ImGui::DragFloat("Sky Rotation", &previewEnvironment_.sky.yaw, 0.01f);
-    ImGui::DragFloat("Sky Intensity", &previewEnvironment_.sky.exposure,
-                     0.01f, 0.0f, 32.0f);
-    ImGui::DragFloat("IBL Reflections",
-                     &previewEnvironment_.sky.reflectionIntensity,
-                     0.01f, 0.0f, 4.0f);
-    if (ImGui::IsItemHovered()) {
-      ImGui::SetTooltip(
-          "Specular reflection strength from the visible DefaultSky. "
-          "Studio Inspect never samples scene reflection probes.");
-    }
-    ImGui::DragFloat("Ambient", &previewEnvironment_.ambient.intensity,
-                     0.01f, 0.0f, 8.0f);
-    ImGui::EndDisabled();
+    DrawPreviewEnvironmentControls();
     ImGui::Checkbox("Preview anti-aliasing (FXAA)",
                     &previewSpatialAaEnabled_);
     ImGui::SeparatorText("Debug View");
@@ -488,6 +462,7 @@ void ModelMaterialWorkspaceController::DrawPreviewWindow(
   ImGui::SetCursorScreenPos({origin.x, origin.y + canvasSize.y});
   ImGui::Dummy(ImVec2(1.0f, 1.0f));
   ImGui::End();
+  DrawPreviewLightingPanel(scene);
 #else
   (void)scene;
   (void)workspaceHost;

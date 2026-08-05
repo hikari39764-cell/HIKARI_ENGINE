@@ -70,6 +70,10 @@ public:
 
   bool Update(const EditorDirectorCameraInput &input, float deltaTime,
               float aspect);
+  void SetFovYRad(float fovYRad) noexcept {
+    camera_.SetPerspective(
+        fovYRad, camera_.GetAspect(), camera_.GetNearZ(), camera_.GetFarZ());
+  }
   void Focus(const MATH::Vec3 &worldPosition, float preferredDistance = 5.0f);
   void ApplyViewPreset(EditorDirectorCameraViewPreset preset);
 

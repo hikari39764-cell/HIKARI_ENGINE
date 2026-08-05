@@ -285,6 +285,9 @@ private:
                          EditorCommandRouter &commandRouter);
   void DrawPreviewToolbar(ModelMaterialWorkspaceResult &result,
                           EditorCommandRouter &commandRouter);
+  void DrawPreviewCameraControls();
+  void DrawPreviewEnvironmentControls();
+  void DrawPreviewLightingPanel(DocumentSceneBase &scene);
   void DrawModelAndSlotsWindow(DocumentSceneBase &scene);
   void DrawMaterialWindow(DocumentSceneBase &scene);
   void DrawPreviewLightingProperties();
@@ -396,6 +399,12 @@ private:
   bool previewLightingInitialized_ = false;
   bool previewSkyEnabled_ = true;
   bool previewSpatialAaEnabled_ = true;
+  float previewCameraSpeedScale_ = 1.0f;
+  float previewCameraBaseMoveSpeed_ = 0.0f;
+  float previewCameraWheelStepScale_ = 1.0f;
+  float previewCameraBaseWheelStep_ = 0.0f;
+  float previewCameraFovYRad_ = 0.0f;
+  bool previewLightingPanelOpen_ = false;
   std::optional<size_t> selectedPreviewLightIndex_{};
   EditorTransformGizmo previewLightGizmo_{};
   EditorTransformGizmoState previewLightGizmoState_{};

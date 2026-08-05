@@ -585,6 +585,7 @@ set(HIKARI_EDITOR_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialFeatureControls.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialPreviewState.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialPreviewLighting.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialPreviewLightingPanel.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialPreviewWindow.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialRampWindow.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialSlotsWindow.cpp"
