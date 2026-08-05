@@ -569,20 +569,61 @@ std::string ExtractActionJson(const std::string& reply) {
 std::vector<std::string> ExtractAllActionJson(
     const std::string& reply) {
     std::vector<std::string> actions;
-    size_t searchFrom = 0u;
-    const std::string marker = "{\"action\"";
-    while (searchFrom < reply.size()) {
-        const auto start = reply.find(marker, searchFrom);
-        if (start == std::string::npos) {
-            break;
+
+    // Batch array form: {"actions":[{...},{...}]}.
+    const auto arrayMarker = reply.find("\"actions\"");
+    if (arrayMarker != std::string::npos) {
+        const auto bracket = reply.find('[', arrayMarker);
+        if (bracket != std::string::npos) {
+            size_t cursor = bracket + 1u;
+            while (cursor < reply.size()) {
+                const auto open = reply.find('{', cursor);
+                if (open == std::string::npos) {
+                    break;
+                }
+                int depth = 0;
+                size_t close = open;
+                for (; close < reply.size(); ++close) {
+                    if (reply[close] == '{') {
+                        ++depth;
+                    } else if (reply[close] == '}') {
+                        --depth;
+                        if (depth == 0) {
+                            break;
+                        }
+                    }
+                }
+                if (close >= reply.size()) {
+                    break;
+                }
+                actions.push_back(
+                    reply.substr(open, close - open + 1u));
+                cursor = close + 1u;
+            }
         }
-        const auto end = reply.find('}', start + 1u);
-        if (end == std::string::npos) {
-            break;
+    }
+    if (!actions.empty()) {
+        return actions;
+    }
+
+    // Whole-line form: one JSON object per line, never inside prose.
+    size_t start = 0u;
+    while (start <= reply.size()) {
+        const auto newline = reply.find('\n', start);
+        const std::string line = newline == std::string::npos
+            ? reply.substr(start)
+            : reply.substr(start, newline - start);
+        start = newline == std::string::npos
+            ? reply.size()
+            : newline + 1u;
+        const std::string trimmed = Trim(line);
+        if (trimmed.size() < 2u ||
+            trimmed.front() != '{' ||
+            trimmed.back() != '}' ||
+            trimmed.find("\"action\"") == std::string::npos) {
+            continue;
         }
-        actions.push_back(
-            reply.substr(start, end - start + 1u));
-        searchFrom = end + 1u;
+        actions.push_back(trimmed);
     }
     return actions;
 }

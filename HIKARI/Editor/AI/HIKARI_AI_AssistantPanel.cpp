@@ -13,6 +13,10 @@
 #endif
 
 namespace HIKARI::EDITOR {
+namespace {
+constexpr int kMaxToolRounds = 8;
+} // namespace
+
 namespace AI_ASSISTANT {
 
 namespace {
@@ -216,9 +220,15 @@ AiAssistantPanel::~AiAssistantPanel() {
 
 std::string AiAssistantPanel::BuildSystemPrompt() const {
     std::string prompt =
-        "你是 HIKARI 引擎的 AI 编辑助手。你可以通过单独输出一行 JSON 调用引擎能力，"
-        "例如 {\"action\":\"list_capabilities\"}；一次可以输出多行 JSON，"
-        "每行一个动作，引擎会一起执行。\n"
+        "你是 HIKARI 引擎的 AI 编辑助手。你可以通过输出 JSON 调用引擎能力。\n"
+        "批量规则：需要多个动作时，输出一个数组 {\"actions\":["
+        "{\"action\":\"...\",\"...\":\"...\"},{\"action\":\"...\"}]}，"
+        "引擎会按顺序全部执行并汇总；单个失败不会中断整批，"
+        "结果里会标明失败项和原因。\n"
+        "行规则：每个 JSON 必须是单独一行且整行都是 JSON，"
+        "不要把它混在普通文字里，也不要在正文里举例 JSON。\n"
+        "收尾规则：调用动作后，必须基于执行结果给出最终中文回复；"
+        "除非用户明确要求继续操作，否则不要再输出任何 action JSON。\n"
         "当前能力清单：\n";
     for (const AI_ASSISTANT::AiCapability& capability :
          AI_ASSISTANT::QueryCapabilities()) {
@@ -248,7 +258,8 @@ void AiAssistantPanel::RunConversation(const std::string& userText) {
         conversation = messages_;
     }
     conversation.push_back({ "user", userText });
-    for (int turn = 0; turn < 4; ++turn) {
+    lastRoundActions_.clear();
+    for (int turn = 0; turn < kMaxToolRounds; ++turn) {
         std::vector<AI_ASSISTANT::AiChatMessage> request = conversation;
         request.insert(
             request.begin(),
@@ -289,19 +300,48 @@ void AiAssistantPanel::RunConversation(const std::string& userText) {
             }
             return;
         }
+        if (!lastRoundActions_.empty() &&
+            std::all_of(
+                actionJsons.begin(), actionJsons.end(),
+                [this](const std::string& action) {
+                    return std::find(
+                        lastRoundActions_.begin(),
+                        lastRoundActions_.end(),
+                        action) != lastRoundActions_.end();
+                })) {
+            AppendMessage(
+                { "assistant",
+                  "检测到连续重复的动作调用，已停止以避免循环；"
+                  "请基于当前结果继续说明，或让我手动操作。" });
+            {
+                std::lock_guard<std::mutex> lock(streamMutex_);
+                streamingPartial_.clear();
+            }
+            return;
+        }
+        lastRoundActions_ = actionJsons;
         conversation.push_back({ "assistant", reply });
         std::string resultText;
+        size_t successCount = 0u;
+        size_t failureCount = 0u;
         for (const std::string& actionJson : actionJsons) {
             const AI_ASSISTANT::AiRequestResult result =
                 ExecuteRequest(actionJson);
+            if (result.ok) {
+                ++successCount;
+            } else {
+                ++failureCount;
+            }
             resultText +=
-                result.ok ? "ACTION OK：" : "ACTION NOT SUPPORTED：";
+                result.ok ? "成功：" : "失败：";
             resultText += actionJson + "\n";
             resultText += result.message + "\n";
             for (const std::string& detail : result.details) {
                 resultText += "- " + detail + "\n";
             }
         }
+        resultText += "\n汇总：" + std::to_string(successCount) +
+            " 成功，" + std::to_string(failureCount) + " 失败。";
         conversation.push_back({ "user", resultText });
     }
     AppendMessage({ "assistant", "（已达到最大工具调用轮数，请继续提问）" });

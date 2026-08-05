@@ -61,6 +61,7 @@ namespace HIKARI::EDITOR {
         std::mutex streamMutex_{};
         std::string streamingPartial_{};
         bool streamingActive_ = false;
+        std::vector<std::string> lastRoundActions_{};
         char inputBuffer_[4096] = {};
         char rawRequestBuffer_[2048] = {};
         bool showCapabilities_ = false;
