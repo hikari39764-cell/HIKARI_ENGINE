@@ -107,16 +107,32 @@ namespace HIKARI {
 
             RENDERER3D::DEBUG::Stroke3D stroke{};
             stroke.from = position;
-            stroke.to = position + direction * 2.0f;
+            stroke.to = position + direction * (selected ? 4.0f : 3.0f);
             stroke.rgba = selected
                 ? DRAW::kSelectionColor
                 : kLightColor;
             stroke.depthMode =
                 RENDERER3D::DEBUG::DebugDepthMode::XRay;
-            stroke.thicknessPixels = selected
-                ? DRAW::kSelectedStrokePixels
-                : DRAW::kNormalStrokePixels;
+            stroke.thicknessPixels = selected ? 4.5f : 3.0f;
             RENDERER3D::DEBUG::SubmitStroke3D(stroke);
+
+            MATH::Vec3 side = MATH::Cross(
+                { 0.0f, 1.0f, 0.0f }, direction);
+            if (MATH::Dot(side, side) < 1.0e-4f) {
+                side = MATH::Cross({ 1.0f, 0.0f, 0.0f }, direction);
+            }
+            side = MATH::Normalize(side);
+            const float headLength = selected ? 0.75f : 0.60f;
+            const float headWidth = selected ? 0.42f : 0.32f;
+            const MATH::Vec3 headBase =
+                stroke.to - direction * headLength;
+            for (const float sign : { -1.0f, 1.0f }) {
+                RENDERER3D::DEBUG::Stroke3D wing = stroke;
+                wing.from = stroke.to;
+                wing.to = headBase + side * (headWidth * sign);
+                wing.thicknessPixels = selected ? 4.0f : 2.6f;
+                RENDERER3D::DEBUG::SubmitStroke3D(wing);
+            }
         }
 
         MATH::Vec3 BuildInnerBoxSize(

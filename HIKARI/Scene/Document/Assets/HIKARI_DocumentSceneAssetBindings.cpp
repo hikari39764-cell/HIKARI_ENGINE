@@ -12,6 +12,7 @@
 #include "Render2D/HIKARI_DxTexture.h"
 #include "Assets/HIKARI_AssetRegistryBuilder.h"
 #include "Assets/Material/Authoring/HIKARI_MaterialAssetAuthoringService.h"
+#include "Assets/Material/HIKARI_MaterialAssetLookup.h"
 #include "Assets/Material/HIKARI_MaterialAssetData.h"
 #include "Assets/Models/HIKARI_ModelAsset.h"
 #include "Assets/Models/HIKARI_ModelMaterialSlot.h"
@@ -304,6 +305,7 @@ namespace HIKARI {
                         auto runtimeMaterial = std::make_unique<Material>();
                         if (materialBuilder.BuildRuntimeMaterial(
                                 binding.materialDescriptor->sourceData,
+                                binding.materialDescriptor->compileResult,
                                 registry_,
                                 programRegistry,
                                 *runtimeMaterial,
@@ -340,6 +342,7 @@ namespace HIKARI {
                     auto runtimeMaterial = std::make_unique<Material>();
                     if (materialBuilder.BuildRuntimeMaterial(
                             descriptor->sourceData,
+                            descriptor->compileResult,
                             registry_,
                             programRegistry,
                             *runtimeMaterial,
@@ -378,6 +381,9 @@ namespace HIKARI {
         }
 
         MaterialAssetData effectiveData = data;
+        MaterialCompileResult effectiveCompile = CompileMaterialAsset(
+            effectiveData,
+            ASSETS::MATERIAL::MakeMaterialCompileOptions(database_));
         if (effectiveData.kind == MaterialAssetKind::Instance) {
             ASSETS::MATERIAL::MaterialAssetAuthoringService service(database_);
             const ASSETS::MATERIAL::MaterialInstanceResolveResult resolved =
@@ -389,6 +395,7 @@ namespace HIKARI {
                 return 0;
             }
             effectiveData = resolved.resolvedMaterial;
+            effectiveCompile = resolved.compile;
         }
 
         int rebuiltCount = 0;
@@ -397,15 +404,17 @@ namespace HIKARI {
             RENDER3D::MATERIAL::GetRuntimeMaterialProgramRegistry();
         scene.state_->runtime.world.ForEachObjectWith<ModelComponent>(
             [this, &rebuiltCount, &materialBuilder, &programRegistry,
-             &materialGuid, &effectiveData](GameObject&, ModelComponent& modelComponent) {
+             &materialGuid, &effectiveData,
+             &effectiveCompile](GameObject&, ModelComponent& modelComponent) {
                 const auto applyPreview = [this, &rebuiltCount,
                     &materialBuilder, &programRegistry, &materialGuid,
-                    &effectiveData,
+                    &effectiveData, &effectiveCompile,
                     &modelComponent](uint32_t materialIndex,
                                      bool inheritModelTextures) {
                     auto runtimeMaterial = std::make_unique<Material>();
                     if (materialBuilder.BuildRuntimeMaterial(
                             effectiveData,
+                            effectiveCompile,
                             registry_,
                             programRegistry,
                             *runtimeMaterial,

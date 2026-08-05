@@ -452,14 +452,14 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             const bool ordinaryMeshletMaterial =
                 !key.materialFx &&
                 !key.waterMaterialFx &&
-                !key.depthAware &&
-                !key.transparent;
+                !key.depthAware;
             const bool materialFxMeshletMaterial =
                 key.materialFx &&
                 !key.materialFxUsesCustomVertexShader;
             // Cluster-compatible MaterialFX, including the built-in water
             // deformation contract, stays on the mesh-shader route.
-            // Mesh shader backend はまぁEstatic opaque / alpha-mask の cluster geometry だけを所有する、E
+            // 通常の Opaque / Mask / Blend は同じ Mesh Shader 本線で扱う。
+            // Blend のパス分割と深度書き込み無効化は key.transparent が所有する。
             key.clusterMainlineEligible =
                 !animatedPoseRecord &&
                 key.geometryBackend == RUNTIME::SurfaceGeometryBackend::ClusterGeometry &&

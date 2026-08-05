@@ -1,56 +1,21 @@
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
-
 #include <algorithm>
+#include <cmath>
+#include <iterator>
 #include <string>
 #include <string_view>
 #include <utility>
-
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/Material/Authoring/HIKARI_MaterialTemplateFactory.h"
 #include "Editor/Widgets/HIKARI_AssetFieldWidget.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialGraphDefaultInputs.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialGraphUi.h"
+#include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
-
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
 #endif
-
 namespace HIKARI::EDITOR {
-namespace {
-
-#if defined(HIKARI_WITH_EDITOR)
-bool DrawCompactValue(MaterialValueData &value, bool color) {
-  switch (value.type) {
-  case MaterialValueType::Bool:
-    return ImGui::Checkbox("##Value", &value.boolean);
-  case MaterialValueType::Float1:
-    return ImGui::DragFloat("##Value", &value.numeric.x, 0.01f);
-  case MaterialValueType::Float2:
-    return ImGui::DragFloat2("##Value", &value.numeric.x, 0.01f);
-  case MaterialValueType::Float3:
-    return color
-        ? ImGui::ColorEdit3("##Value", &value.numeric.x,
-                            ImGuiColorEditFlags_Float |
-                            ImGuiColorEditFlags_NoInputs |
-                            ImGuiColorEditFlags_NoLabel)
-        : ImGui::DragFloat3("##Value", &value.numeric.x, 0.01f);
-  case MaterialValueType::Float4:
-    return color
-        ? ImGui::ColorEdit4("##Value", &value.numeric.x,
-                            ImGuiColorEditFlags_Float |
-                            ImGuiColorEditFlags_NoInputs |
-                            ImGuiColorEditFlags_NoLabel)
-        : ImGui::DragFloat4("##Value", &value.numeric.x, 0.01f);
-  default:
-    ImGui::TextDisabled("%s", ToString(value.type).data());
-    return false;
-  }
-}
-#endif
-
-} // namespace
-
 bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
     DocumentSceneBase &scene, MaterialAssetData &source,
     MaterialGraphData &graph, MaterialGraphNodeData &node,
@@ -60,14 +25,15 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
   bool capturesPointer = false;
   ImGui::PushID(node.id.c_str());
   ImGui::SetCursorScreenPos({x, y});
+  ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(6.0f, 4.0f));
+  ImGui::PushStyleVar(ImGuiStyleVar_ItemInnerSpacing, ImVec2(5.0f, 4.0f));
   ImGui::PushClipRect(
       {x, y},
       {x + width,
-       y + MATERIAL_GRAPH_UI::NodeInlineHeight(node.kind) - 5.0f},
+       y + MATERIAL_GRAPH_UI::NodeInlineHeight(node.kind)},
       true);
   ImGui::BeginGroup();
   ImGui::PushItemWidth(width);
-
   const auto trackItem = [&capturesPointer]() {
     capturesPointer = capturesPointer || ImGui::IsItemHovered() ||
                       ImGui::IsItemActive();
@@ -110,7 +76,7 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
     ImGui::SetNextItemWidth((std::max)(72.0f,
         width - ImGui::CalcTextSize(label).x - 18.0f));
     MaterialAssetData before = source;
-    const bool changed = DrawCompactValue(
+    const bool changed = MATERIAL_GRAPH_UI::DrawCompactMaterialValue(
         parameter->defaultValue,
         MATERIAL_GRAPH_UI::LooksLikeColor(
             parameter->displayName, parameter->id));
@@ -163,7 +129,6 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
     trackItem();
     ImGui::PopID();
   };
-
   if (node.kind == MaterialNodeKind::Parameter) {
     MaterialGraphParameterData *parameter =
         MATERIAL_GRAPH_UI::FindParameter(graph, node.referenceId);
@@ -187,7 +152,7 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
                               ? parameter->id.c_str()
                               : parameter->displayName.c_str());
       MaterialAssetData before = source;
-      const bool changed = DrawCompactValue(
+      const bool changed = MATERIAL_GRAPH_UI::DrawCompactMaterialValue(
           parameter->defaultValue,
           MATERIAL_GRAPH_UI::LooksLikeColor(
               parameter->displayName, parameter->id));
@@ -204,7 +169,7 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
     }
   } else if (node.kind == MaterialNodeKind::Constant) {
     MaterialAssetData before = source;
-    const bool changed = DrawCompactValue(
+    const bool changed = MATERIAL_GRAPH_UI::DrawCompactMaterialValue(
         node.value,
         MATERIAL_GRAPH_UI::LooksLikeColor(node.displayName, node.id));
     trackItem();
@@ -251,116 +216,133 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
                                "Bind texture sample asset", scene);
       }
       trackItem();
+      constexpr MaterialResourceSemantic kTextureSemantics[]{
+          MaterialResourceSemantic::Custom,
+          MaterialResourceSemantic::BaseColor,
+          MaterialResourceSemantic::Normal,
+          MaterialResourceSemantic::MetallicRoughness,
+          MaterialResourceSemantic::Occlusion,
+          MaterialResourceSemantic::Emissive,
+          MaterialResourceSemantic::Specular,
+          MaterialResourceSemantic::SpecularColor,
+          MaterialResourceSemantic::Mask,
+          MaterialResourceSemantic::MatCap,
+          MaterialResourceSemantic::FaceSdf,
+          MaterialResourceSemantic::HairShadow,
+          MaterialResourceSemantic::HairControl,
+          MaterialResourceSemantic::EyeControl,
+          MaterialResourceSemantic::Thickness,
+          MaterialResourceSemantic::Fabric,
+      };
+      int semanticIndex = 0;
+      for (int index = 0;
+           index < static_cast<int>(std::size(kTextureSemantics)); ++index) {
+        if (kTextureSemantics[index] == resource->semantic) {
+          semanticIndex = index;
+          break;
+        }
+      }
+      const auto semanticLabel = [](void *data, int index,
+                                    const char **text) {
+        const auto *semantics =
+            static_cast<const MaterialResourceSemantic *>(data);
+        *text = ToString(semantics[index]).data();
+        return true;
+      };
+      ImGui::SetNextItemWidth(width);
+      if (ImGui::Combo("##TextureSemantic", &semanticIndex,
+                       semanticLabel,
+                       const_cast<MaterialResourceSemantic *>(
+                           kTextureSemantics),
+                       static_cast<int>(std::size(kTextureSemantics)))) {
+        MaterialAssetData before = source;
+        resource->semantic = kTextureSemantics[semanticIndex];
+        resource->displayName =
+            std::string(ToString(resource->semantic)) + " Texture";
+        CommitMaterialMutation(std::move(before),
+                               "Change texture sample semantic", scene);
+      }
+      trackItem();
+      ImGui::TextDisabled(
+          "Color space: %s (derived from semantic)",
+          resource->semantic == MaterialResourceSemantic::BaseColor ||
+                  resource->semantic == MaterialResourceSemantic::Emissive ||
+                  resource->semantic == MaterialResourceSemantic::SpecularColor ||
+                  resource->semantic == MaterialResourceSemantic::MatCap
+              ? "sRGB"
+              : "Linear");
+      int uvSet = static_cast<int>(resource->texCoord);
+      ImGui::SetNextItemWidth(width);
+      if (ImGui::Combo("##TextureUvSet", &uvSet, "UV0\0UV1\0")) {
+        MaterialAssetData before = source;
+        resource->texCoord = static_cast<uint32_t>(uvSet);
+        CommitMaterialMutation(std::move(before),
+                               "Change texture sample UV set", scene);
+      }
+      trackItem();
     }
   } else if (node.kind == MaterialNodeKind::RampDiffuse ||
              node.kind == MaterialNodeKind::MultiRampDiffuse) {
-    MaterialGraphResourceData *resource =
-        MATERIAL_GRAPH_UI::FindRampResource(graph, node);
-    if (resource == nullptr) {
-      if (ImGui::Button("+ Ramp Resource", {width, 0.0f})) {
-        MaterialAssetData before = source;
-        MaterialGraphResourceData created{};
-        created.id = "Ramp_" + std::to_string(authoringIdCounter_++);
-        created.displayName = "Diffuse Ramp";
-        created.type = MaterialResourceType::Ramp1D;
-        created.semantic = MaterialResourceSemantic::Ramp;
-        graph.resources.push_back(std::move(created));
-        node.referenceId = graph.resources.back().id;
-        CommitMaterialMutation(std::move(before), "Create Ramp resource",
-                               scene);
-      }
-      trackItem();
-    } else {
-      const AssetChoice *bound = FindMaterialChoice(resource->assetGuid);
-      const char *preview = bound != nullptr
-          ? bound->label.c_str()
-          : resource->assetGuid.IsValid() ? "Missing Ramp" : "Choose Ramp";
-      ImGui::SetNextItemWidth(width);
-      if (ImGui::BeginCombo("##RampAsset", preview)) {
-        for (const AssetChoice &choice : materialChoices_) {
-          if (choice.materialKind != MaterialAssetKind::Ramp) {
-            continue;
-          }
-          if (ImGui::Selectable(choice.label.c_str(),
-                                choice.guid == resource->assetGuid)) {
-            MaterialAssetData before = source;
-            node.referenceId = resource->id;
-            resource->assetGuid = choice.guid;
-            resource->enabled = true;
-            CommitMaterialMutation(std::move(before), "Bind Ramp asset",
-                                   scene);
-          }
-        }
-        ImGui::EndCombo();
-      }
-      trackItem();
-      bound = FindMaterialChoice(resource->assetGuid);
-      if (bound != nullptr && bound->rampPreview.has_value()) {
-        MATERIAL_GRAPH_UI::DrawRampStrip(*bound->rampPreview, width, 20.0f);
-        trackItem();
-        if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
-          (void)BeginInlineRampEdit(scene, bound->guid, statusMessage_);
-        }
-      }
-      if (ImGui::SmallButton("New from Preset...")) {
-        ImGui::OpenPopup("##NewRampPreset");
-      }
-      trackItem();
-      if (width >= 200.0f) {
-        ImGui::SameLine();
-      }
-      ImGui::BeginDisabled(bound == nullptr);
-      if (ImGui::SmallButton("Edit Ramp")) {
-        (void)BeginInlineRampEdit(scene, bound->guid, statusMessage_);
-      }
-      trackItem();
-      ImGui::EndDisabled();
-      if (ImGui::BeginPopup("##NewRampPreset")) {
-        for (const ASSETS::MATERIAL::MaterialRampPresetInfo &preset :
-             ASSETS::MATERIAL::GetBuiltInMaterialRampPresets()) {
-          if (ImGui::MenuItem(preset.displayName.data())) {
-            (void)CreateRampPresetAndBind(
-                scene, source, graph, node, preset.id, statusMessage_);
-          }
-          if (ImGui::IsItemHovered()) {
-            ImGui::SetTooltip("%s", preset.description.data());
-          }
-        }
-        ImGui::EndPopup();
-      }
-    }
-    drawParameter("parameter.shadowThreshold", "Shadow", "ShadowThreshold");
-    drawParameter("parameter.shadowSoftness", "Softness", "ShadowSoftness");
-    drawParameter("parameter.midThreshold", "Midtone", "MidThreshold");
-    drawParameter("parameter.shadowTint", "Shadow Tint", "ShadowTint");
-    drawParameter("parameter.midTint", "Mid Tint", "MidTint");
-    drawParameter("parameter.litTint", "Lit Tint", "LitTint");
-    drawParameter("parameter.rampMaskInfluence", "Mask", "MaskInfluence");
-    drawParameter("parameter.rampIntensity", "Ramp Influence", "Intensity");
-    drawParameter("parameter.toonDirectGain", "Direct Gain", "DirectGain");
-    if (node.kind == MaterialNodeKind::MultiRampDiffuse) {
-      drawParameter("parameter.rampRow", "Ramp Row", "RampRow");
-      drawParameter("parameter.rampBlend", "Ramp Blend", "RampBlend");
-    }
+    capturesPointer = DrawMaterialGraphRampNodeInlineControls(
+        scene, source, graph, node, width) || capturesPointer;
   } else if (node.kind == MaterialNodeKind::PbrSurface) {
+    ImGui::SeparatorText("Surface");
     drawParameter("parameter.baseColor", "Base Color", "BaseColor");
-    drawTexture("resource.baseColor", "Base Texture", "BaseColor");
     drawParameter("parameter.metallic", "Metallic", "Metallic");
     drawParameter("parameter.roughness", "Roughness", "Roughness");
-    drawTexture("resource.metallicRoughness", "Metal/Rough", "Metallic");
-    drawTexture("resource.normal", "Normal", "Normal");
-    drawParameter("parameter.normalScale", "Normal Scale");
-    drawParameter("parameter.occlusionStrength", "Occlusion", "Occlusion");
-    drawTexture("resource.occlusion", "Occlusion Map", "Occlusion");
     drawParameter("parameter.specular", "Specular", "Specular");
     drawParameter("parameter.specularColor", "Specular Color", "SpecularColor");
-    drawTexture("resource.specular", "Specular Map", "Specular");
-    drawTexture("resource.specularColor", "Spec Color Map", "SpecularColor");
+    drawParameter("parameter.normalScale", "Normal Scale");
+    drawParameter("parameter.occlusionStrength", "Occlusion", "Occlusion");
+    ImGui::SeparatorText("Emission");
     drawParameter("parameter.emissive", "Emission", "Emissive");
     drawParameter("parameter.emissiveStrength", "Emission Power");
-    drawTexture("resource.emissive", "Emission Map", "Emissive");
+    ImGui::TextDisabled("Use Texture Sample nodes for every image input.");
   } else if (node.kind == MaterialNodeKind::SurfaceOutput) {
-    ImGui::TextDisabled("Mesh Shader Surface");
+    ImGui::SeparatorText("Mesh Shader Surface");
+    int alphaMode = static_cast<int>(source.surface.alphaMode);
+    constexpr const char* kAlphaModes[]{"Opaque", "Mask", "Blend"};
+    ImGui::SetNextItemWidth(width);
+    if (ImGui::Combo("##SurfaceAlphaMode", &alphaMode, kAlphaModes, 3)) {
+      MaterialAssetData before = source;
+      source.surface.alphaMode = static_cast<MaterialAlphaMode>(alphaMode);
+      CommitMaterialMutation(std::move(before), "Change surface alpha mode", scene);
+    }
+    trackItem();
+    if (source.surface.alphaMode == MaterialAlphaMode::Mask) {
+      ImGui::TextUnformatted("Alpha Cutoff");
+      ImGui::SetNextItemWidth(width);
+      MaterialAssetData before = source;
+      const bool changed = ImGui::SliderFloat(
+          "##SurfaceAlphaCutoff", &source.surface.alphaCutoff,
+          0.0f, 1.0f, "%.3f");
+      trackItem();
+      commitContinuous(
+          std::move(before), "Edit surface alpha cutoff", changed);
+    } else if (source.surface.alphaMode == MaterialAlphaMode::Blend) {
+      ImGui::TextUnformatted("Source Color");
+      int representation = static_cast<int>(source.surface.alphaRepresentation);
+      constexpr const char *kRepresentations[]{"Straight", "Premultiplied"};
+      ImGui::SetNextItemWidth(width);
+      if (ImGui::Combo("##SurfaceAlphaRepresentation", &representation, kRepresentations, 2)) {
+        MaterialAssetData before = source;
+        source.surface.alphaRepresentation = static_cast<MaterialAlphaRepresentation>(representation);
+        CommitMaterialMutation(std::move(before), "Change alpha representation", scene);
+      }
+      trackItem();
+      ImGui::TextWrapped(source.surface.alphaRepresentation ==
+              MaterialAlphaRepresentation::Premultiplied
+              ? "Advanced: source pixels already contain RGB *= Alpha. "
+                "Ordinary PNG/FBX eye overlays are usually not premultiplied."
+              : "Recommended for ordinary PNG/FBX textures and eye overlays. "
+                "The renderer premultiplies the lit result at output.");
+    }
+    MaterialAssetData before = source;
+    if (ImGui::Checkbox("Double Sided", &source.surface.doubleSided)) {
+      CommitMaterialMutation(
+          std::move(before), "Toggle double-sided surface", scene);
+    }
+    trackItem();
   } else if (node.kind == MaterialNodeKind::SpecularBand) {
     drawParameter("parameter.specularBandWidth", "Width", "Width");
     drawParameter("parameter.specularBandSoftness", "Softness", "Softness");
@@ -376,55 +358,88 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
   } else if (node.kind == MaterialNodeKind::FaceSdf) {
     capturesPointer = DrawFaceRampNodeControl(
         scene, source, graph, width) || capturesPointer;
-    drawTexture("resource.faceSdf", "Face SDF", "SDF");
-    ImGui::TextDisabled("Linear mirrored SDF in R; face basis is model-local.");
+    ImGui::TextDisabled("Required: Texture Sample R -> SDF (linear mirrored SDF).");
+    MaterialGraphParameterData *faceRight =
+        MATERIAL_GRAPH_UI::FindParameter(graph, "parameter.faceRight");
+    MaterialGraphParameterData *faceForward =
+        MATERIAL_GRAPH_UI::FindParameter(graph, "parameter.faceForward");
+    if (faceRight != nullptr && faceForward != nullptr) {
+      const MATH::Vec4 current = faceForward->defaultValue.numeric;
+      int forwardAxis = std::abs(current.z) >= std::abs(current.x)
+          ? (current.z >= 0.0f ? 0 : 1)
+          : (current.x >= 0.0f ? 2 : 3);
+      constexpr const char *kForwardAxes[]{"+Z", "-Z", "+X", "-X"};
+      ImGui::SetNextItemWidth(width);
+      if (ImGui::Combo("##FaceForwardAxis", &forwardAxis,
+                       kForwardAxes, 4)) {
+        MaterialAssetData before = source;
+        constexpr MATH::Vec4 kForward[]{
+            {0.0f, 0.0f, 1.0f, 0.0f},
+            {0.0f, 0.0f, -1.0f, 0.0f},
+            {1.0f, 0.0f, 0.0f, 0.0f},
+            {-1.0f, 0.0f, 0.0f, 0.0f},
+        };
+        constexpr MATH::Vec4 kRight[]{
+            {1.0f, 0.0f, 0.0f, 0.0f},
+            {-1.0f, 0.0f, 0.0f, 0.0f},
+            {0.0f, 0.0f, -1.0f, 0.0f},
+            {0.0f, 0.0f, 1.0f, 0.0f},
+        };
+        faceForward->defaultValue.numeric = kForward[forwardAxis];
+        faceRight->defaultValue.numeric = kRight[forwardAxis];
+        CommitMaterialMutation(std::move(before),
+                               "Change Face SDF head forward axis", scene);
+      }
+      trackItem();
+    }
     drawParameter("parameter.faceShadowSoftness", "Softness", "Softness");
     drawParameter("parameter.toonDirectGain", "Direct Gain", "DirectGain");
     drawParameter("parameter.faceShadowOffset", "Offset");
   } else if (node.kind == MaterialNodeKind::AnisotropicHair) {
-    const char* hairResource =
-        MATERIAL_GRAPH_UI::FindGraphResource(graph, "resource.hairControl")
-            ? "resource.hairControl" : "resource.strandMask";
-    drawTexture(hairResource, "Hair Control", "Mask");
-    const MaterialGraphResourceData* hairControl =
-        MATERIAL_GRAPH_UI::FindGraphResource(graph, hairResource);
-    ImGui::TextDisabled(
-        hairControl != nullptr && hairControl->assetGuid.IsValid()
-            ? "RG flow | B mask | A per-strand shift"
-            : "No control map: uses mesh tangent fallback");
+    ImGui::SeparatorText("Strand Direction");
+    ImGui::TextDisabled("Optional HairControl Texture Sample B -> Mask.");
+    ImGui::TextDisabled("No map uses mesh tangent; RG flow and A shift specialize it.");
+    ImGui::SeparatorText("Dual Kajiya-Kay Lobes");
     drawParameter("parameter.hairShift", "Shift", "Shift");
     drawParameter("parameter.hairWidth", "Width", "Width");
     drawParameter("parameter.hairSecondaryShift", "Second Shift");
     drawParameter("parameter.hairIntensity", "Intensity");
+    drawParameter("parameter.hairPrimaryPower", "Primary Sharpness",
+                  "PrimaryPower");
+    drawParameter("parameter.hairSecondaryPower", "Second Sharpness",
+                  "SecondaryPower");
+    drawParameter("parameter.hairSecondaryIntensity", "Second Intensity",
+                  "SecondaryIntensity");
+    drawParameter("parameter.hairFlowStrength", "Flow Strength",
+                  "FlowStrength");
     const char* hairTint =
         MATERIAL_GRAPH_UI::FindParameter(graph, "parameter.hairHighlightTint")
             ? "parameter.hairHighlightTint" : "parameter.specularTint";
     drawParameter(hairTint, "Tint");
   } else if (node.kind == MaterialNodeKind::MatCap) {
-    drawTexture("resource.matCap", "MatCap");
+    ImGui::TextDisabled("Required: MatCap Texture Sample Color -> Image.");
     drawParameter("parameter.matCapTint", "Tint");
     drawParameter("parameter.matCapIntensity", "Intensity");
+    drawParameter("parameter.matCapViewCorrection", "View Correction");
+    drawParameter("parameter.matCapSphericalNormalBlend", "Eye Sphere Normal");
   } else if (node.kind == MaterialNodeKind::EyeLighting) {
-    const char* eyeResource =
-        MATERIAL_GRAPH_UI::FindGraphResource(graph, "resource.eyeControl")
-            ? "resource.eyeControl" : "resource.irisMask";
-    drawTexture(eyeResource, "Eye Control", "Mask");
-    ImGui::TextDisabled("Linear: R iris | G cornea | B catchlight | A depth");
-    drawParameter("parameter.irisDepth", "Iris Depth");
-    drawParameter("parameter.eyeSparkle", "Catchlight");
-    drawParameter("parameter.eyeSparklePower", "Cornea Power");
+    capturesPointer = DrawEyeLightingNodeInlineControls(scene, source, graph, width) || capturesPointer;
+  } else if (node.kind == MaterialNodeKind::CorneaHighlight) {
+    capturesPointer = DrawCorneaHighlightNodeInlineControls(
+        scene, source, graph, width) || capturesPointer;
   } else if (node.kind == MaterialNodeKind::SkinLighting) {
-    drawTexture("resource.thicknessMask", "Thickness", "Mask");
+    ImGui::TextDisabled("Optional Thickness Texture Sample R -> Mask.");
     drawParameter("parameter.skinWrap", "Light Wrap", "Wrap");
     drawParameter("parameter.skinSubsurface", "Subsurface", "Subsurface");
     drawParameter("parameter.skinTint", "Scatter Tint", "Tint");
   } else if (node.kind == MaterialNodeKind::FabricSheen) {
-    drawTexture("resource.fabricMask", "Fabric Mask", "Mask");
+    ImGui::TextDisabled("Optional Fabric Texture Sample B -> Mask.");
     drawParameter("parameter.fabricSheen", "Sheen", "Sheen");
     drawParameter("parameter.fiberRoughness", "Roughness", "FiberRoughness");
     drawParameter("parameter.fabricSheenPower", "Power", "Power");
     drawParameter("parameter.fabricSheenIntensity", "Intensity", "Intensity");
   } else if (node.kind == MaterialNodeKind::HybridLighting) {
+    ImGui::TextDisabled("0 = NPR endpoint | 1 = PBR endpoint");
     drawParameter("parameter.directDiffusePbrBlend", "Diffuse PBR", "DirectDiffuseBlend");
     drawParameter("parameter.directSpecularPbrBlend", "Specular PBR", "DirectSpecularBlend");
     drawParameter("parameter.indirectPbrBlend", "Indirect PBR", "IndirectBlend");
@@ -445,21 +460,26 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
       if (current != 1) {
         drawParameter("parameter.outlineColor", "Color", "Color");
         drawParameter("parameter.outlineThickness", "Thickness", "Thickness");
+        ImGui::TextDisabled(
+            MESHRENDERER::HasGeometryOutlineFeatureBackend()
+                ? "Geometry backend: ready (closed meshes work best)"
+                : "Geometry backend: unavailable; check renderer diagnostics");
       }
       if (current != 0) {
-        ImGui::TextDisabled("Screen style: View Outline Profile");
+        ImGui::TextDisabled(
+            "Screen outline uses the View profile and supports hair cards.");
       }
     }
   } else if (node.kind == MaterialNodeKind::HairShadow) {
-    drawTexture("resource.hairShadow", "Hair Shadow R", "ShadowMask");
-    ImGui::TextDisabled("Linear R: 1 lit visibility | 0 hair shadow");
+    ImGui::TextDisabled("Required: HairShadow Texture Sample R -> ShadowMask.");
+    ImGui::TextDisabled("Linear R: 1 lit visibility | 0 hair shadow.");
     drawParameter(
         "parameter.hairShadowStrength", "Strength", "Strength");
   }
-
   ImGui::PopItemWidth();
   ImGui::EndGroup();
   ImGui::PopClipRect();
+  ImGui::PopStyleVar(2);
   capturesPointer = capturesPointer || ImGui::IsItemHovered();
   ImGui::PopID();
   ImGui::SetCursorScreenPos(restore);

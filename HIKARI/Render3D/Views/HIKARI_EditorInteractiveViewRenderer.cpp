@@ -271,9 +271,57 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
             return view.gpu;
         }
 
-        void InvalidateOutput(InteractiveViewState& state) {
+        void SetOutputStatus(
+            InteractiveViewState& state,
+            EditorInteractiveViewStatus status,
+            EditorInteractiveViewFailure failure =
+                EditorInteractiveViewFailure::None) {
             state.output.colorSrv = {};
             state.output.ready = false;
+            state.output.status = status;
+            state.output.failure = failure;
+            state.output.sceneRevision = state.request.sceneRevision;
+        }
+
+        void FailOutput(
+            InteractiveViewState& state,
+            EditorInteractiveViewFailure failure) {
+            SetOutputStatus(
+                state,
+                EditorInteractiveViewStatus::Failed,
+                failure);
+        }
+
+        EditorInteractiveViewFailure ToViewFailure(
+            MESHRENDERER::EditorInteractiveMeshRenderResult result) {
+
+            using MeshResult =
+                MESHRENDERER::EditorInteractiveMeshRenderResult;
+            switch (result) {
+            case MeshResult::RendererUnavailable:
+                return EditorInteractiveViewFailure::
+                    MeshRendererUnavailable;
+            case MeshResult::MaterialFrameUnavailable:
+                return EditorInteractiveViewFailure::
+                    MaterialFrameUnavailable;
+            case MeshResult::FrameResourcesUnavailable:
+                return EditorInteractiveViewFailure::
+                    FrameResourcesUnavailable;
+            case MeshResult::SceneResidencyUnavailable:
+                return EditorInteractiveViewFailure::
+                    SceneResidencyUnavailable;
+            case MeshResult::StylizedSurfacePassFailed:
+                return EditorInteractiveViewFailure::
+                    StylizedSurfacePassFailed;
+            case MeshResult::ForwardPassFailed:
+                return EditorInteractiveViewFailure::ForwardPassFailed;
+            case MeshResult::StylizedGeometryPassFailed:
+                return EditorInteractiveViewFailure::
+                    StylizedGeometryPassFailed;
+            case MeshResult::Ready:
+            default:
+                return EditorInteractiveViewFailure::None;
+            }
         }
 
         std::array<float, 4> ResolveClearColor(
@@ -478,6 +526,14 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
 
     void SubmitRequest(const EditorInteractiveViewRequest& request) {
         InteractiveViewState& state = FindOrCreateState(request.viewId);
+        const bool requestChanged = !state.hasRequest ||
+            state.request.sceneRevision != request.sceneRevision ||
+            state.request.sceneSourceOverride !=
+                request.sceneSourceOverride ||
+            state.request.width != request.width ||
+            state.request.height != request.height ||
+            state.request.spatialAntiAliasing !=
+                request.spatialAntiAliasing;
         if (state.hasRequest &&
             state.request.sceneSourceOverride != request.sceneSourceOverride) {
             MESHRENDERER::ReleaseEditorInteractiveSceneSource(
@@ -495,6 +551,11 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         }
         state.output.viewId = request.viewId;
         state.hasRequest = true;
+        if (requestChanged) {
+            SetOutputStatus(
+                state,
+                EditorInteractiveViewStatus::Pending);
+        }
     }
 
     void ClearRequest(RenderViewId viewId) {
@@ -505,7 +566,9 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         MESHRENDERER::ReleaseEditorInteractiveSceneSource(
             found->second->request.sceneSourceOverride);
         found->second->hasRequest = false;
-        InvalidateOutput(*found->second);
+        SetOutputStatus(
+            *found->second,
+            EditorInteractiveViewStatus::Idle);
     }
 
     bool RenderPending(
@@ -525,7 +588,11 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
             if (!IsRenderableRequest(
                     state->request,
                     currentSceneRevision)) {
-                InvalidateOutput(*state);
+                SetOutputStatus(
+                    *state,
+                    state->request.visible
+                        ? EditorInteractiveViewStatus::Pending
+                        : EditorInteractiveViewStatus::Idle);
                 continue;
             }
             ++renderableViewCount;
@@ -569,7 +636,9 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
             height == 0 ||
             !EnsureTarget(*selected, width, height,
                           selected->request.spatialAntiAliasing)) {
-            InvalidateOutput(*selected);
+            FailOutput(
+                *selected,
+                EditorInteractiveViewFailure::RenderTargetUnavailable);
             return false;
         }
 
@@ -599,12 +668,25 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
                 : MESHRENDERER::GetActiveGpuDrivenSceneSource();
         const EditorInteractiveStylizedPreparation stylizedPreparation =
             selected->stylizedView.Prepare(sceneSource);
-        const IBL::IblEnvironmentSource* iblEnvironmentOverride = nullptr;
+        // An authored preview environment is an isolation boundary.  A null
+        // override means "use the process-global runtime IBL", which leaked
+        // whichever scene/probe set rendered previously into material views.
+        // Bind an explicit empty set first, then replace it only with the
+        // complete DefaultSky set requested by Studio Inspect.
+        const IBL::IblEnvironmentSource emptyIblEnvironment{};
+        const IBL::IblEnvironmentSource* iblEnvironmentOverride =
+            selected->request.environmentOverride != nullptr
+                ? &emptyIblEnvironment
+                : nullptr;
         if (selected->request.useDefaultSkyIbl) {
-            (void)LIGHTING::EnsureDefaultSkyEnvironmentAvailable(
+            const LIGHTING::DefaultSkyEnvironmentResult defaultSky =
+                LIGHTING::EnsureDefaultSkyEnvironmentAvailable(
                 skyManager);
-            iblEnvironmentOverride =
-                &LIGHTING::GetDefaultSkyIblSource();
+            const IBL::IblEnvironmentSource& source =
+                LIGHTING::GetDefaultSkyIblSource();
+            if (defaultSky.iblLoaded && source.IsComplete()) {
+                iblEnvironmentOverride = &source;
+            }
         }
         SKYRENDERER::Render(
             GFX::GetCurrentContext(),
@@ -619,7 +701,7 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
                 stylizedPreparation);
         renderSettings.iblEnvironmentOverride =
             iblEnvironmentOverride;
-        const bool meshRendered =
+        const MESHRENDERER::EditorInteractiveMeshRenderResult meshResult =
             MESHRENDERER::RenderEditorInteractiveOpaque(
                 view,
                 effectiveEnvironment,
@@ -636,9 +718,12 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         }
         selected->target->EndCapture();
 
-        if (!meshRendered) {
+        if (meshResult !=
+            MESHRENDERER::EditorInteractiveMeshRenderResult::Ready) {
             (void)POST::PostSystem::RebindCurrentRenderTarget();
-            InvalidateOutput(*selected);
+            FailOutput(
+                *selected,
+                ToViewFailure(meshResult));
             return false;
         }
 
@@ -655,7 +740,9 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
                 stylizedPreparation,
                 displaySource)) {
             (void)POST::PostSystem::RebindCurrentRenderTarget();
-            InvalidateOutput(*selected);
+            FailOutput(
+                *selected,
+                EditorInteractiveViewFailure::StylizedResolveFailed);
             return false;
         }
 
@@ -665,7 +752,9 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
                 effectiveEnvironment,
                 *displaySource)) {
             (void)POST::PostSystem::RebindCurrentRenderTarget();
-            InvalidateOutput(*selected);
+            FailOutput(
+                *selected,
+                EditorInteractiveViewFailure::DisplayResolveFailed);
             return false;
         }
 
@@ -681,7 +770,9 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         (void)POST::PostSystem::RebindCurrentRenderTarget();
 
         if (colorSrv.ptr == 0) {
-            InvalidateOutput(*selected);
+            FailOutput(
+                *selected,
+                EditorInteractiveViewFailure::OutputDescriptorUnavailable);
             return false;
         }
 
@@ -698,6 +789,8 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
             selected->output.outputRevision = 1;
         }
         selected->output.ready = true;
+        selected->output.status = EditorInteractiveViewStatus::Ready;
+        selected->output.failure = EditorInteractiveViewFailure::None;
         return true;
     }
 
@@ -709,6 +802,37 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
             return output;
         }
         return found->second->output;
+    }
+
+    std::string_view GetEditorInteractiveViewFailureMessage(
+        EditorInteractiveViewFailure failure) noexcept {
+        switch (failure) {
+        case EditorInteractiveViewFailure::RenderTargetUnavailable:
+            return "Preview failed: render target unavailable";
+        case EditorInteractiveViewFailure::MeshRendererUnavailable:
+            return "Preview failed: mesh renderer unavailable";
+        case EditorInteractiveViewFailure::MaterialFrameUnavailable:
+            return "Preview waiting: material frame unavailable";
+        case EditorInteractiveViewFailure::FrameResourcesUnavailable:
+            return "Preview failed: frame resources unavailable";
+        case EditorInteractiveViewFailure::SceneResidencyUnavailable:
+            return "Preview waiting: model GPU residency incomplete";
+        case EditorInteractiveViewFailure::StylizedSurfacePassFailed:
+            return "Preview failed: NPR surface-mask pass";
+        case EditorInteractiveViewFailure::ForwardPassFailed:
+            return "Preview failed: no executable forward material partition";
+        case EditorInteractiveViewFailure::StylizedGeometryPassFailed:
+            return "Preview failed: outline geometry subpass";
+        case EditorInteractiveViewFailure::StylizedResolveFailed:
+            return "Preview failed: NPR / outline resolve";
+        case EditorInteractiveViewFailure::DisplayResolveFailed:
+            return "Preview failed: display resolve";
+        case EditorInteractiveViewFailure::OutputDescriptorUnavailable:
+            return "Preview failed: output descriptor unavailable";
+        case EditorInteractiveViewFailure::None:
+        default:
+            return "Preview failed: unknown renderer error";
+        }
     }
 
     EditorInteractiveSchedulerStats GetSchedulerStats() {

@@ -4,6 +4,8 @@
 #include <cctype>
 
 #include "Assets/Material/Compiler/HIKARI_MaterialRampRasterizer.h"
+#include "Assets/Material/Graph/HIKARI_MaterialNodeDefinition.h"
+#include "Assets/Material/Graph/HIKARI_MaterialGraphValidation.h"
 
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
@@ -21,98 +23,30 @@ MaterialGraphData *EditableGraph(MaterialAssetData &source) noexcept {
   return nullptr;
 }
 
-std::vector<std::string_view> OutputPins(MaterialNodeKind kind) {
-  switch (kind) {
-  case MaterialNodeKind::Constant:
-  case MaterialNodeKind::Parameter:
-    return {"Value"};
-  case MaterialNodeKind::TextureSample:
-    return {"Color", "RGB", "R", "G", "B", "A", "Alpha"};
-  case MaterialNodeKind::PbrSurface:
-    return {"Surface"};
-  case MaterialNodeKind::RampDiffuse:
-  case MaterialNodeKind::MultiRampDiffuse:
-  case MaterialNodeKind::SpecularBand:
-  case MaterialNodeKind::AnisotropicHair:
-  case MaterialNodeKind::FaceSdf:
-  case MaterialNodeKind::SkinLighting:
-  case MaterialNodeKind::HybridLighting:
-  case MaterialNodeKind::HairShadow:
-    return {"Response"};
-  case MaterialNodeKind::Outline:
-    return {"Response"};
-  case MaterialNodeKind::FresnelRim:
-  case MaterialNodeKind::MatCap:
-  case MaterialNodeKind::EyeLighting:
-  case MaterialNodeKind::FabricSheen:
-    return {"Color"};
-  case MaterialNodeKind::SurfaceOutput:
-    return {};
-  default:
-    return {"Result"};
-  }
+std::vector<std::string_view> OutputPins(const MaterialNodeTypeId& typeId) {
+  return GetMaterialGraphNodeOutputPins(typeId);
 }
 
-std::vector<std::string_view> InputPins(MaterialNodeKind kind) {
-  switch (kind) {
-  case MaterialNodeKind::Add:
-  case MaterialNodeKind::Multiply:
-  case MaterialNodeKind::Dot:
-    return {"A", "B"};
-  case MaterialNodeKind::Lerp:
-    return {"A", "B", "Alpha"};
-  case MaterialNodeKind::Clamp:
-    return {"Value", "Min", "Max"};
-  case MaterialNodeKind::Saturate:
-  case MaterialNodeKind::OneMinus:
-    return {"Value"};
-  case MaterialNodeKind::Power:
-    return {"Base", "Exponent"};
-  case MaterialNodeKind::NormalUnpack:
-    return {"PackedNormal"};
-  case MaterialNodeKind::PbrSurface:
-    return {"BaseColor", "Normal", "Metallic", "Roughness", "Occlusion",
-            "Emissive", "Specular", "SpecularColor", "DiffuseResponse",
-            "SpecularResponse", "Additive", "Outline"};
-  case MaterialNodeKind::RampDiffuse:
-    return {"ShadowThreshold", "ShadowSoftness", "MidThreshold",
-            "ShadowTint", "MidTint", "LitTint", "MaskInfluence",
-            "Intensity", "DirectGain", "Mask"};
-  case MaterialNodeKind::MultiRampDiffuse:
-    return {"ShadowThreshold", "ShadowSoftness", "MidThreshold",
-            "ShadowTint", "MidTint", "LitTint", "RampRow",
-            "MaskInfluence", "RampBlend", "Intensity", "DirectGain",
-            "Mask"};
-  case MaterialNodeKind::SpecularBand:
-    return {"Width", "Softness", "Intensity", "Power", "Tint"};
-  case MaterialNodeKind::FresnelRim:
-    return {"Power", "Width", "Color", "Intensity", "LightAlignment"};
-  case MaterialNodeKind::MatCap:
-    return {"Mask"};
-  case MaterialNodeKind::AnisotropicHair:
-    return {"Shift", "Width", "Mask"};
-  case MaterialNodeKind::FaceSdf:
-    return {"Softness", "DirectGain"};
-  case MaterialNodeKind::EyeLighting:
-    return {"Mask"};
-  case MaterialNodeKind::SkinLighting:
-    return {"DiffuseResponse", "Wrap", "Subsurface", "Tint", "Mask"};
-  case MaterialNodeKind::FabricSheen:
-    return {"Sheen", "FiberRoughness", "Power", "Intensity", "Mask"};
-  case MaterialNodeKind::HybridLighting:
-    return {"DiffuseResponse", "DirectDiffuseBlend",
-            "DirectSpecularBlend", "IndirectBlend"};
-  case MaterialNodeKind::Outline:
-    return {"Color", "Thickness"};
-  case MaterialNodeKind::HairShadow:
-    return {"DiffuseResponse", "ShadowMask", "Strength"};
-  case MaterialNodeKind::SurfaceOutput:
-    return {"Surface"};
-  case MaterialNodeKind::FunctionCall:
-    return {"Input"};
-  default:
-    return {};
-  }
+std::vector<std::string_view> OutputPins(const MaterialGraphNodeData& node) {
+  return GetMaterialGraphNodeOutputPins(node);
+}
+
+std::vector<std::string_view> InputPins(const MaterialNodeTypeId& typeId) {
+  std::vector<std::string_view> pins =
+      GetMaterialGraphNodeInputPins(typeId);
+  std::erase_if(pins, [&typeId](std::string_view pin) {
+    return IsRuntimeDrivenInput(typeId, pin);
+  });
+  return pins;
+}
+
+std::vector<std::string_view> InputPins(const MaterialGraphNodeData& node) {
+  std::vector<std::string_view> pins =
+      GetMaterialGraphNodeInputPins(node);
+  std::erase_if(pins, [&node](std::string_view pin) {
+    return IsRuntimeDrivenInput(node.kind, pin);
+  });
+  return pins;
 }
 
 const MaterialGraphNodeData *FindNode(const MaterialGraphData &graph,
@@ -182,29 +116,21 @@ constexpr uint32_t PackColor(uint32_t red, uint32_t green,
 }
 } // namespace
 
-uint32_t NodeHeaderColor(MaterialNodeKind kind) noexcept {
-  switch (kind) {
-  case MaterialNodeKind::PbrSurface:
-  case MaterialNodeKind::SurfaceOutput:
+uint32_t NodeHeaderColor(const MaterialNodeTypeId& typeId) noexcept {
+  const MaterialNodeDefinition* definition =
+      FindMaterialNodeDefinition(typeId);
+  if (definition == nullptr) {
+    return PackColor(83u, 74u, 56u);
+  }
+  switch (definition->semanticClass) {
+  case MaterialNodeSemanticClass::Surface:
     return PackColor(92u, 66u, 142u);
-  case MaterialNodeKind::RampDiffuse:
-  case MaterialNodeKind::MultiRampDiffuse:
-  case MaterialNodeKind::SpecularBand:
-  case MaterialNodeKind::FresnelRim:
-  case MaterialNodeKind::MatCap:
-  case MaterialNodeKind::AnisotropicHair:
-  case MaterialNodeKind::FaceSdf:
-  case MaterialNodeKind::EyeLighting:
-  case MaterialNodeKind::SkinLighting:
-  case MaterialNodeKind::FabricSheen:
-  case MaterialNodeKind::HybridLighting:
-  case MaterialNodeKind::Outline:
-  case MaterialNodeKind::HairShadow:
+  case MaterialNodeSemanticClass::Shading:
     return PackColor(40u, 112u, 126u);
-  case MaterialNodeKind::TextureSample:
-  case MaterialNodeKind::Parameter:
-  case MaterialNodeKind::Constant:
+  case MaterialNodeSemanticClass::Input:
     return PackColor(86u, 94u, 108u);
+  case MaterialNodeSemanticClass::Math:
+  case MaterialNodeSemanticClass::Function:
   default:
     return PackColor(83u, 74u, 56u);
   }
@@ -216,7 +142,8 @@ uint32_t PinColor(std::string_view pin) noexcept {
     return PackColor(255u, 166u, 76u);
   }
   if (pin == "Outline") return PackColor(244u, 118u, 143u);
-  if (pin == "Color" || pin == "RGB" || pin == "Additive" ||
+  if (pin == "Color" || pin == "RGB" || pin == "Eye" ||
+      pin == "Control" || pin == "Additive" ||
       pin == "Emissive" || pin == "BaseColor" || pin == "SpecularColor") {
     return PackColor(109u, 208u, 232u);
   }
@@ -232,44 +159,65 @@ std::string PinKey(std::string_view nodeId, std::string_view pin) {
   return key;
 }
 
-float NodeInlineHeight(MaterialNodeKind kind) noexcept {
+NodeInlineLayoutSpec ResolveNodeInlineLayoutSpec(
+    const MaterialNodeTypeId& typeId) noexcept {
+  MaterialNodeKind kind{};
+  if (!TryGetLegacyMaterialNodeKind(typeId, kind)) {
+    return {};
+  }
   switch (kind) {
   case MaterialNodeKind::Parameter:
-    return 52.0f;
+    return {2u, 0.0f};
   case MaterialNodeKind::Constant:
-    return 34.0f;
+    return {1u, 0.0f};
   case MaterialNodeKind::TextureSample:
-    return 58.0f;
+    return {5u, 20.0f};
   case MaterialNodeKind::RampDiffuse:
-    return 334.0f;
+    return {11u, 68.0f};
   case MaterialNodeKind::MultiRampDiffuse:
-    return 382.0f;
+    return {17u, 104.0f};
   case MaterialNodeKind::PbrSurface:
-    return 515.0f;
+    return {8u, 58.0f};
   case MaterialNodeKind::SurfaceOutput:
-    return 26.0f;
+    return {7u, 0.0f};
   case MaterialNodeKind::SpecularBand:
   case MaterialNodeKind::FresnelRim:
-    return 136.0f;
+    return {5u, 0.0f};
   case MaterialNodeKind::FaceSdf:
   case MaterialNodeKind::FabricSheen:
-    return kind == MaterialNodeKind::FaceSdf ? 276.0f : 154.0f;
+    return kind == MaterialNodeKind::FaceSdf
+        ? NodeInlineLayoutSpec{7u, 88.0f}
+        : NodeInlineLayoutSpec{6u, 0.0f};
   case MaterialNodeKind::AnisotropicHair:
-    return 200.0f;
+    return {13u, 48.0f};
   case MaterialNodeKind::MatCap:
-    return 102.0f;
+    return {6u, 0.0f};
   case MaterialNodeKind::EyeLighting:
+  case MaterialNodeKind::CorneaHighlight:
   case MaterialNodeKind::SkinLighting:
-    return kind == MaterialNodeKind::EyeLighting ? 148.0f : 126.0f;
+    return kind == MaterialNodeKind::EyeLighting
+        ? NodeInlineLayoutSpec{20u, 0.0f}
+        : kind == MaterialNodeKind::CorneaHighlight
+        ? NodeInlineLayoutSpec{12u, 24.0f}
+        : NodeInlineLayoutSpec{5u, 0.0f};
   case MaterialNodeKind::HybridLighting:
-    return 84.0f;
+    return {4u, 0.0f};
   case MaterialNodeKind::Outline:
-    return 112.0f;
+    return {5u, 0.0f};
   case MaterialNodeKind::HairShadow:
-    return 96.0f;
+    return {4u, 0.0f};
   default:
+    return {};
+  }
+}
+
+float NodeInlineHeight(const MaterialNodeTypeId& typeId) noexcept {
+  const NodeInlineLayoutSpec spec = ResolveNodeInlineLayoutSpec(typeId);
+  if (spec.rowCount == 0u && spec.fixedHeight == 0.0f) {
     return 0.0f;
   }
+  return static_cast<float>(spec.rowCount) * kInlineControlRowHeight +
+         spec.fixedHeight + kInlineControlSafetyPadding;
 }
 
 bool PinHasConnection(const MaterialGraphData &graph,
@@ -287,8 +235,8 @@ bool PinHasConnection(const MaterialGraphData &graph,
 float NodeLogicalHeight(const MaterialGraphData &graph,
                         const MaterialGraphNodeData &node,
                         bool collapsed) {
-  std::vector<std::string_view> inputs = InputPins(node.kind);
-  std::vector<std::string_view> outputs = OutputPins(node.kind);
+  std::vector<std::string_view> inputs = InputPins(node);
+  std::vector<std::string_view> outputs = OutputPins(node);
   if (collapsed) {
     std::erase_if(inputs, [&](std::string_view pin) {
       return !PinHasConnection(graph, node.id, pin, false);
@@ -385,70 +333,30 @@ void DrawRampStrip(const MaterialRampData &ramp, float width, float height) {
 #endif
 }
 
-MaterialValueType DefaultNodeValueType(MaterialNodeKind kind) noexcept {
-  switch (kind) {
-  case MaterialNodeKind::PbrSurface:
-  case MaterialNodeKind::SurfaceOutput:
-    return MaterialValueType::Surface;
-  case MaterialNodeKind::RampDiffuse:
-  case MaterialNodeKind::MultiRampDiffuse:
-  case MaterialNodeKind::FaceSdf:
-  case MaterialNodeKind::SkinLighting:
-  case MaterialNodeKind::HybridLighting:
-  case MaterialNodeKind::HairShadow:
-    return MaterialValueType::DiffuseResponse;
-  case MaterialNodeKind::Outline:
-    return MaterialValueType::OutlineResponse;
-  case MaterialNodeKind::SpecularBand:
-  case MaterialNodeKind::AnisotropicHair:
-    return MaterialValueType::SpecularResponse;
-  case MaterialNodeKind::FresnelRim:
-  case MaterialNodeKind::MatCap:
-  case MaterialNodeKind::EyeLighting:
-  case MaterialNodeKind::NormalUnpack:
-  case MaterialNodeKind::FabricSheen:
-    return MaterialValueType::Float3;
-  case MaterialNodeKind::TextureSample:
-    return MaterialValueType::Float4;
-  default:
-    return MaterialValueType::Float1;
-  }
+MaterialValueType DefaultNodeValueType(
+    const MaterialNodeTypeId& typeId) noexcept {
+  const MaterialNodeDefinition* definition =
+      FindMaterialNodeDefinition(typeId);
+  return definition == nullptr ? MaterialValueType::Float1
+                               : definition->defaultValueType;
 }
 
-std::string_view NodeCategory(MaterialNodeKind kind) noexcept {
-  switch (kind) {
-  case MaterialNodeKind::Constant:
-  case MaterialNodeKind::Parameter:
-  case MaterialNodeKind::TextureSample:
+std::string_view NodeCategory(const MaterialNodeTypeId& typeId) noexcept {
+  const MaterialNodeDefinition* definition =
+      FindMaterialNodeDefinition(typeId);
+  if (definition == nullptr) {
+    return "Other";
+  }
+  switch (definition->semanticClass) {
+  case MaterialNodeSemanticClass::Input:
     return "Advanced / Inputs";
-  case MaterialNodeKind::Add:
-  case MaterialNodeKind::Multiply:
-  case MaterialNodeKind::Lerp:
-  case MaterialNodeKind::Clamp:
-  case MaterialNodeKind::Saturate:
-  case MaterialNodeKind::OneMinus:
-  case MaterialNodeKind::Power:
-  case MaterialNodeKind::Dot:
-  case MaterialNodeKind::NormalUnpack:
+  case MaterialNodeSemanticClass::Math:
     return "Advanced / Math & Masks";
-  case MaterialNodeKind::PbrSurface:
-  case MaterialNodeKind::SurfaceOutput:
+  case MaterialNodeSemanticClass::Surface:
     return "Surface";
-  case MaterialNodeKind::RampDiffuse:
-  case MaterialNodeKind::MultiRampDiffuse:
-  case MaterialNodeKind::SpecularBand:
-  case MaterialNodeKind::FresnelRim:
-  case MaterialNodeKind::MatCap:
-  case MaterialNodeKind::AnisotropicHair:
-  case MaterialNodeKind::FaceSdf:
-  case MaterialNodeKind::EyeLighting:
-  case MaterialNodeKind::SkinLighting:
-  case MaterialNodeKind::FabricSheen:
-  case MaterialNodeKind::HybridLighting:
-  case MaterialNodeKind::Outline:
-  case MaterialNodeKind::HairShadow:
+  case MaterialNodeSemanticClass::Shading:
     return "Ready-made Shading";
-  case MaterialNodeKind::FunctionCall:
+  case MaterialNodeSemanticClass::Function:
     return "Functions";
   }
   return "Other";

@@ -25,7 +25,8 @@ namespace HIKARI::ASSETS::MATERIAL {
     MaterialInstanceResolveResult ResolveMaterialInstance(
         const MaterialAssetData& instanceSource,
         const MaterialAssetLookup& lookup,
-        uint32_t maxParentDepth = 16u);
+        uint32_t maxParentDepth = 16u,
+        const MaterialCompileOptions& compileOptions = {});
 
     bool SetMaterialInstanceParameterOverride(
         MaterialAssetData& instanceSource,

@@ -29,21 +29,32 @@ namespace HIKARI::ASSETS::MATERIAL {
 
     const MaterialNodeSemanticContract& GetMaterialNodeSemanticContract(
         MaterialNodeKind kind) noexcept;
+    const MaterialNodeSemanticContract& GetMaterialNodeSemanticContract(
+        const MaterialNodeTypeId& typeId) noexcept;
 
     // Canonical node-owned bindings. Parameter/Texture Sample nodes own the
     // binding named by node.referenceId instead.
     std::span<const std::string_view> GetMaterialNodeOwnedParameterIds(
         MaterialNodeKind kind) noexcept;
+    std::span<const std::string_view> GetMaterialNodeOwnedParameterIds(
+        const MaterialNodeTypeId& typeId) noexcept;
     std::span<const std::string_view> GetMaterialNodeOwnedResourceIds(
         MaterialNodeKind kind) noexcept;
+    std::span<const std::string_view> GetMaterialNodeOwnedResourceIds(
+        const MaterialNodeTypeId& typeId) noexcept;
 
     // Ready-made nodes are bounded, game-runtime material building blocks.
     // Their parameters and resources are canonical so template creation and
     // manual graph authoring compile to the same runtime contract.
     bool IsReadyMadeMaterialNode(MaterialNodeKind kind) noexcept;
+    bool IsReadyMadeMaterialNode(const MaterialNodeTypeId& typeId) noexcept;
     bool IsSingletonReadyMadeMaterialNode(MaterialNodeKind kind) noexcept;
+    bool IsSingletonReadyMadeMaterialNode(
+        const MaterialNodeTypeId& typeId) noexcept;
     std::string_view ReadyMadeMaterialNodeDisplayName(
         MaterialNodeKind kind) noexcept;
+    std::string_view ReadyMadeMaterialNodeDisplayName(
+        const MaterialNodeTypeId& typeId) noexcept;
 
     // Idempotently fills the node presentation and ensures every canonical
     // parameter/resource required by the node exists in the owning graph.

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <string>
 #include <vector>
@@ -34,6 +35,7 @@ namespace HIKARI {
         HybridLighting = 1ull << 20u,
         Outline = 1ull << 21u,
         HairShadow = 1ull << 22u,
+        CorneaHighlight = 1ull << 23u,
     };
 
     constexpr uint64_t MaterialCapabilityBit(
@@ -76,37 +78,10 @@ namespace HIKARI {
     inline constexpr uint32_t kInvalidMaterialProgramRegister =
         (std::numeric_limits<uint32_t>::max)();
 
-    // Values are serialized in cooked MaterialProgram IR. Append only.
-    enum class MaterialProgramOpcode : uint8_t {
-        Constant,
-        Parameter,
-        TextureSample,
-        Add,
-        Multiply,
-        Lerp,
-        Clamp,
-        Saturate,
-        OneMinus,
-        Power,
-        Dot,
-        NormalUnpack,
-        PbrSurface,
-        RampDiffuse,
-        MultiRampDiffuse,
-        SpecularBand,
-        FresnelRim,
-        MatCap,
-        AnisotropicHair,
-        FaceSdf,
-        EyeLighting,
-        SurfaceOutput,
-        FunctionCall,
-        SkinLighting,
-        FabricSheen,
-        HybridLighting,
-        Outline,
-        HairShadow,
-    };
+    // Native built-in compatibility IDs are serialized directly as cooked
+    // opcodes. Source graphs use MaterialNodeTypeId; Function calls are
+    // expanded before lowering, so Runtime IR v3 remains compact and closed.
+    using MaterialProgramOpcode = MaterialNodeKind;
 
     // Deterministic SSA-like instruction. The pin arrays preserve the bounded
     // node catalogue order so shader generation never needs the Editor graph.
@@ -160,16 +135,27 @@ namespace HIKARI {
 
     struct MaterialCompileResult {
         bool success = false;
-        bool usedLastGood = false;
         bool usedFallback = false;
         MaterialProgramIR program{};
         std::vector<MaterialCompileDiagnostic> diagnostics{};
     };
 
+    using MaterialCompileAssetResolver = std::function<bool(
+        const AssetGuid& assetGuid,
+        MaterialAssetData& outSource,
+        std::string& outError)>;
+
+    struct MaterialCompileOptions {
+        MaterialCompileAssetResolver resolveAsset{};
+        uint32_t maximumFunctionDepth = 16u;
+    };
+
     MaterialProgramIR BuildStandardPbrMaterialProgramFallback();
 
     MaterialCompileResult CompileMaterialAsset(
+        const MaterialAssetData& source);
+    MaterialCompileResult CompileMaterialAsset(
         const MaterialAssetData& source,
-        const MaterialProgramIR* lastGoodProgram = nullptr);
+        const MaterialCompileOptions& options);
 
 } // namespace HIKARI

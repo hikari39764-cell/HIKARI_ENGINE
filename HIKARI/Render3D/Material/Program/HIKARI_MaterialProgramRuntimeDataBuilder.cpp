@@ -57,14 +57,38 @@ namespace HIKARI::RENDER3D::MATERIAL {
             values[9] = { 0.08f, 0.18f, -0.10f, 1.0f };
             values[10] = { 0.04f, 0.0f, 0.65f, 0.0f };
             values[11] = { 0.12f, 0.35f, 64.0f, 1.0f };
-            values[12] = { 0.55f, 0.55f, 1.0f, 0.25f };
+            values[12] = { 0.25f, 0.35f, 0.65f, 0.25f };
             values[13] = { 0.28f, 0.72f, 4.0f, 1.0f };
             values[14] = { 0.18f, 0.0f, 0.0f, 0.0f };
             values[15] = { 1.0f, 0.42f, 0.32f, 1.0f };
             values[16] = { 0.5f, 0.0f, 0.5f, 1.0f };
             values[17] = { 1.0f, 0.0f, 0.0f, 0.0f };
             values[18] = { 0.0f, 0.0f, 1.0f, 0.0f };
-            values[19] = { 0.025f, 0.030f, 0.045f, 1.25f };
+            values[19] = { 0.025f, 0.030f, 0.045f, 2.0f };
+            // Zero preserves the legacy two-ramp rampBlend path. New
+            // MultiRamp nodes explicitly author {1, 0, 0, 0} through the
+            // named rampLayerWeights parameter.
+            values[20] = { 0.0f, 0.0f, 0.0f, 0.0f };
+            // Hair dual-lobe powers, secondary intensity and flow strength.
+            values[21] = { 96.0f, 48.0f, 0.45f, 1.0f };
+            // Analytic Eye Layer mask: center.xy, radius and edge softness.
+            // Connected Eye Control A replaces this conservative fallback.
+            values[22] = { 0.50f, 0.50f, 0.48f, 0.08f };
+            // Eye layer mode, opacity, highlight threshold and softness.
+            values[23] = { 0.0f, 1.0f, 0.02f, 0.04f };
+            // Eye parallax scale, HDR highlight, iris lift and caustic gain.
+            values[24] = { 0.10f, 2.0f, 0.18f, 0.25f };
+            // MatCap view correction and optional eye spherical-normal blend.
+            values[25] = { 1.0f, 0.0f, 0.0f, 0.0f };
+            // Eye caustic tint and band width.
+            values[26] = { 1.0f, 0.72f, 0.38f, 0.28f };
+            // Cornea highlight mode, travel and weighted half-vector inputs.
+            values[27] = { 2.0f, 0.10f, 0.35f, 0.65f };
+            // Virtual-cornea curvature, retained brightness, light response
+            // and authored-layer edge fade.
+            values[28] = { 0.75f, 0.45f, 0.65f, 0.0f };
+            // Cornea highlight sharpness and light-color influence.
+            values[29] = { 12.0f, 0.25f, 0.0f, 0.0f };
             return values;
         }
 
@@ -219,11 +243,19 @@ namespace HIKARI::RENDER3D::MATERIAL {
             const MaterialProgramResourceBinding& resource,
             uint32_t rampIndex) {
             if (resource.semantic == MaterialResourceSemantic::Ramp) {
-                return (std::min)(rampIndex, 1u);
+                constexpr std::array<uint32_t, 4u> kRampSlots{
+                    0u, 1u, 8u, 9u
+                };
+                return kRampSlots[(std::min)(
+                    rampIndex, static_cast<uint32_t>(kRampSlots.size() - 1u))];
             }
             if (resource.semantic == MaterialResourceSemantic::MatCap) return 2u;
             if (resource.semantic == MaterialResourceSemantic::FaceSdf) return 3u;
             if (resource.semantic == MaterialResourceSemantic::HairShadow) return 7u;
+            if (resource.semantic == MaterialResourceSemantic::HairControl) return 5u;
+            if (resource.semantic == MaterialResourceSemantic::EyeControl) return 6u;
+            if (resource.semantic == MaterialResourceSemantic::Thickness ||
+                resource.semantic == MaterialResourceSemantic::Fabric) return 4u;
             const std::string id = NormalizeId(resource.resourceId);
             if (id.find("hair") != std::string::npos ||
                 id.find("strand") != std::string::npos) return 5u;
@@ -244,8 +276,12 @@ namespace HIKARI::RENDER3D::MATERIAL {
             if (program.surface.unlit) flags |= Unlit;
             if (program.surface.alphaMode == MaterialAlphaMode::Mask) flags |= AlphaMask;
             if (program.surface.alphaMode == MaterialAlphaMode::Blend) flags |= AlphaBlend;
+            if (program.surface.alphaMode == MaterialAlphaMode::Blend &&
+                program.surface.alphaRepresentation ==
+                    MaterialAlphaRepresentation::Premultiplied) {
+                flags |= PremultipliedAlphaInput;
+            }
             if (program.surface.doubleSided) flags |= DoubleSided;
-            if (resolutionKind == MaterialProgramResolutionKind::LastGood) flags |= UsedLastGood;
             if (resolutionKind == MaterialProgramResolutionKind::StandardPbrFallback) flags |= UsedFallback;
             const auto has = [&](MaterialProgramCapability capability) {
                 return (program.capabilities & MaterialCapabilityBit(capability)) != 0u;
@@ -265,14 +301,16 @@ namespace HIKARI::RENDER3D::MATERIAL {
             if (has(MaterialProgramCapability::HybridLighting)) flags |= TemplateHybrid;
             if (has(MaterialProgramCapability::FaceSdf)) flags |= TemplateFace;
             if (has(MaterialProgramCapability::AnisotropicHair)) flags |= TemplateHair;
-            if (has(MaterialProgramCapability::EyeLighting)) flags |= TemplateEye;
+            if (has(MaterialProgramCapability::CorneaHighlight)) flags |= CorneaHighlight;
             for (const MaterialProgramResourceBinding& resource :
                  program.resources) {
                 const std::string id = NormalizeId(resource.resourceId);
-                if (id.find("haircontrol") != std::string::npos) {
+                if (resource.semantic == MaterialResourceSemantic::HairControl ||
+                    id.find("haircontrol") != std::string::npos) {
                     flags |= HairControlMap;
                 }
-                if (id.find("eyecontrol") != std::string::npos) {
+                if (resource.semantic == MaterialResourceSemantic::EyeControl ||
+                    id.find("eyecontrol") != std::string::npos) {
                     flags |= EyeControlMap;
                 }
             }
@@ -307,6 +345,7 @@ namespace HIKARI::RENDER3D::MATERIAL {
                 MaterialCapabilityBit(MaterialProgramCapability::AnisotropicHair) |
                 MaterialCapabilityBit(MaterialProgramCapability::FaceSdf) |
                 MaterialCapabilityBit(MaterialProgramCapability::EyeLighting) |
+                MaterialCapabilityBit(MaterialProgramCapability::CorneaHighlight) |
                 MaterialCapabilityBit(MaterialProgramCapability::SkinLighting) |
                 MaterialCapabilityBit(MaterialProgramCapability::FabricSheen) |
                 MaterialCapabilityBit(MaterialProgramCapability::HybridLighting);

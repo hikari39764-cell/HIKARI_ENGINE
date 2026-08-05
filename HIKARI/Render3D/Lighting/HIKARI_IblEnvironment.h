@@ -19,6 +19,12 @@ namespace HIKARI::IBL {
                 prefilteredResource.IsValid() ||
                 brdfLutResource.IsValid();
         }
+
+        constexpr bool IsComplete() const noexcept {
+            return irradianceResource.IsValid() &&
+                prefilteredResource.IsValid() &&
+                brdfLutResource.IsValid();
+        }
     };
 
     struct IblEnvironmentData {

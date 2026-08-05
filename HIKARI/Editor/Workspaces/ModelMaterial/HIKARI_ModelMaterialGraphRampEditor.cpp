@@ -85,8 +85,7 @@ bool ModelMaterialWorkspaceController::BeginInlineRampEdit(
   }
   inlineRampDocument_.OpenMaterial(
       loaded.assetGuid, loaded.sourcePath, std::move(loaded.source),
-      loaded.compile,
-      loaded.hasLastGoodProgram ? &loaded.lastGoodProgram : nullptr, true);
+      loaded.compile, true);
   inlineRampPointId_.clear();
   if (!inlineRampDocument_.GetMaterial().ramp.points.empty()) {
     inlineRampPointId_ =
@@ -250,8 +249,7 @@ void ModelMaterialWorkspaceController::DrawInlineRampEditorPopup(
     ASSETS::MATERIAL::MaterialAssetAuthoringService service(
         scene.GetAssetDatabase());
     const ASSETS::MATERIAL::MaterialAuthoringResult saved = service.Update(
-        inlineRampDocument_.GetMaterialAssetGuid(), source,
-        inlineRampDocument_.GetLastGoodProgram());
+        inlineRampDocument_.GetMaterialAssetGuid(), source);
     statusMessage_ = saved.message;
     if (saved.success) {
       inlineRampDocument_.MarkMaterialSaved(saved.assetGuid,

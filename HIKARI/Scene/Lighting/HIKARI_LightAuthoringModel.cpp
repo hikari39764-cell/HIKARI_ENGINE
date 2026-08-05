@@ -153,6 +153,29 @@ namespace HIKARI::LIGHTING_AUTHORING {
 
     } // namespace
 
+    MATH::Vec3 LightDirectionFromEulerDegrees(
+        const MATH::Vec3& eulerDegrees) noexcept {
+
+        return ForwardFromEulerDegrees(eulerDegrees);
+    }
+
+    MATH::Vec3 DirectionalLightEulerDegreesFromDirection(
+        const MATH::Vec3& direction) noexcept {
+
+        MATH::Vec3 canonical = EulerDegreesFromForward(direction);
+        canonical.x = std::clamp(canonical.x, -89.9f, 89.9f);
+        canonical.y = std::remainder(canonical.y, 360.0f);
+        canonical.z = 0.0f;
+        return canonical;
+    }
+
+    MATH::Vec3 CanonicalDirectionalLightEulerDegrees(
+        const MATH::Vec3& eulerDegrees) noexcept {
+
+        return DirectionalLightEulerDegreesFromDirection(
+            LightDirectionFromEulerDegrees(eulerDegrees));
+    }
+
     std::vector<LightAuthoring> CollectLights(
         const SceneDocument& document) {
 

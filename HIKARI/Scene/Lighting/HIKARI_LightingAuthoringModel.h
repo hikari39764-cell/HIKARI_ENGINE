@@ -70,6 +70,13 @@ namespace HIKARI::LIGHTING_AUTHORING {
     std::vector<LightAuthoring> CollectLights(
         std::span<const SceneObjectData> objects);
 
+    MATH::Vec3 LightDirectionFromEulerDegrees(
+        const MATH::Vec3& eulerDegrees) noexcept;
+    MATH::Vec3 DirectionalLightEulerDegreesFromDirection(
+        const MATH::Vec3& direction) noexcept;
+    MATH::Vec3 CanonicalDirectionalLightEulerDegrees(
+        const MATH::Vec3& eulerDegrees) noexcept;
+
     SceneObjectId AddLight(
         SceneDocument& document,
         const LightAuthoring& light);

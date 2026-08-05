@@ -164,6 +164,7 @@ namespace HIKARI {
             item.context.sourceMetaRoot = sourceMetaRoot_;
             item.context.importedDirectory =
                 GetImportedDirectory(record->guid);
+            item.context.assetDatabase = this;
 
             std::error_code timeEc{};
             item.sourceWriteTime = std::filesystem::last_write_time(

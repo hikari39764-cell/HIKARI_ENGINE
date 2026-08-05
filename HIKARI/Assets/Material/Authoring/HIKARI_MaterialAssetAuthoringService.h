@@ -21,8 +21,6 @@ namespace HIKARI::ASSETS::MATERIAL {
         std::filesystem::path sourcePath{};
         MaterialAssetData source{};
         MaterialCompileResult compile{};
-        bool hasLastGoodProgram = false;
-        MaterialProgramIR lastGoodProgram{};
         std::vector<std::string> migrationDiagnostics{};
     };
 
@@ -34,8 +32,6 @@ namespace HIKARI::ASSETS::MATERIAL {
         AssetGuid assetGuid{};
         std::filesystem::path sourcePath{};
         MaterialCompileResult compile{};
-        bool hasLastGoodProgram = false;
-        MaterialProgramIR lastGoodProgram{};
         std::string message{};
     };
 
@@ -63,18 +59,15 @@ namespace HIKARI::ASSETS::MATERIAL {
 
         MaterialAuthoringResult Update(
             const AssetGuid& assetGuid,
-            const MaterialAssetData& source,
-            const MaterialProgramIR* lastGoodProgram = nullptr);
+            const MaterialAssetData& source);
 
         MaterialAuthoringResult Save(
             const AssetGuid& assetGuid,
-            const MaterialAssetData& source,
-            const MaterialProgramIR* lastGoodProgram = nullptr);
+            const MaterialAssetData& source);
 
         MaterialAuthoringResult SaveAs(
             const MaterialAssetData& source,
-            const std::filesystem::path& destination,
-            const MaterialProgramIR* lastGoodProgram = nullptr);
+            const std::filesystem::path& destination);
 
         MaterialAuthoringResult ImportAndScan(
             const std::filesystem::path& sourcePath,
@@ -84,8 +77,7 @@ namespace HIKARI::ASSETS::MATERIAL {
         MaterialAuthoringResult SaveToPath(
             const MaterialAssetData& source,
             const std::filesystem::path& destination,
-            bool createMissingMeta,
-            const MaterialProgramIR* lastGoodProgram);
+            bool createMissingMeta);
 
         AssetDatabase& assetDatabase_;
     };

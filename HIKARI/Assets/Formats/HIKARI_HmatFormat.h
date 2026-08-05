@@ -20,7 +20,7 @@ namespace HIKARI {
         MaterialCompileResult& outCompileResult,
         std::string& outMessage);
 
-    // 固定 PBR の既存 consumer 用。書き込みは常に v4 HMAT になる。
+    // 固定 PBR の既存 consumer 用。書き込みは常に v5 HMAT になる。
     bool WriteHmatFile(
         const std::filesystem::path& path,
         const PbrMaterialAssetData& material,

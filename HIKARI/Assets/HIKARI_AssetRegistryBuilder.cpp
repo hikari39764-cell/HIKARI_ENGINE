@@ -12,6 +12,7 @@
 #include "Assets/Material/Compiler/HIKARI_MaterialCompiler.h"
 #include "Assets/Material/Authoring/HIKARI_MaterialInstanceResolver.h"
 #include "Assets/Material/HIKARI_MaterialAssetData.h"
+#include "Assets/Material/HIKARI_MaterialAssetLookup.h"
 #include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingAsset.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
 #include "Core/HIKARI_Logger.h"
@@ -30,7 +31,10 @@ namespace HIKARI {
                 (assetDatabase.GetProjectRoot() / record.sourcePath).lexically_normal();
             std::string loadError{};
             if (LoadMaterialAssetData(sourcePath, outData, loadError)) {
-                outCompileResult = CompileMaterialAsset(outData);
+                outCompileResult = CompileMaterialAsset(
+                    outData,
+                    ASSETS::MATERIAL::MakeMaterialCompileOptions(
+                        assetDatabase));
                 return true;
             }
 
@@ -118,7 +122,10 @@ namespace HIKARI {
                         }
                         outError.clear();
                         return true;
-                    });
+                    },
+                    16u,
+                    ASSETS::MATERIAL::MakeMaterialCompileOptions(
+                        assetDatabase));
             if (!resolved.success) {
                 HIKARI_LOG_WARN(
                     "[AssetRegistryBuilder][Material] Material Instance "
@@ -280,7 +287,10 @@ namespace HIKARI {
                     descriptor->sourceData =
                         MakeStandardPbrMaterialAssetData(fallback);
                     descriptor->compileResult =
-                        CompileMaterialAsset(descriptor->sourceData);
+                        CompileMaterialAsset(
+                            descriptor->sourceData,
+                            ASSETS::MATERIAL::MakeMaterialCompileOptions(
+                                assetDatabase));
                     HIKARI_LOG_WARN("[AssetRegistryBuilder][Material] using fallback material data: " +
                         fallback.materialName);
                 }

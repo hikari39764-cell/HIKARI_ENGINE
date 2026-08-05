@@ -6,10 +6,16 @@
 struct PSInput
 {
     float4 position : SV_POSITION;
+    float3 worldPosWS : TEXCOORD1;
+    float3 normalWS : NORMAL;
+    float4 tangentWS : TANGENT;
     float2 uv : TEXCOORD0;
     float2 uv1 : TEXCOORD10;
     nointerpolation uint materialDataIndex : TEXCOORD2;
+    nointerpolation uint forwardMeta : TEXCOORD3;
+    nointerpolation uint objectDataIndex : TEXCOORD4;
     nointerpolation uint surfaceGpuSceneIndex : TEXCOORD5;
+    nointerpolation uint debugSurfaceId : TEXCOORD6;
 };
 
 static const uint MATERIAL_ALPHA_MASK = 1u << 1u;
@@ -27,7 +33,8 @@ float4 main(PSInput input) : SV_TARGET
                 input.surfaceGpuSceneIndex).materialProgramFlags;
     }
     const bool authoredOutline =
-        (materialData.instanceFlags &
+        ((surfaceMaterialProgramFlags |
+          materialData.instanceFlags) &
          HIKARI_PROGRAM_FLAG_FEATURE_GEOMETRY_OUTLINE) != 0u;
     const bool editorSelection =
         (surfaceMaterialProgramFlags &
@@ -62,6 +69,6 @@ float4 main(PSInput input) : SV_TARGET
         : HikariLoadMaterialProgramParameter(
             materialData,
             19u,
-            float4(0.025f, 0.030f, 0.045f, 1.25f));
+            float4(0.025f, 0.030f, 0.045f, 2.0f));
     return float4(max(outline.rgb, 0.0f.xxx), 1.0f);
 }

@@ -136,17 +136,16 @@ void ModelMaterialWorkspaceController::DrawMaterialWindow(
 
   const MaterialCompileResult &compile =
       authoringDocument_.GetCompileResult();
-  if (compile.success && !compile.usedLastGood && !compile.usedFallback) {
+  if (compile.success) {
     StatusBadge("Live preview", EditorStatusTone::Ready);
-  } else if (compile.usedLastGood) {
-    StatusBadge("Live: last-good shader", EditorStatusTone::Warning);
   } else {
-    StatusBadge("Live: PBR fallback", EditorStatusTone::Warning);
+    StatusBadge("Invalid v5 graph - preview paused", EditorStatusTone::Error);
   }
   ImGui::SameLine();
   ImGui::TextDisabled("Every committed control refreshes runtime bindings.");
 
-  ImGui::BeginDisabled(!authoringDocument_.IsMaterialDirty());
+  ImGui::BeginDisabled(!authoringDocument_.IsMaterialDirty() ||
+                       !compile.success);
   if (ImGui::Button("Save")) {
     (void)SaveMaterial(scene, false, statusMessage_);
   }

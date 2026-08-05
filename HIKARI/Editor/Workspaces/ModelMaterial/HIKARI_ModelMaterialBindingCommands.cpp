@@ -50,7 +50,8 @@ ModelMaterialWorkspaceController::BuildPreviewMaterial(
   auto material = std::make_shared<Material>();
   MaterialRuntimeBuilder builder{};
   if (!builder.BuildRuntimeMaterial(
-          descriptor->sourceData, assetRegistry, materialProgramRegistry_,
+          descriptor->sourceData, descriptor->compileResult,
+          assetRegistry, materialProgramRegistry_,
           *material,
           materialGuid.value + "/model-material-preview")) {
     outMessage = "runtime material projection failed; imported fallback kept";

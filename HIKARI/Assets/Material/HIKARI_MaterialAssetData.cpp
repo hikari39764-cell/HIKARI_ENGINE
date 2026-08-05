@@ -166,12 +166,12 @@ namespace HIKARI {
         std::error_code existsError{};
         const bool exists = std::filesystem::is_regular_file(path, existsError);
         if (exists && !LoadMaterialAssetData(path, source, outError)) {
-            outError = "refusing to overwrite an unreadable Material v4 source through the legacy PBR adapter: " +
+            outError = "refusing to overwrite an unreadable Material v5 source: " +
                 outError;
             return false;
         }
         if (exists && source.kind != MaterialAssetKind::Material) {
-            outError = "legacy PBR adapter cannot overwrite a Material Function, Instance, Profile, or Ramp";
+            outError = "surface material editing cannot overwrite a Material Function, Instance, Profile, or Ramp";
             return false;
         }
         if (!exists) {

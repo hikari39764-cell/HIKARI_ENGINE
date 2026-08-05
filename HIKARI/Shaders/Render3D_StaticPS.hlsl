@@ -84,18 +84,57 @@ float4 main(PSInput input) : SV_TARGET
     const bool costNoMaterialExtras =
         forwardCostMode == HIKARI_FORWARD_COST_NO_MATERIAL_EXTRAS;
 
+    const float3 toCamera = gCameraPos.xyz - input.worldPosWS;
+    const float distanceToCamera = length(toCamera);
+    const float3 v = toCamera / max(distanceToCamera, 0.00001f);
+    const float3 l = normalize(-gDirectionalDir.xyz);
+
     float4 albedo = neutralClay
         ? float4(0.72f, 0.74f, 0.77f, 1.0f)
         : materialData.baseColor;
     if (!neutralClay && materialData.hasBaseColorTexture != 0)
     {
-        const float2 baseColorUv =
+        float2 baseColorUv =
             HikariResolveMaterialUv(materialData, HIKARI_MATERIAL_UV_BASE_COLOR, input.uv, input.uv1);
-        albedo *= HikariSampleMaterialTexture(
+        const float2 eyeSurfaceUv = baseColorUv;
+        baseColorUv = HikariResolveEyeLayerUv(
+            materialData,
+            baseColorUv,
+            normalize(input.normalWS),
+            input.tangentWS,
+            v);
+        baseColorUv = HikariResolveCorneaHighlightUv(
+            materialData,
+            baseColorUv,
+            normalize(input.normalWS),
+            input.tangentWS,
+            v,
+            l);
+        float4 baseColorSample = HikariSampleMaterialTexture(
             materialData.baseColorTextureDescriptorIndex,
             gLinearWrap,
             baseColorUv,
             float4(1.0f, 1.0f, 1.0f, 1.0f));
+        baseColorSample = HikariResolveEyeLayerSample(
+            materialData,
+            baseColorSample);
+        baseColorSample = HikariResolveCorneaHighlightSample(
+            materialData,
+            baseColorSample,
+            eyeSurfaceUv,
+            normalize(input.normalWS),
+            input.tangentWS,
+            v,
+            l,
+            gDirectionalColor.rgb * gDirectionalIntensity);
+        if ((materialData.instanceFlags &
+             HIKARI_PROGRAM_FLAG_PREMULTIPLIED_ALPHA_INPUT) != 0u)
+        {
+            baseColorSample.rgb = baseColorSample.a > 1.0e-5f
+                ? baseColorSample.rgb / baseColorSample.a
+                : 0.0f.xxx;
+        }
+        albedo *= baseColorSample;
     }
     if (!neutralClay &&
         (materialData.materialFlags & MATERIAL_ALPHA_MASK) != 0 &&
@@ -197,13 +236,6 @@ float4 main(PSInput input) : SV_TARGET
             albedo.a);
     }
 
-    float3 l = normalize(-gDirectionalDir.xyz);
-    const float3 toCamera =
-        gCameraPos.xyz - input.worldPosWS;
-    const float distanceToCamera = length(toCamera);
-    float3 v =
-        toCamera /
-        max(distanceToCamera, 0.00001f);
 #if !HIKARI_USE_COOK_TORRANCE_PBR
     float3 h = normalize(l + v);
 #endif
@@ -416,8 +448,17 @@ float4 main(PSInput input) : SV_TARGET
         return float4(ApplyFog(shadedColor, input.worldPosWS), albedo.a);
     }
 
-    float3 finalColor = shadedColor + emissive;
-    finalColor = ApplyFog(finalColor, input.worldPosWS);
+    const bool transparentEyeHighlight =
+        HikariIsTransparentEyeHighlight(materialData) &&
+        ((materialData.materialFlags & MATERIAL_ALPHA_BLEND) != 0u ||
+         (materialData.instanceFlags &
+          HIKARI_PROGRAM_FLAG_ALPHA_BLEND) != 0u);
+    // Eye highlight artwork is a compositing layer, not a second PBR shell.
+    // Keeping it in straight color here lets the shared transparent return
+    // premultiply exactly once below.
+    float3 finalColor = transparentEyeHighlight
+        ? albedo.rgb
+        : ApplyFog(shadedColor + emissive, input.worldPosWS);
 #if HIKARI_FORWARD_ENABLE_MATERIAL_FX
     if (!neutralClay &&
         !costNoMaterialExtras &&
@@ -434,5 +475,11 @@ float4 main(PSInput input) : SV_TARGET
             surfaceFeatureData);
     }
 #endif
-    return float4(finalColor, albedo.a);
+    const bool alphaBlended =
+        (materialData.materialFlags & MATERIAL_ALPHA_BLEND) != 0u ||
+        (materialData.instanceFlags &
+         HIKARI_PROGRAM_FLAG_ALPHA_BLEND) != 0u;
+    return float4(
+        alphaBlended ? finalColor * albedo.a : finalColor,
+        albedo.a);
 }

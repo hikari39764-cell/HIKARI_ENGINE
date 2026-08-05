@@ -4,10 +4,9 @@
 #include <cctype>
 #include <system_error>
 
-#include "Assets/Formats/HIKARI_HmatFormat.h"
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/Material/HIKARI_MaterialAssetData.h"
-#include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
+#include "Assets/Material/HIKARI_MaterialAssetLookup.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
 
 namespace HIKARI::ASSETS::MATERIAL {
@@ -80,45 +79,6 @@ namespace HIKARI::ASSETS::MATERIAL {
             return destination.lexically_normal();
         }
 
-        bool TryLoadLastGood(
-            const AssetDatabase& database,
-            const AssetRecord& record,
-            MaterialProgramIR& outProgram) {
-
-            const std::string artifactPath =
-                SEMANTICS::FindAssetArtifactPath(
-                    record,
-                    SEMANTICS::AssetArtifactKind::Material);
-            if (artifactPath.empty()) {
-                return false;
-            }
-            MaterialAssetData cookedSource{};
-            MaterialCompileResult cookedCompile{};
-            std::string error{};
-            if (!ReadHmatFile(
-                    (database.GetProjectRoot() / artifactPath)
-                        .lexically_normal(),
-                    cookedSource, cookedCompile, error) ||
-                cookedCompile.usedFallback) {
-                return false;
-            }
-            outProgram = cookedCompile.program;
-            return true;
-        }
-
-        void CaptureLastGood(
-            MaterialAuthoringResult& result,
-            const MaterialProgramIR* requestedLastGood) {
-
-            if (result.compile.success) {
-                result.hasLastGoodProgram = true;
-                result.lastGoodProgram = result.compile.program;
-            } else if (result.compile.usedLastGood && requestedLastGood) {
-                result.hasLastGoodProgram = true;
-                result.lastGoodProgram = *requestedLastGood;
-            }
-        }
-
     } // namespace
 
     MaterialAssetAuthoringService::MaterialAssetAuthoringService(
@@ -145,16 +105,9 @@ namespace HIKARI::ASSETS::MATERIAL {
                 &document.migrationDiagnostics)) {
             return false;
         }
-        document.hasLastGoodProgram = TryLoadLastGood(
-            assetDatabase_, *record, document.lastGoodProgram);
         document.compile = CompileMaterialAsset(
             document.source,
-            document.hasLastGoodProgram
-                ? &document.lastGoodProgram : nullptr);
-        if (document.compile.success) {
-            document.hasLastGoodProgram = true;
-            document.lastGoodProgram = document.compile.program;
-        }
+            MakeMaterialCompileOptions(assetDatabase_));
         outDocument = std::move(document);
         outMessage = "Material asset loaded";
         return true;
@@ -170,17 +123,11 @@ namespace HIKARI::ASSETS::MATERIAL {
                 const AssetGuid& guid,
                 MaterialAssetData& outSource,
                 std::string& outError) {
-                const AssetRecord* record =
-                    assetDatabase_.FindByGuid(guid);
-                if (record == nullptr ||
-                    record->type != AssetType::Material) {
-                    outError = "parent Material asset was not found";
-                    return false;
-                }
-                return LoadMaterialAssetData(
-                    ResolveSourcePath(assetDatabase_, *record),
-                    outSource, outError);
-            });
+                return LoadMaterialAssetSource(
+                    assetDatabase_, guid, outSource, outError);
+            },
+            16u,
+            MakeMaterialCompileOptions(assetDatabase_));
     }
 
     MaterialAuthoringResult MaterialAssetAuthoringService::Create(
@@ -210,13 +157,12 @@ namespace HIKARI::ASSETS::MATERIAL {
             path = root / (stem + "_" + std::to_string(suffix) +
                 std::string(kMaterialSourceSuffix));
         }
-        return SaveToPath(source, path, true, nullptr);
+        return SaveToPath(source, path, true);
     }
 
     MaterialAuthoringResult MaterialAssetAuthoringService::Update(
         const AssetGuid& assetGuid,
-        const MaterialAssetData& source,
-        const MaterialProgramIR* lastGoodProgram) {
+        const MaterialAssetData& source) {
 
         const AssetRecord* record = assetDatabase_.FindByGuid(assetGuid);
         if (record == nullptr || record->type != AssetType::Material) {
@@ -227,28 +173,24 @@ namespace HIKARI::ASSETS::MATERIAL {
         return SaveToPath(
             source,
             ResolveSourcePath(assetDatabase_, *record),
-            false,
-            lastGoodProgram);
+            false);
     }
 
     MaterialAuthoringResult MaterialAssetAuthoringService::Save(
         const AssetGuid& assetGuid,
-        const MaterialAssetData& source,
-        const MaterialProgramIR* lastGoodProgram) {
+        const MaterialAssetData& source) {
 
-        return Update(assetGuid, source, lastGoodProgram);
+        return Update(assetGuid, source);
     }
 
     MaterialAuthoringResult MaterialAssetAuthoringService::SaveAs(
         const MaterialAssetData& source,
-        const std::filesystem::path& destination,
-        const MaterialProgramIR* lastGoodProgram) {
+        const std::filesystem::path& destination) {
 
         return SaveToPath(
             source,
             ResolveDestination(assetDatabase_, destination),
-            true,
-            lastGoodProgram);
+            true);
     }
 
     MaterialAuthoringResult
@@ -294,13 +236,19 @@ namespace HIKARI::ASSETS::MATERIAL {
     MaterialAuthoringResult MaterialAssetAuthoringService::SaveToPath(
         const MaterialAssetData& source,
         const std::filesystem::path& destination,
-        bool createMissingMeta,
-        const MaterialProgramIR* lastGoodProgram) {
+        bool createMissingMeta) {
 
         MaterialAuthoringResult result{};
         result.sourcePath = destination;
-        result.compile = CompileMaterialAsset(source, lastGoodProgram);
-        CaptureLastGood(result, lastGoodProgram);
+        // The serialized graph and its compiled runtime meaning are one unit.
+        result.compile = CompileMaterialAsset(
+            source,
+            MakeMaterialCompileOptions(assetDatabase_));
+        if (!result.compile.success) {
+            result.message =
+                "Material v5 graph is invalid; source was not saved";
+            return result;
+        }
         if (destination.empty() ||
             !IsUnderRoot(assetDatabase_.GetAssetsRoot(), destination) ||
             !EndsWithMaterialSuffix(destination)) {
@@ -319,8 +267,6 @@ namespace HIKARI::ASSETS::MATERIAL {
             ImportAndScan(destination, createMissingMeta);
         importResult.sourceSaved = true;
         importResult.compile = result.compile;
-        importResult.hasLastGoodProgram = result.hasLastGoodProgram;
-        importResult.lastGoodProgram = result.lastGoodProgram;
         return importResult;
     }
 

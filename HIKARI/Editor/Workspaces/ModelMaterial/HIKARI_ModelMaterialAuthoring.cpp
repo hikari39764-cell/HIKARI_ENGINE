@@ -8,6 +8,7 @@
 #include "Assets/Material/Authoring/HIKARI_MaterialAssetAuthoringService.h"
 #include "Assets/Material/Authoring/HIKARI_MaterialInstanceResolver.h"
 #include "Assets/Material/Authoring/HIKARI_MaterialTemplateFactory.h"
+#include "Assets/Material/HIKARI_MaterialAssetLookup.h"
 #include "Render3D/Core/HIKARI_Material.h"
 #include "Render3D/Material/HIKARI_MaterialRuntimeBuilder.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
@@ -49,6 +50,9 @@ bool ModelMaterialWorkspaceController::OpenMaterialAsset(
   if (!service.Load(guid, loaded, outMessage)) {
     return false;
   }
+  authoringDocument_.SetMaterialCompileOptions(
+      ASSETS::MATERIAL::MakeMaterialCompileOptions(
+          scene.GetAssetDatabase()));
   EnsureBuiltInRampPresets(scene);
   RefreshAssetChoices(scene.GetAssetDatabase());
   const bool addedDefaultRampBindings =
@@ -56,14 +60,12 @@ bool ModelMaterialWorkspaceController::OpenMaterialAsset(
   if (addedDefaultRampBindings) {
     loaded.compile = CompileMaterialAsset(
         loaded.source,
-        loaded.hasLastGoodProgram ? &loaded.lastGoodProgram : nullptr);
+        ASSETS::MATERIAL::MakeMaterialCompileOptions(
+            scene.GetAssetDatabase()));
   }
   authoringDocument_.OpenMaterial(
       loaded.assetGuid, loaded.sourcePath, std::move(loaded.source),
       loaded.compile,
-      addedDefaultRampBindings && loaded.compile.success
-          ? &loaded.compile.program
-          : loaded.hasLastGoodProgram ? &loaded.lastGoodProgram : nullptr,
       !addedDefaultRampBindings);
   candidateAuthoringAssetGuid_ = guid;
   if (IsRenderableMaterialAsset(authoringDocument_.GetMaterial().kind)) {
@@ -143,9 +145,12 @@ bool ModelMaterialWorkspaceController::CreateAndBindRenderableMaterial(
   if (!created.success) {
     return false;
   }
+  authoringDocument_.SetMaterialCompileOptions(
+      ASSETS::MATERIAL::MakeMaterialCompileOptions(
+          scene.GetAssetDatabase()));
   authoringDocument_.OpenMaterial(
       created.assetGuid, created.sourcePath, std::move(source), created.compile,
-      created.hasLastGoodProgram ? &created.lastGoodProgram : nullptr, true);
+      true);
   candidateMaterialGuid_ = created.assetGuid;
   candidateAuthoringAssetGuid_ = created.assetGuid;
   instanceParentCache_.reset();
@@ -207,6 +212,9 @@ bool ModelMaterialWorkspaceController::CreateAuxiliaryMaterialAsset(
     source = ASSETS::MATERIAL::CreateMaterialRampFromPreset(
         ASSETS::MATERIAL::MaterialRampPresetId::ToonSoft,
         source.materialName);
+  } else if (kind == MaterialAssetKind::Function) {
+    source = ASSETS::MATERIAL::CreatePassThroughMaterialFunction(
+        source.materialName);
   } else if (kind == MaterialAssetKind::Profile) {
     source.profile.baseTemplate = selectedTemplate_;
   }
@@ -219,10 +227,12 @@ bool ModelMaterialWorkspaceController::CreateAuxiliaryMaterialAsset(
   if (!created.success) {
     return false;
   }
+  authoringDocument_.SetMaterialCompileOptions(
+      ASSETS::MATERIAL::MakeMaterialCompileOptions(
+          scene.GetAssetDatabase()));
   authoringDocument_.OpenMaterial(
       created.assetGuid, created.sourcePath, std::move(source),
-      created.compile,
-      created.hasLastGoodProgram ? &created.lastGoodProgram : nullptr, true);
+      created.compile, true);
   candidateAuthoringAssetGuid_ = created.assetGuid;
   selectedGraphNodeId_.clear();
   selectedGraphEdgeId_.clear();
@@ -244,11 +254,14 @@ bool ModelMaterialWorkspaceController::SaveMaterial(
     outMessage = "Keep or Discard the A/B preview before saving";
     return false;
   }
+  if (!authoringDocument_.GetCompileResult().success) {
+    outMessage =
+        "Material v5 graph is invalid; fix Compile & Diagnostics before saving";
+    return false;
+  }
 
   ASSETS::MATERIAL::MaterialAssetAuthoringService service(
       scene.GetAssetDatabase());
-  const MaterialProgramIR *lastGood =
-      authoringDocument_.GetLastGoodProgram();
   ASSETS::MATERIAL::MaterialAuthoringResult saved{};
   if (saveAs) {
     std::filesystem::path destination(saveAsPath_.data());
@@ -256,11 +269,10 @@ bool ModelMaterialWorkspaceController::SaveMaterial(
       destination = std::filesystem::path("Materials") /
                     (authoringDocument_.GetMaterial().materialName + "_Copy");
     }
-    saved = service.SaveAs(authoringDocument_.GetMaterial(), destination,
-                           lastGood);
+    saved = service.SaveAs(authoringDocument_.GetMaterial(), destination);
   } else if (authoringDocument_.GetMaterialAssetGuid().IsValid()) {
     saved = service.Save(authoringDocument_.GetMaterialAssetGuid(),
-                         authoringDocument_.GetMaterial(), lastGood);
+                         authoringDocument_.GetMaterial());
   } else {
     saved = service.Create(authoringDocument_.GetMaterial());
   }
@@ -322,18 +334,26 @@ bool ModelMaterialWorkspaceController::RebuildAuthoredPreview(
   if (!authoringDocument_.HasMaterial()) {
     return false;
   }
+  if (!authoringDocument_.GetCompileResult().success) {
+    outMessage =
+        "current Material v5 graph is invalid; preview is paused until diagnostics are fixed";
+    return false;
+  }
   if (!IsRenderableMaterialAsset(authoringDocument_.GetMaterial().kind)) {
     outMessage = std::string(ToString(authoringDocument_.GetMaterial().kind)) +
                  " saved; auxiliary assets do not replace slot preview";
     return true;
   }
   MaterialAssetData effective = authoringDocument_.GetMaterial();
+  MaterialCompileResult effectiveCompile =
+      authoringDocument_.GetCompileResult();
   if (effective.kind == MaterialAssetKind::Instance) {
     ASSETS::MATERIAL::MaterialAssetAuthoringService service(assetDatabase);
     const ASSETS::MATERIAL::MaterialInstanceResolveResult resolved =
         service.ResolveInstance(effective);
     if (resolved.success) {
       effective = resolved.resolvedMaterial;
+      effectiveCompile = resolved.compile;
     } else {
       outMessage = "material instance resolution failed; last preview kept";
       return false;
@@ -347,7 +367,7 @@ bool ModelMaterialWorkspaceController::RebuildAuthoredPreview(
       authoringDocument_.GetMaterialAssetGuid().IsValid()
           ? authoringDocument_.GetMaterialAssetGuid().value
           : std::string("ModelMaterial/Unsaved");
-  if (!builder.BuildRuntimeMaterial(effective, assetRegistry,
+  if (!builder.BuildRuntimeMaterial(effective, effectiveCompile, assetRegistry,
                                     materialProgramRegistry_, *previewMaterial,
                                     identity, &resolution)) {
     outMessage = "material preview projection failed; last preview kept";
@@ -363,9 +383,7 @@ bool ModelMaterialWorkspaceController::RebuildAuthoredPreview(
       return false;
     }
     standalonePreviewMaterial_ = std::move(previewMaterial);
-    outMessage = resolution.UsedLastGood()
-                     ? "material sphere uses the last-good material program"
-                 : resolution.UsedFallback()
+    outMessage = resolution.UsedFallback()
                      ? "material sphere uses the Standard PBR fallback"
                      : "standalone material preview updated";
     return true;
@@ -397,9 +415,7 @@ bool ModelMaterialWorkspaceController::RebuildAuthoredPreview(
                               : "unsaved editable copy of imported material";
   UpdatePublicSlotViews();
   RefreshSelectedSlotPresentation();
-  outMessage = resolution.UsedLastGood()
-                   ? "preview uses the last-good material program"
-               : resolution.UsedFallback()
+  outMessage = resolution.UsedFallback()
                    ? "preview uses the Standard PBR fallback"
                    : "authored material preview updated";
   return true;
@@ -408,6 +424,12 @@ bool ModelMaterialWorkspaceController::RebuildAuthoredPreview(
 bool ModelMaterialWorkspaceController::RefreshMaterialPreviews(
     DocumentSceneBase &scene, std::string &outMessage) {
   materialPreviewRefreshPending_ = false;
+  if (authoringDocument_.HasMaterial() &&
+      !authoringDocument_.GetCompileResult().success) {
+    outMessage =
+        "current Material v5 graph is invalid; preview and runtime hot update are paused";
+    return false;
+  }
   const bool authoredPreviewUpdated = RebuildAuthoredPreview(
       scene.GetAssetDatabase(), scene.GetAssetRegistry(), outMessage);
   if (!authoringDocument_.HasMaterial() ||

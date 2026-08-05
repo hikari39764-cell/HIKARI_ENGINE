@@ -52,6 +52,11 @@ namespace HIKARI::ASSETS::MATERIAL {
         MaterialRampPresetId presetId,
         std::string_view displayName = {});
 
+    // Creates a valid one-input/one-output Function that can immediately be
+    // discovered by the node palette and then expanded into a richer graph.
+    MaterialAssetData CreatePassThroughMaterialFunction(
+        std::string_view displayName = "New Material Function");
+
     bool IsBuiltInMaterialTemplate(
         MaterialTemplateId templateId) noexcept;
 

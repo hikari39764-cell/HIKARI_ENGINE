@@ -1,7 +1,5 @@
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
-
 #include <algorithm>
-
 #include "Core/HIKARI_TimeService.h"
 #include "Editor/Preview/HIKARI_ModelPreviewPicking.h"
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
@@ -10,15 +8,12 @@
 #include "Editor/Workspaces/HIKARI_EditorWorkspaceHost.h"
 #include "Render3D/Views/HIKARI_EditorInteractiveViewRenderer.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
-
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
 #include "imgui_internal.h"
 #endif
-
 namespace HIKARI::EDITOR {
 namespace {
-
 RENDER3D::EDITORVIEW::EditorInteractiveShadingMode ResolveShadingMode(
     ModelMaterialWorkspaceController::PreviewDebugMode mode) noexcept {
   using Mode = RENDER3D::EDITORVIEW::EditorInteractiveShadingMode;
@@ -34,7 +29,6 @@ RENDER3D::EDITORVIEW::EditorInteractiveShadingMode ResolveShadingMode(
   }
   return Mode::Lit;
 }
-
 const char *DebugModeLabel(
     ModelMaterialWorkspaceController::PreviewDebugMode mode) noexcept {
   switch (mode) {
@@ -92,7 +86,6 @@ void ModelMaterialWorkspaceController::DrawPreviewToolbar(
       StatusBadge(selectedLabel.c_str(), EditorStatusTone::Ready);
     }
   }
-
   ImGui::SameLine(0.0f, 12.0f);
   if (ImGui::RadioButton(
           "Runtime Asset Lighting",
@@ -107,8 +100,8 @@ void ModelMaterialWorkspaceController::DrawPreviewToolbar(
     previewEnvironmentMode_ = PreviewEnvironmentMode::StudioInspect;
   }
 
-  const bool studioInspect =
-      previewEnvironmentMode_ == PreviewEnvironmentMode::StudioInspect;
+  const bool studioInspect = previewEnvironmentMode_ ==
+      PreviewEnvironmentMode::StudioInspect;
   ImGui::SameLine(0.0f, 6.0f);
   if (IconButton(EditorGlyph::Add, "ModelMaterialAddStudioLight",
                  studioInspect ? EditorButtonTone::Primary
@@ -216,6 +209,14 @@ void ModelMaterialWorkspaceController::DrawPreviewToolbar(
     ImGui::DragFloat("Sky Rotation", &previewEnvironment_.sky.yaw, 0.01f);
     ImGui::DragFloat("Sky Intensity", &previewEnvironment_.sky.exposure,
                      0.01f, 0.0f, 32.0f);
+    ImGui::DragFloat("IBL Reflections",
+                     &previewEnvironment_.sky.reflectionIntensity,
+                     0.01f, 0.0f, 4.0f);
+    if (ImGui::IsItemHovered()) {
+      ImGui::SetTooltip(
+          "Specular reflection strength from the visible DefaultSky. "
+          "Studio Inspect never samples scene reflection probes.");
+    }
     ImGui::DragFloat("Ambient", &previewEnvironment_.ambient.intensity,
                      0.01f, 0.0f, 8.0f);
     ImGui::EndDisabled();
@@ -305,25 +306,28 @@ void ModelMaterialWorkspaceController::DrawPreviewWindow(
                            ImGuiButtonFlags_MouseButtonLeft |
                                ImGuiButtonFlags_MouseButtonRight |
                                ImGuiButtonFlags_MouseButtonMiddle);
-    const char *message = IsPreviewReady()
-                              ? "Preparing runtime-sourced material preview..."
-                          : authoringMode_ == AuthoringMode::MaterialAsset
-                              ? "Preparing the material sphere..."
-                              : "Choose a model from Materials & Parts";
+    const char *message = output.status ==
+            RENDER3D::EDITORVIEW::EditorInteractiveViewStatus::Failed
+            ? RENDER3D::EDITORVIEW::GetEditorInteractiveViewFailureMessage(
+                  output.failure).data()
+        : IsPreviewReady()
+            ? "Preparing runtime-sourced material preview..."
+        : authoringMode_ == AuthoringMode::MaterialAsset
+            ? "Preparing the material sphere..."
+            : "Choose a model from Materials & Parts";
     const ImVec2 textSize = ImGui::CalcTextSize(message);
     drawList->AddText({origin.x + (canvasSize.x - textSize.x) * 0.5f,
                        origin.y + (canvasSize.y - textSize.y) * 0.5f},
                       IM_COL32(177, 191, 207, 255), message);
   }
-
   const bool canvasVisible = ImGui::IsItemVisible();
   const bool hovered = ImGui::IsItemHovered();
   const bool studioInspect =
       previewEnvironmentMode_ == PreviewEnvironmentMode::StudioInspect;
   const PreviewLightViewportInteraction lightInteraction =
       studioInspect && IsPreviewReady()
-          ? DrawPreviewLightViewportInteraction(
-                origin.x, origin.y, canvasSize.x, canvasSize.y)
+          ? DrawPreviewLightViewportInteraction(origin.x, origin.y,
+                canvasSize.x, canvasSize.y)
           : PreviewLightViewportInteraction{};
   if (hovered) {
     ImGui::SetItemKeyOwner(ImGuiKey_MouseWheelY,
@@ -437,7 +441,9 @@ void ModelMaterialWorkspaceController::DrawPreviewWindow(
         studioInspect ? &previewEnvironment_ : nullptr;
     request.lightingOverride = studioInspect ? &previewLighting_ : nullptr;
     request.suppressSpatialLightingProviders = true;
-    request.useDefaultSkyIbl = studioInspect;
+    request.useDefaultSkyIbl =
+        studioInspect && previewEnvironment_.sky.enabled &&
+        previewEnvironment_.sky.reflectionIntensity > 0.0f;
     request.spatialAntiAliasing = previewSpatialAaEnabled_;
     RENDER3D::EDITORVIEW::SubmitRequest(request);
     previewRequestSubmitted_ = true;
@@ -453,10 +459,13 @@ void ModelMaterialWorkspaceController::DrawPreviewWindow(
         authoringDocument_.GetCompileResult();
     showingStaleCompile = !compile.success;
     if (showingStaleCompile) {
-      const char *warning = compile.usedLastGood
-          ? "Current graph is invalid - previewing LAST-GOOD graph"
-          : "Current graph is invalid - previewing STANDARD PBR fallback";
+      const char *warning =
+          "CURRENT MATERIAL V5 GRAPH IS INVALID - PREVIEW PAUSED";
       const ImVec2 warningSize = ImGui::CalcTextSize(warning);
+      drawList->AddRectFilled(
+          origin,
+          {origin.x + canvasSize.x, origin.y + canvasSize.y},
+          IM_COL32(18, 12, 10, 174));
       drawList->AddRectFilled(
           {origin.x + 8.0f, origin.y + 8.0f},
           {origin.x + warningSize.x + 24.0f,

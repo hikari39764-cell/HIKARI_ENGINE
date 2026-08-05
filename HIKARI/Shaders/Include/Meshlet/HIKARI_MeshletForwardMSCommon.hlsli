@@ -25,9 +25,12 @@ struct HikariMeshletVertexOut
     nointerpolation uint objectDataIndex : TEXCOORD4;
     nointerpolation uint surfaceGpuSceneIndex : TEXCOORD5;
     nointerpolation uint debugSurfaceId : TEXCOORD6;
-    nointerpolation uint surfaceFeatureFlags : TEXCOORD7;
     float3 characterRightWS : TEXCOORD8;
     float3 characterForwardWS : TEXCOORD9;
+    // Keep the shared VS/MS -> PS signature order identical to
+    // Render3D_StaticPS. DXIL assigns packed hardware registers in declaration
+    // order, so semantic names alone do not make a partial signature linkable.
+    nointerpolation uint surfaceFeatureFlags : TEXCOORD7;
 };
 
 HikariMeshletVertexOut HikariBuildEmptyMeshletVertex()

@@ -28,7 +28,9 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             bool allSourcesExecuted = true;
             for (const RENDER3D::GPUDRIVEN::GpuDrivenPassKind sourcePass :
                  kMaterialFeaturePasses) {
-                if (!layer.GetPassExecutionState(sourcePass).hasSource) {
+                if (!layer.GetPassExecutionState(sourcePass).hasSource ||
+                    layer.GetPassExecutionPlan(sourcePass).
+                        gpuBackendCount == 0u) {
                     continue;
                 }
                 hasSource = true;

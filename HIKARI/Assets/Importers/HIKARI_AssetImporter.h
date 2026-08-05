@@ -13,6 +13,7 @@
 namespace HIKARI {
 
     class AssetTaskContext;
+    class AssetDatabase;
 
     struct AssetImportContext {
         std::filesystem::path projectRoot{};
@@ -20,6 +21,7 @@ namespace HIKARI {
         std::filesystem::path libraryRoot{};
         std::filesystem::path sourceMetaRoot{};
         std::filesystem::path importedDirectory{};
+        const AssetDatabase* assetDatabase = nullptr;
         AssetTaskContext* task = nullptr;
     };
 

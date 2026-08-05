@@ -3,11 +3,14 @@
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <iterator>
 #include <optional>
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+
+#include "Assets/Material/Graph/HIKARI_MaterialNodeDefinition.h"
 
 namespace HIKARI {
     namespace {
@@ -15,11 +18,14 @@ namespace HIKARI {
         constexpr size_t kMaxEdges = 2048u;
         constexpr size_t kMaxParameters = 256u;
         constexpr size_t kMaxResources = 256u;
+        struct ResolvedPin final {
+            std::string_view id{};
+            MaterialValueType type = MaterialValueType::Float1;
+            bool acceptsDynamicNumeric = false;
+        };
         struct NodeSignature final {
-            std::vector<std::pair<std::string_view, MaterialValueType>> inputs{};
-            std::vector<std::pair<std::string_view, MaterialValueType>> outputs{};
-            bool acceptsDynamicNumericInputs = false;
-            bool emitsDynamicNumericOutputs = false;
+            std::vector<ResolvedPin> inputs{};
+            std::vector<ResolvedPin> outputs{};
         };
         void AddDiagnostic(
             std::vector<MaterialGraphDiagnostic>& diagnostics,
@@ -58,189 +64,58 @@ namespace HIKARI {
         NodeSignature MakeSignature(
             const MaterialGraphNodeData& node,
             const std::unordered_map<std::string, MaterialValueType>& parameters) {
-            switch (node.kind) {
-            case MaterialNodeKind::Constant:
-                return { {}, { { "Value", node.value.type } } };
-            case MaterialNodeKind::Parameter: {
-                const auto parameter = parameters.find(node.referenceId);
-                const MaterialValueType type = parameter == parameters.end()
-                    ? node.valueType
-                    : parameter->second;
-                return { {}, { { "Value", type } } };
+            NodeSignature signature{};
+            if (node.kind == MaterialNodeKind::FunctionCall &&
+                (!node.functionInputs.empty() ||
+                 !node.functionOutputs.empty())) {
+                signature.inputs.reserve(node.functionInputs.size());
+                for (const MaterialGraphParameterData& pin :
+                     node.functionInputs) {
+                    signature.inputs.push_back({
+                        pin.id, pin.defaultValue.type, false});
+                }
+                signature.outputs.reserve(node.functionOutputs.size());
+                for (const MaterialGraphParameterData& pin :
+                     node.functionOutputs) {
+                    signature.outputs.push_back({
+                        pin.id, pin.defaultValue.type, false});
+                }
+                return signature;
             }
-            case MaterialNodeKind::TextureSample:
-                return { {}, {
-                    { "Color", MaterialValueType::Float4 },
-                    { "RGB", MaterialValueType::Float3 },
-                    { "R", MaterialValueType::Float1 },
-                    { "G", MaterialValueType::Float1 },
-                    { "B", MaterialValueType::Float1 },
-                    { "A", MaterialValueType::Float1 },
-                    { "Alpha", MaterialValueType::Float1 }
-                } };
-            case MaterialNodeKind::Add:
-            case MaterialNodeKind::Multiply:
-                return { { { "A", MaterialValueType::Float1 }, { "B", MaterialValueType::Float1 } },
-                    { { "Result", node.valueType } }, true, true };
-            case MaterialNodeKind::Lerp:
-                return { {
-                    { "A", MaterialValueType::Float1 },
-                    { "B", MaterialValueType::Float1 },
-                    { "Alpha", MaterialValueType::Float1 }
-                }, { { "Result", node.valueType } }, true, true };
-            case MaterialNodeKind::Clamp:
-                return { {
-                    { "Value", MaterialValueType::Float1 },
-                    { "Min", MaterialValueType::Float1 },
-                    { "Max", MaterialValueType::Float1 }
-                }, { { "Result", node.valueType } }, true, true };
-            case MaterialNodeKind::Saturate:
-            case MaterialNodeKind::OneMinus:
-                return { { { "Value", MaterialValueType::Float1 } },
-                    { { "Result", node.valueType } }, true, true };
-            case MaterialNodeKind::Power:
-                return { { { "Base", MaterialValueType::Float1 }, { "Exponent", MaterialValueType::Float1 } },
-                    { { "Result", node.valueType } }, true, true };
-            case MaterialNodeKind::Dot:
-                return { { { "A", MaterialValueType::Float3 }, { "B", MaterialValueType::Float3 } },
-                    { { "Result", MaterialValueType::Float1 } }, true, false };
-            case MaterialNodeKind::NormalUnpack:
-                return { { { "PackedNormal", MaterialValueType::Float3 } },
-                    { { "Normal", MaterialValueType::Float3 } } };
-            case MaterialNodeKind::PbrSurface:
-                return { {
-                    { "BaseColor", MaterialValueType::Float4 },
-                    { "Normal", MaterialValueType::Float3 },
-                    { "Metallic", MaterialValueType::Float1 },
-                    { "Roughness", MaterialValueType::Float1 },
-                    { "Occlusion", MaterialValueType::Float1 },
-                    { "Emissive", MaterialValueType::Float3 },
-                    { "Specular", MaterialValueType::Float1 },
-                    { "SpecularColor", MaterialValueType::Float3 },
-                    { "DiffuseResponse", MaterialValueType::DiffuseResponse },
-                    { "SpecularResponse", MaterialValueType::SpecularResponse },
-                    { "Additive", MaterialValueType::Float3 },
-                    { "Outline", MaterialValueType::OutlineResponse }
-                }, { { "Surface", MaterialValueType::Surface } } };
-            case MaterialNodeKind::RampDiffuse:
-                return { {
-                    { "ShadowThreshold", MaterialValueType::Float1 },
-                    { "ShadowSoftness", MaterialValueType::Float1 },
-                    { "MidThreshold", MaterialValueType::Float1 },
-                    { "ShadowTint", MaterialValueType::Float3 },
-                    { "MidTint", MaterialValueType::Float3 },
-                    { "LitTint", MaterialValueType::Float3 },
-                    { "MaskInfluence", MaterialValueType::Float1 },
-                    { "Intensity", MaterialValueType::Float1 },
-                    { "DirectGain", MaterialValueType::Float1 },
-                    { "Mask", MaterialValueType::Float1 }
-                }, { { "Response", MaterialValueType::DiffuseResponse } } };
-            case MaterialNodeKind::MultiRampDiffuse:
-                return { {
-                    { "ShadowThreshold", MaterialValueType::Float1 },
-                    { "ShadowSoftness", MaterialValueType::Float1 },
-                    { "MidThreshold", MaterialValueType::Float1 },
-                    { "ShadowTint", MaterialValueType::Float3 },
-                    { "MidTint", MaterialValueType::Float3 },
-                    { "LitTint", MaterialValueType::Float3 },
-                    { "RampRow", MaterialValueType::Float1 },
-                    { "MaskInfluence", MaterialValueType::Float1 },
-                    { "RampBlend", MaterialValueType::Float1 },
-                    { "Intensity", MaterialValueType::Float1 },
-                    { "DirectGain", MaterialValueType::Float1 },
-                    { "Mask", MaterialValueType::Float1 }
-                }, { { "Response", MaterialValueType::DiffuseResponse } } };
-            case MaterialNodeKind::SpecularBand:
-                return { {
-                    { "Width", MaterialValueType::Float1 },
-                    { "Softness", MaterialValueType::Float1 },
-                    { "Intensity", MaterialValueType::Float1 },
-                    { "Power", MaterialValueType::Float1 },
-                    { "Tint", MaterialValueType::Float3 }
-                }, { { "Response", MaterialValueType::SpecularResponse } } };
-            case MaterialNodeKind::FresnelRim:
-                return { {
-                    { "Power", MaterialValueType::Float1 },
-                    { "Width", MaterialValueType::Float1 },
-                    { "Color", MaterialValueType::Float3 },
-                    { "Intensity", MaterialValueType::Float1 },
-                    { "LightAlignment", MaterialValueType::Float1 }
-                }, { { "Color", MaterialValueType::Float3 } } };
-            case MaterialNodeKind::MatCap:
-                return { {
-                    { "Normal", MaterialValueType::Float3 },
-                    { "ViewDirection", MaterialValueType::Float3 },
-                    { "Mask", MaterialValueType::Float1 }
-                }, { { "Color", MaterialValueType::Float3 } } };
-            case MaterialNodeKind::AnisotropicHair:
-                return { {
-                    { "Tangent", MaterialValueType::Float3 },
-                    { "Shift", MaterialValueType::Float1 },
-                    { "Width", MaterialValueType::Float1 },
-                    { "Mask", MaterialValueType::Float1 }
-                }, { { "Response", MaterialValueType::SpecularResponse } } };
-            case MaterialNodeKind::FaceSdf:
-                return { {
-                    { "LightDirection", MaterialValueType::Float3 },
-                    { "SDF", MaterialValueType::Float1 },
-                    { "Softness", MaterialValueType::Float1 },
-                    { "DirectGain", MaterialValueType::Float1 }
-                }, { { "Response", MaterialValueType::DiffuseResponse } } };
-            case MaterialNodeKind::EyeLighting:
-                return { {
-                    { "BaseColor", MaterialValueType::Float3 },
-                    { "Mask", MaterialValueType::Float1 },
-                    { "ViewDirection", MaterialValueType::Float3 }
-                }, { { "Color", MaterialValueType::Float3 } } };
-            case MaterialNodeKind::SkinLighting:
-                return { {
-                    { "DiffuseResponse", MaterialValueType::DiffuseResponse },
-                    { "Wrap", MaterialValueType::Float1 },
-                    { "Subsurface", MaterialValueType::Float1 },
-                    { "Tint", MaterialValueType::Float3 },
-                    { "Mask", MaterialValueType::Float1 }
-                }, { { "Response", MaterialValueType::DiffuseResponse } } };
-            case MaterialNodeKind::FabricSheen:
-                return { {
-                    { "Sheen", MaterialValueType::Float1 },
-                    { "FiberRoughness", MaterialValueType::Float1 },
-                    { "Power", MaterialValueType::Float1 },
-                    { "Intensity", MaterialValueType::Float1 },
-                    { "Mask", MaterialValueType::Float1 }
-                }, { { "Color", MaterialValueType::Float3 } } };
-            case MaterialNodeKind::HybridLighting:
-                return { {
-                    { "DiffuseResponse", MaterialValueType::DiffuseResponse },
-                    { "DirectDiffuseBlend", MaterialValueType::Float1 },
-                    { "DirectSpecularBlend", MaterialValueType::Float1 },
-                    { "IndirectBlend", MaterialValueType::Float1 }
-                }, { { "Response", MaterialValueType::DiffuseResponse } } };
-            case MaterialNodeKind::Outline:
-                return { {
-                    { "Color", MaterialValueType::Float3 },
-                    { "Thickness", MaterialValueType::Float1 }
-                }, { { "Response", MaterialValueType::OutlineResponse } } };
-            case MaterialNodeKind::HairShadow:
-                return { {
-                    { "DiffuseResponse", MaterialValueType::DiffuseResponse },
-                    { "ShadowMask", MaterialValueType::Float1 },
-                    { "Strength", MaterialValueType::Float1 }
-                }, { { "Response", MaterialValueType::DiffuseResponse } } };
-            case MaterialNodeKind::SurfaceOutput:
-                return { { { "Surface", MaterialValueType::Surface } }, {} };
-            case MaterialNodeKind::FunctionCall:
-                return { { { "Input", node.valueType } }, { { "Result", node.valueType } } };
+            const MaterialNodeDefinition* definition =
+                FindMaterialNodeDefinition(node.kind);
+            if (definition == nullptr) {
+                return signature;
             }
-            return {};
+            std::optional<MaterialValueType> parameterType{};
+            if (const auto parameter = parameters.find(node.referenceId);
+                parameter != parameters.end()) {
+                parameterType = parameter->second;
+            }
+            const auto appendPins = [&](
+                std::span<const MaterialNodePinDefinition> definitions,
+                std::vector<ResolvedPin>& pins) {
+                pins.reserve(definitions.size());
+                for (const MaterialNodePinDefinition& pin : definitions) {
+                    pins.push_back(ResolvedPin{
+                        pin.id,
+                        ResolveMaterialNodePinType(pin, node, parameterType),
+                        pin.acceptsDynamicNumeric,
+                    });
+                }
+            };
+            appendPins(definition->inputs, signature.inputs);
+            appendPins(definition->outputs, signature.outputs);
+            return signature;
         }
 
-        const std::pair<std::string_view, MaterialValueType>* FindPin(
-            const std::vector<std::pair<std::string_view, MaterialValueType>>& pins,
+        const ResolvedPin* FindPin(
+            const std::vector<ResolvedPin>& pins,
             std::string_view name) {
             const auto result = std::find_if(
                 pins.begin(),
                 pins.end(),
-                [name](const auto& pin) { return pin.first == name; });
+                [name](const ResolvedPin& pin) { return pin.id == name; });
             return result == pins.end() ? nullptr : &*result;
         }
 
@@ -256,26 +131,6 @@ namespace HIKARI {
             }
             return targetAcceptsNumeric ||
                 source == MaterialValueType::Float1;
-        }
-
-        bool IsDynamicNumericInput(
-            MaterialNodeKind kind,
-            std::string_view pin) noexcept {
-            switch (kind) {
-            case MaterialNodeKind::Add:
-            case MaterialNodeKind::Multiply:
-                return pin == "A" || pin == "B";
-            case MaterialNodeKind::Lerp:
-                return pin == "A" || pin == "B";
-            case MaterialNodeKind::Clamp:
-            case MaterialNodeKind::Saturate:
-            case MaterialNodeKind::OneMinus:
-                return pin == "Value";
-            case MaterialNodeKind::Power:
-                return pin == "Base";
-            default:
-                return false;
-            }
         }
 
         bool HasCycle(
@@ -357,35 +212,17 @@ namespace HIKARI {
                 visiting.erase(std::string(nodeId));
                 return true;
             }
-            std::vector<std::string_view> requiredInputs{};
-            switch (node->kind) {
-            case MaterialNodeKind::Add:
-            case MaterialNodeKind::Multiply:
-            case MaterialNodeKind::Dot:
-                requiredInputs = {"A", "B"};
-                break;
-            case MaterialNodeKind::Lerp:
-                requiredInputs = {"A", "B", "Alpha"};
-                break;
-            case MaterialNodeKind::Clamp:
-                requiredInputs = {"Value", "Min", "Max"};
-                break;
-            case MaterialNodeKind::Saturate:
-            case MaterialNodeKind::OneMinus:
-                requiredInputs = {"Value"};
-                break;
-            case MaterialNodeKind::Power:
-                requiredInputs = {"Base", "Exponent"};
-                break;
-            default:
+            const MaterialNodeDefinition* definition =
+                FindMaterialNodeDefinition(node->kind);
+            if (definition == nullptr || !definition->staticallyEvaluable) {
                 visiting.erase(std::string(nodeId));
                 return false;
             }
             const bool result = std::all_of(
-                requiredInputs.begin(), requiredInputs.end(),
-                [&](std::string_view pin) {
+                definition->inputs.begin(), definition->inputs.end(),
+                [&](const MaterialNodePinDefinition& pin) {
                     const MaterialGraphEdgeData* edge =
-                        FindInputEdge(graph, node->id, pin);
+                        FindInputEdge(graph, node->id, pin.id);
                     return edge != nullptr && IsStaticNumericExpression(
                         graph, edge->sourceNodeId, visiting);
                 });
@@ -478,11 +315,11 @@ namespace HIKARI {
                 graph, edge.sourceNodeId, edge.sourcePin, visiting);
         }
 
-        bool IsAdditiveFeature(MaterialNodeKind kind) noexcept {
-            return kind == MaterialNodeKind::FresnelRim ||
-                kind == MaterialNodeKind::MatCap ||
-                kind == MaterialNodeKind::EyeLighting ||
-                kind == MaterialNodeKind::FabricSheen;
+        bool IsAdditiveFeature(const MaterialNodeTypeId& typeId) noexcept {
+            const MaterialNodeDefinition* definition =
+                FindMaterialNodeDefinition(typeId);
+            return definition != nullptr &&
+                definition->outputRoute == MaterialNodeOutputRoute::Additive;
         }
 
         bool IsAdditiveExpression(
@@ -531,107 +368,74 @@ namespace HIKARI {
         }
 
         bool IsRuntimeResourceInput(
-            MaterialNodeKind kind,
+            const MaterialNodeTypeId& typeId,
             std::string_view pin) noexcept {
-            return pin == "Mask" ||
-                pin == "ShadowMask" ||
-                (kind == MaterialNodeKind::FaceSdf && pin == "SDF");
+            const MaterialNodePinDefinition* definition =
+                FindMaterialNodeInputDefinition(typeId, pin);
+            return definition != nullptr &&
+                !definition->runtimeResourceChannel.empty();
         }
 
         std::string_view RuntimeResourceChannel(
-            MaterialNodeKind kind,
+            const MaterialNodeTypeId& typeId,
             std::string_view pin) noexcept {
-            if (kind == MaterialNodeKind::FaceSdf && pin == "SDF") {
-                return "R";
-            }
-            if (pin == "ShadowMask" &&
-                kind == MaterialNodeKind::HairShadow) {
-                return "R";
-            }
-            if (pin != "Mask") {
-                return {};
-            }
-            switch (kind) {
-            case MaterialNodeKind::SkinLighting:
-                return "G";
-            case MaterialNodeKind::FabricSheen:
-                return "B";
-            case MaterialNodeKind::MatCap:
-                return "A";
-            case MaterialNodeKind::RampDiffuse:
-            case MaterialNodeKind::MultiRampDiffuse:
-            case MaterialNodeKind::AnisotropicHair:
-            case MaterialNodeKind::EyeLighting:
-                return "R";
-            default:
-                return {};
-            }
+            const MaterialNodePinDefinition* definition =
+                FindMaterialNodeInputDefinition(typeId, pin);
+            return definition == nullptr
+                ? std::string_view{}
+                : definition->runtimeResourceChannel;
         }
 
-        bool IsRuntimeGeneratedInput(
-            MaterialNodeKind kind,
-            std::string_view pin) noexcept {
-            return (kind == MaterialNodeKind::MatCap &&
-                    (pin == "Normal" || pin == "ViewDirection")) ||
-                (kind == MaterialNodeKind::AnisotropicHair &&
-                 pin == "Tangent") ||
-                (kind == MaterialNodeKind::FaceSdf &&
-                 pin == "LightDirection") ||
-                (kind == MaterialNodeKind::EyeLighting &&
-                 (pin == "BaseColor" || pin == "ViewDirection"));
-        }
-
-        bool IsStylizedNode(MaterialNodeKind kind) noexcept {
-            return kind >= MaterialNodeKind::RampDiffuse &&
-                kind <= MaterialNodeKind::EyeLighting ||
-                kind == MaterialNodeKind::SkinLighting ||
-                kind == MaterialNodeKind::FabricSheen ||
-                kind == MaterialNodeKind::HybridLighting ||
-                kind == MaterialNodeKind::Outline ||
-                kind == MaterialNodeKind::HairShadow;
+        bool IsStylizedNode(const MaterialNodeTypeId& typeId) noexcept {
+            const MaterialNodeDefinition* definition =
+                FindMaterialNodeDefinition(typeId);
+            return definition != nullptr &&
+                definition->semanticClass == MaterialNodeSemanticClass::Shading;
         }
 
         bool IsCanonicalStylizedOutputEdge(
-            MaterialNodeKind source,
-            MaterialNodeKind target,
+            const MaterialNodeTypeId& source,
+            const MaterialNodeTypeId& target,
             std::string_view targetPin) noexcept {
-            if (source == MaterialNodeKind::RampDiffuse ||
-                source == MaterialNodeKind::MultiRampDiffuse ||
-                source == MaterialNodeKind::FaceSdf ||
-                source == MaterialNodeKind::HairShadow) {
+            const MaterialNodeDefinition* definition =
+                FindMaterialNodeDefinition(source);
+            if (definition == nullptr) {
+                return false;
+            }
+            switch (definition->outputRoute) {
+            case MaterialNodeOutputRoute::DiffuseBase:
                 return targetPin == "DiffuseResponse" &&
                     (target == MaterialNodeKind::PbrSurface ||
                      target == MaterialNodeKind::SkinLighting ||
                      target == MaterialNodeKind::HybridLighting ||
                      target == MaterialNodeKind::HairShadow);
-            }
-            if (source == MaterialNodeKind::SkinLighting) {
+            case MaterialNodeOutputRoute::DiffuseAfterSkin:
                 return targetPin == "DiffuseResponse" &&
                     (target == MaterialNodeKind::PbrSurface ||
                      target == MaterialNodeKind::HybridLighting ||
                      target == MaterialNodeKind::HairShadow);
-            }
-            if (source == MaterialNodeKind::HybridLighting) {
+            case MaterialNodeOutputRoute::DiffuseFinal:
                 return (target == MaterialNodeKind::PbrSurface ||
                         target == MaterialNodeKind::HairShadow) &&
                     targetPin == "DiffuseResponse";
-            }
-            if (source == MaterialNodeKind::SpecularBand ||
-                source == MaterialNodeKind::AnisotropicHair) {
+            case MaterialNodeOutputRoute::Specular:
                 return target == MaterialNodeKind::PbrSurface &&
                     targetPin == "SpecularResponse";
-            }
-            if (IsAdditiveFeature(source)) {
+            case MaterialNodeOutputRoute::Eye:
+                return target == MaterialNodeKind::PbrSurface &&
+                    targetPin == "Eye";
+            case MaterialNodeOutputRoute::Additive:
                 return (target == MaterialNodeKind::PbrSurface &&
                         targetPin == "Additive") ||
                     (target == MaterialNodeKind::Add &&
                      (targetPin == "A" || targetPin == "B"));
-            }
-            if (source == MaterialNodeKind::Outline) {
+            case MaterialNodeOutputRoute::Outline:
                 return target == MaterialNodeKind::PbrSurface &&
                     targetPin == "Outline";
+            case MaterialNodeOutputRoute::Unrestricted:
+            default:
+                return true;
             }
-            return true;
         }
 
         bool IsExpectedPbrTextureChannel(
@@ -715,7 +519,7 @@ namespace HIKARI {
                     if (edge.targetPin == "DiffuseResponse") {
                         continue;
                     }
-                    if (IsRuntimeGeneratedInput(
+                    if (IsMaterialGraphRuntimeGeneratedInput(
                             target->kind, edge.targetPin)) {
                         AddDiagnostic(
                             diagnostics,
@@ -765,6 +569,7 @@ namespace HIKARI {
                 }
                 if (edge.targetPin == "DiffuseResponse" ||
                     edge.targetPin == "SpecularResponse" ||
+                    edge.targetPin == "Eye" ||
                     edge.targetPin == "Outline") {
                     continue;
                 }
@@ -774,7 +579,7 @@ namespace HIKARI {
                             diagnostics,
                             MaterialGraphDiagnosticSeverity::Error,
                             "Material.UnsupportedAdditiveExpression",
-                            "PBR Additive requires a Fresnel, MatCap, Eye, Fabric, or Add feature stack",
+                            "PBR Additive requires a Fresnel, MatCap, Fabric, or Add feature stack; connect Eye Layer to the dedicated Eye socket",
                             edge.id);
                     }
                     continue;
@@ -824,6 +629,73 @@ namespace HIKARI {
         }
 
     } // namespace
+
+    std::vector<std::string_view> GetMaterialGraphNodeInputPins(
+        MaterialNodeKind kind) {
+        return GetMaterialGraphNodeInputPins(MaterialNodeTypeId{ kind });
+    }
+
+    std::vector<std::string_view> GetMaterialGraphNodeInputPins(
+        const MaterialNodeTypeId& typeId) {
+        MaterialGraphNodeData node{};
+        node.kind = typeId;
+        node.valueType = MaterialValueType::Float1;
+        node.value.type = MaterialValueType::Float1;
+        return GetMaterialGraphNodeInputPins(node);
+    }
+
+    std::vector<std::string_view> GetMaterialGraphNodeInputPins(
+        const MaterialGraphNodeData& node) {
+        const NodeSignature signature = MakeSignature(node, {});
+        std::vector<std::string_view> pins{};
+        pins.reserve(signature.inputs.size());
+        std::transform(
+            signature.inputs.begin(), signature.inputs.end(),
+            std::back_inserter(pins),
+            [](const ResolvedPin& pin) { return pin.id; });
+        return pins;
+    }
+
+    std::vector<std::string_view> GetMaterialGraphNodeOutputPins(
+        MaterialNodeKind kind) {
+        return GetMaterialGraphNodeOutputPins(MaterialNodeTypeId{ kind });
+    }
+
+    std::vector<std::string_view> GetMaterialGraphNodeOutputPins(
+        const MaterialNodeTypeId& typeId) {
+        MaterialGraphNodeData node{};
+        node.kind = typeId;
+        node.valueType = MaterialValueType::Float1;
+        node.value.type = MaterialValueType::Float1;
+        return GetMaterialGraphNodeOutputPins(node);
+    }
+
+    std::vector<std::string_view> GetMaterialGraphNodeOutputPins(
+        const MaterialGraphNodeData& node) {
+        const NodeSignature signature = MakeSignature(node, {});
+        std::vector<std::string_view> pins{};
+        pins.reserve(signature.outputs.size());
+        std::transform(
+            signature.outputs.begin(), signature.outputs.end(),
+            std::back_inserter(pins),
+            [](const ResolvedPin& pin) { return pin.id; });
+        return pins;
+    }
+
+    bool IsMaterialGraphRuntimeGeneratedInput(
+        MaterialNodeKind kind,
+        std::string_view pin) noexcept {
+        return IsMaterialGraphRuntimeGeneratedInput(
+            MaterialNodeTypeId{ kind }, pin);
+    }
+
+    bool IsMaterialGraphRuntimeGeneratedInput(
+        const MaterialNodeTypeId& typeId,
+        std::string_view pin) noexcept {
+        const MaterialNodePinDefinition* definition =
+            FindMaterialNodeInputDefinition(typeId, pin);
+        return definition != nullptr && definition->runtimeGenerated;
+    }
 
     bool IsValidMaterialStableId(std::string_view id) noexcept {
         if (id.empty() || id.size() > 128u) {
@@ -883,9 +755,9 @@ namespace HIKARI {
             return false;
         }
         if (!ArePinTypesCompatible(
-                sourcePinSignature->second,
-                targetPinSignature->second,
-                IsDynamicNumericInput(targetNode->kind, targetPin))) {
+                sourcePinSignature->type,
+                targetPinSignature->type,
+                targetPinSignature->acceptsDynamicNumeric)) {
             outReason = "the output and input socket types are incompatible";
             return false;
         }
@@ -1008,6 +880,12 @@ namespace HIKARI {
                     "Material.InvalidNodeId",
                     "material node IDs must be stable and unique", node.id);
             }
+            if (FindMaterialNodeDefinition(node.kind) == nullptr) {
+                AddDiagnostic(outDiagnostics, MaterialGraphDiagnosticSeverity::Error,
+                    "Material.UnknownNodeType",
+                    "material node TypeId is not registered by this compiler",
+                    node.kind.value);
+            }
             if (!std::isfinite(node.position.x) || !std::isfinite(node.position.y) ||
                 !IsFiniteValue(node.value)) {
                 AddDiagnostic(outDiagnostics, MaterialGraphDiagnosticSeverity::Error,
@@ -1124,11 +1002,9 @@ namespace HIKARI {
                 continue;
             }
             if (!ArePinTypesCompatible(
-                sourcePin->second,
-                targetPin->second,
-                IsDynamicNumericInput(
-                    graph.nodes[target->second].kind,
-                    edge.targetPin))) {
+                sourcePin->type,
+                targetPin->type,
+                targetPin->acceptsDynamicNumeric)) {
                 AddDiagnostic(outDiagnostics, MaterialGraphDiagnosticSeverity::Error,
                     "Material.PinTypeMismatch",
                     "material edge connects incompatible typed pins", edge.id);

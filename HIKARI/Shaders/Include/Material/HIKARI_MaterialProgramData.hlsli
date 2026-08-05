@@ -2,11 +2,13 @@
 #define HIKARI_MATERIAL_PROGRAM_DATA_INCLUDED
 
 static const uint HIKARI_STANDARD_PBR_MATERIAL_PROGRAM = 0u;
-static const uint HIKARI_MATERIAL_PROGRAM_PARAMETER_SLOTS = 20u;
-static const uint HIKARI_MATERIAL_PROGRAM_RESOURCE_SLOTS = 8u;
-static const uint HIKARI_MATERIAL_PROGRAM_PARAMETER_CAPACITY = 81920u;
-static const uint HIKARI_MATERIAL_PROGRAM_RESOURCE_CAPACITY = 32768u;
+static const uint HIKARI_MATERIAL_PROGRAM_PARAMETER_SLOTS = 30u;
+static const uint HIKARI_MATERIAL_PROGRAM_RESOURCE_SLOTS = 10u;
+static const uint HIKARI_MATERIAL_PROGRAM_PARAMETER_CAPACITY = 122880u;
+static const uint HIKARI_MATERIAL_PROGRAM_RESOURCE_CAPACITY = 40960u;
 
+static const uint HIKARI_PROGRAM_FLAG_ALPHA_BLEND = 1u << 2u;
+static const uint HIKARI_PROGRAM_FLAG_CORNEA_HIGHLIGHT = 1u << 4u;
 static const uint HIKARI_PROGRAM_FLAG_STANDARD_PBR = 1u << 6u;
 static const uint HIKARI_PROGRAM_FLAG_RAMP_DIFFUSE = 1u << 7u;
 static const uint HIKARI_PROGRAM_FLAG_MULTI_RAMP = 1u << 8u;
@@ -28,6 +30,7 @@ static const uint HIKARI_PROGRAM_FLAG_EDITOR_SELECTION_OUTLINE = 1u << 27u;
 static const uint HIKARI_PROGRAM_FLAG_HAIR_CONTROL_MAP = 1u << 28u;
 static const uint HIKARI_PROGRAM_FLAG_EYE_CONTROL_MAP = 1u << 29u;
 static const uint HIKARI_PROGRAM_FLAG_HAIR_SHADOW = 1u << 30u;
+static const uint HIKARI_PROGRAM_FLAG_PREMULTIPLIED_ALPHA_INPUT = 1u << 31u;
 
 static const uint HIKARI_PROGRAM_RESOURCE_RAMP0 = 0u;
 static const uint HIKARI_PROGRAM_RESOURCE_RAMP1 = 1u;
@@ -38,6 +41,10 @@ static const uint HIKARI_PROGRAM_RESOURCE_HAIR = 5u;
 static const uint HIKARI_PROGRAM_RESOURCE_EYE = 6u;
 static const uint HIKARI_PROGRAM_RESOURCE_DETAIL = 7u;
 static const uint HIKARI_PROGRAM_RESOURCE_HAIR_SHADOW = 7u;
+// Additional Ramp stack slots are appended so the established special
+// resource indices above remain stable inside one engine build.
+static const uint HIKARI_PROGRAM_RESOURCE_RAMP2 = 8u;
+static const uint HIKARI_PROGRAM_RESOURCE_RAMP3 = 9u;
 
 StructuredBuffer<float4> gMaterialProgramParameters : register(t0, space6);
 StructuredBuffer<uint> gMaterialProgramResources : register(t1, space6);

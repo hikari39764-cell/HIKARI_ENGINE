@@ -12,6 +12,7 @@
 #endif
 namespace HIKARI::EDITOR {
 using namespace MATERIAL_GRAPH_UI;
+
 void ModelMaterialWorkspaceController::DrawGraphWindow(DocumentSceneBase &scene) {
 #if defined(HIKARI_WITH_EDITOR)
   constexpr ImGuiWindowFlags flags =
@@ -104,6 +105,7 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(DocumentSceneBase &scene)
     ImVec2 position{};
     ImVec2 size{};
     NodeCardPresentation card{};
+    float screenScale = 1.0f;
   };
   std::unordered_map<std::string, NodeLayout> layouts{};
   std::unordered_map<std::string, ImVec2> inputPositions{}, outputPositions{};
@@ -114,6 +116,11 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(DocumentSceneBase &scene)
         collapsedGraphNodeIds_.contains(node.id));
     const bool authoringControls =
         layout.card.detail == NodeCardDetail::Authoring;
+    // ImGui widgets are pixel-space controls. At the editable LOD the whole
+    // card therefore uses one pixel-space scale instead of mixing zoomed
+    // headers/pins with unscaled fields. Compact/overview cards contain no
+    // widgets and can safely follow canvas zoom.
+    layout.screenScale = authoringControls ? 1.0f : graphCanvas_.zoom;
     const float contentHeight =
         layout.card.inlineHeight + layout.card.compactSummaryHeight;
     const size_t rowInputCount = CountNodeInputRows(
@@ -124,15 +131,15 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(DocumentSceneBase &scene)
         graphCanvas_, {origin.x, origin.y}, node.position);
     layout.position = {screenPosition.x, screenPosition.y};
     layout.size = {
-        kNodeWidth * graphCanvas_.zoom,
+        kNodeWidth * layout.screenScale,
         (kHeaderHeight + kNodePadding + rows * kPinRowHeight) *
-                graphCanvas_.zoom +
+                layout.screenScale +
             contentHeight};
     const std::vector<float> inputOffsets =
         BuildNodeInputVerticalOffsets(
             node.kind, layout.card.inputs, contentHeight,
             authoringControls,
-            graphCanvas_.zoom);
+            layout.screenScale);
     for (size_t index = 0u; index < layout.card.inputs.size(); ++index) {
       inputPositions[PinKey(node.id, layout.card.inputs[index])] = {
           layout.position.x, layout.position.y + inputOffsets[index]};
@@ -143,7 +150,7 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(DocumentSceneBase &scene)
           layout.position.y +
               (kHeaderHeight + kNodePadding +
                (static_cast<float>(index) + 0.5f) * kPinRowHeight) *
-                  graphCanvas_.zoom + contentHeight};
+                  layout.screenScale + contentHeight};
     }
     layouts.emplace(node.id, std::move(layout));
   }
@@ -201,7 +208,6 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(DocumentSceneBase &scene)
     std::string targetPin{};
   };
   std::optional<CompletedLink> completedLink{};
-  const float pinHitRadius = (std::max)(12.0f, 10.0f * graphCanvas_.zoom);
   struct PinHit {
     std::string nodeId{};
     std::string pin{};
@@ -215,6 +221,8 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(DocumentSceneBase &scene)
       }
       const std::vector<std::string_view> &pins =
           output ? layout->second.card.outputs : layout->second.card.inputs;
+      const float pinHitRadius =
+          (std::max)(12.0f, 10.0f * layout->second.screenScale);
       const auto &positions = output ? outputPositions : inputPositions;
       for (const std::string_view pin : pins) {
         const auto position = positions.find(PinKey(node->id, pin));
@@ -257,12 +265,12 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(DocumentSceneBase &scene)
                     hoveredLayout->second.position.y},
           {hoveredLayout->second.position.x + hoveredLayout->second.size.x,
            hoveredLayout->second.position.y + hoveredLayout->second.size.y},
-          kHeaderHeight * graphCanvas_.zoom,
+          kHeaderHeight * hoveredLayout->second.screenScale,
           hoveredLayout->second.card.inlineHeight);
   const bool pointerOverNodeHeader = hoveredLayout != layouts.end() &&
       pointer.y >= hoveredLayout->second.position.y &&
       pointer.y <= hoveredLayout->second.position.y +
-          kHeaderHeight * graphCanvas_.zoom;
+          kHeaderHeight * hoveredLayout->second.screenScale;
   const bool pointerOverNode = !hoveredNodeId.empty() ||
                                hoveredOutput.has_value() ||
                                hoveredInput.has_value();
@@ -365,7 +373,7 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(DocumentSceneBase &scene)
                             IM_COL32(29, 35, 43, 248), 7.0f);
     drawList->AddRectFilled(
         layout.position,
-        {nodeMax.x, layout.position.y + kHeaderHeight * graphCanvas_.zoom},
+        {nodeMax.x, layout.position.y + kHeaderHeight * layout.screenScale},
         NodeHeaderColor(node.kind), 7.0f,
         ImDrawFlags_RoundCornersTop);
     if (selected) {
@@ -378,48 +386,46 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(DocumentSceneBase &scene)
                       selected ? IM_COL32(255, 171, 72, 255)
                                : IM_COL32(69, 82, 96, 255),
                       7.0f, 0, selected ? 3.0f : 1.5f);
-    const float textScale = std::clamp(graphCanvas_.zoom, 0.72f, 1.15f);
+    const float textScale = std::clamp(layout.screenScale, 0.72f, 1.15f);
     const float nodeFontSize = ImGui::GetFontSize() * textScale;
     drawList->AddText(
         ImGui::GetFont(), nodeFontSize,
-        {layout.position.x + 10.0f * graphCanvas_.zoom,
-         layout.position.y + 8.0f * graphCanvas_.zoom},
+        {layout.position.x + 10.0f * layout.screenScale,
+         layout.position.y + 8.0f * layout.screenScale},
         IM_COL32(244, 247, 250, 255),
         node.displayName.empty() ? ToString(node.kind).data()
                                  : node.displayName.c_str(), nullptr);
     ImGui::PushID(node.id.c_str());
-    ImGui::SetCursorScreenPos(
-        {nodeMax.x - 25.0f, layout.position.y + 5.0f});
-    if (ImGui::ArrowButton(
-            "##CollapseNode",
-            layout.card.collapsed ? ImGuiDir_Right : ImGuiDir_Down)) {
+    const NodeCollapseControlResult collapse = DrawNodeCollapseControl(
+        {nodeMax.x, layout.position.y}, layout.screenScale,
+        layout.card.collapsed);
+    if (collapse.toggled) {
       if (layout.card.collapsed) {
         collapsedGraphNodeIds_.erase(node.id);
       } else {
         collapsedGraphNodeIds_.insert(node.id);
       }
     }
-    inlineControlsCapture = inlineControlsCapture ||
-                            ImGui::IsItemHovered() ||
-                            ImGui::IsItemActive();
+    inlineControlsCapture =
+        inlineControlsCapture || collapse.capturesPointer;
     ImGui::PopID();
     if (!layout.card.collapsed && layout.card.inlineHeight > 0.0f) {
       inlineControlsCapture =
           DrawMaterialGraphNodeInlineControls(
               scene, source, *graph, node,
-              layout.position.x + 10.0f,
+              layout.position.x + 10.0f * layout.screenScale,
               layout.position.y +
-                  kHeaderHeight * graphCanvas_.zoom + 5.0f,
-              layout.size.x - 20.0f) ||
+                  kHeaderHeight * layout.screenScale + 5.0f,
+              layout.size.x - 20.0f * layout.screenScale) ||
           inlineControlsCapture;
     } else if (layout.card.detail == NodeCardDetail::Compact) {
       drawList->AddText(
           ImGui::GetFont(), nodeFontSize,
-          {layout.position.x + 10.0f * graphCanvas_.zoom,
-           layout.position.y + kHeaderHeight * graphCanvas_.zoom +
-               6.0f * graphCanvas_.zoom},
+          {layout.position.x + 10.0f * layout.screenScale,
+           layout.position.y + kHeaderHeight * layout.screenScale +
+               6.0f * layout.screenScale},
           IM_COL32(155, 176, 194, 255),
-          "Zoom in to edit", nullptr);
+          "Compact view - Zoom in to edit node parameters", nullptr);
     }
     for (size_t index = 0; index < layout.card.inputs.size(); ++index) {
       const std::string_view pin = layout.card.inputs[index];
@@ -427,7 +433,7 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(DocumentSceneBase &scene)
       const bool hovered = hoveredInput && hoveredInput->nodeId == node.id &&
                            hoveredInput->pin == pin;
       drawList->AddCircleFilled(
-          port, (hovered ? 7.0f : 5.5f) * graphCanvas_.zoom,
+          port, (hovered ? 7.0f : 5.5f) * layout.screenScale,
           PinColor(pin));
       const bool inlineOwned =
           layout.card.detail == NodeCardDetail::Authoring &&
@@ -435,7 +441,7 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(DocumentSceneBase &scene)
       if (!inlineOwned && graphCanvas_.zoom >= 0.55f) {
         drawList->AddText(
             ImGui::GetFont(), nodeFontSize,
-            {port.x + 10.0f * graphCanvas_.zoom,
+            {port.x + 10.0f * layout.screenScale,
              port.y - nodeFontSize * 0.5f},
             IM_COL32(204, 213, 222, 255), pin.data(), nullptr);
       }
@@ -447,13 +453,13 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(DocumentSceneBase &scene)
                            hoveredOutput->nodeId == node.id &&
                            hoveredOutput->pin == pin;
       drawList->AddCircleFilled(
-          port, (hovered ? 7.0f : 5.5f) * graphCanvas_.zoom,
+          port, (hovered ? 7.0f : 5.5f) * layout.screenScale,
           PinColor(pin));
       if (graphCanvas_.zoom >= 0.55f) {
         const ImVec2 labelSize = ImGui::CalcTextSize(pin.data());
         drawList->AddText(
             ImGui::GetFont(), nodeFontSize,
-            {port.x - labelSize.x * textScale - 10.0f * graphCanvas_.zoom,
+            {port.x - labelSize.x * textScale - 10.0f * layout.screenScale,
              port.y - nodeFontSize * 0.5f},
             IM_COL32(204, 213, 222, 255), pin.data(), nullptr);
       }
@@ -466,15 +472,9 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(DocumentSceneBase &scene)
     const auto start = outputPositions.find(
         PinKey(edgeSourceNodeId_, edgeSourcePin_));
     if (start != outputPositions.end()) {
-      const ImVec2 mouse = io.MousePos;
-      const float tangent = (std::max)(60.0f * graphCanvas_.zoom,
-                                       std::abs(mouse.x - start->second.x) *
-                                           0.45f);
-      drawList->AddBezierCubic(
-          start->second,
-          {start->second.x + tangent, start->second.y},
-          {mouse.x - tangent, mouse.y}, mouse,
-          PinColor(edgeSourcePin_), 2.5f);
+      DrawPendingLink(
+          {start->second.x, start->second.y}, {io.MousePos.x, io.MousePos.y},
+          graphCanvas_.zoom, PinColor(edgeSourcePin_));
     }
   }
   drawList->PopClipRect();

@@ -43,7 +43,7 @@ namespace HIKARI {
 
     struct MaterialGraphNodeData {
         std::string id{};
-        MaterialNodeKind kind = MaterialNodeKind::Constant;
+        MaterialNodeTypeId kind{ MaterialNodeKind::Constant };
         std::string displayName{};
         MATH::Vec2 position{ 0.0f, 0.0f };
         MaterialValueType valueType = MaterialValueType::Float1;
@@ -51,6 +51,11 @@ namespace HIKARI {
         std::string referenceId{};
         AssetGuid assetReference{};
         std::vector<MaterialNodePropertyData> properties{};
+        // Material Function calls cache their authored interface so the graph
+        // remains editable while its dependency is temporarily unavailable.
+        // Cook always resolves the authoritative Function asset before use.
+        std::vector<MaterialGraphParameterData> functionInputs{};
+        std::vector<MaterialGraphParameterData> functionOutputs{};
     };
 
     struct MaterialGraphEdgeData {

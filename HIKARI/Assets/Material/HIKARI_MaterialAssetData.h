@@ -49,6 +49,8 @@ namespace HIKARI {
 
     struct MaterialSurfaceData {
         MaterialAlphaMode alphaMode = MaterialAlphaMode::Opaque;
+        MaterialAlphaRepresentation alphaRepresentation =
+            MaterialAlphaRepresentation::Straight;
         float alphaCutoff = 0.5f;
         bool doubleSided = false;
         bool unlit = false;
@@ -99,8 +101,6 @@ namespace HIKARI {
 
     struct MaterialAssetData {
         uint32_t version = kMaterialAssetSourceVersion;
-        uint32_t sourceVersion = kMaterialAssetSourceVersion;
-        bool migratedFromLegacy = false;
         MaterialAssetKind kind = MaterialAssetKind::Material;
         std::string materialName = "New Material";
         MaterialDomain domain = MaterialDomain::Surface;

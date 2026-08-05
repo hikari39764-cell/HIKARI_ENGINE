@@ -123,6 +123,18 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
             };
         }
 
+        nlohmann::json WriteFunctionPins(
+            std::vector<MaterialGraphParameterData> pins) {
+            std::sort(pins.begin(), pins.end(), [](const auto& left, const auto& right) {
+                return left.id < right.id;
+            });
+            nlohmann::json values = nlohmann::json::array();
+            for (const MaterialGraphParameterData& pin : pins) {
+                values.push_back(WriteMaterialParameterJson(pin));
+            }
+            return values;
+        }
+
         bool ReadNode(
             const nlohmann::json& node,
             MaterialGraphNodeData& outNode,
@@ -134,10 +146,10 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
             }
             MaterialGraphNodeData graphNode{};
             graphNode.id = node.value("id", std::string{});
-            if (!TryParseMaterialNodeKind(
+            if (!TryParseMaterialNodeTypeId(
                     node.value("kind", std::string{}),
                     graphNode.kind)) {
-                outError = "unknown or forbidden material node kind for " + graphNode.id;
+                outError = "invalid material node type ID for " + graphNode.id;
                 return false;
             }
             graphNode.displayName = node.value("displayName", graphNode.id);
@@ -158,6 +170,12 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
             graphNode.assetReference.value = node.value("assetReference", std::string{});
             if (!ReadArray(node, "properties", graphNode.properties,
                     ReadProperty, outError)) {
+                return false;
+            }
+            if (!ReadArray(node, "functionInputs", graphNode.functionInputs,
+                    ReadMaterialParameterJson, outError) ||
+                !ReadArray(node, "functionOutputs", graphNode.functionOutputs,
+                    ReadMaterialParameterJson, outError)) {
                 return false;
             }
             outNode = std::move(graphNode);
@@ -183,6 +201,8 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
                 { "referenceId", node.referenceId },
                 { "assetReference", node.assetReference.value },
                 { "properties", std::move(propertyArray) },
+                { "functionInputs", WriteFunctionPins(node.functionInputs) },
+                { "functionOutputs", WriteFunctionPins(node.functionOutputs) },
             };
         }
 

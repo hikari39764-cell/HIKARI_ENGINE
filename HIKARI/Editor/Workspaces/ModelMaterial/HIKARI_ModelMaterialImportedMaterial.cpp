@@ -5,6 +5,7 @@
 
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/Material/Authoring/HIKARI_MaterialTemplateFactory.h"
+#include "Assets/Material/HIKARI_MaterialAssetLookup.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
 namespace HIKARI::EDITOR {
@@ -138,10 +139,13 @@ bool ModelMaterialWorkspaceController::OpenImportedMaterialDraft(
           outMessage)) {
     return false;
   }
-  const MaterialCompileResult compile = CompileMaterialAsset(source, nullptr);
-  authoringDocument_.OpenMaterial({}, {}, std::move(source), compile,
-                                  compile.success ? &compile.program : nullptr,
-                                  true);
+  const MaterialCompileOptions compileOptions =
+      ASSETS::MATERIAL::MakeMaterialCompileOptions(
+          scene.GetAssetDatabase());
+  const MaterialCompileResult compile = CompileMaterialAsset(
+      source, compileOptions);
+  authoringDocument_.SetMaterialCompileOptions(compileOptions);
+  authoringDocument_.OpenMaterial({}, {}, std::move(source), compile, true);
   candidateAuthoringAssetGuid_ = {};
   candidateMaterialGuid_ = {};
   selectedGraphNodeId_.clear();

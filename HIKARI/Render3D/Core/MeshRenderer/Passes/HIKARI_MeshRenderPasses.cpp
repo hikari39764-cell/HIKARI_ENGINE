@@ -26,9 +26,12 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
 
             bool hasSource = false;
             bool allSourcesExecuted = true;
+            SyncGpuDrivenBackendAvailability();
             for (const RENDER3D::GPUDRIVEN::GpuDrivenPassKind sourcePass :
                  kMaterialFeaturePasses) {
-                if (!HasGpuDrivenPassSource(sourcePass)) {
+                if (!HasGpuDrivenPassSource(sourcePass) ||
+                    gMeshRendererState.gpuDrivenLayer.
+                        GetPassExecutionPlan(sourcePass).gpuBackendCount == 0u) {
                     continue;
                 }
                 hasSource = true;
@@ -148,31 +151,40 @@ namespace HIKARI::MESHRENDERER {
     bool HasStylizedFeatureMaskBackend() {
         const auto& meshletStats =
             gMeshRendererState.meshletRenderBackend.GetStats();
-        return
+        const bool traditionalReady =
             gMeshRendererState.pipelines.geometryFeatureMaskPso != nullptr &&
-            gMeshRendererState.pipelines.geometryFeatureMaskSkinnedPso != nullptr &&
-            (!meshletStats.meshShaderSupported ||
-                meshletStats.geometryFeatureMaskPipelineReady);
+            gMeshRendererState.pipelines.geometryFeatureMaskSkinnedPso != nullptr;
+        return RENDER3D::GPUDRIVEN::IsGeometryFeatureBackendReady(
+            RENDER3D::GPUDRIVEN::ResolveGeometryBackendPolicy(
+                RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardOpaque),
+            meshletStats.geometryFeatureMaskPipelineReady,
+            traditionalReady);
     }
 
     bool HasGeometryOutlineFeatureBackend() {
         const auto& meshletStats =
             gMeshRendererState.meshletRenderBackend.GetStats();
-        return
+        const bool traditionalReady =
             gMeshRendererState.pipelines.geometryOutlinePso != nullptr &&
-            gMeshRendererState.pipelines.geometryOutlineSkinnedPso != nullptr &&
-            (!meshletStats.meshShaderSupported ||
-                meshletStats.geometryOutlinePipelineReady);
+            gMeshRendererState.pipelines.geometryOutlineSkinnedPso != nullptr;
+        return RENDER3D::GPUDRIVEN::IsGeometryFeatureBackendReady(
+            RENDER3D::GPUDRIVEN::ResolveGeometryBackendPolicy(
+                RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardOpaque),
+            meshletStats.geometryOutlinePipelineReady,
+            traditionalReady);
     }
 
     bool HasVisibilityOverlayFeatureBackend() {
         const auto& meshletStats =
             gMeshRendererState.meshletRenderBackend.GetStats();
-        return
+        const bool traditionalReady =
             gMeshRendererState.pipelines.visibilityOverlayPso != nullptr &&
-            gMeshRendererState.pipelines.visibilityOverlaySkinnedPso != nullptr &&
-            (!meshletStats.meshShaderSupported ||
-                meshletStats.visibilityOverlayPipelineReady);
+            gMeshRendererState.pipelines.visibilityOverlaySkinnedPso != nullptr;
+        return RENDER3D::GPUDRIVEN::IsGeometryFeatureBackendReady(
+            RENDER3D::GPUDRIVEN::ResolveGeometryBackendPolicy(
+                RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardOpaque),
+            meshletStats.visibilityOverlayPipelineReady,
+            traditionalReady);
     }
 
     bool RenderGeometryOutlineFeaturePass(

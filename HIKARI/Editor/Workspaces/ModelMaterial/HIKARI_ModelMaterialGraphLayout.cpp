@@ -2,31 +2,27 @@
 
 #include <algorithm>
 
+#include "Assets/Material/Graph/HIKARI_MaterialGraphValidation.h"
+
 namespace HIKARI::EDITOR::MATERIAL_GRAPH_UI {
 
-bool IsRuntimeDrivenInput(MaterialNodeKind kind,
+bool IsRuntimeDrivenInput(const MaterialNodeTypeId& typeId,
                           std::string_view pin) noexcept {
-  switch (kind) {
-  case MaterialNodeKind::RampDiffuse:
-  case MaterialNodeKind::MultiRampDiffuse:
-    return pin == "NdotL" || pin == "Shadow";
-  case MaterialNodeKind::SpecularBand: return pin == "NdotH";
-  case MaterialNodeKind::FresnelRim: return pin == "NdotV";
-  case MaterialNodeKind::MatCap:
-    return pin == "Normal" || pin == "ViewDirection";
-  case MaterialNodeKind::AnisotropicHair: return pin == "Tangent";
-  case MaterialNodeKind::FaceSdf:
-    return pin == "LightDirection" || pin == "SDF";
-  case MaterialNodeKind::EyeLighting:
-    return pin == "BaseColor" || pin == "ViewDirection";
-  default: return false;
-  }
+  return IsMaterialGraphRuntimeGeneratedInput(typeId, pin);
 }
 
-bool IsInlineOwnedInput(MaterialNodeKind kind,
+bool IsInlineOwnedInput(const MaterialNodeTypeId& typeId,
                         std::string_view pin) noexcept {
+  MaterialNodeKind kind{};
+  if (!TryGetLegacyMaterialNodeKind(typeId, kind)) {
+    return false;
+  }
   switch (kind) {
-  case MaterialNodeKind::PbrSurface: return true;
+  case MaterialNodeKind::PbrSurface:
+    return pin == "BaseColor" || pin == "Metallic" ||
+           pin == "Roughness" || pin == "Occlusion" ||
+           pin == "Emissive" || pin == "Specular" ||
+           pin == "SpecularColor";
   case MaterialNodeKind::RampDiffuse:
   case MaterialNodeKind::MultiRampDiffuse:
     return pin != "Mask";
@@ -35,10 +31,16 @@ bool IsInlineOwnedInput(MaterialNodeKind kind,
   case MaterialNodeKind::Outline:
     return true;
   case MaterialNodeKind::MatCap:
+    return pin == "Mask";
   case MaterialNodeKind::AnisotropicHair:
-  case MaterialNodeKind::EyeLighting:
   case MaterialNodeKind::FabricSheen:
     return pin == "Mask" || !IsRuntimeDrivenInput(kind, pin);
+  case MaterialNodeKind::EyeLighting:
+    // The authored RGBA control texture remains a visible graph socket.
+    // Only ViewDirection is supplied by the runtime shading context.
+    return false;
+  case MaterialNodeKind::CorneaHighlight:
+    return true;
   case MaterialNodeKind::FaceSdf:
     return pin == "Softness" || pin == "DirectGain";
   case MaterialNodeKind::SkinLighting:
@@ -56,10 +58,10 @@ NodeCardPresentation ResolveNodeCardPresentation(
     float zoom,
     bool collapsed) {
   NodeCardPresentation result{};
-  result.inputs = InputPins(node.kind);
-  result.outputs = OutputPins(node.kind);
+  result.inputs = InputPins(node);
+  result.outputs = OutputPins(node);
   result.collapsed = collapsed;
-  result.detail = collapsed || zoom < 0.55f
+  result.detail = collapsed || zoom < 0.48f
       ? NodeCardDetail::Overview
       : zoom >= kInlineControlsMinimumZoom
           ? NodeCardDetail::Authoring
@@ -76,27 +78,27 @@ NodeCardPresentation ResolveNodeCardPresentation(
       return IsInlineOwnedInput(node.kind, pin) &&
              !PinHasConnection(graph, node.id, pin, false);
     });
-    result.compactSummaryHeight = 28.0f * zoom;
+    result.compactSummaryHeight = 32.0f;
   } else {
     result.inlineHeight = NodeInlineHeight(node.kind);
   }
   return result;
 }
 
-size_t CountNodeInputRows(MaterialNodeKind kind,
+size_t CountNodeInputRows(const MaterialNodeTypeId& typeId,
                           const std::vector<std::string_view>& inputs,
                           bool inlineControls) noexcept {
   return inlineControls
       ? static_cast<size_t>(std::count_if(
             inputs.begin(), inputs.end(),
-            [kind](std::string_view pin) {
-              return !IsInlineOwnedInput(kind, pin);
+            [&typeId](std::string_view pin) {
+              return !IsInlineOwnedInput(typeId, pin);
             }))
       : inputs.size();
 }
 
 std::vector<float> BuildNodeInputVerticalOffsets(
-    MaterialNodeKind kind,
+    const MaterialNodeTypeId& typeId,
     const std::vector<std::string_view>& inputs,
     float contentHeight,
     bool inlineControls,
@@ -104,11 +106,11 @@ std::vector<float> BuildNodeInputVerticalOffsets(
   std::vector<float> offsets{};
   offsets.reserve(inputs.size());
   const size_t inlineCount = inputs.size() -
-      CountNodeInputRows(kind, inputs, inlineControls);
+      CountNodeInputRows(typeId, inputs, inlineControls);
   size_t inlineIndex = 0u;
   size_t rowIndex = 0u;
   for (const std::string_view pin : inputs) {
-    const bool inlineOwned = inlineControls && IsInlineOwnedInput(kind, pin);
+    const bool inlineOwned = inlineControls && IsInlineOwnedInput(typeId, pin);
     offsets.push_back(inlineOwned
         ? kHeaderHeight * zoom + 8.0f +
             (static_cast<float>(inlineIndex++) + 0.5f) *

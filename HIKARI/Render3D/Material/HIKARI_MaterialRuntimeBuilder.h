@@ -25,6 +25,15 @@ namespace HIKARI {
             Material& outMaterial,
             std::string_view debugName,
             RENDER3D::MATERIAL::MaterialProgramResolution* outResolution = nullptr) const;
+
+        bool BuildRuntimeMaterial(
+            const MaterialAssetData& data,
+            const MaterialCompileResult& compileResult,
+            const AssetRegistry& assetRegistry,
+            RENDER3D::MATERIAL::MaterialProgramRegistry& programRegistry,
+            Material& outMaterial,
+            std::string_view debugName,
+            RENDER3D::MATERIAL::MaterialProgramResolution* outResolution = nullptr) const;
     };
 
 } // namespace HIKARI

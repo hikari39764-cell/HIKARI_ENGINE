@@ -48,8 +48,6 @@ namespace HIKARI {
 
         MaterialAssetData data{};
         data.version = kMaterialAssetSourceVersion;
-        data.sourceVersion = legacyData.version;
-        data.migratedFromLegacy = legacyData.version < kMaterialAssetSourceVersion;
         data.materialName = legacyData.materialName;
         data.templateId = MaterialTemplateId::StandardPbr;
         data.surface.doubleSided = legacyData.doubleSided;
@@ -148,10 +146,69 @@ namespace HIKARI {
             MaterialNodeKind::SurfaceOutput, MaterialValueType::Surface,
             360.0f, 0.0f);
 
-        // Principled PBR owns the canonical factor and texture defaults above.
-        // Explicit graph inputs remain available and override those defaults,
-        // but a new material no longer expands every built-in input into a
-        // Parameter -> Texture -> Multiply implementation subgraph.
+        // Material v5 has no hidden resource-to-surface projection. Imported
+        // model textures become ordinary, visible Texture Sample nodes and
+        // only affect the surface through these reachable edges.
+        const auto addTextureSample = [&](
+            std::string id,
+            std::string displayName,
+            std::string referenceId,
+            float y) {
+            addNode(std::move(id), std::move(displayName),
+                MaterialNodeKind::TextureSample,
+                MaterialValueType::Float4, -680.0f, y,
+                std::move(referenceId));
+        };
+        if (legacyData.baseColorTexture.useTexture) {
+            addTextureSample("node.texture.baseColor", "Base Color Texture",
+                "resource.baseColor", -40.0f);
+            connect("edge.texture.baseColor", "node.texture.baseColor",
+                "Color", "node.standardPbr", "BaseColor");
+        }
+        if (legacyData.normalTexture.useTexture) {
+            addTextureSample("node.texture.normal", "Normal Texture",
+                "resource.normal", 180.0f);
+            addNode("node.normalUnpack", "Normal Map",
+                MaterialNodeKind::NormalUnpack, MaterialValueType::Float3,
+                -340.0f, 180.0f);
+            connect("edge.texture.normal.unpack", "node.texture.normal",
+                "RGB", "node.normalUnpack", "PackedNormal");
+            connect("edge.texture.normal.surface", "node.normalUnpack",
+                "Normal", "node.standardPbr", "Normal");
+        }
+        if (legacyData.metallicRoughnessTexture.useTexture) {
+            addTextureSample("node.texture.metallicRoughness",
+                "Metallic Roughness Texture",
+                "resource.metallicRoughness", 400.0f);
+            connect("edge.texture.metallic", "node.texture.metallicRoughness",
+                "B", "node.standardPbr", "Metallic");
+            connect("edge.texture.roughness", "node.texture.metallicRoughness",
+                "G", "node.standardPbr", "Roughness");
+        }
+        if (legacyData.occlusionTexture.useTexture) {
+            addTextureSample("node.texture.occlusion", "Occlusion Texture",
+                "resource.occlusion", 620.0f);
+            connect("edge.texture.occlusion", "node.texture.occlusion",
+                "R", "node.standardPbr", "Occlusion");
+        }
+        if (legacyData.emissiveTexture.useTexture) {
+            addTextureSample("node.texture.emissive", "Emissive Texture",
+                "resource.emissive", 840.0f);
+            connect("edge.texture.emissive", "node.texture.emissive",
+                "RGB", "node.standardPbr", "Emissive");
+        }
+        if (legacyData.specularTexture.useTexture) {
+            addTextureSample("node.texture.specular", "Specular Texture",
+                "resource.specular", 1060.0f);
+            connect("edge.texture.specular", "node.texture.specular",
+                "A", "node.standardPbr", "Specular");
+        }
+        if (legacyData.specularColorTexture.useTexture) {
+            addTextureSample("node.texture.specularColor",
+                "Specular Color Texture", "resource.specularColor", 1280.0f);
+            connect("edge.texture.specularColor", "node.texture.specularColor",
+                "RGB", "node.standardPbr", "SpecularColor");
+        }
         connect("edge.standardPbr.surfaceOutput", "node.standardPbr",
             "Surface", "node.surfaceOutput", "Surface");
         data.graph.outputNodeId = "node.surfaceOutput";

@@ -6,8 +6,10 @@
 #include <d3dx12.h>
 
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
+#include "Gfx/HIKARI_D3D12DebugTools.h"
 #include "Gfx/HIKARI_D3DBlobCompat.h"
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
+#include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
 #include "Render3D/Core/MeshRenderer/Pipeline/HIKARI_MeshInputLayouts.h"
 #include "Render3D/Core/MeshRenderer/Pipeline/HIKARI_MeshRootParameters.h"
@@ -620,10 +622,20 @@ namespace HIKARI::MESHRENDERER {
             outlinePsoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_FRONT;
             outlinePsoDesc.DepthStencilState.DepthWriteMask =
                 D3D12_DEPTH_WRITE_MASK_ZERO;
-            const bool staticPipelineReady = SUCCEEDED(
+            GFX::ClearD3D12InfoQueue(device);
+            const HRESULT staticPipelineResult =
                 device->CreateGraphicsPipelineState(
                     &outlinePsoDesc,
-                    IID_PPV_ARGS(store.geometryOutlinePso.GetAddressOf())));
+                    IID_PPV_ARGS(store.geometryOutlinePso.GetAddressOf()));
+            const bool staticPipelineReady = SUCCEEDED(staticPipelineResult);
+            if (!staticPipelineReady) {
+                HIKARI_DX_CHECK(
+                    staticPipelineResult,
+                    "MeshRenderer::CreateTraditionalGeometryOutlineStaticPSO");
+                GFX::DumpD3D12InfoQueue(
+                    device,
+                    "MeshRenderer::CreateTraditionalGeometryOutlineStaticPSO");
+            }
 
             bool skinnedPipelineReady = false;
             if (staticPipelineReady) {
@@ -638,18 +650,29 @@ namespace HIKARI::MESHRENDERER {
                     skinnedInputElements.data(),
                     static_cast<UINT>(skinnedInputElements.size())
                 };
-                skinnedPipelineReady = SUCCEEDED(
+                GFX::ClearD3D12InfoQueue(device);
+                const HRESULT skinnedPipelineResult =
                     device->CreateGraphicsPipelineState(
                         &outlineSkinnedPsoDesc,
                         IID_PPV_ARGS(
-                            store.geometryOutlineSkinnedPso.GetAddressOf())));
+                            store.geometryOutlineSkinnedPso.GetAddressOf()));
+                skinnedPipelineReady = SUCCEEDED(skinnedPipelineResult);
+                if (!skinnedPipelineReady) {
+                    HIKARI_DX_CHECK(
+                        skinnedPipelineResult,
+                        "MeshRenderer::CreateTraditionalGeometryOutlineSkinnedPSO");
+                    GFX::DumpD3D12InfoQueue(
+                        device,
+                        "MeshRenderer::CreateTraditionalGeometryOutlineSkinnedPSO");
+                }
             }
             if (!staticPipelineReady || !skinnedPipelineReady) {
                 store.geometryOutlinePso.Reset();
                 store.geometryOutlineSkinnedPso.Reset();
                 DEBUGLOG::PushRenderError(
-                    "[MeshRenderer][WARN] Optional geometry-outline pipeline "
-                    "is unavailable. Core Forward rendering remains available.");
+                    "[MeshRenderer][WARN] Optional traditional VS/PS "
+                    "geometry-outline pipeline is unavailable. Mesh Shader "
+                    "outline readiness is evaluated independently.");
             }
         }
 

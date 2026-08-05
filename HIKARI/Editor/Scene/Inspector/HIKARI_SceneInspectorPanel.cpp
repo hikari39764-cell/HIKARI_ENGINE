@@ -17,9 +17,11 @@
 #include "Editor/Widgets/HIKARI_InspectorPropertyLayout.h"
 #include "Render3D/HIKARI_Math3D.h"
 #include "Scene/Components/HIKARI_CameraComponent.h"
+#include "Scene/Components/Lighting/HIKARI_LightComponent.h"
 #include "Scene/HIKARI_ComponentRegistry.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
+#include "Scene/Lighting/HIKARI_LightingAuthoringModel.h"
 
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
@@ -249,6 +251,26 @@ void SceneInspectorPanel::DrawTransform(DocumentSceneBase &scene,
         pendingTransformHistory_->dirtyBefore};
     pendingTransformHistory_.reset();
   };
+  const auto isDirectionalLight = [&]() {
+    const GameObject *selected = context.selection.selectedObject;
+    const LightComponent *light =
+        selected != nullptr ? selected->GetComponent<LightComponent>() : nullptr;
+    return light != nullptr &&
+           light->GetLightType() == LightComponentType::Directional;
+  };
+  const auto applyDirectionalPreset = [&](const MATH::Vec3 &rotation,
+                                          const char *historyLabel) {
+    PendingTransformHistory before{
+        scene.GetSceneDocument().objects, scene.GetSceneDocument().camera,
+        context.sceneDirty || scene.HasUnsavedSceneChanges()};
+    target.transform.rotationEulerDeg =
+        LIGHTING_AUTHORING::CanonicalDirectionalLightEulerDegrees(rotation);
+    applyTransform();
+    historyRequest_ = SceneObjectAuthoringHistoryRequest{
+        historyLabel, std::move(before.beforeObjects),
+        scene.GetSceneDocument().objects, before.beforeCamera,
+        scene.GetSceneDocument().camera, before.dirtyBefore};
+  };
 
   {
     InspectorPropertyRow row("Position");
@@ -264,18 +286,60 @@ void SceneInspectorPanel::DrawTransform(DocumentSceneBase &scene,
     finishHistoryIfDeactivated();
   }
   {
-    InspectorPropertyRow row("Rotation");
-    float values[3]{target.transform.rotationEulerDeg.x,
-                    target.transform.rotationEulerDeg.y,
-                    target.transform.rotationEulerDeg.z};
-    const bool changed =
-        row.IsVisible() && ImGui::DragFloat3("##Value", values, 0.5f);
-    beginHistoryIfActivated();
-    if (changed) {
-      target.transform.rotationEulerDeg = {values[0], values[1], values[2]};
-      applyTransform();
+    if (isDirectionalLight()) {
+      {
+        InspectorPropertyRow row("Light Direction");
+        const MATH::Vec3 canonical =
+            LIGHTING_AUTHORING::CanonicalDirectionalLightEulerDegrees(
+                target.transform.rotationEulerDeg);
+        float values[2]{canonical.x, canonical.y};
+        const bool changed = row.IsVisible() &&
+                             ImGui::DragFloat2("##Value", values, 0.5f,
+                                               -360.0f, 360.0f,
+                                               "%.1f deg");
+        beginHistoryIfActivated();
+        if (changed) {
+          target.transform.rotationEulerDeg =
+              LIGHTING_AUTHORING::CanonicalDirectionalLightEulerDegrees(
+                  {std::clamp(values[0], -89.9f, 89.9f), values[1], 0.0f});
+          applyTransform();
+        }
+        finishHistoryIfDeactivated();
+        if (ImGui::IsItemHovered()) {
+          ImGui::SetTooltip(
+              "Pitch / Yaw in degrees. Pitch is limited to -89.9..89.9; "
+              "Yaw wraps to -180..180; Roll is locked to 0.");
+        }
+      }
+      ImGui::TextDisabled("Pitch / Yaw | Roll locked");
+      if (ImGui::SmallButton("Key 3/4")) {
+        applyDirectionalPreset({35.0f, -35.0f, 0.0f},
+                               "Set Directional Light Key Preset");
+      }
+      ImGui::SameLine();
+      if (ImGui::SmallButton("Top Down")) {
+        applyDirectionalPreset({89.9f, 0.0f, 0.0f},
+                               "Set Directional Light Top Preset");
+      }
+      ImGui::SameLine();
+      if (ImGui::SmallButton("Front")) {
+        applyDirectionalPreset({0.0f, 0.0f, 0.0f},
+                               "Set Directional Light Front Preset");
+      }
+    } else {
+      InspectorPropertyRow row("Rotation");
+      float values[3]{target.transform.rotationEulerDeg.x,
+                      target.transform.rotationEulerDeg.y,
+                      target.transform.rotationEulerDeg.z};
+      const bool changed =
+          row.IsVisible() && ImGui::DragFloat3("##Value", values, 0.5f);
+      beginHistoryIfActivated();
+      if (changed) {
+        target.transform.rotationEulerDeg = {values[0], values[1], values[2]};
+        applyTransform();
+      }
+      finishHistoryIfDeactivated();
     }
-    finishHistoryIfDeactivated();
   }
   {
     InspectorPropertyRow row("Scale");

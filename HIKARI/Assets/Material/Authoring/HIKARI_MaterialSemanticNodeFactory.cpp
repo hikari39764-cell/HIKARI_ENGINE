@@ -17,21 +17,18 @@ constexpr std::array kPbrParameters{
     "parameter.specularColor"sv, "parameter.normalScale"sv,
     "parameter.occlusionStrength"sv, "parameter.emissive"sv,
     "parameter.emissiveStrength"sv};
-constexpr std::array kPbrResources{
-    "resource.baseColor"sv, "resource.normal"sv,
-    "resource.metallicRoughness"sv, "resource.occlusion"sv,
-    "resource.emissive"sv, "resource.specular"sv,
-    "resource.specularColor"sv};
 constexpr std::array kRampParameters{
     "parameter.shadowThreshold"sv, "parameter.shadowSoftness"sv,
     "parameter.midThreshold"sv, "parameter.shadowTint"sv,
     "parameter.midTint"sv, "parameter.litTint"sv,
     "parameter.rampRow"sv, "parameter.rampMaskInfluence"sv,
-    "parameter.rampBlend"sv, "parameter.rampIntensity"sv,
+    "parameter.rampBlend"sv, "parameter.rampLayerWeights"sv,
+    "parameter.rampIntensity"sv,
     "parameter.toonDirectGain"sv};
 constexpr std::array kRampResources{"resource.diffuseRamp"sv};
 constexpr std::array kMultiRampResources{
-    "resource.diffuseRamp"sv, "resource.secondaryRamp"sv};
+    "resource.diffuseRamp"sv, "resource.secondaryRamp"sv,
+    "resource.tertiaryRamp"sv, "resource.quaternaryRamp"sv};
 constexpr std::array kSpecularBandParameters{
     "parameter.specularBandWidth"sv,
     "parameter.specularBandSoftness"sv,
@@ -42,13 +39,15 @@ constexpr std::array kFresnelParameters{
     "parameter.rimWidth"sv, "parameter.rimIntensity"sv,
     "parameter.rimLightAlignment"sv};
 constexpr std::array kMatCapParameters{
-    "parameter.matCapTint"sv, "parameter.matCapIntensity"sv};
-constexpr std::array kMatCapResources{"resource.matCap"sv};
+    "parameter.matCapTint"sv, "parameter.matCapIntensity"sv,
+    "parameter.matCapViewCorrection"sv,
+    "parameter.matCapSphericalNormalBlend"sv};
 constexpr std::array kHairParameters{
     "parameter.hairShift"sv, "parameter.hairWidth"sv,
     "parameter.hairSecondaryShift"sv, "parameter.hairIntensity"sv,
+    "parameter.hairPrimaryPower"sv, "parameter.hairSecondaryPower"sv,
+    "parameter.hairSecondaryIntensity"sv, "parameter.hairFlowStrength"sv,
     "parameter.hairHighlightTint"sv};
-constexpr std::array kHairResources{"resource.hairControl"sv};
 constexpr std::array kFaceParameters{
     "parameter.shadowThreshold"sv, "parameter.shadowSoftness"sv,
     "parameter.midThreshold"sv, "parameter.shadowTint"sv,
@@ -58,21 +57,48 @@ constexpr std::array kFaceParameters{
     "parameter.toonDirectGain"sv, "parameter.faceShadowSoftness"sv,
     "parameter.faceShadowOffset"sv, "parameter.faceRight"sv,
     "parameter.faceForward"sv};
-constexpr std::array kFaceResources{
-    "resource.diffuseRamp"sv, "resource.faceSdf"sv};
+constexpr std::array kFaceResources{"resource.diffuseRamp"sv};
 constexpr std::array kEyeParameters{
     "parameter.irisDepth"sv, "parameter.eyeSparkle"sv,
-    "parameter.eyeSparklePower"sv};
-constexpr std::array kEyeResources{"resource.eyeControl"sv};
+    "parameter.eyeSparklePower"sv, "parameter.irisCenter"sv,
+    "parameter.irisRadius"sv, "parameter.irisMaskSoftness"sv,
+    "parameter.eyeLayerMode"sv, "parameter.eyeHighlightOpacity"sv,
+    "parameter.eyeHighlightThreshold"sv,
+    "parameter.eyeHighlightSoftness"sv,
+    "parameter.eyeParallaxScale"sv,
+    "parameter.eyeHighlightIntensity"sv,
+    "parameter.eyeBaseLift"sv,
+    "parameter.eyeCausticIntensity"sv,
+    "parameter.eyeCausticTint"sv,
+    "parameter.eyeCausticWidth"sv};
+constexpr std::array kCorneaHighlightParameters{
+    "parameter.irisDepth"sv,
+    "parameter.irisCenter"sv,
+    "parameter.irisRadius"sv,
+    "parameter.irisMaskSoftness"sv,
+    "parameter.eyeLayerMode"sv,
+    "parameter.eyeHighlightOpacity"sv,
+    "parameter.eyeHighlightThreshold"sv,
+    "parameter.eyeHighlightSoftness"sv,
+    "parameter.eyeParallaxScale"sv,
+    "parameter.eyeHighlightIntensity"sv,
+    "parameter.corneaHighlightMode"sv,
+    "parameter.corneaHighlightTravel"sv,
+    "parameter.corneaHighlightViewInfluence"sv,
+    "parameter.corneaHighlightLightInfluence"sv,
+    "parameter.corneaHighlightCurvature"sv,
+    "parameter.corneaHighlightMinBrightness"sv,
+    "parameter.corneaHighlightLightResponse"sv,
+    "parameter.corneaHighlightEdgeFade"sv,
+    "parameter.corneaHighlightSharpness"sv,
+    "parameter.corneaHighlightLightColor"sv};
 constexpr std::array kSkinParameters{
     "parameter.skinWrap"sv, "parameter.skinSubsurface"sv,
     "parameter.skinTint"sv};
-constexpr std::array kSkinResources{"resource.thicknessMask"sv};
 constexpr std::array kFabricParameters{
     "parameter.fabricSheen"sv, "parameter.fiberRoughness"sv,
     "parameter.fabricSheenPower"sv,
     "parameter.fabricSheenIntensity"sv};
-constexpr std::array kFabricResources{"resource.fabricMask"sv};
 constexpr std::array kHybridParameters{
     "parameter.directDiffusePbrBlend"sv,
     "parameter.directSpecularPbrBlend"sv,
@@ -82,7 +108,6 @@ constexpr std::array kOutlineParameters{
     "parameter.outlineThickness"sv};
 constexpr std::array kHairShadowParameters{
     "parameter.hairShadowStrength"sv};
-constexpr std::array kHairShadowResources{"resource.hairShadow"sv};
 
 template <size_t Size>
 std::span<const std::string_view> AsSpan(
@@ -152,6 +177,8 @@ void EnsureRamp(MaterialGraphData& graph, bool multiRamp) {
                     Value(MaterialValueType::Float1, 0.0f));
     EnsureParameter(graph, "parameter.rampBlend", "Secondary Ramp Blend",
                     Value(MaterialValueType::Float1, multiRamp ? 0.5f : 0.0f));
+    EnsureParameter(graph, "parameter.rampLayerWeights", "Ramp Layer Weights",
+                    Value(MaterialValueType::Float4, 1.0f, 0.0f, 0.0f, 0.0f));
     EnsureParameter(graph, "parameter.rampIntensity", "Ramp Influence",
                     Value(MaterialValueType::Float1, 1.0f));
     EnsureParameter(graph, "parameter.toonDirectGain", "Direct Light Gain",
@@ -162,6 +189,12 @@ void EnsureRamp(MaterialGraphData& graph, bool multiRamp) {
                    MaterialResourceSemantic::Ramp);
     if (multiRamp) {
         EnsureResource(graph, "resource.secondaryRamp", "Secondary Ramp",
+                       MaterialResourceType::Ramp2D,
+                       MaterialResourceSemantic::Ramp);
+        EnsureResource(graph, "resource.tertiaryRamp", "Tertiary Ramp",
+                       MaterialResourceType::Ramp2D,
+                       MaterialResourceSemantic::Ramp);
+        EnsureResource(graph, "resource.quaternaryRamp", "Quaternary Ramp",
                        MaterialResourceType::Ramp2D,
                        MaterialResourceSemantic::Ramp);
     }
@@ -196,13 +229,13 @@ const MaterialNodeSemanticContract& GetMaterialNodeSemanticContract(
     static constexpr MaterialNodeSemanticContract kPbr{
         "Surface Output / Surface",
         "Base color, normal, metal, roughness, occlusion, emissive and connected lighting responses",
-        "The final bounded game surface", "Uses its displayed factors and optional imported textures",
+        "The final bounded game surface", "Uses displayed factors; textures only apply through reachable Texture Sample links",
         "Unsupported response routes fail compilation",
         MaterialNodeResourcePolicy::OptionalAuthoredOverride};
     static constexpr MaterialNodeSemanticContract kRamp{
         "PBR Surface / Diffuse Response",
-        "NdotL, scene shadows, Ramp colors, thresholds, mask and direct-light gain",
-        "A stepped diffuse lighting response",
+        "NdotL, scene shadows, up to four weighted Ramp layers, thresholds, mask and direct-light gain",
+        "A normalized multi-layer stepped diffuse lighting response",
         "Uses an editable analytic Ramp until a Ramp asset is assigned",
         "Invalid connected masks or Ramp assets are diagnosed",
         MaterialNodeResourcePolicy::GeneratedDefault,
@@ -221,16 +254,16 @@ const MaterialNodeSemanticContract& GetMaterialNodeSemanticContract(
         MaterialNodeResourcePolicy::GeneratedDefault};
     static constexpr MaterialNodeSemanticContract kMatCap{
         "PBR Surface / Additive, directly or through Add",
-        "View-space normal, mask, MatCap image, tint and intensity",
-        "An additive view-space MatCap lobe", "No style image is invented",
+        "Camera-corrected view normal, optional eye-sphere normal, mask, image, tint and intensity",
+        "An additive perspective-aware MatCap lobe", "No style image is invented",
         "A reachable MatCap without a valid MatCap texture fails compilation",
         MaterialNodeResourcePolicy::AuthoredRequired,
         "resource.matCap"};
     static constexpr MaterialNodeSemanticContract kHair{
         "PBR Surface / Specular Response",
         "Generated mesh tangent, light/view directions, shifts, width, tint and optional flow map",
-        "A two-band anisotropic hair highlight",
-        "Uses generated mesh tangents; RGBA hair control is an optional override",
+        "A dual-lobe tangent-shifted Kajiya-Kay hair highlight",
+        "Uses generated mesh tangents; RGBA hair control is an optional per-pixel override",
         "Degenerate UVs receive a stable normal-derived tangent fallback",
         MaterialNodeResourcePolicy::OptionalAuthoredOverride,
         "resource.hairControl"};
@@ -242,13 +275,20 @@ const MaterialNodeSemanticContract& GetMaterialNodeSemanticContract(
         MaterialNodeResourcePolicy::AuthoredRequired,
         "resource.faceSdf"};
     static constexpr MaterialNodeSemanticContract kEye{
-        "PBR Surface / Additive, directly or through Add",
-        "View direction, iris depth, catchlight intensity/power and optional eye-control map",
-        "A procedural eye/cornea catchlight lobe",
-        "Uses a procedural catchlight; RGBA eye control optionally specializes it",
-        "Invalid connected masks fail compilation",
+        "PBR Surface / Eye",
+        "View/light directions, iris parallax, HDR highlight, lift, caustic controls and optional RGBA Eye Control",
+        "A bounded iris-parallax, spherical catchlight and caustic eye layer",
+        "Uses procedural iris/catchlight/caustic defaults; RGBA control specializes iris, cornea, catchlight and parallax placement",
+        "An invalid connected Eye Control sample fails compilation",
         MaterialNodeResourcePolicy::GeneratedDefault,
         "resource.eyeControl"};
+    static constexpr MaterialNodeSemanticContract kCorneaHighlight{
+        "PBR Surface / Eye",
+        "The current material Base Color highlight layer, the eye tangent frame, view direction and scene key-light direction",
+        "A transparent authored cornea highlight whose radiance and optional UV projection respond to the key light",
+        "Uses the displayed fixed, light-intensity or light-projection mode without generating replacement artwork",
+        "The node requires a Blend surface and remains inert when it is disconnected",
+        MaterialNodeResourcePolicy::GeneratedDefault};
     static constexpr MaterialNodeSemanticContract kSkin{
         "PBR Surface or Hybrid / Diffuse Response",
         "Upstream diffuse response, wrap, subsurface tint and optional thickness mask",
@@ -290,7 +330,7 @@ const MaterialNodeSemanticContract& GetMaterialNodeSemanticContract(
     static constexpr MaterialNodeSemanticContract kFunction{
         "A compatible function destination", "The referenced Material Function",
         "The function result", "No fallback function is inserted",
-        "Runtime Material Functions are currently rejected explicitly"};
+        "Missing, cyclic, or signature-incompatible Functions fail compilation before Runtime publication"};
 
     switch (kind) {
     case MaterialNodeKind::Constant: return kConstant;
@@ -316,6 +356,7 @@ const MaterialNodeSemanticContract& GetMaterialNodeSemanticContract(
     case MaterialNodeKind::AnisotropicHair: return kHair;
     case MaterialNodeKind::FaceSdf: return kFace;
     case MaterialNodeKind::EyeLighting: return kEye;
+    case MaterialNodeKind::CorneaHighlight: return kCorneaHighlight;
     case MaterialNodeKind::SkinLighting: return kSkin;
     case MaterialNodeKind::FabricSheen: return kFabric;
     case MaterialNodeKind::HybridLighting: return kHybrid;
@@ -325,6 +366,14 @@ const MaterialNodeSemanticContract& GetMaterialNodeSemanticContract(
     case MaterialNodeKind::FunctionCall: return kFunction;
     }
     return kConstant;
+}
+
+const MaterialNodeSemanticContract& GetMaterialNodeSemanticContract(
+    const MaterialNodeTypeId& typeId) noexcept {
+    MaterialNodeKind kind{};
+    return TryGetLegacyMaterialNodeKind(typeId, kind)
+        ? GetMaterialNodeSemanticContract(kind)
+        : GetMaterialNodeSemanticContract(MaterialNodeKind::Constant);
 }
 
 std::span<const std::string_view> GetMaterialNodeOwnedParameterIds(
@@ -339,6 +388,8 @@ std::span<const std::string_view> GetMaterialNodeOwnedParameterIds(
     case MaterialNodeKind::AnisotropicHair: return AsSpan(kHairParameters);
     case MaterialNodeKind::FaceSdf: return AsSpan(kFaceParameters);
     case MaterialNodeKind::EyeLighting: return AsSpan(kEyeParameters);
+    case MaterialNodeKind::CorneaHighlight:
+        return AsSpan(kCorneaHighlightParameters);
     case MaterialNodeKind::SkinLighting: return AsSpan(kSkinParameters);
     case MaterialNodeKind::FabricSheen: return AsSpan(kFabricParameters);
     case MaterialNodeKind::HybridLighting: return AsSpan(kHybridParameters);
@@ -348,21 +399,38 @@ std::span<const std::string_view> GetMaterialNodeOwnedParameterIds(
     }
 }
 
+std::span<const std::string_view> GetMaterialNodeOwnedParameterIds(
+    const MaterialNodeTypeId& typeId) noexcept {
+    MaterialNodeKind kind{};
+    return TryGetLegacyMaterialNodeKind(typeId, kind)
+        ? GetMaterialNodeOwnedParameterIds(kind)
+        : std::span<const std::string_view>{};
+}
+
 std::span<const std::string_view> GetMaterialNodeOwnedResourceIds(
     MaterialNodeKind kind) noexcept {
     switch (kind) {
-    case MaterialNodeKind::PbrSurface: return AsSpan(kPbrResources);
+    case MaterialNodeKind::PbrSurface: return EmptyBindings();
     case MaterialNodeKind::RampDiffuse: return AsSpan(kRampResources);
     case MaterialNodeKind::MultiRampDiffuse: return AsSpan(kMultiRampResources);
-    case MaterialNodeKind::MatCap: return AsSpan(kMatCapResources);
-    case MaterialNodeKind::AnisotropicHair: return AsSpan(kHairResources);
+    case MaterialNodeKind::MatCap: return EmptyBindings();
+    case MaterialNodeKind::AnisotropicHair: return EmptyBindings();
     case MaterialNodeKind::FaceSdf: return AsSpan(kFaceResources);
-    case MaterialNodeKind::EyeLighting: return AsSpan(kEyeResources);
-    case MaterialNodeKind::SkinLighting: return AsSpan(kSkinResources);
-    case MaterialNodeKind::FabricSheen: return AsSpan(kFabricResources);
-    case MaterialNodeKind::HairShadow: return AsSpan(kHairShadowResources);
+    case MaterialNodeKind::EyeLighting: return EmptyBindings();
+    case MaterialNodeKind::CorneaHighlight: return EmptyBindings();
+    case MaterialNodeKind::SkinLighting: return EmptyBindings();
+    case MaterialNodeKind::FabricSheen: return EmptyBindings();
+    case MaterialNodeKind::HairShadow: return EmptyBindings();
     default: return EmptyBindings();
     }
+}
+
+std::span<const std::string_view> GetMaterialNodeOwnedResourceIds(
+    const MaterialNodeTypeId& typeId) noexcept {
+    MaterialNodeKind kind{};
+    return TryGetLegacyMaterialNodeKind(typeId, kind)
+        ? GetMaterialNodeOwnedResourceIds(kind)
+        : std::span<const std::string_view>{};
 }
 
 bool IsReadyMadeMaterialNode(MaterialNodeKind kind) noexcept {
@@ -376,6 +444,7 @@ bool IsReadyMadeMaterialNode(MaterialNodeKind kind) noexcept {
     case MaterialNodeKind::AnisotropicHair:
     case MaterialNodeKind::FaceSdf:
     case MaterialNodeKind::EyeLighting:
+    case MaterialNodeKind::CorneaHighlight:
     case MaterialNodeKind::SkinLighting:
     case MaterialNodeKind::FabricSheen:
     case MaterialNodeKind::HybridLighting:
@@ -387,9 +456,22 @@ bool IsReadyMadeMaterialNode(MaterialNodeKind kind) noexcept {
     }
 }
 
+bool IsReadyMadeMaterialNode(const MaterialNodeTypeId& typeId) noexcept {
+    MaterialNodeKind kind{};
+    return TryGetLegacyMaterialNodeKind(typeId, kind) &&
+        IsReadyMadeMaterialNode(kind);
+}
+
 bool IsSingletonReadyMadeMaterialNode(MaterialNodeKind kind) noexcept {
     return IsReadyMadeMaterialNode(kind) ||
         kind == MaterialNodeKind::SurfaceOutput;
+}
+
+bool IsSingletonReadyMadeMaterialNode(
+    const MaterialNodeTypeId& typeId) noexcept {
+    MaterialNodeKind kind{};
+    return TryGetLegacyMaterialNodeKind(typeId, kind) &&
+        IsSingletonReadyMadeMaterialNode(kind);
 }
 
 std::string_view ReadyMadeMaterialNodeDisplayName(
@@ -403,7 +485,8 @@ std::string_view ReadyMadeMaterialNodeDisplayName(
     case MaterialNodeKind::MatCap: return "MatCap";
     case MaterialNodeKind::AnisotropicHair: return "Anime Hair Highlight";
     case MaterialNodeKind::FaceSdf: return "Anime Face SDF";
-    case MaterialNodeKind::EyeLighting: return "Anime Eye";
+    case MaterialNodeKind::EyeLighting: return "Eye Layer";
+    case MaterialNodeKind::CorneaHighlight: return "Cornea Highlight";
     case MaterialNodeKind::SkinLighting: return "Skin Lighting";
     case MaterialNodeKind::FabricSheen: return "Fabric Sheen";
     case MaterialNodeKind::HybridLighting: return "PBR + NPR Hybrid";
@@ -413,13 +496,25 @@ std::string_view ReadyMadeMaterialNodeDisplayName(
     }
 }
 
+std::string_view ReadyMadeMaterialNodeDisplayName(
+    const MaterialNodeTypeId& typeId) noexcept {
+    MaterialNodeKind kind{};
+    return TryGetLegacyMaterialNodeKind(typeId, kind)
+        ? ReadyMadeMaterialNodeDisplayName(kind)
+        : ToString(typeId);
+}
+
 void InitializeReadyMadeMaterialNode(MaterialAssetData& material,
                                      MaterialGraphNodeData& node) {
     if (!IsReadyMadeMaterialNode(node.kind)) {
         return;
     }
+    MaterialNodeKind legacyKind{};
+    if (!TryGetLegacyMaterialNodeKind(node.kind, legacyKind)) {
+        return;
+    }
     MaterialGraphData& graph = material.graph;
-    switch (node.kind) {
+    switch (legacyKind) {
     case MaterialNodeKind::PbrSurface:
         node.displayName = ReadyMadeMaterialNodeDisplayName(node.kind);
         node.valueType = MaterialValueType::Surface;
@@ -457,27 +552,6 @@ void InitializeReadyMadeMaterialNode(MaterialAssetData& material,
         EnsureParameter(graph, "parameter.emissiveStrength", "Emissive Strength",
                         Value(MaterialValueType::Float1,
                               material.pbr.emissiveStrength));
-        EnsureResource(graph, "resource.baseColor", "Base Color",
-                       MaterialResourceType::Texture2D,
-                       MaterialResourceSemantic::BaseColor);
-        EnsureResource(graph, "resource.normal", "Normal",
-                       MaterialResourceType::Texture2D,
-                       MaterialResourceSemantic::Normal);
-        EnsureResource(graph, "resource.metallicRoughness", "Metallic Roughness",
-                       MaterialResourceType::Texture2D,
-                       MaterialResourceSemantic::MetallicRoughness);
-        EnsureResource(graph, "resource.occlusion", "Occlusion",
-                       MaterialResourceType::Texture2D,
-                       MaterialResourceSemantic::Occlusion);
-        EnsureResource(graph, "resource.emissive", "Emissive",
-                       MaterialResourceType::Texture2D,
-                       MaterialResourceSemantic::Emissive);
-        EnsureResource(graph, "resource.specular", "Specular",
-                       MaterialResourceType::Texture2D,
-                       MaterialResourceSemantic::Specular);
-        EnsureResource(graph, "resource.specularColor", "Specular Color",
-                       MaterialResourceType::Texture2D,
-                       MaterialResourceSemantic::SpecularColor);
         break;
     case MaterialNodeKind::RampDiffuse:
     case MaterialNodeKind::MultiRampDiffuse: {
@@ -523,10 +597,11 @@ void InitializeReadyMadeMaterialNode(MaterialAssetData& material,
                         Value(MaterialValueType::Float3, 1.0f, 1.0f, 1.0f));
         EnsureParameter(graph, "parameter.matCapIntensity", "MatCap Intensity",
                         Value(MaterialValueType::Float1, 0.25f));
-        EnsureResource(graph, "resource.matCap", "MatCap",
-                       MaterialResourceType::Texture2D,
-                       MaterialResourceSemantic::MatCap);
-        node.referenceId = "resource.matCap";
+        EnsureParameter(graph, "parameter.matCapViewCorrection", "View Correction",
+                        Value(MaterialValueType::Float1, 1.0f));
+        EnsureParameter(graph, "parameter.matCapSphericalNormalBlend",
+                        "Spherical Normal Blend",
+                        Value(MaterialValueType::Float1, 0.0f));
         break;
     case MaterialNodeKind::AnisotropicHair:
         node.displayName = ReadyMadeMaterialNodeDisplayName(node.kind);
@@ -539,12 +614,16 @@ void InitializeReadyMadeMaterialNode(MaterialAssetData& material,
                         Value(MaterialValueType::Float1, -0.10f));
         EnsureParameter(graph, "parameter.hairIntensity", "Highlight Intensity",
                         Value(MaterialValueType::Float1, 1.0f));
+        EnsureParameter(graph, "parameter.hairPrimaryPower", "Primary Sharpness",
+                        Value(MaterialValueType::Float1, 96.0f));
+        EnsureParameter(graph, "parameter.hairSecondaryPower", "Secondary Sharpness",
+                        Value(MaterialValueType::Float1, 48.0f));
+        EnsureParameter(graph, "parameter.hairSecondaryIntensity", "Secondary Intensity",
+                        Value(MaterialValueType::Float1, 0.45f));
+        EnsureParameter(graph, "parameter.hairFlowStrength", "Flow Map Strength",
+                        Value(MaterialValueType::Float1, 1.0f));
         EnsureParameter(graph, "parameter.hairHighlightTint", "Hair Highlight Tint",
                         Value(MaterialValueType::Float3, 1.0f, 0.92f, 0.84f));
-        EnsureResource(graph, "resource.hairControl", "Hair Control (RG flow, B mask, A shift)",
-                       MaterialResourceType::Texture2D,
-                       MaterialResourceSemantic::Mask);
-        node.referenceId = "resource.hairControl";
         break;
     case MaterialNodeKind::FaceSdf:
         node.displayName = ReadyMadeMaterialNodeDisplayName(node.kind);
@@ -558,10 +637,6 @@ void InitializeReadyMadeMaterialNode(MaterialAssetData& material,
                         Value(MaterialValueType::Float3, 1.0f, 0.0f, 0.0f));
         EnsureParameter(graph, "parameter.faceForward", "Face Local Forward",
                         Value(MaterialValueType::Float3, 0.0f, 0.0f, 1.0f));
-        EnsureResource(graph, "resource.faceSdf", "Face SDF (linear R)",
-                       MaterialResourceType::Texture2D,
-                       MaterialResourceSemantic::FaceSdf);
-        node.referenceId = "resource.faceSdf";
         break;
     case MaterialNodeKind::EyeLighting:
         node.displayName = ReadyMadeMaterialNodeDisplayName(node.kind);
@@ -570,12 +645,79 @@ void InitializeReadyMadeMaterialNode(MaterialAssetData& material,
                         Value(MaterialValueType::Float1, 0.12f));
         EnsureParameter(graph, "parameter.eyeSparkle", "Catchlight Intensity",
                         Value(MaterialValueType::Float1, 0.35f));
-        EnsureParameter(graph, "parameter.eyeSparklePower", "Cornea Power",
+        EnsureParameter(graph, "parameter.eyeSparklePower", "Catchlight Sharpness",
                         Value(MaterialValueType::Float1, 64.0f));
-        EnsureResource(graph, "resource.eyeControl", "Eye Control (R iris, G cornea, B catchlight, A depth)",
-                       MaterialResourceType::Texture2D,
-                       MaterialResourceSemantic::Mask);
-        node.referenceId = "resource.eyeControl";
+        EnsureParameter(graph, "parameter.irisCenter", "Iris UV Center",
+                        Value(MaterialValueType::Float2, 0.50f, 0.50f));
+        EnsureParameter(graph, "parameter.irisRadius", "Iris UV Radius",
+                        Value(MaterialValueType::Float1, 0.48f));
+        EnsureParameter(graph, "parameter.irisMaskSoftness", "Iris Mask Softness",
+                        Value(MaterialValueType::Float1, 0.08f));
+        EnsureParameter(graph, "parameter.eyeLayerMode", "Eye Layer Mode",
+                        Value(MaterialValueType::Float1, 0.0f));
+        EnsureParameter(graph, "parameter.eyeHighlightOpacity", "Highlight Opacity",
+                        Value(MaterialValueType::Float1, 1.0f));
+        EnsureParameter(graph, "parameter.eyeHighlightThreshold", "Highlight Threshold",
+                        Value(MaterialValueType::Float1, 0.02f));
+        EnsureParameter(graph, "parameter.eyeHighlightSoftness", "Highlight Softness",
+                        Value(MaterialValueType::Float1, 0.04f));
+        EnsureParameter(graph, "parameter.eyeParallaxScale", "Parallax Scale",
+                        Value(MaterialValueType::Float1, 0.10f));
+        EnsureParameter(graph, "parameter.eyeHighlightIntensity", "Highlight Intensity",
+                        Value(MaterialValueType::Float1, 2.0f));
+        EnsureParameter(graph, "parameter.eyeBaseLift", "Iris Light Lift",
+                        Value(MaterialValueType::Float1, 0.18f));
+        EnsureParameter(graph, "parameter.eyeCausticIntensity", "Caustic Intensity",
+                        Value(MaterialValueType::Float1, 0.25f));
+        EnsureParameter(graph, "parameter.eyeCausticTint", "Caustic Tint",
+                        Value(MaterialValueType::Float3, 1.0f, 0.72f, 0.38f));
+        EnsureParameter(graph, "parameter.eyeCausticWidth", "Caustic Width",
+                        Value(MaterialValueType::Float1, 0.28f));
+        break;
+    case MaterialNodeKind::CorneaHighlight:
+        node.displayName = ReadyMadeMaterialNodeDisplayName(node.kind);
+        node.valueType = MaterialValueType::Float3;
+        material.surface.alphaMode = MaterialAlphaMode::Blend;
+        EnsureParameter(graph, "parameter.irisDepth", "Iris Depth",
+                        Value(MaterialValueType::Float1, 0.12f));
+        EnsureParameter(graph, "parameter.irisCenter", "Iris UV Center",
+                        Value(MaterialValueType::Float2, 0.50f, 0.50f));
+        EnsureParameter(graph, "parameter.irisRadius", "Iris UV Radius",
+                        Value(MaterialValueType::Float1, 0.48f));
+        EnsureParameter(graph, "parameter.irisMaskSoftness", "Iris Mask Softness",
+                        Value(MaterialValueType::Float1, 0.08f));
+        EnsureParameter(graph, "parameter.eyeLayerMode", "Eye Layer Mode",
+                        Value(MaterialValueType::Float1, 1.0f));
+        EnsureParameter(graph, "parameter.eyeHighlightOpacity", "Highlight Opacity",
+                        Value(MaterialValueType::Float1, 1.0f));
+        EnsureParameter(graph, "parameter.eyeHighlightThreshold", "Highlight Threshold",
+                        Value(MaterialValueType::Float1, 0.02f));
+        EnsureParameter(graph, "parameter.eyeHighlightSoftness", "Highlight Softness",
+                        Value(MaterialValueType::Float1, 0.04f));
+        EnsureParameter(graph, "parameter.eyeParallaxScale", "Parallax Scale",
+                        Value(MaterialValueType::Float1, 0.10f));
+        EnsureParameter(graph, "parameter.eyeHighlightIntensity", "Highlight Intensity",
+                        Value(MaterialValueType::Float1, 2.0f));
+        EnsureParameter(graph, "parameter.corneaHighlightMode", "Lighting Mode",
+                        Value(MaterialValueType::Float1, 2.0f));
+        EnsureParameter(graph, "parameter.corneaHighlightTravel", "Highlight Travel",
+                        Value(MaterialValueType::Float1, 0.10f));
+        EnsureParameter(graph, "parameter.corneaHighlightViewInfluence", "View Influence",
+                        Value(MaterialValueType::Float1, 0.35f));
+        EnsureParameter(graph, "parameter.corneaHighlightLightInfluence", "Light Influence",
+                        Value(MaterialValueType::Float1, 0.65f));
+        EnsureParameter(graph, "parameter.corneaHighlightCurvature", "Cornea Curvature",
+                        Value(MaterialValueType::Float1, 0.75f));
+        EnsureParameter(graph, "parameter.corneaHighlightMinBrightness", "Minimum Brightness",
+                        Value(MaterialValueType::Float1, 0.45f));
+        EnsureParameter(graph, "parameter.corneaHighlightLightResponse", "Light Response",
+                        Value(MaterialValueType::Float1, 0.65f));
+        EnsureParameter(graph, "parameter.corneaHighlightEdgeFade", "Edge Fade",
+                        Value(MaterialValueType::Float1, 0.0f));
+        EnsureParameter(graph, "parameter.corneaHighlightSharpness", "Highlight Sharpness",
+                        Value(MaterialValueType::Float1, 12.0f));
+        EnsureParameter(graph, "parameter.corneaHighlightLightColor", "Follow Light Color",
+                        Value(MaterialValueType::Float1, 0.25f));
         break;
     case MaterialNodeKind::SkinLighting:
         node.displayName = ReadyMadeMaterialNodeDisplayName(node.kind);
@@ -586,10 +728,6 @@ void InitializeReadyMadeMaterialNode(MaterialAssetData& material,
                         Value(MaterialValueType::Float1, 0.12f));
         EnsureParameter(graph, "parameter.skinTint", "Scatter Tint",
                         Value(MaterialValueType::Float3, 1.0f, 0.42f, 0.32f));
-        EnsureResource(graph, "resource.thicknessMask", "Thickness Mask",
-                       MaterialResourceType::Texture2D,
-                       MaterialResourceSemantic::Mask);
-        node.referenceId = "resource.thicknessMask";
         break;
     case MaterialNodeKind::FabricSheen:
         node.displayName = ReadyMadeMaterialNodeDisplayName(node.kind);
@@ -602,30 +740,26 @@ void InitializeReadyMadeMaterialNode(MaterialAssetData& material,
                         Value(MaterialValueType::Float1, 4.0f));
         EnsureParameter(graph, "parameter.fabricSheenIntensity", "Sheen Intensity",
                         Value(MaterialValueType::Float1, 1.0f));
-        EnsureResource(graph, "resource.fabricMask", "Fabric Mask",
-                       MaterialResourceType::Texture2D,
-                       MaterialResourceSemantic::Mask);
-        node.referenceId = "resource.fabricMask";
         break;
     case MaterialNodeKind::HybridLighting:
         node.displayName = ReadyMadeMaterialNodeDisplayName(node.kind);
         node.valueType = MaterialValueType::DiffuseResponse;
         EnsureParameter(graph, "parameter.directDiffusePbrBlend", "Diffuse PBR Blend",
-                        Value(MaterialValueType::Float1, 0.55f));
+                        Value(MaterialValueType::Float1, 0.25f));
         EnsureParameter(graph, "parameter.directSpecularPbrBlend", "Specular PBR Blend",
-                        Value(MaterialValueType::Float1, 0.55f));
+                        Value(MaterialValueType::Float1, 0.35f));
         EnsureParameter(graph, "parameter.indirectPbrBlend", "Indirect PBR Blend",
-                        Value(MaterialValueType::Float1, 1.0f));
+                        Value(MaterialValueType::Float1, 0.65f));
         break;
     case MaterialNodeKind::Outline:
         node.displayName = ReadyMadeMaterialNodeDisplayName(node.kind);
         node.valueType = MaterialValueType::OutlineResponse;
         EnsureParameter(graph, "parameter.outlineMode", "Outline Mode",
-                        Value(MaterialValueType::Float1, 1.0f));
+                        Value(MaterialValueType::Float1, 2.0f));
         EnsureParameter(graph, "parameter.outlineColor", "Outline Color",
                         Value(MaterialValueType::Float3, 0.025f, 0.030f, 0.045f));
         EnsureParameter(graph, "parameter.outlineThickness", "Geometry Thickness",
-                        Value(MaterialValueType::Float1, 1.25f));
+                        Value(MaterialValueType::Float1, 2.0f));
         break;
     case MaterialNodeKind::HairShadow:
         node.displayName = ReadyMadeMaterialNodeDisplayName(node.kind);
@@ -633,11 +767,6 @@ void InitializeReadyMadeMaterialNode(MaterialAssetData& material,
         EnsureParameter(graph, "parameter.hairShadowStrength",
                         "Hair Shadow Strength",
                         Value(MaterialValueType::Float1, 0.65f));
-        EnsureResource(graph, "resource.hairShadow",
-                       "Hair Shadow Visibility (linear R)",
-                       MaterialResourceType::Texture2D,
-                       MaterialResourceSemantic::HairShadow);
-        node.referenceId = "resource.hairShadow";
         break;
     default:
         break;

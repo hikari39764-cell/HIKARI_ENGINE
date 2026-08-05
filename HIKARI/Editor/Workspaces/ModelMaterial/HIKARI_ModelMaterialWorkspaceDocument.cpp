@@ -24,19 +24,12 @@ void ModelMaterialWorkspaceDocument::OpenBindings(
 
 void ModelMaterialWorkspaceDocument::OpenMaterial(
     const AssetGuid &assetGuid, std::filesystem::path sourcePath,
-    MaterialAssetData source, const MaterialCompileResult &compile,
-    const MaterialProgramIR *lastGoodProgram, bool saved) {
+    MaterialAssetData source, const MaterialCompileResult &compile, bool saved) {
   materialAssetGuid_ = assetGuid;
   materialSourcePath_ = std::move(sourcePath);
   material_ = std::move(source);
   savedMaterial_ = material_;
   compile_ = compile;
-  lastGoodProgram_.reset();
-  if (lastGoodProgram != nullptr) {
-    lastGoodProgram_ = *lastGoodProgram;
-  } else if (compile_.success) {
-    lastGoodProgram_ = compile_.program;
-  }
   materialOpen_ = true;
   materialRevision_ = 1u;
   compileRevision_ = 1u;
@@ -47,13 +40,20 @@ void ModelMaterialWorkspaceDocument::OpenMaterial(
   activeHistoryDomain_ = ChangedDomain::Material;
 }
 
+void ModelMaterialWorkspaceDocument::SetMaterialCompileOptions(
+    MaterialCompileOptions options) {
+  compileOptions_ = std::move(options);
+  if (materialOpen_) {
+    RefreshCompile();
+  }
+}
+
 void ModelMaterialWorkspaceDocument::CloseMaterial() {
   materialAssetGuid_ = {};
   materialSourcePath_.clear();
   material_ = {};
   savedMaterial_ = {};
   compile_ = {};
-  lastGoodProgram_.reset();
   abBefore_.reset();
   materialOpen_ = false;
   materialRevision_ = 0u;
@@ -120,11 +120,6 @@ ModelMaterialWorkspaceDocument::GetMaterial() const noexcept {
 const MaterialCompileResult &
 ModelMaterialWorkspaceDocument::GetCompileResult() const noexcept {
   return compile_;
-}
-
-const MaterialProgramIR *
-ModelMaterialWorkspaceDocument::GetLastGoodProgram() const noexcept {
-  return lastGoodProgram_ ? &*lastGoodProgram_ : nullptr;
 }
 
 uint64_t ModelMaterialWorkspaceDocument::GetMaterialRevision() const noexcept {
@@ -438,10 +433,10 @@ void ModelMaterialWorkspaceDocument::PushHistory(HistoryEntry entry) {
 }
 
 void ModelMaterialWorkspaceDocument::RefreshCompile() {
-  compile_ = CompileMaterialAsset(material_, GetLastGoodProgram());
-  if (compile_.success) {
-    lastGoodProgram_ = compile_.program;
-  }
+  // Material v5 authoring is graph-authoritative. A failed edit must remain a
+  // failed current graph; projecting any stale program here would make the
+  // viewport look live while it is actually rendering an older topology.
+  compile_ = CompileMaterialAsset(material_, compileOptions_);
   compileRevision_ = materialRevision_;
 }
 

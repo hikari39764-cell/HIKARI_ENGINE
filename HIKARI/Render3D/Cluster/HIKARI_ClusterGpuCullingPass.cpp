@@ -204,7 +204,8 @@ namespace HIKARI::RENDER3D::CLUSTER {
             expandPageTasksPipelineState_ != nullptr &&
             finalizeDispatchPipelineState_ != nullptr &&
             finalizeMeshletDispatchPipelineState_ != nullptr &&
-            cullPageTasksPipelineState_ != nullptr;
+            cullPageTasksPipelineState_ != nullptr &&
+            transparentSortPipelineState_ != nullptr;
         stats_.threadGroupSize = kThreadGroupSize;
         return true;
     }
@@ -252,6 +253,7 @@ namespace HIKARI::RENDER3D::CLUSTER {
         finalizeDispatchPipelineState_.Reset();
         finalizeMeshletDispatchPipelineState_.Reset();
         cullPageTasksPipelineState_.Reset();
+        transparentSortPipelineState_.Reset();
         dispatchCommandSignature_.Reset();
         meshletDispatchCommandSignature_.Reset();
         pageTaskCapacity_ = 0;
@@ -325,7 +327,8 @@ namespace HIKARI::RENDER3D::CLUSTER {
             expandPageTasksPipelineState_ != nullptr &&
             finalizeDispatchPipelineState_ != nullptr &&
             finalizeMeshletDispatchPipelineState_ != nullptr &&
-            cullPageTasksPipelineState_ != nullptr) {
+            cullPageTasksPipelineState_ != nullptr &&
+            transparentSortPipelineState_ != nullptr) {
             return true;
         }
         if (device == nullptr) {
@@ -465,6 +468,15 @@ namespace HIKARI::RENDER3D::CLUSTER {
             "CullPageTasksCS",
             L"Cluster GPU Fine Visibility Page Tasks PSO",
             cullPageTasksPipelineState_.GetAddressOf())) {
+            return false;
+        }
+        if (!CreateComputePipelineState(
+            device,
+            rootSignature_.Get(),
+            L"HIKARI/Shaders/Render3D_ClusterTransparentSortCS.hlsl",
+            "SortTransparentRangesCS",
+            L"Cluster GPU Transparent Back-to-Front Sort PSO",
+            transparentSortPipelineState_.GetAddressOf())) {
             return false;
         }
         return true;
@@ -1026,6 +1038,7 @@ namespace HIKARI::RENDER3D::CLUSTER {
             finalizeDispatchPipelineState_ != nullptr &&
             finalizeMeshletDispatchPipelineState_ != nullptr &&
             cullPageTasksPipelineState_ != nullptr &&
+            transparentSortPipelineState_ != nullptr &&
             constantsUploadBuffer_ != nullptr &&
             counterResetUploadBuffer_ != nullptr &&
             pageTaskBuffer_ != nullptr &&
@@ -1041,7 +1054,8 @@ namespace HIKARI::RENDER3D::CLUSTER {
             expandPageTasksPipelineState_ != nullptr &&
             finalizeDispatchPipelineState_ != nullptr &&
             finalizeMeshletDispatchPipelineState_ != nullptr &&
-            cullPageTasksPipelineState_ != nullptr;
+            cullPageTasksPipelineState_ != nullptr &&
+            transparentSortPipelineState_ != nullptr;
         stats_.inputBufferReady = true;
         stats_.pageTaskBufferReady = pageTaskBuffer_ != nullptr;
         stats_.visibleRangeBufferReady = visibleRangeBuffer_ != nullptr;
@@ -1412,6 +1426,8 @@ namespace HIKARI::RENDER3D::CLUSTER {
         const UINT constantsStride = GFX::AlignD3D12ConstantBufferByteSize(sizeof(GpuConstants));
         std::array<UINT, kClusterGpuCullingMaxSourceRangeCount> expandGroupCounts{};
         size_t activeRangeCount = 0;
+        size_t transparentConstantsSlot =
+            kClusterGpuCullingMaxSourceRangeCount;
         for (size_t rangeIndex = 0; rangeIndex < rangeCount; ++rangeIndex) {
             const ClusterGpuCullingSourceRange& range = ranges[rangeIndex];
             if (range.instanceCount == 0u) {
@@ -1426,6 +1442,12 @@ namespace HIKARI::RENDER3D::CLUSTER {
                 constantsMapped_ +
                 static_cast<size_t>(constantsStride) * activeRangeCount);
             *constantsSlot = constants;
+            if (range.passKind ==
+                    ClusterGpuCullingPassKind::ForwardTransparent &&
+                transparentConstantsSlot ==
+                    kClusterGpuCullingMaxSourceRangeCount) {
+                transparentConstantsSlot = activeRangeCount;
+            }
             expandGroupCounts[activeRangeCount] =
                 static_cast<UINT>(
                     (static_cast<size_t>(range.instanceCount) +
@@ -1627,6 +1649,34 @@ namespace HIKARI::RENDER3D::CLUSTER {
         addUavBarrier(occlusionHistoryBuffer_.Get());
         commandList->ResourceBarrier(barrierCount, barriers.data());
 
+        bool transparentSortDispatched = false;
+        if (transparentConstantsSlot < activeRangeCount) {
+            GFX::PIX::ScopedGpuEvent transparentSortPix(
+                commandList,
+                GFX::PIX::kColorRender,
+                "ClusterGpuCulling.SortTransparentBackToFront");
+            commandList->SetComputeRootConstantBufferView(
+                0,
+                constantsUploadBuffer_->GetGPUVirtualAddress() +
+                    static_cast<UINT64>(constantsStride) *
+                    static_cast<UINT64>(transparentConstantsSlot));
+            commandList->SetPipelineState(
+                transparentSortPipelineState_.Get());
+            commandList->Dispatch(
+                static_cast<UINT>(kGeometryCullModeBucketCount),
+                1u,
+                1u);
+            const D3D12_RESOURCE_BARRIER sortBarriers[]{
+                CD3DX12_RESOURCE_BARRIER::UAV(
+                    visibleRangeBuffer_.Get()),
+                CD3DX12_RESOURCE_BARRIER::UAV(counterBuffer_.Get()),
+            };
+            commandList->ResourceBarrier(
+                static_cast<UINT>(std::size(sortBarriers)),
+                sortBarriers);
+            transparentSortDispatched = true;
+        }
+
         {
             GFX::PIX::ScopedGpuEvent meshletFinalizePix(
                 commandList,
@@ -1682,8 +1732,12 @@ namespace HIKARI::RENDER3D::CLUSTER {
         meshletDispatchArgumentBufferState_ = D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT;
         counterBufferState_ = D3D12_RESOURCE_STATE_INDIRECT_ARGUMENT;
 
-        stats_.dispatchCount = activeRangeCount + 3u;
-        stats_.workgroupCount = expandWorkgroupCount + 2u;
+        stats_.dispatchCount = activeRangeCount + 3u +
+            (transparentSortDispatched ? 1u : 0u);
+        stats_.workgroupCount = expandWorkgroupCount + 2u +
+            (transparentSortDispatched
+                ? kGeometryCullModeBucketCount
+                : 0u);
         StoreActiveFrameResourceStates();
         return true;
     }

@@ -548,7 +548,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
         bool featurePassesOk = true;
         const auto& geometryFeature = gLastRenderFeaturePlan.entries[
             static_cast<size_t>(FEATURES::RenderFeatureKind::GeometryOutline)];
-        if (opaqueOk && depthAwareOk && transparentOk &&
+        if (opaqueOk && depthAwareOk &&
             geometryFeature.scheduled &&
             !geometryFeature.compatibilityFallback) {
             featurePassesOk = frame.targetAccess.Rebind() &&
@@ -558,14 +558,14 @@ namespace HIKARI::RENDER3D::PIPELINE {
         }
         const auto& visibilityFeature = gLastRenderFeaturePlan.entries[
             static_cast<size_t>(FEATURES::RenderFeatureKind::VisibilityOverlay)];
-        if (featurePassesOk && opaqueOk && depthAwareOk && transparentOk &&
+        if (featurePassesOk && opaqueOk && depthAwareOk &&
             visibilityFeature.scheduled) {
             featurePassesOk = frame.targetAccess.Rebind() &&
                 MESHRENDERER::RenderVisibilityOverlayFeaturePass(
                     frame.graphics,
                     postOpaqueResources);
         }
-        if (opaqueOk && depthAwareOk && transparentOk &&
+        if (opaqueOk && depthAwareOk &&
             featurePassesOk &&
             gLastRenderFeaturePlan.screenCompositePassRequired) {
             const RenderTextureView finalSceneColor =

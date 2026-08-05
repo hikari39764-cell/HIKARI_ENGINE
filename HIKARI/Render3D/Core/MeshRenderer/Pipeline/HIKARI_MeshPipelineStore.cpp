@@ -174,7 +174,9 @@ namespace HIKARI::MESHRENDERER {
 
         if (composite == VFX::CompositeMode::Alpha) {
             rt0.BlendEnable = TRUE;
-            rt0.SrcBlend = D3D12_BLEND_SRC_ALPHA;
+            // StaticPS normalizes every transparent material to premultiplied
+            // output before it reaches this pipeline.
+            rt0.SrcBlend = D3D12_BLEND_ONE;
             rt0.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
             rt0.BlendOp = D3D12_BLEND_OP_ADD;
             rt0.SrcBlendAlpha = D3D12_BLEND_ONE;

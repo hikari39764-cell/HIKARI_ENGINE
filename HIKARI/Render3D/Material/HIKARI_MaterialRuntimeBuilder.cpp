@@ -245,8 +245,21 @@ namespace HIKARI {
         Material& outMaterial,
         std::string_view debugName,
         RENDER3D::MATERIAL::MaterialProgramResolution* outResolution) const {
+        return BuildRuntimeMaterial(
+            data, CompileMaterialAsset(data), assetRegistry,
+            programRegistry, outMaterial, debugName, outResolution);
+    }
+
+    bool MaterialRuntimeBuilder::BuildRuntimeMaterial(
+        const MaterialAssetData& data,
+        const MaterialCompileResult& compileResult,
+        const AssetRegistry& assetRegistry,
+        RENDER3D::MATERIAL::MaterialProgramRegistry& programRegistry,
+        Material& outMaterial,
+        std::string_view debugName,
+        RENDER3D::MATERIAL::MaterialProgramResolution* outResolution) const {
         const RENDER3D::MATERIAL::MaterialProgramResolution resolution =
-            programRegistry.ResolveMaterialAsset(debugName, data);
+            programRegistry.ResolveCompileResult(debugName, compileResult);
         const PbrMaterialAssetData pbr = ProjectPbrMaterialAssetData(data);
         ApplyPbrCompatibilityData(
             pbr,

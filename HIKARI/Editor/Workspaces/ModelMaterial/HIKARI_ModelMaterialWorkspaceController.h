@@ -156,6 +156,8 @@ private:
     bool ready = false;
     bool textureAsset = false;
     MaterialAssetKind materialKind = MaterialAssetKind::Material;
+    std::vector<MaterialGraphParameterData> functionInputs{};
+    std::vector<MaterialGraphParameterData> functionOutputs{};
     AssetGuid ownerModelGuid{};
     std::optional<MaterialRampData> rampPreview{};
   };
@@ -285,8 +287,6 @@ private:
                           EditorCommandRouter &commandRouter);
   void DrawModelAndSlotsWindow(DocumentSceneBase &scene);
   void DrawMaterialWindow(DocumentSceneBase &scene);
-  void DrawMaterialSurfaceControls(DocumentSceneBase &scene,
-                                   MaterialAssetData &source);
   void DrawPreviewLightingProperties();
   PreviewLightViewportInteraction DrawPreviewLightViewportInteraction(
       float originX, float originY, float width, float height);
@@ -321,10 +321,20 @@ private:
       DocumentSceneBase &scene, MaterialAssetData &source,
       MaterialGraphData &graph, MaterialGraphNodeData &node,
       float x, float y, float width);
+  bool DrawMaterialGraphRampNodeInlineControls(
+      DocumentSceneBase &scene, MaterialAssetData &source,
+      MaterialGraphData &graph, MaterialGraphNodeData &node,
+      float width);
   bool DrawFaceRampNodeControl(DocumentSceneBase &scene,
                                MaterialAssetData &source,
                                MaterialGraphData &graph,
                                float width);
+  bool DrawEyeLightingNodeInlineControls(
+      DocumentSceneBase &scene, MaterialAssetData &source,
+      MaterialGraphData &graph, float width);
+  bool DrawCorneaHighlightNodeInlineControls(
+      DocumentSceneBase &scene, MaterialAssetData &source,
+      MaterialGraphData &graph, float width);
   bool BeginInlineRampEdit(DocumentSceneBase &scene,
                            const AssetGuid &rampGuid,
                            std::string &outMessage);
@@ -381,7 +391,7 @@ private:
   RENDER3D::LIGHTING::SceneLightingSet previewLighting_{};
   PreviewDebugMode previewDebugMode_ = PreviewDebugMode::Lit;
   PreviewEnvironmentMode previewEnvironmentMode_ =
-      PreviewEnvironmentMode::RuntimeMatch;
+      PreviewEnvironmentMode::StudioInspect;
   AuthoringMode authoringMode_ = AuthoringMode::ModelMaterials;
   bool previewLightingInitialized_ = false;
   bool previewSkyEnabled_ = true;

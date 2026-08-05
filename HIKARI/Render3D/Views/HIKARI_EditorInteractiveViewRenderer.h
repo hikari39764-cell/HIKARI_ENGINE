@@ -3,6 +3,7 @@
 #if defined(HIKARI_WITH_EDITOR)
 
 #include <cstdint>
+#include <string_view>
 
 #include <d3d12.h>
 
@@ -26,6 +27,28 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         Neutral,
         NeutralClay,
         Unlit,
+    };
+
+    enum class EditorInteractiveViewStatus : uint8_t {
+        Idle,
+        Pending,
+        Ready,
+        Failed,
+    };
+
+    enum class EditorInteractiveViewFailure : uint8_t {
+        None,
+        RenderTargetUnavailable,
+        MeshRendererUnavailable,
+        MaterialFrameUnavailable,
+        FrameResourcesUnavailable,
+        SceneResidencyUnavailable,
+        StylizedSurfacePassFailed,
+        ForwardPassFailed,
+        StylizedGeometryPassFailed,
+        StylizedResolveFailed,
+        DisplayResolveFailed,
+        OutputDescriptorUnavailable,
     };
 
     struct EditorInteractiveViewRequest {
@@ -58,6 +81,10 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         uint32_t height = 0;
         uint64_t sceneRevision = 0;
         uint64_t outputRevision = 0;
+        EditorInteractiveViewStatus status =
+            EditorInteractiveViewStatus::Idle;
+        EditorInteractiveViewFailure failure =
+            EditorInteractiveViewFailure::None;
         bool ready = false;
     };
 
@@ -76,6 +103,8 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         ModelManager& modelManager,
         SkyManager& skyManager);
     EditorInteractiveViewOutput GetOutput(RenderViewId viewId);
+    std::string_view GetEditorInteractiveViewFailureMessage(
+        EditorInteractiveViewFailure failure) noexcept;
     EditorInteractiveSchedulerStats GetSchedulerStats();
     void Shutdown();
 

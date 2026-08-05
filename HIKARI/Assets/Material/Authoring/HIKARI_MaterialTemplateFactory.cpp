@@ -127,6 +127,20 @@ namespace HIKARI::ASSETS::MATERIAL {
             });
         }
 
+        void Connect(
+            MaterialAssetData& data,
+            std::string id,
+            std::string sourceNode,
+            std::string sourcePin,
+            std::string targetNode,
+            std::string targetPin) {
+
+            data.graph.edges.push_back(MaterialGraphEdgeData{
+                std::move(id), std::move(sourceNode), std::move(sourcePin),
+                std::move(targetNode), std::move(targetPin)
+            });
+        }
+
         void AddRampInputs(
             MaterialAssetData& data,
             bool multiRamp) {
@@ -148,6 +162,8 @@ namespace HIKARI::ASSETS::MATERIAL {
                 MakeValue(MaterialValueType::Float1, 0.0f));
             AddParameter(data, "parameter.rampBlend", "Secondary Ramp Blend",
                 MakeValue(MaterialValueType::Float1, multiRamp ? 0.5f : 0.0f));
+            AddParameter(data, "parameter.rampLayerWeights", "Ramp Layer Weights",
+                MakeValue(MaterialValueType::Float4, 1.0f, 0.0f, 0.0f, 0.0f));
             AddParameter(data, "parameter.rampIntensity", "Ramp Influence",
                 MakeValue(MaterialValueType::Float1, 1.0f));
             AddResource(data, "resource.diffuseRamp", "Diffuse Ramp",
@@ -155,6 +171,12 @@ namespace HIKARI::ASSETS::MATERIAL {
                 MaterialResourceSemantic::Ramp);
             if (multiRamp) {
                 AddResource(data, "resource.secondaryRamp", "Secondary Ramp",
+                    MaterialResourceType::Ramp2D,
+                    MaterialResourceSemantic::Ramp);
+                AddResource(data, "resource.tertiaryRamp", "Tertiary Ramp",
+                    MaterialResourceType::Ramp2D,
+                    MaterialResourceSemantic::Ramp);
+                AddResource(data, "resource.quaternaryRamp", "Quaternary Ramp",
                     MaterialResourceType::Ramp2D,
                     MaterialResourceSemantic::Ramp);
             }
@@ -210,16 +232,6 @@ namespace HIKARI::ASSETS::MATERIAL {
                 "Color", "Additive");
         }
 
-        void AddMaskResource(
-            MaterialAssetData& data,
-            std::string id,
-            std::string displayName,
-            MaterialResourceSemantic semantic = MaterialResourceSemantic::Mask) {
-
-            AddResource(data, id, displayName,
-                MaterialResourceType::Texture2D, semantic);
-        }
-
         void AddOutline(MaterialAssetData& data, float mode) {
             AddNode(data, "node.outline", "Outline",
                 MaterialNodeKind::Outline,
@@ -240,7 +252,7 @@ namespace HIKARI::ASSETS::MATERIAL {
             AddRamp(data);
             AddSpecularBand(data);
             AddFresnelRim(data);
-            AddOutline(data, 1.0f);
+            AddOutline(data, 2.0f);
             data.featureRequests.clear();
         }
 
@@ -253,9 +265,8 @@ namespace HIKARI::ASSETS::MATERIAL {
                 MakeValue(MaterialValueType::Float3, 1.0f, 0.42f, 0.32f));
             AddParameter(data, "parameter.skinSubsurface", "Skin Subsurface Strength",
                 MakeValue(MaterialValueType::Float1, 0.12f));
-            AddMaskResource(data, "resource.thicknessMask", "Thickness Mask");
             TEMPLATE_FACTORY_INTERNAL::AddSkinLightingGraph(data);
-            AddOutline(data, 1.0f);
+            AddOutline(data, 2.0f);
             data.featureRequests.clear();
         }
 
@@ -273,7 +284,12 @@ namespace HIKARI::ASSETS::MATERIAL {
                 MaterialResourceType::Texture2D, MaterialResourceSemantic::FaceSdf);
             AddNode(data, "node.faceSdf", "Face SDF Lighting",
                 MaterialNodeKind::FaceSdf, MaterialValueType::DiffuseResponse,
-                -320.0f, 420.0f, "resource.faceSdf");
+                -320.0f, 420.0f);
+            AddNode(data, "node.texture.faceSdf", "Face SDF Texture",
+                MaterialNodeKind::TextureSample, MaterialValueType::Float4,
+                -700.0f, 420.0f, "resource.faceSdf");
+            Connect(data, "edge.faceSdf.texture", "node.texture.faceSdf",
+                "R", "node.faceSdf", "SDF");
             Connect(data, "edge.faceSdf.response", "node.faceSdf",
                 "Response", "DiffuseResponse");
             AddParameter(data, "parameter.hairShadowStrength",
@@ -286,7 +302,13 @@ namespace HIKARI::ASSETS::MATERIAL {
             AddNode(data, "node.hairShadow", "Hair Shadow Mask",
                 MaterialNodeKind::HairShadow,
                 MaterialValueType::DiffuseResponse,
-                20.0f, 420.0f, "resource.hairShadow");
+                20.0f, 420.0f);
+            AddNode(data, "node.texture.hairShadow", "Hair Shadow Texture",
+                MaterialNodeKind::TextureSample, MaterialValueType::Float4,
+                -700.0f, 700.0f, "resource.hairShadow");
+            Connect(data, "edge.hairShadow.texture",
+                "node.texture.hairShadow", "R", "node.hairShadow",
+                "ShadowMask");
             const auto faceResponse = std::find_if(
                 data.graph.edges.begin(), data.graph.edges.end(),
                 [](const MaterialGraphEdgeData& edge) {
@@ -298,13 +320,13 @@ namespace HIKARI::ASSETS::MATERIAL {
             }
             Connect(data, "edge.hairShadow.response", "node.hairShadow",
                 "Response", "DiffuseResponse");
-            AddOutline(data, 1.0f);
+            AddOutline(data, 2.0f);
             data.featureRequests.clear();
         }
 
         void ConfigureHair(MaterialAssetData& data) {
             AddRamp(data);
-            AddOutline(data, 0.0f);
+            AddOutline(data, 2.0f);
             AddParameter(data, "parameter.hairShift", "Hair Highlight Shift",
                 MakeValue(MaterialValueType::Float1, 0.08f));
             AddParameter(data, "parameter.hairWidth", "Hair Highlight Width",
@@ -313,10 +335,16 @@ namespace HIKARI::ASSETS::MATERIAL {
                 MakeValue(MaterialValueType::Float1, -0.10f));
             AddParameter(data, "parameter.hairIntensity", "Hair Highlight Intensity",
                 MakeValue(MaterialValueType::Float1, 1.0f));
+            AddParameter(data, "parameter.hairPrimaryPower", "Hair Primary Sharpness",
+                MakeValue(MaterialValueType::Float1, 96.0f));
+            AddParameter(data, "parameter.hairSecondaryPower", "Hair Secondary Sharpness",
+                MakeValue(MaterialValueType::Float1, 48.0f));
+            AddParameter(data, "parameter.hairSecondaryIntensity", "Hair Secondary Intensity",
+                MakeValue(MaterialValueType::Float1, 0.45f));
+            AddParameter(data, "parameter.hairFlowStrength", "Hair Flow Strength",
+                MakeValue(MaterialValueType::Float1, 1.0f));
             AddParameter(data, "parameter.hairHighlightTint", "Hair Highlight Tint",
                 MakeValue(MaterialValueType::Float3, 1.0f, 0.92f, 0.84f));
-            AddMaskResource(data, "resource.hairControl",
-                "Hair Control (RG flow, B mask, A shift)");
             AddNode(data, "node.anisotropicHair", "Anisotropic Hair",
                 MaterialNodeKind::AnisotropicHair,
                 MaterialValueType::SpecularResponse, -320.0f, 760.0f);
@@ -332,13 +360,51 @@ namespace HIKARI::ASSETS::MATERIAL {
                 MakeValue(MaterialValueType::Float1, 0.35f));
             AddParameter(data, "parameter.eyeSparklePower", "Eye Sparkle Power",
                 MakeValue(MaterialValueType::Float1, 64.0f));
-            AddMaskResource(data, "resource.eyeControl",
-                "Eye Control (R iris, G cornea, B catchlight, A depth)");
-            AddNode(data, "node.eyeLighting", "Eye Lighting",
+            AddParameter(data, "parameter.irisCenter", "Iris UV Center",
+                MakeValue(MaterialValueType::Float2, 0.50f, 0.50f));
+            AddParameter(data, "parameter.irisRadius", "Iris UV Radius",
+                MakeValue(MaterialValueType::Float1, 0.48f));
+            AddParameter(data, "parameter.irisMaskSoftness", "Iris Mask Softness",
+                MakeValue(MaterialValueType::Float1, 0.08f));
+            AddParameter(data, "parameter.eyeLayerMode", "Eye Layer Mode",
+                MakeValue(MaterialValueType::Float1, 0.0f));
+            AddParameter(data, "parameter.eyeHighlightOpacity", "Highlight Opacity",
+                MakeValue(MaterialValueType::Float1, 1.0f));
+            AddParameter(data, "parameter.eyeHighlightThreshold", "Highlight Threshold",
+                MakeValue(MaterialValueType::Float1, 0.02f));
+            AddParameter(data, "parameter.eyeHighlightSoftness", "Highlight Softness",
+                MakeValue(MaterialValueType::Float1, 0.04f));
+            AddParameter(data, "parameter.eyeParallaxScale", "Parallax Scale",
+                MakeValue(MaterialValueType::Float1, 0.10f));
+            AddParameter(data, "parameter.eyeHighlightIntensity", "Highlight Intensity",
+                MakeValue(MaterialValueType::Float1, 2.0f));
+            AddParameter(data, "parameter.eyeBaseLift", "Iris Light Lift",
+                MakeValue(MaterialValueType::Float1, 0.18f));
+            AddParameter(data, "parameter.eyeCausticIntensity", "Caustic Intensity",
+                MakeValue(MaterialValueType::Float1, 0.25f));
+            AddParameter(data, "parameter.eyeCausticTint", "Caustic Tint",
+                MakeValue(MaterialValueType::Float3, 1.0f, 0.72f, 0.38f));
+            AddParameter(data, "parameter.eyeCausticWidth", "Caustic Width",
+                MakeValue(MaterialValueType::Float1, 0.28f));
+            AddParameter(data, "parameter.matCapViewCorrection", "MatCap View Correction",
+                MakeValue(MaterialValueType::Float1, 1.0f));
+            AddParameter(data, "parameter.matCapSphericalNormalBlend", "Eye Sphere Normal",
+                MakeValue(MaterialValueType::Float1, 1.0f));
+            AddNode(data, "node.eyeLighting", "Eye Layer",
                 MaterialNodeKind::EyeLighting, MaterialValueType::Float3,
                 -320.0f, 420.0f);
             Connect(data, "edge.eyeLighting.color", "node.eyeLighting",
-                "Color", "Additive");
+                "Color", "Eye");
+            AddResource(data, "resource.matCap", "Eye MatCap",
+                MaterialResourceType::Texture2D, MaterialResourceSemantic::MatCap);
+            AddNode(data, "node.texture.eyeMatCap", "Eye MatCap Texture",
+                MaterialNodeKind::TextureSample, MaterialValueType::Float4,
+                -680.0f, 760.0f, "resource.matCap");
+            AddNode(data, "node.eyeMatCap", "Eye MatCap",
+                MaterialNodeKind::MatCap, MaterialValueType::Float3,
+                -320.0f, 760.0f);
+            Connect(data, "edge.eyeMatCap.image", "node.texture.eyeMatCap",
+                "Color", "node.eyeMatCap", "Image");
             AddOutline(data, 1.0f);
             data.featureRequests.clear();
         }
@@ -354,23 +420,22 @@ namespace HIKARI::ASSETS::MATERIAL {
                 MakeValue(MaterialValueType::Float1, 4.0f));
             AddParameter(data, "parameter.fabricSheenIntensity", "Fabric Sheen Intensity",
                 MakeValue(MaterialValueType::Float1, 1.0f));
-            AddMaskResource(data, "resource.fabricMask", "Fabric Mask");
             TEMPLATE_FACTORY_INTERNAL::AddFabricSheenGraph(data);
-            AddOutline(data, 1.0f);
+            AddOutline(data, 2.0f);
             data.featureRequests.clear();
         }
 
         void ConfigureHybridMetal(MaterialAssetData& data) {
             AddRamp(data, true);
-            AddOutline(data, 0.0f);
+            AddOutline(data, 2.0f);
             AddSpecularBand(data);
             AddFresnelRim(data);
             AddParameter(data, "parameter.directDiffusePbrBlend", "Direct Diffuse PBR Blend",
-                MakeValue(MaterialValueType::Float1, 0.55f));
+                MakeValue(MaterialValueType::Float1, 0.25f));
             AddParameter(data, "parameter.directSpecularPbrBlend", "Direct Specular PBR Blend",
-                MakeValue(MaterialValueType::Float1, 0.55f));
+                MakeValue(MaterialValueType::Float1, 0.35f));
             AddParameter(data, "parameter.indirectPbrBlend", "Indirect PBR Blend",
-                MakeValue(MaterialValueType::Float1, 1.0f));
+                MakeValue(MaterialValueType::Float1, 0.65f));
             AddParameter(data, "parameter.matCapTint", "MatCap Tint",
                 MakeValue(MaterialValueType::Float3, 1.0f, 1.0f, 1.0f));
             AddParameter(data, "parameter.matCapIntensity", "MatCap Intensity",
@@ -391,6 +456,38 @@ namespace HIKARI::ASSETS::MATERIAL {
     const std::array<MaterialRampPresetInfo, 4u>&
         GetBuiltInMaterialRampPresets() noexcept {
         return kRampPresets;
+    }
+
+    MaterialAssetData CreatePassThroughMaterialFunction(
+        std::string_view displayName) {
+        MaterialAssetData data{};
+        data.kind = MaterialAssetKind::Function;
+        data.templateId = MaterialTemplateId::Custom;
+        data.materialName = displayName.empty()
+            ? "New Material Function"
+            : std::string(displayName);
+
+        MaterialGraphParameterData input{};
+        input.id = "Input";
+        input.displayName = "Input";
+        input.defaultValue = MakeValue(MaterialValueType::Float1, 0.0f);
+        data.function.inputs.push_back(input);
+        data.function.outputs.push_back(MaterialGraphParameterData{
+            "Result", "Result",
+            MakeValue(MaterialValueType::Float1, 0.0f), true});
+        data.function.graph.parameters.push_back(input);
+
+        MaterialGraphNodeData inputNode{};
+        inputNode.id = "node.functionInput";
+        inputNode.kind = MaterialNodeKind::Parameter;
+        inputNode.displayName = "Input";
+        inputNode.position = { 0.0f, 0.0f };
+        inputNode.valueType = MaterialValueType::Float1;
+        inputNode.value.type = MaterialValueType::Float1;
+        inputNode.referenceId = input.id;
+        data.function.graph.nodes.push_back(std::move(inputNode));
+        data.function.graph.outputNodeId = "node.functionInput";
+        return data;
     }
 
     MaterialAssetData CreateMaterialRampFromPreset(
@@ -476,8 +573,6 @@ namespace HIKARI::ASSETS::MATERIAL {
             ? std::string(ToString(templateId))
             : std::string(displayName);
         MaterialAssetData data = MakeStandardPbrMaterialAssetData(pbr);
-        data.sourceVersion = kMaterialAssetSourceVersion;
-        data.migratedFromLegacy = false;
         data.templateId = templateId;
         switch (templateId) {
         case MaterialTemplateId::GenericToon: ConfigureGenericToon(data); break;

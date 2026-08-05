@@ -60,9 +60,7 @@ void ModelMaterialWorkspaceController::DrawDiagnosticsWindow(
     ImGui::SeparatorText("Material Compile");
     const MaterialCompileResult &compile =
         authoringDocument_.GetCompileResult();
-    StatusBadge(compile.success ? "Compiled"
-                               : compile.usedLastGood ? "Last-good"
-                                                      : "Fallback",
+    StatusBadge(compile.success ? "Compiled" : "Fallback",
                 compile.success ? EditorStatusTone::Ready
                                 : EditorStatusTone::Warning);
     ImGui::SameLine();

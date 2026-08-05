@@ -104,7 +104,7 @@ namespace HIKARI::RENDER3D::MATERIAL {
                         instruction.outputRegisters.size() ||
                     static_cast<uint32_t>(instruction.opcode) >
                         static_cast<uint32_t>(
-                            MaterialProgramOpcode::FunctionCall)) {
+                            MaterialProgramOpcode::CorneaHighlight)) {
                     diagnostics.push_back(MakeRegistryDiagnostic(
                         MaterialCompileDiagnosticSeverity::Error,
                         "Material.RuntimeInstructionShapeInvalid",
@@ -177,7 +177,6 @@ namespace HIKARI::RENDER3D::MATERIAL {
     void MaterialProgramRegistry::Reset() {
         programs_.clear();
         programByKey_.clear();
-        lastGoodBySource_.clear();
         diagnosticsBySource_.clear();
         stats_ = {};
 
@@ -195,14 +194,8 @@ namespace HIKARI::RENDER3D::MATERIAL {
     MaterialProgramResolution MaterialProgramRegistry::ResolveMaterialAsset(
         std::string_view sourceIdentity,
         const MaterialAssetData& source) {
-        const auto lastGood = sourceIdentity.empty()
-            ? lastGoodBySource_.end()
-            : lastGoodBySource_.find(std::string{ sourceIdentity });
-        const MaterialCompileResult compileResult = CompileMaterialAsset(
-            source,
-            lastGood != lastGoodBySource_.end()
-                ? &lastGood->second.effectiveProgram
-                : nullptr);
+        const MaterialCompileResult compileResult =
+            CompileMaterialAsset(source);
         return ResolveCompileResult(sourceIdentity, compileResult);
     }
 
@@ -212,24 +205,6 @@ namespace HIKARI::RENDER3D::MATERIAL {
         ++stats_.compileResolveCount;
         std::vector<MaterialCompileDiagnostic> diagnostics =
             compileResult.diagnostics;
-        const auto currentLastGood = sourceIdentity.empty()
-            ? lastGoodBySource_.end()
-            : lastGoodBySource_.find(std::string{ sourceIdentity });
-
-        if (compileResult.usedLastGood &&
-            currentLastGood != lastGoodBySource_.end()) {
-            if (Find(currentLastGood->second.residentId) != nullptr) {
-                StoreDiagnostics(sourceIdentity, diagnostics);
-                ++stats_.lastGoodResolveCount;
-                RefreshStats();
-                return MaterialProgramResolution{
-                    currentLastGood->second.residentId,
-                    MaterialProgramResolutionKind::LastGood,
-                    currentLastGood->second.effectiveProgram,
-                    std::move(diagnostics)
-                };
-            }
-        }
         if (compileResult.usedFallback) {
             return ResolveFailure(sourceIdentity, std::move(diagnostics));
         }
@@ -248,13 +223,6 @@ namespace HIKARI::RENDER3D::MATERIAL {
             return ResolveFailure(sourceIdentity, std::move(diagnostics));
         }
 
-        if (!sourceIdentity.empty()) {
-            lastGoodBySource_[std::string{ sourceIdentity }] =
-                LastGoodSourceProgram{
-                    interned.id,
-                    compileResult.program
-                };
-        }
         StoreDiagnostics(sourceIdentity, diagnostics);
         if (interned.created) {
             ++stats_.compiledProgramCount;
@@ -283,17 +251,6 @@ namespace HIKARI::RENDER3D::MATERIAL {
     const RuntimeMaterialProgram&
     MaterialProgramRegistry::GetStandardPbrFallback() const noexcept {
         return programs_.front();
-    }
-
-    MaterialProgramId MaterialProgramRegistry::FindLastGood(
-        std::string_view sourceIdentity) const noexcept {
-        if (sourceIdentity.empty()) {
-            return {};
-        }
-        const auto found = lastGoodBySource_.find(std::string{ sourceIdentity });
-        return found != lastGoodBySource_.end()
-            ? found->second.residentId
-            : kInvalidMaterialProgramId;
     }
 
     std::span<const MaterialCompileDiagnostic>
@@ -339,22 +296,6 @@ namespace HIKARI::RENDER3D::MATERIAL {
     MaterialProgramResolution MaterialProgramRegistry::ResolveFailure(
         std::string_view sourceIdentity,
         std::vector<MaterialCompileDiagnostic> diagnostics) {
-        const auto lastGood = sourceIdentity.empty()
-            ? lastGoodBySource_.end()
-            : lastGoodBySource_.find(std::string{ sourceIdentity });
-        if (lastGood != lastGoodBySource_.end() &&
-            Find(lastGood->second.residentId) != nullptr) {
-            StoreDiagnostics(sourceIdentity, diagnostics);
-            ++stats_.lastGoodResolveCount;
-            RefreshStats();
-            return MaterialProgramResolution{
-                lastGood->second.residentId,
-                MaterialProgramResolutionKind::LastGood,
-                lastGood->second.effectiveProgram,
-                std::move(diagnostics)
-            };
-        }
-
         const RuntimeMaterialProgram& fallback = GetStandardPbrFallback();
         StoreDiagnostics(sourceIdentity, diagnostics);
         ++stats_.fallbackResolveCount;
@@ -379,15 +320,12 @@ namespace HIKARI::RENDER3D::MATERIAL {
     void MaterialProgramRegistry::RefreshStats() {
         stats_.programCount = static_cast<uint32_t>(programs_.size());
         stats_.sourceCount = static_cast<uint32_t>(diagnosticsBySource_.size());
-        stats_.lastGoodSourceCount =
-            static_cast<uint32_t>(lastGoodBySource_.size());
     }
 
     std::string_view ToString(MaterialProgramResolutionKind kind) noexcept {
         switch (kind) {
         case MaterialProgramResolutionKind::Compiled: return "Compiled";
         case MaterialProgramResolutionKind::Reused: return "Reused";
-        case MaterialProgramResolutionKind::LastGood: return "LastGood";
         case MaterialProgramResolutionKind::StandardPbrFallback: return "StandardPBRFallback";
         default: return "Unknown";
         }

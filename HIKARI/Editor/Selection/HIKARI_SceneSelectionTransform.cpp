@@ -10,11 +10,13 @@
 #include "Editor/Selection/HIKARI_EditorSelection.h"
 #include "Render3D/Core/HIKARI_Camera3D.h"
 #include "Scene/Components/HIKARI_CameraComponent.h"
+#include "Scene/Components/Lighting/HIKARI_LightComponent.h"
 #include "Scene/Components/Lighting/HIKARI_IrradianceVolumeComponent.h"
 #include "Scene/Components/Lighting/HIKARI_ReflectionProbeComponent.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_World.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
+#include "Scene/Lighting/HIKARI_LightingAuthoringModel.h"
 
 namespace HIKARI::EDITOR {
     namespace {
@@ -35,6 +37,13 @@ namespace HIKARI::EDITOR {
 
         bool IsCamera(const GameObject& object) {
             return object.GetComponent<CameraComponent>() != nullptr;
+        }
+
+        bool IsDirectionalLight(const GameObject& object) {
+            const LightComponent* light =
+                object.GetComponent<LightComponent>();
+            return light != nullptr &&
+                light->GetLightType() == LightComponentType::Directional;
         }
 
         LightingComponentScaleProxy BuildLightingComponentScaleProxy(
@@ -325,7 +334,12 @@ namespace HIKARI::EDITOR {
                 }
                 const Transform3D& runtime = object.GetTransform();
                 const MATH::Vec3 rotationEulerDeg =
-                    MATH::EulerXYZDegreesFromQuatNearest(
+                    IsDirectionalLight(object)
+                    ? LIGHTING_AUTHORING::
+                        CanonicalDirectionalLightEulerDegrees(
+                            MATH::EulerXYZDegreesFromQuat(
+                                runtime.rotation))
+                    : MATH::EulerXYZDegreesFromQuatNearest(
                         runtime.rotation,
                         documentObject.transform.rotationEulerDeg);
                 documentObject.transform.position = runtime.position;

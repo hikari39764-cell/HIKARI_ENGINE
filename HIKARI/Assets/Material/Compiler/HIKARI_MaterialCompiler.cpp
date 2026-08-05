@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "Assets/Material/Compiler/Internal/HIKARI_MaterialCompilerValidation.h"
+#include "Assets/Material/Compiler/Internal/HIKARI_MaterialFunctionExpansion.h"
 #include "Assets/Material/Compiler/Internal/HIKARI_MaterialProgramLowering.h"
 #include "Assets/Material/Authoring/HIKARI_MaterialSemanticNodeFactory.h"
 #include "Assets/Material/HIKARI_MaterialDependencies.h"
@@ -136,7 +137,12 @@ namespace HIKARI {
                 if (!reachable.contains(node.id)) {
                     continue;
                 }
-                switch (node.kind) {
+                MaterialNodeKind legacyKind{};
+                if (!TryGetLegacyMaterialNodeKind(
+                        node.kind, legacyKind)) {
+                    continue;
+                }
+                switch (legacyKind) {
                 case MaterialNodeKind::PbrSurface:
                     AddCapability(capabilities, MaterialProgramCapability::StandardPbr);
                     break;
@@ -179,6 +185,10 @@ namespace HIKARI {
                 case MaterialNodeKind::HairShadow:
                     AddCapability(capabilities, MaterialProgramCapability::HairShadow);
                     break;
+                case MaterialNodeKind::CorneaHighlight:
+                    AddCapability(capabilities, MaterialProgramCapability::EyeLighting);
+                    AddCapability(capabilities, MaterialProgramCapability::CorneaHighlight);
+                    break;
                 case MaterialNodeKind::FunctionCall:
                     AddCapability(capabilities, MaterialProgramCapability::FunctionCalls);
                     break;
@@ -211,7 +221,7 @@ namespace HIKARI {
             if (!hasOutline) {
                 return;
             }
-            float mode = 1.0f;
+            float mode = 2.0f;
             const auto parameter = std::find_if(
                 graph.parameters.begin(), graph.parameters.end(),
                 [](const MaterialGraphParameterData& value) {
@@ -248,6 +258,7 @@ namespace HIKARI {
                 << ToString(program.templateId) << ':'
                 << source.profileAssetGuid.value << ':'
                 << ToString(source.surface.alphaMode) << ':'
+                << ToString(source.surface.alphaRepresentation) << ':'
                 << source.surface.doubleSided << ':'
                 << source.surface.unlit << ':'
                 << program.capabilities;
@@ -316,7 +327,9 @@ namespace HIKARI {
             return stream.str();
         }
 
-        MaterialProgramIR BuildProgram(const MaterialAssetData& source) {
+        MaterialProgramIR BuildProgram(
+            const MaterialAssetData& source,
+            const std::vector<AssetGuid>& functionDependencies = {}) {
             MaterialProgramIR program{};
             program.sourceKind = source.kind;
             program.domain = source.domain;
@@ -338,6 +351,10 @@ namespace HIKARI {
             if (source.profileAssetGuid.IsValid()) {
                 AddCapability(program.capabilities,
                     MaterialProgramCapability::MaterialProfile);
+            }
+            if (!functionDependencies.empty()) {
+                AddCapability(program.capabilities,
+                    MaterialProgramCapability::FunctionCalls);
             }
             if (source.surface.unlit) {
                 AddCapability(program.capabilities, MaterialProgramCapability::Unlit);
@@ -468,6 +485,9 @@ namespace HIKARI {
                         addDependency(instruction.assetReference);
                     }
                 }
+                for (const AssetGuid& dependency : functionDependencies) {
+                    addDependency(dependency);
+                }
             } else {
                 for (const MaterialAssetDependency& dependency :
                      CollectMaterialAssetDependencies(source)) {
@@ -491,16 +511,6 @@ namespace HIKARI {
             return program;
         }
 
-        bool IsCompatibleLastGood(
-            const MaterialAssetData& source,
-            const MaterialProgramIR* lastGood) noexcept {
-
-            return lastGood &&
-                lastGood->version == kMaterialProgramIrVersion &&
-                lastGood->domain == source.domain &&
-                lastGood->sourceKind == source.kind;
-        }
-
     } // namespace
 
     MaterialProgramIR BuildStandardPbrMaterialProgramFallback() {
@@ -511,34 +521,33 @@ namespace HIKARI {
     }
 
     MaterialCompileResult CompileMaterialAsset(
+        const MaterialAssetData& source) {
+        return CompileMaterialAsset(source, {});
+    }
+
+    MaterialCompileResult CompileMaterialAsset(
         const MaterialAssetData& source,
-        const MaterialProgramIR* lastGoodProgram) {
+        const MaterialCompileOptions& options) {
 
         MaterialCompileResult result{};
-        if (MATERIAL_COMPILER_INTERNAL::ValidateMaterialSource(source, result)) {
+        MaterialAssetData expanded{};
+        std::vector<AssetGuid> functionDependencies{};
+        const bool functionsExpanded =
+            MATERIAL_COMPILER_INTERNAL::ExpandMaterialFunctions(
+                source, options, expanded, functionDependencies, result);
+        if (functionsExpanded &&
+            MATERIAL_COMPILER_INTERNAL::ValidateMaterialSource(
+                expanded, result)) {
             result.success = true;
-            result.program = BuildProgram(source);
-            if (source.migratedFromLegacy) {
-                AddDiagnostic(result, MaterialCompileDiagnosticSeverity::Info,
-                    "Material.LegacyMigration",
-                    "legacy PBR material was compiled through the Material v4 StandardPBR adapter");
-            }
+            result.program = BuildProgram(expanded, functionDependencies);
             return result;
         }
 
-        if (IsCompatibleLastGood(source, lastGoodProgram)) {
-            result.usedLastGood = true;
-            result.program = *lastGoodProgram;
-            AddDiagnostic(result, MaterialCompileDiagnosticSeverity::Warning,
-                "Material.UsingLastGood",
-                "material compilation failed; retained the compatible last-good program");
-        } else {
-            result.usedFallback = true;
-            result.program = BuildStandardPbrMaterialProgramFallback();
-            AddDiagnostic(result, MaterialCompileDiagnosticSeverity::Warning,
-                "Material.UsingStandardPbrFallback",
-                "material compilation failed without a compatible last-good program; using Standard PBR fallback");
-        }
+        result.usedFallback = true;
+        result.program = BuildStandardPbrMaterialProgramFallback();
+        AddDiagnostic(result, MaterialCompileDiagnosticSeverity::Warning,
+            "Material.UsingStandardPbrFallback",
+            "material compilation failed; using the deterministic Standard PBR fallback");
         return result;
     }
 

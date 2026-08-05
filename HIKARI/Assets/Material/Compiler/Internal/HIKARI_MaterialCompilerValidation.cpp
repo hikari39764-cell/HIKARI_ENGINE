@@ -156,16 +156,15 @@ namespace HIKARI::MATERIAL_COMPILER_INTERNAL {
         }
 
         std::string_view ResolveRequiredResourceId(
-            const MaterialGraphData& graph,
             const RuntimeGraphView& view,
-            const MaterialGraphNodeData& node,
-            const ASSETS::MATERIAL::MaterialNodeSemanticContract& contract) {
+            const MaterialGraphNodeData& node) {
             if (node.kind == MaterialNodeKind::TextureSample) {
                 return node.referenceId;
             }
             const std::string_view requiredInput =
                 node.kind == MaterialNodeKind::FaceSdf ? "SDF" :
                 node.kind == MaterialNodeKind::HairShadow ? "ShadowMask" :
+                node.kind == MaterialNodeKind::MatCap ? "Image" :
                 std::string_view{};
             if (!requiredInput.empty()) {
                 if (const MaterialGraphEdgeData* sdf =
@@ -178,11 +177,7 @@ namespace HIKARI::MATERIAL_COMPILER_INTERNAL {
                     }
                 }
             }
-            if (!node.referenceId.empty() &&
-                FindRuntimeResource(graph, node.referenceId) != nullptr) {
-                return node.referenceId;
-            }
-            return contract.primaryResourceId;
+            return {};
         }
 
         bool ValidateRequiredResources(
@@ -208,7 +203,7 @@ namespace HIKARI::MATERIAL_COMPILER_INTERNAL {
                     continue;
                 }
                 const std::string_view resourceId = ResolveRequiredResourceId(
-                    source.graph, view, *node, contract);
+                    view, *node);
                 if (!resourceId.empty() &&
                     HasValidAuthoredResource(source.graph, resourceId)) {
                     continue;
@@ -250,7 +245,13 @@ namespace HIKARI::MATERIAL_COMPILER_INTERNAL {
             };
 
             bool supported = false;
-            switch (node->kind) {
+            MaterialNodeKind legacyKind{};
+            if (!TryGetLegacyMaterialNodeKind(
+                    node->kind, legacyKind)) {
+                evaluating.erase(node->id);
+                return false;
+            }
+            switch (legacyKind) {
             case MaterialNodeKind::Constant:
             case MaterialNodeKind::Parameter:
                 supported = true;
@@ -351,7 +352,6 @@ namespace HIKARI::MATERIAL_COMPILER_INTERNAL {
             bool supported =
                 node->kind == MaterialNodeKind::FresnelRim ||
                 node->kind == MaterialNodeKind::MatCap ||
-                node->kind == MaterialNodeKind::EyeLighting ||
                 node->kind == MaterialNodeKind::FabricSheen;
             if (node->kind == MaterialNodeKind::Add) {
                 const MaterialGraphEdgeData* a =
@@ -376,8 +376,12 @@ namespace HIKARI::MATERIAL_COMPILER_INTERNAL {
         }
 
         bool IsAllowedResponseParameterPin(
-            MaterialNodeKind kind,
+            const MaterialNodeTypeId& typeId,
             std::string_view pin) noexcept {
+            MaterialNodeKind kind{};
+            if (!TryGetLegacyMaterialNodeKind(typeId, kind)) {
+                return false;
+            }
             switch (kind) {
             case MaterialNodeKind::RampDiffuse:
                 return pin == "ShadowThreshold" ||
@@ -391,6 +395,7 @@ namespace HIKARI::MATERIAL_COMPILER_INTERNAL {
                     pin == "ShadowTint" || pin == "MidTint" ||
                     pin == "LitTint" || pin == "RampRow" ||
                     pin == "MaskInfluence" || pin == "RampBlend" ||
+                    pin == "LayerWeights" ||
                     pin == "Intensity" || pin == "DirectGain";
             case MaterialNodeKind::SpecularBand:
                 return pin == "Width" || pin == "Softness" ||
@@ -399,7 +404,9 @@ namespace HIKARI::MATERIAL_COMPILER_INTERNAL {
                 return pin == "Power" || pin == "Width" || pin == "Color" ||
                     pin == "Intensity" || pin == "LightAlignment";
             case MaterialNodeKind::AnisotropicHair:
-                return pin == "Shift" || pin == "Width";
+                return pin == "Shift" || pin == "Width" ||
+                    pin == "PrimaryPower" || pin == "SecondaryPower" ||
+                    pin == "SecondaryIntensity" || pin == "FlowStrength";
             case MaterialNodeKind::FaceSdf:
                 return pin == "Softness" || pin == "DirectGain";
             case MaterialNodeKind::SkinLighting:
@@ -492,6 +499,12 @@ namespace HIKARI::MATERIAL_COMPILER_INTERNAL {
                             supported = response != nullptr &&
                                 (response->kind == MaterialNodeKind::SpecularBand ||
                                  response->kind == MaterialNodeKind::AnisotropicHair);
+                        } else if (edge.targetPin == "Eye") {
+                            const MaterialGraphNodeData* response =
+                                FindRuntimeNode(view, edge.sourceNodeId);
+                            supported = response != nullptr &&
+                                (response->kind == MaterialNodeKind::EyeLighting ||
+                                 response->kind == MaterialNodeKind::CorneaHighlight);
                         } else if (edge.targetPin == "Additive") {
                             supported = IsAdditiveRuntimeExpression(
                                 view, edge.sourceNodeId);
@@ -527,9 +540,20 @@ namespace HIKARI::MATERIAL_COMPILER_INTERNAL {
                     node->kind == MaterialNodeKind::FabricSheen ||
                     node->kind == MaterialNodeKind::HybridLighting ||
                     node->kind == MaterialNodeKind::Outline ||
-                    node->kind == MaterialNodeKind::HairShadow;
+                    node->kind == MaterialNodeKind::HairShadow ||
+                    node->kind == MaterialNodeKind::CorneaHighlight;
                 if (!responseNode) {
                     continue;
+                }
+                if (node->kind == MaterialNodeKind::CorneaHighlight &&
+                    source.surface.alphaMode != MaterialAlphaMode::Blend) {
+                    AddDiagnostic(
+                        result,
+                        MaterialCompileDiagnosticSeverity::Error,
+                        "Material.CorneaHighlightRequiresBlend",
+                        "Cornea Highlight operates on a transparent authored highlight layer; set Surface Output to Blend.",
+                        node->id);
+                    valid = false;
                 }
                 if ((node->kind == MaterialNodeKind::SkinLighting ||
                      node->kind == MaterialNodeKind::HybridLighting ||
@@ -566,15 +590,18 @@ namespace HIKARI::MATERIAL_COMPILER_INTERNAL {
                          inputNode->kind == MaterialNodeKind::HybridLighting);
                     const auto expectedMaskChannel =
                         [node]() -> std::string_view {
-                        switch (node->kind) {
+                        MaterialNodeKind legacyKind{};
+                        if (!TryGetLegacyMaterialNodeKind(
+                                node->kind, legacyKind)) {
+                            return {};
+                        }
+                        switch (legacyKind) {
                         case MaterialNodeKind::RampDiffuse:
                         case MaterialNodeKind::MultiRampDiffuse:
                         case MaterialNodeKind::AnisotropicHair:
                             return "R";
                         case MaterialNodeKind::SkinLighting:
                             return "G";
-                        case MaterialNodeKind::EyeLighting:
-                            return "R";
                         case MaterialNodeKind::FabricSheen:
                             return "B";
                         case MaterialNodeKind::MatCap:
@@ -601,12 +628,25 @@ namespace HIKARI::MATERIAL_COMPILER_INTERNAL {
                         edge.targetPin == "SDF" && edge.sourcePin == "R" &&
                         IsTextureRuntimeExpression(
                             view, edge.sourceNodeId, false);
+                    const bool matCapImageInput =
+                        node->kind == MaterialNodeKind::MatCap &&
+                        edge.targetPin == "Image" &&
+                        edge.sourcePin == "Color" &&
+                        IsTextureRuntimeExpression(
+                            view, edge.sourceNodeId, false);
+                    const bool eyeControlInput =
+                        node->kind == MaterialNodeKind::EyeLighting &&
+                        edge.targetPin == "Control" &&
+                        edge.sourcePin == "Color" &&
+                        IsTextureRuntimeExpression(
+                            view, edge.sourceNodeId, false);
                     const bool parameterInput =
                         IsAllowedResponseParameterPin(
                             node->kind, edge.targetPin) &&
                         IsStaticRuntimeExpression(view, edge.sourceNodeId);
                     if (!responseInput && !maskInput && !hairShadowInput &&
-                        !faceSdfInput &&
+                        !faceSdfInput && !matCapImageInput &&
+                        !eyeControlInput &&
                         !parameterInput) {
                         AddDiagnostic(
                             result,
@@ -631,7 +671,7 @@ namespace HIKARI::MATERIAL_COMPILER_INTERNAL {
         if (source.version != kMaterialAssetSourceVersion) {
             AddDiagnostic(result, MaterialCompileDiagnosticSeverity::Error,
                 "Material.UnsupportedVersion",
-                "compiler accepts only canonical Material v4 source data");
+                "compiler accepts only canonical Material v5 source data");
             valid = false;
         }
         if (source.materialName.empty()) {
@@ -659,8 +699,46 @@ namespace HIKARI::MATERIAL_COMPILER_INTERNAL {
                 source.function.inputs, "function input", result) && valid;
             valid = ValidateStableValueList(
                 source.function.outputs, "function output", result) && valid;
+            if (source.function.outputs.size() != 1u) {
+                AddDiagnostic(result, MaterialCompileDiagnosticSeverity::Error,
+                    "Material.FunctionOutputArity",
+                    "Material Function v1 requires exactly one declared output");
+                valid = false;
+            }
             valid = AppendGraphDiagnostics(
                 source.function.graph, false, result) && valid;
+            if (source.function.graph.outputNodeId.empty()) {
+                AddDiagnostic(result, MaterialCompileDiagnosticSeverity::Error,
+                    "Material.FunctionOutputMissing",
+                    "Material Function graph requires an outputNodeId");
+                valid = false;
+            } else {
+                const auto outputNode = std::find_if(
+                    source.function.graph.nodes.begin(),
+                    source.function.graph.nodes.end(),
+                    [&source](const MaterialGraphNodeData& node) {
+                        return node.id ==
+                            source.function.graph.outputNodeId;
+                    });
+                if (outputNode != source.function.graph.nodes.end()) {
+                    const std::vector<std::string_view> outputPins =
+                        GetMaterialGraphNodeOutputPins(*outputNode);
+                    if (outputPins.empty() ||
+                        (outputPins.size() > 1u &&
+                         !source.function.outputs.empty() &&
+                         std::find(
+                             outputPins.begin(), outputPins.end(),
+                             source.function.outputs.front().id) ==
+                             outputPins.end())) {
+                        AddDiagnostic(result,
+                            MaterialCompileDiagnosticSeverity::Error,
+                            "Material.FunctionOutputPinAmbiguous",
+                            "Function output ID must name a pin when the output node exposes multiple outputs",
+                            outputNode->id);
+                        valid = false;
+                    }
+                }
+            }
             break;
         case MaterialAssetKind::Instance: {
             if (!source.instance.parentMaterialGuid.IsValid()) {

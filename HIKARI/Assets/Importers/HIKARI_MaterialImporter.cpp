@@ -7,6 +7,7 @@
 #include "Assets/Material/Compiler/HIKARI_MaterialCompiler.h"
 #include "Assets/Material/Compiler/HIKARI_MaterialProgramSerialization.h"
 #include "Assets/Material/HIKARI_MaterialAssetData.h"
+#include "Assets/Material/HIKARI_MaterialAssetLookup.h"
 #include "Assets/Material/HIKARI_MaterialDependencies.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
 #include "Core/HIKARI_Logger.h"
@@ -62,20 +63,12 @@ namespace HIKARI {
 
         const std::filesystem::path outputPath =
             (context.importedDirectory / "material.hmat").lexically_normal();
-        MaterialAssetData previousSource{};
-        MaterialCompileResult previousCompile{};
-        std::string previousMessage{};
-        const bool hasPreviousProgram =
-            std::filesystem::is_regular_file(outputPath) &&
-            ReadHmatFile(
-                outputPath,
-                previousSource,
-                previousCompile,
-                previousMessage) &&
-            !previousCompile.usedFallback;
-        const MaterialCompileResult compileResult = CompileMaterialAsset(
-            data,
-            hasPreviousProgram ? &previousCompile.program : nullptr);
+        const MaterialCompileResult compileResult = context.assetDatabase
+            ? CompileMaterialAsset(
+                data,
+                ASSETS::MATERIAL::MakeMaterialCompileOptions(
+                    *context.assetDatabase))
+            : CompileMaterialAsset(data);
 
         std::string compileJson{};
         std::string compileJsonError{};
@@ -86,16 +79,11 @@ namespace HIKARI {
 
         if (!compileResult.success) {
             // Never publish a new HMAT while the source graph is invalid.
-            // AssetDatabase keeps the previous artifact available as the
-            // explicit last-good runtime result and exposes this import
-            // failure to the Editor instead of disguising it as a successful
-            // fallback cook.
+            // v5 exposes the failure instead of rendering stale graph state.
             result.success = false;
-            result.message = compileResult.usedLastGood
-                ? "[MaterialImporter][ERROR] Material graph is invalid; previous last-good HMAT was preserved: " +
-                    record.sourcePath.generic_string()
-                : "[MaterialImporter][ERROR] Material graph is invalid and no runtime HMAT was published: " +
-                    record.sourcePath.generic_string();
+            result.message =
+                "[MaterialImporter][ERROR] Material v5 graph is invalid and no runtime HMAT was published: " +
+                record.sourcePath.generic_string();
             HIKARI_LOG_ERROR(result.message);
             return result;
         }

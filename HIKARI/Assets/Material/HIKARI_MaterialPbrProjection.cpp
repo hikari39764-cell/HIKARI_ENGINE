@@ -247,6 +247,7 @@ namespace HIKARI {
         struct TextureExpressionProjection final {
             const MaterialGraphResourceData* resource = nullptr;
             MATH::Vec4 factor{ 1.0f, 1.0f, 1.0f, 1.0f };
+            bool hasAuthoredFactor = false;
         };
 
         std::optional<TextureExpressionProjection>
@@ -311,6 +312,7 @@ namespace HIKARI {
                     texture.factor.z * ReadComponent(*factor, 2u),
                     texture.factor.w * ReadComponent(*factor, 3u)
                 };
+                texture.hasAuthoredFactor = true;
                 return true;
             };
             auto result = EvaluateTextureExpression(
@@ -353,7 +355,11 @@ namespace HIKARI {
             outSlot.uvScale = resource->uvScale;
             outSlot.uvOffset = resource->uvOffset;
             outSlot.uvRotation = resource->uvRotation;
-            if (outFactor != nullptr) {
+            // A direct Texture Sample means "surface default x texture" in
+            // the fixed runtime material.  Do not replace the surface value
+            // with an implicit 1.0.  Only an explicit Multiply expression
+            // authors a replacement factor.
+            if (outFactor != nullptr && projection->hasAuthoredFactor) {
                 *outFactor = projection->factor;
             }
             return true;
@@ -367,23 +373,6 @@ namespace HIKARI {
                     FindParameter(graph, id)) {
                 outValue = parameter->defaultValue.numeric;
             }
-        }
-
-        void ProjectResource(
-            const MaterialGraphData& graph,
-            MaterialResourceSemantic semantic,
-            MaterialTextureSlotData& outSlot) noexcept {
-            const MaterialGraphResourceData* resource =
-                FindResource(graph, semantic);
-            if (resource == nullptr) {
-                return;
-            }
-            outSlot.useTexture = resource->enabled;
-            outSlot.textureAssetGuid = resource->assetGuid;
-            outSlot.texCoord = static_cast<int>(resource->texCoord);
-            outSlot.uvScale = resource->uvScale;
-            outSlot.uvOffset = resource->uvOffset;
-            outSlot.uvRotation = resource->uvRotation;
         }
 
     } // namespace
@@ -429,21 +418,6 @@ namespace HIKARI {
         value = { projected.emissiveStrength, 0.0f, 0.0f, 0.0f };
         ProjectParameter(data.graph, "parameter.emissiveStrength", value);
         projected.emissiveStrength = value.x;
-
-        ProjectResource(data.graph, MaterialResourceSemantic::BaseColor,
-            projected.baseColorTexture);
-        ProjectResource(data.graph, MaterialResourceSemantic::Normal,
-            projected.normalTexture);
-        ProjectResource(data.graph, MaterialResourceSemantic::MetallicRoughness,
-            projected.metallicRoughnessTexture);
-        ProjectResource(data.graph, MaterialResourceSemantic::Occlusion,
-            projected.occlusionTexture);
-        ProjectResource(data.graph, MaterialResourceSemantic::Emissive,
-            projected.emissiveTexture);
-        ProjectResource(data.graph, MaterialResourceSemantic::Specular,
-            projected.specularTexture);
-        ProjectResource(data.graph, MaterialResourceSemantic::SpecularColor,
-            projected.specularColorTexture);
 
         const MaterialGraphNodeData* surface =
             FindConnectedPbrSurface(data.graph);

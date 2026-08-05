@@ -5,6 +5,7 @@
 #include <string_view>
 
 #include "Assets/Material/Authoring/HIKARI_MaterialSemanticNodeFactory.h"
+#include "Assets/Material/Graph/HIKARI_MaterialNodeDefinition.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialGraphUi.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
@@ -25,13 +26,12 @@ void ModelMaterialWorkspaceController::DrawMaterialGraphNodePalette(
     if (!ImGui::BeginMenu(category.data())) {
       continue;
     }
-    for (uint32_t value = static_cast<uint32_t>(MaterialNodeKind::Constant);
-         value <= static_cast<uint32_t>(MaterialNodeKind::HairShadow);
-         ++value) {
-      const auto kind = static_cast<MaterialNodeKind>(value);
-      if (kind == MaterialNodeKind::FunctionCall) {
+    for (const MaterialNodeDefinition& definition :
+         GetMaterialNodeDefinitions()) {
+      if (!definition.paletteVisible) {
         continue;
       }
+      const MaterialNodeKind kind = definition.kind;
       if (MATERIAL_GRAPH_UI::NodeCategory(kind) != category) {
         continue;
       }
@@ -43,13 +43,13 @@ void ModelMaterialWorkspaceController::DrawMaterialGraphNodePalette(
       const std::string_view label =
           ASSETS::MATERIAL::IsReadyMadeMaterialNode(kind)
               ? ASSETS::MATERIAL::ReadyMadeMaterialNodeDisplayName(kind)
-              : ToString(kind);
+              : definition.stableName;
       if (ImGui::MenuItem(label.data())) {
         MaterialAssetData before = source;
         MaterialGraphNodeData node{};
         node.id = "Node_" + std::to_string(authoringIdCounter_++);
         node.kind = kind;
-        node.displayName = std::string(ToString(kind));
+        node.displayName = std::string(definition.stableName);
         node.position = position;
         node.valueType = MATERIAL_GRAPH_UI::DefaultNodeValueType(kind);
         node.value.type = node.valueType;
@@ -61,9 +61,6 @@ void ModelMaterialWorkspaceController::DrawMaterialGraphNodePalette(
         }
         if (kind == MaterialNodeKind::Parameter && !graph.parameters.empty()) {
           node.referenceId = graph.parameters.front().id;
-        } else if (kind == MaterialNodeKind::TextureSample &&
-                   !graph.resources.empty()) {
-          node.referenceId = graph.resources.front().id;
         }
         if (kind == MaterialNodeKind::SurfaceOutput) {
           graph.outputNodeId = node.id;
@@ -73,6 +70,41 @@ void ModelMaterialWorkspaceController::DrawMaterialGraphNodePalette(
         CommitMaterialMutation(std::move(before), "Add material graph node",
                                scene);
       }
+      ImGui::EndDisabled();
+    }
+    ImGui::EndMenu();
+  }
+  if (ImGui::BeginMenu("Material Functions")) {
+    bool foundFunction = false;
+    for (const AssetChoice& choice : materialChoices_) {
+      if (!choice.ready ||
+          choice.materialKind != MaterialAssetKind::Function ||
+          choice.functionOutputs.size() != 1u) {
+        continue;
+      }
+      foundFunction = true;
+      if (!ImGui::MenuItem(choice.label.c_str())) {
+        continue;
+      }
+      MaterialAssetData before = source;
+      MaterialGraphNodeData node{};
+      node.id = "Node_" + std::to_string(authoringIdCounter_++);
+      node.kind = MaterialNodeKind::FunctionCall;
+      node.displayName = choice.label;
+      node.position = position;
+      node.assetReference = choice.guid;
+      node.functionInputs = choice.functionInputs;
+      node.functionOutputs = choice.functionOutputs;
+      node.valueType = choice.functionOutputs.front().defaultValue.type;
+      node.value.type = node.valueType;
+      selectedGraphNodeId_ = node.id;
+      graph.nodes.push_back(std::move(node));
+      CommitMaterialMutation(
+          std::move(before), "Add Material Function node", scene);
+    }
+    if (!foundFunction) {
+      ImGui::BeginDisabled();
+      (void)ImGui::MenuItem("No imported Material Functions");
       ImGui::EndDisabled();
     }
     ImGui::EndMenu();

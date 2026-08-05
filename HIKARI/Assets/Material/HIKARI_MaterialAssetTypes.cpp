@@ -1,7 +1,10 @@
 #include "HIKARI_MaterialAssetTypes.h"
 
+#include <algorithm>
 #include <array>
 #include <utility>
+
+#include "Assets/Material/Graph/HIKARI_MaterialNodeDefinition.h"
 
 namespace HIKARI {
 
@@ -61,6 +64,10 @@ namespace HIKARI {
             std::pair{ MaterialAlphaMode::Mask, std::string_view{ "Mask" } },
             std::pair{ MaterialAlphaMode::Blend, std::string_view{ "Blend" } },
         };
+        constexpr std::array kAlphaRepresentations{
+            std::pair{ MaterialAlphaRepresentation::Straight, std::string_view{ "Straight" } },
+            std::pair{ MaterialAlphaRepresentation::Premultiplied, std::string_view{ "Premultiplied" } },
+        };
         constexpr std::array kValueTypes{
             std::pair{ MaterialValueType::Bool, std::string_view{ "Bool" } },
             std::pair{ MaterialValueType::Float1, std::string_view{ "Float1" } },
@@ -92,36 +99,10 @@ namespace HIKARI {
             std::pair{ MaterialResourceSemantic::MatCap, std::string_view{ "MatCap" } },
             std::pair{ MaterialResourceSemantic::FaceSdf, std::string_view{ "FaceSDF" } },
             std::pair{ MaterialResourceSemantic::HairShadow, std::string_view{ "HairShadow" } },
-        };
-        constexpr std::array kNodeKinds{
-            std::pair{ MaterialNodeKind::Constant, std::string_view{ "Constant" } },
-            std::pair{ MaterialNodeKind::Parameter, std::string_view{ "Parameter" } },
-            std::pair{ MaterialNodeKind::TextureSample, std::string_view{ "TextureSample" } },
-            std::pair{ MaterialNodeKind::Add, std::string_view{ "Add" } },
-            std::pair{ MaterialNodeKind::Multiply, std::string_view{ "Multiply" } },
-            std::pair{ MaterialNodeKind::Lerp, std::string_view{ "Lerp" } },
-            std::pair{ MaterialNodeKind::Clamp, std::string_view{ "Clamp" } },
-            std::pair{ MaterialNodeKind::Saturate, std::string_view{ "Saturate" } },
-            std::pair{ MaterialNodeKind::OneMinus, std::string_view{ "OneMinus" } },
-            std::pair{ MaterialNodeKind::Power, std::string_view{ "Power" } },
-            std::pair{ MaterialNodeKind::Dot, std::string_view{ "Dot" } },
-            std::pair{ MaterialNodeKind::NormalUnpack, std::string_view{ "NormalUnpack" } },
-            std::pair{ MaterialNodeKind::PbrSurface, std::string_view{ "PBRSurface" } },
-            std::pair{ MaterialNodeKind::RampDiffuse, std::string_view{ "RampDiffuse" } },
-            std::pair{ MaterialNodeKind::MultiRampDiffuse, std::string_view{ "MultiRampDiffuse" } },
-            std::pair{ MaterialNodeKind::SpecularBand, std::string_view{ "SpecularBand" } },
-            std::pair{ MaterialNodeKind::FresnelRim, std::string_view{ "FresnelRim" } },
-            std::pair{ MaterialNodeKind::MatCap, std::string_view{ "MatCap" } },
-            std::pair{ MaterialNodeKind::AnisotropicHair, std::string_view{ "AnisotropicHair" } },
-            std::pair{ MaterialNodeKind::FaceSdf, std::string_view{ "FaceSDF" } },
-            std::pair{ MaterialNodeKind::EyeLighting, std::string_view{ "EyeLighting" } },
-            std::pair{ MaterialNodeKind::SurfaceOutput, std::string_view{ "SurfaceOutput" } },
-            std::pair{ MaterialNodeKind::FunctionCall, std::string_view{ "FunctionCall" } },
-            std::pair{ MaterialNodeKind::SkinLighting, std::string_view{ "SkinLighting" } },
-            std::pair{ MaterialNodeKind::FabricSheen, std::string_view{ "FabricSheen" } },
-            std::pair{ MaterialNodeKind::HybridLighting, std::string_view{ "HybridLighting" } },
-            std::pair{ MaterialNodeKind::Outline, std::string_view{ "Outline" } },
-            std::pair{ MaterialNodeKind::HairShadow, std::string_view{ "HairShadow" } },
+            std::pair{ MaterialResourceSemantic::HairControl, std::string_view{ "HairControl" } },
+            std::pair{ MaterialResourceSemantic::EyeControl, std::string_view{ "EyeControl" } },
+            std::pair{ MaterialResourceSemantic::Thickness, std::string_view{ "Thickness" } },
+            std::pair{ MaterialResourceSemantic::Fabric, std::string_view{ "Fabric" } },
         };
         constexpr std::array kFeatureRequests{
             std::pair{ MaterialFeatureRequest::GeometryOutline, std::string_view{ "GeometryOutline" } },
@@ -149,15 +130,92 @@ namespace HIKARI {
     HIKARI_DEFINE_MATERIAL_ENUM_IO(MaterialDomain, kDomains, TryParseMaterialDomain)
     HIKARI_DEFINE_MATERIAL_ENUM_IO(MaterialTemplateId, kTemplates, TryParseMaterialTemplateId)
     HIKARI_DEFINE_MATERIAL_ENUM_IO(MaterialAlphaMode, kAlphaModes, TryParseMaterialAlphaMode)
+    HIKARI_DEFINE_MATERIAL_ENUM_IO(
+        MaterialAlphaRepresentation,
+        kAlphaRepresentations,
+        TryParseMaterialAlphaRepresentation)
     HIKARI_DEFINE_MATERIAL_ENUM_IO(MaterialValueType, kValueTypes, TryParseMaterialValueType)
     HIKARI_DEFINE_MATERIAL_ENUM_IO(MaterialResourceType, kResourceTypes, TryParseMaterialResourceType)
     HIKARI_DEFINE_MATERIAL_ENUM_IO(MaterialResourceSemantic, kResourceSemantics, TryParseMaterialResourceSemantic)
-    HIKARI_DEFINE_MATERIAL_ENUM_IO(MaterialNodeKind, kNodeKinds, TryParseMaterialNodeKind)
     HIKARI_DEFINE_MATERIAL_ENUM_IO(MaterialFeatureRequest, kFeatureRequests, TryParseMaterialFeatureRequest)
     HIKARI_DEFINE_MATERIAL_ENUM_IO(MaterialRampDimension, kRampDimensions, TryParseMaterialRampDimension)
     HIKARI_DEFINE_MATERIAL_ENUM_IO(MaterialRampInterpolation, kRampInterpolations, TryParseMaterialRampInterpolation)
 
 #undef HIKARI_DEFINE_MATERIAL_ENUM_IO
+
+    std::string_view ToString(MaterialNodeKind value) noexcept {
+        const MaterialNodeDefinition* definition =
+            FindMaterialNodeDefinition(value);
+        return definition == nullptr ? std::string_view{ "Unknown" }
+                                     : definition->stableName;
+    }
+
+    MaterialNodeTypeId::MaterialNodeTypeId(MaterialNodeKind legacyKind)
+        : value(ToString(legacyKind)) {
+    }
+
+    bool MaterialNodeTypeId::operator==(
+        MaterialNodeKind legacyKind) const noexcept {
+        return value == ToString(legacyKind);
+    }
+
+    bool MaterialNodeTypeId::IsValid() const noexcept {
+        if (value.empty() || value.size() > 128u ||
+            !((value.front() >= 'A' && value.front() <= 'Z') ||
+              (value.front() >= 'a' && value.front() <= 'z'))) {
+            return false;
+        }
+        return std::all_of(value.begin(), value.end(), [](char character) {
+            return (character >= 'A' && character <= 'Z') ||
+                (character >= 'a' && character <= 'z') ||
+                (character >= '0' && character <= '9') ||
+                character == '.' || character == '_' || character == '-' ||
+                character == ':';
+        });
+    }
+
+    bool operator==(
+        MaterialNodeKind legacyKind,
+        const MaterialNodeTypeId& typeId) noexcept {
+        return typeId == legacyKind;
+    }
+
+    std::string_view ToString(const MaterialNodeTypeId& value) noexcept {
+        return value.value;
+    }
+
+    bool TryParseMaterialNodeKind(
+        std::string_view text,
+        MaterialNodeKind& outValue) noexcept {
+        const MaterialNodeDefinition* definition =
+            FindMaterialNodeDefinition(text);
+        if (definition == nullptr) {
+            return false;
+        }
+        outValue = definition->kind;
+        return true;
+    }
+
+    bool TryParseMaterialNodeTypeId(
+        std::string_view text,
+        MaterialNodeTypeId& outValue) noexcept {
+        MaterialNodeTypeId parsed{ text };
+        if (!parsed.IsValid()) {
+            return false;
+        }
+        if (const MaterialNodeDefinition* definition =
+                FindMaterialNodeDefinition(text)) {
+            parsed.value = std::string(definition->stableName);
+        }
+        outValue = std::move(parsed);
+        return true;
+    }
+
+    bool TryGetLegacyMaterialNodeKind(
+        const MaterialNodeTypeId& typeId,
+        MaterialNodeKind& outValue) noexcept {
+        return TryParseMaterialNodeKind(typeId.value, outValue);
+    }
 
     bool IsMaterialNumericType(MaterialValueType type) noexcept {
         return type == MaterialValueType::Float1 ||

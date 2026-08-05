@@ -11,8 +11,8 @@ namespace HIKARI::RENDER3D::MATERIAL {
     constexpr uint32_t kInvalidGpuMaterialIndex = 0xffffffffu;
     constexpr uint32_t kInvalidTextureDescriptorIndex = 0xffffffffu;
     constexpr uint32_t kDefaultGpuMaterialCapacity = 4096u;
-    constexpr uint32_t kGpuMaterialProgramParameterSlotCount = 20u;
-    constexpr uint32_t kGpuMaterialProgramResourceSlotCount = 8u;
+    constexpr uint32_t kGpuMaterialProgramParameterSlotCount = 30u;
+    constexpr uint32_t kGpuMaterialProgramResourceSlotCount = 10u;
     constexpr uint32_t kGpuMaterialProgramParameterCapacity =
         kDefaultGpuMaterialCapacity * kGpuMaterialProgramParameterSlotCount;
     constexpr uint32_t kGpuMaterialProgramResourceCapacity =
@@ -28,7 +28,7 @@ namespace HIKARI::RENDER3D::MATERIAL {
         inline constexpr uint32_t AlphaMask = 1u << 1u;
         inline constexpr uint32_t AlphaBlend = 1u << 2u;
         inline constexpr uint32_t DoubleSided = 1u << 3u;
-        inline constexpr uint32_t UsedLastGood = 1u << 4u;
+        inline constexpr uint32_t CorneaHighlight = 1u << 4u;
         inline constexpr uint32_t UsedFallback = 1u << 5u;
         inline constexpr uint32_t StandardPbr = 1u << 6u;
         inline constexpr uint32_t RampDiffuse = 1u << 7u;
@@ -44,7 +44,6 @@ namespace HIKARI::RENDER3D::MATERIAL {
         inline constexpr uint32_t TemplateSkin = 1u << 17u;
         inline constexpr uint32_t TemplateFace = 1u << 18u;
         inline constexpr uint32_t TemplateHair = 1u << 19u;
-        inline constexpr uint32_t TemplateEye = 1u << 20u;
         inline constexpr uint32_t TemplateCloth = 1u << 21u;
         inline constexpr uint32_t TemplateHybrid = 1u << 22u;
         inline constexpr uint32_t RenderFeatureGeometryOutline = 1u << 23u;
@@ -56,6 +55,7 @@ namespace HIKARI::RENDER3D::MATERIAL {
         inline constexpr uint32_t HairControlMap = 1u << 28u;
         inline constexpr uint32_t EyeControlMap = 1u << 29u;
         inline constexpr uint32_t HairShadow = 1u << 30u;
+        inline constexpr uint32_t PremultipliedAlphaInput = 1u << 31u;
     }
 
     struct GpuMaterialProgramBinding {

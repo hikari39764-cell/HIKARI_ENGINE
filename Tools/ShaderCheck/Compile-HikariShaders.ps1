@@ -63,6 +63,7 @@ $entries = @(
     @{ Shader = "HIKARI/Shaders/Render3D_ClusterDispatchFinalizeCS.hlsl"; Entry = "FinalizePageTaskDispatchCS"; Target = "cs_6_0" },
     @{ Shader = "HIKARI/Shaders/Render3D_ClusterMeshletDispatchFinalizeCS.hlsl"; Entry = "FinalizeMeshletDispatchCS"; Target = "cs_6_0" },
     @{ Shader = "HIKARI/Shaders/Render3D_ClusterFineVisibilityCS.hlsl"; Entry = "CullPageTasksCS"; Target = "cs_6_0" },
+    @{ Shader = "HIKARI/Shaders/Render3D_ClusterTransparentSortCS.hlsl"; Entry = "SortTransparentRangesCS"; Target = "cs_6_0" },
     @{ Shader = "HIKARI/Shaders/Render3D_GpuTraditionalCommandCompactCS.hlsl"; Entry = "CompactGpuTraditionalCommandStreamCS"; Target = "cs_6_0" },
     @{ Shader = "HIKARI/Shaders/Render3D_MeshletAS.hlsl"; Entry = "main"; Target = "as_6_5" },
     @{ Shader = "HIKARI/Shaders/Render3D_MeshletMS.hlsl"; Entry = "main"; Target = "ms_6_5" },

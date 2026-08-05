@@ -138,7 +138,18 @@ namespace HIKARI::MESHRENDERER {
         bool suppressSpatialLightingProviders = false;
     };
 
-    bool RenderEditorInteractiveOpaque(
+    enum class EditorInteractiveMeshRenderResult : uint8_t {
+        Ready,
+        RendererUnavailable,
+        MaterialFrameUnavailable,
+        FrameResourcesUnavailable,
+        SceneResidencyUnavailable,
+        StylizedSurfacePassFailed,
+        ForwardPassFailed,
+        StylizedGeometryPassFailed,
+    };
+
+    EditorInteractiveMeshRenderResult RenderEditorInteractiveOpaque(
         const RENDER3D::RenderViewContext& view,
         const SceneEnvironment& environment,
         const RENDER3D::LIGHTING::SceneLightingSet& lighting,

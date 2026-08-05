@@ -466,6 +466,12 @@ namespace HIKARI::MESHRENDERER {
         if (materialAsset->alphaMode == AlphaMode::Mask) {
             obj.materialFlags |= MATERIAL_FEATURES::AlphaMask;
         }
+        if (materialAsset->alphaMode == AlphaMode::Blend ||
+            (materialAsset->featureBits &
+                MATERIAL_FEATURES::ThinTransparentSurface) != 0u) {
+            obj.materialFlags |=
+                MATERIAL_FEATURES::ThinTransparentSurface;
+        }
         const bool isUnlit = (materialAsset->featureBits & MATERIAL_FEATURES::Unlit) != 0;
         if (isUnlit) {
             obj.materialFlags |= MATERIAL_FEATURES::Unlit;

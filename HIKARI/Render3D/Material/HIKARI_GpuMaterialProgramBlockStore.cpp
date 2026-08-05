@@ -9,6 +9,8 @@ namespace HIKARI::RENDER3D::MATERIAL {
         GpuMaterialProgramParameterBlock BuildNeutralParameters() {
             GpuMaterialProgramParameterBlock parameters{};
             parameters.fill({ 0.0f, 0.0f, 0.0f, 0.0f });
+            parameters[22] = { 0.50f, 0.50f, 0.48f, 0.08f };
+            parameters[23] = { 0.0f, 1.0f, 0.02f, 0.04f };
             return parameters;
         }
 

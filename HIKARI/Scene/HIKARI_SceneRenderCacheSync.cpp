@@ -74,6 +74,36 @@ namespace HIKARI {
             return {};
         }
 
+        bool HasRuntimeMaterialRevisionChange(
+            const RENDER3D::RUNTIME::SceneRenderObjectDesc& cached,
+            const ModelComponent& model) {
+
+            size_t liveMaterialCount = 0u;
+            for (const RuntimeMaterialOverrideSlot& slot :
+                model.GetRuntimeMaterialOverrides()) {
+
+                const Material* material = slot.material.get();
+                if (material == nullptr) {
+                    continue;
+                }
+                ++liveMaterialCount;
+                const auto found = std::find_if(
+                    cached.materialOverrides.begin(),
+                    cached.materialOverrides.end(),
+                    [&slot](
+                        const RENDER3D::RUNTIME::
+                            SceneRenderMaterialOverride& cachedSlot) {
+                        return cachedSlot.materialIndex == slot.materialIndex;
+                    });
+                if (found == cached.materialOverrides.end() ||
+                    found->material != material ||
+                    found->materialRevision != material->GetRevision()) {
+                    return true;
+                }
+            }
+            return liveMaterialCount != cached.materialOverrides.size();
+        }
+
         class ClusteredGeometryPathResolver {
         public:
             ClusteredGeometryPathResolver(
@@ -298,6 +328,30 @@ namespace HIKARI {
                 animationPoses,
                 purpose));
         }
+
+        // Material assets publish into the existing runtime Material object.
+        // That revision change does not inherently dirty the owning GameObject,
+        // so observe it explicitly before the SceneRenderCache snapshot becomes
+        // the authoritative GPU Scene source for this frame.
+        world.ForEachObjectWith<ModelComponent>(
+            [&](GameObject& object, ModelComponent& model) {
+                const RENDER3D::RUNTIME::SceneRenderObjectId objectId =
+                    ResolveSceneRenderObjectId(object);
+                const RENDER3D::RUNTIME::SceneRenderObject* cached =
+                    sceneRenderCache.Find(objectId);
+                if (cached != nullptr &&
+                    !HasRuntimeMaterialRevisionChange(cached->desc, model)) {
+                    return;
+                }
+                sceneRenderCache.Upsert(BuildSceneRenderObjectDesc(
+                    object,
+                    model,
+                    renderModelCache,
+                    clusteredGeometryPaths,
+                    presentationTransforms,
+                    animationPoses,
+                    purpose));
+            });
 
         sceneRenderCache.EndPatchSync();
         sceneRenderCache.PreRenderSync();

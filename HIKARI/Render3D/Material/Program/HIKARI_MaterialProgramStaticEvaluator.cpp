@@ -7,6 +7,8 @@
 #include <string>
 #include <vector>
 
+#include "Render3D/Material/HIKARI_GpuMaterialTypes.h"
+
 namespace HIKARI::RENDER3D::MATERIAL {
 namespace {
 
@@ -43,6 +45,7 @@ void ApplyNamedParameter(
   else if (id == "parameterramprow") values[16].x = value.x;
   else if (id == "parameterrampmaskinfluence") values[16].y = value.x;
   else if (id == "parameterrampblend") values[16].z = value.x;
+  else if (id == "parameterramplayerweights") values[20] = value;
   else if (id == "parameterrampintensity") values[16].w = value.x;
   else if (id == "parametertoondirectgain") values[0].w = value.x;
   else if (id == "parametershadowtint") SetRgb(values[1], value);
@@ -65,6 +68,10 @@ void ApplyNamedParameter(
   else if (id == "parameterhairwidth") values[9].y = value.x;
   else if (id == "parameterhairsecondaryshift") values[9].z = value.x;
   else if (id == "parameterhairintensity") values[9].w = value.x;
+  else if (id == "parameterhairprimarypower") values[21].x = value.x;
+  else if (id == "parameterhairsecondarypower") values[21].y = value.x;
+  else if (id == "parameterhairsecondaryintensity") values[21].z = value.x;
+  else if (id == "parameterhairflowstrength") values[21].w = value.x;
   else if (id == "parameterfaceshadowsoftness") values[10].x = value.x;
   else if (id == "parameterfaceshadowoffset") values[10].y = value.x;
   else if (id == "parameterhairshadowstrength") values[10].z = value.x;
@@ -73,6 +80,34 @@ void ApplyNamedParameter(
   else if (id == "parameteririsdepth") values[11].x = value.x;
   else if (id == "parametereyesparkle") values[11].y = value.x;
   else if (id == "parametereyesparklepower") values[11].z = value.x;
+  else if (id == "parameteririscenter") {
+    values[22].x = value.x;
+    values[22].y = value.y;
+  }
+  else if (id == "parameteririsradius") values[22].z = value.x;
+  else if (id == "parameterirismasksoftness") values[22].w = value.x;
+  else if (id == "parametereyelayermode") values[23].x = value.x;
+  else if (id == "parametereyehighlightopacity") values[23].y = value.x;
+  else if (id == "parametereyehighlightthreshold") values[23].z = value.x;
+  else if (id == "parametereyehighlightsoftness") values[23].w = value.x;
+  else if (id == "parametereyeparallaxscale") values[24].x = value.x;
+  else if (id == "parametereyehighlightintensity") values[24].y = value.x;
+  else if (id == "parametereyebaselift") values[24].z = value.x;
+  else if (id == "parametereyecausticintensity") values[24].w = value.x;
+  else if (id == "parametermatcapviewcorrection") values[25].x = value.x;
+  else if (id == "parametermatcapsphericalnormalblend") values[25].y = value.x;
+  else if (id == "parametereyecaustictint") SetRgb(values[26], value);
+  else if (id == "parametereyecausticwidth") values[26].w = value.x;
+  else if (id == "parametercorneahighlightmode") values[27].x = value.x;
+  else if (id == "parametercorneahighlighttravel") values[27].y = value.x;
+  else if (id == "parametercorneahighlightviewinfluence") values[27].z = value.x;
+  else if (id == "parametercorneahighlightlightinfluence") values[27].w = value.x;
+  else if (id == "parametercorneahighlightcurvature") values[28].x = value.x;
+  else if (id == "parametercorneahighlightminbrightness") values[28].y = value.x;
+  else if (id == "parametercorneahighlightlightresponse") values[28].z = value.x;
+  else if (id == "parametercorneahighlightedgefade") values[28].w = value.x;
+  else if (id == "parametercorneahighlightsharpness") values[29].x = value.x;
+  else if (id == "parametercorneahighlightlightcolor") values[29].y = value.x;
   else if (id == "parameterpbrnprblend") {
     values[12].x = value.x;
     values[12].y = value.x;
@@ -212,7 +247,7 @@ StaticRegisterFile EvaluateStaticValues(const MaterialProgramIR& program) {
 
 void ApplyConnectedMaterialResponseParameters(
     const MaterialProgramIR& program, std::span<MATH::Vec4> parameters) {
-  if (parameters.size() < 20u) {
+  if (parameters.size() < kGpuMaterialProgramParameterSlotCount) {
     return;
   }
   for (const MaterialProgramParameterBinding &parameter :
@@ -246,6 +281,13 @@ void ApplyConnectedMaterialResponseParameters(
       scalar("RampRow", parameters[16].x);
       scalar("MaskInfluence", parameters[16].y);
       scalar("RampBlend", parameters[16].z);
+      if (const MaterialValueData* value =
+              ReadStaticInput(instruction, "LayerWeights", registers)) {
+        parameters[20].x = ReadComponent(*value, 0u);
+        parameters[20].y = ReadComponent(*value, 1u);
+        parameters[20].z = ReadComponent(*value, 2u);
+        parameters[20].w = ReadComponent(*value, 3u);
+      }
       scalar("Intensity", parameters[16].w);
       scalar("DirectGain", parameters[0].w);
     } else if (instruction.opcode == MaterialProgramOpcode::SpecularBand) {
@@ -263,6 +305,10 @@ void ApplyConnectedMaterialResponseParameters(
     } else if (instruction.opcode == MaterialProgramOpcode::AnisotropicHair) {
       scalar("Shift", parameters[9].x);
       scalar("Width", parameters[9].y);
+      scalar("PrimaryPower", parameters[21].x);
+      scalar("SecondaryPower", parameters[21].y);
+      scalar("SecondaryIntensity", parameters[21].z);
+      scalar("FlowStrength", parameters[21].w);
     } else if (instruction.opcode == MaterialProgramOpcode::FaceSdf) {
       scalar("Softness", parameters[10].x);
       scalar("DirectGain", parameters[0].w);

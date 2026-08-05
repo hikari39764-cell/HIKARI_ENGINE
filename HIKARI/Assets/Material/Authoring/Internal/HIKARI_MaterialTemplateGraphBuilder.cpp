@@ -107,9 +107,14 @@ namespace HIKARI::ASSETS::MATERIAL::TEMPLATE_FACTORY_INTERNAL {
             "node.hybridLighting", "DiffuseResponse");
         ConnectSurfaceInput(data, "edge.hybridLighting.response",
             "node.hybridLighting", "Response", "DiffuseResponse");
+        AddNode(data, "node.texture.matCap", "MatCap Texture",
+            MaterialNodeKind::TextureSample, MaterialValueType::Float4,
+            -680.0f, 1320.0f, "resource.matCap");
         AddNode(data, "node.matCap", "MatCap",
             MaterialNodeKind::MatCap, MaterialValueType::Float3,
-            -320.0f, 1320.0f, "resource.matCap");
+            -320.0f, 1320.0f);
+        ConnectNodeInput(data, "edge.matCap.image",
+            "node.texture.matCap", "Color", "node.matCap", "Image");
         AddNode(data, "node.additive", "Rim + MatCap",
             MaterialNodeKind::Add, MaterialValueType::Float3,
             -40.0f, 1040.0f);

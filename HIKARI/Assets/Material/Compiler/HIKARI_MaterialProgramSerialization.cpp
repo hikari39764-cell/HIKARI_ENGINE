@@ -46,32 +46,6 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
             return false;
         }
 
-        void UpgradeLegacyProgramInstructions(MaterialProgramIR& program) {
-            if (program.sourceKind != MaterialAssetKind::Material) {
-                return;
-            }
-            MaterialProgramInstruction surface{};
-            surface.opcode = MaterialProgramOpcode::PbrSurface;
-            surface.valueType = MaterialValueType::Surface;
-            surface.outputPins = { "Surface" };
-            surface.outputRegisters = { 0u };
-            surface.sourceNodeId = "legacy.program.surface";
-
-            MaterialProgramInstruction output{};
-            output.opcode = MaterialProgramOpcode::SurfaceOutput;
-            output.valueType = MaterialValueType::Surface;
-            output.inputPins = { "Surface" };
-            output.inputRegisters = { 0u };
-            output.sourceNodeId = "legacy.program.output";
-
-            program.instructions = {
-                std::move(surface),
-                std::move(output)
-            };
-            program.registerCount = 1u;
-            program.surfaceOutputRegister = 0u;
-        }
-
         nlohmann::json WriteProgram(const MaterialProgramIR& program) {
             auto parameters = program.parameters;
             auto resources = program.resources;
@@ -160,6 +134,7 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
                 { "template", std::string(ToString(program.templateId)) },
                 { "surface", {
                     { "alphaMode", std::string(ToString(program.surface.alphaMode)) },
+                    { "alphaRepresentation", std::string(ToString(program.surface.alphaRepresentation)) },
                     { "alphaCutoff", program.surface.alphaCutoff },
                     { "doubleSided", program.surface.doubleSided },
                     { "unlit", program.surface.unlit },
@@ -189,10 +164,10 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
             }
             MaterialProgramIR program{};
             const uint32_t storedVersion = node.value("version", 0u);
-            if (storedVersion != 1u &&
-                storedVersion != kMaterialProgramIrVersion) {
+            if (storedVersion != kMaterialProgramIrVersion) {
                 outError = "unsupported MaterialProgram IR version " +
-                    std::to_string(storedVersion);
+                    std::to_string(storedVersion) +
+                    "; recompile canonical Material v5 source";
                 return false;
             }
             program.version = kMaterialProgramIrVersion;
@@ -218,6 +193,14 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
                     surface.value("alphaMode", std::string{}),
                     program.surface.alphaMode)) {
                 outError = "compiled MaterialProgram has an unknown alpha mode";
+                return false;
+            }
+            if (!TryParseMaterialAlphaRepresentation(
+                    surface.value(
+                        "alphaRepresentation",
+                        std::string{ "Straight" }),
+                    program.surface.alphaRepresentation)) {
+                outError = "compiled MaterialProgram has an unknown alpha representation";
                 return false;
             }
             program.surface.alphaCutoff = surface.value("alphaCutoff", 0.5f);
@@ -291,14 +274,13 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
                     program.resources.push_back(std::move(resource));
                 }
             }
-            if (storedVersion >= 2u) {
-                program.registerCount = node.value("registerCount", 0u);
+            program.registerCount = node.value("registerCount", 0u);
                 program.surfaceOutputRegister = node.value(
                     "surfaceOutputRegister",
                     kInvalidMaterialProgramRegister);
                 const auto instructions = node.find("instructions");
                 if (instructions == node.end() || !instructions->is_array()) {
-                    outError = "compiled MaterialProgram v2 instructions must be an array";
+                    outError = "compiled MaterialProgram v3 instructions must be an array";
                     return false;
                 }
                 for (const nlohmann::json& item : *instructions) {
@@ -307,7 +289,7 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
                         "opcode",
                         (std::numeric_limits<uint32_t>::max)());
                     if (opcode > static_cast<uint32_t>(
-                            MaterialProgramOpcode::HairShadow) ||
+                            MaterialProgramOpcode::CorneaHighlight) ||
                         !TryParseMaterialValueType(
                             item.value("valueType", std::string{}),
                             instruction.valueType)) {
@@ -355,9 +337,6 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
                         }
                     }
                     program.instructions.push_back(std::move(instruction));
-                }
-            } else {
-                UpgradeLegacyProgramInstructions(program);
             }
             if (const auto dependencies = node.find("dependencyGuids");
                 dependencies != node.end()) {
@@ -396,7 +375,6 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
             }
             const nlohmann::json root{
                 { "success", result.success },
-                { "usedLastGood", result.usedLastGood },
                 { "usedFallback", result.usedFallback },
                 { "program", WriteProgram(result.program) },
                 { "diagnostics", std::move(diagnosticArray) },
@@ -425,7 +403,6 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
             }
             MaterialCompileResult result{};
             result.success = root.value("success", false);
-            result.usedLastGood = root.value("usedLastGood", false);
             result.usedFallback = root.value("usedFallback", false);
             if (!ReadProgram(root.value("program", nlohmann::json{}),
                     result.program, outError)) {

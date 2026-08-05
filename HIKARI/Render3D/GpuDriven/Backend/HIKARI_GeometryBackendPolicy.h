@@ -22,6 +22,29 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         bool AddGpuBackend(GeometryBackendKind backend);
     };
 
+    constexpr bool IsGeometryFeatureBackendReady(
+        const GeometryBackendPolicy& policy,
+        bool meshShaderReady,
+        bool traditionalVsPsReady) noexcept {
+
+        const auto isReady = [meshShaderReady, traditionalVsPsReady](
+            GeometryBackendKind backend) constexpr noexcept {
+            switch (backend) {
+            case GeometryBackendKind::GpuDrivenMeshShader:
+                return meshShaderReady;
+            case GeometryBackendKind::GpuDrivenTraditionalVsPs:
+                return traditionalVsPsReady;
+            default:
+                return false;
+            }
+        };
+
+        if (isReady(policy.preferred)) {
+            return true;
+        }
+        return !policy.forcePreferredOnly && isReady(policy.secondary);
+    }
+
     GeometryBackendPolicy ResolveGeometryBackendPolicy(GpuDrivenPassKind pass);
     GeometryBackendExecutionPlan BuildGeometryBackendExecutionPlan(
         const GeometryBackendPolicy& policy);

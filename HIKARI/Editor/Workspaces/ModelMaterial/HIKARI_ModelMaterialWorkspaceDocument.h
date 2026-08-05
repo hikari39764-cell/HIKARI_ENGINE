@@ -29,8 +29,8 @@ public:
   void OpenMaterial(const AssetGuid &assetGuid,
                     std::filesystem::path sourcePath,
                     MaterialAssetData source,
-                    const MaterialCompileResult &compile,
-                    const MaterialProgramIR *lastGoodProgram, bool saved);
+                    const MaterialCompileResult &compile, bool saved);
+  void SetMaterialCompileOptions(MaterialCompileOptions options);
   void CloseMaterial();
 
   bool HasBindings() const noexcept;
@@ -46,7 +46,6 @@ public:
   MaterialAssetData &EditMaterial() noexcept;
   const MaterialAssetData &GetMaterial() const noexcept;
   const MaterialCompileResult &GetCompileResult() const noexcept;
-  const MaterialProgramIR *GetLastGoodProgram() const noexcept;
   uint64_t GetMaterialRevision() const noexcept;
   uint64_t GetCompileRevision() const noexcept;
   bool IsCompileCurrent() const noexcept;
@@ -108,7 +107,7 @@ private:
   MaterialAssetData material_{};
   MaterialAssetData savedMaterial_{};
   MaterialCompileResult compile_{};
-  std::optional<MaterialProgramIR> lastGoodProgram_{};
+  MaterialCompileOptions compileOptions_{};
   std::optional<MaterialAssetData> abBefore_{};
   std::vector<HistoryEntry> bindingHistory_{};
   std::vector<HistoryEntry> materialHistory_{};

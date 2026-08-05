@@ -43,11 +43,15 @@ namespace HIKARI::RENDER3D::LIGHTING {
         const std::filesystem::path brdfPath =
             ResolveEngineSkyPath("IBL/brdf_lut.dds");
 
-        if (!Exists(skyPath)) {
+        if (!Exists(skyPath) ||
+            !Exists(irradiancePath) ||
+            !Exists(prefilteredPath) ||
+            !Exists(brdfPath)) {
             gDefaultSkyIblSource = {};
             result.message =
-                "Engine default sky is unavailable: " +
-                skyPath.generic_string();
+                "Engine DefaultSky requires one cubemap and a complete IBL set; "
+                "one or more files are unavailable under " +
+                skyPath.parent_path().generic_string();
             return result;
         }
 
@@ -69,24 +73,21 @@ namespace HIKARI::RENDER3D::LIGHTING {
         result.skyRegistered = true;
         result.skyPath = skyTexturePath;
 
-        if (Exists(irradiancePath) &&
-            !IsTextureResourceValid(
+        if (!IsTextureResourceValid(
                 gDefaultSkyIblSource.irradianceResource)) {
             gDefaultSkyIblSource.irradianceResource = LoadCubemapResource(
                 "ibl/default_sky/irradiance",
                 irradiancePath.generic_string(),
                 TextureResourceColorSpace::Linear);
         }
-        if (Exists(prefilteredPath) &&
-            !IsTextureResourceValid(
+        if (!IsTextureResourceValid(
                 gDefaultSkyIblSource.prefilteredResource)) {
             gDefaultSkyIblSource.prefilteredResource = LoadCubemapResource(
                 "ibl/default_sky/prefiltered",
                 prefilteredPath.generic_string(),
                 TextureResourceColorSpace::Linear);
         }
-        if (Exists(brdfPath) &&
-            !IsTextureResourceValid(
+        if (!IsTextureResourceValid(
                 gDefaultSkyIblSource.brdfLutResource)) {
             gDefaultSkyIblSource.brdfLutResource = LoadTextureResourceLinear(
                 "ibl/default_sky/brdf_lut",
@@ -95,11 +96,17 @@ namespace HIKARI::RENDER3D::LIGHTING {
         gDefaultSkyIblSource.prefilteredMipCount = 7u;
         result.iblLoaded =
             IsTextureResourceValid(
-                gDefaultSkyIblSource.irradianceResource) ||
+                gDefaultSkyIblSource.irradianceResource) &&
             IsTextureResourceValid(
-                gDefaultSkyIblSource.prefilteredResource) ||
+                gDefaultSkyIblSource.prefilteredResource) &&
             IsTextureResourceValid(
                 gDefaultSkyIblSource.brdfLutResource);
+        if (!result.iblLoaded) {
+            // A partial environment can combine a current sky with stale
+            // fallback descriptors. Preview/runtime may only bind the set as
+            // one coherent unit.
+            gDefaultSkyIblSource = {};
+        }
         result.message = result.iblLoaded
             ? "Engine DefaultSky Cubemap and IBL loaded."
             : "Engine DefaultSky Cubemap registered; IBL resources are unavailable.";

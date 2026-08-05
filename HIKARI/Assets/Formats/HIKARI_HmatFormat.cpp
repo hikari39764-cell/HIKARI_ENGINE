@@ -1,8 +1,6 @@
 #include "HIKARI_HmatFormat.h"
 
-#include <algorithm>
 #include <fstream>
-#include <utility>
 
 #include "Assets/Material/Compiler/HIKARI_MaterialProgramSerialization.h"
 #include "Assets/Material/Serialization/HIKARI_MaterialSourceJson.h"
@@ -13,8 +11,7 @@ namespace HIKARI {
     namespace {
 
         constexpr uint32_t kHmatMagic = 0x54414D48u; // 'HMAT'
-        constexpr uint32_t kHmatVersion = 4u;
-        constexpr uint32_t kMaxStringBytes = 1024u * 1024u;
+        constexpr uint32_t kHmatVersion = 5u;
         constexpr uint32_t kMaxMaterialPayloadBytes = 16u * 1024u * 1024u;
 
         struct HmatFileHeader {
@@ -24,73 +21,10 @@ namespace HIKARI {
             uint32_t reserved = 0u;
         };
 
-        using SERIALIZATION::BINARY::STREAM::ReadBoolean8;
         using SERIALIZATION::BINARY::STREAM::ReadLengthPrefixedString32;
         using SERIALIZATION::BINARY::STREAM::ReadTrivial;
         using SERIALIZATION::BINARY::STREAM::WriteLengthPrefixedString32;
         using SERIALIZATION::BINARY::STREAM::WriteTrivial;
-
-        bool ReadSlot(
-            std::ifstream& stream,
-            MaterialTextureSlotData& slot,
-            uint32_t version) {
-
-            if (!ReadBoolean8(stream, slot.useTexture) ||
-                !ReadLengthPrefixedString32<kMaxStringBytes>(
-                    stream, slot.textureAssetGuid.value)) {
-                return false;
-            }
-            if (version >= 3u &&
-                (!ReadTrivial(stream, slot.texCoord) ||
-                    !ReadTrivial(stream, slot.uvScale) ||
-                    !ReadTrivial(stream, slot.uvOffset) ||
-                    !ReadTrivial(stream, slot.uvRotation))) {
-                return false;
-            }
-            slot.texCoord = std::clamp(slot.texCoord, 0, 1);
-            return true;
-        }
-
-        bool ReadLegacyPbrPayload(
-            std::ifstream& stream,
-            uint32_t hmatVersion,
-            PbrMaterialAssetData& outMaterial,
-            std::string& outMessage) {
-
-            PbrMaterialAssetData material{};
-            const bool baseOk =
-                ReadTrivial(stream, material.version) &&
-                ReadLengthPrefixedString32<kMaxStringBytes>(stream, material.materialName) &&
-                ReadSlot(stream, material.baseColorTexture, hmatVersion) &&
-                ReadSlot(stream, material.normalTexture, hmatVersion) &&
-                ReadSlot(stream, material.metallicRoughnessTexture, hmatVersion) &&
-                ReadSlot(stream, material.occlusionTexture, hmatVersion) &&
-                ReadSlot(stream, material.emissiveTexture, hmatVersion) &&
-                ReadTrivial(stream, material.baseColorFactor) &&
-                ReadTrivial(stream, material.metallicFactor) &&
-                ReadTrivial(stream, material.roughnessFactor) &&
-                ReadTrivial(stream, material.normalScale) &&
-                ReadTrivial(stream, material.occlusionStrength) &&
-                ReadTrivial(stream, material.emissiveFactor) &&
-                ReadTrivial(stream, material.emissiveStrength) &&
-                ReadBoolean8(stream, material.doubleSided) &&
-                ReadBoolean8(stream, material.unlit);
-            if (!baseOk) {
-                outMessage = "[HMAT] failed while reading legacy PBR payload";
-                return false;
-            }
-            if (hmatVersion >= 2u &&
-                (!ReadSlot(stream, material.specularTexture, hmatVersion) ||
-                    !ReadSlot(stream, material.specularColorTexture, hmatVersion) ||
-                    !ReadTrivial(stream, material.specularFactor) ||
-                    !ReadTrivial(stream, material.specularColorFactor))) {
-                outMessage = "[HMAT] failed while reading legacy PBR specular fields";
-                return false;
-            }
-            material.version = hmatVersion;
-            outMaterial = std::move(material);
-            return true;
-        }
 
         bool OpenHmatForWrite(
             const std::filesystem::path& path,
@@ -128,7 +62,7 @@ namespace HIKARI {
                 material, sourceJson, serializationError) ||
             !MATERIAL_SERIALIZATION::SerializeMaterialCompileResult(
                 compileResult, programJson, serializationError)) {
-            outMessage = "[HMAT] failed to serialize v4 payload: " + serializationError;
+            outMessage = "[HMAT] failed to serialize v5 payload: " + serializationError;
             return false;
         }
 
@@ -142,10 +76,10 @@ namespace HIKARI {
             WriteLengthPrefixedString32<kMaxMaterialPayloadBytes>(stream, sourceJson) &&
             WriteLengthPrefixedString32<kMaxMaterialPayloadBytes>(stream, programJson);
         if (!ok || !stream.good()) {
-            outMessage = "[HMAT] failed while writing v4 payload: " + path.generic_string();
+            outMessage = "[HMAT] failed while writing v5 payload: " + path.generic_string();
             return false;
         }
-        outMessage = "[HMAT] wrote v4 " + path.generic_string();
+        outMessage = "[HMAT] wrote v5 " + path.generic_string();
         return true;
     }
 
@@ -169,35 +103,20 @@ namespace HIKARI {
                 path.generic_string();
             return false;
         }
-        if (header.version < 1u || header.version > kHmatVersion) {
+        if (header.version != kHmatVersion) {
             outMessage = "[HMAT] unsupported version " +
                 std::to_string(header.version) +
-                "; supported versions are 1 through " +
+                "; Material v5 accepts only HMAT v" +
                 std::to_string(kHmatVersion) + ": " +
                 path.generic_string();
             return false;
-        }
-
-        if (header.version < kHmatVersion) {
-            PbrMaterialAssetData legacy{};
-            if (!ReadLegacyPbrPayload(stream, header.version, legacy, outMessage)) {
-                outMessage += ": " + path.generic_string();
-                return false;
-            }
-            outMaterial = MakeStandardPbrMaterialAssetData(legacy);
-            outMaterial.sourceVersion = header.version;
-            outMaterial.migratedFromLegacy = true;
-            outCompileResult = CompileMaterialAsset(outMaterial);
-            outMessage = "[HMAT] read and migrated v" +
-                std::to_string(header.version) + " " + path.generic_string();
-            return true;
         }
 
         std::string sourceJson{};
         std::string programJson{};
         if (!ReadLengthPrefixedString32<kMaxMaterialPayloadBytes>(stream, sourceJson) ||
             !ReadLengthPrefixedString32<kMaxMaterialPayloadBytes>(stream, programJson)) {
-            outMessage = "[HMAT] failed while reading v4 payload: " + path.generic_string();
+            outMessage = "[HMAT] failed while reading v5 payload: " + path.generic_string();
             return false;
         }
         std::string parseError{};
@@ -205,10 +124,10 @@ namespace HIKARI {
                 sourceJson, outMaterial, parseError) ||
             !MATERIAL_SERIALIZATION::ParseMaterialCompileResult(
                 programJson, outCompileResult, parseError)) {
-            outMessage = "[HMAT] invalid v4 payload: " + parseError;
+            outMessage = "[HMAT] invalid v5 payload: " + parseError;
             return false;
         }
-        outMessage = "[HMAT] read v4 " + path.generic_string();
+        outMessage = "[HMAT] read v5 " + path.generic_string();
         return true;
     }
 

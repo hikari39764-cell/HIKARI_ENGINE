@@ -863,7 +863,12 @@ float4 HikariShadeWaterSurface(
 
     color = ApplyFog(color, input.worldPosWS);
 
+#if HIKARI_WATER_EMBEDDED
+    // Forward transparent surfaces use one premultiplied source-over PSO.
+    return float4(color * waterAlpha, waterAlpha);
+#else
     return float4(color, waterAlpha);
+#endif
 }
 
 #if !HIKARI_WATER_EMBEDDED

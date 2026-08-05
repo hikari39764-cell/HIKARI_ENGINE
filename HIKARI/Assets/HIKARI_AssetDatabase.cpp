@@ -505,6 +505,7 @@ namespace HIKARI {
         context.libraryRoot = libraryRoot_;
         context.sourceMetaRoot = sourceMetaRoot_;
         context.importedDirectory = GetImportedDirectory(record->guid);
+        context.assetDatabase = this;
         const AssetRecord sourceSnapshot = *record;
         const uint32_t importerVersion =
             importer->GetSemantics().importerVersion;

@@ -274,8 +274,6 @@ namespace HIKARI::ASSETS::MATERIAL {
             const bool valid = ApplyOverrides(source, outMaterial, result);
             outMaterial.materialName = source.materialName;
             outMaterial.pbr.materialName = source.materialName;
-            outMaterial.migratedFromLegacy = false;
-            outMaterial.sourceVersion = kMaterialAssetSourceVersion;
             return valid;
         }
 
@@ -284,7 +282,8 @@ namespace HIKARI::ASSETS::MATERIAL {
     MaterialInstanceResolveResult ResolveMaterialInstance(
         const MaterialAssetData& instanceSource,
         const MaterialAssetLookup& lookup,
-        uint32_t maxParentDepth) {
+        uint32_t maxParentDepth,
+        const MaterialCompileOptions& compileOptions) {
 
         MaterialInstanceResolveResult result{};
         if (instanceSource.kind != MaterialAssetKind::Instance) {
@@ -302,7 +301,8 @@ namespace HIKARI::ASSETS::MATERIAL {
             instanceSource, lookup, 0u, maxParentDepth,
             visited, result, result.resolvedMaterial);
         if (result.success) {
-            result.compile = CompileMaterialAsset(result.resolvedMaterial);
+            result.compile = CompileMaterialAsset(
+                result.resolvedMaterial, compileOptions);
             result.success = result.compile.success;
         }
         return result;

@@ -194,6 +194,9 @@ void ModelMaterialWorkspaceController::RefreshAssetChoices(
       choice.materialKind = source.kind;
       if (source.kind == MaterialAssetKind::Ramp) {
         choice.rampPreview = source.ramp;
+      } else if (source.kind == MaterialAssetKind::Function) {
+        choice.functionInputs = source.function.inputs;
+        choice.functionOutputs = source.function.outputs;
       }
     } else {
       choice.ready = false;

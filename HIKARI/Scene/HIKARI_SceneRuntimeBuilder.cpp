@@ -285,6 +285,7 @@ namespace HIKARI {
                 auto runtimeMaterial = std::make_unique<Material>();
                 if (!builder.BuildRuntimeMaterial(
                         descriptor.sourceData,
+                        descriptor.compileResult,
                         assetRegistry,
                         programRegistry,
                         *runtimeMaterial,

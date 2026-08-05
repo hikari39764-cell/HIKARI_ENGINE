@@ -7,6 +7,8 @@ struct HikariStylizedDirectLobes
     float3 specular;
 };
 
+#include "HIKARI_StylizedEyeMaterial.hlsli"
+
 HikariStylizedDirectLobes HikariEvaluatePbrDirectLobes(
     HikariPbrShadingContext context,
     float3 lightDirection,
@@ -66,6 +68,23 @@ float3 HikariEvaluateAnalyticRamp(
     return lerp(lerp(shadowTint, midTint, shadowToMid), litTint, midToLit);
 }
 
+float HikariEvaluateKajiyaKayLobe(
+    float3 strandTangent,
+    float3 lightDirection,
+    float3 viewDirection,
+    float exponent)
+{
+    const float tangentLight = dot(strandTangent, lightDirection);
+    const float tangentView = dot(strandTangent, viewDirection);
+    const float sineLight = sqrt(saturate(
+        1.0f - tangentLight * tangentLight));
+    const float sineView = sqrt(saturate(
+        1.0f - tangentView * tangentView));
+    const float longitudinal = saturate(
+        tangentLight * tangentView + sineLight * sineView);
+    return pow(longitudinal, max(1.0f, exponent));
+}
+
 float HikariEvaluateFaceSdf(
     HikariMeshMaterialData materialData,
     float2 uv,
@@ -100,18 +119,9 @@ float HikariEvaluateFaceSdf(
     if (dot(referenceRight, referenceRight) < 1.0e-5f ||
         dot(referenceForward, referenceForward) < 1.0e-5f)
     {
-        referenceRight = tangentWS.xyz;
-        if (dot(referenceRight, referenceRight) < 1.0e-5f)
-        {
-            referenceRight = cross(
-                float3(0.0f, 1.0f, 0.0f), normal);
-        }
-        referenceForward = cross(
-            float3(0.0f, 1.0f, 0.0f), referenceRight);
-        if (dot(referenceForward, referenceForward) < 1.0e-5f)
-        {
-            referenceForward = normal;
-        }
+        // Face SDF orientation is a per-draw head basis. Falling back to a
+        // pixel normal/tangent makes adjacent texels select opposite sides.
+        return analyticFallback;
     }
     referenceRight = normalize(referenceRight);
     referenceForward -=
@@ -197,13 +207,6 @@ float3 HikariResolveRampColor(
             (materialData.instanceFlags & HIKARI_PROGRAM_FLAG_FACE_SDF) != 0u
                 ? 1.0f
                 : 0.0f));
-    const uint ramp0 = HikariLoadMaterialProgramResource(
-        materialData,
-        HIKARI_PROGRAM_RESOURCE_RAMP0);
-    if (ramp0 == HIKARI_INVALID_TEXTURE_DESCRIPTOR_INDEX)
-    {
-        return analytic;
-    }
     const float rampCoordinate = saturate(
         lerp(ndotl, faceLight,
             (materialData.instanceFlags & HIKARI_PROGRAM_FLAG_FACE_SDF) != 0u));
@@ -211,20 +214,66 @@ float3 HikariResolveRampColor(
         materialData,
         16u,
         float4(0.50f, 0.0f, 0.50f, 1.0f));
-    float3 color = HikariSampleMaterialTexture(
-        ramp0,
-        gLinearClamp,
-        float2(rampCoordinate, saturate(rampControl.x)),
-        float4(analytic, 1.0f)).rgb;
-    if ((materialData.instanceFlags & HIKARI_PROGRAM_FLAG_MULTI_RAMP) != 0u)
+    const uint ramp0 = HikariLoadMaterialProgramResource(
+        materialData,
+        HIKARI_PROGRAM_RESOURCE_RAMP0);
+    float3 color = analytic;
+    if ((materialData.instanceFlags & HIKARI_PROGRAM_FLAG_MULTI_RAMP) == 0u)
     {
-        const float3 second = HikariSampleMaterialProgramTexture(
-            materialData,
-            HIKARI_PROGRAM_RESOURCE_RAMP1,
+        color = HikariSampleMaterialTexture(
+            ramp0,
             gLinearClamp,
             float2(rampCoordinate, saturate(rampControl.x)),
-            float4(color, 1.0f)).rgb;
-        color = lerp(color, second, saturate(rampControl.z));
+            float4(analytic, 1.0f)).rgb;
+    }
+    else
+    {
+        const uint rampDescriptors[4] =
+        {
+            ramp0,
+            HikariLoadMaterialProgramResource(
+                materialData, HIKARI_PROGRAM_RESOURCE_RAMP1),
+            HikariLoadMaterialProgramResource(
+                materialData, HIKARI_PROGRAM_RESOURCE_RAMP2),
+            HikariLoadMaterialProgramResource(
+                materialData, HIKARI_PROGRAM_RESOURCE_RAMP3)
+        };
+        float4 weights = max(HikariLoadMaterialProgramParameter(
+            materialData,
+            20u,
+            float4(0.0f, 0.0f, 0.0f, 0.0f)), 0.0f.xxxx);
+        // Material blocks authored before the four-layer stack only contain
+        // RampBlend. Preserve that two-layer result until the new weights are
+        // edited or initialized by the authoring factory.
+        if (dot(weights, 1.0f.xxxx) <= 1.0e-5f)
+        {
+            weights = float4(
+                1.0f - saturate(rampControl.z),
+                saturate(rampControl.z),
+                0.0f,
+                0.0f);
+        }
+        float3 accumulated = 0.0f.xxx;
+        float accumulatedWeight = 0.0f;
+        [unroll]
+        for (uint layer = 0u; layer < 4u; ++layer)
+        {
+            if (rampDescriptors[layer] ==
+                    HIKARI_INVALID_TEXTURE_DESCRIPTOR_INDEX ||
+                weights[layer] <= 0.0f)
+            {
+                continue;
+            }
+            accumulated += HikariSampleMaterialTexture(
+                rampDescriptors[layer],
+                gLinearClamp,
+                float2(rampCoordinate, saturate(rampControl.x)),
+                float4(analytic, 1.0f)).rgb * weights[layer];
+            accumulatedWeight += weights[layer];
+        }
+        color = accumulatedWeight > 1.0e-5f
+            ? accumulated / accumulatedWeight
+            : analytic;
     }
     const float maskWeight = lerp(1.0f, saturate(rampMask),
                                   saturate(rampControl.y));
@@ -362,6 +411,10 @@ HikariStylizedDirectLobes HikariEvaluateStylizedDirectLobes(
             materialData,
             9u,
             float4(0.08f, 0.18f, -0.10f, 1.0f));
+        const float4 hairLobes = HikariLoadMaterialProgramParameter(
+            materialData,
+            21u,
+            float4(96.0f, 48.0f, 0.45f, 1.0f));
         float3 tangent = tangentWS.xyz;
         if (dot(tangent, tangent) < 1.0e-5f)
         {
@@ -392,8 +445,12 @@ HikariStylizedDirectLobes HikariEvaluateStylizedDirectLobes(
                 const float2 flow = hairControl.rg * 2.0f - 1.0f;
                 if (dot(flow, flow) > 1.0e-4f)
                 {
-                    tangent = normalize(
+                    const float3 mappedTangent = normalize(
                         tangent * flow.x + bitangent * flow.y);
+                    tangent = normalize(lerp(
+                        tangent,
+                        mappedTangent,
+                        saturate(hairLobes.w)));
                 }
                 hairMask = hairControl.b;
                 mapShift = (hairControl.a * 2.0f - 1.0f) * 0.25f;
@@ -403,23 +460,34 @@ HikariStylizedDirectLobes HikariEvaluateStylizedDirectLobes(
                 hairMask = hairControl.r;
             }
         }
-        const float3 halfVector = normalize(surface.viewWS + lightDirection);
-        const float strand = sqrt(saturate(
-            1.0f - dot(tangent, halfVector) * dot(tangent, halfVector)));
-        const float primary = smoothstep(
-            1.0f - max(0.001f, hair.y),
-            1.0f,
-            saturate(strand + hair.x + mapShift));
-        const float secondary = smoothstep(
-            1.0f - max(0.001f, hair.y * 1.5f),
-            1.0f,
-            saturate(strand + hair.z + mapShift));
+        const float roughnessScale = lerp(
+            1.35f,
+            0.35f,
+            saturate(hair.y));
+        const float flowShift = mapShift * saturate(hairLobes.w);
+        const float3 primaryTangent = normalize(
+            tangent + surface.normalWS * (hair.x + flowShift));
+        const float3 secondaryTangent = normalize(
+            tangent + surface.normalWS * (hair.z + flowShift));
+        // Classic Kajiya-Kay longitudinal response. Using T.L and T.V keeps
+        // the result invariant when a mesh stores the same strand direction
+        // with the opposite tangent sign.
+        const float primary = HikariEvaluateKajiyaKayLobe(
+            primaryTangent,
+            lightDirection,
+            surface.viewWS,
+            hairLobes.x * roughnessScale);
+        const float secondary = HikariEvaluateKajiyaKayLobe(
+            secondaryTangent,
+            lightDirection,
+            surface.viewWS,
+            hairLobes.y * roughnessScale);
         const float3 hairTint = HikariLoadMaterialProgramParameter(
             materialData,
             5u,
             1.0f.xxxx).rgb;
         lobes.specular += hairTint * radiance * hairMask * hair.w *
-            (primary + 0.45f * secondary);
+            (primary + max(0.0f, hairLobes.z) * secondary);
     }
 
     if ((materialData.instanceFlags & HIKARI_PROGRAM_FLAG_TEMPLATE_HYBRID) != 0u)
@@ -427,7 +495,7 @@ HikariStylizedDirectLobes HikariEvaluateStylizedDirectLobes(
         const float4 blend = HikariLoadMaterialProgramParameter(
             materialData,
             12u,
-            float4(0.55f, 0.55f, 1.0f, 0.25f));
+            float4(0.25f, 0.35f, 0.65f, 0.25f));
         lobes.diffuse = lerp(lobes.diffuse, pbr.diffuse, saturate(blend.x));
         lobes.specular = lerp(lobes.specular, pbr.specular, saturate(blend.y));
     }
@@ -453,13 +521,16 @@ float3 HikariEvaluateStylizedViewAdditive(
             materialData,
             7u,
             float4(4.0f, 0.22f, 1.0f, 0.0f));
-        const float fresnel = pow(
-            1.0f - saturate(dot(surface.normalWS, surface.viewWS)),
-            max(0.1f, control.x));
-        const float rim = smoothstep(
-            1.0f - saturate(control.y),
-            1.0f,
-            fresnel);
+        const float viewEdge =
+            1.0f - saturate(dot(surface.normalWS, surface.viewWS));
+        const float width = max(saturate(control.y), 0.001f);
+        // Width owns the visible silhouette band. Power shapes that already
+        // selected band; applying Power before the threshold collapsed the
+        // default 0.22 width into only a few edge pixels.
+        const float band = smoothstep(1.0f - width, 1.0f, viewEdge);
+        const float rim = pow(
+            saturate(band),
+            max(0.1f, control.x * 0.25f));
         const float lightAlignment = lerp(
             1.0f,
             saturate(dot(surface.normalWS, directionalLight)),
@@ -468,17 +539,105 @@ float3 HikariEvaluateStylizedViewAdditive(
     }
     if ((materialData.instanceFlags & HIKARI_PROGRAM_FLAG_MATCAP) != 0u)
     {
-        float4 cameraOriginH = mul(gInvViewProj, float4(0.0f, 0.0f, 0.0f, 1.0f));
-        float4 cameraRightH = mul(gInvViewProj, float4(1.0f, 0.0f, 0.0f, 1.0f));
-        float4 cameraUpH = mul(gInvViewProj, float4(0.0f, 1.0f, 0.0f, 1.0f));
-        const float3 cameraOrigin = cameraOriginH.xyz / max(abs(cameraOriginH.w), 0.0001f);
+        float3 matCapNormal = surface.normalWS;
+        const float4 matCapControl = HikariLoadMaterialProgramParameter(
+            materialData,
+            25u,
+            float4(1.0f, 0.0f, 0.0f, 0.0f));
+        if ((materialData.instanceFlags &
+             HIKARI_PROGRAM_FLAG_EYE_LIGHTING) != 0u &&
+            matCapControl.y > 0.0f)
+        {
+            const float4 iris = HikariLoadMaterialProgramParameter(
+                materialData,
+                22u,
+                float4(0.50f, 0.50f, 0.48f, 0.08f));
+            const float2 eyeUv = HikariResolveEyeLayerUv(
+                materialData,
+                uv,
+                surface.normalWS,
+                tangentWS,
+                surface.viewWS);
+            const float irisMask = HikariResolveAnalyticIrisMask(
+                eyeUv,
+                iris);
+            float2 irisPosition = (eyeUv - iris.xy) /
+                max(abs(iris.z), 0.001f);
+            irisPosition.y = -irisPosition.y;
+            irisPosition = clamp(irisPosition, -0.999f.xx, 0.999f.xx);
+            const float radialSquared = saturate(dot(
+                irisPosition,
+                irisPosition));
+            float3 eyeTangent;
+            float3 eyeBitangent;
+            HikariResolveEyeTangentFrame(
+                surface.normalWS,
+                tangentWS,
+                eyeTangent,
+                eyeBitangent);
+            const float3 sphericalNormal = normalize(
+                eyeTangent * irisPosition.x +
+                eyeBitangent * irisPosition.y +
+                surface.normalWS * sqrt(1.0f - radialSquared));
+            matCapNormal = normalize(lerp(
+                surface.normalWS,
+                sphericalNormal,
+                saturate(matCapControl.y) * irisMask));
+        }
+
+        float4 cameraOriginH = mul(
+            gInvViewProj,
+            float4(0.0f, 0.0f, 0.0f, 1.0f));
+        float4 cameraRightH = mul(
+            gInvViewProj,
+            float4(1.0f, 0.0f, 0.0f, 1.0f));
+        float4 cameraUpH = mul(
+            gInvViewProj,
+            float4(0.0f, 1.0f, 0.0f, 1.0f));
+        float4 cameraFarH = mul(
+            gInvViewProj,
+            float4(0.0f, 0.0f, 1.0f, 1.0f));
+        const float3 cameraOrigin = cameraOriginH.xyz /
+            max(abs(cameraOriginH.w), 0.0001f);
         const float3 cameraRight = normalize(
-            cameraRightH.xyz / max(abs(cameraRightH.w), 0.0001f) - cameraOrigin);
+            cameraRightH.xyz / max(abs(cameraRightH.w), 0.0001f) -
+            cameraOrigin);
         const float3 cameraUp = normalize(
-            cameraUpH.xyz / max(abs(cameraUpH.w), 0.0001f) - cameraOrigin);
-        const float2 matCapUv = saturate(float2(
-            dot(surface.normalWS, cameraRight) * 0.5f + 0.5f,
-            0.5f - dot(surface.normalWS, cameraUp) * 0.5f));
+            cameraUpH.xyz / max(abs(cameraUpH.w), 0.0001f) -
+            cameraOrigin);
+        const float3 cameraForward = normalize(
+            cameraFarH.xyz / max(abs(cameraFarH.w), 0.0001f) -
+            cameraOrigin);
+        const float3 viewNormal = float3(
+            dot(matCapNormal, cameraRight),
+            dot(matCapNormal, cameraUp),
+            -dot(matCapNormal, cameraForward));
+        const float3 viewDirection = float3(
+            dot(surface.viewWS, cameraRight),
+            dot(surface.viewWS, cameraUp),
+            -dot(surface.viewWS, cameraForward));
+        const float2 simpleUv = float2(
+            viewNormal.x * 0.5f + 0.5f,
+            0.5f - viewNormal.y * 0.5f);
+        const float3 correctedDetail =
+            viewNormal * float3(-1.0f, -1.0f, 1.0f);
+        const float3 correctedBase =
+            viewDirection * float3(-1.0f, -1.0f, 1.0f) +
+            float3(0.0f, 0.0f, 1.0f);
+        const float correctedDenominator =
+            abs(correctedBase.z) < 0.001f
+                ? (correctedBase.z < 0.0f ? -0.001f : 0.001f)
+                : correctedBase.z;
+        const float3 correctedNormal =
+            correctedBase * dot(correctedBase, correctedDetail) /
+            correctedDenominator - correctedDetail;
+        const float2 correctedUv = float2(
+            correctedNormal.x * 0.5f + 0.5f,
+            0.5f - correctedNormal.y * 0.5f);
+        const float2 matCapUv = saturate(lerp(
+            simpleUv,
+            correctedUv,
+            saturate(matCapControl.x)));
         const float4 tint = HikariLoadMaterialProgramParameter(
             materialData,
             8u,
@@ -492,27 +651,29 @@ float3 HikariEvaluateStylizedViewAdditive(
     }
     if ((materialData.instanceFlags & HIKARI_PROGRAM_FLAG_EYE_LIGHTING) != 0u)
     {
+        const float4 eyeLayer = HikariLoadMaterialProgramParameter(
+            materialData,
+            23u,
+            float4(0.0f, 1.0f, 0.02f, 0.04f));
         const float4 eye = HikariLoadMaterialProgramParameter(
             materialData,
             11u,
             float4(0.12f, 0.35f, 64.0f, 1.0f));
+        const float4 iris = HikariLoadMaterialProgramParameter(
+            materialData,
+            22u,
+            float4(0.50f, 0.50f, 0.48f, 0.08f));
+        const float4 appearance = HikariLoadMaterialProgramParameter(
+            materialData,
+            24u,
+            float4(0.10f, 2.0f, 0.18f, 0.25f));
+        const float4 caustic = HikariLoadMaterialProgramParameter(
+            materialData,
+            26u,
+            float4(1.0f, 0.72f, 0.38f, 0.28f));
         const uint eyeDescriptor = HikariLoadMaterialProgramResource(
             materialData,
             HIKARI_PROGRAM_RESOURCE_EYE);
-        float3 tangent = tangentWS.xyz;
-        if (dot(tangent, tangent) < 1.0e-5f)
-        {
-            tangent = cross(float3(0.0f, 1.0f, 0.0f), surface.normalWS);
-        }
-        if (dot(tangent, tangent) < 1.0e-5f)
-        {
-            tangent = float3(1.0f, 0.0f, 0.0f);
-        }
-        tangent = normalize(tangent);
-        float3 bitangent = normalize(cross(surface.normalWS, tangent) * tangentWS.w);
-        const float2 parallax = float2(
-            dot(surface.viewWS, tangent),
-            dot(surface.viewWS, bitangent)) * eye.x * 0.05f;
         float3 catchlightLight = directionalLight;
         if (dot(catchlightLight, catchlightLight) < 1.0e-5f)
         {
@@ -525,31 +686,93 @@ float3 HikariEvaluateStylizedViewAdditive(
             catchlightHalf = surface.normalWS;
         }
         catchlightHalf = normalize(catchlightHalf);
+        const float2 eyeUv = HikariResolveEyeLayerUv(
+            materialData,
+            uv,
+            surface.normalWS,
+            tangentWS,
+            surface.viewWS);
+        float2 irisPosition = (eyeUv - iris.xy) /
+            max(abs(iris.z), 0.001f);
+        irisPosition.y = -irisPosition.y;
+        irisPosition = clamp(irisPosition, -0.999f.xx, 0.999f.xx);
+        const float radialSquared = saturate(dot(
+            irisPosition,
+            irisPosition));
+        float3 eyeTangent;
+        float3 eyeBitangent;
+        HikariResolveEyeTangentFrame(
+            surface.normalWS,
+            tangentWS,
+            eyeTangent,
+            eyeBitangent);
+        const float3 eyeNormal = normalize(
+            eyeTangent * irisPosition.x +
+            eyeBitangent * irisPosition.y +
+            surface.normalWS * sqrt(1.0f - radialSquared));
         const float sparkle = pow(
-            saturate(dot(surface.normalWS, catchlightHalf)),
+            saturate(dot(eyeNormal, catchlightHalf)),
             max(1.0f, eye.z));
-        if (eyeDescriptor != HIKARI_INVALID_TEXTURE_DESCRIPTOR_INDEX &&
+        if (eyeLayer.x >= 0.5f)
+        {
+            // Transparent Highlight mode uses the parallax-shifted base-color
+            // artwork itself and must not add a second analytic catchlight.
+        }
+        else if (eyeDescriptor != HIKARI_INVALID_TEXTURE_DESCRIPTOR_INDEX &&
             (materialData.instanceFlags &
              HIKARI_PROGRAM_FLAG_EYE_CONTROL_MAP) != 0u)
         {
             const float4 eyeControl = HikariSampleMaterialTexture(
                 eyeDescriptor,
                 gLinearClamp,
-                saturate(uv + parallax),
+                eyeUv,
                 0.0f.xxxx);
+            const float analyticIris = HikariResolveAnalyticIrisMask(
+                eyeUv,
+                iris);
+            const float irisMask = analyticIris * saturate(eyeControl.r);
             const float depthMask = lerp(0.35f, 1.0f, eyeControl.a);
             const float3 cornea = float3(0.72f, 0.84f, 1.0f) *
                 eyeControl.g * sparkle * 0.12f;
-            const float3 catchlight = 1.0f.xxx * eyeControl.b * sparkle;
-            additive += (surface.baseColor * eyeControl.r * 0.08f +
-                         cornea + catchlight) * eye.y * eye.w * depthMask;
+            const float3 catchlight = 1.0f.xxx *
+                eyeControl.b * sparkle;
+            float2 lightUv = float2(
+                dot(catchlightLight, eyeTangent),
+                -dot(catchlightLight, eyeBitangent));
+            lightUv /= max(length(lightUv), 0.001f);
+            const float causticBand = smoothstep(
+                1.0f - saturate(caustic.w),
+                1.0f,
+                saturate(dot(irisPosition, -lightUv))) * irisMask;
+            const float3 irisLift = surface.baseColor * irisMask *
+                max(appearance.z, 0.0f);
+            const float3 causticLight = caustic.rgb * causticBand *
+                max(appearance.w, 0.0f);
+            additive += (irisLift + causticLight +
+                         (cornea + catchlight) * eye.y) *
+                eye.w * depthMask;
         }
         else
         {
-            // Eye Catchlight has a deterministic analytic default. A control
-            // texture specializes iris/cornea/catchlight placement but is not
-            // required to make the connected node visibly meaningful.
-            additive += 1.0f.xxx * eye.y * eye.w * sparkle;
+            // Eye Catchlight, iris lift and caustic have deterministic
+            // analytic defaults. A control texture specializes placement but
+            // is not required to make the node visibly meaningful.
+            const float irisMask = HikariResolveAnalyticIrisMask(
+                eyeUv,
+                iris);
+            float2 lightUv = float2(
+                dot(catchlightLight, eyeTangent),
+                -dot(catchlightLight, eyeBitangent));
+            lightUv /= max(length(lightUv), 0.001f);
+            const float causticBand = smoothstep(
+                1.0f - saturate(caustic.w),
+                1.0f,
+                saturate(dot(irisPosition, -lightUv))) * irisMask;
+            additive += (surface.baseColor * irisMask *
+                         max(appearance.z, 0.0f) +
+                         caustic.rgb * causticBand *
+                         max(appearance.w, 0.0f) +
+                         1.0f.xxx * eye.y * sparkle) * eye.w;
         }
     }
     if ((materialData.instanceFlags & HIKARI_PROGRAM_FLAG_TEMPLATE_CLOTH) != 0u)
@@ -658,7 +881,7 @@ HikariMaterialLightingResponse HikariEvaluateStylizedMaterial(
         const float4 blend = HikariLoadMaterialProgramParameter(
             materialData,
             12u,
-            float4(0.55f, 0.55f, 1.0f, 0.25f));
+            float4(0.25f, 0.35f, 0.65f, 0.25f));
         response.indirect = lerp(
             response.indirect,
             pbrIndirect,

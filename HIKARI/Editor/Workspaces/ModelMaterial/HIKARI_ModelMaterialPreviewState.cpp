@@ -181,7 +181,7 @@ void ModelMaterialWorkspaceController::InitializePreviewLighting() {
   previewEnvironment_.sky.mode = SkyMode::Cubemap;
   previewEnvironment_.sky.skyAsset = "DefaultSky";
   previewEnvironment_.sky.exposure = 1.0f;
-  previewEnvironment_.sky.reflectionIntensity = 1.0f;
+  previewEnvironment_.sky.reflectionIntensity = 0.45f;
   previewEnvironment_.screenSpaceReflections.enabled = false;
   previewEnvironment_.surfaceLightmaps.enabled = false;
 

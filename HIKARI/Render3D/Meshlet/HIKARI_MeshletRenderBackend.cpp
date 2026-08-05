@@ -451,7 +451,8 @@ namespace HIKARI::RENDER3D::MESHLET {
             if (alphaBlend && hasRenderTarget) {
                 D3D12_RENDER_TARGET_BLEND_DESC& rt0 = blend.RenderTarget[0];
                 rt0.BlendEnable = TRUE;
-                rt0.SrcBlend = D3D12_BLEND_SRC_ALPHA;
+                // Every forward transparent shader returns premultiplied RGB.
+                rt0.SrcBlend = D3D12_BLEND_ONE;
                 rt0.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
                 rt0.BlendOp = D3D12_BLEND_OP_ADD;
                 rt0.SrcBlendAlpha = D3D12_BLEND_ONE;

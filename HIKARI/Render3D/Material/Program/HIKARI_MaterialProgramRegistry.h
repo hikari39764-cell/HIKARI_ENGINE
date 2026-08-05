@@ -14,7 +14,6 @@ namespace HIKARI::RENDER3D::MATERIAL {
     enum class MaterialProgramResolutionKind : uint8_t {
         Compiled,
         Reused,
-        LastGood,
         StandardPbrFallback,
     };
 
@@ -25,10 +24,6 @@ namespace HIKARI::RENDER3D::MATERIAL {
         MaterialProgramIR effectiveProgram{};
         std::vector<MaterialCompileDiagnostic> diagnostics{};
 
-        bool UsedLastGood() const noexcept {
-            return kind == MaterialProgramResolutionKind::LastGood;
-        }
-
         bool UsedFallback() const noexcept {
             return kind == MaterialProgramResolutionKind::StandardPbrFallback;
         }
@@ -37,11 +32,9 @@ namespace HIKARI::RENDER3D::MATERIAL {
     struct MaterialProgramRegistryStats {
         uint32_t programCount = 0u;
         uint32_t sourceCount = 0u;
-        uint32_t lastGoodSourceCount = 0u;
         uint32_t compileResolveCount = 0u;
         uint32_t compiledProgramCount = 0u;
         uint32_t reusedProgramCount = 0u;
-        uint32_t lastGoodResolveCount = 0u;
         uint32_t fallbackResolveCount = 0u;
         uint32_t keyCollisionCount = 0u;
     };
@@ -65,17 +58,11 @@ namespace HIKARI::RENDER3D::MATERIAL {
 
         const RuntimeMaterialProgram* Find(MaterialProgramId id) const noexcept;
         const RuntimeMaterialProgram& GetStandardPbrFallback() const noexcept;
-        MaterialProgramId FindLastGood(std::string_view sourceIdentity) const noexcept;
         std::span<const MaterialCompileDiagnostic> GetDiagnostics(
             std::string_view sourceIdentity) const noexcept;
         const MaterialProgramRegistryStats& GetStats() const noexcept;
 
     private:
-        struct LastGoodSourceProgram {
-            MaterialProgramId residentId{};
-            MaterialProgramIR effectiveProgram{};
-        };
-
         struct InternResult {
             MaterialProgramId id{};
             bool created = false;
@@ -96,12 +83,6 @@ namespace HIKARI::RENDER3D::MATERIAL {
             MaterialProgramKey,
             MaterialProgramId,
             MaterialProgramKeyHasher> programByKey_{};
-        // Structural programs may share one resident ID, but authored values
-        // and resource GUIDs are source-versioned. Keep the complete last-good
-        // IR per source so a failed edit never jumps back to the first values
-        // that happened to intern the shared layout.
-        std::unordered_map<std::string, LastGoodSourceProgram>
-            lastGoodBySource_{};
         std::unordered_map<
             std::string,
             std::vector<MaterialCompileDiagnostic>> diagnosticsBySource_{};

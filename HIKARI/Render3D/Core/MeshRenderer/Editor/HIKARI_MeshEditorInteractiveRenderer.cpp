@@ -45,7 +45,7 @@ namespace HIKARI::MESHRENDERER {
 
     } // namespace
 
-    bool RenderEditorInteractiveOpaque(
+    EditorInteractiveMeshRenderResult RenderEditorInteractiveOpaque(
         const RENDER3D::RenderViewContext& view,
         const SceneEnvironment& environment,
         const RENDER3D::LIGHTING::SceneLightingSet& lighting,
@@ -61,17 +61,19 @@ namespace HIKARI::MESHRENDERER {
             graphics.cmdList == nullptr ||
             !EnsureInitialized(graphics) ||
             !EnsureEditorInteractiveResources()) {
-            return false;
+            return EditorInteractiveMeshRenderResult::RendererUnavailable;
         }
         if (!BeginEditorInteractiveMaterialFrame(graphics)) {
-            return false;
+            return EditorInteractiveMeshRenderResult::
+                MaterialFrameUnavailable;
         }
 
         EditorInteractiveMeshFrameResources& editorFrame =
             gMeshRendererState.editorInteractive.frames[
                 graphics.frameIndex % GFX::kFrameResourceCount];
         if (!editorFrame.IsReady()) {
-            return false;
+            return EditorInteractiveMeshRenderResult::
+                FrameResourcesUnavailable;
         }
 
         std::optional<IBL::ScopedEnvironmentOverride> iblOverride{};
@@ -222,7 +224,8 @@ namespace HIKARI::MESHRENDERER {
             layer.UploadSceneFrame(uploadDescription);
         if (sceneSource.CountGpuSceneInstances() != 0u &&
             !uploadStats.sceneResident) {
-            return false;
+            return EditorInteractiveMeshRenderResult::
+                SceneResidencyUnavailable;
         }
 
         RENDER3D::GPUDRIVEN::GpuDrivenBackendAvailability availability{};
@@ -311,7 +314,7 @@ namespace HIKARI::MESHRENDERER {
         MeshPassResources passResources{};
         passResources.fallbackAoTextureHandle =
             gMeshRendererState.fallbackTextureHandle;
-        bool stylizedFeaturePassesReady =
+        const bool stylizedSurfacePassReady =
             ExecuteEditorInteractiveStylizedSurfacePass(
                 graphics,
                 screenWidth,
@@ -347,20 +350,27 @@ namespace HIKARI::MESHRENDERER {
                 RENDER3D::MESHLET::MeshletPipelineKind::ForwardTransparent,
                 layer,
                 overrides);
-        if (stylizedFeaturePassesReady) {
-            stylizedFeaturePassesReady =
-                ExecuteEditorInteractiveStylizedGeometryPasses(
-                    graphics,
-                    settings,
-                    passResources,
-                    layer,
-                    overrides);
-        }
         const bool sceneRendered = opaqueResult.gpuBackendExecuted ||
             depthAwareResult.gpuBackendExecuted ||
             transparentResult.gpuBackendExecuted ||
             !sceneSource.HasAnyGpuSceneRanges();
-        return sceneRendered && stylizedFeaturePassesReady;
+        if (!sceneRendered) {
+            return EditorInteractiveMeshRenderResult::ForwardPassFailed;
+        }
+        if (!stylizedSurfacePassReady) {
+            return EditorInteractiveMeshRenderResult::
+                StylizedSurfacePassFailed;
+        }
+        if (!ExecuteEditorInteractiveStylizedGeometryPasses(
+                graphics,
+                settings,
+                passResources,
+                layer,
+                overrides)) {
+            return EditorInteractiveMeshRenderResult::
+                StylizedGeometryPassFailed;
+        }
+        return EditorInteractiveMeshRenderResult::Ready;
     }
 
     void ReleaseEditorInteractiveSceneSource(
