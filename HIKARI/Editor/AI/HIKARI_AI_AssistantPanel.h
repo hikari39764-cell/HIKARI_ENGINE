@@ -42,6 +42,8 @@ namespace HIKARI::EDITOR {
         void RunConversation(const std::string& userText);
         void AppendMessage(const AI_ASSISTANT::AiChatMessage& message);
         std::string BuildSystemPrompt() const;
+        void OpenApiSettingsBuffers();
+        void SaveApiSettings();
 
         std::vector<AI_ASSISTANT::AiChatMessage> messages_{};
         std::mutex messageMutex_{};
@@ -49,8 +51,13 @@ namespace HIKARI::EDITOR {
         char rawRequestBuffer_[2048] = {};
         bool showCapabilities_ = false;
         bool showRawRequest_ = false;
+        bool showApiSettings_ = false;
+        bool showApiKey_ = false;
         bool hasRawResult_ = false;
         size_t lastMessageCount_ = 0u;
+        char apiKeyBuffer_[256] = {};
+        char baseUrlBuffer_[512] = {};
+        char modelBuffer_[128] = {};
         AI_ASSISTANT::AiRequestResult rawResult_{};
         AI_ASSISTANT::AiChatConfig config_{};
         bool configLoaded_ = false;

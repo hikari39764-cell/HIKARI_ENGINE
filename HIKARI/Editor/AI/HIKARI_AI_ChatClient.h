@@ -18,6 +18,8 @@ namespace HIKARI::EDITOR::AI_ASSISTANT {
     };
 
     bool LoadAiChatConfig(AiChatConfig& outConfig);
+    bool SaveAiChatConfig(const AiChatConfig& config);
+    bool ResetAiChatConfig();
     bool RunChatCompletions(
         const AiChatConfig& config,
         const std::vector<AiChatMessage>& messages,

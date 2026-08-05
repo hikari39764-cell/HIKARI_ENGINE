@@ -243,6 +243,36 @@ void AiAssistantPanel::SendCurrentMessage() {
     });
 }
 
+void AiAssistantPanel::OpenApiSettingsBuffers() {
+    std::snprintf(
+        apiKeyBuffer_, sizeof(apiKeyBuffer_), "%s",
+        config_.apiKey.c_str());
+    std::snprintf(
+        baseUrlBuffer_, sizeof(baseUrlBuffer_), "%s",
+        config_.baseUrl.c_str());
+    std::snprintf(
+        modelBuffer_, sizeof(modelBuffer_), "%s",
+        config_.model.c_str());
+}
+
+void AiAssistantPanel::SaveApiSettings() {
+    AI_ASSISTANT::AiChatConfig updated{};
+    updated.apiKey = AI_ASSISTANT::Trim(apiKeyBuffer_);
+    updated.baseUrl = AI_ASSISTANT::Trim(baseUrlBuffer_);
+    updated.model = AI_ASSISTANT::Trim(modelBuffer_);
+    if (updated.baseUrl.empty()) {
+        updated.baseUrl =
+            "https://dashscope.aliyuncs.com/compatible-mode/v1";
+    }
+    if (updated.model.empty()) {
+        updated.model = "qwen-plus";
+    }
+    updated.valid = !updated.apiKey.empty();
+    AI_ASSISTANT::SaveAiChatConfig(updated);
+    configLoaded_ = AI_ASSISTANT::LoadAiChatConfig(config_);
+    OpenApiSettingsBuffers();
+}
+
 void AiAssistantPanel::Draw(bool& open) {
 #if defined(HIKARI_WITH_EDITOR)
     if (!ImGui::Begin("AI Assistant", &open, ImGuiWindowFlags_MenuBar)) {
@@ -254,6 +284,12 @@ void AiAssistantPanel::Draw(bool& open) {
         if (ImGui::BeginMenu("View")) {
             ImGui::MenuItem("Capabilities", nullptr, &showCapabilities_);
             ImGui::MenuItem("Raw JSON Action", nullptr, &showRawRequest_);
+            if (ImGui::MenuItem("API Settings", nullptr,
+                                &showApiSettings_)) {
+                if (showApiSettings_) {
+                    OpenApiSettingsBuffers();
+                }
+            }
             if (ImGui::MenuItem("Clear Chat")) {
                 std::lock_guard<std::mutex> lock(messageMutex_);
                 messages_.clear();
@@ -350,6 +386,39 @@ void AiAssistantPanel::Draw(bool& open) {
                 }
                 ImGui::EndTable();
             }
+        }
+    }
+
+    if (showApiSettings_) {
+        ImGui::Separator();
+        if (ImGui::CollapsingHeader(
+                "API Settings", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::InputText(
+                "API Key",
+                apiKeyBuffer_,
+                sizeof(apiKeyBuffer_),
+                showApiKey_ ? 0 : ImGuiInputTextFlags_Password);
+            ImGui::SameLine();
+            ImGui::Checkbox("Show", &showApiKey_);
+            ImGui::InputText(
+                "Base URL",
+                baseUrlBuffer_,
+                sizeof(baseUrlBuffer_));
+            ImGui::InputText(
+                "Model",
+                modelBuffer_,
+                sizeof(modelBuffer_));
+            if (ImGui::Button("Save")) {
+                SaveApiSettings();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Reset to defaults")) {
+                AI_ASSISTANT::ResetAiChatConfig();
+                configLoaded_ = AI_ASSISTANT::LoadAiChatConfig(config_);
+                OpenApiSettingsBuffers();
+            }
+            ImGui::TextDisabled(
+                "Saved to %USERPROFILE%\\.hikari-ai-assistant.env");
         }
     }
 

@@ -1,6 +1,7 @@
 #include "HIKARI_AI_ChatClient.h"
 
 #include <algorithm>
+#include <cerrno>
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
@@ -68,10 +69,26 @@ std::string SkillEnvPath() {
         "/.codex/skills/claude-vision-skill/.env";
 }
 
+std::string EngineConfigPath() {
+    const char* userProfile = std::getenv("USERPROFILE");
+    if (userProfile == nullptr || userProfile[0] == '\0') {
+        return {};
+    }
+    return std::string(userProfile) + "/.hikari-ai-assistant.env";
+}
+
+struct EnvFields {
+    std::string apiKey;
+    std::string baseUrl;
+    std::string model;
+    bool apiKeySet = false;
+    bool baseUrlSet = false;
+    bool modelSet = false;
+};
+
 void ParseEnvFile(const std::string& path,
-                  std::string& apiKey,
-                  std::string& baseUrl,
-                  std::string& model) {
+                  EnvFields& fields,
+                  bool allowEmpty) {
     std::ifstream stream(path);
     if (!stream) {
         return;
@@ -84,17 +101,21 @@ void ParseEnvFile(const std::string& path,
         }
         const std::string key = Trim(line.substr(0u, separator));
         const std::string value = Unquote(line.substr(separator + 1u));
-        if (key.empty() || value.empty()) {
+        if (key.empty() || (!allowEmpty && value.empty())) {
             continue;
         }
-        if (key == "DASHSCOPE_API_KEY" && apiKey.empty()) {
-            apiKey = value;
-        } else if (key == "DASHSCOPE_BASE_URL" && baseUrl.empty()) {
-            baseUrl = value;
-        } else if (key == "CHAT_MODEL" && model.empty()) {
-            model = value;
-        } else if (key == "VISION_MODEL" && model.empty()) {
-            model = value;
+        if (key == "DASHSCOPE_API_KEY" && !fields.apiKeySet) {
+            fields.apiKey = value;
+            fields.apiKeySet = true;
+        } else if (key == "DASHSCOPE_BASE_URL" && !fields.baseUrlSet) {
+            fields.baseUrl = value;
+            fields.baseUrlSet = true;
+        } else if (key == "CHAT_MODEL" && !fields.modelSet) {
+            fields.model = value;
+            fields.modelSet = true;
+        } else if (key == "VISION_MODEL" && !fields.modelSet) {
+            fields.model = value;
+            fields.modelSet = true;
         }
     }
 }
@@ -209,31 +230,69 @@ std::string ExtractJsonContent(const std::string& response) {
 
 bool LoadAiChatConfig(AiChatConfig& outConfig) {
     outConfig = {};
-    std::string apiKey;
-    std::string baseUrl;
-    std::string model;
+    // Precedence: engine-local config file (written by the AI Assistant UI)
+    // > process environment variables > the vision-skill .env fallback.
+    EnvFields local;
+    ParseEnvFile(EngineConfigPath(), local, true);
+    EnvFields environment;
     if (const auto value = GetEnvValue("DASHSCOPE_API_KEY")) {
-        apiKey = *value;
+        environment.apiKey = *value;
+        environment.apiKeySet = true;
     }
     if (const auto value = GetEnvValue("DASHSCOPE_BASE_URL")) {
-        baseUrl = *value;
+        environment.baseUrl = *value;
+        environment.baseUrlSet = true;
     }
     if (const auto value = GetEnvValue("CHAT_MODEL")) {
-        model = *value;
+        environment.model = *value;
+        environment.modelSet = true;
     }
-    ParseEnvFile(SkillEnvPath(), apiKey, baseUrl, model);
-    outConfig.apiKey = Trim(std::move(apiKey));
-    outConfig.baseUrl = Trim(std::move(baseUrl));
+    EnvFields skill;
+    ParseEnvFile(SkillEnvPath(), skill, false);
+    outConfig.apiKey = local.apiKeySet
+        ? local.apiKey
+        : environment.apiKeySet ? environment.apiKey : skill.apiKey;
+    outConfig.baseUrl = local.baseUrlSet
+        ? local.baseUrl
+        : environment.baseUrlSet ? environment.baseUrl : skill.baseUrl;
+    outConfig.model = local.modelSet
+        ? local.model
+        : environment.modelSet ? environment.model : skill.model;
+    outConfig.apiKey = Trim(std::move(outConfig.apiKey));
+    outConfig.baseUrl = Trim(std::move(outConfig.baseUrl));
+    outConfig.model = Trim(std::move(outConfig.model));
     if (outConfig.baseUrl.empty()) {
         outConfig.baseUrl =
             "https://dashscope.aliyuncs.com/compatible-mode/v1";
     }
-    outConfig.model = Trim(std::move(model));
     if (outConfig.model.empty()) {
         outConfig.model = "qwen-plus";
     }
     outConfig.valid = !outConfig.apiKey.empty();
     return outConfig.valid;
+}
+
+bool SaveAiChatConfig(const AiChatConfig& config) {
+    const std::string path = EngineConfigPath();
+    if (path.empty()) {
+        return false;
+    }
+    std::ofstream stream(path, std::ios::trunc);
+    if (!stream) {
+        return false;
+    }
+    stream << "DASHSCOPE_API_KEY=" << config.apiKey << '\n';
+    stream << "DASHSCOPE_BASE_URL=" << config.baseUrl << '\n';
+    stream << "CHAT_MODEL=" << config.model << '\n';
+    return stream.good();
+}
+
+bool ResetAiChatConfig() {
+    const std::string path = EngineConfigPath();
+    if (path.empty()) {
+        return false;
+    }
+    return std::remove(path.c_str()) == 0 || errno == ENOENT;
 }
 
 bool RunChatCompletions(
