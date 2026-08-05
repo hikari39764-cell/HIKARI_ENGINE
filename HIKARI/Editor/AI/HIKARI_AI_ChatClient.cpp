@@ -355,6 +355,43 @@ std::string ExtractJsonField(
     return std::string(json.substr(quote + 1u, end - quote - 1u));
 }
 
+std::string ExtractJsonNumberField(
+    std::string_view json,
+    std::string_view field) {
+    const std::string marker =
+        std::string("\"") + std::string(field) + "\"";
+    const auto position = json.find(marker);
+    if (position == std::string_view::npos) {
+        return {};
+    }
+    const auto colon = json.find(':', position + marker.size());
+    if (colon == std::string_view::npos) {
+        return {};
+    }
+    size_t cursor = colon + 1u;
+    while (cursor < json.size() &&
+           (json[cursor] == ' ' || json[cursor] == '\t' ||
+            json[cursor] == '\r' || json[cursor] == '\n')) {
+        ++cursor;
+    }
+    const size_t start = cursor;
+    if (cursor < json.size() &&
+        (json[cursor] == '-' || json[cursor] == '+')) {
+        ++cursor;
+    }
+    while (cursor < json.size() &&
+           (std::isdigit(static_cast<unsigned char>(json[cursor])) ||
+            json[cursor] == '.' || json[cursor] == 'e' ||
+            json[cursor] == 'E' || json[cursor] == '-' ||
+            json[cursor] == '+')) {
+        ++cursor;
+    }
+    if (cursor == start) {
+        return {};
+    }
+    return std::string(json.substr(start, cursor - start));
+}
+
 bool RunApiRequestRaw(
     const AiChatConfig& config,
     const std::string& body,

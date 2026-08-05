@@ -1,7 +1,11 @@
 #pragma once
 
+#include <cstdint>
 #include <optional>
+#include <string>
 #include <vector>
+
+#include "Render3D/HIKARI_Math3D.h"
 
 #include "Editor/AI/HIKARI_AI_AssistantPanel.h"
 #include "Editor/HIKARI_DebugCameraPanel.h"
@@ -42,6 +46,14 @@ namespace HIKARI {
         class EditorPlaySession;
     }
 
+    struct AiSceneUndoRecord {
+        enum class Kind : uint8_t { Created, Transform, MaterialEdit };
+        Kind kind = Kind::Created;
+        std::string name;
+        MATH::Vec3 position{};
+        MATH::Vec3 scale{ 1.0f, 1.0f, 1.0f };
+    };
+
     class DocumentSceneEditorController {
     public:
         DocumentSceneEditorController();
@@ -74,6 +86,7 @@ namespace HIKARI {
         EDITOR::EditorToolHost toolHost_{};
         EDITOR::SystemAuthoringRegistry systemAuthoringRegistry_{};
         EDITOR::EditorWorkspaceHost workspaceHost_{};
+        std::vector<AiSceneUndoRecord> aiUndoStack_{};
         EDITOR::CinematicsWorkspaceController cinematicsWorkspaceController_{};
         EDITOR::ModelCollisionWorkspaceController modelCollisionWorkspaceController_{};
         EDITOR::ModelMaterialWorkspaceController modelMaterialWorkspaceController_{};

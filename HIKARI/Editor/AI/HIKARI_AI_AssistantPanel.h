@@ -36,12 +36,14 @@ namespace HIKARI::EDITOR {
         using AiSceneActionCallback =
             std::function<AI_ASSISTANT::AiRequestResult(
                 std::string_view)>;
+        using AiContextCallback = std::function<std::string()>;
 
         AiAssistantPanel();
         ~AiAssistantPanel();
 
         void Draw(bool& open);
         void SetSceneActionCallback(AiSceneActionCallback callback);
+        void SetContextCallback(AiContextCallback callback);
 
     private:
         void SendCurrentMessage();
@@ -78,6 +80,7 @@ namespace HIKARI::EDITOR {
         char visionBaseUrlBuffer_[512] = {};
         char visionModelBuffer_[128] = {};
         AiSceneActionCallback sceneActionCallback_{};
+        AiContextCallback contextCallback_{};
         AI_ASSISTANT::AiRequestResult rawResult_{};
         AI_ASSISTANT::AiChatConfig config_{};
         bool configLoaded_ = false;

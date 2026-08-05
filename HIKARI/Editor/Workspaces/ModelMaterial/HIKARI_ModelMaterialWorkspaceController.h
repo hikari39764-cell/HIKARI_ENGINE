@@ -118,6 +118,7 @@ public:
       const std::string &parameterId,
       float value,
       std::string &outMessage);
+  std::string GetAiMaterialStatus() const;
 
   ModelMaterialBindingCommandResult ExecuteBindingCommand(
       const ModelMaterialBindingCommand &command,

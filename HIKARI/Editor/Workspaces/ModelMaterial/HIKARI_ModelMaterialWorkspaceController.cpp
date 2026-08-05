@@ -434,4 +434,25 @@ bool ModelMaterialWorkspaceController::ApplyAiMaterialParameterEdit(
   return false;
 }
 
+std::string ModelMaterialWorkspaceController::GetAiMaterialStatus() const {
+  if (!authoringDocument_.HasMaterial()) {
+    return "material: none";
+  }
+  const MaterialAssetData &material = authoringDocument_.GetMaterial();
+  const MaterialCompileResult &compile =
+      authoringDocument_.GetCompileResult();
+  const MaterialGraphData *graph =
+      material.kind == MaterialAssetKind::Material
+          ? &material.graph
+          : material.kind == MaterialAssetKind::Function
+              ? &material.function.graph
+              : nullptr;
+  const size_t parameterCount =
+      graph != nullptr ? graph->parameters.size() : 0u;
+  return "material: " + material.materialName +
+      " | compile: " +
+      (compile.success ? "ok" : "failed") +
+      " | params: " + std::to_string(parameterCount);
+}
+
 } // namespace HIKARI::EDITOR

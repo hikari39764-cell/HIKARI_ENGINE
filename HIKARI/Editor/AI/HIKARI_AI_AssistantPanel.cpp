@@ -85,6 +85,15 @@ const std::vector<AiCapability>& QueryCapabilities() {
         { "capture.preview",
           "Capture the material preview to a BMP file for vision verification.",
           "stable" },
+        { "help",
+          "Query detailed usage and examples for an action.",
+          "stable" },
+        { "action.undo_last",
+          "Undo the most recent AI-driven material or scene change.",
+          "stable" },
+        { "scene.snapshot",
+          "Return a compact scene object snapshot for before/after comparison.",
+          "stable" },
         { "query.capabilities",
           "List the current AI-accessible capabilities and boundaries.",
           "stable" },
@@ -179,6 +188,74 @@ AiRequestResult SubmitAiRequest(std::string_view requestJson) {
         result.message = text;
         return result;
     }
+    if (action == "help") {
+        AiRequestResult result{};
+        result.ok = true;
+        const std::string topic =
+            ExtractJsonField(requestJson, "topic");
+        if (topic.empty()) {
+            result.message =
+                "输入 topic 查询具体用法，例如 "
+                "{\"action\":\"help\",\"topic\":"
+                "\"procedural.create_primitive\"}";
+            return result;
+        }
+        result.message = "用法说明：" + topic;
+        if (topic == "procedural.create_primitive") {
+            result.details = {
+                "{\"action\":\"procedural.create_primitive\","
+                "\"kind\":\"box\",\"name\":\"cube\","
+                "\"positionX\":0,\"positionY\":0,\"positionZ\":0,"
+                "\"scaleX\":1,\"scaleY\":1,\"scaleZ\":1}",
+                "kind: box/sphere/plane/grid_plane/cylinder/capsule",
+            };
+        } else if (topic == "scene.set_transform") {
+            result.details = {
+                "{\"action\":\"scene.set_transform\","
+                "\"name\":\"cube\","
+                "\"positionX\":0,\"positionY\":1,\"positionZ\":0,"
+                "\"rotationY\":45,\"scaleX\":1}",
+                "只提供需要修改的字段即可",
+            };
+        } else if (topic == "scene.create_object") {
+            result.details = {
+                "{\"action\":\"scene.create_object\","
+                "\"model\":\"资产id或路径片段\",\"name\":\"角色\","
+                "\"positionX\":0,\"positionZ\":0}",
+                "先用 asset.list_models 查询可用模型",
+            };
+        } else if (topic == "material.edit_parameter") {
+            result.details = {
+                "{\"action\":\"material.edit_parameter\","
+                "\"parameter\":\"shadowSoftness\",\"value\":0.08}",
+                "parameter 支持全名或后缀；只改当前打开的材质",
+            };
+        } else if (topic == "capture.preview") {
+            result.details = {
+                "{\"action\":\"capture.preview\","
+                "\"path\":\"C:/temp/preview.bmp\"}",
+                "不传 path 时保存到 %TEMP%/hikari-ai-preview.bmp",
+            };
+        } else if (topic == "vision.analyze_image") {
+            result.details = {
+                "{\"action\":\"vision.analyze_image\","
+                "\"image\":\"C:/temp/preview.bmp\","
+                "\"prompt\":\"描述这张图\"}",
+            };
+        } else if (topic == "scene.list_objects" ||
+                   topic == "scene.snapshot") {
+            result.details = {
+                "{\"action\":\"scene.list_objects\"}",
+                "scene.snapshot 返回同样的对象摘要，"
+                "用于修改前后对比",
+            };
+        } else {
+            result.message =
+                "没有 topic 的专用说明，请先用 list_capabilities "
+                "查看能力清单。";
+        }
+        return result;
+    }
     if (action == "create_material") {
         AiRequestResult result{};
         result.ok = false;
@@ -229,6 +306,11 @@ std::string AiAssistantPanel::BuildSystemPrompt() const {
         "不要把它混在普通文字里，也不要在正文里举例 JSON。\n"
         "收尾规则：调用动作后，必须基于执行结果给出最终中文回复；"
         "除非用户明确要求继续操作，否则不要再输出任何 action JSON。\n"
+        "任务节奏：复杂任务先输出一行计划，格式为 "
+        "\"计划: 1. ...; 2. ...\"，再按计划批量执行，最后总结；"
+        "简单任务可以省略计划。\n"
+        "不确定某个 action 的参数时，先调用 "
+        "{\"action\":\"help\",\"topic\":\"<action名>\"} 查询用法。\n"
         "当前能力清单：\n";
     for (const AI_ASSISTANT::AiCapability& capability :
          AI_ASSISTANT::QueryCapabilities()) {
@@ -261,9 +343,14 @@ void AiAssistantPanel::RunConversation(const std::string& userText) {
     lastRoundActions_.clear();
     for (int turn = 0; turn < kMaxToolRounds; ++turn) {
         std::vector<AI_ASSISTANT::AiChatMessage> request = conversation;
+        std::string systemContent = BuildSystemPrompt();
+        if (contextCallback_) {
+            systemContent += "\n\n当前现状：\n" + contextCallback_();
+        }
         request.insert(
             request.begin(),
-            AI_ASSISTANT::AiChatMessage{ "system", BuildSystemPrompt() });
+            AI_ASSISTANT::AiChatMessage{
+                "system", std::move(systemContent) });
         std::string reply;
         std::string error;
         {
@@ -366,7 +453,16 @@ void AiAssistantPanel::SendCurrentMessage() {
         worker_.join();
     }
     worker_ = std::thread([this, text = std::move(text)]() {
-        RunConversation(text);
+        try {
+            RunConversation(text);
+        } catch (...) {
+            AppendMessage({ "assistant", "（内部错误，已停止）" });
+            {
+                std::lock_guard<std::mutex> lock(streamMutex_);
+                streamingActive_ = false;
+                streamingPartial_.clear();
+            }
+        }
         busy_.store(false);
     });
 }
@@ -406,6 +502,11 @@ void AiAssistantPanel::SetSceneActionCallback(
     sceneActionCallback_ = std::move(callback);
 }
 
+void AiAssistantPanel::SetContextCallback(
+    AiContextCallback callback) {
+    contextCallback_ = std::move(callback);
+}
+
 AI_ASSISTANT::AiRequestResult AiAssistantPanel::ExecuteRequest(
     std::string_view json) {
     const std::string action =
@@ -414,7 +515,8 @@ AI_ASSISTANT::AiRequestResult AiAssistantPanel::ExecuteRequest(
         action.rfind("scene.", 0u) == 0u ||
         action.rfind("asset.", 0u) == 0u ||
         action.rfind("material.", 0u) == 0u ||
-        action.rfind("capture.", 0u) == 0u) {
+        action.rfind("capture.", 0u) == 0u ||
+        action.rfind("action.", 0u) == 0u) {
         if (sceneActionCallback_) {
             return sceneActionCallback_(json);
         }

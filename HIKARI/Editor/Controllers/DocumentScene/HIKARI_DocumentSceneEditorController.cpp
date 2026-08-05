@@ -56,13 +56,66 @@ namespace HIKARI {
                 ", failed " + std::to_string(report.failedCount);
         }
 
+        void SummarizeSceneObjects(
+            DocumentSceneBase& scene,
+            std::vector<std::string>& outLines,
+            size_t limit) {
+            const auto& objects = scene.GetWorld().GetObjects();
+            size_t count = 0u;
+            for (const auto& object : objects) {
+                if (count >= limit) {
+                    outLines.push_back("...（更多省略）");
+                    break;
+                }
+                const MATH::Vec3& position =
+                    object->GetTransform().position;
+                const MATH::Vec3& scale =
+                    object->GetTransform().scale;
+                char line[192];
+                std::snprintf(
+                    line, sizeof(line),
+                    "%s | pos(%.2f, %.2f, %.2f) | "
+                    "scale(%.2f, %.2f, %.2f)",
+                    object->GetName().c_str(),
+                    position.x, position.y, position.z,
+                    scale.x, scale.y, scale.z);
+                outLines.push_back(line);
+                ++count;
+            }
+        }
+
+        bool CapturePreviewToFile(
+            std::string& outPath,
+            std::string& outError) {
+            if (outPath.empty()) {
+                const char* temp = std::getenv("TEMP");
+                outPath = std::string(temp != nullptr ? temp : ".") +
+                    "/hikari-ai-preview.bmp";
+            }
+            RENDER3D::EDITORVIEW::RequestPreviewCapture(
+                EDITOR::kModelMaterialPreviewRenderViewId,
+                outPath);
+            for (int attempt = 0; attempt < 50; ++attempt) {
+                if (RENDER3D::EDITORVIEW::PollPreviewCapture(
+                        outPath, outError)) {
+                    return outError.empty();
+                }
+                std::this_thread::sleep_for(
+                    std::chrono::milliseconds(100));
+            }
+            outError = "截图超时：" + outPath;
+            return false;
+        }
+
         EDITOR::AI_ASSISTANT::AiRequestResult ExecuteAiSceneAction(
             DocumentSceneBase& scene,
-            std::string_view json) {
+            std::string_view json,
+            std::vector<AiSceneUndoRecord>& undoStack) {
             const std::string action =
                 EDITOR::AI_ASSISTANT::ExtractJsonField(json, "action");
             if (action != "procedural.create_primitive" &&
                 action != "scene.list_objects" &&
+                action != "scene.snapshot" &&
                 action != "scene.set_transform" &&
                 action != "scene.create_object" &&
                 action != "asset.list_models" &&
@@ -85,7 +138,8 @@ namespace HIKARI {
             const auto floatField =
                 [&json](const char* name, float fallback) {
                     const std::string value =
-                        EDITOR::AI_ASSISTANT::ExtractJsonField(json, name);
+                        EDITOR::AI_ASSISTANT::ExtractJsonNumberField(
+                            json, name);
                     if (value.empty()) {
                         return fallback;
                     }
@@ -100,31 +154,13 @@ namespace HIKARI {
                     std::string_view::npos;
             };
 
-            if (action == "scene.list_objects") {
+            if (action == "scene.list_objects" ||
+                action == "scene.snapshot") {
                 result.ok = true;
-                result.message = "场景对象：";
-                const auto& objects = scene.GetWorld().GetObjects();
-                size_t count = 0u;
-                for (const auto& object : objects) {
-                    if (count >= 200u) {
-                        result.details.push_back("...（已截断）");
-                        break;
-                    }
-                    const MATH::Vec3& position =
-                        object->GetTransform().position;
-                    const MATH::Vec3& scale =
-                        object->GetTransform().scale;
-                    char line[192];
-                    std::snprintf(
-                        line, sizeof(line),
-                        "%s | pos(%.2f, %.2f, %.2f) | "
-                        "scale(%.2f, %.2f, %.2f)",
-                        object->GetName().c_str(),
-                        position.x, position.y, position.z,
-                        scale.x, scale.y, scale.z);
-                    result.details.push_back(line);
-                    ++count;
-                }
+                result.message = action == "scene.snapshot"
+                    ? "场景快照："
+                    : "场景对象：";
+                SummarizeSceneObjects(scene, result.details, 200u);
                 if (result.details.empty()) {
                     result.message = "场景为空";
                 }
@@ -149,6 +185,10 @@ namespace HIKARI {
                     result.message = "找不到物体：" + name;
                     return result;
                 }
+                const MATH::Vec3 previousPosition =
+                    target->GetTransform().position;
+                const MATH::Vec3 previousScale =
+                    target->GetTransform().scale;
                 bool changed = false;
                 if (hasField("positionX") || hasField("positionY") ||
                     hasField("positionZ")) {
@@ -192,6 +232,13 @@ namespace HIKARI {
                                 kDegreesToRadians));
                 }
                 result.ok = true;
+                if (changed) {
+                    undoStack.push_back(
+                        { AiSceneUndoRecord::Kind::Transform,
+                          name, previousPosition, previousScale });
+                    SummarizeSceneObjects(
+                        scene, result.details, 8u);
+                }
                 result.message = changed
                     ? "已更新物体 " + name
                     : "物体 " + name +
@@ -253,6 +300,10 @@ namespace HIKARI {
                     return result;
                 }
                 result.ok = true;
+                undoStack.push_back(
+                    { AiSceneUndoRecord::Kind::Created,
+                      request.name, {}, {} });
+                SummarizeSceneObjects(scene, result.details, 8u);
                 result.message = "已创建模型 " + request.name +
                     "（" + descriptor->sourcePath + "）";
                 return result;
@@ -277,32 +328,13 @@ namespace HIKARI {
             if (action == "capture.preview") {
                 std::string path =
                     EDITOR::AI_ASSISTANT::ExtractJsonField(json, "path");
-                if (path.empty()) {
-                    const char* temp = std::getenv("TEMP");
-                    path = std::string(temp != nullptr ? temp : ".") +
-                        "/hikari-ai-preview.bmp";
+                std::string captureError;
+                if (CapturePreviewToFile(path, captureError)) {
+                    result.ok = true;
+                    result.message = "预览截图已保存：" + path;
+                } else {
+                    result.message = "截图失败：" + captureError;
                 }
-                RENDER3D::EDITORVIEW::RequestPreviewCapture(
-                    EDITOR::kModelMaterialPreviewRenderViewId,
-                    path);
-                for (int attempt = 0; attempt < 50; ++attempt) {
-                    std::string captureError;
-                    if (RENDER3D::EDITORVIEW::PollPreviewCapture(
-                            path, captureError)) {
-                        if (!captureError.empty()) {
-                            result.message =
-                                "截图失败：" + captureError;
-                        } else {
-                            result.ok = true;
-                            result.message =
-                                "预览截图已保存：" + path;
-                        }
-                        return result;
-                    }
-                    std::this_thread::sleep_for(
-                        std::chrono::milliseconds(100));
-                }
-                result.message = "截图超时：" + path;
                 return result;
             }
 
@@ -358,6 +390,10 @@ namespace HIKARI {
                 request.object.position.x,
                 request.object.position.y,
                 request.object.position.z);
+            undoStack.push_back(
+                { AiSceneUndoRecord::Kind::Created,
+                  request.object.name, {}, {} });
+            SummarizeSceneObjects(scene, result.details, 8u);
             result.ok = true;
             result.message =
                 "已创建 " + request.object.name + " " +
@@ -946,6 +982,30 @@ namespace HIKARI {
             validationLabPanel_.Draw(context_, context_.windows.runtime.showValidationLab);
         }
         if (context_.windows.runtime.showAiAssistant) {
+            aiAssistantPanel_.SetContextCallback([this, &scene]() {
+                std::string context =
+                    "scene objects: " +
+                    std::to_string(
+                        scene.GetWorld().GetObjects().size()) +
+                    " (";
+                size_t shown = 0u;
+                for (const auto& object :
+                     scene.GetWorld().GetObjects()) {
+                    if (shown >= 8u) {
+                        context += "...";
+                        break;
+                    }
+                    if (shown > 0u) {
+                        context += ", ";
+                    }
+                    context += object->GetName();
+                    ++shown;
+                }
+                context += ")\n" +
+                    modelMaterialWorkspaceController_
+                        .GetAiMaterialStatus();
+                return context;
+            });
             aiAssistantPanel_.SetSceneActionCallback(
                 [this, &scene](std::string_view json) {
                     const std::string action =
@@ -962,7 +1022,7 @@ namespace HIKARI {
                         }
                         float value = 0.0f;
                         const std::string valueText =
-                            EDITOR::AI_ASSISTANT::ExtractJsonField(
+                            EDITOR::AI_ASSISTANT::ExtractJsonNumberField(
                                 json, "value");
                         if (!valueText.empty()) {
                             try {
@@ -978,12 +1038,85 @@ namespace HIKARI {
                                     scene, parameter, value, message)) {
                             result.ok = true;
                             result.message = message;
+                            aiUndoStack_.push_back(
+                                { AiSceneUndoRecord::Kind::MaterialEdit,
+                                  {}, {}, {} });
+                            std::string capturePath;
+                            std::string captureError;
+                            if (CapturePreviewToFile(
+                                    capturePath, captureError)) {
+                                result.message +=
+                                    " | 截图已保存：" + capturePath;
+                            } else {
+                                result.message +=
+                                    " | 截图失败：" + captureError;
+                            }
                         } else {
                             result.message = message;
                         }
                         return result;
                     }
-                    return ExecuteAiSceneAction(scene, json);
+                    if (action == "action.undo_last") {
+                        EDITOR::AI_ASSISTANT::AiRequestResult result{};
+                        if (aiUndoStack_.empty()) {
+                            result.message = "没有可撤销的 AI 操作";
+                            return result;
+                        }
+                        const AiSceneUndoRecord record =
+                            aiUndoStack_.back();
+                        aiUndoStack_.pop_back();
+                        if (record.kind ==
+                            AiSceneUndoRecord::Kind::MaterialEdit) {
+                            std::string undoMessage;
+                            if (modelMaterialWorkspaceController_.Undo(
+                                    scene, undoMessage)) {
+                                result.ok = true;
+                                result.message =
+                                    "已撤销上一次材质编辑：" +
+                                    undoMessage;
+                            } else {
+                                result.message =
+                                    "材质撤销失败：" + undoMessage;
+                            }
+                            return result;
+                        }
+                        GameObject* target = nullptr;
+                        for (const auto& object :
+                             scene.GetWorld().GetObjects()) {
+                            if (object->GetName() == record.name) {
+                                target = object.get();
+                                break;
+                            }
+                        }
+                        if (record.kind ==
+                            AiSceneUndoRecord::Kind::Created) {
+                            if (target != nullptr) {
+                                scene.GetWorld().DestroyObject(target);
+                                result.ok = true;
+                                result.message =
+                                    "已删除创建的物体：" + record.name;
+                            } else {
+                                result.message =
+                                    "找不到要删除的物体：" + record.name;
+                            }
+                        } else {
+                            if (target != nullptr) {
+                                (void)target->SetLocalPosition(
+                                    record.position);
+                                (void)target->SetLocalScale(
+                                    record.scale);
+                                result.ok = true;
+                                result.message =
+                                    "已恢复物体变换：" + record.name;
+                            } else {
+                                result.message =
+                                    "找不到要恢复的物体：" + record.name;
+                            }
+                        }
+                        return result;
+                    }
+                    return ExecuteAiSceneAction(
+                        scene, json, aiUndoStack_);
                 });
             aiAssistantPanel_.Draw(context_.windows.runtime.showAiAssistant);
         }
