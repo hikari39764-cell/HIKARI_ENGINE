@@ -1,4 +1,5 @@
 #include "Render3D/Material/Program/HIKARI_MaterialProgramRegistry.h"
+#include "Render3D/Material/Program/HIKARI_MaterialExpressionProgram.h"
 
 #include <algorithm>
 #include <limits>
@@ -104,7 +105,7 @@ namespace HIKARI::RENDER3D::MATERIAL {
                         instruction.outputRegisters.size() ||
                     static_cast<uint32_t>(instruction.opcode) >
                         static_cast<uint32_t>(
-                            MaterialProgramOpcode::CorneaHighlight)) {
+                            MaterialProgramOpcode::FilterWidth)) {
                     diagnostics.push_back(MakeRegistryDiagnostic(
                         MaterialCompileDiagnosticSeverity::Error,
                         "Material.RuntimeInstructionShapeInvalid",
@@ -164,6 +165,16 @@ namespace HIKARI::RENDER3D::MATERIAL {
                     MaterialCompileDiagnosticSeverity::Error,
                     "Material.RuntimeSurfaceOutputInvalid",
                     "Surface MaterialProgram requires a compiled SSA output register."));
+                valid = false;
+            }
+            MaterialExpressionRuntimeProgram expression{};
+            std::string expressionError{};
+            if (!BuildMaterialExpressionRuntimeProgram(
+                    program, expression, expressionError)) {
+                diagnostics.push_back(MakeRegistryDiagnostic(
+                    MaterialCompileDiagnosticSeverity::Error,
+                    "Material.RuntimeExpressionLimitExceeded",
+                    expressionError));
                 valid = false;
             }
             return valid;

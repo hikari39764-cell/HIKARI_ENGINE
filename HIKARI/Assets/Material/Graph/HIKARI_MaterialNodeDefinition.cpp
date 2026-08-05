@@ -38,6 +38,9 @@ constexpr std::array kTextureSampleOutputs{
     Fixed("A", MaterialValueType::Float1),
     Fixed("Alpha", MaterialValueType::Float1),
 };
+constexpr std::array kTextureSampleInputs{
+    Fixed("UV", MaterialValueType::Float2),
+};
 constexpr std::array kBinaryInputs{Dynamic("A", true), Dynamic("B", true)};
 constexpr std::array kDynamicResult{Dynamic("Result", false)};
 constexpr std::array kLerpInputs{
@@ -65,6 +68,7 @@ constexpr std::array kNormalUnpackOutputs{
 };
 constexpr std::array kPbrSurfaceInputs{
     Fixed("BaseColor", MaterialValueType::Float4),
+    Fixed("Opacity", MaterialValueType::Float1),
     Fixed("Normal", MaterialValueType::Float3),
     Fixed("Metallic", MaterialValueType::Float1),
     Fixed("Roughness", MaterialValueType::Float1),
@@ -72,6 +76,7 @@ constexpr std::array kPbrSurfaceInputs{
     Fixed("Emissive", MaterialValueType::Float3),
     Fixed("Specular", MaterialValueType::Float1),
     Fixed("SpecularColor", MaterialValueType::Float3),
+    Fixed("AlphaClipThreshold", MaterialValueType::Float1),
     Fixed("DiffuseResponse", MaterialValueType::DiffuseResponse),
     Fixed("SpecularResponse", MaterialValueType::SpecularResponse),
     Fixed("Eye", MaterialValueType::Float3),
@@ -187,6 +192,75 @@ constexpr std::array kHairShadowInputs{
 };
 constexpr std::array kFunctionInputs{Dynamic("Input", false)};
 constexpr std::array kFunctionOutputs{Dynamic("Result", false)};
+constexpr std::array kStepInputs{
+    Dynamic("Edge", true), Dynamic("Value", true),
+};
+constexpr std::array kSmoothStepInputs{
+    Dynamic("Edge0", true), Dynamic("Edge1", true),
+    Dynamic("Value", true),
+};
+constexpr std::array kRemapInputs{
+    Dynamic("Value", true), Dynamic("InMin", true),
+    Dynamic("InMax", true), Dynamic("OutMin", true),
+    Dynamic("OutMax", true),
+};
+constexpr std::array kCrossInputs{
+    Fixed("A", MaterialValueType::Float3),
+    Fixed("B", MaterialValueType::Float3),
+};
+constexpr std::array kLengthInputs{Dynamic("Value", true)};
+constexpr std::array kDistanceInputs{
+    Dynamic("A", true), Dynamic("B", true),
+};
+constexpr std::array kReflectInputs{
+    Fixed("Incident", MaterialValueType::Float3),
+    Fixed("Normal", MaterialValueType::Float3),
+};
+constexpr std::array kMakeFloat2Inputs{
+    Fixed("X", MaterialValueType::Float1),
+    Fixed("Y", MaterialValueType::Float1),
+};
+constexpr std::array kMakeFloat3Inputs{
+    Fixed("X", MaterialValueType::Float1),
+    Fixed("Y", MaterialValueType::Float1),
+    Fixed("Z", MaterialValueType::Float1),
+};
+constexpr std::array kMakeFloat4Inputs{
+    Fixed("X", MaterialValueType::Float1),
+    Fixed("Y", MaterialValueType::Float1),
+    Fixed("Z", MaterialValueType::Float1),
+    Fixed("W", MaterialValueType::Float1),
+};
+constexpr std::array kSplitInputs{Dynamic("Value", true)};
+constexpr std::array kSplitOutputs{
+    Fixed("X", MaterialValueType::Float1),
+    Fixed("Y", MaterialValueType::Float1),
+    Fixed("Z", MaterialValueType::Float1),
+    Fixed("W", MaterialValueType::Float1),
+};
+constexpr std::array kSelectInputs{
+    Dynamic("False", true), Dynamic("True", true),
+    Fixed("Condition", MaterialValueType::Float1),
+};
+constexpr std::array kTextureCoordinateOutputs{
+    Fixed("UV0", MaterialValueType::Float2),
+    Fixed("UV1", MaterialValueType::Float2),
+};
+constexpr std::array kTimeOutputs{
+    Fixed("Time", MaterialValueType::Float1),
+    Fixed("DeltaTime", MaterialValueType::Float1),
+    Fixed("GameDeltaTime", MaterialValueType::Float1),
+    Fixed("FrameIndex", MaterialValueType::Float1),
+};
+constexpr std::array kFloat2Output{
+    Fixed("Value", MaterialValueType::Float2),
+};
+constexpr std::array kFloat3Output{
+    Fixed("Value", MaterialValueType::Float3),
+};
+constexpr std::array kFloat4Output{
+    Fixed("Value", MaterialValueType::Float4),
+};
 
 constexpr std::array kDefinitions{
     MaterialNodeDefinition{MaterialNodeKind::Constant, "Constant",
@@ -194,7 +268,8 @@ constexpr std::array kDefinitions{
     MaterialNodeDefinition{MaterialNodeKind::Parameter, "Parameter",
         MaterialValueType::Float1, NodeClass::Input, true, {}, kParameterOutputs},
     MaterialNodeDefinition{MaterialNodeKind::TextureSample, "TextureSample",
-        MaterialValueType::Float4, NodeClass::Input, true, {}, kTextureSampleOutputs},
+        MaterialValueType::Float4, NodeClass::Input, true,
+        kTextureSampleInputs, kTextureSampleOutputs},
     MaterialNodeDefinition{MaterialNodeKind::Add, "Add",
         MaterialValueType::Float1, NodeClass::Math, true, kBinaryInputs, kDynamicResult, true},
     MaterialNodeDefinition{MaterialNodeKind::Multiply, "Multiply",
@@ -266,10 +341,114 @@ constexpr std::array kDefinitions{
     MaterialNodeDefinition{MaterialNodeKind::CorneaHighlight, "CorneaHighlight",
         MaterialValueType::Float3, NodeClass::Shading, true, {}, kColorOutput,
         false, OutputRoute::Eye},
+    MaterialNodeDefinition{MaterialNodeKind::Subtract, "Subtract",
+        MaterialValueType::Float1, NodeClass::Math, true,
+        kBinaryInputs, kDynamicResult, true},
+    MaterialNodeDefinition{MaterialNodeKind::Divide, "Divide",
+        MaterialValueType::Float1, NodeClass::Math, true,
+        kBinaryInputs, kDynamicResult, true},
+    MaterialNodeDefinition{MaterialNodeKind::Minimum, "Minimum",
+        MaterialValueType::Float1, NodeClass::Math, true,
+        kBinaryInputs, kDynamicResult, true},
+    MaterialNodeDefinition{MaterialNodeKind::Maximum, "Maximum",
+        MaterialValueType::Float1, NodeClass::Math, true,
+        kBinaryInputs, kDynamicResult, true},
+    MaterialNodeDefinition{MaterialNodeKind::Absolute, "Absolute",
+        MaterialValueType::Float1, NodeClass::Math, true,
+        kUnaryInputs, kDynamicResult, true},
+    MaterialNodeDefinition{MaterialNodeKind::Negate, "Negate",
+        MaterialValueType::Float1, NodeClass::Math, true,
+        kUnaryInputs, kDynamicResult, true},
+    MaterialNodeDefinition{MaterialNodeKind::Floor, "Floor",
+        MaterialValueType::Float1, NodeClass::Math, true,
+        kUnaryInputs, kDynamicResult, true},
+    MaterialNodeDefinition{MaterialNodeKind::Ceil, "Ceil",
+        MaterialValueType::Float1, NodeClass::Math, true,
+        kUnaryInputs, kDynamicResult, true},
+    MaterialNodeDefinition{MaterialNodeKind::Fraction, "Fraction",
+        MaterialValueType::Float1, NodeClass::Math, true,
+        kUnaryInputs, kDynamicResult, true},
+    MaterialNodeDefinition{MaterialNodeKind::Modulo, "Modulo",
+        MaterialValueType::Float1, NodeClass::Math, true,
+        kBinaryInputs, kDynamicResult, true},
+    MaterialNodeDefinition{MaterialNodeKind::SquareRoot, "SquareRoot",
+        MaterialValueType::Float1, NodeClass::Math, true,
+        kUnaryInputs, kDynamicResult, true},
+    MaterialNodeDefinition{MaterialNodeKind::Sine, "Sine",
+        MaterialValueType::Float1, NodeClass::Math, true,
+        kUnaryInputs, kDynamicResult, true},
+    MaterialNodeDefinition{MaterialNodeKind::Cosine, "Cosine",
+        MaterialValueType::Float1, NodeClass::Math, true,
+        kUnaryInputs, kDynamicResult, true},
+    MaterialNodeDefinition{MaterialNodeKind::Step, "Step",
+        MaterialValueType::Float1, NodeClass::Math, true,
+        kStepInputs, kDynamicResult, true},
+    MaterialNodeDefinition{MaterialNodeKind::SmoothStep, "SmoothStep",
+        MaterialValueType::Float1, NodeClass::Math, true,
+        kSmoothStepInputs, kDynamicResult, true},
+    MaterialNodeDefinition{MaterialNodeKind::Remap, "Remap",
+        MaterialValueType::Float1, NodeClass::Math, true,
+        kRemapInputs, kDynamicResult, true},
+    MaterialNodeDefinition{MaterialNodeKind::Cross, "Cross",
+        MaterialValueType::Float3, NodeClass::Math, true,
+        kCrossInputs, kFloat3Output, true},
+    MaterialNodeDefinition{MaterialNodeKind::Length, "Length",
+        MaterialValueType::Float1, NodeClass::Math, true,
+        kLengthInputs, kFloatResult, true},
+    MaterialNodeDefinition{MaterialNodeKind::Normalize, "Normalize",
+        MaterialValueType::Float3, NodeClass::Math, true,
+        kUnaryInputs, kDynamicResult, true},
+    MaterialNodeDefinition{MaterialNodeKind::Distance, "Distance",
+        MaterialValueType::Float1, NodeClass::Math, true,
+        kDistanceInputs, kFloatResult, true},
+    MaterialNodeDefinition{MaterialNodeKind::Reflect, "Reflect",
+        MaterialValueType::Float3, NodeClass::Math, true,
+        kReflectInputs, kFloat3Output, true},
+    MaterialNodeDefinition{MaterialNodeKind::MakeFloat2, "MakeFloat2",
+        MaterialValueType::Float2, NodeClass::Math, true,
+        kMakeFloat2Inputs, kFloat2Output, true},
+    MaterialNodeDefinition{MaterialNodeKind::MakeFloat3, "MakeFloat3",
+        MaterialValueType::Float3, NodeClass::Math, true,
+        kMakeFloat3Inputs, kFloat3Output, true},
+    MaterialNodeDefinition{MaterialNodeKind::MakeFloat4, "MakeFloat4",
+        MaterialValueType::Float4, NodeClass::Math, true,
+        kMakeFloat4Inputs, kFloat4Output, true},
+    MaterialNodeDefinition{MaterialNodeKind::Split, "Split",
+        MaterialValueType::Float4, NodeClass::Math, true,
+        kSplitInputs, kSplitOutputs, true},
+    MaterialNodeDefinition{MaterialNodeKind::Select, "Select",
+        MaterialValueType::Float1, NodeClass::Math, true,
+        kSelectInputs, kDynamicResult, true},
+    MaterialNodeDefinition{MaterialNodeKind::TextureCoordinate, "TextureCoordinate",
+        MaterialValueType::Float2, NodeClass::Input, true,
+        {}, kTextureCoordinateOutputs},
+    MaterialNodeDefinition{MaterialNodeKind::Time, "Time",
+        MaterialValueType::Float1, NodeClass::Input, true, {}, kTimeOutputs},
+    MaterialNodeDefinition{MaterialNodeKind::WorldPosition, "WorldPosition",
+        MaterialValueType::Float3, NodeClass::Input, true, {}, kFloat3Output},
+    MaterialNodeDefinition{MaterialNodeKind::WorldNormal, "WorldNormal",
+        MaterialValueType::Float3, NodeClass::Input, true, {}, kFloat3Output},
+    MaterialNodeDefinition{MaterialNodeKind::WorldTangent, "WorldTangent",
+        MaterialValueType::Float3, NodeClass::Input, true, {}, kFloat3Output},
+    MaterialNodeDefinition{MaterialNodeKind::ViewDirection, "ViewDirection",
+        MaterialValueType::Float3, NodeClass::Input, true, {}, kFloat3Output},
+    MaterialNodeDefinition{MaterialNodeKind::CameraPosition, "CameraPosition",
+        MaterialValueType::Float3, NodeClass::Input, true, {}, kFloat3Output},
+    MaterialNodeDefinition{MaterialNodeKind::ScreenPosition, "ScreenPosition",
+        MaterialValueType::Float4, NodeClass::Input, true, {}, kFloat4Output},
+    MaterialNodeDefinition{MaterialNodeKind::DerivativeX, "DerivativeX",
+        MaterialValueType::Float1, NodeClass::Math, true,
+        kUnaryInputs, kDynamicResult},
+    MaterialNodeDefinition{MaterialNodeKind::DerivativeY, "DerivativeY",
+        MaterialValueType::Float1, NodeClass::Math, true,
+        kUnaryInputs, kDynamicResult},
+    MaterialNodeDefinition{MaterialNodeKind::FilterWidth, "FilterWidth",
+        MaterialValueType::Float1, NodeClass::Math, true,
+        kUnaryInputs, kDynamicResult},
 };
 
 static_assert(kDefinitions.size() ==
-    static_cast<size_t>(MaterialNodeKind::CorneaHighlight) + 1u);
+    static_cast<size_t>(MaterialNodeKind::FilterWidth) + 1u);
 
 template <class Range>
 const MaterialNodePinDefinition* FindPin(

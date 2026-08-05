@@ -164,7 +164,8 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
             }
             MaterialProgramIR program{};
             const uint32_t storedVersion = node.value("version", 0u);
-            if (storedVersion != kMaterialProgramIrVersion) {
+            if (storedVersion != 3u &&
+                storedVersion != kMaterialProgramIrVersion) {
                 outError = "unsupported MaterialProgram IR version " +
                     std::to_string(storedVersion) +
                     "; recompile canonical Material v5 source";
@@ -280,7 +281,7 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
                     kInvalidMaterialProgramRegister);
                 const auto instructions = node.find("instructions");
                 if (instructions == node.end() || !instructions->is_array()) {
-                    outError = "compiled MaterialProgram v3 instructions must be an array";
+                    outError = "compiled MaterialProgram instructions must be an array";
                     return false;
                 }
                 for (const nlohmann::json& item : *instructions) {
@@ -288,8 +289,12 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
                     const uint32_t opcode = item.value(
                         "opcode",
                         (std::numeric_limits<uint32_t>::max)());
-                    if (opcode > static_cast<uint32_t>(
-                            MaterialProgramOpcode::CorneaHighlight) ||
+                    const uint32_t maximumOpcode = storedVersion == 3u
+                        ? static_cast<uint32_t>(
+                            MaterialProgramOpcode::CorneaHighlight)
+                        : static_cast<uint32_t>(
+                            MaterialProgramOpcode::FilterWidth);
+                    if (opcode > maximumOpcode ||
                         !TryParseMaterialValueType(
                             item.value("valueType", std::string{}),
                             instruction.valueType)) {

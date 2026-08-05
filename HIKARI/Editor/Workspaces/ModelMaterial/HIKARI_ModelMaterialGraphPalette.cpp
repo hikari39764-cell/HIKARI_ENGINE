@@ -79,7 +79,7 @@ void ModelMaterialWorkspaceController::DrawMaterialGraphNodePalette(
     for (const AssetChoice& choice : materialChoices_) {
       if (!choice.ready ||
           choice.materialKind != MaterialAssetKind::Function ||
-          choice.functionOutputs.size() != 1u) {
+          choice.functionOutputs.empty()) {
         continue;
       }
       foundFunction = true;

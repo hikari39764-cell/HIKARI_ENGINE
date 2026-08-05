@@ -93,7 +93,8 @@ float HikariEvaluateFaceSdf(
     float4 tangentWS,
     float3 characterRightWS,
     float3 characterForwardWS,
-    float analyticFallback)
+    float analyticFallback,
+    bool frontFace)
 {
     if ((materialData.instanceFlags & HIKARI_PROGRAM_FLAG_FACE_SDF) == 0u)
     {
@@ -150,6 +151,22 @@ float HikariEvaluateFaceSdf(
     {
         tangent = referenceRight;
         forward = referenceForward;
+    }
+    // The authored character basis can point away from the actual face
+    // front (for example models authored facing -Z). Correct the basis from
+    // the geometric surface normal only when the direction is clearly
+    // opposed, so silhouette texels keep a stable side selection.
+    if (dot(normal, forward) < -0.25f)
+    {
+        tangent = -tangent;
+        forward = -forward;
+    }
+    // Double-sided back faces mirror the face basis so the SDF answers the
+    // same light that the flipped shading normal sees.
+    if (!frontFace)
+    {
+        tangent = -tangent;
+        forward = -forward;
     }
     tangent = normalize(tangent);
     forward -= tangent * dot(tangent, forward);
@@ -290,7 +307,8 @@ HikariStylizedDirectLobes HikariEvaluateStylizedDirectLobes(
     float3 characterRightWS,
     float3 characterForwardWS,
     float2 uv,
-    float4 mask)
+    float4 mask,
+    bool frontFace)
 {
     const HikariStylizedDirectLobes pbr = HikariEvaluatePbrDirectLobes(
         pbrContext,
@@ -322,11 +340,12 @@ HikariStylizedDirectLobes HikariEvaluateStylizedDirectLobes(
             materialData,
             uv,
             lightDirection,
-            surface.normalWS,
+            surface.geometricNormalWS,
             tangentWS,
             characterRightWS,
             characterForwardWS,
-            ndotl);
+            ndotl,
+            frontFace);
         const float3 rampColor = HikariResolveRampColor(
             materialData,
             uv,
@@ -803,6 +822,7 @@ HikariMaterialLightingResponse HikariEvaluateStylizedMaterial(
     float3 characterRightWS,
     float3 characterForwardWS,
     float2 uv,
+    bool frontFace,
     float3 directionalLight,
     float3 directionalRadiance,
     float shadowFactor,
@@ -827,7 +847,8 @@ HikariMaterialLightingResponse HikariEvaluateStylizedMaterial(
             characterRightWS,
             characterForwardWS,
             uv,
-            mask);
+            mask,
+            frontFace);
     response.directDiffuse = directional.diffuse * shadowFactor;
     response.directSpecular = directional.specular * shadowFactor;
 
@@ -858,7 +879,8 @@ HikariMaterialLightingResponse HikariEvaluateStylizedMaterial(
                 characterRightWS,
                 characterForwardWS,
                 uv,
-                mask);
+                mask,
+                frontFace);
         response.directDiffuse += local.diffuse;
         response.directSpecular += local.specular;
     }

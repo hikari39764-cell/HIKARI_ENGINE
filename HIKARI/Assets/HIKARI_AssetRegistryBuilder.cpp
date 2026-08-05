@@ -62,6 +62,8 @@ namespace HIKARI {
                         hmatPath,
                         outData,
                         outCompileResult,
+                        ASSETS::MATERIAL::MakeMaterialCompileOptions(
+                            assetDatabase),
                         readMessage)) {
                     HIKARI_LOG_INFO("[AssetRegistryBuilder][Material] loaded HMAT: " + hmatArtifact);
                     return true;

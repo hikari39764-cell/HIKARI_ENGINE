@@ -264,6 +264,10 @@ namespace HIKARI {
                 return std::nullopt;
             }
             if (node->kind == MaterialNodeKind::TextureSample) {
+                if (FindInputEdge(graph, node->id, "UV") != nullptr) {
+                    visiting.erase(std::string(nodeId));
+                    return std::nullopt;
+                }
                 const MaterialGraphResourceData* resource =
                     FindResource(graph, node->referenceId);
                 visiting.erase(std::string(nodeId));

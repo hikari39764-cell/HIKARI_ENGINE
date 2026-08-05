@@ -107,7 +107,8 @@ float2 HikariResolveEyeLayerUv(
 // that RGB through ordinary source-over with a non-zero black alpha darkens
 // the iris instead of layering the highlight. Eye Layer keeps the standard
 // transparent PSO contract and derives a bounded coverage mask from highlight
-// luminance; it does not turn the whole material into additive blending.
+// luminance only for fractional-alpha fringe; it does not turn the whole
+// material into additive blending.
 float4 HikariResolveEyeLayerSample(
     HikariMeshMaterialData materialData,
     float4 sampleColor)
@@ -131,10 +132,16 @@ float4 HikariResolveEyeLayerSample(
         max(sampleColor.g, sampleColor.b));
     const float threshold = saturate(layer.z);
     const float softness = max(abs(layer.w), 0.001f);
-    const float inferredCoverage = smoothstep(
-        threshold,
-        threshold + softness,
-        highlightLuminance);
+    const float authoredCoverage = saturate(sampleColor.a);
+    // Fully opaque texels are authored artwork (for example a VRoid iris)
+    // and must keep their coverage; only fractional-alpha texels need the
+    // black-background luminance gate so dark fringe never greys the iris.
+    const float inferredCoverage = authoredCoverage >= 0.999f
+        ? 1.0f
+        : smoothstep(
+            threshold,
+            threshold + softness,
+            highlightLuminance);
     const float4 appearance = HikariLoadMaterialProgramParameter(
         materialData,
         24u,
@@ -142,14 +149,19 @@ float4 HikariResolveEyeLayerSample(
     // Eye Highlight is a positive-radiance layer. Authored alpha still shapes
     // the art, while the luminance gate prevents dark fractional-alpha texels
     // from covering and greying the iris.
-    const float authoredCoverage = saturate(sampleColor.a);
     const float coverage = authoredCoverage * inferredCoverage;
     const float highlightSignal = max(
         highlightLuminance - threshold,
         0.001f);
-    sampleColor.rgb = saturate(
-        (sampleColor.rgb - threshold.xxx) /
-        highlightSignal) * max(appearance.y, 0.0f);
+    // Only bright texels are treated as highlight radiance. Dark artwork
+    // stays in straight color so the transparent output premultiplies it
+    // exactly once below.
+    if (highlightLuminance > threshold)
+    {
+        sampleColor.rgb = saturate(
+            (sampleColor.rgb - threshold.xxx) /
+            highlightSignal) * max(appearance.y, 0.0f);
+    }
     sampleColor.a = saturate(layer.y) * coverage;
     return sampleColor;
 }

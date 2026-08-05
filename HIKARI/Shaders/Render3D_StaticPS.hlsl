@@ -1,6 +1,7 @@
 #include "Include/Forward/HIKARI_ForwardCommon.hlsli"
 #include "Include/Surface/HIKARI_SurfaceShadingNormal.hlsli"
 #include "Include/Material/HIKARI_MaterialProgramData.hlsli"
+#include "Include/Material/HIKARI_MaterialExpression.hlsli"
 #include "Include/Material/HIKARI_StylizedMaterial.hlsli"
 
 #if HIKARI_FORWARD_ENABLE_MATERIAL_FX
@@ -24,6 +25,7 @@ struct PSInput
     nointerpolation uint debugSurfaceId : TEXCOORD6;
     float3 characterRightWS : TEXCOORD8;
     float3 characterForwardWS : TEXCOORD9;
+    bool isFrontFace : SV_IsFrontFace;
 #if defined(HIKARI_FORWARD_MESHLET_SURFACE_FEATURES) && HIKARI_FORWARD_MESHLET_SURFACE_FEATURES
     nointerpolation uint surfaceFeatureFlags : TEXCOORD7;
 #endif
@@ -72,6 +74,14 @@ float4 main(PSInput input) : SV_TARGET
 #endif
 
     HikariMeshMaterialData materialData = HikariGetMeshMaterialData(input.materialDataIndex);
+    const bool doubleSidedBackFace =
+        (materialData.instanceFlags & HIKARI_PROGRAM_FLAG_DOUBLE_SIDED) != 0u &&
+        !input.isFrontFace;
+    const float3 surfaceGeometricNormal = normalize(input.normalWS);
+    const float3 geometricNormal =
+        doubleSidedBackFace
+            ? -surfaceGeometricNormal
+            : surfaceGeometricNormal;
 #if HIKARI_FORWARD_COST_MODE_STATIC != 255
     static const uint forwardCostMode = HIKARI_FORWARD_COST_MODE_STATIC;
 #else
@@ -89,6 +99,29 @@ float4 main(PSInput input) : SV_TARGET
     const float3 v = toCamera / max(distanceToCamera, 0.00001f);
     const float3 l = normalize(-gDirectionalDir.xyz);
 
+    HikariMaterialExpressionResult materialExpression =
+        (HikariMaterialExpressionResult)0;
+    if (!neutralClay &&
+        materialData.materialProgramIndex !=
+            HIKARI_STANDARD_PBR_MATERIAL_PROGRAM)
+    {
+        HikariMaterialExpressionContext expressionContext;
+        expressionContext.uv0 = input.uv;
+        expressionContext.uv1 = input.uv1;
+        expressionContext.time = gTimeParams;
+        expressionContext.worldPosition = input.worldPosWS;
+        expressionContext.worldNormal = geometricNormal;
+        expressionContext.worldTangent = input.tangentWS;
+        expressionContext.viewDirection = v;
+        expressionContext.cameraPosition = gCameraPos.xyz;
+        expressionContext.screenPosition = float4(
+            input.position.xy * gScreenParams.zw,
+            input.position.z,
+            input.position.w);
+        materialExpression = HikariEvaluateMaterialExpression(
+            materialData, expressionContext, gLinearWrap);
+    }
+
     float4 albedo = neutralClay
         ? float4(0.72f, 0.74f, 0.77f, 1.0f)
         : materialData.baseColor;
@@ -100,13 +133,13 @@ float4 main(PSInput input) : SV_TARGET
         baseColorUv = HikariResolveEyeLayerUv(
             materialData,
             baseColorUv,
-            normalize(input.normalWS),
+            geometricNormal,
             input.tangentWS,
             v);
         baseColorUv = HikariResolveCorneaHighlightUv(
             materialData,
             baseColorUv,
-            normalize(input.normalWS),
+            geometricNormal,
             input.tangentWS,
             v,
             l);
@@ -122,7 +155,7 @@ float4 main(PSInput input) : SV_TARGET
             materialData,
             baseColorSample,
             eyeSurfaceUv,
-            normalize(input.normalWS),
+            geometricNormal,
             input.tangentWS,
             v,
             l,
@@ -136,9 +169,24 @@ float4 main(PSInput input) : SV_TARGET
         }
         albedo *= baseColorSample;
     }
+    if ((materialExpression.outputMask &
+         HIKARI_EXPRESSION_OUTPUT_BASE_COLOR) != 0u)
+    {
+        albedo = materialExpression.baseColor;
+    }
+    if ((materialExpression.outputMask &
+         HIKARI_EXPRESSION_OUTPUT_OPACITY) != 0u)
+    {
+        albedo.a = saturate(materialExpression.opacity);
+    }
+    const float alphaClipThreshold =
+        (materialExpression.outputMask &
+         HIKARI_EXPRESSION_OUTPUT_ALPHA_CLIP) != 0u
+        ? saturate(materialExpression.alphaClipThreshold)
+        : materialData.pbrParams.w;
     if (!neutralClay &&
         (materialData.materialFlags & MATERIAL_ALPHA_MASK) != 0 &&
-        albedo.a < materialData.pbrParams.w)
+        albedo.a < alphaClipThreshold)
     {
         discard;
     }
@@ -171,18 +219,31 @@ float4 main(PSInput input) : SV_TARGET
         return geometryDebugColor;
     }
 
-    float3 geometricNormal = normalize(input.normalWS);
     float3 n = neutralClay
         ? geometricNormal
         : costNoNormalMap
         ? geometricNormal
         : HikariResolveSurfaceShadingNormal(
             materialData,
-            input.normalWS,
+            geometricNormal,
             input.tangentWS,
             input.uv,
             input.uv1,
             gLinearWrap);
+    if ((materialExpression.outputMask &
+         HIKARI_EXPRESSION_OUTPUT_NORMAL) != 0u)
+    {
+        const float normalLengthSquared = dot(
+            materialExpression.normalTS,
+            materialExpression.normalTS);
+        const float3 expressionNormal = normalLengthSquared > 1.0e-10f
+            ? materialExpression.normalTS * rsqrt(normalLengthSquared)
+            : float3(0.0f, 0.0f, 1.0f);
+        n = HikariTransformTangentNormalToWorld(
+            expressionNormal,
+            geometricNormal,
+            input.tangentWS);
+    }
     if (gDebugView == 1)
     {
         return float4(normalize(n) * 0.5f + 0.5f, albedo.a);
@@ -273,6 +334,31 @@ float4 main(PSInput input) : SV_TARGET
         ResolveSpecularInputs(materialData, input.uv, input.uv1, specularColor, specularFactor);
         ApplyPbrMaterialCompatibility(materialData, metallic, roughness, specularColor, specularFactor);
     }
+    if ((materialExpression.outputMask &
+         HIKARI_EXPRESSION_OUTPUT_METALLIC) != 0u)
+    {
+        metallic = saturate(materialExpression.metallic);
+    }
+    if ((materialExpression.outputMask &
+         HIKARI_EXPRESSION_OUTPUT_ROUGHNESS) != 0u)
+    {
+        roughness = clamp(materialExpression.roughness, 0.04f, 1.0f);
+    }
+    if ((materialExpression.outputMask &
+         HIKARI_EXPRESSION_OUTPUT_OCCLUSION) != 0u)
+    {
+        occlusion = saturate(materialExpression.occlusion);
+    }
+    if ((materialExpression.outputMask &
+         HIKARI_EXPRESSION_OUTPUT_SPECULAR) != 0u)
+    {
+        specularFactor = max(0.0f, materialExpression.specular);
+    }
+    if ((materialExpression.outputMask &
+         HIKARI_EXPRESSION_OUTPUT_SPECULAR_COLOR) != 0u)
+    {
+        specularColor = max(0.0f.xxx, materialExpression.specularColor);
+    }
     if (gDebugView == 5)
     {
         return float4(roughness.xxx, albedo.a);
@@ -307,6 +393,11 @@ float4 main(PSInput input) : SV_TARGET
         (materialData.materialFlags & MATERIAL_EMISSIVE) != 0)
         ? ResolveEmissive(materialData, input.uv, input.uv1)
         : 0.0f.xxx;
+    if ((materialExpression.outputMask &
+         HIKARI_EXPRESSION_OUTPUT_EMISSIVE) != 0u)
+    {
+        emissive = max(0.0f.xxx, materialExpression.emissive);
+    }
     if (gDebugView == 10)
     {
         return float4(emissive, albedo.a);
@@ -397,6 +488,7 @@ float4 main(PSInput input) : SV_TARGET
             surface.baseColor = albedo.rgb;
             surface.opacity = albedo.a;
             surface.normalWS = n;
+            surface.geometricNormalWS = surfaceGeometricNormal;
             surface.metallic = metallic;
             surface.viewWS = v;
             surface.roughness = roughness;
@@ -416,6 +508,7 @@ float4 main(PSInput input) : SV_TARGET
                     input.characterRightWS,
                     input.characterForwardWS,
                     input.uv,
+                    !doubleSidedBackFace,
                     l,
                     gDirectionalColor.rgb * gDirectionalIntensity,
                     shadowFactor,

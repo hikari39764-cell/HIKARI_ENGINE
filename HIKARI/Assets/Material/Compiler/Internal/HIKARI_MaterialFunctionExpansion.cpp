@@ -102,9 +102,9 @@ bool ValidateFunctionInterface(
             std::string(subjectId));
         return false;
     }
-    if (function.function.outputs.size() != 1u) {
+    if (function.function.outputs.empty()) {
         AddError(result, "Material.FunctionOutputArity",
-            "Material Function v1 requires exactly one declared output",
+            "Material Function requires at least one declared output",
             std::string(subjectId));
         return false;
     }
@@ -118,13 +118,16 @@ bool ValidateFunctionInterface(
             return false;
         }
     }
-    const MaterialGraphParameterData& output =
-        function.function.outputs.front();
-    if (!IsValidMaterialStableId(output.id)) {
-        AddError(result, "Material.InvalidFunctionInterface",
-            "Material Function output requires a stable ID",
-            std::string(subjectId));
-        return false;
+    std::unordered_set<std::string> outputIds{};
+    for (const MaterialGraphParameterData& output :
+         function.function.outputs) {
+        if (!IsValidMaterialStableId(output.id) ||
+            !outputIds.emplace(output.id).second) {
+            AddError(result, "Material.InvalidFunctionInterface",
+                "Material Function outputs require stable unique IDs",
+                std::string(subjectId));
+            return false;
+        }
     }
     return true;
 }
@@ -238,22 +241,25 @@ bool ExpandCall(
             call.id);
         return false;
     }
-    const MaterialGraphParameterData& functionOutput =
-        function.function.outputs.front();
     std::vector<std::string_view> outputPins =
         GetMaterialGraphNodeOutputPins(*functionOutputNode);
-    std::string outputPin{};
-    const auto namedOutput = std::find(
-        outputPins.begin(), outputPins.end(), functionOutput.id);
-    if (namedOutput != outputPins.end()) {
-        outputPin = functionOutput.id;
-    } else if (outputPins.size() == 1u) {
-        outputPin = std::string(outputPins.front());
-    } else {
-        AddError(result, "Material.FunctionOutputPinAmbiguous",
-            "Material Function output ID must name an output pin when the output node exposes more than one",
-            call.id);
-        return false;
+    std::unordered_map<std::string, std::string> outputPinById{};
+    for (const MaterialGraphParameterData& functionOutput :
+         function.function.outputs) {
+        const auto namedOutput = std::find(
+            outputPins.begin(), outputPins.end(), functionOutput.id);
+        if (namedOutput != outputPins.end()) {
+            outputPinById.emplace(functionOutput.id, functionOutput.id);
+        } else if (function.function.outputs.size() == 1u &&
+                   outputPins.size() == 1u) {
+            outputPinById.emplace(
+                functionOutput.id, std::string(outputPins.front()));
+        } else {
+            AddError(result, "Material.FunctionOutputPinAmbiguous",
+                "each Material Function output ID must name an output pin when the function exposes multiple outputs",
+                call.id);
+            return false;
+        }
     }
 
     std::unordered_map<std::string, const MaterialGraphParameterData*>
@@ -373,26 +379,29 @@ bool ExpandCall(
             call.id);
         return false;
     }
-    SourceEndpoint resolvedOutput = outputEndpoint->second;
-    if (resolvedOutput.pin.empty()) {
-        resolvedOutput.pin = outputPin;
-    }
     for (MaterialGraphEdgeData& edge : graph.edges) {
         if (edge.sourceNodeId != call.id) {
             continue;
         }
-        if (edge.sourcePin != functionOutput.id &&
-            edge.sourcePin != "Result") {
+        std::string outputId = edge.sourcePin;
+        if (function.function.outputs.size() == 1u &&
+            outputId == "Result") {
+            outputId = function.function.outputs.front().id;
+        }
+        const auto outputPin = outputPinById.find(outputId);
+        if (outputPin == outputPinById.end()) {
             AddError(result, "Material.UnknownFunctionOutput",
                 "Function call edge references an undeclared output pin",
                 edge.id);
             return false;
         }
-        edge.sourceNodeId = resolvedOutput.nodeId;
-        edge.sourcePin = resolvedOutput.pin;
+        edge.sourceNodeId = outputEndpoint->second.nodeId;
+        edge.sourcePin = outputEndpoint->second.pin.empty()
+            ? outputPin->second
+            : outputEndpoint->second.pin;
     }
     if (graph.outputNodeId == call.id) {
-        graph.outputNodeId = resolvedOutput.nodeId;
+        graph.outputNodeId = outputEndpoint->second.nodeId;
     }
 
     std::erase_if(graph.edges, [&call](const MaterialGraphEdgeData& edge) {

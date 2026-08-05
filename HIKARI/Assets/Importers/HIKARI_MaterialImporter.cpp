@@ -113,7 +113,7 @@ namespace HIKARI {
                 record.meta.importSettingsJson);
         if (!importPolicy.ShouldCookHmat()) {
             result.success = true;
-            result.message = "[MaterialImporter] Material v4 validated without cook: " +
+            result.message = "[MaterialImporter] Material v5 validated without cook: " +
                 record.sourcePath.generic_string();
             HIKARI_LOG_INFO("[MaterialImporter] validate only: " + record.sourcePath.generic_string());
             return result;
@@ -134,7 +134,7 @@ namespace HIKARI {
                 relativeOutput.generic_string()));
 
         result.success = true;
-        result.message = "[MaterialImporter] Material v4 cooked HMAT: " +
+        result.message = "[MaterialImporter] Material v5 cooked HMAT: " +
             relativeOutput.generic_string();
         HIKARI_LOG_INFO("[MaterialImporter] cooked HMAT: " + relativeOutput.generic_string());
         return result;

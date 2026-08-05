@@ -28,6 +28,12 @@ namespace HIKARI {
 
     bool IsValidMaterialStableId(std::string_view id) noexcept;
 
+    // Promotes generic numeric nodes to the widest connected input type.
+    // This keeps scalar splatting and vector math deterministic in both the
+    // Editor and compiler without storing duplicated socket-type state.
+    bool ReconcileMaterialGraphDynamicNodeTypes(
+        MaterialGraphData& graph);
+
     // Compatibility views over the canonical material node definitions.
     // Validation, lowering and Editor presentation consume one socket schema.
     std::vector<std::string_view> GetMaterialGraphNodeInputPins(

@@ -1,5 +1,7 @@
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
 
+#include "Assets/Material/Graph/HIKARI_MaterialGraphValidation.h"
+
 #include <string>
 #include <utility>
 
@@ -70,6 +72,15 @@ void ModelMaterialWorkspaceController::CancelMaterialGesture(
 void ModelMaterialWorkspaceController::CommitMaterialMutation(
     MaterialAssetData before, std::string label,
     DocumentSceneBase &scene) {
+  MaterialAssetData &material = authoringDocument_.EditMaterial();
+  MaterialGraphData *graph = material.kind == MaterialAssetKind::Material
+      ? &material.graph
+      : material.kind == MaterialAssetKind::Function
+          ? &material.function.graph
+          : nullptr;
+  if (graph != nullptr) {
+    (void)ReconcileMaterialGraphDynamicNodeTypes(*graph);
+  }
   if (authoringDocument_.CommitMaterial(std::move(before), std::move(label))) {
     (void)RefreshMaterialPreviews(scene, statusMessage_);
   }

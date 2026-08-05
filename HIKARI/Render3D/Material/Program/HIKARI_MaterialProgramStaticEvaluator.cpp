@@ -247,7 +247,11 @@ StaticRegisterFile EvaluateStaticValues(const MaterialProgramIR& program) {
 
 void ApplyConnectedMaterialResponseParameters(
     const MaterialProgramIR& program, std::span<MATH::Vec4> parameters) {
-  if (parameters.size() < kGpuMaterialProgramParameterSlotCount) {
+  // The response head is a fixed 30-slot block and the only region this
+  // evaluator writes; expression payloads follow after it. Guarding against
+  // the total 178-slot count silently disabled every authored NPR parameter
+  // when the runtime builder passed the 30-slot response block.
+  if (parameters.size() < kGpuMaterialProgramResponseSlotCount) {
     return;
   }
   for (const MaterialProgramParameterBinding &parameter :

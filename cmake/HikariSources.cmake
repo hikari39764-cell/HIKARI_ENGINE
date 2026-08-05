@@ -459,6 +459,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Material/HIKARI_GpuMaterialProgramBlockStore.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Material/Program/HIKARI_MaterialProgram.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Material/Program/HIKARI_MaterialProgramRegistry.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Material/Program/HIKARI_MaterialExpressionProgram.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Material/Program/HIKARI_MaterialProgramRuntimeDataBuilder.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Material/Program/HIKARI_MaterialProgramStaticEvaluator.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Lighting/HIKARI_LightingRuntimeLoader.cpp"

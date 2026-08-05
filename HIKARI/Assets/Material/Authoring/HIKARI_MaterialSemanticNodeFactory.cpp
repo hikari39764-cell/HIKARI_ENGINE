@@ -344,7 +344,45 @@ const MaterialNodeSemanticContract& GetMaterialNodeSemanticContract(
     case MaterialNodeKind::OneMinus:
     case MaterialNodeKind::Power:
     case MaterialNodeKind::Dot:
+    case MaterialNodeKind::Subtract:
+    case MaterialNodeKind::Divide:
+    case MaterialNodeKind::Minimum:
+    case MaterialNodeKind::Maximum:
+    case MaterialNodeKind::Absolute:
+    case MaterialNodeKind::Negate:
+    case MaterialNodeKind::Floor:
+    case MaterialNodeKind::Ceil:
+    case MaterialNodeKind::Fraction:
+    case MaterialNodeKind::Modulo:
+    case MaterialNodeKind::SquareRoot:
+    case MaterialNodeKind::Sine:
+    case MaterialNodeKind::Cosine:
+    case MaterialNodeKind::Step:
+    case MaterialNodeKind::SmoothStep:
+    case MaterialNodeKind::Remap:
+    case MaterialNodeKind::Cross:
+    case MaterialNodeKind::Length:
+    case MaterialNodeKind::Normalize:
+    case MaterialNodeKind::Distance:
+    case MaterialNodeKind::Reflect:
+    case MaterialNodeKind::MakeFloat2:
+    case MaterialNodeKind::MakeFloat3:
+    case MaterialNodeKind::MakeFloat4:
+    case MaterialNodeKind::Split:
+    case MaterialNodeKind::Select:
+    case MaterialNodeKind::DerivativeX:
+    case MaterialNodeKind::DerivativeY:
+    case MaterialNodeKind::FilterWidth:
         return kMath;
+    case MaterialNodeKind::TextureCoordinate:
+    case MaterialNodeKind::Time:
+    case MaterialNodeKind::WorldPosition:
+    case MaterialNodeKind::WorldNormal:
+    case MaterialNodeKind::WorldTangent:
+    case MaterialNodeKind::ViewDirection:
+    case MaterialNodeKind::CameraPosition:
+    case MaterialNodeKind::ScreenPosition:
+        return kConstant;
     case MaterialNodeKind::NormalUnpack: return kNormalUnpack;
     case MaterialNodeKind::PbrSurface: return kPbr;
     case MaterialNodeKind::RampDiffuse:

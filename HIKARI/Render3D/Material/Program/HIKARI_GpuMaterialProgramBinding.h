@@ -33,7 +33,12 @@ namespace HIKARI::RENDER3D::MATERIAL {
         data.parameterBlockOffset = location.parameterBlockOffset;
         data.resourceTableOffset = location.resourceTableOffset;
         data.parameterBlockCount = static_cast<uint32_t>(parameterCount);
-        data.instanceFlags = material.GetMaterialProgramInstanceFlags();
+        // HikariMaterialProgramUsesBlock requires this bit on every binding
+        // path that publishes a program block; without it the shader treats
+        // all response slots as absent and falls back to defaults.
+        data.instanceFlags =
+            material.GetMaterialProgramInstanceFlags() |
+            GPU_MATERIAL_PROGRAM_FLAGS::UsesProgramBlock;
         return true;
     }
 
@@ -54,7 +59,8 @@ namespace HIKARI::RENDER3D::MATERIAL {
             location.parameterBlockOffset,
             location.resourceTableOffset,
             static_cast<uint32_t>(parameterCount),
-            material.GetMaterialProgramInstanceFlags()
+            material.GetMaterialProgramInstanceFlags() |
+                GPU_MATERIAL_PROGRAM_FLAGS::UsesProgramBlock
         };
         return true;
     }

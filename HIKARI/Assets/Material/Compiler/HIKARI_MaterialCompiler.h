@@ -80,7 +80,7 @@ namespace HIKARI {
 
     // Native built-in compatibility IDs are serialized directly as cooked
     // opcodes. Source graphs use MaterialNodeTypeId; Function calls are
-    // expanded before lowering, so Runtime IR v3 remains compact and closed.
+    // expanded before lowering, so Runtime IR v4 remains compact and closed.
     using MaterialProgramOpcode = MaterialNodeKind;
 
     // Deterministic SSA-like instruction. The pin arrays preserve the bounded

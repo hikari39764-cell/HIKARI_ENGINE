@@ -257,6 +257,10 @@ namespace HIKARI {
                 return std::nullopt;
             }
             if (node->kind == MaterialNodeKind::TextureSample) {
+                if (FindInputEdge(graph, node->id, "UV") != nullptr) {
+                    visiting.erase(std::string(nodeId));
+                    return std::nullopt;
+                }
                 const auto resource = std::find_if(
                     graph.resources.begin(), graph.resources.end(),
                     [&](const MaterialGraphResourceData& value) {
@@ -584,21 +588,16 @@ namespace HIKARI {
                     }
                     continue;
                 }
-                if (IsStaticNumericExpression(graph, edge.sourceNodeId)) {
-                    continue;
-                }
-                const auto texture = FindTextureExpression(graph, edge);
-                if (!texture.has_value() ||
-                    !IsExpectedPbrTextureChannel(edge.targetPin, *texture)) {
-                    AddDiagnostic(
-                        diagnostics,
-                        MaterialGraphDiagnosticSeverity::Error,
-                        "Material.UnsupportedPbrExpression",
-                        "PBR input uses a texture/math expression that the fixed Mesh Shader material path cannot reproduce exactly",
-                        edge.id);
-                }
+                // Numeric PBR sockets are evaluated by the bounded pixel
+                // expression program. Type compatibility and acyclic graph
+                // validation above are the authoring contract; the Runtime
+                // registry enforces instruction/register/resource budgets.
             }
 
+            // The compatibility projection still stores metallic and
+            // roughness in one packed texture. General pixel expressions can
+            // author either socket independently; only the legacy direct
+            // texture fast path retains the paired-channel requirement.
             for (const MaterialGraphNodeData& node : graph.nodes) {
                 if (node.kind != MaterialNodeKind::PbrSurface ||
                     !reachable.contains(node.id)) {
@@ -622,7 +621,7 @@ namespace HIKARI {
                         diagnostics,
                         MaterialGraphDiagnosticSeverity::Error,
                         "Material.MetallicRoughnessPairRequired",
-                        "the runtime uses one packed metallic-roughness texture; connect B to Metallic and G to Roughness from the same sample",
+                        "the legacy packed metallic-roughness path requires B and G from the same sample; connect UV or use expression math for independent channels",
                         node.id);
                 }
             }
@@ -707,6 +706,86 @@ namespace HIKARI {
                 (c >= '0' && c <= '9') ||
                 c == '_' || c == '-' || c == '.' || c == ':';
         });
+    }
+
+    bool ReconcileMaterialGraphDynamicNodeTypes(
+        MaterialGraphData& graph) {
+        std::unordered_map<std::string, MaterialValueType> parameters{};
+        for (const MaterialGraphParameterData& parameter : graph.parameters) {
+            parameters.emplace(parameter.id, parameter.defaultValue.type);
+        }
+        const auto findNode = [&](std::string_view id)
+            -> const MaterialGraphNodeData* {
+            const auto found = std::find_if(
+                graph.nodes.begin(), graph.nodes.end(),
+                [id](const MaterialGraphNodeData& node) {
+                    return node.id == id;
+                });
+            return found == graph.nodes.end() ? nullptr : &*found;
+        };
+        bool anyChanged = false;
+        bool passChanged = false;
+        size_t pass = 0u;
+        do {
+            passChanged = false;
+            for (MaterialGraphNodeData& node : graph.nodes) {
+                const MaterialNodeDefinition* definition =
+                    FindMaterialNodeDefinition(node.kind);
+                if (definition == nullptr ||
+                    std::none_of(
+                        definition->inputs.begin(),
+                        definition->inputs.end(),
+                        [](const MaterialNodePinDefinition& pin) {
+                            return pin.typeSource ==
+                                MaterialNodePinTypeSource::NodeValue;
+                        })) {
+                    continue;
+                }
+                uint32_t widestComponents = 0u;
+                MaterialValueType widestType = node.valueType;
+                for (const MaterialGraphEdgeData& edge : graph.edges) {
+                    if (edge.targetNodeId != node.id) {
+                        continue;
+                    }
+                    const MaterialNodePinDefinition* inputDefinition =
+                        FindMaterialNodeInputDefinition(
+                            node.kind, edge.targetPin);
+                    if (inputDefinition == nullptr ||
+                        inputDefinition->typeSource !=
+                            MaterialNodePinTypeSource::NodeValue) {
+                        continue;
+                    }
+                    const MaterialGraphNodeData* source =
+                        findNode(edge.sourceNodeId);
+                    if (source == nullptr) {
+                        continue;
+                    }
+                    const NodeSignature sourceSignature =
+                        MakeSignature(*source, parameters);
+                    const ResolvedPin* output =
+                        FindPin(sourceSignature.outputs, edge.sourcePin);
+                    if (output == nullptr ||
+                        !IsMaterialNumericType(output->type)) {
+                        continue;
+                    }
+                    const uint32_t components =
+                        GetMaterialValueComponentCount(output->type);
+                    if (components > widestComponents) {
+                        widestComponents = components;
+                        widestType = output->type;
+                    }
+                }
+                if (widestComponents != 0u &&
+                    node.valueType != widestType) {
+                    node.valueType = widestType;
+                    node.value.type = widestType;
+                    passChanged = true;
+                    anyChanged = true;
+                }
+            }
+            ++pass;
+        } while (passChanged && pass < graph.nodes.size());
+        return anyChanged;
     }
 
     bool CanConnectMaterialGraphPins(

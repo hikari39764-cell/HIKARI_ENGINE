@@ -2,12 +2,13 @@
 #define HIKARI_MATERIAL_PROGRAM_DATA_INCLUDED
 
 static const uint HIKARI_STANDARD_PBR_MATERIAL_PROGRAM = 0u;
-static const uint HIKARI_MATERIAL_PROGRAM_PARAMETER_SLOTS = 30u;
-static const uint HIKARI_MATERIAL_PROGRAM_RESOURCE_SLOTS = 10u;
-static const uint HIKARI_MATERIAL_PROGRAM_PARAMETER_CAPACITY = 122880u;
-static const uint HIKARI_MATERIAL_PROGRAM_RESOURCE_CAPACITY = 40960u;
+static const uint HIKARI_MATERIAL_PROGRAM_PARAMETER_SLOTS = 178u;
+static const uint HIKARI_MATERIAL_PROGRAM_RESOURCE_SLOTS = 32u;
+static const uint HIKARI_MATERIAL_PROGRAM_PARAMETER_CAPACITY = 729088u;
+static const uint HIKARI_MATERIAL_PROGRAM_RESOURCE_CAPACITY = 131072u;
 
 static const uint HIKARI_PROGRAM_FLAG_ALPHA_BLEND = 1u << 2u;
+static const uint HIKARI_PROGRAM_FLAG_DOUBLE_SIDED = 1u << 3u;
 static const uint HIKARI_PROGRAM_FLAG_CORNEA_HIGHLIGHT = 1u << 4u;
 static const uint HIKARI_PROGRAM_FLAG_STANDARD_PBR = 1u << 6u;
 static const uint HIKARI_PROGRAM_FLAG_RAMP_DIFFUSE = 1u << 7u;
@@ -55,6 +56,7 @@ struct HikariMaterialSurfaceData
     float3 baseColor;
     float opacity;
     float3 normalWS;
+    float3 geometricNormalWS;
     float metallic;
     float3 viewWS;
     float roughness;

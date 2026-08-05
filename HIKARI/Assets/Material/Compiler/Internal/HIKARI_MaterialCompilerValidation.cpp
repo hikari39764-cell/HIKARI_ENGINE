@@ -461,28 +461,20 @@ namespace HIKARI::MATERIAL_COMPILER_INTERNAL {
                             continue;
                         }
                         bool supported = false;
-                        if (edge.targetPin == "BaseColor") {
-                            supported = IsStaticRuntimeExpression(
-                                    view, edge.sourceNodeId) ||
-                                IsTextureRuntimeExpression(
-                                    view, edge.sourceNodeId, false) ||
-                                IsPbrFactorTextureExpression(
-                                    view, edge.sourceNodeId);
-                        } else if (edge.targetPin == "Normal") {
-                            supported = IsTextureRuntimeExpression(
-                                view, edge.sourceNodeId, true);
-                        } else if (edge.targetPin == "Metallic" ||
+                        if (edge.targetPin == "BaseColor" ||
+                            edge.targetPin == "Opacity" ||
+                            edge.targetPin == "Normal" ||
+                            edge.targetPin == "Metallic" ||
                             edge.targetPin == "Roughness" ||
                             edge.targetPin == "Occlusion" ||
                             edge.targetPin == "Emissive" ||
                             edge.targetPin == "Specular" ||
-                            edge.targetPin == "SpecularColor") {
-                            supported = IsStaticRuntimeExpression(
-                                    view, edge.sourceNodeId) ||
-                                IsTextureRuntimeExpression(
-                                    view, edge.sourceNodeId, false) ||
-                                IsPbrFactorTextureExpression(
-                                    view, edge.sourceNodeId);
+                            edge.targetPin == "SpecularColor" ||
+                            edge.targetPin == "AlphaClipThreshold") {
+                            // The graph catalogue is the source language for
+                            // the bounded pixel expression evaluator. Static
+                            // projection remains a compatibility fast path.
+                            supported = true;
                         } else if (edge.targetPin == "DiffuseResponse") {
                             const MaterialGraphNodeData* response =
                                 FindRuntimeNode(view, edge.sourceNodeId);
@@ -519,7 +511,7 @@ namespace HIKARI::MATERIAL_COMPILER_INTERNAL {
                                 result,
                                 MaterialCompileDiagnosticSeverity::Error,
                                 "Material.RuntimeGraphUnsupported",
-                                "This connection has no equivalent in the bounded production material evaluator. Use a direct texture/static expression or a supported lighting-response path.",
+                                "This connection has no equivalent in the bounded production material evaluator.",
                                 edge.id);
                             valid = false;
                         }
@@ -699,10 +691,10 @@ namespace HIKARI::MATERIAL_COMPILER_INTERNAL {
                 source.function.inputs, "function input", result) && valid;
             valid = ValidateStableValueList(
                 source.function.outputs, "function output", result) && valid;
-            if (source.function.outputs.size() != 1u) {
+            if (source.function.outputs.empty()) {
                 AddDiagnostic(result, MaterialCompileDiagnosticSeverity::Error,
                     "Material.FunctionOutputArity",
-                    "Material Function v1 requires exactly one declared output");
+                    "Material Function requires at least one declared output");
                 valid = false;
             }
             valid = AppendGraphDiagnostics(
@@ -723,17 +715,23 @@ namespace HIKARI::MATERIAL_COMPILER_INTERNAL {
                 if (outputNode != source.function.graph.nodes.end()) {
                     const std::vector<std::string_view> outputPins =
                         GetMaterialGraphNodeOutputPins(*outputNode);
-                    if (outputPins.empty() ||
-                        (outputPins.size() > 1u &&
-                         !source.function.outputs.empty() &&
-                         std::find(
-                             outputPins.begin(), outputPins.end(),
-                             source.function.outputs.front().id) ==
-                             outputPins.end())) {
+                    const bool outputsMatch =
+                        !source.function.outputs.empty() &&
+                        std::all_of(
+                            source.function.outputs.begin(),
+                            source.function.outputs.end(),
+                            [&outputPins, &source](const auto& output) {
+                                return std::find(
+                                    outputPins.begin(), outputPins.end(),
+                                    output.id) != outputPins.end() ||
+                                    (source.function.outputs.size() == 1u &&
+                                     outputPins.size() == 1u);
+                            });
+                    if (outputPins.empty() || !outputsMatch) {
                         AddDiagnostic(result,
                             MaterialCompileDiagnosticSeverity::Error,
                             "Material.FunctionOutputPinAmbiguous",
-                            "Function output ID must name a pin when the output node exposes multiple outputs",
+                            "each Function output ID must name a pin when the function exposes multiple outputs",
                             outputNode->id);
                         valid = false;
                     }

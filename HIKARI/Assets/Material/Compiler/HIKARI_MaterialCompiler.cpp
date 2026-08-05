@@ -11,6 +11,7 @@
 #include "Assets/Material/Compiler/Internal/HIKARI_MaterialFunctionExpansion.h"
 #include "Assets/Material/Compiler/Internal/HIKARI_MaterialProgramLowering.h"
 #include "Assets/Material/Authoring/HIKARI_MaterialSemanticNodeFactory.h"
+#include "Assets/Material/Graph/HIKARI_MaterialGraphValidation.h"
 #include "Assets/Material/HIKARI_MaterialDependencies.h"
 #include "Assets/Material/Serialization/HIKARI_MaterialSourceJson.h"
 
@@ -535,6 +536,17 @@ namespace HIKARI {
         const bool functionsExpanded =
             MATERIAL_COMPILER_INTERNAL::ExpandMaterialFunctions(
                 source, options, expanded, functionDependencies, result);
+        if (functionsExpanded) {
+            MaterialGraphData* graph = expanded.kind ==
+                    MaterialAssetKind::Material
+                ? &expanded.graph
+                : expanded.kind == MaterialAssetKind::Function
+                    ? &expanded.function.graph
+                    : nullptr;
+            if (graph != nullptr) {
+                (void)ReconcileMaterialGraphDynamicNodeTypes(*graph);
+            }
+        }
         if (functionsExpanded &&
             MATERIAL_COMPILER_INTERNAL::ValidateMaterialSource(
                 expanded, result)) {

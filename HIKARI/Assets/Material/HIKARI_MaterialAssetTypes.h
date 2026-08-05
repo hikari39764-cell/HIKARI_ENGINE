@@ -8,7 +8,7 @@
 namespace HIKARI {
 
     inline constexpr uint32_t kMaterialAssetSourceVersion = 5u;
-    inline constexpr uint32_t kMaterialProgramIrVersion = 3u;
+    inline constexpr uint32_t kMaterialProgramIrVersion = 4u;
 
     enum class MaterialAssetKind : uint8_t {
         Material,
@@ -114,12 +114,49 @@ namespace HIKARI {
         Outline,
         HairShadow,
         CorneaHighlight,
+        Subtract,
+        Divide,
+        Minimum,
+        Maximum,
+        Absolute,
+        Negate,
+        Floor,
+        Ceil,
+        Fraction,
+        Modulo,
+        SquareRoot,
+        Sine,
+        Cosine,
+        Step,
+        SmoothStep,
+        Remap,
+        Cross,
+        Length,
+        Normalize,
+        Distance,
+        Reflect,
+        MakeFloat2,
+        MakeFloat3,
+        MakeFloat4,
+        Split,
+        Select,
+        TextureCoordinate,
+        Time,
+        WorldPosition,
+        WorldNormal,
+        WorldTangent,
+        ViewDirection,
+        CameraPosition,
+        ScreenPosition,
+        DerivativeX,
+        DerivativeY,
+        FilterWidth,
     };
 
     // Source graphs use a stable textual identity so ordinary node growth is
     // not coupled to the compact append-only Runtime opcode catalogue.
     // MaterialNodeKind remains the explicit compatibility mapping for native
-    // built-ins and cooked MaterialProgram IR v3.
+    // built-ins and cooked MaterialProgram IR v4.
     struct MaterialNodeTypeId {
         std::string value{ "Constant" };
 

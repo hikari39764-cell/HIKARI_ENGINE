@@ -14,6 +14,7 @@
 #include "Assets/Material/Compiler/HIKARI_MaterialRampRasterizer.h"
 #include "Core/HIKARI_Logger.h"
 #include "Render3D/Material/HIKARI_GpuMaterialTypes.h"
+#include "Render3D/Material/Program/HIKARI_MaterialExpressionProgram.h"
 #include "Render3D/Material/Program/HIKARI_MaterialProgramStaticEvaluator.h"
 #include "Render3D/Material/Program/HIKARI_MaterialProgramRegistry.h"
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
@@ -25,6 +26,22 @@ namespace HIKARI::RENDER3D::MATERIAL {
             uint64_t contentHash = 0u;
             TextureResourceHandle resource{};
         };
+
+        // The response head (30) must always fit inside the total GPU block
+        // (178), and the expression payload must never overlap or exceed the
+        // same block. These are compile-time layout invariants shared with
+        // the HLSL evaluator and the GPU block store.
+        static_assert(
+            kGpuMaterialProgramResponseSlotCount <
+            kGpuMaterialProgramParameterSlotCount);
+        static_assert(
+            kGpuMaterialExpressionValueBase +
+                kGpuMaterialExpressionValueSlotCount <=
+            kGpuMaterialExpressionInstructionBase);
+        static_assert(
+            kGpuMaterialExpressionInstructionBase +
+                kGpuMaterialExpressionInstructionCount <=
+            kGpuMaterialProgramParameterSlotCount);
 
         std::unordered_map<std::string, CachedRampResource>
             gRampResourcesByAsset{};
@@ -43,7 +60,7 @@ namespace HIKARI::RENDER3D::MATERIAL {
 
         std::vector<MATH::Vec4> BuildDefaultParameters() {
             std::vector<MATH::Vec4> values(
-                kGpuMaterialProgramParameterSlotCount,
+                kGpuMaterialProgramResponseSlotCount,
                 MATH::Vec4{ 0.0f, 0.0f, 0.0f, 0.0f });
             values[0] = { 0.50f, 0.08f, 0.72f, 1.0f };
             values[1] = { 0.56f, 0.62f, 0.78f, 1.0f };
@@ -334,7 +351,7 @@ namespace HIKARI::RENDER3D::MATERIAL {
         }
 
         bool RequiresMaterialProgramBlock(
-            const MaterialProgramIR& program) noexcept {
+            const MaterialProgramIR& program) {
 
             constexpr uint64_t kRuntimeResponseCapabilities =
                 MaterialCapabilityBit(MaterialProgramCapability::RampDiffuse) |
@@ -353,7 +370,8 @@ namespace HIKARI::RENDER3D::MATERIAL {
                 MaterialCapabilityBit(MaterialProgramCapability::HairShadow);
             return (program.capabilities & kRuntimeResponseCapabilities) != 0u ||
                 (program.capabilities & kHairShadowCapability) != 0u ||
-                !program.featureRequests.empty();
+                !program.featureRequests.empty() ||
+                MaterialProgramHasRuntimeExpression(program);
         }
     }
 
@@ -367,9 +385,44 @@ namespace HIKARI::RENDER3D::MATERIAL {
         if (!RequiresMaterialProgramBlock(program)) {
             return data;
         }
-        data.parameters = BuildDefaultParameters();
+        std::vector<MATH::Vec4> responseParameters =
+            BuildDefaultParameters();
         ApplyConnectedMaterialResponseParameters(
-            program, data.parameters);
+            program, responseParameters);
+        MaterialExpressionRuntimeProgram expression{};
+        std::string expressionError{};
+        if (!BuildMaterialExpressionRuntimeProgram(
+                program, expression, expressionError)) {
+            HIKARI_LOG_ERROR(
+                "[MaterialProgram] rejected pixel expression: " +
+                expressionError);
+            // The registry normally rejects such programs before this point.
+            // Keep authored response values as the fail-safe so a bounded
+            // stylized material never loses its NPR parameters silently.
+            data.parameters = std::move(responseParameters);
+            return data;
+        }
+        if (expression.active) {
+            if (expression.parameters.size() < responseParameters.size()) {
+                HIKARI_LOG_ERROR(
+                    "[MaterialProgram] response head exceeds the "
+                    "expression parameter block");
+                data.parameters = std::move(responseParameters);
+                return data;
+            }
+            std::copy(
+                responseParameters.begin(), responseParameters.end(),
+                expression.parameters.begin());
+            data.parameters = std::move(expression.parameters);
+        } else {
+            data.parameters = std::move(responseParameters);
+        }
+        if (data.parameters.size() > kGpuMaterialProgramParameterSlotCount) {
+            HIKARI_LOG_ERROR(
+                "[MaterialProgram] parameter block exceeds the GPU slot budget");
+            data.parameters.clear();
+            return data;
+        }
         data.resources.resize(kGpuMaterialProgramResourceSlotCount);
         uint32_t rampIndex = 0u;
         for (const MaterialProgramResourceBinding& resource : program.resources) {
@@ -385,6 +438,20 @@ namespace HIKARI::RENDER3D::MATERIAL {
                 resource,
                 assetRegistry,
                 debugName);
+        }
+        for (const uint32_t bindingIndex :
+             expression.resourceBindingIndices) {
+            if (bindingIndex >= program.resources.size()) {
+                continue;
+            }
+            const uint32_t slot =
+                kGpuMaterialExpressionResourceBase + bindingIndex;
+            if (slot < data.resources.size()) {
+                data.resources[slot] = BuildResourceSlot(
+                    program.resources[bindingIndex],
+                    assetRegistry,
+                    debugName);
+            }
         }
         return data;
     }

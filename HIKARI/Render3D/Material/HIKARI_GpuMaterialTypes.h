@@ -11,8 +11,9 @@ namespace HIKARI::RENDER3D::MATERIAL {
     constexpr uint32_t kInvalidGpuMaterialIndex = 0xffffffffu;
     constexpr uint32_t kInvalidTextureDescriptorIndex = 0xffffffffu;
     constexpr uint32_t kDefaultGpuMaterialCapacity = 4096u;
-    constexpr uint32_t kGpuMaterialProgramParameterSlotCount = 30u;
-    constexpr uint32_t kGpuMaterialProgramResourceSlotCount = 10u;
+    constexpr uint32_t kGpuMaterialProgramResponseSlotCount = 30u;
+    constexpr uint32_t kGpuMaterialProgramParameterSlotCount = 178u;
+    constexpr uint32_t kGpuMaterialProgramResourceSlotCount = 32u;
     constexpr uint32_t kGpuMaterialProgramParameterCapacity =
         kDefaultGpuMaterialCapacity * kGpuMaterialProgramParameterSlotCount;
     constexpr uint32_t kGpuMaterialProgramResourceCapacity =
