@@ -22,10 +22,28 @@ const char *EnvironmentModeLabel(
   switch (mode) {
   case ModelMaterialWorkspaceController::PreviewEnvironmentMode::RuntimeMatch:
     return "Runtime Asset Lighting";
+  case ModelMaterialWorkspaceController::PreviewEnvironmentMode::SceneMatch:
+    return "Scene Match";
   case ModelMaterialWorkspaceController::PreviewEnvironmentMode::StudioInspect:
     return "Studio Inspect";
   }
   return "Runtime Asset Lighting";
+}
+
+RENDER3D::EDITORVIEW::EditorInteractiveShadingMode ResolveShadingMode(
+    ModelMaterialWorkspaceController::PreviewDebugMode mode) noexcept {
+  using Mode = RENDER3D::EDITORVIEW::EditorInteractiveShadingMode;
+  switch (mode) {
+  case ModelMaterialWorkspaceController::PreviewDebugMode::Lit:
+    return Mode::Lit;
+  case ModelMaterialWorkspaceController::PreviewDebugMode::Neutral:
+    return Mode::Neutral;
+  case ModelMaterialWorkspaceController::PreviewDebugMode::Clay:
+    return Mode::NeutralClay;
+  case ModelMaterialWorkspaceController::PreviewDebugMode::Unlit:
+    return Mode::Unlit;
+  }
+  return Mode::Lit;
 }
 
 } // namespace
@@ -43,6 +61,8 @@ void ModelMaterialWorkspaceController::ClosePreviewRequest(
 #if defined(HIKARI_WITH_EDITOR)
   RENDER3D::EDITORVIEW::ClearRequest(
       workspaceHost.GetModelMaterialPreviewView().renderViewId);
+  RENDER3D::EDITORVIEW::ClearRequest(
+      workspaceHost.GetModelMaterialCompareView().renderViewId);
 #else
   (void)workspaceHost;
 #endif
@@ -291,6 +311,71 @@ void ModelMaterialWorkspaceController::DrawPreviewEnvironmentControls() {
                    0.01f, 0.0f, 8.0f);
   ImGui::EndDisabled();
 #endif
+}
+
+void ModelMaterialWorkspaceController::SubmitPreviewRequests(
+    EditorWorkspaceHost &workspaceHost,
+    const ModelPreviewScene &activePreview,
+    bool canvasVisible) {
+  EditorViewInstance &view =
+      workspaceHost.GetModelMaterialPreviewView();
+  EditorViewInstance &compareView =
+      workspaceHost.GetModelMaterialCompareView();
+  if (!IsPreviewReady()) {
+    RENDER3D::EDITORVIEW::ClearRequest(view.renderViewId);
+    RENDER3D::EDITORVIEW::ClearRequest(compareView.renderViewId);
+    previewRequestSubmitted_ = false;
+    return;
+  }
+  const bool studioInspect =
+      previewEnvironmentMode_ == PreviewEnvironmentMode::StudioInspect;
+  RENDER3D::EDITORVIEW::EditorInteractiveViewRequest request{};
+  request.viewId = view.renderViewId;
+  request.purpose = RENDER3D::RenderViewPurpose::ToolPreview;
+  request.cameraFrame.camera = cameraController_.GetCamera();
+  request.cameraFrame.revision = cameraRevision_;
+  request.cameraFrame.cameraCut = cameraCutPending_;
+  request.cameraFrame.valid = true;
+  request.width = view.extent.width;
+  request.height = view.extent.height;
+  request.sceneRevision = activePreview.GetRevision();
+  request.visible = canvasVisible;
+  request.drawDebug = false;
+  request.schedulingPriority = 100u;
+  request.shadingMode = ResolveShadingMode(previewDebugMode_);
+  request.displayExposure = view.visualization.displayExposure;
+  request.sceneSourceOverride = activePreview.GetSceneSource();
+  request.environmentOverride =
+      studioInspect ? &previewEnvironment_ : nullptr;
+  request.lightingOverride =
+      studioInspect ? &previewLighting_ : nullptr;
+  request.useDefaultSkyIbl =
+      studioInspect && previewEnvironment_.sky.enabled &&
+      previewEnvironment_.sky.reflectionIntensity > 0.0f;
+  request.suppressSpatialLightingProviders =
+      previewEnvironmentMode_ != PreviewEnvironmentMode::SceneMatch;
+  request.spatialAntiAliasing = previewSpatialAaEnabled_;
+  RENDER3D::EDITORVIEW::SubmitRequest(request);
+  previewRequestSubmitted_ = true;
+  if (previewCompareEnabled_) {
+    RENDER3D::EDITORVIEW::EditorInteractiveViewRequest compareRequest =
+        request;
+    compareRequest.viewId = compareView.renderViewId;
+    const bool compareStudio =
+        previewEnvironmentMode_ != PreviewEnvironmentMode::StudioInspect;
+    compareRequest.environmentOverride =
+        compareStudio ? &previewEnvironment_ : nullptr;
+    compareRequest.lightingOverride =
+        compareStudio ? &previewLighting_ : nullptr;
+    compareRequest.useDefaultSkyIbl =
+        compareStudio && previewEnvironment_.sky.enabled &&
+        previewEnvironment_.sky.reflectionIntensity > 0.0f;
+    compareRequest.suppressSpatialLightingProviders = compareStudio;
+    compareRequest.schedulingPriority = 90u;
+    RENDER3D::EDITORVIEW::SubmitRequest(compareRequest);
+  } else {
+    RENDER3D::EDITORVIEW::ClearRequest(compareView.renderViewId);
+  }
 }
 
 } // namespace HIKARI::EDITOR

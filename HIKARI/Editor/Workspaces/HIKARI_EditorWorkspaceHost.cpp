@@ -60,6 +60,18 @@ namespace HIKARI::EDITOR {
             EditorViewExecutionMode::RuntimeParityToolPreview;
         material.visualization.shadingMode = EditorViewShadingMode::Lit;
         material.visualization.displayExposure = 1.0f;
+
+        EditorViewInstance& compare =
+            View(BuiltInViewSlot::ModelMaterialCompare);
+        compare.renderViewId = kModelMaterialCompareRenderViewId;
+        compare.role = EditorViewRole::Preview;
+        compare.purpose = RENDER3D::RenderViewPurpose::ToolPreview;
+        compare.cameraBinding.kind =
+            EditorViewCameraSourceKind::OwnedEditorCamera;
+        compare.execution =
+            EditorViewExecutionMode::RuntimeParityToolPreview;
+        compare.visualization.shadingMode = EditorViewShadingMode::Lit;
+        compare.visualization.displayExposure = 1.0f;
     }
 
     bool EditorWorkspaceHost::RequestOpen(EditorWorkspaceOpenRequest request) {
@@ -163,6 +175,18 @@ namespace HIKARI::EDITOR {
         EditorWorkspaceHost::GetModelMaterialPreviewView() const noexcept {
 
         return View(BuiltInViewSlot::ModelMaterialPreview);
+    }
+
+    EditorViewInstance&
+        EditorWorkspaceHost::GetModelMaterialCompareView() noexcept {
+
+        return View(BuiltInViewSlot::ModelMaterialCompare);
+    }
+
+    const EditorViewInstance&
+        EditorWorkspaceHost::GetModelMaterialCompareView() const noexcept {
+
+        return View(BuiltInViewSlot::ModelMaterialCompare);
     }
 
     EditorViewInstance* EditorWorkspaceHost::FindView(

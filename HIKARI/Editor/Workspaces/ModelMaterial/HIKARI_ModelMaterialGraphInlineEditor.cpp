@@ -460,10 +460,8 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
       if (current != 1) {
         drawParameter("parameter.outlineColor", "Color", "Color");
         drawParameter("parameter.outlineThickness", "Thickness", "Thickness");
-        ImGui::TextDisabled(
-            MESHRENDERER::HasGeometryOutlineFeatureBackend()
-                ? "Geometry backend: ready (closed meshes work best)"
-                : "Geometry backend: unavailable; check renderer diagnostics");
+        DrawOutlineThicknessPresets(scene, source, graph);
+        ImGui::TextDisabled(MESHRENDERER::HasGeometryOutlineFeatureBackend() ? "Geometry backend: ready (closed meshes work best)" : "Geometry backend: unavailable; check renderer diagnostics");
       }
       if (current != 0) {
         ImGui::TextDisabled(

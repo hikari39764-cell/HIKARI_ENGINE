@@ -3,6 +3,7 @@
 #include <algorithm>
 
 #include "Assets/Material/Authoring/HIKARI_MaterialTemplateFactory.h"
+#include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialGraphUi.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
 #if defined(HIKARI_WITH_EDITOR)
@@ -67,6 +68,43 @@ void ModelMaterialWorkspaceController::DrawMaterialFeatureControls(
 #else
   (void)scene;
   (void)source;
+#endif
+}
+
+void ModelMaterialWorkspaceController::DrawOutlineThicknessPresets(
+    DocumentSceneBase &scene, MaterialAssetData &source,
+    MaterialGraphData &graph) {
+#if defined(HIKARI_WITH_EDITOR)
+  MaterialGraphParameterData *outlineThickness =
+      MATERIAL_GRAPH_UI::FindParameter(
+          graph, "parameter.outlineThickness");
+  if (outlineThickness == nullptr) {
+    return;
+  }
+  ImGui::TextDisabled("Outline Thickness Presets");
+  const auto applyThickness = [&](float thickness, const char *label) {
+    if (ImGui::Button(label)) {
+      MaterialAssetData before = source;
+      outlineThickness->defaultValue.numeric.x = thickness;
+      CommitMaterialMutation(
+          std::move(before),
+          "Apply outline thickness preset", scene);
+    }
+  };
+  applyThickness(1.0f, "Thin");
+  ImGui::SameLine();
+  applyThickness(2.0f, "Medium");
+  ImGui::SameLine();
+  applyThickness(4.0f, "Thick");
+  if (ImGui::IsItemHovered()) {
+    ImGui::SetTooltip(
+        "Geometry outline thickness is measured in screen pixels and "
+        "clamped to 0.25..8. Screen mode is view-space.");
+  }
+#else
+  (void)scene;
+  (void)source;
+  (void)graph;
 #endif
 }
 

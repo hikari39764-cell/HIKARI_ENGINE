@@ -14,21 +14,6 @@
 #endif
 namespace HIKARI::EDITOR {
 namespace {
-RENDER3D::EDITORVIEW::EditorInteractiveShadingMode ResolveShadingMode(
-    ModelMaterialWorkspaceController::PreviewDebugMode mode) noexcept {
-  using Mode = RENDER3D::EDITORVIEW::EditorInteractiveShadingMode;
-  switch (mode) {
-  case ModelMaterialWorkspaceController::PreviewDebugMode::Lit:
-    return Mode::Lit;
-  case ModelMaterialWorkspaceController::PreviewDebugMode::Neutral:
-    return Mode::Neutral;
-  case ModelMaterialWorkspaceController::PreviewDebugMode::Clay:
-    return Mode::NeutralClay;
-  case ModelMaterialWorkspaceController::PreviewDebugMode::Unlit:
-    return Mode::Unlit;
-  }
-  return Mode::Lit;
-}
 const char *DebugModeLabel(
     ModelMaterialWorkspaceController::PreviewDebugMode mode) noexcept {
   switch (mode) {
@@ -81,6 +66,12 @@ void ModelMaterialWorkspaceController::DrawPreviewToolbar(
           previewEnvironmentMode_ == PreviewEnvironmentMode::RuntimeMatch)) {
     previewEnvironmentMode_ = PreviewEnvironmentMode::RuntimeMatch;
     previewDebugMode_ = PreviewDebugMode::Lit;
+  }
+  ImGui::SameLine();
+  if (ImGui::RadioButton(
+          "Scene Match",
+          previewEnvironmentMode_ == PreviewEnvironmentMode::SceneMatch)) {
+    previewEnvironmentMode_ = PreviewEnvironmentMode::SceneMatch;
   }
   ImGui::SameLine();
   if (ImGui::RadioButton(
@@ -165,6 +156,14 @@ void ModelMaterialWorkspaceController::DrawPreviewToolbar(
   ImGui::EndDisabled();
 
   ImGui::SameLine(0.0f, 8.0f);
+  if (IconButton(EditorGlyph::Lens, "ModelMaterialCompare",
+                 previewCompareEnabled_ ? EditorButtonTone::Primary
+                                        : EditorButtonTone::Quiet,
+                 kIconSize,
+                 "Compare Studio Inspect with Scene Match side by side")) {
+    previewCompareEnabled_ = !previewCompareEnabled_;
+  }
+  ImGui::SameLine(0.0f, 8.0f);
   if (IconButton(EditorGlyph::Light, "ModelMaterialLightingPanel",
                  previewLightingPanelOpen_ ? EditorButtonTone::Primary
                                            : EditorButtonTone::Quiet,
@@ -238,12 +237,15 @@ void ModelMaterialWorkspaceController::DrawPreviewWindow(
       ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse |
       ImGuiWindowFlags_NoCollapse;
   EditorViewInstance &view = workspaceHost.GetModelMaterialPreviewView();
+  EditorViewInstance &compareView =
+      workspaceHost.GetModelMaterialCompareView();
   if (!ImGui::Begin("Preview###ModelMaterial/Preview", nullptr, flags)) {
     view.extent = {};
     view.interaction = {};
     previewRequestSubmitted_ = false;
     previewOutputReady_ = false;
     RENDER3D::EDITORVIEW::ClearRequest(view.renderViewId);
+    RENDER3D::EDITORVIEW::ClearRequest(compareView.renderViewId);
     ImGui::End();
     return;
   }
@@ -269,12 +271,49 @@ void ModelMaterialWorkspaceController::DrawPreviewWindow(
   previewOutputReady_ = IsPreviewReady() && output.ready &&
                         output.colorSrv.ptr != 0u &&
                         output.sceneRevision == activePreview.GetRevision();
+  const RENDER3D::EDITORVIEW::EditorInteractiveViewOutput compareOutput =
+      RENDER3D::EDITORVIEW::GetOutput(compareView.renderViewId);
+  const bool compareReady = previewCompareEnabled_ &&
+      IsPreviewReady() && compareOutput.ready &&
+      compareOutput.colorSrv.ptr != 0u &&
+      compareOutput.sceneRevision == activePreview.GetRevision();
+  const auto environmentModeLabel =
+      [](PreviewEnvironmentMode mode) {
+        switch (mode) {
+        case PreviewEnvironmentMode::RuntimeMatch:
+          return "Runtime Asset Lighting";
+        case PreviewEnvironmentMode::SceneMatch:
+          return "Scene Match";
+        case PreviewEnvironmentMode::StudioInspect:
+          return "Studio Inspect";
+        }
+        return "";
+      };
 
   ImGui::SetCursorScreenPos(origin);
   if (previewOutputReady_) {
     ImGui::Image(reinterpret_cast<ImTextureID>(
                      static_cast<uintptr_t>(output.colorSrv.ptr)),
-                 canvasSize);
+                 compareReady ? ImVec2(canvasSize.x * 0.5f, canvasSize.y)
+                              : canvasSize);
+    if (compareReady) {
+      ImGui::SameLine(0.0f, 2.0f);
+      ImGui::Image(reinterpret_cast<ImTextureID>(
+                       static_cast<uintptr_t>(compareOutput.colorSrv.ptr)),
+                   ImVec2(canvasSize.x * 0.5f, canvasSize.y));
+      const bool compareStudio =
+          previewEnvironmentMode_ != PreviewEnvironmentMode::StudioInspect;
+      drawList->AddText(
+          {origin.x + 8.0f, origin.y + 8.0f},
+          IM_COL32(255, 255, 255, 235),
+          environmentModeLabel(previewEnvironmentMode_));
+      drawList->AddText(
+          {origin.x + canvasSize.x * 0.5f + 10.0f, origin.y + 8.0f},
+          IM_COL32(255, 255, 255, 235),
+          environmentModeLabel(
+              compareStudio ? PreviewEnvironmentMode::StudioInspect
+                            : PreviewEnvironmentMode::SceneMatch));
+    }
   } else {
     ImGui::InvisibleButton("##ModelMaterialPreviewCanvas", canvasSize,
                            ImGuiButtonFlags_MouseButtonLeft |
@@ -394,37 +433,7 @@ void ModelMaterialWorkspaceController::DrawPreviewWindow(
     (void)commandRouter.ProcessViewportShortcuts(true);
   }
 
-  if (IsPreviewReady()) {
-    RENDER3D::EDITORVIEW::EditorInteractiveViewRequest request{};
-    request.viewId = view.renderViewId;
-    request.purpose = RENDER3D::RenderViewPurpose::ToolPreview;
-    request.cameraFrame.camera = cameraController_.GetCamera();
-    request.cameraFrame.revision = cameraRevision_;
-    request.cameraFrame.cameraCut = cameraCutPending_;
-    request.cameraFrame.valid = true;
-    request.width = view.extent.width;
-    request.height = view.extent.height;
-    request.sceneRevision = activePreview.GetRevision();
-    request.visible = canvasVisible;
-    request.drawDebug = false;
-    request.schedulingPriority = 100u;
-    request.shadingMode = ResolveShadingMode(previewDebugMode_);
-    request.displayExposure = view.visualization.displayExposure;
-    request.sceneSourceOverride = activePreview.GetSceneSource();
-    request.environmentOverride =
-        studioInspect ? &previewEnvironment_ : nullptr;
-    request.lightingOverride = studioInspect ? &previewLighting_ : nullptr;
-    request.suppressSpatialLightingProviders = true;
-    request.useDefaultSkyIbl =
-        studioInspect && previewEnvironment_.sky.enabled &&
-        previewEnvironment_.sky.reflectionIntensity > 0.0f;
-    request.spatialAntiAliasing = previewSpatialAaEnabled_;
-    RENDER3D::EDITORVIEW::SubmitRequest(request);
-    previewRequestSubmitted_ = true;
-  } else {
-    RENDER3D::EDITORVIEW::ClearRequest(view.renderViewId);
-    previewRequestSubmitted_ = false;
-  }
+  SubmitPreviewRequests(workspaceHost, activePreview, canvasVisible);
   cameraCutPending_ = false;
 
   bool showingStaleCompile = false;

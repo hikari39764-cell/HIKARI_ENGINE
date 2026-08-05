@@ -135,6 +135,7 @@ public:
 
   enum class PreviewEnvironmentMode : uint8_t {
     RuntimeMatch,
+    SceneMatch,
     StudioInspect,
   };
 
@@ -288,6 +289,14 @@ private:
   void DrawPreviewCameraControls();
   void DrawPreviewEnvironmentControls();
   void DrawPreviewLightingPanel(DocumentSceneBase &scene);
+  void DrawOutlineThicknessPresets(
+      DocumentSceneBase &scene,
+      MaterialAssetData &source,
+      MaterialGraphData &graph);
+  void SubmitPreviewRequests(
+      EditorWorkspaceHost &workspaceHost,
+      const ModelPreviewScene &activePreview,
+      bool canvasVisible);
   void DrawModelAndSlotsWindow(DocumentSceneBase &scene);
   void DrawMaterialWindow(DocumentSceneBase &scene);
   void DrawPreviewLightingProperties();
@@ -405,6 +414,7 @@ private:
   float previewCameraBaseWheelStep_ = 0.0f;
   float previewCameraFovYRad_ = 0.0f;
   bool previewLightingPanelOpen_ = false;
+  bool previewCompareEnabled_ = false;
   std::optional<size_t> selectedPreviewLightIndex_{};
   EditorTransformGizmo previewLightGizmo_{};
   EditorTransformGizmoState previewLightGizmoState_{};
