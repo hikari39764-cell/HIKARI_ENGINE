@@ -166,9 +166,8 @@ bool SplitEndpoint(
     std::wstring& outHost,
     std::wstring& outPath) {
     std::string url = baseUrl;
-    const std::string prefix = "https://";
-    if (url.rfind(prefix, 0u) == 0u) {
-        url = url.substr(prefix.size());
+    if (url.rfind("https://", 0u) == 0u) {
+        url = url.substr(8u);
     } else if (url.rfind("http://", 0u) == 0u) {
         url = url.substr(7u);
     }
@@ -177,12 +176,20 @@ bool SplitEndpoint(
         ? url
         : url.substr(0u, slash);
     std::string path = slash == std::string::npos
-        ? "/compatible-mode/v1/chat/completions"
+        ? std::string{}
         : url.substr(slash);
-    if (path.empty() || path.back() != '/') {
-        path += '/';
+    constexpr std::string_view kChatCompletions = "/chat/completions";
+    if (path.empty()) {
+        path = std::string(kChatCompletions);
+    } else if (path.back() == '/') {
+        path += std::string(kChatCompletions);
+    } else if (path.size() < kChatCompletions.size() ||
+               path.compare(
+                   path.size() - kChatCompletions.size(),
+                   kChatCompletions.size(),
+                   kChatCompletions) != 0) {
+        path += std::string(kChatCompletions);
     }
-    path += "chat/completions";
     if (host.empty()) {
         return false;
     }
@@ -303,14 +310,14 @@ bool RunChatCompletions(
     outContent.clear();
     outError.clear();
     if (!config.valid) {
-        outError = "未配置 DASHSCOPE_API_KEY";
+        outError = "未配置 API Key（DASHSCOPE_API_KEY）";
         return false;
     }
 #ifdef _WIN32
     std::wstring host;
     std::wstring path;
     if (!SplitEndpoint(config.baseUrl, host, path)) {
-        outError = "无法解析 DashScope 端点：" + config.baseUrl;
+        outError = "无法解析 API 端点：" + config.baseUrl;
         return false;
     }
     const std::string body = BuildRequestBody(config, messages);
@@ -388,24 +395,45 @@ bool RunChatCompletions(
            bytesRead > 0u) {
         response.append(buffer, bytesRead);
     }
+    DWORD statusCode = 0u;
+    DWORD statusSize = sizeof(statusCode);
+    (void)WinHttpQueryHeaders(
+        request,
+        WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+        WINHTTP_HEADER_NAME_BY_INDEX,
+        &statusCode,
+        &statusSize,
+        WINHTTP_NO_HEADER_INDEX);
     WinHttpCloseHandle(request);
     WinHttpCloseHandle(connection);
     WinHttpCloseHandle(session);
 
+    const std::string statusText =
+        "HTTP " + std::to_string(statusCode) + " ";
     if (response.empty()) {
-        outError = "DashScope 返回空响应";
+        outError = "API 返回空响应（" + statusText + "）";
         return false;
     }
     if (response.find("\"error\"") != std::string::npos) {
-        outError = "DashScope 返回错误：" +
-            ExtractJsonContent(response);
-        if (outError.empty()) {
-            outError = "DashScope 返回错误（响应被截断）";
-        }
+        const std::string apiMessage = ExtractJsonContent(response);
+        outError = apiMessage.empty()
+            ? "API 返回错误（" + statusText + "响应：" +
+                response.substr(0u, 240u) + "）"
+            : "API 返回错误：" + apiMessage;
+        return false;
+    }
+    if (statusCode >= 400u) {
+        outError = statusText + "响应：" +
+            response.substr(0u, 240u);
         return false;
     }
     outContent = ExtractJsonContent(response);
-    return !outContent.empty();
+    if (outContent.empty()) {
+        outError = "API 响应中没有 content 字段（" + statusText +
+            "响应：" + response.substr(0u, 240u) + "）";
+        return false;
+    }
+    return true;
 #else
     (void)messages;
     outError = "仅支持 Windows 编辑器宿主";

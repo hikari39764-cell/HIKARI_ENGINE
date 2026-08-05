@@ -109,7 +109,7 @@ namespace HIKARI::EDITOR {
                 *io.Fonts,
                 regularSize,
                 "C:/Windows/Fonts/msyh.ttc",
-                io.Fonts->GetGlyphRangesChineseSimplifiedCommon());
+                io.Fonts->GetGlyphRangesChineseFull());
         }
 
         ImFontConfig strongConfig{};

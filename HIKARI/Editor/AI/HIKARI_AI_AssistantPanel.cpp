@@ -312,6 +312,14 @@ void AiAssistantPanel::Draw(bool& open) {
             : config_.valid
                 ? ("● DashScope · " + config_.model).c_str()
                 : "● 未配置 API Key（只读模式）");
+    if (ImGui::GetFont() != nullptr &&
+        ImGui::GetFont()->FindGlyphNoFallback(
+            static_cast<ImWchar>(0x64C7u)) == nullptr) {
+        ImGui::TextColored(
+            ImVec4{ 1.0f, 0.42f, 0.35f, 1.0f },
+            "警告：当前字体缺少部分中文字形（如“擎”），"
+            "请确认系统存在 C:/Windows/Fonts/msyh.ttc");
+    }
 
     ImGui::Separator();
 
