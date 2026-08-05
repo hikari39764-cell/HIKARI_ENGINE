@@ -113,6 +113,11 @@ public:
   bool CanRedo() const noexcept;
   bool Undo(DocumentSceneBase &scene, std::string &outMessage);
   bool Redo(DocumentSceneBase &scene, std::string &outMessage);
+  bool ApplyAiMaterialParameterEdit(
+      DocumentSceneBase &scene,
+      const std::string &parameterId,
+      float value,
+      std::string &outMessage);
 
   ModelMaterialBindingCommandResult ExecuteBindingCommand(
       const ModelMaterialBindingCommand &command,

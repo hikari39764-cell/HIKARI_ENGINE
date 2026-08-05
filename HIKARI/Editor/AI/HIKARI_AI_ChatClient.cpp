@@ -145,7 +145,8 @@ std::string JsonEscape(const std::string& value) {
 
 std::string BuildRequestBody(
     const AiChatConfig& config,
-    const std::vector<AiChatMessage>& messages) {
+    const std::vector<AiChatMessage>& messages,
+    bool stream = false) {
     std::ostringstream body;
     body << "{\"model\":\"" << JsonEscape(config.model)
          << "\",\"messages\":[";
@@ -157,7 +158,8 @@ std::string BuildRequestBody(
              << "\",\"content\":\""
              << JsonEscape(messages[index].content) << "\"}";
     }
-    body << "],\"stream\":false}";
+    body << "],\"stream\":"
+         << (stream ? "true" : "false") << "}";
     return body.str();
 }
 
@@ -353,12 +355,12 @@ std::string ExtractJsonField(
     return std::string(json.substr(quote + 1u, end - quote - 1u));
 }
 
-bool RunApiRequest(
+bool RunApiRequestRaw(
     const AiChatConfig& config,
     const std::string& body,
-    std::string& outContent,
+    std::string& outRaw,
     std::string& outError) {
-    outContent.clear();
+    outRaw.clear();
     outError.clear();
     if (!config.valid) {
         outError = "未配置 API Key";
@@ -474,18 +476,81 @@ bool RunApiRequest(
             response.substr(0u, 240u);
         return false;
     }
-    outContent = ExtractJsonContent(response);
-    if (outContent.empty()) {
-        outError = "API 响应中没有 content 字段（" + statusText +
-            "响应：" + response.substr(0u, 240u) + "）";
-        return false;
-    }
+    outRaw = std::move(response);
     return true;
 #else
     (void)body;
     outError = "仅支持 Windows 编辑器宿主";
     return false;
 #endif
+}
+
+bool RunApiRequest(
+    const AiChatConfig& config,
+    const std::string& body,
+    std::string& outContent,
+    std::string& outError) {
+    std::string raw;
+    if (!RunApiRequestRaw(config, body, raw, outError)) {
+        return false;
+    }
+    outContent = ExtractJsonContent(raw);
+    if (outContent.empty()) {
+        outError = "API 响应中没有 content 字段";
+        return false;
+    }
+    return true;
+}
+
+bool RunChatCompletionsStreaming(
+    const AiChatConfig& config,
+    const std::vector<AiChatMessage>& messages,
+    const AiChatStreamCallback& onDelta,
+    std::string& outFull,
+    std::string& outError) {
+    outFull.clear();
+    outError.clear();
+    if (!config.valid) {
+        outError = "未配置 API Key（DASHSCOPE_API_KEY）";
+        return false;
+    }
+    std::string raw;
+    const std::string body =
+        BuildRequestBody(config, messages, true);
+    if (!RunApiRequestRaw(config, body, raw, outError)) {
+        return false;
+    }
+
+    std::string full;
+    size_t start = 0u;
+    while (start < raw.size()) {
+        const auto newline = raw.find('\n', start);
+        const std::string line = newline == std::string::npos
+            ? raw.substr(start)
+            : raw.substr(start, newline - start);
+        start = newline == std::string::npos
+            ? raw.size()
+            : newline + 1u;
+        std::string trimmed = Trim(line);
+        if (trimmed.rfind("data:", 0u) != 0u) {
+            continue;
+        }
+        const std::string data = Trim(trimmed.substr(5u));
+        if (data == "[DONE]") {
+            break;
+        }
+        const std::string delta = ExtractJsonContent(data);
+        if (delta.empty()) {
+            continue;
+        }
+        full += delta;
+        if (onDelta && !onDelta(delta)) {
+            outError = "用户中止";
+            return false;
+        }
+    }
+    outFull = full;
+    return !full.empty();
 }
 
 std::string ExtractActionJson(const std::string& reply) {

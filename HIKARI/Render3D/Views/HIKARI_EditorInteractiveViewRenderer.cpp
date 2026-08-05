@@ -4,8 +4,13 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
+#include <fstream>
 #include <memory>
+#include <mutex>
+#include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render2D/HIKARI_RenderTarget2D.h"
@@ -57,6 +62,230 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         std::unique_ptr<POST::PostEffect> g_fxaaEffect{};
         uint64_t g_scheduleSerial = 0u;
         EditorInteractiveSchedulerStats g_schedulerStats{};
+
+        struct PreviewCaptureRequest {
+            bool pending = false;
+            bool done = false;
+            RenderViewId viewId{};
+            std::string path;
+            std::string error;
+        };
+
+        std::mutex g_captureMutex;
+        PreviewCaptureRequest g_captureRequest{};
+
+        bool WriteBmp(
+            const std::string& path,
+            int width,
+            int height,
+            UINT sourcePitch,
+            const uint8_t* source) {
+            const int destinationRow =
+                ((width * 3 + 3) / 4) * 4;
+            const uint32_t imageSize =
+                static_cast<uint32_t>(destinationRow) *
+                static_cast<uint32_t>(height);
+            const uint32_t fileSize = 54u + imageSize;
+            std::ofstream output(path, std::ios::binary);
+            if (!output) {
+                return false;
+            }
+            uint8_t header[54] = {};
+            header[0] = 'B';
+            header[1] = 'M';
+            header[2] = static_cast<uint8_t>(fileSize & 0xffu);
+            header[3] = static_cast<uint8_t>((fileSize >> 8u) & 0xffu);
+            header[4] = static_cast<uint8_t>((fileSize >> 16u) & 0xffu);
+            header[5] = static_cast<uint8_t>((fileSize >> 24u) & 0xffu);
+            header[10] = 54u;
+            header[14] = 40u;
+            const auto writeInt = [&header](size_t offset, int32_t value) {
+                const uint32_t bits = static_cast<uint32_t>(value);
+                for (size_t index = 0u; index < 4u; ++index) {
+                    header[offset + index] =
+                        static_cast<uint8_t>((bits >> (index * 8u)) & 0xffu);
+                }
+            };
+            writeInt(18, width);
+            writeInt(22, height);
+            header[26] = 1u;
+            header[28] = 24u;
+            writeInt(34, static_cast<int32_t>(imageSize));
+            output.write(
+                reinterpret_cast<const char*>(header), sizeof(header));
+            std::vector<uint8_t> row(
+                static_cast<size_t>(destinationRow));
+            for (int y = height - 1; y >= 0; --y) {
+                const uint8_t* sourceRow =
+                    source + static_cast<size_t>(y) * sourcePitch;
+                for (int x = 0; x < width; ++x) {
+                    row[static_cast<size_t>(x) * 3u + 0u] =
+                        sourceRow[static_cast<size_t>(x) * 4u + 2u];
+                    row[static_cast<size_t>(x) * 3u + 1u] =
+                        sourceRow[static_cast<size_t>(x) * 4u + 1u];
+                    row[static_cast<size_t>(x) * 3u + 2u] =
+                        sourceRow[static_cast<size_t>(x) * 4u + 0u];
+                }
+                output.write(
+                    reinterpret_cast<const char*>(row.data()),
+                    row.size());
+            }
+            return output.good();
+        }
+
+        void TryRunPendingCapture(InteractiveViewState& state) {
+            PreviewCaptureRequest request{};
+            {
+                std::lock_guard<std::mutex> lock(g_captureMutex);
+                if (!g_captureRequest.pending ||
+                    g_captureRequest.viewId != state.request.viewId) {
+                    return;
+                }
+                request = g_captureRequest;
+                g_captureRequest.pending = false;
+            }
+            const auto finish = [](std::string error) {
+                std::lock_guard<std::mutex> lock(g_captureMutex);
+                g_captureRequest.done = true;
+                g_captureRequest.error = std::move(error);
+            };
+
+            RenderTarget2D* target = state.displayTarget.get();
+            if (target == nullptr || !target->IsInitialized()) {
+                finish("预览目标不可用");
+                return;
+            }
+            const int width = target->GetWidth();
+            const int height = target->GetHeight();
+            if (width <= 0 || height <= 0 ||
+                target->GetFormat() != DXGI_FORMAT_R8G8B8A8_UNORM) {
+                finish("预览截图目前只支持 RGBA8 显示目标");
+                return;
+            }
+
+            ID3D12Device* device = GFX::GetCurrentContext().device;
+            ID3D12CommandQueue* queue = GFX::GetCurrentContext().queue;
+            if (device == nullptr || queue == nullptr) {
+                finish("GPU 上下文不可用");
+                return;
+            }
+            const UINT sourcePitch = static_cast<UINT>(
+                (static_cast<UINT64>(width) * 4u +
+                 D3D12_TEXTURE_DATA_PITCH_ALIGNMENT - 1u) &
+                ~(D3D12_TEXTURE_DATA_PITCH_ALIGNMENT - 1u));
+            const UINT64 totalBytes =
+                static_cast<UINT64>(sourcePitch) *
+                static_cast<UINT64>(height);
+
+            Microsoft::WRL::ComPtr<ID3D12Resource> staging;
+            Microsoft::WRL::ComPtr<ID3D12CommandAllocator> allocator;
+            Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> list;
+            Microsoft::WRL::ComPtr<ID3D12Fence> fence;
+            HANDLE eventHandle = nullptr;
+            D3D12_RESOURCE_DESC stagingDesc =
+                CD3DX12_RESOURCE_DESC::Buffer(totalBytes);
+            CD3DX12_HEAP_PROPERTIES readbackHeap(
+                D3D12_HEAP_TYPE_READBACK);
+            if (FAILED(device->CreateCommittedResource(
+                    &readbackHeap,
+                    D3D12_HEAP_FLAG_NONE,
+                    &stagingDesc,
+                    D3D12_RESOURCE_STATE_COPY_DEST,
+                    nullptr,
+                    IID_PPV_ARGS(&staging))) ||
+                FAILED(device->CreateCommandAllocator(
+                    D3D12_COMMAND_LIST_TYPE_DIRECT,
+                    IID_PPV_ARGS(&allocator))) ||
+                FAILED(device->CreateCommandList(
+                    0,
+                    D3D12_COMMAND_LIST_TYPE_DIRECT,
+                    allocator.Get(),
+                    nullptr,
+                    IID_PPV_ARGS(&list))) ||
+                FAILED(device->CreateFence(
+                    0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence)))) {
+                finish("创建截图读回资源失败");
+                return;
+            }
+            eventHandle = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+            if (eventHandle == nullptr) {
+                finish("创建截图事件失败");
+                return;
+            }
+
+            const D3D12_RESOURCE_STATES previousState =
+                target->GetColorState();
+            D3D12_RESOURCE_BARRIER toCopy =
+                CD3DX12_RESOURCE_BARRIER::Transition(
+                    target->GetResource(),
+                    previousState,
+                    D3D12_RESOURCE_STATE_COPY_SOURCE);
+            list->ResourceBarrier(1, &toCopy);
+            D3D12_TEXTURE_COPY_LOCATION sourceLocation{};
+            sourceLocation.pResource = target->GetResource();
+            sourceLocation.Type =
+                D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+            D3D12_TEXTURE_COPY_LOCATION destinationLocation{};
+            destinationLocation.pResource = staging.Get();
+            destinationLocation.Type =
+                D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+            destinationLocation.PlacedFootprint.Offset = 0u;
+            destinationLocation.PlacedFootprint.Footprint.Format =
+                DXGI_FORMAT_R8G8B8A8_UNORM;
+            destinationLocation.PlacedFootprint.Footprint.Width =
+                static_cast<UINT>(width);
+            destinationLocation.PlacedFootprint.Footprint.Height =
+                static_cast<UINT>(height);
+            destinationLocation.PlacedFootprint.Footprint.Depth = 1u;
+            destinationLocation.PlacedFootprint.Footprint.RowPitch =
+                sourcePitch;
+            D3D12_BOX sourceBox{
+                0u, 0u, 0u,
+                static_cast<UINT>(width),
+                static_cast<UINT>(height),
+                1u
+            };
+            list->CopyTextureRegion(
+                &destinationLocation, 0u, 0u, 0u,
+                &sourceLocation, &sourceBox);
+            D3D12_RESOURCE_BARRIER toPrevious =
+                CD3DX12_RESOURCE_BARRIER::Transition(
+                    target->GetResource(),
+                    D3D12_RESOURCE_STATE_COPY_SOURCE,
+                    previousState);
+            list->ResourceBarrier(1, &toPrevious);
+            (void)list->Close();
+
+            ID3D12CommandList* commandLists[] = { list.Get() };
+            queue->ExecuteCommandLists(1u, commandLists);
+            (void)queue->Signal(fence.Get(), 1ull);
+            (void)fence->SetEventOnCompletion(1ull, eventHandle);
+            if (WaitForSingleObject(eventHandle, 5000u) != WAIT_OBJECT_0) {
+                CloseHandle(eventHandle);
+                finish("截图读回超时");
+                return;
+            }
+            CloseHandle(eventHandle);
+
+            void* mapped = nullptr;
+            if (FAILED(staging->Map(0, nullptr, &mapped)) ||
+                mapped == nullptr) {
+                finish("截图读回映射失败");
+                return;
+            }
+            const bool written = WriteBmp(
+                request.path,
+                width,
+                height,
+                sourcePitch,
+                static_cast<const uint8_t*>(mapped));
+            staging->Unmap(0, nullptr);
+            if (!written) {
+                finish("截图写入失败：" + request.path);
+                return;
+            }
+            finish({});
+        }
 
         InteractiveViewState& FindOrCreateState(RenderViewId viewId) {
             auto found = g_views.find(viewId.value);
@@ -571,6 +800,27 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
             EditorInteractiveViewStatus::Idle);
     }
 
+    void RequestPreviewCapture(
+        RenderViewId viewId, const std::string& outputPath) {
+        std::lock_guard<std::mutex> lock(g_captureMutex);
+        g_captureRequest = {
+            true, false, viewId, outputPath, {}
+        };
+    }
+
+    bool PollPreviewCapture(
+        const std::string& outputPath, std::string& outError) {
+        std::lock_guard<std::mutex> lock(g_captureMutex);
+        if (!g_captureRequest.pending && !g_captureRequest.done) {
+            return false;
+        }
+        if (g_captureRequest.path != outputPath) {
+            return false;
+        }
+        outError = g_captureRequest.error;
+        return g_captureRequest.done;
+    }
+
     bool RenderPending(
         const SceneEnvironment& environment,
         const LIGHTING::SceneLightingSet& lighting,
@@ -641,6 +891,7 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
                 EditorInteractiveViewFailure::RenderTargetUnavailable);
             return false;
         }
+        TryRunPendingCapture(*selected);
 
         const std::array<float, 4> clearColor = ResolveClearColor(
             selected->request.shadingMode);

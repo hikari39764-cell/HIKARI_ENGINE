@@ -378,4 +378,60 @@ void ModelMaterialWorkspaceController::UpdatePublicSlotViews() {
   }
 }
 
+bool ModelMaterialWorkspaceController::ApplyAiMaterialParameterEdit(
+    DocumentSceneBase &scene, const std::string &parameterId,
+    float value, std::string &outMessage) {
+  if (!authoringDocument_.HasMaterial()) {
+    outMessage = "未打开材质文档";
+    return false;
+  }
+  MaterialAssetData before = authoringDocument_.GetMaterial();
+  MaterialAssetData &material = authoringDocument_.EditMaterial();
+  MaterialGraphData *graph = material.kind == MaterialAssetKind::Material
+      ? &material.graph
+      : material.kind == MaterialAssetKind::Function
+          ? &material.function.graph
+          : nullptr;
+  if (graph == nullptr) {
+    outMessage = "当前资产没有可编辑的节点图";
+    return false;
+  }
+  const auto matches = [&parameterId](const std::string &id) {
+    if (id == parameterId || id == "parameter." + parameterId) {
+      return true;
+    }
+    return id.size() > parameterId.size() &&
+        id.compare(
+            id.size() - parameterId.size(),
+            parameterId.size(),
+            parameterId) == 0;
+  };
+  const auto found = std::find_if(
+      graph->parameters.begin(), graph->parameters.end(),
+      [&matches](const MaterialGraphParameterData &parameter) {
+        return matches(parameter.id);
+      });
+  if (found == graph->parameters.end()) {
+    outMessage = "找不到参数：" + parameterId;
+    return false;
+  }
+  if (found->defaultValue.type != MaterialValueType::Float1 &&
+      found->defaultValue.type != MaterialValueType::Float2 &&
+      found->defaultValue.type != MaterialValueType::Float3 &&
+      found->defaultValue.type != MaterialValueType::Float4) {
+    outMessage = "参数 " + parameterId + " 不是数值类型";
+    return false;
+  }
+  found->defaultValue.numeric.x = value;
+  if (authoringDocument_.CommitMaterial(
+          std::move(before), "AI edit parameter")) {
+    (void)RefreshMaterialPreviews(scene, statusMessage_);
+    outMessage = "已更新 " + parameterId + " = " +
+        std::to_string(value);
+    return true;
+  }
+  outMessage = "材质提交失败";
+  return false;
+}
+
 } // namespace HIKARI::EDITOR

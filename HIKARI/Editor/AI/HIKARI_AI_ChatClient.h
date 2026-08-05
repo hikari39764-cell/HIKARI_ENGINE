@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -16,6 +17,9 @@ namespace HIKARI::EDITOR::AI_ASSISTANT {
         std::string model;
         bool valid = false;
     };
+
+    using AiChatStreamCallback =
+        std::function<bool(const std::string& delta)>;
 
     bool LoadAiChatConfig(AiChatConfig& outConfig);
     bool SaveAiChatConfig(const AiChatConfig& config);
@@ -37,6 +41,12 @@ namespace HIKARI::EDITOR::AI_ASSISTANT {
         const AiChatConfig& config,
         const std::vector<AiChatMessage>& messages,
         std::string& outContent,
+        std::string& outError);
+    bool RunChatCompletionsStreaming(
+        const AiChatConfig& config,
+        const std::vector<AiChatMessage>& messages,
+        const AiChatStreamCallback& onDelta,
+        std::string& outFull,
         std::string& outError);
     std::string ExtractActionJson(const std::string& reply);
 

@@ -12,20 +12,25 @@
 #include "Editor/Play/HIKARI_EditorPlaySession.h"
 #include "Editor/SystemAuthoring/HIKARI_BuiltInSystemAuthoring.h"
 #include "Editor/Tools/HIKARI_BuiltInEditorTools.h"
+#include "Editor/Views/HIKARI_EditorViewInstance.h"
 #include "Editor/Widgets/HIKARI_MaterialTextureSlotWidget.h"
 #include "Editor/HIKARI_EditorViewportInput.h"
 #include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
 #include "Project/HIKARI_ProjectSettings.h"
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
+#include "Render3D/Views/HIKARI_EditorInteractiveViewRenderer.h"
 #include "Runtime/HIKARI_RuntimeResourceRefreshService.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/Lighting/HIKARI_SceneLightingSet.h"
 
 #include <cstdio>
+#include <chrono>
+#include <cstdlib>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 
 #if defined(HIKARI_WITH_EDITOR)
@@ -60,7 +65,8 @@ namespace HIKARI {
                 action != "scene.list_objects" &&
                 action != "scene.set_transform" &&
                 action != "scene.create_object" &&
-                action != "asset.list_models") {
+                action != "asset.list_models" &&
+                action != "capture.preview") {
                 EDITOR::AI_ASSISTANT::AiRequestResult result{};
                 result.ok = false;
                 result.message = "不支持的场景动作：" + action;
@@ -70,6 +76,7 @@ namespace HIKARI {
                     "supported: scene.set_transform",
                     "supported: scene.create_object",
                     "supported: asset.list_models",
+                    "supported: capture.preview",
                 };
                 return result;
             }
@@ -264,6 +271,38 @@ namespace HIKARI {
                 if (result.details.empty()) {
                     result.message = "没有已注册的模型资产";
                 }
+                return result;
+            }
+
+            if (action == "capture.preview") {
+                std::string path =
+                    EDITOR::AI_ASSISTANT::ExtractJsonField(json, "path");
+                if (path.empty()) {
+                    const char* temp = std::getenv("TEMP");
+                    path = std::string(temp != nullptr ? temp : ".") +
+                        "/hikari-ai-preview.bmp";
+                }
+                RENDER3D::EDITORVIEW::RequestPreviewCapture(
+                    EDITOR::kModelMaterialPreviewRenderViewId,
+                    path);
+                for (int attempt = 0; attempt < 50; ++attempt) {
+                    std::string captureError;
+                    if (RENDER3D::EDITORVIEW::PollPreviewCapture(
+                            path, captureError)) {
+                        if (!captureError.empty()) {
+                            result.message =
+                                "截图失败：" + captureError;
+                        } else {
+                            result.ok = true;
+                            result.message =
+                                "预览截图已保存：" + path;
+                        }
+                        return result;
+                    }
+                    std::this_thread::sleep_for(
+                        std::chrono::milliseconds(100));
+                }
+                result.message = "截图超时：" + path;
                 return result;
             }
 
@@ -908,7 +947,42 @@ namespace HIKARI {
         }
         if (context_.windows.runtime.showAiAssistant) {
             aiAssistantPanel_.SetSceneActionCallback(
-                [&scene](std::string_view json) {
+                [this, &scene](std::string_view json) {
+                    const std::string action =
+                        EDITOR::AI_ASSISTANT::ExtractJsonField(json, "action");
+                    if (action == "material.edit_parameter") {
+                        EDITOR::AI_ASSISTANT::AiRequestResult result{};
+                        std::string message;
+                        const std::string parameter =
+                            EDITOR::AI_ASSISTANT::ExtractJsonField(
+                                json, "parameter");
+                        if (parameter.empty()) {
+                            result.message = "缺少 parameter 字段";
+                            return result;
+                        }
+                        float value = 0.0f;
+                        const std::string valueText =
+                            EDITOR::AI_ASSISTANT::ExtractJsonField(
+                                json, "value");
+                        if (!valueText.empty()) {
+                            try {
+                                value = std::stof(valueText);
+                            } catch (...) {
+                                result.message =
+                                    "value 不是有效数字：" + valueText;
+                                return result;
+                            }
+                        }
+                        if (modelMaterialWorkspaceController_
+                                .ApplyAiMaterialParameterEdit(
+                                    scene, parameter, value, message)) {
+                            result.ok = true;
+                            result.message = message;
+                        } else {
+                            result.message = message;
+                        }
+                        return result;
+                    }
                     return ExecuteAiSceneAction(scene, json);
                 });
             aiAssistantPanel_.Draw(context_.windows.runtime.showAiAssistant);

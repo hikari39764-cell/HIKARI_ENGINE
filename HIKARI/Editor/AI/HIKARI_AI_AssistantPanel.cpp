@@ -75,6 +75,12 @@ const std::vector<AiCapability>& QueryCapabilities() {
         { "asset.list_models",
           "List registered model assets (id and source path).",
           "stable" },
+        { "material.edit_parameter",
+          "Edit a numeric parameter of the currently open material document.",
+          "stable" },
+        { "capture.preview",
+          "Capture the material preview to a BMP file for vision verification.",
+          "stable" },
         { "query.capabilities",
           "List the current AI-accessible capabilities and boundaries.",
           "stable" },
@@ -93,9 +99,6 @@ const std::vector<AiCapability>& QueryCapabilities() {
         { "material.double_sided",
           "Authored double-sided materials publish the shader flag and back-face handling.",
           "stable" },
-        { "material.edit_parameter",
-          "AI-driven parameter edits through the editor command surface.",
-          "planned" },
         { "scene.query",
           "AI-readable scene/object queries through the editor bridge.",
           "planned" },
@@ -252,8 +255,27 @@ void AiAssistantPanel::RunConversation(const std::string& userText) {
             AI_ASSISTANT::AiChatMessage{ "system", BuildSystemPrompt() });
         std::string reply;
         std::string error;
-        if (!AI_ASSISTANT::RunChatCompletions(
-                config_, request, reply, error)) {
+        {
+            std::lock_guard<std::mutex> lock(streamMutex_);
+            streamingPartial_.clear();
+            streamingActive_ = true;
+        }
+        const bool streamOk =
+            AI_ASSISTANT::RunChatCompletionsStreaming(
+                config_,
+                request,
+                [this](const std::string& delta) {
+                    std::lock_guard<std::mutex> lock(streamMutex_);
+                    streamingPartial_ += delta;
+                    return true;
+                },
+                reply,
+                error);
+        {
+            std::lock_guard<std::mutex> lock(streamMutex_);
+            streamingActive_ = false;
+        }
+        if (!streamOk) {
             AppendMessage({ "assistant", "（调用失败）" + error });
             return;
         }
@@ -261,6 +283,10 @@ void AiAssistantPanel::RunConversation(const std::string& userText) {
             AI_ASSISTANT::ExtractAllActionJson(reply);
         if (actionJsons.empty()) {
             AppendMessage({ "assistant", reply });
+            {
+                std::lock_guard<std::mutex> lock(streamMutex_);
+                streamingPartial_.clear();
+            }
             return;
         }
         conversation.push_back({ "assistant", reply });
@@ -279,6 +305,10 @@ void AiAssistantPanel::RunConversation(const std::string& userText) {
         conversation.push_back({ "user", resultText });
     }
     AppendMessage({ "assistant", "（已达到最大工具调用轮数，请继续提问）" });
+    {
+        std::lock_guard<std::mutex> lock(streamMutex_);
+        streamingPartial_.clear();
+    }
 }
 
 void AiAssistantPanel::SendCurrentMessage() {
@@ -341,7 +371,10 @@ AI_ASSISTANT::AiRequestResult AiAssistantPanel::ExecuteRequest(
     const std::string action =
         AI_ASSISTANT::ExtractJsonField(json, "action");
     if (action.rfind("procedural.", 0u) == 0u ||
-        action.rfind("scene.", 0u) == 0u) {
+        action.rfind("scene.", 0u) == 0u ||
+        action.rfind("asset.", 0u) == 0u ||
+        action.rfind("material.", 0u) == 0u ||
+        action.rfind("capture.", 0u) == 0u) {
         if (sceneActionCallback_) {
             return sceneActionCallback_(json);
         }
@@ -466,7 +499,20 @@ void AiAssistantPanel::Draw(bool& open) {
             ImGui::TextWrapped("%s", message.content.c_str());
             ImGui::Spacing();
         }
-        if (visibleMessages.size() != lastMessageCount_) {
+        std::string partial;
+        {
+            std::lock_guard<std::mutex> lock(streamMutex_);
+            partial = streamingPartial_;
+        }
+        if (!partial.empty()) {
+            ImGui::TextColored(
+                ImVec4{ 0.45f, 0.80f, 1.00f, 1.0f },
+                "[Assistant]");
+            ImGui::TextWrapped("%s", partial.c_str());
+            ImGui::Spacing();
+        }
+        if (visibleMessages.size() != lastMessageCount_ ||
+            !partial.empty()) {
             lastMessageCount_ = visibleMessages.size();
             ImGui::SetScrollHereY(1.0f);
         }

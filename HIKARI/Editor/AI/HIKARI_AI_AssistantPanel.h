@@ -58,6 +58,9 @@ namespace HIKARI::EDITOR {
 
         std::vector<AI_ASSISTANT::AiChatMessage> messages_{};
         std::mutex messageMutex_{};
+        std::mutex streamMutex_{};
+        std::string streamingPartial_{};
+        bool streamingActive_ = false;
         char inputBuffer_[4096] = {};
         char rawRequestBuffer_[2048] = {};
         bool showCapabilities_ = false;

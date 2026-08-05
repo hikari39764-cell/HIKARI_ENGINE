@@ -96,6 +96,12 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
 
     void SubmitRequest(const EditorInteractiveViewRequest& request);
     void ClearRequest(RenderViewId viewId);
+    void RequestPreviewCapture(
+        RenderViewId viewId,
+        const std::string& outputPath);
+    bool PollPreviewCapture(
+        const std::string& outputPath,
+        std::string& outError);
     bool RenderPending(
         const SceneEnvironment& environment,
         const LIGHTING::SceneLightingSet& lighting,
