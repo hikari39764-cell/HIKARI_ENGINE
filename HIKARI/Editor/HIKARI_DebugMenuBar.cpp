@@ -450,6 +450,7 @@ namespace HIKARI {
                 ImGui::MenuItem("Debug View", nullptr, &windows.runtime.showDebugView);
                 ImGui::MenuItem("Performance Audit", nullptr, &windows.runtime.showPerformanceAudit);
                 ImGui::MenuItem("Renderer Health", nullptr, &windows.runtime.showValidationLab);
+                ImGui::MenuItem("AI Assistant", nullptr, &windows.runtime.showAiAssistant);
                 ImGui::EndMenu();
             }
 

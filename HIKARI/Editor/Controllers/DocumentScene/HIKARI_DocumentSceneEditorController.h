@@ -3,6 +3,7 @@
 #include <optional>
 #include <vector>
 
+#include "Editor/AI/HIKARI_AI_AssistantPanel.h"
 #include "Editor/HIKARI_DebugCameraPanel.h"
 #include "Editor/HIKARI_DebugMenuBar.h"
 #include "Editor/HIKARI_EditorContext.h"
@@ -67,6 +68,7 @@ namespace HIKARI {
         PerformanceAuditPanel performanceAuditPanel_{};
         EDITOR::SceneAuthoringUtilityWindows sceneAuthoringUtilityWindows_{};
         ValidationLabPanel validationLabPanel_{};
+        EDITOR::AiAssistantPanel aiAssistantPanel_{};
         EnvironmentPanel environmentPanel_{};
         QualityPanel qualityPanel_{};
         EDITOR::EditorToolHost toolHost_{};

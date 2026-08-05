@@ -519,6 +519,8 @@ set(HIKARI_EDITOR_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/HIKARI_TimePanel.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Views/HIKARI_EditorInteractiveViewRenderer.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/HIKARI_DebugMenuBar.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/AI/HIKARI_AI_AssistantPanel.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/AI/HIKARI_AI_AssistantPanel.h"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/History/HIKARI_EditorDocumentHistory.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/History/HIKARI_SceneObjectTransformHistorySession.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/History/HIKARI_CinematicsHistoryCommand.cpp"

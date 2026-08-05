@@ -625,6 +625,9 @@ namespace HIKARI {
         if (context_.windows.runtime.showValidationLab) {
             validationLabPanel_.Draw(context_, context_.windows.runtime.showValidationLab);
         }
+        if (context_.windows.runtime.showAiAssistant) {
+            aiAssistantPanel_.Draw(context_.windows.runtime.showAiAssistant);
+        }
         DrawPendingSceneOpenModal(scene);
         if (renderQualitySavePending_ && !ImGui::IsAnyItemActive()) {
             (void)SaveRenderQualityProfile(scene);
