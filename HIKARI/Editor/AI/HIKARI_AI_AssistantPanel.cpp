@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
+#include <utility>
 
 #include "Assets/Material/Authoring/HIKARI_MaterialTemplateFactory.h"
 
@@ -14,6 +15,19 @@ namespace HIKARI::EDITOR {
 namespace AI_ASSISTANT {
 
 namespace {
+
+std::string Trim(std::string value) {
+    const auto notSpace = [](unsigned char c) {
+        return std::isspace(c) == 0;
+    };
+    value.erase(
+        value.begin(),
+        std::find_if(value.begin(), value.end(), notSpace));
+    value.erase(
+        std::find_if(value.rbegin(), value.rend(), notSpace).base(),
+        value.end());
+    return value;
+}
 
 std::string ExtractAction(std::string_view json) {
     const auto action = json.find("\"action\"");
@@ -35,23 +49,13 @@ std::string ExtractAction(std::string_view json) {
     return std::string(json.substr(quote + 1u, end - quote - 1u));
 }
 
-std::string Trim(std::string value) {
-    const auto notSpace = [](unsigned char c) {
-        return std::isspace(c) == 0;
-    };
-    value.erase(
-        value.begin(),
-        std::find_if(value.begin(), value.end(), notSpace));
-    value.erase(
-        std::find_if(value.rbegin(), value.rend(), notSpace).base(),
-        value.end());
-    return value;
-}
-
 } // namespace
 
 const std::vector<AiCapability>& QueryCapabilities() {
     static const std::vector<AiCapability> capabilities{
+        { "chat.converse",
+          "Conversational replies via the configured DashScope-compatible chat API; action JSON executes through SubmitAiRequest.",
+          "stable" },
         { "query.capabilities",
           "List the current AI-accessible capabilities and boundaries.",
           "stable" },
@@ -144,71 +148,236 @@ AiRequestResult SubmitAiRequest(std::string_view requestJson) {
 
 } // namespace AI_ASSISTANT
 
+AiAssistantPanel::AiAssistantPanel() {
+    configLoaded_ = AI_ASSISTANT::LoadAiChatConfig(config_);
+}
+
+AiAssistantPanel::~AiAssistantPanel() {
+    if (worker_.joinable()) {
+        worker_.join();
+    }
+}
+
+std::string AiAssistantPanel::BuildSystemPrompt() const {
+    std::string prompt =
+        "你是 HIKARI 引擎的 AI 编辑助手。你可以通过单独输出一行 JSON 调用引擎能力，"
+        "例如 {\"action\":\"list_capabilities\"}。\n"
+        "当前能力清单：\n";
+    for (const AI_ASSISTANT::AiCapability& capability :
+         AI_ASSISTANT::QueryCapabilities()) {
+        prompt += "- " + capability.status + " " + capability.id +
+            "：" + capability.summary + "\n";
+    }
+    prompt +=
+        "\n边界：AI 不能直接修改引擎内部状态；不支持的能力必须明确说做不到，"
+        "并给出替代方案；未验证的结果不得声称成功。\n"
+        "规则：只调用清单中的 action；用户用中文交流时请用中文回复。";
+    return prompt;
+}
+
+void AiAssistantPanel::AppendMessage(
+    const AI_ASSISTANT::AiChatMessage& message) {
+    std::lock_guard<std::mutex> lock(messageMutex_);
+    messages_.push_back(message);
+    if (messages_.size() > 60u) {
+        messages_.erase(messages_.begin(), messages_.begin() + 20u);
+    }
+}
+
+void AiAssistantPanel::RunConversation(const std::string& userText) {
+    std::vector<AI_ASSISTANT::AiChatMessage> conversation;
+    {
+        std::lock_guard<std::mutex> lock(messageMutex_);
+        conversation = messages_;
+    }
+    conversation.push_back({ "user", userText });
+    for (int turn = 0; turn < 4; ++turn) {
+        std::vector<AI_ASSISTANT::AiChatMessage> request = conversation;
+        request.insert(
+            request.begin(),
+            AI_ASSISTANT::AiChatMessage{ "system", BuildSystemPrompt() });
+        std::string reply;
+        std::string error;
+        if (!AI_ASSISTANT::RunChatCompletions(
+                config_, request, reply, error)) {
+            AppendMessage({ "assistant", "（调用失败）" + error });
+            return;
+        }
+        const std::string actionJson =
+            AI_ASSISTANT::ExtractActionJson(reply);
+        if (actionJson.empty()) {
+            AppendMessage({ "assistant", reply });
+            return;
+        }
+        const AI_ASSISTANT::AiRequestResult result =
+            AI_ASSISTANT::SubmitAiRequest(actionJson);
+        conversation.push_back({ "assistant", actionJson });
+        std::string resultText =
+            result.ok ? "ACTION OK：" : "ACTION NOT SUPPORTED：";
+        resultText += result.message;
+        for (const std::string& detail : result.details) {
+            resultText += "\n- " + detail;
+        }
+        conversation.push_back({ "user", resultText });
+    }
+    AppendMessage({ "assistant", "（已达到最大工具调用轮数，请继续提问）" });
+}
+
+void AiAssistantPanel::SendCurrentMessage() {
+    if (busy_.load()) {
+        return;
+    }
+    std::string text = AI_ASSISTANT::Trim(inputBuffer_);
+    if (text.empty()) {
+        return;
+    }
+    AppendMessage({ "user", text });
+    inputBuffer_[0] = '\0';
+    busy_.store(true);
+    if (worker_.joinable()) {
+        worker_.join();
+    }
+    worker_ = std::thread([this, text = std::move(text)]() {
+        RunConversation(text);
+        busy_.store(false);
+    });
+}
+
 void AiAssistantPanel::Draw(bool& open) {
 #if defined(HIKARI_WITH_EDITOR)
-    if (!ImGui::Begin("AI Assistant", &open)) {
+    if (!ImGui::Begin("AI Assistant", &open, ImGuiWindowFlags_MenuBar)) {
         ImGui::End();
         return;
     }
 
-    ImGui::TextDisabled("Calling method:");
-    ImGui::TextWrapped(
-        "Send {\"action\":\"...\"} JSON here, or through the future local "
-        "bridge. Unknown actions are rejected with an explicit boundary "
-        "message; the assistant never claims unsupported work.");
-
-    ImGui::SeparatorText("Capability Manifest");
-    for (const AI_ASSISTANT::AiCapability& capability :
-         AI_ASSISTANT::QueryCapabilities()) {
-        ImVec4 color{ 0.62f, 0.76f, 0.90f, 1.0f };
-        if (capability.status == "stable") {
-            color = ImVec4{ 0.28f, 0.82f, 0.48f, 1.0f };
-        } else if (capability.status == "planned") {
-            color = ImVec4{ 1.0f, 0.72f, 0.28f, 1.0f };
-        } else if (capability.status == "unsupported") {
-            color = ImVec4{ 1.0f, 0.42f, 0.35f, 1.0f };
+    if (ImGui::BeginMenuBar()) {
+        if (ImGui::BeginMenu("View")) {
+            ImGui::MenuItem("Capabilities", nullptr, &showCapabilities_);
+            ImGui::MenuItem("Raw JSON Action", nullptr, &showRawRequest_);
+            if (ImGui::MenuItem("Clear Chat")) {
+                std::lock_guard<std::mutex> lock(messageMutex_);
+                messages_.clear();
+                lastMessageCount_ = 0u;
+            }
+            ImGui::EndMenu();
         }
-        ImGui::TextColored(color, "[%s] %s", capability.status.c_str(),
-                           capability.id.c_str());
-        ImGui::TextWrapped("  %s", capability.summary.c_str());
+        ImGui::EndMenuBar();
     }
 
-    ImGui::SeparatorText("Request");
-    ImGui::InputTextMultiline(
-        "##AiRequest", requestBuffer_, sizeof(requestBuffer_),
-        ImVec2(-1.0f, 96.0f));
-    if (ImGui::Button("Run")) {
-        lastRequest_ = requestBuffer_;
-        lastResult_ = AI_ASSISTANT::SubmitAiRequest(lastRequest_);
-        hasResult_ = true;
+    const bool busy = busy_.load();
+    const ImVec4 statusColor = !configLoaded_
+        ? ImVec4{ 1.0f, 0.42f, 0.35f, 1.0f }
+        : busy
+            ? ImVec4{ 1.0f, 0.72f, 0.28f, 1.0f }
+            : ImVec4{ 0.28f, 0.82f, 0.48f, 1.0f };
+    ImGui::TextColored(statusColor, "%s",
+        busy
+            ? "● 处理中..."
+            : config_.valid
+                ? ("● DashScope · " + config_.model).c_str()
+                : "● 未配置 API Key（只读模式）");
+
+    ImGui::Separator();
+
+    ImGui::BeginChild(
+        "##AiChatLog", ImVec2(0.0f, -112.0f), true);
+    {
+        std::vector<AI_ASSISTANT::AiChatMessage> visibleMessages;
+        {
+            std::lock_guard<std::mutex> lock(messageMutex_);
+            visibleMessages = messages_;
+        }
+        for (const AI_ASSISTANT::AiChatMessage& message : visibleMessages) {
+            if (message.role == "user") {
+                ImGui::TextColored(
+                    ImVec4{ 0.82f, 0.88f, 0.96f, 1.0f },
+                    "[You]");
+            } else {
+                ImGui::TextColored(
+                    ImVec4{ 0.45f, 0.80f, 1.00f, 1.0f },
+                    "[Assistant]");
+            }
+            ImGui::TextWrapped("%s", message.content.c_str());
+            ImGui::Spacing();
+        }
+        if (visibleMessages.size() != lastMessageCount_) {
+            lastMessageCount_ = visibleMessages.size();
+            ImGui::SetScrollHereY(1.0f);
+        }
     }
-    ImGui::SameLine();
-    if (ImGui::SmallButton("Insert: list_capabilities")) {
-        std::snprintf(requestBuffer_, sizeof(requestBuffer_),
-                      "{\"action\":\"list_capabilities\"}");
+    ImGui::EndChild();
+
+    ImGui::BeginDisabled(busy);
+    const bool enterPressed = ImGui::InputTextMultiline(
+        "##AiInput",
+        inputBuffer_,
+        sizeof(inputBuffer_),
+        ImVec2(-1.0f, 56.0f),
+        ImGuiInputTextFlags_EnterReturnsTrue);
+    const bool sendClicked = ImGui::Button("Send");
+    if (enterPressed || sendClicked) {
+        SendCurrentMessage();
     }
-    ImGui::SameLine();
-    if (ImGui::SmallButton("Insert: list_material_templates")) {
-        std::snprintf(requestBuffer_, sizeof(requestBuffer_),
-                      "{\"action\":\"list_material_templates\"}");
-    }
-    ImGui::SameLine();
-    if (ImGui::SmallButton("Insert: create_material")) {
-        std::snprintf(requestBuffer_, sizeof(requestBuffer_),
-                      "{\"action\":\"create_material\","
-                      "\"template\":\"GenericToon\"}");
+    ImGui::EndDisabled();
+    if (busy) {
+        ImGui::SameLine();
+        ImGui::TextDisabled("working...");
     }
 
-    if (hasResult_) {
-        ImGui::SeparatorText("Result");
-        ImGui::TextColored(
-            lastResult_.ok
-                ? ImVec4{ 0.28f, 0.82f, 0.48f, 1.0f }
-                : ImVec4{ 1.0f, 0.42f, 0.35f, 1.0f },
-            lastResult_.ok ? "OK" : "NOT SUPPORTED");
-        ImGui::TextWrapped("%s", lastResult_.message.c_str());
-        for (const std::string& detail : lastResult_.details) {
-            ImGui::BulletText("%s", detail.c_str());
+    if (showCapabilities_) {
+        ImGui::Separator();
+        if (ImGui::CollapsingHeader(
+                "Capability Manifest", ImGuiTreeNodeFlags_DefaultOpen)) {
+            if (ImGui::BeginTable(
+                    "##AiCapabilities", 3,
+                    ImGuiTableFlags_RowBg |
+                        ImGuiTableFlags_BordersInnerV |
+                        ImGuiTableFlags_SizingStretchProp)) {
+                ImGui::TableSetupColumn("Status");
+                ImGui::TableSetupColumn("ID");
+                ImGui::TableSetupColumn("Summary");
+                ImGui::TableHeadersRow();
+                for (const AI_ASSISTANT::AiCapability& capability :
+                     AI_ASSISTANT::QueryCapabilities()) {
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    ImGui::Text("%s", capability.status.c_str());
+                    ImGui::TableSetColumnIndex(1);
+                    ImGui::TextUnformatted(capability.id.c_str());
+                    ImGui::TableSetColumnIndex(2);
+                    ImGui::TextWrapped("%s",
+                                       capability.summary.c_str());
+                }
+                ImGui::EndTable();
+            }
+        }
+    }
+
+    if (showRawRequest_) {
+        ImGui::Separator();
+        if (ImGui::CollapsingHeader(
+                "Raw JSON Action", ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::InputTextMultiline(
+                "##AiRawRequest",
+                rawRequestBuffer_,
+                sizeof(rawRequestBuffer_),
+                ImVec2(-1.0f, 64.0f));
+            if (ImGui::Button("Run")) {
+                rawResult_ = AI_ASSISTANT::SubmitAiRequest(rawRequestBuffer_);
+                hasRawResult_ = true;
+            }
+            if (hasRawResult_) {
+                ImGui::TextColored(
+                    rawResult_.ok
+                        ? ImVec4{ 0.28f, 0.82f, 0.48f, 1.0f }
+                        : ImVec4{ 1.0f, 0.42f, 0.35f, 1.0f },
+                    rawResult_.ok ? "OK" : "NOT SUPPORTED");
+                ImGui::TextWrapped("%s",
+                                   rawResult_.message.c_str());
+                for (const std::string& detail : rawResult_.details) {
+                    ImGui::BulletText("%s", detail.c_str());
+                }
+            }
         }
     }
 

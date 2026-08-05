@@ -1,8 +1,13 @@
 #pragma once
 
+#include <atomic>
+#include <mutex>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <vector>
+
+#include "Editor/AI/HIKARI_AI_ChatClient.h"
 
 namespace HIKARI::EDITOR {
 
@@ -27,13 +32,30 @@ namespace HIKARI::EDITOR {
 
     class AiAssistantPanel {
     public:
+        AiAssistantPanel();
+        ~AiAssistantPanel();
+
         void Draw(bool& open);
 
     private:
-        char requestBuffer_[2048] = {};
-        std::string lastRequest_{};
-        AI_ASSISTANT::AiRequestResult lastResult_{};
-        bool hasResult_ = false;
+        void SendCurrentMessage();
+        void RunConversation(const std::string& userText);
+        void AppendMessage(const AI_ASSISTANT::AiChatMessage& message);
+        std::string BuildSystemPrompt() const;
+
+        std::vector<AI_ASSISTANT::AiChatMessage> messages_{};
+        std::mutex messageMutex_{};
+        char inputBuffer_[4096] = {};
+        char rawRequestBuffer_[2048] = {};
+        bool showCapabilities_ = false;
+        bool showRawRequest_ = false;
+        bool hasRawResult_ = false;
+        size_t lastMessageCount_ = 0u;
+        AI_ASSISTANT::AiRequestResult rawResult_{};
+        AI_ASSISTANT::AiChatConfig config_{};
+        bool configLoaded_ = false;
+        std::atomic<bool> busy_{ false };
+        std::thread worker_{};
     };
 
 } // namespace HIKARI::EDITOR
