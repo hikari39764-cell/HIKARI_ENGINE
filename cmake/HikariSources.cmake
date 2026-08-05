@@ -523,6 +523,8 @@ set(HIKARI_EDITOR_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/AI/HIKARI_AI_AssistantPanel.h"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/AI/HIKARI_AI_ChatClient.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/AI/HIKARI_AI_ChatClient.h"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/AI/HIKARI_AI_VisionClient.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/AI/HIKARI_AI_VisionClient.h"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/History/HIKARI_EditorDocumentHistory.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/History/HIKARI_SceneObjectTransformHistorySession.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/History/HIKARI_CinematicsHistoryCommand.cpp"

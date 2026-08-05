@@ -302,6 +302,14 @@ bool ResetAiChatConfig() {
     return std::remove(path.c_str()) == 0 || errno == ENOENT;
 }
 
+std::string GetAiUserConfigPath() {
+    return EngineConfigPath();
+}
+
+std::string GetAiVisionSkillEnvPath() {
+    return SkillEnvPath();
+}
+
 bool RunChatCompletions(
     const AiChatConfig& config,
     const std::vector<AiChatMessage>& messages,
@@ -313,6 +321,49 @@ bool RunChatCompletions(
         outError = "未配置 API Key（DASHSCOPE_API_KEY）";
         return false;
     }
+    const std::string body = BuildRequestBody(config, messages);
+    return RunApiRequest(config, body, outContent, outError);
+}
+
+std::string AiJsonEscape(const std::string& value) {
+    return JsonEscape(value);
+}
+
+std::string ExtractJsonField(
+    std::string_view json,
+    std::string_view field) {
+    const std::string marker =
+        std::string("\"") + std::string(field) + "\"";
+    const auto position = json.find(marker);
+    if (position == std::string_view::npos) {
+        return {};
+    }
+    const auto colon = json.find(':', position + marker.size());
+    if (colon == std::string_view::npos) {
+        return {};
+    }
+    const auto quote = json.find('"', colon + 1u);
+    if (quote == std::string_view::npos) {
+        return {};
+    }
+    const auto end = json.find('"', quote + 1u);
+    if (end == std::string_view::npos) {
+        return {};
+    }
+    return std::string(json.substr(quote + 1u, end - quote - 1u));
+}
+
+bool RunApiRequest(
+    const AiChatConfig& config,
+    const std::string& body,
+    std::string& outContent,
+    std::string& outError) {
+    outContent.clear();
+    outError.clear();
+    if (!config.valid) {
+        outError = "未配置 API Key";
+        return false;
+    }
 #ifdef _WIN32
     std::wstring host;
     std::wstring path;
@@ -320,7 +371,6 @@ bool RunChatCompletions(
         outError = "无法解析 API 端点：" + config.baseUrl;
         return false;
     }
-    const std::string body = BuildRequestBody(config, messages);
 
     HINTERNET session = WinHttpOpen(
         L"HIKARI AI Assistant",
@@ -435,7 +485,7 @@ bool RunChatCompletions(
     }
     return true;
 #else
-    (void)messages;
+    (void)body;
     outError = "仅支持 Windows 编辑器宿主";
     return false;
 #endif

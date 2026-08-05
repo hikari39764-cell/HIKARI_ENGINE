@@ -6,6 +6,7 @@
 #include <utility>
 
 #include "Assets/Material/Authoring/HIKARI_MaterialTemplateFactory.h"
+#include "Editor/AI/HIKARI_AI_VisionClient.h"
 
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
@@ -55,6 +56,12 @@ const std::vector<AiCapability>& QueryCapabilities() {
     static const std::vector<AiCapability> capabilities{
         { "chat.converse",
           "Conversational replies via the configured DashScope-compatible chat API; action JSON executes through SubmitAiRequest.",
+          "stable" },
+        { "vision.analyze_image",
+          "Analyze a local image via the configured vision API; defaults to the vision-skill DashScope model.",
+          "stable" },
+        { "procedural.create_primitive",
+          "Create a procedural primitive (box/sphere/plane/cylinder/capsule) with position, scale and size.",
           "stable" },
         { "query.capabilities",
           "List the current AI-accessible capabilities and boundaries.",
@@ -117,6 +124,40 @@ AiRequestResult SubmitAiRequest(std::string_view requestJson) {
              ASSETS::MATERIAL::GetBuiltInMaterialTemplates()) {
             result.details.push_back(std::string(info.displayName));
         }
+        return result;
+    }
+    if (action == "vision.analyze_image") {
+        AiRequestResult result{};
+        const std::string image =
+            ExtractJsonField(requestJson, "image");
+        if (image.empty()) {
+            result.ok = false;
+            result.message = "缺少 image 字段（本地图片路径）";
+            result.details = {
+                "示例：{\"action\":\"vision.analyze_image\","
+                "\"image\":\"C:/x.png\",\"prompt\":\"描述这张图\"}",
+            };
+            return result;
+        }
+        AiChatConfig vision{};
+        if (!LoadAiVisionConfig(vision)) {
+            result.ok = false;
+            result.message =
+                "未配置视觉 API Key（可在 API Settings 的 Vision 区配置）";
+            return result;
+        }
+        const std::string prompt =
+            ExtractJsonField(requestJson, "prompt");
+        std::string text;
+        std::string error;
+        if (!RunVisionAnalysis(
+                vision, image, prompt, text, error)) {
+            result.ok = false;
+            result.message = "识图失败：" + error;
+            return result;
+        }
+        result.ok = true;
+        result.message = text;
         return result;
     }
     if (action == "create_material") {
@@ -210,7 +251,7 @@ void AiAssistantPanel::RunConversation(const std::string& userText) {
             return;
         }
         const AI_ASSISTANT::AiRequestResult result =
-            AI_ASSISTANT::SubmitAiRequest(actionJson);
+            ExecuteRequest(actionJson);
         conversation.push_back({ "assistant", actionJson });
         std::string resultText =
             result.ok ? "ACTION OK：" : "ACTION NOT SUPPORTED：";
@@ -273,6 +314,69 @@ void AiAssistantPanel::SaveApiSettings() {
     OpenApiSettingsBuffers();
 }
 
+void AiAssistantPanel::SetSceneActionCallback(
+    AiSceneActionCallback callback) {
+    sceneActionCallback_ = std::move(callback);
+}
+
+AI_ASSISTANT::AiRequestResult AiAssistantPanel::ExecuteRequest(
+    std::string_view json) {
+    const std::string action =
+        AI_ASSISTANT::ExtractJsonField(json, "action");
+    if (action.rfind("procedural.", 0u) == 0u ||
+        action.rfind("scene.", 0u) == 0u) {
+        if (sceneActionCallback_) {
+            return sceneActionCallback_(json);
+        }
+        AI_ASSISTANT::AiRequestResult result{};
+        result.ok = false;
+        result.message = "场景执行器未接线：" + action;
+        result.details = {
+            "supported: query.capabilities",
+            "supported: query.material_templates",
+            "supported: vision.analyze_image",
+        };
+        return result;
+    }
+    return AI_ASSISTANT::SubmitAiRequest(json);
+}
+
+void AiAssistantPanel::OpenVisionBuffers() {
+    AI_ASSISTANT::AiChatConfig vision{};
+    (void)AI_ASSISTANT::LoadAiVisionConfig(vision);
+    std::snprintf(
+        visionApiKeyBuffer_, sizeof(visionApiKeyBuffer_), "%s",
+        vision.apiKey.c_str());
+    std::snprintf(
+        visionBaseUrlBuffer_, sizeof(visionBaseUrlBuffer_), "%s",
+        vision.baseUrl.c_str());
+    std::snprintf(
+        visionModelBuffer_, sizeof(visionModelBuffer_), "%s",
+        vision.model.c_str());
+}
+
+void AiAssistantPanel::SaveVisionSettings() {
+    AI_ASSISTANT::AiChatConfig updated{};
+    updated.apiKey = AI_ASSISTANT::Trim(visionApiKeyBuffer_);
+    updated.baseUrl = AI_ASSISTANT::Trim(visionBaseUrlBuffer_);
+    updated.model = AI_ASSISTANT::Trim(visionModelBuffer_);
+    if (updated.baseUrl.empty()) {
+        updated.baseUrl =
+            "https://dashscope.aliyuncs.com/compatible-mode/v1";
+    }
+    if (updated.model.empty()) {
+        updated.model = "qwen-vl-plus";
+    }
+    updated.valid = !updated.apiKey.empty();
+    AI_ASSISTANT::SaveAiVisionConfig(updated);
+    OpenVisionBuffers();
+}
+
+void AiAssistantPanel::ResetVisionSettings() {
+    AI_ASSISTANT::ResetAiVisionConfig();
+    OpenVisionBuffers();
+}
+
 void AiAssistantPanel::Draw(bool& open) {
 #if defined(HIKARI_WITH_EDITOR)
     if (!ImGui::Begin("AI Assistant", &open, ImGuiWindowFlags_MenuBar)) {
@@ -288,6 +392,7 @@ void AiAssistantPanel::Draw(bool& open) {
                                 &showApiSettings_)) {
                 if (showApiSettings_) {
                     OpenApiSettingsBuffers();
+                    OpenVisionBuffers();
                 }
             }
             if (ImGui::MenuItem("Clear Chat")) {
@@ -427,6 +532,33 @@ void AiAssistantPanel::Draw(bool& open) {
             }
             ImGui::TextDisabled(
                 "Saved to %USERPROFILE%\\.hikari-ai-assistant.env");
+
+            ImGui::SeparatorText("Vision API");
+            ImGui::InputText(
+                "Vision API Key",
+                visionApiKeyBuffer_,
+                sizeof(visionApiKeyBuffer_),
+                showVisionKey_ ? 0 : ImGuiInputTextFlags_Password);
+            ImGui::SameLine();
+            ImGui::Checkbox("Show", &showVisionKey_);
+            ImGui::InputText(
+                "Vision Base URL",
+                visionBaseUrlBuffer_,
+                sizeof(visionBaseUrlBuffer_));
+            ImGui::InputText(
+                "Vision Model",
+                visionModelBuffer_,
+                sizeof(visionModelBuffer_));
+            if (ImGui::Button("Save Vision")) {
+                SaveVisionSettings();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Reset Vision")) {
+                ResetVisionSettings();
+            }
+            ImGui::TextDisabled(
+                "默认读取 vision-skill .env 的 VISION_MODEL；"
+                "保存后写入同一引擎配置文件。");
         }
     }
 
@@ -440,7 +572,7 @@ void AiAssistantPanel::Draw(bool& open) {
                 sizeof(rawRequestBuffer_),
                 ImVec2(-1.0f, 64.0f));
             if (ImGui::Button("Run")) {
-                rawResult_ = AI_ASSISTANT::SubmitAiRequest(rawRequestBuffer_);
+                rawResult_ = ExecuteRequest(rawRequestBuffer_);
                 hasRawResult_ = true;
             }
             if (hasRawResult_) {

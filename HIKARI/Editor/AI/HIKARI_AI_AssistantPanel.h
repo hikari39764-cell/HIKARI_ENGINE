@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <functional>
 #include <mutex>
 #include <string>
 #include <string_view>
@@ -32,10 +33,15 @@ namespace HIKARI::EDITOR {
 
     class AiAssistantPanel {
     public:
+        using AiSceneActionCallback =
+            std::function<AI_ASSISTANT::AiRequestResult(
+                std::string_view)>;
+
         AiAssistantPanel();
         ~AiAssistantPanel();
 
         void Draw(bool& open);
+        void SetSceneActionCallback(AiSceneActionCallback callback);
 
     private:
         void SendCurrentMessage();
@@ -44,6 +50,11 @@ namespace HIKARI::EDITOR {
         std::string BuildSystemPrompt() const;
         void OpenApiSettingsBuffers();
         void SaveApiSettings();
+        void OpenVisionBuffers();
+        void SaveVisionSettings();
+        void ResetVisionSettings();
+        AI_ASSISTANT::AiRequestResult ExecuteRequest(
+            std::string_view json);
 
         std::vector<AI_ASSISTANT::AiChatMessage> messages_{};
         std::mutex messageMutex_{};
@@ -53,11 +64,16 @@ namespace HIKARI::EDITOR {
         bool showRawRequest_ = false;
         bool showApiSettings_ = false;
         bool showApiKey_ = false;
+        bool showVisionKey_ = false;
         bool hasRawResult_ = false;
         size_t lastMessageCount_ = 0u;
         char apiKeyBuffer_[256] = {};
         char baseUrlBuffer_[512] = {};
         char modelBuffer_[128] = {};
+        char visionApiKeyBuffer_[256] = {};
+        char visionBaseUrlBuffer_[512] = {};
+        char visionModelBuffer_[128] = {};
+        AiSceneActionCallback sceneActionCallback_{};
         AI_ASSISTANT::AiRequestResult rawResult_{};
         AI_ASSISTANT::AiChatConfig config_{};
         bool configLoaded_ = false;

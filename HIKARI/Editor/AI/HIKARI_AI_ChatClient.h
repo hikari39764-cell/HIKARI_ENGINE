@@ -20,6 +20,17 @@ namespace HIKARI::EDITOR::AI_ASSISTANT {
     bool LoadAiChatConfig(AiChatConfig& outConfig);
     bool SaveAiChatConfig(const AiChatConfig& config);
     bool ResetAiChatConfig();
+    std::string GetAiUserConfigPath();
+    std::string GetAiVisionSkillEnvPath();
+    std::string AiJsonEscape(const std::string& value);
+    bool RunApiRequest(
+        const AiChatConfig& config,
+        const std::string& requestBody,
+        std::string& outContent,
+        std::string& outError);
+    std::string ExtractJsonField(
+        std::string_view json,
+        std::string_view field);
     bool RunChatCompletions(
         const AiChatConfig& config,
         const std::vector<AiChatMessage>& messages,

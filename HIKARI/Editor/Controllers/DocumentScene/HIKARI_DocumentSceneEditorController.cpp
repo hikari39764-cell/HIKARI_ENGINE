@@ -2,7 +2,9 @@
 
 #include "Assets/Material/HIKARI_MaterialAssetData.h"
 #include "Core/HIKARI_Logger.h"
+#include "Editor/AI/HIKARI_AI_ChatClient.h"
 #include "Editor/Authoring/HIKARI_EditorObjectState.h"
+#include "Editor/Authoring/HIKARI_EditorObjectFactory.h"
 #include "Editor/History/HIKARI_EnvironmentHistoryCommand.h"
 #include "Editor/History/HIKARI_SceneObjectsHistoryCommand.h"
 #include "Editor/History/HIKARI_SceneSystemsHistoryCommand.h"
@@ -18,8 +20,12 @@
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
 #include "Runtime/HIKARI_RuntimeResourceRefreshService.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
+#include "Scene/HIKARI_GameObject.h"
 #include "Scene/Lighting/HIKARI_SceneLightingSet.h"
 
+#include <cstdio>
+#include <string>
+#include <string_view>
 #include <utility>
 
 #if defined(HIKARI_WITH_EDITOR)
@@ -43,6 +49,93 @@ namespace HIKARI {
                 ", material " + std::to_string(report.materialReloadedCount) +
                 ", mat rebound " + std::to_string(report.materialReboundComponentCount) +
                 ", failed " + std::to_string(report.failedCount);
+        }
+
+        EDITOR::AI_ASSISTANT::AiRequestResult ExecuteAiSceneAction(
+            DocumentSceneBase& scene,
+            std::string_view json) {
+            const std::string action =
+                EDITOR::AI_ASSISTANT::ExtractJsonField(json, "action");
+            if (action != "procedural.create_primitive") {
+                EDITOR::AI_ASSISTANT::AiRequestResult result{};
+                result.ok = false;
+                result.message = "不支持的场景动作：" + action;
+                result.details = {
+                    "supported: procedural.create_primitive",
+                };
+                return result;
+            }
+            const auto floatField =
+                [&json](const char* name, float fallback) {
+                    const std::string value =
+                        EDITOR::AI_ASSISTANT::ExtractJsonField(json, name);
+                    if (value.empty()) {
+                        return fallback;
+                    }
+                    try {
+                        return std::stof(value);
+                    } catch (...) {
+                        return fallback;
+                    }
+                };
+            const std::string kind =
+                EDITOR::AI_ASSISTANT::ExtractJsonField(json, "kind");
+            ProceduralMeshKind meshKind = ProceduralMeshKind::Box;
+            if (kind == "sphere") {
+                meshKind = ProceduralMeshKind::Sphere;
+            } else if (kind == "plane") {
+                meshKind = ProceduralMeshKind::Plane;
+            } else if (kind == "grid_plane") {
+                meshKind = ProceduralMeshKind::GridPlane;
+            } else if (kind == "cylinder") {
+                meshKind = ProceduralMeshKind::Cylinder;
+            } else if (kind == "capsule") {
+                meshKind = ProceduralMeshKind::Capsule;
+            }
+
+            EDITOR::CreatePrimitiveRequest request{};
+            request.object.name =
+                EDITOR::AI_ASSISTANT::ExtractJsonField(json, "name");
+            if (request.object.name.empty()) {
+                request.object.name =
+                    kind.empty() ? "AI Primitive" : kind;
+            }
+            request.object.position = {
+                floatField("positionX", 0.0f),
+                floatField("positionY", 0.0f),
+                floatField("positionZ", 0.0f),
+            };
+            request.object.scale = {
+                floatField("scaleX", 1.0f),
+                floatField("scaleY", 1.0f),
+                floatField("scaleZ", 1.0f),
+            };
+            request.mesh.kind = meshKind;
+            request.mesh.width = floatField("width", 1.0f);
+            request.mesh.height = floatField("height", 1.0f);
+            request.mesh.depth = floatField("depth", 1.0f);
+            request.mesh =
+                SanitizeProceduralMeshSettings(request.mesh);
+            GameObject* object =
+                EDITOR::CreatePrimitiveObject(scene, request);
+            EDITOR::AI_ASSISTANT::AiRequestResult result{};
+            if (object == nullptr) {
+                result.message =
+                    "创建程序化物体失败：" + request.object.name;
+                return result;
+            }
+            char positionText[96];
+            std::snprintf(
+                positionText, sizeof(positionText),
+                "(%.2f, %.2f, %.2f)",
+                request.object.position.x,
+                request.object.position.y,
+                request.object.position.z);
+            result.ok = true;
+            result.message =
+                "已创建 " + request.object.name + " " +
+                std::string(positionText);
+            return result;
         }
 
 #if defined(HIKARI_WITH_EDITOR)
@@ -626,6 +719,10 @@ namespace HIKARI {
             validationLabPanel_.Draw(context_, context_.windows.runtime.showValidationLab);
         }
         if (context_.windows.runtime.showAiAssistant) {
+            aiAssistantPanel_.SetSceneActionCallback(
+                [&scene](std::string_view json) {
+                    return ExecuteAiSceneAction(scene, json);
+                });
             aiAssistantPanel_.Draw(context_.windows.runtime.showAiAssistant);
         }
         DrawPendingSceneOpenModal(scene);
