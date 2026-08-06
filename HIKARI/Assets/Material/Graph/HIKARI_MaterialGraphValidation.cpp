@@ -1102,6 +1102,23 @@ namespace HIKARI {
                 "material v1 graphs must be acyclic");
         }
 
+        std::unordered_set<std::string> groupIds{};
+        for (const MaterialGraphGroupData& group : graph.groups) {
+            if (!IsValidMaterialStableId(group.id) ||
+                !groupIds.emplace(group.id).second) {
+                AddDiagnostic(outDiagnostics, MaterialGraphDiagnosticSeverity::Error,
+                    "Material.InvalidGroupId",
+                    "material group IDs must be stable and unique", group.id);
+            }
+            for (const std::string& nodeId : group.nodeIds) {
+                if (nodeIndices.find(nodeId) == nodeIndices.end()) {
+                    AddDiagnostic(outDiagnostics, MaterialGraphDiagnosticSeverity::Warning,
+                        "Material.InvalidGroupMember",
+                        "material group references a missing node", group.id);
+                }
+            }
+        }
+
         ValidateRuntimeSemantics(graph, outDiagnostics);
 
         return std::none_of(

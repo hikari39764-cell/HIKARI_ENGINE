@@ -90,6 +90,7 @@ namespace HIKARI::RENDER3D::MATERIAL {
 
     struct MaterialExpressionRuntimeProgram {
         bool active = false;
+        uint32_t outputMask = 0u;
         uint32_t instructionCount = 0u;
         uint32_t registerCount = 0u;
         uint32_t valueCount = 0u;

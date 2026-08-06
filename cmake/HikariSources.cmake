@@ -1,8 +1,6 @@
 # Authoritative HIKARI compile-source manifest.
 # Add or remove translation units here and keep the source-closure test green.
 
-set(HIKARI_COMPILE_SOURCE_COUNT 809)
-
 set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/External/WICTextureLoader.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render2D/HIKARI_Camera.cpp"
@@ -575,6 +573,7 @@ set(HIKARI_EDITOR_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialGraphInspector.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialGraphDefaultInputs.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialGraphInlineEditor.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialGraphSelection.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialGraphEyeNodeEditor.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialGraphCorneaHighlightNodeEditor.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialGraphRampNodeEditor.cpp"

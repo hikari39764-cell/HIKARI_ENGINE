@@ -99,10 +99,16 @@ namespace HIKARI {
                 outPath = std::string(temp != nullptr ? temp : ".") +
                     "/hikari-ai-preview.png";
             }
+            const std::filesystem::path outputPath(outPath);
+            if (outputPath.has_parent_path()) {
+                std::error_code errorCode{};
+                std::filesystem::create_directories(
+                    outputPath.parent_path(), errorCode);
+            }
             RENDER3D::EDITORVIEW::RequestPreviewCapture(
                 EDITOR::kModelMaterialPreviewRenderViewId,
                 outPath);
-            for (int attempt = 0; attempt < 50; ++attempt) {
+            for (int attempt = 0; attempt < 100; ++attempt) {
                 if (RENDER3D::EDITORVIEW::PollPreviewCapture(
                         outPath, outError)) {
                     return outError.empty();
@@ -677,6 +683,9 @@ namespace HIKARI {
         EDITOR::RegisterBuiltInEditorTools(toolHost_);
         EDITOR::RegisterBuiltInSystemAuthoring(
             systemAuthoringRegistry_);
+        modelMaterialWorkspaceController_.SetAiAssistantPanel(
+            &aiAssistantPanel_,
+            &context_.windows.runtime.showAiAssistant);
     }
 
     void DocumentSceneEditorController::EnsureAiLocalBridge() {

@@ -151,6 +151,22 @@ float4 HikariExpressionNormalize(float4 value, uint components)
     return value * rsqrt(lengthSquared);
 }
 
+float2 HikariExpressionHash22(float2 p)
+{
+    uint2 q = asuint(int2(p));
+    q = q * uint2(1597334673u, 3812015801u);
+    uint n0 = (q.x ^ q.y) * 1597334673u;
+    n0 = n0 ^ (n0 >> 15u);
+    n0 = n0 * 2246822519u;
+    n0 = n0 ^ (n0 >> 13u);
+    uint n1 = n0 * 3266489917u;
+    n0 = n0 ^ (n0 >> 16u);
+    n1 = n1 ^ (n1 >> 16u);
+    return float2(
+        float(n0 & 0xffffffu) / 16777215.0f,
+        float(n1 & 0xffffffu) / 16777215.0f);
+}
+
 HikariMaterialExpressionResult HikariEvaluateMaterialExpression(
     HikariMeshMaterialData materialData,
     HikariMaterialExpressionContext context,
@@ -330,6 +346,9 @@ HikariMaterialExpressionResult HikariEvaluateMaterialExpression(
         else if (opcode == HIKARI_EXPRESSION_TRUNC) value = trunc(a);
         else if (opcode == HIKARI_EXPRESSION_UV_TRANSFORM)
         {
+            const float2 uv =
+                source0 != HIKARI_MATERIAL_EXPRESSION_INVALID_REGISTER
+                    ? a.xy : context.uv0;
             const float2 pivot =
                 source1 != HIKARI_MATERIAL_EXPRESSION_INVALID_REGISTER
                     ? b.xy : 0.0f.xx;
@@ -344,7 +363,7 @@ HikariMaterialExpressionResult HikariEvaluateMaterialExpression(
                     ? e.x : 0.0f;
             const float s = sin(rotation);
             const float c2 = cos(rotation);
-            const float2 centered = a.xy - pivot;
+            const float2 centered = uv - pivot;
             const float2 rotated = float2(
                 centered.x * c2 - centered.y * s,
                 centered.x * s + centered.y * c2);
@@ -354,22 +373,21 @@ HikariMaterialExpressionResult HikariEvaluateMaterialExpression(
         {
             const float scale =
                 source1 != HIKARI_MATERIAL_EXPRESSION_INVALID_REGISTER
-                    ? b.x : 1.0f;
-            const float2 p = a.xy * scale;
+                    ? b.x : 8.0f;
+            const float2 uv =
+                source0 != HIKARI_MATERIAL_EXPRESSION_INVALID_REGISTER
+                    ? a.xy : context.uv0;
+            const float2 p = uv * scale;
             const float2 cell = floor(p);
             const float2 f = frac(p);
             const float2 u = f * f * (3.0f - 2.0f * f);
-            const float h00 = frac(sin(dot(
-                cell, float2(127.1f, 311.7f))) * 43758.5453f);
-            const float h10 = frac(sin(dot(
-                cell + float2(1.0f, 0.0f),
-                float2(127.1f, 311.7f))) * 43758.5453f);
-            const float h01 = frac(sin(dot(
-                cell + float2(0.0f, 1.0f),
-                float2(127.1f, 311.7f))) * 43758.5453f);
-            const float h11 = frac(sin(dot(
-                cell + float2(1.0f, 1.0f),
-                float2(127.1f, 311.7f))) * 43758.5453f);
+            const float h00 = HikariExpressionHash22(cell).x;
+            const float h10 = HikariExpressionHash22(
+                cell + float2(1.0f, 0.0f)).x;
+            const float h01 = HikariExpressionHash22(
+                cell + float2(0.0f, 1.0f)).x;
+            const float h11 = HikariExpressionHash22(
+                cell + float2(1.0f, 1.0f)).x;
             const float v0 = lerp(h00, h10, u.x);
             const float v1 = lerp(h01, h11, u.x);
             value = lerp(v0, v1, u.y).xxxx;
@@ -378,8 +396,11 @@ HikariMaterialExpressionResult HikariEvaluateMaterialExpression(
         {
             const float scale =
                 source1 != HIKARI_MATERIAL_EXPRESSION_INVALID_REGISTER
-                    ? b.x : 1.0f;
-            const float2 p = a.xy * scale;
+                    ? b.x : 8.0f;
+            const float2 uv =
+                source0 != HIKARI_MATERIAL_EXPRESSION_INVALID_REGISTER
+                    ? a.xy : context.uv0;
+            const float2 p = uv * scale;
             const float2 cell = floor(p);
             const float2 f = frac(p);
             float minDistance = 8.0f;
@@ -391,8 +412,7 @@ HikariMaterialExpressionResult HikariEvaluateMaterialExpression(
                 {
                     const float2 neighbor = float2((float)ox, (float)oy);
                     const float2 samplePoint = cell + neighbor;
-                    const float2 hash = frac(sin(dot(
-                        samplePoint, float2(127.1f, 311.7f))) * 43758.5453f);
+                    const float2 hash = HikariExpressionHash22(samplePoint);
                     const float2 offset = neighbor + hash - f;
                     minDistance = min(
                         minDistance, dot(offset, offset));

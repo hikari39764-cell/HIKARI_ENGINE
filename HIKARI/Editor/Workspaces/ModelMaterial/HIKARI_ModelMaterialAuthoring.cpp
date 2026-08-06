@@ -1,5 +1,6 @@
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
 
+#include <cstdio>
 #include <filesystem>
 #include <utility>
 
@@ -11,6 +12,7 @@
 #include "Assets/Material/HIKARI_MaterialAssetLookup.h"
 #include "Render3D/Core/HIKARI_Material.h"
 #include "Render3D/Material/HIKARI_MaterialRuntimeBuilder.h"
+#include "Render3D/Material/Program/HIKARI_MaterialExpressionProgram.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
 namespace HIKARI::EDITOR {
@@ -376,6 +378,25 @@ bool ModelMaterialWorkspaceController::RebuildAuthoredPreview(
     outMessage = "material preview projection failed; last preview kept";
     return false;
   }
+  RENDER3D::MATERIAL::MaterialExpressionRuntimeProgram previewExpression{};
+  std::string previewExpressionError{};
+  (void)RENDER3D::MATERIAL::BuildMaterialExpressionRuntimeProgram(
+      effectiveCompile.program, previewExpression,
+      previewExpressionError);
+  const bool hasExpressionBlock =
+      previewExpression.active &&
+      previewExpression.outputMask != 0u &&
+      previewMaterial->GetMaterialProgramId().value != 0u;
+  const auto maskText = [](uint32_t mask) {
+    char buffer[16];
+    std::snprintf(buffer, sizeof(buffer), "%08X", mask);
+    return std::string(buffer);
+  };
+  materialPreviewExpressionStatus_ =
+      hasExpressionBlock
+          ? "Expression active mask=0x" +
+                maskText(previewExpression.outputMask)
+          : "Expression inactive";
   previewMaterial->SetInheritModelTextures(
       authoringMode_ == AuthoringMode::ModelMaterials);
   if (authoringMode_ == AuthoringMode::MaterialAsset) {
@@ -386,9 +407,14 @@ bool ModelMaterialWorkspaceController::RebuildAuthoredPreview(
       return false;
     }
     standalonePreviewMaterial_ = std::move(previewMaterial);
-    outMessage = resolution.UsedFallback()
-                     ? "material sphere uses the Standard PBR fallback"
-                     : "standalone material preview updated";
+    outMessage = std::string(
+                     resolution.UsedFallback()
+                         ? "material sphere uses the Standard PBR fallback"
+                         : "standalone material preview updated") +
+        (hasExpressionBlock
+             ? " | expression active mask=0x" +
+                   maskText(previewExpression.outputMask)
+             : " | expression inactive");
     return true;
   }
 
@@ -418,9 +444,14 @@ bool ModelMaterialWorkspaceController::RebuildAuthoredPreview(
                               : "unsaved editable copy of imported material";
   UpdatePublicSlotViews();
   RefreshSelectedSlotPresentation();
-  outMessage = resolution.UsedFallback()
-                   ? "preview uses the Standard PBR fallback"
-                   : "authored material preview updated";
+  outMessage = std::string(
+                   resolution.UsedFallback()
+                       ? "preview uses the Standard PBR fallback"
+                       : "authored material preview updated") +
+      (hasExpressionBlock
+           ? " | expression active mask=0x" +
+                 maskText(previewExpression.outputMask)
+           : " | expression inactive");
   return true;
 }
 

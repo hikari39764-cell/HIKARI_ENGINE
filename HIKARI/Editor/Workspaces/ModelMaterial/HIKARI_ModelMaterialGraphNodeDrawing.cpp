@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
@@ -50,6 +51,55 @@ void DrawPendingLink(const MATH::Vec2 &start, const MATH::Vec2 &end,
   ImGui::GetWindowDrawList()->AddBezierCubic(
       {start.x, start.y}, {start.x + tangent, start.y},
       {end.x - tangent, end.y}, {end.x, end.y}, color, 2.5f);
+}
+
+void DrawMaterialGraphGroups(
+    ImDrawList *drawList,
+    const MaterialGraphData &graph,
+    const std::unordered_map<std::string, ImVec2> &screenPositions) {
+  constexpr float kGroupPadding = 18.0f;
+  constexpr float kGroupTitleHeight = 26.0f;
+  constexpr float kGroupNodeHeight = 120.0f;
+  for (const MaterialGraphGroupData &group : graph.groups) {
+    float minX = (std::numeric_limits<float>::max)();
+    float minY = (std::numeric_limits<float>::max)();
+    float maxX = -(std::numeric_limits<float>::max)();
+    float maxY = -(std::numeric_limits<float>::max)();
+    bool hasMembers = false;
+    for (const std::string &nodeId : group.nodeIds) {
+      const auto found = screenPositions.find(nodeId);
+      if (found == screenPositions.end()) {
+        continue;
+      }
+      minX = (std::min)(minX, found->second.x);
+      minY = (std::min)(minY, found->second.y);
+      maxX = (std::max)(maxX, found->second.x + kNodeWidth);
+      maxY = (std::max)(maxY, found->second.y + kGroupNodeHeight);
+      hasMembers = true;
+    }
+    if (!hasMembers) {
+      continue;
+    }
+    const ImVec2 rectMin{
+        minX - kGroupPadding,
+        minY - kGroupTitleHeight - 6.0f};
+    const ImVec2 rectMax{
+        maxX + kGroupPadding,
+        maxY + kGroupPadding};
+    const uint32_t fill = IM_COL32(
+        (group.color >> 16u) & 0xffu,
+        (group.color >> 8u) & 0xffu,
+        group.color & 0xffu,
+        (group.color >> 24u) & 0xffu);
+    drawList->AddRectFilled(rectMin, rectMax, fill, 8.0f);
+    drawList->AddRect(
+        rectMin, rectMax,
+        IM_COL32(190, 205, 220, 200), 8.0f);
+    drawList->AddText(
+        {rectMin.x + 10.0f, rectMin.y + 5.0f},
+        IM_COL32(235, 242, 250, 255),
+        group.name.c_str());
+  }
 }
 #endif
 

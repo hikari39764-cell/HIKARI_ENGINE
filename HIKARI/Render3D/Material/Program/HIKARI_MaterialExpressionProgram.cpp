@@ -63,124 +63,6 @@ const MaterialProgramInstruction* FindProducer(
         : &program.instructions[found->second];
 }
 
-bool IsLegacyStaticExpression(
-    const MaterialProgramIR& program,
-    const ProducerTable& producers,
-    uint32_t materialRegister,
-    std::unordered_set<uint32_t>& visiting) {
-    if (materialRegister == kInvalidMaterialProgramRegister ||
-        !visiting.emplace(materialRegister).second) {
-        return false;
-    }
-    const MaterialProgramInstruction* instruction =
-        FindProducer(program, producers, materialRegister);
-    if (instruction == nullptr) {
-        visiting.erase(materialRegister);
-        return false;
-    }
-    const auto allInputsStatic = [&]() {
-        return !instruction->inputRegisters.empty() &&
-            std::all_of(
-                instruction->inputRegisters.begin(),
-                instruction->inputRegisters.end(),
-                [&](uint32_t input) {
-                    return IsLegacyStaticExpression(
-                        program, producers, input, visiting);
-                });
-    };
-    bool result = false;
-    switch (instruction->opcode) {
-    case MaterialProgramOpcode::Constant:
-    case MaterialProgramOpcode::Parameter:
-        result = true;
-        break;
-    case MaterialProgramOpcode::Add:
-    case MaterialProgramOpcode::Multiply:
-    case MaterialProgramOpcode::Lerp:
-    case MaterialProgramOpcode::Clamp:
-    case MaterialProgramOpcode::Saturate:
-    case MaterialProgramOpcode::OneMinus:
-    case MaterialProgramOpcode::Power:
-    case MaterialProgramOpcode::Dot:
-        result = allInputsStatic();
-        break;
-    default:
-        break;
-    }
-    visiting.erase(materialRegister);
-    return result;
-}
-
-bool IsLegacyStaticExpression(
-    const MaterialProgramIR& program,
-    const ProducerTable& producers,
-    uint32_t materialRegister) {
-    std::unordered_set<uint32_t> visiting{};
-    return IsLegacyStaticExpression(
-        program, producers, materialRegister, visiting);
-}
-
-bool IsLegacyTextureExpression(
-    const MaterialProgramIR& program,
-    const ProducerTable& producers,
-    uint32_t materialRegister,
-    bool allowNormalUnpack) {
-    const MaterialProgramInstruction* instruction =
-        FindProducer(program, producers, materialRegister);
-    if (instruction == nullptr) {
-        return false;
-    }
-    if (instruction->opcode == MaterialProgramOpcode::TextureSample) {
-        return instruction->inputRegisters.empty() ||
-            instruction->inputRegisters.front() ==
-                kInvalidMaterialProgramRegister;
-    }
-    if (allowNormalUnpack &&
-        instruction->opcode == MaterialProgramOpcode::NormalUnpack &&
-        !instruction->inputRegisters.empty()) {
-        return IsLegacyTextureExpression(
-            program, producers, instruction->inputRegisters.front(), false);
-    }
-    return false;
-}
-
-bool IsLegacyFactorTextureExpression(
-    const MaterialProgramIR& program,
-    const ProducerTable& producers,
-    uint32_t materialRegister) {
-    const MaterialProgramInstruction* instruction =
-        FindProducer(program, producers, materialRegister);
-    if (instruction == nullptr ||
-        instruction->opcode != MaterialProgramOpcode::Multiply ||
-        instruction->inputRegisters.size() != 2u) {
-        return false;
-    }
-    const uint32_t a = instruction->inputRegisters[0];
-    const uint32_t b = instruction->inputRegisters[1];
-    return (IsLegacyStaticExpression(program, producers, a) &&
-            IsLegacyTextureExpression(program, producers, b, false)) ||
-        (IsLegacyStaticExpression(program, producers, b) &&
-         IsLegacyTextureExpression(program, producers, a, false));
-}
-
-bool IsLegacyProjectedExpression(
-    const MaterialProgramIR& program,
-    const ProducerTable& producers,
-    uint32_t materialRegister,
-    std::string_view targetPin) {
-    if (IsLegacyStaticExpression(program, producers, materialRegister)) {
-        return true;
-    }
-    if (targetPin == "Normal") {
-        return IsLegacyTextureExpression(
-            program, producers, materialRegister, true);
-    }
-    return IsLegacyTextureExpression(
-            program, producers, materialRegister, false) ||
-        IsLegacyFactorTextureExpression(
-            program, producers, materialRegister);
-}
-
 const MaterialProgramInstruction* FindPbrSurface(
     const MaterialProgramIR& program) noexcept {
     const auto found = std::find_if(
@@ -211,8 +93,7 @@ struct OutputRoot {
 };
 
 std::vector<OutputRoot> CollectDynamicOutputs(
-    const MaterialProgramIR& program,
-    const ProducerTable& producers) {
+    const MaterialProgramIR& program) {
     const MaterialProgramInstruction* surface = FindPbrSurface(program);
     if (surface == nullptr) {
         return {};
@@ -235,13 +116,7 @@ std::vector<OutputRoot> CollectDynamicOutputs(
         if (materialRegister == kInvalidMaterialProgramRegister) {
             continue;
         }
-        const bool legacyProjected = pin != "Opacity" &&
-            pin != "AlphaClipThreshold" &&
-            IsLegacyProjectedExpression(
-                program, producers, materialRegister, pin);
-        if (!legacyProjected) {
-            roots.push_back({pin, mask, materialRegister});
-        }
+        roots.push_back({pin, mask, materialRegister});
     }
     return roots;
 }
@@ -396,7 +271,7 @@ bool BuildMaterialExpressionRuntimeProgram(
     outError.clear();
     const ProducerTable producers = BuildProducerTable(program);
     const std::vector<OutputRoot> roots =
-        CollectDynamicOutputs(program, producers);
+        CollectDynamicOutputs(program);
     if (roots.empty()) {
         return true;
     }
@@ -556,6 +431,7 @@ bool BuildMaterialExpressionRuntimeProgram(
         AsFloat(kGpuMaterialExpressionInstructionBase),
         0.0f,
     };
+    outProgram.outputMask = outputMask;
     for (size_t index = 0u; index < values.size(); ++index) {
         outProgram.parameters[kGpuMaterialExpressionValueBase + index] =
             values[index];
@@ -615,8 +491,7 @@ bool ResolveMaterialExpressionBudget(
 
 bool MaterialProgramHasRuntimeExpression(
     const MaterialProgramIR& program) {
-    const ProducerTable producers = BuildProducerTable(program);
-    return !CollectDynamicOutputs(program, producers).empty();
+    return !CollectDynamicOutputs(program).empty();
 }
 
 } // namespace HIKARI::RENDER3D::MATERIAL

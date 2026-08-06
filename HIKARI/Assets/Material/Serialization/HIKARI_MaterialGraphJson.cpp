@@ -233,6 +233,57 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
             };
         }
 
+        bool ReadGroup(
+            const nlohmann::json& node,
+            MaterialGraphGroupData& outGroup,
+            std::string& outError) {
+
+            if (!node.is_object()) {
+                outError = "material graph group must be an object";
+                return false;
+            }
+            MaterialGraphGroupData group{};
+            group.id = node.value("id", std::string{});
+            group.name = node.value("name", group.id);
+            group.position = JSONREAD::Vec2Or(
+                node.value("position", nlohmann::json::array()),
+                group.position);
+            group.size = JSONREAD::Vec2Or(
+                node.value("size", nlohmann::json::array()),
+                group.size);
+            group.color = node.value("color", group.color);
+            if (!ReadArray(node, "nodeIds", group.nodeIds,
+                    [](const nlohmann::json& item, std::string& outId,
+                       std::string& error) {
+                        if (!item.is_string()) {
+                            error = "group nodeId must be a string";
+                            return false;
+                        }
+                        outId = item.get<std::string>();
+                        return true;
+                    },
+                    outError)) {
+                return false;
+            }
+            outGroup = std::move(group);
+            return true;
+        }
+
+        nlohmann::json WriteGroup(const MaterialGraphGroupData& group) {
+            nlohmann::json nodeIdArray = nlohmann::json::array();
+            for (const std::string& nodeId : group.nodeIds) {
+                nodeIdArray.push_back(nodeId);
+            }
+            return nlohmann::json{
+                { "id", group.id },
+                { "name", group.name },
+                { "position", JsonMath::ToJsonArray(group.position) },
+                { "size", JsonMath::ToJsonArray(group.size) },
+                { "color", group.color },
+                { "nodeIds", std::move(nodeIdArray) },
+            };
+        }
+
     } // namespace
 
     bool ReadMaterialValueJson(
@@ -331,7 +382,9 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
             !ReadArray(node, "nodes", graph.nodes,
                 ReadNode, outError) ||
             !ReadArray(node, "edges", graph.edges,
-                ReadEdge, outError)) {
+                ReadEdge, outError) ||
+            !ReadArray(node, "groups", graph.groups,
+                ReadGroup, outError)) {
             return false;
         }
         outGraph = std::move(graph);
@@ -345,6 +398,7 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
         auto resources = graph.resources;
         auto nodes = graph.nodes;
         auto edges = graph.edges;
+        auto groups = graph.groups;
         const auto byId = [](const auto& left, const auto& right) {
             return left.id < right.id;
         };
@@ -369,12 +423,17 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
         for (const auto& edge : edges) {
             edgeArray.push_back(WriteEdge(edge));
         }
+        nlohmann::json groupArray = nlohmann::json::array();
+        for (const auto& group : groups) {
+            groupArray.push_back(WriteGroup(group));
+        }
         return nlohmann::json{
             { "outputNodeId", graph.outputNodeId },
             { "parameters", std::move(parameterArray) },
             { "resources", std::move(resourceArray) },
             { "nodes", std::move(nodeArray) },
             { "edges", std::move(edgeArray) },
+            { "groups", std::move(groupArray) },
         };
     }
 

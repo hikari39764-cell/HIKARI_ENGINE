@@ -1,5 +1,7 @@
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
 
+#include "Editor/AI/HIKARI_AI_AssistantPanel.h"
+
 #include <utility>
 
 #include "Editor/Workspaces/HIKARI_EditorWorkspaceHost.h"
@@ -93,6 +95,11 @@ ModelMaterialWorkspaceResult ModelMaterialWorkspaceController::Draw(
   }
   DrawPendingTransitionModal(scene);
   FlushPendingMaterialPreview(scene);
+  if (aiAssistantPanel_ != nullptr &&
+      aiAssistantOpenFlag_ != nullptr &&
+      *aiAssistantOpenFlag_) {
+    aiAssistantPanel_->Draw(*aiAssistantOpenFlag_);
+  }
 #else
   (void)scene;
   (void)workspaceHost;

@@ -39,6 +39,7 @@ enum class MaterialRampPresetId : uint8_t;
 namespace HIKARI::EDITOR {
 
 class EditorWorkspaceHost;
+class AiAssistantPanel;
 
 enum class ModelMaterialBindingSource : uint8_t {
   ImportedFallback,
@@ -133,6 +134,8 @@ public:
   void ApplyWorkspaceActivation(DocumentSceneBase &scene,
                                 const EditorWorkspaceActivation &activation,
                                 EditorWorkspaceHost &workspaceHost);
+  void SetAiAssistantPanel(
+      AiAssistantPanel *panel, bool *openFlag);
 
   void DrawDockSpace(bool resetDefaultDockLayout) const;
   ModelMaterialWorkspaceResult Draw(DocumentSceneBase &scene,
@@ -157,6 +160,30 @@ public:
       std::string &outMessage,
       std::vector<std::string> &outDetails,
       std::string &outCode);
+  bool IsGraphNodeSelected(const std::string &id) const;
+  void SetGraphNodeSelection(const std::string &id, bool additive);
+  void ClearGraphNodeSelection();
+  bool CopySelectedGraphNodes(
+      MaterialAssetData &source, MaterialGraphData &graph);
+  bool PasteGraphNodes(
+      DocumentSceneBase &scene,
+      MaterialAssetData &source, MaterialGraphData &graph,
+      const MATH::Vec2 &offset);
+  bool DuplicateSelectedGraphNodes(
+      DocumentSceneBase &scene,
+      MaterialAssetData &source, MaterialGraphData &graph);
+  bool DeleteSelectedGraphNodes(
+      DocumentSceneBase &scene,
+      MaterialAssetData &source, MaterialGraphData &graph);
+  bool ArrangeSelectedGraphNodes(
+      DocumentSceneBase &scene,
+      MaterialAssetData &source, MaterialGraphData &graph);
+  bool CreateGraphGroupFromSelection(
+      DocumentSceneBase &scene,
+      MaterialAssetData &source, MaterialGraphData &graph);
+  bool UngroupSelectedGraphNodes(
+      DocumentSceneBase &scene,
+      MaterialAssetData &source, MaterialGraphData &graph);
   bool QueryAiMaterialGraph(
       DocumentSceneBase &scene,
       const std::string &nameFilter,
@@ -223,6 +250,13 @@ private:
   struct MaterialEditGesture {
     MaterialAssetData before{};
     std::string label{};
+  };
+
+  struct GraphClipboard {
+    std::vector<MaterialGraphNodeData> nodes{};
+    std::vector<MaterialGraphEdgeData> edges{};
+    std::vector<MaterialGraphParameterData> parameters{};
+    std::vector<MaterialGraphResourceData> resources{};
   };
 
   struct PreviewLightViewportInteraction {
@@ -446,6 +480,7 @@ private:
   uint64_t assetChoiceRevision_ = 0u;
 
   EditorDirectorCameraController cameraController_{};
+  std::optional<Camera3D> materialWorkspaceEnterCamera_{};
   ToolPreviewCameraStateStore cameraStateStore_{};
   EditorViewInputRouter inputRouter_{};
   uint64_t cameraRevision_ = 1u;
@@ -485,7 +520,9 @@ private:
   std::optional<MaterialAssetData> instanceParentCache_{};
   uint64_t instanceParentCacheRevision_ = 0u;
   std::string selectedGraphNodeId_{};
+  std::vector<std::string> selectedGraphNodeIds_{};
   std::string selectedGraphEdgeId_{};
+  GraphClipboard graphClipboard_{};
   std::unordered_set<std::string> collapsedGraphNodeIds_{};
   std::string selectedRampPointId_{};
   std::string edgeSourceNodeId_{};
@@ -516,6 +553,9 @@ private:
   std::array<char, 128> materialSearch_{};
   std::array<char, 128> resourceSearch_{};
   std::string statusMessage_{};
+  std::string materialPreviewExpressionStatus_{};
+  AiAssistantPanel *aiAssistantPanel_ = nullptr;
+  bool *aiAssistantOpenFlag_ = nullptr;
   PendingTransition pendingTransition_{};
   bool pendingTransitionPopupRequested_ = false;
   bool executingPendingTransition_ = false;

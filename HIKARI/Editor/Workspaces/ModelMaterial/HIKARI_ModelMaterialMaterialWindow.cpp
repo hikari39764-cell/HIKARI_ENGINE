@@ -133,6 +133,11 @@ void ModelMaterialWorkspaceController::DrawMaterialWindow(
   }
   ImGui::SameLine();
   ImGui::TextDisabled("Every committed control refreshes runtime bindings.");
+  if (!materialPreviewExpressionStatus_.empty()) {
+    ImGui::TextColored(
+        ImVec4{ 0.55f, 0.82f, 1.0f, 1.0f },
+        "%s", materialPreviewExpressionStatus_.c_str());
+  }
 
   ImGui::BeginDisabled(!authoringDocument_.IsMaterialDirty() ||
                        !compile.success);

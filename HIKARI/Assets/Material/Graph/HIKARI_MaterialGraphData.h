@@ -66,12 +66,22 @@ namespace HIKARI {
         std::string targetPin{};
     };
 
+    struct MaterialGraphGroupData {
+        std::string id{};
+        std::string name{};
+        MATH::Vec2 position{};
+        MATH::Vec2 size{ 220.0f, 160.0f };
+        uint32_t color = 0x55334455u;
+        std::vector<std::string> nodeIds{};
+    };
+
     struct MaterialGraphData {
         std::string outputNodeId{};
         std::vector<MaterialGraphParameterData> parameters{};
         std::vector<MaterialGraphResourceData> resources{};
         std::vector<MaterialGraphNodeData> nodes{};
         std::vector<MaterialGraphEdgeData> edges{};
+        std::vector<MaterialGraphGroupData> groups{};
     };
 
 } // namespace HIKARI

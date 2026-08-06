@@ -45,6 +45,37 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphToolbar(
   requestFocusSelection = ImGui::Button("Focus Selection");
   ImGui::EndDisabled();
   ImGui::SameLine();
+  const bool hasNodeSelection =
+      !selectedGraphNodeIds_.empty() ||
+      !selectedGraphNodeId_.empty();
+  ImGui::BeginDisabled(!hasNodeSelection);
+  if (ImGui::Button("Copy")) {
+    (void)CopySelectedGraphNodes(source, graph);
+  }
+  ImGui::EndDisabled();
+  ImGui::SameLine();
+  ImGui::BeginDisabled(graphClipboard_.nodes.empty());
+  if (ImGui::Button("Paste")) {
+    (void)PasteGraphNodes(
+        scene, source, graph, MATH::Vec2{ 30.0f, 30.0f });
+    return true;
+  }
+  ImGui::EndDisabled();
+  ImGui::SameLine();
+  ImGui::BeginDisabled(!hasNodeSelection);
+  if (ImGui::Button("Duplicate")) {
+    (void)DuplicateSelectedGraphNodes(scene, source, graph);
+    return true;
+  }
+  ImGui::EndDisabled();
+  ImGui::SameLine();
+  ImGui::BeginDisabled(!hasNodeSelection);
+  if (ImGui::Button("Arrange")) {
+    (void)ArrangeSelectedGraphNodes(scene, source, graph);
+    return true;
+  }
+  ImGui::EndDisabled();
+  ImGui::SameLine();
   if (ImGui::Button("Organize...")) {
     ImGui::OpenPopup("##MaterialGraphOrganize");
   }
@@ -52,11 +83,32 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphToolbar(
     const bool hasSelection = !selectedGraphNodeId_.empty();
     ImGui::BeginDisabled(!hasSelection);
     if (ImGui::MenuItem("Collapse Selected")) {
-      collapsedGraphNodeIds_.insert(selectedGraphNodeId_);
+      if (!selectedGraphNodeIds_.empty()) {
+        for (const std::string &id : selectedGraphNodeIds_) {
+          collapsedGraphNodeIds_.insert(id);
+        }
+      } else {
+        collapsedGraphNodeIds_.insert(selectedGraphNodeId_);
+      }
     }
     if (ImGui::MenuItem("Expand Selected")) {
-      collapsedGraphNodeIds_.erase(selectedGraphNodeId_);
+      if (!selectedGraphNodeIds_.empty()) {
+        for (const std::string &id : selectedGraphNodeIds_) {
+          collapsedGraphNodeIds_.erase(id);
+        }
+      } else {
+        collapsedGraphNodeIds_.erase(selectedGraphNodeId_);
+      }
     }
+    ImGui::Separator();
+    ImGui::BeginDisabled(!hasSelection);
+    if (ImGui::MenuItem("Group Selection")) {
+      (void)CreateGraphGroupFromSelection(scene, source, graph);
+    }
+    if (ImGui::MenuItem("Ungroup Selected")) {
+      (void)UngroupSelectedGraphNodes(scene, source, graph);
+    }
+    ImGui::EndDisabled();
     ImGui::EndDisabled();
     if (ImGui::MenuItem("Collapse All")) {
       for (const MaterialGraphNodeData &node : graph.nodes) {
@@ -69,14 +121,11 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphToolbar(
     ImGui::EndPopup();
   }
   ImGui::SameLine();
-  const MaterialGraphNodeData *selectedNode =
-      MATERIAL_GRAPH_UI::FindNode(graph, selectedGraphNodeId_);
-  const bool canDeleteNode = selectedNode != nullptr &&
-      selectedNode->kind != MaterialNodeKind::SurfaceOutput;
-  ImGui::BeginDisabled(!canDeleteNode && selectedGraphEdgeId_.empty());
+  ImGui::BeginDisabled(
+      !hasNodeSelection && selectedGraphEdgeId_.empty());
   if (ImGui::Button("Delete Selection")) {
-    requestDeleteNode = canDeleteNode;
-    requestDeleteEdge = !requestDeleteNode &&
+    requestDeleteNode = hasNodeSelection;
+    requestDeleteEdge = !hasNodeSelection &&
         !selectedGraphEdgeId_.empty();
   }
   ImGui::EndDisabled();
@@ -169,15 +218,17 @@ void ModelMaterialWorkspaceController::FinishMaterialGraphCanvasInteraction(
   if (mouseInsideCanvas &&
       ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
     if (pointerOverNode) {
-      selectedGraphNodeId_ = hoveredNodeId;
+      SetGraphNodeSelection(
+          hoveredNodeId,
+          ImGui::GetIO().KeyCtrl || ImGui::GetIO().KeyShift);
       selectedGraphEdgeId_.clear();
       ImGui::OpenPopup("##MaterialGraphSelectionContext");
     } else if (!hoveredEdgeId.empty()) {
-      selectedGraphNodeId_.clear();
+      ClearGraphNodeSelection();
       selectedGraphEdgeId_ = hoveredEdgeId;
       ImGui::OpenPopup("##MaterialGraphSelectionContext");
     } else {
-      selectedGraphNodeId_.clear();
+      ClearGraphNodeSelection();
       selectedGraphEdgeId_.clear();
       contextNodePosition = NodeGraphCanvas::ScreenToCanvas(
           graphCanvas_, canvasOrigin, pointer);
@@ -191,12 +242,30 @@ void ModelMaterialWorkspaceController::FinishMaterialGraphCanvasInteraction(
   }
   if (ImGui::BeginPopup("##MaterialGraphSelectionContext")) {
     if (!selectedGraphNodeId_.empty()) {
+      if (ImGui::MenuItem("Copy", "Ctrl+C")) {
+        (void)CopySelectedGraphNodes(source, graph);
+      }
+      if (ImGui::MenuItem("Duplicate", "Ctrl+D")) {
+        (void)DuplicateSelectedGraphNodes(scene, source, graph);
+        ImGui::EndPopup();
+        return;
+      }
+      if (ImGui::MenuItem("Arrange Selected")) {
+        (void)ArrangeSelectedGraphNodes(scene, source, graph);
+        ImGui::EndPopup();
+        return;
+      }
+      ImGui::Separator();
       const MaterialGraphNodeData *node =
           MATERIAL_GRAPH_UI::FindNode(graph, selectedGraphNodeId_);
       const bool isOutput = node != nullptr &&
           node->kind == MaterialNodeKind::SurfaceOutput;
+      const bool multiSelection =
+          selectedGraphNodeIds_.size() > 1u;
       ImGui::BeginDisabled(isOutput);
-      requestDeleteNode = ImGui::MenuItem("Delete Node", "Delete");
+      requestDeleteNode = ImGui::MenuItem(
+          multiSelection ? "Delete Selected" : "Delete Node",
+          "Delete");
       ImGui::EndDisabled();
       if (node != nullptr) {
         const bool collapsed = collapsedGraphNodeIds_.contains(node->id);
@@ -219,42 +288,39 @@ void ModelMaterialWorkspaceController::FinishMaterialGraphCanvasInteraction(
   }
 
   ImGuiIO &io = ImGui::GetIO();
+  const bool hasNodeSelection =
+      !selectedGraphNodeIds_.empty() ||
+      !selectedGraphNodeId_.empty();
   if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
-      !io.WantTextInput && ImGui::IsKeyPressed(ImGuiKey_Delete)) {
-    const MaterialGraphNodeData *node =
-        MATERIAL_GRAPH_UI::FindNode(graph, selectedGraphNodeId_);
-    requestDeleteNode = node != nullptr &&
-        node->kind != MaterialNodeKind::SurfaceOutput;
-    requestDeleteEdge = !requestDeleteNode &&
-        !selectedGraphEdgeId_.empty();
-  }
-  if (requestDeleteNode && !selectedGraphNodeId_.empty()) {
-    const MaterialGraphNodeData *node =
-        MATERIAL_GRAPH_UI::FindNode(graph, selectedGraphNodeId_);
-    if (node == nullptr || node->kind == MaterialNodeKind::SurfaceOutput) {
-      statusMessage_ = "Surface Output is the required graph root";
-      requestDeleteNode = false;
+      !io.WantTextInput) {
+    if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_C)) {
+      (void)CopySelectedGraphNodes(source, graph);
+    }
+    if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_V)) {
+      (void)PasteGraphNodes(
+          scene, source, graph, MATH::Vec2{ 30.0f, 30.0f });
+    }
+    if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_D)) {
+      (void)DuplicateSelectedGraphNodes(scene, source, graph);
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_Delete)) {
+      requestDeleteNode = hasNodeSelection;
+      requestDeleteEdge = !requestDeleteNode &&
+          !selectedGraphEdgeId_.empty();
     }
   }
-  if (requestDeleteNode && !selectedGraphNodeId_.empty()) {
-    MaterialAssetData before = source;
-    const std::string deletedId = selectedGraphNodeId_;
-    collapsedGraphNodeIds_.erase(deletedId);
-    std::erase_if(graph.nodes, [&deletedId](const auto &node) {
-      return node.id == deletedId;
-    });
-    std::erase_if(graph.edges, [&deletedId](const auto &edge) {
-      return edge.sourceNodeId == deletedId ||
-          edge.targetNodeId == deletedId;
-    });
-    selectedGraphNodeId_.clear();
-    selectedGraphEdgeId_.clear();
+  if (requestDeleteNode) {
+    for (const std::string &id : selectedGraphNodeIds_) {
+      collapsedGraphNodeIds_.erase(id);
+    }
+    if (!DeleteSelectedGraphNodes(scene, source, graph)) {
+      statusMessage_ = "Surface Output is the required graph root";
+    }
     graphLinkDragActive_ = false;
     rewiredGraphEdgeId_.clear();
     draggedGraphNodeId_.clear();
     graphNodeDragStarted_ = false;
-    CommitMaterialMutation(std::move(before),
-                           "Delete material graph node", scene);
+    requestDeleteNode = false;
   } else if (requestDeleteEdge && !selectedGraphEdgeId_.empty()) {
     MaterialAssetData before = source;
     const std::string deletedId = selectedGraphEdgeId_;

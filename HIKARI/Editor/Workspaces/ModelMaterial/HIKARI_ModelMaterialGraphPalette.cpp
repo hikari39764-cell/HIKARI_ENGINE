@@ -112,6 +112,38 @@ void ModelMaterialWorkspaceController::DrawMaterialGraphNodePalette(
             std::move(before), "Add material graph node", scene);
       };
 
+  if (searching) {
+    ImGui::SeparatorText("搜索结果");
+    size_t shown = 0u;
+    for (const MaterialNodeDefinition &definition :
+         GetMaterialNodeDefinitions()) {
+      if (!definition.paletteVisible) {
+        continue;
+      }
+      const std::string_view label =
+          ASSETS::MATERIAL::IsReadyMadeMaterialNode(definition.kind)
+              ? ASSETS::MATERIAL::ReadyMadeMaterialNodeDisplayName(
+                    definition.kind)
+              : definition.stableName;
+      if (!matchesSearch(label) &&
+          !matchesSearch(definition.stableName)) {
+        continue;
+      }
+      if (ImGui::MenuItem(label.data())) {
+        addNodeByKind(definition.kind, label);
+      }
+      ++shown;
+      if (shown >= 40u) {
+        ImGui::TextDisabled("...（更多结果请输入更精确的关键词）");
+        break;
+      }
+    }
+    if (shown == 0u) {
+      ImGui::TextDisabled("没有匹配的节点");
+    }
+    return;
+  }
+
   if (!searching && ImGui::BeginMenu("Common")) {
     for (const MaterialNodeKind kind : commonKinds) {
       const MaterialNodeDefinition *definition =

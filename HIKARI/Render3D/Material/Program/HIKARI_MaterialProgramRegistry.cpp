@@ -103,9 +103,11 @@ namespace HIKARI::RENDER3D::MATERIAL {
                         instruction.inputRegisters.size() ||
                     instruction.outputPins.size() !=
                         instruction.outputRegisters.size() ||
+                    // Append-only runtime opcode ceiling. Must stay in sync
+                    // with the last MaterialNodeKind (currently Fresnel).
                     static_cast<uint32_t>(instruction.opcode) >
                         static_cast<uint32_t>(
-                            MaterialProgramOpcode::FilterWidth)) {
+                            MaterialProgramOpcode::Fresnel)) {
                     diagnostics.push_back(MakeRegistryDiagnostic(
                         MaterialCompileDiagnosticSeverity::Error,
                         "Material.RuntimeInstructionShapeInvalid",

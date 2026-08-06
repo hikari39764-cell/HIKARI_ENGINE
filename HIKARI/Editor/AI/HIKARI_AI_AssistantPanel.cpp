@@ -16,8 +16,8 @@
 
 namespace HIKARI::EDITOR {
 namespace {
-constexpr int kDefaultToolRounds = 12;
-constexpr int kMaxToolRoundsCeiling = 30;
+constexpr int kDefaultToolRounds = 24;
+constexpr int kMaxToolRoundsCeiling = 60;
 } // namespace
 
 namespace AI_ASSISTANT {
@@ -376,7 +376,7 @@ AiRequestResult SubmitAiRequest(std::string_view requestJson) {
             result.details = {
                 "{\"action\":\"budget.request\","
                 "\"rounds\":24,\"reason\":\"逐节点检查需要更多轮\"}",
-                "默认 12 轮，上限 30；授予后每轮会返回剩余预算",
+                "默认 24 轮，上限 60；授予后每轮会返回剩余预算",
             };
         } else if (topic == "capture.preview") {
             result.details = {
@@ -515,8 +515,15 @@ void AiAssistantPanel::AppendMessage(
     const AI_ASSISTANT::AiChatMessage& message) {
     std::lock_guard<std::mutex> lock(messageMutex_);
     messages_.push_back(message);
-    if (messages_.size() > 60u) {
-        messages_.erase(messages_.begin(), messages_.begin() + 20u);
+    if (messages_.size() > 120u) {
+        const size_t keepHead = 20u;
+        const size_t keepTail = 80u;
+        messages_.erase(
+            messages_.begin() +
+                static_cast<std::ptrdiff_t>(keepHead),
+            messages_.begin() +
+                static_cast<std::ptrdiff_t>(
+                    messages_.size() - keepTail));
     }
 }
 
@@ -609,7 +616,7 @@ void AiAssistantPanel::RunConversation(const std::string& userText) {
             AI_ASSISTANT::ExtractAllActionJson(reply);
         if (actionJsons.empty()) {
             if (AI_ASSISTANT::IsPlanOnlyReply(reply) &&
-                planOnlyRounds < 2) {
+                planOnlyRounds < 3) {
                 ++planOnlyRounds;
                 AppendReasoning(reply);
                 conversation.push_back({ "assistant", reply });
@@ -692,21 +699,21 @@ void AiAssistantPanel::RunConversation(const std::string& userText) {
             resultText += result.message + "\n";
             size_t detailCount = 0u;
             for (const std::string& detail : result.details) {
-                if (detailCount >= 12u) {
+                if (detailCount >= 32u) {
                     resultText += "- ...（更多省略）\n";
                     break;
                 }
                 const std::string trimmed =
-                    detail.size() > 160u
-                        ? detail.substr(0u, 160u) + "..."
+                    detail.size() > 320u
+                        ? detail.substr(0u, 320u) + "..."
                         : detail;
                 resultText += "- " + trimmed + "\n";
                 ++detailCount;
             }
         }
-        if (failureSummary.size() > 800u) {
+        if (failureSummary.size() > 2000u) {
             failureSummary =
-                failureSummary.substr(0u, 800u) + "...";
+                failureSummary.substr(0u, 2000u) + "...";
         }
         resultText += "\n汇总：" + std::to_string(successCount) +
             " 成功，" + std::to_string(failureCount) + " 失败。";

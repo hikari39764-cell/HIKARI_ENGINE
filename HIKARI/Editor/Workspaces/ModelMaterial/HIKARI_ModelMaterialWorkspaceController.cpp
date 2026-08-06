@@ -17,11 +17,21 @@
 
 namespace HIKARI::EDITOR {
 
+void ModelMaterialWorkspaceController::SetAiAssistantPanel(
+    AiAssistantPanel *panel, bool *openFlag) {
+  aiAssistantPanel_ = panel;
+  aiAssistantOpenFlag_ = openFlag;
+}
+
 void ModelMaterialWorkspaceController::ApplyWorkspaceActivation(
     DocumentSceneBase &scene, const EditorWorkspaceActivation &activation,
     EditorWorkspaceHost &workspaceHost) {
   if (activation.previous == EditorWorkspaceId::ModelMaterial &&
       activation.current != EditorWorkspaceId::ModelMaterial) {
+    if (materialWorkspaceEnterCamera_.has_value()) {
+      scene.GetCamera() = *materialWorkspaceEnterCamera_;
+      materialWorkspaceEnterCamera_.reset();
+    }
     if (materialGesture_) {
       CancelMaterialGesture(scene);
     }
@@ -33,6 +43,7 @@ void ModelMaterialWorkspaceController::ApplyWorkspaceActivation(
   if (activation.current != EditorWorkspaceId::ModelMaterial) {
     return;
   }
+  materialWorkspaceEnterCamera_ = scene.GetCamera();
 
   EnsureBuiltInRampPresets(scene);
 

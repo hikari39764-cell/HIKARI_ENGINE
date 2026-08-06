@@ -4,10 +4,15 @@
 #include <cstddef>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #include "Assets/Material/HIKARI_MaterialAssetData.h"
 #include "Render3D/HIKARI_Math3D.h"
+
+#if defined(HIKARI_WITH_EDITOR)
+#include "imgui.h"
+#endif
 
 namespace HIKARI::EDITOR::MATERIAL_GRAPH_UI {
 
@@ -79,6 +84,12 @@ bool DrawMaterialValueTypeCombo(MaterialValueType& valueType);
 bool DrawMaterialNodeTypeControl(
     MaterialGraphNodeData& node,
     MaterialGraphParameterData* parameter);
+#if defined(HIKARI_WITH_EDITOR)
+void DrawMaterialGraphGroups(
+    ImDrawList* drawList,
+    const MaterialGraphData& graph,
+    const std::unordered_map<std::string, ImVec2>& screenPositions);
+#endif
 bool IsRuntimeDrivenInput(const MaterialNodeTypeId& typeId,
                           std::string_view pin) noexcept;
 bool IsInlineOwnedInput(const MaterialNodeTypeId& typeId,

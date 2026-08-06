@@ -267,13 +267,8 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(DocumentSceneBase &scene)
            hoveredLayout->second.position.y + hoveredLayout->second.size.y},
           kHeaderHeight * hoveredLayout->second.screenScale,
           hoveredLayout->second.card.inlineHeight);
-  const bool pointerOverNodeHeader = hoveredLayout != layouts.end() &&
-      pointer.y >= hoveredLayout->second.position.y &&
-      pointer.y <= hoveredLayout->second.position.y +
-          kHeaderHeight * hoveredLayout->second.screenScale;
-  const bool pointerOverNode = !hoveredNodeId.empty() ||
-                               hoveredOutput.has_value() ||
-                               hoveredInput.has_value();
+  const bool pointerOverNodeHeader = hoveredLayout != layouts.end() && pointer.y >= hoveredLayout->second.position.y && pointer.y <= hoveredLayout->second.position.y + kHeaderHeight * hoveredLayout->second.screenScale;
+  const bool pointerOverNode = !hoveredNodeId.empty() || hoveredOutput.has_value() || hoveredInput.has_value();
   if (mouseInsideCanvas && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
     if (hoveredOutput) {
       selectedGraphNodeId_ = hoveredOutput->nodeId;
@@ -309,7 +304,7 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(DocumentSceneBase &scene)
         rewiredGraphEdgeId_.clear();
       }
     } else if (!hoveredNodeId.empty()) {
-      selectedGraphNodeId_ = hoveredNodeId;
+      SetGraphNodeSelection(hoveredNodeId, io.KeyCtrl || io.KeyShift);
       selectedGraphEdgeId_.clear();
       draggedGraphNodeId_ = pointerOverNodeHeader && !pointerOverNodeControl
           ? hoveredNodeId : std::string{};
@@ -317,14 +312,14 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(DocumentSceneBase &scene)
       graphLinkDragActive_ = false;
       rewiredGraphEdgeId_.clear();
     } else if (!hoveredEdgeId.empty()) {
-      selectedGraphNodeId_.clear();
+      ClearGraphNodeSelection();
       selectedGraphEdgeId_ = hoveredEdgeId;
       draggedGraphNodeId_.clear();
       graphNodeDragStarted_ = false;
       graphLinkDragActive_ = false;
       rewiredGraphEdgeId_.clear();
     } else {
-      selectedGraphNodeId_.clear();
+      ClearGraphNodeSelection();
       selectedGraphEdgeId_.clear();
       draggedGraphNodeId_.clear();
       graphNodeDragStarted_ = false;
@@ -359,6 +354,9 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(DocumentSceneBase &scene)
     draggedGraphNodeId_.clear();
     graphNodeDragStarted_ = false;
   }
+  std::unordered_map<std::string, ImVec2> groupScreenPositions;
+  for (const auto &[nodeId, layout] : layouts) groupScreenPositions[nodeId] = layout.position;
+  MATERIAL_GRAPH_UI::DrawMaterialGraphGroups(drawList, *graph, groupScreenPositions);
   bool inlineControlsCapture = false;
   for (MaterialGraphNodeData &node : graph->nodes) {
     const auto foundLayout = layouts.find(node.id);
@@ -366,7 +364,7 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(DocumentSceneBase &scene)
       continue;
     }
     const NodeLayout &layout = foundLayout->second;
-    const bool selected = selectedGraphNodeId_ == node.id;
+    const bool selected = selectedGraphNodeId_ == node.id || IsGraphNodeSelected(node.id);
     const ImVec2 nodeMax{layout.position.x + layout.size.x,
                          layout.position.y + layout.size.y};
     drawList->AddRectFilled(layout.position, nodeMax,
