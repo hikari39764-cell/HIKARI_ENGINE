@@ -67,6 +67,7 @@ namespace HIKARI::EDITOR {
         std::string streamingPartial_{};
         bool streamingActive_ = false;
         std::vector<std::string> lastRoundActions_{};
+        std::vector<std::string> lastFailedActionNames_{};
         char inputBuffer_[4096] = {};
         char rawRequestBuffer_[2048] = {};
         bool showCapabilities_ = false;

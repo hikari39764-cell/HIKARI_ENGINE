@@ -357,7 +357,9 @@ std::string AiAssistantPanel::BuildSystemPrompt() const {
         "引擎会按顺序全部执行并汇总；单个失败不会中断整批，"
         "结果里会标明失败项和原因。\n"
         "行规则：每个 JSON 必须是单独一行且整行都是 JSON，"
-        "不要把它混在普通文字里，也不要在正文里举例 JSON。\n"
+        "不要把它混在普通文字里，也不要在正文里举例 JSON；"
+        "解释性回复（如说明失败原因）禁止输出整行动作 JSON，"
+        "如需引用失败的 action 只写动作名（如 connect）。\n"
         "收尾规则：调用动作后，必须基于执行结果给出最终中文回复；"
         "除非用户明确要求继续操作，否则不要再输出任何 action JSON。\n"
         "验证规则：修改材质或场景后，先调用 capture.preview 截图，"
@@ -458,6 +460,30 @@ void AiAssistantPanel::RunConversation(const std::string& userText) {
             }
             return;
         }
+        if (turn == 0 && !lastFailedActionNames_.empty() &&
+            std::all_of(
+                actionJsons.begin(), actionJsons.end(),
+                [this](const std::string& actionJson) {
+                    const std::string name =
+                        AI_ASSISTANT::ExtractJsonField(
+                            actionJson, "action");
+                    return std::find(
+                        lastFailedActionNames_.begin(),
+                        lastFailedActionNames_.end(),
+                        name) != lastFailedActionNames_.end();
+                })) {
+            AppendMessage(
+                { "assistant",
+                  reply +
+                  "\n\n（检测到重复的失败动作，已按聊天显示，"
+                  "没有再次执行；如需重试请明确指示。）" });
+            {
+                std::lock_guard<std::mutex> lock(streamMutex_);
+                streamingPartial_.clear();
+            }
+            lastFailedActionNames_.clear();
+            return;
+        }
         if (!lastRoundActions_.empty() &&
             std::all_of(
                 actionJsons.begin(), actionJsons.end(),
@@ -480,6 +506,7 @@ void AiAssistantPanel::RunConversation(const std::string& userText) {
         lastRoundActions_ = actionJsons;
         conversation.push_back({ "assistant", reply });
         std::string resultText;
+        std::string failureSummary;
         size_t successCount = 0u;
         size_t failureCount = 0u;
         for (const std::string& actionJson : actionJsons) {
@@ -489,14 +516,34 @@ void AiAssistantPanel::RunConversation(const std::string& userText) {
                 ++successCount;
             } else {
                 ++failureCount;
+                const std::string actionName =
+                    AI_ASSISTANT::ExtractJsonField(
+                        actionJson, "action");
+                failureSummary +=
+                    (failureSummary.empty() ? "" : "\n") +
+                    actionName + ": " + result.message;
             }
             resultText +=
                 result.ok ? "成功：" : "失败：";
             resultText += actionJson + "\n";
             resultText += result.message + "\n";
+            size_t detailCount = 0u;
             for (const std::string& detail : result.details) {
-                resultText += "- " + detail + "\n";
+                if (detailCount >= 12u) {
+                    resultText += "- ...（更多省略）\n";
+                    break;
+                }
+                const std::string trimmed =
+                    detail.size() > 160u
+                        ? detail.substr(0u, 160u) + "..."
+                        : detail;
+                resultText += "- " + trimmed + "\n";
+                ++detailCount;
             }
+        }
+        if (failureSummary.size() > 800u) {
+            failureSummary =
+                failureSummary.substr(0u, 800u) + "...";
         }
         resultText += "\n汇总：" + std::to_string(successCount) +
             " 成功，" + std::to_string(failureCount) + " 失败。";
@@ -507,10 +554,23 @@ void AiAssistantPanel::RunConversation(const std::string& userText) {
             consecutiveFailureRounds = 0;
         }
         if (consecutiveFailureRounds >= 3) {
-            AppendMessage(
-                { "assistant",
-                  "连续 3 轮动作全部失败，已停止；"
-                  "请基于失败原因修正参数或换一种做法。" });
+            lastFailedActionNames_.clear();
+            for (const std::string& actionJson : actionJsons) {
+                const std::string name =
+                    AI_ASSISTANT::ExtractJsonField(
+                        actionJson, "action");
+                if (!name.empty()) {
+                    lastFailedActionNames_.push_back(name);
+                }
+            }
+            std::string stopMessage =
+                "连续 3 轮动作全部失败，已停止；失败原因：\n";
+            stopMessage += failureSummary.empty()
+                ? "（无明细）"
+                : failureSummary;
+            stopMessage +=
+                "\n请基于失败原因修正参数或换一种做法。";
+            AppendMessage({ "assistant", stopMessage });
             {
                 std::lock_guard<std::mutex> lock(streamMutex_);
                 streamingPartial_.clear();
