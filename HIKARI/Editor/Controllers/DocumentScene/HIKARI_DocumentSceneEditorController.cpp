@@ -1,10 +1,12 @@
 #include "Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorController.h"
 
 #include "Assets/Material/HIKARI_MaterialAssetData.h"
+#include "Assets/HIKARI_AssetImportState.h"
 #include "Core/HIKARI_Logger.h"
 #include "Editor/AI/HIKARI_AI_ChatClient.h"
 #include "Editor/Authoring/HIKARI_EditorObjectState.h"
 #include "Editor/Authoring/HIKARI_EditorObjectFactory.h"
+#include "Editor/Assets/Browser/HIKARI_AssetBrowserInternal.h"
 #include "Editor/History/HIKARI_EnvironmentHistoryCommand.h"
 #include "Editor/History/HIKARI_SceneObjectsHistoryCommand.h"
 #include "Editor/History/HIKARI_SceneSystemsHistoryCommand.h"
@@ -28,6 +30,7 @@
 #include <cstdio>
 #include <chrono>
 #include <cstdlib>
+#include <filesystem>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -90,7 +93,7 @@ namespace HIKARI {
             if (outPath.empty()) {
                 const char* temp = std::getenv("TEMP");
                 outPath = std::string(temp != nullptr ? temp : ".") +
-                    "/hikari-ai-preview.bmp";
+                    "/hikari-ai-preview.png";
             }
             RENDER3D::EDITORVIEW::RequestPreviewCapture(
                 EDITOR::kModelMaterialPreviewRenderViewId,
@@ -116,9 +119,12 @@ namespace HIKARI {
             if (action != "procedural.create_primitive" &&
                 action != "scene.list_objects" &&
                 action != "scene.snapshot" &&
+                action != "scene.query" &&
                 action != "scene.set_transform" &&
                 action != "scene.create_object" &&
                 action != "asset.list_models" &&
+                action != "asset.import" &&
+                action != "asset.import_status" &&
                 action != "capture.preview") {
                 EDITOR::AI_ASSISTANT::AiRequestResult result{};
                 result.ok = false;
@@ -126,9 +132,12 @@ namespace HIKARI {
                 result.details = {
                     "supported: procedural.create_primitive",
                     "supported: scene.list_objects",
+                    "supported: scene.query",
                     "supported: scene.set_transform",
                     "supported: scene.create_object",
                     "supported: asset.list_models",
+                    "supported: asset.import",
+                    "supported: asset.import_status",
                     "supported: capture.preview",
                 };
                 return result;
@@ -163,6 +172,47 @@ namespace HIKARI {
                 SummarizeSceneObjects(scene, result.details, 200u);
                 if (result.details.empty()) {
                     result.message = "场景为空";
+                }
+                return result;
+            }
+
+            if (action == "scene.query") {
+                const std::string nameFilter =
+                    EDITOR::AI_ASSISTANT::ExtractJsonField(
+                        json, "name");
+                result.ok = true;
+                result.message = nameFilter.empty()
+                    ? "场景查询："
+                    : "场景查询（name 包含 " + nameFilter + "）：";
+                size_t count = 0u;
+                for (const auto& object :
+                     scene.GetWorld().GetObjects()) {
+                    if (count >= 200u) {
+                        result.details.push_back("...（已截断）");
+                        break;
+                    }
+                    if (!nameFilter.empty() &&
+                        object->GetName().find(nameFilter) ==
+                            std::string::npos) {
+                        continue;
+                    }
+                    const MATH::Vec3& position =
+                        object->GetTransform().position;
+                    const MATH::Vec3& scale =
+                        object->GetTransform().scale;
+                    char line[192];
+                    std::snprintf(
+                        line, sizeof(line),
+                        "%s | pos(%.2f, %.2f, %.2f) | "
+                        "scale(%.2f, %.2f, %.2f)",
+                        object->GetName().c_str(),
+                        position.x, position.y, position.z,
+                        scale.x, scale.y, scale.z);
+                    result.details.push_back(line);
+                    ++count;
+                }
+                if (result.details.empty()) {
+                    result.message = "没有匹配的对象";
                 }
                 return result;
             }
@@ -321,6 +371,95 @@ namespace HIKARI {
                 }
                 if (result.details.empty()) {
                     result.message = "没有已注册的模型资产";
+                }
+                return result;
+            }
+
+            if (action == "asset.import") {
+                const std::string sourcePathText =
+                    EDITOR::AI_ASSISTANT::ExtractJsonField(
+                        json, "path");
+                if (sourcePathText.empty()) {
+                    result.message = "缺少 path 字段";
+                    return result;
+                }
+                const std::filesystem::path sourcePath(
+                    sourcePathText);
+                std::error_code fileError;
+                if (!std::filesystem::is_regular_file(
+                        sourcePath, fileError)) {
+                    result.message =
+                        "文件不存在或不可读：" + sourcePathText;
+                    return result;
+                }
+                if (!EDITOR::ASSET_BROWSER::IsSupportedImportSource(
+                        sourcePath)) {
+                    result.message = "不支持的文件类型：" +
+                        sourcePath.extension().string();
+                    return result;
+                }
+                AssetDatabase& assetDatabase =
+                    scene.GetAssetDatabase();
+                const std::filesystem::path targetRelative =
+                    EDITOR::ASSET_BROWSER::SuggestedTargetDirectory(
+                        {}, sourcePath) /
+                    sourcePath.filename();
+                std::filesystem::path copiedRelative;
+                std::string copyError;
+                if (!EDITOR::ASSET_BROWSER::CopySourceFileIntoProject(
+                        assetDatabase, sourcePath, targetRelative,
+                        false, copiedRelative, copyError)) {
+                    result.message = "导入复制失败：" + copyError;
+                    return result;
+                }
+                if (!assetDatabase.ScanAssets(true)) {
+                    result.message = "资产扫描失败";
+                    return result;
+                }
+                const AssetRecord* record =
+                    assetDatabase.FindByPath(copiedRelative);
+                if (record == nullptr) {
+                    result.message = "资产注册失败：" +
+                        copiedRelative.generic_string();
+                    return result;
+                }
+                const bool queued = assetDatabase.QueueImportAssets(
+                    { record->guid }, "AI import");
+                result.ok = true;
+                result.message = "已复制并注册 " +
+                    copiedRelative.generic_string() +
+                    (queued
+                        ? "，后台导入已排队"
+                        : "（已有导入批次运行中）");
+                result.details = {
+                    "guid: " + record->guid.value,
+                    "可用 asset.import_status 查询进度",
+                };
+                return result;
+            }
+
+            if (action == "asset.import_status") {
+                const AssetImportBatchStatus status =
+                    scene.GetAssetDatabase()
+                        .GetQueuedImportStatus();
+                result.ok = true;
+                result.message = status.active
+                    ? "导入进行中"
+                    : status.completed
+                        ? "导入已完成"
+                        : "没有活动导入";
+                result.details = {
+                    "total: " + std::to_string(status.total),
+                    "finished: " +
+                        std::to_string(status.finished),
+                    "succeeded: " +
+                        std::to_string(status.succeeded),
+                    "failed: " + std::to_string(status.failed),
+                    "label: " + status.label,
+                };
+                if (!status.message.empty()) {
+                    result.details.push_back(
+                        "message: " + status.message);
                 }
                 return result;
             }
@@ -484,6 +623,38 @@ namespace HIKARI {
         EDITOR::RegisterBuiltInEditorTools(toolHost_);
         EDITOR::RegisterBuiltInSystemAuthoring(
             systemAuthoringRegistry_);
+    }
+
+    void DocumentSceneEditorController::EnsureAiLocalBridge() {
+        if (aiBridgeStarted_) {
+            aiAssistantPanel_.SetBridgeStatus(
+                aiLocalBridge_.IsRunning()
+                    ? "本地桥：" + aiLocalBridge_.GetEndpoint()
+                    : "本地桥已停止");
+            return;
+        }
+        aiBridgeStarted_ = true;
+        uint16_t port = 18725;
+        if (const char* envPort =
+                std::getenv("HIKARI_AI_BRIDGE_PORT")) {
+            try {
+                port = static_cast<uint16_t>(std::stoul(envPort));
+            } catch (...) {
+            }
+        }
+        std::string bridgeError;
+        if (aiLocalBridge_.Start(
+                port,
+                [this](std::string_view json) {
+                    return aiAssistantPanel_.ExecuteRequest(json);
+                },
+                bridgeError)) {
+            aiAssistantPanel_.SetBridgeStatus(
+                "本地桥：" + aiLocalBridge_.GetEndpoint());
+        } else {
+            aiAssistantPanel_.SetBridgeStatus(
+                "本地桥启动失败：" + bridgeError);
+        }
     }
 
     void DocumentSceneEditorController::Draw(
@@ -981,8 +1152,7 @@ namespace HIKARI {
         if (context_.windows.runtime.showValidationLab) {
             validationLabPanel_.Draw(context_, context_.windows.runtime.showValidationLab);
         }
-        if (context_.windows.runtime.showAiAssistant) {
-            aiAssistantPanel_.SetContextCallback([this, &scene]() {
+        aiAssistantPanel_.SetContextCallback([this, &scene]() {
                 std::string context =
                     "scene objects: " +
                     std::to_string(
@@ -1001,11 +1171,15 @@ namespace HIKARI {
                     context += object->GetName();
                     ++shown;
                 }
-                context += ")\n" +
-                    modelMaterialWorkspaceController_
-                        .GetAiMaterialStatus();
-                return context;
-            });
+            context += ")\n" +
+                modelMaterialWorkspaceController_
+                    .GetAiMaterialStatus();
+            context += "\nmodel assets: " +
+                std::to_string(
+                    scene.GetAssetRegistry().CollectByType(
+                        AssetType::Model).size());
+            return context;
+        });
             aiAssistantPanel_.SetSceneActionCallback(
                 [this, &scene](std::string_view json) {
                     const std::string action =
@@ -1036,6 +1210,81 @@ namespace HIKARI {
                         if (modelMaterialWorkspaceController_
                                 .ApplyAiMaterialParameterEdit(
                                     scene, parameter, value, message)) {
+                            result.ok = true;
+                            result.message = message;
+                            aiUndoStack_.push_back(
+                                { AiSceneUndoRecord::Kind::MaterialEdit,
+                                  {}, {}, {} });
+                            std::string capturePath;
+                            std::string captureError;
+                            if (CapturePreviewToFile(
+                                    capturePath, captureError)) {
+                                result.message +=
+                                    " | 截图已保存：" + capturePath;
+                            } else {
+                                result.message +=
+                                    " | 截图失败：" + captureError;
+                            }
+                        } else {
+                            result.message = message;
+                        }
+                        return result;
+                    }
+                    if (action == "material.graph_edit") {
+                        EDITOR::AI_ASSISTANT::AiRequestResult result{};
+                        EDITOR::AiMaterialGraphEditRequest request{};
+                        request.operation =
+                            EDITOR::AI_ASSISTANT::ExtractJsonField(
+                                json, "operation");
+                        if (request.operation.empty()) {
+                            request.operation =
+                                EDITOR::AI_ASSISTANT::ExtractJsonField(
+                                    json, "op");
+                        }
+                        request.nodeType =
+                            EDITOR::AI_ASSISTANT::ExtractJsonField(
+                                json, "nodeType");
+                        request.name =
+                            EDITOR::AI_ASSISTANT::ExtractJsonField(
+                                json, "name");
+                        request.sourceNode =
+                            EDITOR::AI_ASSISTANT::ExtractJsonField(
+                                json, "sourceNode");
+                        request.sourcePin =
+                            EDITOR::AI_ASSISTANT::ExtractJsonField(
+                                json, "sourcePin");
+                        request.targetNode =
+                            EDITOR::AI_ASSISTANT::ExtractJsonField(
+                                json, "targetNode");
+                        request.targetPin =
+                            EDITOR::AI_ASSISTANT::ExtractJsonField(
+                                json, "targetPin");
+                        request.edgeId =
+                            EDITOR::AI_ASSISTANT::ExtractJsonField(
+                                json, "edgeId");
+                        const auto readFloat =
+                            [&json](const char* name, float fallback) {
+                                const std::string text =
+                                    EDITOR::AI_ASSISTANT::
+                                        ExtractJsonNumberField(
+                                            json, name);
+                                if (text.empty()) {
+                                    return fallback;
+                                }
+                                try {
+                                    return std::stof(text);
+                                } catch (...) {
+                                    return fallback;
+                                }
+                            };
+                        request.positionX =
+                            readFloat("positionX", 0.0f);
+                        request.positionY =
+                            readFloat("positionY", 0.0f);
+                        std::string message;
+                        if (modelMaterialWorkspaceController_
+                                .ApplyAiMaterialGraphEdit(
+                                    scene, request, message)) {
                             result.ok = true;
                             result.message = message;
                             aiUndoStack_.push_back(
@@ -1118,6 +1367,8 @@ namespace HIKARI {
                     return ExecuteAiSceneAction(
                         scene, json, aiUndoStack_);
                 });
+            EnsureAiLocalBridge();
+            if (context_.windows.runtime.showAiAssistant) {
             aiAssistantPanel_.Draw(context_.windows.runtime.showAiAssistant);
         }
         DrawPendingSceneOpenModal(scene);

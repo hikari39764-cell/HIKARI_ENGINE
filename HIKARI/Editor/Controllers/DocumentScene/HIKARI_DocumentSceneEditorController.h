@@ -8,6 +8,7 @@
 #include "Render3D/HIKARI_Math3D.h"
 
 #include "Editor/AI/HIKARI_AI_AssistantPanel.h"
+#include "Editor/AI/HIKARI_AI_LocalBridge.h"
 #include "Editor/HIKARI_DebugCameraPanel.h"
 #include "Editor/HIKARI_DebugMenuBar.h"
 #include "Editor/HIKARI_EditorContext.h"
@@ -81,6 +82,8 @@ namespace HIKARI {
         EDITOR::SceneAuthoringUtilityWindows sceneAuthoringUtilityWindows_{};
         ValidationLabPanel validationLabPanel_{};
         EDITOR::AiAssistantPanel aiAssistantPanel_{};
+        EDITOR::AI_ASSISTANT::AiLocalBridge aiLocalBridge_{};
+        bool aiBridgeStarted_ = false;
         EnvironmentPanel environmentPanel_{};
         QualityPanel qualityPanel_{};
         EDITOR::EditorToolHost toolHost_{};
@@ -119,6 +122,7 @@ namespace HIKARI {
         void DrawDebugViewWindow(DocumentSceneBase& scene, bool& open);
         void HandleGameViewportAssetDrop(DocumentSceneBase& scene);
         void DrawPendingSceneOpenModal(DocumentSceneBase& scene);
+        void EnsureAiLocalBridge();
         bool OpenSceneAssetFromEditor(DocumentSceneBase& scene, const AssetGuid& sceneGuid);
         void SyncDocumentHistory(DocumentSceneBase& scene);
         void ConfigureEditorCommands(DocumentSceneBase& scene);

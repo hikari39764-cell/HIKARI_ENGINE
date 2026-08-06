@@ -12,6 +12,13 @@
 #include <unordered_map>
 #include <vector>
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <wincodec.h>
+#pragma comment(lib, "windowscodecs.lib")
+#endif
+
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render2D/HIKARI_RenderTarget2D.h"
 #include "Render3D/Color/HIKARI_ExposureState.h"
@@ -131,6 +138,169 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
                     row.size());
             }
             return output.good();
+        }
+
+#ifdef _WIN32
+        std::wstring WideFromUtf8(const std::string& value) {
+            if (value.empty()) {
+                return {};
+            }
+            const int required = MultiByteToWideChar(
+                CP_UTF8, 0, value.data(),
+                static_cast<int>(value.size()), nullptr, 0);
+            if (required <= 0) {
+                return {};
+            }
+            std::wstring result(
+                static_cast<size_t>(required), L'\0');
+            (void)MultiByteToWideChar(
+                CP_UTF8, 0, value.data(),
+                static_cast<int>(value.size()),
+                result.data(), required);
+            return result;
+        }
+
+        bool WritePng(
+            const std::string& path,
+            int width,
+            int height,
+            UINT sourcePitch,
+            const uint8_t* source) {
+            const HRESULT coResult =
+                CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+            const bool coInitialized = (coResult == S_OK);
+            const bool comAvailable =
+                coResult == S_OK ||
+                coResult == S_FALSE ||
+                coResult == RPC_E_CHANGED_MODE;
+            if (!comAvailable) {
+                return false;
+            }
+            const UINT stride = static_cast<UINT>(width) * 4u;
+            std::vector<uint8_t> pixels(
+                static_cast<size_t>(stride) *
+                static_cast<size_t>(height));
+            for (int y = 0; y < height; ++y) {
+                const uint8_t* sourceRow =
+                    source + static_cast<size_t>(y) * sourcePitch;
+                uint8_t* targetRow =
+                    pixels.data() + static_cast<size_t>(y) * stride;
+                for (int x = 0; x < width; ++x) {
+                    const size_t sourceIndex =
+                        static_cast<size_t>(x) * 4u;
+                    const size_t targetIndex =
+                        static_cast<size_t>(x) * 4u;
+                    targetRow[targetIndex + 0u] =
+                        sourceRow[sourceIndex + 2u];
+                    targetRow[targetIndex + 1u] =
+                        sourceRow[sourceIndex + 1u];
+                    targetRow[targetIndex + 2u] =
+                        sourceRow[sourceIndex + 0u];
+                    targetRow[targetIndex + 3u] =
+                        sourceRow[sourceIndex + 3u];
+                }
+            }
+
+            bool succeeded = false;
+            IWICImagingFactory* factory = nullptr;
+            IWICStream* stream = nullptr;
+            IWICBitmapEncoder* encoder = nullptr;
+            IWICBitmapFrameEncode* frame = nullptr;
+            HRESULT hr = CoCreateInstance(
+                CLSID_WICImagingFactory,
+                nullptr,
+                CLSCTX_INPROC_SERVER,
+                IID_PPV_ARGS(&factory));
+            if (SUCCEEDED(hr)) {
+                hr = factory->CreateStream(&stream);
+            }
+            if (SUCCEEDED(hr)) {
+                hr = stream->InitializeFromFilename(
+                    WideFromUtf8(path).c_str(), GENERIC_WRITE);
+            }
+            if (SUCCEEDED(hr)) {
+                hr = factory->CreateEncoder(
+                    GUID_ContainerFormatPng, nullptr, &encoder);
+            }
+            if (SUCCEEDED(hr)) {
+                hr = encoder->CreateNewFrame(&frame, nullptr);
+            }
+            if (SUCCEEDED(hr)) {
+                hr = frame->Initialize(nullptr);
+            }
+            if (SUCCEEDED(hr)) {
+                hr = frame->SetSize(
+                    static_cast<UINT>(width),
+                    static_cast<UINT>(height));
+            }
+            WICPixelFormatGUID format = GUID_WICPixelFormat32bppBGRA;
+            if (SUCCEEDED(hr)) {
+                hr = frame->SetPixelFormat(&format);
+            }
+            if (SUCCEEDED(hr)) {
+                hr = frame->WritePixels(
+                    static_cast<UINT>(height),
+                    stride,
+                    static_cast<UINT>(pixels.size()),
+                    pixels.data());
+            }
+            if (SUCCEEDED(hr)) {
+                hr = frame->Commit();
+            }
+            if (SUCCEEDED(hr)) {
+                hr = encoder->Commit();
+            }
+            succeeded = SUCCEEDED(hr);
+            if (frame != nullptr) {
+                frame->Release();
+            }
+            if (encoder != nullptr) {
+                encoder->Release();
+            }
+            if (stream != nullptr) {
+                stream->Release();
+            }
+            if (factory != nullptr) {
+                factory->Release();
+            }
+            if (coInitialized) {
+                CoUninitialize();
+            }
+            return succeeded;
+        }
+#endif
+
+        bool WriteCaptureImage(
+            const std::string& path,
+            int width,
+            int height,
+            UINT sourcePitch,
+            const uint8_t* source) {
+#ifdef _WIN32
+            const std::string lower = path;
+            const auto endsWithPng = [&lower]() {
+                if (lower.size() < 4u) {
+                    return false;
+                }
+                const auto asciiLower = [](char c) {
+                    return c >= 'A' && c <= 'Z'
+                        ? static_cast<char>(c - 'A' + 'a')
+                        : c;
+                };
+                return asciiLower(lower[lower.size() - 4u]) == '.' &&
+                    asciiLower(lower[lower.size() - 3u]) == 'p' &&
+                    asciiLower(lower[lower.size() - 2u]) == 'n' &&
+                    asciiLower(lower[lower.size() - 1u]) == 'g';
+            };
+            if (endsWithPng()) {
+                return WritePng(
+                    path, width, height, sourcePitch, source);
+            }
+#else
+            (void)path;
+#endif
+            return WriteBmp(
+                path, width, height, sourcePitch, source);
         }
 
         void TryRunPendingCapture(InteractiveViewState& state) {
@@ -273,7 +443,7 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
                 finish("截图读回映射失败");
                 return;
             }
-            const bool written = WriteBmp(
+            const bool written = WriteCaptureImage(
                 request.path,
                 width,
                 height,

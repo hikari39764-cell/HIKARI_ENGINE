@@ -54,6 +54,18 @@ std::string ExtractAction(std::string_view json) {
     return std::string(json.substr(quote + 1u, end - quote - 1u));
 }
 
+std::string ExtractPlanLine(std::string_view text) {
+    const auto marker = text.find("计划:");
+    if (marker == std::string_view::npos) {
+        return {};
+    }
+    const auto lineEnd = text.find('\n', marker);
+    const std::string line = lineEnd == std::string_view::npos
+        ? std::string(text.substr(marker))
+        : std::string(text.substr(marker, lineEnd - marker));
+    return Trim(line);
+}
+
 } // namespace
 
 const std::vector<AiCapability>& QueryCapabilities() {
@@ -82,8 +94,11 @@ const std::vector<AiCapability>& QueryCapabilities() {
         { "material.edit_parameter",
           "Edit a numeric parameter of the currently open material document.",
           "stable" },
+        { "material.graph_edit",
+          "Add/remove/connect/disconnect material graph nodes through the document command path.",
+          "stable" },
         { "capture.preview",
-          "Capture the material preview to a BMP file for vision verification.",
+          "Capture the material preview to a PNG file for vision verification.",
           "stable" },
         { "help",
           "Query detailed usage and examples for an action.",
@@ -93,6 +108,15 @@ const std::vector<AiCapability>& QueryCapabilities() {
           "stable" },
         { "scene.snapshot",
           "Return a compact scene object snapshot for before/after comparison.",
+          "stable" },
+        { "scene.query",
+          "Query scene objects by name filter with position and scale.",
+          "stable" },
+        { "asset.import",
+          "Copy a supported source file into the project and queue its import.",
+          "stable" },
+        { "asset.import_status",
+          "Report the current queued asset import progress.",
           "stable" },
         { "query.capabilities",
           "List the current AI-accessible capabilities and boundaries.",
@@ -112,12 +136,6 @@ const std::vector<AiCapability>& QueryCapabilities() {
         { "material.double_sided",
           "Authored double-sided materials publish the shader flag and back-face handling.",
           "stable" },
-        { "scene.query",
-          "AI-readable scene/object queries through the editor bridge.",
-          "planned" },
-        { "asset.import",
-          "AI-triggered model/texture import through the asset command surface.",
-          "planned" },
         { "asset.generate_model",
           "Generating new meshes or rigs from text is not supported.",
           "unsupported" },
@@ -230,24 +248,46 @@ AiRequestResult SubmitAiRequest(std::string_view requestJson) {
                 "\"parameter\":\"shadowSoftness\",\"value\":0.08}",
                 "parameter 支持全名或后缀；只改当前打开的材质",
             };
+        } else if (topic == "material.graph_edit") {
+            result.details = {
+                "{\"action\":\"material.graph_edit\","
+                "\"operation\":\"add_node\","
+                "\"nodeType\":\"node.additive\",\"name\":\"Rim\"}",
+                "{\"action\":\"material.graph_edit\","
+                "\"operation\":\"connect\","
+                "\"sourceNode\":\"Node_1\",\"sourcePin\":\"out\","
+                "\"targetNode\":\"Node_2\",\"targetPin\":\"in\"}",
+                "operation: add_node/remove_node/connect/disconnect；"
+                "节点可用 name 或 id 引用",
+            };
         } else if (topic == "capture.preview") {
             result.details = {
                 "{\"action\":\"capture.preview\","
-                "\"path\":\"C:/temp/preview.bmp\"}",
-                "不传 path 时保存到 %TEMP%/hikari-ai-preview.bmp",
+                "\"path\":\"C:/temp/preview.png\"}",
+                "不传 path 时保存到 %TEMP%/hikari-ai-preview.png",
             };
         } else if (topic == "vision.analyze_image") {
             result.details = {
                 "{\"action\":\"vision.analyze_image\","
-                "\"image\":\"C:/temp/preview.bmp\","
+                "\"image\":\"C:/temp/preview.png\","
                 "\"prompt\":\"描述这张图\"}",
             };
         } else if (topic == "scene.list_objects" ||
-                   topic == "scene.snapshot") {
+                   topic == "scene.snapshot" ||
+                   topic == "scene.query") {
             result.details = {
                 "{\"action\":\"scene.list_objects\"}",
                 "scene.snapshot 返回同样的对象摘要，"
                 "用于修改前后对比",
+                "scene.query 支持 name 过滤："
+                "{\"action\":\"scene.query\",\"name\":\"cube\"}",
+            };
+        } else if (topic == "asset.import" ||
+                   topic == "asset.import_status") {
+            result.details = {
+                "{\"action\":\"asset.import\","
+                "\"path\":\"C:/model.glb\"}",
+                "asset.import_status 返回排队导入的进度",
             };
         } else {
             result.message =
@@ -307,6 +347,9 @@ std::string AiAssistantPanel::BuildSystemPrompt() const {
         "不要把它混在普通文字里，也不要在正文里举例 JSON。\n"
         "收尾规则：调用动作后，必须基于执行结果给出最终中文回复；"
         "除非用户明确要求继续操作，否则不要再输出任何 action JSON。\n"
+        "验证规则：修改材质或场景后，先调用 capture.preview 截图，"
+        "再用 vision.analyze_image 核对效果；不符合预期时继续调整，"
+        "确认符合预期后再做最终总结。\n"
         "任务节奏：复杂任务先输出一行计划，格式为 "
         "\"计划: 1. ...; 2. ...\"，再按计划批量执行，最后总结；"
         "简单任务可以省略计划。\n"
@@ -527,6 +570,10 @@ void AiAssistantPanel::SetContextCallback(
     contextCallback_ = std::move(callback);
 }
 
+void AiAssistantPanel::SetBridgeStatus(const std::string& status) {
+    bridgeStatus_ = status;
+}
+
 AI_ASSISTANT::AiRequestResult AiAssistantPanel::ExecuteRequest(
     std::string_view json) {
     const std::string action =
@@ -646,6 +693,9 @@ void AiAssistantPanel::Draw(bool& open) {
             : configValid
                 ? ("● DashScope · " + configModel).c_str()
                 : "● 未配置 API Key（只读模式）");
+    if (!bridgeStatus_.empty()) {
+        ImGui::TextDisabled("%s", bridgeStatus_.c_str());
+    }
     if (ImGui::GetFont() != nullptr &&
         ImGui::GetFont()->FindGlyphNoFallback(
             static_cast<ImWchar>(0x64C7u)) == nullptr) {
@@ -656,6 +706,21 @@ void AiAssistantPanel::Draw(bool& open) {
     }
 
     ImGui::Separator();
+
+    std::string planLine;
+    {
+        std::lock_guard<std::mutex> lock(streamMutex_);
+        planLine =
+            AI_ASSISTANT::ExtractPlanLine(streamingPartial_);
+    }
+    if (!planLine.empty()) {
+        ImGui::TextColored(
+            ImVec4{ 0.85f, 0.78f, 0.45f, 1.0f },
+            "执行计划");
+        ImGui::TextWrapped("%s", planLine.c_str());
+        ImGui::Spacing();
+        ImGui::Separator();
+    }
 
     ImGui::BeginChild(
         "##AiChatLog", ImVec2(0.0f, -112.0f), true);

@@ -44,6 +44,9 @@ namespace HIKARI::EDITOR {
         void Draw(bool& open);
         void SetSceneActionCallback(AiSceneActionCallback callback);
         void SetContextCallback(AiContextCallback callback);
+        void SetBridgeStatus(const std::string& status);
+        AI_ASSISTANT::AiRequestResult ExecuteRequest(
+            std::string_view json);
 
     private:
         void SendCurrentMessage();
@@ -55,8 +58,6 @@ namespace HIKARI::EDITOR {
         void OpenVisionBuffers();
         void SaveVisionSettings();
         void ResetVisionSettings();
-        AI_ASSISTANT::AiRequestResult ExecuteRequest(
-            std::string_view json);
         AI_ASSISTANT::AiChatConfig SnapshotConfig() const;
 
         std::vector<AI_ASSISTANT::AiChatMessage> messages_{};
@@ -81,6 +82,7 @@ namespace HIKARI::EDITOR {
         char visionApiKeyBuffer_[256] = {};
         char visionBaseUrlBuffer_[512] = {};
         char visionModelBuffer_[128] = {};
+        std::string bridgeStatus_{};
         AiSceneActionCallback sceneActionCallback_{};
         AiContextCallback contextCallback_{};
         AI_ASSISTANT::AiRequestResult rawResult_{};

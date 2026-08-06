@@ -91,6 +91,23 @@ struct ModelMaterialWorkspaceStats {
   uint64_t triangleCount = 0u;
 };
 
+struct AiMaterialGraphEditRequest {
+  // add_node | remove_node | connect | disconnect
+  std::string operation{};
+  // Stable node type name for add_node (for example "node.additive").
+  std::string nodeType{};
+  // Optional display name for add_node, or node id/name for remove_node.
+  std::string name{};
+  float positionX = 0.0f;
+  float positionY = 0.0f;
+  std::string sourceNode{};
+  std::string sourcePin{};
+  std::string targetNode{};
+  std::string targetPin{};
+  // Optional edge id for disconnect.
+  std::string edgeId{};
+};
+
 struct ModelMaterialWorkspaceResult {
   bool exitToSceneRequested = false;
   std::string statusMessage{};
@@ -117,6 +134,10 @@ public:
       DocumentSceneBase &scene,
       const std::string &parameterId,
       float value,
+      std::string &outMessage);
+  bool ApplyAiMaterialGraphEdit(
+      DocumentSceneBase &scene,
+      const AiMaterialGraphEditRequest &request,
       std::string &outMessage);
   std::string GetAiMaterialStatus() const;
 
