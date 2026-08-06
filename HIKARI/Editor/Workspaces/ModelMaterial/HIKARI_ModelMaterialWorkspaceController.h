@@ -100,6 +100,8 @@ struct AiMaterialGraphEditRequest {
   std::string name{};
   float positionX = 0.0f;
   float positionY = 0.0f;
+  // "manual" keeps the supplied position; anything else auto-lays out.
+  bool manualPosition = false;
   std::string sourceNode{};
   std::string sourcePin{};
   std::string targetNode{};
@@ -145,6 +147,9 @@ public:
       const std::string &nameFilter,
       std::string &outMessage,
       std::vector<std::string> &outDetails);
+  bool LayoutAiMaterialGraph(
+      DocumentSceneBase &scene,
+      std::string &outMessage);
   std::string GetAiMaterialStatus() const;
 
   ModelMaterialBindingCommandResult ExecuteBindingCommand(

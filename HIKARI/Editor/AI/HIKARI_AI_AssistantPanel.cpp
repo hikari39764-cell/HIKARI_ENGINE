@@ -14,7 +14,8 @@
 
 namespace HIKARI::EDITOR {
 namespace {
-constexpr int kMaxToolRounds = 12;
+constexpr int kDefaultToolRounds = 12;
+constexpr int kMaxToolRoundsCeiling = 30;
 } // namespace
 
 namespace AI_ASSISTANT {
@@ -99,6 +100,12 @@ const std::vector<AiCapability>& QueryCapabilities() {
           "stable" },
         { "material.graph_query",
           "List material graph nodes with ids, pins and existing connections.",
+          "stable" },
+        { "material.graph_layout",
+          "Auto-layout material graph nodes by topology.",
+          "stable" },
+        { "budget.request",
+          "Request a higher tool-round budget for the current conversation.",
           "stable" },
         { "capture.preview",
           "Capture the material preview to a PNG file for vision verification.",
@@ -276,6 +283,17 @@ AiRequestResult SubmitAiRequest(std::string_view requestJson) {
                 "可选 name 过滤："
                 "{\"action\":\"material.graph_query\",\"name\":\"Rim\"}",
             };
+        } else if (topic == "material.graph_layout") {
+            result.details = {
+                "{\"action\":\"material.graph_layout\"}",
+                "按拓扑分层整理当前材质图节点位置",
+            };
+        } else if (topic == "budget.request") {
+            result.details = {
+                "{\"action\":\"budget.request\","
+                "\"rounds\":24,\"reason\":\"逐节点检查需要更多轮\"}",
+                "默认 12 轮，上限 30；授予后每轮会返回剩余预算",
+            };
         } else if (topic == "capture.preview") {
             result.details = {
                 "{\"action\":\"capture.preview\","
@@ -414,12 +432,27 @@ void AiAssistantPanel::RunConversation(const std::string& userText) {
     conversation.push_back({ "user", userText });
     lastRoundActions_.clear();
     int consecutiveFailureRounds = 0;
-    for (int turn = 0; turn < kMaxToolRounds; ++turn) {
+    int maxToolRounds = kDefaultToolRounds;
+    std::string failureSummary;
+    std::vector<std::string> lastRoundFailedNames;
+    for (int turn = 0; turn < maxToolRounds; ++turn) {
         if (stopRequested_.load()) {
             return;
         }
         std::vector<AI_ASSISTANT::AiChatMessage> request = conversation;
         std::string systemContent = BuildSystemPrompt();
+        systemContent += "\n预算：本轮第 " +
+            std::to_string(turn + 1) + "/" +
+            std::to_string(maxToolRounds) + " 轮。";
+        if (consecutiveFailureRounds >= 2) {
+            systemContent +=
+                " 你已连续失败 " +
+                std::to_string(consecutiveFailureRounds) +
+                " 轮，必须改变策略：先调用诊断动作"
+                "（help / material.graph_query / capture.preview / "
+                "vision.analyze_image），或明确向用户说明无法继续。";
+        }
+        systemContent += "\n";
         if (contextCallback) {
             systemContent += "\n\n当前现状：\n" + contextCallback();
         }
@@ -463,9 +496,41 @@ void AiAssistantPanel::RunConversation(const std::string& userText) {
             }
             return;
         }
+        std::vector<std::string> executableActions = actionJsons;
+        std::string budgetMessage;
+        const auto budgetIt = std::find_if(
+            executableActions.begin(), executableActions.end(),
+            [](const std::string& actionJson) {
+                return AI_ASSISTANT::ExtractJsonField(
+                           actionJson, "action") == "budget.request";
+            });
+        if (budgetIt != executableActions.end()) {
+            const std::string roundsText =
+                AI_ASSISTANT::ExtractJsonNumberField(
+                    *budgetIt, "rounds");
+            int requested = 0;
+            try {
+                requested = std::stoi(roundsText);
+            } catch (...) {
+            }
+            if (requested > kDefaultToolRounds) {
+                maxToolRounds =
+                    (std::min)(requested, kMaxToolRoundsCeiling);
+                budgetMessage =
+                    "预算已授予：本轮最多 " +
+                    std::to_string(maxToolRounds) + " 轮（申请 " +
+                    std::to_string(requested) + "）。";
+            } else {
+                budgetMessage =
+                    "预算申请被忽略：申请轮数 " +
+                    std::to_string(requested) + " 不大于默认 " +
+                    std::to_string(kDefaultToolRounds) + "。";
+            }
+            executableActions.erase(budgetIt);
+        }
         if (turn == 0 && !lastFailedActionNames_.empty() &&
             std::all_of(
-                actionJsons.begin(), actionJsons.end(),
+                executableActions.begin(), executableActions.end(),
                 [this](const std::string& actionJson) {
                     const std::string name =
                         AI_ASSISTANT::ExtractJsonField(
@@ -489,7 +554,7 @@ void AiAssistantPanel::RunConversation(const std::string& userText) {
         }
         if (!lastRoundActions_.empty() &&
             std::all_of(
-                actionJsons.begin(), actionJsons.end(),
+                executableActions.begin(), executableActions.end(),
                 [this](const std::string& action) {
                     return std::find(
                         lastRoundActions_.begin(),
@@ -506,13 +571,16 @@ void AiAssistantPanel::RunConversation(const std::string& userText) {
             }
             return;
         }
-        lastRoundActions_ = actionJsons;
+        lastRoundActions_ = executableActions;
         conversation.push_back({ "assistant", reply });
         std::string resultText;
-        std::string failureSummary;
+        failureSummary.clear();
         size_t successCount = 0u;
         size_t failureCount = 0u;
-        for (const std::string& actionJson : actionJsons) {
+        if (!budgetMessage.empty()) {
+            resultText += budgetMessage + "\n";
+        }
+        for (const std::string& actionJson : executableActions) {
             const AI_ASSISTANT::AiRequestResult result =
                 ExecuteRequest(actionJson);
             if (result.ok) {
@@ -553,35 +621,31 @@ void AiAssistantPanel::RunConversation(const std::string& userText) {
         conversation.push_back({ "user", resultText });
         if (successCount == 0u && failureCount > 0u) {
             ++consecutiveFailureRounds;
-        } else {
-            consecutiveFailureRounds = 0;
-        }
-        if (consecutiveFailureRounds >= 3) {
-            lastFailedActionNames_.clear();
-            for (const std::string& actionJson : actionJsons) {
+            lastRoundFailedNames.clear();
+            for (const std::string& actionJson :
+                 executableActions) {
                 const std::string name =
                     AI_ASSISTANT::ExtractJsonField(
                         actionJson, "action");
                 if (!name.empty()) {
-                    lastFailedActionNames_.push_back(name);
+                    lastRoundFailedNames.push_back(name);
                 }
             }
-            std::string stopMessage =
-                "连续 3 轮动作全部失败，已停止；失败原因：\n";
-            stopMessage += failureSummary.empty()
-                ? "（无明细）"
-                : failureSummary;
-            stopMessage +=
-                "\n请基于失败原因修正参数或换一种做法。";
-            AppendMessage({ "assistant", stopMessage });
-            {
-                std::lock_guard<std::mutex> lock(streamMutex_);
-                streamingPartial_.clear();
-            }
-            return;
+        } else {
+            consecutiveFailureRounds = 0;
+            lastRoundFailedNames.clear();
         }
     }
-    AppendMessage({ "assistant", "（已达到最大工具调用轮数，请继续提问）" });
+    lastFailedActionNames_ = std::move(lastRoundFailedNames);
+    std::string stopMessage =
+        "已达到工具轮数预算（" +
+        std::to_string(maxToolRounds) + " 轮）。";
+    if (!failureSummary.empty()) {
+        stopMessage += "最近失败原因：\n" + failureSummary;
+    }
+    stopMessage +=
+        "\n你可以申请更多轮数（budget.request），或继续提问。";
+    AppendMessage({ "assistant", stopMessage });
     {
         std::lock_guard<std::mutex> lock(streamMutex_);
         streamingPartial_.clear();

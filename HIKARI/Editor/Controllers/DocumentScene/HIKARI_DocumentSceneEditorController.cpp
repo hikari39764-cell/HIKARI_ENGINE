@@ -1249,6 +1249,22 @@ namespace HIKARI {
                         }
                         return result;
                     }
+                    if (action == "material.graph_layout") {
+                        EDITOR::AI_ASSISTANT::AiRequestResult result{};
+                        std::string message;
+                        if (modelMaterialWorkspaceController_
+                                .LayoutAiMaterialGraph(
+                                    scene, message)) {
+                            result.ok = true;
+                            result.message = message;
+                            aiUndoStack_.push_back(
+                                { AiSceneUndoRecord::Kind::MaterialEdit,
+                                  {}, {}, {} });
+                        } else {
+                            result.message = message;
+                        }
+                        return result;
+                    }
                     if (action == "material.graph_edit") {
                         EDITOR::AI_ASSISTANT::AiRequestResult result{};
                         EDITOR::AiMaterialGraphEditRequest request{};
@@ -1281,6 +1297,9 @@ namespace HIKARI {
                         request.edgeId =
                             EDITOR::AI_ASSISTANT::ExtractJsonField(
                                 json, "edgeId");
+                        request.manualPosition =
+                            EDITOR::AI_ASSISTANT::ExtractJsonField(
+                                json, "layout") == "manual";
                         const auto readFloat =
                             [&json](const char* name, float fallback) {
                                 const std::string text =
