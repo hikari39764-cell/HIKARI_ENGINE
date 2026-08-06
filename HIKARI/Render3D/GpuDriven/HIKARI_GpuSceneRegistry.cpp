@@ -8,6 +8,8 @@
 #include <limits>
 #include <unordered_set>
 
+#include "Core/Hashing/HIKARI_FnvHash.h"
+
 #include "Core/Numeric/HIKARI_IntegerConversion.h"
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
@@ -35,10 +37,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         }
 
         uint64_t HashAppend(uint64_t seed, uint64_t value) {
-            constexpr uint64_t kMul = 1099511628211ull;
-            seed ^= value;
-            seed *= kMul;
-            return seed;
+            return HASH::Fnv1aCombine(seed, value);
         }
 
         uint64_t BuildSourceLayoutVersion(
@@ -46,7 +45,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             uint64_t layoutVersion,
             uint64_t routingVersion) {
 
-            uint64_t value = 1469598103934665603ull;
+            uint64_t value = HASH::kFnv1a64OffsetBasis;
             value = HashAppend(value, residencyEpoch);
             value = HashAppend(value, layoutVersion);
             value = HashAppend(value, routingVersion);

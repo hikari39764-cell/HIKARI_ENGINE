@@ -10,6 +10,7 @@ namespace HIKARI::EDITOR {
 void ModelMaterialWorkspaceDocument::OpenBindings(
     const AssetGuid &modelGuid, const AssetGuid &assetGuid,
     std::filesystem::path sourcePath, BindingMap bindings, bool saved) {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   modelGuid_ = modelGuid;
   bindingAssetGuid_ = assetGuid;
   bindingSourcePath_ = std::move(sourcePath);
@@ -25,6 +26,7 @@ void ModelMaterialWorkspaceDocument::OpenBindings(
 void ModelMaterialWorkspaceDocument::OpenMaterial(
     const AssetGuid &assetGuid, std::filesystem::path sourcePath,
     MaterialAssetData source, const MaterialCompileResult &compile, bool saved) {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   materialAssetGuid_ = assetGuid;
   materialSourcePath_ = std::move(sourcePath);
   material_ = std::move(source);
@@ -42,6 +44,7 @@ void ModelMaterialWorkspaceDocument::OpenMaterial(
 
 void ModelMaterialWorkspaceDocument::SetMaterialCompileOptions(
     MaterialCompileOptions options) {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   compileOptions_ = std::move(options);
   if (materialOpen_) {
     RefreshCompile();
@@ -49,6 +52,7 @@ void ModelMaterialWorkspaceDocument::SetMaterialCompileOptions(
 }
 
 void ModelMaterialWorkspaceDocument::CloseMaterial() {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   materialAssetGuid_ = {};
   materialSourcePath_.clear();
   material_ = {};
@@ -67,75 +71,89 @@ void ModelMaterialWorkspaceDocument::CloseMaterial() {
 }
 
 bool ModelMaterialWorkspaceDocument::HasBindings() const noexcept {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   return bindingsOpen_;
 }
 
 bool ModelMaterialWorkspaceDocument::HasMaterial() const noexcept {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   return materialOpen_;
 }
 
 const AssetGuid &ModelMaterialWorkspaceDocument::GetModelGuid() const noexcept {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   return modelGuid_;
 }
 
 const AssetGuid &
 ModelMaterialWorkspaceDocument::GetBindingAssetGuid() const noexcept {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   return bindingAssetGuid_;
 }
 
 const AssetGuid &
 ModelMaterialWorkspaceDocument::GetMaterialAssetGuid() const noexcept {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   return materialAssetGuid_;
 }
 
 const std::filesystem::path &
 ModelMaterialWorkspaceDocument::GetBindingSourcePath() const noexcept {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   return bindingSourcePath_;
 }
 
 const std::filesystem::path &
 ModelMaterialWorkspaceDocument::GetMaterialSourcePath() const noexcept {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   return materialSourcePath_;
 }
 
 ModelMaterialWorkspaceDocument::BindingMap &
 ModelMaterialWorkspaceDocument::EditBindings() noexcept {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   return bindings_;
 }
 
-const ModelMaterialWorkspaceDocument::BindingMap &
-ModelMaterialWorkspaceDocument::GetBindings() const noexcept {
+ModelMaterialWorkspaceDocument::BindingMap
+ModelMaterialWorkspaceDocument::GetBindings() const {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   return bindings_;
 }
 
 MaterialAssetData &ModelMaterialWorkspaceDocument::EditMaterial() noexcept {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   return material_;
 }
 
-const MaterialAssetData &
-ModelMaterialWorkspaceDocument::GetMaterial() const noexcept {
+MaterialAssetData ModelMaterialWorkspaceDocument::GetMaterial() const {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   return material_;
 }
 
-const MaterialCompileResult &
-ModelMaterialWorkspaceDocument::GetCompileResult() const noexcept {
+MaterialCompileResult ModelMaterialWorkspaceDocument::GetCompileResult() const {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   return compile_;
 }
 
 uint64_t ModelMaterialWorkspaceDocument::GetMaterialRevision() const noexcept {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   return materialRevision_;
 }
 
 uint64_t ModelMaterialWorkspaceDocument::GetCompileRevision() const noexcept {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   return compileRevision_;
 }
 
 bool ModelMaterialWorkspaceDocument::IsCompileCurrent() const noexcept {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   return materialOpen_ && compileRevision_ == materialRevision_;
 }
 
 bool ModelMaterialWorkspaceDocument::CommitBindings(BindingMap before,
                                                     std::string label) {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   if (!bindingsOpen_ || AreBindingsEquivalent(before, bindings_)) {
     return false;
   }
@@ -154,31 +172,13 @@ bool ModelMaterialWorkspaceDocument::CommitBindings(BindingMap before,
 
 bool ModelMaterialWorkspaceDocument::CommitMaterial(MaterialAssetData before,
                                                     std::string label) {
-  if (!materialOpen_ || AreMaterialsEquivalent(before, material_)) {
-    return false;
-  }
-  if (abBefore_) {
-    ++materialRevision_;
-    RefreshCompile();
-    return true;
-  }
-  HistoryEntry entry{};
-  entry.domain = ChangedDomain::Material;
-  entry.beforeMaterial = std::move(before);
-  entry.afterMaterial = material_;
-  entry.beforeToken = materialStateToken_;
-  entry.afterToken = nextStateToken_++;
-  entry.label = std::move(label);
-  materialStateToken_ = entry.afterToken;
-  activeHistoryDomain_ = ChangedDomain::Material;
-  PushHistory(std::move(entry));
-  ++materialRevision_;
-  RefreshCompile();
-  return true;
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
+  return CommitMaterialLocked(std::move(before), std::move(label));
 }
 
 void ModelMaterialWorkspaceDocument::RestoreMaterial(
     MaterialAssetData source) {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   if (!materialOpen_) {
     return;
   }
@@ -188,6 +188,7 @@ void ModelMaterialWorkspaceDocument::RestoreMaterial(
 }
 
 bool ModelMaterialWorkspaceDocument::CanUndo() const noexcept {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   if (activeHistoryDomain_ == ChangedDomain::Binding) {
     return bindingHistoryCursor_ > 0u;
   }
@@ -196,6 +197,7 @@ bool ModelMaterialWorkspaceDocument::CanUndo() const noexcept {
 }
 
 bool ModelMaterialWorkspaceDocument::CanRedo() const noexcept {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   if (activeHistoryDomain_ == ChangedDomain::Binding) {
     return bindingHistoryCursor_ < bindingHistory_.size();
   }
@@ -205,6 +207,7 @@ bool ModelMaterialWorkspaceDocument::CanRedo() const noexcept {
 
 bool ModelMaterialWorkspaceDocument::Undo(ChangedDomain &outDomain,
                                           std::string &outLabel) {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   if (!CanUndo()) {
     return false;
   }
@@ -232,6 +235,7 @@ bool ModelMaterialWorkspaceDocument::Undo(ChangedDomain &outDomain,
 
 bool ModelMaterialWorkspaceDocument::Redo(ChangedDomain &outDomain,
                                           std::string &outLabel) {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   if (!CanRedo()) {
     return false;
   }
@@ -259,6 +263,7 @@ bool ModelMaterialWorkspaceDocument::Redo(ChangedDomain &outDomain,
 
 const std::string *
 ModelMaterialWorkspaceDocument::GetUndoLabel() const noexcept {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   if (!CanUndo()) {
     return nullptr;
   }
@@ -269,6 +274,7 @@ ModelMaterialWorkspaceDocument::GetUndoLabel() const noexcept {
 
 const std::string *
 ModelMaterialWorkspaceDocument::GetRedoLabel() const noexcept {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   if (!CanRedo()) {
     return nullptr;
   }
@@ -278,14 +284,17 @@ ModelMaterialWorkspaceDocument::GetRedoLabel() const noexcept {
 }
 
 bool ModelMaterialWorkspaceDocument::IsBindingDirty() const noexcept {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   return bindingsOpen_ && bindingStateToken_ != savedBindingStateToken_;
 }
 
 bool ModelMaterialWorkspaceDocument::IsMaterialDirty() const noexcept {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   return materialOpen_ && materialStateToken_ != savedMaterialStateToken_;
 }
 
 bool ModelMaterialWorkspaceDocument::DiscardBindingChanges() noexcept {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   if (!bindingsOpen_ || !IsBindingDirty()) {
     return false;
   }
@@ -297,6 +306,7 @@ bool ModelMaterialWorkspaceDocument::DiscardBindingChanges() noexcept {
 }
 
 bool ModelMaterialWorkspaceDocument::DiscardMaterialChanges() {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   if (!materialOpen_ || (!IsMaterialDirty() && !abBefore_)) {
     return false;
   }
@@ -312,6 +322,7 @@ bool ModelMaterialWorkspaceDocument::DiscardMaterialChanges() {
 
 void ModelMaterialWorkspaceDocument::MarkBindingsSaved(
     const AssetGuid &assetGuid, std::filesystem::path sourcePath) noexcept {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   bindingAssetGuid_ = assetGuid;
   bindingSourcePath_ = std::move(sourcePath);
   savedBindingStateToken_ = bindingStateToken_;
@@ -320,6 +331,7 @@ void ModelMaterialWorkspaceDocument::MarkBindingsSaved(
 
 void ModelMaterialWorkspaceDocument::MarkMaterialSaved(
     const AssetGuid &assetGuid, std::filesystem::path sourcePath) noexcept {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   materialAssetGuid_ = assetGuid;
   materialSourcePath_ = std::move(sourcePath);
   savedMaterialStateToken_ = materialStateToken_;
@@ -328,6 +340,7 @@ void ModelMaterialWorkspaceDocument::MarkMaterialSaved(
 
 bool ModelMaterialWorkspaceDocument::BeginAbPreview(
     MaterialAssetData candidate, std::string &outMessage) {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   if (!materialOpen_) {
     outMessage = "open or create a material before starting A/B preview";
     return false;
@@ -345,10 +358,12 @@ bool ModelMaterialWorkspaceDocument::BeginAbPreview(
 }
 
 bool ModelMaterialWorkspaceDocument::IsAbPreviewActive() const noexcept {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   return abBefore_.has_value();
 }
 
 bool ModelMaterialWorkspaceDocument::KeepAbPreview(std::string &outMessage) {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   if (!abBefore_) {
     outMessage = "no A/B preview is active";
     return false;
@@ -363,6 +378,7 @@ bool ModelMaterialWorkspaceDocument::KeepAbPreview(std::string &outMessage) {
 
 bool ModelMaterialWorkspaceDocument::DiscardAbPreview(
     std::string &outMessage) {
+  std::lock_guard<std::recursive_mutex> lock(mutex_);
   if (!abBefore_) {
     outMessage = "no A/B preview is active";
     return false;

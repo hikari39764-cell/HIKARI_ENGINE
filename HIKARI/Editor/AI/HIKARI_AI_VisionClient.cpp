@@ -1,5 +1,7 @@
 #include "HIKARI_AI_VisionClient.h"
 
+#include "Core/Text/HIKARI_Trim.h"
+
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
@@ -22,16 +24,7 @@ struct VisionFields {
 };
 
 std::string Trim(std::string value) {
-    const auto notSpace = [](unsigned char c) {
-        return std::isspace(c) == 0;
-    };
-    value.erase(
-        value.begin(),
-        std::find_if(value.begin(), value.end(), notSpace));
-    value.erase(
-        std::find_if(value.rbegin(), value.rend(), notSpace).base(),
-        value.end());
-    return value;
+    return TEXT::TrimCopy(std::move(value));
 }
 
 std::string Unquote(std::string value) {

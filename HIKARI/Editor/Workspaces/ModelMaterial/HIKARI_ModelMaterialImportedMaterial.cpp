@@ -146,6 +146,7 @@ bool ModelMaterialWorkspaceController::OpenImportedMaterialDraft(
       source, compileOptions);
   authoringDocument_.SetMaterialCompileOptions(compileOptions);
   authoringDocument_.OpenMaterial({}, {}, std::move(source), compile, true);
+  RefreshAuthoringIdCounter();
   candidateAuthoringAssetGuid_ = {};
   candidateMaterialGuid_ = {};
   selectedGraphNodeId_.clear();

@@ -6,13 +6,11 @@
 #include <limits>
 #include <unordered_set>
 
+#include "Core/Hashing/HIKARI_FnvHash.h"
+
 namespace HIKARI::ASSETS::MODELS {
 
     namespace {
-        constexpr uint64_t kFnv64OffsetBasis =
-            14695981039346656037ull;
-        constexpr uint64_t kFnv64Prime = 1099511628211ull;
-
         bool IsAsciiWhitespace(unsigned char value) noexcept {
             return value == ' ' ||
                 value == '\t' ||
@@ -49,13 +47,6 @@ namespace HIKARI::ASSETS::MODELS {
             return normalized;
         }
 
-        void AppendHashByte(
-            uint64_t& hash,
-            unsigned char value) noexcept {
-            hash ^= value;
-            hash *= kFnv64Prime;
-        }
-
         bool IsLegacyGeneratedAssimpMaterialName(
             std::string_view value) noexcept {
 
@@ -82,30 +73,31 @@ namespace HIKARI::ASSETS::MODELS {
 
         const std::string normalizedIdentity =
             NormalizeSourceMaterialIdentity(sourceMaterialIdentity);
-        uint64_t hash = kFnv64OffsetBasis;
+        uint64_t hash = HASH::kFnv1a64OffsetBasis;
         constexpr std::string_view kDomain =
             "hikari.model-material-slot.v1";
-        for (const char character : kDomain) {
-            AppendHashByte(
-                hash,
-                static_cast<unsigned char>(character));
-        }
-        AppendHashByte(hash, 0xffu);
-        AppendHashByte(
+        hash = HASH::Fnv1aBytes(
+            hash, kDomain.data(), kDomain.size());
+        const unsigned char separator = 0xffu;
+        hash = HASH::Fnv1aBytes(
+            hash, &separator, sizeof(separator));
+        const unsigned char semanticByte =
+            static_cast<unsigned char>(importerSemantic);
+        hash = HASH::Fnv1aBytes(
+            hash, &semanticByte, sizeof(semanticByte));
+        hash = HASH::Fnv1aBytes(
+            hash, &separator, sizeof(separator));
+        hash = HASH::Fnv1aBytes(
             hash,
-            static_cast<unsigned char>(importerSemantic));
-        AppendHashByte(hash, 0xffu);
-        for (const char character : normalizedIdentity) {
-            AppendHashByte(
-                hash,
-                static_cast<unsigned char>(character));
-        }
-        AppendHashByte(hash, 0xffu);
+            normalizedIdentity.data(),
+            normalizedIdentity.size());
+        hash = HASH::Fnv1aBytes(
+            hash, &separator, sizeof(separator));
         for (uint32_t shift = 0u; shift < 32u; shift += 8u) {
-            AppendHashByte(
-                hash,
-                static_cast<unsigned char>(
-                    (duplicateOrdinal >> shift) & 0xffu));
+            const unsigned char byte = static_cast<unsigned char>(
+                (duplicateOrdinal >> shift) & 0xffu);
+            hash = HASH::Fnv1aBytes(
+                hash, &byte, sizeof(byte));
         }
         return { hash != 0u ? hash : 1u };
     }

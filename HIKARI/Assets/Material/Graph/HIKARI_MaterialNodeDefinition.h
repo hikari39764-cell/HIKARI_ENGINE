@@ -54,6 +54,9 @@ namespace HIKARI {
         bool staticallyEvaluable = false;
         MaterialNodeOutputRoute outputRoute =
             MaterialNodeOutputRoute::Unrestricted;
+        // One-line semantic contract for AI and node catalogs. Palette-visible
+        // nodes must provide a non-empty summary.
+        std::string_view summary{};
     };
 
     std::span<const MaterialNodeDefinition> GetMaterialNodeDefinitions() noexcept;

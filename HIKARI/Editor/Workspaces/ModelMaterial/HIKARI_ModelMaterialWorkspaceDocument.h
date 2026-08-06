@@ -2,6 +2,8 @@
 
 #include <cstddef>
 #include <filesystem>
+#include <functional>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -42,16 +44,25 @@ public:
   const std::filesystem::path &GetMaterialSourcePath() const noexcept;
 
   BindingMap &EditBindings() noexcept;
-  const BindingMap &GetBindings() const noexcept;
+  BindingMap GetBindings() const;
   MaterialAssetData &EditMaterial() noexcept;
-  const MaterialAssetData &GetMaterial() const noexcept;
-  const MaterialCompileResult &GetCompileResult() const noexcept;
+  MaterialAssetData GetMaterial() const;
+  MaterialCompileResult GetCompileResult() const;
   uint64_t GetMaterialRevision() const noexcept;
   uint64_t GetCompileRevision() const noexcept;
   bool IsCompileCurrent() const noexcept;
 
   bool CommitBindings(BindingMap before, std::string label);
   bool CommitMaterial(MaterialAssetData before, std::string label);
+  // Applies an edit and commits it inside the document lock. This is the only
+  // safe material-mutation entry for worker threads (for example the AI
+  // assistant); EditMaterial()/CommitMaterial() are reserved for the UI
+  // thread's short-lived paired gestures.
+  bool ApplyMaterialEdit(
+      const std::function<void(MaterialAssetData &)> &edit,
+      std::string label,
+      std::string &outMessage);
+  std::recursive_mutex &GetMutex() noexcept { return mutex_; }
   void RestoreMaterial(MaterialAssetData source);
 
   bool CanUndo() const noexcept;
@@ -92,6 +103,7 @@ private:
                                     const BindingMap &right) noexcept;
   static bool AreMaterialsEquivalent(const MaterialAssetData &left,
                                      const MaterialAssetData &right);
+  bool CommitMaterialLocked(MaterialAssetData before, std::string label);
   void TruncateRedo(ChangedDomain domain);
   void PushHistory(HistoryEntry entry);
   void RefreshCompile();
@@ -123,6 +135,7 @@ private:
   bool materialOpen_ = false;
   uint64_t materialRevision_ = 0u;
   uint64_t compileRevision_ = 0u;
+  mutable std::recursive_mutex mutex_{};
 };
 
 } // namespace HIKARI::EDITOR

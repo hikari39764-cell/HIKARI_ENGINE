@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 
+#include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Render3D/Core/HIKARI_Material.h"
 #include "Render3D/Core/HIKARI_MeshRendererTypes.h"
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
@@ -83,7 +84,7 @@ namespace HIKARI::SHADOW::INTERNAL {
         uint64_t stableMaterialKey,
         const MESHRENDERER::MaterialGpuData& data) {
 
-        uint64_t seed = AppendShadowHashValue(1469598103934665603ull, stableMaterialKey);
+        uint64_t seed = AppendShadowHashValue(HASH::kFnv1a64OffsetBasis, stableMaterialKey);
         return AppendShadowHashBytes(seed, &data, sizeof(data));
     }
 

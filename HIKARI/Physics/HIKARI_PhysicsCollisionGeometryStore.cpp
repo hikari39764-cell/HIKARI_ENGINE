@@ -1,5 +1,7 @@
 #include "Physics/HIKARI_PhysicsCollisionGeometryStore.h"
 
+#include "Core/HIKARI_MathConfig.h"
+
 #include <algorithm>
 #include <cmath>
 
@@ -13,7 +15,7 @@ namespace HIKARI::PHYSICS {
     namespace {
 
         constexpr float kDegreesToRadians =
-            0.01745329251994329577f;
+            MATH::kDegreesToRadians;
 
         MATH::Vec3 Absolute(const MATH::Vec3& value) noexcept {
             return {

@@ -7,6 +7,7 @@
 #include <limits>
 #include <string_view>
 
+#include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Core/Math/HIKARI_NormalMatrix.h"
 #include "Core/Numeric/HIKARI_IntegerConversion.h"
 #include "Render3D/Core/HIKARI_BoundsUtils.h"
@@ -40,18 +41,11 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         }
 
         uint64_t HashAppend(uint64_t seed, uint64_t value) {
-            constexpr uint64_t kMul = 1099511628211ull;
-            seed ^= value;
-            seed *= kMul;
-            return seed;
+            return HASH::Fnv1aCombine(seed, value);
         }
 
         uint64_t HashString(std::string_view value) {
-            uint64_t hash = 1469598103934665603ull;
-            for (const char c : value) {
-                hash = HashAppend(hash, static_cast<uint64_t>(static_cast<unsigned char>(c)));
-            }
-            return hash;
+            return HASH::Fnv1aString(value);
         }
 
         uint64_t HashPointer(const void* value) {

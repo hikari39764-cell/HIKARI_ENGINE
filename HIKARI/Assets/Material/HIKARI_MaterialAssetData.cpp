@@ -107,14 +107,106 @@ namespace HIKARI {
 
     } // namespace
 
-    void ApplyPbrMaterialAssetData(
-        MaterialAssetData& material,
-        const PbrMaterialAssetData& pbr) {
+void ApplyPbrMaterialAssetData(
+    MaterialAssetData& material,
+    const PbrMaterialAssetData& pbr) {
 
-        ApplyPbrAdapterEdits(pbr, material);
+    ApplyPbrAdapterEdits(pbr, material);
+}
+
+void SyncPbrFromGraphParameters(
+    MaterialAssetData& material) {
+    const auto findParameter =
+        [&material](std::string_view id)
+        -> const MaterialGraphParameterData* {
+            for (const MaterialGraphParameterData& parameter :
+                 material.graph.parameters) {
+                if (parameter.id == id) {
+                    return &parameter;
+                }
+            }
+            return nullptr;
+        };
+    const auto applyScalar = [](float& target,
+                                const MaterialValueData& value) {
+        if (value.type == MaterialValueType::Float1 ||
+            value.type == MaterialValueType::Float2 ||
+            value.type == MaterialValueType::Float3 ||
+            value.type == MaterialValueType::Float4) {
+            target = value.numeric.x;
+        }
+    };
+    const auto applyVec3 = [](MATH::Vec3& target,
+                              const MaterialValueData& value) {
+        if (value.type == MaterialValueType::Float1 ||
+            value.type == MaterialValueType::Float2 ||
+            value.type == MaterialValueType::Float3 ||
+            value.type == MaterialValueType::Float4) {
+            target.x = value.numeric.x;
+            target.y = value.numeric.y;
+            target.z = value.numeric.z;
+        }
+    };
+    const auto applyVec4 = [](MATH::Vec4& target,
+                              const MaterialValueData& value) {
+        if (value.type == MaterialValueType::Float4) {
+            target = value.numeric;
+        } else if (value.type == MaterialValueType::Float1 ||
+                   value.type == MaterialValueType::Float2 ||
+                   value.type == MaterialValueType::Float3) {
+            target.x = value.numeric.x;
+            target.y = value.numeric.y;
+            target.z = value.numeric.z;
+        }
+    };
+    if (const MaterialGraphParameterData* parameter =
+            findParameter("parameter.baseColor")) {
+        applyVec4(material.pbr.baseColorFactor,
+                  parameter->defaultValue);
     }
+    if (const MaterialGraphParameterData* parameter =
+            findParameter("parameter.metallic")) {
+        applyScalar(material.pbr.metallicFactor,
+                    parameter->defaultValue);
+    }
+    if (const MaterialGraphParameterData* parameter =
+            findParameter("parameter.roughness")) {
+        applyScalar(material.pbr.roughnessFactor,
+                    parameter->defaultValue);
+    }
+    if (const MaterialGraphParameterData* parameter =
+            findParameter("parameter.specular")) {
+        applyScalar(material.pbr.specularFactor,
+                    parameter->defaultValue);
+    }
+    if (const MaterialGraphParameterData* parameter =
+            findParameter("parameter.specularColor")) {
+        applyVec3(material.pbr.specularColorFactor,
+                  parameter->defaultValue);
+    }
+    if (const MaterialGraphParameterData* parameter =
+            findParameter("parameter.normalScale")) {
+        applyScalar(material.pbr.normalScale,
+                    parameter->defaultValue);
+    }
+    if (const MaterialGraphParameterData* parameter =
+            findParameter("parameter.occlusionStrength")) {
+        applyScalar(material.pbr.occlusionStrength,
+                    parameter->defaultValue);
+    }
+    if (const MaterialGraphParameterData* parameter =
+            findParameter("parameter.emissive")) {
+        applyVec3(material.pbr.emissiveFactor,
+                  parameter->defaultValue);
+    }
+    if (const MaterialGraphParameterData* parameter =
+            findParameter("parameter.emissiveStrength")) {
+        applyScalar(material.pbr.emissiveStrength,
+                    parameter->defaultValue);
+    }
+}
 
-    bool LoadMaterialAssetData(
+bool LoadMaterialAssetData(
         const std::filesystem::path& path,
         MaterialAssetData& outData,
         std::string& outError,

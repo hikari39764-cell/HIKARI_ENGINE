@@ -1,4 +1,6 @@
 #include "Editor/Scene/Inspector/HIKARI_SceneInspectorPanel.h"
+
+#include "Core/HIKARI_MathConfig.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
 
 #include <algorithm>
@@ -29,7 +31,7 @@
 
 namespace HIKARI::EDITOR {
 namespace {
-constexpr float kDegreesToRadians = 3.14159265358979323846f / 180.0f;
+constexpr float kDegreesToRadians = MATH::kDegreesToRadians;
 
 int ComponentCategoryRank(std::string_view category) {
   if (category == "Rendering")

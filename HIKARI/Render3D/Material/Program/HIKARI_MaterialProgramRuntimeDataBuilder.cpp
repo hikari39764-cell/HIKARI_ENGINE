@@ -18,6 +18,8 @@
 #include "Render3D/Material/Program/HIKARI_MaterialProgramStaticEvaluator.h"
 #include "Render3D/Material/Program/HIKARI_MaterialProgramRegistry.h"
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
+#include "Core/Text/HIKARI_AsciiId.h"
+#include "Core/Text/HIKARI_HexString.h"
 
 namespace HIKARI::RENDER3D::MATERIAL {
 
@@ -47,15 +49,7 @@ namespace HIKARI::RENDER3D::MATERIAL {
             gRampResourcesByAsset{};
 
         std::string NormalizeId(std::string_view id) {
-            std::string normalized{};
-            normalized.reserve(id.size());
-            for (const unsigned char c : id) {
-                if (std::isalnum(c) != 0) {
-                    normalized.push_back(
-                        static_cast<char>(std::tolower(c)));
-                }
-            }
-            return normalized;
+            return TEXT::NormalizeAsciiId(id);
         }
 
         std::vector<MATH::Vec4> BuildDefaultParameters() {
@@ -128,9 +122,7 @@ namespace HIKARI::RENDER3D::MATERIAL {
         }
 
         std::string ToHex(uint64_t value) {
-            std::ostringstream stream{};
-            stream << std::hex << std::setfill('0') << std::setw(16) << value;
-            return stream.str();
+            return TEXT::ToHexString(value);
         }
 
         RuntimeTextureSlot BuildRampResourceSlot(

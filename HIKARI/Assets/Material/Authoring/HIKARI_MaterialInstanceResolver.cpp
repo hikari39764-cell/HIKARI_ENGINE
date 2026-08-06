@@ -1,5 +1,7 @@
 #include "Assets/Material/Authoring/HIKARI_MaterialInstanceResolver.h"
 
+#include "Assets/Material/Graph/HIKARI_MaterialGraphQuery.h"
+
 #include <algorithm>
 #include <cmath>
 #include <unordered_set>
@@ -35,57 +37,25 @@ namespace HIKARI::ASSETS::MATERIAL {
         MaterialGraphParameterData* FindParameter(
             MaterialAssetData& material,
             std::string_view id) noexcept {
-
-            const auto found = std::find_if(
-                material.graph.parameters.begin(),
-                material.graph.parameters.end(),
-                [id](const MaterialGraphParameterData& value) {
-                    return value.id == id;
-                });
-            return found == material.graph.parameters.end()
-                ? nullptr : &*found;
+            return FindMaterialGraphParameter(material.graph, id);
         }
 
         const MaterialGraphParameterData* FindParameter(
             const MaterialAssetData& material,
             std::string_view id) noexcept {
-
-            const auto found = std::find_if(
-                material.graph.parameters.begin(),
-                material.graph.parameters.end(),
-                [id](const MaterialGraphParameterData& value) {
-                    return value.id == id;
-                });
-            return found == material.graph.parameters.end()
-                ? nullptr : &*found;
+            return FindMaterialGraphParameter(material.graph, id);
         }
 
         MaterialGraphResourceData* FindResource(
             MaterialAssetData& material,
             std::string_view id) noexcept {
-
-            const auto found = std::find_if(
-                material.graph.resources.begin(),
-                material.graph.resources.end(),
-                [id](const MaterialGraphResourceData& value) {
-                    return value.id == id;
-                });
-            return found == material.graph.resources.end()
-                ? nullptr : &*found;
+            return FindMaterialGraphResource(material.graph, id);
         }
 
         const MaterialGraphResourceData* FindResource(
             const MaterialAssetData& material,
             std::string_view id) noexcept {
-
-            const auto found = std::find_if(
-                material.graph.resources.begin(),
-                material.graph.resources.end(),
-                [id](const MaterialGraphResourceData& value) {
-                    return value.id == id;
-                });
-            return found == material.graph.resources.end()
-                ? nullptr : &*found;
+            return FindMaterialGraphResource(material.graph, id);
         }
 
         void ApplyPbrParameter(

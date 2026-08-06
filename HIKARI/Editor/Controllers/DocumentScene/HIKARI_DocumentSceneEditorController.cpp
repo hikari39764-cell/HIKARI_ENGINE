@@ -1,9 +1,12 @@
 #include "Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorController.h"
 
+#include "Core/HIKARI_MathConfig.h"
+
 #include "Assets/Material/HIKARI_MaterialAssetData.h"
 #include "Assets/HIKARI_AssetImportState.h"
 #include "Core/HIKARI_Logger.h"
 #include "Editor/AI/HIKARI_AI_ChatClient.h"
+#include "Editor/AI/HIKARI_AI_VisionClient.h"
 #include "Editor/Authoring/HIKARI_EditorObjectState.h"
 #include "Editor/Authoring/HIKARI_EditorObjectFactory.h"
 #include "Editor/Assets/Browser/HIKARI_AssetBrowserInternal.h"
@@ -16,6 +19,7 @@
 #include "Editor/Tools/HIKARI_BuiltInEditorTools.h"
 #include "Editor/Views/HIKARI_EditorViewInstance.h"
 #include "Editor/Widgets/HIKARI_MaterialTextureSlotWidget.h"
+#include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialNodeQuery.h"
 #include "Editor/HIKARI_EditorViewportInput.h"
 #include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
@@ -108,6 +112,56 @@ namespace HIKARI {
             }
             outError = "截图超时：" + outPath;
             return false;
+        }
+
+        void AppendAiHints(
+            const std::string& code,
+            EDITOR::AI_ASSISTANT::AiRequestResult& result) {
+            if (code == "AMBIGUOUS_PARAMETER" ||
+                code == "PARAMETER_NOT_FOUND") {
+                result.hints = {
+                    "请使用完整参数名（如 parameter.baseColor），"
+                    "或用 material.graph_query 查看当前参数",
+                };
+            } else if (code == "PARAMETER_TYPE_MISMATCH") {
+                result.hints = {
+                    "该参数不是数值类型，无法用 value 修改",
+                };
+            } else if (code == "UNKNOWN_NODE_TYPE") {
+                result.hints = {
+                    "请用 help material.graph_edit 查看可用的 "
+                    "nodeType 写法（Constant/Parameter/Add 或 "
+                    "node.additive 等）",
+                };
+            } else if (code == "PIN_NOT_FOUND" ||
+                       code == "CONNECT_REJECTED") {
+                result.hints = {
+                    "先用 material.graph_query 查看节点 id 和插槽，"
+                    "再连线；插槽可省略或用 out/in 取第一个",
+                };
+            } else if (code == "FUNCTION_CALL_UNSUPPORTED") {
+                result.hints = {
+                    "FunctionCall 需要资产 GUID，请在编辑器的 "
+                    "Material Functions 菜单添加；也可以用 "
+                    "material.graph_edit remove_node 删除坏节点",
+                };
+            } else if (code == "NODE_NOT_FOUND" ||
+                       code == "EDGE_NOT_FOUND") {
+                result.hints = {
+                    "先用 material.graph_query 查看现有节点 id/"
+                    "displayName",
+                };
+            } else if (code == "SURFACE_OUTPUT_EXISTS" ||
+                       code == "SURFACE_OUTPUT_PROTECTED") {
+                result.hints = {
+                    "Surface Output 是单例根节点，不能重复添加或删除",
+                };
+            } else if (code.find("COMPILE") != std::string::npos) {
+                result.hints = {
+                    "请查看 compile 诊断修正节点，"
+                    "或用 action.undo_last 回退",
+                };
+            }
         }
 
         EDITOR::AI_ASSISTANT::AiRequestResult ExecuteAiSceneAction(
@@ -271,7 +325,7 @@ namespace HIKARI {
                 if (hasField("rotationX") || hasField("rotationY") ||
                     hasField("rotationZ")) {
                     constexpr float kDegreesToRadians =
-                        0.0174532925f;
+                        MATH::kDegreesToRadians;
                     changed |= target->SetLocalRotation(
                         MATH::Quat::FromEulerXYZ(
                             floatField("rotationX", 0.0f) *
@@ -1187,11 +1241,19 @@ namespace HIKARI {
                     if (action == "material.edit_parameter") {
                         EDITOR::AI_ASSISTANT::AiRequestResult result{};
                         std::string message;
+                        std::string code;
                         const std::string parameter =
                             EDITOR::AI_ASSISTANT::ExtractJsonField(
                                 json, "parameter");
                         if (parameter.empty()) {
                             result.message = "缺少 parameter 字段";
+                            result.code = "MISSING_FIELD";
+                            result.hints = {
+                                "请带上完整参数名，例如 "
+                                "{\"action\":\"material.edit_parameter\","
+                                "\"parameter\":\"parameter.baseColor\","
+                                "\"value\":0.8}",
+                            };
                             return result;
                         }
                         float value = 0.0f;
@@ -1204,14 +1266,20 @@ namespace HIKARI {
                             } catch (...) {
                                 result.message =
                                     "value 不是有效数字：" + valueText;
+                                result.code = "INVALID_VALUE";
                                 return result;
                             }
                         }
                         if (modelMaterialWorkspaceController_
                                 .ApplyAiMaterialParameterEdit(
-                                    scene, parameter, value, message)) {
+                                    scene, parameter, value, message,
+                                    code)) {
                             result.ok = true;
+                            result.code = "OK";
                             result.message = message;
+                            modelMaterialWorkspaceController_
+                                .AppendAiCompileDiagnostics(
+                                    result.details);
                             aiUndoStack_.push_back(
                                 { AiSceneUndoRecord::Kind::MaterialEdit,
                                   {}, {}, {} });
@@ -1227,6 +1295,121 @@ namespace HIKARI {
                             }
                         } else {
                             result.message = message;
+                            result.code = code;
+                            AppendAiHints(code, result);
+                        }
+                        return result;
+                    }
+                    if (action == "material.verify") {
+                        EDITOR::AI_ASSISTANT::AiRequestResult result{};
+                        std::string capturePath;
+                        std::string captureError;
+                        if (!CapturePreviewToFile(
+                                capturePath, captureError)) {
+                            result.message =
+                                "截图失败：" + captureError;
+                            result.code = "CAPTURE_FAILED";
+                            return result;
+                        }
+                        EDITOR::AI_ASSISTANT::AiChatConfig vision{};
+                        if (!EDITOR::AI_ASSISTANT::
+                                LoadAiVisionConfig(vision)) {
+                            result.message =
+                                "截图已保存：" + capturePath +
+                                "，但未配置视觉 API";
+                            result.code = "VISION_NOT_CONFIGURED";
+                            result.details = { capturePath };
+                            return result;
+                        }
+                        const std::string prompt =
+                            EDITOR::AI_ASSISTANT::ExtractJsonField(
+                                json, "prompt");
+                        std::string text;
+                        std::string error;
+                        if (!EDITOR::AI_ASSISTANT::
+                                RunVisionAnalysis(
+                                    vision,
+                                    capturePath,
+                                    prompt.empty()
+                                        ? "描述这张材质预览，"
+                                          "并判断效果是否符合预期"
+                                        : prompt,
+                                    text,
+                                    error)) {
+                            result.message =
+                                "截图已保存：" + capturePath +
+                                "，识图失败：" + error;
+                            result.code = "VISION_FAILED";
+                            result.details = { capturePath };
+                            return result;
+                        }
+                        result.ok = true;
+                        result.code = "OK";
+                        result.message = "预览验证：" + text;
+                        result.details = { "截图：" + capturePath };
+                        return result;
+                    }
+                    if (action == "material.node_info") {
+                        EDITOR::AI_ASSISTANT::AiRequestResult result{};
+                        std::string nodeType =
+                            EDITOR::AI_ASSISTANT::ExtractJsonField(
+                                json, "nodeType");
+                        if (nodeType.empty()) {
+                            nodeType =
+                                EDITOR::AI_ASSISTANT::ExtractJsonField(
+                                    json, "name");
+                        }
+                        if (nodeType.empty()) {
+                            result.message =
+                                "缺少 nodeType 字段";
+                            result.code = "MISSING_FIELD";
+                            result.hints = {
+                                "请带上节点类型，例如 "
+                                "{\"action\":\"material.node_info\","
+                                "\"nodeType\":\"noise.value\"}",
+                            };
+                            return result;
+                        }
+                        std::string message;
+                        std::string code;
+                        std::vector<std::string> details;
+                        if (EDITOR::DescribeAiMaterialNode(
+                                nodeType, message, details, code)) {
+                            result.ok = true;
+                            result.code = "OK";
+                            result.message = message;
+                            result.details = std::move(details);
+                        } else {
+                            result.message = message;
+                            result.code = code;
+                            result.details = std::move(details);
+                            AppendAiHints(code, result);
+                        }
+                        return result;
+                    }
+                    if (action == "material.node_list") {
+                        EDITOR::AI_ASSISTANT::AiRequestResult result{};
+                        const std::string keyword =
+                            EDITOR::AI_ASSISTANT::ExtractJsonField(
+                                json, "keyword");
+                        const std::string nodeClass =
+                            EDITOR::AI_ASSISTANT::ExtractJsonField(
+                                json, "class");
+                        std::string message;
+                        std::string code;
+                        std::vector<std::string> details;
+                        if (EDITOR::ListAiMaterialNodes(
+                                keyword, nodeClass,
+                                message, details, code)) {
+                            result.ok = true;
+                            result.code = "OK";
+                            result.message = message;
+                            result.details = std::move(details);
+                        } else {
+                            result.message = message;
+                            result.code = code;
+                            result.details = std::move(details);
+                            AppendAiHints(code, result);
                         }
                         return result;
                     }
@@ -1236,32 +1419,43 @@ namespace HIKARI {
                             EDITOR::AI_ASSISTANT::ExtractJsonField(
                                 json, "name");
                         std::string message;
+                        std::string code;
                         std::vector<std::string> details;
                         if (modelMaterialWorkspaceController_
                                 .QueryAiMaterialGraph(
                                     scene, nameFilter, message,
-                                    details)) {
+                                    details, code)) {
                             result.ok = true;
+                            result.code = "OK";
                             result.message = message;
                             result.details = std::move(details);
                         } else {
                             result.message = message;
+                            result.code = code;
+                            AppendAiHints(code, result);
                         }
                         return result;
                     }
                     if (action == "material.graph_layout") {
                         EDITOR::AI_ASSISTANT::AiRequestResult result{};
                         std::string message;
+                        std::string code;
                         if (modelMaterialWorkspaceController_
                                 .LayoutAiMaterialGraph(
-                                    scene, message)) {
+                                    scene, message, code)) {
                             result.ok = true;
+                            result.code = "OK";
                             result.message = message;
+                            modelMaterialWorkspaceController_
+                                .AppendAiCompileDiagnostics(
+                                    result.details);
                             aiUndoStack_.push_back(
                                 { AiSceneUndoRecord::Kind::MaterialEdit,
                                   {}, {}, {} });
                         } else {
                             result.message = message;
+                            result.code = code;
+                            AppendAiHints(code, result);
                         }
                         return result;
                     }
@@ -1282,6 +1476,11 @@ namespace HIKARI {
                         request.name =
                             EDITOR::AI_ASSISTANT::ExtractJsonField(
                                 json, "name");
+                        if (request.name.empty()) {
+                            request.name =
+                                EDITOR::AI_ASSISTANT::ExtractJsonField(
+                                    json, "node");
+                        }
                         request.sourceNode =
                             EDITOR::AI_ASSISTANT::ExtractJsonField(
                                 json, "sourceNode");
@@ -1297,6 +1496,18 @@ namespace HIKARI {
                         request.edgeId =
                             EDITOR::AI_ASSISTANT::ExtractJsonField(
                                 json, "edgeId");
+                        request.valueType =
+                            EDITOR::AI_ASSISTANT::ExtractJsonField(
+                                json, "valueType");
+                        request.property =
+                            EDITOR::AI_ASSISTANT::ExtractJsonField(
+                                json, "property");
+                        request.resource =
+                            EDITOR::AI_ASSISTANT::ExtractJsonField(
+                                json, "resource");
+                        request.stringValue =
+                            EDITOR::AI_ASSISTANT::ExtractJsonField(
+                                json, "value");
                         request.manualPosition =
                             EDITOR::AI_ASSISTANT::ExtractJsonField(
                                 json, "layout") == "manual";
@@ -1319,15 +1530,45 @@ namespace HIKARI {
                             readFloat("positionX", 0.0f);
                         request.positionY =
                             readFloat("positionY", 0.0f);
+                        const std::string valueXText =
+                            EDITOR::AI_ASSISTANT::ExtractJsonNumberField(
+                                json, "valueX");
+                        const std::string valueYText =
+                            EDITOR::AI_ASSISTANT::ExtractJsonNumberField(
+                                json, "valueY");
+                        const std::string valueZText =
+                            EDITOR::AI_ASSISTANT::ExtractJsonNumberField(
+                                json, "valueZ");
+                        const std::string valueWText =
+                            EDITOR::AI_ASSISTANT::ExtractJsonNumberField(
+                                json, "valueW");
+                        request.valueSet =
+                            !valueXText.empty() ||
+                            !valueYText.empty() ||
+                            !valueZText.empty() ||
+                            !valueWText.empty();
+                        request.valueX =
+                            readFloat("valueX", 0.0f);
+                        request.valueY =
+                            readFloat("valueY", 0.0f);
+                        request.valueZ =
+                            readFloat("valueZ", 0.0f);
+                        request.valueW =
+                            readFloat("valueW", 0.0f);
                         std::string message;
+                        std::string code;
                         std::vector<std::string> graphDetails;
                         if (modelMaterialWorkspaceController_
                                 .ApplyAiMaterialGraphEdit(
                                     scene, request, message,
-                                    graphDetails)) {
+                                    graphDetails, code)) {
                             result.ok = true;
+                            result.code = "OK";
                             result.message = message;
                             result.details = std::move(graphDetails);
+                            modelMaterialWorkspaceController_
+                                .AppendAiCompileDiagnostics(
+                                    result.details);
                             aiUndoStack_.push_back(
                                 { AiSceneUndoRecord::Kind::MaterialEdit,
                                   {}, {}, {} });
@@ -1343,6 +1584,9 @@ namespace HIKARI {
                             }
                         } else {
                             result.message = message;
+                            result.code = code;
+                            result.details = std::move(graphDetails);
+                            AppendAiHints(code, result);
                         }
                         return result;
                     }

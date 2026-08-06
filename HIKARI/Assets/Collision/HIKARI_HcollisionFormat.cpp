@@ -7,6 +7,7 @@
 #include <type_traits>
 
 #include "Core/Serialization/Binary/HIKARI_BinaryStream.h"
+#include "Core/Hashing/HIKARI_FnvHash.h"
 
 namespace HIKARI::ASSETS::COLLISION {
     namespace {
@@ -19,8 +20,6 @@ namespace HIKARI::ASSETS::COLLISION {
         constexpr uint32_t kMaximumShapes = 1024u * 1024u;
         constexpr uint32_t kMaximumVertices = 64u * 1024u * 1024u;
         constexpr uint32_t kMaximumIndices = 192u * 1024u * 1024u;
-        constexpr uint64_t kFnvOffset = 1469598103934665603ull;
-        constexpr uint64_t kFnvPrime = 1099511628211ull;
         constexpr uint64_t kHeaderBytes = 68u;
         // id/type/reserved (16) + transform/size (36) + radius/height (8)
         // + four geometry ranges (16).
@@ -61,12 +60,7 @@ namespace HIKARI::ASSETS::COLLISION {
             uint64_t& hash,
             const void* bytes,
             size_t byteCount) noexcept {
-
-            const auto* data = static_cast<const uint8_t*>(bytes);
-            for (size_t index = 0u; index < byteCount; ++index) {
-                hash ^= data[index];
-                hash *= kFnvPrime;
-            }
+            hash = HASH::Fnv1aBytes(hash, bytes, byteCount);
         }
 
         template<class TValue>
@@ -151,7 +145,7 @@ namespace HIKARI::ASSETS::COLLISION {
 
     uint64_t ComputeCollisionGeometryContentHash(
         const CollisionGeometryAsset& asset) noexcept {
-        uint64_t hash = kFnvOffset;
+        uint64_t hash = HASH::kFnv1a64OffsetBasis;
         HashBytes(
             hash,
             asset.sourceAssetGuid.data(),

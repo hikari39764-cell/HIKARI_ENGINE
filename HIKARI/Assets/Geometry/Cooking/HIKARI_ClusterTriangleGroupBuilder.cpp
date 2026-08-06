@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 
+#include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Render3D/Core/HIKARI_BoundsUtils.h"
 #include "../../../../ThirdParty/meshoptimizer/src/meshoptimizer.h"
 
@@ -25,13 +26,11 @@ namespace HIKARI::ASSETS::GEOMETRY::COOKING {
 
     struct TriangleKeyHash {
         size_t operator()(const TriangleKey& key) const {
-            uint64_t h = 1469598103934665603ull;
             const uint32_t values[3] = { key.i0, key.i1, key.i2 };
-            for (uint32_t value : values) {
-                h ^= static_cast<uint64_t>(value);
-                h *= 1099511628211ull;
-            }
-            return static_cast<size_t>(h);
+            return static_cast<size_t>(HASH::Fnv1aBytes(
+                HASH::kFnv1a64OffsetBasis,
+                values,
+                sizeof(values)));
         }
     };
 

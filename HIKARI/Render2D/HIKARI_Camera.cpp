@@ -1,4 +1,5 @@
 #include "Render2D/HIKARI_Camera.h"
+#include "Core/Math/HIKARI_ScalarMath.h"
 #include "Input/Runtime/HIKARI_InputActionIds.h"
 #include "Input/Runtime/HIKARI_InputTypes.h"
 #include <cmath>
@@ -40,7 +41,7 @@ namespace HIKARI {
 
         // ====== ユーティリティ ======
         static inline float Clamp(float v, float a, float b) { return v < a ? a : (v > b ? b : v); }
-        static inline float Clamp01(float v) { return v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v); }
+        static inline float Clamp01(float v) { return MATH::Clamp01(v); }
         static inline float Hash01(float x) { float s = std::sin(x * 12.9898f) * 43758.5453f; return s - std::floor(s); }
 
         static inline Vector2 TransformPoint(const Vector2& p, const Matrix3x3& m) {

@@ -1,7 +1,6 @@
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
 #include <algorithm>
 #include <cmath>
-#include <iterator>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -34,6 +33,9 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
       true);
   ImGui::BeginGroup();
   ImGui::PushItemWidth(width);
+  if (node.kind == MaterialNodeKind::FunctionCall && !node.assetReference.IsValid()) {
+    ImGui::TextColored(ImVec4{1.0f, 0.42f, 0.35f, 1.0f}, "缺少 Material Function 资产");
+  }
   const auto trackItem = [&capturesPointer]() {
     capturesPointer = capturesPointer || ImGui::IsItemHovered() ||
                       ImGui::IsItemActive();
@@ -83,8 +85,7 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
     trackItem();
     if (parameter->defaultValue.type == MaterialValueType::Bool) {
       if (changed) {
-        CommitMaterialMutation(
-            std::move(before), "Edit " + parameter->displayName, scene);
+        CommitMaterialMutation(std::move(before), "Edit " + parameter->displayName, scene);
       }
     } else {
       commitContinuous(
@@ -123,8 +124,7 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
       MaterialAssetData before = source;
       resource->assetGuid = AssetGuid{textureGuid};
       resource->enabled = resource->assetGuid.IsValid();
-      CommitMaterialMutation(
-          std::move(before), "Bind " + resource->displayName, scene);
+      CommitMaterialMutation(std::move(before), "Bind " + resource->displayName, scene);
     }
     trackItem();
     ImGui::PopID();
@@ -142,8 +142,7 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
         created.exposed = true;
         graph.parameters.push_back(std::move(created));
         node.referenceId = graph.parameters.back().id;
-        CommitMaterialMutation(std::move(before),
-                               "Create material parameter", scene);
+        CommitMaterialMutation(std::move(before), "Create material parameter", scene);
       }
       trackItem();
     } else {
@@ -151,6 +150,10 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
                           parameter->displayName.empty()
                               ? parameter->id.c_str()
                               : parameter->displayName.c_str());
+      if (MATERIAL_GRAPH_UI::DrawMaterialNodeTypeControl(node, parameter)) {
+        MaterialAssetData before = source;
+        CommitMaterialMutation(std::move(before), "Change parameter type", scene);
+      }
       MaterialAssetData before = source;
       const bool changed = MATERIAL_GRAPH_UI::DrawCompactMaterialValue(
           parameter->defaultValue,
@@ -159,8 +162,7 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
       trackItem();
       if (parameter->defaultValue.type == MaterialValueType::Bool) {
         if (changed) {
-          CommitMaterialMutation(std::move(before),
-                                 "Edit material parameter", scene);
+          CommitMaterialMutation(std::move(before), "Edit material parameter", scene);
         }
       } else {
         commitContinuous(std::move(before), "Edit material parameter",
@@ -168,6 +170,10 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
       }
     }
   } else if (node.kind == MaterialNodeKind::Constant) {
+    if (MATERIAL_GRAPH_UI::DrawMaterialNodeTypeControl(node, nullptr)) {
+      MaterialAssetData before = source;
+      CommitMaterialMutation(std::move(before), "Change constant type", scene);
+    }
     MaterialAssetData before = source;
     const bool changed = MATERIAL_GRAPH_UI::DrawCompactMaterialValue(
         node.value,
@@ -175,8 +181,7 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
     trackItem();
     if (node.value.type == MaterialValueType::Bool) {
       if (changed) {
-        CommitMaterialMutation(std::move(before), "Edit material constant",
-                               scene);
+        CommitMaterialMutation(std::move(before), "Edit material constant", scene);
       }
     } else {
       commitContinuous(std::move(before), "Edit material constant", changed);
@@ -193,8 +198,7 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
         created.type = MaterialResourceType::Texture2D;
         graph.resources.push_back(std::move(created));
         node.referenceId = graph.resources.back().id;
-        CommitMaterialMutation(std::move(before),
-                               "Create texture sample resource", scene);
+        CommitMaterialMutation(std::move(before), "Create texture sample resource", scene);
       }
       trackItem();
     } else {
@@ -339,8 +343,7 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
     }
     MaterialAssetData before = source;
     if (ImGui::Checkbox("Double Sided", &source.surface.doubleSided)) {
-      CommitMaterialMutation(
-          std::move(before), "Toggle double-sided surface", scene);
+      CommitMaterialMutation(std::move(before), "Toggle double-sided surface", scene);
     }
     trackItem();
   } else if (node.kind == MaterialNodeKind::SpecularBand) {
@@ -493,5 +496,4 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
   return false;
 #endif
 }
-
 } // namespace HIKARI::EDITOR

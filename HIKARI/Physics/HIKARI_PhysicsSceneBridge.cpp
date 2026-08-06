@@ -1,9 +1,12 @@
 #include "Physics/HIKARI_PhysicsSceneBridge.h"
 
+#include "Core/HIKARI_MathConfig.h"
+
 #include <algorithm>
 #include <bit>
 #include <cmath>
 
+#include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Core/Math/HIKARI_MathValidation.h"
 #include "Scene/Components/HIKARI_ColliderComponent.h"
 #include "Scene/Components/HIKARI_PhysicsBodyComponent.h"
@@ -15,7 +18,7 @@
 namespace HIKARI::PHYSICS {
     namespace {
         constexpr float kDegreesToRadians =
-            0.01745329251994329577f;
+            MATH::kDegreesToRadians;
 
         MATH::Vec3 Multiply(
             const MATH::Vec3& left,
@@ -252,7 +255,7 @@ namespace HIKARI::PHYSICS {
     uint64_t ComputePhysicsBodyDefinitionSignature(
         const PhysicsBodyCreateInfo& createInfo,
         const MATH::Vec3& worldScale) noexcept {
-        uint64_t signature = 1469598103934665603ull;
+        uint64_t signature = HASH::kFnv1a64OffsetBasis;
         const PhysicsBodyDesc& body = createInfo.body;
         HashValue(signature, static_cast<uint64_t>(body.motionType));
         HashFloat(signature, body.mass);

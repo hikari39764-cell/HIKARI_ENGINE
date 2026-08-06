@@ -1,5 +1,7 @@
 #include "HIKARI_AI_LocalBridge.h"
 
+#include "Core/Text/HIKARI_Trim.h"
+
 #include <algorithm>
 #include <cctype>
 #include <chrono>
@@ -22,16 +24,7 @@ namespace {
 constexpr size_t kMaxRequestBody = 1024u * 1024u;
 
 std::string Trim(std::string value) {
-    const auto notSpace = [](unsigned char c) {
-        return std::isspace(c) == 0;
-    };
-    value.erase(
-        value.begin(),
-        std::find_if(value.begin(), value.end(), notSpace));
-    value.erase(
-        std::find_if(value.rbegin(), value.rend(), notSpace).base(),
-        value.end());
-    return value;
+    return TEXT::TrimCopy(std::move(value));
 }
 
 bool InitializeWinsock(std::string& outError) {
@@ -67,8 +60,10 @@ std::string BuildCapabilitiesJson() {
 std::string BuildResultJson(const AiRequestResult& result) {
     return nlohmann::json{
         { "ok", result.ok },
+        { "code", result.code },
         { "message", result.message },
         { "details", result.details },
+        { "hints", result.hints },
     }.dump();
 }
 

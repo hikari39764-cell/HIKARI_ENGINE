@@ -183,7 +183,10 @@ namespace HIKARI::MESHRENDERER {
         stats.specularPower = out.specularParams.y;
     }
 
-    void FillShadowCB(const SceneEnvironment& environment, ShadowCB& out) {
+    void FillShadowCB(
+        const SceneEnvironment& environment,
+        uint64_t frameIndex,
+        ShadowCB& out) {
         out = {};
         const auto& cascadeMatrices =
             SHADOW::GetDirectionalCascadeLightViewProj();
@@ -214,6 +217,9 @@ namespace HIKARI::MESHRENDERER {
         out.texelSizeX = 1.0f / (resolution * 2.0f);
         out.texelSizeY = 1.0f / (resolution * 2.0f);
         out.edgeFade = 0.04f;
+        // ShadowCB.padding[0] carries the frame index for rotated PCF taps.
+        out.padding[0] =
+            static_cast<float>(frameIndex & 0xffffu);
     }
 
     void FillSkyEnvironmentCB(

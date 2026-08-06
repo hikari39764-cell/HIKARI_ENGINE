@@ -75,6 +75,10 @@ MaterialGraphResourceData *FindGraphResource(
 
 bool LooksLikeColor(std::string_view displayName,
                     std::string_view id);
+bool DrawMaterialValueTypeCombo(MaterialValueType& valueType);
+bool DrawMaterialNodeTypeControl(
+    MaterialGraphNodeData& node,
+    MaterialGraphParameterData* parameter);
 bool IsRuntimeDrivenInput(const MaterialNodeTypeId& typeId,
                           std::string_view pin) noexcept;
 bool IsInlineOwnedInput(const MaterialNodeTypeId& typeId,

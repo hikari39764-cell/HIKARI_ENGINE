@@ -324,10 +324,20 @@ std::optional<MaterialExpressionRuntimeOpcode> ToRuntimeOpcode(
     HIKARI_EXPRESSION_OPCODE(ViewDirection, ViewDirection);
     HIKARI_EXPRESSION_OPCODE(CameraPosition, CameraPosition);
     HIKARI_EXPRESSION_OPCODE(ScreenPosition, ScreenPosition);
-    HIKARI_EXPRESSION_OPCODE(DerivativeX, DerivativeX);
-    HIKARI_EXPRESSION_OPCODE(DerivativeY, DerivativeY);
-    HIKARI_EXPRESSION_OPCODE(FilterWidth, FilterWidth);
-    default:
+HIKARI_EXPRESSION_OPCODE(DerivativeX, DerivativeX);
+HIKARI_EXPRESSION_OPCODE(DerivativeY, DerivativeY);
+HIKARI_EXPRESSION_OPCODE(FilterWidth, FilterWidth);
+HIKARI_EXPRESSION_OPCODE(Atan2, Atan2);
+HIKARI_EXPRESSION_OPCODE(Exp, Exp);
+HIKARI_EXPRESSION_OPCODE(Log2, Log2);
+HIKARI_EXPRESSION_OPCODE(Sign, Sign);
+HIKARI_EXPRESSION_OPCODE(Round, Round);
+HIKARI_EXPRESSION_OPCODE(Trunc, Trunc);
+HIKARI_EXPRESSION_OPCODE(UvTransform, UvTransform);
+HIKARI_EXPRESSION_OPCODE(ValueNoise, ValueNoise);
+HIKARI_EXPRESSION_OPCODE(Voronoi, Voronoi);
+HIKARI_EXPRESSION_OPCODE(Fresnel, Fresnel);
+default:
         return std::nullopt;
     }
 #undef HIKARI_EXPRESSION_OPCODE

@@ -15,6 +15,7 @@
 #include "Assets/Models/HIKARI_ModelAsset.h"
 #include "Assets/Models/HIKARI_ModelMaterialSlot.h"
 #include "Core/HIKARI_Logger.h"
+#include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Render3D/Procedural/HIKARI_ProceduralMeshBuilder.h"
 
 namespace HIKARI::PROCEDURAL {
@@ -62,9 +63,6 @@ namespace HIKARI::PROCEDURAL {
         std::unordered_map<std::string, std::string> gClusterPathCache;
         ProceduralModelDebugStats gStats{};
 
-        constexpr uint64_t kFnv64OffsetBasis = 14695981039346656037ull;
-        constexpr uint64_t kFnv64Prime = 1099511628211ull;
-
         ProceduralModelKey MakeKey(
             const ProceduralMeshSettings& rawSettings) {
 
@@ -107,11 +105,7 @@ namespace HIKARI::PROCEDURAL {
             const void* data,
             size_t size) {
 
-            const auto* bytes = static_cast<const uint8_t*>(data);
-            for (size_t i = 0; i < size; ++i) {
-                hash ^= static_cast<uint64_t>(bytes[i]);
-                hash *= kFnv64Prime;
-            }
+            hash = HASH::Fnv1aBytes(hash, data, size);
         }
 
         void HashAppendU32(uint64_t& hash, uint32_t value) {
@@ -128,7 +122,7 @@ namespace HIKARI::PROCEDURAL {
         uint64_t HashProceduralModelKey(
             const ProceduralModelKey& key) {
 
-            uint64_t hash = kFnv64OffsetBasis;
+            uint64_t hash = HASH::kFnv1a64OffsetBasis;
             HashAppendU32(hash, static_cast<uint32_t>(key.kind));
             HashAppendFloat(hash, key.width);
             HashAppendFloat(hash, key.height);

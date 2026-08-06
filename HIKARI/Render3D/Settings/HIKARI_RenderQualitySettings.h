@@ -81,7 +81,9 @@ namespace HIKARI::RENDER3D {
             LightProbeVolumeSamplingMode::FastSmooth;
         float viewportScale = 1.0f;
         bool vSync = false;
-        RenderAntiAliasingMode antiAliasingMode = RenderAntiAliasingMode::TAA;
+       // DLAA by default when Streamline DLSS is available; falls back to the
+       // declared temporal policy when DLSS is unavailable.
+       RenderAntiAliasingMode antiAliasingMode = RenderAntiAliasingMode::DLAA;
         DlssQualityMode dlssQualityMode = DlssQualityMode::Quality;
         RenderFrameGenerationMode frameGenerationMode =
             RenderFrameGenerationMode::Off;

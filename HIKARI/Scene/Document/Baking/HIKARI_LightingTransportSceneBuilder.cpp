@@ -1,5 +1,7 @@
 #include "Scene/Document/Baking/HIKARI_LightingTransportSceneBuilder.h"
 
+#include "Core/HIKARI_MathConfig.h"
+
 #include <algorithm>
 #include <cmath>
 #include <numbers>
@@ -605,7 +607,7 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
             if (source.type ==
                 RENDER3D::LIGHTING::SceneLightType::Spot) {
                 constexpr float kDegreesToRadians =
-                    std::numbers::pi_v<float> / 180.0f;
+                    MATH::kDegreesToRadians;
                 light.innerConeCos = std::cos(
                     source.innerConeAngleDegrees *
                     kDegreesToRadians);

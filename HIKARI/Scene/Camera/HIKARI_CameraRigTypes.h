@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <string_view>
 
+#include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Render3D/HIKARI_Math3D.h"
 #include "Scene/HIKARI_SceneObjectId.h"
 
@@ -14,11 +15,10 @@ namespace HIKARI::CAMERA {
     constexpr CameraRigSourceId MakeCameraRigSourceId(
         std::string_view stableName) noexcept {
 
-        CameraRigSourceId value = 14695981039346656037ull;
-        for (const char character : stableName) {
-            value ^= static_cast<unsigned char>(character);
-            value *= 1099511628211ull;
-        }
+        CameraRigSourceId value = HASH::Fnv1aBytes(
+            HASH::kFnv1a64OffsetBasis,
+            stableName.data(),
+            stableName.size());
         return value != 0u ? value : 1u;
     }
 

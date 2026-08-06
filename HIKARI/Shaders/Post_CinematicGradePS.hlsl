@@ -1,6 +1,9 @@
 Texture2D gTex : register(t0);
 SamplerState gSamp : register(s0);
 
+#include "Include/Post/HIKARI_PostHash.hlsli"
+#include "Include/Post/HIKARI_PostColorGrade.hlsli"
+
 cbuffer CommonParams : register(b0)
 {
     float time;
@@ -21,24 +24,6 @@ struct PS_IN
     float4 pos : SV_POSITION;
     float2 uv  : TEXCOORD0;
 };
-
-float Hash12(float2 p)
-{
-    float3 p3 = frac(float3(p.xyx) * 0.1031);
-    p3 += dot(p3, p3.yzx + 33.33);
-    return frac((p3.x + p3.y) * p3.z);
-}
-
-float3 ApplySaturation(float3 c, float saturation)
-{
-    float luma = dot(c, float3(0.299, 0.587, 0.114));
-    return lerp(luma.xxx, c, saturation);
-}
-
-float3 ApplyContrast(float3 c, float contrast)
-{
-    return (c - 0.5) * contrast + 0.5;
-}
 
 float4 main(PS_IN i) : SV_TARGET
 {
@@ -61,8 +46,8 @@ float4 main(PS_IN i) : SV_TARGET
 
     float3 color = float3(r, g, b);
 
-    color = ApplySaturation(color, saturation);
-    color = ApplyContrast(color, contrast);
+    color = HikariApplySaturation(color, saturation);
+    color = HikariApplyContrast(color, contrast);
     color *= gain;
 
     float2 center = uv * 2.0 - 1.0;
@@ -72,7 +57,8 @@ float4 main(PS_IN i) : SV_TARGET
     float scanline = 1.0 + sin(uv.y * scanlineFreq + time * 1.5) * scanlineAmp;
     color *= scanline;
 
-    float grain = Hash12(uv * float2(resolutionX, resolutionY) + time * 31.7) - 0.5;
+    float grain = HikariHash12(
+        uv * float2(resolutionX, resolutionY) + time * 31.7) - 0.5;
     color += grain * grainAmount;
 
     return float4(saturate(color), 1.0);

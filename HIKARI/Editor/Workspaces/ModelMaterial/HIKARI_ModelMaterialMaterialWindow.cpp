@@ -20,16 +20,6 @@
 namespace HIKARI::EDITOR {
 namespace {
 
-MaterialGraphData *EditableGraph(MaterialAssetData &material) noexcept {
-  if (material.kind == MaterialAssetKind::Material) {
-    return &material.graph;
-  }
-  if (material.kind == MaterialAssetKind::Function) {
-    return &material.function.graph;
-  }
-  return nullptr;
-}
-
 const char *BindingLabel(ModelMaterialBindingSource source) noexcept {
   switch (source) {
   case ModelMaterialBindingSource::ImportedFallback:
@@ -182,7 +172,8 @@ void ModelMaterialWorkspaceController::DrawMaterialWindow(
         "Profiles group a base template and reusable stylized resources.");
   }
 
-  if (MaterialGraphData *graph = EditableGraph(source)) {
+  if (MaterialGraphData *graph =
+          MATERIAL_GRAPH_UI::EditableGraph(source)) {
     ImGui::SeparatorText("Graph Selection");
     if (const MaterialGraphNodeData *node =
             MATERIAL_GRAPH_UI::FindNode(*graph, selectedGraphNodeId_)) {

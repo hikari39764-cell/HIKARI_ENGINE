@@ -4,6 +4,8 @@
 #include <limits>
 #include <vector>
 
+#include "Core/Hashing/HIKARI_FnvHash.h"
+
 namespace HIKARI::SHADOW::INTERNAL {
 
     bool HasSurfaceGpuSceneFlag(
@@ -221,7 +223,7 @@ namespace HIKARI::SHADOW::INTERNAL {
     uint64_t BuildShadowSourceLayoutHash(
         const RENDER3D::GPUDRIVEN::GpuDrivenPassSource& pass) {
 
-        uint64_t seed = AppendShadowHashValue(1469598103934665603ull, 0x53484c4fu);
+        uint64_t seed = AppendShadowHashValue(HASH::kFnv1a64OffsetBasis, 0x53484c4fu);
         seed = AppendShadowHashValue(seed, pass.gpuSceneInstanceCount);
         seed = AppendShadowHashValue(seed, pass.traditionalIndirect.gpuSceneInstanceCount);
         seed = AppendShadowHashValue(seed, pass.traditionalIndirect.staticCommandCount);
@@ -259,7 +261,7 @@ namespace HIKARI::SHADOW::INTERNAL {
     uint64_t BuildShadowSourceContentHash(
         const RENDER3D::GPUDRIVEN::GpuDrivenPassSource& pass) {
 
-        uint64_t seed = AppendShadowHashValue(1469598103934665603ull, 0x5348434fu);
+        uint64_t seed = AppendShadowHashValue(HASH::kFnv1a64OffsetBasis, 0x5348434fu);
         if (pass.instances != nullptr) {
             for (const RENDER3D::RUNTIME::SurfaceGpuSceneInstance& instance :
                 *pass.instances) {

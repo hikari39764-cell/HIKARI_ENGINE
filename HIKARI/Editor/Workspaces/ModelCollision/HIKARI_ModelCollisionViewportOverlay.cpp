@@ -1,5 +1,7 @@
 #include "Editor/Workspaces/ModelCollision/HIKARI_ModelCollisionViewportOverlay.h"
 
+#include "Core/HIKARI_MathConfig.h"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -12,7 +14,7 @@
 
 namespace HIKARI::EDITOR {
 namespace {
-constexpr float kDegreesToRadians = 0.01745329251994329577f;
+constexpr float kDegreesToRadians = MATH::kDegreesToRadians;
 
 MATH::Vec3
 ShapeDisplaySize(const ASSETS::COLLISION::ModelCollisionShape &shape) noexcept {

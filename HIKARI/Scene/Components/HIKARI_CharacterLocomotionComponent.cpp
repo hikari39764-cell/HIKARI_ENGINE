@@ -1,11 +1,13 @@
 #include "Scene/Components/HIKARI_CharacterLocomotionComponent.h"
 
+#include "Core/HIKARI_MathConfig.h"
+
 #include <algorithm>
 #include <string>
 
 namespace HIKARI {
     namespace {
-        constexpr float kDegreesToRadians = 0.01745329252f;
+        constexpr float kDegreesToRadians = MATH::kDegreesToRadians;
 
         const char* ToString(CharacterMovementSpace space) noexcept {
             switch (space) {

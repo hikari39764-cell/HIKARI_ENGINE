@@ -1,5 +1,7 @@
 #include "Assets/Collision/HIKARI_ModelCollisionCompiler.h"
 
+#include "Core/HIKARI_MathConfig.h"
+
 #include <array>
 #include <cmath>
 
@@ -8,7 +10,7 @@
 namespace HIKARI::ASSETS::COLLISION {
     namespace {
         constexpr float kDegreesToRadians =
-            0.01745329251994329577f;
+            MATH::kDegreesToRadians;
 
         Bounds ShapeBounds(const ModelCollisionShape& shape) {
             if (shape.type == CollisionGeometryShapeType::ConvexHull ||

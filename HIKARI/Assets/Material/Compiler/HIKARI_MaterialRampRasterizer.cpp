@@ -5,12 +5,11 @@
 #include <cmath>
 #include <limits>
 
+#include "Core/Hashing/HIKARI_FnvHash.h"
+
 namespace HIKARI::ASSETS::MATERIAL {
 
     namespace {
-
-        constexpr uint64_t kFnvOffset = 14695981039346656037ull;
-        constexpr uint64_t kFnvPrime = 1099511628211ull;
 
         struct RampPointView {
             const MaterialRampPointData* point = nullptr;
@@ -196,18 +195,6 @@ namespace HIKARI::ASSETS::MATERIAL {
             destination[3] = ToByte(color.w);
         }
 
-        uint64_t HashBytes(
-            uint64_t hash,
-            const void* data,
-            size_t size) noexcept {
-            const auto* bytes = static_cast<const uint8_t*>(data);
-            for (size_t index = 0u; index < size; ++index) {
-                hash ^= bytes[index];
-                hash *= kFnvPrime;
-            }
-            return hash;
-        }
-
     } // namespace
 
     bool RasterizeMaterialRamp(
@@ -258,12 +245,15 @@ namespace HIKARI::ASSETS::MATERIAL {
             }
         }
 
-        uint64_t hash = kFnvOffset;
-        hash = HashBytes(hash, &outImage.width, sizeof(outImage.width));
-        hash = HashBytes(hash, &outImage.height, sizeof(outImage.height));
+        uint64_t hash = HASH::kFnv1a64OffsetBasis;
+        hash = HASH::Fnv1aBytes(
+            hash, &outImage.width, sizeof(outImage.width));
+        hash = HASH::Fnv1aBytes(
+            hash, &outImage.height, sizeof(outImage.height));
         const auto interpolation = static_cast<uint8_t>(ramp.interpolation);
-        hash = HashBytes(hash, &interpolation, sizeof(interpolation));
-        hash = HashBytes(
+        hash = HASH::Fnv1aBytes(
+            hash, &interpolation, sizeof(interpolation));
+        hash = HASH::Fnv1aBytes(
             hash,
             outImage.rgba8.data(),
             outImage.rgba8.size());

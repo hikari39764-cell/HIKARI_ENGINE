@@ -92,7 +92,7 @@ struct ModelMaterialWorkspaceStats {
 };
 
 struct AiMaterialGraphEditRequest {
-  // add_node | remove_node | connect | disconnect
+  // add_node | remove_node | connect | disconnect | set_node
   std::string operation{};
   // Stable node type name for add_node (for example "node.additive").
   std::string nodeType{};
@@ -108,6 +108,19 @@ struct AiMaterialGraphEditRequest {
   std::string targetPin{};
   // Optional edge id for disconnect.
   std::string edgeId{};
+  // Optional typed value for add_node/set_node.
+  std::string valueType{};
+  float valueX = 0.0f;
+  float valueY = 0.0f;
+  float valueZ = 0.0f;
+  float valueW = 0.0f;
+  bool valueSet = false;
+  // set_node: value | valueType | displayName | resource
+  std::string property{};
+  // set_node: resource id for TextureSample nodes.
+  std::string resource{};
+  // set_node: string-valued property (displayName).
+  std::string stringValue{};
 };
 
 struct ModelMaterialWorkspaceResult {
@@ -136,20 +149,26 @@ public:
       DocumentSceneBase &scene,
       const std::string &parameterId,
       float value,
-      std::string &outMessage);
+      std::string &outMessage,
+      std::string &outCode);
   bool ApplyAiMaterialGraphEdit(
       DocumentSceneBase &scene,
       const AiMaterialGraphEditRequest &request,
       std::string &outMessage,
-      std::vector<std::string> &outDetails);
+      std::vector<std::string> &outDetails,
+      std::string &outCode);
   bool QueryAiMaterialGraph(
       DocumentSceneBase &scene,
       const std::string &nameFilter,
       std::string &outMessage,
-      std::vector<std::string> &outDetails);
+      std::vector<std::string> &outDetails,
+      std::string &outCode);
   bool LayoutAiMaterialGraph(
       DocumentSceneBase &scene,
-      std::string &outMessage);
+      std::string &outMessage,
+      std::string &outCode);
+  void AppendAiCompileDiagnostics(
+      std::vector<std::string> &outDetails) const;
   std::string GetAiMaterialStatus() const;
 
   ModelMaterialBindingCommandResult ExecuteBindingCommand(
@@ -235,6 +254,7 @@ private:
 
   bool OpenModel(DocumentSceneBase &scene, const AssetGuid &guid,
                  std::string &outMessage);
+  void RefreshAuthoringIdCounter();
   bool SwitchAuthoringMode(DocumentSceneBase &scene, AuthoringMode mode,
                            std::string &outMessage);
   bool EnsureMaterialSpherePreview(DocumentSceneBase &scene,

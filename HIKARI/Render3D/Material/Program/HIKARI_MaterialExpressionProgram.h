@@ -76,6 +76,16 @@ namespace HIKARI::RENDER3D::MATERIAL {
         DerivativeX,
         DerivativeY,
         FilterWidth,
+        Atan2,
+        Exp,
+        Log2,
+        Sign,
+        Round,
+        Trunc,
+        UvTransform,
+        ValueNoise,
+        Voronoi,
+        Fresnel,
     };
 
     struct MaterialExpressionRuntimeProgram {

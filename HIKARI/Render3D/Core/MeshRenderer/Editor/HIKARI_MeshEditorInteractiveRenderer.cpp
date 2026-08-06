@@ -148,7 +148,10 @@ namespace HIKARI::MESHRENDERER {
             settings.debugView,
             *editorFrame.lightMapped,
             gMeshRendererState.debugStats);
-        FillShadowCB(*renderEnvironment, *editorFrame.shadowMapped);
+        FillShadowCB(
+            *renderEnvironment,
+            GFX::GetCurrentContext().frameIndex,
+            *editorFrame.shadowMapped);
         FillSkyEnvironmentCB(
             *renderEnvironment,
             cameraPosition,

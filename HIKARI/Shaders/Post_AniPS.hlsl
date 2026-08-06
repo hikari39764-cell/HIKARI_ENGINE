@@ -15,16 +15,13 @@ cbuffer CommonParams : register(b0)
 Texture2D gSceneTex : register(t0);
 SamplerState gSamp : register(s0);
 
+#include "Include/Post/HIKARI_PostColorGrade.hlsli"
+
 struct PSInput
 {
     float4 position : SV_POSITION;
     float2 uv : TEXCOORD0;
 };
-
-float Luma(float3 color)
-{
-    return dot(color, float3(0.299f, 0.587f, 0.114f));
-}
 
 float3 DisplayMap(float3 color)
 {
@@ -32,23 +29,12 @@ float3 DisplayMap(float3 color)
     return color / (1.0f.xxx + color);
 }
 
-float3 ApplySaturation(float3 color, float saturation)
-{
-    float luma = Luma(color);
-    return lerp(luma.xxx, color, saturation);
-}
-
-float3 ApplyContrast(float3 color, float contrast)
-{
-    return (color - 0.5f.xxx) * contrast + 0.5f.xxx;
-}
-
 float3 TonePosterize(float3 color, float amount, float levels)
 {
     amount = saturate(amount);
     levels = max(levels, 2.0f);
 
-    float luma = max(Luma(DisplayMap(color)), 1.0e-4f);
+    float luma = max(HikariPostLuma(DisplayMap(color)), 1.0e-4f);
     float quantized = floor(luma * levels + 0.5f) / levels;
     float scale = clamp(quantized / luma, 0.25f, 2.5f);
     return lerp(color, color * scale, amount);
@@ -85,14 +71,14 @@ float4 main(PSInput input) : SV_TARGET
     float3 sw = gSceneTex.Sample(gSamp, input.uv + float2(-texel.x, texel.y)).rgb;
     float3 se = gSceneTex.Sample(gSamp, input.uv + float2(texel.x, texel.y)).rgb;
 
-    float lN = Luma(DisplayMap(n));
-    float lS = Luma(DisplayMap(s));
-    float lW = Luma(DisplayMap(w));
-    float lE = Luma(DisplayMap(e));
-    float lNW = Luma(DisplayMap(nw));
-    float lNE = Luma(DisplayMap(ne));
-    float lSW = Luma(DisplayMap(sw));
-    float lSE = Luma(DisplayMap(se));
+    float lN = HikariPostLuma(DisplayMap(n));
+    float lS = HikariPostLuma(DisplayMap(s));
+    float lW = HikariPostLuma(DisplayMap(w));
+    float lE = HikariPostLuma(DisplayMap(e));
+    float lNW = HikariPostLuma(DisplayMap(nw));
+    float lNE = HikariPostLuma(DisplayMap(ne));
+    float lSW = HikariPostLuma(DisplayMap(sw));
+    float lSE = HikariPostLuma(DisplayMap(se));
 
     float sobelX = (lNE + 2.0f * lE + lSE) - (lNW + 2.0f * lW + lSW);
     float sobelY = (lSW + 2.0f * lS + lSE) - (lNW + 2.0f * lN + lNE);
@@ -114,10 +100,11 @@ float4 main(PSInput input) : SV_TARGET
     float aaAmount = saturate(edgeMask * edgeSoftness * 0.75f) * strength;
     float3 softened = lerp(c, alongEdge, aaAmount);
 
-    float3 stylized = ApplySaturation(softened, saturation);
-    stylized = ApplyContrast(stylized, contrast);
+    float3 stylized = HikariApplySaturation(softened, saturation);
+    stylized = HikariApplyContrast(stylized, contrast);
     stylized = TonePosterize(stylized, posterizeAmount, toneLevels);
-    stylized += shadowLift.xxx * (1.0f - saturate(Luma(DisplayMap(stylized))));
+    stylized += shadowLift.xxx *
+        (1.0f - saturate(HikariPostLuma(DisplayMap(stylized))));
 
     float ink = 1.0f - edgeMask * inkAmount * strength;
     stylized *= max(ink, 0.0f);

@@ -64,7 +64,12 @@ HikariPbrShadingContext HikariBuildPbrShadingContext(
         metallic,
         specularColor,
         specularFactor);
-    context.roughness = roughness;
+    // Specular AA (Karis/Filament style): estimate local surface curvature
+    // from shading-normal derivatives and raise perceptual roughness so
+    // undersampled highlights and metal edges do not alias or shimmer.
+    const float3 normalDerivative = fwidth(normal);
+    const float curvature = 2.0f * length(normalDerivative);
+    context.roughness = saturate(max(roughness, curvature));
     context.normal = normal;
     context.view = view;
 

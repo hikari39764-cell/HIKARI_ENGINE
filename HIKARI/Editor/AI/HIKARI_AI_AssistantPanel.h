@@ -22,8 +22,13 @@ namespace HIKARI::EDITOR {
 
         struct AiRequestResult {
             bool ok = false;
+            // Stable machine-readable error code for failures (for example
+            // NODE_NOT_FOUND / PIN_TYPE_MISMATCH / COMPILE_FAILED).
+            std::string code{};
             std::string message;
             std::vector<std::string> details;
+            // Actionable suggestions for the model to self-correct.
+            std::vector<std::string> hints;
         };
 
         const std::vector<AiCapability>& QueryCapabilities();
@@ -52,6 +57,7 @@ namespace HIKARI::EDITOR {
         void SendCurrentMessage();
         void RunConversation(const std::string& userText);
         void AppendMessage(const AI_ASSISTANT::AiChatMessage& message);
+        void AppendReasoning(const std::string& text);
         std::string BuildSystemPrompt() const;
         void OpenApiSettingsBuffers();
         void SaveApiSettings();
@@ -62,12 +68,12 @@ namespace HIKARI::EDITOR {
 
         std::vector<AI_ASSISTANT::AiChatMessage> messages_{};
         std::mutex messageMutex_{};
+        std::vector<std::string> reasoningLog_{};
+        std::mutex reasoningMutex_{};
         std::mutex streamMutex_{};
         mutable std::mutex stateMutex_{};
         std::string streamingPartial_{};
         bool streamingActive_ = false;
-        std::vector<std::string> lastRoundActions_{};
-        std::vector<std::string> lastFailedActionNames_{};
         char inputBuffer_[4096] = {};
         char rawRequestBuffer_[2048] = {};
         bool showCapabilities_ = false;

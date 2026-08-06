@@ -1,5 +1,7 @@
 #include "Editor/Gizmos/HIKARI_EditorTransformGizmo.h"
 
+#include "Core/HIKARI_MathConfig.h"
+
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
 #include "ImGuizmo.h"
@@ -16,7 +18,7 @@ namespace HIKARI::EDITOR {
 
 #if defined(HIKARI_WITH_EDITOR)
     namespace {
-        constexpr float kDegreesToRadians = 0.01745329251994329577f;
+        constexpr float kDegreesToRadians = MATH::kDegreesToRadians;
 
         struct DecomposedGizmoMatrix {
             TransformData transform{};

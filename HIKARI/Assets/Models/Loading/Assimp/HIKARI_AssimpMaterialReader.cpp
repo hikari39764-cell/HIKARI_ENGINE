@@ -12,6 +12,7 @@
 #include <assimp/scene.h>
 
 #include "Assets/Models/HIKARI_ModelAsset.h"
+#include "Core/Math/HIKARI_ScalarMath.h"
 #include "Assets/Models/HIKARI_ModelAssetLookup.h"
 #include "Assets/Models/HIKARI_ModelMaterialSlot.h"
 #include "Assets/Models/Loading/Assimp/HIKARI_AssimpTypeConversion.h"
@@ -39,7 +40,7 @@ namespace HIKARI::ASSETS::MODELS::ASSIMP {
         }
 
         float Clamp01(float value) {
-            return std::clamp(value, 0.0f, 1.0f);
+            return MATH::Clamp01(value);
         }
 
         float RoughnessFromPhongShininess(float shininess) {

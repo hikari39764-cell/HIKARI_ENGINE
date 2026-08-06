@@ -27,7 +27,10 @@ namespace HIKARI::MESHRENDERER {
         RenderDebugView debugView,
         LightCB& out,
         MeshRendererDebugStats& stats);
-    void FillShadowCB(const SceneEnvironment& environment, ShadowCB& out);
+    void FillShadowCB(
+        const SceneEnvironment& environment,
+        uint64_t frameIndex,
+        ShadowCB& out);
     void FillSkyEnvironmentCB(
         const SceneEnvironment& environment,
         const MATH::Vec3& cameraPosition,

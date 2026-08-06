@@ -207,7 +207,10 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             debugView,
             *frameResources.lightMapped,
             gMeshRendererState.debugStats);
-        FillShadowCB(environment, *frameResources.shadowMapped);
+        FillShadowCB(
+            environment,
+            frame.frameIndex,
+            *frameResources.shadowMapped);
         FillSkyEnvironmentCB(
             environment,
             cameraPos,

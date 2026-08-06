@@ -370,10 +370,20 @@ const MaterialNodeSemanticContract& GetMaterialNodeSemanticContract(
     case MaterialNodeKind::MakeFloat4:
     case MaterialNodeKind::Split:
     case MaterialNodeKind::Select:
-    case MaterialNodeKind::DerivativeX:
-    case MaterialNodeKind::DerivativeY:
-    case MaterialNodeKind::FilterWidth:
-        return kMath;
+case MaterialNodeKind::DerivativeX:
+case MaterialNodeKind::DerivativeY:
+case MaterialNodeKind::FilterWidth:
+case MaterialNodeKind::Atan2:
+case MaterialNodeKind::Exp:
+case MaterialNodeKind::Log2:
+case MaterialNodeKind::Sign:
+case MaterialNodeKind::Round:
+case MaterialNodeKind::Trunc:
+case MaterialNodeKind::UvTransform:
+case MaterialNodeKind::ValueNoise:
+case MaterialNodeKind::Voronoi:
+case MaterialNodeKind::Fresnel:
+return kMath;
     case MaterialNodeKind::TextureCoordinate:
     case MaterialNodeKind::Time:
     case MaterialNodeKind::WorldPosition:

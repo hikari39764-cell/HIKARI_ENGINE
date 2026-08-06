@@ -1,5 +1,7 @@
 #include "Scene/Sequencer/Tracks/HIKARI_CameraTransformTrack.h"
 
+#include "Core/HIKARI_MathConfig.h"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -52,7 +54,7 @@ namespace HIKARI::SEQUENCER {
 
         MATH::Quat RotationFromDegrees(const MATH::Vec3& degrees) noexcept {
             constexpr float kDegreesToRadians =
-                std::numbers::pi_v<float> / 180.0f;
+                MATH::kDegreesToRadians;
             return MATH::Quat::FromEulerXYZ(
                 degrees.x * kDegreesToRadians,
                 degrees.y * kDegreesToRadians,

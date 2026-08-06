@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "Assets/Material/Graph/HIKARI_MaterialGraphValidation.h"
+#include "Assets/Material/Graph/HIKARI_MaterialGraphQuery.h"
 
 namespace HIKARI::MATERIAL_COMPILER_INTERNAL {
 namespace {
@@ -40,10 +41,7 @@ MaterialGraphData* SelectGraph(MaterialAssetData& source) noexcept {
 const MaterialGraphNodeData* FindNode(
     const MaterialGraphData& graph,
     std::string_view id) noexcept {
-    const auto found = std::find_if(
-        graph.nodes.begin(), graph.nodes.end(),
-        [id](const MaterialGraphNodeData& node) { return node.id == id; });
-    return found == graph.nodes.end() ? nullptr : &*found;
+    return FindMaterialGraphNode(graph, id);
 }
 
 std::unordered_set<std::string> CollectReachable(

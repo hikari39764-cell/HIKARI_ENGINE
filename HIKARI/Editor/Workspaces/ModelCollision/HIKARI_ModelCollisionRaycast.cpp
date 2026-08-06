@@ -1,5 +1,7 @@
 #include "Editor/Workspaces/ModelCollision/HIKARI_ModelCollisionRaycast.h"
 
+#include "Core/HIKARI_MathConfig.h"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -16,7 +18,7 @@
 
 namespace HIKARI::EDITOR::DETAIL {
 namespace {
-constexpr float kDegreesToRadians = 0.01745329251994329577f;
+constexpr float kDegreesToRadians = MATH::kDegreesToRadians;
 
 MATH::Vec3 TransformPoint(const MATH::Mat4 &transform,
                           const MATH::Vec3 &point) noexcept {

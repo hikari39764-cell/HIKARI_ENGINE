@@ -123,6 +123,12 @@ namespace HIKARI {
         MaterialAssetData& material,
         const PbrMaterialAssetData& pbr);
 
+    // One-way graph -> PBR compatibility sync. Called on material commit so
+    // node-graph edits (including AI edits) keep the legacy pbr factor block
+    // consistent for the runtime compatibility path and save/reopen rounds.
+    void SyncPbrFromGraphParameters(
+        MaterialAssetData& material);
+
     PbrMaterialAssetData ProjectPbrMaterialAssetData(
         const MaterialAssetData& data);
 

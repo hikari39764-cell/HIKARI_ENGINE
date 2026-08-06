@@ -1,5 +1,7 @@
 #include "Editor/Workspaces/ModelCollision/HIKARI_ModelCollisionWorkspaceInteraction.h"
 
+#include "Core/HIKARI_MathConfig.h"
+
 #include <algorithm>
 #include <cmath>
 #include <limits>
@@ -16,7 +18,7 @@
 
 namespace HIKARI::EDITOR {
 namespace {
-constexpr float kDegreesToRadians = 0.01745329251994329577f;
+constexpr float kDegreesToRadians = MATH::kDegreesToRadians;
 
 bool Unproject(const MATH::Mat4 &inverseViewProjection, float x, float y,
                float z, MATH::Vec3 &outPoint) noexcept {

@@ -8,6 +8,8 @@
 #include "Assets/Material/Authoring/HIKARI_MaterialTemplateFactory.h"
 #include "Editor/AI/HIKARI_AI_VisionClient.h"
 
+#include "Core/Text/HIKARI_Trim.h"
+
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
 #endif
@@ -23,16 +25,7 @@ namespace AI_ASSISTANT {
 namespace {
 
 std::string Trim(std::string value) {
-    const auto notSpace = [](unsigned char c) {
-        return std::isspace(c) == 0;
-    };
-    value.erase(
-        value.begin(),
-        std::find_if(value.begin(), value.end(), notSpace));
-    value.erase(
-        std::find_if(value.rbegin(), value.rend(), notSpace).base(),
-        value.end());
-    return value;
+    return TEXT::TrimCopy(std::move(value));
 }
 
 std::string ExtractAction(std::string_view json) {
@@ -65,6 +58,58 @@ std::string ExtractPlanLine(std::string_view text) {
         ? std::string(text.substr(marker))
         : std::string(text.substr(marker, lineEnd - marker));
     return Trim(line);
+}
+
+bool IsPlanOnlyReply(std::string_view text) {
+    return text.find("计划:") != std::string_view::npos ||
+        text.find("计划：") != std::string_view::npos ||
+        text.find("Plan:") != std::string_view::npos ||
+        text.find("プラン:") != std::string_view::npos;
+}
+
+std::string StripActionJsonForDisplay(std::string text) {
+    std::string result;
+    size_t cursor = 0u;
+    while (cursor < text.size()) {
+        const size_t newline = text.find('\n', cursor);
+        const std::string line = newline == std::string::npos
+            ? text.substr(cursor)
+            : text.substr(cursor, newline - cursor);
+        cursor = newline == std::string::npos
+            ? text.size()
+            : newline + 1u;
+        const std::string trimmed = Trim(line);
+        if (trimmed.rfind("```", 0u) == 0u &&
+            (trimmed.find("json") != std::string::npos ||
+             trimmed.find("JSON") != std::string::npos)) {
+            while (cursor < text.size()) {
+                const size_t close = text.find("```", cursor);
+                if (close == std::string::npos) {
+                    cursor = text.size();
+                    break;
+                }
+                cursor = close + 3u;
+                const size_t closeNewline = text.find('\n', cursor);
+                cursor = closeNewline == std::string::npos
+                    ? text.size()
+                    : closeNewline + 1u;
+                break;
+            }
+            continue;
+        }
+        if (trimmed.size() >= 2u &&
+            trimmed.front() == '{' &&
+            trimmed.back() == '}' &&
+            (trimmed.find("\"action\"") != std::string::npos ||
+             trimmed.find("\"actions\"") != std::string::npos)) {
+            continue;
+        }
+        if (!result.empty()) {
+            result += '\n';
+        }
+        result += line;
+    }
+    return result;
 }
 
 } // namespace
@@ -101,8 +146,17 @@ const std::vector<AiCapability>& QueryCapabilities() {
         { "material.graph_query",
           "List material graph nodes with ids, pins and existing connections.",
           "stable" },
+        { "material.node_info",
+          "Return one node's semantic contract: summary, pin types, class and output route.",
+          "stable" },
+        { "material.node_list",
+          "List discoverable material graph node types, optionally filtered by keyword or class.",
+          "stable" },
         { "material.graph_layout",
           "Auto-layout material graph nodes by topology.",
+          "stable" },
+        { "material.verify",
+          "Capture the material preview and analyze it with the vision API.",
           "stable" },
         { "budget.request",
           "Request a higher tool-round budget for the current conversation.",
@@ -265,6 +319,15 @@ AiRequestResult SubmitAiRequest(std::string_view requestJson) {
                 "{\"action\":\"material.graph_edit\","
                 "\"operation\":\"add_node\","
                 "\"nodeType\":\"node.additive\",\"name\":\"Rim\"}",
+                "创建颜色常量：{\"action\":\"material.graph_edit\","
+                "\"operation\":\"add_node\",\"nodeType\":\"Constant\","
+                "\"valueType\":\"Float4\",\"valueX\":1,\"valueY\":1,"
+                "\"valueZ\":1,\"valueW\":1}",
+                "修改节点：{\"action\":\"material.graph_edit\","
+                "\"operation\":\"set_node\",\"node\":\"Node_5\","
+                "\"property\":\"value\",\"valueType\":\"Float4\","
+                "\"valueX\":0.5,\"valueY\":0.5,\"valueZ\":0.5,"
+                "\"valueW\":1}",
                 "nodeType 支持多种写法：Constant/Parameter/Add、"
                 "node.constant/node.parameter，或成品名 node.additive/"
                 "node.skinLighting",
@@ -272,7 +335,7 @@ AiRequestResult SubmitAiRequest(std::string_view requestJson) {
                 "\"operation\":\"connect\","
                 "\"sourceNode\":\"Node_1\",\"sourcePin\":\"A\","
                 "\"targetNode\":\"Node_2\",\"targetPin\":\"B\"}",
-                "operation: add_node/remove_node/connect/disconnect；"
+                "operation: add_node/remove_node/set_node/connect/disconnect；"
                 "节点可用 name 或 id 引用；pin 名以 add_node 返回的 "
                 "inputs/outputs 为准（例如 A/B/DiffuseResponse/Surface），"
                 "sourcePin/targetPin 可省略或填 out/in 取第一个",
@@ -283,10 +346,31 @@ AiRequestResult SubmitAiRequest(std::string_view requestJson) {
                 "可选 name 过滤："
                 "{\"action\":\"material.graph_query\",\"name\":\"Rim\"}",
             };
+        } else if (topic == "material.node_info") {
+            result.details = {
+                "{\"action\":\"material.node_info\","
+                "\"nodeType\":\"noise.value\"}",
+                "返回节点的语义、输入输出引脚类型、分类和输出路由；"
+                "不确定节点含义时先查这个",
+            };
+        } else if (topic == "material.node_list") {
+            result.details = {
+                "{\"action\":\"material.node_list\"}",
+                "{\"action\":\"material.node_list\","
+                "\"keyword\":\"noise\"}",
+                "{\"action\":\"material.node_list\","
+                "\"class\":\"Math\"}",
+                "返回可创建节点目录；创建节点前先查这个，避免猜节点名",
+            };
         } else if (topic == "material.graph_layout") {
             result.details = {
                 "{\"action\":\"material.graph_layout\"}",
                 "按拓扑分层整理当前材质图节点位置",
+            };
+        } else if (topic == "material.verify") {
+            result.details = {
+                "{\"action\":\"material.verify\"}",
+                "先截图再调用视觉 API 分析，返回描述与是否符合预期",
             };
         } else if (topic == "budget.request") {
             result.details = {
@@ -383,18 +467,37 @@ std::string AiAssistantPanel::BuildSystemPrompt() const {
         "如需引用失败的 action 只写动作名（如 connect）。\n"
         "收尾规则：调用动作后，必须基于执行结果给出最终中文回复；"
         "除非用户明确要求继续操作，否则不要再输出任何 action JSON。\n"
-        "验证规则：修改材质或场景后，先调用 capture.preview 截图，"
-        "再用 vision.analyze_image 核对效果；不符合预期时继续调整，"
-        "确认符合预期后再做最终总结。\n"
+        "验证规则：修改材质后优先调用 material.verify（截图+识图一步完成）"
+        "核对效果；不符合预期时继续调整，确认符合预期后再总结。\n"
+        "参数修改请使用完整参数名（如 parameter.baseColor），"
+        "避免后缀歧义；未知参数先用 material.graph_query 查看。\n"
+        "Material Function 节点（FunctionCall）需要资产 GUID，"
+        "AI 不能创建；遇到缺失资产引用时用 material.graph_edit "
+        "remove_node 删除坏节点。\n"
+        "同类型成品节点（如两个 FresnelRim）共享同一组参数，"
+        "这是当前架构限制；需要独立控制时改用 Constant/Parameter "
+        "节点连线。\n"
+        "材质图思维：值从节点输出流向输入；Surface Output 是终点。"
+        "BaseColor/Emissive 是颜色，Roughness/Metallic/Occlusion 是 0~1 标量，"
+        "Normal 是切线空间向量；引脚的输入输出类型是硬约束，"
+        "类型不匹配就是连错了，按错误信息调整即可。"
+        "Float1 输出会广播到所有分量；其他类型必须精确匹配，"
+        "或用 Split / MakeFloat2/3/4 构造。"
+        "创建 Constant/Parameter 时可传 valueType 与 "
+        "valueX/valueY/valueZ/valueW；修改已有节点用 set_node。\n"
         "任务节奏：复杂任务先输出一行计划，格式为 "
         "\"计划: 1. ...; 2. ...\"，再按计划批量执行，最后总结；"
-        "简单任务可以省略计划。\n"
+        "简单任务可以省略计划。如果你决定开始执行，"
+        "请在输出计划的同时直接给出下一步的整行 action JSON；"
+        "只写计划会被要求补发，不会自动执行。\n"
         "不确定某个 action 的参数时，先调用 "
         "{\"action\":\"help\",\"topic\":\"<action名>\"} 查询用法。\n"
         "连线材质节点时，以 add_node 返回的 inputs/outputs 为准；"
         "sourcePin/targetPin 可省略（默认取第一个输出/输入）。\n"
         "复杂材质任务先调用 material.graph_query 查看节点 id 和插槽，"
-        "再执行 add_node/connect。\n"
+        "再执行 add_node/connect。创建节点前先调用 material.node_list "
+        "查看可用节点；不确定某个节点是做什么时，"
+        "再调用 material.node_info 查看它的语义和引脚类型。\n"
         "当前能力清单：\n";
     for (const AI_ASSISTANT::AiCapability& capability :
          AI_ASSISTANT::QueryCapabilities()) {
@@ -417,6 +520,20 @@ void AiAssistantPanel::AppendMessage(
     }
 }
 
+void AiAssistantPanel::AppendReasoning(const std::string& text) {
+    const std::string display =
+        AI_ASSISTANT::StripActionJsonForDisplay(text);
+    if (display.empty()) {
+        return;
+    }
+    std::lock_guard<std::mutex> lock(reasoningMutex_);
+    reasoningLog_.push_back(display);
+    if (reasoningLog_.size() > 60u) {
+        reasoningLog_.erase(
+            reasoningLog_.begin(), reasoningLog_.begin() + 20u);
+    }
+}
+
 void AiAssistantPanel::RunConversation(const std::string& userText) {
     const AI_ASSISTANT::AiChatConfig config = SnapshotConfig();
     AiContextCallback contextCallback;
@@ -430,11 +547,10 @@ void AiAssistantPanel::RunConversation(const std::string& userText) {
         conversation = messages_;
     }
     conversation.push_back({ "user", userText });
-    lastRoundActions_.clear();
     int consecutiveFailureRounds = 0;
+    int planOnlyRounds = 0;
     int maxToolRounds = kDefaultToolRounds;
     std::string failureSummary;
-    std::vector<std::string> lastRoundFailedNames;
     for (int turn = 0; turn < maxToolRounds; ++turn) {
         if (stopRequested_.load()) {
             return;
@@ -486,9 +602,25 @@ void AiAssistantPanel::RunConversation(const std::string& userText) {
             AppendMessage({ "assistant", "（调用失败）" + error });
             return;
         }
+        if (!error.empty()) {
+            reply += "\n\n" + error;
+        }
         const std::vector<std::string> actionJsons =
             AI_ASSISTANT::ExtractAllActionJson(reply);
         if (actionJsons.empty()) {
+            if (AI_ASSISTANT::IsPlanOnlyReply(reply) &&
+                planOnlyRounds < 2) {
+                ++planOnlyRounds;
+                AppendReasoning(reply);
+                conversation.push_back({ "assistant", reply });
+                conversation.push_back(
+                    { "user",
+                      "你刚才只输出了计划，没有输出任何 action JSON。"
+                      "如果确实要开始执行，请在这一轮直接输出下一步的"
+                      "整行 action JSON；如果只是回答用户问题，"
+                      "请直接给出最终中文回复。" });
+                continue;
+            }
             AppendMessage({ "assistant", reply });
             {
                 std::lock_guard<std::mutex> lock(streamMutex_);
@@ -528,50 +660,7 @@ void AiAssistantPanel::RunConversation(const std::string& userText) {
             }
             executableActions.erase(budgetIt);
         }
-        if (turn == 0 && !lastFailedActionNames_.empty() &&
-            std::all_of(
-                executableActions.begin(), executableActions.end(),
-                [this](const std::string& actionJson) {
-                    const std::string name =
-                        AI_ASSISTANT::ExtractJsonField(
-                            actionJson, "action");
-                    return std::find(
-                        lastFailedActionNames_.begin(),
-                        lastFailedActionNames_.end(),
-                        name) != lastFailedActionNames_.end();
-                })) {
-            AppendMessage(
-                { "assistant",
-                  reply +
-                  "\n\n（检测到重复的失败动作，已按聊天显示，"
-                  "没有再次执行；如需重试请明确指示。）" });
-            {
-                std::lock_guard<std::mutex> lock(streamMutex_);
-                streamingPartial_.clear();
-            }
-            lastFailedActionNames_.clear();
-            return;
-        }
-        if (!lastRoundActions_.empty() &&
-            std::all_of(
-                executableActions.begin(), executableActions.end(),
-                [this](const std::string& action) {
-                    return std::find(
-                        lastRoundActions_.begin(),
-                        lastRoundActions_.end(),
-                        action) != lastRoundActions_.end();
-                })) {
-            AppendMessage(
-                { "assistant",
-                  "检测到连续重复的动作调用，已停止以避免循环；"
-                  "请基于当前结果继续说明，或让我手动操作。" });
-            {
-                std::lock_guard<std::mutex> lock(streamMutex_);
-                streamingPartial_.clear();
-            }
-            return;
-        }
-        lastRoundActions_ = executableActions;
+        AppendReasoning(reply);
         conversation.push_back({ "assistant", reply });
         std::string resultText;
         failureSummary.clear();
@@ -596,6 +685,9 @@ void AiAssistantPanel::RunConversation(const std::string& userText) {
             }
             resultText +=
                 result.ok ? "成功：" : "失败：";
+            if (!result.ok && !result.code.empty()) {
+                resultText += "[" + result.code + "] ";
+            }
             resultText += actionJson + "\n";
             resultText += result.message + "\n";
             size_t detailCount = 0u;
@@ -621,22 +713,10 @@ void AiAssistantPanel::RunConversation(const std::string& userText) {
         conversation.push_back({ "user", resultText });
         if (successCount == 0u && failureCount > 0u) {
             ++consecutiveFailureRounds;
-            lastRoundFailedNames.clear();
-            for (const std::string& actionJson :
-                 executableActions) {
-                const std::string name =
-                    AI_ASSISTANT::ExtractJsonField(
-                        actionJson, "action");
-                if (!name.empty()) {
-                    lastRoundFailedNames.push_back(name);
-                }
-            }
         } else {
             consecutiveFailureRounds = 0;
-            lastRoundFailedNames.clear();
         }
     }
-    lastFailedActionNames_ = std::move(lastRoundFailedNames);
     std::string stopMessage =
         "已达到工具轮数预算（" +
         std::to_string(maxToolRounds) + " 轮）。";
@@ -826,8 +906,14 @@ void AiAssistantPanel::Draw(bool& open) {
                 }
             }
             if (ImGui::MenuItem("Clear Chat")) {
-                std::lock_guard<std::mutex> lock(messageMutex_);
-                messages_.clear();
+                {
+                    std::lock_guard<std::mutex> lock(messageMutex_);
+                    messages_.clear();
+                }
+                {
+                    std::lock_guard<std::mutex> lock(reasoningMutex_);
+                    reasoningLog_.clear();
+                }
                 lastMessageCount_ = 0u;
             }
             ImGui::EndMenu();
@@ -883,6 +969,42 @@ void AiAssistantPanel::Draw(bool& open) {
         ImGui::Separator();
     }
 
+    if (ImGui::CollapsingHeader(
+            "思考过程（AI 推理）", ImGuiTreeNodeFlags_DefaultOpen)) {
+        ImGui::BeginChild(
+            "##AiReasoningLog", ImVec2(0.0f, 160.0f), true);
+        {
+            std::vector<std::string> visibleReasoning;
+            {
+                std::lock_guard<std::mutex> lock(reasoningMutex_);
+                visibleReasoning = reasoningLog_;
+            }
+            for (const std::string& entry : visibleReasoning) {
+                ImGui::TextWrapped("%s", entry.c_str());
+                ImGui::Spacing();
+            }
+            std::string partial;
+            {
+                std::lock_guard<std::mutex> lock(streamMutex_);
+                partial = streamingPartial_;
+            }
+            if (!partial.empty()) {
+                const std::string visiblePartial =
+                    AI_ASSISTANT::StripActionJsonForDisplay(partial);
+                if (!visiblePartial.empty()) {
+                    ImGui::TextColored(
+                        ImVec4{ 0.65f, 0.72f, 0.80f, 1.0f },
+                        "（思考中）");
+                    ImGui::TextWrapped("%s", visiblePartial.c_str());
+                    ImGui::Spacing();
+                    ImGui::SetScrollHereY(1.0f);
+                }
+            }
+        }
+        ImGui::EndChild();
+        ImGui::Separator();
+    }
+
     ImGui::BeginChild(
         "##AiChatLog", ImVec2(0.0f, -112.0f), true);
     {
@@ -904,20 +1026,7 @@ void AiAssistantPanel::Draw(bool& open) {
             ImGui::TextWrapped("%s", message.content.c_str());
             ImGui::Spacing();
         }
-        std::string partial;
-        {
-            std::lock_guard<std::mutex> lock(streamMutex_);
-            partial = streamingPartial_;
-        }
-        if (!partial.empty()) {
-            ImGui::TextColored(
-                ImVec4{ 0.45f, 0.80f, 1.00f, 1.0f },
-                "[Assistant]");
-            ImGui::TextWrapped("%s", partial.c_str());
-            ImGui::Spacing();
-        }
-        if (visibleMessages.size() != lastMessageCount_ ||
-            !partial.empty()) {
+        if (visibleMessages.size() != lastMessageCount_) {
             lastMessageCount_ = visibleMessages.size();
             ImGui::SetScrollHereY(1.0f);
         }

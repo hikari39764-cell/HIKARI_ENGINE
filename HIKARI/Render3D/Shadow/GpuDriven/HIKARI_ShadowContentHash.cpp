@@ -4,13 +4,12 @@
 #include <cstdint>
 #include <string>
 
+#include "Core/Hashing/HIKARI_FnvHash.h"
+
 namespace HIKARI::SHADOW::INTERNAL {
 
     uint64_t AppendShadowHashValue(uint64_t seed, uint64_t value) {
-        constexpr uint64_t kFnvPrime = 1099511628211ull;
-        seed ^= value;
-        seed *= kFnvPrime;
-        return seed;
+        return HASH::Fnv1aCombine(seed, value);
     }
 
     uint64_t AppendShadowHashBytes(
@@ -18,25 +17,19 @@ namespace HIKARI::SHADOW::INTERNAL {
         const void* data,
         size_t size) {
 
-        const uint8_t* bytes = static_cast<const uint8_t*>(data);
-        for (size_t byteIndex = 0; byteIndex < size; ++byteIndex) {
-            seed = AppendShadowHashValue(
-                seed,
-                static_cast<uint64_t>(bytes[byteIndex]));
-        }
-        return seed;
+        return HASH::Fnv1aBytes(seed, data, size);
     }
 
     uint64_t AppendShadowHashString(
         uint64_t seed,
         const std::string& value) {
 
-        seed = AppendShadowHashValue(
-            seed,
-            static_cast<uint64_t>(value.size()));
+        seed = HASH::Fnv1aCombine(
+            seed, static_cast<uint64_t>(value.size()));
         return value.empty()
             ? seed
-            : AppendShadowHashBytes(seed, value.data(), value.size());
+            : HASH::Fnv1aBytes(
+                seed, value.data(), value.size());
     }
 
 } // namespace HIKARI::SHADOW::INTERNAL

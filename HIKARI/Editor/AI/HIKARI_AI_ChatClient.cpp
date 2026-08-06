@@ -1,5 +1,7 @@
 #include "HIKARI_AI_ChatClient.h"
 
+#include "Core/Text/HIKARI_Trim.h"
+
 #include <algorithm>
 #include <cerrno>
 #include <cctype>
@@ -23,16 +25,7 @@ namespace HIKARI::EDITOR::AI_ASSISTANT {
 namespace {
 
 std::string Trim(std::string value) {
-    const auto notSpace = [](unsigned char c) {
-        return std::isspace(c) == 0;
-    };
-    value.erase(
-        value.begin(),
-        std::find_if(value.begin(), value.end(), notSpace));
-    value.erase(
-        std::find_if(value.rbegin(), value.rend(), notSpace).base(),
-        value.end());
-    return value;
+    return TEXT::TrimCopy(std::move(value));
 }
 
 std::wstring WideFromAscii(const std::string& value) {
@@ -651,8 +644,7 @@ bool RunChatCompletionsStreaming(
     std::string pending;
     bool sawDone = false;
     bool userAbort = false;
-    const auto onChunk = [&](const std::string& chunk) {
-        pending += chunk;
+    const auto parsePending = [&]() {
         size_t newline = 0u;
         while ((newline = pending.find('\n')) !=
                std::string::npos) {
@@ -679,9 +671,18 @@ bool RunChatCompletionsStreaming(
         }
         return true;
     };
+    const auto onChunk = [&](const std::string& chunk) {
+        if (!chunk.empty()) {
+            pending += chunk;
+        }
+        return parsePending();
+    };
     std::string streamError;
     const bool streamOk = RunApiRequestRawStreaming(
         config, body, onChunk, streamError);
+    // Flush any trailing partial SSE line (for example when the stream times
+    // out before a final newline) so a complete action is not silently lost.
+    (void)onChunk(std::string{});
     if (userAbort) {
         outError = "用户中止";
         return false;
@@ -689,6 +690,11 @@ bool RunChatCompletionsStreaming(
     if (!streamOk && full.empty()) {
         outError = streamError;
         return false;
+    }
+    if (!sawDone && !streamOk && !full.empty()) {
+        outError = "（流式响应超时，内容可能不完整）";
+        outFull = std::move(full);
+        return true;
     }
     if (!sawDone && full.empty()) {
         outError = "API 没有返回可识别的流式内容";
@@ -701,11 +707,31 @@ bool RunChatCompletionsStreaming(
 std::vector<std::string> ExtractAllActionJson(
     const std::string& reply) {
     std::vector<std::string> actions;
+    const auto isPlausibleAction = [](std::string_view name) {
+        if (name.empty() || name.size() > 64u) {
+            return false;
+        }
+        for (const char c : name) {
+            const bool valid =
+                (c >= 'a' && c <= 'z') ||
+                (c >= 'A' && c <= 'Z') ||
+                (c >= '0' && c <= '9') ||
+                c == '.' || c == '_' || c == '-';
+            if (!valid) {
+                return false;
+            }
+        }
+        return true;
+    };
     const auto collectObject =
-        [&actions](const nlohmann::json& node) {
+        [&actions, &isPlausibleAction](const nlohmann::json& node) {
             if (node.is_object() && node.contains("action") &&
                 node["action"].is_string()) {
-                actions.push_back(node.dump());
+                const std::string name =
+                    node["action"].get<std::string>();
+                if (isPlausibleAction(name)) {
+                    actions.push_back(node.dump());
+                }
             }
         };
     const auto collectContainer =
@@ -784,6 +810,57 @@ std::vector<std::string> ExtractAllActionJson(
         }
         try {
             collectContainer(nlohmann::json::parse(block));
+        } catch (...) {
+        }
+    }
+
+    // Brace-pairing fallback: the model may mix JSON with prose or end the
+    // object with punctuation. Scan for balanced {...} candidates, parse each
+    // with nlohmann, and keep only objects with a plausible action key.
+    cursor = 0u;
+    while (cursor < reply.size()) {
+        const auto open = reply.find('{', cursor);
+        if (open == std::string::npos) {
+            break;
+        }
+        int depth = 0;
+        bool inString = false;
+        bool escaped = false;
+        size_t close = open;
+        for (; close < reply.size(); ++close) {
+            const char c = reply[close];
+            if (inString) {
+                if (escaped) {
+                    escaped = false;
+                } else if (c == '\\') {
+                    escaped = true;
+                } else if (c == '"') {
+                    inString = false;
+                }
+                continue;
+            }
+            if (c == '"') {
+                inString = true;
+            } else if (c == '{') {
+                ++depth;
+            } else if (c == '}') {
+                --depth;
+                if (depth == 0) {
+                    break;
+                }
+            }
+        }
+        if (close >= reply.size()) {
+            break;
+        }
+        const std::string candidate =
+            reply.substr(open, close - open + 1u);
+        cursor = close + 1u;
+        if (candidate.size() > 4096u) {
+            continue;
+        }
+        try {
+            collectContainer(nlohmann::json::parse(candidate));
         } catch (...) {
         }
     }

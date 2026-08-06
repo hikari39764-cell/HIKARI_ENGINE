@@ -5,6 +5,8 @@
 #include <cstring>
 #include <limits>
 
+#include "Core/Hashing/HIKARI_FnvHash.h"
+
 namespace HIKARI::RENDER3D::MATERIAL {
 
     namespace {
@@ -38,7 +40,7 @@ namespace HIKARI::RENDER3D::MATERIAL {
     size_t GpuMaterialRegistry::MaterialIdentityHash::operator()(
         const MaterialIdentity& value) const {
 
-        size_t seed = 1469598103934665603ull;
+        size_t seed = HASH::kFnv1a64OffsetBasis;
         seed = HashCombine(seed, value.resource.index);
         seed = HashCombine(seed, value.resource.generation);
         seed = HashCombine(seed, value.stableMaterialKey);

@@ -148,9 +148,21 @@ namespace HIKARI {
         ViewDirection,
         CameraPosition,
         ScreenPosition,
-        DerivativeX,
-        DerivativeY,
-        FilterWidth,
+    DerivativeX,
+    DerivativeY,
+    FilterWidth,
+    // Append-only: new native nodes MUST be added at the end (cooked IR v4
+    // opcode numbers are stable). Stable names follow domain.name lowercase.
+    Atan2,
+    Exp,
+    Log2,
+    Sign,
+    Round,
+    Trunc,
+    UvTransform,
+    ValueNoise,
+    Voronoi,
+    Fresnel,
     };
 
     // Source graphs use a stable textual identity so ordinary node growth is

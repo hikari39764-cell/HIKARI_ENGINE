@@ -1,5 +1,6 @@
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialGraphUi.h"
 
+#include "Assets/Material/Graph/HIKARI_MaterialGraphQuery.h"
 #include <algorithm>
 #include <cctype>
 
@@ -51,50 +52,32 @@ std::vector<std::string_view> InputPins(const MaterialGraphNodeData& node) {
 
 const MaterialGraphNodeData *FindNode(const MaterialGraphData &graph,
                                       std::string_view id) noexcept {
-  const auto found = std::find_if(
-      graph.nodes.begin(), graph.nodes.end(),
-      [id](const auto &node) { return node.id == id; });
-  return found != graph.nodes.end() ? &*found : nullptr;
+  return FindMaterialGraphNode(graph, id);
 }
 
 MaterialGraphNodeData *FindNode(MaterialGraphData &graph,
                                 std::string_view id) noexcept {
-  const auto found = std::find_if(
-      graph.nodes.begin(), graph.nodes.end(),
-      [id](const auto &node) { return node.id == id; });
-  return found != graph.nodes.end() ? &*found : nullptr;
+  return FindMaterialGraphNode(graph, id);
 }
 
 const MaterialGraphParameterData *FindParameter(
     const MaterialGraphData &graph, std::string_view id) noexcept {
-  const auto found = std::find_if(
-      graph.parameters.begin(), graph.parameters.end(),
-      [id](const auto &parameter) { return parameter.id == id; });
-  return found != graph.parameters.end() ? &*found : nullptr;
+  return FindMaterialGraphParameter(graph, id);
 }
 
 MaterialGraphParameterData *FindParameter(
     MaterialGraphData &graph, std::string_view id) noexcept {
-  const auto found = std::find_if(
-      graph.parameters.begin(), graph.parameters.end(),
-      [id](const auto &parameter) { return parameter.id == id; });
-  return found != graph.parameters.end() ? &*found : nullptr;
+  return FindMaterialGraphParameter(graph, id);
 }
 
 const MaterialGraphResourceData *FindGraphResource(
     const MaterialGraphData &graph, std::string_view id) noexcept {
-  const auto found = std::find_if(
-      graph.resources.begin(), graph.resources.end(),
-      [id](const auto &resource) { return resource.id == id; });
-  return found != graph.resources.end() ? &*found : nullptr;
+  return FindMaterialGraphResource(graph, id);
 }
 
 MaterialGraphResourceData *FindGraphResource(
     MaterialGraphData &graph, std::string_view id) noexcept {
-  const auto found = std::find_if(
-      graph.resources.begin(), graph.resources.end(),
-      [id](const auto &resource) { return resource.id == id; });
-  return found != graph.resources.end() ? &*found : nullptr;
+  return FindMaterialGraphResource(graph, id);
 }
 
 bool LooksLikeColor(std::string_view displayName,

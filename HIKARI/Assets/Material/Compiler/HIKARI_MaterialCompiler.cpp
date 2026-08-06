@@ -14,6 +14,8 @@
 #include "Assets/Material/Graph/HIKARI_MaterialGraphValidation.h"
 #include "Assets/Material/HIKARI_MaterialDependencies.h"
 #include "Assets/Material/Serialization/HIKARI_MaterialSourceJson.h"
+#include "Core/Hashing/HIKARI_FnvHash.h"
+#include "Core/Text/HIKARI_HexString.h"
 
 namespace HIKARI {
 
@@ -32,21 +34,6 @@ namespace HIKARI {
                 std::move(message),
                 std::move(subjectId)
             });
-        }
-
-        uint64_t HashText(std::string_view text) noexcept {
-            uint64_t hash = 14695981039346656037ull;
-            for (const unsigned char value : text) {
-                hash ^= static_cast<uint64_t>(value);
-                hash *= 1099511628211ull;
-            }
-            return hash;
-        }
-
-        std::string HashToString(uint64_t hash) {
-            std::ostringstream stream{};
-            stream << std::hex << std::setfill('0') << std::setw(16) << hash;
-            return stream.str();
         }
 
         void AddCapability(
@@ -497,7 +484,8 @@ namespace HIKARI {
             }
 
             const std::string structure = BuildStructureDescription(source, program);
-            program.key.structureHash = HashText(structure);
+            program.key.structureHash =
+                HASH::Fnv1aString(structure);
             program.key.domain = program.domain;
             program.key.capabilityMask = program.capabilities;
 
@@ -505,9 +493,11 @@ namespace HIKARI {
             std::string serializationError{};
             if (MATERIAL_SERIALIZATION::SerializeMaterialSourceJson(
                     source, canonicalSource, serializationError)) {
-                program.programId = HashToString(HashText(canonicalSource));
+                program.programId = TEXT::ToHexString(
+                    HASH::Fnv1aString(canonicalSource));
             } else {
-                program.programId = HashToString(program.key.structureHash);
+                program.programId = TEXT::ToHexString(
+                    program.key.structureHash);
             }
             return program;
         }

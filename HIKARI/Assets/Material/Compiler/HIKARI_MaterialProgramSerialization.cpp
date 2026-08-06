@@ -293,7 +293,7 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
                         ? static_cast<uint32_t>(
                             MaterialProgramOpcode::CorneaHighlight)
                         : static_cast<uint32_t>(
-                            MaterialProgramOpcode::FilterWidth);
+                            MaterialProgramOpcode::Fresnel);
                     if (opcode > maximumOpcode ||
                         !TryParseMaterialValueType(
                             item.value("valueType", std::string{}),

@@ -5,6 +5,7 @@
 #include <unordered_set>
 
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialGraphUi.h"
+#include "Assets/Material/Graph/HIKARI_MaterialGraphQuery.h"
 
 namespace HIKARI::EDITOR::MATERIAL_GRAPH_UI {
 namespace {
@@ -12,12 +13,7 @@ namespace {
 const MaterialGraphEdgeData *FindInputEdge(
     const MaterialGraphData &graph, std::string_view nodeId,
     std::string_view pin) noexcept {
-  const auto found = std::find_if(
-      graph.edges.begin(), graph.edges.end(),
-      [nodeId, pin](const MaterialGraphEdgeData &edge) {
-        return edge.targetNodeId == nodeId && edge.targetPin == pin;
-      });
-  return found != graph.edges.end() ? &*found : nullptr;
+  return FindMaterialGraphInputEdge(graph, nodeId, pin);
 }
 
 bool NodeDependsOnParameter(

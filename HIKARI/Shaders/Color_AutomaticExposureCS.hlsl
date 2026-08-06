@@ -20,12 +20,26 @@ float HikariMeteringWeight(float logLuminance)
     return max(0.001f, shadowWeight * highlightWeight);
 }
 
+float HikariHalton(uint index, uint base)
+{
+    float result = 0.0f;
+    float f = 1.0f / (float)base;
+    uint i = index + 1u;
+    while (i > 0u)
+    {
+        result += f * (float)(i % base);
+        i /= base;
+        f /= (float)base;
+    }
+    return result;
+}
+
 [numthreads(64, 1, 1)]
 void main(uint3 dispatchThreadId : SV_DispatchThreadID)
 {
     const uint threadIndex = dispatchThreadId.x;
-    const uint gridWidth = 32u;
-    const uint gridHeight = 18u;
+    const uint gridWidth = 64u;
+    const uint gridHeight = 36u;
     const uint sampleCount = gridWidth * gridHeight;
 
     float logSum = 0.0f;
@@ -38,15 +52,16 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
         uint2 gridCoord = uint2(
             sampleIndex % gridWidth,
             sampleIndex / gridWidth);
+        // Low-discrepancy jitter per sample reduces grid structure and the
+        // CPU-side exposure smoother filters the remaining frame noise.
+        const float2 uv = float2(
+            ((float)gridCoord.x + HikariHalton(sampleIndex, 2u)) /
+                (float)gridWidth,
+            ((float)gridCoord.y + HikariHalton(sampleIndex, 3u)) /
+                (float)gridHeight);
         uint2 pixelCoord = uint2(
-            min(
-                gWidth - 1u,
-                (gridCoord.x * gWidth + gWidth / 2u) /
-                    gridWidth),
-            min(
-                gHeight - 1u,
-                (gridCoord.y * gHeight + gHeight / 2u) /
-                    gridHeight));
+            min(gWidth - 1u, (uint)(uv.x * (float)gWidth)),
+            min(gHeight - 1u, (uint)(uv.y * (float)gHeight)));
         float3 color = max(
             gSceneColor.Load(int3(pixelCoord, 0)).rgb,
             0.0f.xxx);

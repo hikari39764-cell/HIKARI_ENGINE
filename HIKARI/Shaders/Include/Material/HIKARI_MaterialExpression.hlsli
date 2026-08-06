@@ -59,6 +59,16 @@ static const uint HIKARI_EXPRESSION_SCREEN_POSITION = 45u;
 static const uint HIKARI_EXPRESSION_DERIVATIVE_X = 46u;
 static const uint HIKARI_EXPRESSION_DERIVATIVE_Y = 47u;
 static const uint HIKARI_EXPRESSION_FILTER_WIDTH = 48u;
+static const uint HIKARI_EXPRESSION_ATAN2 = 49u;
+static const uint HIKARI_EXPRESSION_EXP = 50u;
+static const uint HIKARI_EXPRESSION_LOG2 = 51u;
+static const uint HIKARI_EXPRESSION_SIGN = 52u;
+static const uint HIKARI_EXPRESSION_ROUND = 53u;
+static const uint HIKARI_EXPRESSION_TRUNC = 54u;
+static const uint HIKARI_EXPRESSION_UV_TRANSFORM = 55u;
+static const uint HIKARI_EXPRESSION_VALUE_NOISE = 56u;
+static const uint HIKARI_EXPRESSION_VORONOI = 57u;
+static const uint HIKARI_EXPRESSION_FRESNEL = 58u;
 
 static const uint HIKARI_EXPRESSION_OUTPUT_BASE_COLOR = 1u << 0u;
 static const uint HIKARI_EXPRESSION_OUTPUT_OPACITY = 1u << 1u;
@@ -310,6 +320,104 @@ HikariMaterialExpressionResult HikariEvaluateMaterialExpression(
         else if (opcode == HIKARI_EXPRESSION_DERIVATIVE_X) value = ddx(a);
         else if (opcode == HIKARI_EXPRESSION_DERIVATIVE_Y) value = ddy(a);
         else if (opcode == HIKARI_EXPRESSION_FILTER_WIDTH) value = fwidth(a);
+        else if (opcode == HIKARI_EXPRESSION_ATAN2)
+            value = float4(atan2(a.x, b.x), 0.0f, 0.0f, 0.0f);
+        else if (opcode == HIKARI_EXPRESSION_EXP) value = exp(a);
+        else if (opcode == HIKARI_EXPRESSION_LOG2)
+            value = log2(max(a, 1.0e-6f.xxxx));
+        else if (opcode == HIKARI_EXPRESSION_SIGN) value = sign(a);
+        else if (opcode == HIKARI_EXPRESSION_ROUND) value = round(a);
+        else if (opcode == HIKARI_EXPRESSION_TRUNC) value = trunc(a);
+        else if (opcode == HIKARI_EXPRESSION_UV_TRANSFORM)
+        {
+            const float2 pivot =
+                source1 != HIKARI_MATERIAL_EXPRESSION_INVALID_REGISTER
+                    ? b.xy : 0.0f.xx;
+            const float2 scale =
+                source2 != HIKARI_MATERIAL_EXPRESSION_INVALID_REGISTER
+                    ? c.xy : 1.0f.xx;
+            const float2 offset =
+                source3 != HIKARI_MATERIAL_EXPRESSION_INVALID_REGISTER
+                    ? d.xy : 0.0f.xx;
+            const float rotation =
+                source4 != HIKARI_MATERIAL_EXPRESSION_INVALID_REGISTER
+                    ? e.x : 0.0f;
+            const float s = sin(rotation);
+            const float c2 = cos(rotation);
+            const float2 centered = a.xy - pivot;
+            const float2 rotated = float2(
+                centered.x * c2 - centered.y * s,
+                centered.x * s + centered.y * c2);
+            value = float4(rotated * scale + pivot + offset, 0.0f, 0.0f);
+        }
+        else if (opcode == HIKARI_EXPRESSION_VALUE_NOISE)
+        {
+            const float scale =
+                source1 != HIKARI_MATERIAL_EXPRESSION_INVALID_REGISTER
+                    ? b.x : 1.0f;
+            const float2 p = a.xy * scale;
+            const float2 cell = floor(p);
+            const float2 f = frac(p);
+            const float2 u = f * f * (3.0f - 2.0f * f);
+            const float h00 = frac(sin(dot(
+                cell, float2(127.1f, 311.7f))) * 43758.5453f);
+            const float h10 = frac(sin(dot(
+                cell + float2(1.0f, 0.0f),
+                float2(127.1f, 311.7f))) * 43758.5453f);
+            const float h01 = frac(sin(dot(
+                cell + float2(0.0f, 1.0f),
+                float2(127.1f, 311.7f))) * 43758.5453f);
+            const float h11 = frac(sin(dot(
+                cell + float2(1.0f, 1.0f),
+                float2(127.1f, 311.7f))) * 43758.5453f);
+            const float v0 = lerp(h00, h10, u.x);
+            const float v1 = lerp(h01, h11, u.x);
+            value = lerp(v0, v1, u.y).xxxx;
+        }
+        else if (opcode == HIKARI_EXPRESSION_VORONOI)
+        {
+            const float scale =
+                source1 != HIKARI_MATERIAL_EXPRESSION_INVALID_REGISTER
+                    ? b.x : 1.0f;
+            const float2 p = a.xy * scale;
+            const float2 cell = floor(p);
+            const float2 f = frac(p);
+            float minDistance = 8.0f;
+            [unroll]
+            for (int oy = -1; oy <= 1; ++oy)
+            {
+                [unroll]
+                for (int ox = -1; ox <= 1; ++ox)
+                {
+                    const float2 neighbor = float2((float)ox, (float)oy);
+                    const float2 samplePoint = cell + neighbor;
+                    const float2 hash = frac(sin(dot(
+                        samplePoint, float2(127.1f, 311.7f))) * 43758.5453f);
+                    const float2 offset = neighbor + hash - f;
+                    minDistance = min(
+                        minDistance, dot(offset, offset));
+                }
+            }
+            value = sqrt(minDistance).xxxx;
+        }
+        else if (opcode == HIKARI_EXPRESSION_FRESNEL)
+        {
+            const float3 n =
+                source0 != HIKARI_MATERIAL_EXPRESSION_INVALID_REGISTER
+                    ? normalize(a.xyz) : normalize(context.worldNormal);
+            const float3 v =
+                source1 != HIKARI_MATERIAL_EXPRESSION_INVALID_REGISTER
+                    ? normalize(b.xyz) : normalize(context.viewDirection);
+            const float f0 =
+                source2 != HIKARI_MATERIAL_EXPRESSION_INVALID_REGISTER
+                    ? c.x : 0.04f;
+            const float power =
+                source3 != HIKARI_MATERIAL_EXPRESSION_INVALID_REGISTER
+                    ? d.x : 5.0f;
+            const float ndv = abs(dot(n, v));
+            value = (f0 + (1.0f - f0) *
+                pow(1.0f - saturate(ndv), power)).xxxx;
+        }
 
         registers[destination] = HikariExpressionSplatScalar(value, components);
     }

@@ -16,6 +16,7 @@
 #include "Assets/Lighting/HIKARI_LightingBakeManifest.h"
 #include "Assets/Lighting/HIKARI_LightingBakePolicy.h"
 #include "Core/Serialization/Json/HIKARI_JsonMath.h"
+#include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Scene/HIKARI_SceneDocument.h"
 #include "Scene/Lighting/HIKARI_LightingAuthoringModel.h"
 #include "Scene/Serialization/Environment/HIKARI_SceneEnvironmentJson.h"
@@ -30,10 +31,8 @@ namespace HIKARI::ASSETS::LIGHTING {
         class StableHashBuilder {
         public:
             void Add(std::string_view text) noexcept {
-                for (const unsigned char value : text) {
-                    hash_ ^= static_cast<uint64_t>(value);
-                    hash_ *= 1099511628211ull;
-                }
+                hash_ = HASH::Fnv1aBytes(
+                    hash_, text.data(), text.size());
             }
 
             std::string Finish() const {
@@ -44,7 +43,7 @@ namespace HIKARI::ASSETS::LIGHTING {
             }
 
         private:
-            uint64_t hash_ = 14695981039346656037ull;
+            uint64_t hash_ = HASH::kFnv1a64OffsetBasis;
         };
 
         const SceneComponentData* FindComponent(

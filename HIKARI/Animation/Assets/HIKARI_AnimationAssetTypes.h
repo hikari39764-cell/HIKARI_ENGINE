@@ -6,6 +6,7 @@
 #include <string_view>
 #include <vector>
 
+#include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Render3D/HIKARI_Math3D.h"
 
 namespace HIKARI {
@@ -24,17 +25,18 @@ namespace HIKARI {
         std::string_view clipName,
         size_t ordinal) noexcept {
 
-        uint64_t hash = 14695981039346656037ull;
-        const auto append = [&hash](unsigned char value) {
-            hash ^= value;
-            hash *= 1099511628211ull;
-        };
-        for (const char character : clipName) {
-            append(static_cast<unsigned char>(character));
-        }
-        append(0xffu);
+        uint64_t hash = HASH::Fnv1aBytes(
+            HASH::kFnv1a64OffsetBasis,
+            clipName.data(),
+            clipName.size());
+        const unsigned char separator = 0xffu;
+        hash = HASH::Fnv1aBytes(
+            hash, &separator, sizeof(separator));
         for (size_t shift = 0u; shift < sizeof(size_t) * 8u; shift += 8u) {
-            append(static_cast<unsigned char>((ordinal >> shift) & 0xffu));
+            const unsigned char byte = static_cast<unsigned char>(
+                (ordinal >> shift) & 0xffu);
+            hash = HASH::Fnv1aBytes(
+                hash, &byte, sizeof(byte));
         }
         return { hash != 0u ? hash : 1u };
     }

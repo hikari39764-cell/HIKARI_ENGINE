@@ -1,6 +1,7 @@
 #include "HIKARI_EnvironmentDiagnostics.h"
 
 #include "Core/HIKARI_Logger.h"
+#include "Core/Text/HIKARI_BoolText.h"
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Render3D/Debug/HIKARI_Renderer3D_Debug.h"
@@ -253,7 +254,7 @@ namespace HIKARI::RENDER3D::DIAGNOSTICS {
         }
 
         const char* BoolText(bool value) {
-            return value ? "true" : "false";
+            return TEXT::BoolText(value);
         }
 
         const char* ReflectionProbeInfluenceShapeText(REFLECTION::RuntimeReflectionProbeInfluenceShape shape) {

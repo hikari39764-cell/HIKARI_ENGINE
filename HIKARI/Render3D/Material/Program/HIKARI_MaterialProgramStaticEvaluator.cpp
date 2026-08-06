@@ -8,20 +8,13 @@
 #include <vector>
 
 #include "Render3D/Material/HIKARI_GpuMaterialTypes.h"
+#include "Core/Text/HIKARI_AsciiId.h"
 
 namespace HIKARI::RENDER3D::MATERIAL {
 namespace {
 
 std::string NormalizeId(std::string_view id) {
-  std::string normalized{};
-  normalized.reserve(id.size());
-  for (const unsigned char value : id) {
-    if (std::isalnum(value) != 0) {
-      normalized.push_back(
-          static_cast<char>(std::tolower(value)));
-    }
-  }
-  return normalized;
+  return TEXT::NormalizeAsciiId(id);
 }
 
 void SetRgb(MATH::Vec4 &target, const MATH::Vec4 &value) {
@@ -229,6 +222,46 @@ StaticRegisterFile EvaluateStaticValues(const MaterialProgramIR& program) {
             break;
           }
         }
+        result = value;
+      } else if (instruction.opcode == MaterialProgramOpcode::Atan2 &&
+                 a != nullptr && b != nullptr) {
+        MaterialValueData value{};
+        value.type = MaterialValueType::Float1;
+        value.numeric.x = std::atan2(a->numeric.x, b->numeric.x);
+        result = value;
+      } else if (instruction.opcode == MaterialProgramOpcode::Exp &&
+                 a != nullptr) {
+        MaterialValueData value{};
+        value.type = MaterialValueType::Float1;
+        value.numeric.x = std::exp(a->numeric.x);
+        result = value;
+      } else if (instruction.opcode == MaterialProgramOpcode::Log2 &&
+                 a != nullptr) {
+        MaterialValueData value{};
+        value.type = MaterialValueType::Float1;
+        value.numeric.x =
+            std::log2((std::max)(a->numeric.x, 1.0e-6f));
+        result = value;
+      } else if (instruction.opcode == MaterialProgramOpcode::Sign &&
+                 a != nullptr) {
+        MaterialValueData value{};
+        value.type = MaterialValueType::Float1;
+        value.numeric.x =
+            a->numeric.x > 0.0f
+                ? 1.0f
+                : (a->numeric.x < 0.0f ? -1.0f : 0.0f);
+        result = value;
+      } else if (instruction.opcode == MaterialProgramOpcode::Round &&
+                 a != nullptr) {
+        MaterialValueData value{};
+        value.type = MaterialValueType::Float1;
+        value.numeric.x = std::round(a->numeric.x);
+        result = value;
+      } else if (instruction.opcode == MaterialProgramOpcode::Trunc &&
+                 a != nullptr) {
+        MaterialValueData value{};
+        value.type = MaterialValueType::Float1;
+        value.numeric.x = std::trunc(a->numeric.x);
         result = value;
       }
     }

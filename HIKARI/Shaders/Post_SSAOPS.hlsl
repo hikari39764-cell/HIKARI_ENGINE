@@ -1,4 +1,5 @@
 #include "Include/Surface/HIKARI_SceneSurfaceContract.hlsli"
+#include "Include/Post/HIKARI_PostHash.hlsli"
 
 cbuffer SsaoPassCB : register(b0)
 {
@@ -81,13 +82,6 @@ float3 ReconstructNormalFromDepth(float2 uv, float centerDepth)
     return dot(n, viewDir) < 0.0f ? -n : n;
 }
 
-float Hash12(float2 p)
-{
-    float3 p3 = frac(float3(p.xyx) * 0.1031f);
-    p3 += dot(p3, p3.yzx + 33.33f);
-    return frac((p3.x + p3.y) * p3.z);
-}
-
 float3 SampleKernel(uint index, float angle)
 {
     static const float3 kSamples[32] = {
@@ -127,7 +121,8 @@ float PSMain(VSOut input) : SV_TARGET
     float4 normalRoughness = gNormalRoughnessTex.SampleLevel(gPointClamp, input.uv, 0);
     float3 n = DecodeNormal(normalRoughness);
     float3 worldPos = ReconstructWorld(input.uv, depth);
-    float randomAngle = Hash12(input.uv * gScreenParams.xy + gFrameIndex) * kTwoPi;
+    float randomAngle = HikariHash12(
+        input.uv * gScreenParams.xy + gFrameIndex) * kTwoPi;
     float sampleCount = clamp(gAoSampleCount, 1.0f, 32.0f);
 
     float occlusion = 0.0f;
@@ -203,7 +198,8 @@ float PSMainOptimizedHigh(VSOut input) : SV_TARGET
     float4 normalRoughness = gNormalRoughnessTex.SampleLevel(gPointClamp, input.uv, 0);
     float3 n = DecodeNormal(normalRoughness);
     float3 worldPos = ReconstructWorld(input.uv, depth);
-    float randomAngle = Hash12(input.uv * gScreenParams.xy + gFrameIndex * 7.13f) * kTwoPi;
+    float randomAngle = HikariHash12(
+        input.uv * gScreenParams.xy + gFrameIndex * 7.13f) * kTwoPi;
     float sampleCount = clamp(gAoSampleCount, 1.0f, 32.0f);
     float screenRadius = ScreenRadiusFromWorldRadius(input.uv, worldPos, n);
 
@@ -260,7 +256,8 @@ float PSMainDepthOnly(VSOut input) : SV_TARGET
 
     float3 n = ReconstructNormalFromDepth(input.uv, depth);
     float3 worldPos = ReconstructWorld(input.uv, depth);
-    float randomAngle = Hash12(input.uv * gScreenParams.xy + gFrameIndex * 7.13f) * kTwoPi;
+    float randomAngle = HikariHash12(
+        input.uv * gScreenParams.xy + gFrameIndex * 7.13f) * kTwoPi;
     float sampleCount = clamp(gAoSampleCount, 1.0f, 32.0f);
     float screenRadius = ScreenRadiusFromWorldRadius(input.uv, worldPos, n);
 

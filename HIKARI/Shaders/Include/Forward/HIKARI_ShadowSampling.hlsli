@@ -48,17 +48,37 @@ float HikariSampleShadowPcf(
     const float2 texelSize =
         float2(gShadowTexelSizeX, gShadowTexelSizeY) * gShadowPcfRadius;
 
-    float sum = 0.0f;
-    sum += HikariSampleShadowCompare(uv + texelSize * float2(-1.0f, -1.0f), currentDepth, cascadeIndex);
-    sum += HikariSampleShadowCompare(uv + texelSize * float2( 0.0f, -1.0f), currentDepth, cascadeIndex);
-    sum += HikariSampleShadowCompare(uv + texelSize * float2( 1.0f, -1.0f), currentDepth, cascadeIndex);
-    sum += HikariSampleShadowCompare(uv + texelSize * float2(-1.0f,  0.0f), currentDepth, cascadeIndex);
-    sum += center;
-    sum += HikariSampleShadowCompare(uv + texelSize * float2( 1.0f,  0.0f), currentDepth, cascadeIndex);
-    sum += HikariSampleShadowCompare(uv + texelSize * float2(-1.0f,  1.0f), currentDepth, cascadeIndex);
-    sum += HikariSampleShadowCompare(uv + texelSize * float2( 0.0f,  1.0f), currentDepth, cascadeIndex);
-    sum += HikariSampleShadowCompare(uv + texelSize * float2( 1.0f,  1.0f), currentDepth, cascadeIndex);
-    return sum / 9.0f;
+    // Rotated 5x5 PCF (25 taps). The rotation follows the frame index so
+    // structured cross-shaped aliasing is broken up; TAA/DLAA then smooths the
+    // remaining temporal noise.
+    const float angle = gShadowPadding.x * 2.39996323f;
+    const float s = sin(angle);
+    const float c = cos(angle);
+
+    float sum = center;
+    float count = 1.0f;
+    [unroll]
+    for (int y = -2; y <= 2; ++y)
+    {
+        [unroll]
+        for (int x = -2; x <= 2; ++x)
+        {
+            if (x == 0 && y == 0)
+            {
+                continue;
+            }
+            const float2 offset = float2((float)x, (float)y);
+            const float2 rotated = float2(
+                offset.x * c - offset.y * s,
+                offset.x * s + offset.y * c);
+            sum += HikariSampleShadowCompare(
+                uv + rotated * texelSize,
+                currentDepth,
+                cascadeIndex);
+            count += 1.0f;
+        }
+    }
+    return sum / count;
 }
 
 float HikariShadowReceiverFade(float2 uv)

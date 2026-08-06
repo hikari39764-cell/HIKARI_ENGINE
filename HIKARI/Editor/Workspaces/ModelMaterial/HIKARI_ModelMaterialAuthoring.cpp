@@ -67,6 +67,7 @@ bool ModelMaterialWorkspaceController::OpenMaterialAsset(
       loaded.assetGuid, loaded.sourcePath, std::move(loaded.source),
       loaded.compile,
       !addedDefaultRampBindings);
+  RefreshAuthoringIdCounter();
   candidateAuthoringAssetGuid_ = guid;
   if (IsRenderableMaterialAsset(authoringDocument_.GetMaterial().kind)) {
     candidateMaterialGuid_ = guid;
@@ -151,6 +152,7 @@ bool ModelMaterialWorkspaceController::CreateAndBindRenderableMaterial(
   authoringDocument_.OpenMaterial(
       created.assetGuid, created.sourcePath, std::move(source), created.compile,
       true);
+  RefreshAuthoringIdCounter();
   candidateMaterialGuid_ = created.assetGuid;
   candidateAuthoringAssetGuid_ = created.assetGuid;
   instanceParentCache_.reset();
@@ -233,6 +235,7 @@ bool ModelMaterialWorkspaceController::CreateAuxiliaryMaterialAsset(
   authoringDocument_.OpenMaterial(
       created.assetGuid, created.sourcePath, std::move(source),
       created.compile, true);
+  RefreshAuthoringIdCounter();
   candidateAuthoringAssetGuid_ = created.assetGuid;
   selectedGraphNodeId_.clear();
   selectedGraphEdgeId_.clear();

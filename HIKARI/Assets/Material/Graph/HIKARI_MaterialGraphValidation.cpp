@@ -11,6 +11,7 @@
 #include <utility>
 
 #include "Assets/Material/Graph/HIKARI_MaterialNodeDefinition.h"
+#include "Assets/Material/Graph/HIKARI_MaterialGraphQuery.h"
 
 namespace HIKARI {
     namespace {
@@ -174,25 +175,14 @@ namespace HIKARI {
         const MaterialGraphNodeData* FindNodeById(
             const MaterialGraphData& graph,
             std::string_view nodeId) noexcept {
-            const auto found = std::find_if(
-                graph.nodes.begin(), graph.nodes.end(),
-                [nodeId](const MaterialGraphNodeData& node) {
-                    return node.id == nodeId;
-                });
-            return found == graph.nodes.end() ? nullptr : &*found;
+            return FindMaterialGraphNode(graph, nodeId);
         }
 
         const MaterialGraphEdgeData* FindInputEdge(
             const MaterialGraphData& graph,
             std::string_view nodeId,
             std::string_view pin) noexcept {
-            const auto found = std::find_if(
-                graph.edges.begin(), graph.edges.end(),
-                [nodeId, pin](const MaterialGraphEdgeData& edge) {
-                    return edge.targetNodeId == nodeId &&
-                        edge.targetPin == pin;
-                });
-            return found == graph.edges.end() ? nullptr : &*found;
+            return FindMaterialGraphInputEdge(graph, nodeId, pin);
         }
 
         bool IsStaticNumericExpression(
@@ -837,7 +827,14 @@ namespace HIKARI {
                 sourcePinSignature->type,
                 targetPinSignature->type,
                 targetPinSignature->acceptsDynamicNumeric)) {
-            outReason = "the output and input socket types are incompatible";
+            outReason =
+                std::string(sourceNodeId) + "." +
+                std::string(sourcePin) + " (" +
+                std::string(ToString(sourcePinSignature->type)) +
+                ") cannot connect to " +
+                std::string(targetNodeId) + "." +
+                std::string(targetPin) + " (" +
+                std::string(ToString(targetPinSignature->type)) + ")";
             return false;
         }
 

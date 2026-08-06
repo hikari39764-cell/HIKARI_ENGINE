@@ -1,5 +1,7 @@
 #include "HIKARI_MaterialAssetData.h"
 
+#include "Assets/Material/Graph/HIKARI_MaterialGraphQuery.h"
+
 #include <algorithm>
 #include <cmath>
 #include <optional>
@@ -14,12 +16,7 @@ namespace HIKARI {
         const MaterialGraphParameterData* FindParameter(
             const MaterialGraphData& graph,
             std::string_view id) noexcept {
-            const auto found = std::find_if(
-                graph.parameters.begin(), graph.parameters.end(),
-                [id](const MaterialGraphParameterData& parameter) {
-                    return parameter.id == id;
-                });
-            return found == graph.parameters.end() ? nullptr : &*found;
+            return FindMaterialGraphParameter(graph, id);
         }
 
         const MaterialGraphResourceData* FindResource(
@@ -36,36 +33,20 @@ namespace HIKARI {
         const MaterialGraphResourceData* FindResource(
             const MaterialGraphData& graph,
             std::string_view id) noexcept {
-            const auto found = std::find_if(
-                graph.resources.begin(), graph.resources.end(),
-                [id](const MaterialGraphResourceData& resource) {
-                    return resource.id == id;
-                });
-            return found == graph.resources.end() ? nullptr : &*found;
+            return FindMaterialGraphResource(graph, id);
         }
 
         const MaterialGraphNodeData* FindNode(
             const MaterialGraphData& graph,
             std::string_view id) noexcept {
-            const auto found = std::find_if(
-                graph.nodes.begin(), graph.nodes.end(),
-                [id](const MaterialGraphNodeData& node) {
-                    return node.id == id;
-                });
-            return found == graph.nodes.end() ? nullptr : &*found;
+            return FindMaterialGraphNode(graph, id);
         }
 
         const MaterialGraphEdgeData* FindInputEdge(
             const MaterialGraphData& graph,
             std::string_view nodeId,
             std::string_view inputPin) noexcept {
-            const auto found = std::find_if(
-                graph.edges.begin(), graph.edges.end(),
-                [nodeId, inputPin](const MaterialGraphEdgeData& edge) {
-                    return edge.targetNodeId == nodeId &&
-                        edge.targetPin == inputPin;
-                });
-            return found == graph.edges.end() ? nullptr : &*found;
+            return FindMaterialGraphInputEdge(graph, nodeId, inputPin);
         }
 
         float ReadComponent(

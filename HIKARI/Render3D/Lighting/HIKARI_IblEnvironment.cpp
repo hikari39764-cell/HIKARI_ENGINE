@@ -1,5 +1,6 @@
 #include "Render3D/Lighting/HIKARI_IblEnvironment.h"
 
+#include "Core/Text/HIKARI_BoolText.h"
 #include <algorithm>
 #include <sstream>
 
@@ -82,7 +83,7 @@ namespace HIKARI::IBL {
         }
 
         const char* BoolText(bool value) {
-            return value ? "true" : "false";
+            return TEXT::BoolText(value);
         }
 
         bool IsValidSrv(D3D12_GPU_DESCRIPTOR_HANDLE handle) {

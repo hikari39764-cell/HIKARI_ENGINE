@@ -10,5 +10,7 @@ namespace HIKARI::MATH {
     // - Transform order: clip = Proj * View * World * local
     constexpr bool kRightHanded = true;
     constexpr bool kNdcDepthZeroToOne = true;
+    constexpr float kDegreesToRadians =
+        0.01745329251994329577f;
 
 } // namespace HIKARI::MATH
