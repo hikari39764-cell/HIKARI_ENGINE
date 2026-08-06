@@ -138,7 +138,8 @@ public:
   bool ApplyAiMaterialGraphEdit(
       DocumentSceneBase &scene,
       const AiMaterialGraphEditRequest &request,
-      std::string &outMessage);
+      std::string &outMessage,
+      std::vector<std::string> &outDetails);
   std::string GetAiMaterialStatus() const;
 
   ModelMaterialBindingCommandResult ExecuteBindingCommand(

@@ -1,9 +1,11 @@
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
 
 #include <algorithm>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "Assets/Material/Authoring/HIKARI_MaterialSemanticNodeFactory.h"
 #include "Assets/Material/Graph/HIKARI_MaterialGraphValidation.h"
@@ -13,10 +15,89 @@
 
 namespace HIKARI::EDITOR {
 
+namespace {
+
+bool AsciiEqualFold(std::string_view lhs, std::string_view rhs) {
+    if (lhs.size() != rhs.size()) {
+        return false;
+    }
+    for (size_t index = 0u; index < lhs.size(); ++index) {
+        const auto lower = [](char c) {
+            return c >= 'A' && c <= 'Z'
+                ? static_cast<char>(c - 'A' + 'a')
+                : c;
+        };
+        if (lower(lhs[index]) != lower(rhs[index])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+std::string JoinPins(
+    const std::vector<std::string_view>& pins,
+    std::string_view fallback) {
+    if (pins.empty()) {
+        return std::string(fallback);
+    }
+    std::string result;
+    for (const std::string_view pin : pins) {
+        if (!result.empty()) {
+            result += ", ";
+        }
+        result += pin;
+    }
+    return result;
+}
+
+std::optional<std::string> ResolveOutputPin(
+    const MaterialGraphNodeData& node,
+    const std::string& requested) {
+    const std::vector<std::string_view> outputs =
+        GetMaterialGraphNodeOutputPins(node);
+    if (requested.empty() || requested == "out" ||
+        requested == "output" || requested == "o") {
+        return outputs.empty()
+            ? std::optional<std::string>{}
+            : std::optional<std::string>(
+                  std::string(outputs.front()));
+    }
+    for (const std::string_view output : outputs) {
+        if (AsciiEqualFold(output, requested)) {
+            return std::string(output);
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<std::string> ResolveInputPin(
+    const MaterialGraphNodeData& node,
+    const std::string& requested) {
+    const std::vector<std::string_view> inputs =
+        GetMaterialGraphNodeInputPins(node);
+    if (requested.empty() || requested == "in" ||
+        requested == "input" || requested == "i") {
+        return inputs.empty()
+            ? std::optional<std::string>{}
+            : std::optional<std::string>(
+                  std::string(inputs.front()));
+    }
+    for (const std::string_view input : inputs) {
+        if (AsciiEqualFold(input, requested)) {
+            return std::string(input);
+        }
+    }
+    return std::nullopt;
+}
+
+} // namespace
+
 bool ModelMaterialWorkspaceController::ApplyAiMaterialGraphEdit(
     DocumentSceneBase &scene,
     const AiMaterialGraphEditRequest &request,
-    std::string &outMessage) {
+    std::string &outMessage,
+    std::vector<std::string> &outDetails) {
+  outDetails.clear();
   if (!authoringDocument_.HasMaterial()) {
     outMessage = "未打开材质文档";
     return false;
@@ -95,6 +176,16 @@ bool ModelMaterialWorkspaceController::ApplyAiMaterialGraphEdit(
     CommitMaterialMutation(
         std::move(before), "AI add material graph node", scene);
     outMessage = "已添加节点 " + displayName + "（id=" + nodeId + "）";
+    const MaterialGraphNodeData *added =
+        MATERIAL_GRAPH_UI::FindNode(*graph, nodeId);
+    if (added != nullptr) {
+        outDetails.push_back(
+            "inputs: " + JoinPins(
+                GetMaterialGraphNodeInputPins(*added), "（无输入）"));
+        outDetails.push_back(
+            "outputs: " + JoinPins(
+                GetMaterialGraphNodeOutputPins(*added), "（无输出）"));
+    }
     return true;
   }
 
@@ -133,30 +224,60 @@ bool ModelMaterialWorkspaceController::ApplyAiMaterialGraphEdit(
       outMessage = "找不到目标节点：" + request.targetNode;
       return false;
     }
+    const std::optional<std::string> resolvedSourcePin =
+        ResolveOutputPin(*sourceNode, request.sourcePin);
+    if (!resolvedSourcePin.has_value()) {
+      outMessage = "源节点 " + sourceNode->id + " 没有可用输出，"
+          "或找不到输出 pin：" + request.sourcePin;
+      outDetails.push_back(
+          "outputs: " + JoinPins(
+              GetMaterialGraphNodeOutputPins(*sourceNode),
+              "（无输出）"));
+      return false;
+    }
+    const std::optional<std::string> resolvedTargetPin =
+        ResolveInputPin(*targetNode, request.targetPin);
+    if (!resolvedTargetPin.has_value()) {
+      outMessage = "目标节点 " + targetNode->id + " 没有可用输入，"
+          "或找不到输入 pin：" + request.targetPin;
+      outDetails.push_back(
+          "inputs: " + JoinPins(
+              GetMaterialGraphNodeInputPins(*targetNode),
+              "（无输入）"));
+      return false;
+    }
     std::string reason;
     if (!CanConnectMaterialGraphPins(
-            *graph, sourceNode->id, request.sourcePin,
-            targetNode->id, request.targetPin, reason)) {
+            *graph, sourceNode->id, *resolvedSourcePin,
+            targetNode->id, *resolvedTargetPin, reason)) {
       outMessage = "无法连线：" + reason;
+      outDetails.push_back(
+          "源输出: " + JoinPins(
+              GetMaterialGraphNodeOutputPins(*sourceNode),
+              "（无输出）"));
+      outDetails.push_back(
+          "目标输入: " + JoinPins(
+              GetMaterialGraphNodeInputPins(*targetNode),
+              "（无输入）"));
       return false;
     }
     std::erase_if(
-        graph->edges, [&targetNode, &request](const auto &edge) {
+        graph->edges, [&targetNode, &resolvedTargetPin](const auto &edge) {
           return edge.targetNodeId == targetNode->id &&
-              edge.targetPin == request.targetPin;
+              edge.targetPin == *resolvedTargetPin;
         });
     MaterialGraphEdgeData edge{};
     edge.id = "Edge_" + std::to_string(authoringIdCounter_++);
     edge.sourceNodeId = sourceNode->id;
-    edge.sourcePin = request.sourcePin;
+    edge.sourcePin = *resolvedSourcePin;
     edge.targetNodeId = targetNode->id;
-    edge.targetPin = request.targetPin;
+    edge.targetPin = *resolvedTargetPin;
     graph->edges.push_back(std::move(edge));
     CommitMaterialMutation(
         std::move(before), "AI connect material graph nodes", scene);
     outMessage = "已连接 " + sourceNode->id + ":" +
-        request.sourcePin + " -> " + targetNode->id + ":" +
-        request.targetPin;
+        *resolvedSourcePin + " -> " + targetNode->id + ":" +
+        *resolvedTargetPin;
     return true;
   }
 
@@ -175,15 +296,23 @@ bool ModelMaterialWorkspaceController::ApplyAiMaterialGraphEdit(
           findNode(request.sourceNode);
       const MaterialGraphNodeData *targetNode =
           findNode(request.targetNode);
+      const std::optional<std::string> sourcePin =
+          sourceNode != nullptr
+              ? ResolveOutputPin(*sourceNode, request.sourcePin)
+              : std::nullopt;
+      const std::optional<std::string> targetPin =
+          targetNode != nullptr
+              ? ResolveInputPin(*targetNode, request.targetPin)
+              : std::nullopt;
       for (MaterialGraphEdgeData &edge : graph->edges) {
         const bool sourceMatches =
-            sourceNode != nullptr &&
+            sourceNode != nullptr && sourcePin.has_value() &&
             edge.sourceNodeId == sourceNode->id &&
-            edge.sourcePin == request.sourcePin;
+            edge.sourcePin == *sourcePin;
         const bool targetMatches =
-            targetNode != nullptr &&
+            targetNode != nullptr && targetPin.has_value() &&
             edge.targetNodeId == targetNode->id &&
-            edge.targetPin == request.targetPin;
+            edge.targetPin == *targetPin;
         if (sourceMatches && targetMatches) {
           return &edge;
         }

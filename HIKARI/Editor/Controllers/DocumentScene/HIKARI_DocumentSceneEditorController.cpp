@@ -1282,11 +1282,14 @@ namespace HIKARI {
                         request.positionY =
                             readFloat("positionY", 0.0f);
                         std::string message;
+                        std::vector<std::string> graphDetails;
                         if (modelMaterialWorkspaceController_
                                 .ApplyAiMaterialGraphEdit(
-                                    scene, request, message)) {
+                                    scene, request, message,
+                                    graphDetails)) {
                             result.ok = true;
                             result.message = message;
+                            result.details = std::move(graphDetails);
                             aiUndoStack_.push_back(
                                 { AiSceneUndoRecord::Kind::MaterialEdit,
                                   {}, {}, {} });

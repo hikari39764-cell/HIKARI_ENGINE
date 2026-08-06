@@ -255,10 +255,12 @@ AiRequestResult SubmitAiRequest(std::string_view requestJson) {
                 "\"nodeType\":\"node.additive\",\"name\":\"Rim\"}",
                 "{\"action\":\"material.graph_edit\","
                 "\"operation\":\"connect\","
-                "\"sourceNode\":\"Node_1\",\"sourcePin\":\"out\","
-                "\"targetNode\":\"Node_2\",\"targetPin\":\"in\"}",
+                "\"sourceNode\":\"Node_1\",\"sourcePin\":\"A\","
+                "\"targetNode\":\"Node_2\",\"targetPin\":\"B\"}",
                 "operation: add_node/remove_node/connect/disconnect；"
-                "节点可用 name 或 id 引用",
+                "节点可用 name 或 id 引用；pin 名以 add_node 返回的 "
+                "inputs/outputs 为准（例如 A/B/DiffuseResponse/Surface），"
+                "sourcePin/targetPin 可省略或填 out/in 取第一个",
             };
         } else if (topic == "capture.preview") {
             result.details = {
@@ -355,6 +357,8 @@ std::string AiAssistantPanel::BuildSystemPrompt() const {
         "简单任务可以省略计划。\n"
         "不确定某个 action 的参数时，先调用 "
         "{\"action\":\"help\",\"topic\":\"<action名>\"} 查询用法。\n"
+        "连线材质节点时，以 add_node 返回的 inputs/outputs 为准；"
+        "sourcePin/targetPin 可省略（默认取第一个输出/输入）。\n"
         "当前能力清单：\n";
     for (const AI_ASSISTANT::AiCapability& capability :
          AI_ASSISTANT::QueryCapabilities()) {
@@ -391,6 +395,7 @@ void AiAssistantPanel::RunConversation(const std::string& userText) {
     }
     conversation.push_back({ "user", userText });
     lastRoundActions_.clear();
+    int consecutiveFailureRounds = 0;
     for (int turn = 0; turn < kMaxToolRounds; ++turn) {
         if (stopRequested_.load()) {
             return;
@@ -483,6 +488,22 @@ void AiAssistantPanel::RunConversation(const std::string& userText) {
         resultText += "\n汇总：" + std::to_string(successCount) +
             " 成功，" + std::to_string(failureCount) + " 失败。";
         conversation.push_back({ "user", resultText });
+        if (successCount == 0u && failureCount > 0u) {
+            ++consecutiveFailureRounds;
+        } else {
+            consecutiveFailureRounds = 0;
+        }
+        if (consecutiveFailureRounds >= 3) {
+            AppendMessage(
+                { "assistant",
+                  "连续 3 轮动作全部失败，已停止；"
+                  "请基于失败原因修正参数或换一种做法。" });
+            {
+                std::lock_guard<std::mutex> lock(streamMutex_);
+                streamingPartial_.clear();
+            }
+            return;
+        }
     }
     AppendMessage({ "assistant", "（已达到最大工具调用轮数，请继续提问）" });
     {
