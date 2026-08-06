@@ -40,17 +40,11 @@ namespace HIKARI::EDITOR::AI_ASSISTANT {
         std::string_view field);
     std::vector<std::string> ExtractAllActionJson(
         const std::string& reply);
-    bool RunChatCompletions(
-        const AiChatConfig& config,
-        const std::vector<AiChatMessage>& messages,
-        std::string& outContent,
-        std::string& outError);
     bool RunChatCompletionsStreaming(
         const AiChatConfig& config,
         const std::vector<AiChatMessage>& messages,
         const AiChatStreamCallback& onDelta,
         std::string& outFull,
         std::string& outError);
-    std::string ExtractActionJson(const std::string& reply);
 
 } // namespace HIKARI::EDITOR::AI_ASSISTANT

@@ -57,10 +57,12 @@ namespace HIKARI::EDITOR {
         void ResetVisionSettings();
         AI_ASSISTANT::AiRequestResult ExecuteRequest(
             std::string_view json);
+        AI_ASSISTANT::AiChatConfig SnapshotConfig() const;
 
         std::vector<AI_ASSISTANT::AiChatMessage> messages_{};
         std::mutex messageMutex_{};
         std::mutex streamMutex_{};
+        mutable std::mutex stateMutex_{};
         std::string streamingPartial_{};
         bool streamingActive_ = false;
         std::vector<std::string> lastRoundActions_{};
@@ -85,6 +87,7 @@ namespace HIKARI::EDITOR {
         AI_ASSISTANT::AiChatConfig config_{};
         bool configLoaded_ = false;
         std::atomic<bool> busy_{ false };
+        std::atomic<bool> stopRequested_{ false };
         std::thread worker_{};
     };
 

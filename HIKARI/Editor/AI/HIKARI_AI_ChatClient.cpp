@@ -3,11 +3,14 @@
 #include <algorithm>
 #include <cerrno>
 #include <cctype>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
 #include <optional>
 #include <sstream>
+
+#include <json.hpp>
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -312,21 +315,6 @@ std::string GetAiVisionSkillEnvPath() {
     return SkillEnvPath();
 }
 
-bool RunChatCompletions(
-    const AiChatConfig& config,
-    const std::vector<AiChatMessage>& messages,
-    std::string& outContent,
-    std::string& outError) {
-    outContent.clear();
-    outError.clear();
-    if (!config.valid) {
-        outError = "未配置 API Key（DASHSCOPE_API_KEY）";
-        return false;
-    }
-    const std::string body = BuildRequestBody(config, messages);
-    return RunApiRequest(config, body, outContent, outError);
-}
-
 std::string AiJsonEscape(const std::string& value) {
     return JsonEscape(value);
 }
@@ -392,13 +380,34 @@ std::string ExtractJsonNumberField(
     return std::string(json.substr(start, cursor - start));
 }
 
-bool RunApiRequestRaw(
+namespace {
+
+#ifdef _WIN32
+struct ApiRequestHandleSet {
+    HINTERNET connection = nullptr;
+    HINTERNET request = nullptr;
+
+    ~ApiRequestHandleSet() {
+        if (request != nullptr) {
+            WinHttpCloseHandle(request);
+        }
+        if (connection != nullptr) {
+            WinHttpCloseHandle(connection);
+        }
+    }
+};
+#else
+struct ApiRequestHandleSet {};
+#endif
+
+} // namespace
+
+bool BeginApiRequest(
     const AiChatConfig& config,
     const std::string& body,
-    std::string& outRaw,
+    DWORD receiveTimeoutMs,
+    ApiRequestHandleSet& handles,
     std::string& outError) {
-    outRaw.clear();
-    outError.clear();
     if (!config.valid) {
         outError = "未配置 API Key";
         return false;
@@ -423,25 +432,29 @@ bool RunApiRequestRaw(
     }
     (void)WinHttpSetTimeouts(
         session, 5000, 5000, 30000, 90000);
-    HINTERNET connection = WinHttpConnect(
+    handles.connection = WinHttpConnect(
         session, host.c_str(), INTERNET_DEFAULT_HTTPS_PORT, 0);
-    if (connection == nullptr) {
+    if (handles.connection == nullptr) {
         outError = "WinHttpConnect 失败";
         return false;
     }
-    HINTERNET request = WinHttpOpenRequest(
-        connection,
+    handles.request = WinHttpOpenRequest(
+        handles.connection,
         L"POST",
         path.c_str(),
         nullptr,
         WINHTTP_NO_REFERER,
         WINHTTP_DEFAULT_ACCEPT_TYPES,
         WINHTTP_FLAG_SECURE);
-    if (request == nullptr) {
-        WinHttpCloseHandle(connection);
+    if (handles.request == nullptr) {
         outError = "WinHttpOpenRequest 失败";
         return false;
     }
+    (void)WinHttpSetOption(
+        handles.request,
+        WINHTTP_OPTION_RECEIVE_TIMEOUT,
+        &receiveTimeoutMs,
+        sizeof(receiveTimeoutMs));
 
     const std::wstring headers =
         L"Content-Type: application/json\r\n"
@@ -449,7 +462,7 @@ bool RunApiRequestRaw(
         WideFromAscii(config.apiKey) +
         L"\r\n";
     const BOOL sent = WinHttpSendRequest(
-        request,
+        handles.request,
         headers.c_str(),
         static_cast<DWORD>(-1L),
         const_cast<char*>(body.data()),
@@ -458,18 +471,37 @@ bool RunApiRequestRaw(
         0);
     if (!sent) {
         const DWORD error = GetLastError();
-        WinHttpCloseHandle(request);
-        WinHttpCloseHandle(connection);
         outError = "WinHttpSendRequest 失败 (error " +
             std::to_string(error) + ")";
         return false;
     }
-    if (!WinHttpReceiveResponse(request, nullptr)) {
+    if (!WinHttpReceiveResponse(handles.request, nullptr)) {
         const DWORD error = GetLastError();
-        WinHttpCloseHandle(request);
-        WinHttpCloseHandle(connection);
         outError = "WinHttpReceiveResponse 失败 (error " +
             std::to_string(error) + ")";
+        return false;
+    }
+    return true;
+#else
+    (void)body;
+    (void)receiveTimeoutMs;
+    (void)handles;
+    outError = "仅支持 Windows 编辑器宿主";
+    return false;
+#endif
+}
+
+bool RunApiRequestRaw(
+    const AiChatConfig& config,
+    const std::string& body,
+    std::string& outRaw,
+    std::string& outError) {
+    outRaw.clear();
+    outError.clear();
+#ifdef _WIN32
+    ApiRequestHandleSet handles;
+    if (!BeginApiRequest(
+            config, body, 90000u, handles, outError)) {
         return false;
     }
 
@@ -477,22 +509,20 @@ bool RunApiRequestRaw(
     char buffer[4096];
     DWORD bytesRead = 0u;
     while (WinHttpReadData(
-               request, buffer, static_cast<DWORD>(sizeof(buffer)),
-               &bytesRead) &&
+               handles.request, buffer,
+               static_cast<DWORD>(sizeof(buffer)), &bytesRead) &&
            bytesRead > 0u) {
         response.append(buffer, bytesRead);
     }
     DWORD statusCode = 0u;
     DWORD statusSize = sizeof(statusCode);
     (void)WinHttpQueryHeaders(
-        request,
+        handles.request,
         WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
         WINHTTP_HEADER_NAME_BY_INDEX,
         &statusCode,
         &statusSize,
         WINHTTP_NO_HEADER_INDEX);
-    WinHttpCloseHandle(request);
-    WinHttpCloseHandle(connection);
 
     const std::string statusText =
         "HTTP " + std::to_string(statusCode) + " ";
@@ -516,7 +546,71 @@ bool RunApiRequestRaw(
     outRaw = std::move(response);
     return true;
 #else
+    (void)config;
     (void)body;
+    outError = "仅支持 Windows 编辑器宿主";
+    return false;
+#endif
+}
+
+bool RunApiRequestRawStreaming(
+    const AiChatConfig& config,
+    const std::string& body,
+    const std::function<bool(const std::string& chunk)>& onChunk,
+    std::string& outError) {
+    outError.clear();
+#ifdef _WIN32
+    ApiRequestHandleSet handles;
+    if (!BeginApiRequest(
+            config, body, 20000u, handles, outError)) {
+        return false;
+    }
+
+    char buffer[4096];
+    const auto started = std::chrono::steady_clock::now();
+    const auto deadline =
+        started + std::chrono::seconds(90);
+    while (std::chrono::steady_clock::now() < deadline) {
+        DWORD bytesRead = 0u;
+        if (!WinHttpReadData(
+                handles.request, buffer,
+                static_cast<DWORD>(sizeof(buffer)), &bytesRead)) {
+            const DWORD error = GetLastError();
+            if (error == ERROR_WINHTTP_TIMEOUT ||
+                error == ERROR_WINHTTP_OPERATION_CANCELLED) {
+                outError = "流式响应超时（20 秒无数据）";
+            } else {
+                outError = "WinHttpReadData 失败 (error " +
+                    std::to_string(error) + ")";
+            }
+            return false;
+        }
+        if (bytesRead == 0u) {
+            break;
+        }
+        if (onChunk &&
+            !onChunk(std::string(buffer, bytesRead))) {
+            break;
+        }
+    }
+    DWORD statusCode = 0u;
+    DWORD statusSize = sizeof(statusCode);
+    (void)WinHttpQueryHeaders(
+        handles.request,
+        WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+        WINHTTP_HEADER_NAME_BY_INDEX,
+        &statusCode,
+        &statusSize,
+        WINHTTP_NO_HEADER_INDEX);
+    if (statusCode >= 400u) {
+        outError = "HTTP " + std::to_string(statusCode) + " 响应错误";
+        return false;
+    }
+    return true;
+#else
+    (void)config;
+    (void)body;
+    (void)onChunk;
     outError = "仅支持 Windows 编辑器宿主";
     return false;
 #endif
@@ -551,101 +645,99 @@ bool RunChatCompletionsStreaming(
         outError = "未配置 API Key（DASHSCOPE_API_KEY）";
         return false;
     }
-    std::string raw;
     const std::string body =
         BuildRequestBody(config, messages, true);
-    if (!RunApiRequestRaw(config, body, raw, outError)) {
+    std::string full;
+    std::string pending;
+    bool sawDone = false;
+    bool userAbort = false;
+    const auto onChunk = [&](const std::string& chunk) {
+        pending += chunk;
+        size_t newline = 0u;
+        while ((newline = pending.find('\n')) !=
+               std::string::npos) {
+            const std::string line = pending.substr(0u, newline);
+            pending.erase(0u, newline + 1u);
+            const std::string trimmed = Trim(line);
+            if (trimmed.rfind("data:", 0u) != 0u) {
+                continue;
+            }
+            const std::string data = Trim(trimmed.substr(5u));
+            if (data == "[DONE]") {
+                sawDone = true;
+                return false;
+            }
+            const std::string delta = ExtractJsonContent(data);
+            if (delta.empty()) {
+                continue;
+            }
+            full += delta;
+            if (onDelta && !onDelta(delta)) {
+                userAbort = true;
+                return false;
+            }
+        }
+        return true;
+    };
+    std::string streamError;
+    const bool streamOk = RunApiRequestRawStreaming(
+        config, body, onChunk, streamError);
+    if (userAbort) {
+        outError = "用户中止";
         return false;
     }
-
-    std::string full;
-    size_t start = 0u;
-    while (start < raw.size()) {
-        const auto newline = raw.find('\n', start);
-        const std::string line = newline == std::string::npos
-            ? raw.substr(start)
-            : raw.substr(start, newline - start);
-        start = newline == std::string::npos
-            ? raw.size()
-            : newline + 1u;
-        std::string trimmed = Trim(line);
-        if (trimmed.rfind("data:", 0u) != 0u) {
-            continue;
-        }
-        const std::string data = Trim(trimmed.substr(5u));
-        if (data == "[DONE]") {
-            break;
-        }
-        const std::string delta = ExtractJsonContent(data);
-        if (delta.empty()) {
-            continue;
-        }
-        full += delta;
-        if (onDelta && !onDelta(delta)) {
-            outError = "用户中止";
-            return false;
-        }
+    if (!streamOk && full.empty()) {
+        outError = streamError;
+        return false;
     }
-    outFull = full;
-    return !full.empty();
-}
-
-std::string ExtractActionJson(const std::string& reply) {
-    const std::string marker = "{\"action\"";
-    const auto start = reply.find(marker);
-    if (start == std::string::npos) {
-        return {};
+    if (!sawDone && full.empty()) {
+        outError = "API 没有返回可识别的流式内容";
+        return false;
     }
-    const auto end = reply.find('}', start + 1u);
-    if (end == std::string::npos) {
-        return {};
-    }
-    return reply.substr(start, end - start + 1u);
+    outFull = std::move(full);
+    return !outFull.empty();
 }
 
 std::vector<std::string> ExtractAllActionJson(
     const std::string& reply) {
     std::vector<std::string> actions;
-
-    // Batch array form: {"actions":[{...},{...}]}.
-    const auto arrayMarker = reply.find("\"actions\"");
-    if (arrayMarker != std::string::npos) {
-        const auto bracket = reply.find('[', arrayMarker);
-        if (bracket != std::string::npos) {
-            size_t cursor = bracket + 1u;
-            while (cursor < reply.size()) {
-                const auto open = reply.find('{', cursor);
-                if (open == std::string::npos) {
-                    break;
-                }
-                int depth = 0;
-                size_t close = open;
-                for (; close < reply.size(); ++close) {
-                    if (reply[close] == '{') {
-                        ++depth;
-                    } else if (reply[close] == '}') {
-                        --depth;
-                        if (depth == 0) {
-                            break;
-                        }
-                    }
-                }
-                if (close >= reply.size()) {
-                    break;
-                }
-                actions.push_back(
-                    reply.substr(open, close - open + 1u));
-                cursor = close + 1u;
+    const auto collectObject =
+        [&actions](const nlohmann::json& node) {
+            if (node.is_object() && node.contains("action") &&
+                node["action"].is_string()) {
+                actions.push_back(node.dump());
             }
+        };
+    const auto collectContainer =
+        [&collectObject](const nlohmann::json& node) {
+            if (node.is_object()) {
+                if (node.contains("actions") &&
+                    node["actions"].is_array()) {
+                    for (const auto& item : node["actions"]) {
+                        collectObject(item);
+                    }
+                } else {
+                    collectObject(node);
+                }
+            } else if (node.is_array()) {
+                for (const auto& item : node) {
+                    collectObject(item);
+                }
+            }
+        };
+
+    // Whole-document form: {"actions":[...]} or an action array.
+    try {
+        collectContainer(nlohmann::json::parse(reply));
+        if (!actions.empty()) {
+            return actions;
         }
-    }
-    if (!actions.empty()) {
-        return actions;
+    } catch (...) {
     }
 
-    // Whole-line form: one JSON object per line, never inside prose.
+    // Whole-line form: one complete JSON object per line.
     size_t start = 0u;
-    while (start <= reply.size()) {
+    while (start < reply.size()) {
         const auto newline = reply.find('\n', start);
         const std::string line = newline == std::string::npos
             ? reply.substr(start)
@@ -656,11 +748,44 @@ std::vector<std::string> ExtractAllActionJson(
         const std::string trimmed = Trim(line);
         if (trimmed.size() < 2u ||
             trimmed.front() != '{' ||
-            trimmed.back() != '}' ||
-            trimmed.find("\"action\"") == std::string::npos) {
+            trimmed.back() != '}') {
             continue;
         }
-        actions.push_back(trimmed);
+        try {
+            collectContainer(nlohmann::json::parse(trimmed));
+        } catch (...) {
+        }
+    }
+    if (!actions.empty()) {
+        return actions;
+    }
+
+    // Fenced block form: ```json ... ```.
+    size_t cursor = 0u;
+    while (cursor < reply.size()) {
+        const auto fence = reply.find("```", cursor);
+        if (fence == std::string::npos) {
+            break;
+        }
+        const auto close = reply.find("```", fence + 3u);
+        if (close == std::string::npos) {
+            break;
+        }
+        std::string block =
+            reply.substr(fence + 3u, close - fence - 3u);
+        cursor = close + 3u;
+        const auto firstNewline = block.find('\n');
+        if (firstNewline != std::string::npos) {
+            const std::string tag =
+                Trim(block.substr(0u, firstNewline));
+            if (tag == "json" || tag == "JSON") {
+                block = block.substr(firstNewline + 1u);
+            }
+        }
+        try {
+            collectContainer(nlohmann::json::parse(block));
+        } catch (...) {
+        }
     }
     return actions;
 }

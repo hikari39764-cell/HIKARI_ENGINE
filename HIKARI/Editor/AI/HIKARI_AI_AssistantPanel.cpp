@@ -290,6 +290,7 @@ AiAssistantPanel::AiAssistantPanel() {
 }
 
 AiAssistantPanel::~AiAssistantPanel() {
+    stopRequested_.store(true);
     if (worker_.joinable()) {
         worker_.join();
     }
@@ -334,6 +335,12 @@ void AiAssistantPanel::AppendMessage(
 }
 
 void AiAssistantPanel::RunConversation(const std::string& userText) {
+    const AI_ASSISTANT::AiChatConfig config = SnapshotConfig();
+    AiContextCallback contextCallback;
+    {
+        std::lock_guard<std::mutex> lock(stateMutex_);
+        contextCallback = contextCallback_;
+    }
     std::vector<AI_ASSISTANT::AiChatMessage> conversation;
     {
         std::lock_guard<std::mutex> lock(messageMutex_);
@@ -342,10 +349,13 @@ void AiAssistantPanel::RunConversation(const std::string& userText) {
     conversation.push_back({ "user", userText });
     lastRoundActions_.clear();
     for (int turn = 0; turn < kMaxToolRounds; ++turn) {
+        if (stopRequested_.load()) {
+            return;
+        }
         std::vector<AI_ASSISTANT::AiChatMessage> request = conversation;
         std::string systemContent = BuildSystemPrompt();
-        if (contextCallback_) {
-            systemContent += "\n\n当前现状：\n" + contextCallback_();
+        if (contextCallback) {
+            systemContent += "\n\n当前现状：\n" + contextCallback();
         }
         request.insert(
             request.begin(),
@@ -360,7 +370,7 @@ void AiAssistantPanel::RunConversation(const std::string& userText) {
         }
         const bool streamOk =
             AI_ASSISTANT::RunChatCompletionsStreaming(
-                config_,
+                config,
                 request,
                 [this](const std::string& delta) {
                     std::lock_guard<std::mutex> lock(streamMutex_);
@@ -448,6 +458,7 @@ void AiAssistantPanel::SendCurrentMessage() {
     }
     AppendMessage({ "user", text });
     inputBuffer_[0] = '\0';
+    stopRequested_.store(false);
     busy_.store(true);
     if (worker_.joinable()) {
         worker_.join();
@@ -456,27 +467,31 @@ void AiAssistantPanel::SendCurrentMessage() {
         try {
             RunConversation(text);
         } catch (...) {
-            AppendMessage({ "assistant", "（内部错误，已停止）" });
-            {
-                std::lock_guard<std::mutex> lock(streamMutex_);
-                streamingActive_ = false;
-                streamingPartial_.clear();
+            try {
+                AppendMessage({ "assistant", "（内部错误，已停止）" });
+            } catch (...) {
             }
+        }
+        {
+            std::lock_guard<std::mutex> lock(streamMutex_);
+            streamingActive_ = false;
+            streamingPartial_.clear();
         }
         busy_.store(false);
     });
 }
 
 void AiAssistantPanel::OpenApiSettingsBuffers() {
+    const AI_ASSISTANT::AiChatConfig config = SnapshotConfig();
     std::snprintf(
         apiKeyBuffer_, sizeof(apiKeyBuffer_), "%s",
-        config_.apiKey.c_str());
+        config.apiKey.c_str());
     std::snprintf(
         baseUrlBuffer_, sizeof(baseUrlBuffer_), "%s",
-        config_.baseUrl.c_str());
+        config.baseUrl.c_str());
     std::snprintf(
         modelBuffer_, sizeof(modelBuffer_), "%s",
-        config_.model.c_str());
+        config.model.c_str());
 }
 
 void AiAssistantPanel::SaveApiSettings() {
@@ -493,17 +508,22 @@ void AiAssistantPanel::SaveApiSettings() {
     }
     updated.valid = !updated.apiKey.empty();
     AI_ASSISTANT::SaveAiChatConfig(updated);
-    configLoaded_ = AI_ASSISTANT::LoadAiChatConfig(config_);
+    {
+        std::lock_guard<std::mutex> lock(stateMutex_);
+        configLoaded_ = AI_ASSISTANT::LoadAiChatConfig(config_);
+    }
     OpenApiSettingsBuffers();
 }
 
 void AiAssistantPanel::SetSceneActionCallback(
     AiSceneActionCallback callback) {
+    std::lock_guard<std::mutex> lock(stateMutex_);
     sceneActionCallback_ = std::move(callback);
 }
 
 void AiAssistantPanel::SetContextCallback(
     AiContextCallback callback) {
+    std::lock_guard<std::mutex> lock(stateMutex_);
     contextCallback_ = std::move(callback);
 }
 
@@ -511,14 +531,19 @@ AI_ASSISTANT::AiRequestResult AiAssistantPanel::ExecuteRequest(
     std::string_view json) {
     const std::string action =
         AI_ASSISTANT::ExtractJsonField(json, "action");
+    AiSceneActionCallback sceneCallback;
+    {
+        std::lock_guard<std::mutex> lock(stateMutex_);
+        sceneCallback = sceneActionCallback_;
+    }
     if (action.rfind("procedural.", 0u) == 0u ||
         action.rfind("scene.", 0u) == 0u ||
         action.rfind("asset.", 0u) == 0u ||
         action.rfind("material.", 0u) == 0u ||
         action.rfind("capture.", 0u) == 0u ||
         action.rfind("action.", 0u) == 0u) {
-        if (sceneActionCallback_) {
-            return sceneActionCallback_(json);
+        if (sceneCallback) {
+            return sceneCallback(json);
         }
         AI_ASSISTANT::AiRequestResult result{};
         result.ok = false;
@@ -531,6 +556,11 @@ AI_ASSISTANT::AiRequestResult AiAssistantPanel::ExecuteRequest(
         return result;
     }
     return AI_ASSISTANT::SubmitAiRequest(json);
+}
+
+AI_ASSISTANT::AiChatConfig AiAssistantPanel::SnapshotConfig() const {
+    std::lock_guard<std::mutex> lock(stateMutex_);
+    return config_;
 }
 
 void AiAssistantPanel::OpenVisionBuffers() {
@@ -598,6 +628,13 @@ void AiAssistantPanel::Draw(bool& open) {
     }
 
     const bool busy = busy_.load();
+    bool configValid = false;
+    std::string configModel;
+    {
+        std::lock_guard<std::mutex> lock(stateMutex_);
+        configValid = config_.valid;
+        configModel = config_.model;
+    }
     const ImVec4 statusColor = !configLoaded_
         ? ImVec4{ 1.0f, 0.42f, 0.35f, 1.0f }
         : busy
@@ -606,8 +643,8 @@ void AiAssistantPanel::Draw(bool& open) {
     ImGui::TextColored(statusColor, "%s",
         busy
             ? "● 处理中..."
-            : config_.valid
-                ? ("● DashScope · " + config_.model).c_str()
+            : configValid
+                ? ("● DashScope · " + configModel).c_str()
                 : "● 未配置 API Key（只读模式）");
     if (ImGui::GetFont() != nullptr &&
         ImGui::GetFont()->FindGlyphNoFallback(
@@ -732,7 +769,11 @@ void AiAssistantPanel::Draw(bool& open) {
             ImGui::SameLine();
             if (ImGui::Button("Reset to defaults")) {
                 AI_ASSISTANT::ResetAiChatConfig();
-                configLoaded_ = AI_ASSISTANT::LoadAiChatConfig(config_);
+                {
+                    std::lock_guard<std::mutex> lock(stateMutex_);
+                    configLoaded_ =
+                        AI_ASSISTANT::LoadAiChatConfig(config_);
+                }
                 OpenApiSettingsBuffers();
             }
             ImGui::TextDisabled(
