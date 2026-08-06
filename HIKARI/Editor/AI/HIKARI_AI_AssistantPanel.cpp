@@ -258,6 +258,9 @@ AiRequestResult SubmitAiRequest(std::string_view requestJson) {
                 "{\"action\":\"material.graph_edit\","
                 "\"operation\":\"add_node\","
                 "\"nodeType\":\"node.additive\",\"name\":\"Rim\"}",
+                "nodeType 支持多种写法：Constant/Parameter/Add、"
+                "node.constant/node.parameter，或成品名 node.additive/"
+                "node.skinLighting",
                 "{\"action\":\"material.graph_edit\","
                 "\"operation\":\"connect\","
                 "\"sourceNode\":\"Node_1\",\"sourcePin\":\"A\","

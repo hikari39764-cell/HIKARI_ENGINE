@@ -90,6 +90,43 @@ std::optional<std::string> ResolveInputPin(
     return std::nullopt;
 }
 
+std::optional<MaterialNodeKind> ResolveNodeKind(
+    const std::string& input) {
+    if (const MaterialNodeDefinition* definition =
+            FindMaterialNodeDefinition(std::string_view(input))) {
+        return definition->kind;
+    }
+    std::string normalized = input;
+    if (normalized.rfind("node.", 0u) == 0u) {
+        normalized = normalized.substr(5u);
+    }
+    const auto asciiLower = [](char c) {
+        return c >= 'A' && c <= 'Z'
+            ? static_cast<char>(c - 'A' + 'a')
+            : c;
+    };
+    std::string lowered = normalized;
+    for (char& c : lowered) {
+        c = asciiLower(c);
+    }
+    if (lowered == "additive") {
+        // Template alias "node.additive" maps to the Add math node; connect
+        // validation still enforces output routing at edit time.
+        return MaterialNodeKind::Add;
+    }
+    for (const MaterialNodeDefinition& definition :
+         GetMaterialNodeDefinitions()) {
+        std::string candidate(definition.stableName);
+        for (char& c : candidate) {
+            c = asciiLower(c);
+        }
+        if (candidate == lowered) {
+            return definition.kind;
+        }
+    }
+    return std::nullopt;
+}
+
 } // namespace
 
 bool ModelMaterialWorkspaceController::ApplyAiMaterialGraphEdit(
@@ -124,15 +161,34 @@ bool ModelMaterialWorkspaceController::ApplyAiMaterialGraphEdit(
   };
 
   if (request.operation == "add_node") {
-    const MaterialNodeDefinition *definition =
-        FindMaterialNodeDefinition(
-            std::string_view(request.nodeType));
-    if (definition == nullptr) {
+    const std::optional<MaterialNodeKind> resolvedKind =
+        ResolveNodeKind(request.nodeType);
+    if (!resolvedKind.has_value()) {
       outMessage = "未知节点类型：" + request.nodeType +
-          "（示例：node.additive / constant / parameter）";
+          "；可用类型（部分）：";
+      size_t listed = 0u;
+      for (const MaterialNodeDefinition &definition :
+           GetMaterialNodeDefinitions()) {
+        if (listed >= 24u) {
+          break;
+        }
+        if (listed > 0u) {
+          outMessage += " / ";
+        }
+        outMessage += definition.stableName;
+        ++listed;
+      }
+      outMessage +=
+          "；成品节点例如 node.additive / node.skinLighting";
       return false;
     }
-    const MaterialNodeKind kind = definition->kind;
+    const MaterialNodeKind kind = *resolvedKind;
+    const MaterialNodeDefinition *definition =
+        FindMaterialNodeDefinition(kind);
+    if (definition == nullptr) {
+      outMessage = "节点类型未注册：" + request.nodeType;
+      return false;
+    }
     if (ASSETS::MATERIAL::IsSingletonReadyMadeMaterialNode(kind) &&
         std::any_of(
             graph->nodes.begin(), graph->nodes.end(),
