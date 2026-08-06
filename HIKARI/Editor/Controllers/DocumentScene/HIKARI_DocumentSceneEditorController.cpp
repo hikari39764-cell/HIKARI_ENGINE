@@ -1230,6 +1230,25 @@ namespace HIKARI {
                         }
                         return result;
                     }
+                    if (action == "material.graph_query") {
+                        EDITOR::AI_ASSISTANT::AiRequestResult result{};
+                        const std::string nameFilter =
+                            EDITOR::AI_ASSISTANT::ExtractJsonField(
+                                json, "name");
+                        std::string message;
+                        std::vector<std::string> details;
+                        if (modelMaterialWorkspaceController_
+                                .QueryAiMaterialGraph(
+                                    scene, nameFilter, message,
+                                    details)) {
+                            result.ok = true;
+                            result.message = message;
+                            result.details = std::move(details);
+                        } else {
+                            result.message = message;
+                        }
+                        return result;
+                    }
                     if (action == "material.graph_edit") {
                         EDITOR::AI_ASSISTANT::AiRequestResult result{};
                         EDITOR::AiMaterialGraphEditRequest request{};

@@ -140,6 +140,11 @@ public:
       const AiMaterialGraphEditRequest &request,
       std::string &outMessage,
       std::vector<std::string> &outDetails);
+  bool QueryAiMaterialGraph(
+      DocumentSceneBase &scene,
+      const std::string &nameFilter,
+      std::string &outMessage,
+      std::vector<std::string> &outDetails);
   std::string GetAiMaterialStatus() const;
 
   ModelMaterialBindingCommandResult ExecuteBindingCommand(

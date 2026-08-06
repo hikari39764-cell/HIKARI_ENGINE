@@ -14,7 +14,7 @@
 
 namespace HIKARI::EDITOR {
 namespace {
-constexpr int kMaxToolRounds = 8;
+constexpr int kMaxToolRounds = 12;
 } // namespace
 
 namespace AI_ASSISTANT {
@@ -96,6 +96,9 @@ const std::vector<AiCapability>& QueryCapabilities() {
           "stable" },
         { "material.graph_edit",
           "Add/remove/connect/disconnect material graph nodes through the document command path.",
+          "stable" },
+        { "material.graph_query",
+          "List material graph nodes with ids, pins and existing connections.",
           "stable" },
         { "capture.preview",
           "Capture the material preview to a PNG file for vision verification.",
@@ -250,6 +253,8 @@ AiRequestResult SubmitAiRequest(std::string_view requestJson) {
             };
         } else if (topic == "material.graph_edit") {
             result.details = {
+                "连线前先调用 material.graph_query 获取节点 id 和插槽："
+                "{\"action\":\"material.graph_query\"}",
                 "{\"action\":\"material.graph_edit\","
                 "\"operation\":\"add_node\","
                 "\"nodeType\":\"node.additive\",\"name\":\"Rim\"}",
@@ -261,6 +266,12 @@ AiRequestResult SubmitAiRequest(std::string_view requestJson) {
                 "节点可用 name 或 id 引用；pin 名以 add_node 返回的 "
                 "inputs/outputs 为准（例如 A/B/DiffuseResponse/Surface），"
                 "sourcePin/targetPin 可省略或填 out/in 取第一个",
+            };
+        } else if (topic == "material.graph_query") {
+            result.details = {
+                "{\"action\":\"material.graph_query\"}",
+                "可选 name 过滤："
+                "{\"action\":\"material.graph_query\",\"name\":\"Rim\"}",
             };
         } else if (topic == "capture.preview") {
             result.details = {
@@ -359,6 +370,8 @@ std::string AiAssistantPanel::BuildSystemPrompt() const {
         "{\"action\":\"help\",\"topic\":\"<action名>\"} 查询用法。\n"
         "连线材质节点时，以 add_node 返回的 inputs/outputs 为准；"
         "sourcePin/targetPin 可省略（默认取第一个输出/输入）。\n"
+        "复杂材质任务先调用 material.graph_query 查看节点 id 和插槽，"
+        "再执行 add_node/connect。\n"
         "当前能力清单：\n";
     for (const AI_ASSISTANT::AiCapability& capability :
          AI_ASSISTANT::QueryCapabilities()) {

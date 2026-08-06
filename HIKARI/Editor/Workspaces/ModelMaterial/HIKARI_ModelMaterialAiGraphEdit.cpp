@@ -154,7 +154,17 @@ bool ModelMaterialWorkspaceController::ApplyAiMaterialGraphEdit(
     node.displayName = request.name.empty()
         ? std::string(definition->stableName)
         : request.name;
-    node.position = { request.positionX, request.positionY };
+    if (request.positionX != 0.0f || request.positionY != 0.0f) {
+      node.position = { request.positionX, request.positionY };
+    } else {
+      // Auto-layout so AI-created nodes do not pile up at the origin.
+      const size_t column = graph->nodes.size() % 6u;
+      const size_t row = graph->nodes.size() / 6u;
+      node.position = {
+          static_cast<float>(column) * 260.0f + 40.0f,
+          static_cast<float>(row) * 200.0f + 40.0f,
+      };
+    }
     node.valueType = MATERIAL_GRAPH_UI::DefaultNodeValueType(kind);
     node.value.type = node.valueType;
     ASSETS::MATERIAL::InitializeReadyMadeMaterialNode(material, node);
@@ -337,6 +347,65 @@ bool ModelMaterialWorkspaceController::ApplyAiMaterialGraphEdit(
   outMessage = "未知的 graph_edit 操作：" + request.operation +
       "（支持 add_node / remove_node / connect / disconnect）";
   return false;
+}
+
+bool ModelMaterialWorkspaceController::QueryAiMaterialGraph(
+    DocumentSceneBase &scene,
+    const std::string &nameFilter,
+    std::string &outMessage,
+    std::vector<std::string> &outDetails) {
+  (void)scene;
+  outDetails.clear();
+  if (!authoringDocument_.HasMaterial()) {
+    outMessage = "未打开材质文档";
+    return false;
+  }
+  const MaterialAssetData &material = authoringDocument_.GetMaterial();
+  const MaterialGraphData *graph =
+      material.kind == MaterialAssetKind::Material
+          ? &material.graph
+          : material.kind == MaterialAssetKind::Function
+              ? &material.function.graph
+              : nullptr;
+  if (graph == nullptr) {
+    outMessage = "当前资产没有可编辑的节点图";
+    return false;
+  }
+  const auto matches = [&nameFilter](const std::string &text) {
+    return nameFilter.empty() ||
+        text.find(nameFilter) != std::string::npos;
+  };
+  for (const MaterialGraphNodeData &node : graph->nodes) {
+    if (!matches(node.id) && !matches(node.displayName)) {
+      continue;
+    }
+    std::string line =
+        node.id + " | " + node.displayName +
+        " | kind=" + node.kind.value;
+    if (node.kind == MaterialNodeKind::SurfaceOutput) {
+      line += " | OUTPUT";
+    }
+    outDetails.push_back(line);
+    outDetails.push_back(
+        "  inputs: " + JoinPins(
+            GetMaterialGraphNodeInputPins(node), "（无）"));
+    outDetails.push_back(
+        "  outputs: " + JoinPins(
+            GetMaterialGraphNodeOutputPins(node), "（无）"));
+    for (const MaterialGraphEdgeData &edge : graph->edges) {
+      if (edge.targetNodeId == node.id) {
+        outDetails.push_back(
+            "  in " + edge.targetPin + " <- " +
+            edge.sourceNodeId + "." + edge.sourcePin);
+      }
+    }
+  }
+  if (outDetails.empty()) {
+    outMessage = "没有匹配的材质图节点";
+    return false;
+  }
+  outMessage = "材质图查询：";
+  return true;
 }
 
 } // namespace HIKARI::EDITOR
