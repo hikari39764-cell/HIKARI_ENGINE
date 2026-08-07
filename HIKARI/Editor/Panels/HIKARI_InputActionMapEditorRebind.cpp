@@ -1,5 +1,6 @@
 #include "Editor/Panels/HIKARI_InputActionMapEditor.h"
 
+#include "Core/Text/HIKARI_Localization.h"
 #include <algorithm>
 #include <cmath>
 
@@ -17,7 +18,7 @@ void InputActionMapEditor::BeginBindingCapture(
         inputService.GetRebindOperation();
     if (operation.GetStatus() != INPUT::InputRebindStatus::Idle) {
         bindingCaptureMessage_ =
-            "Another input capture session is already active.";
+            TEXT::Localize("ui.input.captureSessionActive");
         return;
     }
 
@@ -25,7 +26,8 @@ void InputActionMapEditor::BeginBindingCapture(
     options.allowMouseMotion = false;
     options.timeoutSeconds = 10.0f;
     if (!inputService.BeginRebind(options)) {
-        bindingCaptureMessage_ = "Could not start input capture.";
+        bindingCaptureMessage_ =
+            TEXT::Localize("ui.input.captureStartFailed");
         return;
     }
     rebindOwner_ = RebindOwner::Binding;
@@ -62,18 +64,21 @@ void InputActionMapEditor::DrawBindingCapture(
                     bindingDraft_.scale =
                         std::copysign(magnitude, result.actuation);
                 }
-                bindingCaptureMessage_ = "Captured " +
+                bindingCaptureMessage_ =
+                    TEXT::Localize("ui.input.capturedPrefix") +
                     std::string(INPUT::ToString(result.source)) +
                     " / " + result.control + ".";
                 bindingApplyPending_ = false;
             }
             rebindOwner_ = RebindOwner::None;
         } else if (status == INPUT::InputRebindStatus::Cancelled) {
-            bindingCaptureMessage_ = "Input capture cancelled.";
+            bindingCaptureMessage_ =
+                TEXT::Localize("ui.input.captureCancelled");
             inputService.ResetRebind();
             rebindOwner_ = RebindOwner::None;
         } else if (status == INPUT::InputRebindStatus::TimedOut) {
-            bindingCaptureMessage_ = "Input capture timed out.";
+            bindingCaptureMessage_ =
+                TEXT::Localize("ui.input.captureTimedOut");
             inputService.ResetRebind();
             rebindOwner_ = RebindOwner::None;
         }
@@ -87,20 +92,25 @@ void InputActionMapEditor::DrawBindingCapture(
         if (operation.GetStatus() ==
                 INPUT::InputRebindStatus::WaitingForRelease) {
             ImGui::TextUnformatted(
-                "Release the control used to click Listen...");
+                TEXT::Localize(
+                    "ui.input.releaseToClickListen").c_str());
         } else {
             ImGui::TextUnformatted(
-                "Press a key, mouse button, mouse wheel, or gamepad control.");
+                TEXT::Localize(
+                    "ui.input.pressAnyControl").c_str());
         }
         ImGui::TextDisabled(
-            "Escape cancels  |  %.1f seconds remaining",
+            TEXT::Localize("ui.input.escapeCancelsFormat").c_str(),
             operation.GetRemainingSeconds());
         ImGui::SameLine();
-        if (ImGui::SmallButton("Cancel Listening")) {
+        if (ImGui::SmallButton(
+                TEXT::Localize(
+                    "ui.input.cancelListening").c_str())) {
             inputService.CancelRebind();
             inputService.ResetRebind();
             rebindOwner_ = RebindOwner::None;
-            bindingCaptureMessage_ = "Input capture cancelled.";
+            bindingCaptureMessage_ =
+                TEXT::Localize("ui.input.captureCancelled");
         }
         ImGui::EndChild();
     } else if (!bindingCaptureMessage_.empty()) {
@@ -176,7 +186,8 @@ bool InputActionMapEditor::DrawBindingConflictResolution(
     ImGui::Separator();
     ImGui::TextColored(
         ImVec4(1.0f, 0.68f, 0.25f, 1.0f),
-        "This control is already used by %zu binding(s):",
+        TEXT::Localize(
+            "ui.input.alreadyUsedFormat").c_str(),
         bindingConflictIndices_.size());
     for (int index : bindingConflictIndices_) {
         if (index >= 0 && index < static_cast<int>(bindings.size())) {
@@ -184,19 +195,26 @@ bool InputActionMapEditor::DrawBindingConflictResolution(
         }
     }
     ImGui::TextWrapped(
-        "Replace removes those bindings from this context. Keep Both leaves "
-        "the shared control intentionally mapped to multiple actions.");
-    if (ImGui::Button("Replace Existing & Apply", ImVec2(190.0f, 0.0f))) {
+        "%s",
+        TEXT::Localize("ui.input.replaceHint").c_str());
+    if (ImGui::Button(
+            TEXT::Localize(
+                "ui.input.replaceExistingApply").c_str(),
+            ImVec2(190.0f, 0.0f))) {
         ApplyBindingDraft(map, true);
         return true;
     }
     ImGui::SameLine();
-    if (ImGui::Button("Keep Both & Apply", ImVec2(155.0f, 0.0f))) {
+    if (ImGui::Button(
+            TEXT::Localize("ui.input.keepBothApply").c_str(),
+            ImVec2(155.0f, 0.0f))) {
         ApplyBindingDraft(map, false);
         return true;
     }
     ImGui::SameLine();
-    if (ImGui::Button("Go Back", ImVec2(90.0f, 0.0f))) {
+    if (ImGui::Button(
+            TEXT::Localize("ui.input.goBack").c_str(),
+            ImVec2(90.0f, 0.0f))) {
         bindingApplyPending_ = false;
         bindingConflictIndices_.clear();
     }

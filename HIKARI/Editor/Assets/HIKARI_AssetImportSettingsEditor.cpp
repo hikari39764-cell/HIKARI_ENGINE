@@ -1,5 +1,6 @@
 #include "Editor/Assets/HIKARI_AssetImportSettingsEditor.h"
 
+#include "Core/Text/HIKARI_Localization.h"
 #include <algorithm>
 #include <array>
 #include <string>
@@ -79,9 +80,12 @@ namespace HIKARI::EDITOR::ASSET_IMPORT_SETTINGS {
             }
         }
 
-        ImGui::SeparatorText("Lightmap UV");
+        ImGui::SeparatorText(
+            TEXT::Localize(
+                "ui.importSettings.lightmapUv").c_str());
         if (ImGui::Combo(
-                "UV1 Policy",
+                TEXT::Localize(
+                    "ui.importSettings.uv1Policy").c_str(),
                 &selectedUvMode,
                 uvModes.data(),
                 static_cast<int>(uvModes.size()))) {
@@ -93,16 +97,20 @@ namespace HIKARI::EDITOR::ASSET_IMPORT_SETTINGS {
         }
         ImGui::TextDisabled(
             selectedUvMode == 0
-            ? "Keep authored UV1 and report invalid surfaces."
-            : "Generate non-overlapping UV1 during Editor/Cook import.");
+            ? TEXT::Localize(
+                "ui.importSettings.uv1Keep").c_str()
+            : TEXT::Localize(
+                "ui.importSettings.uv1Generate").c_str());
         if (selectedUvMode != 0 &&
             ImGui::TreeNode(
-                "Advanced Lightmap UV")) {
+                TEXT::Localize(
+                    "ui.importSettings.advancedLightmapUv").c_str())) {
             int resolution = lightmapUv.value(
                 "resolution",
                 64);
             if (ImGui::InputInt(
-                    "UV Layout Reference Resolution",
+                    TEXT::Localize(
+                        "ui.importSettings.uvResolution").c_str(),
                     &resolution)) {
                 lightmapUv["resolution"] =
                     std::clamp(
@@ -113,16 +121,16 @@ namespace HIKARI::EDITOR::ASSET_IMPORT_SETTINGS {
             }
             if (ImGui::IsItemHovered()) {
                 ImGui::SetTooltip(
-                    "Reference extent used by UV generation. "
-                    "The final Lightmap allocator preserves its "
-                    "chart padding instead of shrinking it "
-                    "arbitrarily.");
+                    "%s",
+                    TEXT::Localize(
+                        "ui.importSettings.uvResolutionTooltip").c_str());
             }
             int padding = lightmapUv.value(
                 "padding",
                 8);
             if (ImGui::InputInt(
-                    "Chart Padding",
+                    TEXT::Localize(
+                        "ui.importSettings.chartPadding").c_str(),
                     &padding)) {
                 lightmapUv["padding"] =
                     std::clamp(
@@ -133,16 +141,21 @@ namespace HIKARI::EDITOR::ASSET_IMPORT_SETTINGS {
             }
             if (ImGui::IsItemHovered()) {
                 ImGui::SetTooltip(
-                    "Final texel padding between UV charts. "
-                    "Eight texels protects bilinear sampling "
-                    "and the bounded Lightmap mip chain.");
+                    "%s",
+                    TEXT::Localize(
+                        "ui.importSettings.chartPaddingTooltip").c_str());
             }
             ImGui::TreePop();
         }
 
-        ImGui::SeparatorText("Cluster Geometry");
+        ImGui::SeparatorText(
+            TEXT::Localize(
+                "ui.importSettings.clusterGeometry").c_str());
         bool enabled = cluster.value("enabled", true);
-        if (ImGui::Checkbox("Build HCMESH", &enabled)) {
+        if (ImGui::Checkbox(
+                TEXT::Localize(
+                    "ui.importSettings.buildHcmesh").c_str(),
+                &enabled)) {
             cluster["enabled"] = enabled;
             dirty = true;
         }
@@ -151,7 +164,8 @@ namespace HIKARI::EDITOR::ASSET_IMPORT_SETTINGS {
             cluster.value("profile", std::string(profileItems[0]));
         int profile = profileValue == profileItems[1] ? 1 : 0;
         if (ImGui::Combo(
-            "Cook Profile",
+            TEXT::Localize(
+                "ui.importSettings.cookProfile").c_str(),
             &profile,
             profileItems.data(),
             static_cast<int>(profileItems.size()))) {
@@ -179,14 +193,20 @@ namespace HIKARI::EDITOR::ASSET_IMPORT_SETTINGS {
             characterProfile ? 1.25f : 3.0f;
 
         int lodCount = cluster.value("maxLodCount", 5);
-        if (ImGui::InputInt("LOD Count", &lodCount)) {
+        if (ImGui::InputInt(
+                TEXT::Localize(
+                    "ui.importSettings.lodCount").c_str(),
+                &lodCount)) {
             cluster["maxLodCount"] =
                 (std::max)(1, (std::min)(lodCount, 5));
             dirty = true;
         }
 
         float qualityBias = cluster.value("lodQualityBias", 1.0f);
-        if (ImGui::InputFloat("LOD Quality Bias", &qualityBias)) {
+        if (ImGui::InputFloat(
+                TEXT::Localize(
+                    "ui.importSettings.lodQualityBias").c_str(),
+                &qualityBias)) {
             cluster["lodQualityBias"] =
                 (std::max)(0.50f, (std::min)(qualityBias, 4.0f));
             dirty = true;
@@ -194,7 +214,10 @@ namespace HIKARI::EDITOR::ASSET_IMPORT_SETTINGS {
 
         bool partition =
             cluster.value("partitionLargeSurfaces", true);
-        if (ImGui::Checkbox("Partition Large Surfaces", &partition)) {
+        if (ImGui::Checkbox(
+                TEXT::Localize(
+                    "ui.importSettings.partitionLargeSurfaces").c_str(),
+                &partition)) {
             cluster["partitionLargeSurfaces"] = partition;
             dirty = true;
         }
@@ -202,7 +225,10 @@ namespace HIKARI::EDITOR::ASSET_IMPORT_SETTINGS {
         float extent = cluster.value(
             "largeSurfaceTargetExtent",
             defaultPartitionExtent);
-        if (ImGui::InputFloat("Partition Target Extent", &extent)) {
+        if (ImGui::InputFloat(
+                TEXT::Localize(
+                    "ui.importSettings.partitionTargetExtent").c_str(),
+                &extent)) {
             cluster["largeSurfaceTargetExtent"] =
                 (std::max)(
                     characterProfile ? 1.0f : 2.0f,
@@ -211,7 +237,10 @@ namespace HIKARI::EDITOR::ASSET_IMPORT_SETTINGS {
         }
 
         bool lockBorders = cluster.value("lockPartitionBorders", true);
-        if (ImGui::Checkbox("Lock Partition Borders", &lockBorders)) {
+        if (ImGui::Checkbox(
+                TEXT::Localize(
+                    "ui.importSettings.lockPartitionBorders").c_str(),
+                &lockBorders)) {
             cluster["lockPartitionBorders"] = lockBorders;
             dirty = true;
         }

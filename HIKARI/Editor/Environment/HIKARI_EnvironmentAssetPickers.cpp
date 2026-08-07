@@ -4,6 +4,7 @@
 #include "Assets/HIKARI_AssetTypes.h"
 #include "Editor/Environment/HIKARI_EnvironmentEditComparison.h"
 #include "Editor/Environment/HIKARI_EnvironmentPanel.h"
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Widgets/HIKARI_AssetFieldWidget.h"
 #include "Render3D/Diagnostics/HIKARI_EnvironmentDiagnostics.h"
 #include "Render3D/HIKARI_Math3D.h"
@@ -57,10 +58,12 @@ SkyPickerEntry BuildSkyPickerEntry(const AssetDescriptor &descriptor,
     entry.name = std::filesystem::path(descriptor.sourcePath).stem().string();
   }
   if (entry.name.empty()) {
-    entry.name = entry.id.empty() ? "<unnamed sky>" : entry.id;
+    entry.name = entry.id.empty()
+        ? TEXT::Localize("ui.environment.unnamedSky")
+        : entry.id;
   }
   if (entry.state.empty()) {
-    entry.state = "Registered";
+    entry.state = TEXT::Localize("ui.environment.registered");
   }
 
   entry.label = entry.name + "  [" + entry.state + "]##" + entry.id;
@@ -73,7 +76,9 @@ bool DrawSkyAssetPicker(const AssetRegistry *assetRegistry,
 
   if (assetDatabase) {
     return EDITOR::DrawAssetField(assetDatabase,
-                                  EDITOR::AssetFieldOptions{"Sky Asset",
+                                  EDITOR::AssetFieldOptions{
+                                      TEXT::Localize(
+                                          "ui.environment.skyAsset"),
                                                             AssetType::Sky,
                                                             true, false, true},
                                   value);
@@ -82,7 +87,10 @@ bool DrawSkyAssetPicker(const AssetRegistry *assetRegistry,
   if (!assetRegistry) {
     char skyAssetBuffer[256]{};
     std::strncpy(skyAssetBuffer, value.c_str(), sizeof(skyAssetBuffer) - 1);
-    if (ImGui::InputText("Sky Asset", skyAssetBuffer, sizeof(skyAssetBuffer))) {
+    if (ImGui::InputText(
+            TEXT::Localize("ui.environment.skyAsset").c_str(),
+            skyAssetBuffer,
+            sizeof(skyAssetBuffer))) {
       value = skyAssetBuffer;
       return true;
     }
@@ -113,10 +121,17 @@ bool DrawSkyAssetPicker(const AssetRegistry *assetRegistry,
 
   bool changed = false;
   const std::string preview =
-      value.empty() ? std::string("<none>")
-                    : (current ? current->name : ("Missing: " + value));
-  if (ImGui::BeginCombo("Sky Asset", preview.c_str())) {
-    if (ImGui::Selectable("<none>", value.empty())) {
+      value.empty()
+          ? TEXT::Localize("ui.common.none")
+          : (current
+              ? current->name
+              : TEXT::Localize("ui.environment.missingPrefix") + value);
+  if (ImGui::BeginCombo(
+          TEXT::Localize("ui.environment.skyAsset").c_str(),
+          preview.c_str())) {
+    if (ImGui::Selectable(
+            TEXT::Localize("ui.common.none").c_str(),
+            value.empty())) {
       value.clear();
       changed = true;
     }
@@ -127,9 +142,13 @@ bool DrawSkyAssetPicker(const AssetRegistry *assetRegistry,
         changed = true;
       }
       if (ImGui::IsItemHovered()) {
-        ImGui::SetTooltip("%s\n%s\nGUID: %s", entry.name.c_str(),
-                          entry.path.empty() ? "<no source path>"
-                                             : entry.path.c_str(),
+        ImGui::SetTooltip(
+            "%s\n%s\nGUID: %s",
+            entry.name.c_str(),
+            entry.path.empty()
+                ? TEXT::Localize(
+                    "ui.environment.noSourcePath").c_str()
+                : entry.path.c_str(),
                           entry.id.c_str());
       }
       if (selected) {
@@ -139,7 +158,10 @@ bool DrawSkyAssetPicker(const AssetRegistry *assetRegistry,
     ImGui::EndCombo();
   }
   ImGui::SameLine();
-  if (ImGui::Button("Copy Sky GUID") && !value.empty()) {
+  if (ImGui::Button(
+          TEXT::Localize(
+              "ui.environment.copySkyGuid").c_str()) &&
+      !value.empty()) {
     ImGui::SetClipboardText(value.c_str());
   }
   if (!value.empty()) {
@@ -147,8 +169,11 @@ bool DrawSkyAssetPicker(const AssetRegistry *assetRegistry,
       ImGui::TextDisabled("%s | %s", current->path.c_str(),
                           current->state.c_str());
     } else {
-      ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f),
-                         "Unresolved sky asset: %s", value.c_str());
+      ImGui::TextColored(
+          ImVec4(1.0f, 0.45f, 0.35f, 1.0f),
+          TEXT::Localize(
+              "ui.environment.unresolvedSkyFormat").c_str(),
+          value.c_str());
     }
   }
   return changed;
@@ -161,15 +186,18 @@ bool DrawReflectionProbeAssetPicker(const AssetRegistry *assetRegistry,
   if (assetDatabase) {
     return EDITOR::DrawAssetField(
         assetDatabase,
-        EDITOR::AssetFieldOptions{"Source Cubemap Asset", AssetType::Sky, true,
-                                  false, true},
+        EDITOR::AssetFieldOptions{
+            TEXT::Localize("ui.environment.sourceCubemapAsset"),
+            AssetType::Sky, true, false, true},
         value);
   }
 
   if (!assetRegistry) {
     char assetBuffer[256]{};
     std::strncpy(assetBuffer, value.c_str(), sizeof(assetBuffer) - 1);
-    if (ImGui::InputText("Source Cubemap Asset", assetBuffer,
+    if (ImGui::InputText(
+            TEXT::Localize("ui.environment.sourceCubemapAsset").c_str(),
+            assetBuffer,
                          sizeof(assetBuffer))) {
       value = assetBuffer;
       return true;
@@ -201,10 +229,17 @@ bool DrawReflectionProbeAssetPicker(const AssetRegistry *assetRegistry,
 
   bool changed = false;
   const std::string preview =
-      value.empty() ? std::string("<none>")
-                    : (current ? current->name : ("Missing: " + value));
-  if (ImGui::BeginCombo("Source Cubemap Asset", preview.c_str())) {
-    if (ImGui::Selectable("<none>", value.empty())) {
+      value.empty()
+          ? TEXT::Localize("ui.common.none")
+          : (current
+              ? current->name
+              : TEXT::Localize("ui.environment.missingPrefix") + value);
+  if (ImGui::BeginCombo(
+          TEXT::Localize("ui.environment.sourceCubemapAsset").c_str(),
+          preview.c_str())) {
+    if (ImGui::Selectable(
+            TEXT::Localize("ui.common.none").c_str(),
+            value.empty())) {
       value.clear();
       changed = true;
     }

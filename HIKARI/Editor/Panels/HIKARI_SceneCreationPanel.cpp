@@ -1,5 +1,6 @@
 #include "Editor/Panels/HIKARI_SceneCreationPanel.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
+#include "Core/Text/HIKARI_Localization.h"
 
 #include <algorithm>
 #include <cctype>
@@ -36,39 +37,47 @@ namespace HIKARI::EDITOR {
         ImGui::SetNextItemWidth(280.0f);
         ImGui::InputTextWithHint(
             "##CreateSearch",
-            "Search object types...",
+            TEXT::Localize("ui.sceneCreation.searchHint").c_str(),
             searchBuffer_,
             sizeof(searchBuffer_));
         const std::string search = TEXT::ToLowerAsciiCopy(searchBuffer_);
         ImGui::Separator();
 
-        if (Matches("Empty Object", search) &&
-            ImGui::MenuItem("Empty Object")) {
+        const std::string emptyObjectLabel =
+            TEXT::Localize("ui.sceneCreation.emptyObject");
+        if (Matches(emptyObjectLabel.c_str(), search) &&
+            ImGui::MenuItem(emptyObjectLabel.c_str())) {
             CreateEmptyObject(scene, context, selectionSync);
         }
 
         const struct PrimitiveEntry {
-            const char* label;
+            std::string label;
             ProceduralMeshKind kind;
         } primitives[] = {
-            { "Plane", ProceduralMeshKind::Plane },
-            { "Grid Plane", ProceduralMeshKind::GridPlane },
-            { "Box", ProceduralMeshKind::Box },
-            { "Sphere", ProceduralMeshKind::Sphere },
-            { "Cylinder", ProceduralMeshKind::Cylinder },
-            { "Capsule", ProceduralMeshKind::Capsule },
+            { TEXT::Localize("ui.sceneCreation.plane"),
+              ProceduralMeshKind::Plane },
+            { TEXT::Localize("ui.sceneCreation.gridPlane"),
+              ProceduralMeshKind::GridPlane },
+            { TEXT::Localize("ui.sceneCreation.box"),
+              ProceduralMeshKind::Box },
+            { TEXT::Localize("ui.sceneCreation.sphere"),
+              ProceduralMeshKind::Sphere },
+            { TEXT::Localize("ui.sceneCreation.cylinder"),
+              ProceduralMeshKind::Cylinder },
+            { TEXT::Localize("ui.sceneCreation.capsule"),
+              ProceduralMeshKind::Capsule },
         };
 
         bool anyPrimitive = false;
         for (const PrimitiveEntry& primitive : primitives) {
-            anyPrimitive |= Matches(primitive.label, search);
+            anyPrimitive |= Matches(primitive.label.c_str(), search);
         }
         if (anyPrimitive && ImGui::BeginMenu("Procedural Mesh")) {
             for (const PrimitiveEntry& primitive : primitives) {
-                if (!Matches(primitive.label, search)) {
+                if (!Matches(primitive.label.c_str(), search)) {
                     continue;
                 }
-                if (ImGui::MenuItem(primitive.label)) {
+                if (ImGui::MenuItem(primitive.label.c_str())) {
                     primitiveCreationDialog_.Open(primitive.kind);
                 }
             }
@@ -76,20 +85,36 @@ namespace HIKARI::EDITOR {
         }
 
         const bool showReflectionProbe =
-            Matches("Reflection Probe", search);
+            Matches(
+                TEXT::Localize(
+                    "ui.sceneCreation.reflectionProbe").c_str(),
+                search);
         const bool showIrradianceVolume =
-            Matches("Irradiance Volume", search);
+            Matches(
+                TEXT::Localize(
+                    "ui.sceneCreation.irradianceVolume").c_str(),
+                search);
         const bool showDirectionalLight =
-            Matches("Directional Light", search);
+            Matches(
+                TEXT::Localize(
+                    "ui.sceneCreation.directionalLight").c_str(),
+                search);
         const bool showPointLight =
-            Matches("Point Light", search);
+            Matches(
+                TEXT::Localize("ui.sceneCreation.pointLight").c_str(),
+                search);
         const bool showSpotLight =
-            Matches("Spot Light", search);
+            Matches(
+                TEXT::Localize("ui.sceneCreation.spotLight").c_str(),
+                search);
         if ((showReflectionProbe || showIrradianceVolume ||
              showDirectionalLight || showPointLight || showSpotLight) &&
-            ImGui::BeginMenu("Lighting")) {
+            ImGui::BeginMenu(
+                TEXT::Localize("ui.sceneCreation.lighting").c_str())) {
             if (showDirectionalLight &&
-                ImGui::MenuItem("Directional Light")) {
+                ImGui::MenuItem(
+                    TEXT::Localize(
+                        "ui.sceneCreation.directionalLight").c_str())) {
                 CreateLightObject(
                     scene,
                     context,
@@ -97,7 +122,8 @@ namespace HIKARI::EDITOR {
                     RENDER3D::LIGHTING::SceneLightType::Directional);
             }
             if (showPointLight &&
-                ImGui::MenuItem("Point Light")) {
+                ImGui::MenuItem(
+                    TEXT::Localize("ui.sceneCreation.pointLight").c_str())) {
                 CreateLightObject(
                     scene,
                     context,
@@ -105,7 +131,8 @@ namespace HIKARI::EDITOR {
                     RENDER3D::LIGHTING::SceneLightType::Point);
             }
             if (showSpotLight &&
-                ImGui::MenuItem("Spot Light")) {
+                ImGui::MenuItem(
+                    TEXT::Localize("ui.sceneCreation.spotLight").c_str())) {
                 CreateLightObject(
                     scene,
                     context,
@@ -118,7 +145,9 @@ namespace HIKARI::EDITOR {
                 ImGui::Separator();
             }
             if (showReflectionProbe &&
-                ImGui::MenuItem("Reflection Probe")) {
+                ImGui::MenuItem(
+                    TEXT::Localize(
+                        "ui.sceneCreation.reflectionProbe").c_str())) {
                 CreateLightingObject(
                     scene,
                     context,
@@ -126,7 +155,9 @@ namespace HIKARI::EDITOR {
                     true);
             }
             if (showIrradianceVolume &&
-                ImGui::MenuItem("Irradiance Volume")) {
+                ImGui::MenuItem(
+                    TEXT::Localize(
+                        "ui.sceneCreation.irradianceVolume").c_str())) {
                 CreateLightingObject(
                     scene,
                     context,
@@ -138,8 +169,12 @@ namespace HIKARI::EDITOR {
 
         const std::vector<std::string> prefabIds = commands.ListPrefabIds();
         if (!prefabIds.empty() &&
-            (search.empty() || Matches("Prefab", search)) &&
-            ImGui::BeginMenu("Prefab")) {
+            (search.empty() ||
+             Matches(
+                 TEXT::Localize("ui.sceneCreation.prefab").c_str(),
+                 search)) &&
+            ImGui::BeginMenu(
+                TEXT::Localize("ui.sceneCreation.prefab").c_str())) {
             for (const std::string& prefabId : prefabIds) {
                 if (search.empty() || Matches(prefabId, search)) {
                     if (ImGui::MenuItem(prefabId.c_str())) {

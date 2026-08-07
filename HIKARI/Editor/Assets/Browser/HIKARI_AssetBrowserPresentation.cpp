@@ -1,4 +1,5 @@
 #include "Core/Text/HIKARI_AsciiCase.h"
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Assets/Browser/HIKARI_AssetBrowserPanel.h"
 
 #include <algorithm>
@@ -144,20 +145,36 @@ void DrawRecordTooltip(const AssetRecord &record) {
   EDITOR::DrawAssetTypeGlyph(record.type, ImVec2(18.0f, 18.0f));
   ImGui::SameLine();
   ImGui::TextUnformatted(record.displayName.c_str());
-  ImGui::TextDisabled("%s | %s", ToAssetTypeText(record.type), ToString(state));
+  ImGui::TextDisabled(
+      "%s | %s",
+      ToAssetTypeText(record.type).c_str(),
+      ToString(state));
   ImGui::Separator();
-  ImGui::Text("GUID: %s",
-              record.guid.value.empty() ? "<none>" : record.guid.value.c_str());
-  ImGui::Text("Source: %s", record.sourcePath.generic_string().c_str());
-  ImGui::Text("Meta: %s", record.metaPath.generic_string().c_str());
-  ImGui::Text("Importer: %s v%u",
-              record.meta.importerId.empty() ? "<none>"
-                                             : record.meta.importerId.c_str(),
+  ImGui::Text(
+      TEXT::Localize("ui.assetBrowser.tooltipGuid").c_str(),
+      record.guid.value.empty()
+          ? TEXT::Localize("ui.common.none").c_str()
+          : record.guid.value.c_str());
+  ImGui::Text(
+      TEXT::Localize("ui.assetBrowser.tooltipSource").c_str(),
+      record.sourcePath.generic_string().c_str());
+  ImGui::Text(
+      TEXT::Localize("ui.assetBrowser.tooltipMeta").c_str(),
+      record.metaPath.generic_string().c_str());
+  ImGui::Text(
+      TEXT::Localize("ui.assetBrowser.tooltipImporter").c_str(),
+      record.meta.importerId.empty()
+          ? TEXT::Localize("ui.common.none").c_str()
+          : record.meta.importerId.c_str(),
               record.meta.importerVersion);
   const std::string artifactPath = FirstArtifactPath(record);
-  ImGui::Text("Artifact: %s",
-              artifactPath.empty() ? "<none>" : artifactPath.c_str());
-  ImGui::Text("Dependencies: %d",
+  ImGui::Text(
+      TEXT::Localize("ui.assetBrowser.tooltipArtifact").c_str(),
+      artifactPath.empty()
+          ? TEXT::Localize("ui.common.none").c_str()
+          : artifactPath.c_str());
+  ImGui::Text(
+      TEXT::Localize("ui.assetBrowser.tooltipDependencies").c_str(),
               static_cast<int>(record.artifactManifest.dependencies.size()));
   ImGui::EndTooltip();
 }

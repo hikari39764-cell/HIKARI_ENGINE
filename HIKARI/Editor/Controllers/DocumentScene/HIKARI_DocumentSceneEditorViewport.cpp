@@ -2,6 +2,7 @@
 #include "Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorViewportPresentation.h"
 
 #include "Editor/Authoring/HIKARI_EditorObjectState.h"
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Gizmos/HIKARI_EditorTransformGizmoShortcuts.h"
 #include "Editor/HIKARI_EditorViewportInput.h"
 #include "Editor/Play/HIKARI_EditorPlaySession.h"
@@ -44,7 +45,11 @@ namespace HIKARI {
             ImGuiWindowFlags_NoCollapse;
 
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
-        if (!ImGui::Begin("Game View", &open, flags)) {
+        if (!ImGui::Begin(
+                TEXT::LocalizeWindow(
+                    "ui.window.gameView", "Game View").c_str(),
+                &open,
+                flags)) {
             context_.windows.viewport.showGameView = open;
             playSession.ReleaseEmbeddedInput();
             EDITOR::ClearGameViewportInputRect();
@@ -90,8 +95,8 @@ namespace HIKARI {
                             : EDITOR::EditorButtonTone::Primary,
                         ImVec2(26.0f, 26.0f),
                         previewRunning
-                            ? "Stop Play"
-                            : "Play in Game View")) {
+                            ? TEXT::Localize("ui.viewport.stopPlay").c_str()
+                            : TEXT::Localize("ui.viewport.playInGameView").c_str())) {
                     ToggleGamePreview(scene, playSession);
                 }
                 ImGui::SameLine(0.0f, 3.0f);
@@ -99,11 +104,14 @@ namespace HIKARI {
                     ImGui::OpenPopup("Play Mode Menu");
                 }
                 if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("Play options");
+                    ImGui::SetTooltip(
+                        "%s",
+                        TEXT::Localize("ui.viewport.playOptions").c_str());
                 }
                 if (ImGui::BeginPopup("Play Mode Menu")) {
                     if (ImGui::MenuItem(
-                            "Play in New Window",
+                            TEXT::Localize(
+                                "ui.viewport.playInNewWindow").c_str(),
                             nullptr,
                             false,
                             !previewRunning)) {
@@ -123,8 +131,8 @@ namespace HIKARI {
                                 : EDITOR::EditorButtonTone::Neutral,
                             ImVec2(26.0f, 26.0f),
                             playSession.IsPaused()
-                                ? "Resume Play"
-                                : "Pause Play")) {
+                                ? TEXT::Localize("ui.viewport.resumePlay").c_str()
+                                : TEXT::Localize("ui.viewport.pausePlay").c_str())) {
                         playSession.TogglePause();
                     }
                 }
@@ -132,8 +140,10 @@ namespace HIKARI {
                     ImGui::SameLine();
                     EDITOR::StatusText(
                         playSession.IsPaused()
-                            ? "Paused"
-                            : (previewRunning ? "Play Running" : "Play Status"),
+                            ? TEXT::Localize("ui.viewport.paused").c_str()
+                            : (previewRunning
+                                ? TEXT::Localize("ui.viewport.playRunning").c_str()
+                                : TEXT::Localize("ui.viewport.playStatus").c_str()),
                         previewRunning
                             ? EDITOR::EditorStatusTone::Ready
                             : (playSession.GetState() == EDITOR::EditorPlayState::Failed
@@ -156,13 +166,18 @@ namespace HIKARI {
                         ImGui::OpenPopup("ViewportToolSettingsPopup");
                     }
                     if (ImGui::BeginPopup("ViewportToolSettingsPopup")) {
-                        ImGui::SeparatorText("Viewport");
+                        ImGui::SeparatorText(
+                            TEXT::Localize(
+                                "ui.viewport.settingsViewport").c_str());
                         DrawViewportDebugOptions(
                             context_.overlays,
                             context_.viewportPerformance);
-                        ImGui::SeparatorText("Gizmos");
+                        ImGui::SeparatorText(
+                            TEXT::Localize(
+                                "ui.viewport.settingsGizmos").c_str());
                         ImGui::Checkbox(
-                            "Only Selected Object",
+                            TEXT::Localize(
+                                "ui.viewport.onlySelectedObject").c_str(),
                             &context_.gizmos.showOnlySelectedObject);
                         const ComponentGizmoRegistry& gizmoRegistry =
                             scene.GetComponentGizmoRegistry();
@@ -179,22 +194,28 @@ namespace HIKARI {
                                     visible);
                             }
                         }
-                        ImGui::SeparatorText("Snap");
+                        ImGui::SeparatorText(
+                            TEXT::Localize(
+                                "ui.viewport.settingsSnap").c_str());
                         ImGui::DragFloat3(
-                            "Translate",
+                            TEXT::Localize(
+                                "ui.viewport.translate").c_str(),
                             &context_.transformGizmo.translateSnap.x,
                             0.05f,
                             0.001f,
                             100.0f);
                         ImGui::DragFloat(
-                            "Rotate",
+                            TEXT::Localize(
+                                "ui.viewport.rotate").c_str(),
                             &context_.transformGizmo.rotateSnapDeg,
                             0.5f,
                             0.1f,
                             180.0f,
-                            "%.1f deg");
+                            TEXT::Localize(
+                                "ui.viewport.degFormat").c_str());
                         ImGui::DragFloat(
-                            "Scale",
+                            TEXT::Localize(
+                                "ui.viewport.scale").c_str(),
                             &context_.transformGizmo.scaleSnap,
                             0.01f,
                             0.001f,
@@ -205,7 +226,8 @@ namespace HIKARI {
                     ImGui::SameLine();
                     RENDER3D::RenderQualitySettings qualitySettings =
                         RENDER3D::GetRenderQualitySettings();
-                    EDITOR::ToolbarLabel("Render");
+                    EDITOR::ToolbarLabel(
+                        TEXT::Localize("ui.viewport.render").c_str());
                     ImGui::SameLine();
                     ImGui::SetNextItemWidth(118.0f);
                     if (ImGui::BeginCombo(
@@ -234,13 +256,15 @@ namespace HIKARI {
                     }
 
                     ImGui::SameLine();
-                    EDITOR::ToolbarLabel("View");
+                    EDITOR::ToolbarLabel(
+                        TEXT::Localize("ui.viewport.view").c_str());
                     ImGui::SameLine();
                     DrawRenderDebugViewCombo("##GameViewDebug", context_.viewportDebug, 144.0f);
                     if (context_.viewportDebug.renderView != RenderDebugView::None) {
                         ImGui::SameLine();
                         EDITOR::StatusText(
-                            "Diagnostic output",
+                            TEXT::Localize(
+                                "ui.viewport.diagnosticOutput").c_str(),
                             EDITOR::EditorStatusTone::Ready);
                     }
                 }
@@ -311,32 +335,35 @@ namespace HIKARI {
 
                 const bool multipleObjects =
                     context_.selection.GetSelectedObjectCount() > 1u;
-                const char* historyLabel = multipleObjects
-                    ? "Move Objects"
-                    : "Move Object";
+                std::string historyLabel =
+                    TEXT::Localize(
+                        multipleObjects
+                            ? "ui.history.moveObjects"
+                            : "ui.history.moveObject");
                 switch (gizmoState.operation) {
                 case EditorTransformGizmoOperation::Rotate:
-                    historyLabel = multipleObjects
-                        ? "Rotate Objects"
-                        : "Rotate Object";
+                    historyLabel = TEXT::Localize(
+                        multipleObjects
+                            ? "ui.history.rotateObjects"
+                            : "ui.history.rotateObject");
                     break;
                 case EditorTransformGizmoOperation::Scale:
-                    historyLabel = multipleObjects
-                        ? "Scale Objects"
-                        : "Scale Object";
+                    historyLabel = TEXT::Localize(
+                        multipleObjects
+                            ? "ui.history.scaleObjects"
+                            : "ui.history.scaleObject");
                     break;
                 case EditorTransformGizmoOperation::Translate:
                 default:
                     break;
                 }
                 if (!transformResult.historyLabelOverride.empty()) {
-                    historyLabel =
-                        transformResult.historyLabelOverride.data();
+                    historyLabel = transformResult.historyLabelOverride;
                 }
                 viewportTransformHistory_.ObserveBeforeApply(
                     scene.GetSceneDocument(),
                     context_.selection.selectedObject->GetDocumentId(),
-                    historyLabel,
+                    historyLabel.c_str(),
                     transformResult.gizmo.manipulating ||
                         transformResult.gizmo.changed,
                     context_.sceneDirty ||
@@ -381,7 +408,11 @@ namespace HIKARI {
             ImDrawList* drawList = ImGui::GetWindowDrawList();
             drawList->AddRectFilled(imageOrigin, max, IM_COL32(8, 10, 13, 255));
             drawList->AddRect(imageOrigin, max, IM_COL32(80, 108, 124, 160), 4.0f, 0, 1.0f);
-            drawList->AddText(ImVec2(imageOrigin.x + 16.0f, imageOrigin.y + 16.0f), IM_COL32(190, 205, 215, 255), "Waiting for editor viewport texture");
+            drawList->AddText(
+                ImVec2(imageOrigin.x + 16.0f, imageOrigin.y + 16.0f),
+                IM_COL32(190, 205, 215, 255),
+                TEXT::Localize(
+                    "ui.viewport.waitingForTexture").c_str());
             ImGui::Dummy(imageSize);
             viewportImageHovered = ImGui::IsItemHovered();
             processViewportShortcuts(viewportImageHovered);
@@ -482,12 +513,14 @@ namespace HIKARI {
                     0,
                     2.0f);
             }
-            const char* hint = playSession.IsPaused()
-                ? "Paused"
-                : (playSession.HasEmbeddedInput()
-                    ? "Game input active  |  Esc releases mouse"
-                    : "Click Game View to control");
-            const ImVec2 textSize = ImGui::CalcTextSize(hint);
+            const std::string hint =
+                playSession.IsPaused()
+                    ? TEXT::Localize("ui.viewport.paused")
+                    : (playSession.HasEmbeddedInput()
+                        ? TEXT::Localize("ui.viewport.gameInputActive")
+                        : TEXT::Localize("ui.viewport.clickToControl"));
+            const ImVec2 textSize =
+                ImGui::CalcTextSize(hint.c_str());
             const ImVec2 textMin{
                 imageOrigin.x + 12.0f,
                 imageOrigin.y + 12.0f
@@ -504,7 +537,7 @@ namespace HIKARI {
             drawList->AddText(
                 ImVec2(textMin.x + 8.0f, textMin.y + 5.0f),
                 IM_COL32(220, 235, 240, 245),
-                hint);
+                hint.c_str());
         } else if (!viewportDropMessage_.empty()) {
             ImDrawList* drawList = ImGui::GetWindowDrawList();
             const ImVec2 textPos{ imageOrigin.x + 14.0f, imageOrigin.y + imageSize.y - 28.0f };

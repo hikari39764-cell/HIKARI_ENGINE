@@ -1,5 +1,6 @@
 #include "Editor/Panels/HIKARI_ProjectFeaturesPanel.h"
 
+#include "Core/Text/HIKARI_Localization.h"
 #include <algorithm>
 #include <string_view>
 #include <utility>
@@ -84,10 +85,12 @@ namespace HIKARI {
         loadedProjectRoot_ = projectRoot.lexically_normal();
         if (!settingsService_.Load(loadedProjectRoot_)) {
             statusMessage_ =
-                "Project settings could not be loaded; defaults are shown.";
+                TEXT::Localize(
+                    "ui.projectFeatures.loadFailed");
             statusIsError_ = true;
         } else {
-            statusMessage_ = "Project feature settings loaded.";
+            statusMessage_ =
+                TEXT::Localize("ui.projectFeatures.loaded");
             statusIsError_ = false;
         }
         draftFeatureIds_ =
@@ -124,7 +127,8 @@ namespace HIKARI {
             if (loadedFeatureIds != draftFeatureIds_) {
                 dirty_ = true;
                 statusMessage_ =
-                    "Required feature dependencies were added to the draft.";
+                    TEXT::Localize(
+                        "ui.projectFeatures.dependenciesAdded");
                 statusIsError_ = false;
             }
             draftNeedsNormalization_ = false;
@@ -134,15 +138,19 @@ namespace HIKARI {
         const bool playActive = scene.IsRuntimePlayActive();
 
         ImGui::TextWrapped(
-            "Choose the runtime modules owned by this project. Dependencies "
-            "are enabled automatically; disabled scene data is preserved.");
+            "%s",
+            TEXT::Localize("ui.projectFeatures.intro").c_str());
         if (playActive) {
             ImGui::TextColored(
                 ImVec4(1.0f, 0.72f, 0.25f, 1.0f),
-                "Stop Play before changing project features.");
+                "%s",
+                TEXT::Localize(
+                    "ui.projectFeatures.stopPlayHint").c_str());
         }
 
-        ImGui::SeparatorText("Runtime Features");
+        ImGui::SeparatorText(
+            TEXT::Localize(
+                "ui.projectFeatures.runtimeFeatures").c_str());
         for (const RuntimeFeatureInfo& info : infos) {
             ImGui::PushID(info.featureId.c_str());
             bool enabled = ContainsFeature(
@@ -169,7 +177,8 @@ namespace HIKARI {
                     ImGuiHoveredFlags_AllowWhenDisabled)) {
                 const std::string owners = JoinNames(requiredBy);
                 ImGui::SetTooltip(
-                    "Required by: %s",
+                    TEXT::Localize(
+                        "ui.projectFeatures.requiredByFormat").c_str(),
                     owners.c_str());
             }
 
@@ -179,9 +188,14 @@ namespace HIKARI {
             if (info.active) {
                 ImGui::TextColored(
                     ImVec4(0.42f, 0.9f, 0.5f, 1.0f),
-                    "Active");
+                    "%s",
+                    TEXT::Localize(
+                        "ui.projectFeatures.active").c_str());
             } else {
-                ImGui::TextDisabled("Inactive");
+                ImGui::TextDisabled(
+                    "%s",
+                    TEXT::Localize(
+                        "ui.projectFeatures.inactive").c_str());
             }
             ImGui::TextDisabled("%s", info.featureId.c_str());
             ImGui::TextWrapped("%s", info.description.c_str());
@@ -189,7 +203,8 @@ namespace HIKARI {
                 const std::string dependencies =
                     JoinNames(info.requiredFeatureIds);
                 ImGui::TextDisabled(
-                    "Requires: %s",
+                    TEXT::Localize(
+                        "ui.projectFeatures.requiresFormat").c_str(),
                     dependencies.c_str());
             }
             ImGui::Spacing();
@@ -199,17 +214,23 @@ namespace HIKARI {
         const RuntimeFeatureInstallReport::Resolution draftResolution =
             catalog.ResolveEnabledFeatures(draftFeatureIds_);
         if (!draftResolution.unknownFeatures.empty()) {
-            ImGui::SeparatorText("Unknown Features");
+            ImGui::SeparatorText(
+                TEXT::Localize(
+                    "ui.projectFeatures.unknownFeatures").c_str());
             ImGui::TextColored(
                 ImVec4(1.0f, 0.45f, 0.35f, 1.0f),
-                "These configured modules are not available in this build.");
+                "%s",
+                TEXT::Localize(
+                    "ui.projectFeatures.unknownHint").c_str());
             for (const std::string& unknown :
                     draftResolution.unknownFeatures) {
                 ImGui::PushID(unknown.c_str());
                 ImGui::BulletText("%s", unknown.c_str());
                 ImGui::SameLine();
                 ImGui::BeginDisabled(playActive);
-                if (ImGui::SmallButton("Remove")) {
+                if (ImGui::SmallButton(
+                        TEXT::Localize(
+                            "ui.projectFeatures.remove").c_str())) {
                     RemoveFeature(draftFeatureIds_, unknown);
                     dirty_ = true;
                 }
@@ -221,11 +242,14 @@ namespace HIKARI {
         const std::vector<RuntimeFeatureSceneIssue> sceneIssues =
             catalog.AnalyzeSceneDocument(scene.GetSceneDocument());
         if (!sceneIssues.empty()) {
-            ImGui::SeparatorText("Preserved Inactive Scene Data");
+            ImGui::SeparatorText(
+                TEXT::Localize(
+                    "ui.projectFeatures.preservedInactive").c_str());
             ImGui::TextColored(
                 ImVec4(1.0f, 0.72f, 0.25f, 1.0f),
-                "Disabled modules are referenced by the current scene. "
-                "Their serialized data remains intact.");
+                "%s",
+                TEXT::Localize(
+                    "ui.projectFeatures.preservedHint").c_str());
             constexpr size_t kMaxVisibleIssues = 12;
             for (size_t index = 0;
                     index < sceneIssues.size() &&
@@ -235,73 +259,90 @@ namespace HIKARI {
                 if (issue.kind ==
                     RuntimeFeatureSceneIssueKind::DisabledComponent) {
                     ImGui::BulletText(
-                        "%s on %s (%llu) requires %s",
+                        TEXT::Localize(
+                            "ui.projectFeatures.issueComponentFormat").c_str(),
                         issue.itemId.c_str(),
                         issue.objectName.empty()
-                            ? "<unnamed>"
+                            ? TEXT::Localize(
+                                "ui.projectFeatures.unnamed").c_str()
                             : issue.objectName.c_str(),
                         static_cast<unsigned long long>(
                             issue.objectId.value),
                         issue.featureId.c_str());
                 } else {
                     ImGui::BulletText(
-                        "%s requires %s",
+                        TEXT::Localize(
+                            "ui.projectFeatures.issueRequiresFormat").c_str(),
                         issue.itemId.c_str(),
                         issue.featureId.c_str());
                 }
             }
             if (sceneIssues.size() > kMaxVisibleIssues) {
                 ImGui::TextDisabled(
-                    "... and %zu more",
+                    TEXT::Localize(
+                        "ui.projectFeatures.moreFormat").c_str(),
                     sceneIssues.size() - kMaxVisibleIssues);
             }
         }
 
         ImGui::Separator();
         ImGui::BeginDisabled(playActive);
-        if (ImGui::Button("Enable All Built-ins")) {
+        if (ImGui::Button(
+                TEXT::Localize(
+                    "ui.projectFeatures.enableAll").c_str())) {
             draftFeatureIds_ = catalog.GetFeatureIds();
             NormalizeDraft(catalog);
             dirty_ = true;
         }
         ImGui::SameLine();
-        if (ImGui::Button("Clear All")) {
+        if (ImGui::Button(
+                TEXT::Localize(
+                    "ui.projectFeatures.clearAll").c_str())) {
             draftFeatureIds_.clear();
             dirty_ = true;
         }
         ImGui::SameLine();
-        if (ImGui::Button("Reload From Disk")) {
+        if (ImGui::Button(
+                TEXT::Localize(
+                    "ui.projectFeatures.reloadFromDisk").c_str())) {
             ReloadDraft(projectRoot);
             if (!scene.ReloadRuntimeFeaturesFromProjectSettings()) {
                 statusMessage_ =
-                    "Settings reloaded, but runtime feature apply reported errors.";
+                    TEXT::Localize(
+                        "ui.projectFeatures.reloadApplyErrors");
                 statusIsError_ = true;
             }
         }
 
         ImGui::BeginDisabled(!dirty_);
-        if (ImGui::Button("Save & Apply")) {
+        if (ImGui::Button(
+                TEXT::Localize(
+                    "ui.projectFeatures.saveApply").c_str())) {
             NormalizeDraft(catalog);
             const bool settingsReloaded =
                 settingsService_.Load(projectRoot);
             if (!settingsReloaded) {
                 statusMessage_ =
-                    "Could not reload project settings before saving.";
+                    TEXT::Localize(
+                        "ui.projectFeatures.reloadBeforeSaveFailed");
                 statusIsError_ = true;
             } else {
                 settingsService_.SetEnabledRuntimeFeatures(
                     draftFeatureIds_);
             }
             if (!settingsReloaded || !settingsService_.Save()) {
-                statusMessage_ = "Could not save project feature settings.";
+                statusMessage_ =
+                    TEXT::Localize("ui.projectFeatures.saveFailed");
                 statusIsError_ = true;
             } else {
                 dirty_ = false;
                 const bool applied =
                     scene.ReloadRuntimeFeaturesFromProjectSettings();
                 statusMessage_ = applied
-                    ? "Project features saved and applied."
-                    : "Settings saved, but runtime feature apply reported errors.";
+                    ? TEXT::Localize(
+                        "ui.projectFeatures.savedApplied")
+                    : TEXT::Localize(
+                        "ui.projectFeatures.savedApplyErrors");
                 statusIsError_ = !applied;
             }
         }
@@ -309,7 +350,11 @@ namespace HIKARI {
         ImGui::EndDisabled();
 
         ImGui::SameLine();
-        ImGui::TextDisabled(dirty_ ? "Unsaved changes" : "Saved");
+        ImGui::TextDisabled(
+            "%s",
+            dirty_
+                ? TEXT::Localize("ui.projectFeatures.unsaved").c_str()
+                : TEXT::Localize("ui.projectFeatures.saved").c_str());
         if (!statusMessage_.empty()) {
             ImGui::TextColored(
                 statusIsError_

@@ -1,5 +1,6 @@
 #include "HIKARI_HierarchyPanel.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
+#include "Core/Text/HIKARI_Localization.h"
 #include <algorithm>
 #include <cctype>
 #include <string>
@@ -54,7 +55,8 @@ namespace HIKARI {
 
     void HierarchyPanel::Draw(World& world, EditorSelection& selection) {
 #if defined(HIKARI_WITH_EDITOR)
-        if (!ImGui::Begin("Scene Hierarchy")) {
+        if (!ImGui::Begin(
+                TEXT::Localize("menu.windows.sceneHierarchy").c_str())) {
             ImGui::End();
             return;
         }
@@ -82,8 +84,8 @@ namespace HIKARI {
 #if defined(HIKARI_WITH_EDITOR)
         const auto& objects = world.GetObjects();
         EDITOR::SearchField(
-            "Hierarchy",
-            "Search scene objects...",
+            TEXT::Localize("ui.hierarchy.search").c_str(),
+            TEXT::Localize("ui.hierarchy.searchPlaceholder").c_str(),
             searchBuffer_.data(),
             searchBuffer_.size());
 
@@ -99,28 +101,28 @@ namespace HIKARI {
 
         ImGui::TextDisabled(
             searchBuffer_[0] == '\0'
-                ? "%d objects"
-                : "%d of %d objects",
+                ? TEXT::Localize("ui.hierarchy.objects").c_str()
+                : TEXT::Localize("ui.hierarchy.objectsFiltered").c_str(),
             static_cast<int>(filteredObjects.size()),
             static_cast<int>(objects.size()));
         if (selection.GetSelectedObjectCount() > 1u) {
             ImGui::SameLine();
             ImGui::TextDisabled(
-                "| %d selected",
+                TEXT::Localize("ui.hierarchy.selected").c_str(),
                 static_cast<int>(
                     selection.GetSelectedObjectCount()));
         }
 
         if (objects.empty()) {
             EDITOR::EmptyState(
-                "No scene objects",
-                "Use + or right-click to create one.");
+                TEXT::Localize("ui.hierarchy.emptyTitle").c_str(),
+                TEXT::Localize("ui.hierarchy.emptyHint").c_str());
             return;
         }
         if (filteredObjects.empty()) {
             EDITOR::EmptyState(
-                "No matching objects",
-                "Try another name or clear the search.");
+                TEXT::Localize("ui.hierarchy.noMatchTitle").c_str(),
+                TEXT::Localize("ui.hierarchy.noMatchHint").c_str());
             return;
         }
 

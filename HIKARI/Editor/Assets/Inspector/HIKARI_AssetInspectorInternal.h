@@ -15,7 +15,7 @@ struct EditorSelection;
 namespace HIKARI::EDITOR::ASSET_INSPECTOR {
 
 #if defined(HIKARI_WITH_EDITOR)
-const char *
+std::string
 ToClusteredGeometryArtifactStateText(ClusteredGeometryArtifactState state);
 
 void DrawClusteredGeometryArtifactInfo(const AssetDatabase &assetDatabase,

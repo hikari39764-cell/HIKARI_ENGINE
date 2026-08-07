@@ -9,6 +9,7 @@
 #include "Editor/AI/HIKARI_AI_VisionClient.h"
 
 #include "Core/Text/HIKARI_Trim.h"
+#include "Core/Text/HIKARI_Localization.h"
 
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
@@ -896,23 +897,32 @@ void AiAssistantPanel::ResetVisionSettings() {
 
 void AiAssistantPanel::Draw(bool& open) {
 #if defined(HIKARI_WITH_EDITOR)
-    if (!ImGui::Begin("AI Assistant", &open, ImGuiWindowFlags_MenuBar)) {
+    if (!ImGui::Begin(
+            TEXT::Localize("ai.title").c_str(),
+            &open, ImGuiWindowFlags_MenuBar)) {
         ImGui::End();
         return;
     }
 
     if (ImGui::BeginMenuBar()) {
         if (ImGui::BeginMenu("View")) {
-            ImGui::MenuItem("Capabilities", nullptr, &showCapabilities_);
-            ImGui::MenuItem("Raw JSON Action", nullptr, &showRawRequest_);
-            if (ImGui::MenuItem("API Settings", nullptr,
+            ImGui::MenuItem(
+                TEXT::Localize("ai.menu.capabilities").c_str(),
+                nullptr, &showCapabilities_);
+            ImGui::MenuItem(
+                TEXT::Localize("ai.menu.rawJson").c_str(),
+                nullptr, &showRawRequest_);
+            if (ImGui::MenuItem(
+                    TEXT::Localize("ai.menu.apiSettings").c_str(),
+                    nullptr,
                                 &showApiSettings_)) {
                 if (showApiSettings_) {
                     OpenApiSettingsBuffers();
                     OpenVisionBuffers();
                 }
             }
-            if (ImGui::MenuItem("Clear Chat")) {
+            if (ImGui::MenuItem(
+                    TEXT::Localize("ai.menu.clearChat").c_str())) {
                 {
                     std::lock_guard<std::mutex> lock(messageMutex_);
                     messages_.clear();
@@ -943,10 +953,10 @@ void AiAssistantPanel::Draw(bool& open) {
             : ImVec4{ 0.28f, 0.82f, 0.48f, 1.0f };
     ImGui::TextColored(statusColor, "%s",
         busy
-            ? "● 处理中..."
+            ? TEXT::Localize("ai.status.processing").c_str()
             : configValid
                 ? ("● DashScope · " + configModel).c_str()
-                : "● 未配置 API Key（只读模式）");
+                : TEXT::Localize("ai.status.noApi").c_str());
     if (!bridgeStatus_.empty()) {
         ImGui::TextDisabled("%s", bridgeStatus_.c_str());
     }
@@ -970,14 +980,15 @@ void AiAssistantPanel::Draw(bool& open) {
     if (!planLine.empty()) {
         ImGui::TextColored(
             ImVec4{ 0.85f, 0.78f, 0.45f, 1.0f },
-            "执行计划");
+            TEXT::Localize("ai.plan").c_str());
         ImGui::TextWrapped("%s", planLine.c_str());
         ImGui::Spacing();
         ImGui::Separator();
     }
 
     if (ImGui::CollapsingHeader(
-            "思考过程（AI 推理）", ImGuiTreeNodeFlags_DefaultOpen)) {
+            TEXT::Localize("ai.reasoning").c_str(),
+            ImGuiTreeNodeFlags_DefaultOpen)) {
         ImGui::BeginChild(
             "##AiReasoningLog", ImVec2(0.0f, 160.0f), true);
         {
@@ -1001,7 +1012,7 @@ void AiAssistantPanel::Draw(bool& open) {
                 if (!visiblePartial.empty()) {
                     ImGui::TextColored(
                         ImVec4{ 0.65f, 0.72f, 0.80f, 1.0f },
-                        "（思考中）");
+                        TEXT::Localize("ai.status.thinking").c_str());
                     ImGui::TextWrapped("%s", visiblePartial.c_str());
                     ImGui::Spacing();
                     ImGui::SetScrollHereY(1.0f);
@@ -1024,11 +1035,11 @@ void AiAssistantPanel::Draw(bool& open) {
             if (message.role == "user") {
                 ImGui::TextColored(
                     ImVec4{ 0.82f, 0.88f, 0.96f, 1.0f },
-                    "[You]");
+                    TEXT::Localize("ai.chat.you").c_str());
             } else {
                 ImGui::TextColored(
                     ImVec4{ 0.45f, 0.80f, 1.00f, 1.0f },
-                    "[Assistant]");
+                    TEXT::Localize("ai.chat.assistant").c_str());
             }
             ImGui::TextWrapped("%s", message.content.c_str());
             ImGui::Spacing();
@@ -1047,28 +1058,34 @@ void AiAssistantPanel::Draw(bool& open) {
         sizeof(inputBuffer_),
         ImVec2(-1.0f, 56.0f),
         ImGuiInputTextFlags_EnterReturnsTrue);
-    const bool sendClicked = ImGui::Button("Send");
+    const bool sendClicked = ImGui::Button(
+        TEXT::Localize("ai.send").c_str());
     if (enterPressed || sendClicked) {
         SendCurrentMessage();
     }
     ImGui::EndDisabled();
     if (busy) {
         ImGui::SameLine();
-        ImGui::TextDisabled("working...");
+        ImGui::TextDisabled(
+            TEXT::Localize("ai.working").c_str());
     }
 
     if (showCapabilities_) {
         ImGui::Separator();
         if (ImGui::CollapsingHeader(
-                "Capability Manifest", ImGuiTreeNodeFlags_DefaultOpen)) {
+                TEXT::Localize("ai.capabilities").c_str(),
+                ImGuiTreeNodeFlags_DefaultOpen)) {
             if (ImGui::BeginTable(
                     "##AiCapabilities", 3,
                     ImGuiTableFlags_RowBg |
                         ImGuiTableFlags_BordersInnerV |
                         ImGuiTableFlags_SizingStretchProp)) {
-                ImGui::TableSetupColumn("Status");
-                ImGui::TableSetupColumn("ID");
-                ImGui::TableSetupColumn("Summary");
+                ImGui::TableSetupColumn(
+                    TEXT::Localize("ai.capabilities.status").c_str());
+                ImGui::TableSetupColumn(
+                    TEXT::Localize("ai.capabilities.id").c_str());
+                ImGui::TableSetupColumn(
+                    TEXT::Localize("ai.capabilities.summary").c_str());
                 ImGui::TableHeadersRow();
                 for (const AI_ASSISTANT::AiCapability& capability :
                      AI_ASSISTANT::QueryCapabilities()) {
@@ -1089,27 +1106,31 @@ void AiAssistantPanel::Draw(bool& open) {
     if (showApiSettings_) {
         ImGui::Separator();
         if (ImGui::CollapsingHeader(
-                "API Settings", ImGuiTreeNodeFlags_DefaultOpen)) {
+                TEXT::Localize("ai.menu.apiSettings").c_str(),
+                ImGuiTreeNodeFlags_DefaultOpen)) {
             ImGui::InputText(
-                "API Key",
+                TEXT::Localize("ai.api.key").c_str(),
                 apiKeyBuffer_,
                 sizeof(apiKeyBuffer_),
                 showApiKey_ ? 0 : ImGuiInputTextFlags_Password);
             ImGui::SameLine();
-            ImGui::Checkbox("Show", &showApiKey_);
+            ImGui::Checkbox(
+                TEXT::Localize("ai.api.show").c_str(), &showApiKey_);
             ImGui::InputText(
-                "Base URL",
+                TEXT::Localize("ai.api.baseUrl").c_str(),
                 baseUrlBuffer_,
                 sizeof(baseUrlBuffer_));
             ImGui::InputText(
-                "Model",
+                TEXT::Localize("ai.api.model").c_str(),
                 modelBuffer_,
                 sizeof(modelBuffer_));
-            if (ImGui::Button("Save")) {
+            if (ImGui::Button(
+                    TEXT::Localize("ai.api.save").c_str())) {
                 SaveApiSettings();
             }
             ImGui::SameLine();
-            if (ImGui::Button("Reset to defaults")) {
+            if (ImGui::Button(
+                    TEXT::Localize("ai.api.reset").c_str())) {
                 AI_ASSISTANT::ResetAiChatConfig();
                 {
                     std::lock_guard<std::mutex> lock(stateMutex_);
@@ -1119,47 +1140,52 @@ void AiAssistantPanel::Draw(bool& open) {
                 OpenApiSettingsBuffers();
             }
             ImGui::TextDisabled(
-                "Saved to %USERPROFILE%\\.hikari-ai-assistant.env");
+                TEXT::Localize("ai.api.savedTo").c_str());
 
-            ImGui::SeparatorText("Vision API");
+            ImGui::SeparatorText(
+                TEXT::Localize("ai.api.vision").c_str());
             ImGui::InputText(
-                "Vision API Key",
+                TEXT::Localize("ai.api.visionKey").c_str(),
                 visionApiKeyBuffer_,
                 sizeof(visionApiKeyBuffer_),
                 showVisionKey_ ? 0 : ImGuiInputTextFlags_Password);
             ImGui::SameLine();
-            ImGui::Checkbox("Show", &showVisionKey_);
+            ImGui::Checkbox(
+                TEXT::Localize("ai.api.show").c_str(), &showVisionKey_);
             ImGui::InputText(
-                "Vision Base URL",
+                TEXT::Localize("ai.api.visionBaseUrl").c_str(),
                 visionBaseUrlBuffer_,
                 sizeof(visionBaseUrlBuffer_));
             ImGui::InputText(
-                "Vision Model",
+                TEXT::Localize("ai.api.visionModel").c_str(),
                 visionModelBuffer_,
                 sizeof(visionModelBuffer_));
-            if (ImGui::Button("Save Vision")) {
+            if (ImGui::Button(
+                    TEXT::Localize("ai.api.saveVision").c_str())) {
                 SaveVisionSettings();
             }
             ImGui::SameLine();
-            if (ImGui::Button("Reset Vision")) {
+            if (ImGui::Button(
+                    TEXT::Localize("ai.api.resetVision").c_str())) {
                 ResetVisionSettings();
             }
             ImGui::TextDisabled(
-                "默认读取 vision-skill .env 的 VISION_MODEL；"
-                "保存后写入同一引擎配置文件。");
+                TEXT::Localize("ai.api.visionDefault").c_str());
         }
     }
 
     if (showRawRequest_) {
         ImGui::Separator();
         if (ImGui::CollapsingHeader(
-                "Raw JSON Action", ImGuiTreeNodeFlags_DefaultOpen)) {
+                TEXT::Localize("ai.raw.title").c_str(),
+                ImGuiTreeNodeFlags_DefaultOpen)) {
             ImGui::InputTextMultiline(
                 "##AiRawRequest",
                 rawRequestBuffer_,
                 sizeof(rawRequestBuffer_),
                 ImVec2(-1.0f, 64.0f));
-            if (ImGui::Button("Run")) {
+            if (ImGui::Button(
+                    TEXT::Localize("ai.raw.run").c_str())) {
                 rawResult_ = ExecuteRequest(rawRequestBuffer_);
                 hasRawResult_ = true;
             }
@@ -1168,7 +1194,9 @@ void AiAssistantPanel::Draw(bool& open) {
                     rawResult_.ok
                         ? ImVec4{ 0.28f, 0.82f, 0.48f, 1.0f }
                         : ImVec4{ 1.0f, 0.42f, 0.35f, 1.0f },
-                    rawResult_.ok ? "OK" : "NOT SUPPORTED");
+                    rawResult_.ok
+                        ? TEXT::Localize("ai.raw.ok").c_str()
+                        : TEXT::Localize("ai.raw.fail").c_str());
                 ImGui::TextWrapped("%s",
                                    rawResult_.message.c_str());
                 for (const std::string& detail : rawResult_.details) {

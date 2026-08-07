@@ -19,7 +19,7 @@
 
 namespace HIKARI::EDITOR::ASSET_BROWSER {
 
-const char *ToAssetTypeText(AssetType type);
+std::string ToAssetTypeText(AssetType type);
 
 std::filesystem::path
 MakeUniqueFolderPath(const std::filesystem::path &parentDirectory);
@@ -119,12 +119,12 @@ bool MatchesScope(const AssetRecord &record,
                   const AssetUsageSummary *usageSummary,
                   AssetBrowserScope scope);
 
-const char *ToScopeTitle(AssetBrowserScope scope);
+std::string ToScopeTitle(AssetBrowserScope scope);
 
-const char *ToUsageBadge(const AssetRecord &record,
+std::string ToUsageBadge(const AssetRecord &record,
                          const AssetUsageSummary *usageSummary);
 
-const char *ToCookedBadge(const AssetRecord &record);
+std::string ToCookedBadge(const AssetRecord &record);
 
 const char *ToCompactTypeBadge(AssetType type);
 

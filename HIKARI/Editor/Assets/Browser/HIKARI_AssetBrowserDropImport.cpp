@@ -1,4 +1,5 @@
 #include "Core/Text/HIKARI_AsciiCase.h"
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Assets/Browser/HIKARI_AssetBrowserPanel.h"
 
 #include <algorithm>
@@ -356,13 +357,19 @@ void ProcessDroppedFiles(AssetDatabase &assetDatabase,
   if (copiedFiles.empty()) {
     if (copiedCompanionCount > 0) {
       assetDatabase.ScanAssets(false);
-      lastOperationMessage =
-          "Copied " + std::to_string(copiedCompanionCount) +
-          " companion file(s); hidden from the Asset Browser";
+      char buffer[96]{};
+      std::snprintf(
+          buffer,
+          sizeof(buffer),
+          TEXT::Localize(
+              "ui.assetBrowser.copiedCompanionsFormat").c_str(),
+          copiedCompanionCount);
+      lastOperationMessage = buffer;
     } else {
-      lastOperationMessage = lastError.empty()
-                                 ? "Drop ignored: no supported asset files"
-                                 : lastError;
+      lastOperationMessage =
+          lastError.empty()
+              ? TEXT::Localize("ui.assetBrowser.dropIgnored")
+              : lastError;
     }
     return;
   }
@@ -392,16 +399,34 @@ void ProcessDroppedFiles(AssetDatabase &assetDatabase,
     }
   }
 
-  lastOperationMessage =
-      "Dropped " + std::to_string(copiedFiles.size()) +
-      (importQueued ? " file(s); background import queued"
-                    : " file(s); another import batch is already running");
+  char droppedBuffer[128]{};
+  std::snprintf(
+      droppedBuffer,
+      sizeof(droppedBuffer),
+      TEXT::Localize(
+          importQueued
+              ? "ui.assetBrowser.dropQueuedFormat"
+              : "ui.assetBrowser.dropBatchRunningFormat").c_str(),
+      static_cast<int>(copiedFiles.size()));
+  lastOperationMessage = droppedBuffer;
   if (copiedCompanionCount > 0) {
-    lastOperationMessage += ", copied " + std::to_string(copiedCompanionCount) +
-                            " hidden companion file(s)";
+    char companionBuffer[96]{};
+    std::snprintf(
+        companionBuffer,
+        sizeof(companionBuffer),
+        TEXT::Localize(
+            "ui.assetBrowser.copiedHiddenCompanionsFormat").c_str(),
+        copiedCompanionCount);
+    lastOperationMessage += companionBuffer;
   }
   if (skippedCount > 0) {
-    lastOperationMessage += ", skipped " + std::to_string(skippedCount);
+    char skippedBuffer[64]{};
+    std::snprintf(
+        skippedBuffer,
+        sizeof(skippedBuffer),
+        TEXT::Localize("ui.assetBrowser.skippedFormat").c_str(),
+        skippedCount);
+    lastOperationMessage += skippedBuffer;
   }
 }
 

@@ -1,5 +1,6 @@
 #include "Editor/Panels/HIKARI_InputActionMapEditor.h"
 
+#include "Core/Text/HIKARI_Localization.h"
 #include <algorithm>
 #include <utility>
 
@@ -29,15 +30,20 @@ void InputActionMapEditor::Draw(INPUT::InputService& inputService) {
     if (ImGui::BeginTabBar(
             "ProjectInputEditorTabs",
             ImGuiTabBarFlags_FittingPolicyResizeDown)) {
-        if (ImGui::BeginTabItem("Actions")) {
+        if (ImGui::BeginTabItem(
+                TEXT::Localize("ui.input.tabActions").c_str())) {
             DrawActionsTab(inputService);
             ImGui::EndTabItem();
         }
-        if (ImGui::BeginTabItem("Contexts & Bindings")) {
+        if (ImGui::BeginTabItem(
+                TEXT::Localize(
+                    "ui.input.tabContextsBindings").c_str())) {
             DrawContextsTab(inputService);
             ImGui::EndTabItem();
         }
-        if (ImGui::BeginTabItem("Runtime Monitor")) {
+        if (ImGui::BeginTabItem(
+                TEXT::Localize(
+                    "ui.input.tabRuntimeMonitor").c_str())) {
             DrawMonitorTab(inputService);
             ImGui::EndTabItem();
         }
@@ -56,28 +62,42 @@ void InputActionMapEditor::Draw(INPUT::InputService& inputService) {
 
 void InputActionMapEditor::DrawToolbar(INPUT::InputService& inputService) {
 #if defined(HIKARI_WITH_EDITOR)
-    if (ImGui::Button("Save", ImVec2(92.0f, 0.0f))) {
+    if (ImGui::Button(
+            TEXT::Localize("ui.input.save").c_str(),
+            ImVec2(92.0f, 0.0f))) {
         std::string error;
         const bool saved = inputService.SaveProject(&error);
-        SetStatus(saved ? "Input project saved." : error, !saved);
+        SetStatus(
+            saved
+                ? TEXT::Localize("ui.input.projectSaved")
+                : error,
+            !saved);
         if (saved) dirty_ = false;
     }
     ImGui::SameLine();
-    if (ImGui::Button("Reload", ImVec2(92.0f, 0.0f))) {
+    if (ImGui::Button(
+            TEXT::Localize("ui.input.reload").c_str(),
+            ImVec2(92.0f, 0.0f))) {
         if (dirty_) reloadRequested_ = true;
         else {
             std::string error;
             const bool loaded = inputService.ReloadProject(&error);
-            SetStatus(loaded ? "Input project reloaded." : error, !loaded);
+            SetStatus(
+                loaded
+                    ? TEXT::Localize("ui.input.projectReloaded")
+                    : error,
+                !loaded);
         }
     }
     ImGui::SameLine();
-    if (ImGui::Button("Restore Defaults", ImVec2(142.0f, 0.0f))) {
+    if (ImGui::Button(
+            TEXT::Localize("ui.input.restoreDefaults").c_str(),
+            ImVec2(142.0f, 0.0f))) {
         restoreRequested_ = true;
     }
     ImGui::SameLine();
     ImGui::TextDisabled(
-        "%zu actions  |  %zu contexts",
+        TEXT::Localize("ui.input.actionsContextsFormat").c_str(),
         inputService.GetActionMap().actions.size(),
         inputService.GetActionMap().contexts.size());
     if (!statusMessage_.empty()) {
@@ -99,18 +119,29 @@ void InputActionMapEditor::DrawProjectPopups(
     INPUT::InputService& inputService) {
 #if defined(HIKARI_WITH_EDITOR)
     if (reloadRequested_) {
-        ImGui::OpenPopup("Reload Input Project");
+        ImGui::OpenPopup(
+            (TEXT::Localize("ui.input.reloadTitle") +
+                "###ReloadInputProject").c_str());
         reloadRequested_ = false;
     }
     if (ImGui::BeginPopupModal(
-            "Reload Input Project", nullptr,
+            (TEXT::Localize("ui.input.reloadTitle") +
+                "###ReloadInputProject").c_str(),
+            nullptr,
             ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::TextWrapped(
-            "Discard unsaved in-memory changes and reload from disk?");
-        if (ImGui::Button("Reload", ImVec2(120.0f, 0.0f))) {
+            "%s",
+            TEXT::Localize("ui.input.reloadBody").c_str());
+        if (ImGui::Button(
+                TEXT::Localize("ui.input.reload").c_str(),
+                ImVec2(120.0f, 0.0f))) {
             std::string error;
             const bool loaded = inputService.ReloadProject(&error);
-            SetStatus(loaded ? "Input project reloaded." : error, !loaded);
+            SetStatus(
+                loaded
+                    ? TEXT::Localize("ui.input.projectReloaded")
+                    : error,
+                !loaded);
             if (loaded) {
                 dirty_ = false;
                 selectedAction_ = selectedContext_ = 0;
@@ -118,26 +149,37 @@ void InputActionMapEditor::DrawProjectPopups(
             ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(120.0f, 0.0f))) {
+        if (ImGui::Button(
+                TEXT::Localize("ui.common.cancel").c_str(),
+                ImVec2(120.0f, 0.0f))) {
             ImGui::CloseCurrentPopup();
         }
         ImGui::EndPopup();
     }
 
     if (restoreRequested_) {
-        ImGui::OpenPopup("Restore Input Defaults");
+        ImGui::OpenPopup(
+            (TEXT::Localize("ui.input.restoreTitle") +
+                "###RestoreInputDefaults").c_str());
         restoreRequested_ = false;
     }
     if (ImGui::BeginPopupModal(
-            "Restore Input Defaults", nullptr,
+            (TEXT::Localize("ui.input.restoreTitle") +
+                "###RestoreInputDefaults").c_str(),
+            nullptr,
             ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::TextWrapped(
-            "Replace every action, context, and binding with HIKARI defaults?");
-        if (ImGui::Button("Restore", ImVec2(120.0f, 0.0f))) {
+            "%s",
+            TEXT::Localize("ui.input.restoreBody").c_str());
+        if (ImGui::Button(
+                TEXT::Localize("ui.input.restore").c_str(),
+                ImVec2(120.0f, 0.0f))) {
             std::string error;
             const bool restored = inputService.RestoreDefaults(&error);
             SetStatus(
-                restored ? "Default input project restored and saved." : error,
+                restored
+                    ? TEXT::Localize("ui.input.defaultRestored")
+                    : error,
                 !restored);
             if (restored) {
                 dirty_ = false;
@@ -146,7 +188,9 @@ void InputActionMapEditor::DrawProjectPopups(
             ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(120.0f, 0.0f))) {
+        if (ImGui::Button(
+                TEXT::Localize("ui.common.cancel").c_str(),
+                ImVec2(120.0f, 0.0f))) {
             ImGui::CloseCurrentPopup();
         }
         ImGui::EndPopup();

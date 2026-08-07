@@ -1,5 +1,6 @@
 #include "Editor/Assets/Inspector/HIKARI_AssetInspectorPanel.h"
 
+#include "Core/Text/HIKARI_Localization.h"
 #include <algorithm>
 #include <array>
 #include <cstring>
@@ -30,20 +31,20 @@
 namespace HIKARI::EDITOR::ASSET_INSPECTOR {
 
 #if defined(HIKARI_WITH_EDITOR)
-const char *
+std::string
 ToClusteredGeometryArtifactStateText(ClusteredGeometryArtifactState state) {
   switch (state) {
   case ClusteredGeometryArtifactState::Exists:
-    return "Exists";
+    return TEXT::Localize("ui.modelDiagnostics.stateExists");
   case ClusteredGeometryArtifactState::Valid:
-    return "Valid";
+    return TEXT::Localize("ui.modelDiagnostics.stateValid");
   case ClusteredGeometryArtifactState::Invalid:
-    return "Invalid";
+    return TEXT::Localize("ui.modelDiagnostics.stateInvalid");
   case ClusteredGeometryArtifactState::Outdated:
-    return "Outdated";
+    return TEXT::Localize("ui.modelDiagnostics.stateOutdated");
   case ClusteredGeometryArtifactState::Missing:
   default:
-    return "Missing";
+    return TEXT::Localize("ui.modelDiagnostics.stateMissing");
   }
 }
 
@@ -51,24 +52,41 @@ void DrawClusteredGeometryArtifactInfo(const AssetDatabase &assetDatabase,
                                        const AssetRecord &record) {
   const ClusteredGeometryArtifactInfo info =
       assetDatabase.GetClusteredGeometryArtifactInfo(record);
-  ImGui::SeparatorText("ClusteredGeometry Artifact");
-  ImGui::Text("State: %s", ToClusteredGeometryArtifactStateText(info.state));
-  ImGui::Text("Path: %s", info.path.empty()
-                              ? "<none>"
-                              : info.path.generic_string().c_str());
-  ImGui::Text("Message: %s",
-              info.message.empty() ? "<none>" : info.message.c_str());
+  ImGui::SeparatorText(
+      TEXT::Localize(
+          "ui.modelDiagnostics.clusteredArtifact").c_str());
+  ImGui::Text(
+      TEXT::Localize("ui.modelDiagnostics.stateFormat").c_str(),
+      ToClusteredGeometryArtifactStateText(info.state).c_str());
+  ImGui::Text(
+      TEXT::Localize("ui.modelDiagnostics.pathFormat").c_str(),
+      info.path.empty()
+          ? TEXT::Localize("ui.common.none").c_str()
+          : info.path.generic_string().c_str());
+  ImGui::Text(
+      TEXT::Localize("ui.modelDiagnostics.messageFormat").c_str(),
+      info.message.empty()
+          ? TEXT::Localize("ui.common.none").c_str()
+          : info.message.c_str());
   if (info.state == ClusteredGeometryArtifactState::Invalid ||
       info.state == ClusteredGeometryArtifactState::Valid ||
       info.state == ClusteredGeometryArtifactState::Outdated) {
-    ImGui::Text("Validation: %s", info.validationValid ? "Valid" : "Invalid");
-    ImGui::Text("Invalid S/C/P/B/M: %u / %u / %u / %u / %u",
+    ImGui::Text(
+        TEXT::Localize("ui.modelDiagnostics.validationFormat").c_str(),
+        info.validationValid
+            ? TEXT::Localize("ui.modelDiagnostics.stateValid").c_str()
+            : TEXT::Localize("ui.modelDiagnostics.stateInvalid").c_str());
+    ImGui::Text(
+        TEXT::Localize(
+            "ui.modelDiagnostics.invalidScpbmFormat").c_str(),
                 info.invalidSurfaceCount, info.invalidClusterCount,
                 info.invalidPageCount, info.invalidBoundsCount,
                 info.invalidMaterialCount);
   }
   if (!info.validationMessages.empty() &&
-      ImGui::TreeNode("Validation Messages")) {
+      ImGui::TreeNode(
+          TEXT::Localize(
+              "ui.modelDiagnostics.validationMessages").c_str())) {
     for (const std::string &message : info.validationMessages) {
       ImGui::BulletText("%s", message.c_str());
     }
@@ -86,29 +104,37 @@ void DrawModelDiagnostics(const AssetDatabase &assetDatabase,
       !report.is_object() || !report.contains("diagnostics") ||
       !report["diagnostics"].is_object()) {
     ImGui::TextDisabled(
-        "Model diagnostics are written after a successful HMODEL import");
+        "%s",
+        TEXT::Localize(
+            "ui.modelDiagnostics.awaitImport").c_str());
     return;
   }
 
   const nlohmann::json &diagnostics = report["diagnostics"];
   if (diagnostics.contains("summary") && diagnostics["summary"].is_object()) {
     const nlohmann::json &summary = diagnostics["summary"];
-    ImGui::SeparatorText("HMODEL Summary");
-    ImGui::Text("Meshes: %d  Primitives: %d  Materials: %d  Textures: %d",
+    ImGui::SeparatorText(
+        TEXT::Localize("ui.modelDiagnostics.hmodelSummary").c_str());
+    ImGui::Text(
+        TEXT::Localize("ui.modelDiagnostics.meshesFormat").c_str(),
                 summary.value("meshes", 0), summary.value("primitives", 0),
                 summary.value("materials", 0), summary.value("textures", 0));
-    ImGui::Text("Static Vertices: %d  Skinned Vertices: %d  Indices: %d",
+    ImGui::Text(
+        TEXT::Localize("ui.modelDiagnostics.verticesFormat").c_str(),
                 summary.value("staticVertices", 0),
                 summary.value("skinnedVertices", 0),
                 summary.value("indices", 0));
-    ImGui::Text("HTEX Refs: %d  Fallback Textures: %d",
+    ImGui::Text(
+        TEXT::Localize("ui.modelDiagnostics.htexRefsFormat").c_str(),
                 summary.value("htexRefs", 0),
                 summary.value("fallbackTextures", 0));
-    ImGui::Text("Generated N/T: %d / %d  Unresolved Textures: %d",
+    ImGui::Text(
+        TEXT::Localize("ui.modelDiagnostics.generatedNtFormat").c_str(),
                 summary.value("missingNormalGeneratedCount", 0),
                 summary.value("missingTangentGeneratedCount", 0),
                 summary.value("unresolvedTextureCount", 0));
-    ImGui::Text("Cluster Static / Fallback Prim: %d / %d",
+    ImGui::Text(
+        TEXT::Localize("ui.modelDiagnostics.clusterPrimFormat").c_str(),
                 summary.value("clusteredStaticPrimitiveCount", 0),
                 summary.value("fallbackPrimitiveCount", 0));
   }
@@ -116,26 +142,34 @@ void DrawModelDiagnostics(const AssetDatabase &assetDatabase,
   if (diagnostics.contains("formatReport") &&
       diagnostics["formatReport"].is_object()) {
     const nlohmann::json &formatReport = diagnostics["formatReport"];
-    ImGui::SeparatorText("Source Import Report");
-    ImGui::Text("Source Format: %s",
+    ImGui::SeparatorText(
+        TEXT::Localize("ui.modelDiagnostics.sourceReport").c_str());
+    ImGui::Text(
+        TEXT::Localize("ui.modelDiagnostics.sourceFormat").c_str(),
                 formatReport.value("sourceFormat", "<unknown>").c_str());
-    ImGui::Text("Object / Group / Triangulated: %d / %d / %d",
+    ImGui::Text(
+        TEXT::Localize("ui.modelDiagnostics.objectGroupFormat").c_str(),
                 formatReport.value("objectCount", 0),
                 formatReport.value("groupCount", 0),
                 formatReport.value("triangulatedPolygonCount", 0));
-    ImGui::Text("Unsupported Modes / Features: %d / %d",
+    ImGui::Text(
+        TEXT::Localize("ui.modelDiagnostics.unsupportedFormat").c_str(),
                 formatReport.value("unsupportedPrimitiveModeCount", 0),
                 formatReport.value("unsupportedFeatureCount", 0));
-    ImGui::Text("Generated Normals / Tangents: %d / %d",
+    ImGui::Text(
+        TEXT::Localize("ui.modelDiagnostics.generatedNtFormat2").c_str(),
                 formatReport.value("missingNormalGeneratedCount", 0),
                 formatReport.value("missingTangentGeneratedCount", 0));
-    ImGui::Text("Cluster Static / Fallback Prim: %d / %d",
+    ImGui::Text(
+        TEXT::Localize("ui.modelDiagnostics.clusterPrimFormat").c_str(),
                 formatReport.value("clusteredStaticPrimitiveCount", 0),
                 formatReport.value("fallbackPrimitiveCount", 0));
     if (formatReport.contains("unsupportedExtensions") &&
         formatReport["unsupportedExtensions"].is_array() &&
         !formatReport["unsupportedExtensions"].empty() &&
-        ImGui::TreeNode("Unsupported Extensions")) {
+        ImGui::TreeNode(
+            TEXT::Localize(
+                "ui.modelDiagnostics.unsupportedExtensions").c_str())) {
       for (const nlohmann::json &extension :
            formatReport["unsupportedExtensions"]) {
         if (extension.is_string()) {
@@ -150,27 +184,37 @@ void DrawModelDiagnostics(const AssetDatabase &assetDatabase,
       diagnostics["materialAlphaPolicy"].is_object()) {
     const nlohmann::json &alpha =
         diagnostics["materialAlphaPolicy"];
-    ImGui::SeparatorText("Material Classification");
-    ImGui::Text("Opaque / Mask / Blend: %d / %d / %d",
+    ImGui::SeparatorText(
+        TEXT::Localize("ui.modelDiagnostics.materialClassification").c_str());
+    ImGui::Text(
+        TEXT::Localize("ui.modelDiagnostics.opaqueMaskBlendFormat").c_str(),
                 alpha.value("opaque", 0), alpha.value("mask", 0),
                 alpha.value("blend", 0));
-    ImGui::Text("Normalized to O / M / B: %d / %d / %d",
+    ImGui::Text(
+        TEXT::Localize("ui.modelDiagnostics.normalizedFormat").c_str(),
                 alpha.value("normalizedToOpaque", 0),
                 alpha.value("normalizedToMask", 0),
                 alpha.value("normalizedToBlend", 0));
     const int opticalFallback =
         alpha.value("opticalOpacityFallback", 0);
     if (opticalFallback > 0) {
-      ImGui::Text("Recovered Optical Surfaces: %d", opticalFallback);
+      ImGui::Text(
+          TEXT::Localize(
+              "ui.modelDiagnostics.recoveredOpticalFormat").c_str(),
+          opticalFallback);
       ImGui::TextDisabled(
-          "Only explicit source Blend plus glass/window/lens cues are recovered.");
+          "%s",
+          TEXT::Localize(
+              "ui.modelDiagnostics.recoveredOpticalHint").c_str());
     }
   }
 
   if (diagnostics.contains("importMessages") &&
       diagnostics["importMessages"].is_array() &&
       !diagnostics["importMessages"].empty() &&
-      ImGui::TreeNode("Advanced Import Diagnostics")) {
+      ImGui::TreeNode(
+          TEXT::Localize(
+              "ui.modelDiagnostics.advancedImport").c_str())) {
     for (const nlohmann::json &message :
          diagnostics["importMessages"]) {
       if (message.is_string()) {
@@ -183,43 +227,70 @@ void DrawModelDiagnostics(const AssetDatabase &assetDatabase,
   if (diagnostics.contains("clusteredGeometry") &&
       diagnostics["clusteredGeometry"].is_object()) {
     const nlohmann::json &cluster = diagnostics["clusteredGeometry"];
-    ImGui::SeparatorText("HCMESH Diagnostics");
-    ImGui::Text("Ready: %s", cluster.value("ready", false) ? "Yes" : "No");
-    ImGui::Text("Profile: %s", cluster.value("profile", "Scene").c_str());
-    ImGui::Text("Message: %s", cluster.value("message", "").c_str());
+    ImGui::SeparatorText(
+        TEXT::Localize("ui.modelDiagnostics.hcmesh").c_str());
+    ImGui::Text(
+        TEXT::Localize("ui.modelDiagnostics.readyFormat").c_str(),
+        cluster.value("ready", false)
+            ? TEXT::Localize("ui.common.yes").c_str()
+            : TEXT::Localize("ui.common.no").c_str());
+    ImGui::Text(
+        TEXT::Localize("ui.modelDiagnostics.profileFormat").c_str(),
+        cluster.value("profile", "Scene").c_str());
+    ImGui::Text(
+        TEXT::Localize("ui.modelDiagnostics.messageFormat").c_str(),
+        cluster.value("message", "").c_str());
     if (cluster.contains("cookSettings") &&
         cluster["cookSettings"].is_object()) {
       const nlohmann::json &cook = cluster["cookSettings"];
       ImGui::Text(
-          "LOD Count / Partition: %d / %s", cook.value("maxSurfaceLodCount", 0),
-          cook.value("partitionLargeStaticSurfaces", false) ? "Yes" : "No");
-      ImGui::Text("Partition Policy: %s",
+          TEXT::Localize(
+              "ui.modelDiagnostics.lodPartitionFormat").c_str(),
+          cook.value("maxSurfaceLodCount", 0),
+          cook.value("partitionLargeStaticSurfaces", false)
+              ? TEXT::Localize("ui.common.yes").c_str()
+              : TEXT::Localize("ui.common.no").c_str());
+      ImGui::Text(
+          TEXT::Localize("ui.modelDiagnostics.partitionPolicyFormat").c_str(),
                   cook.value("surfacePartitionPolicy", "SceneStatic").c_str());
-      ImGui::Text("Partition Extent / Border Lock: %.2f / %s",
+      ImGui::Text(
+          TEXT::Localize(
+              "ui.modelDiagnostics.partitionExtentFormat").c_str(),
                   cook.value("largeSurfacePartitionMaxExtent", 0.0f),
-                  cook.value("lockPartitionBorders", false) ? "Yes" : "No");
+                  cook.value("lockPartitionBorders", false)
+                      ? TEXT::Localize("ui.common.yes").c_str()
+                      : TEXT::Localize("ui.common.no").c_str());
     }
     if (cluster.contains("summary") && cluster["summary"].is_object()) {
       const nlohmann::json &summary = cluster["summary"];
-      ImGui::Text("Surfaces / LOD Ranges / Clusters / Pages: %d / %d / %d / %d",
+      ImGui::Text(
+          TEXT::Localize("ui.modelDiagnostics.surfacesFormat").c_str(),
                   summary.value("surfaces", 0),
                   summary.value("surfaceLodRanges", 0),
                   summary.value("clusters", 0), summary.value("pages", 0));
-      ImGui::Text("Triangles / Vertices: %d / %d",
+      ImGui::Text(
+          TEXT::Localize("ui.modelDiagnostics.trianglesFormat").c_str(),
                   summary.value("triangles", 0), summary.value("vertices", 0));
-      ImGui::Text("Avg Tri / Vert per Cluster: %.2f / %.2f",
+      ImGui::Text(
+          TEXT::Localize("ui.modelDiagnostics.avgTriVertFormat").c_str(),
                   summary.value("avgTrianglesPerCluster", 0.0),
                   summary.value("avgVerticesPerCluster", 0.0));
-      ImGui::Text("Skipped Skin / Morph / Invalid: %d / %d / %d",
+      ImGui::Text(
+          TEXT::Localize("ui.modelDiagnostics.skippedFormat").c_str(),
                   summary.value("skippedSkinnedPrimitives", 0),
                   summary.value("skippedMorphPrimitives", 0),
                   summary.value("skippedInvalidPrimitives", 0));
     }
     if (cluster.contains("validation") && cluster["validation"].is_object()) {
       const nlohmann::json &validation = cluster["validation"];
-      ImGui::Text("Validation: %s",
-                  validation.value("valid", false) ? "Valid" : "Invalid");
-      ImGui::Text("Invalid S/C/P/B/M: %d / %d / %d / %d / %d",
+      ImGui::Text(
+          TEXT::Localize("ui.modelDiagnostics.validationFormat").c_str(),
+          validation.value("valid", false)
+              ? TEXT::Localize("ui.modelDiagnostics.stateValid").c_str()
+              : TEXT::Localize("ui.modelDiagnostics.stateInvalid").c_str());
+      ImGui::Text(
+          TEXT::Localize(
+              "ui.modelDiagnostics.invalidScpbmFormat").c_str(),
                   validation.value("invalidSurfaces", 0),
                   validation.value("invalidClusters", 0),
                   validation.value("invalidPages", 0),
@@ -231,22 +302,37 @@ void DrawModelDiagnostics(const AssetDatabase &assetDatabase,
   if (diagnostics.contains("collisionGeometry") &&
       diagnostics["collisionGeometry"].is_object()) {
     const nlohmann::json &collision = diagnostics["collisionGeometry"];
-    ImGui::SeparatorText("Model Collision");
-    ImGui::Text("Runtime artifact: %s",
-                collision.value("ready", false) ? "Ready" : "None");
-    ImGui::Text("Shapes: %d", collision.value("shapeCount", 0));
-    ImGui::Text("Message: %s", collision.value("message", "").c_str());
-    ImGui::TextDisabled("Author in the Model Collision workspace.");
+    ImGui::SeparatorText(
+        TEXT::Localize("ui.modelDiagnostics.modelCollision").c_str());
+    ImGui::Text(
+        TEXT::Localize("ui.modelDiagnostics.runtimeArtifactFormat").c_str(),
+        collision.value("ready", false)
+            ? TEXT::Localize("ui.modelDiagnostics.stateReady").c_str()
+            : TEXT::Localize("ui.modelDiagnostics.stateNone").c_str());
+    ImGui::Text(
+        TEXT::Localize("ui.modelDiagnostics.shapesFormat").c_str(),
+        collision.value("shapeCount", 0));
+    ImGui::Text(
+        TEXT::Localize("ui.modelDiagnostics.messageFormat").c_str(),
+        collision.value("message", "").c_str());
+    ImGui::TextDisabled(
+        "%s",
+        TEXT::Localize(
+            "ui.modelDiagnostics.authorInCollision").c_str());
   }
 
   if (diagnostics.contains("textures") && diagnostics["textures"].is_array() &&
       ImGui::BeginTable("ModelDiagnosticTextures", 4,
                         ImGuiTableFlags_RowBg |
                             ImGuiTableFlags_BordersInnerV)) {
-    ImGui::TableSetupColumn("Index", ImGuiTableColumnFlags_WidthFixed, 48.0f);
+    ImGui::TableSetupColumn(
+        TEXT::Localize("ui.modelDiagnostics.index").c_str(),
+        ImGuiTableColumnFlags_WidthFixed, 48.0f);
     ImGui::TableSetupColumn("HTEX", ImGuiTableColumnFlags_WidthFixed, 54.0f);
-    ImGui::TableSetupColumn("Source");
-    ImGui::TableSetupColumn("Runtime");
+    ImGui::TableSetupColumn(
+        TEXT::Localize("ui.modelDiagnostics.source").c_str());
+    ImGui::TableSetupColumn(
+        TEXT::Localize("ui.modelDiagnostics.runtime").c_str());
     ImGui::TableHeadersRow();
 
     for (const nlohmann::json &texture : diagnostics["textures"]) {
@@ -257,7 +343,10 @@ void DrawModelDiagnostics(const AssetDatabase &assetDatabase,
       ImGui::TableSetColumnIndex(0);
       ImGui::Text("%d", texture.value("index", -1));
       ImGui::TableSetColumnIndex(1);
-      ImGui::TextUnformatted(texture.value("htexReady", false) ? "Yes" : "No");
+      ImGui::TextUnformatted(
+          texture.value("htexReady", false)
+              ? TEXT::Localize("ui.common.yes").c_str()
+              : TEXT::Localize("ui.common.no").c_str());
       ImGui::TableSetColumnIndex(2);
       ImGui::TextUnformatted(texture.value("sourcePath", "").c_str());
       ImGui::TableSetColumnIndex(3);
@@ -272,12 +361,17 @@ void DrawModelDiagnostics(const AssetDatabase &assetDatabase,
       ImGui::BeginTable("ModelDiagnosticMaterials", 4,
                         ImGuiTableFlags_RowBg |
                             ImGuiTableFlags_BordersInnerV)) {
-    ImGui::TableSetupColumn("Material");
-    ImGui::TableSetupColumn("Metallic", ImGuiTableColumnFlags_WidthFixed,
-                            72.0f);
-    ImGui::TableSetupColumn("Roughness", ImGuiTableColumnFlags_WidthFixed,
-                            80.0f);
-    ImGui::TableSetupColumn("Alpha", ImGuiTableColumnFlags_WidthFixed, 70.0f);
+    ImGui::TableSetupColumn(
+        TEXT::Localize("ui.modelDiagnostics.material").c_str());
+    ImGui::TableSetupColumn(
+        TEXT::Localize("ui.modelDiagnostics.metallic").c_str(),
+        ImGuiTableColumnFlags_WidthFixed, 72.0f);
+    ImGui::TableSetupColumn(
+        TEXT::Localize("ui.modelDiagnostics.roughness").c_str(),
+        ImGuiTableColumnFlags_WidthFixed, 80.0f);
+    ImGui::TableSetupColumn(
+        TEXT::Localize("ui.modelDiagnostics.alpha").c_str(),
+        ImGuiTableColumnFlags_WidthFixed, 70.0f);
     ImGui::TableHeadersRow();
 
     for (const nlohmann::json &material : diagnostics["materials"]) {

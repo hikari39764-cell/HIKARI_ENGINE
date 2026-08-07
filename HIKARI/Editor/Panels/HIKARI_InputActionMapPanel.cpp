@@ -1,5 +1,6 @@
 #include "Editor/Panels/HIKARI_InputActionMapPanel.h"
 
+#include "Core/Text/HIKARI_Localization.h"
 #include <algorithm>
 
 #include "Input/Assets/HIKARI_InputActionMap.h"
@@ -23,8 +24,8 @@ void InputActionMapPanel::DrawLauncher(INPUT::InputService& inputService) {
         map.FindConflicts();
 
     ImGui::TextWrapped(
-        "Input Actions are edited in a dedicated large workspace so scene "
-        "authoring remains compact and readable.");
+        "%s",
+        TEXT::Localize("ui.input.launcherHint").c_str());
     ImGui::Spacing();
 
     if (ImGui::BeginTable(
@@ -32,30 +33,43 @@ void InputActionMapPanel::DrawLauncher(INPUT::InputService& inputService) {
             ImGuiTableFlags_BordersInnerV |
             ImGuiTableFlags_SizingStretchSame)) {
         ImGui::TableNextColumn();
-        ImGui::TextDisabled("Actions");
+        ImGui::TextDisabled(
+            "%s",
+            TEXT::Localize("ui.input.actions").c_str());
         ImGui::Text("%zu", map.actions.size());
         ImGui::TableNextColumn();
-        ImGui::TextDisabled("Contexts");
+        ImGui::TextDisabled(
+            "%s",
+            TEXT::Localize("ui.input.contexts").c_str());
         ImGui::Text("%zu", map.contexts.size());
         ImGui::TableNextColumn();
-        ImGui::TextDisabled("Status");
+        ImGui::TextDisabled(
+            "%s",
+            TEXT::Localize("ui.input.status").c_str());
         if (issues.empty() && conflicts.empty()) {
             ImGui::TextColored(
-                ImVec4(0.42f, 0.9f, 0.5f, 1.0f), "Ready");
+                ImVec4(0.42f, 0.9f, 0.5f, 1.0f),
+                "%s",
+                TEXT::Localize("ui.input.ready").c_str());
         } else {
             ImGui::TextColored(
                 ImVec4(1.0f, 0.65f, 0.25f, 1.0f),
-                "%zu issue(s)", issues.size() + conflicts.size());
+                TEXT::Localize("ui.input.issuesFormat").c_str(),
+                issues.size() + conflicts.size());
         }
         ImGui::EndTable();
     }
 
     ImGui::Spacing();
-    ImGui::TextDisabled("Active Contexts");
+    ImGui::TextDisabled(
+        "%s",
+        TEXT::Localize("ui.input.activeContexts").c_str());
     const std::vector<std::string>& activeContexts =
         inputService.Contexts().GetActiveContexts();
     if (activeContexts.empty()) {
-        ImGui::TextDisabled("None");
+        ImGui::TextDisabled(
+            "%s",
+            TEXT::Localize("ui.input.none").c_str());
     } else {
         for (size_t index = 0; index < activeContexts.size(); ++index) {
             if (index > 0) ImGui::SameLine();
@@ -70,15 +84,16 @@ void InputActionMapPanel::DrawLauncher(INPUT::InputService& inputService) {
         320.0f, ImGui::GetContentRegionAvail().x);
     if (ImGui::Button(
             editor_.IsDirty()
-                ? "Open Input Editor  *"
-                : "Open Input Editor...",
+                ? TEXT::Localize("ui.input.openEditorDirty").c_str()
+                : TEXT::Localize("ui.input.openEditor").c_str(),
             ImVec2(buttonWidth, 38.0f))) {
         openRequested_ = true;
     }
     if (editor_.IsDirty()) {
         ImGui::TextColored(
             ImVec4(1.0f, 0.72f, 0.25f, 1.0f),
-            "Unsaved input changes are kept in memory.");
+            "%s",
+            TEXT::Localize("ui.input.unsavedInMemory").c_str());
     }
     ImGui::TextDisabled(
         "%s", inputService.GetInputDirectory().generic_string().c_str());
@@ -125,17 +140,22 @@ void InputActionMapPanel::DrawModal(INPUT::InputService& inputService) {
         if (editor_.IsDirty()) {
             ImGui::TextColored(
                 ImVec4(1.0f, 0.72f, 0.25f, 1.0f),
-                "Unsaved changes");
+                "%s",
+                TEXT::Localize("ui.input.unsavedChanges").c_str());
             ImGui::SameLine();
         } else {
-            ImGui::TextDisabled("All changes saved");
+            ImGui::TextDisabled(
+                "%s",
+                TEXT::Localize("ui.input.allChangesSaved").c_str());
             ImGui::SameLine();
         }
         const float closeWidth = 110.0f;
         ImGui::SetCursorPosX(
             (std::max)(ImGui::GetCursorPosX(),
                 ImGui::GetWindowContentRegionMax().x - closeWidth));
-        if (ImGui::Button("Close", ImVec2(closeWidth, 0.0f))) {
+        if (ImGui::Button(
+                TEXT::Localize("ui.input.close").c_str(),
+                ImVec2(closeWidth, 0.0f))) {
             keepOpen = false;
         }
         if (!keepOpen) {

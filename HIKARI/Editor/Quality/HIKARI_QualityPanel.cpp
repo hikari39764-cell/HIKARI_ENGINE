@@ -1,5 +1,6 @@
 #include "HIKARI_QualityPanel.h"
 
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Environment/HIKARI_EnvironmentEditComparison.h"
 #include "Editor/Quality/HIKARI_QualityPanelSections.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
@@ -28,7 +29,9 @@ using namespace EDITOR::QUALITY_PANEL;
 namespace {}
 
 QualityPanelResult QualityPanel::Draw(SceneEnvironment &environment) const {
-  if (!ImGui::Begin("Quality")) {
+  if (!ImGui::Begin(
+          TEXT::LocalizeWindow(
+              "ui.window.quality", "Quality").c_str())) {
     ImGui::End();
     return {};
   }
@@ -39,37 +42,43 @@ QualityPanelResult QualityPanel::Draw(SceneEnvironment &environment) const {
 
   const bool renderQualityChanged = DrawRenderSettings();
 
-  if (ImGui::TreeNodeEx("Directional Shadow", ImGuiTreeNodeFlags_DefaultOpen)) {
+  if (ImGui::TreeNodeEx(
+          TEXT::Localize("ui.quality.directionalShadow").c_str(),
+          ImGuiTreeNodeFlags_DefaultOpen)) {
     DrawDirectionalShadow(environment);
     ImGui::TreePop();
   }
-  if (ImGui::TreeNodeEx("Ambient Occlusion", ImGuiTreeNodeFlags_DefaultOpen)) {
+  if (ImGui::TreeNodeEx(
+          TEXT::Localize("ui.quality.ambientOcclusion").c_str(),
+          ImGuiTreeNodeFlags_DefaultOpen)) {
     DrawAmbientOcclusion(environment, runtimeSnapshot);
     ImGui::TreePop();
   }
-  if (ImGui::TreeNodeEx("Baked Indirect Lighting",
+  if (ImGui::TreeNodeEx(
+          TEXT::Localize("ui.quality.bakedIndirectLighting").c_str(),
                         ImGuiTreeNodeFlags_DefaultOpen)) {
     DrawSurfaceLightmaps(environment);
     ImGui::TreePop();
   }
-  if (ImGui::TreeNodeEx("Screen Space Reflections",
+  if (ImGui::TreeNodeEx(
+          TEXT::Localize("ui.quality.screenSpaceReflections").c_str(),
                         ImGuiTreeNodeFlags_DefaultOpen)) {
     DrawScreenSpaceReflections(environment);
     ImGui::TreePop();
   }
-  if (ImGui::TreeNode("Bloom")) {
+  if (ImGui::TreeNode(TEXT::Localize("ui.quality.bloom").c_str())) {
     DrawBloom(environment);
     ImGui::TreePop();
   }
-  if (ImGui::TreeNode("Tone Mapping")) {
+  if (ImGui::TreeNode(TEXT::Localize("ui.quality.toneMapping").c_str())) {
     DrawToneMapping(environment);
     ImGui::TreePop();
   }
-  if (ImGui::TreeNode("Global Post")) {
+  if (ImGui::TreeNode(TEXT::Localize("ui.quality.globalPost").c_str())) {
     DrawGlobalPost(environment);
     ImGui::TreePop();
   }
-  if (ImGui::TreeNode("Transition Debug")) {
+  if (ImGui::TreeNode(TEXT::Localize("ui.quality.transitionDebug").c_str())) {
     DrawTransitionDebug();
     ImGui::TreePop();
   }

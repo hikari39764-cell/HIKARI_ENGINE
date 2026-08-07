@@ -1,4 +1,5 @@
 #include "Core/Text/HIKARI_AsciiCase.h"
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Assets/Browser/HIKARI_AssetBrowserPanel.h"
 
 #include <algorithm>
@@ -65,12 +66,24 @@ void DrawRecordList(
     return;
   }
 
-  ImGui::TableSetupColumn("Asset", ImGuiTableColumnFlags_WidthStretch);
-  ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_WidthFixed, 80.0f);
-  ImGui::TableSetupColumn("Usage", ImGuiTableColumnFlags_WidthFixed, 74.0f);
-  ImGui::TableSetupColumn("State", ImGuiTableColumnFlags_WidthFixed, 130.0f);
-  ImGui::TableSetupColumn("Cooked", ImGuiTableColumnFlags_WidthFixed, 92.0f);
-  ImGui::TableSetupColumn("Path", ImGuiTableColumnFlags_WidthStretch);
+  ImGui::TableSetupColumn(
+      TEXT::Localize("ui.assetBrowser.columnAsset").c_str(),
+      ImGuiTableColumnFlags_WidthStretch);
+  ImGui::TableSetupColumn(
+      TEXT::Localize("ui.assetBrowser.columnType").c_str(),
+      ImGuiTableColumnFlags_WidthFixed, 80.0f);
+  ImGui::TableSetupColumn(
+      TEXT::Localize("ui.assetBrowser.columnUsage").c_str(),
+      ImGuiTableColumnFlags_WidthFixed, 74.0f);
+  ImGui::TableSetupColumn(
+      TEXT::Localize("ui.assetBrowser.columnState").c_str(),
+      ImGuiTableColumnFlags_WidthFixed, 130.0f);
+  ImGui::TableSetupColumn(
+      TEXT::Localize("ui.assetBrowser.columnCooked").c_str(),
+      ImGuiTableColumnFlags_WidthFixed, 92.0f);
+  ImGui::TableSetupColumn(
+      TEXT::Localize("ui.assetBrowser.columnPath").c_str(),
+      ImGuiTableColumnFlags_WidthStretch);
   ImGui::TableHeadersRow();
 
   for (const AssetRecord *record : records) {
@@ -117,14 +130,15 @@ void DrawRecordList(
     }
 
     ImGui::TableSetColumnIndex(1);
-    ImGui::TextUnformatted(ToAssetTypeText(record->type));
+    ImGui::TextUnformatted(ToAssetTypeText(record->type).c_str());
     ImGui::TableSetColumnIndex(2);
-    ImGui::TextDisabled("%s", ToUsageBadge(*record, usageSummary));
+    ImGui::TextDisabled(
+        "%s", ToUsageBadge(*record, usageSummary).c_str());
     ImGui::TableSetColumnIndex(3);
     const AssetImportState state = GetImportState(*record);
     ImGui::TextColored(StateColor(state), "%s", ToString(state));
     ImGui::TableSetColumnIndex(4);
-    ImGui::TextDisabled("%s", ToCookedBadge(*record));
+    ImGui::TextDisabled("%s", ToCookedBadge(*record).c_str());
     ImGui::TableSetColumnIndex(5);
     ImGui::TextUnformatted(record->sourcePath.generic_string().c_str());
     ImGui::PopID();
@@ -153,8 +167,12 @@ void DrawRecordCompactRows(
     return;
   }
 
-  ImGui::TableSetupColumn("Asset", ImGuiTableColumnFlags_WidthStretch);
-  ImGui::TableSetupColumn("Badges", ImGuiTableColumnFlags_WidthFixed, 230.0f);
+  ImGui::TableSetupColumn(
+      TEXT::Localize("ui.assetBrowser.columnAsset").c_str(),
+      ImGuiTableColumnFlags_WidthStretch);
+  ImGui::TableSetupColumn(
+      TEXT::Localize("ui.assetBrowser.columnBadges").c_str(),
+      ImGuiTableColumnFlags_WidthFixed, 230.0f);
 
   for (const AssetRecord *record : records) {
     if (!record) {

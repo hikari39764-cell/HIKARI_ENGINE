@@ -1,4 +1,5 @@
 #include "Core/Text/HIKARI_AsciiCase.h"
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Assets/Browser/HIKARI_AssetBrowserPanel.h"
 
 #include <algorithm>
@@ -43,11 +44,31 @@
 
 namespace HIKARI::EDITOR::ASSET_BROWSER {
 
-const char *ToAssetTypeText(AssetType type) {
+std::string ToAssetTypeText(AssetType type) {
   if (type == AssetType::ModelMaterialBinding) {
-    return "Material Set";
+    return TEXT::Localize("ui.assetBrowser.typeMaterialSet");
   }
-  return ASSETS::SEMANTICS::ToString(type).data();
+  switch (type) {
+  case AssetType::Texture:
+    return TEXT::Localize("ui.assetBrowser.typeTexture");
+  case AssetType::Model:
+    return TEXT::Localize("ui.assetBrowser.typeModel");
+  case AssetType::Scene:
+    return TEXT::Localize("ui.assetBrowser.typeScene");
+  case AssetType::Material:
+    return TEXT::Localize("ui.assetBrowser.typeMaterial");
+  case AssetType::Sky:
+    return TEXT::Localize("ui.assetBrowser.typeSky");
+  case AssetType::VfxEffect:
+    return TEXT::Localize("ui.assetBrowser.typeVfx");
+  case AssetType::Sequence:
+    return TEXT::Localize("ui.assetBrowser.typeSequence");
+  case AssetType::AnimationStateMachine:
+    return TEXT::Localize("ui.assetBrowser.typeAnimationStateMachine");
+  case AssetType::Unknown:
+  default:
+    return ASSETS::SEMANTICS::ToString(type).data();
+  }
 }
 
 std::filesystem::path

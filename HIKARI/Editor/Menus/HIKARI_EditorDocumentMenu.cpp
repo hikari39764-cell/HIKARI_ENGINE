@@ -1,5 +1,7 @@
 #include "Editor/Menus/HIKARI_EditorDocumentMenu.h"
 
+#include "Core/Text/HIKARI_Localization.h"
+
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
 #endif
@@ -8,7 +10,8 @@ namespace HIKARI::EDITOR {
 
     void DrawEditorDocumentMenu(EditorCommandRouter& commandRouter) {
 #if defined(HIKARI_WITH_EDITOR)
-        if (!ImGui::BeginMenu("Edit")) {
+        if (!ImGui::BeginMenu(
+                TEXT::Localize("menu.edit").c_str())) {
             return;
         }
 
@@ -17,14 +20,16 @@ namespace HIKARI::EDITOR {
         const EditorCommandBinding* redo = commandRouter.Find(
             EditorCommandId::Redo);
         if (ImGui::MenuItem(
-                undo ? undo->label.c_str() : "Undo",
+                undo ? undo->label.c_str()
+                     : TEXT::Localize("menu.edit.undo").c_str(),
                 EditorCommandRouter::Shortcut(EditorCommandId::Undo),
                 false,
                 commandRouter.CanExecute(EditorCommandId::Undo))) {
             (void)commandRouter.Execute(EditorCommandId::Undo);
         }
         if (ImGui::MenuItem(
-                redo ? redo->label.c_str() : "Redo",
+                redo ? redo->label.c_str()
+                     : TEXT::Localize("menu.edit.redo").c_str(),
                 EditorCommandRouter::Shortcut(EditorCommandId::Redo),
                 false,
                 commandRouter.CanExecute(EditorCommandId::Redo))) {
@@ -34,7 +39,8 @@ namespace HIKARI::EDITOR {
         const EditorCommandBinding* save = commandRouter.Find(
             EditorCommandId::SaveDocument);
         if (ImGui::MenuItem(
-                save ? save->label.c_str() : "Save",
+                save ? save->label.c_str()
+                     : TEXT::Localize("menu.edit.save").c_str(),
                 EditorCommandRouter::Shortcut(
                     EditorCommandId::SaveDocument),
                 false,

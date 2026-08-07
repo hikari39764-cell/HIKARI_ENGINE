@@ -1,5 +1,6 @@
 #include "Editor/Quality/HIKARI_QualityPanel.h"
 
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Environment/HIKARI_EnvironmentEditComparison.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 #include "Editor/Widgets/HIKARI_PostProfileParameterWidget.h"
@@ -91,7 +92,8 @@ bool DrawWindowModeCombo(const char *label,
 bool DrawGeometryPipelineCombo(RENDER3D::GeometryPipelineMode &mode) {
   bool changed = false;
   ImGui::PushID("Geometry Backend");
-  EDITOR::PropertyLabel("Geometry Backend");
+  EDITOR::PropertyLabel(
+      TEXT::Localize("ui.quality.geometryBackend").c_str());
   if (ImGui::BeginCombo("##Value", RENDER3D::GeometryPipelineModeLabel(mode))) {
     const RENDER3D::GeometryPipelineMode modes[] = {
         RENDER3D::GeometryPipelineMode::MeshShader,
@@ -118,7 +120,8 @@ bool DrawGeometryPipelineCombo(RENDER3D::GeometryPipelineMode &mode) {
 bool DrawForwardCostModeCombo(RENDER3D::ForwardShadingCostMode &mode) {
   bool changed = false;
   ImGui::PushID("Forward Cost Mode");
-  EDITOR::PropertyLabel("Forward Cost Mode");
+  EDITOR::PropertyLabel(
+      TEXT::Localize("ui.quality.forwardCostMode").c_str());
   if (ImGui::BeginCombo("##Value",
                         RENDER3D::ForwardShadingCostModeLabel(mode))) {
     const RENDER3D::ForwardShadingCostMode modes[] = {
@@ -150,7 +153,8 @@ bool DrawLightProbeVolumeSamplingCombo(
     RENDER3D::LightProbeVolumeSamplingMode &mode) {
   bool changed = false;
   ImGui::PushID("Light Probe Sampling");
-  EDITOR::PropertyLabel("Light Probe Sampling");
+  EDITOR::PropertyLabel(
+      TEXT::Localize("ui.quality.lightProbeSampling").c_str());
   if (ImGui::BeginCombo("##Value",
                         RENDER3D::LightProbeVolumeSamplingModeLabel(mode))) {
     const RENDER3D::LightProbeVolumeSamplingMode modes[] = {
@@ -179,7 +183,8 @@ bool DrawLightProbeVolumeSamplingCombo(
 bool DrawAntiAliasingModeCombo(RENDER3D::RenderAntiAliasingMode &mode) {
   bool changed = false;
   ImGui::PushID("Anti-Aliasing");
-  EDITOR::PropertyLabel("Anti-Aliasing");
+  EDITOR::PropertyLabel(
+      TEXT::Localize("ui.quality.antiAliasing").c_str());
   if (ImGui::BeginCombo("##Value",
                         RENDER3D::RenderAntiAliasingModeLabel(mode))) {
     const RENDER3D::RenderAntiAliasingMode modes[] = {
@@ -212,7 +217,8 @@ bool DrawAntiAliasingModeCombo(RENDER3D::RenderAntiAliasingMode &mode) {
 bool DrawDlssQualityModeCombo(RENDER3D::DlssQualityMode &mode) {
   bool changed = false;
   ImGui::PushID("DLSS Quality");
-  EDITOR::PropertyLabel("DLSS Quality");
+  EDITOR::PropertyLabel(
+      TEXT::Localize("ui.quality.dlssQuality").c_str());
   if (ImGui::BeginCombo("##Value", RENDER3D::DlssQualityModeLabel(mode))) {
     const RENDER3D::DlssQualityMode modes[] = {
         RENDER3D::DlssQualityMode::Quality,
@@ -240,7 +246,8 @@ bool DrawDlssQualityModeCombo(RENDER3D::DlssQualityMode &mode) {
 bool DrawFrameGenerationModeCombo(RENDER3D::RenderFrameGenerationMode &mode) {
   bool changed = false;
   ImGui::PushID("Frame Generation");
-  EDITOR::PropertyLabel("Frame Generation");
+  EDITOR::PropertyLabel(
+      TEXT::Localize("ui.quality.frameGeneration").c_str());
   if (ImGui::BeginCombo("##Value",
                         RENDER3D::RenderFrameGenerationModeLabel(mode))) {
     const RENDER3D::RenderFrameGenerationMode modes[] = {
@@ -273,7 +280,8 @@ bool DrawVolumetricLightingQualityCombo(
 
   bool changed = false;
   ImGui::PushID("Volumetric Lighting");
-  EDITOR::PropertyLabel("Volumetric Lighting");
+  EDITOR::PropertyLabel(
+      TEXT::Localize("ui.quality.volumetricLighting").c_str());
   if (ImGui::BeginCombo("##Value",
                         RENDER3D::VolumetricLightingQualityLabel(quality))) {
     const RENDER3D::VolumetricLightingQuality levels[] = {
@@ -300,13 +308,16 @@ bool DrawVolumetricLightingQualityCombo(
 bool DrawFxaaSettings() {
   POST::PostSystem::FxaaSettings fxaa = POST::PostSystem::GetFxaaSettings();
   bool changed = false;
-  EDITOR::PropertyLabel("Edge Threshold");
+  EDITOR::PropertyLabel(
+      TEXT::Localize("ui.quality.edgeThreshold").c_str());
   changed |= ImGui::DragFloat("##FxaaEdgeThreshold", &fxaa.edgeThreshold,
                               0.001f, 0.0312f, 0.333f, "%.4f");
-  EDITOR::PropertyLabel("Edge Threshold Min");
+  EDITOR::PropertyLabel(
+      TEXT::Localize("ui.quality.edgeThresholdMin").c_str());
   changed |= ImGui::DragFloat("##FxaaEdgeThresholdMin", &fxaa.edgeThresholdMin,
                               0.0005f, 0.0f, 0.0833f, "%.4f");
-  EDITOR::PropertyLabel("Subpixel Quality");
+  EDITOR::PropertyLabel(
+      TEXT::Localize("ui.quality.subpixelQuality").c_str());
   changed |= ImGui::DragFloat("##FxaaSubpixelQuality", &fxaa.subpixelQuality,
                               0.01f, 0.0f, 1.0f);
   if (changed) {
@@ -321,20 +332,28 @@ bool DrawRenderSettings() {
   RENDER3D::RenderQualitySettings settings = beforeEdit;
   bool changed = false;
 
-  if (ImGui::TreeNodeEx("Display", ImGuiTreeNodeFlags_DefaultOpen)) {
+  if (ImGui::TreeNodeEx(
+          TEXT::Localize("ui.quality.display").c_str(),
+          ImGuiTreeNodeFlags_DefaultOpen)) {
     if (EDITOR::BeginPropertyTable("QualityDisplayProperties")) {
-      changed |= DrawResolutionPresetCombo("Render Resolution",
-                                           settings.sceneResolution, true);
+      changed |= DrawResolutionPresetCombo(
+          TEXT::Localize("ui.quality.renderResolution").c_str(),
+          settings.sceneResolution, true);
       if (settings.sceneResolution ==
           RENDER3D::RenderResolutionPreset::Viewport) {
-        EDITOR::PropertyLabel("Viewport Scale");
+        EDITOR::PropertyLabel(
+            TEXT::Localize("ui.quality.viewportScale").c_str());
         changed |= ImGui::SliderFloat(
             "##ViewportScale", &settings.viewportScale, 0.25f, 2.0f, "%.2fx");
       }
-      changed |= DrawResolutionPresetCombo("Game Window Size",
-                                           settings.windowSize, false);
-      changed |= DrawWindowModeCombo("Game Window Mode", settings.windowMode);
-      EDITOR::PropertyLabel("VSync");
+      changed |= DrawResolutionPresetCombo(
+          TEXT::Localize("ui.quality.gameWindowSize").c_str(),
+          settings.windowSize, false);
+      changed |= DrawWindowModeCombo(
+          TEXT::Localize("ui.quality.gameWindowMode").c_str(),
+          settings.windowMode);
+      EDITOR::PropertyLabel(
+          TEXT::Localize("ui.quality.vsync").c_str());
       changed |= ImGui::Checkbox("##VSync", &settings.vSync);
 
       int captureWidth = 0;
@@ -343,16 +362,20 @@ bool DrawRenderSettings() {
       int outputHeight = 0;
       POST::PostSystem::GetSceneCaptureSize(captureWidth, captureHeight);
       POST::PostSystem::GetSceneOutputSize(outputWidth, outputHeight);
-      EDITOR::PropertyLabel("Internal Render");
+      EDITOR::PropertyLabel(
+          TEXT::Localize("ui.quality.internalRender").c_str());
       ImGui::TextDisabled("%d x %d", captureWidth, captureHeight);
-      EDITOR::PropertyLabel("Temporal Output");
+      EDITOR::PropertyLabel(
+          TEXT::Localize("ui.quality.temporalOutput").c_str());
       ImGui::TextDisabled("%d x %d", outputWidth, outputHeight);
       EDITOR::EndPropertyTable();
     }
     ImGui::TreePop();
   }
 
-  if (ImGui::TreeNodeEx("Pipeline", ImGuiTreeNodeFlags_DefaultOpen)) {
+  if (ImGui::TreeNodeEx(
+          TEXT::Localize("ui.quality.pipeline").c_str(),
+          ImGuiTreeNodeFlags_DefaultOpen)) {
     if (EDITOR::BeginPropertyTable("QualityPipelineProperties")) {
       changed |= DrawGeometryPipelineCombo(settings.geometryPipeline);
       changed |= DrawForwardCostModeCombo(settings.forwardCostMode);
@@ -368,7 +391,8 @@ bool DrawRenderSettings() {
       if (settings.frameGenerationMode ==
           RENDER3D::RenderFrameGenerationMode::Dlss) {
         int multiplier = settings.frameGenerationMultiplier;
-        EDITOR::PropertyLabel("Frame Multiplier");
+        EDITOR::PropertyLabel(
+            TEXT::Localize("ui.quality.frameMultiplier").c_str());
         if (ImGui::SliderInt("##FrameGenerationMultiplier", &multiplier, 2, 6,
                              "%dx")) {
           settings.frameGenerationMultiplier = static_cast<uint8_t>(multiplier);
@@ -376,29 +400,35 @@ bool DrawRenderSettings() {
         }
       }
       if (settings.antiAliasingMode == RENDER3D::RenderAntiAliasingMode::TAA) {
-        EDITOR::PropertyLabel("TAA History");
+        EDITOR::PropertyLabel(
+            TEXT::Localize("ui.quality.taaHistory").c_str());
         changed |= ImGui::SliderFloat(
             "##TaaHistory", &settings.taaHistoryWeight, 0.0f, 0.97f, "%.2f");
-        EDITOR::PropertyLabel("Variance Clip");
+        EDITOR::PropertyLabel(
+            TEXT::Localize("ui.quality.varianceClip").c_str());
         changed |= ImGui::SliderFloat("##TaaVarianceClip",
                                       &settings.taaVarianceClipGamma, 0.0f,
                                       3.0f, "%.2f");
-        EDITOR::PropertyLabel("Depth Reject");
+        EDITOR::PropertyLabel(
+            TEXT::Localize("ui.quality.depthReject").c_str());
         changed |=
             ImGui::DragFloat("##TaaDepthReject", &settings.taaDepthRejection,
                              0.0005f, 0.0001f, 0.05f, "%.4f");
-        EDITOR::PropertyLabel("Luma Reject");
+        EDITOR::PropertyLabel(
+            TEXT::Localize("ui.quality.lumaReject").c_str());
         changed |= ImGui::SliderFloat("##TaaLumaReject",
                                       &settings.taaLuminanceRejection, 0.05f,
                                       4.0f, "%.2f");
-        EDITOR::PropertyLabel("Sharpness");
+        EDITOR::PropertyLabel(
+            TEXT::Localize("ui.quality.sharpness").c_str());
         changed |= ImGui::SliderFloat("##TaaSharpness", &settings.taaSharpness,
                                       0.0f, 1.0f, "%.2f");
       } else if (settings.antiAliasingMode ==
                  RENDER3D::RenderAntiAliasingMode::FXAA) {
         (void)DrawFxaaSettings();
       }
-      EDITOR::PropertyLabel("Depth Prepass");
+      EDITOR::PropertyLabel(
+          TEXT::Localize("ui.quality.depthPrepass").c_str());
       changed |=
           ImGui::Checkbox("##SceneDepthPrepass", &settings.sceneDepthPrepass);
       EDITOR::EndPropertyTable();

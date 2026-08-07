@@ -2,6 +2,7 @@
 
 #include "Core/HIKARI_MathConfig.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
+#include "Core/Text/HIKARI_Localization.h"
 
 #include <algorithm>
 #include <cctype>
@@ -72,6 +73,22 @@ bool MatchesComponent(const ComponentTypeInfo &info, std::string_view search) {
   return haystack.find(TEXT::ToLowerAsciiCopy(search)) != std::string::npos;
 }
 
+std::string LocalizeComponentCategory(std::string_view category) {
+  if (category == "Rendering") {
+    return TEXT::Localize("ui.inspector.category.rendering");
+  }
+  if (category == "Camera") {
+    return TEXT::Localize("ui.inspector.category.camera");
+  }
+  if (category == "Gameplay") {
+    return TEXT::Localize("ui.inspector.category.gameplay");
+  }
+  if (category == "Cinematics") {
+    return TEXT::Localize("ui.inspector.category.cinematics");
+  }
+  return std::string(category);
+}
+
 void SelectObject(EditorContext &context, GameObject &object) {
   if (World *world = object.GetWorld()) {
     context.selection.SelectObject(*world, &object);
@@ -97,7 +114,10 @@ void SceneInspectorPanel::Draw(DocumentSceneBase &scene, EditorContext &context,
                                SceneObjectCommandService &commands,
                                bool *open) {
 #if defined(HIKARI_WITH_EDITOR)
-  if (!ImGui::Begin("Inspector", open)) {
+  if (!ImGui::Begin(
+          TEXT::LocalizeWindow(
+              "ui.window.inspector", "Inspector").c_str(),
+          open)) {
     ImGui::End();
     return;
   }
@@ -123,16 +143,20 @@ void SceneInspectorPanel::DrawContents(
           ? selectionSync.FindDocumentObjectByRuntime(scene, selected)
           : nullptr;
   if (selected == nullptr || target == nullptr) {
-    EmptyState("No object selected",
-               "Select one in the hierarchy or editor view.");
+    EmptyState(
+        TEXT::Localize("ui.inspector.emptyTitle").c_str(),
+        TEXT::Localize("ui.inspector.emptyHint").c_str());
     return;
   }
 
   ImGui::PushID(static_cast<int>(target->id.value));
   PanelTitle(target->name.c_str());
   if (ImGui::IsItemHovered()) {
-    ImGui::SetTooltip("%s\nObject ID: %llu", target->name.c_str(),
-                      static_cast<unsigned long long>(target->id.value));
+    ImGui::SetTooltip(
+        TEXT::Localize(
+            "ui.inspector.objectHeaderTooltip").c_str(),
+        target->name.c_str(),
+        static_cast<unsigned long long>(target->id.value));
   }
   if (ImGui::BeginPopupContextItem("ObjectHeaderContext")) {
     DrawObjectContextMenu(scene, context, selectionSync, commands, *selected);
@@ -145,7 +169,7 @@ void SceneInspectorPanel::DrawContents(
                  ImGui::GetWindowContentRegionMax().x - menuWidth));
   if (IconButton(EditorGlyph::More, "ObjectActionsButton",
                  EditorButtonTone::Quiet, ImVec2(menuWidth, menuWidth),
-                 "Object actions")) {
+                 TEXT::Localize("ui.inspector.objectActions").c_str())) {
     ImGui::OpenPopup("ObjectActions");
   }
   if (ImGui::BeginPopup("ObjectActions")) {
@@ -156,21 +180,30 @@ void SceneInspectorPanel::DrawContents(
 
   if (context.selection.GetSelectedObjectCount() > 1u) {
     ImGui::TextDisabled(
-        "%d objects selected | Editing active object",
+        TEXT::Localize(
+            "ui.inspector.multiSelectFormat").c_str(),
         static_cast<int>(context.selection.GetSelectedObjectCount()));
   }
   if (target->editorLocked) {
-    StatusText("Locked in editor", EditorStatusTone::Normal);
+    StatusText(
+        TEXT::Localize("ui.inspector.lockedInEditor").c_str(),
+        EditorStatusTone::Normal);
     ImGui::SameLine();
-    ImGui::TextDisabled("Use Object Actions to unlock.");
+    ImGui::TextDisabled(
+        "%s",
+        TEXT::Localize("ui.inspector.unlockHint").c_str());
     ImGui::BeginDisabled();
   }
   DrawTransform(scene, context, *target);
 
   ImGui::Spacing();
-  if (IconTextButton(EditorGlyph::Add, "Add Component", "AddComponent",
-                     EditorButtonTone::Neutral, ImVec2(-1.0f, 30.0f),
-                     "Add a component to this object")) {
+  if (IconTextButton(
+          EditorGlyph::Add,
+          TEXT::Localize("ui.inspector.addComponent").c_str(),
+          "AddComponent",
+          EditorButtonTone::Neutral,
+          ImVec2(-1.0f, 30.0f),
+          TEXT::Localize("ui.inspector.addComponentTooltip").c_str())) {
     openComponentPicker_ = true;
   }
 
@@ -214,7 +247,9 @@ void SceneInspectorPanel::DrawTransform(DocumentSceneBase &scene,
                                         EditorContext &context,
                                         SceneObjectData &target) {
 #if defined(HIKARI_WITH_EDITOR)
-  if (!ImGui::CollapsingHeader("Transform", ImGuiTreeNodeFlags_DefaultOpen)) {
+  if (!ImGui::CollapsingHeader(
+          TEXT::Localize("ui.inspector.transform").c_str(),
+          ImGuiTreeNodeFlags_DefaultOpen)) {
     return;
   }
 
@@ -245,7 +280,7 @@ void SceneInspectorPanel::DrawTransform(DocumentSceneBase &scene,
       return;
     }
     historyRequest_ = SceneObjectAuthoringHistoryRequest{
-        "Edit Transform",
+        TEXT::Localize("ui.inspector.history.editTransform"),
         std::move(pendingTransformHistory_->beforeObjects),
         scene.GetSceneDocument().objects,
         pendingTransformHistory_->beforeCamera,
@@ -275,7 +310,8 @@ void SceneInspectorPanel::DrawTransform(DocumentSceneBase &scene,
   };
 
   {
-    InspectorPropertyRow row("Position");
+    InspectorPropertyRow row(
+        TEXT::Localize("ui.inspector.position").c_str());
     float values[3]{target.transform.position.x, target.transform.position.y,
                     target.transform.position.z};
     const bool changed =
@@ -290,7 +326,8 @@ void SceneInspectorPanel::DrawTransform(DocumentSceneBase &scene,
   {
     if (isDirectionalLight()) {
       {
-        InspectorPropertyRow row("Light Direction");
+        InspectorPropertyRow row(
+            TEXT::Localize("ui.inspector.lightDirection").c_str());
         const MATH::Vec3 canonical =
             LIGHTING_AUTHORING::CanonicalDirectionalLightEulerDegrees(
                 target.transform.rotationEulerDeg);
@@ -298,7 +335,8 @@ void SceneInspectorPanel::DrawTransform(DocumentSceneBase &scene,
         const bool changed = row.IsVisible() &&
                              ImGui::DragFloat2("##Value", values, 0.5f,
                                                -360.0f, 360.0f,
-                                               "%.1f deg");
+                                               TEXT::Localize(
+                                                   "ui.viewport.degFormat").c_str());
         beginHistoryIfActivated();
         if (changed) {
           target.transform.rotationEulerDeg =
@@ -309,27 +347,41 @@ void SceneInspectorPanel::DrawTransform(DocumentSceneBase &scene,
         finishHistoryIfDeactivated();
         if (ImGui::IsItemHovered()) {
           ImGui::SetTooltip(
-              "Pitch / Yaw in degrees. Pitch is limited to -89.9..89.9; "
-              "Yaw wraps to -180..180; Roll is locked to 0.");
+              "%s",
+              TEXT::Localize(
+                  "ui.inspector.lightDirectionTooltip").c_str());
         }
       }
-      ImGui::TextDisabled("Pitch / Yaw | Roll locked");
-      if (ImGui::SmallButton("Key 3/4")) {
+      ImGui::TextDisabled(
+          "%s",
+          TEXT::Localize(
+              "ui.inspector.lightRotationLocked").c_str());
+      if (ImGui::SmallButton(
+              TEXT::Localize(
+                  "ui.inspector.presetKey34").c_str())) {
         applyDirectionalPreset({35.0f, -35.0f, 0.0f},
-                               "Set Directional Light Key Preset");
+                               TEXT::Localize(
+                                   "ui.inspector.history.keyPreset").c_str());
       }
       ImGui::SameLine();
-      if (ImGui::SmallButton("Top Down")) {
+      if (ImGui::SmallButton(
+              TEXT::Localize(
+                  "ui.inspector.presetTopDown").c_str())) {
         applyDirectionalPreset({89.9f, 0.0f, 0.0f},
-                               "Set Directional Light Top Preset");
+                               TEXT::Localize(
+                                   "ui.inspector.history.topPreset").c_str());
       }
       ImGui::SameLine();
-      if (ImGui::SmallButton("Front")) {
+      if (ImGui::SmallButton(
+              TEXT::Localize(
+                  "ui.inspector.presetFront").c_str())) {
         applyDirectionalPreset({0.0f, 0.0f, 0.0f},
-                               "Set Directional Light Front Preset");
+                               TEXT::Localize(
+                                   "ui.inspector.history.frontPreset").c_str());
       }
     } else {
-      InspectorPropertyRow row("Rotation");
+      InspectorPropertyRow row(
+          TEXT::Localize("ui.inspector.rotation").c_str());
       float values[3]{target.transform.rotationEulerDeg.x,
                       target.transform.rotationEulerDeg.y,
                       target.transform.rotationEulerDeg.z};
@@ -344,7 +396,8 @@ void SceneInspectorPanel::DrawTransform(DocumentSceneBase &scene,
     }
   }
   {
-    InspectorPropertyRow row("Scale");
+    InspectorPropertyRow row(
+        TEXT::Localize("ui.inspector.scale").c_str());
     float values[3]{target.transform.scale.x, target.transform.scale.y,
                     target.transform.scale.z};
     const bool changed =
@@ -378,9 +431,11 @@ void SceneInspectorPanel::DrawAddComponentPopup(
     return;
   }
   ImGui::SetNextItemWidth(320.0f);
-  ImGui::InputTextWithHint("##ComponentSearch", "Search components...",
-                           componentSearchBuffer_,
-                           sizeof(componentSearchBuffer_));
+  ImGui::InputTextWithHint(
+      "##ComponentSearch",
+      TEXT::Localize("ui.inspector.searchComponents").c_str(),
+      componentSearchBuffer_,
+      sizeof(componentSearchBuffer_));
   ImGui::Separator();
 
   std::vector<const ComponentTypeInfo *> componentTypes =
@@ -395,7 +450,9 @@ void SceneInspectorPanel::DrawAddComponentPopup(
     }
     if (currentCategory != typeInfo->presentation.category) {
       currentCategory = typeInfo->presentation.category;
-      ImGui::SeparatorText(currentCategory.c_str());
+      const std::string categoryText =
+          LocalizeComponentCategory(currentCategory);
+      ImGui::SeparatorText(categoryText.c_str());
     }
     if (ImGui::MenuItem(typeInfo->presentation.displayName.c_str())) {
       commands.Execute(SceneObjectCommandId::AddComponent, scene, context,

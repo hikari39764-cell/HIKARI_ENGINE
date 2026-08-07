@@ -1,6 +1,7 @@
 #include "Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorController.h"
 
 #include "Core/HIKARI_MathConfig.h"
+#include "Core/Text/HIKARI_Localization.h"
 
 #include "Assets/Material/HIKARI_MaterialAssetData.h"
 #include "Assets/HIKARI_AssetImportState.h"
@@ -39,6 +40,8 @@
 #include <string_view>
 #include <thread>
 #include <utility>
+
+#include <json.hpp>
 
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
@@ -170,6 +173,17 @@ namespace HIKARI {
             }
         }
 
+        EDITOR::AI_ASSISTANT::AiRequestResult ToAiRequestResult(
+            const EDITOR::EditorOperationResult& operation) {
+            EDITOR::AI_ASSISTANT::AiRequestResult result{};
+            result.ok = operation.ok;
+            result.code = operation.code;
+            result.message = operation.message;
+            result.details = operation.details;
+            result.hints = operation.hints;
+            return result;
+        }
+
         EDITOR::AI_ASSISTANT::AiRequestResult ExecuteAiSceneAction(
             DocumentSceneBase& scene,
             std::string_view json,
@@ -177,15 +191,7 @@ namespace HIKARI {
             const std::string action =
                 EDITOR::AI_ASSISTANT::ExtractJsonField(json, "action");
             if (action != "procedural.create_primitive" &&
-                action != "scene.list_objects" &&
-                action != "scene.snapshot" &&
-                action != "scene.query" &&
-                action != "scene.set_transform" &&
-                action != "scene.create_object" &&
-                action != "asset.list_models" &&
-                action != "asset.import" &&
-                action != "asset.import_status" &&
-                action != "capture.preview") {
+                action != "scene.create_object") {
                 EDITOR::AI_ASSISTANT::AiRequestResult result{};
                 result.ok = false;
                 result.message = "不支持的场景动作：" + action;
@@ -222,139 +228,6 @@ namespace HIKARI {
                 return json.find(std::string("\"") + name + "\"") !=
                     std::string_view::npos;
             };
-
-            if (action == "scene.list_objects" ||
-                action == "scene.snapshot") {
-                result.ok = true;
-                result.message = action == "scene.snapshot"
-                    ? "场景快照："
-                    : "场景对象：";
-                SummarizeSceneObjects(scene, result.details, 200u);
-                if (result.details.empty()) {
-                    result.message = "场景为空";
-                }
-                return result;
-            }
-
-            if (action == "scene.query") {
-                const std::string nameFilter =
-                    EDITOR::AI_ASSISTANT::ExtractJsonField(
-                        json, "name");
-                result.ok = true;
-                result.message = nameFilter.empty()
-                    ? "场景查询："
-                    : "场景查询（name 包含 " + nameFilter + "）：";
-                size_t count = 0u;
-                for (const auto& object :
-                     scene.GetWorld().GetObjects()) {
-                    if (count >= 200u) {
-                        result.details.push_back("...（已截断）");
-                        break;
-                    }
-                    if (!nameFilter.empty() &&
-                        object->GetName().find(nameFilter) ==
-                            std::string::npos) {
-                        continue;
-                    }
-                    const MATH::Vec3& position =
-                        object->GetTransform().position;
-                    const MATH::Vec3& scale =
-                        object->GetTransform().scale;
-                    char line[192];
-                    std::snprintf(
-                        line, sizeof(line),
-                        "%s | pos(%.2f, %.2f, %.2f) | "
-                        "scale(%.2f, %.2f, %.2f)",
-                        object->GetName().c_str(),
-                        position.x, position.y, position.z,
-                        scale.x, scale.y, scale.z);
-                    result.details.push_back(line);
-                    ++count;
-                }
-                if (result.details.empty()) {
-                    result.message = "没有匹配的对象";
-                }
-                return result;
-            }
-
-            if (action == "scene.set_transform") {
-                const std::string name =
-                    EDITOR::AI_ASSISTANT::ExtractJsonField(json, "name");
-                if (name.empty()) {
-                    result.message = "缺少 name 字段（目标物体名）";
-                    return result;
-                }
-                GameObject* target = nullptr;
-                for (const auto& object : scene.GetWorld().GetObjects()) {
-                    if (object->GetName() == name) {
-                        target = object.get();
-                        break;
-                    }
-                }
-                if (target == nullptr) {
-                    result.message = "找不到物体：" + name;
-                    return result;
-                }
-                const MATH::Vec3 previousPosition =
-                    target->GetTransform().position;
-                const MATH::Vec3 previousScale =
-                    target->GetTransform().scale;
-                bool changed = false;
-                if (hasField("positionX") || hasField("positionY") ||
-                    hasField("positionZ")) {
-                    changed |= target->SetLocalPosition({
-                        floatField(
-                            "positionX",
-                            target->GetTransform().position.x),
-                        floatField(
-                            "positionY",
-                            target->GetTransform().position.y),
-                        floatField(
-                            "positionZ",
-                            target->GetTransform().position.z),
-                    });
-                }
-                if (hasField("scaleX") || hasField("scaleY") ||
-                    hasField("scaleZ")) {
-                    changed |= target->SetLocalScale({
-                        floatField(
-                            "scaleX",
-                            target->GetTransform().scale.x),
-                        floatField(
-                            "scaleY",
-                            target->GetTransform().scale.y),
-                        floatField(
-                            "scaleZ",
-                            target->GetTransform().scale.z),
-                    });
-                }
-                if (hasField("rotationX") || hasField("rotationY") ||
-                    hasField("rotationZ")) {
-                    constexpr float kDegreesToRadians =
-                        MATH::kDegreesToRadians;
-                    changed |= target->SetLocalRotation(
-                        MATH::Quat::FromEulerXYZ(
-                            floatField("rotationX", 0.0f) *
-                                kDegreesToRadians,
-                            floatField("rotationY", 0.0f) *
-                                kDegreesToRadians,
-                            floatField("rotationZ", 0.0f) *
-                                kDegreesToRadians));
-                }
-                result.ok = true;
-                if (changed) {
-                    undoStack.push_back(
-                        { AiSceneUndoRecord::Kind::Transform,
-                          name, previousPosition, previousScale });
-                    SummarizeSceneObjects(
-                        scene, result.details, 8u);
-                }
-                result.message = changed
-                    ? "已更新物体 " + name
-                    : "物体 " + name +
-                        " 未变化（需要 positionX/scaleX/rotationX 等字段）";
-                return result;
-            }
 
             if (action == "scene.create_object") {
                 const std::string model =
@@ -416,124 +289,6 @@ namespace HIKARI {
                 SummarizeSceneObjects(scene, result.details, 8u);
                 result.message = "已创建模型 " + request.name +
                     "（" + descriptor->sourcePath + "）";
-                return result;
-            }
-
-            if (action == "asset.list_models") {
-                result.ok = true;
-                result.message = "模型资产：";
-                for (const AssetDescriptor* descriptor :
-                     scene.GetAssetRegistry().CollectByType(
-                         AssetType::Model)) {
-                    result.details.push_back(
-                        descriptor->id.value + " | " +
-                        descriptor->sourcePath);
-                }
-                if (result.details.empty()) {
-                    result.message = "没有已注册的模型资产";
-                }
-                return result;
-            }
-
-            if (action == "asset.import") {
-                const std::string sourcePathText =
-                    EDITOR::AI_ASSISTANT::ExtractJsonField(
-                        json, "path");
-                if (sourcePathText.empty()) {
-                    result.message = "缺少 path 字段";
-                    return result;
-                }
-                const std::filesystem::path sourcePath(
-                    sourcePathText);
-                std::error_code fileError;
-                if (!std::filesystem::is_regular_file(
-                        sourcePath, fileError)) {
-                    result.message =
-                        "文件不存在或不可读：" + sourcePathText;
-                    return result;
-                }
-                if (!EDITOR::ASSET_BROWSER::IsSupportedImportSource(
-                        sourcePath)) {
-                    result.message = "不支持的文件类型：" +
-                        sourcePath.extension().string();
-                    return result;
-                }
-                AssetDatabase& assetDatabase =
-                    scene.GetAssetDatabase();
-                const std::filesystem::path targetRelative =
-                    EDITOR::ASSET_BROWSER::SuggestedTargetDirectory(
-                        {}, sourcePath) /
-                    sourcePath.filename();
-                std::filesystem::path copiedRelative;
-                std::string copyError;
-                if (!EDITOR::ASSET_BROWSER::CopySourceFileIntoProject(
-                        assetDatabase, sourcePath, targetRelative,
-                        false, copiedRelative, copyError)) {
-                    result.message = "导入复制失败：" + copyError;
-                    return result;
-                }
-                if (!assetDatabase.ScanAssets(true)) {
-                    result.message = "资产扫描失败";
-                    return result;
-                }
-                const AssetRecord* record =
-                    assetDatabase.FindByPath(copiedRelative);
-                if (record == nullptr) {
-                    result.message = "资产注册失败：" +
-                        copiedRelative.generic_string();
-                    return result;
-                }
-                const bool queued = assetDatabase.QueueImportAssets(
-                    { record->guid }, "AI import");
-                result.ok = true;
-                result.message = "已复制并注册 " +
-                    copiedRelative.generic_string() +
-                    (queued
-                        ? "，后台导入已排队"
-                        : "（已有导入批次运行中）");
-                result.details = {
-                    "guid: " + record->guid.value,
-                    "可用 asset.import_status 查询进度",
-                };
-                return result;
-            }
-
-            if (action == "asset.import_status") {
-                const AssetImportBatchStatus status =
-                    scene.GetAssetDatabase()
-                        .GetQueuedImportStatus();
-                result.ok = true;
-                result.message = status.active
-                    ? "导入进行中"
-                    : status.completed
-                        ? "导入已完成"
-                        : "没有活动导入";
-                result.details = {
-                    "total: " + std::to_string(status.total),
-                    "finished: " +
-                        std::to_string(status.finished),
-                    "succeeded: " +
-                        std::to_string(status.succeeded),
-                    "failed: " + std::to_string(status.failed),
-                    "label: " + status.label,
-                };
-                if (!status.message.empty()) {
-                    result.details.push_back(
-                        "message: " + status.message);
-                }
-                return result;
-            }
-
-            if (action == "capture.preview") {
-                std::string path =
-                    EDITOR::AI_ASSISTANT::ExtractJsonField(json, "path");
-                std::string captureError;
-                if (CapturePreviewToFile(path, captureError)) {
-                    result.ok = true;
-                    result.message = "预览截图已保存：" + path;
-                } else {
-                    result.message = "截图失败：" + captureError;
-                }
                 return result;
             }
 
@@ -666,10 +421,8 @@ namespace HIKARI {
                 ImGui::DockBuilderDockWindow("Environment", bottomNode);
                 ImGui::DockBuilderDockWindow("Quality", bottomNode);
                 ImGui::DockBuilderDockWindow("Lighting Bake", bottomNode);
-                ImGui::DockBuilderDockWindow("Diagnostics", bottomNode);
                 ImGui::DockBuilderDockWindow("Debug View", bottomNode);
                 ImGui::DockBuilderDockWindow("Performance Audit", bottomNode);
-                ImGui::DockBuilderDockWindow("Renderer Health", bottomNode);
 
                 ImGui::DockBuilderFinish(dockspaceId);
             }
@@ -686,6 +439,560 @@ namespace HIKARI {
         modelMaterialWorkspaceController_.SetAiAssistantPanel(
             &aiAssistantPanel_,
             &context_.windows.runtime.showAiAssistant);
+        operationRegistry_.Register({
+            "material.node_info",
+            "Return one node's semantic contract.",
+            [](const nlohmann::json& parameters)
+                -> EDITOR::EditorOperationResult {
+                std::string nodeType =
+                    parameters.value("nodeType", std::string{});
+                if (nodeType.empty()) {
+                    nodeType =
+                        parameters.value("name", std::string{});
+                }
+                EDITOR::EditorOperationResult result{};
+                std::string message;
+                std::string code;
+                std::vector<std::string> details;
+                if (EDITOR::DescribeAiMaterialNode(
+                        nodeType, message, details, code)) {
+                    result.ok = true;
+                    result.code = "OK";
+                    result.message = message;
+                    result.details = std::move(details);
+                } else {
+                    result.code = code;
+                    result.message = message;
+                    result.details = std::move(details);
+                }
+                return result;
+            },
+        });
+        operationRegistry_.Register({
+            "scene.set_transform",
+            "Set an existing object's position/rotation/scale by name.",
+            [this](const nlohmann::json& parameters) {
+                return ExecuteAiSceneSetTransform(parameters);
+            },
+        });
+        operationRegistry_.Register({
+            "scene.list_objects",
+            "List scene objects with position and scale.",
+            [this](const nlohmann::json&) {
+                return ExecuteAiSceneObjectQuery(false);
+            },
+        });
+        operationRegistry_.Register({
+            "scene.snapshot",
+            "Return a compact scene object snapshot.",
+            [this](const nlohmann::json&) {
+                return ExecuteAiSceneObjectQuery(true);
+            },
+        });
+        operationRegistry_.Register({
+            "scene.query",
+            "Query scene objects by name filter.",
+            [this](const nlohmann::json& parameters) {
+                return ExecuteAiSceneQuery(parameters);
+            },
+        });
+        operationRegistry_.Register({
+            "asset.list_models",
+            "List registered model assets.",
+            [this](const nlohmann::json&) {
+                return ExecuteAiAssetListModels();
+            },
+        });
+        operationRegistry_.Register({
+            "capture.preview",
+            "Capture the material preview to a file.",
+            [this](const nlohmann::json& parameters) {
+                return ExecuteAiCapturePreview(parameters);
+            },
+        });
+        operationRegistry_.Register({
+            "material.graph_query",
+            "List material graph nodes with ids, pins and connections.",
+            [this](const nlohmann::json& parameters) {
+                return ExecuteAiMaterialGraphQuery(parameters);
+            },
+        });
+        operationRegistry_.Register({
+            "material.graph_layout",
+            "Auto-layout material graph nodes.",
+            [this](const nlohmann::json&) {
+                return ExecuteAiMaterialGraphLayout();
+            },
+        });
+        operationRegistry_.Register({
+            "asset.import",
+            "Copy a supported source file into the project and queue its import.",
+            [this](const nlohmann::json& parameters) {
+                return ExecuteAiAssetImport(parameters);
+            },
+        });
+        operationRegistry_.Register({
+            "asset.import_status",
+            "Report the current queued asset import progress.",
+            [this](const nlohmann::json&) {
+                return ExecuteAiAssetImportStatus();
+            },
+        });
+        operationRegistry_.Register({
+            "action.undo_last",
+            "Undo the most recent AI-driven material or scene change.",
+            [this](const nlohmann::json&) {
+                return ExecuteAiUndoLast();
+            },
+        });
+        operationRegistry_.Register({
+            "material.node_list",
+            "List discoverable material graph node types.",
+            [](const nlohmann::json& parameters) {
+                EDITOR::EditorOperationResult result{};
+                std::string message;
+                std::string code;
+                std::vector<std::string> details;
+                if (EDITOR::ListAiMaterialNodes(
+                        parameters.value("keyword", std::string{}),
+                        parameters.value("class", std::string{}),
+                        message, details, code)) {
+                    result.ok = true;
+                    result.code = "OK";
+                    result.message = message;
+                    result.details = std::move(details);
+                } else {
+                    result.code = code;
+                    result.message = message;
+                    result.details = std::move(details);
+                }
+                return result;
+            },
+        });
+    }
+
+    EDITOR::EditorOperationResult
+    DocumentSceneEditorController::ExecuteAiSceneSetTransform(
+        const nlohmann::json& parameters) {
+        EDITOR::EditorOperationResult result{};
+        DocumentSceneBase* scene = aiOperationScene_;
+        if (scene == nullptr) {
+            result.code = "NO_SCENE";
+            result.message = "场景上下文不可用";
+            return result;
+        }
+        const std::string name =
+            parameters.value("name", std::string{});
+        if (name.empty()) {
+            result.code = "MISSING_FIELD";
+            result.message = "缺少 name 字段（目标物体名）";
+            return result;
+        }
+        GameObject* target = nullptr;
+        for (const auto& object : scene->GetWorld().GetObjects()) {
+            if (object->GetName() == name) {
+                target = object.get();
+                break;
+            }
+        }
+        if (target == nullptr) {
+            result.code = "OBJECT_NOT_FOUND";
+            result.message = "找不到物体：" + name;
+            return result;
+        }
+        const MATH::Vec3 previousPosition =
+            target->GetTransform().position;
+        const MATH::Vec3 previousScale =
+            target->GetTransform().scale;
+        const auto hasField = [&parameters](const char* key) {
+            return parameters.contains(key);
+        };
+        const auto floatField =
+            [&parameters](const char* key, float fallback) {
+                const auto found = parameters.find(key);
+                return found != parameters.end() &&
+                        found->is_number()
+                    ? found->get<float>()
+                    : fallback;
+            };
+        bool changed = false;
+        if (hasField("positionX") || hasField("positionY") ||
+            hasField("positionZ")) {
+            changed |= target->SetLocalPosition({
+                floatField(
+                    "positionX",
+                    target->GetTransform().position.x),
+                floatField(
+                    "positionY",
+                    target->GetTransform().position.y),
+                floatField(
+                    "positionZ",
+                    target->GetTransform().position.z),
+            });
+        }
+        if (hasField("scaleX") || hasField("scaleY") ||
+            hasField("scaleZ")) {
+            changed |= target->SetLocalScale({
+                floatField(
+                    "scaleX",
+                    target->GetTransform().scale.x),
+                floatField(
+                    "scaleY",
+                    target->GetTransform().scale.y),
+                floatField(
+                    "scaleZ",
+                    target->GetTransform().scale.z),
+            });
+        }
+        if (hasField("rotationX") || hasField("rotationY") ||
+            hasField("rotationZ")) {
+            changed |= target->SetLocalRotation(
+                MATH::Quat::FromEulerXYZ(
+                    floatField("rotationX", 0.0f) *
+                        MATH::kDegreesToRadians,
+                    floatField("rotationY", 0.0f) *
+                        MATH::kDegreesToRadians,
+                    floatField("rotationZ", 0.0f) *
+                        MATH::kDegreesToRadians));
+        }
+        result.ok = true;
+        if (changed) {
+            aiUndoStack_.push_back(
+                { AiSceneUndoRecord::Kind::Transform,
+                  name, previousPosition, previousScale });
+            SummarizeSceneObjects(
+                *scene, result.details, 8u);
+        }
+        result.message = changed
+            ? "已更新物体 " + name
+            : "物体 " + name +
+                " 未变化（需要 positionX/scaleX/rotationX 等字段）";
+        return result;
+    }
+
+    EDITOR::EditorOperationResult
+    DocumentSceneEditorController::ExecuteAiSceneObjectQuery(
+        bool snapshot) {
+        EDITOR::EditorOperationResult result{};
+        DocumentSceneBase* scene = aiOperationScene_;
+        if (scene == nullptr) {
+            result.code = "NO_SCENE";
+            result.message = "场景上下文不可用";
+            return result;
+        }
+        result.ok = true;
+        result.message = snapshot ? "场景快照：" : "场景对象：";
+        SummarizeSceneObjects(*scene, result.details, 200u);
+        if (result.details.empty()) {
+            result.message = "场景为空";
+        }
+        return result;
+    }
+
+    EDITOR::EditorOperationResult
+    DocumentSceneEditorController::ExecuteAiSceneQuery(
+        const nlohmann::json& parameters) {
+        EDITOR::EditorOperationResult result{};
+        DocumentSceneBase* scene = aiOperationScene_;
+        if (scene == nullptr) {
+            result.code = "NO_SCENE";
+            result.message = "场景上下文不可用";
+            return result;
+        }
+        const std::string nameFilter =
+            parameters.value("name", std::string{});
+        result.ok = true;
+        result.message = nameFilter.empty()
+            ? "场景查询："
+            : "场景查询（name 包含 " + nameFilter + "）：";
+        size_t count = 0u;
+        for (const auto& object : scene->GetWorld().GetObjects()) {
+            if (count >= 200u) {
+                result.details.push_back("...（已截断）");
+                break;
+            }
+            if (!nameFilter.empty() &&
+                object->GetName().find(nameFilter) ==
+                    std::string::npos) {
+                continue;
+            }
+            const MATH::Vec3& position =
+                object->GetTransform().position;
+            const MATH::Vec3& scale =
+                object->GetTransform().scale;
+            char line[192];
+            std::snprintf(
+                line, sizeof(line),
+                "%s | pos(%.2f, %.2f, %.2f) | "
+                "scale(%.2f, %.2f, %.2f)",
+                object->GetName().c_str(),
+                position.x, position.y, position.z,
+                scale.x, scale.y, scale.z);
+            result.details.push_back(line);
+            ++count;
+        }
+        if (result.details.empty()) {
+            result.message = "没有匹配的对象";
+        }
+        return result;
+    }
+
+    EDITOR::EditorOperationResult
+    DocumentSceneEditorController::ExecuteAiAssetListModels() {
+        EDITOR::EditorOperationResult result{};
+        DocumentSceneBase* scene = aiOperationScene_;
+        if (scene == nullptr) {
+            result.code = "NO_SCENE";
+            result.message = "场景上下文不可用";
+            return result;
+        }
+        result.ok = true;
+        result.message = "模型资产：";
+        for (const AssetDescriptor* descriptor :
+             scene->GetAssetRegistry().CollectByType(
+                 AssetType::Model)) {
+            result.details.push_back(
+                descriptor->id.value + " | " +
+                descriptor->sourcePath);
+        }
+        if (result.details.empty()) {
+            result.message = "没有已注册的模型资产";
+        }
+        return result;
+    }
+
+    EDITOR::EditorOperationResult
+    DocumentSceneEditorController::ExecuteAiCapturePreview(
+        const nlohmann::json& parameters) {
+        EDITOR::EditorOperationResult result{};
+        std::string path =
+            parameters.value("path", std::string{});
+        std::string captureError;
+        if (CapturePreviewToFile(path, captureError)) {
+            result.ok = true;
+            result.message = "预览截图已保存：" + path;
+        } else {
+            result.code = "CAPTURE_FAILED";
+            result.message = "截图失败：" + captureError;
+        }
+        return result;
+    }
+
+    EDITOR::EditorOperationResult
+    DocumentSceneEditorController::ExecuteAiMaterialGraphQuery(
+        const nlohmann::json& parameters) {
+        EDITOR::EditorOperationResult result{};
+        DocumentSceneBase* scene = aiOperationScene_;
+        if (scene == nullptr) {
+            result.code = "NO_SCENE";
+            result.message = "场景上下文不可用";
+            return result;
+        }
+        std::string message;
+        std::string code;
+        std::vector<std::string> details;
+        if (modelMaterialWorkspaceController_.QueryAiMaterialGraph(
+                *scene,
+                parameters.value("name", std::string{}),
+                message, details, code)) {
+            result.ok = true;
+            result.code = "OK";
+            result.message = message;
+            result.details = std::move(details);
+        } else {
+            result.code = code;
+            result.message = message;
+            result.details = std::move(details);
+        }
+        return result;
+    }
+
+    EDITOR::EditorOperationResult
+    DocumentSceneEditorController::ExecuteAiMaterialGraphLayout() {
+        EDITOR::EditorOperationResult result{};
+        DocumentSceneBase* scene = aiOperationScene_;
+        if (scene == nullptr) {
+            result.code = "NO_SCENE";
+            result.message = "场景上下文不可用";
+            return result;
+        }
+        std::string message;
+        std::string code;
+        if (modelMaterialWorkspaceController_.LayoutAiMaterialGraph(
+                *scene, message, code)) {
+            result.ok = true;
+            result.code = "OK";
+            result.message = message;
+            modelMaterialWorkspaceController_.AppendAiCompileDiagnostics(
+                result.details);
+            aiUndoStack_.push_back(
+                { AiSceneUndoRecord::Kind::MaterialEdit,
+                  {}, {}, {} });
+        } else {
+            result.code = code;
+            result.message = message;
+        }
+        return result;
+    }
+
+    EDITOR::EditorOperationResult
+    DocumentSceneEditorController::ExecuteAiAssetImport(
+        const nlohmann::json& parameters) {
+        EDITOR::EditorOperationResult result{};
+        DocumentSceneBase* scene = aiOperationScene_;
+        if (scene == nullptr) {
+            result.code = "NO_SCENE";
+            result.message = "场景上下文不可用";
+            return result;
+        }
+        const std::string sourcePathText =
+            parameters.value("path", std::string{});
+        if (sourcePathText.empty()) {
+            result.code = "MISSING_FIELD";
+            result.message = "缺少 path 字段";
+            return result;
+        }
+        const std::filesystem::path sourcePath(sourcePathText);
+        std::error_code fileError;
+        if (!std::filesystem::is_regular_file(
+                sourcePath, fileError)) {
+            result.code = "FILE_NOT_FOUND";
+            result.message = "文件不存在或不可读：" + sourcePathText;
+            return result;
+        }
+        if (!EDITOR::ASSET_BROWSER::IsSupportedImportSource(
+                sourcePath)) {
+            result.code = "UNSUPPORTED_TYPE";
+            result.message = "不支持的文件类型：" +
+                sourcePath.extension().string();
+            return result;
+        }
+        AssetDatabase& assetDatabase = scene->GetAssetDatabase();
+        const std::filesystem::path targetRelative =
+            EDITOR::ASSET_BROWSER::SuggestedTargetDirectory(
+                {}, sourcePath) /
+            sourcePath.filename();
+        std::filesystem::path copiedRelative;
+        std::string copyError;
+        if (!EDITOR::ASSET_BROWSER::CopySourceFileIntoProject(
+                assetDatabase, sourcePath, targetRelative,
+                false, copiedRelative, copyError)) {
+            result.code = "COPY_FAILED";
+            result.message = "导入复制失败：" + copyError;
+            return result;
+        }
+        if (!assetDatabase.ScanAssets(true)) {
+            result.code = "SCAN_FAILED";
+            result.message = "资产扫描失败";
+            return result;
+        }
+        const AssetRecord* record =
+            assetDatabase.FindByPath(copiedRelative);
+        if (record == nullptr) {
+            result.code = "REGISTER_FAILED";
+            result.message = "资产注册失败：" +
+                copiedRelative.generic_string();
+            return result;
+        }
+        const bool queued = assetDatabase.QueueImportAssets(
+            { record->guid }, "AI import");
+        result.ok = true;
+        result.message = "已复制并注册 " +
+            copiedRelative.generic_string() +
+            (queued
+                ? "，后台导入已排队"
+                : "（已有导入批次运行中）");
+        result.details = {
+            "guid: " + record->guid.value,
+            "可用 asset.import_status 查询进度",
+        };
+        return result;
+    }
+
+    EDITOR::EditorOperationResult
+    DocumentSceneEditorController::ExecuteAiAssetImportStatus() {
+        EDITOR::EditorOperationResult result{};
+        DocumentSceneBase* scene = aiOperationScene_;
+        if (scene == nullptr) {
+            result.code = "NO_SCENE";
+            result.message = "场景上下文不可用";
+            return result;
+        }
+        const AssetImportBatchStatus status =
+            scene->GetAssetDatabase().GetQueuedImportStatus();
+        result.ok = true;
+        result.message = status.active
+            ? "导入进行中"
+            : status.completed
+                ? "导入已完成"
+                : "没有活动导入";
+        result.details = {
+            "total: " + std::to_string(status.total),
+            "finished: " + std::to_string(status.finished),
+            "succeeded: " + std::to_string(status.succeeded),
+            "failed: " + std::to_string(status.failed),
+            "label: " + status.label,
+        };
+        if (!status.message.empty()) {
+            result.details.push_back(
+                "message: " + status.message);
+        }
+        return result;
+    }
+
+    EDITOR::EditorOperationResult
+    DocumentSceneEditorController::ExecuteAiUndoLast() {
+        EDITOR::EditorOperationResult result{};
+        DocumentSceneBase* scene = aiOperationScene_;
+        if (scene == nullptr) {
+            result.code = "NO_SCENE";
+            result.message = "场景上下文不可用";
+            return result;
+        }
+        if (aiUndoStack_.empty()) {
+            result.code = "UNDO_EMPTY";
+            result.message = "没有可撤销的 AI 操作";
+            return result;
+        }
+        const AiSceneUndoRecord record = aiUndoStack_.back();
+        aiUndoStack_.pop_back();
+        if (record.kind == AiSceneUndoRecord::Kind::MaterialEdit) {
+            std::string undoMessage;
+            if (modelMaterialWorkspaceController_.Undo(
+                    *scene, undoMessage)) {
+                result.ok = true;
+                result.message = "已撤销上一次材质编辑：" + undoMessage;
+            } else {
+                result.message = "材质撤销失败：" + undoMessage;
+            }
+            return result;
+        }
+        GameObject* target = nullptr;
+        for (const auto& object : scene->GetWorld().GetObjects()) {
+            if (object->GetName() == record.name) {
+                target = object.get();
+                break;
+            }
+        }
+        if (record.kind == AiSceneUndoRecord::Kind::Created) {
+            if (target != nullptr) {
+                scene->GetWorld().DestroyObject(target);
+                result.ok = true;
+                result.message = "已删除创建的物体：" + record.name;
+            } else {
+                result.message = "找不到要删除的物体：" + record.name;
+            }
+        } else {
+            if (target != nullptr) {
+                (void)target->SetLocalPosition(record.position);
+                (void)target->SetLocalScale(record.scale);
+                result.ok = true;
+                result.message = "已恢复物体变换：" + record.name;
+            } else {
+                result.message = "找不到要恢复的物体：" + record.name;
+            }
+        }
+        return result;
     }
 
     void DocumentSceneEditorController::EnsureAiLocalBridge() {
@@ -724,6 +1031,7 @@ namespace HIKARI {
         DocumentSceneBase& scene,
         EDITOR::EditorPlaySession& playSession) {
 #if defined(HIKARI_WITH_EDITOR)
+        aiOperationScene_ = &scene;
         scene.GetAssetDatabase().PumpAssetTasks();
         SyncDocumentHistory(scene);
         context_.selection.RepairObjectSelection(scene.GetWorld());
@@ -1203,17 +1511,11 @@ namespace HIKARI {
         }
         EDITOR::EditorToolContext toolContext{ scene, context_ };
         toolHost_.Draw(toolContext);
-        if (context_.windows.runtime.showDebugWorkspace) {
-            DrawDebugWorkspaceWindow(scene);
-        }
         if (context_.windows.runtime.showDebugView) {
             DrawDebugViewWindow(scene, context_.windows.runtime.showDebugView);
         }
         if (context_.windows.runtime.showPerformanceAudit) {
             performanceAuditPanel_.Draw(context_.windows.runtime.showPerformanceAudit);
-        }
-        if (context_.windows.runtime.showValidationLab) {
-            validationLabPanel_.Draw(context_, context_.windows.runtime.showValidationLab);
         }
         aiAssistantPanel_.SetContextCallback([this, &scene]() {
                 std::string context =
@@ -1247,6 +1549,20 @@ namespace HIKARI {
                 [this, &scene](std::string_view json) {
                     const std::string action =
                         EDITOR::AI_ASSISTANT::ExtractJsonField(json, "action");
+                    if (operationRegistry_.IsRegistered(action)) {
+                        try {
+                            return ToAiRequestResult(
+                                operationRegistry_.Execute(
+                                    action,
+                                    nlohmann::json::parse(
+                                        std::string(json))));
+                        } catch (...) {
+                            EDITOR::AI_ASSISTANT::AiRequestResult result{};
+                            result.code = "INVALID_JSON";
+                            result.message = "动作 JSON 解析失败";
+                            return result;
+                        }
+                    }
                     if (action == "material.edit_parameter") {
                         EDITOR::AI_ASSISTANT::AiRequestResult result{};
                         std::string message;
@@ -1356,116 +1672,6 @@ namespace HIKARI {
                         result.code = "OK";
                         result.message = "预览验证：" + text;
                         result.details = { "截图：" + capturePath };
-                        return result;
-                    }
-                    if (action == "material.node_info") {
-                        EDITOR::AI_ASSISTANT::AiRequestResult result{};
-                        std::string nodeType =
-                            EDITOR::AI_ASSISTANT::ExtractJsonField(
-                                json, "nodeType");
-                        if (nodeType.empty()) {
-                            nodeType =
-                                EDITOR::AI_ASSISTANT::ExtractJsonField(
-                                    json, "name");
-                        }
-                        if (nodeType.empty()) {
-                            result.message =
-                                "缺少 nodeType 字段";
-                            result.code = "MISSING_FIELD";
-                            result.hints = {
-                                "请带上节点类型，例如 "
-                                "{\"action\":\"material.node_info\","
-                                "\"nodeType\":\"noise.value\"}",
-                            };
-                            return result;
-                        }
-                        std::string message;
-                        std::string code;
-                        std::vector<std::string> details;
-                        if (EDITOR::DescribeAiMaterialNode(
-                                nodeType, message, details, code)) {
-                            result.ok = true;
-                            result.code = "OK";
-                            result.message = message;
-                            result.details = std::move(details);
-                        } else {
-                            result.message = message;
-                            result.code = code;
-                            result.details = std::move(details);
-                            AppendAiHints(code, result);
-                        }
-                        return result;
-                    }
-                    if (action == "material.node_list") {
-                        EDITOR::AI_ASSISTANT::AiRequestResult result{};
-                        const std::string keyword =
-                            EDITOR::AI_ASSISTANT::ExtractJsonField(
-                                json, "keyword");
-                        const std::string nodeClass =
-                            EDITOR::AI_ASSISTANT::ExtractJsonField(
-                                json, "class");
-                        std::string message;
-                        std::string code;
-                        std::vector<std::string> details;
-                        if (EDITOR::ListAiMaterialNodes(
-                                keyword, nodeClass,
-                                message, details, code)) {
-                            result.ok = true;
-                            result.code = "OK";
-                            result.message = message;
-                            result.details = std::move(details);
-                        } else {
-                            result.message = message;
-                            result.code = code;
-                            result.details = std::move(details);
-                            AppendAiHints(code, result);
-                        }
-                        return result;
-                    }
-                    if (action == "material.graph_query") {
-                        EDITOR::AI_ASSISTANT::AiRequestResult result{};
-                        const std::string nameFilter =
-                            EDITOR::AI_ASSISTANT::ExtractJsonField(
-                                json, "name");
-                        std::string message;
-                        std::string code;
-                        std::vector<std::string> details;
-                        if (modelMaterialWorkspaceController_
-                                .QueryAiMaterialGraph(
-                                    scene, nameFilter, message,
-                                    details, code)) {
-                            result.ok = true;
-                            result.code = "OK";
-                            result.message = message;
-                            result.details = std::move(details);
-                        } else {
-                            result.message = message;
-                            result.code = code;
-                            AppendAiHints(code, result);
-                        }
-                        return result;
-                    }
-                    if (action == "material.graph_layout") {
-                        EDITOR::AI_ASSISTANT::AiRequestResult result{};
-                        std::string message;
-                        std::string code;
-                        if (modelMaterialWorkspaceController_
-                                .LayoutAiMaterialGraph(
-                                    scene, message, code)) {
-                            result.ok = true;
-                            result.code = "OK";
-                            result.message = message;
-                            modelMaterialWorkspaceController_
-                                .AppendAiCompileDiagnostics(
-                                    result.details);
-                            aiUndoStack_.push_back(
-                                { AiSceneUndoRecord::Kind::MaterialEdit,
-                                  {}, {}, {} });
-                        } else {
-                            result.message = message;
-                            result.code = code;
-                            AppendAiHints(code, result);
-                        }
                         return result;
                     }
                     if (action == "material.graph_edit") {
@@ -1599,71 +1805,17 @@ namespace HIKARI {
                         }
                         return result;
                     }
-                    if (action == "action.undo_last") {
-                        EDITOR::AI_ASSISTANT::AiRequestResult result{};
-                        if (aiUndoStack_.empty()) {
-                            result.message = "没有可撤销的 AI 操作";
-                            return result;
-                        }
-                        const AiSceneUndoRecord record =
-                            aiUndoStack_.back();
-                        aiUndoStack_.pop_back();
-                        if (record.kind ==
-                            AiSceneUndoRecord::Kind::MaterialEdit) {
-                            std::string undoMessage;
-                            if (modelMaterialWorkspaceController_.Undo(
-                                    scene, undoMessage)) {
-                                result.ok = true;
-                                result.message =
-                                    "已撤销上一次材质编辑：" +
-                                    undoMessage;
-                            } else {
-                                result.message =
-                                    "材质撤销失败：" + undoMessage;
-                            }
-                            return result;
-                        }
-                        GameObject* target = nullptr;
-                        for (const auto& object :
-                             scene.GetWorld().GetObjects()) {
-                            if (object->GetName() == record.name) {
-                                target = object.get();
-                                break;
-                            }
-                        }
-                        if (record.kind ==
-                            AiSceneUndoRecord::Kind::Created) {
-                            if (target != nullptr) {
-                                scene.GetWorld().DestroyObject(target);
-                                result.ok = true;
-                                result.message =
-                                    "已删除创建的物体：" + record.name;
-                            } else {
-                                result.message =
-                                    "找不到要删除的物体：" + record.name;
-                            }
-                        } else {
-                            if (target != nullptr) {
-                                (void)target->SetLocalPosition(
-                                    record.position);
-                                (void)target->SetLocalScale(
-                                    record.scale);
-                                result.ok = true;
-                                result.message =
-                                    "已恢复物体变换：" + record.name;
-                            } else {
-                                result.message =
-                                    "找不到要恢复的物体：" + record.name;
-                            }
-                        }
-                        return result;
-                    }
                     return ExecuteAiSceneAction(
                         scene, json, aiUndoStack_);
                 });
             EnsureAiLocalBridge();
             if (context_.windows.runtime.showAiAssistant) {
             aiAssistantPanel_.Draw(context_.windows.runtime.showAiAssistant);
+        }
+        if (context_.windows.runtime.showEditorSettings) {
+            editorSettingsPanel_.Draw(
+                context_.windows.runtime.showEditorSettings,
+                context_);
         }
         DrawPendingSceneOpenModal(scene);
         if (renderQualitySavePending_ && !ImGui::IsAnyItemActive()) {

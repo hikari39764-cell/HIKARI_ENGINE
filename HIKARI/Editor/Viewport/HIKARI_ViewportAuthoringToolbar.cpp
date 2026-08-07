@@ -1,6 +1,7 @@
 #include "Editor/Viewport/HIKARI_ViewportAuthoringToolbar.h"
 
 #include "Editor/HIKARI_EditorContext.h"
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 
@@ -25,7 +26,8 @@ namespace HIKARI::EDITOR {
                 "ViewportTransformEnabled",
                 context.transformGizmo.enabled,
                 buttonSize,
-                "Enable transform gizmo")) {
+                TEXT::Localize(
+                    "ui.viewport.tooltipTransform").c_str())) {
             context.transformGizmo.enabled = !context.transformGizmo.enabled;
         }
         sameLine();
@@ -35,7 +37,8 @@ namespace HIKARI::EDITOR {
                 context.transformGizmo.operation ==
                     EditorTransformGizmoOperation::Translate,
                 buttonSize,
-                "Translate (W)")) {
+                TEXT::Localize(
+                    "ui.viewport.tooltipTranslate").c_str())) {
             context.transformGizmo.operation =
                 EditorTransformGizmoOperation::Translate;
             context.transformGizmo.enabled = true;
@@ -47,7 +50,8 @@ namespace HIKARI::EDITOR {
                 context.transformGizmo.operation ==
                     EditorTransformGizmoOperation::Rotate,
                 buttonSize,
-                "Rotate (E)")) {
+                TEXT::Localize(
+                    "ui.viewport.tooltipRotate").c_str())) {
             context.transformGizmo.operation =
                 EditorTransformGizmoOperation::Rotate;
             context.transformGizmo.enabled = true;
@@ -63,8 +67,10 @@ namespace HIKARI::EDITOR {
                 EditorTransformGizmoOperation::Scale,
             buttonSize,
             scaleDisabled
-                ? "Camera scale does not affect its lens"
-                : "Scale (R)");
+                ? TEXT::Localize(
+                    "ui.viewport.tooltipScaleDisabled").c_str()
+                : TEXT::Localize(
+                    "ui.viewport.tooltipScale").c_str());
         if (scaleDisabled) {
             ImGui::EndDisabled();
         }
@@ -85,8 +91,10 @@ namespace HIKARI::EDITOR {
                 localSpace,
                 buttonSize,
                 localSpace
-                    ? "Local transform space (Q)"
-                    : "World transform space (Q)")) {
+                    ? TEXT::Localize(
+                        "ui.viewport.tooltipLocalSpace").c_str()
+                    : TEXT::Localize(
+                        "ui.viewport.tooltipWorldSpace").c_str())) {
             context.transformGizmo.mode = localSpace
                 ? EditorTransformGizmoMode::World
                 : EditorTransformGizmoMode::Local;
@@ -97,7 +105,8 @@ namespace HIKARI::EDITOR {
                 "ViewportSnap",
                 context.transformGizmo.snapEnabled,
                 buttonSize,
-                "Transform snapping")) {
+                TEXT::Localize(
+                    "ui.viewport.tooltipSnapping").c_str())) {
             context.transformGizmo.snapEnabled =
                 !context.transformGizmo.snapEnabled;
         }
@@ -107,7 +116,8 @@ namespace HIKARI::EDITOR {
                 "ViewportGrid",
                 context.overlays.showGrid,
                 buttonSize,
-                "Viewport grid")) {
+                TEXT::Localize(
+                    "ui.viewport.tooltipGrid").c_str())) {
             context.overlays.showGrid = !context.overlays.showGrid;
         }
         sameLine();
@@ -116,7 +126,8 @@ namespace HIKARI::EDITOR {
                 "ViewportLights",
                 context.overlays.showLights,
                 buttonSize,
-                "Light icons")) {
+                TEXT::Localize(
+                    "ui.viewport.tooltipLights").c_str())) {
             context.overlays.showLights = !context.overlays.showLights;
         }
         sameLine();
@@ -125,7 +136,8 @@ namespace HIKARI::EDITOR {
                 "ViewportComponentGizmos",
                 context.gizmos.showComponentGizmos,
                 buttonSize,
-                "Component gizmos")) {
+                TEXT::Localize(
+                    "ui.viewport.tooltipComponentGizmos").c_str())) {
             context.gizmos.showComponentGizmos =
                 !context.gizmos.showComponentGizmos;
         }
@@ -135,7 +147,8 @@ namespace HIKARI::EDITOR {
             "ViewportToolSettings",
             EditorButtonTone::Quiet,
             buttonSize,
-            "Viewport options");
+            TEXT::Localize(
+                "ui.viewport.tooltipOptions").c_str());
 #else
         (void)context;
         (void)scaleDisabled;

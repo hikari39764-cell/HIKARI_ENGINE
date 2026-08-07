@@ -22,6 +22,6 @@ bool DrawControlPicker(
     INPUT::InputBindingSource source,
     std::string& control);
 bool DrawModifierPicker(std::string& modifier);
-const char* DeviceLabel(INPUT::InputDeviceKind device);
+std::string DeviceLabel(INPUT::InputDeviceKind device);
 
 } // namespace HIKARI::EDITOR::INPUT_WIDGETS

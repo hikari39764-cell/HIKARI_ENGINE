@@ -1,6 +1,7 @@
 #include "Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorController.h"
 
 #include "Editor/Authoring/HIKARI_EditorObjectState.h"
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 #include "Runtime/HIKARI_RuntimeResourceRefreshService.h"
@@ -17,12 +18,16 @@ namespace HIKARI {
 
     void DocumentSceneEditorController::DrawSceneWorkspaceWindow(DocumentSceneBase& scene) {
 #if defined(HIKARI_WITH_EDITOR)
-        if (!ImGui::Begin("Scene Workspace")) {
+        if (!ImGui::Begin(
+                TEXT::LocalizeWindow(
+                    "ui.window.sceneWorkspace",
+                    "Scene Workspace").c_str())) {
             ImGui::End();
             return;
         }
 
-        EDITOR::PanelTitle("Objects");
+        EDITOR::PanelTitle(
+            TEXT::Localize("ui.sceneWorkspace.objects").c_str());
         ImGui::SameLine();
         const float createButtonWidth = ImGui::GetFrameHeight();
         ImGui::SetCursorPosX((std::max)(
@@ -33,7 +38,8 @@ namespace HIKARI {
                 "CreateSceneObject",
                 EDITOR::EditorButtonTone::Quiet,
                 ImVec2(createButtonWidth, createButtonWidth),
-                "Create Object")) {
+                TEXT::Localize(
+                    "ui.sceneWorkspace.createObject").c_str())) {
             ImGui::OpenPopup("SceneHierarchyCreateMenu");
         }
         if (ImGui::BeginPopup("SceneHierarchyCreateMenu")) {

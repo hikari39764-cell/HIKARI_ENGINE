@@ -1,4 +1,5 @@
 #include "Core/Text/HIKARI_AsciiCase.h"
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Assets/Browser/HIKARI_AssetBrowserPanel.h"
 
 #include <algorithm>
@@ -53,28 +54,36 @@ void HandleRecordActivated(const AssetRecord &record,
                            std::string &activatedModelCollisionGuid) {
   if (record.type == AssetType::Scene) {
     activatedSceneGuid = record.guid.value;
-    lastOperationMessage = "Scene open requested: " + record.displayName;
+    lastOperationMessage =
+        TEXT::Localize("ui.assetBrowser.sceneOpenRequested") +
+        record.displayName;
     LogSceneAssetInfo("open requested: " + record.sourcePath.generic_string());
     return;
   }
   if (record.type == AssetType::Sequence) {
     activatedSequenceGuid = record.guid.value;
-    lastOperationMessage = "Sequence open requested: " + record.displayName;
+    lastOperationMessage =
+        TEXT::Localize("ui.assetBrowser.sequenceOpenRequested") +
+        record.displayName;
     return;
   }
   if (record.type == AssetType::AnimationStateMachine) {
     activatedAnimationStateMachineGuid = record.guid.value;
     lastOperationMessage =
-        "Animation State Machine workspace requested: " + record.displayName;
+        TEXT::Localize("ui.assetBrowser.stateMachineRequested") +
+        record.displayName;
     return;
   }
   if (record.type == AssetType::Model) {
     activatedModelCollisionGuid = record.guid.value;
     lastOperationMessage =
-        "Model Collision workspace requested: " + record.displayName;
+        TEXT::Localize("ui.assetBrowser.collisionRequested") +
+        record.displayName;
     return;
   }
-  lastOperationMessage = "Asset selected: " + record.displayName;
+  lastOperationMessage =
+      TEXT::Localize("ui.assetBrowser.assetSelected") +
+      record.displayName;
 }
 
 std::string SceneBadges(const AssetRecord &record,
@@ -85,14 +94,14 @@ std::string SceneBadges(const AssetRecord &record,
 
   std::string badges{};
   if (context->currentSceneGuid == record.guid) {
-    badges += "  [Current";
+    badges += "  " + TEXT::Localize("ui.assetBrowser.badgeCurrent");
     if (context->currentSceneDirty) {
       badges += "*";
     }
     badges += "]";
   }
   if (context->startupSceneGuid == record.guid) {
-    badges += "  [Startup]";
+    badges += "  " + TEXT::Localize("ui.assetBrowser.badgeStartup");
   }
   return badges;
 }
@@ -108,11 +117,11 @@ std::string DisplayNameWithSceneBadges(const AssetRecord &record,
 std::string SceneDisplayNameByGuid(const AssetDatabase &assetDatabase,
                                    const AssetGuid &guid) {
   if (!guid.IsValid()) {
-    return "<none>";
+    return TEXT::Localize("ui.common.none");
   }
   const AssetRecord *record = assetDatabase.FindByGuid(guid);
   if (!record) {
-    return "<missing>";
+    return TEXT::Localize("ui.assetBrowser.missing");
   }
   return record->displayName.empty() ? record->sourcePath.filename().string()
                                      : record->displayName;
@@ -129,14 +138,18 @@ void QueueRenameSceneAsset(const AssetRecord &record,
   renameSceneNameBuffer.fill('\0');
   std::snprintf(renameSceneNameBuffer.data(), renameSceneNameBuffer.size(),
                 "%s", name.c_str());
-  ImGui::OpenPopup("Rename Scene Asset");
+  ImGui::OpenPopup(
+      (TEXT::Localize("ui.assetBrowser.renameTitle") +
+          "###RenameSceneAsset").c_str());
 }
 
 void QueueDeleteSceneAsset(const AssetRecord &record,
                            std::string &deleteSceneGuid) {
 
   deleteSceneGuid = record.guid.value;
-  ImGui::OpenPopup("Delete Scene Asset");
+  ImGui::OpenPopup(
+      (TEXT::Localize("ui.assetBrowser.deleteTitle") +
+          "###DeleteSceneAsset").c_str());
 }
 
 void DrawAssetDragSource(const AssetRecord &record) {
@@ -157,20 +170,29 @@ void DrawRecordContextMenu(
     std::array<char, 128> &renameSceneNameBuffer) {
 
   if (record.type == AssetType::Scene) {
-    if (ImGui::MenuItem("Open Scene")) {
+    if (ImGui::MenuItem(
+            TEXT::Localize("ui.assetBrowser.openScene").c_str())) {
       SelectRecord(record, selection);
       activatedSceneGuid = record.guid.value;
-      lastOperationMessage = "Scene open requested: " + record.displayName;
+      lastOperationMessage =
+          TEXT::Localize("ui.assetBrowser.sceneOpenRequested") +
+          record.displayName;
       LogSceneAssetInfo("open requested: " +
                         record.sourcePath.generic_string());
     }
-    if (ImGui::MenuItem("Save Current Scene Here")) {
+    if (ImGui::MenuItem(
+            TEXT::Localize(
+                "ui.assetBrowser.saveCurrentSceneHere").c_str())) {
       saveSceneAsGuid = record.guid.value;
-      lastOperationMessage = "Scene save requested: " + record.displayName;
+      lastOperationMessage =
+          TEXT::Localize("ui.assetBrowser.sceneSaveRequested") +
+          record.displayName;
       LogSceneAssetInfo("save requested: " +
                         record.sourcePath.generic_string());
     }
-    if (ImGui::MenuItem("Duplicate Scene")) {
+    if (ImGui::MenuItem(
+            TEXT::Localize(
+                "ui.assetBrowser.duplicateScene").c_str())) {
       std::filesystem::path duplicatedPath{};
       std::string error{};
       if (DuplicateSceneAsset(assetDatabase, record, duplicatedPath, error)) {
@@ -179,32 +201,49 @@ void DrawRecordContextMenu(
                 assetDatabase.FindByPath(duplicatedPath)) {
           SelectRecord(*duplicated, selection);
         }
-        lastOperationMessage = "Scene duplicated";
+        lastOperationMessage =
+            TEXT::Localize("ui.assetBrowser.sceneDuplicated");
       } else {
-        lastOperationMessage = error.empty() ? "Scene duplicate failed" : error;
+        lastOperationMessage =
+            error.empty()
+                ? TEXT::Localize("ui.assetBrowser.sceneDuplicateFailed")
+                : error;
       }
     }
-    if (ImGui::MenuItem("Rename Scene")) {
+    if (ImGui::MenuItem(
+            TEXT::Localize("ui.assetBrowser.renameScene").c_str())) {
       QueueRenameSceneAsset(record, renameSceneGuid, renameSceneNameBuffer);
     }
     const bool isCurrentScene =
         context && context->currentSceneGuid == record.guid;
-    if (ImGui::MenuItem("Delete Scene", nullptr, false, !isCurrentScene)) {
+    if (ImGui::MenuItem(
+            TEXT::Localize("ui.assetBrowser.deleteScene").c_str(),
+            nullptr,
+            false,
+            !isCurrentScene)) {
       QueueDeleteSceneAsset(record, deleteSceneGuid);
     }
     if (isCurrentScene &&
         ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-      ImGui::SetTooltip("Open another scene before deleting this one.");
+      ImGui::SetTooltip(
+          "%s",
+          TEXT::Localize(
+              "ui.assetBrowser.deleteCurrentSceneTooltip").c_str());
     }
-    if (ImGui::MenuItem("Set as Startup Scene")) {
+    if (ImGui::MenuItem(
+            TEXT::Localize(
+                "ui.assetBrowser.setStartupScene").c_str())) {
       ProjectSettingsService settings{};
       settings.Load(assetDatabase.GetProjectRoot());
       if (settings.SetStartupSceneGuid(record.guid) && settings.Save()) {
-        lastOperationMessage = "Startup scene set: " + record.displayName;
+        lastOperationMessage =
+            TEXT::Localize("ui.assetBrowser.startupSceneSet") +
+            record.displayName;
         LogSceneAssetInfo("set startup scene: " +
                           record.sourcePath.generic_string());
       } else {
-        lastOperationMessage = "Startup scene update failed";
+        lastOperationMessage =
+            TEXT::Localize("ui.assetBrowser.startupSceneUpdateFailed");
         LogSceneAssetWarn("set startup scene failed: " +
                           record.sourcePath.generic_string());
       }
@@ -213,42 +252,56 @@ void DrawRecordContextMenu(
   }
 
   if (record.type == AssetType::Model) {
-    if (ImGui::MenuItem("Edit Collision...")) {
+    if (ImGui::MenuItem(
+            TEXT::Localize("ui.assetBrowser.editCollision").c_str())) {
       SelectRecord(record, selection);
       activatedModelCollisionGuid = record.guid.value;
       lastOperationMessage =
-          "Model Collision workspace requested: " + record.displayName;
+          TEXT::Localize("ui.assetBrowser.collisionRequested") +
+          record.displayName;
     }
     ImGui::Separator();
   }
 
   if (record.type == AssetType::Sequence) {
-    if (ImGui::MenuItem("Open in Cinematics")) {
+    if (ImGui::MenuItem(
+            TEXT::Localize(
+                "ui.assetBrowser.openInCinematics").c_str())) {
       SelectRecord(record, selection);
       activatedSequenceGuid = record.guid.value;
-      lastOperationMessage = "Sequence open requested: " + record.displayName;
+      lastOperationMessage =
+          TEXT::Localize("ui.assetBrowser.sequenceOpenRequested") +
+          record.displayName;
     }
     ImGui::Separator();
   }
 
   if (record.type == AssetType::AnimationStateMachine) {
-    if (ImGui::MenuItem("Open State Machine")) {
+    if (ImGui::MenuItem(
+            TEXT::Localize(
+                "ui.assetBrowser.openStateMachine").c_str())) {
       SelectRecord(record, selection);
       activatedAnimationStateMachineGuid = record.guid.value;
       lastOperationMessage =
-          "Animation State Machine workspace requested: " + record.displayName;
+          TEXT::Localize("ui.assetBrowser.stateMachineRequested") +
+          record.displayName;
     }
     ImGui::Separator();
   }
 
-  if (ImGui::MenuItem("Reimport")) {
+  if (ImGui::MenuItem(
+          TEXT::Localize("ui.assetBrowser.reimport").c_str())) {
     SelectRecord(record, selection);
     const bool queued = assetDatabase.QueueImportAssets(
         {record.guid}, "Reimport " + record.displayName);
     lastOperationMessage =
-        queued ? "Reimport queued" : "Another import batch is already running";
+        queued
+            ? TEXT::Localize("ui.assetBrowser.reimportQueued")
+            : TEXT::Localize("ui.assetBrowser.importBatchRunning");
   }
-  if (ImGui::MenuItem("Reimport + Refresh Runtime")) {
+  if (ImGui::MenuItem(
+          TEXT::Localize(
+              "ui.assetBrowser.reimportRefreshRuntime").c_str())) {
     SelectRecord(record, selection);
     const bool queued = assetDatabase.QueueImportAssets(
         {record.guid}, "Reimport " + record.displayName);
@@ -256,45 +309,67 @@ void DrawRecordContextMenu(
       pendingReimportAndRefreshRuntimeAssetGuid = record.guid.value;
     }
     lastOperationMessage = queued
-                               ? "Reimport queued; runtime refresh will follow"
-                               : "Another import batch is already running";
+                               ? TEXT::Localize(
+                                   "ui.assetBrowser.reimportQueuedRefresh")
+                               : TEXT::Localize(
+                                   "ui.assetBrowser.importBatchRunning");
   }
-  if (ImGui::MenuItem("Refresh Runtime Only")) {
+  if (ImGui::MenuItem(
+          TEXT::Localize(
+              "ui.assetBrowser.refreshRuntimeOnly").c_str())) {
     SelectRecord(record, selection);
     refreshRuntimeAssetGuid = record.guid.value;
-    lastOperationMessage = "Runtime refresh queued";
+    lastOperationMessage =
+        TEXT::Localize("ui.assetBrowser.runtimeRefreshQueued");
   }
-  if (ImGui::MenuItem("Reimport Dependencies")) {
+  if (ImGui::MenuItem(
+          TEXT::Localize(
+              "ui.assetBrowser.reimportDependencies").c_str())) {
     const bool queued =
         assetDatabase.QueueImportDependencies(record.guid, false);
-    lastOperationMessage = queued ? "Dependency import queued"
-                                  : "Another import batch is already running";
+    lastOperationMessage =
+        queued
+            ? TEXT::Localize("ui.assetBrowser.dependencyImportQueued")
+            : TEXT::Localize("ui.assetBrowser.importBatchRunning");
   }
-  if (ImGui::MenuItem("Show in Explorer")) {
+  if (ImGui::MenuItem(
+          TEXT::Localize("ui.assetBrowser.showInExplorer").c_str())) {
     EDITOR::SHELL::ShowFileInExplorer(assetDatabase.GetProjectRoot() /
                                       record.sourcePath);
   }
   ImGui::Separator();
-  if (ImGui::MenuItem("Copy GUID")) {
+  if (ImGui::MenuItem(
+          TEXT::Localize("ui.assetBrowser.copyGuid").c_str())) {
     ImGui::SetClipboardText(record.guid.value.c_str());
-    lastOperationMessage = "Asset GUID copied";
+    lastOperationMessage =
+        TEXT::Localize("ui.assetBrowser.guidCopied");
   }
-  if (ImGui::MenuItem("Copy Source Path")) {
+  if (ImGui::MenuItem(
+          TEXT::Localize("ui.assetBrowser.copySourcePath").c_str())) {
     const std::string path = record.sourcePath.generic_string();
     ImGui::SetClipboardText(path.c_str());
-    lastOperationMessage = "Source path copied";
+    lastOperationMessage =
+        TEXT::Localize("ui.assetBrowser.sourcePathCopied");
   }
   const std::string artifactPath = FirstArtifactPath(record);
-  if (ImGui::MenuItem("Copy Artifact Path", nullptr, false,
+  if (ImGui::MenuItem(
+          TEXT::Localize("ui.assetBrowser.copyArtifactPath").c_str(),
+          nullptr,
+          false,
                       !artifactPath.empty())) {
     ImGui::SetClipboardText(artifactPath.c_str());
-    lastOperationMessage = "Artifact path copied";
+    lastOperationMessage =
+        TEXT::Localize("ui.assetBrowser.artifactPathCopied");
   }
   ImGui::Separator();
-  if (ImGui::MenuItem("Regenerate Meta")) {
+  if (ImGui::MenuItem(
+          TEXT::Localize("ui.assetBrowser.regenerateMeta").c_str())) {
     SelectRecord(record, selection);
     const bool ok = assetDatabase.RegenerateMeta(record.sourcePath);
-    lastOperationMessage = ok ? "Meta regenerated" : "Meta regeneration failed";
+    lastOperationMessage =
+        ok
+            ? TEXT::Localize("ui.assetBrowser.metaRegenerated")
+            : TEXT::Localize("ui.assetBrowser.metaRegenerationFailed");
   }
 }
 #endif

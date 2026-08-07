@@ -1,4 +1,5 @@
 #include "Core/Text/HIKARI_AsciiCase.h"
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Assets/Browser/HIKARI_AssetBrowserPanel.h"
 
 #include <algorithm>
@@ -151,51 +152,53 @@ bool MatchesScope(const AssetRecord &record,
   }
 }
 
-const char *ToScopeTitle(AssetBrowserScope scope) {
+std::string ToScopeTitle(AssetBrowserScope scope) {
   switch (scope) {
   case AssetBrowserScope::CurrentScene:
-    return "Current Scene";
+    return TEXT::Localize("ui.assetBrowser.scopeTitle.currentScene");
   case AssetBrowserScope::UnusedInScene:
-    return "Unused In Scene";
+    return TEXT::Localize("ui.assetBrowser.scopeTitle.unused");
   case AssetBrowserScope::Broken:
-    return "Broken Assets";
+    return TEXT::Localize("ui.assetBrowser.scopeTitle.broken");
   case AssetBrowserScope::Textures:
-    return "Textures";
+    return TEXT::Localize("ui.assetBrowser.scopeTitle.textures");
   case AssetBrowserScope::Models:
-    return "Models";
+    return TEXT::Localize("ui.assetBrowser.scopeTitle.models");
   case AssetBrowserScope::Scenes:
-    return "Scenes";
+    return TEXT::Localize("ui.assetBrowser.scopeTitle.scenes");
   case AssetBrowserScope::Materials:
-    return "Materials";
+    return TEXT::Localize("ui.assetBrowser.scopeTitle.materials");
   case AssetBrowserScope::Skies:
-    return "Skies";
+    return TEXT::Localize("ui.assetBrowser.scopeTitle.skies");
   case AssetBrowserScope::Vfx:
-    return "VFX";
+    return TEXT::Localize("ui.assetBrowser.scopeTitle.vfx");
   case AssetBrowserScope::Sequences:
-    return "Sequences";
+    return TEXT::Localize("ui.assetBrowser.scopeTitle.sequences");
   case AssetBrowserScope::Project:
   default:
-    return "Project Assets";
+    return TEXT::Localize("ui.assetBrowser.scopeTitle.project");
   }
 }
 
-const char *ToUsageBadge(const AssetRecord &record,
+std::string ToUsageBadge(const AssetRecord &record,
                          const AssetUsageSummary *usageSummary) {
   if (!usageSummary) {
-    return "";
+    return {};
   }
-  return usageSummary->IsUsed(record.guid) ? "Used" : "Unused";
+  return usageSummary->IsUsed(record.guid)
+      ? TEXT::Localize("ui.assetBrowser.usageUsed")
+      : TEXT::Localize("ui.assetBrowser.usageUnused");
 }
 
-const char *ToCookedBadge(const AssetRecord &record) {
+std::string ToCookedBadge(const AssetRecord &record) {
   if (record.type == AssetType::Texture) {
     if (ASSETS::SEMANTICS::HasAssetArtifact(
             record, ASSETS::SEMANTICS::AssetArtifactKind::MainTexture)) {
-      return "HTEX Ready";
+      return TEXT::Localize("ui.assetBrowser.cookedHtexReady");
     }
     if (ASSETS::SEMANTICS::HasAssetArtifact(
             record, ASSETS::SEMANTICS::AssetArtifactKind::DebugTextureDds)) {
-      return "DDS Only";
+      return TEXT::Localize("ui.assetBrowser.cookedDdsOnly");
     }
   }
   if (record.type == AssetType::Model) {
@@ -220,12 +223,12 @@ const char *ToCookedBadge(const AssetRecord &record) {
     if (hasHcmesh) {
       return "HCMESH";
     }
-    return "Raw Model";
+    return TEXT::Localize("ui.assetBrowser.cookedRawModel");
   }
   if (record.type == AssetType::Scene) {
-    return "Scene JSON";
+    return TEXT::Localize("ui.assetBrowser.cookedSceneJson");
   }
-  return "";
+  return {};
 }
 
 const char *ToCompactTypeBadge(AssetType type) {

@@ -1,5 +1,6 @@
 #include "Editor/Panels/HIKARI_InputActionMapEditorWidgets.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
+#include "Core/Text/HIKARI_Localization.h"
 
 #include <algorithm>
 #include <array>
@@ -166,7 +167,11 @@ bool DrawControlPicker(
 #if defined(HIKARI_WITH_EDITOR)
     bool changed = false;
     const std::vector<std::string>& options = ControlsForSource(source);
-    if (ImGui::BeginCombo(label, control.empty() ? "Select control" : control.c_str())) {
+    if (ImGui::BeginCombo(
+            label,
+            control.empty()
+                ? TEXT::Localize("ui.input.selectControl").c_str()
+                : control.c_str())) {
         for (const std::string& candidate : options) {
             const bool selected = candidate == control;
             if (ImGui::Selectable(candidate.c_str(), selected)) {
@@ -190,12 +195,20 @@ bool DrawModifierPicker(std::string& modifier) {
         "", "Shift", "Ctrl", "Alt", "Mouse:Left", "Mouse:Right",
         "Mouse:Middle", "Gamepad:LeftShoulder",
         "Gamepad:RightShoulder", "Gamepad:A" };
-    const char* preview = modifier.empty() ? "None" : modifier.c_str();
+    const char* preview =
+        modifier.empty()
+            ? TEXT::Localize("ui.input.none").c_str()
+            : modifier.c_str();
     bool changed = false;
-    if (ImGui::BeginCombo("Modifier", preview)) {
+    if (ImGui::BeginCombo(
+            TEXT::Localize("ui.input.modifier").c_str(),
+            preview)) {
         for (const char* candidate : modifiers) {
             const bool selected = modifier == candidate;
-            const char* display = *candidate == '\0' ? "None" : candidate;
+            const char* display =
+                *candidate == '\0'
+                    ? TEXT::Localize("ui.input.none").c_str()
+                    : candidate;
             if (ImGui::Selectable(display, selected)) {
                 modifier = candidate;
                 changed = true;
@@ -211,11 +224,14 @@ bool DrawModifierPicker(std::string& modifier) {
 #endif
 }
 
-const char* DeviceLabel(INPUT::InputDeviceKind device) {
+std::string DeviceLabel(INPUT::InputDeviceKind device) {
     switch (device) {
-    case INPUT::InputDeviceKind::KeyboardMouse: return "Keyboard / Mouse";
-    case INPUT::InputDeviceKind::Gamepad: return "Gamepad";
-    default: return "None";
+    case INPUT::InputDeviceKind::KeyboardMouse:
+        return TEXT::Localize("ui.input.deviceKeyboardMouse");
+    case INPUT::InputDeviceKind::Gamepad:
+        return TEXT::Localize("ui.input.deviceGamepad");
+    default:
+        return TEXT::Localize("ui.input.deviceNone");
     }
 }
 

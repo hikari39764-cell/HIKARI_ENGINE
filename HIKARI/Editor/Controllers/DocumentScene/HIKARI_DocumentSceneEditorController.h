@@ -19,11 +19,13 @@
 #include "Editor/Environment/HIKARI_EnvironmentPanel.h"
 #include "Editor/HIKARI_HierarchyPanel.h"
 #include "Editor/Commands/HIKARI_EditorCommandRouter.h"
+#include "Editor/Commands/HIKARI_EditorOperationRegistry.h"
 #include "Editor/Commands/HIKARI_SceneObjectCommandService.h"
 #include "Editor/Panels/HIKARI_SceneCreationPanel.h"
 #include "Editor/Scene/Inspector/HIKARI_SceneInspectorPanel.h"
 #include "Editor/Performance/HIKARI_PerformanceAuditPanel.h"
 #include "Editor/Quality/HIKARI_QualityPanel.h"
+#include "Editor/Settings/HIKARI_EditorSettingsPanel.h"
 #include "Editor/Assets/Workspace/HIKARI_ResourceWorkspacePanel.h"
 #include "Editor/Panels/HIKARI_ValidationLabPanel.h"
 #include "Editor/Tools/HIKARI_EditorToolHost.h"
@@ -82,6 +84,7 @@ namespace HIKARI {
         EDITOR::SceneAuthoringUtilityWindows sceneAuthoringUtilityWindows_{};
         ValidationLabPanel validationLabPanel_{};
         EDITOR::AiAssistantPanel aiAssistantPanel_{};
+        EDITOR::EditorSettingsPanel editorSettingsPanel_{};
         EDITOR::AI_ASSISTANT::AiLocalBridge aiLocalBridge_{};
         bool aiBridgeStarted_ = false;
         EnvironmentPanel environmentPanel_{};
@@ -89,6 +92,8 @@ namespace HIKARI {
         EDITOR::EditorToolHost toolHost_{};
         EDITOR::SystemAuthoringRegistry systemAuthoringRegistry_{};
         EDITOR::EditorWorkspaceHost workspaceHost_{};
+        EDITOR::EditorOperationRegistry operationRegistry_{};
+        DocumentSceneBase* aiOperationScene_ = nullptr;
         std::vector<AiSceneUndoRecord> aiUndoStack_{};
         EDITOR::CinematicsWorkspaceController cinematicsWorkspaceController_{};
         EDITOR::ModelCollisionWorkspaceController modelCollisionWorkspaceController_{};
@@ -123,6 +128,22 @@ namespace HIKARI {
         void HandleGameViewportAssetDrop(DocumentSceneBase& scene);
         void DrawPendingSceneOpenModal(DocumentSceneBase& scene);
         void EnsureAiLocalBridge();
+        EDITOR::EditorOperationResult ExecuteAiSceneSetTransform(
+            const nlohmann::json& parameters);
+        EDITOR::EditorOperationResult ExecuteAiSceneObjectQuery(
+            bool snapshot);
+        EDITOR::EditorOperationResult ExecuteAiSceneQuery(
+            const nlohmann::json& parameters);
+        EDITOR::EditorOperationResult ExecuteAiAssetListModels();
+        EDITOR::EditorOperationResult ExecuteAiCapturePreview(
+            const nlohmann::json& parameters);
+        EDITOR::EditorOperationResult ExecuteAiMaterialGraphQuery(
+            const nlohmann::json& parameters);
+        EDITOR::EditorOperationResult ExecuteAiMaterialGraphLayout();
+        EDITOR::EditorOperationResult ExecuteAiAssetImport(
+            const nlohmann::json& parameters);
+        EDITOR::EditorOperationResult ExecuteAiAssetImportStatus();
+        EDITOR::EditorOperationResult ExecuteAiUndoLast();
         bool OpenSceneAssetFromEditor(DocumentSceneBase& scene, const AssetGuid& sceneGuid);
         void SyncDocumentHistory(DocumentSceneBase& scene);
         void ConfigureEditorCommands(DocumentSceneBase& scene);

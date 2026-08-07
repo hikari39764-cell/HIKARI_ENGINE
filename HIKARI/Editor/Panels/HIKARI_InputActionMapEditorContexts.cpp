@@ -1,5 +1,6 @@
 #include "Editor/Panels/HIKARI_InputActionMapEditor.h"
 
+#include "Core/Text/HIKARI_Localization.h"
 #include <algorithm>
 #include <utility>
 
@@ -20,7 +21,9 @@ void InputActionMapEditor::DrawContextsTab(
     const float listWidth = (std::min)(260.0f,
         ImGui::GetContentRegionAvail().x * 0.3f);
     if (ImGui::BeginChild("##ContextBrowser", ImVec2(listWidth, 0.0f), true)) {
-        if (ImGui::Button("+ New Context", ImVec2(126.0f, 0.0f))) {
+        if (ImGui::Button(
+                TEXT::Localize("ui.input.newContext").c_str(),
+                ImVec2(126.0f, 0.0f))) {
             addContextRequested_ = true;
         }
         ImGui::Separator();
@@ -34,11 +37,18 @@ void InputActionMapEditor::DrawContextsTab(
             ImGui::SameLine();
             if (inputService.Contexts().IsActive(context.contextId)) {
                 ImGui::TextColored(
-                    ImVec4(0.42f, 0.9f, 0.5f, 1.0f), "Active");
+                    ImVec4(0.42f, 0.9f, 0.5f, 1.0f),
+                    "%s",
+                    TEXT::Localize("ui.input.active").c_str());
             }
             ImGui::TextDisabled(
-                "%s  |  Priority %d", context.contextId.c_str(), context.priority);
-            ImGui::TextDisabled("%zu bindings", context.bindings.size());
+                TEXT::Localize(
+                    "ui.input.contextPriorityFormat").c_str(),
+                context.contextId.c_str(),
+                context.priority);
+            ImGui::TextDisabled(
+                TEXT::Localize("ui.input.bindingsCountFormat").c_str(),
+                context.bindings.size());
             ImGui::PopID();
         }
     }
@@ -47,36 +57,54 @@ void InputActionMapEditor::DrawContextsTab(
 
     if (ImGui::BeginChild("##ContextDetails", ImVec2(0.0f, 0.0f), true)) {
         if (map.contexts.empty()) {
-            ImGui::TextDisabled("Create a context to begin.");
+            ImGui::TextDisabled(
+                "%s",
+                TEXT::Localize(
+                    "ui.input.createContextToBegin").c_str());
         } else {
             INPUT::InputContextDefinition& context = map.contexts[selectedContext_];
-            ImGui::TextDisabled("CONTEXT DETAILS");
+            ImGui::TextDisabled(
+                "%s",
+                TEXT::Localize("ui.input.contextDetails").c_str());
             ImGui::SameLine();
             ImGui::Text("%s", context.contextId.c_str());
             ImGui::Separator();
 
             ImGui::SetNextItemWidth(260.0f);
-            if (EditString("Name", context.displayName)) dirty_ = true;
+            if (EditString(
+                    TEXT::Localize("ui.input.name").c_str(),
+                    context.displayName)) dirty_ = true;
             ImGui::SameLine();
             ImGui::SetNextItemWidth(120.0f);
             if (ImGui::DragInt(
-                    "Priority", &context.priority, 1.0f, -10000, 10000)) {
+                    TEXT::Localize("ui.input.priority").c_str(),
+                    &context.priority, 1.0f, -10000, 10000)) {
                 dirty_ = true;
             }
-            if (ImGui::Checkbox("Consume active controls", &context.consumeInput)) {
+            if (ImGui::Checkbox(
+                    TEXT::Localize(
+                        "ui.input.consumeControls").c_str(),
+                    &context.consumeInput)) {
                 dirty_ = true;
             }
             ImGui::SameLine();
-            if (ImGui::Checkbox("Enabled by default", &context.enabledByDefault)) {
+            if (ImGui::Checkbox(
+                    TEXT::Localize(
+                        "ui.input.enabledByDefault").c_str(),
+                    &context.enabledByDefault)) {
                 dirty_ = true;
             }
             ImGui::SameLine();
             bool runtimeActive = inputService.Contexts().IsActive(context.contextId);
-            if (ImGui::Checkbox("Runtime active", &runtimeActive)) {
+            if (ImGui::Checkbox(
+                    TEXT::Localize(
+                        "ui.input.runtimeActive").c_str(),
+                    &runtimeActive)) {
                 inputService.Contexts().SetActive(context.contextId, runtimeActive);
             }
 
-            if (ImGui::Button("+ Add Binding...")) {
+            if (ImGui::Button(
+                    TEXT::Localize("ui.input.addBinding").c_str())) {
                 BeginBindingEdit(map, -1);
             }
             ImGui::SameLine();
@@ -87,12 +115,16 @@ void InputActionMapEditor::DrawContextsTab(
                         INPUT::InputActionValueType::Axis2D;
                 });
             ImGui::BeginDisabled(!hasAxis2D);
-            if (ImGui::Button("+ Add 2D Composite...")) {
+            if (ImGui::Button(
+                    TEXT::Localize(
+                        "ui.input.add2DComposite").c_str())) {
                 BeginCompositeEdit(map);
             }
             ImGui::EndDisabled();
             ImGui::SameLine();
-            if (ImGui::Button("Delete Context...")) {
+            if (ImGui::Button(
+                    TEXT::Localize(
+                        "ui.input.deleteContext").c_str())) {
                 deleteContextRequested_ = true;
             }
 
@@ -105,12 +137,20 @@ void InputActionMapEditor::DrawContextsTab(
                     ImGuiTableFlags_SizingStretchProp,
                     ImVec2(0.0f, -4.0f))) {
                 ImGui::TableSetupScrollFreeze(0, 1);
-                ImGui::TableSetupColumn("Action");
-                ImGui::TableSetupColumn("Device / Source");
-                ImGui::TableSetupColumn("Control");
-                ImGui::TableSetupColumn("Modifier");
-                ImGui::TableSetupColumn("Value");
-                ImGui::TableSetupColumn("Dead Zone", ImGuiTableColumnFlags_WidthFixed, 80.0f);
+                ImGui::TableSetupColumn(
+                    TEXT::Localize("ui.input.tableAction").c_str());
+                ImGui::TableSetupColumn(
+                    TEXT::Localize(
+                        "ui.input.tableDeviceSource").c_str());
+                ImGui::TableSetupColumn(
+                    TEXT::Localize("ui.input.tableControl").c_str());
+                ImGui::TableSetupColumn(
+                    TEXT::Localize("ui.input.tableModifier").c_str());
+                ImGui::TableSetupColumn(
+                    TEXT::Localize("ui.input.tableValue").c_str());
+                ImGui::TableSetupColumn(
+                    TEXT::Localize("ui.input.tableDeadZone").c_str(),
+                    ImGuiTableColumnFlags_WidthFixed, 80.0f);
                 ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 92.0f);
                 ImGui::TableHeadersRow();
                 for (int index = 0;
@@ -127,8 +167,10 @@ void InputActionMapEditor::DrawContextsTab(
                     ImGui::TextUnformatted(binding.control.c_str());
                     ImGui::TableSetColumnIndex(3);
                     ImGui::TextDisabled(
-                        "%s", binding.modifierControl.empty()
-                            ? "None" : binding.modifierControl.c_str());
+                        "%s",
+                        binding.modifierControl.empty()
+                            ? TEXT::Localize("ui.input.none").c_str()
+                            : binding.modifierControl.c_str());
                     ImGui::TableSetColumnIndex(4);
                     ImGui::Text(
                         "%.2f -> %s", binding.scale,
@@ -136,7 +178,8 @@ void InputActionMapEditor::DrawContextsTab(
                     ImGui::TableSetColumnIndex(5);
                     ImGui::Text("%.2f", binding.deadZone);
                     ImGui::TableSetColumnIndex(6);
-                    if (ImGui::SmallButton("Edit")) {
+                    if (ImGui::SmallButton(
+                            TEXT::Localize("ui.input.edit").c_str())) {
                         BeginBindingEdit(map, index);
                     }
                     ImGui::SameLine();
@@ -160,23 +203,35 @@ void InputActionMapEditor::DrawContextPopups(
 #if defined(HIKARI_WITH_EDITOR)
     INPUT::InputActionMap& map = inputService.EditActionMap();
     if (addContextRequested_) {
-        ImGui::OpenPopup("Add Input Context");
+        ImGui::OpenPopup(
+            (TEXT::Localize("ui.input.addContextTitle") +
+                "###AddInputContext").c_str());
         addContextRequested_ = false;
     }
     if (ImGui::BeginPopupModal(
-            "Add Input Context", nullptr,
+            (TEXT::Localize("ui.input.addContextTitle") +
+                "###AddInputContext").c_str(),
+            nullptr,
             ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::TextWrapped(
-            "Contexts group bindings that can be activated independently at runtime.");
-        ImGui::SetNextItemWidth(340.0f);
-        ImGui::InputText("Context ID", newContextId_.data(), newContextId_.size());
+            "%s",
+            TEXT::Localize("ui.input.addContextHint").c_str());
         ImGui::SetNextItemWidth(340.0f);
         ImGui::InputText(
-            "Display Name", newContextName_.data(), newContextName_.size());
+            TEXT::Localize("ui.input.contextId").c_str(),
+            newContextId_.data(),
+            newContextId_.size());
+        ImGui::SetNextItemWidth(340.0f);
+        ImGui::InputText(
+            TEXT::Localize("ui.input.displayName").c_str(),
+            newContextName_.data(),
+            newContextName_.size());
         const bool canAdd = newContextId_[0] != '\0' &&
             map.FindContext(newContextId_.data()) == nullptr;
         ImGui::BeginDisabled(!canAdd);
-        if (ImGui::Button("Create Context", ImVec2(140.0f, 0.0f))) {
+        if (ImGui::Button(
+                TEXT::Localize("ui.input.createContext").c_str(),
+                ImVec2(140.0f, 0.0f))) {
             INPUT::InputContextDefinition context{};
             context.contextId = newContextId_.data();
             context.displayName = newContextName_[0] != '\0'
@@ -190,24 +245,34 @@ void InputActionMapEditor::DrawContextPopups(
         }
         ImGui::EndDisabled();
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(110.0f, 0.0f))) {
+        if (ImGui::Button(
+                TEXT::Localize("ui.common.cancel").c_str(),
+                ImVec2(110.0f, 0.0f))) {
             ImGui::CloseCurrentPopup();
         }
         ImGui::EndPopup();
     }
 
     if (deleteContextRequested_) {
-        ImGui::OpenPopup("Delete Input Context");
+        ImGui::OpenPopup(
+            (TEXT::Localize("ui.input.deleteContextTitle") +
+                "###DeleteInputContext").c_str());
         deleteContextRequested_ = false;
     }
     if (ImGui::BeginPopupModal(
-            "Delete Input Context", nullptr,
+            (TEXT::Localize("ui.input.deleteContextTitle") +
+                "###DeleteInputContext").c_str(),
+            nullptr,
             ImGuiWindowFlags_AlwaysAutoResize)) {
         if (!map.contexts.empty()) {
             const std::string id = map.contexts[selectedContext_].contextId;
             ImGui::TextWrapped(
-                "Delete context %s and all of its bindings?", id.c_str());
-            if (ImGui::Button("Delete", ImVec2(120.0f, 0.0f))) {
+                TEXT::Localize(
+                    "ui.input.deleteContextBodyFormat").c_str(),
+                id.c_str());
+            if (ImGui::Button(
+                    TEXT::Localize("ui.common.delete").c_str(),
+                    ImVec2(120.0f, 0.0f))) {
                 inputService.Contexts().SetActive(id, false);
                 (void)map.RemoveContext(id);
                 selectedContext_ = (std::max)(0, selectedContext_ - 1);
@@ -216,7 +281,9 @@ void InputActionMapEditor::DrawContextPopups(
             }
         }
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(120.0f, 0.0f))) {
+        if (ImGui::Button(
+                TEXT::Localize("ui.common.cancel").c_str(),
+                ImVec2(120.0f, 0.0f))) {
             ImGui::CloseCurrentPopup();
         }
         ImGui::EndPopup();

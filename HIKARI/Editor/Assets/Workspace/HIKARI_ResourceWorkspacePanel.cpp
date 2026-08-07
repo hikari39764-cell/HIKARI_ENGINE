@@ -1,5 +1,6 @@
 #include "HIKARI_ResourceWorkspacePanel.h"
 
+#include "Core/Text/HIKARI_Localization.h"
 #include <algorithm>
 #include <filesystem>
 #include <optional>
@@ -28,7 +29,10 @@ void ResourceWorkspacePanel::Draw(
     const SceneDocument &sceneDocument, EditorSelection &selection,
     const ResourceWorkspaceContext &context) const {
 #if defined(HIKARI_WITH_EDITOR)
-  if (!ImGui::Begin("Resource Workspace")) {
+  if (!ImGui::Begin(
+          TEXT::LocalizeWindow(
+              "ui.window.resourceWorkspace",
+              "Resource Workspace").c_str())) {
     ImGui::End();
     return;
   }
@@ -54,21 +58,26 @@ void ResourceWorkspacePanel::Draw(
 
   DrawScopeCombo(assetDatabase, usageSummary, activeScope_);
   ImGui::SameLine();
-  ImGui::TextDisabled("%d assets  |  %d used",
+  ImGui::TextDisabled(
+      TEXT::Localize("ui.resource.assetsUsedFormat").c_str(),
                       static_cast<int>(assetDatabase.CollectAll().size()),
                       static_cast<int>(usageSummary.usedGuids.size()));
   ImGui::SameLine();
   if (EDITOR::IconToggleButton(
           EDITOR::EditorGlyph::Inspector, "ResourceInspectorToggle",
           showInspector_, ImVec2(28.0f, 28.0f),
-          showInspector_ ? "Hide asset inspector" : "Show asset inspector")) {
+          showInspector_
+              ? TEXT::Localize("ui.resource.hideInspector").c_str()
+              : TEXT::Localize("ui.resource.showInspector").c_str())) {
     showInspector_ = !showInspector_;
   }
   ImGui::SameLine();
   if (EDITOR::IconToggleButton(
           EDITOR::EditorGlyph::Log, "ResourceImportLogToggle", showPreviewLog_,
           ImVec2(28.0f, 28.0f),
-          showPreviewLog_ ? "Hide import log" : "Show import log")) {
+          showPreviewLog_
+              ? TEXT::Localize("ui.resource.hideImportLog").c_str()
+              : TEXT::Localize("ui.resource.showImportLog").c_str())) {
     showPreviewLog_ = !showPreviewLog_;
   }
   const bool compactToolbar = ImGui::GetContentRegionAvail().x < 900.0f;
@@ -78,8 +87,8 @@ void ResourceWorkspacePanel::Draw(
   }
   if (EDITOR::IconButton(EDITOR::EditorGlyph::Refresh, "ResourceRefresh",
                          EDITOR::EditorButtonTone::Quiet, ImVec2(28.0f, 28.0f),
-                         "Refresh AssetDatabase and reload resources used by "
-                         "the current scene")) {
+                         TEXT::Localize(
+                             "ui.resource.refreshTooltip").c_str())) {
     assetDatabase.ScanAssets(true);
     refreshCurrentSceneResourcesRequested_ = true;
   }
@@ -91,10 +100,12 @@ void ResourceWorkspacePanel::Draw(
     ImGui::BeginDisabled();
   }
   if (EDITOR::IconTextButton(
-          EDITOR::EditorGlyph::Import, "Import Outdated",
+          EDITOR::EditorGlyph::Import,
+          TEXT::Localize("ui.resource.importOutdated").c_str(),
           "ResourceImportOutdated", EDITOR::EditorButtonTone::Primary,
           ImVec2(0.0f, 28.0f),
-          "Import every asset whose source is newer than its artifact")) {
+          TEXT::Localize(
+              "ui.resource.importOutdatedTooltip").c_str())) {
     (void)assetDatabase.QueueImportAllOutdated();
   }
   if (importActive) {
@@ -109,14 +120,15 @@ void ResourceWorkspacePanel::Draw(
           ? EDITOR::IconButton(
                 EDITOR::EditorGlyph::Folder, "ResourceImportCurrentFolder",
                 EDITOR::EditorButtonTone::Neutral, ImVec2(28.0f, 28.0f),
-                "Import outdated assets in the selected folder; recursive "
-                "follows the browser toggle")
+                TEXT::Localize(
+                    "ui.resource.importFolderTooltip").c_str())
           : EDITOR::IconTextButton(
-                EDITOR::EditorGlyph::Folder, "Current Folder",
+                EDITOR::EditorGlyph::Folder,
+                TEXT::Localize("ui.resource.currentFolder").c_str(),
                 "ResourceImportCurrentFolder",
                 EDITOR::EditorButtonTone::Neutral, ImVec2(0.0f, 28.0f),
-                "Import outdated assets in the selected folder; recursive "
-                "follows the browser toggle");
+                TEXT::Localize(
+                    "ui.resource.importFolderTooltip").c_str());
   if (importCurrentFolder) {
     const std::filesystem::path currentDirectory =
         assetBrowserPanel_.CurrentDirectory();
@@ -135,12 +147,16 @@ void ResourceWorkspacePanel::Draw(
           ? EDITOR::IconButton(
                 EDITOR::EditorGlyph::Dependency, "ResourceImportDependencies",
                 EDITOR::EditorButtonTone::Quiet, ImVec2(28.0f, 28.0f),
-                "Import dependencies of the selected asset")
+                TEXT::Localize(
+                    "ui.resource.importDependenciesTooltip").c_str())
           : EDITOR::IconTextButton(EDITOR::EditorGlyph::Dependency,
-                                   "Dependencies", "ResourceImportDependencies",
+                                   TEXT::Localize(
+                                       "ui.resource.dependencies").c_str(),
+                                   "ResourceImportDependencies",
                                    EDITOR::EditorButtonTone::Quiet,
                                    ImVec2(0.0f, 28.0f),
-                                   "Import dependencies of the selected asset");
+                                   TEXT::Localize(
+                                       "ui.resource.importDependenciesTooltip").c_str());
   if (importDependencies) {
     (void)assetDatabase.QueueImportDependencies(selectedRecord->guid, false);
   }
@@ -150,11 +166,14 @@ void ResourceWorkspacePanel::Draw(
           ? EDITOR::IconButton(
                 EDITOR::EditorGlyph::Reimport, "ResourceReimportSelected",
                 EDITOR::EditorButtonTone::Neutral, ImVec2(28.0f, 28.0f),
-                "Reimport the selected asset")
+                TEXT::Localize(
+                    "ui.resource.reimportTooltip").c_str())
           : EDITOR::IconTextButton(
-                EDITOR::EditorGlyph::Reimport, "Reimport",
+                EDITOR::EditorGlyph::Reimport,
+                TEXT::Localize("ui.resource.reimport").c_str(),
                 "ResourceReimportSelected", EDITOR::EditorButtonTone::Neutral,
-                ImVec2(0.0f, 28.0f), "Reimport the selected asset");
+                ImVec2(0.0f, 28.0f),
+                TEXT::Localize("ui.resource.reimportTooltip").c_str());
   if (reimportSelected) {
     (void)assetDatabase.QueueImportAssets({selectedRecord->guid},
                                           "Selected asset");
@@ -164,7 +183,8 @@ void ResourceWorkspacePanel::Draw(
   }
   if (importActive) {
     float activeProgress = 0.0f;
-    std::string activeStage = "Waiting for worker";
+    std::string activeStage =
+        TEXT::Localize("ui.resource.waitingForWorker");
     std::string activeItem{};
     for (AssetTaskId taskId : importStatus.activeTaskIds) {
       const std::optional<AssetTaskSnapshot> snapshot =
@@ -194,14 +214,17 @@ void ResourceWorkspacePanel::Draw(
       ImGui::SetTooltip("%s", activeItem.c_str());
     }
     ImGui::SameLine();
-    ImGui::TextDisabled("%d / %d  |  %d ok  |  %d failed",
+    ImGui::TextDisabled(
+        TEXT::Localize("ui.resource.importProgressFormat").c_str(),
                         importStatus.finished, importStatus.total,
                         importStatus.succeeded, importStatus.failed);
     ImGui::SameLine();
     ImGui::BeginDisabled(importStatus.cancellationRequested);
     if (ImGui::SmallButton(importStatus.cancellationRequested
-                               ? "Cancel Requested"
-                               : "Cancel")) {
+                               ? TEXT::Localize(
+                                   "ui.resource.cancelRequested").c_str()
+                               : TEXT::Localize(
+                                   "ui.common.cancel").c_str())) {
       (void)assetDatabase.RequestCancelQueuedImport();
     }
     ImGui::EndDisabled();
@@ -210,12 +233,15 @@ void ResourceWorkspacePanel::Draw(
     const bool failed = importMonitor_.failed > 0;
     const char *statusLabel =
         failed
-            ? "Import failed"
-            : (importMonitor_.attempted > 0 ? "Import complete" : "Up to date");
+            ? TEXT::Localize("ui.resource.importFailed").c_str()
+            : (importMonitor_.attempted > 0
+                ? TEXT::Localize("ui.resource.importComplete").c_str()
+                : TEXT::Localize("ui.resource.upToDate").c_str());
     EDITOR::StatusBadge(statusLabel, failed ? EDITOR::EditorStatusTone::Error
                                             : EDITOR::EditorStatusTone::Ready);
     ImGui::SameLine();
-    ImGui::TextDisabled("%s: %d attempted, %d ok, %d failed",
+    ImGui::TextDisabled(
+        TEXT::Localize("ui.resource.importSummaryFormat").c_str(),
                         importMonitor_.label.c_str(), importMonitor_.attempted,
                         importMonitor_.succeeded, importMonitor_.failed);
   } else {
@@ -258,12 +284,14 @@ void ResourceWorkspacePanel::Draw(
       }
     } else if (ImGui::BeginTabBar("ResourceWorkspaceCompactTabs",
                                   ImGuiTabBarFlags_FittingPolicyScroll)) {
-      if (ImGui::BeginTabItem("Browser")) {
+      if (ImGui::BeginTabItem(
+              TEXT::Localize("ui.resource.tabBrowser").c_str())) {
         assetBrowserPanel_.DrawContents(assetDatabase, selection, &usageSummary,
                                         activeScope_, &browserContext);
         ImGui::EndTabItem();
       }
-      if (showInspector && ImGui::BeginTabItem("Inspector")) {
+      if (showInspector && ImGui::BeginTabItem(
+              TEXT::Localize("ui.resource.tabInspector").c_str())) {
         assetInspectorPanel_.Draw(assetDatabase, assetRegistry, selection);
         ImGui::EndTabItem();
       }

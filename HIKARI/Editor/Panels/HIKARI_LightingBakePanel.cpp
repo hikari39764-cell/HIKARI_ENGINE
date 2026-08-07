@@ -1,5 +1,6 @@
 #include "Editor/Panels/HIKARI_LightingBakePanel.h"
 
+#include "Core/Text/HIKARI_Localization.h"
 #include <algorithm>
 #include <filesystem>
 #include <string>
@@ -48,15 +49,17 @@ namespace HIKARI {
 
             std::error_code ec{};
             if (!std::filesystem::exists(folder, ec)) {
-                outMessage =
-                    "Bake folder does not exist yet.";
+                outMessage = TEXT::Localize(
+                    "ui.lightingBake.folderNotExist");
                 return false;
             }
             if (!EDITOR::SHELL::OpenFolderInExplorer(folder)) {
-                outMessage = "Failed to open bake folder.";
+                outMessage = TEXT::Localize(
+                    "ui.lightingBake.folderOpenFailed");
                 return false;
             }
-            outMessage = "Opened bake folder.";
+            outMessage = TEXT::Localize(
+                "ui.lightingBake.folderOpened");
             return true;
         }
 
@@ -163,7 +166,11 @@ namespace HIKARI {
         DocumentSceneBase& scene,
         bool& open) {
 #if defined(HIKARI_WITH_EDITOR)
-        if (!ImGui::Begin("Lighting Bake", &open)) {
+        if (!ImGui::Begin(
+                TEXT::LocalizeWindow(
+                    "ui.window.lightingBake",
+                    "Lighting Bake").c_str(),
+                &open)) {
             ImGui::End();
             return;
         }
@@ -211,24 +218,26 @@ namespace HIKARI {
             EDITOR::GetEditorThemePalette();
 
         EDITOR::PanelTitle(
-            "Lighting Bake",
-            "Scene lighting objects, dependencies, and cooked outputs");
+            TEXT::Localize("ui.lightingBake.title").c_str(),
+            TEXT::Localize("ui.lightingBake.subtitle").c_str());
         ImGui::TextDisabled(
-            "%s  |  %s",
+            TEXT::Localize("ui.lightingBake.sceneFormat").c_str(),
             request.sceneName.empty()
-                ? "Untitled"
+                ? TEXT::Localize("ui.common.untitled").c_str()
                 : request.sceneName.c_str(),
             request.sceneGuid.empty()
-                ? "Save scene to enable bake"
+                ? TEXT::Localize(
+                    "ui.lightingBake.saveSceneToEnable").c_str()
                 : request.sceneGuid.c_str());
         ImGui::SameLine();
         if (EDITOR::IconTextButton(
                 EDITOR::EditorGlyph::Refresh,
-                "Refresh",
+                TEXT::Localize("ui.lightingBake.refresh").c_str(),
                 "LightingBakeRefreshStatus",
                 EDITOR::EditorButtonTone::Quiet,
                 {},
-                "Re-scan authoring hashes and bake artifacts.")) {
+                TEXT::Localize(
+                    "ui.lightingBake.refreshTooltip").c_str())) {
             statusRefreshRequested_ = true;
         }
 
@@ -238,15 +247,22 @@ namespace HIKARI {
                 3,
                 ImGuiTableFlags_SizingStretchSame)) {
             ImGui::TableNextColumn();
-            ImGui::TextDisabled("LIGHTING OBJECTS");
+            ImGui::TextDisabled(
+                "%s",
+                TEXT::Localize(
+                    "ui.lightingBake.lightingObjects").c_str());
             ImGui::Text("%u", status.totalCount);
             ImGui::TableNextColumn();
-            ImGui::TextDisabled("READY");
+            ImGui::TextDisabled(
+                "%s",
+                TEXT::Localize("ui.lightingBake.ready").c_str());
             EDITOR::StatusBadge(
                 std::to_string(status.readyCount).c_str(),
                 EDITOR::EditorStatusTone::Ready);
             ImGui::TableNextColumn();
-            ImGui::TextDisabled("DIRTY");
+            ImGui::TextDisabled(
+                "%s",
+                TEXT::Localize("ui.lightingBake.dirty").c_str());
             EDITOR::StatusBadge(
                 std::to_string(status.dirtyCount).c_str(),
                 status.dirtyCount == 0u
@@ -267,12 +283,15 @@ namespace HIKARI {
         if (EDITOR::IconTextButton(
                 EDITOR::EditorGlyph::Bake,
                 status.dirtyCount == 0u
-                    ? "Up To Date"
-                    : "Bake Dirty",
+                    ? TEXT::Localize(
+                        "ui.lightingBake.upToDate").c_str()
+                    : TEXT::Localize(
+                        "ui.lightingBake.bakeDirty").c_str(),
                 "LightingBakeDirty",
                 EDITOR::EditorButtonTone::Primary,
                 ImVec2(150.0f, 32.0f),
-                "Bake only objects whose authoring or dependencies changed.")) {
+                TEXT::Localize(
+                    "ui.lightingBake.bakeDirtyTooltip").c_str())) {
             lastReport_ = service.BakeDirtyLighting(scene);
             hasReport_ = true;
             statusRefreshRequested_ = true;
@@ -280,11 +299,13 @@ namespace HIKARI {
         ImGui::SameLine();
         if (EDITOR::IconTextButton(
                 EDITOR::EditorGlyph::Focus,
-                "Bake Selected",
+                TEXT::Localize(
+                    "ui.lightingBake.bakeSelected").c_str(),
                 "LightingBakeSelected",
                 EDITOR::EditorButtonTone::Neutral,
                 ImVec2(150.0f, 32.0f),
-                "Force bake the selected lighting object.")) {
+                TEXT::Localize(
+                    "ui.lightingBake.bakeSelectedTooltip").c_str())) {
             lastReport_ = service.BakeSelectedLighting(scene);
             hasReport_ = true;
             statusRefreshRequested_ = true;
@@ -292,11 +313,13 @@ namespace HIKARI {
         ImGui::SameLine();
         if (EDITOR::IconTextButton(
                 EDITOR::EditorGlyph::Refresh,
-                "Bake All",
+                TEXT::Localize(
+                    "ui.lightingBake.bakeAll").c_str(),
                 "LightingBakeAll",
                 EDITOR::EditorButtonTone::Quiet,
                 ImVec2(120.0f, 32.0f),
-                "Force bake every enabled lighting object.")) {
+                TEXT::Localize(
+                    "ui.lightingBake.bakeAllTooltip").c_str())) {
             lastReport_ = service.BakeAllLighting(scene);
             hasReport_ = true;
             statusRefreshRequested_ = true;
@@ -325,11 +348,15 @@ namespace HIKARI {
         }
 
         ImGui::Spacing();
-        ImGui::SeparatorText("Lighting Objects");
+        ImGui::SeparatorText(
+            TEXT::Localize(
+                "ui.lightingBake.lightingObjectsSection").c_str());
         if (status.items.empty()) {
             EDITOR::EmptyState(
-                "No lighting objects",
-                "Create a probe, or mark an opaque model Static and enable Include in Lighting Bake.");
+                TEXT::Localize(
+                    "ui.lightingBake.emptyTitle").c_str(),
+                TEXT::Localize(
+                    "ui.lightingBake.emptyHint").c_str());
         } else if (ImGui::BeginTable(
                 "LightingBakeItems",
                 4,
@@ -337,15 +364,21 @@ namespace HIKARI {
                     ImGuiTableFlags_BordersInnerH |
                     ImGuiTableFlags_SizingStretchProp)) {
             ImGui::TableSetupColumn(
-                "Type",
+                TEXT::Localize(
+                    "ui.lightingBake.tableType").c_str(),
                 ImGuiTableColumnFlags_WidthFixed,
                 42.0f);
-            ImGui::TableSetupColumn("Name");
             ImGui::TableSetupColumn(
-                "State",
+                TEXT::Localize(
+                    "ui.lightingBake.tableName").c_str());
+            ImGui::TableSetupColumn(
+                TEXT::Localize(
+                    "ui.lightingBake.tableState").c_str(),
                 ImGuiTableColumnFlags_WidthFixed,
                 76.0f);
-            ImGui::TableSetupColumn("Reason");
+            ImGui::TableSetupColumn(
+                TEXT::Localize(
+                    "ui.lightingBake.tableReason").c_str());
             ImGui::TableHeadersRow();
             for (const TOOLS::BAKING::LightingBakeItemStatus& item :
                 status.items) {
@@ -363,15 +396,18 @@ namespace HIKARI {
                 ImGui::TableNextColumn();
                 if (!item.enabled) {
                     EDITOR::StatusBadge(
-                        "Disabled",
+                        TEXT::Localize(
+                            "ui.lightingBake.disabled").c_str(),
                         EDITOR::EditorStatusTone::Normal);
                 } else if (item.dirty) {
                     EDITOR::StatusBadge(
-                        "Dirty",
+                        TEXT::Localize(
+                            "ui.lightingBake.dirtyBadge").c_str(),
                         EDITOR::EditorStatusTone::Warning);
                 } else {
                     EDITOR::StatusBadge(
-                        "Ready",
+                        TEXT::Localize(
+                            "ui.lightingBake.readyBadge").c_str(),
                         EDITOR::EditorStatusTone::Ready);
                 }
                 ImGui::TableNextColumn();
@@ -385,37 +421,46 @@ namespace HIKARI {
 
         ImGui::Spacing();
         if (ImGui::CollapsingHeader(
-                "Diagnostics & Output",
+                TEXT::Localize(
+                    "ui.lightingBake.diagnosticsOutput").c_str(),
                 ImGuiTreeNodeFlags_DefaultOpen)) {
             if (hasReport_) {
                 ImGui::Text(
-                    "Job: %s",
+                    TEXT::Localize(
+                        "ui.lightingBake.jobFormat").c_str(),
                     TOOLS::BAKING::ToString(lastReport_.jobState));
                 ImGui::SameLine();
                 ImGui::TextDisabled(
-                    "| %u / %u complete, %u reused",
+                    TEXT::Localize(
+                        "ui.lightingBake.completeFormat").c_str(),
                     lastReport_.completedItemCount,
                     lastReport_.bakeItemCount,
                     lastReport_.reusedItemCount);
                 DrawLines(
-                    "Dirty Reasons",
+                    TEXT::Localize(
+                        "ui.lightingBake.dirtyReasons").c_str(),
                     lastReport_.dirtyReasons,
                     palette.warning);
                 DrawLines(
-                    "Warnings",
+                    TEXT::Localize(
+                        "ui.lightingBake.warnings").c_str(),
                     lastReport_.warnings,
                     palette.warning);
                 DrawLines(
-                    "Errors",
+                    TEXT::Localize(
+                        "ui.lightingBake.errors").c_str(),
                     lastReport_.errors,
                     palette.error);
                 DrawLines(
-                    "Messages",
+                    TEXT::Localize(
+                        "ui.lightingBake.messages").c_str(),
                     lastReport_.messages,
                     palette.textMuted);
             } else {
                 ImGui::TextDisabled(
-                    "No bake action has been run in this session.");
+                    "%s",
+                    TEXT::Localize(
+                        "ui.lightingBake.noBakeAction").c_str());
             }
             for (const std::string& warning : status.warnings) {
                 ImGui::TextColored(
@@ -424,11 +469,13 @@ namespace HIKARI {
                     warning.c_str());
             }
             ImGui::TextWrapped(
-                "Output: %s",
+                TEXT::Localize(
+                    "ui.lightingBake.outputFormat").c_str(),
                 bakeRoot.generic_string().c_str());
             if (EDITOR::IconTextButton(
                     EDITOR::EditorGlyph::Folder,
-                    "Open Output",
+                    TEXT::Localize(
+                        "ui.lightingBake.openOutput").c_str(),
                     "LightingBakeOpenOutput",
                     EDITOR::EditorButtonTone::Quiet)) {
                 if (!OpenFolder(
@@ -442,7 +489,8 @@ namespace HIKARI {
             ImGui::SameLine();
             if (EDITOR::IconTextButton(
                     EDITOR::EditorGlyph::Delete,
-                    "Clear Outputs",
+                    TEXT::Localize(
+                        "ui.lightingBake.clearOutputs").c_str(),
                     "LightingBakeClear",
                     EDITOR::EditorButtonTone::Danger)) {
                 lastReport_ = service.ClearLightingBake(request);

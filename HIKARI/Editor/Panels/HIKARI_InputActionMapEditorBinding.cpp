@@ -1,5 +1,6 @@
 #include "Editor/Panels/HIKARI_InputActionMapEditor.h"
 
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Panels/HIKARI_InputActionMapEditorWidgets.h"
 #include "Input/Runtime/HIKARI_InputService.h"
 
@@ -36,19 +37,28 @@ void InputActionMapEditor::DrawBindingPopup(
     using namespace EDITOR::INPUT_WIDGETS;
     INPUT::InputActionMap& map = inputService.EditActionMap();
     if (bindingPopupRequested_) {
-        ImGui::OpenPopup("Input Binding");
+        ImGui::OpenPopup(
+            (TEXT::Localize("ui.input.bindingTitle") +
+                "###InputBinding").c_str());
         bindingPopupRequested_ = false;
     }
     if (ImGui::BeginPopupModal(
-            "Input Binding", nullptr,
+            (TEXT::Localize("ui.input.bindingTitle") +
+                "###InputBinding").c_str(),
+            nullptr,
             ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::TextDisabled(
-            bindingEditIndex_ >= 0 ? "EDIT BINDING" : "NEW BINDING");
+            "%s",
+            bindingEditIndex_ >= 0
+                ? TEXT::Localize("ui.input.editBinding").c_str()
+                : TEXT::Localize("ui.input.newBinding").c_str());
         ImGui::Separator();
         ImGui::SetNextItemWidth(390.0f);
         if (ImGui::BeginCombo(
-                "Action", bindingDraft_.actionId.empty()
-                    ? "Select action" : bindingDraft_.actionId.c_str())) {
+                TEXT::Localize("ui.input.action").c_str(),
+                bindingDraft_.actionId.empty()
+                    ? TEXT::Localize("ui.input.selectAction").c_str()
+                    : bindingDraft_.actionId.c_str())) {
             for (const INPUT::InputActionDefinition& action : map.actions) {
                 const bool selected = action.actionId == bindingDraft_.actionId;
                 if (ImGui::Selectable(action.actionId.c_str(), selected)) {
@@ -61,7 +71,9 @@ void InputActionMapEditor::DrawBindingPopup(
         }
 
         ImGui::SetNextItemWidth(250.0f);
-        if (DrawBindingSourceCombo("Device Source", bindingDraft_.source)) {
+        if (DrawBindingSourceCombo(
+                TEXT::Localize("ui.input.deviceSource").c_str(),
+                bindingDraft_.source)) {
             bindingDraft_.control = DefaultControl(bindingDraft_.source);
             bindingDraft_.modifierControl.clear();
             bindingDraft_.deadZone =
@@ -71,19 +83,24 @@ void InputActionMapEditor::DrawBindingPopup(
         }
         ImGui::SetNextItemWidth(250.0f);
         if (DrawControlPicker(
-                "Control", bindingDraft_.source, bindingDraft_.control)) {
+                TEXT::Localize("ui.input.control").c_str(),
+                bindingDraft_.source, bindingDraft_.control)) {
             bindingApplyPending_ = false;
         }
         ImGui::SameLine();
         const bool bindingListening = rebindOwner_ == RebindOwner::Binding &&
             inputService.GetRebindOperation().IsActive();
         ImGui::BeginDisabled(bindingListening);
-        if (ImGui::Button("Listen...", ImVec2(92.0f, 0.0f))) {
+        if (ImGui::Button(
+                TEXT::Localize("ui.input.listen").c_str(),
+                ImVec2(92.0f, 0.0f))) {
             BeginBindingCapture(inputService);
         }
         ImGui::EndDisabled();
         ImGui::SameLine();
-        if (ImGui::Button("Clear", ImVec2(70.0f, 0.0f))) {
+        if (ImGui::Button(
+                TEXT::Localize("ui.input.clear").c_str(),
+                ImVec2(70.0f, 0.0f))) {
             if (rebindOwner_ == RebindOwner::Binding) {
                 inputService.CancelRebind();
                 inputService.ResetRebind();
@@ -94,15 +111,19 @@ void InputActionMapEditor::DrawBindingPopup(
         }
         DrawBindingCapture(inputService);
         ImGui::SetNextItemWidth(390.0f);
-        if (EditString("Custom Control", bindingDraft_.control, 128)) {
+        if (EditString(
+                TEXT::Localize("ui.input.customControl").c_str(),
+                bindingDraft_.control, 128)) {
             bindingApplyPending_ = false;
         }
         ImGui::TextDisabled(
-            "Use the picker for standard controls; custom names remain available for extensions.");
+            "%s",
+            TEXT::Localize("ui.input.customControlHint").c_str());
 
         ImGui::SetNextItemWidth(180.0f);
         if (ImGui::DragFloat(
-            "Scale", &bindingDraft_.scale, 0.05f,
+            TEXT::Localize("ui.input.scale").c_str(),
+            &bindingDraft_.scale, 0.05f,
             -20.0f, 20.0f, "%.2f")) {
             bindingApplyPending_ = false;
         }
@@ -112,7 +133,11 @@ void InputActionMapEditor::DrawBindingPopup(
             action->valueType == INPUT::InputActionValueType::Axis2D) {
             int component = bindingDraft_.component;
             ImGui::SetNextItemWidth(180.0f);
-            if (ImGui::Combo("Output Component", &component, "X\0Y\0")) {
+            if (ImGui::Combo(
+                    TEXT::Localize(
+                        "ui.input.outputComponent").c_str(),
+                    &component,
+                    "X\0Y\0")) {
                 bindingDraft_.component = static_cast<uint8_t>(component);
                 bindingApplyPending_ = false;
             }
@@ -125,12 +150,14 @@ void InputActionMapEditor::DrawBindingPopup(
         }
         ImGui::SetNextItemWidth(390.0f);
         if (EditString(
-                "Custom Modifier", bindingDraft_.modifierControl, 128)) {
+                TEXT::Localize("ui.input.customModifier").c_str(),
+                bindingDraft_.modifierControl, 128)) {
             bindingApplyPending_ = false;
         }
         ImGui::SetNextItemWidth(180.0f);
         if (ImGui::DragFloat(
-            "Dead Zone", &bindingDraft_.deadZone, 0.01f,
+            TEXT::Localize("ui.input.deadZone").c_str(),
+            &bindingDraft_.deadZone, 0.01f,
             0.0f, 0.99f, "%.2f")) {
             bindingApplyPending_ = false;
         }
@@ -141,7 +168,9 @@ void InputActionMapEditor::DrawBindingPopup(
         bool closeBindingPopup = false;
         ImGui::BeginDisabled(!canApply);
         if (ImGui::Button(
-                bindingEditIndex_ >= 0 ? "Apply Changes" : "Add Binding",
+                bindingEditIndex_ >= 0
+                    ? TEXT::Localize("ui.input.applyChanges").c_str()
+                    : TEXT::Localize("ui.input.addBinding").c_str(),
                 ImVec2(140.0f, 0.0f))) {
             bindingConflictIndices_ = FindBindingConflictIndices(map);
             if (bindingConflictIndices_.empty()) {
@@ -153,7 +182,9 @@ void InputActionMapEditor::DrawBindingPopup(
         }
         ImGui::EndDisabled();
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(110.0f, 0.0f))) {
+        if (ImGui::Button(
+                TEXT::Localize("ui.common.cancel").c_str(),
+                ImVec2(110.0f, 0.0f))) {
             if (rebindOwner_ == RebindOwner::Binding) {
                 inputService.CancelRebind();
                 inputService.ResetRebind();
@@ -171,13 +202,20 @@ void InputActionMapEditor::DrawBindingPopup(
     }
 
     if (bindingRemoveIndex_ >= 0) {
-        ImGui::OpenPopup("Remove Input Binding");
+        ImGui::OpenPopup(
+            (TEXT::Localize("ui.input.removeBindingTitle") +
+                "###RemoveInputBinding").c_str());
     }
     if (ImGui::BeginPopupModal(
-            "Remove Input Binding", nullptr,
+            (TEXT::Localize("ui.input.removeBindingTitle") +
+                "###RemoveInputBinding").c_str(),
+            nullptr,
             ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::TextUnformatted("Remove this binding from the selected context?");
-        if (ImGui::Button("Remove", ImVec2(120.0f, 0.0f))) {
+        ImGui::TextUnformatted(
+            TEXT::Localize("ui.input.removeBindingBody").c_str());
+        if (ImGui::Button(
+                TEXT::Localize("ui.input.remove").c_str(),
+                ImVec2(120.0f, 0.0f))) {
             if (!map.contexts.empty()) {
                 auto& bindings = map.contexts[selectedContext_].bindings;
                 if (bindingRemoveIndex_ >= 0 && bindingRemoveIndex_ <
@@ -190,7 +228,9 @@ void InputActionMapEditor::DrawBindingPopup(
             ImGui::CloseCurrentPopup();
         }
         ImGui::SameLine();
-        if (ImGui::Button("Cancel", ImVec2(120.0f, 0.0f))) {
+        if (ImGui::Button(
+                TEXT::Localize("ui.common.cancel").c_str(),
+                ImVec2(120.0f, 0.0f))) {
             bindingRemoveIndex_ = -1;
             ImGui::CloseCurrentPopup();
         }

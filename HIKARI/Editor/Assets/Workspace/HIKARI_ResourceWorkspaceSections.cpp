@@ -1,5 +1,6 @@
 #include "Editor/Assets/Workspace/HIKARI_ResourceWorkspacePanel.h"
 
+#include "Core/Text/HIKARI_Localization.h"
 #include <algorithm>
 #include <filesystem>
 #include <optional>
@@ -50,31 +51,31 @@ MakeImportMonitor(const AssetImportBatchStatus &status) {
                            status.label);
 }
 
-const char *ScopeLabel(AssetBrowserScope scope) {
+std::string ScopeLabel(AssetBrowserScope scope) {
   switch (scope) {
   case AssetBrowserScope::CurrentScene:
-    return "Current Scene";
+    return TEXT::Localize("ui.resource.scope.currentScene");
   case AssetBrowserScope::UnusedInScene:
-    return "Unused";
+    return TEXT::Localize("ui.resource.scope.unused");
   case AssetBrowserScope::Broken:
-    return "Broken";
+    return TEXT::Localize("ui.resource.scope.broken");
   case AssetBrowserScope::Textures:
-    return "Textures";
+    return TEXT::Localize("ui.resource.scope.textures");
   case AssetBrowserScope::Models:
-    return "Models";
+    return TEXT::Localize("ui.resource.scope.models");
   case AssetBrowserScope::Scenes:
-    return "Scenes";
+    return TEXT::Localize("ui.resource.scope.scenes");
   case AssetBrowserScope::Materials:
-    return "Materials";
+    return TEXT::Localize("ui.resource.scope.materials");
   case AssetBrowserScope::Skies:
-    return "Skies";
+    return TEXT::Localize("ui.resource.scope.skies");
   case AssetBrowserScope::Vfx:
-    return "VFX";
+    return TEXT::Localize("ui.resource.scope.vfx");
   case AssetBrowserScope::Sequences:
-    return "Sequences";
+    return TEXT::Localize("ui.resource.scope.sequences");
   case AssetBrowserScope::Project:
   default:
-    return "Project";
+    return TEXT::Localize("ui.resource.scope.project");
   }
 }
 
@@ -129,7 +130,7 @@ void DrawScopeCombo(const AssetDatabase &assetDatabase,
                     AssetBrowserScope &activeScope) {
 
   const std::string preview =
-      std::string(ScopeLabel(activeScope)) + "  " +
+      ScopeLabel(activeScope) + "  " +
       std::to_string(ScopeCount(assetDatabase, usageSummary, activeScope));
 
   ImGui::SetNextItemWidth(190.0f);
@@ -137,36 +138,65 @@ void DrawScopeCombo(const AssetDatabase &assetDatabase,
     return;
   }
 
-  ImGui::TextDisabled("Library");
-  DrawScopeMenuItem(assetDatabase, usageSummary, "Project",
-                    AssetBrowserScope::Project, activeScope);
-  DrawScopeMenuItem(assetDatabase, usageSummary, "Current Scene",
-                    AssetBrowserScope::CurrentScene, activeScope);
-  DrawScopeMenuItem(assetDatabase, usageSummary, "Unused",
-                    AssetBrowserScope::UnusedInScene, activeScope);
-  DrawScopeMenuItem(assetDatabase, usageSummary, "Broken",
-                    AssetBrowserScope::Broken, activeScope);
+  ImGui::TextDisabled(
+      "%s",
+      TEXT::Localize("ui.resource.library").c_str());
+  DrawScopeMenuItem(
+      assetDatabase, usageSummary,
+      TEXT::Localize("ui.resource.scope.project").c_str(),
+      AssetBrowserScope::Project, activeScope);
+  DrawScopeMenuItem(
+      assetDatabase, usageSummary,
+      TEXT::Localize("ui.resource.scope.currentScene").c_str(),
+      AssetBrowserScope::CurrentScene, activeScope);
+  DrawScopeMenuItem(
+      assetDatabase, usageSummary,
+      TEXT::Localize("ui.resource.scope.unused").c_str(),
+      AssetBrowserScope::UnusedInScene, activeScope);
+  DrawScopeMenuItem(
+      assetDatabase, usageSummary,
+      TEXT::Localize("ui.resource.scope.broken").c_str(),
+      AssetBrowserScope::Broken, activeScope);
 
   ImGui::Separator();
-  ImGui::TextDisabled("Types");
-  DrawScopeMenuItem(assetDatabase, usageSummary, "Textures",
-                    AssetBrowserScope::Textures, activeScope);
-  DrawScopeMenuItem(assetDatabase, usageSummary, "Models",
-                    AssetBrowserScope::Models, activeScope);
-  DrawScopeMenuItem(assetDatabase, usageSummary, "Scenes",
-                    AssetBrowserScope::Scenes, activeScope);
-  DrawScopeMenuItem(assetDatabase, usageSummary, "Materials",
-                    AssetBrowserScope::Materials, activeScope);
-  DrawScopeMenuItem(assetDatabase, usageSummary, "Skies",
-                    AssetBrowserScope::Skies, activeScope);
-  DrawScopeMenuItem(assetDatabase, usageSummary, "VFX", AssetBrowserScope::Vfx,
-                    activeScope);
-  DrawScopeMenuItem(assetDatabase, usageSummary, "Sequences",
-                    AssetBrowserScope::Sequences, activeScope);
+  ImGui::TextDisabled(
+      "%s",
+      TEXT::Localize("ui.resource.types").c_str());
+  DrawScopeMenuItem(
+      assetDatabase, usageSummary,
+      TEXT::Localize("ui.resource.scope.textures").c_str(),
+      AssetBrowserScope::Textures, activeScope);
+  DrawScopeMenuItem(
+      assetDatabase, usageSummary,
+      TEXT::Localize("ui.resource.scope.models").c_str(),
+      AssetBrowserScope::Models, activeScope);
+  DrawScopeMenuItem(
+      assetDatabase, usageSummary,
+      TEXT::Localize("ui.resource.scope.scenes").c_str(),
+      AssetBrowserScope::Scenes, activeScope);
+  DrawScopeMenuItem(
+      assetDatabase, usageSummary,
+      TEXT::Localize("ui.resource.scope.materials").c_str(),
+      AssetBrowserScope::Materials, activeScope);
+  DrawScopeMenuItem(
+      assetDatabase, usageSummary,
+      TEXT::Localize("ui.resource.scope.skies").c_str(),
+      AssetBrowserScope::Skies, activeScope);
+  DrawScopeMenuItem(
+      assetDatabase, usageSummary,
+      TEXT::Localize("ui.resource.scope.vfx").c_str(),
+      AssetBrowserScope::Vfx, activeScope);
+  DrawScopeMenuItem(
+      assetDatabase, usageSummary,
+      TEXT::Localize("ui.resource.scope.sequences").c_str(),
+      AssetBrowserScope::Sequences, activeScope);
 
   if (!usageSummary.missingReferences.empty()) {
     ImGui::Separator();
-    ImGui::TextColored(ImVec4(1.0f, 0.42f, 0.36f, 1.0f), "Missing References");
+    ImGui::TextColored(
+        ImVec4(1.0f, 0.42f, 0.36f, 1.0f),
+        "%s",
+        TEXT::Localize("ui.resource.missingReferences").c_str());
     for (const AssetMissingReference &missing :
          usageSummary.missingReferences) {
       ImGui::TextDisabled("%s: %s", missing.role.c_str(),
@@ -179,14 +209,19 @@ void DrawScopeCombo(const AssetDatabase &assetDatabase,
 
 void DrawPreviewAndImportLog(AssetDatabase &assetDatabase,
                              EditorSelection &selection) {
-  ImGui::TextUnformatted("Background Asset Tasks");
+  ImGui::TextUnformatted(
+      TEXT::Localize("ui.resource.backgroundTasks").c_str());
   ImGui::SameLine();
   const std::vector<AssetTaskSnapshot> tasks =
       assetDatabase.GetAssetTaskService().CollectSnapshots();
-  ImGui::TextDisabled("%d recent", static_cast<int>(tasks.size()));
+  ImGui::TextDisabled(
+      TEXT::Localize("ui.resource.recentTasksFormat").c_str(),
+      static_cast<int>(tasks.size()));
   if (!tasks.empty()) {
     ImGui::SameLine();
-    if (ImGui::SmallButton("Clear Completed")) {
+    if (ImGui::SmallButton(
+            TEXT::Localize(
+                "ui.resource.clearCompleted").c_str())) {
       assetDatabase.GetAssetTaskService().ClearCompleted();
     }
   }
@@ -213,14 +248,21 @@ void DrawPreviewAndImportLog(AssetDatabase &assetDatabase,
   }
 
   ImGui::Spacing();
-  ImGui::SeparatorText("Selected Asset Import");
+  ImGui::SeparatorText(
+      TEXT::Localize("ui.resource.selectedAssetImport").c_str());
   if (selection.selectedAssetGuid.empty()) {
-    ImGui::TextDisabled("Select an asset to inspect its latest import message");
+    ImGui::TextDisabled(
+        "%s",
+        TEXT::Localize(
+            "ui.resource.selectAssetHint").c_str());
   } else {
     const AssetRecord *record =
         assetDatabase.FindByGuid(AssetGuid{selection.selectedAssetGuid});
     if (!record) {
-      ImGui::TextDisabled("Selected asset is no longer available");
+      ImGui::TextDisabled(
+          "%s",
+          TEXT::Localize(
+              "ui.resource.assetUnavailable").c_str());
       return;
     }
 
@@ -229,13 +271,17 @@ void DrawPreviewAndImportLog(AssetDatabase &assetDatabase,
     if (!record->lastImportMessage.empty()) {
       ImGui::TextWrapped("%s", record->lastImportMessage.c_str());
     } else {
-      ImGui::TextDisabled("No import report message yet");
+      ImGui::TextDisabled(
+          "%s",
+          TEXT::Localize(
+              "ui.resource.noImportMessage").c_str());
     }
 
     if (!record->artifactManifest.artifacts.empty()) {
       ImGui::SameLine();
       ImGui::TextDisabled(
-          "Artifacts: %d",
+          TEXT::Localize(
+              "ui.resource.artifactsFormat").c_str(),
           static_cast<int>(record->artifactManifest.artifacts.size()));
     }
   }

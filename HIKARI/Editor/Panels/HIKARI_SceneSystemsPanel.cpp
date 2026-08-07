@@ -1,5 +1,6 @@
 #include "Editor/Panels/HIKARI_SceneSystemsPanel.h"
 
+#include "Core/Text/HIKARI_Localization.h"
 #include <utility>
 
 #include "Editor/SystemAuthoring/HIKARI_SceneSystemAuthoringModel.h"
@@ -56,30 +57,43 @@ namespace HIKARI {
                 EDITOR::HasSceneSystemIssue(row, document));
         }
 
-        ImGui::Text("Installed %zu", installedCount);
+        ImGui::Text(
+            TEXT::Localize("ui.sceneSystems.installedFormat").c_str(),
+            installedCount);
         ImGui::SameLine();
-        ImGui::TextDisabled("|  Active %zu", activeCount);
+        ImGui::TextDisabled(
+            TEXT::Localize("ui.sceneSystems.activeFormat").c_str(),
+            activeCount);
         ImGui::SameLine();
-        ImGui::TextDisabled("|  Auto %zu", automaticCount);
+        ImGui::TextDisabled(
+            TEXT::Localize("ui.sceneSystems.autoFormat").c_str(),
+            automaticCount);
         ImGui::SameLine();
         if (issueCount > 0) {
             ImGui::TextColored(
                 ImVec4(1.0f, 0.55f, 0.25f, 1.0f),
-                "|  Issues %zu",
+                TEXT::Localize(
+                    "ui.sceneSystems.issuesFormat").c_str(),
                 issueCount);
         } else {
-            ImGui::TextDisabled("|  Issues 0");
+            ImGui::TextDisabled(
+                "%s",
+                TEXT::Localize(
+                    "ui.sceneSystems.issuesZero").c_str());
         }
 
         if (ImGui::Button(
-                "Open System Manager...",
+                TEXT::Localize(
+                    "ui.sceneSystems.openManager").c_str(),
                 ImVec2(-1.0f, 0.0f))) {
             manager_.Open();
         }
         if (runtimeApplyFailed_) {
             ImGui::TextColored(
                 ImVec4(1.0f, 0.4f, 0.35f, 1.0f),
-                "Runtime update failed.");
+                "%s",
+                TEXT::Localize(
+                    "ui.sceneSystems.runtimeUpdateFailed").c_str());
         }
 
         EDITOR::SceneSystemsManagerResult managerResult =

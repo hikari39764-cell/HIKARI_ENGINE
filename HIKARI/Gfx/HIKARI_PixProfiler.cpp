@@ -27,7 +27,7 @@ namespace HIKARI::GFX::PIX {
             HWND hwnd = nullptr;
             bool capturerLoadAttempted = false;
             bool capturerLoaded = false;
-            bool eventMarkersEnabled = false;
+            bool eventMarkersEnabled = true;
             bool eventMarkerApiFailed = false;
             uint32_t eventMarkerFailureCount = 0;
             bool emitEvents = false;

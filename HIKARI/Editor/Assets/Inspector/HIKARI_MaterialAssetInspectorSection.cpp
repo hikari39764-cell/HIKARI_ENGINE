@@ -1,5 +1,6 @@
 #include "Editor/Assets/Inspector/HIKARI_AssetInspectorPanel.h"
 
+#include "Core/Text/HIKARI_Localization.h"
 #include <algorithm>
 #include <array>
 #include <cstring>
@@ -30,6 +31,29 @@
 namespace HIKARI::EDITOR::ASSET_INSPECTOR {
 
 #if defined(HIKARI_WITH_EDITOR)
+namespace {
+
+std::string LocalizeMaterialStatus(const std::string& status) {
+  if (status == "Runtime preview updated live") {
+    return TEXT::Localize("ui.assetInspector.runtimePreviewLive");
+  }
+  if (status == "Runtime preview refreshed") {
+    return TEXT::Localize("ui.assetInspector.runtimePreviewRefreshed");
+  }
+  if (status == "Material saved") {
+    return TEXT::Localize("ui.assetInspector.materialSaved");
+  }
+  if (status == "Material saved; import waits for the active batch") {
+    return TEXT::Localize("ui.assetInspector.materialSavedWaitImport");
+  }
+  if (status == "Material save failed") {
+    return TEXT::Localize("ui.assetInspector.materialSaveFailed");
+  }
+  return status;
+}
+
+} // namespace
+
 void CopyToBuffer(const std::string &text, char *buffer, size_t bufferSize) {
   if (bufferSize == 0) {
     return;
@@ -71,94 +95,148 @@ bool DrawMaterialAssetEditor(AssetDatabase &assetDatabase,
   bool changed = false;
   char nameBuffer[256]{};
   CopyToBuffer(editData.materialName, nameBuffer, sizeof(nameBuffer));
-  if (ImGui::InputText("Name", nameBuffer, sizeof(nameBuffer))) {
+  if (ImGui::InputText(
+          TEXT::Localize("ui.assetInspector.name").c_str(),
+          nameBuffer,
+          sizeof(nameBuffer))) {
     editData.materialName = nameBuffer;
     changed = true;
   }
-  ImGui::TextDisabled("Shader: PBR");
+  ImGui::TextDisabled(
+      "%s",
+      TEXT::Localize("ui.assetInspector.shaderPbr").c_str());
 
   if (!materialStatus.empty()) {
     ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), "%s",
-                       materialStatus.c_str());
+                       LocalizeMaterialStatus(materialStatus).c_str());
   }
 
   // Keep the material editor close to the engine-facing HE texture slots.
-  if (ImGui::CollapsingHeader("Base Color", ImGuiTreeNodeFlags_DefaultOpen)) {
+  if (ImGui::CollapsingHeader(
+          TEXT::Localize(
+              "ui.assetInspector.baseColor").c_str(),
+          ImGuiTreeNodeFlags_DefaultOpen)) {
     changed = EDITOR::DrawMaterialTextureSlot(
-                  "Albedo", editData.baseColorTexture, assetDatabase,
+                  TEXT::Localize(
+                      "ui.assetInspector.albedo").c_str(),
+                  editData.baseColorTexture, assetDatabase,
                   assetRegistry, &selection) ||
               changed;
     changed =
-        ImGui::ColorEdit4("Color", &editData.baseColorFactor.x) || changed;
+        ImGui::ColorEdit4(
+            TEXT::Localize("ui.assetInspector.color").c_str(),
+            &editData.baseColorFactor.x) || changed;
   }
 
-  if (ImGui::CollapsingHeader("Normal")) {
-    changed = EDITOR::DrawMaterialTextureSlot("Normal", editData.normalTexture,
+  if (ImGui::CollapsingHeader(
+          TEXT::Localize("ui.assetInspector.normal").c_str())) {
+    changed = EDITOR::DrawMaterialTextureSlot(
+                  TEXT::Localize(
+                      "ui.assetInspector.normal").c_str(),
+                  editData.normalTexture,
                                               assetDatabase, assetRegistry,
                                               &selection) ||
               changed;
     changed =
-        ImGui::DragFloat("Scale", &editData.normalScale, 0.01f, 0.0f, 4.0f) ||
+        ImGui::DragFloat(
+            TEXT::Localize("ui.assetInspector.scale").c_str(),
+            &editData.normalScale, 0.01f, 0.0f, 4.0f) ||
         changed;
   }
 
-  if (ImGui::CollapsingHeader("Metallic / Roughness",
+  if (ImGui::CollapsingHeader(
+          TEXT::Localize(
+              "ui.assetInspector.metallicRoughness").c_str(),
                               ImGuiTreeNodeFlags_DefaultOpen)) {
     changed = EDITOR::DrawMaterialTextureSlot(
-                  "MR Texture", editData.metallicRoughnessTexture,
+                  TEXT::Localize(
+                      "ui.assetInspector.mrTexture").c_str(),
+                  editData.metallicRoughnessTexture,
                   assetDatabase, assetRegistry, &selection) ||
               changed;
     changed =
-        ImGui::SliderFloat("Metallic", &editData.metallicFactor, 0.0f, 1.0f) ||
+        ImGui::SliderFloat(
+            TEXT::Localize("ui.assetInspector.metallic").c_str(),
+            &editData.metallicFactor, 0.0f, 1.0f) ||
         changed;
-    changed = ImGui::SliderFloat("Roughness", &editData.roughnessFactor, 0.0f,
-                                 1.0f) ||
+    changed = ImGui::SliderFloat(
+                  TEXT::Localize("ui.assetInspector.roughness").c_str(),
+                  &editData.roughnessFactor, 0.0f, 1.0f) ||
               changed;
   }
 
-  if (ImGui::CollapsingHeader("Specular")) {
+  if (ImGui::CollapsingHeader(
+          TEXT::Localize("ui.assetInspector.specular").c_str())) {
     changed = EDITOR::DrawMaterialTextureSlot(
-                  "Specular", editData.specularTexture, assetDatabase,
+                  TEXT::Localize(
+                      "ui.assetInspector.specular").c_str(),
+                  editData.specularTexture, assetDatabase,
                   assetRegistry, &selection) ||
               changed;
     changed = EDITOR::DrawMaterialTextureSlot(
-                  "Specular Color", editData.specularColorTexture,
+                  TEXT::Localize(
+                      "ui.assetInspector.specularColor").c_str(),
+                  editData.specularColorTexture,
                   assetDatabase, assetRegistry, &selection) ||
               changed;
-    changed = ImGui::SliderFloat("Factor##Specular", &editData.specularFactor,
-                                 0.0f, 2.0f) ||
+    changed = ImGui::SliderFloat(
+                  (TEXT::Localize("ui.assetInspector.factor") +
+                      "##Specular").c_str(),
+                  &editData.specularFactor, 0.0f, 2.0f) ||
               changed;
     changed =
-        ImGui::ColorEdit3("Color##Specular", &editData.specularColorFactor.x) ||
+        ImGui::ColorEdit3(
+            (TEXT::Localize("ui.assetInspector.color") +
+                "##Specular").c_str(),
+            &editData.specularColorFactor.x) ||
         changed;
   }
 
-  if (ImGui::CollapsingHeader("Ambient Occlusion")) {
+  if (ImGui::CollapsingHeader(
+          TEXT::Localize(
+              "ui.assetInspector.ambientOcclusion").c_str())) {
     changed = EDITOR::DrawMaterialTextureSlot(
-                  "Occlusion", editData.occlusionTexture, assetDatabase,
+                  TEXT::Localize(
+                      "ui.assetInspector.occlusion").c_str(),
+                  editData.occlusionTexture, assetDatabase,
                   assetRegistry, &selection) ||
               changed;
-    changed = ImGui::SliderFloat("Strength", &editData.occlusionStrength, 0.0f,
-                                 1.0f) ||
+    changed = ImGui::SliderFloat(
+                  TEXT::Localize("ui.assetInspector.strength").c_str(),
+                  &editData.occlusionStrength, 0.0f, 1.0f) ||
               changed;
   }
 
-  if (ImGui::CollapsingHeader("Emissive")) {
+  if (ImGui::CollapsingHeader(
+          TEXT::Localize("ui.assetInspector.emissive").c_str())) {
     changed = EDITOR::DrawMaterialTextureSlot(
-                  "Emissive", editData.emissiveTexture, assetDatabase,
+                  TEXT::Localize(
+                      "ui.assetInspector.emissive").c_str(),
+                  editData.emissiveTexture, assetDatabase,
                   assetRegistry, &selection) ||
               changed;
     changed =
-        ImGui::ColorEdit3("Color##Emissive", &editData.emissiveFactor.x) ||
+        ImGui::ColorEdit3(
+            (TEXT::Localize("ui.assetInspector.color") +
+                "##Emissive").c_str(),
+            &editData.emissiveFactor.x) ||
         changed;
-    changed = ImGui::DragFloat("Strength##Emissive", &editData.emissiveStrength,
-                               0.01f, 0.0f, 100.0f) ||
+    changed = ImGui::DragFloat(
+                  (TEXT::Localize("ui.assetInspector.strength") +
+                      "##Emissive").c_str(),
+                  &editData.emissiveStrength, 0.01f, 0.0f, 100.0f) ||
               changed;
   }
 
-  if (ImGui::CollapsingHeader("Options")) {
-    changed = ImGui::Checkbox("Double Sided", &editData.doubleSided) || changed;
-    changed = ImGui::Checkbox("Unlit", &editData.unlit) || changed;
+  if (ImGui::CollapsingHeader(
+          TEXT::Localize("ui.assetInspector.options").c_str())) {
+    changed = ImGui::Checkbox(
+                  TEXT::Localize(
+                      "ui.assetInspector.doubleSided").c_str(),
+                  &editData.doubleSided) || changed;
+    changed = ImGui::Checkbox(
+                  TEXT::Localize("ui.assetInspector.unlit").c_str(),
+                  &editData.unlit) || changed;
   }
 
   if (changed) {
@@ -170,20 +248,31 @@ bool DrawMaterialAssetEditor(AssetDatabase &assetDatabase,
 
   if (materialDirty) {
     ImGui::TextColored(ImVec4(1.0f, 0.78f, 0.35f, 1.0f),
-                       "Unsaved material edits");
+                       "%s",
+                       TEXT::Localize(
+                           "ui.assetInspector.unsavedEdits").c_str());
   } else {
-    ImGui::TextDisabled("Material file is clean");
+    ImGui::TextDisabled(
+        "%s",
+        TEXT::Localize(
+            "ui.assetInspector.materialClean").c_str());
   }
 
   ImGui::TextDisabled(
-      "Runtime preview updates live. Saving publishes the imported asset.");
-  if (ImGui::Button("Refresh Runtime Now")) {
+      "%s",
+      TEXT::Localize(
+          "ui.assetInspector.runtimePreviewHint").c_str());
+  if (ImGui::Button(
+          TEXT::Localize(
+              "ui.assetInspector.refreshRuntimeNow").c_str())) {
     outApplyRuntimeGuid = record.guid;
     outApplyRuntimeData = editData;
     materialStatus = "Runtime preview refreshed";
   }
   ImGui::SameLine();
-  if (ImGui::Button("Save Material")) {
+  if (ImGui::Button(
+          TEXT::Localize(
+              "ui.assetInspector.saveMaterial").c_str())) {
     std::string error{};
     if (SavePbrMaterialAssetData(sourcePath, editData, error)) {
       materialDirty = false;
@@ -192,14 +281,17 @@ bool DrawMaterialAssetEditor(AssetDatabase &assetDatabase,
               {record.guid}, "Saved material " + record.displayName)) {
         outRefreshRuntimeGuid = record.guid.value;
       } else {
-        materialStatus = "Material saved; import waits for the active batch";
+        materialStatus =
+            "Material saved; import waits for the active batch";
       }
     } else {
-      materialStatus = error.empty() ? "Material save failed" : error;
+      materialStatus =
+          error.empty() ? "Material save failed" : error;
     }
   }
   ImGui::SameLine();
-  if (ImGui::Button("Revert")) {
+  if (ImGui::Button(
+          TEXT::Localize("ui.assetInspector.revert").c_str())) {
     std::string error{};
     if (LoadPbrMaterialAssetData(sourcePath, editData, error)) {
       materialStatus.clear();

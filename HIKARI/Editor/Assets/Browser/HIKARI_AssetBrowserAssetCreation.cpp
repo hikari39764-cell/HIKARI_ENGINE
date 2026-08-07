@@ -1,4 +1,5 @@
 #include "Core/Text/HIKARI_AsciiCase.h"
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Assets/Browser/HIKARI_AssetBrowserPanel.h"
 
 #include <algorithm>
@@ -221,7 +222,9 @@ bool CreateFolderFromBrowser(AssetDatabase &assetDatabase,
   std::error_code ec{};
   std::filesystem::create_directories(newFolder, ec);
   if (ec) {
-    lastOperationMessage = "Folder creation failed: " + ec.message();
+    lastOperationMessage =
+        TEXT::Localize("ui.assetBrowser.folderCreationFailed") +
+        ec.message();
     return false;
   }
 
@@ -232,7 +235,8 @@ bool CreateFolderFromBrowser(AssetDatabase &assetDatabase,
     currentDirectory = relative.lexically_normal();
   }
   assetDatabase.ScanAssets(true);
-  lastOperationMessage = "Folder created";
+  lastOperationMessage =
+      TEXT::Localize("ui.assetBrowser.folderCreated");
   return true;
 }
 
@@ -245,7 +249,10 @@ bool CreateSceneFromBrowser(AssetDatabase &assetDatabase,
   std::string error{};
   if (!CreateEmptySceneAsset(assetDatabase, currentDirectory, scenePath,
                              error)) {
-    lastOperationMessage = error.empty() ? "Scene creation failed" : error;
+    lastOperationMessage =
+        error.empty()
+            ? TEXT::Localize("ui.assetBrowser.sceneCreationFailed")
+            : error;
     LogSceneAssetWarn("new scene failed: " + lastOperationMessage);
     return false;
   }
@@ -255,7 +262,8 @@ bool CreateSceneFromBrowser(AssetDatabase &assetDatabase,
   if (const AssetRecord *sceneRecord = assetDatabase.FindByPath(scenePath)) {
     SelectRecord(*sceneRecord, selection);
   }
-  lastOperationMessage = "Scene asset created";
+  lastOperationMessage =
+      TEXT::Localize("ui.assetBrowser.sceneAssetCreated");
   LogSceneAssetInfo("new scene: " + scenePath.generic_string());
   return true;
 }
@@ -269,7 +277,10 @@ bool CreateMaterialFromBrowser(AssetDatabase &assetDatabase,
   std::string error{};
   if (!CreateDefaultMaterialAsset(assetDatabase, currentDirectory, materialPath,
                                   error)) {
-    lastOperationMessage = error.empty() ? "Material creation failed" : error;
+    lastOperationMessage =
+        error.empty()
+            ? TEXT::Localize("ui.assetBrowser.materialCreationFailed")
+            : error;
     HIKARI_LOG_WARN("[MaterialAsset] new material failed: " +
                     lastOperationMessage);
     return false;
@@ -281,7 +292,8 @@ bool CreateMaterialFromBrowser(AssetDatabase &assetDatabase,
           assetDatabase.FindByPath(materialPath)) {
     SelectRecord(*materialRecord, selection);
   }
-  lastOperationMessage = "Material asset created";
+  lastOperationMessage =
+      TEXT::Localize("ui.assetBrowser.materialAssetCreated");
   HIKARI_LOG_INFO("[MaterialAsset] new material: " +
                   materialPath.generic_string());
   return true;

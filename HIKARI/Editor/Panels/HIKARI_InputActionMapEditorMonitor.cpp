@@ -1,5 +1,6 @@
 #include "Editor/Panels/HIKARI_InputActionMapEditor.h"
 
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Panels/HIKARI_InputActionMapEditorWidgets.h"
 #include "Input/Runtime/HIKARI_InputService.h"
 
@@ -22,28 +23,33 @@ void InputActionMapEditor::DrawMonitorTab(
     if (validation.empty() && conflicts.empty()) {
         ImGui::TextColored(
             ImVec4(0.42f, 0.9f, 0.5f, 1.0f),
-            "Input project is valid");
+            "%s",
+            TEXT::Localize("ui.input.projectValid").c_str());
     } else {
         ImGui::TextColored(
             ImVec4(1.0f, 0.65f, 0.25f, 1.0f),
-            "%zu validation issue(s)",
+            TEXT::Localize(
+                "ui.input.validationIssuesFormat").c_str(),
             validation.size() + conflicts.size());
     }
     ImGui::SameLine();
     ImGui::TextDisabled(
-        "Frame %llu  |  Device %s",
+        TEXT::Localize("ui.input.frameDeviceFormat").c_str(),
         static_cast<unsigned long long>(snapshot.GetFrameIndex()),
-        DeviceLabel(snapshot.GetLastActiveDevice()));
+        DeviceLabel(snapshot.GetLastActiveDevice()).c_str());
 
     if (!validation.empty() || !conflicts.empty()) {
         if (ImGui::BeginChild(
                 "##InputValidation", ImVec2(0.0f, 120.0f), true)) {
             for (const std::string& issue : validation) {
-                ImGui::BulletText("Error: %s", issue.c_str());
+                ImGui::BulletText(
+                    TEXT::Localize("ui.input.errorFormat").c_str(),
+                    issue.c_str());
             }
             for (const INPUT::InputBindingConflict& conflict : conflicts) {
                 ImGui::BulletText(
-                    "%s: %s is bound to both %s and %s",
+                    TEXT::Localize(
+                        "ui.input.conflictFormat").c_str(),
                     conflict.contextId.c_str(), conflict.control.c_str(),
                     conflict.firstActionId.c_str(),
                     conflict.secondActionId.c_str());
@@ -52,11 +58,14 @@ void InputActionMapEditor::DrawMonitorTab(
         ImGui::EndChild();
     }
 
-    ImGui::Checkbox("Only show active actions", &showOnlyActiveActions_);
+    ImGui::Checkbox(
+        TEXT::Localize("ui.input.onlyActiveActions").c_str(),
+        &showOnlyActiveActions_);
     ImGui::SameLine();
     ImGui::SetNextItemWidth(260.0f);
     ImGui::InputTextWithHint(
-        "##MonitorFilter", "Filter runtime actions...",
+        "##MonitorFilter",
+        TEXT::Localize("ui.input.filterRuntime").c_str(),
         monitorFilter_.data(), monitorFilter_.size());
     if (ImGui::BeginTable(
             "InputRuntimeActions", 5,
@@ -66,11 +75,16 @@ void InputActionMapEditor::DrawMonitorTab(
             ImGuiTableFlags_Resizable,
             ImVec2(0.0f, -4.0f))) {
         ImGui::TableSetupScrollFreeze(0, 1);
-        ImGui::TableSetupColumn("Action");
-        ImGui::TableSetupColumn("Type");
-        ImGui::TableSetupColumn("Value");
-        ImGui::TableSetupColumn("State");
-        ImGui::TableSetupColumn("Held");
+        ImGui::TableSetupColumn(
+            TEXT::Localize("ui.input.tableAction").c_str());
+        ImGui::TableSetupColumn(
+            TEXT::Localize("ui.input.tableType").c_str());
+        ImGui::TableSetupColumn(
+            TEXT::Localize("ui.input.tableValue").c_str());
+        ImGui::TableSetupColumn(
+            TEXT::Localize("ui.input.tableState").c_str());
+        ImGui::TableSetupColumn(
+            TEXT::Localize("ui.input.tableHeld").c_str());
         ImGui::TableHeadersRow();
         for (const INPUT::InputActionDefinition& action : map.actions) {
             if (!MatchesFilter(action.actionId, monitorFilter_.data()) &&
@@ -92,11 +106,17 @@ void InputActionMapEditor::DrawMonitorTab(
             ImGui::Text("%.3f, %.3f", state->x, state->y);
             ImGui::TableSetColumnIndex(3);
             ImGui::TextUnformatted(
-                state->pressed ? "Pressed" :
-                (state->released ? "Released" :
-                    (state->down ? "Down" : "Idle")));
+                state->pressed
+                    ? TEXT::Localize("ui.input.statePressed").c_str()
+                    : (state->released
+                        ? TEXT::Localize("ui.input.stateReleased").c_str()
+                        : (state->down
+                            ? TEXT::Localize("ui.input.stateDown").c_str()
+                            : TEXT::Localize("ui.input.stateIdle").c_str())));
             ImGui::TableSetColumnIndex(4);
-            ImGui::Text("%.2f s", state->heldSeconds);
+            ImGui::Text(
+                TEXT::Localize("ui.input.heldFormat").c_str(),
+                state->heldSeconds);
         }
         ImGui::EndTable();
     }

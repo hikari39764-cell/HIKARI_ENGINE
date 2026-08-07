@@ -1,4 +1,5 @@
 #include "HIKARI_DebugMenuBar.h"
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/HIKARI_EditorContext.h"
 #include "Editor/Export/HIKARI_GameExporter.h"
 #include "Editor/Menus/HIKARI_EditorDocumentMenu.h"
@@ -349,10 +350,13 @@ namespace HIKARI {
             return;
         }
 
-        if (ImGui::BeginMenu("Workspace")) {
+        if (ImGui::BeginMenu(
+                TEXT::Localize("menu.workspace").c_str())) {
             const bool sceneWorkspaceActive = workspaceHost.IsActive(
                 EDITOR::EditorWorkspaceId::Scene);
-            if (ImGui::MenuItem("Scene", nullptr, sceneWorkspaceActive)) {
+            if (ImGui::MenuItem(
+                    TEXT::Localize("menu.workspace.scene").c_str(),
+                    nullptr, sceneWorkspaceActive)) {
                 EDITOR::EditorWorkspaceOpenRequest request{};
                 request.workspaceId = EDITOR::EditorWorkspaceId::Scene;
                 (void)workspaceHost.RequestOpen(std::move(request));
@@ -360,7 +364,9 @@ namespace HIKARI {
 
             const bool cinematicsWorkspaceActive = workspaceHost.IsActive(
                 EDITOR::EditorWorkspaceId::Cinematics);
-            if (ImGui::MenuItem("Cinematics", nullptr, cinematicsWorkspaceActive)) {
+            if (ImGui::MenuItem(
+                    TEXT::Localize("menu.workspace.cinematics").c_str(),
+                    nullptr, cinematicsWorkspaceActive)) {
                 EDITOR::EditorWorkspaceOpenRequest request{};
                 request.workspaceId = EDITOR::EditorWorkspaceId::Cinematics;
                 (void)workspaceHost.RequestOpen(std::move(request));
@@ -369,7 +375,7 @@ namespace HIKARI {
             const bool modelCollisionWorkspaceActive = workspaceHost.IsActive(
                 EDITOR::EditorWorkspaceId::ModelCollision);
             if (ImGui::MenuItem(
-                    "Model Collision",
+                    TEXT::Localize("menu.workspace.modelCollision").c_str(),
                     nullptr,
                     modelCollisionWorkspaceActive)) {
                 EDITOR::EditorWorkspaceOpenRequest request{};
@@ -381,7 +387,7 @@ namespace HIKARI {
             const bool modelMaterialWorkspaceActive = workspaceHost.IsActive(
                 EDITOR::EditorWorkspaceId::ModelMaterial);
             if (ImGui::MenuItem(
-                    "Model Material",
+                    TEXT::Localize("menu.workspace.modelMaterial").c_str(),
                     nullptr,
                     modelMaterialWorkspaceActive)) {
                 EDITOR::EditorWorkspaceOpenRequest request{};
@@ -394,7 +400,8 @@ namespace HIKARI {
                 workspaceHost.IsActive(
                     EDITOR::EditorWorkspaceId::AnimationStateMachine);
             if (ImGui::MenuItem(
-                    "Animation State Machine",
+                    TEXT::Localize(
+                        "menu.workspace.animationStateMachine").c_str(),
                     nullptr,
                     animationStateMachineWorkspaceActive)) {
                 EDITOR::EditorWorkspaceOpenRequest request{};
@@ -404,7 +411,9 @@ namespace HIKARI {
             }
 
             ImGui::Separator();
-            if (ImGui::MenuItem("Reset Active Layout")) {
+            if (ImGui::MenuItem(
+                    TEXT::Localize(
+                        "menu.workspace.resetActiveLayout").c_str())) {
                 workspaceHost.RequestResetActiveLayout();
             }
             ImGui::EndMenu();
@@ -412,86 +421,140 @@ namespace HIKARI {
 
         EDITOR::DrawEditorDocumentMenu(commandRouter);
 
-        if (ImGui::BeginMenu("Windows")) {
-            if (ImGui::BeginMenu("Viewport")) {
-                ImGui::MenuItem("Game View", nullptr, &windows.viewport.showGameView);
-                ImGui::MenuItem("Viewport HUD", nullptr, &windows.viewport.showViewportHud);
+        if (ImGui::BeginMenu(
+                TEXT::Localize("menu.windows").c_str())) {
+            if (ImGui::BeginMenu(
+                    TEXT::Localize("menu.windows.viewport").c_str())) {
+                ImGui::MenuItem(
+                    TEXT::Localize("menu.windows.gameView").c_str(),
+                    nullptr, &windows.viewport.showGameView);
+                ImGui::MenuItem(
+                    TEXT::Localize("menu.windows.viewportHud").c_str(),
+                    nullptr, &windows.viewport.showViewportHud);
                 ImGui::EndMenu();
             }
 
-            if (ImGui::BeginMenu("Scene Authoring")) {
-                ImGui::MenuItem("Scene Hierarchy", nullptr, &windows.authoring.showSceneWorkspace);
-                ImGui::MenuItem("Inspector", nullptr, &windows.authoring.showInspector);
+            if (ImGui::BeginMenu(
+                    TEXT::Localize(
+                        "menu.windows.sceneAuthoring").c_str())) {
+                ImGui::MenuItem(
+                    TEXT::Localize(
+                        "menu.windows.sceneHierarchy").c_str(),
+                    nullptr, &windows.authoring.showSceneWorkspace);
+                ImGui::MenuItem(
+                    TEXT::Localize("menu.windows.inspector").c_str(),
+                    nullptr, &windows.authoring.showInspector);
                 ImGui::Separator();
                 ImGui::MenuItem(
-                    "Project Features",
+                    TEXT::Localize(
+                        "menu.windows.projectFeatures").c_str(),
                     nullptr,
                     &windows.authoring.showProjectFeatures);
                 ImGui::MenuItem(
-                    "Scene Systems",
+                    TEXT::Localize(
+                        "menu.windows.sceneSystems").c_str(),
                     nullptr,
                     &windows.authoring.showSceneSystems);
-                if (ImGui::MenuItem("Input Actions...")) {
+                if (ImGui::MenuItem(
+                        TEXT::Localize(
+                            "menu.windows.inputActions").c_str())) {
                     windows.authoring.openInputEditorRequested = true;
                 }
                 ImGui::EndMenu();
             }
 
-            if (ImGui::BeginMenu("Resources & Environment")) {
-                ImGui::MenuItem("Asset Browser", nullptr, &windows.resources.showAssetBrowser);
-                ImGui::MenuItem("Environment", nullptr, &windows.resources.showEnvironment);
-                ImGui::MenuItem("Quality", nullptr, &windows.resources.showQuality);
+            if (ImGui::BeginMenu(
+                    TEXT::Localize(
+                        "menu.windows.resourcesEnvironment").c_str())) {
+                ImGui::MenuItem(
+                    TEXT::Localize(
+                        "menu.windows.assetBrowser").c_str(),
+                    nullptr, &windows.resources.showAssetBrowser);
+                ImGui::MenuItem(
+                    TEXT::Localize(
+                        "menu.windows.environment").c_str(),
+                    nullptr, &windows.resources.showEnvironment);
+                ImGui::MenuItem(
+                    TEXT::Localize("menu.windows.quality").c_str(),
+                    nullptr, &windows.resources.showQuality);
                 toolHost.DrawMenuItem(EDITOR::kLightingBakeToolId);
                 ImGui::EndMenu();
             }
 
-            if (ImGui::BeginMenu("Runtime & Debug")) {
-                ImGui::MenuItem("Diagnostics", nullptr, &windows.runtime.showDebugWorkspace);
-                ImGui::MenuItem("Debug View", nullptr, &windows.runtime.showDebugView);
+            if (ImGui::BeginMenu(
+                    TEXT::Localize(
+                        "menu.windows.runtimeDebug").c_str())) {
+                ImGui::MenuItem(
+                    TEXT::Localize("menu.windows.debugView").c_str(),
+                    nullptr, &windows.runtime.showDebugView);
                 ImGui::MenuItem("Performance Audit", nullptr, &windows.runtime.showPerformanceAudit);
-                ImGui::MenuItem("Renderer Health", nullptr, &windows.runtime.showValidationLab);
-                ImGui::MenuItem("AI Assistant", nullptr, &windows.runtime.showAiAssistant);
+                ImGui::MenuItem(
+                    TEXT::Localize("menu.aiAssistant").c_str(),
+                    nullptr, &windows.runtime.showAiAssistant);
                 ImGui::EndMenu();
             }
 
             ImGui::Separator();
-            if (ImGui::MenuItem("Reset Docking Layout")) {
+            if (ImGui::MenuItem(
+                    TEXT::Localize(
+                        "menu.windows.resetDockingLayout").c_str())) {
                 resetDockingLayoutRequested = true;
             }
 
             ImGui::EndMenu();
         }
 
-        if (ImGui::BeginMenu("Tools")) {
+        if (ImGui::BeginMenu(
+                TEXT::Localize("menu.tools").c_str())) {
             toolHost.DrawMenuContents();
+            ImGui::Separator();
+            ImGui::MenuItem(
+                TEXT::Localize("menu.editorSettings").c_str(),
+                nullptr, &windows.runtime.showEditorSettings);
             ImGui::EndMenu();
         }
 
-        if (ImGui::BeginMenu("Scene")) {
-            if (ImGui::MenuItem("Reset Camera")) {
+        if (ImGui::BeginMenu(
+                TEXT::Localize("menu.scene").c_str())) {
+            if (ImGui::MenuItem(
+                    TEXT::Localize("menu.scene.resetCamera").c_str())) {
                 const MATH::Vec3 resetPos{ 0.0f, 2.0f, -6.0f };
                 debugCamera.Reset(resetPos, 0.0f, 0.0f);
             }
             bool enabled = debugCamera.IsEnabled();
-            if (ImGui::MenuItem("Toggle Debug Camera", nullptr, enabled)) {
+            if (ImGui::MenuItem(
+                    TEXT::Localize(
+                        "menu.scene.toggleDebugCamera").c_str(),
+                    nullptr, enabled)) {
                 debugCamera.SetEnabled(!enabled);
             }
             ImGui::EndMenu();
         }
 
-        if (ImGui::BeginMenu("Render")) {
-            ImGui::MenuItem("Environment Lighting", nullptr, &environmentLightingEnabled);
+        if (ImGui::BeginMenu(
+                TEXT::Localize("menu.render").c_str())) {
+            ImGui::MenuItem(
+                TEXT::Localize(
+                    "menu.render.environmentLighting").c_str(),
+                nullptr, &environmentLightingEnabled);
             ImGui::Separator();
-            if (ImGui::MenuItem("PIX Capture Next Frame", nullptr, false, GFX::PIX::IsCompiledIn())) {
+            if (ImGui::MenuItem(
+                    TEXT::Localize(
+                        "menu.render.pixCaptureNextFrame").c_str(),
+                    nullptr, false, GFX::PIX::IsCompiledIn())) {
                 GFX::PIX::CaptureNextFrames(1, true);
             }
-            if (ImGui::MenuItem("Open Last PIX Capture", nullptr, false, GFX::PIX::HasLastCapture())) {
+            if (ImGui::MenuItem(
+                    TEXT::Localize(
+                        "menu.render.openLastPixCapture").c_str(),
+                    nullptr, false, GFX::PIX::HasLastCapture())) {
                 GFX::PIX::OpenLastCaptureInPix();
             }
             ImGui::EndMenu();
         }
 
-        if (ImGui::BeginMenu("Build")) {
+        if (ImGui::BeginMenu(
+                TEXT::Localize("menu.build").c_str())) {
             if (ImGui::MenuItem("Export Game...")) {
                 OpenGameExportWindow();
             }

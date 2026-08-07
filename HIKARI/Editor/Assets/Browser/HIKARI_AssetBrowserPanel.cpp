@@ -1,4 +1,5 @@
 #include "HIKARI_AssetBrowserPanel.h"
+#include "Core/Text/HIKARI_Localization.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
 
 #include <algorithm>
@@ -48,7 +49,10 @@ using namespace EDITOR::ASSET_BROWSER;
 void AssetBrowserPanel::Draw(AssetDatabase &assetDatabase,
                              EditorSelection &selection) const {
 #if defined(HIKARI_WITH_EDITOR)
-  if (!ImGui::Begin("Asset Browser")) {
+  if (!ImGui::Begin(
+          TEXT::LocalizeWindow(
+              "ui.window.assetBrowser",
+              "Asset Browser").c_str())) {
     ImGui::End();
     return;
   }
@@ -83,10 +87,11 @@ void AssetBrowserPanel::DrawContents(AssetDatabase &assetDatabase,
           refreshed->lastImportSucceeded) {
         reimportAndRefreshRuntimeAssetGuid_ =
             pendingReimportAndRefreshRuntimeAssetGuid_;
-        lastOperationMessage_ = "Reimport complete; runtime refresh queued";
-      } else {
         lastOperationMessage_ =
-            "Reimport did not complete; runtime refresh skipped";
+            TEXT::Localize("ui.assetBrowser.reimportComplete");
+      } else {
+        lastOperationMessage_ = TEXT::Localize(
+            "ui.assetBrowser.reimportSkipped");
       }
       pendingReimportAndRefreshRuntimeAssetGuid_.clear();
     }
@@ -108,11 +113,13 @@ void AssetBrowserPanel::DrawContents(AssetDatabase &assetDatabase,
 
   ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(6.0f, 4.0f));
   if (scope == AssetBrowserScope::Scenes) {
-    ImGui::TextDisabled("Scenes are project assets. Open, duplicate, delete, "
-                        "and set startup scene here.");
+    ImGui::TextDisabled(
+        "%s",
+        TEXT::Localize("ui.assetBrowser.scenesHint").c_str());
     if (context) {
       ImGui::TextDisabled(
-          "Current: %s    Startup: %s",
+          TEXT::Localize(
+              "ui.assetBrowser.currentStartupFormat").c_str(),
           SceneDisplayNameByGuid(assetDatabase, context->currentSceneGuid)
               .c_str(),
           SceneDisplayNameByGuid(assetDatabase, context->startupSceneGuid)
@@ -122,22 +129,27 @@ void AssetBrowserPanel::DrawContents(AssetDatabase &assetDatabase,
   }
 
   if (EDITOR::IconTextButton(
-          EDITOR::EditorGlyph::Add, "New", "AssetBrowserNew",
+          EDITOR::EditorGlyph::Add,
+          TEXT::Localize("ui.assetBrowser.new").c_str(),
+          "AssetBrowserNew",
           EDITOR::EditorButtonTone::Neutral, ImVec2(0.0f, 26.0f),
-          "Create an asset or folder in the current directory")) {
+          TEXT::Localize("ui.assetBrowser.newTooltip").c_str())) {
     ImGui::OpenPopup("AssetBrowserCreateMenu");
   }
   if (ImGui::BeginPopup("AssetBrowserCreateMenu")) {
     // 髣厄ｽｴ隲帛現繝ｻ鬩堺ｼ夲ｽｽ・ｻ驍ｵ・ｺ繝ｻ・ｯ驛｢譎｢・ｽ・｡驛｢・ｧ繝ｻ・､驛｢譎｢・ｽ・ｳ驛｢譎√・郢晢ｽｻ驍ｵ・ｺ闕ｵ譎｢・ｽ陋ｾ・ｨ・ｾ郢晢ｽｻ遯ｶ・ｲ驍ｵ・ｺ陷会ｽｱ・つ遶丞｣ｹ・・Δ譎｢・ｽ・ｳ驛｢譏ｴ繝ｻ・趣ｽｦ驛｢譏ｴ繝ｻ繝ｻ・ｰ闔ｨ諛茨ｽｲ・ｺ驍ｵ・ｺ繝ｻ・ｮ髫ｴ竏壹・・代・・ｬ・ｫ陜｣・ｺ繝ｻ・ｽ隲帛ｲｩ繝ｻ驍ｵ・ｺ陷会ｽｱ遯ｶ・ｻ髫ｰ繝ｻ・ｽ・ｱ驍ｵ・ｺ郢晢ｽｻ・つ郢晢ｽｻ
-    if (ImGui::MenuItem("Folder")) {
+    if (ImGui::MenuItem(
+            TEXT::Localize("ui.assetBrowser.folder").c_str())) {
       CreateFolderFromBrowser(assetDatabase, currentDirectory_,
                               lastOperationMessage_);
     }
-    if (ImGui::MenuItem("Scene Asset")) {
+    if (ImGui::MenuItem(
+            TEXT::Localize("ui.assetBrowser.sceneAsset").c_str())) {
       CreateSceneFromBrowser(assetDatabase, currentDirectory_, selection,
                              lastOperationMessage_);
     }
-    if (ImGui::MenuItem("Material Asset")) {
+    if (ImGui::MenuItem(
+            TEXT::Localize("ui.assetBrowser.materialAsset").c_str())) {
       CreateMaterialFromBrowser(assetDatabase, currentDirectory_, selection,
                                 lastOperationMessage_);
     }
@@ -146,19 +158,22 @@ void AssetBrowserPanel::DrawContents(AssetDatabase &assetDatabase,
   ImGui::SameLine();
   if (EDITOR::IconToggleButton(EDITOR::EditorGlyph::Compact, "AssetViewCompact",
                                viewMode_ == 0, ImVec2(26.0f, 26.0f),
-                               "Compact view")) {
+                               TEXT::Localize(
+                                   "ui.assetBrowser.compactView").c_str())) {
     viewMode_ = 0;
   }
   ImGui::SameLine();
   if (EDITOR::IconToggleButton(EDITOR::EditorGlyph::List, "AssetViewList",
                                viewMode_ == 1, ImVec2(26.0f, 26.0f),
-                               "List view")) {
+                               TEXT::Localize(
+                                   "ui.assetBrowser.listView").c_str())) {
     viewMode_ = 1;
   }
   ImGui::SameLine();
   if (EDITOR::IconToggleButton(EDITOR::EditorGlyph::Grid, "AssetViewGrid",
                                viewMode_ == 2, ImVec2(26.0f, 26.0f),
-                               "Grid view")) {
+                               TEXT::Localize(
+                                   "ui.assetBrowser.gridView").c_str())) {
     viewMode_ = 2;
   }
   ImGui::SameLine();
@@ -167,51 +182,79 @@ void AssetBrowserPanel::DrawContents(AssetDatabase &assetDatabase,
                                 (stateFilter_ != 0 ? 1 : 0);
   const std::string filterButtonLabel =
       filtersExpanded_
-          ? "Hide Filters"
+          ? TEXT::Localize("ui.assetBrowser.hideFilters")
           : (activeFilterCount > 0
-                 ? "Filters (" + std::to_string(activeFilterCount) + ")"
-                 : "Filters");
+                 ? TEXT::Localize("ui.assetBrowser.filtersCountFormat") +
+                     std::to_string(activeFilterCount) + ")"
+                 : TEXT::Localize("ui.assetBrowser.filters"));
   if (EDITOR::IconTextButton(
           EDITOR::EditorGlyph::Filter, filterButtonLabel.c_str(),
           "AssetBrowserFilters",
           filtersExpanded_ ? EDITOR::EditorButtonTone::Primary
                            : EDITOR::EditorButtonTone::Quiet,
           ImVec2(0.0f, 26.0f),
-          filtersExpanded_ ? "Hide asset filters" : "Show asset filters")) {
+          filtersExpanded_
+              ? TEXT::Localize(
+                  "ui.assetBrowser.hideAssetFilters").c_str()
+              : TEXT::Localize(
+                  "ui.assetBrowser.showAssetFilters").c_str())) {
     filtersExpanded_ = !filtersExpanded_;
   }
   if (activeFilterCount > 0) {
     ImGui::SameLine();
     if (EDITOR::IconButton(EDITOR::EditorGlyph::Close, "AssetFiltersClear",
                            EDITOR::EditorButtonTone::Quiet,
-                           ImVec2(26.0f, 26.0f), "Clear all asset filters")) {
+                           ImVec2(26.0f, 26.0f),
+                           TEXT::Localize(
+                               "ui.assetBrowser.clearFilters").c_str())) {
       searchBuffer_.fill('\0');
       typeFilter_ = 0;
       stateFilter_ = 0;
     }
   }
   ImGui::SameLine();
-  ImGui::Checkbox("Recursive", &recursive_);
+  ImGui::Checkbox(
+      TEXT::Localize("ui.assetBrowser.recursive").c_str(),
+      &recursive_);
 
   if (filtersExpanded_) {
     EDITOR::SearchField(
-        "AssetSearch", "Search assets...", searchBuffer_.data(),
+        "AssetSearch",
+        TEXT::Localize("ui.assetBrowser.searchPlaceholder").c_str(),
+        searchBuffer_.data(),
         searchBuffer_.size(),
         (std::max)(220.0f, ImGui::GetContentRegionAvail().x * 0.42f));
     ImGui::SameLine();
-    static const char *TypeFilterItems[] = {
-        "All",   "Texture",  "Model",
-        "Scene", "Sky",      "Material",
-        "VFX",   "Sequence", "Animation State Machine", "Material Set"};
-    ImGui::TextUnformatted("Type");
+    const char *TypeFilterItems[] = {
+        TEXT::Localize("ui.assetBrowser.filterAll").c_str(),
+        TEXT::Localize("ui.assetBrowser.filterTexture").c_str(),
+        TEXT::Localize("ui.assetBrowser.filterModel").c_str(),
+        TEXT::Localize("ui.assetBrowser.filterScene").c_str(),
+        TEXT::Localize("ui.assetBrowser.filterSky").c_str(),
+        TEXT::Localize("ui.assetBrowser.filterMaterial").c_str(),
+        TEXT::Localize("ui.assetBrowser.filterVfx").c_str(),
+        TEXT::Localize("ui.assetBrowser.filterSequence").c_str(),
+        TEXT::Localize(
+            "ui.assetBrowser.filterAnimationStateMachine").c_str(),
+        TEXT::Localize("ui.assetBrowser.filterMaterialSet").c_str(),
+    };
+    ImGui::TextUnformatted(
+        TEXT::Localize("ui.assetBrowser.type").c_str());
     ImGui::SameLine();
     ImGui::SetNextItemWidth(120.0f);
     ImGui::Combo("##AssetTypeFilter", &typeFilter_, TypeFilterItems,
                  IM_ARRAYSIZE(TypeFilterItems));
     ImGui::SameLine();
-    static const char *StateFilterItems[] = {
-        "All", "Imported", "Outdated", "Missing", "Error", "Meta Only"};
-    ImGui::TextUnformatted("State");
+    const char *StateFilterItems[] = {
+        TEXT::Localize("ui.assetBrowser.filterAll").c_str(),
+        TEXT::Localize("ui.assetBrowser.stateImported").c_str(),
+        TEXT::Localize("ui.assetBrowser.stateOutdated").c_str(),
+        TEXT::Localize("ui.assetBrowser.stateMissing").c_str(),
+        TEXT::Localize("ui.assetBrowser.stateError").c_str(),
+        TEXT::Localize("ui.assetBrowser.stateMetaOnly").c_str(),
+    };
+    ImGui::TextUnformatted(
+        TEXT::Localize("ui.assetBrowser.state").c_str());
     ImGui::SameLine();
     ImGui::SetNextItemWidth(130.0f);
     ImGui::Combo("##AssetStateFilter", &stateFilter_, StateFilterItems,
@@ -260,7 +303,9 @@ void AssetBrowserPanel::DrawContents(AssetDatabase &assetDatabase,
     const float treeWidth =
         (std::min)(240.0f, (std::max)(160.0f, available.x * 0.20f));
     ImGui::BeginChild("##AssetFolderTree", ImVec2(treeWidth, 0.0f), true);
-    ImGui::TextDisabled("Folders");
+    ImGui::TextDisabled(
+        "%s",
+        TEXT::Localize("ui.assetBrowser.folders").c_str());
     ImGui::Separator();
     for (const std::filesystem::path &directory :
          assetDatabase.CollectDirectories()) {
@@ -303,38 +348,49 @@ void AssetBrowserPanel::DrawContents(AssetDatabase &assetDatabase,
   if (scope == AssetBrowserScope::Project) {
     DrawDirectoryBreadcrumbs(currentDirectory_);
   } else {
-    ImGui::TextUnformatted(ToScopeTitle(scope));
+    ImGui::TextUnformatted(ToScopeTitle(scope).c_str());
   }
   ImGui::SameLine();
-  ImGui::TextDisabled("%d assets", static_cast<int>(records.size()));
+  ImGui::TextDisabled(
+      TEXT::Localize("ui.assetBrowser.assetsFormat").c_str(),
+      static_cast<int>(records.size()));
   ImGui::Separator();
   if (ImGui::BeginPopupContextWindow("AssetBrowserEmptyContext",
                                      ImGuiPopupFlags_MouseButtonRight |
                                          ImGuiPopupFlags_NoOpenOverItems)) {
-    if (ImGui::MenuItem("New Folder")) {
+    if (ImGui::MenuItem(
+            TEXT::Localize("ui.assetBrowser.newFolder").c_str())) {
       CreateFolderFromBrowser(assetDatabase, currentDirectory_,
                               lastOperationMessage_);
     }
-    if (ImGui::MenuItem("New Scene Asset")) {
+    if (ImGui::MenuItem(
+            TEXT::Localize("ui.assetBrowser.newSceneAsset").c_str())) {
       CreateSceneFromBrowser(assetDatabase, currentDirectory_, selection,
                              lastOperationMessage_);
     }
-    if (ImGui::MenuItem("New Material Asset")) {
+    if (ImGui::MenuItem(
+            TEXT::Localize("ui.assetBrowser.newMaterialAsset").c_str())) {
       CreateMaterialFromBrowser(assetDatabase, currentDirectory_, selection,
                                 lastOperationMessage_);
     }
     ImGui::Separator();
-    if (ImGui::MenuItem("Refresh Assets")) {
+    if (ImGui::MenuItem(
+            TEXT::Localize("ui.assetBrowser.refreshAssets").c_str())) {
       const bool ok = assetDatabase.ScanAssets(true);
       lastOperationMessage_ =
-          ok ? "AssetDatabase refreshed" : "AssetDatabase refresh failed";
+          ok
+              ? TEXT::Localize(
+                  "ui.assetBrowser.assetDatabaseRefreshed")
+              : TEXT::Localize(
+                  "ui.assetBrowser.assetDatabaseRefreshFailed");
     }
     ImGui::EndPopup();
   }
 
   if (records.empty()) {
-    EDITOR::EmptyState("No assets in this folder",
-                       "Right-click to create an asset or folder.");
+    EDITOR::EmptyState(
+        TEXT::Localize("ui.assetBrowser.emptyTitle").c_str(),
+        TEXT::Localize("ui.assetBrowser.emptyHint").c_str());
   } else if (viewMode_ == 1) {
     DrawRecordList(assetDatabase, records, selection, usageSummary,
                    lastOperationMessage_, context, activatedSceneGuid_,

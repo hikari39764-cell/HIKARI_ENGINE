@@ -1,5 +1,6 @@
 #include "Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorViewportPresentation.h"
 
+#include "Core/Text/HIKARI_Localization.h"
 #include "Render3D/Lighting/HIKARI_SceneLightingRuntimeData.h"
 #include "Render3D/Reflection/HIKARI_ReflectionProbeRuntime.h"
 #include "Scene/Components/Lighting/HIKARI_LightComponent.h"
@@ -28,57 +29,72 @@ namespace HIKARI {
             ViewportOverlayState& overlays,
             ViewportPerformanceState& performance) {
 
-            ImGui::Checkbox("Grid", &overlays.showGrid);
-            ImGui::Checkbox("Axis", &overlays.showAxis);
-            ImGui::Checkbox("Lights", &overlays.showLights);
-            ImGui::Checkbox("Debug Labels", &overlays.showProbeLabels);
-            ImGui::Checkbox("XRay Gizmos", &overlays.showXRayGizmos);
+            ImGui::Checkbox(
+                TEXT::Localize("ui.viewport.debugGrid").c_str(),
+                &overlays.showGrid);
+            ImGui::Checkbox(
+                TEXT::Localize("ui.viewport.debugAxis").c_str(),
+                &overlays.showAxis);
+            ImGui::Checkbox(
+                TEXT::Localize("ui.viewport.debugLights").c_str(),
+                &overlays.showLights);
+            ImGui::Checkbox(
+                TEXT::Localize("ui.viewport.debugLabels").c_str(),
+                &overlays.showProbeLabels);
+            ImGui::Checkbox(
+                TEXT::Localize("ui.viewport.debugXRayGizmos").c_str(),
+                &overlays.showXRayGizmos);
             ImGui::TextDisabled(
-                "Lighting shapes are controlled by component gizmo providers.");
+                "%s",
+                TEXT::Localize(
+                    "ui.viewport.debugLightingShapes").c_str());
             ImGui::Separator();
-            ImGui::Checkbox("Disable SSAO In Editor", &performance.disableSsaoInEditorViewport);
+            ImGui::Checkbox(
+                TEXT::Localize(
+                    "ui.viewport.disableSsaoInEditor").c_str(),
+                &performance.disableSsaoInEditorViewport);
         }
 
         struct RenderDebugViewOption {
             RenderDebugView view = RenderDebugView::None;
-            const char* label = "Lit";
+            const char* key = "ui.debugView.lit";
         };
 
         constexpr RenderDebugViewOption kRenderDebugViewOptions[] = {
-            { RenderDebugView::None, "Lit" },
-            { RenderDebugView::BaseColor, "Base Color" },
-            { RenderDebugView::Normal, "Normal" },
-            { RenderDebugView::Tangent, "Tangent" },
-            { RenderDebugView::Roughness, "Roughness" },
-            { RenderDebugView::Metallic, "Metallic" },
-            { RenderDebugView::Occlusion, "Occlusion" },
-            { RenderDebugView::Shadow, "Shadow" },
-            { RenderDebugView::NdotL, "NdotL" },
-            { RenderDebugView::Emissive, "Emissive" },
-            { RenderDebugView::SceneDepth, "Scene Depth" },
-            { RenderDebugView::SceneColor, "Scene Color" },
-            { RenderDebugView::MotionVectors, "Motion Vectors" },
-            { RenderDebugView::TemporalHistoryWeight, "TAA History Weight" },
-            { RenderDebugView::TemporalDepthRejection, "TAA Depth Rejection" },
-            { RenderDebugView::TemporalReactiveMask, "TAA Reactive Mask" },
-            { RenderDebugView::TemporalTransparencyMask, "TAA Transparency Mask" },
-            { RenderDebugView::TemporalDisocclusion, "TAA Disocclusion" },
-            { RenderDebugView::TemporalInvalidDepthMotion, "Invalid Depth / Motion" },
-            { RenderDebugView::VolumetricScattering, "Volumetric Scattering" },
-            { RenderDebugView::VolumetricTransmittance, "Volumetric Transmittance" },
-            { RenderDebugView::VolumetricDepthSlice, "Volumetric Depth Slice" },
-            { RenderDebugView::ReflectionProviderWeight, "Reflection Provider Weight" },
-            { RenderDebugView::IrradianceProviderWeight, "Irradiance Provider Weight" },
-            { RenderDebugView::LightingFallbackWeight, "Lighting Fallback Weight" },
-            { RenderDebugView::SurfaceLightmap, "Surface Lightmap" },
-            { RenderDebugView::SsrConfidence, "SSR Confidence" },
-            { RenderDebugView::SsrHit, "SSR Hit" },
-            { RenderDebugView::MeshletId, "Meshlet ID" },
-            { RenderDebugView::ClusterId, "Cluster ID" },
-            { RenderDebugView::SurfaceId, "Surface ID" },
-            { RenderDebugView::LodLevel, "LOD Level" },
-            { RenderDebugView::LodHeat, "LOD Heat" },
-            { RenderDebugView::DrawBucket, "Draw Bucket" },
+            { RenderDebugView::None, "ui.debugView.lit" },
+            { RenderDebugView::BaseColor, "ui.debugView.baseColor" },
+            { RenderDebugView::Normal, "ui.debugView.normal" },
+            { RenderDebugView::Tangent, "ui.debugView.tangent" },
+            { RenderDebugView::Roughness, "ui.debugView.roughness" },
+            { RenderDebugView::Metallic, "ui.debugView.metallic" },
+            { RenderDebugView::Occlusion, "ui.debugView.occlusion" },
+            { RenderDebugView::Shadow, "ui.debugView.shadow" },
+            { RenderDebugView::NdotL, "ui.debugView.ndotl" },
+            { RenderDebugView::Emissive, "ui.debugView.emissive" },
+            { RenderDebugView::SceneDepth, "ui.debugView.sceneDepth" },
+            { RenderDebugView::SceneColor, "ui.debugView.sceneColor" },
+            { RenderDebugView::MotionVectors, "ui.debugView.motionVectors" },
+            { RenderDebugView::TemporalHistoryWeight, "ui.debugView.taaHistoryWeight" },
+            { RenderDebugView::TemporalDepthRejection, "ui.debugView.taaDepthRejection" },
+            { RenderDebugView::TemporalReactiveMask, "ui.debugView.taaReactiveMask" },
+            { RenderDebugView::TemporalTransparencyMask, "ui.debugView.taaTransparencyMask" },
+            { RenderDebugView::TemporalDisocclusion, "ui.debugView.taaDisocclusion" },
+            { RenderDebugView::TemporalInvalidDepthMotion, "ui.debugView.invalidDepthMotion" },
+            { RenderDebugView::VolumetricScattering, "ui.debugView.volumetricScattering" },
+            { RenderDebugView::VolumetricTransmittance, "ui.debugView.volumetricTransmittance" },
+            { RenderDebugView::VolumetricDepthSlice, "ui.debugView.volumetricDepthSlice" },
+            { RenderDebugView::ReflectionProviderWeight, "ui.debugView.reflectionProviderWeight" },
+            { RenderDebugView::IrradianceProviderWeight, "ui.debugView.irradianceProviderWeight" },
+            { RenderDebugView::LightingFallbackWeight, "ui.debugView.lightingFallbackWeight" },
+            { RenderDebugView::SurfaceLightmap, "ui.debugView.surfaceLightmap" },
+            { RenderDebugView::SsrConfidence, "ui.debugView.ssrConfidence" },
+            { RenderDebugView::SsrHit, "ui.debugView.ssrHit" },
+            { RenderDebugView::MeshletId, "ui.debugView.meshletId" },
+            { RenderDebugView::ClusterId, "ui.debugView.clusterId" },
+            { RenderDebugView::SurfaceId, "ui.debugView.surfaceId" },
+            { RenderDebugView::LodLevel, "ui.debugView.lodLevel" },
+            { RenderDebugView::LodHeat, "ui.debugView.lodHeat" },
+            { RenderDebugView::DrawBucket, "ui.debugView.drawBucket" },
         };
 
         int RenderDebugViewOptionIndex(RenderDebugView view) {
@@ -95,27 +111,45 @@ namespace HIKARI {
             int selectedIndex = currentIndex;
             bool changed = false;
             ImGui::SetNextItemWidth(width);
-            if (ImGui::BeginCombo(label, kRenderDebugViewOptions[currentIndex].label, ImGuiComboFlags_NoArrowButton)) {
-                ImGui::SeparatorText("Shading");
+            if (ImGui::BeginCombo(
+                    label,
+                    TEXT::Localize(
+                        kRenderDebugViewOptions[currentIndex].key).c_str(),
+                    ImGuiComboFlags_NoArrowButton)) {
+                ImGui::SeparatorText(
+                    TEXT::Localize("ui.debugView.shading").c_str());
                 for (int i = 0; i < static_cast<int>(std::size(kRenderDebugViewOptions)); ++i) {
                     const RenderDebugView option = kRenderDebugViewOptions[i].view;
                     if (option == RenderDebugView::SceneDepth) {
-                        ImGui::SeparatorText("Screen Space");
+                        ImGui::SeparatorText(
+                            TEXT::Localize(
+                                "ui.debugView.screenSpace").c_str());
                     }
                     if (option == RenderDebugView::MotionVectors) {
-                        ImGui::SeparatorText("Temporal");
+                        ImGui::SeparatorText(
+                            TEXT::Localize(
+                                "ui.debugView.temporal").c_str());
                     }
                     if (option == RenderDebugView::VolumetricScattering) {
-                        ImGui::SeparatorText("Volumetric");
+                        ImGui::SeparatorText(
+                            TEXT::Localize(
+                                "ui.debugView.volumetric").c_str());
                     }
                     if (option == RenderDebugView::ReflectionProviderWeight) {
-                        ImGui::SeparatorText("Lighting Providers");
+                        ImGui::SeparatorText(
+                            TEXT::Localize(
+                                "ui.debugView.lightingProviders").c_str());
                     }
                     if (option == RenderDebugView::MeshletId) {
-                        ImGui::SeparatorText("Meshlet");
+                        ImGui::SeparatorText(
+                            TEXT::Localize(
+                                "ui.debugView.meshlet").c_str());
                     }
                     const bool selected = (i == selectedIndex);
-                    if (ImGui::Selectable(kRenderDebugViewOptions[i].label, selected)) {
+                    if (ImGui::Selectable(
+                            TEXT::Localize(
+                                kRenderDebugViewOptions[i].key).c_str(),
+                            selected)) {
                         selectedIndex = i;
                         changed = true;
                     }
@@ -388,7 +422,8 @@ namespace HIKARI {
                     std::snprintf(
                         label,
                         sizeof(label),
-                        "%s\nDirectional / Pitch %.1f / Yaw %.1f / Int %.1f",
+                        TEXT::Localize(
+                            "ui.viewport.lightLabelDirectional").c_str(),
                         object->GetName().c_str(),
                         rotation.x,
                         rotation.y,
@@ -398,7 +433,8 @@ namespace HIKARI {
                     std::snprintf(
                         label,
                         sizeof(label),
-                        "%s\nRange %.1f / Cone %.1f deg",
+                        TEXT::Localize(
+                            "ui.viewport.lightLabelSpot").c_str(),
                         object->GetName().c_str(),
                         light->GetRange(),
                         light->GetOuterConeAngleDegrees());
@@ -406,7 +442,8 @@ namespace HIKARI {
                     std::snprintf(
                         label,
                         sizeof(label),
-                        "%s\nRange %.1f / Int %.1f",
+                        TEXT::Localize(
+                            "ui.viewport.lightLabelPoint").c_str(),
                         object->GetName().c_str(),
                         light->GetRange(),
                         light->GetIntensity());

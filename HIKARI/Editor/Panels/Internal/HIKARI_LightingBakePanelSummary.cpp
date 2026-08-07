@@ -1,5 +1,6 @@
 #include "Editor/Panels/Internal/HIKARI_LightingBakePanelSummary.h"
 
+#include "Core/Text/HIKARI_Localization.h"
 #include <algorithm>
 
 #include "Assets/Lighting/HIKARI_LightingBakePolicy.h"
@@ -59,33 +60,48 @@ namespace HIKARI::EDITOR::LIGHTING_BAKE_PANEL {
             GFX::RAYTRACING::QueryDxrCapabilities(
                 GFX::GetCurrentContext().device);
 
-        ImGui::SeparatorText("Lighting Foundation");
+        ImGui::SeparatorText(
+            TEXT::Localize(
+                "ui.lightingBake.lightingFoundation").c_str());
         if (ImGui::BeginTable(
                 "LightingFoundationSummary",
                 4,
                 ImGuiTableFlags_SizingStretchSame |
                     ImGuiTableFlags_BordersInnerV)) {
             ImGui::TableNextColumn();
-            ImGui::TextDisabled("DIFFUSE GI");
+            ImGui::TextDisabled(
+                "%s",
+                TEXT::Localize(
+                    "ui.lightingBake.diffuseGi").c_str());
             ImGui::Text(
-                "%u Irradiance Volume%s",
+                TEXT::Localize(
+                    "ui.lightingBake.irradianceVolumeFormat").c_str(),
                 irradianceCount,
                 irradianceCount == 1u ? "" : "s");
             ImGui::TextDisabled(
-                "Fallback: Sky / Ambient");
+                "%s",
+                TEXT::Localize(
+                    "ui.lightingBake.fallbackSkyAmbient").c_str());
 
             ImGui::TableNextColumn();
-            ImGui::TextDisabled("SURFACE GI");
+            ImGui::TextDisabled(
+                "%s",
+                TEXT::Localize(
+                    "ui.lightingBake.surfaceGi").c_str());
             ImGui::Text(
-                "%u Lightmap Target%s",
+                TEXT::Localize(
+                    "ui.lightingBake.lightmapTargetFormat").c_str(),
                 lightmapCount,
                 lightmapCount == 1u ? "" : "s");
             ImGui::TextDisabled(
                 dxr.SupportsInlineRayQuery()
-                    ? "DXR Path Tracing Ready"
-                    : "DXR unavailable - Probe fallback");
+                    ? TEXT::Localize(
+                        "ui.lightingBake.dxrReady").c_str()
+                    : TEXT::Localize(
+                        "ui.lightingBake.dxrUnavailable").c_str());
             ImGui::TextDisabled(
-                "%u px | %u spp | %u bounces",
+                TEXT::Localize(
+                    "ui.lightingBake.lightmapBudgetFormat").c_str(),
                 ASSETS::LIGHTING::
                     kSurfaceLightmapDefaultResolution,
                 ASSETS::LIGHTING::
@@ -94,54 +110,72 @@ namespace HIKARI::EDITOR::LIGHTING_BAKE_PANEL {
                     kSurfaceLightmapDefaultBounceCount);
 
             ImGui::TableNextColumn();
-            ImGui::TextDisabled("SPECULAR");
+            ImGui::TextDisabled(
+                "%s",
+                TEXT::Localize(
+                    "ui.lightingBake.specular").c_str());
             ImGui::Text(
-                "%u Reflection Probe%s",
+                TEXT::Localize(
+                    "ui.lightingBake.reflectionProbeFormat").c_str(),
                 reflectionCount,
                 reflectionCount == 1u ? "" : "s");
             ImGui::TextDisabled(
-                "Fallback: Sky IBL");
+                "%s",
+                TEXT::Localize(
+                    "ui.lightingBake.fallbackSkyIbl").c_str());
 
             ImGui::TableNextColumn();
-            ImGui::TextDisabled("BAKE STATE");
+            ImGui::TextDisabled(
+                "%s",
+                TEXT::Localize(
+                    "ui.lightingBake.bakeState").c_str());
             if (!status.valid) {
                 StatusBadge(
-                    "Unavailable",
+                    TEXT::Localize(
+                        "ui.lightingBake.unavailable").c_str(),
                     EditorStatusTone::Error);
             } else if (status.dirtyCount > 0u) {
                 StatusBadge(
-                    "Needs Bake",
+                    TEXT::Localize(
+                        "ui.lightingBake.needsBake").c_str(),
                     EditorStatusTone::Warning);
             } else {
                 StatusBadge(
-                    "Ready",
+                    TEXT::Localize(
+                        "ui.lightingBake.readyBadge").c_str(),
                     EditorStatusTone::Ready);
             }
             ImGui::TextDisabled(
-                "Bake only capture changes");
+                "%s",
+                TEXT::Localize(
+                    "ui.lightingBake.bakeOnlyCaptures").c_str());
             ImGui::EndTable();
         }
 
         if (!status.valid) {
             ImGui::TextColored(
                 palette.warning,
-                "Save the scene before creating persistent lighting outputs.");
+                "%s",
+                TEXT::Localize(
+                    "ui.lightingBake.saveSceneWarning").c_str());
         } else if (status.dirtyCount > 0u) {
             ImGui::TextColored(
                 palette.warning,
-                "%u provider%s changed. Runtime keeps the last valid "
-                "result or its environment fallback until Bake Dirty completes.",
+                TEXT::Localize(
+                    "ui.lightingBake.dirtyWarningFormat").c_str(),
                 status.dirtyCount,
                 status.dirtyCount == 1u ? "" : "s");
         } else if (status.totalCount > 0u) {
             ImGui::TextColored(
                 palette.success,
-                "Local GI and reflection data are ready for runtime blending.");
+                "%s",
+                TEXT::Localize(
+                    "ui.lightingBake.readyNote").c_str());
         }
         ImGui::TextDisabled(
-            "Surface Lightmaps require Static opaque models with valid UV1. "
-            "They replace only diffuse indirect lighting; specular remains "
-            "SSR > Local Probe > Sky IBL.");
+            "%s",
+            TEXT::Localize(
+                "ui.lightingBake.surfaceLightmapHint").c_str());
 #else
         (void)status;
         (void)palette;

@@ -1,5 +1,6 @@
 #include "Editor/Windows/HIKARI_SceneAuthoringUtilityWindows.h"
 
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/HIKARI_EditorContext.h"
 #include "Editor/SystemAuthoring/HIKARI_SystemAuthoringRegistry.h"
 #include "Editor/Tools/HIKARI_EditorToolHost.h"
@@ -30,7 +31,9 @@ namespace HIKARI::EDITOR {
                 ImVec2(620.0f, 520.0f),
                 ImGuiCond_FirstUseEver);
             if (ImGui::Begin(
-                    "Project Features",
+                    TEXT::LocalizeWindow(
+                        "ui.window.projectFeatures",
+                        "Project Features").c_str(),
                     &windowState.showProjectFeatures,
                     utilityFlags)) {
                 projectFeaturesPanel_.Draw(scene);
@@ -43,7 +46,9 @@ namespace HIKARI::EDITOR {
                 ImVec2(680.0f, 620.0f),
                 ImGuiCond_FirstUseEver);
             if (ImGui::Begin(
-                    "Scene Systems",
+                    TEXT::LocalizeWindow(
+                        "ui.window.sceneSystems",
+                        "Scene Systems").c_str(),
                     &windowState.showSceneSystems,
                     utilityFlags)) {
                 systemsResult = sceneSystemsPanel_.Draw(

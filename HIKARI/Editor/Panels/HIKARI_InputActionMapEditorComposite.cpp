@@ -1,5 +1,6 @@
 #include "Editor/Panels/HIKARI_InputActionMapEditor.h"
 
+#include "Core/Text/HIKARI_Localization.h"
 #include <algorithm>
 #include <array>
 #include <unordered_set>
@@ -14,8 +15,12 @@
 namespace HIKARI {
 namespace {
 
-constexpr std::array<const char*, 4> kDirectionNames{
-    "Up", "Down", "Left", "Right" };
+constexpr std::array<const char*, 4> kDirectionNameKeys{
+    "ui.input.directionUp",
+    "ui.input.directionDown",
+    "ui.input.directionLeft",
+    "ui.input.directionRight",
+};
 constexpr std::array<float, 4> kDirectionScales{
     1.0f, -1.0f, -1.0f, 1.0f };
 constexpr std::array<uint8_t, 4> kDirectionComponents{
@@ -66,13 +71,14 @@ void InputActionMapEditor::BeginCompositeEdit(
 void InputActionMapEditor::BeginCompositeCapture(
     INPUT::InputService& inputService) {
     if (compositeActionId_.empty()) {
-        compositeCaptureMessage_ = "Select an Axis2D action first.";
+        compositeCaptureMessage_ =
+            TEXT::Localize("ui.input.selectAxis2DFirst");
         return;
     }
     if (inputService.GetRebindOperation().GetStatus() !=
             INPUT::InputRebindStatus::Idle) {
         compositeCaptureMessage_ =
-            "Another input capture session is already active.";
+            TEXT::Localize("ui.input.captureSessionActive");
         return;
     }
     compositeBindings_ = {};
@@ -81,7 +87,8 @@ void InputActionMapEditor::BeginCompositeCapture(
     compositeCaptureMessage_.clear();
     if (!inputService.BeginRebind(CompositeCaptureOptions())) {
         compositeCaptureStep_ = -1;
-        compositeCaptureMessage_ = "Could not start input capture.";
+        compositeCaptureMessage_ =
+            TEXT::Localize("ui.input.captureStartFailed");
         return;
     }
     rebindOwner_ = RebindOwner::Composite;
@@ -110,13 +117,15 @@ void InputActionMapEditor::DrawCompositeCapture(
                     if (!inputService.BeginRebind(
                             CompositeCaptureOptions())) {
                         compositeCaptureMessage_ =
-                            "Could not continue input capture.";
+                            TEXT::Localize(
+                                "ui.input.captureContinueFailed");
                         compositeCaptureStep_ = -1;
                         rebindOwner_ = RebindOwner::None;
                     }
                 } else {
                     compositeCaptureMessage_ =
-                        "All four directions captured. Review and add the composite.";
+                        TEXT::Localize(
+                            "ui.input.allDirectionsCaptured");
                     compositeCaptureStep_ = -1;
                     rebindOwner_ = RebindOwner::None;
                 }
@@ -125,8 +134,10 @@ void InputActionMapEditor::DrawCompositeCapture(
                    status == INPUT::InputRebindStatus::TimedOut) {
             compositeCaptureMessage_ = status ==
                     INPUT::InputRebindStatus::Cancelled
-                ? "Direction capture cancelled. Captured directions were kept."
-                : "Direction capture timed out. Captured directions were kept.";
+                ? TEXT::Localize(
+                    "ui.input.captureCancelledKept")
+                : TEXT::Localize(
+                    "ui.input.captureTimedOutKept");
             inputService.ResetRebind();
             compositeCaptureStep_ = -1;
             rebindOwner_ = RebindOwner::None;
@@ -142,22 +153,28 @@ void InputActionMapEditor::DrawCompositeCapture(
         if (operation.GetStatus() ==
                 INPUT::InputRebindStatus::WaitingForRelease) {
             ImGui::Text("Release the previous control, then press %s...",
-                kDirectionNames[compositeCaptureStep_]);
+                TEXT::Localize(
+                    kDirectionNameKeys[
+                        compositeCaptureStep_]).c_str());
         } else {
             ImGui::Text("Press the control for %s...",
-                kDirectionNames[compositeCaptureStep_]);
+                TEXT::Localize(
+                    kDirectionNameKeys[
+                        compositeCaptureStep_]).c_str());
         }
         ImGui::TextDisabled(
-            "Escape cancels  |  %.1f seconds remaining",
+            TEXT::Localize("ui.input.escapeCancelsFormat").c_str(),
             operation.GetRemainingSeconds());
         ImGui::SameLine();
-        if (ImGui::SmallButton("Cancel Capture")) {
+        if (ImGui::SmallButton(
+                TEXT::Localize(
+                    "ui.input.cancelCapture").c_str())) {
             inputService.CancelRebind();
             inputService.ResetRebind();
             compositeCaptureStep_ = -1;
             rebindOwner_ = RebindOwner::None;
             compositeCaptureMessage_ =
-                "Direction capture cancelled. Captured directions were kept.";
+                TEXT::Localize("ui.input.captureCancelledKept");
         }
         ImGui::EndChild();
     } else if (!compositeCaptureMessage_.empty()) {
@@ -173,23 +190,32 @@ void InputActionMapEditor::DrawCompositePopup(
 #if defined(HIKARI_WITH_EDITOR)
     INPUT::InputActionMap& map = inputService.EditActionMap();
     if (compositePopupRequested_) {
-        ImGui::OpenPopup("Axis2D Composite Binding");
+        ImGui::OpenPopup(
+            (TEXT::Localize("ui.input.compositeTitle") +
+                "###Axis2DCompositeBinding").c_str());
         compositePopupRequested_ = false;
     }
     if (!ImGui::BeginPopupModal(
-            "Axis2D Composite Binding", nullptr,
+            (TEXT::Localize("ui.input.compositeTitle") +
+                "###Axis2DCompositeBinding").c_str(),
+            nullptr,
             ImGuiWindowFlags_AlwaysAutoResize)) {
         return;
     }
 
-    ImGui::TextDisabled("FOUR-DIRECTION COMPOSITE");
+    ImGui::TextDisabled(
+        "%s",
+        TEXT::Localize("ui.input.compositeHeader").c_str());
     ImGui::TextWrapped(
-        "Capture four button-like controls. They are stored as independent "
-        "bindings that together produce one Axis2D action.");
+        "%s",
+        TEXT::Localize("ui.input.compositeIntro").c_str());
     ImGui::SetNextItemWidth(380.0f);
     if (ImGui::BeginCombo(
-            "Action", compositeActionId_.empty()
-                ? "Select Axis2D action" : compositeActionId_.c_str())) {
+            TEXT::Localize("ui.input.action").c_str(),
+            compositeActionId_.empty()
+                ? TEXT::Localize(
+                    "ui.input.selectAxis2DAction").c_str()
+                : compositeActionId_.c_str())) {
         for (const INPUT::InputActionDefinition& action : map.actions) {
             if (action.valueType != INPUT::InputActionValueType::Axis2D) continue;
             const bool selected = action.actionId == compositeActionId_;
@@ -216,14 +242,22 @@ void InputActionMapEditor::DrawCompositePopup(
             "CompositeDirections", 3,
             ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV |
                 ImGuiTableFlags_SizingStretchProp)) {
-        ImGui::TableSetupColumn("Direction", ImGuiTableColumnFlags_WidthFixed, 90.0f);
-        ImGui::TableSetupColumn("Captured Control");
-        ImGui::TableSetupColumn("Output", ImGuiTableColumnFlags_WidthFixed, 80.0f);
+        ImGui::TableSetupColumn(
+            TEXT::Localize("ui.input.tableDirection").c_str(),
+            ImGuiTableColumnFlags_WidthFixed, 90.0f);
+        ImGui::TableSetupColumn(
+            TEXT::Localize(
+                "ui.input.tableCapturedControl").c_str());
+        ImGui::TableSetupColumn(
+            TEXT::Localize("ui.input.tableOutput").c_str(),
+            ImGuiTableColumnFlags_WidthFixed, 80.0f);
         ImGui::TableHeadersRow();
         for (int index = 0; index < 4; ++index) {
             ImGui::TableNextRow();
             ImGui::TableSetColumnIndex(0);
-            ImGui::TextUnformatted(kDirectionNames[index]);
+            ImGui::TextUnformatted(
+                TEXT::Localize(
+                    kDirectionNameKeys[index]).c_str());
             ImGui::TableSetColumnIndex(1);
             if (compositeCaptured_[index]) {
                 ImGui::Text("%s / %s",
@@ -232,9 +266,13 @@ void InputActionMapEditor::DrawCompositePopup(
             } else if (compositeCaptureStep_ == index &&
                        rebindOwner_ == RebindOwner::Composite) {
                 ImGui::TextColored(
-                    ImVec4(0.38f, 0.85f, 0.9f, 1.0f), "Listening...");
+                    ImVec4(0.38f, 0.85f, 0.9f, 1.0f),
+                    "%s",
+                    TEXT::Localize("ui.input.listening").c_str());
             } else {
-                ImGui::TextDisabled("Not captured");
+                ImGui::TextDisabled(
+                    "%s",
+                    TEXT::Localize("ui.input.notCaptured").c_str());
             }
             ImGui::TableSetColumnIndex(2);
             ImGui::Text("%s %.0f",
@@ -248,7 +286,9 @@ void InputActionMapEditor::DrawCompositePopup(
     const bool capturing = rebindOwner_ == RebindOwner::Composite;
     ImGui::BeginDisabled(capturing || compositeActionId_.empty());
     if (ImGui::Button(
-            compositeCaptured_[0] ? "Restart Capture" : "Start Capture",
+            compositeCaptured_[0]
+                ? TEXT::Localize("ui.input.restartCapture").c_str()
+                : TEXT::Localize("ui.input.startCapture").c_str(),
             ImVec2(140.0f, 0.0f))) {
         BeginCompositeCapture(inputService);
     }
@@ -283,15 +323,19 @@ void InputActionMapEditor::DrawCompositePopup(
     if (duplicateDirections) {
         ImGui::TextColored(
             ImVec4(1.0f, 0.45f, 0.32f, 1.0f),
-            "Each direction needs a different physical control.");
+            "%s",
+            TEXT::Localize(
+                "ui.input.duplicateDirections").c_str());
     }
     if (!conflictIndices.empty()) {
         ImGui::TextColored(
             ImVec4(1.0f, 0.68f, 0.25f, 1.0f),
-            "%zu existing binding(s) use these controls.",
+            TEXT::Localize(
+                "ui.input.existingBindingsUseFormat").c_str(),
             conflictIndices.size());
         ImGui::Checkbox(
-            "Replace existing conflicting bindings",
+            TEXT::Localize(
+                "ui.input.replaceConflicting").c_str(),
             &compositeReplaceConflicts_);
     }
 
@@ -300,7 +344,9 @@ void InputActionMapEditor::DrawCompositePopup(
         selectedContext_ >= 0 &&
         selectedContext_ < static_cast<int>(map.contexts.size());
     ImGui::BeginDisabled(!canAdd);
-    if (ImGui::Button("Add Composite", ImVec2(140.0f, 0.0f))) {
+    if (ImGui::Button(
+            TEXT::Localize("ui.input.addComposite").c_str(),
+            ImVec2(140.0f, 0.0f))) {
         INPUT::InputContextDefinition& context = map.contexts[selectedContext_];
         if (compositeReplaceConflicts_ && !conflictIndices.empty()) {
             std::vector<int> ordered(
@@ -315,12 +361,16 @@ void InputActionMapEditor::DrawCompositePopup(
             context.bindings.push_back(std::move(binding));
         }
         dirty_ = true;
-        SetStatus("Axis2D composite added.", false);
+        SetStatus(
+            TEXT::Localize("ui.input.compositeAdded"),
+            false);
         ImGui::CloseCurrentPopup();
     }
     ImGui::EndDisabled();
     ImGui::SameLine();
-    if (ImGui::Button("Cancel", ImVec2(110.0f, 0.0f))) {
+    if (ImGui::Button(
+            TEXT::Localize("ui.common.cancel").c_str(),
+            ImVec2(110.0f, 0.0f))) {
         if (rebindOwner_ == RebindOwner::Composite) {
             inputService.CancelRebind();
             inputService.ResetRebind();
