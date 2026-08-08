@@ -59,6 +59,14 @@ public:
   bool SaveSequenceDocument(DocumentSceneBase &scene, std::string &outMessage);
   bool UndoSequenceDocument(std::string &outMessage);
   bool RedoSequenceDocument(std::string &outMessage);
+  bool RequestNewSequenceAsset(DocumentSceneBase &scene,
+                               std::string &outMessage);
+  bool RequestRevertSequenceAsset(DocumentSceneBase &scene,
+                                  std::string &outMessage);
+  bool RequestCloseSequenceAsset(DocumentSceneBase &scene,
+                                 std::string &outMessage);
+  bool HasPendingSequenceConfirmation() const noexcept;
+  const SequenceEditorDocument &GetSequenceDocument() const noexcept;
   void BindDocumentCommands(EditorCommandRouter &commandRouter,
                             DocumentSceneBase &scene);
 

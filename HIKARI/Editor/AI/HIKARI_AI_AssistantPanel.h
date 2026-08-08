@@ -1,8 +1,11 @@
 #pragma once
 
 #include <atomic>
+#include <condition_variable>
 #include <functional>
+#include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -31,8 +34,13 @@ namespace HIKARI::EDITOR {
             std::vector<std::string> hints;
         };
 
-        const std::vector<AiCapability>& QueryCapabilities();
-        AiRequestResult SubmitAiRequest(std::string_view requestJson);
+        // Panel-local capabilities that do not map to a registered editor
+        // operation: chat, vision, budget, help, queries and documented
+        // material capabilities, plus explicit unsupported boundaries.
+        const std::vector<AiCapability>& BuiltInCapabilities();
+        AiRequestResult SubmitAiRequest(
+            std::string_view requestJson,
+            const std::vector<AiCapability>& capabilities);
 
     } // namespace AI_ASSISTANT
 
@@ -42,6 +50,10 @@ namespace HIKARI::EDITOR {
             std::function<AI_ASSISTANT::AiRequestResult(
                 std::string_view)>;
         using AiContextCallback = std::function<std::string()>;
+        using AiCapabilityProvider =
+            std::function<std::vector<AI_ASSISTANT::AiCapability>()>;
+        using AiLongRunningClassifier =
+            std::function<bool(std::string_view action)>;
 
         AiAssistantPanel();
         ~AiAssistantPanel();
@@ -49,13 +61,28 @@ namespace HIKARI::EDITOR {
         void Draw(bool& open);
         void SetSceneActionCallback(AiSceneActionCallback callback);
         void SetContextCallback(AiContextCallback callback);
+        void SetCapabilityProvider(AiCapabilityProvider callback);
+        void SetLongRunningClassifier(
+            AiLongRunningClassifier callback);
         void SetBridgeStatus(const std::string& status);
         AI_ASSISTANT::AiRequestResult ExecuteRequest(
             std::string_view json);
+        std::vector<AI_ASSISTANT::AiCapability> Capabilities() const;
+        // Dispatches queued engine actions on the editor main thread. Called
+        // once per frame from the scene controller, independent of the panel
+        // window being visible.
+        void PumpActions();
 
     private:
+        struct PendingAiAction {
+            std::string json{};
+            std::optional<AI_ASSISTANT::AiRequestResult> result{};
+        };
+
         void SendCurrentMessage();
         void RunConversation(const std::string& userText);
+        AI_ASSISTANT::AiRequestResult ExecuteRequestNow(
+            std::string_view json);
         void AppendMessage(const AI_ASSISTANT::AiChatMessage& message);
         void AppendReasoning(const std::string& text);
         std::string BuildSystemPrompt() const;
@@ -72,6 +99,10 @@ namespace HIKARI::EDITOR {
         std::mutex reasoningMutex_{};
         std::mutex streamMutex_{};
         mutable std::mutex stateMutex_{};
+        std::mutex actionMutex_{};
+        std::condition_variable actionCv_{};
+        std::vector<std::shared_ptr<PendingAiAction>> pendingActions_{};
+        std::thread::id mainThreadId_{};
         std::string streamingPartial_{};
         bool streamingActive_ = false;
         char inputBuffer_[4096] = {};
@@ -92,6 +123,8 @@ namespace HIKARI::EDITOR {
         std::string bridgeStatus_{};
         AiSceneActionCallback sceneActionCallback_{};
         AiContextCallback contextCallback_{};
+        AiCapabilityProvider capabilityProvider_{};
+        AiLongRunningClassifier longRunningClassifier_{};
         AI_ASSISTANT::AiRequestResult rawResult_{};
         AI_ASSISTANT::AiChatConfig config_{};
         bool configLoaded_ = false;

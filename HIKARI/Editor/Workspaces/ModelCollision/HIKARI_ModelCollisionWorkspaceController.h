@@ -60,6 +60,8 @@ public:
 
   bool IsEditingModel() const noexcept;
   bool IsDocumentDirty() const noexcept;
+  bool OpenModel(AssetDatabase &assetDatabase, const AssetGuid &guid,
+                 std::string &outMessage);
   bool CanUndo() const noexcept;
   bool CanRedo() const noexcept;
   bool SaveDocument(DocumentSceneBase &scene, std::string &outMessage);
@@ -68,14 +70,30 @@ public:
   void BindDocumentCommands(EditorCommandRouter &commandRouter,
                             DocumentSceneBase &scene);
 
+  // Authoring actions exposed to the unified editor operation bus so human
+  // UI, AI actions and the local bridge share the same implementation path.
+  void AddShape(ASSETS::COLLISION::CollisionGeometryShapeType type);
+  void DuplicateSelectedShapes();
+  void DeleteSelectedShapes();
+  void SetSelectedShapesEnabled(bool enabled);
+  void SetSelectedShapesHidden(bool hidden) noexcept;
+  void SetSelectedShapesLocked(bool locked) noexcept;
+  void ShowAllShapes() noexcept;
+  void HideUnselectedShapes() noexcept;
+  void GenerateShapes();
+  void ApplyGenerationDraft();
+  void DiscardGenerationDraft() noexcept;
+
+  const std::string &GetStatusMessage() const noexcept;
+  bool HasGenerationDraft() const noexcept;
+  size_t GetSelectedShapeCount() const noexcept;
+
 private:
   struct CollisionGenerationTaskOutput {
     ASSETS::COLLISION::ModelCollisionGenerationResult result{};
     ASSETS::COLLISION::ModelCollisionSetup setup{};
   };
 
-  bool OpenModel(AssetDatabase &assetDatabase, const AssetGuid &guid,
-                 std::string &outMessage);
   void ClosePreviewRequest(EditorWorkspaceHost &workspaceHost) const;
   void FitPreviewCamera();
   void FocusPreviewBounds(const Bounds &bounds);
@@ -92,21 +110,10 @@ private:
   bool AreAllSelectedShapesLocked() const noexcept;
   bool ShouldDrawShape(uint64_t shapeId) const noexcept;
   float ShapeOverlayOpacity(uint64_t shapeId) const noexcept;
-  void ShowAllShapes() noexcept;
-  void HideUnselectedShapes() noexcept;
 
   ASSETS::COLLISION::ModelCollisionShape *SelectedShape() noexcept;
   const ASSETS::COLLISION::ModelCollisionShape *SelectedShape() const noexcept;
-  void AddShape(ASSETS::COLLISION::CollisionGeometryShapeType type);
-  void DuplicateSelectedShapes();
-  void DeleteSelectedShapes();
-  void SetSelectedShapesEnabled(bool enabled);
-  void SetSelectedShapesHidden(bool hidden) noexcept;
-  void SetSelectedShapesLocked(bool locked) noexcept;
-  void GenerateShapes();
   void PollGenerationTask();
-  void ApplyGenerationDraft();
-  void DiscardGenerationDraft() noexcept;
 
   void DrawPreviewWindow(DocumentSceneBase &scene,
                          EditorWorkspaceHost &workspaceHost,

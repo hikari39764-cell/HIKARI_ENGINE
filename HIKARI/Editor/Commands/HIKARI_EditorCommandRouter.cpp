@@ -1,6 +1,9 @@
 #include "Editor/Commands/HIKARI_EditorCommandRouter.h"
+#include "Editor/Commands/HIKARI_EditorOperationRegistry.h"
 
 #include <utility>
+
+#include <json.hpp>
 
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
@@ -33,9 +36,34 @@ namespace HIKARI::EDITOR {
         bindings_[index] = {
             std::move(label),
             enabled,
+            {},
             std::move(execute)
         };
         supported_[index] = true;
+    }
+
+    void EditorCommandRouter::BindOperation(
+        EditorCommandId command,
+        std::string label,
+        bool enabled,
+        std::string operationId) {
+
+        const size_t index = ToIndex(command);
+        if (index >= kCommandCount) {
+            return;
+        }
+        bindings_[index] = {
+            std::move(label),
+            enabled,
+            std::move(operationId),
+            {}
+        };
+        supported_[index] = true;
+    }
+
+    void EditorCommandRouter::SetOperationRegistry(
+        const EditorOperationRegistry* registry) noexcept {
+        operationRegistry_ = registry;
     }
 
     const EditorCommandBinding* EditorCommandRouter::Find(
@@ -57,13 +85,31 @@ namespace HIKARI::EDITOR {
         EditorCommandId command) const noexcept {
 
         const EditorCommandBinding* binding = Find(command);
-        return binding != nullptr && binding->enabled &&
-            static_cast<bool>(binding->execute);
+        if (binding == nullptr || !binding->enabled) {
+            return false;
+        }
+        if (!binding->operationId.empty()) {
+            return operationRegistry_ != nullptr;
+        }
+        return static_cast<bool>(binding->execute);
     }
 
     bool EditorCommandRouter::Execute(EditorCommandId command) const {
         const EditorCommandBinding* binding = Find(command);
-        if (binding == nullptr || !binding->enabled || !binding->execute) {
+        if (binding == nullptr || !binding->enabled) {
+            return false;
+        }
+        if (!binding->operationId.empty()) {
+            if (operationRegistry_ == nullptr) {
+                return false;
+            }
+            const nlohmann::json parameters =
+                nlohmann::json::object();
+            return operationRegistry_->Execute(
+                binding->operationId,
+                parameters).ok;
+        }
+        if (!binding->execute) {
             return false;
         }
         binding->execute();

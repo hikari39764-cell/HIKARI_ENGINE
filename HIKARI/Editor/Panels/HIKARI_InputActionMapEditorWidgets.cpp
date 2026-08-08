@@ -195,9 +195,10 @@ bool DrawModifierPicker(std::string& modifier) {
         "", "Shift", "Ctrl", "Alt", "Mouse:Left", "Mouse:Right",
         "Mouse:Middle", "Gamepad:LeftShoulder",
         "Gamepad:RightShoulder", "Gamepad:A" };
+    const std::string noneText = TEXT::Localize("ui.input.none");
     const char* preview =
         modifier.empty()
-            ? TEXT::Localize("ui.input.none").c_str()
+            ? noneText.c_str()
             : modifier.c_str();
     bool changed = false;
     if (ImGui::BeginCombo(
@@ -207,7 +208,7 @@ bool DrawModifierPicker(std::string& modifier) {
             const bool selected = modifier == candidate;
             const char* display =
                 *candidate == '\0'
-                    ? TEXT::Localize("ui.input.none").c_str()
+                    ? noneText.c_str()
                     : candidate;
             if (ImGui::Selectable(display, selected)) {
                 modifier = candidate;

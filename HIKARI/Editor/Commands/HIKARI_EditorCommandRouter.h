@@ -8,6 +8,8 @@
 
 namespace HIKARI::EDITOR {
 
+    class EditorOperationRegistry;
+
     enum class EditorCommandId : uint8_t {
         SaveDocument,
         Undo,
@@ -27,6 +29,7 @@ namespace HIKARI::EDITOR {
     struct EditorCommandBinding {
         std::string label{};
         bool enabled = false;
+        std::string operationId{};
         std::function<void()> execute{};
     };
 
@@ -38,6 +41,16 @@ namespace HIKARI::EDITOR {
             std::string label,
             bool enabled,
             std::function<void()> execute);
+        // Binds a human command to a registered editor operation. Execute()
+        // routes through the operation registry with an empty parameter
+        // object, so human UI and AI share the same implementation path.
+        void BindOperation(
+            EditorCommandId command,
+            std::string label,
+            bool enabled,
+            std::string operationId);
+        void SetOperationRegistry(
+            const EditorOperationRegistry* registry) noexcept;
 
         const EditorCommandBinding* Find(
             EditorCommandId command) const noexcept;
@@ -56,6 +69,7 @@ namespace HIKARI::EDITOR {
 
         std::array<EditorCommandBinding, kCommandCount> bindings_{};
         std::array<bool, kCommandCount> supported_{};
+        const EditorOperationRegistry* operationRegistry_ = nullptr;
     };
 
     bool CanUseEditorShortcut(

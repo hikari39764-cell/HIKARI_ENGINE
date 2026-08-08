@@ -19,8 +19,10 @@
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
 #include <algorithm>
+#include <array>
 #include <cstring>
 #include <filesystem>
+#include <string>
 #include <utility>
 #include <vector>
 #endif
@@ -130,16 +132,20 @@ EnvironmentPanel::Draw(SceneEnvironment &environment,
         TEXT::Localize("ui.environment.skyEnabled").c_str(),
         &environment.sky.enabled);
     int skyMode = static_cast<int>(environment.sky.mode);
-    const char *skyModeNames[] = {
-        TEXT::Localize("ui.environment.skyModeNone").c_str(),
-        TEXT::Localize("ui.environment.skyModeGradient").c_str(),
-        TEXT::Localize("ui.environment.skyModeCubemap").c_str(),
-        TEXT::Localize("ui.environment.skyModeTexture2D").c_str(),
+    const std::array<std::string, 4> skyModeNames{
+        TEXT::Localize("ui.environment.skyModeNone"),
+        TEXT::Localize("ui.environment.skyModeGradient"),
+        TEXT::Localize("ui.environment.skyModeCubemap"),
+        TEXT::Localize("ui.environment.skyModeTexture2D"),
+    };
+    const char *skyModeNamePtrs[4]{};
+    for (size_t index = 0; index < skyModeNames.size(); ++index) {
+        skyModeNamePtrs[index] = skyModeNames[index].c_str();
     };
     if (ImGui::Combo(
             TEXT::Localize("ui.environment.skyMode").c_str(),
-            &skyMode, skyModeNames,
-                     static_cast<int>(std::size(skyModeNames)))) {
+            &skyMode, skyModeNamePtrs,
+                     static_cast<int>(skyModeNames.size()))) {
       environment.sky.mode = static_cast<SkyMode>(std::clamp(skyMode, 0, 3));
     }
     DrawSkyAssetPicker(assetRegistry, assetDatabase, environment.sky.skyAsset);

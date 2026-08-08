@@ -1,6 +1,7 @@
 #include "Editor/Workspaces/Sequence/HIKARI_SequenceEditorDocumentToolbar.h"
 
 #include "Assets/HIKARI_AssetDatabase.h"
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Documents/HIKARI_SequenceEditorDocumentController.h"
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
@@ -19,20 +20,28 @@ SequenceEditorDocumentToolbarResult SequenceEditorDocumentToolbar::Draw(
 
   SequenceEditorDocumentToolbarResult result{};
 #if defined(HIKARI_WITH_EDITOR)
+  (void)sceneDisplayName;
   SequenceEditorDocument &document = controller.GetDocument();
   if (IconToggleButton(EditorGlyph::Library, "SequenceLibraryToggle",
                        libraryVisible, ImVec2(28.0f, 28.0f),
-                       libraryVisible ? "Hide sequence library"
-                                      : "Show sequence library")) {
+                       (libraryVisible
+                            ? TEXT::Localize(
+                                  "ui.sequence.toolbar.hideLibrary")
+                            : TEXT::Localize(
+                                  "ui.sequence.toolbar.showLibrary"))
+                           .c_str())) {
     result.toggleLibraryRequested = true;
   }
   ImGui::SameLine();
-  const char *sourceLabel = "Embedded Scene";
+  std::string sourceLabel = TEXT::Localize(
+      "ui.sequence.toolbar.sourceEmbedded");
   if (document.GetSourceKind() == SequenceEditorSourceKind::Asset) {
-    sourceLabel = "Sequence Asset";
+    sourceLabel = TEXT::Localize(
+        "ui.sequence.toolbar.sourceAsset");
   } else if (document.GetSourceKind() ==
              SequenceEditorSourceKind::TransientAsset) {
-    sourceLabel = "Unsaved Sequence Asset";
+    sourceLabel = TEXT::Localize(
+        "ui.sequence.toolbar.sourceTransient");
   }
   std::string documentName = activeSequence != nullptr
                                  ? activeSequence->name
@@ -42,25 +51,33 @@ SequenceEditorDocumentToolbarResult SequenceEditorDocumentToolbar::Draw(
   }
   ToolbarLabel(documentName.c_str());
   ImGui::SameLine();
-  StatusBadge(sourceLabel, document.IsDirty() ? EditorStatusTone::Warning
-                                              : EditorStatusTone::Normal);
+  StatusBadge(sourceLabel.c_str(),
+              document.IsDirty() ? EditorStatusTone::Warning
+                                 : EditorStatusTone::Normal);
 
   if (!actionsAllowed) {
     ImGui::BeginDisabled();
   }
-  if (IconTextButton(EditorGlyph::NewDocument, "New", "SequenceDocumentNew",
-                     EditorButtonTone::Neutral, ImVec2(0.0f, 28.0f),
-                     "Create a new sequence asset")) {
+  if (IconTextButton(
+          EditorGlyph::NewDocument,
+          TEXT::Localize("ui.sequence.toolbar.new").c_str(),
+          "SequenceDocumentNew",
+          EditorButtonTone::Neutral, ImVec2(0.0f, 28.0f),
+          TEXT::Localize("ui.sequence.toolbar.newTooltip").c_str())) {
     (void)controller.RequestNewAsset(assetDatabase, result.statusMessage);
   }
   ImGui::SameLine();
   if (activeSequence == nullptr) {
     ImGui::BeginDisabled();
   }
-  if (IconTextButton(EditorGlyph::Save, "Save", "SequenceDocumentSave",
-                     document.IsDirty() ? EditorButtonTone::Primary
-                                        : EditorButtonTone::Neutral,
-                     ImVec2(0.0f, 28.0f), "Save the active sequence")) {
+  if (IconTextButton(
+          EditorGlyph::Save,
+          TEXT::Localize("ui.sequence.toolbar.save").c_str(),
+          "SequenceDocumentSave",
+          document.IsDirty() ? EditorButtonTone::Primary
+                             : EditorButtonTone::Neutral,
+          ImVec2(0.0f, 28.0f),
+          TEXT::Localize("ui.sequence.toolbar.saveTooltip").c_str())) {
     if (document.IsEmbeddedScene()) {
       result.saveEmbeddedSceneRequested = true;
     } else {
@@ -70,7 +87,8 @@ SequenceEditorDocumentToolbarResult SequenceEditorDocumentToolbar::Draw(
   ImGui::SameLine();
   if (IconButton(EditorGlyph::SaveAs, "SequenceDocumentSaveAs",
                  EditorButtonTone::Quiet, ImVec2(28.0f, 28.0f),
-                 "Save the active sequence as a new asset")) {
+                 TEXT::Localize("ui.sequence.toolbar.saveAsTooltip")
+                     .c_str())) {
     (void)controller.SaveAs(assetDatabase, *activeSequence,
                             result.statusMessage);
   }
@@ -86,7 +104,8 @@ SequenceEditorDocumentToolbarResult SequenceEditorDocumentToolbar::Draw(
   }
   if (IconButton(EditorGlyph::Revert, "SequenceDocumentRevert",
                  EditorButtonTone::Quiet, ImVec2(28.0f, 28.0f),
-                 "Revert the active sequence to its saved version")) {
+                 TEXT::Localize("ui.sequence.toolbar.revertTooltip")
+                     .c_str())) {
     (void)controller.RequestRevert(assetDatabase, result.statusMessage);
   }
   if (!canRevert) {
@@ -99,11 +118,13 @@ SequenceEditorDocumentToolbarResult SequenceEditorDocumentToolbar::Draw(
   }
   if (IconButton(EditorGlyph::Reveal, "SequenceDocumentReveal",
                  EditorButtonTone::Quiet, ImVec2(28.0f, 28.0f),
-                 "Reveal this sequence in the Resource Workspace")) {
+                 TEXT::Localize("ui.sequence.toolbar.revealTooltip")
+                     .c_str())) {
     result.revealAssetRequested = true;
     result.revealAssetGuid = document.GetAssetGuid();
     result.revealAssetPath = document.GetSourcePath();
-    result.statusMessage = "Sequence selected in Assets";
+    result.statusMessage =
+        TEXT::Localize("ui.sequence.toolbar.revealed");
   }
   if (!document.GetAssetGuid().IsValid()) {
     ImGui::EndDisabled();
@@ -115,8 +136,8 @@ SequenceEditorDocumentToolbarResult SequenceEditorDocumentToolbar::Draw(
   }
   if (IconButton(EditorGlyph::Close, "SequenceDocumentClose",
                  EditorButtonTone::Quiet, ImVec2(28.0f, 28.0f),
-                 "Close the external sequence and return to the embedded scene "
-                 "sequence")) {
+                 TEXT::Localize("ui.sequence.toolbar.closeTooltip")
+                     .c_str())) {
     (void)controller.RequestCloseToEmbedded(assetDatabase,
                                             result.statusMessage);
   }
@@ -128,7 +149,7 @@ SequenceEditorDocumentToolbarResult SequenceEditorDocumentToolbar::Draw(
   }
 
   if (document.GetSourceKind() == SequenceEditorSourceKind::TransientAsset) {
-    StatusText("Save to create a reusable sequence asset.",
+    StatusText(TEXT::Localize("ui.sequence.toolbar.transientHint").c_str(),
                EditorStatusTone::Warning);
   }
 #else
@@ -147,32 +168,44 @@ void SequenceEditorDocumentToolbar::DrawPendingConfirmation(
     std::string &inOutStatusMessage) const {
 
 #if defined(HIKARI_WITH_EDITOR)
+  const std::string unsavedTitle = TEXT::LocalizeWindow(
+      "ui.sequence.toolbar.sourceTransient",
+      "Unsaved Sequence Asset");
   if (controller.HasPendingConfirmation() &&
-      !ImGui::IsPopupOpen("Unsaved Sequence Asset")) {
-    ImGui::OpenPopup("Unsaved Sequence Asset");
+      !ImGui::IsPopupOpen(unsavedTitle.c_str())) {
+    ImGui::OpenPopup(unsavedTitle.c_str());
   }
-  if (!ImGui::BeginPopupModal("Unsaved Sequence Asset", nullptr,
+  if (!ImGui::BeginPopupModal(unsavedTitle.c_str(), nullptr,
                               ImGuiWindowFlags_AlwaysAutoResize)) {
     return;
   }
   ImGui::TextWrapped("%s", controller.GetPendingConfirmationText());
   ImGui::Separator();
-  if (IconTextButton(EditorGlyph::Save, "Save", "SequenceConfirmSave",
-                     EditorButtonTone::Primary, ImVec2(108.0f, 30.0f))) {
+  if (IconTextButton(
+          EditorGlyph::Save,
+          TEXT::Localize("ui.sequence.toolbar.save").c_str(),
+          "SequenceConfirmSave",
+          EditorButtonTone::Primary, ImVec2(108.0f, 30.0f))) {
     if (controller.ConfirmSaveThenContinue(assetDatabase, inOutStatusMessage)) {
       ImGui::CloseCurrentPopup();
     }
   }
   ImGui::SameLine();
-  if (IconTextButton(EditorGlyph::Delete, "Discard", "SequenceConfirmDiscard",
-                     EditorButtonTone::Danger, ImVec2(108.0f, 30.0f))) {
+  if (IconTextButton(
+          EditorGlyph::Delete,
+          TEXT::Localize("ui.sequence.toolbar.discard").c_str(),
+          "SequenceConfirmDiscard",
+          EditorButtonTone::Danger, ImVec2(108.0f, 30.0f))) {
     (void)controller.ConfirmDiscardAndContinue(assetDatabase,
                                                inOutStatusMessage);
     ImGui::CloseCurrentPopup();
   }
   ImGui::SameLine();
-  if (IconTextButton(EditorGlyph::Close, "Cancel", "SequenceConfirmCancel",
-                     EditorButtonTone::Neutral, ImVec2(108.0f, 30.0f))) {
+  if (IconTextButton(
+          EditorGlyph::Close,
+          TEXT::Localize("ui.sequence.toolbar.cancel").c_str(),
+          "SequenceConfirmCancel",
+          EditorButtonTone::Neutral, ImVec2(108.0f, 30.0f))) {
     controller.CancelPending();
     ImGui::CloseCurrentPopup();
   }

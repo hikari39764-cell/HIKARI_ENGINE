@@ -1,5 +1,7 @@
 #include "Editor/Workspaces/ModelCollision/HIKARI_ModelCollisionWorkspaceController.h"
 
+#include "Core/Text/HIKARI_Localization.h"
+
 #include <algorithm>
 
 #include "Assets/HIKARI_AssetDatabase.h"
@@ -55,6 +57,20 @@ bool ModelCollisionWorkspaceController::CanRedo() const noexcept {
   return history_.CanRedo();
 }
 
+const std::string &ModelCollisionWorkspaceController::GetStatusMessage()
+    const noexcept {
+  return statusMessage_;
+}
+
+bool ModelCollisionWorkspaceController::HasGenerationDraft() const noexcept {
+  return generationDraft_.has_value();
+}
+
+size_t ModelCollisionWorkspaceController::GetSelectedShapeCount()
+    const noexcept {
+  return selectedShapeIds_.size();
+}
+
 void ModelCollisionWorkspaceController::BindSelectionCommands(
     EditorCommandRouter &commandRouter) {
 
@@ -64,13 +80,19 @@ void ModelCollisionWorkspaceController::BindSelectionCommands(
   const bool sourceSelection =
       selectionMode_ == ModelCollisionSelectionMode::SourceNodes &&
       !selectedSourceNodes_.empty();
-  commandRouter.Bind(EditorCommandId::DuplicateSelection,
-                     "Duplicate Collision Shape", shapeSelection,
-                     [this]() { DuplicateSelectedShapes(); });
-  commandRouter.Bind(EditorCommandId::DeleteSelection, "Delete Collision Shape",
-                     shapeSelection, [this]() { DeleteSelectedShapes(); });
+  commandRouter.BindOperation(
+      EditorCommandId::DuplicateSelection,
+      TEXT::Localize("ui.collision.duplicate"),
+      shapeSelection,
+      "collision.duplicate_selected");
+  commandRouter.BindOperation(
+      EditorCommandId::DeleteSelection,
+      TEXT::Localize("ui.collision.delete"),
+      shapeSelection,
+      "collision.delete_selected");
   commandRouter.Bind(
-      EditorCommandId::FocusSelection, "Focus Collision Selection",
+      EditorCommandId::FocusSelection,
+      TEXT::Localize("ui.collision.focus"),
       shapeSelection || sourceSelection, [this]() { FocusSelection(); });
 }
 
@@ -135,13 +157,22 @@ bool ModelCollisionWorkspaceController::Redo(std::string &outMessage) {
 void ModelCollisionWorkspaceController::BindDocumentCommands(
     EditorCommandRouter &commandRouter, DocumentSceneBase &scene) {
 
-  commandRouter.Bind(
-      EditorCommandId::SaveDocument, "Save Model Collision", IsEditingModel(),
-      [this, &scene]() { (void)SaveDocument(scene, statusMessage_); });
-  commandRouter.Bind(EditorCommandId::Undo, "Undo Model Collision Edit",
-                     CanUndo(), [this]() { (void)Undo(statusMessage_); });
-  commandRouter.Bind(EditorCommandId::Redo, "Redo Model Collision Edit",
-                     CanRedo(), [this]() { (void)Redo(statusMessage_); });
+  (void)scene;
+  commandRouter.BindOperation(
+      EditorCommandId::SaveDocument,
+      TEXT::Localize("ui.collision.save"),
+      IsEditingModel(),
+      "collision.save");
+  commandRouter.BindOperation(
+      EditorCommandId::Undo,
+      TEXT::Localize("ui.collision.undo"),
+      CanUndo(),
+      "collision.undo");
+  commandRouter.BindOperation(
+      EditorCommandId::Redo,
+      TEXT::Localize("ui.collision.redo"),
+      CanRedo(),
+      "collision.redo");
 }
 
 bool ModelCollisionWorkspaceController::OpenModel(AssetDatabase &assetDatabase,

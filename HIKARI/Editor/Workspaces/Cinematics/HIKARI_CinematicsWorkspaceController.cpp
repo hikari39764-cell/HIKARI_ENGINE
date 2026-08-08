@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/HIKARI_EditorContext.h"
 #include "Editor/HIKARI_SelectionSyncService.h"
 #include "Editor/Views/Director/HIKARI_DirectorCameraPose.h"
@@ -109,19 +110,70 @@ bool CinematicsWorkspaceController::RedoSequenceDocument(
   return changed;
 }
 
+bool CinematicsWorkspaceController::RequestNewSequenceAsset(
+    DocumentSceneBase &scene, std::string &outMessage) {
+
+  const bool requested = sequenceDocumentController_.RequestNewAsset(
+      scene.GetAssetDatabase(), outMessage);
+  if (sequenceDocumentController_.ConsumeTimelineResetRequested()) {
+    cameraTimelinePanel_.ResetForScene();
+  }
+  return requested;
+}
+
+bool CinematicsWorkspaceController::RequestRevertSequenceAsset(
+    DocumentSceneBase &scene, std::string &outMessage) {
+
+  const bool requested = sequenceDocumentController_.RequestRevert(
+      scene.GetAssetDatabase(), outMessage);
+  if (sequenceDocumentController_.ConsumeTimelineResetRequested()) {
+    cameraTimelinePanel_.ResetForScene();
+  }
+  return requested;
+}
+
+bool CinematicsWorkspaceController::RequestCloseSequenceAsset(
+    DocumentSceneBase &scene, std::string &outMessage) {
+
+  const bool requested = sequenceDocumentController_.RequestCloseToEmbedded(
+      scene.GetAssetDatabase(), outMessage);
+  if (sequenceDocumentController_.ConsumeTimelineResetRequested()) {
+    cameraTimelinePanel_.ResetForScene();
+  }
+  return requested;
+}
+
+bool CinematicsWorkspaceController::HasPendingSequenceConfirmation()
+    const noexcept {
+
+  return sequenceDocumentController_.HasPendingConfirmation();
+}
+
+const SequenceEditorDocument &
+CinematicsWorkspaceController::GetSequenceDocument() const noexcept {
+
+  return sequenceDocumentController_.GetDocument();
+}
+
 void CinematicsWorkspaceController::BindDocumentCommands(
     EditorCommandRouter &commandRouter, DocumentSceneBase &scene) {
 
-  commandRouter.Bind(EditorCommandId::SaveDocument, "Save Sequence Asset",
-                     IsEditingSequenceAsset(), [this, &scene]() {
-                       (void)SaveSequenceDocument(scene, pendingStatusMessage_);
-                     });
-  commandRouter.Bind(
-      EditorCommandId::Undo, "Undo Sequence Edit", CanUndoSequenceDocument(),
-      [this]() { (void)UndoSequenceDocument(pendingStatusMessage_); });
-  commandRouter.Bind(
-      EditorCommandId::Redo, "Redo Sequence Edit", CanRedoSequenceDocument(),
-      [this]() { (void)RedoSequenceDocument(pendingStatusMessage_); });
+  (void)scene;
+  commandRouter.BindOperation(
+      EditorCommandId::SaveDocument,
+      TEXT::Localize("ui.cinematics.save"),
+      IsEditingSequenceAsset(),
+      "cinematics.save");
+  commandRouter.BindOperation(
+      EditorCommandId::Undo,
+      TEXT::Localize("ui.cinematics.undo"),
+      CanUndoSequenceDocument(),
+      "cinematics.undo");
+  commandRouter.BindOperation(
+      EditorCommandId::Redo,
+      TEXT::Localize("ui.cinematics.redo"),
+      CanRedoSequenceDocument(),
+      "cinematics.redo");
 }
 
 void CinematicsWorkspaceController::PrepareForRuntimePlay() {
@@ -142,6 +194,7 @@ void CinematicsWorkspaceController::ApplyWorkspaceActivation(
     DocumentSceneBase &scene, const EditorWorkspaceActivation &activation,
     EditorContext &context, EditorWorkspaceHost &workspaceHost) {
 
+  (void)context;
   if (activation.current == EditorWorkspaceId::Cinematics &&
       activation.sequenceAssetGuid && activation.sequenceAssetGuid->IsValid()) {
     (void)RequestOpenSequenceAsset(scene, *activation.sequenceAssetGuid,

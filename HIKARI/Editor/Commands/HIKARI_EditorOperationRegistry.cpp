@@ -5,10 +5,12 @@
 namespace HIKARI::EDITOR {
 
 void EditorOperationRegistry::Register(
-    EditorOperationDefinition definition) {
+    EditorOperationDefinition definition,
+    bool longRunning) {
     if (definition.id.empty() || !definition.execute) {
         return;
     }
+    definition.longRunning = longRunning;
     operations_[definition.id] = std::move(definition);
 }
 
@@ -30,6 +32,11 @@ EditorOperationResult EditorOperationRegistry::Execute(
     return found->second.execute(parameters);
 }
 
+EditorOperationResult EditorOperationRegistry::Execute(
+    const std::string& id) const {
+    return Execute(id, nlohmann::json::object());
+}
+
 std::vector<std::string> EditorOperationRegistry::RegisteredIds() const {
     std::vector<std::string> ids{};
     ids.reserve(operations_.size());
@@ -39,6 +46,34 @@ std::vector<std::string> EditorOperationRegistry::RegisteredIds() const {
     }
     std::sort(ids.begin(), ids.end());
     return ids;
+}
+
+const EditorOperationDefinition* EditorOperationRegistry::Find(
+    const std::string& id) const noexcept {
+    const auto found = operations_.find(id);
+    return found != operations_.end()
+        ? &found->second
+        : nullptr;
+}
+
+std::vector<const EditorOperationDefinition*>
+EditorOperationRegistry::QueryWorkspace(
+    const std::string& workspace) const {
+    std::vector<const EditorOperationDefinition*> definitions{};
+    for (const auto& [id, definition] : operations_) {
+        (void)id;
+        if (definition.workspace == workspace) {
+            definitions.push_back(&definition);
+        }
+    }
+    std::sort(
+        definitions.begin(),
+        definitions.end(),
+        [](const EditorOperationDefinition* lhs,
+           const EditorOperationDefinition* rhs) {
+            return lhs->id < rhs->id;
+        });
+    return definitions;
 }
 
 } // namespace HIKARI::EDITOR

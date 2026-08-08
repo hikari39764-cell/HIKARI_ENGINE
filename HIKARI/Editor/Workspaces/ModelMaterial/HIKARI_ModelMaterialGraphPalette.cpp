@@ -21,6 +21,7 @@ void ModelMaterialWorkspaceController::DrawMaterialGraphNodePalette(
     DocumentSceneBase &scene, MaterialAssetData &source,
     MaterialGraphData &graph, MATH::Vec2 position) {
 #if defined(HIKARI_WITH_EDITOR)
+  (void)source;
   constexpr std::array<std::string_view, 4u> categories{
       "Ready-made Shading", "Surface", "Advanced / Inputs",
       "Advanced / Math & Masks"};
@@ -67,49 +68,44 @@ void ModelMaterialWorkspaceController::DrawMaterialGraphNodePalette(
       [&](MaterialNodeKind kind, std::string_view label,
           MaterialValueType valueType = MaterialValueType::Float1,
           bool typed = false) {
-        MaterialAssetData before = source;
-        MaterialGraphNodeData node{};
-        node.id = "Node_" + std::to_string(authoringIdCounter_++);
-        node.kind = kind;
-        node.displayName = std::string(label);
-        node.position = position;
-        node.valueType = typed
-            ? valueType
-            : MATERIAL_GRAPH_UI::DefaultNodeValueType(kind);
-        node.value.type = node.valueType;
+        const MaterialNodeDefinition *definition =
+            FindMaterialNodeDefinition(kind);
+        if (definition == nullptr) {
+          return;
+        }
+        MaterialGraphNodeCreateRequest request{};
+        request.nodeType = definition->stableName;
+        request.displayName = std::string(label);
+        request.position = position;
+        request.manualPosition = true;
+        request.parameterIdPrefix = "parameter.ui_";
+        request.parameterDisplayName = "Parameter";
         if (typed) {
-          node.value.numeric = { 1.0f, 1.0f, 1.0f, 1.0f };
-        }
-        ASSETS::MATERIAL::InitializeReadyMadeMaterialNode(source, node);
-        if (kind == MaterialNodeKind::RampDiffuse ||
-            kind == MaterialNodeKind::MultiRampDiffuse ||
-            kind == MaterialNodeKind::FaceSdf) {
-          (void)BindBuiltInRampPresets(source);
-        }
-        if (kind == MaterialNodeKind::Parameter) {
-          // Every authored Parameter node gets its own parameter so editing
-          // one color never rewrites another node's color.
-          const std::string parameterId =
-              "parameter.ui_" + node.id;
-          MaterialGraphParameterData parameter{};
-          parameter.id = parameterId;
-          parameter.displayName = "Parameter";
-          parameter.defaultValue.type = node.valueType;
-          if (typed) {
-            parameter.defaultValue.numeric =
-                { 1.0f, 1.0f, 1.0f, 1.0f };
+          request.valueSet = true;
+          request.valueX = 1.0f;
+          request.valueY = 1.0f;
+          request.valueZ = 1.0f;
+          request.valueW = 1.0f;
+          switch (valueType) {
+          case MaterialValueType::Float1:
+            request.valueType = "Float1";
+            break;
+          case MaterialValueType::Float2:
+            request.valueType = "Float2";
+            break;
+          case MaterialValueType::Float3:
+            request.valueType = "Float3";
+            break;
+          case MaterialValueType::Float4:
+            request.valueType = "Float4";
+            break;
           }
-          parameter.exposed = true;
-          graph.parameters.push_back(std::move(parameter));
-          node.referenceId = parameterId;
         }
-        if (kind == MaterialNodeKind::SurfaceOutput) {
-          graph.outputNodeId = node.id;
-        }
-        selectedGraphNodeId_ = node.id;
-        graph.nodes.push_back(std::move(node));
-        CommitMaterialMutation(
-            std::move(before), "Add material graph node", scene);
+        std::string message;
+        std::string code;
+        std::vector<std::string> details;
+        (void)AddMaterialGraphNode(
+            scene, request, message, details, code);
       };
 
   if (searching) {
@@ -341,21 +337,20 @@ void ModelMaterialWorkspaceController::DrawMaterialGraphNodePalette(
       if (!ImGui::MenuItem(choice.label.c_str())) {
         continue;
       }
-      MaterialAssetData before = source;
-      MaterialGraphNodeData node{};
-      node.id = "Node_" + std::to_string(authoringIdCounter_++);
-      node.kind = MaterialNodeKind::FunctionCall;
-      node.displayName = choice.label;
-      node.position = position;
-      node.assetReference = choice.guid;
-      node.functionInputs = choice.functionInputs;
-      node.functionOutputs = choice.functionOutputs;
-      node.valueType = choice.functionOutputs.front().defaultValue.type;
-      node.value.type = node.valueType;
-      selectedGraphNodeId_ = node.id;
-      graph.nodes.push_back(std::move(node));
-      CommitMaterialMutation(
-          std::move(before), "Add Material Function node", scene);
+      MaterialGraphNodeCreateRequest request{};
+      request.nodeType = "FunctionCall";
+      request.displayName = choice.label;
+      request.position = position;
+      request.manualPosition = true;
+      request.allowFunctionCall = true;
+      request.functionAssetGuid = choice.guid;
+      request.functionInputs = choice.functionInputs;
+      request.functionOutputs = choice.functionOutputs;
+      std::string message;
+      std::string code;
+      std::vector<std::string> details;
+      (void)AddMaterialGraphNode(
+          scene, request, message, details, code);
     }
     if (!foundFunction) {
       ImGui::BeginDisabled();

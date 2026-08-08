@@ -1,6 +1,7 @@
 #include "Editor/Quality/HIKARI_QualityPanel.h"
 
 #include "Core/Text/HIKARI_Localization.h"
+#include <array>
 #include "Editor/Environment/HIKARI_EnvironmentEditComparison.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 #include "Editor/Widgets/HIKARI_PostProfileParameterWidget.h"
@@ -34,15 +35,19 @@ void DrawDirectionalShadow(SceneEnvironment &environment) {
       environment.directionalShadow.resolution <= 1024
           ? 0
           : (environment.directionalShadow.resolution >= 4096 ? 2 : 1);
-  const char *qualityNames[] = {
-      TEXT::Localize("ui.common.low").c_str(),
-      TEXT::Localize("ui.common.medium").c_str(),
-      TEXT::Localize("ui.common.high").c_str(),
+  const std::array<std::string, 3> qualityNames{
+      TEXT::Localize("ui.common.low"),
+      TEXT::Localize("ui.common.medium"),
+      TEXT::Localize("ui.common.high"),
+  };
+  const char *qualityNamePtrs[3]{};
+  for (size_t index = 0; index < qualityNames.size(); ++index) {
+    qualityNamePtrs[index] = qualityNames[index].c_str();
   };
   if (ImGui::Combo(
           TEXT::Localize("ui.quality.shadowQuality").c_str(),
-          &shadowQuality, qualityNames,
-                   static_cast<int>(std::size(qualityNames)))) {
+          &shadowQuality, qualityNamePtrs,
+                   static_cast<int>(qualityNames.size()))) {
     environment.directionalShadow.resolution =
         shadowQuality == 0 ? 1024u : (shadowQuality == 2 ? 4096u : 2048u);
   }
@@ -144,16 +149,20 @@ void DrawScreenSpaceReflections(SceneEnvironment &environment) {
       TEXT::Localize("ui.quality.ssrEnabled").c_str(),
       &settings.enabled);
   int quality = static_cast<int>(settings.quality);
-  const char *qualityNames[] = {
-      TEXT::Localize("ui.common.off").c_str(),
-      TEXT::Localize("ui.common.low").c_str(),
-      TEXT::Localize("ui.common.medium").c_str(),
-      TEXT::Localize("ui.common.high").c_str(),
+  const std::array<std::string, 4> qualityNames{
+      TEXT::Localize("ui.common.off"),
+      TEXT::Localize("ui.common.low"),
+      TEXT::Localize("ui.common.medium"),
+      TEXT::Localize("ui.common.high"),
+  };
+  const char *qualityNamePtrs[4]{};
+  for (size_t index = 0; index < qualityNames.size(); ++index) {
+    qualityNamePtrs[index] = qualityNames[index].c_str();
   };
   if (ImGui::Combo(
           TEXT::Localize("ui.quality.quality").c_str(),
-          &quality, qualityNames,
-                   static_cast<int>(std::size(qualityNames)))) {
+          &quality, qualityNamePtrs,
+                   static_cast<int>(qualityNames.size()))) {
     settings.quality = static_cast<ScreenSpaceReflectionQuality>(
         std::clamp(quality, 0, 3));
     settings.enabled =
@@ -211,16 +220,20 @@ void DrawAmbientOcclusion(
         &runtimeSnapshot) {
   int ssaoModeIndex =
       EDITOR::ENVIRONMENT_EDIT::ToSsaoModeIndex(environment.ambientOcclusion);
-  const char *ssaoModeNames[] = {
-      TEXT::Localize("ui.common.off").c_str(),
-      TEXT::Localize("ui.quality.ssaoReference").c_str(),
-      TEXT::Localize("ui.quality.ssaoOptimizedHigh").c_str(),
-      TEXT::Localize("ui.quality.ssaoBalanced").c_str(),
+  const std::array<std::string, 4> ssaoModeNames{
+      TEXT::Localize("ui.common.off"),
+      TEXT::Localize("ui.quality.ssaoReference"),
+      TEXT::Localize("ui.quality.ssaoOptimizedHigh"),
+      TEXT::Localize("ui.quality.ssaoBalanced"),
+  };
+  const char *ssaoModeNamePtrs[4]{};
+  for (size_t index = 0; index < ssaoModeNames.size(); ++index) {
+    ssaoModeNamePtrs[index] = ssaoModeNames[index].c_str();
   };
   if (ImGui::Combo(
           TEXT::Localize("ui.quality.ssaoMode").c_str(),
-          &ssaoModeIndex, ssaoModeNames,
-                   static_cast<int>(std::size(ssaoModeNames)))) {
+          &ssaoModeIndex, ssaoModeNamePtrs,
+                   static_cast<int>(ssaoModeNames.size()))) {
     environment.ambientOcclusion.mode =
         EDITOR::ENVIRONMENT_EDIT::SsaoModeFromIndex(ssaoModeIndex);
     environment.ambientOcclusion.enabled =
@@ -311,24 +324,28 @@ void DrawToneMapping(SceneEnvironment &environment) {
               RENDER3D::COLOR::ExposureMode::Automatic
           ? 1
           : 0;
-  const char *exposureModes[] = {
-      TEXT::Localize("ui.quality.exposureManual").c_str(),
-      TEXT::Localize("ui.quality.exposureAutomatic").c_str(),
+  const std::array<std::string, 2> exposureModes{
+      TEXT::Localize("ui.quality.exposureManual"),
+      TEXT::Localize("ui.quality.exposureAutomatic"),
+  };
+  const char *exposureModePtrs[2]{};
+  for (size_t index = 0; index < exposureModes.size(); ++index) {
+    exposureModePtrs[index] = exposureModes[index].c_str();
   };
   if (ImGui::Combo(
           TEXT::Localize("ui.quality.exposureMode").c_str(),
-          &exposureMode, exposureModes,
-                   static_cast<int>(std::size(exposureModes)))) {
+          &exposureMode, exposureModePtrs,
+                   static_cast<int>(exposureModes.size()))) {
     environment.toneMapping.exposureMode =
         exposureMode == 1 ? RENDER3D::COLOR::ExposureMode::Automatic
                           : RENDER3D::COLOR::ExposureMode::Manual;
   }
-  const char *exposureLabel =
+  const std::string exposureLabel =
       environment.toneMapping.exposureMode ==
               RENDER3D::COLOR::ExposureMode::Automatic
-          ? TEXT::Localize("ui.quality.exposureSeed").c_str()
-          : TEXT::Localize("ui.quality.manualExposure").c_str();
-  ImGui::DragFloat(exposureLabel, &environment.toneMapping.exposure, 0.01f,
+          ? TEXT::Localize("ui.quality.exposureSeed")
+          : TEXT::Localize("ui.quality.manualExposure");
+  ImGui::DragFloat(exposureLabel.c_str(), &environment.toneMapping.exposure, 0.01f,
                    0.01f, 16.0f);
   if (environment.toneMapping.exposureMode ==
       RENDER3D::COLOR::ExposureMode::Automatic) {
@@ -387,15 +404,19 @@ void DrawToneMapping(SceneEnvironment &environment) {
   ImGui::DragFloat(
       TEXT::Localize("ui.quality.sdrDisplayGamma").c_str(),
       &environment.toneMapping.gamma, 0.01f, 0.1f, 4.0f);
-  const char *modes[] = {
-      TEXT::Localize("ui.common.none").c_str(),
-      TEXT::Localize("ui.quality.reinhard").c_str(),
-      TEXT::Localize("ui.quality.acesFitted").c_str(),
+  const std::array<std::string, 3> modes{
+      TEXT::Localize("ui.common.none"),
+      TEXT::Localize("ui.quality.reinhard"),
+      TEXT::Localize("ui.quality.acesFitted"),
+  };
+  const char *modePtrs[3]{};
+  for (size_t index = 0; index < modes.size(); ++index) {
+    modePtrs[index] = modes[index].c_str();
   };
   int mode = std::clamp(environment.toneMapping.mode, 0, 2);
   if (ImGui::Combo(
           TEXT::Localize("ui.quality.mode").c_str(),
-          &mode, modes, static_cast<int>(std::size(modes)))) {
+          &mode, modePtrs, static_cast<int>(modes.size()))) {
     environment.toneMapping.mode = mode;
   }
 }
@@ -500,23 +521,23 @@ void DrawTransitionDebug() {
 
   const TransitionVisualState visualState = transitionBus->GetVisualState();
   const SceneTransitionBus::TransitionState state = transitionBus->GetState();
-  const char *stateLabel =
-      TEXT::Localize("ui.quality.transitionUnknown").c_str();
+  std::string stateLabel =
+      TEXT::Localize("ui.quality.transitionUnknown");
   switch (state) {
   case SceneTransitionBus::TransitionState::Idle:
-    stateLabel = TEXT::Localize("ui.quality.transitionIdle").c_str();
+    stateLabel = TEXT::Localize("ui.quality.transitionIdle");
     break;
   case SceneTransitionBus::TransitionState::TransitionOut:
     stateLabel =
-        TEXT::Localize("ui.quality.transitionOut").c_str();
+        TEXT::Localize("ui.quality.transitionOut");
     break;
   case SceneTransitionBus::TransitionState::SwitchingScene:
     stateLabel =
-        TEXT::Localize("ui.quality.transitionSwitching").c_str();
+        TEXT::Localize("ui.quality.transitionSwitching");
     break;
   case SceneTransitionBus::TransitionState::TransitionIn:
     stateLabel =
-        TEXT::Localize("ui.quality.transitionIn").c_str();
+        TEXT::Localize("ui.quality.transitionIn");
     break;
   default:
     break;
@@ -529,7 +550,7 @@ void DrawTransitionDebug() {
           : visualState.profileId.c_str());
   ImGui::Text(
       TEXT::Localize("ui.quality.stateFormat").c_str(),
-      stateLabel);
+      stateLabel.c_str());
   ImGui::Text(
       TEXT::Localize("ui.quality.progressFormat").c_str(),
       visualState.progress);

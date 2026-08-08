@@ -43,17 +43,18 @@ bool InitializeWinsock(std::string& outError) {
 #endif
 }
 
-std::string BuildCapabilitiesJson() {
-    nlohmann::json capabilities = nlohmann::json::array();
-    for (const AiCapability& capability : QueryCapabilities()) {
-        capabilities.push_back({
+std::string BuildCapabilitiesJson(
+    const std::vector<AiCapability>& sourceCapabilities) {
+    nlohmann::json capabilitiesArray = nlohmann::json::array();
+    for (const AiCapability& capability : sourceCapabilities) {
+        capabilitiesArray.push_back({
             { "id", capability.id },
             { "status", capability.status },
             { "summary", capability.summary },
         });
     }
     return nlohmann::json{
-        { "capabilities", capabilities }
+        { "capabilities", capabilitiesArray }
     }.dump();
 }
 
@@ -185,6 +186,12 @@ void AiLocalBridge::Stop() {
 #ifdef _WIN32
     WSACleanup();
 #endif
+}
+
+void AiLocalBridge::SetCapabilityProvider(
+    CapabilityProvider callback) {
+    std::lock_guard<std::mutex> lock(stateMutex_);
+    capabilityProvider_ = std::move(callback);
 }
 
 bool AiLocalBridge::IsRunning() const {
@@ -368,7 +375,10 @@ void AiLocalBridge::HandleConnection(
         (path == "/health" || path == "/")) {
         payload = nlohmann::json{ { "ok", true } }.dump();
     } else if (method == "GET" && path == "/capabilities") {
-        payload = BuildCapabilitiesJson();
+        payload = BuildCapabilitiesJson(
+            capabilityProvider_
+                ? capabilityProvider_()
+                : BuiltInCapabilities());
     } else if (method == "POST" && path == "/action") {
         if (body.empty()) {
             statusCode = 400;

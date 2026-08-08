@@ -14,6 +14,7 @@ void ModelCollisionWorkspaceController::DrawPreviewToolbar(
     DocumentSceneBase &scene, ModelCollisionWorkspaceResult &result,
     EditorCommandRouter &commandRouter) {
 #if defined(HIKARI_WITH_EDITOR)
+  (void)scene;
   constexpr ImVec2 kIconSize{28.0f, 28.0f};
   const std::string title =
       IsEditingModel() ? modelDisplayName_ : std::string("No model open");

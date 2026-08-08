@@ -17,8 +17,8 @@
 
 namespace HIKARI::EDITOR {
 namespace {
-constexpr int kDefaultToolRounds = 24;
-constexpr int kMaxToolRoundsCeiling = 60;
+constexpr int kDefaultToolRounds = 40;
+constexpr int kMaxToolRoundsCeiling = 120;
 } // namespace
 
 namespace AI_ASSISTANT {
@@ -115,7 +115,7 @@ std::string StripActionJsonForDisplay(std::string text) {
 
 } // namespace
 
-const std::vector<AiCapability>& QueryCapabilities() {
+const std::vector<AiCapability>& BuiltInCapabilities() {
     static const std::vector<AiCapability> capabilities{
         { "chat.converse",
           "Conversational replies via the configured DashScope-compatible chat API; action JSON executes through SubmitAiRequest.",
@@ -123,65 +123,11 @@ const std::vector<AiCapability>& QueryCapabilities() {
         { "vision.analyze_image",
           "Analyze a local image via the configured vision API; defaults to the vision-skill DashScope model.",
           "stable" },
-        { "procedural.create_primitive",
-          "Create a procedural primitive (box/sphere/plane/cylinder/capsule) with position, scale and size.",
-          "stable" },
-        { "scene.list_objects",
-          "List scene objects with position and scale.",
-          "stable" },
-        { "scene.set_transform",
-          "Set an existing object's position/rotation/scale by name.",
-          "stable" },
-        { "scene.create_object",
-          "Create a scene object from a registered model asset.",
-          "stable" },
-        { "asset.list_models",
-          "List registered model assets (id and source path).",
-          "stable" },
-        { "material.edit_parameter",
-          "Edit a numeric parameter of the currently open material document.",
-          "stable" },
-        { "material.graph_edit",
-          "Add/remove/connect/disconnect material graph nodes through the document command path.",
-          "stable" },
-        { "material.graph_query",
-          "List material graph nodes with ids, pins and existing connections.",
-          "stable" },
-        { "material.node_info",
-          "Return one node's semantic contract: summary, pin types, class and output route.",
-          "stable" },
-        { "material.node_list",
-          "List discoverable material graph node types, optionally filtered by keyword or class.",
-          "stable" },
-        { "material.graph_layout",
-          "Auto-layout material graph nodes by topology.",
-          "stable" },
-        { "material.verify",
-          "Capture the material preview and analyze it with the vision API.",
-          "stable" },
         { "budget.request",
           "Request a higher tool-round budget for the current conversation.",
           "stable" },
-        { "capture.preview",
-          "Capture the material preview to a PNG file for vision verification.",
-          "stable" },
         { "help",
           "Query detailed usage and examples for an action.",
-          "stable" },
-        { "action.undo_last",
-          "Undo the most recent AI-driven material or scene change.",
-          "stable" },
-        { "scene.snapshot",
-          "Return a compact scene object snapshot for before/after comparison.",
-          "stable" },
-        { "scene.query",
-          "Query scene objects by name filter with position and scale.",
-          "stable" },
-        { "asset.import",
-          "Copy a supported source file into the project and queue its import.",
-          "stable" },
-        { "asset.import_status",
-          "Report the current queued asset import progress.",
           "stable" },
         { "query.capabilities",
           "List the current AI-accessible capabilities and boundaries.",
@@ -214,13 +160,15 @@ const std::vector<AiCapability>& QueryCapabilities() {
     return capabilities;
 }
 
-AiRequestResult SubmitAiRequest(std::string_view requestJson) {
+AiRequestResult SubmitAiRequest(
+    std::string_view requestJson,
+    const std::vector<AiCapability>& capabilities) {
     const std::string action = Trim(ExtractAction(requestJson));
     if (action == "list_capabilities") {
         AiRequestResult result{};
         result.ok = true;
         result.message = "当前 AI 可访问能力清单如下（status: stable/planned/unsupported）。";
-        for (const AiCapability& capability : QueryCapabilities()) {
+        for (const AiCapability& capability : capabilities) {
             result.details.push_back(
                 capability.status + ": " + capability.id + " - " +
                 capability.summary);
@@ -368,6 +316,81 @@ AiRequestResult SubmitAiRequest(std::string_view requestJson) {
                 "{\"action\":\"material.graph_layout\"}",
                 "按拓扑分层整理当前材质图节点位置",
             };
+        } else if (topic == "material.add_node") {
+            result.details = {
+                "{\"action\":\"material.add_node\","
+                "\"nodeType\":\"Constant\",\"name\":\"RimColor\","
+                "\"valueType\":\"Float4\",\"valueX\":1,\"valueY\":1,"
+                "\"valueZ\":1,\"valueW\":1}",
+                "nodeType 支持 stable name / node.xxx / 成品名；"
+                "不传 manualPosition 时按分类自动排布",
+                "Material Function 节点必须由人类在编辑器的 "
+                "Material Functions 菜单添加",
+            };
+        } else if (topic == "material.open_model" ||
+                   topic == "material.open_asset" ||
+                   topic == "material.list_assets" ||
+                   topic == "collision.open_model" ||
+                   topic == "asm.new_asset" ||
+                   topic == "asm.open_asset") {
+            result.details = {
+                "后台打开/新建文档，不会切换人类当前工作区："
+                "{\"action\":\"material.open_model\","
+                "\"modelGuid\":\"<guid>\"}",
+                "先用 asset.list_models / material.list_assets "
+                "查询资产 guid",
+                "当前文档有未保存修改时返回 PENDING_CONFIRMATION，"
+                "需要用户先保存或确认",
+                "打开后即可在后台继续材质/碰撞/状态机编辑，"
+                "人类切到对应工作区时看到同样的结果",
+            };
+        } else if (topic == "model.list_slots") {
+            result.details = {
+                "{\"action\":\"material.open_model\","
+                "\"modelGuid\":\"<guid>\"}",
+                "{\"action\":\"model.list_slots\"}",
+                "返回每个材质槽的 materialIndex / slotId / 表面数 / "
+                "来源与已绑定的 override 材质",
+            };
+        } else if (topic == "model.bind_material" ||
+                   topic == "model.restore_imported_material") {
+            result.details = {
+                "替换人物/模型材质工作流：",
+                "1. material.list_assets 查询可用材质 guid",
+                "2. material.open_model 后台打开目标模型",
+                "3. model.list_slots 查询槽位 materialIndex",
+                "4. {\"action\":\"model.bind_material\","
+                "\"materialIndex\":0,"
+                "\"materialAssetGuid\":\"<guid>\"}",
+                "恢复导入材质：{\"action\":"
+                "\"model.restore_imported_material\","
+                "\"materialIndex\":0}",
+                "绑定修改进入材质工作区历史，可用 material.save "
+                "保存绑定资产持久化",
+            };
+        } else if (topic == "material.duplicate_selected" ||
+                   topic == "material.delete_selected" ||
+                   topic == "material.delete_connection" ||
+                   topic == "material.group_selected" ||
+                   topic == "material.ungroup_selected" ||
+                   topic == "material.arrange_selected") {
+            result.details = {
+                "操作当前材质图中选中的节点/连线；"
+                "先调用 material.graph_query 或与用户确认选中状态",
+                "删除/分组/整理都是可撤销的文档操作",
+            };
+        } else if (topic == "material.frame_selection" ||
+                   topic == "material.frame_all" ||
+                   topic == "material.frame_preview" ||
+                   topic == "material.collapse_selected" ||
+                   topic == "material.expand_selected" ||
+                   topic == "material.collapse_all" ||
+                   topic == "material.expand_all") {
+            result.details = {
+                "视图/会话操作：frame 调整画布或预览相机，"
+                "collapse/expand 切换节点折叠状态",
+                "配合 capture.preview / material.verify 截图验证效果",
+            };
         } else if (topic == "material.verify") {
             result.details = {
                 "{\"action\":\"material.verify\"}",
@@ -376,8 +399,8 @@ AiRequestResult SubmitAiRequest(std::string_view requestJson) {
         } else if (topic == "budget.request") {
             result.details = {
                 "{\"action\":\"budget.request\","
-                "\"rounds\":24,\"reason\":\"逐节点检查需要更多轮\"}",
-                "默认 24 轮，上限 60；授予后每轮会返回剩余预算",
+                "\"rounds\":80,\"reason\":\"逐节点检查需要更多轮\"}",
+                "默认 40 轮，上限 120；授予后每轮会返回剩余预算",
             };
         } else if (topic == "capture.preview") {
             result.details = {
@@ -401,12 +424,117 @@ AiRequestResult SubmitAiRequest(std::string_view requestJson) {
                 "scene.query 支持 name 过滤："
                 "{\"action\":\"scene.query\",\"name\":\"cube\"}",
             };
+        } else if (topic == "action.undo_last") {
+            result.details = {
+                "撤销活动工作区最近一次编辑：材质/碰撞/状态机/过场"
+                "各自撤销自己的工作区历史，场景工作区撤销场景历史",
+                "AI 与人类的编辑共用同一份撤销历史，"
+                "最近一次人类编辑也会被撤销",
+            };
         } else if (topic == "asset.import" ||
                    topic == "asset.import_status") {
             result.details = {
                 "{\"action\":\"asset.import\","
                 "\"path\":\"C:/model.glb\"}",
                 "asset.import_status 返回排队导入的进度",
+            };
+        } else if (topic == "collision.add_shape") {
+            result.details = {
+                "{\"action\":\"collision.add_shape\",\"type\":\"box\"}",
+                "type: box/sphere/capsule/convex_hull/triangle_mesh；"
+                "需要在模型碰撞工作区打开模型",
+            };
+        } else if (topic == "collision.generate") {
+            result.details = {
+                "{\"action\":\"collision.generate\"}",
+                "完成后用 collision.apply_generation_draft 应用，"
+                "或用 collision.discard_generation_draft 丢弃",
+            };
+        } else if (topic == "asm.query") {
+            result.details = {
+                "{\"action\":\"asm.query\"}",
+                "返回当前状态机的状态/参数/过渡 id，"
+                "后续操作都基于这里的 id 或名称",
+            };
+        } else if (topic == "asm.add_transition") {
+            result.details = {
+                "{\"action\":\"asm.query\"}",
+                "{\"action\":\"asm.add_transition\","
+                "\"source\":\"Idle\",\"target\":\"Run\"}",
+                "source/target 支持状态 id 或名称",
+            };
+        } else if (topic == "asm.set_state_property") {
+            result.details = {
+                "{\"action\":\"asm.set_state_property\","
+                "\"state\":\"Idle\",\"name\":\"待机\",\"speed\":1.0}",
+                "可选字段：name/speed/loop",
+            };
+        } else if (topic == "asm.add_state" ||
+                   topic == "asm.delete_state" ||
+                   topic == "asm.delete_selected" ||
+                   topic == "asm.add_parameter" ||
+                   topic == "asm.delete_parameter" ||
+                   topic == "asm.delete_transition" ||
+                   topic == "asm.save" ||
+                   topic == "asm.undo" ||
+                   topic == "asm.redo") {
+            result.details = {
+                "在动画状态机工作区打开文档后可用；"
+                "先用 asm.query 查询 id/名称再引用",
+            };
+        } else if (topic == "collision.save" ||
+                   topic == "collision.undo" ||
+                   topic == "collision.redo" ||
+                   topic == "collision.delete_selected" ||
+                   topic == "collision.duplicate_selected" ||
+                   topic == "collision.set_selected_enabled" ||
+                   topic == "collision.set_selected_hidden" ||
+                   topic == "collision.set_selected_locked" ||
+                   topic == "collision.show_all" ||
+                   topic == "collision.hide_unselected" ||
+                   topic == "collision.apply_generation_draft" ||
+                   topic == "collision.discard_generation_draft") {
+            result.details = {
+                "在模型碰撞工作区打开模型后可用；选中形状后可用 "
+                "collision.delete_selected/duplicate_selected/"
+                "set_selected_enabled/set_selected_hidden/set_selected_locked",
+            };
+        } else if (topic == "cinematics.list_assets") {
+            result.details = {
+                "{\"action\":\"cinematics.list_assets\"}",
+                "返回 Sequence 资产的 guid/名称/路径，"
+                "open_asset 需要其中的 guid",
+            };
+        } else if (topic == "cinematics.open_asset") {
+            result.details = {
+                "{\"action\":\"cinematics.list_assets\"}",
+                "{\"action\":\"cinematics.open_asset\","
+                "\"assetGuid\":\"<guid>\"}",
+                "打开前先查询当前文档状态："
+                "{\"action\":\"cinematics.query\"}",
+            };
+        } else if (topic == "cinematics.query") {
+            result.details = {
+                "{\"action\":\"cinematics.query\"}",
+                "返回文档来源/名称/脏状态/撤销重做能力，"
+                "以及序列名称、时长和镜头数",
+            };
+        } else if (topic == "cinematics.new_asset" ||
+                   topic == "cinematics.revert" ||
+                   topic == "cinematics.close_to_embedded") {
+            result.details = {
+                "cinematics.new_asset 创建新的未保存序列资产；"
+                "cinematics.revert 把打开的序列资产恢复到已保存版本；"
+                "cinematics.close_to_embedded 返回场景内嵌时间线",
+                "有未保存修改时会返回 PENDING_CONFIRMATION，"
+                "需要用户先在编辑器确认框中选择保存或丢弃",
+            };
+        } else if (topic == "cinematics.save" ||
+                   topic == "cinematics.undo" ||
+                   topic == "cinematics.redo") {
+            result.details = {
+                "仅对已打开的序列资产生效；"
+                "Scene Cinematics（场景内嵌时间线）请使用 scene.save",
             };
         } else {
             result.message =
@@ -450,6 +578,7 @@ AiAssistantPanel::AiAssistantPanel() {
 
 AiAssistantPanel::~AiAssistantPanel() {
     stopRequested_.store(true);
+    actionCv_.notify_all();
     if (worker_.joinable()) {
         worker_.join();
     }
@@ -501,7 +630,7 @@ std::string AiAssistantPanel::BuildSystemPrompt() const {
         "再调用 material.node_info 查看它的语义和引脚类型。\n"
         "当前能力清单：\n";
     for (const AI_ASSISTANT::AiCapability& capability :
-         AI_ASSISTANT::QueryCapabilities()) {
+         Capabilities()) {
         prompt += "- " + capability.status + " " + capability.id +
             "：" + capability.summary + "\n";
     }
@@ -568,6 +697,17 @@ void AiAssistantPanel::RunConversation(const std::string& userText) {
         systemContent += "\n预算：本轮第 " +
             std::to_string(turn + 1) + "/" +
             std::to_string(maxToolRounds) + " 轮。";
+        const int remainingRounds = maxToolRounds - turn - 1;
+        if (remainingRounds <= 8 &&
+            maxToolRounds < kMaxToolRoundsCeiling) {
+            systemContent +=
+                " 剩余预算不足（" +
+                std::to_string(remainingRounds) +
+                " 轮）。如果任务仍需继续，"
+                "请在这一轮直接输出 {\"action\":\"budget.request\","
+                "\"rounds\":N} 申请更多轮数（上限 " +
+                std::to_string(kMaxToolRoundsCeiling) + "）。";
+        }
         if (consecutiveFailureRounds >= 2) {
             systemContent +=
                 " 你已连续失败 " +
@@ -750,11 +890,13 @@ void AiAssistantPanel::SendCurrentMessage() {
     }
     AppendMessage({ "user", text });
     inputBuffer_[0] = '\0';
-    stopRequested_.store(false);
-    busy_.store(true);
     if (worker_.joinable()) {
+        stopRequested_.store(true);
+        actionCv_.notify_all();
         worker_.join();
     }
+    stopRequested_.store(false);
+    busy_.store(true);
     worker_ = std::thread([this, text = std::move(text)]() {
         try {
             RunConversation(text);
@@ -819,6 +961,25 @@ void AiAssistantPanel::SetContextCallback(
     contextCallback_ = std::move(callback);
 }
 
+void AiAssistantPanel::SetCapabilityProvider(
+    AiCapabilityProvider callback) {
+    std::lock_guard<std::mutex> lock(stateMutex_);
+    capabilityProvider_ = std::move(callback);
+}
+
+std::vector<AI_ASSISTANT::AiCapability> AiAssistantPanel::Capabilities()
+    const {
+    AiCapabilityProvider provider;
+    {
+        std::lock_guard<std::mutex> lock(stateMutex_);
+        provider = capabilityProvider_;
+    }
+    if (provider) {
+        return provider();
+    }
+    return AI_ASSISTANT::BuiltInCapabilities();
+}
+
 void AiAssistantPanel::SetBridgeStatus(const std::string& status) {
     bridgeStatus_ = status;
 }
@@ -827,31 +988,108 @@ AI_ASSISTANT::AiRequestResult AiAssistantPanel::ExecuteRequest(
     std::string_view json) {
     const std::string action =
         AI_ASSISTANT::ExtractJsonField(json, "action");
+    // Panel-local actions are handled here; every other action is routed to
+    // the unified operation registry through the scene callback.
+    const bool panelLocalAction =
+        action == "list_capabilities" ||
+        action == "list_material_templates" ||
+        action == "vision.analyze_image" ||
+        action == "help" ||
+        action == "budget.request" ||
+        action == "create_material";
+    if (panelLocalAction) {
+        return AI_ASSISTANT::SubmitAiRequest(json, Capabilities());
+    }
+
+    bool longRunning = false;
+    {
+        std::lock_guard<std::mutex> lock(stateMutex_);
+        longRunning = longRunningClassifier_
+            ? longRunningClassifier_(action)
+            : false;
+    }
+    if (longRunning) {
+        // Long-running operations (network, heavy offline work) stay on the
+        // calling worker thread so the editor main thread never blocks.
+        return ExecuteRequestNow(json);
+    }
+
+    std::thread::id mainThreadId{};
+    {
+        std::lock_guard<std::mutex> lock(actionMutex_);
+        mainThreadId = mainThreadId_;
+    }
+    if (std::this_thread::get_id() == mainThreadId) {
+        return ExecuteRequestNow(json);
+    }
+
+    auto request = std::make_shared<PendingAiAction>();
+    request->json = std::string(json);
+    {
+        std::lock_guard<std::mutex> lock(actionMutex_);
+        pendingActions_.push_back(request);
+    }
+    actionCv_.notify_one();
+    std::unique_lock<std::mutex> waitLock(actionMutex_);
+    actionCv_.wait(
+        waitLock,
+        [this, &request]() {
+            return request->result.has_value() ||
+                stopRequested_.load();
+        });
+    if (!request->result.has_value()) {
+        AI_ASSISTANT::AiRequestResult result{};
+        result.ok = false;
+        result.code = "ACTION_CANCELED";
+        result.message = "动作已被取消（用户停止）";
+        return result;
+    }
+    return *request->result;
+}
+
+AI_ASSISTANT::AiRequestResult AiAssistantPanel::ExecuteRequestNow(
+    std::string_view json) {
+    const std::string action =
+        AI_ASSISTANT::ExtractJsonField(json, "action");
     AiSceneActionCallback sceneCallback;
     {
         std::lock_guard<std::mutex> lock(stateMutex_);
         sceneCallback = sceneActionCallback_;
     }
-    if (action.rfind("procedural.", 0u) == 0u ||
-        action.rfind("scene.", 0u) == 0u ||
-        action.rfind("asset.", 0u) == 0u ||
-        action.rfind("material.", 0u) == 0u ||
-        action.rfind("capture.", 0u) == 0u ||
-        action.rfind("action.", 0u) == 0u) {
-        if (sceneCallback) {
-            return sceneCallback(json);
-        }
-        AI_ASSISTANT::AiRequestResult result{};
-        result.ok = false;
-        result.message = "场景执行器未接线：" + action;
-        result.details = {
-            "supported: query.capabilities",
-            "supported: query.material_templates",
-            "supported: vision.analyze_image",
-        };
-        return result;
+    if (sceneCallback) {
+        return sceneCallback(json);
     }
-    return AI_ASSISTANT::SubmitAiRequest(json);
+    AI_ASSISTANT::AiRequestResult result{};
+    result.ok = false;
+    result.message = "场景执行器未接线：" + action;
+    result.details = {
+        "supported: query.capabilities",
+        "supported: query.material_templates",
+        "supported: vision.analyze_image",
+    };
+    return result;
+}
+
+void AiAssistantPanel::PumpActions() {
+    std::vector<std::shared_ptr<PendingAiAction>> actions;
+    {
+        std::lock_guard<std::mutex> lock(actionMutex_);
+        mainThreadId_ = std::this_thread::get_id();
+        if (pendingActions_.empty()) {
+            return;
+        }
+        actions.swap(pendingActions_);
+    }
+    for (const std::shared_ptr<PendingAiAction>& request : actions) {
+        request->result = ExecuteRequestNow(request->json);
+    }
+    actionCv_.notify_all();
+}
+
+void AiAssistantPanel::SetLongRunningClassifier(
+    AiLongRunningClassifier callback) {
+    std::lock_guard<std::mutex> lock(stateMutex_);
+    longRunningClassifier_ = std::move(callback);
 }
 
 AI_ASSISTANT::AiChatConfig AiAssistantPanel::SnapshotConfig() const {
@@ -898,7 +1136,8 @@ void AiAssistantPanel::ResetVisionSettings() {
 void AiAssistantPanel::Draw(bool& open) {
 #if defined(HIKARI_WITH_EDITOR)
     if (!ImGui::Begin(
-            TEXT::Localize("ai.title").c_str(),
+            TEXT::LocalizeWindow(
+                "ai.title", "AI Assistant").c_str(),
             &open, ImGuiWindowFlags_MenuBar)) {
         ImGui::End();
         return;
@@ -1088,7 +1327,7 @@ void AiAssistantPanel::Draw(bool& open) {
                     TEXT::Localize("ai.capabilities.summary").c_str());
                 ImGui::TableHeadersRow();
                 for (const AI_ASSISTANT::AiCapability& capability :
-                     AI_ASSISTANT::QueryCapabilities()) {
+                     Capabilities()) {
                     ImGui::TableNextRow();
                     ImGui::TableSetColumnIndex(0);
                     ImGui::Text("%s", capability.status.c_str());

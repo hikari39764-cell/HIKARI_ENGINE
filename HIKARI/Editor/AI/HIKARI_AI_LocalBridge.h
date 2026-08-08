@@ -18,6 +18,8 @@ namespace HIKARI::EDITOR::AI_ASSISTANT {
     class AiLocalBridge {
     public:
         using Executor = std::function<AiRequestResult(std::string_view)>;
+        using CapabilityProvider =
+            std::function<std::vector<AiCapability>()>;
 
         AiLocalBridge();
         ~AiLocalBridge();
@@ -27,6 +29,7 @@ namespace HIKARI::EDITOR::AI_ASSISTANT {
 
         bool Start(uint16_t port, Executor executor, std::string& outError);
         void Stop();
+        void SetCapabilityProvider(CapabilityProvider callback);
 
         bool IsRunning() const;
         uint16_t GetPort() const;
@@ -46,6 +49,7 @@ namespace HIKARI::EDITOR::AI_ASSISTANT {
         uint16_t port_ = 0u;
         std::string endpoint_;
         Executor executor_{};
+        CapabilityProvider capabilityProvider_{};
     };
 
 } // namespace HIKARI::EDITOR::AI_ASSISTANT

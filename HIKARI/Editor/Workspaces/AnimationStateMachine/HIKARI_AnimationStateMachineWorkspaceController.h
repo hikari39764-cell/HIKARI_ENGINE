@@ -26,6 +26,7 @@
 
 namespace HIKARI {
 class DocumentSceneBase;
+class AssetDatabase;
 }
 namespace HIKARI::ANIMATION {
 struct AnimationStateMachineRuntimeSnapshot;
@@ -34,6 +35,7 @@ struct AnimationStateMachineRuntimeSnapshot;
 namespace HIKARI::EDITOR {
 
     class EditorWorkspaceHost;
+    class EditorOperationRegistry;
 
     /// アニメーションステートマシン編集ワークスペースの描画結果。
     struct AnimationStateMachineWorkspaceResult {
@@ -71,11 +73,48 @@ namespace HIKARI::EDITOR {
 
         bool Undo(std::string& outMessage);
         bool Redo(std::string& outMessage);
+        bool NewAsset(std::string& outMessage);
+        bool OpenAsset(
+            AssetDatabase& assetDatabase,
+            const AssetGuid& assetGuid,
+            std::string& outMessage);
 
         /// このワークスペースで使用するドキュメントコマンドを登録する。
         void BindDocumentCommands(
             EditorCommandRouter& commandRouter,
             DocumentSceneBase& scene);
+
+        // Authoring actions exposed to the unified editor operation bus so
+        // human UI, AI actions and the local bridge share the same path.
+        void AddState();
+        void AddStateAt(float graphX, float graphY);
+        void AddParameter(ANIMATION::AnimationParameterType type);
+        void AddTransitionBetween(
+            ANIMATION::AnimationStateId source,
+            ANIMATION::AnimationStateId target);
+
+        bool DeleteState(
+            ANIMATION::AnimationStateId stateId,
+            std::string& outMessage);
+        bool DeleteParameter(
+            ANIMATION::AnimationParameterId parameterId,
+            std::string& outMessage);
+        bool DeleteTransition(
+            ANIMATION::AnimationTransitionId transitionId,
+            std::string& outMessage);
+        bool EditStateProperties(
+            ANIMATION::AnimationStateId stateId,
+            const std::optional<std::string>& name,
+            const std::optional<float>& speed,
+            const std::optional<bool>& loop,
+            std::string& outMessage);
+
+        const ANIMATION::AnimationStateMachineDefinition& GetDefinition()
+            const noexcept;
+        const std::string& GetStatusMessage() const noexcept;
+        void SetOperationRegistry(
+            const EditorOperationRegistry* registry) noexcept;
+        bool DeleteSelected(std::string& outMessage);
 
     private:
         enum class SelectionKind : uint8_t {
@@ -157,20 +196,11 @@ namespace HIKARI::EDITOR {
         // Graph editing
         // -------------------------------------------------------------------------
 
-        void AddState();
-        void AddStateAt(float graphX, float graphY);
         void DeleteSelectedState();
 
-        void AddParameter(ANIMATION::AnimationParameterType type);
         void DeleteSelectedParameter();
 
         void AddTransition();
-
-        /// sourceからtargetへのトランジションを作成する。
-        /// 無効なIDまたは重複する組み合わせは追加しない。
-        void AddTransitionBetween(
-            ANIMATION::AnimationStateId source,
-            ANIMATION::AnimationStateId target);
 
         void DeleteSelectedTransition();
 
@@ -232,6 +262,7 @@ namespace HIKARI::EDITOR {
         bool requestUnsavedDocumentDialog_ = false;
 
         std::string statusMessage_{};
+        const EditorOperationRegistry* operationRegistry_ = nullptr;
     };
 
 } // namespace HIKARI::EDITOR

@@ -2,6 +2,7 @@
 
 #if defined(HIKARI_WITH_EDITOR)
 #include <algorithm>
+#include <array>
 #include <filesystem>
 
 #include "imgui.h"
@@ -12,6 +13,21 @@ namespace HIKARI::EDITOR {
         ImFont* gRegularFont = nullptr;
         ImFont* gStrongFont = nullptr;
         ImFont* gMonospaceFont = nullptr;
+
+        // Japanese-first and Chinese-first font chains so the editor stays
+        // readable on Windows locales that only install one of them.
+        constexpr std::array<const char*, 4> kJapaneseFontCandidates{
+            "C:/Windows/Fonts/YuGothM.ttc",
+            "C:/Windows/Fonts/msgothic.ttc",
+            "C:/Windows/Fonts/meiryo.ttc",
+            "C:/Windows/Fonts/msyh.ttc",
+        };
+        constexpr std::array<const char*, 4> kChineseFontCandidates{
+            "C:/Windows/Fonts/msyh.ttc",
+            "C:/Windows/Fonts/msjh.ttc",
+            "C:/Windows/Fonts/simhei.ttf",
+            "C:/Windows/Fonts/simsun.ttc",
+        };
 
         ImFont* AddFontIfPresent(
             ImFontAtlas& atlas,
@@ -29,24 +45,55 @@ namespace HIKARI::EDITOR {
                 ranges);
         }
 
+        void AddCombinedGlyphRanges(
+            ImFontGlyphRangesBuilder& builder,
+            ImFontAtlas& atlas) {
+            builder.AddRanges(atlas.GetGlyphRangesDefault());
+            builder.AddRanges(atlas.GetGlyphRangesJapanese());
+            builder.AddRanges(atlas.GetGlyphRangesChineseFull());
+        }
+
         void MergeCjkFallback(
             ImFontAtlas& atlas,
             float pixelSize,
-            const char* path,
             const ImWchar* ranges) {
-            if (!std::filesystem::exists(path)) {
-                return;
+            // Merge at most two complementary CJK fonts so Japanese kana and
+            // Simplified Chinese ideographs are both covered without loading
+            // every installed font into the atlas.
+            const char* mergedPaths[2]{ nullptr, nullptr };
+            for (const char* candidate : kJapaneseFontCandidates) {
+                if (std::filesystem::exists(candidate)) {
+                    mergedPaths[0] = candidate;
+                    break;
+                }
             }
-            ImFontConfig config{};
-            config.MergeMode = true;
-            config.PixelSnapH = true;
-            config.OversampleH = 1;
-            config.OversampleV = 1;
-            (void)atlas.AddFontFromFileTTF(
-                path,
-                pixelSize,
-                &config,
-                ranges);
+            for (const char* candidate : kChineseFontCandidates) {
+                if (std::filesystem::exists(candidate) &&
+                    candidate != mergedPaths[0]) {
+                    mergedPaths[1] = candidate;
+                    break;
+                }
+            }
+            for (const char* path : mergedPaths) {
+                if (path == nullptr) {
+                    continue;
+                }
+                ImFontConfig config{};
+                config.MergeMode = true;
+                config.PixelSnapH = true;
+                config.OversampleH = 1;
+                config.OversampleV = 1;
+                (void)atlas.AddFontFromFileTTF(
+                    path,
+                    pixelSize,
+                    &config,
+                    ranges);
+            }
+        }
+
+        bool HasCjkGlyph(const ImFont* font) {
+            return font != nullptr &&
+                font->FindGlyphNoFallback(0x4E2D) != nullptr;
         }
     }
 
@@ -78,14 +125,25 @@ namespace HIKARI::EDITOR {
             gRegularFont = io.FontDefault != nullptr
                 ? io.FontDefault
                 : io.Fonts->Fonts.front();
-            gStrongFont = gRegularFont;
-            gMonospaceFont = gRegularFont;
-            return true;
+            if (HasCjkGlyph(gRegularFont)) {
+                gStrongFont = gRegularFont;
+                gMonospaceFont = gRegularFont;
+                return true;
+            }
+            // A font was registered before us without CJK coverage (for
+            // example the ImGui default font). Rebuild the atlas from scratch
+            // so localized UI never falls back to question marks.
+            io.Fonts->Clear();
         }
 
         const float scale = (std::clamp)(uiScale, 0.90f, 1.50f);
         const float regularSize = 16.0f * scale;
         const float monoSize = 15.0f * scale;
+        ImFontGlyphRangesBuilder rangeBuilder{};
+        AddCombinedGlyphRanges(rangeBuilder, *io.Fonts);
+        ImVector<ImWchar> combinedRanges{};
+        rangeBuilder.BuildRanges(&combinedRanges);
+        const ImWchar* combinedRangePtr = combinedRanges.Data;
 
         ImFontConfig regularConfig{};
         regularConfig.OversampleH = 2;
@@ -96,20 +154,11 @@ namespace HIKARI::EDITOR {
             "C:/Windows/Fonts/segoeui.ttf",
             regularSize,
             &regularConfig,
-            io.Fonts->GetGlyphRangesDefault());
+            combinedRangePtr);
         if (gRegularFont == nullptr) {
             gRegularFont = io.Fonts->AddFontDefault();
         } else {
-            MergeCjkFallback(
-                *io.Fonts,
-                regularSize,
-                "C:/Windows/Fonts/YuGothM.ttc",
-                io.Fonts->GetGlyphRangesJapanese());
-            MergeCjkFallback(
-                *io.Fonts,
-                regularSize,
-                "C:/Windows/Fonts/msyh.ttc",
-                io.Fonts->GetGlyphRangesChineseFull());
+            MergeCjkFallback(*io.Fonts, regularSize, combinedRangePtr);
         }
 
         ImFontConfig strongConfig{};
@@ -120,7 +169,10 @@ namespace HIKARI::EDITOR {
             "C:/Windows/Fonts/segoeuib.ttf",
             regularSize,
             &strongConfig,
-            io.Fonts->GetGlyphRangesDefault());
+            combinedRangePtr);
+        if (gStrongFont != nullptr) {
+            MergeCjkFallback(*io.Fonts, regularSize, combinedRangePtr);
+        }
 
         ImFontConfig monoConfig{};
         monoConfig.OversampleH = 2;
@@ -130,7 +182,10 @@ namespace HIKARI::EDITOR {
             "C:/Windows/Fonts/consola.ttf",
             monoSize,
             &monoConfig,
-            io.Fonts->GetGlyphRangesDefault());
+            combinedRangePtr);
+        if (gMonospaceFont != nullptr) {
+            MergeCjkFallback(*io.Fonts, monoSize, combinedRangePtr);
+        }
 
         if (gStrongFont == nullptr) {
             gStrongFont = gRegularFont;
@@ -139,7 +194,37 @@ namespace HIKARI::EDITOR {
             gMonospaceFont = gRegularFont;
         }
         io.FontDefault = gRegularFont;
-        return io.Fonts->Build();
+        const bool built = io.Fonts->Build();
+        if (built && !HasCjkGlyph(gRegularFont)) {
+            // Last-resort fallback: rebuild with a CJK font as the primary
+            // face so a missing Latin font never breaks localized output.
+            io.Fonts->Clear();
+            ImFontConfig cjkConfig{};
+            cjkConfig.OversampleH = 2;
+            cjkConfig.OversampleV = 1;
+            for (const char* candidate : kChineseFontCandidates) {
+                if (!std::filesystem::exists(candidate)) {
+                    continue;
+                }
+                gRegularFont = AddFontIfPresent(
+                    *io.Fonts,
+                    candidate,
+                    regularSize,
+                    &cjkConfig,
+                    combinedRangePtr);
+                if (gRegularFont != nullptr) {
+                    break;
+                }
+            }
+            if (gRegularFont == nullptr) {
+                gRegularFont = io.Fonts->AddFontDefault();
+            }
+            gStrongFont = gRegularFont;
+            gMonospaceFont = gRegularFont;
+            io.FontDefault = gRegularFont;
+            return io.Fonts->Build();
+        }
+        return built;
     }
 
     void ResetEditorFonts() noexcept {

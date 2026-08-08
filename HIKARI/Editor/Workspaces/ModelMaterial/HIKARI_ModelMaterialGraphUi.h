@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -25,6 +26,53 @@ inline constexpr float kCanvasMaximumZoom = 1.35f;
 inline constexpr float kInlineControlsMinimumZoom = 0.78f;
 inline constexpr float kInlineControlRowHeight = 25.0f;
 inline constexpr float kInlineControlSafetyPadding = 24.0f;
+
+inline std::string JoinPins(
+    const std::vector<std::string_view> &pins,
+    std::string_view fallback) {
+    if (pins.empty()) {
+        return std::string(fallback);
+    }
+    std::string result;
+    for (const std::string_view pin : pins) {
+        if (!result.empty()) {
+            result += ", ";
+        }
+        result += pin;
+    }
+    return result;
+}
+
+inline std::optional<MaterialValueType> ParseMaterialValueType(
+    const std::string &input) {
+    std::string normalized = input;
+    for (char &c : normalized) {
+        if (c >= 'A' && c <= 'Z') {
+            c = static_cast<char>(c - 'A' + 'a');
+        }
+    }
+    if (normalized == "float1" || normalized == "f1" ||
+        normalized == "scalar" || normalized == "1") {
+        return MaterialValueType::Float1;
+    }
+    if (normalized == "float2" || normalized == "f2" ||
+        normalized == "vector2" || normalized == "vec2" ||
+        normalized == "2") {
+        return MaterialValueType::Float2;
+    }
+    if (normalized == "float3" || normalized == "f3" ||
+        normalized == "vector3" || normalized == "vec3" ||
+        normalized == "3") {
+        return MaterialValueType::Float3;
+    }
+    if (normalized == "float4" || normalized == "f4" ||
+        normalized == "vector4" || normalized == "vec4" ||
+        normalized == "color" || normalized == "rgba" ||
+        normalized == "4") {
+        return MaterialValueType::Float4;
+    }
+    return std::nullopt;
+}
 
 struct NodeInlineLayoutSpec {
   uint32_t rowCount = 0u;

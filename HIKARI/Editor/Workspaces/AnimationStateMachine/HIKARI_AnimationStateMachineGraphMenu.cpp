@@ -1,8 +1,11 @@
 #include "Editor/Workspaces/AnimationStateMachine/HIKARI_AnimationStateMachineWorkspaceController.h"
 
+#include <cstdio>
 #include <string>
 
 #include "Assets/HIKARI_AssetDatabase.h"
+#include "Core/Text/HIKARI_Localization.h"
+#include "Editor/Commands/HIKARI_EditorOperationRegistry.h"
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
@@ -20,16 +23,21 @@ void AnimationStateMachineWorkspaceController::DrawGraphMenuBar(
   if (!ImGui::BeginMenuBar())
     return;
 
-  if (ImGui::BeginMenu("File")) {
-    if (ImGui::MenuItem("New State Machine")) {
+  if (ImGui::BeginMenu(
+          TEXT::Localize("ui.asm.menu.file").c_str())) {
+    if (ImGui::MenuItem(
+            TEXT::Localize("ui.asm.menu.new").c_str())) {
       RequestDocumentAction(scene, result, requests,
                             PendingDocumentAction::NewDocument);
     }
-    if (ImGui::BeginMenu("Open Asset")) {
+    if (ImGui::BeginMenu(
+            TEXT::Localize("ui.asm.menu.openAsset").c_str())) {
       const auto assets = scene.GetAssetDatabase().CollectByType(
           AssetType::AnimationStateMachine);
       if (assets.empty()) {
-        ImGui::TextDisabled("No state machine assets");
+        ImGui::TextDisabled(
+            "%s",
+            TEXT::Localize("ui.asm.menu.noAssets").c_str());
       }
       for (const AssetRecord *record : assets) {
         if (record == nullptr)
@@ -46,45 +54,50 @@ void AnimationStateMachineWorkspaceController::DrawGraphMenuBar(
     }
     ImGui::Separator();
     if (ImGui::MenuItem(
-            "Save",
+            TEXT::Localize("ui.asm.menu.save").c_str(),
             EditorCommandRouter::Shortcut(EditorCommandId::SaveDocument), false,
             commandRouter.CanExecute(EditorCommandId::SaveDocument))) {
       (void)commandRouter.Execute(EditorCommandId::SaveDocument);
     }
     ImGui::BeginDisabled(!document_.GetAssetGuid().IsValid());
-    if (ImGui::MenuItem("Revert Saved Asset")) {
+    if (ImGui::MenuItem(
+            TEXT::Localize("ui.asm.menu.revert").c_str())) {
       (void)document_.Revert(scene.GetAssetDatabase(), statusMessage_);
       NormalizeSelection();
       requests.frameAll = true;
     }
     ImGui::EndDisabled();
     ImGui::Separator();
-    if (ImGui::MenuItem("Exit to Scene")) {
+    if (ImGui::MenuItem(
+            TEXT::Localize("ui.asm.menu.exitToScene").c_str())) {
       RequestDocumentAction(scene, result, requests,
                             PendingDocumentAction::ExitToScene);
     }
     ImGui::EndMenu();
   }
 
-  if (ImGui::BeginMenu("Edit")) {
+  if (ImGui::BeginMenu(
+          TEXT::Localize("ui.asm.menu.edit").c_str())) {
     ImGui::BeginDisabled(!commandRouter.CanExecute(EditorCommandId::Undo));
-    if (ImGui::MenuItem("Undo",
+    if (ImGui::MenuItem(TEXT::Localize("ui.asm.menu.undo").c_str(),
                         EditorCommandRouter::Shortcut(EditorCommandId::Undo))) {
       (void)commandRouter.Execute(EditorCommandId::Undo);
     }
     ImGui::EndDisabled();
     ImGui::BeginDisabled(!commandRouter.CanExecute(EditorCommandId::Redo));
-    if (ImGui::MenuItem("Redo",
+    if (ImGui::MenuItem(TEXT::Localize("ui.asm.menu.redo").c_str(),
                         EditorCommandRouter::Shortcut(EditorCommandId::Redo))) {
       (void)commandRouter.Execute(EditorCommandId::Redo);
     }
     ImGui::EndDisabled();
     ImGui::Separator();
-    if (ImGui::MenuItem("Add State")) {
+    if (ImGui::MenuItem(
+            TEXT::Localize("ui.asm.menu.addState").c_str())) {
       requests.addStateAtCenter = true;
     }
     ImGui::BeginDisabled(document_.Definition().states.size() < 2u);
-    if (ImGui::MenuItem("Add Transition"))
+    if (ImGui::MenuItem(
+            TEXT::Localize("ui.asm.menu.addTransition").c_str()))
       AddTransition();
     ImGui::EndDisabled();
     const bool canDelete = selectionKind_ == SelectionKind::Transition ||
@@ -92,31 +105,43 @@ void AnimationStateMachineWorkspaceController::DrawGraphMenuBar(
                            (selectionKind_ == SelectionKind::State &&
                             document_.Definition().states.size() > 1u);
     ImGui::BeginDisabled(!canDelete);
-    if (ImGui::MenuItem("Delete Selection", "Delete")) {
-      if (selectionKind_ == SelectionKind::State) {
-        DeleteSelectedState();
-      } else if (selectionKind_ == SelectionKind::Parameter) {
-        DeleteSelectedParameter();
-      } else if (selectionKind_ == SelectionKind::Transition) {
-        DeleteSelectedTransition();
+    if (ImGui::MenuItem(
+            TEXT::Localize("ui.asm.menu.deleteSelection").c_str(),
+            "Delete")) {
+      if (operationRegistry_ != nullptr) {
+        const EditorOperationResult operationResult =
+            operationRegistry_->Execute("asm.delete_selected");
+        statusMessage_ = operationResult.message;
       }
     }
     ImGui::EndDisabled();
     ImGui::EndMenu();
   }
 
-  if (ImGui::BeginMenu("View")) {
-    if (ImGui::MenuItem("Frame Selection", "F")) {
+  if (ImGui::BeginMenu(
+          TEXT::Localize("ui.asm.menu.view").c_str())) {
+    if (ImGui::MenuItem(
+            TEXT::Localize("ui.asm.menu.frameSelection").c_str(),
+            "F")) {
       requests.frameSelection = true;
     }
-    if (ImGui::MenuItem("Frame All", "Home")) {
+    if (ImGui::MenuItem(
+            TEXT::Localize("ui.asm.menu.frameAll").c_str(),
+            "Home")) {
       requests.frameAll = true;
     }
-    if (ImGui::MenuItem("Reset View", "1")) {
+    if (ImGui::MenuItem(
+            TEXT::Localize("ui.asm.menu.resetView").c_str(),
+            "1")) {
       requests.resetView = true;
     }
     ImGui::Separator();
-    ImGui::TextDisabled("Zoom: %.0f%%", graphZoom_ * 100.0f);
+    char zoomBuffer[64] = {};
+    std::snprintf(
+        zoomBuffer, sizeof(zoomBuffer),
+        TEXT::Localize("ui.asm.menu.zoom").c_str(),
+        graphZoom_ * 100.0f);
+    ImGui::TextDisabled("%s", zoomBuffer);
     ImGui::EndMenu();
   }
 
@@ -126,7 +151,7 @@ void AnimationStateMachineWorkspaceController::DrawGraphMenuBar(
   ImGui::SameLine(0.0f, 6.0f);
   if (IconButton(EditorGlyph::NewDocument, "AnimationSmNew",
                  EditorButtonTone::Quiet, kQuickActionSize,
-                 "New state machine")) {
+                 TEXT::Localize("ui.asm.menu.newTooltip").c_str())) {
     RequestDocumentAction(scene, result, requests,
                           PendingDocumentAction::NewDocument);
   }
@@ -136,28 +161,31 @@ void AnimationStateMachineWorkspaceController::DrawGraphMenuBar(
   if (IconButton(EditorGlyph::Save, "AnimationSmSave",
                  document_.IsDirty() ? EditorButtonTone::Primary
                                      : EditorButtonTone::Quiet,
-                 kQuickActionSize, "Save state machine (Ctrl+S)")) {
+                 kQuickActionSize,
+                 TEXT::Localize("ui.asm.menu.saveTooltip").c_str())) {
     (void)commandRouter.Execute(EditorCommandId::SaveDocument);
   }
   ImGui::EndDisabled();
   ImGui::SameLine();
   ImGui::BeginDisabled(!commandRouter.CanExecute(EditorCommandId::Undo));
   if (IconButton(EditorGlyph::Undo, "AnimationSmUndo", EditorButtonTone::Quiet,
-                 kQuickActionSize, "Undo (Ctrl+Z)")) {
+                 kQuickActionSize,
+                 TEXT::Localize("ui.asm.menu.undoTooltip").c_str())) {
     (void)commandRouter.Execute(EditorCommandId::Undo);
   }
   ImGui::EndDisabled();
   ImGui::SameLine();
   ImGui::BeginDisabled(!commandRouter.CanExecute(EditorCommandId::Redo));
   if (IconButton(EditorGlyph::Redo, "AnimationSmRedo", EditorButtonTone::Quiet,
-                 kQuickActionSize, "Redo (Ctrl+Y)")) {
+                 kQuickActionSize,
+                 TEXT::Localize("ui.asm.menu.redoTooltip").c_str())) {
     (void)commandRouter.Execute(EditorCommandId::Redo);
   }
   ImGui::EndDisabled();
   ImGui::SameLine();
   if (IconButton(EditorGlyph::Focus, "AnimationSmFrameAll",
                  EditorButtonTone::Quiet, kQuickActionSize,
-                 "Frame all states (Home)")) {
+                 TEXT::Localize("ui.asm.menu.frameAllTooltip").c_str())) {
     requests.frameAll = true;
   }
 

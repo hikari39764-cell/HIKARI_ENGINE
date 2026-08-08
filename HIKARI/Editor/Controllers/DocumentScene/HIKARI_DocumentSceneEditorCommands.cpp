@@ -1,9 +1,12 @@
 #include "Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorController.h"
 
+#include "Core/Text/HIKARI_Localization.h"
 #include <cstdint>
+#include <span>
 #include <utility>
 
 #include "Editor/History/HIKARI_CinematicsHistoryCommand.h"
+#include "Editor/History/HIKARI_SceneObjectsHistoryCommand.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/Lighting/HIKARI_SceneLightingSet.h"
 
@@ -72,11 +75,11 @@ namespace HIKARI {
         if (const std::string* label = documentHistory_.GetRedoLabel()) {
             redoLabel = "Redo " + *label;
         }
-        commandRouter_.Bind(
+        commandRouter_.BindOperation(
             EditorCommandId::SaveDocument,
-            "Save Scene",
+            TEXT::Localize("menu.edit.save"),
             true,
-            [this, &scene]() { SaveSceneDocument(scene); });
+            "scene.save");
         commandRouter_.Bind(
             EditorCommandId::Undo,
             std::move(undoLabel),
@@ -95,34 +98,22 @@ namespace HIKARI {
         if (!workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Scene)) {
             return;
         }
-        commandRouter_.Bind(
+        commandRouter_.BindOperation(
             EditorCommandId::DuplicateSelection,
-            "Duplicate Selection",
+            TEXT::Localize("ui.command.duplicateSelection"),
             sceneObjectCommands_.CanExecute(
                 EDITOR::SceneObjectCommandId::Duplicate,
                 scene,
                 context_),
-            [this, &scene]() {
-                (void)sceneObjectCommands_.Execute(
-                    EDITOR::SceneObjectCommandId::Duplicate,
-                    scene,
-                    context_,
-                    selectionSync_);
-            });
-        commandRouter_.Bind(
+            "scene.duplicate_object");
+        commandRouter_.BindOperation(
             EditorCommandId::DeleteSelection,
-            "Delete Selection",
+            TEXT::Localize("ui.command.deleteSelection"),
             sceneObjectCommands_.CanExecute(
                 EDITOR::SceneObjectCommandId::Delete,
                 scene,
                 context_),
-            [this, &scene]() {
-                (void)sceneObjectCommands_.Execute(
-                    EDITOR::SceneObjectCommandId::Delete,
-                    scene,
-                    context_,
-                    selectionSync_);
-            });
+            "scene.delete_object");
         commandRouter_.Bind(
             EditorCommandId::FocusSelection,
             "Focus Selection",
@@ -134,7 +125,7 @@ namespace HIKARI {
             });
     }
 
-    void DocumentSceneEditorController::SaveSceneDocument(
+    bool DocumentSceneEditorController::SaveSceneDocument(
         DocumentSceneBase& scene) {
 
         scene.GetSceneDocument().environment = scene.GetSceneEnvironment();
@@ -144,9 +135,11 @@ namespace HIKARI {
             context_.sceneDirty = false;
             scene.SetUnsavedSceneChanges(false);
             viewportDropMessage_ = "Scene saved";
+            return true;
         } else {
             viewportDropMessage_ =
                 "Save failed; save the scene as an asset first";
+            return false;
         }
     }
 
@@ -243,6 +236,47 @@ namespace HIKARI {
         context_.sceneDirty = true;
         scene.SetUnsavedSceneChanges(true);
         ApplyDocumentImpact(scene, immediateImpact);
+    }
+
+    void DocumentSceneEditorController::CommitSceneObjectAuthoringHistory(
+        DocumentSceneBase& scene,
+        SceneObjectAuthoringHistoryRequest history) {
+
+        EDITOR::EditorDocumentImpact impact =
+            history.runtimeWorldAffected
+                ? EDITOR::EditorDocumentImpact::RuntimeWorld
+                : EDITOR::EditorDocumentImpact::None;
+        const auto beforeLighting =
+            LIGHTING_AUTHORING::BuildSceneLightingSet(
+                std::span<const SceneObjectData>(
+                    history.beforeObjects));
+        const auto afterLighting =
+            LIGHTING_AUTHORING::BuildSceneLightingSet(
+                std::span<const SceneObjectData>(
+                    history.afterObjects));
+        const bool lightingChanged =
+            !LIGHTING_AUTHORING::AreSceneLightingSetsEquivalent(
+                beforeLighting,
+                afterLighting);
+        if (lightingChanged) {
+            impact = impact |
+                EDITOR::EditorDocumentImpact::Lighting;
+        }
+        CommitAppliedDocumentCommand(
+            scene,
+            EDITOR::MakeSceneObjectsHistoryCommand(
+                std::move(history.label),
+                std::move(history.beforeObjects),
+                std::move(history.afterObjects),
+                std::move(history.beforeCamera),
+                std::move(history.afterCamera),
+                impact),
+            0,
+            history.dirtyBefore &&
+                !documentHistory_.IsDirty(),
+            lightingChanged
+                ? EDITOR::EditorDocumentImpact::Lighting
+                : EDITOR::EditorDocumentImpact::None);
     }
 
     void DocumentSceneEditorController::RecordCinematicsHistory(

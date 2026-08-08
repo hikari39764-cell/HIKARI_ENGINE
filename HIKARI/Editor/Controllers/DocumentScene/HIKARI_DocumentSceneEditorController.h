@@ -40,6 +40,7 @@
 #include "Editor/HIKARI_StatsPanel.h"
 #include "Editor/Controllers/DocumentScene/HIKARI_DocumentToolbarController.h"
 #include "Editor/HIKARI_TimePanel.h"
+#include "Editor/Authoring/HIKARI_SceneObjectAuthoringTypes.h"
 #include "Assets/HIKARI_AssetGuid.h"
 
 namespace HIKARI {
@@ -48,14 +49,6 @@ namespace HIKARI {
     namespace EDITOR {
         class EditorPlaySession;
     }
-
-    struct AiSceneUndoRecord {
-        enum class Kind : uint8_t { Created, Transform, MaterialEdit };
-        Kind kind = Kind::Created;
-        std::string name;
-        MATH::Vec3 position{};
-        MATH::Vec3 scale{ 1.0f, 1.0f, 1.0f };
-    };
 
     class DocumentSceneEditorController {
     public:
@@ -94,7 +87,6 @@ namespace HIKARI {
         EDITOR::EditorWorkspaceHost workspaceHost_{};
         EDITOR::EditorOperationRegistry operationRegistry_{};
         DocumentSceneBase* aiOperationScene_ = nullptr;
-        std::vector<AiSceneUndoRecord> aiUndoStack_{};
         EDITOR::CinematicsWorkspaceController cinematicsWorkspaceController_{};
         EDITOR::ModelCollisionWorkspaceController modelCollisionWorkspaceController_{};
         EDITOR::ModelMaterialWorkspaceController modelMaterialWorkspaceController_{};
@@ -144,13 +136,33 @@ namespace HIKARI {
             const nlohmann::json& parameters);
         EDITOR::EditorOperationResult ExecuteAiAssetImportStatus();
         EDITOR::EditorOperationResult ExecuteAiUndoLast();
+        EDITOR::EditorOperationResult ExecuteAiSceneCreateObject(
+            const nlohmann::json& parameters);
+        EDITOR::EditorOperationResult ExecuteAiProceduralCreatePrimitive(
+            const nlohmann::json& parameters);
+        EDITOR::EditorOperationResult ExecuteAiMaterialEditParameter(
+            const nlohmann::json& parameters);
+        EDITOR::EditorOperationResult ExecuteAiMaterialGraphEdit(
+            const nlohmann::json& parameters);
+        EDITOR::EditorOperationResult ExecuteAiMaterialVerify(
+            const nlohmann::json& parameters);
+        EDITOR::EditorOperationResult ExecuteSceneSave();
+        EDITOR::EditorOperationResult ExecuteSceneDeleteObject(
+            const nlohmann::json& parameters);
+        EDITOR::EditorOperationResult ExecuteSceneDuplicateObject(
+            const nlohmann::json& parameters);
+        EDITOR::EditorOperationResult ExecuteSceneCreateEmptyObject(
+            const nlohmann::json& parameters);
         bool OpenSceneAssetFromEditor(DocumentSceneBase& scene, const AssetGuid& sceneGuid);
         void SyncDocumentHistory(DocumentSceneBase& scene);
         void ConfigureEditorCommands(DocumentSceneBase& scene);
-        void SaveSceneDocument(DocumentSceneBase& scene);
+        bool SaveSceneDocument(DocumentSceneBase& scene);
         void ExecuteSceneDocumentHistory(
             DocumentSceneBase& scene,
             bool redo);
+        void CommitSceneObjectAuthoringHistory(
+            DocumentSceneBase& scene,
+            SceneObjectAuthoringHistoryRequest history);
         void ApplyHistoryResult(
             DocumentSceneBase& scene,
             const EDITOR::EditorHistoryResult& result,

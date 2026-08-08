@@ -10,6 +10,7 @@
 #include "Assets/Material/Authoring/HIKARI_MaterialAssetAuthoringService.h"
 #include "Assets/Material/Authoring/HIKARI_MaterialTemplateFactory.h"
 #include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingAsset.h"
+#include "Core/Text/HIKARI_Localization.h"
 #include "Render3D/Core/HIKARI_BoundsUtils.h"
 #include "Render3D/Views/HIKARI_EditorInteractiveViewRenderer.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
@@ -64,36 +65,49 @@ void ModelMaterialWorkspaceController::ApplyWorkspaceActivation(
   }
 }
 
+bool ModelMaterialWorkspaceController::SaveMaterialDocument(
+    DocumentSceneBase &scene, std::string &outMessage) {
+  if (authoringDocument_.IsMaterialDirty() &&
+      !SaveMaterial(scene, false, outMessage)) {
+    return false;
+  }
+  if (authoringDocument_.IsBindingDirty()) {
+    return SaveBindings(scene, false, outMessage);
+  }
+  if (!authoringDocument_.IsMaterialDirty()) {
+    outMessage = "material workspace is already saved";
+    return true;
+  }
+  return true;
+}
+
+void ModelMaterialWorkspaceController::FramePreviewCamera() noexcept {
+  FitPreviewCamera();
+}
+
 void ModelMaterialWorkspaceController::BindWorkspaceCommands(
     EditorCommandRouter &commandRouter, DocumentSceneBase &scene) {
-  commandRouter.Bind(EditorCommandId::FocusSelection, "Frame Material Model",
-                     IsPreviewReady(), [this]() { FitPreviewCamera(); });
-  std::string undoLabel = "Undo Material Edit";
-  if (const std::string *label = authoringDocument_.GetUndoLabel()) {
-    undoLabel = "Undo " + *label;
-  }
-  std::string redoLabel = "Redo Material Edit";
-  if (const std::string *label = authoringDocument_.GetRedoLabel()) {
-    redoLabel = "Redo " + *label;
-  }
-  commandRouter.Bind(EditorCommandId::Undo, std::move(undoLabel), CanUndo(),
-                     [this, &scene]() { (void)Undo(scene, statusMessage_); });
-  commandRouter.Bind(EditorCommandId::Redo, std::move(redoLabel), CanRedo(),
-                     [this, &scene]() { (void)Redo(scene, statusMessage_); });
-  commandRouter.Bind(
-      EditorCommandId::SaveDocument, "Save Model Materials",
+  (void)scene;
+  commandRouter.BindOperation(
+      EditorCommandId::SaveDocument,
+      TEXT::Localize("ui.material.save"),
       authoringDocument_.HasBindings() || authoringDocument_.HasMaterial(),
-      [this, &scene]() {
-        if (authoringDocument_.IsMaterialDirty() &&
-            !SaveMaterial(scene, false, statusMessage_)) {
-          return;
-        }
-        if (authoringDocument_.IsBindingDirty()) {
-          (void)SaveBindings(scene, false, statusMessage_);
-        } else if (!authoringDocument_.IsMaterialDirty()) {
-          statusMessage_ = "material workspace is already saved";
-        }
-      });
+      "material.save");
+  commandRouter.BindOperation(
+      EditorCommandId::Undo,
+      TEXT::Localize("ui.material.undo"),
+      CanUndo(),
+      "material.undo");
+  commandRouter.BindOperation(
+      EditorCommandId::Redo,
+      TEXT::Localize("ui.material.redo"),
+      CanRedo(),
+      "material.redo");
+  commandRouter.BindOperation(
+      EditorCommandId::FocusSelection,
+      TEXT::Localize("ui.material.framePreview"),
+      IsPreviewReady(),
+      "material.frame_preview");
 }
 
 bool ModelMaterialWorkspaceController::CanUndo() const noexcept {
@@ -140,6 +154,11 @@ bool ModelMaterialWorkspaceController::Redo(DocumentSceneBase &scene,
 
 bool ModelMaterialWorkspaceController::IsEditingModel() const noexcept {
   return modelGuid_.IsValid() && previewScene_.IsReady();
+}
+
+bool ModelMaterialWorkspaceController::HasPendingTransition()
+    const noexcept {
+  return pendingTransition_.kind != PendingTransitionKind::None;
 }
 
 const AssetGuid &ModelMaterialWorkspaceController::GetModelGuid() const noexcept {

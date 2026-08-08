@@ -40,6 +40,7 @@ namespace HIKARI::EDITOR {
 
 class EditorWorkspaceHost;
 class AiAssistantPanel;
+class EditorOperationRegistry;
 
 enum class ModelMaterialBindingSource : uint8_t {
   ImportedFallback,
@@ -124,6 +125,29 @@ struct AiMaterialGraphEditRequest {
   std::string stringValue{};
 };
 
+// Unified node creation request shared by the human palette, AI actions and
+// the operation registry. FunctionCall nodes require a real function asset
+// GUID, which only the human Material Functions menu can supply.
+struct MaterialGraphNodeCreateRequest {
+  std::string nodeType{};
+  std::string displayName{};
+  MATH::Vec2 position{};
+  bool manualPosition = false;
+  std::string valueType{};
+  bool valueSet = false;
+  float valueX = 0.0f;
+  float valueY = 0.0f;
+  float valueZ = 0.0f;
+  float valueW = 0.0f;
+  std::string parameterIdHint{};
+  std::string parameterIdPrefix{};
+  std::string parameterDisplayName{};
+  AssetGuid functionAssetGuid{};
+  std::vector<MaterialGraphParameterData> functionInputs{};
+  std::vector<MaterialGraphParameterData> functionOutputs{};
+  bool allowFunctionCall = false;
+};
+
 struct ModelMaterialWorkspaceResult {
   bool exitToSceneRequested = false;
   std::string statusMessage{};
@@ -136,6 +160,8 @@ public:
                                 EditorWorkspaceHost &workspaceHost);
   void SetAiAssistantPanel(
       AiAssistantPanel *panel, bool *openFlag);
+  void SetOperationRegistry(
+      const EditorOperationRegistry *registry) noexcept;
 
   void DrawDockSpace(bool resetDefaultDockLayout) const;
   ModelMaterialWorkspaceResult Draw(DocumentSceneBase &scene,
@@ -148,6 +174,8 @@ public:
   bool CanRedo() const noexcept;
   bool Undo(DocumentSceneBase &scene, std::string &outMessage);
   bool Redo(DocumentSceneBase &scene, std::string &outMessage);
+  bool SaveMaterialDocument(
+      DocumentSceneBase &scene, std::string &outMessage);
   bool ApplyAiMaterialParameterEdit(
       DocumentSceneBase &scene,
       const std::string &parameterId,
@@ -160,6 +188,30 @@ public:
       std::string &outMessage,
       std::vector<std::string> &outDetails,
       std::string &outCode);
+  bool AddMaterialGraphNode(
+      DocumentSceneBase &scene,
+      const MaterialGraphNodeCreateRequest &request,
+      std::string &outMessage,
+      std::vector<std::string> &outDetails,
+      std::string &outCode);
+  bool DuplicateSelectedGraphNodes(
+      DocumentSceneBase &scene, std::string &outMessage);
+  bool DeleteSelectedGraphNodes(
+      DocumentSceneBase &scene, std::string &outMessage);
+  bool DeleteSelectedGraphEdge(
+      DocumentSceneBase &scene, std::string &outMessage);
+  bool CreateGraphGroupFromSelection(
+      DocumentSceneBase &scene, std::string &outMessage);
+  bool UngroupSelectedGraphNodes(
+      DocumentSceneBase &scene, std::string &outMessage);
+  bool ArrangeSelectedGraphNodes(
+      DocumentSceneBase &scene, std::string &outMessage);
+  void FrameMaterialGraph(
+      bool selection, const MATH::Vec2 &viewportSize) noexcept;
+  void FramePreviewCamera() noexcept;
+  void SetSelectedGraphNodesCollapsed(bool collapsed) noexcept;
+  void SetAllGraphNodesCollapsed(bool collapsed) noexcept;
+  bool HasMaterialDocument() const noexcept;
   bool IsGraphNodeSelected(const std::string &id) const;
   void SetGraphNodeSelection(const std::string &id, bool additive);
   void ClearGraphNodeSelection();
@@ -204,6 +256,11 @@ public:
       const AssetRegistry &assetRegistry);
 
   bool IsEditingModel() const noexcept;
+  bool HasPendingTransition() const noexcept;
+  bool OpenModel(DocumentSceneBase &scene, const AssetGuid &guid,
+                 std::string &outMessage);
+  bool OpenMaterialAsset(DocumentSceneBase &scene, const AssetGuid &guid,
+                         std::string &outMessage);
   const AssetGuid &GetModelGuid() const noexcept;
   const std::vector<ModelMaterialSlotView> &GetSlotViews() const noexcept;
   const ModelMaterialSlotView *GetSelectedSlot() const noexcept;
@@ -286,8 +343,6 @@ private:
     bool instance = false;
   };
 
-  bool OpenModel(DocumentSceneBase &scene, const AssetGuid &guid,
-                 std::string &outMessage);
   void RefreshAuthoringIdCounter();
   bool SwitchAuthoringMode(DocumentSceneBase &scene, AuthoringMode mode,
                            std::string &outMessage);
@@ -333,8 +388,6 @@ private:
   void FlushPendingMaterialPreview(DocumentSceneBase &scene);
   void RebuildAllBindingPreviews(const AssetDatabase &assetDatabase,
                                  const AssetRegistry &assetRegistry);
-  bool OpenMaterialAsset(DocumentSceneBase &scene, const AssetGuid &guid,
-                         std::string &outMessage);
   bool LoadOrCreateBindings(DocumentSceneBase &scene,
                             std::string &outMessage);
   bool OpenMaterialSet(DocumentSceneBase &scene, const AssetGuid &guid,
@@ -556,6 +609,7 @@ private:
   std::string materialPreviewExpressionStatus_{};
   AiAssistantPanel *aiAssistantPanel_ = nullptr;
   bool *aiAssistantOpenFlag_ = nullptr;
+  const EditorOperationRegistry *operationRegistry_ = nullptr;
   PendingTransition pendingTransition_{};
   bool pendingTransitionPopupRequested_ = false;
   bool executingPendingTransition_ = false;

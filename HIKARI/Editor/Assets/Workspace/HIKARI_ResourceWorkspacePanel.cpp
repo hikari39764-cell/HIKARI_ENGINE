@@ -231,14 +231,16 @@ void ResourceWorkspacePanel::Draw(
   } else if (importMonitor_.hasResult &&
              ImGui::GetTime() <= importMonitor_.visibleUntilSeconds) {
     const bool failed = importMonitor_.failed > 0;
-    const char *statusLabel =
+    const std::string statusLabel =
         failed
-            ? TEXT::Localize("ui.resource.importFailed").c_str()
+            ? TEXT::Localize("ui.resource.importFailed")
             : (importMonitor_.attempted > 0
-                ? TEXT::Localize("ui.resource.importComplete").c_str()
-                : TEXT::Localize("ui.resource.upToDate").c_str());
-    EDITOR::StatusBadge(statusLabel, failed ? EDITOR::EditorStatusTone::Error
-                                            : EDITOR::EditorStatusTone::Ready);
+                ? TEXT::Localize("ui.resource.importComplete")
+                : TEXT::Localize("ui.resource.upToDate"));
+    EDITOR::StatusBadge(
+        statusLabel.c_str(),
+        failed ? EDITOR::EditorStatusTone::Error
+               : EDITOR::EditorStatusTone::Ready);
     ImGui::SameLine();
     ImGui::TextDisabled(
         TEXT::Localize("ui.resource.importSummaryFormat").c_str(),

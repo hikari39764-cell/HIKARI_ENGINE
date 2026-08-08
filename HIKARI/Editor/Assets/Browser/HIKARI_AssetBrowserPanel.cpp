@@ -225,40 +225,49 @@ void AssetBrowserPanel::DrawContents(AssetDatabase &assetDatabase,
         searchBuffer_.size(),
         (std::max)(220.0f, ImGui::GetContentRegionAvail().x * 0.42f));
     ImGui::SameLine();
-    const char *TypeFilterItems[] = {
-        TEXT::Localize("ui.assetBrowser.filterAll").c_str(),
-        TEXT::Localize("ui.assetBrowser.filterTexture").c_str(),
-        TEXT::Localize("ui.assetBrowser.filterModel").c_str(),
-        TEXT::Localize("ui.assetBrowser.filterScene").c_str(),
-        TEXT::Localize("ui.assetBrowser.filterSky").c_str(),
-        TEXT::Localize("ui.assetBrowser.filterMaterial").c_str(),
-        TEXT::Localize("ui.assetBrowser.filterVfx").c_str(),
-        TEXT::Localize("ui.assetBrowser.filterSequence").c_str(),
-        TEXT::Localize(
-            "ui.assetBrowser.filterAnimationStateMachine").c_str(),
-        TEXT::Localize("ui.assetBrowser.filterMaterialSet").c_str(),
+    const std::array<std::string, 10> TypeFilterItems{
+        TEXT::Localize("ui.assetBrowser.filterAll"),
+        TEXT::Localize("ui.assetBrowser.filterTexture"),
+        TEXT::Localize("ui.assetBrowser.filterModel"),
+        TEXT::Localize("ui.assetBrowser.filterScene"),
+        TEXT::Localize("ui.assetBrowser.filterSky"),
+        TEXT::Localize("ui.assetBrowser.filterMaterial"),
+        TEXT::Localize("ui.assetBrowser.filterVfx"),
+        TEXT::Localize("ui.assetBrowser.filterSequence"),
+        TEXT::Localize("ui.assetBrowser.filterAnimationStateMachine"),
+        TEXT::Localize("ui.assetBrowser.filterMaterialSet"),
+    };
+    const char *TypeFilterItemPtrs[10]{};
+    for (size_t index = 0; index < TypeFilterItems.size(); ++index) {
+        TypeFilterItemPtrs[index] = TypeFilterItems[index].c_str();
     };
     ImGui::TextUnformatted(
         TEXT::Localize("ui.assetBrowser.type").c_str());
     ImGui::SameLine();
     ImGui::SetNextItemWidth(120.0f);
-    ImGui::Combo("##AssetTypeFilter", &typeFilter_, TypeFilterItems,
-                 IM_ARRAYSIZE(TypeFilterItems));
+    ImGui::Combo(
+        "##AssetTypeFilter", &typeFilter_, TypeFilterItemPtrs,
+        static_cast<int>(TypeFilterItems.size()));
     ImGui::SameLine();
-    const char *StateFilterItems[] = {
-        TEXT::Localize("ui.assetBrowser.filterAll").c_str(),
-        TEXT::Localize("ui.assetBrowser.stateImported").c_str(),
-        TEXT::Localize("ui.assetBrowser.stateOutdated").c_str(),
-        TEXT::Localize("ui.assetBrowser.stateMissing").c_str(),
-        TEXT::Localize("ui.assetBrowser.stateError").c_str(),
-        TEXT::Localize("ui.assetBrowser.stateMetaOnly").c_str(),
+    const std::array<std::string, 6> StateFilterItems{
+        TEXT::Localize("ui.assetBrowser.filterAll"),
+        TEXT::Localize("ui.assetBrowser.stateImported"),
+        TEXT::Localize("ui.assetBrowser.stateOutdated"),
+        TEXT::Localize("ui.assetBrowser.stateMissing"),
+        TEXT::Localize("ui.assetBrowser.stateError"),
+        TEXT::Localize("ui.assetBrowser.stateMetaOnly"),
+    };
+    const char *StateFilterItemPtrs[6]{};
+    for (size_t index = 0; index < StateFilterItems.size(); ++index) {
+        StateFilterItemPtrs[index] = StateFilterItems[index].c_str();
     };
     ImGui::TextUnformatted(
         TEXT::Localize("ui.assetBrowser.state").c_str());
     ImGui::SameLine();
     ImGui::SetNextItemWidth(130.0f);
-    ImGui::Combo("##AssetStateFilter", &stateFilter_, StateFilterItems,
-                 IM_ARRAYSIZE(StateFilterItems));
+    ImGui::Combo(
+        "##AssetStateFilter", &stateFilter_, StateFilterItemPtrs,
+        static_cast<int>(StateFilterItems.size()));
   }
   ImGui::PopStyleVar();
 

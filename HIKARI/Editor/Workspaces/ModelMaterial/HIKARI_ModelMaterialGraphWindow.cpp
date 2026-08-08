@@ -73,33 +73,10 @@ void ModelMaterialWorkspaceController::DrawGraphWindow(DocumentSceneBase &scene)
   if (canvasHovered && ImGui::IsMouseDragging(ImGuiMouseButton_Middle)) {
     NodeGraphCanvas::Pan(graphCanvas_, {io.MouseDelta.x, io.MouseDelta.y});
   }
-  if (requestFrameAll && !graph->nodes.empty()) {
-    float minX = graph->nodes.front().position.x;
-    float minY = graph->nodes.front().position.y;
-    float maxX = minX + kNodeWidth;
-    float maxY = minY + 120.0f;
-    for (const MaterialGraphNodeData &node : graph->nodes) {
-      const float nodeHeight = NodeLogicalHeight(
-          *graph, node, collapsedGraphNodeIds_.contains(node.id));
-      minX = (std::min)(minX, node.position.x);
-      minY = (std::min)(minY, node.position.y);
-      maxX = (std::max)(maxX, node.position.x + kNodeWidth);
-      maxY = (std::max)(maxY, node.position.y + nodeHeight);
-    }
-    NodeGraphCanvas::FrameBounds(graphCanvas_, {size.x, size.y},
-        {minX, minY}, {maxX, maxY},
-        80.0f, kCanvasMinimumZoom, kCanvasMaximumZoom);
+  if (requestFrameAll) {
+    FrameMaterialGraph(false, {size.x, size.y});
   } else if (requestFocusSelection) {
-    if (const MaterialGraphNodeData *node =
-            FindNode(*graph, selectedGraphNodeId_)) {
-      graphCanvas_.zoom = (std::max)(graphCanvas_.zoom, 1.0f);
-      graphCanvas_.pan.x = size.x * 0.5f -
-          (node->position.x + kNodeWidth * 0.5f) * graphCanvas_.zoom;
-      graphCanvas_.pan.y = size.y * 0.5f -
-          (node->position.y + NodeLogicalHeight(
-              *graph, *node, collapsedGraphNodeIds_.contains(node->id)) *
-                                  0.5f) * graphCanvas_.zoom;
-    }
+    FrameMaterialGraph(true, {size.x, size.y});
   }
   struct NodeLayout {
     ImVec2 position{};

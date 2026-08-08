@@ -1,5 +1,6 @@
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
 
+#include "Core/Text/HIKARI_Localization.h"
 #include <span>
 #include <string>
 #include <vector>
@@ -27,20 +28,29 @@ namespace HIKARI {
             materialSetSelectionAuthored_;
         const uint32_t oldPostGroupMask = postGroupMask_;
 
-        builder.Bool("Visible", visible_);
-        builder.Bool("Cast Shadow", castShadow_);
-        builder.Bool("Receive Shadow", receiveShadow_);
-        builder.Bool("Render Static", renderStatic_);
         builder.Bool(
-            "Include In Lighting Bake",
+            TEXT::Localize("ui.inspector.model.visible"),
+            visible_);
+        builder.Bool(
+            TEXT::Localize("ui.inspector.model.castShadow"),
+            castShadow_);
+        builder.Bool(
+            TEXT::Localize("ui.inspector.model.receiveShadow"),
+            receiveShadow_);
+        builder.Bool(
+            TEXT::Localize("ui.inspector.model.renderStatic"),
+            renderStatic_);
+        builder.Bool(
+            TEXT::Localize(
+                "ui.inspector.model.includeInLightingBake"),
             includeInLightingBake_);
         if (renderStatic_ && includeInLightingBake_) {
             builder.Text(
-                "Surface GI: UV1 must be unique and inside 0-1. "
-                "If invalid, Probe / Sky fallback remains active.");
+                TEXT::Localize(
+                    "ui.inspector.model.surfaceGiHint"));
         }
         const bool modelAssetChanged = builder.AssetIdPicker(
-            "Model Asset",
+            TEXT::Localize("ui.inspector.model.modelAsset"),
             AssetType::Model,
             assetId_);
         if (modelAssetChanged) {
@@ -80,7 +90,8 @@ namespace HIKARI {
                     static_cast<uint32_t>(materialIndex),
                     imported.slotId,
                     imported.name.empty()
-                        ? "Unnamed"
+                        ? TEXT::Localize(
+                            "ui.inspector.model.unnamed")
                         : imported.name,
                     imported.baseColorTexture.textureIndex >= 0
                 });
@@ -92,13 +103,16 @@ namespace HIKARI {
             std::vector<std::string> materialSetLabels{};
             std::vector<const char*> materialSetChoices{};
             materialSetLabels.reserve(materialSets.size() + 3u);
-            materialSetLabels.push_back("Imported Model Materials");
+            materialSetLabels.push_back(
+                TEXT::Localize(
+                    "ui.inspector.model.importedModelMaterials"));
             int selectedSetIndex = 0;
             const bool legacySelection =
                 !materialSetSelectionAuthored_;
             if (legacySelection) {
                 materialSetLabels.push_back(
-                    "Legacy Model Default (migration)");
+                    TEXT::Localize(
+                        "ui.inspector.model.legacyModelDefault"));
                 selectedSetIndex = 1;
             }
             const size_t materialSetChoiceOffset =
@@ -108,7 +122,8 @@ namespace HIKARI {
                     materialSets[index];
                 materialSetLabels.push_back(
                     materialSet.name.empty()
-                        ? "Unnamed Material Set"
+                        ? TEXT::Localize(
+                            "ui.inspector.model.unnamedMaterialSet")
                         : materialSet.name);
                 if (materialSet.assetGuid == materialSetAssetGuid_) {
                     selectedSetIndex = static_cast<int>(
@@ -117,7 +132,8 @@ namespace HIKARI {
             }
             if (materialSetAssetGuid_.IsValid() && selectedSetIndex == 0) {
                 materialSetLabels.push_back(
-                    "Missing or Incompatible Material Set");
+                    TEXT::Localize(
+                        "ui.inspector.model.missingMaterialSet"));
                 selectedSetIndex =
                     static_cast<int>(materialSetLabels.size() - 1u);
             }
@@ -126,7 +142,8 @@ namespace HIKARI {
                 materialSetChoices.push_back(label.c_str());
             }
             if (builder.Choice(
-                    "Material Set",
+                    TEXT::Localize(
+                        "ui.inspector.model.materialSet"),
                     selectedSetIndex,
                     materialSetChoices)) {
                 if (selectedSetIndex == 0) {
@@ -152,9 +169,13 @@ namespace HIKARI {
         }
 
         if (!materialSlots.empty() &&
-            builder.Section("Advanced Slot Overrides", false)) {
+            builder.Section(
+                TEXT::Localize(
+                    "ui.inspector.model.advancedSlotOverrides"),
+                false)) {
             builder.Text(
-                "These per-slot overrides apply after the whole Material Set.");
+                TEXT::Localize(
+                    "ui.inspector.model.slotOverridesHint"));
             for (const ModelMaterialSlotAuthoringView& imported :
                 materialSlots) {
 
@@ -177,13 +198,18 @@ namespace HIKARI {
                 }
 
                 builder.Text(
-                    "Material [" + std::to_string(slotIndex) + "] " +
+                    TEXT::Localize("ui.inspector.model.material") +
+                    " [" + std::to_string(slotIndex) + "] " +
                     imported.name);
                 builder.Text(imported.hasBaseColorTexture
-                    ? "Imported default: Base Color texture"
-                    : "Imported default: Base Color factor");
+                    ? TEXT::Localize(
+                        "ui.inspector.model.importedDefaultBaseColorTexture")
+                    : TEXT::Localize(
+                        "ui.inspector.model.importedDefaultBaseColorFactor"));
                 const std::string pickerLabel =
-                    "Override Material##ModelMaterialSlot" +
+                    TEXT::Localize(
+                        "ui.inspector.model.overrideMaterial") +
+                    "##ModelMaterialSlot" +
                     std::to_string(slotIndex);
                 if (!builder.AssetIdPicker(
                         pickerLabel,
@@ -191,7 +217,9 @@ namespace HIKARI {
                         materialOverrideGuid)) {
                     if (!materialOverrideGuid.empty() &&
                         builder.Button(
-                            "Restore Imported##ModelMaterialSlot" +
+                            TEXT::Localize(
+                                "ui.inspector.model.restoreImported") +
+                            "##ModelMaterialSlot" +
                             std::to_string(slotIndex))) {
                         ClearMaterialOverride(slotIndex);
                     }
@@ -208,12 +236,16 @@ namespace HIKARI {
             }
         } else if (materialSlots.empty()) {
             builder.Text(slotDiagnostic.empty()
-                ? "Select an imported model to inspect and bind its material slots."
+                ? TEXT::Localize(
+                    "ui.inspector.model.selectImportedHint")
                 : slotDiagnostic);
         }
 
         int postMask = static_cast<int>(postGroupMask_);
-        if (builder.Int("Post Group Mask", postMask)) {
+        if (builder.Int(
+                TEXT::Localize(
+                    "ui.inspector.model.postGroupMask"),
+                postMask)) {
             postGroupMask_ =
                 static_cast<uint32_t>(postMask < 0 ? 0 : postMask);
         }

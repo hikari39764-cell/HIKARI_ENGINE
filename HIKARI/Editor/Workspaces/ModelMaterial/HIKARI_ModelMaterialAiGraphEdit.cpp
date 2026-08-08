@@ -9,12 +9,9 @@
 #include <utility>
 #include <vector>
 
-#include "Assets/Material/Authoring/HIKARI_MaterialSemanticNodeFactory.h"
 #include "Assets/Material/Graph/HIKARI_MaterialGraphValidation.h"
-#include "Assets/Material/Graph/HIKARI_MaterialNodeDefinition.h"
 #include "Core/Text/HIKARI_AsciiId.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialGraphUi.h"
-#include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialNodeQuery.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
 namespace HIKARI::EDITOR {
@@ -23,22 +20,6 @@ namespace {
 
 bool AsciiEqualFold(std::string_view lhs, std::string_view rhs) {
     return TEXT::AsciiEqualFold(lhs, rhs);
-}
-
-std::string JoinPins(
-    const std::vector<std::string_view>& pins,
-    std::string_view fallback) {
-    if (pins.empty()) {
-        return std::string(fallback);
-    }
-    std::string result;
-    for (const std::string_view pin : pins) {
-        if (!result.empty()) {
-            result += ", ";
-        }
-        result += pin;
-    }
-    return result;
 }
 
 std::optional<std::string> ResolveOutputPin(
@@ -81,37 +62,6 @@ std::optional<std::string> ResolveInputPin(
     return std::nullopt;
 }
 
-std::optional<MaterialValueType> ParseMaterialValueType(
-    const std::string& input) {
-    std::string normalized = input;
-    for (char& c : normalized) {
-        if (c >= 'A' && c <= 'Z') {
-            c = static_cast<char>(c - 'A' + 'a');
-        }
-    }
-    if (normalized == "float1" || normalized == "f1" ||
-        normalized == "scalar" || normalized == "1") {
-        return MaterialValueType::Float1;
-    }
-    if (normalized == "float2" || normalized == "f2" ||
-        normalized == "vector2" || normalized == "vec2" ||
-        normalized == "2") {
-        return MaterialValueType::Float2;
-    }
-    if (normalized == "float3" || normalized == "f3" ||
-        normalized == "vector3" || normalized == "vec3" ||
-        normalized == "3") {
-        return MaterialValueType::Float3;
-    }
-    if (normalized == "float4" || normalized == "f4" ||
-        normalized == "vector4" || normalized == "vec4" ||
-        normalized == "color" || normalized == "rgba" ||
-        normalized == "4") {
-        return MaterialValueType::Float4;
-    }
-    return std::nullopt;
-}
-
 void ApplyRequestedValueComponents(
     MaterialValueData& value,
     const AiMaterialGraphEditRequest& request) noexcept {
@@ -121,34 +71,6 @@ void ApplyRequestedValueComponents(
     value.numeric = {
         request.valueX, request.valueY,
         request.valueZ, request.valueW };
-}
-
-size_t NodeCategoryColumn(MaterialNodeKind kind) {
-  const MaterialNodeDefinition *definition =
-      FindMaterialNodeDefinition(kind);
-  if (definition == nullptr) {
-    return 2u;
-  }
-  switch (definition->semanticClass) {
-  case MaterialNodeSemanticClass::Input:
-    return 0u;
-  case MaterialNodeSemanticClass::Math:
-    return 1u;
-  case MaterialNodeSemanticClass::Shading:
-    return 2u;
-  case MaterialNodeSemanticClass::Surface:
-    return 3u;
-  case MaterialNodeSemanticClass::Function:
-    return 2u;
-  }
-  return 2u;
-}
-
-size_t NodeCategoryColumn(const MaterialNodeTypeId& typeId) {
-  MaterialNodeKind kind{};
-  return TryGetLegacyMaterialNodeKind(typeId, kind)
-      ? NodeCategoryColumn(kind)
-      : 2u;
 }
 
 } // namespace
@@ -191,173 +113,20 @@ bool ModelMaterialWorkspaceController::ApplyAiMaterialGraphEdit(
   };
 
   if (request.operation == "add_node") {
-    const std::optional<MaterialNodeKind> resolvedKind =
-        ResolveMaterialNodeKind(request.nodeType);
-    if (!resolvedKind.has_value()) {
-      outMessage = "未知节点类型：" + request.nodeType +
-          "；可用类型（部分）：";
-      size_t listed = 0u;
-      for (const MaterialNodeDefinition &definition :
-           GetMaterialNodeDefinitions()) {
-        if (listed >= 24u) {
-          break;
-        }
-        if (listed > 0u) {
-          outMessage += " / ";
-        }
-        outMessage += definition.stableName;
-        ++listed;
-      }
-      outMessage +=
-          "；成品节点例如 node.additive / node.skinLighting";
-      outCode = "UNKNOWN_NODE_TYPE";
-      return false;
-    }
-    const MaterialNodeKind kind = *resolvedKind;
-    if (kind == MaterialNodeKind::FunctionCall) {
-      outMessage =
-          "Material Function 节点必须绑定函数资产 GUID，"
-          "AI 暂不能创建；请在编辑器的 Material Functions 菜单添加，"
-          "或移除现有未绑定的 FunctionCall 节点。";
-      outCode = "FUNCTION_CALL_UNSUPPORTED";
-      return false;
-    }
-    const MaterialNodeDefinition *definition =
-        FindMaterialNodeDefinition(kind);
-    if (definition == nullptr) {
-      outMessage = "节点类型未注册：" + request.nodeType;
-      outCode = "NODE_TYPE_UNREGISTERED";
-      return false;
-    }
-    if (ASSETS::MATERIAL::IsSingletonReadyMadeMaterialNode(kind) &&
-        std::any_of(
-            graph->nodes.begin(), graph->nodes.end(),
-            [kind](const MaterialGraphNodeData &node) {
-              return node.kind == kind;
-            })) {
-      outMessage = "该材质已经包含单例节点：" +
-          std::string(definition->stableName);
-      outCode = "SINGLETON_NODE_EXISTS";
-      return false;
-    }
-    if (kind == MaterialNodeKind::SurfaceOutput &&
-        !graph->outputNodeId.empty()) {
-      outMessage = "材质已经有一个 Surface Output 节点";
-      outCode = "SURFACE_OUTPUT_EXISTS";
-      return false;
-    }
-    MaterialGraphNodeData node{};
-    node.id = "Node_" + std::to_string(authoringIdCounter_++);
-    node.kind = kind;
-    node.displayName = request.name.empty()
-        ? std::string(definition->stableName)
-        : request.name;
-    if (request.manualPosition) {
-      node.position = { request.positionX, request.positionY };
-    } else {
-      // Auto-layout by category so AI-created nodes do not pile up.
-      const size_t column = NodeCategoryColumn(kind);
-      size_t row = 0u;
-      for (const MaterialGraphNodeData &existing : graph->nodes) {
-        if (NodeCategoryColumn(existing.kind) == column) {
-          ++row;
-        }
-      }
-      node.position = {
-          static_cast<float>(column) * 300.0f + 40.0f,
-          static_cast<float>(row) * 240.0f + 40.0f,
-      };
-    }
-    if (!request.valueType.empty()) {
-      const std::optional<MaterialValueType> parsedType =
-          ParseMaterialValueType(request.valueType);
-      if (!parsedType.has_value()) {
-        outMessage = "未知 valueType：" + request.valueType +
-            "（支持 Float1/Float2/Float3/Float4/Color）";
-        outCode = "INVALID_VALUE_TYPE";
-        return false;
-      }
-      if (kind != MaterialNodeKind::Constant &&
-          kind != MaterialNodeKind::Parameter) {
-        outMessage = "valueType 仅支持 Constant/Parameter 节点";
-        outCode = "VALUE_TYPE_UNSUPPORTED";
-        return false;
-      }
-      node.valueType = *parsedType;
-      node.value.type = *parsedType;
-    } else {
-      node.valueType = MATERIAL_GRAPH_UI::DefaultNodeValueType(kind);
-      node.value.type = node.valueType;
-    }
-    ASSETS::MATERIAL::InitializeReadyMadeMaterialNode(material, node);
-    if ((kind == MaterialNodeKind::Constant ||
-         kind == MaterialNodeKind::Parameter) &&
-        request.valueSet) {
-      ApplyRequestedValueComponents(node.value, request);
-    }
-    if (kind == MaterialNodeKind::RampDiffuse ||
-        kind == MaterialNodeKind::MultiRampDiffuse ||
-        kind == MaterialNodeKind::FaceSdf) {
-      (void)BindBuiltInRampPresets(material);
-    }
-    if (kind == MaterialNodeKind::Parameter) {
-      const std::string requestedId = request.name.empty()
-          ? std::string{}
-          : (request.name.rfind("parameter.", 0u) == 0u
-                 ? request.name
-                 : "parameter." + request.name);
-      const auto existing = std::find_if(
-          graph->parameters.begin(), graph->parameters.end(),
-          [&requestedId](const MaterialGraphParameterData &parameter) {
-            return !requestedId.empty() &&
-                parameter.id == requestedId;
-          });
-      if (existing != graph->parameters.end()) {
-        node.referenceId = existing->id;
-      } else {
-        // Create a dedicated parameter so AI-created nodes never share the
-        // first (often baseColor) parameter by accident.
-        const std::string parameterId = requestedId.empty()
-            ? "parameter.ai_" + node.id
-            : requestedId;
-        MaterialGraphParameterData parameter{};
-        parameter.id = parameterId;
-        parameter.displayName = request.name.empty()
-            ? "AI Parameter"
-            : request.name;
-        parameter.defaultValue.type = node.valueType;
-        if (request.valueSet) {
-          ApplyRequestedValueComponents(
-              parameter.defaultValue, request);
-        }
-        parameter.exposed = true;
-        graph->parameters.push_back(std::move(parameter));
-        node.referenceId = parameterId;
-      }
-      if (!request.name.empty()) {
-        node.displayName = request.name;
-      }
-    }
-    if (kind == MaterialNodeKind::SurfaceOutput) {
-      graph->outputNodeId = node.id;
-    }
-    const std::string nodeId = node.id;
-    const std::string displayName = node.displayName;
-    graph->nodes.push_back(std::move(node));
-    CommitMaterialMutation(
-        std::move(before), "AI add material graph node", scene);
-    outMessage = "已添加节点 " + displayName + "（id=" + nodeId + "）";
-    const MaterialGraphNodeData *added =
-        MATERIAL_GRAPH_UI::FindNode(*graph, nodeId);
-    if (added != nullptr) {
-        outDetails.push_back(
-            "inputs: " + JoinPins(
-                GetMaterialGraphNodeInputPins(*added), "（无输入）"));
-        outDetails.push_back(
-            "outputs: " + JoinPins(
-                GetMaterialGraphNodeOutputPins(*added), "（无输出）"));
-    }
-    return true;
+    MaterialGraphNodeCreateRequest create{};
+    create.nodeType = request.nodeType;
+    create.displayName = request.name;
+    create.position = { request.positionX, request.positionY };
+    create.manualPosition = request.manualPosition;
+    create.valueType = request.valueType;
+    create.valueSet = request.valueSet;
+    create.valueX = request.valueX;
+    create.valueY = request.valueY;
+    create.valueZ = request.valueZ;
+    create.valueW = request.valueW;
+    create.allowFunctionCall = false;
+    return AddMaterialGraphNode(
+        scene, create, outMessage, outDetails, outCode);
   }
 
   if (request.operation == "remove_node") {
@@ -395,7 +164,7 @@ bool ModelMaterialWorkspaceController::ApplyAiMaterialGraphEdit(
     }
     if (request.property == "valueType") {
       const std::optional<MaterialValueType> parsedType =
-          ParseMaterialValueType(request.valueType);
+          MATERIAL_GRAPH_UI::ParseMaterialValueType(request.valueType);
       if (!parsedType.has_value()) {
         outMessage = "未知 valueType：" + request.valueType +
             "（支持 Float1/Float2/Float3/Float4/Color）";
@@ -490,7 +259,7 @@ bool ModelMaterialWorkspaceController::ApplyAiMaterialGraphEdit(
       outMessage = "源节点 " + sourceNode->id + " 没有可用输出，"
           "或找不到输出 pin：" + request.sourcePin;
       outDetails.push_back(
-          "outputs: " + JoinPins(
+          "outputs: " + MATERIAL_GRAPH_UI::JoinPins(
               GetMaterialGraphNodeOutputPins(*sourceNode),
               "（无输出）"));
       outCode = "PIN_NOT_FOUND";
@@ -502,7 +271,7 @@ bool ModelMaterialWorkspaceController::ApplyAiMaterialGraphEdit(
       outMessage = "目标节点 " + targetNode->id + " 没有可用输入，"
           "或找不到输入 pin：" + request.targetPin;
       outDetails.push_back(
-          "inputs: " + JoinPins(
+          "inputs: " + MATERIAL_GRAPH_UI::JoinPins(
               GetMaterialGraphNodeInputPins(*targetNode),
               "（无输入）"));
       outCode = "PIN_NOT_FOUND";
@@ -514,11 +283,11 @@ bool ModelMaterialWorkspaceController::ApplyAiMaterialGraphEdit(
             targetNode->id, *resolvedTargetPin, reason)) {
       outMessage = "无法连线：" + reason;
       outDetails.push_back(
-          "源输出: " + JoinPins(
+          "源输出: " + MATERIAL_GRAPH_UI::JoinPins(
               GetMaterialGraphNodeOutputPins(*sourceNode),
               "（无输出）"));
       outDetails.push_back(
-          "目标输入: " + JoinPins(
+          "目标输入: " + MATERIAL_GRAPH_UI::JoinPins(
               GetMaterialGraphNodeInputPins(*targetNode),
               "（无输入）"));
       outCode = "CONNECT_REJECTED";
@@ -657,10 +426,10 @@ bool ModelMaterialWorkspaceController::QueryAiMaterialGraph(
     }
     outDetails.push_back(line);
     outDetails.push_back(
-        "  inputs: " + JoinPins(
+        "  inputs: " + MATERIAL_GRAPH_UI::JoinPins(
             GetMaterialGraphNodeInputPins(node), "（无）"));
     outDetails.push_back(
-        "  outputs: " + JoinPins(
+        "  outputs: " + MATERIAL_GRAPH_UI::JoinPins(
             GetMaterialGraphNodeOutputPins(node), "（无）"));
     for (const MaterialGraphEdgeData &edge : graph->edges) {
       if (edge.targetNodeId == node.id) {

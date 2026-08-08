@@ -1,5 +1,6 @@
 #include "Editor/Workspaces/AnimationStateMachine/HIKARI_AnimationStateMachineWorkspaceController.h"
 
+#include "Core/Text/HIKARI_Localization.h"
 #include <algorithm>
 #include <utility>
 
@@ -80,16 +81,57 @@ bool AnimationStateMachineWorkspaceController::Redo(std::string &outMessage) {
   return true;
 }
 
+bool AnimationStateMachineWorkspaceController::NewAsset(
+    std::string &outMessage) {
+  if (document_.IsDirty()) {
+    outMessage = "Current state machine has unsaved changes";
+    return false;
+  }
+  document_.New();
+  SelectEntryState();
+  outMessage = "New animation state machine created";
+  return true;
+}
+
+bool AnimationStateMachineWorkspaceController::OpenAsset(
+    AssetDatabase &assetDatabase,
+    const AssetGuid &assetGuid,
+    std::string &outMessage) {
+  if (!assetGuid.IsValid()) {
+    outMessage = "Select an Animation State Machine asset to open";
+    return false;
+  }
+  if (document_.IsDirty()) {
+    outMessage = "Current state machine has unsaved changes";
+    return false;
+  }
+  if (!document_.Open(assetDatabase, assetGuid, outMessage)) {
+    return false;
+  }
+  SelectEntryState();
+  outMessage = "Animation state machine asset opened";
+  return true;
+}
+
 void AnimationStateMachineWorkspaceController::BindDocumentCommands(
     EditorCommandRouter &commandRouter, DocumentSceneBase &scene) {
 
-  commandRouter.Bind(EditorCommandId::SaveDocument,
-                     "Save Animation State Machine", IsDocumentOpen(),
-                     [this, &scene]() { (void)Save(scene, statusMessage_); });
-  commandRouter.Bind(EditorCommandId::Undo, "Undo Animation State Machine Edit",
-                     CanUndo(), [this]() { (void)Undo(statusMessage_); });
-  commandRouter.Bind(EditorCommandId::Redo, "Redo Animation State Machine Edit",
-                     CanRedo(), [this]() { (void)Redo(statusMessage_); });
+  (void)scene;
+  commandRouter.BindOperation(
+      EditorCommandId::SaveDocument,
+      TEXT::Localize("ui.asm.save"),
+      IsDocumentOpen(),
+      "asm.save");
+  commandRouter.BindOperation(
+      EditorCommandId::Undo,
+      TEXT::Localize("ui.asm.undo"),
+      CanUndo(),
+      "asm.undo");
+  commandRouter.BindOperation(
+      EditorCommandId::Redo,
+      TEXT::Localize("ui.asm.redo"),
+      CanRedo(),
+      "asm.redo");
 }
 
 void AnimationStateMachineWorkspaceController::AddState() {
@@ -116,31 +158,39 @@ void AnimationStateMachineWorkspaceController::AddStateAt(float graphX,
 }
 
 void AnimationStateMachineWorkspaceController::DeleteSelectedState() {
+  (void)DeleteState(selectedStateId_, statusMessage_);
+}
+
+bool AnimationStateMachineWorkspaceController::DeleteState(
+    ANIMATION::AnimationStateId stateId, std::string& outMessage) {
   auto &definition = document_.Definition();
-  if (definition.states.size() <= 1u || !selectedStateId_.IsValid()) {
-    statusMessage_ = "A state machine must keep at least one state";
-    return;
+  if (definition.states.size() <= 1u || !stateId.IsValid()) {
+    outMessage = "A state machine must keep at least one state";
+    return false;
   }
   auto before = definition;
   definition.states.erase(
       std::remove_if(definition.states.begin(), definition.states.end(),
-                     [this](const ANIMATION::AnimationState &state) {
-                       return state.id == selectedStateId_;
+                     [stateId](const ANIMATION::AnimationState &state) {
+                       return state.id == stateId;
                      }),
       definition.states.end());
   definition.transitions.erase(
       std::remove_if(
           definition.transitions.begin(), definition.transitions.end(),
-          [this](const ANIMATION::AnimationStateTransition &transition) {
-            return transition.sourceStateId == selectedStateId_ ||
-                   transition.targetStateId == selectedStateId_;
+          [stateId](const ANIMATION::AnimationStateTransition &transition) {
+            return transition.sourceStateId == stateId ||
+                   transition.targetStateId == stateId;
           }),
       definition.transitions.end());
-  if (definition.entryStateId == selectedStateId_) {
+  if (definition.entryStateId == stateId) {
     definition.entryStateId = definition.states.front().id;
   }
   selectedStateId_ = definition.entryStateId;
+  selectionKind_ = SelectionKind::State;
   RecordMutation(std::move(before));
+  outMessage = "State deleted";
+  return true;
 }
 
 void AnimationStateMachineWorkspaceController::AddParameter(
@@ -162,23 +212,32 @@ void AnimationStateMachineWorkspaceController::AddParameter(
 }
 
 void AnimationStateMachineWorkspaceController::DeleteSelectedParameter() {
-  if (!selectedParameterId_.IsValid())
-    return;
+  (void)DeleteParameter(selectedParameterId_, statusMessage_);
+}
+
+bool AnimationStateMachineWorkspaceController::DeleteParameter(
+    ANIMATION::AnimationParameterId parameterId, std::string& outMessage) {
+  if (!parameterId.IsValid()) {
+    outMessage = "No parameter selected";
+    return false;
+  }
   auto before = document_.Definition();
   auto &definition = document_.Definition();
   definition.parameters.erase(
       std::remove_if(
           definition.parameters.begin(), definition.parameters.end(),
-          [this](const ANIMATION::AnimationParameterDefinition &value) {
-            return value.id == selectedParameterId_;
+          [parameterId](
+              const ANIMATION::AnimationParameterDefinition &value) {
+            return value.id == parameterId;
           }),
       definition.parameters.end());
   for (auto &transition : definition.transitions) {
     transition.conditions.erase(
         std::remove_if(
             transition.conditions.begin(), transition.conditions.end(),
-            [this](const ANIMATION::AnimationTransitionCondition &value) {
-              return value.parameterId == selectedParameterId_;
+            [parameterId](
+                const ANIMATION::AnimationTransitionCondition &value) {
+              return value.parameterId == parameterId;
             }),
         transition.conditions.end());
   }
@@ -186,13 +245,15 @@ void AnimationStateMachineWorkspaceController::DeleteSelectedParameter() {
     auto *blendTree =
         std::get_if<ANIMATION::AnimationBlendTree1DMotion>(&state.motion);
     if (blendTree != nullptr &&
-        blendTree->parameterId == selectedParameterId_) {
+        blendTree->parameterId == parameterId) {
       blendTree->parameterId = {};
     }
   }
   selectedParameterId_ = {};
   selectionKind_ = SelectionKind::None;
   RecordMutation(std::move(before));
+  outMessage = "Parameter deleted";
+  return true;
 }
 
 void AnimationStateMachineWorkspaceController::AddTransition() {
@@ -239,19 +300,100 @@ void AnimationStateMachineWorkspaceController::AddTransitionBetween(
 }
 
 void AnimationStateMachineWorkspaceController::DeleteSelectedTransition() {
-  if (!selectedTransitionId_.IsValid())
-    return;
+  (void)DeleteTransition(selectedTransitionId_, statusMessage_);
+}
+
+void AnimationStateMachineWorkspaceController::SetOperationRegistry(
+    const EditorOperationRegistry* registry) noexcept {
+  operationRegistry_ = registry;
+}
+
+bool AnimationStateMachineWorkspaceController::DeleteSelected(
+    std::string& outMessage) {
+  if (!IsDocumentOpen()) {
+    outMessage = "No state machine document is open";
+    return false;
+  }
+  switch (selectionKind_) {
+  case SelectionKind::State:
+    DeleteSelectedState();
+    break;
+  case SelectionKind::Parameter:
+    DeleteSelectedParameter();
+    break;
+  case SelectionKind::Transition:
+    DeleteSelectedTransition();
+    break;
+  case SelectionKind::None:
+  default:
+    outMessage = "Nothing is selected";
+    return false;
+  }
+  outMessage = statusMessage_.empty() ? "Selection deleted"
+                                      : statusMessage_;
+  return true;
+}
+
+bool AnimationStateMachineWorkspaceController::DeleteTransition(
+    ANIMATION::AnimationTransitionId transitionId, std::string& outMessage) {
+  if (!transitionId.IsValid()) {
+    outMessage = "No transition selected";
+    return false;
+  }
   auto before = document_.Definition();
   auto &transitions = document_.Definition().transitions;
   transitions.erase(
       std::remove_if(transitions.begin(), transitions.end(),
-                     [this](const ANIMATION::AnimationStateTransition &value) {
-                       return value.id == selectedTransitionId_;
+                     [transitionId](
+                         const ANIMATION::AnimationStateTransition &value) {
+                       return value.id == transitionId;
                      }),
       transitions.end());
   selectedTransitionId_ = {};
   selectionKind_ = SelectionKind::None;
   RecordMutation(std::move(before));
+  outMessage = "Transition deleted";
+  return true;
+}
+
+bool AnimationStateMachineWorkspaceController::EditStateProperties(
+    ANIMATION::AnimationStateId stateId,
+    const std::optional<std::string>& name,
+    const std::optional<float>& speed,
+    const std::optional<bool>& loop,
+    std::string& outMessage) {
+  auto &definition = document_.Definition();
+  ANIMATION::AnimationState* state =
+      ANIMATION::FindAnimationState(definition, stateId);
+  if (state == nullptr) {
+    outMessage = "State not found";
+    return false;
+  }
+  auto before = definition;
+  if (name.has_value() && !name->empty()) {
+    state->name = *name;
+  }
+  if (speed.has_value()) {
+    state->speed = *speed;
+  }
+  if (loop.has_value()) {
+    state->loop = *loop;
+  }
+  RecordMutation(std::move(before));
+  selectedStateId_ = stateId;
+  selectionKind_ = SelectionKind::State;
+  outMessage = "State properties updated";
+  return true;
+}
+
+const ANIMATION::AnimationStateMachineDefinition &
+AnimationStateMachineWorkspaceController::GetDefinition() const noexcept {
+  return document_.Definition();
+}
+
+const std::string &
+AnimationStateMachineWorkspaceController::GetStatusMessage() const noexcept {
+  return statusMessage_;
 }
 
 void AnimationStateMachineWorkspaceController::NormalizeSelection() noexcept {

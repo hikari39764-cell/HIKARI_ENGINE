@@ -9,6 +9,22 @@
 
 namespace HIKARI::EDITOR {
 
+enum class EditorOperationParameterType : uint8_t {
+    String,
+    Float,
+    Int,
+    Bool,
+    Json,
+};
+
+struct EditorOperationParameter {
+    std::string name{};
+    EditorOperationParameterType type =
+        EditorOperationParameterType::String;
+    bool required = false;
+    std::string description{};
+};
+
 struct EditorOperationResult {
     bool ok = false;
     std::string code{};
@@ -20,19 +36,35 @@ struct EditorOperationResult {
 struct EditorOperationDefinition {
     std::string id{};
     std::string summary{};
+    // Owning workspace tag ("scene", "model_material", "model_collision",
+    // "animation_state_machine", "cinematics", "general").
+    std::string workspace{};
+    std::vector<EditorOperationParameter> parameters{};
     std::function<EditorOperationResult(const nlohmann::json&)> execute{};
+    // Long-running operations (network, heavy offline work) may run on the
+    // AI worker thread directly. Everything else is dispatched to the main
+    // thread so engine state stays single-threaded.
+    bool longRunning = false;
 };
 
 // Unified operation bus: human UI, AI actions and the local bridge all call
 // the same registered operations instead of maintaining parallel dispatchers.
 class EditorOperationRegistry {
 public:
-    void Register(EditorOperationDefinition definition);
+    void Register(
+        EditorOperationDefinition definition,
+        bool longRunning = false);
     bool IsRegistered(const std::string& id) const noexcept;
     EditorOperationResult Execute(
         const std::string& id,
         const nlohmann::json& parameters) const;
+    // Convenience for human UI command bindings that need no parameters.
+    EditorOperationResult Execute(const std::string& id) const;
     std::vector<std::string> RegisteredIds() const;
+    const EditorOperationDefinition* Find(
+        const std::string& id) const noexcept;
+    std::vector<const EditorOperationDefinition*> QueryWorkspace(
+        const std::string& workspace) const;
 
 private:
     std::unordered_map<std::string, EditorOperationDefinition> operations_{};
