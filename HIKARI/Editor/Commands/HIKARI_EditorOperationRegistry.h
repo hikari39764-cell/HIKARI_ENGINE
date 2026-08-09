@@ -57,6 +57,9 @@ class EditorOperationRegistry {
 public:
     void Register(EditorOperationDefinition definition);
     bool IsRegistered(const std::string& id) const noexcept;
+    EditorOperationResult Validate(
+        const EditorOperationDefinition& definition,
+        const nlohmann::json& parameters) const;
     EditorOperationResult Execute(
         const std::string& id,
         const nlohmann::json& parameters) const;

@@ -808,6 +808,13 @@ namespace HIKARI {
                 "目标物体不在场景文档中，不能安全修改";
             return result;
         }
+        const bool dirtyBefore =
+            context_.sceneDirty ||
+            scene->HasUnsavedSceneChanges();
+        const std::vector<SceneObjectData> beforeObjects =
+            scene->GetSceneDocument().objects;
+        const SceneCameraSettings beforeCamera =
+            scene->GetSceneDocument().camera;
         const MATH::Vec3 beforePosition =
             documentObject->transform.position;
         const MATH::Vec3 beforeScale =
@@ -899,13 +906,6 @@ namespace HIKARI {
         }
         result.ok = true;
         if (changed) {
-            const bool dirtyBefore =
-                context_.sceneDirty ||
-                scene->HasUnsavedSceneChanges();
-            const std::vector<SceneObjectData> beforeObjects =
-                scene->GetSceneDocument().objects;
-            const SceneCameraSettings beforeCamera =
-                scene->GetSceneDocument().camera;
             CommitSceneObjectAuthoringHistory(
                 *scene,
                 SceneObjectAuthoringHistoryRequest{
@@ -2340,18 +2340,20 @@ namespace HIKARI {
                 const std::string action =
                     EDITOR::AI_ASSISTANT::ExtractJsonField(json, "action");
                 if (operationRegistry_.IsRegistered(action)) {
+                    nlohmann::json parameters;
                     try {
-                        return ToAiRequestResult(
-                            operationRegistry_.Execute(
-                                action,
-                                nlohmann::json::parse(
-                                    std::string(json))));
-                    } catch (...) {
+                        parameters = nlohmann::json::parse(
+                            std::string(json));
+                    } catch (const nlohmann::json::parse_error& error) {
                         EDITOR::AI_ASSISTANT::AiRequestResult result{};
-                        result.code = "INVALID_JSON";
+                        result.code = "JSON_PARSE_ERROR";
                         result.message = "动作 JSON 解析失败";
+                        result.details.push_back(error.what());
                         return result;
                     }
+                    return ToAiRequestResult(
+                        operationRegistry_.Execute(
+                            action, parameters));
                 }
                 EDITOR::AI_ASSISTANT::AiRequestResult result{};
                 result.ok = false;
