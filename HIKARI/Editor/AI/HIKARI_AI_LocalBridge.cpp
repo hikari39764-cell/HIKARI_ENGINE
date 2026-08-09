@@ -154,6 +154,13 @@ bool AiLocalBridge::Start(
     } catch (...) {
         running_.store(false);
         closesocket(listener);
+        {
+            std::lock_guard<std::mutex> lock(stateMutex_);
+            listener_ = 0u;
+            port_ = 0u;
+            endpoint_.clear();
+            executor_ = {};
+        }
         WSACleanup();
         outError = "启动桥接线程失败";
         return false;
@@ -168,6 +175,10 @@ bool AiLocalBridge::Start(
 }
 
 void AiLocalBridge::Stop() {
+    const bool wasRunning = running_.exchange(false);
+    if (!wasRunning && !thread_.joinable()) {
+        return;
+    }
     stopRequested_.store(true);
     if (thread_.joinable()) {
         thread_.join();
@@ -182,7 +193,6 @@ void AiLocalBridge::Stop() {
     port_ = 0u;
     endpoint_.clear();
     executor_ = {};
-    running_.store(false);
 #ifdef _WIN32
     WSACleanup();
 #endif

@@ -577,6 +577,10 @@ AiAssistantPanel::AiAssistantPanel() {
 }
 
 AiAssistantPanel::~AiAssistantPanel() {
+    Stop();
+}
+
+void AiAssistantPanel::Stop() {
     stopRequested_.store(true);
     actionCv_.notify_all();
     if (worker_.joinable()) {
@@ -673,11 +677,6 @@ void AiAssistantPanel::AppendReasoning(const std::string& text) {
 
 void AiAssistantPanel::RunConversation(const std::string& userText) {
     const AI_ASSISTANT::AiChatConfig config = SnapshotConfig();
-    AiContextCallback contextCallback;
-    {
-        std::lock_guard<std::mutex> lock(stateMutex_);
-        contextCallback = contextCallback_;
-    }
     std::vector<AI_ASSISTANT::AiChatMessage> conversation;
     {
         std::lock_guard<std::mutex> lock(messageMutex_);
@@ -717,8 +716,9 @@ void AiAssistantPanel::RunConversation(const std::string& userText) {
                 "vision.analyze_image），或明确向用户说明无法继续。";
         }
         systemContent += "\n";
-        if (contextCallback) {
-            systemContent += "\n\n当前现状：\n" + contextCallback();
+        const std::string contextSnapshot = SnapshotContext();
+        if (!contextSnapshot.empty()) {
+            systemContent += "\n\n当前现状：\n" + contextSnapshot;
         }
         request.insert(
             request.begin(),
@@ -955,10 +955,9 @@ void AiAssistantPanel::SetSceneActionCallback(
     sceneActionCallback_ = std::move(callback);
 }
 
-void AiAssistantPanel::SetContextCallback(
-    AiContextCallback callback) {
+void AiAssistantPanel::SetContextSnapshot(std::string snapshot) {
     std::lock_guard<std::mutex> lock(stateMutex_);
-    contextCallback_ = std::move(callback);
+    contextSnapshot_ = std::move(snapshot);
 }
 
 void AiAssistantPanel::SetCapabilityProvider(
@@ -986,6 +985,13 @@ void AiAssistantPanel::SetBridgeStatus(const std::string& status) {
 
 AI_ASSISTANT::AiRequestResult AiAssistantPanel::ExecuteRequest(
     std::string_view json) {
+    if (stopRequested_.load()) {
+        AI_ASSISTANT::AiRequestResult result{};
+        result.code = "ACTION_CANCELED";
+        result.message = "动作已被取消（编辑器正在关闭）";
+        return result;
+    }
+
     const std::string action =
         AI_ASSISTANT::ExtractJsonField(json, "action");
     // Panel-local actions are handled here; every other action is routed to
@@ -1001,16 +1007,14 @@ AI_ASSISTANT::AiRequestResult AiAssistantPanel::ExecuteRequest(
         return AI_ASSISTANT::SubmitAiRequest(json, Capabilities());
     }
 
-    bool longRunning = false;
+    bool workerExecution = false;
     {
         std::lock_guard<std::mutex> lock(stateMutex_);
-        longRunning = longRunningClassifier_
-            ? longRunningClassifier_(action)
+        workerExecution = workerExecutionClassifier_
+            ? workerExecutionClassifier_(action)
             : false;
     }
-    if (longRunning) {
-        // Long-running operations (network, heavy offline work) stay on the
-        // calling worker thread so the editor main thread never blocks.
+    if (workerExecution) {
         return ExecuteRequestNow(json);
     }
 
@@ -1081,20 +1085,30 @@ void AiAssistantPanel::PumpActions() {
         actions.swap(pendingActions_);
     }
     for (const std::shared_ptr<PendingAiAction>& request : actions) {
-        request->result = ExecuteRequestNow(request->json);
+        AI_ASSISTANT::AiRequestResult result =
+            ExecuteRequestNow(request->json);
+        {
+            std::lock_guard<std::mutex> lock(actionMutex_);
+            request->result = std::move(result);
+        }
     }
     actionCv_.notify_all();
 }
 
-void AiAssistantPanel::SetLongRunningClassifier(
-    AiLongRunningClassifier callback) {
+void AiAssistantPanel::SetWorkerExecutionClassifier(
+    AiWorkerExecutionClassifier callback) {
     std::lock_guard<std::mutex> lock(stateMutex_);
-    longRunningClassifier_ = std::move(callback);
+    workerExecutionClassifier_ = std::move(callback);
 }
 
 AI_ASSISTANT::AiChatConfig AiAssistantPanel::SnapshotConfig() const {
     std::lock_guard<std::mutex> lock(stateMutex_);
     return config_;
+}
+
+std::string AiAssistantPanel::SnapshotContext() const {
+    std::lock_guard<std::mutex> lock(stateMutex_);
+    return contextSnapshot_;
 }
 
 void AiAssistantPanel::OpenVisionBuffers() {

@@ -5,12 +5,10 @@
 namespace HIKARI::EDITOR {
 
 void EditorOperationRegistry::Register(
-    EditorOperationDefinition definition,
-    bool longRunning) {
+    EditorOperationDefinition definition) {
     if (definition.id.empty() || !definition.execute) {
         return;
     }
-    definition.longRunning = longRunning;
     operations_[definition.id] = std::move(definition);
 }
 

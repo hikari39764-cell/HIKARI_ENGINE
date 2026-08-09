@@ -340,12 +340,13 @@ namespace HIKARI {
             [this]() {
                 return aiAssistantPanel_.Capabilities();
             });
-        aiAssistantPanel_.SetLongRunningClassifier(
+        aiAssistantPanel_.SetWorkerExecutionClassifier(
             [this](std::string_view action) {
                 const EDITOR::EditorOperationDefinition* definition =
                     operationRegistry_.Find(std::string(action));
                 return definition != nullptr &&
-                    definition->longRunning;
+                    definition->executionPolicy ==
+                        EDITOR::EditorOperationExecutionPolicy::WorkerThread;
             });
         modelMaterialWorkspaceController_.SetOperationRegistry(
             &operationRegistry_);
@@ -469,9 +470,7 @@ namespace HIKARI {
             [this](const nlohmann::json& parameters) {
                 return ExecuteAiCapturePreview(parameters);
             },
-            // Waits for the renderer to produce the capture frame; running it
-            // on the main thread would stall rendering and never complete.
-            true,
+            EDITOR::EditorOperationExecutionPolicy::WorkerThread,
         });
         operationRegistry_.Register({
             "material.graph_query",
@@ -688,9 +687,7 @@ namespace HIKARI {
             [this](const nlohmann::json& parameters) {
                 return ExecuteAiMaterialVerify(parameters);
             },
-            // Vision analysis performs network I/O; keep it on the AI worker
-            // thread instead of blocking the editor main thread.
-            true,
+            EDITOR::EditorOperationExecutionPolicy::WorkerThread,
         });
         operationRegistry_.Register({
             "scene.save",
@@ -766,6 +763,11 @@ namespace HIKARI {
             modelMaterialWorkspaceController_,
             [this]() { return aiOperationScene_; });
         commandRouter_.SetOperationRegistry(&operationRegistry_);
+    }
+
+    DocumentSceneEditorController::~DocumentSceneEditorController() {
+        aiAssistantPanel_.Stop();
+        aiLocalBridge_.Stop();
     }
 
     EDITOR::EditorOperationResult
@@ -2305,25 +2307,25 @@ namespace HIKARI {
         if (context_.windows.runtime.showPerformanceAudit) {
             performanceAuditPanel_.Draw(context_.windows.runtime.showPerformanceAudit);
         }
-        aiAssistantPanel_.SetContextCallback([this, &scene]() {
-                std::string context =
-                    "scene objects: " +
-                    std::to_string(
-                        scene.GetWorld().GetObjects().size()) +
-                    " (";
-                size_t shown = 0u;
-                for (const auto& object :
-                     scene.GetWorld().GetObjects()) {
-                    if (shown >= 8u) {
-                        context += "...";
-                        break;
-                    }
-                    if (shown > 0u) {
-                        context += ", ";
-                    }
-                    context += object->GetName();
-                    ++shown;
+        {
+            std::string context =
+                "scene objects: " +
+                std::to_string(
+                    scene.GetWorld().GetObjects().size()) +
+                " (";
+            size_t shown = 0u;
+            for (const auto& object :
+                 scene.GetWorld().GetObjects()) {
+                if (shown >= 8u) {
+                    context += "...";
+                    break;
                 }
+                if (shown > 0u) {
+                    context += ", ";
+                }
+                context += object->GetName();
+                ++shown;
+            }
             context += ")\n" +
                 modelMaterialWorkspaceController_
                     .GetAiMaterialStatus();
@@ -2331,38 +2333,38 @@ namespace HIKARI {
                 std::to_string(
                     scene.GetAssetRegistry().CollectByType(
                         AssetType::Model).size());
-            return context;
-        });
-            aiAssistantPanel_.SetSceneActionCallback(
-                [this](std::string_view json) {
-                    const std::string action =
-                        EDITOR::AI_ASSISTANT::ExtractJsonField(json, "action");
-                    if (operationRegistry_.IsRegistered(action)) {
-                        try {
-                            return ToAiRequestResult(
-                                operationRegistry_.Execute(
-                                    action,
-                                    nlohmann::json::parse(
-                                        std::string(json))));
-                        } catch (...) {
-                            EDITOR::AI_ASSISTANT::AiRequestResult result{};
-                            result.code = "INVALID_JSON";
-                            result.message = "动作 JSON 解析失败";
-                            return result;
-                        }
+            aiAssistantPanel_.SetContextSnapshot(std::move(context));
+        }
+        aiAssistantPanel_.SetSceneActionCallback(
+            [this](std::string_view json) {
+                const std::string action =
+                    EDITOR::AI_ASSISTANT::ExtractJsonField(json, "action");
+                if (operationRegistry_.IsRegistered(action)) {
+                    try {
+                        return ToAiRequestResult(
+                            operationRegistry_.Execute(
+                                action,
+                                nlohmann::json::parse(
+                                    std::string(json))));
+                    } catch (...) {
+                        EDITOR::AI_ASSISTANT::AiRequestResult result{};
+                        result.code = "INVALID_JSON";
+                        result.message = "动作 JSON 解析失败";
+                        return result;
                     }
-                    EDITOR::AI_ASSISTANT::AiRequestResult result{};
-                    result.ok = false;
-                    result.code = "UNKNOWN_ACTION";
-                    result.message = "不支持的 AI 动作：" + action;
-                    for (const std::string& id :
-                         operationRegistry_.RegisteredIds()) {
-                        result.details.push_back("supported: " + id);
-                    }
-                    return result;
-                });
-            EnsureAiLocalBridge();
-            if (context_.windows.runtime.showAiAssistant) {
+                }
+                EDITOR::AI_ASSISTANT::AiRequestResult result{};
+                result.ok = false;
+                result.code = "UNKNOWN_ACTION";
+                result.message = "不支持的 AI 动作：" + action;
+                for (const std::string& id :
+                     operationRegistry_.RegisteredIds()) {
+                    result.details.push_back("supported: " + id);
+                }
+                return result;
+            });
+        EnsureAiLocalBridge();
+        if (context_.windows.runtime.showAiAssistant) {
             aiAssistantPanel_.Draw(context_.windows.runtime.showAiAssistant);
         }
         if (context_.windows.runtime.showEditorSettings) {

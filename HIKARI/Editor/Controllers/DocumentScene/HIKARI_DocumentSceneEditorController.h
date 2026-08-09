@@ -53,6 +53,7 @@ namespace HIKARI {
     class DocumentSceneEditorController {
     public:
         DocumentSceneEditorController();
+        ~DocumentSceneEditorController();
 
         void Draw(
             DocumentSceneBase& scene,

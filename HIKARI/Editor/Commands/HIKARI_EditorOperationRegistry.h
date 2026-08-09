@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <functional>
 #include <string>
 #include <unordered_map>
@@ -15,6 +16,11 @@ enum class EditorOperationParameterType : uint8_t {
     Int,
     Bool,
     Json,
+};
+
+enum class EditorOperationExecutionPolicy : uint8_t {
+    MainThread,
+    WorkerThread,
 };
 
 struct EditorOperationParameter {
@@ -41,19 +47,15 @@ struct EditorOperationDefinition {
     std::string workspace{};
     std::vector<EditorOperationParameter> parameters{};
     std::function<EditorOperationResult(const nlohmann::json&)> execute{};
-    // Long-running operations (network, heavy offline work) may run on the
-    // AI worker thread directly. Everything else is dispatched to the main
-    // thread so engine state stays single-threaded.
-    bool longRunning = false;
+    EditorOperationExecutionPolicy executionPolicy =
+        EditorOperationExecutionPolicy::MainThread;
 };
 
 // Unified operation bus: human UI, AI actions and the local bridge all call
 // the same registered operations instead of maintaining parallel dispatchers.
 class EditorOperationRegistry {
 public:
-    void Register(
-        EditorOperationDefinition definition,
-        bool longRunning = false);
+    void Register(EditorOperationDefinition definition);
     bool IsRegistered(const std::string& id) const noexcept;
     EditorOperationResult Execute(
         const std::string& id,

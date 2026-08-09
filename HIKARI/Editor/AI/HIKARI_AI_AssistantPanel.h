@@ -49,21 +49,21 @@ namespace HIKARI::EDITOR {
         using AiSceneActionCallback =
             std::function<AI_ASSISTANT::AiRequestResult(
                 std::string_view)>;
-        using AiContextCallback = std::function<std::string()>;
         using AiCapabilityProvider =
             std::function<std::vector<AI_ASSISTANT::AiCapability>()>;
-        using AiLongRunningClassifier =
+        using AiWorkerExecutionClassifier =
             std::function<bool(std::string_view action)>;
 
         AiAssistantPanel();
         ~AiAssistantPanel();
 
+        void Stop();
         void Draw(bool& open);
         void SetSceneActionCallback(AiSceneActionCallback callback);
-        void SetContextCallback(AiContextCallback callback);
+        void SetContextSnapshot(std::string snapshot);
         void SetCapabilityProvider(AiCapabilityProvider callback);
-        void SetLongRunningClassifier(
-            AiLongRunningClassifier callback);
+        void SetWorkerExecutionClassifier(
+            AiWorkerExecutionClassifier callback);
         void SetBridgeStatus(const std::string& status);
         AI_ASSISTANT::AiRequestResult ExecuteRequest(
             std::string_view json);
@@ -92,6 +92,7 @@ namespace HIKARI::EDITOR {
         void SaveVisionSettings();
         void ResetVisionSettings();
         AI_ASSISTANT::AiChatConfig SnapshotConfig() const;
+        std::string SnapshotContext() const;
 
         std::vector<AI_ASSISTANT::AiChatMessage> messages_{};
         std::mutex messageMutex_{};
@@ -122,9 +123,9 @@ namespace HIKARI::EDITOR {
         char visionModelBuffer_[128] = {};
         std::string bridgeStatus_{};
         AiSceneActionCallback sceneActionCallback_{};
-        AiContextCallback contextCallback_{};
+        std::string contextSnapshot_{};
         AiCapabilityProvider capabilityProvider_{};
-        AiLongRunningClassifier longRunningClassifier_{};
+        AiWorkerExecutionClassifier workerExecutionClassifier_{};
         AI_ASSISTANT::AiRequestResult rawResult_{};
         AI_ASSISTANT::AiChatConfig config_{};
         bool configLoaded_ = false;
