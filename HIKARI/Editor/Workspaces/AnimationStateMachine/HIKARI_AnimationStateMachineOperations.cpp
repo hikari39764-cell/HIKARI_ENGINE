@@ -200,7 +200,7 @@ void AppendQuerySummary(
 void RegisterAnimationStateMachineOperations(
     EditorOperationRegistry& registry,
     AnimationStateMachineWorkspaceController& controller,
-    const std::function<DocumentSceneBase*()>& sceneProvider) {
+    std::function<DocumentSceneBase*()> sceneProvider) {
 
   registry.Register({
       "asm.new_asset",
@@ -241,7 +241,7 @@ void RegisterAnimationStateMachineOperations(
               "assetGuid", EditorOperationParameterType::String,
               true, "状态机资产 guid"),
       },
-      [&controller, &sceneProvider](const nlohmann::json& parameters) {
+      [&controller, sceneProvider](const nlohmann::json& parameters) {
         EditorOperationResult result{};
         DocumentSceneBase* scene = nullptr;
         if (!RequireScene(sceneProvider, result, scene)) {
@@ -296,7 +296,7 @@ void RegisterAnimationStateMachineOperations(
       "Save the current animation state machine document.",
       "animation_state_machine",
       {},
-      [&controller, &sceneProvider](const nlohmann::json&) {
+      [&controller, sceneProvider](const nlohmann::json&) {
         EditorOperationResult result{};
         if (!RequireAsmDocument(controller, result)) {
           return result;

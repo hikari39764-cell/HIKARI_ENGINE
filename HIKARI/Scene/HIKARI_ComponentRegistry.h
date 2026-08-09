@@ -10,6 +10,8 @@
 
 #include <json.hpp>
 
+#include "Authoring/HIKARI_ComponentAuthoringTypes.h"
+
 namespace HIKARI {
 
     class GameObject;
@@ -46,6 +48,8 @@ namespace HIKARI {
         InitializeDefaultsFn initializeDefaults{};
         ConfigureDependenciesFn configureDependencies{};
         ComponentTypePresentation presentation{};
+        std::vector<ComponentAuthoringCommandDefinition>
+            authoringCommands{};
     };
 
     class ComponentRegistry {

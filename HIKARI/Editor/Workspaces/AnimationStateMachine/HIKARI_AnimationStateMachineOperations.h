@@ -17,6 +17,6 @@ class AnimationStateMachineWorkspaceController;
 void RegisterAnimationStateMachineOperations(
     EditorOperationRegistry& registry,
     AnimationStateMachineWorkspaceController& controller,
-    const std::function<DocumentSceneBase*()>& sceneProvider);
+    std::function<DocumentSceneBase*()> sceneProvider);
 
 } // namespace HIKARI::EDITOR

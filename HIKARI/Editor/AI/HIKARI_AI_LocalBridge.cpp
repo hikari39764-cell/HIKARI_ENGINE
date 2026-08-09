@@ -96,10 +96,21 @@ std::string BuildCapabilitiesJson(
     const std::vector<AiCapability>& sourceCapabilities) {
     nlohmann::json capabilitiesArray = nlohmann::json::array();
     for (const AiCapability& capability : sourceCapabilities) {
+        nlohmann::json parameters = nlohmann::json::array();
+        for (const AiCapabilityParameter& parameter :
+            capability.parameters) {
+            parameters.push_back({
+                { "name", parameter.name },
+                { "type", parameter.type },
+                { "required", parameter.required },
+                { "description", parameter.description },
+            });
+        }
         capabilitiesArray.push_back({
             { "id", capability.id },
             { "status", capability.status },
             { "summary", capability.summary },
+            { "parameters", std::move(parameters) },
         });
     }
     return nlohmann::json{
@@ -112,6 +123,7 @@ std::string BuildResultJson(const AiRequestResult& result) {
         { "ok", result.ok },
         { "code", result.code },
         { "message", result.message },
+        { "data", result.data },
         { "details", result.details },
         { "hints", result.hints },
     }.dump();

@@ -1,25 +1,18 @@
 #include "HIKARI_EditorObjectFactory.h"
 
-#include <algorithm>
 #include <utility>
 
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Scene/HIKARI_GameObject.h"
+#include "Scene/HIKARI_SceneComponentId.h"
 #include "Scene/HIKARI_SceneDocument.h"
+#include "Scene/HIKARI_SceneDocumentQueries.h"
 #include "Scene/Lighting/HIKARI_LightingAuthoringModel.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
 namespace HIKARI::EDITOR {
 
     namespace {
-        SceneObjectId AllocateSceneObjectId(const SceneDocument& document) {
-            uint64_t maxId = 0;
-            for (const SceneObjectData& object : document.objects) {
-                maxId = (std::max)(maxId, object.id.value);
-            }
-            return SceneObjectId{ maxId + 1 };
-        }
-
         GameObject* FindRuntimeObject(DocumentSceneBase& scene, SceneObjectId id) {
             return scene.GetWorld().FindObject(id);
         }
@@ -91,6 +84,7 @@ namespace HIKARI::EDITOR {
             { "receiveShadow", true }
         };
         object.components.push_back(std::move(modelComponent));
+        NormalizeSceneComponentIds(object);
 
         scene.GetSceneDocument().objects.push_back(std::move(object));
 
@@ -204,6 +198,8 @@ namespace HIKARI::EDITOR {
                 std::move(collider)
             });
         }
+
+        NormalizeSceneComponentIds(object);
 
         scene.GetSceneDocument().objects.push_back(std::move(object));
         scene.RebuildRuntimeWorld();

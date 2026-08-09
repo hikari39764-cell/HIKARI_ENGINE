@@ -41,6 +41,9 @@ public:
   std::optional<SceneObjectAuthoringHistoryRequest> ConsumeHistoryRequest();
   std::optional<SceneObjectId> ConsumeOpenCinematicsWorkspaceCameraRequest();
   std::optional<SceneObjectId> ConsumeFocusObjectRequest();
+  IModelMaterialSlotProvider& GetModelMaterialSlotProvider() noexcept {
+    return componentAuthoringSection_.GetModelMaterialSlotProvider();
+  }
 
 private:
   struct PendingTransformHistory {

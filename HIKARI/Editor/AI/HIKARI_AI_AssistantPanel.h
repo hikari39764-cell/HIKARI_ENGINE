@@ -11,16 +11,26 @@
 #include <thread>
 #include <vector>
 
+#include <json.hpp>
+
 #include "Editor/AI/HIKARI_AI_ChatClient.h"
 
 namespace HIKARI::EDITOR {
 
     namespace AI_ASSISTANT {
 
+        struct AiCapabilityParameter {
+            std::string name{};
+            std::string type{};
+            bool required = false;
+            std::string description{};
+        };
+
         struct AiCapability {
             std::string id;
             std::string summary;
             std::string status; // stable | planned | unsupported
+            std::vector<AiCapabilityParameter> parameters{};
         };
 
         struct AiRequestResult {
@@ -29,6 +39,7 @@ namespace HIKARI::EDITOR {
             // NODE_NOT_FOUND / PIN_TYPE_MISMATCH / COMPILE_FAILED).
             std::string code{};
             std::string message;
+            nlohmann::json data = nlohmann::json::object();
             std::vector<std::string> details;
             // Actionable suggestions for the model to self-correct.
             std::vector<std::string> hints;

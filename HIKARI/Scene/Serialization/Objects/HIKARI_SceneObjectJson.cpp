@@ -6,6 +6,7 @@
 
 #include "Core/HIKARI_JsonRead.h"
 #include "Core/Serialization/Json/HIKARI_JsonMath.h"
+#include "Scene/HIKARI_SceneComponentId.h"
 #include "Scene/HIKARI_SceneDocument.h"
 
 namespace HIKARI::SCENE::SERIALIZATION {
@@ -36,7 +37,11 @@ namespace HIKARI::SCENE::SERIALIZATION {
 
             out = nlohmann::json::array();
             for (const SceneComponentData& component : components) {
-                out.push_back({ { "type", component.type }, { "properties", component.properties } });
+                out.push_back({
+                    { "id", component.id.value },
+                    { "type", component.type },
+                    { "properties", component.properties }
+                });
             }
         }
 
@@ -51,6 +56,7 @@ namespace HIKARI::SCENE::SERIALIZATION {
                     continue;
                 }
                 SceneComponentData component{};
+                component.id.value = componentNode.value("id", 0ull);
                 component.type = componentNode.value("type", std::string{});
                 component.properties = componentNode.value("properties", nlohmann::json::object());
                 outComponents.push_back(std::move(component));
@@ -102,6 +108,7 @@ namespace HIKARI::SCENE::SERIALIZATION {
 
         DeserializeTransform(node.value("transform", nlohmann::json::object()), outObject.transform);
         DeserializeComponents(node.value("components", nlohmann::json::array()), outObject.components);
+        NormalizeSceneComponentIds(outObject);
         return true;
     }
 

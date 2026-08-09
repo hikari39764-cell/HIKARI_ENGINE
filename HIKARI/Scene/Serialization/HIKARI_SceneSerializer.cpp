@@ -10,6 +10,7 @@
 
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
 #include "Scene/HIKARI_SceneDocument.h"
+#include "Scene/HIKARI_SceneComponentId.h"
 #include "Scene/Lighting/HIKARI_LightingAuthoringModel.h"
 #include "Scene/Sequencer/Serialization/HIKARI_CinematicSequenceJson.h"
 #include "Scene/Serialization/Environment/HIKARI_SceneEnvironmentJson.h"
@@ -206,6 +207,9 @@ namespace HIKARI {
             outDocument,
             sourceVersion);
         LIGHTING_AUTHORING::SynchronizeLegacyLightingViews(outDocument);
+        for (SceneObjectData& object : outDocument.objects) {
+            NormalizeSceneComponentIds(object);
+        }
         outDocument.version = (std::max)(outDocument.version, kCurrentSceneDocumentVersion);
         return true;
     }
@@ -214,6 +218,9 @@ namespace HIKARI {
 
         SceneDocument persisted = document;
         persisted.version = kCurrentSceneDocumentVersion;
+        for (SceneObjectData& object : persisted.objects) {
+            NormalizeSceneComponentIds(object);
+        }
         LIGHTING_AUTHORING::SynchronizeLegacyLightingViews(persisted);
 
         nlohmann::json root = nlohmann::json::object();

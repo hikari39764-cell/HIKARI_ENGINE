@@ -11,6 +11,7 @@
 #include "Editor/AI/HIKARI_AI_VisionClient.h"
 #include "Editor/Authoring/HIKARI_EditorObjectState.h"
 #include "Editor/Authoring/HIKARI_EditorObjectFactory.h"
+#include "Editor/Authoring/HIKARI_SceneObjectTargetResolver.h"
 #include "Editor/Assets/Browser/HIKARI_AssetBrowserInternal.h"
 #include "Editor/History/HIKARI_EnvironmentHistoryCommand.h"
 #include "Editor/History/HIKARI_SceneObjectsHistoryCommand.h"
@@ -56,6 +57,24 @@ namespace HIKARI {
         constexpr uint64_t kQualityPanelMergeGroup =
             0x5155414c49545945ull;
 
+        const char* OperationParameterTypeName(
+            EDITOR::EditorOperationParameterType type) noexcept {
+
+            switch (type) {
+            case EDITOR::EditorOperationParameterType::String:
+                return "string";
+            case EDITOR::EditorOperationParameterType::Float:
+                return "float";
+            case EDITOR::EditorOperationParameterType::Int:
+                return "int";
+            case EDITOR::EditorOperationParameterType::Bool:
+                return "bool";
+            case EDITOR::EditorOperationParameterType::Json:
+                return "json";
+            }
+            return "unknown";
+        }
+
         std::string SummarizeRuntimeRefreshReport(const RuntimeResourceRefreshReport& report) {
             return "Runtime refresh: texture " + std::to_string(report.textureInvalidatedCount) +
                 ", sky " + std::to_string(report.skyInvalidatedCount) +
@@ -84,14 +103,67 @@ namespace HIKARI {
                 char line[192];
                 std::snprintf(
                     line, sizeof(line),
-                    "%s | pos(%.2f, %.2f, %.2f) | "
+                    "[%llu] %s | pos(%.2f, %.2f, %.2f) | "
                     "scale(%.2f, %.2f, %.2f)",
+                    static_cast<unsigned long long>(
+                        object->GetDocumentId().value),
                     object->GetName().c_str(),
                     position.x, position.y, position.z,
                     scale.x, scale.y, scale.z);
                 outLines.push_back(line);
                 ++count;
             }
+        }
+
+        bool ReadOptionalSceneObjectId(
+            const nlohmann::json& parameters,
+            std::optional<SceneObjectId>& outObjectId,
+            EDITOR::EditorOperationResult& outFailure) {
+
+            const auto found = parameters.find("objectId");
+            if (found == parameters.end() || found->is_null()) {
+                outObjectId.reset();
+                return true;
+            }
+            if ((!found->is_number_unsigned() &&
+                 !found->is_number_integer()) ||
+                (!found->is_number_unsigned() &&
+                 found->get<int64_t>() <= 0)) {
+                outFailure.code = "INVALID_OBJECT_ID";
+                outFailure.message =
+                    "objectId must be a positive integer.";
+                return false;
+            }
+            const uint64_t value = found->get<uint64_t>();
+            if (value == 0u) {
+                outFailure.code = "INVALID_OBJECT_ID";
+                outFailure.message =
+                    "objectId must be a positive integer.";
+                return false;
+            }
+            outObjectId = SceneObjectId{ value };
+            return true;
+        }
+
+        EDITOR::EditorOperationResult TargetResolutionFailure(
+            const EDITOR::SceneObjectTargetResolution& resolution) {
+
+            EDITOR::EditorOperationResult result{};
+            result.code = resolution.code;
+            result.message = resolution.message;
+            nlohmann::json candidateIds = nlohmann::json::array();
+            for (const SceneObjectId candidate :
+                resolution.candidates) {
+                candidateIds.push_back(candidate.value);
+                result.details.push_back(
+                    "candidate objectId=" +
+                    std::to_string(candidate.value));
+            }
+            if (!candidateIds.empty()) {
+                result.data["candidateObjectIds"] =
+                    std::move(candidateIds);
+            }
+            return result;
         }
 
         float ReadJsonFloat(
@@ -200,6 +272,7 @@ namespace HIKARI {
             result.ok = operation.ok;
             result.code = operation.code;
             result.message = operation.message;
+            result.data = operation.data;
             result.details = operation.details;
             result.hints = operation.hints;
             return result;
@@ -304,10 +377,23 @@ namespace HIKARI {
                     if (definition == nullptr) {
                         continue;
                     }
-                    capabilities.push_back(
-                        { definition->id,
-                          definition->summary,
-                          "stable" });
+                    EDITOR::AI_ASSISTANT::AiCapability capability{
+                        definition->id,
+                        definition->summary,
+                        "stable"
+                    };
+                    capability.parameters.reserve(
+                        definition->parameters.size());
+                    for (const EDITOR::EditorOperationParameter& parameter :
+                        definition->parameters) {
+                        capability.parameters.push_back({
+                            parameter.name,
+                            OperationParameterTypeName(parameter.type),
+                            parameter.required,
+                            parameter.description
+                        });
+                    }
+                    capabilities.push_back(std::move(capability));
                 }
                 std::sort(
                     capabilities.begin(),
@@ -355,32 +441,20 @@ namespace HIKARI {
         }
         const std::string name =
             parameters.value("name", std::string{});
-        if (name.empty()) {
-            result.code = "MISSING_FIELD";
-            result.message = "缺少 name 字段（目标物体名）";
+        std::optional<SceneObjectId> objectId{};
+        if (!ReadOptionalSceneObjectId(
+                parameters, objectId, result)) {
             return result;
         }
-        GameObject* target = nullptr;
-        for (const auto& object : scene->GetWorld().GetObjects()) {
-            if (object->GetName() == name) {
-                target = object.get();
-                break;
-            }
+        const EDITOR::SceneObjectTargetResolution resolution =
+            EDITOR::ResolveSceneObjectTarget(
+                *scene, objectId, name);
+        if (!resolution.IsResolved()) {
+            return TargetResolutionFailure(resolution);
         }
-        if (target == nullptr) {
-            result.code = "OBJECT_NOT_FOUND";
-            result.message = "找不到物体：" + name;
-            return result;
-        }
+        GameObject* target = resolution.runtimeObject;
         SceneObjectData* documentObject =
-            selectionSync_.FindDocumentObjectByRuntime(
-                *scene, target);
-        if (documentObject == nullptr) {
-            result.code = "OBJECT_NOT_IN_DOCUMENT";
-            result.message =
-                "目标物体不在场景文档中，不能安全修改";
-            return result;
-        }
+            resolution.documentObject;
         const bool dirtyBefore =
             context_.sceneDirty ||
             scene->HasUnsavedSceneChanges();
@@ -492,9 +566,13 @@ namespace HIKARI {
                 *scene, result.details, 8u);
         }
         result.message = changed
-            ? "已更新物体 " + name
-            : "物体 " + name +
+            ? "已更新物体 " + target->GetName()
+            : "物体 " + target->GetName() +
                 " 未变化（需要 positionX/scaleX/rotationX 等字段）";
+        result.data = {
+            { "objectId", target->GetDocumentId().value },
+            { "name", target->GetName() }
+        };
         return result;
     }
 
@@ -551,8 +629,10 @@ namespace HIKARI {
             char line[192];
             std::snprintf(
                 line, sizeof(line),
-                "%s | pos(%.2f, %.2f, %.2f) | "
+                "[%llu] %s | pos(%.2f, %.2f, %.2f) | "
                 "scale(%.2f, %.2f, %.2f)",
+                static_cast<unsigned long long>(
+                    object->GetDocumentId().value),
                 object->GetName().c_str(),
                 position.x, position.y, position.z,
                 scale.x, scale.y, scale.z);
@@ -1225,20 +1305,21 @@ namespace HIKARI {
         }
         const std::string name =
             parameters.value("name", std::string{});
-        if (!name.empty()) {
-            GameObject* target = nullptr;
-            for (const auto& object :
-                 scene->GetWorld().GetObjects()) {
-                if (object->GetName() == name) {
-                    target = object.get();
-                    break;
-                }
+        std::optional<SceneObjectId> objectId{};
+        if (!ReadOptionalSceneObjectId(
+                parameters, objectId, result)) {
+            return result;
+        }
+        std::string resolvedName{};
+        if (objectId.has_value() || !name.empty()) {
+            const EDITOR::SceneObjectTargetResolution resolution =
+                EDITOR::ResolveSceneObjectTarget(
+                    *scene, objectId, name);
+            if (!resolution.IsResolved()) {
+                return TargetResolutionFailure(resolution);
             }
-            if (target == nullptr) {
-                result.code = "OBJECT_NOT_FOUND";
-                result.message = "找不到物体：" + name;
-                return result;
-            }
+            GameObject* target = resolution.runtimeObject;
+            resolvedName = target->GetName();
             context_.selection.SelectObject(
                 scene->GetWorld(),
                 target);
@@ -1267,9 +1348,9 @@ namespace HIKARI {
         }
         result.ok = true;
         result.code = "OK";
-        result.message = name.empty()
+        result.message = resolvedName.empty()
             ? "已删除选中对象"
-            : "已删除对象 " + name;
+            : "已删除对象 " + resolvedName;
         return result;
     }
 
@@ -1285,20 +1366,21 @@ namespace HIKARI {
         }
         const std::string name =
             parameters.value("name", std::string{});
-        if (!name.empty()) {
-            GameObject* target = nullptr;
-            for (const auto& object :
-                 scene->GetWorld().GetObjects()) {
-                if (object->GetName() == name) {
-                    target = object.get();
-                    break;
-                }
+        std::optional<SceneObjectId> objectId{};
+        if (!ReadOptionalSceneObjectId(
+                parameters, objectId, result)) {
+            return result;
+        }
+        std::string resolvedName{};
+        if (objectId.has_value() || !name.empty()) {
+            const EDITOR::SceneObjectTargetResolution resolution =
+                EDITOR::ResolveSceneObjectTarget(
+                    *scene, objectId, name);
+            if (!resolution.IsResolved()) {
+                return TargetResolutionFailure(resolution);
             }
-            if (target == nullptr) {
-                result.code = "OBJECT_NOT_FOUND";
-                result.message = "找不到物体：" + name;
-                return result;
-            }
+            GameObject* target = resolution.runtimeObject;
+            resolvedName = target->GetName();
             context_.selection.SelectObject(
                 scene->GetWorld(),
                 target);
@@ -1327,9 +1409,9 @@ namespace HIKARI {
         }
         result.ok = true;
         result.code = "OK";
-        result.message = name.empty()
+        result.message = resolvedName.empty()
             ? "已复制选中对象"
-            : "已复制对象 " + name;
+            : "已复制对象 " + resolvedName;
         return result;
     }
 
@@ -1909,6 +1991,8 @@ namespace HIKARI {
                 if (shown > 0u) {
                     context += ", ";
                 }
+                context += "[" + std::to_string(
+                    object->GetDocumentId().value) + "] ";
                 context += object->GetName();
                 ++shown;
             }

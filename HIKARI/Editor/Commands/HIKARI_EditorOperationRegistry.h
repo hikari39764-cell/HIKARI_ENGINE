@@ -35,6 +35,7 @@ struct EditorOperationResult {
     bool ok = false;
     std::string code{};
     std::string message{};
+    nlohmann::json data = nlohmann::json::object();
     std::vector<std::string> details{};
     std::vector<std::string> hints{};
 };

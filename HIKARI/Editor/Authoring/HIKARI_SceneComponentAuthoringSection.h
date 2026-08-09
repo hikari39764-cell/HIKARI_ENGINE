@@ -22,10 +22,15 @@ namespace HIKARI {
             const SelectionSyncService& selectionSync,
             SceneObjectData& target);
 
+        IModelMaterialSlotProvider& GetModelMaterialSlotProvider()
+            noexcept {
+            return modelMaterialSlotCatalog_;
+        }
+
     private:
         struct DeferredRuntimeComponentApply {
             SceneObjectId objectId{};
-            size_t componentIndex = 0;
+            SceneComponentId componentId{};
         };
 
         struct PendingComponentHistory {

@@ -10,11 +10,12 @@
 
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Scene/HIKARI_CinematicSequence.h"
+#include "Scene/HIKARI_SceneComponentId.h"
 #include "Scene/HIKARI_SceneObjectId.h"
 
 namespace HIKARI {
 
-    inline constexpr uint32_t kCurrentSceneDocumentVersion = 6;
+    inline constexpr uint32_t kCurrentSceneDocumentVersion = 7;
 
     struct TransformData {
         MATH::Vec3 position{ 0.0f, 0.0f, 0.0f };
@@ -25,6 +26,7 @@ namespace HIKARI {
     struct SceneComponentData {
         std::string type{};
         nlohmann::json properties = nlohmann::json::object();
+        SceneComponentId id{};
     };
 
     struct SceneObjectData {

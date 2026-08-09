@@ -109,7 +109,7 @@ bool ParseBoolParameter(
 void RegisterModelCollisionOperations(
     EditorOperationRegistry& registry,
     ModelCollisionWorkspaceController& controller,
-    const std::function<DocumentSceneBase*()>& sceneProvider) {
+    std::function<DocumentSceneBase*()> sceneProvider) {
 
   using ASSETS::COLLISION::CollisionGeometryShapeType;
 
@@ -122,7 +122,7 @@ void RegisterModelCollisionOperations(
               "modelGuid", EditorOperationParameterType::String,
               true, "模型资产 guid（asset.list_models 可查）"),
       },
-      [&controller, &sceneProvider](const nlohmann::json& parameters) {
+      [&controller, sceneProvider](const nlohmann::json& parameters) {
         EditorOperationResult result{};
         DocumentSceneBase* scene = nullptr;
         if (!RequireScene(sceneProvider, result, scene)) {
@@ -175,7 +175,7 @@ void RegisterModelCollisionOperations(
       "Save the current model collision setup and rebuild its runtime artifact.",
       "model_collision",
       {},
-      [&controller, &sceneProvider](const nlohmann::json&) {
+      [&controller, sceneProvider](const nlohmann::json&) {
         EditorOperationResult result{};
         if (!RequireCollisionDocument(controller, result)) {
           return result;

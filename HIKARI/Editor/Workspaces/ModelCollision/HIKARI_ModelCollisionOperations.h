@@ -17,6 +17,6 @@ class ModelCollisionWorkspaceController;
 void RegisterModelCollisionOperations(
     EditorOperationRegistry& registry,
     ModelCollisionWorkspaceController& controller,
-    const std::function<DocumentSceneBase*()>& sceneProvider);
+    std::function<DocumentSceneBase*()> sceneProvider);
 
 } // namespace HIKARI::EDITOR

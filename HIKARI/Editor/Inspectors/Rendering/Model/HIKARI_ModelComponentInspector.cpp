@@ -29,20 +29,40 @@ namespace HIKARI {
         const uint32_t oldPostGroupMask = postGroupMask_;
 
         builder.Bool(
-            TEXT::Localize("ui.inspector.model.visible"),
+            AuthoringFieldDescriptor{
+                ModelComponentPropertyIds::Visible,
+                TEXT::Localize("ui.inspector.model.visible"),
+                "Controls whether the model is submitted for rendering."
+            },
             visible_);
         builder.Bool(
-            TEXT::Localize("ui.inspector.model.castShadow"),
+            AuthoringFieldDescriptor{
+                ModelComponentPropertyIds::CastShadow,
+                TEXT::Localize("ui.inspector.model.castShadow"),
+                "Controls whether the model casts shadows."
+            },
             castShadow_);
         builder.Bool(
-            TEXT::Localize("ui.inspector.model.receiveShadow"),
+            AuthoringFieldDescriptor{
+                ModelComponentPropertyIds::ReceiveShadow,
+                TEXT::Localize("ui.inspector.model.receiveShadow"),
+                "Controls whether the model receives shadows."
+            },
             receiveShadow_);
         builder.Bool(
-            TEXT::Localize("ui.inspector.model.renderStatic"),
+            AuthoringFieldDescriptor{
+                ModelComponentPropertyIds::RenderStatic,
+                TEXT::Localize("ui.inspector.model.renderStatic"),
+                "Marks the render surface as static authoring data."
+            },
             renderStatic_);
         builder.Bool(
-            TEXT::Localize(
-                "ui.inspector.model.includeInLightingBake"),
+            AuthoringFieldDescriptor{
+                ModelComponentPropertyIds::IncludeInLightingBake,
+                TEXT::Localize(
+                    "ui.inspector.model.includeInLightingBake"),
+                "Includes the model surface in authored lighting bakes."
+            },
             includeInLightingBake_);
         if (renderStatic_ && includeInLightingBake_) {
             builder.Text(
@@ -50,7 +70,11 @@ namespace HIKARI {
                     "ui.inspector.model.surfaceGiHint"));
         }
         const bool modelAssetChanged = builder.AssetIdPicker(
-            TEXT::Localize("ui.inspector.model.modelAsset"),
+            AuthoringFieldDescriptor{
+                ModelComponentPropertyIds::AssetId,
+                TEXT::Localize("ui.inspector.model.modelAsset"),
+                "Model asset GUID assigned to this component."
+            },
             AssetType::Model,
             assetId_);
         if (modelAssetChanged) {
@@ -101,11 +125,13 @@ namespace HIKARI {
 
         if (!assetId_.empty()) {
             std::vector<std::string> materialSetLabels{};
-            std::vector<const char*> materialSetChoices{};
+            std::vector<std::string> materialSetIds{};
             materialSetLabels.reserve(materialSets.size() + 3u);
+            materialSetIds.reserve(materialSets.size() + 3u);
             materialSetLabels.push_back(
                 TEXT::Localize(
                     "ui.inspector.model.importedModelMaterials"));
+            materialSetIds.emplace_back();
             int selectedSetIndex = 0;
             const bool legacySelection =
                 !materialSetSelectionAuthored_;
@@ -113,6 +139,7 @@ namespace HIKARI {
                 materialSetLabels.push_back(
                     TEXT::Localize(
                         "ui.inspector.model.legacyModelDefault"));
+                materialSetIds.push_back("__legacy_model_default");
                 selectedSetIndex = 1;
             }
             const size_t materialSetChoiceOffset =
@@ -125,6 +152,8 @@ namespace HIKARI {
                         ? TEXT::Localize(
                             "ui.inspector.model.unnamedMaterialSet")
                         : materialSet.name);
+                materialSetIds.push_back(
+                    materialSet.assetGuid.value);
                 if (materialSet.assetGuid == materialSetAssetGuid_) {
                     selectedSetIndex = static_cast<int>(
                         index + materialSetChoiceOffset);
@@ -134,16 +163,29 @@ namespace HIKARI {
                 materialSetLabels.push_back(
                     TEXT::Localize(
                         "ui.inspector.model.missingMaterialSet"));
+                materialSetIds.push_back(
+                    materialSetAssetGuid_.value);
                 selectedSetIndex =
                     static_cast<int>(materialSetLabels.size() - 1u);
             }
+            std::vector<AuthoringChoice> materialSetChoices{};
             materialSetChoices.reserve(materialSetLabels.size());
-            for (const std::string& label : materialSetLabels) {
-                materialSetChoices.push_back(label.c_str());
+            for (size_t index = 0u;
+                index < materialSetLabels.size();
+                ++index) {
+
+                materialSetChoices.push_back({
+                    materialSetIds[index],
+                    materialSetLabels[index]
+                });
             }
             if (builder.Choice(
-                    TEXT::Localize(
-                        "ui.inspector.model.materialSet"),
+                    AuthoringFieldDescriptor{
+                        ModelComponentPropertyIds::MaterialSetAssetGuid,
+                        TEXT::Localize(
+                            "ui.inspector.model.materialSet"),
+                        "Compatible whole-model Material Set asset GUID."
+                    },
                     selectedSetIndex,
                     materialSetChoices)) {
                 if (selectedSetIndex == 0) {
@@ -211,8 +253,20 @@ namespace HIKARI {
                         "ui.inspector.model.overrideMaterial") +
                     "##ModelMaterialSlot" +
                     std::to_string(slotIndex);
+                const std::string materialOverridePropertyId =
+                    "materialOverrides." +
+                    (imported.slotId.IsValid()
+                        ? ASSETS::MODELS::MaterialSlotIdToString(
+                            imported.slotId)
+                        : "legacy." + std::to_string(slotIndex));
                 if (!builder.AssetIdPicker(
-                        pickerLabel,
+                        AuthoringFieldDescriptor{
+                            materialOverridePropertyId,
+                            pickerLabel,
+                            "Per-instance Material asset override for this "
+                            "stable imported model slot. Empty restores the "
+                            "inherited material."
+                        },
                         AssetType::Material,
                         materialOverrideGuid)) {
                     if (!materialOverrideGuid.empty() &&
@@ -243,8 +297,12 @@ namespace HIKARI {
 
         int postMask = static_cast<int>(postGroupMask_);
         if (builder.Int(
-                TEXT::Localize(
-                    "ui.inspector.model.postGroupMask"),
+                AuthoringFieldDescriptor{
+                    ModelComponentPropertyIds::PostGroupMask,
+                    TEXT::Localize(
+                        "ui.inspector.model.postGroupMask"),
+                    "Post-process group bit mask."
+                },
                 postMask)) {
             postGroupMask_ =
                 static_cast<uint32_t>(postMask < 0 ? 0 : postMask);

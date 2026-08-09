@@ -19,6 +19,32 @@ namespace HIKARI::EDITOR {
 namespace {
 constexpr int kDefaultToolRounds = 40;
 constexpr int kMaxToolRoundsCeiling = 120;
+
+std::string FormatCapabilityParameters(
+    const AI_ASSISTANT::AiCapability& capability) {
+
+    if (capability.parameters.empty()) {
+        return {};
+    }
+    std::string result = " parameters: ";
+    for (size_t index = 0u;
+        index < capability.parameters.size();
+        ++index) {
+        if (index != 0u) {
+            result += ", ";
+        }
+        const AI_ASSISTANT::AiCapabilityParameter& parameter =
+            capability.parameters[index];
+        if (!parameter.required) {
+            result += "[";
+        }
+        result += parameter.name + ":" + parameter.type;
+        if (!parameter.required) {
+            result += "]";
+        }
+    }
+    return result;
+}
 } // namespace
 
 namespace AI_ASSISTANT {
@@ -171,7 +197,8 @@ AiRequestResult SubmitAiRequest(
         for (const AiCapability& capability : capabilities) {
             result.details.push_back(
                 capability.status + ": " + capability.id + " - " +
-                capability.summary);
+                capability.summary +
+                FormatCapabilityParameters(capability));
         }
         return result;
     }
@@ -537,9 +564,32 @@ AiRequestResult SubmitAiRequest(
                 "Scene Cinematics（场景内嵌时间线）请使用 scene.save",
             };
         } else {
-            result.message =
-                "没有 topic 的专用说明，请先用 list_capabilities "
-                "查看能力清单。";
+            const auto capability = std::find_if(
+                capabilities.begin(),
+                capabilities.end(),
+                [&topic](const AiCapability& candidate) {
+                    return candidate.id == topic;
+                });
+            if (capability == capabilities.end()) {
+                result.ok = false;
+                result.code = "UNKNOWN_CAPABILITY";
+                result.message =
+                    "没有这个能力；请先用 list_capabilities 查看清单。";
+            } else {
+                result.message = "能力契约：" + capability->id;
+                result.details.push_back(capability->summary);
+                for (const AiCapabilityParameter& parameter :
+                    capability->parameters) {
+                    result.details.push_back(
+                        std::string(parameter.required
+                            ? "required "
+                            : "optional ") +
+                        parameter.name + ":" + parameter.type +
+                        (parameter.description.empty()
+                            ? std::string{}
+                            : " - " + parameter.description));
+                }
+            }
         }
         return result;
     }
@@ -636,7 +686,8 @@ std::string AiAssistantPanel::BuildSystemPrompt() const {
     for (const AI_ASSISTANT::AiCapability& capability :
          Capabilities()) {
         prompt += "- " + capability.status + " " + capability.id +
-            "：" + capability.summary + "\n";
+            "：" + capability.summary +
+            FormatCapabilityParameters(capability) + "\n";
     }
     prompt +=
         "\n边界：AI 不能直接修改引擎内部状态；不支持的能力必须明确说做不到，"
@@ -838,6 +889,13 @@ void AiAssistantPanel::RunConversation(const std::string& userText) {
             }
             resultText += actionJson + "\n";
             resultText += result.message + "\n";
+            if (!result.data.empty()) {
+                std::string data = result.data.dump();
+                if (data.size() > 8000u) {
+                    data = data.substr(0u, 8000u) + "...";
+                }
+                resultText += "data: " + data + "\n";
+            }
             size_t detailCount = 0u;
             for (const std::string& detail : result.details) {
                 if (detailCount >= 32u) {

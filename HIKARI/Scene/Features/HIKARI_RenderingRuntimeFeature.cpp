@@ -9,6 +9,7 @@
 #include "Scene/Components/Lighting/HIKARI_ReflectionProbeComponent.h"
 #include "Scene/Components/Rendering/MaterialFx/HIKARI_MaterialFxComponent.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
+#include "Scene/Components/Rendering/Model/HIKARI_ModelComponentAuthoring.h"
 #include "Scene/Features/HIKARI_RuntimeFeature.h"
 #include "Scene/Features/HIKARI_RuntimeFeatureIds.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
@@ -83,6 +84,8 @@ namespace HIKARI {
                 model.presentation = RenderingPresentation(
                     "Model",
                     "Controls the model asset, material slots, visibility, shadows, and render diagnostics.");
+                model.authoringCommands =
+                    BuildModelComponentAuthoringCommands();
 
                 ComponentTypeInfo materialFx{};
                 materialFx.typeName = "MaterialFxComponent";

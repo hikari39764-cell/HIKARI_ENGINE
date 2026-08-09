@@ -1,10 +1,12 @@
 #include "Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorController.h"
 
+#include "Editor/Authoring/HIKARI_ComponentAuthoringOperations.h"
 #include "Editor/Workspaces/AnimationStateMachine/HIKARI_AnimationStateMachineOperations.h"
 #include "Editor/Workspaces/Cinematics/HIKARI_CinematicsOperations.h"
 #include "Editor/Workspaces/ModelCollision/HIKARI_ModelCollisionOperations.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialOperations.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialNodeQuery.h"
+#include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
 #include <utility>
 
@@ -68,11 +70,13 @@ namespace HIKARI {
         });
         operationRegistry_.Register({
             "scene.set_transform",
-            "Set an existing object's position/rotation/scale by name.",
+            "Set one object's transform by stable objectId. Exact name is a discovery fallback and must be unique.",
             "scene",
             {
+                P("objectId", EditorOperationParameterType::Int,
+                  false, "scene.objects.query 返回的稳定 SceneObjectId"),
                 P("name", EditorOperationParameterType::String,
-                  true, "目标物体名称"),
+                  false, "仅兼容发现；重名时必须改用 objectId"),
                 P("positionX", EditorOperationParameterType::Float,
                   false, "世界位置 X"),
                 P("positionY", EditorOperationParameterType::Float,
@@ -376,11 +380,13 @@ namespace HIKARI {
         });
         operationRegistry_.Register({
             "scene.delete_object",
-            "Delete the selected object, or the object with the given name.",
+            "Delete the selected object, or target one object by stable objectId.",
             "scene",
             {
+                P("objectId", EditorOperationParameterType::Int,
+                  false, "scene.objects.query 返回的稳定 SceneObjectId"),
                 P("name", EditorOperationParameterType::String,
-                  false, "物体名称；缺省删除当前选中对象"),
+                  false, "仅兼容发现；重名时必须改用 objectId"),
             },
             [this](const nlohmann::json& parameters) {
                 return ExecuteSceneDeleteObject(parameters);
@@ -388,11 +394,13 @@ namespace HIKARI {
         });
         operationRegistry_.Register({
             "scene.duplicate_object",
-            "Duplicate the selected object, or the object with the given name.",
+            "Duplicate the selected object, or target one object by stable objectId.",
             "scene",
             {
+                P("objectId", EditorOperationParameterType::Int,
+                  false, "scene.objects.query 返回的稳定 SceneObjectId"),
                 P("name", EditorOperationParameterType::String,
-                  false, "物体名称；缺省复制当前选中对象"),
+                  false, "仅兼容发现；重名时必须改用 objectId"),
             },
             [this](const nlohmann::json& parameters) {
                 return ExecuteSceneDuplicateObject(parameters);
@@ -438,6 +446,31 @@ namespace HIKARI {
             operationRegistry_,
             modelMaterialWorkspaceController_,
             [this]() { return aiOperationScene_; });
+        EDITOR::RegisterComponentAuthoringOperations(
+            operationRegistry_,
+            EDITOR::ComponentAuthoringOperationContext{
+                [this]() { return aiOperationScene_; },
+                [this](const DocumentSceneBase& scene) {
+                    return context_.sceneDirty ||
+                        scene.HasUnsavedSceneChanges();
+                },
+                [this](
+                    DocumentSceneBase& scene,
+                    SceneObjectAuthoringHistoryRequest history) {
+                    CommitSceneObjectAuthoringHistory(
+                        scene,
+                        std::move(history));
+                },
+                [this](
+                    DocumentSceneBase& scene,
+                    SceneObjectId objectId) {
+                    SelectViewportObjects(
+                        scene,
+                        { objectId },
+                        EditorObjectSelectionMode::Replace);
+                },
+                &sceneInspectorPanel_.GetModelMaterialSlotProvider()
+            });
     }
 
 } // namespace HIKARI
