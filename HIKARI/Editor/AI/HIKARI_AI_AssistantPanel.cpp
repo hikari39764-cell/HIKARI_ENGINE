@@ -983,6 +983,10 @@ void AiAssistantPanel::SetBridgeStatus(const std::string& status) {
     bridgeStatus_ = status;
 }
 
+void AiAssistantPanel::SetBridgeSessionToken(std::string token) {
+    bridgeSessionToken_ = std::move(token);
+}
+
 AI_ASSISTANT::AiRequestResult AiAssistantPanel::ExecuteRequest(
     std::string_view json) {
     if (stopRequested_.load()) {
@@ -1212,6 +1216,20 @@ void AiAssistantPanel::Draw(bool& open) {
                 : TEXT::Localize("ai.status.noApi").c_str());
     if (!bridgeStatus_.empty()) {
         ImGui::TextDisabled("%s", bridgeStatus_.c_str());
+    }
+    if (!bridgeSessionToken_.empty()) {
+        ImGui::TextDisabled("%s",
+            TEXT::Localize("ai.bridge.token").c_str());
+        ImGui::SetNextItemWidth(-1.0f);
+        ImGui::InputText(
+            "##AiBridgeSessionToken",
+            bridgeSessionToken_.data(),
+            bridgeSessionToken_.size() + 1u,
+            ImGuiInputTextFlags_ReadOnly);
+        if (ImGui::SmallButton(
+                TEXT::Localize("ai.bridge.copyToken").c_str())) {
+            ImGui::SetClipboardText(bridgeSessionToken_.c_str());
+        }
     }
     if (ImGui::GetFont() != nullptr &&
         ImGui::GetFont()->FindGlyphNoFallback(

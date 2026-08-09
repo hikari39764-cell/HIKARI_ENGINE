@@ -3,6 +3,7 @@
 #include "Core/Text/HIKARI_Trim.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <chrono>
 #include <cstdlib>
@@ -15,6 +16,8 @@
 #define WIN32_LEAN_AND_MEAN
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include <bcrypt.h>
+#pragma comment(lib, "bcrypt.lib")
 #pragma comment(lib, "ws2_32.lib")
 #endif
 
@@ -22,6 +25,7 @@ namespace HIKARI::EDITOR::AI_ASSISTANT {
 namespace {
 
 constexpr size_t kMaxRequestBody = 1024u * 1024u;
+constexpr size_t kSessionTokenBytes = 32u;
 
 std::string Trim(std::string value) {
     return TEXT::TrimCopy(std::move(value));
@@ -41,6 +45,51 @@ bool InitializeWinsock(std::string& outError) {
     (void)outError;
     return false;
 #endif
+}
+
+bool GenerateSessionToken(
+    std::string& outToken,
+    std::string& outError) {
+#ifdef _WIN32
+    std::array<unsigned char, kSessionTokenBytes> bytes{};
+    const NTSTATUS status = BCryptGenRandom(
+        nullptr,
+        bytes.data(),
+        static_cast<ULONG>(bytes.size()),
+        BCRYPT_USE_SYSTEM_PREFERRED_RNG);
+    if (!BCRYPT_SUCCESS(status)) {
+        outError = "生成本地桥会话令牌失败";
+        return false;
+    }
+    constexpr char digits[] = "0123456789abcdef";
+    outToken.resize(bytes.size() * 2u);
+    for (size_t index = 0u; index < bytes.size(); ++index) {
+        outToken[index * 2u] = digits[bytes[index] >> 4u];
+        outToken[index * 2u + 1u] = digits[bytes[index] & 0x0fu];
+    }
+    return true;
+#else
+    (void)outToken;
+    outError = "本地桥仅支持 Windows 编辑器宿主";
+    return false;
+#endif
+}
+
+bool ConstantTimeEquals(
+    std::string_view lhs,
+    std::string_view rhs) noexcept {
+    const size_t maximum = std::max(lhs.size(), rhs.size());
+    size_t difference = lhs.size() ^ rhs.size();
+    for (size_t index = 0u; index < maximum; ++index) {
+        const unsigned char left = index < lhs.size()
+            ? static_cast<unsigned char>(lhs[index])
+            : 0u;
+        const unsigned char right = index < rhs.size()
+            ? static_cast<unsigned char>(rhs[index])
+            : 0u;
+        difference |= static_cast<size_t>(left ^ right);
+    }
+    return difference == 0u;
 }
 
 std::string BuildCapabilitiesJson(
@@ -94,6 +143,10 @@ bool AiLocalBridge::Start(
         outError = "本地桥已在运行";
         return false;
     }
+    std::string sessionToken;
+    if (!GenerateSessionToken(sessionToken, outError)) {
+        return false;
+    }
     if (!InitializeWinsock(outError)) {
         return false;
     }
@@ -145,6 +198,7 @@ bool AiLocalBridge::Start(
         port_ = actualPort;
         endpoint_ =
             "http://127.0.0.1:" + std::to_string(actualPort);
+        sessionToken_ = std::move(sessionToken);
         executor_ = std::move(executor);
     }
     stopRequested_.store(false);
@@ -159,6 +213,7 @@ bool AiLocalBridge::Start(
             listener_ = 0u;
             port_ = 0u;
             endpoint_.clear();
+            sessionToken_.clear();
             executor_ = {};
         }
         WSACleanup();
@@ -192,6 +247,7 @@ void AiLocalBridge::Stop() {
     }
     port_ = 0u;
     endpoint_.clear();
+    sessionToken_.clear();
     executor_ = {};
 #ifdef _WIN32
     WSACleanup();
@@ -218,14 +274,23 @@ std::string AiLocalBridge::GetEndpoint() const {
     return endpoint_;
 }
 
+std::string AiLocalBridge::GetSessionToken() const {
+    std::lock_guard<std::mutex> lock(stateMutex_);
+    return sessionToken_;
+}
+
 void AiLocalBridge::AcceptLoop() {
 #ifdef _WIN32
     SOCKET listener = INVALID_SOCKET;
     Executor executor;
+    CapabilityProvider capabilityProvider;
+    std::string sessionToken;
     {
         std::lock_guard<std::mutex> lock(stateMutex_);
         listener = static_cast<SOCKET>(listener_);
         executor = executor_;
+        capabilityProvider = capabilityProvider_;
+        sessionToken = sessionToken_;
     }
     while (!stopRequested_.load()) {
         fd_set readSet;
@@ -250,14 +315,20 @@ void AiLocalBridge::AcceptLoop() {
         if (client == INVALID_SOCKET) {
             continue;
         }
-        HandleConnection(static_cast<uintptr_t>(client), executor);
+        HandleConnection(
+            static_cast<uintptr_t>(client),
+            executor,
+            capabilityProvider,
+            sessionToken);
     }
 #endif
 }
 
 void AiLocalBridge::HandleConnection(
     uintptr_t clientSocket,
-    const Executor& executor) {
+    const Executor& executor,
+    const CapabilityProvider& capabilityProvider,
+    const std::string& sessionToken) {
 #ifdef _WIN32
     const SOCKET client = static_cast<SOCKET>(clientSocket);
     const auto deadline =
@@ -346,8 +417,9 @@ void AiLocalBridge::HandleConnection(
     }
     body = body.substr(0u, contentLength);
 
-    const char* token = std::getenv("HIKARI_AI_BRIDGE_TOKEN");
-    if (token != nullptr && token[0] != '\0') {
+    const bool requiresAuthorization =
+        !(method == "GET" && (path == "/health" || path == "/"));
+    if (requiresAuthorization) {
         bool authorized = false;
         size_t cursor = 0u;
         while (cursor < head.size()) {
@@ -362,7 +434,7 @@ void AiLocalBridge::HandleConnection(
             if (Trim(line).rfind("X-HIKARI-AI-Token:", 0u) == 0u) {
                 const std::string value = Trim(line.substr(
                     std::string("X-HIKARI-AI-Token:").size()));
-                authorized = value == token;
+                authorized = ConstantTimeEquals(value, sessionToken);
                 break;
             }
         }
@@ -386,8 +458,8 @@ void AiLocalBridge::HandleConnection(
         payload = nlohmann::json{ { "ok", true } }.dump();
     } else if (method == "GET" && path == "/capabilities") {
         payload = BuildCapabilitiesJson(
-            capabilityProvider_
-                ? capabilityProvider_()
+            capabilityProvider
+                ? capabilityProvider()
                 : BuiltInCapabilities());
     } else if (method == "POST" && path == "/action") {
         if (body.empty()) {
@@ -420,7 +492,6 @@ void AiLocalBridge::HandleConnection(
         HttpStatusText(statusCode) + "\r\n";
     response +=
         "Content-Type: application/json\r\n"
-        "Access-Control-Allow-Origin: *\r\n"
         "Connection: close\r\n";
     response += "Content-Length: " +
         std::to_string(payload.size()) + "\r\n\r\n";

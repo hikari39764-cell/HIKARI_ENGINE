@@ -134,7 +134,9 @@ if(HIKARI_WITH_EDITOR_BUILD)
             HIKARI::ImGui
             HIKARI::ImGuizmo
             HIKARI::Assimp
-            HIKARI::WinPix)
+            HIKARI::WinPix
+        PRIVATE
+            Bcrypt)
     hikari_configure_engine_target(HIKARI_Editor)
     source_group(
         TREE "${HIKARI_SOURCE_ROOT}"

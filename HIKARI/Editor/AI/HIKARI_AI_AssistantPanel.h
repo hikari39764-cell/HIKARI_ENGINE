@@ -65,6 +65,7 @@ namespace HIKARI::EDITOR {
         void SetWorkerExecutionClassifier(
             AiWorkerExecutionClassifier callback);
         void SetBridgeStatus(const std::string& status);
+        void SetBridgeSessionToken(std::string token);
         AI_ASSISTANT::AiRequestResult ExecuteRequest(
             std::string_view json);
         std::vector<AI_ASSISTANT::AiCapability> Capabilities() const;
@@ -122,6 +123,7 @@ namespace HIKARI::EDITOR {
         char visionBaseUrlBuffer_[512] = {};
         char visionModelBuffer_[128] = {};
         std::string bridgeStatus_{};
+        std::string bridgeSessionToken_{};
         AiSceneActionCallback sceneActionCallback_{};
         std::string contextSnapshot_{};
         AiCapabilityProvider capabilityProvider_{};

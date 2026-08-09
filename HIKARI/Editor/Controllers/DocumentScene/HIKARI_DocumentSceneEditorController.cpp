@@ -1819,6 +1819,16 @@ namespace HIKARI {
     }
 
     void DocumentSceneEditorController::EnsureAiLocalBridge() {
+        if (!context_.aiIntegration.localBridgeEnabled) {
+            if (aiBridgeStarted_) {
+                aiLocalBridge_.Stop();
+                aiBridgeStarted_ = false;
+            }
+            aiAssistantPanel_.SetBridgeSessionToken({});
+            aiAssistantPanel_.SetBridgeStatus(
+                "本地桥已禁用（可在编辑器设置中启用）");
+            return;
+        }
         if (aiBridgeStarted_) {
             aiAssistantPanel_.SetBridgeStatus(
                 aiLocalBridge_.IsRunning()
@@ -1844,7 +1854,10 @@ namespace HIKARI {
                 bridgeError)) {
             aiAssistantPanel_.SetBridgeStatus(
                 "本地桥：" + aiLocalBridge_.GetEndpoint());
+            aiAssistantPanel_.SetBridgeSessionToken(
+                aiLocalBridge_.GetSessionToken());
         } else {
+            aiAssistantPanel_.SetBridgeSessionToken({});
             aiAssistantPanel_.SetBridgeStatus(
                 "本地桥启动失败：" + bridgeError);
         }
