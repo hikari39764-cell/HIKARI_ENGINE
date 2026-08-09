@@ -22,20 +22,22 @@ namespace HIKARI {
         MarkRenderStateDirty();
     }
 
-    void GameObject::SetDocumentId(SceneObjectId id) {
+    bool GameObject::SetDocumentId(SceneObjectId id) {
         if (documentId_ == id) {
-            return;
+            return true;
         }
         const uint64_t oldStableId = GetRenderStableId();
         const SceneObjectId previousId = documentId_;
-        documentId_ = id;
-        if (ownerWorld_ != nullptr) {
-            ownerWorld_->OnDocumentIdChanged(this, previousId, documentId_);
+        if (ownerWorld_ != nullptr &&
+            !ownerWorld_->OnDocumentIdChanged(this, previousId, id)) {
+            return false;
         }
+        documentId_ = id;
         if (ownerWorld_ != nullptr && oldStableId != GetRenderStableId()) {
             ownerWorld_->MarkRenderObjectRemoved(oldStableId);
         }
         MarkRenderStateDirty();
+        return true;
     }
 
     SceneObjectId GameObject::GetDocumentId() const {

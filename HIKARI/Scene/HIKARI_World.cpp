@@ -41,7 +41,7 @@ namespace HIKARI {
         renderDirtyObjects_.erase(
             std::remove(renderDirtyObjects_.begin(), renderDirtyObjects_.end(), object),
             renderDirtyObjects_.end());
-        OnDocumentIdChanged(
+        (void)OnDocumentIdChanged(
             object,
             object->GetDocumentId(),
             SceneObjectId{});
@@ -249,12 +249,29 @@ namespace HIKARI {
         freeObjectSlots_.push_back(handle.slot);
     }
 
-    void World::OnDocumentIdChanged(
+    bool World::OnDocumentIdChanged(
         GameObject* object,
         SceneObjectId previousId,
         SceneObjectId nextId) {
+        if (object == nullptr) {
+            return false;
+        }
 
-        if (previousId.value != 0) {
+        if (nextId.value != 0) {
+            const auto found = objectsByDocumentId_.find(nextId.value);
+            if (found != objectsByDocumentId_.end() &&
+                found->second != object) {
+                HIKARI_LOG_ERROR(
+                    "[World] duplicate SceneObjectId rejected: " +
+                    std::to_string(nextId.value));
+                return false;
+            }
+            if (found == objectsByDocumentId_.end()) {
+                objectsByDocumentId_.emplace(nextId.value, object);
+            }
+        }
+
+        if (previousId.value != 0 && previousId != nextId) {
             const auto previous = objectsByDocumentId_.find(
                 previousId.value);
             if (previous != objectsByDocumentId_.end() &&
@@ -262,17 +279,7 @@ namespace HIKARI {
                 objectsByDocumentId_.erase(previous);
             }
         }
-        if (object == nullptr || nextId.value == 0) {
-            return;
-        }
-
-        const auto [found, inserted] =
-            objectsByDocumentId_.emplace(nextId.value, object);
-        if (!inserted && found->second != object) {
-            HIKARI_LOG_ERROR(
-                "[World] duplicate SceneObjectId: " +
-                std::to_string(nextId.value));
-        }
+        return true;
     }
 
 } // namespace HIKARI

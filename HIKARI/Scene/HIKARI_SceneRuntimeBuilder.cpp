@@ -541,7 +541,13 @@ namespace HIKARI {
 
         for (const SceneObjectData& objectData : document.objects) {
             GameObject* object = world.CreateObject(objectData.name);
-            object->SetDocumentId(objectData.id);
+            if (!object->SetDocumentId(objectData.id)) {
+                HIKARI_LOG_ERROR(
+                    "[SceneRuntime] duplicate object id rejected: " +
+                    std::to_string(objectData.id.value));
+                world.Clear();
+                return false;
+            }
             Transform3D localTransform{};
             localTransform.position = objectData.transform.position;
             localTransform.scale = objectData.transform.scale;
