@@ -60,6 +60,7 @@ namespace HIKARI {
             EDITOR::EditorPlaySession& playSession);
 
     private:
+        void RegisterEditorOperations();
         EditorContext context_{};
         SelectionSyncService selectionSync_{};
 

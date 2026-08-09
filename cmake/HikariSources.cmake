@@ -666,6 +666,7 @@ set(HIKARI_EDITOR_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Panels/Internal/HIKARI_LightingBakePanelSummary.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/HIKARI_DebugCameraPanel.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorController.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorOperations.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorGamePreview.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorViewport.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorViewportInteraction.cpp"
