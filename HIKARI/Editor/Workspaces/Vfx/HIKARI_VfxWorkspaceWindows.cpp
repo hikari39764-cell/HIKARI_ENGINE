@@ -4,6 +4,7 @@
 #include <string>
 
 #include "Assets/HIKARI_AssetDatabase.h"
+#include "Assets/Vfx/HIKARI_VfxPresetRegistry.h"
 #include "Editor/Commands/HIKARI_EditorCommandRouter.h"
 #include "Editor/Views/HIKARI_EditorViewInstance.h"
 
@@ -202,6 +203,36 @@ namespace HIKARI::EDITOR {
                         : "Create")) {
                 NewAsset(newAssetName_.data());
                 ImGui::CloseCurrentPopup();
+            }
+            ImGui::SeparatorText("Start From Preset");
+            ImGui::TextDisabled(
+                "Effekseer-style starter presets (no external assets).");
+            if (ImGui::BeginListBox("##vfx_presets", { 320.0f, 180.0f })) {
+                std::string lastCategory{};
+                for (const auto& preset :
+                    VFX::PRESETS::GetVfxPresetCatalog()) {
+                    if (preset.category != lastCategory) {
+                        lastCategory = preset.category;
+                        ImGui::SeparatorText(preset.category.c_str());
+                    }
+                    ImGui::PushID(preset.id.c_str());
+                    if (ImGui::Selectable(preset.displayName.c_str())) {
+                        std::string presetMessage{};
+                        if (NewAssetFromPreset(preset.id, presetMessage)) {
+                            ImGui::CloseCurrentPopup();
+                        } else if (!presetMessage.empty()) {
+                            statusMessage_ = presetMessage;
+                        }
+                    }
+                    if (ImGui::IsItemHovered(
+                            ImGuiHoveredFlags_DelayShort)) {
+                        ImGui::BeginTooltip();
+                        ImGui::TextUnformatted(preset.summary.c_str());
+                        ImGui::EndTooltip();
+                    }
+                    ImGui::PopID();
+                }
+                ImGui::EndListBox();
             }
             ImGui::EndPopup();
         }
