@@ -431,6 +431,7 @@ namespace HIKARI::VFX::PRESETS {
                 MakeBaseEmitter("main", "Main");
 
             emitter.spawn.ratePerSecond = 2.0f;
+            emitter.spawn.burstCount = 1u;
             emitter.basic.lifetime = MakeVfxFloatConstant(1.8f);
             emitter.renderShape.type = VfxRenderShapeType::Ring;
             emitter.renderShape.ringInnerRadius = 0.7f;
