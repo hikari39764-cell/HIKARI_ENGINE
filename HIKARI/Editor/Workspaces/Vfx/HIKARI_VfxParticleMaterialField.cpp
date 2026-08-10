@@ -1,11 +1,13 @@
 #include "Editor/Workspaces/Vfx/HIKARI_VfxParticleMaterialField.h"
 
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/HIKARI_AssetRecord.h"
 #include "Assets/Material/Authoring/HIKARI_MaterialAssetAuthoringService.h"
+#include "Editor/DragDrop/HIKARI_EditorAssetDragDrop.h"
 
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
@@ -36,6 +38,24 @@ namespace HIKARI::EDITOR {
             return choices;
         }
 
+        bool IsParticleMaterial(
+            AssetDatabase& database,
+            const AssetGuid& guid,
+            std::string& outMessage) {
+
+            ASSETS::MATERIAL::MaterialAssetAuthoringService service(database);
+            ASSETS::MATERIAL::MaterialAuthoringDocument material{};
+            if (!service.Load(guid, material, outMessage)) {
+                return false;
+            }
+            if (material.source.domain != MaterialDomain::Particle) {
+                outMessage =
+                    "DOMAIN_MISMATCH: VFX renderers accept only Particle Material assets";
+                return false;
+            }
+            return true;
+        }
+
     } // namespace
 
     bool DrawVfxParticleMaterialField(
@@ -44,9 +64,11 @@ namespace HIKARI::EDITOR {
         const AssetGuid& current,
         AssetGuid& outSelected,
         AssetGuid& outCreatedAssetGuid,
+        AssetGuid& outEditAssetGuid,
         std::string& outMessage) {
 #if defined(HIKARI_WITH_EDITOR)
         outCreatedAssetGuid = {};
+        outEditAssetGuid = {};
         const uint64_t contentRevision =
             assetDatabase.GetContentRevision();
         if (catalog.contentRevision != contentRevision) {
@@ -85,6 +107,22 @@ namespace HIKARI::EDITOR {
             }
             ImGui::EndCombo();
         }
+        DroppedAssetPayload dropped{};
+        if (AcceptAssetDropOfType(
+                assetDatabase, AssetType::Material, dropped) &&
+            dropped.record != nullptr) {
+            std::string validationMessage{};
+            if (IsParticleMaterial(
+                    assetDatabase, dropped.guid, validationMessage)) {
+                outSelected = dropped.guid;
+                outMessage = "Particle Material assigned by drag and drop";
+                changed = true;
+            } else {
+                outMessage = validationMessage.empty()
+                    ? "Dropped Material could not be loaded"
+                    : std::move(validationMessage);
+            }
+        }
 
         if (current.IsValid() && selected == nullptr) {
             ImGui::TextColored(
@@ -110,6 +148,12 @@ namespace HIKARI::EDITOR {
             }
         }
         ImGui::SameLine();
+        ImGui::BeginDisabled(!current.IsValid() || selected == nullptr);
+        if (ImGui::Button("Edit Particle Material")) {
+            outEditAssetGuid = current;
+        }
+        ImGui::EndDisabled();
+        ImGui::SameLine();
         ImGui::TextDisabled(
             "Procedural nodes, textures, Time, Position and Runtime Variables are supported.");
         return changed;
@@ -119,6 +163,7 @@ namespace HIKARI::EDITOR {
         (void)current;
         (void)outSelected;
         (void)outCreatedAssetGuid;
+        (void)outEditAssetGuid;
         (void)outMessage;
         return false;
 #endif

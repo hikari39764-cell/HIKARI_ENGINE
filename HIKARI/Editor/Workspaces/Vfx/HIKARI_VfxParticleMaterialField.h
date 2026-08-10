@@ -28,6 +28,7 @@ namespace HIKARI::EDITOR {
         const AssetGuid& current,
         AssetGuid& outSelected,
         AssetGuid& outCreatedAssetGuid,
+        AssetGuid& outEditAssetGuid,
         std::string& outMessage);
 
 } // namespace HIKARI::EDITOR

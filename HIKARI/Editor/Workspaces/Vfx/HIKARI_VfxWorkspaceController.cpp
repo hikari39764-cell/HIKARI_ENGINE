@@ -94,6 +94,11 @@ namespace HIKARI::EDITOR {
         assetRefreshCallback_ = std::move(callback);
     }
 
+    void VfxWorkspaceController::SetMaterialEditCallback(
+        MaterialEditCallback callback) {
+        materialEditCallback_ = std::move(callback);
+    }
+
     void VfxWorkspaceController::BindDocumentCommands(
         EditorCommandRouter& commandRouter) const {
 

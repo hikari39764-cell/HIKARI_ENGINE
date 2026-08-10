@@ -483,6 +483,25 @@ namespace HIKARI {
                 outMessage.clear();
                 return true;
             });
+        vfxWorkspaceController_.SetMaterialEditCallback(
+            [this](const AssetGuid& materialGuid,
+                   std::string& outMessage) {
+                if (!materialGuid.IsValid()) {
+                    outMessage = "Particle Material GUID is empty";
+                    return false;
+                }
+                EDITOR::EditorWorkspaceOpenRequest request{};
+                request.workspaceId =
+                    EDITOR::EditorWorkspaceId::ModelMaterial;
+                request.materialAssetGuid = materialGuid;
+                if (!workspaceHost_.RequestOpen(std::move(request))) {
+                    outMessage =
+                        "Failed to queue the Particle Material workspace";
+                    return false;
+                }
+                outMessage = "Opening Particle Material editor";
+                return true;
+            });
         RegisterEditorOperations();
         commandRouter_.SetOperationRegistry(&operationRegistry_);
     }

@@ -362,12 +362,14 @@ namespace HIKARI::EDITOR {
             ImGui::SeparatorText("Render Common");
             AssetGuid selected = emitter.renderCommon.materialAssetGuid;
             AssetGuid created{};
+            AssetGuid editRequested{};
             if (DrawVfxParticleMaterialField(
                     database,
                     particleMaterialCatalog_,
                     emitter.renderCommon.materialAssetGuid,
                     selected,
                     created,
+                    editRequested,
                     statusMessage_)) {
                 std::string assignmentMessage{};
                 const bool assigned = SetProperty(
@@ -387,6 +389,21 @@ namespace HIKARI::EDITOR {
                     } else if (!refreshMessage.empty()) {
                         statusMessage_ += "; " + refreshMessage;
                     }
+                }
+            }
+            if (editRequested.IsValid()) {
+                if (!materialEditCallback_) {
+                    statusMessage_ =
+                        "Particle Material editor is not available";
+                } else {
+                    std::string editMessage{};
+                    const bool opened = materialEditCallback_(
+                        editRequested, editMessage);
+                    statusMessage_ = editMessage.empty()
+                        ? opened
+                            ? "Opening Particle Material editor"
+                            : "Failed to open Particle Material editor"
+                        : std::move(editMessage);
                 }
             }
             VfxInspectorPropertyEditor renderCommonEditor(

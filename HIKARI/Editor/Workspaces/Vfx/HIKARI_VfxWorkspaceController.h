@@ -88,6 +88,9 @@ namespace HIKARI::EDITOR {
         using AssetRefreshCallback = std::function<bool(
             const AssetGuid&,
             std::string&)>;
+        using MaterialEditCallback = std::function<bool(
+            const AssetGuid&,
+            std::string&)>;
 
         VfxWorkspaceController();
         ~VfxWorkspaceController();
@@ -100,6 +103,7 @@ namespace HIKARI::EDITOR {
         void SetPreviewNamespaceRetireCallback(
             PreviewNamespaceRetireCallback callback);
         void SetAssetRefreshCallback(AssetRefreshCallback callback);
+        void SetMaterialEditCallback(MaterialEditCallback callback);
         void DrawDockSpace(bool resetDefaultDockLayout) const;
         VfxWorkspaceResult Draw(
             AssetDatabase& assetDatabase,
@@ -378,6 +382,7 @@ namespace HIKARI::EDITOR {
         PreviewNamespaceRetireCallback
             previewNamespaceRetireCallback_{};
         AssetRefreshCallback assetRefreshCallback_{};
+        MaterialEditCallback materialEditCallback_{};
         std::string lastAssetRefreshMessage_{};
         bool lastAssetRefreshAttempted_ = false;
         bool lastAssetRefreshSucceeded_ = false;
