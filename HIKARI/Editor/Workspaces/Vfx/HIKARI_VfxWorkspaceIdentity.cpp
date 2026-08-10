@@ -218,6 +218,7 @@ namespace HIKARI::EDITOR {
         diagnostics_ = document_.IsOpen()
             ? VFX::ValidateVfxAsset(document_.Asset())
             : std::vector<VFX::VfxDiagnostic>{};
+        NotifyEmitterStructureChanged();
         previewProgramRevision_ = 0u;
         if (previewPlaying_) {
             previewRestartPending_ = true;

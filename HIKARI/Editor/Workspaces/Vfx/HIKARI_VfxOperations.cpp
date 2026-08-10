@@ -360,6 +360,133 @@ namespace HIKARI::EDITOR {
             },
         });
 
+        registry.Register({
+            "vfx.emitter.reparent",
+            "Move an emitter under a new parent (or to root with empty parent)",
+            "vfx",
+            {
+                Parameter(
+                    "emitterId",
+                    EditorOperationParameterType::String,
+                    true,
+                    "Stable emitter ID to move"),
+                Parameter(
+                    "parentEmitterId",
+                    EditorOperationParameterType::String,
+                    false,
+                    "New parent emitter ID, empty for root"),
+            },
+            [&controller](const nlohmann::json& parameters) {
+                std::string message{};
+                const std::string emitterId =
+                    parameters.at("emitterId").get<std::string>();
+                return controller.ReparentEmitter(
+                        emitterId,
+                        parameters.value("parentEmitterId", ""),
+                        message)
+                    ? Success(message, ContextData(controller, emitterId))
+                    : Failure("VFX_EMITTER_REPARENT_FAILED", message);
+            },
+        });
+
+        registry.Register({
+            "vfx.emitter.set_hidden",
+            "Hide or show an emitter in the preview (editor session state)",
+            "vfx",
+            {
+                Parameter(
+                    "emitterId",
+                    EditorOperationParameterType::String,
+                    true,
+                    "Stable emitter ID"),
+                Parameter(
+                    "hidden",
+                    EditorOperationParameterType::Bool,
+                    true,
+                    "True hides from preview, false shows"),
+            },
+            [&controller](const nlohmann::json& parameters) {
+                const std::string emitterId =
+                    parameters.at("emitterId").get<std::string>();
+                if (controller.FindEmitter(emitterId) == nullptr) {
+                    return Failure(
+                        "VFX_EMITTER_NOT_FOUND",
+                        "VFX emitter was not found");
+                }
+                controller.SetEmitterHidden(
+                    emitterId,
+                    parameters.at("hidden").get<bool>());
+                return Success(
+                    "VFX emitter preview visibility updated",
+                    ContextData(controller, emitterId));
+            },
+        });
+
+        registry.Register({
+            "vfx.emitter.set_solo",
+            "Solo one emitter in the preview, or clear solo with empty ID",
+            "vfx",
+            {
+                Parameter(
+                    "emitterId",
+                    EditorOperationParameterType::String,
+                    false,
+                    "Stable emitter ID to solo, empty clears solo"),
+            },
+            [&controller](const nlohmann::json& parameters) {
+                const std::string emitterId =
+                    parameters.value("emitterId", "");
+                if (emitterId.empty()) {
+                    controller.ClearSoloEmitter();
+                    return Success(
+                        "VFX preview solo cleared",
+                        ContextData(controller));
+                }
+                if (controller.FindEmitter(emitterId) == nullptr) {
+                    return Failure(
+                        "VFX_EMITTER_NOT_FOUND",
+                        "VFX emitter was not found");
+                }
+                controller.SetSoloEmitter(emitterId);
+                return Success(
+                    "VFX preview solo set",
+                    ContextData(controller, emitterId));
+            },
+        });
+
+        registry.Register({
+            "vfx.preview.focus_selected",
+            "Focus the preview camera on the selected emitter",
+            "vfx",
+            {},
+            [&controller](const nlohmann::json&) {
+                std::string message{};
+                return controller.FocusSelectedEmitter(message)
+                    ? Success(message, ContextData(controller))
+                    : Failure("VFX_FOCUS_FAILED", message);
+            },
+        });
+
+        registry.Register({
+            "vfx.preview.step",
+            "Pause the preview and advance a fixed number of frames",
+            "vfx",
+            {
+                Parameter(
+                    "frameCount",
+                    EditorOperationParameterType::Int,
+                    false,
+                    "Frames to advance (1-120, default 1)"),
+            },
+            [&controller](const nlohmann::json& parameters) {
+                std::string message{};
+                const int frames = parameters.value("frameCount", 1);
+                return controller.StepPreviewFrame(frames, message)
+                    ? Success(message, ContextData(controller))
+                    : Failure("VFX_STEP_FAILED", message);
+            },
+        });
+
         RegisterVfxBindingOperations(registry, controller);
         RegisterVfxCurveOperations(registry, controller);
         RegisterVfxPreviewOperations(registry, controller);

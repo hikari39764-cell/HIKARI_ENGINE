@@ -1,4 +1,4 @@
-#include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
+﻿#include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -64,6 +64,27 @@ namespace HIKARI::EDITOR {
         }
         if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip("Preview playback speed");
+        }
+        ImGui::SameLine();
+        if (ImGui::SmallButton("|>")) {
+            (void)StepPreviewFrame(1, statusMessage_);
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Step 1 frame (pauses preview)");
+        }
+        ImGui::SameLine();
+        if (ImGui::SmallButton("|>>")) {
+            (void)StepPreviewFrame(10, statusMessage_);
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Step 10 frames (pauses preview)");
+        }
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Focus")) {
+            (void)FocusSelectedEmitter(statusMessage_);
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Focus camera on selected emitter");
         }
         ImGui::SameLine();
         ImGui::TextDisabled(

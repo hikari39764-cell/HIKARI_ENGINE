@@ -7,6 +7,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include <json.hpp>
@@ -213,6 +214,31 @@ namespace HIKARI::EDITOR {
             std::string& outMessage);
         void ResetPreviewInputs();
 
+        bool ReparentEmitter(
+            std::string_view emitterId,
+            std::string_view newParentEmitterId,
+            std::string& outMessage);
+        bool ReorderEmitter(
+            std::string_view emitterId,
+            int direction,
+            std::string& outMessage);
+        void SetEmitterHidden(
+            std::string_view emitterId,
+            bool hidden) noexcept;
+        bool IsEmitterHidden(
+            std::string_view emitterId) const noexcept;
+        void SetSoloEmitter(std::string_view emitterId) noexcept;
+        void ClearSoloEmitter() noexcept;
+        const std::string& GetSoloEmitterId() const noexcept;
+        bool IsEmitterPreviewVisible(
+            std::string_view emitterId) const noexcept;
+        bool FocusSelectedEmitter(std::string& outMessage);
+        bool StepPreviewFrame(
+            int frameCount,
+            std::string& outMessage);
+        void NotifyEmitterStructureChanged() noexcept;
+        void NotifyEmitterVisibilityChanged() noexcept;
+
         void Select(VfxWorkspaceSelection selection);
         const VfxWorkspaceSelection& GetSelection() const noexcept;
         const VfxEditorDocument& GetDocument() const noexcept;
@@ -353,6 +379,8 @@ namespace HIKARI::EDITOR {
         bool lastAssetRefreshAttempted_ = false;
         bool lastAssetRefreshSucceeded_ = false;
 
+        std::unordered_set<std::string> hiddenEmitterIds_{};
+        std::string soloEmitterId_{};
         std::string selectedCurveKeyId_{};
         std::string selectedColorStopId_{};
         std::string curveEditorModuleId_{};

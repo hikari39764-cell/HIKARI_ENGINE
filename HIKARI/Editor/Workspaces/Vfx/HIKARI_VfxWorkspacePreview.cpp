@@ -1,5 +1,9 @@
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
 
+#include <vector>
+
+#include "Assets/Vfx/HIKARI_VfxAssetData.h"
+
 #include <algorithm>
 #include <cmath>
 #include <memory>
@@ -407,9 +411,25 @@ namespace HIKARI::EDITOR {
     }
 
     void VfxWorkspaceController::PublishPreviewRenderInput() {
+        RENDER3D::PARTICLES::ParticleRenderInput input =
+            playbackService_.GetRenderInput();
+        if (!hiddenEmitterIds_.empty() || !soloEmitterId_.empty()) {
+            const auto& emitters = document_.IsOpen()
+                ? document_.Asset().emitters
+                : std::vector<VFX::VfxEmitterData>{};
+            std::erase_if(
+                input.emitters,
+                [this, &emitters](
+                    const RENDER3D::PARTICLES::ParticleEmitterSubmission&
+                        submission) {
+                    const std::size_t index =
+                        submission.key.emitterIndex;
+                    if (index >= emitters.size()) return false;
+                    return !IsEmitterPreviewVisible(emitters[index].id);
+                });
+        }
         previewRenderInput_ = std::make_shared<const
-            RENDER3D::PARTICLES::ParticleRenderInput>(
-                playbackService_.GetRenderInput());
+            RENDER3D::PARTICLES::ParticleRenderInput>(std::move(input));
         ++previewRenderRevision_;
         if (previewRenderRevision_ == 0u) {
             previewRenderRevision_ = 1u;

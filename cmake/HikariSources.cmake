@@ -612,6 +612,7 @@ set(HIKARI_EDITOR_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/Vfx/HIKARI_VfxEditorValue.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/Vfx/HIKARI_VfxEmitterInspector.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/Vfx/HIKARI_VfxHierarchyWindow.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/Vfx/HIKARI_VfxNodeState.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/Vfx/HIKARI_VfxInputInspector.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/Vfx/HIKARI_VfxInspectorAnimatedControls.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/Vfx/HIKARI_VfxInspectorControls.cpp"

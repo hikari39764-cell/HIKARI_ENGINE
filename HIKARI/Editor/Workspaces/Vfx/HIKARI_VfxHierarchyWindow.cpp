@@ -9,6 +9,7 @@
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/HIKARI_AssetRecord.h"
 #include "Assets/Vfx/HIKARI_VfxPropertySchema.h"
+#include "Core/Text/HIKARI_Localization.h"
 
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
@@ -261,6 +262,18 @@ namespace HIKARI::EDITOR {
             const bool emitterSelected =
                 selection_.kind == VfxWorkspaceSelectionKind::Emitter &&
                 selection_.emitterId == emitter->id;
+
+            const bool hidden = IsEmitterHidden(emitter->id);
+            if (ImGui::SmallButton(hidden ? "-" : "o")) {
+                SetEmitterHidden(emitter->id, !hidden);
+            }
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("%s", TEXT::Localize(hidden
+                    ? "ui.vfx.hierarchy.showPreview"
+                    : "ui.vfx.hierarchy.hidePreview").c_str());
+            }
+            ImGui::SameLine();
+
             const bool open = ImGui::TreeNodeEx(
                 "Emitter",
                 ImGuiTreeNodeFlags_DefaultOpen |
@@ -268,12 +281,73 @@ namespace HIKARI::EDITOR {
                     (emitterSelected
                         ? ImGuiTreeNodeFlags_Selected
                         : ImGuiTreeNodeFlags_None),
-                "%s%s",
+                "%s%s%s",
                 emitter->basic.enabled ? "" : "[Disabled] ",
+                soloEmitterId_ == emitter->id ? "[Solo] " : "",
                 emitter->name.c_str());
             if (ImGui::IsItemClicked()) {
                 Select({ VfxWorkspaceSelectionKind::Emitter,
                     emitter->id, emitter->id });
+            }
+
+            if (ImGui::BeginDragDropSource(
+                    ImGuiDragDropFlags_SourceAllowNullID)) {
+                ImGui::SetDragDropPayload(
+                    "HIKARI_VFX_EMITTER",
+                    emitter->id.data(),
+                    emitter->id.size() + 1u);
+                ImGui::TextUnformatted(emitter->name.c_str());
+                ImGui::EndDragDropSource();
+            }
+            if (ImGui::BeginDragDropTarget()) {
+                if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(
+                        "HIKARI_VFX_EMITTER")) {
+                    const std::string draggedId =
+                        static_cast<const char*>(payload->Data);
+                    std::string message{};
+                    if (!ReparentEmitter(
+                            draggedId, emitter->id, message)) {
+                        statusMessage_ = message;
+                    }
+                }
+                ImGui::EndDragDropTarget();
+            }
+
+            if (ImGui::BeginPopupContextItem("EmitterContext")) {
+                Select({ VfxWorkspaceSelectionKind::Emitter,
+                    emitter->id, emitter->id });
+                if (ImGui::MenuItem(TEXT::Localize("ui.vfx.hierarchy.addChild").c_str())) {
+                    std::string id{};
+                    (void)AddEmitter(
+                        emitter->id, {}, {}, id, statusMessage_);
+                }
+                if (ImGui::MenuItem(TEXT::Localize("ui.vfx.hierarchy.duplicate").c_str())) {
+                    std::string id{};
+                    (void)DuplicateEmitter(
+                        emitter->id, id, statusMessage_);
+                }
+                ImGui::Separator();
+                if (ImGui::MenuItem(TEXT::Localize(hidden ? "ui.vfx.hierarchy.show" : "ui.vfx.hierarchy.hide").c_str())) {
+                    SetEmitterHidden(emitter->id, !hidden);
+                }
+                if (ImGui::MenuItem(TEXT::Localize(
+                        soloEmitterId_ == emitter->id
+                            ? "ui.vfx.hierarchy.clearSolo"
+                            : "ui.vfx.hierarchy.solo").c_str())) {
+                    if (soloEmitterId_ == emitter->id) {
+                        ClearSoloEmitter();
+                    } else {
+                        SetSoloEmitter(emitter->id);
+                    }
+                }
+                ImGui::Separator();
+                if (ImGui::MenuItem(
+                        TEXT::Localize("ui.vfx.hierarchy.delete").c_str(),
+                        nullptr, false,
+                        document_.Asset().emitters.size() > 1u)) {
+                    requestDeleteEmitter_ = true;
+                }
+                ImGui::EndPopup();
             }
             if (open) {
                 if (!emitter->inputLinks.empty()) {

@@ -2,6 +2,8 @@
 
 #include <utility>
 
+#include "Core/Text/HIKARI_Localization.h"
+
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Editor/Commands/HIKARI_EditorCommandRouter.h"
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenSceneSource.h"

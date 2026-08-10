@@ -192,7 +192,11 @@ namespace HIKARI::EDITOR {
         }
         nlohmann::json emitters = nlohmann::json::array();
         for (const VFX::VfxEmitterData& emitter : asset->emitters) {
-            emitters.push_back(EmitterSummary(emitter));
+            nlohmann::json summary = EmitterSummary(emitter);
+            summary["hidden"] = controller.IsEmitterHidden(emitter.id);
+            summary["previewVisible"] =
+                controller.IsEmitterPreviewVisible(emitter.id);
+            emitters.push_back(std::move(summary));
         }
         const VfxEditorDocument& document = controller.GetDocument();
         return {
@@ -227,6 +231,7 @@ namespace HIKARI::EDITOR {
                     controller.GetPreviewLoopStartSeconds() },
                 { "loopEndSeconds",
                     controller.GetPreviewLoopEndSeconds() },
+                { "soloEmitterId", controller.GetSoloEmitterId() },
             } },
             { "inputs", std::move(inputs) },
             { "emitters", std::move(emitters) },
