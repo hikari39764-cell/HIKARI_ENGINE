@@ -16,7 +16,9 @@
 #include "Assets/Material/HIKARI_MaterialAssetLookup.h"
 #include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingAsset.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
+#include "Core/Content/HIKARI_EngineContentContext.h"
 #include "Core/HIKARI_Logger.h"
+#include "Core/Serialization/Json/HIKARI_JsonFile.h"
 
 namespace HIKARI {
 
@@ -154,10 +156,90 @@ namespace HIKARI {
             return {};
         }
 
+        bool AppendEngineContentTextures(AssetRegistry& registry) {
+            const CONTENT::EngineContentContext& content =
+                CONTENT::GetEngineContentContext();
+            if (!content.IsOpen()) {
+                return true;
+            }
+
+            const std::filesystem::path manifestPath =
+                content.Resolve("Vfx/BuiltinAssets.json");
+            nlohmann::json root{};
+            std::string readError{};
+            if (manifestPath.empty() ||
+                !SERIALIZATION::JSON::ReadJsonFile(
+                    manifestPath, root, &readError) ||
+                !root.is_object() ||
+                root.value("schema", std::string{}) !=
+                    "hikari.engine_content_assets" ||
+                root.value("version", 0u) != 1u ||
+                !root.contains("assets") ||
+                !root["assets"].is_array()) {
+                HIKARI_LOG_ERROR(
+                    "[AssetRegistryBuilder][EngineContent] invalid VFX "
+                    "asset catalog: " + readError);
+                return false;
+            }
+
+            bool ok = true;
+            for (const nlohmann::json& asset : root["assets"]) {
+                if (!asset.is_object() ||
+                    asset.value("type", std::string{}) != "Texture") {
+                    HIKARI_LOG_ERROR(
+                        "[AssetRegistryBuilder][EngineContent] unsupported "
+                        "VFX asset catalog entry");
+                    ok = false;
+                    continue;
+                }
+
+                const std::string id = asset.value("id", std::string{});
+                const std::filesystem::path sourcePath = content.Resolve(
+                    asset.value("path", std::string{}));
+                std::error_code ec{};
+                if (id.empty() || sourcePath.empty() ||
+                    !std::filesystem::is_regular_file(sourcePath, ec) || ec) {
+                    HIKARI_LOG_ERROR(
+                        "[AssetRegistryBuilder][EngineContent] VFX texture "
+                        "is missing: " + id);
+                    ok = false;
+                    continue;
+                }
+
+                auto descriptor =
+                    std::make_unique<TextureAssetDescriptor>();
+                descriptor->id.value = id;
+                descriptor->type = AssetType::Texture;
+                descriptor->sourcePath = sourcePath.generic_string();
+                descriptor->version = root.value("version", 1u);
+                descriptor->dimension =
+                    TextureAssetDimension::Texture2D;
+                descriptor->colorSpace =
+                    ASSETS::IMPORT_POLICY::ParseTextureColorSpace(
+                        asset.value("colorSpace", std::string{}),
+                        TextureAssetColorSpace::Srgb);
+                descriptor->usage =
+                    ASSETS::IMPORT_POLICY::ParseTextureUsage(
+                        asset.value("usage", std::string{}),
+                        TextureUsage::BaseColor);
+                descriptor->compression =
+                    ASSETS::IMPORT_POLICY::ParseTextureCompression(
+                        asset.value("compression", std::string{}),
+                        TextureCompression::None);
+                descriptor->mipPolicy =
+                    ASSETS::IMPORT_POLICY::ParseTextureMipPolicy(
+                        asset.value("mipPolicy", std::string{}),
+                        TextureMipPolicy::Preserve);
+                ok = registry.RegisterDescriptor(
+                    std::move(descriptor)) && ok;
+            }
+            return ok;
+        }
+
     }
 
     bool AssetRegistryBuilder::AppendToRegistry(const AssetDatabase& assetDatabase, AssetRegistry& registry) const {
-        bool ok = true;
+        bool ok = AppendEngineContentTextures(registry);
 
         for (const AssetRecord* record : assetDatabase.CollectAll()) {
             if (!record || !record->guid.IsValid() || record->duplicateGuid) {
