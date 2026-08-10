@@ -60,6 +60,7 @@ namespace HIKARI {
             std::pair{ MaterialTemplateId::HybridMetal, std::string_view{ "HybridMetal" } },
             std::pair{ MaterialTemplateId::Custom, std::string_view{ "Custom" } },
             std::pair{ MaterialTemplateId::ParticleUnlit, std::string_view{ "ParticleUnlit" } },
+            std::pair{ MaterialTemplateId::ParticleUnlitTextured, std::string_view{ "ParticleUnlitTextured" } },
         };
         constexpr std::array kAlphaModes{
             std::pair{ MaterialAlphaMode::Opaque, std::string_view{ "Opaque" } },

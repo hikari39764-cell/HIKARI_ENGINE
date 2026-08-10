@@ -436,6 +436,18 @@ namespace HIKARI::VFX {
             emitter.render.blendMode = ConvertBlend(
                 source.renderCommon.blendMode);
             emitter.render.depthTest = source.renderCommon.depthTest;
+            emitter.render.flipbookColumns =
+                source.renderCommon.flipbookColumns;
+            emitter.render.flipbookRows =
+                source.renderCommon.flipbookRows;
+            emitter.render.flipbookFrameCount =
+                source.renderCommon.flipbookFrameCount;
+            emitter.render.flipbookFramesPerSecond =
+                source.renderCommon.flipbookFramesPerSecond;
+            emitter.render.flipbookLoop =
+                source.renderCommon.flipbookLoop;
+            emitter.render.flipbookRandomStart =
+                source.renderCommon.flipbookRandomStart;
             emitter.render.shape = ConvertRenderShape(
                 source.renderShape.type);
             emitter.render.billboardMode = ConvertBillboard(

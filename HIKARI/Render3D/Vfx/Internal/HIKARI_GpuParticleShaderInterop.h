@@ -40,6 +40,11 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
         uint32_t renderShapeParam1 = 0u;
         GpuParticleFloat4 renderShapeParamsA{};
         GpuParticleFloat4 renderShapeParamsB{};
+        uint32_t flipbookColumns = 1u;
+        uint32_t flipbookRows = 1u;
+        uint32_t flipbookFrameCount = 1u;
+        uint32_t flipbookFlags = 0u;
+        GpuParticleFloat4 flipbookParams{};
     };
 
     static_assert(sizeof(GpuParticle) == 96u);

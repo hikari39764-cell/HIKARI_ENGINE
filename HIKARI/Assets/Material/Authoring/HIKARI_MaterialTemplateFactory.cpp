@@ -10,7 +10,7 @@ namespace HIKARI::ASSETS::MATERIAL {
 
     namespace {
 
-        constexpr std::array<MaterialTemplateInfo, 9u> kTemplates{ {
+        constexpr std::array<MaterialTemplateInfo, 10u> kTemplates{ {
             { MaterialTemplateId::StandardPbr, "Standard PBR",
                 "Physically based baseline with imported texture compatibility." },
             { MaterialTemplateId::GenericToon, "Generic Toon",
@@ -29,6 +29,9 @@ namespace HIKARI::ASSETS::MATERIAL {
                 "PBR metal response mixed with multi-ramp stylization." },
             { MaterialTemplateId::ParticleUnlit, "Particle Unlit",
                 "Unlit particle material with graph-driven color, opacity, emissive and alpha clipping." },
+            { MaterialTemplateId::ParticleUnlitTextured,
+                "Particle Unlit (Textured)",
+                "Unlit particle texture multiplied by tint, with texture alpha driving opacity." },
         } };
 
         constexpr std::array<MaterialRampPresetInfo, 4u> kRampPresets{ {
@@ -448,9 +451,14 @@ namespace HIKARI::ASSETS::MATERIAL {
             data.featureRequests.clear();
         }
 
-        void ConfigureParticleUnlit(MaterialAssetData& data) {
+        void ConfigureParticleUnlit(
+            MaterialAssetData& data,
+            bool textured) {
+
             data.domain = MaterialDomain::Particle;
-            data.templateId = MaterialTemplateId::ParticleUnlit;
+            data.templateId = textured
+                ? MaterialTemplateId::ParticleUnlitTextured
+                : MaterialTemplateId::ParticleUnlit;
             data.surface.alphaMode = MaterialAlphaMode::Blend;
             data.surface.unlit = true;
             data.pbr.unlit = true;
@@ -481,10 +489,96 @@ namespace HIKARI::ASSETS::MATERIAL {
                 MaterialNodeKind::ParticleOutput, MaterialValueType::Float4,
                 -120.0f, 20.0f);
 
-            Connect(data, "edge.particleTint", "node.particleTint", "Value",
-                "node.particleOutput", "Color");
-            Connect(data, "edge.particleOpacity", "node.particleOpacity", "Value",
-                "node.particleOutput", "Opacity");
+            if (textured) {
+                AddResource(
+                    data,
+                    "resource.particleTexture",
+                    "Particle Texture",
+                    MaterialResourceType::Texture2D,
+                    MaterialResourceSemantic::BaseColor);
+                AddNode(
+                    data,
+                    "node.texture.particle",
+                    "Particle Texture",
+                    MaterialNodeKind::TextureSample,
+                    MaterialValueType::Float4,
+                    -720.0f,
+                    -240.0f,
+                    "resource.particleTexture");
+                AddNode(
+                    data,
+                    "node.multiply.particleColor",
+                    "Texture x Tint",
+                    MaterialNodeKind::Multiply,
+                    MaterialValueType::Float4,
+                    -320.0f,
+                    -160.0f);
+                AddNode(
+                    data,
+                    "node.multiply.particleOpacity",
+                    "Texture Alpha x Opacity",
+                    MaterialNodeKind::Multiply,
+                    MaterialValueType::Float1,
+                    -320.0f,
+                    40.0f);
+                Connect(
+                    data,
+                    "edge.particleTexture.color",
+                    "node.texture.particle",
+                    "Color",
+                    "node.multiply.particleColor",
+                    "A");
+                Connect(
+                    data,
+                    "edge.particleTint",
+                    "node.particleTint",
+                    "Value",
+                    "node.multiply.particleColor",
+                    "B");
+                Connect(
+                    data,
+                    "edge.particleColor.output",
+                    "node.multiply.particleColor",
+                    "Result",
+                    "node.particleOutput",
+                    "Color");
+                Connect(
+                    data,
+                    "edge.particleTexture.alpha",
+                    "node.texture.particle",
+                    "A",
+                    "node.multiply.particleOpacity",
+                    "A");
+                Connect(
+                    data,
+                    "edge.particleOpacity",
+                    "node.particleOpacity",
+                    "Value",
+                    "node.multiply.particleOpacity",
+                    "B");
+                Connect(
+                    data,
+                    "edge.particleOpacity.output",
+                    "node.multiply.particleOpacity",
+                    "Result",
+                    "node.particleOutput",
+                    "Opacity");
+            } else {
+                Connect(
+                    data,
+                    "edge.particleTint",
+                    "node.particleTint",
+                    "Value",
+                    "node.particleOutput",
+                    "Color");
+                Connect(
+                    data,
+                    "edge.particleOpacity",
+                    "node.particleOpacity",
+                    "Value",
+                    "node.particleOutput",
+                    "Opacity");
+            }
             Connect(data, "edge.particleEmissive", "node.particleEmissive", "Value",
                 "node.particleOutput", "Emissive");
             Connect(data, "edge.particleAlphaClip", "node.particleAlphaClip", "Value",
@@ -495,7 +589,7 @@ namespace HIKARI::ASSETS::MATERIAL {
 
     } // namespace
 
-    const std::array<MaterialTemplateInfo, 9u>&
+    const std::array<MaterialTemplateInfo, 10u>&
         GetBuiltInMaterialTemplates() noexcept {
         return kTemplates;
     }
@@ -629,7 +723,12 @@ namespace HIKARI::ASSETS::MATERIAL {
         case MaterialTemplateId::Eye: ConfigureEye(data); break;
         case MaterialTemplateId::Cloth: ConfigureCloth(data); break;
         case MaterialTemplateId::HybridMetal: ConfigureHybridMetal(data); break;
-        case MaterialTemplateId::ParticleUnlit: ConfigureParticleUnlit(data); break;
+        case MaterialTemplateId::ParticleUnlit:
+            ConfigureParticleUnlit(data, false);
+            break;
+        case MaterialTemplateId::ParticleUnlitTextured:
+            ConfigureParticleUnlit(data, true);
+            break;
         case MaterialTemplateId::StandardPbr:
         case MaterialTemplateId::Custom:
             break;

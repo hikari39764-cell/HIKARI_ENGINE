@@ -222,6 +222,12 @@ namespace HIKARI::RENDER3D::PARTICLES {
         ParticleBillboardMode billboardMode =
             ParticleBillboardMode::Fixed;
         bool depthTest = true;
+        uint32_t flipbookColumns = 1u;
+        uint32_t flipbookRows = 1u;
+        uint32_t flipbookFrameCount = 1u;
+        float flipbookFramesPerSecond = 0.0f;
+        bool flipbookLoop = true;
+        bool flipbookRandomStart = false;
         uint32_t ribbonSegmentCount = 16u;
         float ribbonWidth = 0.1f;
         float ringOuterRadius = 1.0f;

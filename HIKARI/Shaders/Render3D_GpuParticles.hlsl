@@ -866,6 +866,11 @@ cbuffer DrawConstants : register(b0)
     uint gRenderShapeParam1;
     float4 gRenderShapeParamsA;
     float4 gRenderShapeParamsB;
+    uint gFlipbookColumns;
+    uint gFlipbookRows;
+    uint gFlipbookFrameCount;
+    uint gFlipbookFlags;
+    float4 gFlipbookParams;
 };
 
 struct ParticleVsOutput
@@ -1055,7 +1060,26 @@ ParticleVsOutput ParticleVS(
 
     ParticleVsOutput output;
     output.position = mul(gViewProjection, float4(worldPosition, 1.0f));
-    output.uv = uvCorner;
+    uint flipbookColumns = max(gFlipbookColumns, 1u);
+    uint flipbookRows = max(gFlipbookRows, 1u);
+    uint flipbookCellCount = flipbookColumns * flipbookRows;
+    uint flipbookFrameCount = clamp(
+        gFlipbookFrameCount, 1u, flipbookCellCount);
+    uint flipbookFrame = (uint)floor(
+        max(gFlipbookParams.x, 0.0f) *
+        max(particle.positionAge.w, 0.0f));
+    if ((gFlipbookFlags & 2u) != 0u)
+    {
+        flipbookFrame += Hash(asuint(
+            particle.physicsPositionSeed.w)) % flipbookFrameCount;
+    }
+    flipbookFrame = (gFlipbookFlags & 1u) != 0u
+        ? flipbookFrame % flipbookFrameCount
+        : min(flipbookFrame, flipbookFrameCount - 1u);
+    uint flipbookColumn = flipbookFrame % flipbookColumns;
+    uint flipbookRow = flipbookFrame / flipbookColumns;
+    output.uv = (float2(flipbookColumn, flipbookRow) + uvCorner) /
+        float2(flipbookColumns, flipbookRows);
     output.color = particle.color;
     output.alive = particle.velocityLifetime.w > 0.0f ? 1.0f : 0.0f;
     output.worldPosition = worldPosition;
@@ -1074,8 +1098,10 @@ float4 ParticlePS(ParticleVsOutput input) : SV_TARGET
     float3 emissive = materialData.emissiveFactor.rgb *
         materialData.emissiveFactor.w;
     float alphaClipThreshold = 0.001f;
-    if (materialData.materialProgramIndex !=
-        HIKARI_STANDARD_PBR_MATERIAL_PROGRAM)
+    const bool hasParticleExpression =
+        materialData.materialProgramIndex !=
+        HIKARI_STANDARD_PBR_MATERIAL_PROGRAM;
+    if (hasParticleExpression)
     {
         HikariMaterialExpressionContext context;
         context.uv0 = input.uv;
@@ -1117,9 +1143,14 @@ float4 ParticlePS(ParticleVsOutput input) : SV_TARGET
                 expression.alphaClipThreshold, 0.0f);
         }
     }
-    float4 result = input.color * materialColor;
+    float4 result = float4(
+        input.color.rgb * materialColor.rgb,
+        input.color.a * opacity);
+    if (!hasParticleExpression)
+    {
+        result.a *= materialColor.a;
+    }
     result.rgb += emissive;
-    result.a *= opacity;
     clip(result.a - alphaClipThreshold);
     return result;
 }

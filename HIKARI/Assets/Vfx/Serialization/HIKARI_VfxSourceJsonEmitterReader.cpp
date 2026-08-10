@@ -191,6 +191,49 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
             renderCommon["materialAssetGuid"].get<std::string>() };
         emitter.renderCommon.depthTest =
             renderCommon["depthTest"].get<bool>();
+        const auto readOptionalUnsigned = [&renderCommon](
+            const char* name,
+            uint32_t& outValue) {
+            if (!renderCommon.contains(name)) return true;
+            if (!renderCommon[name].is_number_unsigned() &&
+                !renderCommon[name].is_number_integer()) {
+                return false;
+            }
+            outValue = renderCommon[name].get<uint32_t>();
+            return true;
+        };
+        const auto readOptionalBool = [&renderCommon](
+            const char* name,
+            bool& outValue) {
+            if (!renderCommon.contains(name)) return true;
+            if (!renderCommon[name].is_boolean()) return false;
+            outValue = renderCommon[name].get<bool>();
+            return true;
+        };
+        if (!readOptionalUnsigned(
+                "flipbookColumns",
+                emitter.renderCommon.flipbookColumns) ||
+            !readOptionalUnsigned(
+                "flipbookRows",
+                emitter.renderCommon.flipbookRows) ||
+            !readOptionalUnsigned(
+                "flipbookFrameCount",
+                emitter.renderCommon.flipbookFrameCount) ||
+            !readOptionalBool(
+                "flipbookLoop",
+                emitter.renderCommon.flipbookLoop) ||
+            !readOptionalBool(
+                "flipbookRandomStart",
+                emitter.renderCommon.flipbookRandomStart)) {
+            return false;
+        }
+        if (renderCommon.contains("flipbookFramesPerSecond")) {
+            if (!renderCommon["flipbookFramesPerSecond"].is_number()) {
+                return false;
+            }
+            emitter.renderCommon.flipbookFramesPerSecond =
+                renderCommon["flipbookFramesPerSecond"].get<float>();
+        }
 
         emitter.renderShape.id =
             renderShape["id"].get<std::string>();
@@ -291,4 +334,3 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
     }
 
 } // namespace HIKARI::VFX::SERIALIZATION::INTERNAL
-

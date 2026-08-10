@@ -320,6 +320,20 @@ namespace HIKARI::VFX {
                     ParticleBillboardMode::DirectionalBillboard &&
                  emitter.render.billboardMode !=
                     ParticleBillboardMode::Fixed) ||
+                emitter.render.flipbookColumns == 0u ||
+                emitter.render.flipbookColumns > 64u ||
+                emitter.render.flipbookRows == 0u ||
+                emitter.render.flipbookRows > 64u ||
+                emitter.render.flipbookFrameCount == 0u ||
+                emitter.render.flipbookFrameCount >
+                    static_cast<uint64_t>(
+                        emitter.render.flipbookColumns) *
+                    static_cast<uint64_t>(
+                        emitter.render.flipbookRows) ||
+                !IsFinite(
+                    emitter.render.flipbookFramesPerSecond) ||
+                emitter.render.flipbookFramesPerSecond < 0.0f ||
+                emitter.render.flipbookFramesPerSecond > 240.0f ||
                 (!emitter.render.materialAssetGuid.empty() &&
                  (emitter.render.materialAssetGuid.size() >
                         kMaximumVfxProgramStringBytes ||

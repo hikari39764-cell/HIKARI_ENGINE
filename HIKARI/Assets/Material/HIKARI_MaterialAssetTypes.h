@@ -34,6 +34,7 @@ namespace HIKARI {
         HybridMetal,
         Custom,
         ParticleUnlit,
+        ParticleUnlitTextured,
     };
 
     enum class MaterialAlphaMode : uint8_t {

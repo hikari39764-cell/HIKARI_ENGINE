@@ -655,6 +655,20 @@ namespace HIKARI::RENDER3D::PARTICLES {
                     0.0f,
                     0.0f,
                     0.0f);
+                drawConstants.flipbookColumns =
+                    render.flipbookColumns;
+                drawConstants.flipbookRows =
+                    render.flipbookRows;
+                drawConstants.flipbookFrameCount =
+                    render.flipbookFrameCount;
+                drawConstants.flipbookFlags =
+                    (render.flipbookLoop ? 1u : 0u) |
+                    (render.flipbookRandomStart ? 2u : 0u);
+                drawConstants.flipbookParams = MakeFloat4(
+                    render.flipbookFramesPerSecond,
+                    0.0f,
+                    0.0f,
+                    0.0f);
                 context.cmdList->SetGraphicsRoot32BitConstants(
                     5u,
                     sizeof(drawConstants) / sizeof(uint32_t),

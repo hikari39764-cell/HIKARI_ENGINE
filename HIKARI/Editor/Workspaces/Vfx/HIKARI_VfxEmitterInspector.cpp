@@ -407,6 +407,41 @@ namespace HIKARI::EDITOR {
                 "Depth Test",
                 "depthTest",
                 emitter.renderCommon.depthTest);
+            ImGui::SeparatorText("Flipbook");
+            renderCommonEditor.Unsigned(
+                "Columns",
+                "flipbookColumns",
+                emitter.renderCommon.flipbookColumns,
+                1u,
+                64u);
+            renderCommonEditor.Unsigned(
+                "Rows",
+                "flipbookRows",
+                emitter.renderCommon.flipbookRows,
+                1u,
+                64u);
+            renderCommonEditor.Unsigned(
+                "Frame Count",
+                "flipbookFrameCount",
+                emitter.renderCommon.flipbookFrameCount,
+                1u,
+                emitter.renderCommon.flipbookColumns *
+                    emitter.renderCommon.flipbookRows);
+            renderCommonEditor.Float(
+                "Frames Per Second",
+                "flipbookFramesPerSecond",
+                emitter.renderCommon.flipbookFramesPerSecond,
+                0.1f,
+                0.0f,
+                240.0f);
+            renderCommonEditor.Bool(
+                "Loop",
+                "flipbookLoop",
+                emitter.renderCommon.flipbookLoop);
+            renderCommonEditor.Bool(
+                "Random Start",
+                "flipbookRandomStart",
+                emitter.renderCommon.flipbookRandomStart);
 
             ImGui::SeparatorText("Render Shape");
             VfxInspectorPropertyEditor renderShapeEditor(

@@ -540,6 +540,28 @@ namespace HIKARI::VFX {
                     "render material GUID is invalid",
                     emitter.renderCommon.id);
             }
+            const uint64_t flipbookCellCount =
+                static_cast<uint64_t>(
+                    emitter.renderCommon.flipbookColumns) *
+                static_cast<uint64_t>(
+                    emitter.renderCommon.flipbookRows);
+            if (emitter.renderCommon.flipbookColumns == 0u ||
+                emitter.renderCommon.flipbookColumns > 64u ||
+                emitter.renderCommon.flipbookRows == 0u ||
+                emitter.renderCommon.flipbookRows > 64u ||
+                emitter.renderCommon.flipbookFrameCount == 0u ||
+                emitter.renderCommon.flipbookFrameCount >
+                    flipbookCellCount ||
+                !IsFinite(
+                    emitter.renderCommon.flipbookFramesPerSecond) ||
+                emitter.renderCommon.flipbookFramesPerSecond < 0.0f ||
+                emitter.renderCommon.flipbookFramesPerSecond > 240.0f) {
+                AddError(
+                    diagnostics,
+                    "Vfx.InvalidFlipbook",
+                    "flipbook layout or playback rate is invalid",
+                    emitter.renderCommon.id);
+            }
             if (emitter.renderShape.billboardMode !=
                     VfxBillboardMode::RotatedBillboard &&
                 emitter.renderShape.billboardMode !=

@@ -427,6 +427,19 @@ namespace HIKARI::VFX {
                 writer.WriteEnum(emitter.render.shape);
                 writer.WriteEnum(emitter.render.billboardMode);
                 writer.WriteBool(emitter.render.depthTest);
+                writer.Write(emitter.render.flipbookColumns);
+                writer.Write(emitter.render.flipbookRows);
+                writer.Write(emitter.render.flipbookFrameCount);
+                writer.Write(emitter.render.flipbookFramesPerSecond);
+                writer.WriteBool(emitter.render.flipbookLoop);
+                writer.WriteBool(emitter.render.flipbookRandomStart);
+                writer.Write(emitter.render.ribbonSegmentCount);
+                writer.Write(emitter.render.ribbonWidth);
+                writer.Write(emitter.render.ringOuterRadius);
+                writer.Write(emitter.render.ringInnerRadius);
+                writer.Write(emitter.render.ringSegmentCount);
+                writer.Write(emitter.render.ringStartAngleRadians);
+                writer.Write(emitter.render.ringEndAngleRadians);
 
                 writer.Write(static_cast<uint32_t>(
                     emitter.inputLinks.size()));
@@ -534,7 +547,22 @@ namespace HIKARI::VFX {
                     !reader.ReadEnum(emitter.render.blendMode) ||
                     !reader.ReadEnum(emitter.render.shape) ||
                     !reader.ReadEnum(emitter.render.billboardMode) ||
-                    !reader.ReadBool(emitter.render.depthTest)) {
+                    !reader.ReadBool(emitter.render.depthTest) ||
+                    !reader.Read(emitter.render.flipbookColumns) ||
+                    !reader.Read(emitter.render.flipbookRows) ||
+                    !reader.Read(emitter.render.flipbookFrameCount) ||
+                    !reader.Read(
+                        emitter.render.flipbookFramesPerSecond) ||
+                    !reader.ReadBool(emitter.render.flipbookLoop) ||
+                    !reader.ReadBool(
+                        emitter.render.flipbookRandomStart) ||
+                    !reader.Read(emitter.render.ribbonSegmentCount) ||
+                    !reader.Read(emitter.render.ribbonWidth) ||
+                    !reader.Read(emitter.render.ringOuterRadius) ||
+                    !reader.Read(emitter.render.ringInnerRadius) ||
+                    !reader.Read(emitter.render.ringSegmentCount) ||
+                    !reader.Read(emitter.render.ringStartAngleRadians) ||
+                    !reader.Read(emitter.render.ringEndAngleRadians)) {
                     return false;
                 }
 

@@ -42,7 +42,7 @@ namespace HIKARI::ASSETS::MATERIAL {
         std::vector<std::string> diagnostics{};
     };
 
-    const std::array<MaterialTemplateInfo, 9u>&
+    const std::array<MaterialTemplateInfo, 10u>&
         GetBuiltInMaterialTemplates() noexcept;
 
     const std::array<MaterialRampPresetInfo, 4u>&

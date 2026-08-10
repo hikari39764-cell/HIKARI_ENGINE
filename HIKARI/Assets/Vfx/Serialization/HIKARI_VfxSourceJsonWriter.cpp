@@ -274,6 +274,18 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
                         { "blendMode", ToString(
                             emitter.renderCommon.blendMode) },
                         { "depthTest", emitter.renderCommon.depthTest },
+                        { "flipbookColumns",
+                            emitter.renderCommon.flipbookColumns },
+                        { "flipbookRows",
+                            emitter.renderCommon.flipbookRows },
+                        { "flipbookFrameCount",
+                            emitter.renderCommon.flipbookFrameCount },
+                        { "flipbookFramesPerSecond",
+                            emitter.renderCommon.flipbookFramesPerSecond },
+                        { "flipbookLoop",
+                            emitter.renderCommon.flipbookLoop },
+                        { "flipbookRandomStart",
+                            emitter.renderCommon.flipbookRandomStart },
                     } },
                     { "renderShape", {
                         { "id", emitter.renderShape.id },
@@ -342,4 +354,3 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
     }
 
 } // namespace HIKARI::VFX::SERIALIZATION::INTERNAL
-
