@@ -903,6 +903,8 @@ ParticleVsOutput ParticleVS(
     Particle particle = gDrawParticles[instanceId];
     float2 corner = corners[vertexId % 6u];
     float2 uvCorner = uvs[vertexId % 6u];
+    const float segmentCorner = corner.x + 0.5f;
+    const float segmentSide = corner.y * 2.0f;
     bool isStripShape = false;
     float stripS = 0.0f;
     float stripSide = 0.0f;
@@ -912,14 +914,9 @@ ParticleVsOutput ParticleVS(
         uint segmentCount = max(gRenderShapeParam0, 2u);
         uint vertsPerStrip = segmentCount * 6u;
         uint quadIndex = (vertexId % vertsPerStrip) / 6u;
-        uint cornerIndex = vertexId % 6u;
-        stripS = (float)quadIndex / (float)(segmentCount - 1u);
-        if (cornerIndex == 2u || cornerIndex == 4u || cornerIndex == 5u)
-        {
-            stripS = (float)(quadIndex + 1u) / (float)(segmentCount - 1u);
-        }
-        stripSide = (cornerIndex == 0u || cornerIndex == 1u ||
-            cornerIndex == 3u) ? -1.0f : 1.0f;
+        stripS = ((float)quadIndex + segmentCorner) /
+            (float)segmentCount;
+        stripSide = segmentSide;
         stripHalfWidth = gRenderShapeParamsA.x * 0.5f;
         isStripShape = true;
     }
@@ -928,20 +925,15 @@ ParticleVsOutput ParticleVS(
         uint segmentCount = max(gRenderShapeParam1, 3u);
         uint vertsPerRing = segmentCount * 6u;
         uint quadIndex = (vertexId % vertsPerRing) / 6u;
-        uint cornerIndex = vertexId % 6u;
         float startAngle = gRenderShapeParamsA.w;
         float endAngle = gRenderShapeParamsB.x;
         float angleSpan = endAngle - startAngle;
-        stripS = (float)quadIndex / (float)segmentCount;
-        if (cornerIndex == 2u || cornerIndex == 4u || cornerIndex == 5u)
-        {
-            stripS = (float)(quadIndex + 1u) / (float)segmentCount;
-        }
+        stripS = ((float)quadIndex + segmentCorner) /
+            (float)segmentCount;
         float angle = startAngle + angleSpan * stripS;
         float outerRadius = gRenderShapeParamsA.y;
         float innerRadius = gRenderShapeParamsA.z;
-        stripSide = (cornerIndex == 0u || cornerIndex == 1u ||
-            cornerIndex == 3u) ? -1.0f : 1.0f;
+        stripSide = segmentSide;
         float radius = stripSide < 0.0f ? innerRadius : outerRadius;
         corner = float2(cos(angle) * radius, sin(angle) * radius);
         uvCorner = float2(stripS, stripSide * 0.5f + 0.5f);
