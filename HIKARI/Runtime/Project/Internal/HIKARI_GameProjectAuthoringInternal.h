@@ -2,6 +2,7 @@
 
 #include <string>
 #include <string_view>
+#include <unordered_set>
 
 #include <json.hpp>
 
@@ -15,6 +16,7 @@ namespace HIKARI {
 
     class ComponentRegistry;
     class ComponentSystemPolicy;
+    class GameProjectComponentAdapter;
     class GameObject;
     class IInspectorBuilder;
     class SystemTypeRegistry;
@@ -45,6 +47,10 @@ namespace HIKARI {
             GameObject& object) noexcept;
         static WorldView MakeWorldView(
             World& world) noexcept;
+        static GameComponentContext MakeGameComponentContext(
+            GameProjectComponentAdapter& adapter,
+            GameObject& object,
+            World& world) noexcept;
         static GameObject* GetObject(
             const ObjectView& view) noexcept;
         static World* GetWorld(
@@ -57,20 +63,32 @@ namespace HIKARI {
         GameProjectComponentAdapter(
             std::string typeName,
             IGameComponent* component,
-            DestroyGameComponentFn destroy) noexcept;
+            DestroyGameComponentFn destroy);
         ~GameProjectComponentAdapter() override;
 
         std::string_view GetTypeName() const override;
         void OnAttach() override;
+        void OnDetach() override;
         void Update(float deltaTime) override;
         void Serialize(nlohmann::json& out) const override;
         void Deserialize(const nlohmann::json& in) override;
         void BuildInspector(IInspectorBuilder& builder) override;
 
         IGameComponent* GetGameComponent() noexcept;
+        bool WriteVariable(
+            const WorldView& world,
+            std::string_view variableId,
+            const GameProjectBindingValue& value) noexcept;
+        bool ReleaseVariable(
+            const WorldView& world,
+            std::string_view variableId) noexcept;
 
     private:
+        void ReleaseAllVariables(const WorldView& world) noexcept;
+
         std::string typeName_{};
+        std::string bindingWriterId_{};
+        std::unordered_set<std::string> writtenVariableIds_{};
         IGameComponent* component_ = nullptr;
         DestroyGameComponentFn destroy_ = nullptr;
     };

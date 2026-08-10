@@ -118,6 +118,45 @@ namespace HIKARI::RENDER3D {
         return view;
     }
 
+    RenderResourceView AllocateBufferUavDescriptor(
+        ID3D12Resource* resource,
+        DXGI_FORMAT format,
+        UINT numElements,
+        UINT structureByteStride,
+        ID3D12Resource* counterResource,
+        UINT64 counterOffsetBytes,
+        D3D12_BUFFER_UAV_FLAGS flags) {
+
+        RenderResourceDescriptorPoolState& state = State();
+        if (!state.initialized ||
+            !HasValidContext(state.context) ||
+            resource == nullptr ||
+            numElements == 0u) {
+            ++state.failedAllocationCount;
+            return {};
+        }
+
+        RenderResourceView view = AllocateDescriptor(state);
+        if (!view.IsValid()) {
+            return {};
+        }
+
+        D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc{};
+        uavDesc.Format = format;
+        uavDesc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
+        uavDesc.Buffer.FirstElement = 0u;
+        uavDesc.Buffer.NumElements = numElements;
+        uavDesc.Buffer.StructureByteStride = structureByteStride;
+        uavDesc.Buffer.CounterOffsetInBytes = counterOffsetBytes;
+        uavDesc.Buffer.Flags = flags;
+        state.context.device->CreateUnorderedAccessView(
+            resource,
+            counterResource,
+            &uavDesc,
+            view.cpu);
+        return view;
+    }
+
     RenderResourceView AllocateTexture2DSrvDescriptor(
         ID3D12Resource* resource,
         DXGI_FORMAT format,

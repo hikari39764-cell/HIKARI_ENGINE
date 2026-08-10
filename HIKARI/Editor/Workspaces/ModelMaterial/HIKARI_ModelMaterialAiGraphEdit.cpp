@@ -124,6 +124,7 @@ bool ModelMaterialWorkspaceController::ApplyAiMaterialGraphEdit(
     create.valueY = request.valueY;
     create.valueZ = request.valueZ;
     create.valueW = request.valueW;
+    create.referenceId = request.referenceId;
     create.allowFunctionCall = false;
     return AddMaterialGraphNode(
         scene, create, outMessage, outDetails, outCode);

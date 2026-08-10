@@ -159,7 +159,7 @@ const std::vector<AiCapability>& BuiltInCapabilities() {
           "List the current AI-accessible capabilities and boundaries.",
           "stable" },
         { "query.material_templates",
-          "List built-in material templates (PBR/Toon/Skin/Face/Hair/Eye/Cloth/Hybrid).",
+          "List built-in Surface and Particle material templates.",
           "stable" },
         { "material.compile",
           "Material graphs compile to bounded expression programs with diagnostics and budget.",
@@ -354,6 +354,16 @@ AiRequestResult SubmitAiRequest(
                 "Material Function 节点必须由人类在编辑器的 "
                 "Material Functions 菜单添加",
             };
+        } else if (topic == "material.create_from_template") {
+            result.details = {
+                "{\"action\":\"material.create_from_template\","
+                "\"templateId\":\"ParticleUnlit\","
+                "\"name\":\"PlayerTrail\"}",
+                "创建成功后会在后台材质工作区打开新文档，"
+                "不会自动绑定当前模型材质槽。",
+                "当前材质文档有未保存修改时返回 PENDING_CONFIRMATION，"
+                "且不会创建资产。",
+            };
         } else if (topic == "material.open_model" ||
                    topic == "material.open_asset" ||
                    topic == "material.list_assets" ||
@@ -366,6 +376,8 @@ AiRequestResult SubmitAiRequest(
                 "\"modelGuid\":\"<guid>\"}",
                 "先用 asset.list_models / material.list_assets "
                 "查询资产 guid",
+                "material.list_assets 可用 domain=Surface 或 Particle 过滤，"
+                "并返回 domain/templateId/guid/name/path。",
                 "当前文档有未保存修改时返回 PENDING_CONFIRMATION，"
                 "需要用户先保存或确认",
                 "打开后即可在后台继续材质/碰撞/状态机编辑，"
@@ -593,21 +605,6 @@ AiRequestResult SubmitAiRequest(
         }
         return result;
     }
-    if (action == "create_material") {
-        AiRequestResult result{};
-        result.ok = false;
-        result.message =
-            "做不到：AI 还不能创建或保存材质资产（Assets 写命令尚未开放）。"
-            "当前可先查询模板，再在编辑器里创建，之后由 AI 调参。";
-        result.details = {
-            "supported: list_capabilities",
-            "supported: list_material_templates",
-            "planned: material.edit_parameter",
-            "planned: material.create_from_template",
-        };
-        return result;
-    }
-
     AiRequestResult result{};
     result.ok = false;
     result.message = action.empty()
@@ -656,7 +653,7 @@ std::string AiAssistantPanel::BuildSystemPrompt() const {
         "参数修改请使用完整参数名（如 parameter.baseColor），"
         "避免后缀歧义；未知参数先用 material.graph_query 查看。\n"
         "Material Function 节点（FunctionCall）需要资产 GUID，"
-        "AI 不能创建；遇到缺失资产引用时用 material.graph_edit "
+        "AI 不能自动创建 Material Function 资产；遇到缺失资产引用时用 material.graph_edit "
         "remove_node 删除坏节点。\n"
         "同类型成品节点（如两个 FresnelRim）共享同一组参数，"
         "这是当前架构限制；需要独立控制时改用 Constant/Parameter "
@@ -1063,8 +1060,7 @@ AI_ASSISTANT::AiRequestResult AiAssistantPanel::ExecuteRequest(
         action == "list_material_templates" ||
         action == "vision.analyze_image" ||
         action == "help" ||
-        action == "budget.request" ||
-        action == "create_material";
+        action == "budget.request";
     if (panelLocalAction) {
         return AI_ASSISTANT::SubmitAiRequest(json, Capabilities());
     }

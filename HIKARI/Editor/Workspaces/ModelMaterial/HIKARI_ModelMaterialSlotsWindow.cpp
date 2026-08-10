@@ -79,8 +79,9 @@ void ModelMaterialWorkspaceController::DrawModelAndSlotsWindow(
   if (authoringMode_ == AuthoringMode::MaterialAsset) {
     ImGui::TextDisabled("STANDALONE MATERIAL");
     ImGui::TextWrapped(
-        "Create or open one Material Asset. It is previewed on the neutral "
-        "material sphere and can later be assigned to a model part.");
+        "Create or open one Material Asset. Surface materials use the neutral "
+        "sphere and can be assigned to a model part; Particle materials are "
+        "previewed and assigned from the VFX workspace.");
 
     std::string openGuid = candidateAuthoringAssetGuid_.value;
     AssetFieldOptions openOptions{};

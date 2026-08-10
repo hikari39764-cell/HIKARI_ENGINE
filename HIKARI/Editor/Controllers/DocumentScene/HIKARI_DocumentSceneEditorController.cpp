@@ -22,11 +22,14 @@
 #include "Editor/Tools/HIKARI_BuiltInEditorTools.h"
 #include "Editor/Views/HIKARI_EditorViewInstance.h"
 #include "Editor/Widgets/HIKARI_MaterialTextureSlotWidget.h"
+#include "Editor/Workspaces/RuntimeBinding/HIKARI_RuntimeBindingReferenceIndex.h"
+#include "Editor/Workspaces/HIKARI_AssetWorkspaceActivationRouter.h"
 #include "Editor/HIKARI_EditorViewportInput.h"
 #include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
 #include "Project/HIKARI_ProjectSettings.h"
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
+#include "Render3D/Vfx/HIKARI_GpuParticleRenderer.h"
 #include "Render3D/Views/HIKARI_EditorInteractiveViewRenderer.h"
 #include "Runtime/HIKARI_RuntimeResourceRefreshService.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
@@ -34,6 +37,7 @@
 #include "Scene/Lighting/HIKARI_SceneLightingSet.h"
 
 #include <cstdio>
+#include <charconv>
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
@@ -420,11 +424,72 @@ namespace HIKARI {
             &operationRegistry_);
         animationStateMachineWorkspaceController_.SetOperationRegistry(
             &operationRegistry_);
+        runtimeBindingWorkspaceController_.SetReferenceProvider(
+            [this](std::string_view bindingId) {
+                return aiOperationScene_ != nullptr
+                    ? EDITOR::CollectRuntimeBindingReferences(
+                        *aiOperationScene_, bindingId)
+                    : std::vector<EDITOR::RuntimeBindingReference>{};
+            });
+        runtimeBindingWorkspaceController_.SetReferenceRevealCallback(
+            [this](const EDITOR::RuntimeBindingReference& reference) {
+                if (reference.targetKind == "material.asset") {
+                    EDITOR::EditorWorkspaceOpenRequest request{};
+                    request.workspaceId =
+                        EDITOR::EditorWorkspaceId::ModelMaterial;
+                    request.materialAssetGuid =
+                        AssetGuid{ reference.targetId };
+                    (void)workspaceHost_.RequestOpen(std::move(request));
+                    return;
+                }
+                if (reference.targetKind != "scene.component" ||
+                    aiOperationScene_ == nullptr) {
+                    return;
+                }
+                uint64_t value = 0u;
+                const char* begin = reference.targetId.data();
+                const char* end = begin + reference.targetId.size();
+                const auto parsed = std::from_chars(begin, end, value);
+                if (parsed.ec != std::errc{} || parsed.ptr != end ||
+                    value == 0u) {
+                    return;
+                }
+                SelectViewportObjects(
+                    *aiOperationScene_,
+                    { SceneObjectId{ value } },
+                    EditorObjectSelectionMode::Replace);
+                EDITOR::EditorWorkspaceOpenRequest request{};
+                request.workspaceId = EDITOR::EditorWorkspaceId::Scene;
+                (void)workspaceHost_.RequestOpen(std::move(request));
+            });
+        vfxWorkspaceController_.SetPreviewNamespaceRetireCallback(
+            [](uint64_t playbackNamespace) {
+                SERVICES::GetGpuParticleRenderer().ReleaseNamespace(
+                    playbackNamespace);
+            });
+        vfxWorkspaceController_.SetAssetRefreshCallback(
+            [this](const AssetGuid&, std::string& outMessage) {
+                if (aiOperationScene_ == nullptr) {
+                    outMessage =
+                        "VFX source saved, but no active scene is available "
+                        "for runtime asset refresh";
+                    return false;
+                }
+                if (!aiOperationScene_->ReloadAssets()) {
+                    outMessage =
+                        "VFX source saved, but runtime asset refresh failed";
+                    return false;
+                }
+                outMessage.clear();
+                return true;
+            });
         RegisterEditorOperations();
         commandRouter_.SetOperationRegistry(&operationRegistry_);
     }
 
     DocumentSceneEditorController::~DocumentSceneEditorController() {
+        vfxWorkspaceController_.Deactivate(
+            workspaceHost_.GetVfxPreviewView().renderViewId);
         aiAssistantPanel_.Stop();
         aiLocalBridge_.Stop();
     }
@@ -865,6 +930,14 @@ namespace HIKARI {
         if (workspaceHost_.IsActive(
                 EDITOR::EditorWorkspaceId::AnimationStateMachine)) {
             return operationRegistry_.Execute("asm.undo");
+        }
+        if (workspaceHost_.IsActive(
+                EDITOR::EditorWorkspaceId::RuntimeBinding)) {
+            return operationRegistry_.Execute("binding.undo");
+        }
+        if (workspaceHost_.IsActive(
+                EDITOR::EditorWorkspaceId::Vfx)) {
+            return operationRegistry_.Execute("vfx.undo");
         }
         if (workspaceHost_.IsActive(
                 EDITOR::EditorWorkspaceId::Cinematics) &&
@@ -1567,6 +1640,11 @@ namespace HIKARI {
         }
         if (const std::optional<EDITOR::EditorWorkspaceActivation> activation =
                 workspaceHost_.ApplyPending()) {
+            if (activation->previous == EDITOR::EditorWorkspaceId::Vfx &&
+                activation->current != EDITOR::EditorWorkspaceId::Vfx) {
+                vfxWorkspaceController_.Deactivate(
+                    workspaceHost_.GetVfxPreviewView().renderViewId);
+            }
             cinematicsWorkspaceController_.ApplyWorkspaceActivation(
                 scene,
                 *activation,
@@ -1583,6 +1661,70 @@ namespace HIKARI {
             animationStateMachineWorkspaceController_.ApplyWorkspaceActivation(
                 scene,
                 *activation);
+            if (activation->current ==
+                    EDITOR::EditorWorkspaceId::RuntimeBinding) {
+                std::string message{};
+                if (!runtimeBindingWorkspaceController_.Activate(
+                        scene,
+                        message) || !message.empty()) {
+                    viewportDropMessage_ = std::move(message);
+                }
+            }
+            if (activation->current == EDITOR::EditorWorkspaceId::Vfx) {
+                std::string message{};
+                const AssetGuid requestedGuid =
+                    activation->vfxAssetGuid.value_or(AssetGuid{});
+                if (!vfxWorkspaceController_.Activate(
+                        scene.GetAssetDatabase(),
+                        requestedGuid,
+                        message) || !message.empty()) {
+                    viewportDropMessage_ = std::move(message);
+                }
+            }
+        }
+
+        if (workspaceHost_.IsActive(
+                EDITOR::EditorWorkspaceId::RuntimeBinding)) {
+            runtimeBindingWorkspaceController_.DrawDockSpace(
+                workspaceHost_.ConsumeReset(
+                    EDITOR::EditorWorkspaceId::RuntimeBinding));
+            const EDITOR::RuntimeBindingWorkspaceResult result =
+                runtimeBindingWorkspaceController_.Draw(
+                    scene,
+                    commandRouter_);
+            if (result.exitToSceneRequested) {
+                EDITOR::EditorWorkspaceOpenRequest request{};
+                request.workspaceId = EDITOR::EditorWorkspaceId::Scene;
+                (void)workspaceHost_.RequestOpen(std::move(request));
+            }
+            if (!result.statusMessage.empty()) {
+                viewportDropMessage_ = result.statusMessage;
+            }
+            DrawPendingSceneOpenModal(scene);
+            return;
+        }
+
+        if (workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Vfx)) {
+            vfxWorkspaceController_.DrawDockSpace(
+                workspaceHost_.ConsumeReset(
+                    EDITOR::EditorWorkspaceId::Vfx));
+            const EDITOR::VfxWorkspaceResult result =
+                vfxWorkspaceController_.Draw(
+                    scene.GetAssetDatabase(),
+                    workspaceHost_.GetVfxPreviewView(),
+                    static_cast<uint64_t>(ImGui::GetFrameCount()),
+                    ImGui::GetIO().DeltaTime,
+                    commandRouter_);
+            if (result.exitToSceneRequested) {
+                EDITOR::EditorWorkspaceOpenRequest request{};
+                request.workspaceId = EDITOR::EditorWorkspaceId::Scene;
+                (void)workspaceHost_.RequestOpen(std::move(request));
+            }
+            if (!result.statusMessage.empty()) {
+                viewportDropMessage_ = result.statusMessage;
+            }
+            DrawPendingSceneOpenModal(scene);
+            return;
         }
 
         if (workspaceHost_.IsActive(
@@ -1799,27 +1941,25 @@ namespace HIKARI {
                 context_.selection,
                 resourceContext);
 
-            const std::string activatedModelCollisionGuid =
-                resourceWorkspacePanel_.ConsumeActivatedModelCollisionGuid();
-            if (!activatedModelCollisionGuid.empty()) {
-                EDITOR::EditorWorkspaceOpenRequest request{};
-                request.workspaceId =
-                    EDITOR::EditorWorkspaceId::ModelCollision;
-                request.modelAssetGuid =
-                    AssetGuid{ activatedModelCollisionGuid };
-                (void)workspaceHost_.RequestOpen(std::move(request));
-            }
-
-            const std::string activatedAnimationStateMachineGuid =
-                resourceWorkspacePanel_.
-                    ConsumeActivatedAnimationStateMachineGuid();
-            if (!activatedAnimationStateMachineGuid.empty()) {
-                EDITOR::EditorWorkspaceOpenRequest request{};
-                request.workspaceId =
-                    EDITOR::EditorWorkspaceId::AnimationStateMachine;
-                request.animationStateMachineAssetGuid =
-                    AssetGuid{ activatedAnimationStateMachineGuid };
-                (void)workspaceHost_.RequestOpen(std::move(request));
+            if (const auto activation =
+                    resourceWorkspacePanel_.ConsumeActivatedAsset()) {
+                EDITOR::AssetWorkspaceActivationRoute route =
+                    EDITOR::RouteAssetWorkspaceActivation(*activation);
+                if (route.workspaceRequest.has_value()) {
+                    (void)workspaceHost_.RequestOpen(
+                        std::move(*route.workspaceRequest));
+                } else if (route.sceneAssetGuid.has_value()) {
+                    pendingSceneOpenGuid_ = *route.sceneAssetGuid;
+                    if (context_.sceneDirty ||
+                        scene.HasUnsavedSceneChanges()) {
+                        ImGui::OpenPopup("Unsaved Scene Changes");
+                    } else {
+                        OpenSceneAssetFromEditor(
+                            scene,
+                            pendingSceneOpenGuid_);
+                        pendingSceneOpenGuid_ = {};
+                    }
+                }
             }
 
             const std::string saveSceneAsGuid = resourceWorkspacePanel_.ConsumeSaveSceneAsGuid();
@@ -1832,17 +1972,6 @@ namespace HIKARI {
                 } else {
                     viewportDropMessage_ = "Scene save target failed";
                     HIKARI_LOG_WARN("[SceneAsset] save scene failed: " + saveSceneAsGuid);
-                }
-            }
-
-            const std::string activatedSceneGuid = resourceWorkspacePanel_.ConsumeActivatedSceneGuid();
-            if (!activatedSceneGuid.empty()) {
-                pendingSceneOpenGuid_ = AssetGuid{ activatedSceneGuid };
-                if (context_.sceneDirty || scene.HasUnsavedSceneChanges()) {
-                    ImGui::OpenPopup("Unsaved Scene Changes");
-                } else {
-                    OpenSceneAssetFromEditor(scene, pendingSceneOpenGuid_);
-                    pendingSceneOpenGuid_ = {};
                 }
             }
 

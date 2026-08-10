@@ -23,7 +23,8 @@ namespace HIKARI {
     };
 
     struct MaterialGraphValidationOptions {
-        bool requireSurfaceOutput = true;
+        bool requireDomainOutput = true;
+        MaterialDomain domain = MaterialDomain::Surface;
     };
 
     bool IsValidMaterialStableId(std::string_view id) noexcept;

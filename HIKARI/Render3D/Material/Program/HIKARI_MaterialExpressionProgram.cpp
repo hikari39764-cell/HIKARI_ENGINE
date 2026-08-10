@@ -63,13 +63,17 @@ const MaterialProgramInstruction* FindProducer(
         : &program.instructions[found->second];
 }
 
-const MaterialProgramInstruction* FindPbrSurface(
+const MaterialProgramInstruction* FindMaterialExpressionOutput(
     const MaterialProgramIR& program) noexcept {
+    const MaterialProgramOpcode outputOpcode =
+        program.domain == MaterialDomain::Particle
+            ? MaterialProgramOpcode::ParticleOutput
+            : MaterialProgramOpcode::PbrSurface;
     const auto found = std::find_if(
         program.instructions.begin(),
         program.instructions.end(),
-        [](const MaterialProgramInstruction& instruction) {
-            return instruction.opcode == MaterialProgramOpcode::PbrSurface;
+        [outputOpcode](const MaterialProgramInstruction& instruction) {
+            return instruction.opcode == outputOpcode;
         });
     return found == program.instructions.end() ? nullptr : &*found;
 }
@@ -94,11 +98,12 @@ struct OutputRoot {
 
 std::vector<OutputRoot> CollectDynamicOutputs(
     const MaterialProgramIR& program) {
-    const MaterialProgramInstruction* surface = FindPbrSurface(program);
-    if (surface == nullptr) {
+    const MaterialProgramInstruction* output =
+        FindMaterialExpressionOutput(program);
+    if (output == nullptr) {
         return {};
     }
-    constexpr std::array outputs{
+    constexpr std::array surfaceOutputs{
         std::pair{std::string_view{"BaseColor"}, BaseColorOutput},
         std::pair{std::string_view{"Opacity"}, OpacityOutput},
         std::pair{std::string_view{"Normal"}, NormalOutput},
@@ -110,13 +115,26 @@ std::vector<OutputRoot> CollectDynamicOutputs(
         std::pair{std::string_view{"SpecularColor"}, SpecularColorOutput},
         std::pair{std::string_view{"AlphaClipThreshold"}, AlphaClipOutput},
     };
+    constexpr std::array particleOutputs{
+        std::pair{std::string_view{"Color"}, BaseColorOutput},
+        std::pair{std::string_view{"Opacity"}, OpacityOutput},
+        std::pair{std::string_view{"Emissive"}, EmissiveOutput},
+        std::pair{std::string_view{"AlphaClipThreshold"}, AlphaClipOutput},
+    };
     std::vector<OutputRoot> roots{};
-    for (const auto& [pin, mask] : outputs) {
-        const uint32_t materialRegister = FindInputRegister(*surface, pin);
+    const auto append = [&roots, output](const auto& outputs) {
+      for (const auto& [pin, mask] : outputs) {
+        const uint32_t materialRegister = FindInputRegister(*output, pin);
         if (materialRegister == kInvalidMaterialProgramRegister) {
             continue;
         }
         roots.push_back({pin, mask, materialRegister});
+      }
+    };
+    if (program.domain == MaterialDomain::Particle) {
+        append(particleOutputs);
+    } else {
+        append(surfaceOutputs);
     }
     return roots;
 }
@@ -251,6 +269,18 @@ uint8_t AddValue(
     return static_cast<uint8_t>(values.size() - 1u);
 }
 
+uint8_t AppendValue(
+    std::vector<MATH::Vec4>& values,
+    const MATH::Vec4& value,
+    std::string& outError) {
+    if (values.size() >= kGpuMaterialExpressionValueSlotCount) {
+        outError = "material expression exceeds the 48-value GPU budget";
+        return kInvalidRegister;
+    }
+    values.push_back(value);
+    return static_cast<uint8_t>(values.size() - 1u);
+}
+
 uint8_t CompactRegister(
     const std::unordered_map<uint32_t, uint8_t>& registers,
     uint32_t materialRegister) noexcept {
@@ -266,7 +296,8 @@ uint8_t CompactRegister(
 bool BuildMaterialExpressionRuntimeProgram(
     const MaterialProgramIR& program,
     MaterialExpressionRuntimeProgram& outProgram,
-    std::string& outError) {
+    std::string& outError,
+    std::span<const MaterialProgramParameterValueOverride> overrides) {
     outProgram = {};
     outError.clear();
     const ProducerTable producers = BuildProducerTable(program);
@@ -308,6 +339,7 @@ bool BuildMaterialExpressionRuntimeProgram(
     std::vector<MATH::Vec4> values{};
     std::vector<MATH::Vec4> instructions{};
     std::unordered_set<uint32_t> resourceBindings{};
+    std::unordered_map<std::string, uint8_t> externalValueIndices{};
     std::unordered_map<std::string, uint32_t> nodeCounts{};
     std::vector<std::pair<std::string, uint32_t>> nodeOrder{};
     instructions.reserve(required.size());
@@ -350,10 +382,31 @@ bool BuildMaterialExpressionRuntimeProgram(
                 outError = "material expression parameter binding is out of range";
                 return false;
             }
-            valueIndex = AddValue(
-                values,
-                program.parameters[instruction.bindingIndex].defaultValue.numeric,
-                outError);
+            const MaterialProgramParameterBinding& parameter =
+                program.parameters[instruction.bindingIndex];
+            const MaterialValueData* overrideValue =
+                FindMaterialParameterOverride(
+                    overrides, instruction.bindingIndex);
+            const MaterialValueData& value = overrideValue != nullptr
+                ? *overrideValue
+                : parameter.defaultValue;
+            if (!parameter.externalBindingId.empty()) {
+                const auto existing = externalValueIndices.find(
+                    parameter.externalBindingId);
+                if (existing != externalValueIndices.end()) {
+                    valueIndex = existing->second;
+                } else {
+                    valueIndex = AppendValue(
+                        values, MaterialValueToVector(value), outError);
+                    if (valueIndex != kInvalidRegister) {
+                        externalValueIndices.emplace(
+                            parameter.externalBindingId, valueIndex);
+                    }
+                }
+            } else {
+                valueIndex = AddValue(
+                    values, MaterialValueToVector(value), outError);
+            }
         } else if (instruction.opcode == MaterialProgramOpcode::TextureSample) {
             if (instruction.bindingIndex >= program.resources.size() ||
                 instruction.bindingIndex +

@@ -1,0 +1,41 @@
+#include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
+
+#include <array>
+#include <string_view>
+
+#include "Editor/Workspaces/Vfx/HIKARI_VfxInspectorControls.h"
+
+#if defined(HIKARI_WITH_EDITOR)
+#include "imgui.h"
+#endif
+
+namespace HIKARI::EDITOR {
+
+    void VfxWorkspaceController::DrawInputInspector(
+        AssetDatabase& database,
+        const VFX::VfxExposedInputData& source) {
+#if defined(HIKARI_WITH_EDITOR)
+        const VFX::VfxExposedInputData input = source;
+        ImGui::TextDisabled("EXPOSED INPUT");
+        ImGui::TextWrapped("Stable ID: %s", input.id.c_str());
+        VfxInspectorPropertyEditor editor(
+            *this, database, input.id, statusMessage_);
+        editor.Text("Name", "name", input.name);
+        constexpr std::array<std::string_view, 7u> types{
+            "Bool", "Int", "Float", "Float2", "Float3", "Float4", "Color"
+        };
+        editor.Choice(
+            "Type", "type", VFX::ToString(input.type),
+            types.data(), types.size());
+        editor.TypedValue(
+            "Default", "defaultValue", input.defaultValue);
+        if (ImGui::Button("Delete Input")) {
+            requestDeleteInput_ = true;
+        }
+#else
+        (void)database;
+        (void)source;
+#endif
+    }
+
+} // namespace HIKARI::EDITOR

@@ -37,19 +37,6 @@ namespace HIKARI {
         }
 
         bool Equal(
-            const std::vector<MATH::Vec4>& lhs,
-            const std::vector<MATH::Vec4>& rhs) {
-            return lhs.size() == rhs.size() &&
-                std::equal(
-                    lhs.begin(),
-                    lhs.end(),
-                    rhs.begin(),
-                    [](const MATH::Vec4& lhsValue, const MATH::Vec4& rhsValue) {
-                        return Equal(lhsValue, rhsValue);
-                    });
-        }
-
-        bool Equal(
             const std::vector<RuntimeTextureSlot>& lhs,
             const std::vector<RuntimeTextureSlot>& rhs) {
             return lhs.size() == rhs.size() &&
@@ -163,20 +150,6 @@ namespace HIKARI {
 
     RENDER3D::MATERIAL::MaterialProgramId Material::GetMaterialProgramId() const {
         return materialProgramId_;
-    }
-
-    void Material::SetMaterialProgramParameterBlock(
-        std::vector<MATH::Vec4> values) {
-        if (Equal(materialProgramParameterBlock_, values)) {
-            return;
-        }
-        materialProgramParameterBlock_ = std::move(values);
-        ++revision_;
-    }
-
-    std::span<const MATH::Vec4>
-    Material::GetMaterialProgramParameterBlock() const {
-        return materialProgramParameterBlock_;
     }
 
     void Material::SetMaterialProgramResourceBlock(

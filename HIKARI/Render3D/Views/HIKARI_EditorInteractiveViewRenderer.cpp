@@ -27,6 +27,8 @@
 #include "Render3D/Lighting/HIKARI_DefaultSkyEnvironment.h"
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
+#include "Render3D/Vfx/HIKARI_GpuParticleRenderer.h"
+#include "Render3D/Views/HIKARI_EditorInteractiveViewGuides.h"
 #include "Render3D/Views/HIKARI_EditorInteractiveStylizedView.h"
 #include "Vfx/Post/HIKARI_PostCommon.h"
 #include "Vfx/Post/HIKARI_PostEffect.h"
@@ -996,7 +998,11 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         const LIGHTING::SceneLightingSet& lighting,
         uint64_t currentSceneRevision,
         ModelManager& modelManager,
-        SkyManager& skyManager) {
+        SkyManager& skyManager,
+        PARTICLES::GpuParticleRenderer* particleRenderer,
+        const AssetRegistry* assetRegistry,
+        const MATERIAL::MaterialExternalValueSnapshot*
+            materialExternalValues) {
 
         InteractiveViewState* selected = nullptr;
         uint32_t renderableViewCount = 0u;
@@ -1130,12 +1136,33 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
                 width,
                 height,
                 renderSettings);
-        if (selected->request.drawDebug) {
+        const bool hasToolGuides =
+            selected->request.guideOverlay.showGroundGrid ||
+            selected->request.guideOverlay.showWorldAxes;
+        if (hasToolGuides) {
+            // Tool guides own an isolated per-view batch. Do not render the
+            // global Scene debug batch into the same editor upload resources.
+            INTERNAL::RenderGuideOverlay(
+                selected->request, width, height);
+        } else if (selected->request.drawDebug) {
             RENDERER3D::DEBUG::RenderAllForView(
                 selected->request.viewId,
                 selected->request.cameraFrame.camera,
                 static_cast<float>(width),
                 static_cast<float>(height));
+        }
+        if (particleRenderer != nullptr &&
+            selected->request.particleInputOverride != nullptr) {
+            particleRenderer->UpdateContext(GFX::GetCurrentContext());
+            (void)particleRenderer->Render(
+                *selected->request.particleInputOverride,
+                selected->request.cameraFrame.camera,
+                assetRegistry,
+                materialExternalValues,
+                PARTICLES::ParticleRenderViewExtent{
+                    width,
+                    height,
+                });
         }
         selected->target->EndCapture();
 

@@ -140,6 +140,8 @@ bool ModelMaterialWorkspaceController::CreateAndBindRenderableMaterial(
     DocumentSceneBase &scene, MaterialAssetData source,
     std::string &outMessage) {
 
+  const MaterialDomain createdDomain = source.domain;
+
   ASSETS::MATERIAL::MaterialAssetAuthoringService service(
       scene.GetAssetDatabase());
   const ASSETS::MATERIAL::MaterialAuthoringResult created =
@@ -163,7 +165,8 @@ bool ModelMaterialWorkspaceController::CreateAndBindRenderableMaterial(
   (void)scene.ReloadAssets();
 
   const ModelMaterialSlotView *slot =
-      authoringMode_ == AuthoringMode::ModelMaterials
+      authoringMode_ == AuthoringMode::ModelMaterials &&
+              createdDomain == MaterialDomain::Surface
           ? GetSelectedSlot()
           : nullptr;
   if (slot != nullptr && slot->slotId.IsValid()) {
@@ -178,8 +181,13 @@ bool ModelMaterialWorkspaceController::CreateAndBindRenderableMaterial(
       outMessage += "; " + binding.message;
     }
   }
-  (void)RebuildAuthoredPreview(scene.GetAssetDatabase(),
-                               scene.GetAssetRegistry(), outMessage);
+  if (createdDomain == MaterialDomain::Particle) {
+    outMessage +=
+        "; Particle material created; preview it from a VFX emitter";
+  } else {
+    (void)RebuildAuthoredPreview(scene.GetAssetDatabase(),
+                                 scene.GetAssetRegistry(), outMessage);
+  }
   return true;
 }
 
@@ -260,8 +268,7 @@ bool ModelMaterialWorkspaceController::SaveMaterial(
     return false;
   }
   if (!authoringDocument_.GetCompileResult().success) {
-    outMessage =
-        "Material v5 graph is invalid; fix Compile & Diagnostics before saving";
+    outMessage = "Material v6 graph is invalid; fix Compile & Diagnostics before saving";
     return false;
   }
 
@@ -340,8 +347,7 @@ bool ModelMaterialWorkspaceController::RebuildAuthoredPreview(
     return false;
   }
   if (!authoringDocument_.GetCompileResult().success) {
-    outMessage =
-        "current Material v5 graph is invalid; preview is paused until diagnostics are fixed";
+    outMessage = "current Material v6 graph is invalid; preview is paused until diagnostics are fixed";
     return false;
   }
   if (!IsRenderableMaterialAsset(authoringDocument_.GetMaterial().kind)) {
@@ -363,6 +369,14 @@ bool ModelMaterialWorkspaceController::RebuildAuthoredPreview(
       outMessage = "material instance resolution failed; last preview kept";
       return false;
     }
+  }
+
+  if (effective.domain == MaterialDomain::Particle) {
+    standalonePreviewMaterial_.reset();
+    outMessage =
+        "Particle material graph compiled; use the VFX workspace preview "
+        "to evaluate particle UV, time, position, and view inputs";
+    return true;
   }
 
   auto previewMaterial = std::make_shared<Material>();
@@ -461,7 +475,7 @@ bool ModelMaterialWorkspaceController::RefreshMaterialPreviews(
   if (authoringDocument_.HasMaterial() &&
       !authoringDocument_.GetCompileResult().success) {
     outMessage =
-        "current Material v5 graph is invalid; preview and runtime hot update are paused";
+        "current Material v6 graph is invalid; preview and runtime hot update are paused";
     return false;
   }
   const bool authoredPreviewUpdated = RebuildAuthoredPreview(

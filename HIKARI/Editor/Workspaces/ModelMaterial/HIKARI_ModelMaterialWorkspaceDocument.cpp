@@ -449,7 +449,7 @@ void ModelMaterialWorkspaceDocument::PushHistory(HistoryEntry entry) {
 }
 
 void ModelMaterialWorkspaceDocument::RefreshCompile() {
-  // Material v5 authoring is graph-authoritative. A failed edit must remain a
+  // Material v6 authoring is graph-authoritative. A failed edit must remain a
   // failed current graph; projecting any stale program here would make the
   // viewport look live while it is actually rendering an older topology.
   compile_ = CompileMaterialAsset(material_, compileOptions_);

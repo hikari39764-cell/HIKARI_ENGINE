@@ -33,6 +33,20 @@ namespace HIKARI {
             std::string_view label,
             INPUT::InputActionValueType expectedType,
             std::string& value) override;
+        bool RuntimeVariableIdPicker(
+            std::string_view label,
+            BINDING::ValueType expectedType,
+            std::string& value) override;
+        bool RuntimeEventIdPicker(
+            std::string_view label,
+            bool hasPayload,
+            BINDING::ValueType payloadType,
+            std::string& value) override;
+        bool RuntimeEventIdPicker(
+            std::string_view label,
+            AuthoringEventPayloadPolicy policy,
+            BINDING::ValueType payloadType,
+            std::string& value) override;
         bool Choice(
             std::string_view label,
             int& selectedIndex,

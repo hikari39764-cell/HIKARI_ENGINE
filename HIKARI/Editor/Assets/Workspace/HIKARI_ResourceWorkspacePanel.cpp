@@ -318,21 +318,9 @@ void ResourceWorkspacePanel::Draw(
 #endif
 }
 
-std::string ResourceWorkspacePanel::ConsumeActivatedSceneGuid() const {
-  return assetBrowserPanel_.ConsumeActivatedSceneGuid();
-}
-
-std::string ResourceWorkspacePanel::ConsumeActivatedSequenceGuid() const {
-  return assetBrowserPanel_.ConsumeActivatedSequenceGuid();
-}
-
-std::string
-ResourceWorkspacePanel::ConsumeActivatedAnimationStateMachineGuid() const {
-  return assetBrowserPanel_.ConsumeActivatedAnimationStateMachineGuid();
-}
-
-std::string ResourceWorkspacePanel::ConsumeActivatedModelCollisionGuid() const {
-  return assetBrowserPanel_.ConsumeActivatedModelCollisionGuid();
+std::optional<AssetWorkspaceActivation>
+ResourceWorkspacePanel::ConsumeActivatedAsset() const {
+  return assetBrowserPanel_.ConsumeActivatedAsset();
 }
 
 std::string ResourceWorkspacePanel::ConsumeSaveSceneAsGuid() const {

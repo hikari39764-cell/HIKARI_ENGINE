@@ -10,6 +10,10 @@
 
 namespace HIKARI {
 
+    namespace BINDING {
+        enum class ValueType : uint8_t;
+    }
+
     namespace INPUT {
         enum class InputActionValueType;
     }
@@ -145,6 +149,61 @@ namespace HIKARI {
             return InputActionIdPicker(
                 field.label,
                 expectedType,
+                value);
+        }
+        virtual bool RuntimeVariableIdPicker(
+            std::string_view label,
+            BINDING::ValueType expectedType,
+            std::string& value) = 0;
+        virtual bool RuntimeVariableIdPicker(
+            const AuthoringFieldDescriptor& field,
+            BINDING::ValueType expectedType,
+            std::string& value) {
+
+            return RuntimeVariableIdPicker(
+                field.label,
+                expectedType,
+                value);
+        }
+        virtual bool RuntimeEventIdPicker(
+            std::string_view label,
+            bool hasPayload,
+            BINDING::ValueType payloadType,
+            std::string& value) = 0;
+        virtual bool RuntimeEventIdPicker(
+            const AuthoringFieldDescriptor& field,
+            bool hasPayload,
+            BINDING::ValueType payloadType,
+            std::string& value) {
+
+            return RuntimeEventIdPicker(
+                field.label,
+                hasPayload,
+                payloadType,
+                value);
+        }
+        virtual bool RuntimeEventIdPicker(
+            std::string_view label,
+            AuthoringEventPayloadPolicy policy,
+            BINDING::ValueType payloadType,
+            std::string& value) {
+
+            return RuntimeEventIdPicker(
+                label,
+                policy == AuthoringEventPayloadPolicy::Exact,
+                payloadType,
+                value);
+        }
+        virtual bool RuntimeEventIdPicker(
+            const AuthoringFieldDescriptor& field,
+            AuthoringEventPayloadPolicy policy,
+            BINDING::ValueType payloadType,
+            std::string& value) {
+
+            return RuntimeEventIdPicker(
+                field.label,
+                policy,
+                payloadType,
                 value);
         }
         virtual bool Choice(

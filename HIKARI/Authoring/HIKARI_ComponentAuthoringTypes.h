@@ -24,6 +24,14 @@ namespace HIKARI {
         SceneId,
         SceneObjectId,
         InputActionId,
+        RuntimeVariableId,
+        RuntimeEventId,
+    };
+
+    enum class AuthoringEventPayloadPolicy : uint8_t {
+        Any,
+        None,
+        Exact,
     };
 
     struct AuthoringFieldDescriptor {

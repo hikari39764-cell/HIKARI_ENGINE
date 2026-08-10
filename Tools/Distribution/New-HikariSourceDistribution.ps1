@@ -274,7 +274,6 @@ foreach ($relativePathValue in $sourceFiles) {
 $bundledDependencyRoots = @(
     'vcpkg_installed/x64-windows',
     'vcpkg_installed_static/x64-windows-static',
-    'ThirdParty/Effekseer/Lib',
     'ThirdParty/WinPixEventRuntime/bin/x64'
 )
 foreach ($dependencyRoot in $bundledDependencyRoots) {

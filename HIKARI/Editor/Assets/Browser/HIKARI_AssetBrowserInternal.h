@@ -196,10 +196,8 @@ ImVec4 CookedBadgeColor(const char *label);
 
 void HandleRecordActivated(const AssetRecord &record,
                            std::string &lastOperationMessage,
-                           std::string &activatedSceneGuid,
-                           std::string &activatedSequenceGuid,
-                           std::string &activatedAnimationStateMachineGuid,
-                           std::string &activatedModelCollisionGuid);
+                           std::optional<AssetWorkspaceActivation>
+                               &activatedAsset);
 
 std::string SceneBadges(const AssetRecord &record,
                         const AssetBrowserContext *context);
@@ -222,12 +220,10 @@ void DrawAssetDragSource(const AssetRecord &record);
 void DrawRecordContextMenu(
     AssetDatabase &assetDatabase, const AssetRecord &record,
     EditorSelection &selection, std::string &lastOperationMessage,
-    const AssetBrowserContext *context, std::string &activatedSceneGuid,
-    std::string &activatedSequenceGuid,
-    std::string &activatedAnimationStateMachineGuid,
-    std::string &activatedModelCollisionGuid, std::string &saveSceneAsGuid,
+    const AssetBrowserContext *context,
+    std::optional<AssetWorkspaceActivation> &activatedAsset,
+    std::string &saveSceneAsGuid,
     std::string &refreshRuntimeAssetGuid,
-    std::string &reimportAndRefreshRuntimeAssetGuid,
     std::string &pendingReimportAndRefreshRuntimeAssetGuid,
     std::string &renameSceneGuid, std::string &deleteSceneGuid,
     std::array<char, 128> &renameSceneNameBuffer);
@@ -236,12 +232,10 @@ void DrawRecordList(
     AssetDatabase &assetDatabase,
     const std::vector<const AssetRecord *> &records, EditorSelection &selection,
     const AssetUsageSummary *usageSummary, std::string &lastOperationMessage,
-    const AssetBrowserContext *context, std::string &activatedSceneGuid,
-    std::string &activatedSequenceGuid,
-    std::string &activatedAnimationStateMachineGuid,
-    std::string &activatedModelCollisionGuid, std::string &saveSceneAsGuid,
+    const AssetBrowserContext *context,
+    std::optional<AssetWorkspaceActivation> &activatedAsset,
+    std::string &saveSceneAsGuid,
     std::string &refreshRuntimeAssetGuid,
-    std::string &reimportAndRefreshRuntimeAssetGuid,
     std::string &pendingReimportAndRefreshRuntimeAssetGuid,
     std::string &renameSceneGuid, std::string &deleteSceneGuid,
     std::array<char, 128> &renameSceneNameBuffer);
@@ -250,12 +244,10 @@ void DrawRecordCompactRows(
     AssetDatabase &assetDatabase,
     const std::vector<const AssetRecord *> &records, EditorSelection &selection,
     const AssetUsageSummary *usageSummary, std::string &lastOperationMessage,
-    const AssetBrowserContext *context, std::string &activatedSceneGuid,
-    std::string &activatedSequenceGuid,
-    std::string &activatedAnimationStateMachineGuid,
-    std::string &activatedModelCollisionGuid, std::string &saveSceneAsGuid,
+    const AssetBrowserContext *context,
+    std::optional<AssetWorkspaceActivation> &activatedAsset,
+    std::string &saveSceneAsGuid,
     std::string &refreshRuntimeAssetGuid,
-    std::string &reimportAndRefreshRuntimeAssetGuid,
     std::string &pendingReimportAndRefreshRuntimeAssetGuid,
     std::string &renameSceneGuid, std::string &deleteSceneGuid,
     std::array<char, 128> &renameSceneNameBuffer);
@@ -264,12 +256,10 @@ void DrawRecordGrid(
     AssetDatabase &assetDatabase,
     const std::vector<const AssetRecord *> &records, EditorSelection &selection,
     const AssetUsageSummary *usageSummary, std::string &lastOperationMessage,
-    const AssetBrowserContext *context, std::string &activatedSceneGuid,
-    std::string &activatedSequenceGuid,
-    std::string &activatedAnimationStateMachineGuid,
-    std::string &activatedModelCollisionGuid, std::string &saveSceneAsGuid,
+    const AssetBrowserContext *context,
+    std::optional<AssetWorkspaceActivation> &activatedAsset,
+    std::string &saveSceneAsGuid,
     std::string &refreshRuntimeAssetGuid,
-    std::string &reimportAndRefreshRuntimeAssetGuid,
     std::string &pendingReimportAndRefreshRuntimeAssetGuid,
     std::string &renameSceneGuid, std::string &deleteSceneGuid,
     std::array<char, 128> &renameSceneNameBuffer);

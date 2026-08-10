@@ -230,6 +230,24 @@ namespace HIKARI {
                         "Animation State Machine",
                         assetDatabase,
                         summary);
+                } else if (component.type == "VfxPlayerComponent") {
+                    const auto slots = component.properties.find("slots");
+                    if (slots != component.properties.end() &&
+                        slots->is_array()) {
+                        for (const nlohmann::json& slot : *slots) {
+                            if (!slot.is_object()) {
+                                continue;
+                            }
+                            AddReference(
+                                slot.value(
+                                    "effectAssetGuid",
+                                    std::string{}),
+                                owner,
+                                "VFX Player Slot",
+                                assetDatabase,
+                                summary);
+                        }
+                    }
                 } else if (component.type ==
                         "ReflectionProbeComponent") {
                     AddReference(

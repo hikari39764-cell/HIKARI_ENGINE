@@ -20,6 +20,8 @@
 #include "Scene/HIKARI_SceneComponentId.h"
 #include "Scene/HIKARI_SceneDocument.h"
 #include "Scene/HIKARI_SceneDocumentQueries.h"
+#include "Scene/HIKARI_WorldServiceRegistry.h"
+#include "Runtime/Binding/HIKARI_RuntimeBindingStore.h"
 
 namespace HIKARI::EDITOR {
 
@@ -41,6 +43,10 @@ namespace HIKARI::EDITOR {
                 return "sceneObjectId";
             case AuthoringFieldValueType::InputActionId:
                 return "inputActionId";
+            case AuthoringFieldValueType::RuntimeVariableId:
+                return "runtimeVariableId";
+            case AuthoringFieldValueType::RuntimeEventId:
+                return "runtimeEventId";
             }
             return "unknown";
         }
@@ -152,6 +158,15 @@ namespace HIKARI::EDITOR {
             bool InputActionIdPicker(
                 std::string_view,
                 INPUT::InputActionValueType,
+                std::string&) override { return false; }
+            bool RuntimeVariableIdPicker(
+                std::string_view,
+                BINDING::ValueType,
+                std::string&) override { return false; }
+            bool RuntimeEventIdPicker(
+                std::string_view,
+                bool,
+                BINDING::ValueType,
                 std::string&) override { return false; }
             bool Choice(
                 std::string_view,
@@ -314,6 +329,150 @@ namespace HIKARI::EDITOR {
                     value,
                     { { "inputValueType", static_cast<int>(expectedType) } },
                     nullptr);
+            }
+
+            bool RuntimeVariableIdPicker(
+                const AuthoringFieldDescriptor& field,
+                BINDING::ValueType expectedType,
+                std::string& value) override {
+                const auto validator = [this, expectedType](
+                    const std::string& next) {
+                    if (next.empty()) {
+                        return true;
+                    }
+                    const auto* store =
+                        context_.worldServices != nullptr
+                            ? context_.worldServices->Find<
+                                BINDING::RuntimeBindingStore>()
+                            : nullptr;
+                    const auto* definition = store != nullptr
+                        ? store->GetCatalog().FindVariable(next)
+                        : nullptr;
+                    if (definition == nullptr) {
+                        SetError(
+                            "RUNTIME_VARIABLE_NOT_FOUND",
+                            "Runtime variable was not found: " + next);
+                        return false;
+                    }
+                    if (definition->defaultValue.type != expectedType) {
+                        SetError(
+                            "RUNTIME_VARIABLE_TYPE_MISMATCH",
+                            "Runtime variable type is incompatible.");
+                        return false;
+                    }
+                    return true;
+                };
+                return VisitString(
+                    field,
+                    AuthoringFieldValueType::RuntimeVariableId,
+                    value,
+                    { { "valueType", BINDING::ToString(expectedType) } },
+                    validator);
+            }
+
+            bool RuntimeEventIdPicker(
+                const AuthoringFieldDescriptor& field,
+                bool hasPayload,
+                BINDING::ValueType payloadType,
+                std::string& value) override {
+                const auto validator =
+                    [this, hasPayload, payloadType](
+                        const std::string& next) {
+                    if (next.empty()) {
+                        return true;
+                    }
+                    const auto* store =
+                        context_.worldServices != nullptr
+                            ? context_.worldServices->Find<
+                                BINDING::RuntimeBindingStore>()
+                            : nullptr;
+                    const auto* definition = store != nullptr
+                        ? store->GetCatalog().FindEvent(next)
+                        : nullptr;
+                    if (definition == nullptr) {
+                        SetError(
+                            "RUNTIME_EVENT_NOT_FOUND",
+                            "Runtime event was not found: " + next);
+                        return false;
+                    }
+                    if (definition->hasPayload != hasPayload ||
+                        (hasPayload &&
+                         definition->payloadType != payloadType)) {
+                        SetError(
+                            "RUNTIME_EVENT_TYPE_MISMATCH",
+                            "Runtime event payload is incompatible.");
+                        return false;
+                    }
+                    return true;
+                };
+                return VisitString(
+                    field,
+                    AuthoringFieldValueType::RuntimeEventId,
+                    value,
+                    {
+                        { "hasPayload", hasPayload },
+                        { "payloadType", BINDING::ToString(payloadType) }
+                    },
+                    validator);
+            }
+
+            bool RuntimeEventIdPicker(
+                const AuthoringFieldDescriptor& field,
+                AuthoringEventPayloadPolicy policy,
+                BINDING::ValueType payloadType,
+                std::string& value) override {
+
+                const auto validator =
+                    [this, policy, payloadType](
+                        const std::string& next) {
+                    if (next.empty()) {
+                        return true;
+                    }
+                    const auto* store =
+                        context_.worldServices != nullptr
+                            ? context_.worldServices->Find<
+                                BINDING::RuntimeBindingStore>()
+                            : nullptr;
+                    const auto* definition = store != nullptr
+                        ? store->GetCatalog().FindEvent(next)
+                        : nullptr;
+                    if (definition == nullptr) {
+                        SetError(
+                            "RUNTIME_EVENT_NOT_FOUND",
+                            "Runtime event was not found: " + next);
+                        return false;
+                    }
+                    const bool compatible =
+                        policy == AuthoringEventPayloadPolicy::Any ||
+                        (policy == AuthoringEventPayloadPolicy::None &&
+                         !definition->hasPayload) ||
+                        (policy == AuthoringEventPayloadPolicy::Exact &&
+                         definition->hasPayload &&
+                         definition->payloadType == payloadType);
+                    if (!compatible) {
+                        SetError(
+                            "RUNTIME_EVENT_TYPE_MISMATCH",
+                            "Runtime event payload is incompatible.");
+                    }
+                    return compatible;
+                };
+
+                const char* policyName = "Any";
+                if (policy == AuthoringEventPayloadPolicy::None) {
+                    policyName = "None";
+                } else if (
+                    policy == AuthoringEventPayloadPolicy::Exact) {
+                    policyName = "Exact";
+                }
+                return VisitString(
+                    field,
+                    AuthoringFieldValueType::RuntimeEventId,
+                    value,
+                    {
+                        { "payloadPolicy", policyName },
+                        { "payloadType", BINDING::ToString(payloadType) }
+                    },
+                    validator);
             }
 
             bool Choice(
@@ -765,6 +924,139 @@ namespace HIKARI::EDITOR {
             return result;
         }
 
+        ComponentAuthoringServiceResult ValidateAuthoringState(
+            const ComponentTypeInfo& typeInfo,
+            const IComponent& component,
+            const InspectorContext& context) {
+
+            ComponentAuthoringServiceResult result{};
+            if (!typeInfo.validateAuthoring) {
+                result.ok = true;
+                return result;
+            }
+            try {
+                const AuthoringCommandResult validation =
+                    typeInfo.validateAuthoring(component, context);
+                if (!validation.ok) {
+                    return MakeFailure(
+                        validation.code.empty()
+                            ? "COMPONENT_AUTHORING_INVALID"
+                            : validation.code,
+                        validation.message.empty()
+                            ? "Component authoring validation failed."
+                            : validation.message);
+                }
+            } catch (const std::exception& error) {
+                return MakeFailure(
+                    "COMPONENT_AUTHORING_VALIDATION_EXCEPTION",
+                    error.what());
+            } catch (...) {
+                return MakeFailure(
+                    "COMPONENT_AUTHORING_VALIDATION_EXCEPTION",
+                    "Component authoring validator threw an unknown exception.");
+            }
+            result.ok = true;
+            return result;
+        }
+
+        ComponentAuthoringServiceResult DeserializeForAuthoring(
+            IComponent& component,
+            const nlohmann::json& properties,
+            std::string_view componentType) {
+
+            try {
+                std::string diagnostic{};
+                if (!component.TryDeserialize(properties, diagnostic)) {
+                    return MakeFailure(
+                        "COMPONENT_DESERIALIZATION_FAILED",
+                        "Component authoring data is invalid for " +
+                            std::string(componentType) +
+                            (diagnostic.empty()
+                                ? "."
+                                : ": " + diagnostic));
+                }
+            } catch (const std::exception& error) {
+                return MakeFailure(
+                    "COMPONENT_DESERIALIZATION_EXCEPTION",
+                    "Component deserialization threw for " +
+                        std::string(componentType) + ": " +
+                        error.what());
+            } catch (...) {
+                return MakeFailure(
+                    "COMPONENT_DESERIALIZATION_EXCEPTION",
+                    "Component deserialization threw an unknown exception for " +
+                        std::string(componentType) + ".");
+            }
+            ComponentAuthoringServiceResult result{};
+            result.ok = true;
+            return result;
+        }
+
+        ComponentAuthoringServiceResult SerializeForAuthoring(
+            const IComponent& component,
+            nlohmann::json& outProperties,
+            std::string_view componentType) {
+
+            try {
+                component.Serialize(outProperties);
+            } catch (const std::exception& error) {
+                return MakeFailure(
+                    "COMPONENT_SERIALIZATION_EXCEPTION",
+                    "Component serialization threw for " +
+                        std::string(componentType) + ": " +
+                        error.what());
+            } catch (...) {
+                return MakeFailure(
+                    "COMPONENT_SERIALIZATION_EXCEPTION",
+                    "Component serialization threw an unknown exception for " +
+                        std::string(componentType) + ".");
+            }
+            ComponentAuthoringServiceResult result{};
+            result.ok = true;
+            return result;
+        }
+
+        ComponentAuthoringServiceResult ValidateStoredAuthoringState(
+            const ComponentRegistry& registry,
+            SceneDocument& document,
+            ComponentAuthoringTarget target,
+            InspectorContext context) {
+
+            SceneObjectData* object = nullptr;
+            SceneComponentData* component = nullptr;
+            const ComponentTypeInfo* typeInfo = nullptr;
+            ComponentAuthoringServiceResult resolved = ResolveTarget(
+                registry,
+                document,
+                target,
+                object,
+                component,
+                typeInfo);
+            if (!resolved.ok) {
+                return resolved;
+            }
+            std::unique_ptr<IComponent> instance = typeInfo->factory();
+            if (!instance) {
+                return MakeFailure(
+                    "COMPONENT_FACTORY_FAILED",
+                    "Component factory returned no instance: " +
+                        component->type);
+            }
+            ComponentAuthoringServiceResult deserialized =
+                DeserializeForAuthoring(
+                    *instance,
+                    component->properties,
+                    component->type);
+            if (!deserialized.ok) {
+                return deserialized;
+            }
+            context.sceneDocument = &document;
+            return ValidateAuthoringState(
+                *typeInfo,
+                *instance,
+                context);
+        }
+
         nlohmann::json SerializeCommands(
             const ComponentTypeInfo& typeInfo) {
 
@@ -828,13 +1120,24 @@ namespace HIKARI::EDITOR {
             HeadlessComponentAuthoringBuilder::Mode::Describe);
         context.sceneDocument = &working;
         builder.SetContext(context);
+        const ComponentAuthoringServiceResult deserialized =
+            DeserializeForAuthoring(
+                *instance,
+                component->properties,
+                component->type);
+        if (!deserialized.ok) {
+            return deserialized;
+        }
         try {
-            instance->Deserialize(component->properties);
             instance->BuildInspector(builder);
         } catch (const std::exception& error) {
             return MakeFailure(
                 "COMPONENT_AUTHORING_EXCEPTION",
                 error.what());
+        } catch (...) {
+            return MakeFailure(
+                "COMPONENT_AUTHORING_EXCEPTION",
+                "Component authoring schema threw an unknown exception.");
         }
         if (builder.HasError()) {
             return MakeFailure(builder.Code(), builder.Message());
@@ -870,6 +1173,7 @@ namespace HIKARI::EDITOR {
         SceneDocument working = document;
         context.sceneDocument = &working;
         nlohmann::json changedFields = nlohmann::json::array();
+        std::vector<ComponentAuthoringTarget> changedTargets{};
         for (const ComponentPropertyMutation& mutation : mutations) {
             if (mutation.propertyId.empty()) {
                 return MakeFailure(
@@ -901,13 +1205,24 @@ namespace HIKARI::EDITOR {
                 mutation.propertyId,
                 mutation.value);
             builder.SetContext(context);
+            const ComponentAuthoringServiceResult deserialized =
+                DeserializeForAuthoring(
+                    *instance,
+                    component->properties,
+                    component->type);
+            if (!deserialized.ok) {
+                return deserialized;
+            }
             try {
-                instance->Deserialize(component->properties);
                 instance->BuildInspector(builder);
             } catch (const std::exception& error) {
                 return MakeFailure(
                     "COMPONENT_AUTHORING_EXCEPTION",
                     error.what());
+            } catch (...) {
+                return MakeFailure(
+                    "COMPONENT_AUTHORING_EXCEPTION",
+                    "Component authoring property builder threw an unknown exception.");
             }
             if (builder.HasError()) {
                 return MakeFailure(builder.Code(), builder.Message());
@@ -922,14 +1237,43 @@ namespace HIKARI::EDITOR {
                 continue;
             }
             nlohmann::json serialized = nlohmann::json::object();
-            instance->Serialize(serialized);
+            const ComponentAuthoringServiceResult serializedResult =
+                SerializeForAuthoring(
+                    *instance,
+                    serialized,
+                    component->type);
+            if (!serializedResult.ok) {
+                return serializedResult;
+            }
             component->properties = std::move(serialized);
+            const auto knownTarget = std::find_if(
+                changedTargets.begin(),
+                changedTargets.end(),
+                [&mutation](const ComponentAuthoringTarget& target) {
+                    return target.objectId == mutation.target.objectId &&
+                        target.componentId == mutation.target.componentId;
+                });
+            if (knownTarget == changedTargets.end()) {
+                changedTargets.push_back(mutation.target);
+            }
             changedFields.push_back({
                 { "objectId", mutation.target.objectId.value },
                 { "componentId", mutation.target.componentId.value },
                 { "componentType", component->type },
                 { "propertyId", mutation.propertyId }
             });
+        }
+        for (const ComponentAuthoringTarget& changedTarget :
+            changedTargets) {
+            const ComponentAuthoringServiceResult validation =
+                ValidateStoredAuthoringState(
+                    registry,
+                    working,
+                    changedTarget,
+                    context);
+            if (!validation.ok) {
+                return validation;
+            }
         }
 
         ComponentAuthoringServiceResult result{};
@@ -999,9 +1343,26 @@ namespace HIKARI::EDITOR {
                 "Component factory returned no instance: " +
                     component->type);
         }
-        instance->Deserialize(component->properties);
-        const AuthoringCommandResult commandResult =
-            command->execute(*instance, arguments);
+        const ComponentAuthoringServiceResult deserialized =
+            DeserializeForAuthoring(
+                *instance,
+                component->properties,
+                component->type);
+        if (!deserialized.ok) {
+            return deserialized;
+        }
+        AuthoringCommandResult commandResult{};
+        try {
+            commandResult = command->execute(*instance, arguments);
+        } catch (const std::exception& error) {
+            return MakeFailure(
+                "COMPONENT_COMMAND_EXCEPTION",
+                error.what());
+        } catch (...) {
+            return MakeFailure(
+                "COMPONENT_COMMAND_EXCEPTION",
+                "Component command threw an unknown exception.");
+        }
         if (!commandResult.ok) {
             return MakeFailure(
                 commandResult.code.empty()
@@ -1009,9 +1370,21 @@ namespace HIKARI::EDITOR {
                     : commandResult.code,
                 commandResult.message);
         }
+        const ComponentAuthoringServiceResult authoringValidation =
+            ValidateAuthoringState(*typeInfo, *instance, context);
+        if (!authoringValidation.ok) {
+            return authoringValidation;
+        }
 
         nlohmann::json serialized = nlohmann::json::object();
-        instance->Serialize(serialized);
+        const ComponentAuthoringServiceResult serializedResult =
+            SerializeForAuthoring(
+                *instance,
+                serialized,
+                component->type);
+        if (!serializedResult.ok) {
+            return serializedResult;
+        }
         const bool changed = serialized != component->properties;
         const std::string componentType = component->type;
         if (changed) {

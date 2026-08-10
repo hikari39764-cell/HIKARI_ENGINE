@@ -49,9 +49,6 @@ set(
     HIKARI::Meshoptimizer
     HIKARI::Nlohmann
     HIKARI::DirectXTex
-    HIKARI::Effekseer
-    HIKARI::EffekseerRendererDX12
-    HIKARI::LLGI
     HIKARI::Jolt
     HIKARI::CoACD
     dxguid

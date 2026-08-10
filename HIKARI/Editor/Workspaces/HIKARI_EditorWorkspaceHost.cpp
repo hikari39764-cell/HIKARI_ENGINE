@@ -72,6 +72,17 @@ namespace HIKARI::EDITOR {
             EditorViewExecutionMode::RuntimeParityToolPreview;
         compare.visualization.shadingMode = EditorViewShadingMode::Lit;
         compare.visualization.displayExposure = 1.0f;
+
+        EditorViewInstance& vfx = View(BuiltInViewSlot::VfxPreview);
+        vfx.renderViewId = kVfxPreviewRenderViewId;
+        vfx.role = EditorViewRole::Preview;
+        vfx.purpose = RENDER3D::RenderViewPurpose::ToolPreview;
+        vfx.cameraBinding.kind =
+            EditorViewCameraSourceKind::OwnedEditorCamera;
+        vfx.execution =
+            EditorViewExecutionMode::RuntimeParityToolPreview;
+        vfx.visualization.shadingMode = EditorViewShadingMode::Lit;
+        vfx.visualization.displayExposure = 1.0f;
     }
 
     bool EditorWorkspaceHost::RequestOpen(EditorWorkspaceOpenRequest request) {
@@ -103,6 +114,7 @@ namespace HIKARI::EDITOR {
         activation.materialAssetGuid = request.materialAssetGuid;
         activation.animationStateMachineAssetGuid =
             request.animationStateMachineAssetGuid;
+        activation.vfxAssetGuid = request.vfxAssetGuid;
         activeWorkspace_ = request.workspaceId;
 
         return activation;
@@ -187,6 +199,15 @@ namespace HIKARI::EDITOR {
         EditorWorkspaceHost::GetModelMaterialCompareView() const noexcept {
 
         return View(BuiltInViewSlot::ModelMaterialCompare);
+    }
+
+    EditorViewInstance& EditorWorkspaceHost::GetVfxPreviewView() noexcept {
+        return View(BuiltInViewSlot::VfxPreview);
+    }
+
+    const EditorViewInstance&
+        EditorWorkspaceHost::GetVfxPreviewView() const noexcept {
+        return View(BuiltInViewSlot::VfxPreview);
     }
 
     EditorViewInstance* EditorWorkspaceHost::FindView(

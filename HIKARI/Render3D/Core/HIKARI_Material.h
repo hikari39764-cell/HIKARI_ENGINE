@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <memory>
 #include <span>
 #include <string>
 #include <vector>
@@ -10,6 +11,10 @@
 #include "Render3D/Resources/HIKARI_RenderResourceHandle.h"
 
 namespace HIKARI {
+
+    namespace RENDER3D::MATERIAL {
+        struct MaterialParameterProjectionRecipe;
+    }
 
     enum class RuntimeMaterialAlphaMode : uint8_t {
         Opaque,
@@ -56,6 +61,24 @@ namespace HIKARI {
         RENDER3D::MATERIAL::MaterialProgramId GetMaterialProgramId() const;
         void SetMaterialProgramParameterBlock(std::vector<MATH::Vec4> values);
         std::span<const MATH::Vec4> GetMaterialProgramParameterBlock() const;
+        void SetMaterialParameterProjection(
+            std::shared_ptr<const RENDER3D::MATERIAL::
+                MaterialParameterProjectionRecipe> recipe);
+        const std::shared_ptr<const RENDER3D::MATERIAL::
+            MaterialParameterProjectionRecipe>&
+            GetMaterialParameterProjection() const noexcept;
+        bool NeedsMaterialParameterProjection(
+            uint64_t sourceRevision) const noexcept;
+        bool NeedsMaterialParameterProjection(
+            uint64_t sourceInstanceId,
+            uint64_t sourceRevision) const noexcept;
+        void ApplyMaterialParameterProjection(
+            std::vector<MATH::Vec4> values,
+            uint64_t sourceRevision);
+        void ApplyMaterialParameterProjection(
+            std::vector<MATH::Vec4> values,
+            uint64_t sourceInstanceId,
+            uint64_t sourceRevision);
         void SetMaterialProgramResourceBlock(std::vector<RuntimeTextureSlot> values);
         std::span<const RuntimeTextureSlot> GetMaterialProgramResourceBlock() const;
         void SetMaterialProgramInstanceFlags(uint32_t flags);
@@ -118,6 +141,12 @@ namespace HIKARI {
             RENDER3D::MATERIAL::kStandardPbrMaterialProgramId
         };
         std::vector<MATH::Vec4> materialProgramParameterBlock_{};
+        std::shared_ptr<const RENDER3D::MATERIAL::
+            MaterialParameterProjectionRecipe>
+            materialParameterProjection_{};
+        uint64_t materialParameterProjectionInstanceId_ = 0u;
+        uint64_t materialParameterProjectionRevision_ = 0u;
+        bool materialParameterProjectionApplied_ = false;
         std::vector<RuntimeTextureSlot> materialProgramResourceBlock_{};
         uint32_t materialProgramInstanceFlags_ = 0u;
         RuntimeMaterialAlphaMode materialAlphaMode_ =

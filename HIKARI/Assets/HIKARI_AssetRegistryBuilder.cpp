@@ -7,6 +7,7 @@
 #include <json.hpp>
 
 #include "Assets/Formats/HIKARI_HmatFormat.h"
+#include "Assets/Formats/HIKARI_HvfxcFormat.h"
 #include "Assets/Importers/Policy/HIKARI_ModelImportPolicy.h"
 #include "Assets/Importers/Policy/HIKARI_TextureImportPolicy.h"
 #include "Assets/Material/Compiler/HIKARI_MaterialCompiler.h"
@@ -329,8 +330,38 @@ namespace HIKARI {
                 auto descriptor = std::make_unique<VfxAssetDescriptor>();
                 descriptor->id.value = record->guid.value;
                 descriptor->type = AssetType::VfxEffect;
-                descriptor->sourcePath = record->sourcePath.generic_string();
+                descriptor->sourcePath =
+                    ASSETS::SEMANTICS::FindAssetArtifactPath(
+                        *record,
+                        ASSETS::SEMANTICS::AssetArtifactKind::VfxProgram,
+                        true);
+                if (descriptor->sourcePath.empty()) {
+                    HIKARI_LOG_WARN(
+                        "[AssetRegistryBuilder][VFX] compiled HVFX artifact "
+                        "is missing: " + record->guid.value);
+                    ok = false;
+                    continue;
+                }
                 descriptor->version = record->meta.importerVersion;
+
+                const std::filesystem::path programPath =
+                    (assetDatabase.GetProjectRoot() /
+                        descriptor->sourcePath).lexically_normal();
+                VFX::VfxProgram program{};
+                std::string readError{};
+                if (!VFX::ReadHvfxcFile(
+                        programPath,
+                        program,
+                        readError)) {
+                    HIKARI_LOG_WARN(
+                        "[AssetRegistryBuilder][VFX] compiled HVFX read "
+                        "failed: " + readError);
+                    ok = false;
+                    continue;
+                }
+                descriptor->program =
+                    std::make_shared<const VFX::VfxProgram>(
+                        std::move(program));
                 ok = registry.RegisterDescriptor(std::move(descriptor)) && ok;
             }
         }

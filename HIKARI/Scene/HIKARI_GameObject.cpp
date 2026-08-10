@@ -197,6 +197,16 @@ namespace HIKARI {
         return ptr;
     }
 
+    void GameObject::DetachComponents() {
+        for (size_t index = components_.size(); index-- > 0u;) {
+            IComponent* component = components_[index].get();
+            if (component != nullptr) {
+                component->OnDetach();
+                component->SetOwner(nullptr);
+            }
+        }
+    }
+
     const std::vector<std::unique_ptr<IComponent>>& GameObject::GetComponents() const {
         return components_;
     }

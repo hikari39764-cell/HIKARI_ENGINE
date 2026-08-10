@@ -18,7 +18,9 @@ namespace HIKARI {
         return ptr;
     }
 
-    World::~World() = default;
+    World::~World() {
+        Clear();
+    }
 
     void World::DestroyObject(GameObject* object) {
         if (object == nullptr || object->ownerWorld_ != this) {
@@ -45,6 +47,7 @@ namespace HIKARI {
             object,
             object->GetDocumentId(),
             SceneObjectId{});
+        object->DetachComponents();
         ReleaseObjectHandle(object->GetRuntimeHandle());
         object->SetRuntimeHandle({});
         object->SetOwnerWorld(nullptr);
@@ -113,6 +116,7 @@ namespace HIKARI {
         for (const auto& object : objects_) {
             if (object) {
                 MarkRenderObjectRemoved(object->GetRenderStableId());
+                object->DetachComponents();
                 ReleaseObjectHandle(object->GetRuntimeHandle());
                 object->SetRuntimeHandle({});
                 object->SetOwnerWorld(nullptr);

@@ -121,6 +121,8 @@ struct AiMaterialGraphEditRequest {
   std::string property{};
   // set_node: resource id for TextureSample nodes.
   std::string resource{};
+  // Stable external/runtime reference used by source nodes such as Variable.
+  std::string referenceId{};
   // set_node: string-valued property (displayName).
   std::string stringValue{};
 };
@@ -142,6 +144,7 @@ struct MaterialGraphNodeCreateRequest {
   std::string parameterIdHint{};
   std::string parameterIdPrefix{};
   std::string parameterDisplayName{};
+  std::string referenceId{};
   AssetGuid functionAssetGuid{};
   std::vector<MaterialGraphParameterData> functionInputs{};
   std::vector<MaterialGraphParameterData> functionOutputs{};
@@ -212,6 +215,7 @@ public:
   void SetSelectedGraphNodesCollapsed(bool collapsed) noexcept;
   void SetAllGraphNodesCollapsed(bool collapsed) noexcept;
   bool HasMaterialDocument() const noexcept;
+  bool HasUnsavedMaterialChanges() const noexcept;
   bool IsGraphNodeSelected(const std::string &id) const;
   void SetGraphNodeSelection(const std::string &id, bool additive);
   void ClearGraphNodeSelection();
@@ -478,6 +482,9 @@ private:
       DocumentSceneBase &scene, MaterialAssetData &source,
       MaterialGraphData &graph, MaterialGraphNodeData &node,
       float x, float y, float width);
+  bool DrawMaterialGraphVariableInlineControl(
+      DocumentSceneBase &scene, MaterialAssetData &source,
+      MaterialGraphNodeData &node);
   bool DrawMaterialGraphRampNodeInlineControls(
       DocumentSceneBase &scene, MaterialAssetData &source,
       MaterialGraphData &graph, MaterialGraphNodeData &node,

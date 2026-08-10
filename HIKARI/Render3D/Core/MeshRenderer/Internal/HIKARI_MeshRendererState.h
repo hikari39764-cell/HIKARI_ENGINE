@@ -135,7 +135,6 @@ namespace HIKARI::MESHRENDERER {
         const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource* gpuDrivenSceneSourceIdentity = nullptr;
         RENDER3D::GPUDRIVEN::GpuDrivenSceneResidency gpuDrivenSceneResidency{};
 
-        float elapsedTimeSec = 0.0f;
     };
 
 } // namespace HIKARI::MESHRENDERER

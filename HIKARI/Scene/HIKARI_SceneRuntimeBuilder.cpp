@@ -406,6 +406,23 @@ namespace HIKARI {
                             }
                         }
                     }
+                } else if (component.type == "VfxPlayerComponent") {
+                    const auto slots =
+                        component.properties.find("slots");
+                    if (slots == component.properties.end() ||
+                        !slots->is_array()) {
+                        continue;
+                    }
+                    for (const nlohmann::json& slot : *slots) {
+                        if (!slot.is_object()) {
+                            continue;
+                        }
+                        const std::string assetGuid = slot.value(
+                            "effectAssetGuid", std::string{});
+                        if (!assetGuid.empty()) {
+                            deps.vfxAssetIds.insert(assetGuid);
+                        }
+                    }
                 }
             }
         }
@@ -502,8 +519,29 @@ namespace HIKARI {
             CollectMaterialTextureRequests(loadPlan, assetRegistry, *descriptor);
         }
 
+        for (const std::string& vfxId : dependencies.vfxAssetIds) {
+            const auto* vfx = assetRegistry.FindAs<VfxAssetDescriptor>(
+                AssetId{ vfxId });
+            if (vfx == nullptr || !vfx->program) {
+                continue;
+            }
+            for (const AssetGuid& materialGuid :
+                    vfx->program->dependencyGuids) {
+                const auto* material =
+                    assetRegistry.FindAs<MaterialAssetDescriptor>(
+                        AssetId{ materialGuid.value });
+                if (material != nullptr) {
+                    CollectMaterialTextureRequests(
+                        loadPlan,
+                        assetRegistry,
+                        *material);
+                }
+            }
+        }
+
         HIKARI_LOG_INFO(
             "[SceneRuntimeBuilder][LoadPlan] models=" + std::to_string(loadPlan.modelAssetIds.size()) +
+            " vfx=" + std::to_string(dependencies.vfxAssetIds.size()) +
             " textures=" + std::to_string(loadPlan.textureRequests.size()) +
             " clusterGeometry=" + std::to_string(loadPlan.clusterGeometryRequests.size()));
         ExecuteRuntimeAssetLoadPlan(loadPlan);
@@ -566,7 +604,19 @@ namespace HIKARI {
                         " objectId=" + std::to_string(objectData.id.value));
                     continue;
                 }
-                component->Deserialize(componentData.properties);
+                std::string deserializeDiagnostic{};
+                if (!component->TryDeserialize(
+                        componentData.properties,
+                        deserializeDiagnostic)) {
+                    HIKARI_LOG_ERROR(
+                        "[SceneRuntime] component deserialize failed: " +
+                        componentData.type +
+                        " objectId=" +
+                        std::to_string(objectData.id.value) +
+                        " diagnostic=" + deserializeDiagnostic);
+                    world.Clear();
+                    return false;
+                }
 
                 if (auto* modelComponent = dynamic_cast<ModelComponent*>(component)) {
                     modelComponent->SetModelAsset(ResolveModelAssetNow(

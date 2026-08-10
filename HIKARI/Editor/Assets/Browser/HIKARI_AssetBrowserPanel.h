@@ -2,6 +2,7 @@
 
 #include <array>
 #include <filesystem>
+#include <optional>
 #include <string>
 
 #include "Assets/HIKARI_AssetGuid.h"
@@ -11,6 +12,15 @@ namespace HIKARI {
 class AssetDatabase;
 struct AssetUsageSummary;
 struct EditorSelection;
+enum class AssetType;
+
+struct AssetWorkspaceActivation {
+  AssetWorkspaceActivation(AssetType assetType, const AssetGuid &assetGuid)
+      : type(assetType), guid(assetGuid) {}
+
+  AssetType type;
+  AssetGuid guid;
+};
 
 enum class AssetBrowserScope {
   Project,
@@ -41,10 +51,7 @@ public:
                     const AssetUsageSummary *usageSummary,
                     AssetBrowserScope scope,
                     const AssetBrowserContext *context = nullptr) const;
-  std::string ConsumeActivatedSceneGuid() const;
-  std::string ConsumeActivatedSequenceGuid() const;
-  std::string ConsumeActivatedAnimationStateMachineGuid() const;
-  std::string ConsumeActivatedModelCollisionGuid() const;
+  std::optional<AssetWorkspaceActivation> ConsumeActivatedAsset() const;
   std::string ConsumeSaveSceneAsGuid() const;
   std::string ConsumeRefreshRuntimeAssetGuid() const;
   std::string ConsumeReimportAndRefreshRuntimeAssetGuid() const;
@@ -62,10 +69,7 @@ private:
   mutable std::string lastOperationMessage_{};
   mutable std::string observedOperationMessage_{};
   mutable double operationMessageVisibleUntil_ = 0.0;
-  mutable std::string activatedSceneGuid_{};
-  mutable std::string activatedSequenceGuid_{};
-  mutable std::string activatedAnimationStateMachineGuid_{};
-  mutable std::string activatedModelCollisionGuid_{};
+  mutable std::optional<AssetWorkspaceActivation> activatedAsset_{};
   mutable std::string saveSceneAsGuid_{};
   mutable std::string refreshRuntimeAssetGuid_{};
   mutable std::string reimportAndRefreshRuntimeAssetGuid_{};

@@ -44,6 +44,19 @@ namespace HIKARI {
         }
 
         if (workspaceHost_.IsActive(
+                EDITOR::EditorWorkspaceId::RuntimeBinding)) {
+            runtimeBindingWorkspaceController_.BindDocumentCommands(
+                commandRouter_);
+            return;
+        }
+
+        if (workspaceHost_.IsActive(
+                EDITOR::EditorWorkspaceId::Vfx)) {
+            vfxWorkspaceController_.BindDocumentCommands(commandRouter_);
+            return;
+        }
+
+        if (workspaceHost_.IsActive(
                 EDITOR::EditorWorkspaceId::ModelCollision)) {
             modelCollisionWorkspaceController_.BindDocumentCommands(
                 commandRouter_,

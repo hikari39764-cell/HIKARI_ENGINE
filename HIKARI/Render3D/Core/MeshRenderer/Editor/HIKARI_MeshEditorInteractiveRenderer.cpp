@@ -112,7 +112,7 @@ namespace HIKARI::MESHRENDERER {
         };
         const FrameContext& timeFrame = TIME::GetFrameContext();
         cameraData.timeParams = {
-            gMeshRendererState.elapsedTimeSec,
+            TIME::GetUnscaledElapsedSeconds(),
             timeFrame.unscaledDt,
             timeFrame.gameDt,
             static_cast<float>(timeFrame.frameIndex)

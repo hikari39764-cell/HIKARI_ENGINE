@@ -110,6 +110,7 @@ namespace HIKARI {
     private:
         friend class World;
 
+        void DetachComponents();
         void SetOwnerWorld(World* world);
         void SetRuntimeHandle(RuntimeObjectHandle handle) noexcept;
         void MarkTransformHierarchyDirty();

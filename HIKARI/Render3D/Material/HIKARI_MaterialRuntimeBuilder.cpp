@@ -146,6 +146,8 @@ namespace HIKARI {
             outMaterial.SetMaterialProgram(resolution.id);
             outMaterial.SetMaterialProgramParameterBlock(
                 runtimeData.parameters);
+            outMaterial.SetMaterialParameterProjection(
+                runtimeData.parameterProjection);
             outMaterial.SetMaterialProgramResourceBlock(
                 runtimeData.resources);
             outMaterial.SetMaterialProgramInstanceFlags(

@@ -7,6 +7,7 @@
 
 #include "Assets/Material/Compiler/HIKARI_MaterialCompiler.h"
 #include "Render3D/Material/HIKARI_GpuMaterialTypes.h"
+#include "Render3D/Material/Program/HIKARI_MaterialParameterProjection.h"
 
 namespace HIKARI::RENDER3D::MATERIAL {
 
@@ -119,7 +120,8 @@ namespace HIKARI::RENDER3D::MATERIAL {
     bool BuildMaterialExpressionRuntimeProgram(
         const MaterialProgramIR& program,
         MaterialExpressionRuntimeProgram& outProgram,
-        std::string& outError);
+        std::string& outError,
+        std::span<const MaterialProgramParameterValueOverride> overrides = {});
 
     bool ResolveMaterialExpressionBudget(
         const MaterialProgramIR& program,

@@ -7,10 +7,15 @@
 #include <string>
 #include <vector>
 
+namespace HIKARI::RENDER3D::PARTICLES {
+    class GpuParticleRenderer;
+}
+
 namespace HIKARI::SERVICES {
     RuntimeHostMode GetRuntimeHostMode();
     INPUT::InputService& GetInputService();
     const INPUT::InputSnapshot& GetInputSnapshot();
+    RENDER3D::PARTICLES::GpuParticleRenderer& GetGpuParticleRenderer();
 
     bool IsEditorHost();
     bool IsStandaloneGameHost();

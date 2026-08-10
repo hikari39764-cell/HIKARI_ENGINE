@@ -1,5 +1,7 @@
 #pragma once
 
+#include <memory>
+
 #include "Animation/Runtime/HIKARI_AnimationPoseService.h"
 #include "Animation/StateMachine/HIKARI_AnimationStateMachineRuntimeService.h"
 #include "Assets/Animation/HIKARI_AnimationStateMachineAssetStore.h"
@@ -11,6 +13,8 @@
 #include "Physics/HIKARI_PhysicsProjectSettings.h"
 #include "Physics/HIKARI_PhysicsRuntimeStatusService.h"
 #include "Physics/HIKARI_PhysicsWorldService.h"
+#include "Runtime/Binding/HIKARI_RuntimeBindingStore.h"
+#include "Render3D/Material/Program/HIKARI_MaterialParameterProjection.h"
 #include "Scene/HIKARI_ComponentRegistry.h"
 #include "Scene/HIKARI_ComponentSystemPolicy.h"
 #include "Scene/HIKARI_PresentationTransformService.h"
@@ -21,6 +25,7 @@
 #include "Scene/HIKARI_World.h"
 #include "Scene/Features/HIKARI_RuntimeExtension.h"
 #include "Scene/Features/HIKARI_RuntimeFeatureCatalog.h"
+#include "Scene/Vfx/HIKARI_VfxPlaybackService.h"
 
 namespace HIKARI {
 
@@ -39,6 +44,13 @@ namespace HIKARI {
         PHYSICS::PhysicsCollisionGeometryStore collisionGeometryStore{};
         PHYSICS::PhysicsRuntimeStatusService physicsStatusService{};
         PHYSICS::PhysicsProjectSettings physicsSettings{};
+        BINDING::RuntimeBindingStore bindingStore{};
+        std::shared_ptr<const BINDING::Snapshot>
+            materialProjectionSourceSnapshot{};
+        std::shared_ptr<const RENDER3D::MATERIAL::
+            MaterialExternalValueSnapshot>
+            materialExternalValueSnapshot{};
+        VFX::VfxPlaybackService vfxPlaybackService{};
         PresentationTransformService presentationTransformService{};
         RuntimeExtensionHost extensionHost{};
         RuntimeFeatureCatalog featureCatalog{};

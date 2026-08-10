@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <string>
 
 #include "Editor/Assets/Browser/HIKARI_AssetBrowserPanel.h"
@@ -32,10 +33,7 @@ public:
   void Draw(AssetDatabase &assetDatabase, AssetRegistry &assetRegistry,
             const SceneDocument &sceneDocument, EditorSelection &selection,
             const ResourceWorkspaceContext &context) const;
-  std::string ConsumeActivatedSceneGuid() const;
-  std::string ConsumeActivatedSequenceGuid() const;
-  std::string ConsumeActivatedAnimationStateMachineGuid() const;
-  std::string ConsumeActivatedModelCollisionGuid() const;
+  std::optional<AssetWorkspaceActivation> ConsumeActivatedAsset() const;
   std::string ConsumeSaveSceneAsGuid() const;
   std::string ConsumeRefreshRuntimeAssetGuid() const;
   std::string ConsumeReimportAndRefreshRuntimeAssetGuid() const;

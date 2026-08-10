@@ -12,6 +12,8 @@ FrameContext gFrame{};
 Clock::time_point gLastTick{};
 bool gHasLastTick = false;
 float gMaxDeltaSeconds = 0.1f;
+float gUnscaledElapsedSeconds = 0.0f;
+float gGameElapsedSeconds = 0.0f;
 
 } // namespace
 
@@ -25,6 +27,8 @@ void Reset() {
     gLastTick = Clock::time_point{};
     gHasLastTick = false;
     gMaxDeltaSeconds = 0.1f;
+    gUnscaledElapsedSeconds = 0.0f;
+    gGameElapsedSeconds = 0.0f;
 }
 
 void ResetFrameClock() {
@@ -54,6 +58,8 @@ const FrameContext& BeginFrame() {
     gFrame.rawDt = rawDt;
     gFrame.unscaledDt = rawDt;
     gFrame.gameDt = gFrame.paused ? 0.0f : (rawDt * gFrame.gameTimeScale);
+    gUnscaledElapsedSeconds += gFrame.unscaledDt;
+    gGameElapsedSeconds += gFrame.gameDt;
     gFrame.fixedStepIndex = 0;
     gFrame.fixedStepsThisFrame = 0;
     gFrame.fixedInterpolationAlpha = 0.0f;
@@ -66,6 +72,14 @@ const FrameContext& BeginFrame() {
 
 const FrameContext& GetFrameContext() {
     return gFrame;
+}
+
+float GetUnscaledElapsedSeconds() {
+    return gUnscaledElapsedSeconds;
+}
+
+float GetGameElapsedSeconds() {
+    return gGameElapsedSeconds;
 }
 
 void SetGameTimeScale(float scale) {

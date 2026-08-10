@@ -49,12 +49,10 @@ void DrawRecordList(
     AssetDatabase &assetDatabase,
     const std::vector<const AssetRecord *> &records, EditorSelection &selection,
     const AssetUsageSummary *usageSummary, std::string &lastOperationMessage,
-    const AssetBrowserContext *context, std::string &activatedSceneGuid,
-    std::string &activatedSequenceGuid,
-    std::string &activatedAnimationStateMachineGuid,
-    std::string &activatedModelCollisionGuid, std::string &saveSceneAsGuid,
+    const AssetBrowserContext *context,
+    std::optional<AssetWorkspaceActivation> &activatedAsset,
+    std::string &saveSceneAsGuid,
     std::string &refreshRuntimeAssetGuid,
-    std::string &reimportAndRefreshRuntimeAssetGuid,
     std::string &pendingReimportAndRefreshRuntimeAssetGuid,
     std::string &renameSceneGuid, std::string &deleteSceneGuid,
     std::array<char, 128> &renameSceneNameBuffer) {
@@ -105,10 +103,7 @@ void DrawRecordList(
                           ImGuiSelectableFlags_SpanAllColumns)) {
       SelectRecord(*record, selection);
       if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-        HandleRecordActivated(*record, lastOperationMessage, activatedSceneGuid,
-                              activatedSequenceGuid,
-                              activatedAnimationStateMachineGuid,
-                              activatedModelCollisionGuid);
+        HandleRecordActivated(*record, lastOperationMessage, activatedAsset);
       }
     }
     const bool rowHovered = ImGui::IsItemHovered();
@@ -120,10 +115,7 @@ void DrawRecordList(
     if (ImGui::BeginPopupContextItem()) {
       DrawRecordContextMenu(
           assetDatabase, *record, selection, lastOperationMessage, context,
-          activatedSceneGuid, activatedSequenceGuid,
-          activatedAnimationStateMachineGuid, activatedModelCollisionGuid,
-          saveSceneAsGuid, refreshRuntimeAssetGuid,
-          reimportAndRefreshRuntimeAssetGuid,
+          activatedAsset, saveSceneAsGuid, refreshRuntimeAssetGuid,
           pendingReimportAndRefreshRuntimeAssetGuid, renameSceneGuid,
           deleteSceneGuid, renameSceneNameBuffer);
       ImGui::EndPopup();
@@ -151,12 +143,10 @@ void DrawRecordCompactRows(
     AssetDatabase &assetDatabase,
     const std::vector<const AssetRecord *> &records, EditorSelection &selection,
     const AssetUsageSummary *usageSummary, std::string &lastOperationMessage,
-    const AssetBrowserContext *context, std::string &activatedSceneGuid,
-    std::string &activatedSequenceGuid,
-    std::string &activatedAnimationStateMachineGuid,
-    std::string &activatedModelCollisionGuid, std::string &saveSceneAsGuid,
+    const AssetBrowserContext *context,
+    std::optional<AssetWorkspaceActivation> &activatedAsset,
+    std::string &saveSceneAsGuid,
     std::string &refreshRuntimeAssetGuid,
-    std::string &reimportAndRefreshRuntimeAssetGuid,
     std::string &pendingReimportAndRefreshRuntimeAssetGuid,
     std::string &renameSceneGuid, std::string &deleteSceneGuid,
     std::array<char, 128> &renameSceneNameBuffer) {
@@ -197,10 +187,7 @@ void DrawRecordCompactRows(
                               ImGuiSelectableFlags_AllowDoubleClick)) {
       SelectRecord(*record, selection);
       if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-        HandleRecordActivated(*record, lastOperationMessage, activatedSceneGuid,
-                              activatedSequenceGuid,
-                              activatedAnimationStateMachineGuid,
-                              activatedModelCollisionGuid);
+        HandleRecordActivated(*record, lastOperationMessage, activatedAsset);
       }
     }
     const bool rowHovered = ImGui::IsItemHovered();
@@ -211,10 +198,7 @@ void DrawRecordCompactRows(
     if (ImGui::BeginPopupContextItem()) {
       DrawRecordContextMenu(
           assetDatabase, *record, selection, lastOperationMessage, context,
-          activatedSceneGuid, activatedSequenceGuid,
-          activatedAnimationStateMachineGuid, activatedModelCollisionGuid,
-          saveSceneAsGuid, refreshRuntimeAssetGuid,
-          reimportAndRefreshRuntimeAssetGuid,
+          activatedAsset, saveSceneAsGuid, refreshRuntimeAssetGuid,
           pendingReimportAndRefreshRuntimeAssetGuid, renameSceneGuid,
           deleteSceneGuid, renameSceneNameBuffer);
       ImGui::EndPopup();
@@ -244,12 +228,10 @@ void DrawRecordGrid(
     AssetDatabase &assetDatabase,
     const std::vector<const AssetRecord *> &records, EditorSelection &selection,
     const AssetUsageSummary *usageSummary, std::string &lastOperationMessage,
-    const AssetBrowserContext *context, std::string &activatedSceneGuid,
-    std::string &activatedSequenceGuid,
-    std::string &activatedAnimationStateMachineGuid,
-    std::string &activatedModelCollisionGuid, std::string &saveSceneAsGuid,
+    const AssetBrowserContext *context,
+    std::optional<AssetWorkspaceActivation> &activatedAsset,
+    std::string &saveSceneAsGuid,
     std::string &refreshRuntimeAssetGuid,
-    std::string &reimportAndRefreshRuntimeAssetGuid,
     std::string &pendingReimportAndRefreshRuntimeAssetGuid,
     std::string &renameSceneGuid, std::string &deleteSceneGuid,
     std::array<char, 128> &renameSceneNameBuffer) {
@@ -308,18 +290,12 @@ void DrawRecordGrid(
     }
     if (cardDoubleClicked) {
       SelectRecord(*record, selection);
-      HandleRecordActivated(*record, lastOperationMessage, activatedSceneGuid,
-                            activatedSequenceGuid,
-                            activatedAnimationStateMachineGuid,
-                            activatedModelCollisionGuid);
+      HandleRecordActivated(*record, lastOperationMessage, activatedAsset);
     }
     if (ImGui::BeginPopupContextItem()) {
       DrawRecordContextMenu(
           assetDatabase, *record, selection, lastOperationMessage, context,
-          activatedSceneGuid, activatedSequenceGuid,
-          activatedAnimationStateMachineGuid, activatedModelCollisionGuid,
-          saveSceneAsGuid, refreshRuntimeAssetGuid,
-          reimportAndRefreshRuntimeAssetGuid,
+          activatedAsset, saveSceneAsGuid, refreshRuntimeAssetGuid,
           pendingReimportAndRefreshRuntimeAssetGuid, renameSceneGuid,
           deleteSceneGuid, renameSceneNameBuffer);
       ImGui::EndPopup();

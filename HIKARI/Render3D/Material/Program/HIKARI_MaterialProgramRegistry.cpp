@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <limits>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
@@ -36,12 +37,11 @@ namespace HIKARI::RENDER3D::MATERIAL {
                     "Material program IR version is not supported by this runtime."));
                 valid = false;
             }
-            if (program.domain != MaterialDomain::Surface ||
-                program.key.domain != program.domain) {
+            if (program.key.domain != program.domain) {
                 diagnostics.push_back(MakeRegistryDiagnostic(
                     MaterialCompileDiagnosticSeverity::Error,
                     "Material.RuntimeProgramDomainMismatch",
-                    "Material program and key domains do not describe one Surface program."));
+                    "Material program and key domains do not match."));
                 valid = false;
             }
             if (program.key.structureHash == 0u ||
@@ -54,6 +54,8 @@ namespace HIKARI::RENDER3D::MATERIAL {
             }
 
             std::unordered_set<std::string> parameterIds{};
+            std::unordered_map<std::string, MaterialValueType>
+                externalBindingTypes{};
             for (const MaterialProgramParameterBinding& parameter : program.parameters) {
                 if (parameter.parameterId.empty() ||
                     !parameterIds.insert(parameter.parameterId).second ||
@@ -66,6 +68,20 @@ namespace HIKARI::RENDER3D::MATERIAL {
                         "Material parameter IDs must be unique and each value must occupy one aligned float4 slot.",
                         parameter.parameterId));
                     valid = false;
+                }
+                if (!parameter.externalBindingId.empty()) {
+                    const auto [binding, inserted] =
+                        externalBindingTypes.emplace(
+                            parameter.externalBindingId,
+                            parameter.type);
+                    if (!inserted && binding->second != parameter.type) {
+                        diagnostics.push_back(MakeRegistryDiagnostic(
+                            MaterialCompileDiagnosticSeverity::Error,
+                            "Material.RuntimeExternalBindingTypeConflict",
+                            "one external material binding ID cannot describe multiple value types.",
+                            parameter.externalBindingId));
+                        valid = false;
+                    }
                 }
             }
 
@@ -103,11 +119,14 @@ namespace HIKARI::RENDER3D::MATERIAL {
                         instruction.inputRegisters.size() ||
                     instruction.outputPins.size() !=
                         instruction.outputRegisters.size() ||
-                    // Append-only runtime opcode ceiling. Must stay in sync
-                    // with the last MaterialNodeKind (currently Fresnel).
-                    static_cast<uint32_t>(instruction.opcode) >
-                        static_cast<uint32_t>(
-                            MaterialProgramOpcode::Fresnel)) {
+                    // Variable is source-only and lowers to Parameter.
+                    // ParticleOutput is the only legal terminal opcode after
+                    // the bounded expression opcode catalogue.
+                    (static_cast<uint32_t>(instruction.opcode) >
+                         static_cast<uint32_t>(
+                             MaterialProgramOpcode::Fresnel) &&
+                     instruction.opcode !=
+                         MaterialProgramOpcode::ParticleOutput)) {
                     diagnostics.push_back(MakeRegistryDiagnostic(
                         MaterialCompileDiagnosticSeverity::Error,
                         "Material.RuntimeInstructionShapeInvalid",
@@ -157,17 +176,34 @@ namespace HIKARI::RENDER3D::MATERIAL {
                     valid = false;
                 }
             }
-            if (program.sourceKind == MaterialAssetKind::Material &&
-                (program.instructions.empty() ||
-                 program.surfaceOutputRegister ==
-                    kInvalidMaterialProgramRegister ||
-                 !producedRegisters.contains(
-                    program.surfaceOutputRegister))) {
-                diagnostics.push_back(MakeRegistryDiagnostic(
-                    MaterialCompileDiagnosticSeverity::Error,
-                    "Material.RuntimeSurfaceOutputInvalid",
-                    "Surface MaterialProgram requires a compiled SSA output register."));
-                valid = false;
+            if (program.sourceKind == MaterialAssetKind::Material) {
+                if (program.domain == MaterialDomain::Surface &&
+                    (program.instructions.empty() ||
+                     program.surfaceOutputRegister ==
+                        kInvalidMaterialProgramRegister ||
+                     !producedRegisters.contains(
+                        program.surfaceOutputRegister))) {
+                    diagnostics.push_back(MakeRegistryDiagnostic(
+                        MaterialCompileDiagnosticSeverity::Error,
+                        "Material.RuntimeSurfaceOutputInvalid",
+                        "Surface MaterialProgram requires a compiled SSA output register."));
+                    valid = false;
+                } else if (program.domain == MaterialDomain::Particle) {
+                    const bool hasParticleOutput = std::any_of(
+                        program.instructions.begin(),
+                        program.instructions.end(),
+                        [](const MaterialProgramInstruction& instruction) {
+                            return instruction.opcode ==
+                                MaterialProgramOpcode::ParticleOutput;
+                        });
+                    if (!hasParticleOutput) {
+                        diagnostics.push_back(MakeRegistryDiagnostic(
+                            MaterialCompileDiagnosticSeverity::Error,
+                            "Material.RuntimeParticleOutputInvalid",
+                            "Particle MaterialProgram requires one ParticleOutput terminal."));
+                        valid = false;
+                    }
+                }
             }
             MaterialExpressionRuntimeProgram expression{};
             std::string expressionError{};

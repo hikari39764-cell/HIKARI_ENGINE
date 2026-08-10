@@ -73,6 +73,8 @@
         { "menu.workspace.cinematics", "シネマティクス" },
         { "menu.workspace.modelCollision", "モデルコリジョン" },
         { "menu.workspace.modelMaterial", "モデルマテリアル" },
+        { "menu.workspace.runtimeBinding", "ランタイムバインディング" },
+        { "menu.workspace.vfx", "VFX" },
         { "menu.workspace.resetActiveLayout", "アクティブレイアウトをリセット" },
         { "menu.workspace.scene", "シーン" },
         { "settings.language", "言語" },

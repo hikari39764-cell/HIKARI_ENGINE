@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "Render3D/Core/HIKARI_Material.h"
+#include "Render3D/Material/Program/HIKARI_MaterialParameterProjection.h"
 #include "Render3D/Material/Program/HIKARI_MaterialProgramRegistry.h"
 
 namespace HIKARI {
@@ -16,6 +17,8 @@ namespace HIKARI::RENDER3D::MATERIAL {
     struct MaterialProgramRuntimeData {
         std::vector<MATH::Vec4> parameters{};
         std::vector<RuntimeTextureSlot> resources{};
+        std::shared_ptr<const MaterialParameterProjectionRecipe>
+            parameterProjection{};
         uint32_t instanceFlags = 0u;
     };
 

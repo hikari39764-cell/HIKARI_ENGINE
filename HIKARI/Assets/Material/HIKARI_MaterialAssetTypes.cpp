@@ -47,6 +47,7 @@ namespace HIKARI {
         };
         constexpr std::array kDomains{
             std::pair{ MaterialDomain::Surface, std::string_view{ "Surface" } },
+            std::pair{ MaterialDomain::Particle, std::string_view{ "Particle" } },
         };
         constexpr std::array kTemplates{
             std::pair{ MaterialTemplateId::StandardPbr, std::string_view{ "StandardPBR" } },
@@ -58,6 +59,7 @@ namespace HIKARI {
             std::pair{ MaterialTemplateId::Cloth, std::string_view{ "Cloth" } },
             std::pair{ MaterialTemplateId::HybridMetal, std::string_view{ "HybridMetal" } },
             std::pair{ MaterialTemplateId::Custom, std::string_view{ "Custom" } },
+            std::pair{ MaterialTemplateId::ParticleUnlit, std::string_view{ "ParticleUnlit" } },
         };
         constexpr std::array kAlphaModes{
             std::pair{ MaterialAlphaMode::Opaque, std::string_view{ "Opaque" } },

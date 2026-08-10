@@ -246,7 +246,7 @@ namespace HIKARI::ASSETS::MATERIAL {
             MakeMaterialCompileOptions(assetDatabase_));
         if (!result.compile.success) {
             result.message =
-                "Material v5 graph is invalid; source was not saved";
+                "Material v6 graph is invalid; source was not saved";
             return result;
         }
         if (destination.empty() ||

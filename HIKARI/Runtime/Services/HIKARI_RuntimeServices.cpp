@@ -34,7 +34,6 @@
 #include "Runtime/Host/HIKARI_HostBootstrapConfig.h"
 #include "Runtime/Host/HIKARI_IEditorUiServices.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
-#include "Vfx/Runtime/HIKARI_VfxSystem.h"
 
 namespace HIKARI {
     namespace SERVICES {
@@ -57,6 +56,8 @@ namespace HIKARI {
                 INTERNAL::GetRuntimeServiceState().runtimeExportedSceneGuids;
             auto& gGpuFrameReady =
                 INTERNAL::GetRuntimeServiceState().gpuFrameReady;
+            auto& gGpuParticleRenderer =
+                INTERNAL::GetRuntimeServiceState().gpuParticleRenderer;
             auto& gLogicalScreenWidth =
                 INTERNAL::GetRuntimeServiceState().logicalScreenWidth;
             auto& gLogicalScreenHeight =
@@ -77,6 +78,10 @@ namespace HIKARI {
 
         const INPUT::InputSnapshot& GetInputSnapshot() {
             return gInputService.GetSnapshot();
+        }
+
+        RENDER3D::PARTICLES::GpuParticleRenderer& GetGpuParticleRenderer() {
+            return gGpuParticleRenderer;
         }
 
         bool IsEditorHost() { return IsEditorHostMode(gRuntimeHostMode); }
@@ -250,8 +255,12 @@ namespace HIKARI {
             else {
                 HIKARI_LOG_WARN("Audio initialized with Null fallback.");
             }
-            HIKARI::VFX::Initialize(graphicsContext);
-            HIKARI_LOG_INFO("VFX initialized.");
+            if (!gGpuParticleRenderer.Initialize(graphicsContext)) {
+                HIKARI_LOG_ERROR(
+                    "Native GPU particle renderer initialization failed.");
+                return false;
+            }
+            HIKARI_LOG_INFO("Native GPU particle renderer initialized.");
 
             const ProjectContext& projectContext =
                 GetProjectContext();
@@ -320,6 +329,8 @@ namespace HIKARI {
                 }
                 editorUiServices->Shutdown(gWindow);
             }
+            gGpuParticleRenderer.Shutdown();
+            HIKARI_LOG_INFO("Native GPU particle renderer finalized.");
             HIKARI::POST::PostSystem::Shutdown();
             HIKARI_LOG_INFO("PostSystem shutdown.");
             DX::DxRenderer::Finalize();
@@ -338,8 +349,6 @@ namespace HIKARI {
             RENDER3D::ShutdownRenderResourceDescriptorPool();
             DXTEX::DxTextureManager::Finalize();
             HIKARI_LOG_INFO("TextureManager finalized.");
-            HIKARI::VFX::Shutdown();
-            HIKARI_LOG_INFO("VFX shutdown.");
             AUDIO::Shutdown();
             HIKARI_LOG_INFO("Audio shutdown.");
             RENDER3D::UPSCALING::ShutdownStreamline();

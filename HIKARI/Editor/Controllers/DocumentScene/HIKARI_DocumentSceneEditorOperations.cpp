@@ -6,6 +6,8 @@
 #include "Editor/Workspaces/ModelCollision/HIKARI_ModelCollisionOperations.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialOperations.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialNodeQuery.h"
+#include "Editor/Workspaces/RuntimeBinding/HIKARI_RuntimeBindingOperations.h"
+#include "Editor/Workspaces/Vfx/HIKARI_VfxOperations.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
 #include <utility>
@@ -446,6 +448,18 @@ namespace HIKARI {
             operationRegistry_,
             modelMaterialWorkspaceController_,
             [this]() { return aiOperationScene_; });
+        EDITOR::RegisterRuntimeBindingOperations(
+            operationRegistry_,
+            runtimeBindingWorkspaceController_,
+            [this]() { return aiOperationScene_; });
+        EDITOR::RegisterVfxOperations(
+            operationRegistry_,
+            vfxWorkspaceController_,
+            [this]() -> AssetDatabase* {
+                return aiOperationScene_ != nullptr
+                    ? &aiOperationScene_->GetAssetDatabase()
+                    : nullptr;
+            });
         EDITOR::RegisterComponentAuthoringOperations(
             operationRegistry_,
             EDITOR::ComponentAuthoringOperationContext{

@@ -48,12 +48,16 @@ namespace HIKARI::EDITOR::ASSET_BROWSER {
 #if defined(HIKARI_WITH_EDITOR)
 void HandleRecordActivated(const AssetRecord &record,
                            std::string &lastOperationMessage,
-                           std::string &activatedSceneGuid,
-                           std::string &activatedSequenceGuid,
-                           std::string &activatedAnimationStateMachineGuid,
-                           std::string &activatedModelCollisionGuid) {
+                           std::optional<AssetWorkspaceActivation>
+                               &activatedAsset) {
+  if (!record.guid.IsValid()) {
+    lastOperationMessage =
+        TEXT::Localize("ui.assetBrowser.assetSelected") +
+        record.displayName;
+    return;
+  }
   if (record.type == AssetType::Scene) {
-    activatedSceneGuid = record.guid.value;
+    activatedAsset = AssetWorkspaceActivation{record.type, record.guid};
     lastOperationMessage =
         TEXT::Localize("ui.assetBrowser.sceneOpenRequested") +
         record.displayName;
@@ -61,23 +65,30 @@ void HandleRecordActivated(const AssetRecord &record,
     return;
   }
   if (record.type == AssetType::Sequence) {
-    activatedSequenceGuid = record.guid.value;
+    activatedAsset = AssetWorkspaceActivation{record.type, record.guid};
     lastOperationMessage =
         TEXT::Localize("ui.assetBrowser.sequenceOpenRequested") +
         record.displayName;
     return;
   }
   if (record.type == AssetType::AnimationStateMachine) {
-    activatedAnimationStateMachineGuid = record.guid.value;
+    activatedAsset = AssetWorkspaceActivation{record.type, record.guid};
     lastOperationMessage =
         TEXT::Localize("ui.assetBrowser.stateMachineRequested") +
         record.displayName;
     return;
   }
   if (record.type == AssetType::Model) {
-    activatedModelCollisionGuid = record.guid.value;
+    activatedAsset = AssetWorkspaceActivation{record.type, record.guid};
     lastOperationMessage =
         TEXT::Localize("ui.assetBrowser.collisionRequested") +
+        record.displayName;
+    return;
+  }
+  if (record.type == AssetType::VfxEffect) {
+    activatedAsset = AssetWorkspaceActivation{record.type, record.guid};
+    lastOperationMessage =
+        TEXT::Localize("ui.assetBrowser.assetSelected") +
         record.displayName;
     return;
   }
@@ -159,12 +170,10 @@ void DrawAssetDragSource(const AssetRecord &record) {
 void DrawRecordContextMenu(
     AssetDatabase &assetDatabase, const AssetRecord &record,
     EditorSelection &selection, std::string &lastOperationMessage,
-    const AssetBrowserContext *context, std::string &activatedSceneGuid,
-    std::string &activatedSequenceGuid,
-    std::string &activatedAnimationStateMachineGuid,
-    std::string &activatedModelCollisionGuid, std::string &saveSceneAsGuid,
+    const AssetBrowserContext *context,
+    std::optional<AssetWorkspaceActivation> &activatedAsset,
+    std::string &saveSceneAsGuid,
     std::string &refreshRuntimeAssetGuid,
-    std::string &reimportAndRefreshRuntimeAssetGuid,
     std::string &pendingReimportAndRefreshRuntimeAssetGuid,
     std::string &renameSceneGuid, std::string &deleteSceneGuid,
     std::array<char, 128> &renameSceneNameBuffer) {
@@ -173,12 +182,7 @@ void DrawRecordContextMenu(
     if (ImGui::MenuItem(
             TEXT::Localize("ui.assetBrowser.openScene").c_str())) {
       SelectRecord(record, selection);
-      activatedSceneGuid = record.guid.value;
-      lastOperationMessage =
-          TEXT::Localize("ui.assetBrowser.sceneOpenRequested") +
-          record.displayName;
-      LogSceneAssetInfo("open requested: " +
-                        record.sourcePath.generic_string());
+      HandleRecordActivated(record, lastOperationMessage, activatedAsset);
     }
     if (ImGui::MenuItem(
             TEXT::Localize(
@@ -255,10 +259,7 @@ void DrawRecordContextMenu(
     if (ImGui::MenuItem(
             TEXT::Localize("ui.assetBrowser.editCollision").c_str())) {
       SelectRecord(record, selection);
-      activatedModelCollisionGuid = record.guid.value;
-      lastOperationMessage =
-          TEXT::Localize("ui.assetBrowser.collisionRequested") +
-          record.displayName;
+      HandleRecordActivated(record, lastOperationMessage, activatedAsset);
     }
     ImGui::Separator();
   }
@@ -268,10 +269,7 @@ void DrawRecordContextMenu(
             TEXT::Localize(
                 "ui.assetBrowser.openInCinematics").c_str())) {
       SelectRecord(record, selection);
-      activatedSequenceGuid = record.guid.value;
-      lastOperationMessage =
-          TEXT::Localize("ui.assetBrowser.sequenceOpenRequested") +
-          record.displayName;
+      HandleRecordActivated(record, lastOperationMessage, activatedAsset);
     }
     ImGui::Separator();
   }
@@ -281,10 +279,7 @@ void DrawRecordContextMenu(
             TEXT::Localize(
                 "ui.assetBrowser.openStateMachine").c_str())) {
       SelectRecord(record, selection);
-      activatedAnimationStateMachineGuid = record.guid.value;
-      lastOperationMessage =
-          TEXT::Localize("ui.assetBrowser.stateMachineRequested") +
-          record.displayName;
+      HandleRecordActivated(record, lastOperationMessage, activatedAsset);
     }
     ImGui::Separator();
   }

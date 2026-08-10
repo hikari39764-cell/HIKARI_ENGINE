@@ -7,6 +7,7 @@
 #include "Render3D/Core/MeshRenderer/Data/HIKARI_MeshMaterialResolver.h"
 #include "Render3D/Core/MeshRenderer/Data/HIKARI_MeshDrawDataBuilder.h"
 #include "Assets/Models/HIKARI_ModelAsset.h"
+#include "Render3D/Material/HIKARI_GpuMaterialProjection.h"
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
 #include "Render3D/Runtime/HIKARI_SurfaceGpuScene.h"
 
@@ -36,37 +37,14 @@ namespace HIKARI::MESHRENDERER {
                 : static_cast<uint32_t>(descriptorIndex);
         }
 
-        std::vector<uint32_t> ResolveMaterialProgramResourceIndices(
-            const Material& material) {
-            const std::span<const RuntimeTextureSlot> resources =
-                material.GetMaterialProgramResourceBlock();
-            std::vector<uint32_t> descriptors(
-                resources.size(),
-                kInvalidTextureDescriptorIndex);
-            for (size_t index = 0u; index < resources.size(); ++index) {
-                const RuntimeTextureSlot& resource = resources[index];
-                if (!resource.IsActive()) {
-                    continue;
-                }
-                const UINT descriptorIndex = resource.resource.IsValid()
-                    ? RENDER3D::GetTextureResourceSrvDescriptorIndex(
-                        resource.resource)
-                    : RENDER3D::GetTextureResourceSrvDescriptorIndexFromBackendHandle(
-                        resource.ResolveBackendHandle());
-                if (descriptorIndex != UINT32_MAX) {
-                    descriptors[index] =
-                        static_cast<uint32_t>(descriptorIndex);
-                }
-            }
-            return descriptors;
-        }
-
         void UpdateMaterialProgramBlocks(
             RENDER3D::MATERIAL::GpuMaterialRegistry& registry,
             uint32_t materialSlot,
             const Material& material) {
             const std::vector<uint32_t> resources =
-                ResolveMaterialProgramResourceIndices(material);
+                RENDER3D::MATERIAL::
+                    ResolveMaterialProgramResourceDescriptorIndices(
+                        material);
             if (registry.UpdateProgramBlocks(
                     materialSlot,
                     material.GetMaterialProgramId(),
@@ -262,70 +240,68 @@ namespace HIKARI::MESHRENDERER {
             const MaterialAsset* materialAsset,
             const Material* runtimeMaterial) {
 
-            MaterialGpuData data{};
+            RENDER3D::MATERIAL::GpuMaterialProjection projection{};
             const MaterialTextureDescriptorIndices textureIndices =
                 ResolveMaterialTextureDescriptorIndices(textures);
-            data.baseColor = obj.baseColor;
-            data.emissiveFactor = obj.emissiveFactor;
-            data.pbrParams = {
+            projection.baseColor = obj.baseColor;
+            projection.emissiveFactor = obj.emissiveFactor;
+            projection.pbrParams = {
                 obj.metallicFactor,
                 obj.roughnessFactor,
                 obj.occlusionStrength,
                 obj.alphaCutoff
             };
-            data.specularParams = ResolveSpecularParams(materialAsset, runtimeMaterial);
-            data.materialFlags = obj.materialFlags;
-            data.hasBaseColorTexture = obj.hasBaseColorTexture;
-            data.hasNormalTexture = obj.hasNormalTexture;
-            data.hasEmissiveTexture = obj.hasEmissiveTexture;
-            data.hasMetallicRoughnessTexture = obj.hasMetallicRoughnessTexture;
-            data.hasOcclusionTexture = obj.hasOcclusionTexture;
-            data.hasSpecularTexture =
-                HasSpecularTextureSlot(materialAsset, runtimeMaterial, MaterialTextureUsage::Specular) ? 1u : 0u;
-            data.hasSpecularColorTexture =
-                HasSpecularTextureSlot(materialAsset, runtimeMaterial, MaterialTextureUsage::SpecularColor) ? 1u : 0u;
-            data.normalScale = obj.normalScale;
-            data.baseColorTextureHandle = textures.baseColor;
-            data.normalTextureHandle = textures.normal;
-            data.emissiveTextureHandle = textures.emissive;
-            data.metallicRoughnessTextureHandle = textures.metallicRoughness;
-            data.occlusionTextureHandle = textures.occlusion;
-            data.specularTextureHandle = textures.specular;
-            data.specularColorTextureHandle = textures.specularColor;
-            data.baseColorTextureDescriptorIndex = textureIndices.baseColor;
-            data.normalTextureDescriptorIndex = textureIndices.normal;
-            data.emissiveTextureDescriptorIndex = textureIndices.emissive;
-            data.metallicRoughnessTextureDescriptorIndex = textureIndices.metallicRoughness;
-            data.occlusionTextureDescriptorIndex = textureIndices.occlusion;
-            data.specularTextureDescriptorIndex = textureIndices.specular;
-            data.specularColorTextureDescriptorIndex = textureIndices.specularColor;
-            data.baseColorUvTransform = ResolveSlotUvTransform(materialAsset, runtimeMaterial, MaterialTextureUsage::BaseColor);
-            data.normalUvTransform = ResolveSlotUvTransform(materialAsset, runtimeMaterial, MaterialTextureUsage::Normal);
-            data.emissiveUvTransform = ResolveSlotUvTransform(materialAsset, runtimeMaterial, MaterialTextureUsage::Emissive);
-            data.metallicRoughnessUvTransform = ResolveSlotUvTransform(materialAsset, runtimeMaterial, MaterialTextureUsage::MetallicRoughness);
-            data.occlusionUvTransform = ResolveSlotUvTransform(materialAsset, runtimeMaterial, MaterialTextureUsage::Occlusion);
-            data.specularUvTransform = ResolveSlotUvTransform(materialAsset, runtimeMaterial, MaterialTextureUsage::Specular);
-            data.specularColorUvTransform = ResolveSlotUvTransform(materialAsset, runtimeMaterial, MaterialTextureUsage::SpecularColor);
-            data.uvRotation0 = {
-                ResolveSlotUvRotation(materialAsset, runtimeMaterial, MaterialTextureUsage::BaseColor),
-                ResolveSlotUvRotation(materialAsset, runtimeMaterial, MaterialTextureUsage::Normal),
-                ResolveSlotUvRotation(materialAsset, runtimeMaterial, MaterialTextureUsage::Emissive),
-                ResolveSlotUvRotation(materialAsset, runtimeMaterial, MaterialTextureUsage::MetallicRoughness)
+            projection.specularParams = ResolveSpecularParams(
+                materialAsset, runtimeMaterial);
+            projection.materialFlags = obj.materialFlags;
+            projection.normalScale = obj.normalScale;
+
+            const auto setTexture = [&](
+                RENDER3D::MATERIAL::GpuMaterialTextureChannel channel,
+                MaterialTextureUsage usage,
+                int handle,
+                uint32_t descriptorIndex,
+                bool enabled) {
+                auto& texture = projection.textures[
+                    static_cast<size_t>(channel)];
+                texture.backendHandle = handle;
+                texture.descriptorIndex = descriptorIndex;
+                texture.uvTransform = ResolveSlotUvTransform(
+                    materialAsset, runtimeMaterial, usage);
+                texture.uvRotation = ResolveSlotUvRotation(
+                    materialAsset, runtimeMaterial, usage);
+                texture.uvSet = ResolveSlotUvSet(
+                    materialAsset, runtimeMaterial, usage);
+                texture.enabled = enabled;
             };
-            data.uvRotation1 = {
-                ResolveSlotUvRotation(materialAsset, runtimeMaterial, MaterialTextureUsage::Occlusion),
-                ResolveSlotUvRotation(materialAsset, runtimeMaterial, MaterialTextureUsage::Specular),
-                ResolveSlotUvRotation(materialAsset, runtimeMaterial, MaterialTextureUsage::SpecularColor),
-                0.0f
-            };
-            data.uvSet0[0] = ResolveSlotUvSet(materialAsset, runtimeMaterial, MaterialTextureUsage::BaseColor);
-            data.uvSet0[1] = ResolveSlotUvSet(materialAsset, runtimeMaterial, MaterialTextureUsage::Normal);
-            data.uvSet0[2] = ResolveSlotUvSet(materialAsset, runtimeMaterial, MaterialTextureUsage::Emissive);
-            data.uvSet0[3] = ResolveSlotUvSet(materialAsset, runtimeMaterial, MaterialTextureUsage::MetallicRoughness);
-            data.uvSet1[0] = ResolveSlotUvSet(materialAsset, runtimeMaterial, MaterialTextureUsage::Occlusion);
-            data.uvSet1[1] = ResolveSlotUvSet(materialAsset, runtimeMaterial, MaterialTextureUsage::Specular);
-            data.uvSet1[2] = ResolveSlotUvSet(materialAsset, runtimeMaterial, MaterialTextureUsage::SpecularColor);
-            return data;
+            setTexture(RENDER3D::MATERIAL::GpuMaterialTextureChannel::BaseColor,
+                MaterialTextureUsage::BaseColor, textures.baseColor,
+                textureIndices.baseColor, obj.hasBaseColorTexture != 0u);
+            setTexture(RENDER3D::MATERIAL::GpuMaterialTextureChannel::Normal,
+                MaterialTextureUsage::Normal, textures.normal,
+                textureIndices.normal, obj.hasNormalTexture != 0u);
+            setTexture(RENDER3D::MATERIAL::GpuMaterialTextureChannel::Emissive,
+                MaterialTextureUsage::Emissive, textures.emissive,
+                textureIndices.emissive, obj.hasEmissiveTexture != 0u);
+            setTexture(RENDER3D::MATERIAL::GpuMaterialTextureChannel::MetallicRoughness,
+                MaterialTextureUsage::MetallicRoughness,
+                textures.metallicRoughness,
+                textureIndices.metallicRoughness,
+                obj.hasMetallicRoughnessTexture != 0u);
+            setTexture(RENDER3D::MATERIAL::GpuMaterialTextureChannel::Occlusion,
+                MaterialTextureUsage::Occlusion, textures.occlusion,
+                textureIndices.occlusion, obj.hasOcclusionTexture != 0u);
+            setTexture(RENDER3D::MATERIAL::GpuMaterialTextureChannel::Specular,
+                MaterialTextureUsage::Specular, textures.specular,
+                textureIndices.specular,
+                HasSpecularTextureSlot(materialAsset, runtimeMaterial,
+                    MaterialTextureUsage::Specular));
+            setTexture(RENDER3D::MATERIAL::GpuMaterialTextureChannel::SpecularColor,
+                MaterialTextureUsage::SpecularColor, textures.specularColor,
+                textureIndices.specularColor,
+                HasSpecularTextureSlot(materialAsset, runtimeMaterial,
+                    MaterialTextureUsage::SpecularColor));
+            return RENDER3D::MATERIAL::PackGpuMaterialData(projection);
         }
 
         MaterialTextureHandles ResolveRuntimeMaterialTextureHandles(

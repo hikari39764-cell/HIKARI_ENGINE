@@ -29,6 +29,9 @@ constexpr std::array<Pin, 1u> kConstantOutputs{{
 constexpr std::array<Pin, 1u> kParameterOutputs{{
     {"Value", MaterialValueType::Float1, PinType::ReferencedParameter, false, false, {}},
 }};
+constexpr std::array<Pin, 1u> kVariableOutputs{{
+    {"Value", MaterialValueType::Float1, PinType::NodeValue, false, false, {}},
+}};
 constexpr std::array kTextureSampleOutputs{
     Fixed("Color", MaterialValueType::Float4),
     Fixed("RGB", MaterialValueType::Float3),
@@ -84,6 +87,12 @@ constexpr std::array kPbrSurfaceInputs{
     Fixed("Outline", MaterialValueType::OutlineResponse),
 };
 constexpr std::array kSurfaceOutput{Fixed("Surface", MaterialValueType::Surface)};
+constexpr std::array kParticleOutputInputs{
+    Fixed("Color", MaterialValueType::Float4),
+    Fixed("Opacity", MaterialValueType::Float1),
+    Fixed("Emissive", MaterialValueType::Float3),
+    Fixed("AlphaClipThreshold", MaterialValueType::Float1),
+};
 constexpr std::array kRampDiffuseInputs{
     Fixed("ShadowThreshold", MaterialValueType::Float1),
     Fixed("ShadowSoftness", MaterialValueType::Float1),
@@ -492,10 +501,16 @@ constexpr std::array kDefinitions{
     MaterialNodeDefinition{MaterialNodeKind::Fresnel, "math.fresnel",
         MaterialValueType::Float1, NodeClass::Math, true,
         kGenericFresnelInputs, kFloatResult, false, OutputRoute::Unrestricted, "Fresnel factor from normal/view; scalar 0..1."},
+    MaterialNodeDefinition{MaterialNodeKind::Variable, "Variable",
+        MaterialValueType::Float1, NodeClass::Input, true,
+        {}, kVariableOutputs, false, OutputRoute::Unrestricted, "Reads one typed project runtime variable with an authored fallback."},
+    MaterialNodeDefinition{MaterialNodeKind::ParticleOutput, "ParticleOutput",
+        MaterialValueType::Float4, NodeClass::Surface, true,
+        kParticleOutputInputs, {}, false, OutputRoute::Unrestricted, "Terminal particle output for color, opacity, emissive and alpha clipping."},
 };
 
 static_assert(kDefinitions.size() ==
-    static_cast<size_t>(MaterialNodeKind::Fresnel) + 1u);
+    static_cast<size_t>(MaterialNodeKind::ParticleOutput) + 1u);
 
 constexpr bool AllPaletteVisibleNodesHaveSummary() {
     for (const MaterialNodeDefinition& definition : kDefinitions) {
@@ -546,6 +561,32 @@ const MaterialNodeDefinition* FindMaterialNodeDefinition(
             return definition.stableName == stableName;
         });
     return found == kDefinitions.end() ? nullptr : &*found;
+}
+
+bool IsMaterialNodeAvailableForDomain(
+    MaterialNodeKind kind,
+    MaterialDomain domain) noexcept {
+    const MaterialNodeDefinition* definition =
+        FindMaterialNodeDefinition(kind);
+    if (definition == nullptr) {
+        return false;
+    }
+    if (domain == MaterialDomain::Surface) {
+        return kind != MaterialNodeKind::ParticleOutput;
+    }
+    if (kind == MaterialNodeKind::ParticleOutput) {
+        return true;
+    }
+    return definition->semanticClass == MaterialNodeSemanticClass::Input ||
+        definition->semanticClass == MaterialNodeSemanticClass::Math;
+}
+
+bool IsMaterialNodeAvailableForDomain(
+    const MaterialNodeTypeId& typeId,
+    MaterialDomain domain) noexcept {
+    MaterialNodeKind kind{};
+    return TryGetLegacyMaterialNodeKind(typeId, kind) &&
+        IsMaterialNodeAvailableForDomain(kind, domain);
 }
 
 const MaterialNodePinDefinition* FindMaterialNodeInputDefinition(

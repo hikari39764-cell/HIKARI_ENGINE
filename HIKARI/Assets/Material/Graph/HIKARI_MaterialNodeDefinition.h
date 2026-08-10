@@ -68,6 +68,13 @@ namespace HIKARI {
     const MaterialNodeDefinition* FindMaterialNodeDefinition(
         std::string_view stableName) noexcept;
 
+    bool IsMaterialNodeAvailableForDomain(
+        MaterialNodeKind kind,
+        MaterialDomain domain) noexcept;
+    bool IsMaterialNodeAvailableForDomain(
+        const MaterialNodeTypeId& typeId,
+        MaterialDomain domain) noexcept;
+
     const MaterialNodePinDefinition* FindMaterialNodeInputDefinition(
         MaterialNodeKind kind,
         std::string_view pin) noexcept;

@@ -73,6 +73,8 @@
         { "menu.workspace.cinematics", "电影机" },
         { "menu.workspace.modelCollision", "模型碰撞" },
         { "menu.workspace.modelMaterial", "模型材质" },
+        { "menu.workspace.runtimeBinding", "运行时绑定" },
+        { "menu.workspace.vfx", "特效" },
         { "menu.workspace.resetActiveLayout", "重置当前布局" },
         { "menu.workspace.scene", "场景" },
         { "settings.language", "语言" },

@@ -6,6 +6,7 @@
 #include "Scene/Features/HIKARI_PhysicsRuntimeFeature.h"
 #include "Scene/Features/HIKARI_RenderingRuntimeFeature.h"
 #include "Scene/Features/HIKARI_SequenceRuntimeFeature.h"
+#include "Scene/Features/HIKARI_VfxRuntimeFeature.h"
 
 namespace HIKARI {
 
@@ -17,6 +18,7 @@ namespace HIKARI {
         (void)catalog.Add(CreatePhysicsRuntimeFeature());
         (void)catalog.Add(CreateGameplayRuntimeFeature());
         (void)catalog.Add(CreateSequenceRuntimeFeature());
+        (void)catalog.Add(CreateVfxRuntimeFeature());
         return catalog;
     }
 

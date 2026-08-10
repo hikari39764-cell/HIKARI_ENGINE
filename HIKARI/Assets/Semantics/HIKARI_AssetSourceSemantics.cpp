@@ -71,8 +71,8 @@ namespace HIKARI::ASSETS::SEMANTICS {
                 AssetImporterKind::VfxEffect,
                 AssetType::VfxEffect,
                 "VfxAssetImporter",
-                1u,
-                ".efk, .efkefc",
+                2u,
+                ".hvfx",
             },
         } };
 
@@ -217,7 +217,7 @@ namespace HIKARI::ASSETS::SEMANTICS {
             kind = AssetImporterKind::Material;
         } else if (extension == ".hmodelmaterial") {
             kind = AssetImporterKind::ModelMaterialBinding;
-        } else if (extension == ".efk" || extension == ".efkefc") {
+        } else if (extension == ".hvfx") {
             kind = AssetImporterKind::VfxEffect;
         }
 

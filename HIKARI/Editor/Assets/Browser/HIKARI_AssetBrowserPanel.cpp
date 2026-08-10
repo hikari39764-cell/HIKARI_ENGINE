@@ -402,29 +402,22 @@ void AssetBrowserPanel::DrawContents(AssetDatabase &assetDatabase,
         TEXT::Localize("ui.assetBrowser.emptyHint").c_str());
   } else if (viewMode_ == 1) {
     DrawRecordList(assetDatabase, records, selection, usageSummary,
-                   lastOperationMessage_, context, activatedSceneGuid_,
-                   activatedSequenceGuid_, activatedAnimationStateMachineGuid_,
-                   activatedModelCollisionGuid_, saveSceneAsGuid_,
+                   lastOperationMessage_, context, activatedAsset_,
+                   saveSceneAsGuid_,
                    refreshRuntimeAssetGuid_,
-                   reimportAndRefreshRuntimeAssetGuid_,
                    pendingReimportAndRefreshRuntimeAssetGuid_, renameSceneGuid_,
                    deleteSceneGuid_, renameSceneNameBuffer_);
   } else if (viewMode_ == 2) {
     DrawRecordGrid(assetDatabase, records, selection, usageSummary,
-                   lastOperationMessage_, context, activatedSceneGuid_,
-                   activatedSequenceGuid_, activatedAnimationStateMachineGuid_,
-                   activatedModelCollisionGuid_, saveSceneAsGuid_,
+                   lastOperationMessage_, context, activatedAsset_,
+                   saveSceneAsGuid_,
                    refreshRuntimeAssetGuid_,
-                   reimportAndRefreshRuntimeAssetGuid_,
                    pendingReimportAndRefreshRuntimeAssetGuid_, renameSceneGuid_,
                    deleteSceneGuid_, renameSceneNameBuffer_);
   } else {
     DrawRecordCompactRows(
         assetDatabase, records, selection, usageSummary, lastOperationMessage_,
-        context, activatedSceneGuid_, activatedSequenceGuid_,
-        activatedAnimationStateMachineGuid_, activatedModelCollisionGuid_,
-        saveSceneAsGuid_, refreshRuntimeAssetGuid_,
-        reimportAndRefreshRuntimeAssetGuid_,
+        context, activatedAsset_, saveSceneAsGuid_, refreshRuntimeAssetGuid_,
         pendingReimportAndRefreshRuntimeAssetGuid_, renameSceneGuid_,
         deleteSceneGuid_, renameSceneNameBuffer_);
   }
@@ -442,41 +435,11 @@ void AssetBrowserPanel::DrawContents(AssetDatabase &assetDatabase,
 #endif
 }
 
-std::string AssetBrowserPanel::ConsumeActivatedSceneGuid() const {
+std::optional<AssetWorkspaceActivation>
+AssetBrowserPanel::ConsumeActivatedAsset() const {
 #if defined(HIKARI_WITH_EDITOR)
-  std::string value = std::move(activatedSceneGuid_);
-  activatedSceneGuid_.clear();
-  return value;
-#else
-  return {};
-#endif
-}
-
-std::string AssetBrowserPanel::ConsumeActivatedSequenceGuid() const {
-#if defined(HIKARI_WITH_EDITOR)
-  std::string value = std::move(activatedSequenceGuid_);
-  activatedSequenceGuid_.clear();
-  return value;
-#else
-  return {};
-#endif
-}
-
-std::string
-AssetBrowserPanel::ConsumeActivatedAnimationStateMachineGuid() const {
-#if defined(HIKARI_WITH_EDITOR)
-  std::string value = std::move(activatedAnimationStateMachineGuid_);
-  activatedAnimationStateMachineGuid_.clear();
-  return value;
-#else
-  return {};
-#endif
-}
-
-std::string AssetBrowserPanel::ConsumeActivatedModelCollisionGuid() const {
-#if defined(HIKARI_WITH_EDITOR)
-  std::string value = std::move(activatedModelCollisionGuid_);
-  activatedModelCollisionGuid_.clear();
+  std::optional<AssetWorkspaceActivation> value = std::move(activatedAsset_);
+  activatedAsset_.reset();
   return value;
 #else
   return {};

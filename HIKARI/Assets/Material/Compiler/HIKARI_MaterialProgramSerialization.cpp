@@ -66,13 +66,18 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
 
             nlohmann::json parameterArray = nlohmann::json::array();
             for (const auto& parameter : parameters) {
-                parameterArray.push_back(nlohmann::json{
+                nlohmann::json parameterJson{
                     { "parameterId", parameter.parameterId },
                     { "type", std::string(ToString(parameter.type)) },
                     { "byteOffset", parameter.byteOffset },
                     { "byteSize", parameter.byteSize },
                     { "defaultValue", WriteMaterialValueJson(parameter.defaultValue) },
-                });
+                };
+                if (!parameter.externalBindingId.empty()) {
+                    parameterJson["externalBindingId"] =
+                        parameter.externalBindingId;
+                }
+                parameterArray.push_back(std::move(parameterJson));
             }
             nlohmann::json resourceArray = nlohmann::json::array();
             for (const auto& resource : resources) {
@@ -165,10 +170,12 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
             MaterialProgramIR program{};
             const uint32_t storedVersion = node.value("version", 0u);
             if (storedVersion != 3u &&
+                storedVersion != 4u &&
+                storedVersion != 5u &&
                 storedVersion != kMaterialProgramIrVersion) {
                 outError = "unsupported MaterialProgram IR version " +
                     std::to_string(storedVersion) +
-                    "; recompile canonical Material v5 source";
+                    "; recompile canonical Material v6 source";
                 return false;
             }
             program.version = kMaterialProgramIrVersion;
@@ -247,6 +254,8 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
                     }
                     parameter.byteOffset = item.value("byteOffset", 0u);
                     parameter.byteSize = item.value("byteSize", 0u);
+                    parameter.externalBindingId = item.value(
+                        "externalBindingId", std::string{});
                     program.parameters.push_back(std::move(parameter));
                 }
             }
@@ -289,12 +298,16 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
                     const uint32_t opcode = item.value(
                         "opcode",
                         (std::numeric_limits<uint32_t>::max)());
-                    const uint32_t maximumOpcode = storedVersion == 3u
+                    const uint32_t legacyMaximumOpcode = storedVersion == 3u
                         ? static_cast<uint32_t>(
                             MaterialProgramOpcode::CorneaHighlight)
                         : static_cast<uint32_t>(
                             MaterialProgramOpcode::Fresnel);
-                    if (opcode > maximumOpcode ||
+                    const bool particleTerminal =
+                        storedVersion >= 6u &&
+                        opcode == static_cast<uint32_t>(
+                            MaterialProgramOpcode::ParticleOutput);
+                    if ((opcode > legacyMaximumOpcode && !particleTerminal) ||
                         !TryParseMaterialValueType(
                             item.value("valueType", std::string{}),
                             instruction.valueType)) {

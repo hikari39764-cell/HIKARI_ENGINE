@@ -73,6 +73,8 @@
         { "menu.workspace.cinematics", "Cinematics" },
         { "menu.workspace.modelCollision", "Model Collision" },
         { "menu.workspace.modelMaterial", "Model Material" },
+        { "menu.workspace.runtimeBinding", "Runtime Bindings" },
+        { "menu.workspace.vfx", "VFX" },
         { "menu.workspace.resetActiveLayout", "Reset Active Layout" },
         { "menu.workspace.scene", "Scene" },
         { "settings.language", "Language" },

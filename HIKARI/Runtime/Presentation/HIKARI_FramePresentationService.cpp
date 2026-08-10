@@ -27,7 +27,6 @@
 #include "Runtime/Host/HIKARI_HostBootstrapConfig.h"
 #include "Runtime/Host/HIKARI_IEditorUiServices.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
-#include "Vfx/Runtime/HIKARI_VfxSystem.h"
 
 namespace HIKARI {
     namespace SERVICES {
@@ -41,8 +40,6 @@ namespace HIKARI {
                 INTERNAL::GetRuntimeServiceState().gpuFrameReady;
             auto& gPresentationPrepared =
                 INTERNAL::GetRuntimeServiceState().presentationPrepared;
-            auto& gVfxFrameEnded =
-                INTERNAL::GetRuntimeServiceState().vfxFrameEnded;
             auto& gHasPendingWindowResize =
                 INTERNAL::GetRuntimeServiceState().hasPendingWindowResize;
             auto& gPendingWindowWidth =
@@ -76,7 +73,8 @@ namespace HIKARI {
             RENDER3D::UpdateClusterGeometryResourceContext(context);
             DX::DxRenderer::UpdateContext(context);
             POST::PostSystem::UpdateContext(context);
-            HIKARI::VFX::UpdateContext(context);
+            INTERNAL::GetRuntimeServiceState().gpuParticleRenderer.
+                UpdateContext(context);
         }
 
         void QueueWindowResize(int width, int height) {
@@ -236,7 +234,6 @@ namespace HIKARI {
             (void)cfg;
             gGpuFrameReady = false;
             gPresentationPrepared = false;
-            gVfxFrameEnded = false;
             GFX::PIX::ScopedCpuEvent pixCpuFrame(GFX::PIX::kColorFrame, "Services.BeginFrame");
             const FrameContext& frame = HIKARI::TIME::BeginFrame();
             CPU_PROFILE::BeginFrame(frame.frameIndex);
@@ -269,7 +266,6 @@ namespace HIKARI {
                     ? inputWindow->ConsumeMouseWheelDelta()
                     : gWindow.ConsumeMouseWheelDelta());
             gInputService.Update(frame.unscaledDt);
-            HIKARI::VFX::BeginFrame(frame.gameDt);
             if (RUNTIME::IEditorUiServices* editorUiServices =
                     RUNTIME::GetEditorUiServices()) {
                 editorUiServices->BeginFrame(
@@ -291,11 +287,6 @@ namespace HIKARI {
             }
             if (gPresentationPrepared) {
                 return true;
-            }
-
-            if (!gVfxFrameEnded) {
-                HIKARI::VFX::EndFrame();
-                gVfxFrameEnded = true;
             }
 
             int renderWidth = 0;

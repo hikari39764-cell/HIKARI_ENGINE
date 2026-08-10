@@ -4,6 +4,7 @@
 #include <string_view>
 
 #include "HIKARI/Project/GameProjectSdk.h"
+#include "HIKARI/Project/ValueTypes.h"
 
 namespace HIKARI {
 
@@ -36,6 +37,17 @@ namespace HIKARI {
             std::string_view label,
             float& x,
             float& y);
+        HIKARI_GAME_PROJECT_SDK_API bool VariableBinding(
+            std::string_view label,
+            GameProjectBindingValueType expectedType,
+            char* value,
+            size_t capacity);
+        HIKARI_GAME_PROJECT_SDK_API bool EventBinding(
+            std::string_view label,
+            bool hasPayload,
+            GameProjectBindingValueType payloadType,
+            char* value,
+            size_t capacity);
 
     private:
         friend struct GameProjectSdkAccess;

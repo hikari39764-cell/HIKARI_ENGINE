@@ -327,10 +327,22 @@ const MaterialNodeSemanticContract& GetMaterialNodeSemanticContract(
         "Graph root", "The connected Surface", "The material's only runtime output",
         "Requires exactly one Surface connection",
         "Missing or multiple output ownership fails compilation"};
+    static constexpr MaterialNodeSemanticContract kParticleOutput{
+        "Particle graph root",
+        "Color, opacity, emissive and alpha-clip expressions",
+        "The particle pixel material response",
+        "Color is required; other inputs use deterministic defaults",
+        "A ParticleOutput in a Surface graph or SurfaceOutput in a Particle graph fails compilation"};
     static constexpr MaterialNodeSemanticContract kFunction{
         "A compatible function destination", "The referenced Material Function",
         "The function result", "No fallback function is inserted",
         "Missing, cyclic, or signature-incompatible Functions fail compilation before Runtime publication"};
+    static constexpr MaterialNodeSemanticContract kVariable{
+        "Any bool or compatible numeric input",
+        "One stable project runtime variable ID",
+        "The latest published value",
+        "Uses the authored fallback when the binding is missing or incompatible",
+        "Unsupported Int bindings and type mismatches remain on fallback"};
 
     switch (kind) {
     case MaterialNodeKind::Constant: return kConstant;
@@ -411,7 +423,9 @@ return kMath;
     case MaterialNodeKind::Outline: return kOutline;
     case MaterialNodeKind::HairShadow: return kHairShadow;
     case MaterialNodeKind::SurfaceOutput: return kOutput;
+    case MaterialNodeKind::ParticleOutput: return kParticleOutput;
     case MaterialNodeKind::FunctionCall: return kFunction;
+    case MaterialNodeKind::Variable: return kVariable;
     }
     return kConstant;
 }
@@ -512,7 +526,8 @@ bool IsReadyMadeMaterialNode(const MaterialNodeTypeId& typeId) noexcept {
 
 bool IsSingletonReadyMadeMaterialNode(MaterialNodeKind kind) noexcept {
     return IsReadyMadeMaterialNode(kind) ||
-        kind == MaterialNodeKind::SurfaceOutput;
+        kind == MaterialNodeKind::SurfaceOutput ||
+        kind == MaterialNodeKind::ParticleOutput;
 }
 
 bool IsSingletonReadyMadeMaterialNode(

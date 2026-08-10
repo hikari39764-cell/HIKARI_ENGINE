@@ -7,8 +7,8 @@
 
 namespace HIKARI {
 
-    inline constexpr uint32_t kMaterialAssetSourceVersion = 5u;
-    inline constexpr uint32_t kMaterialProgramIrVersion = 4u;
+    inline constexpr uint32_t kMaterialAssetSourceVersion = 6u;
+    inline constexpr uint32_t kMaterialProgramIrVersion = 6u;
 
     enum class MaterialAssetKind : uint8_t {
         Material,
@@ -20,6 +20,7 @@ namespace HIKARI {
 
     enum class MaterialDomain : uint8_t {
         Surface,
+        Particle,
     };
 
     enum class MaterialTemplateId : uint8_t {
@@ -32,6 +33,7 @@ namespace HIKARI {
         Cloth,
         HybridMetal,
         Custom,
+        ParticleUnlit,
     };
 
     enum class MaterialAlphaMode : uint8_t {
@@ -148,27 +150,30 @@ namespace HIKARI {
         ViewDirection,
         CameraPosition,
         ScreenPosition,
-    DerivativeX,
-    DerivativeY,
-    FilterWidth,
-    // Append-only: new native nodes MUST be added at the end (cooked IR v4
-    // opcode numbers are stable). Stable names follow domain.name lowercase.
-    Atan2,
-    Exp,
-    Log2,
-    Sign,
-    Round,
-    Trunc,
-    UvTransform,
-    ValueNoise,
-    Voronoi,
-    Fresnel,
+        DerivativeX,
+        DerivativeY,
+        FilterWidth,
+        // Append-only: new native/source nodes MUST be added at the end.
+        // Variable is source-only and lowers to Parameter. ParticleOutput is
+        // a terminal opcode and is never executed by the expression runtime.
+        Atan2,
+        Exp,
+        Log2,
+        Sign,
+        Round,
+        Trunc,
+        UvTransform,
+        ValueNoise,
+        Voronoi,
+        Fresnel,
+        Variable,
+        ParticleOutput,
     };
 
     // Source graphs use a stable textual identity so ordinary node growth is
     // not coupled to the compact append-only Runtime opcode catalogue.
     // MaterialNodeKind remains the explicit compatibility mapping for native
-    // built-ins and cooked MaterialProgram IR v4.
+    // built-ins and cooked MaterialProgram IR.
     struct MaterialNodeTypeId {
         std::string value{ "Constant" };
 
