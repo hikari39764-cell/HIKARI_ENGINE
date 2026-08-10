@@ -41,15 +41,86 @@ namespace HIKARI::VFX::PRESETS {
             return catalog;
         }
 
+        // Every emitter added to a preset asset must receive stable IDs
+        // that are unique across the whole asset: module IDs, gradient stop
+        // IDs, and any curve key IDs. Validation rejects assets whose IDs
+        // collide, so preset factories must re-key the default emitter.
+        void UniquifyEmitterIds(
+            VfxEmitterData& emitter,
+            std::string_view idSuffix) {
+
+            const std::string suffix(idSuffix);
+            const auto qualify = [&suffix](std::string& id) {
+                if (!id.empty()) {
+                    id += "." + suffix;
+                }
+            };
+            qualify(emitter.id);
+            qualify(emitter.basic.id);
+            qualify(emitter.emitterTransform.id);
+            qualify(emitter.spawn.id);
+            qualify(emitter.shape.id);
+            qualify(emitter.position.id);
+            qualify(emitter.rotation.id);
+            qualify(emitter.scale.id);
+            qualify(emitter.forces.id);
+            qualify(emitter.color.id);
+            qualify(emitter.renderCommon.id);
+            qualify(emitter.renderShape.id);
+            const auto qualifyCurve = [&qualify](VfxCurveData& curve) {
+                for (VfxCurveKeyData& key : curve.keys) {
+                    qualify(key.id);
+                }
+            };
+            const auto qualifyVec3Curve =
+                [&qualifyCurve](VfxVec3CurveData& curve) {
+                qualifyCurve(curve.x);
+                qualifyCurve(curve.y);
+                qualifyCurve(curve.z);
+            };
+            const auto qualifyColorCurve =
+                [&qualifyCurve](VfxColorCurveData& curve) {
+                qualifyCurve(curve.r);
+                qualifyCurve(curve.g);
+                qualifyCurve(curve.b);
+                qualifyCurve(curve.a);
+            };
+            qualifyVec3Curve(emitter.position.value.curve);
+            qualifyVec3Curve(emitter.rotation.eulerDegrees.curve);
+            qualifyVec3Curve(emitter.scale.value.curve);
+            qualifyColorCurve(emitter.color.value.curve);
+            for (VfxColorStopData& stop :
+                emitter.color.value.gradient.stops) {
+
+                qualify(stop.id);
+            }
+        }
+
         VfxEmitterData MakeBaseEmitter(
             std::string idSuffix,
             std::string name) {
 
             VfxEmitterData emitter =
                 MakeDefaultVfxAssetData().emitters.front();
-            emitter.id = "emitter." + std::move(idSuffix);
+            UniquifyEmitterIds(emitter, idSuffix);
             emitter.name = std::move(name);
             return emitter;
+        }
+
+        VfxAssetData MakePresetAsset(
+            std::string_view name,
+            std::vector<VfxEmitterData> emitters) {
+
+            VfxAssetData asset;
+            asset.name = std::string(name);
+            if (!emitters.empty()) {
+                asset.emitters = std::move(emitters);
+                uint32_t order = 0u;
+                for (VfxEmitterData& emitter : asset.emitters) {
+                    emitter.order = order++;
+                }
+            }
+            return asset;
         }
 
         void SetColorStops(
@@ -58,18 +129,21 @@ namespace HIKARI::VFX::PRESETS {
             const MATH::Vec4& end) {
 
             emitter.color.value.mode = VfxAnimatedColorMode::Gradient;
+            const std::string prefix = emitter.id + ".color";
             emitter.color.value.gradient.stops = {
-                { "color.start", 0.0f, start },
-                { "color.end", 1.0f, end },
+                { prefix + ".start", 0.0f, start },
+                { prefix + ".end", 1.0f, end },
             };
         }
 
         VfxAssetData BuildBasicSprite() {
-            VfxAssetData asset = MakeDefaultVfxAssetData();
+            VfxAssetData asset;
             asset.name = "Basic Sprite";
             asset.durationSeconds = 2.0f;
             asset.loop = true;
-            VfxEmitterData& emitter = asset.emitters.front();
+            VfxEmitterData emitter =
+                MakeBaseEmitter("main", "Main");
+
             emitter.spawn.ratePerSecond = 24.0f;
             emitter.basic.lifetime = MakeVfxFloatConstant(1.2f);
             emitter.shape.type = VfxShapeType::Sphere;
@@ -77,15 +151,17 @@ namespace HIKARI::VFX::PRESETS {
             SetColorStops(emitter,
                 { 1.0f, 1.0f, 1.0f, 1.0f },
                 { 1.0f, 1.0f, 1.0f, 0.0f });
-            return asset;
+            return MakePresetAsset(asset.name, { std::move(emitter) });
         }
 
         VfxAssetData BuildBurstExplosion() {
-            VfxAssetData asset = MakeDefaultVfxAssetData();
+            VfxAssetData asset;
             asset.name = "Burst Explosion";
             asset.durationSeconds = 1.0f;
             asset.loop = false;
-            VfxEmitterData& emitter = asset.emitters.front();
+            VfxEmitterData emitter =
+                MakeBaseEmitter("main", "Main");
+
             emitter.name = "Explosion Core";
             emitter.spawn.ratePerSecond = 0.0f;
             emitter.spawn.burstCount = 180u;
@@ -100,15 +176,17 @@ namespace HIKARI::VFX::PRESETS {
             SetColorStops(emitter,
                 { 1.0f, 0.75f, 0.3f, 1.0f },
                 { 0.6f, 0.05f, 0.0f, 0.0f });
-            return asset;
+            return MakePresetAsset(asset.name, { std::move(emitter) });
         }
 
         VfxAssetData BuildMuzzleFlash() {
-            VfxAssetData asset = MakeDefaultVfxAssetData();
+            VfxAssetData asset;
             asset.name = "Muzzle Flash";
             asset.durationSeconds = 0.15f;
             asset.loop = false;
-            VfxEmitterData& flash = asset.emitters.front();
+            VfxEmitterData flash =
+                MakeBaseEmitter("flash", "Main");
+
             flash.name = "Flash Cone";
             flash.spawn.ratePerSecond = 0.0f;
             flash.spawn.burstCount = 24u;
@@ -134,16 +212,19 @@ namespace HIKARI::VFX::PRESETS {
             SetColorStops(streaks,
                 { 1.0f, 0.85f, 0.4f, 1.0f },
                 { 1.0f, 0.5f, 0.0f, 0.0f });
-            asset.emitters.push_back(std::move(streaks));
-            return asset;
+            return MakePresetAsset(
+                asset.name,
+                { std::move(flash), std::move(streaks) });
         }
 
         VfxAssetData BuildHitImpact() {
-            VfxAssetData asset = MakeDefaultVfxAssetData();
+            VfxAssetData asset;
             asset.name = "Hit Impact";
             asset.durationSeconds = 0.5f;
             asset.loop = false;
-            VfxEmitterData& sparks = asset.emitters.front();
+            VfxEmitterData sparks =
+                MakeBaseEmitter("sparks", "Main");
+
             sparks.name = "Sparks";
             sparks.spawn.burstCount = 40u;
             sparks.basic.lifetime = MakeVfxFloatConstant(0.35f);
@@ -173,16 +254,19 @@ namespace HIKARI::VFX::PRESETS {
             SetColorStops(ring,
                 { 1.0f, 0.9f, 0.6f, 0.9f },
                 { 1.0f, 0.5f, 0.1f, 0.0f });
-            asset.emitters.push_back(std::move(ring));
-            return asset;
+            return MakePresetAsset(
+                asset.name,
+                { std::move(sparks), std::move(ring) });
         }
 
         VfxAssetData BuildProjectileTrail() {
-            VfxAssetData asset = MakeDefaultVfxAssetData();
+            VfxAssetData asset;
             asset.name = "Projectile Trail";
             asset.durationSeconds = 1.5f;
             asset.loop = true;
-            VfxEmitterData& emitter = asset.emitters.front();
+            VfxEmitterData emitter =
+                MakeBaseEmitter("main", "Main");
+
             emitter.spawn.ratePerSecond = 60.0f;
             emitter.basic.lifetime = MakeVfxFloatConstant(0.6f);
             emitter.renderShape.type = VfxRenderShapeType::Ribbon;
@@ -194,15 +278,17 @@ namespace HIKARI::VFX::PRESETS {
             SetColorStops(emitter,
                 { 0.4f, 0.7f, 1.0f, 0.9f },
                 { 0.1f, 0.2f, 1.0f, 0.0f });
-            return asset;
+            return MakePresetAsset(asset.name, { std::move(emitter) });
         }
 
         VfxAssetData BuildBeam() {
-            VfxAssetData asset = MakeDefaultVfxAssetData();
+            VfxAssetData asset;
             asset.name = "Beam";
             asset.durationSeconds = 1.0f;
             asset.loop = true;
-            VfxEmitterData& emitter = asset.emitters.front();
+            VfxEmitterData emitter =
+                MakeBaseEmitter("main", "Main");
+
             emitter.spawn.ratePerSecond = 8.0f;
             emitter.basic.lifetime = MakeVfxFloatConstant(0.5f);
             emitter.shape.type = VfxShapeType::Edge;
@@ -215,15 +301,17 @@ namespace HIKARI::VFX::PRESETS {
             SetColorStops(emitter,
                 { 0.6f, 0.9f, 1.0f, 1.0f },
                 { 0.2f, 0.5f, 1.0f, 0.0f });
-            return asset;
+            return MakePresetAsset(asset.name, { std::move(emitter) });
         }
 
         VfxAssetData BuildSmokePlume() {
-            VfxAssetData asset = MakeDefaultVfxAssetData();
+            VfxAssetData asset;
             asset.name = "Smoke Plume";
             asset.durationSeconds = 3.0f;
             asset.loop = true;
-            VfxEmitterData& emitter = asset.emitters.front();
+            VfxEmitterData emitter =
+                MakeBaseEmitter("main", "Main");
+
             emitter.spawn.ratePerSecond = 12.0f;
             emitter.basic.lifetime = MakeVfxFloatConstant(2.4f);
             emitter.shape.type = VfxShapeType::Sphere;
@@ -235,15 +323,17 @@ namespace HIKARI::VFX::PRESETS {
             SetColorStops(emitter,
                 { 0.5f, 0.5f, 0.55f, 0.5f },
                 { 0.4f, 0.4f, 0.45f, 0.0f });
-            return asset;
+            return MakePresetAsset(asset.name, { std::move(emitter) });
         }
 
         VfxAssetData BuildFire() {
-            VfxAssetData asset = MakeDefaultVfxAssetData();
+            VfxAssetData asset;
             asset.name = "Fire";
             asset.durationSeconds = 2.0f;
             asset.loop = true;
-            VfxEmitterData& emitter = asset.emitters.front();
+            VfxEmitterData emitter =
+                MakeBaseEmitter("main", "Main");
+
             emitter.spawn.ratePerSecond = 40.0f;
             emitter.basic.lifetime = MakeVfxFloatConstant(0.9f);
             emitter.shape.type = VfxShapeType::Cone;
@@ -259,15 +349,17 @@ namespace HIKARI::VFX::PRESETS {
             SetColorStops(emitter,
                 { 1.0f, 0.7f, 0.2f, 1.0f },
                 { 0.8f, 0.1f, 0.0f, 0.0f });
-            return asset;
+            return MakePresetAsset(asset.name, { std::move(emitter) });
         }
 
         VfxAssetData BuildRain() {
-            VfxAssetData asset = MakeDefaultVfxAssetData();
+            VfxAssetData asset;
             asset.name = "Rain";
             asset.durationSeconds = 2.0f;
             asset.loop = true;
-            VfxEmitterData& emitter = asset.emitters.front();
+            VfxEmitterData emitter =
+                MakeBaseEmitter("main", "Main");
+
             emitter.spawn.ratePerSecond = 300.0f;
             emitter.spawn.maximumParticles = 2048u;
             emitter.basic.lifetime = MakeVfxFloatConstant(1.2f);
@@ -283,15 +375,17 @@ namespace HIKARI::VFX::PRESETS {
             SetColorStops(emitter,
                 { 0.6f, 0.7f, 0.9f, 0.6f },
                 { 0.6f, 0.7f, 0.9f, 0.0f });
-            return asset;
+            return MakePresetAsset(asset.name, { std::move(emitter) });
         }
 
         VfxAssetData BuildSnow() {
-            VfxAssetData asset = MakeDefaultVfxAssetData();
+            VfxAssetData asset;
             asset.name = "Snow";
             asset.durationSeconds = 4.0f;
             asset.loop = true;
-            VfxEmitterData& emitter = asset.emitters.front();
+            VfxEmitterData emitter =
+                MakeBaseEmitter("main", "Main");
+
             emitter.spawn.ratePerSecond = 60.0f;
             emitter.basic.lifetime = MakeVfxFloatConstant(3.5f);
             emitter.shape.type = VfxShapeType::Box;
@@ -303,15 +397,17 @@ namespace HIKARI::VFX::PRESETS {
             SetColorStops(emitter,
                 { 1.0f, 1.0f, 1.0f, 0.9f },
                 { 1.0f, 1.0f, 1.0f, 0.0f });
-            return asset;
+            return MakePresetAsset(asset.name, { std::move(emitter) });
         }
 
         VfxAssetData BuildMagicAura() {
-            VfxAssetData asset = MakeDefaultVfxAssetData();
+            VfxAssetData asset;
             asset.name = "Magic Aura";
             asset.durationSeconds = 3.0f;
             asset.loop = true;
-            VfxEmitterData& emitter = asset.emitters.front();
+            VfxEmitterData emitter =
+                MakeBaseEmitter("main", "Main");
+
             emitter.spawn.ratePerSecond = 50.0f;
             emitter.basic.lifetime = MakeVfxFloatConstant(1.6f);
             emitter.shape.type = VfxShapeType::Sphere;
@@ -323,15 +419,17 @@ namespace HIKARI::VFX::PRESETS {
             SetColorStops(emitter,
                 { 0.5f, 0.3f, 1.0f, 0.8f },
                 { 0.2f, 0.8f, 1.0f, 0.0f });
-            return asset;
+            return MakePresetAsset(asset.name, { std::move(emitter) });
         }
 
         VfxAssetData BuildGroundRing() {
-            VfxAssetData asset = MakeDefaultVfxAssetData();
+            VfxAssetData asset;
             asset.name = "Ground Ring";
             asset.durationSeconds = 2.0f;
             asset.loop = true;
-            VfxEmitterData& emitter = asset.emitters.front();
+            VfxEmitterData emitter =
+                MakeBaseEmitter("main", "Main");
+
             emitter.spawn.ratePerSecond = 2.0f;
             emitter.basic.lifetime = MakeVfxFloatConstant(1.8f);
             emitter.renderShape.type = VfxRenderShapeType::Ring;
@@ -346,15 +444,17 @@ namespace HIKARI::VFX::PRESETS {
             SetColorStops(emitter,
                 { 0.4f, 1.0f, 0.7f, 0.8f },
                 { 0.2f, 0.8f, 0.5f, 0.0f });
-            return asset;
+            return MakePresetAsset(asset.name, { std::move(emitter) });
         }
 
         VfxAssetData BuildShockwaveRing() {
-            VfxAssetData asset = MakeDefaultVfxAssetData();
+            VfxAssetData asset;
             asset.name = "Shockwave Ring";
             asset.durationSeconds = 0.6f;
             asset.loop = false;
-            VfxEmitterData& emitter = asset.emitters.front();
+            VfxEmitterData emitter =
+                MakeBaseEmitter("main", "Main");
+
             emitter.spawn.burstCount = 1u;
             emitter.spawn.ratePerSecond = 0.0f;
             emitter.basic.lifetime = MakeVfxFloatConstant(0.5f);
@@ -373,15 +473,17 @@ namespace HIKARI::VFX::PRESETS {
             SetColorStops(emitter,
                 { 0.7f, 0.9f, 1.0f, 1.0f },
                 { 0.3f, 0.6f, 1.0f, 0.0f });
-            return asset;
+            return MakePresetAsset(asset.name, { std::move(emitter) });
         }
 
         VfxAssetData BuildFountain() {
-            VfxAssetData asset = MakeDefaultVfxAssetData();
+            VfxAssetData asset;
             asset.name = "Fountain";
             asset.durationSeconds = 3.0f;
             asset.loop = true;
-            VfxEmitterData& emitter = asset.emitters.front();
+            VfxEmitterData emitter =
+                MakeBaseEmitter("main", "Main");
+
             emitter.spawn.ratePerSecond = 60.0f;
             emitter.basic.lifetime = MakeVfxFloatConstant(1.6f);
             emitter.shape.type = VfxShapeType::Cone;
@@ -392,15 +494,17 @@ namespace HIKARI::VFX::PRESETS {
             SetColorStops(emitter,
                 { 0.7f, 0.85f, 1.0f, 0.9f },
                 { 0.5f, 0.7f, 1.0f, 0.0f });
-            return asset;
+            return MakePresetAsset(asset.name, { std::move(emitter) });
         }
 
         VfxAssetData BuildSparkler() {
-            VfxAssetData asset = MakeDefaultVfxAssetData();
+            VfxAssetData asset;
             asset.name = "Sparkler";
             asset.durationSeconds = 2.0f;
             asset.loop = true;
-            VfxEmitterData& emitter = asset.emitters.front();
+            VfxEmitterData emitter =
+                MakeBaseEmitter("main", "Main");
+
             emitter.spawn.ratePerSecond = 120.0f;
             emitter.basic.lifetime =
                 { VfxDistributionMode::RandomRange, 0.2f, 0.7f, 0u };
@@ -413,7 +517,7 @@ namespace HIKARI::VFX::PRESETS {
             SetColorStops(emitter,
                 { 1.0f, 0.9f, 0.5f, 1.0f },
                 { 1.0f, 0.4f, 0.0f, 0.0f });
-            return asset;
+            return MakePresetAsset(asset.name, { std::move(emitter) });
         }
 
     } // namespace

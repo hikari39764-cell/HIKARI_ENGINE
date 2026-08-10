@@ -277,7 +277,11 @@ namespace HIKARI::VFX {
                 !IsValidDistribution(simulation.shapeRadius) ||
                 (simulation.shape != ParticleShape::Point &&
                  simulation.shape != ParticleShape::Sphere &&
-                 simulation.shape != ParticleShape::Cone) ||
+                 simulation.shape != ParticleShape::Cone &&
+                 simulation.shape != ParticleShape::Box &&
+                 simulation.shape != ParticleShape::Cylinder &&
+                 simulation.shape != ParticleShape::Circle &&
+                 simulation.shape != ParticleShape::Edge) ||
                 !IsFinite(simulation.coneAngleRadians) ||
                 simulation.coneAngleRadians < 0.0f ||
                 simulation.coneAngleRadians > 3.14159265358979323846f ||
@@ -305,7 +309,9 @@ namespace HIKARI::VFX {
                 (emitter.render.blendMode != ParticleBlendMode::Alpha &&
                  emitter.render.blendMode !=
                     ParticleBlendMode::Additive) ||
-                emitter.render.shape != ParticleRenderShape::Sprite ||
+                (emitter.render.shape != ParticleRenderShape::Sprite &&
+                 emitter.render.shape != ParticleRenderShape::Ribbon &&
+                 emitter.render.shape != ParticleRenderShape::Ring) ||
                 (emitter.render.billboardMode !=
                     ParticleBillboardMode::RotatedBillboard &&
                  emitter.render.billboardMode !=
