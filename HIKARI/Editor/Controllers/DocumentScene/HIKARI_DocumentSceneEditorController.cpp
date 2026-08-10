@@ -344,14 +344,14 @@ namespace HIKARI {
                     &rightNode,
                     &mainNode);
 
-                ImGui::DockBuilderDockWindow("Game View", mainNode);
-                ImGui::DockBuilderDockWindow("Scene Workspace", leftNode);
-                ImGui::DockBuilderDockWindow("Inspector", rightNode);
-                ImGui::DockBuilderDockWindow("AI Assistant", rightNode);
-                ImGui::DockBuilderDockWindow("Resource Workspace", bottomNode);
-                ImGui::DockBuilderDockWindow("Environment", bottomNode);
-                ImGui::DockBuilderDockWindow("Quality", bottomNode);
-                ImGui::DockBuilderDockWindow("Debug View", bottomNode);
+                ImGui::DockBuilderDockWindow("###Game View", mainNode);
+                ImGui::DockBuilderDockWindow("###Scene Workspace", leftNode);
+                ImGui::DockBuilderDockWindow("###Inspector", rightNode);
+                ImGui::DockBuilderDockWindow("###AI Assistant", rightNode);
+                ImGui::DockBuilderDockWindow("###Resource Workspace", bottomNode);
+                ImGui::DockBuilderDockWindow("###Environment", bottomNode);
+                ImGui::DockBuilderDockWindow("###Quality", bottomNode);
+                ImGui::DockBuilderDockWindow("###Debug View", bottomNode);
                 ImGui::DockBuilderDockWindow("Performance Audit", bottomNode);
 
                 ImGui::DockBuilderFinish(dockspaceId);
