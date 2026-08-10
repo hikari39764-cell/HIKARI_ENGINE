@@ -639,6 +639,22 @@ namespace HIKARI::RENDER3D::PARTICLES {
                 }
                 drawConstants.billboardMode = static_cast<uint32_t>(
                     render.billboardMode);
+                drawConstants.renderShapeMode =
+                    static_cast<uint32_t>(render.shape);
+                drawConstants.renderShapeParam0 =
+                    render.ribbonSegmentCount;
+                drawConstants.renderShapeParam1 =
+                    render.ringSegmentCount;
+                drawConstants.renderShapeParamsA = MakeFloat4(
+                    render.ribbonWidth,
+                    render.ringOuterRadius,
+                    render.ringInnerRadius,
+                    render.ringStartAngleRadians);
+                drawConstants.renderShapeParamsB = MakeFloat4(
+                    render.ringEndAngleRadians,
+                    0.0f,
+                    0.0f,
+                    0.0f);
                 context.cmdList->SetGraphicsRoot32BitConstants(
                     5u,
                     sizeof(drawConstants) / sizeof(uint32_t),
@@ -652,8 +668,16 @@ namespace HIKARI::RENDER3D::PARTICLES {
                     static_cast<UINT>(materialConstants.size()),
                     materialConstants.data(),
                     0u);
+                uint32_t verticesPerInstance = 6u;
+                if (render.shape == ParticleRenderShape::Ribbon) {
+                    verticesPerInstance =
+                        (std::max)(2u, render.ribbonSegmentCount) * 6u;
+                } else if (render.shape == ParticleRenderShape::Ring) {
+                    verticesPerInstance =
+                        (std::max)(3u, render.ringSegmentCount) * 6u;
+                }
                 context.cmdList->DrawInstanced(
-                    6u,
+                    verticesPerInstance,
                     item.allocation->activeCapacity,
                     0u,
                     item.allocation->offset);

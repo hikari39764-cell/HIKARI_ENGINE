@@ -1,5 +1,7 @@
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
 
+#include "Assets/Vfx/HIKARI_VfxPresetRegistry.h"
+
 #include <utility>
 
 #include "Core/Text/HIKARI_Localization.h"
@@ -121,6 +123,40 @@ namespace HIKARI::EDITOR {
         previewInputOverrides_.clear();
         OnDocumentChanged();
         statusMessage_ = "New VFX document";
+    }
+
+    bool VfxWorkspaceController::NewAssetFromPreset(
+        std::string_view presetId,
+        std::string& outMessage) {
+
+        const VFX::PRESETS::VfxPresetDescriptor* preset =
+            VFX::PRESETS::FindVfxPreset(presetId);
+        if (preset == nullptr) {
+            outMessage = "Unknown VFX preset: " + std::string(presetId);
+            statusMessage_ = outMessage;
+            return false;
+        }
+        StopPreview();
+        document_.NewAsset(preset->displayName);
+        std::string applyMessage{};
+        if (!document_.ApplyAsset(
+                VFX::PRESETS::MakeVfxPresetAsset(presetId),
+                applyMessage)) {
+            outMessage = applyMessage.empty()
+                ? "Failed to apply VFX preset"
+                : applyMessage;
+            statusMessage_ = outMessage;
+            return false;
+        }
+        document_.SealMerge();
+        previewLoopRangeInitialized_ = false;
+        ResetAssetRefreshStatus();
+        selection_ = {};
+        previewInputOverrides_.clear();
+        OnDocumentChanged();
+        outMessage = "Created VFX from preset: " + preset->displayName;
+        statusMessage_ = outMessage;
+        return true;
     }
 
     bool VfxWorkspaceController::OpenAsset(

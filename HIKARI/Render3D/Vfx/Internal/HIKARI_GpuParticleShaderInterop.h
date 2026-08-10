@@ -35,9 +35,11 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
         GpuParticleFloat4 screenParams{};
         uint32_t billboardMode = static_cast<uint32_t>(
             ParticleBillboardMode::Fixed);
-        uint32_t padding0 = 0u;
-        uint32_t padding1 = 0u;
-        uint32_t padding2 = 0u;
+        uint32_t renderShapeMode = 0u;
+        uint32_t renderShapeParam0 = 0u;
+        uint32_t renderShapeParam1 = 0u;
+        GpuParticleFloat4 renderShapeParamsA{};
+        GpuParticleFloat4 renderShapeParamsB{};
     };
 
     static_assert(sizeof(GpuParticle) == 96u);

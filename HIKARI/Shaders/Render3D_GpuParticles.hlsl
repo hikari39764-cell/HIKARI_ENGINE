@@ -829,9 +829,11 @@ cbuffer DrawConstants : register(b0)
     float4 gTimeParams;
     float4 gScreenParams;
     uint gBillboardMode;
-    uint gDrawPadding0;
-    uint gDrawPadding1;
-    uint gDrawPadding2;
+    uint gRenderShapeMode;
+    uint gRenderShapeParam0;
+    uint gRenderShapeParam1;
+    float4 gRenderShapeParamsA;
+    float4 gRenderShapeParamsB;
 };
 
 struct ParticleVsOutput
@@ -867,7 +869,52 @@ ParticleVsOutput ParticleVS(
     };
 
     Particle particle = gDrawParticles[instanceId];
-    float2 corner = corners[vertexId];
+    float2 corner = corners[vertexId % 6u];
+    float2 uvCorner = uvs[vertexId % 6u];
+    bool isStripShape = false;
+    float stripS = 0.0f;
+    float stripSide = 0.0f;
+    float stripHalfWidth = 0.0f;
+    if (gRenderShapeMode == 1u)
+    {
+        uint segmentCount = max(gRenderShapeParam0, 2u);
+        uint vertsPerStrip = segmentCount * 6u;
+        uint quadIndex = (vertexId % vertsPerStrip) / 6u;
+        uint cornerIndex = vertexId % 6u;
+        stripS = (float)quadIndex / (float)(segmentCount - 1u);
+        if (cornerIndex == 2u || cornerIndex == 4u || cornerIndex == 5u)
+        {
+            stripS = (float)(quadIndex + 1u) / (float)(segmentCount - 1u);
+        }
+        stripSide = (cornerIndex == 0u || cornerIndex == 1u ||
+            cornerIndex == 3u) ? -1.0f : 1.0f;
+        stripHalfWidth = gRenderShapeParamsA.x * 0.5f;
+        isStripShape = true;
+    }
+    else if (gRenderShapeMode == 2u)
+    {
+        uint segmentCount = max(gRenderShapeParam1, 3u);
+        uint vertsPerRing = segmentCount * 6u;
+        uint quadIndex = (vertexId % vertsPerRing) / 6u;
+        uint cornerIndex = vertexId % 6u;
+        float startAngle = gRenderShapeParamsA.w;
+        float endAngle = gRenderShapeParamsB.x;
+        float angleSpan = endAngle - startAngle;
+        stripS = (float)quadIndex / (float)segmentCount;
+        if (cornerIndex == 2u || cornerIndex == 4u || cornerIndex == 5u)
+        {
+            stripS = (float)(quadIndex + 1u) / (float)segmentCount;
+        }
+        float angle = startAngle + angleSpan * stripS;
+        float outerRadius = gRenderShapeParamsA.y;
+        float innerRadius = gRenderShapeParamsA.z;
+        stripSide = (cornerIndex == 0u || cornerIndex == 1u ||
+            cornerIndex == 3u) ? -1.0f : 1.0f;
+        float radius = stripSide < 0.0f ? innerRadius : outerRadius;
+        corner = float2(cos(angle) * radius, sin(angle) * radius);
+        uvCorner = float2(stripS, stripSide * 0.5f + 0.5f);
+        stripS = angle;
+    }
     float3 cameraRight = NormalizeOr(
         gCameraRight.xyz,
         float3(1.0f, 0.0f, 0.0f));
@@ -957,10 +1004,34 @@ ParticleVsOutput ParticleVS(
     float3 worldPosition = particle.positionAge.xyz +
         right * corner.x * particle.scaleRotation.x +
         up * corner.y * particle.scaleRotation.y;
+    if (isStripShape)
+    {
+        float4 stripOrientation = NormalizeQuaternion(
+            particle.orientation);
+        float3 stripTangent = NormalizeOr(RotateByQuaternion(
+            float3(1.0f, 0.0f, 0.0f), stripOrientation), cameraRight);
+        float3 stripNormal = NormalizeOr(RotateByQuaternion(
+            float3(0.0f, 0.0f, -1.0f), stripOrientation),
+            cameraFacingNormal);
+        float3 toCameraStrip = NormalizeOr(
+            gCameraPosition.xyz - particle.positionAge.xyz,
+            cameraFacingNormal);
+        float3 stripWidthDir = NormalizeOr(
+            cross(toCameraStrip, stripTangent), cameraUp);
+        float ribbonLength = max(particle.scaleRotation.x, 0.0f);
+        float ribbonWidthScale = max(particle.scaleRotation.y, 0.0f);
+        worldPosition = particle.positionAge.xyz +
+            stripTangent * ((stripS - 0.5f) * ribbonLength) +
+            stripWidthDir * (stripSide * stripHalfWidth *
+                ribbonWidthScale);
+        normal = stripNormal;
+        right = stripTangent;
+        uvCorner = float2(stripS, stripSide * 0.5f + 0.5f);
+    }
 
     ParticleVsOutput output;
     output.position = mul(gViewProjection, float4(worldPosition, 1.0f));
-    output.uv = uvs[vertexId];
+    output.uv = uvCorner;
     output.color = particle.color;
     output.alive = particle.velocityLifetime.w > 0.0f ? 1.0f : 0.0f;
     output.worldPosition = worldPosition;

@@ -1,5 +1,7 @@
 #include "Editor/Workspaces/Vfx/HIKARI_VfxOperations.h"
 
+#include "Assets/Vfx/HIKARI_VfxPresetRegistry.h"
+
 #include <string>
 #include <string>
 
@@ -76,6 +78,69 @@ namespace HIKARI::EDITOR {
                 controller.NewAsset(parameters.value("name", "New VFX"));
                 return Success(
                     "New VFX document created",
+                    WriteVfxWorkspaceSummary(controller));
+            },
+        });
+
+        registry.Register({
+            "vfx.preset.list",
+            "List the available Effekseer-aligned VFX starter presets",
+            "vfx",
+            {},
+            [](const nlohmann::json&) {
+                nlohmann::json presets = nlohmann::json::array();
+                for (const auto& descriptor :
+                    VFX::PRESETS::GetVfxPresetCatalog()) {
+                    presets.push_back({
+                        { "id", descriptor.id },
+                        { "displayName", descriptor.displayName },
+                        { "category", descriptor.category },
+                        { "summary", descriptor.summary },
+                    });
+                }
+                nlohmann::json data{};
+                data["presets"] = std::move(presets);
+                return Success("VFX presets listed", std::move(data));
+            },
+        });
+
+        registry.Register({
+            "vfx.new_from_preset",
+            "Create a transient VFX document from a starter preset",
+            "vfx",
+            {
+                Parameter(
+                    "presetId",
+                    EditorOperationParameterType::String,
+                    true,
+                    "Preset id returned by vfx.preset.list"),
+                Parameter(
+                    "confirmDiscard",
+                    EditorOperationParameterType::Bool,
+                    false,
+                    "Confirm discarding unsaved VFX edits"),
+            },
+            [&controller](const nlohmann::json& parameters) {
+                const bool confirmDiscard = parameters.value(
+                    "confirmDiscard", false);
+                if (controller.GetDocument().IsDirty() &&
+                    !confirmDiscard) {
+                    EditorOperationResult result = Failure(
+                        "PENDING_CONFIRMATION",
+                        "Creating a VFX preset would discard unsaved edits");
+                    result.data = ContextData(controller);
+                    result.hints.push_back(
+                        "Repeat with confirmDiscard=true to continue");
+                    return result;
+                }
+                std::string message{};
+                if (!controller.NewAssetFromPreset(
+                        parameters.at("presetId").get<std::string>(),
+                        message)) {
+                    return Failure("VFX_PRESET_FAILED", message);
+                }
+                return Success(
+                    message,
                     WriteVfxWorkspaceSummary(controller));
             },
         });

@@ -251,10 +251,16 @@ namespace HIKARI::EDITOR {
             if (leaf == "type" && value.is_string()) {
                 const std::string& current = value.get_ref<const std::string&>();
                 if (current == "Point" || current == "Sphere" ||
-                    current == "Cone") {
-                    return { "Point", "Sphere", "Cone" };
+                    current == "Cone" || current == "Box" ||
+                    current == "Cylinder" || current == "Circle" ||
+                    current == "Edge") {
+                    return { "Point", "Sphere", "Cone", "Box",
+                        "Cylinder", "Circle", "Edge" };
                 }
-                if (current == "Sprite") return { "Sprite" };
+                if (current == "Sprite" || current == "Ribbon" ||
+                    current == "Ring") {
+                    return { "Sprite", "Ribbon", "Ring" };
+                }
                 return { "Bool", "Int", "Float", "Float2", "Float3",
                     "Float4", "Color" };
             }

@@ -284,8 +284,9 @@ namespace HIKARI::EDITOR {
         case VfxEmitterInspectorPage::Shape: {
             VfxInspectorPropertyEditor editor(
                 *this, database, emitter.shape.id, statusMessage_);
-            constexpr std::array<std::string_view, 3u> shapes{
-                "Point", "Sphere", "Cone"
+            constexpr std::array<std::string_view, 7u> shapes{
+                "Point", "Sphere", "Cone", "Box",
+                "Cylinder", "Circle", "Edge"
             };
             editor.Choice(
                 "Type",
@@ -310,6 +311,44 @@ namespace HIKARI::EDITOR {
                     0.1f,
                     0.0f,
                     180.0f);
+            }
+            if (emitter.shape.type == VFX::VfxShapeType::Box) {
+                editor.Vec3(
+                    "Box Half Extents",
+                    "boxHalfExtents",
+                    emitter.shape.boxHalfExtents,
+                    0.01f);
+            }
+            if (emitter.shape.type == VFX::VfxShapeType::Cylinder) {
+                editor.Float(
+                    "Cylinder Height",
+                    "cylinderHeight",
+                    emitter.shape.cylinderHeight,
+                    0.01f,
+                    0.0f,
+                    100000.0f);
+            }
+            if (emitter.shape.type == VFX::VfxShapeType::Circle) {
+                editor.Float(
+                    "Circle Inner Radius",
+                    "circleInnerRadius",
+                    emitter.shape.circleInnerRadius,
+                    0.01f,
+                    0.0f,
+                    100000.0f);
+                editor.Bool(
+                    "Emit On Edge Only",
+                    "circleEmitOnEdge",
+                    emitter.shape.circleEmitOnEdge);
+            }
+            if (emitter.shape.type == VFX::VfxShapeType::Edge) {
+                editor.Float(
+                    "Edge Length",
+                    "edgeLength",
+                    emitter.shape.edgeLength,
+                    0.01f,
+                    0.0f,
+                    100000.0f);
             }
             break;
         }
@@ -375,7 +414,15 @@ namespace HIKARI::EDITOR {
                 database,
                 emitter.renderShape.id,
                 statusMessage_);
-            ImGui::TextDisabled("Shape: Sprite");
+            constexpr std::array<std::string_view, 3u> renderShapes{
+                "Sprite", "Ribbon", "Ring"
+            };
+            renderShapeEditor.Choice(
+                "Render Shape",
+                "type",
+                VFX::ToString(emitter.renderShape.type),
+                renderShapes.data(),
+                renderShapes.size());
             constexpr std::array<std::string_view, 4u> orientationModes{
                 "RotatedBillboard",
                 "FixedYAxis",
@@ -388,6 +435,59 @@ namespace HIKARI::EDITOR {
                 VFX::ToString(emitter.renderShape.billboardMode),
                 orientationModes.data(),
                 orientationModes.size());
+            if (emitter.renderShape.type ==
+                VFX::VfxRenderShapeType::Ribbon) {
+                renderShapeEditor.Unsigned(
+                    "Ribbon Segments",
+                    "ribbonSegmentCount",
+                    emitter.renderShape.ribbonSegmentCount,
+                    2u,
+                    256u);
+                renderShapeEditor.Float(
+                    "Ribbon Width",
+                    "ribbonWidth",
+                    emitter.renderShape.ribbonWidth,
+                    0.01f,
+                    0.0f,
+                    1000.0f);
+            }
+            if (emitter.renderShape.type ==
+                VFX::VfxRenderShapeType::Ring) {
+                renderShapeEditor.Float(
+                    "Ring Outer Radius",
+                    "ringOuterRadius",
+                    emitter.renderShape.ringOuterRadius,
+                    0.01f,
+                    0.0f,
+                    100000.0f);
+                renderShapeEditor.Float(
+                    "Ring Inner Radius",
+                    "ringInnerRadius",
+                    emitter.renderShape.ringInnerRadius,
+                    0.01f,
+                    0.0f,
+                    100000.0f);
+                renderShapeEditor.Unsigned(
+                    "Ring Segments",
+                    "ringSegmentCount",
+                    emitter.renderShape.ringSegmentCount,
+                    3u,
+                    256u);
+                renderShapeEditor.Float(
+                    "Ring Start Angle (degrees)",
+                    "ringStartAngleDegrees",
+                    emitter.renderShape.ringStartAngleDegrees,
+                    0.1f,
+                    -3600.0f,
+                    3600.0f);
+                renderShapeEditor.Float(
+                    "Ring End Angle (degrees)",
+                    "ringEndAngleDegrees",
+                    emitter.renderShape.ringEndAngleDegrees,
+                    0.1f,
+                    -3600.0f,
+                    3600.0f);
+            }
             break;
         }
         case VfxEmitterInspectorPage::Bindings:

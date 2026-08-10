@@ -365,6 +365,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Importers/HIKARI_VfxAssetImporter.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Formats/HIKARI_HvfxcFormat.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Vfx/HIKARI_VfxAssetData.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Vfx/HIKARI_VfxPresetRegistry.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Vfx/HIKARI_VfxPropertySchema.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Vfx/HIKARI_VfxProgramValidation.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Vfx/HIKARI_VfxValidation.cpp"

@@ -111,6 +111,9 @@ namespace HIKARI::EDITOR {
             EditorCommandRouter& commandRouter) const;
 
         void NewAsset(std::string name = "New VFX");
+        bool NewAssetFromPreset(
+            std::string_view presetId,
+            std::string& outMessage);
         bool OpenAsset(
             AssetDatabase& assetDatabase,
             const AssetGuid& assetGuid,
