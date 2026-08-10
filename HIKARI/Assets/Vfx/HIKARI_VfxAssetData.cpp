@@ -38,13 +38,22 @@ namespace HIKARI::VFX {
         switch (value) {
         case VfxShapeType::Sphere: return "Sphere";
         case VfxShapeType::Cone: return "Cone";
+        case VfxShapeType::Box: return "Box";
+        case VfxShapeType::Cylinder: return "Cylinder";
+        case VfxShapeType::Circle: return "Circle";
+        case VfxShapeType::Edge: return "Edge";
         case VfxShapeType::Point:
         default: return "Point";
         }
     }
 
-    std::string_view ToString(VfxRenderShapeType) noexcept {
-        return "Sprite";
+    std::string_view ToString(VfxRenderShapeType value) noexcept {
+        switch (value) {
+        case VfxRenderShapeType::Ribbon: return "Ribbon";
+        case VfxRenderShapeType::Ring: return "Ring";
+        case VfxRenderShapeType::Sprite:
+        default: return "Sprite";
+        }
     }
 
     std::string_view ToString(VfxBlendMode value) noexcept {
@@ -134,6 +143,10 @@ namespace HIKARI::VFX {
             { "Point", VfxShapeType::Point },
             { "Sphere", VfxShapeType::Sphere },
             { "Cone", VfxShapeType::Cone },
+            { "Box", VfxShapeType::Box },
+            { "Cylinder", VfxShapeType::Cylinder },
+            { "Circle", VfxShapeType::Circle },
+            { "Edge", VfxShapeType::Edge },
         }, outValue);
     }
 
@@ -143,6 +156,8 @@ namespace HIKARI::VFX {
 
         return ParseEnum(text, {
             { "Sprite", VfxRenderShapeType::Sprite },
+            { "Ribbon", VfxRenderShapeType::Ribbon },
+            { "Ring", VfxRenderShapeType::Ring },
         }, outValue);
     }
 

@@ -13,8 +13,8 @@ struct Particle
     float4 color;
 };
 
-static const uint HIKARI_PARTICLE_EMITTER_VALUE_COUNT = 207u;
-static const uint HIKARI_PARTICLE_POSITION_VALUES = 12u;
+static const uint HIKARI_PARTICLE_EMITTER_VALUE_COUNT = 210u;
+static const uint HIKARI_PARTICLE_POSITION_VALUES = 15u;
 static const uint HIKARI_PARTICLE_ROTATION_VALUES = 54u;
 static const uint HIKARI_PARTICLE_SCALE_VALUES = 96u;
 static const uint HIKARI_PARTICLE_COLOR_DISTRIBUTIONS = 138u;
@@ -705,6 +705,77 @@ void SpawnCS(uint3 dispatchThreadId : SV_DispatchThreadID)
             HIKARI_PARTICLE_RANDOM_SHAPE_OFFSET_RADIUS),
             1.0f / 3.0f) * shapeRadius;
         localPosition = localDirection * distance;
+    }
+
+    else if (shape == 3u)
+    {
+        float4 shapeBox = LoadEmitterValue(gEmitterIndex, 12u);
+        localPosition = float3(
+            lerp(-shapeBox.x, shapeBox.x, RandomForProperty(
+                particleSeed, 0u,
+                HIKARI_PARTICLE_RANDOM_SHAPE_DIRECTION_Y)),
+            lerp(-shapeBox.y, shapeBox.y, RandomForProperty(
+                particleSeed, 0u,
+                HIKARI_PARTICLE_RANDOM_SHAPE_DIRECTION_ANGLE)),
+            lerp(-shapeBox.z, shapeBox.z, RandomForProperty(
+                particleSeed, 0u,
+                HIKARI_PARTICLE_RANDOM_SHAPE_OFFSET_RADIUS)));
+        localDirection = float3(0.0f, 1.0f, 0.0f);
+    }
+    else if (shape == 4u)
+    {
+        float4 shapeBox = LoadEmitterValue(gEmitterIndex, 12u);
+        float angle = RandomForProperty(
+            particleSeed, 0u,
+            HIKARI_PARTICLE_RANDOM_SHAPE_DIRECTION_ANGLE) *
+            6.28318530718f;
+        float distance = sqrt(RandomForProperty(
+            particleSeed, 0u,
+            HIKARI_PARTICLE_RANDOM_SHAPE_OFFSET_RADIUS)) * shapeRadius;
+        float y = lerp(
+            -shapeBox.w * 0.5f,
+            shapeBox.w * 0.5f,
+            RandomForProperty(
+                particleSeed, 0u,
+                HIKARI_PARTICLE_RANDOM_SHAPE_DIRECTION_Y));
+        localPosition = float3(
+            cos(angle) * distance, y, sin(angle) * distance);
+        localDirection = float3(0.0f, 1.0f, 0.0f);
+    }
+    else if (shape == 5u)
+    {
+        float4 shapeCircle = LoadEmitterValue(gEmitterIndex, 13u);
+        float angle = RandomForProperty(
+            particleSeed, 0u,
+            HIKARI_PARTICLE_RANDOM_SHAPE_DIRECTION_ANGLE) *
+            6.28318530718f;
+        float innerRadius = clamp(shapeCircle.x, 0.0f, shapeRadius);
+        float distance = shapeRadius;
+        if (asuint(shapeCircle.y) == 0u && shapeRadius > innerRadius)
+        {
+            float u = RandomForProperty(
+                particleSeed, 0u,
+                HIKARI_PARTICLE_RANDOM_SHAPE_OFFSET_RADIUS);
+            distance = sqrt(lerp(
+                innerRadius * innerRadius,
+                shapeRadius * shapeRadius,
+                u));
+        }
+        localPosition = float3(
+            cos(angle) * distance, 0.0f, sin(angle) * distance);
+        localDirection = float3(0.0f, 1.0f, 0.0f);
+    }
+    else if (shape == 6u)
+    {
+        float4 shapeCircle = LoadEmitterValue(gEmitterIndex, 13u);
+        float halfLength = shapeCircle.z * 0.5f;
+        localPosition = float3(
+            lerp(-halfLength, halfLength, RandomForProperty(
+                particleSeed, 0u,
+                HIKARI_PARTICLE_RANDOM_SHAPE_DIRECTION_Y)),
+            0.0f,
+            0.0f);
+        localDirection = float3(0.0f, 1.0f, 0.0f);
     }
 
     float4 rotation = LoadEmitterValue(gEmitterIndex, 1u);

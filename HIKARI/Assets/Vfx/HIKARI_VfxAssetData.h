@@ -33,10 +33,16 @@ namespace HIKARI::VFX {
         Point,
         Sphere,
         Cone,
+        Box,
+        Cylinder,
+        Circle,
+        Edge,
     };
 
     enum class VfxRenderShapeType : uint8_t {
         Sprite,
+        Ribbon,
+        Ring,
     };
 
     enum class VfxBlendMode : uint8_t {
@@ -230,6 +236,11 @@ namespace HIKARI::VFX {
         VfxShapeType type = VfxShapeType::Point;
         VfxFloatDistributionData radius{};
         float coneAngleDegrees = 30.0f;
+        MATH::Vec3 boxHalfExtents{ 0.5f, 0.5f, 0.5f };
+        float cylinderHeight = 1.0f;
+        float circleInnerRadius = 0.0f;
+        bool circleEmitOnEdge = false;
+        float edgeLength = 1.0f;
     };
 
     struct VfxPositionModuleData {
@@ -271,6 +282,13 @@ namespace HIKARI::VFX {
         VfxRenderShapeType type = VfxRenderShapeType::Sprite;
         VfxBillboardMode billboardMode =
             VfxBillboardMode::Fixed;
+        uint32_t ribbonSegmentCount = 16u;
+        float ribbonWidth = 0.1f;
+        float ringOuterRadius = 1.0f;
+        float ringInnerRadius = 0.5f;
+        uint32_t ringSegmentCount = 32u;
+        float ringStartAngleDegrees = 0.0f;
+        float ringEndAngleDegrees = 360.0f;
     };
 
     struct VfxEmitterData {

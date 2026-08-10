@@ -5,7 +5,7 @@
 
 namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
     namespace {
-        inline constexpr uint32_t kEmitterHeaderCount = 12u;
+        inline constexpr uint32_t kEmitterHeaderCount = 15u;
         inline constexpr uint32_t kFloat3DistributionValueCount = 2u;
         inline constexpr uint32_t kFloat4DistributionValueCount = 3u;
         inline constexpr uint32_t kAnimatedFloat3DistributionCount = 6u;
@@ -238,6 +238,17 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
             EncodeUint(static_cast<uint32_t>(
                 simulation.radialSpeed.mode)),
             EncodeUint(simulation.radialSpeed.randomGroup));
+        result.values[12] = MakeGpuParticleFloat4(
+            simulation.shapeBoxHalfExtents.x,
+            simulation.shapeBoxHalfExtents.y,
+            simulation.shapeBoxHalfExtents.z,
+            simulation.shapeCylinderHeight);
+        result.values[13] = MakeGpuParticleFloat4(
+            simulation.shapeCircleInnerRadius,
+            EncodeUint(simulation.shapeCircleEmitOnEdge),
+            simulation.shapeEdgeLength,
+            0.0f);
+        result.values[14] = MakeGpuParticleFloat4(0.0f, 0.0f, 0.0f, 0.0f);
 
         StoreAnimatedFloat3(
             result, kPositionValues, simulation.position);

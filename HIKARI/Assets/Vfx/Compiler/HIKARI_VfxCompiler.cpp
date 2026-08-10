@@ -268,11 +268,15 @@ namespace HIKARI::VFX {
         }
 
         ParticleShape ConvertShape(VfxShapeType shape) noexcept {
-            switch (shape) {
-            case VfxShapeType::Sphere: return ParticleShape::Sphere;
-            case VfxShapeType::Cone: return ParticleShape::Cone;
-            case VfxShapeType::Point:
-            default: return ParticleShape::Point;
+    switch (shape) {
+    case VfxShapeType::Sphere: return ParticleShape::Sphere;
+    case VfxShapeType::Cone: return ParticleShape::Cone;
+    case VfxShapeType::Box: return ParticleShape::Box;
+    case VfxShapeType::Cylinder: return ParticleShape::Cylinder;
+    case VfxShapeType::Circle: return ParticleShape::Circle;
+    case VfxShapeType::Edge: return ParticleShape::Edge;
+    case VfxShapeType::Point:
+    default: return ParticleShape::Point;
             }
         }
 
@@ -299,9 +303,16 @@ namespace HIKARI::VFX {
         }
 
         ParticleRenderShape ConvertRenderShape(
-            VfxRenderShapeType) noexcept {
-
+        VfxRenderShapeType shape) noexcept {
+        switch (shape) {
+        case VfxRenderShapeType::Ribbon:
+            return ParticleRenderShape::Ribbon;
+        case VfxRenderShapeType::Ring:
+            return ParticleRenderShape::Ring;
+        case VfxRenderShapeType::Sprite:
+        default:
             return ParticleRenderShape::Sprite;
+        }
         }
 
     }
@@ -398,6 +409,16 @@ namespace HIKARI::VFX {
                 source.shape.radius);
             emitter.simulation.coneAngleRadians =
                 source.shape.coneAngleDegrees * kDegreesToRadians;
+            emitter.simulation.shapeBoxHalfExtents =
+                source.shape.boxHalfExtents;
+            emitter.simulation.shapeCylinderHeight =
+                source.shape.cylinderHeight;
+            emitter.simulation.shapeCircleInnerRadius =
+                source.shape.circleInnerRadius;
+            emitter.simulation.shapeCircleEmitOnEdge =
+                source.shape.circleEmitOnEdge ? 1u : 0u;
+            emitter.simulation.shapeEdgeLength =
+                source.shape.edgeLength;
             emitter.simulation.radialSpeed = CompileDistribution(
                 source.position.radialSpeed);
             emitter.simulation.position = CompileAnimatedVec3(
@@ -419,6 +440,22 @@ namespace HIKARI::VFX {
                 source.renderShape.type);
             emitter.render.billboardMode = ConvertBillboard(
                 source.renderShape.billboardMode);
+            emitter.render.ribbonSegmentCount =
+                source.renderShape.ribbonSegmentCount;
+            emitter.render.ribbonWidth =
+                source.renderShape.ribbonWidth;
+            emitter.render.ringOuterRadius =
+                source.renderShape.ringOuterRadius;
+            emitter.render.ringInnerRadius =
+                source.renderShape.ringInnerRadius;
+            emitter.render.ringSegmentCount =
+                source.renderShape.ringSegmentCount;
+            emitter.render.ringStartAngleRadians =
+                source.renderShape.ringStartAngleDegrees *
+                kDegreesToRadians;
+            emitter.render.ringEndAngleRadians =
+                source.renderShape.ringEndAngleDegrees *
+                kDegreesToRadians;
 
             auto links = source.inputLinks;
             std::sort(

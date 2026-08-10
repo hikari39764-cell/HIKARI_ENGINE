@@ -33,10 +33,16 @@ namespace HIKARI::RENDER3D::PARTICLES {
         Point,
         Sphere,
         Cone,
+        Box,
+        Cylinder,
+        Circle,
+        Edge,
     };
 
     enum class ParticleRenderShape : uint32_t {
         Sprite,
+        Ribbon,
+        Ring,
     };
 
     enum class ParticleBlendMode : uint32_t {
@@ -186,6 +192,11 @@ namespace HIKARI::RENDER3D::PARTICLES {
         ParticleShape shape = ParticleShape::Point;
         ParticleDistributionFloat shapeRadius{};
         float coneAngleRadians = 0.0f;
+        MATH::Vec3 shapeBoxHalfExtents{ 0.5f, 0.5f, 0.5f };
+        float shapeCylinderHeight = 1.0f;
+        float shapeCircleInnerRadius = 0.0f;
+        uint32_t shapeCircleEmitOnEdge = 0u;
+        float shapeEdgeLength = 1.0f;
         ParticleDistributionFloat radialSpeed{};
         ParticleAnimatedFloat3 position{};
         ParticleAnimatedFloat3 rotationRadians{};
@@ -211,6 +222,13 @@ namespace HIKARI::RENDER3D::PARTICLES {
         ParticleBillboardMode billboardMode =
             ParticleBillboardMode::Fixed;
         bool depthTest = true;
+        uint32_t ribbonSegmentCount = 16u;
+        float ribbonWidth = 0.1f;
+        float ringOuterRadius = 1.0f;
+        float ringInnerRadius = 0.5f;
+        uint32_t ringSegmentCount = 32u;
+        float ringStartAngleRadians = 0.0f;
+        float ringEndAngleRadians = 6.28318530717958647692f;
     };
 
     struct ParticleEmitterSubmission {

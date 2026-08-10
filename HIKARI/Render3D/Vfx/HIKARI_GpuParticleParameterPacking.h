@@ -7,7 +7,7 @@
 
 namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
 
-    inline constexpr uint32_t kGpuParticleEmitterValueCount = 207u;
+    inline constexpr uint32_t kGpuParticleEmitterValueCount = 210u;
     inline constexpr uint32_t kGpuParticleEmitterUploadPageCount =
         kMaximumParticleEmitterSubmissionsPerFrame /
         kDefaultParticleEmitterUploadPageCapacity;
@@ -66,6 +66,6 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
         const ParticleEmitterSubmission& submission);
 
     static_assert(sizeof(GpuParticleFloat4) == 16u);
-    static_assert(sizeof(GpuParticleEmitterParameters) == 3312u);
+    static_assert(sizeof(GpuParticleEmitterParameters) == 3360u);
 
 } // namespace HIKARI::RENDER3D::PARTICLES::INTERNAL

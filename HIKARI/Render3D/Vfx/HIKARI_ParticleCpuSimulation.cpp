@@ -453,6 +453,93 @@ namespace HIKARI::RENDER3D::PARTICLES {
                 sample.offset = sample.direction * distance;
                 return sample;
             }
+            case ParticleShape::Box: {
+                const MATH::Vec3& halfExtents =
+                    submission.simulation.shapeBoxHalfExtents;
+                const float x = Lerp(
+                    -halfExtents.x,
+                    halfExtents.x,
+                    PropertyRandom01(
+                        particleSeed, 0u, kRandomSaltShapeDirectionY));
+                const float y = Lerp(
+                    -halfExtents.y,
+                    halfExtents.y,
+                    PropertyRandom01(
+                        particleSeed, 0u, kRandomSaltShapeDirectionAngle));
+                const float z = Lerp(
+                    -halfExtents.z,
+                    halfExtents.z,
+                    PropertyRandom01(
+                        particleSeed, 0u, kRandomSaltShapeOffsetRadius));
+                sample.offset = { x, y, z };
+                sample.direction = { 0.0f, 1.0f, 0.0f };
+                return sample;
+            }
+            case ParticleShape::Cylinder: {
+                constexpr float kTau = 6.28318530717958647692f;
+                const float angle = PropertyRandom01(
+                    particleSeed,
+                    0u,
+                    kRandomSaltShapeDirectionAngle) * kTau;
+                const float distance = std::sqrt(PropertyRandom01(
+                    particleSeed,
+                    0u,
+                    kRandomSaltShapeOffsetRadius)) * radius;
+                const float halfHeight =
+                    submission.simulation.shapeCylinderHeight * 0.5f;
+                const float y = Lerp(
+                    -halfHeight,
+                    halfHeight,
+                    PropertyRandom01(
+                        particleSeed, 0u, kRandomSaltShapeDirectionY));
+                sample.offset = {
+                    std::cos(angle) * distance,
+                    y,
+                    std::sin(angle) * distance,
+                };
+                sample.direction = { 0.0f, 1.0f, 0.0f };
+                return sample;
+            }
+            case ParticleShape::Circle: {
+                constexpr float kTau = 6.28318530717958647692f;
+                const float angle = PropertyRandom01(
+                    particleSeed,
+                    0u,
+                    kRandomSaltShapeDirectionAngle) * kTau;
+                const float innerRadius = std::clamp(
+                    submission.simulation.shapeCircleInnerRadius,
+                    0.0f,
+                    radius);
+                float distance = radius;
+                if (submission.simulation.shapeCircleEmitOnEdge == 0u &&
+                    radius > innerRadius) {
+                    const float u = PropertyRandom01(
+                        particleSeed, 0u, kRandomSaltShapeOffsetRadius);
+                    distance = std::sqrt(std::lerp(
+                        innerRadius * innerRadius,
+                        radius * radius,
+                        u));
+                }
+                sample.offset = {
+                    std::cos(angle) * distance,
+                    0.0f,
+                    std::sin(angle) * distance,
+                };
+                sample.direction = { 0.0f, 1.0f, 0.0f };
+                return sample;
+            }
+            case ParticleShape::Edge: {
+                const float halfLength =
+                    submission.simulation.shapeEdgeLength * 0.5f;
+                const float x = Lerp(
+                    -halfLength,
+                    halfLength,
+                    PropertyRandom01(
+                        particleSeed, 0u, kRandomSaltShapeDirectionY));
+                sample.offset = { x, 0.0f, 0.0f };
+                sample.direction = { 0.0f, 1.0f, 0.0f };
+                return sample;
+            }
             case ParticleShape::Point:
             default:
                 return sample;

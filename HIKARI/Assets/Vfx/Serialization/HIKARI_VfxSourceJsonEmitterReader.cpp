@@ -100,6 +100,41 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
         }
         emitter.shape.coneAngleDegrees =
             shape["coneAngleDegrees"].get<float>();
+        if (shape.contains("boxHalfExtents")) {
+            if (!ReadVec3(
+                    shape["boxHalfExtents"],
+                    emitter.shape.boxHalfExtents)) {
+                return false;
+            }
+        }
+        if (shape.contains("cylinderHeight")) {
+            if (!shape["cylinderHeight"].is_number()) {
+                return false;
+            }
+            emitter.shape.cylinderHeight =
+                shape["cylinderHeight"].get<float>();
+        }
+        if (shape.contains("circleInnerRadius")) {
+            if (!shape["circleInnerRadius"].is_number()) {
+                return false;
+            }
+            emitter.shape.circleInnerRadius =
+                shape["circleInnerRadius"].get<float>();
+        }
+        if (shape.contains("circleEmitOnEdge")) {
+            if (!shape["circleEmitOnEdge"].is_boolean()) {
+                return false;
+            }
+            emitter.shape.circleEmitOnEdge =
+                shape["circleEmitOnEdge"].get<bool>();
+        }
+        if (shape.contains("edgeLength")) {
+            if (!shape["edgeLength"].is_number()) {
+                return false;
+            }
+            emitter.shape.edgeLength =
+                shape["edgeLength"].get<float>();
+        }
 
         emitter.position.id = position["id"].get<std::string>();
         if (!position.contains("radialSpeed") ||
@@ -166,6 +201,57 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
                 renderShape.value("billboardMode", std::string{}),
                 emitter.renderShape.billboardMode)) {
             return false;
+        }
+        if (renderShape.contains("ribbonSegmentCount")) {
+            if (!renderShape["ribbonSegmentCount"].is_number_unsigned() &&
+                !renderShape["ribbonSegmentCount"].is_number_integer()) {
+                return false;
+            }
+            emitter.renderShape.ribbonSegmentCount =
+                renderShape["ribbonSegmentCount"].get<uint32_t>();
+        }
+        if (renderShape.contains("ribbonWidth")) {
+            if (!renderShape["ribbonWidth"].is_number()) {
+                return false;
+            }
+            emitter.renderShape.ribbonWidth =
+                renderShape["ribbonWidth"].get<float>();
+        }
+        if (renderShape.contains("ringOuterRadius")) {
+            if (!renderShape["ringOuterRadius"].is_number()) {
+                return false;
+            }
+            emitter.renderShape.ringOuterRadius =
+                renderShape["ringOuterRadius"].get<float>();
+        }
+        if (renderShape.contains("ringInnerRadius")) {
+            if (!renderShape["ringInnerRadius"].is_number()) {
+                return false;
+            }
+            emitter.renderShape.ringInnerRadius =
+                renderShape["ringInnerRadius"].get<float>();
+        }
+        if (renderShape.contains("ringSegmentCount")) {
+            if (!renderShape["ringSegmentCount"].is_number_unsigned() &&
+                !renderShape["ringSegmentCount"].is_number_integer()) {
+                return false;
+            }
+            emitter.renderShape.ringSegmentCount =
+                renderShape["ringSegmentCount"].get<uint32_t>();
+        }
+        if (renderShape.contains("ringStartAngleDegrees")) {
+            if (!renderShape["ringStartAngleDegrees"].is_number()) {
+                return false;
+            }
+            emitter.renderShape.ringStartAngleDegrees =
+                renderShape["ringStartAngleDegrees"].get<float>();
+        }
+        if (renderShape.contains("ringEndAngleDegrees")) {
+            if (!renderShape["ringEndAngleDegrees"].is_number()) {
+                return false;
+            }
+            emitter.renderShape.ringEndAngleDegrees =
+                renderShape["ringEndAngleDegrees"].get<float>();
         }
 
         for (const Json& item : node["inputLinks"]) {
