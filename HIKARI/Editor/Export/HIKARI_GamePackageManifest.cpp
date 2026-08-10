@@ -71,6 +71,14 @@ namespace HIKARI::EDITOR {
                 StartsWith(
                     path,
                     "enginecontent/shaders/");
+            const bool installedVfxTexture =
+                StartsWith(
+                    path,
+                    "enginecontent/vfx/textures/") &&
+                (extension == ".png" ||
+                 extension == ".jpg" ||
+                 extension == ".jpeg" ||
+                 extension == ".tga");
             if (extension == ".sln" ||
                 extension == ".vcxproj" ||
                 extension == ".filters" ||
@@ -90,7 +98,8 @@ namespace HIKARI::EDITOR {
                 extension == ".gltf" ||
                 extension == ".glb" ||
                 extension == ".obj" ||
-                extension == ".tga" ||
+                (extension == ".tga" &&
+                 !installedVfxTexture) ||
                 extension == ".psd" ||
                 extension == ".blend") {
                 return true;
@@ -99,6 +108,7 @@ namespace HIKARI::EDITOR {
             if ((extension == ".png" ||
                  extension == ".jpg" ||
                  extension == ".jpeg") &&
+                !installedVfxTexture &&
                 !StartsWith(
                     path,
                     "content/runtimepayload/spine/")) {
