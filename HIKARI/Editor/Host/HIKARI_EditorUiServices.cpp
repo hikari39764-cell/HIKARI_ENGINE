@@ -1,5 +1,10 @@
 #include "Editor/Host/HIKARI_EditorUiServices.h"
 
+#include <filesystem>
+#include <string>
+
+#include <ShlObj.h>
+
 #include "Core/HIKARI_Logger.h"
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 #include "Editor/HIKARI_EditorStyle.h"
@@ -27,6 +32,31 @@ namespace HIKARI::EDITOR {
 
     namespace {
 
+        // The editor layout is application state, not project state. Opening
+        // or creating a project changes the process working directory to the
+        // project root, which would make a relative imgui.ini resolve to a
+        // different file per project and surface as a scrambled first layout.
+        // Pin the ini to a stable per-user absolute path instead.
+        std::string ResolveEditorImGuiIniPath() {
+            PWSTR localAppData = nullptr;
+            const HRESULT result = SHGetKnownFolderPath(
+                FOLDERID_LocalAppData,
+                KF_FLAG_DEFAULT,
+                nullptr,
+                &localAppData);
+            if (FAILED(result) || localAppData == nullptr) {
+                return {};
+            }
+            std::filesystem::path path =
+                std::filesystem::path(localAppData) /
+                "HIKARI" / "Editor";
+            CoTaskMemFree(localAppData);
+            std::error_code ec{};
+            std::filesystem::create_directories(path, ec);
+            path /= "imgui.ini";
+            return path.generic_string();
+        }
+
         class EditorUiServices final
             : public RUNTIME::IEditorUiServices {
         public:
@@ -52,6 +82,7 @@ namespace HIKARI::EDITOR {
 
             bool contextInitialized_ = false;
             bool backendInitialized_ = false;
+            std::string iniPathStorage_{};
             bool frameBegun_ = false;
             D3D12_CPU_DESCRIPTOR_HANDLE fontSrvCpu_{};
             D3D12_GPU_DESCRIPTOR_HANDLE fontSrvGpu_{};
@@ -61,6 +92,10 @@ namespace HIKARI::EDITOR {
 
         void EditorUiServices::ConfigureContext() {
             ImGuiIO& io = ImGui::GetIO();
+            iniPathStorage_ = ResolveEditorImGuiIniPath();
+            if (!iniPathStorage_.empty()) {
+                io.IniFilename = iniPathStorage_.c_str();
+            }
             io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
             io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;
             io.ConfigDockingWithShift = false;
