@@ -9,6 +9,7 @@
 
 #include "Assets/HIKARI_AssetGuid.h"
 #include "Assets/Vfx/HIKARI_VfxAssetData.h"
+#include "Assets/Vfx/HIKARI_VfxPresetRegistry.h"
 
 namespace HIKARI {
 
@@ -25,6 +26,9 @@ namespace EDITOR {
     class VfxEditorDocument final {
     public:
         void NewAsset(std::string name = "New VFX");
+        bool ApplyPresetPackage(
+            VFX::PRESETS::VfxPresetPackage package,
+            std::string& outMessage);
         bool OpenAsset(
             const AssetDatabase& assetDatabase,
             const AssetGuid& assetGuid,
@@ -57,6 +61,7 @@ namespace EDITOR {
         bool IsDirty() const noexcept;
         bool CanUndo() const noexcept;
         bool CanRedo() const noexcept;
+        bool HasPendingPresetMaterials() const noexcept;
 
     private:
         struct HistoryEntry {
@@ -80,6 +85,8 @@ namespace EDITOR {
         std::filesystem::path sourcePath_{};
         std::string displayName_{};
         VFX::VfxAssetData asset_{};
+        std::vector<VFX::PRESETS::VfxPresetMaterialRecipe>
+            pendingPresetMaterials_{};
         std::vector<HistoryEntry> history_{};
         size_t historyCursor_ = 0u;
         std::optional<size_t> savedHistoryCursor_{};

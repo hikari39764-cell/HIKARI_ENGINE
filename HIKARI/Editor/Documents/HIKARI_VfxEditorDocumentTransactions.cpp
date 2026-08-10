@@ -38,9 +38,26 @@ namespace HIKARI::EDITOR {
         source_ = VfxEditorDocumentSource::Transient;
         assetGuid_ = {};
         sourcePath_.clear();
+        pendingPresetMaterials_.clear();
         displayName_ = asset_.name;
         ResetHistory(false);
         AdvanceRevision();
+    }
+
+    bool VfxEditorDocument::ApplyPresetPackage(
+        VFX::PRESETS::VfxPresetPackage package,
+        std::string& outMessage) {
+
+        if (source_ != VfxEditorDocumentSource::Transient) {
+            outMessage =
+                "VFX preset packages can only be applied to a transient document";
+            return false;
+        }
+        if (!ApplyAsset(std::move(package.asset), outMessage)) {
+            return false;
+        }
+        pendingPresetMaterials_ = std::move(package.privateMaterials);
+        return true;
     }
 
     bool VfxEditorDocument::ApplyAsset(
@@ -145,6 +162,10 @@ namespace HIKARI::EDITOR {
 
     bool VfxEditorDocument::CanRedo() const noexcept {
         return IsOpen() && historyCursor_ < history_.size();
+    }
+
+    bool VfxEditorDocument::HasPendingPresetMaterials() const noexcept {
+        return !pendingPresetMaterials_.empty();
     }
 
     bool VfxEditorDocument::AreEquivalent(

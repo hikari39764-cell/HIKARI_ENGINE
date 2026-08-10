@@ -136,6 +136,40 @@ namespace HIKARI::VFX::PRESETS {
             };
         }
 
+        void ConfigureFlipbook(
+            VfxEmitterData& emitter,
+            uint32_t columns,
+            uint32_t rows,
+            uint32_t frameCount,
+            float framesPerSecond,
+            bool loop,
+            bool randomStart) {
+
+            emitter.renderCommon.flipbookColumns = columns;
+            emitter.renderCommon.flipbookRows = rows;
+            emitter.renderCommon.flipbookFrameCount = frameCount;
+            emitter.renderCommon.flipbookFramesPerSecond = framesPerSecond;
+            emitter.renderCommon.flipbookLoop = loop;
+            emitter.renderCommon.flipbookRandomStart = randomStart;
+        }
+
+        void AddPrivateMaterial(
+            VfxPresetPackage& package,
+            size_t emitterIndex,
+            std::string_view textureAssetId) {
+
+            if (emitterIndex >= package.asset.emitters.size()) {
+                return;
+            }
+            const VfxEmitterData& emitter =
+                package.asset.emitters[emitterIndex];
+            package.privateMaterials.push_back({
+                emitter.id,
+                package.asset.name + " " + emitter.name + " Material",
+                AssetGuid{ std::string(textureAssetId) },
+            });
+        }
+
         VfxAssetData BuildBasicSprite() {
             VfxAssetData asset;
             asset.name = "Basic Sprite";
@@ -171,6 +205,7 @@ namespace HIKARI::VFX::PRESETS {
             emitter.shape.radius = MakeVfxFloatConstant(0.2f);
             emitter.position.radialSpeed = MakeVfxFloatConstant(6.0f);
             emitter.renderCommon.blendMode = VfxBlendMode::Additive;
+            ConfigureFlipbook(emitter, 5u, 5u, 25u, 30.0f, false, false);
             emitter.renderShape.billboardMode =
                 VfxBillboardMode::DirectionalBillboard;
             SetColorStops(emitter,
@@ -320,6 +355,7 @@ namespace HIKARI::VFX::PRESETS {
                 MakeVfxVec3Constant({ 0.0f, 1.2f, 0.0f });
             emitter.position.value.mode = VfxAnimatedValueMode::Pva;
             emitter.renderCommon.blendMode = VfxBlendMode::Alpha;
+            ConfigureFlipbook(emitter, 8u, 8u, 64u, 16.0f, true, true);
             SetColorStops(emitter,
                 { 0.5f, 0.5f, 0.55f, 0.5f },
                 { 0.4f, 0.4f, 0.45f, 0.0f });
@@ -341,6 +377,7 @@ namespace HIKARI::VFX::PRESETS {
             emitter.shape.coneAngleDegrees = 18.0f;
             emitter.position.radialSpeed = MakeVfxFloatConstant(1.4f);
             emitter.renderCommon.blendMode = VfxBlendMode::Additive;
+            ConfigureFlipbook(emitter, 16u, 4u, 64u, 32.0f, true, true);
             emitter.scale.value.mode = VfxAnimatedValueMode::Easing;
             emitter.scale.value.easing.start =
                 MakeVfxVec3Constant({ 0.6f, 0.6f, 0.6f });
@@ -554,6 +591,55 @@ namespace HIKARI::VFX::PRESETS {
         if (id == "fountain") return BuildFountain();
         if (id == "sparkler") return BuildSparkler();
         return BuildBasicSprite();
+    }
+
+    VfxPresetPackage MakeVfxPresetPackage(std::string_view id) {
+        VfxPresetPackage package{};
+        package.asset = MakeVfxPresetAsset(id);
+
+        if (id == "burst_explosion") {
+            AddPrivateMaterial(package, 0u,
+                "engine.vfx.texture.explosion_flipbook");
+        } else if (id == "muzzle_flash") {
+            AddPrivateMaterial(package, 0u,
+                "engine.vfx.texture.muzzle_flame");
+            AddPrivateMaterial(package, 1u,
+                "engine.vfx.texture.energy_streak");
+        } else if (id == "hit_impact") {
+            AddPrivateMaterial(package, 0u,
+                "engine.vfx.texture.star_glint");
+            AddPrivateMaterial(package, 1u,
+                "engine.vfx.texture.energy_ring");
+        } else if (id == "projectile_trail" || id == "beam" ||
+                   id == "rain" || id == "fountain") {
+            AddPrivateMaterial(package, 0u,
+                "engine.vfx.texture.energy_streak");
+        } else if (id == "smoke_plume") {
+            AddPrivateMaterial(package, 0u,
+                "engine.vfx.texture.wispy_smoke_flipbook");
+        } else if (id == "fire") {
+            AddPrivateMaterial(package, 0u,
+                "engine.vfx.texture.flame_flipbook");
+        } else if (id == "snow") {
+            AddPrivateMaterial(package, 0u,
+                "engine.vfx.texture.soft_disc");
+        } else if (id == "magic_aura") {
+            AddPrivateMaterial(package, 0u,
+                "engine.vfx.texture.lens_flare");
+        } else if (id == "ground_ring") {
+            AddPrivateMaterial(package, 0u,
+                "engine.vfx.texture.magic_ring");
+        } else if (id == "shockwave_ring") {
+            AddPrivateMaterial(package, 0u,
+                "engine.vfx.texture.energy_ring");
+        } else if (id == "sparkler") {
+            AddPrivateMaterial(package, 0u,
+                "engine.vfx.texture.star_glint");
+        } else {
+            AddPrivateMaterial(package, 0u,
+                "engine.vfx.texture.soft_disc");
+        }
+        return package;
     }
 
 } // namespace HIKARI::VFX::PRESETS

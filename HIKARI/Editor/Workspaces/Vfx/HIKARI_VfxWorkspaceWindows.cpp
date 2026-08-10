@@ -206,7 +206,7 @@ namespace HIKARI::EDITOR {
             }
             ImGui::SeparatorText("Start From Preset");
             ImGui::TextDisabled(
-                "Effekseer-style starter presets (no external assets).");
+                "Effekseer-style starter presets using reusable EngineContent textures. Private particle materials are created on first save.");
             if (ImGui::BeginListBox("##vfx_presets", { 320.0f, 180.0f })) {
                 std::string lastCategory{};
                 for (const auto& preset :

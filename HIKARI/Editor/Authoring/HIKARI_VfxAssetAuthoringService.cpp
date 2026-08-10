@@ -8,6 +8,8 @@
 #include <vector>
 
 #include "Assets/HIKARI_AssetDatabase.h"
+#include "Assets/Material/Authoring/HIKARI_MaterialAssetAuthoringService.h"
+#include "Assets/Material/Authoring/HIKARI_MaterialTemplateFactory.h"
 #include "Assets/Vfx/HIKARI_VfxValidation.h"
 #include "Assets/Vfx/Serialization/HIKARI_VfxSourceJson.h"
 #include "Editor/Authoring/Internal/HIKARI_VfxAssetAuthoringTransaction.h"
@@ -94,6 +96,68 @@ namespace HIKARI::EDITOR {
                 outMessage += " [" + found->subjectId + "]";
             }
             return false;
+        }
+
+        VFX::VfxEmitterData* FindEmitter(
+            VFX::VfxAssetData& asset,
+            std::string_view emitterId) noexcept {
+
+            const auto found = std::find_if(
+                asset.emitters.begin(),
+                asset.emitters.end(),
+                [emitterId](const VFX::VfxEmitterData& emitter) {
+                    return emitter.id == emitterId;
+                });
+            return found == asset.emitters.end() ? nullptr : &*found;
+        }
+
+        bool BindParticleTexture(
+            MaterialAssetData& material,
+            const AssetGuid& textureAssetId,
+            std::string& outMessage) {
+
+            if (!textureAssetId.IsValid()) {
+                outMessage = "VFX preset material texture ID is empty";
+                return false;
+            }
+            const auto resource = std::find_if(
+                material.graph.resources.begin(),
+                material.graph.resources.end(),
+                [](const MaterialGraphResourceData& value) {
+                    return value.id == "resource.particleTexture";
+                });
+            if (resource == material.graph.resources.end()) {
+                outMessage =
+                    "Textured Particle Unlit template has no particle texture binding";
+                return false;
+            }
+            resource->assetGuid = textureAssetId;
+            resource->enabled = true;
+            return true;
+        }
+
+        bool RollBackPrivateMaterials(
+            AssetDatabase& database,
+            const INTERNAL::VfxAssetAuthoringRoots& roots,
+            const std::vector<std::filesystem::path>& sourcePaths,
+            std::string& outMessage) {
+
+            std::vector<std::filesystem::path> metaPaths{};
+            metaPaths.reserve(sourcePaths.size());
+            for (const std::filesystem::path& sourcePath : sourcePaths) {
+                metaPaths.push_back(
+                    database.GetMetaPathForSource(sourcePath));
+            }
+            if (!INTERNAL::RollBackCreatedVfxPrivateMaterials(
+                    roots, sourcePaths, metaPaths, outMessage)) {
+                return false;
+            }
+            if (!database.ScanAssets(false)) {
+                outMessage =
+                    "private material files were rolled back, but the asset database could not be rescanned";
+                return false;
+            }
+            return true;
         }
 
         VfxAssetAuthoringResult SaveToRecord(
@@ -308,6 +372,137 @@ namespace HIKARI::EDITOR {
         result.message = result.success
             ? "VFX asset created"
             : "VFX asset created, but import validation failed";
+        return result;
+    }
+
+    VfxAssetAuthoringResult CreateVfxPresetAsset(
+        AssetDatabase& database,
+        const VFX::VfxAssetData& asset,
+        const std::vector<VFX::PRESETS::VfxPresetMaterialRecipe>&
+            privateMaterials) {
+
+        VfxAssetAuthoringResult result{};
+        if (!ValidateForWrite(asset, result.message)) {
+            return result;
+        }
+        if (privateMaterials.empty()) {
+            return CreateVfxAsset(database, asset);
+        }
+
+        INTERNAL::VfxAssetAuthoringRoots roots{};
+        if (!INTERNAL::ResolveVfxAssetAuthoringRoots(
+                database.GetProjectRoot(),
+                database.GetAssetsRoot(),
+                database.GetSourceMetaRoot(),
+                roots,
+                result.message)) {
+            return result;
+        }
+
+        VFX::VfxAssetData authoredAsset = asset;
+        const std::filesystem::path materialDirectory =
+            roots.assetsRoot / "Vfx" /
+            (SanitizeFileStem(asset.name) + "_Private") / "Materials";
+        ASSETS::MATERIAL::MaterialAssetAuthoringService materialService(
+            database);
+        std::vector<std::filesystem::path> createdMaterialSources{};
+        createdMaterialSources.reserve(privateMaterials.size());
+        std::vector<std::string> materializedEmitters{};
+        materializedEmitters.reserve(privateMaterials.size());
+
+        for (const VFX::PRESETS::VfxPresetMaterialRecipe& recipe :
+             privateMaterials) {
+            if (std::find(
+                    materializedEmitters.begin(),
+                    materializedEmitters.end(),
+                    recipe.emitterId) != materializedEmitters.end()) {
+                result.message =
+                    "VFX preset contains duplicate private material recipes for emitter " +
+                    recipe.emitterId;
+                std::string rollbackMessage{};
+                if (!RollBackPrivateMaterials(
+                        database,
+                        roots,
+                        createdMaterialSources,
+                        rollbackMessage)) {
+                    result.message += "; rollback failed: " + rollbackMessage;
+                }
+                return result;
+            }
+            VFX::VfxEmitterData* emitter =
+                FindEmitter(authoredAsset, recipe.emitterId);
+            if (emitter == nullptr ||
+                emitter->renderCommon.materialAssetGuid.IsValid()) {
+                continue;
+            }
+
+            MaterialAssetData material =
+                ASSETS::MATERIAL::CreateMaterialFromTemplate(
+                    MaterialTemplateId::ParticleUnlitTextured,
+                    recipe.displayName);
+            if (!BindParticleTexture(
+                    material, recipe.textureAssetId, result.message)) {
+                std::string rollbackMessage{};
+                if (!RollBackPrivateMaterials(
+                        database,
+                        roots,
+                        createdMaterialSources,
+                        rollbackMessage)) {
+                    result.message += "; rollback failed: " + rollbackMessage;
+                }
+                return result;
+            }
+
+            const ASSETS::MATERIAL::MaterialAuthoringResult created =
+                materialService.Create(material, materialDirectory);
+            if (!created.sourcePath.empty()) {
+                createdMaterialSources.push_back(
+                    created.sourcePath.is_absolute()
+                        ? created.sourcePath.lexically_normal()
+                        : (database.GetProjectRoot() / created.sourcePath)
+                            .lexically_normal());
+            }
+            if (!created.success || !created.assetGuid.IsValid()) {
+                result.message =
+                    "Failed to create VFX private material: " +
+                    created.message;
+                std::string rollbackMessage{};
+                if (!RollBackPrivateMaterials(
+                        database,
+                        roots,
+                        createdMaterialSources,
+                        rollbackMessage)) {
+                    result.message += "; rollback failed: " + rollbackMessage;
+                }
+                return result;
+            }
+            emitter->renderCommon.materialAssetGuid = created.assetGuid;
+            materializedEmitters.push_back(recipe.emitterId);
+        }
+
+        result = CreateVfxAsset(database, authoredAsset);
+        if (result.assetGuid.IsValid()) {
+            result.authoredAsset = std::move(authoredAsset);
+            if (result.success) {
+                result.message =
+                    "VFX preset and private particle materials created";
+            }
+            return result;
+        }
+
+        const std::string createMessage = result.message;
+        std::string rollbackMessage{};
+        if (!RollBackPrivateMaterials(
+                database,
+                roots,
+                createdMaterialSources,
+                rollbackMessage)) {
+            result.message = createMessage +
+                "; private material rollback failed: " + rollbackMessage;
+        } else {
+            result.message = createMessage +
+                "; private materials were rolled back";
+        }
         return result;
     }
 

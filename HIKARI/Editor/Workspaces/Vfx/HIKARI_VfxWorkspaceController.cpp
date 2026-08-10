@@ -139,8 +139,8 @@ namespace HIKARI::EDITOR {
         StopPreview();
         document_.NewAsset(preset->displayName);
         std::string applyMessage{};
-        if (!document_.ApplyAsset(
-                VFX::PRESETS::MakeVfxPresetAsset(presetId),
+        if (!document_.ApplyPresetPackage(
+                VFX::PRESETS::MakeVfxPresetPackage(presetId),
                 applyMessage)) {
             outMessage = applyMessage.empty()
                 ? "Failed to apply VFX preset"
@@ -154,7 +154,8 @@ namespace HIKARI::EDITOR {
         selection_ = {};
         previewInputOverrides_.clear();
         OnDocumentChanged();
-        outMessage = "Created VFX from preset: " + preset->displayName;
+        outMessage = "Created VFX from preset: " + preset->displayName +
+            "; save once to create its private textured materials";
         statusMessage_ = outMessage;
         return true;
     }

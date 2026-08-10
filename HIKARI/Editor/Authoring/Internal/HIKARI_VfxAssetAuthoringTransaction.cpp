@@ -310,4 +310,54 @@ namespace HIKARI::EDITOR::INTERNAL {
             outMessage);
     }
 
+    bool RollBackCreatedVfxPrivateMaterials(
+        const VfxAssetAuthoringRoots& roots,
+        const std::vector<std::filesystem::path>& sourcePaths,
+        const std::vector<std::filesystem::path>& metaPaths,
+        std::string& outMessage) {
+
+        if (sourcePaths.size() != metaPaths.size() ||
+            !IsStrictlyUnderRoot(roots.projectRoot, roots.assetsRoot) ||
+            !IsStrictlyUnderRoot(
+                roots.projectRoot, roots.sourceMetaRoot)) {
+            outMessage =
+                "Refused to roll back invalid VFX private material targets";
+            return false;
+        }
+        std::vector<IO::FileReplacementOperation> operations{};
+        operations.reserve(sourcePaths.size() * 2u);
+        for (size_t index = 0u; index < sourcePaths.size(); ++index) {
+            std::filesystem::path sourcePath{};
+            std::filesystem::path metaPath{};
+            if (!ResolveAbsolutePath(
+                    sourcePaths[index], sourcePath, outMessage) ||
+                !ResolveAbsolutePath(
+                    metaPaths[index], metaPath, outMessage) ||
+                !IsStrictlyUnderRoot(roots.assetsRoot, sourcePath) ||
+                !IsStrictlyUnderRoot(roots.sourceMetaRoot, metaPath) ||
+                !sourcePath.generic_string().ends_with(".material.json")) {
+                outMessage =
+                    "Refused to roll back a private material outside its VFX roots";
+                return false;
+            }
+            if (!AppendCreatedFileRollback(
+                    roots.assetsRoot,
+                    sourcePath,
+                    false,
+                    operations,
+                    outMessage) ||
+                !AppendCreatedFileRollback(
+                    roots.sourceMetaRoot,
+                    metaPath,
+                    false,
+                    operations,
+                    outMessage)) {
+                return false;
+            }
+        }
+        return IO::CommitFileReplacementTransaction(
+            std::span<const IO::FileReplacementOperation>(operations),
+            outMessage);
+    }
+
 } // namespace HIKARI::EDITOR::INTERNAL

@@ -28,6 +28,7 @@ namespace HIKARI::EDITOR {
             return false;
         }
         asset_ = std::move(loaded);
+        pendingPresetMaterials_.clear();
         source_ = VfxEditorDocumentSource::Asset;
         assetGuid_ = record->guid;
         sourcePath_ = record->sourcePath;
@@ -50,7 +51,10 @@ namespace HIKARI::EDITOR {
         }
         const VfxAssetAuthoringResult result =
             source_ == VfxEditorDocumentSource::Transient
-                ? CreateVfxAsset(database, asset_)
+                ? (pendingPresetMaterials_.empty()
+                    ? CreateVfxAsset(database, asset_)
+                    : CreateVfxPresetAsset(
+                        database, asset_, pendingPresetMaterials_))
                 : UpdateVfxAsset(database, assetGuid_, asset_);
         outMessage = result.message;
         if (!result.assetGuid.IsValid()) {
@@ -59,6 +63,10 @@ namespace HIKARI::EDITOR {
         assetGuid_ = result.assetGuid;
         sourcePath_ = result.sourcePath;
         source_ = VfxEditorDocumentSource::Asset;
+        if (result.authoredAsset) {
+            asset_ = *result.authoredAsset;
+        }
+        pendingPresetMaterials_.clear();
         displayName_ = asset_.name;
         if (!result.success) {
             // Keep the source identity after an importer failure so a retry
