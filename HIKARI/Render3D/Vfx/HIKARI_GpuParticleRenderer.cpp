@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstring>
 #include <limits>
@@ -9,6 +10,7 @@
 #include <utility>
 #include <vector>
 
+#include "Core/HIKARI_Logger.h"
 #include "Core/HIKARI_TimeService.h"
 #include "Render3D/Core/HIKARI_Camera3D.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorAccess.h"
@@ -650,25 +652,22 @@ namespace HIKARI::RENDER3D::PARTICLES {
                     render.ringOuterRadius,
                     render.ringInnerRadius,
                     render.ringStartAngleRadians);
-                drawConstants.renderShapeParamsB = MakeFloat4(
-                    render.ringEndAngleRadians,
-                    0.0f,
-                    0.0f,
-                    0.0f);
-                drawConstants.flipbookColumns =
-                    render.flipbookColumns;
-                drawConstants.flipbookRows =
-                    render.flipbookRows;
-                drawConstants.flipbookFrameCount =
-                    render.flipbookFrameCount;
-                drawConstants.flipbookFlags =
+                const uint32_t flipbookGrid =
+                    INTERNAL::PackGpuParticleFlipbookGrid(
+                        render.flipbookColumns,
+                        render.flipbookRows);
+                const uint32_t flipbookFlags =
                     (render.flipbookLoop ? 1u : 0u) |
                     (render.flipbookRandomStart ? 2u : 0u);
-                drawConstants.flipbookParams = MakeFloat4(
+                const uint32_t flipbookPlayback =
+                    INTERNAL::PackGpuParticleFlipbookPlayback(
+                        render.flipbookFrameCount,
+                        flipbookFlags);
+                drawConstants.renderShapeParamsB = MakeFloat4(
+                    render.ringEndAngleRadians,
                     render.flipbookFramesPerSecond,
-                    0.0f,
-                    0.0f,
-                    0.0f);
+                    std::bit_cast<float>(flipbookGrid),
+                    std::bit_cast<float>(flipbookPlayback));
                 context.cmdList->SetGraphicsRoot32BitConstants(
                     5u,
                     sizeof(drawConstants) / sizeof(uint32_t),
@@ -760,11 +759,23 @@ namespace HIKARI::RENDER3D::PARTICLES {
         if (!impl_->storage.Initialize(
                 impl_->context,
                 impl_->stats.particleCapacity,
-                impl_->emitterPageCapacity) ||
-            !impl_->materials.Initialize(
+                impl_->emitterPageCapacity)) {
+            HIKARI_LOG_ERROR(
+                "[GpuParticleRenderer][Initialize][Storage] failed.");
+            impl_->Shutdown();
+            return false;
+        }
+        if (!impl_->materials.Initialize(
                 impl_->context.device,
-                impl_->emitterUploadCapacity) ||
-            !impl_->pipelines.Initialize(impl_->context.device)) {
+                impl_->emitterUploadCapacity)) {
+            HIKARI_LOG_ERROR(
+                "[GpuParticleRenderer][Initialize][Materials] failed.");
+            impl_->Shutdown();
+            return false;
+        }
+        if (!impl_->pipelines.Initialize(impl_->context.device)) {
+            HIKARI_LOG_ERROR(
+                "[GpuParticleRenderer][Initialize][Pipelines] failed.");
             impl_->Shutdown();
             return false;
         }

@@ -866,11 +866,6 @@ cbuffer DrawConstants : register(b0)
     uint gRenderShapeParam1;
     float4 gRenderShapeParamsA;
     float4 gRenderShapeParamsB;
-    uint gFlipbookColumns;
-    uint gFlipbookRows;
-    uint gFlipbookFrameCount;
-    uint gFlipbookFlags;
-    float4 gFlipbookParams;
 };
 
 struct ParticleVsOutput
@@ -1060,20 +1055,23 @@ ParticleVsOutput ParticleVS(
 
     ParticleVsOutput output;
     output.position = mul(gViewProjection, float4(worldPosition, 1.0f));
-    uint flipbookColumns = max(gFlipbookColumns, 1u);
-    uint flipbookRows = max(gFlipbookRows, 1u);
+    uint flipbookGrid = asuint(gRenderShapeParamsB.z);
+    uint flipbookPlayback = asuint(gRenderShapeParamsB.w);
+    uint flipbookColumns = max(flipbookGrid & 0xffu, 1u);
+    uint flipbookRows = max((flipbookGrid >> 8u) & 0xffu, 1u);
     uint flipbookCellCount = flipbookColumns * flipbookRows;
     uint flipbookFrameCount = clamp(
-        gFlipbookFrameCount, 1u, flipbookCellCount);
+        flipbookPlayback & 0xffffu, 1u, flipbookCellCount);
+    uint flipbookFlags = flipbookPlayback >> 16u;
     uint flipbookFrame = (uint)floor(
-        max(gFlipbookParams.x, 0.0f) *
+        max(gRenderShapeParamsB.y, 0.0f) *
         max(particle.positionAge.w, 0.0f));
-    if ((gFlipbookFlags & 2u) != 0u)
+    if ((flipbookFlags & 2u) != 0u)
     {
         flipbookFrame += Hash(asuint(
             particle.physicsPositionSeed.w)) % flipbookFrameCount;
     }
-    flipbookFrame = (gFlipbookFlags & 1u) != 0u
+    flipbookFrame = (flipbookFlags & 1u) != 0u
         ? flipbookFrame % flipbookFrameCount
         : min(flipbookFrame, flipbookFrameCount - 1u);
     uint flipbookColumn = flipbookFrame % flipbookColumns;

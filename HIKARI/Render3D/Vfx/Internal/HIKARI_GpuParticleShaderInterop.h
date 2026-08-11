@@ -26,6 +26,26 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
         uint32_t flags = 0u;
     };
 
+    inline constexpr uint32_t kGpuParticleFlipbookDimensionMask = 0xffu;
+    inline constexpr uint32_t kGpuParticleFlipbookRowShift = 8u;
+    inline constexpr uint32_t kGpuParticleFlipbookFrameMask = 0xffffu;
+    inline constexpr uint32_t kGpuParticleFlipbookFlagsShift = 16u;
+
+    constexpr uint32_t PackGpuParticleFlipbookGrid(
+        uint32_t columns,
+        uint32_t rows) noexcept {
+        return (columns & kGpuParticleFlipbookDimensionMask) |
+            ((rows & kGpuParticleFlipbookDimensionMask) <<
+                kGpuParticleFlipbookRowShift);
+    }
+
+    constexpr uint32_t PackGpuParticleFlipbookPlayback(
+        uint32_t frameCount,
+        uint32_t flags) noexcept {
+        return (frameCount & kGpuParticleFlipbookFrameMask) |
+            (flags << kGpuParticleFlipbookFlagsShift);
+    }
+
     struct GpuParticleDrawConstants {
         MATH::Mat4 viewProjection = MATH::Mat4::Identity();
         GpuParticleFloat4 cameraRight{};
@@ -40,16 +60,10 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
         uint32_t renderShapeParam1 = 0u;
         GpuParticleFloat4 renderShapeParamsA{};
         GpuParticleFloat4 renderShapeParamsB{};
-        uint32_t flipbookColumns = 1u;
-        uint32_t flipbookRows = 1u;
-        uint32_t flipbookFrameCount = 1u;
-        uint32_t flipbookFlags = 0u;
-        GpuParticleFloat4 flipbookParams{};
     };
 
     static_assert(sizeof(GpuParticle) == 96u);
     static_assert(sizeof(GpuParticleSimulationConstants) == 32u);
-    static_assert(
-        sizeof(GpuParticleDrawConstants) % sizeof(uint32_t) == 0u);
+    static_assert(sizeof(GpuParticleDrawConstants) == 192u);
 
 } // namespace HIKARI::RENDER3D::PARTICLES::INTERNAL

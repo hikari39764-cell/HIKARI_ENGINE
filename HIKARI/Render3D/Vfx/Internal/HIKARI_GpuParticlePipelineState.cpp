@@ -13,6 +13,15 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
     namespace {
         using Microsoft::WRL::ComPtr;
 
+        inline constexpr uint32_t kD3d12RootSignatureDwordLimit = 64u;
+        inline constexpr uint32_t
+            kGpuParticleDrawRootSignatureFixedDwordCost = 12u;
+        static_assert(
+            kGpuParticleDrawRootSignatureFixedDwordCost +
+                sizeof(GpuParticleDrawConstants) / sizeof(uint32_t) <=
+                    kD3d12RootSignatureDwordLimit,
+            "GPU particle draw root signature exceeds the D3D12 DWORD budget.");
+
         bool CreateRootSignature(
             ID3D12Device* device,
             const D3D12_ROOT_SIGNATURE_DESC& description,
