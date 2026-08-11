@@ -20,6 +20,9 @@ namespace HIKARI::VFX::PRESETS {
         std::string emitterId{};
         std::string displayName{};
         AssetGuid textureAssetId{};
+
+        bool operator==(
+            const VfxPresetMaterialRecipe&) const noexcept = default;
     };
 
     struct VfxPresetPackage {

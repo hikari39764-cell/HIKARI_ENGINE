@@ -540,6 +540,7 @@ namespace HIKARI::RENDER3D::PARTICLES {
                     allocation,
                     materials.Resolve(
                         submission.render.materialAssetGuid,
+                        submission.render.runtimeMaterialOverride.get(),
                         assetRegistry,
                         externalValues)
                 };

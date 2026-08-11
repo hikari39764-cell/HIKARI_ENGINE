@@ -1730,6 +1730,7 @@ namespace HIKARI {
             const EDITOR::VfxWorkspaceResult result =
                 vfxWorkspaceController_.Draw(
                     scene.GetAssetDatabase(),
+                    scene.GetAssetRegistry(),
                     workspaceHost_.GetVfxPreviewView(),
                     static_cast<uint64_t>(ImGui::GetFrameCount()),
                     ImGui::GetIO().DeltaTime,

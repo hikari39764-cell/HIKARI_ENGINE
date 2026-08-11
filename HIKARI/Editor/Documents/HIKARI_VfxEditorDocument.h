@@ -62,19 +62,31 @@ namespace EDITOR {
         bool CanUndo() const noexcept;
         bool CanRedo() const noexcept;
         bool HasPendingPresetMaterials() const noexcept;
+        const std::vector<VFX::PRESETS::VfxPresetMaterialRecipe>&
+            GetPendingPresetMaterials() const noexcept;
 
     private:
+        struct DocumentState {
+            VFX::VfxAssetData asset{};
+            std::vector<VFX::PRESETS::VfxPresetMaterialRecipe>
+                pendingPresetMaterials{};
+        };
+
         struct HistoryEntry {
-            VFX::VfxAssetData before{};
-            VFX::VfxAssetData after{};
+            DocumentState before{};
+            DocumentState after{};
             uint64_t mergeGroup = 0u;
         };
 
         static bool AreEquivalent(
             const VFX::VfxAssetData& left,
             const VFX::VfxAssetData& right);
+        bool ApplyState(
+            DocumentState state,
+            std::string& outMessage,
+            uint64_t mergeGroup);
         void RecordApplied(
-            VFX::VfxAssetData before,
+            DocumentState before,
             uint64_t mergeGroup);
         void ResetHistory(bool saved) noexcept;
         void AdvanceRevision() noexcept;

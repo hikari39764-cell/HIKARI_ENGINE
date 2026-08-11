@@ -4,6 +4,7 @@
 #include <string>
 
 #include "Assets/HIKARI_AssetDatabase.h"
+#include "Assets/HIKARI_AssetRegistry.h"
 #include "Assets/Vfx/HIKARI_VfxPresetRegistry.h"
 #include "Editor/Commands/HIKARI_EditorCommandRouter.h"
 #include "Editor/Views/HIKARI_EditorViewInstance.h"
@@ -69,6 +70,7 @@ namespace HIKARI::EDITOR {
 
     VfxWorkspaceResult VfxWorkspaceController::Draw(
         AssetDatabase& database,
+        const AssetRegistry& assetRegistry,
         EditorViewInstance& previewView,
         uint64_t frameIndex,
         float deltaSeconds,
@@ -79,6 +81,14 @@ namespace HIKARI::EDITOR {
         if (!document_.IsOpen()) {
             NewAsset();
         }
+        std::string previewMaterialMessage{};
+        if (!RefreshPresetPreviewMaterials(
+                assetRegistry, previewMaterialMessage)) {
+            // Never attach a stale preset material map to a newer document
+            // revision after a rebuild failure.
+            presetPreviewMaterials_.clear();
+            statusMessage_ = std::move(previewMaterialMessage);
+        }
         UpdatePreview(frameIndex, deltaSeconds);
         DrawToolbarWindow(database, result, commandRouter);
         DrawHierarchyWindow(database);
@@ -87,6 +97,7 @@ namespace HIKARI::EDITOR {
         DrawInspectorWindow(database);
 #else
         (void)database;
+        (void)assetRegistry;
         (void)previewView;
         (void)frameIndex;
         (void)deltaSeconds;
@@ -206,7 +217,7 @@ namespace HIKARI::EDITOR {
             }
             ImGui::SeparatorText("Start From Preset");
             ImGui::TextDisabled(
-                "Effekseer-style starter presets using reusable EngineContent textures. Private particle materials are created on first save.");
+                "Effekseer-style starter presets preview with session-owned materials. Save creates VFX-private material assets.");
             if (ImGui::BeginListBox("##vfx_presets", { 320.0f, 180.0f })) {
                 std::string lastCategory{};
                 for (const auto& preset :

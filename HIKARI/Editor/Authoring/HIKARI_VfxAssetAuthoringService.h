@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "Assets/HIKARI_AssetGuid.h"
+#include "Assets/Material/HIKARI_MaterialAssetData.h"
 #include "Assets/Vfx/HIKARI_VfxAssetData.h"
 #include "Assets/Vfx/HIKARI_VfxPresetRegistry.h"
 
@@ -22,6 +23,11 @@ namespace EDITOR {
         std::optional<VFX::VfxAssetData> authoredAsset{};
         std::string message{};
     };
+
+    bool BuildVfxPresetMaterialSource(
+        const VFX::PRESETS::VfxPresetMaterialRecipe& recipe,
+        MaterialAssetData& outMaterial,
+        std::string& outMessage);
 
     VfxAssetAuthoringResult CreateVfxAsset(
         AssetDatabase& assetDatabase,

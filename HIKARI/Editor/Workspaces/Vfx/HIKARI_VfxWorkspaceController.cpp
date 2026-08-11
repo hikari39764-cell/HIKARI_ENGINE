@@ -160,7 +160,7 @@ namespace HIKARI::EDITOR {
         previewInputOverrides_.clear();
         OnDocumentChanged();
         outMessage = "Created VFX from preset: " + preset->displayName +
-            "; save once to create its private textured materials";
+            "; textured preview is session-owned until first save";
         statusMessage_ = outMessage;
         return true;
     }
@@ -200,7 +200,15 @@ namespace HIKARI::EDITOR {
         std::string& outMessage) {
 
         ResetAssetRefreshStatus();
-        if (!document_.Save(database, outMessage)) {
+        const uint64_t revisionBeforeSave = document_.GetRevision();
+        const bool saved = document_.Save(database, outMessage);
+        if (document_.GetRevision() != revisionBeforeSave) {
+            // First-save preset authoring replaces transient material recipes
+            // with durable private material GUIDs. Recompile the preview
+            // program before the next frame so it cannot retain empty GUIDs.
+            OnDocumentChanged();
+        }
+        if (!saved) {
             statusMessage_ = outMessage;
             return false;
         }

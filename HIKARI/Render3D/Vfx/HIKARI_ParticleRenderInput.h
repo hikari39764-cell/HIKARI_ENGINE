@@ -2,11 +2,16 @@
 
 #include <array>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <type_traits>
 #include <vector>
 
 #include "Render3D/HIKARI_Math3D.h"
+
+namespace HIKARI {
+    class Material;
+}
 
 namespace HIKARI::RENDER3D::PARTICLES {
 
@@ -217,6 +222,11 @@ namespace HIKARI::RENDER3D::PARTICLES {
 
     struct ParticleEmitterRenderParameters {
         std::string materialAssetGuid{};
+        // Runtime-authored particle materials are an explicit preview path.
+        // When present they take precedence over the asset GUID for this
+        // submission and own their lifetime with the immutable render input
+        // snapshot. The renderer still validates the Particle domain.
+        std::shared_ptr<const Material> runtimeMaterialOverride{};
         ParticleBlendMode blendMode = ParticleBlendMode::Alpha;
         ParticleRenderShape shape = ParticleRenderShape::Sprite;
         ParticleBillboardMode billboardMode =

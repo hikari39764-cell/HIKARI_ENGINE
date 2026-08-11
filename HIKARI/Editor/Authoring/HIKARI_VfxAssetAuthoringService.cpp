@@ -111,31 +111,6 @@ namespace HIKARI::EDITOR {
             return found == asset.emitters.end() ? nullptr : &*found;
         }
 
-        bool BindParticleTexture(
-            MaterialAssetData& material,
-            const AssetGuid& textureAssetId,
-            std::string& outMessage) {
-
-            if (!textureAssetId.IsValid()) {
-                outMessage = "VFX preset material texture ID is empty";
-                return false;
-            }
-            const auto resource = std::find_if(
-                material.graph.resources.begin(),
-                material.graph.resources.end(),
-                [](const MaterialGraphResourceData& value) {
-                    return value.id == "resource.particleTexture";
-                });
-            if (resource == material.graph.resources.end()) {
-                outMessage =
-                    "Textured Particle Unlit template has no particle texture binding";
-                return false;
-            }
-            resource->assetGuid = textureAssetId;
-            resource->enabled = true;
-            return true;
-        }
-
         bool RollBackPrivateMaterials(
             AssetDatabase& database,
             const INTERNAL::VfxAssetAuthoringRoots& roots,
@@ -239,6 +214,37 @@ namespace HIKARI::EDITOR {
         }
 
     } // namespace
+
+    bool BuildVfxPresetMaterialSource(
+        const VFX::PRESETS::VfxPresetMaterialRecipe& recipe,
+        MaterialAssetData& outMaterial,
+        std::string& outMessage) {
+
+        if (!recipe.textureAssetId.IsValid()) {
+            outMessage = "VFX preset material texture ID is empty";
+            return false;
+        }
+        MaterialAssetData material =
+            ASSETS::MATERIAL::CreateMaterialFromTemplate(
+                MaterialTemplateId::ParticleUnlitTextured,
+                recipe.displayName);
+        const auto resource = std::find_if(
+            material.graph.resources.begin(),
+            material.graph.resources.end(),
+            [](const MaterialGraphResourceData& value) {
+                return value.id == "resource.particleTexture";
+            });
+        if (resource == material.graph.resources.end()) {
+            outMessage =
+                "Textured Particle Unlit template has no particle texture binding";
+            return false;
+        }
+        resource->assetGuid = recipe.textureAssetId;
+        resource->enabled = true;
+        outMaterial = std::move(material);
+        outMessage.clear();
+        return true;
+    }
 
     VfxAssetAuthoringResult CreateVfxAsset(
         AssetDatabase& database,
@@ -436,12 +442,9 @@ namespace HIKARI::EDITOR {
                 continue;
             }
 
-            MaterialAssetData material =
-                ASSETS::MATERIAL::CreateMaterialFromTemplate(
-                    MaterialTemplateId::ParticleUnlitTextured,
-                    recipe.displayName);
-            if (!BindParticleTexture(
-                    material, recipe.textureAssetId, result.message)) {
+            MaterialAssetData material{};
+            if (!BuildVfxPresetMaterialSource(
+                    recipe, material, result.message)) {
                 std::string rollbackMessage{};
                 if (!RollBackPrivateMaterials(
                         database,

@@ -10,12 +10,100 @@
 #include <utility>
 
 #include "Assets/HIKARI_AssetGuid.h"
+#include "Assets/HIKARI_AssetRegistry.h"
+#include "Assets/HIKARI_AssetTypes.h"
 #include "Assets/Vfx/Compiler/HIKARI_VfxCompiler.h"
+#include "Editor/Authoring/HIKARI_VfxAssetAuthoringService.h"
 #include "Editor/Views/HIKARI_EditorViewInstance.h"
+#include "Render3D/Core/HIKARI_Material.h"
+#include "Render3D/Material/HIKARI_MaterialRuntimeBuilder.h"
+#include "Render3D/Material/Program/HIKARI_MaterialProgramRegistry.h"
 #include "Render3D/Vfx/HIKARI_ParticleRenderInput.h"
 #include "Render3D/Views/HIKARI_EditorInteractiveViewRenderer.h"
 
 namespace HIKARI::EDITOR {
+
+    bool VfxWorkspaceController::RefreshPresetPreviewMaterials(
+        const AssetRegistry& assetRegistry,
+        std::string& outMessage) {
+
+        const auto& recipes = document_.GetPendingPresetMaterials();
+        if (recipes.empty()) {
+            presetPreviewMaterials_.clear();
+            presetPreviewMaterialRecipes_.clear();
+            presetPreviewMaterialRegistryInstanceId_ = 0u;
+            presetPreviewMaterialRegistryRevision_ = 0u;
+            outMessage.clear();
+            return true;
+        }
+        if (presetPreviewMaterialRegistryInstanceId_ ==
+                assetRegistry.GetInstanceId() &&
+            presetPreviewMaterialRegistryRevision_ ==
+                assetRegistry.GetRevision() &&
+            presetPreviewMaterialRecipes_ == recipes &&
+            presetPreviewMaterials_.size() == recipes.size()) {
+            outMessage.clear();
+            return true;
+        }
+
+        std::unordered_map<std::string, std::shared_ptr<const Material>>
+            rebuilt{};
+        rebuilt.reserve(recipes.size());
+        MaterialRuntimeBuilder runtimeBuilder{};
+        for (const VFX::PRESETS::VfxPresetMaterialRecipe& recipe :
+             recipes) {
+            if (recipe.emitterId.empty() ||
+                rebuilt.contains(recipe.emitterId)) {
+                outMessage =
+                    "VFX preset preview contains duplicate or empty emitter material bindings";
+                return false;
+            }
+            if (assetRegistry.FindAs<TextureAssetDescriptor>(
+                    AssetId{ recipe.textureAssetId.value }) == nullptr) {
+                outMessage =
+                    "VFX preset preview texture is not registered: " +
+                    recipe.textureAssetId.value;
+                return false;
+            }
+
+            MaterialAssetData source{};
+            if (!BuildVfxPresetMaterialSource(
+                    recipe, source, outMessage)) {
+                return false;
+            }
+            auto runtimeMaterial = std::make_shared<Material>();
+            RENDER3D::MATERIAL::MaterialProgramResolution resolution{};
+            if (!runtimeBuilder.BuildRuntimeMaterial(
+                    source,
+                    assetRegistry,
+                    RENDER3D::MATERIAL::
+                        GetRuntimeMaterialProgramRegistry(),
+                    *runtimeMaterial,
+                    "VFX preset preview/" +
+                        recipe.textureAssetId.value + "/" +
+                        recipe.emitterId,
+                    &resolution) ||
+                resolution.effectiveProgram.domain !=
+                    MaterialDomain::Particle) {
+                outMessage =
+                    "Failed to build Particle-domain preview material for emitter " +
+                    recipe.emitterId;
+                return false;
+            }
+            rebuilt.emplace(
+                recipe.emitterId,
+                std::move(runtimeMaterial));
+        }
+
+        presetPreviewMaterials_ = std::move(rebuilt);
+        presetPreviewMaterialRecipes_ = recipes;
+        presetPreviewMaterialRegistryInstanceId_ =
+            assetRegistry.GetInstanceId();
+        presetPreviewMaterialRegistryRevision_ =
+            assetRegistry.GetRevision();
+        outMessage.clear();
+        return true;
+    }
 
     void VfxWorkspaceController::SetPreviewPlaybackSpeed(
         float speed) noexcept {
@@ -413,6 +501,23 @@ namespace HIKARI::EDITOR {
     void VfxWorkspaceController::PublishPreviewRenderInput() {
         RENDER3D::PARTICLES::ParticleRenderInput input =
             playbackService_.GetRenderInput();
+        if (!presetPreviewMaterials_.empty() && document_.IsOpen()) {
+            const auto& emitters = document_.Asset().emitters;
+            for (RENDER3D::PARTICLES::ParticleEmitterSubmission& submission :
+                 input.emitters) {
+                const std::size_t index = submission.key.emitterIndex;
+                if (index >= emitters.size() ||
+                    !submission.render.materialAssetGuid.empty()) {
+                    continue;
+                }
+                const auto material = presetPreviewMaterials_.find(
+                    emitters[index].id);
+                if (material != presetPreviewMaterials_.end()) {
+                    submission.render.runtimeMaterialOverride =
+                        material->second;
+                }
+            }
+        }
         if (!hiddenEmitterIds_.empty() || !soloEmitterId_.empty()) {
             const auto& emitters = document_.IsOpen()
                 ? document_.Asset().emitters

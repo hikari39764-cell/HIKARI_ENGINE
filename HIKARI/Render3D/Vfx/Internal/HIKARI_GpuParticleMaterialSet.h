@@ -17,7 +17,7 @@ namespace HIKARI {
     namespace RENDER3D::PARTICLES::INTERNAL {
 
         struct ResolvedParticleMaterial {
-            Material* material = nullptr;
+            const Material* material = nullptr;
             bool rejected = false;
         };
 
@@ -39,6 +39,7 @@ namespace HIKARI {
 
             ResolvedParticleMaterial Resolve(
                 std::string_view materialAssetGuid,
+                const Material* runtimeMaterialOverride,
                 const AssetRegistry* assetRegistry,
                 const MATERIAL::MaterialExternalValueSnapshot*
                     externalValues);

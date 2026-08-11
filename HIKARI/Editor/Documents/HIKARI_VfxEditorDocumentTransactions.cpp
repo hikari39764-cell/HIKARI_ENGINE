@@ -53,15 +53,26 @@ namespace HIKARI::EDITOR {
                 "VFX preset packages can only be applied to a transient document";
             return false;
         }
-        if (!ApplyAsset(std::move(package.asset), outMessage)) {
-            return false;
-        }
-        pendingPresetMaterials_ = std::move(package.privateMaterials);
-        return true;
+        return ApplyState(
+            { std::move(package.asset),
+              std::move(package.privateMaterials) },
+            outMessage,
+            0u);
     }
 
     bool VfxEditorDocument::ApplyAsset(
         VFX::VfxAssetData asset,
+        std::string& outMessage,
+        uint64_t mergeGroup) {
+
+        return ApplyState(
+            { std::move(asset), pendingPresetMaterials_ },
+            outMessage,
+            mergeGroup);
+    }
+
+    bool VfxEditorDocument::ApplyState(
+        DocumentState state,
         std::string& outMessage,
         uint64_t mergeGroup) {
 
@@ -70,18 +81,23 @@ namespace HIKARI::EDITOR {
             return false;
         }
         const std::vector<VFX::VfxDiagnostic> diagnostics =
-            VFX::ValidateVfxAsset(asset);
+            VFX::ValidateVfxAsset(state.asset);
         if (VFX::HasVfxErrors(diagnostics)) {
             outMessage = FirstValidationError(diagnostics);
             return false;
         }
-        if (AreEquivalent(asset_, asset)) {
+        if (AreEquivalent(asset_, state.asset) &&
+            pendingPresetMaterials_ == state.pendingPresetMaterials) {
             outMessage = "No VFX changes";
             return true;
         }
 
-        VFX::VfxAssetData before = asset_;
-        asset_ = std::move(asset);
+        DocumentState before{
+            asset_, pendingPresetMaterials_
+        };
+        asset_ = std::move(state.asset);
+        pendingPresetMaterials_ =
+            std::move(state.pendingPresetMaterials);
         displayName_ = asset_.name;
         RecordApplied(std::move(before), mergeGroup);
         AdvanceRevision();
@@ -98,7 +114,9 @@ namespace HIKARI::EDITOR {
             return false;
         }
         --historyCursor_;
-        asset_ = history_[historyCursor_].before;
+        asset_ = history_[historyCursor_].before.asset;
+        pendingPresetMaterials_ =
+            history_[historyCursor_].before.pendingPresetMaterials;
         displayName_ = asset_.name;
         openMergeGroup_ = 0u;
         AdvanceRevision();
@@ -109,7 +127,9 @@ namespace HIKARI::EDITOR {
         if (!CanRedo()) {
             return false;
         }
-        asset_ = history_[historyCursor_].after;
+        asset_ = history_[historyCursor_].after.asset;
+        pendingPresetMaterials_ =
+            history_[historyCursor_].after.pendingPresetMaterials;
         ++historyCursor_;
         displayName_ = asset_.name;
         openMergeGroup_ = 0u;
@@ -168,6 +188,11 @@ namespace HIKARI::EDITOR {
         return !pendingPresetMaterials_.empty();
     }
 
+    const std::vector<VFX::PRESETS::VfxPresetMaterialRecipe>&
+        VfxEditorDocument::GetPendingPresetMaterials() const noexcept {
+        return pendingPresetMaterials_;
+    }
+
     bool VfxEditorDocument::AreEquivalent(
         const VFX::VfxAssetData& left,
         const VFX::VfxAssetData& right) {
@@ -183,7 +208,7 @@ namespace HIKARI::EDITOR {
     }
 
     void VfxEditorDocument::RecordApplied(
-        VFX::VfxAssetData before,
+        DocumentState before,
         uint64_t mergeGroup) {
 
         if (historyCursor_ < history_.size()) {
@@ -202,10 +227,14 @@ namespace HIKARI::EDITOR {
             (!savedHistoryCursor_ ||
                 *savedHistoryCursor_ != historyCursor_);
         if (merge) {
-            history_.back().after = asset_;
+            history_.back().after = {
+                asset_, pendingPresetMaterials_
+            };
             if (AreEquivalent(
-                    history_.back().before,
-                    history_.back().after)) {
+                    history_.back().before.asset,
+                    history_.back().after.asset) &&
+                history_.back().before.pendingPresetMaterials ==
+                    history_.back().after.pendingPresetMaterials) {
                 history_.pop_back();
                 historyCursor_ = history_.size();
                 openMergeGroup_ = 0u;
@@ -213,7 +242,9 @@ namespace HIKARI::EDITOR {
             return;
         }
         history_.push_back({
-            std::move(before), asset_, mergeGroup
+            std::move(before),
+            { asset_, pendingPresetMaterials_ },
+            mergeGroup
         });
         historyCursor_ = history_.size();
         openMergeGroup_ = mergeGroup;

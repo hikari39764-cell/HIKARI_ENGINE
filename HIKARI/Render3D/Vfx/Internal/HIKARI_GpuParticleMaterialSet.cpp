@@ -143,9 +143,26 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
 
     ResolvedParticleMaterial GpuParticleMaterialSet::Resolve(
         std::string_view materialAssetGuid,
+        const Material* runtimeMaterialOverride,
         const AssetRegistry* assetRegistry,
         const MATERIAL::MaterialExternalValueSnapshot* externalValues) {
         ResolvedParticleMaterial result{};
+        if (runtimeMaterialOverride != nullptr) {
+            const MATERIAL::RuntimeMaterialProgram* program =
+                MATERIAL::GetRuntimeMaterialProgramRegistry().Find(
+                    runtimeMaterialOverride->GetMaterialProgramId());
+            if (program == nullptr ||
+                program->ir.domain != MaterialDomain::Particle) {
+                HIKARI_LOG_ERROR(
+                    "[GpuParticleRenderer][RuntimeMaterialDomainMismatch] "
+                    "runtime override is not a registered Particle-domain "
+                    "material; using the visible diagnostic magenta fallback.");
+                result.rejected = true;
+                return result;
+            }
+            result.material = runtimeMaterialOverride;
+            return result;
+        }
         if (materialAssetGuid.empty() || assetRegistry == nullptr) {
             return result;
         }

@@ -23,6 +23,8 @@
 
 namespace HIKARI {
     class AssetDatabase;
+    class AssetRegistry;
+    class Material;
     struct SceneEnvironment;
 }
 
@@ -107,6 +109,7 @@ namespace HIKARI::EDITOR {
         void DrawDockSpace(bool resetDefaultDockLayout) const;
         VfxWorkspaceResult Draw(
             AssetDatabase& assetDatabase,
+            const AssetRegistry& assetRegistry,
             EditorViewInstance& previewView,
             uint64_t frameIndex,
             float deltaSeconds,
@@ -302,6 +305,9 @@ namespace HIKARI::EDITOR {
             std::string& outMessage);
         void ReleasePreviewNamespace();
         void PublishPreviewRenderInput();
+        bool RefreshPresetPreviewMaterials(
+            const AssetRegistry& assetRegistry,
+            std::string& outMessage);
         void NormalizePreviewTimelineRange() noexcept;
         void UpdatePreview(uint64_t frameIndex, float deltaSeconds);
         void SubmitPreviewRequest(
@@ -352,8 +358,14 @@ namespace HIKARI::EDITOR {
         std::shared_ptr<const VFX::VfxProgram> previewProgram_{};
         std::shared_ptr<const RENDER3D::PARTICLES::ParticleRenderInput>
             previewRenderInput_{};
+        std::unordered_map<std::string, std::shared_ptr<const Material>>
+            presetPreviewMaterials_{};
+        std::vector<VFX::PRESETS::VfxPresetMaterialRecipe>
+            presetPreviewMaterialRecipes_{};
         std::unordered_map<std::string, VFX::VfxValue>
             previewInputOverrides_{};
+        uint64_t presetPreviewMaterialRegistryInstanceId_ = 0u;
+        uint64_t presetPreviewMaterialRegistryRevision_ = 0u;
         uint64_t previewProgramRevision_ = 0u;
         uint64_t previewRenderRevision_ = 1u;
         uint64_t previewFrameIndex_ = 0u;
