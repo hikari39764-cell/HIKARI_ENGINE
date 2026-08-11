@@ -7,6 +7,7 @@
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/HIKARI_AssetRecord.h"
 #include "Assets/Material/Authoring/HIKARI_MaterialAssetAuthoringService.h"
+#include "Assets/Vfx/HIKARI_VfxBuiltinTextureCatalog.h"
 #include "Editor/DragDrop/HIKARI_EditorAssetDragDrop.h"
 
 #if defined(HIKARI_WITH_EDITOR)
@@ -27,18 +28,19 @@ namespace HIKARI::EDITOR {
                 ASSETS::MATERIAL::MaterialAuthoringDocument material{};
                 std::string message{};
                 if (!service.Load(record->guid, material, message) ||
-                    material.source.domain != MaterialDomain::Particle) {
+                    !IsRenderableMaterialAssetKind(material.source.kind)) {
                     continue;
                 }
                 choices.push_back({
                     record->guid,
-                    GetAssetRecordDisplayName(*record),
+                    GetAssetRecordDisplayName(*record) + " [" +
+                        std::string(ToString(material.source.domain)) + "]",
                 });
             }
             return choices;
         }
 
-        bool IsParticleMaterial(
+        bool IsVfxRenderableMaterial(
             AssetDatabase& database,
             const AssetGuid& guid,
             std::string& outMessage) {
@@ -48,12 +50,36 @@ namespace HIKARI::EDITOR {
             if (!service.Load(guid, material, outMessage)) {
                 return false;
             }
-            if (material.source.domain != MaterialDomain::Particle) {
+            if (!IsRenderableMaterialAssetKind(material.source.kind)) {
                 outMessage =
-                    "DOMAIN_MISMATCH: VFX renderers accept only Particle Material assets";
+                    "KIND_MISMATCH: VFX renderers require a renderable Material asset";
                 return false;
             }
             return true;
+        }
+
+        std::vector<VfxParticleTextureChoice> CollectParticleTextures(
+            AssetDatabase& database) {
+
+            std::vector<VfxParticleTextureChoice> choices{};
+            for (const VFX::VfxBuiltinTextureDescriptor& descriptor :
+                 VFX::GetVfxBuiltinTextureCatalog()) {
+                choices.push_back({
+                    AssetGuid{ std::string(descriptor.assetId) },
+                    std::string(descriptor.displayName),
+                    true,
+                });
+            }
+            for (const AssetRecord* record :
+                 database.CollectByType(AssetType::Texture)) {
+                if (record == nullptr || !record->guid.IsValid()) continue;
+                choices.push_back({
+                    record->guid,
+                    GetAssetRecordDisplayName(*record),
+                    false,
+                });
+            }
+            return choices;
         }
 
     } // namespace
@@ -85,17 +111,19 @@ namespace HIKARI::EDITOR {
 
         bool changed = false;
         const char* preview = !current.IsValid()
-            ? "Built-in Particle Unlit"
+            ? "Built-in VFX Unlit"
             : selected != nullptr
                 ? selected->label.c_str()
-                : "Domain mismatch or missing material";
-        if (ImGui::BeginCombo("Particle Material", preview)) {
+                : "Missing or non-renderable material";
+        ImGui::BeginGroup();
+        if (ImGui::BeginCombo("Material", preview)) {
             if (ImGui::Selectable(
-                    "Built-in Particle Unlit", !current.IsValid())) {
+                    "Built-in VFX Unlit", !current.IsValid())) {
                 outSelected = {};
                 changed = true;
             }
             for (const VfxParticleMaterialChoice& choice : catalog.choices) {
+                ImGui::PushID(choice.guid.value.c_str());
                 if (ImGui::Selectable(
                         choice.label.c_str(), choice.guid == current)) {
                     outSelected = choice.guid;
@@ -104,18 +132,20 @@ namespace HIKARI::EDITOR {
                 if (ImGui::IsItemHovered()) {
                     ImGui::SetTooltip("%s", choice.guid.value.c_str());
                 }
+                ImGui::PopID();
             }
             ImGui::EndCombo();
         }
+        ImGui::EndGroup();
         DroppedAssetPayload dropped{};
         if (AcceptAssetDropOfType(
                 assetDatabase, AssetType::Material, dropped) &&
             dropped.record != nullptr) {
             std::string validationMessage{};
-            if (IsParticleMaterial(
+            if (IsVfxRenderableMaterial(
                     assetDatabase, dropped.guid, validationMessage)) {
                 outSelected = dropped.guid;
-                outMessage = "Particle Material assigned by drag and drop";
+                outMessage = "VFX Material assigned by drag and drop";
                 changed = true;
             } else {
                 outMessage = validationMessage.empty()
@@ -127,18 +157,18 @@ namespace HIKARI::EDITOR {
         if (current.IsValid() && selected == nullptr) {
             ImGui::TextColored(
                 { 1.0f, 0.48f, 0.30f, 1.0f },
-                "DOMAIN_MISMATCH: the assigned asset is not a Particle Material.");
+                "The assigned asset is missing or is not a renderable Material.");
         } else if (catalog.choices.empty()) {
             ImGui::TextDisabled(
-                "No Particle Material exists yet. The built-in fallback remains usable.");
+                "No Material exists yet. The built-in VFX fallback remains usable.");
         }
-        if (ImGui::Button("Create Particle Material")) {
+        if (ImGui::Button("Create VFX Material")) {
             ASSETS::MATERIAL::MaterialAssetAuthoringService service(
                 assetDatabase);
             const ASSETS::MATERIAL::MaterialAuthoringResult created =
                 service.Create(
                     MaterialTemplateId::ParticleUnlit,
-                    "New Particle Material");
+                    "New VFX Material");
             outMessage = created.message;
             if (created.success && created.assetGuid.IsValid()) {
                 outSelected = created.assetGuid;
@@ -149,13 +179,13 @@ namespace HIKARI::EDITOR {
         }
         ImGui::SameLine();
         ImGui::BeginDisabled(!current.IsValid() || selected == nullptr);
-        if (ImGui::Button("Edit Particle Material")) {
+        if (ImGui::Button("Edit Material")) {
             outEditAssetGuid = current;
         }
         ImGui::EndDisabled();
         ImGui::SameLine();
         ImGui::TextDisabled(
-            "Procedural nodes, textures, Time, Position and Runtime Variables are supported.");
+            "Surface and Particle materials share the main runtime; particle geometry supplies UV and Tint.");
         return changed;
 #else
         (void)assetDatabase;
@@ -164,6 +194,92 @@ namespace HIKARI::EDITOR {
         (void)outSelected;
         (void)outCreatedAssetGuid;
         (void)outEditAssetGuid;
+        (void)outMessage;
+        return false;
+#endif
+    }
+
+    bool DrawVfxParticleTextureField(
+        AssetDatabase& assetDatabase,
+        VfxParticleTextureCatalog& catalog,
+        const AssetGuid& current,
+        AssetGuid& outSelected,
+        std::string& outMessage) {
+#if defined(HIKARI_WITH_EDITOR)
+        const uint64_t contentRevision =
+            assetDatabase.GetContentRevision();
+        if (catalog.contentRevision != contentRevision) {
+            catalog.choices = CollectParticleTextures(assetDatabase);
+            catalog.contentRevision = contentRevision;
+        }
+
+        const VfxParticleTextureChoice* selected = nullptr;
+        for (const VfxParticleTextureChoice& choice : catalog.choices) {
+            if (choice.guid == current) {
+                selected = &choice;
+                break;
+            }
+        }
+        const char* preview = !current.IsValid()
+            ? "None (white particle)"
+            : selected != nullptr
+                ? selected->label.c_str()
+                : "Missing texture";
+        bool changed = false;
+        ImGui::BeginGroup();
+        if (ImGui::BeginCombo("Color Texture", preview)) {
+            if (ImGui::Selectable(
+                    "None (white particle)", !current.IsValid())) {
+                outSelected = {};
+                changed = true;
+            }
+            bool separatorDrawn = false;
+            bool builtInHeaderDrawn = false;
+            for (const VfxParticleTextureChoice& choice : catalog.choices) {
+                if (!choice.builtIn && !separatorDrawn) {
+                    ImGui::SeparatorText("Project Textures");
+                    separatorDrawn = true;
+                }
+                if (choice.builtIn && !builtInHeaderDrawn) {
+                    ImGui::SeparatorText("Engine VFX Textures");
+                    builtInHeaderDrawn = true;
+                }
+                ImGui::PushID(choice.guid.value.c_str());
+                if (ImGui::Selectable(
+                        choice.label.c_str(), choice.guid == current)) {
+                    outSelected = choice.guid;
+                    changed = true;
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("%s", choice.guid.value.c_str());
+                }
+                ImGui::PopID();
+            }
+            ImGui::EndCombo();
+        }
+        ImGui::EndGroup();
+
+        DroppedAssetPayload dropped{};
+        if (AcceptAssetDropOfType(
+                assetDatabase, AssetType::Texture, dropped) &&
+            dropped.record != nullptr) {
+            outSelected = dropped.guid;
+            outMessage = "Particle color texture assigned by drag and drop";
+            changed = true;
+        }
+        if (current.IsValid() && selected == nullptr) {
+            ImGui::TextColored(
+                { 1.0f, 0.48f, 0.30f, 1.0f },
+                "The assigned particle texture is missing.");
+        }
+        ImGui::TextDisabled(
+            "Engine VFX textures are shared; project Texture assets can be dropped here.");
+        return changed;
+#else
+        (void)assetDatabase;
+        (void)catalog;
+        (void)current;
+        (void)outSelected;
         (void)outMessage;
         return false;
 #endif

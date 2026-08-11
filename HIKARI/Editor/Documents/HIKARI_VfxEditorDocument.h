@@ -61,15 +61,9 @@ namespace EDITOR {
         bool IsDirty() const noexcept;
         bool CanUndo() const noexcept;
         bool CanRedo() const noexcept;
-        bool HasPendingPresetMaterials() const noexcept;
-        const std::vector<VFX::PRESETS::VfxPresetMaterialRecipe>&
-            GetPendingPresetMaterials() const noexcept;
-
     private:
         struct DocumentState {
             VFX::VfxAssetData asset{};
-            std::vector<VFX::PRESETS::VfxPresetMaterialRecipe>
-                pendingPresetMaterials{};
         };
 
         struct HistoryEntry {
@@ -97,8 +91,6 @@ namespace EDITOR {
         std::filesystem::path sourcePath_{};
         std::string displayName_{};
         VFX::VfxAssetData asset_{};
-        std::vector<VFX::PRESETS::VfxPresetMaterialRecipe>
-            pendingPresetMaterials_{};
         std::vector<HistoryEntry> history_{};
         size_t historyCursor_ = 0u;
         std::optional<size_t> savedHistoryCursor_{};

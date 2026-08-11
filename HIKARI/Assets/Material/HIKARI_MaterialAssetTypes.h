@@ -18,6 +18,12 @@ namespace HIKARI {
         Ramp,
     };
 
+    constexpr bool IsRenderableMaterialAssetKind(
+        MaterialAssetKind kind) noexcept {
+        return kind == MaterialAssetKind::Material ||
+            kind == MaterialAssetKind::Instance;
+    }
+
     enum class MaterialDomain : uint8_t {
         Surface,
         Particle,

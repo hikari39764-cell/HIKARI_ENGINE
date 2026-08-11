@@ -4,7 +4,6 @@
 #include <string_view>
 #include <vector>
 
-#include "Assets/HIKARI_AssetGuid.h"
 #include "Assets/Vfx/HIKARI_VfxAssetData.h"
 
 namespace HIKARI::VFX::PRESETS {
@@ -16,24 +15,13 @@ namespace HIKARI::VFX::PRESETS {
         std::string summary{};
     };
 
-    struct VfxPresetMaterialRecipe {
-        std::string emitterId{};
-        std::string displayName{};
-        AssetGuid textureAssetId{};
-
-        bool operator==(
-            const VfxPresetMaterialRecipe&) const noexcept = default;
-    };
-
     struct VfxPresetPackage {
         VfxAssetData asset{};
-        std::vector<VfxPresetMaterialRecipe> privateMaterials{};
     };
 
-    // Effekseer-aligned starter presets. Each factory builds a complete,
-    // ready-to-edit VfxAssetData plus VFX-private material recipes. Recipes
-    // reference reusable EngineContent textures and are materialized only when
-    // the transient document is first saved.
+    // Effekseer-aligned starter presets reference reusable EngineContent
+    // textures directly through Render Common. Custom Material authoring is
+    // an explicit user choice and never generated as preset-private state.
     const std::vector<VfxPresetDescriptor>& GetVfxPresetCatalog();
     const VfxPresetDescriptor* FindVfxPreset(std::string_view id) noexcept;
     VfxAssetData MakeVfxPresetAsset(std::string_view id);

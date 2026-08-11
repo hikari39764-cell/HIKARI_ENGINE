@@ -64,6 +64,10 @@ namespace HIKARI {
             gEditorGameViewportHeight = gEditorGameViewportVisible ? height : 0;
         }
 
+        bool IsEditorGameViewportVisible() noexcept {
+            return gEditorGameViewportVisible;
+        }
+
         void UpdateGpuContexts() {
             GFX::PublishCurrentContext(gGraphicsCore.BuildContext());
             const GFX::Context& context = GFX::GetCurrentContext();
@@ -73,8 +77,6 @@ namespace HIKARI {
             RENDER3D::UpdateClusterGeometryResourceContext(context);
             DX::DxRenderer::UpdateContext(context);
             POST::PostSystem::UpdateContext(context);
-            INTERNAL::GetRuntimeServiceState().gpuParticleRenderer.
-                UpdateContext(context);
         }
 
         void QueueWindowResize(int width, int height) {

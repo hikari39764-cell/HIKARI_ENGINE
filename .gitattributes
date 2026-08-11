@@ -49,6 +49,7 @@ Assets/**/*.bin filter=lfs diff=lfs merge=lfs -text
 Assets/**/*.dds filter=lfs diff=lfs merge=lfs -text
 Assets/**/*.png filter=lfs diff=lfs merge=lfs -text
 HIKARI/EngineContent/**/*.dds filter=lfs diff=lfs merge=lfs -text
+HIKARI/EngineContent/**/*.htex filter=lfs diff=lfs merge=lfs -text
 HIKARI/EngineContent/**/*.png filter=lfs diff=lfs merge=lfs -text
 HIKARI/EngineContent/**/*.tga filter=lfs diff=lfs merge=lfs -text
 

@@ -7,6 +7,7 @@
 #include <memory>
 #include <numbers>
 #include <utility>
+#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
 #include "Runtime/Binding/HIKARI_RuntimeBindingCatalogJson.h"
 #include "Runtime/Binding/Adapters/HIKARI_RuntimeMaterialProjection.h"
@@ -18,7 +19,8 @@
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Debug/HIKARI_Renderer3D_Debug.h"
 #include "Render3D/Render/HIKARI_ModelRenderer.h"
-#include "Render3D/Vfx/HIKARI_GpuParticleRenderer.h"
+#include "Render3D/Vfx/HIKARI_ParticleGpuDrivenPass.h"
+#include "Render3D/Vfx/HIKARI_ParticleRenderInput.h"
 #if defined(HIKARI_WITH_EDITOR)
 #include "Render3D/Views/HIKARI_EditorInteractiveViewRenderer.h"
 #endif
@@ -192,7 +194,7 @@ namespace HIKARI {
         state_->runtime.materialProjectionSourceSnapshot.reset();
         state_->runtime.materialExternalValueSnapshot.reset();
         state_->runtime.bindingStore.Clear();
-        SERVICES::GetGpuParticleRenderer().ReleaseNamespace(
+        MESHRENDERER::ReleaseParticleNamespace(
             state_->runtime.vfxPlaybackService.GetPlaybackNamespace());
         state_->runtime.vfxPlaybackService.Reset();
         state_->runtime.fixedStepClock.Reset();
@@ -420,38 +422,56 @@ namespace HIKARI {
         const Camera3D& renderCamera = state_->camera.editorCamera;
 
         const GFX::Context graphics = GFX::GetCurrentContext();
-        SKYRENDERER::Render(graphics, renderCamera, activeEnvironment, state_->assets.Models(), state_->lighting.sky);
-        if (DrawDebugHelpers()) {
-            state_->editor.componentGizmoRenderer.SubmitWorldGizmos(
-                state_->runtime.world,
-                state_->editor.componentGizmoState,
-                state_->editor.selectedGizmoObjectId,
-                renderCamera.GetAspect(),
-                renderCamera.GetPosition());
+        const bool renderPrimaryView =
+            !SERVICES::ShouldProduceEditorUiFrame() ||
+            SERVICES::IsEditorGameViewportVisible();
+        if (renderPrimaryView) {
+            SKYRENDERER::Render(
+                graphics,
+                renderCamera,
+                activeEnvironment,
+                state_->assets.Models(),
+                state_->lighting.sky);
+            if (DrawDebugHelpers()) {
+                state_->editor.componentGizmoRenderer.SubmitWorldGizmos(
+                    state_->runtime.world,
+                    state_->editor.componentGizmoState,
+                    state_->editor.selectedGizmoObjectId,
+                    renderCamera.GetAspect(),
+                    renderCamera.GetPosition());
+            }
+            RENDER3D::RenderViewContext primaryView{};
+            primaryView.viewId = RENDER3D::kPrimaryRenderViewId;
+            primaryView.purpose = state_->runtime.playActive
+                ? RENDER3D::RenderViewPurpose::Game
+                : RENDER3D::RenderViewPurpose::EditorScene;
+            primaryView.cameraFrame = &state_->camera.resolvedFrame;
+            const RENDER3D::PARTICLES::ParticleRenderFrameSource
+                particleFrameSource{
+                    &state_->runtime.vfxPlaybackService.GetRenderInput(),
+                    &state_->assets.Registry(),
+                    state_->runtime.materialExternalValueSnapshot.get(),
+                };
+            primaryView.particleFrameSource = &particleFrameSource;
+            MODELRENDERER::RenderAll(
+                graphics,
+                primaryView,
+                activeEnvironment,
+                sceneLighting,
+                state_->editor.viewportDebugViewState.renderView);
+            const auto& particleReceipt =
+                MESHRENDERER::GetParticleGpuDrivenPassStats();
+            if (particleReceipt.simulationAccepted) {
+                (void)state_->runtime.vfxPlaybackService.
+                    AcknowledgeRenderInput(
+                        particleReceipt.simulationAcceptedToken);
+            }
+            SubmitFrozenCullingCameraDebugFrustum();
+            RENDERER3D::RenderAll(
+                renderCamera,
+                static_cast<float>(captureW),
+                static_cast<float>(captureH));
         }
-        RENDER3D::RenderViewContext primaryView{};
-        primaryView.viewId = RENDER3D::kPrimaryRenderViewId;
-        primaryView.purpose = state_->runtime.playActive
-            ? RENDER3D::RenderViewPurpose::Game
-            : RENDER3D::RenderViewPurpose::EditorScene;
-        primaryView.cameraFrame = &state_->camera.resolvedFrame;
-        MODELRENDERER::RenderAll(
-            graphics,
-            primaryView,
-            activeEnvironment,
-            sceneLighting,
-            state_->editor.viewportDebugViewState.renderView);
-        SubmitFrozenCullingCameraDebugFrustum();
-        RENDERER3D::RenderAll(renderCamera, static_cast<float>(captureW), static_cast<float>(captureH));
-        (void)SERVICES::GetGpuParticleRenderer().Render(
-            state_->runtime.vfxPlaybackService.GetRenderInput(),
-            renderCamera,
-            &state_->assets.Registry(),
-            state_->runtime.materialExternalValueSnapshot.get(),
-            RENDER3D::PARTICLES::ParticleRenderViewExtent{
-                static_cast<uint32_t>(captureW),
-                static_cast<uint32_t>(captureH),
-            });
 #if defined(HIKARI_WITH_EDITOR)
         (void)RENDER3D::EDITORVIEW::RenderPending(
             activeEnvironment,
@@ -459,7 +479,6 @@ namespace HIKARI {
             state_->identity.documentRevision,
             state_->assets.Models(),
             state_->lighting.sky,
-            &SERVICES::GetGpuParticleRenderer(),
             &state_->assets.Registry(),
             state_->runtime.materialExternalValueSnapshot.get());
 #endif

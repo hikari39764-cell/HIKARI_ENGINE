@@ -354,7 +354,6 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
 
         if (!root.is_object() || !root.contains("version") ||
             !root["version"].is_number_unsigned() ||
-            root["version"].get<uint32_t>() != kVfxSourceVersion ||
             !root.contains("name") || !root["name"].is_string() ||
             !root.contains("durationSeconds") ||
             !root["durationSeconds"].is_number() ||
@@ -362,12 +361,18 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
             !root.contains("inputs") || !root["inputs"].is_array() ||
             !root.contains("emitters") ||
             !root["emitters"].is_array()) {
-            outError = "invalid or unsupported VFX source v2 document";
+            outError = "invalid VFX source document";
+            return false;
+        }
+
+        const uint32_t sourceVersion = root["version"].get<uint32_t>();
+        if (sourceVersion < 2u || sourceVersion > kVfxSourceVersion) {
+            outError = "unsupported VFX source version";
             return false;
         }
 
         VfxAssetData asset{};
-        asset.version = root["version"].get<uint32_t>();
+        asset.version = kVfxSourceVersion;
         asset.name = root["name"].get<std::string>();
         asset.durationSeconds = root["durationSeconds"].get<float>();
         asset.loop = root["loop"].get<bool>();
@@ -396,8 +401,9 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
         }
         for (const Json& item : root["emitters"]) {
             VfxEmitterData emitter{};
-            if (!ReadVfxSourceEmitter(item, emitter)) {
-                outError = "invalid VFX emitter v2 document";
+            if (!ReadVfxSourceEmitter(
+                    item, sourceVersion, emitter)) {
+                outError = "invalid VFX emitter document";
                 return false;
             }
             asset.emitters.push_back(std::move(emitter));
@@ -412,5 +418,4 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
     }
 
 } // namespace HIKARI::VFX::SERIALIZATION::INTERNAL
-
 

@@ -306,6 +306,8 @@ namespace HIKARI {
                 outError.clear();
                 return descriptor->program;
             });
+        state_->runtime.vfxPlaybackService.
+            SetReliableRenderDeliveryEnabled(true);
 
         std::string physicsSettingsMessage{};
         if (!state_->runtime.physicsSettings.Load(

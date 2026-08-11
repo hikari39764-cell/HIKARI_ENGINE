@@ -6,7 +6,6 @@
 #include "Platform/HIKARI_Win32Window.h"
 #include "Runtime/HIKARI_GamePresentationController.h"
 #include "Runtime/HIKARI_RuntimeHost.h"
-#include "Render3D/Vfx/HIKARI_GpuParticleRenderer.h"
 
 #include <cstdint>
 #include <string>
@@ -18,7 +17,6 @@ namespace HIKARI::SERVICES::INTERNAL {
         INPUT::InputService inputService{};
         RUNTIME::GamePresentationController gamePresentationController{};
         GFX::Dx12Core core{};
-        RENDER3D::PARTICLES::GpuParticleRenderer gpuParticleRenderer{};
         bool comInitialized = false;
         RuntimeHostMode runtimeHostMode = RuntimeHostMode::Game;
         bool enableImGui = false;

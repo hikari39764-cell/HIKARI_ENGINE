@@ -63,9 +63,7 @@ namespace HIKARI::EDITOR {
         }
 
         NormalizePreviewTimelineRange();
-        const float duration = (std::max)(
-            document_.Asset().durationSeconds,
-            kMinimumTimelineRange);
+        const float duration = GetPreviewTimelineDuration();
 
         if (!previewPlaying_) {
             if (ImGui::Button("Play", { 58.0f, 26.0f })) {

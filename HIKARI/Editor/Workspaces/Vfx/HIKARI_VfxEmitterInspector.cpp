@@ -76,7 +76,7 @@ namespace HIKARI::EDITOR {
                     EditorGlyph::Material,
                     "Render",
                     "Render",
-                    "Color, particle material and render shape",
+                    "Color, material and render shape",
                 },
                 EmitterInspectorPageDescriptor{
                     VfxEmitterInspectorPage::Bindings,
@@ -228,12 +228,29 @@ namespace HIKARI::EDITOR {
                 emitter.spawn.burstCount,
                 0u,
                 emitter.spawn.maximumParticles);
+            constexpr std::array<std::string_view, 2u> capacityModes{
+                "Automatic", "Fixed"
+            };
+            editor.Choice(
+                "Capacity Mode",
+                "capacityMode",
+                VFX::ToString(emitter.spawn.capacityMode),
+                capacityModes.data(),
+                capacityModes.size());
             editor.Unsigned(
-                "Maximum Particles",
+                emitter.spawn.capacityMode ==
+                    VFX::VfxParticleCapacityMode::Automatic
+                    ? "Capacity Ceiling"
+                    : "Maximum Particles",
                 "maximumParticles",
                 emitter.spawn.maximumParticles,
                 1u,
                 RENDER3D::PARTICLES::kGpuParticlePoolCapacity);
+            if (emitter.spawn.capacityMode ==
+                VFX::VfxParticleCapacityMode::Automatic) {
+                ImGui::TextDisabled(
+                    "GPU capacity is derived from spawn rate and maximum lifetime.");
+            }
             break;
         }
         case VfxEmitterInspectorPage::Position: {
@@ -360,57 +377,90 @@ namespace HIKARI::EDITOR {
                 "Color over Life", "value", emitter.color.value);
 
             ImGui::SeparatorText("Render Common");
-            AssetGuid selected = emitter.renderCommon.materialAssetGuid;
-            AssetGuid created{};
-            AssetGuid editRequested{};
-            if (DrawVfxParticleMaterialField(
-                    database,
-                    particleMaterialCatalog_,
-                    emitter.renderCommon.materialAssetGuid,
-                    selected,
-                    created,
-                    editRequested,
-                    statusMessage_)) {
-                std::string assignmentMessage{};
-                const bool assigned = SetProperty(
-                    emitter.renderCommon.id,
-                    "materialAssetGuid",
-                    selected.value,
-                    assignmentMessage,
-                    0u,
-                    &database);
-                statusMessage_ = assignmentMessage;
-                if (assigned && created.IsValid()) {
-                    std::string refreshMessage{};
-                    if (!RefreshAuthoredAsset(created, refreshMessage)) {
-                        statusMessage_ +=
-                            "; live Particle Material refresh failed: " +
-                            refreshMessage;
-                    } else if (!refreshMessage.empty()) {
-                        statusMessage_ += "; " + refreshMessage;
-                    }
-                }
-            }
-            if (editRequested.IsValid()) {
-                if (!materialEditCallback_) {
-                    statusMessage_ =
-                        "Particle Material editor is not available";
-                } else {
-                    std::string editMessage{};
-                    const bool opened = materialEditCallback_(
-                        editRequested, editMessage);
-                    statusMessage_ = editMessage.empty()
-                        ? opened
-                            ? "Opening Particle Material editor"
-                            : "Failed to open Particle Material editor"
-                        : std::move(editMessage);
-                }
-            }
             VfxInspectorPropertyEditor renderCommonEditor(
                 *this,
                 database,
                 emitter.renderCommon.id,
                 statusMessage_);
+            constexpr std::array<std::string_view, 2u> materialModes{
+                "StandardUnlit", "CustomMaterial"
+            };
+            renderCommonEditor.Choice(
+                "Appearance",
+                "materialMode",
+                VFX::ToString(emitter.renderCommon.materialMode),
+                materialModes.data(),
+                materialModes.size());
+            if (emitter.renderCommon.materialMode ==
+                VFX::VfxMaterialMode::StandardUnlit) {
+                AssetGuid selected =
+                    emitter.renderCommon.colorTextureAssetGuid;
+                if (DrawVfxParticleTextureField(
+                        database,
+                        particleTextureCatalog_,
+                        emitter.renderCommon.colorTextureAssetGuid,
+                        selected,
+                        statusMessage_)) {
+                    std::string assignmentMessage{};
+                    (void)SetProperty(
+                        emitter.renderCommon.id,
+                        "colorTextureAssetGuid",
+                        selected.value,
+                        assignmentMessage,
+                        0u,
+                        &database);
+                    statusMessage_ = assignmentMessage;
+                }
+            } else {
+                AssetGuid selected =
+                    emitter.renderCommon.materialAssetGuid;
+                AssetGuid created{};
+                AssetGuid editRequested{};
+                if (DrawVfxParticleMaterialField(
+                        database,
+                        particleMaterialCatalog_,
+                        emitter.renderCommon.materialAssetGuid,
+                        selected,
+                        created,
+                        editRequested,
+                        statusMessage_)) {
+                    std::string assignmentMessage{};
+                    const bool assigned = SetProperty(
+                        emitter.renderCommon.id,
+                        "materialAssetGuid",
+                        selected.value,
+                        assignmentMessage,
+                        0u,
+                        &database);
+                    statusMessage_ = assignmentMessage;
+                    if (assigned && created.IsValid()) {
+                        std::string refreshMessage{};
+                        if (!RefreshAuthoredAsset(
+                                created, refreshMessage)) {
+                            statusMessage_ +=
+                                "; live Material refresh failed: " +
+                                refreshMessage;
+                        } else if (!refreshMessage.empty()) {
+                            statusMessage_ += "; " + refreshMessage;
+                        }
+                    }
+                }
+                if (editRequested.IsValid()) {
+                    if (!materialEditCallback_) {
+                        statusMessage_ =
+                            "Material editor is not available";
+                    } else {
+                        std::string editMessage{};
+                        const bool opened = materialEditCallback_(
+                            editRequested, editMessage);
+                        statusMessage_ = editMessage.empty()
+                            ? opened
+                                ? "Opening Material editor"
+                                : "Failed to open Material editor"
+                            : std::move(editMessage);
+                    }
+                }
+            }
             constexpr std::array<std::string_view, 2u> blendModes{
                 "Alpha", "Additive"
             };

@@ -8,6 +8,7 @@
 #include <unordered_map>
 
 #include "Assets/Vfx/HIKARI_VfxPropertySchema.h"
+#include "Assets/Vfx/HIKARI_VfxBuiltinTextureCatalog.h"
 #include "Assets/Vfx/Serialization/HIKARI_VfxSourceJson.h"
 
 namespace HIKARI::VFX {
@@ -286,6 +287,67 @@ namespace HIKARI::VFX {
                 : ParticleBlendMode::Alpha;
         }
 
+        ParticleMaterialMode ConvertMaterialMode(
+            VfxMaterialMode mode) noexcept {
+
+            return mode == VfxMaterialMode::CustomMaterial
+                ? ParticleMaterialMode::CustomMaterial
+                : ParticleMaterialMode::StandardUnlit;
+        }
+
+        uint32_t CompileParticleCapacity(
+            const VfxAssetData& asset,
+            const VfxEmitterData& emitter) noexcept {
+
+            if (emitter.spawn.capacityMode ==
+                VfxParticleCapacityMode::Fixed) {
+                return emitter.spawn.maximumParticles;
+            }
+
+            const double maximumLifetime =
+                emitter.basic.lifetime.mode ==
+                    VfxDistributionMode::RandomRange
+                ? emitter.basic.lifetime.maximum
+                : emitter.basic.lifetime.minimum;
+            const double continuousWindow = asset.loop
+                ? maximumLifetime
+                : (std::min)(
+                    maximumLifetime,
+                    static_cast<double>(asset.durationSeconds));
+            const uint64_t continuousCapacity =
+                emitter.spawn.ratePerSecond > 0.0f
+                ? static_cast<uint64_t>(std::ceil(
+                    static_cast<double>(emitter.spawn.ratePerSecond) *
+                    continuousWindow)) + 2u
+                : 0u;
+
+            uint64_t overlappingBursts = 1u;
+            if (asset.loop && emitter.spawn.burstCount > 0u &&
+                asset.durationSeconds > 0.0f) {
+                overlappingBursts = (std::max)(
+                    uint64_t{ 1u },
+                    static_cast<uint64_t>(std::ceil(
+                        maximumLifetime /
+                        static_cast<double>(asset.durationSeconds))));
+            }
+            const uint64_t burstCapacity =
+                static_cast<uint64_t>(emitter.spawn.burstCount) *
+                overlappingBursts;
+            const uint64_t required = (std::max)(
+                uint64_t{ 1u },
+                continuousCapacity + burstCapacity);
+            // Match the GPU simulation/compaction thread-group granularity so
+            // the authored automatic capacity reflects the actual pool range.
+            constexpr uint64_t kAllocationGranularity = 64u;
+            const uint64_t aligned =
+                (required + kAllocationGranularity - 1u) /
+                kAllocationGranularity * kAllocationGranularity;
+            return static_cast<uint32_t>((std::min)(
+                aligned,
+                static_cast<uint64_t>(
+                    emitter.spawn.maximumParticles)));
+        }
+
         ParticleBillboardMode ConvertBillboard(
             VfxBillboardMode billboard) noexcept {
 
@@ -396,7 +458,8 @@ namespace HIKARI::VFX {
             emitter.spawnRatePerSecond = source.spawn.ratePerSecond;
             emitter.burstCount = source.spawn.burstCount;
             emitter.authoredOverrides.enabled = source.basic.enabled ? 1u : 0u;
-            emitter.simulation.capacity = source.spawn.maximumParticles;
+            emitter.simulation.capacity =
+                CompileParticleCapacity(asset, source);
             emitter.simulation.lifetime = CompileDistribution(
                 source.basic.lifetime);
             program.maximumParticleLifetimeSeconds = (std::max)(
@@ -431,6 +494,10 @@ namespace HIKARI::VFX {
             emitter.simulation.gravity = source.forces.gravity;
             emitter.simulation.drag = source.forces.drag;
             emitter.simulation.color = CompileAnimatedColor(source.color.value);
+            emitter.render.materialMode = ConvertMaterialMode(
+                source.renderCommon.materialMode);
+            emitter.render.colorTextureAssetGuid =
+                source.renderCommon.colorTextureAssetGuid.value;
             emitter.render.materialAssetGuid =
                 source.renderCommon.materialAssetGuid.value;
             emitter.render.blendMode = ConvertBlend(
@@ -492,9 +559,19 @@ namespace HIKARI::VFX {
                     link.bias,
                 });
             }
-            if (source.renderCommon.materialAssetGuid.IsValid()) {
+            if (source.renderCommon.materialMode ==
+                    VfxMaterialMode::CustomMaterial &&
+                source.renderCommon.materialAssetGuid.IsValid()) {
                 program.dependencyGuids.push_back(
                     source.renderCommon.materialAssetGuid);
+            }
+            if (source.renderCommon.materialMode ==
+                    VfxMaterialMode::StandardUnlit &&
+                source.renderCommon.colorTextureAssetGuid.IsValid() &&
+                !IsVfxBuiltinTextureAssetId(
+                    source.renderCommon.colorTextureAssetGuid.value)) {
+                program.dependencyGuids.push_back(
+                    source.renderCommon.colorTextureAssetGuid);
             }
             program.emitters.push_back(std::move(emitter));
         }

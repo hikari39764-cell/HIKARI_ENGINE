@@ -7,7 +7,10 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
         using Json = nlohmann::json;
     }
 
-    bool ReadVfxSourceEmitter(const Json& node, VfxEmitterData& outEmitter) {
+    bool ReadVfxSourceEmitter(
+        const Json& node,
+        uint32_t sourceVersion,
+        VfxEmitterData& outEmitter) {
         if (!node.is_object() || !node.contains("modules") ||
             !node["modules"].is_object() ||
             !node.contains("inputLinks") ||
@@ -85,6 +88,12 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
         emitter.spawn.ratePerSecond =
             spawn["ratePerSecond"].get<float>();
         emitter.spawn.burstCount = spawn["burstCount"].get<uint32_t>();
+        if (sourceVersion >= 3u &&
+            !TryParseVfxParticleCapacityMode(
+                spawn.value("capacityMode", std::string{}),
+                emitter.spawn.capacityMode)) {
+            return false;
+        }
         emitter.spawn.maximumParticles =
             spawn["maximumParticles"].get<uint32_t>();
 
@@ -189,6 +198,25 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
         }
         emitter.renderCommon.materialAssetGuid = AssetGuid{
             renderCommon["materialAssetGuid"].get<std::string>() };
+        if (sourceVersion >= 3u) {
+            if (!TryParseVfxMaterialMode(
+                    renderCommon.value(
+                        "materialMode", std::string{}),
+                    emitter.renderCommon.materialMode) ||
+                !renderCommon.contains("colorTextureAssetGuid") ||
+                !renderCommon["colorTextureAssetGuid"].is_string()) {
+                return false;
+            }
+            emitter.renderCommon.colorTextureAssetGuid = AssetGuid{
+                renderCommon["colorTextureAssetGuid"].get<std::string>() };
+        } else {
+            emitter.spawn.capacityMode =
+                VfxParticleCapacityMode::Automatic;
+            emitter.renderCommon.materialMode =
+                emitter.renderCommon.materialAssetGuid.IsValid()
+                    ? VfxMaterialMode::CustomMaterial
+                    : VfxMaterialMode::StandardUnlit;
+        }
         emitter.renderCommon.depthTest =
             renderCommon["depthTest"].get<bool>();
         const auto readOptionalUnsigned = [&renderCommon](

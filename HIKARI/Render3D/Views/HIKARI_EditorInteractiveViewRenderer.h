@@ -19,7 +19,6 @@ namespace HIKARI {
 }
 
 namespace HIKARI::RENDER3D::PARTICLES {
-    class GpuParticleRenderer;
     struct ParticleRenderInput;
 }
 
@@ -84,6 +83,10 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         uint64_t sceneRevision = 0;
         bool visible = false;
         bool drawDebug = true;
+        // Continuous tool views (for example VFX playback) must be sampled
+        // every presented frame. They share the same renderer as runtime, but
+        // must not be time-sliced with static inspector thumbnails.
+        bool continuousRealtime = false;
         uint32_t schedulingPriority = 0u;
         EditorInteractiveShadingMode shadingMode =
             EditorInteractiveShadingMode::Lit;
@@ -135,7 +138,6 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         uint64_t currentSceneRevision,
         ModelManager& modelManager,
         SkyManager& skyManager,
-        PARTICLES::GpuParticleRenderer* particleRenderer = nullptr,
         const AssetRegistry* assetRegistry = nullptr,
         const MATERIAL::MaterialExternalValueSnapshot*
             materialExternalValues = nullptr);

@@ -60,6 +60,18 @@ namespace HIKARI::VFX {
         return value == VfxBlendMode::Additive ? "Additive" : "Alpha";
     }
 
+    std::string_view ToString(VfxMaterialMode value) noexcept {
+        return value == VfxMaterialMode::CustomMaterial
+            ? "CustomMaterial"
+            : "StandardUnlit";
+    }
+
+    std::string_view ToString(VfxParticleCapacityMode value) noexcept {
+        return value == VfxParticleCapacityMode::Fixed
+            ? "Fixed"
+            : "Automatic";
+    }
+
     std::string_view ToString(VfxBillboardMode value) noexcept {
         switch (value) {
         case VfxBillboardMode::RotatedBillboard:
@@ -168,6 +180,26 @@ namespace HIKARI::VFX {
         return ParseEnum(text, {
             { "Alpha", VfxBlendMode::Alpha },
             { "Additive", VfxBlendMode::Additive },
+        }, outValue);
+    }
+
+    bool TryParseVfxMaterialMode(
+        std::string_view text,
+        VfxMaterialMode& outValue) noexcept {
+
+        return ParseEnum(text, {
+            { "StandardUnlit", VfxMaterialMode::StandardUnlit },
+            { "CustomMaterial", VfxMaterialMode::CustomMaterial },
+        }, outValue);
+    }
+
+    bool TryParseVfxParticleCapacityMode(
+        std::string_view text,
+        VfxParticleCapacityMode& outValue) noexcept {
+
+        return ParseEnum(text, {
+            { "Automatic", VfxParticleCapacityMode::Automatic },
+            { "Fixed", VfxParticleCapacityMode::Fixed },
         }, outValue);
     }
 
@@ -317,6 +349,10 @@ namespace HIKARI::VFX {
             { "color.end", 1.0f, { 1.0f, 1.0f, 1.0f, 0.0f } },
         };
         emitter.renderCommon.id = "module.render_common";
+        // 新規 VFX もプリセットと同じテクスチャ付き StandardUnlit 経路で
+        // 直ちに確認できるよう、汎用のソフトディスクを初期値にする。
+        emitter.renderCommon.colorTextureAssetGuid = AssetGuid{
+            "engine.vfx.texture.soft_disc" };
         emitter.renderShape.id = "module.render_shape";
         asset.emitters.push_back(std::move(emitter));
         return asset;

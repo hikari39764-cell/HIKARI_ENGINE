@@ -2,7 +2,6 @@
 
 #include <filesystem>
 #include <string>
-#include <vector>
 
 namespace HIKARI::EDITOR::INTERNAL {
 
@@ -44,15 +43,6 @@ namespace HIKARI::EDITOR::INTERNAL {
     // Every deletion is revalidated against its resolved owning root.
     bool RollBackCreatedVfxAsset(
         const VfxAssetCreationFiles& files,
-        std::string& outMessage);
-
-    // Removes VFX-private material sources and metadata that were created by
-    // the current preset save attempt. Callers must pass only new targets
-    // returned by MaterialAssetAuthoringService::Create.
-    bool RollBackCreatedVfxPrivateMaterials(
-        const VfxAssetAuthoringRoots& roots,
-        const std::vector<std::filesystem::path>& sourcePaths,
-        const std::vector<std::filesystem::path>& metaPaths,
         std::string& outMessage);
 
 } // namespace HIKARI::EDITOR::INTERNAL

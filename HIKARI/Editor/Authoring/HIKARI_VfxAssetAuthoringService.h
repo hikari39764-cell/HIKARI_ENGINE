@@ -1,14 +1,10 @@
 #pragma once
 
 #include <filesystem>
-#include <optional>
 #include <string>
-#include <vector>
 
 #include "Assets/HIKARI_AssetGuid.h"
-#include "Assets/Material/HIKARI_MaterialAssetData.h"
 #include "Assets/Vfx/HIKARI_VfxAssetData.h"
-#include "Assets/Vfx/HIKARI_VfxPresetRegistry.h"
 
 namespace HIKARI {
 
@@ -20,23 +16,12 @@ namespace EDITOR {
         bool success = false;
         AssetGuid assetGuid{};
         std::filesystem::path sourcePath{};
-        std::optional<VFX::VfxAssetData> authoredAsset{};
         std::string message{};
     };
-
-    bool BuildVfxPresetMaterialSource(
-        const VFX::PRESETS::VfxPresetMaterialRecipe& recipe,
-        MaterialAssetData& outMaterial,
-        std::string& outMessage);
 
     VfxAssetAuthoringResult CreateVfxAsset(
         AssetDatabase& assetDatabase,
         const VFX::VfxAssetData& asset);
-    VfxAssetAuthoringResult CreateVfxPresetAsset(
-        AssetDatabase& assetDatabase,
-        const VFX::VfxAssetData& asset,
-        const std::vector<VFX::PRESETS::VfxPresetMaterialRecipe>&
-            privateMaterials);
     VfxAssetAuthoringResult UpdateVfxAsset(
         AssetDatabase& assetDatabase,
         const AssetGuid& assetGuid,

@@ -8,6 +8,7 @@
 #include <unordered_set>
 
 #include "Assets/Vfx/HIKARI_VfxPropertySchema.h"
+#include "Assets/Vfx/HIKARI_VfxBuiltinTextureCatalog.h"
 #include "Assets/Vfx/HIKARI_VfxProgram.h"
 #include "Render3D/Vfx/HIKARI_ParticleRenderInput.h"
 
@@ -467,6 +468,10 @@ namespace HIKARI::VFX {
             if (!IsFinite(emitter.spawn.ratePerSecond) ||
                 emitter.spawn.ratePerSecond < 0.0f ||
                 emitter.spawn.ratePerSecond > 1000000.0f ||
+                (emitter.spawn.capacityMode !=
+                    VfxParticleCapacityMode::Automatic &&
+                 emitter.spawn.capacityMode !=
+                    VfxParticleCapacityMode::Fixed) ||
                 emitter.spawn.maximumParticles == 0u ||
                 emitter.spawn.maximumParticles >
                     RENDER3D::PARTICLES::kGpuParticlePoolCapacity ||
@@ -531,6 +536,27 @@ namespace HIKARI::VFX {
                 ids,
                 diagnostics);
 
+            if (emitter.renderCommon.materialMode !=
+                    VfxMaterialMode::StandardUnlit &&
+                emitter.renderCommon.materialMode !=
+                    VfxMaterialMode::CustomMaterial) {
+                AddError(
+                    diagnostics,
+                    "Vfx.InvalidMaterialMode",
+                    "render material mode is invalid",
+                    emitter.renderCommon.id);
+            }
+            if (emitter.renderCommon.colorTextureAssetGuid.IsValid() &&
+                !IsVfxBuiltinTextureAssetId(
+                    emitter.renderCommon.colorTextureAssetGuid.value) &&
+                !IsValidAssetGuid(
+                    emitter.renderCommon.colorTextureAssetGuid.value)) {
+                AddError(
+                    diagnostics,
+                    "Vfx.InvalidColorTextureGuid",
+                    "render color texture GUID is invalid",
+                    emitter.renderCommon.id);
+            }
             if (emitter.renderCommon.materialAssetGuid.IsValid() &&
                 !IsValidAssetGuid(
                     emitter.renderCommon.materialAssetGuid.value)) {
@@ -574,6 +600,17 @@ namespace HIKARI::VFX {
                     diagnostics,
                     "Vfx.InvalidBillboardMode",
                     "sprite orientation mode is invalid",
+                    emitter.renderShape.id);
+            }
+            if (emitter.renderShape.ribbonSegmentCount < 2u ||
+                emitter.renderShape.ribbonSegmentCount > 64u ||
+                emitter.renderShape.ringSegmentCount < 3u ||
+                emitter.renderShape.ringSegmentCount > 64u) {
+                AddError(
+                    diagnostics,
+                    "Vfx.InvalidRenderShapeSegments",
+                    "ribbon/ring segment count exceeds the mesh shader "
+                    "contract (ribbon 2..64, ring 3..64)",
                     emitter.renderShape.id);
             }
 

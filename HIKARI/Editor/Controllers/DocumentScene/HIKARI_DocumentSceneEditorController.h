@@ -6,6 +6,8 @@
 #include <vector>
 
 #include "Render3D/HIKARI_Math3D.h"
+#include "Render3D/Core/HIKARI_Camera3D.h"
+#include "Render3D/Debug/HIKARI_DebugCameraController3D.h"
 
 #include "Editor/AI/HIKARI_AI_AssistantPanel.h"
 #include "Editor/AI/HIKARI_AI_LocalBridge.h"
@@ -184,6 +186,11 @@ namespace HIKARI {
             bool externalDirtyBefore,
             EDITOR::EditorDocumentImpact immediateImpact =
                 EDITOR::EditorDocumentImpact::None);
+        // サブワークスペース滞在中に Scene 共有カメラ（Editor/Debug）が
+        // 変化しても、戻ったときの Game View を入場時の視点へ復元する。
+        void SnapshotSceneViewCameras(DocumentSceneBase& scene);
+        void RestoreSceneViewCameras(DocumentSceneBase& scene);
+
         void RecordCinematicsHistory(
             DocumentSceneBase& scene,
             SceneCinematicsSettings before,
@@ -197,6 +204,9 @@ namespace HIKARI {
         EDITOR::EditorCommandRouter commandRouter_{};
         EDITOR::SceneObjectTransformHistorySession
             viewportTransformHistory_{};
+        bool sceneViewCameraSnapshotValid_ = false;
+        Camera3D sceneViewEditorCameraSnapshot_{};
+        DebugCameraController3D sceneViewDebugCameraSnapshot_{};
         bool historyExternalDirty_ = false;
     };
 

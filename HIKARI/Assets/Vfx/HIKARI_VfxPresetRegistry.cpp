@@ -8,7 +8,7 @@ namespace HIKARI::VFX::PRESETS {
         const std::vector<VfxPresetDescriptor>& Catalog() {
             static const std::vector<VfxPresetDescriptor> catalog{
                 { "basic_sprite", "Basic Sprite", "Foundations",
-                    "Single looping billboard sprite burst" },
+                    "Looping billboard sprites with soft alpha falloff" },
                 { "burst_explosion", "Burst Explosion", "Combat",
                     "One-shot radial sphere burst with additive sparks" },
                 { "muzzle_flash", "Muzzle Flash", "Combat",
@@ -16,9 +16,9 @@ namespace HIKARI::VFX::PRESETS {
                 { "hit_impact", "Hit Impact", "Combat",
                     "Radial edge sparks plus a fading impact ring" },
                 { "projectile_trail", "Projectile Trail", "Combat",
-                    "Ribbon trail with directional billboard stretch" },
+                    "Dense world-space ribbon strips for moving emitters" },
                 { "beam", "Beam", "Combat",
-                    "Fixed-length edge beam with additive core" },
+                    "Layered beam: bright core ribbon, wide glow and muzzle flash" },
                 { "smoke_plume", "Smoke Plume", "Ambient",
                     "Rising alpha smoke with curl and soft fade" },
                 { "fire", "Fire", "Ambient",
@@ -28,13 +28,13 @@ namespace HIKARI::VFX::PRESETS {
                 { "snow", "Snow", "Ambient",
                     "Slow drifting box-volume flakes" },
                 { "magic_aura", "Magic Aura", "Magic",
-                    "Orbiting sphere shell with additive glow" },
+                    "Layered sphere-shell particles with additive glow" },
                 { "ground_ring", "Ground Ring", "Magic",
-                    "Expanding flat ring decal on the ground plane" },
+                    "Expanding fixed-orientation magic ring on the ground plane" },
                 { "shockwave_ring", "Shockwave Ring", "Magic",
-                    "Fast expanding ring burst with edge-only emission" },
+                    "Centered fast-expanding ground-plane ring burst" },
                 { "fountain", "Fountain", "Ambient",
-                    "Cone emitter with gravity arcs" },
+                    "Directional cone streaks with gravity arcs" },
                 { "sparkler", "Sparkler", "Ambient",
                     "High-rate point emitter with random streaks" },
             };
@@ -108,11 +108,9 @@ namespace HIKARI::VFX::PRESETS {
         }
 
         VfxAssetData MakePresetAsset(
-            std::string_view name,
+            VfxAssetData asset,
             std::vector<VfxEmitterData> emitters) {
 
-            VfxAssetData asset;
-            asset.name = std::string(name);
             if (!emitters.empty()) {
                 asset.emitters = std::move(emitters);
                 uint32_t order = 0u;
@@ -153,21 +151,78 @@ namespace HIKARI::VFX::PRESETS {
             emitter.renderCommon.flipbookRandomStart = randomStart;
         }
 
-        void AddPrivateMaterial(
-            VfxPresetPackage& package,
+        void SetStandardTexture(
+            VfxAssetData& asset,
             size_t emitterIndex,
             std::string_view textureAssetId) {
 
-            if (emitterIndex >= package.asset.emitters.size()) {
+            if (emitterIndex >= asset.emitters.size()) {
                 return;
             }
-            const VfxEmitterData& emitter =
-                package.asset.emitters[emitterIndex];
-            package.privateMaterials.push_back({
-                emitter.id,
-                package.asset.name + " " + emitter.name + " Material",
-                AssetGuid{ std::string(textureAssetId) },
-            });
+            VfxEmitterData& emitter = asset.emitters[emitterIndex];
+            emitter.renderCommon.materialMode =
+                VfxMaterialMode::StandardUnlit;
+            emitter.renderCommon.colorTextureAssetGuid =
+                AssetGuid{ std::string(textureAssetId) };
+        }
+
+        void ApplyPresetTextures(
+            std::string_view id,
+            VfxAssetData& asset) {
+
+            if (id == "burst_explosion") {
+                SetStandardTexture(asset, 0u,
+                    "engine.vfx.texture.explosion_flipbook");
+                SetStandardTexture(asset, 1u,
+                    "engine.vfx.texture.energy_streak");
+                SetStandardTexture(asset, 2u,
+                    "engine.vfx.texture.wispy_smoke_flipbook");
+            } else if (id == "muzzle_flash") {
+                SetStandardTexture(asset, 0u,
+                    "engine.vfx.texture.muzzle_flame");
+                SetStandardTexture(asset, 1u,
+                    "engine.vfx.texture.energy_streak");
+            } else if (id == "hit_impact") {
+                SetStandardTexture(asset, 0u,
+                    "engine.vfx.texture.star_glint");
+                SetStandardTexture(asset, 1u,
+                    "engine.vfx.texture.energy_ring");
+            } else if (id == "beam") {
+                SetStandardTexture(asset, 0u,
+                    "engine.vfx.texture.energy_streak");
+                SetStandardTexture(asset, 1u,
+                    "engine.vfx.texture.energy_streak");
+                SetStandardTexture(asset, 2u,
+                    "engine.vfx.texture.lens_flare");
+            } else if (id == "projectile_trail" ||
+                       id == "rain" || id == "fountain") {
+                SetStandardTexture(asset, 0u,
+                    "engine.vfx.texture.energy_streak");
+            } else if (id == "smoke_plume") {
+                SetStandardTexture(asset, 0u,
+                    "engine.vfx.texture.wispy_smoke_flipbook");
+            } else if (id == "fire") {
+                SetStandardTexture(asset, 0u,
+                    "engine.vfx.texture.flame_flipbook");
+            } else if (id == "snow") {
+                SetStandardTexture(asset, 0u,
+                    "engine.vfx.texture.soft_disc");
+            } else if (id == "magic_aura") {
+                SetStandardTexture(asset, 0u,
+                    "engine.vfx.texture.lens_flare");
+            } else if (id == "ground_ring") {
+                SetStandardTexture(asset, 0u,
+                    "engine.vfx.texture.magic_ring");
+            } else if (id == "shockwave_ring") {
+                SetStandardTexture(asset, 0u,
+                    "engine.vfx.texture.energy_ring");
+            } else if (id == "sparkler") {
+                SetStandardTexture(asset, 0u,
+                    "engine.vfx.texture.star_glint");
+            } else {
+                SetStandardTexture(asset, 0u,
+                    "engine.vfx.texture.soft_disc");
+            }
         }
 
         VfxAssetData BuildBasicSprite() {
@@ -182,10 +237,12 @@ namespace HIKARI::VFX::PRESETS {
             emitter.basic.lifetime = MakeVfxFloatConstant(1.2f);
             emitter.shape.type = VfxShapeType::Sphere;
             emitter.shape.radius = MakeVfxFloatConstant(0.4f);
+            emitter.scale.value.fixed =
+                MakeVfxVec3Constant({ 0.25f, 0.25f, 0.25f });
             SetColorStops(emitter,
                 { 1.0f, 1.0f, 1.0f, 1.0f },
                 { 1.0f, 1.0f, 1.0f, 0.0f });
-            return MakePresetAsset(asset.name, { std::move(emitter) });
+            return MakePresetAsset(std::move(asset), { std::move(emitter) });
         }
 
         VfxAssetData BuildBurstExplosion() {
@@ -193,25 +250,78 @@ namespace HIKARI::VFX::PRESETS {
             asset.name = "Burst Explosion";
             asset.durationSeconds = 1.0f;
             asset.loop = false;
-            VfxEmitterData emitter =
-                MakeBaseEmitter("main", "Main");
+            VfxEmitterData core =
+                MakeBaseEmitter("core", "Explosion Core");
 
-            emitter.name = "Explosion Core";
-            emitter.spawn.ratePerSecond = 0.0f;
-            emitter.spawn.burstCount = 180u;
-            emitter.spawn.maximumParticles = 512u;
-            emitter.basic.lifetime = MakeVfxFloatConstant(0.7f);
-            emitter.shape.type = VfxShapeType::Sphere;
-            emitter.shape.radius = MakeVfxFloatConstant(0.2f);
-            emitter.position.radialSpeed = MakeVfxFloatConstant(6.0f);
-            emitter.renderCommon.blendMode = VfxBlendMode::Additive;
-            ConfigureFlipbook(emitter, 5u, 5u, 25u, 30.0f, false, false);
-            emitter.renderShape.billboardMode =
-                VfxBillboardMode::DirectionalBillboard;
-            SetColorStops(emitter,
+            // A flipbook already represents the complete expanding fireball.
+            // Stacking dozens of identical 1024px sheets only multiplies
+            // additive overdraw without adding shape detail.
+            core.spawn.ratePerSecond = 0.0f;
+            core.spawn.burstCount = 2u;
+            // Automatic pools are allocated at the compute thread-group
+            // granularity. Keep the authored ceiling above that granularity so
+            // the compiler can derive the actual 64-slot pool instead of
+            // silently clamping it to an undersized authoring value.
+            core.spawn.maximumParticles = 128u;
+            core.basic.lifetime = MakeVfxFloatConstant(0.7f);
+            core.shape.type = VfxShapeType::Point;
+            core.position.radialSpeed = MakeVfxFloatConstant(0.0f);
+            core.renderCommon.blendMode = VfxBlendMode::Additive;
+            ConfigureFlipbook(core, 5u, 5u, 25u, 30.0f, false, false);
+            core.scale.value.mode = VfxAnimatedValueMode::Easing;
+            core.scale.value.easing.start =
+                MakeVfxVec3Constant({ 0.55f, 0.55f, 0.55f });
+            core.scale.value.easing.end =
+                MakeVfxVec3Constant({ 2.2f, 2.2f, 2.2f });
+            SetColorStops(core,
                 { 1.0f, 0.75f, 0.3f, 1.0f },
                 { 0.6f, 0.05f, 0.0f, 0.0f });
-            return MakePresetAsset(asset.name, { std::move(emitter) });
+
+            VfxEmitterData sparks =
+                MakeBaseEmitter("sparks", "Radial Sparks");
+            sparks.spawn.ratePerSecond = 0.0f;
+            sparks.spawn.burstCount = 16u;
+            sparks.spawn.maximumParticles = 128u;
+            sparks.basic.lifetime = {
+                VfxDistributionMode::RandomRange, 0.22f, 0.5f, 0u };
+            sparks.shape.type = VfxShapeType::Sphere;
+            sparks.shape.radius = MakeVfxFloatConstant(0.08f);
+            sparks.position.radialSpeed = {
+                VfxDistributionMode::RandomRange, 2.5f, 5.0f, 0u };
+            sparks.forces.gravity = { 0.0f, -4.0f, 0.0f };
+            sparks.renderCommon.blendMode = VfxBlendMode::Additive;
+            sparks.renderShape.billboardMode =
+                VfxBillboardMode::DirectionalBillboard;
+            sparks.scale.value.fixed =
+                MakeVfxVec3Constant({ 0.06f, 0.32f, 1.0f });
+            SetColorStops(sparks,
+                { 1.0f, 0.85f, 0.35f, 1.0f },
+                { 1.0f, 0.18f, 0.0f, 0.0f });
+
+            VfxEmitterData smoke =
+                MakeBaseEmitter("smoke", "After Smoke");
+            smoke.spawn.ratePerSecond = 0.0f;
+            smoke.spawn.burstCount = 3u;
+            smoke.spawn.maximumParticles = 128u;
+            smoke.basic.lifetime = MakeVfxFloatConstant(1.1f);
+            smoke.shape.type = VfxShapeType::Sphere;
+            smoke.shape.radius = MakeVfxFloatConstant(0.12f);
+            smoke.position.radialSpeed = {
+                VfxDistributionMode::RandomRange, 0.2f, 0.65f, 0u };
+            smoke.renderCommon.blendMode = VfxBlendMode::Alpha;
+            ConfigureFlipbook(smoke, 8u, 8u, 64u, 36.0f, false, true);
+            smoke.scale.value.mode = VfxAnimatedValueMode::Easing;
+            smoke.scale.value.easing.start =
+                MakeVfxVec3Constant({ 0.35f, 0.35f, 0.35f });
+            smoke.scale.value.easing.end =
+                MakeVfxVec3Constant({ 1.45f, 1.45f, 1.45f });
+            SetColorStops(smoke,
+                { 0.32f, 0.26f, 0.22f, 0.55f },
+                { 0.08f, 0.07f, 0.07f, 0.0f });
+
+            return MakePresetAsset(
+                std::move(asset),
+                { std::move(core), std::move(sparks), std::move(smoke) });
         }
 
         VfxAssetData BuildMuzzleFlash() {
@@ -244,11 +354,13 @@ namespace HIKARI::VFX::PRESETS {
             streaks.renderCommon.blendMode = VfxBlendMode::Additive;
             streaks.renderShape.billboardMode =
                 VfxBillboardMode::DirectionalBillboard;
+            streaks.scale.value.fixed =
+                MakeVfxVec3Constant({ 0.08f, 0.7f, 1.0f });
             SetColorStops(streaks,
                 { 1.0f, 0.85f, 0.4f, 1.0f },
                 { 1.0f, 0.5f, 0.0f, 0.0f });
             return MakePresetAsset(
-                asset.name,
+                std::move(asset),
                 { std::move(flash), std::move(streaks) });
         }
 
@@ -261,6 +373,7 @@ namespace HIKARI::VFX::PRESETS {
                 MakeBaseEmitter("sparks", "Main");
 
             sparks.name = "Sparks";
+            sparks.spawn.ratePerSecond = 0.0f;
             sparks.spawn.burstCount = 40u;
             sparks.basic.lifetime = MakeVfxFloatConstant(0.35f);
             sparks.shape.type = VfxShapeType::Sphere;
@@ -275,12 +388,14 @@ namespace HIKARI::VFX::PRESETS {
                 { 1.0f, 0.3f, 0.0f, 0.0f });
 
             VfxEmitterData ring = MakeBaseEmitter("ring", "Impact Ring");
+            ring.spawn.ratePerSecond = 0.0f;
             ring.spawn.burstCount = 1u;
             ring.basic.lifetime = MakeVfxFloatConstant(0.4f);
-            ring.renderShape.type = VfxRenderShapeType::Ring;
-            ring.renderShape.ringInnerRadius = 0.6f;
-            ring.renderShape.ringOuterRadius = 1.0f;
+            // The built-in impact texture is a complete radial image, so it
+            // belongs on a Sprite quad rather than a strip-mapped Ring mesh.
+            ring.renderShape.type = VfxRenderShapeType::Sprite;
             ring.renderCommon.blendMode = VfxBlendMode::Additive;
+            ring.position.radialSpeed = MakeVfxFloatConstant(0.0f);
             ring.scale.value.mode = VfxAnimatedValueMode::Easing;
             ring.scale.value.easing.start =
                 MakeVfxVec3Constant({ 0.2f, 0.2f, 0.2f });
@@ -290,7 +405,7 @@ namespace HIKARI::VFX::PRESETS {
                 { 1.0f, 0.9f, 0.6f, 0.9f },
                 { 1.0f, 0.5f, 0.1f, 0.0f });
             return MakePresetAsset(
-                asset.name,
+                std::move(asset),
                 { std::move(sparks), std::move(ring) });
         }
 
@@ -309,11 +424,14 @@ namespace HIKARI::VFX::PRESETS {
             emitter.renderShape.ribbonWidth = 0.08f;
             emitter.renderShape.billboardMode =
                 VfxBillboardMode::DirectionalBillboard;
+            emitter.position.radialSpeed = MakeVfxFloatConstant(0.0f);
+            emitter.scale.value.fixed =
+                MakeVfxVec3Constant({ 0.6f, 1.0f, 1.0f });
             emitter.renderCommon.blendMode = VfxBlendMode::Additive;
             SetColorStops(emitter,
                 { 0.4f, 0.7f, 1.0f, 0.9f },
                 { 0.1f, 0.2f, 1.0f, 0.0f });
-            return MakePresetAsset(asset.name, { std::move(emitter) });
+            return MakePresetAsset(std::move(asset), { std::move(emitter) });
         }
 
         VfxAssetData BuildBeam() {
@@ -321,22 +439,65 @@ namespace HIKARI::VFX::PRESETS {
             asset.name = "Beam";
             asset.durationSeconds = 1.0f;
             asset.loop = true;
-            VfxEmitterData emitter =
-                MakeBaseEmitter("main", "Main");
 
-            emitter.spawn.ratePerSecond = 8.0f;
-            emitter.basic.lifetime = MakeVfxFloatConstant(0.5f);
-            emitter.shape.type = VfxShapeType::Edge;
-            emitter.shape.edgeLength = 4.0f;
-            emitter.renderShape.billboardMode =
-                VfxBillboardMode::DirectionalBillboard;
-            emitter.renderCommon.blendMode = VfxBlendMode::Additive;
-            emitter.scale.value.fixed =
-                MakeVfxVec3Constant({ 1.0f, 0.3f, 1.0f });
-            SetColorStops(emitter,
-                { 0.6f, 0.9f, 1.0f, 1.0f },
-                { 0.2f, 0.5f, 1.0f, 0.0f });
-            return MakePresetAsset(asset.name, { std::move(emitter) });
+            // 実際のビームは「明るい芯＋広がるグロー＋根本のフラッシュ」の
+            // 3 層で構成する。すべて同一の安定した単一パーティクルで、
+            // エミッター回転とスケールだけでビームの方向と長さを決める。
+            VfxEmitterData core = MakeBaseEmitter("core", "Beam Core");
+            core.spawn.ratePerSecond = 0.0f;
+            core.spawn.burstCount = 1u;
+            core.basic.lifetime = MakeVfxFloatConstant(1.05f);
+            core.shape.type = VfxShapeType::Point;
+            core.position.radialSpeed = MakeVfxFloatConstant(0.0f);
+            core.renderShape.type = VfxRenderShapeType::Ribbon;
+            core.renderShape.ribbonSegmentCount = 8u;
+            core.renderShape.ribbonWidth = 0.12f;
+            core.renderShape.billboardMode =
+                VfxBillboardMode::RotatedBillboard;
+            core.renderCommon.blendMode = VfxBlendMode::Additive;
+            core.scale.value.fixed =
+                MakeVfxVec3Constant({ 4.0f, 1.0f, 1.0f });
+            SetColorStops(core,
+                { 1.0f, 1.0f, 1.0f, 1.0f },
+                { 0.6f, 0.9f, 1.0f, 0.0f });
+
+            VfxEmitterData glow = MakeBaseEmitter("glow", "Beam Glow");
+            glow.spawn.ratePerSecond = 0.0f;
+            glow.spawn.burstCount = 1u;
+            glow.basic.lifetime = MakeVfxFloatConstant(1.05f);
+            glow.shape.type = VfxShapeType::Point;
+            glow.position.radialSpeed = MakeVfxFloatConstant(0.0f);
+            glow.renderShape.type = VfxRenderShapeType::Ribbon;
+            glow.renderShape.ribbonSegmentCount = 8u;
+            glow.renderShape.ribbonWidth = 0.45f;
+            glow.renderShape.billboardMode =
+                VfxBillboardMode::RotatedBillboard;
+            glow.renderCommon.blendMode = VfxBlendMode::Additive;
+            glow.scale.value.fixed =
+                MakeVfxVec3Constant({ 4.0f, 1.0f, 1.0f });
+            SetColorStops(glow,
+                { 0.2f, 0.5f, 1.0f, 0.4f },
+                { 0.05f, 0.2f, 0.9f, 0.0f });
+
+            VfxEmitterData flash = MakeBaseEmitter("flash", "Beam Flash");
+            flash.spawn.ratePerSecond = 0.0f;
+            flash.spawn.burstCount = 1u;
+            flash.basic.lifetime = MakeVfxFloatConstant(1.05f);
+            flash.shape.type = VfxShapeType::Point;
+            flash.position.radialSpeed = MakeVfxFloatConstant(0.0f);
+            flash.renderShape.type = VfxRenderShapeType::Sprite;
+            flash.renderCommon.blendMode = VfxBlendMode::Additive;
+            // ビームの根本（ローカル X-）にフレアを置き、発射口を明るくする。
+            flash.emitterTransform.transform.position =
+                { -2.0f, 0.0f, 0.0f };
+            flash.scale.value.fixed =
+                MakeVfxVec3Constant({ 0.9f, 0.9f, 0.9f });
+            SetColorStops(flash,
+                { 0.8f, 0.95f, 1.0f, 1.0f },
+                { 0.4f, 0.7f, 1.0f, 0.0f });
+            return MakePresetAsset(
+                std::move(asset),
+                { std::move(core), std::move(glow), std::move(flash) });
         }
 
         VfxAssetData BuildSmokePlume() {
@@ -359,7 +520,7 @@ namespace HIKARI::VFX::PRESETS {
             SetColorStops(emitter,
                 { 0.5f, 0.5f, 0.55f, 0.5f },
                 { 0.4f, 0.4f, 0.45f, 0.0f });
-            return MakePresetAsset(asset.name, { std::move(emitter) });
+            return MakePresetAsset(std::move(asset), { std::move(emitter) });
         }
 
         VfxAssetData BuildFire() {
@@ -386,7 +547,7 @@ namespace HIKARI::VFX::PRESETS {
             SetColorStops(emitter,
                 { 1.0f, 0.7f, 0.2f, 1.0f },
                 { 0.8f, 0.1f, 0.0f, 0.0f });
-            return MakePresetAsset(asset.name, { std::move(emitter) });
+            return MakePresetAsset(std::move(asset), { std::move(emitter) });
         }
 
         VfxAssetData BuildRain() {
@@ -397,22 +558,23 @@ namespace HIKARI::VFX::PRESETS {
             VfxEmitterData emitter =
                 MakeBaseEmitter("main", "Main");
 
-            emitter.spawn.ratePerSecond = 300.0f;
+            emitter.spawn.ratePerSecond = 180.0f;
             emitter.spawn.maximumParticles = 2048u;
             emitter.basic.lifetime = MakeVfxFloatConstant(1.2f);
             emitter.shape.type = VfxShapeType::Box;
             emitter.shape.boxHalfExtents = { 8.0f, 0.1f, 8.0f };
             emitter.emitterTransform.transform.position =
                 { 0.0f, 6.0f, 0.0f };
-            emitter.forces.gravity = { 0.0f, -12.0f, 0.0f };
+            emitter.position.radialSpeed = MakeVfxFloatConstant(-6.0f);
+            emitter.forces.gravity = { 0.0f, -2.5f, 0.0f };
             emitter.renderShape.billboardMode =
                 VfxBillboardMode::DirectionalBillboard;
             emitter.scale.value.fixed =
-                MakeVfxVec3Constant({ 0.6f, 0.05f, 1.0f });
+                MakeVfxVec3Constant({ 0.06f, 0.8f, 1.0f });
             SetColorStops(emitter,
                 { 0.6f, 0.7f, 0.9f, 0.6f },
                 { 0.6f, 0.7f, 0.9f, 0.0f });
-            return MakePresetAsset(asset.name, { std::move(emitter) });
+            return MakePresetAsset(std::move(asset), { std::move(emitter) });
         }
 
         VfxAssetData BuildSnow() {
@@ -429,12 +591,15 @@ namespace HIKARI::VFX::PRESETS {
             emitter.shape.boxHalfExtents = { 8.0f, 0.1f, 8.0f };
             emitter.emitterTransform.transform.position =
                 { 0.0f, 6.0f, 0.0f };
+            emitter.position.radialSpeed = MakeVfxFloatConstant(0.0f);
             emitter.forces.gravity = { 0.0f, -0.6f, 0.0f };
             emitter.forces.drag = 0.2f;
+            emitter.scale.value.fixed =
+                MakeVfxVec3Constant({ 0.12f, 0.12f, 0.12f });
             SetColorStops(emitter,
                 { 1.0f, 1.0f, 1.0f, 0.9f },
                 { 1.0f, 1.0f, 1.0f, 0.0f });
-            return MakePresetAsset(asset.name, { std::move(emitter) });
+            return MakePresetAsset(std::move(asset), { std::move(emitter) });
         }
 
         VfxAssetData BuildMagicAura() {
@@ -445,18 +610,21 @@ namespace HIKARI::VFX::PRESETS {
             VfxEmitterData emitter =
                 MakeBaseEmitter("main", "Main");
 
-            emitter.spawn.ratePerSecond = 50.0f;
+            emitter.spawn.ratePerSecond = 24.0f;
             emitter.basic.lifetime = MakeVfxFloatConstant(1.6f);
             emitter.shape.type = VfxShapeType::Sphere;
             emitter.shape.radius = MakeVfxFloatConstant(1.0f);
+            emitter.position.radialSpeed = MakeVfxFloatConstant(0.0f);
             emitter.renderCommon.blendMode = VfxBlendMode::Additive;
+            emitter.scale.value.fixed =
+                MakeVfxVec3Constant({ 0.2f, 0.2f, 0.2f });
             emitter.rotation.eulerDegrees.mode = VfxAnimatedValueMode::Pva;
             emitter.rotation.eulerDegrees.pva.velocity =
-                MakeVfxVec3Constant({ 0.0f, 180.0f, 0.0f });
+                MakeVfxVec3Constant({ 0.0f, 0.0f, 180.0f });
             SetColorStops(emitter,
                 { 0.5f, 0.3f, 1.0f, 0.8f },
                 { 0.2f, 0.8f, 1.0f, 0.0f });
-            return MakePresetAsset(asset.name, { std::move(emitter) });
+            return MakePresetAsset(std::move(asset), { std::move(emitter) });
         }
 
         VfxAssetData BuildGroundRing() {
@@ -470,10 +638,13 @@ namespace HIKARI::VFX::PRESETS {
             emitter.spawn.ratePerSecond = 2.0f;
             emitter.spawn.burstCount = 1u;
             emitter.basic.lifetime = MakeVfxFloatConstant(1.8f);
-            emitter.renderShape.type = VfxRenderShapeType::Ring;
-            emitter.renderShape.ringInnerRadius = 0.7f;
-            emitter.renderShape.ringOuterRadius = 1.0f;
+            // Magic Ring is a complete square texture, not a ring-strip atlas.
+            emitter.renderShape.type = VfxRenderShapeType::Sprite;
             emitter.renderShape.billboardMode = VfxBillboardMode::Fixed;
+            emitter.position.radialSpeed = MakeVfxFloatConstant(0.0f);
+            emitter.rotation.eulerDegrees.fixed =
+                MakeVfxVec3Constant({ 90.0f, 0.0f, 0.0f });
+            emitter.renderCommon.blendMode = VfxBlendMode::Additive;
             emitter.scale.value.mode = VfxAnimatedValueMode::Easing;
             emitter.scale.value.easing.start =
                 MakeVfxVec3Constant({ 0.3f, 0.3f, 0.3f });
@@ -482,7 +653,7 @@ namespace HIKARI::VFX::PRESETS {
             SetColorStops(emitter,
                 { 0.4f, 1.0f, 0.7f, 0.8f },
                 { 0.2f, 0.8f, 0.5f, 0.0f });
-            return MakePresetAsset(asset.name, { std::move(emitter) });
+            return MakePresetAsset(std::move(asset), { std::move(emitter) });
         }
 
         VfxAssetData BuildShockwaveRing() {
@@ -496,12 +667,12 @@ namespace HIKARI::VFX::PRESETS {
             emitter.spawn.burstCount = 1u;
             emitter.spawn.ratePerSecond = 0.0f;
             emitter.basic.lifetime = MakeVfxFloatConstant(0.5f);
-            emitter.shape.type = VfxShapeType::Circle;
-            emitter.shape.radius = MakeVfxFloatConstant(1.0f);
-            emitter.shape.circleEmitOnEdge = true;
-            emitter.renderShape.type = VfxRenderShapeType::Ring;
-            emitter.renderShape.ringInnerRadius = 0.85f;
-            emitter.renderShape.ringOuterRadius = 1.0f;
+            emitter.shape.type = VfxShapeType::Point;
+            emitter.position.radialSpeed = MakeVfxFloatConstant(0.0f);
+            emitter.renderShape.type = VfxRenderShapeType::Sprite;
+            emitter.renderShape.billboardMode = VfxBillboardMode::Fixed;
+            emitter.rotation.eulerDegrees.fixed =
+                MakeVfxVec3Constant({ 90.0f, 0.0f, 0.0f });
             emitter.renderCommon.blendMode = VfxBlendMode::Additive;
             emitter.scale.value.mode = VfxAnimatedValueMode::Easing;
             emitter.scale.value.easing.start =
@@ -511,7 +682,7 @@ namespace HIKARI::VFX::PRESETS {
             SetColorStops(emitter,
                 { 0.7f, 0.9f, 1.0f, 1.0f },
                 { 0.3f, 0.6f, 1.0f, 0.0f });
-            return MakePresetAsset(asset.name, { std::move(emitter) });
+            return MakePresetAsset(std::move(asset), { std::move(emitter) });
         }
 
         VfxAssetData BuildFountain() {
@@ -529,10 +700,14 @@ namespace HIKARI::VFX::PRESETS {
             emitter.shape.coneAngleDegrees = 14.0f;
             emitter.position.radialSpeed = MakeVfxFloatConstant(5.0f);
             emitter.forces.gravity = { 0.0f, -9.8f, 0.0f };
+            emitter.renderShape.billboardMode =
+                VfxBillboardMode::DirectionalBillboard;
+            emitter.scale.value.fixed =
+                MakeVfxVec3Constant({ 0.05f, 0.35f, 1.0f });
             SetColorStops(emitter,
                 { 0.7f, 0.85f, 1.0f, 0.9f },
                 { 0.5f, 0.7f, 1.0f, 0.0f });
-            return MakePresetAsset(asset.name, { std::move(emitter) });
+            return MakePresetAsset(std::move(asset), { std::move(emitter) });
         }
 
         VfxAssetData BuildSparkler() {
@@ -548,14 +723,20 @@ namespace HIKARI::VFX::PRESETS {
                 { VfxDistributionMode::RandomRange, 0.2f, 0.7f, 0u };
             emitter.position.radialSpeed =
                 { VfxDistributionMode::RandomRange, 1.0f, 3.5f, 0u };
-            emitter.shape.type = VfxShapeType::Point;
+            // A Point shape has the canonical +Y emission direction. A tiny
+            // sphere preserves a point-like origin while providing the
+            // all-direction spark velocity promised by this preset.
+            emitter.shape.type = VfxShapeType::Sphere;
+            emitter.shape.radius = MakeVfxFloatConstant(0.02f);
             emitter.renderShape.billboardMode =
                 VfxBillboardMode::DirectionalBillboard;
             emitter.renderCommon.blendMode = VfxBlendMode::Additive;
+            emitter.scale.value.fixed =
+                MakeVfxVec3Constant({ 0.15f, 0.15f, 1.0f });
             SetColorStops(emitter,
                 { 1.0f, 0.9f, 0.5f, 1.0f },
                 { 1.0f, 0.4f, 0.0f, 0.0f });
-            return MakePresetAsset(asset.name, { std::move(emitter) });
+            return MakePresetAsset(std::move(asset), { std::move(emitter) });
         }
 
     } // namespace
@@ -576,69 +757,30 @@ namespace HIKARI::VFX::PRESETS {
     }
 
     VfxAssetData MakeVfxPresetAsset(std::string_view id) {
-        if (id == "burst_explosion") return BuildBurstExplosion();
-        if (id == "muzzle_flash") return BuildMuzzleFlash();
-        if (id == "hit_impact") return BuildHitImpact();
-        if (id == "projectile_trail") return BuildProjectileTrail();
-        if (id == "beam") return BuildBeam();
-        if (id == "smoke_plume") return BuildSmokePlume();
-        if (id == "fire") return BuildFire();
-        if (id == "rain") return BuildRain();
-        if (id == "snow") return BuildSnow();
-        if (id == "magic_aura") return BuildMagicAura();
-        if (id == "ground_ring") return BuildGroundRing();
-        if (id == "shockwave_ring") return BuildShockwaveRing();
-        if (id == "fountain") return BuildFountain();
-        if (id == "sparkler") return BuildSparkler();
-        return BuildBasicSprite();
+        VfxAssetData asset = [&]() {
+            if (id == "burst_explosion") return BuildBurstExplosion();
+            if (id == "muzzle_flash") return BuildMuzzleFlash();
+            if (id == "hit_impact") return BuildHitImpact();
+            if (id == "projectile_trail") return BuildProjectileTrail();
+            if (id == "beam") return BuildBeam();
+            if (id == "smoke_plume") return BuildSmokePlume();
+            if (id == "fire") return BuildFire();
+            if (id == "rain") return BuildRain();
+            if (id == "snow") return BuildSnow();
+            if (id == "magic_aura") return BuildMagicAura();
+            if (id == "ground_ring") return BuildGroundRing();
+            if (id == "shockwave_ring") return BuildShockwaveRing();
+            if (id == "fountain") return BuildFountain();
+            if (id == "sparkler") return BuildSparkler();
+            return BuildBasicSprite();
+        }();
+        ApplyPresetTextures(id, asset);
+        return asset;
     }
 
     VfxPresetPackage MakeVfxPresetPackage(std::string_view id) {
         VfxPresetPackage package{};
         package.asset = MakeVfxPresetAsset(id);
-
-        if (id == "burst_explosion") {
-            AddPrivateMaterial(package, 0u,
-                "engine.vfx.texture.explosion_flipbook");
-        } else if (id == "muzzle_flash") {
-            AddPrivateMaterial(package, 0u,
-                "engine.vfx.texture.muzzle_flame");
-            AddPrivateMaterial(package, 1u,
-                "engine.vfx.texture.energy_streak");
-        } else if (id == "hit_impact") {
-            AddPrivateMaterial(package, 0u,
-                "engine.vfx.texture.star_glint");
-            AddPrivateMaterial(package, 1u,
-                "engine.vfx.texture.energy_ring");
-        } else if (id == "projectile_trail" || id == "beam" ||
-                   id == "rain" || id == "fountain") {
-            AddPrivateMaterial(package, 0u,
-                "engine.vfx.texture.energy_streak");
-        } else if (id == "smoke_plume") {
-            AddPrivateMaterial(package, 0u,
-                "engine.vfx.texture.wispy_smoke_flipbook");
-        } else if (id == "fire") {
-            AddPrivateMaterial(package, 0u,
-                "engine.vfx.texture.flame_flipbook");
-        } else if (id == "snow") {
-            AddPrivateMaterial(package, 0u,
-                "engine.vfx.texture.soft_disc");
-        } else if (id == "magic_aura") {
-            AddPrivateMaterial(package, 0u,
-                "engine.vfx.texture.lens_flare");
-        } else if (id == "ground_ring") {
-            AddPrivateMaterial(package, 0u,
-                "engine.vfx.texture.magic_ring");
-        } else if (id == "shockwave_ring") {
-            AddPrivateMaterial(package, 0u,
-                "engine.vfx.texture.energy_ring");
-        } else if (id == "sparkler") {
-            AddPrivateMaterial(package, 0u,
-                "engine.vfx.texture.star_glint");
-        } else {
-            AddPrivateMaterial(package, 0u,
-                "engine.vfx.texture.soft_disc");
-        }
         return package;
     }
 

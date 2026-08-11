@@ -39,6 +39,9 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         const MeshFrameCameraOverrides* cameraOverrides);
     void CommitActiveMaterialDataFrame(
         ID3D12GraphicsCommandList* commandList);
+    bool ExecutePreparedParticleForwardTransparent(
+        const GFX::Context& graphics,
+        D3D12_GPU_VIRTUAL_ADDRESS cameraAddress);
     void SyncSurfaceGpuSceneMaterialFrame(const GFX::Context& graphics);
     void SyncGpuDrivenSceneMaterialSources(
         const GFX::Context& graphics,

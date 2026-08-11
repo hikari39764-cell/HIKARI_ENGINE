@@ -203,6 +203,13 @@ namespace HIKARI::MESHRENDERER {
             graphics,
             sourceIdentity,
             sceneSource);
+        if (!gMeshRendererState.particlePass.PrepareFrame(
+                graphics,
+                settings.particleFrameSource,
+                gMeshRendererState.gpuMaterialRegistry)) {
+            return EditorInteractiveMeshRenderResult::
+                MaterialFrameUnavailable;
+        }
         CommitActiveMaterialDataFrame(graphics.cmdList);
 
         RENDER3D::GPUDRIVEN::GpuDrivenLayer& layer =
@@ -344,6 +351,10 @@ namespace HIKARI::MESHRENDERER {
                 RENDER3D::MESHLET::MeshletPipelineKind::ForwardDepthAware,
                 layer,
                 overrides);
+        if (settings.renderDepthAwareOverlay != nullptr) {
+            settings.renderDepthAwareOverlay(
+                settings.depthAwareOverlayUserData);
+        }
         const GeometryBackendExecutionResult transparentResult =
             ExecuteEditorInteractiveGeometryBackendPlan(
                 graphics,
@@ -353,11 +364,16 @@ namespace HIKARI::MESHRENDERER {
                 RENDER3D::MESHLET::MeshletPipelineKind::ForwardTransparent,
                 layer,
                 overrides);
+        const bool particleResult =
+            ExecutePreparedParticleForwardTransparent(
+                graphics,
+                overrides.cameraAddress);
         const bool sceneRendered = opaqueResult.gpuBackendExecuted ||
             depthAwareResult.gpuBackendExecuted ||
             transparentResult.gpuBackendExecuted ||
+            gMeshRendererState.particlePass.HasDrawWork() ||
             !sceneSource.HasAnyGpuSceneRanges();
-        if (!sceneRendered) {
+        if (!sceneRendered || !particleResult) {
             return EditorInteractiveMeshRenderResult::ForwardPassFailed;
         }
         if (!stylizedSurfacePassReady) {

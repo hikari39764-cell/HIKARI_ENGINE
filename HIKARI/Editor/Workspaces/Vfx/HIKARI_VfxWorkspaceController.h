@@ -20,11 +20,11 @@
 #include "Editor/Views/Director/HIKARI_EditorDirectorCameraController.h"
 #include "Render3D/Core/HIKARI_RenderView.h"
 #include "Scene/Vfx/HIKARI_VfxPlaybackService.h"
+#include "Scene/Vfx/HIKARI_VfxRenderInputMailbox.h"
 
 namespace HIKARI {
     class AssetDatabase;
     class AssetRegistry;
-    class Material;
     struct SceneEnvironment;
 }
 
@@ -302,13 +302,18 @@ namespace HIKARI::EDITOR {
         bool RebuildPreviewProgram(std::string& outMessage);
         bool SeekActivePreview(
             float seconds,
-            std::string& outMessage);
+            std::string& outMessage,
+            bool supersedePending = false);
         void ReleasePreviewNamespace();
-        void PublishPreviewRenderInput();
-        bool RefreshPresetPreviewMaterials(
-            const AssetRegistry& assetRegistry,
-            std::string& outMessage);
+        bool PublishPreviewRenderInput(
+            VFX::VfxRenderInputPublishMode mode =
+                VFX::VfxRenderInputPublishMode::RequireAcknowledged);
+        void AcknowledgePreviewRenderInput();
+        float GetPreviewTimelineDuration() const noexcept;
         void NormalizePreviewTimelineRange() noexcept;
+        bool FocusPreviewAsset(
+            std::string_view emitterId = {},
+            bool preserveDistance = false);
         void UpdatePreview(uint64_t frameIndex, float deltaSeconds);
         void SubmitPreviewRequest(
             EditorViewInstance& previewView,
@@ -352,28 +357,23 @@ namespace HIKARI::EDITOR {
         std::array<char, 128> newAssetName_{ "New VFX" };
         std::array<char, 160> assetSearch_{};
         VfxParticleMaterialCatalog particleMaterialCatalog_{};
+        VfxParticleTextureCatalog particleTextureCatalog_{};
 
         VFX::VfxPlaybackService playbackService_{};
         VFX::VfxPlaybackHandle previewHandle_{};
         std::shared_ptr<const VFX::VfxProgram> previewProgram_{};
-        std::shared_ptr<const RENDER3D::PARTICLES::ParticleRenderInput>
-            previewRenderInput_{};
-        std::unordered_map<std::string, std::shared_ptr<const Material>>
-            presetPreviewMaterials_{};
-        std::vector<VFX::PRESETS::VfxPresetMaterialRecipe>
-            presetPreviewMaterialRecipes_{};
+        VFX::VfxRenderInputMailbox previewRenderMailbox_{};
         std::unordered_map<std::string, VFX::VfxValue>
             previewInputOverrides_{};
-        uint64_t presetPreviewMaterialRegistryInstanceId_ = 0u;
-        uint64_t presetPreviewMaterialRegistryRevision_ = 0u;
         uint64_t previewProgramRevision_ = 0u;
-        uint64_t previewRenderRevision_ = 1u;
         uint64_t previewFrameIndex_ = 0u;
+        float previewAccumulatedDeltaSeconds_ = 0.0f;
         float previewElapsedSeconds_ = 0.0f;
         float previewPlaybackSpeed_ = 1.0f;
         bool previewPlaying_ = false;
         bool previewPaused_ = false;
         bool previewRestartPending_ = false;
+        float previewRestartDelaySeconds_ = 0.0f;
         bool previewLoopEnabled_ = true;
         bool previewLoopRangeInitialized_ = false;
         float previewLoopStartSeconds_ = 0.0f;

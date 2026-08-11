@@ -2,7 +2,6 @@
 
 #include <array>
 #include <cstdint>
-#include <memory>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -10,7 +9,11 @@
 #include "Render3D/HIKARI_Math3D.h"
 
 namespace HIKARI {
-    class Material;
+    class AssetRegistry;
+
+    namespace RENDER3D::MATERIAL {
+        struct MaterialExternalValueSnapshot;
+    }
 }
 
 namespace HIKARI::RENDER3D::PARTICLES {
@@ -23,6 +26,18 @@ namespace HIKARI::RENDER3D::PARTICLES {
         kMaximumParticleEmitterSubmissionsPerFrame = 4096u;
     inline constexpr uint32_t
         kDefaultParticleEmitterUploadPageCapacity = 256u;
+
+    // GPU material sources share one registry with scene surfaces. Particle
+    // playback namespaces are tagged as odd identities so they cannot alias
+    // the aligned pointer identities used by surface scene sources.
+    inline uintptr_t MakeParticleMaterialSourceIdentity(
+        uint64_t sourceIdentity,
+        const void* fallbackIdentity) noexcept {
+        const uintptr_t untagged = sourceIdentity != 0u
+            ? static_cast<uintptr_t>(sourceIdentity)
+            : reinterpret_cast<uintptr_t>(fallbackIdentity);
+        return (untagged << 1u) | uintptr_t{1u};
+    }
 
     struct ParticleEmitterInstanceKey {
         uint64_t playbackNamespace = 0u;
@@ -53,6 +68,11 @@ namespace HIKARI::RENDER3D::PARTICLES {
     enum class ParticleBlendMode : uint32_t {
         Alpha,
         Additive,
+    };
+
+    enum class ParticleMaterialMode : uint32_t {
+        StandardUnlit,
+        CustomMaterial,
     };
 
     // Keep these values synchronized with VfxBillboardMode and the particle
@@ -221,16 +241,14 @@ namespace HIKARI::RENDER3D::PARTICLES {
     };
 
     struct ParticleEmitterRenderParameters {
+        ParticleMaterialMode materialMode =
+            ParticleMaterialMode::StandardUnlit;
+        std::string colorTextureAssetGuid{};
         std::string materialAssetGuid{};
-        // Runtime-authored particle materials are an explicit preview path.
-        // When present they take precedence over the asset GUID for this
-        // submission and own their lifetime with the immutable render input
-        // snapshot. The renderer still validates the Particle domain.
-        std::shared_ptr<const Material> runtimeMaterialOverride{};
         ParticleBlendMode blendMode = ParticleBlendMode::Alpha;
         ParticleRenderShape shape = ParticleRenderShape::Sprite;
         ParticleBillboardMode billboardMode =
-            ParticleBillboardMode::Fixed;
+            ParticleBillboardMode::RotatedBillboard;
         bool depthTest = true;
         uint32_t flipbookColumns = 1u;
         uint32_t flipbookRows = 1u;
@@ -264,10 +282,53 @@ namespace HIKARI::RENDER3D::PARTICLES {
         ParticleEmitterRenderParameters render{};
     };
 
+    struct ParticleRenderDeliveryToken {
+        uint64_t sourceIdentity = 0u;
+        uint64_t sequence = 0u;
+
+        bool IsValid() const noexcept {
+            return sourceIdentity != 0u && sequence != 0u;
+        }
+
+        bool operator==(
+            const ParticleRenderDeliveryToken&) const noexcept = default;
+    };
+
     struct ParticleRenderInput {
+        // Stable owner identity used by the shared GPU material registry.
+        // It must remain stable for the lifetime of the playback namespace.
+        uint64_t sourceIdentity = 0u;
+        // Monotonic delivery identity. Runtime playback retains an event-like
+        // reset/spawn snapshot until the renderer reports this exact token as
+        // recorded into a valid frame command list.
+        uint64_t deliverySequence = 0u;
         uint64_t frameIndex = 0u;
         std::vector<ParticleEmitterInstanceKey> retiredEmitters{};
         std::vector<ParticleEmitterSubmission> emitters{};
+
+        ParticleRenderDeliveryToken GetDeliveryToken() const noexcept {
+            return { sourceIdentity, deliverySequence };
+        }
+    };
+
+    // Immutable frame boundary consumed by the main GPU-driven renderer.
+    // Particle simulation and drawing no longer own a public render entry
+    // point; every view supplies this source through RenderViewContext.
+    struct ParticleRenderFrameSource {
+        const ParticleRenderInput* input = nullptr;
+        const AssetRegistry* assetRegistry = nullptr;
+        const MATERIAL::MaterialExternalValueSnapshot* externalValues =
+            nullptr;
+
+        bool HasDrawWork() const noexcept {
+            return input != nullptr && !input->emitters.empty();
+        }
+
+        bool HasFrameWork() const noexcept {
+            return input != nullptr &&
+                (!input->emitters.empty() ||
+                 !input->retiredEmitters.empty());
+        }
     };
 
     static_assert(std::is_trivially_copyable_v<ParticleDistributionFloat>);

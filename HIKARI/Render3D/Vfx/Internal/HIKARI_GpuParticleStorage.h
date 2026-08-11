@@ -18,7 +18,9 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
         bool Initialize(
             const GFX::Context& context,
             uint32_t particleCapacity,
-            uint32_t emitterPageCapacity);
+            uint32_t emitterPageCapacity,
+            uint32_t drawCapacity =
+                kMaximumParticleEmitterSubmissionsPerFrame);
         void Shutdown(const GFX::Context& context) noexcept;
 
         bool IsReady() const noexcept;
@@ -26,6 +28,16 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
             const GFX::Context& context,
             D3D12_RESOURCE_STATES nextState);
         void InsertUavBarrier(const GFX::Context& context) const;
+        void InsertDrawUavBarrier(const GFX::Context& context) const;
+        void InsertDrawResetUavBarrier(const GFX::Context& context) const;
+        void InsertDrawCounterUavBarrier(
+            const GFX::Context& context) const;
+        void TransitionDrawArguments(
+            const GFX::Context& context,
+            D3D12_RESOURCE_STATES nextState);
+        void TransitionAliveIndices(
+            const GFX::Context& context,
+            D3D12_RESOURCE_STATES nextState);
 
         bool WriteEmitterParameters(
             ID3D12Device* device,
@@ -39,6 +51,11 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
             const noexcept;
         D3D12_GPU_DESCRIPTOR_HANDLE GetParticleUavGpuHandle()
             const noexcept;
+        D3D12_GPU_VIRTUAL_ADDRESS GetParticleGpuAddress() const noexcept;
+        D3D12_GPU_VIRTUAL_ADDRESS GetAliveIndexGpuAddress() const noexcept;
+        D3D12_GPU_VIRTUAL_ADDRESS GetDrawCounterGpuAddress() const noexcept;
+        D3D12_GPU_VIRTUAL_ADDRESS GetDrawArgumentGpuAddress() const noexcept;
+        ID3D12Resource* GetDrawArgumentResource() const noexcept;
 
     private:
         bool EnsureEmitterUploadPage(
@@ -47,6 +64,9 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
             uint32_t pageIndex);
 
         Microsoft::WRL::ComPtr<ID3D12Resource> particles_{};
+        Microsoft::WRL::ComPtr<ID3D12Resource> aliveIndices_{};
+        Microsoft::WRL::ComPtr<ID3D12Resource> drawCounters_{};
+        Microsoft::WRL::ComPtr<ID3D12Resource> drawArguments_{};
         RenderResourceView particleSrv_{};
         RenderResourceView particleUav_{};
         std::array<
@@ -57,6 +77,10 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
             GFX::kFrameResourceCount> mappedEmitterPages_{};
         uint32_t emitterPageCapacity_ = 0u;
         D3D12_RESOURCE_STATES particleState_ =
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        D3D12_RESOURCE_STATES drawArgumentState_ =
+            D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+        D3D12_RESOURCE_STATES aliveIndexState_ =
             D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
     };
 

@@ -7,6 +7,7 @@
 
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/Material/Authoring/HIKARI_MaterialAssetAuthoringService.h"
+#include "Assets/Vfx/HIKARI_VfxBuiltinTextureCatalog.h"
 #include "Assets/Vfx/HIKARI_VfxPropertySchema.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxSerializedTarget.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceDomain.h"
@@ -47,10 +48,38 @@ namespace HIKARI::EDITOR {
                     outMessage;
                 return false;
             }
-            if (material.source.domain != MaterialDomain::Particle) {
+            if (!IsRenderableMaterialAssetKind(material.source.kind)) {
                 outMessage =
-                    "DOMAIN_MISMATCH: VFX renderers accept only Particle "
-                    "Material assets";
+                    "KIND_MISMATCH: VFX renderers require a renderable "
+                    "Material asset";
+                return false;
+            }
+            return true;
+        }
+
+        bool ValidateParticleTexture(
+            AssetDatabase* database,
+            const nlohmann::json& value,
+            std::string& outMessage) {
+
+            if (!value.is_string()) {
+                outMessage = "Particle texture GUID must be a string";
+                return false;
+            }
+            const AssetGuid guid{ value.get<std::string>() };
+            if (!guid.IsValid() ||
+                VFX::IsVfxBuiltinTextureAssetId(guid.value)) {
+                return true;
+            }
+            if (database == nullptr) {
+                outMessage =
+                    "Particle texture assignment requires an open project";
+                return false;
+            }
+            const AssetRecord* record = database->FindByGuid(guid);
+            if (record == nullptr || record->type != AssetType::Texture) {
+                outMessage =
+                    "VFX color texture must reference a Texture asset";
                 return false;
             }
             return true;
@@ -347,6 +376,13 @@ namespace HIKARI::EDITOR {
             if (targetId == emitter.renderCommon.id &&
                 propertyId == "materialAssetGuid" &&
                 !ValidateParticleMaterial(
+                    assetDatabase, value, outMessage)) {
+                statusMessage_ = outMessage;
+                return false;
+            }
+            if (targetId == emitter.renderCommon.id &&
+                propertyId == "colorTextureAssetGuid" &&
+                !ValidateParticleTexture(
                     assetDatabase, value, outMessage)) {
                 statusMessage_ = outMessage;
                 return false;

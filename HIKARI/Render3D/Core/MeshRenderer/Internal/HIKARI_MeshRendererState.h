@@ -24,6 +24,7 @@
 #include "Render3D/Meshlet/HIKARI_MeshletRenderBackend.h"
 #include "Render3D/Resources/HIKARI_RenderResourceHandle.h"
 #include "Render3D/Resources/HIKARI_RenderResourcePool.h"
+#include "Render3D/Vfx/HIKARI_ParticleGpuDrivenPass.h"
 
 namespace HIKARI::MESHRENDERER {
 
@@ -130,6 +131,9 @@ namespace HIKARI::MESHRENDERER {
         RENDER3D::CLUSTER::ClusterGpuCullingPass clusterGpuCullingPass{};
         RENDER3D::GPUDRIVEN::ClusterGpuDrivenProducerAdapter clusterGpuDrivenProducer{};
         RENDER3D::MESHLET::MeshletRenderBackend meshletRenderBackend{};
+        RENDER3D::PARTICLES::ParticleGpuDrivenPass particlePass{};
+        const RENDER3D::PARTICLES::ParticleRenderFrameSource*
+            particleFrameSource = nullptr;
 
         RENDER3D::GPUDRIVEN::GpuDrivenSceneSource gpuDrivenSceneSource{};
         const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource* gpuDrivenSceneSourceIdentity = nullptr;

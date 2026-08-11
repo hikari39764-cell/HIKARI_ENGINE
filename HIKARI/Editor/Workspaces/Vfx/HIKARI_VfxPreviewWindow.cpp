@@ -1,4 +1,4 @@
-﻿#include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
+#include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -26,25 +26,16 @@ namespace HIKARI::EDITOR {
         if (ImGui::Button("Perspective")) {
             cameraController_.ApplyViewPreset(
                 EditorDirectorCameraViewPreset::Perspective);
-            cameraController_.Focus({ 0.0f, 0.75f, 0.0f }, 5.0f);
-            ++cameraRevision_;
-            cameraCutPending_ = true;
         }
         ImGui::SameLine();
         if (ImGui::Button("Front")) {
             cameraController_.ApplyViewPreset(
                 EditorDirectorCameraViewPreset::Front);
-            cameraController_.Focus({ 0.0f, 0.75f, 0.0f }, 5.0f);
-            ++cameraRevision_;
-            cameraCutPending_ = true;
         }
         ImGui::SameLine();
         if (ImGui::Button("Top")) {
             cameraController_.ApplyViewPreset(
                 EditorDirectorCameraViewPreset::Top);
-            cameraController_.Focus({ 0.0f, 0.0f, 0.0f }, 5.0f);
-            ++cameraRevision_;
-            cameraCutPending_ = true;
         }
         ImGui::SameLine();
         ImGui::Checkbox("Grid", &showPreviewGrid_);
@@ -89,8 +80,8 @@ namespace HIKARI::EDITOR {
         ImGui::SameLine();
         ImGui::TextDisabled(
             "%zu emitters",
-            previewRenderInput_ != nullptr
-                ? previewRenderInput_->emitters.size()
+            previewRenderMailbox_.GetCurrent() != nullptr
+                ? previewRenderMailbox_.GetCurrent()->emitters.size()
                 : 0u);
         if (ImGui::IsItemHovered()) {
             ImGui::SetTooltip(

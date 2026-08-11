@@ -10,7 +10,7 @@
 
 namespace HIKARI::VFX {
 
-    inline constexpr uint32_t kVfxSourceVersion = 2u;
+    inline constexpr uint32_t kVfxSourceVersion = 3u;
 
     enum class VfxValueType : uint8_t {
         Bool,
@@ -48,6 +48,16 @@ namespace HIKARI::VFX {
     enum class VfxBlendMode : uint8_t {
         Alpha,
         Additive,
+    };
+
+    enum class VfxMaterialMode : uint8_t {
+        StandardUnlit,
+        CustomMaterial,
+    };
+
+    enum class VfxParticleCapacityMode : uint8_t {
+        Automatic,
+        Fixed,
     };
 
     // Numeric values intentionally mirror the cooked HVFXC contract. Values
@@ -228,6 +238,10 @@ namespace HIKARI::VFX {
         std::string id{};
         float ratePerSecond = 10.0f;
         uint32_t burstCount = 0u;
+        VfxParticleCapacityMode capacityMode =
+            VfxParticleCapacityMode::Automatic;
+        // In Automatic mode this remains the authored safety ceiling. The
+        // compiler derives the smaller live allocation from spawn and TTL.
         uint32_t maximumParticles = 1024u;
     };
 
@@ -272,6 +286,8 @@ namespace HIKARI::VFX {
 
     struct VfxRenderCommonModuleData {
         std::string id{};
+        VfxMaterialMode materialMode = VfxMaterialMode::StandardUnlit;
+        AssetGuid colorTextureAssetGuid{};
         AssetGuid materialAssetGuid{};
         VfxBlendMode blendMode = VfxBlendMode::Alpha;
         bool depthTest = true;
@@ -287,7 +303,7 @@ namespace HIKARI::VFX {
         std::string id{};
         VfxRenderShapeType type = VfxRenderShapeType::Sprite;
         VfxBillboardMode billboardMode =
-            VfxBillboardMode::Fixed;
+            VfxBillboardMode::RotatedBillboard;
         uint32_t ribbonSegmentCount = 16u;
         float ribbonWidth = 0.1f;
         float ringOuterRadius = 1.0f;
@@ -329,6 +345,8 @@ namespace HIKARI::VFX {
     std::string_view ToString(VfxShapeType value) noexcept;
     std::string_view ToString(VfxRenderShapeType value) noexcept;
     std::string_view ToString(VfxBlendMode value) noexcept;
+    std::string_view ToString(VfxMaterialMode value) noexcept;
+    std::string_view ToString(VfxParticleCapacityMode value) noexcept;
     std::string_view ToString(VfxBillboardMode value) noexcept;
     std::string_view ToString(VfxCurveInterpolation value) noexcept;
     std::string_view ToString(VfxDistributionMode value) noexcept;
@@ -348,6 +366,12 @@ namespace HIKARI::VFX {
     bool TryParseVfxBlendMode(
         std::string_view text,
         VfxBlendMode& outValue) noexcept;
+    bool TryParseVfxMaterialMode(
+        std::string_view text,
+        VfxMaterialMode& outValue) noexcept;
+    bool TryParseVfxParticleCapacityMode(
+        std::string_view text,
+        VfxParticleCapacityMode& outValue) noexcept;
     bool TryParseVfxBillboardMode(
         std::string_view text,
         VfxBillboardMode& outValue) noexcept;

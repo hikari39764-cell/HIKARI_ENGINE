@@ -27,7 +27,7 @@
 #include "Render3D/Lighting/HIKARI_DefaultSkyEnvironment.h"
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
-#include "Render3D/Vfx/HIKARI_GpuParticleRenderer.h"
+#include "Render3D/Vfx/HIKARI_ParticleRenderInput.h"
 #include "Render3D/Views/HIKARI_EditorInteractiveViewGuides.h"
 #include "Render3D/Views/HIKARI_EditorInteractiveStylizedView.h"
 #include "Vfx/Post/HIKARI_PostCommon.h"
@@ -38,6 +38,22 @@
 namespace HIKARI::RENDER3D::EDITORVIEW {
 
     namespace {
+
+        struct GuidePassContext {
+            const EditorInteractiveViewRequest* request = nullptr;
+            uint32_t width = 0u;
+            uint32_t height = 0u;
+        };
+
+        void RenderDepthAwareGuidePass(void* userData) {
+            const auto* context = static_cast<const GuidePassContext*>(
+                userData);
+            if (context == nullptr || context->request == nullptr) return;
+            INTERNAL::RenderGuideOverlay(
+                *context->request,
+                context->width,
+                context->height);
+        }
 
         constexpr uint32_t kMaxInteractiveViewExtent = 4096u;
         constexpr DXGI_FORMAT kInteractiveViewFormat =
@@ -999,7 +1015,6 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         uint64_t currentSceneRevision,
         ModelManager& modelManager,
         SkyManager& skyManager,
-        PARTICLES::GpuParticleRenderer* particleRenderer,
         const AssetRegistry* assetRegistry,
         const MATERIAL::MaterialExternalValueSnapshot*
             materialExternalValues) {
@@ -1022,21 +1037,27 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
                 continue;
             }
             ++renderableViewCount;
-            const bool olderThanSelected =
+            const bool realtimePreferred =
                 selected == nullptr ||
+                (state->request.continuousRealtime &&
+                 !selected->request.continuousRealtime);
+            const bool sameCadenceClass = selected != nullptr &&
+                state->request.continuousRealtime ==
+                    selected->request.continuousRealtime;
+            const bool olderThanSelected = sameCadenceClass &&
                 state->lastRenderedSerial < selected->lastRenderedSerial;
             const bool sameAgeHigherPriority =
-                selected != nullptr &&
+                sameCadenceClass &&
                 state->lastRenderedSerial == selected->lastRenderedSerial &&
                 state->request.schedulingPriority >
                     selected->request.schedulingPriority;
             const bool sameAgeAndPriorityLowerId =
-                selected != nullptr &&
+                sameCadenceClass &&
                 state->lastRenderedSerial == selected->lastRenderedSerial &&
                 state->request.schedulingPriority ==
                     selected->request.schedulingPriority &&
                 state->request.viewId.value < selected->request.viewId.value;
-            if (olderThanSelected || sameAgeHigherPriority ||
+            if (realtimePreferred || olderThanSelected || sameAgeHigherPriority ||
                 sameAgeAndPriorityLowerId) {
                 selected = state.get();
             }
@@ -1081,6 +1102,15 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         view.viewId = selected->request.viewId;
         view.purpose = selected->request.purpose;
         view.cameraFrame = &selected->request.cameraFrame;
+        const PARTICLES::ParticleRenderFrameSource particleFrameSource{
+            selected->request.particleInputOverride.get(),
+            assetRegistry,
+            materialExternalValues,
+        };
+        view.particleFrameSource =
+            selected->request.particleInputOverride != nullptr
+                ? &particleFrameSource
+                : nullptr;
         const SceneEnvironment& effectiveEnvironment =
             selected->request.environmentOverride != nullptr
                 ? *selected->request.environmentOverride
@@ -1128,6 +1158,21 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
                 stylizedPreparation);
         renderSettings.iblEnvironmentOverride =
             iblEnvironmentOverride;
+        renderSettings.particleFrameSource = view.particleFrameSource;
+        const bool hasToolGuides =
+            selected->request.guideOverlay.showGroundGrid ||
+            selected->request.guideOverlay.showWorldAxes;
+        GuidePassContext guidePassContext{
+            &selected->request,
+            width,
+            height,
+        };
+        if (hasToolGuides) {
+            renderSettings.depthAwareOverlayUserData =
+                &guidePassContext;
+            renderSettings.renderDepthAwareOverlay =
+                &RenderDepthAwareGuidePass;
+        }
         const MESHRENDERER::EditorInteractiveMeshRenderResult meshResult =
             MESHRENDERER::RenderEditorInteractiveOpaque(
                 view,
@@ -1136,33 +1181,12 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
                 width,
                 height,
                 renderSettings);
-        const bool hasToolGuides =
-            selected->request.guideOverlay.showGroundGrid ||
-            selected->request.guideOverlay.showWorldAxes;
-        if (hasToolGuides) {
-            // Tool guides own an isolated per-view batch. Do not render the
-            // global Scene debug batch into the same editor upload resources.
-            INTERNAL::RenderGuideOverlay(
-                selected->request, width, height);
-        } else if (selected->request.drawDebug) {
+        if (!hasToolGuides && selected->request.drawDebug) {
             RENDERER3D::DEBUG::RenderAllForView(
                 selected->request.viewId,
                 selected->request.cameraFrame.camera,
                 static_cast<float>(width),
                 static_cast<float>(height));
-        }
-        if (particleRenderer != nullptr &&
-            selected->request.particleInputOverride != nullptr) {
-            particleRenderer->UpdateContext(GFX::GetCurrentContext());
-            (void)particleRenderer->Render(
-                *selected->request.particleInputOverride,
-                selected->request.cameraFrame.camera,
-                assetRegistry,
-                materialExternalValues,
-                PARTICLES::ParticleRenderViewExtent{
-                    width,
-                    height,
-                });
         }
         selected->target->EndCapture();
 

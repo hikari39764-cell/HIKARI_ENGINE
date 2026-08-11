@@ -2,12 +2,15 @@
 
 #include "Assets/Vfx/HIKARI_VfxPresetRegistry.h"
 
+#include <algorithm>
+#include <cmath>
 #include <utility>
 
 #include "Core/Text/HIKARI_Localization.h"
 
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Editor/Commands/HIKARI_EditorCommandRouter.h"
+#include "Editor/Workspaces/Vfx/HIKARI_VfxPreviewBounds.h"
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenSceneSource.h"
 #include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
@@ -52,18 +55,24 @@ namespace HIKARI::EDITOR {
 
         if (requestedAssetGuid.IsValid()) {
             if (document_.GetAssetGuid() == requestedAssetGuid) {
-                outMessage.clear();
-                return true;
+                if (previewPlaying_ && previewHandle_.IsValid()) {
+                    outMessage.clear();
+                    return true;
+                }
+                return PlayPreview(outMessage);
             }
             return OpenAsset(database, requestedAssetGuid, outMessage);
         }
         if (!document_.IsOpen()) {
             NewAsset();
             outMessage = "New transient VFX document";
-        } else {
-            outMessage.clear();
+            return true;
         }
-        return true;
+        if (previewPlaying_ && previewHandle_.IsValid()) {
+            outMessage.clear();
+            return true;
+        }
+        return PlayPreview(outMessage);
     }
 
     void VfxWorkspaceController::Deactivate(
@@ -81,7 +90,8 @@ namespace HIKARI::EDITOR {
         activePreviewViewId_ = {};
         StopPreview();
         playbackService_.Reset();
-        previewRenderInput_.reset();
+        previewRenderMailbox_.Clear();
+        previewAccumulatedDeltaSeconds_ = 0.0f;
     }
 
     void VfxWorkspaceController::SetPreviewNamespaceRetireCallback(
@@ -127,7 +137,13 @@ namespace HIKARI::EDITOR {
         selection_ = {};
         previewInputOverrides_.clear();
         OnDocumentChanged();
-        statusMessage_ = "New VFX document";
+        (void)FocusPreviewAsset({}, true);
+        std::string previewMessage{};
+        if (PlayPreview(previewMessage)) {
+            statusMessage_ = "New VFX document; preview playing";
+        } else {
+            statusMessage_ = "New VFX document; " + previewMessage;
+        }
     }
 
     bool VfxWorkspaceController::NewAssetFromPreset(
@@ -159,8 +175,15 @@ namespace HIKARI::EDITOR {
         selection_ = {};
         previewInputOverrides_.clear();
         OnDocumentChanged();
+        (void)FocusPreviewAsset({}, true);
         outMessage = "Created VFX from preset: " + preset->displayName +
-            "; textured preview is session-owned until first save";
+            "; shared EngineContent textures are directly editable in Render Common";
+        std::string previewMessage{};
+        if (PlayPreview(previewMessage)) {
+            outMessage += "; preview playing";
+        } else if (!previewMessage.empty()) {
+            outMessage += "; preview unavailable: " + previewMessage;
+        }
         statusMessage_ = outMessage;
         return true;
     }
@@ -191,6 +214,15 @@ namespace HIKARI::EDITOR {
         selection_ = {};
         previewInputOverrides_.clear();
         OnDocumentChanged();
+        (void)FocusPreviewAsset({}, true);
+        const std::string openMessage = outMessage;
+        std::string previewMessage{};
+        if (PlayPreview(previewMessage)) {
+            outMessage = openMessage + "; preview playing";
+        } else if (!previewMessage.empty()) {
+            outMessage = openMessage + "; preview unavailable: " +
+                previewMessage;
+        }
         statusMessage_ = outMessage;
         return true;
     }
@@ -200,14 +232,7 @@ namespace HIKARI::EDITOR {
         std::string& outMessage) {
 
         ResetAssetRefreshStatus();
-        const uint64_t revisionBeforeSave = document_.GetRevision();
         const bool saved = document_.Save(database, outMessage);
-        if (document_.GetRevision() != revisionBeforeSave) {
-            // First-save preset authoring replaces transient material recipes
-            // with durable private material GUIDs. Recompile the preview
-            // program before the next frame so it cannot retain empty GUIDs.
-            OnDocumentChanged();
-        }
         if (!saved) {
             statusMessage_ = outMessage;
             return false;
@@ -277,7 +302,57 @@ namespace HIKARI::EDITOR {
         ResetAssetRefreshStatus();
         previewInputOverrides_.clear();
         OnDocumentChanged();
+        (void)FocusPreviewAsset();
+        const std::string revertMessage = outMessage;
+        std::string previewMessage{};
+        if (PlayPreview(previewMessage)) {
+            outMessage = revertMessage + "; preview playing";
+        } else if (!previewMessage.empty()) {
+            outMessage = revertMessage + "; preview unavailable: " +
+                previewMessage;
+        }
         statusMessage_ = outMessage;
+        return true;
+    }
+
+    bool VfxWorkspaceController::FocusPreviewAsset(
+        std::string_view emitterId,
+        bool preserveDistance) {
+
+        if (!document_.IsOpen()) return false;
+        const VfxPreviewBounds bounds = EstimateVfxPreviewBounds(
+            document_.Asset(), emitterId);
+        if (!bounds.valid) return false;
+
+        const Camera3D& currentCamera = cameraController_.GetCamera();
+        const float halfFov = std::clamp(
+            currentCamera.GetFovYRad() * 0.5f,
+            0.1f,
+            1.4f);
+        const float fitDistance = (std::max)(
+            1.5f,
+            bounds.radius /
+                (std::max)(std::sin(halfFov), 0.1f) * 1.12f);
+        // プリセット切替などでは現在の視点距離を維持し、
+        // オービット中心だけをエフェクトの中心へ寄せる。
+        const float preferredDistance = preserveDistance
+            ? (std::max)(
+                MATH::Length(
+                    currentCamera.GetPosition() -
+                    cameraController_.GetOrbitPivot()),
+                0.5f)
+            : fitDistance;
+        const float farPlane = (std::max)(
+            100.0f,
+            preferredDistance + bounds.radius * 2.0f + 10.0f);
+        cameraController_.GetCamera().SetPerspective(
+            currentCamera.GetFovYRad(),
+            currentCamera.GetAspect(),
+            currentCamera.GetNearZ(),
+            farPlane);
+        cameraController_.Focus(bounds.center, preferredDistance);
+        ++cameraRevision_;
+        cameraCutPending_ = true;
         return true;
     }
 

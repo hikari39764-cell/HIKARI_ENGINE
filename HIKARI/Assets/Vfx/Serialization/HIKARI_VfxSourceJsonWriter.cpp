@@ -221,6 +221,8 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
                         { "id", emitter.spawn.id },
                         { "ratePerSecond", emitter.spawn.ratePerSecond },
                         { "burstCount", emitter.spawn.burstCount },
+                        { "capacityMode", ToString(
+                            emitter.spawn.capacityMode) },
                         { "maximumParticles",
                             emitter.spawn.maximumParticles },
                     } },
@@ -269,6 +271,10 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
                     } },
                     { "renderCommon", {
                         { "id", emitter.renderCommon.id },
+                        { "materialMode", ToString(
+                            emitter.renderCommon.materialMode) },
+                        { "colorTextureAssetGuid",
+                            emitter.renderCommon.colorTextureAssetGuid.value },
                         { "materialAssetGuid",
                             emitter.renderCommon.materialAssetGuid.value },
                         { "blendMode", ToString(
@@ -344,7 +350,7 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
             emitters.push_back(WriteEmitter(emitter));
         }
         return {
-            { "version", asset.version },
+            { "version", kVfxSourceVersion },
             { "name", asset.name },
             { "durationSeconds", asset.durationSeconds },
             { "loop", asset.loop },

@@ -222,13 +222,11 @@ namespace HIKARI::EDITOR {
             outMessage = "Select an emitter to focus";
             return false;
         }
-        const VFX::VfxEmitterData* emitter =
-            FindEmitter(selection_.emitterId);
-        const MATH::Vec3& pivot = emitter->emitterTransform.transform.position;
-        const float radius = 3.0f;
-        cameraController_.Focus(pivot, radius);
-        ++cameraRevision_;
-        cameraCutPending_ = true;
+        if (!FocusPreviewAsset(selection_.emitterId)) {
+            outMessage = "Selected emitter has no previewable bounds";
+            statusMessage_ = outMessage;
+            return false;
+        }
         outMessage = "Preview camera focused on emitter";
         statusMessage_ = outMessage;
         return true;
@@ -244,11 +242,50 @@ namespace HIKARI::EDITOR {
         }
         const int steps = (std::max)(1, (std::min)(frameCount, 120));
         const float stepSeconds = 1.0f / 60.0f;
-        previewPaused_ = true;
-        previewPlaying_ = true;
-        for (int index = 0; index < steps; ++index) {
-            UpdatePreview(++previewFrameIndex_, stepSeconds);
+        if (!previewPlaying_ || !previewHandle_.IsValid()) {
+            if (!PlayPreview(outMessage)) {
+                return false;
+            }
+            previewPaused_ = true;
+            outMessage =
+                "Preview initial frame submitted; step after GPU consumption";
+            statusMessage_ = outMessage;
+            return false;
         }
+        if (previewRenderMailbox_.HasPending()) {
+            outMessage = "Preview is waiting for the current GPU frame";
+            statusMessage_ = outMessage;
+            return false;
+        }
+        if (previewRestartPending_) {
+            if (!RestartPreview(outMessage)) {
+                return false;
+            }
+            previewPaused_ = true;
+            outMessage =
+                "Preview restart frame submitted; step after GPU consumption";
+            statusMessage_ = outMessage;
+            return false;
+        }
+        const float playbackEnd = previewLoopEnabled_
+            ? previewLoopEndSeconds_
+            : GetPreviewTimelineDuration();
+        const float target = (std::min)(
+            previewElapsedSeconds_ +
+                static_cast<float>(steps) * stepSeconds,
+            playbackEnd);
+        if (target <= previewElapsedSeconds_ + 1.0e-6f) {
+            outMessage = "Preview is at the end of its playback range";
+            statusMessage_ = outMessage;
+            previewPaused_ = true;
+            return false;
+        }
+        if (!SeekActivePreview(target, outMessage)) {
+            statusMessage_ = outMessage;
+            previewPaused_ = true;
+            return false;
+        }
+        previewPaused_ = true;
         outMessage = "Preview stepped " + std::to_string(steps) +
             " frame(s)";
         statusMessage_ = outMessage;
@@ -275,7 +312,8 @@ namespace HIKARI::EDITOR {
 
     void VfxWorkspaceController::NotifyEmitterVisibilityChanged() noexcept {
         if (document_.IsOpen()) {
-            PublishPreviewRenderInput();
+            (void)PublishPreviewRenderInput(
+                VFX::VfxRenderInputPublishMode::SupersedePending);
         }
     }
 

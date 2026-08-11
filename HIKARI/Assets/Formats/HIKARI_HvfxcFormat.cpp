@@ -422,6 +422,9 @@ namespace HIKARI::VFX {
                 writer.Write(simulation.drag);
                 WriteAnimated(writer, simulation.color);
 
+                writer.WriteEnum(emitter.render.materialMode);
+                writer.WriteString(
+                    emitter.render.colorTextureAssetGuid);
                 writer.WriteString(emitter.render.materialAssetGuid);
                 writer.WriteEnum(emitter.render.blendMode);
                 writer.WriteEnum(emitter.render.shape);
@@ -543,6 +546,9 @@ namespace HIKARI::VFX {
                     !ReadVec3(reader, simulation.gravity) ||
                     !reader.Read(simulation.drag) ||
                     !ReadAnimated(reader, simulation.color) ||
+                    !reader.ReadEnum(emitter.render.materialMode) ||
+                    !reader.ReadString(
+                        emitter.render.colorTextureAssetGuid) ||
                     !reader.ReadString(emitter.render.materialAssetGuid) ||
                     !reader.ReadEnum(emitter.render.blendMode) ||
                     !reader.ReadEnum(emitter.render.shape) ||

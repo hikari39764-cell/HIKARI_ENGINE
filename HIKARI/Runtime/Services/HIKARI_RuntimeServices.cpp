@@ -18,6 +18,7 @@
 #include "Render2D/HIKARI_DxRenderer.h"
 #include "Render2D/HIKARI_DxTexture.h"
 #include "Render3D/Lighting/HIKARI_VolumetricLightingStage.h"
+#include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Material/HIKARI_DefaultPbrResources.h"
 #include "Render3D/Material/Program/HIKARI_MaterialProgramRegistry.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
@@ -56,8 +57,6 @@ namespace HIKARI {
                 INTERNAL::GetRuntimeServiceState().runtimeExportedSceneGuids;
             auto& gGpuFrameReady =
                 INTERNAL::GetRuntimeServiceState().gpuFrameReady;
-            auto& gGpuParticleRenderer =
-                INTERNAL::GetRuntimeServiceState().gpuParticleRenderer;
             auto& gLogicalScreenWidth =
                 INTERNAL::GetRuntimeServiceState().logicalScreenWidth;
             auto& gLogicalScreenHeight =
@@ -78,10 +77,6 @@ namespace HIKARI {
 
         const INPUT::InputSnapshot& GetInputSnapshot() {
             return gInputService.GetSnapshot();
-        }
-
-        RENDER3D::PARTICLES::GpuParticleRenderer& GetGpuParticleRenderer() {
-            return gGpuParticleRenderer;
         }
 
         bool IsEditorHost() { return IsEditorHostMode(gRuntimeHostMode); }
@@ -255,13 +250,6 @@ namespace HIKARI {
             else {
                 HIKARI_LOG_WARN("Audio initialized with Null fallback.");
             }
-            if (!gGpuParticleRenderer.Initialize(graphicsContext)) {
-                HIKARI_LOG_ERROR(
-                    "Native GPU particle renderer initialization failed.");
-                return false;
-            }
-            HIKARI_LOG_INFO("Native GPU particle renderer initialized.");
-
             const ProjectContext& projectContext =
                 GetProjectContext();
             const bool inputInitialized = projectContext.IsOpen()
@@ -329,8 +317,8 @@ namespace HIKARI {
                 }
                 editorUiServices->Shutdown(gWindow);
             }
-            gGpuParticleRenderer.Shutdown();
-            HIKARI_LOG_INFO("Native GPU particle renderer finalized.");
+            MESHRENDERER::ShutdownParticleGpuDrivenPass();
+            HIKARI_LOG_INFO("Particle GPU-driven pass finalized.");
             HIKARI::POST::PostSystem::Shutdown();
             HIKARI_LOG_INFO("PostSystem shutdown.");
             DX::DxRenderer::Finalize();

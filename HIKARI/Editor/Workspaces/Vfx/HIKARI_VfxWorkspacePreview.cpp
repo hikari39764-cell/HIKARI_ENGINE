@@ -10,100 +10,12 @@
 #include <utility>
 
 #include "Assets/HIKARI_AssetGuid.h"
-#include "Assets/HIKARI_AssetRegistry.h"
-#include "Assets/HIKARI_AssetTypes.h"
 #include "Assets/Vfx/Compiler/HIKARI_VfxCompiler.h"
-#include "Editor/Authoring/HIKARI_VfxAssetAuthoringService.h"
 #include "Editor/Views/HIKARI_EditorViewInstance.h"
-#include "Render3D/Core/HIKARI_Material.h"
-#include "Render3D/Material/HIKARI_MaterialRuntimeBuilder.h"
-#include "Render3D/Material/Program/HIKARI_MaterialProgramRegistry.h"
 #include "Render3D/Vfx/HIKARI_ParticleRenderInput.h"
 #include "Render3D/Views/HIKARI_EditorInteractiveViewRenderer.h"
 
 namespace HIKARI::EDITOR {
-
-    bool VfxWorkspaceController::RefreshPresetPreviewMaterials(
-        const AssetRegistry& assetRegistry,
-        std::string& outMessage) {
-
-        const auto& recipes = document_.GetPendingPresetMaterials();
-        if (recipes.empty()) {
-            presetPreviewMaterials_.clear();
-            presetPreviewMaterialRecipes_.clear();
-            presetPreviewMaterialRegistryInstanceId_ = 0u;
-            presetPreviewMaterialRegistryRevision_ = 0u;
-            outMessage.clear();
-            return true;
-        }
-        if (presetPreviewMaterialRegistryInstanceId_ ==
-                assetRegistry.GetInstanceId() &&
-            presetPreviewMaterialRegistryRevision_ ==
-                assetRegistry.GetRevision() &&
-            presetPreviewMaterialRecipes_ == recipes &&
-            presetPreviewMaterials_.size() == recipes.size()) {
-            outMessage.clear();
-            return true;
-        }
-
-        std::unordered_map<std::string, std::shared_ptr<const Material>>
-            rebuilt{};
-        rebuilt.reserve(recipes.size());
-        MaterialRuntimeBuilder runtimeBuilder{};
-        for (const VFX::PRESETS::VfxPresetMaterialRecipe& recipe :
-             recipes) {
-            if (recipe.emitterId.empty() ||
-                rebuilt.contains(recipe.emitterId)) {
-                outMessage =
-                    "VFX preset preview contains duplicate or empty emitter material bindings";
-                return false;
-            }
-            if (assetRegistry.FindAs<TextureAssetDescriptor>(
-                    AssetId{ recipe.textureAssetId.value }) == nullptr) {
-                outMessage =
-                    "VFX preset preview texture is not registered: " +
-                    recipe.textureAssetId.value;
-                return false;
-            }
-
-            MaterialAssetData source{};
-            if (!BuildVfxPresetMaterialSource(
-                    recipe, source, outMessage)) {
-                return false;
-            }
-            auto runtimeMaterial = std::make_shared<Material>();
-            RENDER3D::MATERIAL::MaterialProgramResolution resolution{};
-            if (!runtimeBuilder.BuildRuntimeMaterial(
-                    source,
-                    assetRegistry,
-                    RENDER3D::MATERIAL::
-                        GetRuntimeMaterialProgramRegistry(),
-                    *runtimeMaterial,
-                    "VFX preset preview/" +
-                        recipe.textureAssetId.value + "/" +
-                        recipe.emitterId,
-                    &resolution) ||
-                resolution.effectiveProgram.domain !=
-                    MaterialDomain::Particle) {
-                outMessage =
-                    "Failed to build Particle-domain preview material for emitter " +
-                    recipe.emitterId;
-                return false;
-            }
-            rebuilt.emplace(
-                recipe.emitterId,
-                std::move(runtimeMaterial));
-        }
-
-        presetPreviewMaterials_ = std::move(rebuilt);
-        presetPreviewMaterialRecipes_ = recipes;
-        presetPreviewMaterialRegistryInstanceId_ =
-            assetRegistry.GetInstanceId();
-        presetPreviewMaterialRegistryRevision_ =
-            assetRegistry.GetRevision();
-        outMessage.clear();
-        return true;
-    }
 
     void VfxWorkspaceController::SetPreviewPlaybackSpeed(
         float speed) noexcept {
@@ -114,19 +26,44 @@ namespace HIKARI::EDITOR {
             4.0f);
     }
 
+    float VfxWorkspaceController::GetPreviewTimelineDuration()
+        const noexcept {
+
+        constexpr float kMinimumRange = 1.0f / 60.0f;
+        if (!document_.IsOpen()) {
+            return kMinimumRange;
+        }
+        float maximumLifetime = 0.0f;
+        for (const VFX::VfxEmitterData& emitter :
+             document_.Asset().emitters) {
+            maximumLifetime = (std::max)(
+                maximumLifetime,
+                emitter.basic.lifetime.mode ==
+                    VFX::VfxDistributionMode::RandomRange
+                    ? emitter.basic.lifetime.maximum
+                    : emitter.basic.lifetime.minimum);
+        }
+        return (std::max)(
+            document_.Asset().durationSeconds + maximumLifetime,
+            kMinimumRange);
+    }
+
     void VfxWorkspaceController::NormalizePreviewTimelineRange() noexcept {
         constexpr float kMinimumRange = 1.0f / 60.0f;
-        const float duration = document_.IsOpen()
-            ? (std::max)(
-                document_.Asset().durationSeconds,
-                kMinimumRange)
-            : kMinimumRange;
+        const float duration = GetPreviewTimelineDuration();
         if (!previewLoopRangeInitialized_) {
-            previewLoopEnabled_ = document_.IsOpen()
-                ? document_.Asset().loop
-                : true;
+            previewLoopEnabled_ = true;
             previewLoopStartSeconds_ = 0.0f;
-            previewLoopEndSeconds_ = duration;
+            // A looping authored effect must wrap at the same authored
+            // duration as runtime playback. One-shot effects include their
+            // particle lifetime tail before the Editor repeats them.
+            previewLoopEndSeconds_ = document_.IsOpen() &&
+                document_.Asset().loop
+                ? std::clamp(
+                    document_.Asset().durationSeconds,
+                    kMinimumRange,
+                    duration)
+                : duration;
             previewLoopRangeInitialized_ = true;
             return;
         }
@@ -142,7 +79,14 @@ namespace HIKARI::EDITOR {
 
     void VfxWorkspaceController::SetPreviewLoopEnabled(
         bool enabled) noexcept {
+
         previewLoopEnabled_ = enabled;
+        if (enabled && previewPlaying_ &&
+            (previewElapsedSeconds_ < previewLoopStartSeconds_ ||
+             previewElapsedSeconds_ >= previewLoopEndSeconds_ - 1e-5f)) {
+            previewRestartPending_ = true;
+            previewRestartDelaySeconds_ = 0.0f;
+        }
     }
 
     void VfxWorkspaceController::SetPreviewLoopRange(
@@ -150,11 +94,7 @@ namespace HIKARI::EDITOR {
         float endSeconds) noexcept {
 
         constexpr float kMinimumRange = 1.0f / 60.0f;
-        const float duration = document_.IsOpen()
-            ? (std::max)(
-                document_.Asset().durationSeconds,
-                kMinimumRange)
-            : kMinimumRange;
+        const float duration = GetPreviewTimelineDuration();
         previewLoopStartSeconds_ = std::clamp(
             std::isfinite(startSeconds) ? startSeconds : 0.0f,
             0.0f,
@@ -168,6 +108,7 @@ namespace HIKARI::EDITOR {
             (previewElapsedSeconds_ < previewLoopStartSeconds_ ||
              previewElapsedSeconds_ > previewLoopEndSeconds_)) {
             previewRestartPending_ = true;
+            previewRestartDelaySeconds_ = 0.0f;
         }
     }
 
@@ -215,9 +156,11 @@ namespace HIKARI::EDITOR {
         previewElapsedSeconds_ = 0.0f;
         previewPlaying_ = true;
         previewPaused_ = false;
+        previewAccumulatedDeltaSeconds_ = 0.0f;
         previewRestartPending_ = false;
+        previewRestartDelaySeconds_ = 0.0f;
         if (!SeekActivePreview(
-                previewLoopStartSeconds_, outMessage)) {
+                previewLoopStartSeconds_, outMessage, true)) {
             if (previewHandle_.IsValid()) {
                 (void)playbackService_.Stop(previewHandle_);
             }
@@ -252,13 +195,16 @@ namespace HIKARI::EDITOR {
         if (previewHandle_.IsValid()) {
             (void)playbackService_.Stop(previewHandle_);
             playbackService_.Update(previewFrameIndex_, 0.0f);
-            PublishPreviewRenderInput();
+            (void)PublishPreviewRenderInput(
+                VFX::VfxRenderInputPublishMode::SupersedePending);
         }
         ReleasePreviewNamespace();
         previewHandle_ = {};
         previewPlaying_ = false;
         previewPaused_ = false;
         previewRestartPending_ = false;
+        previewRestartDelaySeconds_ = 0.0f;
+        previewAccumulatedDeltaSeconds_ = 0.0f;
         previewElapsedSeconds_ = previewLoopStartSeconds_;
     }
 
@@ -271,17 +217,20 @@ namespace HIKARI::EDITOR {
 
     bool VfxWorkspaceController::SeekActivePreview(
         float seconds,
-        std::string& outMessage) {
+        std::string& outMessage,
+        bool supersedePending) {
 
         if (!previewHandle_.IsValid()) {
             outMessage = "VFX preview is not active";
             return false;
         }
+        if (previewRenderMailbox_.HasPending() && !supersedePending) {
+            outMessage = "VFX preview is waiting for the current GPU frame";
+            return false;
+        }
 
         constexpr float kNominalFixedStep = 1.0f / 60.0f;
-        const float duration = (std::max)(
-            document_.Asset().durationSeconds,
-            kNominalFixedStep);
+        const float duration = GetPreviewTimelineDuration();
         const float target = std::clamp(
             std::isfinite(seconds) ? seconds : 0.0f,
             0.0f,
@@ -301,24 +250,24 @@ namespace HIKARI::EDITOR {
                 : capacity.currentSeconds;
         const float simulationSpan = (std::max)(
             target - simulationStart, 0.0f);
-        if (simulationSpan >
-            static_cast<float>(capacity.maximumSteps)) {
-            outMessage =
-                "VFX preview seek exceeds the safe per-frame simulation budget";
-            return false;
-        }
+        constexpr uint32_t kMaximumEditorSeekSteps = 64u;
+        const uint32_t maximumSteps = (std::min)(
+            capacity.maximumSteps,
+            kMaximumEditorSeekSteps);
         const float fixedStep = simulationSpan <= kSeekEpsilon
             ? kNominalFixedStep
-            : (std::max)(
-                kNominalFixedStep,
-                simulationSpan /
-                    static_cast<float>(capacity.maximumSteps));
+            : maximumSteps <= 1u
+                ? simulationSpan
+                : (std::max)(
+                    kNominalFixedStep,
+                    simulationSpan /
+                        static_cast<float>(maximumSteps - 1u));
         const VFX::VfxSeekResult result = playbackService_.Seek(
             previewHandle_,
             previewFrameIndex_,
             target,
             fixedStep,
-            capacity.maximumSteps);
+            maximumSteps);
         if (!result.accepted || !result.complete) {
             outMessage = result.diagnostics.empty()
                 ? "VFX preview seek did not complete atomically"
@@ -326,7 +275,15 @@ namespace HIKARI::EDITOR {
             return false;
         }
         previewElapsedSeconds_ = result.currentSeconds;
-        PublishPreviewRenderInput();
+        previewAccumulatedDeltaSeconds_ = 0.0f;
+        const VFX::VfxRenderInputPublishMode publishMode =
+            supersedePending
+                ? VFX::VfxRenderInputPublishMode::SupersedePending
+                : VFX::VfxRenderInputPublishMode::RequireAcknowledged;
+        if (!PublishPreviewRenderInput(publishMode)) {
+            outMessage = "VFX preview frame is still pending";
+            return false;
+        }
         outMessage.clear();
         return true;
     }
@@ -348,7 +305,8 @@ namespace HIKARI::EDITOR {
             statusMessage_ = outMessage;
             return false;
         }
-        if (!SeekActivePreview(seconds, outMessage)) {
+        if (!SeekActivePreview(
+                seconds, outMessage, !wasActive)) {
             statusMessage_ = outMessage;
             return false;
         }
@@ -400,6 +358,7 @@ namespace HIKARI::EDITOR {
         previewInputOverrides_.clear();
         if (previewPlaying_) {
             previewRestartPending_ = true;
+            previewRestartDelaySeconds_ = 0.0f;
         }
         statusMessage_ = "VFX preview inputs reset";
     }
@@ -435,16 +394,44 @@ namespace HIKARI::EDITOR {
 
         previewFrameIndex_ = frameIndex;
         NormalizePreviewTimelineRange();
+        AcknowledgePreviewRenderInput();
+        const float elapsed = std::isfinite(deltaSeconds)
+            ? (std::max)(deltaSeconds, 0.0f)
+            : 0.0f;
+        // Match VfxPlaybackService's runtime delta clamp. A realtime VFX view
+        // is rendered every presented frame, so this only preserves time
+        // across a genuine renderer/material retry.
+        constexpr float kMaximumPendingPreviewTime = 0.25f;
+        if (previewPlaying_ && !previewPaused_) {
+            previewAccumulatedDeltaSeconds_ = (std::min)(
+                previewAccumulatedDeltaSeconds_ +
+                    elapsed * previewPlaybackSpeed_,
+                kMaximumPendingPreviewTime);
+        }
         bool simulationPublished = false;
         if (previewRestartPending_ && previewPlaying_) {
-            const bool wasPaused = previewPaused_;
-            std::string message{};
-            if (!RestartPreview(message)) {
-                statusMessage_ = message;
-            } else if (wasPaused) {
-                PausePreview(true);
+            previewRestartDelaySeconds_ = (std::max)(
+                previewRestartDelaySeconds_ - elapsed,
+                0.0f);
+        }
+        if (previewRenderMailbox_.HasPending()) {
+            return;
+        }
+        if (previewRestartPending_ && previewPlaying_) {
+            if (previewRestartDelaySeconds_ <= 0.0f) {
+                const bool wasPaused = previewPaused_;
+                std::string message{};
+                if (!RestartPreview(message)) {
+                    statusMessage_ = message;
+                } else if (wasPaused) {
+                    PausePreview(true);
+                }
+                simulationPublished = previewPlaying_;
             }
-            simulationPublished = previewPlaying_;
+        }
+        if (!previewPlaying_ ||
+            (previewPaused_ && !simulationPublished)) {
+            return;
         }
         if (!simulationPublished && previewPlaying_ && !previewPaused_ &&
             previewLoopEnabled_ &&
@@ -460,10 +447,9 @@ namespace HIKARI::EDITOR {
         if (!simulationPublished) {
             float simulationDelta = 0.0f;
             if (previewPlaying_ && !previewPaused_) {
-                simulationDelta = std::clamp(
-                    deltaSeconds * previewPlaybackSpeed_,
-                    0.0f,
-                    0.1f);
+                simulationDelta = (std::min)(
+                    previewAccumulatedDeltaSeconds_,
+                    kMaximumPendingPreviewTime);
                 if (previewLoopEnabled_) {
                     simulationDelta = (std::min)(
                         simulationDelta,
@@ -473,13 +459,26 @@ namespace HIKARI::EDITOR {
                             0.0f));
                 }
             }
+            if (simulationDelta <= 0.0f) {
+                return;
+            }
             playbackService_.Update(frameIndex, simulationDelta);
+            previewAccumulatedDeltaSeconds_ = (std::max)(
+                previewAccumulatedDeltaSeconds_ - simulationDelta,
+                0.0f);
             if (previewPlaying_ && !previewPaused_) {
+                const float playbackEnd = previewLoopEnabled_
+                    ? previewLoopEndSeconds_
+                    : GetPreviewTimelineDuration();
                 previewElapsedSeconds_ = (std::min)(
                     previewElapsedSeconds_ + simulationDelta,
-                    previewLoopEndSeconds_);
+                    playbackEnd);
             }
-            PublishPreviewRenderInput();
+            if (!PublishPreviewRenderInput()) {
+                statusMessage_ =
+                    "VFX preview delivery rejected an unacknowledged frame";
+                return;
+            }
         }
         if (previewPlaying_ &&
             !playbackService_.IsActive(previewHandle_)) {
@@ -498,26 +497,25 @@ namespace HIKARI::EDITOR {
         }
     }
 
-    void VfxWorkspaceController::PublishPreviewRenderInput() {
+    void VfxWorkspaceController::AcknowledgePreviewRenderInput() {
+#if defined(HIKARI_WITH_EDITOR)
+        if (activePreviewViewId_.value == 0u) {
+            return;
+        }
+        const RENDER3D::EDITORVIEW::EditorInteractiveViewOutput output =
+            RENDER3D::EDITORVIEW::GetOutput(activePreviewViewId_);
+        if (output.ready) {
+            (void)previewRenderMailbox_.Acknowledge(
+                output.sceneRevision);
+        }
+#endif
+    }
+
+    bool VfxWorkspaceController::PublishPreviewRenderInput(
+        VFX::VfxRenderInputPublishMode mode) {
+
         RENDER3D::PARTICLES::ParticleRenderInput input =
             playbackService_.GetRenderInput();
-        if (!presetPreviewMaterials_.empty() && document_.IsOpen()) {
-            const auto& emitters = document_.Asset().emitters;
-            for (RENDER3D::PARTICLES::ParticleEmitterSubmission& submission :
-                 input.emitters) {
-                const std::size_t index = submission.key.emitterIndex;
-                if (index >= emitters.size() ||
-                    !submission.render.materialAssetGuid.empty()) {
-                    continue;
-                }
-                const auto material = presetPreviewMaterials_.find(
-                    emitters[index].id);
-                if (material != presetPreviewMaterials_.end()) {
-                    submission.render.runtimeMaterialOverride =
-                        material->second;
-                }
-            }
-        }
         if (!hiddenEmitterIds_.empty() || !soloEmitterId_.empty()) {
             const auto& emitters = document_.IsOpen()
                 ? document_.Asset().emitters
@@ -533,12 +531,8 @@ namespace HIKARI::EDITOR {
                     return !IsEmitterPreviewVisible(emitters[index].id);
                 });
         }
-        previewRenderInput_ = std::make_shared<const
-            RENDER3D::PARTICLES::ParticleRenderInput>(std::move(input));
-        ++previewRenderRevision_;
-        if (previewRenderRevision_ == 0u) {
-            previewRenderRevision_ = 1u;
-        }
+        return previewRenderMailbox_.Publish(
+            std::move(input), mode) != 0u;
     }
 
     void VfxWorkspaceController::SubmitPreviewRequest(
@@ -565,9 +559,10 @@ namespace HIKARI::EDITOR {
         request.cameraFrame.valid = true;
         request.width = previewView.extent.width;
         request.height = previewView.extent.height;
-        request.sceneRevision = previewRenderRevision_;
+        request.sceneRevision = previewRenderMailbox_.GetSequence();
         request.visible = canvasVisible;
         request.drawDebug = false;
+        request.continuousRealtime = true;
         request.schedulingPriority = 110u;
         request.shadingMode =
             RENDER3D::EDITORVIEW::EditorInteractiveShadingMode::Neutral;
@@ -576,7 +571,7 @@ namespace HIKARI::EDITOR {
         request.sceneSourceOverride = emptySceneSource_.get();
         request.environmentOverride = previewEnvironment_.get();
         request.lightingOverride = previewLighting_.get();
-        request.particleInputOverride = previewRenderInput_;
+        request.particleInputOverride = previewRenderMailbox_.GetCurrent();
         request.guideOverlay.showGroundGrid = showPreviewGrid_;
         request.guideOverlay.showWorldAxes = showPreviewAxes_;
         request.guideOverlay.gridHalfCount = 12;

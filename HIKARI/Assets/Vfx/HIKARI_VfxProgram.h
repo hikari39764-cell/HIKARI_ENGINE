@@ -13,7 +13,7 @@
 
 namespace HIKARI::VFX {
 
-    inline constexpr uint32_t kVfxProgramVersion = 3u;
+    inline constexpr uint32_t kVfxProgramVersion = 4u;
     inline constexpr uint32_t kMaximumVfxProgramTableItems = 1u << 20u;
     inline constexpr uint32_t kMaximumVfxProgramEmitters = 1024u;
     inline constexpr uint32_t kMaximumVfxProgramInputs = 4096u;

@@ -240,6 +240,12 @@ namespace HIKARI::EDITOR {
                 return { "Linear", "EaseIn", "EaseOut", "EaseInOut" };
             }
             if (leaf == "blendMode") return { "Alpha", "Additive" };
+            if (leaf == "materialMode") {
+                return { "StandardUnlit", "CustomMaterial" };
+            }
+            if (leaf == "capacityMode") {
+                return { "Automatic", "Fixed" };
+            }
             if (leaf == "billboardMode") {
                 return {
                     "RotatedBillboard",

@@ -109,7 +109,7 @@ namespace HIKARI {
             result.dependencies.push_back({
                 dependency,
                 {},
-                "Vfx.Material"
+                "Vfx.RenderResource"
             });
         }
         result.artifacts.push_back(

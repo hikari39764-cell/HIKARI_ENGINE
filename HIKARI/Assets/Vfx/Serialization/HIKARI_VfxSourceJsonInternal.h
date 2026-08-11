@@ -33,6 +33,7 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
         VfxTransformData& outValue);
     bool ReadVfxSourceEmitter(
         const nlohmann::json& node,
+        uint32_t sourceVersion,
         VfxEmitterData& outEmitter);
     bool ReadVfxSourceDocument(
         const nlohmann::json& root,
@@ -44,4 +45,3 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
         std::string& outError);
 
 } // namespace HIKARI::VFX::SERIALIZATION::INTERNAL
-

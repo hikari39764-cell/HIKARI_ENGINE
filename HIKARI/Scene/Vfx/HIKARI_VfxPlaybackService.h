@@ -47,6 +47,7 @@ namespace HIKARI::VFX {
         ~VfxPlaybackService();
 
         void SetProgramResolver(VfxProgramResolver resolver);
+        void SetReliableRenderDeliveryEnabled(bool enabled) noexcept;
         uint64_t GetPlaybackNamespace() const noexcept;
 
         VfxPlayResult PlayDetailed(const VfxPlayRequest& request);
@@ -73,6 +74,10 @@ namespace HIKARI::VFX {
         void Update(uint64_t frameIndex, float deltaSeconds);
         const RENDER3D::PARTICLES::ParticleRenderInput&
             GetRenderInput() const noexcept;
+        bool AcknowledgeRenderInput(
+            RENDER3D::PARTICLES::ParticleRenderDeliveryToken token)
+            noexcept;
+        bool HasPendingRenderInput() const noexcept;
         bool IsActive(VfxPlaybackHandle handle) const noexcept;
         size_t GetActiveInstanceCount() const noexcept;
         const VfxPlaybackAdmissionStats&
@@ -101,6 +106,7 @@ namespace HIKARI::VFX {
             Instance& instance,
             const std::vector<VfxParameterOverride>& parameters,
             std::vector<VfxPlaybackDiagnostic>* outDiagnostics);
+        void PublishRenderInputDelivery() noexcept;
 
         uint64_t playbackNamespace_ = 0u;
         VfxProgramResolver resolver_{};
@@ -110,6 +116,10 @@ namespace HIKARI::VFX {
         std::vector<RENDER3D::PARTICLES::ParticleEmitterInstanceKey>
             pendingRetiredEmitters_{};
         RENDER3D::PARTICLES::ParticleRenderInput renderInput_{};
+        bool reliableRenderDeliveryEnabled_ = false;
+        uint64_t nextRenderDeliverySequence_ = 0u;
+        uint64_t pendingRenderDeliverySequence_ = 0u;
+        float pendingRenderDeltaSeconds_ = 0.0f;
         uint64_t seekBatchFrameIndex_ =
             (std::numeric_limits<uint64_t>::max)();
         uint32_t nextSeekSimulationOrdinal_ = 0u;

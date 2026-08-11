@@ -411,6 +411,12 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
 
         gMeshRendererState.frameObjectIndex = 0;
         SyncSurfaceGpuSceneMaterialFrame(graphics);
+        if (!gMeshRendererState.particlePass.PrepareFrame(
+                graphics,
+                gMeshRendererState.particleFrameSource,
+                gMeshRendererState.gpuMaterialRegistry)) {
+            return false;
+        }
         CommitActiveMaterialDataFrame(cmd);
         if (HasGpuDrivenSceneSource()) {
             UploadMeshShaderJointPalettes();

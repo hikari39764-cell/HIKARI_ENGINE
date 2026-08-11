@@ -1,5 +1,7 @@
 #include "Assets/Vfx/HIKARI_VfxProgram.h"
 
+#include "Assets/Vfx/HIKARI_VfxBuiltinTextureCatalog.h"
+
 #include <algorithm>
 #include <cmath>
 #include <unordered_set>
@@ -306,6 +308,10 @@ namespace HIKARI::VFX {
                     emitter.authoredOverrides.gravityMultiplier) ||
                 !IsFinite(
                     emitter.authoredOverrides.colorMultiplier) ||
+                (emitter.render.materialMode !=
+                    ParticleMaterialMode::StandardUnlit &&
+                 emitter.render.materialMode !=
+                    ParticleMaterialMode::CustomMaterial) ||
                 (emitter.render.blendMode != ParticleBlendMode::Alpha &&
                  emitter.render.blendMode !=
                     ParticleBlendMode::Additive) ||
@@ -320,6 +326,10 @@ namespace HIKARI::VFX {
                     ParticleBillboardMode::DirectionalBillboard &&
                  emitter.render.billboardMode !=
                     ParticleBillboardMode::Fixed) ||
+                emitter.render.ribbonSegmentCount < 2u ||
+                emitter.render.ribbonSegmentCount > 64u ||
+                emitter.render.ringSegmentCount < 3u ||
+                emitter.render.ringSegmentCount > 64u ||
                 emitter.render.flipbookColumns == 0u ||
                 emitter.render.flipbookColumns > 64u ||
                 emitter.render.flipbookRows == 0u ||
@@ -334,6 +344,13 @@ namespace HIKARI::VFX {
                     emitter.render.flipbookFramesPerSecond) ||
                 emitter.render.flipbookFramesPerSecond < 0.0f ||
                 emitter.render.flipbookFramesPerSecond > 240.0f ||
+                (!emitter.render.colorTextureAssetGuid.empty() &&
+                 (emitter.render.colorTextureAssetGuid.size() >
+                        kMaximumVfxProgramStringBytes ||
+                  (!IsVfxBuiltinTextureAssetId(
+                        emitter.render.colorTextureAssetGuid) &&
+                   !IsValidAssetGuid(
+                        emitter.render.colorTextureAssetGuid)))) ||
                 (!emitter.render.materialAssetGuid.empty() &&
                  (emitter.render.materialAssetGuid.size() >
                         kMaximumVfxProgramStringBytes ||

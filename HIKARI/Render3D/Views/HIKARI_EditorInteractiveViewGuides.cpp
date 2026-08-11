@@ -3,6 +3,7 @@
 #if defined(HIKARI_WITH_EDITOR)
 
 #include <algorithm>
+#include <array>
 #include <span>
 #include <vector>
 
@@ -64,17 +65,22 @@ namespace HIKARI::RENDER3D::EDITORVIEW::INTERNAL {
                 overlay.axisLength, 0.05f, 100.0f);
             const float thickness = std::clamp(
                 overlay.axisThicknessPixels, 0.5f, 6.0f);
-            xrayStrokes = {
+            const std::array<RENDERER3D::DEBUG::Stroke3D, 3u>
+                axisStrokes{{
                 { {}, { length, 0.0f, 0.0f }, 0xF25555FFu,
-                    RENDERER3D::DEBUG::DebugDepthMode::XRay,
+                    RENDERER3D::DEBUG::DebugDepthMode::DepthTest,
                     thickness },
                 { {}, { 0.0f, length, 0.0f }, 0x58D677FFu,
-                    RENDERER3D::DEBUG::DebugDepthMode::XRay,
+                    RENDERER3D::DEBUG::DebugDepthMode::DepthTest,
                     thickness },
                 { {}, { 0.0f, 0.0f, length }, 0x538CF5FFu,
-                    RENDERER3D::DEBUG::DebugDepthMode::XRay,
+                    RENDERER3D::DEBUG::DebugDepthMode::DepthTest,
                     thickness },
-            };
+            }};
+            depthStrokes.insert(
+                depthStrokes.end(),
+                axisStrokes.begin(),
+                axisStrokes.end());
         }
 
         RENDERER3D::DEBUG::INTERNAL::RenderPrimitiveBatches(

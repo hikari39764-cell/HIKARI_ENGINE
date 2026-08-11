@@ -240,6 +240,9 @@ namespace HIKARI::VFX {
         float elapsedSeconds = 0.0f;
         std::vector<VfxValue> inputValues{};
         std::vector<EmitterState> emitterStates{};
+        std::vector<VfxWorldTransform> emitterTransforms{};
+        std::vector<uint8_t> transformResolved{};
+        std::vector<uint32_t> transformStack{};
     };
 
     VfxPlaybackService::VfxPlaybackService(uint64_t playbackNamespace)
@@ -247,6 +250,7 @@ namespace HIKARI::VFX {
             playbackNamespace != 0u
                 ? playbackNamespace
                 : AllocatePlaybackNamespace()) {
+        renderInput_.sourceIdentity = playbackNamespace_;
     }
 
     VfxPlaybackService::~VfxPlaybackService() = default;
@@ -255,6 +259,16 @@ namespace HIKARI::VFX {
         VfxProgramResolver resolver) {
 
         resolver_ = std::move(resolver);
+    }
+
+    void VfxPlaybackService::SetReliableRenderDeliveryEnabled(
+        bool enabled) noexcept {
+
+        reliableRenderDeliveryEnabled_ = enabled;
+        if (!enabled) {
+            pendingRenderDeliverySequence_ = 0u;
+            pendingRenderDeltaSeconds_ = 0.0f;
+        }
     }
 
     uint64_t VfxPlaybackService::GetPlaybackNamespace() const noexcept {
@@ -335,6 +349,12 @@ namespace HIKARI::VFX {
             instance.inputValues.push_back(input.defaultValue);
         }
         instance.emitterStates.resize(instance.program->emitters.size());
+        instance.emitterTransforms.resize(
+            instance.program->emitters.size());
+        instance.transformResolved.resize(
+            instance.program->emitters.size());
+        instance.transformStack.reserve(
+            instance.program->emitters.size());
         (void)ApplyParameters(
             instance,
             request.parameters,
@@ -438,6 +458,15 @@ namespace HIKARI::VFX {
         uint32_t maximumSteps) {
 
         VfxSeekResult result{};
+        if (reliableRenderDeliveryEnabled_ &&
+            pendingRenderDeliverySequence_ != 0u) {
+            result.diagnostics.push_back({
+                VfxDiagnosticSeverity::Warning,
+                "Vfx.RenderDeliveryPending",
+                "VFX seek is waiting for the current render input receipt",
+            });
+            return result;
+        }
         Instance* instance = Find(handle);
         if (instance == nullptr) {
             result.diagnostics.push_back({
@@ -567,6 +596,7 @@ namespace HIKARI::VFX {
             });
         }
         result.currentSeconds = instance->elapsedSeconds;
+        PublishRenderInputDelivery();
         return result;
     }
 
@@ -577,6 +607,17 @@ namespace HIKARI::VFX {
         deltaSeconds = std::isfinite(deltaSeconds)
             ? std::clamp(deltaSeconds, 0.0f, 0.25f)
             : 0.0f;
+        if (reliableRenderDeliveryEnabled_ &&
+            pendingRenderDeliverySequence_ != 0u) {
+            pendingRenderDeltaSeconds_ = (std::min)(
+                pendingRenderDeltaSeconds_ + deltaSeconds,
+                0.25f);
+            return;
+        }
+        deltaSeconds = (std::min)(
+            deltaSeconds + pendingRenderDeltaSeconds_,
+            0.25f);
+        pendingRenderDeltaSeconds_ = 0.0f;
         seekBatchFrameIndex_ = kInvalidSeekBatchFrame;
         nextSeekSimulationOrdinal_ = 0u;
         renderInput_.frameIndex = frameIndex;
@@ -606,12 +647,30 @@ namespace HIKARI::VFX {
                 true,
                 true);
         }
+        PublishRenderInputDelivery();
     }
 
     const ParticleRenderInput&
         VfxPlaybackService::GetRenderInput() const noexcept {
 
         return renderInput_;
+    }
+
+    bool VfxPlaybackService::AcknowledgeRenderInput(
+        ParticleRenderDeliveryToken token) noexcept {
+
+        if (!reliableRenderDeliveryEnabled_ || !token.IsValid() ||
+            token.sourceIdentity != playbackNamespace_ ||
+            token.sequence != pendingRenderDeliverySequence_) {
+            return false;
+        }
+        pendingRenderDeliverySequence_ = 0u;
+        return true;
+    }
+
+    bool VfxPlaybackService::HasPendingRenderInput() const noexcept {
+        return reliableRenderDeliveryEnabled_ &&
+            pendingRenderDeliverySequence_ != 0u;
     }
 
     bool VfxPlaybackService::IsActive(
@@ -641,8 +700,27 @@ namespace HIKARI::VFX {
         admissionStats_ = {};
         renderInput_.emitters.clear();
         renderInput_.retiredEmitters.clear();
+        renderInput_.deliverySequence = 0u;
+        pendingRenderDeliverySequence_ = 0u;
+        pendingRenderDeltaSeconds_ = 0.0f;
         seekBatchFrameIndex_ = kInvalidSeekBatchFrame;
         nextSeekSimulationOrdinal_ = 0u;
+    }
+
+    void VfxPlaybackService::PublishRenderInputDelivery() noexcept {
+        if (renderInput_.emitters.empty() &&
+            renderInput_.retiredEmitters.empty()) {
+            renderInput_.deliverySequence = 0u;
+            return;
+        }
+        ++nextRenderDeliverySequence_;
+        if (nextRenderDeliverySequence_ == 0u) {
+            nextRenderDeliverySequence_ = 1u;
+        }
+        renderInput_.deliverySequence = nextRenderDeliverySequence_;
+        if (reliableRenderDeliveryEnabled_) {
+            pendingRenderDeliverySequence_ = nextRenderDeliverySequence_;
+        }
     }
 
     VfxPlaybackHandle VfxPlaybackService::AllocateHandle(
@@ -757,27 +835,36 @@ namespace HIKARI::VFX {
             ? deltaSeconds
             : (std::min)(deltaSeconds, remaining);
 
-        std::vector<VfxWorldTransform> emitterTransforms(
-            program.emitters.size());
-        std::vector<bool> transformResolved(
-            program.emitters.size(), false);
-        std::function<const VfxWorldTransform&(uint32_t)> resolveTransform =
-            [&](uint32_t emitterIndex) -> const VfxWorldTransform& {
-                if (transformResolved[emitterIndex]) {
-                    return emitterTransforms[emitterIndex];
-                }
-                const VfxProgramEmitter& emitter =
-                    program.emitters[emitterIndex];
-                const VfxWorldTransform& parent =
-                    emitter.parentEmitterIndex != kInvalidVfxProgramIndex
-                    ? resolveTransform(emitter.parentEmitterIndex)
-                    : instance.transform;
-                emitterTransforms[emitterIndex] = Compose(
+        std::fill(
+            instance.transformResolved.begin(),
+            instance.transformResolved.end(),
+            uint8_t{ 0u });
+        for (uint32_t emitterIndex = 0u;
+             emitterIndex < program.emitters.size();
+             ++emitterIndex) {
+            if (instance.transformResolved[emitterIndex] != 0u) continue;
+            instance.transformStack.clear();
+            uint32_t current = emitterIndex;
+            while (current != kInvalidVfxProgramIndex &&
+                instance.transformResolved[current] == 0u) {
+                instance.transformStack.push_back(current);
+                current = program.emitters[current].parentEmitterIndex;
+            }
+            VfxWorldTransform parent =
+                current == kInvalidVfxProgramIndex
+                ? instance.transform
+                : instance.emitterTransforms[current];
+            while (!instance.transformStack.empty()) {
+                const uint32_t child =
+                    instance.transformStack.back();
+                instance.transformStack.pop_back();
+                parent = Compose(
                     parent,
-                    emitter.transform);
-                transformResolved[emitterIndex] = true;
-                return emitterTransforms[emitterIndex];
-            };
+                    program.emitters[child].transform);
+                instance.emitterTransforms[child] = parent;
+                instance.transformResolved[child] = 1u;
+            }
+        }
 
         const size_t firstSubmission = renderInput_.emitters.size();
         for (uint32_t emitterIndex = 0u;
@@ -813,6 +900,15 @@ namespace HIKARI::VFX {
                     spawnCount += (std::min)(
                         emitter.burstCount,
                         available);
+                    if (emitter.burstCount == 0u && spawnCount == 0u &&
+                        emitter.spawnRatePerSecond > 0.0f &&
+                        overrides.spawnRateMultiplier > 0.0f &&
+                        available > 0u) {
+                        // Match authoring-tool expectations: a continuous
+                        // emitter presents one particle at time zero instead
+                        // of an initially empty rate interval.
+                        spawnCount = 1u;
+                    }
                 }
             }
 
@@ -832,7 +928,7 @@ namespace HIKARI::VFX {
             submission.deltaSeconds = deltaSeconds;
             submission.emitterAgeSeconds = instance.elapsedSeconds;
             const VfxWorldTransform& transform =
-                resolveTransform(emitterIndex);
+                instance.emitterTransforms[emitterIndex];
             submission.worldPosition = transform.position;
             submission.worldRotation = transform.rotation;
             submission.worldScale = transform.scale;

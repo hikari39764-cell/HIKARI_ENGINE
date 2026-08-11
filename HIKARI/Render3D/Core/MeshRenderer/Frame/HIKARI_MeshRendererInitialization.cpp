@@ -112,6 +112,11 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             RENDER3D::MESHLET::MeshletPipelineMask::MainRenderer)) {
             DEBUGLOG::PushRenderError("[MeshRenderer][WARN] Meshlet render backend is not ready. GPU-driven mesh shader route will be unavailable.");
         }
+        if (!gMeshRendererState.particlePass.Initialize(graphics)) {
+            DEBUGLOG::PushRenderError(
+                "[MeshRenderer][WARN] Particle GPU-driven pass initialization "
+                "failed. Particle submissions will remain unavailable.");
+        }
         gMeshRendererState.clusterGpuDrivenProducer.Attach(&gMeshRendererState.clusterGpuCullingPass);
         gMeshRendererState.gpuDrivenLayer.Attach(
             &gMeshRendererState.surfaceGpuSceneBuffer,

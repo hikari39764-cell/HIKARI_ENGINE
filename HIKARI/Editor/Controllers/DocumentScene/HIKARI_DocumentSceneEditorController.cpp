@@ -29,7 +29,7 @@
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
 #include "Project/HIKARI_ProjectSettings.h"
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
-#include "Render3D/Vfx/HIKARI_GpuParticleRenderer.h"
+#include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Views/HIKARI_EditorInteractiveViewRenderer.h"
 #include "Runtime/HIKARI_RuntimeResourceRefreshService.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
@@ -464,7 +464,7 @@ namespace HIKARI {
             });
         vfxWorkspaceController_.SetPreviewNamespaceRetireCallback(
             [](uint64_t playbackNamespace) {
-                SERVICES::GetGpuParticleRenderer().ReleaseNamespace(
+                MESHRENDERER::ReleaseParticleNamespace(
                     playbackNamespace);
             });
         vfxWorkspaceController_.SetAssetRefreshCallback(
@@ -487,7 +487,7 @@ namespace HIKARI {
             [this](const AssetGuid& materialGuid,
                    std::string& outMessage) {
                 if (!materialGuid.IsValid()) {
-                    outMessage = "Particle Material GUID is empty";
+                    outMessage = "Material GUID is empty";
                     return false;
                 }
                 EDITOR::EditorWorkspaceOpenRequest request{};
@@ -496,10 +496,10 @@ namespace HIKARI {
                 request.materialAssetGuid = materialGuid;
                 if (!workspaceHost_.RequestOpen(std::move(request))) {
                     outMessage =
-                        "Failed to queue the Particle Material workspace";
+                        "Failed to queue the Material workspace";
                     return false;
                 }
-                outMessage = "Opening Particle Material editor";
+                outMessage = "Opening Material editor";
                 return true;
             });
         RegisterEditorOperations();
@@ -1610,6 +1610,25 @@ namespace HIKARI {
         }
     }
 
+    void DocumentSceneEditorController::SnapshotSceneViewCameras(
+        DocumentSceneBase& scene) {
+
+        sceneViewEditorCameraSnapshot_ = scene.GetCamera();
+        sceneViewDebugCameraSnapshot_ = scene.GetDebugCamera();
+        sceneViewCameraSnapshotValid_ = true;
+    }
+
+    void DocumentSceneEditorController::RestoreSceneViewCameras(
+        DocumentSceneBase& scene) {
+
+        if (!sceneViewCameraSnapshotValid_) {
+            return;
+        }
+        scene.GetCamera() = sceneViewEditorCameraSnapshot_;
+        scene.GetDebugCamera() = sceneViewDebugCameraSnapshot_;
+        sceneViewCameraSnapshotValid_ = false;
+    }
+
     void DocumentSceneEditorController::Draw(
         DocumentSceneBase& scene,
         EDITOR::EditorPlaySession& playSession) {
@@ -1659,6 +1678,19 @@ namespace HIKARI {
         }
         if (const std::optional<EDITOR::EditorWorkspaceActivation> activation =
                 workspaceHost_.ApplyPending()) {
+            const auto isSceneOwnedWorkspace =
+                [](EDITOR::EditorWorkspaceId id) {
+                    return id == EDITOR::EditorWorkspaceId::Scene ||
+                        id == EDITOR::EditorWorkspaceId::Cinematics ||
+                        id == EDITOR::EditorWorkspaceId::Count;
+                };
+            if (isSceneOwnedWorkspace(activation->previous) &&
+                !isSceneOwnedWorkspace(activation->current)) {
+                SnapshotSceneViewCameras(scene);
+            } else if (!isSceneOwnedWorkspace(activation->previous) &&
+                isSceneOwnedWorkspace(activation->current)) {
+                RestoreSceneViewCameras(scene);
+            }
             if (activation->previous == EDITOR::EditorWorkspaceId::Vfx &&
                 activation->current != EDITOR::EditorWorkspaceId::Vfx) {
                 vfxWorkspaceController_.Deactivate(
@@ -1704,6 +1736,7 @@ namespace HIKARI {
 
         if (workspaceHost_.IsActive(
                 EDITOR::EditorWorkspaceId::RuntimeBinding)) {
+            SERVICES::SetEditorGameViewportSize(0, 0, false);
             runtimeBindingWorkspaceController_.DrawDockSpace(
                 workspaceHost_.ConsumeReset(
                     EDITOR::EditorWorkspaceId::RuntimeBinding));
@@ -1724,6 +1757,9 @@ namespace HIKARI {
         }
 
         if (workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Vfx)) {
+            // The VFX workspace owns the presented realtime view. Do not keep
+            // a hidden primary game/scene viewport rendering behind it.
+            SERVICES::SetEditorGameViewportSize(0, 0, false);
             vfxWorkspaceController_.DrawDockSpace(
                 workspaceHost_.ConsumeReset(
                     EDITOR::EditorWorkspaceId::Vfx));
@@ -1749,6 +1785,7 @@ namespace HIKARI {
 
         if (workspaceHost_.IsActive(
                 EDITOR::EditorWorkspaceId::AnimationStateMachine)) {
+            SERVICES::SetEditorGameViewportSize(0, 0, false);
             animationStateMachineWorkspaceController_.DrawDockSpace(
                 workspaceHost_.ConsumeReset(
                     EDITOR::EditorWorkspaceId::AnimationStateMachine));
@@ -1773,6 +1810,7 @@ namespace HIKARI {
 
         if (workspaceHost_.IsActive(
                 EDITOR::EditorWorkspaceId::ModelMaterial)) {
+            SERVICES::SetEditorGameViewportSize(0, 0, false);
             modelMaterialWorkspaceController_.DrawDockSpace(
                 workspaceHost_.ConsumeReset(
                     EDITOR::EditorWorkspaceId::ModelMaterial));
@@ -1798,6 +1836,7 @@ namespace HIKARI {
 
         if (workspaceHost_.IsActive(
                 EDITOR::EditorWorkspaceId::ModelCollision)) {
+            SERVICES::SetEditorGameViewportSize(0, 0, false);
             modelCollisionWorkspaceController_.DrawDockSpace(
                 workspaceHost_.ConsumeReset(
                     EDITOR::EditorWorkspaceId::ModelCollision));
@@ -1822,6 +1861,7 @@ namespace HIKARI {
         }
 
         if (workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Cinematics)) {
+            SERVICES::SetEditorGameViewportSize(0, 0, false);
             const bool externalDirtyBefore =
                 historyExternalDirty_ ||
                 ((context_.sceneDirty || scene.HasUnsavedSceneChanges()) &&

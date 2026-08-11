@@ -222,6 +222,8 @@ namespace HIKARI::EDITOR {
         previewProgramRevision_ = 0u;
         if (previewPlaying_) {
             previewRestartPending_ = true;
+            // Coalesce continuous ImGui drag edits into one compile/reset.
+            previewRestartDelaySeconds_ = 0.12f;
         }
     }
 

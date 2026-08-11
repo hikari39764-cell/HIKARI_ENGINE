@@ -525,6 +525,28 @@ namespace HIKARI {
             if (vfx == nullptr || !vfx->program) {
                 continue;
             }
+            for (const VFX::VfxProgramEmitter& emitter :
+                 vfx->program->emitters) {
+                if (emitter.render.materialMode !=
+                        RENDER3D::PARTICLES::
+                            ParticleMaterialMode::StandardUnlit ||
+                    emitter.render.colorTextureAssetGuid.empty()) {
+                    continue;
+                }
+                const auto* texture =
+                    assetRegistry.FindAs<TextureAssetDescriptor>(
+                        AssetId{
+                            emitter.render.colorTextureAssetGuid });
+                if (texture != nullptr &&
+                    !texture->sourcePath.empty()) {
+                    AddTextureRequest(
+                        loadPlan,
+                        "runtime_vfx/" + vfxId + "/" +
+                            emitter.render.colorTextureAssetGuid,
+                        texture->sourcePath,
+                        RENDER3D::TextureResourceColorSpace::Srgb);
+                }
+            }
             for (const AssetGuid& materialGuid :
                     vfx->program->dependencyGuids) {
                 const auto* material =
@@ -535,6 +557,19 @@ namespace HIKARI {
                         loadPlan,
                         assetRegistry,
                         *material);
+                    continue;
+                }
+                const auto* texture =
+                    assetRegistry.FindAs<TextureAssetDescriptor>(
+                        AssetId{ materialGuid.value });
+                if (texture != nullptr &&
+                    !texture->sourcePath.empty()) {
+                    AddTextureRequest(
+                        loadPlan,
+                        "runtime_vfx/" + vfxId + "/" +
+                            materialGuid.value,
+                        texture->sourcePath,
+                        RENDER3D::TextureResourceColorSpace::Srgb);
                 }
             }
         }

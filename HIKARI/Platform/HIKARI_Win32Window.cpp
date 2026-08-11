@@ -212,8 +212,18 @@ bool Win32Window::Initialize(
     }
     windowedStyle_ = style;
 
-    RECT rect{ 0, 0, width, height };
-    AdjustWindowRect(&rect, style, FALSE);
+    // クライアントサイズは DIP 指定。Per-Monitor DPI 環境では実ピクセルへ
+    // 換算してからウィンドウ矩形を求める（150% スケーリング時の縮小表示対策）。
+    const UINT windowDpi = GetDpiForSystem();
+    const float dpiScale = windowDpi > 0u
+        ? static_cast<float>(windowDpi) / 96.0f
+        : 1.0f;
+    width_ = static_cast<int>(static_cast<float>(width) * dpiScale + 0.5f);
+    height_ = static_cast<int>(static_cast<float>(height) * dpiScale + 0.5f);
+    RECT rect{ 0, 0, width_, height_ };
+    if (AdjustWindowRectExForDpi(&rect, style, FALSE, 0, windowDpi) == FALSE) {
+        AdjustWindowRect(&rect, style, FALSE);
+    }
 
     hwnd_ = CreateWindowExW(
         0,
@@ -455,6 +465,23 @@ LRESULT Win32Window::WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) 
             return 0;
         }
         break;
+    case WM_DPICHANGED: {
+        // モニター間移動などで DPI が変わったら、OS 推奨矩形へ追従する。
+        // SetWindowPos により WM_SIZE が送られ、クライアントサイズと
+        // リサイズコールバックはそちらで更新される。
+        const RECT* suggested = reinterpret_cast<const RECT*>(lparam);
+        if (suggested != nullptr) {
+            SetWindowPos(
+                hwnd,
+                nullptr,
+                suggested->left,
+                suggested->top,
+                suggested->right - suggested->left,
+                suggested->bottom - suggested->top,
+                SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+        return 0;
+    }
     case WM_SIZE:
         width_ = LOWORD(lparam);
         height_ = HIWORD(lparam);
