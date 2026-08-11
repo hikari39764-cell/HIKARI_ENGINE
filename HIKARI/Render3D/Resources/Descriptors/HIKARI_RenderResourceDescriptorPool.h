@@ -32,6 +32,15 @@ namespace HIKARI::RENDER3D {
         UINT structureByteStride,
         D3D12_BUFFER_SRV_FLAGS flags = D3D12_BUFFER_SRV_FLAG_NONE);
 
+    RenderResourceView AllocateBufferUavDescriptor(
+        ID3D12Resource* resource,
+        DXGI_FORMAT format,
+        UINT numElements,
+        UINT structureByteStride,
+        ID3D12Resource* counterResource = nullptr,
+        UINT64 counterOffsetBytes = 0u,
+        D3D12_BUFFER_UAV_FLAGS flags = D3D12_BUFFER_UAV_FLAG_NONE);
+
     RenderResourceView AllocateTexture2DSrvDescriptor(
         ID3D12Resource* resource,
         DXGI_FORMAT format,

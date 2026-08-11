@@ -121,6 +121,9 @@ void ApplyNamedParameter(
 
 float ReadComponent(const MaterialValueData& value,
                     uint32_t component) noexcept {
+  if (value.type == MaterialValueType::Bool) {
+    return value.boolean ? 1.0f : 0.0f;
+  }
   const float values[]{value.numeric.x, value.numeric.y, value.numeric.z,
                        value.numeric.w};
   const uint32_t count = GetMaterialValueComponentCount(value.type);
@@ -149,7 +152,9 @@ const MaterialValueData* ReadStaticInput(
   return &*registers[registerIndex];
 }
 
-StaticRegisterFile EvaluateStaticValues(const MaterialProgramIR& program) {
+StaticRegisterFile EvaluateStaticValues(
+    const MaterialProgramIR& program,
+    std::span<const MaterialProgramParameterValueOverride> overrides) {
   StaticRegisterFile registers(program.registerCount);
   for (const MaterialProgramInstruction& instruction : program.instructions) {
     std::optional<MaterialValueData> result{};
@@ -157,7 +162,12 @@ StaticRegisterFile EvaluateStaticValues(const MaterialProgramIR& program) {
       result = instruction.immediate;
     } else if (instruction.opcode == MaterialProgramOpcode::Parameter &&
                instruction.bindingIndex < program.parameters.size()) {
-      result = program.parameters[instruction.bindingIndex].defaultValue;
+      const MaterialValueData* overrideValue =
+          FindMaterialParameterOverride(
+              overrides, instruction.bindingIndex);
+      result = overrideValue != nullptr
+          ? *overrideValue
+          : program.parameters[instruction.bindingIndex].defaultValue;
     } else {
       const MaterialValueData* a = ReadStaticInput(
           instruction,
@@ -279,7 +289,9 @@ StaticRegisterFile EvaluateStaticValues(const MaterialProgramIR& program) {
 } // namespace
 
 void ApplyConnectedMaterialResponseParameters(
-    const MaterialProgramIR& program, std::span<MATH::Vec4> parameters) {
+    const MaterialProgramIR& program,
+    std::span<MATH::Vec4> parameters,
+    std::span<const MaterialProgramParameterValueOverride> overrides) {
   // The response head is a fixed 30-slot block and the only region this
   // evaluator writes; expression payloads follow after it. Guarding against
   // the total 178-slot count silently disabled every authored NPR parameter
@@ -287,11 +299,16 @@ void ApplyConnectedMaterialResponseParameters(
   if (parameters.size() < kGpuMaterialProgramResponseSlotCount) {
     return;
   }
-  for (const MaterialProgramParameterBinding &parameter :
-       program.parameters) {
+  for (uint32_t index = 0u; index < program.parameters.size(); ++index) {
+    MaterialProgramParameterBinding parameter = program.parameters[index];
+    if (const MaterialValueData* overrideValue =
+            FindMaterialParameterOverride(overrides, index)) {
+      parameter.defaultValue = *overrideValue;
+    }
     ApplyNamedParameter(parameters, parameter);
   }
-  const StaticRegisterFile registers = EvaluateStaticValues(program);
+  const StaticRegisterFile registers =
+      EvaluateStaticValues(program, overrides);
   for (const MaterialProgramInstruction& instruction : program.instructions) {
     const auto scalar = [&](std::string_view pin, float& target) {
       if (const MaterialValueData* value =

@@ -1,5 +1,6 @@
 param(
     [string]$DxcPath = "",
+    [string]$Group = "",
     [switch]$VerboseErrors
 )
 
@@ -50,6 +51,15 @@ $entries = @(
     @{ Shader = "HIKARI/Shaders/Render3D_SkyPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
     @{ Shader = "HIKARI/Shaders/Render3D_VolumetricLighting.hlsl"; Entry = "InjectAndIntegrateCS"; Target = "cs_6_0" },
     @{ Shader = "HIKARI/Shaders/Render3D_VolumetricLighting.hlsl"; Entry = "CompositeCS"; Target = "cs_6_0" },
+    @{ Shader = "HIKARI/Shaders/Render3D_ParticleSimulation.hlsl"; Entry = "ResetCS"; Target = "cs_6_0"; Group = "NativeVfx" },
+    @{ Shader = "HIKARI/Shaders/Render3D_ParticleSimulation.hlsl"; Entry = "UpdateCS"; Target = "cs_6_0"; Group = "NativeVfx" },
+    @{ Shader = "HIKARI/Shaders/Render3D_ParticleSimulation.hlsl"; Entry = "SpawnCS"; Target = "cs_6_0"; Group = "NativeVfx" },
+    @{ Shader = "HIKARI/Shaders/Render3D_ParticleGpuDrivenCompute.hlsl"; Entry = "ResetDrawCS"; Target = "cs_6_0"; Group = "NativeVfx" },
+    @{ Shader = "HIKARI/Shaders/Render3D_ParticleGpuDrivenCompute.hlsl"; Entry = "CompactDrawCS"; Target = "cs_6_0"; Group = "NativeVfx" },
+    @{ Shader = "HIKARI/Shaders/Render3D_ParticleGpuDrivenCompute.hlsl"; Entry = "BuildDrawArgsCS"; Target = "cs_6_0"; Group = "NativeVfx" },
+    @{ Shader = "HIKARI/Shaders/Render3D_ParticleGpuDrivenDraw.hlsl"; Entry = "ParticleSpriteMS"; Target = "ms_6_5"; Group = "NativeVfx" },
+    @{ Shader = "HIKARI/Shaders/Render3D_ParticleGpuDrivenDraw.hlsl"; Entry = "ParticleStripMS"; Target = "ms_6_5"; Group = "NativeVfx" },
+    @{ Shader = "HIKARI/Shaders/Render3D_ParticleGpuDrivenDraw.hlsl"; Entry = "ParticlePS"; Target = "ps_6_0"; Group = "NativeVfx" },
     @{ Shader = "HIKARI/Shaders/Render3D_DebugStrokeVS.hlsl"; Entry = "main"; Target = "vs_6_0" },
     @{ Shader = "HIKARI/Shaders/Render3D_DebugStrokeGS.hlsl"; Entry = "main"; Target = "gs_6_0" },
     @{ Shader = "HIKARI/Shaders/Render3D_DebugStrokePS.hlsl"; Entry = "main"; Target = "ps_6_0" },
@@ -105,9 +115,18 @@ $entries = @(
     @{ Shader = "HIKARI/Shaders/Post_StylizedScreenFeatures.hlsl"; Entry = "PSMain"; Target = "ps_6_0" }
 )
 
+if (-not [string]::IsNullOrWhiteSpace($Group)) {
+    $entries = @($entries | Where-Object {
+        $_.ContainsKey('Group') -and $_.Group -eq $Group
+    })
+    if ($entries.Count -eq 0) {
+        throw "No shader compile entries are registered for group '$Group'."
+    }
+}
+
 $failures = New-Object System.Collections.Generic.List[object]
 foreach ($entry in $entries) {
-    $output = & $dxc -E $entry.Entry -T $entry.Target -HV 2021 -I HIKARI/Shaders -Fo NUL $entry.Shader 2>&1
+    $output = & $dxc -E $entry.Entry -T $entry.Target -HV 2021 -O3 -I HIKARI/Shaders -Fo NUL $entry.Shader 2>&1
     if ($LASTEXITCODE -ne 0) {
         $failures.Add([pscustomobject]@{
             Shader = $entry.Shader

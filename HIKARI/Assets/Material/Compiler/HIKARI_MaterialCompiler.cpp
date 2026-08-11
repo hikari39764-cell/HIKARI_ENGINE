@@ -177,6 +177,11 @@ namespace HIKARI {
                     AddCapability(capabilities, MaterialProgramCapability::EyeLighting);
                     AddCapability(capabilities, MaterialProgramCapability::CorneaHighlight);
                     break;
+                case MaterialNodeKind::ParticleOutput:
+                    AddCapability(
+                        capabilities,
+                        MaterialProgramCapability::ParticleExpression);
+                    break;
                 case MaterialNodeKind::FunctionCall:
                     AddCapability(capabilities, MaterialProgramCapability::FunctionCalls);
                     break;
@@ -389,6 +394,32 @@ namespace HIKARI {
                         byteOffset,
                         16u,
                         parameter.defaultValue,
+                    });
+                    byteOffset += 16u;
+                }
+                std::vector<const MaterialGraphNodeData*> variableNodes{};
+                for (const MaterialGraphNodeData& node : graph->nodes) {
+                    if (reachable.contains(node.id) &&
+                        node.kind == MaterialNodeKind::Variable) {
+                        variableNodes.push_back(&node);
+                    }
+                }
+                std::sort(
+                    variableNodes.begin(), variableNodes.end(),
+                    [](const MaterialGraphNodeData* left,
+                       const MaterialGraphNodeData* right) {
+                        return left->id < right->id;
+                    });
+                for (const MaterialGraphNodeData* node : variableNodes) {
+                    MaterialValueData fallback = node->value;
+                    fallback.type = node->valueType;
+                    program.parameters.push_back(MaterialProgramParameterBinding{
+                        MakeMaterialVariableParameterId(node->id),
+                        node->valueType,
+                        byteOffset,
+                        16u,
+                        fallback,
+                        node->referenceId,
                     });
                     byteOffset += 16u;
                 }

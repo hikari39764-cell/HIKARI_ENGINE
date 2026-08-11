@@ -68,15 +68,6 @@ namespace HIKARI {
         const bool selectedObjectIsCamera =
             context_.selection.selectedObject != nullptr &&
             context_.selection.selectedObject->GetComponent<CameraComponent>() != nullptr;
-        const std::string activatedSequenceGuid =
-            resourceWorkspacePanel_.ConsumeActivatedSequenceGuid();
-        if (!activatedSequenceGuid.empty()) {
-            EDITOR::EditorWorkspaceOpenRequest request{};
-            request.workspaceId = EDITOR::EditorWorkspaceId::Cinematics;
-            request.sequenceAssetGuid = AssetGuid{ activatedSequenceGuid };
-            (void)workspaceHost_.RequestOpen(std::move(request));
-        }
-
         const float toolbarHeight = context_.windows.viewport.showViewportHud ? 38.0f : 0.0f;
         if (toolbarHeight > 0.0f) {
             ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.055f, 0.065f, 0.080f, 1.0f));

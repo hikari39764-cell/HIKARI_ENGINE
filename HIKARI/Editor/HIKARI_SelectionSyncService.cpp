@@ -7,6 +7,7 @@
 #include "HIKARI_EditorContext.h"
 #include "Render3D/HIKARI_Math3D.h"
 #include "Scene/HIKARI_GameObject.h"
+#include "Scene/HIKARI_SceneDocumentQueries.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
 #undef max
@@ -26,12 +27,7 @@ namespace HIKARI {
     }
 
     SceneObjectData* SelectionSyncService::FindDocumentObjectById(DocumentSceneBase& scene, SceneObjectId id) const {
-        for (SceneObjectData& object : scene.GetSceneDocument().objects) {
-            if (object.id == id) {
-                return &object;
-            }
-        }
-        return nullptr;
+        return FindSceneObjectData(scene.GetSceneDocument(), id);
     }
 
     SceneObjectData* SelectionSyncService::FindDocumentObjectByRuntime(DocumentSceneBase& scene, GameObject* runtimeObject) const {

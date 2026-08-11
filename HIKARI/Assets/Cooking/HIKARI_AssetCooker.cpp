@@ -219,6 +219,11 @@ namespace HIKARI::ASSETS::COOKING {
                     artifacts,
                     ASSETS::SEMANTICS::
                         AssetArtifactKind::Material);
+            case AssetType::VfxEffect:
+                return !HasArtifactKind(
+                    artifacts,
+                    ASSETS::SEMANTICS::
+                        AssetArtifactKind::VfxProgram);
             default:
                 return true;
             }
@@ -229,7 +234,8 @@ namespace HIKARI::ASSETS::COOKING {
 
             return type == AssetType::Texture ||
                 type == AssetType::Model ||
-                type == AssetType::Sky;
+                type == AssetType::Sky ||
+                type == AssetType::VfxEffect;
         }
 
         std::filesystem::path MakeRuntimePayloadPath(

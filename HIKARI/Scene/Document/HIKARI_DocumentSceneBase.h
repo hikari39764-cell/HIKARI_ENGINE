@@ -16,6 +16,7 @@
 #include "Render3D/Debug/HIKARI_DebugCameraController3D.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Render3D/Lighting/HIKARI_SkyManager.h"
+#include "Runtime/Binding/HIKARI_RuntimeBindingStore.h"
 #include "Scene/Debug/HIKARI_ComponentGizmoRenderer.h"
 #include "Scene/Debug/HIKARI_ViewportDebugState.h"
 #include "Scene/Features/HIKARI_RuntimeFeatureCatalog.h"
@@ -74,6 +75,10 @@ namespace HIKARI {
         const AssetDatabase& GetAssetDatabase() const;
         AssetRegistry& GetAssetRegistry();
         const AssetRegistry& GetAssetRegistry() const;
+        BINDING::RuntimeBindingStore& GetRuntimeBindingStore() noexcept;
+        const BINDING::RuntimeBindingStore&
+            GetRuntimeBindingStore() const noexcept;
+        bool ReloadRuntimeBindingCatalog(std::string& outMessage);
         ModelManager& GetModelManager();
         SkyManager& GetSkyManager();
         ComponentRegistry& GetComponentRegistry();

@@ -6,6 +6,8 @@
 #include "Assets/HIKARI_AssetRecord.h"
 #include "Assets/HIKARI_AssetTypes.h"
 #include "Editor/Commands/HIKARI_EditorOperationRegistry.h"
+#include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialAssetOperations.h"
+#include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialOperationSupport.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
 #include "Render3D/HIKARI_Math3D.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
@@ -13,18 +15,8 @@
 namespace HIKARI::EDITOR {
 namespace {
 
-EditorOperationParameter MakeOperationParameter(
-    std::string name,
-    EditorOperationParameterType type,
-    bool required,
-    std::string description) {
-  EditorOperationParameter parameter{};
-  parameter.name = std::move(name);
-  parameter.type = type;
-  parameter.required = required;
-  parameter.description = std::move(description);
-  return parameter;
-}
+using MODEL_MATERIAL_OPERATIONS::MakeOperationParameter;
+using MODEL_MATERIAL_OPERATIONS::RequireScene;
 
 bool RequireMaterialDocument(
     const ModelMaterialWorkspaceController& controller,
@@ -38,19 +30,6 @@ bool RequireMaterialDocument(
       "先在材质工作区创建或打开一个材质。",
   };
   return false;
-}
-
-bool RequireScene(
-    const std::function<DocumentSceneBase*()>& sceneProvider,
-    EditorOperationResult& result,
-    DocumentSceneBase*& outScene) {
-  outScene = sceneProvider();
-  if (outScene == nullptr) {
-    result.code = "NO_SCENE";
-    result.message = "当前没有可用的场景上下文。";
-    return false;
-  }
-  return true;
 }
 
 bool RequireEditingModel(
@@ -127,7 +106,10 @@ EditorOperationResult RunDocumentEdit(
 void RegisterModelMaterialOperations(
     EditorOperationRegistry& registry,
     ModelMaterialWorkspaceController& controller,
-    const std::function<DocumentSceneBase*()>& sceneProvider) {
+    std::function<DocumentSceneBase*()> sceneProvider) {
+
+  RegisterModelMaterialAssetOperations(
+      registry, controller, sceneProvider);
 
   registry.Register({
       "material.open_model",
@@ -138,7 +120,7 @@ void RegisterModelMaterialOperations(
               "modelGuid", EditorOperationParameterType::String,
               true, "模型资产 guid（asset.list_models 可查）"),
       },
-      [&controller, &sceneProvider](const nlohmann::json& parameters) {
+      [&controller, sceneProvider](const nlohmann::json& parameters) {
         EditorOperationResult result{};
         DocumentSceneBase* scene = nullptr;
         if (!RequireScene(sceneProvider, result, scene)) {
@@ -182,7 +164,7 @@ void RegisterModelMaterialOperations(
               "materialGuid", EditorOperationParameterType::String,
               true, "材质资产 guid"),
       },
-      [&controller, &sceneProvider](const nlohmann::json& parameters) {
+      [&controller, sceneProvider](const nlohmann::json& parameters) {
         EditorOperationResult result{};
         DocumentSceneBase* scene = nullptr;
         if (!RequireScene(sceneProvider, result, scene)) {
@@ -213,59 +195,6 @@ void RegisterModelMaterialOperations(
         }
         result.code = "OPEN_FAILED";
         result.message = message;
-        return result;
-      },
-  });
-
-  registry.Register({
-      "material.list_assets",
-      "List Material assets in the project (guid, name, source path).",
-      "model_material",
-      {
-          MakeOperationParameter(
-              "keyword", EditorOperationParameterType::String,
-              false, "可选名称/路径关键字过滤"),
-      },
-      [&sceneProvider](const nlohmann::json& parameters) {
-        EditorOperationResult result{};
-        DocumentSceneBase* scene = nullptr;
-        if (!RequireScene(sceneProvider, result, scene)) {
-          return result;
-        }
-        const std::string keyword =
-            parameters.value("keyword", std::string{});
-        const std::vector<const AssetRecord*> records =
-            scene->GetAssetDatabase().CollectByType(AssetType::Material);
-        if (records.empty()) {
-          result.code = "NO_MATERIAL_ASSETS";
-          result.message = "项目中还没有 Material 资产。";
-          return result;
-        }
-        for (const AssetRecord* record : records) {
-          const std::string name =
-              GetAssetRecordDisplayName(*record);
-          const std::string path =
-              record->sourcePath.generic_string();
-          if (!keyword.empty() &&
-              name.find(keyword) == std::string::npos &&
-              path.find(keyword) == std::string::npos) {
-            continue;
-          }
-          result.details.push_back(
-              "material: " + name +
-              " (guid " + record->guid.value + ", " +
-              path + ")");
-        }
-        if (result.details.empty()) {
-          result.code = "NO_MATERIAL_ASSETS";
-          result.message = "没有匹配的 Material 资产。";
-          return result;
-        }
-        result.ok = true;
-        result.code = "OK";
-        result.message =
-            "已返回 " + std::to_string(result.details.size()) +
-            " 个 Material 资产。";
         return result;
       },
   });
@@ -325,7 +254,7 @@ void RegisterModelMaterialOperations(
               "materialAssetGuid", EditorOperationParameterType::String,
               true, "material.list_assets 返回的 guid"),
       },
-      [&controller, &sceneProvider](const nlohmann::json& parameters) {
+      [&controller, sceneProvider](const nlohmann::json& parameters) {
         EditorOperationResult result{};
         if (!RequireEditingModel(controller, result)) {
           return result;
@@ -398,7 +327,7 @@ void RegisterModelMaterialOperations(
               "materialIndex", EditorOperationParameterType::Int,
               true, "model.list_slots 返回的 materialIndex"),
       },
-      [&controller, &sceneProvider](const nlohmann::json& parameters) {
+      [&controller, sceneProvider](const nlohmann::json& parameters) {
         EditorOperationResult result{};
         if (!RequireEditingModel(controller, result)) {
           return result;
@@ -461,7 +390,7 @@ void RegisterModelMaterialOperations(
       "Save the current material and/or material binding document.",
       "model_material",
       {},
-      [&controller, &sceneProvider](const nlohmann::json&) {
+      [&controller, sceneProvider](const nlohmann::json&) {
         EditorOperationResult result{};
         if (!RequireMaterialDocument(controller, result)) {
           return result;
@@ -488,7 +417,7 @@ void RegisterModelMaterialOperations(
       "Undo the most recent material edit.",
       "model_material",
       {},
-      [&controller, &sceneProvider](const nlohmann::json&) {
+      [&controller, sceneProvider](const nlohmann::json&) {
         EditorOperationResult result{};
         if (!RequireMaterialDocument(controller, result)) {
           return result;
@@ -510,7 +439,7 @@ void RegisterModelMaterialOperations(
       "Redo the most recently undone material edit.",
       "model_material",
       {},
-      [&controller, &sceneProvider](const nlohmann::json&) {
+      [&controller, sceneProvider](const nlohmann::json&) {
         EditorOperationResult result{};
         if (!RequireMaterialDocument(controller, result)) {
           return result;
@@ -532,6 +461,9 @@ void RegisterModelMaterialOperations(
       "Add a material graph node by stable node type.",
       "model_material",
       {
+          MakeOperationParameter(
+              "referenceId", EditorOperationParameterType::String,
+              false, "Variable node runtime binding ID"),
           MakeOperationParameter(
               "nodeType", EditorOperationParameterType::String,
               true, "stable name，例如 node.additive / Constant / noise.value"),
@@ -563,7 +495,7 @@ void RegisterModelMaterialOperations(
               "valueW", EditorOperationParameterType::Float,
               false, "初始值分量"),
       },
-      [&controller, &sceneProvider](const nlohmann::json& parameters) {
+      [&controller, sceneProvider](const nlohmann::json& parameters) {
         EditorOperationResult result{};
         if (!RequireMaterialDocument(controller, result)) {
           return result;
@@ -593,6 +525,8 @@ void RegisterModelMaterialOperations(
         create.valueY = parameters.value("valueY", 0.0f);
         create.valueZ = parameters.value("valueZ", 0.0f);
         create.valueW = parameters.value("valueW", 0.0f);
+        create.referenceId =
+            parameters.value("referenceId", std::string{});
         create.allowFunctionCall = false;
         std::string message;
         std::vector<std::string> details;
@@ -616,7 +550,7 @@ void RegisterModelMaterialOperations(
       "Duplicate the selected material graph nodes.",
       "model_material",
       {},
-      [&controller, &sceneProvider](const nlohmann::json&) {
+      [&controller, sceneProvider](const nlohmann::json&) {
         EditorOperationResult result{};
         if (!RequireMaterialDocument(controller, result)) {
           return result;
@@ -639,7 +573,7 @@ void RegisterModelMaterialOperations(
       "Delete the selected material graph nodes.",
       "model_material",
       {},
-      [&controller, &sceneProvider](const nlohmann::json&) {
+      [&controller, sceneProvider](const nlohmann::json&) {
         EditorOperationResult result{};
         if (!RequireMaterialDocument(controller, result)) {
           return result;
@@ -662,7 +596,7 @@ void RegisterModelMaterialOperations(
       "Delete the selected material graph connection.",
       "model_material",
       {},
-      [&controller, &sceneProvider](const nlohmann::json&) {
+      [&controller, sceneProvider](const nlohmann::json&) {
         EditorOperationResult result{};
         if (!RequireMaterialDocument(controller, result)) {
           return result;
@@ -685,7 +619,7 @@ void RegisterModelMaterialOperations(
       "Create a graph group from the selected nodes.",
       "model_material",
       {},
-      [&controller, &sceneProvider](const nlohmann::json&) {
+      [&controller, sceneProvider](const nlohmann::json&) {
         EditorOperationResult result{};
         if (!RequireMaterialDocument(controller, result)) {
           return result;
@@ -708,7 +642,7 @@ void RegisterModelMaterialOperations(
       "Remove graph groups that contain the selected nodes.",
       "model_material",
       {},
-      [&controller, &sceneProvider](const nlohmann::json&) {
+      [&controller, sceneProvider](const nlohmann::json&) {
         EditorOperationResult result{};
         if (!RequireMaterialDocument(controller, result)) {
           return result;
@@ -731,7 +665,7 @@ void RegisterModelMaterialOperations(
       "Arrange the selected material graph nodes into a grid.",
       "model_material",
       {},
-      [&controller, &sceneProvider](const nlohmann::json&) {
+      [&controller, sceneProvider](const nlohmann::json&) {
         EditorOperationResult result{};
         if (!RequireMaterialDocument(controller, result)) {
           return result;

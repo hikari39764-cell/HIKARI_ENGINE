@@ -14,6 +14,8 @@
 #include "Editor/NodeGraph/HIKARI_NodeGraphCanvas.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialNodeQuery.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialGraphUi.h"
+#include "Runtime/Binding/Adapters/HIKARI_RuntimeMaterialValueAdapter.h"
+#include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
 namespace HIKARI::EDITOR {
 
@@ -396,6 +398,12 @@ bool ModelMaterialWorkspaceController::HasMaterialDocument()
   return authoringDocument_.HasMaterial();
 }
 
+bool ModelMaterialWorkspaceController::HasUnsavedMaterialChanges()
+    const noexcept {
+  return authoringDocument_.IsMaterialDirty() ||
+         authoringDocument_.IsAbPreviewActive();
+}
+
 bool ModelMaterialWorkspaceController::AddMaterialGraphNode(
     DocumentSceneBase &scene,
     const MaterialGraphNodeCreateRequest &request,
@@ -510,6 +518,34 @@ bool ModelMaterialWorkspaceController::AddMaterialGraphNode(
         ? MATERIAL_GRAPH_UI::DefaultNodeValueType(kind)
         : node.functionOutputs.front().defaultValue.type;
     node.value.type = node.valueType;
+  } else if (kind == MaterialNodeKind::Variable) {
+    const BINDING::VariableDefinition* variable =
+        scene.GetRuntimeBindingStore().GetCatalog().FindVariable(
+            request.referenceId);
+    if (variable == nullptr) {
+      outMessage = "Runtime variable was not found: " +
+          request.referenceId;
+      outCode = "RUNTIME_VARIABLE_NOT_FOUND";
+      return false;
+    }
+    const std::optional<MaterialValueType> materialType =
+        BINDING::MATERIAL_ADAPTER::ToMaterialValueType(
+            variable->defaultValue.type);
+    if (!materialType.has_value() ||
+        !BINDING::MATERIAL_ADAPTER::TryConvertValue(
+            variable->defaultValue,
+            *materialType,
+            node.value)) {
+      outMessage = "Runtime variable type cannot be consumed by Material: " +
+          variable->id;
+      outCode = "RUNTIME_VARIABLE_TYPE_UNSUPPORTED";
+      return false;
+    }
+    node.referenceId = variable->id;
+    node.valueType = *materialType;
+    if (request.displayName.empty()) {
+      node.displayName = variable->name;
+    }
   } else {
     if (!request.valueType.empty()) {
       const std::optional<MaterialValueType> parsedType =
@@ -606,6 +642,10 @@ bool ModelMaterialWorkspaceController::AddMaterialGraphNode(
   const MaterialGraphNodeData *added =
       MATERIAL_GRAPH_UI::FindNode(*graph, nodeId);
   if (added != nullptr) {
+    if (!added->referenceId.empty()) {
+      outDetails.push_back(
+          "referenceId: " + added->referenceId);
+    }
     outDetails.push_back(
         "inputs: " + MATERIAL_GRAPH_UI::JoinPins(
             GetMaterialGraphNodeInputPins(*added), "（无输入）"));

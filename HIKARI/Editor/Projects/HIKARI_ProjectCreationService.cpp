@@ -396,11 +396,12 @@ namespace {
                             "Camera",
                             "Physics",
                             "GameplayBasic",
-                            "Cinematics"
+                            "Cinematics",
+                            "Vfx"
                         })
                     },
                     { "startupSceneGuid", "" },
-                    { "version", 3 }
+                    { "version", 4 }
                 },
                 &outMessage) ||
             !WriteTextFile(

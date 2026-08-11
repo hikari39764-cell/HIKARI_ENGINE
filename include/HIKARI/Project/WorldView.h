@@ -48,6 +48,29 @@ namespace HIKARI {
 
         HIKARI_GAME_PROJECT_SDK_API ObjectView FindObject(
             uint64_t handle) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool ReadVariable(
+            std::string_view variableId,
+            GameProjectBindingValue& outValue) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool WriteVariable(
+            std::string_view variableId,
+            const GameProjectBindingValue& value,
+            std::string_view writerId) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool ReleaseVariableWriter(
+            std::string_view variableId,
+            std::string_view writerId) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool EmitEvent(
+            std::string_view eventId,
+            uint64_t sourceObjectHandle = 0) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool EmitEvent(
+            std::string_view eventId,
+            uint64_t sourceObjectHandle,
+            const GameProjectBindingValue& payload) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API uint32_t GetEventCount(
+            std::string_view eventId) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool ReadEvent(
+            std::string_view eventId,
+            uint32_t index,
+            GameProjectEventRecord& outEvent) const noexcept;
 
         template<class Component, class Visitor>
         bool ForEachComponent(

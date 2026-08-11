@@ -29,10 +29,44 @@ namespace HIKARI {
 
         nlohmann::json serialized = nlohmann::json::object();
         try {
-            temporaryComponent->Deserialize(componentData.properties);
+            std::string deserializeDiagnostic{};
+            if (!temporaryComponent->TryDeserialize(
+                    componentData.properties,
+                    deserializeDiagnostic)) {
+#if defined(HIKARI_WITH_EDITOR)
+                ImGui::TextColored(
+                    ImVec4(1.0f, 0.35f, 0.35f, 1.0f),
+                    "Component data is invalid for %s: %s",
+                    componentData.type.c_str(),
+                    deserializeDiagnostic.empty()
+                        ? "deserialization failed"
+                        : deserializeDiagnostic.c_str());
+#endif
+                return false;
+            }
             inspectorBuilder.SetContext(context);
             temporaryComponent->BuildInspector(inspectorBuilder);
             temporaryComponent->Serialize(serialized);
+            if (serialized == componentData.properties) {
+                return false;
+            }
+            if (typeInfo->validateAuthoring) {
+                const AuthoringCommandResult validation =
+                    typeInfo->validateAuthoring(
+                        *temporaryComponent,
+                        context);
+                if (!validation.ok) {
+#if defined(HIKARI_WITH_EDITOR)
+                    ImGui::TextColored(
+                        ImVec4(1.0f, 0.55f, 0.2f, 1.0f),
+                        "Component edit rejected: %s",
+                        validation.message.empty()
+                            ? "authoring reference is invalid"
+                            : validation.message.c_str());
+#endif
+                    return false;
+                }
+            }
         } catch (const std::exception& e) {
 #if defined(HIKARI_WITH_EDITOR)
             ImGui::TextColored(
@@ -51,10 +85,6 @@ namespace HIKARI {
                 "Component inspector failed for %s.",
                 componentData.type.c_str());
 #endif
-            return false;
-        }
-
-        if (serialized == componentData.properties) {
             return false;
         }
 

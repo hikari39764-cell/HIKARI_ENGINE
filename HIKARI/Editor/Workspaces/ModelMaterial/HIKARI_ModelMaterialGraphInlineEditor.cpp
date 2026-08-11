@@ -16,9 +16,8 @@
 #endif
 namespace HIKARI::EDITOR {
 bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
-    DocumentSceneBase &scene, MaterialAssetData &source,
-    MaterialGraphData &graph, MaterialGraphNodeData &node,
-    float x, float y, float width) {
+    DocumentSceneBase &scene, MaterialAssetData &source, MaterialGraphData &graph,
+    MaterialGraphNodeData &node, float x, float y, float width) {
 #if defined(HIKARI_WITH_EDITOR)
   const ImVec2 restore = ImGui::GetCursorScreenPos();
   bool capturesPointer = false;
@@ -129,6 +128,7 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
     trackItem();
     ImGui::PopID();
   };
+  capturesPointer = DrawMaterialGraphVariableInlineControl(scene, source, node) || capturesPointer;
   if (node.kind == MaterialNodeKind::Parameter) {
     MaterialGraphParameterData *parameter =
         MATERIAL_GRAPH_UI::FindParameter(graph, node.referenceId);

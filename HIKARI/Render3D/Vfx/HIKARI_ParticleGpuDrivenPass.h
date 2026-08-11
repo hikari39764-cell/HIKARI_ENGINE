@@ -1,0 +1,84 @@
+#pragma once
+
+#include <cstdint>
+#include <memory>
+
+#include "Gfx/HIKARI_GfxContext.h"
+#include "Render3D/Vfx/HIKARI_ParticleRenderInput.h"
+
+namespace HIKARI::RENDER3D::MATERIAL {
+    class GpuMaterialRegistry;
+}
+
+namespace HIKARI::RENDER3D::PARTICLES {
+
+    struct ParticleGpuDrivenPassStats {
+        bool ready = false;
+        uint32_t particleCapacity = 0u;
+        uint32_t allocatedParticles = 0u;
+        uint32_t activeEmitters = 0u;
+        uint32_t simulatedEmitters = 0u;
+        uint32_t simulationSkippedEmitters = 0u;
+        uint32_t compactedEmitters = 0u;
+        uint32_t compactionReuseFrames = 0u;
+        uint32_t drawnEmitters = 0u;
+        uint32_t spawnedParticles = 0u;
+        uint32_t allocationFailures = 0u;
+        uint32_t simulationFailures = 0u;
+        uint32_t materialFailures = 0u;
+        uint32_t compactedCapacityThreads = 0u;
+        uint32_t indirectDispatchCommands = 0u;
+        uint32_t spriteDispatchCommands = 0u;
+        uint32_t stripDispatchCommands = 0u;
+        // True only when every submitted reset/spawn/material dependency was
+        // accepted for this source snapshot. Preview delivery may ACK only
+        // frames with this receipt.
+        bool inputAccepted = false;
+        // Independent simulation receipt used by the main runtime delivery
+        // owner. Material or later screen-pass failures must not replay a
+        // reset/spawn that was already recorded for this exact token.
+        bool simulationAccepted = false;
+        ParticleRenderDeliveryToken simulationAcceptedToken{};
+    };
+
+    struct ParticleGpuDrivenDrawBindings {
+        D3D12_GPU_VIRTUAL_ADDRESS camera = 0u;
+        D3D12_GPU_VIRTUAL_ADDRESS materialData = 0u;
+        D3D12_GPU_VIRTUAL_ADDRESS materialParameters = 0u;
+        D3D12_GPU_VIRTUAL_ADDRESS materialResources = 0u;
+    };
+
+    // Owned by MeshRendererState. This object has no target-owning Render
+    // entry point: simulation is prepared with the main material frame and
+    // drawing is executed only from the main ForwardTransparent pass.
+    class ParticleGpuDrivenPass final {
+    public:
+        ParticleGpuDrivenPass();
+        ~ParticleGpuDrivenPass();
+        ParticleGpuDrivenPass(const ParticleGpuDrivenPass&) = delete;
+        ParticleGpuDrivenPass& operator=(const ParticleGpuDrivenPass&) =
+            delete;
+
+        bool Initialize(
+            const GFX::Context& context,
+            uint32_t particleCapacity = kGpuParticlePoolCapacity,
+            uint32_t emitterPageCapacity =
+                kDefaultParticleEmitterUploadPageCapacity);
+        void Shutdown();
+        bool PrepareFrame(
+            const GFX::Context& context,
+            const ParticleRenderFrameSource* source,
+            MATERIAL::GpuMaterialRegistry& materialRegistry);
+        bool ExecuteForwardTransparent(
+            const GFX::Context& context,
+            const ParticleGpuDrivenDrawBindings& bindings);
+        void ReleaseNamespace(uint64_t playbackNamespace);
+        bool HasDrawWork() const noexcept;
+        const ParticleGpuDrivenPassStats& GetStats() const noexcept;
+
+    private:
+        struct Impl;
+        std::unique_ptr<Impl> impl_{};
+    };
+
+} // namespace HIKARI::RENDER3D::PARTICLES

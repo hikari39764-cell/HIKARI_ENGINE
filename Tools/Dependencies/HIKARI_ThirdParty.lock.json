@@ -91,47 +91,6 @@
       "restore": "Exposed as the header-only HIKARI::Nlohmann target."
     },
     {
-      "name": "Effekseer-DX12-LLGI",
-      "version": "unrecorded-current-snapshot",
-      "kind": "local-prebuilt",
-      "source": "Local prebuilt snapshot; upstream release package and build recipe are not recorded.",
-      "licenseEvidence": null,
-      "restore": "Not yet reproducible. Configuration requires the six libraries below.",
-      "redistributionStatus": "blocked-pending-provenance",
-      "artifacts": [
-        {
-          "path": "ThirdParty/Effekseer/Lib/Debug/Effekseerd.lib",
-          "sha256": "26AD5F6CD60A78EB54FC52CE4223F15B5BE671B12FF6BFB7A4B72382D1AAC33C",
-          "required": true
-        },
-        {
-          "path": "ThirdParty/Effekseer/Lib/Debug/EffekseerRendererDX12d.lib",
-          "sha256": "39F1F375F484F8852AA2F5251BA4F687C874E9638BF1B72A56A37C1A81118DC8",
-          "required": true
-        },
-        {
-          "path": "ThirdParty/Effekseer/Lib/Debug/LLGId.lib",
-          "sha256": "5E438D2908F11186402C0703534F7127994975067412311B6F77474389DCEF11",
-          "required": true
-        },
-        {
-          "path": "ThirdParty/Effekseer/Lib/Release/Effekseer.lib",
-          "sha256": "E6549509C87A958E7A855AF76EAEA777040D6639757888F3626F5F66CD647402",
-          "required": true
-        },
-        {
-          "path": "ThirdParty/Effekseer/Lib/Release/EffekseerRendererDX12.lib",
-          "sha256": "2FFBD3DC83161176FA0110ACE83C64A35F4807F7B1FC4469128CBA555F1302FE",
-          "required": true
-        },
-        {
-          "path": "ThirdParty/Effekseer/Lib/Release/LLGI.lib",
-          "sha256": "3CC7ED94C758062D952DF5E75C8D46DF633983FAEB58FBC92AE638C3358948A6",
-          "required": true
-        }
-      ]
-    },
-    {
       "name": "CoACD",
       "version": "1.0.11",
       "kind": "tracked-editor-runtime",
@@ -236,11 +195,6 @@
     }
   ],
   "knownGaps": [
-    {
-      "id": "effekseer-provenance",
-      "severity": "bootstrap-blocker",
-      "description": "Record the exact Effekseer release or source commit, license set, build options, and a deterministic restore/build path before claiming clean-clone reproducibility."
-    },
     {
       "id": "imguizmo-revision",
       "severity": "maintenance",

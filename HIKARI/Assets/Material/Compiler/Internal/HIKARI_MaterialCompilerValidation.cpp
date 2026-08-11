@@ -52,13 +52,14 @@ namespace HIKARI::MATERIAL_COMPILER_INTERNAL {
 
         bool AppendGraphDiagnostics(
             const MaterialGraphData& graph,
-            bool requireSurfaceOutput,
+            bool requireDomainOutput,
+            MaterialDomain domain,
             MaterialCompileResult& result) {
 
             std::vector<MaterialGraphDiagnostic> graphDiagnostics{};
             const bool graphValid = ValidateMaterialGraph(
                 graph,
-                MaterialGraphValidationOptions{ requireSurfaceOutput },
+                MaterialGraphValidationOptions{ requireDomainOutput, domain },
                 graphDiagnostics);
             for (const MaterialGraphDiagnostic& diagnostic : graphDiagnostics) {
                 MaterialCompileDiagnosticSeverity severity =
@@ -254,6 +255,7 @@ namespace HIKARI::MATERIAL_COMPILER_INTERNAL {
             switch (legacyKind) {
             case MaterialNodeKind::Constant:
             case MaterialNodeKind::Parameter:
+            case MaterialNodeKind::Variable:
                 supported = true;
                 break;
             case MaterialNodeKind::Add:
@@ -663,7 +665,7 @@ namespace HIKARI::MATERIAL_COMPILER_INTERNAL {
         if (source.version != kMaterialAssetSourceVersion) {
             AddDiagnostic(result, MaterialCompileDiagnosticSeverity::Error,
                 "Material.UnsupportedVersion",
-                "compiler accepts only canonical Material v5 source data");
+                "compiler accepts only canonical Material v6 source data");
             valid = false;
         }
         if (source.materialName.empty()) {
@@ -681,7 +683,8 @@ namespace HIKARI::MATERIAL_COMPILER_INTERNAL {
 
         switch (source.kind) {
         case MaterialAssetKind::Material:
-            valid = AppendGraphDiagnostics(source.graph, true, result) && valid;
+            valid = AppendGraphDiagnostics(
+                source.graph, true, source.domain, result) && valid;
             if (valid) {
                 valid = ValidateRuntimeGraphContract(source, result) && valid;
             }
@@ -698,7 +701,7 @@ namespace HIKARI::MATERIAL_COMPILER_INTERNAL {
                 valid = false;
             }
             valid = AppendGraphDiagnostics(
-                source.function.graph, false, result) && valid;
+                source.function.graph, false, source.domain, result) && valid;
             if (source.function.graph.outputNodeId.empty()) {
                 AddDiagnostic(result, MaterialCompileDiagnosticSeverity::Error,
                     "Material.FunctionOutputMissing",

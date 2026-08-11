@@ -49,19 +49,20 @@ namespace HIKARI {
     } // namespace
 
     void ModelComponent::Serialize(nlohmann::json& out) const {
-        out["assetId"] = assetId_;
-        out["visible"] = visible_;
+        out[ModelComponentPropertyIds::AssetId] = assetId_;
+        out[ModelComponentPropertyIds::Visible] = visible_;
         out["showSkeletonDebug"] = showSkeletonDebug_;
         out["skeletonDebugXRay"] = skeletonDebugXRay_;
-        out["castShadow"] = castShadow_;
-        out["receiveShadow"] = receiveShadow_;
-        out["renderStatic"] = renderStatic_;
-        out["includeInLightingBake"] = includeInLightingBake_;
+        out[ModelComponentPropertyIds::CastShadow] = castShadow_;
+        out[ModelComponentPropertyIds::ReceiveShadow] = receiveShadow_;
+        out[ModelComponentPropertyIds::RenderStatic] = renderStatic_;
+        out[ModelComponentPropertyIds::IncludeInLightingBake] =
+            includeInLightingBake_;
         out["debugRenderMode"] = ToString(debugRenderMode_);
         out["wireColor"] = wireColor_;
         out["maxWireLines"] = maxWireLines_;
         out["wirePerPrimitiveColor"] = wirePerPrimitiveColor_;
-        out["postGroupMask"] = postGroupMask_;
+        out[ModelComponentPropertyIds::PostGroupMask] = postGroupMask_;
         if (materialSetSelectionAuthored_) {
             out["materialSetAssetGuid"] = materialSetAssetGuid_.value;
         }
@@ -86,17 +87,27 @@ namespace HIKARI {
     }
 
     void ModelComponent::Deserialize(const nlohmann::json& in) {
-        assetId_ = in.value("assetId", assetId_);
-        visible_ = in.value("visible", visible_);
+        assetId_ = in.value(
+            ModelComponentPropertyIds::AssetId,
+            assetId_);
+        visible_ = in.value(
+            ModelComponentPropertyIds::Visible,
+            visible_);
         showSkeletonDebug_ =
             in.value("showSkeletonDebug", showSkeletonDebug_);
         skeletonDebugXRay_ =
             in.value("skeletonDebugXRay", skeletonDebugXRay_);
-        castShadow_ = in.value("castShadow", castShadow_);
-        receiveShadow_ = in.value("receiveShadow", receiveShadow_);
-        renderStatic_ = in.value("renderStatic", renderStatic_);
+        castShadow_ = in.value(
+            ModelComponentPropertyIds::CastShadow,
+            castShadow_);
+        receiveShadow_ = in.value(
+            ModelComponentPropertyIds::ReceiveShadow,
+            receiveShadow_);
+        renderStatic_ = in.value(
+            ModelComponentPropertyIds::RenderStatic,
+            renderStatic_);
         includeInLightingBake_ = in.value(
-            "includeInLightingBake",
+            ModelComponentPropertyIds::IncludeInLightingBake,
             includeInLightingBake_);
         debugRenderMode_ = ParseRenderDebugMode(
             in.value("debugRenderMode", nlohmann::json{}),
@@ -106,7 +117,9 @@ namespace HIKARI {
         wirePerPrimitiveColor_ =
             in.value("wirePerPrimitiveColor", wirePerPrimitiveColor_);
         postGroupMask_ =
-            in.value("postGroupMask", postGroupMask_);
+            in.value(
+                ModelComponentPropertyIds::PostGroupMask,
+                postGroupMask_);
         materialSetSelectionAuthored_ =
             in.contains("materialSetAssetGuid");
         materialSetAssetGuid_.value = materialSetSelectionAuthored_

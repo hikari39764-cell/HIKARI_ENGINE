@@ -34,12 +34,15 @@ namespace HIKARI::EDITOR::AI_ASSISTANT {
         bool IsRunning() const;
         uint16_t GetPort() const;
         std::string GetEndpoint() const;
+        std::string GetSessionToken() const;
 
     private:
         void AcceptLoop();
         void HandleConnection(
             uintptr_t clientSocket,
-            const Executor& executor);
+            const Executor& executor,
+            const CapabilityProvider& capabilityProvider,
+            const std::string& sessionToken);
 
         std::atomic<bool> running_{ false };
         std::atomic<bool> stopRequested_{ false };
@@ -48,6 +51,7 @@ namespace HIKARI::EDITOR::AI_ASSISTANT {
         uintptr_t listener_ = 0u;
         uint16_t port_ = 0u;
         std::string endpoint_;
+        std::string sessionToken_;
         Executor executor_{};
         CapabilityProvider capabilityProvider_{};
     };

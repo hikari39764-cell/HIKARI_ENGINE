@@ -6,6 +6,10 @@
 
 namespace HIKARI::RENDER3D {
 
+    namespace PARTICLES {
+        struct ParticleRenderFrameSource;
+    }
+
     struct RenderViewId {
         uint64_t value = 0;
 
@@ -35,6 +39,8 @@ namespace HIKARI::RENDER3D {
         RenderViewId viewId{};
         RenderViewPurpose purpose = RenderViewPurpose::Game;
         const ResolvedCameraFrame* cameraFrame = nullptr;
+        const PARTICLES::ParticleRenderFrameSource* particleFrameSource =
+            nullptr;
     };
 
     inline constexpr RenderViewId kPrimaryRenderViewId{ 1 };

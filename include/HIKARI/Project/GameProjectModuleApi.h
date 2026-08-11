@@ -11,7 +11,10 @@ namespace HIKARI {
 
 namespace HIKARI::RUNTIME {
 
-    inline constexpr uint32_t kGameProjectModuleAbiVersion = 2u;
+    // ABI 3 adds GameComponentContext-aware lifecycle virtuals. Reject older
+    // project DLLs so the host rebuilds them instead of calling a mismatched
+    // IGameComponent vtable.
+    inline constexpr uint32_t kGameProjectModuleAbiVersion = 3u;
     inline constexpr char kGameProjectModuleApiEntryPoint[] =
         "HIKARI_GetGameProjectModuleApi";
 

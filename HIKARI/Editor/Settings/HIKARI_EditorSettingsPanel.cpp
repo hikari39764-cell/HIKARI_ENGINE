@@ -34,10 +34,17 @@ void EditorSettingsPanel::Draw(bool& open, EditorContext& context) {
             static_cast<TEXT::Language>(current));
     }
 
+    ImGui::SeparatorText(
+        TEXT::Localize("settings.aiBridge").c_str());
+    ImGui::Checkbox(
+        TEXT::Localize("settings.aiBridge.enable").c_str(),
+        &context.aiIntegration.localBridgeEnabled);
+    ImGui::TextWrapped("%s",
+        TEXT::Localize("settings.aiBridge.warning").c_str());
+
     ImGui::Separator();
     ImGui::TextDisabled("%s",
         TEXT::Localize("settings.product.note").c_str());
-    (void)context;
     ImGui::End();
 #else
     (void)open;

@@ -224,6 +224,8 @@ namespace HIKARI::GFX::GPU_PROFILE {
         case Pass::ForwardOpaque: return "ForwardOpaque";
         case Pass::DepthAware: return "DepthAware";
         case Pass::ForwardTransparent: return "ForwardTransparent";
+        case Pass::ParticleSimulation: return "Particle Simulation";
+        case Pass::ParticleDraw: return "Particle Draw";
         case Pass::VolumetricLighting: return "Volumetric Lighting";
         case Pass::StylizedGeometryOutline: return "Stylized Geometry Outline";
         case Pass::StylizedVisibilityOverlay: return "Stylized Visibility Overlay";

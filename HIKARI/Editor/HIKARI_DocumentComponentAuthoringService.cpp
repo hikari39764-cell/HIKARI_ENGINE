@@ -4,13 +4,33 @@
 #include <sstream>
 #include <utility>
 
+#include "Scene/HIKARI_SceneComponentId.h"
+
 namespace HIKARI {
 
-    ComponentAddResult DocumentComponentAuthoringService::AddComponent(const ComponentRegistry& registry, SceneObjectData& object, std::string_view typeName) const {
+    ComponentAddResult DocumentComponentAuthoringService::AddComponent(
+        const ComponentRegistry& registry,
+        SceneObjectData& object,
+        std::string_view typeName) const {
+
+        SceneObjectData working = object;
+        NormalizeSceneComponentIds(working);
         ComponentAddResult result{};
-        if (!AddSingleComponent(registry, object, typeName, false, result)) {
+        std::vector<std::string> dependencyPath{};
+        if (!AddSingleComponent(
+                registry,
+                working,
+                typeName,
+                false,
+                dependencyPath,
+                result)) {
+            result.documentChanged = false;
+            result.addedComponents.clear();
+            result.autoAddedDependencies.clear();
             return result;
         }
+
+        object = std::move(working);
 
         if (result.autoAddedDependencies.empty()) {
             result.message = "Added component: " + std::string(typeName);
@@ -41,6 +61,7 @@ namespace HIKARI {
         }
         SceneComponentData source =
             object.components[componentIndex];
+        source.id = AllocateSceneComponentId(object);
         result.componentType = source.type;
         const ComponentTypeInfo* info = registry.Find(source.type);
         if (info == nullptr) {
@@ -68,6 +89,7 @@ namespace HIKARI {
     ComponentEditResult
         DocumentComponentAuthoringService::RemoveComponent(
             const ComponentRegistry& registry,
+            SceneDocument& document,
             SceneObjectData& object,
             size_t componentIndex) const {
         ComponentEditResult result{};
@@ -122,6 +144,12 @@ namespace HIKARI {
         object.components.erase(
             object.components.begin() +
             static_cast<std::ptrdiff_t>(componentIndex));
+        if (removedType == "CameraComponent" &&
+            remainingSameType == 0u &&
+            document.camera.defaultCameraObjectId == object.id) {
+
+            document.camera.defaultCameraObjectId.reset();
+        }
         result.success = true;
         result.documentChanged = true;
         result.message = "Removed " + displayName + ".";
@@ -151,7 +179,30 @@ namespace HIKARI {
         SceneObjectData& object,
         std::string_view typeName,
         bool isDependency,
+        std::vector<std::string>& dependencyPath,
         ComponentAddResult& result) const {
+
+        const auto cycleBegin = std::find(
+            dependencyPath.begin(),
+            dependencyPath.end(),
+            typeName);
+        if (cycleBegin != dependencyPath.end()) {
+            std::ostringstream oss;
+            oss << "Component dependency cycle: ";
+            for (auto component = cycleBegin;
+                component != dependencyPath.end();
+                ++component) {
+                if (component != cycleBegin) {
+                    oss << " -> ";
+                }
+                oss << *component;
+            }
+            oss << " -> " << typeName;
+            result.success = false;
+            result.message = oss.str();
+            return false;
+        }
+
         const ComponentTypeInfo* info = registry.Find(typeName);
         if (!info) {
             result.success = false;
@@ -185,19 +236,28 @@ namespace HIKARI {
             }
         }
 
+        dependencyPath.emplace_back(typeName);
         const size_t dependenciesBegin = result.addedComponents.size();
         for (const std::string& dependencyType : info->requiredComponents) {
             if (HasComponent(object, dependencyType)) {
                 continue;
             }
 
-            if (!AddSingleComponent(registry, object, dependencyType, true, result)) {
+            if (!AddSingleComponent(
+                    registry,
+                    object,
+                    dependencyType,
+                    true,
+                    dependencyPath,
+                    result)) {
+                dependencyPath.pop_back();
                 if (result.message.empty()) {
                     result.message = "Failed to add required component: " + dependencyType;
                 }
                 return false;
             }
         }
+        dependencyPath.pop_back();
 
         if (info->configureDependencies) {
             std::vector<std::string> newlyAddedDependencies(
@@ -214,7 +274,12 @@ namespace HIKARI {
             info->initializeDefaults(object, properties);
         }
 
-        object.components.push_back(SceneComponentData{ info->typeName, std::move(properties) });
+        SceneComponentData component{
+            info->typeName,
+            std::move(properties)
+        };
+        component.id = AllocateSceneComponentId(object);
+        object.components.push_back(std::move(component));
         result.documentChanged = true;
         result.addedComponents.push_back(info->typeName);
         if (isDependency) {

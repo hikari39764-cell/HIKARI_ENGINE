@@ -18,13 +18,6 @@ namespace HIKARI::EDITOR {
                 name == "winpixeventruntime.dll";
         }
 
-        bool IsAssimpRuntime(const std::filesystem::path& path) {
-            const std::string name =
-                TEXT::ToLowerAsciiCopy(path.filename().string());
-            return name.rfind("assimp-", 0) == 0 &&
-                TEXT::ToLowerAsciiCopy(path.extension().string()) == ".dll";
-        }
-
         bool IsGameProjectModule(
             const std::filesystem::path& path) {
 
@@ -54,7 +47,6 @@ namespace HIKARI::EDITOR {
             return result;
         }
 
-        bool assimpRuntimeFound = false;
         for (std::filesystem::directory_iterator it(sourceDirectory, ec), end;
              !ec && it != end;
              it.increment(ec)) {
@@ -70,7 +62,6 @@ namespace HIKARI::EDITOR {
                 continue;
             }
 
-            assimpRuntimeFound |= IsAssimpRuntime(source);
             const std::filesystem::path destination =
                 outputDirectory / source.filename();
             std::filesystem::copy_file(
@@ -94,13 +85,6 @@ namespace HIKARI::EDITOR {
                 sourceDirectory.string() + ": " + ec.message();
             return result;
         }
-        if (!assimpRuntimeFound) {
-            result.message =
-                "Assimp runtime DLL is missing from build output: " +
-                sourceDirectory.string();
-            return result;
-        }
-
         result.success = true;
         result.message =
             "Deployed " + std::to_string(result.filesCopied) +

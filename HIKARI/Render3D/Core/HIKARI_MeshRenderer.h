@@ -30,6 +30,10 @@ namespace HIKARI::RENDER3D {
     namespace MATERIAL {
         struct GpuMaterialRegistryStats;
     }
+    namespace PARTICLES {
+        struct ParticleGpuDrivenPassStats;
+        struct ParticleRenderFrameSource;
+    }
 }
 
 namespace HIKARI::MESHRENDERER {
@@ -52,6 +56,10 @@ namespace HIKARI::MESHRENDERER {
     void InvalidateMaterialFxPipelineCache();
     void SetGpuDrivenSceneSource(
         const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource* source);
+    void SetParticleFrameSource(
+        const RENDER3D::PARTICLES::ParticleRenderFrameSource* source);
+    void ReleaseParticleNamespace(uint64_t playbackNamespace);
+    void ShutdownParticleGpuDrivenPass();
     const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource&
         GetActiveGpuDrivenSceneSource();
     bool HasSubmittedItems();
@@ -121,6 +129,7 @@ namespace HIKARI::MESHRENDERER {
     }
     struct EditorInteractiveRenderSettings {
         using RebindTargetCallback = bool (*)(void* userData);
+        using DepthAwareOverlayCallback = void (*)(void* userData);
 
         RenderDebugView debugView = RenderDebugView::None;
         bool neutralLighting = false;
@@ -132,8 +141,12 @@ namespace HIKARI::MESHRENDERER {
         D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv{};
         void* renderTargetUserData = nullptr;
         RebindTargetCallback rebindTarget = nullptr;
+        void* depthAwareOverlayUserData = nullptr;
+        DepthAwareOverlayCallback renderDepthAwareOverlay = nullptr;
         const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource*
             sceneSourceOverride = nullptr;
+        const RENDER3D::PARTICLES::ParticleRenderFrameSource*
+            particleFrameSource = nullptr;
         const IBL::IblEnvironmentSource* iblEnvironmentOverride = nullptr;
         bool suppressSpatialLightingProviders = false;
     };
@@ -163,5 +176,7 @@ namespace HIKARI::MESHRENDERER {
     const MeshRendererDebugStats& GetDebugStats();
     const RENDER3D::MATERIAL::GpuMaterialRegistryStats&
         GetGpuMaterialRegistryStats();
+    const RENDER3D::PARTICLES::ParticleGpuDrivenPassStats&
+        GetParticleGpuDrivenPassStats();
 
 } // namespace HIKARI::MESHRENDERER

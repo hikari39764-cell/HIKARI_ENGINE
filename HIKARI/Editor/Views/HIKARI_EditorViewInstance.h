@@ -123,5 +123,6 @@ namespace HIKARI::EDITOR {
     inline constexpr RENDER3D::RenderViewId kModelCollisionPreviewRenderViewId{ 4 };
     inline constexpr RENDER3D::RenderViewId kModelMaterialPreviewRenderViewId{ 5 };
     inline constexpr RENDER3D::RenderViewId kModelMaterialCompareRenderViewId{ 6 };
+    inline constexpr RENDER3D::RenderViewId kVfxPreviewRenderViewId{ 7 };
 
 } // namespace HIKARI::EDITOR

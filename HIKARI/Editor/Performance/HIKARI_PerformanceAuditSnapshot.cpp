@@ -57,12 +57,16 @@ bool IsShadowSubpass(GFX::GPU_PROFILE::Pass pass) {
 }
 
 bool IsNestedGpuSubpass(GFX::GPU_PROFILE::Pass pass) {
-  return IsClusterSubpass(pass) || IsShadowSubpass(pass);
+  return IsClusterSubpass(pass) || IsShadowSubpass(pass) ||
+         pass == GFX::GPU_PROFILE::Pass::ParticleDraw;
 }
 
 const char *TimingScopeText(GFX::GPU_PROFILE::Pass pass) {
   if (IsShadowSubpass(pass)) {
     return "Shadow Subpass";
+  }
+  if (pass == GFX::GPU_PROFILE::Pass::ParticleDraw) {
+    return "Transparent Subpass";
   }
   return IsClusterSubpass(pass) ? "Cluster Subpass" : "Parent Pass";
 }

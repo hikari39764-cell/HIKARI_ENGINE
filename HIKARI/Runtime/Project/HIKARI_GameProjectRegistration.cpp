@@ -1,5 +1,6 @@
 #include "HIKARI/Project/RuntimeRegistration.h"
 
+#include <atomic>
 #include <exception>
 #include <memory>
 #include <string>
@@ -29,6 +30,12 @@ namespace {
             }
         }
         return result;
+    }
+
+    std::string MakeGameComponentBindingWriterId() {
+        static std::atomic_uint64_t nextWriterId{ 1u };
+        return "game-component/" + std::to_string(
+            nextWriterId.fetch_add(1u, std::memory_order_relaxed));
     }
 
     template<class Callback>
@@ -83,11 +90,40 @@ namespace {
             context.componentSystemPolicy_);
     }
 
+    GameComponentContext
+        GameProjectSdkAccess::MakeGameComponentContext(
+            GameProjectComponentAdapter& adapter,
+            GameObject& object,
+            World& world) noexcept {
+        return GameComponentContext(
+            MakeObjectView(object),
+            MakeWorldView(world),
+            &adapter);
+    }
+
+    bool GameComponentContext::WriteVariable(
+        std::string_view variableId,
+        const GameProjectBindingValue& value) const noexcept {
+        auto* adapter = static_cast<GameProjectComponentAdapter*>(
+            bindingOwner_);
+        return adapter != nullptr && adapter->WriteVariable(
+            world_, variableId, value);
+    }
+
+    bool GameComponentContext::ReleaseVariable(
+        std::string_view variableId) const noexcept {
+        auto* adapter = static_cast<GameProjectComponentAdapter*>(
+            bindingOwner_);
+        return adapter != nullptr && adapter->ReleaseVariable(
+            world_, variableId);
+    }
+
     GameProjectComponentAdapter::GameProjectComponentAdapter(
         std::string typeName,
         IGameComponent* component,
-        DestroyGameComponentFn destroy) noexcept
+        DestroyGameComponentFn destroy)
         : typeName_(std::move(typeName)),
+          bindingWriterId_(MakeGameComponentBindingWriterId()),
           component_(component),
           destroy_(destroy) {
     }
@@ -108,26 +144,75 @@ namespace {
         if (component_ == nullptr || GetOwner() == nullptr) {
             return;
         }
-        const ObjectView owner =
-            GameProjectSdkAccess::MakeObjectView(*GetOwner());
+        GameObject& owner = *GetOwner();
+        World* world = owner.GetWorld();
+        if (world == nullptr) {
+            const ObjectView ownerView =
+                GameProjectSdkAccess::MakeObjectView(owner);
+            InvokeProjectCallback(
+                typeName_,
+                "OnAttach",
+                [this, &ownerView]() {
+                    component_->OnAttach(ownerView);
+                });
+            return;
+        }
+        GameComponentContext context =
+            GameProjectSdkAccess::MakeGameComponentContext(
+                *this, owner, *world);
         InvokeProjectCallback(
             typeName_,
             "OnAttach",
-            [this, &owner]() {
-                component_->OnAttach(owner);
+            [this, &context]() {
+                component_->OnAttach(context);
             });
+    }
+
+    void GameProjectComponentAdapter::OnDetach() {
+        if (component_ == nullptr || GetOwner() == nullptr) {
+            return;
+        }
+        GameObject& owner = *GetOwner();
+        World* world = owner.GetWorld();
+        if (world == nullptr) {
+            return;
+        }
+        GameComponentContext context =
+            GameProjectSdkAccess::MakeGameComponentContext(
+                *this, owner, *world);
+        InvokeProjectCallback(
+            typeName_,
+            "OnDetach",
+            [this, &context]() {
+                component_->OnDetach(context);
+            });
+        ReleaseAllVariables(context.GetWorld());
     }
 
     void GameProjectComponentAdapter::Update(
         float deltaTime) {
-        if (component_ == nullptr) {
+        if (component_ == nullptr || GetOwner() == nullptr) {
             return;
         }
+        GameObject& owner = *GetOwner();
+        World* world = owner.GetWorld();
+        if (world == nullptr) {
+            InvokeProjectCallback(
+                typeName_,
+                "Update",
+                [this, deltaTime]() {
+                    component_->Update(deltaTime);
+                });
+            return;
+        }
+        GameComponentContext context =
+            GameProjectSdkAccess::MakeGameComponentContext(
+                *this, owner, *world);
         InvokeProjectCallback(
             typeName_,
             "Update",
-            [this, deltaTime]() {
-                component_->Update(deltaTime);
+            [this, &context, deltaTime]() {
+                component_->Update(context, deltaTime);
             });
     }
 
@@ -180,6 +265,58 @@ namespace {
     IGameComponent*
         GameProjectComponentAdapter::GetGameComponent() noexcept {
         return component_;
+    }
+
+    bool GameProjectComponentAdapter::WriteVariable(
+        const WorldView& world,
+        std::string_view variableId,
+        const GameProjectBindingValue& value) noexcept {
+        if (variableId.empty() || bindingWriterId_.empty()) {
+            return false;
+        }
+        try {
+            const auto [written, inserted] =
+                writtenVariableIds_.emplace(variableId);
+            if (world.WriteVariable(
+                    variableId, value, bindingWriterId_)) {
+                return true;
+            }
+            if (inserted) {
+                writtenVariableIds_.erase(written);
+            }
+            return false;
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
+    bool GameProjectComponentAdapter::ReleaseVariable(
+        const WorldView& world,
+        std::string_view variableId) noexcept {
+        for (auto written = writtenVariableIds_.begin();
+            written != writtenVariableIds_.end();
+            ++written) {
+            if (*written != variableId) {
+                continue;
+            }
+            if (!world.ReleaseVariableWriter(
+                    *written, bindingWriterId_)) {
+                return false;
+            }
+            writtenVariableIds_.erase(written);
+            return true;
+        }
+        return false;
+    }
+
+    void GameProjectComponentAdapter::ReleaseAllVariables(
+        const WorldView& world) noexcept {
+        for (const std::string& variableId : writtenVariableIds_) {
+            (void)world.ReleaseVariableWriter(
+                variableId, bindingWriterId_);
+        }
+        writtenVariableIds_.clear();
     }
 
     GameProjectSystemAdapter::GameProjectSystemAdapter(
@@ -282,11 +419,17 @@ namespace {
                 if (component == nullptr) {
                     return {};
                 }
-                return std::make_unique<
-                    GameProjectComponentAdapter>(
-                        typeName,
-                        component,
-                        destroy);
+                try {
+                    return std::make_unique<
+                        GameProjectComponentAdapter>(
+                            typeName,
+                            component,
+                            destroy);
+                }
+                catch (...) {
+                    destroy(component);
+                    return {};
+                }
             };
         info.requiredComponents =
             CopyNames(descriptor.requiredComponents);

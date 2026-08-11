@@ -149,6 +149,8 @@ NodeInlineLayoutSpec ResolveNodeInlineLayoutSpec(
     return {};
   }
   switch (kind) {
+  case MaterialNodeKind::Variable:
+    return {1u, 0.0f};
   case MaterialNodeKind::Parameter:
     return {2u, 0.0f};
   case MaterialNodeKind::Constant:
@@ -163,6 +165,8 @@ NodeInlineLayoutSpec ResolveNodeInlineLayoutSpec(
     return {8u, 58.0f};
   case MaterialNodeKind::SurfaceOutput:
     return {7u, 0.0f};
+  case MaterialNodeKind::ParticleOutput:
+    return {4u, 0.0f};
   case MaterialNodeKind::SpecularBand:
   case MaterialNodeKind::FresnelRim:
     return {5u, 0.0f};

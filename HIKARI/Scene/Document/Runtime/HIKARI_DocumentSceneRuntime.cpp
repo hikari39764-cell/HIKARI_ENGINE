@@ -7,6 +7,7 @@
 #include <utility>
 
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
+#include "Runtime/Binding/HIKARI_RuntimeBindingCatalogJson.h"
 #include "Core/HIKARI_Logger.h"
 #include "Core/Math/HIKARI_MathValidation.h"
 #include "Physics/Backends/Jolt/HIKARI_JoltPhysicsBackend.h"
@@ -266,6 +267,48 @@ namespace HIKARI {
     }
 
     bool DocumentSceneBase::ConfigureRuntimeWorldServices() {
+        BINDING::Catalog bindingCatalog{};
+        const std::filesystem::path bindingCatalogPath =
+            BINDING::GetCatalogPath(
+                state_->assets.Database().GetProjectRoot());
+        std::string bindingCatalogMessage{};
+        if (std::filesystem::exists(bindingCatalogPath)) {
+            if (!BINDING::LoadCatalog(
+                    bindingCatalogPath,
+                    bindingCatalog,
+                    bindingCatalogMessage)) {
+                HIKARI_LOG_ERROR(
+                    "[RuntimeBinding] " + bindingCatalogMessage);
+                return false;
+            }
+        }
+        if (!state_->runtime.bindingStore.Initialize(
+                std::move(bindingCatalog))) {
+            HIKARI_LOG_ERROR(
+                "[RuntimeBinding] catalog initialization failed");
+            return false;
+        }
+        state_->runtime.vfxPlaybackService.SetProgramResolver(
+            [registry = &state_->assets.Registry()](
+                const AssetGuid& guid,
+                std::string& outError)
+                -> std::shared_ptr<const VFX::VfxProgram> {
+                const AssetDescriptor* base =
+                    registry->FindDescriptor(guid.value);
+                const auto* descriptor =
+                    dynamic_cast<const VfxAssetDescriptor*>(base);
+                if (descriptor == nullptr || !descriptor->program) {
+                    outError =
+                        "compiled VFX asset is not registered: " +
+                        guid.value;
+                    return {};
+                }
+                outError.clear();
+                return descriptor->program;
+            });
+        state_->runtime.vfxPlaybackService.
+            SetReliableRenderDeliveryEnabled(true);
+
         std::string physicsSettingsMessage{};
         if (!state_->runtime.physicsSettings.Load(
                 state_->assets.Database().GetProjectRoot() /
@@ -292,6 +335,9 @@ namespace HIKARI {
         WorldServiceRegistry& services = state_->runtime.world.Services();
         services.Clear();
         bool success = services.Register(SERVICES::GetInputService());
+        success = services.Register(state_->runtime.bindingStore) && success;
+        success = services.Register(
+            state_->runtime.vfxPlaybackService) && success;
         success = services.Register(state_->camera.sequencePlayback) && success;
         success = services.Register(state_->runtime.playStateService) && success;
         success = services.Register(state_->runtime.gameplayCameraService) && success;

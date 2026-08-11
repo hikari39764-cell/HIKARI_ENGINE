@@ -75,7 +75,7 @@ namespace HIKARI {
 
         RuntimeObjectHandle AllocateObjectHandle(GameObject* object);
         void ReleaseObjectHandle(RuntimeObjectHandle handle);
-        void OnDocumentIdChanged(
+        bool OnDocumentIdChanged(
             GameObject* object,
             SceneObjectId previousId,
             SceneObjectId nextId);

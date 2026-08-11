@@ -11,7 +11,7 @@
 namespace HIKARI {
 
     struct ProjectSettings {
-        uint32_t version = 3;
+        uint32_t version = 4;
         AssetGuid startupSceneGuid{};
         std::vector<std::string> enabledRuntimeFeatures{
             std::string(RuntimeFeatureIds::Rendering),
@@ -19,7 +19,8 @@ namespace HIKARI {
             std::string(RuntimeFeatureIds::Camera),
             std::string(RuntimeFeatureIds::Physics),
             std::string(RuntimeFeatureIds::GameplayBasic),
-            std::string(RuntimeFeatureIds::Cinematics)
+            std::string(RuntimeFeatureIds::Cinematics),
+            std::string(RuntimeFeatureIds::Vfx)
         };
     };
 

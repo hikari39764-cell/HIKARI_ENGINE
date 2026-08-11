@@ -10,7 +10,7 @@ namespace HIKARI::ASSETS::MATERIAL {
 
     namespace {
 
-        constexpr std::array<MaterialTemplateInfo, 8u> kTemplates{ {
+        constexpr std::array<MaterialTemplateInfo, 10u> kTemplates{ {
             { MaterialTemplateId::StandardPbr, "Standard PBR",
                 "Physically based baseline with imported texture compatibility." },
             { MaterialTemplateId::GenericToon, "Generic Toon",
@@ -27,6 +27,11 @@ namespace HIKARI::ASSETS::MATERIAL {
                 "Broad diffuse ramp with fabric sheen and fiber masking." },
             { MaterialTemplateId::HybridMetal, "Hybrid Metal",
                 "PBR metal response mixed with multi-ramp stylization." },
+            { MaterialTemplateId::ParticleUnlit, "Particle Unlit",
+                "Unlit particle material with graph-driven color, opacity, emissive and alpha clipping." },
+            { MaterialTemplateId::ParticleUnlitTextured,
+                "Particle Unlit (Textured)",
+                "Unlit particle texture multiplied by tint, with texture alpha driving opacity." },
         } };
 
         constexpr std::array<MaterialRampPresetInfo, 4u> kRampPresets{ {
@@ -446,9 +451,145 @@ namespace HIKARI::ASSETS::MATERIAL {
             data.featureRequests.clear();
         }
 
+        void ConfigureParticleUnlit(
+            MaterialAssetData& data,
+            bool textured) {
+
+            data.domain = MaterialDomain::Particle;
+            data.templateId = textured
+                ? MaterialTemplateId::ParticleUnlitTextured
+                : MaterialTemplateId::ParticleUnlit;
+            data.surface.alphaMode = MaterialAlphaMode::Blend;
+            data.surface.unlit = true;
+            data.pbr.unlit = true;
+            data.graph = {};
+
+            AddParameter(data, "parameter.particleTint", "Particle Tint",
+                MakeValue(MaterialValueType::Float4, 1.0f, 1.0f, 1.0f, 1.0f));
+            AddParameter(data, "parameter.particleOpacity", "Particle Opacity",
+                MakeValue(MaterialValueType::Float1, 1.0f));
+            AddParameter(data, "parameter.particleEmissive", "Particle Emissive",
+                MakeValue(MaterialValueType::Float3, 0.0f, 0.0f, 0.0f));
+            AddParameter(data, "parameter.particleAlphaClip", "Particle Alpha Clip",
+                MakeValue(MaterialValueType::Float1, 0.0f));
+
+            AddNode(data, "node.particleTint", "Particle Tint",
+                MaterialNodeKind::Parameter, MaterialValueType::Float4,
+                -520.0f, -120.0f, "parameter.particleTint");
+            AddNode(data, "node.particleOpacity", "Particle Opacity",
+                MaterialNodeKind::Parameter, MaterialValueType::Float1,
+                -520.0f, -20.0f, "parameter.particleOpacity");
+            AddNode(data, "node.particleEmissive", "Particle Emissive",
+                MaterialNodeKind::Parameter, MaterialValueType::Float3,
+                -520.0f, 80.0f, "parameter.particleEmissive");
+            AddNode(data, "node.particleAlphaClip", "Particle Alpha Clip",
+                MaterialNodeKind::Parameter, MaterialValueType::Float1,
+                -520.0f, 180.0f, "parameter.particleAlphaClip");
+            AddNode(data, "node.particleOutput", "Particle Output",
+                MaterialNodeKind::ParticleOutput, MaterialValueType::Float4,
+                -120.0f, 20.0f);
+
+            if (textured) {
+                AddResource(
+                    data,
+                    "resource.particleTexture",
+                    "Particle Texture",
+                    MaterialResourceType::Texture2D,
+                    MaterialResourceSemantic::BaseColor);
+                AddNode(
+                    data,
+                    "node.texture.particle",
+                    "Particle Texture",
+                    MaterialNodeKind::TextureSample,
+                    MaterialValueType::Float4,
+                    -720.0f,
+                    -240.0f,
+                    "resource.particleTexture");
+                AddNode(
+                    data,
+                    "node.multiply.particleColor",
+                    "Texture x Tint",
+                    MaterialNodeKind::Multiply,
+                    MaterialValueType::Float4,
+                    -320.0f,
+                    -160.0f);
+                AddNode(
+                    data,
+                    "node.multiply.particleOpacity",
+                    "Texture Alpha x Opacity",
+                    MaterialNodeKind::Multiply,
+                    MaterialValueType::Float1,
+                    -320.0f,
+                    40.0f);
+                Connect(
+                    data,
+                    "edge.particleTexture.color",
+                    "node.texture.particle",
+                    "Color",
+                    "node.multiply.particleColor",
+                    "A");
+                Connect(
+                    data,
+                    "edge.particleTint",
+                    "node.particleTint",
+                    "Value",
+                    "node.multiply.particleColor",
+                    "B");
+                Connect(
+                    data,
+                    "edge.particleColor.output",
+                    "node.multiply.particleColor",
+                    "Result",
+                    "node.particleOutput",
+                    "Color");
+                Connect(
+                    data,
+                    "edge.particleTexture.alpha",
+                    "node.texture.particle",
+                    "A",
+                    "node.multiply.particleOpacity",
+                    "A");
+                Connect(
+                    data,
+                    "edge.particleOpacity",
+                    "node.particleOpacity",
+                    "Value",
+                    "node.multiply.particleOpacity",
+                    "B");
+                Connect(
+                    data,
+                    "edge.particleOpacity.output",
+                    "node.multiply.particleOpacity",
+                    "Result",
+                    "node.particleOutput",
+                    "Opacity");
+            } else {
+                Connect(
+                    data,
+                    "edge.particleTint",
+                    "node.particleTint",
+                    "Value",
+                    "node.particleOutput",
+                    "Color");
+                Connect(
+                    data,
+                    "edge.particleOpacity",
+                    "node.particleOpacity",
+                    "Value",
+                    "node.particleOutput",
+                    "Opacity");
+            }
+            Connect(data, "edge.particleEmissive", "node.particleEmissive", "Value",
+                "node.particleOutput", "Emissive");
+            Connect(data, "edge.particleAlphaClip", "node.particleAlphaClip", "Value",
+                "node.particleOutput", "AlphaClipThreshold");
+            data.graph.outputNodeId = "node.particleOutput";
+            data.featureRequests.clear();
+        }
+
     } // namespace
 
-    const std::array<MaterialTemplateInfo, 8u>&
+    const std::array<MaterialTemplateInfo, 10u>&
         GetBuiltInMaterialTemplates() noexcept {
         return kTemplates;
     }
@@ -582,6 +723,12 @@ namespace HIKARI::ASSETS::MATERIAL {
         case MaterialTemplateId::Eye: ConfigureEye(data); break;
         case MaterialTemplateId::Cloth: ConfigureCloth(data); break;
         case MaterialTemplateId::HybridMetal: ConfigureHybridMetal(data); break;
+        case MaterialTemplateId::ParticleUnlit:
+            ConfigureParticleUnlit(data, false);
+            break;
+        case MaterialTemplateId::ParticleUnlitTextured:
+            ConfigureParticleUnlit(data, true);
+            break;
         case MaterialTemplateId::StandardPbr:
         case MaterialTemplateId::Custom:
             break;

@@ -139,9 +139,8 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             1.0f
         };
         const FrameContext& frame = TIME::GetFrameContext();
-        gMeshRendererState.elapsedTimeSec += std::max(0.0f, frame.unscaledDt);
         frameResources.cameraMapped->timeParams = {
-            gMeshRendererState.elapsedTimeSec,
+            TIME::GetUnscaledElapsedSeconds(),
             frame.unscaledDt,
             frame.gameDt,
             static_cast<float>(frame.frameIndex)
@@ -412,6 +411,12 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
 
         gMeshRendererState.frameObjectIndex = 0;
         SyncSurfaceGpuSceneMaterialFrame(graphics);
+        if (!gMeshRendererState.particlePass.PrepareFrame(
+                graphics,
+                gMeshRendererState.particleFrameSource,
+                gMeshRendererState.gpuMaterialRegistry)) {
+            return false;
+        }
         CommitActiveMaterialDataFrame(cmd);
         if (HasGpuDrivenSceneSource()) {
             UploadMeshShaderJointPalettes();

@@ -46,6 +46,11 @@ ModelMaterialWorkspaceController::BuildPreviewMaterial(
     outMessage = "material is not imported into the runtime registry";
     return {};
   }
+  if (descriptor->sourceData.domain != MaterialDomain::Surface) {
+    outMessage =
+        "Particle materials cannot be bound to model surface slots";
+    return {};
+  }
 
   auto material = std::make_shared<Material>();
   MaterialRuntimeBuilder builder{};

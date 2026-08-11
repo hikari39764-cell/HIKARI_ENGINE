@@ -7,7 +7,10 @@
 #include <memory>
 #include <numbers>
 #include <utility>
+#include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
+#include "Runtime/Binding/HIKARI_RuntimeBindingCatalogJson.h"
+#include "Runtime/Binding/Adapters/HIKARI_RuntimeMaterialProjection.h"
 #include "Core/HIKARI_Logger.h"
 #include "Core/Math/HIKARI_MathValidation.h"
 #include "Core/Presentation/HIKARI_LogicalDisplayDefaults.h"
@@ -16,6 +19,8 @@
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Debug/HIKARI_Renderer3D_Debug.h"
 #include "Render3D/Render/HIKARI_ModelRenderer.h"
+#include "Render3D/Vfx/HIKARI_ParticleGpuDrivenPass.h"
+#include "Render3D/Vfx/HIKARI_ParticleRenderInput.h"
 #if defined(HIKARI_WITH_EDITOR)
 #include "Render3D/Views/HIKARI_EditorInteractiveViewRenderer.h"
 #endif
@@ -23,8 +28,6 @@
 #include "Render3D/Lighting/HIKARI_LocalLightList.h"
 #include "Scene/Features/HIKARI_RuntimeFeatureIds.h"
 #include "Scene/Sequencer/Drivers/HIKARI_CameraSequenceTrackDriver.h"
-#include "Vfx/Runtime/HIKARI_VfxAsset.h"
-#include "Vfx/Runtime/HIKARI_VfxSystem.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
 #include "Vfx/Post/HIKARI_PostProfile.h"
 #include "Scene/HIKARI_RuntimeSceneContext.h"
@@ -170,7 +173,6 @@ namespace HIKARI {
         state_->assets.SequenceAssets().SetAssetDatabase(&state_->assets.Database());
         state_->camera.sequencePlayback.SetAssetStore(&state_->assets.SequenceAssets());
         state_->runtime.animationStateMachineAssets.SetAssetDatabase(&state_->assets.Database());
-        VFX::SetAssetRegistry(&state_->assets.Registry());
         if (!OpenStartupSceneAsset()) {
             CreateTransientEmptySceneDocument();
             RebuildRuntimeWorld();
@@ -185,7 +187,16 @@ namespace HIKARI {
         state_->runtime.animationStateMachineRuntimeService.Clear();
         state_->runtime.systemScheduler.DetachWorld(state_->runtime.world);
         state_->runtime.systemScheduler.Clear();
+        // Components detach while World services (including RuntimeBinding)
+        // are still available, so SDK contexts can release owned writers.
+        state_->runtime.world.Clear();
         state_->runtime.world.Services().Clear();
+        state_->runtime.materialProjectionSourceSnapshot.reset();
+        state_->runtime.materialExternalValueSnapshot.reset();
+        state_->runtime.bindingStore.Clear();
+        MESHRENDERER::ReleaseParticleNamespace(
+            state_->runtime.vfxPlaybackService.GetPlaybackNamespace());
+        state_->runtime.vfxPlaybackService.Reset();
         state_->runtime.fixedStepClock.Reset();
         state_->runtime.initialized = false;
         RuntimeSceneContext::SetCurrentWorld(nullptr);
@@ -201,6 +212,7 @@ namespace HIKARI {
             state_->runtime.fixedStepClock.SetSettings(settings);
         }
         state_->runtime.world.BeginFrame(frame.frameIndex);
+        state_->runtime.bindingStore.BeginFrame(frame.frameIndex);
         state_->camera.rigService.BeginFrame(frame.frameIndex);
         if (state_->runtime.playActive && state_->camera.runtimePreviewCameraActive) {
             state_->camera.runtimePreviewCamera.Update(
@@ -250,6 +262,7 @@ namespace HIKARI {
 
         state_->runtime.systemScheduler.Update(state_->runtime.world, frame);
         state_->runtime.systemScheduler.LateUpdate(state_->runtime.world, frame);
+        (void)state_->runtime.bindingStore.PublishSnapshot();
 
         if (state_->runtime.playActive) {
             if (IsRuntimeFeatureActive(
@@ -280,6 +293,29 @@ namespace HIKARI {
         }
     }
     void DocumentSceneBase::Render() {
+        const std::shared_ptr<const BINDING::Snapshot>
+            publishedBindingSnapshot =
+                state_->runtime.bindingStore.GetPublishedSnapshot();
+        BINDING::ScopedSnapshot bindingSnapshot(
+            publishedBindingSnapshot);
+        if (publishedBindingSnapshot != nullptr) {
+            if (state_->runtime.materialProjectionSourceSnapshot !=
+                    publishedBindingSnapshot) {
+                state_->runtime.materialProjectionSourceSnapshot =
+                    publishedBindingSnapshot;
+                state_->runtime.materialExternalValueSnapshot =
+                    BINDING::MATERIAL_ADAPTER::
+                        BuildMaterialExternalValueSnapshot(
+                            *publishedBindingSnapshot);
+            }
+            (void)BINDING::MATERIAL_ADAPTER::
+                ApplyExternalValuesToRuntimeMaterials(
+                    state_->runtime.world,
+                    *state_->runtime.materialExternalValueSnapshot);
+        } else {
+            state_->runtime.materialProjectionSourceSnapshot.reset();
+            state_->runtime.materialExternalValueSnapshot.reset();
+        }
         int captureW = 0;
         int captureH = 0;
         POST::PostSystem::GetSceneCaptureSize(captureW, captureH);
@@ -386,37 +422,65 @@ namespace HIKARI {
         const Camera3D& renderCamera = state_->camera.editorCamera;
 
         const GFX::Context graphics = GFX::GetCurrentContext();
-        SKYRENDERER::Render(graphics, renderCamera, activeEnvironment, state_->assets.Models(), state_->lighting.sky);
-        if (DrawDebugHelpers()) {
-            state_->editor.componentGizmoRenderer.SubmitWorldGizmos(
-                state_->runtime.world,
-                state_->editor.componentGizmoState,
-                state_->editor.selectedGizmoObjectId,
-                renderCamera.GetAspect(),
-                renderCamera.GetPosition());
+        const bool renderPrimaryView =
+            !SERVICES::ShouldProduceEditorUiFrame() ||
+            SERVICES::IsEditorGameViewportVisible();
+        if (renderPrimaryView) {
+            SKYRENDERER::Render(
+                graphics,
+                renderCamera,
+                activeEnvironment,
+                state_->assets.Models(),
+                state_->lighting.sky);
+            if (DrawDebugHelpers()) {
+                state_->editor.componentGizmoRenderer.SubmitWorldGizmos(
+                    state_->runtime.world,
+                    state_->editor.componentGizmoState,
+                    state_->editor.selectedGizmoObjectId,
+                    renderCamera.GetAspect(),
+                    renderCamera.GetPosition());
+            }
+            RENDER3D::RenderViewContext primaryView{};
+            primaryView.viewId = RENDER3D::kPrimaryRenderViewId;
+            primaryView.purpose = state_->runtime.playActive
+                ? RENDER3D::RenderViewPurpose::Game
+                : RENDER3D::RenderViewPurpose::EditorScene;
+            primaryView.cameraFrame = &state_->camera.resolvedFrame;
+            const RENDER3D::PARTICLES::ParticleRenderFrameSource
+                particleFrameSource{
+                    &state_->runtime.vfxPlaybackService.GetRenderInput(),
+                    &state_->assets.Registry(),
+                    state_->runtime.materialExternalValueSnapshot.get(),
+                };
+            primaryView.particleFrameSource = &particleFrameSource;
+            MODELRENDERER::RenderAll(
+                graphics,
+                primaryView,
+                activeEnvironment,
+                sceneLighting,
+                state_->editor.viewportDebugViewState.renderView);
+            const auto& particleReceipt =
+                MESHRENDERER::GetParticleGpuDrivenPassStats();
+            if (particleReceipt.simulationAccepted) {
+                (void)state_->runtime.vfxPlaybackService.
+                    AcknowledgeRenderInput(
+                        particleReceipt.simulationAcceptedToken);
+            }
+            SubmitFrozenCullingCameraDebugFrustum();
+            RENDERER3D::RenderAll(
+                renderCamera,
+                static_cast<float>(captureW),
+                static_cast<float>(captureH));
         }
-        RENDER3D::RenderViewContext primaryView{};
-        primaryView.viewId = RENDER3D::kPrimaryRenderViewId;
-        primaryView.purpose = state_->runtime.playActive
-            ? RENDER3D::RenderViewPurpose::Game
-            : RENDER3D::RenderViewPurpose::EditorScene;
-        primaryView.cameraFrame = &state_->camera.resolvedFrame;
-        MODELRENDERER::RenderAll(
-            graphics,
-            primaryView,
-            activeEnvironment,
-            sceneLighting,
-            state_->editor.viewportDebugViewState.renderView);
-        SubmitFrozenCullingCameraDebugFrustum();
-        RENDERER3D::RenderAll(renderCamera, static_cast<float>(captureW), static_cast<float>(captureH));
-        VFX::Render(renderCamera);
 #if defined(HIKARI_WITH_EDITOR)
         (void)RENDER3D::EDITORVIEW::RenderPending(
             activeEnvironment,
             sceneLighting,
             state_->identity.documentRevision,
             state_->assets.Models(),
-            state_->lighting.sky);
+            state_->lighting.sky,
+            &state_->assets.Registry(),
+            state_->runtime.materialExternalValueSnapshot.get());
 #endif
     }
     void DocumentSceneBase::RenderImGui() {
@@ -464,6 +528,34 @@ namespace HIKARI {
 
     const AssetRegistry& DocumentSceneBase::GetAssetRegistry() const {
         return state_->assets.Registry();
+    }
+    BINDING::RuntimeBindingStore&
+        DocumentSceneBase::GetRuntimeBindingStore() noexcept {
+        return state_->runtime.bindingStore;
+    }
+    const BINDING::RuntimeBindingStore&
+        DocumentSceneBase::GetRuntimeBindingStore() const noexcept {
+        return state_->runtime.bindingStore;
+    }
+    bool DocumentSceneBase::ReloadRuntimeBindingCatalog(
+        std::string& outMessage) {
+        BINDING::Catalog catalog{};
+        const std::filesystem::path path =
+            BINDING::GetCatalogPath(
+                state_->assets.Database().GetProjectRoot());
+        if (!std::filesystem::exists(path)) {
+            catalog = {};
+        } else if (!BINDING::LoadCatalog(
+                path, catalog, outMessage)) {
+            return false;
+        }
+        if (!state_->runtime.bindingStore.ReloadCatalog(
+                std::move(catalog))) {
+            outMessage = "runtime binding catalog validation failed";
+            return false;
+        }
+        outMessage.clear();
+        return true;
     }
     AssetDatabase& DocumentSceneBase::GetAssetDatabase() {
         return state_->assets.Database();

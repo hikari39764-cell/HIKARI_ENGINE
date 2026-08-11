@@ -9,6 +9,7 @@
 #include "Assets/Material/Authoring/HIKARI_MaterialSemanticNodeFactory.h"
 #include "Assets/Material/Graph/HIKARI_MaterialNodeDefinition.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialGraphUi.h"
+#include "Runtime/Binding/Adapters/HIKARI_RuntimeMaterialValueAdapter.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
 #if defined(HIKARI_WITH_EDITOR)
@@ -21,14 +22,14 @@ void ModelMaterialWorkspaceController::DrawMaterialGraphNodePalette(
     DocumentSceneBase &scene, MaterialAssetData &source,
     MaterialGraphData &graph, MATH::Vec2 position) {
 #if defined(HIKARI_WITH_EDITOR)
-  (void)source;
   constexpr std::array<std::string_view, 4u> categories{
       "Ready-made Shading", "Surface", "Advanced / Inputs",
       "Advanced / Math & Masks"};
   constexpr std::string_view otherCategory = "Other";
-  constexpr std::array<MaterialNodeKind, 8u> commonKinds{
+  constexpr std::array<MaterialNodeKind, 9u> commonKinds{
       MaterialNodeKind::Constant,
       MaterialNodeKind::Parameter,
+      MaterialNodeKind::Variable,
       MaterialNodeKind::Add,
       MaterialNodeKind::Multiply,
       MaterialNodeKind::Lerp,
@@ -67,7 +68,8 @@ void ModelMaterialWorkspaceController::DrawMaterialGraphNodePalette(
   const auto addNodeByKind =
       [&](MaterialNodeKind kind, std::string_view label,
           MaterialValueType valueType = MaterialValueType::Float1,
-          bool typed = false) {
+          bool typed = false,
+          std::string_view referenceId = {}) {
         const MaterialNodeDefinition *definition =
             FindMaterialNodeDefinition(kind);
         if (definition == nullptr) {
@@ -80,6 +82,7 @@ void ModelMaterialWorkspaceController::DrawMaterialGraphNodePalette(
         request.manualPosition = true;
         request.parameterIdPrefix = "parameter.ui_";
         request.parameterDisplayName = "Parameter";
+        request.referenceId = referenceId;
         if (typed) {
           request.valueSet = true;
           request.valueX = 1.0f;
@@ -108,12 +111,44 @@ void ModelMaterialWorkspaceController::DrawMaterialGraphNodePalette(
             scene, request, message, details, code);
       };
 
+  const auto drawVariableMenu = [&](std::string_view label) {
+    if (!ImGui::BeginMenu(label.data())) {
+      return;
+    }
+    size_t compatibleCount = 0u;
+    for (const BINDING::VariableDefinition& variable :
+         scene.GetRuntimeBindingStore().GetCatalog().variables) {
+      if (!BINDING::MATERIAL_ADAPTER::ToMaterialValueType(
+              variable.defaultValue.type).has_value()) {
+        continue;
+      }
+      const std::string itemLabel = variable.name + "  [" +
+          std::string(BINDING::ToString(
+              variable.defaultValue.type)) + "]##" + variable.id;
+      if (ImGui::MenuItem(itemLabel.c_str())) {
+        addNodeByKind(
+            MaterialNodeKind::Variable,
+            variable.name,
+            MaterialValueType::Float1,
+            false,
+            variable.id);
+      }
+      ++compatibleCount;
+    }
+    if (compatibleCount == 0u) {
+      ImGui::TextDisabled("No Material-compatible variables");
+    }
+    ImGui::EndMenu();
+  };
+
   if (searching) {
     ImGui::SeparatorText("搜索结果");
     size_t shown = 0u;
     for (const MaterialNodeDefinition &definition :
          GetMaterialNodeDefinitions()) {
-      if (!definition.paletteVisible) {
+      if (!definition.paletteVisible ||
+          !IsMaterialNodeAvailableForDomain(
+              definition.kind, source.domain)) {
         continue;
       }
       const std::string_view label =
@@ -125,7 +160,9 @@ void ModelMaterialWorkspaceController::DrawMaterialGraphNodePalette(
           !matchesSearch(definition.stableName)) {
         continue;
       }
-      if (ImGui::MenuItem(label.data())) {
+      if (definition.kind == MaterialNodeKind::Variable) {
+        drawVariableMenu(label);
+      } else if (ImGui::MenuItem(label.data())) {
         addNodeByKind(definition.kind, label);
       }
       ++shown;
@@ -144,7 +181,9 @@ void ModelMaterialWorkspaceController::DrawMaterialGraphNodePalette(
     for (const MaterialNodeKind kind : commonKinds) {
       const MaterialNodeDefinition *definition =
           FindMaterialNodeDefinition(kind);
-      if (definition == nullptr || !definition->paletteVisible) {
+      if (definition == nullptr || !definition->paletteVisible ||
+          !IsMaterialNodeAvailableForDomain(
+              definition->kind, source.domain)) {
         continue;
       }
       const bool duplicateSingleton =
@@ -154,6 +193,10 @@ void ModelMaterialWorkspaceController::DrawMaterialGraphNodePalette(
               [kind](const auto &node) {
                 return node.kind == kind;
               });
+      if (kind == MaterialNodeKind::Variable) {
+        drawVariableMenu(definition->stableName);
+        continue;
+      }
       if (kind == MaterialNodeKind::Constant ||
           kind == MaterialNodeKind::Parameter) {
         if (ImGui::BeginMenu(definition->stableName.data())) {
@@ -268,7 +311,9 @@ void ModelMaterialWorkspaceController::DrawMaterialGraphNodePalette(
           ImGui::EndDisabled();
           return;
         }
-        if (ImGui::MenuItem(label.data())) {
+        if (kind == MaterialNodeKind::Variable) {
+          drawVariableMenu(label);
+        } else if (ImGui::MenuItem(label.data())) {
           addNodeByKind(kind, label);
         }
         ImGui::EndDisabled();
@@ -285,6 +330,8 @@ void ModelMaterialWorkspaceController::DrawMaterialGraphNodePalette(
           for (const MaterialNodeDefinition &definition :
                GetMaterialNodeDefinitions()) {
             if (!definition.paletteVisible ||
+                !IsMaterialNodeAvailableForDomain(
+                    definition.kind, source.domain) ||
                 MATERIAL_GRAPH_UI::NodeCategory(definition.kind) !=
                     category) {
               continue;
@@ -311,6 +358,8 @@ void ModelMaterialWorkspaceController::DrawMaterialGraphNodePalette(
           for (const MaterialNodeDefinition &definition :
                GetMaterialNodeDefinitions()) {
             if (!definition.paletteVisible ||
+                !IsMaterialNodeAvailableForDomain(
+                    definition.kind, source.domain) ||
                 MATERIAL_GRAPH_UI::NodeCategory(definition.kind) !=
                     category) {
               continue;

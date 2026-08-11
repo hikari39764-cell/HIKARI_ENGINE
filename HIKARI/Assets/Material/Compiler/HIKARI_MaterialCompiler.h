@@ -36,6 +36,7 @@ namespace HIKARI {
         Outline = 1ull << 21u,
         HairShadow = 1ull << 22u,
         CorneaHighlight = 1ull << 23u,
+        ParticleExpression = 1ull << 24u,
     };
 
     constexpr uint64_t MaterialCapabilityBit(
@@ -61,7 +62,16 @@ namespace HIKARI {
         uint32_t byteOffset = 0u;
         uint32_t byteSize = 16u;
         MaterialValueData defaultValue{};
+        // Empty for ordinary authored parameters. Runtime-variable source
+        // nodes retain their project binding ID here while lowering to the
+        // existing Parameter opcode.
+        std::string externalBindingId{};
     };
+
+    inline std::string MakeMaterialVariableParameterId(
+        std::string_view sourceNodeId) {
+        return "runtime.variable:" + std::string(sourceNodeId);
+    }
 
     struct MaterialProgramResourceBinding {
         std::string resourceId{};
@@ -80,7 +90,7 @@ namespace HIKARI {
 
     // Native built-in compatibility IDs are serialized directly as cooked
     // opcodes. Source graphs use MaterialNodeTypeId; Function calls are
-    // expanded before lowering, so Runtime IR v4 remains compact and closed.
+    // expanded before lowering, so Runtime IR remains compact and closed.
     using MaterialProgramOpcode = MaterialNodeKind;
 
     // Deterministic SSA-like instruction. The pin arrays preserve the bounded

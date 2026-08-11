@@ -7,6 +7,8 @@
 
 #include "Core/HIKARI_JsonRead.h"
 #include "Core/Serialization/Json/HIKARI_JsonMath.h"
+#include "Scene/HIKARI_SceneComponentId.h"
+#include "Scene/HIKARI_SceneDocumentQueries.h"
 #include "Scene/Lighting/Internal/HIKARI_LightAuthoringInternal.h"
 
 namespace HIKARI::LIGHTING_AUTHORING {
@@ -14,14 +16,6 @@ namespace HIKARI::LIGHTING_AUTHORING {
     namespace JsonMath = SERIALIZATION::JSON::MATH;
 
     namespace {
-
-        SceneObjectId AllocateSceneObjectId(const SceneDocument& document) {
-            uint64_t maximumId = 0;
-            for (const SceneObjectData& object : document.objects) {
-                maximumId = (std::max)(maximumId, object.id.value);
-            }
-            return SceneObjectId{ maximumId + 1u };
-        }
 
         std::string NonEmptyOrDefault(
             const nlohmann::json& properties,
@@ -326,6 +320,7 @@ namespace HIKARI::LIGHTING_AUTHORING {
                 { "scenario", probe.scenario }
             }
         });
+        NormalizeSceneComponentIds(object);
         const SceneObjectId id = object.id;
         document.objects.push_back(std::move(object));
         return id;
@@ -363,6 +358,7 @@ namespace HIKARI::LIGHTING_AUTHORING {
                 { "scenario", volume.scenario }
             }
         });
+        NormalizeSceneComponentIds(object);
         const SceneObjectId id = object.id;
         document.objects.push_back(std::move(object));
         return id;

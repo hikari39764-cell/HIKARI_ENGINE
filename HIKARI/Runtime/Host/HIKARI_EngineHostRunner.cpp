@@ -68,6 +68,37 @@ namespace HIKARI::RUNTIME {
             return "unknown";
         }
 
+        // ウィンドウ生成前に DPI 認識を有効化する。
+        // 未設定だとスケーリング 150% などで OS に仮想化され、
+        // 最大化するまで描画とマウス座標がずれたままになる。
+        void EnableProcessDpiAwareness() {
+
+            if (HMODULE user32 = GetModuleHandleW(L"user32.dll")) {
+                using SetContextFn =
+                    DPI_AWARENESS_CONTEXT(WINAPI*)(DPI_AWARENESS_CONTEXT);
+                if (auto setContext =
+                        reinterpret_cast<SetContextFn>(GetProcAddress(
+                            user32, "SetProcessDpiAwarenessContext"))) {
+                    if (setContext(
+                            DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) != FALSE) {
+                        return;
+                    }
+                }
+            }
+            if (HMODULE shcore = LoadLibraryW(L"shcore.dll")) {
+                using SetAwarenessFn = HRESULT(WINAPI*)(int);
+                // PROCESS_PER_MONITOR_DPI_AWARE
+                if (auto setAwareness =
+                        reinterpret_cast<SetAwarenessFn>(GetProcAddress(
+                            shcore, "SetProcessDpiAwareness"))) {
+                    if (SUCCEEDED(setAwareness(2))) {
+                        return;
+                    }
+                }
+            }
+            SetProcessDPIAware();
+        }
+
         int ReportLaunchFailure(
             const std::string& message) {
 
@@ -88,6 +119,8 @@ namespace HIKARI::RUNTIME {
     int RunEngineHost(
         IHostApplication& application,
         const EngineHostRunOptions& options) {
+
+        EnableProcessDpiAwareness();
 
         std::string engineContentMessage{};
         if (!CONTENT::OpenEngineContentForLaunch(

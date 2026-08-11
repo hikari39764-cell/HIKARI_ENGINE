@@ -97,7 +97,6 @@ namespace HIKARI::SHADOW::INTERNAL {
         MATH::Vec3 lightCullPosition{};
         MATH::Vec3 lightAnchor{};
         float lightAnchorGrid = 0.0f;
-        float elapsedTimeSec = 0.0f;
 
         ComPtr<ID3D12Resource> shadowMap;
         ComPtr<ID3D12Resource> staticShadowMap;

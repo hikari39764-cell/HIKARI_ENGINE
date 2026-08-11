@@ -1,69 +1,142 @@
 ﻿#include "HIKARI_DynamicUploadBuffer.h"
-#include <cassert>
+#include "Gfx/HIKARI_DXCheck.h"
+
+#include <algorithm>
+#include <utility>
 #include <d3dx12.h>
 
 using namespace HIKARI::DX;
-// 256 バイト境界にサイズを切り上げる
-static inline size_t Align256(size_t size) {
-    return (size + 255) & ~255;
-}
-// DynamicUploadBuffer クラスの実装
+
+namespace {
+
+constexpr size_t kUploadAlignment = 256u;
+
+} // namespace
+
 DynamicUploadBuffer::DynamicUploadBuffer() {}
-DynamicUploadBuffer::~DynamicUploadBuffer() {}
+DynamicUploadBuffer::~DynamicUploadBuffer() {
+    Finalize();
+}
 
-// バッファを初期化する。device には ID3D12Device のポインタを、bufferSize にはバッファのサイズを指定する
-void DynamicUploadBuffer::Init(ID3D12Device* device, size_t bufferSize)
-{
-    bufferSize_ = Align256(bufferSize);
+bool DynamicUploadBuffer::Init(
+    ID3D12Device* device,
+    size_t bufferSize) {
+    Finalize();
+    if (device == nullptr ||
+        !HIKARI::GFX::TryAlignUploadSize(
+            bufferSize,
+            kUploadAlignment,
+            defaultPageSize_)) {
+        return false;
+    }
+    device_ = device;
+    if (!CreatePage(defaultPageSize_)) {
+        Finalize();
+        return false;
+    }
+    return true;
+}
 
+bool DynamicUploadBuffer::CreatePage(size_t capacity) {
+    if (device_ == nullptr || capacity == 0u) {
+        return false;
+    }
+    try {
+        pages_.reserve(pages_.size() + 1u);
+        pageRanges_.reserve(pageRanges_.size() + 1u);
+    } catch (...) {
+        return false;
+    }
     CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_UPLOAD);
-    CD3DX12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Buffer(bufferSize_);
+    CD3DX12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Buffer(capacity);
 
-    HRESULT hr = device->CreateCommittedResource(
+    Page page{};
+    HRESULT hr = device_->CreateCommittedResource(
         &heapProps,
         D3D12_HEAP_FLAG_NONE,
         &desc,
         D3D12_RESOURCE_STATE_GENERIC_READ,
         nullptr,
-        IID_PPV_ARGS(&buffer_)
-    );
-    assert(SUCCEEDED(hr));
-
-    buffer_->Map(0, nullptr, reinterpret_cast<void**>(&cpuBase_));
-    gpuBase_ = buffer_->GetGPUVirtualAddress();
-
-    offset_ = 0;
-}
-// バッファから size バイト分の領域を確保し、その CPU アドレスを返す。gpuAddress には対応する GPU アドレスが格納される
-void* DynamicUploadBuffer::Allocate(size_t size, D3D12_GPU_VIRTUAL_ADDRESS& gpuAddress)
-{
-    size_t aligned = Align256(size);
-
-    if (offset_ + aligned > bufferSize_) {
-        offset_ = 0; // バッファが足りない場合は先頭に戻す
+        IID_PPV_ARGS(page.resource.GetAddressOf()));
+    if (!HIKARI_DX_CHECK(
+            hr,
+            "DynamicUploadBuffer::CreateCommittedResource")) {
+        return false;
     }
 
-    void* cpuAddr = cpuBase_ + offset_;
-    gpuAddress = gpuBase_ + offset_;
-
-    offset_ += aligned;
-
-    return cpuAddr;
-}
-// バッファを解放する。バッファが存在する場合は Unmap し、リセットする
-void DynamicUploadBuffer::Finalize()
-{
-    if (buffer_) {
-        buffer_->Unmap(0, nullptr);
+    const D3D12_RANGE readRange{ 0u, 0u };
+    hr = page.resource->Map(
+        0u,
+        &readRange,
+        reinterpret_cast<void**>(&page.cpuBase));
+    if (!HIKARI_DX_CHECK(hr, "DynamicUploadBuffer::Map")) {
+        return false;
     }
-    buffer_.Reset();
-    cpuBase_ = nullptr;
-    gpuBase_ = 0;
-    offset_ = 0;
-    bufferSize_ = 0;
+    if (page.cpuBase == nullptr) {
+        return false;
+    }
+    page.gpuBase = page.resource->GetGPUVirtualAddress();
+    pages_.push_back(std::move(page));
+    pageRanges_.push_back({ capacity, 0u });
+    return true;
 }
-// バッファのオフセットをリセットする
-void DynamicUploadBuffer::Reset()
-{
-    offset_ = 0;
+
+void* DynamicUploadBuffer::Allocate(
+    size_t size,
+    D3D12_GPU_VIRTUAL_ADDRESS& gpuAddress) {
+    gpuAddress = 0u;
+    HIKARI::GFX::UploadPageReservation reservation{};
+    if (!HIKARI::GFX::TryReserveUploadPageRange(
+            pageRanges_,
+            activePageIndex_,
+            size,
+            kUploadAlignment,
+            reservation)) {
+        size_t alignedSize = 0u;
+        if (!HIKARI::GFX::TryAlignUploadSize(
+                size,
+                kUploadAlignment,
+                alignedSize)) {
+            return nullptr;
+        }
+        const size_t newPageSize =
+            std::max(defaultPageSize_, alignedSize);
+        if (!CreatePage(newPageSize) ||
+            !HIKARI::GFX::TryReserveUploadPageRange(
+                pageRanges_,
+                activePageIndex_,
+                size,
+                kUploadAlignment,
+                reservation)) {
+            return nullptr;
+        }
+    }
+
+    if (reservation.pageIndex >= pages_.size()) {
+        return nullptr;
+    }
+    Page& page = pages_[reservation.pageIndex];
+    gpuAddress = page.gpuBase + reservation.offset;
+    return page.cpuBase + reservation.offset;
+}
+
+void DynamicUploadBuffer::Finalize() {
+    for (Page& page : pages_) {
+        if (page.resource != nullptr && page.cpuBase != nullptr) {
+            page.resource->Unmap(0u, nullptr);
+        }
+        page.resource.Reset();
+        page.cpuBase = nullptr;
+        page.gpuBase = 0u;
+    }
+    pages_.clear();
+    pageRanges_.clear();
+    device_.Reset();
+    defaultPageSize_ = 0u;
+    activePageIndex_ = 0u;
+}
+
+void DynamicUploadBuffer::Reset() {
+    HIKARI::GFX::ResetUploadPageRanges(
+        pageRanges_, activePageIndex_);
 }

@@ -65,8 +65,13 @@ namespace HIKARI {
         RuntimeDebugWindowState runtime{};
     };
 
+    struct EditorAiIntegrationSettings {
+        bool localBridgeEnabled = false;
+    };
+
     struct EditorContext {
         DebugWindowState windows{};
+        EditorAiIntegrationSettings aiIntegration{};
         ComponentGizmoState gizmos{};
         EditorTransformGizmoState transformGizmo{};
         ViewportOverlayState overlays{};

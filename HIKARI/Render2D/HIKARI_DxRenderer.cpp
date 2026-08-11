@@ -3,6 +3,7 @@
 #include "Render2D/HIKARI_DxRenderer.h"
 #include "Render2D/HIKARI_DxTexture.h"
 #include "Core/Presentation/HIKARI_LogicalDisplayDefaults.h"
+#include "Core/HIKARI_Logger.h"
 #include "Gfx/HIKARI_DynamicUploadBuffer.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
 
@@ -341,15 +342,20 @@ float4 main(PS_IN input) : SV_TARGET { return input.col; }
             g_outputFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
 
             // === UploadBuffers ===
+            bool uploadBuffersReady = true;
             for (uint32_t frameIndex = 0;
                 frameIndex < GFX::kFrameResourceCount;
                 ++frameIndex) {
-                g_uploadCB[frameIndex].Init(
+                uploadBuffersReady &= g_uploadCB[frameIndex].Init(
                     device,
                     static_cast<size_t>(1024 * 1024) * 8);
-                g_uploadVB[frameIndex].Init(
+                uploadBuffersReady &= g_uploadVB[frameIndex].Init(
                     device,
                     static_cast<size_t>(1024 * 1024) * 16);
+            }
+            if (!uploadBuffersReady) {
+                HIKARI_LOG_ERROR(
+                    "[DxRenderer] dynamic upload page initialization failed");
             }
 
             // === RootSignature (Default) ===
@@ -650,6 +656,9 @@ float4 main(PS_IN input) : SV_TARGET { return input.col; }
             D3D12_GPU_VIRTUAL_ADDRESS gpuVB;
             MeshVertex* vb = (MeshVertex*)ActiveUploadVB().Allocate(
                 sizeof(MeshVertex) * vertexCount, gpuVB);
+            if (vb == nullptr) {
+                return;
+            }
 
             for (int i = 0; i < vertexCount; ++i) {
                 vb[i] = verts[i];
@@ -675,7 +684,12 @@ float4 main(PS_IN input) : SV_TARGET { return input.col; }
 
             // 【修改后】 ?制 256 字???
             UINT cbSizeAligned = (sizeof(cb) + 255) & ~255;
-            memcpy(ActiveUploadCB().Allocate(cbSizeAligned, gpuCB), &cb, sizeof(cb));
+            void* cbUpload =
+                ActiveUploadCB().Allocate(cbSizeAligned, gpuCB);
+            if (cbUpload == nullptr) {
+                return;
+            }
+            memcpy(cbUpload, &cb, sizeof(cb));
 
             cmd->SetGraphicsRootConstantBufferView(0, gpuCB);
 
@@ -768,6 +782,9 @@ float4 main(PS_IN input) : SV_TARGET { return input.col; }
             D3D12_GPU_VIRTUAL_ADDRESS gpuVB;
             MeshVertex* vb = (MeshVertex*)ActiveUploadVB().Allocate(
                 sizeof(MeshVertex) * vertexCount, gpuVB);
+            if (vb == nullptr) {
+                return;
+            }
 
             for (int i = 0; i < vertexCount; ++i) {
                 vb[i] = verts[i];
@@ -787,7 +804,12 @@ float4 main(PS_IN input) : SV_TARGET { return input.col; }
 
             // =============== 修改 GlobalCB ===============
             UINT globalSizeAligned = (sizeof(GlobalCB) + 255) & ~255;
-            memcpy(ActiveUploadCB().Allocate(globalSizeAligned, gpuCB), &cb, sizeof(cb));
+            void* globalUpload =
+                ActiveUploadCB().Allocate(globalSizeAligned, gpuCB);
+            if (globalUpload == nullptr) {
+                return;
+            }
+            memcpy(globalUpload, &cb, sizeof(cb));
             cmd->SetGraphicsRootConstantBufferView(0, gpuCB);
 
             // 4. Upload MaskCB (b1)
@@ -795,7 +817,12 @@ float4 main(PS_IN input) : SV_TARGET { return input.col; }
 
             // =============== 修改 MaskCB ===============
             UINT maskSizeAligned = (sizeof(MaskCB) + 255) & ~255;
-            memcpy(ActiveUploadCB().Allocate(maskSizeAligned, gpuMaskCB), &g_currentMaskParams, sizeof(MaskCB));
+            void* maskUpload =
+                ActiveUploadCB().Allocate(maskSizeAligned, gpuMaskCB);
+            if (maskUpload == nullptr) {
+                return;
+            }
+            memcpy(maskUpload, &g_currentMaskParams, sizeof(MaskCB));
             cmd->SetGraphicsRootConstantBufferView(2, gpuMaskCB);
 
             // 5. ?定?理 SRV (t0)
@@ -884,6 +911,9 @@ float4 main(PS_IN input) : SV_TARGET { return input.col; }
 
             D3D12_GPU_VIRTUAL_ADDRESS gpuVB;
             LineVertex* vb = (LineVertex*)ActiveUploadVB().Allocate(sizeof(verts), gpuVB);
+            if (vb == nullptr) {
+                return;
+            }
             memcpy(vb, verts, sizeof(verts));
 
             D3D12_VERTEX_BUFFER_VIEW vbv{};
@@ -896,7 +926,12 @@ float4 main(PS_IN input) : SV_TARGET { return input.col; }
             cb.screenSize[1] = g_screenH;
             D3D12_GPU_VIRTUAL_ADDRESS gpuCB;
             const UINT cbSizeAligned = (sizeof(cb) + 255) & ~255u;
-            memcpy(ActiveUploadCB().Allocate(cbSizeAligned, gpuCB), &cb, sizeof(cb));
+            void* cbUpload =
+                ActiveUploadCB().Allocate(cbSizeAligned, gpuCB);
+            if (cbUpload == nullptr) {
+                return;
+            }
+            memcpy(cbUpload, &cb, sizeof(cb));
 
             cmd->SetGraphicsRootConstantBufferView(0, gpuCB);
 

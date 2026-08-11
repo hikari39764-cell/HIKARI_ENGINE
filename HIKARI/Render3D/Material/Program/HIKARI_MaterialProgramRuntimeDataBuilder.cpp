@@ -52,57 +52,6 @@ namespace HIKARI::RENDER3D::MATERIAL {
             return TEXT::NormalizeAsciiId(id);
         }
 
-        std::vector<MATH::Vec4> BuildDefaultParameters() {
-            std::vector<MATH::Vec4> values(
-                kGpuMaterialProgramResponseSlotCount,
-                MATH::Vec4{ 0.0f, 0.0f, 0.0f, 0.0f });
-            values[0] = { 0.50f, 0.08f, 0.72f, 1.0f };
-            values[1] = { 0.56f, 0.62f, 0.78f, 1.0f };
-            values[2] = { 0.82f, 0.86f, 0.94f, 1.0f };
-            values[3] = { 1.0f, 1.0f, 1.0f, 1.0f };
-            values[4] = { 0.10f, 0.025f, 1.0f, 64.0f };
-            values[5] = { 1.0f, 1.0f, 1.0f, 1.0f };
-            values[6] = { 0.55f, 0.68f, 1.0f, 1.0f };
-            values[7] = { 4.0f, 0.22f, 1.0f, 0.0f };
-            values[8] = { 1.0f, 1.0f, 1.0f, 1.0f };
-            values[9] = { 0.08f, 0.18f, -0.10f, 1.0f };
-            values[10] = { 0.04f, 0.0f, 0.65f, 0.0f };
-            values[11] = { 0.12f, 0.35f, 64.0f, 1.0f };
-            values[12] = { 0.25f, 0.35f, 0.65f, 0.25f };
-            values[13] = { 0.28f, 0.72f, 4.0f, 1.0f };
-            values[14] = { 0.18f, 0.0f, 0.0f, 0.0f };
-            values[15] = { 1.0f, 0.42f, 0.32f, 1.0f };
-            values[16] = { 0.5f, 0.0f, 0.5f, 1.0f };
-            values[17] = { 1.0f, 0.0f, 0.0f, 0.0f };
-            values[18] = { 0.0f, 0.0f, 1.0f, 0.0f };
-            values[19] = { 0.025f, 0.030f, 0.045f, 2.0f };
-            // Zero preserves the legacy two-ramp rampBlend path. New
-            // MultiRamp nodes explicitly author {1, 0, 0, 0} through the
-            // named rampLayerWeights parameter.
-            values[20] = { 0.0f, 0.0f, 0.0f, 0.0f };
-            // Hair dual-lobe powers, secondary intensity and flow strength.
-            values[21] = { 96.0f, 48.0f, 0.45f, 1.0f };
-            // Analytic Eye Layer mask: center.xy, radius and edge softness.
-            // Connected Eye Control A replaces this conservative fallback.
-            values[22] = { 0.50f, 0.50f, 0.48f, 0.08f };
-            // Eye layer mode, opacity, highlight threshold and softness.
-            values[23] = { 0.0f, 1.0f, 0.02f, 0.04f };
-            // Eye parallax scale, HDR highlight, iris lift and caustic gain.
-            values[24] = { 0.10f, 2.0f, 0.18f, 0.25f };
-            // MatCap view correction and optional eye spherical-normal blend.
-            values[25] = { 1.0f, 0.0f, 0.0f, 0.0f };
-            // Eye caustic tint and band width.
-            values[26] = { 1.0f, 0.72f, 0.38f, 0.28f };
-            // Cornea highlight mode, travel and weighted half-vector inputs.
-            values[27] = { 2.0f, 0.10f, 0.35f, 0.65f };
-            // Virtual-cornea curvature, retained brightness, light response
-            // and authored-layer edge fade.
-            values[28] = { 0.75f, 0.45f, 0.65f, 0.0f };
-            // Cornea highlight sharpness and light-color influence.
-            values[29] = { 12.0f, 0.25f, 0.0f, 0.0f };
-            return values;
-        }
-
         TextureResourceColorSpace ResolveColorSpace(
             MaterialResourceSemantic semantic) {
             return semantic == MaterialResourceSemantic::BaseColor ||
@@ -377,44 +326,23 @@ namespace HIKARI::RENDER3D::MATERIAL {
         if (!RequiresMaterialProgramBlock(program)) {
             return data;
         }
-        std::vector<MATH::Vec4> responseParameters =
-            BuildDefaultParameters();
-        ApplyConnectedMaterialResponseParameters(
-            program, responseParameters);
-        MaterialExpressionRuntimeProgram expression{};
-        std::string expressionError{};
-        if (!BuildMaterialExpressionRuntimeProgram(
-                program, expression, expressionError)) {
+        std::string parameterError{};
+        if (!BuildMaterialProgramParameterBlock(
+                program, {}, data.parameters, parameterError)) {
             HIKARI_LOG_ERROR(
-                "[MaterialProgram] rejected pixel expression: " +
-                expressionError);
+                "[MaterialProgram] rejected parameter projection: " +
+                parameterError);
             // The registry normally rejects such programs before this point.
             // Keep authored response values as the fail-safe so a bounded
             // stylized material never loses its NPR parameters silently.
-            data.parameters = std::move(responseParameters);
             return data;
         }
-        if (expression.active) {
-            if (expression.parameters.size() < responseParameters.size()) {
-                HIKARI_LOG_ERROR(
-                    "[MaterialProgram] response head exceeds the "
-                    "expression parameter block");
-                data.parameters = std::move(responseParameters);
-                return data;
-            }
-            std::copy(
-                responseParameters.begin(), responseParameters.end(),
-                expression.parameters.begin());
-            data.parameters = std::move(expression.parameters);
-        } else {
-            data.parameters = std::move(responseParameters);
-        }
-        if (data.parameters.size() > kGpuMaterialProgramParameterSlotCount) {
-            HIKARI_LOG_ERROR(
-                "[MaterialProgram] parameter block exceeds the GPU slot budget");
-            data.parameters.clear();
-            return data;
-        }
+        data.parameterProjection =
+            BuildMaterialParameterProjectionRecipe(program);
+        MaterialExpressionRuntimeProgram expression{};
+        std::string expressionError{};
+        (void)BuildMaterialExpressionRuntimeProgram(
+            program, expression, expressionError);
         data.resources.resize(kGpuMaterialProgramResourceSlotCount);
         uint32_t rampIndex = 0u;
         for (const MaterialProgramResourceBinding& resource : program.resources) {

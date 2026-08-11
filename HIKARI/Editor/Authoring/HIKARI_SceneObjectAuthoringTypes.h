@@ -15,6 +15,7 @@ namespace HIKARI {
         SceneCameraSettings afterCamera{};
         bool dirtyBefore = false;
         bool runtimeWorldAffected = true;
+        bool runtimeWorldRefreshRequired = false;
     };
 
 } // namespace HIKARI

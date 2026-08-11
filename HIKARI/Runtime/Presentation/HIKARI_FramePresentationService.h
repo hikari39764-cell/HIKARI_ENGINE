@@ -18,6 +18,7 @@ namespace HIKARI::SERVICES {
     };
 
     void SetEditorGameViewportSize(int width, int height, bool visible);
+    bool IsEditorGameViewportVisible() noexcept;
     void UpdateGpuContexts();
     void QueueWindowResize(int width, int height);
     void ClearPendingWindowResize();

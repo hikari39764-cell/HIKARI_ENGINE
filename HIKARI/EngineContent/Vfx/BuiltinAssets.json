@@ -1,0 +1,211 @@
+{
+  "schema": "hikari.engine_content_assets",
+  "version": 1,
+  "sources": [
+    {
+      "id": "kenney.particle_pack",
+      "name": "Kenney Particle Pack",
+      "version": "1.1",
+      "license": "CC0-1.0",
+      "pageUrl": "https://kenney.nl/assets/particle-pack",
+      "archiveUrl": "https://kenney.nl/media/pages/assets/particle-pack/f8fe0f8cb8-1677578741/kenney_particle-pack.zip",
+      "archiveSha256": "B631D4B07F7002549FDCF155F01141AD482F79F3440E4E301EED49CE5F1D8958",
+      "licenseFile": "Vfx/Licenses/Kenney-Particle-Pack.txt"
+    },
+    {
+      "id": "unity_labs.vfx_flipbooks",
+      "name": "Unity Labs VFX Image Sequences and Flipbooks",
+      "version": "2016-11-28",
+      "license": "CC0-1.0",
+      "pageUrl": "https://unity.com/blog/engine-platform/free-vfx-image-sequences-flipbooks",
+      "licenseFile": "Vfx/Licenses/Unity-Labs-VFX-Flipbooks.txt",
+      "archives": [
+        {
+          "name": "Flame02-flipbooks.zip",
+          "url": "https://unity3d.com/files/labs/downloads/vfx/assets01/Flame02/Flame02-flipbooks.zip",
+          "sha256": "F37B12CDAE090591D537ED3BB50396F03833A49864362BF665D6817B7282C954"
+        },
+        {
+          "name": "WispySmoke01-flipbooks.zip",
+          "url": "https://unity3d.com/files/labs/downloads/vfx/assets01/WispySmoke01/WispySmoke01-flipbooks.zip",
+          "sha256": "F9BDC88948FF18A7D3E6332B68F2F2FF17E9A64C6FEB821E05388F4F23DBCFF0"
+        },
+        {
+          "name": "Explosion01-flipbooks.zip",
+          "url": "https://unity3d.com/files/labs/downloads/vfx/assets01/Explosion01/Explosion01-flipbooks.zip",
+          "sha256": "496A212733EB4E93C230F654F1FC1460E8A6389D2F1B13F2B945EC124A375742"
+        }
+      ]
+    }
+  ],
+  "assets": [
+    {
+      "id": "engine.vfx.texture.soft_disc",
+      "type": "Texture",
+      "path": "Vfx/Textures/Cooked/soft_disc.htex",
+      "sourcePath": "Vfx/Textures/soft_disc.png",
+      "colorSpace": "Srgb",
+      "usage": "BaseColor",
+      "compression": "BC7",
+      "mipPolicy": "Generate",
+      "sourceId": "kenney.particle_pack",
+      "upstreamPath": "PNG (Transparent)/circle_05.png",
+      "sha256": "7D74F80D3363067C2325A2D71B5EF9C2D397DC1291F64911D3E42CF88AC5170B",
+      "sourceSha256": "925B8AC284436F74F9CADF0ECD058DA1C08FBA65C098E4E34FD220603022F02E"
+    },
+    {
+      "id": "engine.vfx.texture.lens_flare",
+      "type": "Texture",
+      "path": "Vfx/Textures/Cooked/lens_flare.htex",
+      "sourcePath": "Vfx/Textures/lens_flare.png",
+      "colorSpace": "Srgb",
+      "usage": "BaseColor",
+      "compression": "BC7",
+      "mipPolicy": "Generate",
+      "sourceId": "kenney.particle_pack",
+      "upstreamPath": "PNG (Transparent)/flare_01.png",
+      "sha256": "66CE1915B40ED388957C33E2415A99C4FE56731361CD90E566C791B8103234B2",
+      "sourceSha256": "254F5BD4F0548612BF29305D27899EFDEE8CB8D8306292761EBBDDEBD3E57935"
+    },
+    {
+      "id": "engine.vfx.texture.energy_ring",
+      "type": "Texture",
+      "path": "Vfx/Textures/Cooked/energy_ring.htex",
+      "sourcePath": "Vfx/Textures/energy_ring.png",
+      "colorSpace": "Srgb",
+      "usage": "BaseColor",
+      "compression": "BC7",
+      "mipPolicy": "Generate",
+      "sourceId": "kenney.particle_pack",
+      "upstreamPath": "PNG (Transparent)/light_02.png",
+      "sha256": "650DB7034440B15D42D6481BB229E92B62D219F4F4B7DFFF5E4206B30E93540B",
+      "sourceSha256": "F1BDB57478703FEC539F7B8EECEB494C4A23664652B296389F310104BE80CFE0"
+    },
+    {
+      "id": "engine.vfx.texture.magic_ring",
+      "type": "Texture",
+      "path": "Vfx/Textures/Cooked/magic_ring.htex",
+      "sourcePath": "Vfx/Textures/magic_ring.png",
+      "colorSpace": "Srgb",
+      "usage": "BaseColor",
+      "compression": "BC7",
+      "mipPolicy": "Generate",
+      "sourceId": "kenney.particle_pack",
+      "upstreamPath": "PNG (Transparent)/magic_03.png",
+      "sha256": "E9D8BAF0B6019D3B8E69DFF7D368941D90081BB72150DE91ED445B219200B007",
+      "sourceSha256": "C2EF5FE86CD2FD08E5B9768389AB6580B346C391DB3C7C09FC9B0A63E00EC4CE"
+    },
+    {
+      "id": "engine.vfx.texture.muzzle_flame",
+      "type": "Texture",
+      "path": "Vfx/Textures/Cooked/muzzle_flame.htex",
+      "sourcePath": "Vfx/Textures/muzzle_flame.png",
+      "colorSpace": "Srgb",
+      "usage": "BaseColor",
+      "compression": "BC7",
+      "mipPolicy": "Generate",
+      "sourceId": "kenney.particle_pack",
+      "upstreamPath": "PNG (Transparent)/muzzle_03.png",
+      "sha256": "11CCA07E831E304533560EA7360375299A0BA366A9F4FCF5161C8FCAEF885E03",
+      "sourceSha256": "579983452D263EBECA78080714B6DD55A0F95FCA7452F309E91A9D466DE6C058"
+    },
+    {
+      "id": "engine.vfx.texture.lightning",
+      "type": "Texture",
+      "path": "Vfx/Textures/Cooked/lightning.htex",
+      "sourcePath": "Vfx/Textures/lightning.png",
+      "colorSpace": "Srgb",
+      "usage": "BaseColor",
+      "compression": "BC7",
+      "mipPolicy": "Generate",
+      "sourceId": "kenney.particle_pack",
+      "upstreamPath": "PNG (Transparent)/spark_06.png",
+      "sha256": "3BD1E78CD940CEC4FEC2AF4D91ECF10C8E6DAB229542E81A62FD05EF7A918BED",
+      "sourceSha256": "FE6D473393D3B9350C7A654B7CB5FBD343766B5B5B11D3E4ABA476832D4A6D3F"
+    },
+    {
+      "id": "engine.vfx.texture.star_glint",
+      "type": "Texture",
+      "path": "Vfx/Textures/Cooked/star_glint.htex",
+      "sourcePath": "Vfx/Textures/star_glint.png",
+      "colorSpace": "Srgb",
+      "usage": "BaseColor",
+      "compression": "BC7",
+      "mipPolicy": "Generate",
+      "sourceId": "kenney.particle_pack",
+      "upstreamPath": "PNG (Transparent)/star_06.png",
+      "sha256": "B78983DE234A9529EF4D51631656F03886A9E9D2D25ED9BF7388B1B945896C90",
+      "sourceSha256": "65D3FF5AA87EC0770C11FE1293FDC70CDC5CCF0EABC2E2FD6A1EAD922051035E"
+    },
+    {
+      "id": "engine.vfx.texture.energy_streak",
+      "type": "Texture",
+      "path": "Vfx/Textures/Cooked/energy_streak.htex",
+      "sourcePath": "Vfx/Textures/energy_streak.png",
+      "colorSpace": "Srgb",
+      "usage": "BaseColor",
+      "compression": "BC7",
+      "mipPolicy": "Generate",
+      "sourceId": "kenney.particle_pack",
+      "upstreamPath": "PNG (Transparent)/trace_04.png",
+      "sha256": "E12B2D9B5529D646777E85155D5A4F3A820197DAF6BAFC927C049B7ACE9D5F03",
+      "sourceSha256": "CA69D82709295663EF1D9FCD90D346319FEF5389A15DD63E3B71B4527E620CD8"
+    },
+    {
+      "id": "engine.vfx.texture.smoke_puff",
+      "type": "Texture",
+      "path": "Vfx/Textures/Cooked/smoke_puff.htex",
+      "sourcePath": "Vfx/Textures/smoke_puff.png",
+      "colorSpace": "Srgb",
+      "usage": "BaseColor",
+      "compression": "BC7",
+      "mipPolicy": "Generate",
+      "sourceId": "kenney.particle_pack",
+      "upstreamPath": "PNG (Transparent)/smoke_05.png",
+      "sha256": "E83B51A394F04B3BA6D69A102D3D0046333E95AF205D2D789FD3AE5A78ABEA5E",
+      "sourceSha256": "E88C8416BD8DA1B3F9F19E615DCEBDF42F71045799CB4C41F545CB16DD835E35"
+    },
+    {
+      "id": "engine.vfx.texture.flame_flipbook",
+      "type": "Texture",
+      "path": "Vfx/Textures/Cooked/flame_16x4.htex",
+      "sourcePath": "Vfx/Textures/flame_16x4.tga",
+      "colorSpace": "Srgb",
+      "usage": "BaseColor",
+      "compression": "BC7",
+      "mipPolicy": "Generate",
+      "sourceId": "unity_labs.vfx_flipbooks",
+      "upstreamPath": "Flame02_16x4.tga",
+      "sha256": "195485A2815664BB1B9161D6FEE9B5C6CF2BEAB5295DBC5876A3E034D6D8AF52",
+      "sourceSha256": "6AE2158BC06E0B035196DB2695C19E7CB29A23F59B345D4C5C2764C6C10CE3A6"
+    },
+    {
+      "id": "engine.vfx.texture.wispy_smoke_flipbook",
+      "type": "Texture",
+      "path": "Vfx/Textures/Cooked/wispy_smoke_8x8.htex",
+      "sourcePath": "Vfx/Textures/wispy_smoke_8x8.tga",
+      "colorSpace": "Srgb",
+      "usage": "BaseColor",
+      "compression": "BC7",
+      "mipPolicy": "Generate",
+      "sourceId": "unity_labs.vfx_flipbooks",
+      "upstreamPath": "WispySmoke01_8x8.tga",
+      "sha256": "76A87858DAE71A57ED3E3890596784F80CAF6485527856558D227BA86B97FFF3",
+      "sourceSha256": "C3F5D3BE66882F05BAD5B22D300FA0C9BFBAC0340ED5DC48977F91D95F842143"
+    },
+    {
+      "id": "engine.vfx.texture.explosion_flipbook",
+      "type": "Texture",
+      "path": "Vfx/Textures/Cooked/explosion_5x5.htex",
+      "sourcePath": "Vfx/Textures/explosion_5x5.tga",
+      "colorSpace": "Srgb",
+      "usage": "BaseColor",
+      "compression": "BC7",
+      "mipPolicy": "Generate",
+      "sourceId": "unity_labs.vfx_flipbooks",
+      "upstreamPath": "Explosion01_5x5.tga",
+      "sha256": "8DC027C67B5EBC70D49C37086E2E999D8642FB85DA9AD95B33FB081039F85E2F",
+      "sourceSha256": "4AF82AF6311C0FB4D106DE7768DDA851C26F65CF2C1679938294878C250482EC"
+    }
+  ]
+}

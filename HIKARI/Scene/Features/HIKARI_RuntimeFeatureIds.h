@@ -10,5 +10,6 @@ namespace HIKARI::RuntimeFeatureIds {
     inline constexpr std::string_view Physics = "Physics";
     inline constexpr std::string_view GameplayBasic = "GameplayBasic";
     inline constexpr std::string_view Cinematics = "Cinematics";
+    inline constexpr std::string_view Vfx = "Vfx";
 
 } // namespace HIKARI::RuntimeFeatureIds

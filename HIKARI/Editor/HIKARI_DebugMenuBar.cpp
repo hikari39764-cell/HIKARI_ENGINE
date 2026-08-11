@@ -352,61 +352,39 @@ namespace HIKARI {
 
         if (ImGui::BeginMenu(
                 TEXT::Localize("menu.workspace").c_str())) {
-            const bool sceneWorkspaceActive = workspaceHost.IsActive(
-                EDITOR::EditorWorkspaceId::Scene);
-            if (ImGui::MenuItem(
-                    TEXT::Localize("menu.workspace.scene").c_str(),
-                    nullptr, sceneWorkspaceActive)) {
+            static constexpr std::array workspaceEntries{
+                std::pair{
+                    EDITOR::EditorWorkspaceId::Scene,
+                    "menu.workspace.scene" },
+                std::pair{
+                    EDITOR::EditorWorkspaceId::Cinematics,
+                    "menu.workspace.cinematics" },
+                std::pair{
+                    EDITOR::EditorWorkspaceId::ModelCollision,
+                    "menu.workspace.modelCollision" },
+                std::pair{
+                    EDITOR::EditorWorkspaceId::ModelMaterial,
+                    "menu.workspace.modelMaterial" },
+                std::pair{
+                    EDITOR::EditorWorkspaceId::AnimationStateMachine,
+                    "menu.workspace.animationStateMachine" },
+                std::pair{
+                    EDITOR::EditorWorkspaceId::RuntimeBinding,
+                    "menu.workspace.runtimeBinding" },
+                std::pair{
+                    EDITOR::EditorWorkspaceId::Vfx,
+                    "menu.workspace.vfx" },
+            };
+            for (const auto& [workspaceId, labelKey] :
+                    workspaceEntries) {
+                if (!ImGui::MenuItem(
+                        TEXT::Localize(labelKey).c_str(),
+                        nullptr,
+                        workspaceHost.IsActive(workspaceId))) {
+                    continue;
+                }
                 EDITOR::EditorWorkspaceOpenRequest request{};
-                request.workspaceId = EDITOR::EditorWorkspaceId::Scene;
-                (void)workspaceHost.RequestOpen(std::move(request));
-            }
-
-            const bool cinematicsWorkspaceActive = workspaceHost.IsActive(
-                EDITOR::EditorWorkspaceId::Cinematics);
-            if (ImGui::MenuItem(
-                    TEXT::Localize("menu.workspace.cinematics").c_str(),
-                    nullptr, cinematicsWorkspaceActive)) {
-                EDITOR::EditorWorkspaceOpenRequest request{};
-                request.workspaceId = EDITOR::EditorWorkspaceId::Cinematics;
-                (void)workspaceHost.RequestOpen(std::move(request));
-            }
-
-            const bool modelCollisionWorkspaceActive = workspaceHost.IsActive(
-                EDITOR::EditorWorkspaceId::ModelCollision);
-            if (ImGui::MenuItem(
-                    TEXT::Localize("menu.workspace.modelCollision").c_str(),
-                    nullptr,
-                    modelCollisionWorkspaceActive)) {
-                EDITOR::EditorWorkspaceOpenRequest request{};
-                request.workspaceId =
-                    EDITOR::EditorWorkspaceId::ModelCollision;
-                (void)workspaceHost.RequestOpen(std::move(request));
-            }
-
-            const bool modelMaterialWorkspaceActive = workspaceHost.IsActive(
-                EDITOR::EditorWorkspaceId::ModelMaterial);
-            if (ImGui::MenuItem(
-                    TEXT::Localize("menu.workspace.modelMaterial").c_str(),
-                    nullptr,
-                    modelMaterialWorkspaceActive)) {
-                EDITOR::EditorWorkspaceOpenRequest request{};
-                request.workspaceId =
-                    EDITOR::EditorWorkspaceId::ModelMaterial;
-                (void)workspaceHost.RequestOpen(std::move(request));
-            }
-
-            const bool animationStateMachineWorkspaceActive =
-                workspaceHost.IsActive(
-                    EDITOR::EditorWorkspaceId::AnimationStateMachine);
-            if (ImGui::MenuItem(
-                    TEXT::Localize(
-                        "menu.workspace.animationStateMachine").c_str(),
-                    nullptr,
-                    animationStateMachineWorkspaceActive)) {
-                EDITOR::EditorWorkspaceOpenRequest request{};
-                request.workspaceId =
-                    EDITOR::EditorWorkspaceId::AnimationStateMachine;
+                request.workspaceId = workspaceId;
                 (void)workspaceHost.RequestOpen(std::move(request));
             }
 

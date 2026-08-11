@@ -17,6 +17,6 @@ class CinematicsWorkspaceController;
 void RegisterCinematicsOperations(
     EditorOperationRegistry& registry,
     CinematicsWorkspaceController& controller,
-    const std::function<DocumentSceneBase*()>& sceneProvider);
+    std::function<DocumentSceneBase*()> sceneProvider);
 
 } // namespace HIKARI::EDITOR

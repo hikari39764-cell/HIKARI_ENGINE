@@ -7,6 +7,7 @@
 #include <json.hpp>
 
 #include "Authoring/HIKARI_IInspectorBuilder.h"
+#include "Runtime/Binding/HIKARI_RuntimeBindingTypes.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
 
 namespace HIKARI {
@@ -31,6 +32,28 @@ namespace {
             *object = nlohmann::json::object();
         }
         return object;
+    }
+
+    BINDING::ValueType ToRuntimeBindingType(
+        GameProjectBindingValueType type) noexcept {
+
+        switch (type) {
+        case GameProjectBindingValueType::Bool:
+            return BINDING::ValueType::Bool;
+        case GameProjectBindingValueType::Int:
+            return BINDING::ValueType::Int;
+        case GameProjectBindingValueType::Float2:
+            return BINDING::ValueType::Float2;
+        case GameProjectBindingValueType::Float3:
+            return BINDING::ValueType::Float3;
+        case GameProjectBindingValueType::Float4:
+            return BINDING::ValueType::Float4;
+        case GameProjectBindingValueType::Color:
+            return BINDING::ValueType::Color;
+        case GameProjectBindingValueType::Float:
+        default:
+            return BINDING::ValueType::Float;
+        }
     }
 
 } // namespace
@@ -286,6 +309,62 @@ namespace {
             static_cast<IInspectorBuilder*>(builder_);
         return builder != nullptr &&
             builder->Vec2(label, x, y);
+    }
+
+    bool GameProjectInspector::VariableBinding(
+        std::string_view label,
+        GameProjectBindingValueType expectedType,
+        char* value,
+        size_t capacity) {
+        if (value == nullptr || capacity == 0u) {
+            return false;
+        }
+        auto* builder =
+            static_cast<IInspectorBuilder*>(builder_);
+        if (builder == nullptr) {
+            return false;
+        }
+        std::string editable(value);
+        if (!builder->RuntimeVariableIdPicker(
+                label,
+                ToRuntimeBindingType(expectedType),
+                editable)) {
+            return false;
+        }
+        const size_t count =
+            (std::min)(editable.size(), capacity - 1u);
+        std::memcpy(value, editable.data(), count);
+        value[count] = '\0';
+        return true;
+    }
+
+    bool GameProjectInspector::EventBinding(
+        std::string_view label,
+        bool hasPayload,
+        GameProjectBindingValueType payloadType,
+        char* value,
+        size_t capacity) {
+        if (value == nullptr || capacity == 0u) {
+            return false;
+        }
+        auto* builder =
+            static_cast<IInspectorBuilder*>(builder_);
+        if (builder == nullptr) {
+            return false;
+        }
+        std::string editable(value);
+        if (!builder->RuntimeEventIdPicker(
+                label,
+                hasPayload,
+                ToRuntimeBindingType(payloadType),
+                editable)) {
+            return false;
+        }
+        const size_t count =
+            (std::min)(editable.size(), capacity - 1u);
+        std::memcpy(value, editable.data(), count);
+        value[count] = '\0';
+        return true;
     }
 
 } // namespace HIKARI

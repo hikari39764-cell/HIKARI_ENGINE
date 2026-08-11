@@ -287,6 +287,24 @@ namespace HIKARI {
         ClearRuntimeMaterialOverride(slotIndex);
     }
 
+    void ModelComponent::ClearMaterialOverride(MaterialSlotId slotId) {
+        if (!slotId.IsValid()) {
+            return;
+        }
+        const auto found = std::find_if(
+            materialOverrides_.begin(),
+            materialOverrides_.end(),
+            [slotId](const ModelMaterialOverrideSlot& slot) {
+                return slot.slotId == slotId;
+            });
+        if (found == materialOverrides_.end()) {
+            return;
+        }
+        const uint32_t legacySlotIndex = found->slotIndex;
+        materialOverrides_.erase(found);
+        ClearRuntimeMaterialOverride(legacySlotIndex);
+    }
+
     const Material* ModelComponent::GetRuntimeMaterialOverride(
         uint32_t slotIndex) const {
 

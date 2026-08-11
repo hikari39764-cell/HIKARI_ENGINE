@@ -109,14 +109,14 @@ void AppendDocumentState(
 void RegisterCinematicsOperations(
     EditorOperationRegistry& registry,
     CinematicsWorkspaceController& controller,
-    const std::function<DocumentSceneBase*()>& sceneProvider) {
+    std::function<DocumentSceneBase*()> sceneProvider) {
 
   registry.Register({
       "cinematics.query",
       "Return the current sequence document state and sequence summary.",
       "cinematics",
       {},
-      [&controller, &sceneProvider](const nlohmann::json&) {
+      [&controller, sceneProvider](const nlohmann::json&) {
         EditorOperationResult result{};
         result.ok = true;
         result.code = "OK";
@@ -147,7 +147,7 @@ void RegisterCinematicsOperations(
       "Save the currently open Sequence asset.",
       "cinematics",
       {},
-      [&controller, &sceneProvider](const nlohmann::json&) {
+      [&controller, sceneProvider](const nlohmann::json&) {
         EditorOperationResult result{};
         if (!RequireSequenceAssetDocument(controller, result)) {
           return result;
@@ -220,7 +220,7 @@ void RegisterCinematicsOperations(
       "List Sequence assets in the project (guid, name, source path).",
       "cinematics",
       {},
-      [&sceneProvider](const nlohmann::json&) {
+      [sceneProvider](const nlohmann::json&) {
         EditorOperationResult result{};
         DocumentSceneBase* scene = nullptr;
         if (!RequireScene(sceneProvider, result, scene)) {
@@ -253,7 +253,7 @@ void RegisterCinematicsOperations(
       "Create a new unsaved Sequence asset.",
       "cinematics",
       {},
-      [&controller, &sceneProvider](const nlohmann::json&) {
+      [&controller, sceneProvider](const nlohmann::json&) {
         EditorOperationResult result{};
         DocumentSceneBase* scene = nullptr;
         if (!RequireScene(sceneProvider, result, scene)) {
@@ -291,7 +291,7 @@ void RegisterCinematicsOperations(
               "assetGuid", EditorOperationParameterType::String,
               true, "cinematics.list_assets 返回的 guid"),
       },
-      [&controller, &sceneProvider](const nlohmann::json& parameters) {
+      [&controller, sceneProvider](const nlohmann::json& parameters) {
         EditorOperationResult result{};
         DocumentSceneBase* scene = nullptr;
         if (!RequireScene(sceneProvider, result, scene)) {
@@ -346,7 +346,7 @@ void RegisterCinematicsOperations(
       "Revert the open Sequence asset to its saved version.",
       "cinematics",
       {},
-      [&controller, &sceneProvider](const nlohmann::json&) {
+      [&controller, sceneProvider](const nlohmann::json&) {
         EditorOperationResult result{};
         if (!RequireSequenceAssetDocument(controller, result)) {
           return result;
@@ -383,7 +383,7 @@ void RegisterCinematicsOperations(
       "Close the external Sequence asset and return to Scene Cinematics.",
       "cinematics",
       {},
-      [&controller, &sceneProvider](const nlohmann::json&) {
+      [&controller, sceneProvider](const nlohmann::json&) {
         EditorOperationResult result{};
         DocumentSceneBase* scene = nullptr;
         if (!RequireScene(sceneProvider, result, scene)) {

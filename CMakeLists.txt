@@ -49,9 +49,6 @@ set(
     HIKARI::Meshoptimizer
     HIKARI::Nlohmann
     HIKARI::DirectXTex
-    HIKARI::Effekseer
-    HIKARI::EffekseerRendererDX12
-    HIKARI::LLGI
     HIKARI::Jolt
     HIKARI::CoACD
     dxguid
@@ -134,7 +131,9 @@ if(HIKARI_WITH_EDITOR_BUILD)
             HIKARI::ImGui
             HIKARI::ImGuizmo
             HIKARI::Assimp
-            HIKARI::WinPix)
+            HIKARI::WinPix
+        PRIVATE
+            Bcrypt)
     hikari_configure_engine_target(HIKARI_Editor)
     source_group(
         TREE "${HIKARI_SOURCE_ROOT}"

@@ -17,6 +17,6 @@ class ModelMaterialWorkspaceController;
 void RegisterModelMaterialOperations(
     EditorOperationRegistry& registry,
     ModelMaterialWorkspaceController& controller,
-    const std::function<DocumentSceneBase*()>& sceneProvider);
+    std::function<DocumentSceneBase*()> sceneProvider);
 
 } // namespace HIKARI::EDITOR

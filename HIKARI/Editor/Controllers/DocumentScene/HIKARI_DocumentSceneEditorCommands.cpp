@@ -44,6 +44,19 @@ namespace HIKARI {
         }
 
         if (workspaceHost_.IsActive(
+                EDITOR::EditorWorkspaceId::RuntimeBinding)) {
+            runtimeBindingWorkspaceController_.BindDocumentCommands(
+                commandRouter_);
+            return;
+        }
+
+        if (workspaceHost_.IsActive(
+                EDITOR::EditorWorkspaceId::Vfx)) {
+            vfxWorkspaceController_.BindDocumentCommands(commandRouter_);
+            return;
+        }
+
+        if (workspaceHost_.IsActive(
                 EDITOR::EditorWorkspaceId::ModelCollision)) {
             modelCollisionWorkspaceController_.BindDocumentCommands(
                 commandRouter_,
@@ -262,6 +275,14 @@ namespace HIKARI {
             impact = impact |
                 EDITOR::EditorDocumentImpact::Lighting;
         }
+        EDITOR::EditorDocumentImpact immediateImpact =
+            history.runtimeWorldRefreshRequired
+                ? EDITOR::EditorDocumentImpact::RuntimeWorld
+                : EDITOR::EditorDocumentImpact::None;
+        if (lightingChanged) {
+            immediateImpact = immediateImpact |
+                EDITOR::EditorDocumentImpact::Lighting;
+        }
         CommitAppliedDocumentCommand(
             scene,
             EDITOR::MakeSceneObjectsHistoryCommand(
@@ -274,9 +295,7 @@ namespace HIKARI {
             0,
             history.dirtyBefore &&
                 !documentHistory_.IsDirty(),
-            lightingChanged
-                ? EDITOR::EditorDocumentImpact::Lighting
-                : EDITOR::EditorDocumentImpact::None);
+            immediateImpact);
     }
 
     void DocumentSceneEditorController::RecordCinematicsHistory(

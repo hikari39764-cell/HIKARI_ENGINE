@@ -310,7 +310,7 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
             return true;
         }
 
-        bool ParseV5(
+        bool ParseCurrent(
             const nlohmann::json& root,
             MaterialAssetData& outData,
             std::string& outError) {
@@ -321,7 +321,7 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
             if (!TryParseMaterialAssetKind(root.value("kind", std::string{}), data.kind) ||
                 !TryParseMaterialDomain(root.value("domain", std::string{ "Surface" }), data.domain) ||
                 !TryParseMaterialTemplateId(root.value("template", std::string{ "StandardPBR" }), data.templateId)) {
-                outError = "unknown Material v5 kind, domain, or template";
+                outError = "unknown Material v6 kind, domain, or template";
                 return false;
             }
             data.profileAssetGuid.value =
@@ -336,7 +336,7 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
                 if (!TryParseMaterialAlphaMode(
                         surface->value("alphaMode", std::string{ "Opaque" }),
                         data.surface.alphaMode)) {
-                    outError = "unknown Material v5 alpha mode";
+                    outError = "unknown Material v6 alpha mode";
                     return false;
                 }
                 if (!TryParseMaterialAlphaRepresentation(
@@ -344,7 +344,7 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
                             "alphaRepresentation",
                             std::string{ "Straight" }),
                         data.surface.alphaRepresentation)) {
-                    outError = "unknown Material v5 alpha representation";
+                    outError = "unknown Material v6 alpha representation";
                     return false;
                 }
                 data.surface.alphaCutoff = surface->value("alphaCutoff", data.surface.alphaCutoff);
@@ -407,7 +407,7 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
             std::vector<std::string>* outDiagnostics) {
 
             MaterialAssetData migrated{};
-            if (!ParseV5(root, migrated, outError)) {
+            if (!ParseCurrent(root, migrated, outError)) {
                 if (!outError.empty()) {
                     outError = "Material v4 migration failed: " + outError;
                 }
@@ -424,7 +424,7 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
             outData = std::move(migrated);
             if (outDiagnostics) {
                 outDiagnostics->push_back(
-                    "Material v4 migrated to Material v5; surface alpha mode and Straight alpha representation were preserved");
+                    "Material v4 migrated to Material v6; surface alpha mode and Straight alpha representation were preserved");
             }
             return true;
         }
@@ -512,7 +512,7 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
                 if (outDiagnostics) {
                     outDiagnostics->push_back(
                         "Material v" + std::to_string(version) +
-                        " migrated to Material v5 StandardPBR");
+                        " migrated to Material v6 StandardPBR");
                 }
                 return true;
             }
@@ -520,7 +520,12 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
                 return ParseV4(
                     root, outData, outError, outDiagnostics);
             }
-            return ParseV5(root, outData, outError);
+            const bool parsed = ParseCurrent(root, outData, outError);
+            if (parsed && version == 5u && outDiagnostics) {
+                outDiagnostics->push_back(
+                    "Material v5 Surface source migrated to Material v6 without changing its graph semantics");
+            }
+            return parsed;
         } catch (const std::exception& exception) {
             outError = "material JSON schema error: " + std::string(exception.what());
             return false;
@@ -537,7 +542,7 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
             outError.clear();
             return true;
         } catch (const std::exception& exception) {
-            outError = "failed to serialize Material v5 JSON: " +
+            outError = "failed to serialize Material v6 JSON: " +
                 std::string(exception.what());
             return false;
         }
@@ -568,7 +573,7 @@ namespace HIKARI::MATERIAL_SERIALIZATION {
                 ToJson(data),
                 &outError);
         } catch (const std::exception& exception) {
-            outError = "failed to save Material v5 JSON: " +
+            outError = "failed to save Material v6 JSON: " +
                 std::string(exception.what());
             return false;
         }

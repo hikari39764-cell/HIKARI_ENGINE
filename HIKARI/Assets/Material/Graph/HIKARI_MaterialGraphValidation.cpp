@@ -198,7 +198,8 @@ namespace HIKARI {
                 return false;
             }
             if (node->kind == MaterialNodeKind::Constant ||
-                node->kind == MaterialNodeKind::Parameter) {
+                node->kind == MaterialNodeKind::Parameter ||
+                node->kind == MaterialNodeKind::Variable) {
                 visiting.erase(std::string(nodeId));
                 return true;
             }
@@ -948,6 +949,10 @@ namespace HIKARI {
         }
 
         std::unordered_map<std::string, size_t> nodeIndices{};
+        std::unordered_map<std::string, MaterialValueType>
+            runtimeVariableTypes{};
+        const std::unordered_set<std::string> runtimeReachable =
+            CollectRuntimeReachableNodes(graph);
         for (size_t index = 0; index < graph.nodes.size(); ++index) {
             const MaterialGraphNodeData& node = graph.nodes[index];
             if (!IsValidMaterialStableId(node.id) ||
@@ -956,11 +961,24 @@ namespace HIKARI {
                     "Material.InvalidNodeId",
                     "material node IDs must be stable and unique", node.id);
             }
-            if (FindMaterialNodeDefinition(node.kind) == nullptr) {
+            const MaterialNodeDefinition* definition =
+                FindMaterialNodeDefinition(node.kind);
+            if (definition == nullptr) {
                 AddDiagnostic(outDiagnostics, MaterialGraphDiagnosticSeverity::Error,
                     "Material.UnknownNodeType",
                     "material node TypeId is not registered by this compiler",
                     node.kind.value);
+            } else if (options.requireDomainOutput &&
+                !IsMaterialNodeAvailableForDomain(
+                    node.kind, options.domain)) {
+                    AddDiagnostic(
+                        outDiagnostics,
+                        MaterialGraphDiagnosticSeverity::Error,
+                        "Material.NodeDomainMismatch",
+                        options.domain == MaterialDomain::Particle
+                            ? "particle material graphs accept numeric expressions and ParticleOutput, not Surface shading nodes"
+                            : "surface material graphs cannot contain ParticleOutput",
+                        node.id);
             }
             if (!std::isfinite(node.position.x) || !std::isfinite(node.position.y) ||
                 !IsFiniteValue(node.value)) {
@@ -973,6 +991,39 @@ namespace HIKARI {
                 AddDiagnostic(outDiagnostics, MaterialGraphDiagnosticSeverity::Error,
                     "Material.MissingParameter",
                     "parameter node references an undeclared parameter", node.id);
+            }
+            if (node.kind == MaterialNodeKind::Variable) {
+                if (!IsValidMaterialStableId(node.referenceId)) {
+                    AddDiagnostic(outDiagnostics, MaterialGraphDiagnosticSeverity::Error,
+                        "Material.MissingRuntimeVariable",
+                        "variable nodes require one stable runtime variable ID",
+                        node.id);
+                }
+                if ((node.valueType != MaterialValueType::Bool &&
+                        !IsMaterialNumericType(node.valueType)) ||
+                    node.value.type != node.valueType) {
+                    AddDiagnostic(outDiagnostics, MaterialGraphDiagnosticSeverity::Error,
+                        "Material.InvalidRuntimeVariableType",
+                        "variable node type and fallback must be the same bool or numeric type",
+                        node.id);
+                }
+                if (runtimeReachable.contains(node.id) &&
+                    IsValidMaterialStableId(node.referenceId) &&
+                    (node.valueType == MaterialValueType::Bool ||
+                     IsMaterialNumericType(node.valueType))) {
+                    const auto [type, inserted] =
+                        runtimeVariableTypes.emplace(
+                            node.referenceId,
+                            node.valueType);
+                    if (!inserted && type->second != node.valueType) {
+                        AddDiagnostic(
+                            outDiagnostics,
+                            MaterialGraphDiagnosticSeverity::Error,
+                            "Material.RuntimeVariableTypeConflict",
+                            "all Variable nodes using one runtime ID must use the same material value type",
+                            node.referenceId);
+                    }
+                }
             }
             if (node.kind == MaterialNodeKind::Constant &&
                 node.value.type != MaterialValueType::Bool &&
@@ -1018,13 +1069,21 @@ namespace HIKARI {
             }
         }
 
-        if (options.requireSurfaceOutput) {
+        if (options.requireDomainOutput) {
             const auto output = nodeIndices.find(graph.outputNodeId);
+            const MaterialNodeKind expectedOutput =
+                options.domain == MaterialDomain::Particle
+                    ? MaterialNodeKind::ParticleOutput
+                    : MaterialNodeKind::SurfaceOutput;
             if (output == nodeIndices.end() ||
-                graph.nodes[output->second].kind != MaterialNodeKind::SurfaceOutput) {
+                graph.nodes[output->second].kind != expectedOutput) {
                 AddDiagnostic(outDiagnostics, MaterialGraphDiagnosticSeverity::Error,
-                    "Material.MissingSurfaceOutput",
-                    "surface material graph requires an explicit SurfaceOutput node",
+                    options.domain == MaterialDomain::Particle
+                        ? "Material.MissingParticleOutput"
+                        : "Material.MissingSurfaceOutput",
+                    options.domain == MaterialDomain::Particle
+                        ? "particle material graph requires an explicit ParticleOutput node"
+                        : "surface material graph requires an explicit SurfaceOutput node",
                     graph.outputNodeId);
             }
         } else if (!graph.outputNodeId.empty() &&
@@ -1087,13 +1146,20 @@ namespace HIKARI {
             }
         }
 
-        if (options.requireSurfaceOutput &&
-            !graph.outputNodeId.empty() &&
-            targetPins.find(graph.outputNodeId + ":Surface") == targetPins.end()) {
-            AddDiagnostic(outDiagnostics, MaterialGraphDiagnosticSeverity::Error,
-                "Material.UnconnectedSurfaceOutput",
-                "SurfaceOutput requires one typed Surface connection",
-                graph.outputNodeId);
+        if (options.requireDomainOutput && !graph.outputNodeId.empty()) {
+            if (options.domain == MaterialDomain::Surface &&
+                targetPins.find(graph.outputNodeId + ":Surface") == targetPins.end()) {
+                AddDiagnostic(outDiagnostics, MaterialGraphDiagnosticSeverity::Error,
+                    "Material.UnconnectedSurfaceOutput",
+                    "SurfaceOutput requires one typed Surface connection",
+                    graph.outputNodeId);
+            } else if (options.domain == MaterialDomain::Particle &&
+                targetPins.find(graph.outputNodeId + ":Color") == targetPins.end()) {
+                AddDiagnostic(outDiagnostics, MaterialGraphDiagnosticSeverity::Error,
+                    "Material.UnconnectedParticleOutput",
+                    "ParticleOutput requires one typed Color connection",
+                    graph.outputNodeId);
+            }
         }
 
         if (HasCycle(graph, nodeIndices)) {

@@ -13,7 +13,7 @@ namespace HIKARI {
     namespace {
 
         constexpr uint32_t kHmatMagic = 0x54414D48u; // 'HMAT'
-        constexpr uint32_t kHmatVersion = 5u;
+        constexpr uint32_t kHmatVersion = 6u;
         constexpr uint32_t kFirstGraphHmatVersion = 4u;
         constexpr uint32_t kMaxStringBytes = 1024u * 1024u;
         constexpr uint32_t kMaxMaterialPayloadBytes = 16u * 1024u * 1024u;
@@ -130,7 +130,7 @@ namespace HIKARI {
                 material, sourceJson, serializationError) ||
             !MATERIAL_SERIALIZATION::SerializeMaterialCompileResult(
                 compileResult, programJson, serializationError)) {
-            outMessage = "[HMAT] failed to serialize v5 payload: " + serializationError;
+            outMessage = "[HMAT] failed to serialize v6 payload: " + serializationError;
             return false;
         }
 
@@ -144,10 +144,10 @@ namespace HIKARI {
             WriteLengthPrefixedString32<kMaxMaterialPayloadBytes>(stream, sourceJson) &&
             WriteLengthPrefixedString32<kMaxMaterialPayloadBytes>(stream, programJson);
         if (!ok || !stream.good()) {
-            outMessage = "[HMAT] failed while writing v5 payload: " + path.generic_string();
+            outMessage = "[HMAT] failed while writing v6 payload: " + path.generic_string();
             return false;
         }
-        outMessage = "[HMAT] wrote v5 " + path.generic_string();
+        outMessage = "[HMAT] wrote v6 " + path.generic_string();
         return true;
     }
 
@@ -197,7 +197,7 @@ namespace HIKARI {
                 return false;
             }
             outMessage = "[HMAT] read and migrated v" +
-                std::to_string(header.version) + " to v5 " +
+                std::to_string(header.version) + " to v6 " +
                 path.generic_string();
             return true;
         }
@@ -227,20 +227,24 @@ namespace HIKARI {
                 outMaterial, migrationCompileOptions);
             if (!outCompileResult.success) {
                 outMessage =
-                    "[HMAT] migrated v4 source did not compile as Material v5: " +
+                    "[HMAT] migrated v4 source did not compile as Material v6: " +
                     path.generic_string();
                 return false;
             }
-            outMessage = "[HMAT] read and migrated v4 to v5 " +
+            outMessage = "[HMAT] read and migrated v4 to v6 " +
                 path.generic_string();
             return true;
         }
         if (!MATERIAL_SERIALIZATION::ParseMaterialCompileResult(
                 programJson, outCompileResult, parseError)) {
-            outMessage = "[HMAT] invalid v5 program payload: " + parseError;
+            outMessage = "[HMAT] invalid v" +
+                std::to_string(header.version) +
+                " program payload: " + parseError;
             return false;
         }
-        outMessage = "[HMAT] read v5 " + path.generic_string();
+        outMessage = "[HMAT] read v" +
+            std::to_string(header.version) + " as v6 " +
+            path.generic_string();
         return true;
     }
 

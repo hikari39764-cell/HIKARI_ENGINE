@@ -10,10 +10,13 @@
 
 #include <json.hpp>
 
+#include "Authoring/HIKARI_ComponentAuthoringTypes.h"
+
 namespace HIKARI {
 
     class GameObject;
     class IComponent;
+    struct InspectorContext;
     struct SceneObjectData;
 
     struct ComponentTypePresentation {
@@ -34,6 +37,9 @@ namespace HIKARI {
         using ConfigureDependenciesFn = std::function<void(
             SceneObjectData& object,
             const std::vector<std::string>& newlyAddedDependencies)>;
+        using ValidateAuthoringFn = std::function<AuthoringCommandResult(
+            const IComponent& component,
+            const InspectorContext& context)>;
 
         std::string typeName{};
         FactoryFn factory{};
@@ -46,6 +52,9 @@ namespace HIKARI {
         InitializeDefaultsFn initializeDefaults{};
         ConfigureDependenciesFn configureDependencies{};
         ComponentTypePresentation presentation{};
+        std::vector<ComponentAuthoringCommandDefinition>
+            authoringCommands{};
+        ValidateAuthoringFn validateAuthoring{};
     };
 
     class ComponentRegistry {

@@ -10,6 +10,7 @@
 #include "Render3D/HIKARI_Math3D.h"
 #include "Scene/HIKARI_ComponentRegistry.h"
 #include "Scene/HIKARI_GameObject.h"
+#include "Scene/HIKARI_SceneComponentId.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/Lighting/HIKARI_LightingAuthoringModel.h"
 
@@ -95,6 +96,7 @@ namespace HIKARI {
 #if defined(HIKARI_WITH_EDITOR)
         std::optional<SceneObjectAuthoringHistoryRequest>
             historyRequest{};
+        NormalizeSceneComponentIds(target);
         bool needsRebuild = false;
         bool forceImmediateRebuild = false;
         RuntimeObjectHandle runtimeObject{};
@@ -147,7 +149,10 @@ namespace HIKARI {
                         std::to_string(componentTypeIndex)
                     : componentDisplayName;
 
-            ImGui::PushID(static_cast<int>(componentIndex));
+            const std::string componentUiId =
+                "SceneComponent_" +
+                std::to_string(component.id.value);
+            ImGui::PushID(componentUiId.c_str());
             const bool allowDuplicate =
                 typeInfo != nullptr && typeInfo->allowMultiple;
             const bool componentOpen = ImGui::TreeNodeEx(
@@ -211,6 +216,7 @@ namespace HIKARI {
                 const ComponentEditResult result =
                     componentAuthoringService_.RemoveComponent(
                         scene.GetComponentRegistry(),
+                        scene.GetSceneDocument(),
                         target,
                         componentIndex);
                 context.componentAddStatusMessage = result.message;
@@ -301,7 +307,7 @@ namespace HIKARI {
                     deferredRuntimeComponentApply_ =
                         DeferredRuntimeComponentApply{
                             target.id,
-                            componentIndex
+                            component.id
                         };
                 } else {
                     const bool appliedToRuntime =
@@ -334,13 +340,18 @@ namespace HIKARI {
             const DeferredRuntimeComponentApply deferred =
                 *deferredRuntimeComponentApply_;
             deferredRuntimeComponentApply_.reset();
-            if (deferred.objectId == target.id &&
-                deferred.componentIndex < target.components.size()) {
+            const std::optional<size_t> deferredIndex =
+                deferred.objectId == target.id
+                    ? FindSceneComponentIndex(
+                        target,
+                        deferred.componentId)
+                    : std::nullopt;
+            if (deferredIndex.has_value()) {
                 const SceneComponentData& component =
-                    target.components[deferred.componentIndex];
+                    target.components[*deferredIndex];
                 if (!ApplyDocumentComponentToRuntime(
                         component,
-                        deferred.componentIndex,
+                        *deferredIndex,
                         context)) {
                     needsRebuild = true;
                 } else if (component.type == "CameraComponent") {

@@ -74,16 +74,24 @@ namespace HIKARI {
         if (database_.GetProjectRoot().empty()) {
             database_.Initialize({});
         }
-        const bool okDatabase = database_.ScanAssets(true);
+        if (!database_.ScanAssets(true)) {
+            return false;
+        }
 
         // AssetDatabase 郢ｧ雋樣ｫｪ闕ｳﾂ邵ｺ・ｮ騾具ｽｻ鬪ｭ・ｲ陷医・竊堤ｸｺ蜉ｱ窶ｻ runtime descriptor 郢ｧ蜑・ｽｽ諛奇ｽ企ｶ・ｴ邵ｺ蜷ｶﾂ繝ｻ
-        registry_.Clear();
+        // Build into an isolated registry. A corrupt asset must not replace
+        // the last complete live registry with a partial rebuild.
+        AssetRegistry stagedRegistry{};
         AssetRegistryBuilder assetRegistryBuilder{};
-        const bool okRegistry = assetRegistryBuilder.AppendToRegistry(database_, registry_);
+        if (!assetRegistryBuilder.AppendToRegistry(
+                database_, stagedRegistry)) {
+            return false;
+        }
+        registry_.SwapContents(stagedRegistry);
 
         ConfigureModelTextureResolver();
         RenderSubmissionSystem::InvalidateSceneResources(false);
-        return okDatabase && okRegistry;
+        return true;
     }
     void DocumentSceneAssetBindings::ConfigureModelTextureResolver() {
         models_.ResetTextureResolveStats();
@@ -211,6 +219,10 @@ namespace HIKARI {
                 registry_,
                 AssetType::ModelMaterialBinding,
                 dependencies.modelMaterialSetAssetIds) ||
+            HasMissingAssetDescriptors(
+                registry_,
+                AssetType::VfxEffect,
+                dependencies.vfxAssetIds) ||
             HasMissingAssetDescriptors(
                 registry_,
                 AssetType::Sky,

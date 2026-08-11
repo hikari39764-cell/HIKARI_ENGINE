@@ -11,16 +11,26 @@
 #include <thread>
 #include <vector>
 
+#include <json.hpp>
+
 #include "Editor/AI/HIKARI_AI_ChatClient.h"
 
 namespace HIKARI::EDITOR {
 
     namespace AI_ASSISTANT {
 
+        struct AiCapabilityParameter {
+            std::string name{};
+            std::string type{};
+            bool required = false;
+            std::string description{};
+        };
+
         struct AiCapability {
             std::string id;
             std::string summary;
             std::string status; // stable | planned | unsupported
+            std::vector<AiCapabilityParameter> parameters{};
         };
 
         struct AiRequestResult {
@@ -29,6 +39,7 @@ namespace HIKARI::EDITOR {
             // NODE_NOT_FOUND / PIN_TYPE_MISMATCH / COMPILE_FAILED).
             std::string code{};
             std::string message;
+            nlohmann::json data = nlohmann::json::object();
             std::vector<std::string> details;
             // Actionable suggestions for the model to self-correct.
             std::vector<std::string> hints;
@@ -49,22 +60,23 @@ namespace HIKARI::EDITOR {
         using AiSceneActionCallback =
             std::function<AI_ASSISTANT::AiRequestResult(
                 std::string_view)>;
-        using AiContextCallback = std::function<std::string()>;
         using AiCapabilityProvider =
             std::function<std::vector<AI_ASSISTANT::AiCapability>()>;
-        using AiLongRunningClassifier =
+        using AiWorkerExecutionClassifier =
             std::function<bool(std::string_view action)>;
 
         AiAssistantPanel();
         ~AiAssistantPanel();
 
+        void Stop();
         void Draw(bool& open);
         void SetSceneActionCallback(AiSceneActionCallback callback);
-        void SetContextCallback(AiContextCallback callback);
+        void SetContextSnapshot(std::string snapshot);
         void SetCapabilityProvider(AiCapabilityProvider callback);
-        void SetLongRunningClassifier(
-            AiLongRunningClassifier callback);
+        void SetWorkerExecutionClassifier(
+            AiWorkerExecutionClassifier callback);
         void SetBridgeStatus(const std::string& status);
+        void SetBridgeSessionToken(std::string token);
         AI_ASSISTANT::AiRequestResult ExecuteRequest(
             std::string_view json);
         std::vector<AI_ASSISTANT::AiCapability> Capabilities() const;
@@ -92,6 +104,7 @@ namespace HIKARI::EDITOR {
         void SaveVisionSettings();
         void ResetVisionSettings();
         AI_ASSISTANT::AiChatConfig SnapshotConfig() const;
+        std::string SnapshotContext() const;
 
         std::vector<AI_ASSISTANT::AiChatMessage> messages_{};
         std::mutex messageMutex_{};
@@ -121,10 +134,11 @@ namespace HIKARI::EDITOR {
         char visionBaseUrlBuffer_[512] = {};
         char visionModelBuffer_[128] = {};
         std::string bridgeStatus_{};
+        std::string bridgeSessionToken_{};
         AiSceneActionCallback sceneActionCallback_{};
-        AiContextCallback contextCallback_{};
+        std::string contextSnapshot_{};
         AiCapabilityProvider capabilityProvider_{};
-        AiLongRunningClassifier longRunningClassifier_{};
+        AiWorkerExecutionClassifier workerExecutionClassifier_{};
         AI_ASSISTANT::AiRequestResult rawResult_{};
         AI_ASSISTANT::AiChatConfig config_{};
         bool configLoaded_ = false;

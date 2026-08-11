@@ -85,36 +85,6 @@ target_include_directories(
 add_library(HIKARI::DirectXTex ALIAS DirectXTex)
 
 set(
-    HIKARI_EFFEKSEER_ROOT
-    "${HIKARI_SOURCE_ROOT}/ThirdParty/Effekseer")
-hikari_add_imported_static(
-    HIKARI::Effekseer
-    "${HIKARI_EFFEKSEER_ROOT}/Lib/Debug/Effekseerd.lib"
-    "${HIKARI_EFFEKSEER_ROOT}/Lib/Release/Effekseer.lib")
-hikari_add_imported_static(
-    HIKARI::EffekseerRendererDX12
-    "${HIKARI_EFFEKSEER_ROOT}/Lib/Debug/EffekseerRendererDX12d.lib"
-    "${HIKARI_EFFEKSEER_ROOT}/Lib/Release/EffekseerRendererDX12.lib")
-hikari_add_imported_static(
-    HIKARI::LLGI
-    "${HIKARI_EFFEKSEER_ROOT}/Lib/Debug/LLGId.lib"
-    "${HIKARI_EFFEKSEER_ROOT}/Lib/Release/LLGI.lib")
-foreach(
-    effekseer_target
-    IN ITEMS
-        HIKARI::Effekseer
-        HIKARI::EffekseerRendererDX12
-        HIKARI::LLGI)
-    target_include_directories(
-        "${effekseer_target}"
-        SYSTEM INTERFACE
-            "${HIKARI_EFFEKSEER_ROOT}/include"
-            "${HIKARI_EFFEKSEER_ROOT}/include/Effekseer"
-            "${HIKARI_EFFEKSEER_ROOT}/include/EffekseerRendererDX12"
-            "${HIKARI_EFFEKSEER_ROOT}/include/LLGI")
-endforeach()
-
-set(
     HIKARI_VCPKG_INCLUDE_DIR
     "${HIKARI_VCPKG_DYNAMIC_ROOT}/x64-windows/include")
 hikari_require_dependency_file(

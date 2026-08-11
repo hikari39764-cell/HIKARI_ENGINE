@@ -25,7 +25,6 @@ namespace HIKARI::SERVICES::INTERNAL {
         std::vector<std::string> runtimeExportedSceneGuids{};
         bool gpuFrameReady = false;
         bool presentationPrepared = false;
-        bool vfxFrameEnded = false;
         bool hasPendingWindowResize = false;
         int pendingWindowWidth = 0;
         int pendingWindowHeight = 0;

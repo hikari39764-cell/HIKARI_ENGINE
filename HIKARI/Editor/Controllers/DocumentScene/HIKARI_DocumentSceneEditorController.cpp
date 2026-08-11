@@ -11,6 +11,7 @@
 #include "Editor/AI/HIKARI_AI_VisionClient.h"
 #include "Editor/Authoring/HIKARI_EditorObjectState.h"
 #include "Editor/Authoring/HIKARI_EditorObjectFactory.h"
+#include "Editor/Authoring/HIKARI_SceneObjectTargetResolver.h"
 #include "Editor/Assets/Browser/HIKARI_AssetBrowserInternal.h"
 #include "Editor/History/HIKARI_EnvironmentHistoryCommand.h"
 #include "Editor/History/HIKARI_SceneObjectsHistoryCommand.h"
@@ -21,16 +22,14 @@
 #include "Editor/Tools/HIKARI_BuiltInEditorTools.h"
 #include "Editor/Views/HIKARI_EditorViewInstance.h"
 #include "Editor/Widgets/HIKARI_MaterialTextureSlotWidget.h"
-#include "Editor/Workspaces/Cinematics/HIKARI_CinematicsOperations.h"
-#include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialOperations.h"
-#include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialNodeQuery.h"
-#include "Editor/Workspaces/ModelCollision/HIKARI_ModelCollisionOperations.h"
-#include "Editor/Workspaces/AnimationStateMachine/HIKARI_AnimationStateMachineOperations.h"
+#include "Editor/Workspaces/RuntimeBinding/HIKARI_RuntimeBindingReferenceIndex.h"
+#include "Editor/Workspaces/HIKARI_AssetWorkspaceActivationRouter.h"
 #include "Editor/HIKARI_EditorViewportInput.h"
 #include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
 #include "Project/HIKARI_ProjectSettings.h"
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
+#include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Views/HIKARI_EditorInteractiveViewRenderer.h"
 #include "Runtime/HIKARI_RuntimeResourceRefreshService.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
@@ -38,6 +37,7 @@
 #include "Scene/Lighting/HIKARI_SceneLightingSet.h"
 
 #include <cstdio>
+#include <charconv>
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
@@ -60,6 +60,24 @@ namespace HIKARI {
             0x454e5649524f4e4dull;
         constexpr uint64_t kQualityPanelMergeGroup =
             0x5155414c49545945ull;
+
+        const char* OperationParameterTypeName(
+            EDITOR::EditorOperationParameterType type) noexcept {
+
+            switch (type) {
+            case EDITOR::EditorOperationParameterType::String:
+                return "string";
+            case EDITOR::EditorOperationParameterType::Float:
+                return "float";
+            case EDITOR::EditorOperationParameterType::Int:
+                return "int";
+            case EDITOR::EditorOperationParameterType::Bool:
+                return "bool";
+            case EDITOR::EditorOperationParameterType::Json:
+                return "json";
+            }
+            return "unknown";
+        }
 
         std::string SummarizeRuntimeRefreshReport(const RuntimeResourceRefreshReport& report) {
             return "Runtime refresh: texture " + std::to_string(report.textureInvalidatedCount) +
@@ -89,14 +107,67 @@ namespace HIKARI {
                 char line[192];
                 std::snprintf(
                     line, sizeof(line),
-                    "%s | pos(%.2f, %.2f, %.2f) | "
+                    "[%llu] %s | pos(%.2f, %.2f, %.2f) | "
                     "scale(%.2f, %.2f, %.2f)",
+                    static_cast<unsigned long long>(
+                        object->GetDocumentId().value),
                     object->GetName().c_str(),
                     position.x, position.y, position.z,
                     scale.x, scale.y, scale.z);
                 outLines.push_back(line);
                 ++count;
             }
+        }
+
+        bool ReadOptionalSceneObjectId(
+            const nlohmann::json& parameters,
+            std::optional<SceneObjectId>& outObjectId,
+            EDITOR::EditorOperationResult& outFailure) {
+
+            const auto found = parameters.find("objectId");
+            if (found == parameters.end() || found->is_null()) {
+                outObjectId.reset();
+                return true;
+            }
+            if ((!found->is_number_unsigned() &&
+                 !found->is_number_integer()) ||
+                (!found->is_number_unsigned() &&
+                 found->get<int64_t>() <= 0)) {
+                outFailure.code = "INVALID_OBJECT_ID";
+                outFailure.message =
+                    "objectId must be a positive integer.";
+                return false;
+            }
+            const uint64_t value = found->get<uint64_t>();
+            if (value == 0u) {
+                outFailure.code = "INVALID_OBJECT_ID";
+                outFailure.message =
+                    "objectId must be a positive integer.";
+                return false;
+            }
+            outObjectId = SceneObjectId{ value };
+            return true;
+        }
+
+        EDITOR::EditorOperationResult TargetResolutionFailure(
+            const EDITOR::SceneObjectTargetResolution& resolution) {
+
+            EDITOR::EditorOperationResult result{};
+            result.code = resolution.code;
+            result.message = resolution.message;
+            nlohmann::json candidateIds = nlohmann::json::array();
+            for (const SceneObjectId candidate :
+                resolution.candidates) {
+                candidateIds.push_back(candidate.value);
+                result.details.push_back(
+                    "candidate objectId=" +
+                    std::to_string(candidate.value));
+            }
+            if (!candidateIds.empty()) {
+                result.data["candidateObjectIds"] =
+                    std::move(candidateIds);
+            }
+            return result;
         }
 
         float ReadJsonFloat(
@@ -118,19 +189,6 @@ namespace HIKARI {
                 }
             }
             return fallback;
-        }
-
-        EDITOR::EditorOperationParameter MakeOperationParameter(
-            std::string name,
-            EDITOR::EditorOperationParameterType type,
-            bool required,
-            std::string description) {
-            EDITOR::EditorOperationParameter parameter{};
-            parameter.name = std::move(name);
-            parameter.type = type;
-            parameter.required = required;
-            parameter.description = std::move(description);
-            return parameter;
         }
 
         bool CapturePreviewToFile(
@@ -218,6 +276,7 @@ namespace HIKARI {
             result.ok = operation.ok;
             result.code = operation.code;
             result.message = operation.message;
+            result.data = operation.data;
             result.details = operation.details;
             result.hints = operation.hints;
             return result;
@@ -285,14 +344,14 @@ namespace HIKARI {
                     &rightNode,
                     &mainNode);
 
-                ImGui::DockBuilderDockWindow("Game View", mainNode);
-                ImGui::DockBuilderDockWindow("Scene Workspace", leftNode);
-                ImGui::DockBuilderDockWindow("Inspector", rightNode);
-                ImGui::DockBuilderDockWindow("AI Assistant", rightNode);
-                ImGui::DockBuilderDockWindow("Resource Workspace", bottomNode);
-                ImGui::DockBuilderDockWindow("Environment", bottomNode);
-                ImGui::DockBuilderDockWindow("Quality", bottomNode);
-                ImGui::DockBuilderDockWindow("Debug View", bottomNode);
+                ImGui::DockBuilderDockWindow("###Game View", mainNode);
+                ImGui::DockBuilderDockWindow("###Scene Workspace", leftNode);
+                ImGui::DockBuilderDockWindow("###Inspector", rightNode);
+                ImGui::DockBuilderDockWindow("###AI Assistant", rightNode);
+                ImGui::DockBuilderDockWindow("###Resource Workspace", bottomNode);
+                ImGui::DockBuilderDockWindow("###Environment", bottomNode);
+                ImGui::DockBuilderDockWindow("###Quality", bottomNode);
+                ImGui::DockBuilderDockWindow("###Debug View", bottomNode);
                 ImGui::DockBuilderDockWindow("Performance Audit", bottomNode);
 
                 ImGui::DockBuilderFinish(dockspaceId);
@@ -322,10 +381,23 @@ namespace HIKARI {
                     if (definition == nullptr) {
                         continue;
                     }
-                    capabilities.push_back(
-                        { definition->id,
-                          definition->summary,
-                          "stable" });
+                    EDITOR::AI_ASSISTANT::AiCapability capability{
+                        definition->id,
+                        definition->summary,
+                        "stable"
+                    };
+                    capability.parameters.reserve(
+                        definition->parameters.size());
+                    for (const EDITOR::EditorOperationParameter& parameter :
+                        definition->parameters) {
+                        capability.parameters.push_back({
+                            parameter.name,
+                            OperationParameterTypeName(parameter.type),
+                            parameter.required,
+                            parameter.description
+                        });
+                    }
+                    capabilities.push_back(std::move(capability));
                 }
                 std::sort(
                     capabilities.begin(),
@@ -340,432 +412,105 @@ namespace HIKARI {
             [this]() {
                 return aiAssistantPanel_.Capabilities();
             });
-        aiAssistantPanel_.SetLongRunningClassifier(
+        aiAssistantPanel_.SetWorkerExecutionClassifier(
             [this](std::string_view action) {
                 const EDITOR::EditorOperationDefinition* definition =
                     operationRegistry_.Find(std::string(action));
                 return definition != nullptr &&
-                    definition->longRunning;
+                    definition->executionPolicy ==
+                        EDITOR::EditorOperationExecutionPolicy::WorkerThread;
             });
         modelMaterialWorkspaceController_.SetOperationRegistry(
             &operationRegistry_);
         animationStateMachineWorkspaceController_.SetOperationRegistry(
             &operationRegistry_);
-        using EDITOR::EditorOperationParameterType;
-        const auto P = MakeOperationParameter;
-        operationRegistry_.Register({
-            "material.node_info",
-            "Return one node's semantic contract.",
-            "model_material",
-            {
-                P("nodeType", EditorOperationParameterType::String,
-                  false, "稳定节点类型名，例如 node.additive"),
-                P("name", EditorOperationParameterType::String,
-                  false, "节点类型别名，与 nodeType 二选一"),
-            },
-            [](const nlohmann::json& parameters)
-                -> EDITOR::EditorOperationResult {
-                std::string nodeType =
-                    parameters.value("nodeType", std::string{});
-                if (nodeType.empty()) {
-                    nodeType =
-                        parameters.value("name", std::string{});
+        runtimeBindingWorkspaceController_.SetReferenceProvider(
+            [this](std::string_view bindingId) {
+                return aiOperationScene_ != nullptr
+                    ? EDITOR::CollectRuntimeBindingReferences(
+                        *aiOperationScene_, bindingId)
+                    : std::vector<EDITOR::RuntimeBindingReference>{};
+            });
+        runtimeBindingWorkspaceController_.SetReferenceRevealCallback(
+            [this](const EDITOR::RuntimeBindingReference& reference) {
+                if (reference.targetKind == "material.asset") {
+                    EDITOR::EditorWorkspaceOpenRequest request{};
+                    request.workspaceId =
+                        EDITOR::EditorWorkspaceId::ModelMaterial;
+                    request.materialAssetGuid =
+                        AssetGuid{ reference.targetId };
+                    (void)workspaceHost_.RequestOpen(std::move(request));
+                    return;
                 }
-                EDITOR::EditorOperationResult result{};
-                std::string message;
-                std::string code;
-                std::vector<std::string> details;
-                if (EDITOR::DescribeAiMaterialNode(
-                        nodeType, message, details, code)) {
-                    result.ok = true;
-                    result.code = "OK";
-                    result.message = message;
-                    result.details = std::move(details);
-                } else {
-                    result.code = code;
-                    result.message = message;
-                    result.details = std::move(details);
+                if (reference.targetKind != "scene.component" ||
+                    aiOperationScene_ == nullptr) {
+                    return;
                 }
-                return result;
-            },
-        });
-        operationRegistry_.Register({
-            "scene.set_transform",
-            "Set an existing object's position/rotation/scale by name.",
-            "scene",
-            {
-                P("name", EditorOperationParameterType::String,
-                  true, "目标物体名称"),
-                P("positionX", EditorOperationParameterType::Float,
-                  false, "世界位置 X"),
-                P("positionY", EditorOperationParameterType::Float,
-                  false, "世界位置 Y"),
-                P("positionZ", EditorOperationParameterType::Float,
-                  false, "世界位置 Z"),
-                P("scaleX", EditorOperationParameterType::Float,
-                  false, "缩放 X"),
-                P("scaleY", EditorOperationParameterType::Float,
-                  false, "缩放 Y"),
-                P("scaleZ", EditorOperationParameterType::Float,
-                  false, "缩放 Z"),
-                P("rotationX", EditorOperationParameterType::Float,
-                  false, "欧拉旋转 X（度）"),
-                P("rotationY", EditorOperationParameterType::Float,
-                  false, "欧拉旋转 Y（度）"),
-                P("rotationZ", EditorOperationParameterType::Float,
-                  false, "欧拉旋转 Z（度）"),
-            },
-            [this](const nlohmann::json& parameters) {
-                return ExecuteAiSceneSetTransform(parameters);
-            },
-        });
-        operationRegistry_.Register({
-            "scene.list_objects",
-            "List scene objects with position and scale.",
-            "scene",
-            {},
-            [this](const nlohmann::json&) {
-                return ExecuteAiSceneObjectQuery(false);
-            },
-        });
-        operationRegistry_.Register({
-            "scene.snapshot",
-            "Return a compact scene object snapshot.",
-            "scene",
-            {},
-            [this](const nlohmann::json&) {
-                return ExecuteAiSceneObjectQuery(true);
-            },
-        });
-        operationRegistry_.Register({
-            "scene.query",
-            "Query scene objects by name filter.",
-            "scene",
-            {
-                P("name", EditorOperationParameterType::String,
-                  false, "按名称包含过滤"),
-            },
-            [this](const nlohmann::json& parameters) {
-                return ExecuteAiSceneQuery(parameters);
-            },
-        });
-        operationRegistry_.Register({
-            "asset.list_models",
-            "List registered model assets.",
-            "assets",
-            {},
-            [this](const nlohmann::json&) {
-                return ExecuteAiAssetListModels();
-            },
-        });
-        operationRegistry_.Register({
-            "capture.preview",
-            "Capture the material preview to a file.",
-            "general",
-            {
-                P("path", EditorOperationParameterType::String,
-                  false, "输出文件路径，缺省为临时目录"),
-            },
-            [this](const nlohmann::json& parameters) {
-                return ExecuteAiCapturePreview(parameters);
-            },
-            // Waits for the renderer to produce the capture frame; running it
-            // on the main thread would stall rendering and never complete.
-            true,
-        });
-        operationRegistry_.Register({
-            "material.graph_query",
-            "List material graph nodes with ids, pins and connections.",
-            "model_material",
-            {
-                P("name", EditorOperationParameterType::String,
-                  false, "按节点 id/displayName 过滤"),
-            },
-            [this](const nlohmann::json& parameters) {
-                return ExecuteAiMaterialGraphQuery(parameters);
-            },
-        });
-        operationRegistry_.Register({
-            "material.graph_layout",
-            "Auto-layout material graph nodes.",
-            "model_material",
-            {},
-            [this](const nlohmann::json&) {
-                return ExecuteAiMaterialGraphLayout();
-            },
-        });
-        operationRegistry_.Register({
-            "asset.import",
-            "Copy a supported source file into the project and queue its import.",
-            "assets",
-            {
-                P("path", EditorOperationParameterType::String,
-                  true, "源文件绝对路径"),
-            },
-            [this](const nlohmann::json& parameters) {
-                return ExecuteAiAssetImport(parameters);
-            },
-        });
-        operationRegistry_.Register({
-            "asset.import_status",
-            "Report the current queued asset import progress.",
-            "assets",
-            {},
-            [this](const nlohmann::json&) {
-                return ExecuteAiAssetImportStatus();
-            },
-        });
-        operationRegistry_.Register({
-            "action.undo_last",
-            "Undo the most recent edit in the active workspace.",
-            "general",
-            {},
-            [this](const nlohmann::json&) {
-                return ExecuteAiUndoLast();
-            },
-        });
-        operationRegistry_.Register({
-            "material.node_list",
-            "List discoverable material graph node types.",
-            "model_material",
-            {
-                P("keyword", EditorOperationParameterType::String,
-                  false, "按关键字过滤节点类型"),
-                P("class", EditorOperationParameterType::String,
-                  false, "按节点类别过滤"),
-            },
-            [](const nlohmann::json& parameters) {
-                EDITOR::EditorOperationResult result{};
-                std::string message;
-                std::string code;
-                std::vector<std::string> details;
-                if (EDITOR::ListAiMaterialNodes(
-                        parameters.value("keyword", std::string{}),
-                        parameters.value("class", std::string{}),
-                        message, details, code)) {
-                    result.ok = true;
-                    result.code = "OK";
-                    result.message = message;
-                    result.details = std::move(details);
-                } else {
-                    result.code = code;
-                    result.message = message;
-                    result.details = std::move(details);
+                uint64_t value = 0u;
+                const char* begin = reference.targetId.data();
+                const char* end = begin + reference.targetId.size();
+                const auto parsed = std::from_chars(begin, end, value);
+                if (parsed.ec != std::errc{} || parsed.ptr != end ||
+                    value == 0u) {
+                    return;
                 }
-                return result;
-            },
-        });
-        operationRegistry_.Register({
-            "scene.create_object",
-            "Create a model object in the scene by asset id or path fragment.",
-            "scene",
-            {
-                P("model", EditorOperationParameterType::String,
-                  true, "模型资产 id 或路径片段"),
-                P("name", EditorOperationParameterType::String,
-                  false, "物体名称，缺省为 AI Model"),
-                P("positionX", EditorOperationParameterType::Float,
-                  false, "世界位置 X"),
-                P("positionY", EditorOperationParameterType::Float,
-                  false, "世界位置 Y"),
-                P("positionZ", EditorOperationParameterType::Float,
-                  false, "世界位置 Z"),
-                P("scaleX", EditorOperationParameterType::Float,
-                  false, "缩放 X"),
-                P("scaleY", EditorOperationParameterType::Float,
-                  false, "缩放 Y"),
-                P("scaleZ", EditorOperationParameterType::Float,
-                  false, "缩放 Z"),
-            },
-            [this](const nlohmann::json& parameters) {
-                return ExecuteAiSceneCreateObject(parameters);
-            },
-        });
-        operationRegistry_.Register({
-            "procedural.create_primitive",
-            "Create a procedural mesh object (box/sphere/plane/grid_plane/cylinder/capsule).",
-            "scene",
-            {
-                P("kind", EditorOperationParameterType::String,
-                  false, "box/sphere/plane/grid_plane/cylinder/capsule"),
-                P("name", EditorOperationParameterType::String,
-                  false, "物体名称，缺省使用 kind"),
-                P("positionX", EditorOperationParameterType::Float,
-                  false, "世界位置 X"),
-                P("positionY", EditorOperationParameterType::Float,
-                  false, "世界位置 Y"),
-                P("positionZ", EditorOperationParameterType::Float,
-                  false, "世界位置 Z"),
-                P("scaleX", EditorOperationParameterType::Float,
-                  false, "缩放 X"),
-                P("scaleY", EditorOperationParameterType::Float,
-                  false, "缩放 Y"),
-                P("scaleZ", EditorOperationParameterType::Float,
-                  false, "缩放 Z"),
-                P("width", EditorOperationParameterType::Float,
-                  false, "网格宽度"),
-                P("height", EditorOperationParameterType::Float,
-                  false, "网格高度"),
-                P("depth", EditorOperationParameterType::Float,
-                  false, "网格深度"),
-            },
-            [this](const nlohmann::json& parameters) {
-                return ExecuteAiProceduralCreatePrimitive(parameters);
-            },
-        });
-        operationRegistry_.Register({
-            "material.edit_parameter",
-            "Edit a scalar material graph parameter by full parameter name.",
-            "model_material",
-            {
-                P("parameter", EditorOperationParameterType::String,
-                  true, "完整参数名，例如 parameter.baseColor"),
-                P("value", EditorOperationParameterType::Float,
-                  true, "要写入的数值"),
-            },
-            [this](const nlohmann::json& parameters) {
-                return ExecuteAiMaterialEditParameter(parameters);
-            },
-        });
-        operationRegistry_.Register({
-            "material.graph_edit",
-            "Add/remove/connect material graph nodes and edit node values.",
-            "model_material",
-            {
-                P("operation", EditorOperationParameterType::String,
-                  true, "add_node/remove_node/connect/disconnect/set_node"),
-                P("nodeType", EditorOperationParameterType::String,
-                  false, "add_node 的稳定节点类型名"),
-                P("name", EditorOperationParameterType::String,
-                  false, "add_node 的显示名或 remove_node 的节点 id/name"),
-                P("node", EditorOperationParameterType::String,
-                  false, "name 的别名"),
-                P("sourceNode", EditorOperationParameterType::String,
-                  false, "连线起点节点"),
-                P("sourcePin", EditorOperationParameterType::String,
-                  false, "连线起点插槽，缺省取第一个"),
-                P("targetNode", EditorOperationParameterType::String,
-                  false, "连线终点节点"),
-                P("targetPin", EditorOperationParameterType::String,
-                  false, "连线终点插槽，缺省取第一个"),
-                P("edgeId", EditorOperationParameterType::String,
-                  false, "disconnect 的边 id"),
-                P("valueType", EditorOperationParameterType::String,
-                  false, "set_node 的值类型"),
-                P("property", EditorOperationParameterType::String,
-                  false, "set_node 的属性名"),
-                P("resource", EditorOperationParameterType::String,
-                  false, "set_node 的资源 id（TextureSample）"),
-                P("value", EditorOperationParameterType::String,
-                  false, "set_node 的字符串属性值"),
-                P("layout", EditorOperationParameterType::String,
-                  false, "manual 保留坐标，否则自动布局"),
-                P("positionX", EditorOperationParameterType::Float,
-                  false, "节点 X"),
-                P("positionY", EditorOperationParameterType::Float,
-                  false, "节点 Y"),
-                P("valueX", EditorOperationParameterType::Float,
-                  false, "值 X"),
-                P("valueY", EditorOperationParameterType::Float,
-                  false, "值 Y"),
-                P("valueZ", EditorOperationParameterType::Float,
-                  false, "值 Z"),
-                P("valueW", EditorOperationParameterType::Float,
-                  false, "值 W"),
-            },
-            [this](const nlohmann::json& parameters) {
-                return ExecuteAiMaterialGraphEdit(parameters);
-            },
-        });
-        operationRegistry_.Register({
-            "material.verify",
-            "Capture the material preview and run a vision analysis on it.",
-            "model_material",
-            {
-                P("prompt", EditorOperationParameterType::String,
-                  false, "识图提示词，缺省使用默认描述"),
-            },
-            [this](const nlohmann::json& parameters) {
-                return ExecuteAiMaterialVerify(parameters);
-            },
-            // Vision analysis performs network I/O; keep it on the AI worker
-            // thread instead of blocking the editor main thread.
-            true,
-        });
-        operationRegistry_.Register({
-            "scene.save",
-            "Save the current scene document.",
-            "scene",
-            {},
-            [this](const nlohmann::json&) {
-                return ExecuteSceneSave();
-            },
-        });
-        operationRegistry_.Register({
-            "scene.delete_object",
-            "Delete the selected object, or the object with the given name.",
-            "scene",
-            {
-                P("name", EditorOperationParameterType::String,
-                  false, "物体名称；缺省删除当前选中对象"),
-            },
-            [this](const nlohmann::json& parameters) {
-                return ExecuteSceneDeleteObject(parameters);
-            },
-        });
-        operationRegistry_.Register({
-            "scene.duplicate_object",
-            "Duplicate the selected object, or the object with the given name.",
-            "scene",
-            {
-                P("name", EditorOperationParameterType::String,
-                  false, "物体名称；缺省复制当前选中对象"),
-            },
-            [this](const nlohmann::json& parameters) {
-                return ExecuteSceneDuplicateObject(parameters);
-            },
-        });
-        operationRegistry_.Register({
-            "scene.create_empty_object",
-            "Create an empty scene object.",
-            "scene",
-            {
-                P("name", EditorOperationParameterType::String,
-                  false, "物体名称，缺省为 AI Object"),
-                P("positionX", EditorOperationParameterType::Float,
-                  false, "世界位置 X"),
-                P("positionY", EditorOperationParameterType::Float,
-                  false, "世界位置 Y"),
-                P("positionZ", EditorOperationParameterType::Float,
-                  false, "世界位置 Z"),
-                P("scaleX", EditorOperationParameterType::Float,
-                  false, "缩放 X"),
-                P("scaleY", EditorOperationParameterType::Float,
-                  false, "缩放 Y"),
-                P("scaleZ", EditorOperationParameterType::Float,
-                  false, "缩放 Z"),
-            },
-            [this](const nlohmann::json& parameters) {
-                return ExecuteSceneCreateEmptyObject(parameters);
-            },
-        });
-        EDITOR::RegisterModelCollisionOperations(
-            operationRegistry_,
-            modelCollisionWorkspaceController_,
-            [this]() { return aiOperationScene_; });
-        EDITOR::RegisterAnimationStateMachineOperations(
-            operationRegistry_,
-            animationStateMachineWorkspaceController_,
-            [this]() { return aiOperationScene_; });
-        EDITOR::RegisterCinematicsOperations(
-            operationRegistry_,
-            cinematicsWorkspaceController_,
-            [this]() { return aiOperationScene_; });
-        EDITOR::RegisterModelMaterialOperations(
-            operationRegistry_,
-            modelMaterialWorkspaceController_,
-            [this]() { return aiOperationScene_; });
+                SelectViewportObjects(
+                    *aiOperationScene_,
+                    { SceneObjectId{ value } },
+                    EditorObjectSelectionMode::Replace);
+                EDITOR::EditorWorkspaceOpenRequest request{};
+                request.workspaceId = EDITOR::EditorWorkspaceId::Scene;
+                (void)workspaceHost_.RequestOpen(std::move(request));
+            });
+        vfxWorkspaceController_.SetPreviewNamespaceRetireCallback(
+            [](uint64_t playbackNamespace) {
+                MESHRENDERER::ReleaseParticleNamespace(
+                    playbackNamespace);
+            });
+        vfxWorkspaceController_.SetAssetRefreshCallback(
+            [this](const AssetGuid&, std::string& outMessage) {
+                if (aiOperationScene_ == nullptr) {
+                    outMessage =
+                        "VFX source saved, but no active scene is available "
+                        "for runtime asset refresh";
+                    return false;
+                }
+                if (!aiOperationScene_->ReloadAssets()) {
+                    outMessage =
+                        "VFX source saved, but runtime asset refresh failed";
+                    return false;
+                }
+                outMessage.clear();
+                return true;
+            });
+        vfxWorkspaceController_.SetMaterialEditCallback(
+            [this](const AssetGuid& materialGuid,
+                   std::string& outMessage) {
+                if (!materialGuid.IsValid()) {
+                    outMessage = "Material GUID is empty";
+                    return false;
+                }
+                EDITOR::EditorWorkspaceOpenRequest request{};
+                request.workspaceId =
+                    EDITOR::EditorWorkspaceId::ModelMaterial;
+                request.materialAssetGuid = materialGuid;
+                if (!workspaceHost_.RequestOpen(std::move(request))) {
+                    outMessage =
+                        "Failed to queue the Material workspace";
+                    return false;
+                }
+                outMessage = "Opening Material editor";
+                return true;
+            });
+        RegisterEditorOperations();
         commandRouter_.SetOperationRegistry(&operationRegistry_);
+    }
+
+    DocumentSceneEditorController::~DocumentSceneEditorController() {
+        vfxWorkspaceController_.Deactivate(
+            workspaceHost_.GetVfxPreviewView().renderViewId);
+        aiAssistantPanel_.Stop();
+        aiLocalBridge_.Stop();
     }
 
     EDITOR::EditorOperationResult
@@ -780,32 +525,27 @@ namespace HIKARI {
         }
         const std::string name =
             parameters.value("name", std::string{});
-        if (name.empty()) {
-            result.code = "MISSING_FIELD";
-            result.message = "缺少 name 字段（目标物体名）";
+        std::optional<SceneObjectId> objectId{};
+        if (!ReadOptionalSceneObjectId(
+                parameters, objectId, result)) {
             return result;
         }
-        GameObject* target = nullptr;
-        for (const auto& object : scene->GetWorld().GetObjects()) {
-            if (object->GetName() == name) {
-                target = object.get();
-                break;
-            }
+        const EDITOR::SceneObjectTargetResolution resolution =
+            EDITOR::ResolveSceneObjectTarget(
+                *scene, objectId, name);
+        if (!resolution.IsResolved()) {
+            return TargetResolutionFailure(resolution);
         }
-        if (target == nullptr) {
-            result.code = "OBJECT_NOT_FOUND";
-            result.message = "找不到物体：" + name;
-            return result;
-        }
+        GameObject* target = resolution.runtimeObject;
         SceneObjectData* documentObject =
-            selectionSync_.FindDocumentObjectByRuntime(
-                *scene, target);
-        if (documentObject == nullptr) {
-            result.code = "OBJECT_NOT_IN_DOCUMENT";
-            result.message =
-                "目标物体不在场景文档中，不能安全修改";
-            return result;
-        }
+            resolution.documentObject;
+        const bool dirtyBefore =
+            context_.sceneDirty ||
+            scene->HasUnsavedSceneChanges();
+        const std::vector<SceneObjectData> beforeObjects =
+            scene->GetSceneDocument().objects;
+        const SceneCameraSettings beforeCamera =
+            scene->GetSceneDocument().camera;
         const MATH::Vec3 beforePosition =
             documentObject->transform.position;
         const MATH::Vec3 beforeScale =
@@ -897,13 +637,6 @@ namespace HIKARI {
         }
         result.ok = true;
         if (changed) {
-            const bool dirtyBefore =
-                context_.sceneDirty ||
-                scene->HasUnsavedSceneChanges();
-            const std::vector<SceneObjectData> beforeObjects =
-                scene->GetSceneDocument().objects;
-            const SceneCameraSettings beforeCamera =
-                scene->GetSceneDocument().camera;
             CommitSceneObjectAuthoringHistory(
                 *scene,
                 SceneObjectAuthoringHistoryRequest{
@@ -917,9 +650,13 @@ namespace HIKARI {
                 *scene, result.details, 8u);
         }
         result.message = changed
-            ? "已更新物体 " + name
-            : "物体 " + name +
+            ? "已更新物体 " + target->GetName()
+            : "物体 " + target->GetName() +
                 " 未变化（需要 positionX/scaleX/rotationX 等字段）";
+        result.data = {
+            { "objectId", target->GetDocumentId().value },
+            { "name", target->GetName() }
+        };
         return result;
     }
 
@@ -976,8 +713,10 @@ namespace HIKARI {
             char line[192];
             std::snprintf(
                 line, sizeof(line),
-                "%s | pos(%.2f, %.2f, %.2f) | "
+                "[%llu] %s | pos(%.2f, %.2f, %.2f) | "
                 "scale(%.2f, %.2f, %.2f)",
+                static_cast<unsigned long long>(
+                    object->GetDocumentId().value),
                 object->GetName().c_str(),
                 position.x, position.y, position.z,
                 scale.x, scale.y, scale.z);
@@ -1210,6 +949,14 @@ namespace HIKARI {
         if (workspaceHost_.IsActive(
                 EDITOR::EditorWorkspaceId::AnimationStateMachine)) {
             return operationRegistry_.Execute("asm.undo");
+        }
+        if (workspaceHost_.IsActive(
+                EDITOR::EditorWorkspaceId::RuntimeBinding)) {
+            return operationRegistry_.Execute("binding.undo");
+        }
+        if (workspaceHost_.IsActive(
+                EDITOR::EditorWorkspaceId::Vfx)) {
+            return operationRegistry_.Execute("vfx.undo");
         }
         if (workspaceHost_.IsActive(
                 EDITOR::EditorWorkspaceId::Cinematics) &&
@@ -1650,20 +1397,21 @@ namespace HIKARI {
         }
         const std::string name =
             parameters.value("name", std::string{});
-        if (!name.empty()) {
-            GameObject* target = nullptr;
-            for (const auto& object :
-                 scene->GetWorld().GetObjects()) {
-                if (object->GetName() == name) {
-                    target = object.get();
-                    break;
-                }
+        std::optional<SceneObjectId> objectId{};
+        if (!ReadOptionalSceneObjectId(
+                parameters, objectId, result)) {
+            return result;
+        }
+        std::string resolvedName{};
+        if (objectId.has_value() || !name.empty()) {
+            const EDITOR::SceneObjectTargetResolution resolution =
+                EDITOR::ResolveSceneObjectTarget(
+                    *scene, objectId, name);
+            if (!resolution.IsResolved()) {
+                return TargetResolutionFailure(resolution);
             }
-            if (target == nullptr) {
-                result.code = "OBJECT_NOT_FOUND";
-                result.message = "找不到物体：" + name;
-                return result;
-            }
+            GameObject* target = resolution.runtimeObject;
+            resolvedName = target->GetName();
             context_.selection.SelectObject(
                 scene->GetWorld(),
                 target);
@@ -1692,9 +1440,9 @@ namespace HIKARI {
         }
         result.ok = true;
         result.code = "OK";
-        result.message = name.empty()
+        result.message = resolvedName.empty()
             ? "已删除选中对象"
-            : "已删除对象 " + name;
+            : "已删除对象 " + resolvedName;
         return result;
     }
 
@@ -1710,20 +1458,21 @@ namespace HIKARI {
         }
         const std::string name =
             parameters.value("name", std::string{});
-        if (!name.empty()) {
-            GameObject* target = nullptr;
-            for (const auto& object :
-                 scene->GetWorld().GetObjects()) {
-                if (object->GetName() == name) {
-                    target = object.get();
-                    break;
-                }
+        std::optional<SceneObjectId> objectId{};
+        if (!ReadOptionalSceneObjectId(
+                parameters, objectId, result)) {
+            return result;
+        }
+        std::string resolvedName{};
+        if (objectId.has_value() || !name.empty()) {
+            const EDITOR::SceneObjectTargetResolution resolution =
+                EDITOR::ResolveSceneObjectTarget(
+                    *scene, objectId, name);
+            if (!resolution.IsResolved()) {
+                return TargetResolutionFailure(resolution);
             }
-            if (target == nullptr) {
-                result.code = "OBJECT_NOT_FOUND";
-                result.message = "找不到物体：" + name;
-                return result;
-            }
+            GameObject* target = resolution.runtimeObject;
+            resolvedName = target->GetName();
             context_.selection.SelectObject(
                 scene->GetWorld(),
                 target);
@@ -1752,9 +1501,9 @@ namespace HIKARI {
         }
         result.ok = true;
         result.code = "OK";
-        result.message = name.empty()
+        result.message = resolvedName.empty()
             ? "已复制选中对象"
-            : "已复制对象 " + name;
+            : "已复制对象 " + resolvedName;
         return result;
     }
 
@@ -1817,6 +1566,16 @@ namespace HIKARI {
     }
 
     void DocumentSceneEditorController::EnsureAiLocalBridge() {
+        if (!context_.aiIntegration.localBridgeEnabled) {
+            if (aiBridgeStarted_) {
+                aiLocalBridge_.Stop();
+                aiBridgeStarted_ = false;
+            }
+            aiAssistantPanel_.SetBridgeSessionToken({});
+            aiAssistantPanel_.SetBridgeStatus(
+                "本地桥已禁用（可在编辑器设置中启用）");
+            return;
+        }
         if (aiBridgeStarted_) {
             aiAssistantPanel_.SetBridgeStatus(
                 aiLocalBridge_.IsRunning()
@@ -1842,10 +1601,32 @@ namespace HIKARI {
                 bridgeError)) {
             aiAssistantPanel_.SetBridgeStatus(
                 "本地桥：" + aiLocalBridge_.GetEndpoint());
+            aiAssistantPanel_.SetBridgeSessionToken(
+                aiLocalBridge_.GetSessionToken());
         } else {
+            aiAssistantPanel_.SetBridgeSessionToken({});
             aiAssistantPanel_.SetBridgeStatus(
                 "本地桥启动失败：" + bridgeError);
         }
+    }
+
+    void DocumentSceneEditorController::SnapshotSceneViewCameras(
+        DocumentSceneBase& scene) {
+
+        sceneViewEditorCameraSnapshot_ = scene.GetCamera();
+        sceneViewDebugCameraSnapshot_ = scene.GetDebugCamera();
+        sceneViewCameraSnapshotValid_ = true;
+    }
+
+    void DocumentSceneEditorController::RestoreSceneViewCameras(
+        DocumentSceneBase& scene) {
+
+        if (!sceneViewCameraSnapshotValid_) {
+            return;
+        }
+        scene.GetCamera() = sceneViewEditorCameraSnapshot_;
+        scene.GetDebugCamera() = sceneViewDebugCameraSnapshot_;
+        sceneViewCameraSnapshotValid_ = false;
     }
 
     void DocumentSceneEditorController::Draw(
@@ -1897,6 +1678,24 @@ namespace HIKARI {
         }
         if (const std::optional<EDITOR::EditorWorkspaceActivation> activation =
                 workspaceHost_.ApplyPending()) {
+            const auto isSceneOwnedWorkspace =
+                [](EDITOR::EditorWorkspaceId id) {
+                    return id == EDITOR::EditorWorkspaceId::Scene ||
+                        id == EDITOR::EditorWorkspaceId::Cinematics ||
+                        id == EDITOR::EditorWorkspaceId::Count;
+                };
+            if (isSceneOwnedWorkspace(activation->previous) &&
+                !isSceneOwnedWorkspace(activation->current)) {
+                SnapshotSceneViewCameras(scene);
+            } else if (!isSceneOwnedWorkspace(activation->previous) &&
+                isSceneOwnedWorkspace(activation->current)) {
+                RestoreSceneViewCameras(scene);
+            }
+            if (activation->previous == EDITOR::EditorWorkspaceId::Vfx &&
+                activation->current != EDITOR::EditorWorkspaceId::Vfx) {
+                vfxWorkspaceController_.Deactivate(
+                    workspaceHost_.GetVfxPreviewView().renderViewId);
+            }
             cinematicsWorkspaceController_.ApplyWorkspaceActivation(
                 scene,
                 *activation,
@@ -1913,10 +1712,80 @@ namespace HIKARI {
             animationStateMachineWorkspaceController_.ApplyWorkspaceActivation(
                 scene,
                 *activation);
+            if (activation->current ==
+                    EDITOR::EditorWorkspaceId::RuntimeBinding) {
+                std::string message{};
+                if (!runtimeBindingWorkspaceController_.Activate(
+                        scene,
+                        message) || !message.empty()) {
+                    viewportDropMessage_ = std::move(message);
+                }
+            }
+            if (activation->current == EDITOR::EditorWorkspaceId::Vfx) {
+                std::string message{};
+                const AssetGuid requestedGuid =
+                    activation->vfxAssetGuid.value_or(AssetGuid{});
+                if (!vfxWorkspaceController_.Activate(
+                        scene.GetAssetDatabase(),
+                        requestedGuid,
+                        message) || !message.empty()) {
+                    viewportDropMessage_ = std::move(message);
+                }
+            }
+        }
+
+        if (workspaceHost_.IsActive(
+                EDITOR::EditorWorkspaceId::RuntimeBinding)) {
+            SERVICES::SetEditorGameViewportSize(0, 0, false);
+            runtimeBindingWorkspaceController_.DrawDockSpace(
+                workspaceHost_.ConsumeReset(
+                    EDITOR::EditorWorkspaceId::RuntimeBinding));
+            const EDITOR::RuntimeBindingWorkspaceResult result =
+                runtimeBindingWorkspaceController_.Draw(
+                    scene,
+                    commandRouter_);
+            if (result.exitToSceneRequested) {
+                EDITOR::EditorWorkspaceOpenRequest request{};
+                request.workspaceId = EDITOR::EditorWorkspaceId::Scene;
+                (void)workspaceHost_.RequestOpen(std::move(request));
+            }
+            if (!result.statusMessage.empty()) {
+                viewportDropMessage_ = result.statusMessage;
+            }
+            DrawPendingSceneOpenModal(scene);
+            return;
+        }
+
+        if (workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Vfx)) {
+            // The VFX workspace owns the presented realtime view. Do not keep
+            // a hidden primary game/scene viewport rendering behind it.
+            SERVICES::SetEditorGameViewportSize(0, 0, false);
+            vfxWorkspaceController_.DrawDockSpace(
+                workspaceHost_.ConsumeReset(
+                    EDITOR::EditorWorkspaceId::Vfx));
+            const EDITOR::VfxWorkspaceResult result =
+                vfxWorkspaceController_.Draw(
+                    scene.GetAssetDatabase(),
+                    scene.GetAssetRegistry(),
+                    workspaceHost_.GetVfxPreviewView(),
+                    static_cast<uint64_t>(ImGui::GetFrameCount()),
+                    ImGui::GetIO().DeltaTime,
+                    commandRouter_);
+            if (result.exitToSceneRequested) {
+                EDITOR::EditorWorkspaceOpenRequest request{};
+                request.workspaceId = EDITOR::EditorWorkspaceId::Scene;
+                (void)workspaceHost_.RequestOpen(std::move(request));
+            }
+            if (!result.statusMessage.empty()) {
+                viewportDropMessage_ = result.statusMessage;
+            }
+            DrawPendingSceneOpenModal(scene);
+            return;
         }
 
         if (workspaceHost_.IsActive(
                 EDITOR::EditorWorkspaceId::AnimationStateMachine)) {
+            SERVICES::SetEditorGameViewportSize(0, 0, false);
             animationStateMachineWorkspaceController_.DrawDockSpace(
                 workspaceHost_.ConsumeReset(
                     EDITOR::EditorWorkspaceId::AnimationStateMachine));
@@ -1941,6 +1810,7 @@ namespace HIKARI {
 
         if (workspaceHost_.IsActive(
                 EDITOR::EditorWorkspaceId::ModelMaterial)) {
+            SERVICES::SetEditorGameViewportSize(0, 0, false);
             modelMaterialWorkspaceController_.DrawDockSpace(
                 workspaceHost_.ConsumeReset(
                     EDITOR::EditorWorkspaceId::ModelMaterial));
@@ -1966,6 +1836,7 @@ namespace HIKARI {
 
         if (workspaceHost_.IsActive(
                 EDITOR::EditorWorkspaceId::ModelCollision)) {
+            SERVICES::SetEditorGameViewportSize(0, 0, false);
             modelCollisionWorkspaceController_.DrawDockSpace(
                 workspaceHost_.ConsumeReset(
                     EDITOR::EditorWorkspaceId::ModelCollision));
@@ -1990,6 +1861,7 @@ namespace HIKARI {
         }
 
         if (workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Cinematics)) {
+            SERVICES::SetEditorGameViewportSize(0, 0, false);
             const bool externalDirtyBefore =
                 historyExternalDirty_ ||
                 ((context_.sceneDirty || scene.HasUnsavedSceneChanges()) &&
@@ -2129,27 +2001,25 @@ namespace HIKARI {
                 context_.selection,
                 resourceContext);
 
-            const std::string activatedModelCollisionGuid =
-                resourceWorkspacePanel_.ConsumeActivatedModelCollisionGuid();
-            if (!activatedModelCollisionGuid.empty()) {
-                EDITOR::EditorWorkspaceOpenRequest request{};
-                request.workspaceId =
-                    EDITOR::EditorWorkspaceId::ModelCollision;
-                request.modelAssetGuid =
-                    AssetGuid{ activatedModelCollisionGuid };
-                (void)workspaceHost_.RequestOpen(std::move(request));
-            }
-
-            const std::string activatedAnimationStateMachineGuid =
-                resourceWorkspacePanel_.
-                    ConsumeActivatedAnimationStateMachineGuid();
-            if (!activatedAnimationStateMachineGuid.empty()) {
-                EDITOR::EditorWorkspaceOpenRequest request{};
-                request.workspaceId =
-                    EDITOR::EditorWorkspaceId::AnimationStateMachine;
-                request.animationStateMachineAssetGuid =
-                    AssetGuid{ activatedAnimationStateMachineGuid };
-                (void)workspaceHost_.RequestOpen(std::move(request));
+            if (const auto activation =
+                    resourceWorkspacePanel_.ConsumeActivatedAsset()) {
+                EDITOR::AssetWorkspaceActivationRoute route =
+                    EDITOR::RouteAssetWorkspaceActivation(*activation);
+                if (route.workspaceRequest.has_value()) {
+                    (void)workspaceHost_.RequestOpen(
+                        std::move(*route.workspaceRequest));
+                } else if (route.sceneAssetGuid.has_value()) {
+                    pendingSceneOpenGuid_ = *route.sceneAssetGuid;
+                    if (context_.sceneDirty ||
+                        scene.HasUnsavedSceneChanges()) {
+                        ImGui::OpenPopup("Unsaved Scene Changes");
+                    } else {
+                        OpenSceneAssetFromEditor(
+                            scene,
+                            pendingSceneOpenGuid_);
+                        pendingSceneOpenGuid_ = {};
+                    }
+                }
             }
 
             const std::string saveSceneAsGuid = resourceWorkspacePanel_.ConsumeSaveSceneAsGuid();
@@ -2162,17 +2032,6 @@ namespace HIKARI {
                 } else {
                     viewportDropMessage_ = "Scene save target failed";
                     HIKARI_LOG_WARN("[SceneAsset] save scene failed: " + saveSceneAsGuid);
-                }
-            }
-
-            const std::string activatedSceneGuid = resourceWorkspacePanel_.ConsumeActivatedSceneGuid();
-            if (!activatedSceneGuid.empty()) {
-                pendingSceneOpenGuid_ = AssetGuid{ activatedSceneGuid };
-                if (context_.sceneDirty || scene.HasUnsavedSceneChanges()) {
-                    ImGui::OpenPopup("Unsaved Scene Changes");
-                } else {
-                    OpenSceneAssetFromEditor(scene, pendingSceneOpenGuid_);
-                    pendingSceneOpenGuid_ = {};
                 }
             }
 
@@ -2305,25 +2164,27 @@ namespace HIKARI {
         if (context_.windows.runtime.showPerformanceAudit) {
             performanceAuditPanel_.Draw(context_.windows.runtime.showPerformanceAudit);
         }
-        aiAssistantPanel_.SetContextCallback([this, &scene]() {
-                std::string context =
-                    "scene objects: " +
-                    std::to_string(
-                        scene.GetWorld().GetObjects().size()) +
-                    " (";
-                size_t shown = 0u;
-                for (const auto& object :
-                     scene.GetWorld().GetObjects()) {
-                    if (shown >= 8u) {
-                        context += "...";
-                        break;
-                    }
-                    if (shown > 0u) {
-                        context += ", ";
-                    }
-                    context += object->GetName();
-                    ++shown;
+        {
+            std::string context =
+                "scene objects: " +
+                std::to_string(
+                    scene.GetWorld().GetObjects().size()) +
+                " (";
+            size_t shown = 0u;
+            for (const auto& object :
+                 scene.GetWorld().GetObjects()) {
+                if (shown >= 8u) {
+                    context += "...";
+                    break;
                 }
+                if (shown > 0u) {
+                    context += ", ";
+                }
+                context += "[" + std::to_string(
+                    object->GetDocumentId().value) + "] ";
+                context += object->GetName();
+                ++shown;
+            }
             context += ")\n" +
                 modelMaterialWorkspaceController_
                     .GetAiMaterialStatus();
@@ -2331,38 +2192,40 @@ namespace HIKARI {
                 std::to_string(
                     scene.GetAssetRegistry().CollectByType(
                         AssetType::Model).size());
-            return context;
-        });
-            aiAssistantPanel_.SetSceneActionCallback(
-                [this](std::string_view json) {
-                    const std::string action =
-                        EDITOR::AI_ASSISTANT::ExtractJsonField(json, "action");
-                    if (operationRegistry_.IsRegistered(action)) {
-                        try {
-                            return ToAiRequestResult(
-                                operationRegistry_.Execute(
-                                    action,
-                                    nlohmann::json::parse(
-                                        std::string(json))));
-                        } catch (...) {
-                            EDITOR::AI_ASSISTANT::AiRequestResult result{};
-                            result.code = "INVALID_JSON";
-                            result.message = "动作 JSON 解析失败";
-                            return result;
-                        }
+            aiAssistantPanel_.SetContextSnapshot(std::move(context));
+        }
+        aiAssistantPanel_.SetSceneActionCallback(
+            [this](std::string_view json) {
+                const std::string action =
+                    EDITOR::AI_ASSISTANT::ExtractJsonField(json, "action");
+                if (operationRegistry_.IsRegistered(action)) {
+                    nlohmann::json parameters;
+                    try {
+                        parameters = nlohmann::json::parse(
+                            std::string(json));
+                    } catch (const nlohmann::json::parse_error& error) {
+                        EDITOR::AI_ASSISTANT::AiRequestResult result{};
+                        result.code = "JSON_PARSE_ERROR";
+                        result.message = "动作 JSON 解析失败";
+                        result.details.push_back(error.what());
+                        return result;
                     }
-                    EDITOR::AI_ASSISTANT::AiRequestResult result{};
-                    result.ok = false;
-                    result.code = "UNKNOWN_ACTION";
-                    result.message = "不支持的 AI 动作：" + action;
-                    for (const std::string& id :
-                         operationRegistry_.RegisteredIds()) {
-                        result.details.push_back("supported: " + id);
-                    }
-                    return result;
-                });
-            EnsureAiLocalBridge();
-            if (context_.windows.runtime.showAiAssistant) {
+                    return ToAiRequestResult(
+                        operationRegistry_.Execute(
+                            action, parameters));
+                }
+                EDITOR::AI_ASSISTANT::AiRequestResult result{};
+                result.ok = false;
+                result.code = "UNKNOWN_ACTION";
+                result.message = "不支持的 AI 动作：" + action;
+                for (const std::string& id :
+                     operationRegistry_.RegisteredIds()) {
+                    result.details.push_back("supported: " + id);
+                }
+                return result;
+            });
+        EnsureAiLocalBridge();
+        if (context_.windows.runtime.showAiAssistant) {
             aiAssistantPanel_.Draw(context_.windows.runtime.showAiAssistant);
         }
         if (context_.windows.runtime.showEditorSettings) {

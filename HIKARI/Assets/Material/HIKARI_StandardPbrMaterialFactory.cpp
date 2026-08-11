@@ -146,7 +146,7 @@ namespace HIKARI {
             MaterialNodeKind::SurfaceOutput, MaterialValueType::Surface,
             360.0f, 0.0f);
 
-        // Material v5 has no hidden resource-to-surface projection. Imported
+        // Material v6 has no hidden resource-to-surface projection. Imported
         // model textures become ordinary, visible Texture Sample nodes and
         // only affect the surface through these reachable edges.
         const auto addTextureSample = [&](

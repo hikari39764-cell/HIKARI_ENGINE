@@ -19,6 +19,32 @@ namespace HIKARI::EDITOR {
 namespace {
 constexpr int kDefaultToolRounds = 40;
 constexpr int kMaxToolRoundsCeiling = 120;
+
+std::string FormatCapabilityParameters(
+    const AI_ASSISTANT::AiCapability& capability) {
+
+    if (capability.parameters.empty()) {
+        return {};
+    }
+    std::string result = " parameters: ";
+    for (size_t index = 0u;
+        index < capability.parameters.size();
+        ++index) {
+        if (index != 0u) {
+            result += ", ";
+        }
+        const AI_ASSISTANT::AiCapabilityParameter& parameter =
+            capability.parameters[index];
+        if (!parameter.required) {
+            result += "[";
+        }
+        result += parameter.name + ":" + parameter.type;
+        if (!parameter.required) {
+            result += "]";
+        }
+    }
+    return result;
+}
 } // namespace
 
 namespace AI_ASSISTANT {
@@ -133,7 +159,7 @@ const std::vector<AiCapability>& BuiltInCapabilities() {
           "List the current AI-accessible capabilities and boundaries.",
           "stable" },
         { "query.material_templates",
-          "List built-in material templates (PBR/Toon/Skin/Face/Hair/Eye/Cloth/Hybrid).",
+          "List built-in Surface and Particle material templates.",
           "stable" },
         { "material.compile",
           "Material graphs compile to bounded expression programs with diagnostics and budget.",
@@ -171,7 +197,8 @@ AiRequestResult SubmitAiRequest(
         for (const AiCapability& capability : capabilities) {
             result.details.push_back(
                 capability.status + ": " + capability.id + " - " +
-                capability.summary);
+                capability.summary +
+                FormatCapabilityParameters(capability));
         }
         return result;
     }
@@ -327,6 +354,16 @@ AiRequestResult SubmitAiRequest(
                 "Material Function 节点必须由人类在编辑器的 "
                 "Material Functions 菜单添加",
             };
+        } else if (topic == "material.create_from_template") {
+            result.details = {
+                "{\"action\":\"material.create_from_template\","
+                "\"templateId\":\"ParticleUnlit\","
+                "\"name\":\"PlayerTrail\"}",
+                "创建成功后会在后台材质工作区打开新文档，"
+                "不会自动绑定当前模型材质槽。",
+                "当前材质文档有未保存修改时返回 PENDING_CONFIRMATION，"
+                "且不会创建资产。",
+            };
         } else if (topic == "material.open_model" ||
                    topic == "material.open_asset" ||
                    topic == "material.list_assets" ||
@@ -339,6 +376,8 @@ AiRequestResult SubmitAiRequest(
                 "\"modelGuid\":\"<guid>\"}",
                 "先用 asset.list_models / material.list_assets "
                 "查询资产 guid",
+                "material.list_assets 可用 domain=Surface 或 Particle 过滤，"
+                "并返回 domain/templateId/guid/name/path。",
                 "当前文档有未保存修改时返回 PENDING_CONFIRMATION，"
                 "需要用户先保存或确认",
                 "打开后即可在后台继续材质/碰撞/状态机编辑，"
@@ -537,27 +576,35 @@ AiRequestResult SubmitAiRequest(
                 "Scene Cinematics（场景内嵌时间线）请使用 scene.save",
             };
         } else {
-            result.message =
-                "没有 topic 的专用说明，请先用 list_capabilities "
-                "查看能力清单。";
+            const auto capability = std::find_if(
+                capabilities.begin(),
+                capabilities.end(),
+                [&topic](const AiCapability& candidate) {
+                    return candidate.id == topic;
+                });
+            if (capability == capabilities.end()) {
+                result.ok = false;
+                result.code = "UNKNOWN_CAPABILITY";
+                result.message =
+                    "没有这个能力；请先用 list_capabilities 查看清单。";
+            } else {
+                result.message = "能力契约：" + capability->id;
+                result.details.push_back(capability->summary);
+                for (const AiCapabilityParameter& parameter :
+                    capability->parameters) {
+                    result.details.push_back(
+                        std::string(parameter.required
+                            ? "required "
+                            : "optional ") +
+                        parameter.name + ":" + parameter.type +
+                        (parameter.description.empty()
+                            ? std::string{}
+                            : " - " + parameter.description));
+                }
+            }
         }
         return result;
     }
-    if (action == "create_material") {
-        AiRequestResult result{};
-        result.ok = false;
-        result.message =
-            "做不到：AI 还不能创建或保存材质资产（Assets 写命令尚未开放）。"
-            "当前可先查询模板，再在编辑器里创建，之后由 AI 调参。";
-        result.details = {
-            "supported: list_capabilities",
-            "supported: list_material_templates",
-            "planned: material.edit_parameter",
-            "planned: material.create_from_template",
-        };
-        return result;
-    }
-
     AiRequestResult result{};
     result.ok = false;
     result.message = action.empty()
@@ -577,6 +624,10 @@ AiAssistantPanel::AiAssistantPanel() {
 }
 
 AiAssistantPanel::~AiAssistantPanel() {
+    Stop();
+}
+
+void AiAssistantPanel::Stop() {
     stopRequested_.store(true);
     actionCv_.notify_all();
     if (worker_.joinable()) {
@@ -602,7 +653,7 @@ std::string AiAssistantPanel::BuildSystemPrompt() const {
         "参数修改请使用完整参数名（如 parameter.baseColor），"
         "避免后缀歧义；未知参数先用 material.graph_query 查看。\n"
         "Material Function 节点（FunctionCall）需要资产 GUID，"
-        "AI 不能创建；遇到缺失资产引用时用 material.graph_edit "
+        "AI 不能自动创建 Material Function 资产；遇到缺失资产引用时用 material.graph_edit "
         "remove_node 删除坏节点。\n"
         "同类型成品节点（如两个 FresnelRim）共享同一组参数，"
         "这是当前架构限制；需要独立控制时改用 Constant/Parameter "
@@ -632,7 +683,8 @@ std::string AiAssistantPanel::BuildSystemPrompt() const {
     for (const AI_ASSISTANT::AiCapability& capability :
          Capabilities()) {
         prompt += "- " + capability.status + " " + capability.id +
-            "：" + capability.summary + "\n";
+            "：" + capability.summary +
+            FormatCapabilityParameters(capability) + "\n";
     }
     prompt +=
         "\n边界：AI 不能直接修改引擎内部状态；不支持的能力必须明确说做不到，"
@@ -673,11 +725,6 @@ void AiAssistantPanel::AppendReasoning(const std::string& text) {
 
 void AiAssistantPanel::RunConversation(const std::string& userText) {
     const AI_ASSISTANT::AiChatConfig config = SnapshotConfig();
-    AiContextCallback contextCallback;
-    {
-        std::lock_guard<std::mutex> lock(stateMutex_);
-        contextCallback = contextCallback_;
-    }
     std::vector<AI_ASSISTANT::AiChatMessage> conversation;
     {
         std::lock_guard<std::mutex> lock(messageMutex_);
@@ -717,8 +764,9 @@ void AiAssistantPanel::RunConversation(const std::string& userText) {
                 "vision.analyze_image），或明确向用户说明无法继续。";
         }
         systemContent += "\n";
-        if (contextCallback) {
-            systemContent += "\n\n当前现状：\n" + contextCallback();
+        const std::string contextSnapshot = SnapshotContext();
+        if (!contextSnapshot.empty()) {
+            systemContent += "\n\n当前现状：\n" + contextSnapshot;
         }
         request.insert(
             request.begin(),
@@ -838,6 +886,13 @@ void AiAssistantPanel::RunConversation(const std::string& userText) {
             }
             resultText += actionJson + "\n";
             resultText += result.message + "\n";
+            if (!result.data.empty()) {
+                std::string data = result.data.dump();
+                if (data.size() > 8000u) {
+                    data = data.substr(0u, 8000u) + "...";
+                }
+                resultText += "data: " + data + "\n";
+            }
             size_t detailCount = 0u;
             for (const std::string& detail : result.details) {
                 if (detailCount >= 32u) {
@@ -955,10 +1010,9 @@ void AiAssistantPanel::SetSceneActionCallback(
     sceneActionCallback_ = std::move(callback);
 }
 
-void AiAssistantPanel::SetContextCallback(
-    AiContextCallback callback) {
+void AiAssistantPanel::SetContextSnapshot(std::string snapshot) {
     std::lock_guard<std::mutex> lock(stateMutex_);
-    contextCallback_ = std::move(callback);
+    contextSnapshot_ = std::move(snapshot);
 }
 
 void AiAssistantPanel::SetCapabilityProvider(
@@ -984,8 +1038,19 @@ void AiAssistantPanel::SetBridgeStatus(const std::string& status) {
     bridgeStatus_ = status;
 }
 
+void AiAssistantPanel::SetBridgeSessionToken(std::string token) {
+    bridgeSessionToken_ = std::move(token);
+}
+
 AI_ASSISTANT::AiRequestResult AiAssistantPanel::ExecuteRequest(
     std::string_view json) {
+    if (stopRequested_.load()) {
+        AI_ASSISTANT::AiRequestResult result{};
+        result.code = "ACTION_CANCELED";
+        result.message = "动作已被取消（编辑器正在关闭）";
+        return result;
+    }
+
     const std::string action =
         AI_ASSISTANT::ExtractJsonField(json, "action");
     // Panel-local actions are handled here; every other action is routed to
@@ -995,22 +1060,19 @@ AI_ASSISTANT::AiRequestResult AiAssistantPanel::ExecuteRequest(
         action == "list_material_templates" ||
         action == "vision.analyze_image" ||
         action == "help" ||
-        action == "budget.request" ||
-        action == "create_material";
+        action == "budget.request";
     if (panelLocalAction) {
         return AI_ASSISTANT::SubmitAiRequest(json, Capabilities());
     }
 
-    bool longRunning = false;
+    bool workerExecution = false;
     {
         std::lock_guard<std::mutex> lock(stateMutex_);
-        longRunning = longRunningClassifier_
-            ? longRunningClassifier_(action)
+        workerExecution = workerExecutionClassifier_
+            ? workerExecutionClassifier_(action)
             : false;
     }
-    if (longRunning) {
-        // Long-running operations (network, heavy offline work) stay on the
-        // calling worker thread so the editor main thread never blocks.
+    if (workerExecution) {
         return ExecuteRequestNow(json);
     }
 
@@ -1081,20 +1143,30 @@ void AiAssistantPanel::PumpActions() {
         actions.swap(pendingActions_);
     }
     for (const std::shared_ptr<PendingAiAction>& request : actions) {
-        request->result = ExecuteRequestNow(request->json);
+        AI_ASSISTANT::AiRequestResult result =
+            ExecuteRequestNow(request->json);
+        {
+            std::lock_guard<std::mutex> lock(actionMutex_);
+            request->result = std::move(result);
+        }
     }
     actionCv_.notify_all();
 }
 
-void AiAssistantPanel::SetLongRunningClassifier(
-    AiLongRunningClassifier callback) {
+void AiAssistantPanel::SetWorkerExecutionClassifier(
+    AiWorkerExecutionClassifier callback) {
     std::lock_guard<std::mutex> lock(stateMutex_);
-    longRunningClassifier_ = std::move(callback);
+    workerExecutionClassifier_ = std::move(callback);
 }
 
 AI_ASSISTANT::AiChatConfig AiAssistantPanel::SnapshotConfig() const {
     std::lock_guard<std::mutex> lock(stateMutex_);
     return config_;
+}
+
+std::string AiAssistantPanel::SnapshotContext() const {
+    std::lock_guard<std::mutex> lock(stateMutex_);
+    return contextSnapshot_;
 }
 
 void AiAssistantPanel::OpenVisionBuffers() {
@@ -1198,6 +1270,20 @@ void AiAssistantPanel::Draw(bool& open) {
                 : TEXT::Localize("ai.status.noApi").c_str());
     if (!bridgeStatus_.empty()) {
         ImGui::TextDisabled("%s", bridgeStatus_.c_str());
+    }
+    if (!bridgeSessionToken_.empty()) {
+        ImGui::TextDisabled("%s",
+            TEXT::Localize("ai.bridge.token").c_str());
+        ImGui::SetNextItemWidth(-1.0f);
+        ImGui::InputText(
+            "##AiBridgeSessionToken",
+            bridgeSessionToken_.data(),
+            bridgeSessionToken_.size() + 1u,
+            ImGuiInputTextFlags_ReadOnly);
+        if (ImGui::SmallButton(
+                TEXT::Localize("ai.bridge.copyToken").c_str())) {
+            ImGui::SetClipboardText(bridgeSessionToken_.c_str());
+        }
     }
     if (ImGui::GetFont() != nullptr &&
         ImGui::GetFont()->FindGlyphNoFallback(

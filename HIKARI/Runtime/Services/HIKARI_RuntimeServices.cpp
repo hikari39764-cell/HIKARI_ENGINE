@@ -18,6 +18,7 @@
 #include "Render2D/HIKARI_DxRenderer.h"
 #include "Render2D/HIKARI_DxTexture.h"
 #include "Render3D/Lighting/HIKARI_VolumetricLightingStage.h"
+#include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Material/HIKARI_DefaultPbrResources.h"
 #include "Render3D/Material/Program/HIKARI_MaterialProgramRegistry.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
@@ -34,7 +35,6 @@
 #include "Runtime/Host/HIKARI_HostBootstrapConfig.h"
 #include "Runtime/Host/HIKARI_IEditorUiServices.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
-#include "Vfx/Runtime/HIKARI_VfxSystem.h"
 
 namespace HIKARI {
     namespace SERVICES {
@@ -250,9 +250,6 @@ namespace HIKARI {
             else {
                 HIKARI_LOG_WARN("Audio initialized with Null fallback.");
             }
-            HIKARI::VFX::Initialize(graphicsContext);
-            HIKARI_LOG_INFO("VFX initialized.");
-
             const ProjectContext& projectContext =
                 GetProjectContext();
             const bool inputInitialized = projectContext.IsOpen()
@@ -320,6 +317,8 @@ namespace HIKARI {
                 }
                 editorUiServices->Shutdown(gWindow);
             }
+            MESHRENDERER::ShutdownParticleGpuDrivenPass();
+            HIKARI_LOG_INFO("Particle GPU-driven pass finalized.");
             HIKARI::POST::PostSystem::Shutdown();
             HIKARI_LOG_INFO("PostSystem shutdown.");
             DX::DxRenderer::Finalize();
@@ -338,8 +337,6 @@ namespace HIKARI {
             RENDER3D::ShutdownRenderResourceDescriptorPool();
             DXTEX::DxTextureManager::Finalize();
             HIKARI_LOG_INFO("TextureManager finalized.");
-            HIKARI::VFX::Shutdown();
-            HIKARI_LOG_INFO("VFX shutdown.");
             AUDIO::Shutdown();
             HIKARI_LOG_INFO("Audio shutdown.");
             RENDER3D::UPSCALING::ShutdownStreamline();

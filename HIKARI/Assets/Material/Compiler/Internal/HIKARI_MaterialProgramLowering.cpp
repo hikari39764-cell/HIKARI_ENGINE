@@ -90,7 +90,9 @@ void BuildMaterialProgramInstructions(const MaterialGraphData& graph,
     ready.erase(ready.begin());
     const MaterialGraphNodeData& node = *nodes.at(nodeId);
     MaterialProgramInstruction instruction{};
-    instruction.opcode = ToProgramOpcode(node.kind);
+    instruction.opcode = node.kind == MaterialNodeKind::Variable
+        ? MaterialProgramOpcode::Parameter
+        : ToProgramOpcode(node.kind);
     instruction.valueType = node.valueType;
     instruction.immediate = node.value;
     instruction.properties = node.properties;
@@ -100,8 +102,12 @@ void BuildMaterialProgramInstructions(const MaterialGraphData& graph,
               });
     instruction.assetReference = node.assetReference;
     instruction.sourceNodeId = node.id;
-    if (node.kind == MaterialNodeKind::Parameter) {
-      const auto binding = parameterBindings.find(node.referenceId);
+    if (node.kind == MaterialNodeKind::Parameter ||
+        node.kind == MaterialNodeKind::Variable) {
+      const std::string bindingId = node.kind == MaterialNodeKind::Variable
+          ? MakeMaterialVariableParameterId(node.id)
+          : node.referenceId;
+      const auto binding = parameterBindings.find(bindingId);
       if (binding != parameterBindings.end()) {
         instruction.bindingIndex = binding->second;
         instruction.valueType = program.parameters[binding->second].type;

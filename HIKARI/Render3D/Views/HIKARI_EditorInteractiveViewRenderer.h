@@ -3,6 +3,7 @@
 #if defined(HIKARI_WITH_EDITOR)
 
 #include <cstdint>
+#include <memory>
 #include <string_view>
 
 #include <d3d12.h>
@@ -11,9 +12,18 @@
 #include "Render3D/Lighting/HIKARI_LightingProviderContract.h"
 
 namespace HIKARI {
+    class AssetRegistry;
     struct SceneEnvironment;
     class ModelManager;
     class SkyManager;
+}
+
+namespace HIKARI::RENDER3D::PARTICLES {
+    struct ParticleRenderInput;
+}
+
+namespace HIKARI::RENDER3D::MATERIAL {
+    struct MaterialExternalValueSnapshot;
 }
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
@@ -21,6 +31,19 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
 }
 
 namespace HIKARI::RENDER3D::EDITORVIEW {
+
+    // Tool previews own these guides per view. They are expanded directly by
+    // the interactive-view renderer and never enter the global Scene debug
+    // submission list.
+    struct EditorInteractiveViewGuideOverlay {
+        bool showGroundGrid = false;
+        bool showWorldAxes = false;
+        int32_t gridHalfCount = 10;
+        float gridSpacing = 1.0f;
+        float gridThicknessPixels = 1.0f;
+        float axisLength = 1.0f;
+        float axisThicknessPixels = 2.0f;
+    };
 
     enum class EditorInteractiveShadingMode : uint8_t {
         Lit,
@@ -60,6 +83,10 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         uint64_t sceneRevision = 0;
         bool visible = false;
         bool drawDebug = true;
+        // Continuous tool views (for example VFX playback) must be sampled
+        // every presented frame. They share the same renderer as runtime, but
+        // must not be time-sliced with static inspector thumbnails.
+        bool continuousRealtime = false;
         uint32_t schedulingPriority = 0u;
         EditorInteractiveShadingMode shadingMode =
             EditorInteractiveShadingMode::Lit;
@@ -67,6 +94,9 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         const GPUDRIVEN::GpuDrivenSceneSource* sceneSourceOverride = nullptr;
         const SceneEnvironment* environmentOverride = nullptr;
         const LIGHTING::SceneLightingSet* lightingOverride = nullptr;
+        std::shared_ptr<const PARTICLES::ParticleRenderInput>
+            particleInputOverride{};
+        EditorInteractiveViewGuideOverlay guideOverlay{};
         bool suppressSpatialLightingProviders = false;
         bool useDefaultSkyIbl = false;
         // Spatial AA is applied after the shared display resolve. It is
@@ -107,7 +137,10 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         const LIGHTING::SceneLightingSet& lighting,
         uint64_t currentSceneRevision,
         ModelManager& modelManager,
-        SkyManager& skyManager);
+        SkyManager& skyManager,
+        const AssetRegistry* assetRegistry = nullptr,
+        const MATERIAL::MaterialExternalValueSnapshot*
+            materialExternalValues = nullptr);
     EditorInteractiveViewOutput GetOutput(RenderViewId viewId);
     std::string_view GetEditorInteractiveViewFailureMessage(
         EditorInteractiveViewFailure failure) noexcept;

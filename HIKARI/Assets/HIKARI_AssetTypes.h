@@ -1,12 +1,14 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "Assets/Material/Compiler/HIKARI_MaterialCompiler.h"
 #include "Assets/Material/HIKARI_MaterialAssetData.h"
 #include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingAsset.h"
+#include "Assets/Vfx/HIKARI_VfxProgram.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 
 namespace HIKARI {
@@ -198,6 +200,7 @@ namespace HIKARI {
         HMAT,
         HSKY,
         HIBL,
+        HVFX,
         HPAK,
     };
 
@@ -221,9 +224,7 @@ namespace HIKARI {
     };
 
     struct VfxAssetDescriptor final : AssetDescriptor {
-        bool preload = true;
-        bool loopByDefault = false;
-        float defaultScale = 1.0f;
+        std::shared_ptr<const VFX::VfxProgram> program{};
     };
 
 } // namespace HIKARI

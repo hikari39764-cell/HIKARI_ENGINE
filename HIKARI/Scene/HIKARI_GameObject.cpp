@@ -22,20 +22,22 @@ namespace HIKARI {
         MarkRenderStateDirty();
     }
 
-    void GameObject::SetDocumentId(SceneObjectId id) {
+    bool GameObject::SetDocumentId(SceneObjectId id) {
         if (documentId_ == id) {
-            return;
+            return true;
         }
         const uint64_t oldStableId = GetRenderStableId();
         const SceneObjectId previousId = documentId_;
-        documentId_ = id;
-        if (ownerWorld_ != nullptr) {
-            ownerWorld_->OnDocumentIdChanged(this, previousId, documentId_);
+        if (ownerWorld_ != nullptr &&
+            !ownerWorld_->OnDocumentIdChanged(this, previousId, id)) {
+            return false;
         }
+        documentId_ = id;
         if (ownerWorld_ != nullptr && oldStableId != GetRenderStableId()) {
             ownerWorld_->MarkRenderObjectRemoved(oldStableId);
         }
         MarkRenderStateDirty();
+        return true;
     }
 
     SceneObjectId GameObject::GetDocumentId() const {
@@ -193,6 +195,16 @@ namespace HIKARI {
         components_.push_back(std::move(component));
         MarkRenderStateDirty();
         return ptr;
+    }
+
+    void GameObject::DetachComponents() {
+        for (size_t index = components_.size(); index-- > 0u;) {
+            IComponent* component = components_[index].get();
+            if (component != nullptr) {
+                component->OnDetach();
+                component->SetOwner(nullptr);
+            }
+        }
     }
 
     const std::vector<std::unique_ptr<IComponent>>& GameObject::GetComponents() const {

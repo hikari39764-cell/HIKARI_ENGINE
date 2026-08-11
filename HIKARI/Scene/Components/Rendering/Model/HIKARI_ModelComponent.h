@@ -12,6 +12,19 @@
 
 namespace HIKARI {
 
+    namespace ModelComponentPropertyIds {
+        inline constexpr char AssetId[] = "assetId";
+        inline constexpr char Visible[] = "visible";
+        inline constexpr char CastShadow[] = "castShadow";
+        inline constexpr char ReceiveShadow[] = "receiveShadow";
+        inline constexpr char RenderStatic[] = "renderStatic";
+        inline constexpr char IncludeInLightingBake[] =
+            "includeInLightingBake";
+        inline constexpr char MaterialSetAssetGuid[] =
+            "materialSetAssetGuid";
+        inline constexpr char PostGroupMask[] = "postGroupMask";
+    }
+
     class Material;
     class ModelAsset;
 
@@ -98,6 +111,7 @@ namespace HIKARI {
             uint32_t legacySlotIndex,
             AssetGuid materialGuid);
         void ClearMaterialOverride(uint32_t slotIndex);
+        void ClearMaterialOverride(MaterialSlotId slotId);
         const Material* GetRuntimeMaterialOverride(
             uint32_t slotIndex) const;
         void SetRuntimeMaterialOverride(

@@ -406,6 +406,23 @@ namespace HIKARI {
                             }
                         }
                     }
+                } else if (component.type == "VfxPlayerComponent") {
+                    const auto slots =
+                        component.properties.find("slots");
+                    if (slots == component.properties.end() ||
+                        !slots->is_array()) {
+                        continue;
+                    }
+                    for (const nlohmann::json& slot : *slots) {
+                        if (!slot.is_object()) {
+                            continue;
+                        }
+                        const std::string assetGuid = slot.value(
+                            "effectAssetGuid", std::string{});
+                        if (!assetGuid.empty()) {
+                            deps.vfxAssetIds.insert(assetGuid);
+                        }
+                    }
                 }
             }
         }
@@ -502,8 +519,64 @@ namespace HIKARI {
             CollectMaterialTextureRequests(loadPlan, assetRegistry, *descriptor);
         }
 
+        for (const std::string& vfxId : dependencies.vfxAssetIds) {
+            const auto* vfx = assetRegistry.FindAs<VfxAssetDescriptor>(
+                AssetId{ vfxId });
+            if (vfx == nullptr || !vfx->program) {
+                continue;
+            }
+            for (const VFX::VfxProgramEmitter& emitter :
+                 vfx->program->emitters) {
+                if (emitter.render.materialMode !=
+                        RENDER3D::PARTICLES::
+                            ParticleMaterialMode::StandardUnlit ||
+                    emitter.render.colorTextureAssetGuid.empty()) {
+                    continue;
+                }
+                const auto* texture =
+                    assetRegistry.FindAs<TextureAssetDescriptor>(
+                        AssetId{
+                            emitter.render.colorTextureAssetGuid });
+                if (texture != nullptr &&
+                    !texture->sourcePath.empty()) {
+                    AddTextureRequest(
+                        loadPlan,
+                        "runtime_vfx/" + vfxId + "/" +
+                            emitter.render.colorTextureAssetGuid,
+                        texture->sourcePath,
+                        RENDER3D::TextureResourceColorSpace::Srgb);
+                }
+            }
+            for (const AssetGuid& materialGuid :
+                    vfx->program->dependencyGuids) {
+                const auto* material =
+                    assetRegistry.FindAs<MaterialAssetDescriptor>(
+                        AssetId{ materialGuid.value });
+                if (material != nullptr) {
+                    CollectMaterialTextureRequests(
+                        loadPlan,
+                        assetRegistry,
+                        *material);
+                    continue;
+                }
+                const auto* texture =
+                    assetRegistry.FindAs<TextureAssetDescriptor>(
+                        AssetId{ materialGuid.value });
+                if (texture != nullptr &&
+                    !texture->sourcePath.empty()) {
+                    AddTextureRequest(
+                        loadPlan,
+                        "runtime_vfx/" + vfxId + "/" +
+                            materialGuid.value,
+                        texture->sourcePath,
+                        RENDER3D::TextureResourceColorSpace::Srgb);
+                }
+            }
+        }
+
         HIKARI_LOG_INFO(
             "[SceneRuntimeBuilder][LoadPlan] models=" + std::to_string(loadPlan.modelAssetIds.size()) +
+            " vfx=" + std::to_string(dependencies.vfxAssetIds.size()) +
             " textures=" + std::to_string(loadPlan.textureRequests.size()) +
             " clusterGeometry=" + std::to_string(loadPlan.clusterGeometryRequests.size()));
         ExecuteRuntimeAssetLoadPlan(loadPlan);
@@ -541,7 +614,13 @@ namespace HIKARI {
 
         for (const SceneObjectData& objectData : document.objects) {
             GameObject* object = world.CreateObject(objectData.name);
-            object->SetDocumentId(objectData.id);
+            if (!object->SetDocumentId(objectData.id)) {
+                HIKARI_LOG_ERROR(
+                    "[SceneRuntime] duplicate object id rejected: " +
+                    std::to_string(objectData.id.value));
+                world.Clear();
+                return false;
+            }
             Transform3D localTransform{};
             localTransform.position = objectData.transform.position;
             localTransform.scale = objectData.transform.scale;
@@ -560,7 +639,19 @@ namespace HIKARI {
                         " objectId=" + std::to_string(objectData.id.value));
                     continue;
                 }
-                component->Deserialize(componentData.properties);
+                std::string deserializeDiagnostic{};
+                if (!component->TryDeserialize(
+                        componentData.properties,
+                        deserializeDiagnostic)) {
+                    HIKARI_LOG_ERROR(
+                        "[SceneRuntime] component deserialize failed: " +
+                        componentData.type +
+                        " objectId=" +
+                        std::to_string(objectData.id.value) +
+                        " diagnostic=" + deserializeDiagnostic);
+                    world.Clear();
+                    return false;
+                }
 
                 if (auto* modelComponent = dynamic_cast<ModelComponent*>(component)) {
                     modelComponent->SetModelAsset(ResolveModelAssetNow(

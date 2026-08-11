@@ -27,10 +27,6 @@ namespace HIKARI::SHADOW::INTERNAL {
             static_cast<size_t>(ShadowCameraConstantStride()) * cascadeIndex);
 
         const FrameContext& frameContext = TIME::GetFrameContext();
-        if (cascadeIndex == 0u) {
-            gShadowRendererState.elapsedTimeSec +=
-                std::max(0.0f, frameContext.unscaledDt);
-        }
         const float resolution =
             static_cast<float>((std::max)(1u, gShadowRendererState.resolution));
         camera->lightViewProj = frame.viewProj;
@@ -42,7 +38,7 @@ namespace HIKARI::SHADOW::INTERNAL {
             1.0f
         };
         camera->timeParams = {
-            gShadowRendererState.elapsedTimeSec,
+            TIME::GetUnscaledElapsedSeconds(),
             frameContext.unscaledDt,
             frameContext.gameDt,
             static_cast<float>(frameContext.frameIndex)

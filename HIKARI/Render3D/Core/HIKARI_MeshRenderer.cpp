@@ -24,6 +24,7 @@ namespace HIKARI::MESHRENDERER {
         gMeshRendererState.gpuMaterialRegistry.Clear();
         gMeshRendererState.gpuDrivenSceneSource.Reset();
         gMeshRendererState.gpuDrivenSceneSourceIdentity = nullptr;
+        gMeshRendererState.particleFrameSource = nullptr;
         InvalidateGpuDrivenSceneResidency();
         gMeshRendererState.freezeGpuDrivenCullingCamera = false;
         gMeshRendererState.frozenCullingCamera = {};
@@ -79,8 +80,29 @@ namespace HIKARI::MESHRENDERER {
         return gMeshRendererState.gpuDrivenSceneSource;
     }
 
+    void SetParticleFrameSource(
+        const RENDER3D::PARTICLES::ParticleRenderFrameSource* source) {
+        gMeshRendererState.particleFrameSource = source;
+    }
+
+    void ReleaseParticleNamespace(uint64_t playbackNamespace) {
+        if (playbackNamespace == 0u) return;
+        gMeshRendererState.particlePass.ReleaseNamespace(playbackNamespace);
+        gMeshRendererState.gpuMaterialRegistry.ReleaseSourceBindings(
+            RENDER3D::PARTICLES::MakeParticleMaterialSourceIdentity(
+                playbackNamespace,
+                nullptr));
+    }
+
+    void ShutdownParticleGpuDrivenPass() {
+        gMeshRendererState.particlePass.Shutdown();
+        gMeshRendererState.particleFrameSource = nullptr;
+    }
+
     bool HasSubmittedItems() {
-        return HasGpuDrivenSceneSource();
+        return HasGpuDrivenSceneSource() ||
+            (gMeshRendererState.particleFrameSource != nullptr &&
+             gMeshRendererState.particleFrameSource->HasFrameWork());
     }
 
     bool BeginFrame(
@@ -169,12 +191,14 @@ namespace HIKARI::MESHRENDERER {
         if (view.cameraFrame == nullptr || !view.cameraFrame->valid) {
             return;
         }
+        SetParticleFrameSource(view.particleFrameSource);
         (void)RENDER3D::PIPELINE::RenderMeshLightingFrame(
             graphics,
             view,
             environment,
             lighting,
             debugView);
+        SetParticleFrameSource(nullptr);
     }
 
     const MeshRendererDebugStats& GetDebugStats() {
@@ -188,6 +212,11 @@ namespace HIKARI::MESHRENDERER {
     const RENDER3D::MATERIAL::GpuMaterialRegistryStats&
         GetGpuMaterialRegistryStats() {
         return gMeshRendererState.gpuMaterialRegistry.GetStats();
+    }
+
+    const RENDER3D::PARTICLES::ParticleGpuDrivenPassStats&
+        GetParticleGpuDrivenPassStats() {
+        return gMeshRendererState.particlePass.GetStats();
     }
 
 } // namespace HIKARI::MESHRENDERER

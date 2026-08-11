@@ -82,10 +82,6 @@ namespace HIKARI {
                 return std::string(ASSETS::SEMANTICS::GetAssetImporterSemantics(
                     ASSETS::SEMANTICS::AssetImporterKind::Scene).importerId);
             }
-            if (importerId == "VfxImporterStub") {
-                return std::string(ASSETS::SEMANTICS::GetAssetImporterSemantics(
-                    ASSETS::SEMANTICS::AssetImporterKind::VfxEffect).importerId);
-            }
             return importerId;
         }
 

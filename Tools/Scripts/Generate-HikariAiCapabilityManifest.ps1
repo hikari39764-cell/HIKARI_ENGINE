@@ -13,25 +13,40 @@ if (-not $OutputPath) {
 # AI capabilities. The manifest generator extracts them from the registration
 # sites so adding an operation never requires a second manual edit.
 $registryFiles = @(
-    'HIKARI\Editor\Controllers\DocumentScene\HIKARI_DocumentSceneEditorController.cpp',
+    'HIKARI\Editor\Authoring\HIKARI_ComponentAuthoringOperations.cpp',
+    'HIKARI\Editor\Controllers\DocumentScene\HIKARI_DocumentSceneEditorOperations.cpp',
     'HIKARI\Editor\Workspaces\ModelCollision\HIKARI_ModelCollisionOperations.cpp',
     'HIKARI\Editor\Workspaces\AnimationStateMachine\HIKARI_AnimationStateMachineOperations.cpp',
     'HIKARI\Editor\Workspaces\Cinematics\HIKARI_CinematicsOperations.cpp',
-    'HIKARI\Editor\Workspaces\ModelMaterial\HIKARI_ModelMaterialOperations.cpp'
+    'HIKARI\Editor\Workspaces\ModelMaterial\HIKARI_ModelMaterialAssetOperations.cpp',
+    'HIKARI\Editor\Workspaces\ModelMaterial\HIKARI_ModelMaterialOperations.cpp',
+    'HIKARI\Editor\Workspaces\RuntimeBinding\HIKARI_RuntimeBindingOperations.cpp',
+    'HIKARI\Editor\Workspaces\Vfx\HIKARI_VfxBindingOperations.cpp',
+    'HIKARI\Editor\Workspaces\Vfx\HIKARI_VfxCurveOperations.cpp',
+    'HIKARI\Editor\Workspaces\Vfx\HIKARI_VfxOperations.cpp',
+    'HIKARI\Editor\Workspaces\Vfx\HIKARI_VfxPreviewOperations.cpp'
 )
 
 $operations = @{}
+$registrationPatterns = @(
+    'Register\(\{\s*"([a-z][a-z0-9_.]+)"\s*,\s*"([^"]+)"',
+    'register[A-Z][A-Za-z0-9]*Operation\(\s*"([a-z][a-z0-9_.]+)"\s*,\s*"([^"]+)"'
+)
 foreach ($relative in $registryFiles) {
     $path = Join-Path $repoRoot $relative
     $source = [System.IO.File]::ReadAllText(
         $path,
         [System.Text.Encoding]::UTF8)
-    $matches = [regex]::Matches(
-        $source,
-        'Register\(\{\s*"([a-z][a-z0-9_.]+)"\s*,\s*"([^"]+)"')
-    foreach ($match in $matches) {
-        $operations[$match.Groups[1].Value] =
-            $match.Groups[2].Value
+    foreach ($pattern in $registrationPatterns) {
+        foreach ($match in [regex]::Matches($source, $pattern)) {
+            $id = $match.Groups[1].Value
+            $summary = $match.Groups[2].Value
+            if ($operations.ContainsKey($id) -and
+                $operations[$id] -ne $summary) {
+                throw "Operation registered with different summaries: $id"
+            }
+            $operations[$id] = $summary
+        }
     }
 }
 
@@ -70,7 +85,9 @@ foreach ($id in $operations.Keys) {
     }
 }
 
-$capabilityList = @($capabilities.Values | Sort-Object id)
+$capabilityList = @(
+    $capabilities.Values |
+        Sort-Object { [string]$_['id'] })
 
 $manifest = [ordered]@{
     manifestVersion = 1

@@ -8,6 +8,8 @@ void Reset();
 void ResetFrameClock();
 const FrameContext& BeginFrame();
 const FrameContext& GetFrameContext();
+float GetUnscaledElapsedSeconds();
+float GetGameElapsedSeconds();
 
 void SetGameTimeScale(float scale);
 float GetGameTimeScale();

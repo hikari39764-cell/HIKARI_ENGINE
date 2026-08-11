@@ -20,7 +20,7 @@ namespace HIKARI {
 
         const std::string& GetName() const;
         void SetName(const std::string& name);
-        void SetDocumentId(SceneObjectId id);
+        bool SetDocumentId(SceneObjectId id);
         SceneObjectId GetDocumentId() const;
         RuntimeObjectHandle GetRuntimeHandle() const noexcept;
         World* GetWorld() noexcept;
@@ -110,6 +110,7 @@ namespace HIKARI {
     private:
         friend class World;
 
+        void DetachComponents();
         void SetOwnerWorld(World* world);
         void SetRuntimeHandle(RuntimeObjectHandle handle) noexcept;
         void MarkTransformHierarchyDirty();

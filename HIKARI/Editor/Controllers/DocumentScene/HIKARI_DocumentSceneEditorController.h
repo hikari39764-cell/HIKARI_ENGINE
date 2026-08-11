@@ -6,6 +6,8 @@
 #include <vector>
 
 #include "Render3D/HIKARI_Math3D.h"
+#include "Render3D/Core/HIKARI_Camera3D.h"
+#include "Render3D/Debug/HIKARI_DebugCameraController3D.h"
 
 #include "Editor/AI/HIKARI_AI_AssistantPanel.h"
 #include "Editor/AI/HIKARI_AI_LocalBridge.h"
@@ -36,6 +38,8 @@
 #include "Editor/Workspaces/ModelCollision/HIKARI_ModelCollisionWorkspaceController.h"
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialWorkspaceController.h"
 #include "Editor/Workspaces/AnimationStateMachine/HIKARI_AnimationStateMachineWorkspaceController.h"
+#include "Editor/Workspaces/RuntimeBinding/HIKARI_RuntimeBindingWorkspaceController.h"
+#include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
 #include "Editor/HIKARI_SelectionSyncService.h"
 #include "Editor/HIKARI_StatsPanel.h"
 #include "Editor/Controllers/DocumentScene/HIKARI_DocumentToolbarController.h"
@@ -53,12 +57,14 @@ namespace HIKARI {
     class DocumentSceneEditorController {
     public:
         DocumentSceneEditorController();
+        ~DocumentSceneEditorController();
 
         void Draw(
             DocumentSceneBase& scene,
             EDITOR::EditorPlaySession& playSession);
 
     private:
+        void RegisterEditorOperations();
         EditorContext context_{};
         SelectionSyncService selectionSync_{};
 
@@ -92,6 +98,9 @@ namespace HIKARI {
         EDITOR::ModelMaterialWorkspaceController modelMaterialWorkspaceController_{};
         EDITOR::AnimationStateMachineWorkspaceController
             animationStateMachineWorkspaceController_{};
+        EDITOR::RuntimeBindingWorkspaceController
+            runtimeBindingWorkspaceController_{};
+        EDITOR::VfxWorkspaceController vfxWorkspaceController_{};
         DebugCameraPanel debugCameraPanel_{};
         EDITOR::EditorTransformGizmo transformGizmo_{};
         void DrawGameViewportWindow(
@@ -177,6 +186,11 @@ namespace HIKARI {
             bool externalDirtyBefore,
             EDITOR::EditorDocumentImpact immediateImpact =
                 EDITOR::EditorDocumentImpact::None);
+        // サブワークスペース滞在中に Scene 共有カメラ（Editor/Debug）が
+        // 変化しても、戻ったときの Game View を入場時の視点へ復元する。
+        void SnapshotSceneViewCameras(DocumentSceneBase& scene);
+        void RestoreSceneViewCameras(DocumentSceneBase& scene);
+
         void RecordCinematicsHistory(
             DocumentSceneBase& scene,
             SceneCinematicsSettings before,
@@ -190,6 +204,9 @@ namespace HIKARI {
         EDITOR::EditorCommandRouter commandRouter_{};
         EDITOR::SceneObjectTransformHistorySession
             viewportTransformHistory_{};
+        bool sceneViewCameraSnapshotValid_ = false;
+        Camera3D sceneViewEditorCameraSnapshot_{};
+        DebugCameraController3D sceneViewDebugCameraSnapshot_{};
         bool historyExternalDirty_ = false;
     };
 

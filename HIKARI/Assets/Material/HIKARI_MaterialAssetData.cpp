@@ -258,7 +258,7 @@ bool LoadMaterialAssetData(
         std::error_code existsError{};
         const bool exists = std::filesystem::is_regular_file(path, existsError);
         if (exists && !LoadMaterialAssetData(path, source, outError)) {
-            outError = "refusing to overwrite an unreadable Material v5 source: " +
+            outError = "refusing to overwrite an unreadable Material v6 source: " +
                 outError;
             return false;
         }

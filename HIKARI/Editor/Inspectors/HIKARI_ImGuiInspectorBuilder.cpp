@@ -14,7 +14,9 @@
 #include "Editor/Widgets/HIKARI_AssetFieldWidget.h"
 #include "Editor/Widgets/HIKARI_InputActionFieldWidget.h"
 #include "Editor/Widgets/HIKARI_InspectorPropertyLayout.h"
+#include "Editor/Widgets/HIKARI_RuntimeBindingFieldWidget.h"
 #include "Input/Runtime/HIKARI_InputService.h"
+#include "Runtime/Binding/HIKARI_RuntimeBindingStore.h"
 #include "Scene/HIKARI_WorldServiceRegistry.h"
 #include "Scene/HIKARI_SceneDocument.h"
 
@@ -198,6 +200,84 @@ namespace HIKARI {
             value);
 #else
         (void)expectedType;
+        return String(label, value);
+#endif
+    }
+
+    bool ImGuiInspectorBuilder::RuntimeVariableIdPicker(
+        std::string_view label,
+        BINDING::ValueType expectedType,
+        std::string& value) {
+#if defined(HIKARI_WITH_EDITOR)
+        const auto* store = context_.worldServices != nullptr
+            ? context_.worldServices->Find<
+                BINDING::RuntimeBindingStore>()
+            : nullptr;
+        if (store == nullptr) {
+            return String(label, value);
+        }
+        EDITOR::InspectorPropertyRow row(label);
+        return row.IsVisible() && EDITOR::DrawRuntimeVariableField(
+            store->GetCatalog(),
+            "##Value",
+            expectedType,
+            value);
+#else
+        (void)expectedType;
+        return String(label, value);
+#endif
+    }
+
+    bool ImGuiInspectorBuilder::RuntimeEventIdPicker(
+        std::string_view label,
+        bool hasPayload,
+        BINDING::ValueType payloadType,
+        std::string& value) {
+#if defined(HIKARI_WITH_EDITOR)
+        const auto* store = context_.worldServices != nullptr
+            ? context_.worldServices->Find<
+                BINDING::RuntimeBindingStore>()
+            : nullptr;
+        if (store == nullptr) {
+            return String(label, value);
+        }
+        EDITOR::InspectorPropertyRow row(label);
+        return row.IsVisible() && EDITOR::DrawRuntimeEventField(
+            store->GetCatalog(),
+            "##Value",
+            hasPayload,
+            payloadType,
+            value);
+#else
+        (void)hasPayload;
+        (void)payloadType;
+        return String(label, value);
+#endif
+    }
+
+    bool ImGuiInspectorBuilder::RuntimeEventIdPicker(
+        std::string_view label,
+        AuthoringEventPayloadPolicy policy,
+        BINDING::ValueType payloadType,
+        std::string& value) {
+#if defined(HIKARI_WITH_EDITOR)
+        const auto* store = context_.worldServices != nullptr
+            ? context_.worldServices->Find<
+                BINDING::RuntimeBindingStore>()
+            : nullptr;
+        if (store == nullptr) {
+            return String(label, value);
+        }
+        EDITOR::InspectorPropertyRow row(label);
+        return row.IsVisible() && EDITOR::DrawRuntimeEventField(
+            store->GetCatalog(),
+            "##Value",
+            policy,
+            payloadType,
+            value);
+#else
+        (void)policy;
+        (void)payloadType;
         return String(label, value);
 #endif
     }

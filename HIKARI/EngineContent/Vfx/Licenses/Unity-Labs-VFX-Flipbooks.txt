@@ -1,0 +1,10 @@
+Unity Labs VFX Image Sequences and Flipbooks
+
+Author: Unity Technologies / Unity Labs Paris
+Source: https://unity.com/blog/engine-platform/free-vfx-image-sequences-flipbooks
+License: Creative Commons Zero v1.0 Universal (CC0-1.0)
+License URL: https://creativecommons.org/publicdomain/zero/1.0/
+
+The source page states that these image sequences are released under CC0 and
+may be used in projects. HIKARI includes only the selected uncompressed TGA
+flipbooks listed in ../BuiltinAssets.json.
