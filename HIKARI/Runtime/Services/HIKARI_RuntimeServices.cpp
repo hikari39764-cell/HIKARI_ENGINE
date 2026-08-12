@@ -195,10 +195,14 @@ namespace HIKARI {
             graphicsCallbacks.swapChainCreated = [](IDXGISwapChain4* swapChain) {
                 RENDER3D::UPSCALING::InspectStreamlineSwapChain(swapChain);
             };
+            // 交换链必须按窗口 DPI 缩放后的实际客户端像素创建，
+            // 否则 150% 缩放下窗口 2880x1620 但交换链只有 1920x1080，内容被截断。
+            const int physicalClientWidth = (std::max)(gWindow.Width(), 16);
+            const int physicalClientHeight = (std::max)(gWindow.Height(), 16);
             if (!gGraphicsCore.Initialize(
                     gWindow.GetHWND(),
-                    cfg.windowWidth,
-                    cfg.windowHeight,
+                    physicalClientWidth,
+                    physicalClientHeight,
                     cfg.enableDebugLayer,
                     graphicsCallbacks)) {
                 HIKARI_LOG_ERROR("D3D12 core initialization failed.");

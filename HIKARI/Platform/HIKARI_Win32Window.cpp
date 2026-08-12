@@ -255,6 +255,8 @@ bool Win32Window::Initialize(
     DragAcceptFiles(hwnd_, TRUE);
     UpdateWindow(hwnd_);
     HIKARI_LOG_INFO("Window shown.");
+    // 创建后以实际客户端区为准，消除 AdjustWindowRect 边框估算与真实值的偏差。
+    RefreshClientSize();
     running_ = true;
     HIKARI_LOG_INFO("Win32Window initialization completed.");
     return true;
@@ -337,7 +339,11 @@ bool Win32Window::ApplyWindowMode(WindowMode mode, int clientWidth, int clientHe
         windowedStyle_ = style;
 
         RECT rect{ 0, 0, clientWidth, clientHeight };
-        AdjustWindowRect(&rect, style, FALSE);
+        // 切回窗口模式同样按当前显示器 DPI 换算边框，避免 150% 缩放下窗口偏小。
+        const UINT currentDpi = hwnd_ ? GetDpiForWindow(hwnd_) : GetDpiForSystem();
+        if (AdjustWindowRectExForDpi(&rect, style, FALSE, 0, currentDpi) == FALSE) {
+            AdjustWindowRect(&rect, style, FALSE);
+        }
         const int windowWidth = rect.right - rect.left;
         const int windowHeight = rect.bottom - rect.top;
 
