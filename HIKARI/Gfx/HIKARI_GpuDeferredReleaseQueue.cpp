@@ -75,7 +75,7 @@ namespace HIKARI::GFX {
     }
 	// 保留リストをクリアする。通常は、GPU の完了を待たずにすべてのリリースを強制的に実行した後に呼び出される
     void GpuDeferredReleaseQueue::Reset() {
-        pending_.clear();
+        FlushAll();
     }
 	// 保留リストに現在存在するアイテムの数を返す
     size_t GpuDeferredReleaseQueue::GetPendingCount() const {

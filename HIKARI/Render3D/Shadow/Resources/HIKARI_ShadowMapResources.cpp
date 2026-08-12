@@ -1,5 +1,6 @@
 #include "Render3D/Shadow/Internal/HIKARI_ShadowRendererInternal.h"
 #include "Gfx/HIKARI_GfxContext.h"
+#include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 
 #include <utility>
 
@@ -24,9 +25,19 @@ namespace HIKARI::SHADOW::INTERNAL {
         gShadowRendererState.shadowSrvResource = {};
         gShadowRendererState.shadowSrvHandle = -1;
 
-        gShadowRendererState.shadowMap.Reset();
-        gShadowRendererState.staticShadowMap.Reset();
-        gShadowRendererState.dsvHeap.Reset();
+        // GPU がまだ参照している可能性があるため、Fence 経由の遅延解放に切り替える
+        GFX::RetireD3D12ObjectForFrame(
+            gShadowRendererState.shadowMap,
+            graphics,
+            "ShadowRenderer.ShadowMap");
+        GFX::RetireD3D12ObjectForFrame(
+            gShadowRendererState.staticShadowMap,
+            graphics,
+            "ShadowRenderer.StaticShadowMap");
+        GFX::RetireD3D12ObjectForFrame(
+            gShadowRendererState.dsvHeap,
+            graphics,
+            "ShadowRenderer.DsvHeap");
         gShadowRendererState.staticShadowState = D3D12_RESOURCE_STATE_COMMON;
         gShadowRendererState.shadowCache.SetFinalMatchesStaticCache(false);
 
@@ -72,7 +83,11 @@ namespace HIKARI::SHADOW::INTERNAL {
             &clearValue,
             IID_PPV_ARGS(gShadowRendererState.staticShadowMap.GetAddressOf()));
         if (!HIKARI_DX_CHECK(staticHr, "ShadowMapRenderer::CreateStaticShadowCacheResource")) {
-            gShadowRendererState.shadowMap.Reset();
+            // 部分初期化失敗時も GPU 参照を待ってから解放する
+            GFX::RetireD3D12ObjectForFrame(
+                gShadowRendererState.shadowMap,
+                graphics,
+                "ShadowRenderer.ShadowMap.PartialInit");
             return false;
         }
         GFX::SetD3D12Name(gShadowRendererState.staticShadowMap.Get(), L"Directional Static Shadow Cache");
