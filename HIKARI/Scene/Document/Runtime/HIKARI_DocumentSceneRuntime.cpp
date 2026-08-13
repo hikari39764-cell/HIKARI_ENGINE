@@ -30,7 +30,9 @@ namespace HIKARI {
         state_->runtime.systemScheduler.DetachWorld(state_->runtime.world);
         state_->runtime.systemScheduler.Clear();
         state_->runtime.fixedStepClock.Reset();
-        RenderSubmissionSystem::InvalidateSceneResources(true);
+        // プロシージャルキャッシュは settings キーで不変なので、
+        // シーン再構築ごとに破棄せずプロセス内で再利用する。
+        RenderSubmissionSystem::InvalidateSceneResources(false);
 
         const bool configured = BuildSystemScheduleFromDocument();
         state_->runtime.systemScheduler.AttachWorld(state_->runtime.world);
@@ -453,7 +455,9 @@ namespace HIKARI {
         state_->runtime.systemScheduler.DetachWorld(state_->runtime.world);
         state_->runtime.systemScheduler.Clear();
         state_->runtime.fixedStepClock.Reset();
-        RenderSubmissionSystem::InvalidateSceneResources(true);
+        // プロシージャルキャッシュは settings キーで不変なので、
+        // シーン再構築ごとに破棄せずプロセス内で再利用する。
+        RenderSubmissionSystem::InvalidateSceneResources(false);
 
         SceneDependencySet deps = state_->runtime.builder.CollectDependencies(
             state_->identity.document,

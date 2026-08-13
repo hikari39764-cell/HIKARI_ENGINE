@@ -9,6 +9,7 @@
 #include "Editor/HIKARI_SelectionSyncService.h"
 #include "Render3D/HIKARI_Math3D.h"
 #include "Scene/HIKARI_ComponentRegistry.h"
+#include "Scene/Components/HIKARI_ProceduralMeshComponent.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_SceneComponentId.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
@@ -106,13 +107,26 @@ namespace HIKARI {
             runtimeObject = context.selection.selectedObject
                 ->GetRuntimeHandle();
         }
+        ProceduralMeshSettings proceduralSettings{};
+        const ProceduralMeshSettings* proceduralSettingsPtr = nullptr;
+        for (const SceneComponentData& candidate : target.components) {
+            if (candidate.type != "ProceduralMeshComponent") {
+                continue;
+            }
+            ProceduralMeshComponent probe{};
+            probe.Deserialize(candidate.properties);
+            proceduralSettings = probe.GetSettings();
+            proceduralSettingsPtr = &proceduralSettings;
+            break;
+        }
         const InspectorContext inspectorContext{
             &scene.GetAssetRegistry(),
             &scene.GetAssetDatabase(),
             &scene.GetSceneDocument(),
             &scene.GetWorld().Services(),
             runtimeObject.IsValid() ? &runtimeObject : nullptr,
-            &modelMaterialSlotCatalog_
+            &modelMaterialSlotCatalog_,
+            proceduralSettingsPtr
         };
 
         ImGui::SeparatorText("Document Components");

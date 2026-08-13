@@ -33,6 +33,9 @@ namespace HIKARI {
                 TEXT::Localize("ui.viewport.debugGrid").c_str(),
                 &overlays.showGrid);
             ImGui::Checkbox(
+                TEXT::Localize("ui.viewport.debugGridFloor").c_str(),
+                &overlays.showGridFloor);
+            ImGui::Checkbox(
                 TEXT::Localize("ui.viewport.debugAxis").c_str(),
                 &overlays.showAxis);
             ImGui::Checkbox(

@@ -23,6 +23,7 @@ namespace HIKARI {
     class AssetRegistry;
     class IModelMaterialSlotProvider;
     class WorldServiceRegistry;
+    struct ProceduralMeshSettings;
     struct RuntimeObjectHandle;
     struct SceneDocument;
     struct SceneObjectId;
@@ -34,6 +35,8 @@ namespace HIKARI {
         const WorldServiceRegistry* worldServices = nullptr;
         const RuntimeObjectHandle* runtimeObject = nullptr;
         IModelMaterialSlotProvider* modelMaterialSlotProvider = nullptr;
+        // プロシージャルオブジェクトの検査時、隣接する ProceduralMeshComponent の設定。
+        const ProceduralMeshSettings* proceduralMeshSettings = nullptr;
     };
 
     class IInspectorBuilder {

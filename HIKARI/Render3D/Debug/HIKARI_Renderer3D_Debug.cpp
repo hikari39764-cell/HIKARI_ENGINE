@@ -141,17 +141,37 @@ namespace HIKARI::RENDERER3D::DEBUG {
                 grid.spacing > 0.0f ? grid.spacing : 1.0f;
             const float extent =
                 static_cast<float>(halfCount) * spacing;
+            const int majorEvery = (std::max)(grid.majorLineEvery, 0);
+            if ((grid.fillRgba & 0xFFu) != 0u) {
+                const MATH::Vec4 fillColor = DecodeRgba(grid.fillRgba);
+                const MATH::Vec3 corners[4] = {
+                    { -extent, 0.0f, -extent },
+                    {  extent, 0.0f, -extent },
+                    {  extent, 0.0f,  extent },
+                    { -extent, 0.0f,  extent },
+                };
+                g_solidVertices.push_back({ corners[0], fillColor });
+                g_solidVertices.push_back({ corners[1], fillColor });
+                g_solidVertices.push_back({ corners[2], fillColor });
+                g_solidVertices.push_back({ corners[0], fillColor });
+                g_solidVertices.push_back({ corners[2], fillColor });
+                g_solidVertices.push_back({ corners[3], fillColor });
+            }
             for (int index = -halfCount; index <= halfCount; ++index) {
                 const float position =
                     static_cast<float>(index) * spacing;
+                const bool isMajor =
+                    majorEvery > 0 && (index % majorEvery) == 0;
+                const unsigned int lineRgba =
+                    isMajor ? grid.majorRgba : grid.rgba;
                 PushStroke(
                     { -extent, 0.0f, position },
                     { extent, 0.0f, position },
-                    grid.rgba, grid.depthMode, grid.thicknessPixels);
+                    lineRgba, grid.depthMode, grid.thicknessPixels);
                 PushStroke(
                     { position, 0.0f, -extent },
                     { position, 0.0f, extent },
-                    grid.rgba, grid.depthMode, grid.thicknessPixels);
+                    lineRgba, grid.depthMode, grid.thicknessPixels);
             }
         }
 
@@ -299,7 +319,9 @@ namespace HIKARI::RENDERER3D::DEBUG {
             g_expandedStrokes.clear();
             g_solidVertices.clear();
             g_expandedStrokes.reserve(EstimateStrokeCount());
-            g_solidVertices.reserve(g_boxes.size() * 36u);
+            g_solidVertices.reserve(
+                g_boxes.size() * 36u +
+                g_grids.size() * 6u);
             g_expandedStrokes.insert(
                 g_expandedStrokes.end(),
                 g_strokes.begin(),

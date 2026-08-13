@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 
+#include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Inspectors/HIKARI_IInspectorBuilder.h"
 
 namespace HIKARI {
@@ -122,6 +123,9 @@ namespace HIKARI {
 
         builder.Bool("Double Sided", settings_.doubleSided);
         builder.Bool("Generate Tangents", settings_.generateTangents);
+        builder.Text(
+            TEXT::Localize(
+                "ui.inspector.procedural.materialEntryHint"));
         settings_ = SanitizeProceduralMeshSettings(settings_);
         if (!(settings_ == before)) {
             NotifyRenderStateDirty();

@@ -53,6 +53,8 @@ namespace HIKARI::MESHRENDERER {
     };
 
     void Reset();
+    // 初回描画時のパイプライン初期化をユーザー操作から切り離して呼ぶ。
+    void EnsureReadyForFirstFrame(const GFX::Context& graphics);
     void InvalidateMaterialFxPipelineCache();
     void SetGpuDrivenSceneSource(
         const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource* source);

@@ -58,6 +58,11 @@ namespace HIKARI::RENDERER3D::DEBUG {
         int halfCount = 10;
         float spacing = 1.0f;
         unsigned int rgba = 0x888888FF;
+        // majorLineEvery > 0 のとき、N 本ごとの線を majorRgba で強調する。0 は無効。
+        int majorLineEvery = 0;
+        unsigned int majorRgba = 0x888888FF;
+        // 0x00000000 以外のとき、地面パネル（XZ 平面、Y=0）を半透明塗りで描画する。
+        unsigned int fillRgba = 0x00000000;
         DebugDepthMode depthMode = DebugDepthMode::DepthTest;
         float thicknessPixels = 1.0f;
     };

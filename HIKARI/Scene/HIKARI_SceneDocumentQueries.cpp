@@ -5,6 +5,7 @@
 #include <unordered_set>
 
 #include "Scene/HIKARI_SceneDocument.h"
+#include "Scene/HIKARI_SceneComponentId.h"
 
 namespace HIKARI {
 
@@ -61,6 +62,67 @@ namespace HIKARI {
         return found != document.objects.end()
             ? &*found
             : nullptr;
+    }
+
+    SceneObjectData BuildDefaultGridFloorSceneObject(
+        SceneDocument& document) {
+
+        SceneObjectData object{};
+        object.id = AllocateSceneObjectId(document);
+        object.name = "Grid Floor";
+
+        object.components.push_back(SceneComponentData{
+            "ModelComponent",
+            {
+                { "assetId", "" },
+                { "visible", true },
+                { "castShadow", false },
+                { "receiveShadow", true },
+                { "renderStatic", true }
+            }
+        });
+        object.components.push_back(SceneComponentData{
+            "ProceduralMeshComponent",
+            {
+                { "kind", "GridPlane" },
+                { "width", 100.0f },
+                { "height", 1.0f },
+                { "depth", 100.0f },
+                { "segmentsX", 50u },
+                { "segmentsY", 50u },
+                { "segmentsZ", 1u },
+                { "sphereSlices", 32u },
+                { "sphereStacks", 16u },
+                { "doubleSided", true },
+                { "generateTangents", true }
+            }
+        });
+        object.components.push_back(SceneComponentData{
+            "ColliderComponent",
+            {
+                { "enabled", true },
+                { "fitMode", "Geometry" },
+                { "center", { 0.0f, 0.0f, 0.0f } },
+                { "rotation", { 0.0f, 0.0f, 0.0f } },
+                { "trigger", false },
+                { "material", {
+                    { "friction", 0.5f },
+                    { "restitution", 0.0f },
+                    { "density", 1.0f }
+                } },
+                { "filter", {
+                    { "layer", 1u },
+                    { "mask", 0xFFFFFFFFu }
+                } },
+                { "shape", "Box" },
+                { "size", { 100.0f, 0.02f, 100.0f } },
+                { "radius", 0.01f },
+                { "height", 0.02f }
+            }
+        });
+
+        NormalizeSceneComponentIds(object);
+        return object;
     }
 
 } // namespace HIKARI

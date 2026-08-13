@@ -9,6 +9,7 @@
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
 #include "Core/HIKARI_Logger.h"
 #include "Project/HIKARI_ProjectSettings.h"
+#include "Scene/HIKARI_SceneDocumentQueries.h"
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
 #include "Scene/Lighting/HIKARI_LightingAuthoringModel.h"
 
@@ -114,6 +115,12 @@ namespace HIKARI {
         state_->identity.document = SceneDocument{};
         ++state_->identity.documentRevision;
         state_->identity.document.sceneName = "Untitled Scene";
+        // デフォルトの未保存シーンには実体のグリッド床を置く。
+        if (!state_->assets.Database().GetProjectRoot().empty()) {
+            state_->identity.document.objects.push_back(
+                BuildDefaultGridFloorSceneObject(
+                    state_->identity.document));
+        }
         state_->identity.document.systems =
             state_->runtime.featureCatalog.CreateDefaultSceneSystems();
         LIGHTING_AUTHORING::MigrateLegacyLightingAuthoring(

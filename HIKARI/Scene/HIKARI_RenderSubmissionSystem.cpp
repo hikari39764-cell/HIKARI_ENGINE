@@ -93,6 +93,14 @@ namespace HIKARI {
         std::filesystem::path projectRoot) {
 
         std::filesystem::path normalizedProjectRoot = NormalizeProjectRoot(std::move(projectRoot));
+        // 初回描画時のパイプライン初期化とプロシージャル既定プリミティブの
+        // ウォームアップを、ユーザー操作（プリミティブ作成）から切り離す。
+        if (!normalizedProjectRoot.empty()) {
+            (void)MESHRENDERER::EnsureReadyForFirstFrame(
+                GFX::GetCurrentContext());
+            PROCEDURAL::WarmUpDefaultPrimitiveClusters(
+                normalizedProjectRoot);
+        }
         const bool assetContextChanged = sAssetRegistry_ != assetRegistry;
         const bool projectRootChanged = sProjectRoot_ != normalizedProjectRoot;
         if (!assetContextChanged && !projectRootChanged) {

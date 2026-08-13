@@ -70,12 +70,22 @@ namespace HIKARI::PROCEDURAL {
 
             const uint32_t sx = settings.segmentsX;
             const uint32_t sy = settings.segmentsY;
+            // GridPlane は 1 セグメントごとにチェッカーを 1 回タイルする。
+            // これによりセグメント寸法が実世界のグリッド寸法と一致する。
+            const bool tilePerSegment =
+                settings.kind == ProceduralMeshKind::GridPlane;
             primitive.staticVertices.reserve(
                 static_cast<size_t>(sx + 1u) * static_cast<size_t>(sy + 1u));
             for (uint32_t y = 0; y <= sy; ++y) {
                 const float fy = static_cast<float>(y) / static_cast<float>(sy);
                 for (uint32_t x = 0; x <= sx; ++x) {
                     const float fx = static_cast<float>(x) / static_cast<float>(sx);
+                    const float u = tilePerSegment
+                        ? fx * static_cast<float>(sx)
+                        : fx;
+                    const float v = tilePerSegment
+                        ? fy * static_cast<float>(sy)
+                        : fy;
                     primitive.staticVertices.push_back(MakeVertex(
                         {
                             -settings.width * 0.5f + settings.width * fx,
@@ -83,11 +93,11 @@ namespace HIKARI::PROCEDURAL {
                             -settings.depth * 0.5f + settings.depth * fy
                         },
                         { 0.0f, 1.0f, 0.0f },
-                        settings.generateTangents
-                            ? MATH::Vec4{ 1.0f, 0.0f, 0.0f, 1.0f }
-                            : MATH::Vec4{},
-                        fx,
-                        fy));
+                            settings.generateTangents
+                                ? MATH::Vec4{ 1.0f, 0.0f, 0.0f, 1.0f }
+                                : MATH::Vec4{},
+                        u,
+                        v));
                 }
             }
 

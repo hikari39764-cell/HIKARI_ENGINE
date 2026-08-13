@@ -34,6 +34,10 @@ namespace HIKARI::MESHRENDERER {
         gMeshRendererState.debugStats = {};
     }
 
+    void EnsureReadyForFirstFrame(const GFX::Context& graphics) {
+        (void)INTERNAL::EnsureInitialized(graphics);
+    }
+
     void InvalidateMaterialFxPipelineCache() {
         InvalidateMeshPipelineVariants(gMeshRendererState.pipelines);
     }

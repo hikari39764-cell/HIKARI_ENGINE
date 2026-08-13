@@ -7,6 +7,7 @@
 
 #include "Assets/HIKARI_AssetTypes.h"
 #include "Assets/Models/HIKARI_ModelAsset.h"
+#include "Assets/Models/HIKARI_ModelMaterialSlot.h"
 #include "Authoring/HIKARI_IModelMaterialSlotProvider.h"
 #include "Editor/Inspectors/HIKARI_IInspectorBuilder.h"
 
@@ -123,6 +124,22 @@ namespace HIKARI {
             materialSlots = runtimeSlots;
         }
 
+        const bool proceduralMaterialSlots =
+            assetId_.empty() &&
+            context.proceduralMeshSettings != nullptr;
+        if (proceduralMaterialSlots) {
+            runtimeSlots.push_back(ModelMaterialSlotAuthoringView{
+                0u,
+                ASSETS::MODELS::MakeMaterialSlotId(
+                    ASSETS::MODELS::MaterialSlotImporterSemantic::Procedural,
+                    "Procedural Default",
+                    0u),
+                TEXT::Localize("ui.inspector.model.proceduralMaterial"),
+                true
+            });
+            materialSlots = runtimeSlots;
+        }
+
         if (!assetId_.empty()) {
             std::vector<std::string> materialSetLabels{};
             std::vector<std::string> materialSetIds{};
@@ -210,17 +227,9 @@ namespace HIKARI {
             }
         }
 
-        if (!materialSlots.empty() &&
-            builder.Section(
-                TEXT::Localize(
-                    "ui.inspector.model.advancedSlotOverrides"),
-                false)) {
-            builder.Text(
-                TEXT::Localize(
-                    "ui.inspector.model.slotOverridesHint"));
-            for (const ModelMaterialSlotAuthoringView& imported :
-                materialSlots) {
-
+        const auto drawMaterialSlotOverride =
+            [this, &builder](
+                const ModelMaterialSlotAuthoringView& imported) {
                 const uint32_t slotIndex = imported.slotIndex;
                 std::string materialOverrideGuid{};
                 for (const ModelMaterialOverrideSlot& slot :
@@ -264,7 +273,7 @@ namespace HIKARI {
                             materialOverridePropertyId,
                             pickerLabel,
                             "Per-instance Material asset override for this "
-                            "stable imported model slot. Empty restores the "
+                            "stable model slot. Empty restores the "
                             "inherited material."
                         },
                         AssetType::Material,
@@ -277,7 +286,7 @@ namespace HIKARI {
                             std::to_string(slotIndex))) {
                         ClearMaterialOverride(slotIndex);
                     }
-                    continue;
+                    return;
                 }
                 if (materialOverrideGuid.empty()) {
                     ClearMaterialOverride(slotIndex);
@@ -287,6 +296,29 @@ namespace HIKARI {
                         slotIndex,
                         AssetGuid{ materialOverrideGuid });
                 }
+            };
+
+        if (proceduralMaterialSlots) {
+            if (builder.Section(
+                    TEXT::Localize(
+                        "ui.inspector.model.proceduralMaterial"),
+                    false)) {
+                builder.Text(
+                    TEXT::Localize(
+                        "ui.inspector.model.proceduralMaterialHint"));
+                drawMaterialSlotOverride(materialSlots.front());
+            }
+        } else if (!materialSlots.empty() &&
+            builder.Section(
+                TEXT::Localize(
+                    "ui.inspector.model.advancedSlotOverrides"),
+                false)) {
+            builder.Text(
+                TEXT::Localize(
+                    "ui.inspector.model.slotOverridesHint"));
+            for (const ModelMaterialSlotAuthoringView& imported :
+                materialSlots) {
+                drawMaterialSlotOverride(imported);
             }
         } else if (materialSlots.empty()) {
             builder.Text(slotDiagnostic.empty()

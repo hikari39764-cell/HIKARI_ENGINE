@@ -23,6 +23,7 @@
 #include "Assets/HIKARI_AssetUsageAnalyzer.h"
 #include "Assets/Material/HIKARI_MaterialAssetData.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
+#include "Scene/HIKARI_SceneDocumentQueries.h"
 #include "Assets/Semantics/HIKARI_AssetSourceSemantics.h"
 #include "Core/HIKARI_Logger.h"
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
@@ -186,6 +187,9 @@ bool CreateEmptySceneAsset(AssetDatabase &assetDatabase,
   SceneDocument document{};
   document.sceneName =
       sceneName.empty() ? "New Scene" : sceneName;
+  // 新規シーンのデフォルト構成として実体のグリッド床を置く。
+  document.objects.push_back(
+      BuildDefaultGridFloorSceneObject(document));
   document.systems.push_back(SceneSystemData{
       "ModelRenderSystem",
       true,

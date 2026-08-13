@@ -239,6 +239,31 @@ namespace HIKARI {
                 oss << std::hex << std::setw(8) << std::setfill('0') << rgba;
                 return oss.str();
             }
+
+            // generated://checker/<colorA>/<colorB> 形式の合成パスを解釈する。
+            // ディスクを持たない synthetic texture のみ true を返し、色を出力する。
+            bool TryParseGeneratedCheckerPath(
+                const std::string& path,
+                uint32_t& outColorA,
+                uint32_t& outColorB)
+            {
+                constexpr const char* kPrefix = "generated://checker/";
+                constexpr size_t kPrefixLen = 20;
+                if (path.size() != kPrefixLen + 8u + 1u + 8u ||
+                    path.compare(0, kPrefixLen, kPrefix) != 0 ||
+                    path[kPrefixLen + 8u] != '/') {
+                    return false;
+                }
+                try {
+                    outColorA = static_cast<uint32_t>(
+                        std::stoul(path.substr(kPrefixLen, 8u), nullptr, 16));
+                    outColorB = static_cast<uint32_t>(
+                        std::stoul(path.substr(kPrefixLen + 9u, 8u), nullptr, 16));
+                } catch (...) {
+                    return false;
+                }
+                return true;
+            }
         }
 
         bool  DxTextureManager::initialized_ = false;
@@ -389,6 +414,18 @@ namespace HIKARI {
             auto it = nameToHandle_.find(cacheKey);
             if (it != nameToHandle_.end()) {
                 return it->second;
+            }
+
+            // ディスクを持たない generated:// パスは合成生成へディスパッチする。
+            uint32_t genColorA = 0;
+            uint32_t genColorB = 0;
+            if (TryParseGeneratedCheckerPath(path, genColorA, genColorB)) {
+                const int genHandle =
+                    CreateCheckerTexture(name, genColorA, genColorB, resolvedColorSpace);
+                if (genHandle >= 0) {
+                    nameToHandle_[cacheKey] = genHandle;
+                }
+                return genHandle;
             }
 
             int handle = CreateTextureFromFile(path, resolvedColorSpace);
@@ -874,11 +911,15 @@ namespace HIKARI {
                 return it->second;
             }
 
-            constexpr uint32_t kSize = 8;
+            // 8x8 では 1 マス 4 テクセルしかなく縮小表示でぼやけるため、
+            // 128x128（1 マス 64 テクセル）にして解像感を確保する。
+            constexpr uint32_t kSize = 128;
+            constexpr uint32_t kCellPixels = kSize / 2u;
             std::vector<uint8_t> pixels(kSize * kSize * 4);
             for (uint32_t y = 0; y < kSize; ++y) {
                 for (uint32_t x = 0; x < kSize; ++x) {
-                    const bool useA = ((x / 4u) + (y / 4u)) % 2u == 0u;
+                    const bool useA =
+                        ((x / kCellPixels) + (y / kCellPixels)) % 2u == 0u;
                     WriteRgba(useA ? colorA : colorB, pixels.data() + ((y * kSize + x) * 4u));
                 }
             }
@@ -1539,39 +1580,59 @@ namespace HIKARI {
                 return -1;
             }
 
-            D3D12_RESOURCE_DESC textureDesc{};
-            textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-            textureDesc.Alignment = 0;
-            textureDesc.Width = width;
-            textureDesc.Height = height;
-            textureDesc.DepthOrArraySize = 1;
-            textureDesc.MipLevels = 1;
-            textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-            textureDesc.SampleDesc.Count = 1;
-            textureDesc.SampleDesc.Quality = 0;
-            textureDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
-            textureDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+            // 縮小表示でもぼやけないよう、生成テクスチャには mip チェーンを張る。
+            DirectX::Image sourceImage{};
+            sourceImage.width = width;
+            sourceImage.height = height;
+            sourceImage.format = DXGI_FORMAT_R8G8B8A8_UNORM;
+            sourceImage.rowPitch = static_cast<size_t>(width) * 4u;
+            sourceImage.slicePitch = sourceImage.rowPitch * height;
+            sourceImage.pixels = const_cast<uint8_t*>(rgbaPixels);
 
-            auto textureHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+            const DirectX::TEX_FILTER_FLAGS filter =
+                colorSpace == TextureColorSpace::Srgb
+                    ? static_cast<DirectX::TEX_FILTER_FLAGS>(
+                        DirectX::TEX_FILTER_DEFAULT |
+                        DirectX::TEX_FILTER_SRGB)
+                    : DirectX::TEX_FILTER_DEFAULT;
+            DirectX::ScratchImage mipChain{};
+            HRESULT hr = DirectX::GenerateMipMaps(
+                sourceImage,
+                filter,
+                0,
+                mipChain);
+            if (FAILED(hr) || mipChain.GetImageCount() == 0) {
+                HIKARI_LOG_ERROR("[DxTextureManager][Generated][ERROR] mip generation failed: " + debugName);
+                return -1;
+            }
+            const DirectX::TexMetadata metadata = mipChain.GetMetadata();
+
             Microsoft::WRL::ComPtr<ID3D12Resource> texResource;
-            HRESULT hr = device->CreateCommittedResource(
-                &textureHeap,
-                D3D12_HEAP_FLAG_NONE,
-                &textureDesc,
-                D3D12_RESOURCE_STATE_COPY_DEST,
-                nullptr,
-                IID_PPV_ARGS(texResource.GetAddressOf()));
+            hr = DirectX::CreateTexture(
+                device,
+                metadata,
+                texResource.GetAddressOf());
             if (FAILED(hr) || !texResource) {
                 HIKARI_LOG_ERROR("[DxTextureManager][Generated][ERROR] CreateCommittedResource failed: " + debugName);
                 return -1;
             }
 
-            D3D12_SUBRESOURCE_DATA subresource{};
-            subresource.pData = rgbaPixels;
-            subresource.RowPitch = static_cast<LONG_PTR>(width * 4u);
-            subresource.SlicePitch = static_cast<LONG_PTR>(width * height * 4u);
+            std::vector<D3D12_SUBRESOURCE_DATA> subresources;
+            DirectX::PrepareUpload(
+                device,
+                mipChain.GetImages(),
+                mipChain.GetImageCount(),
+                metadata,
+                subresources);
+            if (subresources.empty()) {
+                HIKARI_LOG_ERROR("[DxTextureManager][Generated][ERROR] PrepareUpload returned no subresources: " + debugName);
+                return -1;
+            }
 
-            const UINT64 uploadSize = GetRequiredIntermediateSize(texResource.Get(), 0, 1);
+            const UINT64 uploadSize = GetRequiredIntermediateSize(
+                texResource.Get(),
+                0,
+                static_cast<UINT>(subresources.size()));
             auto uploadHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
             auto uploadDesc = CD3DX12_RESOURCE_DESC::Buffer(uploadSize);
             Microsoft::WRL::ComPtr<ID3D12Resource> uploadResource;
@@ -1592,7 +1653,14 @@ namespace HIKARI {
             hr = uploadCmdList_->Reset(uploadAllocator_.Get(), nullptr);
             assert(SUCCEEDED(hr));
 
-            UpdateSubresources(uploadCmdList_.Get(), texResource.Get(), uploadResource.Get(), 0, 0, 1, &subresource);
+            UpdateSubresources(
+                uploadCmdList_.Get(),
+                texResource.Get(),
+                uploadResource.Get(),
+                0,
+                0,
+                static_cast<UINT>(subresources.size()),
+                subresources.data());
             auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
                 texResource.Get(),
                 D3D12_RESOURCE_STATE_COPY_DEST,
@@ -1613,7 +1681,7 @@ namespace HIKARI {
                 WaitForSingleObject(uploadFenceEvent_, INFINITE);
             }
 
-            const DXGI_FORMAT srvFormat = ResolveSrvFormat(DXGI_FORMAT_R8G8B8A8_UNORM, colorSpace);
+            const DXGI_FORMAT srvFormat = ResolveSrvFormat(metadata.format, colorSpace);
             const int handle = RegisterFromResourceAs(texResource.Get(), srvFormat);
             if (handle >= 0) {
                 LogTextureLoad(logKind, debugName, colorSpace, srvFormat, handle);

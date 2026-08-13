@@ -367,6 +367,19 @@ namespace HIKARI {
         POST::PostSystem::SetBloomSettings(state_->lighting.environment.bloom);
         POST::PostSystem::SetToneMappingSettings(state_->lighting.environment.toneMapping);
 
+        // UE 風の地面グリッド: 半透明の地面パネルと主線/副線を一括で描画する。
+        if (DrawDebugHelpers() && state_->editor.viewportOverlayState.showGridFloor) {
+            RENDERER3D::DEBUG::Grid3D grid{};
+            grid.halfCount = 50;
+            grid.spacing = 1.0f;
+            grid.rgba = 0x5A6A7FA8;
+            grid.majorLineEvery = 5;
+            grid.majorRgba = 0x7F93ABC8;
+            grid.fillRgba = 0x15191FA8;
+            RENDERER3D::DEBUG::SubmitGrid3D(grid);
+        }
+
+        // 純粋なワイヤーフレームグリッドはデバッグ表示として残す。
         if (DrawDebugHelpers() && state_->editor.viewportOverlayState.showGrid) {
             RENDERER3D::DEBUG::Grid3D grid{};
             grid.halfCount = 10;

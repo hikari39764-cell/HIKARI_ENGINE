@@ -32,6 +32,8 @@ namespace HIKARI::RENDER3D {
         Microsoft::WRL::ComPtr<ID3D12Resource> metadataBuffer{};
         uint64_t metadataBufferBytes = 0;
         bool ready = false;
+        // ディスクファイルではなくメモリ登録済み packed データから作られた資源。
+        bool memoryResident = false;
     };
 
     struct ClusterGeometryResourceSystemStats {
@@ -63,6 +65,15 @@ namespace HIKARI::RENDER3D {
 
     void UpdateClusterGeometryResourceContext(const GFX::Context& ctx);
     void ShutdownClusterGeometryResourceSystem();
+
+    // プロシージャル等の実行時生成ジオメトリを、ファイルを介さず
+    // packed データのまま登録する。path は LoadClusterGeometryResource の
+    // hcmeshPath と一致させる。
+    void RegisterClusterGeometryPackedSource(
+        const std::string& path,
+        CLUSTER::ClusterGeometryPackedBytes packed);
+    void UnregisterClusterGeometryPackedSource(
+        const std::string& path);
 
     ClusterGeometryResourceHandle LoadClusterGeometryResource(
         const std::string& sourceKey,

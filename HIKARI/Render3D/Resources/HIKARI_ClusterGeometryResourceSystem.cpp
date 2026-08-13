@@ -24,6 +24,7 @@ namespace HIKARI::RENDER3D {
             GFX::Context context{};
             std::unordered_map<std::string, ClusterGeometryResourceRecord> recordsBySourceKey{};
             std::unordered_map<uint64_t, std::string> sourceKeyByHandle{};
+            std::unordered_map<std::string, CLUSTER::ClusterGeometryPackedBytes> memorySourcesByPath{};
             ClusterGeometryResourceSystemStats stats{};
             ID3D12Device* uploadDevice = nullptr;
             Microsoft::WRL::ComPtr<ID3D12CommandAllocator> uploadAllocator{};
@@ -61,6 +62,12 @@ namespace HIKARI::RENDER3D {
 
             return lhs.lexically_normal().generic_string() ==
                 rhs.lexically_normal().generic_string();
+        }
+
+        std::string SourcePathKey(
+            const std::filesystem::path& path) {
+
+            return path.lexically_normal().generic_string();
         }
 
         void ResetUploadObjects(ClusterGeometryResourceSystemState& state) {
@@ -429,6 +436,7 @@ namespace HIKARI::RENDER3D {
 
     void ShutdownClusterGeometryResourceSystem() {
         ClusterGeometryResourceSystemState& state = State();
+        state.memorySourcesByPath.clear();
         for (const auto& pair : state.recordsBySourceKey) {
             const ClusterGeometryResourceRecord& record = pair.second;
             ReleaseClusterGeometryRecordViews(record);
@@ -441,6 +449,24 @@ namespace HIKARI::RENDER3D {
         state.context = {};
         state.stats = {};
         ResetUploadObjects(state);
+    }
+
+    void RegisterClusterGeometryPackedSource(
+        const std::string& path,
+        CLUSTER::ClusterGeometryPackedBytes packed) {
+
+        if (path.empty()) {
+            return;
+        }
+        State().memorySourcesByPath[SourcePathKey(path)] =
+            std::move(packed);
+    }
+
+    void UnregisterClusterGeometryPackedSource(
+        const std::string& path) {
+
+        State().memorySourcesByPath.erase(
+            SourcePathKey(path));
     }
 
     ClusterGeometryResourceHandle LoadClusterGeometryResource(
@@ -460,9 +486,15 @@ namespace HIKARI::RENDER3D {
         if (cached != state.recordsBySourceKey.end() &&
             cached->second.ready &&
             GetRenderResourcePool().IsAlive(cached->second.handle.ToUntyped())) {
-            const std::filesystem::file_time_type currentWriteTime = ReadSourceWriteTime(hcmeshPath);
-            if (IsSameSourcePath(cached->second.sourcePath, hcmeshPath) &&
-                cached->second.sourceWriteTime == currentWriteTime) {
+            const bool memoryHit = cached->second.memoryResident;
+            const bool fileHit =
+                !memoryHit &&
+                IsSameSourcePath(
+                    cached->second.sourcePath,
+                    hcmeshPath) &&
+                cached->second.sourceWriteTime ==
+                    ReadSourceWriteTime(hcmeshPath);
+            if (memoryHit || fileHit) {
                 ++state.stats.hitCount;
                 RebuildStats();
                 return cached->second.handle;
@@ -478,15 +510,29 @@ namespace HIKARI::RENDER3D {
             return {};
         }
 
+        const std::string pathKey = SourcePathKey(hcmeshPath);
+        const auto memorySource =
+            state.memorySourcesByPath.find(pathKey);
+        const bool fromMemory =
+            memorySource != state.memorySourcesByPath.end();
         CLUSTER::ClusterGeometryPackedBytes packed{};
-        std::string readMessage{};
-        if (!ASSETS::GEOMETRY::ReadHcmeshPackedFile(hcmeshPath, packed, readMessage)) {
-            HIKARI_LOG_WARN(
-                "[ClusterGeometryResourceSystem][Load] " +
-                (readMessage.empty() ? hcmeshPath.generic_string() : readMessage));
-            ++state.stats.failedCount;
-            RebuildStats();
-            return {};
+        if (fromMemory) {
+            packed = memorySource->second;
+        } else {
+            std::string readMessage{};
+            if (!ASSETS::GEOMETRY::ReadHcmeshPackedFile(
+                    hcmeshPath,
+                    packed,
+                    readMessage)) {
+                HIKARI_LOG_WARN(
+                    "[ClusterGeometryResourceSystem][Load] " +
+                    (readMessage.empty()
+                        ? hcmeshPath.generic_string()
+                        : readMessage));
+                ++state.stats.failedCount;
+                RebuildStats();
+                return {};
+            }
         }
 
         ClusterGeometryUploadBuffer geometryUpload{};
@@ -592,6 +638,7 @@ namespace HIKARI::RENDER3D {
         record.metadataBuffer = std::move(metadataUpload.gpu);
         record.metadataBufferBytes = packed.metadataByteSize;
         record.ready = true;
+        record.memoryResident = fromMemory;
         state.recordsBySourceKey[sourceKey] = std::move(record);
         state.sourceKeyByHandle[PackHandle(handle)] = sourceKey;
 

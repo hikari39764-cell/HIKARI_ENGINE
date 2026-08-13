@@ -1,6 +1,7 @@
 #include "Render3D/Procedural/HIKARI_ProceduralModelFactory.h"
 
 #include <algorithm>
+#include <array>
 #include <cstring>
 #include <filesystem>
 #include <iomanip>
@@ -17,6 +18,7 @@
 #include "Core/HIKARI_Logger.h"
 #include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Render3D/Procedural/HIKARI_ProceduralMeshBuilder.h"
+#include "Render3D/Resources/HIKARI_ClusterGeometryResourceSystem.h"
 
 namespace HIKARI::PROCEDURAL {
     namespace {
@@ -62,6 +64,17 @@ namespace HIKARI::PROCEDURAL {
             KeyHasher> gCache;
         std::unordered_map<std::string, std::string> gClusterPathCache;
         ProceduralModelDebugStats gStats{};
+        constexpr std::array<ProceduralMeshKind, 6>
+            kDefaultWarmUpKinds{{
+                ProceduralMeshKind::Box,
+                ProceduralMeshKind::Plane,
+                ProceduralMeshKind::GridPlane,
+                ProceduralMeshKind::Sphere,
+                ProceduralMeshKind::Cylinder,
+                ProceduralMeshKind::Capsule,
+            }};
+        std::filesystem::path gWarmUpProjectRoot{};
+        size_t gWarmUpIndex = 0u;
 
         ProceduralModelKey MakeKey(
             const ProceduralMeshSettings& rawSettings) {
@@ -205,6 +218,24 @@ namespace HIKARI::PROCEDURAL {
                 return false;
             }
 
+            // ディスク書き込みに先立って packed データをメモリ登録し、
+            // 初回レンダリングがファイルを読まないようにする。
+            RENDER3D::CLUSTER::ClusterGeometryPackedBytes packed{};
+            std::string packMessage{};
+            if (RENDER3D::CLUSTER::PackClusterGeometryForGpu(
+                    clusteredGeometry,
+                    {},
+                    packed,
+                    &packMessage)) {
+                RENDER3D::RegisterClusterGeometryPackedSource(
+                    outputPath.generic_string(),
+                    std::move(packed));
+            } else {
+                HIKARI_LOG_WARN(
+                    "[ProceduralModelFactory] clustered geometry pack failed: " +
+                    packMessage);
+            }
+
             std::string message;
             if (!ASSETS::GEOMETRY::WriteHcmeshFile(
                     outputPath,
@@ -273,6 +304,17 @@ namespace HIKARI::PROCEDURAL {
             material.shaderProfileId = "PBR";
             material.doubleSided = key.doubleSided;
             material.baseColorFactor = { 1, 1, 1, 1 };
+
+            // プロシージャル既定の baseColor は generated:// 合成チェッカーを指す。
+            // ディスク IO を伴わず、パスが色をエンコードするため個別調整も衝突しない。
+            TextureAsset3D checkerTexture{};
+            checkerTexture.name = "Procedural Checker";
+            checkerTexture.sourcePath =
+                "generated://checker/bfbfbfff/8a8a8aff";
+            checkerTexture.resolvedPath = checkerTexture.sourcePath;
+            material.baseColorTexture.textureIndex =
+                static_cast<int>(model->textures.size());
+            model->textures.push_back(checkerTexture);
             model->materials.push_back(material);
 
             MeshPrimitive primitive{};
@@ -340,10 +382,37 @@ namespace HIKARI::PROCEDURAL {
         return normalizedPath;
     }
 
+    void WarmUpDefaultPrimitiveClusters(
+        const std::filesystem::path& projectRoot) {
+
+        if (projectRoot.empty()) {
+            return;
+        }
+        const std::filesystem::path normalized =
+            projectRoot.lexically_normal();
+        if (gWarmUpProjectRoot != normalized) {
+            gWarmUpProjectRoot = normalized;
+            gWarmUpIndex = 0u;
+        }
+        if (gWarmUpIndex >= kDefaultWarmUpKinds.size()) {
+            return;
+        }
+
+        ProceduralMeshSettings settings{};
+        settings.kind = kDefaultWarmUpKinds[gWarmUpIndex];
+        settings = SanitizeProceduralMeshSettings(settings);
+        (void)GetOrCreateClusteredGeometryPath(
+            settings,
+            projectRoot);
+        ++gWarmUpIndex;
+    }
+
     void ClearCache() {
         gCache.clear();
         gClusterPathCache.clear();
         gStats = {};
+        gWarmUpProjectRoot.clear();
+        gWarmUpIndex = 0u;
     }
 
     const ProceduralModelDebugStats& GetDebugStats() {

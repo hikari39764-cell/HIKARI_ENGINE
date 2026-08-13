@@ -25,6 +25,10 @@ namespace HIKARI::PROCEDURAL {
     std::string GetOrCreateClusteredGeometryPath(
         const ProceduralMeshSettings& settings,
         const std::filesystem::path& projectRoot);
+    // デフォルト六種のプロシージャルプリミティブを、1 フレーム 1 種ずつ
+    // ウォームアップする。プロジェクトルートが変わると再開する。
+    void WarmUpDefaultPrimitiveClusters(
+        const std::filesystem::path& projectRoot);
     void ClearCache();
     const ProceduralModelDebugStats& GetDebugStats();
 

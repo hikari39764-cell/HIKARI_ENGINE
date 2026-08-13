@@ -114,11 +114,12 @@ namespace HIKARI::EDITOR {
         if (IconToggleButton(
                 EditorGlyph::Grid,
                 "ViewportGrid",
-                context.overlays.showGrid,
+                context.overlays.showGridFloor,
                 buttonSize,
                 TEXT::Localize(
-                    "ui.viewport.tooltipGrid").c_str())) {
-            context.overlays.showGrid = !context.overlays.showGrid;
+                    "ui.viewport.tooltipGridFloor").c_str())) {
+            context.overlays.showGridFloor =
+                !context.overlays.showGridFloor;
         }
         sameLine();
         if (IconToggleButton(
