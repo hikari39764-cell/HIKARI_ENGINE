@@ -13,6 +13,7 @@
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenProducer.h"
 #include "Render3D/GpuDriven/HIKARI_SurfaceGpuSceneFrameBuffer.h"
 #include "Render3D/GpuDriven/CommandStream/HIKARI_GpuTraditionalCommandStreamBuffer.h"
+#include "Render3D/Sand/HIKARI_SandSurfaceGpuFrameBuffer.h"
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
 
@@ -34,6 +35,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         bool reusedResidentFrame = false;
         bool patchedDirtyRanges = false;
         bool uploadedFullScene = false;
+        bool sandSurfaceDataResident = false;
         std::array<uint32_t, kGpuDrivenPassCount> passInstanceCounts{};
         SurfaceGpuSceneFrameBufferStats bufferStats{};
     };
@@ -73,7 +75,8 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         void Attach(
             SurfaceGpuSceneFrameBuffer* sceneBuffer,
             GpuTraditionalCommandStreamBuffer* traditionalCommandStreamBuffer,
-            IGpuDrivenProducer* producer);
+            IGpuDrivenProducer* producer,
+            SAND::SandSurfaceGpuFrameBuffer* sandSurfaceBuffer);
 
         void ResetFrame();
         bool BeginFrame(const GpuDrivenSceneSource* source);
@@ -133,6 +136,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         };
 
         SurfaceGpuSceneFrameBuffer* sceneBuffer_ = nullptr;
+        SAND::SandSurfaceGpuFrameBuffer* sandSurfaceBuffer_ = nullptr;
         GpuTraditionalCommandStreamBuffer* traditionalCommandStreamBuffer_ = nullptr;
         IGpuDrivenProducer* producer_ = nullptr;
         const GpuDrivenSceneSource* frameSource_ = nullptr;

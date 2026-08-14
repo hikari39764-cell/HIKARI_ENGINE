@@ -40,6 +40,10 @@ namespace EDITOR {
         DocumentSceneBase& scene,
         const CreatePrimitiveRequest& request);
 
+    GameObject* CreateSandSurfaceObject(
+        DocumentSceneBase& scene,
+        const CreateObjectRequest& request);
+
     GameObject* CreateReflectionProbeObject(
         DocumentSceneBase& scene,
         const CreateObjectRequest& request);

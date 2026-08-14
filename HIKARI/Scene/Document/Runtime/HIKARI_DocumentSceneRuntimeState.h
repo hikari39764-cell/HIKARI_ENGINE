@@ -25,6 +25,7 @@
 #include "Scene/HIKARI_World.h"
 #include "Scene/Features/HIKARI_RuntimeExtension.h"
 #include "Scene/Features/HIKARI_RuntimeFeatureCatalog.h"
+#include "Scene/Sand/HIKARI_SandSurfaceQueryService.h"
 #include "Scene/Vfx/HIKARI_VfxPlaybackService.h"
 
 namespace HIKARI {
@@ -51,6 +52,7 @@ namespace HIKARI {
             MaterialExternalValueSnapshot>
             materialExternalValueSnapshot{};
         VFX::VfxPlaybackService vfxPlaybackService{};
+        SAND::SandSurfaceQueryService sandSurfaceQueryService{};
         PresentationTransformService presentationTransformService{};
         RuntimeExtensionHost extensionHost{};
         RuntimeFeatureCatalog featureCatalog{};

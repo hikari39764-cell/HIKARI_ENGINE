@@ -37,6 +37,7 @@ namespace HIKARI::RENDER3D::RUNTIME {
         PassForwardTransparent = 1u << 14,
         PassShadow = 1u << 15,
         Skinned = 1u << 16,
+        SandSurface = 1u << 17,
     };
 
     enum class SurfaceGpuSceneResourceFlags : uint32_t {
@@ -98,7 +99,10 @@ namespace HIKARI::RENDER3D::RUNTIME {
 
         uint32_t materialProgramFlags = 0u;
         uint32_t postGroupMask = 0u;
-        uint32_t stylizedFeaturePadding0 = 0u;
+        // Renderer-owned sparse feature payload。index 0 は全 feature buffer で
+        // 必須の neutral sentinel とする。沙地/水面などが共有する engine 層の
+        // 索引であり、surface 専用の状態は buffer 側が持つ。
+        uint32_t surfaceFeatureDataIndex = 0u;
         uint32_t stylizedFeaturePadding1 = 0u;
 
         MATH::Vec4 lightmapUvScaleBias{
@@ -108,6 +112,15 @@ namespace HIKARI::RENDER3D::RUNTIME {
     };
 
     static_assert(sizeof(SurfaceGpuSceneInstance) == 560u);
+    static_assert(offsetof(
+        SurfaceGpuSceneInstance,
+        surfaceFeatureDataIndex) == 408u);
+    static_assert(offsetof(
+        SurfaceGpuSceneInstance,
+        lightmapUvScaleBias) == 416u);
+    static_assert(offsetof(
+        SurfaceGpuSceneInstance,
+        fxUser) == 432u);
     static_assert(kSurfaceGpuSceneJointPaletteStrideBytes == 8192u);
 
     struct SurfaceGpuSceneMaterialSource {

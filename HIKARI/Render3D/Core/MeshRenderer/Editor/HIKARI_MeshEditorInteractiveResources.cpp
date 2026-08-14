@@ -211,7 +211,8 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         gMeshRendererState.editorInteractive.gpuDrivenLayer.Attach(
             &gMeshRendererState.editorInteractive.surfaceGpuSceneBuffer,
             nullptr,
-            &gMeshRendererState.editorInteractive.clusterGpuDrivenProducer);
+            &gMeshRendererState.editorInteractive.clusterGpuDrivenProducer,
+            &gMeshRendererState.sandSurfaceGpuFrameBuffer);
         if (!gMeshRendererState.editorInteractive.gpuDrivenLayer.Initialize(
                 device,
                 GetStaticRootSignature(gMeshRendererState.pipelines),

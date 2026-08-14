@@ -437,6 +437,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             key.waterMaterialFx =
                 pixelShaderId == "Render3D_FxWaterPS" ||
                 shaderRoute.vertexShaderId == "Render3D_FxWaterVS";
+            key.sandSurface = record.sandSurface;
             key.materialFxUsesCustomVertexShader =
                 key.materialFx &&
                 usesCustomVertexShader &&
@@ -460,6 +461,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                 clusterVertexCompatible &&
                 clusterPixelCompatible &&
                 key.objectDataCompatible &&
+                !key.sandSurface &&
                 (ordinaryMeshletMaterial || materialFxMeshletMaterial);
             if (key.clusterMainlineEligible) {
                 key.backendRoute = RUNTIME::SurfaceBackendRoute::MeshShader;
@@ -502,6 +504,9 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             }
             if (record.key.waterMaterialFx) {
                 flags |= ToInstanceFlag(RUNTIME::SurfaceGpuSceneInstanceFlags::WaterMaterialFx);
+            }
+            if (record.key.sandSurface) {
+                flags |= ToInstanceFlag(RUNTIME::SurfaceGpuSceneInstanceFlags::SandSurface);
             }
             if (record.key.depthAware) {
                 flags |= ToInstanceFlag(RUNTIME::SurfaceGpuSceneInstanceFlags::DepthAware);
@@ -661,6 +666,8 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                 instance.materialProgramFlags |= EditorSelectionOutline;
             }
             instance.postGroupMask = record.postGroupMask;
+            instance.surfaceFeatureDataIndex =
+                record.sandSurfaceGpuDataIndex;
             if (record.skinned &&
                 record.jointPaletteSlot != RUNTIME::kInvalidRenderSurfaceIndex) {
                 instance.jointPaletteOffsetBytes =
@@ -777,6 +784,10 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         for (size_t i = 0; i < VFX::kMaterialFxUserCount; ++i) {
             record.materialFxParamValues[i] = surfaceInstance.materialFxParamValues[i];
         }
+        record.sandSurface = surfaceInstance.sandSurface;
+        record.sandSurfaceData = surfaceInstance.sandSurfaceData;
+        record.sandSurfaceHeightOffset =
+            surfaceInstance.sandSurfaceHeightOffset;
 
         record.forwardCandidate = record.visible;
         record.shadowCandidate = record.visible && record.castShadow;

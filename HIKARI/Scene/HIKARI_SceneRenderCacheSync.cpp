@@ -11,6 +11,7 @@
 #include "Render3D/Procedural/HIKARI_ProceduralModelFactory.h"
 #include "Render3D/Runtime/HIKARI_RenderModelCache.h"
 #include "Render3D/Runtime/HIKARI_SceneRenderCache.h"
+#include "Render3D/Sand/HIKARI_SandSurfaceRenderData.h"
 #include "Scene/Components/HIKARI_ProceduralMeshComponent.h"
 #include "Scene/Components/Rendering/MaterialFx/HIKARI_MaterialFxComponent.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
@@ -18,10 +19,36 @@
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_PresentationTransformService.h"
 #include "Scene/HIKARI_World.h"
+#include "Scene/Sand/HIKARI_SandSurfaceComponent.h"
+#include "Scene/Sand/HIKARI_SandSurfaceQueryService.h"
 
 namespace HIKARI {
 
     namespace {
+        RENDER3D::SAND::SandSurfaceRenderData
+            BuildSandSurfaceRenderData(
+                const SAND::SandSurfaceSettings& authoredSettings,
+                const ProceduralMeshComponent& procedural) {
+
+            const ProceduralMeshSettings mesh =
+                SanitizeProceduralMeshSettings(
+                    procedural.GetSettings());
+            const SAND::SandSurfaceSettings settings =
+                SAND::SanitizeSandSurfaceSettings(authoredSettings);
+
+            RENDER3D::SAND::SandSurfaceRenderData data{};
+            data.gridResolution = settings.gridResolution;
+            data.extents = { mesh.width, mesh.depth };
+            data.heightScale = settings.heightScale;
+            data.rimStrength = settings.rimStrength;
+            data.lightTint = settings.lightTint;
+            data.sparkleStrength = settings.sparkleStrength;
+            data.darkTint = settings.darkTint;
+            data.rippleAmount = settings.rippleAmount;
+            data.pitDarkening = settings.pitDarkening;
+            return data;
+        }
+
         RENDER3D::RUNTIME::SceneRenderObjectId ResolveSceneRenderObjectId(const GameObject& object) {
             RENDER3D::RUNTIME::SceneRenderObjectId id{ object.GetDocumentId().value };
             if (!id.IsValid()) {
@@ -148,6 +175,7 @@ namespace HIKARI {
             ClusteredGeometryPathResolver& clusteredGeometryPaths,
             const PresentationTransformService* presentationTransforms,
             const ANIMATION::AnimationPoseService* animationPoses,
+            const SAND::SandSurfaceQueryService* sandSurfaceQuery,
             RENDER3D::RenderViewPurpose purpose) {
 
             RENDER3D::RUNTIME::SceneRenderObjectDesc desc{};
@@ -232,6 +260,29 @@ namespace HIKARI {
                     return lhs.materialIndex < rhs.materialIndex;
                 });
             desc.postGroupMask = model.GetPostGroupMask();
+            const auto* procedural =
+                object.GetComponent<ProceduralMeshComponent>();
+            const auto* sand =
+                object.GetComponent<SandSurfaceComponent>();
+            if (sand != nullptr && procedural != nullptr) {
+                const ProceduralMeshKind meshKind =
+                    procedural->GetSettings().kind;
+                if (meshKind == ProceduralMeshKind::Plane ||
+                    meshKind == ProceduralMeshKind::GridPlane) {
+                    desc.sandSurface = true;
+                    desc.sandSurfaceData = BuildSandSurfaceRenderData(
+                        sand->GetSettings(),
+                        *procedural);
+                    if (sandSurfaceQuery != nullptr) {
+                        const std::vector<float>* heights = nullptr;
+                        if (sandSurfaceQuery->TryGetHeights(
+                                object.GetRuntimeHandle(),
+                                heights)) {
+                            desc.sandSurfaceHeights = heights;
+                        }
+                    }
+                }
+            }
             if (const MaterialFxComponent* materialFx =
                 object.GetComponent<MaterialFxComponent>()) {
 
@@ -268,6 +319,8 @@ namespace HIKARI {
             world.Services().Find<PresentationTransformService>();
         const ANIMATION::AnimationPoseService* animationPoses =
             world.Services().Find<ANIMATION::AnimationPoseService>();
+        const SAND::SandSurfaceQueryService* sandSurfaceQuery =
+            world.Services().Find<SAND::SandSurfaceQueryService>();
 
         world.ForEachObjectWith<ModelComponent>([&](GameObject& object, ModelComponent& model) {
             sceneRenderCache.Upsert(BuildSceneRenderObjectDesc(
@@ -277,6 +330,7 @@ namespace HIKARI {
                 clusteredGeometryPaths,
                 presentationTransforms,
                 animationPoses,
+                sandSurfaceQuery,
                 purpose));
         });
 
@@ -306,6 +360,8 @@ namespace HIKARI {
             world.Services().Find<PresentationTransformService>();
         const ANIMATION::AnimationPoseService* animationPoses =
             world.Services().Find<ANIMATION::AnimationPoseService>();
+        const SAND::SandSurfaceQueryService* sandSurfaceQuery =
+            world.Services().Find<SAND::SandSurfaceQueryService>();
 
         for (GameObject* object : world.GetRenderDirtyObjects()) {
             if (object == nullptr) {
@@ -326,6 +382,7 @@ namespace HIKARI {
                 clusteredGeometryPaths,
                 presentationTransforms,
                 animationPoses,
+                sandSurfaceQuery,
                 purpose));
         }
 
@@ -350,6 +407,7 @@ namespace HIKARI {
                     clusteredGeometryPaths,
                     presentationTransforms,
                     animationPoses,
+                    sandSurfaceQuery,
                     purpose));
             });
 

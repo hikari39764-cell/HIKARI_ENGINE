@@ -978,6 +978,10 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         }
         surfaceRecords_.clear();
         meshShaderJointPalettes_.clear();
+        sandSurfaceGpuData_.clear();
+        sandSurfaceGpuData_.push_back(
+            SAND::BuildSandSurfaceGpuDataSentinel());
+        sandSurfaceHeights_ = nullptr;
         forwardOpaqueResidentRecordIndices_.clear();
         depthPrepassOccluderRecordIndices_.clear();
         forwardDepthAwareResidentRecordIndices_.clear();
@@ -1120,6 +1124,24 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             meshShaderJointPalettes_[recordIndex] = *palette;
             record.jointPaletteSlot = recordIndex;
             record.jointPaletteMatrixCount = NUMERIC::SaturateToUint32(palette->size());
+        }
+
+        sandSurfaceGpuData_.clear();
+        sandSurfaceGpuData_.push_back(
+            SAND::BuildSandSurfaceGpuDataSentinel());
+        sandSurfaceHeights_ =
+            input.sceneCache->GetSandSurfaceHeights();
+        for (GpuSceneSurfaceRecord& record : surfaceRecords_) {
+            if (!record.valid || !record.sandSurface) {
+                record.sandSurfaceGpuDataIndex = 0u;
+                continue;
+            }
+            record.sandSurfaceGpuDataIndex =
+                NUMERIC::SaturateToUint32(sandSurfaceGpuData_.size());
+            sandSurfaceGpuData_.push_back(
+                SAND::BuildSandSurfaceGpuData(
+                    record.sandSurfaceData,
+                    record.sandSurfaceHeightOffset));
         }
 
         stats_.sourceRecordCount = NUMERIC::SaturateToUint32(surfaceRecords_.size());
@@ -1600,6 +1622,9 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                 IsGpuSceneShadowStaticTraditionalRecord(newRecord)) {
                 return false;
             }
+            if (oldRecord.sandSurface != newRecord.sandSurface) {
+                return false;
+            }
             const bool oldOpaque = IsGpuSceneForwardOpaqueResidentRecord(oldRecord);
             const bool newOpaque = IsGpuSceneForwardOpaqueResidentRecord(newRecord);
             const bool oldDepthOccluder =
@@ -1631,7 +1656,25 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                 return false;
             }
 
+            const uint32_t sandSurfaceGpuDataIndex =
+                oldRecord.sandSurfaceGpuDataIndex;
+            if (newRecord.sandSurface) {
+                if (sandSurfaceGpuDataIndex == 0u ||
+                    sandSurfaceGpuDataIndex >=
+                        sandSurfaceGpuData_.size()) {
+                    return false;
+                }
+                newRecord.sandSurfaceGpuDataIndex =
+                    sandSurfaceGpuDataIndex;
+            }
             surfaceRecords_[surfaceIndex] = std::move(newRecord);
+            if (sandSurfaceGpuDataIndex != 0u) {
+                sandSurfaceGpuData_[sandSurfaceGpuDataIndex] =
+                    SAND::BuildSandSurfaceGpuData(
+                        surfaceRecords_[surfaceIndex].sandSurfaceData,
+                        surfaceRecords_[surfaceIndex].
+                            sandSurfaceHeightOffset);
+            }
             if (!newOpaque &&
                 !newDepthOccluder &&
                 !newDepthAware &&
@@ -1711,6 +1754,8 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
 
     void GpuSceneRegistry::RebuildForwardSceneSource() {
         sceneSource_.meshShaderJointPalettes = &meshShaderJointPalettes_;
+        sceneSource_.sandSurfaceGpuData = &sandSurfaceGpuData_;
+        sceneSource_.sandSurfaceHeights = sandSurfaceHeights_;
         const uint32_t sharedPrimaryCount =
             NUMERIC::SaturateToUint32(globalGpuSceneInstances_.size());
         uint32_t cursor = sharedPrimaryCount;

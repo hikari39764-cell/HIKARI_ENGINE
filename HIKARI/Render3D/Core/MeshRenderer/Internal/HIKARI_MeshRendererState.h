@@ -24,6 +24,7 @@
 #include "Render3D/Meshlet/HIKARI_MeshletRenderBackend.h"
 #include "Render3D/Resources/HIKARI_RenderResourceHandle.h"
 #include "Render3D/Resources/HIKARI_RenderResourcePool.h"
+#include "Render3D/Sand/HIKARI_SandSurfaceGpuFrameBuffer.h"
 #include "Render3D/Vfx/HIKARI_ParticleGpuDrivenPass.h"
 
 namespace HIKARI::MESHRENDERER {
@@ -121,6 +122,7 @@ namespace HIKARI::MESHRENDERER {
         RENDER3D::MATERIAL::GpuMaterialRegistry gpuMaterialRegistry{};
         std::vector<RENDER3D::MATERIAL::GpuMaterialUploadRange> materialUploadRanges{};
         RENDER3D::GPUDRIVEN::SurfaceGpuSceneFrameBuffer surfaceGpuSceneBuffer{};
+        RENDER3D::SAND::SandSurfaceGpuFrameBuffer sandSurfaceGpuFrameBuffer{};
         RENDER3D::GPUDRIVEN::GpuTraditionalCommandStreamBuffer traditionalCommandStreamBuffer{};
         MeshTraditionalIndirectOwner traditionalIndirectOwner{};
         RENDER3D::GPUDRIVEN::GpuDrivenFrame gpuDrivenFrame{};

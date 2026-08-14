@@ -405,6 +405,20 @@ namespace HIKARI::MESHRENDERER {
         params[ROOT_PARAM::MaterialProgramResources].Descriptor.ShaderRegister = 1;
         params[ROOT_PARAM::MaterialProgramResources].Descriptor.RegisterSpace = 6;
 
+        params[ROOT_PARAM::SurfaceFeatureData].ParameterType =
+            D3D12_ROOT_PARAMETER_TYPE_SRV;
+        params[ROOT_PARAM::SurfaceFeatureData].ShaderVisibility =
+            D3D12_SHADER_VISIBILITY_ALL;
+        params[ROOT_PARAM::SurfaceFeatureData].Descriptor.ShaderRegister = 0;
+        params[ROOT_PARAM::SurfaceFeatureData].Descriptor.RegisterSpace = 7;
+
+        params[ROOT_PARAM::SurfaceFeatureHeights].ParameterType =
+            D3D12_ROOT_PARAMETER_TYPE_SRV;
+        params[ROOT_PARAM::SurfaceFeatureHeights].ShaderVisibility =
+            D3D12_SHADER_VISIBILITY_ALL;
+        params[ROOT_PARAM::SurfaceFeatureHeights].Descriptor.ShaderRegister = 1;
+        params[ROOT_PARAM::SurfaceFeatureHeights].Descriptor.RegisterSpace = 7;
+
         D3D12_STATIC_SAMPLER_DESC linearWrapSampler{};
         linearWrapSampler.Filter = D3D12_FILTER_ANISOTROPIC;
         linearWrapSampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;

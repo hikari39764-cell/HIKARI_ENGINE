@@ -109,6 +109,8 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             pass.Reset();
         }
         meshShaderJointPalettes = nullptr;
+        sandSurfaceGpuData = nullptr;
+        sandSurfaceHeights = nullptr;
         layoutVersion = 0;
         sourceVersion = 0;
         dirtyBaseSourceVersion = 0;

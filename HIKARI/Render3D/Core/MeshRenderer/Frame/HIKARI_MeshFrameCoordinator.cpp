@@ -344,6 +344,12 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             ? frame.skyEnvironmentCB->GetGPUVirtualAddress()
             : 0;
 #endif
+        ctx.surfaceFeatureDataAddress =
+            gMeshRendererState.sandSurfaceGpuFrameBuffer.
+                GetDataGpuVirtualAddress();
+        ctx.surfaceFeatureHeightsAddress =
+            gMeshRendererState.sandSurfaceGpuFrameBuffer.
+                GetHeightGpuVirtualAddress();
         ctx.passKind = passKind;
         ctx.binding.cmd = ctx.cmd;
         ctx.binding.graphics = &graphics;

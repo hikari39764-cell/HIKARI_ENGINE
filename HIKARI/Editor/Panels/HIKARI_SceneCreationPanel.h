@@ -50,6 +50,10 @@ namespace HIKARI {
                 EditorContext& context,
                 const SelectionSyncService& selectionSync,
                 RENDER3D::LIGHTING::SceneLightType lightType);
+            void CreateSandSurfaceObject(
+                DocumentSceneBase& scene,
+                EditorContext& context,
+                const SelectionSyncService& selectionSync);
 
             PrimitiveCreationDialog primitiveCreationDialog_{};
             std::optional<SceneObjectAuthoringHistoryRequest>

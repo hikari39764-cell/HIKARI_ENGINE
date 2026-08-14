@@ -1052,6 +1052,7 @@
         { "ui.sceneCreation.pointLight", "Point Light" },
         { "ui.sceneCreation.prefab", "Prefab" },
         { "ui.sceneCreation.proceduralMesh", "Procedural Mesh" },
+        { "ui.sceneCreation.sandSurface", "Sand Surface" },
         { "ui.sceneCreation.reflectionProbe", "Reflection Probe" },
         { "ui.sceneCreation.searchHint", "Search object types..." },
         { "ui.sceneCreation.sphere", "Sphere" },

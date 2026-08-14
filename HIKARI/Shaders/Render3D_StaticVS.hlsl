@@ -19,6 +19,7 @@ cbuffer CameraCB : register(b0)
 
 #include "Include/HIKARI_MeshObjectData.hlsli"
 #include "Include/Forward/HIKARI_ForwardVertexMeta.hlsli"
+#include "Include/Surface/HIKARI_SandSurfaceDeform.hlsli"
 #if defined(HIKARI_GEOMETRY_OUTLINE_VERTEX)
 #include "Include/Features/HIKARI_GeometryOutlineVertex.hlsli"
 #endif
@@ -48,6 +49,8 @@ struct VSOutput
     nointerpolation uint debugSurfaceId : TEXCOORD6;
     float3 characterRightWS : TEXCOORD8;
     float3 characterForwardWS : TEXCOORD9;
+    nointerpolation uint surfaceFeatureFlags : TEXCOORD7;
+    float3 sandSurfaceData : TEXCOORD11;
 };
 
 VSOutput main(VSInput input)
@@ -57,17 +60,29 @@ VSOutput main(VSInput input)
     uint surfaceGpuSceneIndex =
         HikariGetSurfaceGpuSceneAbsoluteIndex(input.instanceId);
     uint surfaceMaterialProgramFlags = 0u;
+    HikariSurfaceGpuSceneInstance surfaceInstance =
+        (HikariSurfaceGpuSceneInstance)0;
     if (gUseSurfaceGpuScene != 0u)
     {
+        surfaceInstance = HikariGetSurfaceGpuSceneInstanceAt(
+            surfaceGpuSceneIndex);
         surfaceMaterialProgramFlags =
-            HikariGetSurfaceGpuSceneInstanceAt(
-                surfaceGpuSceneIndex).materialProgramFlags;
+            surfaceInstance.materialProgramFlags;
     }
     HikariMeshObjectData objectData =
         HikariGetMeshObjectDataForInstance(objectDataIndex, input.instanceId);
-    float4 worldPos = mul(objectData.world, float4(input.position, 1.0f));
+    float3 localPosition = input.position;
+    float3 localNormal = input.normal;
+    output.sandSurfaceData = float3(localPosition.xz, 0.0f);
+    HikariApplySandSurfaceDeform(
+        surfaceInstance,
+        localPosition,
+        localNormal,
+        output.sandSurfaceData);
+    float4 worldPos = mul(objectData.world, float4(localPosition, 1.0f));
     output.worldPosWS = worldPos.xyz;
-    output.normalWS = normalize(mul((float3x3)objectData.normalMatrix, input.normal));
+    output.normalWS = normalize(
+        mul((float3x3)objectData.normalMatrix, localNormal));
 #if defined(HIKARI_GEOMETRY_OUTLINE_VERTEX)
     output.position = HikariExpandGeometryOutlineVertex(
         worldPos,
@@ -90,5 +105,7 @@ VSOutput main(VSInput input)
         mul((float3x3)objectData.normalMatrix, float3(1.0f, 0.0f, 0.0f)));
     output.characterForwardWS = normalize(
         mul((float3x3)objectData.normalMatrix, float3(0.0f, 0.0f, 1.0f)));
+    output.surfaceFeatureFlags =
+        gUseSurfaceGpuScene != 0u ? surfaceInstance.flags : 0u;
     return output;
 }

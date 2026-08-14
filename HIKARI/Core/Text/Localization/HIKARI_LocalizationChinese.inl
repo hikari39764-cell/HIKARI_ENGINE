@@ -1052,6 +1052,7 @@
         { "ui.sceneCreation.pointLight", "点光源" },
         { "ui.sceneCreation.prefab", "预制体" },
         { "ui.sceneCreation.proceduralMesh", "程序化网格" },
+        { "ui.sceneCreation.sandSurface", "沙地表面" },
         { "ui.sceneCreation.reflectionProbe", "反射探针" },
         { "ui.sceneCreation.searchHint", "搜索对象类型..." },
         { "ui.sceneCreation.sphere", "球体" },

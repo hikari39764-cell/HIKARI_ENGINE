@@ -301,7 +301,8 @@ namespace HIKARI::SHADOW::INTERNAL {
         gShadowRendererState.gpuDrivenLayer.Attach(
             &gShadowRendererState.surfaceGpuSceneBuffer,
             &gShadowRendererState.traditionalCommandStreamBuffer,
-            &gShadowRendererState.clusterGpuDrivenProducer);
+            &gShadowRendererState.clusterGpuDrivenProducer,
+            nullptr);
         if (!gShadowRendererState.gpuDrivenLayer.Initialize(
             device,
             gShadowRendererState.rootSig.Get(),

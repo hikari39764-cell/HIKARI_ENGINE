@@ -74,7 +74,24 @@ namespace HIKARI::MESHRENDERER::ROOT_PARAM {
     constexpr UINT MaterialProgramParameters = 32;
     // Fixed material-program descriptor-index tables -> t1, space6
     constexpr UINT MaterialProgramResources = 33;
+    // Sparse renderer-owned surface feature data (Sand record) -> t0, space7
+    constexpr UINT SurfaceFeatureData = 34;
+    // Sparse renderer-owned surface feature heights (flat float) -> t1, space7
+    constexpr UINT SurfaceFeatureHeights = 35;
 
-    constexpr UINT Count = MaterialProgramResources + 1;
+    constexpr UINT Count = SurfaceFeatureHeights + 1;
+
+    // Root descriptor は 2 DWORD、descriptor table は 1 DWORD。
+    // Static/Skinned は JointPalette slot の型だけを置換し、同じ予算を使う。
+    constexpr UINT RootDescriptorCount = 16u;
+    constexpr UINT DescriptorTableCount = 17u;
+    constexpr UINT RootConstantDwordCount = 6u;
+    constexpr UINT DwordCost =
+        RootDescriptorCount * 2u +
+        DescriptorTableCount +
+        RootConstantDwordCount;
+    static_assert(Count == 36u, "Update the mesh root-signature budget.");
+    static_assert(DwordCost == 55u);
+    static_assert(DwordCost <= 64u);
 
 } // namespace HIKARI::MESHRENDERER::ROOT_PARAM

@@ -31,6 +31,9 @@ struct HikariMeshletVertexOut
     // Render3D_StaticPS. DXIL assigns packed hardware registers in declaration
     // order, so semantic names alone do not make a partial signature linkable.
     nointerpolation uint surfaceFeatureFlags : TEXCOORD7;
+    // Sand displacement uses the traditional VS/PS route only. The slot stays
+    // in the shared signature so the meshlet PSO links against StaticPS.
+    float3 sandSurfaceData : TEXCOORD11;
 };
 
 HikariMeshletVertexOut HikariBuildEmptyMeshletVertex()
@@ -39,6 +42,7 @@ HikariMeshletVertexOut HikariBuildEmptyMeshletVertex()
     output.position = float4(2.0f, 2.0f, 2.0f, 1.0f);
     output.normalWS = float3(0.0f, 1.0f, 0.0f);
     output.tangentWS = float4(1.0f, 0.0f, 0.0f, 1.0f);
+    output.sandSurfaceData = 0.0f.xxx;
     return output;
 }
 
@@ -94,6 +98,7 @@ HikariMeshletVertexOut HikariBuildMeshletVertex(
         mul((float3x3)instance.clusterNormalMatrix, localCharacterRight));
     output.characterForwardWS = normalize(
         mul((float3x3)instance.clusterNormalMatrix, localCharacterForward));
+    output.sandSurfaceData = float3(localPosition.xz, 0.0f);
     return output;
 }
 

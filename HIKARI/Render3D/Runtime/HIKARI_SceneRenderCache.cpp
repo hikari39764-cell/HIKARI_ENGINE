@@ -123,7 +123,11 @@ namespace HIKARI::RENDER3D::RUNTIME {
                 oldDesc.materialFxProfileId != newDesc.materialFxProfileId ||
                 oldDesc.postGroupMask != newDesc.postGroupMask ||
                 oldDesc.materialFxValuesInitialized != newDesc.materialFxValuesInitialized ||
-                !EqualMaterialFxValues(oldDesc.materialFxParamValues, newDesc.materialFxParamValues);
+                !EqualMaterialFxValues(oldDesc.materialFxParamValues, newDesc.materialFxParamValues) ||
+                oldDesc.sandSurface != newDesc.sandSurface ||
+                !SAND::SandSurfaceRenderDataEqual(
+                    oldDesc.sandSurfaceData,
+                    newDesc.sandSurfaceData);
 
             const bool animationDataChanged =
                 oldDesc.animationPoseRevision !=
@@ -232,6 +236,9 @@ namespace HIKARI::RENDER3D::RUNTIME {
             instance.postGroupMask = object.desc.postGroupMask;
             instance.materialFxValuesInitialized = object.desc.materialFxValuesInitialized;
             CopyMaterialFxValues(object.desc, instance);
+            instance.sandSurface = object.desc.sandSurface;
+            instance.sandSurfaceData = object.desc.sandSurfaceData;
+            instance.sandSurfaceHeights = object.desc.sandSurfaceHeights;
 
             instance.hasDrawWorldMatrix = ResolveRenderSurfaceDrawWorldMatrix(
                 object.desc.worldTransform,
@@ -266,6 +273,7 @@ namespace HIKARI::RENDER3D::RUNTIME {
         surfaceTopologyDirty_ = true;
         surfaceRoutingDirty_ = true;
         surfaceDataDirty_ = true;
+        sandSurfaceHeights_.clear();
     }
 
     void SceneRenderCache::BeginSync(uint64_t frameIndex) {
@@ -408,6 +416,28 @@ namespace HIKARI::RENDER3D::RUNTIME {
                 surfaceDataDirty_ = false;
             }
         }
+
+        // 高さは fixed step ごとに変わるため、データバージョンとは独立に
+        // 毎フレーム組み立てる。index 0 は sentinel、以降は surface 順の tile。
+        sandSurfaceHeights_.clear();
+        sandSurfaceHeights_.push_back(0.0f);
+        for (SceneSurfaceInstance& instance : surfaceInstances_) {
+            if (!instance.sandSurface ||
+                instance.sandSurfaceHeights == nullptr) {
+                instance.sandSurfaceHeightOffset = 0u;
+                continue;
+            }
+            if (instance.sandSurfaceHeights->size() <= 1u) {
+                instance.sandSurfaceHeightOffset = 0u;
+                continue;
+            }
+            instance.sandSurfaceHeightOffset =
+                NUMERIC::SaturateToUint32(sandSurfaceHeights_.size());
+            sandSurfaceHeights_.insert(
+                sandSurfaceHeights_.end(),
+                instance.sandSurfaceHeights->begin() + 1u,
+                instance.sandSurfaceHeights->end());
+        }
         RefreshStats();
     }
 
@@ -428,6 +458,10 @@ namespace HIKARI::RENDER3D::RUNTIME {
 
     const std::vector<SceneSurfaceInstance>& SceneRenderCache::GetSurfaceInstances() const {
         return surfaceInstances_;
+    }
+
+    const std::vector<float>* SceneRenderCache::GetSandSurfaceHeights() const {
+        return &sandSurfaceHeights_;
     }
 
     const std::vector<uint32_t>& SceneRenderCache::GetDirtySurfaceIndices() const {

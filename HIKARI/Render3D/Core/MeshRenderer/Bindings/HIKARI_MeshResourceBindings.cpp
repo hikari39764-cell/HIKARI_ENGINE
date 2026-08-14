@@ -325,6 +325,26 @@ namespace HIKARI::MESHRENDERER {
         }
     }
 
+    void BindSurfaceFeatureData(
+        const MeshBindingContext& ctx,
+        D3D12_GPU_VIRTUAL_ADDRESS featureDataAddress) {
+
+        BindSrvCached(
+            ctx,
+            ROOT_PARAM::SurfaceFeatureData,
+            featureDataAddress);
+    }
+
+    void BindSurfaceFeatureHeights(
+        const MeshBindingContext& ctx,
+        D3D12_GPU_VIRTUAL_ADDRESS featureHeightsAddress) {
+
+        BindSrvCached(
+            ctx,
+            ROOT_PARAM::SurfaceFeatureHeights,
+            featureHeightsAddress);
+    }
+
     void BindMaterialTexturePool(const MeshBindingContext& ctx) {
         if (ctx.cmd == nullptr) {
             return;

@@ -9,6 +9,7 @@
 #include "Scene/HIKARI_SceneDocumentQueries.h"
 #include "Scene/Lighting/HIKARI_LightingAuthoringModel.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
+#include "Scene/Sand/HIKARI_SandSurfaceComponent.h"
 
 namespace HIKARI::EDITOR {
 
@@ -201,6 +202,77 @@ namespace HIKARI::EDITOR {
 
         NormalizeSceneComponentIds(object);
 
+        scene.GetSceneDocument().objects.push_back(std::move(object));
+        scene.RebuildRuntimeWorld();
+        return FindRuntimeObject(scene, id);
+    }
+
+    GameObject* CreateSandSurfaceObject(
+        DocumentSceneBase& scene,
+        const CreateObjectRequest& request) {
+
+        CreateObjectRequest objectRequest = request;
+        if (objectRequest.name.empty()) {
+            objectRequest.name = "Sand Surface";
+        }
+
+        SceneObjectData object = BuildBaseObject(
+            scene, nullptr, objectRequest);
+        const SceneObjectId id = object.id;
+
+        object.components.push_back(SceneComponentData{
+            "ModelComponent",
+            {
+                { "assetId", "" },
+                { "visible", true },
+                { "castShadow", false },
+                { "receiveShadow", true },
+                { "renderStatic", false }
+            }
+        });
+        object.components.push_back(SceneComponentData{
+            "ProceduralMeshComponent",
+            {
+                { "kind", "GridPlane" },
+                { "width", 200.0f },
+                { "height", 1.0f },
+                { "depth", 200.0f },
+                { "segmentsX", 256u },
+                { "segmentsY", 256u },
+                { "segmentsZ", 1u },
+                { "sphereSlices", 32u },
+                { "sphereStacks", 16u },
+                { "doubleSided", true },
+                { "generateTangents", true }
+            }
+        });
+
+        SandSurfaceComponent sandDefaults{};
+        nlohmann::json sandProperties = nlohmann::json::object();
+        sandDefaults.Serialize(sandProperties);
+        object.components.push_back(SceneComponentData{
+            "SandSurfaceComponent",
+            std::move(sandProperties)
+        });
+
+        // 球体の物理が乗れる平らな床だけを Collider に置く。
+        // 視覚的な凹みは sand displacement が持ち、物理床は変形しない。
+        object.components.push_back(SceneComponentData{
+            "ColliderComponent",
+            {
+                { "enabled", true },
+                { "fitMode", "Manual" },
+                { "shape", "Box" },
+                { "center", { 0.0f, -0.1f, 0.0f } },
+                { "rotation", { 0.0f, 0.0f, 0.0f } },
+                { "size", { 200.0f, 0.2f, 200.0f } },
+                { "radius", 1.0f },
+                { "height", 0.2f },
+                { "trigger", false }
+            }
+        });
+
+        NormalizeSceneComponentIds(object);
         scene.GetSceneDocument().objects.push_back(std::move(object));
         scene.RebuildRuntimeWorld();
         return FindRuntimeObject(scene, id);

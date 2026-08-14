@@ -10,6 +10,7 @@
 #include "Render3D/Runtime/HIKARI_SceneRenderCache.h"
 #include "Render3D/Runtime/HIKARI_SurfaceDrawPlan.h"
 #include "Render3D/Runtime/HIKARI_SurfaceGpuScene.h"
+#include "Render3D/Sand/HIKARI_SandSurfaceRenderData.h"
 #include "Vfx/Common/HIKARI_FxTypes.h"
 
 namespace HIKARI {
@@ -51,6 +52,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         bool clusterMainlineEligible = false;
         bool materialFx = false;
         bool waterMaterialFx = false;
+        bool sandSurface = false;
         bool materialFxUsesCustomVertexShader = false;
         bool customVertexShader = false;
         bool depthAware = false;
@@ -104,6 +106,10 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         uint32_t postGroupMask = 0;
         DirectX::XMFLOAT4 materialFxParamValues[VFX::kMaterialFxUserCount]{};
         bool materialFxValuesInitialized = false;
+        bool sandSurface = false;
+        SAND::SandSurfaceRenderData sandSurfaceData{};
+        uint32_t sandSurfaceGpuDataIndex = 0u;
+        uint32_t sandSurfaceHeightOffset = 0u;
 
         GpuSceneResourceKey key{};
     };

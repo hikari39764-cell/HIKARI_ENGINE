@@ -3,6 +3,7 @@
 #include "Include/Material/HIKARI_MaterialProgramData.hlsli"
 #include "Include/Material/HIKARI_MaterialExpression.hlsli"
 #include "Include/Material/HIKARI_StylizedMaterial.hlsli"
+#include "Include/Forward/HIKARI_SurfaceFeatureCoverage.hlsli"
 
 #if HIKARI_FORWARD_ENABLE_MATERIAL_FX
 #include "Include/Forward/HIKARI_SurfaceFeatureShading.hlsli"
@@ -25,12 +26,12 @@ struct PSInput
     nointerpolation uint debugSurfaceId : TEXCOORD6;
     float3 characterRightWS : TEXCOORD8;
     float3 characterForwardWS : TEXCOORD9;
-    bool isFrontFace : SV_IsFrontFace;
-#if defined(HIKARI_FORWARD_MESHLET_SURFACE_FEATURES) && HIKARI_FORWARD_MESHLET_SURFACE_FEATURES
     nointerpolation uint surfaceFeatureFlags : TEXCOORD7;
-#endif
+    float3 sandSurfaceData : TEXCOORD11;
+    bool isFrontFace : SV_IsFrontFace;
 };
 
+#include "Include/Surface/HIKARI_SandSurfaceShading.hlsli"
 #include "Include/Forward/HIKARI_ForwardMaterialInputs.hlsli"
 
 #if defined(HIKARI_FORWARD_MESHLET_SURFACE_FEATURES) && HIKARI_FORWARD_MESHLET_SURFACE_FEATURES
@@ -43,6 +44,18 @@ float4 main(PSInput input) : SV_TARGET
 {
     const bool neutralClay =
         gDebugView == HIKARI_DEBUG_VIEW_NEUTRAL_CLAY;
+    if (!neutralClay &&
+        HikariSurfaceHasSandSurface(input.surfaceFeatureFlags))
+    {
+        const HikariMeshObjectData sandObjectData =
+            HikariGetMeshObjectDataForPixel(
+                input.objectDataIndex,
+                input.surfaceGpuSceneIndex);
+        return HikariShadeSandSurface(
+            input,
+            sandObjectData,
+            input.sandSurfaceData);
+    }
 #if defined(HIKARI_FORWARD_MESHLET_SURFACE_FEATURES) && HIKARI_FORWARD_MESHLET_SURFACE_FEATURES
     if (!neutralClay &&
         HikariSurfaceHasWaterMaterialFx(input.surfaceFeatureFlags))

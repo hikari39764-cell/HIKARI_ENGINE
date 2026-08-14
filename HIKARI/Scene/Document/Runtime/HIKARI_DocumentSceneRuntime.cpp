@@ -338,6 +338,8 @@ namespace HIKARI {
         success = services.Register(state_->runtime.bindingStore) && success;
         success = services.Register(
             state_->runtime.vfxPlaybackService) && success;
+        success = services.Register(
+            state_->runtime.sandSurfaceQueryService) && success;
         success = services.Register(state_->camera.sequencePlayback) && success;
         success = services.Register(state_->runtime.playStateService) && success;
         success = services.Register(state_->runtime.gameplayCameraService) && success;
