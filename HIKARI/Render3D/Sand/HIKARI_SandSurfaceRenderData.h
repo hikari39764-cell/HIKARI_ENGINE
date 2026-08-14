@@ -22,6 +22,9 @@ namespace HIKARI::RENDER3D::SAND {
         MATH::Vec3 darkTint{ 0.62f, 0.47f, 0.29f };
         float rippleAmount = 0.45f;
         float pitDarkening = 0.32f;
+
+        uint32_t toonBandCount = 3u;
+        float toonBandHardness = 0.14f;
     };
 
     bool SandSurfaceRenderDataEqual(

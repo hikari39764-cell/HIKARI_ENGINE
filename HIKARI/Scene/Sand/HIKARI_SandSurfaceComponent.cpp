@@ -52,6 +52,8 @@ namespace HIKARI {
             { "sparkleStrength", settings.sparkleStrength },
             { "rippleAmount", settings.rippleAmount },
             { "pitDarkening", settings.pitDarkening },
+            { "toonBandCount", settings.toonBandCount },
+            { "toonBandHardness", settings.toonBandHardness },
         };
     }
 
@@ -92,6 +94,10 @@ namespace HIKARI {
             in.value("rippleAmount", next.rippleAmount);
         next.pitDarkening =
             in.value("pitDarkening", next.pitDarkening);
+        next.toonBandCount = static_cast<uint32_t>(
+            in.value("toonBandCount", next.toonBandCount));
+        next.toonBandHardness =
+            in.value("toonBandHardness", next.toonBandHardness);
         SetSettings(next);
     }
 

@@ -110,6 +110,14 @@ namespace HIKARI::SAND {
             FiniteOr(settings.pitDarkening, 0.32f),
             0.0f,
             1.0f);
+        settings.toonBandCount = std::clamp(
+            settings.toonBandCount,
+            2u,
+            4u);
+        settings.toonBandHardness = std::clamp(
+            FiniteOr(settings.toonBandHardness, 0.14f),
+            0.0f,
+            0.5f);
         return settings;
     }
 
@@ -133,7 +141,9 @@ namespace HIKARI::SAND {
             lhs.darkTint.z == rhs.darkTint.z &&
             lhs.sparkleStrength == rhs.sparkleStrength &&
             lhs.rippleAmount == rhs.rippleAmount &&
-            lhs.pitDarkening == rhs.pitDarkening;
+            lhs.pitDarkening == rhs.pitDarkening &&
+            lhs.toonBandCount == rhs.toonBandCount &&
+            lhs.toonBandHardness == rhs.toonBandHardness;
     }
 
     float EvaluateSandSurfaceBaseHeight(

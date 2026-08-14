@@ -42,6 +42,11 @@ namespace HIKARI::SAND {
         float sparkleStrength = 0.35f;
         float rippleAmount = 0.45f;
         float pitDarkening = 0.32f;
+
+        // アニメ調トゥーン：明暗を 2..4 段のセル分帯に量子化する。
+        uint32_t toonBandCount = 3u;
+        // 0.0 は滑らかなグラデーション、0.5 に近づくほどハードなセル境界。
+        float toonBandHardness = 0.14f;
     };
 
     SandSurfaceSettings SanitizeSandSurfaceSettings(

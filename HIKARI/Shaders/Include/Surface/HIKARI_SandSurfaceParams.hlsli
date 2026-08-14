@@ -32,6 +32,8 @@ struct HikariSandSurfaceParams
     float3 darkTint;
     float rippleAmount;
     float pitDarkening;
+    float toonBandHardness;
+    float toonBandCount;
 };
 
 HikariSandSurfaceParams HikariBuildNeutralSandSurfaceParams()
@@ -42,6 +44,8 @@ HikariSandSurfaceParams HikariBuildNeutralSandSurfaceParams()
     p.heightScale = 1.0f;
     p.lightTint = 1.0f.xxx;
     p.darkTint = 0.0f.xxx;
+    p.toonBandHardness = 0.14f;
+    p.toonBandCount = 3.0f;
     return p;
 }
 
@@ -79,6 +83,8 @@ HikariSandSurfaceParams HikariLoadSandSurfaceParamsFromDataIndex(
     p.darkTint = saturate(data.styleDark.rgb);
     p.rippleAmount = max(data.styleDark.w, 0.0f);
     p.pitDarkening = saturate(data.stylePit.x);
+    p.toonBandHardness = clamp(data.stylePit.y, 0.0f, 0.5f);
+    p.toonBandCount = clamp(data.stylePit.z, 2.0f, 4.0f);
     return p;
 }
 

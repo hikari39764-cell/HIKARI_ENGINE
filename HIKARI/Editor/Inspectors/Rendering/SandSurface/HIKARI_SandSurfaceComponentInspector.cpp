@@ -139,6 +139,28 @@ namespace HIKARI {
                 0.0f,
                 1.0f,
                 0.01f);
+            int toonBands =
+                static_cast<int>(settings_.toonBandCount);
+            if (builder.Int(
+                    AuthoringFieldDescriptor{
+                        SandSurfaceComponentPropertyIds::ToonBandCount,
+                        "Toon Bands",
+                        "Number of flat cel shading bands (2-4)."
+                    },
+                    toonBands)) {
+                settings_.toonBandCount = static_cast<uint32_t>(
+                    std::clamp(toonBands, 2, 4));
+            }
+            builder.FloatRange(
+                AuthoringFieldDescriptor{
+                    SandSurfaceComponentPropertyIds::ToonBandHardness,
+                    "Band Hardness",
+                    "0 is a soft gradient, 0.5 gives hard cel edges."
+                },
+                settings_.toonBandHardness,
+                0.0f,
+                0.5f,
+                0.01f);
         }
 
         settings_ = SAND::SanitizeSandSurfaceSettings(settings_);

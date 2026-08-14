@@ -48,8 +48,9 @@ float4 HikariShadeSandSurface(
     }
 
     // 凹みは湿った深い色へ、滑らかに乾いた砂へ戻す。
-    const float pitMask = saturate(-sandSurfaceData.z /
+    const float pitMaskRaw = saturate(-sandSurfaceData.z /
         max(p.extents.x * 0.02f, 0.05f));
+    const float pitMask = smoothstep(0.16f, 0.38f, pitMaskRaw);
     albedo.rgb = lerp(
         albedo.rgb,
         albedo.rgb * p.darkTint * 0.82f,
@@ -75,10 +76,19 @@ float4 HikariShadeSandSurface(
         float3(rippleX, 0.0f, rippleZ) * p.rippleAmount * 0.10f);
 
     const float ndotl = saturate(dot(shadingNormal, lightDir));
-    const float ramp = smoothstep(0.10f, 0.58f, ndotl);
+    // アニメ調：ndotl を 2..4 段のセル分帯へ量子化し、帯の境界を
+    // toonBandHardness で柔らかくする。平坦な帯色で塗り分ける。
+    const float bandCount = max(p.toonBandCount, 2.0f);
+    const float scaled = ndotl * bandCount;
+    const float bandBase = floor(scaled);
+    const float bandEdge = smoothstep(
+        0.5f - p.toonBandHardness,
+        0.5f + p.toonBandHardness,
+        scaled - bandBase);
+    const float ramp = saturate(
+        (bandBase + bandEdge) / max(bandCount - 1.0f, 1.0f));
     const float3 diffuse = lerp(p.darkTint, p.lightTint, ramp);
-    float3 color = albedo.rgb * diffuse *
-        (0.42f + 0.58f * ndotl);
+    float3 color = albedo.rgb * diffuse;
 
     // 砂粒のきらめき。高周波 hash で細かい輝点を作り、硬さを避ける。
     const float grain = HikariSandHash21(

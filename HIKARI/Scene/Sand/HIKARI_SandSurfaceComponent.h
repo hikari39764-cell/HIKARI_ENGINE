@@ -21,6 +21,8 @@ namespace HIKARI {
         inline constexpr char SparkleStrength[] = "sparkleStrength";
         inline constexpr char RippleAmount[] = "rippleAmount";
         inline constexpr char PitDarkening[] = "pitDarkening";
+        inline constexpr char ToonBandCount[] = "toonBandCount";
+        inline constexpr char ToonBandHardness[] = "toonBandHardness";
     }
 
     class SandSurfaceComponent final : public IComponent {

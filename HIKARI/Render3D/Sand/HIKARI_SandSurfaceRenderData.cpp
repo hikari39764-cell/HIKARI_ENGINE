@@ -30,7 +30,9 @@ namespace HIKARI::RENDER3D::SAND {
             lhs.darkTint.y == rhs.darkTint.y &&
             lhs.darkTint.z == rhs.darkTint.z &&
             lhs.rippleAmount == rhs.rippleAmount &&
-            lhs.pitDarkening == rhs.pitDarkening;
+            lhs.pitDarkening == rhs.pitDarkening &&
+            lhs.toonBandCount == rhs.toonBandCount &&
+            lhs.toonBandHardness == rhs.toonBandHardness;
     }
 
     SandSurfaceGpuData BuildSandSurfaceGpuDataSentinel() noexcept {
@@ -73,8 +75,9 @@ namespace HIKARI::RENDER3D::SAND {
         };
         result.stylePit = {
             std::clamp(FiniteOr(source.pitDarkening, 0.32f), 0.0f, 1.0f),
-            0.0f,
-            0.0f,
+            std::clamp(FiniteOr(source.toonBandHardness, 0.14f), 0.0f, 0.5f),
+            static_cast<float>(std::clamp(
+                source.toonBandCount, 2u, 4u)),
             0.0f
         };
         return result;

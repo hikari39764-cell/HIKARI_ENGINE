@@ -98,6 +98,8 @@ namespace HIKARI {
             data.darkTint = settings.darkTint;
             data.rippleAmount = settings.rippleAmount;
             data.pitDarkening = settings.pitDarkening;
+            data.toonBandCount = settings.toonBandCount;
+            data.toonBandHardness = settings.toonBandHardness;
             return data;
         }
 
