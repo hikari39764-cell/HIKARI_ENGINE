@@ -171,22 +171,17 @@ namespace HIKARI {
                 };
                 // 空オブジェクトへ追加された場合も SceneCreationPanel と
                 // 同じ 200x200 GridPlane になるように、自動追加された
-                // ProceduralMeshComponent を既定の水面メッシュへ上げる。
+                // あるいは既存の小さい Plane を水面メッシュへ上げる。
                 waterSurface.configureDependencies = [](
                     SceneObjectData& object,
-                    const std::vector<std::string>& newlyAdded) {
-                    bool autoAddedMesh = false;
-                    for (const std::string& type : newlyAdded) {
-                        if (type == "ProceduralMeshComponent") {
-                            autoAddedMesh = true;
-                            break;
-                        }
-                    }
-                    if (!autoAddedMesh) {
-                        return;
-                    }
+                    const std::vector<std::string>&) {
                     for (SceneComponentData& component : object.components) {
                         if (component.type != "ProceduralMeshComponent") {
+                            continue;
+                        }
+                        if (component.properties.value(
+                                "kind",
+                                std::string{}) != "Plane") {
                             continue;
                         }
                         component.properties = {
@@ -229,22 +224,17 @@ namespace HIKARI {
                 };
                 // 空オブジェクトへ追加された場合も SceneCreationPanel と
                 // 同じ 200x200 GridPlane になるように、自動追加された
-                // ProceduralMeshComponent を既定の砂地メッシュへ上げる。
+                // あるいは既存の小さい Plane を砂地メッシュへ上げる。
                 sandSurface.configureDependencies = [](
                     SceneObjectData& object,
-                    const std::vector<std::string>& newlyAdded) {
-                    bool autoAddedMesh = false;
-                    for (const std::string& type : newlyAdded) {
-                        if (type == "ProceduralMeshComponent") {
-                            autoAddedMesh = true;
-                            break;
-                        }
-                    }
-                    if (!autoAddedMesh) {
-                        return;
-                    }
+                    const std::vector<std::string>&) {
                     for (SceneComponentData& component : object.components) {
                         if (component.type != "ProceduralMeshComponent") {
+                            continue;
+                        }
+                        if (component.properties.value(
+                                "kind",
+                                std::string{}) != "Plane") {
                             continue;
                         }
                         component.properties = {

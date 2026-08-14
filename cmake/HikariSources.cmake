@@ -439,6 +439,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Water/HIKARI_WaterSurfaceSystem.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Sand/HIKARI_SandSurfaceTypes.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Sand/HIKARI_SandSurfaceComponent.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Sand/HIKARI_SandSurfaceMaterialBinder.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Sand/HIKARI_SandSurfaceQueryService.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Sand/HIKARI_SandSurfaceSystem.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Sand/HIKARI_SandSurfaceFollowerComponent.cpp"

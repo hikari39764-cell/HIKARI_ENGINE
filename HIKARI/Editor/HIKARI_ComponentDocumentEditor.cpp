@@ -20,6 +20,11 @@ namespace HIKARI {
         const InspectorContext& context) const {
         const ComponentTypeInfo* typeInfo = componentRegistry.Find(componentData.type);
         if (!typeInfo || !typeInfo->factory) {
+#if defined(HIKARI_WITH_EDITOR)
+            ImGui::TextDisabled(
+                "Inspector unavailable for component type: %s",
+                componentData.type.c_str());
+#endif
             return false;
         }
 

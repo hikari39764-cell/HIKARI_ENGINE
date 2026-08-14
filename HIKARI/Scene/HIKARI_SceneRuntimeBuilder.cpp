@@ -31,6 +31,7 @@
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
 #include "Scene/Components/HIKARI_IComponent.h"
 #include "Scene/Sand/HIKARI_SandSurfaceComponent.h"
+#include "Scene/Sand/HIKARI_SandSurfaceMaterialBinder.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelRenderableAssetResolver.h"
 #include "Scene/HIKARI_ComponentRegistry.h"
@@ -384,42 +385,15 @@ namespace HIKARI {
             World& world,
             const AssetRegistry& assetRegistry) {
 
-            const auto* sandMaterial =
-                assetRegistry.FindAs<MaterialAssetDescriptor>(
-                    AssetId{ std::string(
-                        ASSETS::MATERIAL::kBuiltInSandMaterialAssetId) });
-            if (sandMaterial == nullptr) {
-                HIKARI_LOG_WARN(
-                    "[MaterialRuntime][Sand] built-in sand material is "
-                    "not registered; procedural checker remains active.");
-                return;
-            }
-
-            MaterialRuntimeBuilder builder{};
-            auto& programRegistry =
-                RENDER3D::MATERIAL::GetRuntimeMaterialProgramRegistry();
             world.ForEachObjectWith<
                 ModelComponent,
                 SandSurfaceComponent>(
                 [&](GameObject&,
                     ModelComponent& modelComponent,
                     SandSurfaceComponent&) {
-                    auto runtimeMaterial = std::make_unique<Material>();
-                    if (!builder.BuildRuntimeMaterial(
-                            sandMaterial->sourceData,
-                            sandMaterial->compileResult,
-                            assetRegistry,
-                            programRegistry,
-                            *runtimeMaterial,
-                            sandMaterial->id.value)) {
-                        HIKARI_LOG_WARN(
-                            "[MaterialRuntime][Sand] failed to build "
-                            "built-in sand material.");
-                        return;
-                    }
-                    modelComponent.SetRuntimeMaterialOverride(
-                        0u,
-                        std::move(runtimeMaterial));
+                    (void)SAND::EnsureSandSurfaceMaterialOverride(
+                        modelComponent,
+                        assetRegistry);
                 });
         }
 

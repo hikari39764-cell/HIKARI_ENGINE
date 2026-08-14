@@ -23,6 +23,7 @@
 #include "Scene/HIKARI_World.h"
 #include "Scene/Water/HIKARI_WaterSurfaceComponent.h"
 #include "Scene/Sand/HIKARI_SandSurfaceComponent.h"
+#include "Scene/Sand/HIKARI_SandSurfaceMaterialBinder.h"
 #include "Scene/Sand/HIKARI_SandSurfaceQueryService.h"
 
 namespace HIKARI {
@@ -391,6 +392,15 @@ namespace HIKARI {
             world.Services().Find<SAND::SandSurfaceQueryService>();
 
         world.ForEachObjectWith<ModelComponent>([&](GameObject& object, ModelComponent& model) {
+            // World 再構築のタイミングに依存せず、描画同期のたびに
+            // 沙地マテリアルを保証する。Ensure はすでに適用済みなら
+            // 何もせず、フレーム毎の再アップロードを避ける。
+            if (assetRegistry != nullptr &&
+                object.GetComponent<SandSurfaceComponent>() != nullptr) {
+                (void)SAND::EnsureSandSurfaceMaterialOverride(
+                    model,
+                    *assetRegistry);
+            }
             sceneRenderCache.Upsert(BuildSceneRenderObjectDesc(
                 object,
                 model,
