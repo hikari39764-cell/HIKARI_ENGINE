@@ -21,6 +21,7 @@ namespace HIKARI {
 
         void Serialize(nlohmann::json& out) const override;
         void Deserialize(const nlohmann::json& in) override;
+        void BuildInspector(IInspectorBuilder& builder) override;
 
         void OnDetach() override;
         void Update(float dt) override;

@@ -179,9 +179,16 @@ namespace HIKARI {
                         if (component.type != "ProceduralMeshComponent") {
                             continue;
                         }
-                        if (component.properties.value(
+                        const std::string kind =
+                            component.properties.value(
                                 "kind",
-                                std::string{}) != "Plane") {
+                                std::string{});
+                        const bool isPlane = kind == "Plane";
+                        const bool isSmallGrid =
+                            kind == "GridPlane" &&
+                            component.properties.value("width", 0.0f) < 50.0f &&
+                            component.properties.value("depth", 0.0f) < 50.0f;
+                        if (!isPlane && !isSmallGrid) {
                             continue;
                         }
                         component.properties = {
@@ -273,8 +280,11 @@ namespace HIKARI {
                     defaults.Serialize(properties);
                 };
                 sandFollower.presentation = RenderingPresentation(
-                    "Sand Surface Follower",
-                    "Keeps a visual-only presentation transform riding the sampled sand height; physics stays authoritative.");
+                    "Sand Ball Follower",
+                    "Attach this to the protagonist ball so it visually "
+                    "rides the sampled sand height; physics stays "
+                    "authoritative. The sand ground itself uses "
+                    "SandSurfaceComponent.");
 
                 ComponentTypeInfo light{};
                 light.typeName = "LightComponent";

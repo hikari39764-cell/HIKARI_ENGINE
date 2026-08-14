@@ -565,6 +565,7 @@ set(HIKARI_EDITOR_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Inspectors/Rendering/ProceduralMesh/HIKARI_ProceduralMeshComponentInspector.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Inspectors/Rendering/WaterSurface/HIKARI_WaterSurfaceComponentInspector.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Inspectors/Rendering/SandSurface/HIKARI_SandSurfaceComponentInspector.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Inspectors/Rendering/SandSurface/HIKARI_SandSurfaceFollowerComponentInspector.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Inspectors/Sequencing/HIKARI_SequencePlayerComponentInspector.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Host/HIKARI_EditorUiServices.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/HIKARI_TimePanel.cpp"
