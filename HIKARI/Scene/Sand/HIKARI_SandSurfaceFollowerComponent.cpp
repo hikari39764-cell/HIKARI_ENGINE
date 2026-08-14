@@ -45,25 +45,39 @@ namespace HIKARI {
             return radius_;
         }
         const GameObject* owner = GetOwner();
+        float localRadius = 0.0f;
         if (owner != nullptr) {
             if (const ColliderComponent* collider =
                     owner->GetComponent<ColliderComponent>()) {
                 const ResolvedColliderShape shape =
                     collider->ResolveShape();
                 if (shape.type == PHYSICS::PhysicsShapeType::Sphere) {
-                    return shape.radius;
+                    localRadius = shape.radius;
                 }
             }
-            if (const ProceduralMeshComponent* procedural =
-                    owner->GetComponent<ProceduralMeshComponent>()) {
-                GeometryFitDesc fit{};
-                if (procedural->QueryGeometryFit(fit) &&
-                    fit.shape == GeometryFitShape::Sphere) {
-                    return fit.radius;
+            if (localRadius <= 0.0f) {
+                if (const ProceduralMeshComponent* procedural =
+                        owner->GetComponent<ProceduralMeshComponent>()) {
+                    GeometryFitDesc fit{};
+                    if (procedural->QueryGeometryFit(fit) &&
+                        fit.shape == GeometryFitShape::Sphere) {
+                        localRadius = fit.radius;
+                    }
                 }
             }
         }
-        return 0.5f;
+        if (localRadius <= 0.0f) {
+            return 0.5f;
+        }
+        // stamp 側と同じく、所有者のユニフォームスケールを適用して
+        // 視覚半径と凹み半径を一致させる。
+        const float worldScale = owner != nullptr
+            ? (std::max)({
+                  owner->GetTransform().scale.x,
+                  owner->GetTransform().scale.y,
+                  owner->GetTransform().scale.z })
+            : 1.0f;
+        return localRadius * worldScale;
     }
 
     void SandSurfaceFollowerComponent::Serialize(

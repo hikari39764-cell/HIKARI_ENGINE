@@ -8,7 +8,7 @@ float HikariSandSampleSurfaceHeight(
     float2 localXZ)
 {
     const float2 uv =
-        localXZ / p.extents * 0.5f + 0.5f;
+        localXZ / p.extents + 0.5f;
     const float deform = HikariSandSampleHeight(p, uv);
     const float base = HikariEvaluateSandBaseHeight(
         localXZ,
@@ -36,7 +36,7 @@ void HikariApplySandSurfaceDeform(
     const float cellZ = p.extents.y / (float)max(p.gridResolution, 1u);
 
     const float2 uv =
-        localPosition.xz / p.extents * 0.5f + 0.5f;
+        localPosition.xz / p.extents + 0.5f;
     const float du = cellX / p.extents.x;
     const float dv = cellZ / p.extents.y;
 

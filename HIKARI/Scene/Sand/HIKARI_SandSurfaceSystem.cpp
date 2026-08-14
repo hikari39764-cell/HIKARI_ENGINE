@@ -189,22 +189,29 @@ namespace HIKARI {
                     }
                     const float ballBottom =
                         local.y - worldRadius;
-                    const float penetration =
+                    // 物理床は平坦なので、ただ乗っているだけでは
+                    // penetration がほぼ 0 になり、視覚的な穴が残らない。
+                    // 接触中は球の重さを模した「静止押し込み」を加え、
+                    // 着地した球がはっきり沈むようにする。
+                    const float restPress = (std::min)(
+                        state->settings.maxDepth * 0.55f,
+                        worldRadius * 0.16f + 0.03f);
+                    const float sink =
                         surfaceHeight - ballBottom;
-                    if (penetration <= 0.0f) {
+                    if (sink < -restPress) {
                         continue;
                     }
 
                     const float depth = (std::min)(
                         state->settings.maxDepth * 0.55f,
-                        penetration + 0.015f);
+                        (std::max)(sink, 0.0f) + restPress);
                     ApplyStamp(
                         *state,
                         local.x,
                         local.z,
                         (std::max)(
                             state->settings.stampRadius,
-                            worldRadius * 0.8f),
+                            worldRadius),
                         depth);
                 }
             });
