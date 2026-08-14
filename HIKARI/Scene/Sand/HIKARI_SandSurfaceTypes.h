@@ -26,7 +26,9 @@ namespace HIKARI::SAND {
         // 高さグリッドは (gridResolution + 1)^2 ノードを保持する。
         // ProceduralMeshComponent 側のセグメント数とは独立した
         // インタラクション解像度であり、法線もこのグリッドから求める。
-        uint32_t gridResolution = 128u;
+        // 球面の凹みを十分に解像するため既定は 256（200m で約 0.78m/cell）。
+        // より細かくする場合は Inspector で 512 まで上げられる。
+        uint32_t gridResolution = 256u;
 
         // 全体的な凹み深さのスケール。単位はローカルメートル。
         float heightScale = 0.32f;

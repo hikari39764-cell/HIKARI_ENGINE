@@ -205,13 +205,11 @@ namespace HIKARI {
                     const float depth = (std::min)(
                         state->settings.maxDepth * 0.55f,
                         (std::max)(sink, 0.0f) + restPress);
-                    ApplyStamp(
+                    ApplySphereImprint(
                         *state,
                         local.x,
                         local.z,
-                        (std::max)(
-                            state->settings.stampRadius,
-                            worldRadius),
+                        worldRadius,
                         depth);
                 }
             });
@@ -298,6 +296,105 @@ namespace HIKARI {
                     state.heights[static_cast<size_t>(z) * stride + x];
                 height = std::clamp(
                     height - pit + (std::max)(rim, 0.0f),
+                    minimum,
+                    maximum);
+            }
+        }
+    }
+
+    void SandSurfaceSystem::ApplySphereImprint(
+        SAND::SandSurfaceRuntimeState& state,
+        float localX,
+        float localZ,
+        float worldRadius,
+        float sinkDepth) {
+
+        const uint32_t resolution = state.gridResolution;
+        const uint32_t stride = resolution + 1u;
+        if (state.heights.size() !=
+                static_cast<size_t>(stride) * stride ||
+            sinkDepth <= 0.0f) {
+            return;
+        }
+
+        const float radius = (std::max)(worldRadius, 0.01f);
+        const float depth = (std::min)(
+            sinkDepth,
+            state.settings.maxDepth);
+        if (depth <= 0.0f) {
+            return;
+        }
+
+        // 球が depth だけ沈んだときの球面キャップ接地円半径。
+        const float capRadius = std::sqrt((std::max)(
+            2.0f * radius * depth - depth * depth,
+            0.0f));
+        const float cellX =
+            (2.0f * state.halfExtents.x) /
+            static_cast<float>(resolution);
+        const float cellZ =
+            (2.0f * state.halfExtents.y) /
+            static_cast<float>(resolution);
+        const float cell = (std::max)(
+            (std::min)(cellX, cellZ),
+            1.0e-4f);
+        const float rimBand = (std::max)(0.12f * radius, cell);
+        const float reach = capRadius + rimBand;
+        const int extent =
+            static_cast<int>(std::ceil(reach / cell)) + 2;
+
+        const float minimum = -state.settings.maxDepth;
+        const float maximum =
+            state.settings.maxDepth * state.settings.rimStrength;
+
+        const int centerX = static_cast<int>(std::lround(
+            (localX / (2.0f * state.halfExtents.x) + 0.5f) *
+            static_cast<float>(resolution)));
+        const int centerZ = static_cast<int>(std::lround(
+            (localZ / (2.0f * state.halfExtents.y) + 0.5f) *
+            static_cast<float>(resolution)));
+
+        for (int z = centerZ - extent;
+            z <= centerZ + extent;
+            ++z) {
+            for (int x = centerX - extent;
+                x <= centerX + extent;
+                ++x) {
+                if (x < 0 || z < 0 ||
+                    x > static_cast<int>(resolution) ||
+                    z > static_cast<int>(resolution)) {
+                    continue;
+                }
+                const float dx =
+                    (static_cast<float>(x) /
+                        static_cast<float>(resolution) - 0.5f) *
+                    2.0f * state.halfExtents.x - localX;
+                const float dz =
+                    (static_cast<float>(z) /
+                        static_cast<float>(resolution) - 0.5f) *
+                    2.0f * state.halfExtents.y - localZ;
+                const float r = std::sqrt(dx * dx + dz * dz);
+
+                float imprint = 0.0f;
+                if (r <= capRadius) {
+                    // 球の下半球面をそのまま押し込み、実球の体積に
+                    // 一致する球形の凹みを作る。
+                    imprint = (std::max)(
+                        0.0f,
+                        std::sqrt((std::max)(
+                            radius * radius - r * r,
+                            0.0f)) - (radius - depth));
+                } else if (r <= reach && rimBand > 0.0f) {
+                    // 縁に押し出された砂の隆起。負値は盛り上がり。
+                    const float t = (r - capRadius) / rimBand;
+                    imprint = -state.settings.rimStrength * depth *
+                        0.5f * (1.0f - t);
+                }
+
+                float& height =
+                    state.heights[static_cast<size_t>(z) * stride + x];
+                height = std::clamp(
+                    height - imprint,
                     minimum,
                     maximum);
             }

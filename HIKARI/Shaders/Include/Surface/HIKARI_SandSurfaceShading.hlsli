@@ -36,11 +36,24 @@ float4 HikariShadeSandSurface(
             baseColorUv +
             (HikariSandValueNoise(worldPos.xz * 0.35f) - 0.5f) *
                 0.08f * float2(1.0f, 0.75f);
-        albedo *= HikariSampleMaterialTexture(
+        const float3 grain = saturate(
+            HikariSampleMaterialTexture(
             materialData.baseColorTextureDescriptorIndex,
             gLinearWrap,
             sandUv,
-            float4(1.0f, 1.0f, 1.0f, 1.0f));
+            float4(1.0f, 1.0f, 1.0f, 1.0f)).rgb);
+        // アニメ調：写実の細粒を残しつつ、暖かい夏の砂色へ寄せて
+        // コントラストを圧縮し、彩度をわずかに上げて平塗りに近づける。
+        const float3 flatWarm = float3(0.97f, 0.88f, 0.68f);
+        float3 stylized = lerp(flatWarm, grain, 0.52f);
+        const float luminance = dot(
+            stylized,
+            float3(0.299f, 0.587f, 0.114f));
+        stylized = lerp(
+            float3(luminance, luminance, luminance),
+            stylized,
+            1.14f);
+        albedo.rgb *= stylized;
     }
     else
     {

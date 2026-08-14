@@ -50,6 +50,12 @@ namespace HIKARI {
             float localZ,
             float radius,
             float depth);
+        void ApplySphereImprint(
+            SAND::SandSurfaceRuntimeState& state,
+            float localX,
+            float localZ,
+            float worldRadius,
+            float sinkDepth);
 
         SAND::SandSurfaceQueryService* queryService_ = nullptr;
         std::unordered_map<uint64_t, SAND::SandSurfaceRuntimeStatePtr>

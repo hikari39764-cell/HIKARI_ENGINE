@@ -9,6 +9,7 @@
 #include "Scene/Debug/HIKARI_ComponentGizmoRegistry.h"
 #include "Scene/Debug/HIKARI_PhysicsShapeDebugDraw.h"
 #include "Scene/HIKARI_GameObject.h"
+#include "Scene/HIKARI_PresentationTransformService.h"
 #include "Scene/HIKARI_World.h"
 
 namespace HIKARI {
@@ -62,11 +63,28 @@ namespace HIKARI {
             const ComponentGizmoDrawContext& context) {
             const bool selected =
                 object.GetDocumentId() == context.selectedObjectId;
+            MATH::Mat4 visualWorld =
+                object.GetTransform().GetWorldMatrix();
+            // SandBallFollower などは PresentationTransformService で
+            // 表示位置だけを上書きする。debug 枠も表示位置に合わせないと、
+            // 実際に描画されている球と物理枠がずれて判定しにくい。
+            if (context.world != nullptr) {
+                if (const auto* presentation =
+                        context.world->Services().Find<
+                            PresentationTransformService>()) {
+                    MATH::Mat4 presented{};
+                    if (presentation->TryGetWorldMatrix(
+                            object.GetRuntimeHandle(),
+                            presented)) {
+                        visualWorld = presented;
+                    }
+                }
+            }
             MATH::Vec3 objectPosition{};
             MATH::Quat objectRotation{};
             MATH::Vec3 objectScale{};
             if (!MATH::DecomposeTRS(
-                    object.GetTransform().GetWorldMatrix(),
+                    visualWorld,
                     objectPosition,
                     objectRotation,
                     objectScale)) {
