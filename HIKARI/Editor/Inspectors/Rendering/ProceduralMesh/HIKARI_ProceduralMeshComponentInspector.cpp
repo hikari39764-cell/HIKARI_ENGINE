@@ -2,7 +2,12 @@
 
 #include <algorithm>
 #include <array>
+#include <string>
+#include <vector>
 
+#include "Assets/HIKARI_AssetDatabase.h"
+#include "Assets/HIKARI_AssetTypes.h"
+#include "Assets/Material/HIKARI_MaterialBuiltInAssets.h"
 #include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Inspectors/HIKARI_IInspectorBuilder.h"
 
@@ -123,9 +128,65 @@ namespace HIKARI {
 
         builder.Bool("Double Sided", settings_.doubleSided);
         builder.Bool("Generate Tangents", settings_.generateTangents);
-        builder.Text(
-            TEXT::Localize(
-                "ui.inspector.procedural.materialEntryHint"));
+
+        // マテリアル選択: None(デフォルト白) / Checker(デバッグ) /
+        // プロジェクト内のマテリアルアセット。
+        std::vector<std::string> materialLabels{
+            TEXT::Localize("ui.inspector.procedural.materialNone"),
+            TEXT::Localize("ui.inspector.procedural.materialChecker")
+        };
+        std::vector<std::string> materialIds{
+            std::string{},
+            std::string(
+                ASSETS::MATERIAL::kBuiltInCheckerMaterialAssetId)
+        };
+        const InspectorContext& context = builder.GetContext();
+        if (const AssetDatabase* assetDatabase = context.assetDatabase) {
+            for (const AssetRecord* record :
+                assetDatabase->CollectByType(AssetType::Material)) {
+                if (record == nullptr || !record->guid.IsValid()) {
+                    continue;
+                }
+                materialIds.push_back(record->guid.value);
+                materialLabels.push_back(
+                    record->displayName.empty()
+                        ? record->sourcePath.stem().string()
+                        : record->displayName);
+            }
+        }
+
+        int selectedMaterial = 0;
+        for (size_t index = 0; index < materialIds.size(); ++index) {
+            if (materialIds[index] == materialSelection_) {
+                selectedMaterial = static_cast<int>(index);
+                break;
+            }
+        }
+        if (selectedMaterial == 0 && !materialSelection_.empty()) {
+            materialIds.push_back(materialSelection_);
+            materialLabels.push_back(
+                TEXT::Localize(
+                    "ui.inspector.procedural.materialMissing"));
+            selectedMaterial =
+                static_cast<int>(materialIds.size() - 1u);
+        }
+
+        std::vector<const char*> materialLabelPointers{};
+        materialLabelPointers.reserve(materialLabels.size());
+        for (const std::string& label : materialLabels) {
+            materialLabelPointers.push_back(label.c_str());
+        }
+        if (builder.Choice(
+                TEXT::Localize(
+                    "ui.inspector.procedural.material"),
+                selectedMaterial,
+                materialLabelPointers)) {
+            if (selectedMaterial >= 0 &&
+                selectedMaterial <
+                    static_cast<int>(materialIds.size())) {
+                SetMaterialSelection(materialIds[selectedMaterial]);
+            }
+        }
         settings_ = SanitizeProceduralMeshSettings(settings_);
         if (!(settings_ == before)) {
             NotifyRenderStateDirty();

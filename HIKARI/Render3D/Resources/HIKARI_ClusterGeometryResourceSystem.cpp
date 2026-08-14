@@ -486,7 +486,11 @@ namespace HIKARI::RENDER3D {
         if (cached != state.recordsBySourceKey.end() &&
             cached->second.ready &&
             GetRenderResourcePool().IsAlive(cached->second.handle.ToUntyped())) {
-            const bool memoryHit = cached->second.memoryResident;
+            const bool memoryHit =
+                cached->second.memoryResident &&
+                IsSameSourcePath(
+                    cached->second.sourcePath,
+                    hcmeshPath);
             const bool fileHit =
                 !memoryHit &&
                 IsSameSourcePath(
@@ -515,6 +519,11 @@ namespace HIKARI::RENDER3D {
             state.memorySourcesByPath.find(pathKey);
         const bool fromMemory =
             memorySource != state.memorySourcesByPath.end();
+        if (fromMemory) {
+            HIKARI_LOG_INFO(
+                "[ClusterGeometry][Load][Memory] sourceKey=" +
+                sourceKey);
+        }
         CLUSTER::ClusterGeometryPackedBytes packed{};
         if (fromMemory) {
             packed = memorySource->second;

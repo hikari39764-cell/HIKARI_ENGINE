@@ -9,6 +9,7 @@
 #include "Scene/HIKARI_SceneDocumentQueries.h"
 #include "Scene/Lighting/HIKARI_LightingAuthoringModel.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
+#include "Scene/Water/HIKARI_WaterSurfaceComponent.h"
 
 namespace HIKARI::EDITOR {
 
@@ -201,6 +202,60 @@ namespace HIKARI::EDITOR {
 
         NormalizeSceneComponentIds(object);
 
+        scene.GetSceneDocument().objects.push_back(std::move(object));
+        scene.RebuildRuntimeWorld();
+        return FindRuntimeObject(scene, id);
+    }
+
+    GameObject* CreateWaterSurfaceObject(
+        DocumentSceneBase& scene,
+        const CreateObjectRequest& request) {
+
+        CreateObjectRequest objectRequest = request;
+        if (objectRequest.name.empty()) {
+            objectRequest.name = "Water Surface";
+        }
+
+        SceneObjectData object = BuildBaseObject(
+            scene, nullptr, objectRequest);
+        const SceneObjectId id = object.id;
+
+        object.components.push_back(SceneComponentData{
+            "ModelComponent",
+            {
+                { "assetId", "" },
+                { "visible", true },
+                { "castShadow", false },
+                { "receiveShadow", false },
+                { "renderStatic", false }
+            }
+        });
+        object.components.push_back(SceneComponentData{
+            "ProceduralMeshComponent",
+            {
+                { "kind", "GridPlane" },
+                { "width", 200.0f },
+                { "height", 1.0f },
+                { "depth", 200.0f },
+                { "segmentsX", 300u },
+                { "segmentsY", 300u },
+                { "segmentsZ", 1u },
+                { "sphereSlices", 32u },
+                { "sphereStacks", 16u },
+                { "doubleSided", true },
+                { "generateTangents", true }
+            }
+        });
+
+        nlohmann::json waterProperties = nlohmann::json::object();
+        WaterSurfaceComponent defaults{};
+        defaults.Serialize(waterProperties);
+        object.components.push_back(SceneComponentData{
+            "WaterSurfaceComponent",
+            std::move(waterProperties)
+        });
+
+        NormalizeSceneComponentIds(object);
         scene.GetSceneDocument().objects.push_back(std::move(object));
         scene.RebuildRuntimeWorld();
         return FindRuntimeObject(scene, id);

@@ -13,6 +13,7 @@
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenProducer.h"
 #include "Render3D/GpuDriven/HIKARI_SurfaceGpuSceneFrameBuffer.h"
 #include "Render3D/GpuDriven/CommandStream/HIKARI_GpuTraditionalCommandStreamBuffer.h"
+#include "Render3D/Water/HIKARI_WaterSurfaceGpuFrameBuffer.h"
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
 
@@ -36,6 +37,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         bool uploadedFullScene = false;
         std::array<uint32_t, kGpuDrivenPassCount> passInstanceCounts{};
         SurfaceGpuSceneFrameBufferStats bufferStats{};
+        bool waterSurfaceDataResident = false;
     };
 
     struct GpuDrivenSceneUploadDesc {
@@ -73,7 +75,8 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         void Attach(
             SurfaceGpuSceneFrameBuffer* sceneBuffer,
             GpuTraditionalCommandStreamBuffer* traditionalCommandStreamBuffer,
-            IGpuDrivenProducer* producer);
+            IGpuDrivenProducer* producer,
+            WATER::WaterSurfaceGpuFrameBuffer* waterSurfaceBuffer = nullptr);
 
         void ResetFrame();
         bool BeginFrame(const GpuDrivenSceneSource* source);
@@ -110,6 +113,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         const GpuDrivenPassExecutionState& GetPassExecutionState(
             GpuDrivenPassKind pass) const;
         SurfaceGpuSceneFrameBuffer* GetSceneBuffer() const;
+        WATER::WaterSurfaceGpuFrameBuffer* GetWaterSurfaceBuffer() const;
         GpuTraditionalCommandStreamBuffer* GetTraditionalCommandStreamBuffer() const;
         IGpuDrivenProducer* GetProducer() const;
         const GpuDrivenFrameContext& GetFrameContext() const;
@@ -133,6 +137,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         };
 
         SurfaceGpuSceneFrameBuffer* sceneBuffer_ = nullptr;
+        WATER::WaterSurfaceGpuFrameBuffer* waterSurfaceBuffer_ = nullptr;
         GpuTraditionalCommandStreamBuffer* traditionalCommandStreamBuffer_ = nullptr;
         IGpuDrivenProducer* producer_ = nullptr;
         const GpuDrivenSceneSource* frameSource_ = nullptr;

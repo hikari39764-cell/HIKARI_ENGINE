@@ -325,6 +325,97 @@ namespace HIKARI::MESHRENDERER {
         }
     }
 
+    void BindSurfaceFeatureData(
+        const MeshBindingContext& ctx,
+        D3D12_GPU_VIRTUAL_ADDRESS featureDataAddress) {
+
+        BindSrvCached(
+            ctx,
+            ROOT_PARAM::SurfaceFeatureData,
+            featureDataAddress);
+    }
+
+    void BindScreenSpaceTraceResources(
+        const MeshBindingContext& ctx) {
+
+        if (ctx.cmd == nullptr) {
+            return;
+        }
+
+        const RENDER3D::DEPTH::DepthPyramidView& depthPyramid =
+            ctx.passResources.depthPyramid;
+        const bool traceInputValid =
+            ctx.depthAwarePhase &&
+            ctx.passResources.sceneDepth.IsSampleable() &&
+            ctx.passResources.opaqueSceneColor.IsSampleable() &&
+            ctx.passResources.packedSceneSurface.IsSampleable() &&
+            depthPyramid.valid &&
+            depthPyramid.sourceKind ==
+                RENDER3D::DEPTH::DepthPyramidSourceKind::SceneDepth &&
+            depthPyramid.viewKind ==
+                RENDER3D::DEPTH::DepthPyramidViewKind::CurrentFrame &&
+            depthPyramid.depthConvention ==
+                RENDER3D::DEPTH::DepthPyramidDepthConvention::
+                    StandardD3DLessMax &&
+            depthPyramid.pyramidSrv.ptr != 0 &&
+            depthPyramid.width > 0u &&
+            depthPyramid.height > 0u &&
+            depthPyramid.mipCount > 0u &&
+            depthPyramid.sourceWidth ==
+                ctx.passResources.sceneDepth.width &&
+            depthPyramid.sourceHeight ==
+                ctx.passResources.sceneDepth.height &&
+            ctx.passResources.packedSceneSurface.width ==
+                ctx.passResources.sceneDepth.width &&
+            ctx.passResources.packedSceneSurface.height ==
+                ctx.passResources.sceneDepth.height;
+
+        D3D12_GPU_DESCRIPTOR_HANDLE fallbackSrv =
+            RENDER3D::GetTextureResourceSrvGpuHandleFromBackendHandle(
+                ctx.fallbackTextureHandle);
+        if (fallbackSrv.ptr == 0) {
+            fallbackSrv = ctx.passResources.sceneDepth.srv;
+        }
+        const D3D12_GPU_DESCRIPTOR_HANDLE depthPyramidSrv =
+            traceInputValid
+                ? depthPyramid.pyramidSrv
+                : fallbackSrv;
+        const D3D12_GPU_DESCRIPTOR_HANDLE packedSurfaceSrv =
+            traceInputValid
+                ? ctx.passResources.packedSceneSurface.srv
+                : fallbackSrv;
+        if (depthPyramidSrv.ptr != 0) {
+            BindDescriptorTableCached(
+                ctx,
+                ROOT_PARAM::ScreenSpaceDepthPyramid,
+                depthPyramidSrv);
+        }
+        if (packedSurfaceSrv.ptr != 0) {
+            BindDescriptorTableCached(
+                ctx,
+                ROOT_PARAM::ScreenSpacePackedSurface,
+                packedSurfaceSrv);
+        }
+
+        const bool boundTraceValid =
+            traceInputValid &&
+            depthPyramidSrv.ptr != 0 &&
+            packedSurfaceSrv.ptr != 0;
+        const uint32_t constants[2] = {
+            boundTraceValid ? 1u : 0u,
+            boundTraceValid ? depthPyramid.mipCount : 0u
+        };
+        ctx.cmd->SetGraphicsRoot32BitConstants(
+            ROOT_PARAM::ScreenSpaceTraceControl,
+            2u,
+            constants,
+            0u);
+        if (ctx.cache != nullptr) {
+            ctx.cache->rootConstantValid[
+                ROOT_PARAM::ScreenSpaceTraceControl] = false;
+        }
+    }
+
     void BindMaterialTexturePool(const MeshBindingContext& ctx) {
         if (ctx.cmd == nullptr) {
             return;

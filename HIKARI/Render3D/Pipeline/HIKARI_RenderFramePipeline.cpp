@@ -111,6 +111,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
             MESHRENDERER::MeshPassResources resources{};
             resources.sceneDepth = textures.sceneDepth;
             resources.opaqueSceneColor = textures.opaqueSceneColor;
+            resources.packedSceneSurface = textures.packedSurface;
             resources.ambientOcclusion = textures.ambientOcclusion;
             resources.depthPyramid = textures.currentSceneDepthPyramid.valid
                 ? textures.currentSceneDepthPyramid

@@ -52,7 +52,7 @@ struct HikariSurfaceGpuSceneInstance
 
     uint materialProgramFlags;
     uint postGroupMask;
-    uint stylizedFeaturePadding0;
+    uint surfaceFeatureDataIndex;
     uint stylizedFeaturePadding1;
 
     float4 lightmapUvScaleBias;
@@ -68,7 +68,7 @@ static const uint HIKARI_SURFACE_GPU_SCENE_FLAG_TRANSPARENT = 1u << 4;
 static const uint HIKARI_SURFACE_GPU_SCENE_FLAG_DOUBLE_SIDED = 1u << 6;
 static const uint HIKARI_SURFACE_GPU_SCENE_FLAG_MATERIAL_FX = 1u << 7;
 static const uint HIKARI_SURFACE_GPU_SCENE_FLAG_CLUSTER_MAINLINE = 1u << 8;
-static const uint HIKARI_SURFACE_GPU_SCENE_FLAG_WATER_MATERIAL_FX = 1u << 9;
+static const uint HIKARI_SURFACE_GPU_SCENE_FLAG_WATER_SURFACE = 1u << 9;
 static const uint HIKARI_SURFACE_GPU_SCENE_FLAG_DEPTH_AWARE = 1u << 10;
 static const uint HIKARI_SURFACE_GPU_SCENE_FLAG_PASS_FORWARD_OPAQUE = 1u << 11;
 static const uint HIKARI_SURFACE_GPU_SCENE_FLAG_PASS_DEPTH_PREPASS = 1u << 12;

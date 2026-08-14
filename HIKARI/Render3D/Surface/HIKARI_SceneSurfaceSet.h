@@ -45,7 +45,16 @@ namespace HIKARI::RENDER3D::SURFACE {
                     DEPTH::DepthPyramidViewKind::CurrentFrame &&
                 currentSceneDepthPyramid.sourceKind ==
                     DEPTH::DepthPyramidSourceKind::SceneDepth &&
-                currentSceneDepthPyramid.pyramidSrv.ptr != 0;
+                currentSceneDepthPyramid.depthConvention ==
+                    DEPTH::DepthPyramidDepthConvention::StandardD3DLessMax &&
+                currentSceneDepthPyramid.pyramidSrv.ptr != 0 &&
+                currentSceneDepthPyramid.mipCount != 0u &&
+                currentSceneDepthPyramid.width != 0u &&
+                currentSceneDepthPyramid.height != 0u &&
+                currentSceneDepthPyramid.sourceWidth == sceneDepth.width &&
+                currentSceneDepthPyramid.sourceHeight == sceneDepth.height &&
+                packedSurface.width == sceneDepth.width &&
+                packedSurface.height == sceneDepth.height;
         }
     };
 } // namespace HIKARI::RENDER3D::SURFACE

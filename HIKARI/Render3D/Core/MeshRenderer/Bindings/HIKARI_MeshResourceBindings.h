@@ -88,6 +88,13 @@ namespace HIKARI::MESHRENDERER {
         uint32_t baseInstanceIndex,
         bool enabled);
 
+    void BindSurfaceFeatureData(
+        const MeshBindingContext& ctx,
+        D3D12_GPU_VIRTUAL_ADDRESS featureDataAddress);
+
+    void BindScreenSpaceTraceResources(
+        const MeshBindingContext& ctx);
+
     void BindMaterialTexturePool(const MeshBindingContext& ctx);
 
     void BindClusterGeometryPool(const MeshBindingContext& ctx);

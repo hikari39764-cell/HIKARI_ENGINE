@@ -5,7 +5,7 @@
 #endif
 
 #define HIKARI_GPU_DRIVEN_ENABLE_WATER_DEFORM HIKARI_MESHLET_ENABLE_WATER_DEFORM
-#include "Include/Meshlet/HIKARI_GpuDrivenWaterDeform.hlsli"
+#include "Include/Meshlet/HIKARI_WaterSurfaceDeform.hlsli"
 #include "Include/Forward/HIKARI_ForwardVertexMeta.hlsli"
 #if defined(HIKARI_GEOMETRY_OUTLINE_VERTEX)
 #include "Include/HIKARI_MeshMaterialData.hlsli"
@@ -31,6 +31,7 @@ struct HikariMeshletVertexOut
     // Render3D_StaticPS. DXIL assigns packed hardware registers in declaration
     // order, so semantic names alone do not make a partial signature linkable.
     nointerpolation uint surfaceFeatureFlags : TEXCOORD7;
+    float3 waterSurfaceData : TEXCOORD11;
 };
 
 HikariMeshletVertexOut HikariBuildEmptyMeshletVertex()
@@ -53,11 +54,12 @@ HikariMeshletVertexOut HikariBuildMeshletVertex(
     HikariMeshletVertexOut output = HikariBuildEmptyMeshletVertex();
     float3 localPosition = vertex.position.xyz;
     float3 localNormal = vertex.normal.xyz;
-    HikariApplyGpuDrivenWaterDeform(
+    HikariApplyWaterSurfaceDeform(
         instance,
-        gTimeParams.x,
+        gSimulationTimeParams.x,
         localPosition,
-        localNormal);
+        localNormal,
+        output.waterSurfaceData);
 
     // Depth prepass (MeshletDepthMS) と深度を bit 一致させるため、
     // clip 位置の計算は各 MS で同一式 + precise に固定する。

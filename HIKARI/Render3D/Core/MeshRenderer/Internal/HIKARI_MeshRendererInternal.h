@@ -113,6 +113,8 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         D3D12_GPU_VIRTUAL_ADDRESS jointPaletteAddress = 0;
         RENDER3D::GPUDRIVEN::SurfaceGpuSceneFrameBuffer*
             surfaceGpuSceneFrameBuffer = nullptr;
+        RENDER3D::WATER::WaterSurfaceGpuFrameBuffer*
+            waterSurfaceGpuFrameBuffer = nullptr;
         RENDER3D::GPUDRIVEN::GpuTraditionalCommandStreamBuffer*
             traditionalCommandStreamBuffer = nullptr;
     };

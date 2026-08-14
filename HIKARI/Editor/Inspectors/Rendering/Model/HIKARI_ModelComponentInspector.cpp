@@ -7,6 +7,7 @@
 
 #include "Assets/HIKARI_AssetTypes.h"
 #include "Assets/Models/HIKARI_ModelAsset.h"
+#include "Assets/Material/HIKARI_MaterialBuiltInAssets.h"
 #include "Assets/Models/HIKARI_ModelMaterialSlot.h"
 #include "Authoring/HIKARI_IModelMaterialSlotProvider.h"
 #include "Editor/Inspectors/HIKARI_IInspectorBuilder.h"
@@ -299,15 +300,11 @@ namespace HIKARI {
             };
 
         if (proceduralMaterialSlots) {
-            if (builder.Section(
-                    TEXT::Localize(
-                        "ui.inspector.model.proceduralMaterial"),
-                    false)) {
-                builder.Text(
-                    TEXT::Localize(
-                        "ui.inspector.model.proceduralMaterialHint"));
-                drawMaterialSlotOverride(materialSlots.front());
-            }
+            // プロシージャル形状のマテリアルは Model コンポーネントでは
+            // 管理しない。ProceduralMeshComponent 側の選択が所有する。
+            builder.Text(
+                TEXT::Localize(
+                    "ui.inspector.model.proceduralMaterialInProcedural"));
         } else if (!materialSlots.empty() &&
             builder.Section(
                 TEXT::Localize(

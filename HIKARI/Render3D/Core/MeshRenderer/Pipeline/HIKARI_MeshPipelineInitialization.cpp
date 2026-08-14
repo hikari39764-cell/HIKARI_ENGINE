@@ -200,6 +200,22 @@ namespace HIKARI::MESHRENDERER {
         clusterGeometryPoolRange.RegisterSpace = 1;
         clusterGeometryPoolRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
+        D3D12_DESCRIPTOR_RANGE screenSpaceDepthPyramidRange{};
+        screenSpaceDepthPyramidRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+        screenSpaceDepthPyramidRange.NumDescriptors = 1;
+        screenSpaceDepthPyramidRange.BaseShaderRegister = 1;
+        screenSpaceDepthPyramidRange.RegisterSpace = 7;
+        screenSpaceDepthPyramidRange.OffsetInDescriptorsFromTableStart =
+            D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+        D3D12_DESCRIPTOR_RANGE screenSpacePackedSurfaceRange{};
+        screenSpacePackedSurfaceRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+        screenSpacePackedSurfaceRange.NumDescriptors = 1;
+        screenSpacePackedSurfaceRange.BaseShaderRegister = 2;
+        screenSpacePackedSurfaceRange.RegisterSpace = 7;
+        screenSpacePackedSurfaceRange.OffsetInDescriptorsFromTableStart =
+            D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
         // 既存 slot を動かさず、GPU-driven 用のリソースプールを末尾へ追加する。
         D3D12_ROOT_PARAMETER params[ROOT_PARAM::Count]{};
         params[ROOT_PARAM::Camera].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
@@ -405,6 +421,37 @@ namespace HIKARI::MESHRENDERER {
         params[ROOT_PARAM::MaterialProgramResources].Descriptor.ShaderRegister = 1;
         params[ROOT_PARAM::MaterialProgramResources].Descriptor.RegisterSpace = 6;
 
+        params[ROOT_PARAM::SurfaceFeatureData].ParameterType =
+            D3D12_ROOT_PARAMETER_TYPE_SRV;
+        params[ROOT_PARAM::SurfaceFeatureData].ShaderVisibility =
+            D3D12_SHADER_VISIBILITY_ALL;
+        params[ROOT_PARAM::SurfaceFeatureData].Descriptor.ShaderRegister = 0;
+        params[ROOT_PARAM::SurfaceFeatureData].Descriptor.RegisterSpace = 7;
+
+        params[ROOT_PARAM::ScreenSpaceDepthPyramid].ParameterType =
+            D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        params[ROOT_PARAM::ScreenSpaceDepthPyramid].ShaderVisibility =
+            D3D12_SHADER_VISIBILITY_PIXEL;
+        params[ROOT_PARAM::ScreenSpaceDepthPyramid].DescriptorTable.NumDescriptorRanges = 1;
+        params[ROOT_PARAM::ScreenSpaceDepthPyramid].DescriptorTable.pDescriptorRanges =
+            &screenSpaceDepthPyramidRange;
+
+        params[ROOT_PARAM::ScreenSpacePackedSurface].ParameterType =
+            D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        params[ROOT_PARAM::ScreenSpacePackedSurface].ShaderVisibility =
+            D3D12_SHADER_VISIBILITY_PIXEL;
+        params[ROOT_PARAM::ScreenSpacePackedSurface].DescriptorTable.NumDescriptorRanges = 1;
+        params[ROOT_PARAM::ScreenSpacePackedSurface].DescriptorTable.pDescriptorRanges =
+            &screenSpacePackedSurfaceRange;
+
+        params[ROOT_PARAM::ScreenSpaceTraceControl].ParameterType =
+            D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+        params[ROOT_PARAM::ScreenSpaceTraceControl].ShaderVisibility =
+            D3D12_SHADER_VISIBILITY_PIXEL;
+        params[ROOT_PARAM::ScreenSpaceTraceControl].Constants.ShaderRegister = 10;
+        params[ROOT_PARAM::ScreenSpaceTraceControl].Constants.RegisterSpace = 0;
+        params[ROOT_PARAM::ScreenSpaceTraceControl].Constants.Num32BitValues = 2;
+
         D3D12_STATIC_SAMPLER_DESC linearWrapSampler{};
         linearWrapSampler.Filter = D3D12_FILTER_ANISOTROPIC;
         linearWrapSampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
@@ -439,10 +486,21 @@ namespace HIKARI::MESHRENDERER {
             D3D12_SHADER_VISIBILITY_PIXEL;
         linearClampSampler.MaxLOD = D3D12_FLOAT32_MAX;
 
+        D3D12_STATIC_SAMPLER_DESC pointClampSampler{};
+        pointClampSampler.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
+        pointClampSampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        pointClampSampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        pointClampSampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        pointClampSampler.ShaderRegister = 3;
+        pointClampSampler.RegisterSpace = 0;
+        pointClampSampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        pointClampSampler.MaxLOD = D3D12_FLOAT32_MAX;
+
         const D3D12_STATIC_SAMPLER_DESC staticSamplers[] = {
             linearWrapSampler,
             shadowSampler,
-            linearClampSampler
+            linearClampSampler,
+            pointClampSampler
         };
 
         D3D12_ROOT_SIGNATURE_DESC rsDesc{};

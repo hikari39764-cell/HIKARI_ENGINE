@@ -30,6 +30,7 @@
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
 #include "Scene/Components/HIKARI_IComponent.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
+#include "Scene/Components/Rendering/Model/HIKARI_ModelRenderableAssetResolver.h"
 #include "Scene/HIKARI_ComponentRegistry.h"
 #include "Scene/HIKARI_SceneDocument.h"
 #include "Scene/HIKARI_World.h"
@@ -262,11 +263,11 @@ namespace HIKARI {
 
         void BuildModelMaterialOverrides(
             ModelComponent& modelComponent,
-            const AssetRegistry& assetRegistry) {
+            const AssetRegistry& assetRegistry,
+            const ModelAsset* modelAsset,
+            const std::string* proceduralMaterialSelection) {
 
             modelComponent.ClearRuntimeMaterialOverrides();
-            const ModelAsset* modelAsset =
-                modelComponent.GetModelAsset();
             if (modelAsset == nullptr) {
                 return;
             }
@@ -299,6 +300,25 @@ namespace HIKARI {
                     std::move(runtimeMaterial));
                 return true;
             };
+
+            // プロシージャル形状は ProceduralMeshComponent がマテリアル選択を
+            // 所有する。ModelComponent 側の既定/上書きは適用しない。
+            if (proceduralMaterialSelection != nullptr) {
+                if (!proceduralMaterialSelection->empty()) {
+                    const auto* descriptor =
+                        assetRegistry.FindAs<MaterialAssetDescriptor>(
+                            AssetId{ *proceduralMaterialSelection });
+                    if (descriptor != nullptr) {
+                        (void)applyMaterial(0, *descriptor, false);
+                    } else {
+                        HIKARI_LOG_WARN(
+                            "[MaterialRuntime][Procedural] material "
+                            "selection not registered: " +
+                            *proceduralMaterialSelection);
+                    }
+                }
+                return;
+            }
 
             // imported -> explicit model-owned Material Set (legacy scenes
             // without one retain deterministic model-default lookup)
@@ -658,7 +678,29 @@ namespace HIKARI {
                         modelManager,
                         assetRegistry,
                         modelComponent->GetAssetId()));
-                    BuildModelMaterialOverrides(*modelComponent, assetRegistry);
+                }
+            }
+
+            // 全コンポーネントを反映した後に、プログラム化モデルを含む
+            // レンダリング可能アセットへ解決してマテリアルオーバーライドを構築する。
+            // (ProceduralMeshComponent が後続の順序で追加されるケースを吸収)
+            for (const std::unique_ptr<IComponent>& component :
+                object->GetComponents()) {
+                if (auto* modelComponent =
+                        dynamic_cast<ModelComponent*>(component.get())) {
+                    const std::string* proceduralSelection = nullptr;
+                    if (const auto* procedural =
+                            object->GetComponent<
+                                ProceduralMeshComponent>()) {
+                        proceduralSelection =
+                            &procedural->GetMaterialSelection();
+                    }
+                    BuildModelMaterialOverrides(
+                        *modelComponent,
+                        assetRegistry,
+                        ResolveRenderableModelAsset(
+                            *object, *modelComponent),
+                        proceduralSelection);
                 }
             }
         }

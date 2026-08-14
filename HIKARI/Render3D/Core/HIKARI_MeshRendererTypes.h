@@ -37,6 +37,7 @@ namespace HIKARI::MESHRENDERER {
         MATH::Mat4 invViewProj{};
         MATH::Vec4 cameraPos{};
         MATH::Vec4 timeParams{};
+        MATH::Vec4 simulationTimeParams{};
         MATH::Vec4 screenParams{};
     };
 
@@ -141,13 +142,19 @@ namespace HIKARI::MESHRENDERER {
         uint32_t debugView = 0;
         float forwardCostMode = 0.0f;
         float debugPadding[2]{};
+        // View 単位の SSR 設定。Water も opaque provider と同じ authoring 値を使い、
+        // 変形後の surface origin だけを差し替えて trace する。
+        MATH::Vec4 screenSpaceReflectionParams0{};
+        MATH::Vec4 screenSpaceReflectionParams1{};
     };
 
     static_assert(
         offsetof(LightCB, localLightDepthScale) == 104u);
     static_assert(
         offsetof(LightCB, fogColorDensity) == 112u);
-    static_assert(sizeof(LightCB) == 160u);
+    static_assert(
+        offsetof(LightCB, screenSpaceReflectionParams0) == 160u);
+    static_assert(sizeof(LightCB) == 192u);
 
     struct ReflectionProbeGpuData {
         MATH::Vec4 positionRadius{};

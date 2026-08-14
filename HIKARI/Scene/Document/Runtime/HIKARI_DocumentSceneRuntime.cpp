@@ -22,6 +22,44 @@
 
 namespace HIKARI {
 
+    namespace {
+        class PhysicsWaterBathymetryProvider final
+            : public WATER::IWaterBathymetryProvider {
+        public:
+            explicit PhysicsWaterBathymetryProvider(
+                const PHYSICS::PhysicsWorldService& physics) noexcept
+                : physics_(&physics) {
+            }
+
+            bool RaycastBathymetry(
+                const WATER::WaterBathymetryRay& ray,
+                float& outDistance) const noexcept override {
+
+                outDistance = 0.0f;
+                if (physics_ == nullptr) {
+                    return false;
+                }
+
+                PHYSICS::PhysicsRaycastQuery query{};
+                query.origin = ray.originWS;
+                query.direction = ray.directionWS;
+                query.maxDistance = ray.maximumDistance;
+                query.filter.includeTriggers = false;
+                query.filter.ignoredObject = ray.surfaceObject;
+
+                PHYSICS::PhysicsHit hit{};
+                if (!physics_->Raycast(query, hit)) {
+                    return false;
+                }
+                outDistance = hit.distance;
+                return true;
+            }
+
+        private:
+            const PHYSICS::PhysicsWorldService* physics_ = nullptr;
+        };
+    }
+
     bool DocumentSceneBase::IsRuntimePlayActive() const {
         return state_->runtime.playActive;
     }
@@ -334,12 +372,22 @@ namespace HIKARI {
             return false;
         }
 
+        if (!state_->runtime.waterBathymetryProvider) {
+            state_->runtime.waterBathymetryProvider =
+                std::make_unique<PhysicsWaterBathymetryProvider>(
+                    state_->runtime.physicsWorldService);
+        }
+        state_->runtime.waterSurfaceQueryService.SetBathymetryProvider(
+            state_->runtime.waterBathymetryProvider.get());
+
         WorldServiceRegistry& services = state_->runtime.world.Services();
         services.Clear();
         bool success = services.Register(SERVICES::GetInputService());
         success = services.Register(state_->runtime.bindingStore) && success;
         success = services.Register(
             state_->runtime.vfxPlaybackService) && success;
+        success = services.Register(
+            state_->runtime.waterSurfaceQueryService) && success;
         success = services.Register(state_->camera.sequencePlayback) && success;
         success = services.Register(state_->runtime.playStateService) && success;
         success = services.Register(state_->runtime.gameplayCameraService) && success;

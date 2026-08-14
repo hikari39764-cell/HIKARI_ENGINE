@@ -3,16 +3,12 @@
 
 bool HikariSurfaceHasMaterialFx(uint surfaceFlags)
 {
-    return
-        (surfaceFlags & HIKARI_SURFACE_GPU_SCENE_FLAG_MATERIAL_FX) != 0u &&
-        (surfaceFlags & HIKARI_SURFACE_GPU_SCENE_FLAG_WATER_MATERIAL_FX) == 0u;
+    return (surfaceFlags & HIKARI_SURFACE_GPU_SCENE_FLAG_MATERIAL_FX) != 0u;
 }
 
-bool HikariSurfaceHasWaterMaterialFx(uint surfaceFlags)
+bool HikariSurfaceHasWaterSurface(uint surfaceFlags)
 {
-    return
-        (surfaceFlags & HIKARI_SURFACE_GPU_SCENE_FLAG_MATERIAL_FX) != 0u &&
-        (surfaceFlags & HIKARI_SURFACE_GPU_SCENE_FLAG_WATER_MATERIAL_FX) != 0u;
+    return (surfaceFlags & HIKARI_SURFACE_GPU_SCENE_FLAG_WATER_SURFACE) != 0u;
 }
 
 float HikariSurfaceFeatureHash31(float3 p)

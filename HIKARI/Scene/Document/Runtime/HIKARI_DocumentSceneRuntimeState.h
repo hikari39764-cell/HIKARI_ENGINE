@@ -26,6 +26,7 @@
 #include "Scene/Features/HIKARI_RuntimeExtension.h"
 #include "Scene/Features/HIKARI_RuntimeFeatureCatalog.h"
 #include "Scene/Vfx/HIKARI_VfxPlaybackService.h"
+#include "Scene/Water/HIKARI_WaterSurfaceQueryService.h"
 
 namespace HIKARI {
 
@@ -51,6 +52,10 @@ namespace HIKARI {
             MaterialExternalValueSnapshot>
             materialExternalValueSnapshot{};
         VFX::VfxPlaybackService vfxPlaybackService{};
+        // composition root が所有し、WaterSurfaceQueryService は借用する。
+        std::unique_ptr<WATER::IWaterBathymetryProvider>
+            waterBathymetryProvider{};
+        WATER::WaterSurfaceQueryService waterSurfaceQueryService{};
         PresentationTransformService presentationTransformService{};
         RuntimeExtensionHost extensionHost{};
         RuntimeFeatureCatalog featureCatalog{};

@@ -1,12 +1,115 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
+#include <limits>
+#include <string>
+#include <utility>
 
 #include <json.hpp>
 
 #include "Render3D/HIKARI_Math3D.h"
 
 namespace HIKARI::JSONREAD {
+
+    inline const nlohmann::json* FindMember(
+        const nlohmann::json& object,
+        const char* key) noexcept {
+
+        if (!object.is_object() || key == nullptr) {
+            return nullptr;
+        }
+        const auto found = object.find(key);
+        return found == object.end() ? nullptr : &(*found);
+    }
+
+    inline float NumberMemberOr(
+        const nlohmann::json& object,
+        const char* key,
+        float fallback) {
+
+        const nlohmann::json* value = FindMember(object, key);
+        return value != nullptr && value->is_number()
+            ? value->get<float>()
+            : fallback;
+    }
+
+    inline int IntegerMemberOr(
+        const nlohmann::json& object,
+        const char* key,
+        int fallback) {
+
+        const nlohmann::json* value = FindMember(object, key);
+        if (value == nullptr) {
+            return fallback;
+        }
+        if (value->is_number_unsigned()) {
+            const uint64_t parsed = value->get<uint64_t>();
+            return parsed <= static_cast<uint64_t>(
+                    (std::numeric_limits<int>::max)())
+                ? static_cast<int>(parsed)
+                : fallback;
+        }
+        if (!value->is_number_integer()) {
+            return fallback;
+        }
+        const int64_t parsed = value->get<int64_t>();
+        return parsed >= static_cast<int64_t>(
+                (std::numeric_limits<int>::min)()) &&
+            parsed <= static_cast<int64_t>(
+                (std::numeric_limits<int>::max)())
+            ? static_cast<int>(parsed)
+            : fallback;
+    }
+
+    inline uint32_t UnsignedMemberOr(
+        const nlohmann::json& object,
+        const char* key,
+        uint32_t fallback) {
+
+        const nlohmann::json* value = FindMember(object, key);
+        if (value == nullptr) {
+            return fallback;
+        }
+        if (value->is_number_unsigned()) {
+            const uint64_t parsed = value->get<uint64_t>();
+            return parsed <= static_cast<uint64_t>(
+                    (std::numeric_limits<uint32_t>::max)())
+                ? static_cast<uint32_t>(parsed)
+                : fallback;
+        }
+        if (!value->is_number_integer()) {
+            return fallback;
+        }
+        const int64_t parsed = value->get<int64_t>();
+        return parsed >= 0 &&
+            parsed <= static_cast<int64_t>(
+                (std::numeric_limits<uint32_t>::max)())
+            ? static_cast<uint32_t>(parsed)
+            : fallback;
+    }
+
+    inline bool BooleanMemberOr(
+        const nlohmann::json& object,
+        const char* key,
+        bool fallback) {
+
+        const nlohmann::json* value = FindMember(object, key);
+        return value != nullptr && value->is_boolean()
+            ? value->get<bool>()
+            : fallback;
+    }
+
+    inline std::string StringMemberOr(
+        const nlohmann::json& object,
+        const char* key,
+        std::string fallback) {
+
+        const nlohmann::json* value = FindMember(object, key);
+        return value != nullptr && value->is_string()
+            ? value->get<std::string>()
+            : std::move(fallback);
+    }
 
     inline float NumberOr(const nlohmann::json& node, std::size_t index, float fallback) {
         if (!node.is_array() || node.size() <= index || !node[index].is_number()) {
@@ -21,8 +124,8 @@ namespace HIKARI::JSONREAD {
             value.x = NumberOr(node, 0, value.x);
             value.y = NumberOr(node, 1, value.y);
         } else if (node.is_object()) {
-            value.x = node.value("x", value.x);
-            value.y = node.value("y", value.y);
+            value.x = NumberMemberOr(node, "x", value.x);
+            value.y = NumberMemberOr(node, "y", value.y);
         }
         return value;
     }
@@ -34,9 +137,9 @@ namespace HIKARI::JSONREAD {
             value.y = NumberOr(node, 1, value.y);
             value.z = NumberOr(node, 2, value.z);
         } else if (node.is_object()) {
-            value.x = node.value("x", value.x);
-            value.y = node.value("y", value.y);
-            value.z = node.value("z", value.z);
+            value.x = NumberMemberOr(node, "x", value.x);
+            value.y = NumberMemberOr(node, "y", value.y);
+            value.z = NumberMemberOr(node, "z", value.z);
         }
         return value;
     }
@@ -49,12 +152,21 @@ namespace HIKARI::JSONREAD {
             value.z = NumberOr(node, 2, value.z);
             value.w = NumberOr(node, 3, value.w);
         } else if (node.is_object()) {
-            value.x = node.value("x", value.x);
-            value.y = node.value("y", value.y);
-            value.z = node.value("z", value.z);
-            value.w = node.value("w", value.w);
+            value.x = NumberMemberOr(node, "x", value.x);
+            value.y = NumberMemberOr(node, "y", value.y);
+            value.z = NumberMemberOr(node, "z", value.z);
+            value.w = NumberMemberOr(node, "w", value.w);
         }
         return value;
+    }
+
+    inline MATH::Vec3 Vec3MemberOr(
+        const nlohmann::json& object,
+        const char* key,
+        const MATH::Vec3& fallback) {
+
+        const nlohmann::json* value = FindMember(object, key);
+        return value != nullptr ? Vec3Or(*value, fallback) : fallback;
     }
 
 } // namespace HIKARI::JSONREAD

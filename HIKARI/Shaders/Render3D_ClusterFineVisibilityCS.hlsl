@@ -53,7 +53,7 @@ void CullPageTasksCS(
     const bool vertexDeformed =
         (input.flags & (
             HIKARI_SURFACE_GPU_SCENE_FLAG_SKINNED |
-            HIKARI_SURFACE_GPU_SCENE_FLAG_WATER_MATERIAL_FX)) != 0u;
+            HIKARI_SURFACE_GPU_SCENE_FLAG_WATER_SURFACE)) != 0u;
 
     HikariClusterPage page = HikariLoadClusterPage(metadata, header, task.pageIndex);
     uint pageEndCluster = page.firstCluster + page.clusterCount;
@@ -159,7 +159,7 @@ void CullPageTasksCS(
             HIKARI_SURFACE_GPU_SCENE_FLAG_ALPHA_MASKED |
             HIKARI_SURFACE_GPU_SCENE_FLAG_TRANSPARENT |
             HIKARI_SURFACE_GPU_SCENE_FLAG_SKINNED |
-            HIKARI_SURFACE_GPU_SCENE_FLAG_WATER_MATERIAL_FX)) != 0u;
+            HIKARI_SURFACE_GPU_SCENE_FLAG_WATER_SURFACE)) != 0u;
 
     // run-merge の状態は thread0 のレジスタにのみ意味を持つ。
     bool hasRun = false;

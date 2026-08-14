@@ -12,6 +12,7 @@ cbuffer CameraCB : register(b0)
     float4x4 gInvViewProj;
     float4 gCameraPos;
     float4 gTimeParams;
+    float4 gSimulationTimeParams;
     float4 gScreenParams;
 };
 
@@ -21,6 +22,7 @@ cbuffer CullingCameraCB : register(b9)
     float4x4 gCullInvViewProj;
     float4 gCullCameraPos;
     float4 gCullTimeParams;
+    float4 gCullSimulationTimeParams;
     float4 gCullScreenParams;
 };
 
@@ -142,7 +144,7 @@ bool HikariMeshletAsCanConeCull(HikariMeshletVisibleRange visible)
             HIKARI_SURFACE_GPU_SCENE_FLAG_TRANSPARENT |
             HIKARI_SURFACE_GPU_SCENE_FLAG_DOUBLE_SIDED |
             HIKARI_SURFACE_GPU_SCENE_FLAG_SKINNED |
-            HIKARI_SURFACE_GPU_SCENE_FLAG_WATER_MATERIAL_FX)) == 0u;
+            HIKARI_SURFACE_GPU_SCENE_FLAG_WATER_SURFACE)) == 0u;
 }
 
 [numthreads(HIKARI_MESHLET_AS_MAX_CLUSTER_PAYLOAD, 1, 1)]
@@ -238,7 +240,7 @@ void main(uint groupIndex : SV_GroupIndex, uint3 groupId : SV_GroupID)
     const bool vertexDeformedRange =
         (visible.flags & (
             HIKARI_SURFACE_GPU_SCENE_FLAG_SKINNED |
-            HIKARI_SURFACE_GPU_SCENE_FLAG_WATER_MATERIAL_FX)) != 0u;
+            HIKARI_SURFACE_GPU_SCENE_FLAG_WATER_SURFACE)) != 0u;
     const bool requiresFineCull =
         !vertexDeformedRange && (amplificationFineCull || !preculledRange);
     if (clusterValid && requiresFineCull)

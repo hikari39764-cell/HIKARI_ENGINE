@@ -1,4 +1,5 @@
 #include "Include/Surface/HIKARI_SceneSurfaceContract.hlsli"
+#include "Include/Surface/HIKARI_ScreenSpaceGeometry.hlsli"
 #include "Include/Post/HIKARI_PostHash.hlsli"
 
 cbuffer SsaoPassCB : register(b0)
@@ -51,17 +52,23 @@ float3 DecodeNormal(float4 packed)
 
 float3 ReconstructWorld(float2 uv, float depth)
 {
-    float2 ndc = uv * 2.0f - 1.0f;
-    ndc.y = -ndc.y;
-    float4 world = mul(gInvViewProj, float4(ndc, depth, 1.0f));
-    return world.xyz / max(abs(world.w), 1e-5f);
+    float3 world;
+    HikariReconstructWorldPosition(uv, depth, gInvViewProj, world);
+    return world;
 }
 
 float2 ProjectWorld(float3 world)
 {
-    float4 clip = mul(gViewProj, float4(world, 1.0f));
-    float3 ndc = clip.xyz / max(abs(clip.w), 1e-5f);
-    return float2(ndc.x * 0.5f + 0.5f, -ndc.y * 0.5f + 0.5f);
+    float2 uv;
+    float projectedDepth;
+    float viewDepth;
+    HikariProjectWorldPosition(
+        world,
+        gViewProj,
+        uv,
+        projectedDepth,
+        viewDepth);
+    return uv;
 }
 
 float3 ReconstructNormalFromDepth(float2 uv, float centerDepth)

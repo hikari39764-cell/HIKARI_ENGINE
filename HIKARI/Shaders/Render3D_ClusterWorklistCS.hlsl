@@ -77,7 +77,7 @@ void ExpandPageTasksCS(uint3 dispatchThreadId : SV_DispatchThreadID)
         const bool vertexDeformed =
             (instance.flags & (
                 HIKARI_SURFACE_GPU_SCENE_FLAG_SKINNED |
-                HIKARI_SURFACE_GPU_SCENE_FLAG_WATER_MATERIAL_FX)) != 0u;
+                HIKARI_SURFACE_GPU_SCENE_FLAG_WATER_SURFACE)) != 0u;
         if (!vertexDeformed && !HikariClusterCullSphereVisible(sectionWorldSphere))
         {
             if (gClusterCullEnableDebugCounters != 0u)

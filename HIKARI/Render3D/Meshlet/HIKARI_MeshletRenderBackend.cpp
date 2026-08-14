@@ -554,6 +554,7 @@ namespace HIKARI::RENDER3D::MESHLET {
 
         Microsoft::WRL::ComPtr<ID3DBlob> amplificationShader;
         Microsoft::WRL::ComPtr<ID3DBlob> forwardMeshShader;
+        Microsoft::WRL::ComPtr<ID3DBlob> shadowMeshShader;
         Microsoft::WRL::ComPtr<ID3DBlob> depthMeshShader;
         Microsoft::WRL::ComPtr<ID3DBlob> geometryMeshShader;
         Microsoft::WRL::ComPtr<ID3DBlob> geometryOutlineMeshShader;
@@ -572,8 +573,9 @@ namespace HIKARI::RENDER3D::MESHLET {
             IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardDepthAware) ||
             IsPipelineRequested(pipelineMask_, MeshletPipelineKind::ForwardTransparent) ||
             IsPipelineRequested(pipelineMask_, MeshletPipelineKind::VisibilityOverlay);
+        const bool needsShadowMeshShader =
+            IsPipelineRequested(pipelineMask_, MeshletPipelineKind::Shadow);
         const bool needsDepthMeshShader =
-            IsPipelineRequested(pipelineMask_, MeshletPipelineKind::Shadow) ||
             IsPipelineRequested(pipelineMask_, MeshletPipelineKind::DepthPrepass);
         const bool needsGeometryMeshShader =
             IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryAux);
@@ -593,6 +595,14 @@ namespace HIKARI::RENDER3D::MESHLET {
                 "main",
                 GFX::ShaderStage::Mesh,
                 forwardMeshShader.GetAddressOf())) {
+            return false;
+        }
+        if (needsShadowMeshShader &&
+            !GFX::CompileShaderFileSm6(
+                L"HIKARI/Shaders/Render3D_MeshletShadowMS.hlsl",
+                "main",
+                GFX::ShaderStage::Mesh,
+                shadowMeshShader.GetAddressOf())) {
             return false;
         }
         if (needsDepthMeshShader &&
@@ -765,7 +775,7 @@ namespace HIKARI::RENDER3D::MESHLET {
                     device,
                     rootSignature,
                     amplificationShader.Get(),
-                    depthMeshShader.Get(),
+                    shadowMeshShader.Get(),
                     shadowPixelShader.Get(),
                     DXGI_FORMAT_UNKNOWN,
                     CullModeForBucket(bucket),

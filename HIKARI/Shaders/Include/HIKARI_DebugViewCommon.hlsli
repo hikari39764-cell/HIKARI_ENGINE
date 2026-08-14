@@ -2,6 +2,8 @@
 #define HIKARI_DEBUG_VIEW_COMMON_HLSLI
 
 static const uint HIKARI_DEBUG_VIEW_NEUTRAL_CLAY = 29u;
+static const uint HIKARI_DEBUG_VIEW_SSR_CONFIDENCE = 26u;
+static const uint HIKARI_DEBUG_VIEW_SSR_HIT = 27u;
 static const uint HIKARI_DEBUG_VIEW_MESHLET_ID = 32u;
 static const uint HIKARI_DEBUG_VIEW_CLUSTER_ID = 33u;
 static const uint HIKARI_DEBUG_VIEW_SURFACE_ID = 34u;

@@ -88,8 +88,8 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                 bindingOverrides);
         settings.stylizedSurfaceBuffer->EndWrite(graphics.cmdList);
 
-        const bool targetReady = settings.rebindTarget == nullptr ||
-            settings.rebindTarget(settings.renderTargetUserData);
+        const bool targetReady = settings.targetAccess.rebind == nullptr ||
+            settings.targetAccess.Rebind();
         return result.gpuBackendExecuted && targetReady;
     }
 
@@ -101,8 +101,8 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         const MeshFrameBindingOverrides& bindingOverrides) {
 
         const auto rebindTarget = [&settings]() {
-            return settings.rebindTarget == nullptr ||
-                settings.rebindTarget(settings.renderTargetUserData);
+            return settings.targetAccess.rebind == nullptr ||
+                settings.targetAccess.Rebind();
         };
         if (settings.renderGeometryOutline) {
             if (!rebindTarget() ||

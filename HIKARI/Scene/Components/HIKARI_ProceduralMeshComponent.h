@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+
 #include "Render3D/Procedural/HIKARI_ProceduralMeshTypes.h"
 #include "Scene/Components/HIKARI_IComponent.h"
 #include "Scene/Geometry/HIKARI_GeometryFitProvider.h"
@@ -20,6 +22,10 @@ namespace HIKARI {
 
         const ProceduralMeshSettings& GetSettings() const noexcept;
         void SetSettings(const ProceduralMeshSettings& settings);
+        // マテリアル選択: "" = None(デフォルト白) / "checker" または
+        // マテリアルアセット GUID。
+        const std::string& GetMaterialSelection() const noexcept;
+        void SetMaterialSelection(std::string selection);
         int GetGeometryFitPriority() const noexcept override;
         bool QueryGeometryFit(
             GeometryFitDesc& outFit) const noexcept override;
@@ -28,6 +34,7 @@ namespace HIKARI {
         void NotifyRenderStateDirty();
 
         ProceduralMeshSettings settings_{};
+        std::string materialSelection_{};
     };
 
 } // namespace HIKARI

@@ -52,6 +52,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         bool materialFx = false;
         bool waterMaterialFx = false;
         bool materialFxUsesCustomVertexShader = false;
+        bool materialFxUsesCustomPixelShader = false;
         bool customVertexShader = false;
         bool depthAware = false;
         bool alphaMasked = false;
@@ -104,6 +105,9 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         uint32_t postGroupMask = 0;
         DirectX::XMFLOAT4 materialFxParamValues[VFX::kMaterialFxUserCount]{};
         bool materialFxValuesInitialized = false;
+        bool waterSurface = false;
+        RENDER3D::WATER::WaterSurfaceRenderData waterSurfaceData{};
+        uint32_t waterSurfaceGpuDataIndex = 0u;
 
         GpuSceneResourceKey key{};
     };
@@ -115,6 +119,9 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         bool missingDrawMatrix = false;
         bool invalidBounds = false;
         bool invalidPrimitiveIndex = false;
+        bool unsupportedWaterSkinned = false;
+        bool unsupportedWaterCustomVertexShader = false;
+        bool unsupportedWaterCustomPixelShader = false;
 
         bool IsValid() const;
     };

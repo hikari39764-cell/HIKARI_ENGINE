@@ -24,8 +24,7 @@ namespace HIKARI::RENDER3D::RUNTIME {
     bool IsSurfaceObjectDataVertexShader(std::string_view vertexShaderId) {
         return
             vertexShaderId.empty() ||
-            vertexShaderId == "Render3D_StaticVS" ||
-            vertexShaderId == "Render3D_FxWaterVS";
+            vertexShaderId == "Render3D_StaticVS";
     }
 
     bool IsSurfaceObjectDataPixelShader(std::string_view shaderId, std::string_view pixelShaderId) {
@@ -37,7 +36,6 @@ namespace HIKARI::RENDER3D::RUNTIME {
             id == "MaterialFx" ||
             id == "Render3D_StaticPS" ||
             id == "Render3D_StaticFxPS" ||
-            id == "Render3D_FxWaterPS" ||
             id == "Render3D_GeometryAuxPS";
     }
 

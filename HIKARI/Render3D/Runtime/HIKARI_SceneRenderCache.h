@@ -12,6 +12,7 @@
 #include "Animation/Runtime/HIKARI_AnimationPose.h"
 #include "Assets/Models/HIKARI_ModelAsset.h"
 #include "Render3D/Runtime/HIKARI_RenderModelAsset.h"
+#include "Render3D/Water/HIKARI_WaterSurfaceRenderData.h"
 
 namespace HIKARI {
     class Material;
@@ -68,6 +69,10 @@ namespace HIKARI::RENDER3D::RUNTIME {
 
         DirectX::XMFLOAT4 materialFxParamValues[VFX::kMaterialFxUserCount]{};
         bool materialFxValuesInitialized = false;
+
+        // Renderer-owned typed input; Scene does not own the GPU slot layout.
+        bool waterSurface = false;
+        WATER::WaterSurfaceRenderData waterSurfaceData{};
     };
 
     struct SceneRenderObject {
@@ -126,6 +131,8 @@ namespace HIKARI::RENDER3D::RUNTIME {
         uint32_t postGroupMask = 0;
         DirectX::XMFLOAT4 materialFxParamValues[VFX::kMaterialFxUserCount]{};
         bool materialFxValuesInitialized = false;
+        bool waterSurface = false;
+        WATER::WaterSurfaceRenderData waterSurfaceData{};
     };
 
     class SceneRenderCache {

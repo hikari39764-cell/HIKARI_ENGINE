@@ -82,6 +82,13 @@ float GetGameElapsedSeconds() {
     return gGameElapsedSeconds;
 }
 
+float GetInterpolatedSimulationTimeSeconds() {
+    const double tick = static_cast<double>(gFrame.fixedTickIndex) +
+        static_cast<double>(gFrame.fixedInterpolationAlpha);
+    return static_cast<float>(
+        tick * static_cast<double>(gFrame.fixedDt));
+}
+
 void SetGameTimeScale(float scale) {
     gFrame.gameTimeScale = (scale < 0.0f) ? 0.0f : scale;
 }

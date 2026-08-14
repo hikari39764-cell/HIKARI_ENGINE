@@ -30,6 +30,7 @@ cbuffer CameraConstants : register(b0)
     float4x4 gInverseViewProjection;
     float4 gCameraPosition;
     float4 gTimeParams;
+    float4 gSimulationTimeParams;
     float4 gScreenParams;
 };
 

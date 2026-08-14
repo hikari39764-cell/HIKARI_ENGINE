@@ -84,6 +84,13 @@ namespace HIKARI::EDITOR {
             ImGui::EndMenu();
         }
 
+        const std::string waterSurfaceLabel =
+            TEXT::Localize("ui.sceneCreation.waterSurface");
+        if (Matches(waterSurfaceLabel.c_str(), search) &&
+            ImGui::MenuItem(waterSurfaceLabel.c_str())) {
+            CreateWaterSurfaceObject(scene, context, selectionSync);
+        }
+
         const bool showReflectionProbe =
             Matches(
                 TEXT::Localize(
@@ -293,6 +300,35 @@ namespace HIKARI::EDITOR {
             reflectionProbe
                 ? "Create Reflection Probe"
                 : "Create Irradiance Volume",
+            beforeObjects,
+            scene.GetSceneDocument().objects,
+            beforeCamera,
+            scene.GetSceneDocument().camera,
+            dirtyBefore
+        };
+    }
+
+    void SceneCreationPanel::CreateWaterSurfaceObject(
+        DocumentSceneBase& scene,
+        EditorContext& context,
+        const SelectionSyncService& selectionSync) {
+
+        const bool dirtyBefore =
+            context.sceneDirty || scene.HasUnsavedSceneChanges();
+        const std::vector<SceneObjectData> beforeObjects =
+            scene.GetSceneDocument().objects;
+        const SceneCameraSettings beforeCamera =
+            scene.GetSceneDocument().camera;
+        CreateObjectRequest request{};
+        request.position = ComputeObjectPlacementInView(scene.GetCamera());
+        GameObject* object = EDITOR::CreateWaterSurfaceObject(scene, request);
+        context.selection.SelectObject(scene.GetWorld(), object);
+        context.sceneDirty = true;
+        selectionSync.SyncNextSceneObjectId(
+            scene,
+            context.nextSceneObjectId);
+        historyRequest_ = SceneObjectAuthoringHistoryRequest{
+            "Create Water Surface",
             beforeObjects,
             scene.GetSceneDocument().objects,
             beforeCamera,

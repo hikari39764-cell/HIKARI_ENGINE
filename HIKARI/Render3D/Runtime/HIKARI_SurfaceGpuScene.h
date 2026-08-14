@@ -1,5 +1,6 @@
 ﻿#pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 #include "Render3D/HIKARI_Math3D.h"
@@ -29,7 +30,7 @@ namespace HIKARI::RENDER3D::RUNTIME {
         DoubleSided = 1u << 6,
         MaterialFx = 1u << 7,
         ClusterMainline = 1u << 8,
-        WaterMaterialFx = 1u << 9,
+        WaterSurface = 1u << 9,
         DepthAware = 1u << 10,
         PassForwardOpaque = 1u << 11,
         PassDepthPrepass = 1u << 12,
@@ -98,7 +99,9 @@ namespace HIKARI::RENDER3D::RUNTIME {
 
         uint32_t materialProgramFlags = 0u;
         uint32_t postGroupMask = 0u;
-        uint32_t stylizedFeaturePadding0 = 0u;
+        // Renderer-owned sparse feature payload。index 0 は全 feature buffer で
+        // 必須の neutral sentinel とする。
+        uint32_t surfaceFeatureDataIndex = 0u;
         uint32_t stylizedFeaturePadding1 = 0u;
 
         MATH::Vec4 lightmapUvScaleBias{
@@ -108,6 +111,15 @@ namespace HIKARI::RENDER3D::RUNTIME {
     };
 
     static_assert(sizeof(SurfaceGpuSceneInstance) == 560u);
+    static_assert(offsetof(
+        SurfaceGpuSceneInstance,
+        surfaceFeatureDataIndex) == 408u);
+    static_assert(offsetof(
+        SurfaceGpuSceneInstance,
+        lightmapUvScaleBias) == 416u);
+    static_assert(offsetof(
+        SurfaceGpuSceneInstance,
+        fxUser) == 432u);
     static_assert(kSurfaceGpuSceneJointPaletteStrideBytes == 8192u);
 
     struct SurfaceGpuSceneMaterialSource {

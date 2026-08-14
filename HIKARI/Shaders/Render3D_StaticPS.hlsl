@@ -3,6 +3,7 @@
 #include "Include/Material/HIKARI_MaterialProgramData.hlsli"
 #include "Include/Material/HIKARI_MaterialExpression.hlsli"
 #include "Include/Material/HIKARI_StylizedMaterial.hlsli"
+#include "Include/Forward/HIKARI_SurfaceFeatureCoverage.hlsli"
 
 #if HIKARI_FORWARD_ENABLE_MATERIAL_FX
 #include "Include/Forward/HIKARI_SurfaceFeatureShading.hlsli"
@@ -25,27 +26,23 @@ struct PSInput
     nointerpolation uint debugSurfaceId : TEXCOORD6;
     float3 characterRightWS : TEXCOORD8;
     float3 characterForwardWS : TEXCOORD9;
-    bool isFrontFace : SV_IsFrontFace;
-#if defined(HIKARI_FORWARD_MESHLET_SURFACE_FEATURES) && HIKARI_FORWARD_MESHLET_SURFACE_FEATURES
     nointerpolation uint surfaceFeatureFlags : TEXCOORD7;
-#endif
+    float3 waterSurfaceData : TEXCOORD11;
+    bool isFrontFace : SV_IsFrontFace;
 };
 
 #include "Include/Forward/HIKARI_ForwardMaterialInputs.hlsli"
 
-#if defined(HIKARI_FORWARD_MESHLET_SURFACE_FEATURES) && HIKARI_FORWARD_MESHLET_SURFACE_FEATURES
 #define HIKARI_WATER_EMBEDDED 1
-#include "Render3D_FxWaterPS.hlsl"
+#include "Render3D_WaterSurfacePS.hlsl"
 #undef HIKARI_WATER_EMBEDDED
-#endif
 
 float4 main(PSInput input) : SV_TARGET
 {
     const bool neutralClay =
         gDebugView == HIKARI_DEBUG_VIEW_NEUTRAL_CLAY;
-#if defined(HIKARI_FORWARD_MESHLET_SURFACE_FEATURES) && HIKARI_FORWARD_MESHLET_SURFACE_FEATURES
     if (!neutralClay &&
-        HikariSurfaceHasWaterMaterialFx(input.surfaceFeatureFlags))
+        HikariSurfaceHasWaterSurface(input.surfaceFeatureFlags))
     {
         const HikariMeshObjectData waterObjectData =
             HikariGetMeshObjectDataForPixel(
@@ -53,7 +50,6 @@ float4 main(PSInput input) : SV_TARGET
                 input.surfaceGpuSceneIndex);
         return HikariShadeWaterSurface(input, waterObjectData);
     }
-#endif
 #if HIKARI_FORWARD_ENABLE_MATERIAL_FX
     HikariMeshObjectData surfaceFeatureData = (HikariMeshObjectData)0;
     bool hasStaticMaterialFx = false;
@@ -69,7 +65,8 @@ float4 main(PSInput input) : SV_TARGET
     surfaceFeatureData = HikariGetMeshObjectDataForPixel(
         input.objectDataIndex,
         input.surfaceGpuSceneIndex);
-    hasStaticMaterialFx = HikariObjectDataHasMaterialFx(surfaceFeatureData);
+    hasStaticMaterialFx =
+        HikariObjectDataHasMaterialFx(surfaceFeatureData);
 #endif
 #endif
 

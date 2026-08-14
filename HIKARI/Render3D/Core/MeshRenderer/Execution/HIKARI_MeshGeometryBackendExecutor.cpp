@@ -355,6 +355,9 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             BindMaterialDataBuffer(drawCtx.binding, drawCtx.materialDataSrv);
             BindSurfaceGpuSceneBuffer(drawCtx.binding, drawCtx.surfaceGpuSceneSrv);
             BindSurfaceGpuSceneControl(drawCtx.binding, 0u, false);
+            BindSurfaceFeatureData(
+                drawCtx.binding,
+                drawCtx.surfaceFeatureDataAddress);
             BindShadowMap(drawCtx.binding);
             if (passKind == MeshDrawPassKind::Forward) {
                 BindSkyCube(drawCtx.binding);

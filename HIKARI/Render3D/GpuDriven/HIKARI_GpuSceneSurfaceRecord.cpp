@@ -16,6 +16,7 @@
 #include "Render3D/Resources/HIKARI_ClusterGeometryResourceSystem.h"
 #include "Render3D/Resources/HIKARI_RenderResourceSystem.h"
 #include "Render3D/Runtime/HIKARI_SurfaceDrawRoute.h"
+#include "Core/HIKARI_Logger.h"
 #include "Vfx/MaterialFx/HIKARI_MaterialFxProfile.h"
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
@@ -128,7 +129,13 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             uint64_t key = HashString("procedural-cluster-object");
             key = HashAppend(key, record.objectId.value);
             key = HashAppend(key, record.meshIndex);
-            return HashAppend(key, record.primitiveIndex);
+            key = HashAppend(key, record.primitiveIndex);
+            // 設定変更で別の hcmesh になるため、パスもキーに含める。
+            return HashAppend(
+                key,
+                BuildStableStringKey(
+                    "cluster-geometry-path",
+                    record.clusteredGeometryPath));
         }
 
         const MaterialAsset* ResolveMaterialAsset(const GpuSceneSurfaceRecord& record) {
@@ -353,7 +360,6 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             const bool clusterVertexCompatible =
                 shaderRoute.vertexShaderId.empty() ||
                 shaderRoute.vertexShaderId == "Render3D_StaticVS" ||
-                shaderRoute.vertexShaderId == "Render3D_FxWaterVS" ||
                 (record.skinned && shaderRoute.vertexShaderId == "Render3D_SkinnedVS");
             const bool usesCustomVertexShader =
                 !shaderRoute.vertexShaderId.empty() &&
@@ -365,8 +371,12 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                 pixelShaderId == "StaticFx" ||
                 pixelShaderId == "MaterialFx" ||
                 pixelShaderId == "Render3D_StaticPS" ||
-                pixelShaderId == "Render3D_StaticFxPS" ||
-                pixelShaderId == "Render3D_FxWaterPS";
+                pixelShaderId == "Render3D_StaticFxPS";
+            const bool waterMaterialFxPixelCompatible =
+                pixelShaderId.empty() ||
+                pixelShaderId == "StaticFx" ||
+                pixelShaderId == "MaterialFx" ||
+                pixelShaderId == "Render3D_StaticFxPS";
 
             key.modelKey = modelKey;
             const bool animatedPoseRecord =
@@ -429,20 +439,27 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                 key.shaderKey,
                 key.psoKey);
             key.alphaMasked = alphaMode == AlphaMode::Mask;
-            key.transparent = alphaMode == AlphaMode::Blend;
+            // 水面はメッシュが持つマテリアルのアルファモードに依存せず、
+            // 常に透明(プレマルチプライド)として分類する。
+            key.transparent =
+                record.waterSurface ||
+                alphaMode == AlphaMode::Blend;
             key.doubleSided = doubleSided;
             key.resourceKeyValid = key.resources.HasStableKeys();
             key.objectDataCompatible = shaderRoute.objectDataCompatible;
             key.materialFx = !record.materialFxProfileId.empty();
-            key.waterMaterialFx =
-                pixelShaderId == "Render3D_FxWaterPS" ||
-                shaderRoute.vertexShaderId == "Render3D_FxWaterVS";
+            key.waterMaterialFx = record.waterSurface;
             key.materialFxUsesCustomVertexShader =
                 key.materialFx &&
-                usesCustomVertexShader &&
-                !key.waterMaterialFx;
+                usesCustomVertexShader;
+            key.materialFxUsesCustomPixelShader =
+                key.materialFx &&
+                !waterMaterialFxPixelCompatible;
             key.customVertexShader = usesCustomVertexShader;
-            key.depthAware = shaderRoute.depthAware;
+            // 水面は常に DepthAware パスへ。SceneColor スナップショットと
+            // alpha 合成が必要なため、プロファイル未設定でも depthAware を
+            // 強制する（cluster mainline 資格は waterMaterialFx が維持する）。
+            key.depthAware = shaderRoute.depthAware || record.waterSurface;
             const bool ordinaryMeshletMaterial =
                 !key.materialFx &&
                 !key.waterMaterialFx &&
@@ -450,6 +467,9 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             const bool materialFxMeshletMaterial =
                 key.materialFx &&
                 !key.materialFxUsesCustomVertexShader;
+            const bool waterSurfaceMeshletMaterial =
+                key.waterMaterialFx &&
+                !usesCustomVertexShader;
             // Cluster-compatible MaterialFX, including the built-in water
             // deformation contract, stays on the mesh-shader route.
             // 通常の Opaque / Mask / Blend は同じ Mesh Shader 本線で扱う。
@@ -460,7 +480,9 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                 clusterVertexCompatible &&
                 clusterPixelCompatible &&
                 key.objectDataCompatible &&
-                (ordinaryMeshletMaterial || materialFxMeshletMaterial);
+                (ordinaryMeshletMaterial ||
+                    materialFxMeshletMaterial ||
+                    waterSurfaceMeshletMaterial);
             if (key.clusterMainlineEligible) {
                 key.backendRoute = RUNTIME::SurfaceBackendRoute::MeshShader;
             } else if (record.skinned) {
@@ -501,7 +523,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                 flags |= ToInstanceFlag(RUNTIME::SurfaceGpuSceneInstanceFlags::MaterialFx);
             }
             if (record.key.waterMaterialFx) {
-                flags |= ToInstanceFlag(RUNTIME::SurfaceGpuSceneInstanceFlags::WaterMaterialFx);
+                flags |= ToInstanceFlag(RUNTIME::SurfaceGpuSceneInstanceFlags::WaterSurface);
             }
             if (record.key.depthAware) {
                 flags |= ToInstanceFlag(RUNTIME::SurfaceGpuSceneInstanceFlags::DepthAware);
@@ -530,14 +552,15 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                 }
             }
 
-            if (!record.materialFxValuesInitialized) {
-                return;
+            if (record.materialFxValuesInitialized) {
+                for (size_t i = 0; i < VFX::kMaterialFxUserCount; ++i) {
+                    const DirectX::XMFLOAT4& value =
+                        record.materialFxParamValues[i];
+                    instance.fxUser[i] = {
+                        value.x, value.y, value.z, value.w };
+                }
             }
 
-            for (size_t i = 0; i < VFX::kMaterialFxUserCount; ++i) {
-                const DirectX::XMFLOAT4& value = record.materialFxParamValues[i];
-                instance.fxUser[i] = { value.x, value.y, value.z, value.w };
-            }
         }
 
         void FillClusterGeometryData(
@@ -661,6 +684,8 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                 instance.materialProgramFlags |= EditorSelectionOutline;
             }
             instance.postGroupMask = record.postGroupMask;
+            instance.surfaceFeatureDataIndex =
+                record.waterSurfaceGpuDataIndex;
             if (record.skinned &&
                 record.jointPaletteSlot != RUNTIME::kInvalidRenderSurfaceIndex) {
                 instance.jointPaletteOffsetBytes =
@@ -719,7 +744,10 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             !unsupportedGeometry &&
             !missingDrawMatrix &&
             !invalidBounds &&
-            !invalidPrimitiveIndex;
+            !invalidPrimitiveIndex &&
+            !unsupportedWaterSkinned &&
+            !unsupportedWaterCustomVertexShader &&
+            !unsupportedWaterCustomPixelShader;
     }
 
     bool HasValidGpuSceneSubmitPrimitiveTarget(
@@ -777,6 +805,8 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         for (size_t i = 0; i < VFX::kMaterialFxUserCount; ++i) {
             record.materialFxParamValues[i] = surfaceInstance.materialFxParamValues[i];
         }
+        record.waterSurface = surfaceInstance.waterSurface;
+        record.waterSurfaceData = surfaceInstance.waterSurfaceData;
 
         record.forwardCandidate = record.visible;
         record.shadowCandidate = record.visible && record.castShadow;
@@ -818,6 +848,15 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             record.model,
             record.surface != nullptr ? *record.surface : RUNTIME::RenderSurfaceRecord{})) {
             result.invalidPrimitiveIndex = true;
+        }
+        if (record.waterSurface && record.skinned) {
+            result.unsupportedWaterSkinned = true;
+        }
+        if (record.waterSurface && record.key.customVertexShader) {
+            result.unsupportedWaterCustomVertexShader = true;
+        }
+        if (record.waterSurface && record.key.materialFxUsesCustomPixelShader) {
+            result.unsupportedWaterCustomPixelShader = true;
         }
         return result;
     }

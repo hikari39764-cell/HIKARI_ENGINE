@@ -234,9 +234,11 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
     void GpuDrivenLayer::Attach(
         SurfaceGpuSceneFrameBuffer* sceneBuffer,
         GpuTraditionalCommandStreamBuffer* traditionalCommandStreamBuffer,
-        IGpuDrivenProducer* producer) {
+        IGpuDrivenProducer* producer,
+        WATER::WaterSurfaceGpuFrameBuffer* waterSurfaceBuffer) {
 
         sceneBuffer_ = sceneBuffer;
+        waterSurfaceBuffer_ = waterSurfaceBuffer;
         traditionalCommandStreamBuffer_ = traditionalCommandStreamBuffer;
         producer_ = producer;
         frameContext_.scene.instanceBuffer = sceneBuffer_;
@@ -269,6 +271,15 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
 
         sceneUploadStats_ = {};
         frameContext_.scene.instanceBuffer = sceneBuffer_;
+        const bool waterSurfaceDataResident =
+            waterSurfaceBuffer_ == nullptr ||
+            waterSurfaceBuffer_->UploadFrame(
+                desc.frameIndex,
+                frameSource_ != nullptr
+                    ? frameSource_->waterSurfaceGpuData
+                    : nullptr);
+        sceneUploadStats_.waterSurfaceDataResident =
+            waterSurfaceDataResident;
         if (sceneBuffer_ != nullptr) {
             sceneBuffer_->BeginFrame(desc.frameIndex);
         }
@@ -371,6 +382,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         sceneUploadStats_.bufferStats = sceneBuffer_->GetStats();
         sceneUploadStats_.sceneResident =
             sourceInstanceCount != 0u &&
+            waterSurfaceDataResident &&
             sceneUploadStats_.bufferStats.overflowInstanceCount == 0u &&
             sceneUploadStats_.bufferStats.uploadedInstanceCount ==
                 sourceInstanceCount;
@@ -645,6 +657,12 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
 
     SurfaceGpuSceneFrameBuffer* GpuDrivenLayer::GetSceneBuffer() const {
         return sceneBuffer_;
+    }
+
+    WATER::WaterSurfaceGpuFrameBuffer*
+        GpuDrivenLayer::GetWaterSurfaceBuffer() const {
+
+        return waterSurfaceBuffer_;
     }
 
     GpuTraditionalCommandStreamBuffer* GpuDrivenLayer::GetTraditionalCommandStreamBuffer() const {

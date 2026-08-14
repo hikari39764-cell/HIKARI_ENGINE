@@ -43,6 +43,12 @@ namespace HIKARI::SHADOW::INTERNAL {
             frameContext.gameDt,
             static_cast<float>(frameContext.frameIndex)
         };
+        camera->simulationTimeParams = {
+            TIME::GetInterpolatedSimulationTimeSeconds(),
+            frameContext.fixedDt,
+            frameContext.fixedInterpolationAlpha,
+            static_cast<float>(frameContext.fixedTickIndex)
+        };
         camera->screenParams = {
             resolution,
             resolution,

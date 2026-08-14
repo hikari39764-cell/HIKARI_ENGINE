@@ -14,6 +14,7 @@
 #include "Assets/Material/Authoring/HIKARI_MaterialInstanceResolver.h"
 #include "Assets/Material/HIKARI_MaterialAssetData.h"
 #include "Assets/Material/HIKARI_MaterialAssetLookup.h"
+#include "Assets/Material/HIKARI_MaterialBuiltInAssets.h"
 #include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingAsset.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
 #include "Core/Content/HIKARI_EngineContentContext.h"
@@ -236,10 +237,92 @@ namespace HIKARI {
             return ok;
         }
 
+        bool AppendBuiltInMaterials(
+            AssetRegistry& registry,
+            const AssetDatabase& assetDatabase) {
+
+            // プロシージャルグラフィックスの「デフォルト白」マテリアル。
+            // ディスク資産を持たず、AssetGuid 文字列をそのまま ID にする。
+            PbrMaterialAssetData white{};
+            white.materialName = "Default White";
+            white.baseColorFactor = { 1.0f, 1.0f, 1.0f, 1.0f };
+            white.metallicFactor = 0.0f;
+            white.roughnessFactor = 0.95f;
+
+            auto descriptor = std::make_unique<MaterialAssetDescriptor>();
+            descriptor->id.value =
+                std::string(ASSETS::MATERIAL::kBuiltInWhiteMaterialAssetId);
+            descriptor->type = AssetType::Material;
+            descriptor->sourcePath = descriptor->id.value;
+            descriptor->version = 1u;
+            descriptor->sourceData =
+                MakeStandardPbrMaterialAssetData(white);
+            descriptor->compileResult = CompileMaterialAsset(
+                descriptor->sourceData,
+                ASSETS::MATERIAL::MakeMaterialCompileOptions(
+                    assetDatabase));
+            descriptor->data =
+                ProjectPbrMaterialAssetData(descriptor->sourceData);
+            bool ok = registry.RegisterDescriptor(std::move(descriptor));
+
+            // チェッカー(デバッグ)用テクスチャ。
+            // マテリアル ID とレジストリキーが衝突しないよう
+            // テクスチャは専用 ID を使う。
+            const std::string checkerTextureId =
+                std::string(
+                    ASSETS::MATERIAL::kBuiltInCheckerMaterialAssetId) +
+                "/texture";
+            auto checkerTexture =
+                std::make_unique<TextureAssetDescriptor>();
+            checkerTexture->id.value = checkerTextureId;
+            checkerTexture->type = AssetType::Texture;
+            checkerTexture->sourcePath = std::string(
+                ASSETS::MATERIAL::kBuiltInCheckerMaterialAssetId);
+            checkerTexture->version = 1u;
+            checkerTexture->dimension = TextureAssetDimension::Texture2D;
+            checkerTexture->colorSpace = TextureAssetColorSpace::Srgb;
+            checkerTexture->usage = TextureUsage::BaseColor;
+            checkerTexture->compression = TextureCompression::None;
+            checkerTexture->mipPolicy = TextureMipPolicy::Preserve;
+            ok = registry.RegisterDescriptor(
+                std::move(checkerTexture)) && ok;
+
+            // チェッカー(デバッグ)マテリアル。
+            PbrMaterialAssetData checker{};
+            checker.materialName = "Checker (Debug)";
+            checker.baseColorFactor = { 1.0f, 1.0f, 1.0f, 1.0f };
+            checker.baseColorTexture.useTexture = true;
+            checker.baseColorTexture.textureAssetGuid.value =
+                checkerTextureId;
+            checker.metallicFactor = 0.0f;
+            checker.roughnessFactor = 0.95f;
+
+            auto checkerMaterial =
+                std::make_unique<MaterialAssetDescriptor>();
+            checkerMaterial->id.value = std::string(
+                ASSETS::MATERIAL::kBuiltInCheckerMaterialAssetId);
+            checkerMaterial->type = AssetType::Material;
+            checkerMaterial->sourcePath = checkerMaterial->id.value;
+            checkerMaterial->version = 1u;
+            checkerMaterial->sourceData =
+                MakeStandardPbrMaterialAssetData(checker);
+            checkerMaterial->compileResult = CompileMaterialAsset(
+                checkerMaterial->sourceData,
+                ASSETS::MATERIAL::MakeMaterialCompileOptions(
+                    assetDatabase));
+            checkerMaterial->data =
+                ProjectPbrMaterialAssetData(
+                    checkerMaterial->sourceData);
+            ok = registry.RegisterDescriptor(
+                std::move(checkerMaterial)) && ok;
+            return ok;
+        }
+
     }
 
     bool AssetRegistryBuilder::AppendToRegistry(const AssetDatabase& assetDatabase, AssetRegistry& registry) const {
         bool ok = AppendEngineContentTextures(registry);
+        ok = AppendBuiltInMaterials(registry, assetDatabase) && ok;
 
         for (const AssetRecord* record : assetDatabase.CollectAll()) {
             if (!record || !record->guid.IsValid() || record->duplicateGuid) {

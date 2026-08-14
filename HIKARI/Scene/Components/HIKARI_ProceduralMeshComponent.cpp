@@ -19,7 +19,8 @@ namespace HIKARI {
             { "sphereSlices", settings.sphereSlices },
             { "sphereStacks", settings.sphereStacks },
             { "doubleSided", settings.doubleSided },
-            { "generateTangents", settings.generateTangents }
+            { "generateTangents", settings.generateTangents },
+            { "materialSelection", materialSelection_ }
         };
     }
 
@@ -40,6 +41,8 @@ namespace HIKARI {
         settings_.sphereStacks = source.value("sphereStacks", settings_.sphereStacks);
         settings_.doubleSided = source.value("doubleSided", settings_.doubleSided);
         settings_.generateTangents = source.value("generateTangents", settings_.generateTangents);
+        materialSelection_ =
+            source.value("materialSelection", std::string{});
         settings_ = SanitizeProceduralMeshSettings(settings_);
         NotifyRenderStateDirty();
     }
@@ -57,6 +60,20 @@ namespace HIKARI {
             return;
         }
         settings_ = sanitized;
+        NotifyRenderStateDirty();
+    }
+
+    const std::string&
+        ProceduralMeshComponent::GetMaterialSelection() const noexcept {
+        return materialSelection_;
+    }
+
+    void ProceduralMeshComponent::SetMaterialSelection(
+        std::string selection) {
+        if (materialSelection_ == selection) {
+            return;
+        }
+        materialSelection_ = std::move(selection);
         NotifyRenderStateDirty();
     }
 

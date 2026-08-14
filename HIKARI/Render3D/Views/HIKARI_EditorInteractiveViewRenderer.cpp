@@ -65,9 +65,20 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
             EditorInteractiveViewRequest request{};
             EditorInteractiveViewOutput output{};
             std::unique_ptr<RenderTarget2D> target{};
+            std::unique_ptr<RenderTarget2D> opaqueSceneColorSnapshot{};
             std::unique_ptr<RenderTarget2D> displayTarget{};
             std::unique_ptr<RenderTarget2D> antialiasedTarget{};
             EditorInteractiveStylizedView stylizedView{};
+            std::array<
+                RenderResourceView,
+                GFX::kFrameResourceCount> opaqueSceneColorSrvs{};
+            std::array<
+                RenderResourceView,
+                GFX::kFrameResourceCount> sceneDepthSrvs{};
+            std::array<uint64_t, GFX::kFrameResourceCount>
+                opaqueSceneColorSrvGenerations{};
+            std::array<uint64_t, GFX::kFrameResourceCount>
+                sceneDepthSrvGenerations{};
             std::array<
                 RenderResourceView,
                 GFX::kFrameResourceCount> outputSrvs{};
@@ -555,6 +566,15 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
                 state.target->GetHeight() == static_cast<int>(height) &&
                 state.target->GetFormat() == kInteractiveViewFormat &&
                 state.target->HasDepth() &&
+                state.opaqueSceneColorSnapshot != nullptr &&
+                state.opaqueSceneColorSnapshot->IsInitialized() &&
+                state.opaqueSceneColorSnapshot->GetWidth() ==
+                    static_cast<int>(width) &&
+                state.opaqueSceneColorSnapshot->GetHeight() ==
+                    static_cast<int>(height) &&
+                state.opaqueSceneColorSnapshot->GetFormat() ==
+                    kInteractiveViewFormat &&
+                !state.opaqueSceneColorSnapshot->HasDepth() &&
                 state.displayTarget != nullptr &&
                 state.displayTarget->IsInitialized() &&
                 state.displayTarget->GetWidth() == static_cast<int>(width) &&
@@ -575,6 +595,8 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
             if (primaryTargetsReady && aaTargetReady) {
 
                 state.target->UpdateContext(GFX::GetCurrentContext());
+                state.opaqueSceneColorSnapshot->UpdateContext(
+                    GFX::GetCurrentContext());
                 state.displayTarget->UpdateContext(GFX::GetCurrentContext());
                 if (state.antialiasedTarget != nullptr) {
                     state.antialiasedTarget->UpdateContext(
@@ -596,6 +618,21 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
                 return false;
             }
             replacement->SetDebugName("EditorInteractiveView");
+
+            auto sceneColorReplacement = std::make_unique<RenderTarget2D>();
+            sceneColorReplacement->UpdateContext(GFX::GetCurrentContext());
+            if (!sceneColorReplacement->Init(
+                    static_cast<int>(width),
+                    static_cast<int>(height),
+                    kInteractiveViewFormat,
+                    false,
+                    { 0.0f, 0.0f, 0.0f, 1.0f },
+                    false,
+                    false)) {
+                return false;
+            }
+            sceneColorReplacement->SetDebugName(
+                "EditorInteractiveView.OpaqueSceneColor");
 
             auto displayReplacement = std::make_unique<RenderTarget2D>();
             displayReplacement->UpdateContext(GFX::GetCurrentContext());
@@ -628,6 +665,8 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
                     "EditorInteractiveView.SpatialAA");
             }
             state.target = std::move(replacement);
+            state.opaqueSceneColorSnapshot =
+                std::move(sceneColorReplacement);
             state.displayTarget = std::move(displayReplacement);
             state.antialiasedTarget = std::move(aaReplacement);
             ++state.targetGeneration;
@@ -686,6 +725,148 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
                     publishedTarget.GetResource();
             }
             return view.gpu;
+        }
+
+        D3D12_GPU_DESCRIPTOR_HANDLE PublishInteractiveTextureSrv(
+            std::array<
+                RenderResourceView,
+                GFX::kFrameResourceCount>& views,
+            std::array<
+                uint64_t,
+                GFX::kFrameResourceCount>& generations,
+            uint64_t targetGeneration,
+            ID3D12Resource* resource,
+            DXGI_FORMAT format) {
+
+            D3D12_GPU_DESCRIPTOR_HANDLE output{};
+            const GFX::Context& graphics = GFX::GetCurrentContext();
+            if (resource == nullptr || graphics.device == nullptr) {
+                return output;
+            }
+
+            UpdateRenderResourceDescriptorPoolContext(graphics);
+            const uint32_t frameSlot =
+                graphics.frameIndex % GFX::kFrameResourceCount;
+            RenderResourceView& view = views[frameSlot];
+            if (!view.IsValid()) {
+                view = AllocateTexture2DSrvDescriptor(resource, format);
+                if (!view.IsValid()) {
+                    return output;
+                }
+                generations[frameSlot] = targetGeneration;
+            } else if (generations[frameSlot] != targetGeneration) {
+                D3D12_SHADER_RESOURCE_VIEW_DESC desc{};
+                desc.Shader4ComponentMapping =
+                    D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+                desc.Format = format;
+                desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+                desc.Texture2D.MostDetailedMip = 0;
+                desc.Texture2D.MipLevels = 1;
+                desc.Texture2D.PlaneSlice = 0;
+                desc.Texture2D.ResourceMinLODClamp = 0.0f;
+                graphics.device->CreateShaderResourceView(
+                    resource,
+                    &desc,
+                    view.cpu);
+                generations[frameSlot] = targetGeneration;
+            }
+            return view.gpu;
+        }
+
+        RENDER3D::RenderTextureView BuildInteractiveSceneDepthView(
+            InteractiveViewState& state) {
+
+            if (state.target == nullptr || !state.target->HasDepth()) {
+                return {};
+            }
+            const D3D12_GPU_DESCRIPTOR_HANDLE srv =
+                PublishInteractiveTextureSrv(
+                    state.sceneDepthSrvs,
+                    state.sceneDepthSrvGenerations,
+                    state.targetGeneration,
+                    state.target->GetDepthResource(),
+                    DXGI_FORMAT_R32_FLOAT);
+            return {
+                state.target->GetDepthResource(),
+                srv,
+                DXGI_FORMAT_R32_FLOAT,
+                static_cast<uint32_t>(state.target->GetWidth()),
+                static_cast<uint32_t>(state.target->GetHeight()),
+                1u,
+                state.target->GetDepthState(),
+                state.target->GetDepthResource() != nullptr && srv.ptr != 0u
+            };
+        }
+
+        RENDER3D::RenderTextureView CaptureInteractiveSceneColor(
+            void* userData) {
+
+            auto* state = static_cast<InteractiveViewState*>(userData);
+            const GFX::Context& graphics = GFX::GetCurrentContext();
+            if (state == nullptr || state->target == nullptr ||
+                state->opaqueSceneColorSnapshot == nullptr ||
+                graphics.cmdList == nullptr ||
+                state->target->GetResource() == nullptr ||
+                state->opaqueSceneColorSnapshot->GetResource() == nullptr) {
+                return {};
+            }
+
+            // Opaque + sky の結果を独立 resource に固定し、後段の
+            // depth-aware / transparent pass が同じ RTV を sample しない。
+            state->target->TransitionColor(
+                D3D12_RESOURCE_STATE_COPY_SOURCE);
+            state->opaqueSceneColorSnapshot->TransitionColor(
+                D3D12_RESOURCE_STATE_COPY_DEST);
+            graphics.cmdList->CopyResource(
+                state->opaqueSceneColorSnapshot->GetResource(),
+                state->target->GetResource());
+            state->opaqueSceneColorSnapshot->TransitionColor(
+                D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+            state->target->TransitionColor(
+                D3D12_RESOURCE_STATE_RENDER_TARGET);
+
+            const D3D12_GPU_DESCRIPTOR_HANDLE srv =
+                PublishInteractiveTextureSrv(
+                    state->opaqueSceneColorSrvs,
+                    state->opaqueSceneColorSrvGenerations,
+                    state->targetGeneration,
+                    state->opaqueSceneColorSnapshot->GetResource(),
+                    state->opaqueSceneColorSnapshot->GetFormat());
+            return {
+                state->opaqueSceneColorSnapshot->GetResource(),
+                srv,
+                state->opaqueSceneColorSnapshot->GetFormat(),
+                static_cast<uint32_t>(
+                    state->opaqueSceneColorSnapshot->GetWidth()),
+                static_cast<uint32_t>(
+                    state->opaqueSceneColorSnapshot->GetHeight()),
+                1u,
+                state->opaqueSceneColorSnapshot->GetColorState(),
+                srv.ptr != 0u
+            };
+        }
+
+        bool RebindInteractiveTarget(void* userData) {
+            auto* state = static_cast<InteractiveViewState*>(userData);
+            if (state == nullptr || state->target == nullptr ||
+                !state->target->IsInitialized()) {
+                return false;
+            }
+            state->target->Rebind();
+            return true;
+        }
+
+        bool BeginInteractiveDepthRead(void* userData) {
+            auto* state = static_cast<InteractiveViewState*>(userData);
+            return state != nullptr && state->target != nullptr &&
+                state->target->BeginDepthRead();
+        }
+
+        void EndInteractiveDepthRead(void* userData) {
+            auto* state = static_cast<InteractiveViewState*>(userData);
+            if (state != nullptr && state->target != nullptr) {
+                state->target->EndDepthRead();
+            }
         }
 
         void SetOutputStatus(
@@ -787,15 +968,15 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
             settings.sceneDsv = state.target != nullptr
                 ? state.target->GetDsvHandle()
                 : D3D12_CPU_DESCRIPTOR_HANDLE{};
-            settings.renderTargetUserData = state.target.get();
-            settings.rebindTarget = [](void* userData) {
-                auto* target = static_cast<RenderTarget2D*>(userData);
-                if (target == nullptr || !target->IsInitialized()) {
-                    return false;
-                }
-                target->Rebind();
-                return true;
-            };
+            settings.passResources.sceneDepth =
+                BuildInteractiveSceneDepthView(state);
+            settings.targetAccess.userData = &state;
+            settings.targetAccess.rebind = &RebindInteractiveTarget;
+            settings.targetAccess.beginDepthRead =
+                &BeginInteractiveDepthRead;
+            settings.targetAccess.endDepthRead =
+                &EndInteractiveDepthRead;
+            settings.captureSceneColor = &CaptureInteractiveSceneColor;
             settings.sceneSourceOverride = request.sceneSourceOverride;
             settings.suppressSpatialLightingProviders =
                 request.suppressSpatialLightingProviders;
@@ -1323,9 +1504,22 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
                     view = {};
                 }
             }
+            for (RenderResourceView& view : state->opaqueSceneColorSrvs) {
+                if (view.IsValid()) {
+                    (void)ReleaseRenderResourceDescriptor(view);
+                    view = {};
+                }
+            }
+            for (RenderResourceView& view : state->sceneDepthSrvs) {
+                if (view.IsValid()) {
+                    (void)ReleaseRenderResourceDescriptor(view);
+                    view = {};
+                }
+            }
             state->outputSrvResources.fill(nullptr);
             state->stylizedView.Shutdown();
             state->target.reset();
+            state->opaqueSceneColorSnapshot.reset();
             state->displayTarget.reset();
             state->antialiasedTarget.reset();
         }

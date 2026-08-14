@@ -123,7 +123,11 @@ namespace HIKARI::RENDER3D::RUNTIME {
                 oldDesc.materialFxProfileId != newDesc.materialFxProfileId ||
                 oldDesc.postGroupMask != newDesc.postGroupMask ||
                 oldDesc.materialFxValuesInitialized != newDesc.materialFxValuesInitialized ||
-                !EqualMaterialFxValues(oldDesc.materialFxParamValues, newDesc.materialFxParamValues);
+                !EqualMaterialFxValues(oldDesc.materialFxParamValues, newDesc.materialFxParamValues) ||
+                oldDesc.waterSurface != newDesc.waterSurface ||
+                !WATER::WaterSurfaceRenderDataEqual(
+                    oldDesc.waterSurfaceData,
+                    newDesc.waterSurfaceData);
 
             const bool animationDataChanged =
                 oldDesc.animationPoseRevision !=
@@ -232,6 +236,8 @@ namespace HIKARI::RENDER3D::RUNTIME {
             instance.postGroupMask = object.desc.postGroupMask;
             instance.materialFxValuesInitialized = object.desc.materialFxValuesInitialized;
             CopyMaterialFxValues(object.desc, instance);
+            instance.waterSurface = object.desc.waterSurface;
+            instance.waterSurfaceData = object.desc.waterSurfaceData;
 
             instance.hasDrawWorldMatrix = ResolveRenderSurfaceDrawWorldMatrix(
                 object.desc.worldTransform,

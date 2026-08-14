@@ -149,6 +149,21 @@ namespace HIKARI {
         High,
     };
 
+    inline uint32_t ResolveScreenSpaceReflectionMaxSteps(
+        ScreenSpaceReflectionQuality quality) {
+        switch (quality) {
+        case ScreenSpaceReflectionQuality::Low:
+            return 24u;
+        case ScreenSpaceReflectionQuality::High:
+            return 64u;
+        case ScreenSpaceReflectionQuality::Medium:
+            return 40u;
+        case ScreenSpaceReflectionQuality::Off:
+        default:
+            return 0u;
+        }
+    }
+
     struct ScreenSpaceReflectionSettings {
         bool enabled = true;
         ScreenSpaceReflectionQuality quality =

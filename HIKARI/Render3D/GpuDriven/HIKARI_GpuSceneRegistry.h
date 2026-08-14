@@ -115,6 +115,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         void ClearFrameDirtyRanges();
 
         std::vector<GpuSceneSurfaceRecord> surfaceRecords_{};
+        std::vector<WATER::WaterSurfaceGpuData> waterSurfaceGpuData_{};
         std::vector<std::vector<MATH::Mat4>> meshShaderJointPalettes_{};
         std::vector<uint32_t> forwardOpaqueResidentRecordIndices_{};
         std::vector<uint32_t> depthPrepassOccluderRecordIndices_{};

@@ -22,15 +22,16 @@
 #include "Render3D/Core/HIKARI_Material.h"
 #include "Render3D/Material/HIKARI_MaterialRuntimeBuilder.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
+#include "Scene/Components/Rendering/Model/HIKARI_ModelRenderableAssetResolver.h"
+#include "Scene/Components/HIKARI_ProceduralMeshComponent.h"
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
 
 namespace HIKARI {
     namespace {
         ASSETS::MODELS::MaterialSlotResolution ResolveOverrideSlot(
-            const ModelComponent& component,
+            const ModelAsset* model,
             const ModelMaterialOverrideSlot& slot) {
 
-            const ModelAsset* model = component.GetModelAsset();
             if (model == nullptr) {
                 return {};
             }
@@ -292,12 +293,50 @@ namespace HIKARI {
 
         // Material override 邵ｺ・ｯ scene load / refresh 隴弱ｅ笆｡邵ｺ螟ｧ繝ｻ隶堤距・ｯ蟲ｨ笘・ｹｧ荵敖繝ｻ
         scene.state_->runtime.world.ForEachObjectWith<ModelComponent>(
-            [this, &rebuiltCount, &materialBuilder](GameObject&, ModelComponent& modelComponent) {
+            [this, &rebuiltCount, &materialBuilder](
+                GameObject& object, ModelComponent& modelComponent) {
                 modelComponent.ClearRuntimeMaterialOverrides();
 
                 auto& programRegistry =
                     RENDER3D::MATERIAL::GetRuntimeMaterialProgramRegistry();
-                const ModelAsset* modelAsset = modelComponent.GetModelAsset();
+                // 程序化モデルは ModelComponent に保持されないため、
+                // レンダリングと同じ「プログラム化対応」の解決を使う。
+                const ModelAsset* modelAsset =
+                    ResolveRenderableModelAsset(object, modelComponent);
+                // プロシージャル形状は ProceduralMeshComponent が
+                // マテリアル選択を所有する。
+                if (const auto* procedural =
+                        object.GetComponent<
+                            ProceduralMeshComponent>()) {
+                    const std::string& selection =
+                        procedural->GetMaterialSelection();
+                    if (!selection.empty()) {
+                        const auto* descriptor =
+                            registry_.FindAs<MaterialAssetDescriptor>(
+                                AssetId{ selection });
+                        if (descriptor != nullptr) {
+                            auto runtimeMaterial =
+                                std::make_unique<Material>();
+                            if (materialBuilder.BuildRuntimeMaterial(
+                                    descriptor->sourceData,
+                                    descriptor->compileResult,
+                                    registry_,
+                                    programRegistry,
+                                    *runtimeMaterial,
+                                    descriptor->id.value)) {
+                                modelComponent.SetRuntimeMaterialOverride(
+                                    0, std::move(runtimeMaterial));
+                                ++rebuiltCount;
+                            }
+                        } else {
+                            HIKARI_LOG_WARN(
+                                "[MaterialRuntime][Procedural] material "
+                                "selection not registered: " +
+                                selection);
+                        }
+                    }
+                    return;
+                }
                 if (modelAsset != nullptr) {
                     const auto defaults =
                         ASSETS::MODELS::ResolveModelMaterialBindings(
@@ -337,7 +376,7 @@ namespace HIKARI {
                     }
 
                     const auto resolution = ResolveOverrideSlot(
-                        modelComponent,
+                        modelAsset,
                         slot);
                     if (!resolution.IsValid()) {
                         continue;
@@ -417,7 +456,8 @@ namespace HIKARI {
         scene.state_->runtime.world.ForEachObjectWith<ModelComponent>(
             [this, &rebuiltCount, &materialBuilder, &programRegistry,
              &materialGuid, &effectiveData,
-             &effectiveCompile](GameObject&, ModelComponent& modelComponent) {
+             &effectiveCompile](GameObject& object,
+                                ModelComponent& modelComponent) {
                 const auto applyPreview = [this, &rebuiltCount,
                     &materialBuilder, &programRegistry, &materialGuid,
                     &effectiveData, &effectiveCompile,
@@ -449,8 +489,10 @@ namespace HIKARI {
                 };
                 std::unordered_map<uint32_t, EffectiveMaterialBinding>
                     effectiveMaterialByIndex{};
-                if (const ModelAsset* modelAsset =
-                        modelComponent.GetModelAsset()) {
+                const ModelAsset* modelAsset =
+                    ResolveRenderableModelAsset(
+                        object, modelComponent);
+                if (modelAsset != nullptr) {
                     const auto materialSet =
                         ASSETS::MODELS::ResolveModelMaterialBindings(
                             registry_,
@@ -473,7 +515,7 @@ namespace HIKARI {
                     }
 
                     const auto resolution = ResolveOverrideSlot(
-                        modelComponent,
+                        modelAsset,
                         slot);
                     if (!resolution.IsValid()) {
                         continue;

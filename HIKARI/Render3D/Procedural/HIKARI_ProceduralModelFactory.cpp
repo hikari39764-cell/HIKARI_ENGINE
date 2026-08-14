@@ -305,16 +305,9 @@ namespace HIKARI::PROCEDURAL {
             material.doubleSided = key.doubleSided;
             material.baseColorFactor = { 1, 1, 1, 1 };
 
-            // プロシージャル既定の baseColor は generated:// 合成チェッカーを指す。
-            // ディスク IO を伴わず、パスが色をエンコードするため個別調整も衝突しない。
-            TextureAsset3D checkerTexture{};
-            checkerTexture.name = "Procedural Checker";
-            checkerTexture.sourcePath =
-                "generated://checker/bfbfbfff/8a8a8aff";
-            checkerTexture.resolvedPath = checkerTexture.sourcePath;
-            material.baseColorTexture.textureIndex =
-                static_cast<int>(model->textures.size());
-            model->textures.push_back(checkerTexture);
+            // プロシージャル形状の既定マテリアルは無地の白。
+            // チェッカー(デバッグ)は ProceduralMeshComponent の
+            // マテリアル選択で明示的に選ぶ。
             model->materials.push_back(material);
 
             MeshPrimitive primitive{};

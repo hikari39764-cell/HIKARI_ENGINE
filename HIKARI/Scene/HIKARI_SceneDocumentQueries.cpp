@@ -6,6 +6,7 @@
 
 #include "Scene/HIKARI_SceneDocument.h"
 #include "Scene/HIKARI_SceneComponentId.h"
+#include "Assets/Material/HIKARI_MaterialBuiltInAssets.h"
 
 namespace HIKARI {
 
@@ -94,7 +95,11 @@ namespace HIKARI {
                 { "sphereSlices", 32u },
                 { "sphereStacks", 16u },
                 { "doubleSided", true },
-                { "generateTangents", true }
+                { "generateTangents", true },
+                { "materialSelection",
+                    std::string(
+                        ASSETS::MATERIAL::
+                            kBuiltInCheckerMaterialAssetId) }
             }
         });
         object.components.push_back(SceneComponentData{

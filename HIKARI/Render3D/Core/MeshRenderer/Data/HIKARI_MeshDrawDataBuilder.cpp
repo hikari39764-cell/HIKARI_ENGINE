@@ -138,6 +138,26 @@ namespace HIKARI::MESHRENDERER {
             static_cast<float>(
                 static_cast<uint8_t>(
                     RENDER3D::GetRenderQualitySettings().forwardCostMode));
+        const ScreenSpaceReflectionSettings& ssr =
+            environment.screenSpaceReflections;
+        const bool ssrEnabled =
+            ssr.enabled &&
+            ssr.quality != ScreenSpaceReflectionQuality::Off;
+        out.screenSpaceReflectionParams0 = {
+            ssrEnabled
+                ? std::clamp(ssr.intensity, 0.0f, 2.0f)
+                : 0.0f,
+            std::clamp(ssr.maxDistance, 1.0f, 200.0f),
+            std::clamp(ssr.thickness, 0.0001f, 0.05f),
+            std::clamp(ssr.maxRoughness, 0.05f, 1.0f)
+        };
+        out.screenSpaceReflectionParams1 = {
+            std::clamp(ssr.stride, 0.02f, 2.0f),
+            std::clamp(ssr.edgeFade, 0.01f, 0.35f),
+            static_cast<float>(
+                ResolveScreenSpaceReflectionMaxSteps(ssr.quality)),
+            0.0f
+        };
 
         out.localLightCount = localLightList.lightCount;
         out.localLightClusterCountX =

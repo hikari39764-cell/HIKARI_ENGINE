@@ -43,6 +43,10 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             DEBUGLOG::PushRenderError(
                 "[MeshRenderer][WARN] SurfaceGpuScene buffer initialization failed. GPU-driven mesh pass will be unavailable.");
         }
+        if (!gMeshRendererState.waterSurfaceGpuFrameBuffer.Initialize(device)) {
+            DEBUGLOG::PushRenderError(
+                "[MeshRenderer][WARN] Water surface feature buffer initialization failed. GPU-driven mesh pass will be unavailable.");
+        }
 
         if (!gMeshRendererState.frameResources.Initialize(device, srvHeap)) {
             return false;
@@ -121,7 +125,8 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         gMeshRendererState.gpuDrivenLayer.Attach(
             &gMeshRendererState.surfaceGpuSceneBuffer,
             &gMeshRendererState.traditionalCommandStreamBuffer,
-            &gMeshRendererState.clusterGpuDrivenProducer);
+            &gMeshRendererState.clusterGpuDrivenProducer,
+            &gMeshRendererState.waterSurfaceGpuFrameBuffer);
         if (!gMeshRendererState.gpuDrivenLayer.Initialize(
             device,
             GetStaticRootSignature(gMeshRendererState.pipelines),
@@ -134,7 +139,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         // MeshRenderer 蜈ｱ騾・fallback 縺ｯ resource handle 繧呈ｭ｣縺ｨ縺励※菫晄戟縺吶ｋ縲・
         gMeshRendererState.fallbackTextureResource = RENDER3D::LoadTextureResource(
             "mesh_renderer/fallback_white",
-            "HIKARI/black1x1.png");
+            "HIKARI/white1x1.png");
         gMeshRendererState.fallbackTextureHandle =
             RENDER3D::GetTextureResourceBackendHandle(gMeshRendererState.fallbackTextureResource);
         gMeshRendererState.fallbackNormalTextureResource = RENDER3D::LoadTextureResource(
@@ -146,8 +151,18 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             gMeshRendererState.fallbackNormalTextureResource = gMeshRendererState.fallbackTextureResource;
             gMeshRendererState.fallbackNormalTextureHandle = gMeshRendererState.fallbackTextureHandle;
         }
-        gMeshRendererState.fallbackBlackTextureResource = gMeshRendererState.fallbackTextureResource;
-        gMeshRendererState.fallbackBlackTextureHandle = gMeshRendererState.fallbackTextureHandle;
+        gMeshRendererState.fallbackBlackTextureResource = RENDER3D::LoadTextureResource(
+            "mesh_renderer/fallback_black",
+            "HIKARI/black1x1.png");
+        gMeshRendererState.fallbackBlackTextureHandle =
+            RENDER3D::GetTextureResourceBackendHandle(
+                gMeshRendererState.fallbackBlackTextureResource);
+        if (gMeshRendererState.fallbackBlackTextureHandle < 0) {
+            gMeshRendererState.fallbackBlackTextureResource =
+                gMeshRendererState.fallbackTextureResource;
+            gMeshRendererState.fallbackBlackTextureHandle =
+                gMeshRendererState.fallbackTextureHandle;
+        }
         gMeshRendererState.fallbackCubeTextureResource = RENDER3D::CreateSolidColorCubemapResource(
             "mesh_renderer/fallback_cube",
             0x000000ffu,

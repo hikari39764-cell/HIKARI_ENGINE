@@ -14,6 +14,16 @@ float3 HikariFresnelSchlick(float cosTheta, float3 F0)
     return F0 + (1.0f.xxx - F0) * HikariPow5(1.0f - saturate(cosTheta));
 }
 
+float HikariDielectricF0FromIor(float incidentIor, float transmittedIor)
+{
+    const float denominator = max(
+        incidentIor + transmittedIor,
+        1.0e-4f);
+    const float ratio =
+        (incidentIor - transmittedIor) / denominator;
+    return ratio * ratio;
+}
+
 // 環境光 (IBL) 用 Fresnel。粗い表面はミクロ面の遮蔽により掠射角でも反射が
 // 立ち上がらないため、F90 を粗さで減衰させる (Karis の ambient fresnel)。
 // これが無いと粗い表面 (植生など) の縁が空の色で白く洗われる。

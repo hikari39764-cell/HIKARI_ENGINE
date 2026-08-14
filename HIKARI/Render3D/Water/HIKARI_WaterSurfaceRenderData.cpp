@@ -1,0 +1,147 @@
+#include "Render3D/Water/HIKARI_WaterSurfaceRenderData.h"
+#include "Render3D/Water/HIKARI_WaterSurfaceGpuData.h"
+
+#include <algorithm>
+#include <cmath>
+
+namespace HIKARI::RENDER3D::WATER {
+
+    namespace {
+        constexpr float kTwoPi = 6.28318530717958647692f;
+        constexpr float kGravity = 9.81f;
+        constexpr float kMinimumWavelength = 0.05f;
+
+        bool Vec3Equal(
+            const MATH::Vec3& left,
+            const MATH::Vec3& right) noexcept {
+            return left.x == right.x && left.y == right.y &&
+                left.z == right.z;
+        }
+
+        float FiniteOr(float value, float fallback) noexcept {
+            return std::isfinite(value) ? value : fallback;
+        }
+
+        float NonNegative(float value, float fallback = 0.0f) noexcept {
+            return (std::max)(FiniteOr(value, fallback), 0.0f);
+        }
+
+        MATH::Vec3 NonNegative(const MATH::Vec3& value) noexcept {
+            return {
+                NonNegative(value.x),
+                NonNegative(value.y),
+                NonNegative(value.z)
+            };
+        }
+    }
+
+    bool WaterSurfaceRenderDataEqual(
+        const WaterSurfaceRenderData& left,
+        const WaterSurfaceRenderData& right) noexcept {
+
+        if (left.shadingModel != right.shadingModel ||
+            left.timeScale != right.timeScale ||
+            left.choppiness != right.choppiness ||
+            left.microWaveStrength != right.microWaveStrength ||
+            !Vec3Equal(
+                left.depthTransmittance,
+                right.depthTransmittance) ||
+            !Vec3Equal(left.scatteringColor, right.scatteringColor) ||
+            !Vec3Equal(left.foamColor, right.foamColor) ||
+            left.foamAmount != right.foamAmount ||
+            left.absorptionDistance != right.absorptionDistance ||
+            left.surfaceRoughness != right.surfaceRoughness) {
+            return false;
+        }
+        for (std::size_t index = 0u; index < left.waves.size(); ++index) {
+            const WaterWaveRenderData& a = left.waves[index];
+            const WaterWaveRenderData& b = right.waves[index];
+            if (a.directionRadians != b.directionRadians ||
+                a.amplitude != b.amplitude ||
+                a.wavelength != b.wavelength ||
+                a.steepness != b.steepness) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    WaterSurfaceGpuData BuildWaterSurfaceGpuDataSentinel(
+        uint32_t recordCount) noexcept {
+
+        WaterSurfaceGpuData result{};
+        // sentinel は schema を識別できるが feature 自体は無効のままにする。
+        // recordCount は Root SRV が持たない bounds 情報を明示的に運ぶ。
+        result.schemaVersion = kWaterSurfaceGpuSchemaVersion;
+        result.recordCount = (std::max)(recordCount, 1u);
+        return result;
+    }
+
+    WaterSurfaceGpuData BuildWaterSurfaceGpuData(
+        const WaterSurfaceRenderData& source) noexcept {
+
+        WaterSurfaceGpuData result{};
+        result.schemaVersion = kWaterSurfaceGpuSchemaVersion;
+        result.flags = static_cast<uint32_t>(WaterSurfaceGpuFlags::Enabled);
+        result.waveCount = static_cast<uint32_t>(kWaterSurfaceWaveCount);
+
+        const WaterSurfaceShadingModel shadingModel =
+            source.shadingModel == WaterSurfaceShadingModel::RealisticClearSummer
+                ? WaterSurfaceShadingModel::RealisticClearSummer
+                : WaterSurfaceShadingModel::AnimeSummer;
+        result.surfaceParams = {
+            FiniteOr(source.timeScale, 1.0f),
+            NonNegative(source.choppiness),
+            static_cast<float>(shadingModel),
+            NonNegative(source.microWaveStrength)
+        };
+
+        const MATH::Vec3 depthTransmittance =
+            NonNegative(source.depthTransmittance);
+        result.depthTransmittanceFoam = {
+            depthTransmittance.x,
+            depthTransmittance.y,
+            depthTransmittance.z,
+            std::clamp(FiniteOr(source.foamAmount, 0.0f), 0.0f, 1.0f)
+        };
+        const MATH::Vec3 scattering = NonNegative(source.scatteringColor);
+        result.scatteringAbsorption = {
+            scattering.x,
+            scattering.y,
+            scattering.z,
+            (std::max)(FiniteOr(source.absorptionDistance, 1.0f), 0.001f)
+        };
+        const MATH::Vec3 foam = NonNegative(source.foamColor);
+        result.foamRoughness = {
+            foam.x,
+            foam.y,
+            foam.z,
+            std::clamp(FiniteOr(source.surfaceRoughness, 0.1f), 0.02f, 1.0f)
+        };
+
+        for (std::size_t index = 0u; index < source.waves.size(); ++index) {
+            const WaterWaveRenderData& wave = source.waves[index];
+            const float directionRadians =
+                FiniteOr(wave.directionRadians, 0.0f);
+            const float wavelength = (std::max)(
+                FiniteOr(wave.wavelength, 1.0f),
+                kMinimumWavelength);
+            const float waveNumber = kTwoPi / wavelength;
+            const float angularFrequency = std::sqrt(kGravity * waveNumber);
+            result.waves[index].directionAmplitudeWaveNumber = {
+                std::cos(directionRadians),
+                std::sin(directionRadians),
+                NonNegative(wave.amplitude),
+                waveNumber
+            };
+            result.waves[index].angularFrequencySteepness = {
+                angularFrequency,
+                NonNegative(wave.steepness),
+                0.0f,
+                0.0f
+            };
+        }
+        return result;
+    }
+
+} // namespace HIKARI::RENDER3D::WATER

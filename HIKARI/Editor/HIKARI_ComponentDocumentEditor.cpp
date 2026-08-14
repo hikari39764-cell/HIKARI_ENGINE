@@ -3,6 +3,7 @@
 #include "Scene/Components/HIKARI_IComponent.h"
 #include "Scene/HIKARI_ComponentRegistry.h"
 #include "Scene/HIKARI_SceneDocument.h"
+#include "Core/HIKARI_Logger.h"
 
 #include <exception>
 
@@ -49,6 +50,42 @@ namespace HIKARI {
             temporaryComponent->Serialize(serialized);
             if (serialized == componentData.properties) {
                 return false;
+            }
+            {
+                std::string diff;
+                for (auto it = serialized.begin();
+                    it != serialized.end();
+                    ++it) {
+                    const bool same =
+                        componentData.properties.contains(it.key()) &&
+                        componentData.properties[it.key()] == it.value();
+                    if (!same) {
+                        diff += it.key() + "=" +
+                            it.value().dump() + "!=" +
+                            (componentData.properties.contains(it.key())
+                                ? componentData.properties[it.key()].dump()
+                                : "<missing>") + ";";
+                    }
+                }
+                for (auto it = componentData.properties.begin();
+                    it != componentData.properties.end();
+                    ++it) {
+                    if (!serialized.contains(it.key())) {
+                        diff += "serialized-missing:" +
+                            it.key() + ";";
+                    }
+                }
+                if (diff.empty()) {
+                    diff = "ser=" + serialized.dump() +
+                        " props=" +
+                        componentData.properties.dump();
+                }
+                HIKARI_LOG_INFO(
+                    "[InspectorEdit] type=" +
+                    componentData.type +
+                    " diff=[" +
+                    (diff.empty() ? std::string("<none>") : diff) +
+                    "]");
             }
             if (typeInfo->validateAuthoring) {
                 const AuthoringCommandResult validation =

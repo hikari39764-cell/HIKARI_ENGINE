@@ -27,6 +27,7 @@ cbuffer CameraCB : register(b0)
     float4x4 gInvViewProj;
     float4 gCameraPos;
     float4 gTimeParams;
+    float4 gSimulationTimeParams;
     float4 gScreenParams;
 };
 
@@ -73,6 +74,8 @@ cbuffer LightCB : register(b2)
     uint gDebugView;
     float gForwardCostMode;
     float2 gDebugPadding;
+    float4 gScreenSpaceReflectionParams0;
+    float4 gScreenSpaceReflectionParams1;
 };
 
 static const uint HIKARI_FORWARD_COST_FULL = 0u;
@@ -161,7 +164,7 @@ cbuffer SkyEnvironmentCB : register(b5)
 
 Texture2D gShadowMap : register(t2);
 TextureCube gSkyCube : register(t6);
-Texture2D gSceneDepthTex : register(t7);
+Texture2D<float> gSceneDepthTex : register(t7);
 Texture2D gSceneColorTex : register(t8);
 TextureCube gIblIrradianceTex : register(t9);
 TextureCube gIblPrefilteredTex : register(t10);
@@ -169,6 +172,13 @@ Texture2D gIblBrdfLutTex : register(t11);
 TextureCube gReflectionProbePrefilteredTex0 : register(t12);
 Texture2D gSsaoTex : register(t13);
 TextureCube gReflectionProbePrefilteredTex1 : register(t14);
+Texture2D<float> gScreenSpaceDepthPyramid : register(t1, space7);
+Texture2D<float4> gScreenSpacePackedSurface : register(t2, space7);
+cbuffer ScreenSpaceTraceControlCB : register(b10)
+{
+    uint gScreenSpaceTraceValid;
+    uint gScreenSpaceDepthPyramidMipCount;
+};
 // Light probe volume: SH9 係数を係数ごとに 1 枚の Texture3D (RGB=係数) に
 // 焼き、hardware trilinear で係数を補間する。9 枚は root param LightProbeSh の
 // descriptor table として連続確保される。
@@ -177,6 +187,7 @@ Texture3D<float4> gLightProbeShVolume1[9] : register(t0, space4);
 SamplerState gLinearWrap : register(s0);
 SamplerComparisonState gShadowSampler : register(s1);
 SamplerState gLinearClamp : register(s2);
+SamplerState gPointClamp : register(s3);
 
 #include "Include/HIKARI_PbrCommon.hlsli"
 #include "Include/HIKARI_SkyEnvironmentCommon.hlsli"

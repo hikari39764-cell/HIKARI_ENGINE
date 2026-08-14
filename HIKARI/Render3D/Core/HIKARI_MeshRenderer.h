@@ -14,6 +14,7 @@
 #include "Render3D/HIKARI_Transform3D.h"
 #include "Render3D/Core/HIKARI_MeshPassResources.h"
 #include "Render3D/Core/HIKARI_MeshRendererTypes.h"
+#include "Render3D/Pipeline/HIKARI_RenderFrameContext.h"
 
 namespace HIKARI::IBL {
     struct IblEnvironmentSource;
@@ -130,7 +131,8 @@ namespace HIKARI::MESHRENDERER {
         struct SceneSourceTag;
     }
     struct EditorInteractiveRenderSettings {
-        using RebindTargetCallback = bool (*)(void* userData);
+        using CaptureSceneColorCallback =
+            RENDER3D::RenderTextureView (*)(void* userData);
         using DepthAwareOverlayCallback = void (*)(void* userData);
 
         RenderDebugView debugView = RenderDebugView::None;
@@ -141,8 +143,9 @@ namespace HIKARI::MESHRENDERER {
         bool renderVisibilityOverlay = false;
         RENDER3D::SURFACE::SceneSurfaceBuffer* stylizedSurfaceBuffer = nullptr;
         D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv{};
-        void* renderTargetUserData = nullptr;
-        RebindTargetCallback rebindTarget = nullptr;
+        MeshPassResources passResources{};
+        RENDER3D::PIPELINE::RenderTargetAccess targetAccess{};
+        CaptureSceneColorCallback captureSceneColor = nullptr;
         void* depthAwareOverlayUserData = nullptr;
         DepthAwareOverlayCallback renderDepthAwareOverlay = nullptr;
         const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource*

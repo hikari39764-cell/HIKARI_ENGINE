@@ -2,6 +2,7 @@
 #include "Render3D/GpuDriven/HIKARI_GpuScenePoseBuilder.h"
 #include "Render3D/GpuDriven/CommandStream/HIKARI_GpuTraditionalCommandStreamBuffer.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
+#include "Render3D/Water/HIKARI_WaterSurfaceGpuData.h"
 #include "Vfx/MaterialFx/HIKARI_MaterialFxProfile.h"
 
 #include <algorithm>
@@ -555,9 +556,6 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         std::string ResolveTraditionalMaterialFxPixelShaderId(
             std::string pixelShaderId) {
 
-            if (pixelShaderId == "Render3D_FxWaterPS") {
-                return "Render3D_FxWaterPS";
-            }
             if (pixelShaderId == "Render3D_StaticFxPS" ||
                 pixelShaderId == "StaticFx" ||
                 pixelShaderId == "MaterialFx") {
@@ -900,7 +898,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                 record.valid &&
                 record.key.resourceKeyValid &&
                 !record.skinned &&
-                !record.key.materialFx &&
+                (!record.key.materialFx || record.key.waterMaterialFx) &&
                 !record.hasSpecialRenderDebug &&
                 HasValidGpuSceneSubmitPrimitiveTarget(record);
         }
@@ -977,6 +975,9 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             ++residencyEpoch_;
         }
         surfaceRecords_.clear();
+        waterSurfaceGpuData_.clear();
+        waterSurfaceGpuData_.push_back(
+            WATER::BuildWaterSurfaceGpuDataSentinel());
         meshShaderJointPalettes_.clear();
         forwardOpaqueResidentRecordIndices_.clear();
         depthPrepassOccluderRecordIndices_.clear();
@@ -1095,6 +1096,17 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                     surfaces[surfaceIndex],
                     surfaceIndex);
             surfaceRecords_.push_back(std::move(record));
+        }
+
+        for (GpuSceneSurfaceRecord& record : surfaceRecords_) {
+            if (!record.valid || !record.waterSurface) {
+                record.waterSurfaceGpuDataIndex = 0u;
+                continue;
+            }
+            record.waterSurfaceGpuDataIndex =
+                NUMERIC::SaturateToUint32(waterSurfaceGpuData_.size());
+            waterSurfaceGpuData_.push_back(
+                WATER::BuildWaterSurfaceGpuData(record.waterSurfaceData));
         }
 
         meshShaderJointPalettes_.resize(surfaceRecords_.size());
@@ -1590,6 +1602,9 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                 }
             }
             const GpuSceneSurfaceRecord& oldRecord = surfaceRecords_[surfaceIndex];
+            if (oldRecord.waterSurface != newRecord.waterSurface) {
+                return false;
+            }
             if (IsGpuSceneForwardSkinnedTraditionalRecord(oldRecord) ||
                 IsGpuSceneForwardSkinnedTraditionalRecord(newRecord) ||
                 IsGpuSceneForwardStaticTraditionalRecord(oldRecord) ||
@@ -1631,7 +1646,22 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                 return false;
             }
 
+            const uint32_t waterSurfaceGpuDataIndex =
+                oldRecord.waterSurfaceGpuDataIndex;
+            if (newRecord.waterSurface) {
+                if (waterSurfaceGpuDataIndex == 0u ||
+                    waterSurfaceGpuDataIndex >= waterSurfaceGpuData_.size()) {
+                    return false;
+                }
+                newRecord.waterSurfaceGpuDataIndex =
+                    waterSurfaceGpuDataIndex;
+            }
             surfaceRecords_[surfaceIndex] = std::move(newRecord);
+            if (waterSurfaceGpuDataIndex != 0u) {
+                waterSurfaceGpuData_[waterSurfaceGpuDataIndex] =
+                    WATER::BuildWaterSurfaceGpuData(
+                        surfaceRecords_[surfaceIndex].waterSurfaceData);
+            }
             if (!newOpaque &&
                 !newDepthOccluder &&
                 !newDepthAware &&
@@ -1711,6 +1741,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
 
     void GpuSceneRegistry::RebuildForwardSceneSource() {
         sceneSource_.meshShaderJointPalettes = &meshShaderJointPalettes_;
+        sceneSource_.waterSurfaceGpuData = &waterSurfaceGpuData_;
         const uint32_t sharedPrimaryCount =
             NUMERIC::SaturateToUint32(globalGpuSceneInstances_.size());
         uint32_t cursor = sharedPrimaryCount;

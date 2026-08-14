@@ -1,3 +1,5 @@
+#include "Include/Surface/HIKARI_ScreenSpaceGeometry.hlsli"
+
 cbuffer SsaoPassCB : register(b0)
 {
     float4x4 gViewProj;
@@ -40,10 +42,9 @@ float3 DecodeNormal(float4 packed)
 
 float3 ReconstructWorld(float2 uv, float depth)
 {
-    float2 ndc = uv * 2.0f - 1.0f;
-    ndc.y = -ndc.y;
-    float4 world = mul(gInvViewProj, float4(ndc, depth, 1.0f));
-    return world.xyz / max(abs(world.w), 1e-5f);
+    float3 world;
+    HikariReconstructWorldPosition(uv, depth, gInvViewProj, world);
+    return world;
 }
 
 float3 ReconstructNormalFromDepth(float2 uv, float centerDepth)

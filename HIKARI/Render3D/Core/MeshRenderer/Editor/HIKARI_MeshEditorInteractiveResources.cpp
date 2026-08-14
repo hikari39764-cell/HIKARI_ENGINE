@@ -93,6 +93,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             nullptr);
         gMeshRendererState.editorInteractive.clusterGpuCullingPass.Reset();
         gMeshRendererState.editorInteractive.surfaceGpuSceneBuffer = {};
+        gMeshRendererState.editorInteractive.waterSurfaceGpuFrameBuffer = {};
         gMeshRendererState.editorInteractive.sceneResidency.Reset();
         for (RENDER3D::RenderResourceView& view :
             gMeshRendererState.editorInteractive.surfaceGpuSceneViews) {
@@ -197,6 +198,12 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             ResetEditorInteractiveResources();
             return false;
         }
+        if (!gMeshRendererState.editorInteractive.waterSurfaceGpuFrameBuffer.Initialize(
+                device)) {
+
+            ResetEditorInteractiveResources();
+            return false;
+        }
 
         (void)gMeshRendererState.editorInteractive.clusterGpuCullingPass.Initialize(
             GFX::GetCurrentContext(),
@@ -211,7 +218,8 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         gMeshRendererState.editorInteractive.gpuDrivenLayer.Attach(
             &gMeshRendererState.editorInteractive.surfaceGpuSceneBuffer,
             nullptr,
-            &gMeshRendererState.editorInteractive.clusterGpuDrivenProducer);
+            &gMeshRendererState.editorInteractive.clusterGpuDrivenProducer,
+            &gMeshRendererState.editorInteractive.waterSurfaceGpuFrameBuffer);
         if (!gMeshRendererState.editorInteractive.gpuDrivenLayer.Initialize(
                 device,
                 GetStaticRootSignature(gMeshRendererState.pipelines),

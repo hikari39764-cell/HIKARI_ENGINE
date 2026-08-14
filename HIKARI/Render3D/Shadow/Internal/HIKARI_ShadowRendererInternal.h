@@ -45,6 +45,7 @@ namespace HIKARI::SHADOW::INTERNAL {
         MATH::Mat4 invLightViewProj{};
         MATH::Vec4 lightPosition{};
         MATH::Vec4 timeParams{};
+        MATH::Vec4 simulationTimeParams{};
         MATH::Vec4 screenParams{};
     };
 

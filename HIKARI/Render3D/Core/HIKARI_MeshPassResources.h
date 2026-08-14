@@ -9,6 +9,7 @@ namespace HIKARI::MESHRENDERER {
     struct MeshPassResources {
         RENDER3D::RenderTextureView sceneDepth{};
         RENDER3D::RenderTextureView opaqueSceneColor{};
+        RENDER3D::RenderTextureView packedSceneSurface{};
         RENDER3D::RenderTextureView ambientOcclusion{};
         RENDER3D::DEPTH::DepthPyramidView depthPyramid{};
         int fallbackAoTextureHandle = -1;

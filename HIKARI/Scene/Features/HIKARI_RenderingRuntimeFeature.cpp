@@ -12,6 +12,8 @@
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponentAuthoring.h"
 #include "Scene/Features/HIKARI_RuntimeFeature.h"
 #include "Scene/Features/HIKARI_RuntimeFeatureIds.h"
+#include "Scene/Water/HIKARI_WaterSurfaceComponent.h"
+#include "Scene/Water/HIKARI_WaterSurfaceSystem.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
 #include "Scene/HIKARI_ComponentRegistry.h"
 #include "Scene/HIKARI_ComponentSystemPolicy.h"
@@ -48,10 +50,11 @@ namespace HIKARI {
 
             std::span<const std::string_view>
                 GetComponentTypeNames() const noexcept override {
-                static constexpr std::array<std::string_view, 6> names{
+                static constexpr std::array<std::string_view, 7> names{
                     "ModelComponent",
                     "MaterialFxComponent",
                     "ProceduralMeshComponent",
+                    "WaterSurfaceComponent",
                     "LightComponent",
                     "ReflectionProbeComponent",
                     "IrradianceVolumeComponent"
@@ -61,8 +64,9 @@ namespace HIKARI {
 
             std::span<const std::string_view>
                 GetSystemIds() const noexcept override {
-                static constexpr std::array<std::string_view, 1> ids{
-                    "ModelRenderSystem"
+                static constexpr std::array<std::string_view, 2> ids{
+                    "ModelRenderSystem",
+                    "WaterSurfaceSystem"
                 };
                 return ids;
             }
@@ -121,7 +125,7 @@ namespace HIKARI {
                     const SceneObjectData&,
                     nlohmann::json& properties) {
                     properties = {
-                        { "kind", "Box" },
+                        { "kind", "Plane" },
                         { "width", 1.0f },
                         { "height", 1.0f },
                         { "depth", 1.0f },
@@ -130,13 +134,35 @@ namespace HIKARI {
                         { "segmentsZ", 1u },
                         { "sphereSlices", 32u },
                         { "sphereStacks", 16u },
-                        { "doubleSided", false },
+                        { "doubleSided", true },
                         { "generateTangents", true }
                     };
                 };
                 procedural.presentation = RenderingPresentation(
                     "Procedural Mesh",
                     "Generates editable plane, box, sphere, cylinder, or capsule geometry.");
+
+                ComponentTypeInfo waterSurface{};
+                waterSurface.typeName = "WaterSurfaceComponent";
+                waterSurface.factory =
+                    []() -> std::unique_ptr<IComponent> {
+                    return std::make_unique<WaterSurfaceComponent>();
+                };
+                waterSurface.requiredComponents = {
+                    "ModelComponent",
+                    "ProceduralMeshComponent"
+                };
+                waterSurface.runtimeApplyPolicy =
+                    ComponentRuntimeApplyPolicy::OnEditCommit;
+                waterSurface.initializeDefaults = [](
+                    const SceneObjectData&,
+                    nlohmann::json& properties) {
+                    WaterSurfaceComponent defaults{};
+                    defaults.Serialize(properties);
+                };
+                waterSurface.presentation = RenderingPresentation(
+                    "Water Surface",
+                    "Gerstner-driven animated water surface with stylized or realistic shading.");
 
                 ComponentTypeInfo light{};
                 light.typeName = "LightComponent";
@@ -211,6 +237,8 @@ namespace HIKARI {
                 success = componentRegistry.Register(
                     std::move(procedural)) && success;
                 success = componentRegistry.Register(
+                    std::move(waterSurface)) && success;
+                success = componentRegistry.Register(
                     std::move(light)) && success;
                 success = componentRegistry.Register(
                     std::move(reflectionProbe)) && success;
@@ -224,6 +252,14 @@ namespace HIKARI {
                     "Model Rendering",
                     "Rendering"
                 }) && success;
+                success = systemTypeRegistry.Register(SystemTypeInfo{
+                    "WaterSurfaceSystem",
+                    [](const nlohmann::json&) -> std::unique_ptr<ISystem> {
+                        return std::make_unique<WaterSurfaceSystem>();
+                    },
+                    "Water Surface",
+                    "Rendering"
+                }) && success;
                 return success;
             }
 
@@ -231,11 +267,16 @@ namespace HIKARI {
                 GetDefaultSystems() const noexcept override {
                 static constexpr std::array<
                     RuntimeSystemDefault,
-                    1> defaults{
+                    2> defaults{
                     RuntimeSystemDefault{
                         "ModelRenderSystem",
                         true,
                         100
+                    },
+                    RuntimeSystemDefault{
+                        "WaterSurfaceSystem",
+                        true,
+                        95
                     }
                 };
                 return defaults;

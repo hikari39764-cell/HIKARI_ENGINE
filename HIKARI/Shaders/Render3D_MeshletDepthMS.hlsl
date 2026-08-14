@@ -1,5 +1,11 @@
 #include "Include/HIKARI_MeshletMSCommon.hlsli"
-#include "Include/HIKARI_GpuDrivenWaterDeform.hlsli"
+#ifndef HIKARI_MESHLET_DEPTH_ENABLE_WATER
+#define HIKARI_MESHLET_DEPTH_ENABLE_WATER 1
+#endif
+
+#if HIKARI_MESHLET_DEPTH_ENABLE_WATER
+#include "Include/Meshlet/HIKARI_WaterSurfaceDeform.hlsli"
+#endif
 
 struct HikariMeshletDepthVertexOut
 {
@@ -38,11 +44,13 @@ HikariMeshletDepthVertexOut HikariBuildMeshletDepthVertex(
         localPosition,
         localNormal,
         localTangent);
-    HikariApplyGpuDrivenWaterDeform(
+#if HIKARI_MESHLET_DEPTH_ENABLE_WATER
+    HikariApplyWaterSurfaceDeform(
         instance,
-        gTimeParams.x,
+        gSimulationTimeParams.x,
         localPosition,
         localNormal);
+#endif
 
     // Depth prepass と forward (LESS_EQUAL) の深度を bit 一致させるため、
     // clip 位置の計算は各 MS で同一式 + precise に固定する。
@@ -54,7 +62,7 @@ HikariMeshletDepthVertexOut HikariBuildMeshletDepthVertex(
         (instance.flags & HIKARI_SURFACE_GPU_SCENE_FLAG_ALPHA_MASKED) != 0u;
     const bool materialFx =
         (instance.flags & HIKARI_SURFACE_GPU_SCENE_FLAG_MATERIAL_FX) != 0u &&
-        (instance.flags & HIKARI_SURFACE_GPU_SCENE_FLAG_WATER_MATERIAL_FX) == 0u;
+        (instance.flags & HIKARI_SURFACE_GPU_SCENE_FLAG_WATER_SURFACE) == 0u;
     if (alphaMasked || materialFx)
     {
         float4 uv01 = HikariLoadClusterVertexUv01(geometry, resolved.header, vertexIndex);

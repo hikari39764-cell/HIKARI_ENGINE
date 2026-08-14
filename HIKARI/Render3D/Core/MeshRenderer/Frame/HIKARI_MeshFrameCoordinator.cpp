@@ -145,6 +145,12 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             frame.gameDt,
             static_cast<float>(frame.frameIndex)
         };
+        frameResources.cameraMapped->simulationTimeParams = {
+            TIME::GetInterpolatedSimulationTimeSeconds(),
+            frame.fixedDt,
+            frame.fixedInterpolationAlpha,
+            static_cast<float>(frame.fixedTickIndex)
+        };
         int screenW = static_cast<int>(overrideScreenWidth);
         int screenH = static_cast<int>(overrideScreenHeight);
         if (screenW <= 0 || screenH <= 0) {
@@ -247,6 +253,8 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             frame.materialProgramResourceBuffer
                 ? frame.materialProgramResourceBuffer->GetGPUVirtualAddress()
                 : 0u;
+        RENDER3D::WATER::WaterSurfaceGpuFrameBuffer* waterSurfaceBuffer =
+            &gMeshRendererState.waterSurfaceGpuFrameBuffer;
         ctx.jointPaletteMapped = frame.jointPaletteMapped;
         ctx.gpuMaterialRegistry = &gMeshRendererState.gpuMaterialRegistry;
         ctx.objectDataSrv = frame.objectDataSrvGpu;
@@ -259,6 +267,10 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                 : &gMeshRendererState.surfaceGpuSceneBuffer;
         ctx.surfaceGpuSceneSrv =
             ctx.surfaceGpuSceneFrameBuffer->GetSrv();
+        if (overrides != nullptr &&
+            overrides->waterSurfaceGpuFrameBuffer != nullptr) {
+            waterSurfaceBuffer = overrides->waterSurfaceGpuFrameBuffer;
+        }
         ctx.traditionalCommandStreamBuffer =
             overrides != nullptr &&
                 overrides->traditionalCommandStreamBuffer != nullptr
@@ -344,6 +356,10 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             ? frame.skyEnvironmentCB->GetGPUVirtualAddress()
             : 0;
 #endif
+        ctx.surfaceFeatureDataAddress =
+            waterSurfaceBuffer != nullptr
+                ? waterSurfaceBuffer->GetGpuVirtualAddress()
+                : 0u;
         ctx.passKind = passKind;
         ctx.binding.cmd = ctx.cmd;
         ctx.binding.graphics = &graphics;

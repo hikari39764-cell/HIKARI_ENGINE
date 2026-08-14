@@ -10,6 +10,9 @@ const FrameContext& BeginFrame();
 const FrameContext& GetFrameContext();
 float GetUnscaledElapsedSeconds();
 float GetGameElapsedSeconds();
+// Fixed-step authority plus render interpolation. Rendering systems that must
+// agree with deterministic simulation should consume this instead of wall time.
+float GetInterpolatedSimulationTimeSeconds();
 
 void SetGameTimeScale(float scale);
 float GetGameTimeScale();

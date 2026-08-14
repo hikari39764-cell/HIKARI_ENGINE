@@ -13,6 +13,7 @@ cbuffer CameraCB : register(b0)
     float4x4 gInvViewProj;
     float4 gCameraPos;
     float4 gTimeParams;
+    float4 gSimulationTimeParams;
     float4 gScreenParams;
 };
 
@@ -84,6 +85,8 @@ struct VSOutput
     nointerpolation uint debugSurfaceId : TEXCOORD6;
     float3 characterRightWS : TEXCOORD8;
     float3 characterForwardWS : TEXCOORD9;
+    nointerpolation uint surfaceFeatureFlags : TEXCOORD7;
+    float3 waterSurfaceData : TEXCOORD11;
 };
 
 float4x4 ResolveJointMatrix(uint jointIndex)
@@ -132,6 +135,7 @@ VSOutput main(VSInput input)
     uint surfaceMaterialProgramFlags = 0u;
     uint debugSurfaceId = 0u;
     uint debugDrawBucket = 0u;
+    uint surfaceFeatureFlags = 0u;
     if (gUseSurfaceGpuScene != 0u)
     {
         surfaceGpuSceneIndex = HikariGetSurfaceGpuSceneAbsoluteIndex(input.instanceId);
@@ -147,6 +151,7 @@ VSOutput main(VSInput input)
                 : 0u;
         debugSurfaceId = instance.sourceSurfaceInstanceIndex;
         debugDrawBucket = instance.geometryBackend;
+        surfaceFeatureFlags = instance.flags;
     }
 
     float4 worldPos = mul(world, float4(localPos.xyz, 1.0f));
@@ -170,6 +175,8 @@ VSOutput main(VSInput input)
     output.objectDataIndex = 0u;
     output.surfaceGpuSceneIndex = surfaceGpuSceneIndex;
     output.debugSurfaceId = debugSurfaceId;
+    output.surfaceFeatureFlags = surfaceFeatureFlags;
+    output.waterSurfaceData = float3(localPos.xz, 0.0f);
     output.characterRightWS = normalize(
         mul((float3x3)normalMatrix,
             dot(localCharacterRight, localCharacterRight) > 1.0e-6f

@@ -7,6 +7,7 @@ cbuffer CameraCB : register(b0)
     float4x4 gInvViewProj;
     float4 gCameraPos;
     float4 gTimeParams;
+    float4 gSimulationTimeParams;
     float4 gScreenParams;
 };
 

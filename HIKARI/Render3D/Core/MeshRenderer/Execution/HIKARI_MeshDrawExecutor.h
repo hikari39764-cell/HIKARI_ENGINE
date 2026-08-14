@@ -28,6 +28,10 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
     class GpuTraditionalCommandStreamBuffer;
 }
 
+namespace HIKARI::RENDER3D::WATER {
+    class WaterSurfaceGpuFrameBuffer;
+}
+
 namespace HIKARI::MESHRENDERER {
 
     class MeshMaterialResolver;
@@ -78,6 +82,7 @@ namespace HIKARI::MESHRENDERER {
         D3D12_GPU_VIRTUAL_ADDRESS localLightClusterIndicesAddress = 0;
         D3D12_GPU_VIRTUAL_ADDRESS materialProgramParametersAddress = 0;
         D3D12_GPU_VIRTUAL_ADDRESS materialProgramResourcesAddress = 0;
+        D3D12_GPU_VIRTUAL_ADDRESS surfaceFeatureDataAddress = 0;
         D3D12_GPU_VIRTUAL_ADDRESS shadowAddress = 0;
         D3D12_GPU_VIRTUAL_ADDRESS skyEnvironmentAddress = 0;
         MeshDrawPassKind passKind = MeshDrawPassKind::Forward;

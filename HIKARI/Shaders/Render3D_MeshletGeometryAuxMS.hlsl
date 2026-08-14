@@ -1,5 +1,5 @@
 #include "Include/HIKARI_MeshletMSCommon.hlsli"
-#include "Include/HIKARI_GpuDrivenWaterDeform.hlsli"
+#include "Include/Meshlet/HIKARI_WaterSurfaceDeform.hlsli"
 
 struct HikariMeshletGeometryAuxVertexOut
 {
@@ -47,9 +47,9 @@ HikariMeshletGeometryAuxVertexOut HikariBuildMeshletGeometryAuxVertex(
         localPosition,
         localNormal,
         localTangent);
-    HikariApplyGpuDrivenWaterDeform(
+    HikariApplyWaterSurfaceDeform(
         instance,
-        gTimeParams.x,
+        gSimulationTimeParams.x,
         localPosition,
         localNormal);
 

@@ -337,6 +337,9 @@ namespace HIKARI {
                     } else if (IsLightingRuntimeComponent(
                             component.type)) {
                         (void)scene.RefreshLightingRuntime();
+                    } else if (component.type ==
+                        "ProceduralMeshComponent") {
+                        (void)scene.RebuildMaterialOverrides();
                     } else if (component.type == "ModelComponent") {
                         (void)scene.RebuildMaterialOverrides();
                     }
@@ -373,6 +376,9 @@ namespace HIKARI {
                 } else if (IsLightingRuntimeComponent(
                         component.type)) {
                     (void)scene.RefreshLightingRuntime();
+                } else if (component.type ==
+                    "ProceduralMeshComponent") {
+                    (void)scene.RebuildMaterialOverrides();
                 } else if (component.type == "ModelComponent") {
                     (void)scene.RebuildMaterialOverrides();
                 }

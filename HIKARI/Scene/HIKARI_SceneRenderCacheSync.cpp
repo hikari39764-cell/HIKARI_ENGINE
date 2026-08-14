@@ -1,6 +1,7 @@
 #include "Scene/HIKARI_SceneRenderCacheSync.h"
 
 #include <algorithm>
+#include <cmath>
 #include <unordered_map>
 #include <utility>
 
@@ -11,6 +12,7 @@
 #include "Render3D/Procedural/HIKARI_ProceduralModelFactory.h"
 #include "Render3D/Runtime/HIKARI_RenderModelCache.h"
 #include "Render3D/Runtime/HIKARI_SceneRenderCache.h"
+#include "Render3D/Water/HIKARI_WaterSurfaceRenderData.h"
 #include "Scene/Components/HIKARI_ProceduralMeshComponent.h"
 #include "Scene/Components/Rendering/MaterialFx/HIKARI_MaterialFxComponent.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
@@ -18,10 +20,59 @@
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_PresentationTransformService.h"
 #include "Scene/HIKARI_World.h"
+#include "Scene/Water/HIKARI_WaterSurfaceComponent.h"
 
 namespace HIKARI {
 
     namespace {
+        constexpr float kPi = 3.14159265358979323846f;
+
+        RENDER3D::WATER::WaterSurfaceRenderData
+            BuildWaterSurfaceRenderData(
+                const WATER::WaterSurfaceSettings& authoredSettings,
+                const ProceduralMeshComponent& procedural) {
+
+            const ProceduralMeshSettings mesh =
+                SanitizeProceduralMeshSettings(
+                    procedural.GetSettings());
+            const float spacingX = mesh.width /
+                static_cast<float>((std::max)(mesh.segmentsX, 1u));
+            const float spacingZ = mesh.depth /
+                static_cast<float>((std::max)(mesh.segmentsY, 1u));
+            const WATER::WaterSurfaceSettings settings =
+                WATER::ResolveWaterSurfaceSettingsForMesh(
+                    authoredSettings,
+                    (std::max)(spacingX, spacingZ));
+
+            RENDER3D::WATER::WaterSurfaceRenderData data{};
+            data.shadingModel = settings.preset ==
+                    WATER::WaterSurfacePreset::RealisticClearSummer
+                ? RENDER3D::WATER::WaterSurfaceShadingModel::
+                    RealisticClearSummer
+                : RENDER3D::WATER::WaterSurfaceShadingModel::AnimeSummer;
+            data.timeScale = settings.timeScale;
+            data.choppiness = settings.choppiness;
+            data.microWaveStrength = settings.microWaveStrength;
+            data.depthTransmittance = settings.depthTransmittance;
+            data.scatteringColor = settings.scatteringColor;
+            data.foamColor = settings.foamColor;
+            data.foamAmount = settings.foamAmount;
+            data.absorptionDistance = settings.absorptionDistance;
+            data.surfaceRoughness = settings.surfaceRoughness;
+            for (size_t index = 0u; index < data.waves.size(); ++index) {
+                const WATER::WaterGerstnerWave& source =
+                    settings.waves[index];
+                RENDER3D::WATER::WaterWaveRenderData& destination =
+                    data.waves[index];
+                destination.directionRadians =
+                    source.directionDeg * (kPi / 180.0f);
+                destination.amplitude = source.amplitude;
+                destination.wavelength = source.wavelength;
+                destination.steepness = source.steepness;
+            }
+            return data;
+        }
+
         RENDER3D::RUNTIME::SceneRenderObjectId ResolveSceneRenderObjectId(const GameObject& object) {
             RENDER3D::RUNTIME::SceneRenderObjectId id{ object.GetDocumentId().value };
             if (!id.IsValid()) {
@@ -232,19 +283,36 @@ namespace HIKARI {
                     return lhs.materialIndex < rhs.materialIndex;
                 });
             desc.postGroupMask = model.GetPostGroupMask();
-            if (const MaterialFxComponent* materialFx =
-                object.GetComponent<MaterialFxComponent>()) {
+            const auto* procedural =
+                object.GetComponent<ProceduralMeshComponent>();
+            const auto* water =
+                object.GetComponent<WaterSurfaceComponent>();
+            if (water != nullptr && procedural != nullptr) {
+                const ProceduralMeshKind meshKind =
+                    procedural->GetSettings().kind;
+                if (meshKind == ProceduralMeshKind::Plane ||
+                    meshKind == ProceduralMeshKind::GridPlane) {
+                    desc.waterSurface = true;
+                    desc.waterSurfaceData = BuildWaterSurfaceRenderData(
+                        water->GetSettings(),
+                        *procedural);
+                }
+            }
+            if (!desc.waterSurface) {
+                if (const MaterialFxComponent* materialFx =
+                        object.GetComponent<MaterialFxComponent>()) {
 
-                desc.materialFxProfileId =
-                    materialFx->GetProfileId();
-                desc.materialFxValuesInitialized =
-                    materialFx->AreValuesInitialized();
-                for (size_t i = 0;
-                    i < VFX::kMaterialFxUserCount;
-                    ++i) {
+                    desc.materialFxProfileId =
+                        materialFx->GetProfileId();
+                    desc.materialFxValuesInitialized =
+                        materialFx->AreValuesInitialized();
+                    for (size_t i = 0;
+                        i < VFX::kMaterialFxUserCount;
+                        ++i) {
 
-                    desc.materialFxParamValues[i] =
-                        materialFx->GetParamValues()[i];
+                        desc.materialFxParamValues[i] =
+                            materialFx->GetParamValues()[i];
+                    }
                 }
             }
             return desc;

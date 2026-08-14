@@ -1581,49 +1581,92 @@ namespace HIKARI {
             }
 
             // 縮小表示でもぼやけないよう、生成テクスチャには mip チェーンを張る。
-            DirectX::Image sourceImage{};
-            sourceImage.width = width;
-            sourceImage.height = height;
-            sourceImage.format = DXGI_FORMAT_R8G8B8A8_UNORM;
-            sourceImage.rowPitch = static_cast<size_t>(width) * 4u;
-            sourceImage.slicePitch = sourceImage.rowPitch * height;
-            sourceImage.pixels = const_cast<uint8_t*>(rgbaPixels);
-
-            const DirectX::TEX_FILTER_FLAGS filter =
-                colorSpace == TextureColorSpace::Srgb
-                    ? static_cast<DirectX::TEX_FILTER_FLAGS>(
-                        DirectX::TEX_FILTER_DEFAULT |
-                        DirectX::TEX_FILTER_SRGB)
-                    : DirectX::TEX_FILTER_DEFAULT;
+            // 1x1 や mip 生成失敗時は従来どおり単一 mip にフォールバックする。
             DirectX::ScratchImage mipChain{};
-            HRESULT hr = DirectX::GenerateMipMaps(
-                sourceImage,
-                filter,
-                0,
-                mipChain);
-            if (FAILED(hr) || mipChain.GetImageCount() == 0) {
-                HIKARI_LOG_ERROR("[DxTextureManager][Generated][ERROR] mip generation failed: " + debugName);
-                return -1;
+            DirectX::TexMetadata metadata{};
+            bool useMipChain = false;
+            const DXGI_FORMAT generatedFormat = ResolveSrvFormat(
+                DXGI_FORMAT_R8G8B8A8_UNORM,
+                colorSpace);
+            if (width > 1u || height > 1u) {
+                DirectX::Image sourceImage{};
+                sourceImage.width = width;
+                sourceImage.height = height;
+                sourceImage.format = generatedFormat;
+                sourceImage.rowPitch = static_cast<size_t>(width) * 4u;
+                sourceImage.slicePitch = sourceImage.rowPitch * height;
+                sourceImage.pixels = const_cast<uint8_t*>(rgbaPixels);
+
+                const DirectX::TEX_FILTER_FLAGS filter =
+                    colorSpace == TextureColorSpace::Srgb
+                        ? static_cast<DirectX::TEX_FILTER_FLAGS>(
+                            DirectX::TEX_FILTER_DEFAULT |
+                            DirectX::TEX_FILTER_SRGB)
+                        : DirectX::TEX_FILTER_DEFAULT;
+                const HRESULT mipResult = DirectX::GenerateMipMaps(
+                    sourceImage,
+                    filter,
+                    0,
+                    mipChain);
+                if (SUCCEEDED(mipResult) &&
+                    mipChain.GetImageCount() > 0) {
+                    metadata = mipChain.GetMetadata();
+                    useMipChain = true;
+                }
             }
-            const DirectX::TexMetadata metadata = mipChain.GetMetadata();
 
             Microsoft::WRL::ComPtr<ID3D12Resource> texResource;
-            hr = DirectX::CreateTexture(
-                device,
-                metadata,
-                texResource.GetAddressOf());
+            HRESULT hr = S_OK;
+            if (useMipChain) {
+                hr = DirectX::CreateTexture(
+                    device,
+                    metadata,
+                    texResource.GetAddressOf());
+            } else {
+                D3D12_RESOURCE_DESC textureDesc{};
+                textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+                textureDesc.Alignment = 0;
+                textureDesc.Width = width;
+                textureDesc.Height = height;
+                textureDesc.DepthOrArraySize = 1;
+                textureDesc.MipLevels = 1;
+                textureDesc.Format = generatedFormat;
+                textureDesc.SampleDesc.Count = 1;
+                textureDesc.SampleDesc.Quality = 0;
+                textureDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+                textureDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+                const auto textureHeap =
+                    CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
+                hr = device->CreateCommittedResource(
+                    &textureHeap,
+                    D3D12_HEAP_FLAG_NONE,
+                    &textureDesc,
+                    D3D12_RESOURCE_STATE_COPY_DEST,
+                    nullptr,
+                    IID_PPV_ARGS(texResource.GetAddressOf()));
+            }
             if (FAILED(hr) || !texResource) {
                 HIKARI_LOG_ERROR("[DxTextureManager][Generated][ERROR] CreateCommittedResource failed: " + debugName);
                 return -1;
             }
 
             std::vector<D3D12_SUBRESOURCE_DATA> subresources;
-            DirectX::PrepareUpload(
-                device,
-                mipChain.GetImages(),
-                mipChain.GetImageCount(),
-                metadata,
-                subresources);
+            if (useMipChain) {
+                DirectX::PrepareUpload(
+                    device,
+                    mipChain.GetImages(),
+                    mipChain.GetImageCount(),
+                    metadata,
+                    subresources);
+            } else {
+                D3D12_SUBRESOURCE_DATA subresource{};
+                subresource.pData = rgbaPixels;
+                subresource.RowPitch =
+                    static_cast<LONG_PTR>(width * 4u);
+                subresource.SlicePitch =
+                    static_cast<LONG_PTR>(width * height * 4u);
+                subresources.push_back(subresource);
+            }
             if (subresources.empty()) {
                 HIKARI_LOG_ERROR("[DxTextureManager][Generated][ERROR] PrepareUpload returned no subresources: " + debugName);
                 return -1;
@@ -1681,10 +1724,15 @@ namespace HIKARI {
                 WaitForSingleObject(uploadFenceEvent_, INFINITE);
             }
 
-            const DXGI_FORMAT srvFormat = ResolveSrvFormat(metadata.format, colorSpace);
-            const int handle = RegisterFromResourceAs(texResource.Get(), srvFormat);
+            const int handle = RegisterFromResourceAs(
+                texResource.Get(), generatedFormat);
             if (handle >= 0) {
-                LogTextureLoad(logKind, debugName, colorSpace, srvFormat, handle);
+                LogTextureLoad(
+                    logKind,
+                    debugName,
+                    colorSpace,
+                    generatedFormat,
+                    handle);
             }
             return handle;
         }
@@ -1697,11 +1745,16 @@ namespace HIKARI {
         {
             auto* device = context_.device;
             auto* queue = context_.queue;
-            if (!device || !queue || !uploadAllocator_ || !uploadCmdList_ || !uploadFence_ || !uploadFenceEvent_) {
-                HIKARI_LOG_ERROR("[DxTextureManager][GeneratedCube][ERROR] invalid generated cubemap request: " + debugName);
+            if (!device || !queue || !uploadAllocator_ || !uploadCmdList_ ||
+                !uploadFence_ || !uploadFenceEvent_) {
+                HIKARI_LOG_ERROR(
+                    "[DxTextureManager][GeneratedCube][ERROR] invalid generated cubemap request: " +
+                    debugName);
                 return -1;
             }
-
+            const DXGI_FORMAT generatedFormat = ResolveSrvFormat(
+                DXGI_FORMAT_R8G8B8A8_UNORM,
+                colorSpace);
             D3D12_RESOURCE_DESC textureDesc{};
             textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
             textureDesc.Alignment = 0;
@@ -1709,7 +1762,7 @@ namespace HIKARI {
             textureDesc.Height = 1;
             textureDesc.DepthOrArraySize = 6;
             textureDesc.MipLevels = 1;
-            textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+            textureDesc.Format = generatedFormat;
             textureDesc.SampleDesc.Count = 1;
             textureDesc.SampleDesc.Quality = 0;
             textureDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
@@ -1790,10 +1843,15 @@ namespace HIKARI {
                 WaitForSingleObject(uploadFenceEvent_, INFINITE);
             }
 
-            const DXGI_FORMAT srvFormat = ResolveSrvFormat(DXGI_FORMAT_R8G8B8A8_UNORM, colorSpace);
-            const int handle = RegisterCubeFromResourceAs(texResource.Get(), srvFormat);
+            const int handle = RegisterCubeFromResourceAs(
+                texResource.Get(), generatedFormat);
             if (handle >= 0) {
-                LogTextureLoad(logKind, debugName, colorSpace, srvFormat, handle);
+                LogTextureLoad(
+                    logKind,
+                    debugName,
+                    colorSpace,
+                    generatedFormat,
+                    handle);
             }
             return handle;
         }

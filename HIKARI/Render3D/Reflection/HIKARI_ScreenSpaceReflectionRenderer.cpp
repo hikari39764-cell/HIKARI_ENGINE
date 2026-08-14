@@ -36,20 +36,6 @@ namespace HIKARI::RENDER3D::REFLECTION {
             return (size + 255u) & ~255u;
         }
 
-        uint32_t ResolveMaxSteps(ScreenSpaceReflectionQuality quality) {
-            switch (quality) {
-            case ScreenSpaceReflectionQuality::Low:
-                return 24u;
-            case ScreenSpaceReflectionQuality::High:
-                return 64u;
-            case ScreenSpaceReflectionQuality::Medium:
-                return 40u;
-            case ScreenSpaceReflectionQuality::Off:
-            default:
-                return 0u;
-            }
-        }
-
         uint32_t ResolveDebugMode(RenderDebugView debugView) {
             if (debugView == RenderDebugView::SsrConfidence) {
                 return 1u;
@@ -99,7 +85,8 @@ namespace HIKARI::RENDER3D::REFLECTION {
             surfaces.currentSceneDepthPyramid.mipCount;
         debugState_.maxDistance = settings.maxDistance;
         debugState_.maxRoughness = settings.maxRoughness;
-        debugState_.maxSteps = ResolveMaxSteps(settings.quality);
+        debugState_.maxSteps =
+            ResolveScreenSpaceReflectionMaxSteps(settings.quality);
         debugState_.traceWidth =
             (surfaces.sceneDepth.width + 1u) / 2u;
         debugState_.traceHeight =
@@ -170,6 +157,10 @@ namespace HIKARI::RENDER3D::REFLECTION {
             &constants,
             sizeof(constants));
 
+        if (!targetAccess.BeginDepthRead()) {
+            return false;
+        }
+
         ID3D12GraphicsCommandList* cmd = graphics.cmdList;
         GFX::PIX::ScopedGpuEvent pixEvent(
             cmd,
@@ -235,7 +226,8 @@ namespace HIKARI::RENDER3D::REFLECTION {
             traceTarget_.Get(),
             traceTargetState_,
             D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-        if (!targetAccess.Rebind()) {
+        if (!targetAccess.BeginDepthRead()) {
+            targetAccess.EndDepthRead();
             return false;
         }
         cmd->SetGraphicsRootSignature(rootSignature_.Get());
@@ -258,6 +250,7 @@ namespace HIKARI::RENDER3D::REFLECTION {
             surfaces.currentSceneDepthPyramid.pyramidSrv);
         cmd->SetGraphicsRootDescriptorTable(5, traceSrv_);
         cmd->DrawInstanced(3, 1, 0, 0);
+        targetAccess.EndDepthRead();
         debugState_.rendered = true;
         return true;
     }

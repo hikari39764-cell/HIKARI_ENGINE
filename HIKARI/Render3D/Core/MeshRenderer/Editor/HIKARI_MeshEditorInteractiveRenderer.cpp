@@ -117,6 +117,12 @@ namespace HIKARI::MESHRENDERER {
             timeFrame.gameDt,
             static_cast<float>(timeFrame.frameIndex)
         };
+        cameraData.simulationTimeParams = {
+            TIME::GetInterpolatedSimulationTimeSeconds(),
+            timeFrame.fixedDt,
+            timeFrame.fixedInterpolationAlpha,
+            static_cast<float>(timeFrame.fixedTickIndex)
+        };
         cameraData.screenParams = {
             static_cast<float>(screenWidth),
             static_cast<float>(screenHeight),
@@ -320,8 +326,10 @@ namespace HIKARI::MESHRENDERER {
             editorFrame.jointPaletteCB->GetGPUVirtualAddress();
         overrides.surfaceGpuSceneFrameBuffer =
             &gMeshRendererState.editorInteractive.surfaceGpuSceneBuffer;
+        overrides.waterSurfaceGpuFrameBuffer =
+            &gMeshRendererState.editorInteractive.waterSurfaceGpuFrameBuffer;
 
-        MeshPassResources passResources{};
+        MeshPassResources passResources = settings.passResources;
         passResources.fallbackAoTextureHandle =
             gMeshRendererState.fallbackTextureHandle;
         const bool stylizedSurfacePassReady =
@@ -342,18 +350,55 @@ namespace HIKARI::MESHRENDERER {
                 RENDER3D::MESHLET::MeshletPipelineKind::ForwardOpaque,
                 layer,
                 overrides);
-        const GeometryBackendExecutionResult depthAwareResult =
-            ExecuteEditorInteractiveGeometryBackendPlan(
-                graphics,
-                RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardDepthAware,
-                passResources,
-                MeshDrawPassKind::Forward,
-                RENDER3D::MESHLET::MeshletPipelineKind::ForwardDepthAware,
-                layer,
-                overrides);
-        if (settings.renderDepthAwareOverlay != nullptr) {
-            settings.renderDepthAwareOverlay(
-                settings.depthAwareOverlayUserData);
+
+        const bool hasDepthAwareSource =
+            layer.GetPassExecutionState(
+                RENDER3D::GPUDRIVEN::GpuDrivenPassKind::
+                    ForwardDepthAware).hasSource;
+        const bool hasTransparentSource =
+            layer.GetPassExecutionState(
+                RENDER3D::GPUDRIVEN::GpuDrivenPassKind::
+                    ForwardTransparent).hasSource;
+        if (hasDepthAwareSource || hasTransparentSource) {
+            const RENDER3D::RenderTextureView opaqueSceneColor =
+                settings.captureSceneColor != nullptr
+                    ? settings.captureSceneColor(
+                        settings.targetAccess.userData)
+                    : RENDER3D::RenderTextureView{};
+            const bool targetReady = settings.targetAccess.Rebind();
+            if (!opaqueSceneColor.IsSampleable() || !targetReady) {
+                return EditorInteractiveMeshRenderResult::ForwardPassFailed;
+            }
+            passResources.opaqueSceneColor = opaqueSceneColor;
+        }
+
+        GeometryBackendExecutionResult depthAwareResult{};
+        const bool needsDepthRead = hasDepthAwareSource ||
+            settings.renderDepthAwareOverlay != nullptr;
+        if (needsDepthRead) {
+            if ((hasDepthAwareSource &&
+                 !passResources.sceneDepth.IsSampleable()) ||
+                !settings.targetAccess.BeginDepthRead()) {
+                return EditorInteractiveMeshRenderResult::ForwardPassFailed;
+            }
+            if (hasDepthAwareSource) {
+                depthAwareResult =
+                    ExecuteEditorInteractiveGeometryBackendPlan(
+                        graphics,
+                        RENDER3D::GPUDRIVEN::GpuDrivenPassKind::
+                            ForwardDepthAware,
+                        passResources,
+                        MeshDrawPassKind::Forward,
+                        RENDER3D::MESHLET::MeshletPipelineKind::
+                            ForwardDepthAware,
+                        layer,
+                        overrides);
+            }
+            if (settings.renderDepthAwareOverlay != nullptr) {
+                settings.renderDepthAwareOverlay(
+                    settings.depthAwareOverlayUserData);
+            }
+            settings.targetAccess.EndDepthRead();
         }
         const GeometryBackendExecutionResult transparentResult =
             ExecuteEditorInteractiveGeometryBackendPlan(
