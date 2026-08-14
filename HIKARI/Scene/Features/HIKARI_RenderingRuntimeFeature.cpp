@@ -18,6 +18,7 @@
 #include "Scene/HIKARI_ComponentRegistry.h"
 #include "Scene/HIKARI_ComponentSystemPolicy.h"
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
+#include "Scene/HIKARI_SceneDocument.h"
 #include "Scene/HIKARI_SystemTypeRegistry.h"
 #include "Scene/Sand/HIKARI_SandSurfaceComponent.h"
 #include "Scene/Sand/HIKARI_SandSurfaceFollowerComponent.h"
@@ -82,6 +83,8 @@ namespace HIKARI {
                     RuntimeFeatureContextAccess::Components(context);
                 SystemTypeRegistry& systemTypeRegistry =
                     RuntimeFeatureContextAccess::Systems(context);
+                ComponentSystemPolicy& componentSystemPolicy =
+                    RuntimeFeatureContextAccess::Policy(context);
                 ComponentTypeInfo model{};
                 model.typeName = "ModelComponent";
                 model.factory = []() -> std::unique_ptr<IComponent> {
@@ -166,6 +169,42 @@ namespace HIKARI {
                     WaterSurfaceComponent defaults{};
                     defaults.Serialize(properties);
                 };
+                // 空オブジェクトへ追加された場合も SceneCreationPanel と
+                // 同じ 200x200 GridPlane になるように、自動追加された
+                // ProceduralMeshComponent を既定の水面メッシュへ上げる。
+                waterSurface.configureDependencies = [](
+                    SceneObjectData& object,
+                    const std::vector<std::string>& newlyAdded) {
+                    bool autoAddedMesh = false;
+                    for (const std::string& type : newlyAdded) {
+                        if (type == "ProceduralMeshComponent") {
+                            autoAddedMesh = true;
+                            break;
+                        }
+                    }
+                    if (!autoAddedMesh) {
+                        return;
+                    }
+                    for (SceneComponentData& component : object.components) {
+                        if (component.type != "ProceduralMeshComponent") {
+                            continue;
+                        }
+                        component.properties = {
+                            { "kind", "GridPlane" },
+                            { "width", 200.0f },
+                            { "height", 1.0f },
+                            { "depth", 200.0f },
+                            { "segmentsX", 300u },
+                            { "segmentsY", 300u },
+                            { "segmentsZ", 1u },
+                            { "sphereSlices", 32u },
+                            { "sphereStacks", 16u },
+                            { "doubleSided", true },
+                            { "generateTangents", true }
+                        };
+                        break;
+                    }
+                };
                 waterSurface.presentation = RenderingPresentation(
                     "Water Surface",
                     "Gerstner-driven animated water surface with stylized or realistic shading.");
@@ -187,6 +226,42 @@ namespace HIKARI {
                     nlohmann::json& properties) {
                     SandSurfaceComponent defaults{};
                     defaults.Serialize(properties);
+                };
+                // 空オブジェクトへ追加された場合も SceneCreationPanel と
+                // 同じ 200x200 GridPlane になるように、自動追加された
+                // ProceduralMeshComponent を既定の砂地メッシュへ上げる。
+                sandSurface.configureDependencies = [](
+                    SceneObjectData& object,
+                    const std::vector<std::string>& newlyAdded) {
+                    bool autoAddedMesh = false;
+                    for (const std::string& type : newlyAdded) {
+                        if (type == "ProceduralMeshComponent") {
+                            autoAddedMesh = true;
+                            break;
+                        }
+                    }
+                    if (!autoAddedMesh) {
+                        return;
+                    }
+                    for (SceneComponentData& component : object.components) {
+                        if (component.type != "ProceduralMeshComponent") {
+                            continue;
+                        }
+                        component.properties = {
+                            { "kind", "GridPlane" },
+                            { "width", 200.0f },
+                            { "height", 1.0f },
+                            { "depth", 200.0f },
+                            { "segmentsX", 256u },
+                            { "segmentsY", 256u },
+                            { "segmentsZ", 1u },
+                            { "sphereSlices", 32u },
+                            { "sphereStacks", 16u },
+                            { "doubleSided", true },
+                            { "generateTangents", true }
+                        };
+                        break;
+                    }
                 };
                 sandSurface.presentation = RenderingPresentation(
                     "Sand Surface",
@@ -319,6 +394,26 @@ namespace HIKARI {
                     "Sand Surface",
                     "Rendering"
                 }) && success;
+                // 水面/砂地のシステムは Scene が明示的な systems 配列で
+                // 上書きしていても、コンポーネントが存在すれば必ず導入する。
+                success = componentSystemPolicy.Register(
+                    ComponentSystemRule{
+                        "WaterSurfaceComponent",
+                        "WaterSurfaceSystem",
+                        95
+                    }) && success;
+                success = componentSystemPolicy.Register(
+                    ComponentSystemRule{
+                        "SandSurfaceComponent",
+                        "SandSurfaceSystem",
+                        95
+                    }) && success;
+                success = componentSystemPolicy.Register(
+                    ComponentSystemRule{
+                        "SandSurfaceFollowerComponent",
+                        "SandSurfaceSystem",
+                        95
+                    }) && success;
                 return success;
             }
 
