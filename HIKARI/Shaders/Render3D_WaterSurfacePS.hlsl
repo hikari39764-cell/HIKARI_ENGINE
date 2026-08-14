@@ -323,10 +323,10 @@ float4 HikariShadeWaterSurface(
     const float animationTime =
         HikariWrapWaterSimulationTime(simulationTime, p.timeScale);
     const float2 localXZ = HikariFiniteOr(
-        input.waterSurfaceData.xy,
+        input.surfaceFeatureData.xy,
         0.0f.xx);
     const float compression = saturate(HikariFiniteOr(
-        input.waterSurfaceData.z,
+        input.surfaceFeatureData.z,
         0.0f));
 
     float3 geometricNormal = HikariSafeNormalize(

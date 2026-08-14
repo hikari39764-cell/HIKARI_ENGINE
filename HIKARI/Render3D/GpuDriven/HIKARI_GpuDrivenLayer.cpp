@@ -235,10 +235,12 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         SurfaceGpuSceneFrameBuffer* sceneBuffer,
         GpuTraditionalCommandStreamBuffer* traditionalCommandStreamBuffer,
         IGpuDrivenProducer* producer,
-        WATER::WaterSurfaceGpuFrameBuffer* waterSurfaceBuffer) {
+        WATER::WaterSurfaceGpuFrameBuffer* waterSurfaceBuffer,
+        SAND::SandSurfaceGpuFrameBuffer* sandSurfaceBuffer) {
 
         sceneBuffer_ = sceneBuffer;
         waterSurfaceBuffer_ = waterSurfaceBuffer;
+        sandSurfaceBuffer_ = sandSurfaceBuffer;
         traditionalCommandStreamBuffer_ = traditionalCommandStreamBuffer;
         producer_ = producer;
         frameContext_.scene.instanceBuffer = sceneBuffer_;
@@ -280,6 +282,19 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                     : nullptr);
         sceneUploadStats_.waterSurfaceDataResident =
             waterSurfaceDataResident;
+
+        const bool sandSurfaceDataResident =
+            sandSurfaceBuffer_ == nullptr ||
+            sandSurfaceBuffer_->UploadFrame(
+                desc.frameIndex,
+                frameSource_ != nullptr
+                    ? frameSource_->sandSurfaceGpuData
+                    : nullptr,
+                frameSource_ != nullptr
+                    ? frameSource_->sandSurfaceHeights
+                    : nullptr);
+        sceneUploadStats_.sandSurfaceDataResident =
+            sandSurfaceDataResident;
         if (sceneBuffer_ != nullptr) {
             sceneBuffer_->BeginFrame(desc.frameIndex);
         }

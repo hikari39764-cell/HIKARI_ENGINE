@@ -27,10 +27,13 @@ struct PSInput
     float3 characterRightWS : TEXCOORD8;
     float3 characterForwardWS : TEXCOORD9;
     nointerpolation uint surfaceFeatureFlags : TEXCOORD7;
-    float3 waterSurfaceData : TEXCOORD11;
+    // 水面と沙地が共有する surface feature 出力。TEXCOORD11 を一つに
+    // 統合し、フラグに応じてどちらかの変形データを読む。
+    float3 surfaceFeatureData : TEXCOORD11;
     bool isFrontFace : SV_IsFrontFace;
 };
 
+#include "Include/Surface/HIKARI_SandSurfaceShading.hlsli"
 #include "Include/Forward/HIKARI_ForwardMaterialInputs.hlsli"
 
 #define HIKARI_WATER_EMBEDDED 1
@@ -41,6 +44,18 @@ float4 main(PSInput input) : SV_TARGET
 {
     const bool neutralClay =
         gDebugView == HIKARI_DEBUG_VIEW_NEUTRAL_CLAY;
+    if (!neutralClay &&
+        HikariSurfaceHasSandSurface(input.surfaceFeatureFlags))
+    {
+        const HikariMeshObjectData sandObjectData =
+            HikariGetMeshObjectDataForPixel(
+                input.objectDataIndex,
+                input.surfaceGpuSceneIndex);
+        return HikariShadeSandSurface(
+            input,
+            sandObjectData,
+            input.surfaceFeatureData);
+    }
     if (!neutralClay &&
         HikariSurfaceHasWaterSurface(input.surfaceFeatureFlags))
     {

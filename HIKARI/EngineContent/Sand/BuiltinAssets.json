@@ -1,0 +1,46 @@
+{
+  "schema": "hikari.engine_content_assets",
+  "version": 1,
+  "sources": [
+    {
+      "id": "ambientcg.ground054",
+      "name": "ambientCG Ground054 (Beach Sand)",
+      "version": "2022-06-06",
+      "license": "CC0-1.0",
+      "pageUrl": "https://ambientcg.com/view?id=Ground054",
+      "archiveUrl": "https://ambientcg.com/get?file=Ground054_1K-JPG.zip",
+      "archiveSha256": "B325EC2F167DCE95A0FABC61A2104641288CF20915419578C3EFDB46200C563E",
+      "licenseFile": "Sand/Licenses/AmbientCG-CC0.txt"
+    }
+  ],
+  "assets": [
+    {
+      "id": "engine.sand.texture.ground054_albedo",
+      "type": "Texture",
+      "path": "Sand/Textures/Cooked/Ground054_1K-JPG_Color.htex",
+      "sourcePath": "Sand/Textures/Ground054_1K-JPG_Color.jpg",
+      "colorSpace": "Srgb",
+      "usage": "BaseColor",
+      "compression": "BC7",
+      "mipPolicy": "Generate",
+      "sourceId": "ambientcg.ground054",
+      "upstreamPath": "Ground054_1K-JPG_Color.jpg",
+      "sha256": "4157F23EE18096E05B6B575F58F49B4053F8A4CEAC129E1F899616DBB38AC02C",
+      "sourceSha256": "77C0B5AC13EEAD1420887C608B2C28209A1AE5BA70761BF29953AA23CF3DC31B"
+    },
+    {
+      "id": "engine.sand.texture.ground054_normal",
+      "type": "Texture",
+      "path": "Sand/Textures/Cooked/Ground054_1K-JPG_NormalDX.htex",
+      "sourcePath": "Sand/Textures/Ground054_1K-JPG_NormalDX.jpg",
+      "colorSpace": "Linear",
+      "usage": "Normal",
+      "compression": "BC7",
+      "mipPolicy": "Generate",
+      "sourceId": "ambientcg.ground054",
+      "upstreamPath": "Ground054_1K-JPG_NormalDX.jpg",
+      "sha256": "80B7B1A2FB9E51A61AFEA49DB7A710FC62BE03B269FA749C2CFD11A57A87E4E3",
+      "sourceSha256": "A46B124EC627636A1985F90B1148445678A919BA1D5C28F43AA776BED3F77E21"
+    }
+  ]
+}

@@ -55,6 +55,11 @@ namespace HIKARI {
                 EditorContext& context,
                 const SelectionSyncService& selectionSync);
 
+            void CreateSandSurfaceObject(
+                DocumentSceneBase& scene,
+                EditorContext& context,
+                const SelectionSyncService& selectionSync);
+
             PrimitiveCreationDialog primitiveCreationDialog_{};
             std::optional<SceneObjectAuthoringHistoryRequest>
                 historyRequest_{};

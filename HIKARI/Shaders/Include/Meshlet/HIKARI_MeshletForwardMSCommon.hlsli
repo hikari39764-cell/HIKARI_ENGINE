@@ -31,7 +31,10 @@ struct HikariMeshletVertexOut
     // Render3D_StaticPS. DXIL assigns packed hardware registers in declaration
     // order, so semantic names alone do not make a partial signature linkable.
     nointerpolation uint surfaceFeatureFlags : TEXCOORD7;
-    float3 waterSurfaceData : TEXCOORD11;
+    // 水面と沙地が共有する surface feature 出力。水面は meshlet 変形が、
+    // 沙地は traditional VS/PS のみが値を書き込む。TEXCOORD11 を一つに
+    // 統合し、PSO が StaticPS と bit 一致でリンクできるよう保つ。
+    float3 surfaceFeatureData : TEXCOORD11;
 };
 
 HikariMeshletVertexOut HikariBuildEmptyMeshletVertex()
@@ -40,6 +43,7 @@ HikariMeshletVertexOut HikariBuildEmptyMeshletVertex()
     output.position = float4(2.0f, 2.0f, 2.0f, 1.0f);
     output.normalWS = float3(0.0f, 1.0f, 0.0f);
     output.tangentWS = float4(1.0f, 0.0f, 0.0f, 1.0f);
+    output.surfaceFeatureData = 0.0f.xxx;
     return output;
 }
 
@@ -59,7 +63,7 @@ HikariMeshletVertexOut HikariBuildMeshletVertex(
         gSimulationTimeParams.x,
         localPosition,
         localNormal,
-        output.waterSurfaceData);
+        output.surfaceFeatureData);
 
     // Depth prepass (MeshletDepthMS) と深度を bit 一致させるため、
     // clip 位置の計算は各 MS で同一式 + precise に固定する。
@@ -96,6 +100,7 @@ HikariMeshletVertexOut HikariBuildMeshletVertex(
         mul((float3x3)instance.clusterNormalMatrix, localCharacterRight));
     output.characterForwardWS = normalize(
         mul((float3x3)instance.clusterNormalMatrix, localCharacterForward));
+    output.surfaceFeatureData = float3(localPosition.xz, 0.0f);
     return output;
 }
 

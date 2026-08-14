@@ -25,6 +25,7 @@
 #include "Scene/HIKARI_World.h"
 #include "Scene/Features/HIKARI_RuntimeExtension.h"
 #include "Scene/Features/HIKARI_RuntimeFeatureCatalog.h"
+#include "Scene/Sand/HIKARI_SandSurfaceQueryService.h"
 #include "Scene/Vfx/HIKARI_VfxPlaybackService.h"
 #include "Scene/Water/HIKARI_WaterSurfaceQueryService.h"
 
@@ -56,6 +57,7 @@ namespace HIKARI {
         std::unique_ptr<WATER::IWaterBathymetryProvider>
             waterBathymetryProvider{};
         WATER::WaterSurfaceQueryService waterSurfaceQueryService{};
+        SAND::SandSurfaceQueryService sandSurfaceQueryService{};
         PresentationTransformService presentationTransformService{};
         RuntimeExtensionHost extensionHost{};
         RuntimeFeatureCatalog featureCatalog{};

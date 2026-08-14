@@ -172,8 +172,9 @@ Texture2D gIblBrdfLutTex : register(t11);
 TextureCube gReflectionProbePrefilteredTex0 : register(t12);
 Texture2D gSsaoTex : register(t13);
 TextureCube gReflectionProbePrefilteredTex1 : register(t14);
-Texture2D<float> gScreenSpaceDepthPyramid : register(t1, space7);
-Texture2D<float4> gScreenSpacePackedSurface : register(t2, space7);
+// t1 space7 は sand の高さバッファが使うため、screen-space は t2/t3 へ移動。
+Texture2D<float> gScreenSpaceDepthPyramid : register(t2, space7);
+Texture2D<float4> gScreenSpacePackedSurface : register(t3, space7);
 cbuffer ScreenSpaceTraceControlCB : register(b10)
 {
     uint gScreenSpaceTraceValid;

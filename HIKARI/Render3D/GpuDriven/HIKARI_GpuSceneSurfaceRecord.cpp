@@ -449,6 +449,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             key.objectDataCompatible = shaderRoute.objectDataCompatible;
             key.materialFx = !record.materialFxProfileId.empty();
             key.waterMaterialFx = record.waterSurface;
+            key.sandSurface = record.sandSurface;
             key.materialFxUsesCustomVertexShader =
                 key.materialFx &&
                 usesCustomVertexShader;
@@ -480,6 +481,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                 clusterVertexCompatible &&
                 clusterPixelCompatible &&
                 key.objectDataCompatible &&
+                !key.sandSurface &&
                 (ordinaryMeshletMaterial ||
                     materialFxMeshletMaterial ||
                     waterSurfaceMeshletMaterial);
@@ -524,6 +526,9 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             }
             if (record.key.waterMaterialFx) {
                 flags |= ToInstanceFlag(RUNTIME::SurfaceGpuSceneInstanceFlags::WaterSurface);
+            }
+            if (record.key.sandSurface) {
+                flags |= ToInstanceFlag(RUNTIME::SurfaceGpuSceneInstanceFlags::SandSurface);
             }
             if (record.key.depthAware) {
                 flags |= ToInstanceFlag(RUNTIME::SurfaceGpuSceneInstanceFlags::DepthAware);
@@ -685,7 +690,9 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             }
             instance.postGroupMask = record.postGroupMask;
             instance.surfaceFeatureDataIndex =
-                record.waterSurfaceGpuDataIndex;
+                record.waterSurface
+                    ? record.waterSurfaceGpuDataIndex
+                    : record.sandSurfaceGpuDataIndex;
             if (record.skinned &&
                 record.jointPaletteSlot != RUNTIME::kInvalidRenderSurfaceIndex) {
                 instance.jointPaletteOffsetBytes =
@@ -807,6 +814,10 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         }
         record.waterSurface = surfaceInstance.waterSurface;
         record.waterSurfaceData = surfaceInstance.waterSurfaceData;
+        record.sandSurface = surfaceInstance.sandSurface;
+        record.sandSurfaceData = surfaceInstance.sandSurfaceData;
+        record.sandSurfaceHeightOffset =
+            surfaceInstance.sandSurfaceHeightOffset;
 
         record.forwardCandidate = record.visible;
         record.shadowCandidate = record.visible && record.castShadow;

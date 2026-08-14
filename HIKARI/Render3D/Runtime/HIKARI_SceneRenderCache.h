@@ -13,6 +13,7 @@
 #include "Assets/Models/HIKARI_ModelAsset.h"
 #include "Render3D/Runtime/HIKARI_RenderModelAsset.h"
 #include "Render3D/Water/HIKARI_WaterSurfaceRenderData.h"
+#include "Render3D/Sand/HIKARI_SandSurfaceRenderData.h"
 
 namespace HIKARI {
     class Material;
@@ -73,6 +74,9 @@ namespace HIKARI::RENDER3D::RUNTIME {
         // Renderer-owned typed input; Scene does not own the GPU slot layout.
         bool waterSurface = false;
         WATER::WaterSurfaceRenderData waterSurfaceData{};
+        bool sandSurface = false;
+        SAND::SandSurfaceRenderData sandSurfaceData{};
+        const std::vector<float>* sandSurfaceHeights = nullptr;
     };
 
     struct SceneRenderObject {
@@ -133,6 +137,10 @@ namespace HIKARI::RENDER3D::RUNTIME {
         bool materialFxValuesInitialized = false;
         bool waterSurface = false;
         WATER::WaterSurfaceRenderData waterSurfaceData{};
+        bool sandSurface = false;
+        SAND::SandSurfaceRenderData sandSurfaceData{};
+        const std::vector<float>* sandSurfaceHeights = nullptr;
+        uint32_t sandSurfaceHeightOffset = 0u;
     };
 
     class SceneRenderCache {
@@ -186,6 +194,7 @@ namespace HIKARI::RENDER3D::RUNTIME {
         const SceneRenderObject* Find(SceneRenderObjectId id) const;
         const std::vector<SceneRenderObject>& GetObjects() const;
         const std::vector<SceneSurfaceInstance>& GetSurfaceInstances() const;
+        const std::vector<float>* GetSandSurfaceHeights() const;
         const std::vector<uint32_t>& GetDirtySurfaceIndices() const;
         uint64_t GetSurfaceVersion() const;
         uint64_t GetSurfaceRoutingVersion() const;
@@ -206,6 +215,7 @@ namespace HIKARI::RENDER3D::RUNTIME {
 
         std::vector<SceneRenderObject> objects_{};
         std::vector<SceneSurfaceInstance> surfaceInstances_{};
+        std::vector<float> sandSurfaceHeights_{};
         std::vector<uint32_t> dirtySurfaceIndices_{};
         std::unordered_map<uint64_t, size_t> indexById_{};
 

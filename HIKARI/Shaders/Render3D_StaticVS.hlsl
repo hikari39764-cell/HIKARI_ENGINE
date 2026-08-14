@@ -21,6 +21,7 @@ cbuffer CameraCB : register(b0)
 #include "Include/HIKARI_MeshObjectData.hlsli"
 #include "Include/Meshlet/HIKARI_WaterSurfaceDeform.hlsli"
 #include "Include/Forward/HIKARI_ForwardVertexMeta.hlsli"
+#include "Include/Surface/HIKARI_SandSurfaceDeform.hlsli"
 #if defined(HIKARI_GEOMETRY_OUTLINE_VERTEX)
 #include "Include/Features/HIKARI_GeometryOutlineVertex.hlsli"
 #endif
@@ -51,7 +52,9 @@ struct VSOutput
     float3 characterRightWS : TEXCOORD8;
     float3 characterForwardWS : TEXCOORD9;
     nointerpolation uint surfaceFeatureFlags : TEXCOORD7;
-    float3 waterSurfaceData : TEXCOORD11;
+    // 水面と沙地が共有する surface feature 出力。TEXCOORD11 を一つに
+    // 統合し、フラグに応じてどちらかの変形関数が値を書き込む。
+    float3 surfaceFeatureData : TEXCOORD11;
 };
 
 VSOutput main(VSInput input)
@@ -67,13 +70,14 @@ VSOutput main(VSInput input)
     {
         surfaceInstance = HikariGetSurfaceGpuSceneInstanceAt(
             surfaceGpuSceneIndex);
-        surfaceMaterialProgramFlags = surfaceInstance.materialProgramFlags;
+        surfaceMaterialProgramFlags =
+            surfaceInstance.materialProgramFlags;
     }
     HikariMeshObjectData objectData =
-        HikariGetMeshObjectDataForInstance(objectDataIndex, input.instanceId);
+    HikariGetMeshObjectDataForInstance(objectDataIndex, input.instanceId);
     float3 localPosition = input.position;
     float3 localNormal = input.normal;
-    output.waterSurfaceData = float3(localPosition.xz, 0.0f);
+    output.surfaceFeatureData = float3(localPosition.xz, 0.0f);
     if (gUseSurfaceGpuScene != 0u)
     {
         HikariApplyWaterSurfaceDeform(
@@ -81,11 +85,17 @@ VSOutput main(VSInput input)
             gSimulationTimeParams.x,
             localPosition,
             localNormal,
-            output.waterSurfaceData);
+            output.surfaceFeatureData);
     }
+    HikariApplySandSurfaceDeform(
+        surfaceInstance,
+        localPosition,
+        localNormal,
+        output.surfaceFeatureData);
     float4 worldPos = mul(objectData.world, float4(localPosition, 1.0f));
     output.worldPosWS = worldPos.xyz;
-    output.normalWS = normalize(mul((float3x3)objectData.normalMatrix, localNormal));
+    output.normalWS = normalize(
+        mul((float3x3)objectData.normalMatrix, localNormal));
 #if defined(HIKARI_GEOMETRY_OUTLINE_VERTEX)
     output.position = HikariExpandGeometryOutlineVertex(
         worldPos,

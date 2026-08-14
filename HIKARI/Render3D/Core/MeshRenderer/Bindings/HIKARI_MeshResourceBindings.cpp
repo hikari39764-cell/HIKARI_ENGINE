@@ -335,6 +335,16 @@ namespace HIKARI::MESHRENDERER {
             featureDataAddress);
     }
 
+    void BindSandSurfaceData(
+        const MeshBindingContext& ctx,
+        D3D12_GPU_VIRTUAL_ADDRESS sandDataAddress) {
+
+        BindSrvCached(
+            ctx,
+            ROOT_PARAM::SandSurfaceData,
+            sandDataAddress);
+    }
+
     void BindScreenSpaceTraceResources(
         const MeshBindingContext& ctx) {
 
@@ -414,6 +424,16 @@ namespace HIKARI::MESHRENDERER {
             ctx.cache->rootConstantValid[
                 ROOT_PARAM::ScreenSpaceTraceControl] = false;
         }
+    }
+
+    void BindSurfaceFeatureHeights(
+        const MeshBindingContext& ctx,
+        D3D12_GPU_VIRTUAL_ADDRESS featureHeightsAddress) {
+
+        BindSrvCached(
+            ctx,
+            ROOT_PARAM::SurfaceFeatureHeights,
+            featureHeightsAddress);
     }
 
     void BindMaterialTexturePool(const MeshBindingContext& ctx) {

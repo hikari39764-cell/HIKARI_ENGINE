@@ -203,7 +203,7 @@ namespace HIKARI::MESHRENDERER {
         D3D12_DESCRIPTOR_RANGE screenSpaceDepthPyramidRange{};
         screenSpaceDepthPyramidRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
         screenSpaceDepthPyramidRange.NumDescriptors = 1;
-        screenSpaceDepthPyramidRange.BaseShaderRegister = 1;
+        screenSpaceDepthPyramidRange.BaseShaderRegister = 2;
         screenSpaceDepthPyramidRange.RegisterSpace = 7;
         screenSpaceDepthPyramidRange.OffsetInDescriptorsFromTableStart =
             D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
@@ -211,7 +211,7 @@ namespace HIKARI::MESHRENDERER {
         D3D12_DESCRIPTOR_RANGE screenSpacePackedSurfaceRange{};
         screenSpacePackedSurfaceRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
         screenSpacePackedSurfaceRange.NumDescriptors = 1;
-        screenSpacePackedSurfaceRange.BaseShaderRegister = 2;
+        screenSpacePackedSurfaceRange.BaseShaderRegister = 3;
         screenSpacePackedSurfaceRange.RegisterSpace = 7;
         screenSpacePackedSurfaceRange.OffsetInDescriptorsFromTableStart =
             D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
@@ -427,6 +427,20 @@ namespace HIKARI::MESHRENDERER {
             D3D12_SHADER_VISIBILITY_ALL;
         params[ROOT_PARAM::SurfaceFeatureData].Descriptor.ShaderRegister = 0;
         params[ROOT_PARAM::SurfaceFeatureData].Descriptor.RegisterSpace = 7;
+
+        params[ROOT_PARAM::SandSurfaceData].ParameterType =
+            D3D12_ROOT_PARAMETER_TYPE_SRV;
+        params[ROOT_PARAM::SandSurfaceData].ShaderVisibility =
+            D3D12_SHADER_VISIBILITY_ALL;
+        params[ROOT_PARAM::SandSurfaceData].Descriptor.ShaderRegister = 4;
+        params[ROOT_PARAM::SandSurfaceData].Descriptor.RegisterSpace = 7;
+
+        params[ROOT_PARAM::SurfaceFeatureHeights].ParameterType =
+            D3D12_ROOT_PARAMETER_TYPE_SRV;
+        params[ROOT_PARAM::SurfaceFeatureHeights].ShaderVisibility =
+            D3D12_SHADER_VISIBILITY_ALL;
+        params[ROOT_PARAM::SurfaceFeatureHeights].Descriptor.ShaderRegister = 1;
+        params[ROOT_PARAM::SurfaceFeatureHeights].Descriptor.RegisterSpace = 7;
 
         params[ROOT_PARAM::ScreenSpaceDepthPyramid].ParameterType =
             D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;

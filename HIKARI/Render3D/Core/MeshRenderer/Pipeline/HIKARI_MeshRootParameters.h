@@ -74,28 +74,32 @@ namespace HIKARI::MESHRENDERER::ROOT_PARAM {
     constexpr UINT MaterialProgramParameters = 32;
     // Fixed material-program descriptor-index tables -> t1, space6
     constexpr UINT MaterialProgramResources = 33;
-    // Sparse renderer-owned surface feature data -> t0, space7
+    // Water surface feature records -> t0, space7
     constexpr UINT SurfaceFeatureData = 34;
-    // Current-frame hierarchical depth pyramid -> t1, space7
-    constexpr UINT ScreenSpaceDepthPyramid = 35;
-    // Current-frame packed receiver surface -> t2, space7
-    constexpr UINT ScreenSpacePackedSurface = 36;
+    // Sand surface feature records -> t4, space7
+    constexpr UINT SandSurfaceData = 35;
+    // Sand surface feature heights -> t1, space7
+    constexpr UINT SurfaceFeatureHeights = 36;
+    // Current-frame hierarchical depth pyramid -> t2, space7
+    constexpr UINT ScreenSpaceDepthPyramid = 37;
+    // Current-frame packed receiver surface -> t3, space7
+    constexpr UINT ScreenSpacePackedSurface = 38;
     // Screen-space trace validity / mip count -> b10
-    constexpr UINT ScreenSpaceTraceControl = 37;
+    constexpr UINT ScreenSpaceTraceControl = 39;
 
     constexpr UINT Count = ScreenSpaceTraceControl + 1;
 
     // Root descriptor は 2 DWORD、descriptor table は 1 DWORD。
     // Static/Skinned は JointPalette slot の型だけを置換し、同じ予算を使う。
-    constexpr UINT RootDescriptorCount = 15u;
+    constexpr UINT RootDescriptorCount = 17u;
     constexpr UINT DescriptorTableCount = 19u;
     constexpr UINT RootConstantDwordCount = 8u;
     constexpr UINT DwordCost =
         RootDescriptorCount * 2u +
         DescriptorTableCount +
         RootConstantDwordCount;
-    static_assert(Count == 38u, "Update the mesh root-signature budget.");
-    static_assert(DwordCost == 57u);
+    static_assert(Count == 40u, "Update the mesh root-signature budget.");
+    static_assert(DwordCost == 61u);
     static_assert(DwordCost <= 64u);
 
 } // namespace HIKARI::MESHRENDERER::ROOT_PARAM

@@ -219,7 +219,8 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             &gMeshRendererState.editorInteractive.surfaceGpuSceneBuffer,
             nullptr,
             &gMeshRendererState.editorInteractive.clusterGpuDrivenProducer,
-            &gMeshRendererState.editorInteractive.waterSurfaceGpuFrameBuffer);
+            &gMeshRendererState.editorInteractive.waterSurfaceGpuFrameBuffer,
+            &gMeshRendererState.sandSurfaceGpuFrameBuffer);
         if (!gMeshRendererState.editorInteractive.gpuDrivenLayer.Initialize(
                 device,
                 GetStaticRootSignature(gMeshRendererState.pipelines),

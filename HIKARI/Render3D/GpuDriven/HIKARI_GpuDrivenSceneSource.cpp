@@ -110,6 +110,8 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         }
         meshShaderJointPalettes = nullptr;
         waterSurfaceGpuData = nullptr;
+        sandSurfaceGpuData = nullptr;
+        sandSurfaceHeights = nullptr;
         layoutVersion = 0;
         sourceVersion = 0;
         dirtyBaseSourceVersion = 0;

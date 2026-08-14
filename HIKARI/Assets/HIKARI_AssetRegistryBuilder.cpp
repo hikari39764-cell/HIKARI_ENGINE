@@ -12,9 +12,9 @@
 #include "Assets/Importers/Policy/HIKARI_TextureImportPolicy.h"
 #include "Assets/Material/Compiler/HIKARI_MaterialCompiler.h"
 #include "Assets/Material/Authoring/HIKARI_MaterialInstanceResolver.h"
+#include "Assets/Material/HIKARI_MaterialBuiltInAssets.h"
 #include "Assets/Material/HIKARI_MaterialAssetData.h"
 #include "Assets/Material/HIKARI_MaterialAssetLookup.h"
-#include "Assets/Material/HIKARI_MaterialBuiltInAssets.h"
 #include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingAsset.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
 #include "Core/Content/HIKARI_EngineContentContext.h"
@@ -157,15 +157,13 @@ namespace HIKARI {
             return {};
         }
 
-        bool AppendEngineContentTextures(AssetRegistry& registry) {
-            const CONTENT::EngineContentContext& content =
-                CONTENT::GetEngineContentContext();
-            if (!content.IsOpen()) {
-                return true;
-            }
-
+        bool AppendEngineContentTextureManifest(
+            AssetRegistry& registry,
+            const CONTENT::EngineContentContext& content,
+            const char* relativeManifestPath,
+            const char* domainLabel) {
             const std::filesystem::path manifestPath =
-                content.Resolve("Vfx/BuiltinAssets.json");
+                content.Resolve(relativeManifestPath);
             nlohmann::json root{};
             std::string readError{};
             if (manifestPath.empty() ||
@@ -178,8 +176,9 @@ namespace HIKARI {
                 !root.contains("assets") ||
                 !root["assets"].is_array()) {
                 HIKARI_LOG_ERROR(
-                    "[AssetRegistryBuilder][EngineContent] invalid VFX "
-                    "asset catalog: " + readError);
+                    std::string(
+                        "[AssetRegistryBuilder][EngineContent] invalid ") +
+                    domainLabel + " asset catalog: " + readError);
                 return false;
             }
 
@@ -188,8 +187,10 @@ namespace HIKARI {
                 if (!asset.is_object() ||
                     asset.value("type", std::string{}) != "Texture") {
                     HIKARI_LOG_ERROR(
-                        "[AssetRegistryBuilder][EngineContent] unsupported "
-                        "VFX asset catalog entry");
+                        std::string(
+                            "[AssetRegistryBuilder][EngineContent] "
+                            "unsupported ") +
+                        domainLabel + " asset catalog entry");
                     ok = false;
                     continue;
                 }
@@ -201,8 +202,9 @@ namespace HIKARI {
                 if (id.empty() || sourcePath.empty() ||
                     !std::filesystem::is_regular_file(sourcePath, ec) || ec) {
                     HIKARI_LOG_ERROR(
-                        "[AssetRegistryBuilder][EngineContent] VFX texture "
-                        "is missing: " + id);
+                        std::string(
+                            "[AssetRegistryBuilder][EngineContent] ") +
+                        domainLabel + " texture is missing: " + id);
                     ok = false;
                     continue;
                 }
@@ -234,6 +236,27 @@ namespace HIKARI {
                 ok = registry.RegisterDescriptor(
                     std::move(descriptor)) && ok;
             }
+            return ok;
+        }
+
+        bool AppendEngineContentTextures(AssetRegistry& registry) {
+            const CONTENT::EngineContentContext& content =
+                CONTENT::GetEngineContentContext();
+            if (!content.IsOpen()) {
+                return true;
+            }
+
+            bool ok = AppendEngineContentTextureManifest(
+                registry,
+                content,
+                "Vfx/BuiltinAssets.json",
+                "VFX");
+            ok = AppendEngineContentTextureManifest(
+                     registry,
+                     content,
+                     "Sand/BuiltinAssets.json",
+                     "Sand") &&
+                ok;
             return ok;
         }
 
@@ -318,11 +341,56 @@ namespace HIKARI {
             return ok;
         }
 
+        bool AppendBuiltInSandMaterial(
+            AssetRegistry& registry,
+            const AssetDatabase& assetDatabase) {
+
+            PbrMaterialAssetData sand{};
+            sand.materialName = "Sand Surface (Anime Dry)";
+            sand.baseColorFactor = { 1.0f, 1.0f, 1.0f, 1.0f };
+            sand.baseColorTexture.useTexture = true;
+            sand.baseColorTexture.textureAssetGuid.value =
+                std::string(
+                    ASSETS::MATERIAL::kBuiltInSandAlbedoTextureId);
+            // GridPlane の uv は segment 単位でタイルされるため、
+            // 200m 平面で数回タイルする程度のスケールへ落とす。
+            sand.baseColorTexture.uvScale = { 0.01f, 0.01f };
+            // 法線も同じタイルスケールで一致させ、凹みの傾斜と
+            // テクスチャ細粒が矛盾しないようにする。
+            sand.normalTexture.useTexture = true;
+            sand.normalTexture.textureAssetGuid.value =
+                std::string(
+                    ASSETS::MATERIAL::kBuiltInSandNormalTextureId);
+            sand.normalTexture.uvScale = { 0.01f, 0.01f };
+            sand.normalScale = 0.72f;
+            sand.metallicFactor = 0.0f;
+            sand.roughnessFactor = 0.92f;
+            sand.doubleSided = true;
+
+            auto descriptor =
+                std::make_unique<MaterialAssetDescriptor>();
+            descriptor->id.value =
+                std::string(ASSETS::MATERIAL::kBuiltInSandMaterialAssetId);
+            descriptor->type = AssetType::Material;
+            descriptor->sourcePath = descriptor->id.value;
+            descriptor->version = 1u;
+            descriptor->sourceData =
+                MakeStandardPbrMaterialAssetData(sand);
+            descriptor->compileResult = CompileMaterialAsset(
+                descriptor->sourceData,
+                ASSETS::MATERIAL::MakeMaterialCompileOptions(
+                    assetDatabase));
+            descriptor->data =
+                ProjectPbrMaterialAssetData(descriptor->sourceData);
+            return registry.RegisterDescriptor(std::move(descriptor));
+        }
+
     }
 
     bool AssetRegistryBuilder::AppendToRegistry(const AssetDatabase& assetDatabase, AssetRegistry& registry) const {
         bool ok = AppendEngineContentTextures(registry);
         ok = AppendBuiltInMaterials(registry, assetDatabase) && ok;
+        ok = AppendBuiltInSandMaterial(registry, assetDatabase) && ok;
 
         for (const AssetRecord* record : assetDatabase.CollectAll()) {
             if (!record || !record->guid.IsValid() || record->duplicateGuid) {

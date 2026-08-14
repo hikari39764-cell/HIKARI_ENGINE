@@ -11,6 +11,12 @@ bool HikariSurfaceHasWaterSurface(uint surfaceFlags)
     return (surfaceFlags & HIKARI_SURFACE_GPU_SCENE_FLAG_WATER_SURFACE) != 0u;
 }
 
+bool HikariSurfaceHasSandSurface(uint surfaceFlags)
+{
+    return
+        (surfaceFlags & HIKARI_SURFACE_GPU_SCENE_FLAG_SAND_SURFACE) != 0u;
+}
+
 float HikariSurfaceFeatureHash31(float3 p)
 {
     p = frac(p * 0.1031f);

@@ -38,6 +38,7 @@ namespace HIKARI::RENDER3D::RUNTIME {
         PassForwardTransparent = 1u << 14,
         PassShadow = 1u << 15,
         Skinned = 1u << 16,
+        SandSurface = 1u << 17,
     };
 
     enum class SurfaceGpuSceneResourceFlags : uint32_t {
@@ -100,7 +101,8 @@ namespace HIKARI::RENDER3D::RUNTIME {
         uint32_t materialProgramFlags = 0u;
         uint32_t postGroupMask = 0u;
         // Renderer-owned sparse feature payload。index 0 は全 feature buffer で
-        // 必須の neutral sentinel とする。
+        // 必須の neutral sentinel とする。沙地/水面などが共有する engine 層の
+        // 索引であり、surface 専用の状態は buffer 側が持つ。
         uint32_t surfaceFeatureDataIndex = 0u;
         uint32_t stylizedFeaturePadding1 = 0u;
 

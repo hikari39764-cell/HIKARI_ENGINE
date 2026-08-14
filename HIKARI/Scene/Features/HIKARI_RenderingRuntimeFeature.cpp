@@ -19,6 +19,9 @@
 #include "Scene/HIKARI_ComponentSystemPolicy.h"
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
 #include "Scene/HIKARI_SystemTypeRegistry.h"
+#include "Scene/Sand/HIKARI_SandSurfaceComponent.h"
+#include "Scene/Sand/HIKARI_SandSurfaceFollowerComponent.h"
+#include "Scene/Sand/HIKARI_SandSurfaceSystem.h"
 
 namespace HIKARI {
     namespace {
@@ -50,11 +53,13 @@ namespace HIKARI {
 
             std::span<const std::string_view>
                 GetComponentTypeNames() const noexcept override {
-                static constexpr std::array<std::string_view, 7> names{
+                static constexpr std::array<std::string_view, 9> names{
                     "ModelComponent",
                     "MaterialFxComponent",
                     "ProceduralMeshComponent",
                     "WaterSurfaceComponent",
+                    "SandSurfaceComponent",
+                    "SandSurfaceFollowerComponent",
                     "LightComponent",
                     "ReflectionProbeComponent",
                     "IrradianceVolumeComponent"
@@ -64,9 +69,10 @@ namespace HIKARI {
 
             std::span<const std::string_view>
                 GetSystemIds() const noexcept override {
-                static constexpr std::array<std::string_view, 2> ids{
+                static constexpr std::array<std::string_view, 3> ids{
                     "ModelRenderSystem",
-                    "WaterSurfaceSystem"
+                    "WaterSurfaceSystem",
+                    "SandSurfaceSystem"
                 };
                 return ids;
             }
@@ -164,6 +170,47 @@ namespace HIKARI {
                     "Water Surface",
                     "Gerstner-driven animated water surface with stylized or realistic shading.");
 
+                ComponentTypeInfo sandSurface{};
+                sandSurface.typeName = "SandSurfaceComponent";
+                sandSurface.factory =
+                    []() -> std::unique_ptr<IComponent> {
+                    return std::make_unique<SandSurfaceComponent>();
+                };
+                sandSurface.requiredComponents = {
+                    "ModelComponent",
+                    "ProceduralMeshComponent"
+                };
+                sandSurface.runtimeApplyPolicy =
+                    ComponentRuntimeApplyPolicy::OnEditCommit;
+                sandSurface.initializeDefaults = [](
+                    const SceneObjectData&,
+                    nlohmann::json& properties) {
+                    SandSurfaceComponent defaults{};
+                    defaults.Serialize(properties);
+                };
+                sandSurface.presentation = RenderingPresentation(
+                    "Sand Surface",
+                    "Procedural deformable anime-style sand ground with soft sphere-contact indentations.");
+
+                ComponentTypeInfo sandFollower{};
+                sandFollower.typeName = "SandSurfaceFollowerComponent";
+                sandFollower.factory =
+                    []() -> std::unique_ptr<IComponent> {
+                    return std::make_unique<
+                        SandSurfaceFollowerComponent>();
+                };
+                sandFollower.runtimeApplyPolicy =
+                    ComponentRuntimeApplyPolicy::Immediate;
+                sandFollower.initializeDefaults = [](
+                    const SceneObjectData&,
+                    nlohmann::json& properties) {
+                    SandSurfaceFollowerComponent defaults{};
+                    defaults.Serialize(properties);
+                };
+                sandFollower.presentation = RenderingPresentation(
+                    "Sand Surface Follower",
+                    "Keeps a visual-only presentation transform riding the sampled sand height; physics stays authoritative.");
+
                 ComponentTypeInfo light{};
                 light.typeName = "LightComponent";
                 light.factory =
@@ -239,6 +286,10 @@ namespace HIKARI {
                 success = componentRegistry.Register(
                     std::move(waterSurface)) && success;
                 success = componentRegistry.Register(
+                    std::move(sandSurface)) && success;
+                success = componentRegistry.Register(
+                    std::move(sandFollower)) && success;
+                success = componentRegistry.Register(
                     std::move(light)) && success;
                 success = componentRegistry.Register(
                     std::move(reflectionProbe)) && success;
@@ -260,6 +311,14 @@ namespace HIKARI {
                     "Water Surface",
                     "Rendering"
                 }) && success;
+                success = systemTypeRegistry.Register(SystemTypeInfo{
+                    "SandSurfaceSystem",
+                    [](const nlohmann::json&) -> std::unique_ptr<ISystem> {
+                        return std::make_unique<SandSurfaceSystem>();
+                    },
+                    "Sand Surface",
+                    "Rendering"
+                }) && success;
                 return success;
             }
 
@@ -267,7 +326,7 @@ namespace HIKARI {
                 GetDefaultSystems() const noexcept override {
                 static constexpr std::array<
                     RuntimeSystemDefault,
-                    2> defaults{
+                    3> defaults{
                     RuntimeSystemDefault{
                         "ModelRenderSystem",
                         true,
@@ -275,6 +334,11 @@ namespace HIKARI {
                     },
                     RuntimeSystemDefault{
                         "WaterSurfaceSystem",
+                        true,
+                        95
+                    },
+                    RuntimeSystemDefault{
+                        "SandSurfaceSystem",
                         true,
                         95
                     }

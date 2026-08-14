@@ -9,6 +9,7 @@
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenFrame.h"
 #include "Render3D/Runtime/HIKARI_SurfaceGpuScene.h"
 #include "Render3D/Water/HIKARI_WaterSurfaceGpuData.h"
+#include "Render3D/Sand/HIKARI_SandSurfaceGpuData.h"
 #include "Vfx/Common/HIKARI_FxTypes.h"
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
@@ -68,6 +69,8 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         std::array<GpuDrivenPassSource, kGpuDrivenPassCount> passes{};
         const std::vector<std::vector<MATH::Mat4>>* meshShaderJointPalettes = nullptr;
         const std::vector<WATER::WaterSurfaceGpuData>* waterSurfaceGpuData = nullptr;
+        const std::vector<SAND::SandSurfaceGpuData>* sandSurfaceGpuData = nullptr;
+        const std::vector<float>* sandSurfaceHeights = nullptr;
         uint64_t layoutVersion = 0;
         uint64_t sourceVersion = 0;
         uint64_t dirtyBaseSourceVersion = 0;

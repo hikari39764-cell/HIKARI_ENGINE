@@ -48,6 +48,12 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                 "[MeshRenderer][WARN] Water surface feature buffer initialization failed. GPU-driven mesh pass will be unavailable.");
         }
 
+        if (!gMeshRendererState.sandSurfaceGpuFrameBuffer.Initialize(
+                device)) {
+            DEBUGLOG::PushRenderError(
+                "[MeshRenderer][WARN] SandSurface feature buffer initialization failed. Sand displacement will fall back to the base surface.");
+        }
+
         if (!gMeshRendererState.frameResources.Initialize(device, srvHeap)) {
             return false;
         }
@@ -126,7 +132,8 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             &gMeshRendererState.surfaceGpuSceneBuffer,
             &gMeshRendererState.traditionalCommandStreamBuffer,
             &gMeshRendererState.clusterGpuDrivenProducer,
-            &gMeshRendererState.waterSurfaceGpuFrameBuffer);
+            &gMeshRendererState.waterSurfaceGpuFrameBuffer,
+            &gMeshRendererState.sandSurfaceGpuFrameBuffer);
         if (!gMeshRendererState.gpuDrivenLayer.Initialize(
             device,
             GetStaticRootSignature(gMeshRendererState.pipelines),

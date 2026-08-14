@@ -360,6 +360,12 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             waterSurfaceBuffer != nullptr
                 ? waterSurfaceBuffer->GetGpuVirtualAddress()
                 : 0u;
+        ctx.sandSurfaceDataAddress =
+            gMeshRendererState.sandSurfaceGpuFrameBuffer.
+                GetDataGpuVirtualAddress();
+        ctx.surfaceFeatureHeightsAddress =
+            gMeshRendererState.sandSurfaceGpuFrameBuffer.
+                GetHeightGpuVirtualAddress();
         ctx.passKind = passKind;
         ctx.binding.cmd = ctx.cmd;
         ctx.binding.graphics = &graphics;

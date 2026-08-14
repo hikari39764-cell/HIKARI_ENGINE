@@ -1053,6 +1053,7 @@
         { "ui.sceneCreation.pointLight", "ポイントライト" },
         { "ui.sceneCreation.prefab", "プレハブ" },
         { "ui.sceneCreation.proceduralMesh", "プロシージャルメッシュ" },
+        { "ui.sceneCreation.sandSurface", "砂地面" },
         { "ui.sceneCreation.reflectionProbe", "リフレクションプローブ" },
         { "ui.sceneCreation.searchHint", "オブジェクトタイプを検索..." },
         { "ui.sceneCreation.sphere", "球" },

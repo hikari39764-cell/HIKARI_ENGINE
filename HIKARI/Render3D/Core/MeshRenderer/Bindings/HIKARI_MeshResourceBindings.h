@@ -92,8 +92,16 @@ namespace HIKARI::MESHRENDERER {
         const MeshBindingContext& ctx,
         D3D12_GPU_VIRTUAL_ADDRESS featureDataAddress);
 
+    void BindSandSurfaceData(
+        const MeshBindingContext& ctx,
+        D3D12_GPU_VIRTUAL_ADDRESS sandDataAddress);
+
     void BindScreenSpaceTraceResources(
         const MeshBindingContext& ctx);
+
+    void BindSurfaceFeatureHeights(
+        const MeshBindingContext& ctx,
+        D3D12_GPU_VIRTUAL_ADDRESS featureHeightsAddress);
 
     void BindMaterialTexturePool(const MeshBindingContext& ctx);
 

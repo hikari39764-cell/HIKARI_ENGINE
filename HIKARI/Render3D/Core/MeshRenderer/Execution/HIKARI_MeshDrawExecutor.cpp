@@ -481,6 +481,12 @@ namespace HIKARI::MESHRENDERER {
             BindSurfaceFeatureData(
                 ctx.binding,
                 ctx.surfaceFeatureDataAddress);
+            BindSandSurfaceData(
+                ctx.binding,
+                ctx.sandSurfaceDataAddress);
+            BindSurfaceFeatureHeights(
+                ctx.binding,
+                ctx.surfaceFeatureHeightsAddress);
             BindShadowMap(ctx.binding);
             if (ctx.passKind == MeshDrawPassKind::Forward) {
                 BindSkyCube(ctx.binding);
