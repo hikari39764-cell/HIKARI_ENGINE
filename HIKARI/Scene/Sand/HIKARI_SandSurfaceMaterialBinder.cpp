@@ -30,7 +30,7 @@ namespace HIKARI::SAND {
             model.GetRuntimeMaterialOverride(0u);
         if (current != nullptr &&
             current->GetBaseColorTexturePath().find(
-                "Ground054_1K-JPG_Color") != std::string::npos) {
+                "Ground101_1K-JPG_Color") != std::string::npos) {
             return true;
         }
 

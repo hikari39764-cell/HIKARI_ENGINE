@@ -195,7 +195,7 @@ namespace HIKARI {
                     // 着地した球がはっきり沈むようにする。
                     const float restPress = (std::min)(
                         state->settings.maxDepth * 0.55f,
-                        worldRadius * 0.16f + 0.03f);
+                        worldRadius * 0.24f + 0.05f);
                     const float sink =
                         surfaceHeight - ballBottom;
                     if (sink < -restPress) {

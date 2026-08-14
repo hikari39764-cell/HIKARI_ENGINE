@@ -1,4 +1,4 @@
-Ground054 (Beach Sand) PBR texture set
+ambientCG PBR texture sets used by the built-in sand surface
 
 by ambientCG, creator Lennart Demes (https://ambientcg.com)
 
@@ -10,5 +10,10 @@ dedicating them to the public domain. You may use these assets in personal
 and commercial projects. Attribution is not required; crediting ambientCG
 or creator Lennart Demes is appreciated.
 
-Asset page: https://ambientcg.com/view?id=Ground054
-Archive:   https://ambientcg.com/get?file=Ground054_1K-JPG.zip
+Albedo: Ground101 (Light Smooth Sand)
+  https://ambientcg.com/view?id=Ground101
+  https://ambientcg.com/get?file=Ground101_1K-JPG.zip
+
+Normal: Ground054 (Beach Sand), DirectX convention
+  https://ambientcg.com/view?id=Ground054
+  https://ambientcg.com/get?file=Ground054_1K-JPG.zip

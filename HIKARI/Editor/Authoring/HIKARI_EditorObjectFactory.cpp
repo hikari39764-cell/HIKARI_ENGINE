@@ -289,9 +289,9 @@ namespace HIKARI::EDITOR {
             "ProceduralMeshComponent",
             {
                 { "kind", "GridPlane" },
-                { "width", 200.0f },
+                { "width", 40.0f },
                 { "height", 1.0f },
-                { "depth", 200.0f },
+                { "depth", 40.0f },
                 { "segmentsX", 256u },
                 { "segmentsY", 256u },
                 { "segmentsZ", 1u },
@@ -320,7 +320,7 @@ namespace HIKARI::EDITOR {
                 { "shape", "Box" },
                 { "center", { 0.0f, -0.1f, 0.0f } },
                 { "rotation", { 0.0f, 0.0f, 0.0f } },
-                { "size", { 200.0f, 0.2f, 200.0f } },
+                { "size", { 40.0f, 0.2f, 40.0f } },
                 { "radius", 1.0f },
                 { "height", 0.2f },
                 { "trigger", false }

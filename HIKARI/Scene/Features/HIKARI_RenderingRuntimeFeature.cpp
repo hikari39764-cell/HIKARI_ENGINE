@@ -230,8 +230,10 @@ namespace HIKARI {
                     defaults.Serialize(properties);
                 };
                 // 空オブジェクトへ追加された場合も SceneCreationPanel と
-                // 同じ 200x200 GridPlane になるように、自動追加された
+                // 同じ 40x40 GridPlane になるように、自動追加された
                 // あるいは既存の小さい Plane を砂地メッシュへ上げる。
+                // 球スケールの凹みを十分に解像できるよう、既定の砂地は
+                // 200m ではなく 40m にしてグリッド密度を上げている。
                 sandSurface.configureDependencies = [](
                     SceneObjectData& object,
                     const std::vector<std::string>&) {
@@ -239,16 +241,23 @@ namespace HIKARI {
                         if (component.type != "ProceduralMeshComponent") {
                             continue;
                         }
-                        if (component.properties.value(
+                        const std::string kind =
+                            component.properties.value(
                                 "kind",
-                                std::string{}) != "Plane") {
+                                std::string{});
+                        const bool isPlane = kind == "Plane";
+                        const bool isSmallGrid =
+                            kind == "GridPlane" &&
+                            component.properties.value("width", 0.0f) < 50.0f &&
+                            component.properties.value("depth", 0.0f) < 50.0f;
+                        if (!isPlane && !isSmallGrid) {
                             continue;
                         }
                         component.properties = {
                             { "kind", "GridPlane" },
-                            { "width", 200.0f },
+                            { "width", 40.0f },
                             { "height", 1.0f },
-                            { "depth", 200.0f },
+                            { "depth", 40.0f },
                             { "segmentsX", 256u },
                             { "segmentsY", 256u },
                             { "segmentsZ", 1u },

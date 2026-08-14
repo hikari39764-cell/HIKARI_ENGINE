@@ -30,10 +30,10 @@ inline constexpr std::string_view kBuiltInSandMaterialAssetId =
     "generated://sand/anime-dry";
 
 // HIKARI/EngineContent/Sand/BuiltinAssets.json が登録する固定アセット ID。
-// CC0 PBR セット（ambientCG Ground054）由来。アルベドは Color、
-// 法線は DirectX 慣習（緑 -Y）の NormalDX を使用する。
+// CC0 PBR セット由来。アルベドは ambientCG Ground101（明るく平滑な砂）、
+// 法線は Ground054 の DirectX 慣習（緑 -Y）NormalDX を使用する。
 inline constexpr std::string_view kBuiltInSandAlbedoTextureId =
-    "engine.sand.texture.ground054_albedo";
+    "engine.sand.texture.ground101_albedo";
 
 inline constexpr std::string_view kBuiltInSandNormalTextureId =
     "engine.sand.texture.ground054_normal";

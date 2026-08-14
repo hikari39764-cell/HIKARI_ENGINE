@@ -11,22 +11,32 @@
       "archiveUrl": "https://ambientcg.com/get?file=Ground054_1K-JPG.zip",
       "archiveSha256": "B325EC2F167DCE95A0FABC61A2104641288CF20915419578C3EFDB46200C563E",
       "licenseFile": "Sand/Licenses/AmbientCG-CC0.txt"
+    },
+    {
+      "id": "ambientcg.ground101",
+      "name": "ambientCG Ground101 (Light Smooth Sand)",
+      "version": "2022-06-06",
+      "license": "CC0-1.0",
+      "pageUrl": "https://ambientcg.com/view?id=Ground101",
+      "archiveUrl": "https://ambientcg.com/get?file=Ground101_1K-JPG.zip",
+      "archiveSha256": "F4B3A519C79A54D3661335E2158AC1E1474C0CB5687C9537E8105FDE66D53539",
+      "licenseFile": "Sand/Licenses/AmbientCG-CC0.txt"
     }
   ],
   "assets": [
     {
-      "id": "engine.sand.texture.ground054_albedo",
+      "id": "engine.sand.texture.ground101_albedo",
       "type": "Texture",
-      "path": "Sand/Textures/Cooked/Ground054_1K-JPG_Color.htex",
-      "sourcePath": "Sand/Textures/Ground054_1K-JPG_Color.jpg",
+      "path": "Sand/Textures/Cooked/Ground101_1K-JPG_Color.htex",
+      "sourcePath": "Sand/Textures/Ground101_1K-JPG_Color.jpg",
       "colorSpace": "Srgb",
       "usage": "BaseColor",
       "compression": "BC7",
       "mipPolicy": "Generate",
-      "sourceId": "ambientcg.ground054",
-      "upstreamPath": "Ground054_1K-JPG_Color.jpg",
-      "sha256": "4157F23EE18096E05B6B575F58F49B4053F8A4CEAC129E1F899616DBB38AC02C",
-      "sourceSha256": "77C0B5AC13EEAD1420887C608B2C28209A1AE5BA70761BF29953AA23CF3DC31B"
+      "sourceId": "ambientcg.ground101",
+      "upstreamPath": "Ground101_1K-JPG_Color.jpg",
+      "sha256": "BDF267B8099088A3A8DBE8DB340FBC6720EF64AC470E2E14CFA5C6830105D31D",
+      "sourceSha256": "120CDA825F432D0066901F4B6BDCA6F49D4F264E5005A7E4048260391D574185"
     },
     {
       "id": "engine.sand.texture.ground054_normal",
