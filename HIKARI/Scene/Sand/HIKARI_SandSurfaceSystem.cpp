@@ -49,6 +49,11 @@ namespace HIKARI {
     void SandSurfaceSystem::OnWorldAttached(World& world) {
         queryService_ =
             world.Services().Find<SAND::SandSurfaceQueryService>();
+        waterQueryService_ =
+            world.Services().Find<WATER::WaterSurfaceQueryService>();
+        if (waterQueryService_ != nullptr) {
+            waterQueryService_->SetBathymetryProvider(this);
+        }
         if (queryService_ != nullptr) {
             queryService_->Clear();
             states_.clear();
@@ -57,11 +62,48 @@ namespace HIKARI {
     }
 
     void SandSurfaceSystem::OnWorldDetached(World&) {
+        if (waterQueryService_ != nullptr) {
+            waterQueryService_->SetBathymetryProvider(nullptr);
+        }
+        waterQueryService_ = nullptr;
         if (queryService_ != nullptr) {
             queryService_->Clear();
         }
         queryService_ = nullptr;
         states_.clear();
+    }
+
+    bool SandSurfaceSystem::RaycastBathymetry(
+        const WATER::WaterBathymetryRay& ray,
+        float& outDistance) const noexcept {
+
+        if (queryService_ == nullptr) {
+            return false;
+        }
+        float sandHeight = 0.0f;
+        MATH::Vec3 sandNormal{};
+        if (!queryService_->SampleWorldHeight(
+                ray.originWS,
+                sandHeight,
+                sandNormal)) {
+            return false;
+        }
+
+        const float verticalDelta = ray.originWS.y - sandHeight;
+        if (verticalDelta < 0.0f) {
+            outDistance = 0.0f;
+            return false;
+        }
+        const float downward = -(ray.directionWS.y);
+        const float distance = downward > 1.0e-4f
+            ? verticalDelta / downward
+            : verticalDelta;
+        if (distance < 0.0f ||
+            distance > ray.maximumDistance) {
+            return false;
+        }
+        outDistance = distance;
+        return true;
     }
 
     void SandSurfaceSystem::PreFixedUpdate(

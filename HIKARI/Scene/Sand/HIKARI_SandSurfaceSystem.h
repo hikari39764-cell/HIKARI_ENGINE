@@ -7,6 +7,7 @@
 #include "Scene/HIKARI_ISystem.h"
 #include "Scene/HIKARI_RuntimeObjectHandle.h"
 #include "Scene/Sand/HIKARI_SandSurfaceTypes.h"
+#include "Scene/Water/HIKARI_WaterSurfaceQueryService.h"
 
 namespace HIKARI {
 
@@ -22,7 +23,9 @@ namespace HIKARI {
     // 可変 World component を CPU 高さグリッドへ投影し、球体の接触を
     // stamp として適用する。レンダリングはこのグリッドの snapshot だけを
     // 読むため、システムが唯一の変異経路になる。
-    class SandSurfaceSystem final : public ISystem {
+    class SandSurfaceSystem final :
+        public ISystem,
+        public WATER::IWaterBathymetryProvider {
     public:
         std::string_view GetName() const override {
             return "SandSurfaceSystem";
@@ -36,6 +39,9 @@ namespace HIKARI {
         void PreRender(
             World& world,
             const FrameContext& frame) override;
+        bool RaycastBathymetry(
+            const WATER::WaterBathymetryRay& ray,
+            float& outDistance) const noexcept override;
 
     private:
         void Refresh(World& world);
@@ -58,6 +64,7 @@ namespace HIKARI {
             float sinkDepth);
 
         SAND::SandSurfaceQueryService* queryService_ = nullptr;
+        WATER::WaterSurfaceQueryService* waterQueryService_ = nullptr;
         std::unordered_map<uint64_t, SAND::SandSurfaceRuntimeStatePtr>
             states_{};
         std::unordered_map<uint64_t, MATH::Vec3> previousSphereCenters_{};
