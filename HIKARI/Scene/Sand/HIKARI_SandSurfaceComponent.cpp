@@ -116,7 +116,10 @@ namespace HIKARI {
             { "brushStrength", terrain.brush.strength },
             { "brushHardness", terrain.brush.hardness },
             { "brushFlattenHeight", terrain.brush.flattenHeight },
-            { "terrainHeights", terrain.heights },
+            {
+                "terrainHeights",
+                SAND::EncodeSandSurfaceTerrainHeights(terrain)
+            },
         };
     }
 
@@ -182,16 +185,22 @@ namespace HIKARI {
             in.value(
                 "brushFlattenHeight",
                 terrain.brush.flattenHeight);
-        if (in.contains("terrainHeights") &&
-            in["terrainHeights"].is_array()) {
-            terrain.heights.clear();
-            terrain.heights.reserve(
-                in["terrainHeights"].size());
-            for (const nlohmann::json& value : in["terrainHeights"]) {
-                terrain.heights.push_back(
-                    value.is_number()
-                        ? value.get<float>()
-                        : 0.0f);
+        if (in.contains("terrainHeights")) {
+            if (in["terrainHeights"].is_string()) {
+                (void)SAND::DecodeSandSurfaceTerrainHeights(
+                    terrain,
+                    in["terrainHeights"].get<std::string>());
+            } else if (in["terrainHeights"].is_array()) {
+                terrain.heights.clear();
+                terrain.heights.reserve(
+                    in["terrainHeights"].size());
+                for (const nlohmann::json& value :
+                    in["terrainHeights"]) {
+                    terrain.heights.push_back(
+                        value.is_number()
+                            ? value.get<float>()
+                            : 0.0f);
+                }
             }
         }
         SetTerrain(terrain);

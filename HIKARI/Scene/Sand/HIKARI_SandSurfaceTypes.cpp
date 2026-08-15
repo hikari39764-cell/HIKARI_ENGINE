@@ -1,7 +1,9 @@
 #include "Scene/Sand/HIKARI_SandSurfaceTypes.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <cmath>
+#include <string>
 
 namespace HIKARI::SAND {
 
@@ -428,6 +430,155 @@ namespace HIKARI::SAND {
                         heightScale);
             }
         }
+    }
+
+    namespace {
+        constexpr char kSandTerrainBase64Alphabet[] =
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+            "abcdefghijklmnopqrstuvwxyz"
+            "0123456789+/";
+
+        std::string Base64EncodeBytes(
+            const uint8_t* data,
+            size_t size) {
+
+            std::string out{};
+            out.reserve((size + 2u) / 3u * 4u);
+            for (size_t i = 0u; i < size; i += 3u) {
+                const uint32_t a = data[i];
+                const uint32_t b =
+                    i + 1u < size ? data[i + 1u] : 0u;
+                const uint32_t c =
+                    i + 2u < size ? data[i + 2u] : 0u;
+                const uint32_t triple =
+                    (a << 16u) | (b << 8u) | c;
+                out.push_back(
+                    kSandTerrainBase64Alphabet[
+                        (triple >> 18u) & 0x3Fu]);
+                out.push_back(
+                    kSandTerrainBase64Alphabet[
+                        (triple >> 12u) & 0x3Fu]);
+                out.push_back(
+                    i + 1u < size
+                        ? kSandTerrainBase64Alphabet[
+                            (triple >> 6u) & 0x3Fu]
+                        : '=');
+                out.push_back(
+                    i + 2u < size
+                        ? kSandTerrainBase64Alphabet[
+                            triple & 0x3Fu]
+                        : '=');
+            }
+            return out;
+        }
+
+        int Base64DecodeValue(char c) {
+            if (c >= 'A' && c <= 'Z') {
+                return c - 'A';
+            }
+            if (c >= 'a' && c <= 'z') {
+                return c - 'a' + 26;
+            }
+            if (c >= '0' && c <= '9') {
+                return c - '0' + 52;
+            }
+            if (c == '+') {
+                return 62;
+            }
+            if (c == '/') {
+                return 63;
+            }
+            return -1;
+        }
+
+        bool Base64DecodeBytes(
+            std::string_view input,
+            std::vector<uint8_t>& out) {
+
+            out.clear();
+            if (input.empty() || input.size() % 4u != 0u) {
+                return false;
+            }
+            out.reserve(input.size() / 4u * 3u);
+            uint32_t buffer = 0u;
+            int bits = 0;
+            for (char c : input) {
+                if (c == '=') {
+                    break;
+                }
+                const int value = Base64DecodeValue(c);
+                if (value < 0) {
+                    return false;
+                }
+                buffer = (buffer << 6u) |
+                    static_cast<uint32_t>(value);
+                bits += 6;
+                if (bits >= 8) {
+                    bits -= 8;
+                    out.push_back(static_cast<uint8_t>(
+                        (buffer >> bits) & 0xFFu));
+                }
+            }
+            return true;
+        }
+    }
+
+    std::string EncodeSandSurfaceTerrainHeights(
+        const SandSurfaceTerrain& terrain) {
+
+        std::vector<uint8_t> bytes{};
+        bytes.reserve(
+            terrain.heights.size() * sizeof(uint16_t));
+        for (float height : terrain.heights) {
+            const int32_t quantized = static_cast<int32_t>(
+                std::lround(std::clamp(
+                    height * 1000.0f,
+                    -32768.0f,
+                    32767.0f)));
+            const uint16_t value = static_cast<uint16_t>(
+                static_cast<int16_t>(quantized));
+            bytes.push_back(
+                static_cast<uint8_t>(value & 0xFFu));
+            bytes.push_back(static_cast<uint8_t>(
+                (value >> 8u) & 0xFFu));
+        }
+        return Base64EncodeBytes(
+            bytes.data(),
+            bytes.size());
+    }
+
+    bool DecodeSandSurfaceTerrainHeights(
+        SandSurfaceTerrain& terrain,
+        std::string_view encoded) {
+
+        std::vector<uint8_t> bytes{};
+        if (!Base64DecodeBytes(encoded, bytes)) {
+            return false;
+        }
+        const size_t count =
+            bytes.size() / sizeof(uint16_t);
+        if (count * sizeof(uint16_t) != bytes.size()) {
+            return false;
+        }
+        const uint32_t stride =
+            terrain.authoringResolution + 1u;
+        if (count !=
+            static_cast<size_t>(stride) * stride) {
+            terrain.heights.clear();
+            return false;
+        }
+        terrain.heights.resize(count);
+        for (size_t i = 0u; i < count; ++i) {
+            const uint16_t value = static_cast<uint16_t>(
+                bytes[i * 2u] |
+                (static_cast<uint16_t>(
+                    bytes[i * 2u + 1u]) << 8u));
+            terrain.heights[i] =
+                static_cast<float>(
+                    static_cast<int16_t>(value)) /
+                1000.0f;
+        }
+        return true;
     }
 
     float EvaluateSandSurfaceRippleHeight(

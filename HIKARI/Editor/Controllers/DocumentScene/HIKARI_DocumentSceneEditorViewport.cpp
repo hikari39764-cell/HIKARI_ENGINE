@@ -556,48 +556,24 @@ namespace HIKARI {
         bool viewportHovered) {
 #if defined(HIKARI_WITH_EDITOR)
         GameObject* selected = context_.selection.selectedObject;
-        if (selected == nullptr) {
-            sandTerrainStrokeActive_ = false;
-            return;
-        }
         SandSurfaceComponent* sand =
-            selected->GetComponent<SandSurfaceComponent>();
+            selected != nullptr
+                ? selected->GetComponent<SandSurfaceComponent>()
+                : nullptr;
         ProceduralMeshComponent* procedural =
-            selected->GetComponent<ProceduralMeshComponent>();
-        if (sand == nullptr || procedural == nullptr) {
-            sandTerrainStrokeActive_ = false;
-            return;
-        }
+            selected != nullptr
+                ? selected->GetComponent<ProceduralMeshComponent>()
+                : nullptr;
 
-        const ProceduralMeshSettings mesh =
-            SanitizeProceduralMeshSettings(
-                procedural->GetSettings());
-        const MATH::Vec2 halfExtents{
-            mesh.width * 0.5f,
-            mesh.depth * 0.5f
-        };
-
-        if (!ImGui::IsAnyItemActive() &&
-            ImGui::IsKeyPressed(ImGuiKey_B, false)) {
-            sandTerrainSculptActive_ = !sandTerrainSculptActive_;
-            sandTerrainStrokeActive_ = false;
-        }
-
-        ImDrawList* drawList = ImGui::GetWindowDrawList();
-        drawList->AddText(
-            ImVec2(viewport.x + 14.0f, viewport.y + 14.0f),
-            sandTerrainSculptActive_
-                ? IM_COL32(250, 196, 96, 245)
-                : IM_COL32(210, 226, 236, 210),
-            sandTerrainSculptActive_
-                ? "Sand Sculpt: ON (B) - drag to paint"
-                : "Sand Sculpt: OFF (B)");
-
-        const auto commitStroke = [&]() {
-            if (!sandTerrainStrokeActive_) {
+        const auto finishStroke = [&]() {
+            if (!sandTerrainStrokeActive_ ||
+                sand == nullptr ||
+                selected == nullptr) {
+                sandTerrainStrokeActive_ = false;
                 return;
             }
             sandTerrainStrokeActive_ = false;
+
             nlohmann::json serialized = nlohmann::json::object();
             sand->Serialize(serialized);
             if (SceneObjectData* documentObject =
@@ -613,16 +589,69 @@ namespace HIKARI {
                     break;
                 }
             }
-            context_.sceneDirty = true;
-            scene.SetUnsavedSceneChanges(true);
+
+            SceneObjectAuthoringHistoryRequest history{};
+            history.label = "Sculpt Sand Terrain";
+            history.beforeObjects = sandBrushBeforeObjects_;
+            history.afterObjects = scene.GetSceneDocument().objects;
+            history.beforeCamera = sandBrushBeforeCamera_;
+            history.afterCamera = scene.GetSceneDocument().camera;
+            history.dirtyBefore = sandBrushDirtyBefore_;
+            history.runtimeWorldAffected = true;
+            history.runtimeWorldRefreshRequired = true;
+            CommitSceneObjectAuthoringHistory(
+                scene,
+                std::move(history));
         };
 
-        if (!sandTerrainSculptActive_ ||
-            !viewportHovered ||
-            !ImGui::IsMouseDown(ImGuiMouseButton_Left) ||
-            ImGui::IsAnyItemActive()) {
-            commitStroke();
+        if (sand == nullptr || procedural == nullptr) {
+            finishStroke();
             return;
+        }
+
+        const ProceduralMeshSettings mesh =
+            SanitizeProceduralMeshSettings(
+                procedural->GetSettings());
+        const MATH::Vec2 halfExtents{
+            mesh.width * 0.5f,
+            mesh.depth * 0.5f
+        };
+
+        if (!ImGui::IsAnyItemActive() &&
+            ImGui::IsKeyPressed(ImGuiKey_B, false)) {
+            sandTerrainSculptActive_ = !sandTerrainSculptActive_;
+            finishStroke();
+        }
+
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        drawList->AddText(
+            ImVec2(viewport.x + 14.0f, viewport.y + 14.0f),
+            sandTerrainSculptActive_
+                ? IM_COL32(250, 196, 96, 245)
+                : IM_COL32(210, 226, 236, 210),
+            sandTerrainSculptActive_
+                ? "Sand Sculpt: ON (B) - drag to paint"
+                : "Sand Sculpt: OFF (B)");
+
+        const bool pointerDown =
+            sandTerrainSculptActive_ &&
+            viewportHovered &&
+            ImGui::IsMouseDown(ImGuiMouseButton_Left) &&
+            !ImGui::IsAnyItemActive();
+        if (!pointerDown) {
+            finishStroke();
+            return;
+        }
+
+        if (!sandTerrainStrokeActive_) {
+            sandBrushBeforeObjects_ =
+                scene.GetSceneDocument().objects;
+            sandBrushBeforeCamera_ =
+                scene.GetSceneDocument().camera;
+            sandBrushDirtyBefore_ =
+                context_.sceneDirty ||
+                scene.HasUnsavedSceneChanges();
+            sandTerrainStrokeActive_ = true;
         }
 
         const Camera3D& camera = scene.GetCamera();
@@ -673,7 +702,6 @@ namespace HIKARI {
                 if (std::abs(localXZ.x) <= halfExtents.x &&
                     std::abs(localXZ.y) <= halfExtents.y) {
                     sand->SculptTerrain(halfExtents, localXZ);
-                    sandTerrainStrokeActive_ = true;
                 }
             }
         }

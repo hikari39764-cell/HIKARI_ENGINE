@@ -214,6 +214,9 @@ namespace HIKARI {
         bool historyExternalDirty_ = false;
         bool sandTerrainSculptActive_ = false;
         bool sandTerrainStrokeActive_ = false;
+        std::vector<SceneObjectData> sandBrushBeforeObjects_{};
+        SceneCameraSettings sandBrushBeforeCamera_{};
+        bool sandBrushDirtyBefore_ = false;
     };
 
 } // namespace HIKARI

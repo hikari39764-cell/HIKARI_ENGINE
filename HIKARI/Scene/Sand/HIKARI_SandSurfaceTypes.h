@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -78,6 +79,12 @@ namespace HIKARI::SAND {
         const MATH::Vec2& halfExtents,
         float rippleAmount,
         float heightScale) noexcept;
+
+    std::string EncodeSandSurfaceTerrainHeights(
+        const SandSurfaceTerrain& terrain);
+    bool DecodeSandSurfaceTerrainHeights(
+        SandSurfaceTerrain& terrain,
+        std::string_view encoded);
 
     struct SandSurfaceSettings {
         SandSurfaceStyle style = SandSurfaceStyle::AnimeDry;
