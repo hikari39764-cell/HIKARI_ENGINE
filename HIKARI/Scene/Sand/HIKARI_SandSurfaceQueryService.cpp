@@ -91,12 +91,12 @@ namespace HIKARI::SAND {
             return false;
         }
 
-        const float base = EvaluateSandSurfaceBaseHeight(
+        const float combined = SampleGrid(state, u, v);
+        const float ripple = EvaluateSandSurfaceRippleHeight(
             localXZ,
             state.settings.rippleAmount,
             state.settings.heightScale);
-        const float deform = SampleGrid(state, u, v);
-        outHeight = base + deform;
+        outHeight = combined + ripple;
 
         const uint32_t resolution =
             (std::max)(state.gridResolution, 1u);

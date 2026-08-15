@@ -70,6 +70,39 @@ namespace HIKARI::SAND {
         return fallback;
     }
 
+    const char* ToString(SandSurfaceBrushMode mode) noexcept {
+        switch (mode) {
+        case SandSurfaceBrushMode::Raise:
+            return "raise";
+        case SandSurfaceBrushMode::Lower:
+            return "lower";
+        case SandSurfaceBrushMode::Smooth:
+            return "smooth";
+        case SandSurfaceBrushMode::Flatten:
+        default:
+            return "flatten";
+        }
+    }
+
+    SandSurfaceBrushMode ParseSandSurfaceBrushMode(
+        std::string_view value,
+        SandSurfaceBrushMode fallback) noexcept {
+
+        if (value == "raise" || value == "Raise") {
+            return SandSurfaceBrushMode::Raise;
+        }
+        if (value == "lower" || value == "Lower") {
+            return SandSurfaceBrushMode::Lower;
+        }
+        if (value == "smooth" || value == "Smooth") {
+            return SandSurfaceBrushMode::Smooth;
+        }
+        if (value == "flatten" || value == "Flatten") {
+            return SandSurfaceBrushMode::Flatten;
+        }
+        return fallback;
+    }
+
     SandSurfaceSettings SanitizeSandSurfaceSettings(
         SandSurfaceSettings settings) noexcept {
 
@@ -146,7 +179,258 @@ namespace HIKARI::SAND {
             lhs.toonBandHardness == rhs.toonBandHardness;
     }
 
-    float EvaluateSandSurfaceBaseHeight(
+    SandSurfaceBrush SanitizeSandSurfaceBrush(
+        SandSurfaceBrush brush) noexcept {
+
+        const uint8_t modeIndex =
+            static_cast<uint8_t>(brush.mode);
+        brush.mode = modeIndex <=
+                static_cast<uint8_t>(SandSurfaceBrushMode::Flatten)
+            ? brush.mode
+            : SandSurfaceBrushMode::Raise;
+        brush.radius = ClampPositive(brush.radius, 0.01f, 100.0f);
+        brush.strength = ClampPositive(brush.strength, 0.0f, 10.0f);
+        brush.hardness = std::clamp(
+            FiniteOr(brush.hardness, 0.5f), 0.0f, 1.0f);
+        brush.flattenHeight = std::clamp(
+            FiniteOr(brush.flattenHeight, 0.0f), -10.0f, 10.0f);
+        return brush;
+    }
+
+    SandSurfaceTerrain SanitizeSandSurfaceTerrain(
+        SandSurfaceTerrain terrain) noexcept {
+
+        terrain.authoringResolution = std::clamp(
+            terrain.authoringResolution,
+            kSandSurfaceMinTerrainResolution,
+            kSandSurfaceMaxTerrainResolution);
+        const uint32_t stride = terrain.authoringResolution + 1u;
+        const size_t count =
+            static_cast<size_t>(stride) * stride;
+        if (terrain.heights.size() != count) {
+            terrain.heights.assign(count, 0.0f);
+        }
+        terrain.brush = SanitizeSandSurfaceBrush(terrain.brush);
+        return terrain;
+    }
+
+    bool SandSurfaceTerrainEqual(
+        const SandSurfaceTerrain& lhs,
+        const SandSurfaceTerrain& rhs) noexcept {
+
+        return lhs.authoringResolution == rhs.authoringResolution &&
+            lhs.heights == rhs.heights &&
+            lhs.brush.mode == rhs.brush.mode &&
+            lhs.brush.radius == rhs.brush.radius &&
+            lhs.brush.strength == rhs.brush.strength &&
+            lhs.brush.hardness == rhs.brush.hardness &&
+            lhs.brush.flattenHeight == rhs.brush.flattenHeight;
+    }
+
+    float SampleSandSurfaceTerrain(
+        const SandSurfaceTerrain& terrain,
+        const MATH::Vec2& halfExtents,
+        const MATH::Vec2& localXZ) noexcept {
+
+        const uint32_t resolution =
+            (std::max)(terrain.authoringResolution, 1u);
+        const uint32_t stride = resolution + 1u;
+        if (terrain.heights.size() !=
+            static_cast<size_t>(stride) * stride) {
+            return 0.0f;
+        }
+        const float halfX = (std::max)(halfExtents.x, 1.0e-3f);
+        const float halfZ = (std::max)(halfExtents.y, 1.0e-3f);
+        const float u = std::clamp(
+            localXZ.x / (2.0f * halfX) + 0.5f, 0.0f, 1.0f);
+        const float v = std::clamp(
+            localXZ.y / (2.0f * halfZ) + 0.5f, 0.0f, 1.0f);
+        const float fu = u * static_cast<float>(resolution);
+        const float fv = v * static_cast<float>(resolution);
+        const uint32_t x0 = static_cast<uint32_t>(fu);
+        const uint32_t y0 = static_cast<uint32_t>(fv);
+        const uint32_t x1 = (std::min)(x0 + 1u, resolution);
+        const uint32_t y1 = (std::min)(y0 + 1u, resolution);
+        const float tx = fu - static_cast<float>(x0);
+        const float ty = fv - static_cast<float>(y0);
+        const float h00 = terrain.heights[
+            static_cast<size_t>(y0) * stride + x0];
+        const float h10 = terrain.heights[
+            static_cast<size_t>(y0) * stride + x1];
+        const float h01 = terrain.heights[
+            static_cast<size_t>(y1) * stride + x0];
+        const float h11 = terrain.heights[
+            static_cast<size_t>(y1) * stride + x1];
+        return std::lerp(
+            std::lerp(h00, h10, tx),
+            std::lerp(h01, h11, tx),
+            ty);
+    }
+
+    void SculptSandSurfaceTerrain(
+        SandSurfaceTerrain& terrain,
+        const MATH::Vec2& halfExtents,
+        const MATH::Vec2& localXZ) noexcept {
+
+        terrain.authoringResolution = std::clamp(
+            terrain.authoringResolution,
+            kSandSurfaceMinTerrainResolution,
+            kSandSurfaceMaxTerrainResolution);
+        const uint32_t resolution = terrain.authoringResolution;
+        const uint32_t stride = resolution + 1u;
+        const size_t count =
+            static_cast<size_t>(stride) * stride;
+        if (terrain.heights.size() != count) {
+            terrain.heights.assign(count, 0.0f);
+        }
+
+        const SandSurfaceBrush brush =
+            SanitizeSandSurfaceBrush(terrain.brush);
+        const float halfX = (std::max)(halfExtents.x, 1.0e-3f);
+        const float halfZ = (std::max)(halfExtents.y, 1.0e-3f);
+        const float cellX = (2.0f * halfX) /
+            static_cast<float>(resolution);
+        const float cellZ = (2.0f * halfZ) /
+            static_cast<float>(resolution);
+        const float cell = (std::max)(
+            (std::min)(cellX, cellZ), 1.0e-4f);
+        const float radius = (std::max)(brush.radius, cell);
+        const int extent =
+            static_cast<int>(radius / cell) + 2;
+
+        const float u = std::clamp(
+            localXZ.x / (2.0f * halfX) + 0.5f, 0.0f, 1.0f);
+        const float v = std::clamp(
+            localXZ.y / (2.0f * halfZ) + 0.5f, 0.0f, 1.0f);
+        const int centerX = static_cast<int>(std::lround(
+            u * static_cast<float>(resolution)));
+        const int centerZ = static_cast<int>(std::lround(
+            v * static_cast<float>(resolution)));
+        const float hardnessExp = 1.0f + brush.hardness * 7.0f;
+
+        for (int z = centerZ - extent;
+            z <= centerZ + extent;
+            ++z) {
+            for (int x = centerX - extent;
+                x <= centerX + extent;
+                ++x) {
+                if (x < 0 || z < 0 ||
+                    x > static_cast<int>(resolution) ||
+                    z > static_cast<int>(resolution)) {
+                    continue;
+                }
+                const float dx =
+                    (static_cast<float>(x) /
+                        static_cast<float>(resolution) - 0.5f) *
+                    2.0f * halfX - localXZ.x;
+                const float dz =
+                    (static_cast<float>(z) /
+                        static_cast<float>(resolution) - 0.5f) *
+                    2.0f * halfZ - localXZ.y;
+                const float distance = std::sqrt(dx * dx + dz * dz);
+                const float normalized =
+                    std::clamp(distance / radius, 0.0f, 1.0f);
+                const float falloff = std::pow(
+                    (std::max)(1.0f - normalized, 0.0f),
+                    hardnessExp);
+
+                const size_t index =
+                    static_cast<size_t>(z) * stride + x;
+                float& height = terrain.heights[index];
+                switch (brush.mode) {
+                case SandSurfaceBrushMode::Raise:
+                    height += brush.strength * falloff;
+                    break;
+                case SandSurfaceBrushMode::Lower:
+                    height -= brush.strength * falloff;
+                    break;
+                case SandSurfaceBrushMode::Smooth: {
+                    float neighborSum = 0.0f;
+                    uint32_t neighborCount = 0u;
+                    const auto accumulate = [&](int nx, int nz) {
+                        if (nx >= 0 && nz >= 0 &&
+                            nx <= static_cast<int>(resolution) &&
+                            nz <= static_cast<int>(resolution)) {
+                            neighborSum += terrain.heights[
+                                static_cast<size_t>(nz) * stride + nx];
+                            ++neighborCount;
+                        }
+                    };
+                    accumulate(x - 1, z);
+                    accumulate(x + 1, z);
+                    accumulate(x, z - 1);
+                    accumulate(x, z + 1);
+                    if (neighborCount != 0u) {
+                        const float average = neighborSum /
+                            static_cast<float>(neighborCount);
+                        const float blend = std::clamp(
+                            brush.strength, 0.0f, 1.0f) * falloff;
+                        height += (average - height) * blend;
+                    }
+                    break;
+                }
+                case SandSurfaceBrushMode::Flatten: {
+                    const float blend = std::clamp(
+                        brush.strength, 0.0f, 1.0f) * falloff;
+                    height += (brush.flattenHeight - height) * blend;
+                    break;
+                }
+                }
+            }
+        }
+    }
+
+    void ResetSandSurfaceTerrain(
+        SandSurfaceTerrain& terrain) noexcept {
+
+        terrain.authoringResolution = std::clamp(
+            terrain.authoringResolution,
+            kSandSurfaceMinTerrainResolution,
+            kSandSurfaceMaxTerrainResolution);
+        const uint32_t stride = terrain.authoringResolution + 1u;
+        terrain.heights.assign(
+            static_cast<size_t>(stride) * stride,
+            0.0f);
+    }
+
+    void BakeSandSurfaceTerrain(
+        SandSurfaceTerrain& terrain,
+        const MATH::Vec2& halfExtents,
+        float rippleAmount,
+        float heightScale) noexcept {
+
+        (void)rippleAmount;
+        terrain.authoringResolution = std::clamp(
+            terrain.authoringResolution,
+            kSandSurfaceMinTerrainResolution,
+            kSandSurfaceMaxTerrainResolution);
+        const uint32_t resolution = terrain.authoringResolution;
+        const uint32_t stride = resolution + 1u;
+        terrain.heights.assign(
+            static_cast<size_t>(stride) * stride,
+            0.0f);
+        const float halfX = (std::max)(halfExtents.x, 1.0e-3f);
+        const float halfZ = (std::max)(halfExtents.y, 1.0e-3f);
+        for (uint32_t z = 0u; z <= resolution; ++z) {
+            for (uint32_t x = 0u; x <= resolution; ++x) {
+                const MATH::Vec2 localXZ{
+                    (static_cast<float>(x) /
+                        static_cast<float>(resolution) - 0.5f) *
+                        2.0f * halfX,
+                    (static_cast<float>(z) /
+                        static_cast<float>(resolution) - 0.5f) *
+                        2.0f * halfZ
+                };
+                terrain.heights[
+                    static_cast<size_t>(z) * stride + x] =
+                    EvaluateSandSurfaceDuneHeight(
+                        localXZ,
+                        heightScale);
+            }
+        }
+    }
+
+    float EvaluateSandSurfaceRippleHeight(
         const MATH::Vec2& localXZ,
         float rippleAmount,
         float heightScale) noexcept {
@@ -155,9 +439,22 @@ namespace HIKARI::SAND {
             std::clamp(FiniteOr(rippleAmount, 0.45f), 0.0f, 3.0f);
         const float safeScale =
             std::clamp(FiniteOr(heightScale, 0.32f), 0.0f, 2.0f);
+        const float ripple =
+            std::sin(localXZ.x * 0.85f +
+                1.7f * std::sin(localXZ.y * 0.21f)) *
+                0.012f * safeRipple +
+            std::sin(localXZ.y * 0.63f -
+                0.9f * std::sin(localXZ.x * 0.17f)) *
+                0.009f * safeRipple;
+        return ripple * safeScale;
+    }
 
-        // 3 オクターブの value noise で低周波の砂丘を作る。
-        // 値と周期は HLSL 側の HikariEvaluateSandBaseHeight と一致させる。
+    float EvaluateSandSurfaceDuneHeight(
+        const MATH::Vec2& localXZ,
+        float heightScale) noexcept {
+
+        const float safeScale =
+            std::clamp(FiniteOr(heightScale, 0.32f), 0.0f, 2.0f);
         const float dune =
             ValueNoise({
                 localXZ.x * 0.045f,
@@ -168,14 +465,7 @@ namespace HIKARI::SAND {
             ValueNoise({
                 localXZ.x * 0.27f + 2.1f,
                 localXZ.y * 0.27f + 9.4f }) * 0.08f;
-        const float ripple =
-            std::sin(localXZ.x * 0.85f +
-                1.7f * std::sin(localXZ.y * 0.21f)) *
-                0.012f * safeRipple +
-            std::sin(localXZ.y * 0.63f -
-                0.9f * std::sin(localXZ.x * 0.17f)) *
-                0.009f * safeRipple;
-        return (dune * 0.16f + ripple) * safeScale;
+        return dune * 0.16f * safeScale;
     }
 
 } // namespace HIKARI::SAND

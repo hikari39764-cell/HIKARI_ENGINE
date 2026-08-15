@@ -272,6 +272,94 @@ namespace HIKARI {
                 sandSurface.presentation = RenderingPresentation(
                     "Sand Surface",
                     "Procedural deformable anime-style sand ground with soft sphere-contact indentations.");
+                sandSurface.authoringCommands = {
+                    {
+                        "terrain.sculpt",
+                        "Sculpt one brush stroke into the authored sand terrain.",
+                        {
+                            { "localX", AuthoringCommandParameterType::Float, true, "Brush center local X." },
+                            { "localZ", AuthoringCommandParameterType::Float, true, "Brush center local Z." },
+                            { "halfExtentsX", AuthoringCommandParameterType::Float, true, "Terrain half extent X." },
+                            { "halfExtentsZ", AuthoringCommandParameterType::Float, true, "Terrain half extent Z." },
+                        },
+                        [](IComponent& base, const nlohmann::json& args) {
+                            auto* component =
+                                dynamic_cast<SandSurfaceComponent*>(&base);
+                            if (component == nullptr) {
+                                return AuthoringCommandResult{
+                                    false,
+                                    "TYPE_MISMATCH",
+                                    "Component is not a sand surface."
+                                };
+                            }
+                            component->SculptTerrain(
+                                {
+                                    args.value("halfExtentsX", 10.0f),
+                                    args.value("halfExtentsZ", 10.0f)
+                                },
+                                {
+                                    args.value("localX", 0.0f),
+                                    args.value("localZ", 0.0f)
+                                });
+                            return AuthoringCommandResult{
+                                true,
+                                "OK",
+                                "Sand terrain sculpted."
+                            };
+                        }
+                    },
+                    {
+                        "terrain.reset",
+                        "Clear the authored sand terrain to flat.",
+                        {},
+                        [](IComponent& base, const nlohmann::json&) {
+                            auto* component =
+                                dynamic_cast<SandSurfaceComponent*>(&base);
+                            if (component == nullptr) {
+                                return AuthoringCommandResult{
+                                    false,
+                                    "TYPE_MISMATCH",
+                                    "Component is not a sand surface."
+                                };
+                            }
+                            component->ResetTerrain();
+                            return AuthoringCommandResult{
+                                true,
+                                "OK",
+                                "Sand terrain reset."
+                            };
+                        }
+                    },
+                    {
+                        "terrain.bake",
+                        "Bake the procedural dune height into the authored terrain.",
+                        {
+                            { "halfExtentsX", AuthoringCommandParameterType::Float, true, "Terrain half extent X." },
+                            { "halfExtentsZ", AuthoringCommandParameterType::Float, true, "Terrain half extent Z." },
+                        },
+                        [](IComponent& base, const nlohmann::json& args) {
+                            auto* component =
+                                dynamic_cast<SandSurfaceComponent*>(&base);
+                            if (component == nullptr) {
+                                return AuthoringCommandResult{
+                                    false,
+                                    "TYPE_MISMATCH",
+                                    "Component is not a sand surface."
+                                };
+                            }
+                            component->BakeTerrain(
+                                {
+                                    args.value("halfExtentsX", 10.0f),
+                                    args.value("halfExtentsZ", 10.0f)
+                                });
+                            return AuthoringCommandResult{
+                                true,
+                                "OK",
+                                "Sand terrain baked from procedural dunes."
+                            };
+                        }
+                    },
+                };
 
                 ComponentTypeInfo sandFollower{};
                 sandFollower.typeName = "SandSurfaceFollowerComponent";

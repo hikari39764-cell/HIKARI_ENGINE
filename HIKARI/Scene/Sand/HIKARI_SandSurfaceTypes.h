@@ -2,12 +2,13 @@
 
 #include <cstdint>
 #include <string_view>
+#include <vector>
 
 #include "Render3D/HIKARI_Math3D.h"
 
 namespace HIKARI::SAND {
 
-    constexpr uint32_t kSandSurfaceSchemaVersion = 1u;
+    constexpr uint32_t kSandSurfaceSchemaVersion = 2u;
     constexpr uint32_t kSandSurfaceMinGridResolution = 16u;
     constexpr uint32_t kSandSurfaceMaxGridResolution = 512u;
 
@@ -19,6 +20,64 @@ namespace HIKARI::SAND {
     SandSurfaceStyle ParseSandSurfaceStyle(
         std::string_view value,
         SandSurfaceStyle fallback = SandSurfaceStyle::AnimeDry) noexcept;
+
+    enum class SandSurfaceBrushMode : uint8_t {
+        Raise = 0,
+        Lower = 1,
+        Smooth = 2,
+        Flatten = 3,
+    };
+
+    const char* ToString(SandSurfaceBrushMode mode) noexcept;
+    SandSurfaceBrushMode ParseSandSurfaceBrushMode(
+        std::string_view value,
+        SandSurfaceBrushMode fallback =
+            SandSurfaceBrushMode::Raise) noexcept;
+
+    struct SandSurfaceBrush {
+        SandSurfaceBrushMode mode = SandSurfaceBrushMode::Raise;
+        float radius = 1.0f;
+        float strength = 0.12f;
+        float hardness = 0.5f;
+        float flattenHeight = 0.0f;
+    };
+
+    constexpr uint32_t kSandSurfaceMinTerrainResolution = 16u;
+    constexpr uint32_t kSandSurfaceMaxTerrainResolution = 128u;
+    constexpr uint32_t kSandSurfaceDefaultTerrainResolution = 64u;
+
+    // コンポーネントが保持する authoring 用の地形高さ。単位はローカルメートル。
+    // heights は (authoringResolution + 1)^2 個で、グリッドは halfExtents 相当の
+    // ローカル XZ 空間を正規化した [0,1]^2 にマップされる。
+    struct SandSurfaceTerrain {
+        uint32_t authoringResolution = kSandSurfaceDefaultTerrainResolution;
+        std::vector<float> heights{};
+        SandSurfaceBrush brush{};
+    };
+
+    SandSurfaceBrush SanitizeSandSurfaceBrush(
+        SandSurfaceBrush brush) noexcept;
+    SandSurfaceTerrain SanitizeSandSurfaceTerrain(
+        SandSurfaceTerrain terrain) noexcept;
+    bool SandSurfaceTerrainEqual(
+        const SandSurfaceTerrain& lhs,
+        const SandSurfaceTerrain& rhs) noexcept;
+
+    float SampleSandSurfaceTerrain(
+        const SandSurfaceTerrain& terrain,
+        const MATH::Vec2& halfExtents,
+        const MATH::Vec2& localXZ) noexcept;
+    void SculptSandSurfaceTerrain(
+        SandSurfaceTerrain& terrain,
+        const MATH::Vec2& halfExtents,
+        const MATH::Vec2& localXZ) noexcept;
+    void ResetSandSurfaceTerrain(
+        SandSurfaceTerrain& terrain) noexcept;
+    void BakeSandSurfaceTerrain(
+        SandSurfaceTerrain& terrain,
+        const MATH::Vec2& halfExtents,
+        float rippleAmount,
+        float heightScale) noexcept;
 
     struct SandSurfaceSettings {
         SandSurfaceStyle style = SandSurfaceStyle::AnimeDry;
@@ -59,9 +118,13 @@ namespace HIKARI::SAND {
 
     // CPU クエリと GPU シェーダが同一の砂丘底形を共有するための
     // 決定論的ノイズ関数。interaction グリッドはこの上に重なる凹みだけを持つ。
-    float EvaluateSandSurfaceBaseHeight(
+    float EvaluateSandSurfaceRippleHeight(
         const MATH::Vec2& localXZ,
         float rippleAmount,
+        float heightScale) noexcept;
+
+    float EvaluateSandSurfaceDuneHeight(
+        const MATH::Vec2& localXZ,
         float heightScale) noexcept;
 
 } // namespace HIKARI::SAND

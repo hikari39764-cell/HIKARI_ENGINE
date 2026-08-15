@@ -79,14 +79,20 @@ float4 HikariShadeSandSurface(
         input.uv,
         input.uv1,
         gLinearWrap);
-    // さらに穏やかなリップルを重ね、のっぺりした見た目を避ける。
-    const float rippleX =
-        HikariSandValueNoise(worldPos.xz * 1.7f + 3.1f) - 0.5f;
-    const float rippleZ =
-        HikariSandValueNoise(worldPos.xz * 1.9f + 9.7f) - 0.5f;
+    // 風向きに沿った砂紋。ランダムノイズではなく、方向性のある
+    // 波を法線へ加えることで、砂漠らしい細かい明暗を作る。
+    const float2 windDir = normalize(float2(0.93f, 0.37f));
+    const float ripplePhase =
+        dot(worldPos.xz, windDir) * 2.4f +
+        HikariSandValueNoise(worldPos.xz * 0.32f + 7.0f) * 1.7f;
+    const float rippleAmplitude =
+        p.rippleAmount * 0.12f * saturate(shadingNormal.y);
     shadingNormal = normalize(
         shadingNormal +
-        float3(rippleX, 0.0f, rippleZ) * p.rippleAmount * 0.10f);
+        float3(
+            -windDir.x * sin(ripplePhase),
+            0.0f,
+            -windDir.y * sin(ripplePhase)) * rippleAmplitude);
 
     const float ndotl = saturate(dot(shadingNormal, lightDir));
     // アニメ調：ndotl を 2..4 段のセル分帯へ量子化し、帯の境界を
@@ -102,6 +108,12 @@ float4 HikariShadeSandSurface(
         (bandBase + bandEdge) / max(bandCount - 1.0f, 1.0f));
     const float3 diffuse = lerp(p.darkTint, p.lightTint, ramp);
     float3 color = albedo.rgb * diffuse;
+
+    // 海面ハイライトに似た広い光沢を加え、流れるような砂の質感を作る。
+    const float3 halfDir = normalize(lightDir + viewDir);
+    const float oceanSpecular =
+        pow(saturate(dot(shadingNormal, halfDir)), 64.0f);
+    color += oceanSpecular * 0.16f * p.lightTint;
 
     // 砂粒のきらめき。高周波 hash で細かい輝点を作り、硬さを避ける。
     const float grain = HikariSandHash21(

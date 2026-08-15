@@ -106,6 +106,10 @@ namespace HIKARI {
         void DrawGameViewportWindow(
             DocumentSceneBase& scene,
             EDITOR::EditorPlaySession& playSession);
+        void HandleSandTerrainBrush(
+            DocumentSceneBase& scene,
+            const EDITOR::SceneViewportRect& viewport,
+            bool viewportHovered);
         void ToggleGamePreview(
             DocumentSceneBase& scene,
             EDITOR::EditorPlaySession& playSession);
@@ -208,6 +212,8 @@ namespace HIKARI {
         Camera3D sceneViewEditorCameraSnapshot_{};
         DebugCameraController3D sceneViewDebugCameraSnapshot_{};
         bool historyExternalDirty_ = false;
+        bool sandTerrainSculptActive_ = false;
+        bool sandTerrainStrokeActive_ = false;
     };
 
 } // namespace HIKARI

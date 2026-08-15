@@ -6,6 +6,7 @@
 
 #include "Scene/HIKARI_ISystem.h"
 #include "Scene/HIKARI_RuntimeObjectHandle.h"
+#include "Scene/Sand/HIKARI_SandSurfaceTypes.h"
 
 namespace HIKARI {
 
@@ -44,12 +45,11 @@ namespace HIKARI {
         void RelaxState(
             SAND::SandSurfaceRuntimeState& state,
             float fixedDt);
-        void ApplyStamp(
+        void SyncAuthoredTerrain(
             SAND::SandSurfaceRuntimeState& state,
-            float localX,
-            float localZ,
-            float radius,
-            float depth);
+            const SAND::SandSurfaceTerrain& terrain);
+        void RebuildCombinedHeights(
+            SAND::SandSurfaceRuntimeState& state);
         void ApplySphereImprint(
             SAND::SandSurfaceRuntimeState& state,
             float localX,
@@ -60,6 +60,7 @@ namespace HIKARI {
         SAND::SandSurfaceQueryService* queryService_ = nullptr;
         std::unordered_map<uint64_t, SAND::SandSurfaceRuntimeStatePtr>
             states_{};
+        std::unordered_map<uint64_t, MATH::Vec3> previousSphereCenters_{};
     };
 
 } // namespace HIKARI

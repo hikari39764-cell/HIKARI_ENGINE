@@ -9,12 +9,12 @@ float HikariSandSampleSurfaceHeight(
 {
     const float2 uv =
         localXZ / p.extents + 0.5f;
-    const float deform = HikariSandSampleHeight(p, uv);
-    const float base = HikariEvaluateSandBaseHeight(
+    const float authored = HikariSandSampleHeight(p, uv);
+    const float ripple = HikariEvaluateSandRippleHeight(
         localXZ,
         p.rippleAmount,
         p.heightScale);
-    return base + deform;
+    return authored + ripple;
 }
 
 void HikariApplySandSurfaceDeform(

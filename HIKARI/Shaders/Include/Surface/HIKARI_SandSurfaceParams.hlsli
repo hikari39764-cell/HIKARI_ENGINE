@@ -131,23 +131,19 @@ float HikariSandValueNoise(float2 noisePoint)
     return lerp(lerp(a, b, fade.x), lerp(c, d, fade.x), fade.y);
 }
 
-float HikariEvaluateSandBaseHeight(
+float HikariEvaluateSandRippleHeight(
     float2 localXZ,
     float rippleAmount,
     float heightScale)
 {
     const float safeRipple = clamp(rippleAmount, 0.0f, 3.0f);
     const float safeScale = clamp(heightScale, 0.0f, 2.0f);
-    const float dune =
-        HikariSandValueNoise(localXZ * 0.045f) * 0.72f +
-        HikariSandValueNoise(localXZ * 0.11f + float2(7.3f, 2.9f)) * 0.20f +
-        HikariSandValueNoise(localXZ * 0.27f + float2(2.1f, 9.4f)) * 0.08f;
     const float ripple =
         sin(localXZ.x * 0.85f + 1.7f * sin(localXZ.y * 0.21f)) *
             0.012f * safeRipple +
         sin(localXZ.y * 0.63f - 0.9f * sin(localXZ.x * 0.17f)) *
             0.009f * safeRipple;
-    return (dune * 0.16f + ripple) * safeScale;
+    return ripple * safeScale;
 }
 
 #endif

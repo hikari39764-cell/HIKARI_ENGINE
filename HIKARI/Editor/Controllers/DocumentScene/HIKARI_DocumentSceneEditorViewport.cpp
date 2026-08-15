@@ -13,9 +13,12 @@
 #include "Runtime/Presentation/HIKARI_FramePresentationService.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Scene/Components/HIKARI_CameraComponent.h"
+#include "Scene/Components/HIKARI_ProceduralMeshComponent.h"
 #include "Scene/Debug/HIKARI_ComponentGizmoRenderer.h"
 #include "Scene/HIKARI_GameObject.h"
+#include "Scene/HIKARI_SceneDocument.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
+#include "Scene/Sand/HIKARI_SandSurfaceComponent.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
 
 #include <algorithm>
@@ -486,6 +489,10 @@ namespace HIKARI {
                 imageOrigin,
                 imageSize);
             DrawViewportContextMenu(scene);
+            HandleSandTerrainBrush(
+                scene,
+                sceneViewportRect,
+                viewportImageHovered);
         }
         viewportTransformHistory_.EndFrame(scene.GetSceneDocument());
 
@@ -540,6 +547,140 @@ namespace HIKARI {
 #else
         (void)scene;
         (void)playSession;
+#endif
+    }
+
+    void DocumentSceneEditorController::HandleSandTerrainBrush(
+        DocumentSceneBase& scene,
+        const EDITOR::SceneViewportRect& viewport,
+        bool viewportHovered) {
+#if defined(HIKARI_WITH_EDITOR)
+        GameObject* selected = context_.selection.selectedObject;
+        if (selected == nullptr) {
+            sandTerrainStrokeActive_ = false;
+            return;
+        }
+        SandSurfaceComponent* sand =
+            selected->GetComponent<SandSurfaceComponent>();
+        ProceduralMeshComponent* procedural =
+            selected->GetComponent<ProceduralMeshComponent>();
+        if (sand == nullptr || procedural == nullptr) {
+            sandTerrainStrokeActive_ = false;
+            return;
+        }
+
+        const ProceduralMeshSettings mesh =
+            SanitizeProceduralMeshSettings(
+                procedural->GetSettings());
+        const MATH::Vec2 halfExtents{
+            mesh.width * 0.5f,
+            mesh.depth * 0.5f
+        };
+
+        if (!ImGui::IsAnyItemActive() &&
+            ImGui::IsKeyPressed(ImGuiKey_B, false)) {
+            sandTerrainSculptActive_ = !sandTerrainSculptActive_;
+            sandTerrainStrokeActive_ = false;
+        }
+
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        drawList->AddText(
+            ImVec2(viewport.x + 14.0f, viewport.y + 14.0f),
+            sandTerrainSculptActive_
+                ? IM_COL32(250, 196, 96, 245)
+                : IM_COL32(210, 226, 236, 210),
+            sandTerrainSculptActive_
+                ? "Sand Sculpt: ON (B) - drag to paint"
+                : "Sand Sculpt: OFF (B)");
+
+        const auto commitStroke = [&]() {
+            if (!sandTerrainStrokeActive_) {
+                return;
+            }
+            sandTerrainStrokeActive_ = false;
+            nlohmann::json serialized = nlohmann::json::object();
+            sand->Serialize(serialized);
+            if (SceneObjectData* documentObject =
+                    selectionSync_.FindDocumentObjectByRuntime(
+                        scene,
+                        selected)) {
+                for (SceneComponentData& component :
+                    documentObject->components) {
+                    if (component.type != "SandSurfaceComponent") {
+                        continue;
+                    }
+                    component.properties = serialized;
+                    break;
+                }
+            }
+            context_.sceneDirty = true;
+            scene.SetUnsavedSceneChanges(true);
+        };
+
+        if (!sandTerrainSculptActive_ ||
+            !viewportHovered ||
+            !ImGui::IsMouseDown(ImGuiMouseButton_Left) ||
+            ImGui::IsAnyItemActive()) {
+            commitStroke();
+            return;
+        }
+
+        const Camera3D& camera = scene.GetCamera();
+        const MATH::Vec3 forward = MATH::Normalize(
+            camera.GetTarget() - camera.GetPosition());
+        const MATH::Vec3 right = MATH::Normalize(
+            MATH::Cross(camera.GetUp(), forward));
+        const MATH::Vec3 up = MATH::Normalize(
+            MATH::Cross(forward, right));
+        const float tanHalfFov = std::tan(
+            (std::max)(camera.GetFovYRad(), 0.001f) * 0.5f);
+        const float aspect = viewport.height > 0.0f
+            ? viewport.width / viewport.height
+            : camera.GetAspect();
+        const ImVec2 mouse = ImGui::GetMousePos();
+        const float ndcX =
+            (mouse.x - viewport.x) /
+                (std::max)(viewport.width, 1.0f) * 2.0f - 1.0f;
+        const float ndcY =
+            1.0f -
+            (mouse.y - viewport.y) /
+                (std::max)(viewport.height, 1.0f) * 2.0f;
+        const MATH::Vec3 rayDirection = MATH::Normalize(
+            forward +
+            right * (ndcX * aspect * tanHalfFov) +
+            up * (ndcY * tanHalfFov));
+        const MATH::Vec3 rayOrigin = camera.GetPosition();
+
+        const MATH::Mat4 world =
+            selected->GetTransform().GetWorldMatrix();
+        const MATH::Mat4 inverseWorld = MATH::Inverse(world);
+        const MATH::Vec4 localOrigin4 = inverseWorld.TransformPoint({
+            rayOrigin.x, rayOrigin.y, rayOrigin.z, 1.0f });
+        const MATH::Vec4 localDir4 = inverseWorld.TransformPoint({
+            rayDirection.x, rayDirection.y, rayDirection.z, 0.0f });
+        const MATH::Vec3 localOrigin{
+            localOrigin4.x, localOrigin4.y, localOrigin4.z };
+        const MATH::Vec3 localDir{
+            localDir4.x, localDir4.y, localDir4.z };
+
+        if (std::abs(localDir.y) > 1.0e-6f) {
+            const float t = -localOrigin.y / localDir.y;
+            if (t >= 0.0f) {
+                const MATH::Vec2 localXZ{
+                    localOrigin.x + localDir.x * t,
+                    localOrigin.z + localDir.z * t
+                };
+                if (std::abs(localXZ.x) <= halfExtents.x &&
+                    std::abs(localXZ.y) <= halfExtents.y) {
+                    sand->SculptTerrain(halfExtents, localXZ);
+                    sandTerrainStrokeActive_ = true;
+                }
+            }
+        }
+#else
+        (void)scene;
+        (void)viewport;
+        (void)viewportHovered;
 #endif
     }
 

@@ -121,14 +121,28 @@ namespace HIKARI {
                     mesh.width * 0.5f,
                     mesh.depth * 0.5f
                 };
+                const uint32_t stride =
+                    settings.gridResolution + 1u;
+                const size_t cellCount =
+                    static_cast<size_t>(stride) * stride;
                 if (state->gridResolution != settings.gridResolution) {
                     state->gridResolution = settings.gridResolution;
-                    const uint32_t stride =
-                        settings.gridResolution + 1u;
-                    state->heights.assign(
-                        static_cast<size_t>(stride) * stride,
-                        0.0f);
+                    state->baseHeights.assign(cellCount, 0.0f);
+                    state->deformHeights.assign(cellCount, 0.0f);
+                    state->heights.assign(cellCount, 0.0f);
+                    state->authoredTerrain = {};
                 }
+
+                const SAND::SandSurfaceTerrain terrain =
+                    SAND::SanitizeSandSurfaceTerrain(
+                        sand.GetTerrain());
+                if (!SAND::SandSurfaceTerrainEqual(
+                        state->authoredTerrain,
+                        terrain)) {
+                    state->authoredTerrain = terrain;
+                    SyncAuthoredTerrain(*state, terrain);
+                }
+                RebuildCombinedHeights(*state);
 
                 SAND::SandSurfaceSnapshotEntry entry{};
                 entry.object = object.GetRuntimeHandle();
@@ -136,6 +150,56 @@ namespace HIKARI {
                 surfaces.push_back(std::move(entry));
             });
         queryService_->PublishSnapshot(std::move(surfaces));
+    }
+
+    void SandSurfaceSystem::SyncAuthoredTerrain(
+        SAND::SandSurfaceRuntimeState& state,
+        const SAND::SandSurfaceTerrain& terrain) {
+
+        const uint32_t resolution = state.gridResolution;
+        const uint32_t stride = resolution + 1u;
+        const size_t cellCount =
+            static_cast<size_t>(stride) * stride;
+        if (state.baseHeights.size() != cellCount) {
+            state.baseHeights.assign(cellCount, 0.0f);
+        }
+        for (uint32_t z = 0u; z <= resolution; ++z) {
+            for (uint32_t x = 0u; x <= resolution; ++x) {
+                const MATH::Vec2 localXZ{
+                    (static_cast<float>(x) /
+                        static_cast<float>(resolution) - 0.5f) *
+                        2.0f * state.halfExtents.x,
+                    (static_cast<float>(z) /
+                        static_cast<float>(resolution) - 0.5f) *
+                        2.0f * state.halfExtents.y
+                };
+                state.baseHeights[
+                    static_cast<size_t>(z) * stride + x] =
+                    SAND::SampleSandSurfaceTerrain(
+                        terrain,
+                        state.halfExtents,
+                        localXZ);
+            }
+        }
+    }
+
+    void SandSurfaceSystem::RebuildCombinedHeights(
+        SAND::SandSurfaceRuntimeState& state) {
+
+        const uint32_t stride = state.gridResolution + 1u;
+        const size_t cellCount =
+            static_cast<size_t>(stride) * stride;
+        if (state.baseHeights.size() != cellCount ||
+            state.deformHeights.size() != cellCount) {
+            return;
+        }
+        if (state.heights.size() != cellCount) {
+            state.heights.resize(cellCount);
+        }
+        for (size_t i = 0u; i < cellCount; ++i) {
+            state.heights[i] =
+                state.baseHeights[i] + state.deformHeights[i];
+        }
     }
 
     void SandSurfaceSystem::ApplySphereContactStamps(
@@ -164,141 +228,90 @@ namespace HIKARI {
                         (std::max)(
                             object.GetTransform().scale.y,
                             object.GetTransform().scale.z));
+                const uint64_t objectKey = object.GetRenderStableId();
 
-                for (const auto& [key, state] : states_) {
-                    (void)key;
-                    const MATH::Vec3 local =
-                        TransformPoint(
-                            state->inverseWorld,
-                            worldCenter);
-                    if (std::abs(local.x) >
-                            state->halfExtents.x + worldRadius ||
-                        std::abs(local.z) >
-                            state->halfExtents.y + worldRadius) {
-                        continue;
-                    }
+                MATH::Vec3 previous = worldCenter;
+                const auto previousIt =
+                    previousSphereCenters_.find(objectKey);
+                if (previousIt != previousSphereCenters_.end()) {
+                    previous = previousIt->second;
+                }
+                previousSphereCenters_[objectKey] = worldCenter;
 
-                    float surfaceHeight = 0.0f;
-                    MATH::Vec3 surfaceNormal{};
-                    if (!queryService_->SampleLocalHeight(
+                const MATH::Vec3 delta = worldCenter - previous;
+                const float travel = std::sqrt(
+                    delta.x * delta.x +
+                    delta.y * delta.y +
+                    delta.z * delta.z);
+                const float stepLength =
+                    (std::max)(worldRadius * 0.5f, 0.05f);
+                const int steps = (std::max)(
+                    1,
+                    static_cast<int>(
+                        std::ceil(travel / stepLength)));
+
+                for (int step = 0; step <= steps; ++step) {
+                    const float t = steps > 0
+                        ? static_cast<float>(step) /
+                            static_cast<float>(steps)
+                        : 0.0f;
+                    const MATH::Vec3 sampleCenter{
+                        previous.x + delta.x * t,
+                        previous.y + delta.y * t,
+                        previous.z + delta.z * t
+                    };
+
+                    for (const auto& [key, state] : states_) {
+                        (void)key;
+                        const MATH::Vec3 local =
+                            TransformPoint(
+                                state->inverseWorld,
+                                sampleCenter);
+                        if (std::abs(local.x) >
+                                state->halfExtents.x + worldRadius ||
+                            std::abs(local.z) >
+                                state->halfExtents.y + worldRadius) {
+                            continue;
+                        }
+
+                        float surfaceHeight = 0.0f;
+                        MATH::Vec3 surfaceNormal{};
+                        if (!queryService_->SampleLocalHeight(
+                                *state,
+                                { local.x, local.z },
+                                surfaceHeight,
+                                surfaceNormal)) {
+                            continue;
+                        }
+                        const float ballBottom =
+                            local.y - worldRadius;
+                        const float sink =
+                            surfaceHeight - ballBottom;
+                        // 剛体物理は平坦なコライダーで止まるため、静止時は
+                        // penetration がほぼ 0 になる。柔らかい砂の接触を
+                        // 近似する最小沈み込みだけ加えて、転がった跡を残す。
+                        const float softContact =
+                            worldRadius * 0.06f;
+                        if (sink < -softContact) {
+                            continue;
+                        }
+                        const float depth = std::clamp(
+                            sink + softContact,
+                            0.0f,
+                            state->settings.maxDepth);
+                        ApplySphereImprint(
                             *state,
-                            { local.x, local.z },
-                            surfaceHeight,
-                            surfaceNormal)) {
-                        continue;
+                            local.x,
+                            local.z,
+                            worldRadius,
+                            depth);
                     }
-                    const float ballBottom =
-                        local.y - worldRadius;
-                    // 物理床は平坦なので、ただ乗っているだけでは
-                    // penetration がほぼ 0 になり、視覚的な穴が残らない。
-                    // 接触中は球の重さを模した「静止押し込み」を加え、
-                    // 着地した球がはっきり沈むようにする。
-                    const float restPress = (std::min)(
-                        state->settings.maxDepth * 0.55f,
-                        worldRadius * 0.24f + 0.05f);
-                    const float sink =
-                        surfaceHeight - ballBottom;
-                    if (sink < -restPress) {
-                        continue;
-                    }
-
-                    const float depth = (std::min)(
-                        state->settings.maxDepth * 0.55f,
-                        (std::max)(sink, 0.0f) + restPress);
-                    ApplySphereImprint(
-                        *state,
-                        local.x,
-                        local.z,
-                        worldRadius,
-                        depth);
                 }
             });
 
         for (const auto& [key, state] : states_) {
             (void)key;
             RelaxState(*state, safeDt);
-        }
-    }
-
-    void SandSurfaceSystem::ApplyStamp(
-        SAND::SandSurfaceRuntimeState& state,
-        float localX,
-        float localZ,
-        float radius,
-        float depth) {
-
-        const uint32_t resolution = state.gridResolution;
-        const uint32_t stride = resolution + 1u;
-        if (state.heights.size() !=
-                static_cast<size_t>(stride) * stride ||
-            depth <= 0.0f) {
-            return;
-        }
-
-        const float cellX =
-            (2.0f * state.halfExtents.x) /
-            static_cast<float>(resolution);
-        const float cellZ =
-            (2.0f * state.halfExtents.y) /
-            static_cast<float>(resolution);
-        const float cellRadius =
-            radius / (std::max)((std::min)(cellX, cellZ), 1.0e-4f);
-        const int extent = static_cast<int>(cellRadius) + 2;
-
-        const float safeDepth = (std::min)(depth, state.settings.maxDepth);
-        const float rimStrength = state.settings.rimStrength;
-        const float minimum = -state.settings.maxDepth;
-        const float maximum = state.settings.maxDepth * rimStrength;
-
-        const int centerX = static_cast<int>(std::lround(
-            (localX / (2.0f * state.halfExtents.x) + 0.5f) *
-            static_cast<float>(resolution)));
-        const int centerZ = static_cast<int>(std::lround(
-            (localZ / (2.0f * state.halfExtents.y) + 0.5f) *
-            static_cast<float>(resolution)));
-
-        for (int z = centerZ - extent;
-            z <= centerZ + extent;
-            ++z) {
-            for (int x = centerX - extent;
-                x <= centerX + extent;
-                ++x) {
-                if (x < 0 || z < 0 ||
-                    x > static_cast<int>(resolution) ||
-                    z > static_cast<int>(resolution)) {
-                    continue;
-                }
-                const float dx =
-                    (static_cast<float>(x) /
-                        static_cast<float>(resolution) - 0.5f) *
-                    2.0f * state.halfExtents.x - localX;
-                const float dz =
-                    (static_cast<float>(z) /
-                        static_cast<float>(resolution) - 0.5f) *
-                    2.0f * state.halfExtents.y - localZ;
-                const float distance = std::sqrt(dx * dx + dz * dz);
-                const float normalized =
-                    std::clamp(distance / radius, 0.0f, 1.5f);
-
-                // 中心へ滑らかに沈み、縁には砂を外へ押し出した rim を作る。
-                // 硬い穴ではなく「砂が動いた」痕になるようにする。
-                const float falloff = 1.0f -
-                    3.0f * normalized * normalized +
-                    2.0f * normalized * normalized * normalized;
-                const float pit =
-                    safeDepth * (std::max)(falloff, 0.0f);
-                const float rim = rimStrength * safeDepth *
-                    (1.0f - std::exp(-((normalized - 0.72f) *
-                        (normalized - 0.72f) * 22.0f))) *
-                    (1.0f - normalized);
-
-                float& height =
-                    state.heights[static_cast<size_t>(z) * stride + x];
-                height = std::clamp(
-                    height - pit + (std::max)(rim, 0.0f),
-                    minimum,
-                    maximum);
-            }
         }
     }
 
@@ -311,7 +324,7 @@ namespace HIKARI {
 
         const uint32_t resolution = state.gridResolution;
         const uint32_t stride = resolution + 1u;
-        if (state.heights.size() !=
+        if (state.deformHeights.size() !=
                 static_cast<size_t>(stride) * stride ||
             sinkDepth <= 0.0f) {
             return;
@@ -392,7 +405,8 @@ namespace HIKARI {
                 }
 
                 float& height =
-                    state.heights[static_cast<size_t>(z) * stride + x];
+                    state.deformHeights[
+                        static_cast<size_t>(z) * stride + x];
                 height = std::clamp(
                     height - imprint,
                     minimum,
@@ -407,7 +421,7 @@ namespace HIKARI {
 
         const uint32_t resolution = state.gridResolution;
         const uint32_t stride = resolution + 1u;
-        if (state.heights.size() !=
+        if (state.deformHeights.size() !=
             static_cast<size_t>(stride) * stride) {
             return;
         }
@@ -417,7 +431,7 @@ namespace HIKARI {
             0.0f,
             1.0f);
         if (decay > 0.0f) {
-            for (float& height : state.heights) {
+            for (float& height : state.deformHeights) {
                 height *= 1.0f - decay;
             }
         }
@@ -427,17 +441,18 @@ namespace HIKARI {
             0.0f,
             0.5f);
         if (diffusion <= 1.0e-4f) {
+            RebuildCombinedHeights(state);
             return;
         }
 
-        std::vector<float> source = state.heights;
+        std::vector<float> source = state.deformHeights;
         const float keep = 1.0f - diffusion;
         const float neighbor = diffusion * 0.25f;
         for (uint32_t z = 1u; z < resolution; ++z) {
             for (uint32_t x = 1u; x < resolution; ++x) {
                 const size_t index =
                     static_cast<size_t>(z) * stride + x;
-                state.heights[index] =
+                state.deformHeights[index] =
                     source[index] * keep +
                     (source[index - stride] +
                         source[index + stride] +
@@ -445,6 +460,7 @@ namespace HIKARI {
                         source[index + 1u]) * neighbor;
             }
         }
+        RebuildCombinedHeights(state);
     }
 
 } // namespace HIKARI

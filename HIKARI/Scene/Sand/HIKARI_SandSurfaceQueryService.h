@@ -19,6 +19,9 @@ namespace HIKARI::SAND {
     struct SandSurfaceRuntimeState {
         uint32_t gridResolution = 0u;
         SandSurfaceSettings settings{};
+        SandSurfaceTerrain authoredTerrain{};
+        std::vector<float> baseHeights{};
+        std::vector<float> deformHeights{};
         std::vector<float> heights{};
 
         MATH::Mat4 world = MATH::Mat4::Identity();

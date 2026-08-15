@@ -1,8 +1,10 @@
 #include "Scene/Sand/HIKARI_SandSurfaceComponent.h"
 
 #include <algorithm>
+#include <array>
 
 #include "Authoring/HIKARI_IInspectorBuilder.h"
+#include "Render3D/Procedural/HIKARI_ProceduralMeshTypes.h"
 
 namespace HIKARI {
 
@@ -10,6 +12,7 @@ namespace HIKARI {
         IInspectorBuilder& builder) {
 
         const SAND::SandSurfaceSettings before = settings_;
+        const SAND::SandSurfaceTerrain beforeTerrain = terrain_;
 
         if (builder.Section("Deformation", true)) {
             int resolution =
@@ -163,8 +166,94 @@ namespace HIKARI {
                 0.01f);
         }
 
+        if (builder.Section("Terrain", true)) {
+            int terrainResolution =
+                static_cast<int>(terrain_.authoringResolution);
+            if (builder.Int(
+                    AuthoringFieldDescriptor{
+                        SandSurfaceComponentPropertyIds::TerrainResolution,
+                        "Terrain Resolution",
+                        "Authored terrain height-field nodes per axis. "
+                        "Lower values are lighter to serialize."
+                    },
+                    terrainResolution)) {
+                terrain_.authoringResolution = static_cast<uint32_t>(
+                    std::clamp(terrainResolution, 16, 128));
+            }
+
+            int brushMode = static_cast<int>(terrain_.brush.mode);
+            static constexpr std::array<const char*, 4> kBrushModes{
+                "Raise",
+                "Lower",
+                "Smooth",
+                "Flatten"
+            };
+            if (builder.Choice("Brush Mode", brushMode, kBrushModes)) {
+                terrain_.brush.mode =
+                    static_cast<SAND::SandSurfaceBrushMode>(
+                        std::clamp(brushMode, 0, 3));
+            }
+            builder.FloatRange(
+                AuthoringFieldDescriptor{
+                    SandSurfaceComponentPropertyIds::BrushRadius,
+                    "Brush Radius",
+                    "Sculpt brush radius in local meters."
+                },
+                terrain_.brush.radius,
+                0.1f,
+                20.0f,
+                0.05f);
+            builder.FloatRange(
+                AuthoringFieldDescriptor{
+                    SandSurfaceComponentPropertyIds::BrushStrength,
+                    "Brush Strength",
+                    "Height change per stroke in local meters."
+                },
+                terrain_.brush.strength,
+                0.0f,
+                2.0f,
+                0.01f);
+            builder.FloatRange(
+                AuthoringFieldDescriptor{
+                    SandSurfaceComponentPropertyIds::BrushHardness,
+                    "Brush Hardness",
+                    "0 is a soft falloff, 1 is a hard edge."
+                },
+                terrain_.brush.hardness,
+                0.0f,
+                1.0f,
+                0.01f);
+            builder.FloatRange(
+                AuthoringFieldDescriptor{
+                    SandSurfaceComponentPropertyIds::BrushFlattenHeight,
+                    "Flatten Height",
+                    "Target height in local meters for the Flatten brush."
+                },
+                terrain_.brush.flattenHeight,
+                -5.0f,
+                5.0f,
+                0.01f);
+
+            if (builder.Button("Reset Terrain")) {
+                ResetTerrain();
+            }
+            if (builder.Button("Bake Dune Height")) {
+                if (const auto* mesh =
+                        builder.GetContext().proceduralMeshSettings) {
+                    BakeTerrain({
+                        mesh->width * 0.5f,
+                        mesh->depth * 0.5f
+                    });
+                }
+            }
+        }
+
         settings_ = SAND::SanitizeSandSurfaceSettings(settings_);
+        terrain_ = SAND::SanitizeSandSurfaceTerrain(terrain_);
         if (!SAND::SandSurfaceSettingsEqual(settings_, before)) {
+            NotifyRenderStateDirty();
+        }
+        if (!SAND::SandSurfaceTerrainEqual(terrain_, beforeTerrain)) {
             NotifyRenderStateDirty();
         }
     }

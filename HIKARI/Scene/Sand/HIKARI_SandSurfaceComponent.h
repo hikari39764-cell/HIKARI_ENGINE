@@ -23,6 +23,12 @@ namespace HIKARI {
         inline constexpr char PitDarkening[] = "pitDarkening";
         inline constexpr char ToonBandCount[] = "toonBandCount";
         inline constexpr char ToonBandHardness[] = "toonBandHardness";
+        inline constexpr char TerrainResolution[] = "terrainResolution";
+        inline constexpr char BrushMode[] = "brushMode";
+        inline constexpr char BrushRadius[] = "brushRadius";
+        inline constexpr char BrushStrength[] = "brushStrength";
+        inline constexpr char BrushHardness[] = "brushHardness";
+        inline constexpr char BrushFlattenHeight[] = "brushFlattenHeight";
     }
 
     class SandSurfaceComponent final : public IComponent {
@@ -33,6 +39,17 @@ namespace HIKARI {
 
         const SAND::SandSurfaceSettings& GetSettings() const noexcept;
         void SetSettings(const SAND::SandSurfaceSettings& settings);
+        const SAND::SandSurfaceTerrain& GetTerrain() const noexcept;
+        void SetTerrain(const SAND::SandSurfaceTerrain& terrain);
+
+        void SculptTerrain(
+            const MATH::Vec2& halfExtents,
+            const MATH::Vec2& localXZ);
+        void ResetTerrain();
+        void BakeTerrain(const MATH::Vec2& halfExtents);
+        float SampleAuthoredHeight(
+            const MATH::Vec2& halfExtents,
+            const MATH::Vec2& localXZ) const noexcept;
 
         void Serialize(nlohmann::json& out) const override;
         void Deserialize(const nlohmann::json& in) override;
@@ -42,6 +59,7 @@ namespace HIKARI {
         void NotifyRenderStateDirty();
 
         SAND::SandSurfaceSettings settings_{};
+        SAND::SandSurfaceTerrain terrain_{};
     };
 
 } // namespace HIKARI
