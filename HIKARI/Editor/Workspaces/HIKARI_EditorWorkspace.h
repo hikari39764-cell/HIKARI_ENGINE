@@ -17,6 +17,7 @@ namespace HIKARI::EDITOR {
         AnimationStateMachine,
         RuntimeBinding,
         Vfx,
+        TerrainSurface,
         Count,
     };
 

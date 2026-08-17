@@ -48,6 +48,9 @@ namespace HIKARI::PHYSICS {
             PhysicsBodyHandle body,
             const MATH::Vec3& linearVelocity,
             const MATH::Vec3& angularVelocity);
+        bool AddForce(
+            PhysicsBodyHandle body,
+            const MATH::Vec3& force);
         bool TryGetBodyState(
             PhysicsBodyHandle body,
             PhysicsBodyState& outState) const;

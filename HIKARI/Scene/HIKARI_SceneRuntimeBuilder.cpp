@@ -30,7 +30,7 @@
 #include "Render3D/Resources/HIKARI_ClusterGeometryResourceSystem.h"
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
 #include "Scene/Components/HIKARI_IComponent.h"
-#include "Scene/Sand/HIKARI_SandSurfaceComponent.h"
+#include "Scene/Terrain/HIKARI_TerrainSurfaceComponent.h"
 #include "Scene/Sand/HIKARI_SandSurfaceMaterialBinder.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelRenderableAssetResolver.h"
@@ -387,10 +387,10 @@ namespace HIKARI {
 
             world.ForEachObjectWith<
                 ModelComponent,
-                SandSurfaceComponent>(
+                TerrainSurfaceComponent>(
                 [&](GameObject&,
                     ModelComponent& modelComponent,
-                    SandSurfaceComponent&) {
+                    TerrainSurfaceComponent&) {
                     (void)SAND::EnsureSandSurfaceMaterialOverride(
                         modelComponent,
                         assetRegistry);

@@ -9,8 +9,8 @@
 #include "Scene/HIKARI_SceneDocumentQueries.h"
 #include "Scene/Lighting/HIKARI_LightingAuthoringModel.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
+#include "Scene/Terrain/HIKARI_TerrainSurfaceComponent.h"
 #include "Scene/Water/HIKARI_WaterSurfaceComponent.h"
-#include "Scene/Sand/HIKARI_SandSurfaceComponent.h"
 
 namespace HIKARI::EDITOR {
 
@@ -249,8 +249,10 @@ namespace HIKARI::EDITOR {
         });
 
         nlohmann::json waterProperties = nlohmann::json::object();
-        WaterSurfaceComponent defaults{};
-        defaults.Serialize(waterProperties);
+        WaterSurfaceComponent waterDefaults{};
+        waterDefaults.ApplyPreset(
+            WATER::WaterSurfacePreset::AnimeSummer);
+        waterDefaults.Serialize(waterProperties);
         object.components.push_back(SceneComponentData{
             "WaterSurfaceComponent",
             std::move(waterProperties)
@@ -289,11 +291,11 @@ namespace HIKARI::EDITOR {
             "ProceduralMeshComponent",
             {
                 { "kind", "GridPlane" },
-                { "width", 40.0f },
+                { "width", 8.0f },
                 { "height", 1.0f },
-                { "depth", 40.0f },
-                { "segmentsX", 256u },
-                { "segmentsY", 256u },
+                { "depth", 8.0f },
+                { "segmentsX", 128u },
+                { "segmentsY", 128u },
                 { "segmentsZ", 1u },
                 { "sphereSlices", 32u },
                 { "sphereStacks", 16u },
@@ -302,11 +304,12 @@ namespace HIKARI::EDITOR {
             }
         });
 
-        SandSurfaceComponent sandDefaults{};
+        TerrainSurfaceComponent sandDefaults{};
+        sandDefaults.ApplySolidPreset("sand");
         nlohmann::json sandProperties = nlohmann::json::object();
         sandDefaults.Serialize(sandProperties);
         object.components.push_back(SceneComponentData{
-            "SandSurfaceComponent",
+            "TerrainSurfaceComponent",
             std::move(sandProperties)
         });
 

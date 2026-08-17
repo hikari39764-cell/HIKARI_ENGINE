@@ -50,7 +50,9 @@ namespace HIKARI::RENDER3D::WATER {
             !Vec3Equal(left.foamColor, right.foamColor) ||
             left.foamAmount != right.foamAmount ||
             left.absorptionDistance != right.absorptionDistance ||
-            left.surfaceRoughness != right.surfaceRoughness) {
+            left.surfaceRoughness != right.surfaceRoughness ||
+            left.coverageResolution != right.coverageResolution ||
+            left.liquidCoverage != right.liquidCoverage) {
             return false;
         }
         for (std::size_t index = 0u; index < left.waves.size(); ++index) {
@@ -78,12 +80,21 @@ namespace HIKARI::RENDER3D::WATER {
     }
 
     WaterSurfaceGpuData BuildWaterSurfaceGpuData(
-        const WaterSurfaceRenderData& source) noexcept {
+        const WaterSurfaceRenderData& source,
+        uint32_t liquidCoverageOffset) noexcept {
 
         WaterSurfaceGpuData result{};
         result.schemaVersion = kWaterSurfaceGpuSchemaVersion;
         result.flags = static_cast<uint32_t>(WaterSurfaceGpuFlags::Enabled);
         result.waveCount = static_cast<uint32_t>(kWaterSurfaceWaveCount);
+        // 非 sentinel の recordCount は liquidCoverage の buffer offset を運ぶ。
+        result.recordCount = liquidCoverageOffset;
+        result.coverageParams = {
+            static_cast<float>((std::max)(source.coverageResolution, 1u)),
+            0.0f,
+            0.0f,
+            0.0f
+        };
 
         const WaterSurfaceShadingModel shadingModel =
             source.shadingModel == WaterSurfaceShadingModel::RealisticClearSummer

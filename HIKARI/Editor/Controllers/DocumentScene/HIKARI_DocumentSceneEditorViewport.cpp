@@ -18,7 +18,8 @@
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_SceneDocument.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
-#include "Scene/Sand/HIKARI_SandSurfaceComponent.h"
+#include "Scene/Terrain/HIKARI_TerrainSurfaceComponent.h"
+#include "Scene/Terrain/HIKARI_TerrainSurfaceConversion.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
 
 #include <algorithm>
@@ -38,7 +39,8 @@ namespace HIKARI {
 
     void DocumentSceneEditorController::DrawGameViewportWindow(
         DocumentSceneBase& scene,
-        EDITOR::EditorPlaySession& playSession) {
+        EDITOR::EditorPlaySession& playSession,
+        std::string_view stableWindowId) {
 #if defined(HIKARI_WITH_EDITOR)
         viewportTransformHistory_.BeginFrame();
         bool open = context_.windows.viewport.showGameView;
@@ -50,7 +52,7 @@ namespace HIKARI {
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
         if (!ImGui::Begin(
                 TEXT::LocalizeWindow(
-                    "ui.window.gameView", "Game View").c_str(),
+                    "ui.window.gameView", stableWindowId).c_str(),
                 &open,
                 flags)) {
             context_.windows.viewport.showGameView = open;
@@ -555,19 +557,55 @@ namespace HIKARI {
         const EDITOR::SceneViewportRect& viewport,
         bool viewportHovered) {
 #if defined(HIKARI_WITH_EDITOR)
+        if (!workspaceHost_.IsActive(
+                EDITOR::EditorWorkspaceId::TerrainSurface)) {
+            context_.terrainTool.active = false;
+            sandTerrainStrokeActive_ = false;
+            return;
+        }
+
         GameObject* selected = context_.selection.selectedObject;
-        SandSurfaceComponent* sand =
+        TerrainSurfaceComponent* terrain =
             selected != nullptr
-                ? selected->GetComponent<SandSurfaceComponent>()
+                ? selected->GetComponent<TerrainSurfaceComponent>()
                 : nullptr;
         ProceduralMeshComponent* procedural =
             selected != nullptr
                 ? selected->GetComponent<ProceduralMeshComponent>()
                 : nullptr;
 
+        const auto toTerrainMode = [](EditorTerrainToolMode mode) {
+            switch (mode) {
+            case EditorTerrainToolMode::Lower:
+                return TERRAIN::TerrainBrushMode::Lower;
+            case EditorTerrainToolMode::Pit:
+                return TERRAIN::TerrainBrushMode::Pit;
+            case EditorTerrainToolMode::Smooth:
+                return TERRAIN::TerrainBrushMode::Smooth;
+            case EditorTerrainToolMode::Flatten:
+                return TERRAIN::TerrainBrushMode::Flatten;
+            case EditorTerrainToolMode::Mound:
+                return TERRAIN::TerrainBrushMode::Mound;
+            case EditorTerrainToolMode::Raise:
+            default:
+                return TERRAIN::TerrainBrushMode::Raise;
+            }
+        };
+        const auto getBrushRadius = [&]() -> float {
+            if (terrain != nullptr) {
+                return terrain->GetBrush().radius;
+            }
+            return 1.0f;
+        };
+        const auto setBrushRadius = [&](float radius) {
+            if (terrain != nullptr) {
+                terrain->SetBrushRadius(radius);
+            }
+        };
+
         const auto finishStroke = [&]() {
             if (!sandTerrainStrokeActive_ ||
-                sand == nullptr ||
+                terrain == nullptr ||
                 selected == nullptr) {
                 sandTerrainStrokeActive_ = false;
                 return;
@@ -575,14 +613,15 @@ namespace HIKARI {
             sandTerrainStrokeActive_ = false;
 
             nlohmann::json serialized = nlohmann::json::object();
-            sand->Serialize(serialized);
+            const char* componentType = "TerrainSurfaceComponent";
+            terrain->Serialize(serialized);
             if (SceneObjectData* documentObject =
                     selectionSync_.FindDocumentObjectByRuntime(
                         scene,
                         selected)) {
                 for (SceneComponentData& component :
                     documentObject->components) {
-                    if (component.type != "SandSurfaceComponent") {
+                    if (component.type != componentType) {
                         continue;
                     }
                     component.properties = serialized;
@@ -598,60 +637,16 @@ namespace HIKARI {
             history.afterCamera = scene.GetSceneDocument().camera;
             history.dirtyBefore = sandBrushDirtyBefore_;
             history.runtimeWorldAffected = true;
-            history.runtimeWorldRefreshRequired = true;
+            history.runtimeWorldRefreshRequired = false;
             CommitSceneObjectAuthoringHistory(
                 scene,
                 std::move(history));
         };
 
-        if (sand == nullptr || procedural == nullptr) {
+        if (terrain == nullptr || procedural == nullptr) {
             finishStroke();
+            context_.terrainTool.active = false;
             return;
-        }
-
-        const ProceduralMeshSettings mesh =
-            SanitizeProceduralMeshSettings(
-                procedural->GetSettings());
-        const MATH::Vec2 halfExtents{
-            mesh.width * 0.5f,
-            mesh.depth * 0.5f
-        };
-
-        if (!ImGui::IsAnyItemActive() &&
-            ImGui::IsKeyPressed(ImGuiKey_B, false)) {
-            sandTerrainSculptActive_ = !sandTerrainSculptActive_;
-            finishStroke();
-        }
-
-        ImDrawList* drawList = ImGui::GetWindowDrawList();
-        drawList->AddText(
-            ImVec2(viewport.x + 14.0f, viewport.y + 14.0f),
-            sandTerrainSculptActive_
-                ? IM_COL32(250, 196, 96, 245)
-                : IM_COL32(210, 226, 236, 210),
-            sandTerrainSculptActive_
-                ? "Sand Sculpt: ON (B) - drag to paint"
-                : "Sand Sculpt: OFF (B)");
-
-        const bool pointerDown =
-            sandTerrainSculptActive_ &&
-            viewportHovered &&
-            ImGui::IsMouseDown(ImGuiMouseButton_Left) &&
-            !ImGui::IsAnyItemActive();
-        if (!pointerDown) {
-            finishStroke();
-            return;
-        }
-
-        if (!sandTerrainStrokeActive_) {
-            sandBrushBeforeObjects_ =
-                scene.GetSceneDocument().objects;
-            sandBrushBeforeCamera_ =
-                scene.GetSceneDocument().camera;
-            sandBrushDirtyBefore_ =
-                context_.sceneDirty ||
-                scene.HasUnsavedSceneChanges();
-            sandTerrainStrokeActive_ = true;
         }
 
         const Camera3D& camera = scene.GetCamera();
@@ -680,30 +675,284 @@ namespace HIKARI {
             up * (ndcY * tanHalfFov));
         const MATH::Vec3 rayOrigin = camera.GetPosition();
 
-        const MATH::Mat4 world =
-            selected->GetTransform().GetWorldMatrix();
-        const MATH::Mat4 inverseWorld = MATH::Inverse(world);
-        const MATH::Vec4 localOrigin4 = inverseWorld.TransformPoint({
-            rayOrigin.x, rayOrigin.y, rayOrigin.z, 1.0f });
-        const MATH::Vec4 localDir4 = inverseWorld.TransformPoint({
-            rayDirection.x, rayDirection.y, rayDirection.z, 0.0f });
-        const MATH::Vec3 localOrigin{
-            localOrigin4.x, localOrigin4.y, localOrigin4.z };
-        const MATH::Vec3 localDir{
-            localDir4.x, localDir4.y, localDir4.z };
+        const auto setTool = [&](EditorTerrainToolMode mode) {
+            context_.terrainTool.mode = mode;
+            context_.terrainTool.active = true;
+            terrain->SetBrushMode(toTerrainMode(mode));
+        };
 
-        if (std::abs(localDir.y) > 1.0e-6f) {
-            const float t = -localOrigin.y / localDir.y;
-            if (t >= 0.0f) {
-                const MATH::Vec2 localXZ{
-                    localOrigin.x + localDir.x * t,
-                    localOrigin.z + localDir.z * t
-                };
-                if (std::abs(localXZ.x) <= halfExtents.x &&
-                    std::abs(localXZ.y) <= halfExtents.y) {
-                    sand->SculptTerrain(halfExtents, localXZ);
+        if (!ImGui::IsAnyItemActive()) {
+            if (ImGui::IsKeyPressed(ImGuiKey_1, false)) {
+                setTool(EditorTerrainToolMode::Raise);
+            } else if (ImGui::IsKeyPressed(ImGuiKey_2, false)) {
+                setTool(EditorTerrainToolMode::Lower);
+            } else if (ImGui::IsKeyPressed(ImGuiKey_3, false)) {
+                setTool(EditorTerrainToolMode::Smooth);
+            } else if (ImGui::IsKeyPressed(ImGuiKey_4, false)) {
+                setTool(EditorTerrainToolMode::Flatten);
+            } else if (ImGui::IsKeyPressed(ImGuiKey_5, false)) {
+                setTool(EditorTerrainToolMode::Mound);
+            } else if (ImGui::IsKeyPressed(ImGuiKey_6, false)) {
+                setTool(EditorTerrainToolMode::Pit);
+            } else if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+                context_.terrainTool.active = false;
+                finishStroke();
+            }
+            if (context_.terrainTool.active) {
+                if (ImGui::IsKeyPressed(ImGuiKey_LeftBracket, false)) {
+                    setBrushRadius(
+                        (std::max)(getBrushRadius() * 0.9f, 0.05f));
+                } else if (ImGui::IsKeyPressed(
+                    ImGuiKey_RightBracket, false)) {
+                    setBrushRadius(getBrushRadius() / 0.9f);
                 }
             }
+        }
+
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        drawList->AddText(
+            ImVec2(viewport.x + 14.0f, viewport.y + 14.0f),
+            context_.terrainTool.active
+                ? IM_COL32(250, 196, 96, 245)
+                : IM_COL32(210, 226, 236, 210),
+            context_.terrainTool.active
+                ? TEXT::Localize("ui.terrain.brushHint").c_str()
+                : TEXT::Localize("ui.terrain.brushHint").c_str());
+
+        if (!context_.terrainTool.active) {
+            context_.terrainTool.hasHit = false;
+            finishStroke();
+            return;
+        }
+
+        const bool pointerDown =
+            viewportHovered &&
+            ImGui::IsMouseDown(ImGuiMouseButton_Left);
+
+        // ワールド空間レイを地形高さ場へぶつけて命中点を求める。
+        // 平坦面ではなく実際の起伏に吸着させるため、マーチングで
+        // 「高さ場より上 → 下」に沈んだ点を二分で詰める。
+        const auto sampleTerrainHeight = [&](
+            float worldX,
+            float worldZ,
+            float& outHeight) -> bool {
+            MATH::Vec3 n{};
+            return terrain->SampleWorldHeight(
+                { worldX, 0.0f, worldZ },
+                outHeight,
+                n);
+        };
+
+        MATH::Vec3 worldHit{};
+        bool hasHit = false;
+        {
+            // 既存 chunk がある場合は高さ場マーチ、無ければ y=0 平面で
+            // 新規 chunk を生やす起点を取る。
+            const float maxDist = 500.0f;
+            const int marchSteps = 128;
+            float prevT = 0.0f;
+            float prevAbove = 0.0f;
+            bool hasPrev = false;
+            for (int i = 0; i <= marchSteps && !hasHit; ++i) {
+                const float t =
+                    (static_cast<float>(i) / marchSteps) * maxDist;
+                const MATH::Vec3 p{
+                    rayOrigin.x + rayDirection.x * t,
+                    rayOrigin.y + rayDirection.y * t,
+                    rayOrigin.z + rayDirection.z * t
+                };
+                float ground = 0.0f;
+                const bool hasGround =
+                    sampleTerrainHeight(p.x, p.z, ground);
+                const float above = p.y - (hasGround ? ground : 0.0f);
+                if (hasPrev && prevAbove > 0.0f && above <= 0.0f) {
+                    // 二分で交点を詰める。
+                    float lo = prevT;
+                    float hi = t;
+                    for (int it = 0; it < 16; ++it) {
+                        const float mid = (lo + hi) * 0.5f;
+                        const MATH::Vec3 mp{
+                            rayOrigin.x + rayDirection.x * mid,
+                            rayOrigin.y + rayDirection.y * mid,
+                            rayOrigin.z + rayDirection.z * mid
+                        };
+                        float mg = 0.0f;
+                        const bool mh =
+                            sampleTerrainHeight(mp.x, mp.z, mg);
+                        if (mp.y - (mh ? mg : 0.0f) > 0.0f) {
+                            lo = mid;
+                        } else {
+                            hi = mid;
+                        }
+                    }
+                    const float ft = (lo + hi) * 0.5f;
+                    worldHit = {
+                        rayOrigin.x + rayDirection.x * ft,
+                        rayOrigin.y + rayDirection.y * ft,
+                        rayOrigin.z + rayDirection.z * ft
+                    };
+                    float hg = 0.0f;
+                    if (sampleTerrainHeight(
+                            worldHit.x, worldHit.z, hg)) {
+                        worldHit.y = hg;
+                    }
+                    hasHit = true;
+                }
+                prevT = t;
+                prevAbove = above;
+                hasPrev = true;
+            }
+        }
+
+        if (hasHit) {
+            context_.terrainTool.hasHit = true;
+            context_.terrainTool.hitPoint = worldHit;
+
+            const TERRAIN::TerrainBrush previewBrush =
+                terrain->GetBrush();
+            const EditorTerrainPaintMode previewPaint =
+                context_.terrainTool.paint;
+            ImU32 brushColor = IM_COL32(250, 196, 96, 245);
+            if (previewPaint == EditorTerrainPaintMode::Snow) {
+                brushColor = IM_COL32(240, 244, 250, 245);
+            } else if (previewPaint == EditorTerrainPaintMode::Dirt) {
+                brushColor = IM_COL32(170, 120, 70, 245);
+            } else if (previewPaint == EditorTerrainPaintMode::Erase) {
+                brushColor = IM_COL32(240, 90, 90, 245);
+            } else if (context_.terrainTool.mode ==
+                    EditorTerrainToolMode::Lower ||
+                context_.terrainTool.mode == EditorTerrainToolMode::Pit) {
+                brushColor = IM_COL32(250, 130, 90, 245);
+            } else if (context_.terrainTool.mode ==
+                EditorTerrainToolMode::Smooth) {
+                brushColor = IM_COL32(120, 220, 160, 245);
+            } else if (context_.terrainTool.mode ==
+                EditorTerrainToolMode::Flatten) {
+                brushColor = IM_COL32(200, 170, 250, 245);
+            }
+
+            // ブラシを実際の高さ場に沿って貼り付けて描く。
+            const float brushRadiusWorld = getBrushRadius();
+            const MATH::Mat4 viewProjection = camera.GetViewProj();
+            const auto projectToScreen = [&](
+                const MATH::Vec3& worldPos,
+                ImVec2& outScreen) -> bool {
+                const MATH::Vec4 clip = viewProjection.TransformPoint({
+                    worldPos.x, worldPos.y, worldPos.z, 1.0f });
+                if (clip.w <= 1.0e-4f) {
+                    return false;
+                }
+                const float invW = 1.0f / clip.w;
+                outScreen.x = viewport.x +
+                    (clip.x * invW * 0.5f + 0.5f) * viewport.width;
+                outScreen.y = viewport.y +
+                    (1.0f - (clip.y * invW * 0.5f + 0.5f)) *
+                        viewport.height;
+                return true;
+            };
+            const auto drawGroundRing = [&](
+                float ringRadius,
+                int segments,
+                float thickness) {
+                ImVec2 previous{};
+                bool previousValid = false;
+                for (int segment = 0; segment <= segments; ++segment) {
+                    const float angle =
+                        (static_cast<float>(segment) / segments) *
+                        6.28318530718f;
+                    const float wx = worldHit.x +
+                        std::cos(angle) * ringRadius;
+                    const float wz = worldHit.z +
+                        std::sin(angle) * ringRadius;
+                    float ringY = worldHit.y;
+                    float sampled = 0.0f;
+                    if (sampleTerrainHeight(wx, wz, sampled)) {
+                        ringY = sampled;
+                    }
+                    ImVec2 screenPoint{};
+                    const bool valid = projectToScreen(
+                        { wx, ringY + 0.02f, wz }, screenPoint);
+                    if (valid && previousValid) {
+                        drawList->AddLine(
+                            previous, screenPoint,
+                            brushColor, thickness);
+                    }
+                    previous = screenPoint;
+                    previousValid = valid;
+                }
+            };
+            drawGroundRing(brushRadiusWorld, 48, 2.0f);
+            const float innerRadius =
+                brushRadiusWorld *
+                (std::max)(1.0f - previewBrush.falloff, 0.0f);
+            if (innerRadius > 0.01f) {
+                drawGroundRing(innerRadius, 32, 1.0f);
+            }
+            ImVec2 centerScreen{};
+            if (projectToScreen(worldHit, centerScreen)) {
+                drawList->AddCircleFilled(
+                    centerScreen, 3.0f, brushColor, 12);
+            }
+
+            const EditorTerrainPaintMode paint =
+                context_.terrainTool.paint;
+            if (pointerDown) {
+                if (!sandTerrainStrokeActive_) {
+                    sandBrushBeforeObjects_ =
+                        scene.GetSceneDocument().objects;
+                    sandBrushBeforeCamera_ =
+                        scene.GetSceneDocument().camera;
+                    sandBrushDirtyBefore_ =
+                        context_.sceneDirty ||
+                        scene.HasUnsavedSceneChanges();
+                    sandTerrainStrokeActive_ = true;
+                }
+            }
+            if (pointerDown && paint != EditorTerrainPaintMode::None) {
+                switch (paint) {
+                case EditorTerrainPaintMode::Sand:
+                    terrain->PaintLayerAtWorld("sand", worldHit);
+                    break;
+                case EditorTerrainPaintMode::Snow:
+                    terrain->PaintLayerAtWorld("snow", worldHit);
+                    break;
+                case EditorTerrainPaintMode::Dirt:
+                    terrain->PaintLayerAtWorld("dirt", worldHit);
+                    break;
+                case EditorTerrainPaintMode::Erase:
+                    terrain->PaintCoverageAtWorld(0.0f, worldHit);
+                    break;
+                case EditorTerrainPaintMode::None:
+                default:
+                    break;
+                }
+            } else if (pointerDown) {
+                TERRAIN::TerrainBrushMode mode =
+                    toTerrainMode(context_.terrainTool.mode);
+                const ImGuiIO& io = ImGui::GetIO();
+                if (io.KeyShift) {
+                    if (mode == TERRAIN::TerrainBrushMode::Raise) {
+                        mode = TERRAIN::TerrainBrushMode::Lower;
+                    } else if (mode == TERRAIN::TerrainBrushMode::Lower) {
+                        mode = TERRAIN::TerrainBrushMode::Raise;
+                    } else if (mode == TERRAIN::TerrainBrushMode::Mound) {
+                        mode = TERRAIN::TerrainBrushMode::Pit;
+                    } else if (mode == TERRAIN::TerrainBrushMode::Pit) {
+                        mode = TERRAIN::TerrainBrushMode::Mound;
+                    }
+                }
+                if (io.KeyCtrl) {
+                    mode = TERRAIN::TerrainBrushMode::Smooth;
+                }
+                terrain->SetBrushMode(mode);
+                terrain->SculptAtWorld(worldHit, ImGui::GetIO().DeltaTime);
+            }
+        } else {
+            context_.terrainTool.hasHit = false;
+        }
+
+        if (!pointerDown) {
+            finishStroke();
         }
 #else
         (void)scene;

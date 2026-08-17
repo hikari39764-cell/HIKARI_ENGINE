@@ -17,6 +17,30 @@ float4 HikariShadeSandSurface(
         HikariLoadSandSurfaceParamsFromDataIndex(
             instance.surfaceFeatureDataIndex);
 
+    const float coverage = HikariSandSampleCoverage(p, input.uv1);
+    if (coverage < 0.5f)
+    {
+        discard;
+    }
+
+    float3 blendedLight = p.lightTint;
+    float3 blendedDark = p.darkTint;
+    if (p.layerCount > 1u)
+    {
+        // 任意層数を層 tint で混合。層 tint はペイントプリセット由来で、
+        // 組み込み sand/snow/dirt は従来ハードコード色と同一値を持つため
+        // 既定の見た目は変わらない。
+        blendedLight = 0.0f.xxx;
+        blendedDark = 0.0f.xxx;
+        const uint blendLayers = min(p.layerCount, 8u);
+        for (uint layer = 0u; layer < blendLayers; ++layer)
+        {
+            const float w = HikariSandSampleLayerWeight(p, layer, input.uv1);
+            blendedLight += HikariSandSampleLayerLightTint(p, layer) * w;
+            blendedDark += HikariSandSampleLayerDarkTint(p, layer) * w;
+        }
+    }
+
     const float3 worldPos = input.worldPosWS;
     const float3 viewDir =
         normalize(gCameraPos.xyz - worldPos);
@@ -57,7 +81,7 @@ float4 HikariShadeSandSurface(
     }
     else
     {
-        albedo.rgb *= p.lightTint;
+        albedo.rgb *= blendedLight;
     }
 
     // 凹みは湿った深い色へ、滑らかに乾いた砂へ戻す。
@@ -66,8 +90,16 @@ float4 HikariShadeSandSurface(
     const float pitMask = smoothstep(0.16f, 0.38f, pitMaskRaw);
     albedo.rgb = lerp(
         albedo.rgb,
-        albedo.rgb * p.darkTint * 0.82f,
+        albedo.rgb * blendedDark * 0.82f,
         pitMask * p.pitDarkening);
+    // 水際の湿った砂。沈んだ領域を wetness に応じて暗く湿らせる。
+    if (p.wetness > 0.0f)
+    {
+        albedo.rgb = lerp(
+            albedo.rgb,
+            albedo.rgb * float3(0.48f, 0.44f, 0.40f),
+            saturate(pitMaskRaw) * p.wetness);
+    }
 
     // 法線マップ（NormalDX）は共有の normal resolver でワールド空間へ
     // 変換する。VS が変形勾配から再構築した normalWS を基準にするため、
@@ -106,14 +138,14 @@ float4 HikariShadeSandSurface(
         scaled - bandBase);
     const float ramp = saturate(
         (bandBase + bandEdge) / max(bandCount - 1.0f, 1.0f));
-    const float3 diffuse = lerp(p.darkTint, p.lightTint, ramp);
+    const float3 diffuse = lerp(blendedDark, blendedLight, ramp);
     float3 color = albedo.rgb * diffuse;
 
     // 海面ハイライトに似た広い光沢を加え、流れるような砂の質感を作る。
     const float3 halfDir = normalize(lightDir + viewDir);
     const float oceanSpecular =
         pow(saturate(dot(shadingNormal, halfDir)), 64.0f);
-    color += oceanSpecular * 0.16f * p.lightTint;
+    color += oceanSpecular * 0.16f * blendedLight;
 
     // 砂粒のきらめき。高周波 hash で細かい輝点を作り、硬さを避ける。
     const float grain = HikariSandHash21(

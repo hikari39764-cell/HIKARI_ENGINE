@@ -7,6 +7,7 @@
 #include "Core/HIKARI_JsonRead.h"
 #include "Core/Serialization/Json/HIKARI_JsonMath.h"
 #include "Scene/HIKARI_SceneComponentId.h"
+#include "Scene/Terrain/HIKARI_TerrainSurfaceMigration.h"
 #include "Scene/HIKARI_SceneDocument.h"
 
 namespace HIKARI::SCENE::SERIALIZATION {
@@ -108,6 +109,40 @@ namespace HIKARI::SCENE::SERIALIZATION {
 
         DeserializeTransform(node.value("transform", nlohmann::json::object()), outObject.transform);
         DeserializeComponents(node.value("components", nlohmann::json::array()), outObject.components);
+        {
+            const nlohmann::json* sandJson = nullptr;
+            const nlohmann::json* waterJson = nullptr;
+            SceneComponentId terrainId{};
+            for (const SceneComponentData& component : outObject.components) {
+                if (component.type == "SandSurfaceComponent") {
+                    sandJson = &component.properties;
+                    terrainId = component.id;
+                } else if (component.type == "WaterSurfaceComponent") {
+                    waterJson = &component.properties;
+                }
+            }
+            if (sandJson != nullptr) {
+                nlohmann::json merged =
+                    TERRAIN::BuildTerrainSurfaceFromLegacy(
+                        *sandJson,
+                        waterJson);
+                std::vector<SceneComponentData> next{};
+                next.reserve(outObject.components.size());
+                for (SceneComponentData& component : outObject.components) {
+                    // 砂地は統合地形へ移行し、水は独立コンポーネントとして温存する。
+                    if (component.type == "SandSurfaceComponent") {
+                        continue;
+                    }
+                    next.push_back(std::move(component));
+                }
+                SceneComponentData terrain{};
+                terrain.type = "TerrainSurfaceComponent";
+                terrain.id = terrainId;
+                terrain.properties = std::move(merged);
+                next.push_back(std::move(terrain));
+                outObject.components = std::move(next);
+            }
+        }
         NormalizeSceneComponentIds(outObject);
         return true;
     }

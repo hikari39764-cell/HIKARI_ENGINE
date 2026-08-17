@@ -18,6 +18,8 @@ namespace HIKARI {
         inline constexpr char SurfaceRoughness[] = "surfaceRoughness";
     }
 
+    // 独立した水面コンポーネント。TerrainSurface とは分離し、
+    // 単一の GameObject が外観と波形だけを保持する。
     class WaterSurfaceComponent final : public IComponent {
     public:
         std::string_view GetTypeName() const override {

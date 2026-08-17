@@ -582,6 +582,35 @@ namespace HIKARI::EDITOR {
             canvas.Arc(-0.70f, 0.70f, 0.42f);
             canvas.Arc(-0.70f, 0.70f, 0.70f);
             break;
+        case EditorGlyph::TerrainRaise:
+            canvas.Line(-0.56f, 0.42f, 0.0f, -0.58f);
+            canvas.Line(0.0f, -0.58f, 0.56f, 0.42f);
+            canvas.Line(-0.72f, 0.42f, 0.72f, 0.42f);
+            break;
+        case EditorGlyph::TerrainLower:
+            canvas.Line(-0.56f, -0.42f, 0.0f, 0.58f);
+            canvas.Line(0.0f, 0.58f, 0.56f, -0.42f);
+            canvas.Line(-0.72f, -0.42f, 0.72f, -0.42f);
+            break;
+        case EditorGlyph::TerrainSmooth:
+            canvas.Arc(3.14159265358979323846f,
+                6.28318530717958647692f, 0.46f);
+            canvas.Line(-0.72f, 0.28f, 0.72f, 0.28f);
+            break;
+        case EditorGlyph::TerrainFlatten:
+            canvas.Line(-0.72f, -0.20f, 0.72f, -0.20f);
+            canvas.Line(-0.72f, 0.28f, 0.72f, 0.28f);
+            break;
+        case EditorGlyph::TerrainMound:
+            canvas.Line(-0.66f, 0.45f, 0.0f, -0.45f);
+            canvas.Line(0.0f, -0.45f, 0.66f, 0.45f);
+            canvas.Line(-0.30f, 0.45f, 0.30f, 0.45f);
+            break;
+        case EditorGlyph::TerrainPit:
+            canvas.Line(-0.66f, -0.45f, 0.0f, 0.45f);
+            canvas.Line(0.0f, 0.45f, 0.66f, -0.45f);
+            canvas.Line(-0.30f, 0.45f, 0.30f, 0.45f);
+            break;
         }
     }
 

@@ -12,6 +12,7 @@ struct HikariSandSurfaceGpuData
     float4 styleLight;     // lightTint.rgb, sparkleStrength
     float4 styleDark;      // darkTint.rgb, rippleAmount
     float4 stylePit;       // pitDarkening, reserved, reserved, reserved
+    float4 styleWet;       // wetness, reserved, reserved, reserved
 };
 
 // ROOT_PARAM::SandSurfaceData (t4, space7)。水面の t0 と分離し、
@@ -34,6 +35,11 @@ struct HikariSandSurfaceParams
     float pitDarkening;
     float toonBandHardness;
     float toonBandCount;
+    uint layerCount;
+    uint layerWeightsOffset;
+    uint coverageOffset;
+    float wetness;
+    uint layerTintsOffset;
 };
 
 HikariSandSurfaceParams HikariBuildNeutralSandSurfaceParams()
@@ -46,6 +52,10 @@ HikariSandSurfaceParams HikariBuildNeutralSandSurfaceParams()
     p.darkTint = 0.0f.xxx;
     p.toonBandHardness = 0.14f;
     p.toonBandCount = 3.0f;
+    p.layerCount = 1u;
+    p.layerWeightsOffset = 0u;
+    p.coverageOffset = 0u;
+    p.wetness = 0.0f;
     return p;
 }
 
@@ -85,7 +95,103 @@ HikariSandSurfaceParams HikariLoadSandSurfaceParamsFromDataIndex(
     p.pitDarkening = saturate(data.stylePit.x);
     p.toonBandHardness = clamp(data.stylePit.y, 0.0f, 0.5f);
     p.toonBandCount = clamp(data.stylePit.z, 2.0f, 4.0f);
+    p.layerCount = max(data.header.y >> 1u, 1u);
+    p.layerWeightsOffset = (uint)data.stylePit.w;
+    p.coverageOffset = (uint)data.styleWet.y;
+    p.wetness = saturate(data.styleWet.x);
+    p.layerTintsOffset = (uint)data.styleWet.z;
     return p;
+}
+
+// 層 tint を float プールから読む。layer ごとに light.rgb + dark.rgb の 6 float。
+// プール未供給 (offset==0) のときは従来ハードコード色へフォールバックし、
+// 組み込み sand/snow/dirt の見た目を完全に保つ。
+float3 HikariSandSampleLayerLightTint(
+    HikariSandSurfaceParams p,
+    uint layerIndex)
+{
+    if (p.layerTintsOffset == 0u)
+    {
+        if (layerIndex == 0u) { return p.lightTint; }
+        if (layerIndex == 1u) { return float3(1.0f, 1.0f, 1.0f); }
+        return float3(0.52f, 0.38f, 0.24f);
+    }
+    const uint base = p.layerTintsOffset + layerIndex * 6u;
+    return float3(
+        gSandSurfaceHeights[base + 0u],
+        gSandSurfaceHeights[base + 1u],
+        gSandSurfaceHeights[base + 2u]);
+}
+
+float3 HikariSandSampleLayerDarkTint(
+    HikariSandSurfaceParams p,
+    uint layerIndex)
+{
+    if (p.layerTintsOffset == 0u)
+    {
+        if (layerIndex == 0u) { return p.darkTint; }
+        if (layerIndex == 1u) { return float3(0.68f, 0.78f, 0.90f); }
+        return float3(0.28f, 0.20f, 0.12f);
+    }
+    const uint base = p.layerTintsOffset + layerIndex * 6u;
+    return float3(
+        gSandSurfaceHeights[base + 3u],
+        gSandSurfaceHeights[base + 4u],
+        gSandSurfaceHeights[base + 5u]);
+}
+
+float HikariSandSampleCoverage(
+    HikariSandSurfaceParams p,
+    float2 uv)
+{
+    if (p.coverageOffset == 0u)
+    {
+        return 1.0f;
+    }
+    const float2 safeUv = saturate(uv);
+    const float fu = safeUv.x * (float)p.gridResolution;
+    const float fv = safeUv.y * (float)p.gridResolution;
+    uint x0 = (uint)fu;
+    uint y0 = (uint)fv;
+    uint x1 = min(x0 + 1u, p.gridResolution);
+    uint y1 = min(y0 + 1u, p.gridResolution);
+    const float tx = fu - (float)x0;
+    const float ty = fv - (float)y0;
+    const uint stride = p.gridResolution + 1u;
+    const uint base = p.coverageOffset;
+    const float c00 = gSandSurfaceHeights[base + y0 * stride + x0];
+    const float c10 = gSandSurfaceHeights[base + y0 * stride + x1];
+    const float c01 = gSandSurfaceHeights[base + y1 * stride + x0];
+    const float c11 = gSandSurfaceHeights[base + y1 * stride + x1];
+    return lerp(lerp(c00, c10, tx), lerp(c01, c11, tx), ty);
+}
+
+float HikariSandSampleLayerWeight(
+    HikariSandSurfaceParams p,
+    uint layerIndex,
+    float2 uv)
+{
+    if (p.layerCount <= 1u || p.layerWeightsOffset == 0u)
+    {
+        return layerIndex == 0u ? 1.0f : 0.0f;
+    }
+    const float2 safeUv = saturate(uv);
+    const float fu = safeUv.x * (float)p.gridResolution;
+    const float fv = safeUv.y * (float)p.gridResolution;
+    uint x0 = (uint)fu;
+    uint y0 = (uint)fv;
+    uint x1 = min(x0 + 1u, p.gridResolution);
+    uint y1 = min(y0 + 1u, p.gridResolution);
+    const float tx = fu - (float)x0;
+    const float ty = fv - (float)y0;
+    const uint stride = p.gridResolution + 1u;
+    const uint cellCount = stride * stride;
+    const uint base = p.layerWeightsOffset + layerIndex * cellCount;
+    const float w00 = gSandSurfaceHeights[base + y0 * stride + x0];
+    const float w10 = gSandSurfaceHeights[base + y0 * stride + x1];
+    const float w01 = gSandSurfaceHeights[base + y1 * stride + x0];
+    const float w11 = gSandSurfaceHeights[base + y1 * stride + x1];
+    return lerp(lerp(w00, w10, tx), lerp(w01, w11, tx), ty);
 }
 
 float HikariSandSampleHeight(

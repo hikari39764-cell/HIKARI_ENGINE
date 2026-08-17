@@ -126,6 +126,12 @@ namespace HIKARI::SAND {
             settings.refillPerSecond, 0.0f, 10.0f);
         settings.diffusionPerSecond = ClampPositive(
             settings.diffusionPerSecond, 0.0f, 100.0f);
+        settings.edgeFalloff = ClampPositive(
+            settings.edgeFalloff, 0.0f, 1000.0f);
+        settings.edgeDepth = std::clamp(
+            FiniteOr(settings.edgeDepth, 1.5f),
+            0.0f,
+            100.0f);
 
         settings.lightTint = {
             std::clamp(FiniteOr(settings.lightTint.x, 1.0f), 0.0f, 1.0f),
@@ -161,6 +167,7 @@ namespace HIKARI::SAND {
         const SandSurfaceSettings& rhs) noexcept {
 
         return lhs.style == rhs.style &&
+            lhs.presetId == rhs.presetId &&
             lhs.gridResolution == rhs.gridResolution &&
             lhs.heightScale == rhs.heightScale &&
             lhs.maxDepth == rhs.maxDepth &&
@@ -168,6 +175,8 @@ namespace HIKARI::SAND {
             lhs.rimStrength == rhs.rimStrength &&
             lhs.refillPerSecond == rhs.refillPerSecond &&
             lhs.diffusionPerSecond == rhs.diffusionPerSecond &&
+            lhs.edgeFalloff == rhs.edgeFalloff &&
+            lhs.edgeDepth == rhs.edgeDepth &&
             lhs.lightTint.x == rhs.lightTint.x &&
             lhs.lightTint.y == rhs.lightTint.y &&
             lhs.lightTint.z == rhs.lightTint.z &&

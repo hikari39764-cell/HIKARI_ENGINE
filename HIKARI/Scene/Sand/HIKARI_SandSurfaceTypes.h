@@ -88,6 +88,7 @@ namespace HIKARI::SAND {
 
     struct SandSurfaceSettings {
         SandSurfaceStyle style = SandSurfaceStyle::AnimeDry;
+        std::string presetId = "sand";
 
         // 高さグリッドは (gridResolution + 1)^2 ノードを保持する。
         // ProceduralMeshComponent 側のセグメント数とは独立した
@@ -103,6 +104,12 @@ namespace HIKARI::SAND {
         float rimStrength = 0.28f;
         float refillPerSecond = 0.018f;
         float diffusionPerSecond = 1.2f;
+
+        // 矩形の砂地境界を水面下へ滑らかに沈め、硬いエッジを消す。
+        // edgeFalloff は境界からの遷移幅（メートル）、edgeDepth は
+        // 境界で沈ませる量（メートル、水面下になる値を指定する）。
+        float edgeFalloff = 4.0f;
+        float edgeDepth = 1.5f;
 
         // アニメ調の二階調トゥーン色と砂粒表現。
         MATH::Vec3 lightTint{ 0.95f, 0.84f, 0.60f };

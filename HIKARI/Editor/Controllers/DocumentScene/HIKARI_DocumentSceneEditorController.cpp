@@ -1906,6 +1906,33 @@ namespace HIKARI {
             return;
         }
 
+        if (workspaceHost_.IsActive(
+                EDITOR::EditorWorkspaceId::TerrainSurface)) {
+#if defined(HIKARI_WITH_EDITOR)
+            terrainSurfaceWorkspaceController_.DrawDockSpace(
+                workspaceHost_.ConsumeReset(
+                    EDITOR::EditorWorkspaceId::TerrainSurface));
+#endif
+            if (context_.windows.viewport.showGameView) {
+                DrawGameViewportWindow(
+                    scene,
+                    playSession,
+                    "TerrainSurface/GameView");
+            } else {
+                playSession.ReleaseEmbeddedInput();
+                viewportTransformHistory_.BeginFrame();
+                viewportTransformHistory_.EndFrame(
+                    scene.GetSceneDocument());
+                EDITOR::ClearGameViewportInputRect();
+                SERVICES::SetEditorGameViewportSize(0, 0, false);
+            }
+            terrainSurfaceWorkspaceController_.Draw(
+                scene,
+                context_);
+            DrawPendingSceneOpenModal(scene);
+            return;
+        }
+
 #if defined(HIKARI_WITH_EDITOR)
         DrawEditorDockSpace(
             workspaceHost_.ConsumeReset(EDITOR::EditorWorkspaceId::Scene));

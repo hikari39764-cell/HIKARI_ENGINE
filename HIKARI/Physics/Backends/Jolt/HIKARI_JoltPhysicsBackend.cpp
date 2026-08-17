@@ -581,6 +581,28 @@ namespace HIKARI::PHYSICS::JOLT_BACKEND {
         return true;
     }
 
+    bool JoltPhysicsBackend::AddForce(
+        PhysicsBodyHandle body,
+        const MATH::Vec3& force) {
+        if (!initialized_ || !physicsSystem_) {
+            return false;
+        }
+        JPH::BodyID bodyId{};
+        {
+            std::scoped_lock lock(recordsMutex_);
+            const BodyRecord* record = FindRecord(body);
+            if (!record ||
+                record->motionType == PhysicsMotionType::Static) {
+                return false;
+            }
+            bodyId = record->bodyId;
+        }
+        physicsSystem_->GetBodyInterface().AddForce(
+            bodyId,
+            ToJolt(force));
+        return true;
+    }
+
     bool JoltPhysicsBackend::TryGetBodyState(
         PhysicsBodyHandle body,
         PhysicsBodyState& outState) const {

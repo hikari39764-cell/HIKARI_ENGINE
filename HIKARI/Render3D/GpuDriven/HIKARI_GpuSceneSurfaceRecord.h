@@ -114,6 +114,10 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         SAND::SandSurfaceRenderData sandSurfaceData{};
         uint32_t sandSurfaceGpuDataIndex = 0u;
         uint32_t sandSurfaceHeightOffset = 0u;
+        uint32_t sandSurfaceLayerWeightsOffset = 0u;
+        uint32_t sandSurfaceCoverageOffset = 0u;
+        uint32_t sandSurfaceLayerTintsOffset = 0u;
+        uint32_t waterSurfaceLiquidCoverageOffset = 0u;
 
         GpuSceneResourceKey key{};
     };

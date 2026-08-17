@@ -1,64 +1,74 @@
 #pragma once
 
-#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
-#include <mutex>
 #include <vector>
 
 #include "Render3D/HIKARI_Math3D.h"
 #include "Scene/HIKARI_RuntimeObjectHandle.h"
 #include "Scene/Sand/HIKARI_SandSurfaceTypes.h"
+#include "Scene/Terrain/HIKARI_TerrainChunks.h"
+#include "Scene/Terrain/HIKARI_TerrainSnapshotService.h"
 
 namespace HIKARI::SAND {
 
-    // System が所有する可変状態。query と renderer bridge はこの共有
-    // ポインタ越しに参照するため、World 再構築で vector が再配置されても
-    // ポインタは安定する。高さ配列の書換は main-thread の fixed step だけが行う。
-    struct SandSurfaceRuntimeState {
-        uint32_t gridResolution = 0u;
+    // 1 chunk 分の可変状態。System が main-thread fixed step でのみ書き換え、
+    // query / renderer bridge は shared_ptr 越しに読む。
+    // 高さは「基底(筆刷が彫った形状) + 変形(球の凹み)」を合成した最終値。
+    struct SandChunkRuntimeState {
+        TERRAIN::TerrainChunkKey key{};
+        uint32_t cells = TERRAIN::kTerrainChunkCells;
         SandSurfaceSettings settings{};
-        SandSurfaceTerrain authoredTerrain{};
-        std::vector<float> baseHeights{};
-        std::vector<float> deformHeights{};
-        std::vector<float> heights{};
+        // chunk 左下角のワールド XZ。
+        MATH::Vec2 chunkOriginWS{ 0.0f, 0.0f };
+        float cellSize = 0.25f;
+        float heightScale = 0.32f;
+        float chunkWorldSize = 8.0f;
 
-        MATH::Mat4 world = MATH::Mat4::Identity();
-        MATH::Mat4 inverseWorld = MATH::Mat4::Identity();
-        MATH::Vec2 halfExtents{ 10.0f, 10.0f };
+        std::vector<float> baseHeights{};   // (cells+1)^2
+        std::vector<float> deformHeights{}; // (cells+1)^2
+        std::vector<float> heights{};       // base + deform
     };
 
-    using SandSurfaceRuntimeStatePtr =
-        std::shared_ptr<SandSurfaceRuntimeState>;
+    using SandChunkRuntimeStatePtr =
+        std::shared_ptr<SandChunkRuntimeState>;
 
     struct SandSurfaceSnapshotEntry {
         RuntimeObjectHandle object{};
-        SandSurfaceRuntimeStatePtr state{};
+        SandChunkRuntimeStatePtr chunk{};
     };
 
+    // ワールド空間で疎 chunk 化された地形への問い合わせ。
+    // フォロワー・水面 bathymetry・描画 bridge が共有する。
     class SandSurfaceQueryService final {
     public:
-        struct Snapshot {
-            uint64_t revision = 0u;
-            std::vector<SandSurfaceSnapshotEntry> entries{};
-        };
-
+        // ワールド座標から該当 chunk を定位し、最終高さと法線を返す。
+        // chunk が無い場所では false。
         bool SampleWorldHeight(
             const MATH::Vec3& worldPosition,
             float& outHeight,
             MATH::Vec3& outNormal) const noexcept;
 
-        bool SampleLocalHeight(
-            const SandSurfaceRuntimeState& state,
-            const MATH::Vec2& localXZ,
-            float& outHeight,
-            MATH::Vec3& outNormal) const noexcept;
+        // 指定 chunk 内のローカル高さを返す（描画 bridge 用）。
+        bool SampleChunkLocalHeight(
+            const SandChunkRuntimeState& chunk,
+            float localX,
+            float localZ,
+            float& outHeight) const noexcept;
 
-        // Renderer bridge 用。現在の snapshot から object の高さ配列を借用する。
-        bool TryGetHeights(
+        // Renderer bridge 用。object + chunkKey の高さ配列を借用する。
+        bool TryGetChunkHeights(
             RuntimeObjectHandle object,
+            TERRAIN::TerrainChunkKey key,
             const std::vector<float>*& outHeights) const noexcept;
+
+        // object + chunkKey の chunk 可変状態そのものを借用する。
+        // 描画 bridge が chunk 原点・セルピッチを含めて参照するために使う。
+        bool TryGetChunkState(
+            RuntimeObjectHandle object,
+            TERRAIN::TerrainChunkKey key,
+            const SandChunkRuntimeState*& outChunk) const noexcept;
 
         uint64_t GetSnapshotRevision() const noexcept;
         std::size_t GetSurfaceCount() const noexcept;
@@ -67,9 +77,8 @@ namespace HIKARI::SAND {
         void Clear();
 
     private:
-        std::atomic<std::shared_ptr<const Snapshot>> snapshot_{};
-        std::atomic<uint64_t> revision_{ 0u };
-        mutable std::mutex publishMutex_{};
+        TERRAIN::TerrainSnapshotService<SandSurfaceSnapshotEntry>
+            snapshotStore_{};
     };
 
 } // namespace HIKARI::SAND

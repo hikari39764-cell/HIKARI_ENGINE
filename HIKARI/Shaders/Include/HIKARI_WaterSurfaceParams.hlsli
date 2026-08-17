@@ -33,6 +33,8 @@ struct HikariWaterSurfaceGpuData
     float4 scatteringAbsorption;
     // (foamColor.rgb, surfaceRoughness)
     float4 foamRoughness;
+    // (coverageResolution, reserved, reserved, reserved)
+    float4 coverageParams;
     HikariWaterSurfaceWaveGpuData waves[HIKARI_WATER_SURFACE_WAVE_COUNT];
 };
 
@@ -61,6 +63,8 @@ struct HikariWaterSurfaceParams
     float3 foamColor;
     float surfaceRoughness;
     uint waveCount;
+    uint liquidCoverageOffset;
+    uint coverageResolution;
     HikariWaterWaveParams waves[HIKARI_WATER_SURFACE_WAVE_COUNT];
 };
 
@@ -80,6 +84,7 @@ HikariWaterSurfaceParams HikariBuildNeutralWaterSurfaceParams()
     p.foamColor = 1.0f.xxx;
     p.absorptionDistance = 1.0f;
     p.surfaceRoughness = 1.0f;
+    p.coverageResolution = 1u;
     return p;
 }
 
@@ -141,6 +146,8 @@ HikariWaterSurfaceParams HikariLoadWaterSurfaceParamsFromDataIndex(
         0.02f,
         1.0f);
     p.waveCount = min(data.header.z, HIKARI_WATER_SURFACE_WAVE_COUNT);
+    p.liquidCoverageOffset = data.header.w;
+    p.coverageResolution = max((uint)data.coverageParams.x, 1u);
     [unroll]
     for (uint index = 0u; index < HIKARI_WATER_SURFACE_WAVE_COUNT; ++index)
     {

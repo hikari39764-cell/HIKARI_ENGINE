@@ -444,6 +444,89 @@ namespace HIKARI::RENDER3D::RUNTIME {
                 instance.sandSurfaceHeights->begin() + 1u,
                 instance.sandSurfaceHeights->end());
         }
+        // 層ウェイトは高さの後ろへ layer-major で追記する。layerCount<=1 は
+        // 従来の単一砂地と完全に同一レイアウトになる。
+        for (SceneSurfaceInstance& instance : surfaceInstances_) {
+            const std::vector<float>& weights =
+                instance.sandSurfaceData.layerWeights;
+            if (!instance.sandSurface ||
+                instance.sandSurfaceData.layerCount <= 1u ||
+                weights.empty()) {
+                instance.sandSurfaceLayerWeightsOffset = 0u;
+                continue;
+            }
+            instance.sandSurfaceLayerWeightsOffset =
+                NUMERIC::SaturateToUint32(sandSurfaceHeights_.size());
+            sandSurfaceHeights_.insert(
+                sandSurfaceHeights_.end(),
+                weights.begin(),
+                weights.end());
+        }
+        // coverage は hole 判定用に高さ/層の後ろへ追記する。空なら 0（全面実体）。
+        for (SceneSurfaceInstance& instance : surfaceInstances_) {
+            const std::vector<float>& coverage =
+                instance.sandSurfaceData.coverage;
+            if (!instance.sandSurface || coverage.empty()) {
+                instance.sandSurfaceCoverageOffset = 0u;
+                continue;
+            }
+            instance.sandSurfaceCoverageOffset =
+                NUMERIC::SaturateToUint32(sandSurfaceHeights_.size());
+            sandSurfaceHeights_.insert(
+                sandSurfaceHeights_.end(),
+                coverage.begin(),
+                coverage.end());
+        }
+        // 層 tint (light.rgb,dark.rgb per layer) を coverage の後ろへ追記する。
+        // 未指定の層は従来ハードコード色 (sand=material, snow=白, dirt=茶) に
+        // 展開するため、組み込み層の見た目は変わらない。
+        for (SceneSurfaceInstance& instance : surfaceInstances_) {
+            if (!instance.sandSurface ||
+                instance.sandSurfaceData.layerCount <= 1u) {
+                instance.sandSurfaceLayerTintsOffset = 0u;
+                continue;
+            }
+            const uint32_t layerCount = instance.sandSurfaceData.layerCount;
+            const auto& lights = instance.sandSurfaceData.layerLightTints;
+            const auto& darks = instance.sandSurfaceData.layerDarkTints;
+            const MATH::Vec3 baseLight = instance.sandSurfaceData.lightTint;
+            const MATH::Vec3 baseDark = instance.sandSurfaceData.darkTint;
+            instance.sandSurfaceLayerTintsOffset =
+                NUMERIC::SaturateToUint32(sandSurfaceHeights_.size());
+            for (uint32_t layer = 0u; layer < layerCount; ++layer) {
+                const MATH::Vec3 light =
+                    layer < lights.size() ? lights[layer]
+                        : layer == 0u ? baseLight
+                        : layer == 1u ? MATH::Vec3{ 1.0f, 1.0f, 1.0f }
+                        : MATH::Vec3{ 0.52f, 0.38f, 0.24f };
+                const MATH::Vec3 dark =
+                    layer < darks.size() ? darks[layer]
+                        : layer == 0u ? baseDark
+                        : layer == 1u ? MATH::Vec3{ 0.68f, 0.78f, 0.90f }
+                        : MATH::Vec3{ 0.28f, 0.20f, 0.12f };
+                sandSurfaceHeights_.push_back(light.x);
+                sandSurfaceHeights_.push_back(light.y);
+                sandSurfaceHeights_.push_back(light.z);
+                sandSurfaceHeights_.push_back(dark.x);
+                sandSurfaceHeights_.push_back(dark.y);
+                sandSurfaceHeights_.push_back(dark.z);
+            }
+        }
+        // 水面の liquidCoverage も同じ t1 バッファへ追記し、water record が offset を持つ。
+        for (SceneSurfaceInstance& instance : surfaceInstances_) {
+            const std::vector<float>& liquidCoverage =
+                instance.waterSurfaceData.liquidCoverage;
+            if (!instance.waterSurface || liquidCoverage.empty()) {
+                instance.waterSurfaceLiquidCoverageOffset = 0u;
+                continue;
+            }
+            instance.waterSurfaceLiquidCoverageOffset =
+                NUMERIC::SaturateToUint32(sandSurfaceHeights_.size());
+            sandSurfaceHeights_.insert(
+                sandSurfaceHeights_.end(),
+                liquidCoverage.begin(),
+                liquidCoverage.end());
+        }
         RefreshStats();
     }
 

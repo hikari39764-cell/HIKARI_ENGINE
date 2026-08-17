@@ -9,11 +9,6 @@
 
 namespace HIKARI::WATER {
 
-    struct WaterSurfaceQueryService::Snapshot {
-        std::vector<WaterSurfaceSnapshotEntry> surfaces{};
-        uint64_t revision = 0u;
-    };
-
     namespace {
         MATH::Vec3 TransformPoint(
             const MATH::Mat4& matrix,
@@ -92,7 +87,6 @@ namespace HIKARI::WATER {
                 std::abs(sourceLocalXZ.y) > surface.halfExtents.y) {
                 return false;
             }
-
             const MATH::Vec3 positionWS = TransformPoint(
                 surface.world,
                 evaluation.positionLocal);
@@ -224,13 +218,12 @@ namespace HIKARI::WATER {
         const WaterSurfaceQuery& query,
         WaterSurfaceSample& outSample) const noexcept {
 
-        const std::shared_ptr<const Snapshot> snapshot =
-            snapshot_.load(std::memory_order_acquire);
+        const auto snapshot = snapshotStore_.Current();
         const IWaterBathymetryProvider* provider =
             bathymetryProvider_.load(std::memory_order_acquire);
         const std::span<const WaterSurfaceSnapshotEntry> surfaces =
             snapshot != nullptr
-            ? std::span<const WaterSurfaceSnapshotEntry>(snapshot->surfaces)
+            ? std::span<const WaterSurfaceSnapshotEntry>(snapshot->entries)
             : std::span<const WaterSurfaceSnapshotEntry>{};
         return SampleNearestFromSnapshot(
             surfaces,
@@ -247,13 +240,12 @@ namespace HIKARI::WATER {
         const std::size_t count = (std::min)(
             queries.size(),
             outSamples.size());
-        const std::shared_ptr<const Snapshot> snapshot =
-            snapshot_.load(std::memory_order_acquire);
+        const auto snapshot = snapshotStore_.Current();
         const IWaterBathymetryProvider* provider =
             bathymetryProvider_.load(std::memory_order_acquire);
         const std::span<const WaterSurfaceSnapshotEntry> surfaces =
             snapshot != nullptr
-            ? std::span<const WaterSurfaceSnapshotEntry>(snapshot->surfaces)
+            ? std::span<const WaterSurfaceSnapshotEntry>(snapshot->entries)
             : std::span<const WaterSurfaceSnapshotEntry>{};
         const uint64_t revision =
             snapshot != nullptr ? snapshot->revision : 0u;
@@ -269,50 +261,26 @@ namespace HIKARI::WATER {
     }
 
     uint64_t WaterSurfaceQueryService::GetSnapshotRevision() const noexcept {
-        const std::shared_ptr<const Snapshot> snapshot =
-            snapshot_.load(std::memory_order_acquire);
-        return snapshot != nullptr ? snapshot->revision : 0u;
+        return snapshotStore_.Revision();
     }
 
     std::size_t WaterSurfaceQueryService::GetSurfaceCount() const noexcept {
-        const std::shared_ptr<const Snapshot> snapshot =
-            snapshot_.load(std::memory_order_acquire);
-        return snapshot != nullptr ? snapshot->surfaces.size() : 0u;
+        return snapshotStore_.Count();
     }
 
     void WaterSurfaceQueryService::PublishSnapshot(
         std::vector<WaterSurfaceSnapshotEntry> surfaces) {
 
-        std::scoped_lock lock(publishMutex_);
-        const std::shared_ptr<const Snapshot> current =
-            snapshot_.load(std::memory_order_acquire);
+        const auto current = snapshotStore_.Current();
         if (current != nullptr &&
-            SnapshotEqual(current->surfaces, surfaces)) {
+            SnapshotEqual(current->entries, surfaces)) {
             return;
         }
-        auto next = std::make_shared<Snapshot>();
-        next->surfaces = std::move(surfaces);
-        next->revision = current != nullptr
-            ? current->revision + 1u
-            : 1u;
-        snapshot_.store(
-            std::shared_ptr<const Snapshot>(std::move(next)),
-            std::memory_order_release);
+        snapshotStore_.Publish(std::move(surfaces));
     }
 
     void WaterSurfaceQueryService::Clear() {
-
-        std::scoped_lock lock(publishMutex_);
-        const std::shared_ptr<const Snapshot> current =
-            snapshot_.load(std::memory_order_acquire);
-        if (current == nullptr || current->surfaces.empty()) {
-            return;
-        }
-        auto next = std::make_shared<Snapshot>();
-        next->revision = current->revision + 1u;
-        snapshot_.store(
-            std::shared_ptr<const Snapshot>(std::move(next)),
-            std::memory_order_release);
+        snapshotStore_.Clear();
     }
 
 } // namespace HIKARI::WATER

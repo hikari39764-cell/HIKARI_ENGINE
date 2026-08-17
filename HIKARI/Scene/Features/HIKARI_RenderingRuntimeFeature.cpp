@@ -12,7 +12,8 @@
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponentAuthoring.h"
 #include "Scene/Features/HIKARI_RuntimeFeature.h"
 #include "Scene/Features/HIKARI_RuntimeFeatureIds.h"
-#include "Scene/Water/HIKARI_WaterSurfaceComponent.h"
+#include "Scene/Features/HIKARI_BuoyancyComponent.h"
+#include "Scene/Features/HIKARI_BuoyancySystem.h"
 #include "Scene/Water/HIKARI_WaterSurfaceSystem.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
 #include "Scene/HIKARI_ComponentRegistry.h"
@@ -20,9 +21,10 @@
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
 #include "Scene/HIKARI_SceneDocument.h"
 #include "Scene/HIKARI_SystemTypeRegistry.h"
-#include "Scene/Sand/HIKARI_SandSurfaceComponent.h"
 #include "Scene/Sand/HIKARI_SandSurfaceFollowerComponent.h"
 #include "Scene/Sand/HIKARI_SandSurfaceSystem.h"
+#include "Scene/Terrain/HIKARI_TerrainSurfaceComponent.h"
+#include "Scene/Water/HIKARI_WaterSurfaceComponent.h"
 
 namespace HIKARI {
     namespace {
@@ -58,8 +60,8 @@ namespace HIKARI {
                     "ModelComponent",
                     "MaterialFxComponent",
                     "ProceduralMeshComponent",
+                    "TerrainSurfaceComponent",
                     "WaterSurfaceComponent",
-                    "SandSurfaceComponent",
                     "SandSurfaceFollowerComponent",
                     "LightComponent",
                     "ReflectionProbeComponent",
@@ -151,6 +153,28 @@ namespace HIKARI {
                     "Procedural Mesh",
                     "Generates editable plane, box, sphere, cylinder, or capsule geometry.");
 
+                ComponentTypeInfo terrainSurface{};
+                terrainSurface.typeName = "TerrainSurfaceComponent";
+                terrainSurface.factory =
+                    []() -> std::unique_ptr<IComponent> {
+                    return std::make_unique<TerrainSurfaceComponent>();
+                };
+                terrainSurface.requiredComponents = {
+                    "ModelComponent",
+                    "ProceduralMeshComponent"
+                };
+                terrainSurface.runtimeApplyPolicy =
+                    ComponentRuntimeApplyPolicy::OnEditCommit;
+                terrainSurface.initializeDefaults = [](
+                    const SceneObjectData&,
+                    nlohmann::json& properties) {
+                    TerrainSurfaceComponent defaults{};
+                    defaults.Serialize(properties);
+                };
+                terrainSurface.presentation = RenderingPresentation(
+                    "Terrain Surface",
+                    "Unified editable solid terrain with heightfield and paintable layers.");
+
                 ComponentTypeInfo waterSurface{};
                 waterSurface.typeName = "WaterSurfaceComponent";
                 waterSurface.factory =
@@ -169,196 +193,155 @@ namespace HIKARI {
                     WaterSurfaceComponent defaults{};
                     defaults.Serialize(properties);
                 };
-                // 空オブジェクトへ追加された場合も SceneCreationPanel と
-                // 同じ 200x200 GridPlane になるように、自動追加された
-                // あるいは既存の小さい Plane を水面メッシュへ上げる。
-                waterSurface.configureDependencies = [](
-                    SceneObjectData& object,
-                    const std::vector<std::string>&) {
-                    for (SceneComponentData& component : object.components) {
-                        if (component.type != "ProceduralMeshComponent") {
-                            continue;
-                        }
-                        const std::string kind =
-                            component.properties.value(
-                                "kind",
-                                std::string{});
-                        const bool isPlane = kind == "Plane";
-                        const bool isSmallGrid =
-                            kind == "GridPlane" &&
-                            component.properties.value("width", 0.0f) < 50.0f &&
-                            component.properties.value("depth", 0.0f) < 50.0f;
-                        if (!isPlane && !isSmallGrid) {
-                            continue;
-                        }
-                        component.properties = {
-                            { "kind", "GridPlane" },
-                            { "width", 200.0f },
-                            { "height", 1.0f },
-                            { "depth", 200.0f },
-                            { "segmentsX", 300u },
-                            { "segmentsY", 300u },
-                            { "segmentsZ", 1u },
-                            { "sphereSlices", 32u },
-                            { "sphereStacks", 16u },
-                            { "doubleSided", true },
-                            { "generateTangents", true }
-                        };
-                        break;
-                    }
-                };
                 waterSurface.presentation = RenderingPresentation(
                     "Water Surface",
                     "Gerstner-driven animated water surface with stylized or realistic shading.");
-
-                ComponentTypeInfo sandSurface{};
-                sandSurface.typeName = "SandSurfaceComponent";
-                sandSurface.factory =
-                    []() -> std::unique_ptr<IComponent> {
-                    return std::make_unique<SandSurfaceComponent>();
-                };
-                sandSurface.requiredComponents = {
-                    "ModelComponent",
-                    "ProceduralMeshComponent"
-                };
-                sandSurface.runtimeApplyPolicy =
-                    ComponentRuntimeApplyPolicy::OnEditCommit;
-                sandSurface.initializeDefaults = [](
-                    const SceneObjectData&,
-                    nlohmann::json& properties) {
-                    SandSurfaceComponent defaults{};
-                    defaults.Serialize(properties);
-                };
-                // 空オブジェクトへ追加された場合も SceneCreationPanel と
-                // 同じ 40x40 GridPlane になるように、自動追加された
-                // あるいは既存の小さい Plane を砂地メッシュへ上げる。
-                // 球スケールの凹みを十分に解像できるよう、既定の砂地は
-                // 200m ではなく 40m にしてグリッド密度を上げている。
-                sandSurface.configureDependencies = [](
-                    SceneObjectData& object,
-                    const std::vector<std::string>&) {
-                    for (SceneComponentData& component : object.components) {
-                        if (component.type != "ProceduralMeshComponent") {
-                            continue;
-                        }
-                        const std::string kind =
-                            component.properties.value(
-                                "kind",
-                                std::string{});
-                        const bool isPlane = kind == "Plane";
-                        const bool isSmallGrid =
-                            kind == "GridPlane" &&
-                            component.properties.value("width", 0.0f) < 50.0f &&
-                            component.properties.value("depth", 0.0f) < 50.0f;
-                        if (!isPlane && !isSmallGrid) {
-                            continue;
-                        }
-                        component.properties = {
-                            { "kind", "GridPlane" },
-                            { "width", 40.0f },
-                            { "height", 1.0f },
-                            { "depth", 40.0f },
-                            { "segmentsX", 256u },
-                            { "segmentsY", 256u },
-                            { "segmentsZ", 1u },
-                            { "sphereSlices", 32u },
-                            { "sphereStacks", 16u },
-                            { "doubleSided", true },
-                            { "generateTangents", true }
-                        };
-                        break;
-                    }
-                };
-                sandSurface.presentation = RenderingPresentation(
-                    "Sand Surface",
-                    "Procedural deformable anime-style sand ground with soft sphere-contact indentations.");
-                sandSurface.authoringCommands = {
+                terrainSurface.authoringCommands = {
                     {
-                        "terrain.sculpt",
-                        "Sculpt one brush stroke into the authored sand terrain.",
+                        "terrain.surfacePreset",
+                        "Apply a solid surface preset (sand, snow, dirt).",
                         {
-                            { "localX", AuthoringCommandParameterType::Float, true, "Brush center local X." },
-                            { "localZ", AuthoringCommandParameterType::Float, true, "Brush center local Z." },
-                            { "halfExtentsX", AuthoringCommandParameterType::Float, true, "Terrain half extent X." },
-                            { "halfExtentsZ", AuthoringCommandParameterType::Float, true, "Terrain half extent Z." },
+                            { "presetId", AuthoringCommandParameterType::String, true, "Preset id: sand, snow, or dirt." },
                         },
                         [](IComponent& base, const nlohmann::json& args) {
                             auto* component =
-                                dynamic_cast<SandSurfaceComponent*>(&base);
+                                dynamic_cast<TerrainSurfaceComponent*>(&base);
                             if (component == nullptr) {
                                 return AuthoringCommandResult{
                                     false,
                                     "TYPE_MISMATCH",
-                                    "Component is not a sand surface."
+                                    "Component is not a terrain surface."
                                 };
                             }
-                            component->SculptTerrain(
-                                {
-                                    args.value("halfExtentsX", 10.0f),
-                                    args.value("halfExtentsZ", 10.0f)
-                                },
-                                {
-                                    args.value("localX", 0.0f),
-                                    args.value("localZ", 0.0f)
-                                });
+                            component->ApplySolidPreset(
+                                args.value(
+                                    "presetId",
+                                    std::string("sand")));
                             return AuthoringCommandResult{
                                 true,
                                 "OK",
-                                "Sand terrain sculpted."
+                                "Terrain solid preset applied."
+                            };
+                        }
+                    },
+                    {
+                        "terrain.sculpt",
+                        "Sculpt one brush stroke into the authored terrain.",
+                        {
+                            { "worldX", AuthoringCommandParameterType::Float, true, "Brush center world X." },
+                            { "worldY", AuthoringCommandParameterType::Float, false, "Brush center world Y." },
+                            { "worldZ", AuthoringCommandParameterType::Float, true, "Brush center world Z." },
+                        },
+                        [](IComponent& base, const nlohmann::json& args) {
+                            auto* component =
+                                dynamic_cast<TerrainSurfaceComponent*>(&base);
+                            if (component == nullptr) {
+                                return AuthoringCommandResult{
+                                    false,
+                                    "TYPE_MISMATCH",
+                                    "Component is not a terrain surface."
+                                };
+                            }
+                            component->SculptAtWorld({
+                                args.value("worldX", 0.0f),
+                                args.value("worldY", 0.0f),
+                                args.value("worldZ", 0.0f)
+                            });
+                            return AuthoringCommandResult{
+                                true,
+                                "OK",
+                                "Terrain sculpted."
                             };
                         }
                     },
                     {
                         "terrain.reset",
-                        "Clear the authored sand terrain to flat.",
+                        "Clear the authored terrain to flat.",
                         {},
                         [](IComponent& base, const nlohmann::json&) {
                             auto* component =
-                                dynamic_cast<SandSurfaceComponent*>(&base);
+                                dynamic_cast<TerrainSurfaceComponent*>(&base);
                             if (component == nullptr) {
                                 return AuthoringCommandResult{
                                     false,
                                     "TYPE_MISMATCH",
-                                    "Component is not a sand surface."
+                                    "Component is not a terrain surface."
                                 };
                             }
                             component->ResetTerrain();
                             return AuthoringCommandResult{
                                 true,
                                 "OK",
-                                "Sand terrain reset."
+                                "Terrain reset."
                             };
                         }
                     },
                     {
-                        "terrain.bake",
-                        "Bake the procedural dune height into the authored terrain.",
+                        "terrain.paintLayer",
+                        "Paint one preset layer stroke at a world position.",
                         {
-                            { "halfExtentsX", AuthoringCommandParameterType::Float, true, "Terrain half extent X." },
-                            { "halfExtentsZ", AuthoringCommandParameterType::Float, true, "Terrain half extent Z." },
+                            { "presetId", AuthoringCommandParameterType::String, true, "Preset id: sand, snow, or dirt." },
+                            { "worldX", AuthoringCommandParameterType::Float, true, "Brush center world X." },
+                            { "worldY", AuthoringCommandParameterType::Float, false, "Brush center world Y." },
+                            { "worldZ", AuthoringCommandParameterType::Float, true, "Brush center world Z." },
                         },
                         [](IComponent& base, const nlohmann::json& args) {
                             auto* component =
-                                dynamic_cast<SandSurfaceComponent*>(&base);
+                                dynamic_cast<TerrainSurfaceComponent*>(&base);
                             if (component == nullptr) {
                                 return AuthoringCommandResult{
                                     false,
                                     "TYPE_MISMATCH",
-                                    "Component is not a sand surface."
+                                    "Component is not a terrain surface."
                                 };
                             }
-                            component->BakeTerrain(
+                            component->PaintLayerAtWorld(
+                                args.value("presetId", std::string("sand")),
                                 {
-                                    args.value("halfExtentsX", 10.0f),
-                                    args.value("halfExtentsZ", 10.0f)
+                                    args.value("worldX", 0.0f),
+                                    args.value("worldY", 0.0f),
+                                    args.value("worldZ", 0.0f)
                                 });
                             return AuthoringCommandResult{
                                 true,
                                 "OK",
-                                "Sand terrain baked from procedural dunes."
+                                "Terrain layer painted."
                             };
                         }
                     },
+                    {
+                        "terrain.paintCoverage",
+                        "Paint or erase terrain coverage at a world position.",
+                        {
+                            { "target", AuthoringCommandParameterType::Float, true, "Target coverage 1=paint, 0=erase." },
+                            { "worldX", AuthoringCommandParameterType::Float, true, "Brush center world X." },
+                            { "worldY", AuthoringCommandParameterType::Float, false, "Brush center world Y." },
+                            { "worldZ", AuthoringCommandParameterType::Float, true, "Brush center world Z." },
+                        },
+                        [](IComponent& base, const nlohmann::json& args) {
+                            auto* component =
+                                dynamic_cast<TerrainSurfaceComponent*>(&base);
+                            if (component == nullptr) {
+                                return AuthoringCommandResult{
+                                    false,
+                                    "TYPE_MISMATCH",
+                                    "Component is not a terrain surface."
+                                };
+                            }
+                            component->PaintCoverageAtWorld(
+                                args.value("target", 1.0f),
+                                {
+                                    args.value("worldX", 0.0f),
+                                    args.value("worldY", 0.0f),
+                                    args.value("worldZ", 0.0f)
+                                });
+                            return AuthoringCommandResult{
+                                true,
+                                "OK",
+                                "Terrain coverage painted."
+                            };
+                        }
+                    }
                 };
 
                 ComponentTypeInfo sandFollower{};
@@ -382,6 +365,18 @@ namespace HIKARI {
                     "rides the sampled sand height; physics stays "
                     "authoritative. The sand ground itself uses "
                     "SandSurfaceComponent.");
+
+                ComponentTypeInfo buoyancy{};
+                buoyancy.typeName = "BuoyancyComponent";
+                buoyancy.factory =
+                    []() -> std::unique_ptr<IComponent> {
+                    return std::make_unique<BuoyancyComponent>();
+                };
+                buoyancy.runtimeApplyPolicy =
+                    ComponentRuntimeApplyPolicy::Immediate;
+                buoyancy.presentation = RenderingPresentation(
+                    "Buoyancy",
+                    "Applies a buoyant force to a floating sphere from the water surface query.");
 
                 ComponentTypeInfo light{};
                 light.typeName = "LightComponent";
@@ -456,11 +451,13 @@ namespace HIKARI {
                 success = componentRegistry.Register(
                     std::move(procedural)) && success;
                 success = componentRegistry.Register(
+                    std::move(terrainSurface)) && success;
+                success = componentRegistry.Register(
                     std::move(waterSurface)) && success;
                 success = componentRegistry.Register(
-                    std::move(sandSurface)) && success;
-                success = componentRegistry.Register(
                     std::move(sandFollower)) && success;
+                success = componentRegistry.Register(
+                    std::move(buoyancy)) && success;
                 success = componentRegistry.Register(
                     std::move(light)) && success;
                 success = componentRegistry.Register(
@@ -491,6 +488,14 @@ namespace HIKARI {
                     "Sand Surface",
                     "Rendering"
                 }) && success;
+                success = systemTypeRegistry.Register(SystemTypeInfo{
+                    "BuoyancySystem",
+                    [](const nlohmann::json&) -> std::unique_ptr<ISystem> {
+                        return std::make_unique<BuoyancySystem>();
+                    },
+                    "Buoyancy",
+                    "Gameplay"
+                }) && success;
                 // 水面/砂地のシステムは Scene が明示的な systems 配列で
                 // 上書きしていても、コンポーネントが存在すれば必ず導入する。
                 success = componentSystemPolicy.Register(
@@ -501,7 +506,7 @@ namespace HIKARI {
                     }) && success;
                 success = componentSystemPolicy.Register(
                     ComponentSystemRule{
-                        "SandSurfaceComponent",
+                        "TerrainSurfaceComponent",
                         "SandSurfaceSystem",
                         95
                     }) && success;
@@ -510,6 +515,12 @@ namespace HIKARI {
                         "SandSurfaceFollowerComponent",
                         "SandSurfaceSystem",
                         95
+                    }) && success;
+                success = componentSystemPolicy.Register(
+                    ComponentSystemRule{
+                        "BuoyancyComponent",
+                        "BuoyancySystem",
+                        90
                     }) && success;
                 return success;
             }

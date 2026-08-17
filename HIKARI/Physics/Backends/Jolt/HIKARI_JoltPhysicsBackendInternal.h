@@ -42,6 +42,9 @@ namespace HIKARI::PHYSICS::JOLT_BACKEND {
             PhysicsBodyHandle body,
             const MATH::Vec3& linearVelocity,
             const MATH::Vec3& angularVelocity) override;
+        bool AddForce(
+            PhysicsBodyHandle body,
+            const MATH::Vec3& force) override;
         bool TryGetBodyState(
             PhysicsBodyHandle body,
             PhysicsBodyState& outState) const override;

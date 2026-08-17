@@ -2,32 +2,28 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
+#include <map>
+#include <optional>
 
 #include "Core/HIKARI_FrameContext.h"
+#include "Core/HIKARI_Logger.h"
+
+#include <cstdio>
 #include "Scene/Components/HIKARI_ColliderComponent.h"
 #include "Scene/Components/HIKARI_PhysicsBodyComponent.h"
-#include "Scene/Components/HIKARI_ProceduralMeshComponent.h"
 #include "Scene/HIKARI_GameObject.h"
+#include "Scene/HIKARI_PresentationTransformService.h"
 #include "Scene/HIKARI_World.h"
-#include "Scene/Sand/HIKARI_SandSurfaceComponent.h"
+#include "Scene/Sand/HIKARI_SandSurfaceFollowerComponent.h"
 #include "Scene/Sand/HIKARI_SandSurfaceQueryService.h"
+#include "Scene/Terrain/HIKARI_SurfacePreset.h"
+#include "Scene/Terrain/HIKARI_TerrainSurfaceComponent.h"
+#include "Scene/Terrain/HIKARI_TerrainSurfaceConversion.h"
 
 namespace HIKARI {
 
     namespace {
-        MATH::Vec3 TransformPoint(
-            const MATH::Mat4& matrix,
-            const MATH::Vec3& point) {
-
-            const MATH::Vec4 transformed = matrix.TransformPoint({
-                point.x, point.y, point.z, 1.0f });
-            return {
-                transformed.x,
-                transformed.y,
-                transformed.z
-            };
-        }
-
         bool IsDynamicSphere(const GameObject& object) {
             const ColliderComponent* collider =
                 object.GetComponent<ColliderComponent>();
@@ -49,6 +45,8 @@ namespace HIKARI {
     void SandSurfaceSystem::OnWorldAttached(World& world) {
         queryService_ =
             world.Services().Find<SAND::SandSurfaceQueryService>();
+        presentationTransforms_ =
+            world.Services().Find<PresentationTransformService>();
         waterQueryService_ =
             world.Services().Find<WATER::WaterSurfaceQueryService>();
         if (waterQueryService_ != nullptr) {
@@ -56,12 +54,54 @@ namespace HIKARI {
         }
         if (queryService_ != nullptr) {
             queryService_->Clear();
-            states_.clear();
+            objects_.clear();
             Refresh(world);
         }
     }
 
     void SandSurfaceSystem::OnWorldDetached(World&) {
+        // 地形健全性セルフチェック。エディタでは常時、ゲームでは
+        // HKR_TERRAIN_SELFTEST=1 で有効。ランタイム chunk 状態の整合と
+        // 非ゼロ高さ・変形の有無を数値で報告し、編集/物理/描画の断点を
+        // 一度に切り分ける。
+#if defined(HIKARI_WITH_EDITOR)
+        constexpr bool kRunSelfTest = true;
+#else
+        const bool kRunSelfTest =
+            std::getenv("HKR_TERRAIN_SELFTEST") != nullptr;
+#endif
+        if (kRunSelfTest) {
+            int badLayout = 0;
+            int totalChunks = 0;
+            int nonzeroHeight = 0;
+            int nonzeroDeform = 0;
+            for (const auto& [objKey, bucket] : objects_) {
+                (void)objKey;
+                for (const auto& [stateKey, state] : bucket.chunks) {
+                    (void)stateKey;
+                    ++totalChunks;
+                    const std::size_t n =
+                        static_cast<std::size_t>(state->cells + 1u) *
+                        (state->cells + 1u);
+                    if (state->heights.size() != n ||
+                        state->baseHeights.size() != n ||
+                        state->deformHeights.size() != n) {
+                        ++badLayout;
+                    }
+                    for (float v : state->heights) {
+                        if (v != 0.0f) { ++nonzeroHeight; break; }
+                    }
+                    for (float v : state->deformHeights) {
+                        if (v != 0.0f) { ++nonzeroDeform; break; }
+                    }
+                }
+            }
+            char buf[256];
+            std::snprintf(buf, sizeof(buf),
+                "[TerrainSelfTest] chunks=%d badLayout=%d nonzeroHeight=%d nonzeroDeform=%d",
+                totalChunks, badLayout, nonzeroHeight, nonzeroDeform);
+            HIKARI_LOG_INFO(buf);
+        }
         if (waterQueryService_ != nullptr) {
             waterQueryService_->SetBathymetryProvider(nullptr);
         }
@@ -70,25 +110,21 @@ namespace HIKARI {
             queryService_->Clear();
         }
         queryService_ = nullptr;
-        states_.clear();
+        objects_.clear();
     }
 
     bool SandSurfaceSystem::RaycastBathymetry(
         const WATER::WaterBathymetryRay& ray,
         float& outDistance) const noexcept {
-
         if (queryService_ == nullptr) {
             return false;
         }
         float sandHeight = 0.0f;
         MATH::Vec3 sandNormal{};
         if (!queryService_->SampleWorldHeight(
-                ray.originWS,
-                sandHeight,
-                sandNormal)) {
+                ray.originWS, sandHeight, sandNormal)) {
             return false;
         }
-
         const float verticalDelta = ray.originWS.y - sandHeight;
         if (verticalDelta < 0.0f) {
             outDistance = 0.0f;
@@ -98,8 +134,7 @@ namespace HIKARI {
         const float distance = downward > 1.0e-4f
             ? verticalDelta / downward
             : verticalDelta;
-        if (distance < 0.0f ||
-            distance > ray.maximumDistance) {
+        if (distance < 0.0f || distance > ray.maximumDistance) {
             return false;
         }
         outDistance = distance;
@@ -109,16 +144,113 @@ namespace HIKARI {
     void SandSurfaceSystem::PreFixedUpdate(
         World& world,
         const FrameContext& frame) {
-
         Refresh(world);
-        ApplySphereContactStamps(world, frame.fixedDt);
+        ApplyImprintSources(world, frame.fixedDt);
+
+#if defined(HIKARI_WITH_EDITOR)
+        // エディタ診断: 1 秒に 1 回、スタンプ源の有無と chunk 数を出す。
+        // 「球を置いたのに凹まない」が設定起因かコード起因かを即座に
+        // 切り分けるためのもの。
+        {
+            static int sDiagTick = 0;
+            if (++sDiagTick >= 60) {
+                sDiagTick = 0;
+                int colliders = 0;
+                int dynamicSpheres = 0;
+                world.ForEachObjectWith<ColliderComponent>(
+                    [&](GameObject& object, ColliderComponent&) {
+                        ++colliders;
+                        if (IsDynamicSphere(object)) {
+                            ++dynamicSpheres;
+                        }
+                    });
+                char buf[256];
+                std::snprintf(buf, sizeof(buf),
+                    "[TerrainDiag] terrainObjs=%zu colliders=%d dynamicSpheres=%d",
+                    objects_.size(), colliders, dynamicSpheres);
+                HIKARI_LOG_INFO(buf);
+
+                // 実動検証: 共有辺の高さ差（継ぎ目）を計測して出す。
+                // 0 なら chunk 縫合と 1:1 変位パイプラインが成立している。
+                float seamMaxDiff = 0.0f;
+                int chunkTotal = 0;
+                for (const auto& [objKey, bucket] : objects_) {
+                    (void)objKey;
+                    // ワールド頂点格子 -> 高さ（共有辺の一致検証用）。
+                    std::map<uint64_t, float> worldVertexH{};
+                    for (const auto& [stateKey, state] : bucket.chunks) {
+                        (void)stateKey;
+                        if (state == nullptr) { continue; }
+                        ++chunkTotal;
+                        const uint32_t stride = state->cells + 1u;
+                        const int32_t ckx = static_cast<int32_t>(
+                            std::lround(state->chunkOriginWS.x /
+                                (std::max)(state->chunkWorldSize, 1.0e-4f)));
+                        const int32_t ckz = static_cast<int32_t>(
+                            std::lround(state->chunkOriginWS.y /
+                                (std::max)(state->chunkWorldSize, 1.0e-4f)));
+                        const std::size_t need =
+                            static_cast<std::size_t>(stride) * stride;
+                        if (state->heights.size() != need) { continue; }
+                        for (uint32_t z = 0u; z <= state->cells; ++z) {
+                            for (uint32_t x = 0u; x <= state->cells; ++x) {
+                                const uint32_t gvx = static_cast<uint32_t>(
+                                    static_cast<int64_t>(ckx) *
+                                        state->cells + x);
+                                const uint32_t gvz = static_cast<uint32_t>(
+                                    static_cast<int64_t>(ckz) *
+                                        state->cells + z);
+                                const uint64_t wkey =
+                                    (static_cast<uint64_t>(gvx) << 32u) | gvz;
+                                const float h = state->heights[
+                                    static_cast<std::size_t>(z) * stride + x];
+                                const auto it = worldVertexH.find(wkey);
+                                if (it == worldVertexH.end()) {
+                                    worldVertexH.emplace(wkey, h);
+                                } else {
+                                    const float d = std::fabs(it->second - h);
+                                    if (d > seamMaxDiff) { seamMaxDiff = d; }
+                                }
+                            }
+                        }
+                    }
+                }
+                std::snprintf(buf, sizeof(buf),
+                    "[TerrainGeom] chunks=%d seamMaxDiff=%.6f",
+                    chunkTotal, static_cast<double>(seamMaxDiff));
+                HIKARI_LOG_INFO(buf);
+            }
+        }
+#endif
     }
 
     void SandSurfaceSystem::PreRender(
         World& world,
         const FrameContext&) {
-
         Refresh(world);
+    }
+
+    void SandSurfaceSystem::SyncChunkFromAuthored(
+        SAND::SandChunkRuntimeState& chunk,
+        const TERRAIN::TerrainChunk& authored) {
+        // 筆刷が彫った基底形状を baseHeights へ同期する。
+        chunk.baseHeights = authored.heights;
+        RebuildCombinedHeights(chunk);
+    }
+
+    void SandSurfaceSystem::RebuildCombinedHeights(
+        SAND::SandChunkRuntimeState& chunk) {
+        const std::size_t count = chunk.baseHeights.size();
+        if (chunk.deformHeights.size() != count) {
+            chunk.deformHeights.assign(count, 0.0f);
+        }
+        if (chunk.heights.size() != count) {
+            chunk.heights.resize(count);
+        }
+        for (std::size_t i = 0u; i < count; ++i) {
+            chunk.heights[i] =
+                chunk.baseHeights[i] + chunk.deformHeights[i];
+        }
     }
 
     void SandSurfaceSystem::Refresh(World& world) {
@@ -126,133 +258,82 @@ namespace HIKARI {
             return;
         }
 
-        std::vector<SAND::SandSurfaceSnapshotEntry> surfaces{};
-        surfaces.reserve(world.GetObjects().size());
-        world.ForEachObjectWith<
-            SandSurfaceComponent,
-            ProceduralMeshComponent>(
-            [&](GameObject& object,
-                SandSurfaceComponent& sand,
-                ProceduralMeshComponent& procedural) {
+        std::vector<SAND::SandSurfaceSnapshotEntry> entries{};
 
-                const ProceduralMeshSettings mesh =
-                    SanitizeProceduralMeshSettings(
-                        procedural.GetSettings());
-                if (mesh.kind != ProceduralMeshKind::Plane &&
-                    mesh.kind != ProceduralMeshKind::GridPlane) {
-                    return;
+        world.ForEachObjectWith<TerrainSurfaceComponent>(
+            [&](GameObject& object, TerrainSurfaceComponent& terrain) {
+                const uint64_t objectKey = object.GetRenderStableId();
+                ObjectChunks& bucket = objects_[objectKey];
+                const TERRAIN::TerrainSurface& surface =
+                    terrain.GetSurface();
+                const float chunkSize = terrain.GetChunkWorldSize();
+                const float cellSize = (std::max)(
+                    surface.chunkCellSize, 0.01f);
+
+                const uint64_t revision = terrain.GetRevision();
+                const bool revisionChanged =
+                    bucket.lastRevision != revision;
+                bucket.lastRevision = revision;
+
+                for (const auto& [key, authored] : surface.chunks) {
+                    const uint64_t stateKey = ChunkStateKey(key);
+                    SAND::SandChunkRuntimeStatePtr state;
+                    auto found = bucket.chunks.find(stateKey);
+                    if (found == bucket.chunks.end()) {
+                        state = std::make_shared<
+                            SAND::SandChunkRuntimeState>();
+                        bucket.chunks.emplace(stateKey, state);
+                        state->key = key;
+                        state->cells = authored.cells;
+                        state->cellSize = cellSize;
+                        state->chunkWorldSize = chunkSize;
+                        state->chunkOriginWS = {
+                            static_cast<float>(key.x) * chunkSize,
+                            static_cast<float>(key.z) * chunkSize
+                        };
+                        state->heightScale = surface.heightScale;
+                        state->settings =
+                            SAND::SanitizeSandSurfaceSettings(
+                                TERRAIN::ToSandSurfaceSettings(surface));
+                        SyncChunkFromAuthored(*state, authored);
+                    } else {
+                        state = found->second;
+                        if (revisionChanged) {
+                            // 筆刷編集が入ったので基底を再同期する。
+                            SyncChunkFromAuthored(*state, authored);
+                        }
+                    }
+
+                    SAND::SandSurfaceSnapshotEntry entry{};
+                    entry.object = object.GetRuntimeHandle();
+                    entry.chunk = state;
+                    entries.push_back(std::move(entry));
                 }
 
-                const SAND::SandSurfaceSettings settings =
-                    SAND::SanitizeSandSurfaceSettings(
-                        sand.GetSettings());
-                const uint64_t key = object.GetRenderStableId();
-                auto found = states_.find(key);
-                SAND::SandSurfaceRuntimeStatePtr state =
-                    found != states_.end()
-                        ? found->second
-                        : std::make_shared<SAND::SandSurfaceRuntimeState>();
-                if (found == states_.end()) {
-                    states_.emplace(key, state);
+                // 消えた chunk を状態表から落とす。
+                for (auto it = bucket.chunks.begin();
+                    it != bucket.chunks.end();) {
+                    const TERRAIN::TerrainChunkKey k{
+                        static_cast<int32_t>(it->first >> 32u),
+                        static_cast<int32_t>(it->first & 0xFFFFFFFFu)
+                    };
+                    if (surface.chunks.find(k) == surface.chunks.end()) {
+                        it = bucket.chunks.erase(it);
+                    } else {
+                        ++it;
+                    }
                 }
-
-                state->settings = settings;
-                state->world = object.GetTransform().GetWorldMatrix();
-                state->inverseWorld = MATH::Inverse(state->world);
-                state->halfExtents = {
-                    mesh.width * 0.5f,
-                    mesh.depth * 0.5f
-                };
-                const uint32_t stride =
-                    settings.gridResolution + 1u;
-                const size_t cellCount =
-                    static_cast<size_t>(stride) * stride;
-                if (state->gridResolution != settings.gridResolution) {
-                    state->gridResolution = settings.gridResolution;
-                    state->baseHeights.assign(cellCount, 0.0f);
-                    state->deformHeights.assign(cellCount, 0.0f);
-                    state->heights.assign(cellCount, 0.0f);
-                    state->authoredTerrain = {};
-                }
-
-                const SAND::SandSurfaceTerrain terrain =
-                    SAND::SanitizeSandSurfaceTerrain(
-                        sand.GetTerrain());
-                if (!SAND::SandSurfaceTerrainEqual(
-                        state->authoredTerrain,
-                        terrain)) {
-                    state->authoredTerrain = terrain;
-                    SyncAuthoredTerrain(*state, terrain);
-                }
-                RebuildCombinedHeights(*state);
-
-                SAND::SandSurfaceSnapshotEntry entry{};
-                entry.object = object.GetRuntimeHandle();
-                entry.state = state;
-                surfaces.push_back(std::move(entry));
             });
-        queryService_->PublishSnapshot(std::move(surfaces));
+
+        queryService_->PublishSnapshot(std::move(entries));
     }
 
-    void SandSurfaceSystem::SyncAuthoredTerrain(
-        SAND::SandSurfaceRuntimeState& state,
-        const SAND::SandSurfaceTerrain& terrain) {
-
-        const uint32_t resolution = state.gridResolution;
-        const uint32_t stride = resolution + 1u;
-        const size_t cellCount =
-            static_cast<size_t>(stride) * stride;
-        if (state.baseHeights.size() != cellCount) {
-            state.baseHeights.assign(cellCount, 0.0f);
-        }
-        for (uint32_t z = 0u; z <= resolution; ++z) {
-            for (uint32_t x = 0u; x <= resolution; ++x) {
-                const MATH::Vec2 localXZ{
-                    (static_cast<float>(x) /
-                        static_cast<float>(resolution) - 0.5f) *
-                        2.0f * state.halfExtents.x,
-                    (static_cast<float>(z) /
-                        static_cast<float>(resolution) - 0.5f) *
-                        2.0f * state.halfExtents.y
-                };
-                state.baseHeights[
-                    static_cast<size_t>(z) * stride + x] =
-                    SAND::SampleSandSurfaceTerrain(
-                        terrain,
-                        state.halfExtents,
-                        localXZ);
-            }
-        }
-    }
-
-    void SandSurfaceSystem::RebuildCombinedHeights(
-        SAND::SandSurfaceRuntimeState& state) {
-
-        const uint32_t stride = state.gridResolution + 1u;
-        const size_t cellCount =
-            static_cast<size_t>(stride) * stride;
-        if (state.baseHeights.size() != cellCount ||
-            state.deformHeights.size() != cellCount) {
-            return;
-        }
-        if (state.heights.size() != cellCount) {
-            state.heights.resize(cellCount);
-        }
-        for (size_t i = 0u; i < cellCount; ++i) {
-            state.heights[i] =
-                state.baseHeights[i] + state.deformHeights[i];
-        }
-    }
-
-    void SandSurfaceSystem::ApplySphereContactStamps(
+    void SandSurfaceSystem::GatherImprintSources(
         World& world,
-        float fixedDt) {
-
-        if (queryService_ == nullptr || states_.empty()) {
-            return;
-        }
-        const float safeDt = (std::max)(fixedDt, 1.0e-4f);
-
+        std::vector<ImprintRequest>& outRequests) {
+        // 球: Collider(sphere) + dynamic body を持つオブジェクト。
+        // 物理駆動の実位置は PresentationTransformService から取る。
+        // 将来ここに Footprint / Wheel / Box などの列挙を追加する。
         world.ForEachObjectWith<ColliderComponent>(
             [&](GameObject& object, ColliderComponent&) {
                 if (!IsDynamicSphere(object)) {
@@ -262,16 +343,29 @@ namespace HIKARI {
                     object.GetComponent<ColliderComponent>();
                 const ResolvedColliderShape shape =
                     collider->ResolveShape();
-                const MATH::Vec3 worldCenter =
+
+                MATH::Vec3 worldCenter =
                     object.GetTransform().position;
+                if (presentationTransforms_ != nullptr) {
+                    MATH::Mat4 simWorld{};
+                    if (presentationTransforms_->TryGetWorldMatrix(
+                            object.GetRuntimeHandle(), simWorld)) {
+                        MATH::Vec3 t{}, s{};
+                        MATH::Quat r{};
+                        if (MATH::DecomposeTRS(simWorld, t, r, s)) {
+                            worldCenter = t;
+                        }
+                    }
+                }
                 const float worldRadius = shape.radius *
                     (std::max)(
                         object.GetTransform().scale.x,
                         (std::max)(
                             object.GetTransform().scale.y,
                             object.GetTransform().scale.z));
-                const uint64_t objectKey = object.GetRenderStableId();
 
+                // 移動を細分化してトンネリングを防ぐ。
+                const uint64_t objectKey = object.GetRenderStableId();
                 MATH::Vec3 previous = worldCenter;
                 const auto previousIt =
                     previousSphereCenters_.find(objectKey);
@@ -288,221 +382,239 @@ namespace HIKARI {
                 const float stepLength =
                     (std::max)(worldRadius * 0.5f, 0.05f);
                 const int steps = (std::max)(
-                    1,
-                    static_cast<int>(
-                        std::ceil(travel / stepLength)));
-
+                    1, static_cast<int>(std::ceil(travel / stepLength)));
                 for (int step = 0; step <= steps; ++step) {
                     const float t = steps > 0
                         ? static_cast<float>(step) /
                             static_cast<float>(steps)
                         : 0.0f;
-                    const MATH::Vec3 sampleCenter{
+                    ImprintRequest req{};
+                    req.centerWS = {
                         previous.x + delta.x * t,
                         previous.y + delta.y * t,
                         previous.z + delta.z * t
                     };
-
-                    for (const auto& [key, state] : states_) {
-                        (void)key;
-                        const MATH::Vec3 local =
-                            TransformPoint(
-                                state->inverseWorld,
-                                sampleCenter);
-                        if (std::abs(local.x) >
-                                state->halfExtents.x + worldRadius ||
-                            std::abs(local.z) >
-                                state->halfExtents.y + worldRadius) {
-                            continue;
-                        }
-
-                        float surfaceHeight = 0.0f;
-                        MATH::Vec3 surfaceNormal{};
-                        if (!queryService_->SampleLocalHeight(
-                                *state,
-                                { local.x, local.z },
-                                surfaceHeight,
-                                surfaceNormal)) {
-                            continue;
-                        }
-                        const float ballBottom =
-                            local.y - worldRadius;
-                        const float sink =
-                            surfaceHeight - ballBottom;
-                        // 剛体物理は平坦なコライダーで止まるため、静止時は
-                        // penetration がほぼ 0 になる。柔らかい砂の接触を
-                        // 近似する最小沈み込みだけ加えて、転がった跡を残す。
-                        const float softContact =
-                            worldRadius * 0.06f;
-                        if (sink < -softContact) {
-                            continue;
-                        }
-                        const float depth = std::clamp(
-                            sink + softContact,
-                            0.0f,
-                            state->settings.maxDepth);
-                        ApplySphereImprint(
-                            *state,
-                            local.x,
-                            local.z,
-                            worldRadius,
-                            depth);
-                    }
+                    req.radius = worldRadius;
+                    outRequests.push_back(req);
                 }
             });
+        // フォロワー通道: SandSurfaceFollowerComponent（見た目を沙面に
+        // 貼り付ける球など）も変形スタンプ源にする。dynamic body が無くても
+        // これで「沙面に置いた物が沈む」が成立する。
+        world.ForEachObjectWith<SandSurfaceFollowerComponent>(
+            [&](GameObject& object, SandSurfaceFollowerComponent& follower) {
+                const float radius = (std::max)(follower.ResolveRadius(), 0.05f);
+                // 見た目の実位置は PresentationTransformService 優先。
+                MATH::Vec3 center = object.GetTransform().position;
+                if (presentationTransforms_ != nullptr) {
+                    MATH::Mat4 simWorld{};
+                    if (presentationTransforms_->TryGetWorldMatrix(
+                            object.GetRuntimeHandle(), simWorld)) {
+                        MATH::Vec3 t{}, s{};
+                        MATH::Quat r{};
+                        if (MATH::DecomposeTRS(simWorld, t, r, s)) {
+                            center = t;
+                        }
+                    }
+                }
+                // 接触深さは「球の底が沙面より下に出た分」に任せるため、
+                // ここでは中心をそのまま渡し、ApplyImprintSources 側の
+                // softContact 計算に委ねる。
+                ImprintRequest req{};
+                req.centerWS = center;
+                req.radius = radius;
+                req.strength = 1.0f;
+                outRequests.push_back(req);
+            });
+    }
 
-        for (const auto& [key, state] : states_) {
-            (void)key;
-            RelaxState(*state, safeDt);
+    void SandSurfaceSystem::ApplyImprintSources(
+        World& world,
+        float fixedDt) {
+        if (queryService_ == nullptr || objects_.empty()) {
+            return;
+        }
+        const float safeDt = (std::max)(fixedDt, 1.0e-4f);
+
+        std::vector<ImprintRequest> requests{};
+        GatherImprintSources(world, requests);
+
+        for (const ImprintRequest& req : requests) {
+            const float worldRadius = (std::max)(req.radius, 0.01f);
+            for (auto& [objKey, bucket] : objects_) {
+                (void)objKey;
+                for (auto& [stateKey, state] : bucket.chunks) {
+                    (void)stateKey;
+                    const float size = state->chunkWorldSize;
+                    if (size <= 1.0e-4f) {
+                        continue;
+                    }
+                    const float localX =
+                        req.centerWS.x - state->chunkOriginWS.x;
+                    const float localZ =
+                        req.centerWS.z - state->chunkOriginWS.y;
+                    if (localX < -worldRadius ||
+                        localX > size + worldRadius ||
+                        localZ < -worldRadius ||
+                        localZ > size + worldRadius) {
+                        continue;
+                    }
+                    const std::optional<TERRAIN::SurfacePreset>
+                        preset = TERRAIN::ResolveSurfacePreset(
+                            state->settings.presetId);
+                    if (!preset.has_value() ||
+                        preset->deform.behavior ==
+                            TERRAIN::DeformBehaviorId::None) {
+                        continue;
+                    }
+
+                    float surfaceHeight = 0.0f;
+                    if (!queryService_->SampleChunkLocalHeight(
+                            *state, localX, localZ,
+                            surfaceHeight)) {
+                        continue;
+                    }
+                    const float ballBottom =
+                        req.centerWS.y - worldRadius;
+                    const float sink = surfaceHeight - ballBottom;
+                    const float softContact = worldRadius * 0.06f;
+                    if (sink < -softContact) {
+                        continue;
+                    }
+                    const float depth = std::clamp(
+                        sink + softContact,
+                        0.0f,
+                        state->settings.maxDepth) * req.strength;
+                    ApplySphereImprint(
+                        *state,
+                        req.centerWS.x,
+                        req.centerWS.z,
+                        worldRadius,
+                        depth);
+                }
+            }
+        }
+
+        for (auto& [objKey, bucket] : objects_) {
+            (void)objKey;
+            for (auto& [stateKey, state] : bucket.chunks) {
+                (void)stateKey;
+                RelaxChunk(*state, safeDt);
+            }
         }
     }
 
+    void SandSurfaceSystem::ApplySphereContactStamps(
+        World& world,
+        float fixedDt) {
+        // 旧エントリの互換維持。新規は ApplyImprintSources 経由。
+        ApplyImprintSources(world, fixedDt);
+    }
+
+
     void SandSurfaceSystem::ApplySphereImprint(
-        SAND::SandSurfaceRuntimeState& state,
-        float localX,
-        float localZ,
+        SAND::SandChunkRuntimeState& chunk,
+        float worldX,
+        float worldZ,
         float worldRadius,
         float sinkDepth) {
-
-        const uint32_t resolution = state.gridResolution;
-        const uint32_t stride = resolution + 1u;
-        if (state.deformHeights.size() !=
-                static_cast<size_t>(stride) * stride ||
+        const uint32_t cells = (std::max)(chunk.cells, 1u);
+        const uint32_t stride = cells + 1u;
+        if (chunk.deformHeights.size() !=
+                static_cast<std::size_t>(stride) * stride ||
             sinkDepth <= 0.0f) {
             return;
         }
 
         const float radius = (std::max)(worldRadius, 0.01f);
         const float depth = (std::min)(
-            sinkDepth,
-            state.settings.maxDepth);
+            sinkDepth, chunk.settings.maxDepth);
         if (depth <= 0.0f) {
             return;
         }
 
-        // 球が depth だけ沈んだときの球面キャップ接地円半径。
         const float capRadius = std::sqrt((std::max)(
-            2.0f * radius * depth - depth * depth,
-            0.0f));
-        const float cellX =
-            (2.0f * state.halfExtents.x) /
-            static_cast<float>(resolution);
-        const float cellZ =
-            (2.0f * state.halfExtents.y) /
-            static_cast<float>(resolution);
-        const float cell = (std::max)(
-            (std::min)(cellX, cellZ),
-            1.0e-4f);
+            2.0f * radius * depth - depth * depth, 0.0f));
+        const float cell = (std::max)(chunk.cellSize, 1.0e-4f);
         const float rimBand = (std::max)(0.12f * radius, cell);
         const float reach = capRadius + rimBand;
-        const int extent =
-            static_cast<int>(std::ceil(reach / cell)) + 2;
-
-        const float minimum = -state.settings.maxDepth;
+        const float minimum = -chunk.settings.maxDepth;
         const float maximum =
-            state.settings.maxDepth * state.settings.rimStrength;
+            chunk.settings.maxDepth * chunk.settings.rimStrength;
 
-        const int centerX = static_cast<int>(std::lround(
-            (localX / (2.0f * state.halfExtents.x) + 0.5f) *
-            static_cast<float>(resolution)));
-        const int centerZ = static_cast<int>(std::lround(
-            (localZ / (2.0f * state.halfExtents.y) + 0.5f) *
-            static_cast<float>(resolution)));
-
-        for (int z = centerZ - extent;
-            z <= centerZ + extent;
-            ++z) {
-            for (int x = centerX - extent;
-                x <= centerX + extent;
-                ++x) {
-                if (x < 0 || z < 0 ||
-                    x > static_cast<int>(resolution) ||
-                    z > static_cast<int>(resolution)) {
+        for (uint32_t z = 0u; z <= cells; ++z) {
+            for (uint32_t x = 0u; x <= cells; ++x) {
+                const float vx = chunk.chunkOriginWS.x +
+                    static_cast<float>(x) * cell;
+                const float vz = chunk.chunkOriginWS.y +
+                    static_cast<float>(z) * cell;
+                const float dx = vx - worldX;
+                const float dz = vz - worldZ;
+                const float r = std::sqrt(dx * dx + dz * dz);
+                if (r > reach) {
                     continue;
                 }
-                const float dx =
-                    (static_cast<float>(x) /
-                        static_cast<float>(resolution) - 0.5f) *
-                    2.0f * state.halfExtents.x - localX;
-                const float dz =
-                    (static_cast<float>(z) /
-                        static_cast<float>(resolution) - 0.5f) *
-                    2.0f * state.halfExtents.y - localZ;
-                const float r = std::sqrt(dx * dx + dz * dz);
 
                 float imprint = 0.0f;
                 if (r <= capRadius) {
-                    // 球の下半球面をそのまま押し込み、実球の体積に
-                    // 一致する球形の凹みを作る。
                     imprint = (std::max)(
                         0.0f,
                         std::sqrt((std::max)(
-                            radius * radius - r * r,
-                            0.0f)) - (radius - depth));
-                } else if (r <= reach && rimBand > 0.0f) {
-                    // 縁に押し出された砂の隆起。負値は盛り上がり。
+                            radius * radius - r * r, 0.0f)) -
+                            (radius - depth));
+                } else if (rimBand > 0.0f) {
                     const float t = (r - capRadius) / rimBand;
-                    imprint = -state.settings.rimStrength * depth *
+                    imprint = -chunk.settings.rimStrength * depth *
                         0.5f * (1.0f - t);
                 }
 
                 float& height =
-                    state.deformHeights[
-                        static_cast<size_t>(z) * stride + x];
+                    chunk.deformHeights[
+                        static_cast<std::size_t>(z) * stride + x];
                 height = std::clamp(
-                    height - imprint,
-                    minimum,
-                    maximum);
+                    height - imprint, minimum, maximum);
             }
         }
     }
 
-    void SandSurfaceSystem::RelaxState(
-        SAND::SandSurfaceRuntimeState& state,
+    void SandSurfaceSystem::RelaxChunk(
+        SAND::SandChunkRuntimeState& chunk,
         float fixedDt) {
-
-        const uint32_t resolution = state.gridResolution;
-        const uint32_t stride = resolution + 1u;
-        if (state.deformHeights.size() !=
-            static_cast<size_t>(stride) * stride) {
+        const uint32_t cells = (std::max)(chunk.cells, 1u);
+        const uint32_t stride = cells + 1u;
+        if (chunk.deformHeights.size() !=
+            static_cast<std::size_t>(stride) * stride) {
             return;
         }
 
         const float decay = std::clamp(
-            state.settings.refillPerSecond * fixedDt,
-            0.0f,
-            1.0f);
+            chunk.settings.refillPerSecond * fixedDt, 0.0f, 1.0f);
         if (decay > 0.0f) {
-            for (float& height : state.deformHeights) {
+            for (float& height : chunk.deformHeights) {
                 height *= 1.0f - decay;
             }
         }
 
         const float diffusion = std::clamp(
-            state.settings.diffusionPerSecond * fixedDt,
-            0.0f,
-            0.5f);
-        if (diffusion <= 1.0e-4f) {
-            RebuildCombinedHeights(state);
-            return;
-        }
-
-        std::vector<float> source = state.deformHeights;
-        const float keep = 1.0f - diffusion;
-        const float neighbor = diffusion * 0.25f;
-        for (uint32_t z = 1u; z < resolution; ++z) {
-            for (uint32_t x = 1u; x < resolution; ++x) {
-                const size_t index =
-                    static_cast<size_t>(z) * stride + x;
-                state.deformHeights[index] =
-                    source[index] * keep +
-                    (source[index - stride] +
-                        source[index + stride] +
-                        source[index - 1u] +
-                        source[index + 1u]) * neighbor;
+            chunk.settings.diffusionPerSecond * fixedDt, 0.0f, 0.5f);
+        if (diffusion > 1.0e-4f) {
+            std::vector<float> source = chunk.deformHeights;
+            const float keep = 1.0f - diffusion;
+            const float neighbor = diffusion * 0.25f;
+            for (uint32_t z = 1u; z < cells; ++z) {
+                for (uint32_t x = 1u; x < cells; ++x) {
+                    const std::size_t index =
+                        static_cast<std::size_t>(z) * stride + x;
+                    chunk.deformHeights[index] =
+                        source[index] * keep +
+                        (source[index - stride] +
+                            source[index + stride] +
+                            source[index - 1u] +
+                            source[index + 1u]) * neighbor;
+                }
             }
         }
-        RebuildCombinedHeights(state);
+        RebuildCombinedHeights(chunk);
     }
 
 } // namespace HIKARI

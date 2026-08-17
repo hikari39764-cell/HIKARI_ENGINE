@@ -141,6 +141,10 @@ namespace HIKARI::RENDER3D::RUNTIME {
         SAND::SandSurfaceRenderData sandSurfaceData{};
         const std::vector<float>* sandSurfaceHeights = nullptr;
         uint32_t sandSurfaceHeightOffset = 0u;
+        uint32_t sandSurfaceLayerWeightsOffset = 0u;
+        uint32_t sandSurfaceCoverageOffset = 0u;
+        uint32_t sandSurfaceLayerTintsOffset = 0u;
+        uint32_t waterSurfaceLiquidCoverageOffset = 0u;
     };
 
     class SceneRenderCache {

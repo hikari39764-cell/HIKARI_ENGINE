@@ -67,6 +67,12 @@ namespace HIKARI::EDITOR {
         Animation,
         StateMachine,
         Audio,
+        TerrainRaise,
+        TerrainLower,
+        TerrainSmooth,
+        TerrainFlatten,
+        TerrainMound,
+        TerrainPit,
     };
 
 #if defined(HIKARI_WITH_EDITOR)

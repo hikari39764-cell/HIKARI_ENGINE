@@ -130,6 +130,13 @@ namespace HIKARI::PHYSICS {
                 angularVelocity);
     }
 
+    bool PhysicsWorldService::AddForce(
+        PhysicsBodyHandle body,
+        const MATH::Vec3& force) {
+        return backend_ && world_ != nullptr && body.IsValid() &&
+            backend_->AddForce(body, force);
+    }
+
     bool PhysicsWorldService::TryGetBodyState(
         PhysicsBodyHandle body,
         PhysicsBodyState& outState) const {

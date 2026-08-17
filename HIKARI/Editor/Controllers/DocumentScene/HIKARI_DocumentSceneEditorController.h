@@ -40,6 +40,7 @@
 #include "Editor/Workspaces/AnimationStateMachine/HIKARI_AnimationStateMachineWorkspaceController.h"
 #include "Editor/Workspaces/RuntimeBinding/HIKARI_RuntimeBindingWorkspaceController.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
+#include "Editor/Workspaces/TerrainSurface/HIKARI_TerrainSurfaceWorkspaceController.h"
 #include "Editor/HIKARI_SelectionSyncService.h"
 #include "Editor/HIKARI_StatsPanel.h"
 #include "Editor/Controllers/DocumentScene/HIKARI_DocumentToolbarController.h"
@@ -101,11 +102,14 @@ namespace HIKARI {
         EDITOR::RuntimeBindingWorkspaceController
             runtimeBindingWorkspaceController_{};
         EDITOR::VfxWorkspaceController vfxWorkspaceController_{};
+        EDITOR::TerrainSurfaceWorkspaceController
+            terrainSurfaceWorkspaceController_{};
         DebugCameraPanel debugCameraPanel_{};
         EDITOR::EditorTransformGizmo transformGizmo_{};
         void DrawGameViewportWindow(
             DocumentSceneBase& scene,
-            EDITOR::EditorPlaySession& playSession);
+            EDITOR::EditorPlaySession& playSession,
+            std::string_view stableWindowId = "Game View");
         void HandleSandTerrainBrush(
             DocumentSceneBase& scene,
             const EDITOR::SceneViewportRect& viewport,
@@ -212,7 +216,6 @@ namespace HIKARI {
         Camera3D sceneViewEditorCameraSnapshot_{};
         DebugCameraController3D sceneViewDebugCameraSnapshot_{};
         bool historyExternalDirty_ = false;
-        bool sandTerrainSculptActive_ = false;
         bool sandTerrainStrokeActive_ = false;
         std::vector<SceneObjectData> sandBrushBeforeObjects_{};
         SceneCameraSettings sandBrushBeforeCamera_{};

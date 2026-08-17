@@ -1110,7 +1110,9 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             record.waterSurfaceGpuDataIndex =
                 NUMERIC::SaturateToUint32(waterSurfaceGpuData_.size());
             waterSurfaceGpuData_.push_back(
-                WATER::BuildWaterSurfaceGpuData(record.waterSurfaceData));
+                WATER::BuildWaterSurfaceGpuData(
+                    record.waterSurfaceData,
+                    record.waterSurfaceLiquidCoverageOffset));
         }
 
         meshShaderJointPalettes_.resize(surfaceRecords_.size());
@@ -1153,7 +1155,10 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             sandSurfaceGpuData_.push_back(
                 SAND::BuildSandSurfaceGpuData(
                     record.sandSurfaceData,
-                    record.sandSurfaceHeightOffset));
+                    record.sandSurfaceHeightOffset,
+                    record.sandSurfaceLayerWeightsOffset,
+                    record.sandSurfaceCoverageOffset,
+                    record.sandSurfaceLayerTintsOffset));
         }
 
         stats_.sourceRecordCount = NUMERIC::SaturateToUint32(surfaceRecords_.size());
@@ -1698,14 +1703,22 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             if (waterSurfaceGpuDataIndex != 0u) {
                 waterSurfaceGpuData_[waterSurfaceGpuDataIndex] =
                     WATER::BuildWaterSurfaceGpuData(
-                        surfaceRecords_[surfaceIndex].waterSurfaceData);
+                        surfaceRecords_[surfaceIndex].waterSurfaceData,
+                        surfaceRecords_[surfaceIndex].
+                            waterSurfaceLiquidCoverageOffset);
             }
             if (sandSurfaceGpuDataIndex != 0u) {
                 sandSurfaceGpuData_[sandSurfaceGpuDataIndex] =
                     SAND::BuildSandSurfaceGpuData(
                         surfaceRecords_[surfaceIndex].sandSurfaceData,
                         surfaceRecords_[surfaceIndex].
-                            sandSurfaceHeightOffset);
+                            sandSurfaceHeightOffset,
+                        surfaceRecords_[surfaceIndex].
+                            sandSurfaceLayerWeightsOffset,
+                        surfaceRecords_[surfaceIndex].
+                            sandSurfaceCoverageOffset,
+                        surfaceRecords_[surfaceIndex].
+                            sandSurfaceLayerTintsOffset);
             }
             if (!newOpaque &&
                 !newDepthOccluder &&

@@ -25,7 +25,7 @@ constexpr bool IsBuiltInCheckerMaterialAssetId(
 }
 
 // プロシージャル砂地の既定マテリアル。SceneRuntimeBuilder が
-// SandSurfaceComponent を持つオブジェクトの slot 0 へ上書きする。
+// TerrainSurfaceComponent を持つオブジェクトの slot 0 へ上書きする。
 inline constexpr std::string_view kBuiltInSandMaterialAssetId =
     "generated://sand/anime-dry";
 

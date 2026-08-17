@@ -5,6 +5,32 @@
 #include "Include/Surface/HIKARI_ScreenSpaceReflectionTrace.hlsli"
 #include "Include/Surface/HIKARI_SurfaceTransmission.hlsli"
 
+float HikariSampleLiquidCoverage(
+    HikariWaterSurfaceParams p,
+    float2 uv)
+{
+    if (p.liquidCoverageOffset == 0u)
+    {
+        return 1.0f;
+    }
+    const float2 safeUv = saturate(uv);
+    const float fu = safeUv.x * (float)p.coverageResolution;
+    const float fv = safeUv.y * (float)p.coverageResolution;
+    uint x0 = (uint)fu;
+    uint y0 = (uint)fv;
+    uint x1 = min(x0 + 1u, p.coverageResolution);
+    uint y1 = min(y0 + 1u, p.coverageResolution);
+    const float tx = fu - (float)x0;
+    const float ty = fv - (float)y0;
+    const uint stride = p.coverageResolution + 1u;
+    const uint base = p.liquidCoverageOffset;
+    const float c00 = gSandSurfaceHeights[base + y0 * stride + x0];
+    const float c10 = gSandSurfaceHeights[base + y0 * stride + x1];
+    const float c01 = gSandSurfaceHeights[base + y1 * stride + x0];
+    const float c11 = gSandSurfaceHeights[base + y1 * stride + x1];
+    return lerp(lerp(c00, c10, tx), lerp(c01, c11, tx), ty);
+}
+
 float HikariWaterHash21(float2 value)
 {
     value = frac(value * float2(123.34f, 456.21f));
@@ -316,6 +342,12 @@ float4 HikariShadeWaterSurface(
 {
     const HikariWaterSurfaceParams p =
         HikariLoadWaterSurfaceParams(input.surfaceGpuSceneIndex);
+    const float liquidCoverage =
+        HikariSampleLiquidCoverage(p, input.uv);
+    if (liquidCoverage < 0.5f)
+    {
+        discard;
+    }
     const bool anime = p.shadingModel < 0.5f;
     const float simulationTime = HikariFiniteOr(
         gSimulationTimeParams.x,

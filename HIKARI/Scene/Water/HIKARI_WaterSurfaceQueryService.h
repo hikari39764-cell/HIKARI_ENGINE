@@ -10,6 +10,7 @@
 
 #include "Render3D/HIKARI_Math3D.h"
 #include "Scene/HIKARI_RuntimeObjectHandle.h"
+#include "Scene/Terrain/HIKARI_TerrainSnapshotService.h"
 #include "Scene/Water/HIKARI_WaterSurfaceTypes.h"
 
 namespace HIKARI::WATER {
@@ -118,14 +119,10 @@ namespace HIKARI::WATER {
         void Clear();
 
     private:
-        struct Snapshot;
-
-        // Publish/Clear と sample は並行可能。reader は immutable snapshot を
-        // 所有し、batch の途中で publish されても同じ revision を維持する。
-        std::atomic<std::shared_ptr<const Snapshot>> snapshot_{};
+        TERRAIN::TerrainSnapshotService<WaterSurfaceSnapshotEntry>
+            snapshotStore_{};
         std::atomic<const IWaterBathymetryProvider*>
             bathymetryProvider_{ nullptr };
-        mutable std::mutex publishMutex_{};
     };
 
 } // namespace HIKARI::WATER

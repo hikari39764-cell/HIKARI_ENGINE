@@ -51,43 +51,49 @@ namespace HIKARI {
 
         std::vector<WATER::WaterSurfaceSnapshotEntry> surfaces{};
         surfaces.reserve(world.GetObjects().size());
+        const auto publishSurface = [&](GameObject& object,
+            const WATER::WaterSurfaceSettings& authored,
+            ProceduralMeshComponent& procedural) {
+
+            const ProceduralMeshSettings mesh =
+                SanitizeProceduralMeshSettings(
+                    procedural.GetSettings());
+            if (mesh.kind != ProceduralMeshKind::Plane &&
+                mesh.kind != ProceduralMeshKind::GridPlane) {
+                return;
+            }
+
+            const float spacingX = mesh.width /
+                static_cast<float>((std::max)(mesh.segmentsX, 1u));
+            const float spacingZ = mesh.depth /
+                static_cast<float>((std::max)(mesh.segmentsY, 1u));
+            WATER::WaterSurfaceSnapshotEntry snapshot{};
+            snapshot.object = object.GetRuntimeHandle();
+            snapshot.world = object.GetTransform().GetWorldMatrix();
+            snapshot.inverseWorld = MATH::Inverse(snapshot.world);
+            snapshot.normalMatrix =
+                MATH::BuildNormalMatrixFromWorld(snapshot.world);
+            snapshot.settings =
+                WATER::ResolveWaterSurfaceSettingsForMesh(
+                    authored,
+                    (std::max)(spacingX, spacingZ));
+            snapshot.halfExtents = {
+                mesh.width * 0.5f,
+                mesh.depth * 0.5f
+            };
+            snapshot.maximumHorizontalDisplacement =
+                WATER::CalculateWaterMaximumHorizontalDisplacement(
+                    snapshot.settings);
+            surfaces.push_back(std::move(snapshot));
+        };
+
         world.ForEachObjectWith<
             WaterSurfaceComponent,
             ProceduralMeshComponent>(
             [&](GameObject& object,
                 WaterSurfaceComponent& water,
                 ProceduralMeshComponent& procedural) {
-
-                const ProceduralMeshSettings mesh =
-                    SanitizeProceduralMeshSettings(
-                        procedural.GetSettings());
-                if (mesh.kind != ProceduralMeshKind::Plane &&
-                    mesh.kind != ProceduralMeshKind::GridPlane) {
-                    return;
-                }
-
-                const float spacingX = mesh.width /
-                    static_cast<float>((std::max)(mesh.segmentsX, 1u));
-                const float spacingZ = mesh.depth /
-                    static_cast<float>((std::max)(mesh.segmentsY, 1u));
-                WATER::WaterSurfaceSnapshotEntry snapshot{};
-                snapshot.object = object.GetRuntimeHandle();
-                snapshot.world = object.GetTransform().GetWorldMatrix();
-                snapshot.inverseWorld = MATH::Inverse(snapshot.world);
-                snapshot.normalMatrix =
-                    MATH::BuildNormalMatrixFromWorld(snapshot.world);
-                snapshot.settings =
-                    WATER::ResolveWaterSurfaceSettingsForMesh(
-                        water.GetSettings(),
-                        (std::max)(spacingX, spacingZ));
-                snapshot.halfExtents = {
-                    mesh.width * 0.5f,
-                    mesh.depth * 0.5f
-                };
-                snapshot.maximumHorizontalDisplacement =
-                    WATER::CalculateWaterMaximumHorizontalDisplacement(
-                        snapshot.settings);
-                surfaces.push_back(std::move(snapshot));
+                publishSurface(object, water.GetSettings(), procedural);
             });
         queryService_->PublishSnapshot(std::move(surfaces));
     }

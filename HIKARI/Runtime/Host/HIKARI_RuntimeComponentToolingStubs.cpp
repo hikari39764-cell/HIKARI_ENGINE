@@ -15,8 +15,8 @@
 #include "Scene/Components/Lighting/HIKARI_ReflectionProbeComponent.h"
 #include "Scene/Components/Rendering/MaterialFx/HIKARI_MaterialFxComponent.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
+#include "Scene/Terrain/HIKARI_TerrainSurfaceComponent.h"
 #include "Scene/Water/HIKARI_WaterSurfaceComponent.h"
-#include "Scene/Sand/HIKARI_SandSurfaceComponent.h"
 #include "Scene/Sand/HIKARI_SandSurfaceFollowerComponent.h"
 
 namespace HIKARI {
@@ -53,9 +53,8 @@ namespace HIKARI {
     void ModelComponent::BuildInspector(IInspectorBuilder&) {}
     void ModelComponent::RenderImGui() {}
 
-    void WaterSurfaceComponent::BuildInspector(
-        IInspectorBuilder&) {}
-    void SandSurfaceComponent::BuildInspector(IInspectorBuilder&) {}
+    void TerrainSurfaceComponent::BuildInspector(IInspectorBuilder&) {}
+    void WaterSurfaceComponent::BuildInspector(IInspectorBuilder&) {}
     void SandSurfaceFollowerComponent::BuildInspector(
         IInspectorBuilder&) {}
 

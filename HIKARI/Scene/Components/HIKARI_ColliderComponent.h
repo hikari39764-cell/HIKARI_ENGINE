@@ -9,6 +9,7 @@ namespace HIKARI {
         Manual,
         Geometry,
         CollisionAsset,
+        RuntimeGeometry,
     };
 
     struct ResolvedColliderShape {
@@ -49,6 +50,11 @@ namespace HIKARI {
         uint32_t GetCollisionMask() const noexcept;
         const std::string& GetCollisionGeometryAssetId() const noexcept;
         bool UsesCollisionGeometryAsset() const noexcept;
+        void SetRuntimeTriangleMesh(
+            std::shared_ptr<const PHYSICS::PhysicsGeometryBuffer> geometry) noexcept;
+        bool UsesRuntimeGeometry() const noexcept;
+        const std::shared_ptr<const PHYSICS::PhysicsGeometryBuffer>&
+            GetRuntimeGeometry() const noexcept;
 
         void SetEnabled(bool enabled) noexcept;
         void SetFitMode(ColliderFitMode mode) noexcept;
@@ -73,6 +79,7 @@ namespace HIKARI {
         uint32_t collisionLayer_ = 1u;
         uint32_t collisionMask_ = 0xFFFFFFFFu;
         std::string collisionGeometryAssetId_{};
+        std::shared_ptr<const PHYSICS::PhysicsGeometryBuffer> runtimeGeometry_{};
     };
 
 } // namespace HIKARI

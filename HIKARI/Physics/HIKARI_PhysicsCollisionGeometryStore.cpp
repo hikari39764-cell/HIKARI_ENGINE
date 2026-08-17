@@ -229,6 +229,40 @@ namespace HIKARI::PHYSICS {
         uint32_t componentOrdinal,
         std::vector<PhysicsShapeDesc>& outShapes) {
         AppendResult result{};
+        if (collider.UsesRuntimeGeometry()) {
+            const auto& geometry = collider.GetRuntimeGeometry();
+            if (!geometry ||
+                geometry->vertices.size() < 3u ||
+                geometry->indices.size() < 3u) {
+                result.error = PhysicsErrorCode::InvalidBodyDefinition;
+                result.message = "runtime terrain geometry is empty";
+                return result;
+            }
+            PhysicsShapeDesc shape{};
+            shape.key.componentOrdinal = componentOrdinal;
+            shape.type = PhysicsShapeType::TriangleMesh;
+            shape.localScale = Absolute(worldScale);
+            shape.geometry = geometry;
+            shape.vertexCount =
+                static_cast<uint32_t>(geometry->vertices.size());
+            shape.indexCount =
+                static_cast<uint32_t>(geometry->indices.size());
+            shape.isTrigger = collider.IsTrigger();
+            shape.material = PhysicsMaterialDesc{
+                collider.GetFriction(),
+                collider.GetRestitution(),
+                collider.GetDensity()
+            };
+            shape.filter = PhysicsCollisionFilter{
+                collider.GetCollisionLayer(),
+                collider.GetCollisionMask()
+            };
+            outShapes.push_back(std::move(shape));
+            result.success = true;
+            result.appendedShapeCount = 1u;
+            result.message = "runtime terrain geometry ready";
+            return result;
+        }
         if (!collider.IsEnabled() ||
             !collider.UsesCollisionGeometryAsset()) {
             result.error = PhysicsErrorCode::InvalidBodyDefinition;

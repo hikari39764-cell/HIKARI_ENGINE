@@ -36,6 +36,8 @@ namespace HIKARI::EDITOR {
         const EditorViewInstance& GetModelMaterialCompareView() const noexcept;
         EditorViewInstance& GetVfxPreviewView() noexcept;
         const EditorViewInstance& GetVfxPreviewView() const noexcept;
+        EditorViewInstance& GetTerrainSurfaceGameView() noexcept;
+        const EditorViewInstance& GetTerrainSurfaceGameView() const noexcept;
         EditorViewInstance* FindView(
             RENDER3D::RenderViewId renderViewId) noexcept;
         const EditorViewInstance* FindView(
@@ -50,6 +52,7 @@ namespace HIKARI::EDITOR {
             ModelMaterialPreview,
             ModelMaterialCompare,
             VfxPreview,
+            TerrainSurfaceGame,
             Count,
         };
 

@@ -32,7 +32,11 @@ namespace HIKARI::RENDER3D::SAND {
             lhs.rippleAmount == rhs.rippleAmount &&
             lhs.pitDarkening == rhs.pitDarkening &&
             lhs.toonBandCount == rhs.toonBandCount &&
-            lhs.toonBandHardness == rhs.toonBandHardness;
+            lhs.toonBandHardness == rhs.toonBandHardness &&
+            lhs.wetness == rhs.wetness &&
+            lhs.layerCount == rhs.layerCount &&
+            lhs.layerWeights == rhs.layerWeights &&
+            lhs.coverage == rhs.coverage;
     }
 
     SandSurfaceGpuData BuildSandSurfaceGpuDataSentinel() noexcept {
@@ -46,12 +50,19 @@ namespace HIKARI::RENDER3D::SAND {
 
     SandSurfaceGpuData BuildSandSurfaceGpuData(
         const SandSurfaceRenderData& source,
-        uint32_t heightOffset) noexcept {
+        uint32_t heightOffset,
+        uint32_t layerWeightsOffset,
+        uint32_t coverageOffset,
+        uint32_t layerTintsOffset) noexcept {
 
         SandSurfaceGpuData result{};
         result.schemaVersion = kSandSurfaceGpuSchemaVersion;
+        // 上位 bit に layerCount を詰める（単層=1 のとき従来と同一）。
+        const uint32_t layerCount =
+            (std::max)(source.layerCount, 1u) & 0x7Fu;
         result.flags =
-            static_cast<uint32_t>(SandSurfaceGpuFlags::Enabled);
+            static_cast<uint32_t>(SandSurfaceGpuFlags::Enabled) |
+            (layerCount << 1u);
         result.gridResolution =
             std::clamp(source.gridResolution, 1u, 512u);
         result.heightOffset = heightOffset;
@@ -78,7 +89,13 @@ namespace HIKARI::RENDER3D::SAND {
             std::clamp(FiniteOr(source.toonBandHardness, 0.14f), 0.0f, 0.5f),
             static_cast<float>(std::clamp(
                 source.toonBandCount, 2u, 4u)),
-            0.0f
+            static_cast<float>(layerWeightsOffset)
+        };
+        result.styleWet = {
+            std::clamp(FiniteOr(source.wetness, 0.0f), 0.0f, 1.0f),
+            static_cast<float>(coverageOffset),
+            static_cast<float>(layerTintsOffset),
+            static_cast<float>(source.layerCount)
         };
         return result;
     }

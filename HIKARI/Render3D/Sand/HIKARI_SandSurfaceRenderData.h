@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <vector>
 
 #include "Render3D/HIKARI_Math3D.h"
 
@@ -25,6 +26,19 @@ namespace HIKARI::RENDER3D::SAND {
 
         uint32_t toonBandCount = 3u;
         float toonBandHardness = 0.14f;
+        float wetness = 0.0f;
+
+        // 層ウェイト。layer-major で、各層は (gridResolution+1)^2 個。
+        // 既定は 1 層（既存の単一砂地）で、このとき既存着色と完全一致する。
+        uint32_t layerCount = 1u;
+        std::vector<float> layerWeights{};
+        std::vector<float> coverage{};
+
+        // 層ごとの着色 tint。空の場合は従来通りのハードコード色
+        // (sand=material tint, snow=白, dirt=茶) に C++ 側で展開され、
+        // 組み込み層の見た目は変わらない。設定時は layerCount 個必要。
+        std::vector<MATH::Vec3> layerLightTints{};
+        std::vector<MATH::Vec3> layerDarkTints{};
     };
 
     bool SandSurfaceRenderDataEqual(

@@ -27,9 +27,10 @@ namespace HIKARI::RENDER3D::SAND {
         MATH::Vec4 styleLight{ 0.0f, 0.0f, 0.0f, 0.0f };
         MATH::Vec4 styleDark{ 0.0f, 0.0f, 0.0f, 0.0f };
         MATH::Vec4 stylePit{ 0.0f, 0.0f, 0.0f, 0.0f };
+        MATH::Vec4 styleWet{ 0.0f, 0.0f, 0.0f, 0.0f };
     };
 
-    static_assert(sizeof(SandSurfaceGpuData) == 80u);
+    static_assert(sizeof(SandSurfaceGpuData) == 96u);
     static_assert(alignof(SandSurfaceGpuData) == 16u);
     static_assert(offsetof(SandSurfaceGpuData, schemaVersion) == 0u);
     static_assert(offsetof(SandSurfaceGpuData, heightOffset) == 12u);
@@ -37,10 +38,14 @@ namespace HIKARI::RENDER3D::SAND {
     static_assert(offsetof(SandSurfaceGpuData, styleLight) == 32u);
     static_assert(offsetof(SandSurfaceGpuData, styleDark) == 48u);
     static_assert(offsetof(SandSurfaceGpuData, stylePit) == 64u);
+    static_assert(offsetof(SandSurfaceGpuData, styleWet) == 80u);
 
     SandSurfaceGpuData BuildSandSurfaceGpuDataSentinel() noexcept;
     SandSurfaceGpuData BuildSandSurfaceGpuData(
         const SandSurfaceRenderData& source,
-        uint32_t heightOffset) noexcept;
+        uint32_t heightOffset,
+        uint32_t layerWeightsOffset,
+        uint32_t coverageOffset,
+        uint32_t layerTintsOffset = 0u) noexcept;
 
 } // namespace HIKARI::RENDER3D::SAND

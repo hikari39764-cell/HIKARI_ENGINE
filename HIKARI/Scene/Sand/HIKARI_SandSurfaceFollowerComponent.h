@@ -26,8 +26,10 @@ namespace HIKARI {
         void OnDetach() override;
         void Update(float dt) override;
 
-    private:
+        // for imprint system: resolved radius (Collider/mesh sphere fit).
         float ResolveRadius() const noexcept;
+
+    private:
 
         // 0 は Collider/ProceduralMesh の sphere fit から自動解決する。
         float radius_ = 0.0f;

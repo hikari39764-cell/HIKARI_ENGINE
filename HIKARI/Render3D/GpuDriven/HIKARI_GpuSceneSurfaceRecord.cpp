@@ -818,6 +818,14 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         record.sandSurfaceData = surfaceInstance.sandSurfaceData;
         record.sandSurfaceHeightOffset =
             surfaceInstance.sandSurfaceHeightOffset;
+        record.sandSurfaceLayerWeightsOffset =
+            surfaceInstance.sandSurfaceLayerWeightsOffset;
+        record.sandSurfaceCoverageOffset =
+            surfaceInstance.sandSurfaceCoverageOffset;
+        record.sandSurfaceLayerTintsOffset =
+            surfaceInstance.sandSurfaceLayerTintsOffset;
+        record.waterSurfaceLiquidCoverageOffset =
+            surfaceInstance.waterSurfaceLiquidCoverageOffset;
 
         record.forwardCandidate = record.visible;
         record.shadowCandidate = record.visible && record.castShadow;

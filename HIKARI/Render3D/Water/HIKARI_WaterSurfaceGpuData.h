@@ -36,6 +36,7 @@ namespace HIKARI::RENDER3D::WATER {
         MATH::Vec4 depthTransmittanceFoam{ 0.0f, 0.0f, 0.0f, 0.0f };
         MATH::Vec4 scatteringAbsorption{ 0.0f, 0.0f, 0.0f, 0.0f };
         MATH::Vec4 foamRoughness{ 0.0f, 0.0f, 0.0f, 0.0f };
+        MATH::Vec4 coverageParams{ 0.0f, 0.0f, 0.0f, 0.0f };
         std::array<WaterSurfaceWaveGpuData, kWaterSurfaceWaveCount> waves{};
     };
 
@@ -43,13 +44,15 @@ namespace HIKARI::RENDER3D::WATER {
     static_assert(alignof(WaterSurfaceWaveGpuData) == 16u);
     static_assert(offsetof(WaterSurfaceGpuData, surfaceParams) == 16u);
     static_assert(offsetof(WaterSurfaceGpuData, recordCount) == 12u);
-    static_assert(offsetof(WaterSurfaceGpuData, waves) == 80u);
-    static_assert(sizeof(WaterSurfaceGpuData) == 208u);
+    static_assert(offsetof(WaterSurfaceGpuData, coverageParams) == 80u);
+    static_assert(offsetof(WaterSurfaceGpuData, waves) == 96u);
+    static_assert(sizeof(WaterSurfaceGpuData) == 224u);
     static_assert(alignof(WaterSurfaceGpuData) == 16u);
 
     WaterSurfaceGpuData BuildWaterSurfaceGpuDataSentinel(
         uint32_t recordCount = 1u) noexcept;
     WaterSurfaceGpuData BuildWaterSurfaceGpuData(
-        const WaterSurfaceRenderData& source) noexcept;
+        const WaterSurfaceRenderData& source,
+        uint32_t liquidCoverageOffset) noexcept;
 
 } // namespace HIKARI::RENDER3D::WATER

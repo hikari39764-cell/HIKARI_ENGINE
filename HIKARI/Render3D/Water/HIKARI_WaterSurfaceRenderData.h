@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 #include "Render3D/HIKARI_Math3D.h"
 
@@ -37,6 +38,8 @@ namespace HIKARI::RENDER3D::WATER {
         float absorptionDistance = 1.0f;
         float surfaceRoughness = 0.1f;
         std::array<WaterWaveRenderData, kWaterSurfaceWaveCount> waves{};
+        uint32_t coverageResolution = 256u;
+        std::vector<float> liquidCoverage{};
     };
 
     bool WaterSurfaceRenderDataEqual(

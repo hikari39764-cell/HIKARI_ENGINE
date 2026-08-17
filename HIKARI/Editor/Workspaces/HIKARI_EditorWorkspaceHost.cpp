@@ -83,6 +83,16 @@ namespace HIKARI::EDITOR {
             EditorViewExecutionMode::RuntimeParityToolPreview;
         vfx.visualization.shadingMode = EditorViewShadingMode::Lit;
         vfx.visualization.displayExposure = 1.0f;
+
+        EditorViewInstance& terrain =
+            View(BuiltInViewSlot::TerrainSurfaceGame);
+        terrain.renderViewId = RENDER3D::kPrimaryRenderViewId;
+        terrain.role = EditorViewRole::Game;
+        terrain.purpose = RENDER3D::RenderViewPurpose::EditorScene;
+        terrain.cameraBinding.kind =
+            EditorViewCameraSourceKind::OwnedEditorCamera;
+        terrain.execution =
+            EditorViewExecutionMode::PrimaryFullQuality;
     }
 
     bool EditorWorkspaceHost::RequestOpen(EditorWorkspaceOpenRequest request) {
@@ -208,6 +218,16 @@ namespace HIKARI::EDITOR {
     const EditorViewInstance&
         EditorWorkspaceHost::GetVfxPreviewView() const noexcept {
         return View(BuiltInViewSlot::VfxPreview);
+    }
+
+    EditorViewInstance&
+        EditorWorkspaceHost::GetTerrainSurfaceGameView() noexcept {
+        return View(BuiltInViewSlot::TerrainSurfaceGame);
+    }
+
+    const EditorViewInstance&
+        EditorWorkspaceHost::GetTerrainSurfaceGameView() const noexcept {
+        return View(BuiltInViewSlot::TerrainSurfaceGame);
     }
 
     EditorViewInstance* EditorWorkspaceHost::FindView(

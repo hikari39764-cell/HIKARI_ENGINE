@@ -22,6 +22,23 @@ namespace HIKARI {
         Local,
     };
 
+    enum class EditorTerrainToolMode : uint8_t {
+        Raise,
+        Lower,
+        Smooth,
+        Flatten,
+        Mound,
+        Pit,
+    };
+
+    enum class EditorTerrainPaintMode : uint8_t {
+        None,
+        Sand,
+        Snow,
+        Dirt,
+        Erase,
+    };
+
     struct EditorTransformGizmoState {
         bool enabled = true;
         EditorTransformGizmoOperation operation = EditorTransformGizmoOperation::Translate;
@@ -30,6 +47,15 @@ namespace HIKARI {
         MATH::Vec3 translateSnap{ 0.5f, 0.5f, 0.5f };
         float rotateSnapDeg = 15.0f;
         float scaleSnap = 0.1f;
+    };
+
+    // 地形工作区のセッション状態。ドキュメントには保存しない。
+    struct EditorTerrainToolState {
+        EditorTerrainToolMode mode = EditorTerrainToolMode::Raise;
+        EditorTerrainPaintMode paint = EditorTerrainPaintMode::None;
+        bool active = false;
+        bool hasHit = false;
+        MATH::Vec3 hitPoint{};
     };
 
     struct ViewportWindowState {
@@ -74,6 +100,7 @@ namespace HIKARI {
         EditorAiIntegrationSettings aiIntegration{};
         ComponentGizmoState gizmos{};
         EditorTransformGizmoState transformGizmo{};
+        EditorTerrainToolState terrainTool{};
         ViewportOverlayState overlays{};
         ViewportPerformanceState viewportPerformance{};
         ViewportDebugViewState viewportDebug{};
