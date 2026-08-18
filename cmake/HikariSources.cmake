@@ -806,6 +806,7 @@ set(HIKARI_EDITOR_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Inspectors/Rendering/MaterialFx/HIKARI_MaterialFxComponentInspector.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Inspectors/Rendering/Model/HIKARI_ModelComponentDiagnostics.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Inspectors/Rendering/Model/HIKARI_ModelComponentInspector.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Inspectors/Rendering/TerrainSurface/HIKARI_TerrainSurfaceComponentInspector.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Inspectors/Rendering/WaterSurface/HIKARI_WaterSurfaceComponentInspector.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Widgets/HIKARI_AssetFieldWidget.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Widgets/HIKARI_InspectorPropertyLayout.cpp"

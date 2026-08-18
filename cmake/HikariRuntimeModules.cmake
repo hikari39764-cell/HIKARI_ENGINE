@@ -17,6 +17,7 @@ set(HIKARI_RUNTIME_SCENE_SOURCES)
 set(HIKARI_RUNTIME_PHYSICS_SOURCES)
 set(HIKARI_RUNTIME_GFX_SOURCES)
 set(HIKARI_RUNTIME_RENDER3D_SOURCES)
+set(HIKARI_RUNTIME_RENDER3D_FEATURE_SOURCES)
 set(HIKARI_RUNTIME_AUTHORING_SOURCES)
 set(HIKARI_RUNTIME_COMPOSITION_SOURCES)
 
@@ -45,6 +46,10 @@ foreach(runtime_source IN LISTS HIKARI_RUNTIME_SOURCES)
         list(APPEND HIKARI_RUNTIME_PHYSICS_SOURCES "${runtime_source}")
     elseif(runtime_relative_path MATCHES "^HIKARI/(Gfx|Render2D|Vfx)/")
         list(APPEND HIKARI_RUNTIME_GFX_SOURCES "${runtime_source}")
+    elseif(
+        runtime_relative_path MATCHES
+        "^HIKARI/Render3D/(Color|Features|Lighting|Reflection|Sand|ScreenSpace|Shadow|Surface|Vfx|Water)/")
+        list(APPEND HIKARI_RUNTIME_RENDER3D_FEATURE_SOURCES "${runtime_source}")
     elseif(runtime_relative_path MATCHES "^HIKARI/Render3D/")
         list(APPEND HIKARI_RUNTIME_RENDER3D_SOURCES "${runtime_source}")
     elseif(runtime_relative_path MATCHES "^HIKARI/Tools/")
@@ -68,6 +73,7 @@ set(
     HIKARI_RUNTIME_PHYSICS_SOURCES
     HIKARI_RUNTIME_GFX_SOURCES
     HIKARI_RUNTIME_RENDER3D_SOURCES
+    HIKARI_RUNTIME_RENDER3D_FEATURE_SOURCES
     HIKARI_RUNTIME_AUTHORING_SOURCES
     HIKARI_RUNTIME_COMPOSITION_SOURCES)
 
@@ -134,6 +140,7 @@ function(hikari_define_runtime_modules output_variable)
         "hikari_runtime_physics|HIKARI_RUNTIME_PHYSICS_SOURCES"
         "hikari_runtime_gfx|HIKARI_RUNTIME_GFX_SOURCES"
         "hikari_runtime_render3d|HIKARI_RUNTIME_RENDER3D_SOURCES"
+        "hikari_runtime_render3d_features|HIKARI_RUNTIME_RENDER3D_FEATURE_SOURCES"
         "hikari_runtime_authoring|HIKARI_RUNTIME_AUTHORING_SOURCES"
         "hikari_runtime_composition|HIKARI_RUNTIME_COMPOSITION_SOURCES")
 
