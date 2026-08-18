@@ -58,11 +58,27 @@ namespace HIKARI {
                     (std::max)(spacingX, spacingZ));
 
             RENDER3D::WATER::WaterSurfaceRenderData data{};
-            data.shadingModel = settings.preset ==
-                    WATER::WaterSurfacePreset::RealisticClearSummer
-                ? RENDER3D::WATER::WaterSurfaceShadingModel::
-                    RealisticClearSummer
-                : RENDER3D::WATER::WaterSurfaceShadingModel::AnimeSummer;
+            data.shadingModel =
+                settings.preset == WATER::WaterSurfacePreset::
+                        RealisticSpectralSummer
+                    ? RENDER3D::WATER::WaterSurfaceShadingModel::
+                        RealisticSpectralSummer
+                    : settings.preset == WATER::WaterSurfacePreset::
+                        AnimeSparklingSummer
+                    ? RENDER3D::WATER::WaterSurfaceShadingModel::
+                        AnimeSparklingSummer
+                    : settings.preset == WATER::WaterSurfacePreset::
+                        RealisticClearSummer
+                        ? RENDER3D::WATER::WaterSurfaceShadingModel::
+                            RealisticClearSummer
+                        : RENDER3D::WATER::WaterSurfaceShadingModel::
+                            AnimeSummer;
+            data.geometryMode = settings.geometryMode ==
+                    WATER::WaterSurfaceGeometryMode::CameraCenteredOcean
+                ? RENDER3D::WATER::WaterSurfaceGeometryMode::
+                    CameraCenteredOcean
+                : RENDER3D::WATER::WaterSurfaceGeometryMode::
+                    FiniteAuthored;
             data.timeScale = settings.timeScale;
             data.choppiness = settings.choppiness;
             data.microWaveStrength = settings.microWaveStrength;
@@ -75,6 +91,22 @@ namespace HIKARI {
             data.foamAmount = settings.foamAmount;
             data.absorptionDistance = settings.absorptionDistance;
             data.surfaceRoughness = settings.surfaceRoughness;
+            data.reflectionStrength = settings.reflectionStrength;
+            data.sunGlintStrength = settings.sunGlintStrength;
+            data.glintDensity = settings.glintDensity;
+            data.glintFlowSpeed = settings.glintFlowSpeed;
+            data.ribbonWidth = settings.ribbonWidth;
+            data.windDirectionRadians = settings.windDirectionDeg *
+                (kPi / 180.0f);
+            data.windSpeed = settings.windSpeed;
+            data.shortWaveStrength = settings.shortWaveStrength;
+            data.capillaryStrength = settings.capillaryStrength;
+            data.geometryParams = {
+                0.0f,
+                0.0f,
+                (std::max)(mesh.width * 0.5f, 0.001f),
+                (std::max)(mesh.depth * 0.5f, 0.001f)
+            };
             for (size_t index = 0u; index < data.waves.size(); ++index) {
                 const WATER::WaterGerstnerWave& source =
                     settings.waves[index];

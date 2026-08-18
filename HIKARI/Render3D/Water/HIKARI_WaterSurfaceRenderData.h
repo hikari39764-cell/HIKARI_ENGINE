@@ -14,6 +14,13 @@ namespace HIKARI::RENDER3D::WATER {
     enum class WaterSurfaceShadingModel : uint8_t {
         AnimeSummer = 0,
         RealisticClearSummer = 1,
+        AnimeSparklingSummer = 2,
+        RealisticSpectralSummer = 3,
+    };
+
+    enum class WaterSurfaceGeometryMode : uint8_t {
+        FiniteAuthored = 0,
+        CameraCenteredOcean = 1,
     };
 
     struct WaterWaveRenderData {
@@ -28,6 +35,8 @@ namespace HIKARI::RENDER3D::WATER {
     struct WaterSurfaceRenderData {
         WaterSurfaceShadingModel shadingModel =
             WaterSurfaceShadingModel::AnimeSummer;
+        WaterSurfaceGeometryMode geometryMode =
+            WaterSurfaceGeometryMode::FiniteAuthored;
         float timeScale = 1.0f;
         float choppiness = 0.0f;
         float microWaveStrength = 0.0f;
@@ -40,6 +49,17 @@ namespace HIKARI::RENDER3D::WATER {
         float shallowClearDepth = 0.20f;
         float shallowBlendDepth = 2.80f;
         float shallowGraphicWeight = 0.14f;
+        float reflectionStrength = 1.0f;
+        float sunGlintStrength = 0.0f;
+        float glintDensity = 0.0f;
+        float glintFlowSpeed = 0.0f;
+        float ribbonWidth = 0.02f;
+        float windDirectionRadians = 0.0f;
+        float windSpeed = 0.0f;
+        float shortWaveStrength = 0.0f;
+        float capillaryStrength = 0.0f;
+        // (authored center X/Z, authored half extent X/Z) in local space.
+        MATH::Vec4 geometryParams{ 0.0f, 0.0f, 0.5f, 0.5f };
         std::array<WaterWaveRenderData, kWaterSurfaceWaveCount> waves{};
         uint32_t coverageResolution = 256u;
         std::vector<float> liquidCoverage{};

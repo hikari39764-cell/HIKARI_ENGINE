@@ -50,6 +50,8 @@ namespace HIKARI::GFX::GPU_PROFILE {
         SceneLayers,
         UiLayers,
         ImGui,
+        WaterVisibilityDepth,
+        StylizedClouds,
         Count
     };
 

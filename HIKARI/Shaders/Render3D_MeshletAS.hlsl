@@ -145,7 +145,8 @@ bool HikariMeshletAsCanConeCull(HikariMeshletVisibleRange visible)
             HIKARI_SURFACE_GPU_SCENE_FLAG_DOUBLE_SIDED |
             HIKARI_SURFACE_GPU_SCENE_FLAG_SKINNED |
             HIKARI_SURFACE_GPU_SCENE_FLAG_WATER_SURFACE |
-            HIKARI_SURFACE_GPU_SCENE_FLAG_SAND_SURFACE)) == 0u;
+            HIKARI_SURFACE_GPU_SCENE_FLAG_SAND_SURFACE |
+            HIKARI_SURFACE_GPU_SCENE_FLAG_CAMERA_CENTERED_OCEAN)) == 0u;
 }
 
 [numthreads(HIKARI_MESHLET_AS_MAX_CLUSTER_PAYLOAD, 1, 1)]
@@ -242,7 +243,8 @@ void main(uint groupIndex : SV_GroupIndex, uint3 groupId : SV_GroupID)
         (visible.flags & (
             HIKARI_SURFACE_GPU_SCENE_FLAG_SKINNED |
             HIKARI_SURFACE_GPU_SCENE_FLAG_WATER_SURFACE |
-            HIKARI_SURFACE_GPU_SCENE_FLAG_SAND_SURFACE)) != 0u;
+            HIKARI_SURFACE_GPU_SCENE_FLAG_SAND_SURFACE |
+            HIKARI_SURFACE_GPU_SCENE_FLAG_CAMERA_CENTERED_OCEAN)) != 0u;
     const bool requiresFineCull =
         !vertexDeformedRange && (amplificationFineCull || !preculledRange);
     if (clusterValid && requiresFineCull)

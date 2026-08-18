@@ -63,6 +63,7 @@ namespace HIKARI::MESHRENDERER {
         const RENDER3D::PARTICLES::ParticleRenderFrameSource* source);
     void ReleaseParticleNamespace(uint64_t playbackNamespace);
     void ShutdownParticleGpuDrivenPass();
+    void ShutdownOceanSpectrumRuntime();
     const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource&
         GetActiveGpuDrivenSceneSource();
     bool HasSubmittedItems();
@@ -99,6 +100,10 @@ namespace HIKARI::MESHRENDERER {
     bool RenderDepthPrepass(
         const GFX::Context& graphics,
         D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv);
+    bool RenderWaterVisibilityDepth(
+        const GFX::Context& graphics,
+        D3D12_CPU_DESCRIPTOR_HANDLE waterDsv,
+        const MeshPassResources& passResources);
     bool FinalizeGpuDrivenVisibilityWithoutDepth(
         const GFX::Context& graphics);
     bool FinalizeGpuDrivenVisibilityFromDepth(

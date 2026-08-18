@@ -1639,6 +1639,44 @@ bool HikariClusterCullSelectSectionLodRange(
 
     uint rangeBegin = section.firstLodRange;
     uint rangeEnd = min(rangeBegin + section.lodRangeCount, header.surfaceLodRangeCount);
+    const bool cameraCenteredOcean =
+        (instance.flags & HIKARI_SURFACE_GPU_SCENE_FLAG_CAMERA_CENTERED_OCEAN) != 0u;
+
+    // Camera-centered ocean geometry is evaluated from the snapped GridPlane
+    // lattice and graded in the deformation route.  Its authored section
+    // sphere is intentionally finite and therefore cannot drive projected
+    // error, transition radius, occlusion, or LOD selection.  Keep the
+    // finest authored range (LOD0) whenever available; the first usable range
+    // is only a malformed/legacy-data fallback.
+    if (cameraCenteredOcean)
+    {
+        bool hasFallback = false;
+        for (uint rangeIndex = rangeBegin; rangeIndex < rangeEnd; ++rangeIndex)
+        {
+            HikariClusterGeometrySurfaceLodRange range =
+                HikariLoadClusterGeometrySurfaceLodRange(geometry, header, rangeIndex);
+            if (!HikariClusterCullLodRangeUsable(
+                    header,
+                    range,
+                    instance.clusterSurfaceIndex,
+                    section.sectionIndex))
+            {
+                continue;
+            }
+            if (!hasFallback)
+            {
+                selectedRange = range;
+                hasFallback = true;
+            }
+            if (range.lodIndex == 0u)
+            {
+                selectedRange = range;
+                return true;
+            }
+        }
+        return hasFallback;
+    }
+
     float4 lodWorldSphere =
         HikariClusterCullResolveSectionLodWorldSphere(instance, section, sectionWorldSphere);
     float screenRadius = HikariClusterCullProjectedScreenRadius(lodWorldSphere);

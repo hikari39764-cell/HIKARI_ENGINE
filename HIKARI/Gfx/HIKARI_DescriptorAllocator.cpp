@@ -1,5 +1,6 @@
 #include "Gfx/HIKARI_DescriptorAllocator.h"
 
+#include <algorithm>
 #include <cassert>
 
 namespace HIKARI::GFX {
@@ -40,6 +41,44 @@ namespace HIKARI::GFX {
         allocated_[localIndex] = true;
         ++usedCount_;
         return { begin_ + localIndex };
+    }
+
+    DescriptorSlot DescriptorAllocator::AllocateRange(UINT rangeCount) {
+        if (rangeCount == 0u || rangeCount > count_) {
+            return {};
+        }
+        for (UINT first = 0u;
+             first + rangeCount <= count_;
+             ++first) {
+            bool available = true;
+            for (UINT offset = 0u; offset < rangeCount; ++offset) {
+                if (allocated_[first + offset]) {
+                    available = false;
+                    first += offset;
+                    break;
+                }
+            }
+            if (!available) {
+                continue;
+            }
+            for (UINT offset = 0u; offset < rangeCount; ++offset) {
+                allocated_[first + offset] = true;
+            }
+            usedCount_ += rangeCount;
+            next_ = (std::max)(next_, first + rangeCount);
+            const UINT absoluteFirst = begin_ + first;
+            const UINT absoluteEnd = absoluteFirst + rangeCount;
+            freeList_.erase(
+                std::remove_if(
+                    freeList_.begin(),
+                    freeList_.end(),
+                    [absoluteFirst, absoluteEnd](UINT index) {
+                        return index >= absoluteFirst && index < absoluteEnd;
+                    }),
+                freeList_.end());
+            return { absoluteFirst };
+        }
+        return {};
     }
 
     void DescriptorAllocator::Free(DescriptorSlot slot) {

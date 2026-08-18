@@ -8,9 +8,15 @@
 namespace HIKARI {
 
     namespace {
-        constexpr std::array<AuthoringChoice, 2> kWaterPresets{{
+        constexpr std::array<AuthoringChoice, 4> kWaterPresets{{
             { "anime_summer", "Anime Summer" },
             { "realistic_clear_summer", "Realistic Clear Summer" },
+            { "anime_sparkling_summer", "Anime Sparkling Summer" },
+            { "realistic_spectral_summer", "Realistic Spectral Summer" },
+        }};
+        constexpr std::array<AuthoringChoice, 2> kWaterGeometryModes{{
+            { "finite_authored", "Finite Authored" },
+            { "camera_centered_ocean", "Camera-Centered Ocean" },
         }};
 
         constexpr std::array<const char*, 4> kWaveDirectionIds{{
@@ -54,13 +60,28 @@ namespace HIKARI {
                     },
                     preset,
                     kWaterPresets)) {
-                settings_ = WATER::MakeWaterSurfacePresetSettings(
+                const WATER::WaterSurfacePreset selectedPreset =
                     preset == static_cast<int>(
                         WATER::WaterSurfacePreset::
-                            RealisticClearSummer)
-                        ? WATER::WaterSurfacePreset::
-                            RealisticClearSummer
-                        : WATER::WaterSurfacePreset::AnimeSummer);
+                            RealisticSpectralSummer)
+                        ? WATER::WaterSurfacePreset::RealisticSpectralSummer
+                        : preset == static_cast<int>(
+                        WATER::WaterSurfacePreset::
+                            AnimeSparklingSummer)
+                        ? WATER::WaterSurfacePreset::AnimeSparklingSummer
+                        : preset == static_cast<int>(
+                            WATER::WaterSurfacePreset::
+                                RealisticClearSummer)
+                            ? WATER::WaterSurfacePreset::
+                                RealisticClearSummer
+                            : WATER::WaterSurfacePreset::AnimeSummer;
+                const WATER::WaterSurfaceGeometryMode geometryMode =
+                    settings_.geometryMode;
+                settings_ = WATER::MakeWaterSurfacePresetSettings(
+                    selectedPreset);
+                // Preset is an optical/motion bundle; geometry ownership is
+                // an independent authoring choice and must survive A/B swaps.
+                settings_.geometryMode = geometryMode;
             }
             builder.Color3(
                 AuthoringFieldDescriptor{
@@ -149,6 +170,119 @@ namespace HIKARI {
                 0.02f,
                 1.0f,
                 0.005f);
+        }
+
+        if (builder.Section("Geometry / Extent", false)) {
+            int geometryMode = static_cast<int>(settings_.geometryMode);
+            if (builder.Choice(
+                    AuthoringFieldDescriptor{
+                        WaterSurfaceComponentPropertyIds::GeometryMode,
+                        "Geometry Mode",
+                        "Selects finite authored coverage or an explicit camera-centered ocean geometry provider; presets never change this mode."
+                    },
+                    geometryMode,
+                    kWaterGeometryModes)) {
+                settings_.geometryMode = geometryMode == static_cast<int>(
+                    WATER::WaterSurfaceGeometryMode::CameraCenteredOcean)
+                    ? WATER::WaterSurfaceGeometryMode::CameraCenteredOcean
+                    : WATER::WaterSurfaceGeometryMode::FiniteAuthored;
+            }
+        }
+
+        if (builder.Section("Stylized Optics", false)) {
+            builder.FloatRange(
+                AuthoringFieldDescriptor{
+                    WaterSurfaceComponentPropertyIds::ReflectionStrength,
+                    "Reflection Strength",
+                    "Multiplier for the stylized water reflection response."
+                },
+                settings_.reflectionStrength,
+                0.0f,
+                2.0f,
+                0.01f);
+            builder.FloatRange(
+                AuthoringFieldDescriptor{
+                    WaterSurfaceComponentPropertyIds::SunGlintStrength,
+                    "Sun Glint Strength",
+                    "Strength of the sparkling summer sun glints."
+                },
+                settings_.sunGlintStrength,
+                0.0f,
+                2.0f,
+                0.01f);
+            builder.FloatRange(
+                AuthoringFieldDescriptor{
+                    WaterSurfaceComponentPropertyIds::GlintDensity,
+                    "Glint Density",
+                    "Density of sparkle marks in local water space."
+                },
+                settings_.glintDensity,
+                0.0f,
+                1.0f,
+                0.01f);
+            builder.FloatRange(
+                AuthoringFieldDescriptor{
+                    WaterSurfaceComponentPropertyIds::GlintFlowSpeed,
+                    "Glint Flow Speed",
+                    "Animation speed of the stylized sparkle phase."
+                },
+                settings_.glintFlowSpeed,
+                0.0f,
+                4.0f,
+                0.02f);
+            builder.FloatRange(
+                AuthoringFieldDescriptor{
+                    WaterSurfaceComponentPropertyIds::RibbonWidth,
+                    "Ribbon Width",
+                    "Normalized width of the broad stylized highlight ribbon."
+                },
+                settings_.ribbonWidth,
+                0.02f,
+                0.5f,
+                0.005f);
+        }
+
+        if (builder.Section("Spectral Ocean", false)) {
+            builder.FloatRange(
+                AuthoringFieldDescriptor{
+                    WaterSurfaceComponentPropertyIds::WindDirectionDeg,
+                    "Wind Direction (deg)",
+                    "World-anchored direction of the analytic short-wave slope field."
+                },
+                settings_.windDirectionDeg,
+                -180.0f,
+                180.0f,
+                1.0f);
+            builder.FloatRange(
+                AuthoringFieldDescriptor{
+                    WaterSurfaceComponentPropertyIds::WindSpeed,
+                    "Wind Speed",
+                    "Controls spectral energy and wind-aligned anisotropy; only a bounded drift moves the field over time."
+                },
+                settings_.windSpeed,
+                0.0f,
+                50.0f,
+                0.1f);
+            builder.FloatRange(
+                AuthoringFieldDescriptor{
+                    WaterSurfaceComponentPropertyIds::ShortWaveStrength,
+                    "Short-Wave Strength",
+                    "Amplitude of resolved dynamic short-wave slopes before footprint filtering."
+                },
+                settings_.shortWaveStrength,
+                0.0f,
+                2.0f,
+                0.01f);
+            builder.FloatRange(
+                AuthoringFieldDescriptor{
+                    WaterSurfaceComponentPropertyIds::CapillaryStrength,
+                    "Capillary Strength",
+                    "Amplitude of wind-aligned capillary slopes used by the spectral lobe."
+                },
+                settings_.capillaryStrength,
+                0.0f,
+                2.0f,
+                0.01f);
         }
 
         if (builder.Section("Surface Motion", true)) {

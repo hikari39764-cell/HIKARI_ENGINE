@@ -18,6 +18,7 @@
 #include "Render2D/HIKARI_DxRenderer.h"
 #include "Render2D/HIKARI_DxTexture.h"
 #include "Render3D/Lighting/HIKARI_VolumetricLightingStage.h"
+#include "Render3D/Lighting/HIKARI_StylizedCloudStage.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Material/HIKARI_DefaultPbrResources.h"
 #include "Render3D/Material/Program/HIKARI_MaterialProgramRegistry.h"
@@ -32,6 +33,7 @@
 #include "Render3D/Upscaling/HIKARI_StreamlineFrameGeneration.h"
 #include "Render3D/Upscaling/HIKARI_StreamlineReflex.h"
 #include "Render3D/Upscaling/HIKARI_StreamlineRuntime.h"
+#include "Render3D/Water/HIKARI_WaterVisibleDepth.h"
 #include "Runtime/Host/HIKARI_HostBootstrapConfig.h"
 #include "Runtime/Host/HIKARI_IEditorUiServices.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
@@ -323,6 +325,8 @@ namespace HIKARI {
             }
             MESHRENDERER::ShutdownParticleGpuDrivenPass();
             HIKARI_LOG_INFO("Particle GPU-driven pass finalized.");
+            MESHRENDERER::ShutdownOceanSpectrumRuntime();
+            HIKARI_LOG_INFO("Ocean spectrum runtime finalized.");
             HIKARI::POST::PostSystem::Shutdown();
             HIKARI_LOG_INFO("PostSystem shutdown.");
             DX::DxRenderer::Finalize();
@@ -336,7 +340,9 @@ namespace HIKARI {
             RENDER3D::TEMPORAL::ShutdownTemporalGeometryPass();
             RENDER3D::TEMPORAL::ShutdownMotionVectorPass();
             RENDER3D::TEMPORAL::ShutdownTemporalResourceSystem();
+            RENDER3D::CLOUDS::ShutdownStylizedCloudStage();
             RENDER3D::VOLUMETRIC::ShutdownVolumetricLightingStage();
+            RENDER3D::WATER::ShutdownWaterVisibleDepth();
             RENDER3D::ShutdownClusterGeometryResourceSystem();
             RENDER3D::ShutdownRenderResourceDescriptorPool();
             DXTEX::DxTextureManager::Finalize();

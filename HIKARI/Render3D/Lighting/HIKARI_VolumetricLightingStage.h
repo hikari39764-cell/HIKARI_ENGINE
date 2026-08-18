@@ -19,6 +19,10 @@ namespace HIKARI::RENDER3D::TEMPORAL {
     struct TemporalFrameState;
 }
 
+namespace HIKARI::RENDER3D::WATER {
+    struct WaterVisibleDepthView;
+}
+
 namespace HIKARI::RENDER3D::VOLUMETRIC {
 
     struct VolumetricLightingStats {
@@ -26,6 +30,8 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
         bool active = false;
         bool historyValid = false;
         bool shadowed = false;
+        bool waterDepthValid = false;
+        bool waterDepthFallback = true;
         uint32_t renderWidth = 0;
         uint32_t renderHeight = 0;
         uint32_t froxelWidth = 0;
@@ -52,6 +58,12 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
         RenderDebugView debugView);
 
     RenderTarget2D* ExecuteVolumetricLightingStage(RenderTarget2D& sceneTarget);
+    // Borrow a producer-owned water depth view for the prepared frame/view.
+    // Prepare clears this input every frame; Execute falls back to opaque
+    // SceneDepth when the token, dimensions, or frame do not match.
+    void SetVolumetricVisibleWaterDepth(
+        const WATER::WaterVisibleDepthView& view);
+    void ClearVolumetricVisibleWaterDepth();
     bool IsVolumetricLightingActive();
     bool IsVolumetricLightingDebugViewActive();
     const VolumetricLightingStats& GetVolumetricLightingStats();

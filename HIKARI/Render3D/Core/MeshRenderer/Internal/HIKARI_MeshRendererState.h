@@ -27,6 +27,7 @@
 #include "Render3D/Sand/HIKARI_SandSurfaceGpuFrameBuffer.h"
 #include "Render3D/Vfx/HIKARI_ParticleGpuDrivenPass.h"
 #include "Render3D/Water/HIKARI_WaterSurfaceGpuFrameBuffer.h"
+#include "Render3D/Water/Spectrum/HIKARI_OceanSpectrumRuntime.h"
 
 namespace HIKARI::MESHRENDERER {
 
@@ -126,6 +127,7 @@ namespace HIKARI::MESHRENDERER {
         std::vector<RENDER3D::MATERIAL::GpuMaterialUploadRange> materialUploadRanges{};
         RENDER3D::GPUDRIVEN::SurfaceGpuSceneFrameBuffer surfaceGpuSceneBuffer{};
         RENDER3D::WATER::WaterSurfaceGpuFrameBuffer waterSurfaceGpuFrameBuffer{};
+        RENDER3D::WATER::SPECTRUM::OceanSpectrumRuntime oceanSpectrumRuntime{};
         RENDER3D::SAND::SandSurfaceGpuFrameBuffer sandSurfaceGpuFrameBuffer{};
         RENDER3D::GPUDRIVEN::GpuTraditionalCommandStreamBuffer traditionalCommandStreamBuffer{};
         MeshTraditionalIndirectOwner traditionalIndirectOwner{};

@@ -59,9 +59,11 @@ HikariMeshletVertexOut HikariBuildMeshletVertex(
     HikariMeshletVertexOut output = HikariBuildEmptyMeshletVertex();
     float3 localPosition = vertex.position.xyz;
     float3 localNormal = vertex.normal.xyz;
-    HikariApplyWaterSurfaceDeform(
+    HikariApplyWaterSurfaceDeformWithWorld(
         instance,
         gSimulationTimeParams.x,
+        vertex.uv01.zw,
+        instance.clusterWorld,
         localPosition,
         localNormal,
         output.surfaceFeatureData);

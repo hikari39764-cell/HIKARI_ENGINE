@@ -16,7 +16,9 @@
 #include "Render3D/Features/HIKARI_StylizedScreenFeatureRenderer.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Render3D/Lighting/HIKARI_LocalLightList.h"
+#include "Render3D/Lighting/HIKARI_StylizedCloudStage.h"
 #include "Render3D/Lighting/HIKARI_VolumetricLightingStage.h"
+#include "Render3D/Water/HIKARI_WaterVisibleDepth.h"
 #include "Render3D/Pipeline/HIKARI_RenderFrameContext.h"
 #include "Render3D/Reflection/HIKARI_ScreenSpaceReflectionRenderer.h"
 #include "Render3D/Surface/HIKARI_SceneSurfaceSet.h"
@@ -408,6 +410,17 @@ namespace HIKARI::RENDER3D::PIPELINE {
                 screenResult.fallbackAoTextureHandle);
         }
         if (opaqueOk) {
+            // Clouds are composed after opaque depth/color but before motion
+            // vectors and transparent geometry. This keeps scene geometry in
+            // front of the atmosphere while transparent surfaces remain able
+            // to render over it.
+            (void)RENDER3D::CLOUDS::ExecuteStylizedCloudStage(
+                frame,
+                temporalFrame,
+                environment.clouds,
+                renderQuality.stylizedCloudQuality);
+        }
+        if (opaqueOk) {
             const RENDER3D::TEMPORAL::TemporalInputs temporalInputs =
                 RENDER3D::TEMPORAL::BuildTemporalInputs(
                     sceneTextures.sceneDepth,
@@ -488,6 +501,28 @@ namespace HIKARI::RENDER3D::PIPELINE {
                 depthAwareOk = MESHRENDERER::RenderDepthAwarePass(
                     frame.graphics,
                     postOpaqueResources);
+                if (depthAwareOk &&
+                    RENDER3D::VOLUMETRIC::IsVolumetricLightingActive()) {
+                    GFX::PIX::ScopedGpuEvent pixWaterVisibility(
+                        frame.graphics.cmdList,
+                        GFX::PIX::kColorRender,
+                        "WaterVisibilityDepth");
+                    GFX::GPU_PROFILE::ScopedGpuTimer gpuWaterVisibility(
+                        frame.graphics.cmdList,
+                        GFX::GPU_PROFILE::Pass::WaterVisibilityDepth);
+                    const RENDER3D::WATER::WaterVisibleDepthView waterDepth =
+                        RENDER3D::WATER::RenderWaterVisibleDepth(
+                            frame.graphics,
+                            postOpaqueResources,
+                            postOpaqueResources.sceneDepth.width,
+                            postOpaqueResources.sceneDepth.height,
+                            frame.frameIndex,
+                            postOpaqueResources.sceneDepth.resource);
+                    if (waterDepth.IsValid()) {
+                        RENDER3D::VOLUMETRIC::
+                            SetVolumetricVisibleWaterDepth(waterDepth);
+                    }
+                }
                 POST::PostSystem::EndCurrentRenderTargetDepthRead();
             } else {
                 depthAwareOk = false;

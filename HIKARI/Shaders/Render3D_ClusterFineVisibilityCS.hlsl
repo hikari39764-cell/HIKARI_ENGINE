@@ -54,7 +54,8 @@ void CullPageTasksCS(
         (input.flags & (
             HIKARI_SURFACE_GPU_SCENE_FLAG_SKINNED |
             HIKARI_SURFACE_GPU_SCENE_FLAG_WATER_SURFACE |
-            HIKARI_SURFACE_GPU_SCENE_FLAG_SAND_SURFACE)) != 0u;
+            HIKARI_SURFACE_GPU_SCENE_FLAG_SAND_SURFACE |
+            HIKARI_SURFACE_GPU_SCENE_FLAG_CAMERA_CENTERED_OCEAN)) != 0u;
 
     HikariClusterPage page = HikariLoadClusterPage(metadata, header, task.pageIndex);
     uint pageEndCluster = page.firstCluster + page.clusterCount;
@@ -161,7 +162,8 @@ void CullPageTasksCS(
             HIKARI_SURFACE_GPU_SCENE_FLAG_TRANSPARENT |
             HIKARI_SURFACE_GPU_SCENE_FLAG_SKINNED |
             HIKARI_SURFACE_GPU_SCENE_FLAG_WATER_SURFACE |
-            HIKARI_SURFACE_GPU_SCENE_FLAG_SAND_SURFACE)) != 0u;
+            HIKARI_SURFACE_GPU_SCENE_FLAG_SAND_SURFACE |
+            HIKARI_SURFACE_GPU_SCENE_FLAG_CAMERA_CENTERED_OCEAN)) != 0u;
 
     // run-merge の状態は thread0 のレジスタにのみ意味を持つ。
     bool hasRun = false;

@@ -39,6 +39,7 @@ namespace HIKARI::RENDER3D::RUNTIME {
         PassShadow = 1u << 15,
         Skinned = 1u << 16,
         SandSurface = 1u << 17,
+        CameraCenteredOcean = 1u << 18,
     };
 
     enum class SurfaceGpuSceneResourceFlags : uint32_t {

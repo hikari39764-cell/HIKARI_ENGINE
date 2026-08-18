@@ -27,6 +27,7 @@ namespace HIKARI::RENDER3D::MESHLET {
         GeometryOutline,
         VisibilityOverlay,
         DepthPrepass,
+        WaterVisibility,
     };
 
     namespace MeshletPipelineMask {
@@ -38,6 +39,11 @@ namespace HIKARI::RENDER3D::MESHLET {
         constexpr uint32_t DepthPrepass = 1u << 5;
         constexpr uint32_t GeometryOutline = 1u << 6;
         constexpr uint32_t VisibilityOverlay = 1u << 7;
+        // Auxiliary producer only.  It is requested with the main renderer
+        // but deliberately excluded from global readiness so missing water
+        // shaders/PSOs preserve the core mesh-shader route and opaque-depth
+        // fallback.
+        constexpr uint32_t WaterVisibility = 1u << 8;
         constexpr uint32_t MainRenderer =
             ForwardOpaque |
             ForwardDepthAware |
@@ -45,7 +51,8 @@ namespace HIKARI::RENDER3D::MESHLET {
             GeometryAux |
             GeometryOutline |
             VisibilityOverlay |
-            DepthPrepass;
+            DepthPrepass |
+            WaterVisibility;
         constexpr uint32_t ShadowRenderer = Shadow;
         constexpr uint32_t All = MainRenderer | ShadowRenderer;
     }
@@ -67,6 +74,7 @@ namespace HIKARI::RENDER3D::MESHLET {
         bool geometryOutlinePipelineReady = false;
         bool visibilityOverlayPipelineReady = false;
         bool depthPrepassPipelineReady = false;
+        bool waterVisibilityPipelineReady = false;
         bool pipelineReady = false;
         uint32_t meshShaderTier = 0;
         size_t pipelineCreateRequestCount = 0;
@@ -126,6 +134,7 @@ namespace HIKARI::RENDER3D::MESHLET {
         PipelineBucketArray geometryOutlinePipelineStates_{};
         PipelineBucketArray visibilityOverlayPipelineStates_{};
         PipelineBucketArray depthPrepassPipelineStates_{};
+        PipelineBucketArray waterVisibilityPipelineStates_{};
         uint32_t pipelineMask_ = MeshletPipelineMask::All;
         MeshletRenderBackendStats stats_{};
     };

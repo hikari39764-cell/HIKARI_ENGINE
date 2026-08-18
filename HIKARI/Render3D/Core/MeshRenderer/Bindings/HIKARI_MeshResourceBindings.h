@@ -96,6 +96,12 @@ namespace HIKARI::MESHRENDERER {
         const MeshBindingContext& ctx,
         D3D12_GPU_VIRTUAL_ADDRESS sandDataAddress);
 
+    void BindOceanSpectrumData(
+        const MeshBindingContext& ctx,
+        D3D12_GPU_DESCRIPTOR_HANDLE spectrumTable,
+        bool valid,
+        uint32_t resolution);
+
     void BindScreenSpaceTraceResources(
         const MeshBindingContext& ctx);
 

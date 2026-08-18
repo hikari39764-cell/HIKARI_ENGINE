@@ -366,6 +366,20 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         ctx.surfaceFeatureHeightsAddress =
             gMeshRendererState.sandSurfaceGpuFrameBuffer.
                 GetHeightGpuVirtualAddress();
+        const RENDER3D::WATER::SPECTRUM::
+            OceanSpectrumOutputDescriptorTable& oceanSpectrumTable =
+                gMeshRendererState.oceanSpectrumRuntime.
+                    GetOutputDescriptorTable();
+        ctx.oceanSpectrumTable = oceanSpectrumTable.base;
+        ctx.oceanSpectrumResolution =
+            gMeshRendererState.oceanSpectrumRuntime.GetResolution();
+        ctx.oceanSpectrumValid =
+            oceanSpectrumTable.valid &&
+            oceanSpectrumTable.descriptorCount ==
+                RENDER3D::WATER::SPECTRUM::
+                    kOceanSpectrumCascadeCount * 2u &&
+            gMeshRendererState.oceanSpectrumRuntime.IsOutputValidForFrame(
+                TIME::GetFrameContext().frameIndex);
         ctx.passKind = passKind;
         ctx.binding.cmd = ctx.cmd;
         ctx.binding.graphics = &graphics;
@@ -412,6 +426,10 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         gMeshRendererState.frameResources.Activate(graphics.frameIndex);
         gMeshRendererState.materialResolver.BeginFrame(kMaxMaterialTextureGpuLoadsPerFrame);
         gMeshRendererState.gpuMaterialRegistry.BeginFrame();
+        (void)gMeshRendererState.oceanSpectrumRuntime.RecordCompute(
+            graphics,
+            TIME::GetFrameContext().frameIndex,
+            TIME::GetInterpolatedSimulationTimeSeconds());
         // Capture 逕ｨ縺ｮ蝗ｺ螳夊ｧ｣蜒丞ｺｦ繧・camera constants 縺ｫ蜿肴丐縺吶ｋ縲・
         if (!PrepareMeshFrame(
                 graphics,

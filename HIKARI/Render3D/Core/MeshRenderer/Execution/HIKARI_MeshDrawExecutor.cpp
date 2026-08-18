@@ -487,6 +487,11 @@ namespace HIKARI::MESHRENDERER {
             BindSurfaceFeatureHeights(
                 ctx.binding,
                 ctx.surfaceFeatureHeightsAddress);
+            BindOceanSpectrumData(
+                ctx.binding,
+                ctx.oceanSpectrumTable,
+                ctx.oceanSpectrumValid,
+                ctx.oceanSpectrumResolution);
             BindShadowMap(ctx.binding);
             if (ctx.passKind == MeshDrawPassKind::Forward) {
                 BindSkyCube(ctx.binding);
@@ -497,6 +502,10 @@ namespace HIKARI::MESHRENDERER {
                 BindReflectionProbeResources(ctx.binding);
                 BindSsao(ctx.binding);
                 BindLightProbeResources(ctx.binding);
+            } else if (ctx.passKind == MeshDrawPassKind::WaterVisibility) {
+                // The independent water depth pass samples authoritative
+                // SceneDepth only to reject occluded water pixels.
+                BindSceneDepth(ctx.binding);
             }
         }
 

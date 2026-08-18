@@ -67,11 +67,31 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
     }
 	// 深度リソースを解放する。SRV デスクリプタと DSV デスクリプタも解放する。
     void GpuDepthVisibilityLayer::Release() {
+        const GFX::Context* graphics =
+            hasGraphicsContext_ ? &lastGraphicsContext_ : nullptr;
+        if (graphics != nullptr) {
+            DEPTH::UpdateDepthPyramidContext(*graphics);
+        }
         depthPyramid_.Release();
-        ReleaseDepthResource();
+        ReleaseDepthResource(graphics);
         depthWidth_ = 0;
         depthHeight_ = 0;
         stats_ = {};
+        lastGraphicsContext_ = {};
+        hasGraphicsContext_ = false;
+    }
+
+    void GpuDepthVisibilityLayer::Release(const GFX::Context& graphics) {
+        lastGraphicsContext_ = graphics;
+        hasGraphicsContext_ = true;
+        DEPTH::UpdateDepthPyramidContext(graphics);
+        depthPyramid_.Release();
+        ReleaseDepthResource(&graphics);
+        depthWidth_ = 0;
+        depthHeight_ = 0;
+        stats_ = {};
+        lastGraphicsContext_ = {};
+        hasGraphicsContext_ = false;
     }
 	// 深度プリパスの書き込み状態を記録する。書き込まれた場合は true、そうでない場合は false を設定する。
     void GpuDepthVisibilityLayer::RecordDepthPrepass(bool written) {
@@ -101,6 +121,27 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         stats_.visibilityDepthReady = visibilityDepthSrv_.gpu.ptr != 0;
         stats_.visibilityDepthSrv = visibilityDepthSrv_.gpu;
         return visibilityDsv_;
+    }
+
+    bool GpuDepthVisibilityLayer::EndDepthPrepass(
+        const GFX::Context& graphics,
+        ID3D12GraphicsCommandList* cmd) {
+
+        (void)graphics;
+        stats_.visibilityDepthReady =
+            visibilityDepth_ != nullptr &&
+            visibilityDepthSrv_.gpu.ptr != 0 &&
+            visibilityDsv_.ptr != 0;
+        stats_.visibilityDepthSrv = visibilityDepthSrv_.gpu;
+        if (cmd == nullptr || !stats_.visibilityDepthReady) {
+            return false;
+        }
+
+        TransitionDepth(
+            cmd,
+            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE |
+            D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        return true;
     }
 	// 深度プリパスの結果から深度ピラミッドを構築する。視錐台行列を指定することで、深度ピラミッドのビュー行列を設定する、共有リリースキューを使用して、GPU による遅延解放を行う。
     bool GpuDepthVisibilityLayer::BuildDepthPyramidFromVisibilityPrepass(
@@ -196,18 +237,37 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             depthHeight_ == height &&
             visibilityDepth_ != nullptr &&
             visibilityDepthSrv_.IsValid() &&
-            visibilityDsv_.ptr != 0) {
+            visibilityDsv_.ptr != 0 &&
+            hasGraphicsContext_ &&
+            lastGraphicsContext_.device == graphics.device &&
+            lastGraphicsContext_.srvHeap == graphics.srvHeap) {
+            lastGraphicsContext_ = graphics;
+            hasGraphicsContext_ = true;
             stats_.visibilityDepthReady = true;
             stats_.visibilityDepthSrv = visibilityDepthSrv_.gpu;
             return true;
         }
 
         ID3D12Device* device = graphics.device;
-        if (device == nullptr) {
+        if (device == nullptr || graphics.srvHeap == nullptr) {
             return false;
         }
 
-        ReleaseDepthResource();
+        const bool graphicsMatchesExistingContext =
+            hasGraphicsContext_ &&
+            lastGraphicsContext_.device == graphics.device &&
+            lastGraphicsContext_.srvHeap == graphics.srvHeap;
+        if (graphicsMatchesExistingContext) {
+            ReleaseDepthResource(&graphics);
+        } else if (hasGraphicsContext_) {
+            // A device/heap switch cannot retire the old descriptor through
+            // the new allocator state. Use the context that created it.
+            ReleaseDepthResource(&lastGraphicsContext_);
+        } else {
+            ReleaseDepthResource(&graphics);
+        }
+        lastGraphicsContext_ = graphics;
+        hasGraphicsContext_ = true;
         depthWidth_ = width;
         depthHeight_ = height;
 
@@ -235,7 +295,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             &clearValue,
             IID_PPV_ARGS(visibilityDepth_.GetAddressOf()));
         if (!HIKARI_DX_CHECK(hr, "GpuDepthVisibility::CreateVisibilityDepth")) {
-            ReleaseDepthResource();
+            ReleaseDepthResource(&graphics);
             return false;
         }
         visibilityDepth_->SetName(L"HIKARI.DepthVisibility.Depth");
@@ -249,7 +309,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             &dsvHeapDesc,
             IID_PPV_ARGS(visibilityDsvHeap_.GetAddressOf()));
         if (!HIKARI_DX_CHECK(hr, "GpuDepthVisibility::CreateVisibilityDsvHeap")) {
-            ReleaseDepthResource();
+            ReleaseDepthResource(&graphics);
             return false;
         }
         visibilityDsvHeap_->SetName(L"HIKARI.DepthVisibility.DSVHeap");
@@ -266,7 +326,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             visibilityDepth_.Get(),
             DXGI_FORMAT_R32_FLOAT);
         if (!visibilityDepthSrv_.IsValid()) {
-            ReleaseDepthResource();
+            ReleaseDepthResource(&graphics);
             return false;
         }
 
@@ -282,14 +342,34 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         return true;
     }
 	// 深度リソースを解放する。SRV デスクリプタと DSV デスクリプタも解放する。
-    void GpuDepthVisibilityLayer::ReleaseDepthResource() {
+    void GpuDepthVisibilityLayer::ReleaseDepthResource(
+        const GFX::Context* graphics) {
+        const GFX::Context* retireContext = graphics;
+        if (retireContext == nullptr && hasGraphicsContext_) {
+            retireContext = &lastGraphicsContext_;
+        }
+        const GFX::Context emptyContext{};
+        const GFX::Context& context =
+            retireContext != nullptr ? *retireContext : emptyContext;
+        if (retireContext != nullptr) {
+            // Descriptor retirement uses the same queue/fence snapshot as the
+            // resource retirement below; never fall back to the global
+            // current-context singleton during a resize or shutdown.
+            DEPTH::UpdateDepthPyramidContext(context);
+        }
         DEPTH::RetireDepthPyramidTransientDescriptor(
             visibilityDepthSrv_,
             "GpuDepthVisibility.VisibilityDepth.SRV");
         visibilityDepthSrv_ = {};
         visibilityDsv_ = {};
-        GFX::RetireD3D12ObjectForCurrentFrame(visibilityDsvHeap_, "GpuDepthVisibility.VisibilityDepth.DSVHeap");
-        GFX::RetireD3D12ObjectForCurrentFrame(visibilityDepth_, "GpuDepthVisibility.VisibilityDepth.Texture");
+        GFX::RetireD3D12ObjectForFrame(
+            visibilityDsvHeap_,
+            context,
+            "GpuDepthVisibility.VisibilityDepth.DSVHeap");
+        GFX::RetireD3D12ObjectForFrame(
+            visibilityDepth_,
+            context,
+            "GpuDepthVisibility.VisibilityDepth.Texture");
         visibilityDepthState_ = D3D12_RESOURCE_STATE_DEPTH_WRITE;
         depthWidth_ = 0;
         depthHeight_ = 0;

@@ -15,12 +15,21 @@ namespace HIKARI::RENDER3D::WATER {
         constexpr float kDefaultShallowGraphicWeight = 0.14f;
         constexpr float kMinimumShallowDepthRange = 1.0e-3f;
         constexpr float kMaximumShallowDepth = 1000.0f;
+        constexpr float kDefaultReflectionStrength = 1.0f;
+        constexpr float kDefaultRibbonWidth = 0.02f;
 
         bool Vec3Equal(
             const MATH::Vec3& left,
             const MATH::Vec3& right) noexcept {
             return left.x == right.x && left.y == right.y &&
                 left.z == right.z;
+        }
+
+        bool Vec4Equal(
+            const MATH::Vec4& left,
+            const MATH::Vec4& right) noexcept {
+            return left.x == right.x && left.y == right.y &&
+                left.z == right.z && left.w == right.w;
         }
 
         float FiniteOr(float value, float fallback) noexcept {
@@ -45,6 +54,7 @@ namespace HIKARI::RENDER3D::WATER {
         const WaterSurfaceRenderData& right) noexcept {
 
         if (left.shadingModel != right.shadingModel ||
+            left.geometryMode != right.geometryMode ||
             left.timeScale != right.timeScale ||
             left.choppiness != right.choppiness ||
             left.microWaveStrength != right.microWaveStrength ||
@@ -59,6 +69,16 @@ namespace HIKARI::RENDER3D::WATER {
             left.shallowClearDepth != right.shallowClearDepth ||
             left.shallowBlendDepth != right.shallowBlendDepth ||
             left.shallowGraphicWeight != right.shallowGraphicWeight ||
+            left.reflectionStrength != right.reflectionStrength ||
+            left.sunGlintStrength != right.sunGlintStrength ||
+            left.glintDensity != right.glintDensity ||
+            left.glintFlowSpeed != right.glintFlowSpeed ||
+            left.ribbonWidth != right.ribbonWidth ||
+            left.windDirectionRadians != right.windDirectionRadians ||
+            left.windSpeed != right.windSpeed ||
+            left.shortWaveStrength != right.shortWaveStrength ||
+            left.capillaryStrength != right.capillaryStrength ||
+            !Vec4Equal(left.geometryParams, right.geometryParams) ||
             left.coverageResolution != right.coverageResolution ||
             left.liquidCoverage != right.liquidCoverage) {
             return false;
@@ -94,6 +114,11 @@ namespace HIKARI::RENDER3D::WATER {
         WaterSurfaceGpuData result{};
         result.schemaVersion = kWaterSurfaceGpuSchemaVersion;
         result.flags = static_cast<uint32_t>(WaterSurfaceGpuFlags::Enabled);
+        if (source.geometryMode ==
+                WaterSurfaceGeometryMode::CameraCenteredOcean) {
+            result.flags |= static_cast<uint32_t>(
+                WaterSurfaceGpuFlags::CameraCenteredOcean);
+        }
         result.waveCount = static_cast<uint32_t>(kWaterSurfaceWaveCount);
         // 非 sentinel の recordCount は liquidCoverage の buffer offset を運ぶ。
         result.recordCount = liquidCoverageOffset;
@@ -123,9 +148,16 @@ namespace HIKARI::RENDER3D::WATER {
         };
 
         const WaterSurfaceShadingModel shadingModel =
-            source.shadingModel == WaterSurfaceShadingModel::RealisticClearSummer
-                ? WaterSurfaceShadingModel::RealisticClearSummer
-                : WaterSurfaceShadingModel::AnimeSummer;
+            source.shadingModel == WaterSurfaceShadingModel::
+                    RealisticSpectralSummer
+                ? WaterSurfaceShadingModel::RealisticSpectralSummer
+                : source.shadingModel == WaterSurfaceShadingModel::
+                    AnimeSparklingSummer
+                ? WaterSurfaceShadingModel::AnimeSparklingSummer
+                : source.shadingModel == WaterSurfaceShadingModel::
+                    RealisticClearSummer
+                    ? WaterSurfaceShadingModel::RealisticClearSummer
+                    : WaterSurfaceShadingModel::AnimeSummer;
         result.surfaceParams = {
             FiniteOr(source.timeScale, 1.0f),
             NonNegative(source.choppiness),
@@ -154,6 +186,44 @@ namespace HIKARI::RENDER3D::WATER {
             foam.y,
             foam.z,
             std::clamp(FiniteOr(source.surfaceRoughness, 0.1f), 0.02f, 1.0f)
+        };
+        result.stylizedOptics = {
+            std::clamp(
+                FiniteOr(
+                    source.reflectionStrength,
+                    kDefaultReflectionStrength),
+                0.0f,
+                2.0f),
+            std::clamp(FiniteOr(source.sunGlintStrength, 0.0f), 0.0f, 2.0f),
+            std::clamp(FiniteOr(source.glintDensity, 0.0f), 0.0f, 1.0f),
+            std::clamp(FiniteOr(source.glintFlowSpeed, 0.0f), 0.0f, 4.0f)
+        };
+        result.stylizedRibbon = {
+            std::clamp(
+                FiniteOr(source.ribbonWidth, kDefaultRibbonWidth),
+                0.02f,
+                0.5f),
+            0.0f,
+            0.0f,
+            0.0f
+        };
+        result.spectralOptics = {
+            FiniteOr(source.windDirectionRadians, 0.0f),
+            std::clamp(FiniteOr(source.windSpeed, 0.0f), 0.0f, 50.0f),
+            std::clamp(
+                FiniteOr(source.shortWaveStrength, 0.0f),
+                0.0f,
+                2.0f),
+            std::clamp(
+                FiniteOr(source.capillaryStrength, 0.0f),
+                0.0f,
+                2.0f)
+        };
+        result.geometryParams = {
+            FiniteOr(source.geometryParams.x, 0.0f),
+            FiniteOr(source.geometryParams.y, 0.0f),
+            (std::max)(NonNegative(source.geometryParams.z, 0.5f), 0.001f),
+            (std::max)(NonNegative(source.geometryParams.w, 0.5f), 0.001f)
         };
 
         for (std::size_t index = 0u; index < source.waves.size(); ++index) {

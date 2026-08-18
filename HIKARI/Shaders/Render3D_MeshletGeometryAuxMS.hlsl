@@ -48,9 +48,11 @@ HikariMeshletGeometryAuxVertexOut HikariBuildMeshletGeometryAuxVertex(
         localPosition,
         localNormal,
         localTangent);
-    HikariApplyWaterSurfaceDeform(
+    HikariApplyWaterSurfaceDeformWithWorld(
         instance,
         gSimulationTimeParams.x,
+        vertex.uv01.zw,
+        instance.clusterWorld,
         localPosition,
         localNormal);
     float3 sandSurfaceData = 0.0f.xxx;

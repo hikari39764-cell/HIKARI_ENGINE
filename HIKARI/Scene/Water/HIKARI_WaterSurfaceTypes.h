@@ -9,19 +9,31 @@
 
 namespace HIKARI::WATER {
 
-    constexpr uint32_t kWaterSurfaceSchemaVersion = 3u;
+    constexpr uint32_t kWaterSurfaceSchemaVersion = 5u;
     constexpr std::size_t kMaxWaterWaves = 4u;
 
     enum class WaterSurfacePreset : uint8_t {
         AnimeSummer = 0,
         RealisticClearSummer = 1,
+        AnimeSparklingSummer = 2,
+        RealisticSpectralSummer = 3,
+    };
+
+    enum class WaterSurfaceGeometryMode : uint8_t {
+        FiniteAuthored = 0,
+        CameraCenteredOcean = 1,
     };
 
     const char* ToString(WaterSurfacePreset preset) noexcept;
+    const char* ToString(WaterSurfaceGeometryMode mode) noexcept;
     WaterSurfacePreset ParseWaterSurfacePreset(
         std::string_view value,
         WaterSurfacePreset fallback =
             WaterSurfacePreset::AnimeSummer) noexcept;
+    WaterSurfaceGeometryMode ParseWaterSurfaceGeometryMode(
+        std::string_view value,
+        WaterSurfaceGeometryMode fallback =
+            WaterSurfaceGeometryMode::FiniteAuthored) noexcept;
 
     struct WaterGerstnerWave {
         float directionDeg = 0.0f;
@@ -34,6 +46,8 @@ namespace HIKARI::WATER {
     // ProceduralMeshComponent が唯一の所有者になる。
     struct WaterSurfaceSettings {
         WaterSurfacePreset preset = WaterSurfacePreset::AnimeSummer;
+        WaterSurfaceGeometryMode geometryMode =
+            WaterSurfaceGeometryMode::FiniteAuthored;
         float timeScale = 0.78f;
         float choppiness = 0.58f;
         float microWaveStrength = 0.32f;
@@ -48,6 +62,16 @@ namespace HIKARI::WATER {
         float foamAmount = 0.58f;
         float absorptionDistance = 8.0f;
         float surfaceRoughness = 0.18f;
+        float reflectionStrength = 1.0f;
+        float sunGlintStrength = 0.0f;
+        float glintDensity = 0.0f;
+        float glintFlowSpeed = 0.0f;
+        float ribbonWidth = 0.02f;
+        // 解析短波/毛細波の wind-aligned slope field。旧 preset は 0 で無効。
+        float windDirectionDeg = 0.0f;
+        float windSpeed = 0.0f;
+        float shortWaveStrength = 0.0f;
+        float capillaryStrength = 0.0f;
 
         std::array<WaterGerstnerWave, kMaxWaterWaves> waves{{
             { 18.0f, 0.25f, 11.5f, 0.72f },

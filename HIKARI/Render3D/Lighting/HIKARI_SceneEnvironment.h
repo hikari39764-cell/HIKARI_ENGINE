@@ -102,7 +102,7 @@ namespace HIKARI {
         float thickness = 90.0f;
         float scale = 140.0f;
         MATH::Vec2 windDirection{ 1.0f, 0.22f };
-        float windSpeed = 2.5f;
+        float windSpeed = 6.0f;
         float shapeDetail = 0.55f;
         float softness = 0.28f;
         float lightAbsorption = 0.72f;

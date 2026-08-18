@@ -37,6 +37,18 @@ namespace HIKARI {
                         return WATER::WaterSurfacePreset::
                             RealisticClearSummer;
                     }
+                    if (value == static_cast<int>(
+                            WATER::WaterSurfacePreset::
+                                AnimeSparklingSummer)) {
+                        return WATER::WaterSurfacePreset::
+                            AnimeSparklingSummer;
+                    }
+                    if (value == static_cast<int>(
+                            WATER::WaterSurfacePreset::
+                                RealisticSpectralSummer)) {
+                        return WATER::WaterSurfacePreset::
+                            RealisticSpectralSummer;
+                    }
                 }
             }
 
@@ -77,7 +89,12 @@ namespace HIKARI {
     void WaterSurfaceComponent::ApplyPreset(
         WATER::WaterSurfacePreset preset) {
 
-        SetSettings(WATER::MakeWaterSurfacePresetSettings(preset));
+        const WATER::WaterSurfaceGeometryMode geometryMode =
+            settings_.geometryMode;
+        WATER::WaterSurfaceSettings next =
+            WATER::MakeWaterSurfacePresetSettings(preset);
+        next.geometryMode = geometryMode;
+        SetSettings(next);
     }
 
     void WaterSurfaceComponent::NotifyRenderStateDirty() {
@@ -92,6 +109,7 @@ namespace HIKARI {
         out = {
             { "_schemaVersion", WATER::kWaterSurfaceSchemaVersion },
             { "preset", WATER::ToString(settings.preset) },
+            { "geometryMode", WATER::ToString(settings.geometryMode) },
             { "timeScale", settings.timeScale },
             { "choppiness", settings.choppiness },
             { "microWaveStrength", settings.microWaveStrength },
@@ -113,6 +131,15 @@ namespace HIKARI {
             { "foamAmount", settings.foamAmount },
             { "absorptionDistance", settings.absorptionDistance },
             { "surfaceRoughness", settings.surfaceRoughness },
+            { "reflectionStrength", settings.reflectionStrength },
+            { "sunGlintStrength", settings.sunGlintStrength },
+            { "glintDensity", settings.glintDensity },
+            { "glintFlowSpeed", settings.glintFlowSpeed },
+            { "ribbonWidth", settings.ribbonWidth },
+            { "windDirectionDeg", settings.windDirectionDeg },
+            { "windSpeed", settings.windSpeed },
+            { "shortWaveStrength", settings.shortWaveStrength },
+            { "capillaryStrength", settings.capillaryStrength },
             { "waves", nlohmann::json::array() }
         };
         for (const WATER::WaterGerstnerWave& wave : settings.waves) {
@@ -136,6 +163,13 @@ namespace HIKARI {
         WATER::WaterSurfaceSettings next =
             WATER::MakeWaterSurfacePresetSettings(preset);
         next.preset = preset;
+        if (const nlohmann::json* geometryMode =
+                JSONREAD::FindMember(in, "geometryMode");
+            geometryMode != nullptr && geometryMode->is_string()) {
+            next.geometryMode = WATER::ParseWaterSurfaceGeometryMode(
+                geometryMode->get<std::string>(),
+                WATER::WaterSurfaceGeometryMode::FiniteAuthored);
+        }
         next.timeScale = JSONREAD::NumberMemberOr(
             in,
             "timeScale",
@@ -190,6 +224,42 @@ namespace HIKARI {
             in,
             "surfaceRoughness",
             next.surfaceRoughness);
+        next.reflectionStrength = JSONREAD::NumberMemberOr(
+            in,
+            "reflectionStrength",
+            next.reflectionStrength);
+        next.sunGlintStrength = JSONREAD::NumberMemberOr(
+            in,
+            "sunGlintStrength",
+            next.sunGlintStrength);
+        next.glintDensity = JSONREAD::NumberMemberOr(
+            in,
+            "glintDensity",
+            next.glintDensity);
+        next.glintFlowSpeed = JSONREAD::NumberMemberOr(
+            in,
+            "glintFlowSpeed",
+            next.glintFlowSpeed);
+        next.ribbonWidth = JSONREAD::NumberMemberOr(
+            in,
+            "ribbonWidth",
+            next.ribbonWidth);
+        next.windDirectionDeg = JSONREAD::NumberMemberOr(
+            in,
+            "windDirectionDeg",
+            next.windDirectionDeg);
+        next.windSpeed = JSONREAD::NumberMemberOr(
+            in,
+            "windSpeed",
+            next.windSpeed);
+        next.shortWaveStrength = JSONREAD::NumberMemberOr(
+            in,
+            "shortWaveStrength",
+            next.shortWaveStrength);
+        next.capillaryStrength = JSONREAD::NumberMemberOr(
+            in,
+            "capillaryStrength",
+            next.capillaryStrength);
 
         if (JSONREAD::FindMember(in, "absorptionDistance") != nullptr) {
             next.absorptionDistance = JSONREAD::NumberMemberOr(

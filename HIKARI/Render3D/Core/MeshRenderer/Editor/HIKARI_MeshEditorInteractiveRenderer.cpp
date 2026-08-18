@@ -67,6 +67,10 @@ namespace HIKARI::MESHRENDERER {
             return EditorInteractiveMeshRenderResult::
                 MaterialFrameUnavailable;
         }
+        (void)gMeshRendererState.oceanSpectrumRuntime.RecordCompute(
+            graphics,
+            TIME::GetFrameContext().frameIndex,
+            TIME::GetInterpolatedSimulationTimeSeconds());
 
         EditorInteractiveMeshFrameResources& editorFrame =
             gMeshRendererState.editorInteractive.frames[

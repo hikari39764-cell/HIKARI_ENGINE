@@ -69,9 +69,23 @@ namespace HIKARI::WATER {
         switch (preset) {
         case WaterSurfacePreset::RealisticClearSummer:
             return "realistic_clear_summer";
+        case WaterSurfacePreset::AnimeSparklingSummer:
+            return "anime_sparkling_summer";
+        case WaterSurfacePreset::RealisticSpectralSummer:
+            return "realistic_spectral_summer";
         case WaterSurfacePreset::AnimeSummer:
         default:
             return "anime_summer";
+        }
+    }
+
+    const char* ToString(WaterSurfaceGeometryMode mode) noexcept {
+        switch (mode) {
+        case WaterSurfaceGeometryMode::CameraCenteredOcean:
+            return "camera_centered_ocean";
+        case WaterSurfaceGeometryMode::FiniteAuthored:
+        default:
+            return "finite_authored";
         }
     }
 
@@ -87,6 +101,32 @@ namespace HIKARI::WATER {
             value == "RealisticClearSummer" || value == "realistic" ||
             value == "Realistic") {
             return WaterSurfacePreset::RealisticClearSummer;
+        }
+        if (value == "anime_sparkling_summer" ||
+            value == "AnimeSparklingSummer" ||
+            value == "sparkling" || value == "Sparkling") {
+            return WaterSurfacePreset::AnimeSparklingSummer;
+        }
+        if (value == "realistic_spectral_summer" ||
+            value == "RealisticSpectralSummer" ||
+            value == "spectral" || value == "Spectral") {
+            return WaterSurfacePreset::RealisticSpectralSummer;
+        }
+        return fallback;
+    }
+
+    WaterSurfaceGeometryMode ParseWaterSurfaceGeometryMode(
+        std::string_view value,
+        WaterSurfaceGeometryMode fallback) noexcept {
+
+        if (value == "finite_authored" || value == "FiniteAuthored" ||
+            value == "finite" || value == "Finite") {
+            return WaterSurfaceGeometryMode::FiniteAuthored;
+        }
+        if (value == "camera_centered_ocean" ||
+            value == "CameraCenteredOcean" || value == "ocean" ||
+            value == "Ocean") {
+            return WaterSurfaceGeometryMode::CameraCenteredOcean;
         }
         return fallback;
     }
@@ -118,6 +158,32 @@ namespace HIKARI::WATER {
             return settings;
         }
 
+        if (preset == WaterSurfacePreset::AnimeSparklingSummer) {
+            settings.preset = preset;
+            settings.reflectionStrength = 0.62f;
+            settings.sunGlintStrength = 0.78f;
+            settings.glintDensity = 0.48f;
+            settings.glintFlowSpeed = 0.72f;
+            settings.ribbonWidth = 0.18f;
+            return settings;
+        }
+
+        if (preset == WaterSurfacePreset::RealisticSpectralSummer) {
+            settings = MakeWaterSurfacePresetSettings(
+                WaterSurfacePreset::RealisticClearSummer);
+            settings.preset = preset;
+            settings.reflectionStrength = 0.92f;
+            settings.sunGlintStrength = 1.10f;
+            settings.glintDensity = 0.72f;
+            settings.glintFlowSpeed = 1.0f;
+            settings.ribbonWidth = 0.08f;
+            settings.windDirectionDeg = 28.0f;
+            settings.windSpeed = 14.0f;
+            settings.shortWaveStrength = 0.80f;
+            settings.capillaryStrength = 0.48f;
+            return settings;
+        }
+
         settings.preset = WaterSurfacePreset::AnimeSummer;
         return settings;
     }
@@ -126,8 +192,17 @@ namespace HIKARI::WATER {
         WaterSurfaceSettings settings) noexcept {
 
         if (settings.preset != WaterSurfacePreset::AnimeSummer &&
-            settings.preset != WaterSurfacePreset::RealisticClearSummer) {
+            settings.preset != WaterSurfacePreset::RealisticClearSummer &&
+            settings.preset != WaterSurfacePreset::AnimeSparklingSummer &&
+            settings.preset != WaterSurfacePreset::RealisticSpectralSummer) {
             settings.preset = WaterSurfacePreset::AnimeSummer;
+        }
+        if (settings.geometryMode !=
+                WaterSurfaceGeometryMode::FiniteAuthored &&
+            settings.geometryMode !=
+                WaterSurfaceGeometryMode::CameraCenteredOcean) {
+            settings.geometryMode =
+                WaterSurfaceGeometryMode::FiniteAuthored;
         }
         const WaterSurfaceSettings fallback =
             MakeWaterSurfacePresetSettings(settings.preset);
@@ -182,6 +257,48 @@ namespace HIKARI::WATER {
             fallback.surfaceRoughness,
             0.02f,
             1.0f);
+        settings.reflectionStrength = ClampFinite(
+            settings.reflectionStrength,
+            fallback.reflectionStrength,
+            0.0f,
+            2.0f);
+        settings.sunGlintStrength = ClampFinite(
+            settings.sunGlintStrength,
+            fallback.sunGlintStrength,
+            0.0f,
+            2.0f);
+        settings.glintDensity = ClampFinite(
+            settings.glintDensity,
+            fallback.glintDensity,
+            0.0f,
+            1.0f);
+        settings.glintFlowSpeed = ClampFinite(
+            settings.glintFlowSpeed,
+            fallback.glintFlowSpeed,
+            0.0f,
+            4.0f);
+        settings.ribbonWidth = ClampFinite(
+            settings.ribbonWidth,
+            fallback.ribbonWidth,
+            0.02f,
+            0.5f);
+        settings.windDirectionDeg = WrapDegrees(
+            FiniteOr(settings.windDirectionDeg, fallback.windDirectionDeg));
+        settings.windSpeed = ClampFinite(
+            settings.windSpeed,
+            fallback.windSpeed,
+            0.0f,
+            50.0f);
+        settings.shortWaveStrength = ClampFinite(
+            settings.shortWaveStrength,
+            fallback.shortWaveStrength,
+            0.0f,
+            2.0f);
+        settings.capillaryStrength = ClampFinite(
+            settings.capillaryStrength,
+            fallback.capillaryStrength,
+            0.0f,
+            2.0f);
 
         for (std::size_t index = 0; index < settings.waves.size(); ++index) {
             WaterGerstnerWave& wave = settings.waves[index];
@@ -369,6 +486,7 @@ namespace HIKARI::WATER {
             return a.x == b.x && a.y == b.y && a.z == b.z;
         };
         if (lhs.preset != rhs.preset ||
+            lhs.geometryMode != rhs.geometryMode ||
             lhs.timeScale != rhs.timeScale ||
             lhs.choppiness != rhs.choppiness ||
             lhs.microWaveStrength != rhs.microWaveStrength ||
@@ -382,7 +500,16 @@ namespace HIKARI::WATER {
             !equalVec3(lhs.foamColor, rhs.foamColor) ||
             lhs.foamAmount != rhs.foamAmount ||
             lhs.absorptionDistance != rhs.absorptionDistance ||
-            lhs.surfaceRoughness != rhs.surfaceRoughness) {
+            lhs.surfaceRoughness != rhs.surfaceRoughness ||
+            lhs.reflectionStrength != rhs.reflectionStrength ||
+            lhs.sunGlintStrength != rhs.sunGlintStrength ||
+            lhs.glintDensity != rhs.glintDensity ||
+            lhs.glintFlowSpeed != rhs.glintFlowSpeed ||
+            lhs.ribbonWidth != rhs.ribbonWidth ||
+            lhs.windDirectionDeg != rhs.windDirectionDeg ||
+            lhs.windSpeed != rhs.windSpeed ||
+            lhs.shortWaveStrength != rhs.shortWaveStrength ||
+            lhs.capillaryStrength != rhs.capillaryStrength) {
             return false;
         }
         for (std::size_t index = 0; index < lhs.waves.size(); ++index) {

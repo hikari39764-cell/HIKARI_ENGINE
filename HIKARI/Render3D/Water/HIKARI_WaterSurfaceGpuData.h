@@ -9,11 +9,12 @@
 
 namespace HIKARI::RENDER3D::WATER {
 
-    constexpr uint32_t kWaterSurfaceGpuSchemaVersion = 2u;
+    constexpr uint32_t kWaterSurfaceGpuSchemaVersion = 5u;
 
     enum class WaterSurfaceGpuFlags : uint32_t {
         None = 0u,
         Enabled = 1u << 0,
+        CameraCenteredOcean = 1u << 1,
     };
 
     struct alignas(16) WaterSurfaceWaveGpuData {
@@ -37,6 +38,15 @@ namespace HIKARI::RENDER3D::WATER {
         MATH::Vec4 scatteringAbsorption{ 0.0f, 0.0f, 0.0f, 0.0f };
         MATH::Vec4 foamRoughness{ 0.0f, 0.0f, 0.0f, 0.0f };
         MATH::Vec4 coverageParams{ 0.0f, 0.0f, 0.0f, 0.0f };
+        // (reflectionStrength, sunGlintStrength, glintDensity, glintFlowSpeed)
+        MATH::Vec4 stylizedOptics{ 0.0f, 0.0f, 0.0f, 0.0f };
+        // (ribbonWidth, reserved, reserved, reserved)
+        MATH::Vec4 stylizedRibbon{ 0.0f, 0.0f, 0.0f, 0.0f };
+        // (windDirectionRadians, windSpeed, shortWaveStrength,
+        //  capillaryStrength)
+        MATH::Vec4 spectralOptics{ 0.0f, 0.0f, 0.0f, 0.0f };
+        // (authored center X/Z, authored half extent X/Z)
+        MATH::Vec4 geometryParams{ 0.0f, 0.0f, 0.5f, 0.5f };
         std::array<WaterSurfaceWaveGpuData, kWaterSurfaceWaveCount> waves{};
     };
 
@@ -45,8 +55,12 @@ namespace HIKARI::RENDER3D::WATER {
     static_assert(offsetof(WaterSurfaceGpuData, surfaceParams) == 16u);
     static_assert(offsetof(WaterSurfaceGpuData, recordCount) == 12u);
     static_assert(offsetof(WaterSurfaceGpuData, coverageParams) == 80u);
-    static_assert(offsetof(WaterSurfaceGpuData, waves) == 96u);
-    static_assert(sizeof(WaterSurfaceGpuData) == 224u);
+    static_assert(offsetof(WaterSurfaceGpuData, stylizedOptics) == 96u);
+        static_assert(offsetof(WaterSurfaceGpuData, stylizedRibbon) == 112u);
+        static_assert(offsetof(WaterSurfaceGpuData, spectralOptics) == 128u);
+        static_assert(offsetof(WaterSurfaceGpuData, geometryParams) == 144u);
+        static_assert(offsetof(WaterSurfaceGpuData, waves) == 160u);
+        static_assert(sizeof(WaterSurfaceGpuData) == 288u);
     static_assert(alignof(WaterSurfaceGpuData) == 16u);
 
     WaterSurfaceGpuData BuildWaterSurfaceGpuDataSentinel(

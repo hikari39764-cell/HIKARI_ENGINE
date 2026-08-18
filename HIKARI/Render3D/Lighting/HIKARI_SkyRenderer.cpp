@@ -6,7 +6,6 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
 #include <d3dcompiler.h>
 #include <d3dx12.h>
 #include <limits>
@@ -20,7 +19,6 @@
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
-#include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 
 namespace HIKARI::SKYRENDERER {
 
@@ -31,47 +29,17 @@ namespace HIKARI::SKYRENDERER {
         constexpr uint64_t kInvalidSkyConstantFrameSerial =
             (std::numeric_limits<uint64_t>::max)();
 
-        // Keep these values synchronized with the matching constants in
-        // Render3D_SkyPS.hlsl.  The loop itself is always bounded by the
-        // maximum; quality only chooses the early-exit count.
-        constexpr uint32_t kStylizedCloudLowSteps = 6u;
-        constexpr uint32_t kStylizedCloudBalancedSteps = 10u;
-        constexpr uint32_t kStylizedCloudHighSteps = 16u;
-        constexpr uint32_t kStylizedCloudMaxSteps = 16u;
-        static_assert(kStylizedCloudLowSteps == 6u);
-        static_assert(kStylizedCloudBalancedSteps == 10u);
-        static_assert(kStylizedCloudHighSteps == kStylizedCloudMaxSteps);
-        static_assert(kStylizedCloudMaxSteps == 16u);
-
-        struct SkyVertex {
-            MATH::Vec3 position{};
-        };
-
         struct SkyCB {
-            MATH::Mat4 worldViewProj{};
+            MATH::Mat4 inverseViewProj{};
             MATH::Vec4 zenithExposure{};
             MATH::Vec4 horizonPower{};
             MATH::Vec4 groundYaw{};
             MATH::Vec4 tintMode{};
             MATH::Vec4 sunDirectionIntensity{};
             MATH::Vec4 sunSizeParams{};
-            MATH::Vec4 cloudCameraTime{};
-            MATH::Vec4 cloudShape{};
-            MATH::Vec4 cloudMotion{};
-            MATH::Vec4 cloudDetailLighting{};
-            MATH::Vec4 cloudHorizonQuality{};
-            MATH::Vec4 cloudBrightColor{};
-            MATH::Vec4 cloudShadowColor{};
         };
 
-        static_assert(sizeof(SkyCB) == 272u);
-        static_assert(offsetof(SkyCB, cloudCameraTime) == 160u);
-        static_assert(offsetof(SkyCB, cloudShape) == 176u);
-        static_assert(offsetof(SkyCB, cloudMotion) == 192u);
-        static_assert(offsetof(SkyCB, cloudDetailLighting) == 208u);
-        static_assert(offsetof(SkyCB, cloudHorizonQuality) == 224u);
-        static_assert(offsetof(SkyCB, cloudBrightColor) == 240u);
-        static_assert(offsetof(SkyCB, cloudShadowColor) == 256u);
+        static_assert(sizeof(SkyCB) == 160u);
 
         float SanitizeFiniteRange(
             float value,
@@ -82,14 +50,6 @@ namespace HIKARI::SKYRENDERER {
                 return fallback;
             }
             return std::clamp(value, minimum, maximum);
-        }
-
-        MATH::Vec3 SanitizeColor(const MATH::Vec3& value, const MATH::Vec3& fallback) noexcept {
-            return {
-                SanitizeFiniteRange(value.x, fallback.x, 0.0f, 8.0f),
-                SanitizeFiniteRange(value.y, fallback.y, 0.0f, 8.0f),
-                SanitizeFiniteRange(value.z, fallback.z, 0.0f, 8.0f),
-            };
         }
 
         MATH::Vec3 SanitizeDirection(const MATH::Vec3& value, const MATH::Vec3& fallback) noexcept {
@@ -114,31 +74,6 @@ namespace HIKARI::SKYRENDERER {
             return NormalizeFinite(value);
         }
 
-        MATH::Vec2 SanitizeWindDirection(const MATH::Vec2& value) noexcept {
-            constexpr MATH::Vec2 kFallback{ 1.0f, 0.22f };
-            if (!std::isfinite(value.x) || !std::isfinite(value.y)) {
-                return kFallback;
-            }
-            const float length = std::hypot(value.x, value.y);
-            if (!std::isfinite(length) || length < 1e-5f) {
-                return kFallback;
-            }
-            return { value.x / length, value.y / length };
-        }
-
-        uint32_t ResolveStylizedCloudStepCount(
-            RENDER3D::StylizedCloudQuality quality) noexcept {
-            switch (quality) {
-            case RENDER3D::StylizedCloudQuality::Low:
-                return kStylizedCloudLowSteps;
-            case RENDER3D::StylizedCloudQuality::High:
-                return kStylizedCloudHighSteps;
-            case RENDER3D::StylizedCloudQuality::Balanced:
-            default:
-                return kStylizedCloudBalancedSteps;
-            }
-        }
-
         struct State {
             bool initialized = false;
             ComPtr<ID3D12RootSignature> rootSig;
@@ -146,11 +81,6 @@ namespace HIKARI::SKYRENDERER {
             ComPtr<ID3DBlob> vsBlob;
             ComPtr<ID3DBlob> psBlob;
             ComPtr<ID3D12Resource> cb;
-            ComPtr<ID3D12Resource> vertexBuffer;
-            ComPtr<ID3D12Resource> indexBuffer;
-            D3D12_VERTEX_BUFFER_VIEW vbView{};
-            D3D12_INDEX_BUFFER_VIEW ibView{};
-            UINT indexCount = 0;
             UINT constantStride = 0;
             uint8_t* constantMapped = nullptr;
             std::array<uint64_t, GFX::kFrameResourceCount>
@@ -206,56 +136,6 @@ namespace HIKARI::SKYRENDERER {
             g.constantDrawCursors.fill(0u);
             g.debug.constantCapacityPerFrame =
                 kSkyConstantDrawCapacityPerFrame;
-
-            const std::array<SkyVertex, 8> vertices = {
-                SkyVertex{{ -1.0f, -1.0f, -1.0f }},
-                SkyVertex{{ -1.0f,  1.0f, -1.0f }},
-                SkyVertex{{  1.0f,  1.0f, -1.0f }},
-                SkyVertex{{  1.0f, -1.0f, -1.0f }},
-                SkyVertex{{ -1.0f, -1.0f,  1.0f }},
-                SkyVertex{{ -1.0f,  1.0f,  1.0f }},
-                SkyVertex{{  1.0f,  1.0f,  1.0f }},
-                SkyVertex{{  1.0f, -1.0f,  1.0f }},
-            };
-            const std::array<uint32_t, 36> indices = {
-                0, 1, 2, 0, 2, 3,
-                7, 6, 5, 7, 5, 4,
-                4, 5, 1, 4, 1, 0,
-                3, 2, 6, 3, 6, 7,
-                1, 5, 6, 1, 6, 2,
-                4, 0, 3, 4, 3, 7,
-            };
-            g.indexCount = static_cast<UINT>(indices.size());
-
-            auto vbDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(vertices));
-            if (FAILED(device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &vbDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(g.vertexBuffer.GetAddressOf())))) {
-                HIKARI_LOG_ERROR("[SkyRenderer][ERROR] Create vertex buffer failed.");
-                return false;
-            }
-            void* vbData = nullptr;
-            if (FAILED(g.vertexBuffer->Map(0, nullptr, &vbData))) {
-                return false;
-            }
-            std::memcpy(vbData, vertices.data(), sizeof(vertices));
-            g.vertexBuffer->Unmap(0, nullptr);
-            g.vbView.BufferLocation = g.vertexBuffer->GetGPUVirtualAddress();
-            g.vbView.SizeInBytes = static_cast<UINT>(sizeof(vertices));
-            g.vbView.StrideInBytes = static_cast<UINT>(sizeof(SkyVertex));
-
-            auto ibDesc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(indices));
-            if (FAILED(device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &ibDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(g.indexBuffer.GetAddressOf())))) {
-                HIKARI_LOG_ERROR("[SkyRenderer][ERROR] Create index buffer failed.");
-                return false;
-            }
-            void* ibData = nullptr;
-            if (FAILED(g.indexBuffer->Map(0, nullptr, &ibData))) {
-                return false;
-            }
-            std::memcpy(ibData, indices.data(), sizeof(indices));
-            g.indexBuffer->Unmap(0, nullptr);
-            g.ibView.BufferLocation = g.indexBuffer->GetGPUVirtualAddress();
-            g.ibView.SizeInBytes = static_cast<UINT>(sizeof(indices));
-            g.ibView.Format = DXGI_FORMAT_R32_UINT;
             return true;
         }
 
@@ -378,10 +258,6 @@ namespace HIKARI::SKYRENDERER {
                 return false;
             }
 
-            const D3D12_INPUT_ELEMENT_DESC inputElements[] = {
-                { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, static_cast<UINT>(offsetof(SkyVertex, position)), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-            };
-
             D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc{};
             psoDesc.pRootSignature = g.rootSig.Get();
             psoDesc.VS = { g.vsBlob->GetBufferPointer(), g.vsBlob->GetBufferSize() };
@@ -393,7 +269,7 @@ namespace HIKARI::SKYRENDERER {
             psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
             psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
             psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
-            psoDesc.InputLayout = { inputElements, static_cast<UINT>(std::size(inputElements)) };
+            psoDesc.InputLayout = { nullptr, 0 };
             psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
             psoDesc.NumRenderTargets = 1;
             psoDesc.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
@@ -589,10 +465,6 @@ namespace HIKARI::SKYRENDERER {
         // PIX 上で sky pass の境界を追いやすくする。
         GFX::PIX::ScopedGpuEvent pixSky(cmd, GFX::PIX::kColorRender, "SkyRenderer.Render");
 
-        const MATH::Vec3 cameraPos = settings.followCamera ? camera.GetPosition() : MATH::Vec3{};
-        const MATH::Quat yawRot = MATH::Quat::FromEulerXYZ(0.0f, settings.yaw, 0.0f);
-        const float s = std::max(0.0001f, settings.scale);
-        const MATH::Mat4 world = MATH::Mat4::TRS(cameraPos, yawRot, { s, s, s });
         const MATH::Vec3 sunDir = SanitizeDirection(
             sun.direction,
             { 0.4f, -1.0f, -0.6f });
@@ -600,89 +472,13 @@ namespace HIKARI::SKYRENDERER {
             ? SanitizeFiniteRange(sun.intensity, 0.0f, 0.0f, 64.0f)
             : 0.0f;
 
-        const StylizedCloudSettings& clouds = environment.clouds;
-        const MATH::Vec2 cloudWind = SanitizeWindDirection(clouds.windDirection);
-        const float cloudTime = [&]() {
-            float elapsed = TIME::GetUnscaledElapsedSeconds();
-            if (!std::isfinite(elapsed)) {
-                return 0.0f;
-            }
-            // Do not wrap a non-periodic noise field: an unscaled elapsed
-            // phase must remain continuous for the lifetime of the editor.
-            return elapsed;
-        }();
-        const float cloudCoverage = SanitizeFiniteRange(clouds.coverage, 0.46f, 0.0f, 1.0f);
-        const float cloudDensity = SanitizeFiniteRange(clouds.density, 1.10f, 0.0f, 8.0f);
-        const float cloudAltitude = SanitizeFiniteRange(clouds.altitude, 180.0f, -10000.0f, 10000.0f);
-        const float cloudThickness = SanitizeFiniteRange(clouds.thickness, 90.0f, 0.5f, 5000.0f);
-        const float cloudScale = SanitizeFiniteRange(clouds.scale, 140.0f, 1.0f, 10000.0f);
-        const float cloudWindSpeed = SanitizeFiniteRange(clouds.windSpeed, 2.5f, -100.0f, 100.0f);
-        const float cloudShapeDetail = SanitizeFiniteRange(clouds.shapeDetail, 0.55f, 0.0f, 1.0f);
-        const float cloudSoftness = SanitizeFiniteRange(clouds.softness, 0.28f, 0.001f, 1.0f);
-        const float cloudAbsorption = SanitizeFiniteRange(clouds.lightAbsorption, 0.72f, 0.0f, 8.0f);
-        const float cloudSilverLining = SanitizeFiniteRange(clouds.silverLining, 0.42f, 0.0f, 2.0f);
-        const float cloudHorizonFade = SanitizeFiniteRange(clouds.horizonFade, 0.62f, 0.001f, 1.0f);
-        const MATH::Vec3 cloudBrightColor = SanitizeColor(
-            clouds.brightColor,
-            { 1.0f, 0.985f, 0.94f });
-        const MATH::Vec3 cloudShadowColor = SanitizeColor(
-            clouds.shadowColor,
-            { 0.48f, 0.67f, 0.86f });
-        const uint32_t cloudStepCount = ResolveStylizedCloudStepCount(
-            RENDER3D::GetRenderQualitySettings().stylizedCloudQuality);
-
-        constants.cpu->worldViewProj = camera.GetViewProj() * world;
+        constants.cpu->inverseViewProj = MATH::Inverse(camera.GetViewProj());
         constants.cpu->zenithExposure = { settings.zenithColor.x, settings.zenithColor.y, settings.zenithColor.z, std::max(0.0f, settings.exposure) };
         constants.cpu->horizonPower = { settings.horizonColor.x, settings.horizonColor.y, settings.horizonColor.z, std::max(0.01f, settings.horizonPower) };
         constants.cpu->groundYaw = { settings.groundColor.x, settings.groundColor.y, settings.groundColor.z, settings.yaw };
         constants.cpu->tintMode = { settings.tint.x, settings.tint.y, settings.tint.z, static_cast<float>(renderMode) };
         constants.cpu->sunDirectionIntensity = { sunDir.x, sunDir.y, sunDir.z, settings.showSunDisk ? settings.sunDiskIntensity * sunIntensity : 0.0f };
-        // Keep the directional intensity available to the cloud lobe even
-        // when the optional sun disk is hidden. The existing x/y/z fields
-        // retain their sky/sun semantics.
         constants.cpu->sunSizeParams = { std::max(0.0001f, settings.sunDiskSize), settings.ambientFromSky, settings.reflectionIntensity, sunIntensity };
-        constants.cpu->cloudCameraTime = {
-            SanitizeFiniteRange(camera.GetPosition().x, 0.0f, -1000000.0f, 1000000.0f),
-            SanitizeFiniteRange(camera.GetPosition().y, 0.0f, -1000000.0f, 1000000.0f),
-            SanitizeFiniteRange(camera.GetPosition().z, 0.0f, -1000000.0f, 1000000.0f),
-            cloudTime,
-        };
-        constants.cpu->cloudShape = {
-            cloudCoverage,
-            cloudDensity,
-            cloudAltitude,
-            cloudThickness,
-        };
-        constants.cpu->cloudMotion = {
-            cloudScale,
-            cloudWind.x,
-            cloudWind.y,
-            cloudWindSpeed,
-        };
-        constants.cpu->cloudDetailLighting = {
-            cloudShapeDetail,
-            cloudSoftness,
-            cloudAbsorption,
-            cloudSilverLining,
-        };
-        constants.cpu->cloudHorizonQuality = {
-            cloudHorizonFade,
-            clouds.enabled ? 1.0f : 0.0f,
-            static_cast<float>(cloudStepCount),
-            static_cast<float>(kStylizedCloudMaxSteps),
-        };
-        constants.cpu->cloudBrightColor = {
-            cloudBrightColor.x,
-            cloudBrightColor.y,
-            cloudBrightColor.z,
-            1.0f,
-        };
-        constants.cpu->cloudShadowColor = {
-            cloudShadowColor.x,
-            cloudShadowColor.y,
-            cloudShadowColor.z,
-            1.0f,
-        };
 
         cmd->SetGraphicsRootSignature(g.rootSig.Get());
         cmd->SetPipelineState(g.pso.Get());
@@ -754,9 +550,7 @@ namespace HIKARI::SKYRENDERER {
         g.environmentData.activeSkyAsset = settings.skyAsset;
         g.environmentData.activeTexturePath = g.debug.activeTexturePath;
 
-        cmd->IASetVertexBuffers(0, 1, &g.vbView);
-        cmd->IASetIndexBuffer(&g.ibView);
-        cmd->DrawIndexedInstanced(g.indexCount, 1, 0, 0, 0);
+        cmd->DrawInstanced(3, 1, 0, 0);
         g.debug.lastRenderSubmitted = true;
         ++g.debug.drawCount;
     }

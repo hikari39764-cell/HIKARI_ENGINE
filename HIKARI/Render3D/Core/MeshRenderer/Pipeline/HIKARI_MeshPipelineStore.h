@@ -24,6 +24,8 @@ namespace HIKARI::MESHRENDERER {
         Microsoft::WRL::ComPtr<ID3D12PipelineState> skinnedPso;
         Microsoft::WRL::ComPtr<ID3D12PipelineState> depthPso;
         Microsoft::WRL::ComPtr<ID3D12PipelineState> depthSkinnedPso;
+        Microsoft::WRL::ComPtr<ID3D12PipelineState> waterDepthPso;
+        Microsoft::WRL::ComPtr<ID3D12PipelineState> waterDepthSkinnedPso;
         Microsoft::WRL::ComPtr<ID3D12PipelineState> geometryPso;
         Microsoft::WRL::ComPtr<ID3D12PipelineState> geometrySkinnedPso;
         Microsoft::WRL::ComPtr<ID3D12PipelineState> geometryFeatureMaskPso;
@@ -35,6 +37,7 @@ namespace HIKARI::MESHRENDERER {
         Microsoft::WRL::ComPtr<ID3DBlob> vsBlob;
         Microsoft::WRL::ComPtr<ID3DBlob> skinnedVsBlob;
         Microsoft::WRL::ComPtr<ID3DBlob> psBlob;
+        Microsoft::WRL::ComPtr<ID3DBlob> waterDepthPsBlob;
         Microsoft::WRL::ComPtr<ID3DBlob> geometryPsBlob;
         Microsoft::WRL::ComPtr<ID3DBlob> geometryFeatureMaskPsBlob;
         Microsoft::WRL::ComPtr<ID3DBlob> geometryOutlineVsBlob;
@@ -56,6 +59,7 @@ namespace HIKARI::MESHRENDERER {
     ID3D12RootSignature* GetStaticRootSignature(MeshPipelineStore& store);
     ID3D12RootSignature* GetSkinnedRootSignature(MeshPipelineStore& store);
     ID3D12PipelineState* GetDepthPso(MeshPipelineStore& store, bool skinned);
+    ID3D12PipelineState* GetWaterDepthPso(MeshPipelineStore& store, bool skinned);
     ID3D12PipelineState* GetGeometryPso(
         MeshPipelineStore& store,
         bool skinned,

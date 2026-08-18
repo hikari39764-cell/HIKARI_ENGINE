@@ -38,7 +38,12 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
     class GpuDepthVisibilityLayer final {
     public:
         void ResetFrame();
+        // Uses the most recent EnsureDepthResource context, preserving the
+        // legacy no-argument shutdown call without consulting global GFX
+        // context state.
         void Release();
+        // Explicit shutdown path for owners that still hold the frame context.
+        void Release(const GFX::Context& graphics);
 
         void RecordDepthPrepass(bool written);
         D3D12_CPU_DESCRIPTOR_HANDLE BeginDepthPrepass(
@@ -46,6 +51,12 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             ID3D12GraphicsCommandList* cmd,
             uint32_t width,
             uint32_t height);
+        // Completes the independent visibility depth pass and publishes its
+        // SRV in the existing frame descriptor pool. This never transitions
+        // or writes the authoritative scene depth resource.
+        bool EndDepthPrepass(
+            const GFX::Context& graphics,
+            ID3D12GraphicsCommandList* cmd);
         bool BuildDepthPyramidFromVisibilityPrepass(
             const GFX::Context& graphics,
             ID3D12GraphicsCommandList* cmd,
@@ -67,7 +78,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             const GFX::Context& graphics,
             uint32_t width,
             uint32_t height);
-        void ReleaseDepthResource();
+        void ReleaseDepthResource(const GFX::Context* graphics);
         void TransitionDepth(
             ID3D12GraphicsCommandList* cmd,
             D3D12_RESOURCE_STATES nextState);
@@ -82,6 +93,8 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         D3D12_RESOURCE_STATES visibilityDepthState_ = D3D12_RESOURCE_STATE_DEPTH_WRITE;
         uint32_t depthWidth_ = 0;
         uint32_t depthHeight_ = 0;
+        GFX::Context lastGraphicsContext_{};
+        bool hasGraphicsContext_ = false;
         GpuDepthVisibilityStats stats_{};
     };
 

@@ -133,6 +133,63 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         return backendResult.gpuBackendExecuted;
     }
 
+    bool RenderWaterVisibilityDepthInternal(
+        const GFX::Context& graphics,
+        D3D12_CPU_DESCRIPTOR_HANDLE waterDsv,
+        const MeshPassResources& passResources) {
+
+        if (!HasGpuDrivenPassSource(
+                RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardDepthAware) ||
+            graphics.cmdList == nullptr ||
+            waterDsv.ptr == 0 ||
+            !passResources.sceneDepth.IsSampleable()) {
+            return false;
+        }
+
+        const CameraCB* camera = GetActiveMeshFrameResources().cameraMapped;
+        const uint32_t width = static_cast<uint32_t>(
+            (std::max)(1.0f, camera ? camera->screenParams.x :
+                static_cast<float>(passResources.sceneDepth.width)));
+        const uint32_t height = static_cast<uint32_t>(
+            (std::max)(1.0f, camera ? camera->screenParams.y :
+                static_cast<float>(passResources.sceneDepth.height)));
+        if (width != passResources.sceneDepth.width ||
+            height != passResources.sceneDepth.height) {
+            return false;
+        }
+
+        D3D12_VIEWPORT viewport{};
+        viewport.Width = static_cast<float>(width);
+        viewport.Height = static_cast<float>(height);
+        viewport.MaxDepth = 1.0f;
+        D3D12_RECT scissor{
+            0,
+            0,
+            static_cast<LONG>(width),
+            static_cast<LONG>(height)};
+
+        GFX::PIX::ScopedGpuEvent pixWater(
+            graphics.cmdList,
+            GFX::PIX::kColorRender,
+            "GpuDepthVisibility.Water");
+        graphics.cmdList->OMSetRenderTargets(
+            0,
+            nullptr,
+            FALSE,
+            &waterDsv);
+        graphics.cmdList->RSSetViewports(1, &viewport);
+        graphics.cmdList->RSSetScissorRects(1, &scissor);
+
+        const GeometryBackendExecutionResult backendResult =
+            ExecuteGeometryBackendPlan(
+                graphics,
+                RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardDepthAware,
+                passResources,
+                MeshDrawPassKind::WaterVisibility,
+                RENDER3D::MESHLET::MeshletPipelineKind::WaterVisibility);
+        return backendResult.gpuBackendExecuted;
+    }
+
     bool ExecutePreparedParticleForwardTransparent(
         const GFX::Context& graphics,
         D3D12_GPU_VIRTUAL_ADDRESS cameraAddress) {
@@ -259,6 +316,16 @@ namespace HIKARI::MESHRENDERER {
         const GFX::Context& graphics,
         D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv) {
         return RenderDepthPrepassInternal(graphics, sceneDsv);
+    }
+
+    bool RenderWaterVisibilityDepth(
+        const GFX::Context& graphics,
+        D3D12_CPU_DESCRIPTOR_HANDLE waterDsv,
+        const MeshPassResources& passResources) {
+        return RenderWaterVisibilityDepthInternal(
+            graphics,
+            waterDsv,
+            passResources);
     }
 
     bool FinalizeGpuDrivenVisibilityWithoutDepth(

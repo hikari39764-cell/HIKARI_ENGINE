@@ -2,6 +2,9 @@
 #ifndef HIKARI_MESHLET_DEPTH_ENABLE_WATER
 #define HIKARI_MESHLET_DEPTH_ENABLE_WATER 1
 #endif
+#ifndef HIKARI_MESHLET_DEPTH_WATER_ONLY
+#define HIKARI_MESHLET_DEPTH_WATER_ONLY 0
+#endif
 
 #if HIKARI_MESHLET_DEPTH_ENABLE_WATER
 #include "Include/Meshlet/HIKARI_WaterSurfaceDeform.hlsli"
@@ -34,6 +37,12 @@ HikariMeshletDepthVertexOut HikariBuildMeshletDepthVertex(
     uint vertexIndex)
 {
     HikariMeshletDepthVertexOut output = HikariBuildEmptyMeshletDepthVertex();
+#if HIKARI_MESHLET_DEPTH_WATER_ONLY
+    if ((instance.flags & HIKARI_SURFACE_GPU_SCENE_FLAG_WATER_SURFACE) == 0u)
+    {
+        return output;
+    }
+#endif
     float3 localPosition =
         HikariLoadClusterVertexPosition(geometry, resolved.header, vertexIndex).xyz;
     float3 localNormal = float3(0.0f, 1.0f, 0.0f);
@@ -45,10 +54,16 @@ HikariMeshletDepthVertexOut HikariBuildMeshletDepthVertex(
         localPosition,
         localNormal,
         localTangent);
+    const float4 uv01 = HikariLoadClusterVertexUv01(
+        geometry,
+        resolved.header,
+        vertexIndex);
 #if HIKARI_MESHLET_DEPTH_ENABLE_WATER
-    HikariApplyWaterSurfaceDeform(
+    HikariApplyWaterSurfaceDeformWithWorld(
         instance,
         gSimulationTimeParams.x,
+        uv01.zw,
+        instance.clusterWorld,
         localPosition,
         localNormal);
 #endif
@@ -77,9 +92,14 @@ HikariMeshletDepthVertexOut HikariBuildMeshletDepthVertex(
         (instance.flags & HIKARI_SURFACE_GPU_SCENE_FLAG_WATER_SURFACE) == 0u;
     const bool sandSurface =
         (instance.flags & HIKARI_SURFACE_GPU_SCENE_FLAG_SAND_SURFACE) != 0u;
-    if (alphaMasked || materialFx || sandSurface)
+    const bool waterSurface =
+        (instance.flags & HIKARI_SURFACE_GPU_SCENE_FLAG_WATER_SURFACE) != 0u;
+    // Water visibility uses the same authored liquid-coverage clip as the
+    // forward water shader, so its PS needs uv, feature-data index and flags
+    // even when the material has no alpha/material-FX coverage path.
+    if (alphaMasked || materialFx || sandSurface ||
+        (HIKARI_MESHLET_DEPTH_WATER_ONLY && waterSurface))
     {
-        float4 uv01 = HikariLoadClusterVertexUv01(geometry, resolved.header, vertexIndex);
         output.uv = uv01.xy;
         output.uv1 = uv01.zw;
         output.materialDataIndex = instance.materialDataIndex;

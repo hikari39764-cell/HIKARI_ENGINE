@@ -21,6 +21,7 @@ namespace HIKARI::GFX {
         void Reset();
 
         DescriptorSlot Allocate();
+        DescriptorSlot AllocateRange(UINT count);
         void Free(DescriptorSlot slot);
 
         bool Owns(DescriptorSlot slot) const;

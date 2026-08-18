@@ -80,9 +80,11 @@ VSOutput main(VSInput input)
     output.surfaceFeatureData = float3(localPosition.xz, 0.0f);
     if (gUseSurfaceGpuScene != 0u)
     {
-        HikariApplyWaterSurfaceDeform(
+        HikariApplyWaterSurfaceDeformWithWorld(
             surfaceInstance,
             gSimulationTimeParams.x,
+            input.uv1,
+            objectData.world,
             localPosition,
             localNormal,
             output.surfaceFeatureData);

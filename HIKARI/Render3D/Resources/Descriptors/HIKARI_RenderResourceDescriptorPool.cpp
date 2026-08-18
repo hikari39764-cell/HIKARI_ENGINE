@@ -58,6 +58,40 @@ namespace HIKARI::RENDER3D {
             return view;
         }
 
+        std::vector<RenderResourceView> AllocateDescriptorRange(
+            RenderResourceDescriptorPoolState& state,
+            uint32_t count) {
+
+            std::vector<RenderResourceView> views{};
+            if (!state.initialized || !HasValidContext(state.context) ||
+                count == 0u) {
+                ++state.failedAllocationCount;
+                return views;
+            }
+            const GFX::DescriptorSlot first =
+                state.allocator.AllocateRange(count);
+            if (!first.IsValid()) {
+                ++state.failedAllocationCount;
+                return views;
+            }
+            views.reserve(count);
+            for (uint32_t offset = 0u; offset < count; ++offset) {
+                RenderResourceView view{};
+                view.descriptorIndex = first.index + offset;
+                view.cpu = GFX::DESCRIPTOR::CpuAt(
+                    state.context.srvHeap,
+                    state.descriptorSize,
+                    view.descriptorIndex);
+                view.gpu = GFX::DESCRIPTOR::GpuAt(
+                    state.context.srvHeap,
+                    state.descriptorSize,
+                    view.descriptorIndex);
+                views.push_back(view);
+            }
+            state.allocationCount += count;
+            return views;
+        }
+
     } // namespace
 
     void UpdateRenderResourceDescriptorPoolContext(const GFX::Context& ctx) {
@@ -82,6 +116,11 @@ namespace HIKARI::RENDER3D {
 
     RenderResourceView AllocateRenderResourceDescriptor() {
         return AllocateDescriptor(State());
+    }
+
+    std::vector<RenderResourceView>
+    AllocateRenderResourceDescriptorRange(uint32_t count) {
+        return AllocateDescriptorRange(State(), count);
     }
 
     RenderResourceView AllocateBufferSrvDescriptor(

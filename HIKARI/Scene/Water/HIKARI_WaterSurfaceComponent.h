@@ -7,6 +7,7 @@ namespace HIKARI {
 
     namespace WaterSurfaceComponentPropertyIds {
         inline constexpr char Preset[] = "preset";
+        inline constexpr char GeometryMode[] = "geometryMode";
         inline constexpr char TimeScale[] = "timeScale";
         inline constexpr char Choppiness[] = "choppiness";
         inline constexpr char MicroWaveStrength[] = "microWaveStrength";
@@ -19,6 +20,15 @@ namespace HIKARI {
         inline constexpr char FoamAmount[] = "foamAmount";
         inline constexpr char AbsorptionDistance[] = "absorptionDistance";
         inline constexpr char SurfaceRoughness[] = "surfaceRoughness";
+        inline constexpr char ReflectionStrength[] = "reflectionStrength";
+        inline constexpr char SunGlintStrength[] = "sunGlintStrength";
+        inline constexpr char GlintDensity[] = "glintDensity";
+        inline constexpr char GlintFlowSpeed[] = "glintFlowSpeed";
+        inline constexpr char RibbonWidth[] = "ribbonWidth";
+        inline constexpr char WindDirectionDeg[] = "windDirectionDeg";
+        inline constexpr char WindSpeed[] = "windSpeed";
+        inline constexpr char ShortWaveStrength[] = "shortWaveStrength";
+        inline constexpr char CapillaryStrength[] = "capillaryStrength";
     }
 
     // 独立した水面コンポーネント。TerrainSurface とは分離し、

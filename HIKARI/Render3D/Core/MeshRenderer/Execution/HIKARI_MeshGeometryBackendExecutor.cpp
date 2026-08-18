@@ -134,6 +134,9 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         if (passKind == MeshDrawPassKind::DepthPrepass) {
             return gMeshRendererState.pipelines.depthPso.Get();
         }
+        if (passKind == MeshDrawPassKind::WaterVisibility) {
+            return gMeshRendererState.pipelines.waterDepthPso.Get();
+        }
         if (passKind != MeshDrawPassKind::Forward ||
             graphics.device == nullptr) {
             return gMeshRendererState.pipelines.pso.Get();
@@ -175,6 +178,9 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         }
         if (passKind == MeshDrawPassKind::DepthPrepass) {
             return gMeshRendererState.pipelines.depthSkinnedPso.Get();
+        }
+        if (passKind == MeshDrawPassKind::WaterVisibility) {
+            return gMeshRendererState.pipelines.waterDepthSkinnedPso.Get();
         }
         if (passKind != MeshDrawPassKind::Forward ||
             graphics.device == nullptr) {
@@ -373,6 +379,8 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                 BindReflectionProbeResources(drawCtx.binding);
                 BindSsao(drawCtx.binding);
                 BindLightProbeResources(drawCtx.binding);
+            } else if (passKind == MeshDrawPassKind::WaterVisibility) {
+                BindSceneDepth(drawCtx.binding);
             }
             BindObjectDataIndex(drawCtx.binding, 0u);
             BindMaterialDataIndex(drawCtx.binding, 0u);

@@ -86,20 +86,24 @@ namespace HIKARI::MESHRENDERER::ROOT_PARAM {
     constexpr UINT ScreenSpacePackedSurface = 38;
     // Screen-space trace validity / mip count -> b10
     constexpr UINT ScreenSpaceTraceControl = 39;
+    // Global three-cascade ocean displacement/slope table -> t5-t10, space7
+    constexpr UINT OceanSpectrumData = 40;
+    // Ocean spectrum validity / resolution -> b11
+    constexpr UINT OceanSpectrumControl = 41;
 
-    constexpr UINT Count = ScreenSpaceTraceControl + 1;
+    constexpr UINT Count = OceanSpectrumControl + 1;
 
     // Root descriptor は 2 DWORD、descriptor table は 1 DWORD。
     // Static/Skinned は JointPalette slot の型だけを置換し、同じ予算を使う。
     constexpr UINT RootDescriptorCount = 17u;
-    constexpr UINT DescriptorTableCount = 19u;
-    constexpr UINT RootConstantDwordCount = 8u;
+    constexpr UINT DescriptorTableCount = 20u;
+    constexpr UINT RootConstantDwordCount = 10u;
     constexpr UINT DwordCost =
         RootDescriptorCount * 2u +
         DescriptorTableCount +
         RootConstantDwordCount;
-    static_assert(Count == 40u, "Update the mesh root-signature budget.");
-    static_assert(DwordCost == 61u);
+    static_assert(Count == 42u, "Update the mesh root-signature budget.");
+    static_assert(DwordCost == 64u);
     static_assert(DwordCost <= 64u);
 
 } // namespace HIKARI::MESHRENDERER::ROOT_PARAM

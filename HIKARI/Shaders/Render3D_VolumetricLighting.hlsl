@@ -263,7 +263,24 @@ void InjectAndIntegrateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
 
 Texture2D<float> gCompositeDepth : register(t4);
 Texture3D<float4> gIntegratedVolume : register(t5);
+Texture2D<float> gCompositeWaterDepth : register(t6);
 RWTexture2D<float4> gSceneColorUav : register(u1);
+
+float ResolveNearestCompositeDepth(float opaqueDepth, float waterDepth)
+{
+    // D32 visibility clears to 1.0.  The water visibility PS clamps a
+    // far-plane water texel just below that value so it remains a valid
+    // nearest receiver without ever treating an untouched texel as water.
+    const bool opaqueValid =
+        isfinite(opaqueDepth) && opaqueDepth >= 0.0f && opaqueDepth < 1.0f;
+    const bool waterValid =
+        isfinite(waterDepth) && waterDepth >= 0.0f && waterDepth < 1.0f;
+    if (waterValid && (!opaqueValid || waterDepth < opaqueDepth))
+    {
+        return waterDepth;
+    }
+    return opaqueValid ? opaqueDepth : 1.0f;
+}
 
 float3 HueRamp(float value)
 {
@@ -284,7 +301,9 @@ void CompositeCS(uint3 dispatchThreadId : SV_DispatchThreadID)
 
     const uint2 pixel = dispatchThreadId.xy;
     const float2 uv = (float2(pixel) + 0.5f) / float2(sceneWidth, sceneHeight);
-    const float depth = gCompositeDepth.Load(int3(pixel, 0));
+    const float depth = ResolveNearestCompositeDepth(
+        gCompositeDepth.Load(int3(pixel, 0)),
+        gCompositeWaterDepth.Load(int3(pixel, 0)));
     float4 clip = float4(uv.x * 2.0f - 1.0f, 1.0f - uv.y * 2.0f, depth, 1.0f);
     float4 world = mul(gInvViewProj, clip);
     world.xyz /= max(abs(world.w), 1e-6f);

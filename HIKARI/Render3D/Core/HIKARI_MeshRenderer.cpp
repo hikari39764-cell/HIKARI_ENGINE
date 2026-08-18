@@ -103,6 +103,12 @@ namespace HIKARI::MESHRENDERER {
         gMeshRendererState.particleFrameSource = nullptr;
     }
 
+    void ShutdownOceanSpectrumRuntime() {
+        const GFX::Context& graphics = GFX::GetCurrentContext();
+        gMeshRendererState.oceanSpectrumRuntime.Shutdown(
+            graphics.device != nullptr ? &graphics : nullptr);
+    }
+
     bool HasSubmittedItems() {
         return HasGpuDrivenSceneSource() ||
             (gMeshRendererState.particleFrameSource != nullptr &&

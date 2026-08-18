@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <vector>
 
 #include <d3d12.h>
 
@@ -24,6 +25,8 @@ namespace HIKARI::RENDER3D {
     void ShutdownRenderResourceDescriptorPool();
 
     RenderResourceView AllocateRenderResourceDescriptor();
+    std::vector<RenderResourceView>
+        AllocateRenderResourceDescriptorRange(uint32_t count);
 
     RenderResourceView AllocateBufferSrvDescriptor(
         ID3D12Resource* resource,

@@ -17,10 +17,12 @@
 #include "Render3D/Debug/HIKARI_RenderDebugView.h"
 #include "Render3D/Lighting/HIKARI_LocalLightList.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
+#include "Render3D/Lighting/HIKARI_SkyRenderer.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Render3D/Shadow/HIKARI_ShadowMapRenderer.h"
 #include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
+#include "Render3D/Water/HIKARI_WaterVisibleDepth.h"
 
 namespace HIKARI::RENDER3D::VOLUMETRIC {
 
@@ -78,6 +80,8 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
             VolumeResource volumes[2]{};
             RenderResourceView sceneColorUav{};
             RenderResourceView sceneDepthSrv{};
+            D3D12_GPU_DESCRIPTOR_HANDLE waterDepthSrv{};
+            WATER::WaterVisibleDepthView waterDepthView{};
             ID3D12Resource* sceneColorResource = nullptr;
             ID3D12Resource* sceneDepthResource = nullptr;
             VolumetricConstants constants{};
@@ -166,7 +170,7 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
             bool injection,
             ID3D12RootSignature** output) {
             std::array<D3D12_DESCRIPTOR_RANGE, 4> ranges{};
-            const uint32_t tableCount = injection ? 4u : 3u;
+            const uint32_t tableCount = injection ? 4u : 4u;
             for (uint32_t index = 0; index < tableCount; ++index) {
                 ranges[index].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
                 ranges[index].NumDescriptors = 1;
@@ -176,10 +180,10 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
                         : D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
                     ranges[index].BaseShaderRegister = index == 3 ? 0u : index;
                 } else {
-                    ranges[index].RangeType = index == 2
+                    ranges[index].RangeType = index == 3
                         ? D3D12_DESCRIPTOR_RANGE_TYPE_UAV
                         : D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-                    ranges[index].BaseShaderRegister = index == 2
+                    ranges[index].BaseShaderRegister = index == 3
                         ? 1u
                         : (4u + index);
                 }
@@ -412,6 +416,10 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
         state.stats.requested = environment.fog.enabled && environment.fog.volumetric;
         state.stats.active = false;
         state.prepared = false;
+        state.waterDepthView = {};
+        state.waterDepthSrv = {};
+        state.stats.waterDepthValid = false;
+        state.stats.waterDepthFallback = true;
         if (!state.stats.requested || environment.fog.density <= 0.0f ||
             !frame.camera.valid || !context.device || !context.cmdList || !context.srvHeap) {
             return false;
@@ -455,9 +463,21 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
         };
         constants.cameraPos = frame.camera.cameraPos;
         constants.prevCameraPos = frame.camera.prevCameraPos;
-        MATH::Vec3 fogColor = environment.fog.useSkyHorizonColor
-            ? environment.sky.horizonColor
-            : environment.fog.color;
+        // The sky renderer publishes the scene-linear, tinted horizon
+        // radiance used by the actual sky pass.  Reusing that contract lets
+        // the shared volumetric integral converge to the same horizon at far
+        // water distances; it does not add a water-owned fog/color path.
+        MATH::Vec3 fogColor = environment.fog.color;
+        const SKYRENDERER::SkyEnvironmentData& skyData =
+            SKYRENDERER::GetEnvironmentData();
+        if (environment.fog.useSkyHorizonColor && skyData.valid) {
+            const float skyExposure = (std::max)(0.0f, skyData.exposure);
+            fogColor = {
+                skyData.horizonColor.x * skyExposure,
+                skyData.horizonColor.y * skyExposure,
+                skyData.horizonColor.z * skyExposure
+            };
+        }
         constants.fogColorDensity = {
             fogColor.x, fogColor.y, fogColor.z,
             (std::max)(0.0f, environment.fog.density)
@@ -544,10 +564,43 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
         return true;
     }
 
+    void SetVolumetricVisibleWaterDepth(
+        const WATER::WaterVisibleDepthView& view) {
+        StageState& state = State();
+        state.waterDepthView = view;
+    }
+
+    void ClearVolumetricVisibleWaterDepth() {
+        StageState& state = State();
+        state.waterDepthView = {};
+        state.waterDepthSrv = {};
+        state.stats.waterDepthValid = false;
+        state.stats.waterDepthFallback = true;
+    }
+
     RenderTarget2D* ExecuteVolumetricLightingStage(RenderTarget2D& scene) {
         StageState& state = State();
         if (!state.prepared || !state.stats.active ||
             !EnsureSceneViews(state, scene) || !scene.BeginDepthShaderRead()) return &scene;
+
+        // SceneDepth remains authoritative and read-only. The water producer
+        // must have run before MeshRenderer::EndFrame and publishes only a
+        // borrowed SRV for this frame/view; every failure path keeps opaque
+        // depth. Execute never re-enters MeshRenderer.
+        state.waterDepthSrv = state.sceneDepthSrv.gpu;
+        state.stats.waterDepthValid = false;
+        state.stats.waterDepthFallback = true;
+        const WATER::WaterVisibleDepthView& waterView = state.waterDepthView;
+        if (waterView.IsValid() &&
+            waterView.frameIndex == state.preparedFrameIndex &&
+            waterView.viewToken == scene.GetDepthResource() &&
+            waterView.width == state.stats.renderWidth &&
+            waterView.height == state.stats.renderHeight) {
+            state.waterDepthSrv = waterView.srv;
+            state.stats.waterDepthValid = true;
+            state.stats.waterDepthFallback = false;
+        }
+
         ID3D12GraphicsCommandList* cmd = state.context.cmdList;
         ID3D12DescriptorHeap* heap = state.context.srvHeap;
         if (!cmd || !heap) {
@@ -607,7 +660,12 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
         cmd->SetComputeRootConstantBufferView(0, constantAddress);
         cmd->SetComputeRootDescriptorTable(1, state.sceneDepthSrv.gpu);
         cmd->SetComputeRootDescriptorTable(2, output.srv.gpu);
-        cmd->SetComputeRootDescriptorTable(3, state.sceneColorUav.gpu);
+        cmd->SetComputeRootDescriptorTable(
+            3,
+            state.waterDepthSrv.ptr != 0
+                ? state.waterDepthSrv
+                : state.sceneDepthSrv.gpu);
+        cmd->SetComputeRootDescriptorTable(4, state.sceneColorUav.gpu);
         cmd->Dispatch(
             (state.stats.renderWidth + 7u) / 8u,
             (state.stats.renderHeight + 7u) / 8u,
@@ -653,6 +711,8 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
         state.compositeRoot.Reset();
         state.sceneColorResource = nullptr;
         state.sceneDepthResource = nullptr;
+        state.waterDepthSrv = {};
+        state.waterDepthView = {};
         state.constants = {};
         state.stats = {};
         state.writeIndex = 0;

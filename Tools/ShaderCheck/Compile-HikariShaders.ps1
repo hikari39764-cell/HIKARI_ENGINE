@@ -38,6 +38,10 @@ $entries = @(
     @{ Shader = "HIKARI/Shaders/Render3D_StaticVS.hlsl"; Entry = "main"; Target = "vs_6_0" },
     @{ Shader = "HIKARI/Shaders/Render3D_SkinnedVS.hlsl"; Entry = "main"; Target = "vs_6_0" },
     @{ Shader = "HIKARI/Shaders/Render3D_StaticPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
+    @{ Shader = "HIKARI/Shaders/Render3D_WaterVisibilityPS.hlsl"; Entry = "main"; Target = "ps_6_0"; Group = "WaterVisibility"; WarningsAsErrors = $true },
+    @{ Shader = "HIKARI/Shaders/WaterSpectrum/HIKARI_WaterSpectrumEvolutionCS.hlsl"; Entry = "main"; Target = "cs_6_0"; Group = "WaterSpectrum"; WarningsAsErrors = $true },
+    @{ Shader = "HIKARI/Shaders/WaterSpectrum/HIKARI_WaterSpectrumStockhamCS.hlsl"; Entry = "main"; Target = "cs_6_0"; Group = "WaterSpectrum"; WarningsAsErrors = $true },
+    @{ Shader = "HIKARI/Shaders/WaterSpectrum/HIKARI_WaterSpectrumResolveCS.hlsl"; Entry = "main"; Target = "cs_6_0"; Group = "WaterSpectrum"; WarningsAsErrors = $true },
     @{ Shader = "HIKARI/Shaders/Render3D_StaticFxPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
     @{ Shader = "HIKARI/Shaders/Render3D_GeometryAuxPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
     @{ Shader = "HIKARI/Shaders/Render3D_GeometryAuxFeaturePS.hlsl"; Entry = "main"; Target = "ps_6_0" },
@@ -47,6 +51,17 @@ $entries = @(
     @{ Shader = "HIKARI/Shaders/Render3D_VisibilityOverlayPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
     @{ Shader = "HIKARI/Shaders/Render3D_SkyVS.hlsl"; Entry = "main"; Target = "vs_6_0" },
     @{ Shader = "HIKARI/Shaders/Render3D_SkyPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
+    # StylizedClouds is a strict, independently runnable shader group.  Noise
+    # generation is compute; trace, temporal reprojection and composite remain
+    # graphics entries so the MRT/depth contract cannot be hidden by a compute
+    # substitute.
+    @{ Shader = "HIKARI/Shaders/Render3D_StylizedCloudNoise.hlsl"; Entry = "GenerateStylizedCloudShapeCS"; Target = "cs_6_0"; Group = "StylizedClouds"; WarningsAsErrors = $true },
+    @{ Shader = "HIKARI/Shaders/Render3D_StylizedCloudNoise.hlsl"; Entry = "GenerateStylizedCloudDetailCS"; Target = "cs_6_0"; Group = "StylizedClouds"; WarningsAsErrors = $true },
+    @{ Shader = "HIKARI/Shaders/Render3D_StylizedCloudNoise.hlsl"; Entry = "GenerateStylizedCloudWeatherCS"; Target = "cs_6_0"; Group = "StylizedClouds"; WarningsAsErrors = $true },
+    @{ Shader = "HIKARI/Shaders/Render3D_StylizedCloudPass.hlsl"; Entry = "FullscreenVS"; Target = "vs_6_0"; Group = "StylizedClouds"; WarningsAsErrors = $true },
+    @{ Shader = "HIKARI/Shaders/Render3D_StylizedCloudPass.hlsl"; Entry = "RenderCloudPS"; Target = "ps_6_0"; Group = "StylizedClouds"; WarningsAsErrors = $true },
+    @{ Shader = "HIKARI/Shaders/Render3D_StylizedCloudPass.hlsl"; Entry = "ReprojectCloudPS"; Target = "ps_6_0"; Group = "StylizedClouds"; WarningsAsErrors = $true },
+    @{ Shader = "HIKARI/Shaders/Render3D_StylizedCloudPass.hlsl"; Entry = "CompositeCloudPS"; Target = "ps_6_0"; Group = "StylizedClouds"; WarningsAsErrors = $true },
     @{ Shader = "HIKARI/Shaders/Render3D_VolumetricLighting.hlsl"; Entry = "InjectAndIntegrateCS"; Target = "cs_6_0" },
     @{ Shader = "HIKARI/Shaders/Render3D_VolumetricLighting.hlsl"; Entry = "CompositeCS"; Target = "cs_6_0" },
     @{ Shader = "HIKARI/Shaders/Render3D_ParticleSimulation.hlsl"; Entry = "ResetCS"; Target = "cs_6_0"; Group = "NativeVfx" },
@@ -76,6 +91,8 @@ $entries = @(
     @{ Shader = "HIKARI/Shaders/Render3D_MeshletAS.hlsl"; Entry = "main"; Target = "as_6_5" },
     @{ Shader = "HIKARI/Shaders/Render3D_MeshletMS.hlsl"; Entry = "main"; Target = "ms_6_5" },
     @{ Shader = "HIKARI/Shaders/Render3D_MeshletDepthMS.hlsl"; Entry = "main"; Target = "ms_6_5" },
+    @{ Shader = "HIKARI/Shaders/Render3D_MeshletWaterVisibilityMS.hlsl"; Entry = "main"; Target = "ms_6_5"; Group = "WaterVisibility"; WarningsAsErrors = $true },
+    @{ Shader = "HIKARI/Shaders/Render3D_MeshletWaterVisibilityPS.hlsl"; Entry = "main"; Target = "ps_6_0"; Group = "WaterVisibility"; WarningsAsErrors = $true },
     @{ Shader = "HIKARI/Shaders/Render3D_MeshletShadowMS.hlsl"; Entry = "main"; Target = "ms_6_5" },
     @{ Shader = "HIKARI/Shaders/Render3D_MeshletDepthPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
     @{ Shader = "HIKARI/Shaders/Render3D_MeshletGeometryAuxMS.hlsl"; Entry = "main"; Target = "ms_6_5" },
@@ -125,7 +142,17 @@ if (-not [string]::IsNullOrWhiteSpace($Group)) {
 
 $failures = New-Object System.Collections.Generic.List[object]
 foreach ($entry in $entries) {
-    $output = & $dxc -E $entry.Entry -T $entry.Target -HV 2021 -O3 -I HIKARI/Shaders -Fo NUL $entry.Shader 2>&1
+    $arguments = @(
+        '-E', $entry.Entry,
+        '-T', $entry.Target,
+        '-HV', '2021',
+        '-O3',
+        '-I', 'HIKARI/Shaders')
+    if ($entry.ContainsKey('WarningsAsErrors') -and $entry.WarningsAsErrors) {
+        $arguments += '-WX'
+    }
+    $arguments += @('-Fo', 'NUL', $entry.Shader)
+    $output = & $dxc @arguments 2>&1
     if ($LASTEXITCODE -ne 0) {
         $failures.Add([pscustomobject]@{
             Shader = $entry.Shader

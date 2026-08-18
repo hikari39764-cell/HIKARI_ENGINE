@@ -33,6 +33,17 @@ namespace HIKARI::MESHRENDERER {
         if (!GFX::CompileShaderFileSm6(L"HIKARI/Shaders/Render3D_StaticPS.hlsl", "main", GFX::ShaderStage::Pixel, store.psBlob.GetAddressOf())) {
             return false;
         }
+        const bool waterDepthShaderReady =
+            GFX::CompileShaderFileSm6(
+                L"HIKARI/Shaders/Render3D_WaterVisibilityPS.hlsl",
+                "main",
+                GFX::ShaderStage::Pixel,
+                store.waterDepthPsBlob.GetAddressOf());
+        if (!waterDepthShaderReady) {
+            DEBUGLOG::PushRenderError(
+                "[MeshRenderer][WARN] Water visibility depth shader is "
+                "unavailable; volumetric lighting will use opaque SceneDepth.");
+        }
         if (!GFX::CompileShaderFileSm6(L"HIKARI/Shaders/Render3D_GeometryAuxPS.hlsl", "main", GFX::ShaderStage::Pixel, store.geometryPsBlob.GetAddressOf())) {
             return false;
         }
@@ -214,6 +225,14 @@ namespace HIKARI::MESHRENDERER {
         screenSpacePackedSurfaceRange.BaseShaderRegister = 3;
         screenSpacePackedSurfaceRange.RegisterSpace = 7;
         screenSpacePackedSurfaceRange.OffsetInDescriptorsFromTableStart =
+            D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+        D3D12_DESCRIPTOR_RANGE oceanSpectrumRange{};
+        oceanSpectrumRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+        oceanSpectrumRange.NumDescriptors = 6u;
+        oceanSpectrumRange.BaseShaderRegister = 5u;
+        oceanSpectrumRange.RegisterSpace = 7u;
+        oceanSpectrumRange.OffsetInDescriptorsFromTableStart =
             D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
         // 既存 slot を動かさず、GPU-driven 用のリソースプールを末尾へ追加する。
@@ -466,6 +485,23 @@ namespace HIKARI::MESHRENDERER {
         params[ROOT_PARAM::ScreenSpaceTraceControl].Constants.RegisterSpace = 0;
         params[ROOT_PARAM::ScreenSpaceTraceControl].Constants.Num32BitValues = 2;
 
+        params[ROOT_PARAM::OceanSpectrumData].ParameterType =
+            D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        params[ROOT_PARAM::OceanSpectrumData].ShaderVisibility =
+            D3D12_SHADER_VISIBILITY_ALL;
+        params[ROOT_PARAM::OceanSpectrumData].DescriptorTable.
+            NumDescriptorRanges = 1u;
+        params[ROOT_PARAM::OceanSpectrumData].DescriptorTable.
+            pDescriptorRanges = &oceanSpectrumRange;
+
+        params[ROOT_PARAM::OceanSpectrumControl].ParameterType =
+            D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+        params[ROOT_PARAM::OceanSpectrumControl].ShaderVisibility =
+            D3D12_SHADER_VISIBILITY_ALL;
+        params[ROOT_PARAM::OceanSpectrumControl].Constants.ShaderRegister = 11u;
+        params[ROOT_PARAM::OceanSpectrumControl].Constants.RegisterSpace = 0u;
+        params[ROOT_PARAM::OceanSpectrumControl].Constants.Num32BitValues = 2u;
+
         D3D12_STATIC_SAMPLER_DESC linearWrapSampler{};
         linearWrapSampler.Filter = D3D12_FILTER_ANISOTROPIC;
         linearWrapSampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
@@ -616,6 +652,43 @@ namespace HIKARI::MESHRENDERER {
         depthSkinnedPsoDesc.InputLayout = { skinnedInputElements.data(), static_cast<UINT>(skinnedInputElements.size()) };
         if (FAILED(device->CreateGraphicsPipelineState(&depthSkinnedPsoDesc, IID_PPV_ARGS(store.depthSkinnedPso.GetAddressOf())))) {
             return false;
+        }
+
+        if (waterDepthShaderReady) {
+            D3D12_GRAPHICS_PIPELINE_STATE_DESC waterDepthPsoDesc =
+                depthPsoDesc;
+            waterDepthPsoDesc.PS = {
+                store.waterDepthPsBlob->GetBufferPointer(),
+                store.waterDepthPsBlob->GetBufferSize()
+            };
+            if (FAILED(device->CreateGraphicsPipelineState(
+                    &waterDepthPsoDesc,
+                    IID_PPV_ARGS(store.waterDepthPso.GetAddressOf())))) {
+                store.waterDepthPso.Reset();
+            }
+
+            D3D12_GRAPHICS_PIPELINE_STATE_DESC waterDepthSkinnedPsoDesc =
+                waterDepthPsoDesc;
+            waterDepthSkinnedPsoDesc.pRootSignature = store.skinnedRootSig.Get();
+            waterDepthSkinnedPsoDesc.VS = {
+                store.skinnedVsBlob->GetBufferPointer(),
+                store.skinnedVsBlob->GetBufferSize()
+            };
+            waterDepthSkinnedPsoDesc.InputLayout = {
+                skinnedInputElements.data(),
+                static_cast<UINT>(skinnedInputElements.size())
+            };
+            if (FAILED(device->CreateGraphicsPipelineState(
+                    &waterDepthSkinnedPsoDesc,
+                    IID_PPV_ARGS(store.waterDepthSkinnedPso.GetAddressOf())))) {
+                store.waterDepthSkinnedPso.Reset();
+            }
+            if (store.waterDepthPso == nullptr ||
+                store.waterDepthSkinnedPso == nullptr) {
+                DEBUGLOG::PushRenderError(
+                    "[MeshRenderer][WARN] Water visibility depth PSO is "
+                    "unavailable; volumetric lighting will use opaque SceneDepth.");
+            }
         }
 
         D3D12_GRAPHICS_PIPELINE_STATE_DESC geometryPsoDesc = psoDesc;

@@ -210,6 +210,8 @@ namespace HIKARI::MESHRENDERER {
         GFX::RetireD3D12ObjectForCurrentFrame(store.skinnedPso, "MeshRenderer.SkinnedPSO");
         GFX::RetireD3D12ObjectForCurrentFrame(store.depthPso, "MeshRenderer.DepthPSO");
         GFX::RetireD3D12ObjectForCurrentFrame(store.depthSkinnedPso, "MeshRenderer.DepthSkinnedPSO");
+        GFX::RetireD3D12ObjectForCurrentFrame(store.waterDepthPso, "MeshRenderer.WaterDepthPSO");
+        GFX::RetireD3D12ObjectForCurrentFrame(store.waterDepthSkinnedPso, "MeshRenderer.WaterDepthSkinnedPSO");
         GFX::RetireD3D12ObjectForCurrentFrame(store.geometryPso, "MeshRenderer.GeometryPSO");
         GFX::RetireD3D12ObjectForCurrentFrame(store.geometrySkinnedPso, "MeshRenderer.GeometrySkinnedPSO");
         GFX::RetireD3D12ObjectForCurrentFrame(store.geometryFeatureMaskPso, "MeshRenderer.GeometryFeatureMaskPSO");
@@ -223,6 +225,7 @@ namespace HIKARI::MESHRENDERER {
         store.vsBlob.Reset();
         store.skinnedVsBlob.Reset();
         store.psBlob.Reset();
+        store.waterDepthPsBlob.Reset();
         store.geometryPsBlob.Reset();
         store.geometryFeatureMaskPsBlob.Reset();
         store.geometryOutlineVsBlob.Reset();
@@ -253,6 +256,14 @@ namespace HIKARI::MESHRENDERER {
 
     ID3D12PipelineState* GetDepthPso(MeshPipelineStore& store, bool skinned) {
         return skinned ? store.depthSkinnedPso.Get() : store.depthPso.Get();
+    }
+
+    ID3D12PipelineState* GetWaterDepthPso(
+        MeshPipelineStore& store,
+        bool skinned) {
+        return skinned
+            ? store.waterDepthSkinnedPso.Get()
+            : store.waterDepthPso.Get();
     }
 
     ID3D12PipelineState* GetGeometryPso(

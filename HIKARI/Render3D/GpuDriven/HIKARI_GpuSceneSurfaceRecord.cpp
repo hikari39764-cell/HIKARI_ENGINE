@@ -527,6 +527,12 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             if (record.key.waterMaterialFx) {
                 flags |= ToInstanceFlag(RUNTIME::SurfaceGpuSceneInstanceFlags::WaterSurface);
             }
+            if (record.waterSurface &&
+                record.waterSurfaceData.geometryMode ==
+                    RENDER3D::WATER::WaterSurfaceGeometryMode::CameraCenteredOcean) {
+                flags |= ToInstanceFlag(
+                    RUNTIME::SurfaceGpuSceneInstanceFlags::CameraCenteredOcean);
+            }
             if (record.key.sandSurface) {
                 flags |= ToInstanceFlag(RUNTIME::SurfaceGpuSceneInstanceFlags::SandSurface);
             }
@@ -658,6 +664,18 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             instance.clusterNormalMatrix = MATH::BuildNormalMatrixFromWorld(instance.clusterWorld);
             instance.boundsCenterRadius =
                 BOUNDS::ComputeCenterRadius(record.worldBounds);
+            if (record.waterSurface &&
+                record.waterSurfaceData.geometryMode ==
+                    RENDER3D::WATER::WaterSurfaceGeometryMode::CameraCenteredOcean) {
+                // Traditional indirect compaction recognizes a negative
+                // radius as an explicit no-frustum-cull marker.  Meshlet
+                // coarse/fine cull uses the matching instance flag below.
+                // Preserve the conservative radius magnitude for shader-side
+                // authored-grid extent recovery while retaining the negative
+                // no-frustum-cull marker consumed by traditional compaction.
+                instance.boundsCenterRadius.w =
+                    -abs(instance.boundsCenterRadius.w);
+            }
             instance.sourceRecordIndex = sourceRecordIndex;
             instance.sourceSurfaceInstanceIndex = record.sourceSurfaceInstanceIndex;
             instance.objectIdLow = static_cast<uint32_t>(record.objectId.value & 0xffffffffull);

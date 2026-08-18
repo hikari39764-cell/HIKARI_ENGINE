@@ -235,6 +235,8 @@ namespace HIKARI::GFX::GPU_PROFILE {
         case Pass::SceneLayers: return "Scene Layers";
         case Pass::UiLayers: return "UI Layers";
         case Pass::ImGui: return "ImGui";
+        case Pass::WaterVisibilityDepth: return "Water Visibility Depth";
+        case Pass::StylizedClouds: return "Stylized Clouds";
         case Pass::Count:
         default: return "";
         }

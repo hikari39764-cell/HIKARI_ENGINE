@@ -345,6 +345,81 @@ namespace HIKARI::MESHRENDERER {
             sandDataAddress);
     }
 
+    void BindOceanSpectrumData(
+        const MeshBindingContext& ctx,
+        D3D12_GPU_DESCRIPTOR_HANDLE spectrumTable,
+        bool valid,
+        uint32_t resolution) {
+
+        if (ctx.cmd == nullptr) {
+            return;
+        }
+
+        // The spectrum sample seam short-circuits when the control flag is
+        // zero. Keep the descriptor-table root parameter legal in that mode
+        // by reusing an already-owned neutral SRV instead of allocating a
+        // second six-descriptor table during an initialization failure.
+        const bool outputTableValid = valid && spectrumTable.ptr != 0u;
+        if (spectrumTable.ptr == 0u) {
+            const D3D12_GPU_DESCRIPTOR_HANDLE fallbackSrv =
+                RENDER3D::GetTextureResourceSrvGpuHandleFromBackendHandle(
+                    ctx.fallbackTextureHandle);
+            if (fallbackSrv.ptr != 0u) {
+                spectrumTable = fallbackSrv;
+                if (ctx.graphics != nullptr &&
+                    ctx.graphics->device != nullptr &&
+                    ctx.graphics->srvHeap != nullptr) {
+                    const UINT fallbackIndex =
+                        RENDER3D::
+                            GetTextureResourceSrvDescriptorIndexFromBackendHandle(
+                                ctx.fallbackTextureHandle);
+                    const bool hasSixDescriptorsInHeap =
+                        fallbackIndex != UINT32_MAX &&
+                        fallbackIndex <=
+                            GFX::DESCRIPTOR::kSrvHeapCapacity - 6u;
+                    if (!hasSixDescriptorsInHeap) {
+                        spectrumTable = {};
+                    }
+                }
+            }
+        }
+        if (spectrumTable.ptr == 0u &&
+            ctx.graphics != nullptr &&
+            ctx.graphics->device != nullptr &&
+            ctx.graphics->srvHeap != nullptr) {
+            const UINT descriptorSize =
+                ctx.graphics->device->GetDescriptorHandleIncrementSize(
+                    D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+            // The fixed system range starts with six contiguous SRV slots.
+            // Their contents are irrelevant while the control flag is zero,
+            // but the table base remains inside the shader-visible heap.
+            spectrumTable = GFX::DESCRIPTOR::GpuAt(
+                ctx.graphics->srvHeap,
+                descriptorSize,
+                GFX::DESCRIPTOR::ToIndex(
+                    GFX::DESCRIPTOR::SystemSrv::SceneColor));
+        }
+        if (spectrumTable.ptr != 0u) {
+            BindDescriptorTableCached(
+                ctx,
+                ROOT_PARAM::OceanSpectrumData,
+                spectrumTable);
+        }
+        const uint32_t constants[2] = {
+            outputTableValid ? 1u : 0u,
+            outputTableValid ? resolution : 0u
+        };
+        ctx.cmd->SetGraphicsRoot32BitConstants(
+            ROOT_PARAM::OceanSpectrumControl,
+            2u,
+            constants,
+            0u);
+        if (ctx.cache != nullptr) {
+            ctx.cache->rootConstantValid[
+                ROOT_PARAM::OceanSpectrumControl] = false;
+        }
+    }
+
     void BindScreenSpaceTraceResources(
         const MeshBindingContext& ctx) {
 

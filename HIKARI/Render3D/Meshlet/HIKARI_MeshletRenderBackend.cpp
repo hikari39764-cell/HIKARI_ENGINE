@@ -65,6 +65,8 @@ namespace HIKARI::RENDER3D::MESHLET {
                 return MeshletPipelineMask::VisibilityOverlay;
             case MeshletPipelineKind::DepthPrepass:
                 return MeshletPipelineMask::DepthPrepass;
+            case MeshletPipelineKind::WaterVisibility:
+                return MeshletPipelineMask::WaterVisibility;
             case MeshletPipelineKind::ForwardOpaque:
             default:
                 return MeshletPipelineMask::ForwardOpaque;
@@ -141,7 +143,8 @@ namespace HIKARI::RENDER3D::MESHLET {
             const MeshletRenderBackend::PipelineBucketArray& geometryFeatureMask,
             const MeshletRenderBackend::PipelineBucketArray& geometryOutline,
             const MeshletRenderBackend::PipelineBucketArray& visibilityOverlay,
-            const MeshletRenderBackend::PipelineBucketArray& depthPrepass) {
+            const MeshletRenderBackend::PipelineBucketArray& depthPrepass,
+            const MeshletRenderBackend::PipelineBucketArray& waterVisibility) {
 
             bool ready = true;
             if (IsPipelineRequested(pipelineMask, MeshletPipelineKind::ForwardOpaque)) {
@@ -169,6 +172,11 @@ namespace HIKARI::RENDER3D::MESHLET {
             if (IsPipelineRequested(pipelineMask, MeshletPipelineKind::DepthPrepass)) {
                 ready = ready && ArePipelinesReady(depthPrepass);
             }
+            // Water visibility is an optional auxiliary producer.  Its absence
+            // must never make the main mesh-shader renderer unavailable; the
+            // caller falls back to the authoritative opaque SceneDepth when
+            // this bucket is not ready.
+            (void)waterVisibility;
             return ready;
         }
 
@@ -278,6 +286,10 @@ namespace HIKARI::RENDER3D::MESHLET {
                 return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided
                     ? "MeshletDraw.DepthPrepass.DoubleSided"
                     : "MeshletDraw.DepthPrepass.BackFace";
+            case MeshletPipelineKind::WaterVisibility:
+                return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided
+                    ? "MeshletDraw.WaterVisibility.DoubleSided"
+                    : "MeshletDraw.WaterVisibility.BackFace";
             case MeshletPipelineKind::GeometryAux:
                 return bucket == GPUDRIVEN::GpuDrivenCommandBucket::DoubleSided
                     ? "MeshletDraw.GeometryAux.DoubleSided"
@@ -324,6 +336,8 @@ namespace HIKARI::RENDER3D::MESHLET {
             case MeshletPipelineKind::VisibilityOverlay:
                 return GFX::GPU_PROFILE::Pass::MeshletDrawVisibilityOverlay;
             case MeshletPipelineKind::DepthPrepass:
+                return GFX::GPU_PROFILE::Pass::MeshletDrawDepthPrepass;
+            case MeshletPipelineKind::WaterVisibility:
                 return GFX::GPU_PROFILE::Pass::MeshletDrawDepthPrepass;
             case MeshletPipelineKind::ForwardDepthAware:
                 return GFX::GPU_PROFILE::Pass::MeshletDrawDepthAware;
@@ -556,6 +570,7 @@ namespace HIKARI::RENDER3D::MESHLET {
         Microsoft::WRL::ComPtr<ID3DBlob> forwardMeshShader;
         Microsoft::WRL::ComPtr<ID3DBlob> shadowMeshShader;
         Microsoft::WRL::ComPtr<ID3DBlob> depthMeshShader;
+        Microsoft::WRL::ComPtr<ID3DBlob> waterVisibilityMeshShader;
         Microsoft::WRL::ComPtr<ID3DBlob> geometryMeshShader;
         Microsoft::WRL::ComPtr<ID3DBlob> geometryOutlineMeshShader;
         std::array<
@@ -564,6 +579,7 @@ namespace HIKARI::RENDER3D::MESHLET {
         Microsoft::WRL::ComPtr<ID3DBlob> depthAwarePixelShader;
         Microsoft::WRL::ComPtr<ID3DBlob> transparentPixelShader;
         Microsoft::WRL::ComPtr<ID3DBlob> shadowPixelShader;
+        Microsoft::WRL::ComPtr<ID3DBlob> waterVisibilityPixelShader;
         Microsoft::WRL::ComPtr<ID3DBlob> geometryPixelShader;
         Microsoft::WRL::ComPtr<ID3DBlob> geometryFeatureMaskPixelShader;
         Microsoft::WRL::ComPtr<ID3DBlob> geometryOutlinePixelShader;
@@ -577,11 +593,15 @@ namespace HIKARI::RENDER3D::MESHLET {
             IsPipelineRequested(pipelineMask_, MeshletPipelineKind::Shadow);
         const bool needsDepthMeshShader =
             IsPipelineRequested(pipelineMask_, MeshletPipelineKind::DepthPrepass);
+        const bool needsWaterVisibilityMeshShader =
+            IsPipelineRequested(
+                pipelineMask_, MeshletPipelineKind::WaterVisibility);
         const bool needsGeometryMeshShader =
             IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryAux);
         const bool needsGeometryOutlineMeshShader =
             IsPipelineRequested(
                 pipelineMask_, MeshletPipelineKind::GeometryOutline);
+        bool waterVisibilityShadersReady = true;
         if (!GFX::CompileShaderFileSm6(
             L"HIKARI/Shaders/Render3D_MeshletAS.hlsl",
             "main",
@@ -612,6 +632,17 @@ namespace HIKARI::RENDER3D::MESHLET {
                 GFX::ShaderStage::Mesh,
                 depthMeshShader.GetAddressOf())) {
             return false;
+        }
+        if (needsWaterVisibilityMeshShader &&
+            !GFX::CompileShaderFileSm6(
+                L"HIKARI/Shaders/Render3D_MeshletWaterVisibilityMS.hlsl",
+                "main",
+                GFX::ShaderStage::Mesh,
+                waterVisibilityMeshShader.GetAddressOf())) {
+            waterVisibilityShadersReady = false;
+            DEBUGLOG::PushRenderError(
+                "[MeshletBackend][WARN] Optional water visibility mesh shader "
+                "failed to compile; opaque SceneDepth fallback remains active.");
         }
         if (needsGeometryMeshShader &&
             !GFX::CompileShaderFileSm6(
@@ -666,6 +697,18 @@ namespace HIKARI::RENDER3D::MESHLET {
                 GFX::ShaderStage::Pixel,
                 shadowPixelShader.GetAddressOf())) {
             return false;
+        }
+        if (IsPipelineRequested(
+                pipelineMask_, MeshletPipelineKind::WaterVisibility) &&
+            !GFX::CompileShaderFileSm6(
+                L"HIKARI/Shaders/Render3D_MeshletWaterVisibilityPS.hlsl",
+                "main",
+                GFX::ShaderStage::Pixel,
+                waterVisibilityPixelShader.GetAddressOf())) {
+            waterVisibilityShadersReady = false;
+            DEBUGLOG::PushRenderError(
+                "[MeshletBackend][WARN] Optional water visibility pixel shader "
+                "failed to compile; opaque SceneDepth fallback remains active.");
         }
         if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::GeometryAux) &&
             !GFX::CompileShaderFileSm6(
@@ -885,6 +928,27 @@ namespace HIKARI::RENDER3D::MESHLET {
                     ++stats_.pipelineCreateReadyCount;
                 }
             }
+
+            if (IsPipelineRequested(
+                    pipelineMask_, MeshletPipelineKind::WaterVisibility) &&
+                waterVisibilityShadersReady) {
+                ++stats_.pipelineCreateRequestCount;
+                if (CreateMeshletPipelineState(
+                        device,
+                        rootSignature,
+                        amplificationShader.Get(),
+                        waterVisibilityMeshShader.Get(),
+                        waterVisibilityPixelShader.Get(),
+                        DXGI_FORMAT_UNKNOWN,
+                        CullModeForBucket(bucket),
+                        false,
+                        true,
+                        false,
+                        L"Meshlet WaterVisibility PSO",
+                        waterVisibilityPipelineStates_[bucketIndex].GetAddressOf())) {
+                    ++stats_.pipelineCreateReadyCount;
+                }
+            }
         }
 
         ResetFrame();
@@ -919,6 +983,9 @@ namespace HIKARI::RENDER3D::MESHLET {
             pipeline.Reset();
         }
         for (auto& pipeline : depthPrepassPipelineStates_) {
+            pipeline.Reset();
+        }
+        for (auto& pipeline : waterVisibilityPipelineStates_) {
             pipeline.Reset();
         }
         pipelineMask_ = MeshletPipelineMask::All;
@@ -969,6 +1036,10 @@ namespace HIKARI::RENDER3D::MESHLET {
         const bool depthPrepassReady =
             IsPipelineRequested(pipelineMask_, MeshletPipelineKind::DepthPrepass) &&
             ArePipelinesReady(depthPrepassPipelineStates_);
+        const bool waterVisibilityReady =
+            IsPipelineRequested(
+                pipelineMask_, MeshletPipelineKind::WaterVisibility) &&
+            ArePipelinesReady(waterVisibilityPipelineStates_);
         stats_.forwardPipelineReady = forwardReady;
         stats_.depthAwarePipelineReady = depthAwareReady;
         stats_.transparentPipelineReady = transparentReady;
@@ -978,6 +1049,7 @@ namespace HIKARI::RENDER3D::MESHLET {
         stats_.geometryOutlinePipelineReady = geometryOutlineReady;
         stats_.visibilityOverlayPipelineReady = visibilityOverlayReady;
         stats_.depthPrepassPipelineReady = depthPrepassReady;
+        stats_.waterVisibilityPipelineReady = waterVisibilityReady;
         stats_.pipelineReady = AreRequestedPipelinesReady(
             pipelineMask_,
             forwardPipelineStates_,
@@ -988,7 +1060,8 @@ namespace HIKARI::RENDER3D::MESHLET {
             geometryFeatureMaskPipelineStates_,
             geometryOutlinePipelineStates_,
             visibilityOverlayPipelineStates_,
-            depthPrepassPipelineStates_);
+            depthPrepassPipelineStates_,
+            waterVisibilityPipelineStates_);
     }
 
     bool MeshletRenderBackend::Execute(const MeshletRenderExecutionContext& ctx) {
@@ -1038,6 +1111,10 @@ namespace HIKARI::RENDER3D::MESHLET {
         stats_.depthPrepassPipelineReady =
             IsPipelineRequested(pipelineMask_, MeshletPipelineKind::DepthPrepass) &&
             ArePipelinesReady(depthPrepassPipelineStates_);
+        stats_.waterVisibilityPipelineReady =
+            IsPipelineRequested(
+                pipelineMask_, MeshletPipelineKind::WaterVisibility) &&
+            ArePipelinesReady(waterVisibilityPipelineStates_);
         stats_.pipelineReady = AreRequestedPipelinesReady(
             pipelineMask_,
             forwardPipelineStates_,
@@ -1048,7 +1125,8 @@ namespace HIKARI::RENDER3D::MESHLET {
             geometryFeatureMaskPipelineStates_,
             geometryOutlinePipelineStates_,
             visibilityOverlayPipelineStates_,
-            depthPrepassPipelineStates_);
+            depthPrepassPipelineStates_,
+            waterVisibilityPipelineStates_);
         const bool requestedPipelineReady =
             ctx.pipelineKind == MeshletPipelineKind::GeometryAuxFeatureMask
                 ? stats_.geometryFeatureMaskPipelineReady
@@ -1060,6 +1138,8 @@ namespace HIKARI::RENDER3D::MESHLET {
                         ? stats_.visibilityOverlayPipelineReady
                 : ctx.pipelineKind == MeshletPipelineKind::DepthPrepass
                     ? stats_.depthPrepassPipelineReady
+                    : ctx.pipelineKind == MeshletPipelineKind::WaterVisibility
+                        ? stats_.waterVisibilityPipelineReady
                     : ctx.pipelineKind == MeshletPipelineKind::ForwardDepthAware
                         ? stats_.depthAwarePipelineReady
                         : ctx.pipelineKind == MeshletPipelineKind::ForwardTransparent
@@ -1160,6 +1240,8 @@ namespace HIKARI::RENDER3D::MESHLET {
             stats_.visibilityOverlaySubmittedDispatchCount += requestedDispatchCount;
         } else if (ctx.pipelineKind == MeshletPipelineKind::DepthPrepass) {
             stats_.depthPrepassSubmittedDispatchCount += requestedDispatchCount;
+        } else if (ctx.pipelineKind == MeshletPipelineKind::WaterVisibility) {
+            stats_.depthPrepassSubmittedDispatchCount += requestedDispatchCount;
         } else if (ctx.pipelineKind == MeshletPipelineKind::Shadow) {
             stats_.shadowSubmittedDispatchCount += requestedDispatchCount;
         } else {
@@ -1183,6 +1265,8 @@ namespace HIKARI::RENDER3D::MESHLET {
         switch (kind) {
         case MeshletPipelineKind::DepthPrepass:
             return depthPrepassPipelineStates_[index].Get();
+        case MeshletPipelineKind::WaterVisibility:
+            return waterVisibilityPipelineStates_[index].Get();
         case MeshletPipelineKind::GeometryAux:
             return geometryAuxPipelineStates_[index].Get();
         case MeshletPipelineKind::GeometryAuxFeatureMask:

@@ -53,6 +53,7 @@ namespace HIKARI::MESHRENDERER {
         GeometryOutline,
         VisibilityOverlay,
         DepthPrepass,
+        WaterVisibility,
     };
 
     struct MeshDrawContext {
@@ -85,6 +86,9 @@ namespace HIKARI::MESHRENDERER {
         D3D12_GPU_VIRTUAL_ADDRESS surfaceFeatureDataAddress = 0;
         D3D12_GPU_VIRTUAL_ADDRESS sandSurfaceDataAddress = 0;
         D3D12_GPU_VIRTUAL_ADDRESS surfaceFeatureHeightsAddress = 0;
+        D3D12_GPU_DESCRIPTOR_HANDLE oceanSpectrumTable{};
+        uint32_t oceanSpectrumResolution = 0u;
+        bool oceanSpectrumValid = false;
         D3D12_GPU_VIRTUAL_ADDRESS shadowAddress = 0;
         D3D12_GPU_VIRTUAL_ADDRESS skyEnvironmentAddress = 0;
         MeshDrawPassKind passKind = MeshDrawPassKind::Forward;
