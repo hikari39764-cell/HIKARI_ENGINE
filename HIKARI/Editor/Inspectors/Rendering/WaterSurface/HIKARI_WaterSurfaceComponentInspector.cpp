@@ -80,6 +80,36 @@ namespace HIKARI {
                 settings_.scatteringColor.x,
                 settings_.scatteringColor.y,
                 settings_.scatteringColor.z);
+            builder.FloatRange(
+                AuthoringFieldDescriptor{
+                    WaterSurfaceComponentPropertyIds::ShallowClearDepth,
+                    "Shallow Clear Depth",
+                    "Water depth in meters that remains visually clear before shallow-water blending begins."
+                },
+                settings_.shallowClearDepth,
+                0.0f,
+                100.0f,
+                0.05f);
+            builder.FloatRange(
+                AuthoringFieldDescriptor{
+                    WaterSurfaceComponentPropertyIds::ShallowBlendDepth,
+                    "Shallow Blend Depth",
+                    "Water depth in meters at which the shallow-water color reaches its full blend range."
+                },
+                settings_.shallowBlendDepth,
+                0.001f,
+                100.0f,
+                0.05f);
+            builder.FloatRange(
+                AuthoringFieldDescriptor{
+                    WaterSurfaceComponentPropertyIds::ShallowGraphicWeight,
+                    "Shallow Graphic Weight",
+                    "Weight of the stylized shallow-water graphic contribution."
+                },
+                settings_.shallowGraphicWeight,
+                0.0f,
+                1.0f,
+                0.01f);
             builder.Color3(
                 AuthoringFieldDescriptor{
                     WaterSurfaceComponentPropertyIds::FoamColor,

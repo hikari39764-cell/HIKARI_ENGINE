@@ -68,6 +68,9 @@ namespace HIKARI {
             data.microWaveStrength = settings.microWaveStrength;
             data.depthTransmittance = settings.depthTransmittance;
             data.scatteringColor = settings.scatteringColor;
+            data.shallowClearDepth = settings.shallowClearDepth;
+            data.shallowBlendDepth = settings.shallowBlendDepth;
+            data.shallowGraphicWeight = settings.shallowGraphicWeight;
             data.foamColor = settings.foamColor;
             data.foamAmount = settings.foamAmount;
             data.absorptionDistance = settings.absorptionDistance;

@@ -12,6 +12,9 @@ namespace HIKARI {
         inline constexpr char MicroWaveStrength[] = "microWaveStrength";
         inline constexpr char DepthTransmittance[] = "depthTransmittance";
         inline constexpr char ScatteringColor[] = "scatteringColor";
+        inline constexpr char ShallowClearDepth[] = "shallowClearDepth";
+        inline constexpr char ShallowBlendDepth[] = "shallowBlendDepth";
+        inline constexpr char ShallowGraphicWeight[] = "shallowGraphicWeight";
         inline constexpr char FoamColor[] = "foamColor";
         inline constexpr char FoamAmount[] = "foamAmount";
         inline constexpr char AbsorptionDistance[] = "absorptionDistance";

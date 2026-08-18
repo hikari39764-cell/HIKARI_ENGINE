@@ -3,7 +3,7 @@
 
 #include "Include/Math/HIKARI_FiniteMath.hlsli"
 
-static const uint HIKARI_WATER_SURFACE_GPU_SCHEMA_VERSION = 1u;
+static const uint HIKARI_WATER_SURFACE_GPU_SCHEMA_VERSION = 2u;
 static const uint HIKARI_WATER_SURFACE_GPU_FLAG_ENABLED = 1u << 0;
 static const uint HIKARI_WATER_SURFACE_WAVE_COUNT = 4u;
 static const float HIKARI_WATER_TIME_WRAP_SECONDS = 4096.0f;
@@ -33,7 +33,8 @@ struct HikariWaterSurfaceGpuData
     float4 scatteringAbsorption;
     // (foamColor.rgb, surfaceRoughness)
     float4 foamRoughness;
-    // (coverageResolution, reserved, reserved, reserved)
+    // (coverageResolution, shallowClearDepth, shallowBlendDepth,
+    //  shallowGraphicWeight)
     float4 coverageParams;
     HikariWaterSurfaceWaveGpuData waves[HIKARI_WATER_SURFACE_WAVE_COUNT];
 };
@@ -65,6 +66,9 @@ struct HikariWaterSurfaceParams
     uint waveCount;
     uint liquidCoverageOffset;
     uint coverageResolution;
+    float shallowClearDepth;
+    float shallowBlendDepth;
+    float shallowGraphicWeight;
     HikariWaterWaveParams waves[HIKARI_WATER_SURFACE_WAVE_COUNT];
 };
 
@@ -85,6 +89,9 @@ HikariWaterSurfaceParams HikariBuildNeutralWaterSurfaceParams()
     p.absorptionDistance = 1.0f;
     p.surfaceRoughness = 1.0f;
     p.coverageResolution = 1u;
+    p.shallowClearDepth = 0.20f;
+    p.shallowBlendDepth = 2.80f;
+    p.shallowGraphicWeight = 0.14f;
     return p;
 }
 
@@ -148,6 +155,17 @@ HikariWaterSurfaceParams HikariLoadWaterSurfaceParamsFromDataIndex(
     p.waveCount = min(data.header.z, HIKARI_WATER_SURFACE_WAVE_COUNT);
     p.liquidCoverageOffset = data.header.w;
     p.coverageResolution = max((uint)data.coverageParams.x, 1u);
+    p.shallowClearDepth = clamp(
+        HikariFiniteOr(data.coverageParams.y, 0.20f),
+        0.0f,
+        1000.0f - 1.0e-3f);
+    p.shallowBlendDepth = clamp(
+        HikariFiniteOr(data.coverageParams.z, 2.80f),
+        p.shallowClearDepth + 1.0e-3f,
+        1000.0f);
+    p.shallowGraphicWeight = saturate(HikariFiniteOr(
+        data.coverageParams.w,
+        0.14f));
     [unroll]
     for (uint index = 0u; index < HIKARI_WATER_SURFACE_WAVE_COUNT; ++index)
     {

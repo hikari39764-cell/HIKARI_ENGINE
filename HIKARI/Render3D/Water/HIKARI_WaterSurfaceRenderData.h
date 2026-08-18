@@ -37,6 +37,9 @@ namespace HIKARI::RENDER3D::WATER {
         float foamAmount = 0.0f;
         float absorptionDistance = 1.0f;
         float surfaceRoughness = 0.1f;
+        float shallowClearDepth = 0.20f;
+        float shallowBlendDepth = 2.80f;
+        float shallowGraphicWeight = 0.14f;
         std::array<WaterWaveRenderData, kWaterSurfaceWaveCount> waves{};
         uint32_t coverageResolution = 256u;
         std::vector<float> liquidCoverage{};

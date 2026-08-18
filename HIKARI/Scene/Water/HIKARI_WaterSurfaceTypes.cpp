@@ -10,6 +10,8 @@ namespace HIKARI::WATER {
         constexpr float kTwoPi = 6.28318530717958647692f;
         constexpr float kGravity = 9.81f;
         constexpr float kTimeWrapSeconds = 4096.0f;
+        constexpr float kMinimumShallowBlendDepthDelta = 1.0e-3f;
+        constexpr float kMaximumShallowDepth = 1000.0f;
 
         float FiniteOr(float value, float fallback) noexcept {
             return std::isfinite(value) ? value : fallback;
@@ -100,6 +102,9 @@ namespace HIKARI::WATER {
             settings.microWaveStrength = 0.52f;
             settings.depthTransmittance = { 0.10f, 0.52f, 0.72f };
             settings.scatteringColor = { 0.015f, 0.24f, 0.30f };
+            settings.shallowClearDepth = 0.20f;
+            settings.shallowBlendDepth = 2.80f;
+            settings.shallowGraphicWeight = 0.14f;
             settings.foamColor = { 0.96f, 0.99f, 1.0f };
             settings.foamAmount = 0.30f;
             settings.absorptionDistance = 11.0f;
@@ -145,6 +150,21 @@ namespace HIKARI::WATER {
             fallback.scatteringColor,
             0.0f,
             8.0f);
+        settings.shallowClearDepth = ClampFinite(
+            settings.shallowClearDepth,
+            fallback.shallowClearDepth,
+            0.0f,
+            kMaximumShallowDepth - kMinimumShallowBlendDepthDelta);
+        settings.shallowBlendDepth = ClampFinite(
+            settings.shallowBlendDepth,
+            fallback.shallowBlendDepth,
+            settings.shallowClearDepth + kMinimumShallowBlendDepthDelta,
+            kMaximumShallowDepth);
+        settings.shallowGraphicWeight = ClampFinite(
+            settings.shallowGraphicWeight,
+            fallback.shallowGraphicWeight,
+            0.0f,
+            1.0f);
         settings.foamColor = SanitizeColor(
             settings.foamColor,
             fallback.foamColor,
@@ -356,6 +376,9 @@ namespace HIKARI::WATER {
                 lhs.depthTransmittance,
                 rhs.depthTransmittance) ||
             !equalVec3(lhs.scatteringColor, rhs.scatteringColor) ||
+            lhs.shallowClearDepth != rhs.shallowClearDepth ||
+            lhs.shallowBlendDepth != rhs.shallowBlendDepth ||
+            lhs.shallowGraphicWeight != rhs.shallowGraphicWeight ||
             !equalVec3(lhs.foamColor, rhs.foamColor) ||
             lhs.foamAmount != rhs.foamAmount ||
             lhs.absorptionDistance != rhs.absorptionDistance ||

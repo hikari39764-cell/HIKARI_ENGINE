@@ -9,7 +9,7 @@
 
 namespace HIKARI::WATER {
 
-    constexpr uint32_t kWaterSurfaceSchemaVersion = 2u;
+    constexpr uint32_t kWaterSurfaceSchemaVersion = 3u;
     constexpr std::size_t kMaxWaterWaves = 4u;
 
     enum class WaterSurfacePreset : uint8_t {
@@ -41,6 +41,9 @@ namespace HIKARI::WATER {
         // absorptionDistance 進んだ光に残る RGB 透過率。
         MATH::Vec3 depthTransmittance{ 0.04f, 0.30f, 0.68f };
         MATH::Vec3 scatteringColor{ 0.035f, 0.58f, 0.78f };
+        float shallowClearDepth = 0.20f;
+        float shallowBlendDepth = 2.80f;
+        float shallowGraphicWeight = 0.14f;
         MATH::Vec3 foamColor{ 1.0f, 0.97f, 0.82f };
         float foamAmount = 0.58f;
         float absorptionDistance = 8.0f;

@@ -152,6 +152,31 @@ HikariWaterDepthSample HikariSampleWaterCenterDepth(
     return result;
 }
 
+float HikariWaterColumnDepth(
+    PSInput input,
+    HikariWaterDepthSample centerDepth,
+    float3 stableSurfaceNormalWS)
+{
+    // Scene depth は視線距離なので、安定した水面法線へ射影して
+    // カメラ角度に依存しない浅水遷移を作る。欠損・矛盾した深度は
+    // 安全側として深水へ退避する。
+    const float safeFallbackDepth = 1000.0f;
+    if (!centerDepth.valid ||
+        !HikariIsFiniteFloat3(centerDepth.receiverWorldPosition))
+    {
+        return safeFallbackDepth;
+    }
+    const float normalColumnDepth = dot(
+        centerDepth.receiverWorldPosition - input.worldPosWS,
+        -stableSurfaceNormalWS);
+    if (!HikariIsFiniteFloat(normalColumnDepth) ||
+        normalColumnDepth < -0.025f)
+    {
+        return safeFallbackDepth;
+    }
+    return max(normalColumnDepth, 0.0f);
+}
+
 float3 HikariSampleWaterRefraction(
     PSInput input,
     float3 normalWS,
@@ -368,6 +393,17 @@ float4 HikariShadeWaterSurface(
     {
         geometricNormal = -geometricNormal;
     }
+    const float3 stableSurfaceNormalFallback = input.isFrontFace
+        ? geometricNormal
+        : -geometricNormal;
+    const float3 stableSurfaceNormalUnflipped = HikariSafeNormalize(
+        mul(
+            (float3x3)waterObjectData.normalMatrix,
+            float3(0.0f, 1.0f, 0.0f)),
+        stableSurfaceNormalFallback);
+    const float3 stableSurfaceNormalWS = input.isFrontFace
+        ? stableSurfaceNormalUnflipped
+        : -stableSurfaceNormalUnflipped;
     const float3 normalWS = HikariWaterResolveMicroNormal(
         geometricNormal,
         input.tangentWS,
@@ -389,11 +425,25 @@ float4 HikariShadeWaterSurface(
         gScreenParams.zw);
     const HikariWaterDepthSample centerDepth =
         HikariSampleWaterCenterDepth(input, screenUv);
+    const float columnDepth = HikariWaterColumnDepth(
+        input,
+        centerDepth,
+        stableSurfaceNormalWS);
+    const float shallowMask = 1.0f - smoothstep(
+        p.shallowClearDepth,
+        p.shallowBlendDepth,
+        columnDepth);
     float opticalDistance;
     float refractionConfidence;
-    const float distortionStrength = anime
+    const float deepDistortionStrength = anime
         ? 0.55f + p.microWaveStrength * 0.20f
         : 0.85f + p.microWaveStrength * 0.30f;
+    const float distortionStrength = anime
+        ? deepDistortionStrength * lerp(
+            1.0f,
+            0.30f,
+            shallowMask)
+        : deepDistortionStrength;
     const float3 sceneRefraction = HikariSampleWaterRefraction(
         input,
         normalWS,
@@ -530,7 +580,7 @@ float4 HikariShadeWaterSurface(
         localXZ,
         animationTime);
     const float shoreFoam = centerDepth.valid
-        ? 1.0f - smoothstep(0.18f, 1.65f, opticalDistance)
+        ? 1.0f - smoothstep(0.18f, 1.65f, columnDepth)
         : 0.0f;
     const float crestFoam = smoothstep(
         anime ? 0.18f : 0.30f,
@@ -601,9 +651,13 @@ float4 HikariShadeWaterSurface(
             graphicBody,
             compressedSummer,
             compressionStep * 0.24f);
-        const float graphicWeight = saturate(
+        const float deepGraphicWeight = saturate(
             0.68f + depthStep1 * 0.12f +
             depthStep2 * 0.08f + compressionStep * 0.06f);
+        const float graphicWeight = lerp(
+            deepGraphicWeight,
+            p.shallowGraphicWeight,
+            shallowMask);
         color = lerp(
             transmittedColor,
             graphicBody,
@@ -636,8 +690,12 @@ float4 HikariShadeWaterSurface(
             0.0f.xxx);
         color += summerSun *
             (sunRibbon * 0.12f + sparkle * 0.58f) * shadowFactor;
+        const float environmentReflectionWeight = lerp(
+            0.42f + 0.48f * fresnel,
+            1.0f,
+            shallowMask);
         color += resolvedEnvironmentReflection *
-            (0.42f + 0.48f * fresnel);
+            environmentReflectionWeight;
         color += (directionalReflection + localReflection) * 0.35f;
         const float3 crestRibbonColor = lerp(
             shallowSummer,

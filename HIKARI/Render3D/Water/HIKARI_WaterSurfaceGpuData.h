@@ -9,7 +9,7 @@
 
 namespace HIKARI::RENDER3D::WATER {
 
-    constexpr uint32_t kWaterSurfaceGpuSchemaVersion = 1u;
+    constexpr uint32_t kWaterSurfaceGpuSchemaVersion = 2u;
 
     enum class WaterSurfaceGpuFlags : uint32_t {
         None = 0u,

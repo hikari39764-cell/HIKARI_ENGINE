@@ -10,6 +10,11 @@ namespace HIKARI::RENDER3D::WATER {
         constexpr float kTwoPi = 6.28318530717958647692f;
         constexpr float kGravity = 9.81f;
         constexpr float kMinimumWavelength = 0.05f;
+        constexpr float kDefaultShallowClearDepth = 0.20f;
+        constexpr float kDefaultShallowBlendDepth = 2.80f;
+        constexpr float kDefaultShallowGraphicWeight = 0.14f;
+        constexpr float kMinimumShallowDepthRange = 1.0e-3f;
+        constexpr float kMaximumShallowDepth = 1000.0f;
 
         bool Vec3Equal(
             const MATH::Vec3& left,
@@ -51,6 +56,9 @@ namespace HIKARI::RENDER3D::WATER {
             left.foamAmount != right.foamAmount ||
             left.absorptionDistance != right.absorptionDistance ||
             left.surfaceRoughness != right.surfaceRoughness ||
+            left.shallowClearDepth != right.shallowClearDepth ||
+            left.shallowBlendDepth != right.shallowBlendDepth ||
+            left.shallowGraphicWeight != right.shallowGraphicWeight ||
             left.coverageResolution != right.coverageResolution ||
             left.liquidCoverage != right.liquidCoverage) {
             return false;
@@ -89,11 +97,29 @@ namespace HIKARI::RENDER3D::WATER {
         result.waveCount = static_cast<uint32_t>(kWaterSurfaceWaveCount);
         // 非 sentinel の recordCount は liquidCoverage の buffer offset を運ぶ。
         result.recordCount = liquidCoverageOffset;
+        const float shallowClearDepth = std::clamp(
+            FiniteOr(
+                source.shallowClearDepth,
+                kDefaultShallowClearDepth),
+            0.0f,
+            kMaximumShallowDepth - kMinimumShallowDepthRange);
+        const float shallowBlendDepth = std::clamp(
+            FiniteOr(
+                source.shallowBlendDepth,
+                kDefaultShallowBlendDepth),
+            shallowClearDepth + kMinimumShallowDepthRange,
+            kMaximumShallowDepth);
+        const float shallowGraphicWeight = std::clamp(
+            FiniteOr(
+                source.shallowGraphicWeight,
+                kDefaultShallowGraphicWeight),
+            0.0f,
+            1.0f);
         result.coverageParams = {
             static_cast<float>((std::max)(source.coverageResolution, 1u)),
-            0.0f,
-            0.0f,
-            0.0f
+            shallowClearDepth,
+            shallowBlendDepth,
+            shallowGraphicWeight
         };
 
         const WaterSurfaceShadingModel shadingModel =

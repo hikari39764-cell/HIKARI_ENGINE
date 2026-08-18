@@ -103,6 +103,9 @@ namespace HIKARI {
                 settings.scatteringColor.x,
                 settings.scatteringColor.y,
                 settings.scatteringColor.z } },
+            { "shallowClearDepth", settings.shallowClearDepth },
+            { "shallowBlendDepth", settings.shallowBlendDepth },
+            { "shallowGraphicWeight", settings.shallowGraphicWeight },
             { "foamColor", {
                 settings.foamColor.x,
                 settings.foamColor.y,
@@ -163,6 +166,18 @@ namespace HIKARI {
                 in,
                 "shallowColor",
                 next.scatteringColor));
+        next.shallowClearDepth = JSONREAD::NumberMemberOr(
+            in,
+            "shallowClearDepth",
+            next.shallowClearDepth);
+        next.shallowBlendDepth = JSONREAD::NumberMemberOr(
+            in,
+            "shallowBlendDepth",
+            next.shallowBlendDepth);
+        next.shallowGraphicWeight = JSONREAD::NumberMemberOr(
+            in,
+            "shallowGraphicWeight",
+            next.shallowGraphicWeight);
         next.foamColor = JSONREAD::Vec3MemberOr(
             in,
             "foamColor",
