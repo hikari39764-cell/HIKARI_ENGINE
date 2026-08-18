@@ -175,10 +175,10 @@ float4 main(PS_IN i) : SV_TARGET
                 return false;
             }
 
-            blendDesc.SrcBlend = D3D12_BLEND_SRC_ALPHA;
+            blendDesc.SrcBlend = D3D12_BLEND_ONE;
             blendDesc.DestBlend = D3D12_BLEND_ONE;
-            blendDesc.SrcBlendAlpha = D3D12_BLEND_ONE;
-            blendDesc.DestBlendAlpha = D3D12_BLEND_ZERO;
+            blendDesc.SrcBlendAlpha = D3D12_BLEND_ZERO;
+            blendDesc.DestBlendAlpha = D3D12_BLEND_ONE;
             blendDesc.BlendOpAlpha = D3D12_BLEND_OP_ADD;
             pso.BlendState.RenderTarget[0] = blendDesc;
             if (!HIKARI_DX_CHECK(device->CreateGraphicsPipelineState(&pso, IID_PPV_ARGS(outSet.blendAdd.GetAddressOf())), "Create Additive Blend PSO")) {

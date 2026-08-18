@@ -37,7 +37,7 @@ namespace HIKARI {
             void Finalize();
 
         private:
-            void EnsureTempSize(int w, int h);
+            bool EnsureTempSize(int w, int h);
 
         private:
             std::vector<PostEffect*> effects_;

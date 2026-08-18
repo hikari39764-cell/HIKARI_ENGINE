@@ -1,4 +1,6 @@
 #pragma once
+#include <array>
+#include <cstdint>
 #include <wrl.h>
 #include <d3d12.h>
 #include <DirectXMath.h>
@@ -31,11 +33,18 @@ namespace HIKARI {
             bool CreateConstantBuffer();
 
         private:
+            static constexpr uint32_t kConstantDrawCapacityPerFrame = 32u;
+
             static GFX::Context context_;
             Microsoft::WRL::ComPtr<ID3DBlob> psBlob_;
 
             Microsoft::WRL::ComPtr<ID3D12Resource> constantBuffer_;
-            void* mappedPtr_ = nullptr;
+            uint8_t* mappedPtr_ = nullptr;
+            uint32_t constantStride_ = 0u;
+            std::array<uint64_t, GFX::kFrameResourceCount>
+                constantFrameSerials_{};
+            std::array<uint32_t, GFX::kFrameResourceCount>
+                constantDrawCursors_{};
 
             CommonParams params_{};
         };

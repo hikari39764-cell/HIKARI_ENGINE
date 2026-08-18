@@ -1,11 +1,14 @@
 #include "Vfx/Post/HIKARI_PostEffect.h"
 #include "Vfx/Post/HIKARI_PostQuadDrawer.h"
+#include "Core/HIKARI_TimeService.h"
 #include "Gfx/HIKARI_D3DBlobCompat.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
 #include <Windows.h>
+#include <algorithm>
 #include <d3dcommon.h>
 #include <cstring>
 #include <d3dx12.h>
+#include <limits>
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
@@ -20,6 +23,9 @@ namespace HIKARI {
         PostEffect::PostEffect()
         {
             ZeroMemory(&params_, sizeof(params_));
+            constantFrameSerials_.fill(
+                (std::numeric_limits<uint64_t>::max)());
+            constantDrawCursors_.fill(0u);
         }
 
         void PostEffect::UpdateContext(const GFX::Context& ctx) {
@@ -33,6 +39,7 @@ namespace HIKARI {
                 mappedPtr_ = nullptr;
             }
             GFX::RetireD3D12ObjectForFrame(constantBuffer_, context_, "PostEffect.ConstantBuffer");
+            constantStride_ = 0u;
         }
 
         bool PostEffect::CreateConstantBuffer()
@@ -47,7 +54,11 @@ namespace HIKARI {
                 return false;
             }
 
-            UINT size = Align256(sizeof(CommonParams));
+            constantStride_ = Align256(sizeof(CommonParams));
+            const UINT64 size =
+                static_cast<UINT64>(constantStride_) *
+                kConstantDrawCapacityPerFrame *
+                GFX::kFrameResourceCount;
 
             CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_UPLOAD);
             CD3DX12_RESOURCE_DESC resDesc = CD3DX12_RESOURCE_DESC::Buffer(size);
@@ -64,12 +75,18 @@ namespace HIKARI {
                 return false;
             }
 
-            hr = constantBuffer_->Map(0, nullptr, &mappedPtr_);
+            void* mapped = nullptr;
+            hr = constantBuffer_->Map(0, nullptr, &mapped);
             if (!HIKARI_DX_CHECK(hr, "PostEffect::Map constant buffer")) {
                 constantBuffer_.Reset();
                 mappedPtr_ = nullptr;
+                constantStride_ = 0u;
                 return false;
             }
+            mappedPtr_ = static_cast<uint8_t*>(mapped);
+            constantFrameSerials_.fill(
+                (std::numeric_limits<uint64_t>::max)());
+            constantDrawCursors_.fill(0u);
             return true;
         }
         bool PostEffect::LoadPixelShader(const wchar_t* path)
@@ -109,12 +126,37 @@ namespace HIKARI {
                 return false;
             }
 
-            memcpy(mappedPtr_, &params_, sizeof(params_));
+            const uint32_t frameSlot =
+                context_.frameIndex % GFX::kFrameResourceCount;
+            const uint64_t frameSerial =
+                TIME::GetFrameContext().frameIndex;
+            if (constantFrameSerials_[frameSlot] != frameSerial) {
+                constantFrameSerials_[frameSlot] = frameSerial;
+                constantDrawCursors_[frameSlot] = 0u;
+            }
+
+            const uint32_t drawSlot = constantDrawCursors_[frameSlot];
+            if (drawSlot >= kConstantDrawCapacityPerFrame) {
+                DEBUGLOG::PushRenderError(
+                    "[PostEffect][ERROR] Per-frame constant draw capacity exhausted; "
+                    "the draw was skipped to preserve GPU resource lifetime.");
+                return false;
+            }
+            ++constantDrawCursors_[frameSlot];
+
+            const UINT64 allocationIndex =
+                static_cast<UINT64>(frameSlot) *
+                    kConstantDrawCapacityPerFrame +
+                drawSlot;
+            const UINT64 byteOffset =
+                allocationIndex * constantStride_;
+            memcpy(mappedPtr_ + byteOffset, &params_, sizeof(params_));
 
             if (!drawer.SetPixelShader(psBlob_.Get())) {
                 return false;
             }
-            drawer.SetConstantBuffer(constantBuffer_->GetGPUVirtualAddress());
+            drawer.SetConstantBuffer(
+                constantBuffer_->GetGPUVirtualAddress() + byteOffset);
             drawer.DrawFullscreen();
             return true;
         }

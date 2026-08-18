@@ -53,68 +53,54 @@ namespace HIKARI {
             effects_.clear();
         }
 
-        void PostChain::EnsureTempSize(int w, int h)
+        bool PostChain::EnsureTempSize(int w, int h)
         {
             if (w <= 0 || h <= 0) {
-                return;
+                return false;
             }
 
             constexpr DXGI_FORMAT kPostChainFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
-            if (!tempsInitialized_ ||
+            const bool recreate = !tempsInitialized_ ||
                 ping_.GetResource() == nullptr ||
                 pong_.GetResource() == nullptr ||
                 ping_.GetFormat() != kPostChainFormat ||
-                pong_.GetFormat() != kPostChainFormat) {
+                pong_.GetFormat() != kPostChainFormat ||
+                ping_.GetWidth() != w || ping_.GetHeight() != h ||
+                pong_.GetWidth() != w || pong_.GetHeight() != h;
+            if (!recreate) {
+                return true;
+            }
+
+            // ping/pong は常に同じ世代として再生成し、片方だけ古い状態を
+            // 後段へ公開しない。
+            ping_.Finalize();
+            pong_.Finalize();
+            tempsInitialized_ = false;
+            ping_.UpdateContext(context_);
+            pong_.UpdateContext(context_);
+            const bool okPing = ping_.Init(
+                w, h,
+                kPostChainFormat,
+                false,
+                { 0.0f, 0.0f, 0.0f, 0.0f });
+            const bool okPong = pong_.Init(
+                w, h,
+                kPostChainFormat,
+                false,
+                { 0.0f, 0.0f, 0.0f, 0.0f });
+            tempsInitialized_ = okPing && okPong;
+            if (!tempsInitialized_) {
                 ping_.Finalize();
                 pong_.Finalize();
-                ping_.UpdateContext(context_);
-                pong_.UpdateContext(context_);
-                const bool okPing = ping_.Init(
-                    w, h,
-                    kPostChainFormat,
-                    false,
-                    { 0.0f, 0.0f, 0.0f, 0.0f }
-                );
-
-                const bool okPong = pong_.Init(
-                    w, h,
-                    kPostChainFormat,
-                    false,
-                    { 0.0f, 0.0f, 0.0f, 0.0f }
-                );
-                tempsInitialized_ = okPing && okPong;
-                if (!tempsInitialized_) {
-                    DEBUGLOG::PushRenderError(std::string("[PostChain][ERROR] EnsureTempSize failed.\n") + DumpState());
-                }
-                return;
+                DEBUGLOG::PushRenderError(
+                    std::string("[PostChain][ERROR] EnsureTempSize failed.\n") +
+                    DumpState());
             }
-
-
-
-            if (ping_.GetWidth() != w || ping_.GetHeight() != h) {
-                ping_.Finalize();
-                ping_.UpdateContext(context_);
-                ping_.Init(
-                    w, h,
-                    kPostChainFormat,
-                    false,
-                    { 0.0f, 0.0f, 0.0f, 0.0f }
-                );
-            }
-            if (pong_.GetWidth() != w || pong_.GetHeight() != h) {
-                pong_.Finalize();
-                pong_.UpdateContext(context_);
-                pong_.Init(
-                    w, h,
-                    kPostChainFormat,
-                    false,
-                    { 0.0f, 0.0f, 0.0f, 0.0f }
-                );
-            }
+            return tempsInitialized_;
         }
         void PostChain::PrepareBuffers(int w, int h)
         {
-            EnsureTempSize(w, h);
+            (void)EnsureTempSize(w, h);
         }
 
         RenderTarget2D* PostChain::Execute(
@@ -131,8 +117,9 @@ namespace HIKARI {
 
             int w = tempWidth > 0 ? tempWidth : src.GetWidth();
             int h = tempHeight > 0 ? tempHeight : src.GetHeight();
-            EnsureTempSize(w, h);
-            if (ping_.GetResource() == nullptr || pong_.GetResource() == nullptr) {
+            if (!EnsureTempSize(w, h) ||
+                ping_.GetResource() == nullptr ||
+                pong_.GetResource() == nullptr) {
                 DEBUGLOG::PushRenderError(std::string("[PostChain][ERROR] Execute skipped: temp buffers invalid.\n") + DumpState());
                 return &src;
             }
@@ -142,7 +129,7 @@ namespace HIKARI {
             for (size_t i = 0; i < effects_.size(); i++) {
                 if (effects_[i] == nullptr) {
                     DEBUGLOG::PushRenderError(std::string("[PostChain][ERROR] Execute skipped null effect.\n") + DumpState());
-                    continue;
+                    return &src;
                 }
                 RenderTarget2D* dst = nullptr;
 
@@ -163,13 +150,15 @@ namespace HIKARI {
                 if (!quad.SetOutputFormat(dst->GetFormat())) {
                     DEBUGLOG::PushRenderError(std::string("[PostChain][ERROR] Execute SetOutputFormat failed.\n") + DumpState());
                     dst->EndCapture();
-                    return cur;
+                    return &src;
                 }
 
 
                 effects_[i]->ApplyCommonParams(params);
                 if (!effects_[i]->BindAndDraw(quad)) {
                     DEBUGLOG::PushRenderError(std::string("[PostChain][ERROR] Effect BindAndDraw failed.\n") + DumpState());
+                    dst->EndCapture();
+                    return &src;
                 }
 
                 dst->EndCapture();

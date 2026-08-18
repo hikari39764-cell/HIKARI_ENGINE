@@ -1,6 +1,7 @@
 #include "Vfx/Post/HIKARI_PostProcessingStage.h"
 
 #include <algorithm>
+#include <cmath>
 #include <sstream>
 
 #include "Core/HIKARI_Logger.h"
@@ -133,6 +134,32 @@ namespace HIKARI::POST {
 
     void PostProcessingStage::SetBloomSettings(const BloomSettings& settings) {
         bloomSettings_ = settings;
+        const BloomSettings defaults{};
+        if (!std::isfinite(bloomSettings_.threshold)) {
+            bloomSettings_.threshold = defaults.threshold;
+        }
+        if (!std::isfinite(bloomSettings_.intensity)) {
+            bloomSettings_.intensity = defaults.intensity;
+        }
+        if (!std::isfinite(bloomSettings_.radius)) {
+            bloomSettings_.radius = defaults.radius;
+        }
+        bloomSettings_.threshold = std::clamp(
+            bloomSettings_.threshold,
+            0.0f,
+            10.0f);
+        bloomSettings_.intensity = std::clamp(
+            bloomSettings_.intensity,
+            0.0f,
+            5.0f);
+        bloomSettings_.radius = std::clamp(
+            bloomSettings_.radius,
+            0.0f,
+            8.0f);
+        bloomSettings_.downsampleCount = std::clamp<uint32_t>(
+            bloomSettings_.downsampleCount,
+            1u,
+            5u);
     }
 
     void PostProcessingStage::SetToneMappingSettings(
@@ -363,7 +390,10 @@ namespace HIKARI::POST {
             std::clamp<uint32_t>(bloomSettings_.downsampleCount, 1u, 5u);
         bloomDebugStats_.textureWidth = source.GetWidth();
         bloomDebugStats_.textureHeight = source.GetHeight();
-        if (!bloomSettings_.enabled || bloomSettings_.intensity <= 0.0f) return nullptr;
+        if (!source.GetResource() || !bloomSettings_.enabled ||
+            bloomSettings_.intensity <= 0.0f) {
+            return nullptr;
+        }
         if (!EnsureBloomEffects(bloomDebugStats_.downsampleCount)) {
             bloomDebugStats_.failed = true;
             return nullptr;
@@ -374,9 +404,9 @@ namespace HIKARI::POST {
         // 拡散も自然に太くなる。合成側 (加算ブレンド) は linear サンプルで
         // アップサンプルされる。
         const int bloomWidth =
-            (std::max)(source.GetWidth() / 4, 32);
+            (std::max)((source.GetWidth() + 3) / 4, 1);
         const int bloomHeight =
-            (std::max)(source.GetHeight() / 4, 32);
+            (std::max)((source.GetHeight() + 3) / 4, 1);
         bloomDebugStats_.textureWidth = bloomWidth;
         bloomDebugStats_.textureHeight = bloomHeight;
         CommonParams params = commonParams_;
@@ -390,9 +420,21 @@ namespace HIKARI::POST {
             1.0f / static_cast<float>(bloomWidth),
             1.0f / static_cast<float>(bloomHeight), 0, 0
         };
+        RenderTarget2D* bloomOutput = bloomChain_.Execute(
+            source,
+            quad,
+            params,
+            bloomWidth,
+            bloomHeight);
+        if (bloomOutput == nullptr || bloomOutput == &source ||
+            bloomOutput->GetResource() == nullptr) {
+            bloomDebugStats_.failed = true;
+            return nullptr;
+        }
         bloomDebugStats_.initialized = true;
-        bloomDebugStats_.passCount = 1u + bloomDebugStats_.downsampleCount * 2u;
-        return bloomChain_.Execute(source, quad, params, bloomWidth, bloomHeight);
+        bloomDebugStats_.passCount =
+            1u + bloomDebugStats_.downsampleCount * 2u;
+        return bloomOutput;
     }
 
     RenderTarget2D* PostProcessingStage::ApplyFxaa(
