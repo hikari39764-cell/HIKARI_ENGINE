@@ -5,6 +5,11 @@ namespace HIKARI {
 
     class Camera3D {
     public:
+        static constexpr float kDefaultFovYRad =
+            60.0f * 3.1415926535f / 180.0f;
+        static constexpr float kDefaultNearZ = 0.1f;
+        static constexpr float kDefaultFarZ = 2000.0f;
+
         void SetPerspective(float fovYRad, float aspect, float nearZ, float farZ);
         void SetLookAt(const MATH::Vec3& eye, const MATH::Vec3& target, const MATH::Vec3& up = { 0.0f, 1.0f, 0.0f });
 
@@ -23,10 +28,10 @@ namespace HIKARI {
         MATH::Vec3 eye_{ 0.0f, 0.0f, -5.0f };
         MATH::Vec3 target_{ 0.0f, 0.0f, 0.0f };
         MATH::Vec3 up_{ 0.0f, 1.0f, 0.0f };
-        float fovYRad_ = 60.0f * 3.1415926535f / 180.0f;
+        float fovYRad_ = kDefaultFovYRad;
         float aspect_ = 16.0f / 9.0f;
-        float nearZ_ = 0.1f;
-        float farZ_ = 100.0f;
+        float nearZ_ = kDefaultNearZ;
+        float farZ_ = kDefaultFarZ;
 
         MATH::Mat4 view_ = MATH::Mat4::Identity();
         MATH::Mat4 proj_ = MATH::Mat4::Identity();

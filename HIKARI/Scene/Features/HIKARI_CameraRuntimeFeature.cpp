@@ -79,8 +79,8 @@ namespace HIKARI {
                     nlohmann::json& properties) {
                     properties["enabled"] = true;
                     properties["verticalFovDegrees"] = 60.0f;
-                    properties["nearClip"] = 0.1f;
-                    properties["farClip"] = 100.0f;
+                    properties["nearClip"] = Camera3D::kDefaultNearZ;
+                    properties["farClip"] = Camera3D::kDefaultFarZ;
                 };
                 camera.presentation = CameraPresentation(
                     "Camera",

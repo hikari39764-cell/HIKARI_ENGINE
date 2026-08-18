@@ -237,6 +237,23 @@ DirectorViewPanelResult DirectorViewPanel::DrawContents(
                        "%.1fx");
   }
 
+  if (mode_ == DirectorViewMode::Free) {
+    ImGui::SameLine();
+    ImGui::TextUnformatted("Far");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(92.0f);
+    float farClip = freeCamera_.GetCamera().GetFarZ();
+    if (ImGui::DragFloat("##DirectorFreeCameraFarClip", &farClip, 10.0f,
+                         10.0f, 100000.0f, "%.0f")) {
+      freeCamera_.SetFarZ(farClip);
+      toolbarCameraChanged = true;
+    }
+    if (ImGui::IsItemHovered()) {
+      ImGui::SetTooltip(
+          "Free-view far clip. Scene cameras use Camera > Far Clip.");
+    }
+  }
+
   ImGui::Spacing();
   if (selectedObjectIsCamera &&
       gizmoState.operation == EditorTransformGizmoOperation::Scale) {

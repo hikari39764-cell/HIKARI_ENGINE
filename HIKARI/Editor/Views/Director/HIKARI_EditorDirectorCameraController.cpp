@@ -274,6 +274,11 @@ EditorDirectorCameraController::GetOrbitPivot() const noexcept {
   return orbitPivot_;
 }
 
+void EditorDirectorCameraController::SetFarZ(float farZ) noexcept {
+  camera_.SetPerspective(camera_.GetFovYRad(), camera_.GetAspect(),
+                         camera_.GetNearZ(), farZ);
+}
+
 EditorDirectorCameraSettings &
 EditorDirectorCameraController::Settings() noexcept {
   return settings_;

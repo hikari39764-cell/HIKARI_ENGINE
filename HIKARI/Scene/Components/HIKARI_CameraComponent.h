@@ -3,6 +3,7 @@
 #include <string_view>
 
 #include "HIKARI_IComponent.h"
+#include "Render3D/Core/HIKARI_Camera3D.h"
 
 namespace HIKARI {
 
@@ -24,8 +25,8 @@ namespace HIKARI {
 
         bool enabled_ = true;
         float verticalFovDegrees_ = 60.0f;
-        float nearClip_ = 0.1f;
-        float farClip_ = 100.0f;
+        float nearClip_ = Camera3D::kDefaultNearZ;
+        float farClip_ = Camera3D::kDefaultFarZ;
     };
 
 } // namespace HIKARI

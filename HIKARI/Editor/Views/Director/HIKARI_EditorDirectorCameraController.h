@@ -44,8 +44,8 @@ struct EditorDirectorCameraState {
   float pitch = 0.0f;
   float fovYRad = 1.0471975512f;
   float aspect = 16.0f / 9.0f;
-  float nearZ = 0.1f;
-  float farZ = 100.0f;
+  float nearZ = Camera3D::kDefaultNearZ;
+  float farZ = Camera3D::kDefaultFarZ;
   EditorDirectorCameraSettings settings{};
 };
 
@@ -74,6 +74,7 @@ public:
     camera_.SetPerspective(
         fovYRad, camera_.GetAspect(), camera_.GetNearZ(), camera_.GetFarZ());
   }
+  void SetFarZ(float farZ) noexcept;
   void Focus(const MATH::Vec3 &worldPosition, float preferredDistance = 5.0f);
   void ApplyViewPreset(EditorDirectorCameraViewPreset preset);
 

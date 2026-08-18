@@ -150,8 +150,8 @@ namespace HIKARI {
                 PRESENTATION::kDefaultLogicalWidth) /
                 static_cast<float>(
                     PRESENTATION::kDefaultLogicalHeight),
-            0.1f,
-            100.0f);
+            Camera3D::kDefaultNearZ,
+            Camera3D::kDefaultFarZ);
         state_->camera.gameplayCamera = state_->camera.editorCamera;
         state_->camera.debugCamera.Reset({ 0.0f, 2.0f, -6.0f }, 0.0f, 0.0f);
         state_->runtime.fixedStepClock.SetSettings(FixedStepSettings{

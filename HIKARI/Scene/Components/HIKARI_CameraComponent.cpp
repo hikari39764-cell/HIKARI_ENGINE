@@ -49,10 +49,10 @@ namespace HIKARI {
             verticalFovDegrees_ = 60.0f;
         }
         if (!std::isfinite(nearClip_)) {
-            nearClip_ = 0.1f;
+            nearClip_ = Camera3D::kDefaultNearZ;
         }
         if (!std::isfinite(farClip_)) {
-            farClip_ = 100.0f;
+            farClip_ = Camera3D::kDefaultFarZ;
         }
         verticalFovDegrees_ = std::clamp(
             verticalFovDegrees_,
