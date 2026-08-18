@@ -4,6 +4,7 @@
 #include <memory>
 
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
+#include "Scene/Components/Rendering/Vfx/HIKARI_GhostPossessionComponent.h"
 #include "Scene/Components/Rendering/Vfx/HIKARI_VfxPlayerComponent.h"
 #include "Scene/Components/Rendering/Vfx/HIKARI_VfxPlayerComponentAuthoring.h"
 #include "Scene/Features/HIKARI_RuntimeFeature.h"
@@ -11,6 +12,7 @@
 #include "Scene/HIKARI_ComponentRegistry.h"
 #include "Scene/HIKARI_ComponentSystemPolicy.h"
 #include "Scene/HIKARI_SystemTypeRegistry.h"
+#include "Scene/Vfx/HIKARI_GhostPossessionSystem.h"
 #include "Scene/Vfx/HIKARI_VfxPlayerSystem.h"
 
 namespace HIKARI {
@@ -39,15 +41,17 @@ namespace HIKARI {
 
             std::span<const std::string_view>
                 GetComponentTypeNames() const noexcept override {
-                static constexpr std::array<std::string_view, 1> names{
-                    "VfxPlayerComponent"
+                static constexpr std::array<std::string_view, 2> names{
+                    "VfxPlayerComponent",
+                    "GhostPossessionComponent"
                 };
                 return names;
             }
 
             std::span<const std::string_view>
                 GetSystemIds() const noexcept override {
-                static constexpr std::array<std::string_view, 1> ids{
+                static constexpr std::array<std::string_view, 2> ids{
+                    "GhostPossessionSystem",
                     "VfxPlayerSystem"
                 };
                 return ids;
@@ -83,8 +87,43 @@ namespace HIKARI {
                 player.validateAuthoring =
                     ValidateVfxPlayerComponentAuthoring;
 
+                ComponentTypeInfo ghost{};
+                ghost.typeName = "GhostPossessionComponent";
+                ghost.factory = []() -> std::unique_ptr<IComponent> {
+                    return std::make_unique<GhostPossessionComponent>();
+                };
+                ghost.requiredComponents = {
+                    "ModelComponent",
+                    "MaterialFxComponent"
+                };
+                ghost.optionalComponents = {
+                    "VfxPlayerComponent"
+                };
+                ghost.initializeDefaults = [](
+                    const SceneObjectData&,
+                    nlohmann::json& properties) {
+                    GhostPossessionComponent defaults{};
+                    defaults.Serialize(properties);
+                };
+                ghost.presentation = ComponentTypePresentation{
+                    "Ghost Possession",
+                    "Rendering/VFX",
+                    "Blends a reusable ghost surface and optional enter, loop, and exit VFX slots.",
+                    "VFX"
+                };
+
                 bool success = componentRegistry.Register(
                     std::move(player));
+                success = componentRegistry.Register(
+                    std::move(ghost)) && success;
+                success = systemRegistry.Register(SystemTypeInfo{
+                    "GhostPossessionSystem",
+                    [](const nlohmann::json&) -> std::unique_ptr<ISystem> {
+                        return std::make_unique<GhostPossessionSystem>();
+                    },
+                    "Ghost Possession",
+                    "VFX"
+                }) && success;
                 success = systemRegistry.Register(SystemTypeInfo{
                     "VfxPlayerSystem",
                     [](const nlohmann::json&) -> std::unique_ptr<ISystem> {
@@ -93,6 +132,12 @@ namespace HIKARI {
                     "VFX Player",
                     "VFX"
                 }) && success;
+                success = componentSystemPolicy.Register(
+                    ComponentSystemRule{
+                        "GhostPossessionComponent",
+                        "GhostPossessionSystem",
+                        170
+                    }) && success;
                 success = componentSystemPolicy.Register(
                     ComponentSystemRule{
                         "VfxPlayerComponent",

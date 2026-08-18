@@ -171,16 +171,24 @@ namespace HIKARI {
                 static_cast<int>(materialIds.size() - 1u);
         }
 
-        std::vector<const char*> materialLabelPointers{};
-        materialLabelPointers.reserve(materialLabels.size());
-        for (const std::string& label : materialLabels) {
-            materialLabelPointers.push_back(label.c_str());
+        std::vector<AuthoringChoice> materialChoices{};
+        materialChoices.reserve(materialLabels.size());
+        for (size_t index = 0u; index < materialLabels.size(); ++index) {
+            materialChoices.push_back({
+                materialIds[index],
+                materialLabels[index]
+            });
         }
         if (builder.Choice(
-                TEXT::Localize(
-                    "ui.inspector.procedural.material"),
+                AuthoringFieldDescriptor{
+                    "materialSelection",
+                    TEXT::Localize(
+                        "ui.inspector.procedural.material"),
+                    "Material asset GUID assigned to the procedural surface; "
+                    "empty selects the default material."
+                },
                 selectedMaterial,
-                materialLabelPointers)) {
+                materialChoices)) {
             if (selectedMaterial >= 0 &&
                 selectedMaterial <
                     static_cast<int>(materialIds.size())) {

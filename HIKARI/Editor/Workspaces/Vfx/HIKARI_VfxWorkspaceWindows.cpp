@@ -4,6 +4,7 @@
 #include <string>
 
 #include "Assets/HIKARI_AssetDatabase.h"
+#include "Assets/HIKARI_AssetRecord.h"
 #include "Assets/Vfx/HIKARI_VfxPresetRegistry.h"
 #include "Editor/Commands/HIKARI_EditorCommandRouter.h"
 #include "Editor/Views/HIKARI_EditorViewInstance.h"
@@ -87,6 +88,7 @@ namespace HIKARI::EDITOR {
         DrawCurveDiagnosticsWindow();
         DrawPreviewWindow(previewView, deltaSeconds);
         DrawInspectorWindow(database);
+        DrawPendingAssetOpenModal(database);
 #else
         (void)database;
         (void)previewView;
@@ -96,6 +98,77 @@ namespace HIKARI::EDITOR {
 #endif
         result.statusMessage = statusMessage_;
         return result;
+    }
+
+    void VfxWorkspaceController::DrawPendingAssetOpenModal(
+        AssetDatabase& database) {
+#if defined(HIKARI_WITH_EDITOR)
+        constexpr const char* kPopupId =
+            "Unsaved VFX Changes###Vfx/PendingAssetOpen";
+        if (!pendingAssetOpenGuid_.IsValid()) {
+            return;
+        }
+        if (pendingAssetOpenPopupRequested_ ||
+            !ImGui::IsPopupOpen(kPopupId)) {
+            ImGui::OpenPopup(kPopupId);
+            pendingAssetOpenPopupRequested_ = false;
+        }
+        if (!ImGui::BeginPopupModal(
+                kPopupId,
+                nullptr,
+                ImGuiWindowFlags_AlwaysAutoResize)) {
+            return;
+        }
+
+        const AssetRecord* target =
+            database.FindByGuid(pendingAssetOpenGuid_);
+        const std::string targetName = target == nullptr
+            ? pendingAssetOpenGuid_.value
+            : target->displayName.empty()
+                ? target->sourcePath.stem().string()
+                : target->displayName;
+        ImGui::TextWrapped(
+            "Save changes to '%s' before opening '%s'?",
+            document_.GetDisplayName().c_str(),
+            targetName.c_str());
+        ImGui::TextDisabled(
+            "The requested effect will open only after this decision succeeds.");
+        ImGui::Spacing();
+
+        if (ImGui::Button(
+                "Save and Continue", ImVec2(150.0f, 0.0f))) {
+            const AssetGuid targetGuid = pendingAssetOpenGuid_;
+            if (Save(database, statusMessage_) &&
+                OpenAsset(
+                    database,
+                    targetGuid,
+                    statusMessage_)) {
+                ImGui::CloseCurrentPopup();
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button(
+                "Discard and Continue", ImVec2(150.0f, 0.0f))) {
+            const AssetGuid targetGuid = pendingAssetOpenGuid_;
+            if (OpenAsset(
+                    database,
+                    targetGuid,
+                    statusMessage_,
+                    true)) {
+                ImGui::CloseCurrentPopup();
+            }
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", ImVec2(90.0f, 0.0f))) {
+            ClearPendingAssetOpen();
+            statusMessage_ =
+                "VFX asset switch canceled; current edits are unchanged";
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+#else
+        (void)database;
+#endif
     }
 
     void VfxWorkspaceController::DrawToolbarWindow(

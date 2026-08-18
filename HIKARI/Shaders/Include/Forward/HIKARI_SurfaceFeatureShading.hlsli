@@ -95,6 +95,7 @@ float3 HikariApplyStaticMaterialFx(
 {
     const float4 fxUser0 = featureData.fxUser[0];
     const float4 fxUser1 = featureData.fxUser[1];
+    const float4 fxUser2 = featureData.fxUser[2];
     const HikariSurfaceFeatureCoverage coverage =
         HikariEvaluateStaticMaterialFxCoverage(
             worldPosition,
@@ -105,18 +106,29 @@ float3 HikariApplyStaticMaterialFx(
     const float rimPower = max(fxUser0.y, 0.01f);
     const float pulseSpeed = fxUser1.x;
     const float edgeBoost = fxUser1.y;
+    const float flowSpeed = max(fxUser1.w, 0.0f);
+    const float flowStrength = saturate(fxUser2.w);
+    const float effectiveFlowSpeed = flowSpeed * flowStrength;
     const float pulse = 0.5f + 0.5f * sin(timeSeconds * pulseSpeed);
     const float rim = pow(
         1.0f - saturate(dot(shadingNormal, viewDirection)),
         rimPower);
+    const float flowNoise = HikariSurfaceFeatureNoise3D(
+        worldPosition * max(fxUser1.z, 0.0001f) +
+        float3(0.0f, -timeSeconds * effectiveFlowSpeed,
+            timeSeconds * effectiveFlowSpeed * 0.35f));
+    const float flowWave = lerp(
+        1.0f,
+        0.62f + flowNoise * 0.92f,
+        flowStrength);
     const float3 rimColor =
         float3(0.15f, 0.75f, 1.0f) *
-        rim * rimStrength * (0.75f + pulse * 0.25f);
+        rim * rimStrength * (0.75f + pulse * 0.25f) * flowWave;
     const float3 edgeColor =
-        float3(0.4f, 0.5f, 1.0f) * coverage.edgeBand * edgeBoost;
+        float3(0.4f, 0.5f, 1.0f) * coverage.edgeBand * edgeBoost *
+        (1.0f + (flowNoise - 0.5f) * 1.2f * flowStrength);
     float3 finalColor = litColor * coverage.edge + rimColor + edgeColor;
 
-    const float4 fxUser2 = featureData.fxUser[2];
     const float sceneColorDistortionStrength = fxUser2.x;
     const float sceneColorMix = saturate(fxUser2.y);
     const float sceneColorNoiseScale = max(fxUser2.z, 0.0001f);
@@ -124,11 +136,14 @@ float3 HikariApplyStaticMaterialFx(
     {
         const float2 screenUv = pixelPosition.xy * gScreenParams.zw;
         const float n0 = HikariSurfaceFeatureNoise3D(
-            worldPosition * sceneColorNoiseScale);
+            worldPosition * sceneColorNoiseScale +
+            float3(0.0f, -timeSeconds * effectiveFlowSpeed, 0.0f));
         const float n1 = HikariSurfaceFeatureNoise3D(
-            worldPosition * sceneColorNoiseScale + float3(13.1f, 7.7f, 3.3f));
+            worldPosition * sceneColorNoiseScale +
+            float3(13.1f, 7.7f - timeSeconds * effectiveFlowSpeed, 3.3f));
         const float2 distortion =
-            (float2(n0, n1) * 2.0f - 1.0f) * sceneColorDistortionStrength;
+            (float2(n0, n1) * 2.0f - 1.0f) *
+            sceneColorDistortionStrength * (1.0f + 0.5f * flowStrength);
         const float3 sceneColor = gSceneColorTex.Sample(
             gLinearWrap,
             saturate(screenUv + distortion)).rgb;

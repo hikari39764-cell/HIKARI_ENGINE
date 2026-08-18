@@ -61,7 +61,8 @@ namespace HIKARI::EDITOR {
                 }
                 return PlayPreview(outMessage);
             }
-            return OpenAsset(database, requestedAssetGuid, outMessage);
+            return RequestOpenAsset(
+                database, requestedAssetGuid, outMessage);
         }
         if (!document_.IsOpen()) {
             NewAsset();
@@ -130,6 +131,7 @@ namespace HIKARI::EDITOR {
     }
 
     void VfxWorkspaceController::NewAsset(std::string name) {
+        ClearPendingAssetOpen();
         StopPreview();
         document_.NewAsset(std::move(name));
         previewLoopRangeInitialized_ = false;
@@ -157,6 +159,7 @@ namespace HIKARI::EDITOR {
             statusMessage_ = outMessage;
             return false;
         }
+        ClearPendingAssetOpen();
         StopPreview();
         document_.NewAsset(preset->displayName);
         std::string applyMessage{};
@@ -200,7 +203,6 @@ namespace HIKARI::EDITOR {
             statusMessage_ = outMessage;
             return true;
         }
-        StopPreview();
         if (!document_.OpenAsset(
                 database,
                 assetGuid,
@@ -209,6 +211,8 @@ namespace HIKARI::EDITOR {
             statusMessage_ = outMessage;
             return false;
         }
+        ClearPendingAssetOpen();
+        StopPreview();
         previewLoopRangeInitialized_ = false;
         ResetAssetRefreshStatus();
         selection_ = {};
@@ -225,6 +229,57 @@ namespace HIKARI::EDITOR {
         }
         statusMessage_ = outMessage;
         return true;
+    }
+
+    bool VfxWorkspaceController::RequestOpenAsset(
+        AssetDatabase& database,
+        const AssetGuid& assetGuid,
+        std::string& outMessage) {
+
+        if (!assetGuid.IsValid()) {
+            outMessage = "VFX asset GUID is invalid";
+            statusMessage_ = outMessage;
+            return false;
+        }
+        const AssetRecord* record = database.FindByGuid(assetGuid);
+        if (record == nullptr || record->type != AssetType::VfxEffect) {
+            outMessage = "The requested VFX asset is unavailable";
+            statusMessage_ = outMessage;
+            return false;
+        }
+        if (document_.IsOpen() &&
+            document_.GetAssetGuid() == assetGuid) {
+            outMessage = "VFX asset is already open";
+            statusMessage_ = outMessage;
+            return true;
+        }
+        if (!document_.IsDirty()) {
+            return OpenAsset(database, assetGuid, outMessage);
+        }
+        if (pendingAssetOpenGuid_.IsValid()) {
+            if (pendingAssetOpenGuid_ == assetGuid) {
+                outMessage =
+                    "Waiting for the unsaved VFX decision";
+                statusMessage_ = outMessage;
+                return true;
+            }
+            outMessage =
+                "Finish the pending Save / Discard / Cancel decision first";
+            statusMessage_ = outMessage;
+            return false;
+        }
+
+        pendingAssetOpenGuid_ = assetGuid;
+        pendingAssetOpenPopupRequested_ = true;
+        outMessage =
+            "Unsaved VFX changes need a Save / Discard / Cancel decision";
+        statusMessage_ = outMessage;
+        return true;
+    }
+
+    void VfxWorkspaceController::ClearPendingAssetOpen() noexcept {
+        pendingAssetOpenGuid_ = {};
+        pendingAssetOpenPopupRequested_ = false;
     }
 
     bool VfxWorkspaceController::Save(

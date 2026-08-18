@@ -285,6 +285,11 @@ namespace HIKARI::EDITOR {
             std::string* outPropertyId = nullptr) const noexcept;
 
     private:
+        bool RequestOpenAsset(
+            AssetDatabase& assetDatabase,
+            const AssetGuid& assetGuid,
+            std::string& outMessage);
+        void ClearPendingAssetOpen() noexcept;
         bool ApplyAsset(
             VFX::VfxAssetData asset,
             std::string& outMessage,
@@ -325,6 +330,8 @@ namespace HIKARI::EDITOR {
             AssetDatabase& assetDatabase,
             VfxWorkspaceResult& result,
             EditorCommandRouter& commandRouter);
+        void DrawPendingAssetOpenModal(
+            AssetDatabase& assetDatabase);
         void DrawHierarchyWindow(AssetDatabase& assetDatabase);
         void DrawPreviewWindow(
             EditorViewInstance& previewView,
@@ -354,6 +361,8 @@ namespace HIKARI::EDITOR {
         VfxWorkspaceSelection selection_{};
         std::vector<VFX::VfxDiagnostic> diagnostics_{};
         std::string statusMessage_{};
+        AssetGuid pendingAssetOpenGuid_{};
+        bool pendingAssetOpenPopupRequested_ = false;
         std::array<char, 128> newAssetName_{ "New VFX" };
         std::array<char, 160> assetSearch_{};
         VfxParticleMaterialCatalog particleMaterialCatalog_{};

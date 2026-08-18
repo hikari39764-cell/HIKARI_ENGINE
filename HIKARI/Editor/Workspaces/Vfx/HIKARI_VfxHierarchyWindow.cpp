@@ -91,7 +91,7 @@ namespace HIKARI::EDITOR {
                         selected,
                         ImGuiSelectableFlags_AllowDoubleClick) &&
                     ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-                    (void)OpenAsset(
+                    (void)RequestOpenAsset(
                         database, record->guid, statusMessage_);
                 }
                 if (ImGui::IsItemHovered()) {
