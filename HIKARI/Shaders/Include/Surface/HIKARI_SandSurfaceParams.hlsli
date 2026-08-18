@@ -1,8 +1,12 @@
 #ifndef HIKARI_SAND_SURFACE_PARAMS_INCLUDED
 #define HIKARI_SAND_SURFACE_PARAMS_INCLUDED
 
-static const uint HIKARI_SAND_SURFACE_GPU_SCHEMA_VERSION = 1u;
+static const uint HIKARI_SAND_SURFACE_GPU_SCHEMA_VERSION = 2u;
 static const uint HIKARI_SAND_SURFACE_GPU_FLAG_ENABLED = 1u << 0;
+static const uint HIKARI_SAND_SURFACE_GPU_LAYER_COUNT_SHIFT = 1u;
+static const uint HIKARI_SAND_SURFACE_GPU_LAYER_COUNT_MASK = 0x000000FEu;
+static const uint HIKARI_SAND_SURFACE_GPU_DEFORMATION_OFFSET_SHIFT = 8u;
+static const uint HIKARI_SAND_SURFACE_GPU_DEFORMATION_OFFSET_MASK = 0xFFFFFF00u;
 
 // C++ 側の SandSurfaceGpuData と同一の sparse record layout。
 struct HikariSandSurfaceGpuData
@@ -18,13 +22,15 @@ struct HikariSandSurfaceGpuData
 // ROOT_PARAM::SandSurfaceData (t4, space7)。水面の t0 と分離し、
 // 水面/沙地が同じ pass に共存しても別々のバッファを束縛できるようにする。
 StructuredBuffer<HikariSandSurfaceGpuData> gSandSurfaceData : register(t4, space7);
-// ROOT_PARAM::SandSurfaceHeights (t1, space7)
+// ROOT_PARAM::SandSurfaceHeights (t1, space7)。名前は互換のため維持し、
+// total height / deformation / coverage / layer payload の単一 float pool とする。
 StructuredBuffer<float> gSandSurfaceHeights : register(t1, space7);
 
 struct HikariSandSurfaceParams
 {
     uint gridResolution;
     uint heightOffset;
+    uint deformationOffset;
     float2 extents;
     float heightScale;
     float rimStrength;
@@ -40,6 +46,7 @@ struct HikariSandSurfaceParams
     uint coverageOffset;
     float wetness;
     uint layerTintsOffset;
+    float edgeDepth;
 };
 
 HikariSandSurfaceParams HikariBuildNeutralSandSurfaceParams()
@@ -53,9 +60,11 @@ HikariSandSurfaceParams HikariBuildNeutralSandSurfaceParams()
     p.toonBandHardness = 0.14f;
     p.toonBandCount = 3.0f;
     p.layerCount = 1u;
+    p.deformationOffset = 0u;
     p.layerWeightsOffset = 0u;
     p.coverageOffset = 0u;
     p.wetness = 0.0f;
+    p.edgeDepth = 1.5f;
     return p;
 }
 
@@ -95,7 +104,16 @@ HikariSandSurfaceParams HikariLoadSandSurfaceParamsFromDataIndex(
     p.pitDarkening = saturate(data.stylePit.x);
     p.toonBandHardness = clamp(data.stylePit.y, 0.0f, 0.5f);
     p.toonBandCount = clamp(data.stylePit.z, 2.0f, 4.0f);
-    p.layerCount = max(data.header.y >> 1u, 1u);
+    // styleWet.w は edgeDepth。flags は layerCount(bits 1..7) と
+    // deformationOffset(bits 8..31) を共有する。
+    p.edgeDepth = clamp(data.styleWet.w, 0.0f, 100.0f);
+    p.layerCount = max(
+        (data.header.y & HIKARI_SAND_SURFACE_GPU_LAYER_COUNT_MASK) >>
+            HIKARI_SAND_SURFACE_GPU_LAYER_COUNT_SHIFT,
+        1u);
+    p.deformationOffset =
+        (data.header.y & HIKARI_SAND_SURFACE_GPU_DEFORMATION_OFFSET_MASK) >>
+        HIKARI_SAND_SURFACE_GPU_DEFORMATION_OFFSET_SHIFT;
     p.layerWeightsOffset = (uint)data.stylePit.w;
     p.coverageOffset = (uint)data.styleWet.y;
     p.wetness = saturate(data.styleWet.x);
@@ -216,6 +234,52 @@ float HikariSandSampleHeight(
         lerp(h00, h10, tx),
         lerp(h01, h11, tx),
         ty);
+}
+
+
+// coverage 自体が筆の hardness/falloff を保持する。ここで別の侵食を掛けると
+// 表示輪郭だけが筆位置からずれるため、全 pass が同じ双線形値を使う。
+float HikariSandEdgeFactor(HikariSandSurfaceParams p, float2 uv)
+{
+    return saturate(HikariSandSampleCoverage(p, uv));
+}
+
+float HikariSandSampleDeformation(
+    HikariSandSurfaceParams p,
+    float2 uv)
+{
+    // offset 0 points at the neutral sentinel and means no runtime response.
+    if (p.deformationOffset == 0u)
+    {
+        return 0.0f;
+    }
+    const float2 safeUv = saturate(uv);
+    const float fu = safeUv.x * (float)p.gridResolution;
+    const float fv = safeUv.y * (float)p.gridResolution;
+    const uint x0 = (uint)fu;
+    const uint y0 = (uint)fv;
+    const uint x1 = min(x0 + 1u, p.gridResolution);
+    const uint y1 = min(y0 + 1u, p.gridResolution);
+    const float tx = fu - (float)x0;
+    const float ty = fv - (float)y0;
+    const uint stride = p.gridResolution + 1u;
+    const uint base = p.deformationOffset;
+    const float d00 = gSandSurfaceHeights[base + y0 * stride + x0];
+    const float d10 = gSandSurfaceHeights[base + y0 * stride + x1];
+    const float d01 = gSandSurfaceHeights[base + y1 * stride + x0];
+    const float d11 = gSandSurfaceHeights[base + y1 * stride + x1];
+    return lerp(
+        lerp(d00, d10, tx),
+        lerp(d01, d11, tx),
+        ty);
+}
+
+void HikariClipSandCoverage(HikariSandSurfaceParams p, float2 uv)
+{
+    // CPU query / imprint の kSandSurfaceVisibleCoverageThreshold と同値。
+    // edge sink がほぼ完了した位置まで平滑斜面を残す。
+    static const float kVisibleCoverageThreshold = 0.05f;
+    clip(HikariSandEdgeFactor(p, uv) - kVisibleCoverageThreshold);
 }
 
 float HikariSandHash21(float2 value)

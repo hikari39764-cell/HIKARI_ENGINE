@@ -20,6 +20,8 @@ namespace HIKARI {
             { "sphereStacks", settings.sphereStacks },
             { "doubleSided", settings.doubleSided },
             { "generateTangents", settings.generateTangents },
+            { "uvTilesX", settings.uvTilesX },
+            { "uvTilesY", settings.uvTilesY },
             { "materialSelection", materialSelection_ }
         };
     }
@@ -41,6 +43,8 @@ namespace HIKARI {
         settings_.sphereStacks = source.value("sphereStacks", settings_.sphereStacks);
         settings_.doubleSided = source.value("doubleSided", settings_.doubleSided);
         settings_.generateTangents = source.value("generateTangents", settings_.generateTangents);
+        settings_.uvTilesX = source.value("uvTilesX", settings_.uvTilesX);
+        settings_.uvTilesY = source.value("uvTilesY", settings_.uvTilesY);
         materialSelection_ =
             source.value("materialSelection", std::string{});
         settings_ = SanitizeProceduralMeshSettings(settings_);

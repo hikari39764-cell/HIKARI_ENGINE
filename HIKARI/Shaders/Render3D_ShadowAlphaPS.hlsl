@@ -3,6 +3,9 @@ static const uint HIKARI_INVALID_SHADOW_MATERIAL_INDEX = 0xffffffffu;
 
 #define HIKARI_MATERIAL_TEXTURE_POOL_SAMPLING 1
 #include "Include/HIKARI_MeshMaterialData.hlsli"
+#include "Include/HIKARI_SurfaceGpuScene.hlsli"
+#include "Include/Forward/HIKARI_SurfaceFeatureCoverage.hlsli"
+#include "Include/Surface/HIKARI_SandSurfaceParams.hlsli"
 
 Texture2D gBaseColorTex : register(t0);
 SamplerState gLinearWrap : register(s0);
@@ -15,10 +18,22 @@ struct PSInput
     nointerpolation uint materialFlags : MATERIALFLAGS;
     nointerpolation float alphaCutoff : ALPHACUTOFF;
     nointerpolation uint materialDataIndex : MATERIALINDEX;
+    nointerpolation uint surfaceGpuSceneIndex : TEXCOORD2;
+    nointerpolation uint surfaceFeatureFlags : TEXCOORD3;
 };
 
 void main(PSInput input)
 {
+    if (HikariSurfaceHasSandSurface(input.surfaceFeatureFlags))
+    {
+        const HikariSurfaceGpuSceneInstance sandInstance =
+            HikariGetSurfaceGpuSceneInstanceAt(input.surfaceGpuSceneIndex);
+        const HikariSandSurfaceParams sandParams =
+            HikariLoadSandSurfaceParamsFromDataIndex(
+                sandInstance.surfaceFeatureDataIndex);
+        HikariClipSandCoverage(sandParams, input.uv1);
+    }
+
     if ((input.materialFlags & MATERIAL_ALPHA_MASK) == 0)
     {
         return;

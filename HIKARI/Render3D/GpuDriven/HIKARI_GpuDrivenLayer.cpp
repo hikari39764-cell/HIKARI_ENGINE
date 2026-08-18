@@ -299,7 +299,10 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             sceneBuffer_->BeginFrame(desc.frameIndex);
         }
 
-        if (sceneBuffer_ == nullptr || frameSource_ == nullptr) {
+        // surface payload と Scene records は同じ frame transaction。どちらかの
+        // upload が失敗した frame へ、offset を持つ instance record を送信しない。
+        if (sceneBuffer_ == nullptr || frameSource_ == nullptr ||
+            !waterSurfaceDataResident || !sandSurfaceDataResident) {
             if (sceneBuffer_ != nullptr) {
                 sceneBuffer_->ResetFrame();
                 sceneUploadStats_.bufferStats = sceneBuffer_->GetStats();
@@ -398,6 +401,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         sceneUploadStats_.sceneResident =
             sourceInstanceCount != 0u &&
             waterSurfaceDataResident &&
+            sandSurfaceDataResident &&
             sceneUploadStats_.bufferStats.overflowInstanceCount == 0u &&
             sceneUploadStats_.bufferStats.uploadedInstanceCount ==
                 sourceInstanceCount;

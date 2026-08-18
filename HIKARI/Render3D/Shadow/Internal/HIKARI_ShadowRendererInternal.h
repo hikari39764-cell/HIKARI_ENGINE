@@ -26,6 +26,7 @@
 #include "Render3D/HIKARI_Mesh.h"
 #include "Render3D/Meshlet/HIKARI_MeshletRenderBackend.h"
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
+#include "Render3D/Sand/HIKARI_SandSurfaceGpuFrameBuffer.h"
 #include "Render3D/Shadow/HIKARI_ShadowCachePolicy.h"
 #include "Render3D/Shadow/HIKARI_ShadowLightFrame.h"
 #include "Render3D/Shadow/HIKARI_ShadowMapRenderer.h"
@@ -131,6 +132,7 @@ namespace HIKARI::SHADOW::INTERNAL {
             dynamicShadowPrimaryMaterialSources{};
         ShadowSourceCacheState shadowSourceCache{};
         RENDER3D::GPUDRIVEN::SurfaceGpuSceneFrameBuffer surfaceGpuSceneBuffer{};
+        RENDER3D::SAND::SandSurfaceGpuFrameBuffer sandSurfaceGpuFrameBuffer{};
         RENDER3D::GPUDRIVEN::GpuTraditionalCommandStreamBuffer
             traditionalCommandStreamBuffer{};
         RENDER3D::GPUDRIVEN::GpuDrivenFrame gpuDrivenFrame{};

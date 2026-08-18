@@ -2,14 +2,19 @@
 
 #include <algorithm>
 #include <array>
+#include <condition_variable>
 #include <cstring>
+#include <deque>
 #include <filesystem>
 #include <iomanip>
 #include <memory>
+#include <mutex>
 #include <sstream>
 #include <string>
 #include <system_error>
+#include <thread>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "Assets/Geometry/HIKARI_ClusteredGeometryCooker.h"
 #include "Assets/Geometry/HIKARI_HcmeshFormat.h"
@@ -34,6 +39,8 @@ namespace HIKARI::PROCEDURAL {
             uint32_t sphereStacks = 16;
             bool doubleSided = false;
             bool generateTangents = true;
+            float uvTilesX = 0.0f;
+            float uvTilesY = 0.0f;
 
             bool operator==(const ProceduralModelKey& rhs) const = default;
         };
@@ -54,6 +61,8 @@ namespace HIKARI::PROCEDURAL {
                 mix(key.sphereStacks);
                 mix(key.doubleSided ? 1u : 0u);
                 mix(key.generateTangents ? 1u : 0u);
+                mix(std::hash<float>{}(key.uvTilesX));
+                mix(std::hash<float>{}(key.uvTilesY));
                 return seed;
             }
         };
@@ -64,6 +73,10 @@ namespace HIKARI::PROCEDURAL {
             KeyHasher> gCache;
         std::unordered_map<std::string, std::string> gClusterPathCache;
         ProceduralModelDebugStats gStats{};
+        // 頂点属性の意味が変わった場合、旧 hcmesh を再利用しない。
+        // v2: GridPlane の uv1 を正規化地形座標として生成する。
+        // v3: response subdivision と独立した uv0 tile 数を含める。
+        constexpr uint32_t kProceduralGeometryRevision = 3u;
         constexpr std::array<ProceduralMeshKind, 6>
             kDefaultWarmUpKinds{{
                 ProceduralMeshKind::Box,
@@ -75,6 +88,8 @@ namespace HIKARI::PROCEDURAL {
             }};
         std::filesystem::path gWarmUpProjectRoot{};
         size_t gWarmUpIndex = 0u;
+        uint64_t gWarmUpGeneration = 1u;
+        std::unordered_set<std::string> gPendingClusterWarmUps{};
 
         ProceduralModelKey MakeKey(
             const ProceduralMeshSettings& rawSettings) {
@@ -92,7 +107,9 @@ namespace HIKARI::PROCEDURAL {
                 settings.sphereSlices,
                 settings.sphereStacks,
                 settings.doubleSided,
-                settings.generateTangents
+                settings.generateTangents,
+                settings.uvTilesX,
+                settings.uvTilesY
             };
         }
 
@@ -109,7 +126,9 @@ namespace HIKARI::PROCEDURAL {
                 key.sphereSlices,
                 key.sphereStacks,
                 key.doubleSided,
-                key.generateTangents
+                key.generateTangents,
+                key.uvTilesX,
+                key.uvTilesY
             };
         }
 
@@ -136,6 +155,7 @@ namespace HIKARI::PROCEDURAL {
             const ProceduralModelKey& key) {
 
             uint64_t hash = HASH::kFnv1a64OffsetBasis;
+            HashAppendU32(hash, kProceduralGeometryRevision);
             HashAppendU32(hash, static_cast<uint32_t>(key.kind));
             HashAppendFloat(hash, key.width);
             HashAppendFloat(hash, key.height);
@@ -147,6 +167,8 @@ namespace HIKARI::PROCEDURAL {
             HashAppendU32(hash, key.sphereStacks);
             HashAppendU32(hash, key.doubleSided ? 1u : 0u);
             HashAppendU32(hash, key.generateTangents ? 1u : 0u);
+            HashAppendFloat(hash, key.uvTilesX);
+            HashAppendFloat(hash, key.uvTilesY);
             return hash;
         }
 
@@ -190,24 +212,19 @@ namespace HIKARI::PROCEDURAL {
             return settings;
         }
 
-        bool CookClusteredGeometry(
-            const ProceduralMeshSettings& settings,
+        bool CookClusteredGeometryFromModel(
+            const ModelAsset& model,
             const ProceduralModelKey& key,
-            const std::filesystem::path& outputPath) {
-
-            const ModelAsset* model = GetOrCreateModel(settings);
-            if (model == nullptr) {
-                HIKARI_LOG_WARN(
-                    "[ProceduralModelFactory] failed to build procedural model for clustered geometry.");
-                return false;
-            }
+            const std::filesystem::path& outputPath,
+            bool publishPackedSource,
+            RENDER3D::CLUSTER::ClusterGeometryPackedBytes* outPacked) {
 
             RENDER3D::CLUSTER::ClusteredGeometryAsset clusteredGeometry{};
             RENDER3D::CLUSTER::ClusteredGeometryBuildReport report{};
             AssetGuid sourceGuid{};
             sourceGuid.value = MakeClusterGuidValue(key);
             if (!ASSETS::GEOMETRY::CookClusteredGeometryFromModel(
-                    *model,
+                    model,
                     sourceGuid,
                     MakeProceduralClusteredGeometryCookSettings(),
                     clusteredGeometry,
@@ -227,9 +244,13 @@ namespace HIKARI::PROCEDURAL {
                     {},
                     packed,
                     &packMessage)) {
-                RENDER3D::RegisterClusterGeometryPackedSource(
-                    outputPath.generic_string(),
-                    std::move(packed));
+                if (publishPackedSource) {
+                    RENDER3D::RegisterClusterGeometryPackedSource(
+                        outputPath.generic_string(),
+                        std::move(packed));
+                } else if (outPacked != nullptr) {
+                    *outPacked = std::move(packed);
+                }
             } else {
                 HIKARI_LOG_WARN(
                     "[ProceduralModelFactory] clustered geometry pack failed: " +
@@ -287,7 +308,8 @@ namespace HIKARI::PROCEDURAL {
         }
 
         std::unique_ptr<ModelAsset> BuildModel(
-            const ProceduralModelKey& key) {
+            const ProceduralModelKey& key,
+            bool recordStats) {
 
             auto model = std::make_unique<ModelAsset>();
             const std::string proceduralId = MakeClusterGuidValue(key);
@@ -319,8 +341,10 @@ namespace HIKARI::PROCEDURAL {
             MeshAsset mesh{};
             mesh.name = "Procedural Mesh";
             FinalizeBounds(primitive, mesh, *model);
-            gStats.generatedVertexCount += primitive.staticVertices.size();
-            gStats.generatedIndexCount += primitive.indices.size();
+            if (recordStats) {
+                gStats.generatedVertexCount += primitive.staticVertices.size();
+                gStats.generatedIndexCount += primitive.indices.size();
+            }
             mesh.primitives.push_back(std::move(primitive));
             model->meshes.push_back(std::move(mesh));
 
@@ -329,14 +353,162 @@ namespace HIKARI::PROCEDURAL {
             node.meshIndex = 0;
             model->nodes.push_back(node);
             model->defaultSceneRootNode = 0;
-            ++gStats.generatedModelCount;
+            if (recordStats) {
+                ++gStats.generatedModelCount;
+            }
             return model;
+        }
+
+        void RecordGeneratedModelStats(const ModelAsset& model) {
+            ++gStats.generatedModelCount;
+            for (const MeshAsset& mesh : model.meshes) {
+                for (const MeshPrimitive& primitive : mesh.primitives) {
+                    gStats.generatedVertexCount +=
+                        primitive.staticVertices.size();
+                    gStats.generatedIndexCount += primitive.indices.size();
+                }
+            }
+        }
+
+        struct ClusterWarmUpJob {
+            ProceduralModelKey key{};
+            std::filesystem::path path{};
+            std::string normalizedPath{};
+            uint64_t generation = 0u;
+            bool cookClusteredGeometry = true;
+        };
+
+        struct ClusterWarmUpResult {
+            ProceduralModelKey key{};
+            std::filesystem::path path{};
+            std::string normalizedPath{};
+            uint64_t generation = 0u;
+            std::unique_ptr<ModelAsset> model{};
+            RENDER3D::CLUSTER::ClusterGeometryPackedBytes packed{};
+            bool packedValid = false;
+            bool success = false;
+        };
+
+        class ClusterWarmUpWorker final {
+        public:
+            ClusterWarmUpWorker()
+                : thread_([this]() { Run(); }) {
+            }
+
+            ~ClusterWarmUpWorker() {
+                {
+                    std::scoped_lock lock(mutex_);
+                    stop_ = true;
+                    jobs_.clear();
+                }
+                condition_.notify_one();
+                if (thread_.joinable()) {
+                    thread_.join();
+                }
+            }
+
+            void Enqueue(ClusterWarmUpJob job) {
+                {
+                    std::scoped_lock lock(mutex_);
+                    jobs_.push_back(std::move(job));
+                }
+                condition_.notify_one();
+            }
+
+            void Drain(std::vector<ClusterWarmUpResult>& outResults) {
+                std::scoped_lock lock(mutex_);
+                while (!results_.empty()) {
+                    outResults.push_back(std::move(results_.front()));
+                    results_.pop_front();
+                }
+            }
+
+        private:
+            void Run() {
+                for (;;) {
+                    ClusterWarmUpJob job{};
+                    {
+                        std::unique_lock lock(mutex_);
+                        condition_.wait(lock, [this]() {
+                            return stop_ || !jobs_.empty();
+                        });
+                        if (stop_ && jobs_.empty()) {
+                            return;
+                        }
+                        job = std::move(jobs_.front());
+                        jobs_.pop_front();
+                    }
+
+                    ClusterWarmUpResult result{};
+                    result.key = job.key;
+                    result.path = job.path;
+                    result.normalizedPath = job.normalizedPath;
+                    result.generation = job.generation;
+                    result.model = BuildModel(job.key, false);
+                    if (result.model != nullptr) {
+                        if (job.cookClusteredGeometry) {
+                            result.success = CookClusteredGeometryFromModel(
+                                *result.model,
+                                job.key,
+                                job.path,
+                                false,
+                                &result.packed);
+                            result.packedValid = result.success &&
+                                (!result.packed.geometryBytes.empty() ||
+                                    !result.packed.metadataBytes.empty());
+                        } else {
+                            result.success = true;
+                        }
+                    }
+                    {
+                        std::scoped_lock lock(mutex_);
+                        results_.push_back(std::move(result));
+                    }
+                }
+            }
+
+            std::mutex mutex_{};
+            std::condition_variable condition_{};
+            std::deque<ClusterWarmUpJob> jobs_{};
+            std::deque<ClusterWarmUpResult> results_{};
+            bool stop_ = false;
+            std::thread thread_{};
+        };
+
+        std::unique_ptr<ClusterWarmUpWorker>&
+            GetClusterWarmUpWorkerStorage() {
+
+            static std::unique_ptr<ClusterWarmUpWorker> worker{};
+            return worker;
+        }
+
+        ClusterWarmUpWorker& GetClusterWarmUpWorker() {
+            auto& worker = GetClusterWarmUpWorkerStorage();
+            if (!worker) {
+                worker = std::make_unique<ClusterWarmUpWorker>();
+            }
+            return *worker;
+        }
+
+        bool CookClusteredGeometry(
+            const ProceduralMeshSettings& settings,
+            const ProceduralModelKey& key,
+            const std::filesystem::path& outputPath) {
+
+            const ModelAsset* model = GetOrCreateModel(settings);
+            return model != nullptr && CookClusteredGeometryFromModel(
+                *model,
+                key,
+                outputPath,
+                true,
+                nullptr);
         }
     }
 
     const ModelAsset* GetOrCreateModel(
         const ProceduralMeshSettings& settings) {
 
+        PumpClusteredGeometryWarmUps();
         const ProceduralModelKey key = MakeKey(settings);
         const auto found = gCache.find(key);
         if (found != gCache.end()) {
@@ -344,7 +516,7 @@ namespace HIKARI::PROCEDURAL {
             return found->second.get();
         }
         ++gStats.cacheMissCount;
-        auto model = BuildModel(key);
+        auto model = BuildModel(key, true);
         const ModelAsset* raw = model.get();
         gCache.emplace(key, std::move(model));
         return raw;
@@ -375,6 +547,114 @@ namespace HIKARI::PROCEDURAL {
         return normalizedPath;
     }
 
+    void RequestClusteredGeometryWarmUp(
+        const ProceduralMeshSettings& settings,
+        const std::filesystem::path& projectRoot) {
+
+        PumpClusteredGeometryWarmUps();
+        if (projectRoot.empty()) {
+            return;
+        }
+
+        const ProceduralModelKey key = MakeKey(settings);
+        const std::filesystem::path path =
+            ResolveClusterCachePath(key, projectRoot);
+        const std::string normalizedPath = path.generic_string();
+        std::error_code existsError{};
+        const bool pathExists =
+            std::filesystem::exists(path, existsError) && !existsError;
+        const bool modelReady = gCache.find(key) != gCache.end();
+        if (modelReady &&
+            (pathExists ||
+                gClusterPathCache.find(normalizedPath) !=
+                    gClusterPathCache.end())) {
+            gClusterPathCache.emplace(normalizedPath, normalizedPath);
+            return;
+        }
+        if (!gPendingClusterWarmUps.emplace(normalizedPath).second) {
+            return;
+        }
+
+        GetClusterWarmUpWorker().Enqueue(ClusterWarmUpJob{
+            key,
+            path,
+            normalizedPath,
+            gWarmUpGeneration,
+            !pathExists,
+        });
+    }
+
+    bool TryGetWarmedClusteredGeometry(
+        const ProceduralMeshSettings& settings,
+        const std::filesystem::path& projectRoot,
+        const ModelAsset*& outModel,
+        std::string& outPath) {
+
+        outModel = nullptr;
+        outPath.clear();
+        PumpClusteredGeometryWarmUps();
+        if (projectRoot.empty()) {
+            return false;
+        }
+
+        const ProceduralModelKey key = MakeKey(settings);
+        const auto model = gCache.find(key);
+        if (model == gCache.end() || model->second == nullptr) {
+            return false;
+        }
+
+        const std::filesystem::path path =
+            ResolveClusterCachePath(key, projectRoot);
+        const std::string normalizedPath = path.generic_string();
+        const auto cachedPath = gClusterPathCache.find(normalizedPath);
+        if (cachedPath == gClusterPathCache.end()) {
+            std::error_code existsError{};
+            if (!std::filesystem::exists(path, existsError) || existsError) {
+                return false;
+            }
+            gClusterPathCache.emplace(normalizedPath, normalizedPath);
+        }
+        outModel = model->second.get();
+        outPath = normalizedPath;
+        return true;
+    }
+
+    void PumpClusteredGeometryWarmUps() {
+        std::vector<ClusterWarmUpResult> results{};
+        auto& worker = GetClusterWarmUpWorkerStorage();
+        if (!worker) {
+            return;
+        }
+        worker->Drain(results);
+        for (ClusterWarmUpResult& result : results) {
+            gPendingClusterWarmUps.erase(result.normalizedPath);
+            if (result.generation != gWarmUpGeneration) {
+                continue;
+            }
+            if (!result.success || result.model == nullptr) {
+                HIKARI_LOG_WARN(
+                    "[ProceduralModelFactory] background clustered geometry warm-up failed: " +
+                    result.normalizedPath);
+                continue;
+            }
+
+            if (gCache.find(result.key) == gCache.end()) {
+                RecordGeneratedModelStats(*result.model);
+                gCache.emplace(result.key, std::move(result.model));
+            }
+            if (result.packedValid) {
+                RENDER3D::RegisterClusterGeometryPackedSource(
+                    result.normalizedPath,
+                    std::move(result.packed));
+            }
+            gClusterPathCache[result.normalizedPath] =
+                result.normalizedPath;
+            HIKARI_LOG_INFO(
+                "[ProceduralModelFactory] background clustered geometry ready: " +
+                result.normalizedPath);
+        }
+    }
+
     void WarmUpDefaultPrimitiveClusters(
         const std::filesystem::path& projectRoot) {
 
@@ -401,6 +681,8 @@ namespace HIKARI::PROCEDURAL {
     }
 
     void ClearCache() {
+        ++gWarmUpGeneration;
+        gPendingClusterWarmUps.clear();
         gCache.clear();
         gClusterPathCache.clear();
         gStats = {};

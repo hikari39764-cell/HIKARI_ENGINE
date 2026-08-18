@@ -7,7 +7,15 @@
 
 namespace HIKARI::RENDER3D::SAND {
 
-    constexpr uint32_t kSandSurfaceGpuSchemaVersion = 1u;
+    constexpr uint32_t kSandSurfaceGpuSchemaVersion = 2u;
+    constexpr uint32_t kSandSurfaceGpuLayerCountShift = 1u;
+    constexpr uint32_t kSandSurfaceGpuLayerCountMask = 0x7Fu <<
+        kSandSurfaceGpuLayerCountShift;
+    constexpr uint32_t kSandSurfaceGpuDeformationOffsetShift = 8u;
+    constexpr uint32_t kSandSurfaceGpuMaxDeformationOffset = 0x00FFFFFFu;
+    constexpr uint32_t kSandSurfaceGpuDeformationOffsetMask =
+        kSandSurfaceGpuMaxDeformationOffset <<
+        kSandSurfaceGpuDeformationOffsetShift;
 
     enum class SandSurfaceGpuFlags : uint32_t {
         None = 0,
@@ -39,11 +47,21 @@ namespace HIKARI::RENDER3D::SAND {
     static_assert(offsetof(SandSurfaceGpuData, styleDark) == 48u);
     static_assert(offsetof(SandSurfaceGpuData, stylePit) == 64u);
     static_assert(offsetof(SandSurfaceGpuData, styleWet) == 80u);
+    static_assert(
+        (static_cast<uint32_t>(SandSurfaceGpuFlags::Enabled) &
+            kSandSurfaceGpuLayerCountMask) == 0u);
+    static_assert(
+        (kSandSurfaceGpuLayerCountMask &
+            kSandSurfaceGpuDeformationOffsetMask) == 0u);
+    static_assert(
+        kSandSurfaceMaxHeightCells - 1u <=
+            kSandSurfaceGpuMaxDeformationOffset);
 
     SandSurfaceGpuData BuildSandSurfaceGpuDataSentinel() noexcept;
     SandSurfaceGpuData BuildSandSurfaceGpuData(
         const SandSurfaceRenderData& source,
         uint32_t heightOffset,
+        uint32_t deformationOffset,
         uint32_t layerWeightsOffset,
         uint32_t coverageOffset,
         uint32_t layerTintsOffset = 0u) noexcept;

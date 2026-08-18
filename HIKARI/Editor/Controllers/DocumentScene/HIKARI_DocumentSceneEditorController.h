@@ -217,8 +217,13 @@ namespace HIKARI {
         DebugCameraController3D sceneViewDebugCameraSnapshot_{};
         bool historyExternalDirty_ = false;
         bool sandTerrainStrokeActive_ = false;
-        std::vector<SceneObjectData> sandBrushBeforeObjects_{};
-        SceneCameraSettings sandBrushBeforeCamera_{};
+        bool sandBrushStrokeChanged_ = false;
+        SceneObjectId sandBrushTargetObjectId_{};
+        SceneComponentId sandBrushTargetComponentId_{};
+        nlohmann::json sandBrushBeforeComponentProperties_ =
+            nlohmann::json::object();
+        MATH::Vec3 sandBrushPreviousLocalHit_{};
+        bool sandBrushHasPreviousLocalHit_ = false;
         bool sandBrushDirtyBefore_ = false;
     };
 

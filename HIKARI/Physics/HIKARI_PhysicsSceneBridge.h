@@ -12,6 +12,7 @@ namespace HIKARI {
 namespace HIKARI::PHYSICS {
 
     class PhysicsCollisionGeometryStore;
+    struct TerrainCollisionProjection;
 
     struct PhysicsBodyBuildResult {
         bool hasDefinition = false;
@@ -31,6 +32,7 @@ namespace HIKARI::PHYSICS {
         PhysicsBodyCreateInfo& outCreateInfo,
         MATH::Vec3& outWorldScale,
         PhysicsCollisionGeometryStore* collisionGeometryStore = nullptr,
+        const TerrainCollisionProjection* terrainProjection = nullptr,
         const MATH::Vec3* retainedDefinitionScale = nullptr);
 
     uint64_t ComputePhysicsBodyDefinitionSignature(

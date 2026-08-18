@@ -2,16 +2,22 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
+#include <limits>
+#include <map>
+#include <memory>
 #include <unordered_map>
 #include <utility>
 
 #include "Animation/Runtime/HIKARI_AnimationPoseService.h"
 #include "Assets/HIKARI_AssetRegistry.h"
+#include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Render3D/Core/HIKARI_BoundsUtils.h"
 #include "Render3D/Core/HIKARI_Material.h"
 #include "Render3D/Procedural/HIKARI_ProceduralModelFactory.h"
 #include "Render3D/Runtime/HIKARI_RenderModelCache.h"
 #include "Render3D/Runtime/HIKARI_SceneRenderCache.h"
+#include "Render3D/Runtime/HIKARI_SceneSurfaceFloatPool.h"
 #include "Render3D/Water/HIKARI_WaterSurfaceRenderData.h"
 #include "Render3D/Sand/HIKARI_SandSurfaceRenderData.h"
 #include "Scene/Components/HIKARI_ProceduralMeshComponent.h"
@@ -103,159 +109,200 @@ namespace HIKARI {
             data.pitDarkening = settings.pitDarkening;
             data.toonBandCount = settings.toonBandCount;
             data.toonBandHardness = settings.toonBandHardness;
+            data.edgeDepth = settings.edgeDepth;
             return data;
         }
 
-        // Rebuild a 1:1 vertex grid whose segments equal the baked height-field
-        // resolution and whose extent equals the chunk bounding box. uv0 tiles the
-        // sand-grain texture once per grid cell (same density as the old
-        // GridPlane fx*segments) so the material keeps its anime look; uv1 stays
-        // normalized [0,1] because the SAND-only pixel shader reads coverage and
-        // layer weights from uv1 and height from localPosition/extents, so a tiled
-        // uv0 never reaches the coverage sampler and cannot cause a discard.
-        const ModelAsset* RebuildTerrainMesh(
-            uint64_t objectId,
-            uint32_t gridX,
-            uint32_t gridZ,
-            float extentX,
-            float extentZ,
-            float cellPitch,
-            RENDER3D::RUNTIME::RenderModelCache& renderModelCache) {
+        struct TerrainProjectionLayout {
+            int32_t minKeyX = 0;
+            int32_t minKeyZ = 0;
+            int32_t maxKeyX = 0;
+            int32_t maxKeyZ = 0;
+            float chunkSize = 0.0f;
+            uint32_t authoredCells = 0u;
+            uint32_t gridResolution = 0u;
+            uint32_t layerCount = 1u;
 
-            struct TerrainMeshEntry {
-                std::unique_ptr<ModelAsset> model{};
-                const RENDER3D::RUNTIME::RenderModelAsset* renderModel = nullptr;
-                uint32_t gridX = 0u;
-                uint32_t gridZ = 0u;
-                float extentX = 0.0f;
-                float extentZ = 0.0f;
-                float cellPitch = 0.0f;
+            bool operator==(const TerrainProjectionLayout&) const = default;
+        };
+
+        struct TerrainProjectionState {
+            TerrainProjectionLayout layout{};
+            bool layoutValid = false;
+            uint64_t authoredRevision = 0u;
+            std::map<TERRAIN::TerrainChunkKey, uint64_t> authoredHashes{};
+            std::map<TERRAIN::TerrainChunkKey, uint64_t> runtimeRevisions{};
+            std::map<
+                TERRAIN::TerrainChunkKey,
+                SAND::SandChunkRuntimeSnapshotPtr> runtimeByChunk{};
+            std::vector<TERRAIN::TerrainChunkKey> changedChunks{};
+            std::shared_ptr<std::vector<float>> heights{};
+            std::shared_ptr<std::vector<float>> deformations{};
+            std::shared_ptr<std::vector<float>> coverage{};
+            std::shared_ptr<std::vector<float>> layerWeights{};
+            uint64_t projectionRevision = 0u;
+            float authoredMinHeight = 0.0f;
+            float authoredMaxHeight = 0.0f;
+            float stableBoundsMinY = 0.0f;
+            float stableBoundsMaxY = 0.0f;
+            bool stableBoundsValid = false;
+            ProceduralMeshSettings warmSettings{};
+            std::filesystem::path warmProjectRoot{};
+            bool warmSettingsValid = false;
+            bool warmPending = false;
+        };
+
+        uint64_t HashTerrainChunk(const TERRAIN::TerrainChunk& chunk) {
+            uint64_t hash = HASH::kFnv1a64OffsetBasis;
+            hash = HASH::Fnv1aBytes(
+                hash, &chunk.cells, sizeof(chunk.cells));
+            hash = HASH::Fnv1aBytes(
+                hash, &chunk.layerCount, sizeof(chunk.layerCount));
+            const auto append = [&hash](const std::vector<float>& values) {
+                const uint64_t size = static_cast<uint64_t>(values.size());
+                hash = HASH::Fnv1aBytes(hash, &size, sizeof(size));
+                if (!values.empty()) {
+                    hash = HASH::Fnv1aBytes(
+                        hash,
+                        values.data(),
+                        values.size() * sizeof(float));
+                }
             };
-            static std::unordered_map<uint64_t, TerrainMeshEntry> sTerrainMeshes{};
-
-            TerrainMeshEntry& entry = sTerrainMeshes[objectId];
-            if (entry.renderModel != nullptr &&
-                entry.gridX == gridX && entry.gridZ == gridZ &&
-                entry.extentX == extentX && entry.extentZ == extentZ &&
-                entry.cellPitch == cellPitch) {
-                return entry.model.get();
-            }
-
-            auto model = std::make_unique<ModelAsset>();
-            model->SetName("terrain-grid");
-            model->SetSourcePath("procedural://terrain-grid");
-            model->SetState(ModelAsset::State::Loaded);
-
-            MaterialAsset material{};
-            material.name = "Terrain Default";
-            material.slotId = ASSETS::MODELS::MakeMaterialSlotId(
-                ASSETS::MODELS::MaterialSlotImporterSemantic::Procedural,
-                material.name,
-                0u);
-            material.shaderProfileId = "PBR";
-            material.doubleSided = true;
-            model->materials.push_back(material);
-
-            MeshPrimitive primitive{};
-            primitive.name = "Terrain Grid";
-            primitive.layout = VertexLayoutKind::StaticPNTT;
-            primitive.materialIndex = 0;
-            primitive.staticVertices.reserve(
-                static_cast<std::size_t>(gridX + 1u) * (gridZ + 1u));
-            Bounds bounds{};
-            bool boundsInit = false;
-            const float cellsAcrossX = extentX / (std::max)(cellPitch, 1.0e-4f);
-            const float cellsAcrossZ = extentZ / (std::max)(cellPitch, 1.0e-4f);
-            for (uint32_t gz = 0u; gz <= gridZ; ++gz) {
-                const float fz = static_cast<float>(gz) / static_cast<float>(gridZ);
-                for (uint32_t gx = 0u; gx <= gridX; ++gx) {
-                    const float fx = static_cast<float>(gx) / static_cast<float>(gridX);
-                    Vertex3D v{};
-                    v.position = {
-                        -extentX * 0.5f + extentX * fx,
-                        0.0f,
-                        -extentZ * 0.5f + extentZ * fz
-                    };
-                    v.normal = { 0.0f, 1.0f, 0.0f };
-                    v.tangent = { 1.0f, 0.0f, 0.0f, 1.0f };
-                    v.uv0 = { fx * cellsAcrossX, fz * cellsAcrossZ };
-                    v.uv1 = { fx, fz };
-                    primitive.staticVertices.push_back(v);
-                    if (!boundsInit) {
-                        bounds.min = v.position;
-                        bounds.max = v.position;
-                        boundsInit = true;
-                    } else {
-                        bounds.min.x = (std::min)(bounds.min.x, v.position.x);
-                        bounds.min.y = (std::min)(bounds.min.y, v.position.y);
-                        bounds.min.z = (std::min)(bounds.min.z, v.position.z);
-                        bounds.max.x = (std::max)(bounds.max.x, v.position.x);
-                        bounds.max.y = (std::max)(bounds.max.y, v.position.y);
-                        bounds.max.z = (std::max)(bounds.max.z, v.position.z);
-                    }
-                }
-            }
-            primitive.indices.reserve(static_cast<std::size_t>(gridX) * gridZ * 6u);
-            for (uint32_t gz = 0u; gz < gridZ; ++gz) {
-                for (uint32_t gx = 0u; gx < gridX; ++gx) {
-                    const uint32_t row0 = gz * (gridX + 1u);
-                    const uint32_t row1 = (gz + 1u) * (gridX + 1u);
-                    const uint32_t i0 = row0 + gx;
-                    const uint32_t i1 = row0 + gx + 1u;
-                    const uint32_t i2 = row1 + gx;
-                    const uint32_t i3 = row1 + gx + 1u;
-                    primitive.indices.insert(
-                        primitive.indices.end(), { i0, i2, i1, i1, i2, i3 });
-                }
-            }
-            primitive.bounds = bounds;
-
-            MeshAsset mesh{};
-            mesh.name = "Terrain Mesh";
-            mesh.bounds = bounds;
-            mesh.primitives.push_back(std::move(primitive));
-            model->meshes.push_back(std::move(mesh));
-            model->bounds = bounds;
-
-            ModelNode node{};
-            node.name = "Terrain Root";
-            node.meshIndex = 0;
-            model->nodes.push_back(node);
-            model->defaultSceneRootNode = 0;
-
-            const RENDER3D::RUNTIME::RenderModelAsset* renderModel =
-                renderModelCache.GetOrCreate(*model);
-            entry.model = std::move(model);
-            entry.renderModel = renderModel;
-            entry.gridX = gridX;
-            entry.gridZ = gridZ;
-            entry.extentX = extentX;
-            entry.extentZ = extentZ;
-            entry.cellPitch = cellPitch;
-            return renderModel != nullptr ? entry.model.get() : nullptr;
+            append(chunk.heights);
+            append(chunk.coverage);
+            append(chunk.layerWeights);
+            return hash;
         }
 
-        // Bake the sparse chunk set into one square (gridRes+1)^2 height / coverage /
-        // layer-weight field. Positions outside every chunk keep coverage 0 so the
-        // pixel shader discards them (real holes), which is the only intended source
-        // of transparency. Buffers are persistent per object because Upsert copies the
-        // desc but the renderer keeps reading sandSurfaceHeights until the next bake.
+        void AppendChangedChunk(
+            std::vector<TERRAIN::TerrainChunkKey>& chunks,
+            TERRAIN::TerrainChunkKey key) {
+
+            if (std::find(chunks.begin(), chunks.end(), key) ==
+                chunks.end()) {
+                chunks.push_back(key);
+            }
+        }
+
+        uint32_t ResolveTerrainProjectionGrid(
+            uint32_t totalCellsX,
+            uint32_t totalCellsZ,
+            uint32_t projectionScale,
+            uint32_t layerCount,
+            bool includeDeformation) {
+
+            constexpr uint32_t kMaxGrid = 512u;
+            const std::size_t fieldsPerVertex =
+                2u + // total height + coverage
+                (includeDeformation ? 1u : 0u) +
+                (layerCount > 1u
+                    ? static_cast<std::size_t>(layerCount)
+                    : 0u);
+            const std::size_t fixedPoolFloats =
+                RENDER3D::RUNTIME::kSceneSurfaceNeutralFloatCount +
+                (layerCount > 1u
+                    ? static_cast<std::size_t>(layerCount) * 6u
+                    : 0u);
+            const std::size_t availableVertexFloats =
+                RENDER3D::SAND::kSandSurfaceMaxHeightCells > fixedPoolFloats
+                    ? RENDER3D::SAND::kSandSurfaceMaxHeightCells -
+                        fixedPoolFloats
+                    : 0u;
+            const std::size_t vertexBudget = fieldsPerVertex > 0u
+                ? availableVertexFloats / fieldsPerVertex
+                : 0u;
+            const double budgetStride = std::sqrt(
+                static_cast<double>(vertexBudget));
+            const uint32_t budgetGrid = budgetStride >= 2.0
+                ? static_cast<uint32_t>(budgetStride) - 1u
+                : 1u;
+            const uint64_t desiredGrid =
+                static_cast<uint64_t>((std::max)(
+                    totalCellsX, totalCellsZ)) *
+                (std::max)(projectionScale, 1u);
+            return (std::max)(1u, (std::min)(
+                static_cast<uint32_t>((std::min)(
+                    desiredGrid,
+                    static_cast<uint64_t>(kMaxGrid))),
+                budgetGrid));
+        }
+
+        bool SampleTerrainGrid(
+            const std::vector<float>& values,
+            std::size_t baseOffset,
+            uint32_t sourceCells,
+            float sourceCellSize,
+            float localX,
+            float localZ,
+            float& outValue) {
+
+            if (sourceCells == 0u ||
+                !std::isfinite(sourceCellSize) ||
+                sourceCellSize <= 1.0e-4f) {
+                return false;
+            }
+            const uint32_t sourceStride = sourceCells + 1u;
+            const std::size_t sourceCount =
+                static_cast<std::size_t>(sourceStride) * sourceStride;
+            if (baseOffset > values.size() ||
+                sourceCount > values.size() - baseOffset) {
+                return false;
+            }
+            const float fx = std::clamp(
+                localX / sourceCellSize,
+                0.0f,
+                static_cast<float>(sourceCells));
+            const float fz = std::clamp(
+                localZ / sourceCellSize,
+                0.0f,
+                static_cast<float>(sourceCells));
+            const uint32_t x0 = static_cast<uint32_t>(fx);
+            const uint32_t z0 = static_cast<uint32_t>(fz);
+            const uint32_t x1 = (std::min)(x0 + 1u, sourceCells);
+            const uint32_t z1 = (std::min)(z0 + 1u, sourceCells);
+            const float tx = fx - static_cast<float>(x0);
+            const float tz = fz - static_cast<float>(z0);
+            const auto sample = [&](uint32_t x, uint32_t z) {
+                return values[
+                    baseOffset +
+                    static_cast<std::size_t>(z) * sourceStride + x];
+            };
+            outValue = std::lerp(
+                std::lerp(sample(x0, z0), sample(x1, z0), tx),
+                std::lerp(sample(x0, z1), sample(x1, z1), tx),
+                tz);
+            return std::isfinite(outValue);
+        }
+
+        struct TerrainProjectionOutput {
+            const ModelAsset* warmedModel = nullptr;
+            std::string warmedClusteredGeometryPath{};
+            ProceduralMeshSettings meshSettings{};
+            float stableBoundsMinY = 0.0f;
+            float stableBoundsMaxY = 0.0f;
+        };
+
         void BakeTerrainChunksForRender(
             const TERRAIN::TerrainSurface& surface,
             const TerrainSurfaceComponent& terrain,
-            uint64_t objectId,
             RuntimeObjectHandle objectHandle,
             const SAND::SandSurfaceQueryService* sandSurfaceQuery,
+            const std::filesystem::path& projectRoot,
             float chunkSize,
             uint32_t cells,
-            float cellSize,
-            RENDER3D::RUNTIME::SceneRenderObjectDesc& desc,
-            uint32_t* outTotalCellsX = nullptr,
-            uint32_t* outTotalCellsZ = nullptr) {
+            TerrainProjectionState& state,
+            SceneRenderCacheSync::DebugStats& stats,
+            TerrainProjectionOutput& output,
+            RENDER3D::RUNTIME::SceneRenderObjectDesc& desc) {
 
+            desc.sandSurfaceHeights.reset();
+            desc.sandSurfaceDeformations.reset();
+            desc.sandSurfaceLayerWeights.reset();
+            desc.sandSurfaceCoverage.reset();
             const TERRAIN::TerrainChunkMap& chunks = surface.chunks;
             if (chunks.empty()) {
                 desc.sandSurface = false;
+                state = {};
                 return;
             }
 
@@ -264,6 +311,7 @@ namespace HIKARI {
             int32_t maxKeyX = (std::numeric_limits<int32_t>::min)();
             int32_t maxKeyZ = (std::numeric_limits<int32_t>::min)();
             for (const auto& [key, chunk] : chunks) {
+                (void)chunk;
                 minKeyX = (std::min)(minKeyX, key.x);
                 minKeyZ = (std::min)(minKeyZ, key.z);
                 maxKeyX = (std::max)(maxKeyX, key.x);
@@ -276,152 +324,459 @@ namespace HIKARI {
                 static_cast<uint32_t>(maxKeyX - minKeyX + 1) * cells);
             const uint32_t totalCellsZ = (std::max)(1u,
                 static_cast<uint32_t>(maxKeyZ - minKeyZ + 1) * cells);
-            if (outTotalCellsX != nullptr) { *outTotalCellsX = totalCellsX; }
-            if (outTotalCellsZ != nullptr) { *outTotalCellsZ = totalCellsZ; }
 
-            // The GPU height field is a single square gridResolution x gridResolution
-            // (capped at 512). A non-square chunk span is resampled isotropically into
-            // that square; uv1 = local/extents+0.5 stays the exact 1:1 mapping.
-            constexpr uint32_t kMaxGrid = 512u;
-            const uint32_t gridRes = (std::max)(1u, (std::min)(
-                (std::max)(totalCellsX, totalCellsZ), kMaxGrid));
-            const uint32_t stride = gridRes + 1u;
-            const std::size_t gridCount = static_cast<std::size_t>(stride) * stride;
+            state.changedChunks.clear();
+            const uint64_t authoredRevision = terrain.GetRevision();
+            if (!state.layoutValid ||
+                state.authoredRevision != authoredRevision) {
+
+                float authoredMin =
+                    (std::numeric_limits<float>::max)();
+                float authoredMax =
+                    (std::numeric_limits<float>::lowest)();
+                for (const auto& [key, chunk] : chunks) {
+                    const uint64_t hash = HashTerrainChunk(chunk);
+                    const auto old = state.authoredHashes.find(key);
+                    if (old == state.authoredHashes.end() ||
+                        old->second != hash) {
+                        AppendChangedChunk(state.changedChunks, key);
+                    }
+                    state.authoredHashes[key] = hash;
+                    for (const float height : chunk.heights) {
+                        if (!std::isfinite(height)) {
+                            continue;
+                        }
+                        authoredMin = (std::min)(authoredMin, height);
+                        authoredMax = (std::max)(authoredMax, height);
+                    }
+                }
+                for (auto it = state.authoredHashes.begin();
+                    it != state.authoredHashes.end();) {
+
+                    if (chunks.find(it->first) != chunks.end()) {
+                        ++it;
+                        continue;
+                    }
+                    AppendChangedChunk(state.changedChunks, it->first);
+                    it = state.authoredHashes.erase(it);
+                }
+                state.authoredMinHeight = std::isfinite(authoredMin)
+                    ? authoredMin : 0.0f;
+                state.authoredMaxHeight = std::isfinite(authoredMax)
+                    ? authoredMax : 0.0f;
+                state.authoredRevision = authoredRevision;
+            }
+
+            // Runtime snapshot は stateRevision だけを比較し、変更 chunk の
+            // immutable storage だけ差し替える。fixed tick ごとの大配列複製は
+            // Sand owner 側に閉じ、render bridge は参照を保持する。
+            bool responseGridActive = false;
+            uint32_t responseProjectionScale = 1u;
+            for (const auto& [key, chunk] : chunks) {
+                (void)chunk;
+                SAND::SandChunkRuntimeSnapshotPtr runtime{};
+                const bool runtimeValid = sandSurfaceQuery != nullptr &&
+                    sandSurfaceQuery->TryGetChunkState(
+                        objectHandle, key, runtime) &&
+                    runtime && runtime->cells > 0u &&
+                    std::isfinite(runtime->cellSize) &&
+                    runtime->cellSize > 1.0e-4f;
+                const auto oldRevision = state.runtimeRevisions.find(key);
+                if (!runtimeValid) {
+                    if (oldRevision != state.runtimeRevisions.end()) {
+                        AppendChangedChunk(state.changedChunks, key);
+                        state.runtimeRevisions.erase(oldRevision);
+                        state.runtimeByChunk.erase(key);
+                    }
+                    continue;
+                }
+
+                if (oldRevision == state.runtimeRevisions.end() ||
+                    oldRevision->second != runtime->stateRevision) {
+                    AppendChangedChunk(state.changedChunks, key);
+                    state.runtimeRevisions[key] = runtime->stateRevision;
+                    state.runtimeByChunk[key] = runtime;
+                }
+                responseGridActive = responseGridActive ||
+                    runtime->responseGridActive;
+                const uint32_t runtimeAuthoredCells =
+                    (std::max)(runtime->authoredCells, 1u);
+                const uint64_t responseScale =
+                    (static_cast<uint64_t>(runtime->cells) +
+                        runtimeAuthoredCells - 1u) /
+                    runtimeAuthoredCells;
+                responseProjectionScale = (std::max)(
+                    responseProjectionScale,
+                    static_cast<uint32_t>((std::max)(
+                        responseScale,
+                        uint64_t{ 1u })));
+            }
+            for (auto it = state.runtimeRevisions.begin();
+                it != state.runtimeRevisions.end();) {
+
+                if (chunks.find(it->first) != chunks.end()) {
+                    ++it;
+                    continue;
+                }
+                AppendChangedChunk(state.changedChunks, it->first);
+                state.runtimeByChunk.erase(it->first);
+                it = state.runtimeRevisions.erase(it);
+            }
 
             uint32_t layerCount = 1u;
             for (const auto& [key, chunk] : chunks) {
+                (void)key;
                 layerCount = (std::max)(layerCount, chunk.layerCount);
             }
 
-            struct BakedTerrainBuffers {
-                std::vector<float> heights{};
-                std::vector<float> coverage{};
-                std::vector<float> layerWeights{};
+            const uint32_t authoredGrid = ResolveTerrainProjectionGrid(
+                totalCellsX, totalCellsZ, 1u, layerCount, false);
+            const uint32_t configuredResponseScale = (std::clamp)(
+                surface.deform.responseResolutionScale, 1u, 4u);
+            const uint32_t desiredResponseScale = responseGridActive
+                ? responseProjectionScale
+                : configuredResponseScale;
+            const uint32_t responseGrid = ResolveTerrainProjectionGrid(
+                totalCellsX,
+                totalCellsZ,
+                desiredResponseScale,
+                layerCount,
+                true);
+
+            ProceduralMeshSettings responseSettings{};
+            responseSettings.kind = ProceduralMeshKind::GridPlane;
+            responseSettings.width = extentX;
+            responseSettings.depth = extentZ;
+            responseSettings.segmentsX = responseGrid;
+            responseSettings.segmentsY = responseGrid;
+            // uv0 の材質 tile 密度は authored lattice に固定する。
+            // response grid が高密度へ切り替わっても、地面全体の
+            // テクスチャ尺度は変えない。uv1 は正規化 field 座標のまま。
+            responseSettings.uvTilesX = static_cast<float>(
+                (std::max)(totalCellsX, 1u));
+            responseSettings.uvTilesY = static_cast<float>(
+                (std::max)(totalCellsZ, 1u));
+            bool responseModelReady = responseGrid <= authoredGrid;
+            if (responseGrid > authoredGrid && !projectRoot.empty()) {
+                if (!state.warmSettingsValid ||
+                    state.warmSettings != responseSettings ||
+                    state.warmProjectRoot != projectRoot) {
+
+                    state.warmSettings = responseSettings;
+                    state.warmProjectRoot = projectRoot;
+                    state.warmSettingsValid = true;
+                    ++stats.terrainResponseWarmRequestCount;
+                }
+                PROCEDURAL::RequestClusteredGeometryWarmUp(
+                    responseSettings, projectRoot);
+                responseModelReady =
+                    PROCEDURAL::TryGetWarmedClusteredGeometry(
+                        responseSettings,
+                        projectRoot,
+                        output.warmedModel,
+                        output.warmedClusteredGeometryPath);
+            }
+            state.warmPending =
+                responseGrid > authoredGrid && !responseModelReady;
+            if (state.warmPending) {
+                ++stats.terrainResponseWarmPendingCount;
+            }
+
+            const bool useResponseGrid = responseModelReady &&
+                (responseGridActive || responseGrid > authoredGrid);
+            const uint32_t gridRes = useResponseGrid
+                ? responseGrid
+                : authoredGrid;
+            if (!responseModelReady ||
+                responseGrid <= authoredGrid) {
+                output.warmedModel = nullptr;
+                output.warmedClusteredGeometryPath.clear();
+            }
+            const uint32_t stride = gridRes + 1u;
+            const std::size_t gridCount =
+                static_cast<std::size_t>(stride) * stride;
+
+            const TerrainProjectionLayout layout{
+                minKeyX,
+                minKeyZ,
+                maxKeyX,
+                maxKeyZ,
+                chunkSize,
+                cells,
+                gridRes,
+                layerCount,
             };
-            static std::unordered_map<uint64_t, BakedTerrainBuffers> sBakedByObject{};
-            BakedTerrainBuffers& baked = sBakedByObject[objectId];
-            std::vector<float>& bakedHeights = baked.heights;
-            std::vector<float>& bakedCoverage = baked.coverage;
-            std::vector<float>& bakedLayerWeights = baked.layerWeights;
-            bakedHeights.assign(gridCount, 0.0f);
-            bakedCoverage.assign(gridCount, 0.0f);
-            bakedLayerWeights.assign(
-                gridCount * static_cast<std::size_t>(layerCount), 0.0f);
+            const bool fullProjection =
+                !state.layoutValid || state.layout != layout;
+            const auto ensureField = [&](
+                std::shared_ptr<std::vector<float>>& field,
+                std::size_t requiredCount,
+                bool enabled) {
+
+                if (!field) {
+                    field = std::make_shared<std::vector<float>>();
+                }
+                if (!enabled) {
+                    field->clear();
+                    return;
+                }
+                if (field->size() != requiredCount) {
+                    field->assign(requiredCount, 0.0f);
+                    ++stats.terrainProjectionAllocationCount;
+                }
+            };
+            ensureField(state.heights, gridCount, true);
+            // response field も load-time projection と同時に確保して 0 初期化する。
+            // 最初の接触では changed chunk だけを書き、全 terrain を作り直さない。
+            ensureField(state.deformations, gridCount, true);
+            ensureField(state.coverage, gridCount, true);
+            ensureField(
+                state.layerWeights,
+                gridCount * static_cast<std::size_t>(layerCount),
+                layerCount > 1u);
 
             const float gridCellX = extentX / static_cast<float>(gridRes);
             const float gridCellZ = extentZ / static_cast<float>(gridRes);
             const float originX = static_cast<float>(minKeyX) * chunkSize;
             const float originZ = static_cast<float>(minKeyZ) * chunkSize;
-            const uint32_t chunkStride = cells + 1u;
-            const std::size_t chunkVertCount =
-                static_cast<std::size_t>(chunkStride) * chunkStride;
 
-            // Resolve the live (base+deform) heights per chunk when the runtime
-            // simulation has them, so ball imprints show through. Otherwise bake the
-            // authored base heights.
-            std::map<TERRAIN::TerrainChunkKey, const std::vector<float>*> resolvedHeights{};
-            for (const auto& [key, chunk] : chunks) {
-                const SAND::SandChunkRuntimeState* runtime = nullptr;
-                const std::vector<float>* src = &chunk.heights;
-                if (sandSurfaceQuery != nullptr &&
-                    sandSurfaceQuery->TryGetChunkState(objectHandle, key, runtime) &&
-                    runtime != nullptr &&
-                    runtime->heights.size() == chunkVertCount) {
-                    src = &runtime->heights;
+            // bbox の最大端は floor すると「次の chunk」になる。存在する左/下
+            // chunk も候補にし、最終頂点を 0 coverage へ落とさない。
+            const auto findChunkAt = [&] (
+                float localSurfaceX,
+                float localSurfaceZ,
+                TERRAIN::TerrainChunkKey& outKey,
+                const TERRAIN::TerrainChunk*& outChunk,
+                float& outLocalX,
+                float& outLocalZ) {
+                const TERRAIN::TerrainChunkKey base =
+                    TERRAIN::TerrainChunkKeyFromWorld(
+                        localSurfaceX, localSurfaceZ, chunkSize);
+                constexpr int32_t offsets[2] = { 0, -1 };
+                for (const int32_t dz : offsets) {
+                    for (const int32_t dx : offsets) {
+                        const TERRAIN::TerrainChunkKey candidate{
+                            base.x + dx, base.z + dz };
+                        const auto found = chunks.find(candidate);
+                        if (found == chunks.end()) {
+                            continue;
+                        }
+                        const float cx = localSurfaceX -
+                            static_cast<float>(candidate.x) * chunkSize;
+                        const float cz = localSurfaceZ -
+                            static_cast<float>(candidate.z) * chunkSize;
+                        constexpr float epsilon = 1.0e-4f;
+                        if (cx < -epsilon || cx > chunkSize + epsilon ||
+                            cz < -epsilon || cz > chunkSize + epsilon) {
+                            continue;
+                        }
+                        outKey = candidate;
+                        outChunk = &found->second;
+                        outLocalX = std::clamp(cx, 0.0f, chunkSize);
+                        outLocalZ = std::clamp(cz, 0.0f, chunkSize);
+                        return true;
+                    }
                 }
-                if (src->size() == chunkVertCount) {
-                    resolvedHeights.emplace(key, src);
-                }
-            }
+                return false;
+            };
 
-            const auto sampleChunkCoverage =
-                [&](const TERRAIN::TerrainChunk& chunk, float localX, float localZ) {
-                    const float fx = std::clamp(localX / cellSize, 0.0f, static_cast<float>(cells));
-                    const float fz = std::clamp(localZ / cellSize, 0.0f, static_cast<float>(cells));
-                    const uint32_t x0 = static_cast<uint32_t>(fx);
-                    const uint32_t z0 = static_cast<uint32_t>(fz);
-                    const uint32_t x1 = (std::min)(x0 + 1u, cells);
-                    const uint32_t z1 = (std::min)(z0 + 1u, cells);
-                    const float tx = fx - static_cast<float>(x0);
-                    const float tz = fz - static_cast<float>(z0);
-                    const auto C = [&](uint32_t xx, uint32_t zz) {
-                        return chunk.coverage[static_cast<std::size_t>(zz) * chunkStride + xx];
-                    };
-                    return std::lerp(
-                        std::lerp(C(x0, z0), C(x1, z0), tx),
-                        std::lerp(C(x0, z1), C(x1, z1), tx), tz);
-                };
-            const auto sampleChunkHeight =
-                [&](const std::vector<float>& heights, float localX, float localZ) {
-                    const float fx = std::clamp(localX / cellSize, 0.0f, static_cast<float>(cells));
-                    const float fz = std::clamp(localZ / cellSize, 0.0f, static_cast<float>(cells));
-                    const uint32_t x0 = static_cast<uint32_t>(fx);
-                    const uint32_t z0 = static_cast<uint32_t>(fz);
-                    const uint32_t x1 = (std::min)(x0 + 1u, cells);
-                    const uint32_t z1 = (std::min)(z0 + 1u, cells);
-                    const float tx = fx - static_cast<float>(x0);
-                    const float tz = fz - static_cast<float>(z0);
-                    const auto H = [&](uint32_t xx, uint32_t zz) {
-                        return heights[static_cast<std::size_t>(zz) * chunkStride + xx];
-                    };
-                    return std::lerp(
-                        std::lerp(H(x0, z0), H(x1, z0), tx),
-                        std::lerp(H(x0, z1), H(x1, z1), tx), tz);
-                };
+            const auto projectRect = [&] (
+                uint32_t minGridX,
+                uint32_t minGridZ,
+                uint32_t maxGridX,
+                uint32_t maxGridZ) {
 
-            for (uint32_t gz = 0u; gz <= gridRes; ++gz) {
-                const float wz = originZ + static_cast<float>(gz) * gridCellZ;
-                for (uint32_t gx = 0u; gx <= gridRes; ++gx) {
+                for (uint32_t gz = minGridZ; gz <= maxGridZ; ++gz) {
+                    const float wz =
+                        originZ + static_cast<float>(gz) * gridCellZ;
+                    for (uint32_t gx = minGridX; gx <= maxGridX; ++gx) {
                     const float wx = originX + static_cast<float>(gx) * gridCellX;
                     const std::size_t dst = static_cast<std::size_t>(gz) * stride + gx;
-                    const TERRAIN::TerrainChunkKey key =
-                        TERRAIN::TerrainChunkKeyFromWorld(wx, wz, chunkSize);
-                    const auto cit = chunks.find(key);
-                    if (cit == chunks.end()) {
-                        continue; // no chunk -> coverage stays 0 -> discard (real hole)
+                    (*state.heights)[dst] = 0.0f;
+                    (*state.coverage)[dst] = 0.0f;
+                    (*state.deformations)[dst] = 0.0f;
+                    if (layerCount > 1u) {
+                        for (uint32_t layer = 0u;
+                            layer < layerCount;
+                            ++layer) {
+
+                            (*state.layerWeights)[
+                                static_cast<std::size_t>(layer) *
+                                    gridCount + dst] = 0.0f;
+                        }
                     }
-                    const TERRAIN::TerrainChunk& chunk = cit->second;
-                    const float localX = wx - static_cast<float>(key.x) * chunkSize;
-                    const float localZ = wz - static_cast<float>(key.z) * chunkSize;
-                    const float cov = sampleChunkCoverage(chunk, localX, localZ);
-                    bakedCoverage[dst] = cov;
+                    TERRAIN::TerrainChunkKey key{};
+                    const TERRAIN::TerrainChunk* chunk = nullptr;
+                    float localX = 0.0f;
+                    float localZ = 0.0f;
+                    if (!findChunkAt(
+                            wx, wz, key, chunk, localX, localZ)) {
+                        continue;
+                    }
+                    const auto runtimeFound = state.runtimeByChunk.find(key);
+                    const SAND::SandChunkRuntimeState* runtime =
+                        runtimeFound != state.runtimeByChunk.end()
+                            ? runtimeFound->second.get()
+                            : nullptr;
+                    float cov = 0.0f;
+                    const bool sampledRuntimeCoverage = runtime != nullptr &&
+                        SampleTerrainGrid(
+                            runtime->coverage,
+                            0u,
+                            runtime->cells,
+                            runtime->cellSize,
+                            localX,
+                            localZ,
+                            cov);
+                    if (!sampledRuntimeCoverage) {
+                        const uint32_t authoredCells =
+                            (std::max)(chunk->cells, 1u);
+                        const float authoredCellSize = chunkSize /
+                            static_cast<float>(authoredCells);
+                        (void)SampleTerrainGrid(
+                            chunk->coverage,
+                            0u,
+                            authoredCells,
+                            authoredCellSize,
+                            localX,
+                            localZ,
+                            cov);
+                    }
+                    (*state.coverage)[dst] = cov;
                     if (cov <= 1.0e-4f) {
                         continue;
                     }
-                    const auto hit = resolvedHeights.find(key);
-                    if (hit == resolvedHeights.end()) {
+
+                    float totalHeight = 0.0f;
+                    bool sampledTotal = runtime != nullptr &&
+                        SampleTerrainGrid(
+                            runtime->heights,
+                            0u,
+                            runtime->cells,
+                            runtime->cellSize,
+                            localX,
+                            localZ,
+                            totalHeight);
+                    const uint32_t authoredCells =
+                        (std::max)(chunk->cells, 1u);
+                    const float authoredCellSize = chunkSize /
+                        static_cast<float>(authoredCells);
+                    if (!sampledTotal) {
+                        sampledTotal = SampleTerrainGrid(
+                            chunk->heights,
+                            0u,
+                            authoredCells,
+                            authoredCellSize,
+                            localX,
+                            localZ,
+                            totalHeight);
+                    }
+                    if (sampledTotal) {
+                        (*state.heights)[dst] = totalHeight;
+                    }
+
+                    if (responseGridActive && runtime != nullptr) {
+                        float deformation = 0.0f;
+                        if (SampleTerrainGrid(
+                                runtime->deformHeights,
+                                0u,
+                                runtime->cells,
+                                runtime->cellSize,
+                                localX,
+                                localZ,
+                                deformation)) {
+                            (*state.deformations)[dst] = deformation;
+                        }
+                    }
+
+                    if (layerCount <= 1u) {
                         continue;
                     }
-                    bakedHeights[dst] = sampleChunkHeight(*hit->second, localX, localZ);
+                    const std::size_t authoredVertexCount =
+                        TERRAIN::TerrainChunkVertexCount(authoredCells);
                     for (uint32_t layer = 0u; layer < layerCount; ++layer) {
                         const std::size_t lsrc =
-                            static_cast<std::size_t>(layer) * chunkVertCount;
-                        if (lsrc >= chunk.layerWeights.size()) { break; }
-                        const float fx = std::clamp(localX / cellSize, 0.0f, static_cast<float>(cells));
-                        const float fz = std::clamp(localZ / cellSize, 0.0f, static_cast<float>(cells));
-                        const uint32_t x0 = static_cast<uint32_t>(fx);
-                        const uint32_t z0 = static_cast<uint32_t>(fz);
-                        const uint32_t x1 = (std::min)(x0 + 1u, cells);
-                        const uint32_t z1 = (std::min)(z0 + 1u, cells);
-                        const float tx = fx - static_cast<float>(x0);
-                        const float tz = fz - static_cast<float>(z0);
-                        const auto W = [&](uint32_t xx, uint32_t zz) {
-                            return chunk.layerWeights[lsrc + static_cast<std::size_t>(zz) * chunkStride + xx];
-                        };
-                        bakedLayerWeights[static_cast<std::size_t>(layer) * gridCount + dst] =
-                            std::lerp(
-                                std::lerp(W(x0, z0), W(x1, z0), tx),
-                                std::lerp(W(x0, z1), W(x1, z1), tx), tz);
+                            static_cast<std::size_t>(layer) *
+                            authoredVertexCount;
+                        float weight = 0.0f;
+                        if (SampleTerrainGrid(
+                                chunk->layerWeights,
+                                lsrc,
+                                authoredCells,
+                                authoredCellSize,
+                                localX,
+                                localZ,
+                                weight)) {
+                            (*state.layerWeights)[
+                                static_cast<std::size_t>(layer) *
+                                    gridCount + dst] = weight;
+                        }
                     }
                 }
+                }
+                stats.terrainProjectedVertexCount +=
+                    static_cast<uint64_t>(maxGridX - minGridX + 1u) *
+                    static_cast<uint64_t>(maxGridZ - minGridZ + 1u);
+            };
+
+            if (fullProjection) {
+                projectRect(0u, 0u, gridRes, gridRes);
+                ++stats.terrainFullProjectionCount;
+            } else if (!state.changedChunks.empty()) {
+                for (const TERRAIN::TerrainChunkKey key :
+                    state.changedChunks) {
+
+                    const float chunkOriginX =
+                        static_cast<float>(key.x) * chunkSize;
+                    const float chunkOriginZ =
+                        static_cast<float>(key.z) * chunkSize;
+                    const int32_t minGridX = static_cast<int32_t>(std::floor(
+                        (chunkOriginX - originX) / gridCellX)) - 1;
+                    const int32_t minGridZ = static_cast<int32_t>(std::floor(
+                        (chunkOriginZ - originZ) / gridCellZ)) - 1;
+                    const int32_t maxGridX = static_cast<int32_t>(std::ceil(
+                        (chunkOriginX + chunkSize - originX) / gridCellX)) + 1;
+                    const int32_t maxGridZ = static_cast<int32_t>(std::ceil(
+                        (chunkOriginZ + chunkSize - originZ) / gridCellZ)) + 1;
+                    projectRect(
+                        static_cast<uint32_t>((std::clamp)(
+                            minGridX, 0, static_cast<int32_t>(gridRes))),
+                        static_cast<uint32_t>((std::clamp)(
+                            minGridZ, 0, static_cast<int32_t>(gridRes))),
+                        static_cast<uint32_t>((std::clamp)(
+                            maxGridX, 0, static_cast<int32_t>(gridRes))),
+                        static_cast<uint32_t>((std::clamp)(
+                            maxGridZ, 0, static_cast<int32_t>(gridRes))));
+                }
+                ++stats.terrainIncrementalProjectionCount;
+            } else {
+                ++stats.terrainProjectionReuseCount;
             }
 
+            if (fullProjection || !state.changedChunks.empty()) {
+                ++state.projectionRevision;
+            }
+            state.layout = layout;
+            state.layoutValid = true;
+
+            // chunk 経路でもスタイル/変形パラメータを全同期する。
+            // 以前は既定値のままだったため、パネルで変えても反映されなかった。
             desc.sandSurfaceData.gridResolution = gridRes;
             desc.sandSurfaceData.extents = { extentX, extentZ };
+            desc.sandSurfaceData.heightScale = surface.heightScale;
+            desc.sandSurfaceData.rimStrength = surface.deform.rimStrength;
+            desc.sandSurfaceData.lightTint = surface.material.lightTint;
+            desc.sandSurfaceData.darkTint = surface.material.darkTint;
+            desc.sandSurfaceData.sparkleStrength = surface.material.sparkleStrength;
+            desc.sandSurfaceData.rippleAmount = surface.material.rippleAmount;
+            desc.sandSurfaceData.pitDarkening = surface.material.pitDarkening;
+            desc.sandSurfaceData.toonBandCount = surface.material.toonBandCount;
+            desc.sandSurfaceData.toonBandHardness = surface.material.toonBandHardness;
             desc.sandSurfaceData.layerCount = layerCount;
-            desc.sandSurfaceData.layerWeights = bakedLayerWeights;
-            desc.sandSurfaceData.coverage = bakedCoverage;
+            desc.sandSurfaceData.layerWeights.clear();
+            desc.sandSurfaceData.coverage.clear();
             desc.sandSurfaceData.wetness = surface.shoreline.wetness;
+            desc.sandSurfaceData.edgeDepth = surface.shoreline.edgeDepth;
 
             // Resolve per-layer tints from the registry; layers without a preset fall
             // back to the surface material tints so the built-in sand look is kept.
@@ -443,18 +798,61 @@ namespace HIKARI {
                 }
             }
 
-            // Recenter the transform onto the middle of the chunk bounding box; the
-            // local plane is centered, so the world origin must move with the span.
-            const float centerX =
-                (static_cast<float>(minKeyX) * chunkSize) + extentX * 0.5f;
-            const float centerZ =
-                (static_cast<float>(minKeyZ) * chunkSize) + extentZ * 0.5f;
-            desc.worldTransform.position = {
-                centerX, desc.worldTransform.position.y, centerZ };
-            desc.worldTransform.useExplicitMatrix = false;
+            // 生成グリッドは原点中心なので、地形オブジェクトの本来の world
+            // 行列に chunk bbox のローカル中心を合成する。
+            const MATH::Mat4 objectWorld =
+                desc.worldTransform.GetWorldMatrix();
+            desc.worldTransform.useExplicitMatrix = true;
+            desc.worldTransform.explicitMatrix = objectWorld *
+                MATH::Mat4::Translate({
+                    originX + extentX * 0.5f,
+                    0.0f,
+                    originZ + extentZ * 0.5f });
 
-            desc.sandSurfaceHeights = &bakedHeights;
-            (void)terrain;
+            desc.sandSurfaceHeights = state.heights;
+            desc.sandSurfaceLayerWeights = state.layerWeights;
+            desc.sandSurfaceCoverage = state.coverage;
+            if (responseGridActive) {
+                desc.sandSurfaceDeformations = state.deformations;
+            }
+            desc.sandSurfaceProjectionRevision = state.projectionRevision;
+
+            // authored 高さと response profile から保守 bounds を作り、8m 単位で
+            // 量子化して只拡張する。dent tick や通常の brush sample が毎回
+            // topology rebuild を起こさず、極値を越えた時だけ安全側へ広がる。
+            const float rippleMargin = std::clamp(
+                desc.sandSurfaceData.rippleAmount, 0.0f, 3.0f) *
+                std::clamp(
+                    desc.sandSurfaceData.heightScale, 0.0f, 2.0f) *
+                0.021f;
+            const float desiredMin = state.authoredMinHeight -
+                (std::max)(surface.shoreline.edgeDepth, 0.0f) -
+                (std::max)(surface.deform.maxDepth, 0.0f) -
+                rippleMargin;
+            const float desiredMax = state.authoredMaxHeight +
+                (std::max)(surface.deform.maxDepth, 0.0f) *
+                    (std::max)(surface.deform.rimStrength, 0.0f) +
+                rippleMargin;
+            constexpr float kBoundsQuantum = 8.0f;
+            const float quantizedMin =
+                std::floor(desiredMin / kBoundsQuantum) * kBoundsQuantum;
+            const float quantizedMax =
+                std::ceil(desiredMax / kBoundsQuantum) * kBoundsQuantum;
+            if (!state.stableBoundsValid) {
+                state.stableBoundsMinY = quantizedMin;
+                state.stableBoundsMaxY = quantizedMax;
+                state.stableBoundsValid = true;
+            } else {
+                state.stableBoundsMinY = (std::min)(
+                    state.stableBoundsMinY, quantizedMin);
+                state.stableBoundsMaxY = (std::max)(
+                    state.stableBoundsMaxY, quantizedMax);
+            }
+            output.meshSettings = responseSettings;
+            output.meshSettings.segmentsX = gridRes;
+            output.meshSettings.segmentsY = gridRes;
+            output.stableBoundsMinY = state.stableBoundsMinY;
+            output.stableBoundsMaxY = state.stableBoundsMaxY;
         }
 
 
@@ -549,6 +947,19 @@ namespace HIKARI {
                 , projectRoot_(std::move(projectRoot)) {
             }
 
+            // 地形メッシュに合わせて procedural 設定を直接解決する。
+            // (terrain は desc.model を差し替えるため、既定の object 経由では
+            //  旧平面の clustered 幾何が残ってしまう)
+            std::string ResolveProceduralSettings(
+                const ProceduralMeshSettings& settings) {
+                return PROCEDURAL::GetOrCreateClusteredGeometryPath(
+                    settings, projectRoot_);
+            }
+
+            const std::filesystem::path& GetProjectRoot() const noexcept {
+                return projectRoot_;
+            }
+
             std::string Resolve(
                 const GameObject& object,
                 const ModelComponent& model) {
@@ -585,6 +996,8 @@ namespace HIKARI {
             const PresentationTransformService* presentationTransforms,
             const ANIMATION::AnimationPoseService* animationPoses,
             const SAND::SandSurfaceQueryService* sandSurfaceQuery,
+            TerrainProjectionState& terrainProjection,
+            SceneRenderCacheSync::DebugStats& syncStats,
             RENDER3D::RenderViewPurpose purpose) {
 
             RENDER3D::RUNTIME::SceneRenderObjectDesc desc{};
@@ -684,33 +1097,50 @@ namespace HIKARI {
                     if (!surface.chunks.empty()) {
                         const float chunkSize = terrainSurface->GetChunkWorldSize();
                         const uint32_t cells = terrainSurface->GetChunkCells();
-                        const float cellSize =
-                            chunkSize / static_cast<float>((std::max)(cells, 1u));
 
                         desc.sandSurface = true;
                         desc.sandSurfaceData = BuildSandSurfaceRenderData(
                             TERRAIN::ToSandSurfaceSettings(surface), *procedural);
-                        uint32_t totalCellsX = cells;
-                        uint32_t totalCellsZ = cells;
+                        TerrainProjectionOutput projectionOutput{};
                         BakeTerrainChunksForRender(
-                            surface, *terrainSurface, desc.id.value,
-                            object.GetRuntimeHandle(), sandSurfaceQuery,
-                            chunkSize, cells, cellSize, desc,
-                            &totalCellsX, &totalCellsZ);
-                        const float ex = desc.sandSurfaceData.extents.x;
-                        const float ez = desc.sandSurfaceData.extents.y;
-                        const uint32_t gridRes = desc.sandSurfaceData.gridResolution;
-                        if (const ModelAsset* terrainModel =
-                                RebuildTerrainMesh(
-                                    desc.id.value, gridRes, gridRes, ex, ez,
-                                    cellSize, renderModelCache)) {
+                            surface, *terrainSurface,
+                            object.GetRuntimeHandle(),
+                            sandSurfaceQuery,
+                            clusteredGeometryPaths.GetProjectRoot(),
+                            chunkSize, cells,
+                            terrainProjection,
+                            syncStats,
+                            projectionOutput,
+                            desc);
+                        const ProceduralMeshSettings& terrainSettings =
+                            projectionOutput.meshSettings;
+                        const ModelAsset* terrainModel =
+                            projectionOutput.warmedModel != nullptr
+                                ? projectionOutput.warmedModel
+                                : PROCEDURAL::GetOrCreateModel(
+                                    terrainSettings);
+                        if (terrainModel != nullptr) {
                             desc.model = terrainModel;
                             desc.renderModel =
                                 renderModelCache.GetOrCreate(*terrainModel);
                             desc.localBounds = terrainModel->bounds;
+                            desc.localBounds.min.y = (std::min)(
+                                desc.localBounds.min.y,
+                                projectionOutput.stableBoundsMinY);
+                            desc.localBounds.max.y = (std::max)(
+                                desc.localBounds.max.y,
+                                projectionOutput.stableBoundsMaxY);
                             desc.worldBounds = BOUNDS::TransformBounds(
                                 desc.localBounds,
                                 desc.worldTransform.GetWorldMatrix());
+                            // CPU と meshlet の両経路で同じ手続き型モデルを使う。
+                            desc.clusteredGeometryPath =
+                                projectionOutput.warmedClusteredGeometryPath.empty()
+                                    ? clusteredGeometryPaths.
+                                        ResolveProceduralSettings(
+                                            terrainSettings)
+                                    : projectionOutput.
+                                        warmedClusteredGeometryPath;
                         }
                     }
                 }
@@ -750,6 +1180,30 @@ namespace HIKARI {
         }
     }
 
+    struct SceneRenderCacheSync::State {
+        DebugStats debugStats{};
+        std::unordered_map<
+            const RENDER3D::RUNTIME::SceneRenderCache*,
+            std::unordered_map<uint64_t, TerrainProjectionState>>
+            terrainProjections{};
+    };
+
+    SceneRenderCacheSync::SceneRenderCacheSync()
+        : state_(std::make_unique<State>()) {
+    }
+
+    SceneRenderCacheSync::~SceneRenderCacheSync() = default;
+
+    const SceneRenderCacheSync::DebugStats&
+        SceneRenderCacheSync::GetDebugStats() const noexcept {
+
+        return state_->debugStats;
+    }
+
+    void SceneRenderCacheSync::ResetDebugStats() noexcept {
+        state_->debugStats = {};
+    }
+
     void SceneRenderCacheSync::Sync(
         World& world,
         RENDER3D::RUNTIME::RenderModelCache& renderModelCache,
@@ -759,7 +1213,11 @@ namespace HIKARI {
         std::filesystem::path projectRoot,
         RENDER3D::RenderViewPurpose purpose) {
 
+        PROCEDURAL::PumpClusteredGeometryWarmUps();
         sceneRenderCache.BeginSync(frameIndex);
+        auto& terrainProjections =
+            state_->terrainProjections[&sceneRenderCache];
+        terrainProjections.clear();
         ClusteredGeometryPathResolver clusteredGeometryPaths(
             assetRegistry,
             std::move(projectRoot));
@@ -780,6 +1238,10 @@ namespace HIKARI {
                     model,
                     *assetRegistry);
             }
+            const RENDER3D::RUNTIME::SceneRenderObjectId objectId =
+                ResolveSceneRenderObjectId(object);
+            TerrainProjectionState& terrainProjection =
+                terrainProjections[objectId.value];
             sceneRenderCache.Upsert(BuildSceneRenderObjectDesc(
                 object,
                 model,
@@ -788,6 +1250,8 @@ namespace HIKARI {
                 presentationTransforms,
                 animationPoses,
                 sandSurfaceQuery,
+                terrainProjection,
+                state_->debugStats,
                 purpose));
         });
 
@@ -805,9 +1269,13 @@ namespace HIKARI {
         std::filesystem::path projectRoot,
         RENDER3D::RenderViewPurpose purpose) {
 
+        PROCEDURAL::PumpClusteredGeometryWarmUps();
         sceneRenderCache.BeginPatchSync(frameIndex);
+        auto& terrainProjections =
+            state_->terrainProjections[&sceneRenderCache];
         for (const uint64_t removedObjectId : world.GetRemovedRenderObjectIds()) {
             sceneRenderCache.Remove(RENDER3D::RUNTIME::SceneRenderObjectId{ removedObjectId });
+            terrainProjections.erase(removedObjectId);
         }
 
         ClusteredGeometryPathResolver clusteredGeometryPaths(
@@ -829,6 +1297,7 @@ namespace HIKARI {
             if (model == nullptr) {
                 sceneRenderCache.Remove(
                     RENDER3D::RUNTIME::SceneRenderObjectId{ object->GetRenderStableId() });
+                terrainProjections.erase(object->GetRenderStableId());
                 continue;
             }
 
@@ -840,6 +1309,10 @@ namespace HIKARI {
                     *model, *assetRegistry);
             }
 
+            const RENDER3D::RUNTIME::SceneRenderObjectId objectId =
+                ResolveSceneRenderObjectId(*object);
+            TerrainProjectionState& terrainProjection =
+                terrainProjections[objectId.value];
             sceneRenderCache.Upsert(BuildSceneRenderObjectDesc(
                 *object,
                 *model,
@@ -848,6 +1321,8 @@ namespace HIKARI {
                 presentationTransforms,
                 animationPoses,
                 sandSurfaceQuery,
+                terrainProjection,
+                state_->debugStats,
                 purpose));
         }
 
@@ -861,8 +1336,24 @@ namespace HIKARI {
                     ResolveSceneRenderObjectId(object);
                 const RENDER3D::RUNTIME::SceneRenderObject* cached =
                     sceneRenderCache.Find(objectId);
+                TerrainProjectionState& terrainProjection =
+                    terrainProjections[objectId.value];
+                bool responseWarmReady = false;
+                if (terrainProjection.warmPending &&
+                    terrainProjection.warmSettingsValid) {
+
+                    const ModelAsset* warmedModel = nullptr;
+                    std::string warmedPath{};
+                    responseWarmReady =
+                        PROCEDURAL::TryGetWarmedClusteredGeometry(
+                            terrainProjection.warmSettings,
+                            terrainProjection.warmProjectRoot,
+                            warmedModel,
+                            warmedPath);
+                }
                 if (cached != nullptr &&
-                    !HasRuntimeMaterialRevisionChange(cached->desc, model)) {
+                    !HasRuntimeMaterialRevisionChange(cached->desc, model) &&
+                    !responseWarmReady) {
                     return;
                 }
                 sceneRenderCache.Upsert(BuildSceneRenderObjectDesc(
@@ -873,6 +1364,8 @@ namespace HIKARI {
                     presentationTransforms,
                     animationPoses,
                     sandSurfaceQuery,
+                    terrainProjection,
+                    state_->debugStats,
                     purpose));
             });
 

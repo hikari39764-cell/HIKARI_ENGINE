@@ -261,6 +261,16 @@ namespace HIKARI::SHADOW::INTERNAL {
             gShadowRendererState.gpuDrivenSceneSource->meshShaderJointPalettes;
         gShadowRendererState.dynamicShadowSceneSource.meshShaderJointPalettes =
             gShadowRendererState.gpuDrivenSceneSource->meshShaderJointPalettes;
+        const auto* sandGpuData =
+            gShadowRendererState.gpuDrivenSceneSource->sandSurfaceGpuData;
+        const auto* sandHeights =
+            gShadowRendererState.gpuDrivenSceneSource->sandSurfaceHeights;
+        gShadowRendererState.shadowSceneSource.sandSurfaceGpuData = sandGpuData;
+        gShadowRendererState.shadowSceneSource.sandSurfaceHeights = sandHeights;
+        gShadowRendererState.staticShadowSceneSource.sandSurfaceGpuData = sandGpuData;
+        gShadowRendererState.staticShadowSceneSource.sandSurfaceHeights = sandHeights;
+        gShadowRendererState.dynamicShadowSceneSource.sandSurfaceGpuData = sandGpuData;
+        gShadowRendererState.dynamicShadowSceneSource.sandSurfaceHeights = sandHeights;
         gShadowRendererState.staticShadowPrimaryInstances.clear();
         gShadowRendererState.staticShadowPrimaryMaterialSources.clear();
         gShadowRendererState.dynamicShadowPrimaryInstances.clear();

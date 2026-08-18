@@ -67,6 +67,14 @@ namespace HIKARI {
         settings.segmentsZ = std::clamp(settings.segmentsZ, 1u, 64u);
         settings.sphereSlices = std::clamp(settings.sphereSlices, 3u, 512u);
         settings.sphereStacks = std::clamp(settings.sphereStacks, 2u, 256u);
+        const auto finiteTileCount = [](float value) noexcept {
+            if (!std::isfinite(value) || value <= 0.0f) {
+                return 0.0f;
+            }
+            return std::clamp(value, 0.001f, 4096.0f);
+        };
+        settings.uvTilesX = finiteTileCount(settings.uvTilesX);
+        settings.uvTilesY = finiteTileCount(settings.uvTilesY);
 
         switch (settings.kind) {
         case ProceduralMeshKind::Plane:
@@ -86,6 +94,10 @@ namespace HIKARI {
             break;
         default:
             break;
+        }
+        if (settings.kind != ProceduralMeshKind::GridPlane) {
+            settings.uvTilesX = 0.0f;
+            settings.uvTilesY = 0.0f;
         }
         return settings;
     }

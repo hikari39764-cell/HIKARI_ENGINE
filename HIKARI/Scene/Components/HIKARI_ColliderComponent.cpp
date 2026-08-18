@@ -245,20 +245,6 @@ namespace HIKARI {
             !collisionGeometryAssetId_.empty();
     }
 
-    void ColliderComponent::SetRuntimeTriangleMesh(
-        std::shared_ptr<const PHYSICS::PhysicsGeometryBuffer> geometry) noexcept {
-        runtimeGeometry_ = std::move(geometry);
-    }
-
-    bool ColliderComponent::UsesRuntimeGeometry() const noexcept {
-        return fitMode_ == ColliderFitMode::RuntimeGeometry &&
-            runtimeGeometry_ != nullptr;
-    }
-
-    const std::shared_ptr<const PHYSICS::PhysicsGeometryBuffer>&
-        ColliderComponent::GetRuntimeGeometry() const noexcept {
-        return runtimeGeometry_;
-    }
     void ColliderComponent::SetEnabled(bool enabled) noexcept { enabled_ = enabled; }
     void ColliderComponent::SetFitMode(ColliderFitMode mode) noexcept { fitMode_ = mode; }
     void ColliderComponent::SetShapeType(PHYSICS::PhysicsShapeType type) noexcept { shapeType_ = type; }

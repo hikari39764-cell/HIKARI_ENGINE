@@ -119,13 +119,39 @@ namespace HIKARI::SAND {
         settings.stampRadius = ClampPositive(
             settings.stampRadius, 0.02f, 10.0f);
         settings.rimStrength = std::clamp(
-            FiniteOr(settings.rimStrength, 0.28f),
+            FiniteOr(settings.rimStrength, 0.32f),
             0.0f,
+            2.0f);
+        settings.responseResolutionScale = std::clamp(
+            settings.responseResolutionScale, 1u, 4u);
+        settings.restDepthScale = std::clamp(
+            FiniteOr(settings.restDepthScale, 0.36f),
+            0.0f,
+            2.0f);
+        settings.minimumDepth = ClampPositive(
+            settings.minimumDepth, 0.0f, 2.0f);
+        settings.settleStartRatio = std::clamp(
+            FiniteOr(settings.settleStartRatio, 0.72f),
+            0.0f,
+            1.0f);
+        settings.settleSeconds = ClampPositive(
+            settings.settleSeconds, 0.0f, 10.0f);
+        settings.impactDepthScale = ClampPositive(
+            settings.impactDepthScale, 0.0f, 2.0f);
+        settings.rimWidthScale = std::clamp(
+            FiniteOr(settings.rimWidthScale, 0.42f),
+            0.05f,
             2.0f);
         settings.refillPerSecond = ClampPositive(
             settings.refillPerSecond, 0.0f, 10.0f);
         settings.diffusionPerSecond = ClampPositive(
             settings.diffusionPerSecond, 0.0f, 100.0f);
+        settings.plasticity = std::clamp(
+            FiniteOr(settings.plasticity, 0.93f), 0.0f, 1.0f);
+        settings.plasticRefillPerSecond = ClampPositive(
+            settings.plasticRefillPerSecond, 0.0f, 10.0f);
+        settings.recoveryDelaySeconds = ClampPositive(
+            settings.recoveryDelaySeconds, 0.0f, 60.0f);
         settings.edgeFalloff = ClampPositive(
             settings.edgeFalloff, 0.0f, 1000.0f);
         settings.edgeDepth = std::clamp(
@@ -168,13 +194,25 @@ namespace HIKARI::SAND {
 
         return lhs.style == rhs.style &&
             lhs.presetId == rhs.presetId &&
+            lhs.deformationEnabled == rhs.deformationEnabled &&
             lhs.gridResolution == rhs.gridResolution &&
             lhs.heightScale == rhs.heightScale &&
             lhs.maxDepth == rhs.maxDepth &&
             lhs.stampRadius == rhs.stampRadius &&
             lhs.rimStrength == rhs.rimStrength &&
+            lhs.responseResolutionScale == rhs.responseResolutionScale &&
+            lhs.restDepthScale == rhs.restDepthScale &&
+            lhs.minimumDepth == rhs.minimumDepth &&
+            lhs.settleStartRatio == rhs.settleStartRatio &&
+            lhs.settleSeconds == rhs.settleSeconds &&
+            lhs.impactDepthScale == rhs.impactDepthScale &&
+            lhs.rimWidthScale == rhs.rimWidthScale &&
             lhs.refillPerSecond == rhs.refillPerSecond &&
             lhs.diffusionPerSecond == rhs.diffusionPerSecond &&
+            lhs.plasticity == rhs.plasticity &&
+            lhs.plasticRefillPerSecond ==
+                rhs.plasticRefillPerSecond &&
+            lhs.recoveryDelaySeconds == rhs.recoveryDelaySeconds &&
             lhs.edgeFalloff == rhs.edgeFalloff &&
             lhs.edgeDepth == rhs.edgeDepth &&
             lhs.lightTint.x == rhs.lightTint.x &&
@@ -188,6 +226,21 @@ namespace HIKARI::SAND {
             lhs.pitDarkening == rhs.pitDarkening &&
             lhs.toonBandCount == rhs.toonBandCount &&
             lhs.toonBandHardness == rhs.toonBandHardness;
+    }
+
+    float EvaluateSandSurfaceEffectiveHeight(
+        float baseHeight,
+        float coverage,
+        float edgeDepth,
+        float fallbackDepth) noexcept {
+
+        const float edge = std::clamp(
+            FiniteOr(coverage, 0.0f), 0.0f, 1.0f);
+        const float depth = edgeDepth > 1.0e-4f
+            ? edgeDepth
+            : (std::max)(fallbackDepth, 0.0f);
+        const float smooth = edge * edge * (3.0f - 2.0f * edge);
+        return baseHeight - depth * (1.0f - smooth);
     }
 
     SandSurfaceBrush SanitizeSandSurfaceBrush(

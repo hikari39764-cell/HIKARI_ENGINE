@@ -27,10 +27,36 @@ namespace HIKARI::TERRAIN {
             sand, "stampRadius", solid.stampRadius);
         solid.rimStrength = JSONREAD::NumberMemberOr(
             sand, "rimStrength", solid.rimStrength);
+        solid.responseResolutionScale = static_cast<uint32_t>(
+            sand.value(
+                "responseResolutionScale",
+                solid.responseResolutionScale));
+        solid.restDepthScale = JSONREAD::NumberMemberOr(
+            sand, "restDepthScale", solid.restDepthScale);
+        solid.minimumDepth = JSONREAD::NumberMemberOr(
+            sand, "minimumDepth", solid.minimumDepth);
+        solid.settleStartRatio = JSONREAD::NumberMemberOr(
+            sand, "settleStartRatio", solid.settleStartRatio);
+        solid.settleSeconds = JSONREAD::NumberMemberOr(
+            sand, "settleSeconds", solid.settleSeconds);
+        solid.impactDepthScale = JSONREAD::NumberMemberOr(
+            sand, "impactDepthScale", solid.impactDepthScale);
+        solid.rimWidthScale = JSONREAD::NumberMemberOr(
+            sand, "rimWidthScale", solid.rimWidthScale);
         solid.refillPerSecond = JSONREAD::NumberMemberOr(
             sand, "refillPerSecond", solid.refillPerSecond);
         solid.diffusionPerSecond = JSONREAD::NumberMemberOr(
             sand, "diffusionPerSecond", solid.diffusionPerSecond);
+        solid.plasticity = JSONREAD::NumberMemberOr(
+            sand, "plasticity", solid.plasticity);
+        solid.plasticRefillPerSecond = JSONREAD::NumberMemberOr(
+            sand,
+            "plasticRefillPerSecond",
+            solid.plasticRefillPerSecond);
+        solid.recoveryDelaySeconds = JSONREAD::NumberMemberOr(
+            sand,
+            "recoveryDelaySeconds",
+            solid.recoveryDelaySeconds);
         solid.edgeFalloff = JSONREAD::NumberMemberOr(
             sand, "edgeFalloff", solid.edgeFalloff);
         solid.edgeDepth = JSONREAD::NumberMemberOr(
@@ -121,7 +147,7 @@ namespace HIKARI::TERRAIN {
         };
 
         return nlohmann::json{
-            { "_schemaVersion", 3u },
+            { "_schemaVersion", 5u },
             { "chunked", true },
             { "presetId", solid.presetId },
             { "heightScale", solid.heightScale },
@@ -141,8 +167,21 @@ namespace HIKARI::TERRAIN {
                 { "maxDepth", solid.maxDepth },
                 { "stampRadius", solid.stampRadius },
                 { "rimStrength", solid.rimStrength },
+                { "responseResolutionScale",
+                    solid.responseResolutionScale },
+                { "restDepthScale", solid.restDepthScale },
+                { "minimumDepth", solid.minimumDepth },
+                { "settleStartRatio", solid.settleStartRatio },
+                { "settleSeconds", solid.settleSeconds },
+                { "impactDepthScale", solid.impactDepthScale },
+                { "rimWidthScale", solid.rimWidthScale },
                 { "refillPerSecond", solid.refillPerSecond },
                 { "diffusionPerSecond", solid.diffusionPerSecond },
+                { "plasticity", solid.plasticity },
+                { "plasticRefillPerSecond",
+                    solid.plasticRefillPerSecond },
+                { "recoveryDelaySeconds",
+                    solid.recoveryDelaySeconds },
             } },
             { "shoreline", {
                 { "edgeFalloff", solid.edgeFalloff },

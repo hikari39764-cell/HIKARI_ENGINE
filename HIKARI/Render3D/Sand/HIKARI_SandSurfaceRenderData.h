@@ -13,6 +13,8 @@ namespace HIKARI::RENDER3D::SAND {
     // Scene から Render3D へ渡す narrow, GPU-neutral な入力。
     // Scene は GPU スロット配置や DirectX パッキングを所有しない。
     struct SandSurfaceRenderData {
+        // 高さ・coverage・layer weight が共有する正方形グリッド解像度。
+        // GPU record と水面 bathymetry も同じ単一値を読む。
         uint32_t gridResolution = 64u;
         MATH::Vec2 extents{ 20.0f, 20.0f };
         float heightScale = 0.32f;
@@ -27,6 +29,8 @@ namespace HIKARI::RENDER3D::SAND {
         uint32_t toonBandCount = 3u;
         float toonBandHardness = 0.14f;
         float wetness = 0.0f;
+        // 境界を沈ませる深さ（メートル）。GPU record の styleWet.w に乗せる。
+        float edgeDepth = 1.5f;
 
         // 層ウェイト。layer-major で、各層は (gridResolution+1)^2 個。
         // 既定は 1 層（既存の単一砂地）で、このとき既存着色と完全一致する。

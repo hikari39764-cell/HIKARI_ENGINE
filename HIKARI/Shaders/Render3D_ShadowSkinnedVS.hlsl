@@ -44,6 +44,8 @@ struct VSOutput
     nointerpolation uint materialFlags : MATERIALFLAGS;
     nointerpolation float alphaCutoff : ALPHACUTOFF;
     nointerpolation uint materialDataIndex : MATERIALINDEX;
+    nointerpolation uint surfaceGpuSceneIndex : TEXCOORD2;
+    nointerpolation uint surfaceFeatureFlags : TEXCOORD3;
 };
 
 float4x4 ResolveJointMatrix(uint jointIndex)
@@ -64,12 +66,16 @@ VSOutput main(VSInput input)
     uint materialFlags = gMaterialFlags;
     float alphaCutoff = gAlphaCutoff;
     uint materialDataIndex = HIKARI_INVALID_SHADOW_MATERIAL_INDEX;
+    uint surfaceGpuSceneIndex = 0u;
+    uint surfaceFeatureFlags = 0u;
 
     if (gUseSurfaceGpuScene != 0u)
     {
         HikariSurfaceGpuSceneInstance instance =
             HikariGetSurfaceGpuSceneInstance(input.instanceId);
         world = instance.world;
+        surfaceGpuSceneIndex = input.instanceId;
+        surfaceFeatureFlags = instance.flags;
         materialDataIndex = instance.materialDataIndex;
         HikariMeshMaterialData materialData = HikariGetMeshMaterialData(materialDataIndex);
         materialFlags = materialData.materialFlags;
@@ -83,5 +89,7 @@ VSOutput main(VSInput input)
     output.materialFlags = materialFlags;
     output.alphaCutoff = alphaCutoff;
     output.materialDataIndex = materialDataIndex;
+    output.surfaceGpuSceneIndex = surfaceGpuSceneIndex;
+    output.surfaceFeatureFlags = surfaceFeatureFlags;
     return output;
 }

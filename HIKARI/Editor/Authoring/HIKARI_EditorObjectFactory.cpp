@@ -313,23 +313,6 @@ namespace HIKARI::EDITOR {
             std::move(sandProperties)
         });
 
-        // 球体の物理が乗れる平らな床だけを Collider に置く。
-        // 視覚的な凹みは sand displacement が持ち、物理床は変形しない。
-        object.components.push_back(SceneComponentData{
-            "ColliderComponent",
-            {
-                { "enabled", true },
-                { "fitMode", "Manual" },
-                { "shape", "Box" },
-                { "center", { 0.0f, -0.1f, 0.0f } },
-                { "rotation", { 0.0f, 0.0f, 0.0f } },
-                { "size", { 40.0f, 0.2f, 40.0f } },
-                { "radius", 1.0f },
-                { "height", 0.2f },
-                { "trigger", false }
-            }
-        });
-
         NormalizeSceneComponentIds(object);
         scene.GetSceneDocument().objects.push_back(std::move(object));
         scene.RebuildRuntimeWorld();

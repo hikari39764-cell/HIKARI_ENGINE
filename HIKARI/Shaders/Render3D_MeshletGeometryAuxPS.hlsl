@@ -4,6 +4,7 @@
 #include "Include/Forward/HIKARI_SurfaceFeatureCoverage.hlsli"
 #include "Include/Surface/HIKARI_SceneSurfaceContract.hlsli"
 #include "Include/Surface/HIKARI_SurfaceShadingNormal.hlsli"
+#include "Include/Surface/HIKARI_SandSurfaceParams.hlsli"
 #if defined(HIKARI_GEOMETRY_AUX_WRITE_FEATURE_MASK)
 #include "Include/Material/HIKARI_MaterialProgramData.hlsli"
 #include "Include/Features/HIKARI_StylizedFeatureMask.hlsli"
@@ -70,6 +71,15 @@ float4 main(PSInput input) : SV_TARGET
             input.worldPosWS,
             instance.fxUser[0],
             instance.fxUser[1]);
+    }
+    if (HikariSurfaceHasSandSurface(input.surfaceFeatureFlags))
+    {
+        const HikariSurfaceGpuSceneInstance sandInstance =
+            HikariGetSurfaceGpuSceneInstanceAt(input.surfaceGpuSceneIndex);
+        HikariClipSandCoverage(
+            HikariLoadSandSurfaceParamsFromDataIndex(
+                sandInstance.surfaceFeatureDataIndex),
+            input.uv1);
     }
 
     float roughness = clamp(materialData.pbrParams.y, 0.04f, 1.0f);

@@ -18,25 +18,49 @@ namespace HIKARI::SAND {
     // 高さは「基底(筆刷が彫った形状) + 変形(球の凹み)」を合成した最終値。
     struct SandChunkRuntimeState {
         TERRAIN::TerrainChunkKey key{};
+        uint32_t authoredCells = TERRAIN::kTerrainChunkCells;
         uint32_t cells = TERRAIN::kTerrainChunkCells;
         SandSurfaceSettings settings{};
-        // chunk 左下角のワールド XZ。
-        MATH::Vec2 chunkOriginWS{ 0.0f, 0.0f };
+        // chunk 左下角の地形オブジェクトローカル XZ。
+        MATH::Vec2 chunkOriginLocal{ 0.0f, 0.0f };
         float cellSize = 0.25f;
         float heightScale = 0.32f;
         float chunkWorldSize = 8.0f;
 
-        std::vector<float> baseHeights{};   // (cells+1)^2
-        std::vector<float> deformHeights{}; // (cells+1)^2
-        std::vector<float> heights{};       // base + deform
+        std::vector<float> baseHeights{};    // (cells+1)^2
+        // elastic/plastic を分離し、deformHeights は query/render 向けの
+        // 合成 projection としてだけ保持する。
+        std::vector<float> elasticHeights{}; // short-lived response
+        std::vector<float> plasticHeights{}; // retained track
+        std::vector<float> recoveryHold{};   // per vertex seconds
+        std::vector<float> elasticScratch{}; // fixed-step 再利用 buffer
+        std::vector<float> deformHeights{};  // elastic + plastic
+        std::vector<float> heights{};        // base + deform
+        std::vector<float> coverage{};       // visible solid coverage
+        // responseGridActive は一度でも痕跡が付いたら play 中は維持する。
+        // renderer はこれを境界に authored 解像度から response 解像度へ切り替える。
+        bool responseGridActive = false;
+        bool hasDeformation = false;
+        uint64_t stateRevision = 1u;
     };
 
     using SandChunkRuntimeStatePtr =
         std::shared_ptr<SandChunkRuntimeState>;
+    using SandChunkRuntimeSnapshotPtr =
+        std::shared_ptr<const SandChunkRuntimeState>;
+
+    // 可変 simulation state から query / renderer が必要な projection だけを
+    // 複製する。base/elastic/plastic/hold/scratch は main-thread owner に残し、
+    // fixed tick ごとの snapshot 発行で不要な大配列を複製しない。
+    SandChunkRuntimeSnapshotPtr MakeSandChunkRuntimeSnapshot(
+        const SandChunkRuntimeState& source);
 
     struct SandSurfaceSnapshotEntry {
         RuntimeObjectHandle object{};
-        SandChunkRuntimeStatePtr chunk{};
+        SandChunkRuntimeSnapshotPtr chunk{};
+        MATH::Mat4 localToWorld{};
+        MATH::Mat4 worldToLocal{};
+        MATH::Mat4 normalMatrix{};
     };
 
     // ワールド空間で疎 chunk 化された地形への問い合わせ。
@@ -56,19 +80,25 @@ namespace HIKARI::SAND {
             float localX,
             float localZ,
             float& outHeight) const noexcept;
+        bool SampleChunkLocalCoverage(
+            const SandChunkRuntimeState& chunk,
+            float localX,
+            float localZ,
+            float& outCoverage) const noexcept;
+        // GPU と同じ shoreline sink を適用した最終地表高と coverage を返す。
+        // 可視判定は kSandSurfaceVisibleCoverageThreshold を共有する。
+        bool SampleChunkLocalSurface(
+            const SandChunkRuntimeState& chunk,
+            float localX,
+            float localZ,
+            float& outHeight,
+            float& outCoverage) const noexcept;
 
-        // Renderer bridge 用。object + chunkKey の高さ配列を借用する。
-        bool TryGetChunkHeights(
-            RuntimeObjectHandle object,
-            TERRAIN::TerrainChunkKey key,
-            const std::vector<float>*& outHeights) const noexcept;
-
-        // object + chunkKey の chunk 可変状態そのものを借用する。
-        // 描画 bridge が chunk 原点・セルピッチを含めて参照するために使う。
+        // object + chunkKey の不変 snapshot を返す。
         bool TryGetChunkState(
             RuntimeObjectHandle object,
             TERRAIN::TerrainChunkKey key,
-            const SandChunkRuntimeState*& outChunk) const noexcept;
+            SandChunkRuntimeSnapshotPtr& outChunk) const noexcept;
 
         uint64_t GetSnapshotRevision() const noexcept;
         std::size_t GetSurfaceCount() const noexcept;

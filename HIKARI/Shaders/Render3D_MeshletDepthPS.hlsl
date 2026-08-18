@@ -5,6 +5,7 @@ static const uint HIKARI_INVALID_MESHLET_DEPTH_MATERIAL_INDEX = 0xffffffffu;
 #include "Include/HIKARI_MeshMaterialData.hlsli"
 #include "Include/HIKARI_SurfaceGpuScene.hlsli"
 #include "Include/Forward/HIKARI_SurfaceFeatureCoverage.hlsli"
+#include "Include/Surface/HIKARI_SandSurfaceParams.hlsli"
 
 SamplerState gLinearWrap : register(s0);
 
@@ -34,6 +35,19 @@ void main(PSInput input)
             input.worldPosWS,
             instance.fxUser[0],
             instance.fxUser[1]);
+    }
+
+    // Coverage holes in a sand surface must not write depth, otherwise SSR
+    // treats the hollow as a solid reflector and fills it with sky. uv1 is
+    // the normalized terrain uv (the forward sand shader samples it too).
+    if (HikariSurfaceHasSandSurface(input.surfaceFeatureFlags))
+    {
+        const HikariSurfaceGpuSceneInstance sandInstance =
+            HikariGetSurfaceGpuSceneInstanceAt(input.surfaceGpuSceneIndex);
+        const HikariSandSurfaceParams sandParams =
+            HikariLoadSandSurfaceParamsFromDataIndex(
+                sandInstance.surfaceFeatureDataIndex);
+        HikariClipSandCoverage(sandParams, input.uv1);
     }
 
     HikariMeshMaterialData materialData =

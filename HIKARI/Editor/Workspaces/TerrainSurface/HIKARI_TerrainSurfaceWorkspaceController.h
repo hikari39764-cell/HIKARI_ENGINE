@@ -1,6 +1,10 @@
 #pragma once
 
+#include <json.hpp>
+
 #include "Editor/HIKARI_EditorContext.h"
+#include "Scene/HIKARI_SceneComponentId.h"
+#include "Scene/HIKARI_SceneObjectId.h"
 
 namespace HIKARI {
 
@@ -8,10 +12,21 @@ namespace HIKARI {
 
     namespace EDITOR {
 
+        struct TerrainSurfaceWorkspaceResult {
+            SceneObjectId objectId{};
+            SceneComponentId componentId{};
+            nlohmann::json beforePatch = nlohmann::json::object();
+            nlohmann::json afterPatch = nlohmann::json::object();
+            bool componentChanged = false;
+            bool editActive = false;
+        };
+
         class TerrainSurfaceWorkspaceController {
         public:
             void DrawDockSpace(bool resetDefaultDockLayout) const;
-            void Draw(DocumentSceneBase& scene, EditorContext& context);
+            TerrainSurfaceWorkspaceResult Draw(
+                DocumentSceneBase& scene,
+                EditorContext& context);
         };
 
     } // namespace EDITOR

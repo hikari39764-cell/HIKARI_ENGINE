@@ -50,12 +50,15 @@ namespace HIKARI::PHYSICS {
                 : nullptr;
             PhysicsBodyCreateInfo createInfo{};
             MATH::Vec3 worldScale{};
+            const TerrainCollisionProjection* terrainProjection =
+                terrainCollisionProjections_.Find(objectHandle);
             PhysicsBodyBuildResult build =
                 BuildPhysicsBodyCreateInfo(
                     object,
                     createInfo,
                     worldScale,
                     collisionGeometryStore_,
+                    terrainProjection,
                     retainedBinding != nullptr
                         ? &retainedBinding->definitionWorldScale
                         : nullptr);

@@ -17,11 +17,7 @@ float4 HikariShadeSandSurface(
         HikariLoadSandSurfaceParamsFromDataIndex(
             instance.surfaceFeatureDataIndex);
 
-    const float coverage = HikariSandSampleCoverage(p, input.uv1);
-    if (coverage < 0.5f)
-    {
-        discard;
-    }
+    HikariClipSandCoverage(p, input.uv1);
 
     float3 blendedLight = p.lightTint;
     float3 blendedDark = p.darkTint;
@@ -84,14 +80,26 @@ float4 HikariShadeSandSurface(
         albedo.rgb *= blendedLight;
     }
 
-    // 凹みは湿った深い色へ、滑らかに乾いた砂へ戻す。
-    const float pitMaskRaw = saturate(-sandSurfaceData.z /
-        max(p.extents.x * 0.02f, 0.05f));
+    // sandSurfaceData.z は runtime response のみ。地形サイズではなく
+    // authored heightScale を基準にして、大きな地形でも足跡の濃さを保つ。
+    const float responseScale = max(p.heightScale, 0.05f);
+    const float pitMaskRaw = saturate(
+        -sandSurfaceData.z / responseScale);
+    const float rimMaskRaw = saturate(
+        sandSurfaceData.z / responseScale);
     const float pitMask = smoothstep(0.16f, 0.38f, pitMaskRaw);
+    const float rimMask = smoothstep(0.04f, 0.24f, rimMaskRaw);
     albedo.rgb = lerp(
         albedo.rgb,
         albedo.rgb * blendedDark * 0.82f,
         pitMask * p.pitDarkening);
+    // 押し出された正の rim は pit より弱く、乾いた砂の細い明部として出す。
+    const float3 rimColor = saturate(
+        albedo.rgb * 1.06f + blendedLight * 0.025f);
+    albedo.rgb = lerp(
+        albedo.rgb,
+        rimColor,
+        rimMask * 0.35f);
     // 水際の湿った砂。沈んだ領域を wetness に応じて暗く湿らせる。
     if (p.wetness > 0.0f)
     {

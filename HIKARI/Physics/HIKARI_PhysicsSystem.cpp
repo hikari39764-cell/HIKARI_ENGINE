@@ -50,6 +50,7 @@ namespace HIKARI::PHYSICS {
             service_ = nullptr;
             return;
         }
+        terrainCollisionProjections_.Refresh(world);
         ReconcileBodies(world, 0u);
         HIKARI_LOG_INFO(
             "[Physics] world attached backend=" +
@@ -68,6 +69,7 @@ namespace HIKARI::PHYSICS {
             kinematicMotion_->Clear();
         }
         failures_.clear();
+        terrainCollisionProjections_.Clear();
         lastStepResult_ = {};
         lastReconcileFrame_ =
             (std::numeric_limits<uint64_t>::max)();
@@ -85,6 +87,7 @@ namespace HIKARI::PHYSICS {
         if (!ShouldSimulate()) {
             return;
         }
+        terrainCollisionProjections_.Refresh(world);
         if (lastReconcileFrame_ != frame.frameIndex) {
             ReconcileBodies(world, frame.frameIndex);
         }

@@ -6,6 +6,7 @@
 #if HIKARI_MESHLET_DEPTH_ENABLE_WATER
 #include "Include/Meshlet/HIKARI_WaterSurfaceDeform.hlsli"
 #endif
+#include "Include/Surface/HIKARI_SandSurfaceDeform.hlsli"
 
 struct HikariMeshletDepthVertexOut
 {
@@ -51,6 +52,17 @@ HikariMeshletDepthVertexOut HikariBuildMeshletDepthVertex(
         localPosition,
         localNormal);
 #endif
+    // 沙地も depth pass で同じ頂点位移を行い、forward と深度を一致させる。
+    // これが無いと SSR 用深度が未変形の平面になり、透明部で空を反射していた。
+    float3 sandSurfaceData = float3(0.0f, 0.0f, 0.0f);
+    if ((instance.flags & HIKARI_SURFACE_GPU_SCENE_FLAG_SAND_SURFACE) != 0u)
+    {
+        HikariApplySandSurfaceDeform(
+            instance,
+            localPosition,
+            localNormal,
+            sandSurfaceData);
+    }
 
     // Depth prepass と forward (LESS_EQUAL) の深度を bit 一致させるため、
     // clip 位置の計算は各 MS で同一式 + precise に固定する。
@@ -63,7 +75,9 @@ HikariMeshletDepthVertexOut HikariBuildMeshletDepthVertex(
     const bool materialFx =
         (instance.flags & HIKARI_SURFACE_GPU_SCENE_FLAG_MATERIAL_FX) != 0u &&
         (instance.flags & HIKARI_SURFACE_GPU_SCENE_FLAG_WATER_SURFACE) == 0u;
-    if (alphaMasked || materialFx)
+    const bool sandSurface =
+        (instance.flags & HIKARI_SURFACE_GPU_SCENE_FLAG_SAND_SURFACE) != 0u;
+    if (alphaMasked || materialFx || sandSurface)
     {
         float4 uv01 = HikariLoadClusterVertexUv01(geometry, resolved.header, vertexIndex);
         output.uv = uv01.xy;

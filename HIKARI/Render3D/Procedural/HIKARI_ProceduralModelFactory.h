@@ -25,6 +25,18 @@ namespace HIKARI::PROCEDURAL {
     std::string GetOrCreateClusteredGeometryPath(
         const ProceduralMeshSettings& settings,
         const std::filesystem::path& projectRoot);
+    // 高密度 terrain response 用 model/hcmesh を worker で準備する。
+    // Try は main thread を cook せず、model と path の両方が publish 済みの
+    // ときだけ true を返す。
+    void RequestClusteredGeometryWarmUp(
+        const ProceduralMeshSettings& settings,
+        const std::filesystem::path& projectRoot);
+    bool TryGetWarmedClusteredGeometry(
+        const ProceduralMeshSettings& settings,
+        const std::filesystem::path& projectRoot,
+        const ModelAsset*& outModel,
+        std::string& outPath);
+    void PumpClusteredGeometryWarmUps();
     // デフォルト六種のプロシージャルプリミティブを、1 フレーム 1 種ずつ
     // ウォームアップする。プロジェクトルートが変わると再開する。
     void WarmUpDefaultPrimitiveClusters(

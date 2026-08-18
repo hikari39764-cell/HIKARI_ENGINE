@@ -70,10 +70,17 @@ namespace HIKARI::PROCEDURAL {
 
             const uint32_t sx = settings.segmentsX;
             const uint32_t sy = settings.segmentsY;
-            // GridPlane は 1 セグメントごとにチェッカーを 1 回タイルする。
-            // これによりセグメント寸法が実世界のグリッド寸法と一致する。
+            // GridPlane は既定で 1 セグメントごとに 1 回タイルする。
+            // terrain response mesh は明示 tile 数を使い、細分化の切替で
+            // 地面全体のテクスチャ密度が突然変わらないようにする。
             const bool tilePerSegment =
                 settings.kind == ProceduralMeshKind::GridPlane;
+            const float tileCountX = settings.uvTilesX > 0.0f
+                ? settings.uvTilesX
+                : static_cast<float>(sx);
+            const float tileCountY = settings.uvTilesY > 0.0f
+                ? settings.uvTilesY
+                : static_cast<float>(sy);
             primitive.staticVertices.reserve(
                 static_cast<size_t>(sx + 1u) * static_cast<size_t>(sy + 1u));
             for (uint32_t y = 0; y <= sy; ++y) {
@@ -81,12 +88,12 @@ namespace HIKARI::PROCEDURAL {
                 for (uint32_t x = 0; x <= sx; ++x) {
                     const float fx = static_cast<float>(x) / static_cast<float>(sx);
                     const float u = tilePerSegment
-                        ? fx * static_cast<float>(sx)
+                        ? fx * tileCountX
                         : fx;
                     const float v = tilePerSegment
-                        ? fy * static_cast<float>(sy)
+                        ? fy * tileCountY
                         : fy;
-                    primitive.staticVertices.push_back(MakeVertex(
+                    Vertex3D vertex = MakeVertex(
                         {
                             -settings.width * 0.5f + settings.width * fx,
                             0.0f,
@@ -97,7 +104,11 @@ namespace HIKARI::PROCEDURAL {
                                 ? MATH::Vec4{ 1.0f, 0.0f, 0.0f, 1.0f }
                                 : MATH::Vec4{},
                         u,
-                        v));
+                        v);
+                    // uv0 はマテリアル用のタイル座標、uv1 は地形高さ場・
+                    // coverage 用の正規化座標として役割を分離する。
+                    vertex.uv1 = { fx, fy };
+                    primitive.staticVertices.push_back(vertex);
                 }
             }
 

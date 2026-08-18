@@ -6,12 +6,15 @@
 #include "Editor/Workspaces/HIKARI_EditorWorkspaceHost.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/HIKARI_GameObject.h"
+#include "Scene/HIKARI_SceneComponentId.h"
+#include "Scene/HIKARI_SceneDocumentQueries.h"
 #include "Scene/HIKARI_World.h"
 #include "Scene/Terrain/HIKARI_SurfaceLayerRegistry.h"
 #include "Scene/Terrain/HIKARI_TerrainSurface.h"
 #include "Scene/Terrain/HIKARI_TerrainSurfaceComponent.h"
 
 #include <algorithm>
+#include <array>
 #include <string>
 
 #if defined(HIKARI_WITH_EDITOR)
@@ -91,6 +94,45 @@ namespace HIKARI::EDITOR {
             EditorTerrainToolMode::Mound,
             EditorTerrainToolMode::Pit,
         };
+
+        nlohmann::json ExtractTerrainSettingsPatch(
+            const nlohmann::json& properties) {
+            nlohmann::json patch = nlohmann::json::object();
+            if (!properties.is_object()) {
+                return patch;
+            }
+            static constexpr std::array<const char*, 8> keys{{
+                "_schemaVersion",
+                "presetId",
+                "heightScale",
+                "material",
+                "deform",
+                "shoreline",
+                "layerPresetIds",
+                "brush",
+            }};
+            for (const char* key : keys) {
+                const auto found = properties.find(key);
+                if (found != properties.end()) {
+                    patch[key] = *found;
+                }
+            }
+            return patch;
+        }
+
+        void ApplyTerrainSettingsPatch(
+            nlohmann::json& properties,
+            const nlohmann::json& patch) {
+            if (!patch.is_object()) {
+                return;
+            }
+            if (!properties.is_object()) {
+                properties = nlohmann::json::object();
+            }
+            for (auto it = patch.begin(); it != patch.end(); ++it) {
+                properties[it.key()] = it.value();
+            }
+        }
     } // namespace
 #endif
 
@@ -149,10 +191,11 @@ namespace HIKARI::EDITOR {
 #endif
     }
 
-    void TerrainSurfaceWorkspaceController::Draw(
+    TerrainSurfaceWorkspaceResult TerrainSurfaceWorkspaceController::Draw(
         DocumentSceneBase& scene,
         EditorContext& context) {
 #if defined(HIKARI_WITH_EDITOR)
+        TerrainSurfaceWorkspaceResult result{};
         TERRAIN::SurfaceLayerRegistry::Get().RegisterBuiltins();
         const std::vector<TERRAIN::SurfacePreset>& layers =
             TERRAIN::SurfaceLayerRegistry::Get().Layers();
@@ -162,6 +205,31 @@ namespace HIKARI::EDITOR {
             selected != nullptr
                 ? selected->GetComponent<TerrainSurfaceComponent>()
                 : nullptr;
+        SceneComponentData* documentComponent = nullptr;
+        if (selected != nullptr && terrain != nullptr) {
+            result.objectId = selected->GetDocumentId();
+            SceneObjectData* documentObject = FindSceneObjectData(
+                scene.GetSceneDocument(), result.objectId);
+            if (documentObject != nullptr) {
+                for (SceneComponentData& component :
+                    documentObject->components) {
+                    if (component.type == "TerrainSurfaceComponent") {
+                        documentComponent = &component;
+                        result.componentId = component.id;
+                        break;
+                    }
+                }
+            }
+        }
+        const bool canAuthor = terrain != nullptr &&
+            documentComponent != nullptr &&
+            result.objectId.value != 0u &&
+            result.componentId.value != 0u;
+        if (canAuthor) {
+            result.beforePatch = ExtractTerrainSettingsPatch(
+                documentComponent->properties);
+        }
+        bool runtimeComponentChanged = false;
 
         // 左: ブラシツール
         if (ImGui::Begin((TEXT::Localize("ui.terrain.tools") +
@@ -250,22 +318,25 @@ namespace HIKARI::EDITOR {
             ImGui::SeparatorText(
                 TEXT::Localize("ui.terrain.brush").c_str());
             if (terrain != nullptr) {
-                TERRAIN::TerrainSurface surface = terrain->GetSurface();
+                TERRAIN::TerrainBrush brush = terrain->GetBrush();
                 bool brushChanged = false;
                 brushChanged |= ImGui::SliderFloat(
                     TEXT::Localize("ui.terrain.radius").c_str(),
-                    &surface.brush.radius, 0.1f, 20.0f, "%.2f");
+                    &brush.radius, 0.1f, 20.0f, "%.2f");
                 brushChanged |= ImGui::SliderFloat(
                     TEXT::Localize("ui.terrain.strength").c_str(),
-                    &surface.brush.strength, 0.0f, 1.0f, "%.3f");
+                    &brush.strength, 0.0f, 1.0f, "%.3f");
                 brushChanged |= ImGui::SliderFloat(
                     TEXT::Localize("ui.terrain.hardness").c_str(),
-                    &surface.brush.hardness, 0.0f, 1.0f, "%.3f");
+                    &brush.hardness, 0.0f, 1.0f, "%.3f");
                 brushChanged |= ImGui::SliderFloat(
                     TEXT::Localize("ui.terrain.falloff").c_str(),
-                    &surface.brush.falloff, 0.0f, 1.0f, "%.3f");
+                    &brush.falloff, 0.0f, 1.0f, "%.3f");
                 if (brushChanged) {
-                    terrain->SetSurface(surface);
+                    if (canAuthor) {
+                        terrain->SetBrush(brush);
+                        runtimeComponentChanged = true;
+                    }
                 }
             } else {
                 ImGui::TextDisabled(
@@ -307,7 +378,10 @@ namespace HIKARI::EDITOR {
                             layer.id.c_str(),
                             isCurrent,
                             ImGuiSelectableFlags_AllowDoubleClick)) {
-                        terrain->ApplySolidPreset(layer.id);
+                        if (canAuthor) {
+                            terrain->ApplySolidPreset(layer.id);
+                            runtimeComponentChanged = true;
+                        }
                     }
                 }
             } else {
@@ -321,40 +395,92 @@ namespace HIKARI::EDITOR {
         if (ImGui::Begin((TEXT::Localize("ui.terrain.details") +
                 "###TerrainSurface/Details").c_str())) {
             if (terrain != nullptr) {
-                TERRAIN::TerrainSurface surface = terrain->GetSurface();
-                bool changed = false;
+                TERRAIN::ShorelineParams shoreline =
+                    terrain->GetSurface().shoreline;
+                TERRAIN::DeformParams deform =
+                    terrain->GetSurface().deform;
+                bool shorelineChanged = false;
+                bool deformChanged = false;
                 ImGui::SeparatorText(
                     TEXT::Localize("ui.terrain.shoreline").c_str());
-                changed |= ImGui::SliderFloat(
+                shorelineChanged |= ImGui::SliderFloat(
                     TEXT::Localize("ui.terrain.edgeFalloff").c_str(),
-                    &surface.shoreline.edgeFalloff, 0.0f, 40.0f, "%.2f");
-                changed |= ImGui::SliderFloat(
+                    &shoreline.edgeFalloff, 0.0f, 40.0f, "%.2f");
+                shorelineChanged |= ImGui::SliderFloat(
                     TEXT::Localize("ui.terrain.edgeDepth").c_str(),
-                    &surface.shoreline.edgeDepth, 0.0f, 20.0f, "%.2f");
-                changed |= ImGui::SliderFloat(
+                    &shoreline.edgeDepth, 0.0f, 20.0f, "%.2f");
+                shorelineChanged |= ImGui::SliderFloat(
                     TEXT::Localize("ui.terrain.wetness").c_str(),
-                    &surface.shoreline.wetness, 0.0f, 1.0f, "%.2f");
+                    &shoreline.wetness, 0.0f, 1.0f, "%.2f");
 
                 ImGui::SeparatorText(
                     TEXT::Localize("ui.terrain.deform").c_str());
-                changed |= ImGui::SliderFloat(
+                deformChanged |= ImGui::SliderFloat(
                     TEXT::Localize("ui.terrain.maxDepth").c_str(),
-                    &surface.deform.maxDepth, 0.0f, 2.0f, "%.3f");
-                changed |= ImGui::SliderFloat(
+                    &deform.maxDepth, 0.0f, 2.0f, "%.3f");
+                deformChanged |= ImGui::SliderFloat(
                     TEXT::Localize("ui.terrain.stampRadius").c_str(),
-                    &surface.deform.stampRadius, 0.05f, 2.0f, "%.3f");
-                changed |= ImGui::SliderFloat(
+                    &deform.stampRadius, 0.05f, 2.0f, "%.3f");
+                deformChanged |= ImGui::SliderFloat(
                     TEXT::Localize("ui.terrain.rimStrength").c_str(),
-                    &surface.deform.rimStrength, 0.0f, 1.0f, "%.3f");
-                changed |= ImGui::SliderFloat(
+                    &deform.rimStrength, 0.0f, 1.0f, "%.3f");
+                int responseScale = static_cast<int>(
+                    deform.responseResolutionScale);
+                if (ImGui::SliderInt(
+                        TEXT::Localize(
+                            "ui.terrain.responseResolutionScale").c_str(),
+                        &responseScale, 1, 4)) {
+                    deform.responseResolutionScale =
+                        static_cast<uint32_t>(responseScale);
+                    deformChanged = true;
+                }
+                deformChanged |= ImGui::SliderFloat(
+                    TEXT::Localize("ui.terrain.restDepthScale").c_str(),
+                    &deform.restDepthScale, 0.0f, 1.0f, "%.3f");
+                deformChanged |= ImGui::SliderFloat(
+                    TEXT::Localize("ui.terrain.minimumDepth").c_str(),
+                    &deform.minimumDepth, 0.0f, 0.5f, "%.3f m");
+                deformChanged |= ImGui::SliderFloat(
+                    TEXT::Localize("ui.terrain.settleStartRatio").c_str(),
+                    &deform.settleStartRatio, 0.0f, 1.0f, "%.3f");
+                deformChanged |= ImGui::SliderFloat(
+                    TEXT::Localize("ui.terrain.settleSeconds").c_str(),
+                    &deform.settleSeconds, 0.0f, 1.0f, "%.3f s");
+                deformChanged |= ImGui::SliderFloat(
+                    TEXT::Localize("ui.terrain.impactDepthScale").c_str(),
+                    &deform.impactDepthScale, 0.0f, 0.2f, "%.3f");
+                deformChanged |= ImGui::SliderFloat(
+                    TEXT::Localize("ui.terrain.rimWidthScale").c_str(),
+                    &deform.rimWidthScale, 0.05f, 1.0f, "%.3f");
+                deformChanged |= ImGui::SliderFloat(
                     TEXT::Localize("ui.terrain.refill").c_str(),
-                    &surface.deform.refillPerSecond, 0.0f, 1.0f, "%.4f");
-                changed |= ImGui::SliderFloat(
+                    &deform.refillPerSecond, 0.0f, 1.0f, "%.4f");
+                deformChanged |= ImGui::SliderFloat(
                     TEXT::Localize("ui.terrain.diffusion").c_str(),
-                    &surface.deform.diffusionPerSecond, 0.0f, 8.0f, "%.3f");
+                    &deform.diffusionPerSecond, 0.0f, 8.0f, "%.3f");
+                deformChanged |= ImGui::SliderFloat(
+                    TEXT::Localize("ui.terrain.plasticity").c_str(),
+                    &deform.plasticity, 0.0f, 1.0f, "%.3f");
+                deformChanged |= ImGui::SliderFloat(
+                    TEXT::Localize("ui.terrain.plasticRefill").c_str(),
+                    &deform.plasticRefillPerSecond,
+                    0.0f, 0.1f, "%.4f");
+                deformChanged |= ImGui::SliderFloat(
+                    TEXT::Localize("ui.terrain.recoveryDelay").c_str(),
+                    &deform.recoveryDelaySeconds,
+                    0.0f, 30.0f, "%.2f s");
 
-                if (changed) {
-                    terrain->SetSurface(surface);
+                if (shorelineChanged) {
+                    if (canAuthor) {
+                        terrain->SetShorelineParams(shoreline);
+                        runtimeComponentChanged = true;
+                    }
+                }
+                if (deformChanged) {
+                    if (canAuthor) {
+                        terrain->SetDeformParams(deform);
+                        runtimeComponentChanged = true;
+                    }
                 }
             } else {
                 ImGui::TextDisabled(
@@ -362,9 +488,22 @@ namespace HIKARI::EDITOR {
             }
         }
         ImGui::End();
+        result.editActive = canAuthor && ImGui::IsAnyItemActive();
+        if (runtimeComponentChanged && canAuthor) {
+            terrain->SerializeSettings(result.afterPatch);
+            result.componentChanged =
+                result.afterPatch != result.beforePatch;
+            if (result.componentChanged) {
+                ApplyTerrainSettingsPatch(
+                    documentComponent->properties,
+                    result.afterPatch);
+            }
+        }
+        return result;
 #else
         (void)scene;
         (void)context;
+        return {};
 #endif
     }
 

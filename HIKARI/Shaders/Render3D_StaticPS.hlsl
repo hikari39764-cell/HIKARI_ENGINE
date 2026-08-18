@@ -44,8 +44,21 @@ float4 main(PSInput input) : SV_TARGET
 {
     const bool neutralClay =
         gDebugView == HIKARI_DEBUG_VIEW_NEUTRAL_CLAY;
-    if (!neutralClay &&
-        HikariSurfaceHasSandSurface(input.surfaceFeatureFlags))
+    const bool sandSurface =
+        HikariSurfaceHasSandSurface(input.surfaceFeatureFlags);
+    // Neutral Clay も authored coverage の外側を描いてはいけない。
+    // 深度/GeometryAux と同じ clip を先に適用し、debug 表示だけが
+    // 四角い terrain chunk を復活させる不一致を防ぐ。
+    if (neutralClay && sandSurface)
+    {
+        const HikariSurfaceGpuSceneInstance sandInstance =
+            HikariGetSurfaceGpuSceneInstanceAt(input.surfaceGpuSceneIndex);
+        HikariClipSandCoverage(
+            HikariLoadSandSurfaceParamsFromDataIndex(
+                sandInstance.surfaceFeatureDataIndex),
+            input.uv1);
+    }
+    if (!neutralClay && sandSurface)
     {
         const HikariMeshObjectData sandObjectData =
             HikariGetMeshObjectDataForPixel(

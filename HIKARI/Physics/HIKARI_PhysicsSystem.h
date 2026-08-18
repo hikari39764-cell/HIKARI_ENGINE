@@ -5,6 +5,7 @@
 #include <unordered_map>
 
 #include "Physics/HIKARI_PhysicsTypes.h"
+#include "Physics/HIKARI_TerrainCollisionProjection.h"
 #include "Scene/HIKARI_ISystem.h"
 
 namespace HIKARI {
@@ -129,6 +130,7 @@ namespace HIKARI::PHYSICS {
         const RuntimePlayStateService* runtimePlayState_ = nullptr;
         std::unordered_map<uint64_t, BodyBinding> bindings_{};
         std::unordered_map<uint64_t, ReconcileFailure> failures_{};
+        TerrainCollisionProjectionCache terrainCollisionProjections_{};
         PhysicsStepResult lastStepResult_{};
         uint64_t lastReconcileFrame_ =
             (std::numeric_limits<uint64_t>::max)();

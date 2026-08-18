@@ -6,6 +6,7 @@
 #include "Core/Numeric/HIKARI_IntegerConversion.h"
 #include "Render3D/Core/HIKARI_BoundsUtils.h"
 #include "Render3D/Runtime/HIKARI_RenderSurfaceResolver.h"
+#include "Render3D/Runtime/HIKARI_SceneSurfaceFloatPool.h"
 
 namespace HIKARI::RENDER3D::RUNTIME {
 
@@ -99,6 +100,7 @@ namespace HIKARI::RENDER3D::RUNTIME {
             bool material = false;
             bool model = false;
             bool routing = false;
+            bool surfaceData = false;
         };
 
         DirtyFlags BuildDirtyFlags(const SceneRenderObjectDesc& oldDesc, const SceneRenderObjectDesc& newDesc) {
@@ -125,10 +127,24 @@ namespace HIKARI::RENDER3D::RUNTIME {
                 oldDesc.materialFxValuesInitialized != newDesc.materialFxValuesInitialized ||
                 !EqualMaterialFxValues(oldDesc.materialFxParamValues, newDesc.materialFxParamValues) ||
                 oldDesc.waterSurface != newDesc.waterSurface ||
+                oldDesc.sandSurface != newDesc.sandSurface;
+
+            // Feature enable/disable changes routing, but per-frame terrain payload
+            // changes only require the existing forward-data patch path.
+            flags.surfaceData =
+                oldDesc.sandSurfaceProjectionRevision !=
+                    newDesc.sandSurfaceProjectionRevision ||
+                oldDesc.sandSurfaceHeights !=
+                    newDesc.sandSurfaceHeights ||
+                oldDesc.sandSurfaceDeformations !=
+                    newDesc.sandSurfaceDeformations ||
+                oldDesc.sandSurfaceLayerWeights !=
+                    newDesc.sandSurfaceLayerWeights ||
+                oldDesc.sandSurfaceCoverage !=
+                    newDesc.sandSurfaceCoverage ||
                 !WATER::WaterSurfaceRenderDataEqual(
                     oldDesc.waterSurfaceData,
                     newDesc.waterSurfaceData) ||
-                oldDesc.sandSurface != newDesc.sandSurface ||
                 !SAND::SandSurfaceRenderDataEqual(
                     oldDesc.sandSurfaceData,
                     newDesc.sandSurfaceData);
@@ -152,6 +168,7 @@ namespace HIKARI::RENDER3D::RUNTIME {
                 flags.model ||
                 flags.transform ||
                 flags.routing ||
+                flags.surfaceData ||
                 animationDataChanged;
 
             return flags;
@@ -245,6 +262,14 @@ namespace HIKARI::RENDER3D::RUNTIME {
             instance.sandSurface = object.desc.sandSurface;
             instance.sandSurfaceData = object.desc.sandSurfaceData;
             instance.sandSurfaceHeights = object.desc.sandSurfaceHeights;
+            instance.sandSurfaceDeformations =
+                object.desc.sandSurfaceDeformations;
+            instance.sandSurfaceLayerWeights =
+                object.desc.sandSurfaceLayerWeights;
+            instance.sandSurfaceCoverage =
+                object.desc.sandSurfaceCoverage;
+            instance.sandSurfaceProjectionRevision =
+                object.desc.sandSurfaceProjectionRevision;
 
             instance.hasDrawWorldMatrix = ResolveRenderSurfaceDrawWorldMatrix(
                 object.desc.worldTransform,
@@ -279,7 +304,12 @@ namespace HIKARI::RENDER3D::RUNTIME {
         surfaceTopologyDirty_ = true;
         surfaceRoutingDirty_ = true;
         surfaceDataDirty_ = true;
+        surfaceFloatPoolDirty_ = true;
         sandSurfaceHeights_.clear();
+        previousPackedSurfaceScratch_.clear();
+        sourceSandGridResolutionScratch_.clear();
+        terrainCoreResidentScratch_.clear();
+        surfaceTintScratch_.clear();
     }
 
     void SceneRenderCache::BeginSync(uint64_t frameIndex) {
@@ -333,6 +363,8 @@ namespace HIKARI::RENDER3D::RUNTIME {
                     MarkSurfaceRoutingDirty();
                 } else {
                     MarkSurfaceDataDirty();
+                    surfaceFloatPoolDirty_ =
+                        surfaceFloatPoolDirty_ || dirty.surfaceData;
                 }
             }
             ++frameStats_.updatedCount;
@@ -402,6 +434,8 @@ namespace HIKARI::RENDER3D::RUNTIME {
     }
 
     void SceneRenderCache::PreRenderSync() {
+        const bool repackSurfaceFloatPool = surfaceFloatPoolDirty_;
+        const uint64_t dataVersionBeforePacking = surfaceDataVersion_;
         if (surfaceTopologyDirty_) {
             RebuildSurfaceInstances();
             MarkAllSurfaceInstancesDirty();
@@ -423,67 +457,167 @@ namespace HIKARI::RENDER3D::RUNTIME {
             }
         }
 
-        // 高さは fixed step ごとに変わるため、データバージョンとは独立に
-        // 毎フレーム組み立てる。index 0 は sentinel、以降は surface 順の tile。
-        sandSurfaceHeights_.clear();
-        sandSurfaceHeights_.push_back(0.0f);
-        for (SceneSurfaceInstance& instance : surfaceInstances_) {
-            if (!instance.sandSurface ||
-                instance.sandSurfaceHeights == nullptr) {
-                instance.sandSurfaceHeightOffset = 0u;
-                continue;
-            }
-            if (instance.sandSurfaceHeights->size() <= 1u) {
-                instance.sandSurfaceHeightOffset = 0u;
-                continue;
-            }
-            instance.sandSurfaceHeightOffset =
-                NUMERIC::SaturateToUint32(sandSurfaceHeights_.size());
-            sandSurfaceHeights_.insert(
-                sandSurfaceHeights_.end(),
-                instance.sandSurfaceHeights->begin() + 1u,
-                instance.sandSurfaceHeights->end());
+        if (!repackSurfaceFloatPool) {
+            RefreshStats();
+            return;
         }
-        // 層ウェイトは高さの後ろへ layer-major で追記する。layerCount<=1 は
-        // 従来の単一砂地と完全に同一レイアウトになる。
-        for (SceneSurfaceInstance& instance : surfaceInstances_) {
-            const std::vector<float>& weights =
-                instance.sandSurfaceData.layerWeights;
-            if (!instance.sandSurface ||
-                instance.sandSurfaceData.layerCount <= 1u ||
-                weights.empty()) {
-                instance.sandSurfaceLayerWeightsOffset = 0u;
+
+        struct PackedSurfaceState {
+            uint32_t sandGridResolution = 0u;
+            uint32_t sandLayerCount = 0u;
+            uint32_t sandHeightOffset = 0u;
+            uint32_t sandDeformationOffset = 0u;
+            uint32_t sandLayerWeightsOffset = 0u;
+            uint32_t sandCoverageOffset = 0u;
+            uint32_t sandLayerTintsOffset = 0u;
+            uint32_t waterCoverageResolution = 0u;
+            uint32_t waterCoverageOffset = 0u;
+
+            bool operator==(const PackedSurfaceState&) const = default;
+        };
+        const auto capturePackedState = [](const SceneSurfaceInstance& instance) {
+            return PackedSurfaceState{
+                instance.sandSurfaceData.gridResolution,
+                instance.sandSurfaceData.layerCount,
+                instance.sandSurfaceHeightOffset,
+                instance.sandSurfaceDeformationOffset,
+                instance.sandSurfaceLayerWeightsOffset,
+                instance.sandSurfaceCoverageOffset,
+                instance.sandSurfaceLayerTintsOffset,
+                instance.waterSurfaceData.coverageResolution,
+                instance.waterSurfaceLiquidCoverageOffset,
+            };
+        };
+
+        previousPackedSurfaceScratch_.resize(surfaceInstances_.size());
+        sourceSandGridResolutionScratch_.assign(
+            surfaceInstances_.size(), 1u);
+        terrainCoreResidentScratch_.assign(
+            surfaceInstances_.size(), uint8_t{ 0u });
+        for (uint32_t surfaceIndex = 0u;
+            surfaceIndex < surfaceInstances_.size();
+            ++surfaceIndex) {
+
+            SceneSurfaceInstance& instance = surfaceInstances_[surfaceIndex];
+            const PackedSurfaceState previous = capturePackedState(instance);
+            previousPackedSurfaceScratch_[surfaceIndex] = {
+                previous.sandGridResolution,
+                previous.sandLayerCount,
+                previous.sandHeightOffset,
+                previous.sandDeformationOffset,
+                previous.sandLayerWeightsOffset,
+                previous.sandCoverageOffset,
+                previous.sandLayerTintsOffset,
+                previous.waterCoverageResolution,
+                previous.waterCoverageOffset,
+            };
+
+            // 前フレームの縮退結果を authoring/runtime source へ逆流させない。
+            if (instance.objectIndex < objects_.size()) {
+                const SceneRenderObjectDesc& source =
+                    objects_[instance.objectIndex].desc;
+                instance.waterSurfaceData = source.waterSurfaceData;
+                instance.sandSurfaceData = source.sandSurfaceData;
+                instance.sandSurfaceHeights = source.sandSurfaceHeights;
+                instance.sandSurfaceDeformations =
+                    source.sandSurfaceDeformations;
+                instance.sandSurfaceLayerWeights =
+                    source.sandSurfaceLayerWeights;
+                instance.sandSurfaceCoverage =
+                    source.sandSurfaceCoverage;
+                instance.sandSurfaceProjectionRevision =
+                    source.sandSurfaceProjectionRevision;
+            }
+            sourceSandGridResolutionScratch_[surfaceIndex] =
+                (std::max)(instance.sandSurfaceData.gridResolution, 1u);
+            instance.sandSurfaceHeightOffset = 0u;
+            instance.sandSurfaceDeformationOffset = 0u;
+            instance.sandSurfaceLayerWeightsOffset = 0u;
+            instance.sandSurfaceCoverageOffset = 0u;
+            instance.sandSurfaceLayerTintsOffset = 0u;
+            instance.waterSurfaceLiquidCoverageOffset = 0u;
+        }
+
+        // 全 surface と water が共有する唯一の float pool を、surface 順の
+        // deterministic first-fit で構築する。terrain の height/weight/coverage
+        // は atomic に入り、残量不足なら record 全体を neutral tile へ縮退する。
+        SceneSurfaceFloatPoolPacker floatPool(
+            sandSurfaceHeights_,
+            SAND::kSandSurfaceMaxHeightCells);
+        for (uint32_t surfaceIndex = 0u;
+            surfaceIndex < surfaceInstances_.size();
+            ++surfaceIndex) {
+
+            SceneSurfaceInstance& instance = surfaceInstances_[surfaceIndex];
+            if (!instance.sandSurface) {
                 continue;
             }
+            const SceneSurfaceTerrainFloatAllocation allocation =
+                floatPool.PackTerrainCore({
+                    sourceSandGridResolutionScratch_[surfaceIndex],
+                    instance.sandSurfaceData.layerCount,
+                    instance.sandSurfaceHeights.get(),
+                    instance.sandSurfaceLayerWeights
+                        ? instance.sandSurfaceLayerWeights.get()
+                        : &instance.sandSurfaceData.layerWeights,
+                    instance.sandSurfaceCoverage
+                        ? instance.sandSurfaceCoverage.get()
+                        : &instance.sandSurfaceData.coverage,
+                });
+            terrainCoreResidentScratch_[surfaceIndex] =
+                allocation.resident ? uint8_t{ 1u } : uint8_t{ 0u };
+            if (!allocation.resident) {
+                // offset 0 の neutral 2x2 tile へ縮退し、GPU は常に pool 内を読む。
+                // feature routing は維持するため、平坦な sand fallback は可視のまま。
+                instance.sandSurfaceData.gridResolution = 1u;
+                instance.sandSurfaceData.layerCount = 1u;
+                continue;
+            }
+            instance.sandSurfaceData.gridResolution =
+                allocation.gridResolution;
+            instance.sandSurfaceData.layerCount = allocation.layerCount;
+            instance.sandSurfaceHeightOffset = allocation.heightOffset;
             instance.sandSurfaceLayerWeightsOffset =
-                NUMERIC::SaturateToUint32(sandSurfaceHeights_.size());
-            sandSurfaceHeights_.insert(
-                sandSurfaceHeights_.end(),
-                weights.begin(),
-                weights.end());
+                allocation.layerWeightsOffset;
+            instance.sandSurfaceCoverageOffset = allocation.coverageOffset;
         }
-        // coverage は hole 判定用に高さ/層の後ろへ追記する。空なら 0（全面実体）。
+
+        // water coverage も同じ残量から正方形 field を確保する。
+        // 入らない場合の offset 0 は shader 契約上「全面 water」の安全 fallback。
         for (SceneSurfaceInstance& instance : surfaceInstances_) {
-            const std::vector<float>& coverage =
-                instance.sandSurfaceData.coverage;
-            if (!instance.sandSurface || coverage.empty()) {
-                instance.sandSurfaceCoverageOffset = 0u;
+            if (!instance.waterSurface ||
+                instance.waterSurfaceData.liquidCoverage.empty()) {
                 continue;
             }
-            instance.sandSurfaceCoverageOffset =
-                NUMERIC::SaturateToUint32(sandSurfaceHeights_.size());
-            sandSurfaceHeights_.insert(
-                sandSurfaceHeights_.end(),
-                coverage.begin(),
-                coverage.end());
+            floatPool.TryPackSquareField(
+                instance.waterSurfaceData.liquidCoverage,
+                instance.waterSurfaceData.coverageResolution,
+                instance.waterSurfaceLiquidCoverageOffset);
         }
-        // 層 tint (light.rgb,dark.rgb per layer) を coverage の後ろへ追記する。
-        // 未指定の層は従来ハードコード色 (sand=material, snow=白, dirt=茶) に
-        // 展開するため、組み込み層の見た目は変わらない。
+
+        // runtime deformation は total height に既に含まれる optional shading
+        // field。core と water coverage を優先し、残量不足時は offset 0 へ落とす。
+        for (uint32_t surfaceIndex = 0u;
+            surfaceIndex < surfaceInstances_.size();
+            ++surfaceIndex) {
+
+            SceneSurfaceInstance& instance = surfaceInstances_[surfaceIndex];
+            if (!instance.sandSurface ||
+                terrainCoreResidentScratch_[surfaceIndex] == 0u ||
+                !instance.sandSurfaceDeformations ||
+                instance.sandSurfaceDeformations->empty()) {
+                continue;
+            }
+            floatPool.TryPackSquareField(
+                *instance.sandSurfaceDeformations,
+                sourceSandGridResolutionScratch_[surfaceIndex],
+                instance.sandSurfaceDeformationOffset);
+        }
+
+        // layer tint は offset 0 で既定 tint を再現できるため最後に詰める。
         for (SceneSurfaceInstance& instance : surfaceInstances_) {
             if (!instance.sandSurface ||
                 instance.sandSurfaceData.layerCount <= 1u) {
-                instance.sandSurfaceLayerTintsOffset = 0u;
                 continue;
             }
             const uint32_t layerCount = instance.sandSurfaceData.layerCount;
@@ -491,8 +625,9 @@ namespace HIKARI::RENDER3D::RUNTIME {
             const auto& darks = instance.sandSurfaceData.layerDarkTints;
             const MATH::Vec3 baseLight = instance.sandSurfaceData.lightTint;
             const MATH::Vec3 baseDark = instance.sandSurfaceData.darkTint;
-            instance.sandSurfaceLayerTintsOffset =
-                NUMERIC::SaturateToUint32(sandSurfaceHeights_.size());
+            surfaceTintScratch_.clear();
+            surfaceTintScratch_.reserve(
+                static_cast<std::size_t>(layerCount) * 6u);
             for (uint32_t layer = 0u; layer < layerCount; ++layer) {
                 const MATH::Vec3 light =
                     layer < lights.size() ? lights[layer]
@@ -504,29 +639,46 @@ namespace HIKARI::RENDER3D::RUNTIME {
                         : layer == 0u ? baseDark
                         : layer == 1u ? MATH::Vec3{ 0.68f, 0.78f, 0.90f }
                         : MATH::Vec3{ 0.28f, 0.20f, 0.12f };
-                sandSurfaceHeights_.push_back(light.x);
-                sandSurfaceHeights_.push_back(light.y);
-                sandSurfaceHeights_.push_back(light.z);
-                sandSurfaceHeights_.push_back(dark.x);
-                sandSurfaceHeights_.push_back(dark.y);
-                sandSurfaceHeights_.push_back(dark.z);
+                surfaceTintScratch_.insert(
+                    surfaceTintScratch_.end(),
+                    { light.x, light.y, light.z, dark.x, dark.y, dark.z });
             }
+            floatPool.TryPackLinear(
+                std::span<const float>(surfaceTintScratch_),
+                instance.sandSurfaceLayerTintsOffset);
         }
-        // 水面の liquidCoverage も同じ t1 バッファへ追記し、water record が offset を持つ。
-        for (SceneSurfaceInstance& instance : surfaceInstances_) {
-            const std::vector<float>& liquidCoverage =
-                instance.waterSurfaceData.liquidCoverage;
-            if (!instance.waterSurface || liquidCoverage.empty()) {
-                instance.waterSurfaceLiquidCoverageOffset = 0u;
+
+        // 先行 surface のサイズ変化は後続 offset も動かす。影響を受けた record
+        // を明示的に data-dirty にし、routing rebuild なしで全 offset を patch する。
+        bool packedStateChanged = false;
+        for (uint32_t surfaceIndex = 0u;
+            surfaceIndex < surfaceInstances_.size();
+            ++surfaceIndex) {
+
+            const PackedSurfaceState current =
+                capturePackedState(surfaceInstances_[surfaceIndex]);
+            const std::array<uint32_t, 9u> currentValues{
+                current.sandGridResolution,
+                current.sandLayerCount,
+                current.sandHeightOffset,
+                current.sandDeformationOffset,
+                current.sandLayerWeightsOffset,
+                current.sandCoverageOffset,
+                current.sandLayerTintsOffset,
+                current.waterCoverageResolution,
+                current.waterCoverageOffset,
+            };
+            if (previousPackedSurfaceScratch_[surfaceIndex] ==
+                currentValues) {
                 continue;
             }
-            instance.waterSurfaceLiquidCoverageOffset =
-                NUMERIC::SaturateToUint32(sandSurfaceHeights_.size());
-            sandSurfaceHeights_.insert(
-                sandSurfaceHeights_.end(),
-                liquidCoverage.begin(),
-                liquidCoverage.end());
+            MarkDirtySurfaceIndex(surfaceIndex);
+            packedStateChanged = true;
         }
+        if (packedStateChanged && surfaceDataVersion_ == dataVersionBeforePacking) {
+            ++surfaceDataVersion_;
+        }
+        surfaceFloatPoolDirty_ = false;
         RefreshStats();
     }
 
@@ -668,6 +820,7 @@ namespace HIKARI::RENDER3D::RUNTIME {
         surfaceTopologyDirty_ = true;
         surfaceRoutingDirty_ = true;
         surfaceDataDirty_ = true;
+        surfaceFloatPoolDirty_ = true;
     }
 
     void SceneRenderCache::MarkSurfaceRoutingDirty() {
@@ -676,6 +829,7 @@ namespace HIKARI::RENDER3D::RUNTIME {
         }
         surfaceRoutingDirty_ = true;
         surfaceDataDirty_ = true;
+        surfaceFloatPoolDirty_ = true;
     }
 
     void SceneRenderCache::MarkSurfaceDataDirty() {

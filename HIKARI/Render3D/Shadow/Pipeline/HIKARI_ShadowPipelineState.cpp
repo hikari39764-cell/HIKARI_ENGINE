@@ -139,7 +139,7 @@ namespace HIKARI::SHADOW::INTERNAL {
         const D3D12_DESCRIPTOR_RANGE clusterGeometryPoolRange =
             MakeSrvRange(GFX::DESCRIPTOR::kSystemSrvDynamicCount, 0, 1);
 
-        D3D12_ROOT_PARAMETER params[PIPELINE::kShadowStaticRootParamDeformationPalettes + 1]{};
+        D3D12_ROOT_PARAMETER params[PIPELINE::kShadowStaticRootParamSandSurfaceHeights + 1]{};
         params[PIPELINE::kShadowStaticRootParamCamera] =
             MakeRootDescriptor(D3D12_ROOT_PARAMETER_TYPE_CBV, 0);
         params[PIPELINE::kShadowStaticRootParamObject] =
@@ -174,6 +174,10 @@ namespace HIKARI::SHADOW::INTERNAL {
             MakeRootDescriptor(D3D12_ROOT_PARAMETER_TYPE_CBV, 9);
         params[PIPELINE::kShadowStaticRootParamDeformationPalettes] =
             MakeRootDescriptor(D3D12_ROOT_PARAMETER_TYPE_SRV, 0, 3);
+        params[PIPELINE::kShadowStaticRootParamSandSurfaceData] =
+            MakeRootDescriptor(D3D12_ROOT_PARAMETER_TYPE_SRV, 4, 7);
+        params[PIPELINE::kShadowStaticRootParamSandSurfaceHeights] =
+            MakeRootDescriptor(D3D12_ROOT_PARAMETER_TYPE_SRV, 1, 7);
         D3D12_STATIC_SAMPLER_DESC sampler{};
         sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
         sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
@@ -302,7 +306,8 @@ namespace HIKARI::SHADOW::INTERNAL {
             &gShadowRendererState.surfaceGpuSceneBuffer,
             &gShadowRendererState.traditionalCommandStreamBuffer,
             &gShadowRendererState.clusterGpuDrivenProducer,
-            nullptr);
+            nullptr,
+            &gShadowRendererState.sandSurfaceGpuFrameBuffer);
         if (!gShadowRendererState.gpuDrivenLayer.Initialize(
             device,
             gShadowRendererState.rootSig.Get(),

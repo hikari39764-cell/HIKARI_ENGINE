@@ -11,6 +11,22 @@ namespace HIKARI::RENDER3D::SAND {
         float FiniteOr(float value, float fallback) noexcept {
             return std::isfinite(value) ? value : fallback;
         }
+
+        bool TintVectorsEqual(
+            const std::vector<MATH::Vec3>& lhs,
+            const std::vector<MATH::Vec3>& rhs) noexcept {
+            if (lhs.size() != rhs.size()) {
+                return false;
+            }
+            for (std::size_t index = 0u; index < lhs.size(); ++index) {
+                if (lhs[index].x != rhs[index].x ||
+                    lhs[index].y != rhs[index].y ||
+                    lhs[index].z != rhs[index].z) {
+                    return false;
+                }
+            }
+            return true;
+        }
     }
 
     bool SandSurfaceRenderDataEqual(
@@ -34,9 +50,14 @@ namespace HIKARI::RENDER3D::SAND {
             lhs.toonBandCount == rhs.toonBandCount &&
             lhs.toonBandHardness == rhs.toonBandHardness &&
             lhs.wetness == rhs.wetness &&
+            lhs.edgeDepth == rhs.edgeDepth &&
             lhs.layerCount == rhs.layerCount &&
             lhs.layerWeights == rhs.layerWeights &&
-            lhs.coverage == rhs.coverage;
+            lhs.coverage == rhs.coverage &&
+            TintVectorsEqual(
+                lhs.layerLightTints, rhs.layerLightTints) &&
+            TintVectorsEqual(
+                lhs.layerDarkTints, rhs.layerDarkTints);
     }
 
     SandSurfaceGpuData BuildSandSurfaceGpuDataSentinel() noexcept {
@@ -51,18 +72,26 @@ namespace HIKARI::RENDER3D::SAND {
     SandSurfaceGpuData BuildSandSurfaceGpuData(
         const SandSurfaceRenderData& source,
         uint32_t heightOffset,
+        uint32_t deformationOffset,
         uint32_t layerWeightsOffset,
         uint32_t coverageOffset,
         uint32_t layerTintsOffset) noexcept {
 
         SandSurfaceGpuData result{};
         result.schemaVersion = kSandSurfaceGpuSchemaVersion;
-        // 上位 bit に layerCount を詰める（単層=1 のとき従来と同一）。
+        // flags は enabled | layerCount(bits 1..7) |
+        // deformationOffset(bits 8..31)。offset 0 は neutral。
         const uint32_t layerCount =
-            (std::max)(source.layerCount, 1u) & 0x7Fu;
+            std::clamp(source.layerCount, 1u, 0x7Fu);
+        const uint32_t safeDeformationOffset =
+            deformationOffset <= kSandSurfaceGpuMaxDeformationOffset
+                ? deformationOffset
+                : 0u;
         result.flags =
             static_cast<uint32_t>(SandSurfaceGpuFlags::Enabled) |
-            (layerCount << 1u);
+            (layerCount << kSandSurfaceGpuLayerCountShift) |
+            (safeDeformationOffset <<
+                kSandSurfaceGpuDeformationOffsetShift);
         result.gridResolution =
             std::clamp(source.gridResolution, 1u, 512u);
         result.heightOffset = heightOffset;
@@ -95,7 +124,8 @@ namespace HIKARI::RENDER3D::SAND {
             std::clamp(FiniteOr(source.wetness, 0.0f), 0.0f, 1.0f),
             static_cast<float>(coverageOffset),
             static_cast<float>(layerTintsOffset),
-            static_cast<float>(source.layerCount)
+            // 空きスロットに edgeDepth を詰める（layerCount は flags bits 1..7）。
+            std::clamp(FiniteOr(source.edgeDepth, 1.5f), 0.0f, 100.0f)
         };
         return result;
     }

@@ -23,6 +23,7 @@
 #include "Scene/HIKARI_SystemTypeRegistry.h"
 #include "Scene/Sand/HIKARI_SandSurfaceFollowerComponent.h"
 #include "Scene/Sand/HIKARI_SandSurfaceSystem.h"
+#include "Scene/Terrain/HIKARI_TerrainInteractionSourceSystem.h"
 #include "Scene/Terrain/HIKARI_TerrainSurfaceComponent.h"
 #include "Scene/Water/HIKARI_WaterSurfaceComponent.h"
 
@@ -72,9 +73,10 @@ namespace HIKARI {
 
             std::span<const std::string_view>
                 GetSystemIds() const noexcept override {
-                static constexpr std::array<std::string_view, 3> ids{
+                static constexpr std::array<std::string_view, 4> ids{
                     "ModelRenderSystem",
                     "WaterSurfaceSystem",
+                    "TerrainInteractionSourceSystem",
                     "SandSurfaceSystem"
                 };
                 return ids;
@@ -226,11 +228,11 @@ namespace HIKARI {
                     },
                     {
                         "terrain.sculpt",
-                        "Sculpt one brush stroke into the authored terrain.",
+                        "Sculpt one brush stroke in terrain-object local space.",
                         {
-                            { "worldX", AuthoringCommandParameterType::Float, true, "Brush center world X." },
-                            { "worldY", AuthoringCommandParameterType::Float, false, "Brush center world Y." },
-                            { "worldZ", AuthoringCommandParameterType::Float, true, "Brush center world Z." },
+                            { "localX", AuthoringCommandParameterType::Float, true, "Brush center local X." },
+                            { "localY", AuthoringCommandParameterType::Float, false, "Brush center local Y." },
+                            { "localZ", AuthoringCommandParameterType::Float, true, "Brush center local Z." },
                         },
                         [](IComponent& base, const nlohmann::json& args) {
                             auto* component =
@@ -242,10 +244,10 @@ namespace HIKARI {
                                     "Component is not a terrain surface."
                                 };
                             }
-                            component->SculptAtWorld({
-                                args.value("worldX", 0.0f),
-                                args.value("worldY", 0.0f),
-                                args.value("worldZ", 0.0f)
+                            component->SculptAtLocal({
+                                args.value("localX", 0.0f),
+                                args.value("localY", 0.0f),
+                                args.value("localZ", 0.0f)
                             });
                             return AuthoringCommandResult{
                                 true,
@@ -256,7 +258,7 @@ namespace HIKARI {
                     },
                     {
                         "terrain.reset",
-                        "Clear the authored terrain to flat.",
+                        "Remove every authored terrain chunk.",
                         {},
                         [](IComponent& base, const nlohmann::json&) {
                             auto* component =
@@ -278,12 +280,12 @@ namespace HIKARI {
                     },
                     {
                         "terrain.paintLayer",
-                        "Paint one preset layer stroke at a world position.",
+                        "Paint one preset layer stroke in terrain-object local space.",
                         {
                             { "presetId", AuthoringCommandParameterType::String, true, "Preset id: sand, snow, or dirt." },
-                            { "worldX", AuthoringCommandParameterType::Float, true, "Brush center world X." },
-                            { "worldY", AuthoringCommandParameterType::Float, false, "Brush center world Y." },
-                            { "worldZ", AuthoringCommandParameterType::Float, true, "Brush center world Z." },
+                            { "localX", AuthoringCommandParameterType::Float, true, "Brush center local X." },
+                            { "localY", AuthoringCommandParameterType::Float, false, "Brush center local Y." },
+                            { "localZ", AuthoringCommandParameterType::Float, true, "Brush center local Z." },
                         },
                         [](IComponent& base, const nlohmann::json& args) {
                             auto* component =
@@ -295,12 +297,12 @@ namespace HIKARI {
                                     "Component is not a terrain surface."
                                 };
                             }
-                            component->PaintLayerAtWorld(
+                            component->PaintLayerAtLocal(
                                 args.value("presetId", std::string("sand")),
                                 {
-                                    args.value("worldX", 0.0f),
-                                    args.value("worldY", 0.0f),
-                                    args.value("worldZ", 0.0f)
+                                    args.value("localX", 0.0f),
+                                    args.value("localY", 0.0f),
+                                    args.value("localZ", 0.0f)
                                 });
                             return AuthoringCommandResult{
                                 true,
@@ -311,12 +313,12 @@ namespace HIKARI {
                     },
                     {
                         "terrain.paintCoverage",
-                        "Paint or erase terrain coverage at a world position.",
+                        "Paint or erase coverage in terrain-object local space.",
                         {
                             { "target", AuthoringCommandParameterType::Float, true, "Target coverage 1=paint, 0=erase." },
-                            { "worldX", AuthoringCommandParameterType::Float, true, "Brush center world X." },
-                            { "worldY", AuthoringCommandParameterType::Float, false, "Brush center world Y." },
-                            { "worldZ", AuthoringCommandParameterType::Float, true, "Brush center world Z." },
+                            { "localX", AuthoringCommandParameterType::Float, true, "Brush center local X." },
+                            { "localY", AuthoringCommandParameterType::Float, false, "Brush center local Y." },
+                            { "localZ", AuthoringCommandParameterType::Float, true, "Brush center local Z." },
                         },
                         [](IComponent& base, const nlohmann::json& args) {
                             auto* component =
@@ -328,12 +330,12 @@ namespace HIKARI {
                                     "Component is not a terrain surface."
                                 };
                             }
-                            component->PaintCoverageAtWorld(
+                            component->PaintCoverageAtLocal(
                                 args.value("target", 1.0f),
                                 {
-                                    args.value("worldX", 0.0f),
-                                    args.value("worldY", 0.0f),
-                                    args.value("worldZ", 0.0f)
+                                    args.value("localX", 0.0f),
+                                    args.value("localY", 0.0f),
+                                    args.value("localZ", 0.0f)
                                 });
                             return AuthoringCommandResult{
                                 true,
@@ -481,6 +483,15 @@ namespace HIKARI {
                     "Rendering"
                 }) && success;
                 success = systemTypeRegistry.Register(SystemTypeInfo{
+                    "TerrainInteractionSourceSystem",
+                    [](const nlohmann::json&) -> std::unique_ptr<ISystem> {
+                        return std::make_unique<
+                            TerrainInteractionSourceSystem>();
+                    },
+                    "Terrain Interaction Sources",
+                    "Rendering"
+                }) && success;
+                success = systemTypeRegistry.Register(SystemTypeInfo{
                     "SandSurfaceSystem",
                     [](const nlohmann::json&) -> std::unique_ptr<ISystem> {
                         return std::make_unique<SandSurfaceSystem>();
@@ -507,14 +518,26 @@ namespace HIKARI {
                 success = componentSystemPolicy.Register(
                     ComponentSystemRule{
                         "TerrainSurfaceComponent",
+                        "TerrainInteractionSourceSystem",
+                        125
+                    }) && success;
+                success = componentSystemPolicy.Register(
+                    ComponentSystemRule{
+                        "SandSurfaceFollowerComponent",
+                        "TerrainInteractionSourceSystem",
+                        125
+                    }) && success;
+                success = componentSystemPolicy.Register(
+                    ComponentSystemRule{
+                        "TerrainSurfaceComponent",
                         "SandSurfaceSystem",
-                        95
+                        140
                     }) && success;
                 success = componentSystemPolicy.Register(
                     ComponentSystemRule{
                         "SandSurfaceFollowerComponent",
                         "SandSurfaceSystem",
-                        95
+                        140
                     }) && success;
                 success = componentSystemPolicy.Register(
                     ComponentSystemRule{
@@ -529,7 +552,7 @@ namespace HIKARI {
                 GetDefaultSystems() const noexcept override {
                 static constexpr std::array<
                     RuntimeSystemDefault,
-                    3> defaults{
+                    4> defaults{
                     RuntimeSystemDefault{
                         "ModelRenderSystem",
                         true,
@@ -541,9 +564,14 @@ namespace HIKARI {
                         95
                     },
                     RuntimeSystemDefault{
+                        "TerrainInteractionSourceSystem",
+                        true,
+                        125
+                    },
+                    RuntimeSystemDefault{
                         "SandSurfaceSystem",
                         true,
-                        95
+                        140
                     }
                 };
                 return defaults;

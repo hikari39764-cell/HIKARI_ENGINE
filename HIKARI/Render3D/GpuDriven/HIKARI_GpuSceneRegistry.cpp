@@ -1156,6 +1156,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                 SAND::BuildSandSurfaceGpuData(
                     record.sandSurfaceData,
                     record.sandSurfaceHeightOffset,
+                    record.sandSurfaceDeformationOffset,
                     record.sandSurfaceLayerWeightsOffset,
                     record.sandSurfaceCoverageOffset,
                     record.sandSurfaceLayerTintsOffset));
@@ -1713,6 +1714,8 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                         surfaceRecords_[surfaceIndex].sandSurfaceData,
                         surfaceRecords_[surfaceIndex].
                             sandSurfaceHeightOffset,
+                        surfaceRecords_[surfaceIndex].
+                            sandSurfaceDeformationOffset,
                         surfaceRecords_[surfaceIndex].
                             sandSurfaceLayerWeightsOffset,
                         surfaceRecords_[surfaceIndex].

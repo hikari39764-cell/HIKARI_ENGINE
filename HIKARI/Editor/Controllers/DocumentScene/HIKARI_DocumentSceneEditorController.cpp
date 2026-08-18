@@ -14,6 +14,7 @@
 #include "Editor/Authoring/HIKARI_SceneObjectTargetResolver.h"
 #include "Editor/Assets/Browser/HIKARI_AssetBrowserInternal.h"
 #include "Editor/History/HIKARI_EnvironmentHistoryCommand.h"
+#include "Editor/History/HIKARI_SceneComponentPropertiesHistoryCommand.h"
 #include "Editor/History/HIKARI_SceneObjectsHistoryCommand.h"
 #include "Editor/History/HIKARI_SceneSystemsHistoryCommand.h"
 #include "Editor/Menus/HIKARI_EditorDocumentMenu.h"
@@ -60,6 +61,8 @@ namespace HIKARI {
             0x454e5649524f4e4dull;
         constexpr uint64_t kQualityPanelMergeGroup =
             0x5155414c49545945ull;
+        constexpr uint64_t kTerrainSurfaceWorkspaceMergeGroup =
+            0x5445525241494e53ull;
 
         const char* OperationParameterTypeName(
             EDITOR::EditorOperationParameterType type) noexcept {
@@ -1926,9 +1929,34 @@ namespace HIKARI {
                 EDITOR::ClearGameViewportInputRect();
                 SERVICES::SetEditorGameViewportSize(0, 0, false);
             }
-            terrainSurfaceWorkspaceController_.Draw(
+            const bool externalDirtyBefore =
+                historyExternalDirty_ ||
+                ((context_.sceneDirty ||
+                    scene.HasUnsavedSceneChanges()) &&
+                    !documentHistory_.IsDirty());
+            EDITOR::TerrainSurfaceWorkspaceResult terrainResult =
+                terrainSurfaceWorkspaceController_.Draw(
                 scene,
                 context_);
+            if (terrainResult.componentChanged) {
+                CommitAppliedDocumentCommand(
+                    scene,
+                    EDITOR::MakeSceneComponentPropertiesPatchHistoryCommand(
+                        "Edit Terrain Surface Settings",
+                        terrainResult.objectId,
+                        terrainResult.componentId,
+                        std::move(terrainResult.beforePatch),
+                        std::move(terrainResult.afterPatch),
+                        EDITOR::EditorDocumentImpact::RuntimeWorld),
+                    terrainResult.editActive
+                        ? kTerrainSurfaceWorkspaceMergeGroup
+                        : 0u,
+                    externalDirtyBefore,
+                    EDITOR::EditorDocumentImpact::None);
+            }
+            if (!terrainResult.editActive) {
+                documentHistory_.SealMerge();
+            }
             DrawPendingSceneOpenModal(scene);
             return;
         }

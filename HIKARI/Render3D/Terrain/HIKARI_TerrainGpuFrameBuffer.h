@@ -98,9 +98,24 @@ namespace HIKARI::RENDER3D::TERRAIN {
                 records != nullptr && !records->empty()
                     ? records->size()
                     : 1u;
-            if (recordCount > recordCapacity_) {
+            const std::size_t heightCount =
+                heights != nullptr && !heights->empty()
+                    ? heights->size()
+                    : 1u;
+            const auto publishNeutralSlot = [&]() {
+                slot->recordMapped[0] = TTraits{}.MakeSentinel(1u);
+                slot->heightMapped[0] = 0.0f;
+                slot->recordCount = 1u;
+                slot->heightCount = 1u;
+            };
+            // 容量を両方検証してから一文字も payload を書かない。失敗 slot は
+            // sentinel のみに戻し、以前の record と新しい offset を混在させない。
+            if (recordCount > recordCapacity_ ||
+                heightCount > heightCapacity_) {
+                publishNeutralSlot();
                 return false;
             }
+
             slot->recordMapped[0] =
                 TTraits{}.MakeSentinel(recordCount);
             slot->recordCount = 1u;
@@ -112,14 +127,6 @@ namespace HIKARI::RENDER3D::TERRAIN {
                 slot->recordCount = recordCount;
             }
 
-            const std::size_t heightCount =
-                heights != nullptr && !heights->empty()
-                    ? heights->size()
-                    : 1u;
-            if (heightCount > heightCapacity_) {
-                slot->heightCount = 0u;
-                return false;
-            }
             slot->heightMapped[0] = 0.0f;
             slot->heightCount = 1u;
             if (heightCount > 1u) {

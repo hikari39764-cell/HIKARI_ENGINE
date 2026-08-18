@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -76,7 +77,11 @@ namespace HIKARI::RENDER3D::RUNTIME {
         WATER::WaterSurfaceRenderData waterSurfaceData{};
         bool sandSurface = false;
         SAND::SandSurfaceRenderData sandSurfaceData{};
-        const std::vector<float>* sandSurfaceHeights = nullptr;
+        std::shared_ptr<const std::vector<float>> sandSurfaceHeights{};
+        std::shared_ptr<const std::vector<float>> sandSurfaceDeformations{};
+        std::shared_ptr<const std::vector<float>> sandSurfaceLayerWeights{};
+        std::shared_ptr<const std::vector<float>> sandSurfaceCoverage{};
+        uint64_t sandSurfaceProjectionRevision = 0u;
     };
 
     struct SceneRenderObject {
@@ -139,8 +144,13 @@ namespace HIKARI::RENDER3D::RUNTIME {
         WATER::WaterSurfaceRenderData waterSurfaceData{};
         bool sandSurface = false;
         SAND::SandSurfaceRenderData sandSurfaceData{};
-        const std::vector<float>* sandSurfaceHeights = nullptr;
+        std::shared_ptr<const std::vector<float>> sandSurfaceHeights{};
+        std::shared_ptr<const std::vector<float>> sandSurfaceDeformations{};
+        std::shared_ptr<const std::vector<float>> sandSurfaceLayerWeights{};
+        std::shared_ptr<const std::vector<float>> sandSurfaceCoverage{};
+        uint64_t sandSurfaceProjectionRevision = 0u;
         uint32_t sandSurfaceHeightOffset = 0u;
+        uint32_t sandSurfaceDeformationOffset = 0u;
         uint32_t sandSurfaceLayerWeightsOffset = 0u;
         uint32_t sandSurfaceCoverageOffset = 0u;
         uint32_t sandSurfaceLayerTintsOffset = 0u;
@@ -231,6 +241,12 @@ namespace HIKARI::RENDER3D::RUNTIME {
         bool surfaceTopologyDirty_ = true;
         bool surfaceRoutingDirty_ = true;
         bool surfaceDataDirty_ = true;
+        bool surfaceFloatPoolDirty_ = true;
+        std::vector<std::array<uint32_t, 9u>>
+            previousPackedSurfaceScratch_{};
+        std::vector<uint32_t> sourceSandGridResolutionScratch_{};
+        std::vector<uint8_t> terrainCoreResidentScratch_{};
+        std::vector<float> surfaceTintScratch_{};
     };
 
 }

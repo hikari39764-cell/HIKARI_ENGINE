@@ -42,10 +42,26 @@ namespace HIKARI::TERRAIN {
     struct DeformParams {
         DeformBehaviorId behavior = DeformBehaviorId::SphereCap;
         float maxDepth = 0.30f;
-        float stampRadius = 0.42f;
-        float rimStrength = 0.28f;
-        float refillPerSecond = 0.018f;
-        float diffusionPerSecond = 1.2f;
+        float stampRadius = 0.58f;
+        float rimStrength = 0.32f;
+        // runtime response は authored terrain より細かい疎格子で保持する。
+        // 2 倍なら既定 0.25 m cell が 0.125 m になり、小さな足跡も潰れない。
+        uint32_t responseResolutionScale = 2u;
+        // 接触は変形の gate にだけ使い、深さはアート調整可能な profile で決める。
+        // 物理 solver の侵入量や質量が 0 に近くても一定の見える痕跡を作れる。
+        float restDepthScale = 0.36f;
+        float minimumDepth = 0.055f;
+        float settleStartRatio = 0.72f;
+        float settleSeconds = 0.18f;
+        float impactDepthScale = 0.03f;
+        float rimWidthScale = 0.42f;
+        // elastic は緩やかに戻り、plastic は長時間痕跡として残る。
+        // diffusion は elastic/loose sand にだけ作用させる。
+        float refillPerSecond = 0.008f;
+        float diffusionPerSecond = 0.04f;
+        float plasticity = 0.93f;
+        float plasticRefillPerSecond = 0.0003f;
+        float recoveryDelaySeconds = 8.0f;
     };
 
     struct ShorelineParams {
@@ -86,7 +102,16 @@ namespace HIKARI::TERRAIN {
         preset.material.darkTint = { 0.68f, 0.78f, 0.90f };
         preset.deform.behavior = DeformBehaviorId::SoftSnow;
         preset.deform.maxDepth = 0.45f;
-        preset.deform.diffusionPerSecond = 3.0f;
+        preset.deform.restDepthScale = 0.38f;
+        preset.deform.minimumDepth = 0.05f;
+        preset.deform.settleStartRatio = 0.40f;
+        preset.deform.settleSeconds = 0.18f;
+        preset.deform.rimWidthScale = 0.40f;
+        preset.deform.refillPerSecond = 0.004f;
+        preset.deform.diffusionPerSecond = 0.025f;
+        preset.deform.plasticity = 0.97f;
+        preset.deform.plasticRefillPerSecond = 0.00015f;
+        preset.deform.recoveryDelaySeconds = 12.0f;
         preset.tint.light = { 1.0f, 1.0f, 1.0f };
         preset.tint.dark = { 0.68f, 0.78f, 0.90f };
         return preset;

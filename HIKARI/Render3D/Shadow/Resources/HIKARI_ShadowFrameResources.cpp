@@ -159,6 +159,9 @@ namespace HIKARI::SHADOW::INTERNAL {
             descriptorSize)) {
             DEBUGLOG::PushRenderError("[ShadowMapRenderer][WARN] SurfaceGpuScene buffer initialization failed. GPU-driven shadow pass will be unavailable.");
         }
+        if (!gShadowRendererState.sandSurfaceGpuFrameBuffer.Initialize(device)) {
+            DEBUGLOG::PushRenderError("[ShadowMapRenderer][WARN] SandSurface buffers initialization failed. Sand displacement will be unavailable in shadows.");
+        }
 
         for (uint32_t frameIndex = 0; frameIndex < GFX::kFrameResourceCount; ++frameIndex) {
             ShadowFrameResources& frame = gShadowRendererState.frameResources[frameIndex];

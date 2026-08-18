@@ -818,6 +818,8 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         record.sandSurfaceData = surfaceInstance.sandSurfaceData;
         record.sandSurfaceHeightOffset =
             surfaceInstance.sandSurfaceHeightOffset;
+        record.sandSurfaceDeformationOffset =
+            surfaceInstance.sandSurfaceDeformationOffset;
         record.sandSurfaceLayerWeightsOffset =
             surfaceInstance.sandSurfaceLayerWeightsOffset;
         record.sandSurfaceCoverageOffset =

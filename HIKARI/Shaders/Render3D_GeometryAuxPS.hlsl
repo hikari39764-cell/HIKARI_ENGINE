@@ -1,7 +1,9 @@
 #define HIKARI_MATERIAL_TEXTURE_POOL_SAMPLING 1
 #include "Include/HIKARI_MeshObjectData.hlsli"
+#include "Include/Forward/HIKARI_SurfaceFeatureCoverage.hlsli"
 #include "Include/Surface/HIKARI_SceneSurfaceContract.hlsli"
 #include "Include/Surface/HIKARI_SurfaceShadingNormal.hlsli"
+#include "Include/Surface/HIKARI_SandSurfaceParams.hlsli"
 #if defined(HIKARI_GEOMETRY_AUX_WRITE_FEATURE_MASK)
 #include "Include/Material/HIKARI_MaterialProgramData.hlsli"
 #include "Include/Features/HIKARI_StylizedFeatureMask.hlsli"
@@ -26,6 +28,7 @@ struct PSInput
     nointerpolation uint objectDataIndex : TEXCOORD4;
     nointerpolation uint surfaceGpuSceneIndex : TEXCOORD5;
     nointerpolation uint debugSurfaceId : TEXCOORD6;
+    nointerpolation uint surfaceFeatureFlags : TEXCOORD7;
 };
 
 #if defined(HIKARI_GEOMETRY_AUX_WRITE_FEATURE_MASK)
@@ -57,6 +60,15 @@ float4 main(PSInput input) : SV_TARGET
     if ((materialData.materialFlags & MATERIAL_ALPHA_MASK) != 0 && albedo.a < materialData.pbrParams.w)
     {
         discard;
+    }
+    if (HikariSurfaceHasSandSurface(input.surfaceFeatureFlags))
+    {
+        const HikariSurfaceGpuSceneInstance sandInstance =
+            HikariGetSurfaceGpuSceneInstanceAt(input.surfaceGpuSceneIndex);
+        HikariClipSandCoverage(
+            HikariLoadSandSurfaceParamsFromDataIndex(
+                sandInstance.surfaceFeatureDataIndex),
+            input.uv1);
     }
 
     float roughness = clamp(materialData.pbrParams.y, 0.04f, 1.0f);

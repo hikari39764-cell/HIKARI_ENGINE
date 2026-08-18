@@ -1,5 +1,6 @@
 #include "Include/HIKARI_MeshletMSCommon.hlsli"
 #include "Include/Meshlet/HIKARI_WaterSurfaceDeform.hlsli"
+#include "Include/Surface/HIKARI_SandSurfaceDeform.hlsli"
 
 struct HikariMeshletGeometryAuxVertexOut
 {
@@ -52,6 +53,12 @@ HikariMeshletGeometryAuxVertexOut HikariBuildMeshletGeometryAuxVertex(
         gSimulationTimeParams.x,
         localPosition,
         localNormal);
+    float3 sandSurfaceData = 0.0f.xxx;
+    HikariApplySandSurfaceDeform(
+        instance,
+        localPosition,
+        localNormal,
+        sandSurfaceData);
 
     // Depth prepass (MeshletDepthMS) と深度を bit 一致させるため、
     // clip 位置の計算は各 MS で同一式 + precise に固定する。

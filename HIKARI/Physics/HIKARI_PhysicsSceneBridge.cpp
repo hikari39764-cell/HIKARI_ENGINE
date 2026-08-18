@@ -14,6 +14,7 @@
 #include "Physics/HIKARI_PhysicsBodyValidator.h"
 #include "Physics/HIKARI_PhysicsCollisionGeometryStore.h"
 #include "Physics/HIKARI_PhysicsDefinitionScale.h"
+#include "Physics/HIKARI_TerrainCollisionProjection.h"
 
 namespace HIKARI::PHYSICS {
     namespace {
@@ -93,6 +94,28 @@ namespace HIKARI::PHYSICS {
             HashFloat(seed, value.z);
             HashFloat(seed, value.w);
         }
+
+        bool IsLegacyTerrainFloorCollider(
+            const ColliderComponent& collider) noexcept {
+            if (collider.GetFitMode() != ColliderFitMode::Manual ||
+                collider.IsTrigger()) {
+                return false;
+            }
+            const ResolvedColliderShape shape = collider.ResolveShape();
+            const auto nearlyEqual = [](float lhs, float rhs) {
+                return std::fabs(lhs - rhs) <= 1.0e-4f;
+            };
+            return shape.type == PhysicsShapeType::Box &&
+                nearlyEqual(shape.center.x, 0.0f) &&
+                nearlyEqual(shape.center.y, -0.1f) &&
+                nearlyEqual(shape.center.z, 0.0f) &&
+                nearlyEqual(shape.rotationEulerDegrees.x, 0.0f) &&
+                nearlyEqual(shape.rotationEulerDegrees.y, 0.0f) &&
+                nearlyEqual(shape.rotationEulerDegrees.z, 0.0f) &&
+                nearlyEqual(shape.size.x, 40.0f) &&
+                nearlyEqual(shape.size.y, 0.2f) &&
+                nearlyEqual(shape.size.z, 40.0f);
+        }
     }
 
     PhysicsShapeDesc BuildPhysicsShapeDesc(
@@ -154,6 +177,7 @@ namespace HIKARI::PHYSICS {
         PhysicsBodyCreateInfo& outCreateInfo,
         MATH::Vec3& outWorldScale,
         PhysicsCollisionGeometryStore* collisionGeometryStore,
+        const TerrainCollisionProjection* terrainProjection,
         const MATH::Vec3* retainedDefinitionScale) {
         PhysicsBodyBuildResult result{};
         PhysicsPose pose{};
@@ -192,10 +216,46 @@ namespace HIKARI::PHYSICS {
         }
         uint32_t componentOrdinal = 0u;
         bool appendFailed = false;
+        if (terrainProjection != nullptr &&
+            terrainProjection->geometry != nullptr &&
+            terrainProjection->geometry->vertices.size() >= 3u &&
+            terrainProjection->geometry->indices.size() >= 3u) {
+            PhysicsShapeDesc terrainShape{};
+            // "TERRAIN"。authored Collider component の ordinal と衝突しない
+            // domain-owned stable shape identity。
+            terrainShape.key.sourceShapeId =
+                kTerrainCollisionShapeSourceId;
+            terrainShape.type = PhysicsShapeType::TriangleMesh;
+            terrainShape.localScale = Absolute(outWorldScale);
+            terrainShape.geometry = terrainProjection->geometry;
+            terrainShape.vertexCount = static_cast<uint32_t>(
+                terrainProjection->geometry->vertices.size());
+            terrainShape.indexCount = static_cast<uint32_t>(
+                terrainProjection->geometry->indices.size());
+            terrainShape.geometryContentRevision =
+                terrainProjection->contentRevision;
+            terrainShape.material = PhysicsMaterialDesc{
+                0.8f, 0.0f, 1.0f };
+            terrainShape.filter = PhysicsCollisionFilter{
+                1u, 0xFFFFFFFFu };
+            outCreateInfo.shapes.push_back(std::move(terrainShape));
+            result.hasDefinition = true;
+            result.sourceRevision ^= terrainProjection->contentRevision +
+                0x9E3779B97F4A7C15ull +
+                (result.sourceRevision << 6u) +
+                (result.sourceRevision >> 2u);
+        }
         object.ForEachComponent<ColliderComponent>(
             [&](const ColliderComponent& collider) {
                 ++componentOrdinal;
                 if (!collider.IsEnabled()) {
+                    return;
+                }
+                // 旧 sand factory が保存した仮の 40x0.2x40 床だけを精密に
+                // 無視する。新しい domain-owned terrain mesh と二重衝突させず、
+                // ユーザーが追加した別寸法の trigger/collider は保持する。
+                if (terrainProjection != nullptr &&
+                    IsLegacyTerrainFloorCollider(collider)) {
                     return;
                 }
                 result.hasDefinition = true;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #include "Render3D/HIKARI_Math3D.h"
@@ -10,7 +11,7 @@
 
 namespace HIKARI {
 
-    // 統合地形地表コンポーネント。固体地形を「ワールド XZ に整列した疎
+    // 統合地形地表コンポーネント。固体地形を「オブジェクトローカル XZ に整列した疎
     // chunk 表」として保持する。筆刷が届いた場所に chunk が生え、1 つの
     // コンポーネントが任意範囲の地形を担う。水面は独立コンポーネント。
     //
@@ -31,25 +32,48 @@ namespace HIKARI {
         // 以降の編集 API はすべてワールド座標を取る。内部で chunk を
         // 定位・生成し、該当 chunk のローカル高さ場へスタンプする。
         TERRAIN::TerrainBrush GetBrush() const noexcept;
+        void SetBrush(const TERRAIN::TerrainBrush& brush) noexcept;
         void SetBrushMode(TERRAIN::TerrainBrushMode mode);
         void SetBrushRadius(float radius);
+        void SetDeformParams(const TERRAIN::DeformParams& deform);
+        void SetShorelineParams(const TERRAIN::ShorelineParams& shoreline);
 
         // 起伏スカルプト。worldPos を中心に brush を 1 回適用する。
         // deltaSeconds: フレーム時間。strength は「毎秒の伸び」として
         // 扱い、dt を掛けてフレームレート非依存にする（成熟ツール相当）。
-        void SculptAtWorld(
+        bool SculptAtWorld(
             const MATH::Vec3& worldPos,
             float deltaSeconds = 1.0f / 60.0f);
+        bool SculptAtLocal(
+            const MATH::Vec3& localPos,
+            float deltaSeconds = 1.0f / 60.0f);
         // 層ペイント。presetId の層を worldPos 周辺へ塗る。
-        void PaintLayerAtWorld(
+        // deltaSeconds=1 は単発 authoring command の従来強度を保つ。
+        // 連続 stroke は実フレーム時間を渡して FPS 非依存にする。
+        bool PaintLayerAtWorld(
             std::string_view presetId,
-            const MATH::Vec3& worldPos);
+            const MATH::Vec3& worldPos,
+            float deltaSeconds = 1.0f);
+        bool PaintLayerAtLocal(
+            std::string_view presetId,
+            const MATH::Vec3& localPos,
+            float deltaSeconds = 1.0f);
         // coverage（実体/穴）を worldPos 周辺へ塗る。target=1 で実体。
-        void PaintCoverageAtWorld(
+        bool PaintCoverageAtWorld(
             float target,
-            const MATH::Vec3& worldPos);
+            const MATH::Vec3& worldPos,
+            float deltaSeconds = 1.0f);
+        bool PaintCoverageAtLocal(
+            float target,
+            const MATH::Vec3& localPos,
+            float deltaSeconds = 1.0f);
 
         void ResetTerrain();
+
+        // Editor stroke 中は描画を即時更新しつつ、重い static collision の
+        // revision は stroke 終了時に 1 回だけ commit する。
+        void BeginGeometryEditBatch() noexcept;
+        bool EndGeometryEditBatch() noexcept;
 
         // ── 物理 / 変形 ───────────────────────────────────
         // ワールド XZ の地形高さをサンプルする。chunk が無い場所は false。
@@ -57,30 +81,97 @@ namespace HIKARI {
             const MATH::Vec3& worldPos,
             float& outHeight,
             MATH::Vec3& outNormal) const noexcept;
+        bool SampleLocalHeight(
+            const MATH::Vec3& localPos,
+            float& outHeight,
+            MATH::Vec3& outNormal) const noexcept;
+        // レイマーチや筆刷プレビュー向け。法線の 4 近傍サンプルを省き、
+        // 可視 edge を反映した高さだけを返す。
+        bool SampleLocalSurfaceHeight(
+            const MATH::Vec3& localPos,
+            float& outHeight) const noexcept;
+        float SampleLocalCoverage(
+            const MATH::Vec3& localPos) const noexcept;
+        bool RaycastWorld(
+            const MATH::Vec3& rayOrigin,
+            const MATH::Vec3& rayDirection,
+            float maxDistance,
+            MATH::Vec3& outPosition,
+            MATH::Vec3& outNormal,
+            bool allowBasePlaneFallback = true) const noexcept;
 
         uint32_t GetLayerCount() const noexcept;
         uint64_t GetRevision() const noexcept;
+        uint64_t GetGeometryRevision() const noexcept;
+        uint64_t GetCoverageRevision() const noexcept;
 
         // chunk 走査用。描画・衝突・変形システムがここから chunk を得る。
         const TERRAIN::TerrainChunkMap& GetChunks() const noexcept;
         float GetChunkWorldSize() const noexcept;
         uint32_t GetChunkCells() const noexcept;
 
+        // 高さ場はオブジェクトローカル空間。ブラシ・変形・物理は
+        // この変換でローカル座標へそろえ、描画と一致させる。
+        MATH::Vec3 WorldToLocal(const MATH::Vec3& worldPos) const noexcept;
+        MATH::Vec3 LocalToWorld(const MATH::Vec3& localPos) const noexcept;
+
+        // Workspace の軽量 authoring transaction 用。巨大な chunk 配列を
+        // 複製せず、preset / brush / edge / deform 設定だけを直列化する。
+        void SerializeSettings(nlohmann::json& out) const;
         void Serialize(nlohmann::json& out) const override;
         void Deserialize(const nlohmann::json& in) override;
         void BuildInspector(IInspectorBuilder& builder) override;
 
     private:
         void NotifyRenderStateDirty();
+        void MarkGeometryChanged() noexcept;
+        void InvalidateCoverageCache() noexcept;
+        bool TryReadCoverageVertex(
+            int32_t globalX,
+            int32_t globalZ,
+            float& outRawCoverage) const noexcept;
+        void RebuildCoverageCache() const;
+        void MarkCoverageVertexDirty(
+            const TERRAIN::TerrainChunkKey& chunkKey,
+            uint32_t localX,
+            uint32_t localZ) noexcept;
+        void MarkCoverageChunkDirty(
+            const TERRAIN::TerrainChunkKey& chunkKey) noexcept;
+        bool SampleLocalRaw(
+            float localX,
+            float localZ,
+            float& outHeight,
+            float& outCoverage) const noexcept;
+        void StitchChunkBorders();
+        bool StitchChunkBorders(
+            const std::vector<TERRAIN::TerrainChunkKey>& touchedChunks);
         TERRAIN::TerrainChunk& EnsureChunk(
             const TERRAIN::TerrainChunkKey& key);
-        // worldPos 周辺のブラシ半径が触れる全 chunk を走査して fn を呼ぶ。
-        // fn は (chunk, その chunk 原点のワールド XZ) を受け取る。
+        // fn が受け取る chunkOrigin は地形オブジェクトローカル空間。
         template <typename Fn>
-        void ForEachChunkInBrush(const MATH::Vec3& worldPos, Fn&& fn);
+        void ForEachChunkInBrushLocal(
+            const MATH::Vec3& localPos,
+            float radius,
+            bool createMissingChunks,
+            Fn&& fn);
 
         TERRAIN::TerrainSurface surface_{};
         uint64_t revision_ = 0u;
+        uint64_t geometryRevision_ = 0u;
+        uint64_t coverageRevision_ = 1u;
+        bool geometryEditBatchActive_ = false;
+        bool geometryEditBatchDirty_ = false;
+        mutable uint64_t coverageCacheRevision_ = 0u;
+        mutable std::unordered_map<uint64_t, float> coverageCache_{};
+        mutable std::unordered_map<uint64_t, float>
+            coverageDistanceCache_{};
+        mutable bool coverageCacheInitialized_ = false;
+        mutable bool coverageCacheFullRebuild_ = true;
+        mutable bool coverageDirtyValid_ = false;
+        mutable int32_t coverageDirtyMinX_ = 0;
+        mutable int32_t coverageDirtyMaxX_ = 0;
+        mutable int32_t coverageDirtyMinZ_ = 0;
+        mutable int32_t coverageDirtyMaxZ_ = 0;
     };
 
 } // namespace HIKARI

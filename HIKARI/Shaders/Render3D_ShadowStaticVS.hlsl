@@ -13,6 +13,7 @@ cbuffer ShadowObjectCB : register(b1)
 
 #include "Include/HIKARI_MeshMaterialData.hlsli"
 #include "Include/HIKARI_SurfaceGpuScene.hlsli"
+#include "Include/Surface/HIKARI_SandSurfaceDeform.hlsli"
 
 static const uint HIKARI_INVALID_SHADOW_MATERIAL_INDEX = 0xffffffffu;
 
@@ -34,6 +35,8 @@ struct VSOutput
     nointerpolation uint materialFlags : MATERIALFLAGS;
     nointerpolation float alphaCutoff : ALPHACUTOFF;
     nointerpolation uint materialDataIndex : MATERIALINDEX;
+    nointerpolation uint surfaceGpuSceneIndex : TEXCOORD2;
+    nointerpolation uint surfaceFeatureFlags : TEXCOORD3;
 };
 
 VSOutput main(VSInput input)
@@ -43,23 +46,37 @@ VSOutput main(VSInput input)
     uint materialFlags = gMaterialFlags;
     float alphaCutoff = gAlphaCutoff;
     uint materialDataIndex = HIKARI_INVALID_SHADOW_MATERIAL_INDEX;
+    uint surfaceGpuSceneIndex = 0u;
+    uint surfaceFeatureFlags = 0u;
+    float3 localPosition = input.position;
 
     if (gUseSurfaceGpuScene != 0)
     {
         HikariSurfaceGpuSceneInstance instance = HikariGetSurfaceGpuSceneInstance(input.instanceId);
         world = instance.world;
+        surfaceGpuSceneIndex = input.instanceId;
+        surfaceFeatureFlags = instance.flags;
+        float3 localNormal = input.normal;
+        float3 sandSurfaceData = float3(0.0f, 0.0f, 0.0f);
+        HikariApplySandSurfaceDeform(
+            instance,
+            localPosition,
+            localNormal,
+            sandSurfaceData);
         materialDataIndex = instance.materialDataIndex;
         HikariMeshMaterialData materialData = HikariGetMeshMaterialData(materialDataIndex);
         materialFlags = materialData.materialFlags;
         alphaCutoff = materialData.pbrParams.w;
     }
 
-    float4 worldPos = mul(world, float4(input.position, 1.0f));
+    float4 worldPos = mul(world, float4(localPosition, 1.0f));
     output.position = mul(gLightViewProj, worldPos);
     output.uv = input.uv;
     output.uv1 = input.uv1;
     output.materialFlags = materialFlags;
     output.alphaCutoff = alphaCutoff;
     output.materialDataIndex = materialDataIndex;
+    output.surfaceGpuSceneIndex = surfaceGpuSceneIndex;
+    output.surfaceFeatureFlags = surfaceFeatureFlags;
     return output;
 }

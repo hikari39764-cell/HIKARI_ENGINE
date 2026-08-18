@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <unordered_map>
 #include <vector>
 
@@ -9,18 +10,22 @@
 #include "Scene/HIKARI_RuntimeObjectHandle.h"
 #include "Scene/Sand/HIKARI_SandSurfaceTypes.h"
 #include "Scene/Terrain/HIKARI_TerrainChunks.h"
+#include "Scene/Terrain/HIKARI_TerrainInteraction.h"
 #include "Scene/Water/HIKARI_WaterSurfaceQueryService.h"
 
 namespace HIKARI {
 
     class World;
+    class GameObject;
+    struct RuntimePlayStateService;
 
-    class PresentationTransformService;
     namespace SAND {
         class SandSurfaceQueryService;
         struct SandChunkRuntimeState;
         using SandChunkRuntimeStatePtr =
             std::shared_ptr<SandChunkRuntimeState>;
+        using SandChunkRuntimeSnapshotPtr =
+            std::shared_ptr<const SandChunkRuntimeState>;
     }
 
     // 疎 chunk 化された地形の物理・変形システム。
@@ -39,6 +44,12 @@ namespace HIKARI {
         void PreFixedUpdate(
             World& world,
             const FrameContext& frame) override;
+        void PostFixedUpdate(
+            World& world,
+            const FrameContext& frame) override;
+        void Update(
+            World& world,
+            const FrameContext& frame) override;
         void PreRender(
             World& world,
             const FrameContext& frame) override;
@@ -46,53 +57,60 @@ namespace HIKARI {
             const WATER::WaterBathymetryRay& ray,
             float& outDistance) const noexcept override;
 
-    public:
-        // 変形スタンプ源の識別。球・キャラクターの足・車輪など、
-        // あらゆる「沈み込む物」を統一的に扱うための抽象。
-        // 新しい種類を足すときはここへ追加し、GatherImprintSources で
-        // 対応する Component を列挙するだけでよい。
-        enum class ImprintSourceKind : uint8_t {
-            Sphere = 0,   // 球（Collider sphere + dynamic body）
-            Footprint,    // キャラクターの足裏（将来）
-            Wheel,        // 車輪（将来）
-            Box,          // 直方体（将来）
-            Custom,       // 任意形状（将来）
-        };
-
-        // 一度の沈み込み要求。ソース非依存で、形状は球近似。
-        struct ImprintRequest {
-            MATH::Vec3 centerWS{};   // ワールド中心
-            float radius = 0.5f;     // 接触半径（ワールド）
-            float sinkDepth = 0.1f;  // 沈み深さ
-            float strength = 1.0f;   // 凹みの強さ係数
-        };
-
     private:
         struct ObjectChunks {
             // chunkKey -> 可変状態。shared_ptr で安定させる。
             std::unordered_map<uint64_t, SAND::SandChunkRuntimeStatePtr>
                 chunks{};
+            std::unordered_map<uint64_t, SAND::SandChunkRuntimeSnapshotPtr>
+                snapshots{};
+            std::unordered_map<uint64_t, uint64_t>
+                snapshotRevisions{};
+            std::unordered_map<uint64_t, uint64_t>
+                authoredHeightSignatures{};
+            std::unordered_map<uint64_t, uint64_t>
+                authoredCoverageSignatures{};
             uint64_t lastRevision = 0u;
+            uint64_t lastCoverageRevision = 0u;
+            float lastCoverageEdgeFalloff = 0.0f;
+            bool hasCoverageProjectionSettings = false;
+            // 高さ場はオブジェクトローカル空間。スタンプ源のワールド中心を
+            // ここに掛けてローカルへそろえる（Refresh で 1 度だけ計算）。
+            MATH::Mat4 localToWorld{};
+            MATH::Mat4 worldToLocal{};
+            MATH::Mat4 publishedLocalToWorld{};
+            bool hasPublishedTransform = false;
+            GameObject* owner = nullptr;
+            float scaleX = 1.0f;
+            float scaleY = 1.0f;
+            float scaleZ = 1.0f;
         };
 
         void Refresh(World& world);
-        // 変形スタンプ源を集めて chunk へ適用する。
-        void ApplyImprintSources(World& world, float fixedDt);
-        // 現在アクティブなスタンプ源を列挙する（拡張点）。
-        void GatherImprintSources(
-            World& world,
-            std::vector<ImprintRequest>& outRequests);
-        void ApplySphereContactStamps(World& world, float fixedDt);
-        void RelaxChunk(
+        // 唯一の TerrainInteractionSample stream を chunk へ適用する。
+        // runtime 高さが実際に変わった場合だけ true。PostFixed で直ちに
+        // immutable snapshot を再発行し、PreRender の consumer に渡す。
+        bool ApplyInteractions(
+            std::span<const TERRAIN::TerrainInteractionSample> requests,
+            float deltaSeconds);
+        bool RelaxChunk(
             SAND::SandChunkRuntimeState& chunk,
             float fixedDt);
+        bool StitchRuntimeBorders(ObjectChunks& bucket);
         void RebuildCombinedHeights(SAND::SandChunkRuntimeState& chunk);
-        void ApplySphereImprint(
+        bool ApplyStylizedImprint(
             SAND::SandChunkRuntimeState& chunk,
-            float worldX,
-            float worldZ,
-            float worldRadius,
-            float sinkDepth);
+            TERRAIN::TerrainFootprintKind footprintKind,
+            float localX,
+            float localZ,
+            float localRadiusX,
+            float localRadiusZ,
+            float localVerticalRadius,
+            const MATH::Vec2& localTangent,
+            const MATH::Vec2& localBitangent,
+            float edgeSoftness,
+            float sinkDepth,
+            bool holdOnly);
         void SyncChunkFromAuthored(
             SAND::SandChunkRuntimeState& chunk,
             const TERRAIN::TerrainChunk& authored);
@@ -106,10 +124,10 @@ namespace HIKARI {
 
         SAND::SandSurfaceQueryService* queryService_ = nullptr;
         WATER::WaterSurfaceQueryService* waterQueryService_ = nullptr;
-        PresentationTransformService* presentationTransforms_ = nullptr;
+        const RuntimePlayStateService* runtimePlayState_ = nullptr;
         // objectKey (render stable id) -> chunk 状態表
         std::unordered_map<uint64_t, ObjectChunks> objects_{};
-        std::unordered_map<uint64_t, MATH::Vec3> previousSphereCenters_{};
+        bool hasPublishedSnapshot_ = false;
     };
 
 } // namespace HIKARI

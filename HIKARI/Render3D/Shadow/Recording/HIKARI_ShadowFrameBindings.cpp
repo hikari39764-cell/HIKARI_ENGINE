@@ -66,6 +66,22 @@ namespace HIKARI::SHADOW::INTERNAL {
                 PIPELINE::kShadowStaticRootParamDeformationPalettes,
                 frame.jointPaletteCB->GetGPUVirtualAddress());
         }
+        const D3D12_GPU_VIRTUAL_ADDRESS sandDataAddress =
+            gShadowRendererState.sandSurfaceGpuFrameBuffer.
+                GetRecordGpuVirtualAddress();
+        if (sandDataAddress != 0u) {
+            cmd->SetGraphicsRootShaderResourceView(
+                PIPELINE::kShadowStaticRootParamSandSurfaceData,
+                sandDataAddress);
+        }
+        const D3D12_GPU_VIRTUAL_ADDRESS sandHeightAddress =
+            gShadowRendererState.sandSurfaceGpuFrameBuffer.
+                GetHeightGpuVirtualAddress();
+        if (sandHeightAddress != 0u) {
+            cmd->SetGraphicsRootShaderResourceView(
+                PIPELINE::kShadowStaticRootParamSandSurfaceHeights,
+                sandHeightAddress);
+        }
         cmd->SetGraphicsRoot32BitConstant(
             PIPELINE::kShadowStaticRootParamMaterialIndex,
             0u,

@@ -5,6 +5,7 @@
 #include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Gizmos/HIKARI_EditorTransformGizmoShortcuts.h"
 #include "Editor/HIKARI_EditorViewportInput.h"
+#include "Editor/History/HIKARI_SceneComponentPropertiesHistoryCommand.h"
 #include "Editor/Play/HIKARI_EditorPlaySession.h"
 #include "Editor/Selection/HIKARI_SceneSelectionTransform.h"
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
@@ -17,6 +18,7 @@
 #include "Scene/Debug/HIKARI_ComponentGizmoRenderer.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_SceneDocument.h"
+#include "Scene/HIKARI_SceneDocumentQueries.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/Terrain/HIKARI_TerrainSurfaceComponent.h"
 #include "Scene/Terrain/HIKARI_TerrainSurfaceConversion.h"
@@ -557,13 +559,6 @@ namespace HIKARI {
         const EDITOR::SceneViewportRect& viewport,
         bool viewportHovered) {
 #if defined(HIKARI_WITH_EDITOR)
-        if (!workspaceHost_.IsActive(
-                EDITOR::EditorWorkspaceId::TerrainSurface)) {
-            context_.terrainTool.active = false;
-            sandTerrainStrokeActive_ = false;
-            return;
-        }
-
         GameObject* selected = context_.selection.selectedObject;
         TerrainSurfaceComponent* terrain =
             selected != nullptr
@@ -603,45 +598,91 @@ namespace HIKARI {
             }
         };
 
+        const auto resetStrokeState = [&]() {
+            sandTerrainStrokeActive_ = false;
+            sandBrushStrokeChanged_ = false;
+            sandBrushTargetObjectId_ = {};
+            sandBrushTargetComponentId_ = {};
+            sandBrushBeforeComponentProperties_ =
+                nlohmann::json::object();
+            sandBrushPreviousLocalHit_ = {};
+            sandBrushHasPreviousLocalHit_ = false;
+            sandBrushDirtyBefore_ = false;
+        };
+
         const auto finishStroke = [&]() {
-            if (!sandTerrainStrokeActive_ ||
-                terrain == nullptr ||
-                selected == nullptr) {
-                sandTerrainStrokeActive_ = false;
+            if (!sandTerrainStrokeActive_) {
                 return;
             }
-            sandTerrainStrokeActive_ = false;
-
-            nlohmann::json serialized = nlohmann::json::object();
-            const char* componentType = "TerrainSurfaceComponent";
-            terrain->Serialize(serialized);
-            if (SceneObjectData* documentObject =
-                    selectionSync_.FindDocumentObjectByRuntime(
-                        scene,
-                        selected)) {
-                for (SceneComponentData& component :
-                    documentObject->components) {
-                    if (component.type != componentType) {
-                        continue;
-                    }
-                    component.properties = serialized;
-                    break;
-                }
+            const SceneObjectId strokeObjectId =
+                sandBrushTargetObjectId_;
+            const SceneComponentId strokeComponentId =
+                sandBrushTargetComponentId_;
+            GameObject* strokeTarget =
+                scene.GetWorld().FindObject(strokeObjectId);
+            TerrainSurfaceComponent* strokeTerrain =
+                strokeTarget != nullptr
+                    ? strokeTarget->GetComponent<TerrainSurfaceComponent>()
+                    : nullptr;
+            if (strokeTerrain == nullptr) {
+                resetStrokeState();
+                return;
+            }
+            (void)strokeTerrain->EndGeometryEditBatch();
+            const bool strokeChanged = sandBrushStrokeChanged_;
+            if (!strokeChanged) {
+                resetStrokeState();
+                return;
             }
 
-            SceneObjectAuthoringHistoryRequest history{};
-            history.label = "Sculpt Sand Terrain";
-            history.beforeObjects = sandBrushBeforeObjects_;
-            history.afterObjects = scene.GetSceneDocument().objects;
-            history.beforeCamera = sandBrushBeforeCamera_;
-            history.afterCamera = scene.GetSceneDocument().camera;
-            history.dirtyBefore = sandBrushDirtyBefore_;
-            history.runtimeWorldAffected = true;
-            history.runtimeWorldRefreshRequired = false;
-            CommitSceneObjectAuthoringHistory(
+            nlohmann::json serialized = nlohmann::json::object();
+            strokeTerrain->Serialize(serialized);
+            SceneObjectData* documentObject = FindSceneObjectData(
+                scene.GetSceneDocument(),
+                strokeObjectId);
+            SceneComponentData* documentComponent =
+                documentObject != nullptr
+                    ? FindSceneComponent(
+                        *documentObject,
+                        strokeComponentId)
+                    : nullptr;
+            if (documentComponent == nullptr) {
+                resetStrokeState();
+                return;
+            }
+            documentComponent->properties = serialized;
+
+            std::string label =
+                context_.terrainTool.paint != EditorTerrainPaintMode::None
+                    ? "Paint Terrain Surface"
+                    : "Sculpt Sand Terrain";
+            CommitAppliedDocumentCommand(
                 scene,
-                std::move(history));
+                EDITOR::MakeSceneComponentPropertiesHistoryCommand(
+                    std::move(label),
+                    strokeObjectId,
+                    strokeComponentId,
+                    std::move(sandBrushBeforeComponentProperties_),
+                    std::move(serialized),
+                    EDITOR::EditorDocumentImpact::RuntimeWorld),
+                0,
+                sandBrushDirtyBefore_ && !documentHistory_.IsDirty(),
+                EDITOR::EditorDocumentImpact::None);
+            resetStrokeState();
         };
+
+        if (!workspaceHost_.IsActive(
+                EDITOR::EditorWorkspaceId::TerrainSurface)) {
+            context_.terrainTool.active = false;
+            finishStroke();
+            return;
+        }
+
+        if (sandTerrainStrokeActive_ &&
+            (selected == nullptr ||
+                selected->GetDocumentId() != sandBrushTargetObjectId_)) {
+            finishStroke();
+        }
 
         if (terrain == nullptr || procedural == nullptr) {
             finishStroke();
@@ -725,84 +766,27 @@ namespace HIKARI {
             return;
         }
 
+        // Terrain query/bake は高価なので、viewport 外の Inspector 操作中は
+        // hover preview を更新しない。ドラッグが外へ出た場合も従来どおり
+        // その場で stroke を確定する。
+        if (!viewportHovered) {
+            context_.terrainTool.hasHit = false;
+            finishStroke();
+            return;
+        }
+
         const bool pointerDown =
-            viewportHovered &&
             ImGui::IsMouseDown(ImGuiMouseButton_Left);
 
-        // ワールド空間レイを地形高さ場へぶつけて命中点を求める。
-        // 平坦面ではなく実際の起伏に吸着させるため、マーチングで
-        // 「高さ場より上 → 下」に沈んだ点を二分で詰める。
-        const auto sampleTerrainHeight = [&](
-            float worldX,
-            float worldZ,
-            float& outHeight) -> bool {
-            MATH::Vec3 n{};
-            return terrain->SampleWorldHeight(
-                { worldX, 0.0f, worldZ },
-                outHeight,
-                n);
-        };
-
         MATH::Vec3 worldHit{};
-        bool hasHit = false;
-        {
-            // 既存 chunk がある場合は高さ場マーチ、無ければ y=0 平面で
-            // 新規 chunk を生やす起点を取る。
-            const float maxDist = 500.0f;
-            const int marchSteps = 128;
-            float prevT = 0.0f;
-            float prevAbove = 0.0f;
-            bool hasPrev = false;
-            for (int i = 0; i <= marchSteps && !hasHit; ++i) {
-                const float t =
-                    (static_cast<float>(i) / marchSteps) * maxDist;
-                const MATH::Vec3 p{
-                    rayOrigin.x + rayDirection.x * t,
-                    rayOrigin.y + rayDirection.y * t,
-                    rayOrigin.z + rayDirection.z * t
-                };
-                float ground = 0.0f;
-                const bool hasGround =
-                    sampleTerrainHeight(p.x, p.z, ground);
-                const float above = p.y - (hasGround ? ground : 0.0f);
-                if (hasPrev && prevAbove > 0.0f && above <= 0.0f) {
-                    // 二分で交点を詰める。
-                    float lo = prevT;
-                    float hi = t;
-                    for (int it = 0; it < 16; ++it) {
-                        const float mid = (lo + hi) * 0.5f;
-                        const MATH::Vec3 mp{
-                            rayOrigin.x + rayDirection.x * mid,
-                            rayOrigin.y + rayDirection.y * mid,
-                            rayOrigin.z + rayDirection.z * mid
-                        };
-                        float mg = 0.0f;
-                        const bool mh =
-                            sampleTerrainHeight(mp.x, mp.z, mg);
-                        if (mp.y - (mh ? mg : 0.0f) > 0.0f) {
-                            lo = mid;
-                        } else {
-                            hi = mid;
-                        }
-                    }
-                    const float ft = (lo + hi) * 0.5f;
-                    worldHit = {
-                        rayOrigin.x + rayDirection.x * ft,
-                        rayOrigin.y + rayDirection.y * ft,
-                        rayOrigin.z + rayDirection.z * ft
-                    };
-                    float hg = 0.0f;
-                    if (sampleTerrainHeight(
-                            worldHit.x, worldHit.z, hg)) {
-                        worldHit.y = hg;
-                    }
-                    hasHit = true;
-                }
-                prevT = t;
-                prevAbove = above;
-                hasPrev = true;
-            }
-        }
+        MATH::Vec3 worldHitNormal{};
+        const bool hasHit = terrain->RaycastWorld(
+            rayOrigin,
+            rayDirection,
+            500.0f,
+            worldHit,
+            worldHitNormal,
+            true);
 
         if (hasHit) {
             context_.terrainTool.hasHit = true;
@@ -832,7 +816,8 @@ namespace HIKARI {
             }
 
             // ブラシを実際の高さ場に沿って貼り付けて描く。
-            const float brushRadiusWorld = getBrushRadius();
+            const float brushRadiusLocal = getBrushRadius();
+            const MATH::Vec3 localHit = terrain->WorldToLocal(worldHit);
             const MATH::Mat4 viewProjection = camera.GetViewProj();
             const auto projectToScreen = [&](
                 const MATH::Vec3& worldPos,
@@ -860,18 +845,22 @@ namespace HIKARI {
                     const float angle =
                         (static_cast<float>(segment) / segments) *
                         6.28318530718f;
-                    const float wx = worldHit.x +
-                        std::cos(angle) * ringRadius;
-                    const float wz = worldHit.z +
-                        std::sin(angle) * ringRadius;
-                    float ringY = worldHit.y;
-                    float sampled = 0.0f;
-                    if (sampleTerrainHeight(wx, wz, sampled)) {
-                        ringY = sampled;
+                    MATH::Vec3 ringLocal{
+                        localHit.x + std::cos(angle) * ringRadius,
+                        0.0f,
+                        localHit.z + std::sin(angle) * ringRadius };
+                    float ringHeight = 0.0f;
+                    if (!terrain->SampleLocalSurfaceHeight(
+                            ringLocal, ringHeight)) {
+                        ringHeight = 0.0f;
                     }
+                    ringLocal.y = ringHeight;
+                    MATH::Vec3 ringWorld =
+                        terrain->LocalToWorld(ringLocal);
+                    ringWorld = ringWorld + worldHitNormal * 0.02f;
                     ImVec2 screenPoint{};
                     const bool valid = projectToScreen(
-                        { wx, ringY + 0.02f, wz }, screenPoint);
+                        ringWorld, screenPoint);
                     if (valid && previousValid) {
                         drawList->AddLine(
                             previous, screenPoint,
@@ -881,10 +870,10 @@ namespace HIKARI {
                     previousValid = valid;
                 }
             };
-            drawGroundRing(brushRadiusWorld, 48, 2.0f);
+            drawGroundRing(brushRadiusLocal, 48, 2.0f);
             const float innerRadius =
-                brushRadiusWorld *
-                (std::max)(1.0f - previewBrush.falloff, 0.0f);
+                brushRadiusLocal *
+                std::clamp(previewBrush.hardness, 0.0f, 1.0f);
             if (innerRadius > 0.01f) {
                 drawGroundRing(innerRadius, 32, 1.0f);
             }
@@ -896,37 +885,78 @@ namespace HIKARI {
 
             const EditorTerrainPaintMode paint =
                 context_.terrainTool.paint;
-            if (pointerDown) {
-                if (!sandTerrainStrokeActive_) {
-                    sandBrushBeforeObjects_ =
-                        scene.GetSceneDocument().objects;
-                    sandBrushBeforeCamera_ =
-                        scene.GetSceneDocument().camera;
+            if (pointerDown && !sandTerrainStrokeActive_) {
+                SceneObjectData* documentObject =
+                    selectionSync_.FindDocumentObjectByRuntime(
+                        scene,
+                        selected);
+                SceneComponentData* documentComponent = nullptr;
+                if (documentObject != nullptr) {
+                    for (SceneComponentData& component :
+                        documentObject->components) {
+                        if (component.type ==
+                            "TerrainSurfaceComponent") {
+                            documentComponent = &component;
+                            break;
+                        }
+                    }
+                }
+                // 履歴対象を安定 ID で確定できる場合だけ live mutation を
+                // 始める。Undo 不能な地形編集を先に適用しない。
+                if (documentComponent != nullptr &&
+                    documentComponent->id.value != 0u) {
+                    sandBrushBeforeComponentProperties_ =
+                        documentComponent->properties;
                     sandBrushDirtyBefore_ =
                         context_.sceneDirty ||
                         scene.HasUnsavedSceneChanges();
+                    sandBrushTargetObjectId_ =
+                        selected->GetDocumentId();
+                    sandBrushTargetComponentId_ =
+                        documentComponent->id;
+                    sandBrushStrokeChanged_ = false;
+                    sandBrushPreviousLocalHit_ = {};
+                    sandBrushHasPreviousLocalHit_ = false;
+                    terrain->BeginGeometryEditBatch();
                     sandTerrainStrokeActive_ = true;
                 }
             }
-            if (pointerDown && paint != EditorTerrainPaintMode::None) {
-                switch (paint) {
-                case EditorTerrainPaintMode::Sand:
-                    terrain->PaintLayerAtWorld("sand", worldHit);
-                    break;
-                case EditorTerrainPaintMode::Snow:
-                    terrain->PaintLayerAtWorld("snow", worldHit);
-                    break;
-                case EditorTerrainPaintMode::Dirt:
-                    terrain->PaintLayerAtWorld("dirt", worldHit);
-                    break;
-                case EditorTerrainPaintMode::Erase:
-                    terrain->PaintCoverageAtWorld(0.0f, worldHit);
-                    break;
-                case EditorTerrainPaintMode::None:
-                default:
-                    break;
-                }
-            } else if (pointerDown) {
+
+            if (pointerDown && sandTerrainStrokeActive_) {
+                const TERRAIN::TerrainBrush strokeBrush =
+                    terrain->GetBrush();
+                const float cellSize = terrain->GetChunkWorldSize() /
+                    static_cast<float>((std::max)(
+                        terrain->GetChunkCells(), 1u));
+                const float brushSpacing = (std::max)(
+                    cellSize,
+                    strokeBrush.radius * 0.22f);
+                const float segmentDx =
+                    localHit.x - sandBrushPreviousLocalHit_.x;
+                const float segmentDz =
+                    localHit.z - sandBrushPreviousLocalHit_.z;
+                const float segmentLength =
+                    sandBrushHasPreviousLocalHit_
+                        ? std::sqrt(
+                            segmentDx * segmentDx +
+                            segmentDz * segmentDz)
+                        : 0.0f;
+                const uint32_t sampleCount =
+                    sandBrushHasPreviousLocalHit_
+                        ? (std::max)(
+                            1u,
+                            static_cast<uint32_t>(std::ceil(
+                                segmentLength /
+                                (std::max)(brushSpacing, 1.0e-4f))))
+                        : 1u;
+                const float frameDeltaSeconds = std::clamp(
+                    ImGui::GetIO().DeltaTime,
+                    0.0f,
+                    0.1f);
+                const float sampleDeltaSeconds =
+                    frameDeltaSeconds /
+                    static_cast<float>(sampleCount);
+
                 TERRAIN::TerrainBrushMode mode =
                     toTerrainMode(context_.terrainTool.mode);
                 const ImGuiIO& io = ImGui::GetIO();
@@ -945,10 +975,54 @@ namespace HIKARI {
                     mode = TERRAIN::TerrainBrushMode::Smooth;
                 }
                 terrain->SetBrushMode(mode);
-                terrain->SculptAtWorld(worldHit, ImGui::GetIO().DeltaTime);
+
+                bool frameChanged = false;
+                for (uint32_t sampleIndex = 1u;
+                    sampleIndex <= sampleCount;
+                    ++sampleIndex) {
+                    const float t = sandBrushHasPreviousLocalHit_
+                        ? static_cast<float>(sampleIndex) /
+                            static_cast<float>(sampleCount)
+                        : 1.0f;
+                    const MATH::Vec3 sampleLocal =
+                        sandBrushHasPreviousLocalHit_
+                            ? sandBrushPreviousLocalHit_ +
+                                (localHit - sandBrushPreviousLocalHit_) * t
+                            : localHit;
+                    bool sampleChanged = false;
+                    switch (paint) {
+                    case EditorTerrainPaintMode::Sand:
+                        sampleChanged = terrain->PaintLayerAtLocal(
+                            "sand", sampleLocal, sampleDeltaSeconds);
+                        break;
+                    case EditorTerrainPaintMode::Snow:
+                        sampleChanged = terrain->PaintLayerAtLocal(
+                            "snow", sampleLocal, sampleDeltaSeconds);
+                        break;
+                    case EditorTerrainPaintMode::Dirt:
+                        sampleChanged = terrain->PaintLayerAtLocal(
+                            "dirt", sampleLocal, sampleDeltaSeconds);
+                        break;
+                    case EditorTerrainPaintMode::Erase:
+                        sampleChanged = terrain->PaintCoverageAtLocal(
+                            0.0f, sampleLocal, sampleDeltaSeconds);
+                        break;
+                    case EditorTerrainPaintMode::None:
+                    default:
+                        sampleChanged = terrain->SculptAtLocal(
+                            sampleLocal, sampleDeltaSeconds);
+                        break;
+                    }
+                    frameChanged = frameChanged || sampleChanged;
+                }
+                sandBrushPreviousLocalHit_ = localHit;
+                sandBrushHasPreviousLocalHit_ = true;
+                sandBrushStrokeChanged_ =
+                    sandBrushStrokeChanged_ || frameChanged;
             }
         } else {
             context_.terrainTool.hasHit = false;
+            sandBrushHasPreviousLocalHit_ = false;
         }
 
         if (!pointerDown) {

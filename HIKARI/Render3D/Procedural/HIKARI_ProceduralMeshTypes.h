@@ -28,6 +28,11 @@ namespace HIKARI {
         // 両面描画は cluster の cone culling を無効化するため、必要な面だけ明示的に有効化する。
         bool doubleSided = false;
         bool generateTangents = true;
+        // 0 は従来どおり segment 数を UV tile 数に使う。terrain の
+        // response mesh は subdivision だけ増やしても材質密度を変えないため、
+        // authored grid 由来の固定 tile 数を明示する。
+        float uvTilesX = 0.0f;
+        float uvTilesY = 0.0f;
 
         bool operator==(const ProceduralMeshSettings&) const = default;
     };
