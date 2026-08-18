@@ -4,6 +4,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cmath>
 #include <string>
 
 #include "Core/HIKARI_JsonRead.h"
@@ -226,6 +227,131 @@ namespace HIKARI::SCENE::SERIALIZATION {
             return { diameter, diameter, diameter };
         }
 
+        constexpr float kCloudColorMin = 0.0f;
+        constexpr float kCloudColorMax = 16.0f;
+        constexpr float kCloudDirectionMin = -10000.0f;
+        constexpr float kCloudDirectionMax = 10000.0f;
+
+        float SanitizeCloudFloat(float value,
+                                 float fallback,
+                                 float minimum,
+                                 float maximum) noexcept {
+            if (!std::isfinite(value)) {
+                return fallback;
+            }
+            return std::clamp(value, minimum, maximum);
+        }
+
+        float ReadCloudNumber(const nlohmann::json* value,
+                              float fallback,
+                              float minimum,
+                              float maximum) {
+            if (value == nullptr || !value->is_number()) {
+                return fallback;
+            }
+            try {
+                const double parsed = value->get<double>();
+                if (!std::isfinite(parsed)) {
+                    return fallback;
+                }
+                const double clamped = std::clamp(
+                    parsed,
+                    static_cast<double>(minimum),
+                    static_cast<double>(maximum));
+                const float result = static_cast<float>(clamped);
+                return std::isfinite(result) ? result : fallback;
+            } catch (...) {
+                return fallback;
+            }
+        }
+
+        float ReadCloudMember(const nlohmann::json& object,
+                              const char* key,
+                              float fallback,
+                              float minimum,
+                              float maximum) {
+            return ReadCloudNumber(
+                JSONREAD::FindMember(object, key),
+                fallback,
+                minimum,
+                maximum);
+        }
+
+        float ReadCloudArrayElement(const nlohmann::json& node,
+                                    std::size_t index,
+                                    float fallback,
+                                    float minimum,
+                                    float maximum) {
+            if (!node.is_array() || node.size() <= index) {
+                return fallback;
+            }
+            return ReadCloudNumber(
+                &node[index], fallback, minimum, maximum);
+        }
+
+        MATH::Vec2 ReadCloudVec2(const nlohmann::json& node,
+                                 const MATH::Vec2& fallback,
+                                 float minimum,
+                                 float maximum) {
+            MATH::Vec2 value = fallback;
+            if (node.is_array()) {
+                value.x = ReadCloudArrayElement(
+                    node, 0u, value.x, minimum, maximum);
+                value.y = ReadCloudArrayElement(
+                    node, 1u, value.y, minimum, maximum);
+            } else if (node.is_object()) {
+                value.x = ReadCloudMember(
+                    node, "x", value.x, minimum, maximum);
+                value.y = ReadCloudMember(
+                    node, "y", value.y, minimum, maximum);
+            }
+            return value;
+        }
+
+        MATH::Vec3 ReadCloudVec3(const nlohmann::json& node,
+                                 const MATH::Vec3& fallback,
+                                 float minimum,
+                                 float maximum) {
+            MATH::Vec3 value = fallback;
+            if (node.is_array()) {
+                value.x = ReadCloudArrayElement(
+                    node, 0u, value.x, minimum, maximum);
+                value.y = ReadCloudArrayElement(
+                    node, 1u, value.y, minimum, maximum);
+                value.z = ReadCloudArrayElement(
+                    node, 2u, value.z, minimum, maximum);
+            } else if (node.is_object()) {
+                value.x = ReadCloudMember(
+                    node, "x", value.x, minimum, maximum);
+                value.y = ReadCloudMember(
+                    node, "y", value.y, minimum, maximum);
+                value.z = ReadCloudMember(
+                    node, "z", value.z, minimum, maximum);
+            }
+            return value;
+        }
+
+        MATH::Vec2 SanitizeCloudVec2(const MATH::Vec2& value,
+                                     const MATH::Vec2& fallback,
+                                     float minimum,
+                                     float maximum) noexcept {
+            return {
+                SanitizeCloudFloat(value.x, fallback.x, minimum, maximum),
+                SanitizeCloudFloat(value.y, fallback.y, minimum, maximum),
+            };
+        }
+
+        MATH::Vec3 SanitizeCloudVec3(const MATH::Vec3& value,
+                                     const MATH::Vec3& fallback,
+                                     float minimum,
+                                     float maximum) noexcept {
+            return {
+                SanitizeCloudFloat(value.x, fallback.x, minimum, maximum),
+                SanitizeCloudFloat(value.y, fallback.y, minimum, maximum),
+                SanitizeCloudFloat(value.z, fallback.z, minimum, maximum),
+            };
+        }
+
     } // namespace
 
     void SerializeSceneEnvironmentJson(const SceneEnvironment& environment, nlohmann::json& out) {
@@ -305,6 +431,50 @@ namespace HIKARI::SCENE::SERIALIZATION {
         out["sky"]["ambientFromSky"] = environment.sky.ambientFromSky;
         out["sky"]["reflectionIntensity"] = environment.sky.reflectionIntensity;
         out["sky"]["showDebugTexture"] = environment.sky.showDebugTexture;
+
+        const StylizedCloudSettings cloudDefaults{};
+        const StylizedCloudSettings& clouds = environment.clouds;
+        out["clouds"]["enabled"] = clouds.enabled;
+        out["clouds"]["coverage"] = SanitizeCloudFloat(
+            clouds.coverage, cloudDefaults.coverage, 0.0f, 1.0f);
+        out["clouds"]["density"] = SanitizeCloudFloat(
+            clouds.density, cloudDefaults.density, 0.0f, 8.0f);
+        out["clouds"]["altitude"] = SanitizeCloudFloat(
+            clouds.altitude, cloudDefaults.altitude, 0.0f, 100000.0f);
+        out["clouds"]["thickness"] = SanitizeCloudFloat(
+            clouds.thickness, cloudDefaults.thickness, 0.1f, 100000.0f);
+        out["clouds"]["scale"] = SanitizeCloudFloat(
+            clouds.scale, cloudDefaults.scale, 0.1f, 100000.0f);
+        out["clouds"]["windDirection"] = JsonMath::ToJsonArray(
+            SanitizeCloudVec2(
+                clouds.windDirection,
+                cloudDefaults.windDirection,
+                kCloudDirectionMin,
+                kCloudDirectionMax));
+        out["clouds"]["windSpeed"] = SanitizeCloudFloat(
+            clouds.windSpeed, cloudDefaults.windSpeed, 0.0f, 1000.0f);
+        out["clouds"]["shapeDetail"] = SanitizeCloudFloat(
+            clouds.shapeDetail, cloudDefaults.shapeDetail, 0.0f, 1.0f);
+        out["clouds"]["softness"] = SanitizeCloudFloat(
+            clouds.softness, cloudDefaults.softness, 0.0f, 1.0f);
+        out["clouds"]["lightAbsorption"] = SanitizeCloudFloat(
+            clouds.lightAbsorption, cloudDefaults.lightAbsorption, 0.0f, 8.0f);
+        out["clouds"]["silverLining"] = SanitizeCloudFloat(
+            clouds.silverLining, cloudDefaults.silverLining, 0.0f, 4.0f);
+        out["clouds"]["horizonFade"] = SanitizeCloudFloat(
+            clouds.horizonFade, cloudDefaults.horizonFade, 0.0f, 1.0f);
+        out["clouds"]["brightColor"] = JsonMath::ToJsonArray(
+            SanitizeCloudVec3(
+                clouds.brightColor,
+                cloudDefaults.brightColor,
+                kCloudColorMin,
+                kCloudColorMax));
+        out["clouds"]["shadowColor"] = JsonMath::ToJsonArray(
+            SanitizeCloudVec3(
+                clouds.shadowColor,
+                cloudDefaults.shadowColor,
+                kCloudColorMin,
+                kCloudColorMax));
 
         out["reflectionProbe"]["enabled"] = environment.reflectionProbe.enabled;
         out["reflectionProbe"]["sourceCubemapAsset"] = environment.reflectionProbe.sourceCubemapAsset;
@@ -405,6 +575,9 @@ namespace HIKARI::SCENE::SERIALIZATION {
 
     void DeserializeSceneEnvironmentJson(const nlohmann::json& node, SceneEnvironment& outEnvironment) {
 
+        // Clouds were introduced after the original environment format. A
+        // missing or malformed member must keep the legacy scene disabled.
+        outEnvironment.clouds = StylizedCloudSettings{};
         if (!node.is_object()) {
             return;
         }
@@ -540,6 +713,51 @@ namespace HIKARI::SCENE::SERIALIZATION {
             outEnvironment.sky.ambientFromSky = sky.value("ambientFromSky", outEnvironment.sky.ambientFromSky);
             outEnvironment.sky.reflectionIntensity = sky.value("reflectionIntensity", outEnvironment.sky.reflectionIntensity);
             outEnvironment.sky.showDebugTexture = sky.value("showDebugTexture", outEnvironment.sky.showDebugTexture);
+        }
+
+        if (node.contains("clouds") && node["clouds"].is_object()) {
+            const nlohmann::json& cloudNode = node["clouds"];
+            StylizedCloudSettings& clouds = outEnvironment.clouds;
+            const StylizedCloudSettings defaults{};
+            clouds.enabled = JSONREAD::BooleanMemberOr(
+                cloudNode, "enabled", defaults.enabled);
+            clouds.coverage = ReadCloudMember(
+                cloudNode, "coverage", defaults.coverage, 0.0f, 1.0f);
+            clouds.density = ReadCloudMember(
+                cloudNode, "density", defaults.density, 0.0f, 8.0f);
+            clouds.altitude = ReadCloudMember(
+                cloudNode, "altitude", defaults.altitude, 0.0f, 100000.0f);
+            clouds.thickness = ReadCloudMember(
+                cloudNode, "thickness", defaults.thickness, 0.1f, 100000.0f);
+            clouds.scale = ReadCloudMember(
+                cloudNode, "scale", defaults.scale, 0.1f, 100000.0f);
+            clouds.windDirection = ReadCloudVec2(
+                cloudNode.value("windDirection", nlohmann::json{}),
+                defaults.windDirection,
+                kCloudDirectionMin,
+                kCloudDirectionMax);
+            clouds.windSpeed = ReadCloudMember(
+                cloudNode, "windSpeed", defaults.windSpeed, 0.0f, 1000.0f);
+            clouds.shapeDetail = ReadCloudMember(
+                cloudNode, "shapeDetail", defaults.shapeDetail, 0.0f, 1.0f);
+            clouds.softness = ReadCloudMember(
+                cloudNode, "softness", defaults.softness, 0.0f, 1.0f);
+            clouds.lightAbsorption = ReadCloudMember(
+                cloudNode, "lightAbsorption", defaults.lightAbsorption, 0.0f, 8.0f);
+            clouds.silverLining = ReadCloudMember(
+                cloudNode, "silverLining", defaults.silverLining, 0.0f, 4.0f);
+            clouds.horizonFade = ReadCloudMember(
+                cloudNode, "horizonFade", defaults.horizonFade, 0.0f, 1.0f);
+            clouds.brightColor = ReadCloudVec3(
+                cloudNode.value("brightColor", nlohmann::json{}),
+                defaults.brightColor,
+                kCloudColorMin,
+                kCloudColorMax);
+            clouds.shadowColor = ReadCloudVec3(
+                cloudNode.value("shadowColor", nlohmann::json{}),
+                defaults.shadowColor,
+                kCloudColorMin,
+                kCloudColorMax);
         }
 
         if (node.contains("reflectionProbe") && node["reflectionProbe"].is_object()) {

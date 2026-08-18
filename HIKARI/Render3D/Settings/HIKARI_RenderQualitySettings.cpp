@@ -71,6 +71,10 @@ namespace HIKARI::RENDER3D {
             static_cast<uint8_t>(VolumetricLightingQuality::High)) {
             settings.volumetricLightingQuality = VolumetricLightingQuality::Balanced;
         }
+        if (static_cast<uint8_t>(settings.stylizedCloudQuality) >
+            static_cast<uint8_t>(StylizedCloudQuality::High)) {
+            settings.stylizedCloudQuality = StylizedCloudQuality::Balanced;
+        }
         if (static_cast<uint8_t>(settings.forwardCostMode) >
             static_cast<uint8_t>(ForwardShadingCostMode::NoMaterialExtras)) {
             settings.forwardCostMode = ForwardShadingCostMode::Full;
@@ -99,6 +103,7 @@ namespace HIKARI::RENDER3D {
             lhs.frameGenerationMode == rhs.frameGenerationMode &&
             lhs.frameGenerationMultiplier == rhs.frameGenerationMultiplier &&
             lhs.volumetricLightingQuality == rhs.volumetricLightingQuality &&
+            lhs.stylizedCloudQuality == rhs.stylizedCloudQuality &&
             lhs.taaHistoryWeight == rhs.taaHistoryWeight &&
             lhs.taaVarianceClipGamma == rhs.taaVarianceClipGamma &&
             lhs.taaDepthRejection == rhs.taaDepthRejection &&
@@ -196,6 +201,15 @@ namespace HIKARI::RENDER3D {
         case VolumetricLightingQuality::Low: return "Low";
         case VolumetricLightingQuality::Balanced: return "Balanced";
         case VolumetricLightingQuality::High: return "High";
+        default: return "Unknown";
+        }
+    }
+
+    const char* StylizedCloudQualityLabel(StylizedCloudQuality quality) {
+        switch (quality) {
+        case StylizedCloudQuality::Low: return "Low";
+        case StylizedCloudQuality::Balanced: return "Balanced";
+        case StylizedCloudQuality::High: return "High";
         default: return "Unknown";
         }
     }

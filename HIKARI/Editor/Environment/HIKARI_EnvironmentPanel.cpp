@@ -98,6 +98,7 @@ EnvironmentPanel::Draw(SceneEnvironment &environment,
         "ui.environment.preset.overcast",
         "ui.environment.preset.stylizedBlue",
         "ui.environment.preset.warmIndoor",
+        "ui.environment.preset.freshSummer",
     };
     const int presetCount =
         static_cast<int>(sizeof(presetKeys) / sizeof(presetKeys[0]));
@@ -263,6 +264,56 @@ EnvironmentPanel::Draw(SceneEnvironment &environment,
         TEXT::Localize("ui.environment.primaryProbeFormat").c_str(),
         RENDER3D::DIAGNOSTICS::ResolveReflectionProbeSummaryLabel(
             runtimeSnapshot));
+    ImGui::TreePop();
+  }
+
+  if (ImGui::TreeNode(TEXT::Localize("ui.environment.clouds").c_str())) {
+    StylizedCloudSettings &clouds = environment.clouds;
+    ImGui::Checkbox(
+        TEXT::Localize("ui.environment.cloudsEnabled").c_str(),
+        &clouds.enabled);
+    ImGui::SliderFloat(
+        TEXT::Localize("ui.environment.cloudCoverage").c_str(),
+        &clouds.coverage, 0.0f, 1.0f);
+    ImGui::DragFloat(
+        TEXT::Localize("ui.environment.cloudDensity").c_str(),
+        &clouds.density, 0.01f, 0.0f, 8.0f);
+    ImGui::DragFloat(
+        TEXT::Localize("ui.environment.cloudAltitude").c_str(),
+        &clouds.altitude, 1.0f, 0.0f, 100000.0f);
+    ImGui::DragFloat(
+        TEXT::Localize("ui.environment.cloudThickness").c_str(),
+        &clouds.thickness, 1.0f, 0.1f, 100000.0f);
+    ImGui::DragFloat(
+        TEXT::Localize("ui.environment.cloudScale").c_str(),
+        &clouds.scale, 1.0f, 0.1f, 100000.0f);
+    ImGui::DragFloat2(
+        TEXT::Localize("ui.environment.cloudWindDirection").c_str(),
+        &clouds.windDirection.x, 0.01f, -1.0f, 1.0f);
+    ImGui::DragFloat(
+        TEXT::Localize("ui.environment.cloudWindSpeed").c_str(),
+        &clouds.windSpeed, 0.01f, 0.0f, 1000.0f);
+    ImGui::SliderFloat(
+        TEXT::Localize("ui.environment.cloudShapeDetail").c_str(),
+        &clouds.shapeDetail, 0.0f, 1.0f);
+    ImGui::SliderFloat(
+        TEXT::Localize("ui.environment.cloudSoftness").c_str(),
+        &clouds.softness, 0.0f, 1.0f);
+    ImGui::DragFloat(
+        TEXT::Localize("ui.environment.cloudLightAbsorption").c_str(),
+        &clouds.lightAbsorption, 0.01f, 0.0f, 8.0f);
+    ImGui::DragFloat(
+        TEXT::Localize("ui.environment.cloudSilverLining").c_str(),
+        &clouds.silverLining, 0.01f, 0.0f, 4.0f);
+    ImGui::SliderFloat(
+        TEXT::Localize("ui.environment.cloudHorizonFade").c_str(),
+        &clouds.horizonFade, 0.0f, 1.0f);
+    ImGui::ColorEdit3(
+        TEXT::Localize("ui.environment.cloudBrightColor").c_str(),
+        &clouds.brightColor.x);
+    ImGui::ColorEdit3(
+        TEXT::Localize("ui.environment.cloudShadowColor").c_str(),
+        &clouds.shadowColor.x);
     ImGui::TreePop();
   }
 

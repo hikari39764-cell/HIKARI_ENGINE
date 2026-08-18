@@ -61,6 +61,11 @@ namespace HIKARI::RENDER3D {
             { VolumetricLightingQuality::Balanced, "Balanced" },
             { VolumetricLightingQuality::High, "High" },
         } };
+        constexpr EnumNames<StylizedCloudQuality, 3> kStylizedCloudNames{ {
+            { StylizedCloudQuality::Low, "Low" },
+            { StylizedCloudQuality::Balanced, "Balanced" },
+            { StylizedCloudQuality::High, "High" },
+        } };
 
         template <typename Enum, size_t Size>
         std::string_view EnumName(Enum value, const EnumNames<Enum, Size>& names) {
@@ -127,6 +132,7 @@ namespace HIKARI::RENDER3D {
             { "frameGenerationMode", EnumName(settings.frameGenerationMode, kFrameGenerationNames) },
             { "frameGenerationMultiplier", settings.frameGenerationMultiplier },
             { "volumetricLightingQuality", EnumName(settings.volumetricLightingQuality, kVolumetricNames) },
+            { "stylizedCloudQuality", EnumName(settings.stylizedCloudQuality, kStylizedCloudNames) },
             { "taaHistoryWeight", settings.taaHistoryWeight },
             { "taaVarianceClipGamma", settings.taaVarianceClipGamma },
             { "taaDepthRejection", settings.taaDepthRejection },
@@ -162,6 +168,7 @@ namespace HIKARI::RENDER3D {
             ReadEnum(node, "frameGenerationMode", kFrameGenerationNames, parsed.frameGenerationMode) &&
             ReadValue(node, "frameGenerationMultiplier", parsed.frameGenerationMultiplier) &&
             ReadEnum(node, "volumetricLightingQuality", kVolumetricNames, parsed.volumetricLightingQuality) &&
+            ReadEnum(node, "stylizedCloudQuality", kStylizedCloudNames, parsed.stylizedCloudQuality) &&
             ReadValue(node, "taaHistoryWeight", parsed.taaHistoryWeight) &&
             ReadValue(node, "taaVarianceClipGamma", parsed.taaVarianceClipGamma) &&
             ReadValue(node, "taaDepthRejection", parsed.taaDepthRejection) &&

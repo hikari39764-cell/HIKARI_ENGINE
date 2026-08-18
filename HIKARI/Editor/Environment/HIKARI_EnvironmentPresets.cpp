@@ -85,6 +85,29 @@ void ApplyEnvironmentPreset(SceneEnvironment &environment, int presetIndex) {
     environment.fog.enabled = false;
     environment.toneMapping.exposure = 1.05f;
     break;
+  case 7: // Fresh Summer
+    environment.ambient.color = {0.72f, 0.84f, 1.0f};
+    environment.ambient.intensity = 0.38f;
+    environment.directional.enabled = true;
+    environment.directional.direction = {0.28f, -1.0f, -0.48f};
+    environment.directional.intensity = 1.35f;
+    environment.directional.color = {1.0f, 0.93f, 0.82f};
+    environment.sky.enabled = true;
+    environment.sky.mode = SkyMode::Gradient;
+    environment.sky.zenithColor = {0.10f, 0.34f, 0.88f};
+    environment.sky.horizonColor = {0.72f, 0.90f, 1.0f};
+    environment.sky.groundColor = {0.18f, 0.28f, 0.40f};
+    environment.sky.horizonPower = 1.55f;
+    environment.sky.showSunDisk = true;
+    environment.sky.sunDiskIntensity = 2.5f;
+    environment.sky.sunDiskSize = 0.035f;
+    environment.sky.ambientFromSky = 1.2f;
+    environment.sky.reflectionIntensity = 1.0f;
+    environment.clouds = StylizedCloudSettings{};
+    environment.clouds.enabled = true;
+    environment.toneMapping.exposure = 1.05f;
+    environment.fog.enabled = false;
+    break;
   case 0:
   default:
     environment = SceneEnvironment{};

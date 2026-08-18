@@ -66,6 +66,12 @@ namespace HIKARI::RENDER3D {
         High,
     };
 
+    enum class StylizedCloudQuality : uint8_t {
+        Low = 0,
+        Balanced,
+        High,
+    };
+
     struct RenderResolution {
         int width = 0;
         int height = 0;
@@ -90,6 +96,8 @@ namespace HIKARI::RENDER3D {
         uint8_t frameGenerationMultiplier = 2;
         VolumetricLightingQuality volumetricLightingQuality =
             VolumetricLightingQuality::Balanced;
+        StylizedCloudQuality stylizedCloudQuality =
+            StylizedCloudQuality::Balanced;
         float taaHistoryWeight = 0.92f;
         float taaVarianceClipGamma = 1.25f;
         float taaDepthRejection = 0.0025f;
@@ -117,6 +125,7 @@ namespace HIKARI::RENDER3D {
     const char* DlssQualityModeLabel(DlssQualityMode mode);
     const char* RenderFrameGenerationModeLabel(RenderFrameGenerationMode mode);
     const char* VolumetricLightingQualityLabel(VolumetricLightingQuality quality);
+    const char* StylizedCloudQualityLabel(StylizedCloudQuality quality);
 
     bool IsTemporalAntiAliasingMode(RenderAntiAliasingMode mode);
     bool UsesTemporalJitter(RenderAntiAliasingMode mode);

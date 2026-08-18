@@ -94,6 +94,24 @@ namespace HIKARI {
         bool showDebugTexture = false;
     };
 
+    struct StylizedCloudSettings {
+        bool enabled = false;
+        float coverage = 0.46f;
+        float density = 1.10f;
+        float altitude = 180.0f;
+        float thickness = 90.0f;
+        float scale = 140.0f;
+        MATH::Vec2 windDirection{ 1.0f, 0.22f };
+        float windSpeed = 2.5f;
+        float shapeDetail = 0.55f;
+        float softness = 0.28f;
+        float lightAbsorption = 0.72f;
+        float silverLining = 0.42f;
+        float horizonFade = 0.62f;
+        MATH::Vec3 brightColor{ 1.0f, 0.985f, 0.94f };
+        MATH::Vec3 shadowColor{ 0.48f, 0.67f, 0.86f };
+    };
+
     enum class ReflectionProbeInfluenceShape {
         Sphere,
         Box,
@@ -231,6 +249,7 @@ namespace HIKARI {
         std::vector<PointLight> pointLights{};
         std::vector<SpotLight> spotLights{};
         SkySettings sky{};
+        StylizedCloudSettings clouds{};
         ReflectionProbeSettings reflectionProbe{};
         AmbientOcclusionSettings ambientOcclusion{};
         SurfaceLightmapSettings surfaceLightmaps{};

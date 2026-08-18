@@ -305,6 +305,35 @@ bool DrawVolumetricLightingQualityCombo(
   return changed;
 }
 
+bool DrawStylizedCloudQualityCombo(
+    RENDER3D::StylizedCloudQuality &quality) {
+  bool changed = false;
+  ImGui::PushID("Stylized Clouds");
+  EDITOR::PropertyLabel("Stylized Clouds");
+  if (ImGui::BeginCombo("##Value",
+                        RENDER3D::StylizedCloudQualityLabel(quality))) {
+    const RENDER3D::StylizedCloudQuality levels[] = {
+        RENDER3D::StylizedCloudQuality::Low,
+        RENDER3D::StylizedCloudQuality::Balanced,
+        RENDER3D::StylizedCloudQuality::High,
+    };
+    for (RENDER3D::StylizedCloudQuality candidate : levels) {
+      const bool selected = quality == candidate;
+      if (ImGui::Selectable(RENDER3D::StylizedCloudQualityLabel(candidate),
+                            selected)) {
+        quality = candidate;
+        changed = true;
+      }
+      if (selected) {
+        ImGui::SetItemDefaultFocus();
+      }
+    }
+    ImGui::EndCombo();
+  }
+  ImGui::PopID();
+  return changed;
+}
+
 bool DrawFxaaSettings() {
   POST::PostSystem::FxaaSettings fxaa = POST::PostSystem::GetFxaaSettings();
   bool changed = false;
@@ -383,6 +412,7 @@ bool DrawRenderSettings() {
           DrawLightProbeVolumeSamplingCombo(settings.lightProbeVolumeSampling);
       changed |= DrawVolumetricLightingQualityCombo(
           settings.volumetricLightingQuality);
+      changed |= DrawStylizedCloudQualityCombo(settings.stylizedCloudQuality);
       changed |= DrawAntiAliasingModeCombo(settings.antiAliasingMode);
       if (settings.antiAliasingMode == RENDER3D::RenderAntiAliasingMode::DLSS) {
         changed |= DrawDlssQualityModeCombo(settings.dlssQualityMode);

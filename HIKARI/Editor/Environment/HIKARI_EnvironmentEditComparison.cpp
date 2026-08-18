@@ -30,6 +30,27 @@ bool EqualSkySettings(const SkySettings &lhs, const SkySettings &rhs) {
          lhs.showDebugTexture == rhs.showDebugTexture;
 }
 
+bool EqualVec2(const MATH::Vec2 &lhs, const MATH::Vec2 &rhs) {
+  return lhs.x == rhs.x && lhs.y == rhs.y;
+}
+
+bool EqualStylizedCloudSettings(const StylizedCloudSettings &lhs,
+                                const StylizedCloudSettings &rhs) {
+  return lhs.enabled == rhs.enabled &&
+         lhs.coverage == rhs.coverage && lhs.density == rhs.density &&
+         lhs.altitude == rhs.altitude && lhs.thickness == rhs.thickness &&
+         lhs.scale == rhs.scale &&
+         EqualVec2(lhs.windDirection, rhs.windDirection) &&
+         lhs.windSpeed == rhs.windSpeed &&
+         lhs.shapeDetail == rhs.shapeDetail &&
+         lhs.softness == rhs.softness &&
+         lhs.lightAbsorption == rhs.lightAbsorption &&
+         lhs.silverLining == rhs.silverLining &&
+         lhs.horizonFade == rhs.horizonFade &&
+         EqualVec3(lhs.brightColor, rhs.brightColor) &&
+         EqualVec3(lhs.shadowColor, rhs.shadowColor);
+}
+
 bool EqualReflectionProbeSettings(const ReflectionProbeSettings &lhs,
                                   const ReflectionProbeSettings &rhs) {
   return lhs.enabled == rhs.enabled &&
@@ -132,6 +153,7 @@ bool AreSceneEnvironmentValuesEqual(const SceneEnvironment &lhs,
       !EqualDirectionalShadowSettings(lhs.directionalShadow,
                                       rhs.directionalShadow) ||
       !EqualSkySettings(lhs.sky, rhs.sky) ||
+      !EqualStylizedCloudSettings(lhs.clouds, rhs.clouds) ||
       !EqualReflectionProbeSettings(lhs.reflectionProbe, rhs.reflectionProbe) ||
       !EqualAmbientOcclusionSettings(lhs.ambientOcclusion, rhs.ambientOcclusion,
                                     false) ||
