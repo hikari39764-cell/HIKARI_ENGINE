@@ -44,6 +44,9 @@ namespace HIKARI::PHYSICS {
         void LateUpdate(
             World& world,
             const FrameContext& frame) override;
+        void Update(
+            World& world,
+            const FrameContext& frame) override;
 
     private:
         struct BodyBinding {
@@ -132,6 +135,9 @@ namespace HIKARI::PHYSICS {
         std::unordered_map<uint64_t, ReconcileFailure> failures_{};
         TerrainCollisionProjectionCache terrainCollisionProjections_{};
         PhysicsStepResult lastStepResult_{};
+        // 编辑器暂停期间仍可能修改碰撞几何。进入 Play 时必须强制重新
+        // reconcile 一次，不能只依赖 frameIndex（它可能从 0 重新开始）。
+        bool wasRuntimeActive_ = false;
         uint64_t lastReconcileFrame_ =
             (std::numeric_limits<uint64_t>::max)();
     };

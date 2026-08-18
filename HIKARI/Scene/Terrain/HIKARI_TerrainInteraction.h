@@ -156,16 +156,16 @@ namespace HIKARI::TERRAIN {
                 sample.footprint.tangentWS);
         }
         sample.footprint.halfExtentsWS.x = std::clamp(
-            finiteOr(sample.footprint.halfExtentsWS.x, 0.01f),
-            0.01f,
+            finiteOr(sample.footprint.halfExtentsWS.x, 0.0f),
+            0.0f,
             100.0f);
         sample.footprint.halfExtentsWS.y = std::clamp(
-            finiteOr(sample.footprint.halfExtentsWS.y, 0.01f),
-            0.01f,
+            finiteOr(sample.footprint.halfExtentsWS.y, 0.0f),
+            0.0f,
             100.0f);
         sample.footprint.verticalRadiusWS = std::clamp(
-            finiteOr(sample.footprint.verticalRadiusWS, 0.01f),
-            0.01f,
+            finiteOr(sample.footprint.verticalRadiusWS, 0.0f),
+            0.0f,
             100.0f);
         sample.footprint.edgeSoftness = std::clamp(
             finiteOr(sample.footprint.edgeSoftness, 0.35f),

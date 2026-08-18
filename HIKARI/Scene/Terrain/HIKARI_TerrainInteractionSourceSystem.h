@@ -44,11 +44,18 @@ namespace HIKARI {
         struct ContactKey {
             TERRAIN::TerrainInteractionSourceKey source{};
             RuntimeObjectHandle target{};
+            // Physics shape identity is part of the contact generation. A
+            // live collider rebuild must not inherit the previous shape's
+            // Begin/Persist history even when the component ordinal is same.
+            uint64_t sourceShapeId = 0u;
+            uint64_t definitionSignature = 0u;
 
             bool operator==(const ContactKey& rhs) const noexcept {
                 return source.object == rhs.source.object &&
                     source.featureId == rhs.source.featureId &&
-                    target == rhs.target;
+                    target == rhs.target &&
+                    sourceShapeId == rhs.sourceShapeId &&
+                    definitionSignature == rhs.definitionSignature;
             }
         };
 
@@ -73,6 +80,8 @@ namespace HIKARI {
             TERRAIN::TerrainInteractionFootprint footprint{};
             float normalLoadN = 0.0f;
             float contactAgeSeconds = 0.0f;
+            uint64_t sourceShapeId = 0u;
+            uint64_t definitionSignature = 0u;
         };
 
         struct ColliderObservation {
@@ -138,7 +147,9 @@ namespace HIKARI {
             float penetrationDepthWS = 0.0f,
             float normalImpulseNs = 0.0f,
             float strength = 1.0f,
-            float contactAgeSeconds = 0.0f);
+            float contactAgeSeconds = 0.0f,
+            uint64_t sourceShapeId = 0u,
+            uint64_t definitionSignature = 0u);
         void PublishSweptInteraction(
             WorldEventStream& events,
             float stepSeconds,
@@ -154,7 +165,9 @@ namespace HIKARI {
             float penetrationDepthWS,
             float normalImpulseNs,
             float strength,
-            float contactAgeSeconds);
+            float contactAgeSeconds,
+            uint64_t sourceShapeId = 0u,
+            uint64_t definitionSignature = 0u);
 
         const PHYSICS::KinematicMotionService* kinematicMotionService_ =
             nullptr;

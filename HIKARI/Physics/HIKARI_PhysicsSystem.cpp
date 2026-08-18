@@ -52,6 +52,10 @@ namespace HIKARI::PHYSICS {
         }
         terrainCollisionProjections_.Refresh(world);
         ReconcileBodies(world, 0u);
+        // The editor can attach a world while Play is paused.  Keep the
+        // active state separate from the reconciliation frame so that the
+        // first frame after entering Play cannot reuse a stale definition.
+        wasRuntimeActive_ = ShouldSimulate();
         HIKARI_LOG_INFO(
             "[Physics] world attached backend=" +
             std::string(service_->GetBackendName()));
@@ -71,6 +75,7 @@ namespace HIKARI::PHYSICS {
         failures_.clear();
         terrainCollisionProjections_.Clear();
         lastStepResult_ = {};
+        wasRuntimeActive_ = false;
         lastReconcileFrame_ =
             (std::numeric_limits<uint64_t>::max)();
         service_ = nullptr;
@@ -84,13 +89,20 @@ namespace HIKARI::PHYSICS {
     void PhysicsSystem::PreFixedUpdate(
         World& world,
         const FrameContext& frame) {
-        if (!ShouldSimulate()) {
+        const bool runtimeActive = ShouldSimulate();
+        if (!runtimeActive) {
+            wasRuntimeActive_ = false;
             return;
         }
         terrainCollisionProjections_.Refresh(world);
+        if (!wasRuntimeActive_) {
+            lastReconcileFrame_ =
+                (std::numeric_limits<uint64_t>::max)();
+        }
         if (lastReconcileFrame_ != frame.frameIndex) {
             ReconcileBodies(world, frame.frameIndex);
         }
+        wasRuntimeActive_ = true;
         PushSceneDrivenPoses(world);
     }
 
@@ -148,6 +160,17 @@ namespace HIKARI::PHYSICS {
                 frame.fixedInterpolationAlpha,
                 0.0f,
                 1.0f));
+    }
+
+    void PhysicsSystem::Update(
+        World&,
+        const FrameContext&) {
+        // Editor pause/stop can skip the fixed loop entirely. Observe the
+        // play-state from the regular frame so the next Play transition still
+        // takes the forced-reconcile path in PreFixedUpdate.
+        if (!ShouldSimulate()) {
+            wasRuntimeActive_ = false;
+        }
     }
 
     bool PhysicsSystem::ShouldSimulate() const noexcept {

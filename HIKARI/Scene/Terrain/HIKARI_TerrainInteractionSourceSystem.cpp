@@ -38,6 +38,8 @@ namespace HIKARI {
             MATH::Vec3 positionWS{};
             TERRAIN::TerrainInteractionFootprint footprint{};
             float normalLoadN = 0.0f;
+            uint64_t sourceShapeId = 0u;
+            uint64_t definitionSignature = 0u;
         };
 
         void HashCombine(uint64_t& seed, uint64_t value) noexcept {
@@ -164,12 +166,11 @@ namespace HIKARI {
 
             TERRAIN::TerrainInteractionFootprint footprint{};
             if (resolved.type == PHYSICS::PhysicsShapeType::Sphere) {
-                const float radius = (std::max)(
-                    resolved.radius * (std::max)({
+                const float radius = std::fabs(resolved.radius) *
+                    (std::max)({
                         objectScale.x,
                         objectScale.y,
-                        objectScale.z }),
-                    0.01f);
+                        objectScale.z });
                 footprint.kind = TERRAIN::TerrainFootprintKind::Sphere;
                 footprint.halfExtentsWS = { radius, radius };
                 footprint.verticalRadiusWS = radius;
@@ -182,10 +183,8 @@ namespace HIKARI {
                 std::fabs(resolved.size.y) * objectScale.y * 0.5f,
                 std::fabs(resolved.size.z) * objectScale.z * 0.5f };
             if (resolved.type == PHYSICS::PhysicsShapeType::Capsule) {
-                const float radius = (std::max)(
-                    std::fabs(resolved.radius) * (std::max)(
-                        objectScale.x, objectScale.z),
-                    0.01f);
+                const float radius = std::fabs(resolved.radius) *
+                    (std::max)(objectScale.x, objectScale.z);
                 const float totalHalfLength = (std::max)(
                     std::fabs(resolved.height) * objectScale.y * 0.5f,
                     radius);
@@ -198,9 +197,8 @@ namespace HIKARI {
                 footprint.halfExtentsWS = {
                     radius + segmentHalfLength * planarAxisLength,
                     radius };
-                footprint.verticalRadiusWS = (std::max)(
-                    radius + segmentHalfLength * std::fabs(axisY.y),
-                    0.01f);
+                footprint.verticalRadiusWS = radius +
+                    segmentHalfLength * std::fabs(axisY.y);
                 return footprint;
             }
 
@@ -221,7 +219,7 @@ namespace HIKARI {
                     std::fabs(MATH::Dot(axisX, direction)) * localHalf.x +
                         std::fabs(MATH::Dot(axisY, direction)) * localHalf.y +
                         std::fabs(MATH::Dot(axisZ, direction)) * localHalf.z,
-                    0.01f);
+                    0.0f);
             };
             // upright yaw では local X/Z 半長と完全に一致する。tilt は
             // projected box の定向 support radius として保守的に包む。
@@ -232,7 +230,87 @@ namespace HIKARI {
                 std::fabs(axisX.y) * localHalf.x +
                     std::fabs(axisY.y) * localHalf.y +
                     std::fabs(axisZ.y) * localHalf.z,
-                0.01f);
+                0.0f);
+            return footprint;
+        }
+
+        TERRAIN::TerrainInteractionFootprint BuildRuntimeFootprint(
+            const MATH::Mat4& bodyWorld,
+            const PHYSICS::PhysicsShapeDesc& shape) noexcept {
+            MATH::Vec3 ignoredTranslation{};
+            MATH::Quat bodyRotation{};
+            MATH::Vec3 ignoredScale{};
+            if (!MATH::DecomposeTRS(
+                    bodyWorld,
+                    ignoredTranslation,
+                    bodyRotation,
+                    ignoredScale)) {
+                bodyRotation = MATH::Quat::Identity();
+            }
+            const MATH::Mat4 shapeRotation =
+                MATH::Mat4::Rotate(bodyRotation) *
+                MATH::Mat4::Rotate(shape.localRotation);
+            const MATH::Vec3 axisX = TransformVector(
+                shapeRotation, { 1.0f, 0.0f, 0.0f });
+            const MATH::Vec3 axisY = TransformVector(
+                shapeRotation, { 0.0f, 1.0f, 0.0f });
+            const MATH::Vec3 axisZ = TransformVector(
+                shapeRotation, { 0.0f, 0.0f, 1.0f });
+            TERRAIN::TerrainInteractionFootprint footprint{};
+            if (shape.type == PHYSICS::PhysicsShapeType::Sphere) {
+                const float radius = std::fabs(shape.radius);
+                footprint.kind = TERRAIN::TerrainFootprintKind::Sphere;
+                footprint.halfExtentsWS = { radius, radius };
+                footprint.verticalRadiusWS = radius;
+                return footprint;
+            }
+            if (shape.type == PHYSICS::PhysicsShapeType::Capsule) {
+                const float radius = std::fabs(shape.radius);
+                const float totalHalfLength = (std::max)(
+                    std::fabs(shape.height) * 0.5f,
+                    radius);
+                const float segmentHalfLength = (std::max)(
+                    totalHalfLength - radius,
+                    0.0f);
+                const float planarAxisLength = AxisLength({
+                    axisY.x, 0.0f, axisY.z });
+                footprint.kind = TERRAIN::TerrainFootprintKind::Capsule;
+                footprint.tangentWS = PlanarTangent(axisY, axisX);
+                footprint.halfExtentsWS = {
+                    radius + segmentHalfLength * planarAxisLength,
+                    radius };
+                footprint.verticalRadiusWS = radius +
+                    segmentHalfLength * std::fabs(axisY.y);
+                return footprint;
+            }
+            const MATH::Vec3 localHalf{
+                std::fabs(shape.halfExtents.x),
+                std::fabs(shape.halfExtents.y),
+                std::fabs(shape.halfExtents.z) };
+            footprint.kind = TERRAIN::TerrainFootprintKind::Ellipse;
+            const float planarXLength = AxisLength({
+                axisX.x, 0.0f, axisX.z });
+            const float planarZLength = AxisLength({
+                axisZ.x, 0.0f, axisZ.z });
+            footprint.tangentWS = planarXLength >= planarZLength
+                ? PlanarTangent(axisX, axisZ)
+                : PlanarTangent(axisZ, axisX);
+            const MATH::Vec3 bitangentWS = MATH::Normalize(MATH::Cross(
+                MATH::Vec3{ 0.0f, 1.0f, 0.0f },
+                footprint.tangentWS));
+            const auto supportRadius = [&](
+                const MATH::Vec3& direction) noexcept {
+                return std::fabs(MATH::Dot(axisX, direction)) * localHalf.x +
+                    std::fabs(MATH::Dot(axisY, direction)) * localHalf.y +
+                    std::fabs(MATH::Dot(axisZ, direction)) * localHalf.z;
+            };
+            footprint.halfExtentsWS = {
+                supportRadius(footprint.tangentWS),
+                supportRadius(bitangentWS) };
+            footprint.verticalRadiusWS =
+                std::fabs(axisX.y) * localHalf.x +
+                std::fabs(axisY.y) * localHalf.y +
+                std::fabs(axisZ.y) * localHalf.z;
             return footprint;
         }
 
@@ -241,7 +319,8 @@ namespace HIKARI {
             GameObject& object,
             uint32_t componentOrdinal,
             ResolvedInteractionSource& outSource,
-            const MATH::Mat4* sourceWorldOverride = nullptr) {
+            const MATH::Mat4* sourceWorldOverride = nullptr,
+            const PHYSICS::PhysicsShapeKey* sourceShapeOverride = nullptr) {
             const PHYSICS::PhysicsMotionType motionType =
                 ResolveMotionType(object, runtimeStatus);
             if (motionType == PHYSICS::PhysicsMotionType::Static) {
@@ -267,15 +346,72 @@ namespace HIKARI {
                     : object.GetTransform().GetWorldMatrix());
             const ResolvedColliderShape resolved =
                 sourceCollider->ResolveShape();
+            const PHYSICS::PhysicsShapeDesc* runtimeShape = nullptr;
+            const PHYSICS::PhysicsBodyRuntimeStatus* bodyStatus = nullptr;
+            if (runtimeStatus != nullptr) {
+                bodyStatus = runtimeStatus->FindBodyStatus(
+                    object.GetRuntimeHandle());
+                const std::vector<PHYSICS::PhysicsShapeDesc>* shapes =
+                    runtimeStatus->FindBodyDebugShapes(
+                        object.GetRuntimeHandle());
+                if (shapes != nullptr) {
+                    for (const PHYSICS::PhysicsShapeDesc& shape : *shapes) {
+                        const bool keyMatches = sourceShapeOverride != nullptr
+                            ? shape.key == *sourceShapeOverride
+                            : shape.key.componentOrdinal == componentOrdinal;
+                        if (keyMatches && !shape.isTrigger) {
+                            runtimeShape = &shape;
+                            break;
+                        }
+                    }
+                }
+            }
             const PhysicsBodyComponent* body =
                 object.GetComponent<PhysicsBodyComponent>();
             outSource.source.object = object.GetRuntimeHandle();
             outSource.source.featureId =
                 kColliderFeatureBase + componentOrdinal;
             outSource.motionType = motionType;
-            outSource.positionWS = TransformPoint(
-                world, resolved.center);
-            outSource.footprint = BuildFootprint(world, resolved);
+            if (runtimeShape != nullptr) {
+                MATH::Vec3 runtimePosition{};
+                MATH::Quat runtimeRotation{};
+                MATH::Vec3 runtimeScale{};
+                const MATH::Mat4 runtimeWorld =
+                    MATH::DecomposeTRS(
+                        world,
+                        runtimePosition,
+                        runtimeRotation,
+                        runtimeScale)
+                    ? MATH::Mat4::TRS(
+                        runtimePosition,
+                        runtimeRotation,
+                        { 1.0f, 1.0f, 1.0f })
+                    : world;
+                outSource.sourceShapeId =
+                    runtimeShape->key.sourceShapeId;
+                outSource.positionWS = TransformPoint(
+                    runtimeWorld,
+                    runtimeShape->localCenter);
+                outSource.footprint = BuildRuntimeFootprint(
+                    runtimeWorld,
+                    *runtimeShape);
+            } else if (sourceShapeOverride != nullptr) {
+                outSource.sourceShapeId =
+                    sourceShapeOverride->sourceShapeId;
+                outSource.positionWS = TransformPoint(
+                    world, resolved.center);
+                outSource.footprint = BuildFootprint(world, resolved);
+            } else {
+                outSource.positionWS = TransformPoint(
+                    world, resolved.center);
+                outSource.footprint = BuildFootprint(world, resolved);
+            }
+            if (bodyStatus != nullptr &&
+                bodyStatus->state ==
+                    PHYSICS::PhysicsBodyRuntimeState::Ready) {
+                outSource.definitionSignature =
+                    bodyStatus->definitionSignature;
+            }
             if (body != nullptr) {
                 const float loadScale = motionType ==
                         PHYSICS::PhysicsMotionType::Dynamic
@@ -350,6 +486,8 @@ namespace HIKARI {
         uint64_t hash = key.source.object.ToValue();
         HashCombine(hash, key.source.featureId);
         HashCombine(hash, key.target.ToValue());
+        HashCombine(hash, key.sourceShapeId);
+        HashCombine(hash, key.definitionSignature);
         return static_cast<std::size_t>(hash);
     }
 
@@ -515,22 +653,29 @@ namespace HIKARI {
                 continue;
             }
 
-            ContactKey key{};
-            key.source.object = sourceObject;
-            key.source.featureId =
-                kColliderFeatureBase + sourceShape.componentOrdinal;
-            key.target = terrainObject;
             if (event.phase == PHYSICS::PhysicsContactPhase::End) {
-                const auto found = activeRigidContacts_.find(key);
-                if (found == activeRigidContacts_.end()) {
-                    continue;
+                // A body replacement can emit End after the new definition is
+                // already visible in runtime status.  Its signature therefore
+                // need not equal the generation that received Begin.  Retire
+                // every matching old generation instead of leaking its dent.
+                for (auto& [key, active] : activeRigidContacts_) {
+                    if (key.source.object != sourceObject ||
+                        key.source.featureId !=
+                            kColliderFeatureBase +
+                                sourceShape.componentOrdinal ||
+                        key.target != terrainObject ||
+                        (sourceShape.sourceShapeId != 0u &&
+                            key.sourceShapeId !=
+                                sourceShape.sourceShapeId)) {
+                        continue;
+                    }
+                    if (active.referenceCount > 1u) {
+                        --active.referenceCount;
+                        continue;
+                    }
+                    active.referenceCount = 0u;
+                    active.endedThisTick = true;
                 }
-                if (found->second.referenceCount > 1u) {
-                    --found->second.referenceCount;
-                    continue;
-                }
-                found->second.referenceCount = 0u;
-                found->second.endedThisTick = true;
                 continue;
             }
 
@@ -545,12 +690,19 @@ namespace HIKARI {
                     runtimeStatus_,
                     *sourceObjectPtr,
                     sourceShape.componentOrdinal,
-                    source)) {
+                    source,
+                    nullptr,
+                    &sourceShape)) {
                 // Static body、disabled collider、trigger collider はここで
                 // authoritative に排除し、active contact にも登録しない。
                 continue;
             }
 
+            ContactKey key{};
+            key.source = source.source;
+            key.target = terrainObject;
+            key.sourceShapeId = source.sourceShapeId;
+            key.definitionSignature = source.definitionSignature;
             ActiveRigidContact& active = activeRigidContacts_[key];
             if (event.phase == PHYSICS::PhysicsContactPhase::Begin) {
                 active.endedThisTick = false;
@@ -570,6 +722,8 @@ namespace HIKARI {
             active.positionWS = source.positionWS;
             active.footprint = source.footprint;
             active.normalLoadN = source.normalLoadN;
+            active.sourceShapeId = source.sourceShapeId;
+            active.definitionSignature = source.definitionSignature;
         }
     }
 
@@ -587,6 +741,11 @@ namespace HIKARI {
             const uint64_t ordinal64 = featureValid
                 ? key.source.featureId - kColliderFeatureBase
                 : 0u;
+            const PHYSICS::PhysicsShapeKey contactShape{
+                key.sourceShapeId,
+                ordinal64 <= (std::numeric_limits<uint32_t>::max)()
+                    ? static_cast<uint32_t>(ordinal64)
+                    : 0u };
             const bool sourceValid = sourceObject != nullptr &&
                 ordinal64 > 0u &&
                 ordinal64 <=
@@ -595,13 +754,20 @@ namespace HIKARI {
                     runtimeStatus_,
                     *sourceObject,
                     static_cast<uint32_t>(ordinal64),
-                    resolved);
+                    resolved,
+                    nullptr,
+                    &contactShape);
             const bool targetValid = targetObject != nullptr &&
                 targetObject->GetComponent<TerrainSurfaceComponent>() !=
                     nullptr;
+            const bool sourceGenerationValid = sourceValid &&
+                (active.definitionSignature == 0u ||
+                    resolved.definitionSignature == 0u ||
+                    active.definitionSignature ==
+                        resolved.definitionSignature);
 
             bool movedThisStep = false;
-            if (sourceValid) {
+            if (sourceGenerationValid) {
                 active.kinematic = resolved.motionType ==
                     PHYSICS::PhysicsMotionType::Kinematic;
                 active.positionWS = resolved.positionWS;
@@ -619,8 +785,9 @@ namespace HIKARI {
             }
 
             const bool canMaintain = active.submitted &&
-                !active.endedThisTick && sourceValid && targetValid;
-            const bool canBegin = sourceValid && targetValid &&
+                !active.endedThisTick && sourceGenerationValid &&
+                targetValid;
+            const bool canBegin = sourceGenerationValid && targetValid &&
                 !active.submitted &&
                 (!active.kinematic || movedThisStep);
             if (canMaintain || canBegin) {
@@ -658,7 +825,9 @@ namespace HIKARI {
                     active.penetrationDepthWS,
                     active.normalImpulseNs,
                     strength,
-                    active.contactAgeSeconds);
+                    active.contactAgeSeconds,
+                    active.sourceShapeId,
+                    active.definitionSignature);
                 active.submitted = true;
                 active.contactAgeSeconds +=
                     (std::max)(frame.fixedDt, 0.0f);
@@ -667,7 +836,8 @@ namespace HIKARI {
                 active.normalImpulseNs = 0.0f;
             }
 
-            if (active.endedThisTick || !sourceValid || !targetValid) {
+            if (active.endedThisTick || !sourceGenerationValid ||
+                !targetValid) {
                 if (active.submitted) {
                     PublishSweptInteraction(
                         world,
@@ -683,7 +853,9 @@ namespace HIKARI {
                         0.0f,
                         0.0f,
                         0.0f,
-                        active.contactAgeSeconds);
+                        active.contactAgeSeconds,
+                        active.sourceShapeId,
+                        active.definitionSignature);
                 }
                 finished.push_back(key);
             }
@@ -876,9 +1048,8 @@ namespace HIKARI {
                         float bestPenetration = 0.0f;
                         float bestScore =
                             (std::numeric_limits<float>::max)();
-                        const float verticalRadius = (std::max)(
-                            resolved.footprint.verticalRadiusWS,
-                            0.01f);
+                        const float verticalRadius =
+                            resolved.footprint.verticalRadiusWS;
                         world.ForEachObjectWith<TerrainSurfaceComponent>(
                             [&](GameObject& terrainObject,
                                 TerrainSurfaceComponent& terrain) {
@@ -897,9 +1068,7 @@ namespace HIKARI {
                                     resolved.positionWS.y -
                                     verticalRadius - surfaceY;
                                 const float contactTolerance =
-                                    (std::max)(
-                                        verticalRadius * 0.10f,
-                                        0.025f);
+                                    verticalRadius * 0.10f;
                                 if (gap > contactTolerance ||
                                     resolved.positionWS.y +
                                         verticalRadius <
@@ -1072,12 +1241,14 @@ namespace HIKARI {
                 seen.insert(source);
                 const MATH::Vec3 center = TransformPoint(
                     sourceWorld, {});
-                const float radius = (std::max)(
-                    follower.ResolveRadius() * (std::max)({
+                const float radius = std::fabs(follower.ResolveRadius()) *
+                    (std::max)({
                         std::fabs(scale.x),
                         std::fabs(scale.y),
-                        std::fabs(scale.z) }),
-                    0.01f);
+                        std::fabs(scale.z) });
+                if (!(radius > 1.0e-8f) || !std::isfinite(radius)) {
+                    return;
+                }
                 TERRAIN::TerrainInteractionFootprint footprint{};
                 footprint.kind = TERRAIN::TerrainFootprintKind::Sphere;
                 footprint.halfExtentsWS = { radius, radius };
@@ -1234,7 +1405,9 @@ namespace HIKARI {
         float penetrationDepthWS,
         float normalImpulseNs,
         float strength,
-        float contactAgeSeconds) {
+        float contactAgeSeconds,
+        uint64_t sourceShapeId,
+        uint64_t definitionSignature) {
         PublishSweptInteraction(
             world.FixedEvents(),
             frame.fixedDt,
@@ -1250,7 +1423,9 @@ namespace HIKARI {
             penetrationDepthWS,
             normalImpulseNs,
             strength,
-            contactAgeSeconds);
+            contactAgeSeconds,
+            sourceShapeId,
+            definitionSignature);
     }
 
     void TerrainInteractionSourceSystem::PublishSweptInteraction(
@@ -1268,8 +1443,14 @@ namespace HIKARI {
         float penetrationDepthWS,
         float normalImpulseNs,
         float strength,
-        float contactAgeSeconds) {
-        const ContactKey contactKey{ source, targetSurface };
+        float contactAgeSeconds,
+        uint64_t sourceShapeId,
+        uint64_t definitionSignature) {
+        const ContactKey contactKey{
+            source,
+            targetSurface,
+            sourceShapeId,
+            definitionSignature };
         const bool allowAutomaticSettling =
             sourceKind == TERRAIN::TerrainInteractionSourceKind::RigidBody ||
             sourceKind == TERRAIN::TerrainInteractionSourceKind::
@@ -1307,14 +1488,15 @@ namespace HIKARI {
         const float footprintRadius = (std::max)({
             footprint.halfExtentsWS.x,
             footprint.halfExtentsWS.y,
-            footprint.verticalRadiusWS,
-            0.01f });
-        const float stepLength = (std::max)(
-            footprintRadius * 0.35f, 0.04f);
+            footprint.verticalRadiusWS });
+        const float stepLength = footprintRadius * 0.35f;
         const uint32_t steps = hasPrevious && travel > 1.0e-5f
-            ? (std::max)(
-                1u,
-                static_cast<uint32_t>(std::ceil(travel / stepLength)))
+            ? stepLength > 1.0e-8f
+                ? (std::max)(
+                    1u,
+                    static_cast<uint32_t>(std::ceil(
+                        travel / stepLength)))
+                : 1u
             : 1u;
         const MATH::Vec3 velocity = stepSeconds > 1.0e-6f
             ? delta * (1.0f / stepSeconds)
