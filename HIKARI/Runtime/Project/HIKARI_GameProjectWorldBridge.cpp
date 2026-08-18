@@ -114,6 +114,80 @@ namespace HIKARI {
         return WorldView(&world);
     }
 
+    // 公開済みの World bridge から action bridge を参照し、
+    // static library 内の SDK export 群を host link に確実に取り込む。
+    InputView WorldView::GetInput() const noexcept {
+        try {
+            World* world = GameProjectSdkAccess::GetWorld(*this);
+            return world != nullptr
+                ? GameProjectSdkAccess::MakeInputView(*world)
+                : InputView{};
+        }
+        catch (...) {
+            return {};
+        }
+    }
+
+    AnimationView WorldView::GetAnimation() const noexcept {
+        try {
+            World* world = GameProjectSdkAccess::GetWorld(*this);
+            return world != nullptr
+                ? GameProjectSdkAccess::MakeAnimationView(*world)
+                : AnimationView{};
+        }
+        catch (...) {
+            return {};
+        }
+    }
+
+    MotionView WorldView::GetMotion() const noexcept {
+        try {
+            World* world = GameProjectSdkAccess::GetWorld(*this);
+            return world != nullptr
+                ? GameProjectSdkAccess::MakeMotionView(*world)
+                : MotionView{};
+        }
+        catch (...) {
+            return {};
+        }
+    }
+
+    PhysicsQueryView WorldView::GetPhysicsQueries() const noexcept {
+        try {
+            World* world = GameProjectSdkAccess::GetWorld(*this);
+            return world != nullptr
+                ? GameProjectSdkAccess::MakePhysicsQueryView(*world)
+                : PhysicsQueryView{};
+        }
+        catch (...) {
+            return {};
+        }
+    }
+
+    CameraView WorldView::GetCamera() const noexcept {
+        try {
+            World* world = GameProjectSdkAccess::GetWorld(*this);
+            return world != nullptr
+                ? GameProjectSdkAccess::MakeCameraView(*world)
+                : CameraView{};
+        }
+        catch (...) {
+            return {};
+        }
+    }
+
+    TimeDilationView WorldView::GetTimeDilation() const noexcept {
+        try {
+            World* world = GameProjectSdkAccess::GetWorld(*this);
+            return world != nullptr
+                ? GameProjectSdkAccess::MakeTimeDilationView(*world)
+                : TimeDilationView{};
+        }
+        catch (...) {
+            return {};
+        }
+    }
+
     GameObject* GameProjectSdkAccess::GetObject(
         const ObjectView& view) noexcept {
         return static_cast<GameObject*>(view.object_);

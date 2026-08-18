@@ -410,6 +410,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Binding/HIKARI_RuntimeBindingStore.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Binding/Adapters/HIKARI_RuntimeMaterialProjection.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Binding/Adapters/HIKARI_RuntimeMaterialValueAdapter.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectActionBridge.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectModuleLibrary.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectPropertyBridge.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectRegistration.cpp"

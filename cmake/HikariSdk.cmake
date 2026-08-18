@@ -4,6 +4,8 @@ include(CMakePackageConfigHelpers)
 
 set(
     HIKARI_GAME_PROJECT_SDK_HEADERS
+    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/ActionTypes.h"
+    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/ActionViews.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/FrameContext.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/GameComponent.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/GameProjectModule.h"
@@ -74,7 +76,7 @@ configure_package_config_file(
     NO_SET_AND_CHECK_MACRO)
 write_basic_package_version_file(
     "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARIConfigVersion.cmake"
-    VERSION 1.2.0
+    VERSION 1.5.0
     COMPATIBILITY SameMajorVersion)
 
 function(hikari_configure_game_project_sdk host_target)

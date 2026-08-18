@@ -47,6 +47,18 @@ namespace HIKARI {
             GameObject& object) noexcept;
         static WorldView MakeWorldView(
             World& world) noexcept;
+        static InputView MakeInputView(
+            World& world) noexcept;
+        static AnimationView MakeAnimationView(
+            World& world) noexcept;
+        static MotionView MakeMotionView(
+            World& world) noexcept;
+        static PhysicsQueryView MakePhysicsQueryView(
+            World& world) noexcept;
+        static CameraView MakeCameraView(
+            World& world) noexcept;
+        static TimeDilationView MakeTimeDilationView(
+            World& world) noexcept;
         static GameComponentContext MakeGameComponentContext(
             GameProjectComponentAdapter& adapter,
             GameObject& object,

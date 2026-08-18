@@ -5,6 +5,7 @@
 #include <type_traits>
 #include <utility>
 
+#include "HIKARI/Project/ActionViews.h"
 #include "HIKARI/Project/GameProjectSdk.h"
 #include "HIKARI/Project/ValueTypes.h"
 
@@ -71,6 +72,18 @@ namespace HIKARI {
             std::string_view eventId,
             uint32_t index,
             GameProjectEventRecord& outEvent) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API InputView
+            GetInput() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API AnimationView
+            GetAnimation() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API MotionView
+            GetMotion() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API PhysicsQueryView
+            GetPhysicsQueries() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API CameraView
+            GetCamera() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API TimeDilationView
+            GetTimeDilation() const noexcept;
 
         template<class Component, class Visitor>
         bool ForEachComponent(

@@ -1,0 +1,160 @@
+#pragma once
+
+#include <cstdint>
+#include <string_view>
+
+#include "HIKARI/Project/ActionTypes.h"
+#include "HIKARI/Project/GameProjectSdk.h"
+
+namespace HIKARI {
+
+    struct GameProjectSdkAccess;
+
+    class InputView {
+    public:
+        InputView() = default;
+
+        bool IsValid() const noexcept { return world_ != nullptr; }
+
+        HIKARI_GAME_PROJECT_SDK_API bool GetAction(
+            std::string_view actionId,
+            GameProjectInputActionState& outState) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API GameProjectInputDevice
+            GetLastActiveDevice() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API uint64_t
+            GetFrameIndex() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool SetGamepadVibration(
+            float lowFrequency,
+            float highFrequency,
+            float durationSeconds) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API void
+            StopGamepadVibration() const noexcept;
+
+    private:
+        friend struct GameProjectSdkAccess;
+        explicit InputView(void* world) noexcept : world_(world) {}
+        void* world_ = nullptr;
+    };
+
+    class AnimationView {
+    public:
+        AnimationView() = default;
+
+        bool IsValid() const noexcept { return world_ != nullptr; }
+
+        HIKARI_GAME_PROJECT_SDK_API bool Play(
+            uint64_t objectHandle,
+            std::string_view clipName,
+            uint8_t loop = 1u,
+            uint8_t restart = 1u) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool CrossFade(
+            uint64_t objectHandle,
+            std::string_view clipName,
+            float blendSeconds,
+            uint8_t loop = 1u,
+            uint8_t restart = 1u) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool PlayOnce(
+            uint64_t objectHandle,
+            std::string_view clipName,
+            uint8_t restart = 1u) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool Pause(
+            uint64_t objectHandle) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool Resume(
+            uint64_t objectHandle) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool Stop(
+            uint64_t objectHandle) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool GetState(
+            uint64_t objectHandle,
+            GameProjectAnimationState& outState) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool GetSocketTransform(
+            uint64_t objectHandle,
+            std::string_view socketName,
+            GameProjectAnimationSocketSpace space,
+            GameProjectTransform& outTransform) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool ConsumeRootMotion(
+            uint64_t objectHandle,
+            uint64_t fixedTickIndex,
+            GameProjectRootMotionDelta& outDelta) const noexcept;
+
+    private:
+        friend struct GameProjectSdkAccess;
+        explicit AnimationView(void* world) noexcept : world_(world) {}
+        void* world_ = nullptr;
+    };
+
+    class MotionView {
+    public:
+        MotionView() = default;
+
+        bool IsValid() const noexcept { return world_ != nullptr; }
+
+        HIKARI_GAME_PROJECT_SDK_API bool SubmitKinematicMove(
+            const GameProjectKinematicMove& move) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool GetKinematicState(
+            uint64_t objectHandle,
+            GameProjectKinematicState& outState) const noexcept;
+
+    private:
+        friend struct GameProjectSdkAccess;
+        explicit MotionView(void* world) noexcept : world_(world) {}
+        void* world_ = nullptr;
+    };
+
+    class PhysicsQueryView {
+    public:
+        PhysicsQueryView() = default;
+
+        bool IsValid() const noexcept { return world_ != nullptr; }
+
+        HIKARI_GAME_PROJECT_SDK_API bool Raycast(
+            const GameProjectPhysicsRaycastQuery& query,
+            GameProjectPhysicsHit& outHit) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool ShapeCast(
+            const GameProjectPhysicsShapeCastQuery& query,
+            GameProjectPhysicsHit& outHit) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API uint32_t Overlap(
+            const GameProjectPhysicsOverlapQuery& query,
+            GameProjectPhysicsHit* outHits,
+            uint32_t capacity) const noexcept;
+
+    private:
+        friend struct GameProjectSdkAccess;
+        explicit PhysicsQueryView(void* world) noexcept : world_(world) {}
+        void* world_ = nullptr;
+    };
+
+    class CameraView {
+    public:
+        CameraView() = default;
+
+        bool IsValid() const noexcept { return world_ != nullptr; }
+
+        HIKARI_GAME_PROJECT_SDK_API bool SubmitModifier(
+            const GameProjectCameraModifier& modifier) const noexcept;
+
+    private:
+        friend struct GameProjectSdkAccess;
+        explicit CameraView(void* world) noexcept : world_(world) {}
+        void* world_ = nullptr;
+    };
+
+    class TimeDilationView {
+    public:
+        TimeDilationView() = default;
+
+        bool IsValid() const noexcept { return world_ != nullptr; }
+
+        HIKARI_GAME_PROJECT_SDK_API uint64_t Request(
+            const GameProjectTimeDilationRequest& request) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool Release(
+            uint64_t token) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API float
+            GetEffectiveScale() const noexcept;
+
+    private:
+        friend struct GameProjectSdkAccess;
+        explicit TimeDilationView(void* world) noexcept : world_(world) {}
+        void* world_ = nullptr;
+    };
+
+} // namespace HIKARI
