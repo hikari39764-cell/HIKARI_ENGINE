@@ -5,6 +5,7 @@
 #include <numbers>
 
 #include "Core/HIKARI_JsonRead.h"
+#include "Core/Math/HIKARI_MathValidation.h"
 #include "Core/Serialization/Json/HIKARI_JsonMath.h"
 namespace HIKARI {
 
@@ -12,6 +13,62 @@ namespace HIKARI {
 
     namespace {
         constexpr float kMinimumRange = 0.01f;
+
+        float FiniteOr(float value, float fallback) noexcept {
+            return std::isfinite(value) ? value : fallback;
+        }
+
+        float NonNegativeFinite(
+            float value,
+            float fallback) noexcept {
+
+            return (std::max)(FiniteOr(value, fallback), 0.0f);
+        }
+
+        MATH::Vec3 FiniteOr(
+            const MATH::Vec3& value,
+            const MATH::Vec3& fallback) noexcept {
+
+            return MATH::IsFinite(value) ? value : fallback;
+        }
+
+        CAMERA::CameraTargetFramingDynamics SanitizeDynamics(
+            const CAMERA::CameraTargetFramingDynamics& dynamics) noexcept {
+
+            const CAMERA::CameraTargetFramingDynamics defaults{};
+            CAMERA::CameraTargetFramingDynamics result = dynamics;
+            result.enterSmoothSeconds = NonNegativeFinite(
+                result.enterSmoothSeconds,
+                defaults.enterSmoothSeconds);
+            result.exitSmoothSeconds = NonNegativeFinite(
+                result.exitSmoothSeconds,
+                defaults.exitSmoothSeconds);
+            result.targetSwitchSmoothSeconds = NonNegativeFinite(
+                result.targetSwitchSmoothSeconds,
+                defaults.targetSwitchSmoothSeconds);
+            result.yawSmoothSeconds = NonNegativeFinite(
+                result.yawSmoothSeconds,
+                defaults.yawSmoothSeconds);
+            result.pitchSmoothSeconds = NonNegativeFinite(
+                result.pitchSmoothSeconds,
+                defaults.pitchSmoothSeconds);
+            result.focusSmoothSeconds = NonNegativeFinite(
+                result.focusSmoothSeconds,
+                defaults.focusSmoothSeconds);
+            result.distanceExpandSmoothSeconds = NonNegativeFinite(
+                result.distanceExpandSmoothSeconds,
+                defaults.distanceExpandSmoothSeconds);
+            result.distanceContractSmoothSeconds = NonNegativeFinite(
+                result.distanceContractSmoothSeconds,
+                defaults.distanceContractSmoothSeconds);
+            result.yawDeadZoneDegrees = std::clamp(
+                FiniteOr(
+                    result.yawDeadZoneDegrees,
+                    defaults.yawDeadZoneDegrees),
+                0.0f,
+                180.0f);
+            return result;
+        }
 
         float RadiansToDegrees(float radians) noexcept {
             return radians * 180.0f / std::numbers::pi_v<float>;
@@ -266,6 +323,31 @@ namespace HIKARI {
         runtimeFollowPivot_ = lookAt;
         runtimeTargetPivot_ = lookAt;
         runtimeCollisionLimited_ = false;
+        runtimeFramingInitialized_ = false;
+        runtimeFramingHasSubmission_ = false;
+        runtimeFramingTargetObject_ = {};
+        runtimeFramingSourceId_ = 0u;
+        runtimeFramingPriority_ = 0;
+        runtimeFramingDynamics_ = {};
+        runtimeFramingTargetWeight_ = 0.45f;
+        runtimeFramingDistanceScale_ = 0.18f;
+        runtimeFramingMaximumDistanceOffset_ = 2.0f;
+        runtimeFramingYawTrackingSpeed_ = 540.0f;
+        runtimeFramingPreferredPitchDegrees_ = 17.0f;
+        runtimeFramingPitchTrackingSpeed_ = 240.0f;
+        runtimeFramingSuppressOrbitInput_ = true;
+        runtimeFramingSuppressZoomInput_ = true;
+        runtimeFramingSwitchActive_ = false;
+        runtimeFramingSwitchRemainingSeconds_ = 0.0f;
+        runtimeFramingWeight_ = 0.0f;
+        runtimeFramingWeightVelocity_ = 0.0f;
+        runtimeFramingSecondaryPivot_ = {};
+        runtimeFramingSecondaryPivotVelocity_ = {};
+        runtimeFramingYawVelocity_ = 0.0f;
+        runtimeFramingPitchVelocity_ = 0.0f;
+        runtimeFramingFocusOffset_ = {};
+        runtimeFramingFocusVelocity_ = {};
+        runtimeFramingDistanceVelocity_ = 0.0f;
         runtimeInitialized_ = true;
     }
 
@@ -273,8 +355,95 @@ namespace HIKARI {
         const MATH::Vec3& followPivot,
         const MATH::Vec3& targetPivot) noexcept {
 
-        runtimeFollowPivot_ = followPivot;
-        runtimeTargetPivot_ = targetPivot;
+        runtimeFollowPivot_ = FiniteOr(
+            followPivot,
+            runtimeFollowPivot_);
+        runtimeTargetPivot_ = FiniteOr(
+            targetPivot,
+            runtimeTargetPivot_);
+    }
+
+    void CameraFollowComponent::SetRuntimeFramingState(
+        bool hasSubmission,
+        RuntimeObjectHandle targetObject,
+        CAMERA::CameraRigSourceId sourceId,
+        int priority,
+        const CAMERA::CameraTargetFramingDynamics& dynamics,
+        float targetWeight,
+        float distanceScale,
+        float maximumDistanceOffset,
+        float yawTrackingSpeed,
+        float preferredPitchDegrees,
+        float pitchTrackingSpeed,
+        bool suppressOrbitInput,
+        bool suppressZoomInput,
+        bool switchActive,
+        float switchRemainingSeconds,
+        const MATH::Vec3& secondaryPivot,
+        float framingWeight,
+        float framingWeightVelocity,
+        const MATH::Vec3& secondaryPivotVelocity,
+        float yawVelocity,
+        float pitchVelocity,
+        const MATH::Vec3& focusOffset,
+        const MATH::Vec3& focusVelocity,
+        float distanceVelocity) noexcept {
+
+        runtimeFramingInitialized_ = true;
+        runtimeFramingHasSubmission_ = hasSubmission;
+        runtimeFramingTargetObject_ = targetObject;
+        runtimeFramingSourceId_ = sourceId;
+        runtimeFramingPriority_ = priority;
+        runtimeFramingDynamics_ = SanitizeDynamics(dynamics);
+        runtimeFramingTargetWeight_ = std::clamp(
+            FiniteOr(targetWeight, 0.0f),
+            0.0f,
+            1.0f);
+        runtimeFramingDistanceScale_ = NonNegativeFinite(
+            distanceScale,
+            0.0f);
+        runtimeFramingMaximumDistanceOffset_ = NonNegativeFinite(
+            maximumDistanceOffset,
+            0.0f);
+        runtimeFramingYawTrackingSpeed_ = NonNegativeFinite(
+            yawTrackingSpeed,
+            0.0f);
+        runtimeFramingPreferredPitchDegrees_ = FiniteOr(
+            preferredPitchDegrees,
+            17.0f);
+        runtimeFramingPitchTrackingSpeed_ = NonNegativeFinite(
+            pitchTrackingSpeed,
+            0.0f);
+        runtimeFramingSuppressOrbitInput_ = suppressOrbitInput;
+        runtimeFramingSuppressZoomInput_ = suppressZoomInput;
+        runtimeFramingSwitchActive_ = switchActive;
+        runtimeFramingSwitchRemainingSeconds_ = NonNegativeFinite(
+            switchRemainingSeconds,
+            0.0f);
+        runtimeFramingSecondaryPivot_ = FiniteOr(
+            secondaryPivot,
+            MATH::Vec3{});
+        runtimeFramingWeight_ = std::clamp(
+            FiniteOr(framingWeight, 0.0f),
+            0.0f,
+            1.0f);
+        runtimeFramingWeightVelocity_ = FiniteOr(
+            framingWeightVelocity,
+            0.0f);
+        runtimeFramingSecondaryPivotVelocity_ = FiniteOr(
+            secondaryPivotVelocity,
+            MATH::Vec3{});
+        runtimeFramingYawVelocity_ = FiniteOr(yawVelocity, 0.0f);
+        runtimeFramingPitchVelocity_ = FiniteOr(pitchVelocity, 0.0f);
+        runtimeFramingFocusOffset_ = FiniteOr(
+            focusOffset,
+            MATH::Vec3{});
+        runtimeFramingFocusVelocity_ = FiniteOr(
+            focusVelocity,
+            MATH::Vec3{});
+        runtimeFramingDistanceVelocity_ = FiniteOr(
+            distanceVelocity,
+            0.0f);
     }
 
     void CameraFollowComponent::SetRuntimeOrbit(
@@ -284,11 +453,24 @@ namespace HIKARI {
         float resolvedDistance,
         float lookIdleSeconds) noexcept {
 
-        runtimeYawDegrees_ = yawDegrees;
-        runtimePitchDegrees_ = pitchDegrees;
-        runtimeDesiredDistance_ = desiredDistance;
-        runtimeDistance_ = resolvedDistance;
-        runtimeLookIdleSeconds_ = (std::max)(lookIdleSeconds, 0.0f);
+        runtimeYawDegrees_ = FiniteOr(
+            yawDegrees,
+            GetInitialYawDegrees());
+        runtimePitchDegrees_ = std::clamp(
+            FiniteOr(pitchDegrees, GetInitialPitchDegrees()),
+            minimumPitchDegrees_,
+            maximumPitchDegrees_);
+        runtimeDesiredDistance_ = std::clamp(
+            FiniteOr(desiredDistance, GetInitialDistance()),
+            minimumDistance_,
+            maximumDistance_);
+        runtimeDistance_ = std::clamp(
+            FiniteOr(resolvedDistance, runtimeDesiredDistance_),
+            minimumDistance_,
+            maximumDistance_);
+        runtimeLookIdleSeconds_ = NonNegativeFinite(
+            lookIdleSeconds,
+            0.0f);
     }
 
     void CameraFollowComponent::SetRuntimeView(
@@ -296,8 +478,8 @@ namespace HIKARI {
         const MATH::Vec3& lookAt,
         bool collisionLimited) noexcept {
 
-        runtimeEye_ = eye;
-        runtimeLookAt_ = lookAt;
+        runtimeEye_ = FiniteOr(eye, runtimeEye_);
+        runtimeLookAt_ = FiniteOr(lookAt, runtimeLookAt_);
         runtimeCollisionLimited_ = collisionLimited;
         runtimeInitialized_ = true;
     }
@@ -314,12 +496,44 @@ namespace HIKARI {
         runtimeFollowPivot_ = {};
         runtimeTargetPivot_ = {};
         runtimeCollisionLimited_ = false;
+        runtimeFramingInitialized_ = false;
+        runtimeFramingHasSubmission_ = false;
+        runtimeFramingTargetObject_ = {};
+        runtimeFramingSourceId_ = 0u;
+        runtimeFramingPriority_ = 0;
+        runtimeFramingDynamics_ = {};
+        runtimeFramingTargetWeight_ = 0.45f;
+        runtimeFramingDistanceScale_ = 0.18f;
+        runtimeFramingMaximumDistanceOffset_ = 2.0f;
+        runtimeFramingYawTrackingSpeed_ = 540.0f;
+        runtimeFramingPreferredPitchDegrees_ = 17.0f;
+        runtimeFramingPitchTrackingSpeed_ = 240.0f;
+        runtimeFramingSuppressOrbitInput_ = true;
+        runtimeFramingSuppressZoomInput_ = true;
+        runtimeFramingSwitchActive_ = false;
+        runtimeFramingSwitchRemainingSeconds_ = 0.0f;
+        runtimeFramingWeight_ = 0.0f;
+        runtimeFramingWeightVelocity_ = 0.0f;
+        runtimeFramingSecondaryPivot_ = {};
+        runtimeFramingSecondaryPivotVelocity_ = {};
+        runtimeFramingYawVelocity_ = 0.0f;
+        runtimeFramingPitchVelocity_ = 0.0f;
+        runtimeFramingFocusOffset_ = {};
+        runtimeFramingFocusVelocity_ = {};
+        runtimeFramingDistanceVelocity_ = 0.0f;
     }
 
     void CameraFollowComponent::ClampSettings() noexcept {
-        if (!std::isfinite(initialYawDegrees_)) {
-            initialYawDegrees_ = 0.0f;
-        }
+        pivotOffset_ = FiniteOr(
+            pivotOffset_,
+            MATH::Vec3{ 0.0f, 1.2f, 0.0f });
+        initialYawDegrees_ = FiniteOr(initialYawDegrees_, 0.0f);
+        minimumPitchDegrees_ = FiniteOr(minimumPitchDegrees_, -65.0f);
+        maximumPitchDegrees_ = FiniteOr(maximumPitchDegrees_, 75.0f);
+        initialPitchDegrees_ = FiniteOr(initialPitchDegrees_, 28.0f);
+        minimumDistance_ = FiniteOr(minimumDistance_, 1.0f);
+        maximumDistance_ = FiniteOr(maximumDistance_, 20.0f);
+        initialDistance_ = FiniteOr(initialDistance_, 8.0f);
         minimumPitchDegrees_ = std::clamp(
             minimumPitchDegrees_,
             -89.0f,
@@ -338,25 +552,34 @@ namespace HIKARI {
             initialDistance_,
             minimumDistance_,
             maximumDistance_);
-        followSmooth_ = (std::max)(followSmooth_, 0.0f);
-        lookSmooth_ = (std::max)(lookSmooth_, 0.0f);
-        distanceSmooth_ = (std::max)(distanceSmooth_, 0.0f);
-        yawSpeedDegreesPerSecond_ =
-            (std::max)(yawSpeedDegreesPerSecond_, 0.0f);
-        pitchSpeedDegreesPerSecond_ =
-            (std::max)(pitchSpeedDegreesPerSecond_, 0.0f);
-        mouseSensitivityDegreesPerPixel_ =
-            (std::max)(mouseSensitivityDegreesPerPixel_, 0.0f);
-        zoomSpeedUnitsPerSecond_ =
-            (std::max)(zoomSpeedUnitsPerSecond_, 0.0f);
-        mouseWheelZoomUnitsPerStep_ =
-            (std::max)(mouseWheelZoomUnitsPerStep_, 0.0f);
-        autoRecenterDelaySeconds_ =
-            (std::max)(autoRecenterDelaySeconds_, 0.0f);
-        autoRecenterSpeedDegreesPerSecond_ =
-            (std::max)(autoRecenterSpeedDegreesPerSecond_, 0.0f);
-        collisionRadius_ = (std::max)(collisionRadius_, 0.01f);
-        collisionPadding_ = (std::max)(collisionPadding_, 0.0f);
+        followSmooth_ = NonNegativeFinite(followSmooth_, 12.0f);
+        lookSmooth_ = NonNegativeFinite(lookSmooth_, 14.0f);
+        distanceSmooth_ = NonNegativeFinite(distanceSmooth_, 18.0f);
+        yawSpeedDegreesPerSecond_ = NonNegativeFinite(
+            yawSpeedDegreesPerSecond_,
+            180.0f);
+        pitchSpeedDegreesPerSecond_ = NonNegativeFinite(
+            pitchSpeedDegreesPerSecond_,
+            140.0f);
+        mouseSensitivityDegreesPerPixel_ = NonNegativeFinite(
+            mouseSensitivityDegreesPerPixel_,
+            0.12f);
+        zoomSpeedUnitsPerSecond_ = NonNegativeFinite(
+            zoomSpeedUnitsPerSecond_,
+            30.0f);
+        mouseWheelZoomUnitsPerStep_ = NonNegativeFinite(
+            mouseWheelZoomUnitsPerStep_,
+            1.0f);
+        autoRecenterDelaySeconds_ = NonNegativeFinite(
+            autoRecenterDelaySeconds_,
+            1.25f);
+        autoRecenterSpeedDegreesPerSecond_ = NonNegativeFinite(
+            autoRecenterSpeedDegreesPerSecond_,
+            90.0f);
+        collisionRadius_ = (std::max)(
+            NonNegativeFinite(collisionRadius_, 0.25f),
+            0.01f);
+        collisionPadding_ = NonNegativeFinite(collisionPadding_, 0.08f);
     }
 
 } // namespace HIKARI

@@ -6,6 +6,7 @@
 
 #include "HIKARI_IComponent.h"
 #include "Render3D/HIKARI_Math3D.h"
+#include "Scene/Camera/HIKARI_CameraRigTypes.h"
 #include "Scene/HIKARI_SceneDocument.h"
 
 namespace HIKARI {
@@ -103,6 +104,84 @@ namespace HIKARI {
             return runtimeCollisionLimited_;
         }
 
+        bool HasRuntimeFramingState() const noexcept {
+            return runtimeFramingInitialized_;
+        }
+        bool HasRuntimeFramingSubmission() const noexcept {
+            return runtimeFramingHasSubmission_;
+        }
+        RuntimeObjectHandle GetRuntimeFramingTargetObject() const noexcept {
+            return runtimeFramingTargetObject_;
+        }
+        CAMERA::CameraRigSourceId GetRuntimeFramingSourceId() const noexcept {
+            return runtimeFramingSourceId_;
+        }
+        int GetRuntimeFramingPriority() const noexcept {
+            return runtimeFramingPriority_;
+        }
+        const CAMERA::CameraTargetFramingDynamics&
+            GetRuntimeFramingDynamics() const noexcept {
+            return runtimeFramingDynamics_;
+        }
+        float GetRuntimeFramingTargetWeight() const noexcept {
+            return runtimeFramingTargetWeight_;
+        }
+        float GetRuntimeFramingDistanceScale() const noexcept {
+            return runtimeFramingDistanceScale_;
+        }
+        float GetRuntimeFramingMaximumDistanceOffset() const noexcept {
+            return runtimeFramingMaximumDistanceOffset_;
+        }
+        float GetRuntimeFramingYawTrackingSpeed() const noexcept {
+            return runtimeFramingYawTrackingSpeed_;
+        }
+        float GetRuntimeFramingPreferredPitch() const noexcept {
+            return runtimeFramingPreferredPitchDegrees_;
+        }
+        float GetRuntimeFramingPitchTrackingSpeed() const noexcept {
+            return runtimeFramingPitchTrackingSpeed_;
+        }
+        bool GetRuntimeFramingSuppressOrbitInput() const noexcept {
+            return runtimeFramingSuppressOrbitInput_;
+        }
+        bool GetRuntimeFramingSuppressZoomInput() const noexcept {
+            return runtimeFramingSuppressZoomInput_;
+        }
+        bool GetRuntimeFramingSwitchActive() const noexcept {
+            return runtimeFramingSwitchActive_;
+        }
+        float GetRuntimeFramingSwitchRemainingSeconds() const noexcept {
+            return runtimeFramingSwitchRemainingSeconds_;
+        }
+        float GetRuntimeFramingWeight() const noexcept {
+            return runtimeFramingWeight_;
+        }
+        float GetRuntimeFramingWeightVelocity() const noexcept {
+            return runtimeFramingWeightVelocity_;
+        }
+        const MATH::Vec3& GetRuntimeFramingSecondaryPivot() const noexcept {
+            return runtimeFramingSecondaryPivot_;
+        }
+        const MATH::Vec3&
+            GetRuntimeFramingSecondaryPivotVelocity() const noexcept {
+            return runtimeFramingSecondaryPivotVelocity_;
+        }
+        float GetRuntimeFramingYawVelocity() const noexcept {
+            return runtimeFramingYawVelocity_;
+        }
+        float GetRuntimeFramingPitchVelocity() const noexcept {
+            return runtimeFramingPitchVelocity_;
+        }
+        const MATH::Vec3& GetRuntimeFramingFocusOffset() const noexcept {
+            return runtimeFramingFocusOffset_;
+        }
+        const MATH::Vec3& GetRuntimeFramingFocusVelocity() const noexcept {
+            return runtimeFramingFocusVelocity_;
+        }
+        float GetRuntimeFramingDistanceVelocity() const noexcept {
+            return runtimeFramingDistanceVelocity_;
+        }
+
         void InitializeRuntimeState(
             const MATH::Vec3& eye,
             const MATH::Vec3& lookAt) noexcept;
@@ -119,6 +198,31 @@ namespace HIKARI {
         void SetRuntimeTracking(
             const MATH::Vec3& followPivot,
             const MATH::Vec3& targetPivot) noexcept;
+        void SetRuntimeFramingState(
+            bool hasSubmission,
+            RuntimeObjectHandle targetObject,
+            CAMERA::CameraRigSourceId sourceId,
+            int priority,
+            const CAMERA::CameraTargetFramingDynamics& dynamics,
+            float targetWeight,
+            float distanceScale,
+            float maximumDistanceOffset,
+            float yawTrackingSpeed,
+            float preferredPitchDegrees,
+            float pitchTrackingSpeed,
+            bool suppressOrbitInput,
+            bool suppressZoomInput,
+            bool switchActive,
+            float switchRemainingSeconds,
+            const MATH::Vec3& secondaryPivot,
+            float framingWeight,
+            float framingWeightVelocity,
+            const MATH::Vec3& secondaryPivotVelocity,
+            float yawVelocity,
+            float pitchVelocity,
+            const MATH::Vec3& focusOffset,
+            const MATH::Vec3& focusVelocity,
+            float distanceVelocity) noexcept;
         void ResetRuntimeState() noexcept;
 
     private:
@@ -170,6 +274,32 @@ namespace HIKARI {
         MATH::Vec3 runtimeFollowPivot_{};
         MATH::Vec3 runtimeTargetPivot_{};
         bool runtimeCollisionLimited_ = false;
+
+        bool runtimeFramingInitialized_ = false;
+        bool runtimeFramingHasSubmission_ = false;
+        RuntimeObjectHandle runtimeFramingTargetObject_{};
+        CAMERA::CameraRigSourceId runtimeFramingSourceId_ = 0u;
+        int runtimeFramingPriority_ = 0;
+        CAMERA::CameraTargetFramingDynamics runtimeFramingDynamics_{};
+        float runtimeFramingTargetWeight_ = 0.45f;
+        float runtimeFramingDistanceScale_ = 0.18f;
+        float runtimeFramingMaximumDistanceOffset_ = 2.0f;
+        float runtimeFramingYawTrackingSpeed_ = 540.0f;
+        float runtimeFramingPreferredPitchDegrees_ = 17.0f;
+        float runtimeFramingPitchTrackingSpeed_ = 240.0f;
+        bool runtimeFramingSuppressOrbitInput_ = true;
+        bool runtimeFramingSuppressZoomInput_ = true;
+        bool runtimeFramingSwitchActive_ = false;
+        float runtimeFramingSwitchRemainingSeconds_ = 0.0f;
+        float runtimeFramingWeight_ = 0.0f;
+        float runtimeFramingWeightVelocity_ = 0.0f;
+        MATH::Vec3 runtimeFramingSecondaryPivot_{};
+        MATH::Vec3 runtimeFramingSecondaryPivotVelocity_{};
+        float runtimeFramingYawVelocity_ = 0.0f;
+        float runtimeFramingPitchVelocity_ = 0.0f;
+        MATH::Vec3 runtimeFramingFocusOffset_{};
+        MATH::Vec3 runtimeFramingFocusVelocity_{};
+        float runtimeFramingDistanceVelocity_ = 0.0f;
     };
 
 } // namespace HIKARI

@@ -6,6 +6,7 @@
 
 #include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Render3D/HIKARI_Math3D.h"
+#include "Scene/HIKARI_RuntimeObjectHandle.h"
 #include "Scene/HIKARI_SceneObjectId.h"
 
 namespace HIKARI::CAMERA {
@@ -54,6 +55,41 @@ namespace HIKARI::CAMERA {
         float localRollRadians = 0.0f;
         float weight = 1.0f;
         bool applyDuringOverride = false;
+    };
+
+    struct CameraTargetFramingDynamics {
+        float enterSmoothSeconds = 0.24f;
+        float exitSmoothSeconds = 0.20f;
+        float targetSwitchSmoothSeconds = 0.18f;
+        float yawSmoothSeconds = 0.14f;
+        float pitchSmoothSeconds = 0.20f;
+        float focusSmoothSeconds = 0.10f;
+        float distanceExpandSmoothSeconds = 0.12f;
+        float distanceContractSmoothSeconds = 0.26f;
+        float yawDeadZoneDegrees = 1.5f;
+    };
+
+    // Per-frame secondary-target framing for an orbit-follow camera.  The
+    // follow system keeps ownership of its primary pivot, smoothing and wall
+    // collision; gameplay only supplies the extra subject and composition
+    // policy.  This prevents lock-on cameras from replacing the canonical
+    // camera pose or duplicating collision handling in a game module.
+    struct CameraTargetFramingSubmission {
+        SceneObjectId cameraObjectId{};
+        RuntimeObjectHandle targetObject{};
+        CameraRigSourceId sourceId = 0u;
+        int priority = 0;
+        MATH::Vec3 targetPivotOffset{ 0.0f, 1.0f, 0.0f };
+        float targetWeight = 0.45f;
+        float yawTrackingSpeedDegreesPerSecond = 540.0f;
+        float preferredPitchDegrees = 17.0f;
+        float pitchTrackingSpeedDegreesPerSecond = 240.0f;
+        float distanceScale = 0.18f;
+        float maximumDistanceOffset = 2.0f;
+        float weight = 1.0f;
+        bool suppressOrbitInput = true;
+        bool suppressZoomInput = true;
+        CameraTargetFramingDynamics dynamics{};
     };
 
     struct CameraRigRuntimeStatus {

@@ -73,7 +73,8 @@ namespace HIKARI::PHYSICS::JOLT_BACKEND {
                 owner_.CharacterFilterAcceptsShape(
                     self->desc,
                     contact.mBodyB,
-                    contact.mSubShapeIDB);
+                    contact.mSubShapeIDB,
+                    self->activeStepIgnoredObject);
         }
 
         void OnContactAdded(
@@ -180,9 +181,12 @@ namespace HIKARI::PHYSICS::JOLT_BACKEND {
 
     bool JoltPhysicsBackend::CharacterFilterAcceptsBody(
         const PhysicsCharacterDesc& character,
-        const JPH::Body& body) const noexcept {
+        const JPH::Body& body,
+        RuntimeObjectHandle ignoredCollisionObject) const noexcept {
         const BodyRecord* record = FindRecordFromBodyId(body.GetID());
-        if (record == nullptr || record->object == character.object) {
+        if (record == nullptr || record->object == character.object ||
+            (ignoredCollisionObject.IsValid() &&
+                record->object == ignoredCollisionObject)) {
             return false;
         }
         return std::any_of(
@@ -198,9 +202,12 @@ namespace HIKARI::PHYSICS::JOLT_BACKEND {
     bool JoltPhysicsBackend::CharacterFilterAcceptsShape(
         const PhysicsCharacterDesc& character,
         const JPH::BodyID& bodyId,
-        const JPH::SubShapeID& subShapeId) const noexcept {
+        const JPH::SubShapeID& subShapeId,
+        RuntimeObjectHandle ignoredCollisionObject) const noexcept {
         const BodyRecord* record = FindRecordFromBodyId(bodyId);
-        if (record == nullptr || record->object == character.object) {
+        if (record == nullptr || record->object == character.object ||
+            (ignoredCollisionObject.IsValid() &&
+                record->object == ignoredCollisionObject)) {
             return false;
         }
         uint32_t shapeIndex = 0u;
@@ -336,6 +343,7 @@ namespace HIKARI::PHYSICS::JOLT_BACKEND {
             record.object = createInfo.character.object;
             record.desc = createInfo.character;
             record.character = std::move(character);
+            record.activeStepIgnoredObject = {};
         }
 
         (void)RefreshCharacterContacts(handle);
@@ -361,6 +369,7 @@ namespace HIKARI::PHYSICS::JOLT_BACKEND {
             record->object = {};
             record->desc = {};
             record->character = nullptr;
+            record->activeStepIgnoredObject = {};
             freeCharacterSlots_.push_back(handle.slot);
         }
         character = nullptr;

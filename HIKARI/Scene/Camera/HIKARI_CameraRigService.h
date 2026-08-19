@@ -38,12 +38,21 @@ namespace HIKARI {
             bool SubmitModifier(
                 const CameraModifierSubmission& submission);
 
+            // Submits a secondary subject to the built-in orbit-follow rig.
+            // The winning request is resolved per camera and per frame.
+            bool SubmitTargetFraming(
+                const CameraTargetFramingSubmission& submission);
+
             // 指定カメラの最適な姿勢を解決する
             // 最も高い優先度の提出が選択され、outSubmission に格納される
             // 戻り値: 有効な姿勢が見つかった場合は true
             bool TryResolvePose(
                 SceneObjectId cameraObjectId,
                 CameraRigSubmission& outSubmission) const noexcept;
+
+            bool TryResolveTargetFraming(
+                SceneObjectId cameraObjectId,
+                CameraTargetFramingSubmission& outSubmission) const noexcept;
 
             // フォールバックカメラを検索する
             // どのソースからも姿勢が提出されていない場合に、
@@ -73,6 +82,9 @@ namespace HIKARI {
             static bool IsValidModifier(
                 const CameraModifierSubmission& modifier) noexcept;
 
+            static bool IsValidTargetFraming(
+                const CameraTargetFramingSubmission& submission) noexcept;
+
             // 現在のフレームインデックス
             uint64_t frameIndex_ = 0u;
 
@@ -81,6 +93,7 @@ namespace HIKARI {
 
             // 今フレームに提出されたカメラモディファイア一覧
             std::vector<CameraModifierSubmission> modifiers_{};
+            std::vector<CameraTargetFramingSubmission> targetFramings_{};
         };
 
     } // namespace CAMERA

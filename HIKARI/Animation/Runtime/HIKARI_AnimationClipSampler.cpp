@@ -2,8 +2,11 @@
 
 #include <algorithm>
 #include <cmath>
+#include <utility>
 
 #include "Assets/Models/HIKARI_ModelAsset.h"
+#include "Core/Math/HIKARI_MathValidation.h"
+#include "Animation/Runtime/HIKARI_AnimationPoseEvaluation.h"
 
 namespace HIKARI::ANIMATION {
     namespace {
@@ -295,6 +298,104 @@ namespace HIKARI::ANIMATION {
             result.rotation = Nlerp(a.rotation, b.rotation, safeWeight);
             result.scale = Lerp(a.scale, b.scale, safeWeight);
         }
+        return true;
+    }
+
+    bool BlendAnimationPoseSubtree(
+        const ModelAsset& model,
+        const AnimationLocalPose& from,
+        const AnimationLocalPose& to,
+        std::string_view maskRootNodeName,
+        float weight,
+        AnimationLocalPose& outPose) {
+        if (!std::isfinite(weight) ||
+            model.nodes.empty() ||
+            !from.IsValidFor(model.nodes.size()) ||
+            !to.IsValidFor(model.nodes.size()) ||
+            maskRootNodeName.empty()) {
+            return false;
+        }
+
+        int rootNode = -1;
+        for (size_t index = 0u; index < model.nodes.size(); ++index) {
+            if (model.nodes[index].name == maskRootNodeName) {
+                rootNode = static_cast<int>(index);
+                break;
+            }
+        }
+        if (rootNode < 0) {
+            return false;
+        }
+
+        const float safeWeight = ClampUnit(weight);
+        AnimationLocalPose candidate = from;
+        if (safeWeight <= 0.0f) {
+            outPose = std::move(candidate);
+            return true;
+        }
+
+        const size_t nodeCount = model.nodes.size();
+        const int rootMotionNode =
+            POSE_EVALUATION::ResolveRootNode(model);
+        for (size_t index = 0u; index < nodeCount; ++index) {
+            if (static_cast<int>(index) == rootMotionNode) {
+                // Root motion is produced from the base/cross-fade pose. A
+                // masked overlay must never reintroduce authored root
+                // translation or rotation into the published pose.
+                continue;
+            }
+            int cursor = static_cast<int>(index);
+            bool inSubtree = false;
+            // Follow parent links instead of trusting children arrays.  The
+            // import contract permits both representations, while the
+            // bounded walk also protects the evaluator from malformed
+            // parent cycles.
+            for (size_t step = 0u; step <= nodeCount; ++step) {
+                if (cursor == rootNode) {
+                    inSubtree = true;
+                    break;
+                }
+                if (cursor < 0 ||
+                    cursor >= static_cast<int>(nodeCount)) {
+                    break;
+                }
+                cursor = model.nodes[static_cast<size_t>(cursor)].parent;
+            }
+            if (!inSubtree) {
+                continue;
+            }
+
+            const Transform3D& fromNode = from.nodes[index];
+            const Transform3D& toNode = to.nodes[index];
+            if (!MATH::IsFinite(fromNode.position) ||
+                !MATH::IsFinite(fromNode.rotation) ||
+                !MATH::IsFinite(fromNode.scale) ||
+                !MATH::IsFinite(toNode.position) ||
+                !MATH::IsFinite(toNode.rotation) ||
+                !MATH::IsFinite(toNode.scale)) {
+                return false;
+            }
+
+            Transform3D& result = candidate.nodes[index];
+            result.position = Lerp(
+                fromNode.position,
+                toNode.position,
+                safeWeight);
+            result.rotation = Nlerp(
+                fromNode.rotation,
+                toNode.rotation,
+                safeWeight);
+            result.scale = Lerp(
+                fromNode.scale,
+                toNode.scale,
+                safeWeight);
+            // Animation clip sampling is TRS-authoritative.  Do not carry
+            // an explicit matrix or a private Transform3D parent pointer
+            // from either source pose into the blended local pose.
+            result.useExplicitMatrix = false;
+            result.explicitMatrix = {};
+        }
+        outPose = std::move(candidate);
         return true;
     }
 

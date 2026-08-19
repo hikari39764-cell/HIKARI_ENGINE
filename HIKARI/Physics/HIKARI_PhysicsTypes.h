@@ -240,6 +240,9 @@ namespace HIKARI::PHYSICS {
         float stepUpHeight = 0.4f;
         float stickToFloorDistance = 0.5f;
         float stepForwardTestDistance = 0.15f;
+        // Valid only for this character solve. The backend must not mutate
+        // the authored body collision layers for a transient action.
+        RuntimeObjectHandle ignoredCollisionObject{};
     };
 
     struct PhysicsCharacterState {

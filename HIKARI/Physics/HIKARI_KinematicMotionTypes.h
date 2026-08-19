@@ -25,6 +25,9 @@ namespace HIKARI::PHYSICS {
     };
 
     struct KinematicMotionRequest {
+        // A transient fixed-tick collision exception. Physics still filters
+        // every other body through the authored layer/mask contract.
+        RuntimeObjectHandle ignoredCollisionObject{};
         MATH::Vec3 horizontalVelocity{};
         MATH::Quat desiredRotation = MATH::Quat::Identity();
         float jumpSpeed = 0.0f;

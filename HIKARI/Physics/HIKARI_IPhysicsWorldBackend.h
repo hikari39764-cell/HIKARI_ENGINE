@@ -54,7 +54,8 @@ namespace HIKARI::PHYSICS {
         virtual bool RefreshCharacterGroundVelocity(
             PhysicsCharacterHandle character) = 0;
         virtual bool RefreshCharacterContacts(
-            PhysicsCharacterHandle character) = 0;
+            PhysicsCharacterHandle character,
+            RuntimeObjectHandle ignoredCollisionObject = {}) = 0;
         virtual bool StepCharacter(
             PhysicsCharacterHandle character,
             float fixedDeltaSeconds,

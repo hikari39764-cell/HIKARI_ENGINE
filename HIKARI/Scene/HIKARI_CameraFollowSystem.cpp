@@ -6,6 +6,7 @@
 #include <numbers>
 
 #include "Core/HIKARI_FrameContext.h"
+#include "Core/Math/HIKARI_MathValidation.h"
 #include "Gameplay/Motion/HIKARI_MotionIntentService.h"
 #include "Input/Runtime/HIKARI_InputService.h"
 #include "Physics/HIKARI_PhysicsTypes.h"
@@ -64,6 +65,117 @@ namespace HIKARI {
                 return target;
             }
             return current + std::copysign(maxDelta, delta);
+        }
+
+        float SmoothDampScalar(
+            float current,
+            float target,
+            float& currentVelocity,
+            float smoothTime,
+            float maxSpeed,
+            float dt) noexcept {
+
+            if (!std::isfinite(current) || !std::isfinite(target) ||
+                !std::isfinite(currentVelocity)) {
+                currentVelocity = 0.0f;
+                return std::isfinite(current) ? current : 0.0f;
+            }
+            if (dt <= 0.0f || !std::isfinite(dt)) {
+                return current;
+            }
+            if (!std::isfinite(smoothTime) || smoothTime <= kViewEpsilon) {
+                currentVelocity = 0.0f;
+                return target;
+            }
+
+            smoothTime = (std::max)(smoothTime, kViewEpsilon);
+            const float omega = 2.0f / smoothTime;
+            const float x = omega * dt;
+            const float exp = 1.0f /
+                (1.0f + x + 0.48f * x * x + 0.235f * x * x * x);
+            const float originalTarget = target;
+            float change = current - target;
+            // A negative maxSpeed means unbounded smoothing.  Zero is a real
+            // limit: callers use it to disable a tracking channel.
+            if (std::isfinite(maxSpeed) && maxSpeed >= 0.0f) {
+                const float maxChange = maxSpeed * smoothTime;
+                if (std::isfinite(maxChange)) {
+                    change = std::clamp(
+                        change,
+                        -maxChange,
+                        maxChange);
+                }
+            }
+            target = current - change;
+            const float temp =
+                (currentVelocity + omega * change) * dt;
+            currentVelocity =
+                (currentVelocity - omega * temp) * exp;
+            float output = target + (change + temp) * exp;
+
+            if ((originalTarget - current > 0.0f) ==
+                    (output > originalTarget)) {
+                output = originalTarget;
+                currentVelocity = dt > kViewEpsilon
+                    ? (output - originalTarget) / dt
+                    : 0.0f;
+            }
+            if (!std::isfinite(output) ||
+                !std::isfinite(currentVelocity)) {
+                currentVelocity = 0.0f;
+                return originalTarget;
+            }
+            return output;
+        }
+
+        float SmoothDampAngle(
+            float current,
+            float target,
+            float& currentVelocity,
+            float smoothTime,
+            float maxSpeed,
+            float dt) noexcept {
+
+            const float delta = WrapDegrees(target - current);
+            return SmoothDampScalar(
+                current,
+                current + delta,
+                currentVelocity,
+                smoothTime,
+                maxSpeed,
+                dt);
+        }
+
+        MATH::Vec3 SmoothDampVector(
+            const MATH::Vec3& current,
+            const MATH::Vec3& target,
+            MATH::Vec3& currentVelocity,
+            float smoothTime,
+            float dt) noexcept {
+
+            MATH::Vec3 result = current;
+            result.x = SmoothDampScalar(
+                current.x,
+                target.x,
+                currentVelocity.x,
+                smoothTime,
+                -1.0f,
+                dt);
+            result.y = SmoothDampScalar(
+                current.y,
+                target.y,
+                currentVelocity.y,
+                smoothTime,
+                -1.0f,
+                dt);
+            result.z = SmoothDampScalar(
+                current.z,
+                target.z,
+                currentVelocity.z,
+                smoothTime,
+                -1.0f,
+                dt);
+            return MATH::IsFinite(result) ? result : target;
         }
 
         MATH::Vec3 ExtractAxis(
@@ -229,12 +341,18 @@ namespace HIKARI {
         const float dt = std::isfinite(frame.gameDt)
             ? (std::max)(frame.gameDt, 0.0f)
             : 0.0f;
+        // Camera input and target framing are presentation behavior.  Keep
+        // them responsive while gameplay is being time-dilated; ordinary
+        // world-follow smoothing below intentionally retains gameDt.
+        const float cameraDt = std::isfinite(frame.unscaledDt)
+            ? std::clamp(frame.unscaledDt, 0.0f, 0.25f)
+            : 0.0f;
         const INPUT::InputSnapshot* input = inputService_ != nullptr
             ? &inputService_->GetSnapshot()
             : nullptr;
 
         world.ForEachObjectWith<CameraComponent, CameraFollowComponent>(
-            [this, input, dt, frameIndex = frame.frameIndex](
+            [this, input, dt, cameraDt, frameIndex = frame.frameIndex](
                 GameObject& cameraObject,
                 CameraComponent&,
                 CameraFollowComponent& component) {
@@ -260,6 +378,10 @@ namespace HIKARI {
                 const MATH::Vec3 pivot = TransformPoint(
                     targetWorld,
                     component.GetPivotOffset());
+                if (!MATH::IsFinite(pivot)) {
+                    component.ResetRuntimeState();
+                    return;
+                }
                 if (!component.HasRuntimeState()) {
                     const MATH::Vec3 direction = OrbitDirection(
                         component.GetInitialYawDegrees(),
@@ -268,6 +390,222 @@ namespace HIKARI {
                         pivot + direction * component.GetInitialDistance(),
                         pivot);
                 }
+
+                CAMERA::CameraTargetFramingSubmission targetFraming{};
+                const bool hasFramingSubmission =
+                    rigService_->TryResolveTargetFraming(
+                        cameraObject.GetDocumentId(),
+                        targetFraming);
+                GameObject* secondaryTarget = nullptr;
+                MATH::Vec3 requestedSecondaryPivot{};
+                if (hasFramingSubmission) {
+                    secondaryTarget = cameraObject.GetWorld()->FindObject(
+                        targetFraming.targetObject);
+                    if (secondaryTarget != nullptr) {
+                        const MATH::Mat4 secondaryWorld =
+                            ResolveTargetWorldMatrix(
+                                *secondaryTarget,
+                                presentationTransforms_);
+                        requestedSecondaryPivot = TransformPoint(
+                            secondaryWorld,
+                            targetFraming.targetPivotOffset);
+                        if (!MATH::IsFinite(requestedSecondaryPivot)) {
+                            secondaryTarget = nullptr;
+                        }
+                    }
+                }
+
+                const bool hadFramingState =
+                    component.HasRuntimeFramingState();
+                const bool hadFramingSubmission =
+                    component.HasRuntimeFramingSubmission();
+                const RuntimeObjectHandle previousFramingTarget =
+                    component.GetRuntimeFramingTargetObject();
+                const RuntimeObjectHandle framingTarget =
+                    hasFramingSubmission
+                    ? targetFraming.targetObject
+                    : previousFramingTarget;
+                const CAMERA::CameraRigSourceId framingSourceId =
+                    hasFramingSubmission
+                    ? targetFraming.sourceId
+                    : component.GetRuntimeFramingSourceId();
+                const int framingPriority = hasFramingSubmission
+                    ? targetFraming.priority
+                    : component.GetRuntimeFramingPriority();
+                const CAMERA::CameraTargetFramingDynamics framingDynamics =
+                    hasFramingSubmission
+                    ? targetFraming.dynamics
+                    : component.GetRuntimeFramingDynamics();
+                const float framingTargetWeight = hasFramingSubmission
+                    ? std::clamp(targetFraming.targetWeight, 0.0f, 1.0f)
+                    : component.GetRuntimeFramingTargetWeight();
+                const float framingDistanceScale = hasFramingSubmission
+                    ? (std::max)(targetFraming.distanceScale, 0.0f)
+                    : component.GetRuntimeFramingDistanceScale();
+                const float framingMaximumDistanceOffset =
+                    hasFramingSubmission
+                    ? (std::max)(targetFraming.maximumDistanceOffset, 0.0f)
+                    : component.GetRuntimeFramingMaximumDistanceOffset();
+                const float framingYawSpeed = hasFramingSubmission
+                    ? (std::max)(
+                        targetFraming.yawTrackingSpeedDegreesPerSecond,
+                        0.0f)
+                    : component.GetRuntimeFramingYawTrackingSpeed();
+                const float framingPreferredPitch = hasFramingSubmission
+                    ? targetFraming.preferredPitchDegrees
+                    : component.GetRuntimeFramingPreferredPitch();
+                const float framingPitchTrackingSpeed = hasFramingSubmission
+                    ? (std::max)(
+                        targetFraming.pitchTrackingSpeedDegreesPerSecond,
+                        0.0f)
+                    : component.GetRuntimeFramingPitchTrackingSpeed();
+                const bool suppressOrbitInput = hasFramingSubmission
+                    ? targetFraming.suppressOrbitInput
+                    : component.GetRuntimeFramingSuppressOrbitInput();
+                const bool suppressZoomInput = hasFramingSubmission
+                    ? targetFraming.suppressZoomInput
+                    : component.GetRuntimeFramingSuppressZoomInput();
+                const bool targetHandleChanged = hasFramingSubmission &&
+                    (!hadFramingSubmission ||
+                        framingTarget != previousFramingTarget ||
+                        framingSourceId !=
+                            component.GetRuntimeFramingSourceId() ||
+                        framingPriority !=
+                            component.GetRuntimeFramingPriority());
+                const float previousFramingWeight = hadFramingState
+                    ? component.GetRuntimeFramingWeight()
+                    : 0.0f;
+                const bool framingStateDormant = !hadFramingState ||
+                    (previousFramingWeight <= kInputEpsilon &&
+                        std::abs(component.GetRuntimeFramingWeightVelocity()) <=
+                            kViewEpsilon &&
+                        MATH::Length(
+                            component.GetRuntimeFramingFocusOffset()) <=
+                            kViewEpsilon &&
+                        MATH::Length(
+                            component.GetRuntimeFramingFocusVelocity()) <=
+                            kViewEpsilon &&
+                        MATH::Length(
+                            component.GetRuntimeFramingSecondaryPivotVelocity()) <=
+                            kViewEpsilon &&
+                        std::abs(component.GetRuntimeFramingYawVelocity()) <=
+                            kViewEpsilon &&
+                        std::abs(component.GetRuntimeFramingPitchVelocity()) <=
+                            kViewEpsilon &&
+                        std::abs(component.GetRuntimeFramingDistanceVelocity()) <=
+                            kViewEpsilon);
+                bool framingSwitchActive = hadFramingState &&
+                    component.GetRuntimeFramingSwitchActive();
+                float framingSwitchRemainingSeconds = hadFramingState
+                    ? (std::max)(
+                        component.GetRuntimeFramingSwitchRemainingSeconds(),
+                        0.0f)
+                    : 0.0f;
+                if (framingStateDormant) {
+                    framingSwitchActive = false;
+                    framingSwitchRemainingSeconds = 0.0f;
+                } else if (targetHandleChanged) {
+                    const float switchSmoothSeconds = (std::max)(
+                        framingDynamics.targetSwitchSmoothSeconds,
+                        0.0f);
+                    // Let the critically damped switch spring run for a few
+                    // time constants, then return stable targets to the
+                    // single focus spring even when the target keeps moving.
+                    framingSwitchRemainingSeconds = std::isfinite(
+                        switchSmoothSeconds)
+                        ? std::min(switchSmoothSeconds, 10.0f) * 3.0f
+                        : 0.0f;
+                    framingSwitchActive =
+                        framingSwitchRemainingSeconds > kInputEpsilon;
+                }
+
+                MATH::Vec3 secondaryPivot =
+                    component.GetRuntimeFramingSecondaryPivot();
+                MATH::Vec3 secondaryPivotVelocity = component
+                    .GetRuntimeFramingSecondaryPivotVelocity();
+                if (framingStateDormant) {
+                    secondaryPivot = secondaryTarget != nullptr
+                        ? requestedSecondaryPivot
+                        : pivot;
+                    secondaryPivotVelocity = {};
+                } else if (secondaryTarget != nullptr &&
+                    framingSwitchActive) {
+                    secondaryPivot = SmoothDampVector(
+                        secondaryPivot,
+                        requestedSecondaryPivot,
+                        secondaryPivotVelocity,
+                        framingDynamics.targetSwitchSmoothSeconds,
+                        cameraDt);
+                    if (MATH::Length(
+                            requestedSecondaryPivot - secondaryPivot) <=
+                            kViewEpsilon &&
+                        MATH::Length(secondaryPivotVelocity) <=
+                            kViewEpsilon) {
+                        framingSwitchActive = false;
+                    }
+                } else if (secondaryTarget != nullptr) {
+                    // A stable target's presentation pivot is fed directly to
+                    // the explicit focus spring below.  Only a real handle or
+                    // source switch needs a secondary-pivot spring.
+                    secondaryPivot = requestedSecondaryPivot;
+                    secondaryPivotVelocity = {};
+                } else {
+                    // Keep the last valid pivot while the target is absent;
+                    // the framing weight and focus then fade out smoothly.
+                    secondaryPivot = SmoothDampVector(
+                        secondaryPivot,
+                        secondaryPivot,
+                        secondaryPivotVelocity,
+                        framingDynamics.exitSmoothSeconds,
+                        cameraDt);
+                    if (MATH::Length(secondaryPivotVelocity) <=
+                        kViewEpsilon) {
+                        framingSwitchActive = false;
+                    }
+                }
+                if (framingSwitchActive) {
+                    framingSwitchRemainingSeconds = (std::max)(
+                        framingSwitchRemainingSeconds - cameraDt,
+                        0.0f);
+                    if (framingSwitchRemainingSeconds <= kInputEpsilon) {
+                        framingSwitchActive = false;
+                    }
+                } else {
+                    framingSwitchRemainingSeconds = 0.0f;
+                }
+
+                const float currentFramingWeight = previousFramingWeight;
+                float framingWeightVelocity = hadFramingState
+                    ? component.GetRuntimeFramingWeightVelocity()
+                    : 0.0f;
+                const float desiredFramingWeight =
+                    secondaryTarget != nullptr && hasFramingSubmission
+                    ? std::clamp(targetFraming.weight, 0.0f, 1.0f)
+                    : 0.0f;
+                const float framingWeightSmoothSeconds =
+                    desiredFramingWeight > currentFramingWeight + kInputEpsilon
+                    ? framingDynamics.enterSmoothSeconds
+                    : framingDynamics.exitSmoothSeconds;
+                const float framingWeight = SmoothDampScalar(
+                    currentFramingWeight,
+                    desiredFramingWeight,
+                    framingWeightVelocity,
+                    framingWeightSmoothSeconds,
+                    -1.0f,
+                    cameraDt);
+                const float clampedFramingWeight = std::clamp(
+                    framingWeight,
+                    0.0f,
+                    1.0f);
+                const bool hasTargetFraming =
+                    secondaryTarget != nullptr &&
+                    hasFramingSubmission &&
+                    desiredFramingWeight > kInputEpsilon;
+                const bool framingResponseActive =
+                    desiredFramingWeight > kInputEpsilon ||
+                    clampedFramingWeight > kInputEpsilon ||
+                    MATH::Length(component.GetRuntimeFramingFocusOffset()) >
+                        kViewEpsilon;
 
                 float yaw = component.GetRuntimeYawDegrees();
                 float pitch = component.GetRuntimePitchDegrees();
@@ -280,15 +618,33 @@ namespace HIKARI {
                 float zoom = 0.0f;
                 bool recenterPressed = false;
                 if (input != nullptr && component.IsOrbitInputEnabled()) {
+                    const float inputRestore = 1.0f - clampedFramingWeight;
                     if (!component.GetLookActionId().empty()) {
                         look = input->GetAxis2D(
                             component.GetLookActionId());
+                        if (suppressOrbitInput) {
+                            look[0] *= inputRestore;
+                            look[1] *= inputRestore;
+                        }
                     }
                     if (!component.GetZoomActionId().empty()) {
                         zoom = input->GetAxis1D(
                             component.GetZoomActionId());
+                        if (suppressZoomInput) {
+                            zoom *= inputRestore;
+                        }
                     }
-                    if (!component.GetRecenterActionId().empty()) {
+                    if (!std::isfinite(look[0])) {
+                        look[0] = 0.0f;
+                    }
+                    if (!std::isfinite(look[1])) {
+                        look[1] = 0.0f;
+                    }
+                    if (!std::isfinite(zoom)) {
+                        zoom = 0.0f;
+                    }
+                    if (!component.GetRecenterActionId().empty() &&
+                        inputRestore > kInputEpsilon) {
                         recenterPressed = input->IsPressed(
                             component.GetRecenterActionId());
                     }
@@ -302,10 +658,10 @@ namespace HIKARI {
                         input->GetLastActiveDevice() ==
                             INPUT::InputDeviceKind::Gamepad;
                     const float yawAmount = gamepadLook
-                        ? component.GetYawSpeedDegreesPerSecond() * dt
+                        ? component.GetYawSpeedDegreesPerSecond() * cameraDt
                         : component.GetMouseSensitivityDegreesPerPixel();
                     const float pitchAmount = gamepadLook
-                        ? component.GetPitchSpeedDegreesPerSecond() * dt
+                        ? component.GetPitchSpeedDegreesPerSecond() * cameraDt
                         : component.GetMouseSensitivityDegreesPerPixel();
                     // Orbit direction points from the target to the camera,
                     // so it turns opposite to the viewed direction.
@@ -315,7 +671,71 @@ namespace HIKARI {
                     pitch += look[1] * verticalSign * pitchAmount;
                     lookIdleSeconds = 0.0f;
                 } else {
-                    lookIdleSeconds += dt;
+                    lookIdleSeconds += cameraDt;
+                }
+
+                float framingYawVelocity = hadFramingState
+                    ? component.GetRuntimeFramingYawVelocity()
+                    : 0.0f;
+                float framingPitchVelocity = hadFramingState
+                    ? component.GetRuntimeFramingPitchVelocity()
+                    : 0.0f;
+                if (framingResponseActive) {
+                    MATH::Vec3 targetDirection = secondaryPivot - pivot;
+                    targetDirection.y = 0.0f;
+                    if (framingYawSpeed <= kInputEpsilon) {
+                        framingYawVelocity = 0.0f;
+                    } else if (MATH::IsFinite(targetDirection) &&
+                        MATH::Length(targetDirection) > kViewEpsilon) {
+                        targetDirection = MATH::Normalize(targetDirection);
+                        const float targetYaw = -RadiansToDegrees(std::atan2(
+                            targetDirection.x,
+                            targetDirection.z));
+                        const float yawError = WrapDegrees(targetYaw - yaw);
+                        const float deadZone = std::clamp(
+                            framingDynamics.yawDeadZoneDegrees,
+                            0.0f,
+                            180.0f);
+                        const float outsideDeadZone = (std::max)(
+                            std::abs(yawError) - deadZone,
+                            0.0f);
+                        const float yawTarget = yaw +
+                            (yawError >= 0.0f ? 1.0f : -1.0f) *
+                            outsideDeadZone * clampedFramingWeight;
+                        yaw = SmoothDampAngle(
+                            yaw,
+                            yawTarget,
+                            framingYawVelocity,
+                            framingDynamics.yawSmoothSeconds,
+                            (std::max)(
+                                framingYawSpeed,
+                                0.0f) * clampedFramingWeight,
+                            cameraDt);
+                    } else {
+                        framingYawVelocity = 0.0f;
+                    }
+                    const float preferredPitch = std::clamp(
+                        framingPreferredPitch,
+                        component.GetMinimumPitchDegrees(),
+                        component.GetMaximumPitchDegrees());
+                    const float pitchTarget = pitch +
+                        (preferredPitch - pitch) * clampedFramingWeight;
+                    if (framingPitchTrackingSpeed <= kInputEpsilon) {
+                        framingPitchVelocity = 0.0f;
+                    } else {
+                        pitch = SmoothDampScalar(
+                            pitch,
+                            pitchTarget,
+                            framingPitchVelocity,
+                            framingDynamics.pitchSmoothSeconds,
+                            framingPitchTrackingSpeed *
+                                clampedFramingWeight,
+                            cameraDt);
+                    }
+                    lookIdleSeconds = 0.0f;
+                } else {
+                    framingYawVelocity = 0.0f;
+                    framingPitchVelocity = 0.0f;
                 }
 
                 if (std::abs(zoom) > kInputEpsilon) {
@@ -323,7 +743,7 @@ namespace HIKARI {
                         input->GetLastActiveDevice() ==
                             INPUT::InputDeviceKind::Gamepad;
                     const float zoomAmount = gamepadZoom
-                        ? component.GetZoomSpeedUnitsPerSecond() * dt
+                        ? component.GetZoomSpeedUnitsPerSecond() * cameraDt
                         : component.GetMouseWheelZoomUnitsPerStep();
                     desiredDistance -= zoom * zoomAmount;
                 }
@@ -345,6 +765,8 @@ namespace HIKARI {
                         motionIntent) &&
                     motionIntent.move.y < kBackwardMovementThreshold;
                 const bool automaticRecenter =
+                    !hasTargetFraming &&
+                    clampedFramingWeight <= kInputEpsilon &&
                     component.IsAutoRecenterEnabled() &&
                     !movingBackward &&
                     targetSpeed > 0.05f &&
@@ -353,7 +775,8 @@ namespace HIKARI {
                 if (recenterPressed || automaticRecenter) {
                     const float recenterDelta = recenterPressed
                         ? 360.0f
-                        : component.GetAutoRecenterSpeedDegreesPerSecond() * dt;
+                        : component.GetAutoRecenterSpeedDegreesPerSecond() *
+                            cameraDt;
                     yaw = MoveTowardsAngle(
                         yaw,
                         ResolveTargetYawDegrees(targetWorld),
@@ -371,11 +794,53 @@ namespace HIKARI {
                     component.GetRuntimeFollowPivot() +
                     (pivot - component.GetRuntimeFollowPivot()) *
                         followAmount;
-                const float lookAmount = SmoothFactor(
-                    component.GetLookSmooth(), dt);
-                const MATH::Vec3 lookAt = component.GetRuntimeLookAt() +
-                    (pivot - component.GetRuntimeLookAt()) * lookAmount;
+                MATH::Vec3 focusVelocity = hadFramingState
+                    ? component.GetRuntimeFramingFocusVelocity()
+                    : MATH::Vec3{};
+                MATH::Vec3 focusOffset = hadFramingState
+                    ? component.GetRuntimeFramingFocusOffset()
+                    : MATH::Vec3{};
+                const float focusWeight =
+                    std::clamp(framingTargetWeight, 0.0f, 1.0f) *
+                    clampedFramingWeight;
+                const MATH::Vec3 desiredFocusOffset =
+                    (secondaryPivot - followPivot) * focusWeight;
+                focusOffset = SmoothDampVector(
+                    focusOffset,
+                    desiredFocusOffset,
+                    focusVelocity,
+                    framingDynamics.focusSmoothSeconds,
+                    cameraDt);
+                const bool focusResponseActive = framingResponseActive ||
+                    MATH::Length(focusOffset) > kViewEpsilon ||
+                    MATH::Length(focusVelocity) > kViewEpsilon;
+                const MATH::Vec3 lookAt = focusResponseActive
+                    ? followPivot + focusOffset
+                    : component.GetRuntimeLookAt() +
+                        (pivot - component.GetRuntimeLookAt()) *
+                        SmoothFactor(component.GetLookSmooth(), dt);
                 const MATH::Vec3 orbitDirection = OrbitDirection(yaw, pitch);
+
+                float framingDistance = desiredDistance;
+                if (secondaryTarget != nullptr) {
+                    MATH::Vec3 separation = secondaryPivot - pivot;
+                    separation.y = 0.0f;
+                    const float separationLength = MATH::Length(separation);
+                    const float scaledSeparation =
+                        std::isfinite(separationLength)
+                        ? separationLength * framingDistanceScale
+                        : framingMaximumDistanceOffset;
+                    const float distanceOffset = std::min(
+                        framingMaximumDistanceOffset,
+                        std::isfinite(scaledSeparation)
+                        ? scaledSeparation
+                        : framingMaximumDistanceOffset);
+                    framingDistance = std::clamp(
+                        desiredDistance +
+                            distanceOffset * clampedFramingWeight,
+                        component.GetMinimumDistance(),
+                        component.GetMaximumDistance());
+                }
 
                 bool collisionLimited = false;
                 const float collisionDistance = ResolveCollisionDistance(
@@ -384,16 +849,48 @@ namespace HIKARI {
                     *target,
                     followPivot,
                     orbitDirection,
-                    desiredDistance,
+                    framingDistance,
                     collisionLimited);
                 float resolvedDistance = component.GetRuntimeDistance();
-                if (collisionLimited &&
-                    collisionDistance < resolvedDistance) {
+                float distanceVelocity = hadFramingState
+                    ? component.GetRuntimeFramingDistanceVelocity()
+                    : 0.0f;
+                if (!std::isfinite(resolvedDistance)) {
+                    resolvedDistance = framingDistance;
+                    distanceVelocity = 0.0f;
+                }
+                const bool collisionPushIn = collisionLimited &&
+                    collisionDistance < resolvedDistance;
+                if (collisionPushIn) {
                     resolvedDistance = collisionDistance;
+                    distanceVelocity = 0.0f;
+                } else if (framingResponseActive ||
+                    (component.WasCollisionLimited() &&
+                        !collisionLimited)) {
+                    const bool releasingCollision =
+                        component.WasCollisionLimited() &&
+                        !collisionLimited;
+                    const bool expanding =
+                        collisionDistance > resolvedDistance;
+                    const float smoothSeconds = releasingCollision
+                        ? framingDynamics.distanceContractSmoothSeconds
+                        : (expanding
+                            ? framingDynamics.distanceExpandSmoothSeconds
+                            : framingDynamics.distanceContractSmoothSeconds);
+                    resolvedDistance = SmoothDampScalar(
+                        resolvedDistance,
+                        collisionDistance,
+                        distanceVelocity,
+                        smoothSeconds,
+                        -1.0f,
+                        cameraDt);
                 } else {
                     resolvedDistance +=
                         (collisionDistance - resolvedDistance) *
                         SmoothFactor(component.GetDistanceSmooth(), dt);
+                    // The ordinary world-follow path owns distance directly;
+                    // do not retain a stale framing spring velocity here.
+                    distanceVelocity = 0.0f;
                 }
 
                 const MATH::Vec3 eye =
@@ -410,6 +907,31 @@ namespace HIKARI {
                     lookAt,
                     collisionLimited);
                 component.SetRuntimeTracking(followPivot, pivot);
+                component.SetRuntimeFramingState(
+                    hasFramingSubmission,
+                    framingTarget,
+                    framingSourceId,
+                    framingPriority,
+                    framingDynamics,
+                    framingTargetWeight,
+                    framingDistanceScale,
+                    framingMaximumDistanceOffset,
+                    framingYawSpeed,
+                    framingPreferredPitch,
+                    framingPitchTrackingSpeed,
+                    suppressOrbitInput,
+                    suppressZoomInput,
+                    framingSwitchActive,
+                    framingSwitchRemainingSeconds,
+                    secondaryPivot,
+                    clampedFramingWeight,
+                    framingWeightVelocity,
+                    secondaryPivotVelocity,
+                    framingYawVelocity,
+                    framingPitchVelocity,
+                    focusOffset,
+                    focusVelocity,
+                    distanceVelocity);
 
                 CAMERA::CameraRigSubmission submission{};
                 submission.cameraObjectId =

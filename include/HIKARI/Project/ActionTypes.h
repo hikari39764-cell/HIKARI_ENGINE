@@ -96,6 +96,16 @@ namespace HIKARI {
         uint8_t reserved = 0u;
     };
 
+    // Optional, per-fixed-tick collision policy for one kinematic move. A
+    // valid ignored object is excluded only while the submitted move is
+    // solved; every other body and the following tick retain normal
+    // collision. Reserved fields must remain zero.
+    struct GameProjectKinematicCollisionOptions {
+        uint64_t ignoredObjectHandle = 0u;
+        uint32_t reserved0 = 0u;
+        uint32_t reserved1 = 0u;
+    };
+
     // A collision-aware relative contribution consumed by the kinematic
     // character solver for one fixed tick. Translation is in world space;
     // rotation is a relative quaternion composed after locomotion facing.
@@ -218,6 +228,54 @@ namespace HIKARI {
         float weight = 1.0f;
         uint8_t applyDuringOverride = 0u;
         uint8_t reserved[3] = { 0u, 0u, 0u };
+    };
+
+    // Last resolved gameplay camera pose. It is a value snapshot only and
+    // does not expose Camera3D or CameraDirector ownership across the SDK.
+    struct GameProjectCameraPose {
+        GameProjectFloat3 eye{};
+        GameProjectFloat3 target{ 0.0f, 0.0f, 1.0f };
+        GameProjectFloat3 up{ 0.0f, 1.0f, 0.0f };
+        float verticalFovRadians = 0.0f;
+        float aspectRatio = 1.0f;
+        uint32_t reserved = 0u;
+    };
+
+    // Secondary-subject composition for the built-in orbit-follow camera.
+    // The engine keeps ownership of the primary follow pivot, smoothing and
+    // collision. A zero camera handle applies to every active follow camera.
+    struct GameProjectCameraTargetFramingRequest {
+        uint64_t cameraObjectHandle = 0u;
+        uint64_t targetObjectHandle = 0u;
+        uint64_t sourceId = 0u;
+        int32_t priority = 0;
+        GameProjectFloat3 targetPivotOffset{ 0.0f, 1.0f, 0.0f };
+        float targetWeight = 0.45f;
+        float yawTrackingSpeedDegreesPerSecond = 540.0f;
+        float preferredPitchDegrees = 17.0f;
+        float pitchTrackingSpeedDegreesPerSecond = 240.0f;
+        float distanceScale = 0.18f;
+        float maximumDistanceOffset = 2.0f;
+        float weight = 1.0f;
+        uint8_t suppressOrbitInput = 1u;
+        uint8_t suppressZoomInput = 1u;
+        uint8_t reserved[6] = { 0u, 0u, 0u, 0u, 0u, 0u };
+    };
+
+    // Optional response profile for secondary-subject framing. Keeping this
+    // separate preserves the SDK 1.8 request layout and lets old callers use
+    // the engine-owned default profile.
+    struct GameProjectCameraTargetFramingDynamics {
+        float enterSmoothSeconds = 0.24f;
+        float exitSmoothSeconds = 0.20f;
+        float targetSwitchSmoothSeconds = 0.18f;
+        float yawSmoothSeconds = 0.14f;
+        float pitchSmoothSeconds = 0.20f;
+        float focusSmoothSeconds = 0.10f;
+        float distanceExpandSmoothSeconds = 0.12f;
+        float distanceContractSmoothSeconds = 0.26f;
+        float yawDeadZoneDegrees = 1.5f;
+        uint32_t reserved[4] = { 0u, 0u, 0u, 0u };
     };
 
     struct GameProjectTimeDilationRequest {

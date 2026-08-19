@@ -62,7 +62,8 @@ namespace HIKARI::PHYSICS::JOLT_BACKEND {
         bool RefreshCharacterGroundVelocity(
             PhysicsCharacterHandle character) override;
         bool RefreshCharacterContacts(
-            PhysicsCharacterHandle character) override;
+            PhysicsCharacterHandle character,
+            RuntimeObjectHandle ignoredCollisionObject = {}) override;
         bool StepCharacter(
             PhysicsCharacterHandle character,
             float fixedDeltaSeconds,
@@ -105,6 +106,9 @@ namespace HIKARI::PHYSICS::JOLT_BACKEND {
             RuntimeObjectHandle object{};
             PhysicsCharacterDesc desc{};
             JPH::Ref<JPH::CharacterVirtual> character{};
+            // Set only while this character is synchronously refreshing or
+            // solving one fixed tick. Never use it as authored collision data.
+            RuntimeObjectHandle activeStepIgnoredObject{};
         };
 
         struct ContactKey {
@@ -170,17 +174,24 @@ namespace HIKARI::PHYSICS::JOLT_BACKEND {
             const BodyRecord& body,
             const JPH::SubShapeID& subShapeId,
             uint32_t& outIndex) const noexcept;
+        bool SetActiveCharacterIgnoredObject(
+            PhysicsCharacterHandle character,
+            RuntimeObjectHandle ignoredCollisionObject) noexcept;
+        void ClearActiveCharacterIgnoredObject(
+            PhysicsCharacterHandle character) noexcept;
         bool PassesQueryFilter(
             const BodyRecord& body,
             uint32_t shapeIndex,
             const PhysicsQueryFilter& filter) const noexcept;
         bool CharacterFilterAcceptsBody(
             const PhysicsCharacterDesc& character,
-            const JPH::Body& body) const noexcept;
+            const JPH::Body& body,
+            RuntimeObjectHandle ignoredCollisionObject = {}) const noexcept;
         bool CharacterFilterAcceptsShape(
             const PhysicsCharacterDesc& character,
             const JPH::BodyID& bodyId,
-            const JPH::SubShapeID& subShapeId) const noexcept;
+            const JPH::SubShapeID& subShapeId,
+            RuntimeObjectHandle ignoredCollisionObject = {}) const noexcept;
         void FillCharacterState(
             const CharacterRecord& record,
             PhysicsCharacterState& outState) const noexcept;

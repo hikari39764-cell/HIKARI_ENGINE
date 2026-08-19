@@ -37,12 +37,14 @@ namespace HIKARI::CAMERA {
         frameIndex_ = frameIndex;
         poses_.clear();
         modifiers_.clear();
+        targetFramings_.clear();
     }
 
     void CameraRigService::Clear() noexcept {
         frameIndex_ = 0u;
         poses_.clear();
         modifiers_.clear();
+        targetFramings_.clear();
     }
 
     bool CameraRigService::SubmitPose(
@@ -95,6 +97,31 @@ namespace HIKARI::CAMERA {
         return true;
     }
 
+    bool CameraRigService::SubmitTargetFraming(
+        const CameraTargetFramingSubmission& submission) {
+
+        if (submission.sourceId == 0u ||
+            !submission.targetObject.IsValid() ||
+            !IsValidTargetFraming(submission)) {
+            return false;
+        }
+
+        const auto existing = std::find_if(
+            targetFramings_.begin(),
+            targetFramings_.end(),
+            [&submission](const CameraTargetFramingSubmission& candidate) {
+                return candidate.cameraObjectId ==
+                        submission.cameraObjectId &&
+                    candidate.sourceId == submission.sourceId;
+            });
+        if (existing != targetFramings_.end()) {
+            *existing = submission;
+        } else {
+            targetFramings_.push_back(submission);
+        }
+        return true;
+    }
+
     bool CameraRigService::TryResolvePose(
         SceneObjectId cameraObjectId,
         CameraRigSubmission& outSubmission) const noexcept {
@@ -102,6 +129,33 @@ namespace HIKARI::CAMERA {
         const CameraRigSubmission* winner = nullptr;
         for (const CameraRigSubmission& submission : poses_) {
             if (!(submission.cameraObjectId == cameraObjectId)) {
+                continue;
+            }
+            if (winner == nullptr ||
+                IsPreferred(
+                    submission.priority,
+                    submission.sourceId,
+                    winner->priority,
+                    winner->sourceId)) {
+                winner = &submission;
+            }
+        }
+        if (winner == nullptr) {
+            return false;
+        }
+        outSubmission = *winner;
+        return true;
+    }
+
+    bool CameraRigService::TryResolveTargetFraming(
+        SceneObjectId cameraObjectId,
+        CameraTargetFramingSubmission& outSubmission) const noexcept {
+
+        const CameraTargetFramingSubmission* winner = nullptr;
+        for (const CameraTargetFramingSubmission& submission :
+                targetFramings_) {
+            if (submission.cameraObjectId.value != 0u &&
+                !(submission.cameraObjectId == cameraObjectId)) {
                 continue;
             }
             if (winner == nullptr ||
@@ -292,6 +346,51 @@ namespace HIKARI::CAMERA {
             std::isfinite(modifier.verticalFovOffsetRadians) &&
             std::isfinite(modifier.localRollRadians) &&
             std::isfinite(modifier.weight);
+    }
+
+    bool CameraRigService::IsValidTargetFraming(
+        const CameraTargetFramingSubmission& submission) noexcept {
+
+        return MATH::IsFinite(submission.targetPivotOffset) &&
+            std::isfinite(submission.targetWeight) &&
+            submission.targetWeight >= 0.0f &&
+            submission.targetWeight <= 1.0f &&
+            std::isfinite(
+                submission.yawTrackingSpeedDegreesPerSecond) &&
+            submission.yawTrackingSpeedDegreesPerSecond >= 0.0f &&
+            std::isfinite(submission.preferredPitchDegrees) &&
+            std::isfinite(
+                submission.pitchTrackingSpeedDegreesPerSecond) &&
+            submission.pitchTrackingSpeedDegreesPerSecond >= 0.0f &&
+            std::isfinite(submission.distanceScale) &&
+            submission.distanceScale >= 0.0f &&
+            std::isfinite(submission.maximumDistanceOffset) &&
+            submission.maximumDistanceOffset >= 0.0f &&
+            std::isfinite(submission.weight) &&
+            submission.weight >= 0.0f &&
+            submission.weight <= 1.0f &&
+            std::isfinite(submission.dynamics.enterSmoothSeconds) &&
+            submission.dynamics.enterSmoothSeconds >= 0.0f &&
+            std::isfinite(submission.dynamics.exitSmoothSeconds) &&
+            submission.dynamics.exitSmoothSeconds >= 0.0f &&
+            std::isfinite(
+                submission.dynamics.targetSwitchSmoothSeconds) &&
+            submission.dynamics.targetSwitchSmoothSeconds >= 0.0f &&
+            std::isfinite(submission.dynamics.yawSmoothSeconds) &&
+            submission.dynamics.yawSmoothSeconds >= 0.0f &&
+            std::isfinite(submission.dynamics.pitchSmoothSeconds) &&
+            submission.dynamics.pitchSmoothSeconds >= 0.0f &&
+            std::isfinite(submission.dynamics.focusSmoothSeconds) &&
+            submission.dynamics.focusSmoothSeconds >= 0.0f &&
+            std::isfinite(
+                submission.dynamics.distanceExpandSmoothSeconds) &&
+            submission.dynamics.distanceExpandSmoothSeconds >= 0.0f &&
+            std::isfinite(
+                submission.dynamics.distanceContractSmoothSeconds) &&
+            submission.dynamics.distanceContractSmoothSeconds >= 0.0f &&
+            std::isfinite(submission.dynamics.yawDeadZoneDegrees) &&
+            submission.dynamics.yawDeadZoneDegrees >= 0.0f &&
+            submission.dynamics.yawDeadZoneDegrees <= 180.0f;
     }
 
 } // namespace HIKARI::CAMERA

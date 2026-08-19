@@ -62,6 +62,7 @@ namespace HIKARI {
         secondaryClip_ = {};
         secondaryWeight_ = 0.0f;
         ClearTransition();
+        ResetMaskedPoseLayer();
     }
 
     void AnimatorComponent::Play(std::string clip, bool loop, bool restart) {
@@ -224,6 +225,7 @@ namespace HIKARI {
     }
 
     void AnimatorComponent::Advance(float deltaTimeSec, float clipDurationSec) {
+        AdvanceMaskedPoseLayer(deltaTimeSec);
         if (!playing_ || clip_.IsEmpty()) {
             return;
         }
@@ -311,6 +313,7 @@ namespace HIKARI {
         bind(secondaryClip_);
         bind(transitionSourceClip_);
         bind(transitionSourceSecondaryClip_);
+        bind(maskedPoseLayer_.clip);
     }
 
     void AnimatorComponent::SetTime(float timeSec) {
@@ -439,6 +442,144 @@ namespace HIKARI {
         transitionDurationSec_ = 0.0f;
         transitionElapsedSec_ = 0.0f;
         transitionSourceLoop_ = true;
+    }
+
+    void AnimatorComponent::SetMaskedPoseLayer(
+        std::string clipName,
+        std::string maskRootNodeName,
+        float normalizedTime,
+        float targetWeight,
+        float blendSeconds) {
+        if (clipName.empty() || maskRootNodeName.empty()) {
+            ResetMaskedPoseLayer();
+            return;
+        }
+
+        const float safeNormalizedTime = std::isfinite(normalizedTime)
+            ? std::clamp(normalizedTime, 0.0f, 1.0f)
+            : 0.0f;
+        const float safeTargetWeight = std::isfinite(targetWeight)
+            ? std::clamp(targetWeight, 0.0f, 1.0f)
+            : 0.0f;
+        const float safeBlendSeconds = std::isfinite(blendSeconds)
+            ? (std::max)(0.0f, blendSeconds)
+            : 0.0f;
+
+        MaskedPoseLayerState& layer = maskedPoseLayer_;
+        const bool sameLayer = layer.active &&
+            layer.clip.fallbackName == clipName &&
+            layer.maskRootNodeName == maskRootNodeName;
+        const bool targetChanged = !sameLayer ||
+            std::abs(layer.targetWeight - safeTargetWeight) > 1.0e-5f;
+
+        if (!sameLayer) {
+            layer.clip = {};
+            layer.clip.fallbackName = std::move(clipName);
+            layer.maskRootNodeName = std::move(maskRootNodeName);
+            layer.currentWeight = 0.0f;
+            layer.blendStartWeight = 0.0f;
+            layer.blendElapsedSec = 0.0f;
+        }
+
+        layer.active = true;
+        layer.normalizedTime = safeNormalizedTime;
+        if (targetChanged) {
+            layer.targetWeight = safeTargetWeight;
+            layer.blendStartWeight = layer.currentWeight;
+            layer.blendDurationSec = safeBlendSeconds;
+            layer.blendElapsedSec = 0.0f;
+            if (safeBlendSeconds <= 1.0e-5f) {
+                layer.currentWeight = safeTargetWeight;
+                layer.blendStartWeight = safeTargetWeight;
+                if (safeTargetWeight <= 0.0f) {
+                    ResetMaskedPoseLayer();
+                }
+            }
+        }
+    }
+
+    void AnimatorComponent::ClearMaskedPoseLayer(float blendOutSeconds) {
+        if (!maskedPoseLayer_.active) {
+            return;
+        }
+        const float safeBlendSeconds = std::isfinite(blendOutSeconds)
+            ? (std::max)(0.0f, blendOutSeconds)
+            : 0.0f;
+        if (safeBlendSeconds <= 1.0e-5f ||
+            maskedPoseLayer_.currentWeight <= 1.0e-5f) {
+            ResetMaskedPoseLayer();
+            return;
+        }
+        if (maskedPoseLayer_.targetWeight <= 1.0e-5f &&
+            std::abs(maskedPoseLayer_.blendDurationSec -
+                safeBlendSeconds) <= 1.0e-5f) {
+            return;
+        }
+        maskedPoseLayer_.targetWeight = 0.0f;
+        maskedPoseLayer_.blendStartWeight =
+            maskedPoseLayer_.currentWeight;
+        maskedPoseLayer_.blendDurationSec = safeBlendSeconds;
+        maskedPoseLayer_.blendElapsedSec = 0.0f;
+    }
+
+    const AnimatorComponent::MaskedPoseLayerState&
+        AnimatorComponent::GetMaskedPoseLayer() const noexcept {
+        return maskedPoseLayer_;
+    }
+
+    void AnimatorComponent::AdvanceMaskedPoseLayer(
+        float deltaTimeSec) noexcept {
+        MaskedPoseLayerState& layer = maskedPoseLayer_;
+        if (!layer.active) {
+            return;
+        }
+        if (!std::isfinite(layer.currentWeight) ||
+            !std::isfinite(layer.targetWeight) ||
+            !std::isfinite(layer.blendDurationSec)) {
+            ResetMaskedPoseLayer();
+            return;
+        }
+
+        const float safeDelta = std::isfinite(deltaTimeSec)
+            ? (std::max)(0.0f, deltaTimeSec)
+            : 0.0f;
+        const float safeTarget = std::clamp(
+            layer.targetWeight,
+            0.0f,
+            1.0f);
+        const float safeDuration = (std::max)(
+            0.0f,
+            layer.blendDurationSec);
+        layer.targetWeight = safeTarget;
+
+        if (safeDuration <= 1.0e-5f) {
+            layer.currentWeight = safeTarget;
+            layer.blendStartWeight = safeTarget;
+        } else if (safeDelta > 0.0f &&
+            std::abs(layer.currentWeight - safeTarget) > 1.0e-5f) {
+            layer.blendElapsedSec = (std::min)(
+                safeDuration,
+                layer.blendElapsedSec + safeDelta);
+            const float amount = std::clamp(
+                layer.blendElapsedSec / safeDuration,
+                0.0f,
+                1.0f);
+            layer.currentWeight = layer.blendStartWeight +
+                (safeTarget - layer.blendStartWeight) * amount;
+        }
+
+        layer.currentWeight = std::clamp(
+            layer.currentWeight,
+            0.0f,
+            1.0f);
+        if (safeTarget <= 1.0e-5f &&
+            layer.currentWeight <= 1.0e-5f) {
+            ResetMaskedPoseLayer();
+        }
+    }
+
+    void AnimatorComponent::ResetMaskedPoseLayer() noexcept {
+        maskedPoseLayer_ = {};
     }
 
 } // namespace HIKARI

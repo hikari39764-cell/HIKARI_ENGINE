@@ -76,6 +76,53 @@ namespace HIKARI {
             return true;
         }
 
+        void ApplyMaskedPoseLayer(
+            const ModelAsset& model,
+            const AnimatorComponent::MaskedPoseLayerState& layer,
+            ANIMATION::AnimationLocalPose& inOutPose) {
+            if (!layer.active ||
+                layer.clip.IsEmpty() ||
+                layer.maskRootNodeName.empty() ||
+                !std::isfinite(layer.normalizedTime) ||
+                !std::isfinite(layer.currentWeight) ||
+                layer.currentWeight <= 0.0f) {
+                return;
+            }
+
+            const AnimationClip* clip =
+                ANIMATION::ResolveAnimationClip(model, layer.clip);
+            if (clip == nullptr ||
+                !std::isfinite(clip->durationSec) ||
+                clip->durationSec <= 0.0f) {
+                return;
+            }
+
+            ANIMATION::AnimationLocalPose overlayPose{};
+            const float sampleTime = std::clamp(
+                layer.normalizedTime,
+                0.0f,
+                1.0f) * clip->durationSec;
+            if (!ANIMATION::SampleAnimationClip(
+                    model,
+                    layer.clip,
+                    sampleTime,
+                    false,
+                    overlayPose)) {
+                return;
+            }
+
+            ANIMATION::AnimationLocalPose blended{};
+            if (ANIMATION::BlendAnimationPoseSubtree(
+                    model,
+                    inOutPose,
+                    overlayPose,
+                    layer.maskRootNodeName,
+                    layer.currentWeight,
+                    blended)) {
+                inOutPose = std::move(blended);
+            }
+        }
+
         MATH::Quat DivideRotation(
             const MATH::Quat& rotation,
             uint32_t stepCount) noexcept {
@@ -218,6 +265,12 @@ namespace HIKARI {
                         *modelAsset,
                         snapshot.localPose);
                 }
+                // Keep the post-transition base pose separate.  Root motion
+                // must be captured and stripped from this base pose before
+                // any masked overlay is applied; otherwise a guard layer
+                // could contaminate the fixed-step motion delta.
+                const ANIMATION::AnimationLocalPose basePose =
+                    snapshot.localPose;
                 snapshot.loop = animator.GetLoop();
                 snapshot.playbackSpeed = animator.GetSpeed();
                 snapshot.rootMotionEnabled =
@@ -233,7 +286,7 @@ namespace HIKARI {
                     snapshot.rootMotionEnabled &&
                     ANIMATION::POSE_EVALUATION::CaptureRootMotionSample(
                         *modelAsset,
-                        snapshot.localPose,
+                        basePose,
                         snapshot.rootMotionSample) &&
                     ANIMATION::POSE_EVALUATION::StripRootMotionFromPose(
                         *modelAsset,
@@ -271,6 +324,13 @@ namespace HIKARI {
                             snapshot.rootMotion = rootMotion;
                         }
                     }
+                }
+
+                if (snapshot.valid) {
+                    ApplyMaskedPoseLayer(
+                        *modelAsset,
+                        animator.GetMaskedPoseLayer(),
+                        snapshot.localPose);
                 }
                 const bool poseChanged = poseService_->Publish(
                     object.GetRuntimeHandle(),

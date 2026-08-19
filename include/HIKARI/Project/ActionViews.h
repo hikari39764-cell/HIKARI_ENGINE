@@ -63,6 +63,24 @@ namespace HIKARI {
             uint64_t objectHandle) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool Stop(
             uint64_t objectHandle) const noexcept;
+        // Sets the authored clip playback multiplier. Values outside the
+        // supported positive range are rejected rather than clamped.
+        HIKARI_GAME_PROJECT_SDK_API bool SetSpeed(
+            uint64_t objectHandle,
+            float speed) const noexcept;
+        // Applies one animation pose to a model-node subtree while the base
+        // Animator keeps advancing. Names are consumed synchronously and the
+        // layer remains owned by the target Animator until cleared.
+        HIKARI_GAME_PROJECT_SDK_API bool SetMaskedPoseLayer(
+            uint64_t objectHandle,
+            std::string_view clipName,
+            std::string_view maskRootNodeName,
+            float normalizedTime,
+            float targetWeight,
+            float blendSeconds) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool ClearMaskedPoseLayer(
+            uint64_t objectHandle,
+            float blendOutSeconds) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool SetRootMotionEnabled(
             uint64_t objectHandle,
             uint8_t enabled) const noexcept;
@@ -93,6 +111,11 @@ namespace HIKARI {
 
         HIKARI_GAME_PROJECT_SDK_API bool SubmitKinematicMove(
             const GameProjectKinematicMove& move) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool
+            SubmitKinematicMoveWithCollisionOptions(
+                const GameProjectKinematicMove& move,
+                const GameProjectKinematicCollisionOptions& options)
+                const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool SubmitMotionDelta(
             const GameProjectKinematicMotionDelta& delta) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool GetKinematicState(
@@ -138,6 +161,15 @@ namespace HIKARI {
             const GameProjectCameraModifier& modifier) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool SubmitRollModifier(
             const GameProjectCameraRollModifier& modifier) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool GetControlPose(
+            GameProjectCameraPose& outPose) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool SubmitTargetFraming(
+            const GameProjectCameraTargetFramingRequest& request)
+            const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool SubmitTargetFramingWithDynamics(
+            const GameProjectCameraTargetFramingRequest& request,
+            const GameProjectCameraTargetFramingDynamics& dynamics)
+            const noexcept;
 
     private:
         friend struct GameProjectSdkAccess;

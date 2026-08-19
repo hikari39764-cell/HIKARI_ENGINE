@@ -201,7 +201,8 @@ namespace HIKARI::PHYSICS {
                 binding.kinematicJumpActive = false;
             }
             (void)service_->RefreshCharacterContacts(
-                binding.kinematicSolver);
+                binding.kinematicSolver,
+                request.ignoredCollisionObject);
             (void)service_->RefreshCharacterGroundVelocity(
                 binding.kinematicSolver);
 
@@ -302,6 +303,8 @@ namespace HIKARI::PHYSICS {
             }
             PhysicsCharacterStepSettings step{};
             step.gravity = gravity;
+            step.ignoredCollisionObject =
+                request.ignoredCollisionObject;
             // Step and floor-snap helpers are ground traversal policies. A
             // jump keeps them disabled for its complete airborne lifecycle,
             // including descent, until the solver confirms a real landing.

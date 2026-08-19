@@ -18,6 +18,7 @@
 #include "Physics/HIKARI_KinematicMotionService.h"
 #include "Physics/HIKARI_PhysicsTypes.h"
 #include "Physics/HIKARI_PhysicsWorldService.h"
+#include "Render3D/Core/HIKARI_Camera3D.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
 #include "Runtime/Services/HIKARI_ActionTimeDilationService.h"
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
@@ -25,6 +26,7 @@
 #include "Scene/Camera/HIKARI_CameraRigService.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_RuntimeObjectHandle.h"
+#include "Scene/HIKARI_RuntimeWorldServices.h"
 #include "Scene/HIKARI_SceneObjectId.h"
 #include "Scene/HIKARI_World.h"
 #include "Scene/Components/HIKARI_AnimatorComponent.h"
@@ -139,6 +141,24 @@ namespace HIKARI {
                 : nullptr;
             return asset == nullptr ||
                 asset->FindAnimationClip(clipName) != nullptr;
+        }
+
+        bool HasNodeIfModelLoaded(
+            const GameObject& object,
+            std::string_view nodeName) noexcept {
+            const ModelComponent* model = object.GetComponent<
+                ModelComponent>();
+            const ModelAsset* asset = model != nullptr
+                ? model->GetModelAsset()
+                : nullptr;
+            if (asset == nullptr) {
+                return true;
+            }
+            return std::ranges::any_of(
+                asset->nodes,
+                [nodeName](const ModelNode& node) noexcept {
+                    return node.name == nodeName;
+                });
         }
 
         uint64_t ResolvePublicClipId(
@@ -614,6 +634,93 @@ namespace HIKARI {
         }
     }
 
+    bool AnimationView::SetSpeed(
+        uint64_t objectHandle,
+        float speed) const noexcept {
+        try {
+            if (!std::isfinite(speed) || speed < 0.05f || speed > 4.0f) {
+                return false;
+            }
+            GameObject* object = FindObject(
+                static_cast<World*>(world_), objectHandle);
+            AnimatorComponent* animator = object != nullptr
+                ? object->GetComponent<AnimatorComponent>()
+                : nullptr;
+            if (animator == nullptr) {
+                return false;
+            }
+            animator->SetSpeed(speed);
+            return true;
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
+    bool AnimationView::SetMaskedPoseLayer(
+        uint64_t objectHandle,
+        std::string_view clipName,
+        std::string_view maskRootNodeName,
+        float normalizedTime,
+        float targetWeight,
+        float blendSeconds) const noexcept {
+        try {
+            if (clipName.empty() || maskRootNodeName.empty() ||
+                !std::isfinite(normalizedTime) ||
+                normalizedTime < 0.0f || normalizedTime > 1.0f ||
+                !std::isfinite(targetWeight) ||
+                targetWeight < 0.0f || targetWeight > 1.0f ||
+                !IsFiniteNonNegative(blendSeconds)) {
+                return false;
+            }
+            GameObject* object = FindObject(
+                static_cast<World*>(world_), objectHandle);
+            if (object == nullptr ||
+                !HasClipIfModelLoaded(*object, clipName) ||
+                !HasNodeIfModelLoaded(*object, maskRootNodeName)) {
+                return false;
+            }
+            AnimatorComponent* animator = object->GetComponent<
+                AnimatorComponent>();
+            if (animator == nullptr) {
+                return false;
+            }
+            animator->SetMaskedPoseLayer(
+                std::string(clipName),
+                std::string(maskRootNodeName),
+                normalizedTime,
+                targetWeight,
+                blendSeconds);
+            return true;
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
+    bool AnimationView::ClearMaskedPoseLayer(
+        uint64_t objectHandle,
+        float blendOutSeconds) const noexcept {
+        try {
+            if (!IsFiniteNonNegative(blendOutSeconds)) {
+                return false;
+            }
+            GameObject* object = FindObject(
+                static_cast<World*>(world_), objectHandle);
+            AnimatorComponent* animator = object != nullptr
+                ? object->GetComponent<AnimatorComponent>()
+                : nullptr;
+            if (animator == nullptr) {
+                return false;
+            }
+            animator->ClearMaskedPoseLayer(blendOutSeconds);
+            return true;
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
     bool AnimationView::SetRootMotionEnabled(
         uint64_t objectHandle,
         uint8_t enabled) const noexcept {
@@ -832,12 +939,20 @@ namespace HIKARI {
 
     bool MotionView::SubmitKinematicMove(
         const GameProjectKinematicMove& move) const noexcept {
+        return SubmitKinematicMoveWithCollisionOptions(move, {});
+    }
+
+    bool MotionView::SubmitKinematicMoveWithCollisionOptions(
+        const GameProjectKinematicMove& move,
+        const GameProjectKinematicCollisionOptions& options) const noexcept {
         try {
             if (world_ == nullptr || move.sourceId == 0u ||
                 !IsFinite(move.horizontalVelocity) ||
                 !IsFinite(move.desiredRotation) ||
                 !IsFiniteNonNegative(move.jumpSpeed) ||
                 !IsFinitePositive(move.maximumFallSpeed) ||
+                options.reserved0 != 0u ||
+                options.reserved1 != 0u ||
                 (move.hasDesiredRotation != 0u &&
                     !IsFiniteNonZeroRotation(move.desiredRotation))) {
                 return false;
@@ -845,6 +960,13 @@ namespace HIKARI {
             World* world = static_cast<World*>(world_);
             GameObject* object = FindObject(world, move.objectHandle);
             if (object == nullptr) {
+                return false;
+            }
+            GameObject* ignoredObject = options.ignoredObjectHandle != 0u
+                ? FindObject(world, options.ignoredObjectHandle)
+                : nullptr;
+            if (options.ignoredObjectHandle != 0u &&
+                (ignoredObject == nullptr || ignoredObject == object)) {
                 return false;
             }
             PHYSICS::KinematicMotionService* service = world->Services().Find<
@@ -861,6 +983,9 @@ namespace HIKARI {
             request.jumpRequested = move.jumpRequested != 0u;
             request.allowJumpWithoutGroundContact =
                 move.allowJumpWithoutGroundContact != 0u;
+            request.ignoredCollisionObject = ignoredObject != nullptr
+                ? ignoredObject->GetRuntimeHandle()
+                : RuntimeObjectHandle{};
             service->SubmitMove(
                 object->GetRuntimeHandle(),
                 move.sourceId,
@@ -1153,6 +1278,163 @@ namespace HIKARI {
             submission.applyDuringOverride =
                 modifier.applyDuringOverride != 0u;
             return service->SubmitModifier(submission);
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
+    bool CameraView::GetControlPose(
+        GameProjectCameraPose& outPose) const noexcept {
+        outPose = {};
+        try {
+            if (world_ == nullptr) {
+                return false;
+            }
+            World* world = static_cast<World*>(world_);
+            GameplayCameraService* service = world->Services().Find<
+                GameplayCameraService>();
+            if (service == nullptr || service->camera == nullptr ||
+                !service->IsRuntimeCameraActive()) {
+                return false;
+            }
+            const Camera3D& camera = *service->camera;
+            const MATH::Vec3 eye = camera.GetPosition();
+            const MATH::Vec3 target = camera.GetTarget();
+            const MATH::Vec3 up = camera.GetUp();
+            const float fov = camera.GetFovYRad();
+            const float aspect = camera.GetAspect();
+            if (!MATH::IsFinite(eye) || !MATH::IsFinite(target) ||
+                !MATH::IsFinite(up) || !std::isfinite(fov) ||
+                !std::isfinite(aspect) || aspect <= 0.0f ||
+                MATH::Length(target - eye) <= kDirectionEpsilon ||
+                MATH::Length(up) <= kDirectionEpsilon ||
+                std::abs(MATH::Dot(
+                    MATH::Normalize(target - eye),
+                    MATH::Normalize(up))) >= 0.999f) {
+                return false;
+            }
+            outPose.eye = ToProject(eye);
+            outPose.target = ToProject(target);
+            outPose.up = ToProject(up);
+            outPose.verticalFovRadians = fov;
+            outPose.aspectRatio = aspect;
+            return true;
+        }
+        catch (...) {
+            outPose = {};
+            return false;
+        }
+    }
+
+    bool CameraView::SubmitTargetFraming(
+        const GameProjectCameraTargetFramingRequest& request)
+        const noexcept {
+        return SubmitTargetFramingWithDynamics(request, {});
+    }
+
+    bool CameraView::SubmitTargetFramingWithDynamics(
+        const GameProjectCameraTargetFramingRequest& request,
+        const GameProjectCameraTargetFramingDynamics& dynamics)
+        const noexcept {
+        try {
+            if (world_ == nullptr || request.sourceId == 0u ||
+                request.targetObjectHandle == 0u ||
+                !IsFinite(request.targetPivotOffset) ||
+                !std::isfinite(request.targetWeight) ||
+                request.targetWeight < 0.0f ||
+                request.targetWeight > 1.0f ||
+                !std::isfinite(
+                    request.yawTrackingSpeedDegreesPerSecond) ||
+                request.yawTrackingSpeedDegreesPerSecond < 0.0f ||
+                !std::isfinite(request.preferredPitchDegrees) ||
+                !std::isfinite(
+                    request.pitchTrackingSpeedDegreesPerSecond) ||
+                request.pitchTrackingSpeedDegreesPerSecond < 0.0f ||
+                !std::isfinite(request.distanceScale) ||
+                request.distanceScale < 0.0f ||
+                !std::isfinite(request.maximumDistanceOffset) ||
+                request.maximumDistanceOffset < 0.0f ||
+                !std::isfinite(request.weight) ||
+                request.weight < 0.0f || request.weight > 1.0f ||
+                !std::isfinite(dynamics.enterSmoothSeconds) ||
+                dynamics.enterSmoothSeconds < 0.0f ||
+                !std::isfinite(dynamics.exitSmoothSeconds) ||
+                dynamics.exitSmoothSeconds < 0.0f ||
+                !std::isfinite(dynamics.targetSwitchSmoothSeconds) ||
+                dynamics.targetSwitchSmoothSeconds < 0.0f ||
+                !std::isfinite(dynamics.yawSmoothSeconds) ||
+                dynamics.yawSmoothSeconds < 0.0f ||
+                !std::isfinite(dynamics.pitchSmoothSeconds) ||
+                dynamics.pitchSmoothSeconds < 0.0f ||
+                !std::isfinite(dynamics.focusSmoothSeconds) ||
+                dynamics.focusSmoothSeconds < 0.0f ||
+                !std::isfinite(dynamics.distanceExpandSmoothSeconds) ||
+                dynamics.distanceExpandSmoothSeconds < 0.0f ||
+                !std::isfinite(dynamics.distanceContractSmoothSeconds) ||
+                dynamics.distanceContractSmoothSeconds < 0.0f ||
+                !std::isfinite(dynamics.yawDeadZoneDegrees) ||
+                dynamics.yawDeadZoneDegrees < 0.0f ||
+                dynamics.yawDeadZoneDegrees > 180.0f) {
+                return false;
+            }
+
+            World* world = static_cast<World*>(world_);
+            GameObject* target = FindObject(
+                world,
+                request.targetObjectHandle);
+            CAMERA::CameraRigService* service = world->Services().Find<
+                CAMERA::CameraRigService>();
+            if (target == nullptr || service == nullptr) {
+                return false;
+            }
+
+            CAMERA::CameraTargetFramingSubmission submission{};
+            if (!ToCameraObjectId(
+                    *world,
+                    request.cameraObjectHandle,
+                    submission.cameraObjectId)) {
+                return false;
+            }
+            submission.targetObject = target->GetRuntimeHandle();
+            submission.sourceId = request.sourceId;
+            submission.priority = request.priority;
+            submission.targetPivotOffset = ToRuntime(
+                request.targetPivotOffset);
+            submission.targetWeight = request.targetWeight;
+            submission.yawTrackingSpeedDegreesPerSecond =
+                request.yawTrackingSpeedDegreesPerSecond;
+            submission.preferredPitchDegrees =
+                request.preferredPitchDegrees;
+            submission.pitchTrackingSpeedDegreesPerSecond =
+                request.pitchTrackingSpeedDegreesPerSecond;
+            submission.distanceScale = request.distanceScale;
+            submission.maximumDistanceOffset =
+                request.maximumDistanceOffset;
+            submission.weight = request.weight;
+            submission.suppressOrbitInput =
+                request.suppressOrbitInput != 0u;
+            submission.suppressZoomInput =
+                request.suppressZoomInput != 0u;
+            submission.dynamics.enterSmoothSeconds =
+                dynamics.enterSmoothSeconds;
+            submission.dynamics.exitSmoothSeconds =
+                dynamics.exitSmoothSeconds;
+            submission.dynamics.targetSwitchSmoothSeconds =
+                dynamics.targetSwitchSmoothSeconds;
+            submission.dynamics.yawSmoothSeconds =
+                dynamics.yawSmoothSeconds;
+            submission.dynamics.pitchSmoothSeconds =
+                dynamics.pitchSmoothSeconds;
+            submission.dynamics.focusSmoothSeconds =
+                dynamics.focusSmoothSeconds;
+            submission.dynamics.distanceExpandSmoothSeconds =
+                dynamics.distanceExpandSmoothSeconds;
+            submission.dynamics.distanceContractSmoothSeconds =
+                dynamics.distanceContractSmoothSeconds;
+            submission.dynamics.yawDeadZoneDegrees =
+                dynamics.yawDeadZoneDegrees;
+            return service->SubmitTargetFraming(submission);
         }
         catch (...) {
             return false;

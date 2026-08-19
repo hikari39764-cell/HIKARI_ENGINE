@@ -96,8 +96,34 @@ namespace HIKARI {
         float GetTransitionSourceSpeed() const noexcept;
         bool GetTransitionSourceLoop() const noexcept;
 
+        struct MaskedPoseLayerState {
+            ANIMATION::AnimationClipReference clip{};
+            std::string maskRootNodeName{};
+            float normalizedTime = 0.0f;
+            float currentWeight = 0.0f;
+            float targetWeight = 0.0f;
+            float blendStartWeight = 0.0f;
+            float blendDurationSec = 0.0f;
+            float blendElapsedSec = 0.0f;
+            bool active = false;
+        };
+
+        // The game-facing bridge uses these narrow methods to drive one
+        // transient upper-body (or other subtree) overlay.  The base
+        // Animator timeline remains independent and may continue advancing.
+        void SetMaskedPoseLayer(
+            std::string clipName,
+            std::string maskRootNodeName,
+            float normalizedTime,
+            float targetWeight,
+            float blendSeconds);
+        void ClearMaskedPoseLayer(float blendOutSeconds = 0.0f);
+        const MaskedPoseLayerState& GetMaskedPoseLayer() const noexcept;
+
     private:
         void ClearTransition() noexcept;
+        void AdvanceMaskedPoseLayer(float deltaTimeSec) noexcept;
+        void ResetMaskedPoseLayer() noexcept;
 
         ANIMATION::AnimationClipReference clip_{};
         ANIMATION::AnimationClipReference secondaryClip_{};
@@ -119,6 +145,8 @@ namespace HIKARI {
         float transitionDurationSec_ = 0.0f;
         float transitionElapsedSec_ = 0.0f;
         bool transitionSourceLoop_ = true;
+
+        MaskedPoseLayerState maskedPoseLayer_{};
     };
 
 } // namespace HIKARI

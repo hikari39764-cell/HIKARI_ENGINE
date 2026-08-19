@@ -183,9 +183,12 @@ namespace HIKARI::PHYSICS {
     }
 
     bool PhysicsWorldService::RefreshCharacterContacts(
-        PhysicsCharacterHandle character) {
+        PhysicsCharacterHandle character,
+        RuntimeObjectHandle ignoredCollisionObject) {
         return backend_ && world_ != nullptr && character.IsValid() &&
-            backend_->RefreshCharacterContacts(character);
+            backend_->RefreshCharacterContacts(
+                character,
+                ignoredCollisionObject);
     }
 
     bool PhysicsWorldService::StepCharacter(

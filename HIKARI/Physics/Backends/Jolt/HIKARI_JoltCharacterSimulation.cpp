@@ -32,9 +32,11 @@ namespace HIKARI::PHYSICS::JOLT_BACKEND {
     public:
         CharacterBodyFilter(
             const JoltPhysicsBackend& owner,
-            PhysicsCharacterDesc desc) noexcept
+            PhysicsCharacterDesc desc,
+            RuntimeObjectHandle ignoredCollisionObject) noexcept
             : owner_(owner),
-              desc_(std::move(desc)) {
+              desc_(std::move(desc)),
+              ignoredCollisionObject_(ignoredCollisionObject) {
         }
 
         bool ShouldCollide(const JPH::BodyID&) const override {
@@ -43,13 +45,49 @@ namespace HIKARI::PHYSICS::JOLT_BACKEND {
 
         bool ShouldCollideLocked(const JPH::Body& body) const override {
             std::scoped_lock lock(owner_.recordsMutex_);
-            return owner_.CharacterFilterAcceptsBody(desc_, body);
+            return owner_.CharacterFilterAcceptsBody(
+                desc_,
+                body,
+                ignoredCollisionObject_);
         }
 
     private:
         const JoltPhysicsBackend& owner_;
         PhysicsCharacterDesc desc_{};
+        RuntimeObjectHandle ignoredCollisionObject_{};
     };
+
+    bool JoltPhysicsBackend::SetActiveCharacterIgnoredObject(
+        PhysicsCharacterHandle character,
+        RuntimeObjectHandle ignoredCollisionObject) noexcept {
+        try {
+            std::scoped_lock lock(recordsMutex_);
+            CharacterRecord* record = FindCharacter(character);
+            if (record == nullptr || !record->character) {
+                return false;
+            }
+            record->activeStepIgnoredObject = ignoredCollisionObject;
+            return true;
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
+    void JoltPhysicsBackend::ClearActiveCharacterIgnoredObject(
+        PhysicsCharacterHandle character) noexcept {
+        try {
+            std::scoped_lock lock(recordsMutex_);
+            CharacterRecord* record = FindCharacter(character);
+            if (record != nullptr) {
+                record->activeStepIgnoredObject = {};
+            }
+        }
+        catch (...) {
+            // The fixed-step caller must not rethrow from cleanup. A failed
+            // lock is not expected during the serialized physics phase.
+        }
+    }
 
     bool JoltPhysicsBackend::RefreshCharacterGroundVelocity(
         PhysicsCharacterHandle handle) {
@@ -63,7 +101,8 @@ namespace HIKARI::PHYSICS::JOLT_BACKEND {
     }
 
     bool JoltPhysicsBackend::RefreshCharacterContacts(
-        PhysicsCharacterHandle handle) {
+        PhysicsCharacterHandle handle,
+        RuntimeObjectHandle ignoredCollisionObject) {
         PhysicsCharacterDesc desc{};
         JPH::Ref<JPH::CharacterVirtual> character{};
         {
@@ -74,21 +113,33 @@ namespace HIKARI::PHYSICS::JOLT_BACKEND {
             }
             desc = record->desc;
             character = record->character;
+            record->activeStepIgnoredObject = ignoredCollisionObject;
         }
-        CharacterBodyFilter bodyFilter(*this, desc);
-        // ShapeFilter is evaluated at every level of a compound hierarchy.
-        // Authored Collider metadata only exists on the final leaf, so trying
-        // to resolve it here rejects intermediate nodes before Jolt reaches
-        // the actual collision shape. BodyFilter provides the coarse reject;
-        // CharacterContactListener validates the final leaf and its mask.
-        JPH::ShapeFilter hierarchyFilter{};
-        character->RefreshContacts(
-            physicsSystem_->GetDefaultBroadPhaseLayerFilter(
-                kCharacterLayer),
-            physicsSystem_->GetDefaultLayerFilter(kCharacterLayer),
-            bodyFilter,
-            hierarchyFilter,
-            *tempAllocator_);
+        try {
+            CharacterBodyFilter bodyFilter(
+                *this,
+                desc,
+                ignoredCollisionObject);
+            // ShapeFilter is evaluated at every level of a compound hierarchy.
+            // Authored Collider metadata only exists on the final leaf, so
+            // trying to resolve it here rejects intermediate nodes before
+            // Jolt reaches the actual collision shape. BodyFilter provides
+            // the coarse reject.
+            // CharacterContactListener validates the final leaf and its mask.
+            JPH::ShapeFilter hierarchyFilter{};
+            character->RefreshContacts(
+                physicsSystem_->GetDefaultBroadPhaseLayerFilter(
+                    kCharacterLayer),
+                physicsSystem_->GetDefaultLayerFilter(kCharacterLayer),
+                bodyFilter,
+                hierarchyFilter,
+                *tempAllocator_);
+        }
+        catch (...) {
+            ClearActiveCharacterIgnoredObject(handle);
+            return false;
+        }
+        ClearActiveCharacterIgnoredObject(handle);
         return true;
     }
 
@@ -127,18 +178,33 @@ namespace HIKARI::PHYSICS::JOLT_BACKEND {
             stepSettings.stepForwardTestDistance,
             0.0f);
 
-        CharacterBodyFilter bodyFilter(*this, desc);
-        JPH::ShapeFilter hierarchyFilter{};
-        character->ExtendedUpdate(
-            fixedDeltaSeconds,
-            ToJolt(stepSettings.gravity),
-            extended,
-            physicsSystem_->GetDefaultBroadPhaseLayerFilter(
-                kCharacterLayer),
-            physicsSystem_->GetDefaultLayerFilter(kCharacterLayer),
-            bodyFilter,
-            hierarchyFilter,
-            *tempAllocator_);
+        if (!SetActiveCharacterIgnoredObject(
+                handle,
+                stepSettings.ignoredCollisionObject)) {
+            return false;
+        }
+        try {
+            CharacterBodyFilter bodyFilter(
+                *this,
+                desc,
+                stepSettings.ignoredCollisionObject);
+            JPH::ShapeFilter hierarchyFilter{};
+            character->ExtendedUpdate(
+                fixedDeltaSeconds,
+                ToJolt(stepSettings.gravity),
+                extended,
+                physicsSystem_->GetDefaultBroadPhaseLayerFilter(
+                    kCharacterLayer),
+                physicsSystem_->GetDefaultLayerFilter(kCharacterLayer),
+                bodyFilter,
+                hierarchyFilter,
+                *tempAllocator_);
+        }
+        catch (...) {
+            ClearActiveCharacterIgnoredObject(handle);
+            return false;
+        }
+        ClearActiveCharacterIgnoredObject(handle);
         return true;
     }
 
