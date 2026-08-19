@@ -121,21 +121,24 @@ namespace HIKARI::EDITOR {
                 { "renderStatic", false }
             }
         });
+        nlohmann::json proceduralProperties{
+            { "kind", ToString(settings.kind) },
+            { "width", settings.width },
+            { "height", settings.height },
+            { "depth", settings.depth },
+            { "segmentsX", settings.segmentsX },
+            { "segmentsY", settings.segmentsY },
+            { "segmentsZ", settings.segmentsZ },
+            { "sphereSlices", settings.sphereSlices },
+            { "sphereStacks", settings.sphereStacks },
+            { "doubleSided", settings.doubleSided },
+            { "generateTangents", settings.generateTangents },
+            { "uvTilesX", settings.uvTilesX },
+            { "uvTilesY", settings.uvTilesY }
+        };
         object.components.push_back(SceneComponentData{
             "ProceduralMeshComponent",
-            {
-                { "kind", ToString(settings.kind) },
-                { "width", settings.width },
-                { "height", settings.height },
-                { "depth", settings.depth },
-                { "segmentsX", settings.segmentsX },
-                { "segmentsY", settings.segmentsY },
-                { "segmentsZ", settings.segmentsZ },
-                { "sphereSlices", settings.sphereSlices },
-                { "sphereStacks", settings.sphereStacks },
-                { "doubleSided", settings.doubleSided },
-                { "generateTangents", settings.generateTangents }
-            }
+            std::move(proceduralProperties)
         });
 
         if (request.addCollider) {

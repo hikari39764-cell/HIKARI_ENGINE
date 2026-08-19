@@ -9,12 +9,84 @@ float HikariSandSampleSurfaceHeight(
 {
     const float2 uv =
         localXZ / p.extents + 0.5f;
+    const float granularWeight =
+        HikariSandSampleGranularWeight(p, uv);
     const float totalHeight = HikariSandSampleHeight(p, uv);
     const float ripple = HikariEvaluateSandRippleHeight(
         localXZ,
-        p.rippleAmount,
+        p.rippleAmount * granularWeight,
         p.heightScale);
     return totalHeight + ripple;
+}
+
+float2 HikariResolveTerrainFacetSlope(
+    HikariSandSurfaceParams p,
+    float2 localXZ,
+    float2 smoothSlope)
+{
+    const HikariSandLayerStyle style =
+        HikariSandLoadLayerStyle(p, 0u);
+    const float strength = saturate(style.facetStrength);
+    if (strength <= 1.0e-5f)
+    {
+        return smoothSlope;
+    }
+
+    // 高密度 grid の各微小三角を flat 化せず、authoring された metre 尺度で
+    // 仮想 coarse cell を作る。各 cell は 2 枚の大きな三角平面を持ち、
+    // checkerboard diagonal で長い一方向の筋を避ける。
+    const float requestedSize = max(style.facetSizeMeters, 0.25f);
+    const float2 halfExtents = p.extents * 0.5f;
+    const float2 gridPosition =
+        max(localXZ + halfExtents, 0.0f.xx) / requestedSize;
+    const float2 cellIndex = floor(gridPosition);
+    const float2 cellMin = clamp(
+        cellIndex * requestedSize - halfExtents,
+        -halfExtents,
+        halfExtents);
+    const float2 cellMax = clamp(
+        cellMin + requestedSize,
+        -halfExtents,
+        halfExtents);
+    const float2 cellExtent = max(
+        cellMax - cellMin,
+        float2(1.0e-4f, 1.0e-4f));
+    const float2 cellUv = saturate(
+        (localXZ - cellMin) / cellExtent);
+
+    const float2 uv00 = cellMin / p.extents + 0.5f;
+    const float2 uv10 = float2(cellMax.x, cellMin.y) / p.extents + 0.5f;
+    const float2 uv01 = float2(cellMin.x, cellMax.y) / p.extents + 0.5f;
+    const float2 uv11 = cellMax / p.extents + 0.5f;
+    const float h00 = HikariSandSampleHeight(p, uv00);
+    const float h10 = HikariSandSampleHeight(p, uv10);
+    const float h01 = HikariSandSampleHeight(p, uv01);
+    const float h11 = HikariSandSampleHeight(p, uv11);
+
+    float2 facetSlope = smoothSlope;
+    const uint checker =
+        ((uint)cellIndex.x + (uint)cellIndex.y) & 1u;
+    if (checker == 0u)
+    {
+        facetSlope = cellUv.x + cellUv.y <= 1.0f
+            ? float2(
+                (h10 - h00) / cellExtent.x,
+                (h01 - h00) / cellExtent.y)
+            : float2(
+                (h11 - h01) / cellExtent.x,
+                (h11 - h10) / cellExtent.y);
+    }
+    else
+    {
+        facetSlope = cellUv.x <= cellUv.y
+            ? float2(
+                (h11 - h01) / cellExtent.x,
+                (h01 - h00) / cellExtent.y)
+            : float2(
+                (h10 - h00) / cellExtent.x,
+                (h11 - h10) / cellExtent.y);
+    }
+    return lerp(smoothSlope, facetSlope, strength);
 }
 
 void HikariApplySandSurfaceDeform(
@@ -46,6 +118,12 @@ void HikariApplySandSurfaceDeform(
     const float hU = HikariSandSampleHeight(p, uv + float2(0.0f, dv));
     float slopeX = (hR - hL) / (2.0f * cellX);
     float slopeZ = (hU - hD) / (2.0f * cellZ);
+    const float2 resolvedSlope = HikariResolveTerrainFacetSlope(
+        p,
+        localPosition.xz,
+        float2(slopeX, slopeZ));
+    slopeX = resolvedSlope.x;
+    slopeZ = resolvedSlope.y;
 
     const float totalHeight = HikariSandSampleSurfaceHeight(
         p,

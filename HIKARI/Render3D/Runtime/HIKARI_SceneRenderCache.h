@@ -50,6 +50,9 @@ namespace HIKARI::RENDER3D::RUNTIME {
 
         Bounds localBounds{};
         Bounds worldBounds{};
+        // World-space padding for render-only vertex displacement such as
+        // foliage wind. It affects culling bounds without changing geometry.
+        MATH::Vec3 worldBoundsPadding{};
 
         bool visible = true;
         bool isStatic = false;
@@ -71,6 +74,12 @@ namespace HIKARI::RENDER3D::RUNTIME {
 
         DirectX::XMFLOAT4 materialFxParamValues[VFX::kMaterialFxUserCount]{};
         bool materialFxValuesInitialized = false;
+
+        // Render-only foliage deformation contract. Parameters are
+        // (strength metres, speed, spatial frequency, reserved) and reuse
+        // SurfaceGpuScene::fxUser[0] without making MaterialFX the owner.
+        bool foliageWind = false;
+        MATH::Vec4 foliageWindParams{};
 
         // Renderer-owned typed input; Scene does not own the GPU slot layout.
         bool waterSurface = false;
@@ -140,9 +149,14 @@ namespace HIKARI::RENDER3D::RUNTIME {
         uint32_t postGroupMask = 0;
         DirectX::XMFLOAT4 materialFxParamValues[VFX::kMaterialFxUserCount]{};
         bool materialFxValuesInitialized = false;
+        bool foliageWind = false;
+        MATH::Vec4 foliageWindParams{};
         bool waterSurface = false;
         WATER::WaterSurfaceRenderData waterSurfaceData{};
         bool sandSurface = false;
+        // CPU-side residency only. A terrain whose atomic core could not be
+        // admitted must never be submitted as the neutral 2x2 sand tile.
+        bool sandSurfaceCoreResident = false;
         SAND::SandSurfaceRenderData sandSurfaceData{};
         std::shared_ptr<const std::vector<float>> sandSurfaceHeights{};
         std::shared_ptr<const std::vector<float>> sandSurfaceDeformations{};
@@ -242,7 +256,7 @@ namespace HIKARI::RENDER3D::RUNTIME {
         bool surfaceRoutingDirty_ = true;
         bool surfaceDataDirty_ = true;
         bool surfaceFloatPoolDirty_ = true;
-        std::vector<std::array<uint32_t, 9u>>
+        std::vector<std::array<uint32_t, 10u>>
             previousPackedSurfaceScratch_{};
         std::vector<uint32_t> sourceSandGridResolutionScratch_{};
         std::vector<uint8_t> terrainCoreResidentScratch_{};

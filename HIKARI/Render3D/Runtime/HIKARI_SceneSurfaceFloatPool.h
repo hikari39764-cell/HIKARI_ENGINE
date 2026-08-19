@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -113,24 +114,40 @@ namespace HIKARI::RENDER3D::RUNTIME {
                 (hasLayerWeights
                     ? static_cast<std::size_t>(packedLayerCount)
                     : 0u);
-            if (cellCount > GetRemaining() / fieldMultiplier) {
+            const uint32_t packedGridResolution = ResolveLargestResidentGrid(
+                gridResolution,
+                fieldMultiplier);
+            if (packedGridResolution == 0u) {
                 return result;
             }
-
-            result.gridResolution = gridResolution;
+            result.gridResolution = packedGridResolution;
             result.layerCount = packedLayerCount;
             result.heightOffset = CurrentOffset();
-            AppendExact(*fields.heights, 0u, cellCount);
+            AppendSquareField(
+                *fields.heights,
+                gridResolution,
+                packedGridResolution,
+                0u);
             if (hasLayerWeights) {
                 result.layerWeightsOffset = CurrentOffset();
-                AppendExact(
-                    *fields.layerWeights,
-                    0u,
-                    cellCount * packedLayerCount);
+                for (uint32_t layer = 0u;
+                    layer < packedLayerCount;
+                    ++layer) {
+
+                    AppendSquareField(
+                        *fields.layerWeights,
+                        gridResolution,
+                        packedGridResolution,
+                        static_cast<std::size_t>(layer) * cellCount);
+                }
             }
             if (hasCoverage) {
                 result.coverageOffset = CurrentOffset();
-                AppendExact(*fields.coverage, 0u, cellCount);
+                AppendSquareField(
+                    *fields.coverage,
+                    gridResolution,
+                    packedGridResolution,
+                    0u);
             }
             result.resident = true;
             return result;
@@ -152,6 +169,36 @@ namespace HIKARI::RENDER3D::RUNTIME {
             }
             outOffset = CurrentOffset();
             AppendExact(values, 0u, cellCount);
+            return true;
+        }
+
+        bool TryPackSquareFieldResampled(
+            const std::vector<float>& values,
+            uint32_t sourceGridResolution,
+            uint32_t targetGridResolution,
+            uint32_t& outOffset) {
+
+            outOffset = 0u;
+            const uint32_t safeSourceGrid =
+                (std::max)(sourceGridResolution, 1u);
+            const uint32_t safeTargetGrid =
+                (std::max)(targetGridResolution, 1u);
+            const std::size_t sourceCount =
+                ResolveSquareCellCount(safeSourceGrid);
+            const std::size_t targetCount =
+                ResolveSquareCellCount(safeTargetGrid);
+            if (!IsUsable() || safeSourceGrid > 512u ||
+                safeTargetGrid > safeSourceGrid || sourceCount == 0u ||
+                targetCount == 0u || values.size() < sourceCount ||
+                targetCount > GetRemaining()) {
+                return false;
+            }
+            outOffset = CurrentOffset();
+            AppendSquareField(
+                values,
+                safeSourceGrid,
+                safeTargetGrid,
+                0u);
             return true;
         }
 
@@ -185,6 +232,27 @@ namespace HIKARI::RENDER3D::RUNTIME {
         }
 
     private:
+        uint32_t ResolveLargestResidentGrid(
+            uint32_t requestedGridResolution,
+            std::size_t fieldMultiplier) const noexcept {
+
+            if (fieldMultiplier == 0u) {
+                return 0u;
+            }
+            const std::size_t availableCells =
+                GetRemaining() / fieldMultiplier;
+            if (availableCells < 4u) {
+                return 0u;
+            }
+            const double side = std::floor(std::sqrt(
+                static_cast<double>(availableCells)));
+            if (side < 2.0) {
+                return 0u;
+            }
+            const uint32_t budgetGrid = static_cast<uint32_t>(side) - 1u;
+            return (std::min)(requestedGridResolution, budgetGrid);
+        }
+
         uint32_t CurrentOffset() const noexcept {
             return destination_.size() <=
                 static_cast<std::size_t>((std::numeric_limits<uint32_t>::max)())
@@ -201,6 +269,57 @@ namespace HIKARI::RENDER3D::RUNTIME {
                 destination_.end(),
                 values.begin() + sourceOffset,
                 values.begin() + sourceOffset + count);
+        }
+
+        void AppendSquareField(
+            const std::vector<float>& values,
+            uint32_t sourceGridResolution,
+            uint32_t targetGridResolution,
+            std::size_t sourceOffset) {
+
+            if (sourceGridResolution == targetGridResolution) {
+                AppendExact(
+                    values,
+                    sourceOffset,
+                    ResolveSquareCellCount(sourceGridResolution));
+                return;
+            }
+
+            const uint32_t sourceStride = sourceGridResolution + 1u;
+            const uint32_t targetStride = targetGridResolution + 1u;
+            destination_.reserve(
+                destination_.size() +
+                ResolveSquareCellCount(targetGridResolution));
+            for (uint32_t z = 0u; z < targetStride; ++z) {
+                const float sourceZ =
+                    static_cast<float>(z) *
+                    static_cast<float>(sourceGridResolution) /
+                    static_cast<float>(targetGridResolution);
+                const uint32_t z0 = static_cast<uint32_t>(sourceZ);
+                const uint32_t z1 =
+                    (std::min)(z0 + 1u, sourceGridResolution);
+                const float tz = sourceZ - static_cast<float>(z0);
+                for (uint32_t x = 0u; x < targetStride; ++x) {
+                    const float sourceX =
+                        static_cast<float>(x) *
+                        static_cast<float>(sourceGridResolution) /
+                        static_cast<float>(targetGridResolution);
+                    const uint32_t x0 = static_cast<uint32_t>(sourceX);
+                    const uint32_t x1 =
+                        (std::min)(x0 + 1u, sourceGridResolution);
+                    const float tx = sourceX - static_cast<float>(x0);
+                    const auto sample = [&](uint32_t sx, uint32_t sz) {
+                        return values[
+                            sourceOffset +
+                            static_cast<std::size_t>(sz) * sourceStride + sx];
+                    };
+                    const float top = std::lerp(
+                        sample(x0, z0), sample(x1, z0), tx);
+                    const float bottom = std::lerp(
+                        sample(x0, z1), sample(x1, z1), tx);
+                    destination_.push_back(std::lerp(top, bottom, tz));
+                }
+            }
         }
 
         std::vector<float>& destination_;

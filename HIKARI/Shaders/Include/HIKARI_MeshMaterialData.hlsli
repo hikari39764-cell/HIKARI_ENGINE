@@ -226,6 +226,26 @@ float4 HikariSampleMaterialTexture(
 
     return gMaterialTexturePool[NonUniformResourceIndex(descriptorIndex)].Sample(samplerState, uv);
 }
+
+float4 HikariSampleMaterialTextureGrad(
+    uint descriptorIndex,
+    SamplerState samplerState,
+    float2 uv,
+    float2 uvDx,
+    float2 uvDy,
+    float4 fallbackValue)
+{
+    if (!HikariHasMaterialTexture(descriptorIndex))
+    {
+        return fallbackValue;
+    }
+
+    return gMaterialTexturePool[NonUniformResourceIndex(descriptorIndex)].SampleGrad(
+        samplerState,
+        uv,
+        uvDx,
+        uvDy);
+}
 #endif
 
 #endif

@@ -12,16 +12,35 @@ namespace HIKARI::RENDER3D::SAND {
             return std::isfinite(value) ? value : fallback;
         }
 
-        bool TintVectorsEqual(
-            const std::vector<MATH::Vec3>& lhs,
-            const std::vector<MATH::Vec3>& rhs) noexcept {
+        bool LayerStylesEqual(
+            const std::vector<SandSurfaceLayerRenderStyle>& lhs,
+            const std::vector<SandSurfaceLayerRenderStyle>& rhs) noexcept {
             if (lhs.size() != rhs.size()) {
                 return false;
             }
             for (std::size_t index = 0u; index < lhs.size(); ++index) {
-                if (lhs[index].x != rhs[index].x ||
-                    lhs[index].y != rhs[index].y ||
-                    lhs[index].z != rhs[index].z) {
+                const SandSurfaceLayerRenderStyle& a = lhs[index];
+                const SandSurfaceLayerRenderStyle& b = rhs[index];
+                if (a.lightTint.x != b.lightTint.x ||
+                    a.lightTint.y != b.lightTint.y ||
+                    a.lightTint.z != b.lightTint.z ||
+                    a.textureStrength != b.textureStrength ||
+                    a.darkTint.x != b.darkTint.x ||
+                    a.darkTint.y != b.darkTint.y ||
+                    a.darkTint.z != b.darkTint.z ||
+                    a.normalStrength != b.normalStrength ||
+                    a.atlasScaleBias.x != b.atlasScaleBias.x ||
+                    a.atlasScaleBias.y != b.atlasScaleBias.y ||
+                    a.atlasScaleBias.z != b.atlasScaleBias.z ||
+                    a.atlasScaleBias.w != b.atlasScaleBias.w ||
+                    a.tilesPerMeter != b.tilesPerMeter ||
+                    a.roughness != b.roughness ||
+                    a.saturation != b.saturation ||
+                    a.materialKind != b.materialKind ||
+                    a.shadowStrength != b.shadowStrength ||
+                    a.granularStrength != b.granularStrength ||
+                    a.facetSizeMeters != b.facetSizeMeters ||
+                    a.facetStrength != b.facetStrength) {
                     return false;
                 }
             }
@@ -54,10 +73,7 @@ namespace HIKARI::RENDER3D::SAND {
             lhs.layerCount == rhs.layerCount &&
             lhs.layerWeights == rhs.layerWeights &&
             lhs.coverage == rhs.coverage &&
-            TintVectorsEqual(
-                lhs.layerLightTints, rhs.layerLightTints) &&
-            TintVectorsEqual(
-                lhs.layerDarkTints, rhs.layerDarkTints);
+            LayerStylesEqual(lhs.layerStyles, rhs.layerStyles);
     }
 
     SandSurfaceGpuData BuildSandSurfaceGpuDataSentinel() noexcept {

@@ -1,0 +1,171 @@
+{
+  "schema": "hikari.engine_content_assets",
+  "version": 1,
+  "sources": [
+    {
+      "id": "ambientcg.ground054",
+      "name": "ambientCG Ground054 (Beach Sand)",
+      "version": "2022-06-06",
+      "license": "CC0-1.0",
+      "pageUrl": "https://ambientcg.com/view?id=Ground054",
+      "archiveUrl": "https://ambientcg.com/get?file=Ground054_1K-JPG.zip",
+      "archiveSha256": "B325EC2F167DCE95A0FABC61A2104641288CF20915419578C3EFDB46200C563E",
+      "licenseFile": "Terrain/Licenses/AmbientCG-CC0.txt"
+    },
+    {
+      "id": "ambientcg.ground101",
+      "name": "ambientCG Ground101 (Light Smooth Sand)",
+      "version": "2022-06-06",
+      "license": "CC0-1.0",
+      "pageUrl": "https://ambientcg.com/view?id=Ground101",
+      "archiveUrl": "https://ambientcg.com/get?file=Ground101_1K-JPG.zip",
+      "archiveSha256": "F4B3A519C79A54D3661335E2158AC1E1474C0CB5687C9537E8105FDE66D53539",
+      "licenseFile": "Terrain/Licenses/AmbientCG-CC0.txt"
+    },
+    {
+      "id": "ambientcg.grass004",
+      "name": "ambientCG Grass004 (Dense Lawn)",
+      "version": "2021-03-28",
+      "license": "CC0-1.0",
+      "pageUrl": "https://ambientcg.com/view?id=Grass004",
+      "archiveUrl": "https://ambientcg.com/get?file=Grass004_1K-JPG.zip",
+      "archiveSha256": "4B63495F459DB8481F4D5144E4E9069345C81CF898CC71F2216F5DD3BB344469",
+      "licenseFile": "Terrain/Licenses/AmbientCG-CC0.txt"
+    },
+    {
+      "id": "ambientcg.ground048",
+      "name": "ambientCG Ground048 (Brown Soil)",
+      "version": "2021-06-27",
+      "license": "CC0-1.0",
+      "pageUrl": "https://ambientcg.com/view?id=Ground048",
+      "archiveUrl": "https://ambientcg.com/get?file=Ground048_1K-JPG.zip",
+      "archiveSha256": "3DECFDD20E6C8F8C1FF02840CBD336922FCA678E23987111AF4BEBB0A7A89C96",
+      "licenseFile": "Terrain/Licenses/AmbientCG-CC0.txt"
+    },
+    {
+      "id": "ambientcg.rock030",
+      "name": "ambientCG Rock030 (Grey Layered Stone)",
+      "version": "2020-03-29",
+      "license": "CC0-1.0",
+      "pageUrl": "https://ambientcg.com/view?id=Rock030",
+      "archiveUrl": "https://ambientcg.com/get?file=Rock030_1K-JPG.zip",
+      "archiveSha256": "2FD0BC2D214E2487C19062ED0798A85DD135B41CFC12BBAED42D5ACAE238F989",
+      "licenseFile": "Terrain/Licenses/AmbientCG-CC0.txt"
+    }
+  ],
+  "sourceInputs": [
+    {
+      "sourceId": "ambientcg.grass004",
+      "path": "Terrain/Sources/Grass004_1K-JPG_Color.jpg",
+      "upstreamPath": "Grass004_1K-JPG_Color.jpg",
+      "sha256": "9E1C60DA44B34A9738B1256BA827541F097DC583521B1D281E61B5F4B4217BC5"
+    },
+    {
+      "sourceId": "ambientcg.grass004",
+      "path": "Terrain/Sources/Grass004_1K-JPG_NormalDX.jpg",
+      "upstreamPath": "Grass004_1K-JPG_NormalDX.jpg",
+      "sha256": "C375AB178FAA4DF0B0E0B13DABC5594AB8E8E8220A9D40E8815FF8E602EC058C"
+    },
+    {
+      "sourceId": "ambientcg.ground048",
+      "path": "Terrain/Sources/Ground048_1K-JPG_Color.jpg",
+      "upstreamPath": "Ground048_1K-JPG_Color.jpg",
+      "sha256": "5ED6949BBE77332E12F9FDCFCADCD1D851AE2240EA0A46196E9A171FAC201E8B"
+    },
+    {
+      "sourceId": "ambientcg.ground048",
+      "path": "Terrain/Sources/Ground048_1K-JPG_NormalDX.jpg",
+      "upstreamPath": "Ground048_1K-JPG_NormalDX.jpg",
+      "sha256": "4E2585F25DDDC2E735C312AB458E4345F311CAE938CE4BD217018723923E59EB"
+    },
+    {
+      "sourceId": "ambientcg.rock030",
+      "path": "Terrain/Sources/Rock030_1K-JPG_Color.jpg",
+      "upstreamPath": "Rock030_1K-JPG_Color.jpg",
+      "sha256": "1DCA8A336518CE0ADCA4B5CBE2AB30819C8769388F1C15278082A99F022C615A"
+    },
+    {
+      "sourceId": "ambientcg.rock030",
+      "path": "Terrain/Sources/Rock030_1K-JPG_NormalDX.jpg",
+      "upstreamPath": "Rock030_1K-JPG_NormalDX.jpg",
+      "sha256": "9A2FB25D9A3365D751AD6B5772CC2E6A3960AC58702978327EBA95A003BFE7EE"
+    }
+  ],
+  "derivations": [
+    {
+      "id": "hikari.terrain.layer_atlas_color",
+      "tool": "Tools/Scripts/Build-TerrainLayerAtlases.ps1",
+      "layout": "2x2: sand, dirt, grass, neutral-grey rock",
+      "tileSize": 1024,
+      "gutter": 8,
+      "rockSaturation": 0.28
+    },
+    {
+      "id": "hikari.terrain.layer_atlas_normal",
+      "tool": "Tools/Scripts/Build-TerrainLayerAtlases.ps1",
+      "layout": "2x2 DirectX NormalDX: sand, dirt, grass, rock",
+      "tileSize": 1024,
+      "gutter": 8
+    },
+    {
+      "id": "hikari.terrain.rock030_neutral_grey",
+      "tool": "Tools/Scripts/Build-TerrainLayerAtlases.ps1",
+      "rockSaturation": 0.28
+    }
+  ],
+  "assets": [
+    {
+      "id": "engine.terrain.texture.layer_atlas_albedo",
+      "type": "Texture",
+      "path": "Terrain/Textures/Cooked/TerrainLayer_Atlas_Color.htex",
+      "sourcePath": "Terrain/Textures/TerrainLayer_Atlas_Color.png",
+      "colorSpace": "Srgb",
+      "usage": "BaseColor",
+      "compression": "BC7",
+      "mipPolicy": "Generate",
+      "sourceId": "hikari.terrain.layer_atlas_color",
+      "sha256": "87C800EDDB0F23171C4CA16E82CDFC771DEAE19BF089469FEAB8ABE7B0629F91",
+      "sourceSha256": "C3258EEDCE80F4D0C8E0CD8BE9616DD7235C3F15E62764F320333FCAFE1462B7"
+    },
+    {
+      "id": "engine.terrain.texture.layer_atlas_normal",
+      "type": "Texture",
+      "path": "Terrain/Textures/Cooked/TerrainLayer_Atlas_NormalDX.htex",
+      "sourcePath": "Terrain/Textures/TerrainLayer_Atlas_NormalDX.png",
+      "colorSpace": "Linear",
+      "usage": "Normal",
+      "compression": "BC7",
+      "mipPolicy": "Generate",
+      "sourceId": "hikari.terrain.layer_atlas_normal",
+      "sha256": "5CF2803981B3F17CA0CE77B1494E65FB322E2A8739F01868F8E5BAA3482B6913",
+      "sourceSha256": "1A080D6AC98A538A4CAEEAA94A4FBC904D0278901B1C206E988B783D9CA687CD"
+    },
+    {
+      "id": "engine.terrain.texture.rock030_grey_albedo",
+      "type": "Texture",
+      "path": "Terrain/Textures/Cooked/Rock030_1K-NeutralGray_Color.htex",
+      "sourcePath": "Terrain/Textures/Rock030_1K-NeutralGray_Color.png",
+      "colorSpace": "Srgb",
+      "usage": "BaseColor",
+      "compression": "BC7",
+      "mipPolicy": "Generate",
+      "sourceId": "hikari.terrain.rock030_neutral_grey",
+      "sha256": "766638E104D81747794762F4F5753CC27532530131EC8F59260B6059F2D00B5F",
+      "sourceSha256": "687BCA23235488B31AACFC318D42C8BEAA443294CBB4B16B02FC56C5D696D25D"
+    },
+    {
+      "id": "engine.terrain.texture.rock030_normal",
+      "type": "Texture",
+      "path": "Terrain/Textures/Cooked/Rock030_1K-JPG_NormalDX.htex",
+      "sourcePath": "Terrain/Sources/Rock030_1K-JPG_NormalDX.jpg",
+      "colorSpace": "Linear",
+      "usage": "Normal",
+      "compression": "BC7",
+      "mipPolicy": "Generate",
+      "sourceId": "ambientcg.rock030",
+      "upstreamPath": "Rock030_1K-JPG_NormalDX.jpg",
+      "sha256": "80E8B28362D1AF7AB7C569843B4E2C2ABDC63236BCBDD22AF35A98A3C4FCBE64",
+      "sourceSha256": "9A2FB25D9A3365D751AD6B5772CC2E6A3960AC58702978327EBA95A003BFE7EE"
+    }
+  ]
+}

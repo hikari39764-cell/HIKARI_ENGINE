@@ -40,6 +40,7 @@ namespace HIKARI::RENDER3D::RUNTIME {
         Skinned = 1u << 16,
         SandSurface = 1u << 17,
         CameraCenteredOcean = 1u << 18,
+        FoliageWind = 1u << 19,
     };
 
     enum class SurfaceGpuSceneResourceFlags : uint32_t {

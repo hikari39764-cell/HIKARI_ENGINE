@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "Core/HIKARI_Logger.h"
+#include "Core/Math/HIKARI_MathValidation.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_World.h"
 #include "Scene/Sand/HIKARI_SandSurfaceTypes.h"
@@ -137,6 +138,7 @@ namespace HIKARI::PHYSICS {
             const TerrainSurfaceComponent& terrain) noexcept {
             TerrainCollisionProjection result{};
             result.object = object;
+            result.sourceRevision = terrain.GetCollisionRevision();
             result.authoredRevision = terrain.GetGeometryRevision();
             // 0 は source revision 無しに予約する。wrap 時も 0 を出さない。
             result.contentRevision =
@@ -403,7 +405,7 @@ namespace HIKARI::PHYSICS {
         private:
             bool ValidateVertex(
                 const CoverageVertex& vertex) const noexcept {
-                return IsFinite(vertex.position) &&
+                return MATH::IsFinite(vertex.position) &&
                     std::isfinite(vertex.coverage);
             }
 
@@ -508,7 +510,7 @@ namespace HIKARI::PHYSICS {
                         (static_cast<double>(high.position.z) -
                             low.position.z) * t)
                 };
-                if (!IsFinite(position)) {
+                if (!MATH::IsFinite(position)) {
                     Fail("coverage clip produced a non-finite vertex");
                     return kInvalidVertexIndex;
                 }
@@ -771,19 +773,19 @@ namespace HIKARI::PHYSICS {
                 const RuntimeObjectHandle handle =
                     object.GetRuntimeHandle();
                 const uint64_t key = handle.ToValue();
-                const uint64_t authoredRevision =
-                    terrain.GetGeometryRevision();
+                const uint64_t sourceRevision =
+                    terrain.GetCollisionRevision();
                 active.insert(key);
 
                 const auto found = entries_.find(key);
                 if (found != entries_.end() &&
-                    found->second.authoredRevision == authoredRevision) {
+                    found->second.sourceRevision == sourceRevision) {
                     rejectedRevisions_.erase(key);
                     return;
                 }
                 const auto rejected = rejectedRevisions_.find(key);
                 if (rejected != rejectedRevisions_.end() &&
-                    rejected->second == authoredRevision) {
+                    rejected->second == sourceRevision) {
                     return;
                 }
 
@@ -791,12 +793,12 @@ namespace HIKARI::PHYSICS {
                     BuildTerrainCollisionProjection(handle, terrain);
                 if (!projection.buildSucceeded) {
                     rejectedRevisions_.insert_or_assign(
-                        key, authoredRevision);
+                        key, sourceRevision);
                     HIKARI_LOG_WARN(
                         "[TerrainCollision] projection rejected object=" +
                         std::to_string(key) +
                         " revision=" +
-                        std::to_string(authoredRevision) +
+                        std::to_string(sourceRevision) +
                         " reason=" +
                         (projection.diagnostic.empty()
                             ? std::string("unknown build failure")

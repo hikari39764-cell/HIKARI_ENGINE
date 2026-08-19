@@ -22,7 +22,7 @@ namespace HIKARI::TERRAIN {
             return instance;
         }
 
-        // 既定の組み込み層（sand/snow/dirt）を登録する。
+        // 既定の組み込み層（sand/snow/dirt/grass/rock）を登録する。
         // アプリ起動時に一度だけ呼ぶ。冪等。
         void RegisterBuiltins() {
             if (initialized_) {
@@ -33,6 +33,8 @@ namespace HIKARI::TERRAIN {
             Register(MakeSandPreset());
             Register(MakeSnowPreset());
             Register(MakeDirtPreset());
+            Register(MakeGrassPreset());
+            Register(MakeRockPreset());
         }
 
         void Register(const SurfacePreset& preset) {

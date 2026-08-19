@@ -126,8 +126,10 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                     record.clusteredGeometryPath);
             }
 
-            uint64_t key = HashString("procedural-cluster-object");
-            key = HashAppend(key, record.objectId.value);
+            // procedural hcmesh は content-addressed path 単位で共有する。
+            // objectId を含めると scatter instance ごとに同じ GPU resource を
+            // 再登録し、terrain 再投影のたびに resource record が蓄積する。
+            uint64_t key = HashString("procedural-cluster-path");
             key = HashAppend(key, record.meshIndex);
             key = HashAppend(key, record.primitiveIndex);
             // 設定変更で別の hcmesh になるため、パスもキーに含める。
@@ -473,7 +475,9 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                 !usesCustomVertexShader;
             // Cluster-compatible MaterialFX, including the built-in water
             // deformation contract, stays on the mesh-shader route.
-            // 通常の Opaque / Mask / Blend は同じ Mesh Shader 本線で扱う。
+            // sand terrain は forward/depth/aux の shader 実装を共有しているが、
+            // runtime visibility 経路の実機検証が完了するまでは traditional
+            // VS/PS の authoritative route を維持する。
             // Blend のパス分割と深度書き込み無効化は key.transparent が所有する。
             key.clusterMainlineEligible =
                 !animatedPoseRecord &&
@@ -545,6 +549,10 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             if (record.skinned) {
                 flags |= ToInstanceFlag(RUNTIME::SurfaceGpuSceneInstanceFlags::Skinned);
             }
+            if (record.foliageWind) {
+                flags |= ToInstanceFlag(
+                    RUNTIME::SurfaceGpuSceneInstanceFlags::FoliageWind);
+            }
             return flags;
         }
 
@@ -570,6 +578,10 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                     instance.fxUser[i] = {
                         value.x, value.y, value.z, value.w };
                 }
+            }
+
+            if (record.foliageWind) {
+                instance.fxUser[0] = record.foliageWindParams;
             }
 
         }
@@ -808,7 +820,12 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         record.drawWorldMatrix = surfaceInstance.drawWorldMatrix;
         record.hasDrawWorldMatrix = surfaceInstance.hasDrawWorldMatrix;
         record.worldBounds = surfaceInstance.worldBounds;
-        record.visible = surfaceInstance.visible;
+        // Terrain core residency is atomic. Never route an overflowed terrain
+        // through offset-zero neutral data: that produces a convincing but
+        // false flat sand plane and masks the real capacity failure.
+        record.visible = surfaceInstance.visible &&
+            (!surfaceInstance.sandSurface ||
+                surfaceInstance.sandSurfaceCoreResident);
         record.isStatic = surfaceInstance.isStatic;
         record.hasRuntimeAnimation = surfaceInstance.hasRuntimeAnimation;
         record.animationPose = surfaceInstance.animationPose;
@@ -830,9 +847,12 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         for (size_t i = 0; i < VFX::kMaterialFxUserCount; ++i) {
             record.materialFxParamValues[i] = surfaceInstance.materialFxParamValues[i];
         }
+        record.foliageWind = surfaceInstance.foliageWind;
+        record.foliageWindParams = surfaceInstance.foliageWindParams;
         record.waterSurface = surfaceInstance.waterSurface;
         record.waterSurfaceData = surfaceInstance.waterSurfaceData;
-        record.sandSurface = surfaceInstance.sandSurface;
+        record.sandSurface = surfaceInstance.sandSurface &&
+            surfaceInstance.sandSurfaceCoreResident;
         record.sandSurfaceData = surfaceInstance.sandSurfaceData;
         record.sandSurfaceHeightOffset =
             surfaceInstance.sandSurfaceHeightOffset;

@@ -22,6 +22,8 @@
 namespace HIKARI {
 
     namespace {
+        constexpr float kPi = 3.14159265358979323846f;
+
         nlohmann::json SerializeVec3(const MATH::Vec3& value) {
             return nlohmann::json::array({ value.x, value.y, value.z });
         }
@@ -53,11 +55,16 @@ namespace HIKARI {
 
         std::vector<float> ReadFloatArray(
             const nlohmann::json& source,
-            const char* key) {
+            const char* key,
+            std::size_t maximumSize =
+                (std::numeric_limits<std::size_t>::max)()) {
             std::vector<float> out;
             if (const nlohmann::json* arr =
                     JSONREAD::FindMember(source, key);
                 arr != nullptr && arr->is_array()) {
+                if (arr->size() > maximumSize) {
+                    return out;
+                }
                 out.reserve(arr->size());
                 for (const nlohmann::json& v : *arr) {
                     out.push_back(v.is_number() ? v.get<float>() : 0.0f);
@@ -130,6 +137,187 @@ namespace HIKARI {
                 (localPos.z + radius - chunkOrigin.y) / safeCellSize)));
             return range;
         }
+
+        int ResolveSurfaceLayerIndex(std::string_view presetId) {
+            TERRAIN::SurfaceLayerRegistry::Get().RegisterBuiltins();
+            int index = TERRAIN::SurfaceLayerRegistry::Get().IndexOf(presetId);
+            if (index >= 0) {
+                return index;
+            }
+            const std::optional<TERRAIN::SurfacePreset> fallback =
+                TERRAIN::ResolveSurfacePreset(presetId);
+            if (!fallback.has_value()) {
+                return -1;
+            }
+            if (fallback->id == "sand") { return 0; }
+            if (fallback->id == "snow") { return 1; }
+            if (fallback->id == "dirt") { return 2; }
+            if (fallback->id == "grass") { return 3; }
+            if (fallback->id == "rock") { return 4; }
+            return -1;
+        }
+
+        bool Vec3Equal(
+            const MATH::Vec3& lhs,
+            const MATH::Vec3& rhs) noexcept {
+            return lhs.x == rhs.x && lhs.y == rhs.y && lhs.z == rhs.z;
+        }
+
+        bool TerrainMaterialEqual(
+            const TERRAIN::GranularMaterialParams& lhs,
+            const TERRAIN::GranularMaterialParams& rhs) noexcept {
+            return Vec3Equal(lhs.lightTint, rhs.lightTint) &&
+                Vec3Equal(lhs.darkTint, rhs.darkTint) &&
+                lhs.sparkleStrength == rhs.sparkleStrength &&
+                lhs.rippleAmount == rhs.rippleAmount &&
+                lhs.pitDarkening == rhs.pitDarkening &&
+                lhs.toonBandCount == rhs.toonBandCount &&
+                lhs.toonBandHardness == rhs.toonBandHardness;
+        }
+
+        bool TerrainStylizationEqual(
+            const TERRAIN::TerrainStylizationSettings& lhs,
+            const TERRAIN::TerrainStylizationSettings& rhs) noexcept {
+            return lhs.textureScale == rhs.textureScale &&
+                lhs.textureStrength == rhs.textureStrength &&
+                lhs.normalStrength == rhs.normalStrength &&
+                lhs.saturation == rhs.saturation &&
+                lhs.shadowStrength == rhs.shadowStrength &&
+                lhs.rockSaturation == rhs.rockSaturation &&
+                lhs.facetSizeMeters == rhs.facetSizeMeters &&
+                lhs.facetStrength == rhs.facetStrength;
+        }
+
+        bool TerrainDeformEqual(
+            const TERRAIN::DeformParams& lhs,
+            const TERRAIN::DeformParams& rhs) noexcept {
+            return lhs.behavior == rhs.behavior &&
+                lhs.maxDepth == rhs.maxDepth &&
+                lhs.stampRadius == rhs.stampRadius &&
+                lhs.rimStrength == rhs.rimStrength &&
+                lhs.responseResolutionScale == rhs.responseResolutionScale &&
+                lhs.restDepthScale == rhs.restDepthScale &&
+                lhs.minimumDepth == rhs.minimumDepth &&
+                lhs.settleStartRatio == rhs.settleStartRatio &&
+                lhs.settleSeconds == rhs.settleSeconds &&
+                lhs.impactDepthScale == rhs.impactDepthScale &&
+                lhs.rimWidthScale == rhs.rimWidthScale &&
+                lhs.refillPerSecond == rhs.refillPerSecond &&
+                lhs.diffusionPerSecond == rhs.diffusionPerSecond &&
+                lhs.plasticity == rhs.plasticity &&
+                lhs.plasticRefillPerSecond == rhs.plasticRefillPerSecond &&
+                lhs.recoveryDelaySeconds == rhs.recoveryDelaySeconds;
+        }
+
+        bool TerrainShorelineEqual(
+            const TERRAIN::ShorelineParams& lhs,
+            const TERRAIN::ShorelineParams& rhs) noexcept {
+            return lhs.edgeFalloff == rhs.edgeFalloff &&
+                lhs.edgeDepth == rhs.edgeDepth &&
+                lhs.wetness == rhs.wetness;
+        }
+
+        bool TerrainBrushEqual(
+            const TERRAIN::TerrainBrush& lhs,
+            const TERRAIN::TerrainBrush& rhs) noexcept {
+            return lhs.mode == rhs.mode &&
+                lhs.radius == rhs.radius &&
+                lhs.strength == rhs.strength &&
+                lhs.hardness == rhs.hardness &&
+                lhs.falloff == rhs.falloff &&
+                lhs.flattenHeight == rhs.flattenHeight &&
+                lhs.ridgeDirectionDegrees == rhs.ridgeDirectionDegrees &&
+                lhs.ridgeSharpness == rhs.ridgeSharpness &&
+                lhs.terraceStepHeight == rhs.terraceStepHeight;
+        }
+
+        bool TerrainGrassEqual(
+            const TERRAIN::TerrainGrassSettings& lhs,
+            const TERRAIN::TerrainGrassSettings& rhs) noexcept {
+            return lhs.enabled == rhs.enabled &&
+                lhs.density == rhs.density &&
+                lhs.bladeHeight == rhs.bladeHeight &&
+                lhs.bladeWidth == rhs.bladeWidth &&
+                lhs.heightVariation == rhs.heightVariation &&
+                lhs.layerWeightThreshold == rhs.layerWeightThreshold &&
+                lhs.maxSlopeDegrees == rhs.maxSlopeDegrees &&
+                lhs.windStrength == rhs.windStrength &&
+                lhs.windSpeed == rhs.windSpeed &&
+                lhs.spatialFrequency == rhs.spatialFrequency &&
+                lhs.seed == rhs.seed &&
+                lhs.maxClumps == rhs.maxClumps;
+        }
+
+        bool TerrainChunkGeometryEqual(
+            const TERRAIN::TerrainChunkMap& lhs,
+            const TERRAIN::TerrainChunkMap& rhs) {
+            if (lhs.size() != rhs.size()) {
+                return false;
+            }
+            auto left = lhs.begin();
+            auto right = rhs.begin();
+            for (; left != lhs.end(); ++left, ++right) {
+                if (left->first != right->first ||
+                    left->second.cells != right->second.cells ||
+                    left->second.heights != right->second.heights) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        bool TerrainChunkCoverageEqual(
+            const TERRAIN::TerrainChunkMap& lhs,
+            const TERRAIN::TerrainChunkMap& rhs) {
+            if (lhs.size() != rhs.size()) {
+                return false;
+            }
+            auto left = lhs.begin();
+            auto right = rhs.begin();
+            for (; left != lhs.end(); ++left, ++right) {
+                if (left->first != right->first ||
+                    left->second.cells != right->second.cells ||
+                    left->second.coverage != right->second.coverage) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        bool TerrainChunkLayersEqual(
+            const TERRAIN::TerrainChunkMap& lhs,
+            const TERRAIN::TerrainChunkMap& rhs) {
+            if (lhs.size() != rhs.size()) {
+                return false;
+            }
+            auto left = lhs.begin();
+            auto right = rhs.begin();
+            for (; left != lhs.end(); ++left, ++right) {
+                if (left->first != right->first ||
+                    left->second.cells != right->second.cells ||
+                    left->second.layerCount != right->second.layerCount ||
+                    left->second.layerWeights != right->second.layerWeights) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        bool TerrainSettingsEqual(
+            const TERRAIN::TerrainSurface& lhs,
+            const TERRAIN::TerrainSurface& rhs) noexcept {
+            return lhs.presetId == rhs.presetId &&
+                TerrainMaterialEqual(lhs.material, rhs.material) &&
+                TerrainStylizationEqual(lhs.stylization, rhs.stylization) &&
+                TerrainDeformEqual(lhs.deform, rhs.deform) &&
+                TerrainShorelineEqual(lhs.shoreline, rhs.shoreline) &&
+                lhs.heightScale == rhs.heightScale &&
+                lhs.layerPresetIds == rhs.layerPresetIds &&
+                TerrainBrushEqual(lhs.brush, rhs.brush) &&
+                TerrainGrassEqual(lhs.grass, rhs.grass) &&
+                lhs.chunkCells == rhs.chunkCells &&
+                lhs.chunkCellSize == rhs.chunkCellSize;
+        }
     }
 
     const TERRAIN::TerrainSurface&
@@ -139,21 +327,124 @@ namespace HIKARI {
 
     void TerrainSurfaceComponent::SetSurface(
         const TERRAIN::TerrainSurface& surface) {
-        surface_ = surface;
-        for (auto it = surface_.chunks.begin();
-            it != surface_.chunks.end();) {
-            if (!TERRAIN::TerrainChunkValid(it->second) ||
-                it->second.cells != GetChunkCells()) {
-                it = surface_.chunks.erase(it);
-            } else {
-                ++it;
+        TERRAIN::TerrainSurface next = surface;
+        next.chunkCells = (std::clamp)(
+            next.chunkCells,
+            1u,
+            TERRAIN::kTerrainChunkMaxCells);
+        next.stylization = TERRAIN::SanitizeTerrainStylizationSettings(
+            next.stylization);
+        next.grass = TERRAIN::SanitizeTerrainGrassSettings(next.grass);
+        for (const auto& [key, chunk] : next.chunks) {
+            (void)key;
+            if (!TERRAIN::TerrainChunkValid(chunk) ||
+                chunk.cells != next.chunkCells) {
+                // A malformed document update must not erase an already
+                // usable runtime terrain. The caller can rebuild/report the
+                // rejected document state without publishing partial data.
+                return;
             }
         }
-        StitchChunkBorders();
+
+        const TERRAIN::TerrainSurface previous = surface_;
+        surface_ = std::move(next);
+        const bool chunkPayloadChanged =
+            !TerrainChunkGeometryEqual(previous.chunks, surface_.chunks) ||
+            !TerrainChunkCoverageEqual(previous.chunks, surface_.chunks) ||
+            !TerrainChunkLayersEqual(previous.chunks, surface_.chunks);
+        if (chunkPayloadChanged) {
+            StitchChunkBorders();
+        }
+
+        const bool geometryChanged =
+            previous.chunkCells != surface_.chunkCells ||
+            previous.chunkCellSize != surface_.chunkCellSize ||
+            previous.heightScale != surface_.heightScale ||
+            !TerrainChunkGeometryEqual(previous.chunks, surface_.chunks);
+        const bool coverageChanged =
+            previous.chunkCells != surface_.chunkCells ||
+            previous.chunkCellSize != surface_.chunkCellSize ||
+            !TerrainChunkCoverageEqual(previous.chunks, surface_.chunks);
+        const bool layersChanged =
+            previous.layerPresetIds != surface_.layerPresetIds ||
+            !TerrainChunkLayersEqual(previous.chunks, surface_.chunks);
+        const bool settingsChanged =
+            !TerrainSettingsEqual(previous, surface_);
+        if (!geometryChanged && !coverageChanged && !layersChanged &&
+            !settingsChanged) {
+            return;
+        }
+
         ++revision_;
-        MarkGeometryChanged();
-        ++coverageRevision_;
-        InvalidateCoverageCache();
+        if (geometryChanged) {
+            MarkGeometryChanged();
+        }
+        if (coverageChanged) {
+            ++coverageRevision_;
+            if (!geometryChanged) {
+                ++collisionRevision_;
+            }
+            InvalidateCoverageCache();
+        }
+        NotifyRenderStateDirty();
+    }
+
+    const TERRAIN::TerrainStylizationSettings&
+        TerrainSurfaceComponent::GetStylizationSettings() const noexcept {
+        return surface_.stylization;
+    }
+
+    void TerrainSurfaceComponent::SetStylizationSettings(
+        const TERRAIN::TerrainStylizationSettings& settings) noexcept {
+        const TERRAIN::TerrainStylizationSettings sanitized =
+            TERRAIN::SanitizeTerrainStylizationSettings(settings);
+        const TERRAIN::TerrainStylizationSettings& current =
+            surface_.stylization;
+        if (current.textureScale == sanitized.textureScale &&
+            current.textureStrength == sanitized.textureStrength &&
+            current.normalStrength == sanitized.normalStrength &&
+            current.saturation == sanitized.saturation &&
+            current.shadowStrength == sanitized.shadowStrength &&
+            current.rockSaturation == sanitized.rockSaturation &&
+            current.facetSizeMeters == sanitized.facetSizeMeters &&
+            current.facetStrength == sanitized.facetStrength) {
+            return;
+        }
+        surface_.stylization = sanitized;
+        ++revision_;
+        // 見た目だけの変更なので geometry / coverage revision は無効化せず、
+        // 地形衝突 lattice も再構築しない。
+        NotifyRenderStateDirty();
+    }
+
+    const TERRAIN::TerrainGrassSettings&
+        TerrainSurfaceComponent::GetGrassSettings() const noexcept {
+        return surface_.grass;
+    }
+
+    void TerrainSurfaceComponent::SetGrassSettings(
+        const TERRAIN::TerrainGrassSettings& settings) noexcept {
+        const TERRAIN::TerrainGrassSettings sanitized =
+            TERRAIN::SanitizeTerrainGrassSettings(settings);
+        const TERRAIN::TerrainGrassSettings& current = surface_.grass;
+        if (current.enabled == sanitized.enabled &&
+            current.density == sanitized.density &&
+            current.bladeHeight == sanitized.bladeHeight &&
+            current.bladeWidth == sanitized.bladeWidth &&
+            current.heightVariation == sanitized.heightVariation &&
+            current.layerWeightThreshold == sanitized.layerWeightThreshold &&
+            current.maxSlopeDegrees == sanitized.maxSlopeDegrees &&
+            current.windStrength == sanitized.windStrength &&
+            current.windSpeed == sanitized.windSpeed &&
+            current.spatialFrequency == sanitized.spatialFrequency &&
+            current.seed == sanitized.seed &&
+            current.maxClumps == sanitized.maxClumps) {
+            return;
+        }
+        surface_.grass = sanitized;
+        ++revision_;
+        // Grass placement is a deterministic render projection. It does not
+        // modify terrain height, coverage, or collision geometry.
         NotifyRenderStateDirty();
     }
 
@@ -169,6 +460,10 @@ namespace HIKARI {
         return coverageRevision_;
     }
 
+    uint64_t TerrainSurfaceComponent::GetCollisionRevision() const noexcept {
+        return collisionRevision_;
+    }
+
     uint32_t TerrainSurfaceComponent::GetLayerCount() const noexcept {
         return (std::max)(
             static_cast<uint32_t>(surface_.layerPresetIds.size()), 1u);
@@ -180,12 +475,26 @@ namespace HIKARI {
     }
 
     uint32_t TerrainSurfaceComponent::GetChunkCells() const noexcept {
-        return (std::max)(surface_.chunkCells, 1u);
+        return (std::clamp)(
+            surface_.chunkCells,
+            1u,
+            TERRAIN::kTerrainChunkMaxCells);
     }
 
     float TerrainSurfaceComponent::GetChunkWorldSize() const noexcept {
         return static_cast<float>(GetChunkCells()) *
             (std::max)(surface_.chunkCellSize, 0.01f);
+    }
+
+    TERRAIN::TerrainGrassPlacementSnapshot
+        TerrainSurfaceComponent::BuildGrassPlacementSnapshot() const {
+        return TERRAIN::BuildTerrainGrassPlacementSnapshot(
+            surface_.grass,
+            GetChunkCells(),
+            surface_.chunkCellSize,
+            surface_.chunks,
+            surface_.layerPresetIds,
+            surface_.presetId);
     }
 
     void TerrainSurfaceComponent::ApplySolidPreset(
@@ -204,11 +513,72 @@ namespace HIKARI {
             return;
         }
         TERRAIN::TerrainSurface next = surface_;
-        next.presetId = std::string(presetId);
+        next.presetId = found->id.empty()
+            ? std::string(presetId)
+            : found->id;
+        if (next.layerPresetIds.empty()) {
+            next.layerPresetIds.resize(1u);
+        }
+        next.layerPresetIds[0] = next.presetId;
         next.material = found->material;
         next.deform = found->deform;
         next.shoreline = found->shoreline;
         SetSurface(next);
+    }
+
+    bool TerrainSurfaceComponent::FillLayer(
+        std::string_view presetId) {
+        TERRAIN::SurfaceLayerRegistry::Get().RegisterBuiltins();
+        const TERRAIN::SurfacePreset* found =
+            TERRAIN::SurfaceLayerRegistry::Get().Find(presetId);
+        std::optional<TERRAIN::SurfacePreset> fallback;
+        if (found == nullptr) {
+            fallback = TERRAIN::ResolveSurfacePreset(presetId);
+            if (fallback.has_value()) {
+                found = &*fallback;
+            }
+        }
+        if (found == nullptr) {
+            return false;
+        }
+        const int layerIndex = ResolveSurfaceLayerIndex(
+            found->id.empty() ? presetId : std::string_view(found->id));
+        if (layerIndex < 0 ||
+            static_cast<uint32_t>(layerIndex) >=
+                TERRAIN::kTerrainChunkMaxLayers) {
+            return false;
+        }
+        const std::string targetId = found->id.empty()
+            ? std::string(presetId)
+            : found->id;
+        TERRAIN::TerrainSurface next = surface_;
+        if (next.layerPresetIds.size() <=
+                static_cast<std::size_t>(layerIndex)) {
+            next.layerPresetIds.resize(
+                static_cast<std::size_t>(layerIndex) + 1u);
+        }
+        bool changed = next.presetId != targetId ||
+            next.layerPresetIds[static_cast<std::size_t>(layerIndex)] !=
+                targetId;
+        next.presetId = targetId;
+        next.layerPresetIds[static_cast<std::size_t>(layerIndex)] = targetId;
+        for (auto& [key, chunk] : next.chunks) {
+            (void)key;
+            changed = TERRAIN::FillTerrainChunkLayer(
+                chunk,
+                static_cast<uint32_t>(layerIndex)) || changed;
+        }
+        if (!changed) {
+            return false;
+        }
+        // Fill は material layer weights と preset metadata だけを変える。
+        // geometry / coverage / collision の projection はそのまま共有し、
+        // render 側だけを一度 dirty にする。SetSurface は地形形状の更新
+        // 用で、ここから呼ぶと不要な collision rebuild を起こす。
+        surface_ = std::move(next);
+        ++revision_;
+        NotifyRenderStateDirty();
+        return true;
     }
 
     TERRAIN::TerrainBrush TerrainSurfaceComponent::GetBrush() const noexcept {
@@ -288,7 +658,8 @@ namespace HIKARI {
     }
 
     TERRAIN::TerrainChunk& TerrainSurfaceComponent::EnsureChunk(
-        const TERRAIN::TerrainChunkKey& key) {
+        const TERRAIN::TerrainChunkKey& key,
+        int32_t seedLayer) {
         auto it = surface_.chunks.find(key);
         if (it == surface_.chunks.end()) {
             it = surface_.chunks
@@ -302,9 +673,100 @@ namespace HIKARI {
                 it->second.coverage.begin(),
                 it->second.coverage.end(),
                 0.0f);
+            if (seedLayer >= 0) {
+                (void)TERRAIN::FillTerrainChunkLayer(
+                    it->second,
+                    static_cast<uint32_t>(seedLayer));
+            } else {
+                if (!SeedChunkFromNeighborEdges(key, it->second)) {
+                    // 隣接 chunk が無い場合も無条件に Sand (layer 0) へ
+                    // 戻さず、authored の solid preset を fallback にする。
+                    // 直前に Grass / Rock を全体 fill していれば、孤立した
+                    // 追加 chunk も同じ材質を引き継ぐ。
+                    int baseLayer = ResolveSurfaceLayerIndex(
+                        surface_.presetId);
+                    if (baseLayer < 0) {
+                        baseLayer = 0;
+                    }
+                    (void)TERRAIN::FillTerrainChunkLayer(
+                        it->second,
+                        static_cast<uint32_t>(baseLayer));
+                }
+            }
             MarkCoverageChunkDirty(key);
         }
         return it->second;
+    }
+
+    bool TerrainSurfaceComponent::SeedChunkFromNeighborEdges(
+        const TERRAIN::TerrainChunkKey& key,
+        TERRAIN::TerrainChunk& chunk) {
+        struct Candidate {
+            TERRAIN::TerrainChunkKey key{};
+            TERRAIN::TerrainChunkEdge edge =
+                TERRAIN::TerrainChunkEdge::NegativeX;
+        };
+        // 角の順序は固定する。既存の cardinal neighbour を constructor の
+        // 基底層より優先し、隣接が無い場合だけ MakeTerrainChunk の layer 0
+        // を fallback とする。
+        const Candidate candidates[] = {
+            { { key.x - 1, key.z }, TERRAIN::TerrainChunkEdge::PositiveX },
+            { { key.x + 1, key.z }, TERRAIN::TerrainChunkEdge::NegativeX },
+            { { key.x, key.z - 1 }, TERRAIN::TerrainChunkEdge::PositiveZ },
+            { { key.x, key.z + 1 }, TERRAIN::TerrainChunkEdge::NegativeZ },
+        };
+        for (const Candidate& candidate : candidates) {
+            const auto found = surface_.chunks.find(candidate.key);
+            if (found == surface_.chunks.end() ||
+                !TERRAIN::TerrainChunkValid(found->second)) {
+                continue;
+            }
+            if (TERRAIN::CopyTerrainChunkEdgeToAll(
+                    found->second, chunk, candidate.edge)) {
+                return true;
+            }
+        }
+
+        // Brush が複数 chunk の疎な gap をまたぐ場合は最寄りの authored
+        // chunk まで探索する。gap 全体を黙って Sand / base に戻さない。
+        // 同距離は map 順で解決し、Editor session 間の決定性を保つ。
+        const TERRAIN::TerrainChunk* nearest = nullptr;
+        TERRAIN::TerrainChunkEdge nearestEdge =
+            TERRAIN::TerrainChunkEdge::NegativeX;
+        int64_t nearestDistance = (std::numeric_limits<int64_t>::max)();
+        for (const auto& [candidateKey, candidateChunk] : surface_.chunks) {
+            const int64_t dx = static_cast<int64_t>(candidateKey.x) -
+                static_cast<int64_t>(key.x);
+            const int64_t dz = static_cast<int64_t>(candidateKey.z) -
+                static_cast<int64_t>(key.z);
+            if (dx == 0 && dz == 0 ||
+                !TERRAIN::TerrainChunkValid(candidateChunk)) {
+                continue;
+            }
+            const int64_t absDx = dx < 0 ? -dx : dx;
+            const int64_t absDz = dz < 0 ? -dz : dz;
+            const int64_t distance = absDx + absDz;
+            if (distance >= nearestDistance) {
+                continue;
+            }
+            nearest = &candidateChunk;
+            nearestDistance = distance;
+            if (absDx >= absDz) {
+                nearestEdge = dx < 0
+                    ? TERRAIN::TerrainChunkEdge::PositiveX
+                    : TERRAIN::TerrainChunkEdge::NegativeX;
+            } else {
+                nearestEdge = dz < 0
+                    ? TERRAIN::TerrainChunkEdge::PositiveZ
+                    : TERRAIN::TerrainChunkEdge::NegativeZ;
+            }
+        }
+        if (nearest != nullptr &&
+            TERRAIN::CopyTerrainChunkEdgeToAll(
+                *nearest, chunk, nearestEdge)) {
+            return true;
+        }
+        return false;
     }
 
     MATH::Vec3 TerrainSurfaceComponent::WorldToLocal(
@@ -510,7 +972,8 @@ namespace HIKARI {
         const MATH::Vec3& localPos,
         float radius,
         bool createMissingChunks,
-        Fn&& fn) {
+        Fn&& fn,
+        int32_t seedLayer) {
         const float chunkSize = GetChunkWorldSize();
         const float r = (std::max)(radius, 0.05f);
         const auto keyMin = TERRAIN::TerrainChunkKeyFromWorld(
@@ -564,7 +1027,7 @@ namespace HIKARI {
                 TERRAIN::TerrainChunk& chunk =
                     found != surface_.chunks.end()
                         ? found->second
-                        : EnsureChunk(key);
+                        : EnsureChunk(key, seedLayer);
                 fn(key, chunk, chunkOrigin);
             }
         }
@@ -648,6 +1111,16 @@ namespace HIKARI {
             return true;
         };
 
+        const bool isRidge =
+            brush.mode == TERRAIN::TerrainBrushMode::Ridge;
+        const float ridgeAngle = brush.ridgeDirectionDegrees * kPi / 180.0f;
+        const float ridgeAxisX = std::cos(ridgeAngle);
+        const float ridgeAxisZ = std::sin(ridgeAngle);
+        const float ridgePerpendicularX = -ridgeAxisZ;
+        const float ridgePerpendicularZ = ridgeAxisX;
+        const float ridgeWidth = brush.radius * std::lerp(
+            0.55f, 0.10f, brush.ridgeSharpness);
+
         bool changed = false;
         bool coverageChanged = false;
         std::vector<TERRAIN::TerrainChunkKey> touchedChunks{};
@@ -686,17 +1159,37 @@ namespace HIKARI {
                         if (falloff <= 0.0f) {
                             continue;
                         }
+                        float sculptFalloff = falloff;
+                        if (isRidge) {
+                            const float along = dx * ridgeAxisX +
+                                dz * ridgeAxisZ;
+                            const float across = dx * ridgePerpendicularX +
+                                dz * ridgePerpendicularZ;
+                            sculptFalloff = BrushFalloff(
+                                std::fabs(across),
+                                ridgeWidth,
+                                brush.hardness,
+                                brush.falloff) *
+                                BrushFalloff(
+                                    std::fabs(along),
+                                    brush.radius,
+                                    brush.hardness,
+                                    brush.falloff);
+                        }
+                        if (sculptFalloff <= 0.0f) {
+                            continue;
+                        }
                         float& h = chunk.heights[
                             static_cast<std::size_t>(z) * stride + x];
                         float& coverage = chunk.coverage[
                             static_cast<std::size_t>(z) * stride + x];
                         const float oldHeight = h;
                         const float oldCoverage = coverage;
-                        coverage = (std::max)(coverage, falloff);
+                        coverage = (std::max)(coverage, sculptFalloff);
                         // strength は 1 ストローク当たりの伸びとして扱い、
                         // heightScale を掛けて見た目の起伏スケールに合わせる。
                         const float amount =
-                            brush.strength * dtScale * falloff *
+                            brush.strength * dtScale * sculptFalloff *
                                 surface_.heightScale;
                         switch (brush.mode) {
                         case TERRAIN::TerrainBrushMode::Raise:
@@ -742,6 +1235,27 @@ namespace HIKARI {
                                     0.0f,
                                     1.0f);
                             }
+                            break;
+                        }
+                        case TERRAIN::TerrainBrushMode::Ridge: {
+                            // The line-shaped falloff was resolved above so
+                            // coverage and height share the same ridge mask.
+                            h += amount;
+                            break;
+                        }
+                        case TERRAIN::TerrainBrushMode::Terrace: {
+                            // Terrace moves the current height toward the
+                            // nearest authored step. Unlike Raise/Lower this
+                            // is a target blend, so use a 60 Hz reference to
+                            // make strength meaningful for a single stroke.
+                            const float step = (std::max)(
+                                brush.terraceStepHeight, 0.05f);
+                            const float stepped = std::round(h / step) * step;
+                            const float blend = std::clamp(
+                                brush.strength * dtScale * 60.0f * falloff,
+                                0.0f,
+                                1.0f);
+                            h += (stepped - h) * blend;
                             break;
                         }
                         }
@@ -793,18 +1307,11 @@ namespace HIKARI {
             return false;
         }
         TERRAIN::SurfaceLayerRegistry::Get().RegisterBuiltins();
-        int layerIndex =
-            TERRAIN::SurfaceLayerRegistry::Get().IndexOf(presetId);
-        if (layerIndex < 0) {
-            const std::optional<TERRAIN::SurfacePreset> fallback =
-                TERRAIN::ResolveSurfacePreset(presetId);
-            if (!fallback.has_value()) {
-                return false;
-            }
-            if (fallback->id == "sand") { layerIndex = 0; }
-            else if (fallback->id == "snow") { layerIndex = 1; }
-            else if (fallback->id == "dirt") { layerIndex = 2; }
-            else { return false; }
+        const int layerIndex = ResolveSurfaceLayerIndex(presetId);
+        if (layerIndex < 0 ||
+            static_cast<uint32_t>(layerIndex) >=
+                TERRAIN::kTerrainChunkMaxLayers) {
+            return false;
         }
         const uint32_t layer = static_cast<uint32_t>(layerIndex);
 
@@ -837,24 +1344,11 @@ namespace HIKARI {
                 touchedChunks.push_back(key);
                 // 層数が足りなければ拡張する。
                 if (chunk.layerCount <= layer) {
-                    const uint32_t newCount = layer + 1u;
-                    const std::size_t count =
-                        TERRAIN::TerrainChunkVertexCount(chunk.cells);
-                    std::vector<float> weights(
-                        count * newCount, 0.0f);
-                    for (std::size_t cell = 0u; cell < count; ++cell) {
-                        weights[cell] = 1.0f; // 基底層
+                    if (!TERRAIN::EnsureTerrainChunkLayerCount(
+                            chunk,
+                            layer + 1u)) {
+                        return;
                     }
-                    for (uint32_t l = 0u; l < chunk.layerCount; ++l) {
-                        for (std::size_t cell = 0u; cell < count; ++cell) {
-                            weights[
-                                static_cast<std::size_t>(l) * count + cell] =
-                                chunk.layerWeights[
-                                    static_cast<std::size_t>(l) * count + cell];
-                        }
-                    }
-                    chunk.layerCount = newCount;
-                    chunk.layerWeights = std::move(weights);
                     changed = true;
                 }
 
@@ -931,7 +1425,8 @@ namespace HIKARI {
                         }
                     }
                 }
-            });
+            },
+            static_cast<int32_t>(layer));
         if (!changed) {
             return false;
         }
@@ -1064,6 +1559,7 @@ namespace HIKARI {
         geometryEditBatchDirty_ = false;
         if (changed) {
             ++geometryRevision_;
+            ++collisionRevision_;
         }
         return changed;
     }
@@ -1074,6 +1570,7 @@ namespace HIKARI {
             return;
         }
         ++geometryRevision_;
+        ++collisionRevision_;
     }
 
     void TerrainSurfaceComponent::InvalidateCoverageCache() noexcept {
@@ -1835,7 +2332,7 @@ namespace HIKARI {
         nlohmann::json& out) const {
         const TERRAIN::TerrainSurface& s = surface_;
         out = {
-            { "_schemaVersion", 6u },
+            { "_schemaVersion", 9u },
             { "presetId", s.presetId },
             { "heightScale", s.heightScale },
             { "material", {
@@ -1846,6 +2343,16 @@ namespace HIKARI {
                 { "pitDarkening", s.material.pitDarkening },
                 { "toonBandCount", s.material.toonBandCount },
                 { "toonBandHardness", s.material.toonBandHardness },
+            } },
+            { "stylization", {
+                { "textureScale", s.stylization.textureScale },
+                { "textureStrength", s.stylization.textureStrength },
+                { "normalStrength", s.stylization.normalStrength },
+                { "saturation", s.stylization.saturation },
+                { "shadowStrength", s.stylization.shadowStrength },
+                { "rockSaturation", s.stylization.rockSaturation },
+                { "facetSizeMeters", s.stylization.facetSizeMeters },
+                { "facetStrength", s.stylization.facetStrength },
             } },
             { "deform", {
                 { "behavior", static_cast<uint32_t>(s.deform.behavior) },
@@ -1881,7 +2388,11 @@ namespace HIKARI {
                 { "hardness", s.brush.hardness },
                 { "falloff", s.brush.falloff },
                 { "flattenHeight", s.brush.flattenHeight },
+                { "ridgeDirectionDegrees", s.brush.ridgeDirectionDegrees },
+                { "ridgeSharpness", s.brush.ridgeSharpness },
+                { "terraceStepHeight", s.brush.terraceStepHeight },
             } },
+            { "grass", TERRAIN::SerializeTerrainGrassSettings(s.grass) },
         };
     }
 
@@ -1912,11 +2423,21 @@ namespace HIKARI {
         }
         const uint32_t schemaVersion = in.value("_schemaVersion", 0u);
         TERRAIN::TerrainSurface surface = surface_;
+        // schema 7 以下の scene には render stylization block がないため、
+        // legacy scene の読み込みで古い in-memory 値を持ち越さない。
+        surface.stylization = TERRAIN::TerrainStylizationSettings{};
+        // Grass authored values are introduced by schema 9. Legacy scenes
+        // intentionally start from the stable defaults, never stale memory.
+        surface.grass = TERRAIN::TerrainGrassSettings{};
         surface.presetId = in.value("presetId", surface.presetId);
         surface.heightScale = JSONREAD::NumberMemberOr(
             in, "heightScale", surface.heightScale);
-        surface.chunkCells = static_cast<uint32_t>(
-            in.value("chunkCells", surface.chunkCells));
+        surface.chunkCells = JSONREAD::UnsignedMemberOr(
+            in, "chunkCells", surface.chunkCells);
+        surface.chunkCells = (std::clamp)(
+            surface.chunkCells,
+            1u,
+            TERRAIN::kTerrainChunkMaxCells);
         surface.chunkCellSize = JSONREAD::NumberMemberOr(
             in, "chunkCellSize", surface.chunkCellSize);
 
@@ -1937,6 +2458,44 @@ namespace HIKARI {
                 material->value("toonBandCount", surface.material.toonBandCount));
             surface.material.toonBandHardness = JSONREAD::NumberMemberOr(
                 *material, "toonBandHardness", surface.material.toonBandHardness);
+        }
+        if (schemaVersion >= 8u) {
+            if (const nlohmann::json* stylization =
+                    JSONREAD::FindMember(in, "stylization");
+                stylization != nullptr && stylization->is_object()) {
+                surface.stylization.textureScale = JSONREAD::NumberMemberOr(
+                    *stylization,
+                    "textureScale",
+                    surface.stylization.textureScale);
+                surface.stylization.textureStrength = JSONREAD::NumberMemberOr(
+                    *stylization,
+                    "textureStrength",
+                    surface.stylization.textureStrength);
+                surface.stylization.normalStrength = JSONREAD::NumberMemberOr(
+                    *stylization,
+                    "normalStrength",
+                    surface.stylization.normalStrength);
+                surface.stylization.saturation = JSONREAD::NumberMemberOr(
+                    *stylization,
+                    "saturation",
+                    surface.stylization.saturation);
+                surface.stylization.shadowStrength = JSONREAD::NumberMemberOr(
+                    *stylization,
+                    "shadowStrength",
+                    surface.stylization.shadowStrength);
+                surface.stylization.rockSaturation = JSONREAD::NumberMemberOr(
+                    *stylization,
+                    "rockSaturation",
+                    surface.stylization.rockSaturation);
+                surface.stylization.facetSizeMeters = JSONREAD::NumberMemberOr(
+                    *stylization,
+                    "facetSizeMeters",
+                    surface.stylization.facetSizeMeters);
+                surface.stylization.facetStrength = JSONREAD::NumberMemberOr(
+                    *stylization,
+                    "facetStrength",
+                    surface.stylization.facetStrength);
+            }
         }
         if (const nlohmann::json* deform =
                 JSONREAD::FindMember(in, "deform");
@@ -2065,6 +2624,27 @@ namespace HIKARI {
                 *brush, "falloff", surface.brush.falloff);
             surface.brush.flattenHeight = JSONREAD::NumberMemberOr(
                 *brush, "flattenHeight", surface.brush.flattenHeight);
+            surface.brush.ridgeDirectionDegrees = JSONREAD::NumberMemberOr(
+                *brush,
+                "ridgeDirectionDegrees",
+                surface.brush.ridgeDirectionDegrees);
+            surface.brush.ridgeSharpness = JSONREAD::NumberMemberOr(
+                *brush,
+                "ridgeSharpness",
+                surface.brush.ridgeSharpness);
+            surface.brush.terraceStepHeight = JSONREAD::NumberMemberOr(
+                *brush,
+                "terraceStepHeight",
+                surface.brush.terraceStepHeight);
+        }
+
+        if (schemaVersion >= 9u) {
+            if (const nlohmann::json* grass =
+                    JSONREAD::FindMember(in, "grass");
+                grass != nullptr && grass->is_object()) {
+                surface.grass =
+                    TERRAIN::DeserializeTerrainGrassSettings(*grass);
+            }
         }
 
         surface.chunks.clear();
@@ -2080,13 +2660,25 @@ namespace HIKARI {
                     c.value("z", 0)
                 };
                 TERRAIN::TerrainChunk chunk{};
-                chunk.cells = static_cast<uint32_t>(
-                    c.value("cells", surface.chunkCells));
-                chunk.layerCount = static_cast<uint32_t>(
-                    c.value("layerCount", 1u));
-                chunk.heights = ReadFloatArray(c, "heights");
-                chunk.coverage = ReadFloatArray(c, "coverage");
-                chunk.layerWeights = ReadFloatArray(c, "layerWeights");
+                chunk.cells = JSONREAD::UnsignedMemberOr(
+                    c, "cells", surface.chunkCells);
+                chunk.layerCount = JSONREAD::UnsignedMemberOr(
+                    c, "layerCount", 1u);
+                std::size_t vertexCount = 0u;
+                if (!TERRAIN::TryGetTerrainChunkVertexCount(
+                        chunk.cells, vertexCount) ||
+                    chunk.layerCount == 0u ||
+                    chunk.layerCount > TERRAIN::kTerrainChunkMaxLayers ||
+                    vertexCount > (std::numeric_limits<std::size_t>::max)() /
+                        static_cast<std::size_t>(chunk.layerCount)) {
+                    continue;
+                }
+                const std::size_t layerWeightCount = vertexCount *
+                    static_cast<std::size_t>(chunk.layerCount);
+                chunk.heights = ReadFloatArray(c, "heights", vertexCount);
+                chunk.coverage = ReadFloatArray(c, "coverage", vertexCount);
+                chunk.layerWeights = ReadFloatArray(
+                    c, "layerWeights", layerWeightCount);
                 if (TERRAIN::TerrainChunkValid(chunk)) {
                     surface.chunks.emplace(key, std::move(chunk));
                 }

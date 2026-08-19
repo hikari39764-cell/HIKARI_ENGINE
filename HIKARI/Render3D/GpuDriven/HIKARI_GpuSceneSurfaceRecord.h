@@ -107,6 +107,8 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         uint32_t postGroupMask = 0;
         DirectX::XMFLOAT4 materialFxParamValues[VFX::kMaterialFxUserCount]{};
         bool materialFxValuesInitialized = false;
+        bool foliageWind = false;
+        MATH::Vec4 foliageWindParams{};
         bool waterSurface = false;
         RENDER3D::WATER::WaterSurfaceRenderData waterSurfaceData{};
         uint32_t waterSurfaceGpuDataIndex = 0u;

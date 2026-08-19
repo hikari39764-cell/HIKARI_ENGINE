@@ -1,6 +1,7 @@
 #include "Scene/HIKARI_SceneRenderCacheSync.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <limits>
@@ -32,6 +33,7 @@
 #include "Scene/Sand/HIKARI_SandSurfaceQueryService.h"
 #include "Scene/Terrain/HIKARI_TerrainSurfaceComponent.h"
 #include "Scene/Terrain/HIKARI_TerrainSurfaceConversion.h"
+#include "Scene/Terrain/HIKARI_TerrainGrassRenderProjection.h"
 #include "Scene/Terrain/HIKARI_SurfaceLayerRegistry.h"
 
 
@@ -39,6 +41,74 @@ namespace HIKARI {
 
     namespace {
         constexpr float kPi = 3.14159265358979323846f;
+        constexpr float kTerrainAtlasContentScale = 1008.0f / 2048.0f;
+        constexpr float kTerrainAtlasGutterBias = 8.0f / 2048.0f;
+
+        MATH::Vec4 ResolveTerrainAtlasScaleBias(uint32_t tile) noexcept {
+            const uint32_t safeTile = (std::min)(tile, 3u);
+            return {
+                kTerrainAtlasContentScale,
+                kTerrainAtlasContentScale,
+                static_cast<float>(safeTile & 1u) * 0.5f +
+                    kTerrainAtlasGutterBias,
+                static_cast<float>(safeTile >> 1u) * 0.5f +
+                    kTerrainAtlasGutterBias,
+            };
+        }
+
+        RENDER3D::SAND::SandSurfaceLayerRenderStyle
+            BuildTerrainLayerRenderStyle(
+                const TERRAIN::SurfacePreset& preset,
+                const TERRAIN::TerrainStylizationSettings& authoredSettings)
+                noexcept {
+
+            const TERRAIN::SurfaceLayerMaterialParams& authored =
+                preset.layerMaterial;
+            const TERRAIN::TerrainStylizationSettings stylization =
+                TERRAIN::SanitizeTerrainStylizationSettings(authoredSettings);
+            RENDER3D::SAND::SandSurfaceLayerRenderStyle style{};
+            style.lightTint = preset.tint.light;
+            style.textureStrength = std::clamp(
+                authored.textureStrength * stylization.textureStrength,
+                0.0f,
+                2.0f);
+            style.darkTint = preset.tint.dark;
+            style.normalStrength = std::clamp(
+                authored.normalStrength * stylization.normalStrength,
+                0.0f,
+                2.0f);
+            style.atlasScaleBias = ResolveTerrainAtlasScaleBias(
+                authored.atlasTile);
+            style.tilesPerMeter = 1.0f / (std::max)(
+                authored.metersPerTile, 0.05f) * stylization.textureScale;
+            style.roughness = std::clamp(
+                authored.roughness, 0.0f, 1.0f);
+            const float saturation =
+                authored.kind == TERRAIN::SurfaceLayerMaterialKind::Rock
+                    ? stylization.rockSaturation
+                    : authored.saturation * stylization.saturation;
+            style.saturation = std::clamp(
+                saturation, 0.0f, 2.0f);
+            style.materialKind = static_cast<uint32_t>(authored.kind);
+            style.shadowStrength = std::clamp(
+                authored.shadowStrength * stylization.shadowStrength,
+                0.0f,
+                1.0f);
+            style.granularStrength =
+                authored.kind == TERRAIN::SurfaceLayerMaterialKind::Sand ||
+                authored.kind == TERRAIN::SurfaceLayerMaterialKind::Snow
+                    ? 1.0f : 0.0f;
+            style.facetSizeMeters = stylization.facetSizeMeters;
+            style.facetStrength = stylization.facetStrength;
+            return style;
+        }
+
+        std::string_view ResolveLegacyTerrainLayerPresetId(
+            uint32_t layer) noexcept {
+            constexpr std::array<std::string_view, 5u> kIds{
+                "sand", "snow", "dirt", "grass", "rock" };
+            return layer < kIds.size() ? kIds[layer] : kIds.front();
+        }
 
         RENDER3D::WATER::WaterSurfaceRenderData
             BuildWaterSurfaceRenderData(
@@ -162,6 +232,7 @@ namespace HIKARI {
         };
 
         struct TerrainProjectionState {
+            RuntimeObjectHandle sourceObject{};
             TerrainProjectionLayout layout{};
             bool layoutValid = false;
             uint64_t authoredRevision = 0u;
@@ -236,7 +307,9 @@ namespace HIKARI {
             const std::size_t fixedPoolFloats =
                 RENDER3D::RUNTIME::kSceneSurfaceNeutralFloatCount +
                 (layerCount > 1u
-                    ? static_cast<std::size_t>(layerCount) * 6u
+                    ? static_cast<std::size_t>(layerCount) *
+                        RENDER3D::SAND::
+                            kSandSurfaceLayerStyleFloatCount
                     : 0u);
             const std::size_t availableVertexFloats =
                 RENDER3D::SAND::kSandSurfaceMaxHeightCells > fixedPoolFloats
@@ -339,6 +412,14 @@ namespace HIKARI {
                 desc.sandSurface = false;
                 state = {};
                 return;
+            }
+            // Runtime world rebuilds may recreate a component with the same
+            // local revision. Projection state is owned by the render bridge,
+            // so revision alone is not a valid cache identity across object
+            // handle generations.
+            if (state.sourceObject != objectHandle) {
+                state = {};
+                state.sourceObject = objectHandle;
             }
 
             int32_t minKeyX = (std::numeric_limits<int32_t>::max)();
@@ -813,23 +894,35 @@ namespace HIKARI {
             desc.sandSurfaceData.wetness = surface.shoreline.wetness;
             desc.sandSurfaceData.edgeDepth = surface.shoreline.edgeDepth;
 
-            // Resolve per-layer tints from the registry; layers without a preset fall
-            // back to the surface material tints so the built-in sand look is kept.
+            // 全レイヤーの atlas/toon style を解決する。layerPresetIds を持たない
+            // 旧 scene は従来の sand/snow/dirt registry 順を維持する。
             TERRAIN::SurfaceLayerRegistry::Get().RegisterBuiltins();
-            auto& lights = desc.sandSurfaceData.layerLightTints;
-            auto& darks = desc.sandSurfaceData.layerDarkTints;
-            lights.assign(layerCount, surface.material.lightTint);
-            darks.assign(layerCount, surface.material.darkTint);
+            auto& styles = desc.sandSurfaceData.layerStyles;
+            styles.assign(
+                layerCount,
+                BuildTerrainLayerRenderStyle(
+                    TERRAIN::MakeSandPreset(), surface.stylization));
             for (uint32_t layer = 0u; layer < layerCount; ++layer) {
-                const std::string id =
-                    layer < surface.layerPresetIds.size()
-                        ? surface.layerPresetIds[layer] : std::string{};
+                const std::string_view id =
+                    layer < surface.layerPresetIds.size() &&
+                            !surface.layerPresetIds[layer].empty()
+                        ? std::string_view(surface.layerPresetIds[layer])
+                        : (layer == 0u && !surface.presetId.empty()
+                            ? std::string_view(surface.presetId)
+                            : ResolveLegacyTerrainLayerPresetId(layer));
                 const TERRAIN::SurfacePreset* preset =
                     id.empty() ? nullptr
                         : TERRAIN::SurfaceLayerRegistry::Get().Find(id);
                 if (preset != nullptr) {
-                    lights[layer] = preset->tint.light;
-                    darks[layer] = preset->tint.dark;
+                    styles[layer] = BuildTerrainLayerRenderStyle(
+                        *preset, surface.stylization);
+                } else if (layer == 0u) {
+                    TERRAIN::SurfacePreset fallback =
+                        TERRAIN::MakeSandPreset();
+                    fallback.tint.light = surface.material.lightTint;
+                    fallback.tint.dark = surface.material.darkTint;
+                    styles[layer] = BuildTerrainLayerRenderStyle(
+                        fallback, surface.stylization);
                 }
             }
 
@@ -1221,6 +1314,10 @@ namespace HIKARI {
             const RENDER3D::RUNTIME::SceneRenderCache*,
             std::unordered_map<uint64_t, TerrainProjectionState>>
             terrainProjections{};
+        std::unordered_map<
+            const RENDER3D::RUNTIME::SceneRenderCache*,
+            TERRAIN::TerrainGrassRenderProjectionState>
+            terrainGrassProjections{};
     };
 
     SceneRenderCacheSync::SceneRenderCacheSync()
@@ -1253,6 +1350,10 @@ namespace HIKARI {
         auto& terrainProjections =
             state_->terrainProjections[&sceneRenderCache];
         terrainProjections.clear();
+        auto& terrainGrassProjections =
+            state_->terrainGrassProjections[&sceneRenderCache];
+        terrainGrassProjections.renderObjectIdsByOwner.clear();
+        terrainGrassProjections.activeRenderInstanceCount = 0u;
         ClusteredGeometryPathResolver clusteredGeometryPaths(
             assetRegistry,
             std::move(projectRoot));
@@ -1288,6 +1389,25 @@ namespace HIKARI {
                 terrainProjection,
                 state_->debugStats,
                 purpose));
+            if (const TerrainSurfaceComponent* terrain =
+                    object.GetComponent<TerrainSurfaceComponent>()) {
+                TERRAIN::TerrainGrassRenderProjectionStats grassStats{};
+                TERRAIN::SyncTerrainGrassRenderObjects(
+                    object,
+                    model,
+                    *terrain,
+                    renderModelCache,
+                    clusteredGeometryPaths.GetProjectRoot(),
+                    presentationTransforms,
+                    terrainGrassProjections,
+                    sceneRenderCache,
+                    purpose,
+                    grassStats);
+                state_->debugStats.terrainGrassRenderInstanceCount +=
+                    grassStats.renderedCount;
+                state_->debugStats.terrainGrassRenderSkippedCount +=
+                    grassStats.skippedCount;
+            }
         });
 
         sceneRenderCache.EndSync();
@@ -1308,9 +1428,15 @@ namespace HIKARI {
         sceneRenderCache.BeginPatchSync(frameIndex);
         auto& terrainProjections =
             state_->terrainProjections[&sceneRenderCache];
+        auto& terrainGrassProjections =
+            state_->terrainGrassProjections[&sceneRenderCache];
         for (const uint64_t removedObjectId : world.GetRemovedRenderObjectIds()) {
             sceneRenderCache.Remove(RENDER3D::RUNTIME::SceneRenderObjectId{ removedObjectId });
             terrainProjections.erase(removedObjectId);
+            TERRAIN::RemoveTerrainGrassRenderObjects(
+                sceneRenderCache,
+                terrainGrassProjections,
+                removedObjectId);
         }
 
         ClusteredGeometryPathResolver clusteredGeometryPaths(
@@ -1323,10 +1449,19 @@ namespace HIKARI {
         const SAND::SandSurfaceQueryService* sandSurfaceQuery =
             world.Services().Find<SAND::SandSurfaceQueryService>();
 
+        // built-in material の公開 revision は必ずしも GameObject を dirty にしない。
+        // patch 前に live な terrain owner を再 projection し、置換前の runtime
+        // Material pointer を保持する descriptor を残さない。
         for (GameObject* object : world.GetRenderDirtyObjects()) {
             if (object == nullptr) {
                 continue;
             }
+
+            const uint64_t ownerStableId = object->GetRenderStableId();
+            TERRAIN::RemoveTerrainGrassRenderObjects(
+                sceneRenderCache,
+                terrainGrassProjections,
+                ownerStableId);
 
             ModelComponent* model = object->GetComponent<ModelComponent>();
             if (model == nullptr) {
@@ -1359,12 +1494,31 @@ namespace HIKARI {
                 terrainProjection,
                 state_->debugStats,
                 purpose));
+            if (const TerrainSurfaceComponent* terrain =
+                    object->GetComponent<TerrainSurfaceComponent>()) {
+                TERRAIN::TerrainGrassRenderProjectionStats grassStats{};
+                TERRAIN::SyncTerrainGrassRenderObjects(
+                    *object,
+                    *model,
+                    *terrain,
+                    renderModelCache,
+                    clusteredGeometryPaths.GetProjectRoot(),
+                    presentationTransforms,
+                    terrainGrassProjections,
+                    sceneRenderCache,
+                    purpose,
+                    grassStats);
+                state_->debugStats.terrainGrassRenderInstanceCount +=
+                    grassStats.renderedCount;
+                state_->debugStats.terrainGrassRenderSkippedCount +=
+                    grassStats.skippedCount;
+            }
         }
 
-        // Material assets publish into the existing runtime Material object.
-        // That revision change does not inherently dirty the owning GameObject,
-        // so observe it explicitly before the SceneRenderCache snapshot becomes
-        // the authoritative GPU Scene source for this frame.
+        // Material asset は既存 runtime Material object へ publish する。
+        // revision の変化だけでは owning GameObject は dirty にならないため、
+        // この frame の SceneRenderCache snapshot が authoritative GPU Scene source
+        // になる前に明示的に検出する。
         world.ForEachObjectWith<ModelComponent>(
             [&](GameObject& object, ModelComponent& model) {
                 const RENDER3D::RUNTIME::SceneRenderObjectId objectId =

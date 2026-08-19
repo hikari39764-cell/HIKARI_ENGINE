@@ -581,6 +581,10 @@ namespace HIKARI {
                 return TERRAIN::TerrainBrushMode::Flatten;
             case EditorTerrainToolMode::Mound:
                 return TERRAIN::TerrainBrushMode::Mound;
+            case EditorTerrainToolMode::Ridge:
+                return TERRAIN::TerrainBrushMode::Ridge;
+            case EditorTerrainToolMode::Terrace:
+                return TERRAIN::TerrainBrushMode::Terrace;
             case EditorTerrainToolMode::Raise:
             default:
                 return TERRAIN::TerrainBrushMode::Raise;
@@ -602,6 +606,7 @@ namespace HIKARI {
             sandTerrainStrokeActive_ = false;
             sandBrushStrokeChanged_ = false;
             sandBrushTargetObjectId_ = {};
+            sandBrushTargetRuntimeHandle_ = {};
             sandBrushTargetComponentId_ = {};
             sandBrushBeforeComponentProperties_ =
                 nlohmann::json::object();
@@ -624,7 +629,16 @@ namespace HIKARI {
                 strokeTarget != nullptr
                     ? strokeTarget->GetComponent<TerrainSurfaceComponent>()
                     : nullptr;
-            if (strokeTerrain == nullptr) {
+            if (strokeTerrain == nullptr ||
+                strokeTarget->GetRuntimeHandle() !=
+                    sandBrushTargetRuntimeHandle_) {
+                // The runtime world changed while the stroke was active.
+                // Runtime-only edits cannot be committed safely against a
+                // replacement component, so restore the document projection.
+                (void)selectionSync_.RebuildRuntimeWorldWithSelectionSync(
+                    scene,
+                    context_.selection,
+                    context_.nextSceneObjectId);
                 resetStrokeState();
                 return;
             }
@@ -647,6 +661,10 @@ namespace HIKARI {
                         strokeComponentId)
                     : nullptr;
             if (documentComponent == nullptr) {
+                (void)selectionSync_.RebuildRuntimeWorldWithSelectionSync(
+                    scene,
+                    context_.selection,
+                    context_.nextSceneObjectId);
                 resetStrokeState();
                 return;
             }
@@ -801,6 +819,10 @@ namespace HIKARI {
                 brushColor = IM_COL32(240, 244, 250, 245);
             } else if (previewPaint == EditorTerrainPaintMode::Dirt) {
                 brushColor = IM_COL32(170, 120, 70, 245);
+            } else if (previewPaint == EditorTerrainPaintMode::Grass) {
+                brushColor = IM_COL32(110, 190, 80, 245);
+            } else if (previewPaint == EditorTerrainPaintMode::Rock) {
+                brushColor = IM_COL32(170, 178, 190, 245);
             } else if (previewPaint == EditorTerrainPaintMode::Erase) {
                 brushColor = IM_COL32(240, 90, 90, 245);
             } else if (context_.terrainTool.mode ==
@@ -912,6 +934,8 @@ namespace HIKARI {
                         scene.HasUnsavedSceneChanges();
                     sandBrushTargetObjectId_ =
                         selected->GetDocumentId();
+                    sandBrushTargetRuntimeHandle_ =
+                        selected->GetRuntimeHandle();
                     sandBrushTargetComponentId_ =
                         documentComponent->id;
                     sandBrushStrokeChanged_ = false;
@@ -1002,6 +1026,14 @@ namespace HIKARI {
                     case EditorTerrainPaintMode::Dirt:
                         sampleChanged = terrain->PaintLayerAtLocal(
                             "dirt", sampleLocal, sampleDeltaSeconds);
+                        break;
+                    case EditorTerrainPaintMode::Grass:
+                        sampleChanged = terrain->PaintLayerAtLocal(
+                            "grass", sampleLocal, sampleDeltaSeconds);
+                        break;
+                    case EditorTerrainPaintMode::Rock:
+                        sampleChanged = terrain->PaintLayerAtLocal(
+                            "rock", sampleLocal, sampleDeltaSeconds);
                         break;
                     case EditorTerrainPaintMode::Erase:
                         sampleChanged = terrain->PaintCoverageAtLocal(

@@ -257,6 +257,12 @@ namespace HIKARI {
                      "Sand/BuiltinAssets.json",
                      "Sand") &&
                 ok;
+            ok = AppendEngineContentTextureManifest(
+                     registry,
+                     content,
+                     "Terrain/BuiltinAssets.json",
+                     "Terrain") &&
+                ok;
             return ok;
         }
 
@@ -341,28 +347,28 @@ namespace HIKARI {
             return ok;
         }
 
-        bool AppendBuiltInSandMaterial(
+        bool AppendBuiltInTerrainMaterials(
             AssetRegistry& registry,
             const AssetDatabase& assetDatabase) {
 
             PbrMaterialAssetData sand{};
-            sand.materialName = "Sand Surface (Anime Dry)";
+            sand.materialName = "Terrain Surface (Stylized Layers)";
             sand.baseColorFactor = { 1.0f, 1.0f, 1.0f, 1.0f };
             sand.baseColorTexture.useTexture = true;
             sand.baseColorTexture.textureAssetGuid.value =
                 std::string(
-                    ASSETS::MATERIAL::kBuiltInSandAlbedoTextureId);
-            // GridPlane の uv は segment 単位でタイルされるため、
-            // 200m 平面で数回タイルする程度のスケールへ落とす。
-            sand.baseColorTexture.uvScale = { 0.01f, 0.01f };
-            // 法線も同じタイルスケールで一致させ、凹みの傾斜と
-            // テクスチャ細粒が矛盾しないようにする。
+                    ASSETS::MATERIAL::
+                        kBuiltInTerrainLayerAlbedoTextureId);
+            // Terrain shader が world-space tiling と atlas rect を所有する。
+            // uv1 は coverage 専用のため、マテリアル側では変換しない。
+            sand.baseColorTexture.uvScale = { 1.0f, 1.0f };
             sand.normalTexture.useTexture = true;
             sand.normalTexture.textureAssetGuid.value =
                 std::string(
-                    ASSETS::MATERIAL::kBuiltInSandNormalTextureId);
-            sand.normalTexture.uvScale = { 0.01f, 0.01f };
-            sand.normalScale = 0.72f;
+                    ASSETS::MATERIAL::
+                        kBuiltInTerrainLayerNormalTextureId);
+            sand.normalTexture.uvScale = { 1.0f, 1.0f };
+            sand.normalScale = 1.0f;
             sand.metallicFactor = 0.0f;
             sand.roughnessFactor = 0.92f;
             sand.doubleSided = true;
@@ -390,7 +396,7 @@ namespace HIKARI {
     bool AssetRegistryBuilder::AppendToRegistry(const AssetDatabase& assetDatabase, AssetRegistry& registry) const {
         bool ok = AppendEngineContentTextures(registry);
         ok = AppendBuiltInMaterials(registry, assetDatabase) && ok;
-        ok = AppendBuiltInSandMaterial(registry, assetDatabase) && ok;
+        ok = AppendBuiltInTerrainMaterials(registry, assetDatabase) && ok;
 
         for (const AssetRecord* record : assetDatabase.CollectAll()) {
             if (!record || !record->guid.IsValid() || record->duplicateGuid) {

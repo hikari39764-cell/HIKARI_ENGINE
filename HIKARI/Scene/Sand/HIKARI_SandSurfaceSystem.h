@@ -18,6 +18,9 @@ namespace HIKARI {
     class World;
     class GameObject;
     struct RuntimePlayStateService;
+    namespace TERRAIN {
+        struct TerrainSurface;
+    }
 
     namespace SAND {
         class SandSurfaceQueryService;
@@ -68,6 +71,10 @@ namespace HIKARI {
                 snapshotRevisions{};
             std::unordered_map<uint64_t, uint64_t>
                 authoredHeightSignatures{};
+            // layer weights は terrain revision で hash し、deform policy は
+            // registry 変更を拾うため Refresh ごとに比較する。
+            std::unordered_map<uint64_t, uint64_t>
+                authoredLayerPolicySignatures{};
             std::unordered_map<uint64_t, uint64_t>
                 authoredCoverageSignatures{};
             uint64_t lastRevision = 0u;
@@ -113,7 +120,8 @@ namespace HIKARI {
             bool holdOnly);
         void SyncChunkFromAuthored(
             SAND::SandChunkRuntimeState& chunk,
-            const TERRAIN::TerrainChunk& authored);
+            const TERRAIN::TerrainChunk& authored,
+            const TERRAIN::TerrainSurface& surface);
 
         static uint64_t ChunkStateKey(
             const TERRAIN::TerrainChunkKey& key) noexcept {

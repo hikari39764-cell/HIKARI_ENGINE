@@ -64,6 +64,14 @@ namespace HIKARI::ASSETS::MATERIAL {
         MaterialTemplateId templateId,
         std::string_view displayName = {});
 
+    // Seeds the standard PBR inputs before the selected template augments the
+    // graph. This keeps authored texture sample/normal edges reachable for
+    // stylized templates instead of trying to retrofit resources afterwards.
+    MaterialAssetData CreateMaterialFromTemplateWithPbr(
+        MaterialTemplateId templateId,
+        const PbrMaterialAssetData& pbr,
+        std::string_view displayName = {});
+
     DefaultCharacterMaterialSet CreateDefaultCharacterMaterialSet(
         std::string_view displayNamePrefix = "Character");
 

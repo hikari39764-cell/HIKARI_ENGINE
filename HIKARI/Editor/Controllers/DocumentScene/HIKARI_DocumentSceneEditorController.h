@@ -139,6 +139,8 @@ namespace HIKARI {
         void EnsureAiLocalBridge();
         EDITOR::EditorOperationResult ExecuteAiSceneSetTransform(
             const nlohmann::json& parameters);
+        EDITOR::EditorOperationResult ExecuteAiTerrainFillLayer(
+            const nlohmann::json& parameters);
         EDITOR::EditorOperationResult ExecuteAiSceneObjectQuery(
             bool snapshot);
         EDITOR::EditorOperationResult ExecuteAiSceneQuery(
@@ -219,6 +221,7 @@ namespace HIKARI {
         bool sandTerrainStrokeActive_ = false;
         bool sandBrushStrokeChanged_ = false;
         SceneObjectId sandBrushTargetObjectId_{};
+        RuntimeObjectHandle sandBrushTargetRuntimeHandle_{};
         SceneComponentId sandBrushTargetComponentId_{};
         nlohmann::json sandBrushBeforeComponentProperties_ =
             nlohmann::json::object();

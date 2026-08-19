@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <array>
 #include <string>
+#include <vector>
 
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
@@ -34,6 +35,10 @@ namespace HIKARI::EDITOR {
             case EditorTerrainToolMode::Flatten: return EditorGlyph::TerrainFlatten;
             case EditorTerrainToolMode::Mound: return EditorGlyph::TerrainMound;
             case EditorTerrainToolMode::Pit: return EditorGlyph::TerrainPit;
+            // Ridge/Terrace reuse the existing sculpt glyph language until
+            // the editor glyph atlas receives dedicated icons.
+            case EditorTerrainToolMode::Ridge: return EditorGlyph::TerrainMound;
+            case EditorTerrainToolMode::Terrace: return EditorGlyph::TerrainFlatten;
             }
             return EditorGlyph::TerrainRaise;
         }
@@ -93,25 +98,34 @@ namespace HIKARI::EDITOR {
             EditorTerrainToolMode::Flatten,
             EditorTerrainToolMode::Mound,
             EditorTerrainToolMode::Pit,
+            EditorTerrainToolMode::Ridge,
+            EditorTerrainToolMode::Terrace,
         };
 
-        nlohmann::json ExtractTerrainSettingsPatch(
+        constexpr std::array<const char*, 14> kTerrainPatchKeys{{
+            "_schemaVersion",
+            "presetId",
+            "heightScale",
+            "material",
+            "stylization",
+            "deform",
+            "shoreline",
+            "layerPresetIds",
+            "brush",
+            "grass",
+            "chunked",
+            "chunkCells",
+            "chunkCellSize",
+            "chunks",
+        }};
+
+        nlohmann::json ExtractTerrainFullPatch(
             const nlohmann::json& properties) {
             nlohmann::json patch = nlohmann::json::object();
             if (!properties.is_object()) {
                 return patch;
             }
-            static constexpr std::array<const char*, 8> keys{{
-                "_schemaVersion",
-                "presetId",
-                "heightScale",
-                "material",
-                "deform",
-                "shoreline",
-                "layerPresetIds",
-                "brush",
-            }};
-            for (const char* key : keys) {
+            for (const char* key : kTerrainPatchKeys) {
                 const auto found = properties.find(key);
                 if (found != properties.end()) {
                     patch[key] = *found;
@@ -226,10 +240,13 @@ namespace HIKARI::EDITOR {
             result.objectId.value != 0u &&
             result.componentId.value != 0u;
         if (canAuthor) {
-            result.beforePatch = ExtractTerrainSettingsPatch(
-                documentComponent->properties);
+            // Runtime component has already resolved schema migrations and
+            // defaults. Serializing its small settings view gives Undo a
+            // complete patch without copying terrain chunk arrays.
+            terrain->SerializeSettings(result.beforePatch);
         }
         bool runtimeComponentChanged = false;
+        bool discreteFillTransaction = false;
 
         // 左: ブラシツール
         if (ImGui::Begin((TEXT::Localize("ui.terrain.tools") +
@@ -240,10 +257,14 @@ namespace HIKARI::EDITOR {
                 (ImGui::GetContentRegionAvail().x -
                     ImGui::GetStyle().ItemSpacing.x) * 0.5f;
             static const char* kToolIds[] = {
-                "R##t", "L##t", "S##t", "F##t", "M##t", "P##t"
+                "R##t", "L##t", "S##t", "F##t", "M##t", "P##t",
+                "G##t", "T##t"
             };
-            static const char* kToolNames[] = {
-                "Raise", "Lower", "Smooth", "Flatten", "Mound", "Pit"
+            static const char* kToolNameKeys[] = {
+                "ui.terrain.toolRaise", "ui.terrain.toolLower",
+                "ui.terrain.toolSmooth", "ui.terrain.toolFlatten",
+                "ui.terrain.toolMound", "ui.terrain.toolPit",
+                "ui.terrain.toolRidge", "ui.terrain.toolTerrace"
             };
             for (std::size_t i = 0; i < std::size(kSculptTools); ++i) {
                 const EditorTerrainToolMode mode = kSculptTools[i];
@@ -253,14 +274,17 @@ namespace HIKARI::EDITOR {
                         EditorTerrainPaintMode::None;
                 const ImVec4 tint =
                     (mode == EditorTerrainToolMode::Raise ||
-                        mode == EditorTerrainToolMode::Mound)
+                        mode == EditorTerrainToolMode::Mound ||
+                        mode == EditorTerrainToolMode::Ridge)
                         ? ImVec4(0.25f, 0.55f, 0.95f, 1.0f)
                         : (mode == EditorTerrainToolMode::Lower ||
                             mode == EditorTerrainToolMode::Pit)
                             ? ImVec4(0.95f, 0.45f, 0.25f, 1.0f)
                             : ImVec4(0.35f, 0.75f, 0.45f, 1.0f);
+                const std::string localizedToolName = TEXT::Localize(
+                    kToolNameKeys[i]);
                 if (ToolButton(
-                        mode, kToolIds[i], kToolNames[i],
+                        mode, kToolIds[i], localizedToolName.c_str(),
                         isActive, tint, toolWidth)) {
                     context.terrainTool.mode = mode;
                     context.terrainTool.paint =
@@ -297,6 +321,8 @@ namespace HIKARI::EDITOR {
                 { "sand", EditorTerrainPaintMode::Sand, "ui.terrain.sand" },
                 { "snow", EditorTerrainPaintMode::Snow, "ui.terrain.snow" },
                 { "dirt", EditorTerrainPaintMode::Dirt, "ui.terrain.dirt" },
+                { "grass", EditorTerrainPaintMode::Grass, "ui.terrain.grass" },
+                { "rock", EditorTerrainPaintMode::Rock, "ui.terrain.rock" },
             };
             int paintCol = 0;
             for (const auto& entry : kPaintPresets) {
@@ -332,6 +358,24 @@ namespace HIKARI::EDITOR {
                 brushChanged |= ImGui::SliderFloat(
                     TEXT::Localize("ui.terrain.falloff").c_str(),
                     &brush.falloff, 0.0f, 1.0f, "%.3f");
+                brushChanged |= ImGui::SliderFloat(
+                    TEXT::Localize("ui.terrain.ridgeDirection").c_str(),
+                    &brush.ridgeDirectionDegrees,
+                    -180.0f,
+                    180.0f,
+                    "%.1f");
+                brushChanged |= ImGui::SliderFloat(
+                    TEXT::Localize("ui.terrain.ridgeSharpness").c_str(),
+                    &brush.ridgeSharpness,
+                    0.05f,
+                    1.0f,
+                    "%.3f");
+                brushChanged |= ImGui::SliderFloat(
+                    TEXT::Localize("ui.terrain.terraceStepHeight").c_str(),
+                    &brush.terraceStepHeight,
+                    0.05f,
+                    8.0f,
+                    "%.2f m");
                 if (brushChanged) {
                     if (canAuthor) {
                         terrain->SetBrush(brush);
@@ -361,7 +405,9 @@ namespace HIKARI::EDITOR {
                     if (ImGui::Selectable(
                             object.GetName().c_str(),
                             isSelected)) {
-                        context.selection.selectedObject = &object;
+                        context.selection.SelectObject(
+                            scene.GetWorld(),
+                            &object);
                     }
                 });
 
@@ -374,13 +420,38 @@ namespace HIKARI::EDITOR {
                 const std::string current = terrain->GetSurface().presetId;
                 for (const TERRAIN::SurfacePreset& layer : layers) {
                     const bool isCurrent = current == layer.id;
+                    const char* labelKey = layer.id == "sand"
+                        ? "ui.terrain.sand"
+                        : layer.id == "snow"
+                            ? "ui.terrain.snow"
+                            : layer.id == "dirt"
+                                ? "ui.terrain.dirt"
+                                : layer.id == "grass"
+                                    ? "ui.terrain.grass"
+                                    : layer.id == "rock"
+                                        ? "ui.terrain.rock"
+                                        : "ui.terrain.surfacePreset";
+                    const std::string label =
+                        TEXT::Localize(labelKey) +
+                        "##TerrainPreset/" + layer.id;
                     if (ImGui::Selectable(
-                            layer.id.c_str(),
+                            label.c_str(),
                             isCurrent,
-                            ImGuiSelectableFlags_AllowDoubleClick)) {
+                        ImGuiSelectableFlags_AllowDoubleClick)) {
                         if (canAuthor) {
-                            terrain->ApplySolidPreset(layer.id);
-                            runtimeComponentChanged = true;
+                            result.beforePatch = ExtractTerrainFullPatch(
+                                documentComponent->properties);
+                            // Preset の click は地形全体の材質 fill とする。
+                            // layer weight は component が所有し、workspace は
+                            // 下の既存 document transaction へ結果だけ渡す。
+                            const bool fillChanged =
+                                terrain->FillLayer(layer.id);
+                            runtimeComponentChanged = fillChanged ||
+                                runtimeComponentChanged;
+                            // A no-op fill is still a discrete command
+                            // boundary: close any prior slider merge and do
+                            // not let the button press inherit it.
+                            discreteFillTransaction = true;
                         }
                     }
                 }
@@ -399,8 +470,14 @@ namespace HIKARI::EDITOR {
                     terrain->GetSurface().shoreline;
                 TERRAIN::DeformParams deform =
                     terrain->GetSurface().deform;
+                TERRAIN::TerrainStylizationSettings stylization =
+                    terrain->GetStylizationSettings();
+                TERRAIN::TerrainGrassSettings grass =
+                    terrain->GetGrassSettings();
                 bool shorelineChanged = false;
                 bool deformChanged = false;
+                bool stylizationChanged = false;
+                bool grassChanged = false;
                 ImGui::SeparatorText(
                     TEXT::Localize("ui.terrain.shoreline").c_str());
                 shorelineChanged |= ImGui::SliderFloat(
@@ -470,6 +547,128 @@ namespace HIKARI::EDITOR {
                     &deform.recoveryDelaySeconds,
                     0.0f, 30.0f, "%.2f s");
 
+                ImGui::SeparatorText(
+                    TEXT::Localize("ui.terrain.stylization").c_str());
+                stylizationChanged |= ImGui::SliderFloat(
+                    TEXT::Localize("ui.terrain.textureScale").c_str(),
+                    &stylization.textureScale, 0.1f, 8.0f, "%.2f");
+                stylizationChanged |= ImGui::SliderFloat(
+                    TEXT::Localize("ui.terrain.textureStrength").c_str(),
+                    &stylization.textureStrength, 0.0f, 2.0f, "%.2f");
+                stylizationChanged |= ImGui::SliderFloat(
+                    TEXT::Localize("ui.terrain.normalStrength").c_str(),
+                    &stylization.normalStrength, 0.0f, 2.0f, "%.2f");
+                stylizationChanged |= ImGui::SliderFloat(
+                    TEXT::Localize("ui.terrain.saturation").c_str(),
+                    &stylization.saturation, 0.0f, 2.0f, "%.2f");
+                stylizationChanged |= ImGui::SliderFloat(
+                    TEXT::Localize("ui.terrain.shadowStrength").c_str(),
+                    &stylization.shadowStrength, 0.0f, 1.0f, "%.2f");
+                stylizationChanged |= ImGui::SliderFloat(
+                    TEXT::Localize("ui.terrain.rockSaturation").c_str(),
+                    &stylization.rockSaturation, 0.0f, 1.0f, "%.2f");
+                stylizationChanged |= ImGui::SliderFloat(
+                    TEXT::Localize("ui.terrain.facetSize").c_str(),
+                    &stylization.facetSizeMeters,
+                    0.25f,
+                    16.0f,
+                    "%.2f");
+                stylizationChanged |= ImGui::SliderFloat(
+                    TEXT::Localize("ui.terrain.facetStrength").c_str(),
+                    &stylization.facetStrength,
+                    0.0f,
+                    1.0f,
+                    "%.3f");
+
+                ImGui::SeparatorText(
+                    TEXT::Localize("ui.terrain.grass").c_str());
+                grassChanged |= ImGui::Checkbox(
+                    (TEXT::Localize("ui.terrain.grassEnabled") +
+                        "##TerrainGrass").c_str(),
+                    &grass.enabled);
+                grassChanged |= ImGui::SliderFloat(
+                    (TEXT::Localize("ui.terrain.grassDensity") +
+                        "##TerrainGrass").c_str(),
+                    &grass.density,
+                    0.0f,
+                    1.0f,
+                    "%.3f");
+                grassChanged |= ImGui::SliderFloat(
+                    (TEXT::Localize("ui.terrain.bladeHeight") +
+                        "##TerrainGrass").c_str(),
+                    &grass.bladeHeight,
+                    0.005f,
+                    10.0f,
+                    "%.3f m");
+                grassChanged |= ImGui::SliderFloat(
+                    (TEXT::Localize("ui.terrain.bladeWidth") +
+                        "##TerrainGrass").c_str(),
+                    &grass.bladeWidth,
+                    0.001f,
+                    2.0f,
+                    "%.3f m");
+                grassChanged |= ImGui::SliderFloat(
+                    (TEXT::Localize("ui.terrain.layerWeightThreshold") +
+                        "##TerrainGrass").c_str(),
+                    &grass.layerWeightThreshold,
+                    0.0f,
+                    1.0f,
+                    "%.3f");
+                grassChanged |= ImGui::SliderFloat(
+                    (TEXT::Localize("ui.terrain.maxSlope") +
+                        "##TerrainGrass").c_str(),
+                    &grass.maxSlopeDegrees,
+                    0.0f,
+                    90.0f,
+                    "%.1f deg");
+                grassChanged |= ImGui::SliderFloat(
+                    (TEXT::Localize("ui.terrain.windStrength") +
+                        "##TerrainGrass").c_str(),
+                    &grass.windStrength,
+                    0.0f,
+                    0.5f,
+                    "%.3f");
+                grassChanged |= ImGui::SliderFloat(
+                    (TEXT::Localize("ui.terrain.windSpeed") +
+                        "##TerrainGrass").c_str(),
+                    &grass.windSpeed,
+                    0.0f,
+                    20.0f,
+                    "%.3f");
+                grassChanged |= ImGui::SliderFloat(
+                    (TEXT::Localize("ui.terrain.spatialFrequency") +
+                        "##TerrainGrass").c_str(),
+                    &grass.spatialFrequency,
+                    0.0f,
+                    20.0f,
+                    "%.3f");
+                grassChanged |= ImGui::SliderFloat(
+                    (TEXT::Localize("ui.terrain.heightVariation") +
+                        "##TerrainGrass").c_str(),
+                    &grass.heightVariation,
+                    0.0f,
+                    1.0f,
+                    "%.3f");
+                uint64_t grassSeed = grass.seed;
+                if (ImGui::InputScalar(
+                        (TEXT::Localize("ui.terrain.grassSeed") +
+                            "##TerrainGrass").c_str(),
+                        ImGuiDataType_U64,
+                        &grassSeed)) {
+                    grass.seed = grassSeed;
+                    grassChanged = true;
+                }
+                int maxClumps = static_cast<int>(grass.maxClumps);
+                if (ImGui::SliderInt(
+                        (TEXT::Localize("ui.terrain.maxClumps") +
+                            "##TerrainGrass").c_str(),
+                        &maxClumps,
+                        0,
+                        static_cast<int>(TERRAIN::kTerrainGrassMaxClumps))) {
+                    grass.maxClumps = static_cast<uint32_t>(maxClumps);
+                    grassChanged = true;
+                }
+
                 if (shorelineChanged) {
                     if (canAuthor) {
                         terrain->SetShorelineParams(shoreline);
@@ -482,15 +681,38 @@ namespace HIKARI::EDITOR {
                         runtimeComponentChanged = true;
                     }
                 }
+                if (stylizationChanged) {
+                    if (canAuthor) {
+                        terrain->SetStylizationSettings(stylization);
+                        runtimeComponentChanged = true;
+                    }
+                }
+                if (grassChanged) {
+                    if (canAuthor) {
+                        terrain->SetGrassSettings(grass);
+                        runtimeComponentChanged = true;
+                    }
+                }
             } else {
                 ImGui::TextDisabled(
                     TEXT::Localize("ui.terrain.selectTerrain").c_str());
             }
         }
         ImGui::End();
-        result.editActive = canAuthor && ImGui::IsAnyItemActive();
+        // Whole-layer fill is a semantic button command, not a continuous
+        // slider stroke. Keep it out of the workspace merge group so Undo
+        // and the AI operation each remain one discrete transaction.
+        result.editActive = canAuthor && !discreteFillTransaction &&
+            ImGui::IsAnyItemActive();
         if (runtimeComponentChanged && canAuthor) {
-            terrain->SerializeSettings(result.afterPatch);
+            // Fill は chunk の layer weight まで transaction に渡す。
+            // Slider/grass/stylization は settings-only patch を保ち、巨大な
+            // chunk array の複製と runtime Deserialize churn を避ける。
+            if (discreteFillTransaction) {
+                terrain->Serialize(result.afterPatch);
+            } else {
+                terrain->SerializeSettings(result.afterPatch);
+            }
             result.componentChanged =
                 result.afterPatch != result.beforePatch;
             if (result.componentChanged) {

@@ -8,8 +8,8 @@ namespace HIKARI {
 
     namespace SAND {
 
-        // 沙地の組み込みマテリアルを slot 0 へ適用する。すでに適用済み
-        // （ベースカラーテクスチャが Sand アルベドを指す）なら何もしない。
+        // TerrainSurface の組み込み layer-atlas マテリアルを slot 0 へ適用する。
+        // すでに同じ atlas を指す場合は何もしない。
         // ランタイム World の再構築タイミングに依存しないよう、
         // SceneRuntimeBuilder と SceneRenderCacheSync の両方から呼ぶ。
         bool EnsureSandSurfaceMaterialOverride(

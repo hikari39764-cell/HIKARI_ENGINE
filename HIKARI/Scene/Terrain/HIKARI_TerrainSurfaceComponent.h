@@ -25,8 +25,19 @@ namespace HIKARI {
 
         const TERRAIN::TerrainSurface& GetSurface() const noexcept;
         void SetSurface(const TERRAIN::TerrainSurface& surface);
+        const TERRAIN::TerrainStylizationSettings&
+            GetStylizationSettings() const noexcept;
+        void SetStylizationSettings(
+            const TERRAIN::TerrainStylizationSettings& settings) noexcept;
+        const TERRAIN::TerrainGrassSettings&
+            GetGrassSettings() const noexcept;
+        void SetGrassSettings(
+            const TERRAIN::TerrainGrassSettings& settings) noexcept;
 
         void ApplySolidPreset(std::string_view presetId);
+        // 明示的な材質操作。既存 chunk の全頂点を対象層へ揃え、authored
+        // height / coverage は保持する。
+        bool FillLayer(std::string_view presetId);
 
         // ── ワールド空間ブラシ ────────────────────────────
         // 以降の編集 API はすべてワールド座標を取る。内部で chunk を
@@ -104,11 +115,17 @@ namespace HIKARI {
         uint64_t GetRevision() const noexcept;
         uint64_t GetGeometryRevision() const noexcept;
         uint64_t GetCoverageRevision() const noexcept;
+        uint64_t GetCollisionRevision() const noexcept;
 
         // chunk 走査用。描画・衝突・変形システムがここから chunk を得る。
         const TERRAIN::TerrainChunkMap& GetChunks() const noexcept;
         float GetChunkWorldSize() const noexcept;
         uint32_t GetChunkCells() const noexcept;
+
+        // authored chunk / height / layer weight から毎回再構築する deterministic
+        // snapshot。配置は Scene の GameObject や serialized transform ではない。
+        TERRAIN::TerrainGrassPlacementSnapshot
+            BuildGrassPlacementSnapshot() const;
 
         // 高さ場はオブジェクトローカル空間。ブラシ・変形・物理は
         // この変換でローカル座標へそろえ、描画と一致させる。
@@ -146,19 +163,25 @@ namespace HIKARI {
         bool StitchChunkBorders(
             const std::vector<TERRAIN::TerrainChunkKey>& touchedChunks);
         TERRAIN::TerrainChunk& EnsureChunk(
-            const TERRAIN::TerrainChunkKey& key);
+            const TERRAIN::TerrainChunkKey& key,
+            int32_t seedLayer = -1);
+        bool SeedChunkFromNeighborEdges(
+            const TERRAIN::TerrainChunkKey& key,
+            TERRAIN::TerrainChunk& chunk);
         // fn が受け取る chunkOrigin は地形オブジェクトローカル空間。
         template <typename Fn>
         void ForEachChunkInBrushLocal(
             const MATH::Vec3& localPos,
             float radius,
             bool createMissingChunks,
-            Fn&& fn);
+            Fn&& fn,
+            int32_t seedLayer = -1);
 
         TERRAIN::TerrainSurface surface_{};
         uint64_t revision_ = 0u;
         uint64_t geometryRevision_ = 0u;
         uint64_t coverageRevision_ = 1u;
+        uint64_t collisionRevision_ = 0u;
         bool geometryEditBatchActive_ = false;
         bool geometryEditBatchDirty_ = false;
         mutable uint64_t coverageCacheRevision_ = 0u;

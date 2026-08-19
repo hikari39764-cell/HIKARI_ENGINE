@@ -26,6 +26,8 @@ namespace HIKARI {
             uint64_t terrainProjectionAllocationCount = 0u;
             uint64_t terrainResponseWarmRequestCount = 0u;
             uint64_t terrainResponseWarmPendingCount = 0u;
+            uint64_t terrainGrassRenderInstanceCount = 0u;
+            uint64_t terrainGrassRenderSkippedCount = 0u;
         };
 
         SceneRenderCacheSync();

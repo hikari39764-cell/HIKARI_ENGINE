@@ -29,6 +29,8 @@ namespace HIKARI {
         Flatten,
         Mound,
         Pit,
+        Ridge,
+        Terrace,
     };
 
     enum class EditorTerrainPaintMode : uint8_t {
@@ -36,6 +38,8 @@ namespace HIKARI {
         Sand,
         Snow,
         Dirt,
+        Grass,
+        Rock,
         Erase,
     };
 

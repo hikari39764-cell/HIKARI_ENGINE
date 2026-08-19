@@ -10,6 +10,7 @@
 #include "Include/Meshlet/HIKARI_WaterSurfaceDeform.hlsli"
 #endif
 #include "Include/Surface/HIKARI_SandSurfaceDeform.hlsli"
+#include "Include/Surface/HIKARI_FoliageWind.hlsli"
 
 struct HikariMeshletDepthVertexOut
 {
@@ -82,6 +83,11 @@ HikariMeshletDepthVertexOut HikariBuildMeshletDepthVertex(
     // Depth prepass と forward (LESS_EQUAL) の深度を bit 一致させるため、
     // clip 位置の計算は各 MS で同一式 + precise に固定する。
     float4 worldPos = mul(instance.clusterWorld, float4(localPosition, 1.0f));
+    worldPos = HikariApplyFoliageWindWorldPosition(
+        instance,
+        gTimeParams.x,
+        uv01.xy,
+        worldPos);
     precise float4 clipPosition = mul(gViewProj, worldPos);
     output.position = clipPosition;
 

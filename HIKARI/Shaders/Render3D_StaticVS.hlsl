@@ -22,6 +22,7 @@ cbuffer CameraCB : register(b0)
 #include "Include/Meshlet/HIKARI_WaterSurfaceDeform.hlsli"
 #include "Include/Forward/HIKARI_ForwardVertexMeta.hlsli"
 #include "Include/Surface/HIKARI_SandSurfaceDeform.hlsli"
+#include "Include/Surface/HIKARI_FoliageWind.hlsli"
 #if defined(HIKARI_GEOMETRY_OUTLINE_VERTEX)
 #include "Include/Features/HIKARI_GeometryOutlineVertex.hlsli"
 #endif
@@ -95,6 +96,11 @@ VSOutput main(VSInput input)
         localNormal,
         output.surfaceFeatureData);
     float4 worldPos = mul(objectData.world, float4(localPosition, 1.0f));
+    worldPos = HikariApplyFoliageWindWorldPosition(
+        surfaceInstance,
+        gTimeParams.x,
+        input.uv,
+        worldPos);
     output.worldPosWS = worldPos.xyz;
     output.normalWS = normalize(
         mul((float3x3)objectData.normalMatrix, localNormal));

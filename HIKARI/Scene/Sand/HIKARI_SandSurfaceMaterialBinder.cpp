@@ -30,7 +30,7 @@ namespace HIKARI::SAND {
             model.GetRuntimeMaterialOverride(0u);
         if (current != nullptr &&
             current->GetBaseColorTexturePath().find(
-                "Ground101_1K-JPG_Color") != std::string::npos) {
+                "TerrainLayer_Atlas_Color") != std::string::npos) {
             return true;
         }
 
@@ -46,8 +46,8 @@ namespace HIKARI::SAND {
                 *runtimeMaterial,
                 sandMaterial->id.value)) {
             HIKARI_LOG_WARN(
-                "[MaterialRuntime][Sand] failed to build "
-                "built-in sand material.");
+                "[MaterialRuntime][Terrain] failed to build "
+                "built-in stylized layer material.");
             return false;
         }
 
@@ -55,8 +55,8 @@ namespace HIKARI::SAND {
             0u,
             std::move(runtimeMaterial));
         HIKARI_LOG_INFO(
-            "[MaterialRuntime][Sand] built-in sand material "
-            "override applied.");
+            "[MaterialRuntime][Terrain] built-in stylized layer "
+            "material override applied.");
         return true;
     }
 

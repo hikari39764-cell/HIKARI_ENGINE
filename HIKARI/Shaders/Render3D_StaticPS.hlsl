@@ -46,6 +46,13 @@ float4 main(PSInput input) : SV_TARGET
         gDebugView == HIKARI_DEBUG_VIEW_NEUTRAL_CLAY;
     const bool sandSurface =
         HikariSurfaceHasSandSurface(input.surfaceFeatureFlags);
+#if HIKARI_FORWARD_COST_MODE_STATIC != 255
+    static const uint forwardCostMode = HIKARI_FORWARD_COST_MODE_STATIC;
+#else
+    const uint forwardCostMode = (uint)(gForwardCostMode + 0.5f);
+#endif
+    const bool costNoShadow =
+        forwardCostMode == HIKARI_FORWARD_COST_NO_SHADOW;
     // Neutral Clay も authored coverage の外側を描いてはいけない。
     // 深度/GeometryAux と同じ clip を先に適用し、debug 表示だけが
     // 四角い terrain chunk を復活させる不一致を防ぐ。
@@ -67,7 +74,8 @@ float4 main(PSInput input) : SV_TARGET
         return HikariShadeSandSurface(
             input,
             sandObjectData,
-            input.surfaceFeatureData);
+            input.surfaceFeatureData,
+            costNoShadow);
     }
     if (!neutralClay &&
         HikariSurfaceHasWaterSurface(input.surfaceFeatureFlags))
@@ -107,14 +115,8 @@ float4 main(PSInput input) : SV_TARGET
         doubleSidedBackFace
             ? -surfaceGeometricNormal
             : surfaceGeometricNormal;
-#if HIKARI_FORWARD_COST_MODE_STATIC != 255
-    static const uint forwardCostMode = HIKARI_FORWARD_COST_MODE_STATIC;
-#else
-    const uint forwardCostMode = (uint)(gForwardCostMode + 0.5f);
-#endif
     const bool costAlbedoOnly = forwardCostMode == HIKARI_FORWARD_COST_ALBEDO_ONLY;
     const bool costNoNormalMap = forwardCostMode == HIKARI_FORWARD_COST_NO_NORMAL_MAP;
-    const bool costNoShadow = forwardCostMode == HIKARI_FORWARD_COST_NO_SHADOW;
     const bool costNoSsao = forwardCostMode == HIKARI_FORWARD_COST_NO_SSAO;
     const bool costNoMaterialExtras =
         forwardCostMode == HIKARI_FORWARD_COST_NO_MATERIAL_EXTRAS;

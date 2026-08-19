@@ -7,6 +7,7 @@
 #include <cstring>
 #include <optional>
 #include <span>
+#include <string>
 #include <unordered_set>
 #include <utility>
 
@@ -27,6 +28,7 @@ namespace HIKARI {
     namespace {
         constexpr float kFootprintBasisEpsilon = 1.0e-5f;
         constexpr float kRecoverySnapEpsilon = 1.0e-4f;
+        constexpr float kDeformableMaskClearThreshold = 1.0e-3f;
 
         uint64_t HashAuthoredHeights(
             const TERRAIN::TerrainChunk& chunk) noexcept {
@@ -38,6 +40,34 @@ namespace HIKARI {
             mix(chunk.cells);
             for (float value : chunk.heights) {
                 mix(std::bit_cast<uint32_t>(value));
+            }
+            // 層ペイントも authored terrain state なので同じ signature に含め、
+            // paint revision で runtime response mask を再投影する。
+            mix(chunk.layerCount);
+            for (float value : chunk.layerWeights) {
+                mix(std::bit_cast<uint32_t>(value));
+            }
+            return hash;
+        }
+
+        uint64_t HashAuthoredLayerPolicy(
+            const TERRAIN::TerrainSurface& surface,
+            uint32_t layerCount) noexcept {
+            uint64_t hash = 1469598103934665603ull;
+            const auto mix = [&](uint32_t value) {
+                hash ^= static_cast<uint64_t>(value);
+                hash *= 1099511628211ull;
+            };
+            mix(layerCount);
+            mix(static_cast<uint32_t>(surface.layerPresetIds.size()));
+            for (const std::string& presetId : surface.layerPresetIds) {
+                for (const unsigned char character : presetId) {
+                    mix(static_cast<uint32_t>(character));
+                }
+                mix(0u);
+            }
+            for (uint32_t layer = 0u; layer < layerCount; ++layer) {
+                mix(SAND::IsSandLayerDeformable(surface, layer) ? 1u : 0u);
             }
             return hash;
         }
@@ -250,7 +280,8 @@ namespace HIKARI {
 
     void SandSurfaceSystem::SyncChunkFromAuthored(
         SAND::SandChunkRuntimeState& chunk,
-        const TERRAIN::TerrainChunk& authored) {
+        const TERRAIN::TerrainChunk& authored,
+        const TERRAIN::TerrainSurface& surface) {
         // authored 格子を runtime response 格子へ双線形投影する。
         // runtime deformation は別配列なので、筆刷更新で痕跡を混ぜない。
         const uint32_t sourceCells = (std::max)(authored.cells, 1u);
@@ -290,6 +321,38 @@ namespace HIKARI {
                 }
             }
         }
+        SAND::ProjectSandChunkDeformableMask(
+            surface,
+            authored,
+            targetCells,
+            chunk.deformableMask);
+        // 完全な hard layer に隠れた response を残すと、後から sand を塗った
+        // ときに復活する。混合境界の feather は保ち、ほぼ 0 の内部だけ消す。
+        const std::size_t responseCount = chunk.deformableMask.size();
+        if (chunk.elasticHeights.size() == responseCount &&
+            chunk.plasticHeights.size() == responseCount &&
+            chunk.recoveryHold.size() == responseCount) {
+            for (std::size_t index = 0u; index < responseCount; ++index) {
+                if (chunk.deformableMask[index] <=
+                    kDeformableMaskClearThreshold) {
+                    chunk.elasticHeights[index] = 0.0f;
+                    chunk.plasticHeights[index] = 0.0f;
+                    chunk.recoveryHold[index] = 0.0f;
+                }
+            }
+            chunk.hasDeformation = std::any_of(
+                chunk.elasticHeights.begin(),
+                chunk.elasticHeights.end(),
+                [](float value) {
+                    return std::fabs(value) > kRecoverySnapEpsilon;
+                }) ||
+                std::any_of(
+                    chunk.plasticHeights.begin(),
+                    chunk.plasticHeights.end(),
+                    [](float value) {
+                        return std::fabs(value) > kRecoverySnapEpsilon;
+                    });
+        }
         RebuildCombinedHeights(chunk);
         ++chunk.stateRevision;
     }
@@ -315,11 +378,25 @@ namespace HIKARI {
         if (chunk.heights.size() != count) {
             chunk.heights.resize(count);
         }
+        if (chunk.deformableMask.size() != count) {
+            // 旧 runtime state には layer mask が無い。Refresh が authored
+            // layer weights を投影するまでは、従来どおり全体を変形可能とする。
+            chunk.deformableMask.assign(count, 1.0f);
+        }
         for (std::size_t i = 0u; i < count; ++i) {
-            chunk.deformHeights[i] =
+            const float rawDeformation =
                 chunk.elasticHeights[i] + chunk.plasticHeights[i];
-            chunk.heights[i] = chunk.baseHeights[i] +
-                chunk.deformHeights[i];
+            chunk.deformHeights[i] =
+                SAND::EvaluateSandChunkFinalHeight(
+                    0.0f,
+                    rawDeformation,
+                    chunk.deformableMask[i],
+                    chunk.settings.deformationEnabled);
+            chunk.heights[i] = SAND::EvaluateSandChunkFinalHeight(
+                chunk.baseHeights[i],
+                rawDeformation,
+                chunk.deformableMask[i],
+                chunk.settings.deformationEnabled);
         }
     }
 
@@ -526,11 +603,17 @@ namespace HIKARI {
                     }
                     const auto previousSignature =
                         bucket.authoredHeightSignatures.find(stateKey);
+                    const auto previousLayerPolicySignature =
+                        bucket.authoredLayerPolicySignatures.find(stateKey);
                     uint64_t authoredSignature =
                         previousSignature !=
                             bucket.authoredHeightSignatures.end()
                         ? previousSignature->second
                         : 0u;
+                    const uint64_t layerPolicySignature =
+                        HashAuthoredLayerPolicy(
+                            surface,
+                            authored.layerCount);
                     bool authoredChanged = created || layoutChanged ||
                         previousSignature ==
                             bucket.authoredHeightSignatures.end();
@@ -541,11 +624,22 @@ namespace HIKARI {
                             nextSignature != authoredSignature;
                         authoredSignature = nextSignature;
                     }
+                    const bool layerPolicyChanged = created || layoutChanged ||
+                        previousLayerPolicySignature ==
+                            bucket.authoredLayerPolicySignatures.end() ||
+                        previousLayerPolicySignature->second !=
+                            layerPolicySignature;
+                    // authoredSignature は height+layerWeights 側で、policy 側は
+                    // 独立比較する。これにより TerrainSurface revision が同じでも
+                    // registry の変更を検出できる。
+                    authoredChanged = authoredChanged || layerPolicyChanged;
                     const bool settingsChanged = created ||
                         !SAND::SandSurfaceSettingsEqual(
                             state->settings, nextSettings);
                     bucket.authoredHeightSignatures[stateKey] =
                         authoredSignature;
+                    bucket.authoredLayerPolicySignatures[stateKey] =
+                        layerPolicySignature;
                     state->key = key;
                     state->authoredCells = authored.cells;
                     state->cells = runtimeCells;
@@ -560,7 +654,7 @@ namespace HIKARI {
                     if (authoredChanged) {
                         // 筆刷内容だけでなく grid/chunk 尺度の変更も同じ経路で
                         // 再同期し、古い stride で query / imprint しない。
-                        SyncChunkFromAuthored(*state, authored);
+                        SyncChunkFromAuthored(*state, authored, surface);
                     } else if (settingsChanged) {
                         ++state->stateRevision;
                     }
@@ -625,6 +719,7 @@ namespace HIKARI {
                         bucket.snapshots.erase(it->first);
                         bucket.snapshotRevisions.erase(it->first);
                         bucket.authoredHeightSignatures.erase(it->first);
+                        bucket.authoredLayerPolicySignatures.erase(it->first);
                         bucket.authoredCoverageSignatures.erase(it->first);
                         publishNeeded = true;
                         it = bucket.chunks.erase(it);
@@ -1097,9 +1192,15 @@ namespace HIKARI {
                     const int32_t gz = state->key.z *
                         static_cast<int32_t>(cells) +
                         static_cast<int32_t>(z);
-                    BoundaryValue& value = shared[globalKey(gx, gz)];
                     const std::size_t index =
                         static_cast<std::size_t>(z) * stride + x;
+                    if (state->deformableMask.size() == count &&
+                        (state->deformableMask[index] <=
+                            kDeformableMaskClearThreshold ||
+                         !std::isfinite(state->deformableMask[index]))) {
+                        continue;
+                    }
+                    BoundaryValue& value = shared[globalKey(gx, gz)];
                     accumulate(state->elasticHeights[index], value.elastic);
                     accumulate(state->plasticHeights[index], value.plastic);
                     value.hold = (std::max)(
@@ -1139,6 +1240,22 @@ namespace HIKARI {
                     }
                     const std::size_t index =
                         static_cast<std::size_t>(z) * stride + x;
+                    if (state->deformableMask.size() == count &&
+                        (state->deformableMask[index] <=
+                            kDeformableMaskClearThreshold ||
+                         !std::isfinite(state->deformableMask[index]))) {
+                        if (std::fabs(state->elasticHeights[index]) >
+                                kRecoverySnapEpsilon ||
+                            std::fabs(state->plasticHeights[index]) >
+                                kRecoverySnapEpsilon ||
+                            state->recoveryHold[index] > 0.0f) {
+                            state->elasticHeights[index] = 0.0f;
+                            state->plasticHeights[index] = 0.0f;
+                            state->recoveryHold[index] = 0.0f;
+                            touched.insert(state.get());
+                        }
+                        continue;
+                    }
                     const BoundaryValue& value = found->second;
                     if (std::fabs(
                             state->elasticHeights[index] - value.elastic) >
@@ -1272,6 +1389,18 @@ namespace HIKARI {
                     SAND::kSandSurfaceVisibleCoverageThreshold) {
                     continue;
                 }
+                const float deformableMask =
+                    vertexIndex < chunk.deformableMask.size()
+                        ? std::clamp(
+                            chunk.deformableMask[vertexIndex], 0.0f, 1.0f)
+                        : 1.0f;
+                if (!std::isfinite(deformableMask) ||
+                    deformableMask <= kDeformableMaskClearThreshold) {
+                    // RebuildCombinedHeights が final response へ mask を一度だけ
+                    // 適用する。ここでは 0 領域の gate だけにし、imprint にも
+                    // 掛けると混合境界を二重に mask してしまう。
+                    continue;
+                }
                 const float vx = chunk.chunkOriginLocal.x +
                     static_cast<float>(x) * cell;
                 const float vz = chunk.chunkOriginLocal.y +
@@ -1402,11 +1531,30 @@ namespace HIKARI {
             -(std::max)(
                 chunk.settings.plasticRefillPerSecond, 0.0f) *
                 safeDt);
+        const auto maskAt = [&](std::size_t index) noexcept {
+            if (chunk.deformableMask.size() != vertexCount) {
+                return 1.0f;
+            }
+            const float value = chunk.deformableMask[index];
+            return std::isfinite(value)
+                ? std::clamp(value, 0.0f, 1.0f)
+                : 0.0f;
+        };
         for (std::size_t index = 0u;
             index < vertexCount;
             ++index) {
             float& elastic = chunk.elasticHeights[index];
             float& plastic = chunk.plasticHeights[index];
+            if (maskAt(index) <= kDeformableMaskClearThreshold) {
+                changed = changed ||
+                    std::fabs(elastic) > kRecoverySnapEpsilon ||
+                    std::fabs(plastic) > kRecoverySnapEpsilon ||
+                    chunk.recoveryHold[index] > 0.0f;
+                elastic = 0.0f;
+                plastic = 0.0f;
+                chunk.recoveryHold[index] = 0.0f;
+                continue;
+            }
             const auto snapRecovered = [](float value) noexcept {
                 return std::isfinite(value) &&
                     std::fabs(value) > kRecoverySnapEpsilon
@@ -1464,7 +1612,9 @@ namespace HIKARI {
                         continue;
                     }
                     const auto neighborValue = [&](std::size_t candidate) {
-                        return chunk.recoveryHold[candidate] > 0.0f
+                        return maskAt(candidate) <=
+                                kDeformableMaskClearThreshold ||
+                                chunk.recoveryHold[candidate] > 0.0f
                             ? source[index]
                             : source[candidate];
                     };

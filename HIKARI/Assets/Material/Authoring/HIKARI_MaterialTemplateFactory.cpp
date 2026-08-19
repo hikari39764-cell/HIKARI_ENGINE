@@ -701,18 +701,21 @@ namespace HIKARI::ASSETS::MATERIAL {
             });
     }
 
-    MaterialAssetData CreateMaterialFromTemplate(
+    MaterialAssetData CreateMaterialFromTemplateWithPbr(
         MaterialTemplateId templateId,
+        const PbrMaterialAssetData& pbrSeed,
         std::string_view displayName) {
 
         if (!IsBuiltInMaterialTemplate(templateId)) {
             templateId = MaterialTemplateId::StandardPbr;
         }
-        PbrMaterialAssetData pbr{};
+        PbrMaterialAssetData pbr = pbrSeed;
         pbr.version = kMaterialAssetSourceVersion;
-        pbr.materialName = displayName.empty()
-            ? std::string(ToString(templateId))
-            : std::string(displayName);
+        if (!displayName.empty()) {
+            pbr.materialName = std::string(displayName);
+        } else if (pbr.materialName.empty()) {
+            pbr.materialName = std::string(ToString(templateId));
+        }
         MaterialAssetData data = MakeStandardPbrMaterialAssetData(pbr);
         data.templateId = templateId;
         switch (templateId) {
@@ -742,6 +745,16 @@ namespace HIKARI::ASSETS::MATERIAL {
                 data.featureRequests.begin(), data.featureRequests.end()),
             data.featureRequests.end());
         return data;
+    }
+
+    MaterialAssetData CreateMaterialFromTemplate(
+        MaterialTemplateId templateId,
+        std::string_view displayName) {
+
+        return CreateMaterialFromTemplateWithPbr(
+            templateId,
+            PbrMaterialAssetData{},
+            displayName);
     }
 
 } // namespace HIKARI::ASSETS::MATERIAL

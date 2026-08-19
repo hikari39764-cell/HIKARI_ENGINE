@@ -39,26 +39,46 @@ namespace HIKARI {
         }
 
         bool ApplyDocumentComponentToRuntime(
+            const SceneObjectData& documentObject,
             const SceneComponentData& componentData,
             size_t componentIndex,
             const EditorContext& context) {
             if (!context.selection.selectedObject) {
                 return false;
             }
+            if (componentIndex >= documentObject.components.size() ||
+                documentObject.components[componentIndex].type !=
+                    componentData.type) {
+                return false;
+            }
+
+            // Runtime construction may skip an unavailable document
+            // component, so the raw document index is not a stable runtime
+            // address. Until runtime components carry their document ID,
+            // resolve by type plus the same-type ordinal.
+            size_t typeOrdinal = 0u;
+            for (size_t index = 0u; index < componentIndex; ++index) {
+                if (documentObject.components[index].type ==
+                    componentData.type) {
+                    ++typeOrdinal;
+                }
+            }
             const auto& runtimeComponents =
                 context.selection.selectedObject->GetComponents();
-            if (componentIndex >= runtimeComponents.size() ||
-                !runtimeComponents[componentIndex]) {
-                return false;
+            for (const auto& runtimeEntry : runtimeComponents) {
+                if (!runtimeEntry ||
+                    std::string(runtimeEntry->GetTypeName()) !=
+                        componentData.type) {
+                    continue;
+                }
+                if (typeOrdinal > 0u) {
+                    --typeOrdinal;
+                    continue;
+                }
+                runtimeEntry->Deserialize(componentData.properties);
+                return true;
             }
-            IComponent* runtimeComponent =
-                runtimeComponents[componentIndex].get();
-            if (std::string(runtimeComponent->GetTypeName()) !=
-                componentData.type) {
-                return false;
-            }
-            runtimeComponent->Deserialize(componentData.properties);
-            return true;
+            return false;
         }
 
         bool HasDocumentComponent(
@@ -326,6 +346,7 @@ namespace HIKARI {
                 } else {
                     const bool appliedToRuntime =
                         ApplyDocumentComponentToRuntime(
+                            target,
                             component,
                             componentIndex,
                             context);
@@ -367,6 +388,7 @@ namespace HIKARI {
                 const SceneComponentData& component =
                     target.components[*deferredIndex];
                 if (!ApplyDocumentComponentToRuntime(
+                        target,
                         component,
                         *deferredIndex,
                         context)) {

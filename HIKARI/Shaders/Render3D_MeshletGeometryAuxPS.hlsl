@@ -5,6 +5,7 @@
 #include "Include/Surface/HIKARI_SceneSurfaceContract.hlsli"
 #include "Include/Surface/HIKARI_SurfaceShadingNormal.hlsli"
 #include "Include/Surface/HIKARI_SandSurfaceParams.hlsli"
+#include "Include/Surface/HIKARI_SandSurfaceNormal.hlsli"
 #if defined(HIKARI_GEOMETRY_AUX_WRITE_FEATURE_MASK)
 #include "Include/Material/HIKARI_MaterialProgramData.hlsli"
 #include "Include/Features/HIKARI_StylizedFeatureMask.hlsli"
@@ -13,6 +14,7 @@
 static const uint MATERIAL_ALPHA_MASK = 1u << 1;
 
 SamplerState gLinearWrap : register(s0);
+SamplerState gLinearClamp : register(s2);
 
 struct PSInput
 {
@@ -105,14 +107,31 @@ float4 main(PSInput input) : SV_TARGET
         metallic = saturate(metallic * metallicRoughness.b);
     }
 
-    const float3 n =
-        HikariResolveSurfaceShadingNormal(
+    float3 n = normalize(input.normalWS);
+    if (HikariSurfaceHasSandSurface(input.surfaceFeatureFlags))
+    {
+        const HikariSurfaceGpuSceneInstance sandInstance =
+            HikariGetSurfaceGpuSceneInstanceAt(input.surfaceGpuSceneIndex);
+        n = HikariResolveSandSurfaceAuxNormal(
+            materialData,
+            HikariLoadSandSurfaceParamsFromDataIndex(
+                sandInstance.surfaceFeatureDataIndex),
+            input.worldPosWS,
+            input.uv1,
+            input.normalWS,
+            input.tangentWS,
+            gLinearClamp);
+    }
+    else
+    {
+        n = HikariResolveSurfaceShadingNormal(
             materialData,
             input.normalWS,
             input.tangentWS,
             input.uv,
             input.uv1,
             gLinearWrap);
+    }
     const float4 packedSurface =
         HikariPackSceneSurface(n, roughness, metallic);
 #if defined(HIKARI_GEOMETRY_AUX_WRITE_FEATURE_MASK)

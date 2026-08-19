@@ -7,6 +7,8 @@ static const uint HIKARI_SAND_SURFACE_GPU_LAYER_COUNT_SHIFT = 1u;
 static const uint HIKARI_SAND_SURFACE_GPU_LAYER_COUNT_MASK = 0x000000FEu;
 static const uint HIKARI_SAND_SURFACE_GPU_DEFORMATION_OFFSET_SHIFT = 8u;
 static const uint HIKARI_SAND_SURFACE_GPU_DEFORMATION_OFFSET_MASK = 0xFFFFFF00u;
+static const uint HIKARI_SAND_LAYER_STYLE_FLOAT_COUNT = 20u;
+static const uint HIKARI_SAND_LAYER_MATERIAL_KIND_SAND = 0u;
 
 // C++ 側の SandSurfaceGpuData と同一の sparse record layout。
 struct HikariSandSurfaceGpuData
@@ -121,41 +123,157 @@ HikariSandSurfaceParams HikariLoadSandSurfaceParamsFromDataIndex(
     return p;
 }
 
-// 層 tint を float プールから読む。layer ごとに light.rgb + dark.rgb の 6 float。
-// プール未供給 (offset==0) のときは従来ハードコード色へフォールバックし、
-// 組み込み sand/snow/dirt の見た目を完全に保つ。
-float3 HikariSandSampleLayerLightTint(
+struct HikariSandLayerStyle
+{
+    float3 lightTint;
+    float textureStrength;
+    float3 darkTint;
+    float normalStrength;
+    float4 atlasScaleBias;
+    float tilesPerMeter;
+    float roughness;
+    float saturation;
+    uint materialKind;
+    float shadowStrength;
+    float granularStrength;
+    float facetSizeMeters;
+    float facetStrength;
+};
+
+float4 HikariSandAtlasScaleBias(uint tile)
+{
+    static const float contentScale = 1008.0f / 2048.0f;
+    static const float gutter = 8.0f / 2048.0f;
+    const uint safeTile = min(tile, 3u);
+    return float4(
+        contentScale,
+        contentScale,
+        (float)(safeTile & 1u) * 0.5f + gutter,
+        (float)(safeTile >> 1u) * 0.5f + gutter);
+}
+
+HikariSandLayerStyle HikariBuildLegacySandLayerStyle(
+    HikariSandSurfaceParams p,
+    uint layerIndex)
+{
+    HikariSandLayerStyle style = (HikariSandLayerStyle)0;
+    style.lightTint = p.lightTint;
+    style.textureStrength = 0.52f;
+    style.darkTint = p.darkTint;
+    style.normalStrength = 0.72f;
+    style.atlasScaleBias = HikariSandAtlasScaleBias(0u);
+    // Pure Sand compatibility: approximately the former 0.01 uv scale on
+    // the default 0.25 m terrain cell (one 25 m world-space tile).
+    style.tilesPerMeter = 1.0f / 25.0f;
+    style.roughness = 0.92f;
+    style.saturation = 1.14f;
+    style.materialKind = 0u;
+    style.shadowStrength = 1.0f;
+    style.granularStrength = 1.0f;
+    style.facetSizeMeters = 1.6f;
+    style.facetStrength = 0.0f;
+    if (layerIndex == 1u)
+    {
+        style.tilesPerMeter = 1.0f / 2.8f;
+        style.lightTint = 1.0f.xxx;
+        style.darkTint = float3(0.68f, 0.78f, 0.90f);
+        style.textureStrength = 0.30f;
+        style.normalStrength = 0.42f;
+        style.roughness = 0.96f;
+        style.saturation = 0.18f;
+        style.materialKind = 1u;
+    }
+    else if (layerIndex == 2u)
+    {
+        style.lightTint = float3(0.52f, 0.38f, 0.24f);
+        style.darkTint = float3(0.28f, 0.20f, 0.12f);
+        style.textureStrength = 0.72f;
+        style.normalStrength = 0.58f;
+        style.atlasScaleBias = HikariSandAtlasScaleBias(1u);
+        style.tilesPerMeter = 1.0f / 1.4f;
+        style.roughness = 0.95f;
+        style.saturation = 0.78f;
+        style.materialKind = 2u;
+        style.granularStrength = 0.0f;
+    }
+    else if (layerIndex == 3u)
+    {
+        style.lightTint = float3(0.68f, 0.90f, 0.50f);
+        style.darkTint = float3(0.18f, 0.32f, 0.12f);
+        style.textureStrength = 0.68f;
+        style.normalStrength = 0.48f;
+        style.atlasScaleBias = HikariSandAtlasScaleBias(2u);
+        style.tilesPerMeter = 1.0f / 1.4f;
+        style.roughness = 0.92f;
+        style.saturation = 0.82f;
+        style.materialKind = 3u;
+        style.granularStrength = 0.0f;
+    }
+    else if (layerIndex == 4u)
+    {
+        style.lightTint = 0.86f.xxx;
+        style.darkTint = 0.30f.xxx;
+        style.textureStrength = 0.76f;
+        style.normalStrength = 0.74f;
+        style.atlasScaleBias = HikariSandAtlasScaleBias(3u);
+        style.tilesPerMeter = 1.0f / 1.4f;
+        style.roughness = 0.88f;
+        style.saturation = 0.30f;
+        style.materialKind = 4u;
+        style.granularStrength = 0.0f;
+    }
+    return style;
+}
+
+HikariSandLayerStyle HikariSandLoadLayerStyle(
     HikariSandSurfaceParams p,
     uint layerIndex)
 {
     if (p.layerTintsOffset == 0u)
     {
-        if (layerIndex == 0u) { return p.lightTint; }
-        if (layerIndex == 1u) { return float3(1.0f, 1.0f, 1.0f); }
-        return float3(0.52f, 0.38f, 0.24f);
+        return HikariBuildLegacySandLayerStyle(p, layerIndex);
     }
-    const uint base = p.layerTintsOffset + layerIndex * 6u;
-    return float3(
+    const uint base = p.layerTintsOffset +
+        layerIndex * HIKARI_SAND_LAYER_STYLE_FLOAT_COUNT;
+    HikariSandLayerStyle style = (HikariSandLayerStyle)0;
+    style.lightTint = float3(
         gSandSurfaceHeights[base + 0u],
         gSandSurfaceHeights[base + 1u],
         gSandSurfaceHeights[base + 2u]);
+    style.textureStrength = gSandSurfaceHeights[base + 3u];
+    style.darkTint = float3(
+        gSandSurfaceHeights[base + 4u],
+        gSandSurfaceHeights[base + 5u],
+        gSandSurfaceHeights[base + 6u]);
+    style.normalStrength = gSandSurfaceHeights[base + 7u];
+    style.atlasScaleBias = float4(
+        gSandSurfaceHeights[base + 8u],
+        gSandSurfaceHeights[base + 9u],
+        gSandSurfaceHeights[base + 10u],
+        gSandSurfaceHeights[base + 11u]);
+    style.tilesPerMeter = gSandSurfaceHeights[base + 12u];
+    style.roughness = gSandSurfaceHeights[base + 13u];
+    style.saturation = gSandSurfaceHeights[base + 14u];
+    style.materialKind = (uint)gSandSurfaceHeights[base + 15u];
+    style.shadowStrength = gSandSurfaceHeights[base + 16u];
+    style.granularStrength = gSandSurfaceHeights[base + 17u];
+    style.facetSizeMeters = max(gSandSurfaceHeights[base + 18u], 0.25f);
+    style.facetStrength = saturate(gSandSurfaceHeights[base + 19u]);
+    return style;
+}
+
+float3 HikariSandSampleLayerLightTint(
+    HikariSandSurfaceParams p,
+    uint layerIndex)
+{
+    return HikariSandLoadLayerStyle(p, layerIndex).lightTint;
 }
 
 float3 HikariSandSampleLayerDarkTint(
     HikariSandSurfaceParams p,
     uint layerIndex)
 {
-    if (p.layerTintsOffset == 0u)
-    {
-        if (layerIndex == 0u) { return p.darkTint; }
-        if (layerIndex == 1u) { return float3(0.68f, 0.78f, 0.90f); }
-        return float3(0.28f, 0.20f, 0.12f);
-    }
-    const uint base = p.layerTintsOffset + layerIndex * 6u;
-    return float3(
-        gSandSurfaceHeights[base + 3u],
-        gSandSurfaceHeights[base + 4u],
-        gSandSurfaceHeights[base + 5u]);
+    return HikariSandLoadLayerStyle(p, layerIndex).darkTint;
 }
 
 float HikariSandSampleCoverage(
@@ -210,6 +328,27 @@ float HikariSandSampleLayerWeight(
     const float w01 = gSandSurfaceHeights[base + y1 * stride + x0];
     const float w11 = gSandSurfaceHeights[base + y1 * stride + x1];
     return lerp(lerp(w00, w10, tx), lerp(w01, w11, tx), ty);
+}
+
+float HikariSandSampleGranularWeight(
+    HikariSandSurfaceParams p,
+    float2 uv)
+{
+    float result = 0.0f;
+    float weightSum = 0.0f;
+    const uint layers = min(p.layerCount, 8u);
+    for (uint layer = 0u; layer < layers; ++layer)
+    {
+        const float weight = saturate(
+            HikariSandSampleLayerWeight(p, layer, uv));
+        const HikariSandLayerStyle style =
+            HikariSandLoadLayerStyle(p, layer);
+        result += weight * saturate(style.granularStrength);
+        weightSum += weight;
+    }
+    return weightSum > 1.0e-5f
+        ? saturate(result / weightSum)
+        : 1.0f;
 }
 
 float HikariSandSampleHeight(

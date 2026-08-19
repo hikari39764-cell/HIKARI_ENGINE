@@ -15,6 +15,11 @@ namespace HIKARI::RENDER3D::RUNTIME {
             return lhs.x == rhs.x && lhs.y == rhs.y && lhs.z == rhs.z;
         }
 
+        bool EqualVec4(const MATH::Vec4& lhs, const MATH::Vec4& rhs) {
+            return lhs.x == rhs.x && lhs.y == rhs.y &&
+                lhs.z == rhs.z && lhs.w == rhs.w;
+        }
+
         bool EqualQuat(const MATH::Quat& lhs, const MATH::Quat& rhs) {
             return lhs.x == rhs.x && lhs.y == rhs.y && lhs.z == rhs.z && lhs.w == rhs.w;
         }
@@ -103,6 +108,46 @@ namespace HIKARI::RENDER3D::RUNTIME {
             bool surfaceData = false;
         };
 
+        // Float-pool offsets and the effective terrain dimensions are derived
+        // at PreRenderSync time.  A transform-only cache update must carry
+        // those values across the surface-instance rebuild; otherwise the
+        // rebuilt instance points back at the neutral tile while the pool is
+        // intentionally not repacked.
+        using PackedSurfaceMetadata = std::array<uint32_t, 10u>;
+
+        PackedSurfaceMetadata CapturePackedSurfaceMetadata(
+            const SceneSurfaceInstance& instance) {
+
+            return {
+                instance.sandSurfaceData.gridResolution,
+                instance.sandSurfaceData.layerCount,
+                instance.sandSurfaceHeightOffset,
+                instance.sandSurfaceDeformationOffset,
+                instance.sandSurfaceLayerWeightsOffset,
+                instance.sandSurfaceCoverageOffset,
+                instance.sandSurfaceLayerTintsOffset,
+                instance.waterSurfaceData.coverageResolution,
+                instance.waterSurfaceLiquidCoverageOffset,
+                instance.sandSurfaceCoreResident ? 1u : 0u,
+            };
+        }
+
+        void RestorePackedSurfaceMetadata(
+            SceneSurfaceInstance& instance,
+            const PackedSurfaceMetadata& metadata) {
+
+            instance.sandSurfaceData.gridResolution = metadata[0];
+            instance.sandSurfaceData.layerCount = metadata[1];
+            instance.sandSurfaceHeightOffset = metadata[2];
+            instance.sandSurfaceDeformationOffset = metadata[3];
+            instance.sandSurfaceLayerWeightsOffset = metadata[4];
+            instance.sandSurfaceCoverageOffset = metadata[5];
+            instance.sandSurfaceLayerTintsOffset = metadata[6];
+            instance.waterSurfaceData.coverageResolution = metadata[7];
+            instance.waterSurfaceLiquidCoverageOffset = metadata[8];
+            instance.sandSurfaceCoreResident = metadata[9] != 0u;
+        }
+
         DirtyFlags BuildDirtyFlags(const SceneRenderObjectDesc& oldDesc, const SceneRenderObjectDesc& newDesc) {
             DirtyFlags flags{};
 
@@ -114,7 +159,10 @@ namespace HIKARI::RENDER3D::RUNTIME {
 
             flags.transform =
                 !EqualTransform(oldDesc.worldTransform, newDesc.worldTransform) ||
-                !EqualBounds(oldDesc.worldBounds, newDesc.worldBounds);
+                !EqualBounds(oldDesc.worldBounds, newDesc.worldBounds) ||
+                !EqualVec3(
+                    oldDesc.worldBoundsPadding,
+                    newDesc.worldBoundsPadding);
 
             flags.material =
                 !EqualMaterialOverrides(
@@ -126,6 +174,10 @@ namespace HIKARI::RENDER3D::RUNTIME {
                 oldDesc.postGroupMask != newDesc.postGroupMask ||
                 oldDesc.materialFxValuesInitialized != newDesc.materialFxValuesInitialized ||
                 !EqualMaterialFxValues(oldDesc.materialFxParamValues, newDesc.materialFxParamValues) ||
+                oldDesc.foliageWind != newDesc.foliageWind ||
+                !EqualVec4(
+                    oldDesc.foliageWindParams,
+                    newDesc.foliageWindParams) ||
                 oldDesc.waterSurface != newDesc.waterSurface ||
                 oldDesc.sandSurface != newDesc.sandSurface;
 
@@ -257,9 +309,12 @@ namespace HIKARI::RENDER3D::RUNTIME {
             instance.postGroupMask = object.desc.postGroupMask;
             instance.materialFxValuesInitialized = object.desc.materialFxValuesInitialized;
             CopyMaterialFxValues(object.desc, instance);
+            instance.foliageWind = object.desc.foliageWind;
+            instance.foliageWindParams = object.desc.foliageWindParams;
             instance.waterSurface = object.desc.waterSurface;
             instance.waterSurfaceData = object.desc.waterSurfaceData;
             instance.sandSurface = object.desc.sandSurface;
+            instance.sandSurfaceCoreResident = false;
             instance.sandSurfaceData = object.desc.sandSurfaceData;
             instance.sandSurfaceHeights = object.desc.sandSurfaceHeights;
             instance.sandSurfaceDeformations =
@@ -281,6 +336,23 @@ namespace HIKARI::RENDER3D::RUNTIME {
                 surface,
                 instance.drawWorldMatrix,
                 instance.hasDrawWorldMatrix);
+            if (BOUNDS::IsUsable(instance.worldBounds)) {
+                const MATH::Vec3 requestedPadding =
+                    MATH::IsFinite(object.desc.worldBoundsPadding)
+                        ? object.desc.worldBoundsPadding
+                        : MATH::Vec3{};
+                const MATH::Vec3 padding{
+                    (std::max)(requestedPadding.x, 0.0f),
+                    (std::max)(requestedPadding.y, 0.0f),
+                    (std::max)(requestedPadding.z, 0.0f),
+                };
+                instance.worldBounds.min.x -= padding.x;
+                instance.worldBounds.min.y -= padding.y;
+                instance.worldBounds.min.z -= padding.z;
+                instance.worldBounds.max.x += padding.x;
+                instance.worldBounds.max.y += padding.y;
+                instance.worldBounds.max.z += padding.z;
+            }
 
             instance.valid =
                 IsSurfaceSourceUsable(object) &&
@@ -462,33 +534,6 @@ namespace HIKARI::RENDER3D::RUNTIME {
             return;
         }
 
-        struct PackedSurfaceState {
-            uint32_t sandGridResolution = 0u;
-            uint32_t sandLayerCount = 0u;
-            uint32_t sandHeightOffset = 0u;
-            uint32_t sandDeformationOffset = 0u;
-            uint32_t sandLayerWeightsOffset = 0u;
-            uint32_t sandCoverageOffset = 0u;
-            uint32_t sandLayerTintsOffset = 0u;
-            uint32_t waterCoverageResolution = 0u;
-            uint32_t waterCoverageOffset = 0u;
-
-            bool operator==(const PackedSurfaceState&) const = default;
-        };
-        const auto capturePackedState = [](const SceneSurfaceInstance& instance) {
-            return PackedSurfaceState{
-                instance.sandSurfaceData.gridResolution,
-                instance.sandSurfaceData.layerCount,
-                instance.sandSurfaceHeightOffset,
-                instance.sandSurfaceDeformationOffset,
-                instance.sandSurfaceLayerWeightsOffset,
-                instance.sandSurfaceCoverageOffset,
-                instance.sandSurfaceLayerTintsOffset,
-                instance.waterSurfaceData.coverageResolution,
-                instance.waterSurfaceLiquidCoverageOffset,
-            };
-        };
-
         previousPackedSurfaceScratch_.resize(surfaceInstances_.size());
         sourceSandGridResolutionScratch_.assign(
             surfaceInstances_.size(), 1u);
@@ -499,18 +544,8 @@ namespace HIKARI::RENDER3D::RUNTIME {
             ++surfaceIndex) {
 
             SceneSurfaceInstance& instance = surfaceInstances_[surfaceIndex];
-            const PackedSurfaceState previous = capturePackedState(instance);
-            previousPackedSurfaceScratch_[surfaceIndex] = {
-                previous.sandGridResolution,
-                previous.sandLayerCount,
-                previous.sandHeightOffset,
-                previous.sandDeformationOffset,
-                previous.sandLayerWeightsOffset,
-                previous.sandCoverageOffset,
-                previous.sandLayerTintsOffset,
-                previous.waterCoverageResolution,
-                previous.waterCoverageOffset,
-            };
+            previousPackedSurfaceScratch_[surfaceIndex] =
+                CapturePackedSurfaceMetadata(instance);
 
             // 前フレームの縮退結果を authoring/runtime source へ逆流させない。
             if (instance.objectIndex < objects_.size()) {
@@ -536,11 +571,14 @@ namespace HIKARI::RENDER3D::RUNTIME {
             instance.sandSurfaceCoverageOffset = 0u;
             instance.sandSurfaceLayerTintsOffset = 0u;
             instance.waterSurfaceLiquidCoverageOffset = 0u;
+            instance.sandSurfaceCoreResident = false;
         }
 
         // 全 surface と water が共有する唯一の float pool を、surface 順の
         // deterministic first-fit で構築する。terrain の height/weight/coverage
-        // は atomic に入り、残量不足なら record 全体を neutral tile へ縮退する。
+        // は atomic に入り、必要なら同じ範囲を保ったまま格子だけを縮小する。
+        // 最小格子さえ収容できない surface は明示的に non-resident とし、
+        // neutral tile を「平らな砂地」として公開しない。
         SceneSurfaceFloatPoolPacker floatPool(
             sandSurfaceHeights_,
             SAND::kSandSurfaceMaxHeightCells);
@@ -567,12 +605,9 @@ namespace HIKARI::RENDER3D::RUNTIME {
             terrainCoreResidentScratch_[surfaceIndex] =
                 allocation.resident ? uint8_t{ 1u } : uint8_t{ 0u };
             if (!allocation.resident) {
-                // offset 0 の neutral 2x2 tile へ縮退し、GPU は常に pool 内を読む。
-                // feature routing は維持するため、平坦な sand fallback は可視のまま。
-                instance.sandSurfaceData.gridResolution = 1u;
-                instance.sandSurfaceData.layerCount = 1u;
                 continue;
             }
+            instance.sandSurfaceCoreResident = true;
             instance.sandSurfaceData.gridResolution =
                 allocation.gridResolution;
             instance.sandSurfaceData.layerCount = allocation.layerCount;
@@ -608,40 +643,61 @@ namespace HIKARI::RENDER3D::RUNTIME {
                 instance.sandSurfaceDeformations->empty()) {
                 continue;
             }
-            floatPool.TryPackSquareField(
+            floatPool.TryPackSquareFieldResampled(
                 *instance.sandSurfaceDeformations,
                 sourceSandGridResolutionScratch_[surfaceIndex],
+                instance.sandSurfaceData.gridResolution,
                 instance.sandSurfaceDeformationOffset);
         }
 
-        // layer tint は offset 0 で既定 tint を再現できるため最後に詰める。
+        // Layer style is optional float-pool payload. Offset 0 remains a valid
+        // legacy sand fallback, so it is packed after geometry/coverage fields.
         for (SceneSurfaceInstance& instance : surfaceInstances_) {
             if (!instance.sandSurface ||
-                instance.sandSurfaceData.layerCount <= 1u) {
+                !instance.sandSurfaceCoreResident) {
                 continue;
             }
             const uint32_t layerCount = instance.sandSurfaceData.layerCount;
-            const auto& lights = instance.sandSurfaceData.layerLightTints;
-            const auto& darks = instance.sandSurfaceData.layerDarkTints;
+            const auto& styles = instance.sandSurfaceData.layerStyles;
             const MATH::Vec3 baseLight = instance.sandSurfaceData.lightTint;
             const MATH::Vec3 baseDark = instance.sandSurfaceData.darkTint;
             surfaceTintScratch_.clear();
             surfaceTintScratch_.reserve(
-                static_cast<std::size_t>(layerCount) * 6u);
+                static_cast<std::size_t>(layerCount) *
+                    SAND::kSandSurfaceLayerStyleFloatCount);
             for (uint32_t layer = 0u; layer < layerCount; ++layer) {
-                const MATH::Vec3 light =
-                    layer < lights.size() ? lights[layer]
-                        : layer == 0u ? baseLight
-                        : layer == 1u ? MATH::Vec3{ 1.0f, 1.0f, 1.0f }
-                        : MATH::Vec3{ 0.52f, 0.38f, 0.24f };
-                const MATH::Vec3 dark =
-                    layer < darks.size() ? darks[layer]
-                        : layer == 0u ? baseDark
-                        : layer == 1u ? MATH::Vec3{ 0.68f, 0.78f, 0.90f }
-                        : MATH::Vec3{ 0.28f, 0.20f, 0.12f };
+                SAND::SandSurfaceLayerRenderStyle style =
+                    layer < styles.size()
+                        ? styles[layer]
+                        : SAND::SandSurfaceLayerRenderStyle{};
+                if (layer >= styles.size() && layer == 0u) {
+                    style.lightTint = baseLight;
+                    style.darkTint = baseDark;
+                }
                 surfaceTintScratch_.insert(
                     surfaceTintScratch_.end(),
-                    { light.x, light.y, light.z, dark.x, dark.y, dark.z });
+                    {
+                        style.lightTint.x,
+                        style.lightTint.y,
+                        style.lightTint.z,
+                        style.textureStrength,
+                        style.darkTint.x,
+                        style.darkTint.y,
+                        style.darkTint.z,
+                        style.normalStrength,
+                        style.atlasScaleBias.x,
+                        style.atlasScaleBias.y,
+                        style.atlasScaleBias.z,
+                        style.atlasScaleBias.w,
+                        style.tilesPerMeter,
+                        style.roughness,
+                        style.saturation,
+                        static_cast<float>(style.materialKind),
+                        style.shadowStrength,
+                        style.granularStrength,
+                        style.facetSizeMeters,
+                        style.facetStrength,
+                    });
             }
             floatPool.TryPackLinear(
                 std::span<const float>(surfaceTintScratch_),
@@ -655,21 +711,10 @@ namespace HIKARI::RENDER3D::RUNTIME {
             surfaceIndex < surfaceInstances_.size();
             ++surfaceIndex) {
 
-            const PackedSurfaceState current =
-                capturePackedState(surfaceInstances_[surfaceIndex]);
-            const std::array<uint32_t, 9u> currentValues{
-                current.sandGridResolution,
-                current.sandLayerCount,
-                current.sandHeightOffset,
-                current.sandDeformationOffset,
-                current.sandLayerWeightsOffset,
-                current.sandCoverageOffset,
-                current.sandLayerTintsOffset,
-                current.waterCoverageResolution,
-                current.waterCoverageOffset,
-            };
+            const PackedSurfaceMetadata current =
+                CapturePackedSurfaceMetadata(surfaceInstances_[surfaceIndex]);
             if (previousPackedSurfaceScratch_[surfaceIndex] ==
-                currentValues) {
+                current) {
                 continue;
             }
             MarkDirtySurfaceIndex(surfaceIndex);
@@ -801,12 +846,18 @@ namespace HIKARI::RENDER3D::RUNTIME {
                 return;
             }
 
-            surfaceInstance = BuildSurfaceInstance(
+            const PackedSurfaceMetadata packedMetadata =
+                CapturePackedSurfaceMetadata(surfaceInstance);
+            SceneSurfaceInstance updatedSurfaceInstance = BuildSurfaceInstance(
                 object,
                 NUMERIC::SaturateToUint32(objectIndex),
                 renderModel.surfaces[surfaceInstance.surfaceIndex],
                 surfaceInstance.surfaceIndex,
                 nodeGlobals);
+            RestorePackedSurfaceMetadata(
+                updatedSurfaceInstance,
+                packedMetadata);
+            surfaceInstance = std::move(updatedSurfaceInstance);
             MarkDirtySurfaceIndex(NUMERIC::SaturateToUint32(surfaceInstanceIndex));
             ++updatedSurfaceCount;
         }

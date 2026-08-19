@@ -36,6 +36,9 @@
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/Lighting/HIKARI_SceneLightingSet.h"
+#include "Scene/Terrain/HIKARI_SurfaceLayerRegistry.h"
+#include "Scene/Terrain/HIKARI_SurfacePreset.h"
+#include "Scene/Terrain/HIKARI_TerrainSurfaceComponent.h"
 
 #include <cstdio>
 #include <charconv>
@@ -659,6 +662,154 @@ namespace HIKARI {
         result.data = {
             { "objectId", target->GetDocumentId().value },
             { "name", target->GetName() }
+        };
+        return result;
+    }
+
+    EDITOR::EditorOperationResult
+    DocumentSceneEditorController::ExecuteAiTerrainFillLayer(
+        const nlohmann::json& parameters) {
+        EDITOR::EditorOperationResult result{};
+        DocumentSceneBase* scene = aiOperationScene_;
+        if (scene == nullptr) {
+            result.code = "NO_SCENE";
+            result.message = "场景上下文不可用";
+            return result;
+        }
+
+        const std::string presetId =
+            parameters.value("presetId", std::string{});
+        if (presetId.empty()) {
+            result.code = "INVALID_PRESET_ID";
+            result.message = "presetId 不能为空";
+            return result;
+        }
+
+        const std::string name =
+            parameters.value("name", std::string{});
+        std::optional<SceneObjectId> objectId{};
+        if (!ReadOptionalSceneObjectId(
+                parameters, objectId, result)) {
+            return result;
+        }
+        const EDITOR::SceneObjectTargetResolution resolution =
+            EDITOR::ResolveSceneObjectTarget(
+                *scene, objectId, name);
+        if (!resolution.IsResolved()) {
+            return TargetResolutionFailure(resolution);
+        }
+
+        GameObject* target = resolution.runtimeObject;
+        TerrainSurfaceComponent* terrain =
+            target->GetComponent<TerrainSurfaceComponent>();
+        if (terrain == nullptr) {
+            result.code = "TERRAIN_COMPONENT_NOT_FOUND";
+            result.message =
+                "目标对象没有 TerrainSurfaceComponent: " +
+                target->GetName();
+            result.data = {
+                { "objectId", target->GetDocumentId().value },
+                { "name", target->GetName() },
+            };
+            return result;
+        }
+
+        SceneComponentData* documentComponent = nullptr;
+        for (SceneComponentData& component :
+             resolution.documentObject->components) {
+            if (component.type == "TerrainSurfaceComponent") {
+                documentComponent = &component;
+                break;
+            }
+        }
+        if (documentComponent == nullptr) {
+            result.code = "TERRAIN_DOCUMENT_COMPONENT_NOT_FOUND";
+            result.message =
+                "目标对象的 SceneDocument 中没有 TerrainSurfaceComponent";
+            return result;
+        }
+
+        TERRAIN::SurfaceLayerRegistry::Get().RegisterBuiltins();
+        const TERRAIN::SurfacePreset* registeredPreset =
+            TERRAIN::SurfaceLayerRegistry::Get().Find(presetId);
+        const std::optional<TERRAIN::SurfacePreset> fallbackPreset =
+            registeredPreset == nullptr
+            ? TERRAIN::ResolveSurfacePreset(presetId)
+            : std::nullopt;
+        if (registeredPreset == nullptr && !fallbackPreset.has_value()) {
+            result.code = "TERRAIN_PRESET_NOT_FOUND";
+            result.message =
+                "地形材质层 preset 不存在: " + presetId;
+            return result;
+        }
+
+        nlohmann::json beforeProperties =
+            documentComponent->properties;
+        const bool fillChanged = terrain->FillLayer(presetId);
+        if (!fillChanged) {
+            // FillLayer=false is also the idempotent success path: a valid
+            // preset whose layer weights already match the target has no
+            // document delta and must not be reported as a lookup failure.
+            result.ok = true;
+            result.code = "NO_CHANGE";
+            result.message =
+                "地形已经是目标材质层，无需填充: " + presetId;
+        } else {
+            // FillLayer changes every chunk's layer weights. Serialize the
+            // full component once and use the existing document history
+            // command; this keeps the operation on the same authoritative
+            // transaction path as the terrain workspace without introducing
+            // a second history stack.
+            nlohmann::json afterProperties = nlohmann::json::object();
+            terrain->Serialize(afterProperties);
+            if (afterProperties == beforeProperties) {
+                // Keep the operation idempotent if a legacy runtime
+                // projection reports no serialized difference.
+                result.ok = true;
+                result.code = "NO_CHANGE";
+                result.message =
+                    "地形已经是目标材质层，无需填充: " + presetId;
+            } else {
+                documentComponent->properties = afterProperties;
+                const bool externalDirtyBefore =
+                    historyExternalDirty_ ||
+                    ((context_.sceneDirty ||
+                        scene->HasUnsavedSceneChanges()) &&
+                        !documentHistory_.IsDirty());
+                CommitAppliedDocumentCommand(
+                    *scene,
+                    EDITOR::MakeSceneComponentPropertiesHistoryCommand(
+                        TEXT::Localize("ui.terrain.fillLayerHistory"),
+                        target->GetDocumentId(),
+                        documentComponent->id,
+                        std::move(beforeProperties),
+                        std::move(afterProperties),
+                        EDITOR::EditorDocumentImpact::RuntimeWorld),
+                    0u,
+                    externalDirtyBefore,
+                    EDITOR::EditorDocumentImpact::None);
+                result.ok = true;
+                result.code = "OK";
+                result.message =
+                    "已将地形整体填充为材质层: " + presetId;
+            }
+        }
+
+        SelectViewportObjects(
+            *scene,
+            { target->GetDocumentId() },
+            EditorObjectSelectionMode::Replace);
+        EDITOR::EditorWorkspaceOpenRequest request{};
+        request.workspaceId = EDITOR::EditorWorkspaceId::TerrainSurface;
+        if (!workspaceHost_.RequestOpen(std::move(request))) {
+            result.details.push_back(
+                "地形工作区打开请求失败，但材质填充已完成");
+        }
+        result.data = {
+            { "objectId", target->GetDocumentId().value },
+            { "componentId", documentComponent->id.value },
+            { "presetId", presetId },
+            { "workspace", "terrain_surface" },
         };
         return result;
     }

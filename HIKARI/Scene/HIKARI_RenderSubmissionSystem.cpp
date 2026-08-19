@@ -16,6 +16,7 @@
 #include "Scene/Components/Rendering/Model/HIKARI_ModelRenderableAssetResolver.h"
 #include "Scene/Components/HIKARI_ProceduralMeshComponent.h"
 #include "Scene/HIKARI_GameObject.h"
+#include "Scene/Terrain/HIKARI_TerrainGrassModelFactory.h"
 #include "Scene/HIKARI_World.h"
 #include <Vfx/Common/HIKARI_FxTypes.h>
 
@@ -148,6 +149,7 @@ namespace HIKARI {
         SHADOW::SetGpuDrivenSceneSource(nullptr);
         if (clearProceduralCache) {
             PROCEDURAL::ClearCache();
+            TERRAIN::ClearTerrainGrassModelCache();
         }
     }
 

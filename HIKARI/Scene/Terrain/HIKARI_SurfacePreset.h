@@ -12,7 +12,16 @@ namespace HIKARI::TERRAIN {
 
     enum class ShadingModelId : uint8_t {
         GranularAnime,
+        StylizedGround,
         Flat,
+    };
+
+    enum class SurfaceLayerMaterialKind : uint8_t {
+        Sand = 0,
+        Snow = 1,
+        Dirt = 2,
+        Grass = 3,
+        Rock = 4,
     };
 
     enum class DeformBehaviorId : uint8_t {
@@ -37,6 +46,21 @@ namespace HIKARI::TERRAIN {
     struct SurfaceLayerTint {
         MATH::Vec3 light{ 1.0f, 1.0f, 1.0f };
         MATH::Vec3 dark{ 1.0f, 1.0f, 1.0f };
+    };
+
+    // Built-in terrain atlas の 1 layer を解決する描画スタイル。
+    // atlasTile は EngineContent/Terrain/README.md の固定 2x2 layout。
+    // texture density は world-space metersPerTile が所有し、coverage uv1 を
+    // タイルしてはならない。
+    struct SurfaceLayerMaterialParams {
+        SurfaceLayerMaterialKind kind = SurfaceLayerMaterialKind::Sand;
+        uint32_t atlasTile = 0u;
+        float metersPerTile = 2.8f;
+        float textureStrength = 0.52f;
+        float normalStrength = 0.72f;
+        float roughness = 0.92f;
+        float saturation = 1.10f;
+        float shadowStrength = 1.0f;
     };
 
     struct DeformParams {
@@ -78,6 +102,7 @@ namespace HIKARI::TERRAIN {
         DeformParams deform{};
         ShorelineParams shoreline{};
         SurfaceLayerTint tint{}; // この層をペイントしたときの色
+        SurfaceLayerMaterialParams layerMaterial{};
     };
 
     inline SurfacePreset MakeSandPreset() {
@@ -92,6 +117,15 @@ namespace HIKARI::TERRAIN {
         // p.lightTint/p.darkTint と一致し、見た目が変わらない。
         preset.tint.light = preset.material.lightTint;
         preset.tint.dark = preset.material.darkTint;
+        preset.layerMaterial = {};
+        // Preserve the pre-layer Sand baseline: the old terrain uv0 used a
+        // 0.01 material scale over the default 0.25 m terrain cell, which is
+        // approximately one 25 m world-space tile. Other built-in layers
+        // intentionally keep their newer, denser world-space scales.
+        preset.layerMaterial.metersPerTile = 25.0f;
+        preset.layerMaterial.textureStrength = 0.52f;
+        preset.layerMaterial.normalStrength = 0.72f;
+        preset.layerMaterial.saturation = 1.14f;
         return preset;
     }
 
@@ -114,19 +148,76 @@ namespace HIKARI::TERRAIN {
         preset.deform.recoveryDelaySeconds = 12.0f;
         preset.tint.light = { 1.0f, 1.0f, 1.0f };
         preset.tint.dark = { 0.68f, 0.78f, 0.90f };
+        preset.layerMaterial.kind = SurfaceLayerMaterialKind::Snow;
+        preset.layerMaterial.atlasTile = 0u;
+        preset.layerMaterial.metersPerTile = 2.8f;
+        preset.layerMaterial.textureStrength = 0.30f;
+        preset.layerMaterial.normalStrength = 0.42f;
+        preset.layerMaterial.roughness = 0.96f;
+        preset.layerMaterial.saturation = 0.18f;
         return preset;
     }
 
     inline SurfacePreset MakeDirtPreset() {
         SurfacePreset preset = MakeSandPreset();
         preset.id = "dirt";
-        preset.shading = ShadingModelId::Flat;
+        preset.shading = ShadingModelId::StylizedGround;
         preset.material.lightTint = { 0.52f, 0.38f, 0.24f };
         preset.material.darkTint = { 0.28f, 0.20f, 0.12f };
         preset.material.sparkleStrength = 0.0f;
         preset.deform.behavior = DeformBehaviorId::None;
         preset.tint.light = { 0.52f, 0.38f, 0.24f };
         preset.tint.dark = { 0.28f, 0.20f, 0.12f };
+        preset.layerMaterial.kind = SurfaceLayerMaterialKind::Dirt;
+        preset.layerMaterial.atlasTile = 1u;
+        preset.layerMaterial.metersPerTile = 1.4f;
+        preset.layerMaterial.textureStrength = 0.72f;
+        preset.layerMaterial.normalStrength = 0.58f;
+        preset.layerMaterial.roughness = 0.95f;
+        preset.layerMaterial.saturation = 0.78f;
+        return preset;
+    }
+
+    inline SurfacePreset MakeGrassPreset() {
+        SurfacePreset preset = MakeSandPreset();
+        preset.id = "grass";
+        preset.shading = ShadingModelId::StylizedGround;
+        preset.material.lightTint = { 0.68f, 0.90f, 0.50f };
+        preset.material.darkTint = { 0.18f, 0.32f, 0.12f };
+        preset.material.sparkleStrength = 0.0f;
+        preset.material.rippleAmount = 0.0f;
+        preset.deform.behavior = DeformBehaviorId::None;
+        preset.tint.light = preset.material.lightTint;
+        preset.tint.dark = preset.material.darkTint;
+        preset.layerMaterial.kind = SurfaceLayerMaterialKind::Grass;
+        preset.layerMaterial.atlasTile = 2u;
+        preset.layerMaterial.metersPerTile = 1.4f;
+        preset.layerMaterial.textureStrength = 0.68f;
+        preset.layerMaterial.normalStrength = 0.48f;
+        preset.layerMaterial.roughness = 0.92f;
+        preset.layerMaterial.saturation = 0.82f;
+        return preset;
+    }
+
+    inline SurfacePreset MakeRockPreset() {
+        SurfacePreset preset = MakeSandPreset();
+        preset.id = "rock";
+        preset.shading = ShadingModelId::StylizedGround;
+        preset.material.lightTint = { 0.86f, 0.86f, 0.86f };
+        preset.material.darkTint = { 0.30f, 0.30f, 0.30f };
+        preset.material.sparkleStrength = 0.0f;
+        preset.material.rippleAmount = 0.0f;
+        preset.deform.behavior = DeformBehaviorId::None;
+        preset.tint.light = preset.material.lightTint;
+        preset.tint.dark = preset.material.darkTint;
+        preset.layerMaterial.kind = SurfaceLayerMaterialKind::Rock;
+        preset.layerMaterial.atlasTile = 3u;
+        preset.layerMaterial.metersPerTile = 1.4f;
+        preset.layerMaterial.textureStrength = 0.76f;
+        preset.layerMaterial.normalStrength = 0.74f;
+        preset.layerMaterial.roughness = 0.88f;
+        // ユーザー指定の中性 grey。元の brown/green 成分を残しすぎない。
+        preset.layerMaterial.saturation = 0.30f;
         return preset;
     }
 
@@ -142,6 +233,12 @@ namespace HIKARI::TERRAIN {
         }
         if (id == "dirt") {
             return MakeDirtPreset();
+        }
+        if (id == "grass") {
+            return MakeGrassPreset();
+        }
+        if (id == "rock") {
+            return MakeRockPreset();
         }
         return std::nullopt;
     }

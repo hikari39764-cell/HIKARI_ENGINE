@@ -9,6 +9,7 @@
 #include "Scene/HIKARI_RuntimeObjectHandle.h"
 #include "Scene/Sand/HIKARI_SandSurfaceTypes.h"
 #include "Scene/Terrain/HIKARI_TerrainChunks.h"
+#include "Scene/Terrain/HIKARI_TerrainSurface.h"
 #include "Scene/Terrain/HIKARI_TerrainSnapshotService.h"
 
 namespace HIKARI::SAND {
@@ -34,9 +35,12 @@ namespace HIKARI::SAND {
         std::vector<float> plasticHeights{}; // retained track
         std::vector<float> recoveryHold{};   // per vertex seconds
         std::vector<float> elasticScratch{}; // fixed-step 再利用 buffer
-        std::vector<float> deformHeights{};  // elastic + plastic
-        std::vector<float> heights{};        // base + deform
+        std::vector<float> deformHeights{};  // mask 後の elastic + plastic
+        std::vector<float> heights{};        // base + mask 後 deform
         std::vector<float> coverage{};       // visible solid coverage
+        // layerWeights を runtime response grid へ投影した変形 gate。
+        // authored / serialized data ではなく、SandSurfaceSystem が毎回再構築する。
+        std::vector<float> deformableMask{};
         // responseGridActive は一度でも痕跡が付いたら play 中は維持する。
         // renderer はこれを境界に authored 解像度から response 解像度へ切り替える。
         bool responseGridActive = false;
@@ -48,6 +52,26 @@ namespace HIKARI::SAND {
         std::shared_ptr<SandChunkRuntimeState>;
     using SandChunkRuntimeSnapshotPtr =
         std::shared_ptr<const SandChunkRuntimeState>;
+
+    // TerrainSurface の層 preset と authored layerWeights から、runtime 解像度の
+    // 変形 gate を作る。registry 未初期化や旧 document の layerPresetIds 欠落時は
+    // sand/snow/dirt/grass/rock の固定順を使用する。
+    bool IsSandLayerDeformable(
+        const TERRAIN::TerrainSurface& surface,
+        uint32_t layer) noexcept;
+    void ProjectSandChunkDeformableMask(
+        const TERRAIN::TerrainSurface& surface,
+        const TERRAIN::TerrainChunk& authored,
+        uint32_t runtimeCells,
+        std::vector<float>& outMask);
+
+    // base + response の最終高さを一箇所で定義する。runtime mask は query と
+    // renderer bridge が読む final heights にだけ適用し、serialized terrain には入れない。
+    float EvaluateSandChunkFinalHeight(
+        float baseHeight,
+        float rawDeformation,
+        float deformableMask,
+        bool deformationEnabled = true) noexcept;
 
     // 可変 simulation state から query / renderer が必要な projection だけを
     // 複製する。base/elastic/plastic/hold/scratch は main-thread owner に残し、

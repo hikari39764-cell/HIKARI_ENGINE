@@ -432,6 +432,22 @@ namespace HIKARI {
                 return ExecuteSceneCreateEmptyObject(parameters);
             },
         });
+        operationRegistry_.Register({
+            "terrain.fill_layer",
+            "Fill an entire terrain object with one material layer while preserving authored height and coverage.",
+            "terrain_surface",
+            {
+                P("objectId", EditorOperationParameterType::Int,
+                  false, "scene.objects.query 返回的稳定 SceneObjectId"),
+                P("name", EditorOperationParameterType::String,
+                  false, "仅兼容发现；重名时必须改用 objectId"),
+                P("presetId", EditorOperationParameterType::String,
+                  true, "要填充的地形材质层 preset id"),
+            },
+            [this](const nlohmann::json& parameters) {
+                return ExecuteAiTerrainFillLayer(parameters);
+            },
+        });
         EDITOR::RegisterModelCollisionOperations(
             operationRegistry_,
             modelCollisionWorkspaceController_,

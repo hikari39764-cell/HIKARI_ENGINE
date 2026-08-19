@@ -38,6 +38,14 @@ inline constexpr std::string_view kBuiltInSandAlbedoTextureId =
 inline constexpr std::string_view kBuiltInSandNormalTextureId =
     "engine.sand.texture.ground054_normal";
 
+// TerrainSurface の stylized layer atlas。2x2 の固定 layout は
+// EngineContent/Terrain/README.md と SurfacePreset の atlas tile を共有する。
+inline constexpr std::string_view kBuiltInTerrainLayerAlbedoTextureId =
+    "engine.terrain.texture.layer_atlas_albedo";
+
+inline constexpr std::string_view kBuiltInTerrainLayerNormalTextureId =
+    "engine.terrain.texture.layer_atlas_normal";
+
 constexpr bool IsBuiltInSandMaterialAssetId(
     std::string_view id) noexcept {
     return id == kBuiltInSandMaterialAssetId;
