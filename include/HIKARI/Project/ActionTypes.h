@@ -68,6 +68,10 @@ namespace HIKARI {
         World = 1,
     };
 
+    // Translation and rotation are expressed in character/model axes. The
+    // action owner chooses facing policy and converts translation to world
+    // space before SubmitMotionDelta; the SDK never teleports the object or
+    // silently assumes a locomotion orientation.
     struct GameProjectRootMotionDelta {
         GameProjectFloat3 translation{};
         GameProjectQuat rotation{};
@@ -90,6 +94,19 @@ namespace HIKARI {
         uint8_t jumpRequested = 0u;
         uint8_t allowJumpWithoutGroundContact = 0u;
         uint8_t reserved = 0u;
+    };
+
+    // A collision-aware relative contribution consumed by the kinematic
+    // character solver for one fixed tick. Translation is in world space;
+    // rotation is a relative quaternion composed after locomotion facing.
+    struct GameProjectKinematicMotionDelta {
+        uint64_t objectHandle = 0u;
+        uint64_t sourceId = 0u;
+        uint64_t fixedTickIndex = 0u;
+        int32_t priority = 0;
+        GameProjectFloat3 translation{};
+        GameProjectQuat rotation{};
+        uint32_t reserved = 0u;
     };
 
     enum class GameProjectGroundState : uint8_t {
@@ -186,6 +203,18 @@ namespace HIKARI {
         GameProjectFloat3 worldTargetOffset{};
         GameProjectFloat3 localTargetOffset{};
         float verticalFovOffsetRadians = 0.0f;
+        float weight = 1.0f;
+        uint8_t applyDuringOverride = 0u;
+        uint8_t reserved[3] = { 0u, 0u, 0u };
+    };
+
+    // Kept separate from GameProjectCameraModifier so SDK 1.5 modules retain
+    // the exact value layout they were compiled against.
+    struct GameProjectCameraRollModifier {
+        uint64_t cameraObjectHandle = 0u;
+        uint64_t sourceId = 0u;
+        int32_t priority = 0;
+        float localRollRadians = 0.0f;
         float weight = 1.0f;
         uint8_t applyDuringOverride = 0u;
         uint8_t reserved[3] = { 0u, 0u, 0u };

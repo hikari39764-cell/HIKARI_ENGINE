@@ -3,6 +3,7 @@
 #include "Input/Runtime/HIKARI_InputService.h"
 #include "Runtime/HIKARI_RuntimeHost.h"
 #include "Runtime/Host/HIKARI_HostBootstrapConfig.h"
+#include "Runtime/Services/HIKARI_ActionTimeDilationService.h"
 
 #include <string>
 #include <vector>
@@ -11,6 +12,7 @@ namespace HIKARI::SERVICES {
     RuntimeHostMode GetRuntimeHostMode();
     INPUT::InputService& GetInputService();
     const INPUT::InputSnapshot& GetInputSnapshot();
+    ActionTimeDilationService& GetActionTimeDilationService();
 
     bool IsEditorHost();
     bool IsStandaloneGameHost();

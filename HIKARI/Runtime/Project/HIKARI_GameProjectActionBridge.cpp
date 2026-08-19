@@ -9,13 +9,18 @@
 
 #include "Animation/Runtime/HIKARI_AnimationClipSampler.h"
 #include "Animation/Runtime/HIKARI_AnimationPoseService.h"
+#include "Animation/Runtime/HIKARI_AnimationRootMotionService.h"
+#include "Animation/Runtime/HIKARI_AnimationSocketService.h"
 #include "Assets/Models/HIKARI_ModelAsset.h"
 #include "Core/Hashing/HIKARI_FnvHash.h"
+#include "Core/Math/HIKARI_MathValidation.h"
 #include "Input/Runtime/HIKARI_InputService.h"
 #include "Physics/HIKARI_KinematicMotionService.h"
 #include "Physics/HIKARI_PhysicsTypes.h"
 #include "Physics/HIKARI_PhysicsWorldService.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
+#include "Runtime/Services/HIKARI_ActionTimeDilationService.h"
+#include "Runtime/Services/HIKARI_RuntimeServices.h"
 #include "HIKARI/Project/WorldView.h"
 #include "Scene/Camera/HIKARI_CameraRigService.h"
 #include "Scene/HIKARI_GameObject.h"
@@ -609,6 +614,26 @@ namespace HIKARI {
         }
     }
 
+    bool AnimationView::SetRootMotionEnabled(
+        uint64_t objectHandle,
+        uint8_t enabled) const noexcept {
+        try {
+            GameObject* object = FindObject(
+                static_cast<World*>(world_), objectHandle);
+            AnimatorComponent* animator = object != nullptr
+                ? object->GetComponent<AnimatorComponent>()
+                : nullptr;
+            if (animator == nullptr) {
+                return false;
+            }
+            animator->SetRootMotionEnabled(enabled != 0u);
+            return true;
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
     bool AnimationView::GetState(
         uint64_t objectHandle,
         GameProjectAnimationState& outState) const noexcept {
@@ -702,20 +727,107 @@ namespace HIKARI {
     }
 
     bool AnimationView::GetSocketTransform(
-        uint64_t,
-        std::string_view,
-        GameProjectAnimationSocketSpace,
+        uint64_t objectHandle,
+        std::string_view socketName,
+        GameProjectAnimationSocketSpace space,
         GameProjectTransform& outTransform) const noexcept {
         outTransform = {};
-        return false;
+        try {
+            World* world = static_cast<World*>(world_);
+            GameObject* object = FindObject(world, objectHandle);
+            const ModelComponent* model = object != nullptr
+                ? object->GetComponent<ModelComponent>()
+                : nullptr;
+            const ModelAsset* asset = model != nullptr
+                ? model->GetModelAsset()
+                : nullptr;
+            const ANIMATION::AnimationSocketService* sockets =
+                world != nullptr
+                ? world->Services().Find<
+                    ANIMATION::AnimationSocketService>()
+                : nullptr;
+            if (object == nullptr || asset == nullptr || sockets == nullptr ||
+                socketName.empty()) {
+                return false;
+            }
+            ANIMATION::AnimationSocketSpace runtimeSpace{};
+            switch (space) {
+            case GameProjectAnimationSocketSpace::Local:
+                runtimeSpace = ANIMATION::AnimationSocketSpace::Local;
+                break;
+            case GameProjectAnimationSocketSpace::World:
+                runtimeSpace = ANIMATION::AnimationSocketSpace::World;
+                break;
+            default:
+                return false;
+            }
+            const ANIMATION::AnimationPoseService* poses =
+                world->Services().Find<ANIMATION::AnimationPoseService>();
+            const std::shared_ptr<const ANIMATION::AnimationPoseSnapshot>
+                pose = poses != nullptr
+                ? poses->Find(object->GetRuntimeHandle())
+                : nullptr;
+            Transform3D resolved{};
+            if (!sockets->Resolve(
+                    *object,
+                    *asset,
+                    pose.get(),
+                    socketName,
+                    runtimeSpace,
+                    resolved) ||
+                !MATH::IsFinite(resolved.position) ||
+                !MATH::IsFinite(resolved.rotation) ||
+                !MATH::IsFinite(resolved.scale)) {
+                return false;
+            }
+            outTransform.position = ToProject(resolved.position);
+            outTransform.rotation = ToProject(resolved.rotation);
+            outTransform.scale = ToProject(resolved.scale);
+            return true;
+        }
+        catch (...) {
+            outTransform = {};
+            return false;
+        }
     }
 
     bool AnimationView::ConsumeRootMotion(
-        uint64_t,
-        uint64_t,
+        uint64_t objectHandle,
+        uint64_t fixedTickIndex,
         GameProjectRootMotionDelta& outDelta) const noexcept {
         outDelta = {};
-        return false;
+        try {
+            World* world = static_cast<World*>(world_);
+            GameObject* object = FindObject(world, objectHandle);
+            ANIMATION::AnimationRootMotionService* rootMotion =
+                world != nullptr
+                ? world->Services().Find<
+                    ANIMATION::AnimationRootMotionService>()
+                : nullptr;
+            if (object == nullptr || rootMotion == nullptr) {
+                return false;
+            }
+            ANIMATION::AnimationRootMotionDelta delta{};
+            if (!rootMotion->Consume(
+                    object->GetRuntimeHandle(),
+                    fixedTickIndex,
+                    delta) ||
+                !delta.valid ||
+                !MATH::IsFinite(delta.translation) ||
+                !MATH::IsFinite(delta.rotation)) {
+                return false;
+            }
+            outDelta.translation = ToProject(delta.translation);
+            outDelta.rotation = ToProject(delta.rotation);
+            outDelta.fixedTickIndex = delta.fixedTickIndex;
+            outDelta.revision = delta.revision;
+            outDelta.valid = 1u;
+            return true;
+        }
+        catch (...) {
+            outDelta = {};
+            return false;
+        }
     }
 
     bool MotionView::SubmitKinematicMove(
@@ -756,6 +868,34 @@ namespace HIKARI {
                 request,
                 move.fixedTickIndex);
             return true;
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
+    bool MotionView::SubmitMotionDelta(
+        const GameProjectKinematicMotionDelta& delta) const noexcept {
+        try {
+            if (world_ == nullptr || delta.sourceId == 0u ||
+                !IsFinite(delta.translation) ||
+                !IsFiniteNonZeroRotation(delta.rotation)) {
+                return false;
+            }
+            World* world = static_cast<World*>(world_);
+            GameObject* object = FindObject(world, delta.objectHandle);
+            if (object == nullptr) {
+                return false;
+            }
+            PHYSICS::KinematicMotionService* service =
+                world->Services().Find<PHYSICS::KinematicMotionService>();
+            return service != nullptr && service->SubmitMotionDelta(
+                object->GetRuntimeHandle(),
+                delta.sourceId,
+                delta.priority,
+                delta.fixedTickIndex,
+                ToRuntime(delta.translation),
+                ToRuntime(delta.rotation));
         }
         catch (...) {
             return false;
@@ -984,6 +1124,41 @@ namespace HIKARI {
         }
     }
 
+    bool CameraView::SubmitRollModifier(
+        const GameProjectCameraRollModifier& modifier) const noexcept {
+        try {
+            if (world_ == nullptr || modifier.sourceId == 0u ||
+                !std::isfinite(modifier.localRollRadians) ||
+                !std::isfinite(modifier.weight)) {
+                return false;
+            }
+            World* world = static_cast<World*>(world_);
+            CAMERA::CameraRigService* service = world->Services().Find<
+                CAMERA::CameraRigService>();
+            if (service == nullptr) {
+                return false;
+            }
+            CAMERA::CameraModifierSubmission submission{};
+            if (!ToCameraObjectId(
+                    *world,
+                    modifier.cameraObjectHandle,
+                    submission.cameraObjectId)) {
+                return false;
+            }
+            submission.sourceId = modifier.sourceId;
+            submission.channelId = 1u;
+            submission.priority = modifier.priority;
+            submission.localRollRadians = modifier.localRollRadians;
+            submission.weight = modifier.weight;
+            submission.applyDuringOverride =
+                modifier.applyDuringOverride != 0u;
+            return service->SubmitModifier(submission);
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
     uint64_t TimeDilationView::Request(
         const GameProjectTimeDilationRequest& request) const noexcept {
         try {
@@ -991,24 +1166,44 @@ namespace HIKARI {
                 !std::isfinite(request.scale) ||
                 !std::isfinite(request.durationUnscaledSeconds) ||
                 request.scale < 0.0f ||
+                request.scale > 1.0f ||
                 request.durationUnscaledSeconds < 0.0f) {
                 return 0u;
             }
-            // Slice-1 keeps the public contract in place while the engine
-            // time arbiter is deliberately deferred to the next slice.
-            return 0u;
+            return SERVICES::GetActionTimeDilationService().Request(
+                static_cast<World*>(world_),
+                request.sourceId,
+                request.priority,
+                request.scale,
+                request.durationUnscaledSeconds);
         }
         catch (...) {
             return 0u;
         }
     }
 
-    bool TimeDilationView::Release(uint64_t) const noexcept {
-        return false;
+    bool TimeDilationView::Release(uint64_t token) const noexcept {
+        try {
+            return world_ != nullptr &&
+                SERVICES::GetActionTimeDilationService().Release(
+                    static_cast<World*>(world_),
+                    token);
+        }
+        catch (...) {
+            return false;
+        }
     }
 
     float TimeDilationView::GetEffectiveScale() const noexcept {
-        return 1.0f;
+        try {
+            return world_ != nullptr
+                ? SERVICES::GetActionTimeDilationService().GetEffectiveScale(
+                    static_cast<World*>(world_))
+                : 1.0f;
+        }
+        catch (...) {
+            return 1.0f;
+        }
     }
 
 } // namespace HIKARI

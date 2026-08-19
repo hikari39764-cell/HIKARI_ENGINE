@@ -75,6 +75,9 @@ namespace HIKARI {
         void SetAutoPlay(bool autoPlay);
         bool GetAutoPlay() const;
 
+        void SetRootMotionEnabled(bool enabled) noexcept;
+        bool IsRootMotionEnabled() const noexcept;
+
         void SetPlaying(bool playing);
         bool IsPlaying() const;
 
@@ -104,6 +107,7 @@ namespace HIKARI {
         float defaultBlendDurationSec_ = 0.2f;
         bool loop_ = true;
         bool autoPlay_ = true;
+        bool rootMotionEnabled_ = false;
         bool playing_ = true;
         bool finished_ = false;
 

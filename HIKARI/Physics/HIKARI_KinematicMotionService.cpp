@@ -1,10 +1,29 @@
 #include "Physics/HIKARI_KinematicMotionService.h"
 
 #include <algorithm>
+#include <cmath>
 #include <iterator>
 #include <utility>
 
+#include "Core/Math/HIKARI_MathValidation.h"
+
 namespace HIKARI::PHYSICS {
+    namespace {
+
+        bool IsValidMotionDeltaRotation(
+            const MATH::Quat& rotation) noexcept {
+            if (!MATH::IsFinite(rotation)) {
+                return false;
+            }
+            const float lengthSquared = rotation.x * rotation.x +
+                rotation.y * rotation.y +
+                rotation.z * rotation.z +
+                rotation.w * rotation.w;
+            return std::isfinite(lengthSquared) &&
+                lengthSquared > 1.0e-12f;
+        }
+
+    } // namespace
 
     KinematicMotionService::ActorState&
         KinematicMotionService::FindOrCreate(
@@ -78,6 +97,114 @@ namespace HIKARI::PHYSICS {
         if (outSource != nullptr) {
             *outSource = selected->source;
         }
+        return true;
+    }
+
+    bool KinematicMotionService::SubmitMotionDelta(
+        RuntimeObjectHandle object,
+        KinematicMotionSourceId source,
+        int priority,
+        uint64_t fixedTickIndex,
+        const MATH::Vec3& translation,
+        const MATH::Quat& rotation) {
+        if (!object.IsValid() || source == 0u ||
+            !MATH::IsFinite(translation) ||
+            !IsValidMotionDeltaRotation(rotation)) {
+            return false;
+        }
+
+        ActorState& actor = FindOrCreate(object);
+        if (actor.hasConsumedMotionDeltaTick &&
+            fixedTickIndex <= actor.lastConsumedMotionDeltaTick) {
+            return false;
+        }
+
+        std::vector<MotionDeltaSlot>& slots = actor.motionDeltas;
+        auto found = std::find_if(
+            slots.begin(),
+            slots.end(),
+            [source, fixedTickIndex](const MotionDeltaSlot& slot) {
+                return slot.source == source &&
+                    slot.submittedTick == fixedTickIndex;
+            });
+        if (found == slots.end()) {
+            slots.push_back(MotionDeltaSlot{});
+            found = std::prev(slots.end());
+            found->source = source;
+        }
+
+        found->priority = priority;
+        found->submittedTick = fixedTickIndex;
+        found->delta.translation = translation;
+        found->delta.rotation = MATH::NormalizeQ(rotation);
+        return true;
+    }
+
+    bool KinematicMotionService::ConsumeMotionDelta(
+        RuntimeObjectHandle object,
+        uint64_t fixedTickIndex,
+        KinematicMotionDelta& outDelta,
+        KinematicMotionSourceId* outSource) {
+        outDelta = {};
+        if (outSource != nullptr) {
+            *outSource = 0u;
+        }
+        const auto actor = actors_.find(object.ToValue());
+        if (!object.IsValid() || actor == actors_.end()) {
+            return false;
+        }
+
+        ActorState& state = actor->second;
+        if (state.hasConsumedMotionDeltaTick &&
+            fixedTickIndex <= state.lastConsumedMotionDeltaTick) {
+            return false;
+        }
+
+        state.motionDeltas.erase(
+            std::remove_if(
+                state.motionDeltas.begin(),
+                state.motionDeltas.end(),
+                [fixedTickIndex](const MotionDeltaSlot& slot) {
+                    return slot.submittedTick < fixedTickIndex;
+                }),
+            state.motionDeltas.end());
+
+        MotionDeltaSlot* selected = nullptr;
+        for (MotionDeltaSlot& slot : state.motionDeltas) {
+            if (slot.submittedTick != fixedTickIndex) {
+                continue;
+            }
+            if (selected == nullptr || slot.priority > selected->priority ||
+                (slot.priority == selected->priority &&
+                    slot.source < selected->source)) {
+                selected = &slot;
+            }
+        }
+        if (selected == nullptr) {
+            // Physics owns the consumption point. Once this tick reaches the
+            // solver, a later system may not enqueue a delta retroactively.
+            state.lastConsumedMotionDeltaTick = fixedTickIndex;
+            state.hasConsumedMotionDeltaTick = true;
+            return false;
+        }
+
+        outDelta = selected->delta;
+        if (outSource != nullptr) {
+            *outSource = selected->source;
+        }
+        state.lastConsumedMotionDeltaTick = fixedTickIndex;
+        state.hasConsumedMotionDeltaTick = true;
+        // Consumption is once per (object, tick), not once per source. Drop
+        // every candidate at or before the consumed tick so late submissions
+        // cannot be replayed by a second consumer.
+        state.motionDeltas.erase(
+            std::remove_if(
+                state.motionDeltas.begin(),
+                state.motionDeltas.end(),
+                [fixedTickIndex](const MotionDeltaSlot& slot) {
+                    return slot.submittedTick <= fixedTickIndex;
+                }),
+            state.motionDeltas.end());
         return true;
     }
 

@@ -1,100 +1,10 @@
 #include "Render3D/GpuDriven/HIKARI_GpuScenePoseBuilder.h"
 
+#include "Animation/Runtime/HIKARI_AnimationPoseEvaluation.h"
+
 namespace HIKARI::RENDER3D::GPUDRIVEN {
 
     namespace {
-        MATH::Mat4 ResolveNodeLocalMatrix(
-            const ModelNode& node,
-            const ANIMATION::AnimationLocalPose& pose,
-            size_t nodeIndex) {
-
-            if (node.hasLocalMatrix) {
-                return node.localMatrix;
-            }
-            if (nodeIndex < pose.nodes.size()) {
-                return pose.nodes[nodeIndex].GetLocalMatrix();
-            }
-            return node.localTransform.GetLocalMatrix();
-        }
-
-        void EvaluateNodeMatrixRecursive(
-            const ModelAsset& model,
-            const ANIMATION::AnimationLocalPose& pose,
-            int nodeIndex,
-            const MATH::Mat4& parentWorld,
-            std::vector<MATH::Mat4>& outGlobals,
-            std::vector<uint8_t>& visited) {
-
-            if (nodeIndex < 0 || nodeIndex >= static_cast<int>(model.nodes.size())) {
-                return;
-            }
-            const size_t index = static_cast<size_t>(nodeIndex);
-            if (visited[index]) {
-                return;
-            }
-
-            const ModelNode& node = model.nodes[index];
-            outGlobals[index] =
-                parentWorld * ResolveNodeLocalMatrix(node, pose, index);
-            visited[index] = 1u;
-
-            for (int childIndex : node.children) {
-                EvaluateNodeMatrixRecursive(
-                    model,
-                    pose,
-                    childIndex,
-                    outGlobals[index],
-                    outGlobals,
-                    visited);
-            }
-        }
-
-        void BuildNodeGlobalMatricesWithRoot(
-            const ModelAsset& model,
-            const ANIMATION::AnimationLocalPose& pose,
-            const MATH::Mat4& rootWorld,
-            std::vector<MATH::Mat4>& outGlobals,
-            std::vector<uint8_t>& visited) {
-
-            if (model.nodes.empty()) {
-                outGlobals.clear();
-                visited.clear();
-                return;
-            }
-
-            outGlobals.assign(model.nodes.size(), rootWorld);
-            visited.assign(model.nodes.size(), 0u);
-
-            for (size_t i = 0; i < model.nodes.size(); ++i) {
-                if (model.nodes[i].parent == -1) {
-                    EvaluateNodeMatrixRecursive(
-                        model,
-                        pose,
-                        static_cast<int>(i),
-                        rootWorld,
-                        outGlobals,
-                        visited);
-                }
-            }
-            for (size_t i = 0; i < model.nodes.size(); ++i) {
-                if (visited[i]) {
-                    continue;
-                }
-                const int parent = model.nodes[i].parent;
-                const MATH::Mat4 parentWorld =
-                    parent >= 0 && parent < static_cast<int>(outGlobals.size())
-                        ? outGlobals[static_cast<size_t>(parent)]
-                        : rootWorld;
-                EvaluateNodeMatrixRecursive(
-                    model,
-                    pose,
-                    static_cast<int>(i),
-                    parentWorld,
-                    outGlobals,
-                    visited);
-            }
-        }
-
         bool BuildJointPalette(
             const ModelAsset& model,
             int skinIndex,
@@ -154,12 +64,10 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             }
             pose = &bindPose;
         }
-        BuildNodeGlobalMatricesWithRoot(
+        (void)ANIMATION::POSE_EVALUATION::BuildNodeGlobalMatrices(
             *record.model,
-            *pose,
-            MATH::Mat4::Identity(),
-            entry.localNodeGlobals,
-            entry.visited);
+            pose,
+            entry.localNodeGlobals);
 
         entries_.push_back(std::move(entry));
         return &entries_.back();

@@ -53,6 +53,16 @@ namespace HIKARI::ANIMATION {
     struct AnimationRootMotionDelta {
         MATH::Vec3 translation{};
         MATH::Quat rotation = MATH::Quat::Identity();
+        // The animation evaluator fills the motion value.  The root-motion
+        // service assigns these delivery fields when the value is queued for
+        // a fixed tick; they are intentionally not part of pose equality.
+        uint64_t fixedTickIndex = 0u;
+        uint64_t revision = 0u;
+        bool valid = false;
+    };
+
+    struct AnimationRootMotionSample {
+        MATH::Mat4 modelMatrix = MATH::Mat4::Identity();
         bool valid = false;
     };
 
@@ -64,8 +74,12 @@ namespace HIKARI::ANIMATION {
         float motionBlendWeight = 0.0f;
         float blendWeight = 1.0f;
         AnimationRootMotionDelta rootMotion{};
+        AnimationRootMotionSample rootMotionSample{};
         uint64_t revision = 0u;
         bool transitioning = false;
+        bool loop = true;
+        float playbackSpeed = 1.0f;
+        bool rootMotionEnabled = false;
         bool valid = false;
     };
 

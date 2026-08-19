@@ -396,6 +396,10 @@ namespace HIKARI {
         success = services.Register(state_->camera.director) && success;
         success = services.Register(state_->camera.rigService) && success;
         success = services.Register(state_->runtime.animationPoseService) && success;
+        success = services.Register(state_->runtime.animationSocketService) &&
+            success;
+        success = services.Register(state_->runtime.animationRootMotionService) &&
+            success;
         success = services.Register(state_->runtime.animationStateMachineAssets) &&
             success;
         success = services.Register(state_->runtime.animationStateMachineRuntimeService) &&
@@ -500,6 +504,8 @@ namespace HIKARI {
         return OpenStartupSceneAsset();
     }
     bool DocumentSceneBase::RebuildRuntimeWorld() {
+        SERVICES::GetActionTimeDilationService().ReleaseOwner(
+            &state_->runtime.world);
         LIGHTING_AUTHORING::SynchronizeLegacyLightingViews(
             state_->identity.document);
         state_->runtime.systemScheduler.DetachWorld(state_->runtime.world);

@@ -40,12 +40,18 @@ namespace HIKARI::CAMERA {
     struct CameraModifierSubmission {
         SceneObjectId cameraObjectId{};
         CameraRigSourceId sourceId = 0u;
+        // A source may submit independent presentation channels in the same
+        // frame (for example the stable SDK modifier and the SDK 1.6 roll
+        // extension). The channel only selects the per-frame storage slot;
+        // sourceId continues to own priority and deterministic ordering.
+        uint64_t channelId = 0u;
         int priority = 0;
         MATH::Vec3 worldPositionOffset{};
         MATH::Vec3 localPositionOffset{};
         MATH::Vec3 worldTargetOffset{};
         MATH::Vec3 localTargetOffset{};
         float verticalFovOffsetRadians = 0.0f;
+        float localRollRadians = 0.0f;
         float weight = 1.0f;
         bool applyDuringOverride = false;
     };

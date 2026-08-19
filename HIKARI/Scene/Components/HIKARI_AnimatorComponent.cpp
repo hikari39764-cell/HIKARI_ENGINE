@@ -33,6 +33,7 @@ namespace HIKARI {
         out["defaultBlendDurationSec"] = defaultBlendDurationSec_;
         out["loop"] = loop_;
         out["autoPlay"] = autoPlay_;
+        out["rootMotionEnabled"] = rootMotionEnabled_;
         out["playing"] = playing_;
         out["finished"] = finished_;
     }
@@ -53,6 +54,9 @@ namespace HIKARI {
                 defaultBlendDurationSec_));
         loop_ = in.value("loop", loop_);
         autoPlay_ = in.value("autoPlay", autoPlay_);
+        rootMotionEnabled_ = in.value(
+            "rootMotionEnabled",
+            rootMotionEnabled_);
         playing_ = in.value("playing", autoPlay_);
         finished_ = in.value("finished", finished_);
         secondaryClip_ = {};
@@ -340,6 +344,14 @@ namespace HIKARI {
 
     bool AnimatorComponent::GetAutoPlay() const {
         return autoPlay_;
+    }
+
+    void AnimatorComponent::SetRootMotionEnabled(bool enabled) noexcept {
+        rootMotionEnabled_ = enabled;
+    }
+
+    bool AnimatorComponent::IsRootMotionEnabled() const noexcept {
+        return rootMotionEnabled_;
     }
 
     void AnimatorComponent::SetPlaying(bool playing) {

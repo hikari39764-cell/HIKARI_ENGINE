@@ -12,6 +12,7 @@ namespace HIKARI::CAMERA {
         constexpr float kViewEpsilon = 1.0e-5f;
         constexpr float kMinVerticalFov = 1.0e-3f;
         constexpr float kMaxVerticalFov = 3.13f;
+        constexpr float kTwoPi = 6.28318530717958647692f;
 
         bool IsPreferred(
             int candidatePriority,
@@ -83,7 +84,8 @@ namespace HIKARI::CAMERA {
             [&submission](const CameraModifierSubmission& candidate) {
                 return candidate.cameraObjectId ==
                         submission.cameraObjectId &&
-                    candidate.sourceId == submission.sourceId;
+                    candidate.sourceId == submission.sourceId &&
+                    candidate.channelId == submission.channelId;
             });
         if (existing != modifiers_.end()) {
             *existing = submission;
@@ -169,7 +171,10 @@ namespace HIKARI::CAMERA {
                 if (lhs->priority != rhs->priority) {
                     return lhs->priority < rhs->priority;
                 }
-                return lhs->sourceId < rhs->sourceId;
+                if (lhs->sourceId != rhs->sourceId) {
+                    return lhs->sourceId < rhs->sourceId;
+                }
+                return lhs->channelId < rhs->channelId;
             });
 
         MATH::Vec3 eye = camera.GetPosition();
@@ -190,6 +195,7 @@ namespace HIKARI::CAMERA {
         up = MATH::Normalize(MATH::Cross(forward, right));
 
         float verticalFov = camera.GetFovYRad();
+        float localRoll = 0.0f;
         for (const CameraModifierSubmission* modifier : applicable) {
             const float weight = std::clamp(modifier->weight, 0.0f, 1.0f);
             const auto toWorld = [right, up, forward](
@@ -202,6 +208,29 @@ namespace HIKARI::CAMERA {
             target = target + Scale(modifier->worldTargetOffset, weight) +
                 Scale(toWorld(modifier->localTargetOffset), weight);
             verticalFov += modifier->verticalFovOffsetRadians * weight;
+            localRoll = std::remainder(
+                localRoll +
+                    std::remainder(modifier->localRollRadians, kTwoPi) *
+                        weight,
+                kTwoPi);
+        }
+
+        // Roll is an explicit presentation modifier. Rebuild the final view
+        // basis after all position/target offsets, then rotate its up vector
+        // around the resulting forward axis.
+        forward = MATH::Normalize(target - eye);
+        if (MATH::Length(forward) <= kViewEpsilon) {
+            forward = { 0.0f, 0.0f, 1.0f };
+        }
+        right = MATH::Normalize(MATH::Cross(up, forward));
+        if (MATH::Length(right) <= kViewEpsilon) {
+            right = { 1.0f, 0.0f, 0.0f };
+        }
+        up = MATH::Normalize(MATH::Cross(forward, right));
+        if (std::abs(localRoll) > kViewEpsilon) {
+            up = MATH::Normalize(
+                up * std::cos(localRoll) +
+                right * std::sin(localRoll));
         }
 
         verticalFov = std::clamp(
@@ -261,6 +290,7 @@ namespace HIKARI::CAMERA {
             MATH::IsFinite(modifier.worldTargetOffset) &&
             MATH::IsFinite(modifier.localTargetOffset) &&
             std::isfinite(modifier.verticalFovOffsetRadians) &&
+            std::isfinite(modifier.localRollRadians) &&
             std::isfinite(modifier.weight);
     }
 

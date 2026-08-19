@@ -3,6 +3,8 @@
 #include <memory>
 
 #include "Animation/Runtime/HIKARI_AnimationPoseService.h"
+#include "Animation/Runtime/HIKARI_AnimationRootMotionService.h"
+#include "Animation/Runtime/HIKARI_AnimationSocketService.h"
 #include "Animation/StateMachine/HIKARI_AnimationStateMachineRuntimeService.h"
 #include "Assets/Animation/HIKARI_AnimationStateMachineAssetStore.h"
 #include "Core/HIKARI_FixedStepClock.h"
@@ -37,6 +39,8 @@ namespace HIKARI {
         RuntimePlayStateService playStateService{};
         GameplayCameraService gameplayCameraService{};
         ANIMATION::AnimationPoseService animationPoseService{};
+        ANIMATION::AnimationSocketService animationSocketService{};
+        ANIMATION::AnimationRootMotionService animationRootMotionService{};
         ANIMATION::AnimationStateMachineRuntimeService
             animationStateMachineRuntimeService{};
         GAMEPLAY::MotionIntentService motionIntentService{};

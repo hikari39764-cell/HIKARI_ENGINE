@@ -6,6 +6,7 @@
 #include <utility>
 
 #include "Core/HIKARI_FrameContext.h"
+#include "Core/Math/HIKARI_MathValidation.h"
 #include "Physics/HIKARI_KinematicMotionDiagnostics.h"
 #include "Physics/HIKARI_KinematicMotionService.h"
 #include "Physics/HIKARI_PhysicsSceneBridge.h"
@@ -31,6 +32,21 @@ namespace HIKARI::PHYSICS {
             return result;
         }
 
+        MATH::Quat ComposeRotation(
+            const MATH::Quat& base,
+            const MATH::Quat& delta) noexcept {
+            return MATH::NormalizeQ({
+                base.w * delta.x + base.x * delta.w +
+                    base.y * delta.z - base.z * delta.y,
+                base.w * delta.y - base.x * delta.z +
+                    base.y * delta.w + base.z * delta.x,
+                base.w * delta.z + base.x * delta.y -
+                    base.y * delta.x + base.z * delta.w,
+                base.w * delta.w - base.x * delta.x -
+                    base.y * delta.y - base.z * delta.z
+            });
+        }
+
     }
 
     void PhysicsSystem::ProcessKinematicMotions(
@@ -47,11 +63,16 @@ namespace HIKARI::PHYSICS {
                 binding.object,
                 frame.fixedTickIndex,
                 request);
+            KinematicMotionDelta motionDelta{};
+            const bool hasMotionDelta = kinematicMotion_->ConsumeMotionDelta(
+                binding.object,
+                frame.fixedTickIndex,
+                motionDelta);
             KinematicTeleportRequest teleport{};
             const bool hasTeleport = kinematicMotion_->ConsumeTeleport(
                 binding.object,
                 teleport);
-            if (!hasMove && !hasTeleport) {
+            if (!hasMove && !hasMotionDelta && !hasTeleport) {
                 if (binding.effectiveMotionType ==
                         PhysicsMotionType::Kinematic) {
                     binding.kinematicPresentationActive = false;
@@ -123,7 +144,7 @@ namespace HIKARI::PHYSICS {
                     }
                 }
             }
-            if (!hasMove) {
+            if (!hasMove && !hasMotionDelta) {
                 continue;
             }
 
@@ -192,16 +213,26 @@ namespace HIKARI::PHYSICS {
                 continue;
             }
 
-            if (request.hasDesiredRotation) {
+            if (request.hasDesiredRotation || hasMotionDelta) {
                 PhysicsPose solverPose = before.pose;
-                solverPose.rotation = request.desiredRotation;
+                if (request.hasDesiredRotation) {
+                    solverPose.rotation = request.desiredRotation;
+                }
+                if (hasMotionDelta) {
+                    // Locomotion owns its absolute facing target. A submitted
+                    // delta is relative and is composed after that target so
+                    // action/root motion remains visible when both are present.
+                    solverPose.rotation = ComposeRotation(
+                        solverPose.rotation,
+                        motionDelta.rotation);
+                }
                 if (!service_->SetCharacterPose(
                         binding.kinematicSolver,
                         solverPose)) {
                     setError("unable to rotate the kinematic motion solver");
                     continue;
                 }
-                before.pose.rotation = request.desiredRotation;
+                before.pose.rotation = solverPose.rotation;
             }
 
             const MATH::Vec3 gravity = settings_.gravity *
@@ -237,9 +268,24 @@ namespace HIKARI::PHYSICS {
                     velocity.y,
                     -request.maximumFallSpeed);
             }
+            MATH::Vec3 deltaVelocity{};
+            if (hasMotionDelta) {
+                deltaVelocity = motionDelta.translation *
+                    (1.0f / frame.fixedDt);
+                if (!MATH::IsFinite(deltaVelocity)) {
+                    setError("kinematic motion delta produced a non-finite velocity");
+                    continue;
+                }
+            }
             velocity = velocity +
                 kinematicMotion_->ConsumeExternalVelocity(
                     binding.object);
+            if (hasMotionDelta) {
+                // Locomotion and external velocity remain additive inputs; the
+                // delta is converted to velocity for this fixed step so the
+                // character solver performs collision-aware movement.
+                velocity = velocity + deltaVelocity;
+            }
 
             const float supportVerticalVelocity = onGround
                 ? before.groundVelocity.y

@@ -22,6 +22,19 @@ namespace HIKARI::PHYSICS {
             KinematicMotionRequest& outRequest,
             KinematicMotionSourceId* outSource = nullptr);
 
+        bool SubmitMotionDelta(
+            RuntimeObjectHandle object,
+            KinematicMotionSourceId source,
+            int priority,
+            uint64_t fixedTickIndex,
+            const MATH::Vec3& translation,
+            const MATH::Quat& rotation);
+        bool ConsumeMotionDelta(
+            RuntimeObjectHandle object,
+            uint64_t fixedTickIndex,
+            KinematicMotionDelta& outDelta,
+            KinematicMotionSourceId* outSource = nullptr);
+
         void RequestTeleport(
             RuntimeObjectHandle object,
             KinematicMotionSourceId source,
@@ -58,6 +71,13 @@ namespace HIKARI::PHYSICS {
             KinematicMotionRequest request{};
         };
 
+        struct MotionDeltaSlot {
+            KinematicMotionSourceId source = 0u;
+            int priority = 0;
+            uint64_t submittedTick = 0u;
+            KinematicMotionDelta delta{};
+        };
+
         struct TeleportSlot {
             KinematicMotionSourceId source = 0u;
             int priority = 0;
@@ -66,10 +86,13 @@ namespace HIKARI::PHYSICS {
 
         struct ActorState {
             std::vector<MoveSlot> moves{};
+            std::vector<MotionDeltaSlot> motionDeltas{};
             std::optional<TeleportSlot> teleport{};
             MATH::Vec3 externalVelocity{};
             KinematicMotionState state{};
             KinematicMotionRuntimeStatus status{};
+            uint64_t lastConsumedMotionDeltaTick = 0u;
+            bool hasConsumedMotionDeltaTick = false;
             bool hasState = false;
             bool hasStatus = false;
         };

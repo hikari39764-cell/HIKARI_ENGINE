@@ -6,6 +6,7 @@
 #include "Platform/HIKARI_Win32Window.h"
 #include "Runtime/HIKARI_GamePresentationController.h"
 #include "Runtime/HIKARI_RuntimeHost.h"
+#include "Runtime/Services/HIKARI_ActionTimeDilationService.h"
 
 #include <cstdint>
 #include <string>
@@ -15,6 +16,7 @@ namespace HIKARI::SERVICES::INTERNAL {
     struct RuntimeServiceState {
         PLATFORM::Win32Window window{};
         INPUT::InputService inputService{};
+        ActionTimeDilationService actionTimeDilationService{};
         RUNTIME::GamePresentationController gamePresentationController{};
         GFX::Dx12Core core{};
         bool comInitialized = false;

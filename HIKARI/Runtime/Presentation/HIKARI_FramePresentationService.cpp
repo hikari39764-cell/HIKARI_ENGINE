@@ -34,6 +34,8 @@ namespace HIKARI {
             auto& gGraphicsCore = INTERNAL::GetRuntimeServiceState().core;
             auto& gWindow = INTERNAL::GetRuntimeServiceState().window;
             auto& gInputService = INTERNAL::GetRuntimeServiceState().inputService;
+            auto& gActionTimeDilationService =
+                INTERNAL::GetRuntimeServiceState().actionTimeDilationService;
             auto& gGamePresentationController =
                 INTERNAL::GetRuntimeServiceState().gamePresentationController;
             auto& gGpuFrameReady =
@@ -237,7 +239,9 @@ namespace HIKARI {
             gGpuFrameReady = false;
             gPresentationPrepared = false;
             GFX::PIX::ScopedCpuEvent pixCpuFrame(GFX::PIX::kColorFrame, "Services.BeginFrame");
+            gActionTimeDilationService.ApplyPending();
             const FrameContext& frame = HIKARI::TIME::BeginFrame();
+            gActionTimeDilationService.Advance(frame.unscaledDt);
             CPU_PROFILE::BeginFrame(frame.frameIndex);
             CPU_PROFILE::ScopedCpuTimer cpuBeginFrame(
                 CPU_PROFILE::Pass::ServicesBeginFrame);

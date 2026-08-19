@@ -44,6 +44,8 @@ namespace HIKARI {
             auto& gGraphicsCore = INTERNAL::GetRuntimeServiceState().core;
             auto& gWindow = INTERNAL::GetRuntimeServiceState().window;
             auto& gInputService = INTERNAL::GetRuntimeServiceState().inputService;
+            auto& gActionTimeDilationService =
+                INTERNAL::GetRuntimeServiceState().actionTimeDilationService;
             auto& gGamePresentationController =
                 INTERNAL::GetRuntimeServiceState().gamePresentationController;
             auto& gComInitialized =
@@ -81,6 +83,10 @@ namespace HIKARI {
             return gInputService.GetSnapshot();
         }
 
+        ActionTimeDilationService& GetActionTimeDilationService() {
+            return gActionTimeDilationService;
+        }
+
         bool IsEditorHost() { return IsEditorHostMode(gRuntimeHostMode); }
 
         bool IsStandaloneGameHost() { return IsStandaloneGameHostMode(gRuntimeHostMode); }
@@ -114,6 +120,7 @@ namespace HIKARI {
         bool Initialize(
             const char* title,
             const RUNTIME::HostBootstrapConfig& cfg) {
+            gActionTimeDilationService.Reset();
             const bool enableFrameGenerationPlugins =
                 IsEditorHostMode(cfg.hostMode) ||
                 (IsStandaloneGameHostMode(cfg.hostMode) &&
@@ -303,6 +310,7 @@ namespace HIKARI {
 
         void FinalizeAll() {
             HIKARI_LOG_INFO("HIKARI shutdown started.");
+            gActionTimeDilationService.Reset();
             gInputService.Shutdown();
             if (IsInProcessGamePresentationActive() &&
                 !EndInProcessGamePresentation()) {

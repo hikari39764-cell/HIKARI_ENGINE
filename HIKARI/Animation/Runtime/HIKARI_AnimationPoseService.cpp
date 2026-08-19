@@ -13,6 +13,17 @@ namespace HIKARI::ANIMATION {
                 lhs.z == rhs.z && lhs.w == rhs.w;
         }
 
+        bool EqualMat4(const MATH::Mat4& lhs, const MATH::Mat4& rhs) {
+            for (int column = 0; column < 4; ++column) {
+                for (int row = 0; row < 4; ++row) {
+                    if (lhs.m[column][row] != rhs.m[column][row]) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
         bool EqualPose(
             const AnimationLocalPose& lhs,
             const AnimationLocalPose& rhs) {
@@ -22,7 +33,10 @@ namespace HIKARI::ANIMATION {
                 const Transform3D& b = rhs.nodes[index];
                 if (!EqualVec3(a.position, b.position) ||
                     !EqualQuat(a.rotation, b.rotation) ||
-                    !EqualVec3(a.scale, b.scale)) {
+                    !EqualVec3(a.scale, b.scale) ||
+                    a.useExplicitMatrix != b.useExplicitMatrix ||
+                    (a.useExplicitMatrix &&
+                        !EqualMat4(a.explicitMatrix, b.explicitMatrix))) {
                     return false;
                 }
             }
@@ -44,7 +58,15 @@ namespace HIKARI::ANIMATION {
                     lhs.rootMotion.rotation,
                     rhs.rootMotion.rotation) &&
                 lhs.rootMotion.valid == rhs.rootMotion.valid &&
+                lhs.rootMotionSample.valid == rhs.rootMotionSample.valid &&
+                (!lhs.rootMotionSample.valid ||
+                    EqualMat4(
+                        lhs.rootMotionSample.modelMatrix,
+                        rhs.rootMotionSample.modelMatrix)) &&
                 lhs.transitioning == rhs.transitioning &&
+                lhs.loop == rhs.loop &&
+                lhs.playbackSpeed == rhs.playbackSpeed &&
+                lhs.rootMotionEnabled == rhs.rootMotionEnabled &&
                 lhs.valid == rhs.valid &&
                 EqualPose(lhs.localPose, rhs.localPose);
         }

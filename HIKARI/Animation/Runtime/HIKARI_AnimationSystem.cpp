@@ -1,12 +1,15 @@
 #include "Animation/Runtime/HIKARI_AnimationSystem.h"
 
+#include <cmath>
 #include <utility>
 #include <unordered_set>
 
 #include <algorithm>
 
 #include "Animation/Runtime/HIKARI_AnimationClipSampler.h"
+#include "Animation/Runtime/HIKARI_AnimationPoseEvaluation.h"
 #include "Animation/Runtime/HIKARI_AnimationPoseService.h"
+#include "Animation/Runtime/HIKARI_AnimationRootMotionService.h"
 #include "Core/HIKARI_FrameContext.h"
 #include "Assets/Models/HIKARI_ModelAsset.h"
 #include "Scene/Components/HIKARI_AnimatorComponent.h"
@@ -72,16 +75,67 @@ namespace HIKARI {
             }
             return true;
         }
+
+        MATH::Quat DivideRotation(
+            const MATH::Quat& rotation,
+            uint32_t stepCount) noexcept {
+            MATH::Quat normalized = MATH::NormalizeQ(rotation);
+            if (stepCount <= 1u) {
+                return normalized;
+            }
+            // Use the shortest quaternion arc before taking its fractional
+            // power, then repeat that fixed-step rotation stepCount times.
+            if (normalized.w < 0.0f) {
+                normalized.x = -normalized.x;
+                normalized.y = -normalized.y;
+                normalized.z = -normalized.z;
+                normalized.w = -normalized.w;
+            }
+            const float halfAngle = std::acos(
+                std::clamp(normalized.w, -1.0f, 1.0f));
+            const float sine = std::sin(halfAngle);
+            if (std::abs(sine) <= 1.0e-6f) {
+                // Preserve sub-microradian authored turns. Around identity,
+                // the quaternion vector is linear in the half-angle, so a
+                // normalized first-order split is more accurate than
+                // dropping the rotation altogether.
+                const float inverseSteps = 1.0f /
+                    static_cast<float>(stepCount);
+                return MATH::NormalizeQ({
+                    normalized.x * inverseSteps,
+                    normalized.y * inverseSteps,
+                    normalized.z * inverseSteps,
+                    1.0f
+                });
+            }
+            const float stepHalfAngle = halfAngle /
+                static_cast<float>(stepCount);
+            const float stepSine = std::sin(stepHalfAngle);
+            return MATH::NormalizeQ({
+                normalized.x / sine * stepSine,
+                normalized.y / sine * stepSine,
+                normalized.z / sine * stepSine,
+                std::cos(stepHalfAngle)
+            });
+        }
     }
 
     void AnimationSystem::OnWorldAttached(World& world) {
         publishedObjects_.clear();
         poseService_ = world.Services().Find<
             ANIMATION::AnimationPoseService>();
+        if (auto* rootMotionService = world.Services().Find<
+                ANIMATION::AnimationRootMotionService>()) {
+            rootMotionService->Clear();
+        }
     }
 
-    void AnimationSystem::OnWorldDetached(World&) {
+    void AnimationSystem::OnWorldDetached(World& world) {
         if (poseService_ != nullptr) poseService_->Clear();
+        if (auto* rootMotionService = world.Services().Find<
+                ANIMATION::AnimationRootMotionService>()) {
+            rootMotionService->Clear();
+        }
         poseService_ = nullptr;
         publishedObjects_.clear();
     }
@@ -91,17 +145,23 @@ namespace HIKARI {
         const FrameContext& frame) {
         if (poseService_ == nullptr) return;
 
+        ANIMATION::AnimationRootMotionService* rootMotionService =
+            world.Services().Find<ANIMATION::AnimationRootMotionService>();
+
         std::unordered_set<uint64_t> currentObjectKeys{};
         std::vector<RuntimeObjectHandle> currentObjects{};
 
         world.ForEachObjectWith<ModelComponent, AnimatorComponent>(
-            [this, &frame, &currentObjectKeys, &currentObjects](
+            [this, &frame, rootMotionService, &currentObjectKeys, &currentObjects](
                 GameObject& object,
                 ModelComponent& model,
                 AnimatorComponent& animator) {
                 const ModelAsset* modelAsset = model.GetModelAsset();
                 if (modelAsset == nullptr) {
                     poseService_->Remove(object.GetRuntimeHandle());
+                    if (rootMotionService != nullptr) {
+                        rootMotionService->Remove(object.GetRuntimeHandle());
+                    }
                     return;
                 }
 
@@ -158,6 +218,60 @@ namespace HIKARI {
                         *modelAsset,
                         snapshot.localPose);
                 }
+                snapshot.loop = animator.GetLoop();
+                snapshot.playbackSpeed = animator.GetSpeed();
+                snapshot.rootMotionEnabled =
+                    animator.IsRootMotionEnabled();
+
+                // AnimationSystem runs after the fixed-step loop (order 150).
+                // Queue root motion for the next fixed tick instead of
+                // mutating the authoritative GameObject transform here.
+                const std::shared_ptr<const ANIMATION::AnimationPoseSnapshot>
+                    previousSnapshot = poseService_->Find(
+                        object.GetRuntimeHandle());
+                const bool rootMotionPrepared = snapshot.valid &&
+                    snapshot.rootMotionEnabled &&
+                    ANIMATION::POSE_EVALUATION::CaptureRootMotionSample(
+                        *modelAsset,
+                        snapshot.localPose,
+                        snapshot.rootMotionSample) &&
+                    ANIMATION::POSE_EVALUATION::StripRootMotionFromPose(
+                        *modelAsset,
+                        snapshot.localPose);
+                if (!rootMotionPrepared) {
+                    snapshot.rootMotionSample = {};
+                }
+                if (rootMotionService != nullptr && rootMotionPrepared) {
+                    ANIMATION::AnimationRootMotionDelta rootMotion{};
+                    if (ANIMATION::EvaluateAnimationRootMotion(
+                            *modelAsset,
+                            previousSnapshot.get(),
+                            snapshot,
+                            rootMotion)) {
+                        const uint32_t deliverySteps = (std::max)(
+                            frame.fixedStepsThisFrame,
+                            1u);
+                        ANIMATION::AnimationRootMotionDelta step =
+                            rootMotion;
+                        step.translation = rootMotion.translation *
+                            (1.0f / static_cast<float>(deliverySteps));
+                        step.rotation = DivideRotation(
+                            rootMotion.rotation,
+                            deliverySteps);
+                        bool queuedAny = false;
+                        for (uint32_t stepIndex = 0u;
+                            stepIndex < deliverySteps;
+                            ++stepIndex) {
+                            queuedAny = rootMotionService->Publish(
+                                object.GetRuntimeHandle(),
+                                frame.fixedTickIndex + 1u + stepIndex,
+                                step) || queuedAny;
+                        }
+                        if (queuedAny) {
+                            snapshot.rootMotion = rootMotion;
+                        }
+                    }
+                }
                 const bool poseChanged = poseService_->Publish(
                     object.GetRuntimeHandle(),
                     std::move(snapshot));
@@ -177,6 +291,9 @@ namespace HIKARI {
         for (const RuntimeObjectHandle object : publishedObjects_) {
             if (!currentObjectKeys.contains(object.ToValue())) {
                 poseService_->Remove(object);
+                if (rootMotionService != nullptr) {
+                    rootMotionService->Remove(object);
+                }
             }
         }
         publishedObjects_ = std::move(currentObjects);

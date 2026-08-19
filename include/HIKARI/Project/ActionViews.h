@@ -63,6 +63,9 @@ namespace HIKARI {
             uint64_t objectHandle) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool Stop(
             uint64_t objectHandle) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool SetRootMotionEnabled(
+            uint64_t objectHandle,
+            uint8_t enabled) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool GetState(
             uint64_t objectHandle,
             GameProjectAnimationState& outState) const noexcept;
@@ -90,6 +93,8 @@ namespace HIKARI {
 
         HIKARI_GAME_PROJECT_SDK_API bool SubmitKinematicMove(
             const GameProjectKinematicMove& move) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool SubmitMotionDelta(
+            const GameProjectKinematicMotionDelta& delta) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool GetKinematicState(
             uint64_t objectHandle,
             GameProjectKinematicState& outState) const noexcept;
@@ -131,6 +136,8 @@ namespace HIKARI {
 
         HIKARI_GAME_PROJECT_SDK_API bool SubmitModifier(
             const GameProjectCameraModifier& modifier) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool SubmitRollModifier(
+            const GameProjectCameraRollModifier& modifier) const noexcept;
 
     private:
         friend struct GameProjectSdkAccess;

@@ -179,6 +179,8 @@ namespace HIKARI {
         }
     }
     void DocumentSceneBase::OnExit() {
+        SERVICES::GetActionTimeDilationService().ReleaseOwner(
+            &state_->runtime.world);
         state_->camera.sequencePlayback.Reset();
         state_->camera.currentCameraSequenceHandle = {};
         state_->camera.rigService.Clear();
@@ -242,6 +244,11 @@ namespace HIKARI {
             fixedPlan.stepCount,
             fixedPlan.interpolationAlpha,
             fixedPlan.droppedSeconds);
+        // Update/LateUpdate observe the completed simulation tick for this
+        // frame. Fixed callbacks below still receive their exact per-step
+        // index through fixedFrame.
+        frame.fixedTickIndex =
+            state_->runtime.fixedStepClock.GetCompletedTickCount();
         for (uint32_t stepIndex = 0;
             stepIndex < fixedPlan.stepCount;
             ++stepIndex) {

@@ -37,6 +37,14 @@ namespace HIKARI::PHYSICS {
         KinematicControllerSettings controller{};
     };
 
+    // A relative, fixed-tick motion contribution. Translation is expressed in
+    // physics/world coordinates by the submitter; rotation is a relative
+    // quaternion that the physics integration composes with the current pose.
+    struct KinematicMotionDelta {
+        MATH::Vec3 translation{};
+        MATH::Quat rotation = MATH::Quat::Identity();
+    };
+
     struct KinematicTeleportRequest {
         PhysicsPose pose{};
         bool clearVelocity = true;

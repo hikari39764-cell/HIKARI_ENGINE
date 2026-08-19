@@ -418,6 +418,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/App/HIKARI_RuntimeEngineApp.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Presentation/HIKARI_FramePresentationService.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Presentation/HIKARI_GamePresentationService.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Services/HIKARI_ActionTimeDilationService.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Services/HIKARI_RuntimeServices.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Services/Internal/HIKARI_RuntimeServiceState.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Host/HIKARI_EngineHostRunner.cpp"
