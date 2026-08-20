@@ -43,11 +43,14 @@ namespace HIKARI::POST {
         void SetBloomSettings(const BloomSettings& settings);
         void SetToneMappingSettings(const ToneMappingSettings& settings);
         void SetFxaaSettings(const FxaaSettings& settings);
+        void SetSunGlareFrame(const SunGlareFrame& frame);
+        void ClearSunGlareFrame();
         void SetTransitionState(const TransitionVisualState& state);
         void ClearTransitionState();
 
         const FxaaSettings& GetFxaaSettings() const;
         const BloomDebugStats& GetBloomDebugStats() const;
+        const SunGlareDebugStats& GetSunGlareDebugStats() const;
         const CommonParams& GetCommonParams() const;
         const RENDER3D::COLOR::ExposureFrameState&
             GetExposureState() const;
@@ -66,7 +69,8 @@ namespace HIKARI::POST {
             QuadDrawer& quad,
             bool debugOutput,
             const char* temporalBackend,
-            bool lightingEnabled);
+            bool lightingEnabled,
+            RenderTarget2D* sceneDepthOwner);
         RenderTarget2D* ResolveDebugLdr(
             RenderTarget2D& source,
             DXGI_FORMAT outputFormat,
@@ -83,8 +87,14 @@ namespace HIKARI::POST {
         bool EnsureToneMappingEffect();
         bool EnsureFxaaEffect();
         bool EnsureBloomEffects(uint32_t blurPairCount);
+        bool EnsureSunGlareEffect();
+        bool EnsureSunGlareTarget(int width, int height);
         bool EnsureLdrTarget(int width, int height, DXGI_FORMAT format);
         bool EnsureTemporalOutput(int width, int height, DXGI_FORMAT format);
+        bool ApplySunGlare(
+            RenderTarget2D& source,
+            RenderTarget2D& sceneDepthOwner,
+            QuadDrawer& quad);
         RenderTarget2D* ApplyBloom(RenderTarget2D& source, QuadDrawer& quad);
         RenderTarget2D* ApplyFxaa(RenderTarget2D& source, QuadDrawer& quad);
         void LogState(const char* reason) const;
@@ -96,6 +106,7 @@ namespace HIKARI::POST {
         PostChain fxaaChain_{};
         RenderTarget2D ldrTarget_{};
         RenderTarget2D temporalOutput_{};
+        RenderTarget2D sunGlareTarget_{};
         CommonParams commonParams_{};
         float elapsedTime_ = 0.0f;
 
@@ -109,7 +120,11 @@ namespace HIKARI::POST {
         RENDER3D::COLOR::ExposureFrameState exposureState_{};
         FxaaSettings fxaaSettings_{};
         BloomDebugStats bloomDebugStats_{};
+        SunGlareFrame sunGlareFrame_{};
+        SunGlareDebugStats sunGlareDebugStats_{};
         uint32_t activeBloomBlurPairCount_ = 0;
+        std::unique_ptr<PostEffect> sunGlareEffect_{};
+        CommonParams sunGlareParams_{};
         std::unique_ptr<PostEffect> toneMappingEffect_{};
         CommonParams toneMappingParams_{};
         std::unique_ptr<PostEffect> fxaaEffect_{};

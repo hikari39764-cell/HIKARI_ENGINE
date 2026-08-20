@@ -26,6 +26,7 @@ namespace HIKARI::POST {
         fxaaChain_.UpdateContext(context);
         ldrTarget_.UpdateContext(context);
         temporalOutput_.UpdateContext(context);
+        sunGlareTarget_.UpdateContext(context);
         automaticExposureMeter_.UpdateContext(context);
         globalChain_.SetDebugName("PostProcessing.Global");
         bloomChain_.SetDebugName("PostProcessing.Bloom");
@@ -41,12 +42,16 @@ namespace HIKARI::POST {
         transitionChain_.Finalize();
         fxaaChain_.Finalize();
         activeBloomEffects_.clear();
+        sunGlareEffect_.reset();
         toneMappingEffect_.reset();
         fxaaEffect_.reset();
         ldrTarget_.Finalize();
         temporalOutput_.Finalize();
+        sunGlareTarget_.Finalize();
         automaticExposureMeter_.Shutdown();
         bloomDebugStats_ = {};
+        sunGlareFrame_ = {};
+        sunGlareDebugStats_ = {};
         activeBloomBlurPairCount_ = 0;
         dumpNextFrame_ = false;
     }
@@ -188,6 +193,59 @@ namespace HIKARI::POST {
             std::clamp(fxaaSettings_.subpixelQuality, 0.0f, 1.0f);
     }
 
+    void PostProcessingStage::SetSunGlareFrame(
+        const SunGlareFrame& frame) {
+        const SunGlareFrame defaults{};
+        const auto finiteOr = [](float value, float fallback) {
+            return std::isfinite(value) ? value : fallback;
+        };
+        sunGlareFrame_ = frame;
+        sunGlareFrame_.sunUvX = finiteOr(frame.sunUvX, defaults.sunUvX);
+        sunGlareFrame_.sunUvY = finiteOr(frame.sunUvY, defaults.sunUvY);
+        sunGlareFrame_.coreRadius = std::clamp(
+            finiteOr(frame.coreRadius, defaults.coreRadius),
+            0.0005f,
+            0.25f);
+        sunGlareFrame_.colorR = std::clamp(
+            finiteOr(frame.colorR, defaults.colorR), 0.0f, 64.0f);
+        sunGlareFrame_.colorG = std::clamp(
+            finiteOr(frame.colorG, defaults.colorG), 0.0f, 64.0f);
+        sunGlareFrame_.colorB = std::clamp(
+            finiteOr(frame.colorB, defaults.colorB), 0.0f, 64.0f);
+        sunGlareFrame_.intensity = std::clamp(
+            finiteOr(frame.intensity, defaults.intensity), 0.0f, 64.0f);
+        sunGlareFrame_.haloRadius = std::clamp(
+            finiteOr(frame.haloRadius, defaults.haloRadius),
+            sunGlareFrame_.coreRadius,
+            1.0f);
+        sunGlareFrame_.haloFalloff = std::clamp(
+            finiteOr(frame.haloFalloff, defaults.haloFalloff), 0.25f, 16.0f);
+        sunGlareFrame_.streakIntensity = std::clamp(
+            finiteOr(frame.streakIntensity, defaults.streakIntensity),
+            0.0f,
+            4.0f);
+        sunGlareFrame_.streakLength = std::clamp(
+            finiteOr(frame.streakLength, defaults.streakLength), 0.001f, 2.0f);
+        sunGlareFrame_.occlusionRadius = std::clamp(
+            finiteOr(frame.occlusionRadius, defaults.occlusionRadius),
+            0.001f,
+            0.25f);
+        sunGlareFrame_.edgeFade = std::clamp(
+            finiteOr(frame.edgeFade, defaults.edgeFade), 0.001f, 0.5f);
+        sunGlareFrame_.maxRadiance = std::clamp(
+            finiteOr(frame.maxRadiance, defaults.maxRadiance), 0.1f, 4096.0f);
+        sunGlareFrame_.enabled = frame.enabled &&
+            sunGlareFrame_.intensity > 0.0f &&
+            (sunGlareFrame_.colorR > 0.0f ||
+                sunGlareFrame_.colorG > 0.0f ||
+                sunGlareFrame_.colorB > 0.0f);
+    }
+
+    void PostProcessingStage::ClearSunGlareFrame() {
+        sunGlareFrame_ = {};
+        sunGlareDebugStats_ = {};
+    }
+
     void PostProcessingStage::SetTransitionState(
         const TransitionVisualState& state) {
         if (!state.active) {
@@ -248,6 +306,11 @@ namespace HIKARI::POST {
         return bloomDebugStats_;
     }
 
+    const SunGlareDebugStats&
+    PostProcessingStage::GetSunGlareDebugStats() const {
+        return sunGlareDebugStats_;
+    }
+
     const CommonParams& PostProcessingStage::GetCommonParams() const {
         return commonParams_;
     }
@@ -295,6 +358,17 @@ namespace HIKARI::POST {
         }
         fxaaChain_.Clear();
         fxaaChain_.Add(fxaaEffect_.get());
+        return true;
+    }
+
+    bool PostProcessingStage::EnsureSunGlareEffect() {
+        if (sunGlareEffect_) return true;
+        auto effect = std::make_unique<PostEffect>();
+        if (!effect->LoadPixelShader(L"HIKARI/Shaders/Post_SunGlarePS.hlsl")) {
+            LogState("Sun glare effect load failed");
+            return false;
+        }
+        sunGlareEffect_ = std::move(effect);
         return true;
     }
 
@@ -360,6 +434,117 @@ namespace HIKARI::POST {
         temporalOutput_.Finalize();
         temporalOutput_.SetDebugName("PostProcessing.TemporalOutput");
         return temporalOutput_.Init(width, height, format, false, { 0, 0, 0, 0 });
+    }
+
+    bool PostProcessingStage::EnsureSunGlareTarget(
+        int width,
+        int height) {
+        if (width <= 0 || height <= 0) return false;
+        const int targetWidth = (std::max)((width + 3) / 4, 1);
+        const int targetHeight = (std::max)((height + 3) / 4, 1);
+        sunGlareTarget_.UpdateContext(context_);
+        const bool invalid = !sunGlareTarget_.GetResource() ||
+            sunGlareTarget_.GetWidth() != targetWidth ||
+            sunGlareTarget_.GetHeight() != targetHeight ||
+            sunGlareTarget_.GetFormat() != DXGI_FORMAT_R16G16B16A16_FLOAT ||
+            sunGlareTarget_.HasDepth();
+        if (!invalid) return true;
+        sunGlareTarget_.Finalize();
+        sunGlareTarget_.SetDebugName("PostProcessing.SunGlareQuarterRes");
+        return sunGlareTarget_.Init(
+            targetWidth,
+            targetHeight,
+            DXGI_FORMAT_R16G16B16A16_FLOAT,
+            false,
+            { 0, 0, 0, 0 });
+    }
+
+    bool PostProcessingStage::ApplySunGlare(
+        RenderTarget2D& source,
+        RenderTarget2D& sceneDepthOwner,
+        QuadDrawer& quad) {
+        sunGlareDebugStats_ = {};
+        sunGlareDebugStats_.requested = sunGlareFrame_.enabled;
+        sunGlareDebugStats_.sunUvX = sunGlareFrame_.sunUvX;
+        sunGlareDebugStats_.sunUvY = sunGlareFrame_.sunUvY;
+        sunGlareDebugStats_.intensity = sunGlareFrame_.intensity;
+        if (!sunGlareFrame_.enabled || !source.GetResource() ||
+            !sceneDepthOwner.GetDepthResource() ||
+            sceneDepthOwner.GetDepthSrvGpu().ptr == 0) {
+            return false;
+        }
+        if (!EnsureSunGlareEffect() ||
+            !EnsureSunGlareTarget(source.GetWidth(), source.GetHeight())) {
+            sunGlareDebugStats_.failed = true;
+            return false;
+        }
+
+        sunGlareDebugStats_.textureWidth = sunGlareTarget_.GetWidth();
+        sunGlareDebugStats_.textureHeight = sunGlareTarget_.GetHeight();
+        if (!sceneDepthOwner.BeginDepthShaderRead()) {
+            sunGlareDebugStats_.failed = true;
+            return false;
+        }
+
+        sunGlareTarget_.BeginCapture(0, 0, 0, 0);
+        bool rendered = quad.SetOutputFormat(sunGlareTarget_.GetFormat());
+        if (rendered) {
+            quad.SetInputTexture(
+                sceneDepthOwner.GetSrvHeap(),
+                sceneDepthOwner.GetDepthSrvGpu());
+            sunGlareParams_ = commonParams_;
+            sunGlareParams_.resolutionX =
+                static_cast<float>(sunGlareTarget_.GetWidth());
+            sunGlareParams_.resolutionY =
+                static_cast<float>(sunGlareTarget_.GetHeight());
+            sunGlareParams_.user[0] = {
+                sunGlareFrame_.sunUvX,
+                sunGlareFrame_.sunUvY,
+                sunGlareFrame_.coreRadius,
+                sunGlareFrame_.intensity
+            };
+            sunGlareParams_.user[1] = {
+                sunGlareFrame_.colorR,
+                sunGlareFrame_.colorG,
+                sunGlareFrame_.colorB,
+                sunGlareFrame_.maxRadiance
+            };
+            sunGlareParams_.user[2] = {
+                sunGlareFrame_.haloRadius,
+                sunGlareFrame_.haloFalloff,
+                sunGlareFrame_.streakIntensity,
+                sunGlareFrame_.streakLength
+            };
+            sunGlareParams_.user[3] = {
+                sunGlareFrame_.occlusionRadius,
+                sunGlareFrame_.edgeFade,
+                static_cast<float>(sceneDepthOwner.GetWidth()),
+                static_cast<float>(sceneDepthOwner.GetHeight())
+            };
+            sunGlareEffect_->ApplyCommonParams(sunGlareParams_);
+            rendered = sunGlareEffect_->BindAndDraw(quad);
+        }
+        sunGlareTarget_.EndCapture();
+        sceneDepthOwner.EndDepthShaderRead();
+        if (!rendered) {
+            sunGlareDebugStats_.failed = true;
+            return false;
+        }
+
+        source.Rebind();
+        if (!quad.SetOutputFormat(source.GetFormat())) {
+            source.EndCapture();
+            sunGlareDebugStats_.failed = true;
+            return false;
+        }
+        quad.DrawBlended(
+            sunGlareTarget_.GetSrvHeap(),
+            sunGlareTarget_.GetSrvGpu(),
+            BlendOption::Additive);
+        source.EndCapture();
+        sunGlareDebugStats_.active = true;
+        sunGlareDebugStats_.initialized = true;
+        return true;
     }
 
     RenderTarget2D* PostProcessingStage::NormalizeTemporalOutput(
@@ -459,10 +644,17 @@ namespace HIKARI::POST {
         QuadDrawer& quad,
         bool debugOutput,
         const char* temporalBackend,
-        bool lightingEnabled) {
+        bool lightingEnabled,
+        RenderTarget2D* sceneDepthOwner) {
         RenderTarget2D* output = &source;
         commonParams_.resolutionX = static_cast<float>((std::max)(1, output->GetWidth()));
         commonParams_.resolutionY = static_cast<float>((std::max)(1, output->GetHeight()));
+        if (!debugOutput && sceneDepthOwner != nullptr) {
+            (void)ApplySunGlare(*output, *sceneDepthOwner, quad);
+        } else {
+            sunGlareDebugStats_ = {};
+            sunGlareDebugStats_.requested = sunGlareFrame_.enabled;
+        }
         if (!debugOutput && globalChain_.HasAny()) {
             output = globalChain_.Execute(*output, quad, commonParams_);
         }
@@ -492,6 +684,7 @@ namespace HIKARI::POST {
                 (globalChain_.HasAny() ? "on" : "off") + " bloom=" +
                 (bloom && bloom->GetResource() ? "on" : "off") +
                 " temporal=" + (temporalBackend ? temporalBackend : "off") +
+                " sunGlare=" + (sunGlareDebugStats_.active ? "on" : "off") +
                 " fxaa=" + (RENDER3D::IsFxaaAntiAliasingMode(quality.antiAliasingMode) ? "on" : "off") +
                 " lighting=" + (lightingEnabled ? "on" : "off"));
         }
@@ -580,6 +773,8 @@ namespace HIKARI::POST {
         stream << "[PostProcessingStage] global=" << globalChain_.HasAny()
             << " bloom=" << bloomSettings_.enabled
             << " bloomPasses=" << bloomDebugStats_.passCount
+            << " sunGlare=" << sunGlareDebugStats_.active
+            << " sunGlareRequested=" << sunGlareDebugStats_.requested
             << " toneCurve=" << toneMappingSettings_.enabled
             << " exposureMode="
             << RENDER3D::COLOR::ToString(exposureState_.mode)
@@ -593,6 +788,7 @@ namespace HIKARI::POST {
             << " transition=" << transitionActive_
             << "\n  " << ldrTarget_.DumpState()
             << "\n  " << temporalOutput_.DumpState()
+            << "\n  " << sunGlareTarget_.DumpState()
             << "\n  " << globalChain_.DumpState()
             << "\n  " << bloomChain_.DumpState()
             << "\n  " << transitionChain_.DumpState()

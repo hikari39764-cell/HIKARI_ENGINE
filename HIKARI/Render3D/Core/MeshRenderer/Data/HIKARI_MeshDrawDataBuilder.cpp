@@ -416,6 +416,71 @@ namespace HIKARI::MESHRENDERER {
             skyData.tint.z,
             1.0f
         };
+
+        const bool atmosphereEnabled =
+            skyData.atmosphereEnabled &&
+            skyData.mode == SkyMode::Atmosphere;
+        if (atmosphereEnabled) {
+            // A stale authored prefiltered/irradiance cubemap is not the
+            // same environment as the authoritative atmosphere sun. Keep
+            // the BRDF LUT, but force diffuse/specular sky sampling through
+            // the shared atmosphere evaluator until dynamic atmosphere IBL
+            // baking is available.
+            out.iblParams.x = 0.0f;
+            out.iblParams.y = 0.0f;
+        }
+        if (atmosphereEnabled) {
+            const float planetRadius = std::clamp(
+                skyData.planetRadius,
+                1.0f,
+                100000000.0f);
+            const float atmosphereHeight = std::clamp(
+                skyData.atmosphereHeight,
+                1.0f,
+                1000000.0f);
+            out.atmospherePlanetParams = {
+                planetRadius,
+                planetRadius + atmosphereHeight,
+                std::max(1.0f, skyData.rayleighScaleHeight),
+                std::max(1.0f, skyData.mieScaleHeight),
+            };
+            out.atmosphereRayleigh = {
+                std::max(0.0f, skyData.rayleighScattering.x),
+                std::max(0.0f, skyData.rayleighScattering.y),
+                std::max(0.0f, skyData.rayleighScattering.z),
+                std::clamp(skyData.sunAngularRadius, 0.0001f, 0.25f),
+            };
+            out.atmosphereMie = {
+                std::max(0.0f, skyData.mieScattering.x),
+                std::max(0.0f, skyData.mieScattering.y),
+                std::max(0.0f, skyData.mieScattering.z),
+                std::clamp(skyData.mieAnisotropy, -0.95f, 0.95f),
+            };
+            out.atmosphereOzone = {
+                std::max(0.0f, skyData.ozoneAbsorption.x),
+                std::max(0.0f, skyData.ozoneAbsorption.y),
+                std::max(0.0f, skyData.ozoneAbsorption.z),
+                std::max(0.0f, skyData.ozoneCenterHeight),
+            };
+            out.atmosphereOzoneParams = {
+                std::max(1.0f, skyData.ozoneWidth),
+                std::clamp(skyData.aerialPerspectiveStrength, 0.0f, 8.0f),
+                skyData.sunExposure,
+                std::clamp(skyData.groundAlbedo, 0.0f, 1.0f),
+            };
+            out.atmosphereSunDirection = {
+                skyData.sunDirection.x,
+                skyData.sunDirection.y,
+                skyData.sunDirection.z,
+                skyData.atmosphereLutsReady ? 2.0f : 1.0f,
+            };
+            out.atmosphereSunColorRadiance = {
+                std::max(0.0f, skyData.sunColor.x),
+                std::max(0.0f, skyData.sunColor.y),
+                std::max(0.0f, skyData.sunColor.z),
+                std::max(0.0f, skyData.sunRadiance),
+            };
+        }
     }
 
     namespace {

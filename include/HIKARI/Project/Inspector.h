@@ -14,6 +14,9 @@ namespace HIKARI {
     public:
         HIKARI_GAME_PROJECT_SDK_API void Text(
             std::string_view text);
+        HIKARI_GAME_PROJECT_SDK_API bool Section(
+            std::string_view label,
+            bool defaultOpen = false);
         HIKARI_GAME_PROJECT_SDK_API bool Bool(
             std::string_view label,
             bool& value);

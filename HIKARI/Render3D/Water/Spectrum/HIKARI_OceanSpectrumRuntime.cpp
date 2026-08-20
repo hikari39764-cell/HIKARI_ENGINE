@@ -378,6 +378,15 @@ namespace HIKARI::RENDER3D::WATER::SPECTRUM {
             view = {};
         }
 
+        bool MustDeferRetirement(const GFX::Context* context) noexcept {
+            return context != nullptr &&
+                context->deferredReleaseQueue != nullptr &&
+                context->currentFrameRetireFenceValue != 0u &&
+                (context->frameFence == nullptr ||
+                    context->frameFence->GetCompletedValue() <
+                        context->currentFrameRetireFenceValue);
+        }
+
         void RetireDescriptor(
             RenderResourceView& view,
             const GFX::Context* context,
@@ -387,8 +396,7 @@ namespace HIKARI::RENDER3D::WATER::SPECTRUM {
             }
             const RenderResourceView retired = view;
             view = {};
-            if (context != nullptr && context->deferredReleaseQueue != nullptr &&
-                context->currentFrameRetireFenceValue != 0u) {
+            if (MustDeferRetirement(context)) {
                 context->deferredReleaseQueue->Enqueue(
                     context->currentFrameRetireFenceValue,
                     [retired]() {
@@ -410,7 +418,7 @@ namespace HIKARI::RENDER3D::WATER::SPECTRUM {
             if (!object) {
                 return;
             }
-            if (context != nullptr) {
+            if (MustDeferRetirement(context)) {
                 GFX::RetireD3D12ObjectForFrame(
                     object,
                     *context,

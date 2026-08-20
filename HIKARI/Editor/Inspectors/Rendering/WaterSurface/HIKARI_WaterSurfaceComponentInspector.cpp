@@ -8,11 +8,9 @@
 namespace HIKARI {
 
     namespace {
-        constexpr std::array<AuthoringChoice, 4> kWaterPresets{{
+        constexpr std::array<AuthoringChoice, 2> kWaterPresets{{
             { "anime_summer", "Anime Summer" },
             { "realistic_clear_summer", "Realistic Clear Summer" },
-            { "anime_sparkling_summer", "Anime Sparkling Summer" },
-            { "realistic_spectral_summer", "Realistic Spectral Summer" },
         }};
         constexpr std::array<AuthoringChoice, 2> kWaterGeometryModes{{
             { "finite_authored", "Finite Authored" },
@@ -62,19 +60,9 @@ namespace HIKARI {
                     kWaterPresets)) {
                 const WATER::WaterSurfacePreset selectedPreset =
                     preset == static_cast<int>(
-                        WATER::WaterSurfacePreset::
-                            RealisticSpectralSummer)
-                        ? WATER::WaterSurfacePreset::RealisticSpectralSummer
-                        : preset == static_cast<int>(
-                        WATER::WaterSurfacePreset::
-                            AnimeSparklingSummer)
-                        ? WATER::WaterSurfacePreset::AnimeSparklingSummer
-                        : preset == static_cast<int>(
-                            WATER::WaterSurfacePreset::
-                                RealisticClearSummer)
-                            ? WATER::WaterSurfacePreset::
-                                RealisticClearSummer
-                            : WATER::WaterSurfacePreset::AnimeSummer;
+                        WATER::WaterSurfacePreset::RealisticClearSummer)
+                        ? WATER::WaterSurfacePreset::RealisticClearSummer
+                        : WATER::WaterSurfacePreset::AnimeSummer;
                 const WATER::WaterSurfaceGeometryMode geometryMode =
                     settings_.geometryMode;
                 settings_ = WATER::MakeWaterSurfacePresetSettings(
@@ -170,6 +158,36 @@ namespace HIKARI {
                 0.02f,
                 1.0f,
                 0.005f);
+            builder.FloatRange(
+                AuthoringFieldDescriptor{
+                    WaterSurfaceComponentPropertyIds::DirectSunStrength,
+                    "Direct Sun Strength",
+                    "Energy of the direct directional-sun specular lobe before shadow influence."
+                },
+                settings_.directSunStrength,
+                0.0f,
+                2.0f,
+                0.01f);
+            builder.FloatRange(
+                AuthoringFieldDescriptor{
+                    WaterSurfaceComponentPropertyIds::TransmissionStrength,
+                    "Transmission Strength",
+                    "Energy assigned to Beer-Lambert refraction and in-water scattering."
+                },
+                settings_.transmissionStrength,
+                0.0f,
+                2.0f,
+                0.01f);
+            builder.FloatRange(
+                AuthoringFieldDescriptor{
+                    WaterSurfaceComponentPropertyIds::ShadowStrength,
+                    "Shadow Influence",
+                    "How strongly directional shadow visibility attenuates direct sun; sky and SSR remain independent."
+                },
+                settings_.shadowStrength,
+                0.0f,
+                1.0f,
+                0.01f);
         }
 
         if (builder.Section("Geometry / Extent", false)) {
@@ -189,12 +207,12 @@ namespace HIKARI {
             }
         }
 
-        if (builder.Section("Stylized Optics", false)) {
+        if (builder.Section("Reflection / Sparkle", false)) {
             builder.FloatRange(
                 AuthoringFieldDescriptor{
                     WaterSurfaceComponentPropertyIds::ReflectionStrength,
-                    "Reflection Strength",
-                    "Multiplier for the stylized water reflection response."
+                    "Sky / SSR Reflection",
+                    "Energy multiplier for the shared sky and confidence-weighted SSR reflection provider."
                 },
                 settings_.reflectionStrength,
                 0.0f,
@@ -203,8 +221,8 @@ namespace HIKARI {
             builder.FloatRange(
                 AuthoringFieldDescriptor{
                     WaterSurfaceComponentPropertyIds::SunGlintStrength,
-                    "Sun Glint Strength",
-                    "Strength of the sparkling summer sun glints."
+                    "Anime Sun Glint",
+                    "Bounded direct-sun sparkle contribution for Anime Summer; it shares the direct-sun energy budget."
                 },
                 settings_.sunGlintStrength,
                 0.0f,
@@ -242,7 +260,7 @@ namespace HIKARI {
                 0.005f);
         }
 
-        if (builder.Section("Spectral Ocean", false)) {
+        if (builder.Section("Ocean Micro Waves", false)) {
             builder.FloatRange(
                 AuthoringFieldDescriptor{
                     WaterSurfaceComponentPropertyIds::WindDirectionDeg,
@@ -257,7 +275,7 @@ namespace HIKARI {
                 AuthoringFieldDescriptor{
                     WaterSurfaceComponentPropertyIds::WindSpeed,
                     "Wind Speed",
-                    "Controls spectral energy and wind-aligned anisotropy; only a bounded drift moves the field over time."
+                    "Controls physically bounded short-wave energy and wind-aligned anisotropy; only a bounded drift moves the field over time."
                 },
                 settings_.windSpeed,
                 0.0f,
@@ -267,7 +285,7 @@ namespace HIKARI {
                 AuthoringFieldDescriptor{
                     WaterSurfaceComponentPropertyIds::ShortWaveStrength,
                     "Short-Wave Strength",
-                    "Amplitude of resolved dynamic short-wave slopes before footprint filtering."
+                    "Amplitude of resolved dynamic short-wave slopes before pixel-footprint filtering."
                 },
                 settings_.shortWaveStrength,
                 0.0f,
@@ -277,7 +295,7 @@ namespace HIKARI {
                 AuthoringFieldDescriptor{
                     WaterSurfaceComponentPropertyIds::CapillaryStrength,
                     "Capillary Strength",
-                    "Amplitude of wind-aligned capillary slopes used by the spectral lobe."
+                    "Amplitude of wind-aligned capillary slopes used by the realistic micro-wave lobe."
                 },
                 settings_.capillaryStrength,
                 0.0f,

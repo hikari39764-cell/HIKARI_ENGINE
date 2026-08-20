@@ -35,15 +35,19 @@ float3 HikariEvaluateAmbientIblApprox(
     float3 kD = (1.0f.xxx - kS) * (1.0f - metallic);
     float3 diffuseAmbient =
         gAmbientColor.rgb * gAmbientIntensity;
+    const uint skyMode = (uint)(gSkyMode + 0.5f);
 
     if (gSkyAmbientFromSky > 0.0001f)
     {
-        float3 skyDiffuse = lerp(
-            gSkyGroundColor,
-            gSkyHorizonColor,
-            saturate(n.y * 0.5f + 0.5f));
-        skyDiffuse *=
-            gSkyExposure * gSkyAmbientFromSky;
+        float3 skyDiffuse = skyMode == 4u &&
+            gAtmosphereSunEnabled > 0.5f
+            ? HikariEvaluateAtmosphereDiffuse(n) *
+                max(0.0f, gSkyAmbientFromSky)
+            : lerp(
+                gSkyGroundColor,
+                gSkyHorizonColor,
+                saturate(n.y * 0.5f + 0.5f)) *
+                gSkyExposure * gSkyAmbientFromSky;
         diffuseAmbient = lerp(
             diffuseAmbient,
             skyDiffuse,
@@ -62,7 +66,6 @@ float3 HikariEvaluateAmbientIblApprox(
         kD * baseColor * diffuseAmbient;
 
     float3 r = normalize(reflect(-v, n));
-    uint skyMode = (uint)(gSkyMode + 0.5f);
     if (!(skyMode == 2u && gSkyHasCubemap > 0.5f))
     {
         r.y = abs(r.y);
@@ -149,7 +152,20 @@ float3 HikariEvaluateAmbientIbl(
 
     float3 diffuseIbl =
         gAmbientColor.rgb * gAmbientIntensity;
-    if (gIblHasIrradiance > 0.5f &&
+    const uint skyMode = (uint)(gSkyMode + 0.5f);
+    if (skyMode == 4u &&
+        gAtmosphereSunEnabled > 0.5f &&
+        gSkyAmbientFromSky > 0.0001f)
+    {
+        const float3 skyDiffuse =
+            HikariEvaluateAtmosphereDiffuse(n) *
+            max(0.0f, gSkyAmbientFromSky);
+        diffuseIbl = lerp(
+            diffuseIbl,
+            skyDiffuse,
+            saturate(gSkyAmbientFromSky));
+    }
+    else if (gIblHasIrradiance > 0.5f &&
         gSkyAmbientFromSky > 0.0001f)
     {
         float3 skyDiffuse =

@@ -261,6 +261,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Shadow/Resources/HIKARI_ShadowMapResources.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Diagnostics/HIKARI_EnvironmentDiagnostics.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Lighting/HIKARI_DefaultSkyEnvironment.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Lighting/Atmosphere/HIKARI_AtmosphereRuntime.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Lighting/HIKARI_IblEnvironment.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Lighting/HIKARI_LightProbeVolumeRuntime.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Lighting/HIKARI_LightingProviderViewSelection.cpp"

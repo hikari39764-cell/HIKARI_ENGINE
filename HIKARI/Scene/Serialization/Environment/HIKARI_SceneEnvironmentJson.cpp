@@ -37,6 +37,8 @@ namespace HIKARI::SCENE::SERIALIZATION {
                 return "Cubemap";
             case SkyMode::Texture2D:
                 return "Texture2D";
+            case SkyMode::Atmosphere:
+                return "Atmosphere";
             case SkyMode::Gradient:
             default:
                 return "Gradient";
@@ -47,7 +49,7 @@ namespace HIKARI::SCENE::SERIALIZATION {
 
             if (node.is_number_integer()) {
                 const int value = node.get<int>();
-                if (value >= static_cast<int>(SkyMode::None) && value <= static_cast<int>(SkyMode::Texture2D)) {
+                if (value >= static_cast<int>(SkyMode::None) && value <= static_cast<int>(SkyMode::Atmosphere)) {
                     return static_cast<SkyMode>(value);
                 }
                 return fallback;
@@ -60,6 +62,9 @@ namespace HIKARI::SCENE::SERIALIZATION {
             if (value == "Gradient") return SkyMode::Gradient;
             if (value == "Cubemap") return SkyMode::Cubemap;
             if (value == "Texture2D") return SkyMode::Texture2D;
+            if (value == "Atmosphere" || value == "Atmospheric" || value == "Physical") {
+                return SkyMode::Atmosphere;
+            }
             return fallback;
         }
 
@@ -352,11 +357,47 @@ namespace HIKARI::SCENE::SERIALIZATION {
             };
         }
 
+        float ReadAtmosphereMember(
+            const nlohmann::json& object,
+            const char* key,
+            float fallback,
+            float minimum,
+            float maximum) {
+            return ReadCloudMember(object, key, fallback, minimum, maximum);
+        }
+
+        MATH::Vec3 ReadAtmosphereVec3(
+            const nlohmann::json& node,
+            const MATH::Vec3& fallback,
+            float minimum,
+            float maximum) {
+            return ReadCloudVec3(node, fallback, minimum, maximum);
+        }
+
+        uint32_t ReadAtmosphereUInt(
+            const nlohmann::json& object,
+            const char* key,
+            uint32_t fallback,
+            uint32_t minimum,
+            uint32_t maximum) {
+            const float parsed = ReadAtmosphereMember(
+                object,
+                key,
+                static_cast<float>(fallback),
+                static_cast<float>(minimum),
+                static_cast<float>(maximum));
+            if (!std::isfinite(parsed)) {
+                return fallback;
+            }
+            return static_cast<uint32_t>(parsed);
+        }
+
     } // namespace
 
     void SerializeSceneEnvironmentJson(const SceneEnvironment& environment, nlohmann::json& out) {
 
         out = nlohmann::json::object();
+        out["schemaVersion"] = 2u;
         out["ambient"]["color"] = JsonMath::ToJsonArray(environment.ambient.color);
         out["ambient"]["intensity"] = environment.ambient.intensity;
         out["ambient"]["useSkyColor"] = environment.ambient.useSkyColor;
@@ -431,6 +472,114 @@ namespace HIKARI::SCENE::SERIALIZATION {
         out["sky"]["ambientFromSky"] = environment.sky.ambientFromSky;
         out["sky"]["reflectionIntensity"] = environment.sky.reflectionIntensity;
         out["sky"]["showDebugTexture"] = environment.sky.showDebugTexture;
+
+        const AtmosphereSettings atmosphereDefaults{};
+        const AtmosphereSettings& atmosphere = environment.atmosphere;
+        out["atmosphere"]["enabled"] = atmosphere.enabled;
+        out["atmosphere"]["planetRadius"] = SanitizeCloudFloat(
+            atmosphere.planetRadius,
+            atmosphereDefaults.planetRadius,
+            1.0f,
+            100000000.0f);
+        out["atmosphere"]["atmosphereHeight"] = SanitizeCloudFloat(
+            atmosphere.atmosphereHeight,
+            atmosphereDefaults.atmosphereHeight,
+            1.0f,
+            1000000.0f);
+        out["atmosphere"]["rayleighScaleHeight"] = SanitizeCloudFloat(
+            atmosphere.rayleighScaleHeight,
+            atmosphereDefaults.rayleighScaleHeight,
+            1.0f,
+            1000000.0f);
+        out["atmosphere"]["mieScaleHeight"] = SanitizeCloudFloat(
+            atmosphere.mieScaleHeight,
+            atmosphereDefaults.mieScaleHeight,
+            1.0f,
+            1000000.0f);
+        out["atmosphere"]["rayleighScattering"] = JsonMath::ToJsonArray(
+            SanitizeCloudVec3(
+                atmosphere.rayleighScattering,
+                atmosphereDefaults.rayleighScattering,
+                0.0f,
+                1.0f));
+        out["atmosphere"]["mieScattering"] = JsonMath::ToJsonArray(
+            SanitizeCloudVec3(
+                atmosphere.mieScattering,
+                atmosphereDefaults.mieScattering,
+                0.0f,
+                1.0f));
+        out["atmosphere"]["ozoneAbsorption"] = JsonMath::ToJsonArray(
+            SanitizeCloudVec3(
+                atmosphere.ozoneAbsorption,
+                atmosphereDefaults.ozoneAbsorption,
+                0.0f,
+                1.0f));
+        out["atmosphere"]["ozoneCenterHeight"] = SanitizeCloudFloat(
+            atmosphere.ozoneCenterHeight,
+            atmosphereDefaults.ozoneCenterHeight,
+            0.0f,
+            1000000.0f);
+        out["atmosphere"]["ozoneWidth"] = SanitizeCloudFloat(
+            atmosphere.ozoneWidth,
+            atmosphereDefaults.ozoneWidth,
+            1.0f,
+            1000000.0f);
+        out["atmosphere"]["mieAnisotropy"] = SanitizeCloudFloat(
+            atmosphere.mieAnisotropy,
+            atmosphereDefaults.mieAnisotropy,
+            -0.95f,
+            0.95f);
+        out["atmosphere"]["sunIlluminance"] = SanitizeCloudFloat(
+            atmosphere.sunIlluminance,
+            atmosphereDefaults.sunIlluminance,
+            0.0f,
+            16.0f);
+        out["atmosphere"]["sunExposure"] = SanitizeCloudFloat(
+            atmosphere.sunExposure,
+            atmosphereDefaults.sunExposure,
+            -16.0f,
+            16.0f);
+        out["atmosphere"]["groundAlbedo"] = SanitizeCloudFloat(
+            atmosphere.groundAlbedo,
+            atmosphereDefaults.groundAlbedo,
+            0.0f,
+            1.0f);
+        out["atmosphere"]["aerialPerspectiveStrength"] = SanitizeCloudFloat(
+            atmosphere.aerialPerspectiveStrength,
+            atmosphereDefaults.aerialPerspectiveStrength,
+            0.0f,
+            8.0f);
+        out["atmosphere"]["sunAngularRadius"] = SanitizeCloudFloat(
+            atmosphere.sunAngularRadius,
+            atmosphereDefaults.sunAngularRadius,
+            0.0001f,
+            0.25f);
+        out["atmosphere"]["transmittanceLutWidth"] = atmosphere.transmittanceLutWidth;
+        out["atmosphere"]["transmittanceLutHeight"] = atmosphere.transmittanceLutHeight;
+        out["atmosphere"]["multiScatteringLutSize"] = atmosphere.multiScatteringLutSize;
+        out["atmosphere"]["skyViewLutWidth"] = atmosphere.skyViewLutWidth;
+        out["atmosphere"]["skyViewLutHeight"] = atmosphere.skyViewLutHeight;
+        out["atmosphere"]["preferLut"] = atmosphere.preferLut;
+
+        const SunGlareSettings glareDefaults{};
+        const SunGlareSettings& glare = environment.sunGlare;
+        out["sunGlare"]["enabled"] = glare.enabled;
+        out["sunGlare"]["intensity"] = SanitizeCloudFloat(
+            glare.intensity, glareDefaults.intensity, 0.0f, 8.0f);
+        out["sunGlare"]["haloRadius"] = SanitizeCloudFloat(
+            glare.haloRadius, glareDefaults.haloRadius, 0.0f, 2.0f);
+        out["sunGlare"]["haloFalloff"] = SanitizeCloudFloat(
+            glare.haloFalloff, glareDefaults.haloFalloff, 0.1f, 16.0f);
+        out["sunGlare"]["streakIntensity"] = SanitizeCloudFloat(
+            glare.streakIntensity, glareDefaults.streakIntensity, 0.0f, 8.0f);
+        out["sunGlare"]["streakLength"] = SanitizeCloudFloat(
+            glare.streakLength, glareDefaults.streakLength, 0.0f, 2.0f);
+        out["sunGlare"]["occlusionRadius"] = SanitizeCloudFloat(
+            glare.occlusionRadius, glareDefaults.occlusionRadius, 0.0f, 2.0f);
+        out["sunGlare"]["edgeFade"] = SanitizeCloudFloat(
+            glare.edgeFade, glareDefaults.edgeFade, 0.0f, 1.0f);
+        out["sunGlare"]["maxRadiance"] = SanitizeCloudFloat(
+            glare.maxRadiance, glareDefaults.maxRadiance, 0.0f, 64.0f);
 
         const StylizedCloudSettings cloudDefaults{};
         const StylizedCloudSettings& clouds = environment.clouds;
@@ -690,7 +839,7 @@ namespace HIKARI::SCENE::SERIALIZATION {
             }
         }
 
-        if (node.contains("sky")) {
+        if (node.contains("sky") && node["sky"].is_object()) {
             const nlohmann::json& sky = node["sky"];
             outEnvironment.sky.enabled = sky.value("enabled", outEnvironment.sky.enabled);
             outEnvironment.sky.mode = ParseSkyMode(sky.value("mode", nlohmann::json{}), outEnvironment.sky.mode);
@@ -713,6 +862,168 @@ namespace HIKARI::SCENE::SERIALIZATION {
             outEnvironment.sky.ambientFromSky = sky.value("ambientFromSky", outEnvironment.sky.ambientFromSky);
             outEnvironment.sky.reflectionIntensity = sky.value("reflectionIntensity", outEnvironment.sky.reflectionIntensity);
             outEnvironment.sky.showDebugTexture = sky.value("showDebugTexture", outEnvironment.sky.showDebugTexture);
+        }
+        if ((!node.contains("sky") || !node["sky"].is_object()) &&
+            node.contains("skyMode")) {
+            outEnvironment.sky.mode = ParseSkyMode(
+                node["skyMode"],
+                outEnvironment.sky.mode);
+        }
+
+        // Atmosphere is additive to the legacy Gradient/Cubemap/Texture2D
+        // payload. Missing members intentionally retain standard defaults so
+        // old scenes deserialize without requiring a migration write-back.
+        if (node.contains("atmosphere") && node["atmosphere"].is_object()) {
+            const nlohmann::json& atmosphereNode = node["atmosphere"];
+            const AtmosphereSettings defaults{};
+            AtmosphereSettings& atmosphere = outEnvironment.atmosphere;
+            atmosphere.enabled = JSONREAD::BooleanMemberOr(
+                atmosphereNode, "enabled", atmosphere.enabled);
+            atmosphere.planetRadius = ReadAtmosphereMember(
+                atmosphereNode,
+                "planetRadius",
+                defaults.planetRadius,
+                1.0f,
+                100000000.0f);
+            atmosphere.atmosphereHeight = ReadAtmosphereMember(
+                atmosphereNode,
+                "atmosphereHeight",
+                defaults.atmosphereHeight,
+                1.0f,
+                1000000.0f);
+            atmosphere.rayleighScaleHeight = ReadAtmosphereMember(
+                atmosphereNode,
+                "rayleighScaleHeight",
+                defaults.rayleighScaleHeight,
+                1.0f,
+                1000000.0f);
+            atmosphere.mieScaleHeight = ReadAtmosphereMember(
+                atmosphereNode,
+                "mieScaleHeight",
+                defaults.mieScaleHeight,
+                1.0f,
+                1000000.0f);
+            atmosphere.rayleighScattering = ReadAtmosphereVec3(
+                atmosphereNode.value("rayleighScattering", nlohmann::json{}),
+                defaults.rayleighScattering,
+                0.0f,
+                1.0f);
+            atmosphere.mieScattering = ReadAtmosphereVec3(
+                atmosphereNode.value("mieScattering", nlohmann::json{}),
+                defaults.mieScattering,
+                0.0f,
+                1.0f);
+            atmosphere.ozoneAbsorption = ReadAtmosphereVec3(
+                atmosphereNode.value("ozoneAbsorption", nlohmann::json{}),
+                defaults.ozoneAbsorption,
+                0.0f,
+                1.0f);
+            atmosphere.ozoneCenterHeight = ReadAtmosphereMember(
+                atmosphereNode,
+                "ozoneCenterHeight",
+                defaults.ozoneCenterHeight,
+                0.0f,
+                1000000.0f);
+            atmosphere.ozoneWidth = ReadAtmosphereMember(
+                atmosphereNode,
+                "ozoneWidth",
+                defaults.ozoneWidth,
+                1.0f,
+                1000000.0f);
+            atmosphere.mieAnisotropy = ReadAtmosphereMember(
+                atmosphereNode,
+                "mieAnisotropy",
+                defaults.mieAnisotropy,
+                -0.95f,
+                0.95f);
+            atmosphere.sunIlluminance = ReadAtmosphereMember(
+                atmosphereNode,
+                "sunIlluminance",
+                defaults.sunIlluminance,
+                0.0f,
+                16.0f);
+            atmosphere.sunExposure = ReadAtmosphereMember(
+                atmosphereNode,
+                "sunExposure",
+                defaults.sunExposure,
+                -16.0f,
+                16.0f);
+            atmosphere.groundAlbedo = ReadAtmosphereMember(
+                atmosphereNode,
+                "groundAlbedo",
+                defaults.groundAlbedo,
+                0.0f,
+                1.0f);
+            atmosphere.aerialPerspectiveStrength = ReadAtmosphereMember(
+                atmosphereNode,
+                "aerialPerspectiveStrength",
+                defaults.aerialPerspectiveStrength,
+                0.0f,
+                8.0f);
+            atmosphere.sunAngularRadius = ReadAtmosphereMember(
+                atmosphereNode,
+                "sunAngularRadius",
+                defaults.sunAngularRadius,
+                0.0001f,
+                0.25f);
+            atmosphere.transmittanceLutWidth = ReadAtmosphereUInt(
+                atmosphereNode,
+                "transmittanceLutWidth",
+                defaults.transmittanceLutWidth,
+                1u,
+                4096u);
+            atmosphere.transmittanceLutHeight = ReadAtmosphereUInt(
+                atmosphereNode,
+                "transmittanceLutHeight",
+                defaults.transmittanceLutHeight,
+                1u,
+                4096u);
+            atmosphere.multiScatteringLutSize = ReadAtmosphereUInt(
+                atmosphereNode,
+                "multiScatteringLutSize",
+                defaults.multiScatteringLutSize,
+                1u,
+                4096u);
+            atmosphere.skyViewLutWidth = ReadAtmosphereUInt(
+                atmosphereNode,
+                "skyViewLutWidth",
+                defaults.skyViewLutWidth,
+                1u,
+                4096u);
+            atmosphere.skyViewLutHeight = ReadAtmosphereUInt(
+                atmosphereNode,
+                "skyViewLutHeight",
+                defaults.skyViewLutHeight,
+                1u,
+                4096u);
+            atmosphere.preferLut = JSONREAD::BooleanMemberOr(
+                atmosphereNode,
+                "preferLut",
+                defaults.preferLut);
+        }
+
+        if (node.contains("sunGlare") && node["sunGlare"].is_object()) {
+            const nlohmann::json& glareNode = node["sunGlare"];
+            const SunGlareSettings defaults{};
+            SunGlareSettings& glare = outEnvironment.sunGlare;
+            glare.enabled = JSONREAD::BooleanMemberOr(
+                glareNode, "enabled", glare.enabled);
+            glare.intensity = ReadAtmosphereMember(
+                glareNode, "intensity", defaults.intensity, 0.0f, 8.0f);
+            glare.haloRadius = ReadAtmosphereMember(
+                glareNode, "haloRadius", defaults.haloRadius, 0.0f, 2.0f);
+            glare.haloFalloff = ReadAtmosphereMember(
+                glareNode, "haloFalloff", defaults.haloFalloff, 0.1f, 16.0f);
+            glare.streakIntensity = ReadAtmosphereMember(
+                glareNode, "streakIntensity", defaults.streakIntensity, 0.0f, 8.0f);
+            glare.streakLength = ReadAtmosphereMember(
+                glareNode, "streakLength", defaults.streakLength, 0.0f, 2.0f);
+            glare.occlusionRadius = ReadAtmosphereMember(
+                glareNode, "occlusionRadius", defaults.occlusionRadius, 0.0f, 2.0f);
+            glare.edgeFade = ReadAtmosphereMember(
+                glareNode, "edgeFade", defaults.edgeFade, 0.0f, 1.0f);
+            glare.maxRadiance = ReadAtmosphereMember(
+                glareNode, "maxRadiance", defaults.maxRadiance, 0.0f, 64.0f);
         }
 
         if (node.contains("clouds") && node["clouds"].is_object()) {

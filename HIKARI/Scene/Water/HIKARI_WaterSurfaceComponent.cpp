@@ -27,28 +27,7 @@ namespace HIKARI {
                         source,
                         "preset",
                         -1);
-                    if (value == static_cast<int>(
-                            WATER::WaterSurfacePreset::AnimeSummer)) {
-                        return WATER::WaterSurfacePreset::AnimeSummer;
-                    }
-                    if (value == static_cast<int>(
-                            WATER::WaterSurfacePreset::
-                                RealisticClearSummer)) {
-                        return WATER::WaterSurfacePreset::
-                            RealisticClearSummer;
-                    }
-                    if (value == static_cast<int>(
-                            WATER::WaterSurfacePreset::
-                                AnimeSparklingSummer)) {
-                        return WATER::WaterSurfacePreset::
-                            AnimeSparklingSummer;
-                    }
-                    if (value == static_cast<int>(
-                            WATER::WaterSurfacePreset::
-                                RealisticSpectralSummer)) {
-                        return WATER::WaterSurfacePreset::
-                            RealisticSpectralSummer;
-                    }
+                    return WATER::ParseWaterSurfacePreset(value, fallback);
                 }
             }
 
@@ -131,6 +110,9 @@ namespace HIKARI {
             { "foamAmount", settings.foamAmount },
             { "absorptionDistance", settings.absorptionDistance },
             { "surfaceRoughness", settings.surfaceRoughness },
+            { "directSunStrength", settings.directSunStrength },
+            { "transmissionStrength", settings.transmissionStrength },
+            { "shadowStrength", settings.shadowStrength },
             { "reflectionStrength", settings.reflectionStrength },
             { "sunGlintStrength", settings.sunGlintStrength },
             { "glintDensity", settings.glintDensity },
@@ -224,6 +206,18 @@ namespace HIKARI {
             in,
             "surfaceRoughness",
             next.surfaceRoughness);
+        next.directSunStrength = JSONREAD::NumberMemberOr(
+            in,
+            "directSunStrength",
+            next.directSunStrength);
+        next.transmissionStrength = JSONREAD::NumberMemberOr(
+            in,
+            "transmissionStrength",
+            next.transmissionStrength);
+        next.shadowStrength = JSONREAD::NumberMemberOr(
+            in,
+            "shadowStrength",
+            next.shadowStrength);
         next.reflectionStrength = JSONREAD::NumberMemberOr(
             in,
             "reflectionStrength",

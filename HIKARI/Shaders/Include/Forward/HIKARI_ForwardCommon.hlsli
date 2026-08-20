@@ -140,6 +140,13 @@ cbuffer SkyEnvironmentCB : register(b5)
     HikariReflectionProbeData gReflectionProbes[2];
     float4 gAmbientSamplingParams;
     HikariIrradianceVolumeData gIrradianceVolumes[2];
+    float4 gAtmospherePlanetParams;
+    float4 gAtmosphereRayleigh;
+    float4 gAtmosphereMie;
+    float4 gAtmosphereOzone;
+    float4 gAtmosphereOzoneParams;
+    float4 gAtmosphereSunDirection;
+    float4 gAtmosphereSunColorRadiance;
 };
 
 #define gSkyZenithColor gSkyZenithExposure.rgb
@@ -153,6 +160,13 @@ cbuffer SkyEnvironmentCB : register(b5)
 #define gSkyHorizonPower gSkyParams.z
 #define gSkyYaw gSkyParams.w
 #define gSkyTint gSkyTintLighting.rgb
+#define gAtmospherePlanetRadius gAtmospherePlanetParams.x
+#define gAtmosphereTopRadius gAtmospherePlanetParams.y
+#define gAtmosphereRayleighScaleHeight gAtmospherePlanetParams.z
+#define gAtmosphereMieScaleHeight gAtmospherePlanetParams.w
+#define gAtmosphereSunEnabled gAtmosphereSunDirection.w
+#define gAtmosphereLutsReady (gAtmosphereSunDirection.w > 1.5f)
+#define gAtmosphereSunRadiance gAtmosphereSunColorRadiance.a
 #define gIblHasIrradiance gIblParams.x
 #define gIblHasPrefiltered gIblParams.y
 #define gIblHasBrdfLut gIblParams.z

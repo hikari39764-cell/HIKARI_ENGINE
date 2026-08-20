@@ -20,6 +20,9 @@ namespace HIKARI {
         inline constexpr char FoamAmount[] = "foamAmount";
         inline constexpr char AbsorptionDistance[] = "absorptionDistance";
         inline constexpr char SurfaceRoughness[] = "surfaceRoughness";
+        inline constexpr char DirectSunStrength[] = "directSunStrength";
+        inline constexpr char TransmissionStrength[] = "transmissionStrength";
+        inline constexpr char ShadowStrength[] = "shadowStrength";
         inline constexpr char ReflectionStrength[] = "reflectionStrength";
         inline constexpr char SunGlintStrength[] = "sunGlintStrength";
         inline constexpr char GlintDensity[] = "glintDensity";

@@ -69,10 +69,6 @@ namespace HIKARI::WATER {
         switch (preset) {
         case WaterSurfacePreset::RealisticClearSummer:
             return "realistic_clear_summer";
-        case WaterSurfacePreset::AnimeSparklingSummer:
-            return "anime_sparkling_summer";
-        case WaterSurfacePreset::RealisticSpectralSummer:
-            return "realistic_spectral_summer";
         case WaterSurfacePreset::AnimeSummer:
         default:
             return "anime_summer";
@@ -102,17 +98,38 @@ namespace HIKARI::WATER {
             value == "Realistic") {
             return WaterSurfacePreset::RealisticClearSummer;
         }
+        // v5 compatibility: the removed sparkling preset is now the single
+        // AnimeSummer product. Keep old display/name tokens readable without
+        // exposing a third enum value to authoring or runtime code.
         if (value == "anime_sparkling_summer" ||
             value == "AnimeSparklingSummer" ||
             value == "sparkling" || value == "Sparkling") {
-            return WaterSurfacePreset::AnimeSparklingSummer;
+            return WaterSurfacePreset::AnimeSummer;
         }
+        // v5 compatibility: the removed spectral preset is now the single
+        // RealisticClearSummer product.
         if (value == "realistic_spectral_summer" ||
             value == "RealisticSpectralSummer" ||
             value == "spectral" || value == "Spectral") {
-            return WaterSurfacePreset::RealisticSpectralSummer;
+            return WaterSurfacePreset::RealisticClearSummer;
         }
         return fallback;
+    }
+
+    WaterSurfacePreset ParseWaterSurfacePreset(
+        int32_t value,
+        WaterSurfacePreset fallback) noexcept {
+
+        switch (value) {
+        case 0:
+        case 2: // v5 AnimeSparklingSummer -> AnimeSummer
+            return WaterSurfacePreset::AnimeSummer;
+        case 1:
+        case 3: // v5 RealisticSpectralSummer -> RealisticClearSummer
+            return WaterSurfacePreset::RealisticClearSummer;
+        default:
+            return fallback;
+        }
     }
 
     WaterSurfaceGeometryMode ParseWaterSurfaceGeometryMode(
@@ -148,7 +165,21 @@ namespace HIKARI::WATER {
             settings.foamColor = { 0.96f, 0.99f, 1.0f };
             settings.foamAmount = 0.30f;
             settings.absorptionDistance = 11.0f;
-            settings.surfaceRoughness = 0.075f;
+            // Keep the GGX lobe above the sub-pixel/TAA loss region. The
+            // shader still applies derivative AA for authored values.
+            settings.surfaceRoughness = 0.12f;
+            settings.directSunStrength = 1.0f;
+            settings.transmissionStrength = 1.0f;
+            settings.shadowStrength = 0.82f;
+            settings.reflectionStrength = 1.0f;
+            settings.sunGlintStrength = 0.0f;
+            settings.glintDensity = 0.0f;
+            settings.glintFlowSpeed = 0.0f;
+            settings.ribbonWidth = 0.08f;
+            settings.windDirectionDeg = 28.0f;
+            settings.windSpeed = 14.0f;
+            settings.shortWaveStrength = 0.80f;
+            settings.capillaryStrength = 0.48f;
             settings.waves = {{
                 { 12.0f, 0.30f, 15.0f, 0.66f },
                 { 61.0f, 0.16f, 8.3f, 0.55f },
@@ -158,33 +189,15 @@ namespace HIKARI::WATER {
             return settings;
         }
 
-        if (preset == WaterSurfacePreset::AnimeSparklingSummer) {
-            settings.preset = preset;
-            settings.reflectionStrength = 0.62f;
-            settings.sunGlintStrength = 0.78f;
-            settings.glintDensity = 0.48f;
-            settings.glintFlowSpeed = 0.72f;
-            settings.ribbonWidth = 0.18f;
-            return settings;
-        }
-
-        if (preset == WaterSurfacePreset::RealisticSpectralSummer) {
-            settings = MakeWaterSurfacePresetSettings(
-                WaterSurfacePreset::RealisticClearSummer);
-            settings.preset = preset;
-            settings.reflectionStrength = 0.92f;
-            settings.sunGlintStrength = 1.10f;
-            settings.glintDensity = 0.72f;
-            settings.glintFlowSpeed = 1.0f;
-            settings.ribbonWidth = 0.08f;
-            settings.windDirectionDeg = 28.0f;
-            settings.windSpeed = 14.0f;
-            settings.shortWaveStrength = 0.80f;
-            settings.capillaryStrength = 0.48f;
-            return settings;
-        }
-
         settings.preset = WaterSurfacePreset::AnimeSummer;
+        settings.directSunStrength = 0.82f;
+        settings.transmissionStrength = 0.92f;
+        settings.shadowStrength = 0.72f;
+        settings.reflectionStrength = 1.0f;
+        settings.sunGlintStrength = 0.52f;
+        settings.glintDensity = 0.30f;
+        settings.glintFlowSpeed = 0.62f;
+        settings.ribbonWidth = 0.16f;
         return settings;
     }
 
@@ -192,9 +205,7 @@ namespace HIKARI::WATER {
         WaterSurfaceSettings settings) noexcept {
 
         if (settings.preset != WaterSurfacePreset::AnimeSummer &&
-            settings.preset != WaterSurfacePreset::RealisticClearSummer &&
-            settings.preset != WaterSurfacePreset::AnimeSparklingSummer &&
-            settings.preset != WaterSurfacePreset::RealisticSpectralSummer) {
+            settings.preset != WaterSurfacePreset::RealisticClearSummer) {
             settings.preset = WaterSurfacePreset::AnimeSummer;
         }
         if (settings.geometryMode !=
@@ -256,6 +267,21 @@ namespace HIKARI::WATER {
             settings.surfaceRoughness,
             fallback.surfaceRoughness,
             0.02f,
+            1.0f);
+        settings.directSunStrength = ClampFinite(
+            settings.directSunStrength,
+            fallback.directSunStrength,
+            0.0f,
+            2.0f);
+        settings.transmissionStrength = ClampFinite(
+            settings.transmissionStrength,
+            fallback.transmissionStrength,
+            0.0f,
+            2.0f);
+        settings.shadowStrength = ClampFinite(
+            settings.shadowStrength,
+            fallback.shadowStrength,
+            0.0f,
             1.0f);
         settings.reflectionStrength = ClampFinite(
             settings.reflectionStrength,
@@ -501,6 +527,9 @@ namespace HIKARI::WATER {
             lhs.foamAmount != rhs.foamAmount ||
             lhs.absorptionDistance != rhs.absorptionDistance ||
             lhs.surfaceRoughness != rhs.surfaceRoughness ||
+            lhs.directSunStrength != rhs.directSunStrength ||
+            lhs.transmissionStrength != rhs.transmissionStrength ||
+            lhs.shadowStrength != rhs.shadowStrength ||
             lhs.reflectionStrength != rhs.reflectionStrength ||
             lhs.sunGlintStrength != rhs.sunGlintStrength ||
             lhs.glintDensity != rhs.glintDensity ||

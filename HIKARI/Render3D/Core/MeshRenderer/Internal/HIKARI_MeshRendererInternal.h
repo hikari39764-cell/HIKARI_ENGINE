@@ -20,6 +20,10 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
 #endif
 
     bool EnsureInitialized(const GFX::Context& graphics);
+    void RecordOceanSpectrumForWaterFrame(
+        const GFX::Context& graphics,
+        const RENDER3D::WATER::WaterSurfaceGpuFrameBuffer& waterSurfaceBuffer);
+    void ResetOceanSpectrumLazyInitializationState() noexcept;
     MeshFrameResources& GetActiveMeshFrameResources();
     MATH::Mat4 ResolveGpuDrivenCullingViewProj();
     MATH::Vec3 ResolveGpuDrivenCullingCameraPosition();

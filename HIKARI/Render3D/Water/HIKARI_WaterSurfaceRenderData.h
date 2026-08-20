@@ -14,8 +14,6 @@ namespace HIKARI::RENDER3D::WATER {
     enum class WaterSurfaceShadingModel : uint8_t {
         AnimeSummer = 0,
         RealisticClearSummer = 1,
-        AnimeSparklingSummer = 2,
-        RealisticSpectralSummer = 3,
     };
 
     enum class WaterSurfaceGeometryMode : uint8_t {
@@ -54,6 +52,9 @@ namespace HIKARI::RENDER3D::WATER {
         float glintDensity = 0.0f;
         float glintFlowSpeed = 0.0f;
         float ribbonWidth = 0.02f;
+        float directSunStrength = 1.0f;
+        float transmissionStrength = 1.0f;
+        float shadowStrength = 1.0f;
         float windDirectionRadians = 0.0f;
         float windSpeed = 0.0f;
         float shortWaveStrength = 0.0f;

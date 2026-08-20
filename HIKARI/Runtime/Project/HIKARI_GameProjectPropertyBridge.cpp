@@ -234,6 +234,15 @@ namespace {
         }
     }
 
+    bool GameProjectInspector::Section(
+        std::string_view label,
+        bool defaultOpen) {
+        auto* builder =
+            static_cast<IInspectorBuilder*>(builder_);
+        return builder != nullptr &&
+            builder->Section(label, defaultOpen);
+    }
+
     bool GameProjectInspector::Bool(
         std::string_view label,
         bool& value) {

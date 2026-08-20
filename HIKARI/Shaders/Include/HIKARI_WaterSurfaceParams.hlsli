@@ -3,15 +3,13 @@
 
 #include "Include/Math/HIKARI_FiniteMath.hlsli"
 
-static const uint HIKARI_WATER_SURFACE_GPU_SCHEMA_VERSION = 5u;
+static const uint HIKARI_WATER_SURFACE_GPU_SCHEMA_VERSION = 6u;
 static const uint HIKARI_WATER_SURFACE_GPU_FLAG_ENABLED = 1u << 0;
 static const uint HIKARI_WATER_SURFACE_GPU_FLAG_CAMERA_CENTERED_OCEAN = 1u << 1;
 static const uint HIKARI_WATER_SURFACE_WAVE_COUNT = 4u;
 static const float HIKARI_WATER_TIME_WRAP_SECONDS = 4096.0f;
 static const float HIKARI_WATER_SHADING_ANIME_SUMMER = 0.0f;
 static const float HIKARI_WATER_SHADING_REALISTIC_CLEAR_SUMMER = 1.0f;
-static const float HIKARI_WATER_SHADING_ANIME_SPARKLING_SUMMER = 2.0f;
-static const float HIKARI_WATER_SHADING_REALISTIC_SPECTRAL_SUMMER = 3.0f;
 
 // C++ 側の WaterSurfaceWaveGpuData / WaterSurfaceGpuData と同一 layout。
 // 波向き、波数、角周波数は scene snapshot から CPU で一度だけ計算する。
@@ -40,11 +38,11 @@ struct HikariWaterSurfaceGpuData
     //  shallowGraphicWeight)
     float4 coverageParams;
     // (reflectionStrength, sunGlintStrength, glintDensity, glintFlowSpeed)
-    float4 stylizedOptics;
-    // (ribbonWidth, reserved, reserved, reserved)
-    float4 stylizedRibbon;
+    float4 reflectionParams;
+    // (ribbonWidth, directSunStrength, transmissionStrength, shadowStrength)
+    float4 ribbonEnergyParams;
     // (windDirectionRadians, windSpeed, shortWaveStrength, capillaryStrength)
-    float4 spectralOptics;
+    float4 microWaveParams;
     // (authored center X/Z, authored half extent X/Z)
     float4 geometryParams;
     HikariWaterSurfaceWaveGpuData waves[HIKARI_WATER_SURFACE_WAVE_COUNT];
@@ -77,6 +75,9 @@ struct HikariWaterSurfaceParams
     float windSpeed;
     float shortWaveStrength;
     float capillaryStrength;
+    float directSunStrength;
+    float transmissionStrength;
+    float shadowStrength;
     bool cameraCenteredOcean;
     float2 authoredCenterXZ;
     float2 authoredHalfExtentXZ;
@@ -111,6 +112,9 @@ HikariWaterSurfaceParams HikariBuildNeutralWaterSurfaceParams()
     p.foamColor = 1.0f.xxx;
     p.absorptionDistance = 1.0f;
     p.surfaceRoughness = 1.0f;
+    p.directSunStrength = 1.0f;
+    p.transmissionStrength = 1.0f;
+    p.shadowStrength = 0.72f;
     p.reflectionStrength = 1.0f;
     p.ribbonWidth = 0.02f;
     p.windDirectionRadians = 0.0f;
@@ -159,14 +163,9 @@ HikariWaterSurfaceParams HikariLoadWaterSurfaceParamsFromDataIndex(
     const float shadingModel = HikariFiniteOr(
         data.surfaceParams.z,
         HIKARI_WATER_SHADING_ANIME_SUMMER);
-    p.shadingModel =
-        shadingModel >= 2.5f && shadingModel < 3.5f
-            ? HIKARI_WATER_SHADING_REALISTIC_SPECTRAL_SUMMER
-            : shadingModel >= 1.5f && shadingModel < 2.5f
-            ? HIKARI_WATER_SHADING_ANIME_SPARKLING_SUMMER
-            : shadingModel >= 0.5f && shadingModel < 1.5f
-                ? HIKARI_WATER_SHADING_REALISTIC_CLEAR_SUMMER
-                : HIKARI_WATER_SHADING_ANIME_SUMMER;
+    p.shadingModel = shadingModel >= 0.5f
+        ? HIKARI_WATER_SHADING_REALISTIC_CLEAR_SUMMER
+        : HIKARI_WATER_SHADING_ANIME_SUMMER;
     p.microWaveStrength = max(
         HikariFiniteOr(data.surfaceParams.w, 0.0f),
         0.0f);
@@ -179,37 +178,48 @@ HikariWaterSurfaceParams HikariLoadWaterSurfaceParamsFromDataIndex(
         HikariFiniteOr(abs(data.geometryParams.zw), 0.5f.xx),
         1.0e-3f.xx);
     p.reflectionStrength = clamp(
-        HikariFiniteOr(data.stylizedOptics.x, 1.0f),
+        HikariFiniteOr(data.reflectionParams.x, 1.0f),
         0.0f,
         2.0f);
     p.sunGlintStrength = clamp(
-        HikariFiniteOr(data.stylizedOptics.y, 0.0f),
+        HikariFiniteOr(data.reflectionParams.y, 0.0f),
         0.0f,
         2.0f);
     p.glintDensity = saturate(HikariFiniteOr(
-        data.stylizedOptics.z,
+        data.reflectionParams.z,
         0.0f));
     p.glintFlowSpeed = clamp(
-        HikariFiniteOr(data.stylizedOptics.w, 0.0f),
+        HikariFiniteOr(data.reflectionParams.w, 0.0f),
         0.0f,
         4.0f);
     p.ribbonWidth = clamp(
-        HikariFiniteOr(data.stylizedRibbon.x, 0.02f),
+        HikariFiniteOr(data.ribbonEnergyParams.x, 0.02f),
         0.02f,
         0.5f);
+    p.directSunStrength = clamp(
+        HikariFiniteOr(data.ribbonEnergyParams.y, 1.0f),
+        0.0f,
+        2.0f);
+    p.transmissionStrength = clamp(
+        HikariFiniteOr(data.ribbonEnergyParams.z, 1.0f),
+        0.0f,
+        2.0f);
+    p.shadowStrength = saturate(HikariFiniteOr(
+        data.ribbonEnergyParams.w,
+        0.72f));
     p.windDirectionRadians = HikariFiniteOr(
-        data.spectralOptics.x,
+        data.microWaveParams.x,
         0.0f);
     p.windSpeed = clamp(
-        HikariFiniteOr(data.spectralOptics.y, 0.0f),
+        HikariFiniteOr(data.microWaveParams.y, 0.0f),
         0.0f,
         50.0f);
     p.shortWaveStrength = clamp(
-        HikariFiniteOr(data.spectralOptics.z, 0.0f),
+        HikariFiniteOr(data.microWaveParams.z, 0.0f),
         0.0f,
         2.0f);
     p.capillaryStrength = clamp(
-        HikariFiniteOr(data.spectralOptics.w, 0.0f),
+        HikariFiniteOr(data.microWaveParams.w, 0.0f),
         0.0f,
         2.0f);
     p.depthTransmittance = saturate(HikariFiniteOr(

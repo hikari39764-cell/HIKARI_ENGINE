@@ -128,21 +128,11 @@ namespace HIKARI {
                     (std::max)(spacingX, spacingZ));
 
             RENDER3D::WATER::WaterSurfaceRenderData data{};
-            data.shadingModel =
-                settings.preset == WATER::WaterSurfacePreset::
-                        RealisticSpectralSummer
-                    ? RENDER3D::WATER::WaterSurfaceShadingModel::
-                        RealisticSpectralSummer
-                    : settings.preset == WATER::WaterSurfacePreset::
-                        AnimeSparklingSummer
-                    ? RENDER3D::WATER::WaterSurfaceShadingModel::
-                        AnimeSparklingSummer
-                    : settings.preset == WATER::WaterSurfacePreset::
-                        RealisticClearSummer
-                        ? RENDER3D::WATER::WaterSurfaceShadingModel::
-                            RealisticClearSummer
-                        : RENDER3D::WATER::WaterSurfaceShadingModel::
-                            AnimeSummer;
+            data.shadingModel = settings.preset ==
+                    WATER::WaterSurfacePreset::RealisticClearSummer
+                ? RENDER3D::WATER::WaterSurfaceShadingModel::
+                    RealisticClearSummer
+                : RENDER3D::WATER::WaterSurfaceShadingModel::AnimeSummer;
             data.geometryMode = settings.geometryMode ==
                     WATER::WaterSurfaceGeometryMode::CameraCenteredOcean
                 ? RENDER3D::WATER::WaterSurfaceGeometryMode::
@@ -161,6 +151,9 @@ namespace HIKARI {
             data.foamAmount = settings.foamAmount;
             data.absorptionDistance = settings.absorptionDistance;
             data.surfaceRoughness = settings.surfaceRoughness;
+            data.directSunStrength = settings.directSunStrength;
+            data.transmissionStrength = settings.transmissionStrength;
+            data.shadowStrength = settings.shadowStrength;
             data.reflectionStrength = settings.reflectionStrength;
             data.sunGlintStrength = settings.sunGlintStrength;
             data.glintDensity = settings.glintDensity;

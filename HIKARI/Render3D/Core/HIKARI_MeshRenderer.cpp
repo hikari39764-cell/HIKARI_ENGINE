@@ -107,6 +107,7 @@ namespace HIKARI::MESHRENDERER {
         const GFX::Context& graphics = GFX::GetCurrentContext();
         gMeshRendererState.oceanSpectrumRuntime.Shutdown(
             graphics.device != nullptr ? &graphics : nullptr);
+        INTERNAL::ResetOceanSpectrumLazyInitializationState();
     }
 
     bool HasSubmittedItems() {

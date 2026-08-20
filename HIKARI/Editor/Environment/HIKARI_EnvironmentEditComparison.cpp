@@ -30,6 +30,45 @@ bool EqualSkySettings(const SkySettings &lhs, const SkySettings &rhs) {
          lhs.showDebugTexture == rhs.showDebugTexture;
 }
 
+bool EqualAtmosphereSettings(const AtmosphereSettings &lhs,
+                             const AtmosphereSettings &rhs) {
+  return lhs.enabled == rhs.enabled &&
+         lhs.planetRadius == rhs.planetRadius &&
+         lhs.atmosphereHeight == rhs.atmosphereHeight &&
+         lhs.rayleighScaleHeight == rhs.rayleighScaleHeight &&
+         lhs.mieScaleHeight == rhs.mieScaleHeight &&
+         EqualVec3(lhs.rayleighScattering, rhs.rayleighScattering) &&
+         EqualVec3(lhs.mieScattering, rhs.mieScattering) &&
+         EqualVec3(lhs.ozoneAbsorption, rhs.ozoneAbsorption) &&
+         lhs.ozoneCenterHeight == rhs.ozoneCenterHeight &&
+         lhs.ozoneWidth == rhs.ozoneWidth &&
+         lhs.mieAnisotropy == rhs.mieAnisotropy &&
+         lhs.sunIlluminance == rhs.sunIlluminance &&
+         lhs.sunExposure == rhs.sunExposure &&
+         lhs.groundAlbedo == rhs.groundAlbedo &&
+         lhs.aerialPerspectiveStrength == rhs.aerialPerspectiveStrength &&
+         lhs.sunAngularRadius == rhs.sunAngularRadius &&
+         lhs.transmittanceLutWidth == rhs.transmittanceLutWidth &&
+         lhs.transmittanceLutHeight == rhs.transmittanceLutHeight &&
+         lhs.multiScatteringLutSize == rhs.multiScatteringLutSize &&
+         lhs.skyViewLutWidth == rhs.skyViewLutWidth &&
+         lhs.skyViewLutHeight == rhs.skyViewLutHeight &&
+         lhs.preferLut == rhs.preferLut;
+}
+
+bool EqualSunGlareSettings(const SunGlareSettings &lhs,
+                           const SunGlareSettings &rhs) {
+  return lhs.enabled == rhs.enabled &&
+         lhs.intensity == rhs.intensity &&
+         lhs.haloRadius == rhs.haloRadius &&
+         lhs.haloFalloff == rhs.haloFalloff &&
+         lhs.streakIntensity == rhs.streakIntensity &&
+         lhs.streakLength == rhs.streakLength &&
+         lhs.occlusionRadius == rhs.occlusionRadius &&
+         lhs.edgeFade == rhs.edgeFade &&
+         lhs.maxRadiance == rhs.maxRadiance;
+}
+
 bool EqualVec2(const MATH::Vec2 &lhs, const MATH::Vec2 &rhs) {
   return lhs.x == rhs.x && lhs.y == rhs.y;
 }
@@ -153,6 +192,8 @@ bool AreSceneEnvironmentValuesEqual(const SceneEnvironment &lhs,
       !EqualDirectionalShadowSettings(lhs.directionalShadow,
                                       rhs.directionalShadow) ||
       !EqualSkySettings(lhs.sky, rhs.sky) ||
+      !EqualAtmosphereSettings(lhs.atmosphere, rhs.atmosphere) ||
+      !EqualSunGlareSettings(lhs.sunGlare, rhs.sunGlare) ||
       !EqualStylizedCloudSettings(lhs.clouds, rhs.clouds) ||
       !EqualReflectionProbeSettings(lhs.reflectionProbe, rhs.reflectionProbe) ||
       !EqualAmbientOcclusionSettings(lhs.ambientOcclusion, rhs.ambientOcclusion,

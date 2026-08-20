@@ -74,6 +74,9 @@ namespace HIKARI::RENDER3D::WATER {
             left.glintDensity != right.glintDensity ||
             left.glintFlowSpeed != right.glintFlowSpeed ||
             left.ribbonWidth != right.ribbonWidth ||
+            left.directSunStrength != right.directSunStrength ||
+            left.transmissionStrength != right.transmissionStrength ||
+            left.shadowStrength != right.shadowStrength ||
             left.windDirectionRadians != right.windDirectionRadians ||
             left.windSpeed != right.windSpeed ||
             left.shortWaveStrength != right.shortWaveStrength ||
@@ -149,15 +152,9 @@ namespace HIKARI::RENDER3D::WATER {
 
         const WaterSurfaceShadingModel shadingModel =
             source.shadingModel == WaterSurfaceShadingModel::
-                    RealisticSpectralSummer
-                ? WaterSurfaceShadingModel::RealisticSpectralSummer
-                : source.shadingModel == WaterSurfaceShadingModel::
-                    AnimeSparklingSummer
-                ? WaterSurfaceShadingModel::AnimeSparklingSummer
-                : source.shadingModel == WaterSurfaceShadingModel::
                     RealisticClearSummer
-                    ? WaterSurfaceShadingModel::RealisticClearSummer
-                    : WaterSurfaceShadingModel::AnimeSummer;
+                ? WaterSurfaceShadingModel::RealisticClearSummer
+                : WaterSurfaceShadingModel::AnimeSummer;
         result.surfaceParams = {
             FiniteOr(source.timeScale, 1.0f),
             NonNegative(source.choppiness),
@@ -187,7 +184,7 @@ namespace HIKARI::RENDER3D::WATER {
             foam.z,
             std::clamp(FiniteOr(source.surfaceRoughness, 0.1f), 0.02f, 1.0f)
         };
-        result.stylizedOptics = {
+        result.reflectionParams = {
             std::clamp(
                 FiniteOr(
                     source.reflectionStrength,
@@ -198,16 +195,25 @@ namespace HIKARI::RENDER3D::WATER {
             std::clamp(FiniteOr(source.glintDensity, 0.0f), 0.0f, 1.0f),
             std::clamp(FiniteOr(source.glintFlowSpeed, 0.0f), 0.0f, 4.0f)
         };
-        result.stylizedRibbon = {
+        result.ribbonEnergyParams = {
             std::clamp(
                 FiniteOr(source.ribbonWidth, kDefaultRibbonWidth),
                 0.02f,
                 0.5f),
-            0.0f,
-            0.0f,
-            0.0f
+            std::clamp(
+                FiniteOr(source.directSunStrength, 1.0f),
+                0.0f,
+                2.0f),
+            std::clamp(
+                FiniteOr(source.transmissionStrength, 1.0f),
+                0.0f,
+                2.0f),
+            std::clamp(
+                FiniteOr(source.shadowStrength, 1.0f),
+                0.0f,
+                1.0f)
         };
-        result.spectralOptics = {
+        result.microWaveParams = {
             FiniteOr(source.windDirectionRadians, 0.0f),
             std::clamp(FiniteOr(source.windSpeed, 0.0f), 0.0f, 50.0f),
             std::clamp(

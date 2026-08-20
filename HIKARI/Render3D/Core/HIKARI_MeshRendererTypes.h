@@ -185,7 +185,19 @@ namespace HIKARI::MESHRENDERER {
         ReflectionProbeGpuData reflectionProbes[2]{};
         MATH::Vec4 ambientSamplingParams{};
         IrradianceVolumeGpuData irradianceVolumes[2]{};
+        // Shared atmosphere source for Forward, water, and analytic IBL.
+        MATH::Vec4 atmospherePlanetParams{};
+        MATH::Vec4 atmosphereRayleigh{};
+        MATH::Vec4 atmosphereMie{};
+        MATH::Vec4 atmosphereOzone{};
+        MATH::Vec4 atmosphereOzoneParams{};
+        MATH::Vec4 atmosphereSunDirection{};
+        MATH::Vec4 atmosphereSunColorRadiance{};
     };
+
+    static_assert(
+        offsetof(SkyEnvironmentCB, atmospherePlanetParams) == 528u);
+    static_assert(sizeof(SkyEnvironmentCB) == 640u);
 
     struct ShadowCB {
         MATH::Mat4 lightViewProj[SHADOW::kMaxDirectionalShadowCascades]{};

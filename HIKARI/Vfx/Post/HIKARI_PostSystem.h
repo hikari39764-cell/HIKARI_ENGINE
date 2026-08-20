@@ -32,6 +32,8 @@ namespace HIKARI::POST {
     public:
         using BloomDebugStats = POST::BloomDebugStats;
         using FxaaSettings = POST::FxaaSettings;
+        using SunGlareFrame = POST::SunGlareFrame;
+        using SunGlareDebugStats = POST::SunGlareDebugStats;
 
         static void Initialize(const GFX::Context& context);
         static void UpdateContext(const GFX::Context& context);
@@ -49,8 +51,11 @@ namespace HIKARI::POST {
         static void SetBloomSettings(const BloomSettings& settings);
         static void SetToneMappingSettings(const ToneMappingSettings& settings);
         static void SetFxaaSettings(const FxaaSettings& settings);
+        static void SetSunGlareFrame(const SunGlareFrame& frame);
+        static void ClearSunGlareFrame();
         static const FxaaSettings& GetFxaaSettings();
         static const BloomDebugStats& GetBloomDebugStats();
+        static const SunGlareDebugStats& GetSunGlareDebugStats();
         static const RENDER3D::COLOR::ExposureFrameState&
             GetExposureState();
         static const RENDER3D::COLOR::AutomaticExposureDebugState&

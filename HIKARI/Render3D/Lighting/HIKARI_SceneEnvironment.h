@@ -2,6 +2,7 @@
 
 #include <string>
 #include <vector>
+#include <cstdint>
 #include <DirectXMath.h>
 #include "Render3D/Color/HIKARI_ExposureState.h"
 #include "Render3D/Debug/HIKARI_RenderDebugView.h"
@@ -69,6 +70,49 @@ namespace HIKARI {
         Gradient,
         Cubemap,
         Texture2D,
+        Atmosphere,
+    };
+
+    // Relative solar illumination keeps the legacy directional intensity as
+    // the authoritative scene-light value while allowing an atmosphere to
+    // calibrate sky radiance without introducing a second sun owner.
+    struct AtmosphereSettings {
+        bool enabled = true;
+        float planetRadius = 6360000.0f;
+        float atmosphereHeight = 80000.0f;
+        float rayleighScaleHeight = 8000.0f;
+        float mieScaleHeight = 1200.0f;
+        MATH::Vec3 rayleighScattering{ 5.8e-6f, 13.5e-6f, 33.1e-6f };
+        MATH::Vec3 mieScattering{ 3.996e-6f, 3.996e-6f, 3.996e-6f };
+        MATH::Vec3 ozoneAbsorption{ 6.5e-7f, 1.881e-6f, 8.5e-8f };
+        float ozoneCenterHeight = 25000.0f;
+        float ozoneWidth = 15000.0f;
+        float mieAnisotropy = 0.76f;
+        float sunIlluminance = 1.0f;
+        float sunExposure = 0.0f;
+        float groundAlbedo = 0.1f;
+        float aerialPerspectiveStrength = 1.0f;
+        float sunAngularRadius = 0.004675f;
+        uint32_t transmittanceLutWidth = 256u;
+        uint32_t transmittanceLutHeight = 64u;
+        uint32_t multiScatteringLutSize = 32u;
+        uint32_t skyViewLutWidth = 192u;
+        uint32_t skyViewLutHeight = 108u;
+        bool preferLut = true;
+    };
+
+    // Post owns the glare pass; Environment owns only the persistent policy
+    // and the renderer-facing values that identify the same solar source.
+    struct SunGlareSettings {
+        bool enabled = false;
+        float intensity = 0.15f;
+        float haloRadius = 0.08f;
+        float haloFalloff = 3.0f;
+        float streakIntensity = 0.0f;
+        float streakLength = 0.15f;
+        float occlusionRadius = 0.012f;
+        float edgeFade = 0.15f;
+        float maxRadiance = 4.0f;
     };
 
     struct SkySettings {
@@ -249,6 +293,8 @@ namespace HIKARI {
         std::vector<PointLight> pointLights{};
         std::vector<SpotLight> spotLights{};
         SkySettings sky{};
+        AtmosphereSettings atmosphere{};
+        SunGlareSettings sunGlare{};
         StylizedCloudSettings clouds{};
         ReflectionProbeSettings reflectionProbe{};
         AmbientOcclusionSettings ambientOcclusion{};

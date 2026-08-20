@@ -18,6 +18,7 @@
 #include "Gfx/HIKARI_D3DBlobCompat.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
+#include "Render3D/Lighting/Atmosphere/HIKARI_AtmosphereRuntime.h"
 #include "Render3D/Resources/HIKARI_TextureResourceSystem.h"
 
 namespace HIKARI::SKYRENDERER {
@@ -40,6 +41,10 @@ namespace HIKARI::SKYRENDERER {
         };
 
         static_assert(sizeof(SkyCB) == 160u);
+
+        using AtmosphereCB = ATMOSPHERE::AtmosphereLutConstants;
+
+        static_assert(sizeof(AtmosphereCB) == 112u);
 
         float SanitizeFiniteRange(
             float value,
@@ -74,6 +79,204 @@ namespace HIKARI::SKYRENDERER {
             return NormalizeFinite(value);
         }
 
+        MATH::Vec3 SanitizeRadianceColor(
+            const MATH::Vec3& value,
+            const MATH::Vec3& fallback = { 1.0f, 1.0f, 1.0f }) noexcept {
+            return {
+                SanitizeFiniteRange(value.x, fallback.x, 0.0f, 64.0f),
+                SanitizeFiniteRange(value.y, fallback.y, 0.0f, 64.0f),
+                SanitizeFiniteRange(value.z, fallback.z, 0.0f, 64.0f),
+            };
+        }
+
+        uint64_t HashAtmosphereConstants(
+            const AtmosphereCB& constants) noexcept {
+            const auto* bytes = reinterpret_cast<const uint8_t*>(&constants);
+            uint64_t hash = 1469598103934665603ull;
+            for (size_t index = 0u; index < sizeof(constants); ++index) {
+                hash ^= static_cast<uint64_t>(bytes[index]);
+                hash *= 1099511628211ull;
+            }
+            return hash == 0u ? 1u : hash;
+        }
+
+        SunGlareSettings SanitizeSunGlare(
+            const SunGlareSettings& settings) noexcept {
+            SunGlareSettings result = settings;
+            result.intensity = SanitizeFiniteRange(
+                result.intensity, 0.15f, 0.0f, 8.0f);
+            result.haloRadius = SanitizeFiniteRange(
+                result.haloRadius, 0.08f, 0.0f, 2.0f);
+            result.haloFalloff = SanitizeFiniteRange(
+                result.haloFalloff, 3.0f, 0.1f, 16.0f);
+            result.streakIntensity = SanitizeFiniteRange(
+                result.streakIntensity, 0.0f, 0.0f, 8.0f);
+            result.streakLength = SanitizeFiniteRange(
+                result.streakLength, 0.15f, 0.0f, 2.0f);
+            result.occlusionRadius = SanitizeFiniteRange(
+                result.occlusionRadius, 0.012f, 0.0f, 2.0f);
+            result.edgeFade = SanitizeFiniteRange(
+                result.edgeFade, 0.15f, 0.0f, 1.0f);
+            result.maxRadiance = SanitizeFiniteRange(
+                result.maxRadiance, 4.0f, 0.0f, 64.0f);
+            return result;
+        }
+
+        float EstimateAtmosphereSunTransmittance(
+            const AtmosphereSettings& atmosphere,
+            const MATH::Vec3& sunDirection) noexcept {
+            // This is the CPU-side source-to-ground term used by the narrow
+            // glare/frame contract. It deliberately uses the same optical
+            // coefficients and scale heights as the LUT/analytic shaders;
+            // the view-path transmittance remains part of sky scattering.
+            if (!std::isfinite(sunDirection.y) || sunDirection.y <= -0.05f) {
+                return 0.0f;
+            }
+            const float rayleighHeight = SanitizeFiniteRange(
+                atmosphere.rayleighScaleHeight,
+                8000.0f,
+                1.0f,
+                1000000.0f);
+            const float mieHeight = SanitizeFiniteRange(
+                atmosphere.mieScaleHeight,
+                1200.0f,
+                1.0f,
+                1000000.0f);
+            const float ozoneWidth = SanitizeFiniteRange(
+                atmosphere.ozoneWidth,
+                15000.0f,
+                1.0f,
+                1000000.0f);
+            const float ozoneCenter = SanitizeFiniteRange(
+                atmosphere.ozoneCenterHeight,
+                25000.0f,
+                0.0f,
+                1000000.0f);
+            const float secant = 1.0f / std::max(
+                0.05f,
+                SanitizeFiniteRange(sunDirection.y, 1.0f, -1.0f, 1.0f));
+            const float ozoneColumn = ozoneWidth * std::exp(
+                -ozoneCenter / ozoneWidth);
+            const auto coefficient = [](float value, float fallback) {
+                return SanitizeFiniteRange(value, fallback, 0.0f, 1.0f);
+            };
+            const MATH::Vec3 opticalDepth{
+                (coefficient(atmosphere.rayleighScattering.x, 5.8e-6f) *
+                    rayleighHeight +
+                    coefficient(atmosphere.mieScattering.x, 3.996e-6f) *
+                        mieHeight +
+                    coefficient(atmosphere.ozoneAbsorption.x, 6.5e-7f) *
+                        ozoneColumn) *
+                    secant,
+                (coefficient(atmosphere.rayleighScattering.y, 13.5e-6f) *
+                    rayleighHeight +
+                    coefficient(atmosphere.mieScattering.y, 3.996e-6f) *
+                        mieHeight +
+                    coefficient(atmosphere.ozoneAbsorption.y, 1.881e-6f) *
+                        ozoneColumn) *
+                    secant,
+                (coefficient(atmosphere.rayleighScattering.z, 33.1e-6f) *
+                    rayleighHeight +
+                    coefficient(atmosphere.mieScattering.z, 3.996e-6f) *
+                        mieHeight +
+                    coefficient(atmosphere.ozoneAbsorption.z, 8.5e-8f) *
+                        ozoneColumn) *
+                    secant,
+            };
+            const MATH::Vec3 transmittance{
+                std::exp(-std::clamp(opticalDepth.x, 0.0f, 32.0f)),
+                std::exp(-std::clamp(opticalDepth.y, 0.0f, 32.0f)),
+                std::exp(-std::clamp(opticalDepth.z, 0.0f, 32.0f)),
+            };
+            return SanitizeFiniteRange(
+                transmittance.x * 0.2126f +
+                    transmittance.y * 0.7152f +
+                    transmittance.z * 0.0722f,
+                0.0f,
+                0.0f,
+                1.0f);
+        }
+
+        AtmosphereFrameData BuildAtmosphereFrameDataInternal(
+            const SceneEnvironment& environment,
+            const Camera3D* camera) {
+            AtmosphereFrameData result{};
+            const DirectionalLight& sun = environment.directional;
+            const MATH::Vec3 directional = SanitizeDirection(
+                sun.direction,
+                { 0.4f, -1.0f, -0.6f });
+            result.sunDirection = directional * -1.0f;
+            result.sunColor = SanitizeRadianceColor(sun.color);
+            const float directionalIntensity = sun.enabled
+                ? SanitizeFiniteRange(sun.intensity, 0.0f, 0.0f, 64.0f)
+                : 0.0f;
+            result.atmosphereEnabled =
+                environment.sky.enabled &&
+                environment.sky.mode == SkyMode::Atmosphere &&
+                environment.atmosphere.enabled;
+            const float solarScale = result.atmosphereEnabled
+                ? SanitizeFiniteRange(
+                    environment.atmosphere.sunIlluminance,
+                    1.0f,
+                    0.0f,
+                    16.0f) *
+                    std::exp2(SanitizeFiniteRange(
+                        environment.atmosphere.sunExposure,
+                        0.0f,
+                        -16.0f,
+                        16.0f))
+                : 1.0f;
+            result.sunRadiance = SanitizeFiniteRange(
+                directionalIntensity * solarScale,
+                0.0f,
+                0.0f,
+                256.0f);
+            if (result.atmosphereEnabled) {
+                result.sunRadiance *= EstimateAtmosphereSunTransmittance(
+                    environment.atmosphere,
+                    result.sunDirection);
+            }
+            result.sunAngularRadius = result.atmosphereEnabled
+                ? SanitizeFiniteRange(
+                    environment.atmosphere.sunAngularRadius,
+                    0.004675f,
+                    0.0001f,
+                    0.25f)
+                : SanitizeFiniteRange(
+                    environment.sky.sunDiskSize * 0.003f,
+                    0.004675f,
+                    0.0001f,
+                    0.25f);
+            result.sunGlare = SanitizeSunGlare(environment.sunGlare);
+            result.valid = sun.enabled;
+            result.usingAnalyticFallback = result.atmosphereEnabled;
+            result.lutsReady = false;
+
+            if (camera != nullptr) {
+                const MATH::Vec3 probe =
+                    camera->GetPosition() + result.sunDirection * 1000.0f;
+                const MATH::Vec4 projected = camera->GetViewProj().TransformPoint({
+                    probe.x,
+                    probe.y,
+                    probe.z,
+                    1.0f,
+                });
+                if (std::isfinite(projected.x) &&
+                    std::isfinite(projected.y) &&
+                    std::isfinite(projected.w) &&
+                    projected.w > 1.0e-5f) {
+                    const float ndcX = projected.x / projected.w;
+                    const float ndcY = projected.y / projected.w;
+                    result.screenSunPosition = {
+                        ndcX * 0.5f + 0.5f,
+                        1.0f - (ndcY * 0.5f + 0.5f),
+                    };
+                    result.screenSunVisible = true;
+                }
+            }
+            return result;
+        }
+
         struct State {
             bool initialized = false;
             ComPtr<ID3D12RootSignature> rootSig;
@@ -81,8 +284,11 @@ namespace HIKARI::SKYRENDERER {
             ComPtr<ID3DBlob> vsBlob;
             ComPtr<ID3DBlob> psBlob;
             ComPtr<ID3D12Resource> cb;
+            ComPtr<ID3D12Resource> atmosphereCb;
             UINT constantStride = 0;
+            UINT atmosphereConstantStride = 0;
             uint8_t* constantMapped = nullptr;
+            uint8_t* atmosphereConstantMapped = nullptr;
             std::array<uint64_t, GFX::kFrameResourceCount>
                 constantFrameSerials{};
             std::array<uint32_t, GFX::kFrameResourceCount>
@@ -97,18 +303,23 @@ namespace HIKARI::SKYRENDERER {
             int fallbackTextureHandle = -1;
             SkyRendererDebugState debug{};
             SkyEnvironmentData environmentData{};
+            AtmosphereFrameData atmosphereFrame{};
+            ATMOSPHERE::AtmosphereLutOwner atmosphereLuts{};
         };
 
         State g;
 
         struct SkyConstantAllocation {
             SkyCB* cpu = nullptr;
+            AtmosphereCB* atmosphereCpu = nullptr;
             D3D12_GPU_VIRTUAL_ADDRESS gpu = 0;
+            D3D12_GPU_VIRTUAL_ADDRESS atmosphereGpu = 0;
             uint32_t frameSlot = 0;
             uint32_t drawSlot = 0;
 
             bool IsValid() const noexcept {
-                return cpu != nullptr && gpu != 0;
+                return cpu != nullptr && atmosphereCpu != nullptr &&
+                    gpu != 0 && atmosphereGpu != 0;
             }
         };
 
@@ -119,10 +330,29 @@ namespace HIKARI::SKYRENDERER {
                 static_cast<UINT64>(g.constantStride) *
                 kSkyConstantDrawCapacityPerFrame *
                 GFX::kFrameResourceCount;
+            g.atmosphereConstantStride =
+                GFX::AlignD3D12ConstantBufferByteSize(sizeof(AtmosphereCB));
+            const UINT64 atmosphereCbBytes =
+                static_cast<UINT64>(g.atmosphereConstantStride) *
+                kSkyConstantDrawCapacityPerFrame *
+                GFX::kFrameResourceCount;
             auto uploadHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
             auto cbDesc = CD3DX12_RESOURCE_DESC::Buffer(cbBytes);
             if (FAILED(device->CreateCommittedResource(&uploadHeap, D3D12_HEAP_FLAG_NONE, &cbDesc, D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(g.cb.GetAddressOf())))) {
                 HIKARI_LOG_ERROR("[SkyRenderer][ERROR] Create constant buffer failed.");
+                return false;
+            }
+            auto atmosphereCbDesc =
+                CD3DX12_RESOURCE_DESC::Buffer(atmosphereCbBytes);
+            if (FAILED(device->CreateCommittedResource(
+                    &uploadHeap,
+                    D3D12_HEAP_FLAG_NONE,
+                    &atmosphereCbDesc,
+                    D3D12_RESOURCE_STATE_GENERIC_READ,
+                    nullptr,
+                    IID_PPV_ARGS(g.atmosphereCb.GetAddressOf())))) {
+                HIKARI_LOG_ERROR(
+                    "[SkyRenderer][ERROR] Create atmosphere constant buffer failed.");
                 return false;
             }
             if (FAILED(g.cb->Map(
@@ -130,6 +360,14 @@ namespace HIKARI::SKYRENDERER {
                     nullptr,
                     reinterpret_cast<void**>(&g.constantMapped)))) {
                 HIKARI_LOG_ERROR("[SkyRenderer][ERROR] Map constant buffer failed.");
+                return false;
+            }
+            if (FAILED(g.atmosphereCb->Map(
+                    0,
+                    nullptr,
+                    reinterpret_cast<void**>(&g.atmosphereConstantMapped)))) {
+                HIKARI_LOG_ERROR(
+                    "[SkyRenderer][ERROR] Map atmosphere constant buffer failed.");
                 return false;
             }
             g.constantFrameSerials.fill(kInvalidSkyConstantFrameSerial);
@@ -144,7 +382,10 @@ namespace HIKARI::SKYRENDERER {
 
             if (g.cb == nullptr ||
                 g.constantMapped == nullptr ||
-                g.constantStride == 0u) {
+                g.constantStride == 0u ||
+                g.atmosphereCb == nullptr ||
+                g.atmosphereConstantMapped == nullptr ||
+                g.atmosphereConstantStride == 0u) {
                 return {};
             }
 
@@ -186,6 +427,13 @@ namespace HIKARI::SKYRENDERER {
                 g.constantMapped + static_cast<size_t>(byteOffset));
             allocation.gpu =
                 g.cb->GetGPUVirtualAddress() + byteOffset;
+            const UINT64 atmosphereByteOffset =
+                allocationIndex * g.atmosphereConstantStride;
+            allocation.atmosphereCpu = reinterpret_cast<AtmosphereCB*>(
+                g.atmosphereConstantMapped +
+                static_cast<size_t>(atmosphereByteOffset));
+            allocation.atmosphereGpu =
+                g.atmosphereCb->GetGPUVirtualAddress() + atmosphereByteOffset;
             allocation.frameSlot = frameSlot;
             allocation.drawSlot = drawSlot;
             return allocation;
@@ -217,24 +465,39 @@ namespace HIKARI::SKYRENDERER {
             cubeRange.BaseShaderRegister = 1;
             cubeRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-            D3D12_ROOT_PARAMETER params[3]{};
+            D3D12_DESCRIPTOR_RANGE atmosphereSkyViewRange{};
+            atmosphereSkyViewRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+            atmosphereSkyViewRange.NumDescriptors = 1;
+            atmosphereSkyViewRange.BaseShaderRegister = 2;
+            atmosphereSkyViewRange.OffsetInDescriptorsFromTableStart =
+                D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+
+            D3D12_ROOT_PARAMETER params[5]{};
             params[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
             params[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
             params[0].Descriptor.ShaderRegister = 0;
-            params[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+            params[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
             params[1].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
-            params[1].DescriptorTable.NumDescriptorRanges = 1;
-            params[1].DescriptorTable.pDescriptorRanges = &texture2DRange;
+            params[1].Descriptor.ShaderRegister = 1;
             params[2].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
             params[2].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
             params[2].DescriptorTable.NumDescriptorRanges = 1;
-            params[2].DescriptorTable.pDescriptorRanges = &cubeRange;
+            params[2].DescriptorTable.pDescriptorRanges = &texture2DRange;
+            params[3].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+            params[3].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+            params[3].DescriptorTable.NumDescriptorRanges = 1;
+            params[3].DescriptorTable.pDescriptorRanges = &cubeRange;
+            params[4].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+            params[4].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+            params[4].DescriptorTable.NumDescriptorRanges = 1;
+            params[4].DescriptorTable.pDescriptorRanges = &atmosphereSkyViewRange;
 
             D3D12_STATIC_SAMPLER_DESC linearClampSampler{};
             linearClampSampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
             linearClampSampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
             linearClampSampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
             linearClampSampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+            linearClampSampler.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
             linearClampSampler.ShaderRegister = 0;
             linearClampSampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
             linearClampSampler.MaxLOD = D3D12_FLOAT32_MAX;
@@ -377,8 +640,20 @@ namespace HIKARI::SKYRENDERER {
         }
     }
 
+    AtmosphereFrameData BuildAtmosphereFrameData(
+        const SceneEnvironment& environment) {
+        return BuildAtmosphereFrameDataInternal(environment, nullptr);
+    }
+
+    AtmosphereFrameData BuildAtmosphereFrameData(
+        const SceneEnvironment& environment,
+        const Camera3D& camera) {
+        return BuildAtmosphereFrameDataInternal(environment, &camera);
+    }
+
     void Reset() {
         g.environmentData = {};
+        g.atmosphereFrame = {};
         g.debug.lastRenderSubmitted = false;
         g.debug.skyAssetFound = false;
         g.debug.cubemapLoaded = false;
@@ -390,6 +665,11 @@ namespace HIKARI::SKYRENDERER {
         g.debug.textureResource = {};
         g.debug.cubemapHandle = -1;
         g.debug.textureHandle = -1;
+    }
+
+    void ShutdownAtmosphereRuntime() {
+        g.atmosphereLuts.Reset();
+        g.atmosphereFrame = {};
     }
 	// キャッシュされたテクスチャを解放し、次回の描画で再ロードするようにする
     void InvalidateSkyTextureCache()
@@ -422,9 +702,12 @@ namespace HIKARI::SKYRENDERER {
         SkyManager& skyManager) {
         const SkySettings& settings = environment.sky;
         const DirectionalLight& sun = environment.directional;
+        g.atmosphereLuts.SetContext(graphics);
+        g.atmosphereFrame = BuildAtmosphereFrameData(environment, camera);
         g.debug.initialized = g.initialized;
         g.debug.activeSkyAsset = settings.skyAsset;
         g.debug.activeTexturePath.clear();
+        g.debug.usingFallback = false;
 
         if (!settings.enabled ||
             settings.mode == SkyMode::None ||
@@ -436,6 +719,19 @@ namespace HIKARI::SKYRENDERER {
         RENDER3D::TextureResourceHandle texture2DResource = g.fallbackTextureResource;
         RENDER3D::TextureResourceHandle cubemapResource{};
         SkyMode renderMode = settings.mode;
+
+        if (settings.mode == SkyMode::Atmosphere &&
+            !environment.atmosphere.enabled) {
+            g.debug.usingFallback = true;
+            renderMode = SkyMode::Gradient;
+        }
+
+        AtmosphereSettings atmosphereLutSettings = environment.atmosphere;
+        atmosphereLutSettings.enabled =
+            renderMode == SkyMode::Atmosphere &&
+            settings.enabled &&
+            atmosphereLutSettings.enabled;
+        (void)g.atmosphereLuts.Configure(atmosphereLutSettings);
 
         if (settings.mode == SkyMode::Texture2D) {
             const RENDER3D::TextureResourceHandle resolved = ResolveTexture2D(settings, skyManager);
@@ -479,13 +775,90 @@ namespace HIKARI::SKYRENDERER {
         constants.cpu->tintMode = { settings.tint.x, settings.tint.y, settings.tint.z, static_cast<float>(renderMode) };
         constants.cpu->sunDirectionIntensity = { sunDir.x, sunDir.y, sunDir.z, settings.showSunDisk ? settings.sunDiskIntensity * sunIntensity : 0.0f };
         constants.cpu->sunSizeParams = { std::max(0.0001f, settings.sunDiskSize), settings.ambientFromSky, settings.reflectionIntensity, sunIntensity };
+        bool atmosphereLutsReady = false;
+        if (renderMode == SkyMode::Atmosphere &&
+            g.atmosphereFrame.atmosphereEnabled) {
+            const AtmosphereSettings& atmosphere = environment.atmosphere;
+            constants.atmosphereCpu->planetParams = {
+                SanitizeFiniteRange(atmosphere.planetRadius, 6360000.0f, 1.0f, 100000000.0f),
+                SanitizeFiniteRange(
+                    atmosphere.planetRadius + atmosphere.atmosphereHeight,
+                    6440000.0f,
+                    1.0f,
+                    100000000.0f),
+                SanitizeFiniteRange(atmosphere.rayleighScaleHeight, 8000.0f, 1.0f, 1000000.0f),
+                SanitizeFiniteRange(atmosphere.mieScaleHeight, 1200.0f, 1.0f, 1000000.0f),
+            };
+            constants.atmosphereCpu->rayleighScattering = {
+                SanitizeFiniteRange(atmosphere.rayleighScattering.x, 5.8e-6f, 0.0f, 1.0f),
+                SanitizeFiniteRange(atmosphere.rayleighScattering.y, 13.5e-6f, 0.0f, 1.0f),
+                SanitizeFiniteRange(atmosphere.rayleighScattering.z, 33.1e-6f, 0.0f, 1.0f),
+                SanitizeFiniteRange(
+                    atmosphere.sunAngularRadius,
+                    0.004675f,
+                    0.0001f,
+                    0.25f),
+            };
+            constants.atmosphereCpu->mieScattering = {
+                SanitizeFiniteRange(atmosphere.mieScattering.x, 3.996e-6f, 0.0f, 1.0f),
+                SanitizeFiniteRange(atmosphere.mieScattering.y, 3.996e-6f, 0.0f, 1.0f),
+                SanitizeFiniteRange(atmosphere.mieScattering.z, 3.996e-6f, 0.0f, 1.0f),
+                SanitizeFiniteRange(atmosphere.mieAnisotropy, 0.76f, -0.95f, 0.95f),
+            };
+            constants.atmosphereCpu->ozoneAbsorption = {
+                SanitizeFiniteRange(atmosphere.ozoneAbsorption.x, 6.5e-7f, 0.0f, 1.0f),
+                SanitizeFiniteRange(atmosphere.ozoneAbsorption.y, 1.881e-6f, 0.0f, 1.0f),
+                SanitizeFiniteRange(atmosphere.ozoneAbsorption.z, 8.5e-8f, 0.0f, 1.0f),
+                SanitizeFiniteRange(atmosphere.ozoneCenterHeight, 25000.0f, 0.0f, 1000000.0f),
+            };
+            constants.atmosphereCpu->ozoneParams = {
+                SanitizeFiniteRange(atmosphere.ozoneWidth, 15000.0f, 1.0f, 1000000.0f),
+                SanitizeFiniteRange(
+                    atmosphere.aerialPerspectiveStrength,
+                    1.0f,
+                    0.0f,
+                    8.0f),
+                SanitizeFiniteRange(atmosphere.sunExposure, 0.0f, -16.0f, 16.0f),
+                SanitizeFiniteRange(atmosphere.groundAlbedo, 0.1f, 0.0f, 1.0f),
+            };
+            constants.atmosphereCpu->sunDirection = {
+                g.atmosphereFrame.sunDirection.x,
+                g.atmosphereFrame.sunDirection.y,
+                g.atmosphereFrame.sunDirection.z,
+                1.0f,
+            };
+            constants.atmosphereCpu->sunColorRadiance = {
+                g.atmosphereFrame.sunColor.x,
+                g.atmosphereFrame.sunColor.y,
+                g.atmosphereFrame.sunColor.z,
+                g.atmosphereFrame.sunRadiance,
+            };
+
+            if (atmosphere.preferLut) {
+                atmosphereLutsReady = g.atmosphereLuts.Dispatch(
+                    graphics,
+                    constants.atmosphereGpu,
+                    HashAtmosphereConstants(*constants.atmosphereCpu));
+            }
+            constants.atmosphereCpu->sunDirection.w =
+                atmosphereLutsReady ? 2.0f : 1.0f;
+        } else {
+            *constants.atmosphereCpu = {};
+        }
+
+        g.atmosphereFrame.lutsReady = atmosphereLutsReady;
+        g.atmosphereFrame.usingAnalyticFallback =
+            g.atmosphereFrame.atmosphereEnabled && !atmosphereLutsReady;
 
         cmd->SetGraphicsRootSignature(g.rootSig.Get());
         cmd->SetPipelineState(g.pso.Get());
         cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         cmd->SetGraphicsRootConstantBufferView(0, constants.gpu);
+        cmd->SetGraphicsRootConstantBufferView(1, constants.atmosphereGpu);
 
-        ID3D12DescriptorHeap* srvHeap = RENDER3D::GetTextureResourceSrvHeap();
+        ID3D12DescriptorHeap* srvHeap = graphics.srvHeap != nullptr
+            ? graphics.srvHeap
+            : RENDER3D::GetTextureResourceSrvHeap();
         if (srvHeap != nullptr) {
             ID3D12DescriptorHeap* heaps[] = { srvHeap };
             cmd->SetDescriptorHeaps(1, heaps);
@@ -494,18 +867,26 @@ namespace HIKARI::SKYRENDERER {
         const D3D12_GPU_DESCRIPTOR_HANDLE textureSrv =
             RENDER3D::GetTextureResourceSrvGpuHandle(texture2DResource);
         if (textureSrv.ptr != 0) {
-            cmd->SetGraphicsRootDescriptorTable(1, textureSrv);
+            cmd->SetGraphicsRootDescriptorTable(2, textureSrv);
         }
         const D3D12_GPU_DESCRIPTOR_HANDLE cubeSrv =
             RENDER3D::GetTextureResourceSrvGpuHandle(cubemapResource);
         if (cubeSrv.ptr != 0) {
-            cmd->SetGraphicsRootDescriptorTable(2, cubeSrv);
+            cmd->SetGraphicsRootDescriptorTable(3, cubeSrv);
         } else if (textureSrv.ptr != 0) {
             // Keep every root descriptor table initialized for Gradient/Texture2D fallback paths.
-            cmd->SetGraphicsRootDescriptorTable(2, textureSrv);
+            cmd->SetGraphicsRootDescriptorTable(3, textureSrv);
         }
 
-        g.debug.textureValid = (textureSrv.ptr != 0) || (cubeSrv.ptr != 0) || renderMode == SkyMode::Gradient;
+        D3D12_GPU_DESCRIPTOR_HANDLE atmosphereSkyViewSrv = textureSrv;
+        if (atmosphereLutsReady) {
+            atmosphereSkyViewSrv = g.atmosphereLuts.GetSkyViewSrv().gpu;
+        }
+        if (atmosphereSkyViewSrv.ptr != 0) {
+            cmd->SetGraphicsRootDescriptorTable(4, atmosphereSkyViewSrv);
+        }
+
+        g.debug.textureValid = (textureSrv.ptr != 0) || (cubeSrv.ptr != 0) || renderMode == SkyMode::Gradient || renderMode == SkyMode::Atmosphere;
         g.debug.cubemapLoaded = (RENDER3D::IsTextureResourceValid(cubemapResource) && cubeSrv.ptr != 0);
         g.debug.cubemapResource = cubemapResource;
         g.debug.textureResource = texture2DResource;
@@ -549,6 +930,35 @@ namespace HIKARI::SKYRENDERER {
         g.environmentData.yaw = settings.yaw;
         g.environmentData.activeSkyAsset = settings.skyAsset;
         g.environmentData.activeTexturePath = g.debug.activeTexturePath;
+        g.environmentData.atmosphereEnabled =
+            g.atmosphereFrame.atmosphereEnabled &&
+            renderMode == SkyMode::Atmosphere;
+        g.environmentData.atmosphereLutsReady = atmosphereLutsReady;
+        g.environmentData.atmosphereAnalyticFallback =
+            g.environmentData.atmosphereEnabled && !atmosphereLutsReady;
+        g.environmentData.sunDirection = g.atmosphereFrame.sunDirection;
+        g.environmentData.sunColor = g.atmosphereFrame.sunColor;
+        g.environmentData.sunRadiance = g.atmosphereFrame.sunRadiance;
+        g.environmentData.sunAngularRadius = g.atmosphereFrame.sunAngularRadius;
+        g.environmentData.sunGlare = g.atmosphereFrame.sunGlare;
+        if (g.environmentData.atmosphereEnabled) {
+            const AtmosphereSettings& atmosphere = environment.atmosphere;
+            g.environmentData.rayleighScattering = atmosphere.rayleighScattering;
+            g.environmentData.mieScattering = atmosphere.mieScattering;
+            g.environmentData.ozoneAbsorption = atmosphere.ozoneAbsorption;
+            g.environmentData.mieAnisotropy = atmosphere.mieAnisotropy;
+            g.environmentData.planetRadius = atmosphere.planetRadius;
+            g.environmentData.atmosphereHeight = atmosphere.atmosphereHeight;
+            g.environmentData.rayleighScaleHeight = atmosphere.rayleighScaleHeight;
+            g.environmentData.mieScaleHeight = atmosphere.mieScaleHeight;
+            g.environmentData.ozoneCenterHeight = atmosphere.ozoneCenterHeight;
+            g.environmentData.ozoneWidth = atmosphere.ozoneWidth;
+            g.environmentData.groundAlbedo = atmosphere.groundAlbedo;
+            g.environmentData.sunIlluminance = atmosphere.sunIlluminance;
+            g.environmentData.sunExposure = atmosphere.sunExposure;
+            g.environmentData.aerialPerspectiveStrength =
+                atmosphere.aerialPerspectiveStrength;
+        }
 
         cmd->DrawInstanced(3, 1, 0, 0);
         g.debug.lastRenderSubmitted = true;
@@ -561,6 +971,10 @@ namespace HIKARI::SKYRENDERER {
 
     const SkyEnvironmentData& GetEnvironmentData() {
         return g.environmentData;
+    }
+
+    const AtmosphereFrameData& GetAtmosphereFrameData() {
+        return g.atmosphereFrame;
     }
 
     D3D12_GPU_DESCRIPTOR_HANDLE GetActiveCubemapSrv() {

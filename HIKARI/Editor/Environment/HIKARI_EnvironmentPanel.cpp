@@ -20,6 +20,7 @@
 #include "imgui.h"
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <cstring>
 #include <filesystem>
 #include <string>
@@ -99,6 +100,7 @@ EnvironmentPanel::Draw(SceneEnvironment &environment,
         "ui.environment.preset.stylizedBlue",
         "ui.environment.preset.warmIndoor",
         "ui.environment.preset.freshSummer",
+        "ui.environment.preset.goldenHour",
     };
     const int presetCount =
         static_cast<int>(sizeof(presetKeys) / sizeof(presetKeys[0]));
@@ -133,13 +135,14 @@ EnvironmentPanel::Draw(SceneEnvironment &environment,
         TEXT::Localize("ui.environment.skyEnabled").c_str(),
         &environment.sky.enabled);
     int skyMode = static_cast<int>(environment.sky.mode);
-    const std::array<std::string, 4> skyModeNames{
+    const std::array<std::string, 5> skyModeNames{
         TEXT::Localize("ui.environment.skyModeNone"),
         TEXT::Localize("ui.environment.skyModeGradient"),
         TEXT::Localize("ui.environment.skyModeCubemap"),
         TEXT::Localize("ui.environment.skyModeTexture2D"),
+        TEXT::Localize("ui.environment.skyModeAtmosphere"),
     };
-    const char *skyModeNamePtrs[4]{};
+    const char *skyModeNamePtrs[5]{};
     for (size_t index = 0; index < skyModeNames.size(); ++index) {
         skyModeNamePtrs[index] = skyModeNames[index].c_str();
     };
@@ -147,7 +150,7 @@ EnvironmentPanel::Draw(SceneEnvironment &environment,
             TEXT::Localize("ui.environment.skyMode").c_str(),
             &skyMode, skyModeNamePtrs,
                      static_cast<int>(skyModeNames.size()))) {
-      environment.sky.mode = static_cast<SkyMode>(std::clamp(skyMode, 0, 3));
+      environment.sky.mode = static_cast<SkyMode>(std::clamp(skyMode, 0, 4));
     }
     DrawSkyAssetPicker(assetRegistry, assetDatabase, environment.sky.skyAsset);
     ImGui::DragFloat(
@@ -186,6 +189,116 @@ EnvironmentPanel::Draw(SceneEnvironment &environment,
         ImGui::TreePop();
       }
     }
+    if (environment.sky.mode == SkyMode::Atmosphere) {
+      if (ImGui::TreeNode(
+              TEXT::Localize("ui.environment.atmosphere").c_str())) {
+        AtmosphereSettings &atmosphere = environment.atmosphere;
+        ImGui::Checkbox(
+            TEXT::Localize("ui.environment.atmosphereEnabled").c_str(),
+            &atmosphere.enabled);
+        ImGui::DragFloat(
+            TEXT::Localize("ui.environment.planetRadius").c_str(),
+            &atmosphere.planetRadius, 100.0f, 1.0f, 100000000.0f);
+        ImGui::DragFloat(
+            TEXT::Localize("ui.environment.atmosphereHeight").c_str(),
+            &atmosphere.atmosphereHeight, 100.0f, 1.0f, 1000000.0f);
+        ImGui::DragFloat(
+            TEXT::Localize("ui.environment.rayleighScaleHeight").c_str(),
+            &atmosphere.rayleighScaleHeight, 10.0f, 1.0f, 1000000.0f);
+        ImGui::DragFloat(
+            TEXT::Localize("ui.environment.mieScaleHeight").c_str(),
+            &atmosphere.mieScaleHeight, 10.0f, 1.0f, 1000000.0f);
+        ImGui::DragFloat3(
+            TEXT::Localize("ui.environment.rayleighScattering").c_str(),
+            &atmosphere.rayleighScattering.x,
+            0.0000001f,
+            0.0f,
+            0.001f,
+            "%.8f");
+        ImGui::DragFloat3(
+            TEXT::Localize("ui.environment.mieScattering").c_str(),
+            &atmosphere.mieScattering.x,
+            0.0000001f,
+            0.0f,
+            0.001f,
+            "%.8f");
+        ImGui::DragFloat3(
+            TEXT::Localize("ui.environment.ozoneAbsorption").c_str(),
+            &atmosphere.ozoneAbsorption.x,
+            0.0000001f,
+            0.0f,
+            0.001f,
+            "%.8f");
+        ImGui::DragFloat(
+            TEXT::Localize("ui.environment.mieAnisotropy").c_str(),
+            &atmosphere.mieAnisotropy, 0.005f, -0.95f, 0.95f);
+        ImGui::DragFloat(
+            TEXT::Localize("ui.environment.ozoneCenterHeight").c_str(),
+            &atmosphere.ozoneCenterHeight, 50.0f, 0.0f, 1000000.0f);
+        ImGui::DragFloat(
+            TEXT::Localize("ui.environment.ozoneWidth").c_str(),
+            &atmosphere.ozoneWidth, 50.0f, 1.0f, 1000000.0f);
+        ImGui::DragFloat(
+            TEXT::Localize("ui.environment.sunIlluminance").c_str(),
+            &atmosphere.sunIlluminance, 0.01f, 0.0f, 16.0f);
+        ImGui::DragFloat(
+            TEXT::Localize("ui.environment.sunExposure").c_str(),
+            &atmosphere.sunExposure, 0.01f, -16.0f, 16.0f);
+        ImGui::DragFloat(
+            TEXT::Localize("ui.environment.groundAlbedo").c_str(),
+            &atmosphere.groundAlbedo, 0.01f, 0.0f, 1.0f);
+        ImGui::DragFloat(
+            TEXT::Localize("ui.environment.aerialPerspectiveStrength").c_str(),
+            &atmosphere.aerialPerspectiveStrength, 0.01f, 0.0f, 8.0f);
+        ImGui::DragFloat(
+            TEXT::Localize("ui.environment.sunAngularRadius").c_str(),
+            &atmosphere.sunAngularRadius, 0.0001f, 0.0001f, 0.25f);
+        ImGui::Checkbox(
+            TEXT::Localize("ui.environment.preferAtmosphereLut").c_str(),
+            &atmosphere.preferLut);
+        const uint32_t lutMin = 1u;
+        const uint32_t lutMax = 4096u;
+        ImGui::DragScalar(
+            TEXT::Localize("ui.environment.transmittanceLutWidth").c_str(),
+            ImGuiDataType_U32,
+            &atmosphere.transmittanceLutWidth,
+            1.0f,
+            &lutMin,
+            &lutMax);
+        ImGui::DragScalar(
+            TEXT::Localize("ui.environment.transmittanceLutHeight").c_str(),
+            ImGuiDataType_U32,
+            &atmosphere.transmittanceLutHeight,
+            1.0f,
+            &lutMin,
+            &lutMax);
+        ImGui::DragScalar(
+            TEXT::Localize("ui.environment.multiScatteringLutSize").c_str(),
+            ImGuiDataType_U32,
+            &atmosphere.multiScatteringLutSize,
+            1.0f,
+            &lutMin,
+            &lutMax);
+        ImGui::DragScalar(
+            TEXT::Localize("ui.environment.skyViewLutWidth").c_str(),
+            ImGuiDataType_U32,
+            &atmosphere.skyViewLutWidth,
+            1.0f,
+            &lutMin,
+            &lutMax);
+        ImGui::DragScalar(
+            TEXT::Localize("ui.environment.skyViewLutHeight").c_str(),
+            ImGuiDataType_U32,
+            &atmosphere.skyViewLutHeight,
+            1.0f,
+            &lutMin,
+            &lutMax);
+        ImGui::TextDisabled(
+            "%s",
+            TEXT::Localize("ui.environment.atmosphereLutOwnerHint").c_str());
+        ImGui::TreePop();
+      }
+    }
     if (ImGui::TreeNode(
             TEXT::Localize("ui.environment.sunDisk").c_str())) {
       ImGui::Checkbox(
@@ -197,6 +310,38 @@ EnvironmentPanel::Draw(SceneEnvironment &environment,
       ImGui::DragFloat(
           TEXT::Localize("ui.environment.sunDiskSize").c_str(),
           &environment.sky.sunDiskSize, 0.001f, 0.001f, 0.5f);
+      ImGui::TreePop();
+    }
+    if (ImGui::TreeNode(
+            TEXT::Localize("ui.environment.sunGlare").c_str())) {
+      SunGlareSettings &glare = environment.sunGlare;
+      ImGui::Checkbox(
+          TEXT::Localize("ui.environment.sunGlareEnabled").c_str(),
+          &glare.enabled);
+      ImGui::DragFloat(
+          TEXT::Localize("ui.environment.sunGlareIntensity").c_str(),
+          &glare.intensity, 0.01f, 0.0f, 8.0f);
+      ImGui::DragFloat(
+          TEXT::Localize("ui.environment.sunGlareHaloRadius").c_str(),
+          &glare.haloRadius, 0.005f, 0.0f, 2.0f);
+      ImGui::DragFloat(
+          TEXT::Localize("ui.environment.sunGlareHaloFalloff").c_str(),
+          &glare.haloFalloff, 0.05f, 0.1f, 16.0f);
+      ImGui::DragFloat(
+          TEXT::Localize("ui.environment.sunGlareStreakIntensity").c_str(),
+          &glare.streakIntensity, 0.01f, 0.0f, 8.0f);
+      ImGui::DragFloat(
+          TEXT::Localize("ui.environment.sunGlareStreakLength").c_str(),
+          &glare.streakLength, 0.01f, 0.0f, 2.0f);
+      ImGui::DragFloat(
+          TEXT::Localize("ui.environment.sunGlareOcclusionRadius").c_str(),
+          &glare.occlusionRadius, 0.005f, 0.0f, 2.0f);
+      ImGui::DragFloat(
+          TEXT::Localize("ui.environment.sunGlareEdgeFade").c_str(),
+          &glare.edgeFade, 0.01f, 0.0f, 1.0f);
+      ImGui::DragFloat(
+          TEXT::Localize("ui.environment.sunGlareMaxRadiance").c_str(),
+          &glare.maxRadiance, 0.05f, 0.0f, 64.0f);
       ImGui::TreePop();
     }
     if (ImGui::TreeNode(

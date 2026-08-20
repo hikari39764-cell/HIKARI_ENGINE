@@ -9,14 +9,12 @@
 
 namespace HIKARI::WATER {
 
-    constexpr uint32_t kWaterSurfaceSchemaVersion = 5u;
+    constexpr uint32_t kWaterSurfaceSchemaVersion = 6u;
     constexpr std::size_t kMaxWaterWaves = 4u;
 
     enum class WaterSurfacePreset : uint8_t {
         AnimeSummer = 0,
         RealisticClearSummer = 1,
-        AnimeSparklingSummer = 2,
-        RealisticSpectralSummer = 3,
     };
 
     enum class WaterSurfaceGeometryMode : uint8_t {
@@ -28,6 +26,13 @@ namespace HIKARI::WATER {
     const char* ToString(WaterSurfaceGeometryMode mode) noexcept;
     WaterSurfacePreset ParseWaterSurfacePreset(
         std::string_view value,
+        WaterSurfacePreset fallback =
+            WaterSurfacePreset::AnimeSummer) noexcept;
+    // Serialized numeric values 2/3 belonged to the removed intermediate
+    // presets. Keep their migration at the Scene water owner so the public
+    // enum remains limited to the two supported products.
+    WaterSurfacePreset ParseWaterSurfacePreset(
+        int32_t value,
         WaterSurfacePreset fallback =
             WaterSurfacePreset::AnimeSummer) noexcept;
     WaterSurfaceGeometryMode ParseWaterSurfaceGeometryMode(
@@ -62,6 +67,10 @@ namespace HIKARI::WATER {
         float foamAmount = 0.58f;
         float absorptionDistance = 8.0f;
         float surfaceRoughness = 0.18f;
+        // Scene-linear contribution controls shared by both formal presets.
+        float directSunStrength = 0.82f;
+        float transmissionStrength = 0.92f;
+        float shadowStrength = 0.72f;
         float reflectionStrength = 1.0f;
         float sunGlintStrength = 0.0f;
         float glintDensity = 0.0f;

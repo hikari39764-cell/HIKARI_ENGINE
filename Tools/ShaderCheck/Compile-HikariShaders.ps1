@@ -50,7 +50,7 @@ $entries = @(
     @{ Shader = "HIKARI/Shaders/Render3D_GeometryOutlinePS.hlsl"; Entry = "main"; Target = "ps_6_0" },
     @{ Shader = "HIKARI/Shaders/Render3D_VisibilityOverlayPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
     @{ Shader = "HIKARI/Shaders/Render3D_SkyVS.hlsl"; Entry = "main"; Target = "vs_6_0" },
-    @{ Shader = "HIKARI/Shaders/Render3D_SkyPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
+    @{ Shader = "HIKARI/Shaders/Render3D_SkyPS.hlsl"; Entry = "main"; Target = "ps_6_0"; Group = "Atmosphere"; WarningsAsErrors = $true },
     # StylizedClouds is a strict, independently runnable shader group.  Noise
     # generation is compute; trace, temporal reprojection and composite remain
     # graphics entries so the MRT/depth contract cannot be hidden by a compute
@@ -112,6 +112,10 @@ $entries = @(
     @{ Shader = "HIKARI/Shaders/Post_BloomExtractPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
     @{ Shader = "HIKARI/Shaders/Post_BloomBlurHPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
     @{ Shader = "HIKARI/Shaders/Post_BloomBlurVPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
+    @{ Shader = "HIKARI/Shaders/Post_SunGlarePS.hlsl"; Entry = "main"; Target = "ps_6_0"; Group = "Atmosphere"; WarningsAsErrors = $true },
+    @{ Shader = "HIKARI/Shaders/Render3D_AtmosphereTransmittanceCS.hlsl"; Entry = "main"; Target = "cs_6_0"; Group = "Atmosphere"; WarningsAsErrors = $true },
+    @{ Shader = "HIKARI/Shaders/Render3D_AtmosphereMultiScatteringCS.hlsl"; Entry = "main"; Target = "cs_6_0"; Group = "Atmosphere"; WarningsAsErrors = $true },
+    @{ Shader = "HIKARI/Shaders/Render3D_AtmosphereSkyViewCS.hlsl"; Entry = "main"; Target = "cs_6_0"; Group = "Atmosphere"; WarningsAsErrors = $true },
     @{ Shader = "HIKARI/Shaders/Post_AniPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
     @{ Shader = "HIKARI/Shaders/Post_CinematicGradePS.hlsl"; Entry = "main"; Target = "ps_6_0" },
     @{ Shader = "HIKARI/Shaders/Post_TransitionLinearWipePS.hlsl"; Entry = "main"; Target = "ps_6_0" },

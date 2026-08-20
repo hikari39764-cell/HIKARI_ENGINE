@@ -2,6 +2,7 @@
 #include "Gfx/HIKARI_GfxContext.h"
 
 #include <algorithm>
+#include <cmath>
 #include <string>
 
 #include "Core/HIKARI_Logger.h"
@@ -16,6 +17,7 @@
 #include "Render3D/Features/HIKARI_StylizedScreenFeatureRenderer.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Render3D/Lighting/HIKARI_LocalLightList.h"
+#include "Render3D/Lighting/HIKARI_SkyRenderer.h"
 #include "Render3D/Lighting/HIKARI_StylizedCloudStage.h"
 #include "Render3D/Lighting/HIKARI_VolumetricLightingStage.h"
 #include "Render3D/Water/HIKARI_WaterVisibleDepth.h"
@@ -136,6 +138,58 @@ namespace HIKARI::RENDER3D::PIPELINE {
                 return true;
             }
         }
+
+        void PrepareSunGlareFrame(
+            const Camera3D& camera,
+            const SceneEnvironment& environment) {
+            POST::SunGlareFrame frame{};
+            const SKYRENDERER::AtmosphereFrameData sun =
+                SKYRENDERER::BuildAtmosphereFrameData(environment, camera);
+            const SunGlareSettings& settings = sun.sunGlare;
+            if (!sun.valid || !sun.screenSunVisible ||
+                !settings.enabled || sun.sunRadiance <= 0.0f) {
+                POST::PostSystem::SetSunGlareFrame(frame);
+                return;
+            }
+            const float sunUvX = sun.screenSunPosition.x;
+            const float sunUvY = sun.screenSunPosition.y;
+            const float maximumExtent = (std::max)(
+                settings.haloRadius,
+                settings.streakLength);
+            if (!std::isfinite(sunUvX) || !std::isfinite(sunUvY) ||
+                sunUvX < -maximumExtent || sunUvX > 1.0f + maximumExtent ||
+                sunUvY < -maximumExtent || sunUvY > 1.0f + maximumExtent) {
+                POST::PostSystem::SetSunGlareFrame(frame);
+                return;
+            }
+
+            const float angularRadius = std::clamp(
+                sun.sunAngularRadius,
+                0.0005f,
+                0.035f);
+            const float halfFov = (std::max)(camera.GetFovYRad() * 0.5f, 0.01f);
+            const float coreRadius = std::clamp(
+                0.5f * std::tan(angularRadius) / std::tan(halfFov),
+                0.001f,
+                0.04f);
+
+            frame.enabled = true;
+            frame.sunUvX = sunUvX;
+            frame.sunUvY = sunUvY;
+            frame.coreRadius = coreRadius;
+            frame.colorR = sun.sunColor.x;
+            frame.colorG = sun.sunColor.y;
+            frame.colorB = sun.sunColor.z;
+            frame.intensity = settings.intensity * sun.sunRadiance;
+            frame.haloRadius = settings.haloRadius;
+            frame.haloFalloff = settings.haloFalloff;
+            frame.streakIntensity = settings.streakIntensity;
+            frame.streakLength = settings.streakLength;
+            frame.occlusionRadius = settings.occlusionRadius;
+            frame.edgeFade = settings.edgeFade;
+            frame.maxRadiance = settings.maxRadiance;
+            POST::PostSystem::SetSunGlareFrame(frame);
+        }
     }
 
     bool RenderMeshLightingFrame(
@@ -150,6 +204,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
         }
 
         const Camera3D& camera = view.cameraFrame->camera;
+        PrepareSunGlareFrame(camera, environment);
         RENDER3D::SetRenderDebugOutputView(debugView);
         const RENDER3D::RenderDebugOutputRoute& debugRoute =
             RENDER3D::GetRenderDebugOutputRoute();

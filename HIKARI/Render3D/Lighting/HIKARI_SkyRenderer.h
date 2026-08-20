@@ -1,6 +1,7 @@
 #pragma once
 
 #include <d3d12.h>
+#include <cstdint>
 #include <string>
 
 #include "Gfx/HIKARI_GfxContext.h"
@@ -56,9 +57,56 @@ namespace HIKARI::SKYRENDERER {
         float yaw = 0.0f;
         std::string activeSkyAsset{};
         std::string activeTexturePath{};
+        bool atmosphereEnabled = false;
+        bool atmosphereLutsReady = false;
+        bool atmosphereAnalyticFallback = false;
+        MATH::Vec3 sunDirection{ 0.0f, 1.0f, 0.0f };
+        MATH::Vec3 sunColor{ 1.0f, 1.0f, 1.0f };
+        // Scene-linear source radiance after the shared source-to-ground
+        // atmosphere transmittance estimate; directional light intensity
+        // remains the sole surface-light authority.
+        float sunRadiance = 0.0f;
+        MATH::Vec3 rayleighScattering{ 0.0f, 0.0f, 0.0f };
+        MATH::Vec3 mieScattering{ 0.0f, 0.0f, 0.0f };
+        MATH::Vec3 ozoneAbsorption{ 0.0f, 0.0f, 0.0f };
+        float mieAnisotropy = 0.0f;
+        float planetRadius = 0.0f;
+        float atmosphereHeight = 0.0f;
+        float rayleighScaleHeight = 0.0f;
+        float mieScaleHeight = 0.0f;
+        float ozoneCenterHeight = 0.0f;
+        float ozoneWidth = 0.0f;
+        float groundAlbedo = 0.0f;
+        float sunIlluminance = 1.0f;
+        float sunExposure = 0.0f;
+        float aerialPerspectiveStrength = 1.0f;
+        float sunAngularRadius = 0.004675f;
+        SunGlareSettings sunGlare{};
+    };
+
+    // Narrow renderer-to-post contract. Direction and radiance are derived
+    // from SceneEnvironment::directional; screen position is a probe input,
+    // not a second light owner.
+    struct AtmosphereFrameData {
+        bool valid = false;
+        bool atmosphereEnabled = false;
+        bool lutsReady = false;
+        bool usingAnalyticFallback = false;
+        MATH::Vec3 sunDirection{ 0.0f, 1.0f, 0.0f };
+        MATH::Vec3 sunColor{ 1.0f, 1.0f, 1.0f };
+        float sunRadiance = 0.0f;
+        float sunAngularRadius = 0.004675f;
+        MATH::Vec2 screenSunPosition{ 0.5f, 0.5f };
+        bool screenSunVisible = false;
+        SunGlareSettings sunGlare{};
     };
 
     void Reset();
+    // Runtime/device teardown hook for the atmosphere owner. Reset() is a
+    // per-frame debug-state reset and intentionally preserves atmosphere LUTs
+    // and PSOs. The host must call this before the shared descriptor pool is
+    // destroyed; it does not tear down the legacy sky renderer resources.
+    void ShutdownAtmosphereRuntime();
     void InvalidateSkyTextureCache();
     void Render(
         const GFX::Context& graphics,
@@ -68,6 +116,12 @@ namespace HIKARI::SKYRENDERER {
         SkyManager& skyManager);
     const SkyRendererDebugState& GetDebugState();
     const SkyEnvironmentData& GetEnvironmentData();
+    AtmosphereFrameData BuildAtmosphereFrameData(
+        const SceneEnvironment& environment);
+    AtmosphereFrameData BuildAtmosphereFrameData(
+        const SceneEnvironment& environment,
+        const Camera3D& camera);
+    const AtmosphereFrameData& GetAtmosphereFrameData();
     D3D12_GPU_DESCRIPTOR_HANDLE GetActiveCubemapSrv();
     int GetActiveCubemapHandle();
     bool HasActiveCubemap();

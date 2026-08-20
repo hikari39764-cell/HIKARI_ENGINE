@@ -47,11 +47,6 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             DEBUGLOG::PushRenderError(
                 "[MeshRenderer][WARN] Water surface feature buffer initialization failed. GPU-driven mesh pass will be unavailable.");
         }
-        if (!gMeshRendererState.oceanSpectrumRuntime.Initialize(graphics)) {
-            DEBUGLOG::PushRenderError(
-                "[MeshRenderer][WARN] Ocean spectrum runtime initialization failed. Water will use the non-spectral fallback while mesh rendering continues.");
-        }
-
         if (!gMeshRendererState.sandSurfaceGpuFrameBuffer.Initialize(
                 device)) {
             DEBUGLOG::PushRenderError(

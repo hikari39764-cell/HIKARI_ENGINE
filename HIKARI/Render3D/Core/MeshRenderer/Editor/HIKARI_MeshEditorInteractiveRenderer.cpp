@@ -67,10 +67,6 @@ namespace HIKARI::MESHRENDERER {
             return EditorInteractiveMeshRenderResult::
                 MaterialFrameUnavailable;
         }
-        (void)gMeshRendererState.oceanSpectrumRuntime.RecordCompute(
-            graphics,
-            TIME::GetFrameContext().frameIndex,
-            TIME::GetInterpolatedSimulationTimeSeconds());
 
         EditorInteractiveMeshFrameResources& editorFrame =
             gMeshRendererState.editorInteractive.frames[
@@ -247,6 +243,9 @@ namespace HIKARI::MESHRENDERER {
             return EditorInteractiveMeshRenderResult::
                 SceneResidencyUnavailable;
         }
+        RecordOceanSpectrumForWaterFrame(
+            graphics,
+            gMeshRendererState.editorInteractive.waterSurfaceGpuFrameBuffer);
 
         RENDER3D::GPUDRIVEN::GpuDrivenBackendAvailability availability{};
         const RENDER3D::MESHLET::MeshletRenderBackendStats& meshletStats =

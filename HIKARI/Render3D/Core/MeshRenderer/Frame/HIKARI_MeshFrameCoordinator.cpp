@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "Core/HIKARI_TimeService.h"
+#include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Render3D/Core/MeshRenderer/Bindings/HIKARI_MeshResourceBindings.h"
 #include "Render3D/Core/MeshRenderer/Pipeline/HIKARI_MeshPipelineStore.h"
 #include "Render3D/Core/MeshRenderer/Pipeline/HIKARI_MeshRootParameters.h"
@@ -16,8 +17,52 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
     namespace {
 
         constexpr size_t kMaxMaterialTextureGpuLoadsPerFrame = 2;
+        constexpr uint64_t kOceanSpectrumRetryDelayFrames = 120u;
+        ID3D12Device* gOceanSpectrumInitializationFailedDevice = nullptr;
+        uint64_t gOceanSpectrumNextRetryFrame = 0u;
+        bool gOceanSpectrumFailureWarningEmitted = false;
 
     } // namespace
+
+    void ResetOceanSpectrumLazyInitializationState() noexcept {
+        gOceanSpectrumInitializationFailedDevice = nullptr;
+        gOceanSpectrumNextRetryFrame = 0u;
+        gOceanSpectrumFailureWarningEmitted = false;
+    }
+
+    void RecordOceanSpectrumForWaterFrame(
+        const GFX::Context& graphics,
+        const RENDER3D::WATER::WaterSurfaceGpuFrameBuffer& waterSurfaceBuffer) {
+
+        if (!waterSurfaceBuffer.RequiresOceanSpectrum()) {
+            return;
+        }
+
+        auto& runtime = gMeshRendererState.oceanSpectrumRuntime;
+        const uint64_t frameIndex = TIME::GetFrameContext().frameIndex;
+        if (!runtime.IsInitialized()) {
+            if (gOceanSpectrumInitializationFailedDevice == graphics.device &&
+                frameIndex < gOceanSpectrumNextRetryFrame) {
+                return;
+            }
+            if (!runtime.Initialize(graphics)) {
+                gOceanSpectrumInitializationFailedDevice = graphics.device;
+                gOceanSpectrumNextRetryFrame =
+                    frameIndex + kOceanSpectrumRetryDelayFrames;
+                if (!gOceanSpectrumFailureWarningEmitted) {
+                    gOceanSpectrumFailureWarningEmitted = true;
+                    DEBUGLOG::PushRenderError(
+                        "[MeshRenderer][WARN] Ocean spectrum lazy initialization failed. Water will use the non-spectral fallback while mesh rendering continues.");
+                }
+                return;
+            }
+            ResetOceanSpectrumLazyInitializationState();
+        }
+        (void)runtime.RecordCompute(
+            graphics,
+            frameIndex,
+            TIME::GetInterpolatedSimulationTimeSeconds());
+    }
     MeshFrameResources& GetActiveMeshFrameResources() {
         return gMeshRendererState.frameResources.Active();
     }
@@ -370,10 +415,16 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             OceanSpectrumOutputDescriptorTable& oceanSpectrumTable =
                 gMeshRendererState.oceanSpectrumRuntime.
                     GetOutputDescriptorTable();
+        const bool waterRequiresOceanSpectrum =
+            waterSurfaceBuffer != nullptr &&
+            waterSurfaceBuffer->RequiresOceanSpectrum();
         ctx.oceanSpectrumTable = oceanSpectrumTable.base;
         ctx.oceanSpectrumResolution =
-            gMeshRendererState.oceanSpectrumRuntime.GetResolution();
+            waterRequiresOceanSpectrum
+                ? gMeshRendererState.oceanSpectrumRuntime.GetResolution()
+                : 0u;
         ctx.oceanSpectrumValid =
+            waterRequiresOceanSpectrum &&
             oceanSpectrumTable.valid &&
             oceanSpectrumTable.descriptorCount ==
                 RENDER3D::WATER::SPECTRUM::
@@ -426,10 +477,6 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         gMeshRendererState.frameResources.Activate(graphics.frameIndex);
         gMeshRendererState.materialResolver.BeginFrame(kMaxMaterialTextureGpuLoadsPerFrame);
         gMeshRendererState.gpuMaterialRegistry.BeginFrame();
-        (void)gMeshRendererState.oceanSpectrumRuntime.RecordCompute(
-            graphics,
-            TIME::GetFrameContext().frameIndex,
-            TIME::GetInterpolatedSimulationTimeSeconds());
         // Capture 逕ｨ縺ｮ蝗ｺ螳夊ｧ｣蜒丞ｺｦ繧・camera constants 縺ｫ蜿肴丐縺吶ｋ縲・
         if (!PrepareMeshFrame(
                 graphics,
@@ -467,6 +514,9 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         } else {
             ResetGpuDrivenFrameState(graphics);
         }
+        RecordOceanSpectrumForWaterFrame(
+            graphics,
+            gMeshRendererState.waterSurfaceGpuFrameBuffer);
 
         cmd->IASetPrimitiveTopology(
             D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);

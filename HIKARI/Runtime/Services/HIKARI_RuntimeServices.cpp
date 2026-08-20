@@ -19,6 +19,7 @@
 #include "Render2D/HIKARI_DxTexture.h"
 #include "Render3D/Lighting/HIKARI_VolumetricLightingStage.h"
 #include "Render3D/Lighting/HIKARI_StylizedCloudStage.h"
+#include "Render3D/Lighting/HIKARI_SkyRenderer.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Material/HIKARI_DefaultPbrResources.h"
 #include "Render3D/Material/Program/HIKARI_MaterialProgramRegistry.h"
@@ -331,6 +332,10 @@ namespace HIKARI {
                 }
                 editorUiServices->Shutdown(gWindow);
             }
+            if (!gGraphicsCore.WaitForIdle()) {
+                HIKARI_LOG_ERROR(
+                    "GPU idle wait failed before renderer resource shutdown.");
+            }
             MESHRENDERER::ShutdownParticleGpuDrivenPass();
             HIKARI_LOG_INFO("Particle GPU-driven pass finalized.");
             MESHRENDERER::ShutdownOceanSpectrumRuntime();
@@ -350,6 +355,7 @@ namespace HIKARI {
             RENDER3D::TEMPORAL::ShutdownTemporalResourceSystem();
             RENDER3D::CLOUDS::ShutdownStylizedCloudStage();
             RENDER3D::VOLUMETRIC::ShutdownVolumetricLightingStage();
+            SKYRENDERER::ShutdownAtmosphereRuntime();
             RENDER3D::WATER::ShutdownWaterVisibleDepth();
             RENDER3D::ShutdownClusterGeometryResourceSystem();
             RENDER3D::ShutdownRenderResourceDescriptorPool();

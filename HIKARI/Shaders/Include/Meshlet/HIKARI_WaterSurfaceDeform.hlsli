@@ -159,14 +159,14 @@ void HikariApplyWaterSurfaceDeformWithWorld(
         : HikariOceanWorldAnchoredXZ(
             deformationWorld,
             sourceLocalPosition);
-    const bool realisticSpectral =
-        p.shadingModel >=
-            HIKARI_WATER_SHADING_REALISTIC_SPECTRAL_SUMMER - 0.25f &&
-        p.shadingModel <=
-            HIKARI_WATER_SHADING_REALISTIC_SPECTRAL_SUMMER + 0.25f;
+    const bool useOceanSpectrum =
+        p.shadingModel >= HIKARI_WATER_SHADING_REALISTIC_CLEAR_SUMMER -
+            0.25f &&
+        (p.shortWaveStrength > 1.0e-4f ||
+            p.capillaryStrength > 1.0e-4f);
     HikariOceanSpectrumSample oceanSpectrum =
         (HikariOceanSpectrumSample)0;
-    if (realisticSpectral)
+    if (useOceanSpectrum)
     {
         oceanSpectrum = HikariSampleOceanSpectrum(
             spectrumWorldXZ,
@@ -176,9 +176,9 @@ void HikariApplyWaterSurfaceDeformWithWorld(
     }
     if (oceanSpectrum.connected != 0u)
     {
-        // The frequency-domain field is the single geometry authority for
-        // RealisticSpectralSummer. Keeping the four analytic carriers here
-        // would recreate the repeated parallel bands that this route replaces.
+        // The frequency-domain field is the optional high-frequency geometry
+        // authority for RealisticClearSummer. Keeping the analytic carriers
+        // active at the same time would double count the short-wave energy.
         p.waveCount = 0u;
         p.choppiness = 0.0f;
     }

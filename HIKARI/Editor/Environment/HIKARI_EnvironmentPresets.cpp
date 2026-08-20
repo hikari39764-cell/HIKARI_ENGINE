@@ -85,7 +85,7 @@ void ApplyEnvironmentPreset(SceneEnvironment &environment, int presetIndex) {
     environment.fog.enabled = false;
     environment.toneMapping.exposure = 1.05f;
     break;
-  case 7: // Fresh Summer
+  case 7: // Fresh Summer - clear noon atmosphere
     environment.ambient.color = {0.72f, 0.84f, 1.0f};
     environment.ambient.intensity = 0.38f;
     environment.directional.enabled = true;
@@ -93,7 +93,7 @@ void ApplyEnvironmentPreset(SceneEnvironment &environment, int presetIndex) {
     environment.directional.intensity = 1.35f;
     environment.directional.color = {1.0f, 0.93f, 0.82f};
     environment.sky.enabled = true;
-    environment.sky.mode = SkyMode::Gradient;
+    environment.sky.mode = SkyMode::Atmosphere;
     environment.sky.zenithColor = {0.10f, 0.34f, 0.88f};
     environment.sky.horizonColor = {0.72f, 0.90f, 1.0f};
     environment.sky.groundColor = {0.18f, 0.28f, 0.40f};
@@ -103,9 +103,58 @@ void ApplyEnvironmentPreset(SceneEnvironment &environment, int presetIndex) {
     environment.sky.sunDiskSize = 0.035f;
     environment.sky.ambientFromSky = 1.2f;
     environment.sky.reflectionIntensity = 1.0f;
+    environment.atmosphere = AtmosphereSettings{};
+    environment.atmosphere.enabled = true;
+    environment.atmosphere.sunIlluminance = 1.0f;
+    environment.atmosphere.sunExposure = 0.0f;
+    environment.atmosphere.groundAlbedo = 0.12f;
+    environment.atmosphere.preferLut = true;
+    environment.sunGlare = SunGlareSettings{};
+    environment.sunGlare.enabled = true;
+    environment.sunGlare.intensity = 0.06f;
+    environment.sunGlare.haloRadius = 0.045f;
+    environment.sunGlare.haloFalloff = 3.0f;
+    environment.sunGlare.occlusionRadius = 0.012f;
+    environment.sunGlare.edgeFade = 0.18f;
     environment.clouds = StylizedCloudSettings{};
     environment.clouds.enabled = true;
     environment.toneMapping.exposure = 1.05f;
+    environment.fog.enabled = false;
+    break;
+  case 8: // Backlit Golden Hour Atmosphere
+    environment.ambient.color = {0.42f, 0.30f, 0.28f};
+    environment.ambient.intensity = 0.24f;
+    environment.directional.enabled = true;
+    environment.directional.direction = {-0.72f, -0.34f, 0.58f};
+    environment.directional.intensity = 0.82f;
+    environment.directional.color = {1.0f, 0.58f, 0.30f};
+    environment.sky.enabled = true;
+    environment.sky.mode = SkyMode::Atmosphere;
+    environment.sky.zenithColor = {0.08f, 0.12f, 0.30f};
+    environment.sky.horizonColor = {0.96f, 0.42f, 0.18f};
+    environment.sky.groundColor = {0.16f, 0.08f, 0.06f};
+    environment.sky.horizonPower = 1.25f;
+    environment.sky.showSunDisk = true;
+    environment.sky.sunDiskIntensity = 1.2f;
+    environment.sky.sunDiskSize = 0.045f;
+    environment.sky.ambientFromSky = 0.85f;
+    environment.sky.reflectionIntensity = 0.72f;
+    environment.atmosphere = AtmosphereSettings{};
+    environment.atmosphere.enabled = true;
+    environment.atmosphere.sunIlluminance = 0.72f;
+    environment.atmosphere.sunExposure = -0.35f;
+    environment.atmosphere.mieAnisotropy = 0.80f;
+    environment.atmosphere.groundAlbedo = 0.08f;
+    environment.atmosphere.preferLut = true;
+    environment.sunGlare = SunGlareSettings{};
+    environment.sunGlare.enabled = true;
+    environment.sunGlare.intensity = 0.10f;
+    environment.sunGlare.haloRadius = 0.06f;
+    environment.sunGlare.haloFalloff = 3.5f;
+    environment.sunGlare.edgeFade = 0.20f;
+    environment.clouds = StylizedCloudSettings{};
+    environment.clouds.enabled = false;
+    environment.toneMapping.exposure = 1.0f;
     environment.fog.enabled = false;
     break;
   case 0:

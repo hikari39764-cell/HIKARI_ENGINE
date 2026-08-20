@@ -95,8 +95,11 @@ namespace HIKARI::POST {
     void PostSystem::SetBloomSettings(const BloomSettings& settings) { processingStage_.SetBloomSettings(settings); }
     void PostSystem::SetToneMappingSettings(const ToneMappingSettings& settings) { processingStage_.SetToneMappingSettings(settings); }
     void PostSystem::SetFxaaSettings(const FxaaSettings& settings) { processingStage_.SetFxaaSettings(settings); }
+    void PostSystem::SetSunGlareFrame(const SunGlareFrame& frame) { processingStage_.SetSunGlareFrame(frame); }
+    void PostSystem::ClearSunGlareFrame() { processingStage_.ClearSunGlareFrame(); }
     const PostSystem::FxaaSettings& PostSystem::GetFxaaSettings() { return processingStage_.GetFxaaSettings(); }
     const PostSystem::BloomDebugStats& PostSystem::GetBloomDebugStats() { return processingStage_.GetBloomDebugStats(); }
+    const PostSystem::SunGlareDebugStats& PostSystem::GetSunGlareDebugStats() { return processingStage_.GetSunGlareDebugStats(); }
     const RENDER3D::COLOR::ExposureFrameState&
         PostSystem::GetExposureState() {
         return processingStage_.GetExposureState();
@@ -187,6 +190,7 @@ namespace HIKARI::POST {
         int height = 0;
         GetSceneCaptureSize(width, height);
         presentationStage_.InvalidateEditorOutput();
+        processingStage_.ClearSunGlareFrame();
         processingStage_.UpdateCommonParams(0.0f, width, height);
         if (!initialized_ || !captureStage_.Begin(width, height)) {
             LogFrameState("BeginSceneCapture failed");
@@ -263,7 +267,8 @@ namespace HIKARI::POST {
             quad_,
             RENDER3D::GetRenderDebugOutputRoute().bypassPostProcessing,
             RENDER3D::TEMPORAL::ToString(temporal.backend),
-            captureStage_.IsLightingEnabled());
+            captureStage_.IsLightingEnabled(),
+            captured);
     }
 
     RenderTarget2D* PostSystem::ResolveFinalSceneToLdr(
