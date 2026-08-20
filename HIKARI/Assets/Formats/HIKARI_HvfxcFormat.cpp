@@ -175,6 +175,122 @@ namespace HIKARI::VFX {
                 reader.Read(value.z) && reader.Read(value.w);
         }
 
+        void WriteTransform(
+            BinaryWriter& writer,
+            const VfxTransformData& value) {
+            WriteVec3(writer, value.position);
+            WriteVec3(writer, value.rotationEulerDegrees);
+            WriteVec3(writer, value.scale);
+        }
+
+        bool ReadTransform(
+            BinaryReader& reader,
+            VfxTransformData& value) {
+            return ReadVec3(reader, value.position) &&
+                ReadVec3(reader, value.rotationEulerDegrees) &&
+                ReadVec3(reader, value.scale);
+        }
+
+        void WriteAttachment(
+            BinaryWriter& writer,
+            const VfxAttachmentData& value) {
+            writer.WriteString(value.id);
+            writer.WriteEnum(value.mode);
+            writer.WriteEnum(value.follow);
+            writer.WriteString(value.socketName);
+            WriteTransform(writer, value.offset);
+        }
+
+        bool ReadAttachment(
+            BinaryReader& reader,
+            VfxAttachmentData& value) {
+            return reader.ReadString(value.id) &&
+                reader.ReadEnum(value.mode) &&
+                reader.ReadEnum(value.follow) &&
+                reader.ReadString(value.socketName) &&
+                ReadTransform(reader, value.offset);
+        }
+
+        void WriteSpecialOutput(
+            BinaryWriter& writer,
+            const VfxSpecialOutputData& value) {
+            writer.WriteString(value.id);
+            writer.WriteEnum(value.type);
+            writer.WriteBool(value.enabled);
+            const auto& weapon = value.weaponPathDistortion;
+            writer.Write(weapon.distortion);
+            writer.Write(weapon.blur);
+            writer.Write(weapon.opacity);
+            writer.Write(weapon.emissive);
+            writer.Write(weapon.flow);
+            writer.Write(weapon.width);
+            writer.Write(weapon.lifetimeSeconds);
+            WriteVec4(writer, weapon.bodyColor);
+            WriteVec4(writer, weapon.edgeColor);
+            const auto& screen = value.screenImpulse;
+            writer.Write(screen.durationSeconds);
+            writer.Write(screen.maxRadius);
+            writer.Write(screen.ringThickness);
+            writer.Write(screen.distortion);
+            writer.Write(screen.chromaticAberration);
+            writer.Write(screen.flash);
+            writer.Write(screen.intensity);
+            WriteVec4(writer, screen.color);
+            writer.Write(screen.waveFrequency);
+            writer.Write(screen.waveAmplitude);
+            writer.Write(screen.waveDamping);
+            writer.Write(screen.waveCount);
+            const auto& afterimage = value.skinnedAfterimage;
+            writer.Write(afterimage.sampleCount);
+            writer.Write(afterimage.lifetimeSeconds);
+            writer.Write(afterimage.opacity);
+            writer.Write(afterimage.fresnel);
+            writer.Write(afterimage.dissolve);
+            writer.Write(afterimage.shellOffset);
+            WriteVec4(writer, afterimage.color);
+            writer.Write(afterimage.intensity);
+        }
+
+        bool ReadSpecialOutput(
+            BinaryReader& reader,
+            VfxSpecialOutputData& value) {
+            auto& weapon = value.weaponPathDistortion;
+            auto& screen = value.screenImpulse;
+            auto& afterimage = value.skinnedAfterimage;
+            return reader.ReadString(value.id) &&
+                reader.ReadEnum(value.type) &&
+                reader.ReadBool(value.enabled) &&
+                reader.Read(weapon.distortion) &&
+                reader.Read(weapon.blur) &&
+                reader.Read(weapon.opacity) &&
+                reader.Read(weapon.emissive) &&
+                reader.Read(weapon.flow) &&
+                reader.Read(weapon.width) &&
+                reader.Read(weapon.lifetimeSeconds) &&
+                ReadVec4(reader, weapon.bodyColor) &&
+                ReadVec4(reader, weapon.edgeColor) &&
+                reader.Read(screen.durationSeconds) &&
+                reader.Read(screen.maxRadius) &&
+                reader.Read(screen.ringThickness) &&
+                reader.Read(screen.distortion) &&
+                reader.Read(screen.chromaticAberration) &&
+                reader.Read(screen.flash) &&
+                reader.Read(screen.intensity) &&
+                ReadVec4(reader, screen.color) &&
+                reader.Read(screen.waveFrequency) &&
+                reader.Read(screen.waveAmplitude) &&
+                reader.Read(screen.waveDamping) &&
+                reader.Read(screen.waveCount) &&
+                reader.Read(afterimage.sampleCount) &&
+                reader.Read(afterimage.lifetimeSeconds) &&
+                reader.Read(afterimage.opacity) &&
+                reader.Read(afterimage.fresnel) &&
+                reader.Read(afterimage.dissolve) &&
+                reader.Read(afterimage.shellOffset) &&
+                ReadVec4(reader, afterimage.color) &&
+                reader.Read(afterimage.intensity);
+        }
+
         void WriteValue(BinaryWriter& writer, const VfxValue& value) {
             writer.WriteEnum(value.type);
             writer.WriteBool(value.boolean);
@@ -398,8 +514,18 @@ namespace HIKARI::VFX {
                 WriteVec3(writer, emitter.transform.position);
                 WriteVec3(writer, emitter.transform.rotationEulerDegrees);
                 WriteVec3(writer, emitter.transform.scale);
+                writer.Write(emitter.startDelay);
+                writer.Write(emitter.activeDuration);
+                WriteAttachment(writer, emitter.attachment);
                 writer.Write(emitter.spawnRatePerSecond);
                 writer.Write(emitter.burstCount);
+                writer.Write(static_cast<uint32_t>(
+                    emitter.burstTimeline.size()));
+                for (const VfxBurstKeyData& key : emitter.burstTimeline) {
+                    writer.WriteString(key.id);
+                    writer.Write(key.time);
+                    writer.Write(key.count);
+                }
                 writer.Write(emitter.authoredOverrides.enabled);
                 writer.Write(emitter.authoredOverrides.spawnRateMultiplier);
                 writer.Write(emitter.authoredOverrides.radialSpeedMultiplier);
@@ -414,6 +540,11 @@ namespace HIKARI::VFX {
                 writer.WriteEnum(simulation.shape);
                 WriteDistribution(writer, simulation.shapeRadius);
                 writer.Write(simulation.coneAngleRadians);
+                WriteVec3(writer, simulation.shapeBoxHalfExtents);
+                writer.Write(simulation.shapeCylinderHeight);
+                writer.Write(simulation.shapeCircleInnerRadius);
+                writer.Write(simulation.shapeCircleEmitOnEdge);
+                writer.Write(simulation.shapeEdgeLength);
                 WriteDistribution(writer, simulation.radialSpeed);
                 WriteAnimated(writer, simulation.position);
                 WriteAnimated(writer, simulation.rotationRadians);
@@ -443,6 +574,13 @@ namespace HIKARI::VFX {
                 writer.Write(emitter.render.ringSegmentCount);
                 writer.Write(emitter.render.ringStartAngleRadians);
                 writer.Write(emitter.render.ringEndAngleRadians);
+
+                writer.Write(static_cast<uint32_t>(
+                    emitter.specialOutputs.size()));
+                for (const VfxSpecialOutputData& output :
+                     emitter.specialOutputs) {
+                    WriteSpecialOutput(writer, output);
+                }
 
                 writer.Write(static_cast<uint32_t>(
                     emitter.inputLinks.size()));
@@ -507,6 +645,7 @@ namespace HIKARI::VFX {
             uint64_t totalInputLinks = 0u;
             for (uint32_t index = 0u; index < emitterCount; ++index) {
                 VfxProgramEmitter emitter{};
+                uint32_t burstCount = 0u;
                 if (!reader.ReadString(emitter.sourceEmitterId) ||
                     !reader.Read(emitter.emitterIndex) ||
                     !reader.Read(emitter.parentEmitterIndex) ||
@@ -515,9 +654,33 @@ namespace HIKARI::VFX {
                         reader,
                         emitter.transform.rotationEulerDegrees) ||
                     !ReadVec3(reader, emitter.transform.scale) ||
+                    !reader.Read(emitter.startDelay) ||
+                    !reader.Read(emitter.activeDuration) ||
+                    !ReadAttachment(reader, emitter.attachment) ||
                     !reader.Read(emitter.spawnRatePerSecond) ||
                     !reader.Read(emitter.burstCount) ||
-                    !reader.Read(emitter.authoredOverrides.enabled) ||
+                    !reader.Read(burstCount)) {
+                    return false;
+                }
+                if (burstCount > kMaximumVfxProgramBurstKeys ||
+                    burstCount > reader.Remaining() /
+                        (sizeof(float) + sizeof(uint32_t) +
+                         sizeof(uint32_t))) {
+                    return false;
+                }
+                emitter.burstTimeline.reserve(burstCount);
+                for (uint32_t burstIndex = 0u;
+                     burstIndex < burstCount;
+                     ++burstIndex) {
+                    VfxBurstKeyData key{};
+                    if (!reader.ReadString(key.id) ||
+                        !reader.Read(key.time) ||
+                        !reader.Read(key.count)) {
+                        return false;
+                    }
+                    emitter.burstTimeline.push_back(std::move(key));
+                }
+                if (!reader.Read(emitter.authoredOverrides.enabled) ||
                     !reader.Read(
                         emitter.authoredOverrides.spawnRateMultiplier) ||
                     !reader.Read(
@@ -539,6 +702,11 @@ namespace HIKARI::VFX {
                     !reader.ReadEnum(simulation.shape) ||
                     !ReadDistribution(reader, simulation.shapeRadius) ||
                     !reader.Read(simulation.coneAngleRadians) ||
+                    !ReadVec3(reader, simulation.shapeBoxHalfExtents) ||
+                    !reader.Read(simulation.shapeCylinderHeight) ||
+                    !reader.Read(simulation.shapeCircleInnerRadius) ||
+                    !reader.Read(simulation.shapeCircleEmitOnEdge) ||
+                    !reader.Read(simulation.shapeEdgeLength) ||
                     !ReadDistribution(reader, simulation.radialSpeed) ||
                     !ReadAnimated(reader, simulation.position) ||
                     !ReadAnimated(reader, simulation.rotationRadians) ||
@@ -570,6 +738,21 @@ namespace HIKARI::VFX {
                     !reader.Read(emitter.render.ringStartAngleRadians) ||
                     !reader.Read(emitter.render.ringEndAngleRadians)) {
                     return false;
+                }
+
+                uint32_t specialOutputCount = 0u;
+                if (!reader.Read(specialOutputCount) ||
+                    specialOutputCount >
+                        kMaximumVfxProgramSpecialOutputs) {
+                    return false;
+                }
+                emitter.specialOutputs.reserve(specialOutputCount);
+                for (uint32_t outputIndex = 0u;
+                     outputIndex < specialOutputCount;
+                     ++outputIndex) {
+                    VfxSpecialOutputData output{};
+                    if (!ReadSpecialOutput(reader, output)) return false;
+                    emitter.specialOutputs.push_back(std::move(output));
                 }
 
                 uint32_t linkCount = 0u;

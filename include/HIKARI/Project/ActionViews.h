@@ -5,6 +5,7 @@
 
 #include "HIKARI/Project/ActionTypes.h"
 #include "HIKARI/Project/GameProjectSdk.h"
+#include "HIKARI/Project/VfxTypes.h"
 
 namespace HIKARI {
 
@@ -209,6 +210,18 @@ namespace HIKARI {
             const GameProjectWeaponTrailSample& sample) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool TriggerPerfectGuardWave(
             const GameProjectPerfectGuardWaveRequest& request)
+            const noexcept;
+        // Profiled methods use all-new request layouts so older callers keep
+        // the exact legacy ABI.  The profile GUID/output id is resolved by
+        // the engine's compiled HVFX registry.
+        HIKARI_GAME_PROJECT_SDK_API bool SubmitWeaponTrailProfiled(
+            const GameProjectWeaponTrailProfiledRequest& request)
+            const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool TriggerPerfectGuardWaveProfiled(
+            const GameProjectPerfectGuardWaveProfiledRequest& request)
+            const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool CaptureAfterimageProfiled(
+            const GameProjectAfterimageProfiledRequest& request)
             const noexcept;
 
     private:

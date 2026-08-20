@@ -3,8 +3,10 @@
 #include <array>
 #include <cstdint>
 #include <memory>
+#include <string_view>
 #include <vector>
 
+#include "Assets/Vfx/HIKARI_VfxAssetData.h"
 #include "Render3D/HIKARI_Math3D.h"
 #include "Render3D/Vfx/HIKARI_CombatPresentationFrameSource.h"
 #include "Scene/HIKARI_RuntimeObjectHandle.h"
@@ -43,10 +45,17 @@ namespace HIKARI::VFX {
         MATH::Vec3 bladeTipWorld{};
         MATH::Vec3 bodyColor{ 0.08f, 0.52f, 0.92f };
         MATH::Vec3 edgeColor{ 0.72f, 0.96f, 1.0f };
+        float bodyAlpha = 1.0f;
+        float edgeAlpha = 1.0f;
         float lifetimeUnscaledSeconds = 0.14f;
         float opacity = 0.72f;
         float emissiveIntensity = 1.35f;
         float flowStrength = 0.65f;
+        // Typed HVFX weapon-path profiles override these frame-local
+        // renderer controls. Legacy callers retain the neutral defaults.
+        float width = 1.0f;
+        float distortionStrength = 1.0f;
+        float blurScale = 1.0f;
     };
 
     class CombatPresentationService final {
@@ -60,6 +69,19 @@ namespace HIKARI::VFX {
             const CombatWorldEffectRequest& request);
         bool SubmitWeaponTrail(
             const WeaponTrailSampleRequest& request,
+            uint64_t frameIndex) noexcept;
+        bool SubmitWeaponTrail(
+            const WeaponTrailSampleRequest& request,
+            const VfxSpecialOutputData& output,
+            uint64_t frameIndex) noexcept;
+        bool SubmitWeaponTrail(
+            const WeaponTrailSampleRequest& request,
+            const VfxProgram& program,
+            uint64_t frameIndex) noexcept;
+        bool SubmitWeaponTrail(
+            const WeaponTrailSampleRequest& request,
+            const VfxProgram& program,
+            std::string_view outputId,
             uint64_t frameIndex) noexcept;
         void Tick(uint64_t frameIndex, float unscaledDeltaSeconds) noexcept;
         void Reset() noexcept;

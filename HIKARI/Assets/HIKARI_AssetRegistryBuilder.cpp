@@ -577,8 +577,8 @@ namespace HIKARI {
                 if (descriptor->sourcePath.empty()) {
                     HIKARI_LOG_WARN(
                         "[AssetRegistryBuilder][VFX] compiled HVFX artifact "
-                        "is missing: " + record->guid.value);
-                    ok = false;
+                        "is missing; runtime effect skipped until import succeeds: " +
+                        record->guid.value);
                     continue;
                 }
                 descriptor->version = record->meta.importerVersion;
@@ -593,9 +593,9 @@ namespace HIKARI {
                         program,
                         readError)) {
                     HIKARI_LOG_WARN(
-                        "[AssetRegistryBuilder][VFX] compiled HVFX read "
-                        "failed: " + readError);
-                    ok = false;
+                        "[AssetRegistryBuilder][VFX] compiled HVFX read failed; "
+                        "runtime effect skipped until import succeeds: " +
+                        record->guid.value + " (" + readError + ")");
                     continue;
                 }
                 descriptor->program =

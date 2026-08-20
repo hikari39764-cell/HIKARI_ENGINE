@@ -6,6 +6,7 @@
 #include <limits>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "Render3D/Vfx/HIKARI_ParticleRenderInput.h"
@@ -47,8 +48,19 @@ namespace HIKARI::VFX {
         ~VfxPlaybackService();
 
         void SetProgramResolver(VfxProgramResolver resolver);
+        void SetAttachmentResolver(VfxAttachmentResolver resolver);
         void SetReliableRenderDeliveryEnabled(bool enabled) noexcept;
         uint64_t GetPlaybackNamespace() const noexcept;
+
+        // Resolves a typed compiled special output by stable asset GUID and
+        // output id. The returned value is copied so callers never retain a
+        // pointer into an evictable program cache. Empty/mismatched ids fail
+        // closed; legacy numeric presentation APIs do not use this path.
+        bool ResolveSpecialOutput(
+            const AssetGuid& assetGuid,
+            std::string_view outputId,
+            VfxSpecialOutputType expectedType,
+            VfxSpecialOutputData& outOutput) const;
 
         VfxPlayResult PlayDetailed(const VfxPlayRequest& request);
         bool Stop(VfxPlaybackHandle handle);
@@ -110,6 +122,9 @@ namespace HIKARI::VFX {
 
         uint64_t playbackNamespace_ = 0u;
         VfxProgramResolver resolver_{};
+        VfxAttachmentResolver attachmentResolver_{};
+        uint64_t lastUpdateFrame_ = 0u;
+        bool hasUpdatedFrame_ = false;
         std::vector<HandleSlot> handleSlots_{};
         std::vector<uint32_t> freeHandleSlots_{};
         std::vector<Instance> instances_{};

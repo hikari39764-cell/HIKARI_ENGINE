@@ -28,6 +28,11 @@ namespace HIKARI::VFX {
                 IsFinite(value.z) && IsFinite(value.w);
         }
 
+        bool IsNonNegative(const MATH::Vec4& value) noexcept {
+            return value.x >= 0.0f && value.y >= 0.0f &&
+                value.z >= 0.0f && value.w >= 0.0f;
+        }
+
         bool IsOrdered(float minimum, float maximum) noexcept {
             return minimum <= maximum;
         }
@@ -341,10 +346,12 @@ namespace HIKARI::VFX {
             std::vector<VfxDiagnostic>& diagnostics) {
 
             const std::array<std::pair<std::string_view, std::string_view>,
-                11u> modules{
+                12u> modules{
                 std::pair{ std::string_view(emitter.basic.id), "basic module" },
                 std::pair{ std::string_view(emitter.emitterTransform.id),
                     "emitter transform module" },
+                std::pair{ std::string_view(emitter.attachment.id),
+                    "attachment module" },
                 std::pair{ std::string_view(emitter.spawn.id), "spawn module" },
                 std::pair{ std::string_view(emitter.shape.id), "shape module" },
                 std::pair{ std::string_view(emitter.position.id),
@@ -451,6 +458,75 @@ namespace HIKARI::VFX {
                     emitter.emitterTransform.id);
             }
 
+            if (!IsFinite(emitter.startDelay) ||
+                !IsFinite(emitter.activeDuration) ||
+                emitter.startDelay < 0.0f ||
+                emitter.startDelay > 3600.0f ||
+                emitter.activeDuration < 0.0f ||
+                emitter.activeDuration > 3600.0f) {
+                AddError(
+                    diagnostics,
+                    "Vfx.InvalidEmitterActivation",
+                    "emitter startDelay and activeDuration must be within "
+                    "[0, 3600] seconds",
+                    emitter.id);
+            }
+            if (IsFinite(emitter.startDelay) &&
+                IsFinite(emitter.activeDuration) &&
+                (static_cast<double>(emitter.startDelay) >
+                    static_cast<double>(asset.durationSeconds) ||
+                 (emitter.activeDuration > 0.0f &&
+                  static_cast<double>(emitter.startDelay) +
+                    static_cast<double>(emitter.activeDuration) >
+                    static_cast<double>(asset.durationSeconds)))) {
+                AddError(
+                    diagnostics,
+                    "Vfx.EmitterActivationOutsideAsset",
+                    "emitter activation window must fit within asset duration",
+                    emitter.id);
+            }
+
+            if (emitter.attachment.mode != VfxAttachmentMode::World &&
+                emitter.attachment.mode != VfxAttachmentMode::Owner &&
+                emitter.attachment.mode != VfxAttachmentMode::OwnerSocket) {
+                AddError(
+                    diagnostics,
+                    "Vfx.InvalidAttachmentMode",
+                    "emitter attachment mode is invalid",
+                    emitter.attachment.id);
+            }
+            if (emitter.attachment.follow != VfxFollowMode::None &&
+                emitter.attachment.follow != VfxFollowMode::Position &&
+                emitter.attachment.follow != VfxFollowMode::Rotation &&
+                emitter.attachment.follow != VfxFollowMode::Transform) {
+                AddError(
+                    diagnostics,
+                    "Vfx.InvalidFollowMode",
+                    "emitter follow mode is invalid",
+                    emitter.attachment.id);
+            }
+            if (emitter.attachment.mode == VfxAttachmentMode::OwnerSocket &&
+                emitter.attachment.socketName.empty()) {
+                AddError(
+                    diagnostics,
+                    "Vfx.MissingAttachmentSocket",
+                    "OwnerSocket attachment requires a socket name",
+                    emitter.attachment.id);
+            }
+            if (emitter.attachment.socketName.size() > 256u ||
+                !IsFinite(emitter.attachment.offset.position) ||
+                !IsFinite(emitter.attachment.offset.rotationEulerDegrees) ||
+                !IsFinite(emitter.attachment.offset.scale) ||
+                emitter.attachment.offset.scale.x == 0.0f ||
+                emitter.attachment.offset.scale.y == 0.0f ||
+                emitter.attachment.offset.scale.z == 0.0f) {
+                AddError(
+                    diagnostics,
+                    "Vfx.InvalidAttachmentOffset",
+                    "attachment socket and local offset are invalid",
+                    emitter.attachment.id);
+            }
+
             ValidateDistribution(
                 emitter.basic.lifetime,
                 emitter.basic.id,
@@ -483,6 +559,73 @@ namespace HIKARI::VFX {
                     "spawn rate, burst count, or particle capacity is invalid",
                     emitter.spawn.id);
             }
+            if (emitter.spawn.burstTimeline.size() >
+                kMaximumVfxProgramBurstKeys) {
+                AddError(
+                    diagnostics,
+                    "Vfx.BurstTimelineLimit",
+                    "burst timeline exceeds the native VFX key budget",
+                    emitter.spawn.id);
+            }
+            std::unordered_set<std::string> burstIds{};
+            std::unordered_set<float> burstTimes{};
+            if (emitter.spawn.burstTimeline.empty() &&
+                emitter.spawn.burstCount >
+                    emitter.spawn.maximumParticles) {
+                AddError(
+                    diagnostics,
+                    "Vfx.BurstCapacityExceeded",
+                    "burst count exceeds the emitter particle capacity",
+                    emitter.spawn.id);
+            }
+            for (const VfxBurstKeyData& key : emitter.spawn.burstTimeline) {
+                (void)RegisterId(key.id, "burst key", ids, diagnostics);
+                if (!burstIds.emplace(key.id).second) {
+                    AddError(
+                        diagnostics,
+                        "Vfx.DuplicateBurstKeyId",
+                        "burst key stable ID is duplicated",
+                        key.id);
+                }
+                if (!IsFinite(key.time) || key.time < 0.0f ||
+                    key.time > 3600.0f || key.count == 0u) {
+                    AddError(
+                        diagnostics,
+                        "Vfx.InvalidBurstKey",
+                        "burst key time/count is invalid",
+                        key.id);
+                }
+                const double effectiveActiveDuration =
+                    emitter.activeDuration > 0.0f
+                    ? static_cast<double>(emitter.activeDuration)
+                    : (std::max)(
+                        0.0,
+                        static_cast<double>(asset.durationSeconds) -
+                            static_cast<double>(emitter.startDelay));
+                if (IsFinite(key.time) && key.time >= 0.0f &&
+                    static_cast<double>(key.time) >
+                        effectiveActiveDuration) {
+                    AddError(
+                        diagnostics,
+                        "Vfx.BurstOutsideActivation",
+                        "burst key time exceeds the emitter active window",
+                        key.id);
+                }
+                if (!burstTimes.emplace(key.time).second) {
+                    AddError(
+                        diagnostics,
+                        "Vfx.DuplicateBurstTime",
+                        "burst keys may not share the same time",
+                        key.id);
+                }
+                if (key.count > emitter.spawn.maximumParticles) {
+                    AddError(
+                        diagnostics,
+                        "Vfx.BurstCapacityExceeded",
+                        "burst count exceeds the emitter particle capacity",
+                        key.id);
+                }
+            }
             declaredParticleCapacity += emitter.spawn.maximumParticles;
 
             ValidateDistribution(
@@ -493,7 +636,20 @@ namespace HIKARI::VFX {
                 emitter.shape.radius.maximum < 0.0f ||
                 !IsFinite(emitter.shape.coneAngleDegrees) ||
                 emitter.shape.coneAngleDegrees < 0.0f ||
-                emitter.shape.coneAngleDegrees > 180.0f) {
+                emitter.shape.coneAngleDegrees > 180.0f ||
+                !IsFinite(emitter.shape.boxHalfExtents) ||
+                emitter.shape.boxHalfExtents.x < 0.0f ||
+                emitter.shape.boxHalfExtents.y < 0.0f ||
+                emitter.shape.boxHalfExtents.z < 0.0f ||
+                !IsFinite(emitter.shape.cylinderHeight) ||
+                emitter.shape.cylinderHeight < 0.0f ||
+                !IsFinite(emitter.shape.circleInnerRadius) ||
+                emitter.shape.circleInnerRadius < 0.0f ||
+                !IsFinite(emitter.shape.edgeLength) ||
+                emitter.shape.edgeLength < 0.0f ||
+                (emitter.shape.type == VfxShapeType::Circle &&
+                 emitter.shape.circleInnerRadius >
+                    emitter.shape.radius.minimum)) {
                 AddError(
                     diagnostics,
                     "Vfx.InvalidShapeModule",
@@ -612,6 +768,130 @@ namespace HIKARI::VFX {
                     "ribbon/ring segment count exceeds the mesh shader "
                     "contract (ribbon 2..64, ring 3..64)",
                     emitter.renderShape.id);
+            }
+
+            if (emitter.specialOutputs.size() >
+                kMaximumVfxProgramSpecialOutputs) {
+                AddError(
+                    diagnostics,
+                    "Vfx.SpecialOutputLimit",
+                    "special output count exceeds the native VFX budget",
+                    emitter.id);
+            }
+            std::unordered_set<std::string> specialOutputIds{};
+            for (const VfxSpecialOutputData& output :
+                 emitter.specialOutputs) {
+                (void)RegisterId(
+                    output.id, "special output", ids, diagnostics);
+                if (!specialOutputIds.emplace(output.id).second) {
+                    AddError(
+                        diagnostics,
+                        "Vfx.DuplicateSpecialOutputId",
+                        "special output stable ID is duplicated",
+                        output.id);
+                }
+                if (output.type !=
+                        VfxSpecialOutputType::WeaponPathDistortion &&
+                    output.type != VfxSpecialOutputType::ScreenImpulse &&
+                    output.type != VfxSpecialOutputType::SkinnedAfterimage) {
+                    AddError(
+                        diagnostics,
+                        "Vfx.InvalidSpecialOutputType",
+                        "special output type is invalid",
+                        output.id);
+                }
+                const auto& weapon = output.weaponPathDistortion;
+                const auto& screen = output.screenImpulse;
+                const auto& afterimage = output.skinnedAfterimage;
+                if ((output.type ==
+                        VfxSpecialOutputType::WeaponPathDistortion &&
+                    (!IsFinite(weapon.distortion) ||
+                    !IsFinite(weapon.blur) || !IsFinite(weapon.opacity) ||
+                    !IsFinite(weapon.emissive) || !IsFinite(weapon.flow) ||
+                    !IsFinite(weapon.width) ||
+                    !IsFinite(weapon.lifetimeSeconds) ||
+                    !IsFinite(weapon.bodyColor) ||
+                    !IsFinite(weapon.edgeColor) ||
+                    !IsNonNegative(weapon.bodyColor) ||
+                    !IsNonNegative(weapon.edgeColor) ||
+                    weapon.distortion < kVfxWeaponDistortionMin ||
+                    weapon.distortion > kVfxWeaponDistortionMax ||
+                    weapon.blur < kVfxWeaponBlurMin ||
+                    weapon.blur > kVfxWeaponBlurMax ||
+                    weapon.opacity < kVfxWeaponOpacityMin ||
+                    weapon.opacity > kVfxWeaponOpacityMax ||
+                    weapon.emissive < kVfxWeaponEmissiveMin ||
+                    weapon.emissive > kVfxWeaponEmissiveMax ||
+                    weapon.flow < kVfxWeaponFlowMin ||
+                    weapon.flow > kVfxWeaponFlowMax ||
+                    weapon.width < kVfxWeaponWidthMin ||
+                    weapon.width > kVfxWeaponWidthMax ||
+                    weapon.lifetimeSeconds < kVfxWeaponLifetimeMin ||
+                    weapon.lifetimeSeconds > kVfxWeaponLifetimeMax)) ||
+                    (output.type == VfxSpecialOutputType::ScreenImpulse &&
+                    (!IsFinite(screen.durationSeconds) ||
+                    !IsFinite(screen.maxRadius) ||
+                    !IsFinite(screen.ringThickness) ||
+                    !IsFinite(screen.distortion) ||
+                    !IsFinite(screen.chromaticAberration) ||
+                    !IsFinite(screen.flash) || !IsFinite(screen.intensity) ||
+                    !IsFinite(screen.color) ||
+                    !IsNonNegative(screen.color) ||
+                    !IsFinite(screen.waveFrequency) ||
+                    !IsFinite(screen.waveAmplitude) ||
+                    !IsFinite(screen.waveDamping) ||
+                    screen.durationSeconds < kVfxScreenDurationMin ||
+                    screen.durationSeconds > kVfxScreenDurationMax ||
+                    screen.maxRadius < kVfxScreenRadiusMin ||
+                    screen.maxRadius > kVfxScreenRadiusMax ||
+                    screen.ringThickness < kVfxScreenRingThicknessMin ||
+                    screen.ringThickness > kVfxScreenRingThicknessMax ||
+                    screen.distortion < kVfxScreenDistortionMin ||
+                    screen.distortion > kVfxScreenDistortionMax ||
+                    screen.chromaticAberration < kVfxScreenChromaticMin ||
+                    screen.chromaticAberration > kVfxScreenChromaticMax ||
+                    screen.flash < kVfxScreenFlashMin ||
+                    screen.flash > kVfxScreenFlashMax ||
+                    screen.intensity < kVfxScreenIntensityMin ||
+                    screen.intensity > kVfxScreenIntensityMax ||
+                    screen.waveFrequency < kVfxScreenWaveFrequencyMin ||
+                    screen.waveFrequency > kVfxScreenWaveFrequencyMax ||
+                    screen.waveAmplitude < kVfxScreenWaveAmplitudeMin ||
+                    screen.waveAmplitude > kVfxScreenWaveAmplitudeMax ||
+                    screen.waveDamping < kVfxScreenWaveDampingMin ||
+                    screen.waveDamping > kVfxScreenWaveDampingMax ||
+                    screen.waveCount < kVfxScreenImpulseWaveCountMin ||
+                    screen.waveCount > kVfxScreenImpulseWaveCountMax)) ||
+                    (output.type ==
+                        VfxSpecialOutputType::SkinnedAfterimage &&
+                    (!IsFinite(afterimage.lifetimeSeconds) ||
+                    !IsFinite(afterimage.opacity) ||
+                    !IsFinite(afterimage.fresnel) ||
+                    !IsFinite(afterimage.dissolve) ||
+                    !IsFinite(afterimage.shellOffset) ||
+                    !IsFinite(afterimage.color) ||
+                    !IsNonNegative(afterimage.color) ||
+                    !IsFinite(afterimage.intensity) ||
+                    afterimage.lifetimeSeconds < kVfxAfterimageLifetimeMin ||
+                    afterimage.lifetimeSeconds > kVfxAfterimageLifetimeMax ||
+                    afterimage.opacity < kVfxAfterimageOpacityMin ||
+                    afterimage.opacity > kVfxAfterimageOpacityMax ||
+                    afterimage.fresnel < kVfxAfterimageFresnelMin ||
+                    afterimage.fresnel > kVfxAfterimageFresnelMax ||
+                    afterimage.dissolve < kVfxAfterimageDissolveMin ||
+                    afterimage.dissolve > kVfxAfterimageDissolveMax ||
+                    afterimage.shellOffset < kVfxAfterimageShellOffsetMin ||
+                    afterimage.shellOffset > kVfxAfterimageShellOffsetMax ||
+                    afterimage.intensity < kVfxAfterimageIntensityMin ||
+                    afterimage.intensity > kVfxAfterimageIntensityMax ||
+                    afterimage.sampleCount < kVfxAfterimageSampleCountMin ||
+                    afterimage.sampleCount > kVfxAfterimageSampleCountMax))) {
+                    AddError(
+                        diagnostics,
+                        "Vfx.InvalidSpecialOutputProfile",
+                        "special output profile contains invalid values",
+                        output.id);
+                }
             }
 
             std::unordered_set<std::string> inputLinkTargets{};

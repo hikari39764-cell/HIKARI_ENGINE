@@ -1,10 +1,12 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "Assets/HIKARI_AssetGuid.h"
@@ -33,6 +35,15 @@ namespace HIKARI::VFX {
         MATH::Quat rotation = MATH::Quat::Identity();
         MATH::Vec3 scale{ 1.0f, 1.0f, 1.0f };
     };
+
+    // Scene-owned attachment lookup.  Runtime VFX can follow an animation
+    // socket without teaching Render3D about GameObject, model, or pose
+    // ownership.  The callback is installed by the world/system owner and
+    // is never serialized into a playback request or a render frame source.
+    using VfxAttachmentResolver = std::function<bool(
+        RuntimeObjectHandle,
+        std::string_view,
+        VfxWorldTransform&)>;
 
     struct VfxParameterOverride {
         std::string inputId{};

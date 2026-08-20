@@ -38,7 +38,9 @@ namespace HIKARI::EDITOR {
                 kind == VfxWorkspaceSelectionKind::Bindings ||
                 kind == VfxWorkspaceSelectionKind::Link ||
                 kind == VfxWorkspaceSelectionKind::CurveKey ||
-                kind == VfxWorkspaceSelectionKind::ColorStop;
+                kind == VfxWorkspaceSelectionKind::ColorStop ||
+                kind == VfxWorkspaceSelectionKind::BurstKey ||
+                kind == VfxWorkspaceSelectionKind::SpecialOutput;
         }
 
         std::string LinkLabel(
@@ -88,15 +90,13 @@ namespace HIKARI::EDITOR {
                     document_.GetAssetGuid() == record->guid;
                 if (ImGui::Selectable(
                         GetAssetRecordDisplayName(*record).c_str(),
-                        selected,
-                        ImGuiSelectableFlags_AllowDoubleClick) &&
-                    ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+                        selected)) {
                     (void)RequestOpenAsset(
                         database, record->guid, statusMessage_);
                 }
                 if (ImGui::IsItemHovered()) {
                     ImGui::SetTooltip(
-                        "%s\nDouble-click to open",
+                        "%s\nClick to open",
                         record->guid.value.c_str());
                 }
                 ImGui::PopID();
@@ -376,6 +376,70 @@ namespace HIKARI::EDITOR {
                                     emitter->id,
                                     link.target.moduleId,
                                     link.target.propertyId,
+                                });
+                            }
+                        }
+                        ImGui::TreePop();
+                    }
+                }
+                if (!emitter->spawn.burstTimeline.empty()) {
+                    const std::string burstLabel = "Burst Timeline (" +
+                        std::to_string(emitter->spawn.burstTimeline.size()) +
+                        ")";
+                    const bool burstOpen = ImGui::TreeNodeEx(
+                        "BurstTimeline",
+                        ImGuiTreeNodeFlags_SpanAvailWidth,
+                        "%s",
+                        burstLabel.c_str());
+                    if (ImGui::IsItemClicked()) {
+                        Select({ VfxWorkspaceSelectionKind::Emitter,
+                            emitter->id, emitter->id });
+                    }
+                    if (burstOpen) {
+                        for (const VFX::VfxBurstKeyData& key :
+                             emitter->spawn.burstTimeline) {
+                            const std::string label = key.id + "  " +
+                                std::to_string(key.time) + "s x" +
+                                std::to_string(key.count);
+                            if (ImGui::Selectable(
+                                    label.c_str(),
+                                    selection_.kind ==
+                                        VfxWorkspaceSelectionKind::BurstKey &&
+                                    selection_.targetId == key.id)) {
+                                Select({ VfxWorkspaceSelectionKind::BurstKey,
+                                    key.id, emitter->id });
+                            }
+                        }
+                        ImGui::TreePop();
+                    }
+                }
+                if (!emitter->specialOutputs.empty()) {
+                    const std::string outputLabel = "Special Outputs (" +
+                        std::to_string(emitter->specialOutputs.size()) +
+                        ")";
+                    const bool outputOpen = ImGui::TreeNodeEx(
+                        "SpecialOutputs",
+                        ImGuiTreeNodeFlags_SpanAvailWidth,
+                        "%s",
+                        outputLabel.c_str());
+                    if (ImGui::IsItemClicked()) {
+                        Select({ VfxWorkspaceSelectionKind::Emitter,
+                            emitter->id, emitter->id });
+                    }
+                    if (outputOpen) {
+                        for (const VFX::VfxSpecialOutputData& output :
+                             emitter->specialOutputs) {
+                            const std::string label = output.id + "  [" +
+                                std::string(VFX::ToString(output.type)) + "]";
+                            if (ImGui::Selectable(
+                                    label.c_str(),
+                                    selection_.kind ==
+                                        VfxWorkspaceSelectionKind::SpecialOutput &&
+                                    selection_.targetId == output.id)) {
+                                Select({
+                                    VfxWorkspaceSelectionKind::SpecialOutput,
+                                    output.id,
+                                    emitter->id,
                                 });
                             }
                         }

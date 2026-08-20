@@ -7,6 +7,7 @@
 
 #include "HIKARI/Project/GameProjectSdk.h"
 #include "HIKARI/Project/ValueTypes.h"
+#include "HIKARI/Project/VfxTypes.h"
 
 namespace HIKARI {
 
@@ -28,6 +29,15 @@ namespace HIKARI {
         HIKARI_GAME_PROJECT_SDK_API GameProjectFloat3 ReadFloat3(
             std::string_view name,
             GameProjectFloat3 fallback = {}) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool ReadVfxAssetReference(
+            std::string_view name,
+            GameProjectVfxAssetReference& outReference) const noexcept;
+
+        bool ReadAssetReference(
+            std::string_view name,
+            GameProjectVfxAssetReference& outReference) const noexcept {
+            return ReadVfxAssetReference(name, outReference);
+        }
 
         std::string ReadString(
             std::string_view name,
@@ -82,6 +92,15 @@ namespace HIKARI {
         HIKARI_GAME_PROJECT_SDK_API void WriteFloat3(
             std::string_view name,
             GameProjectFloat3 value);
+        HIKARI_GAME_PROJECT_SDK_API void WriteVfxAssetReference(
+            std::string_view name,
+            const GameProjectVfxAssetReference& reference);
+
+        void WriteAssetReference(
+            std::string_view name,
+            const GameProjectVfxAssetReference& reference) {
+            WriteVfxAssetReference(name, reference);
+        }
 
     private:
         friend struct GameProjectSdkAccess;

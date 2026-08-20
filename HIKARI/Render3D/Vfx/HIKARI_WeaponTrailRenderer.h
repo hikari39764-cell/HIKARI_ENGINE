@@ -80,8 +80,8 @@ namespace HIKARI::RENDER3D::COMBAT_VFX {
                 distortionMaskView_,
                 distortionMaskSrvCpu_,
                 distortionMaskFrame_,
-                1.0f,
-                1.0f,
+                distortionStrengthScale_,
+                blurScale_,
                 distortionMaskView_.valid };
         }
 
@@ -140,6 +140,8 @@ namespace HIKARI::RENDER3D::COMBAT_VFX {
         uint32_t distortionMaskWidth_ = 0u;
         uint32_t distortionMaskHeight_ = 0u;
         uint64_t distortionMaskFrame_ = 0u;
+        float distortionStrengthScale_ = 1.0f;
+        float blurScale_ = 1.0f;
         WeaponTrailRendererDebugState debugState_{};
         WeaponTrailRendererFailure lastLoggedFailure_ =
             WeaponTrailRendererFailure::None;

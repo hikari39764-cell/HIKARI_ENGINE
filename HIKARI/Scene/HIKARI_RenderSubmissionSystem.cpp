@@ -21,6 +21,7 @@
 #include "Scene/Vfx/HIKARI_ActionPostReactionService.h"
 #include "Scene/Vfx/HIKARI_CombatAfterimageService.h"
 #include "Scene/Vfx/HIKARI_CombatPresentationService.h"
+#include "Scene/Vfx/HIKARI_VfxPlaybackService.h"
 #include <Vfx/Common/HIKARI_FxTypes.h>
 
 #include <utility>
@@ -57,6 +58,16 @@ namespace HIKARI {
             World& world,
             const FrameContext& frame) noexcept {
             try {
+                // Playback is a world-owned service, not a component-owned
+                // slot system. Tick it here so public VfxView users still
+                // advance/render Owner or World effects without a
+                // VfxPlayerComponent. VfxPlayerSystem may also call Update
+                // earlier in this frame; the service de-duplicates the frame
+                // token and preserves one deterministic step.
+                if (auto* playback = world.Services().Find<
+                        VFX::VfxPlaybackService>()) {
+                    playback->Update(frame.frameIndex, frame.gameDt);
+                }
                 if (auto* combat = world.Services().Find<
                         VFX::CombatPresentationService>()) {
                     combat->Tick(frame.frameIndex, frame.unscaledDt);

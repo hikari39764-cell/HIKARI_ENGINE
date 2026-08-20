@@ -221,6 +221,10 @@ namespace HIKARI::EDITOR {
                 ? path
                 : path.substr(separator + 1u);
             if (leaf == "mode") {
+                if (parent.contains("socketName") &&
+                    parent.contains("offset")) {
+                    return { "World", "Owner", "OwnerSocket" };
+                }
                 if (parent.contains("pva")) {
                     return { "Fixed", "Pva", "Easing", "Curve" };
                 }
@@ -232,6 +236,10 @@ namespace HIKARI::EDITOR {
                     parent.contains("maximum")) {
                     return { "Constant", "RandomRange" };
                 }
+            }
+            if (leaf == "follow" && parent.contains("socketName") &&
+                parent.contains("offset")) {
+                return { "None", "Position", "Rotation", "Transform" };
             }
             if (leaf == "interpolation") {
                 return { "Linear", "Smooth", "Step" };
@@ -256,6 +264,15 @@ namespace HIKARI::EDITOR {
             }
             if (leaf == "type" && value.is_string()) {
                 const std::string& current = value.get_ref<const std::string&>();
+                if (parent.contains("weaponPathDistortion") &&
+                    parent.contains("screenImpulse") &&
+                    parent.contains("skinnedAfterimage")) {
+                    return {
+                        "WeaponPathDistortion",
+                        "ScreenImpulse",
+                        "SkinnedAfterimage",
+                    };
+                }
                 if (current == "Point" || current == "Sphere" ||
                     current == "Cone" || current == "Box" ||
                     current == "Cylinder" || current == "Circle" ||

@@ -40,13 +40,41 @@ namespace HIKARI::EDITOR {
                 modules[std::string(VFX::ToString(kind))] =
                     GetVfxModuleId(emitter, kind);
             }
+            nlohmann::json bursts = nlohmann::json::array();
+            for (const VFX::VfxBurstKeyData& key :
+                 emitter.spawn.burstTimeline) {
+                bursts.push_back({
+                    { "id", key.id },
+                    { "time", key.time },
+                    { "count", key.count },
+                });
+            }
+            nlohmann::json outputs = nlohmann::json::array();
+            for (const VFX::VfxSpecialOutputData& output :
+                 emitter.specialOutputs) {
+                outputs.push_back({
+                    { "id", output.id },
+                    { "type", VFX::ToString(output.type) },
+                    { "enabled", output.enabled },
+                });
+            }
             return {
                 { "id", emitter.id },
                 { "name", emitter.name },
                 { "parentEmitterId", emitter.parentEmitterId },
                 { "order", emitter.order },
                 { "enabled", emitter.basic.enabled },
+                { "startDelay", emitter.startDelay },
+                { "activeDuration", emitter.activeDuration },
+                { "attachment", {
+                    { "id", emitter.attachment.id },
+                    { "mode", VFX::ToString(emitter.attachment.mode) },
+                    { "follow", VFX::ToString(emitter.attachment.follow) },
+                    { "socketName", emitter.attachment.socketName },
+                } },
                 { "modules", std::move(modules) },
+                { "burstTimeline", std::move(bursts) },
+                { "specialOutputs", std::move(outputs) },
                 { "links", std::move(links) },
             };
         }
@@ -140,6 +168,23 @@ namespace HIKARI::EDITOR {
                     owner != nullptr ? owner->id : "";
                 description["propertyAddress"] =
                     PropertyAddress(link->target);
+                return true;
+            }
+            if (const VFX::VfxBurstKeyData* key =
+                    controller.FindBurstKey(targetId, &owner)) {
+                description["kind"] = "burstKey";
+                description["targetId"] = key->id;
+                description["emitterId"] =
+                    owner != nullptr ? owner->id : "";
+                return true;
+            }
+            if (const VFX::VfxSpecialOutputData* output =
+                    controller.FindSpecialOutput(targetId, &owner)) {
+                description["kind"] = "specialOutput";
+                description["targetId"] = output->id;
+                description["emitterId"] =
+                    owner != nullptr ? owner->id : "";
+                description["type"] = VFX::ToString(output->type);
                 return true;
             }
             VfxCurveAddress curveAddress{};

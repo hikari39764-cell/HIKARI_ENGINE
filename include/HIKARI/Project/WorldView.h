@@ -8,6 +8,7 @@
 #include "HIKARI/Project/ActionViews.h"
 #include "HIKARI/Project/GameProjectSdk.h"
 #include "HIKARI/Project/ValueTypes.h"
+#include "HIKARI/Project/VfxView.h"
 
 namespace HIKARI {
 
@@ -86,6 +87,8 @@ namespace HIKARI {
             GetTimeDilation() const noexcept;
         HIKARI_GAME_PROJECT_SDK_API PresentationVfxView
             GetPresentationVfx() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API VfxView
+            GetVfx() const noexcept;
 
         template<class Component, class Visitor>
         bool ForEachComponent(

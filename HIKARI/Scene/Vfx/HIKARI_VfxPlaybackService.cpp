@@ -1,4 +1,6 @@
 #include "Scene/Vfx/HIKARI_VfxPlaybackService.h"
+#include "Scene/Vfx/HIKARI_VfxPlaybackSchedule.h"
+#include "Scene/Vfx/HIKARI_VfxSpecialOutputBridge.h"
 
 #include <algorithm>
 #include <atomic>
@@ -76,73 +78,6 @@ namespace HIKARI::VFX {
             };
         }
 
-        uint32_t AccumulateSpawnCount(
-            float& accumulator,
-            float spawnRatePerSecond,
-            float multiplier,
-            float deltaSeconds,
-            uint32_t capacity) noexcept {
-
-            if (!std::isfinite(accumulator) || accumulator < 0.0f) {
-                accumulator = 0.0f;
-            }
-            if (capacity == 0u || !std::isfinite(spawnRatePerSecond) ||
-                !std::isfinite(multiplier) ||
-                !std::isfinite(deltaSeconds) ||
-                spawnRatePerSecond <= 0.0f || multiplier <= 0.0f ||
-                deltaSeconds <= 0.0f) {
-                return 0u;
-            }
-
-            const double total = static_cast<double>(accumulator) +
-                static_cast<double>(spawnRatePerSecond) *
-                static_cast<double>(multiplier) *
-                static_cast<double>(deltaSeconds);
-            if (!std::isfinite(total) || total < 0.0) {
-                accumulator = 0.0f;
-                return 0u;
-            }
-            double integral = 0.0;
-            accumulator = static_cast<float>(std::modf(total, &integral));
-            return integral >= static_cast<double>(capacity)
-                ? capacity
-                : static_cast<uint32_t>(integral);
-        }
-
-        VfxWorldTransform Compose(
-            const VfxWorldTransform& parent,
-            const VfxTransformData& local) {
-
-            constexpr float kDegreesToRadians =
-                3.14159265358979323846f / 180.0f;
-            const MATH::Quat localRotation = MATH::Quat::FromEulerXYZ(
-                local.rotationEulerDegrees.x * kDegreesToRadians,
-                local.rotationEulerDegrees.y * kDegreesToRadians,
-                local.rotationEulerDegrees.z * kDegreesToRadians);
-            const MATH::Mat4 matrix = MATH::Mat4::TRS(
-                parent.position,
-                parent.rotation,
-                parent.scale) * MATH::Mat4::TRS(
-                    local.position,
-                    localRotation,
-                    local.scale);
-            VfxWorldTransform result{};
-            if (!MATH::DecomposeTRS(
-                    matrix,
-                    result.position,
-                    result.rotation,
-                    result.scale)) {
-                result.position = parent.position + local.position;
-                result.rotation = parent.rotation;
-                result.scale = {
-                    parent.scale.x * local.scale.x,
-                    parent.scale.y * local.scale.y,
-                    parent.scale.z * local.scale.z,
-                };
-            }
-            return result;
-        }
-
         void ApplyRuntimeLink(
             ParticleEmitterRuntimeOverrides& overrides,
             const VfxProgramInputLink& link,
@@ -216,6 +151,21 @@ namespace HIKARI::VFX {
                 overrides.colorMultiplier,
                 1.0f);
         }
+
+        bool RequiresLiveOwnerAttachment(
+            const VfxProgram& program) noexcept {
+
+            return std::any_of(
+                program.emitters.begin(),
+                program.emitters.end(),
+                [](const VfxProgramEmitter& emitter) {
+                    return emitter.attachment.mode ==
+                            VfxAttachmentMode::Owner ||
+                        emitter.attachment.mode ==
+                            VfxAttachmentMode::OwnerSocket;
+                });
+        }
+
     }
 
     struct VfxPlaybackService::HandleSlot {
@@ -223,10 +173,9 @@ namespace HIKARI::VFX {
         uint32_t generation = 1u;
     };
 
-    struct VfxPlaybackService::EmitterState {
-        float spawnAccumulator = 0.0f;
-        bool burstPending = true;
-        bool resetSimulation = true;
+    struct VfxPlaybackService::EmitterState
+        : PLAYBACK::EmitterScheduleState {
+        EmitterState() = default;
     };
 
     struct VfxPlaybackService::Instance {
@@ -261,6 +210,12 @@ namespace HIKARI::VFX {
         resolver_ = std::move(resolver);
     }
 
+    void VfxPlaybackService::SetAttachmentResolver(
+        VfxAttachmentResolver resolver) {
+
+        attachmentResolver_ = std::move(resolver);
+    }
+
     void VfxPlaybackService::SetReliableRenderDeliveryEnabled(
         bool enabled) noexcept {
 
@@ -273,6 +228,33 @@ namespace HIKARI::VFX {
 
     uint64_t VfxPlaybackService::GetPlaybackNamespace() const noexcept {
         return playbackNamespace_;
+    }
+
+    bool VfxPlaybackService::ResolveSpecialOutput(
+        const AssetGuid& assetGuid,
+        std::string_view outputId,
+        VfxSpecialOutputType expectedType,
+        VfxSpecialOutputData& outOutput) const {
+
+        outOutput = {};
+        if (!assetGuid.IsValid() || outputId.empty() || !resolver_) {
+            return false;
+        }
+        std::string error{};
+        const std::shared_ptr<const VfxProgram> program =
+            resolver_(assetGuid, error);
+        if (!program) {
+            return false;
+        }
+        const VfxSpecialOutputData* output = FindVfxSpecialOutput(
+            *program,
+            outputId,
+            expectedType);
+        if (output == nullptr || !PLAYBACK::HasUniqueSpecialOutputIds(*program)) {
+            return false;
+        }
+        outOutput = *output;
+        return true;
     }
 
     VfxPlayResult VfxPlaybackService::PlayDetailed(
@@ -294,6 +276,18 @@ namespace HIKARI::VFX {
                 return result;
             }
         }
+        // Keep the runtime contract explicit for cooked/direct programs. The
+        // asset validator also rejects this shape, but PlayDetailed must
+        // report the stable output-id violation before generic validation so
+        // callers can diagnose a bad cooked table deterministically.
+        if (program && !PLAYBACK::HasUniqueSpecialOutputIds(*program)) {
+            result.diagnostics.push_back({
+                VfxDiagnosticSeverity::Error,
+                "Vfx.DuplicateSpecialOutputId",
+                "VFX special output ids must be globally unique",
+            });
+            return result;
+        }
         std::string validationError{};
         if (!program ||
             !ValidateVfxProgram(*program, validationError)) {
@@ -303,6 +297,14 @@ namespace HIKARI::VFX {
                 validationError.empty()
                     ? "VFX play request has no compiled program"
                     : std::move(validationError),
+            });
+            return result;
+        }
+        if (!PLAYBACK::HasOrderedBurstTimeline(*program)) {
+            result.diagnostics.push_back({
+                VfxDiagnosticSeverity::Error,
+                "Vfx.InvalidBurstTimelineOrder",
+                "VFX burst timeline must be sorted by ascending local time",
             });
             return result;
         }
@@ -355,10 +357,17 @@ namespace HIKARI::VFX {
             instance.program->emitters.size());
         instance.transformStack.reserve(
             instance.program->emitters.size());
-        (void)ApplyParameters(
-            instance,
-            request.parameters,
-            &result.diagnostics);
+        if (!ApplyParameters(
+                instance,
+                request.parameters,
+                &result.diagnostics)) {
+            result.diagnostics.push_back({
+                VfxDiagnosticSeverity::Error,
+                "Vfx.InvalidParameterOverrides",
+                "VFX play request contains an unknown or type-mismatched input",
+            });
+            return result;
+        }
 
         const size_t instanceIndex = instances_.size();
         instance.handle = AllocateHandle(instanceIndex);
@@ -604,6 +613,11 @@ namespace HIKARI::VFX {
         uint64_t frameIndex,
         float deltaSeconds) {
 
+        if (hasUpdatedFrame_ && lastUpdateFrame_ == frameIndex) {
+            return;
+        }
+        hasUpdatedFrame_ = true;
+        lastUpdateFrame_ = frameIndex;
         deltaSeconds = std::isfinite(deltaSeconds)
             ? std::clamp(deltaSeconds, 0.0f, 0.25f)
             : 0.0f;
@@ -627,6 +641,22 @@ namespace HIKARI::VFX {
 
         for (size_t index = instances_.size(); index-- > 0u;) {
             const Instance& instance = instances_[index];
+            if (attachmentResolver_ && instance.ownerObject.IsValid() &&
+                RequiresLiveOwnerAttachment(*instance.program)) {
+                VfxWorldTransform ownerTransform{};
+                if (!attachmentResolver_(
+                        instance.ownerObject,
+                        {},
+                        ownerTransform)) {
+                    // An Owner/OwnerSocket effect may tolerate a transient
+                    // pose or socket miss, but the empty-socket lookup is the
+                    // authoritative owner-liveness probe. Retire the complete
+                    // instance before its last captured transform can become
+                    // a permanent looping ghost.
+                    RetireInstanceAt(index);
+                    continue;
+                }
+            }
             if (!instance.loop && instance.elapsedSeconds >=
                 instance.program->durationSeconds +
                 instance.program->maximumParticleLifetimeSeconds) {
@@ -834,6 +864,12 @@ namespace HIKARI::VFX {
         const float spawnDelta = instance.loop
             ? deltaSeconds
             : (std::min)(deltaSeconds, remaining);
+        const float duration = (std::max)(0.0f, program.durationSeconds);
+        const float submittedAge = instance.loop && duration > 0.0f
+            ? std::fmod(instance.elapsedSeconds + spawnDelta, duration)
+            : (std::min)(
+                duration,
+                instance.elapsedSeconds + spawnDelta);
 
         std::fill(
             instance.transformResolved.begin(),
@@ -858,9 +894,13 @@ namespace HIKARI::VFX {
                 const uint32_t child =
                     instance.transformStack.back();
                 instance.transformStack.pop_back();
-                parent = Compose(
+                parent = PLAYBACK::ResolveEmitterTransform(
+                    instance.transform,
+                    instance.ownerObject,
+                    program.emitters[child],
                     parent,
-                    program.emitters[child].transform);
+                    instance.emitterStates[child],
+                    attachmentResolver_);
                 instance.emitterTransforms[child] = parent;
                 instance.transformResolved[child] = 1u;
             }
@@ -887,29 +927,15 @@ namespace HIKARI::VFX {
 
             uint32_t spawnCount = 0u;
             if (overrides.enabled != 0u) {
-                spawnCount = AccumulateSpawnCount(
-                    state.spawnAccumulator,
-                    emitter.spawnRatePerSecond,
-                    overrides.spawnRateMultiplier,
+                spawnCount = PLAYBACK::ComputeEmitterSpawnCount(
+                    state,
+                    program,
+                    emitter,
+                    instance.elapsedSeconds,
                     spawnDelta,
-                    emitter.simulation.capacity);
-                if (state.burstPending &&
-                    (instance.loop || remaining > 0.0f)) {
-                    const uint32_t available =
-                        emitter.simulation.capacity - spawnCount;
-                    spawnCount += (std::min)(
-                        emitter.burstCount,
-                        available);
-                    if (emitter.burstCount == 0u && spawnCount == 0u &&
-                        emitter.spawnRatePerSecond > 0.0f &&
-                        overrides.spawnRateMultiplier > 0.0f &&
-                        available > 0u) {
-                        // Match authoring-tool expectations: a continuous
-                        // emitter presents one particle at time zero instead
-                        // of an initially empty rate interval.
-                        spawnCount = 1u;
-                    }
-                }
+                    overrides.spawnRateMultiplier,
+                    instance.loop,
+                    wrapLoop);
             }
 
             ParticleEmitterSubmission submission{};
@@ -926,7 +952,10 @@ namespace HIKARI::VFX {
             submission.randomSeed = instance.randomSeed +
                 emitterIndex * 0x9e3779b9u;
             submission.deltaSeconds = deltaSeconds;
-            submission.emitterAgeSeconds = instance.elapsedSeconds;
+            // Age is the local post-step time. In particular, a single host
+            // delta can cross several short loop periods; never publish a
+            // pre-wrap value greater than the authored program duration.
+            submission.emitterAgeSeconds = submittedAge;
             const VfxWorldTransform& transform =
                 instance.emitterTransforms[emitterIndex];
             submission.worldPosition = transform.position;
@@ -936,18 +965,27 @@ namespace HIKARI::VFX {
             submission.simulation = emitter.simulation;
             submission.render = emitter.render;
             renderInput_.emitters.push_back(std::move(submission));
-            state.burstPending = false;
             state.resetSimulation = false;
         }
 
         instance.elapsedSeconds += deltaSeconds;
         if (wrapLoop && instance.loop && program.durationSeconds > 0.0f &&
             instance.elapsedSeconds >= program.durationSeconds) {
-            instance.elapsedSeconds = std::fmod(
+            const float wrapped = std::fmod(
                 instance.elapsedSeconds,
                 program.durationSeconds);
-            for (EmitterState& state : instance.emitterStates) {
-                state.burstPending = true;
+            instance.elapsedSeconds = wrapped;
+            // ComputeEmitterSpawnCount already advanced state through every
+            // crossed loop. Only an exact boundary starts a fresh schedule;
+            // a non-zero remainder must keep its burst cursor/accumulator.
+            if (wrapped <= 1.0e-6f ||
+                program.durationSeconds - wrapped <= 1.0e-6f) {
+                instance.elapsedSeconds = 0.0f;
+                for (EmitterState& state : instance.emitterStates) {
+                    state.burstPending = true;
+                    state.nextBurstIndex = 0u;
+                    state.resetSimulation = true;
+                }
             }
         }
         return renderInput_.emitters.size() - firstSubmission;
@@ -981,11 +1019,26 @@ namespace HIKARI::VFX {
                 }
                 continue;
             }
+        }
+        if (!allApplied) {
+            return false;
+        }
+
+        // Validate the complete batch before mutating any input. Public
+        // VfxView::Update is transactional: a rejected parameter must not
+        // leave the instance partially updated.
+        for (const VfxParameterOverride& parameter : parameters) {
+            const auto input = std::find_if(
+                instance.program->inputs.begin(),
+                instance.program->inputs.end(),
+                [&parameter](const VfxProgramInput& candidate) {
+                    return candidate.id == parameter.inputId;
+                });
             const size_t index = static_cast<size_t>(
                 input - instance.program->inputs.begin());
             instance.inputValues[index] = parameter.value;
         }
-        return allApplied;
+        return true;
     }
 
 } // namespace HIKARI::VFX

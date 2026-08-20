@@ -2,8 +2,10 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string_view>
 #include <vector>
 
+#include "Assets/Vfx/HIKARI_VfxAssetData.h"
 #include "Render3D/Vfx/HIKARI_CombatAfterimageFrameSource.h"
 #include "Scene/HIKARI_RuntimeObjectHandle.h"
 
@@ -12,6 +14,8 @@ namespace HIKARI {
 }
 
 namespace HIKARI::VFX {
+
+    struct VfxProgram;
 
     // Private presentation request.  Gameplay supplies only an owner and a
     // deduplication identity; the service resolves the current model, pose,
@@ -23,6 +27,7 @@ namespace HIKARI::VFX {
         uint32_t randomSeed = 0u;
         uint64_t frameIndex = 0u;
 
+        bool silhouette = true;
         float intensity = 1.0f;
         float uniformScale = 1.0f;
         uint32_t silhouetteCount = 4u;
@@ -49,6 +54,23 @@ namespace HIKARI::VFX {
         bool Capture(
             World& world,
             const CombatAfterimageRequest& request) noexcept;
+        bool Capture(
+            World& world,
+            const CombatAfterimageRequest& request,
+            const VfxSpecialOutputData& output) noexcept;
+        bool Capture(
+            World& world,
+            const CombatAfterimageRequest& request,
+            const VfxSkinnedAfterimageProfile& profile) noexcept;
+        bool Capture(
+            World& world,
+            const CombatAfterimageRequest& request,
+            const VfxProgram& program) noexcept;
+        bool Capture(
+            World& world,
+            const CombatAfterimageRequest& request,
+            const VfxProgram& program,
+            std::string_view outputId) noexcept;
 
         // Advances unscaled presentation time.  Repeated calls for the same
         // frame are ignored so multiple views cannot age the effect twice.

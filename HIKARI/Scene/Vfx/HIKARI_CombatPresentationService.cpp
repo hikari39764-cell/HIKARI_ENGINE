@@ -11,6 +11,7 @@
 #include "Assets/Vfx/Compiler/HIKARI_VfxCompiler.h"
 #include "Assets/Vfx/HIKARI_VfxPresetRegistry.h"
 #include "Scene/Vfx/HIKARI_VfxPlaybackService.h"
+#include "Scene/Vfx/HIKARI_VfxSpecialOutputBridge.h"
 
 namespace HIKARI::VFX {
     namespace {
@@ -21,6 +22,18 @@ namespace HIKARI::VFX {
         constexpr float kMaximumTrailDiscontinuity = 2.5f;
         constexpr float kTrailInterpolationSpacing = 0.18f;
         constexpr uint64_t kMaximumContinuousFrameGap = 2u;
+        constexpr float kDefaultTrailLifetimeSeconds = 0.14f;
+        constexpr float kDefaultTrailOpacity = 0.72f;
+        constexpr float kDefaultTrailEmissive = 1.35f;
+        constexpr float kDefaultTrailFlow = 0.65f;
+        constexpr MATH::Vec3 kDefaultTrailBodyColor{
+            0.08f,
+            0.52f,
+            0.92f };
+        constexpr MATH::Vec3 kDefaultTrailEdgeColor{
+            0.72f,
+            0.96f,
+            1.0f };
 
         bool IsFinite(float value) noexcept {
             return std::isfinite(value);
@@ -56,6 +69,38 @@ namespace HIKARI::VFX {
         float SmoothStep01(float value) noexcept {
             const float t = std::clamp(value, 0.0f, 1.0f);
             return t * t * (3.0f - 2.0f * t);
+        }
+
+        float ActionScale(
+            float requestValue,
+            float defaultValue) noexcept {
+            if (!std::isfinite(requestValue) ||
+                !std::isfinite(defaultValue) ||
+                defaultValue <= 0.0f) {
+                return 1.0f;
+            }
+            return std::clamp(
+                requestValue / defaultValue,
+                0.0f,
+                8.0f);
+        }
+
+        MATH::Vec3 ApplyColorActionScale(
+            const MATH::Vec4& profileColor,
+            const MATH::Vec3& requestColor,
+            const MATH::Vec3& defaultColor) noexcept {
+            const auto channel = [](float profileValue,
+                                    float requestValue,
+                                    float defaultValue) noexcept {
+                const float profile = std::isfinite(profileValue)
+                    ? (std::max)(0.0f, profileValue)
+                    : 0.0f;
+                return profile * ActionScale(requestValue, defaultValue);
+            };
+            return {
+                channel(profileColor.x, requestColor.x, defaultColor.x),
+                channel(profileColor.y, requestColor.y, defaultColor.y),
+                channel(profileColor.z, requestColor.z, defaultColor.z) };
         }
 
         MATH::Vec3 NormalizeSafe(
@@ -457,11 +502,16 @@ namespace HIKARI::VFX {
         MATH::Vec3 bladeTipWorld{};
         MATH::Vec3 bodyColor{};
         MATH::Vec3 edgeColor{};
+        float bodyAlpha = 1.0f;
+        float edgeAlpha = 1.0f;
         float lifetimeSeconds = 0.14f;
         float ageSeconds = 0.0f;
         float opacity = 0.72f;
         float emissiveIntensity = 1.35f;
         float flowStrength = 0.65f;
+        float width = 1.0f;
+        float distortionStrength = 1.0f;
+        float blurScale = 1.0f;
     };
 
     struct CombatPresentationService::TrailState {
@@ -558,10 +608,14 @@ namespace HIKARI::VFX {
             !IsFinite(request.bladeBaseWorld) ||
             !IsFinite(request.bladeTipWorld) ||
             !IsFinite(request.bodyColor) || !IsFinite(request.edgeColor) ||
+            !IsFinite(request.bodyAlpha) || !IsFinite(request.edgeAlpha) ||
             !IsFinite(request.lifetimeUnscaledSeconds) ||
             !IsFinite(request.opacity) ||
             !IsFinite(request.emissiveIntensity) ||
-            !IsFinite(request.flowStrength)) {
+            !IsFinite(request.flowStrength) ||
+            !IsFinite(request.width) ||
+            !IsFinite(request.distortionStrength) ||
+            !IsFinite(request.blurScale)) {
             return false;
         }
         const float bladeLength = Distance(
@@ -616,6 +670,8 @@ namespace HIKARI::VFX {
             (std::max)(0.0f, request.edgeColor.x),
             (std::max)(0.0f, request.edgeColor.y),
             (std::max)(0.0f, request.edgeColor.z) };
+        next.bodyAlpha = std::clamp(request.bodyAlpha, 0.0f, 1.0f);
+        next.edgeAlpha = std::clamp(request.edgeAlpha, 0.0f, 1.0f);
         next.lifetimeSeconds = std::clamp(
             request.lifetimeUnscaledSeconds,
             0.035f,
@@ -629,6 +685,12 @@ namespace HIKARI::VFX {
             request.flowStrength,
             0.0f,
             2.0f);
+        next.width = std::clamp(request.width, 0.05f, 8.0f);
+        next.distortionStrength = std::clamp(
+            request.distortionStrength,
+            0.0f,
+            8.0f);
+        next.blurScale = std::clamp(request.blurScale, 0.0f, 8.0f);
 
         if (trail.lastSubmissionFrame == frameIndex &&
             !trail.samples.empty()) {
@@ -670,6 +732,94 @@ namespace HIKARI::VFX {
         }
         trail.lastSubmissionFrame = frameIndex;
         return true;
+    }
+
+    bool CombatPresentationService::SubmitWeaponTrail(
+        const WeaponTrailSampleRequest& request,
+        const VfxSpecialOutputData& output,
+        uint64_t frameIndex) noexcept {
+
+        if (!output.enabled ||
+            output.type != VfxSpecialOutputType::WeaponPathDistortion) {
+            return false;
+        }
+
+        // The compiled HVFX profile is the authored art source. The legacy
+        // request contributes only frame-local action multipliers and the
+        // world-space blade sample; it does not replace profile colors or
+        // lifetime with old combat defaults.
+        const VfxWeaponPathDistortionProfile& profile =
+            output.weaponPathDistortion;
+        WeaponTrailSampleRequest configured = request;
+        const float lifetimeScale = ActionScale(
+            request.lifetimeUnscaledSeconds,
+            kDefaultTrailLifetimeSeconds);
+        const float opacityScale = ActionScale(
+            request.opacity,
+            kDefaultTrailOpacity);
+        const float emissiveScale = ActionScale(
+            request.emissiveIntensity,
+            kDefaultTrailEmissive);
+        const float flowScale = ActionScale(
+            request.flowStrength,
+            kDefaultTrailFlow);
+        const float widthScale = std::clamp(request.width, 0.05f, 8.0f);
+        const float distortionScale = std::clamp(
+            request.distortionStrength, 0.0f, 8.0f);
+        const float blurScale = std::clamp(request.blurScale, 0.0f, 8.0f);
+        // Profile RGB remains the authored base. Request colors are action
+        // tints relative to the public GameProject defaults, so Summer's
+        // per-action light/heavy/skill colors still affect the typed path
+        // without replacing the HVFX profile itself.
+        configured.bodyColor = ApplyColorActionScale(
+            profile.bodyColor,
+            request.bodyColor,
+            kDefaultTrailBodyColor);
+        configured.edgeColor = ApplyColorActionScale(
+            profile.edgeColor,
+            request.edgeColor,
+            kDefaultTrailEdgeColor);
+        configured.bodyAlpha = std::clamp(profile.bodyColor.w, 0.0f, 1.0f);
+        configured.edgeAlpha = std::clamp(profile.edgeColor.w, 0.0f, 1.0f);
+        configured.lifetimeUnscaledSeconds =
+            profile.lifetimeSeconds * lifetimeScale;
+        configured.opacity = profile.opacity * opacityScale;
+        configured.emissiveIntensity = profile.emissive * emissiveScale;
+        configured.flowStrength = profile.flow * flowScale;
+        configured.width = (profile.width / 0.15f) * widthScale;
+        configured.distortionStrength = profile.distortion * distortionScale;
+        configured.blurScale = profile.blur * blurScale;
+        return SubmitWeaponTrail(configured, frameIndex);
+    }
+
+    bool CombatPresentationService::SubmitWeaponTrail(
+        const WeaponTrailSampleRequest& request,
+        const VfxProgram& program,
+        uint64_t frameIndex) noexcept {
+
+        const VfxSpecialOutputData* output = FindVfxSpecialOutput(
+            program,
+            VfxSpecialOutputType::WeaponPathDistortion);
+        if (output == nullptr) {
+            // Assets authored before typed special outputs retain the old
+            // numeric presentation request as a compatibility fallback.
+            return SubmitWeaponTrail(request, frameIndex);
+        }
+        return SubmitWeaponTrail(request, *output, frameIndex);
+    }
+
+    bool CombatPresentationService::SubmitWeaponTrail(
+        const WeaponTrailSampleRequest& request,
+        const VfxProgram& program,
+        std::string_view outputId,
+        uint64_t frameIndex) noexcept {
+
+        const VfxSpecialOutputData* output = FindVfxSpecialOutput(
+            program,
+            outputId,
+            VfxSpecialOutputType::WeaponPathDistortion);
+        return output != nullptr &&
+            SubmitWeaponTrail(request, *output, frameIndex);
     }
 
     void CombatPresentationService::Tick(
@@ -714,6 +864,11 @@ namespace HIKARI::VFX {
     void CombatPresentationService::BuildWeaponTrailFrame() noexcept {
         weaponTrailVertices_.clear();
         frameSource_.activeWeaponTrailCount = 0u;
+        // Distortion/blur are carried in each trail vertex. Keep the
+        // frame-level compatibility values neutral so concurrent trails do
+        // not inherit the strongest profile in the frame.
+        frameSource_.distortionStrengthScale = 1.0f;
+        frameSource_.blurScale = 1.0f;
         for (const TrailState& trail : trails_) {
             if (trail.samples.size() < 2u) {
                 continue;
@@ -773,6 +928,18 @@ namespace HIKARI::VFX {
             }
             const float denominator = static_cast<float>(
                 (std::max)(size_t{ 1u }, trail.samples.size() - 1u));
+            const auto bladeBaseOf = [](const TrailSample& sample) noexcept {
+                const MATH::Vec3 center =
+                    (sample.bladeBaseWorld + sample.bladeTipWorld) * 0.5f;
+                return center +
+                    (sample.bladeBaseWorld - center) * sample.width;
+            };
+            const auto bladeTipOf = [](const TrailSample& sample) noexcept {
+                const MATH::Vec3 center =
+                    (sample.bladeBaseWorld + sample.bladeTipWorld) * 0.5f;
+                return center +
+                    (sample.bladeTipWorld - center) * sample.width;
+            };
             for (size_t index = 1u; index < trail.samples.size(); ++index) {
                 const TrailSample& previous = trail.samples[index - 1u];
                 const TrailSample& current = trail.samples[index];
@@ -780,6 +947,7 @@ namespace HIKARI::VFX {
                     const TrailSample& sample,
                     const MATH::Vec3& position,
                     const MATH::Vec3& color,
+                    float colorAlpha,
                     const MATH::Vec3& tangent,
                     const MATH::Vec3& normal,
                     float along,
@@ -792,6 +960,7 @@ namespace HIKARI::VFX {
                         0.0f,
                         1.0f);
                     const float alpha = sample.opacity *
+                        std::clamp(colorAlpha, 0.0f, 1.0f) *
                         SmoothStep01(remaining);
                     RENDER3D::COMBAT_VFX::WeaponTrailVertex vertex{};
                     vertex.position = position;
@@ -808,34 +977,44 @@ namespace HIKARI::VFX {
                     vertex.flowData = {
                         along / denominator + sample.ageSeconds * 2.0f,
                         alpha,
-                        0.22f + 0.78f * SmoothStep01(
-                            std::clamp(edgeDistance * 4.0f, 0.0f, 1.0f)),
-                        std::clamp(
-                            sample.emissiveIntensity * 0.16f +
-                                sample.flowStrength * 0.20f,
+                        SmoothStep01(std::clamp(
+                            edgeDistance * 4.0f * sample.width,
                             0.0f,
-                            1.0f) };
+                            1.0f)) * std::clamp(
+                                sample.blurScale,
+                                0.0f,
+                                8.0f),
+                        std::clamp(
+                            sample.distortionStrength,
+                            0.0f,
+                            8.0f) };
                     weaponTrailVertices_.push_back(vertex);
                 };
                 const float previousAlong = static_cast<float>(index - 1u);
                 const float currentAlong = static_cast<float>(index);
-                append(previous, previous.bladeBaseWorld,
-                    previous.bodyColor, tangents[index - 1u],
+                append(previous, bladeBaseOf(previous),
+                    previous.bodyColor, previous.bodyAlpha,
+                    tangents[index - 1u],
                     normals[index - 1u], previousAlong, 0.0f);
-                append(previous, previous.bladeTipWorld,
-                    previous.edgeColor, tangents[index - 1u],
+                append(previous, bladeTipOf(previous),
+                    previous.edgeColor, previous.edgeAlpha,
+                    tangents[index - 1u],
                     normals[index - 1u], previousAlong, 1.0f);
-                append(current, current.bladeTipWorld,
-                    current.edgeColor, tangents[index], normals[index],
+                append(current, bladeTipOf(current),
+                    current.edgeColor, current.edgeAlpha,
+                    tangents[index], normals[index],
                     currentAlong, 1.0f);
-                append(previous, previous.bladeBaseWorld,
-                    previous.bodyColor, tangents[index - 1u],
+                append(previous, bladeBaseOf(previous),
+                    previous.bodyColor, previous.bodyAlpha,
+                    tangents[index - 1u],
                     normals[index - 1u], previousAlong, 0.0f);
-                append(current, current.bladeTipWorld,
-                    current.edgeColor, tangents[index], normals[index],
+                append(current, bladeTipOf(current),
+                    current.edgeColor, current.edgeAlpha,
+                    tangents[index], normals[index],
                     currentAlong, 1.0f);
-                append(current, current.bladeBaseWorld,
-                    current.bodyColor, tangents[index], normals[index],
+                append(current, bladeBaseOf(current),
+                    current.bodyColor, current.bodyAlpha,
+                    tangents[index], normals[index],
                     currentAlong, 0.0f);
             }
         }

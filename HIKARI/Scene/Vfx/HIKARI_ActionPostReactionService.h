@@ -3,10 +3,14 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <string_view>
 
+#include "Assets/Vfx/HIKARI_VfxAssetData.h"
 #include "Render3D/Vfx/HIKARI_ActionPostReactionFrameSource.h"
 
 namespace HIKARI::VFX {
+
+    struct VfxProgram;
 
     // Scene-owned, presentation-time reaction state for perfect guard only.
     // It owns no GPU resources and never changes gameplay or time scale.
@@ -25,6 +29,10 @@ namespace HIKARI::VFX {
             MATH::Vec3 color{ 0.32f, 0.78f, 1.0f };
             float chromaticShift = 0.0035f;
             float flashIntensity = 0.42f;
+            float waveFrequency = 1.0f;
+            float waveAmplitude = 1.0f;
+            float waveDamping = 1.0f;
+            uint32_t waveCount = 1u;
         };
 
         static constexpr uint32_t kMaximumWaveCount =
@@ -42,6 +50,19 @@ namespace HIKARI::VFX {
         // (or source/frame when sequence is unavailable).
         bool TriggerPerfectGuardShockwave(
             const PerfectGuardShockwaveRequest& request) noexcept;
+        bool TriggerPerfectGuardShockwave(
+            const PerfectGuardShockwaveRequest& request,
+            const VfxSpecialOutputData& output) noexcept;
+        bool TriggerPerfectGuardShockwave(
+            const PerfectGuardShockwaveRequest& request,
+            const VfxScreenImpulseProfile& profile) noexcept;
+        bool TriggerPerfectGuardShockwave(
+            const PerfectGuardShockwaveRequest& request,
+            const VfxProgram& program) noexcept;
+        bool TriggerPerfectGuardShockwave(
+            const PerfectGuardShockwaveRequest& request,
+            const VfxProgram& program,
+            std::string_view outputId) noexcept;
 
         // Uses unscaled presentation time so hit-stop cannot freeze the
         // screen reaction. Delta is bounded to keep a stalled frame finite.

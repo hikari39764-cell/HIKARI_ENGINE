@@ -17,7 +17,7 @@ struct WeaponTrailVertex
     float flowStrength : TEXCOORD2;
     float3 tangentWorld : TEXCOORD3;
     float3 normalWorld : TEXCOORD4;
-    // x = phase, y = coverage, z = blur hint, w = edge/accent hint.
+    // x = phase, y = coverage, z = blur hint, w = distortion strength.
     float4 flowData : TEXCOORD5;
 };
 
@@ -138,8 +138,12 @@ float4 PSMain(WeaponTrailPixel input) : SV_TARGET
         (tearNoise - 0.5f) * (0.18f + centerWeight * 0.16f) +
         flowSignal * (0.10f + centerWeight * 0.08f);
     const float signedDisplacement = fold * 1.34f + breakup;
+    // Zero is a real disable. A bounded rational response keeps every value in
+    // the authored [0, 8] range distinct while approaching, but never reaching,
+    // the 96-pixel safety limit.
+    const float authoredDistortion = clamp(input.flowData.w, 0.0f, 8.0f);
     const float distortionPixels =
-        (10.0f + saturate(input.flowStrength) * 30.0f) *
+        (96.0f * authoredDistortion / (authoredDistortion + 2.15f)) *
         signedDisplacement * alpha * gScreenParams.w;
     const float2 vectorOffset = normalUv * distortionPixels *
         gScreenParams.xy;
@@ -153,12 +157,13 @@ float4 PSMain(WeaponTrailPixel input) : SV_TARGET
         max(input.color.rgb, 0.0f),
         float3(0.2126f, 0.7152f, 0.0722f));
     const float accent = saturate(
-        input.flowData.w * (0.48f + colorLuma * 0.12f) * alpha +
-        edge * alpha * 0.24f);
+        input.emissiveIntensity *
+        (0.10f + colorLuma * 0.05f + edge * 0.08f) * alpha);
+    const float coverage = saturate(alpha + accent * 0.22f);
 
     // Mask contract for the post-temporal composite:
     //   RG = signed UV refraction vector, always normal to the slash path;
-    //   B  = coverage;
-    //   A  = accumulated blur/accent hint.
-    return float4(vectorOffset, alpha, saturate(blurHint * 0.70f + accent * 0.30f));
+    //   B  = coverage, including the independently authored edge accent;
+    //   A  = blur hint only, so blur=0 cannot be resurrected by emissive.
+    return float4(vectorOffset, coverage, blurHint);
 }

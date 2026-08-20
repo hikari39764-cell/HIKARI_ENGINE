@@ -10,7 +10,10 @@
 
 namespace HIKARI::VFX {
 
-    inline constexpr uint32_t kVfxSourceVersion = 3u;
+    // Source v4 adds emitter activation, burst keys, attachment semantics and
+    // typed non-particle output profiles. Readers still accept v2/v3 and
+    // materialize the missing fields from the defaults below.
+    inline constexpr uint32_t kVfxSourceVersion = 4u;
 
     enum class VfxValueType : uint8_t {
         Bool,
@@ -114,10 +117,152 @@ namespace HIKARI::VFX {
         EaseInOut,
     };
 
+    // These values describe authoring intent only. Runtime resolves the
+    // owner/socket target through its narrow playback context; an asset never
+    // stores a live Scene or renderer pointer.
+    enum class VfxAttachmentMode : uint8_t {
+        World,
+        Owner,
+        OwnerSocket,
+    };
+
+    enum class VfxFollowMode : uint8_t {
+        None,
+        Position,
+        Rotation,
+        Transform,
+    };
+
+    enum class VfxSpecialOutputType : uint8_t {
+        WeaponPathDistortion,
+        ScreenImpulse,
+        SkinnedAfterimage,
+    };
+
+    // Keep these authoring limits identical to the private presentation
+    // consumers: the screen post path supports four wave layers and the
+    // afterimage history keeps three to five silhouettes.
+    inline constexpr uint32_t kVfxScreenImpulseWaveCountMin = 1u;
+    inline constexpr uint32_t kVfxScreenImpulseWaveCountMax = 4u;
+    inline constexpr uint32_t kVfxAfterimageSampleCountMin = 3u;
+    inline constexpr uint32_t kVfxAfterimageSampleCountMax = 5u;
+    inline constexpr float kVfxWeaponDistortionMin = 0.0f;
+    inline constexpr float kVfxWeaponDistortionMax = 8.0f;
+    inline constexpr float kVfxWeaponBlurMin = 0.0f;
+    inline constexpr float kVfxWeaponBlurMax = 8.0f;
+    inline constexpr float kVfxWeaponOpacityMin = 0.0f;
+    inline constexpr float kVfxWeaponOpacityMax = 1.0f;
+    inline constexpr float kVfxWeaponEmissiveMin = 0.0f;
+    inline constexpr float kVfxWeaponEmissiveMax = 8.0f;
+    inline constexpr float kVfxWeaponFlowMin = 0.0f;
+    inline constexpr float kVfxWeaponFlowMax = 2.0f;
+    // The presentation bridge maps profile width / 0.15 to the renderer's
+    // normalized [0.05, 8] width range.
+    inline constexpr float kVfxWeaponWidthMin = 0.0075f;
+    inline constexpr float kVfxWeaponWidthMax = 1.2f;
+    inline constexpr float kVfxWeaponLifetimeMin = 0.035f;
+    inline constexpr float kVfxWeaponLifetimeMax = 0.45f;
+    inline constexpr float kVfxScreenDurationMin = 0.02f;
+    inline constexpr float kVfxScreenDurationMax = 1.5f;
+    inline constexpr float kVfxScreenRadiusMin = 0.02f;
+    inline constexpr float kVfxScreenRadiusMax = 1.5f;
+    inline constexpr float kVfxScreenRingThicknessMin = 0.001f;
+    inline constexpr float kVfxScreenRingThicknessMax = 0.35f;
+    inline constexpr float kVfxScreenDistortionMin = 0.0f;
+    inline constexpr float kVfxScreenDistortionMax = 0.25f;
+    inline constexpr float kVfxScreenChromaticMin = 0.0f;
+    inline constexpr float kVfxScreenChromaticMax = 0.05f;
+    inline constexpr float kVfxScreenFlashMin = 0.0f;
+    inline constexpr float kVfxScreenFlashMax = 4.0f;
+    inline constexpr float kVfxScreenIntensityMin = 0.0f;
+    inline constexpr float kVfxScreenIntensityMax = 8.0f;
+    inline constexpr float kVfxScreenWaveFrequencyMin = 0.05f;
+    inline constexpr float kVfxScreenWaveFrequencyMax = 8.0f;
+    inline constexpr float kVfxScreenWaveAmplitudeMin = 0.0f;
+    inline constexpr float kVfxScreenWaveAmplitudeMax = 8.0f;
+    inline constexpr float kVfxScreenWaveDampingMin = 0.05f;
+    inline constexpr float kVfxScreenWaveDampingMax = 8.0f;
+    inline constexpr float kVfxAfterimageLifetimeMin = 0.04f;
+    inline constexpr float kVfxAfterimageLifetimeMax = 1.0f;
+    inline constexpr float kVfxAfterimageOpacityMin = 0.01f;
+    inline constexpr float kVfxAfterimageOpacityMax = 1.0f;
+    inline constexpr float kVfxAfterimageFresnelMin = 0.5f;
+    inline constexpr float kVfxAfterimageFresnelMax = 8.0f;
+    inline constexpr float kVfxAfterimageDissolveMin = 0.1f;
+    inline constexpr float kVfxAfterimageDissolveMax = 4.0f;
+    inline constexpr float kVfxAfterimageShellOffsetMin = 0.0f;
+    inline constexpr float kVfxAfterimageShellOffsetMax = 0.08f;
+    inline constexpr float kVfxAfterimageIntensityMin = 0.05f;
+    inline constexpr float kVfxAfterimageIntensityMax = 4.0f;
+
     struct VfxTransformData {
         MATH::Vec3 position{ 0.0f, 0.0f, 0.0f };
         MATH::Vec3 rotationEulerDegrees{ 0.0f, 0.0f, 0.0f };
         MATH::Vec3 scale{ 1.0f, 1.0f, 1.0f };
+    };
+
+    struct VfxAttachmentData {
+        std::string id{};
+        VfxAttachmentMode mode = VfxAttachmentMode::World;
+        VfxFollowMode follow = VfxFollowMode::None;
+        // Runtime supplies the owner object; the asset stores only the
+        // semantic socket name, never an object/resource pointer.
+        std::string socketName{};
+        VfxTransformData offset{};
+    };
+
+    struct VfxBurstKeyData {
+        std::string id{};
+        float time = 0.0f;
+        uint32_t count = 0u;
+    };
+
+    struct VfxWeaponPathDistortionProfile {
+        float distortion = 1.0f;
+        float blur = 0.05f;
+        float opacity = 1.0f;
+        float emissive = 1.0f;
+        float flow = 1.0f;
+        float width = 0.15f;
+        float lifetimeSeconds = 0.12f;
+        MATH::Vec4 bodyColor{ 1.0f, 1.0f, 1.0f, 1.0f };
+        MATH::Vec4 edgeColor{ 1.0f, 1.0f, 1.0f, 0.0f };
+    };
+
+    struct VfxScreenImpulseProfile {
+        float durationSeconds = 0.18f;
+        float maxRadius = 1.0f;
+        float ringThickness = 0.15f;
+        float distortion = 0.1f;
+        float chromaticAberration = 0.0f;
+        float flash = 0.0f;
+        float intensity = 1.0f;
+        MATH::Vec4 color{ 1.0f, 1.0f, 1.0f, 1.0f };
+        float waveFrequency = 1.0f;
+        float waveAmplitude = 1.0f;
+        float waveDamping = 1.0f;
+        uint32_t waveCount = 1u;
+    };
+
+    struct VfxSkinnedAfterimageProfile {
+        uint32_t sampleCount = 4u;
+        float lifetimeSeconds = 0.24f;
+        float opacity = 1.0f;
+        float fresnel = 0.5f;
+        float dissolve = 0.1f;
+        float shellOffset = 0.0f;
+        MATH::Vec4 color{ 1.0f, 1.0f, 1.0f, 1.0f };
+        float intensity = 1.0f;
+    };
+
+    struct VfxSpecialOutputData {
+        std::string id{};
+        VfxSpecialOutputType type =
+            VfxSpecialOutputType::WeaponPathDistortion;
+        bool enabled = true;
+        VfxWeaponPathDistortionProfile weaponPathDistortion{};
+        VfxScreenImpulseProfile screenImpulse{};
+        VfxSkinnedAfterimageProfile skinnedAfterimage{};
     };
 
     template<class T>
@@ -237,7 +382,11 @@ namespace HIKARI::VFX {
     struct VfxSpawnModuleData {
         std::string id{};
         float ratePerSecond = 10.0f;
+        // Legacy single-burst field retained as a compatibility view. New
+        // authored data is represented by burstTimeline. When the timeline
+        // is non-empty, its keys are authoritative and this field is ignored.
         uint32_t burstCount = 0u;
+        std::vector<VfxBurstKeyData> burstTimeline{};
         VfxParticleCapacityMode capacityMode =
             VfxParticleCapacityMode::Automatic;
         // In Automatic mode this remains the authored safety ceiling. The
@@ -318,8 +467,13 @@ namespace HIKARI::VFX {
         std::string name{};
         std::string parentEmitterId{};
         uint32_t order = 0u;
+        // Local emitter activation window. A zero activeDuration means
+        // "until asset end" after startDelay, preserving old defaults.
+        float startDelay = 0.0f;
+        float activeDuration = 0.0f;
         VfxBasicModuleData basic{};
         VfxEmitterTransformModuleData emitterTransform{};
+        VfxAttachmentData attachment{};
         VfxSpawnModuleData spawn{};
         VfxShapeModuleData shape{};
         VfxPositionModuleData position{};
@@ -329,6 +483,7 @@ namespace HIKARI::VFX {
         VfxColorModuleData color{};
         VfxRenderCommonModuleData renderCommon{};
         VfxRenderShapeModuleData renderShape{};
+        std::vector<VfxSpecialOutputData> specialOutputs{};
         std::vector<VfxInputLinkData> inputLinks{};
     };
 
@@ -353,6 +508,9 @@ namespace HIKARI::VFX {
     std::string_view ToString(VfxAnimatedValueMode value) noexcept;
     std::string_view ToString(VfxAnimatedColorMode value) noexcept;
     std::string_view ToString(VfxEasingFunction value) noexcept;
+    std::string_view ToString(VfxAttachmentMode value) noexcept;
+    std::string_view ToString(VfxFollowMode value) noexcept;
+    std::string_view ToString(VfxSpecialOutputType value) noexcept;
 
     bool TryParseVfxValueType(
         std::string_view text,
@@ -390,6 +548,15 @@ namespace HIKARI::VFX {
     bool TryParseVfxEasingFunction(
         std::string_view text,
         VfxEasingFunction& outValue) noexcept;
+    bool TryParseVfxAttachmentMode(
+        std::string_view text,
+        VfxAttachmentMode& outValue) noexcept;
+    bool TryParseVfxFollowMode(
+        std::string_view text,
+        VfxFollowMode& outValue) noexcept;
+    bool TryParseVfxSpecialOutputType(
+        std::string_view text,
+        VfxSpecialOutputType& outValue) noexcept;
 
     VfxFloatDistributionData MakeVfxFloatConstant(float value) noexcept;
     VfxVec3DistributionData MakeVfxVec3Constant(

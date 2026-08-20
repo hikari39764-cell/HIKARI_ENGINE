@@ -1661,7 +1661,7 @@ namespace HIKARI {
                 !IsFiniteNonNegative(sample.bodyColor) ||
                 !IsFiniteNonNegative(sample.edgeColor) ||
                 !IsFinitePositive(sample.lifetimeUnscaledSeconds) ||
-                !IsFinitePositive(sample.emissiveIntensity) ||
+                !IsFiniteNonNegative(sample.emissiveIntensity) ||
                 !IsFiniteNonNegative(sample.opacity) ||
                 sample.opacity > 1.0f ||
                 !IsFiniteNonNegative(sample.flowStrength)) {

@@ -13,12 +13,14 @@
 
 namespace HIKARI::VFX {
 
-    inline constexpr uint32_t kVfxProgramVersion = 4u;
+    inline constexpr uint32_t kVfxProgramVersion = 6u;
     inline constexpr uint32_t kMaximumVfxProgramTableItems = 1u << 20u;
     inline constexpr uint32_t kMaximumVfxProgramEmitters = 1024u;
     inline constexpr uint32_t kMaximumVfxProgramInputs = 4096u;
     inline constexpr uint32_t kMaximumVfxProgramLinksPerEmitter = 4096u;
     inline constexpr uint32_t kMaximumVfxProgramDependencies = 4096u;
+    inline constexpr uint32_t kMaximumVfxProgramBurstKeys = 1024u;
+    inline constexpr uint32_t kMaximumVfxProgramSpecialOutputs = 256u;
     inline constexpr uint32_t kMaximumVfxProgramStringBytes = 1u << 20u;
     inline constexpr uint32_t kInvalidVfxProgramIndex =
         (std::numeric_limits<uint32_t>::max)();
@@ -100,13 +102,18 @@ namespace HIKARI::VFX {
         uint32_t emitterIndex = 0u;
         uint32_t parentEmitterIndex = kInvalidVfxProgramIndex;
         VfxTransformData transform{};
+        float startDelay = 0.0f;
+        float activeDuration = 0.0f;
+        VfxAttachmentData attachment{};
         float spawnRatePerSecond = 0.0f;
         uint32_t burstCount = 0u;
+        std::vector<VfxBurstKeyData> burstTimeline{};
         RENDER3D::PARTICLES::ParticleEmitterRuntimeOverrides
             authoredOverrides{};
         RENDER3D::PARTICLES::ParticleEmitterSimulationParameters
             simulation{};
         RENDER3D::PARTICLES::ParticleEmitterRenderParameters render{};
+        std::vector<VfxSpecialOutputData> specialOutputs{};
         std::vector<VfxProgramInputLink> inputLinks{};
     };
 

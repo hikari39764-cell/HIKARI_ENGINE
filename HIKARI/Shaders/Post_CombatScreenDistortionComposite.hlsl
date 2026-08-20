@@ -140,6 +140,23 @@ float4 main(PSInput input) : SV_TARGET
         const float3 tint = max(gUser[index * 4u + 2u].rgb, 0.0f.xxx);
         const float chromatic = max(gUser[index * 4u + 2u].w, 0.0f);
         const float flashIntensity = max(gUser[index * 4u + 3u].x, 0.0f);
+        const float waveFrequency = clamp(
+            gUser[index * 4u + 3u].y,
+            0.05f,
+            8.0f);
+        const float waveAmplitude = clamp(
+            gUser[index * 4u + 3u].z,
+            0.0f,
+            8.0f);
+        const float packedDamping = max(
+            gUser[index * 4u + 3u].w,
+            16.0f);
+        const uint profileWaveCount = min(
+            (uint)max(floor(packedDamping / 16.0f), 1.0f),
+            4u);
+        const float waveDamping = max(
+            packedDamping - (float)profileWaveCount * 16.0f,
+            0.05f);
 
         float2 delta = uv - centerUv;
         delta.x *= aspect;
@@ -161,8 +178,10 @@ float4 main(PSInput input) : SV_TARGET
         const float envelope = fadeIn * fadeOut;
         const float angular = atan2(radialDirection.y, radialDirection.x);
         const float organic =
-            sin(angular * 11.0f + age * 19.0f) * 0.55f +
-            sin(angular * 23.0f - age * 13.0f) * 0.25f +
+            sin(angular * 11.0f * waveFrequency +
+                age * 19.0f * waveFrequency) * 0.55f * waveAmplitude +
+            sin(angular * 23.0f * waveFrequency -
+                age * 13.0f * waveFrequency) * 0.25f * waveAmplitude +
             (HikariNoise(uv + centerUv + age) - 0.5f) * 0.35f;
         const float waveWidth = thickness * lerp(0.90f, 1.50f, age);
         const float distortedDistance = distanceToCenter +
@@ -178,20 +197,41 @@ float4 main(PSInput input) : SV_TARGET
         const float interiorLens = interior * interior *
             (1.0f - smoothstep(0.48f, 0.92f, age));
 
-        const float echoAge = saturate((age - 0.11f) / 0.89f);
-        const float echoRadius = maximumRadius *
-            lerp(0.08f, 1.08f, 1.0f - pow(1.0f - echoAge, 2.2f));
-        const float echo = HikariRing(
-            distortedDistance,
-            echoRadius,
-            waveWidth * 1.30f) *
-            smoothstep(0.10f, 0.24f, age) *
-            (1.0f - smoothstep(0.78f, 1.0f, age));
-        const float echoSign = saturate(
-            (distortedDistance - echoRadius) /
-                max(waveWidth * 1.3f, 0.0005f));
+        float echo = 0.0f;
+        float echoSign = 0.5f;
+        [unroll]
+        for (uint echoIndex = 1u; echoIndex <= 4u; ++echoIndex)
+        {
+            if (echoIndex > profileWaveCount)
+            {
+                continue;
+            }
+            const float layer = (float)(echoIndex - 1u);
+            const float delay = 0.11f + layer * 0.045f;
+            const float echoAge = saturate((age - delay) /
+                max(1.0f - delay, 0.05f));
+            const float echoRadius = maximumRadius *
+                lerp(0.08f + layer * 0.035f,
+                    1.08f + layer * 0.06f,
+                    1.0f - pow(1.0f - echoAge, 2.2f));
+            const float echoEnvelope = smoothstep(
+                delay,
+                delay + 0.13f,
+                age) *
+                (1.0f - smoothstep(0.78f, 1.0f, age)) *
+                exp(-waveDamping * layer * 0.45f);
+            const float echoLayer = HikariRing(
+                distortedDistance,
+                echoRadius,
+                waveWidth * (1.30f + layer * 0.12f)) *
+                echoEnvelope * waveAmplitude;
+            echo += echoLayer;
+            echoSign = saturate(
+                (distortedDistance - echoRadius) /
+                    max(waveWidth * (1.3f + layer * 0.12f), 0.0005f));
+        }
         const float signedWarp = clamp(
-            distortion * intensity * envelope *
+            distortion * intensity * envelope * waveAmplitude *
                 (signedWarpProfile * 1.30f + interiorLens * 0.18f +
                     echo * lerp(-0.12f, 0.18f, echoSign)),
             -0.12f,
@@ -226,7 +266,7 @@ float4 main(PSInput input) : SV_TARGET
             (rim * 0.075f + echo * intensity * 0.035f + flash * 0.16f);
     }
 
-    const float maskEnabled = saturate(gUser[15].y);
+    const float maskEnabled = gCommonPadding.x >= 0.0f ? 1.0f : 0.0f;
     if (maskEnabled > 0.5f)
     {
         uint maskWidth = 1u;
@@ -324,8 +364,12 @@ float4 main(PSInput input) : SV_TARGET
         const float2 tangent = float2(-normal.y, normal.x);
         const float blurHint = saturate(
             bestSample.a / max(coverage, max(bestCoverage, 1.0e-4f)));
-        const float maskStrength = clamp(gUser[15].z, 0.0f, 4.0f);
-        const float blurScale = clamp(gUser[15].w, 0.05f, 8.0f);
+        const float maskStrength = clamp(gCommonPadding.x, 0.0f, 4.0f);
+        const float blurScale = clamp(gCommonPadding.y, 0.0f, 8.0f);
+        // The typed weapon profile owns blur.  Keep refraction active when
+        // blur is zero, but collapse all blur/chromatic tap distances to the
+        // displaced sample so the inspector can explicitly turn drag blur off.
+        const float blurDistance = blurHint * blurScale;
         const float extensionAttenuation = lerp(
             0.58f,
             1.0f,
@@ -335,9 +379,9 @@ float4 main(PSInput input) : SV_TARGET
             float2(-0.12f, -0.12f),
             float2(0.12f, 0.12f));
         const float2 tangentTap = tangent * outputTexel *
-            (4.0f + blurHint * 24.0f) * blurScale;
+            (blurDistance * 24.0f);
         const float2 normalTap = normal * outputTexel *
-            (1.2f + blurHint * 4.0f) * sqrt(blurScale);
+            (blurDistance * 4.0f);
 
         const float3 displaced = HikariScene(uv + warp);
         const float3 streakNearA = HikariScene(uv + warp + tangentTap);
@@ -351,7 +395,7 @@ float4 main(PSInput input) : SV_TARGET
             (streakFarA + streakFarB) * 0.08f +
             (crossA + crossB) * 0.07f;
 
-        const float chromaticPixels = 1.5f + blurHint * 2.5f;
+        const float chromaticPixels = blurDistance * 2.5f;
         const float2 chromaticOffset = normal * outputTexel * chromaticPixels;
         directionalBlur.r = HikariScene(uv + warp + chromaticOffset).r;
         directionalBlur.b = HikariScene(uv + warp - chromaticOffset).b;

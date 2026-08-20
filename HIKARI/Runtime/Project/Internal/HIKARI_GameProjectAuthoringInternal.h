@@ -61,6 +61,8 @@ namespace HIKARI {
             World& world) noexcept;
         static PresentationVfxView MakePresentationVfxView(
             World& world) noexcept;
+        static VfxView MakeVfxView(
+            World& world) noexcept;
         static GameComponentContext MakeGameComponentContext(
             GameProjectComponentAdapter& adapter,
             GameObject& object,

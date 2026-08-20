@@ -1450,6 +1450,14 @@ namespace HIKARI {
             !ASSETS::SEMANTICS::HasAssetArtifact(
                 record,
                 ASSETS::SEMANTICS::AssetArtifactKind::Material);
+        // VFX source assets are never a runtime fallback. A newly added or
+        // cleaned project therefore has to publish an HVFXC artifact before
+        // the effect can enter the runtime registry.
+        const bool vfxNeedsArtifact =
+            record.type == AssetType::VfxEffect &&
+            !ASSETS::SEMANTICS::HasAssetArtifact(
+                record,
+                ASSETS::SEMANTICS::AssetArtifactKind::VfxProgram);
         record.importOutdated = record.importerMissing ||
             record.artifactMissing ||
             sourceNewerThanArtifact ||
@@ -1458,7 +1466,8 @@ namespace HIKARI {
             textureNeedsArtifact ||
             modelNeedsArtifact ||
             skyNeedsArtifact ||
-            materialNeedsArtifact;
+            materialNeedsArtifact ||
+            vfxNeedsArtifact;
 
         const std::filesystem::path reportPath = record.importedDirectory / "import_report.json";
         nlohmann::json report;

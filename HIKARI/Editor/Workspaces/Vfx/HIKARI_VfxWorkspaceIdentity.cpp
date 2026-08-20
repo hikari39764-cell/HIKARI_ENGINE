@@ -198,6 +198,63 @@ namespace HIKARI::EDITOR {
         return nullptr;
     }
 
+    const VFX::VfxBurstKeyData* VfxWorkspaceController::FindBurstKey(
+        std::string_view keyId,
+        const VFX::VfxEmitterData** outEmitter) const noexcept {
+
+        if (outEmitter != nullptr) {
+            *outEmitter = nullptr;
+        }
+        if (!document_.IsOpen()) {
+            return nullptr;
+        }
+        for (const VFX::VfxEmitterData& emitter :
+             document_.Asset().emitters) {
+            const auto found = std::find_if(
+                emitter.spawn.burstTimeline.begin(),
+                emitter.spawn.burstTimeline.end(),
+                [keyId](const VFX::VfxBurstKeyData& key) {
+                    return key.id == keyId;
+                });
+            if (found != emitter.spawn.burstTimeline.end()) {
+                if (outEmitter != nullptr) {
+                    *outEmitter = &emitter;
+                }
+                return &*found;
+            }
+        }
+        return nullptr;
+    }
+
+    const VFX::VfxSpecialOutputData*
+        VfxWorkspaceController::FindSpecialOutput(
+            std::string_view outputId,
+            const VFX::VfxEmitterData** outEmitter) const noexcept {
+
+        if (outEmitter != nullptr) {
+            *outEmitter = nullptr;
+        }
+        if (!document_.IsOpen()) {
+            return nullptr;
+        }
+        for (const VFX::VfxEmitterData& emitter :
+             document_.Asset().emitters) {
+            const auto found = std::find_if(
+                emitter.specialOutputs.begin(),
+                emitter.specialOutputs.end(),
+                [outputId](const VFX::VfxSpecialOutputData& output) {
+                    return output.id == outputId;
+                });
+            if (found != emitter.specialOutputs.end()) {
+                if (outEmitter != nullptr) {
+                    *outEmitter = &emitter;
+                }
+                return &*found;
+            }
+        }
+        return nullptr;
+    }
+
     bool VfxWorkspaceController::ApplyAsset(
         VFX::VfxAssetData asset,
         std::string& outMessage,
@@ -248,6 +305,10 @@ namespace HIKARI::EDITOR {
                 return FindCurveKey(selection_.targetId) != nullptr;
             case VfxWorkspaceSelectionKind::ColorStop:
                 return FindColorStop(selection_.targetId) != nullptr;
+            case VfxWorkspaceSelectionKind::BurstKey:
+                return FindBurstKey(selection_.targetId) != nullptr;
+            case VfxWorkspaceSelectionKind::SpecialOutput:
+                return FindSpecialOutput(selection_.targetId) != nullptr;
             }
             return false;
         }();
@@ -282,6 +343,21 @@ namespace HIKARI::EDITOR {
                 emitter != nullptr) {
                 selection_.emitterId = emitter->id;
             }
+        } else if (selection_.kind ==
+                   VfxWorkspaceSelectionKind::BurstKey) {
+            const VFX::VfxEmitterData* emitter = nullptr;
+            if (FindBurstKey(selection_.targetId, &emitter) != nullptr &&
+                emitter != nullptr) {
+                selection_.emitterId = emitter->id;
+            }
+        } else if (selection_.kind ==
+                   VfxWorkspaceSelectionKind::SpecialOutput) {
+            const VFX::VfxEmitterData* emitter = nullptr;
+            if (FindSpecialOutput(
+                    selection_.targetId, &emitter) != nullptr &&
+                emitter != nullptr) {
+                selection_.emitterId = emitter->id;
+            }
         }
     }
 
@@ -305,7 +381,8 @@ namespace HIKARI::EDITOR {
         }
         if (FindEmitter(id) != nullptr || FindInput(id) != nullptr ||
             FindInputLink(id) != nullptr || FindCurveKey(id) != nullptr ||
-            FindColorStop(id) != nullptr) {
+            FindColorStop(id) != nullptr || FindBurstKey(id) != nullptr ||
+            FindSpecialOutput(id) != nullptr) {
             return true;
         }
         for (const VFX::VfxEmitterData& emitter :
@@ -328,9 +405,10 @@ namespace HIKARI::EDITOR {
         VFX::VfxEmitterData& emitter) const {
 
         const std::string previousEmitterId = emitter.id;
-        const std::array<std::string, 11u> previousModuleIds{
+        const std::array<std::string, 12u> previousModuleIds{
             emitter.basic.id,
             emitter.emitterTransform.id,
+            emitter.attachment.id,
             emitter.spawn.id,
             emitter.shape.id,
             emitter.position.id,
@@ -345,6 +423,7 @@ namespace HIKARI::EDITOR {
         emitter.basic.id = AllocateStableId("module.basic");
         emitter.emitterTransform.id =
             AllocateStableId("module.emitter_transform");
+        emitter.attachment.id = AllocateStableId("module.attachment");
         emitter.spawn.id = AllocateStableId("module.spawn");
         emitter.shape.id = AllocateStableId("module.shape");
         emitter.position.id = AllocateStableId("module.position");
@@ -355,9 +434,10 @@ namespace HIKARI::EDITOR {
         emitter.renderCommon.id =
             AllocateStableId("module.render_common");
         emitter.renderShape.id = AllocateStableId("module.render_shape");
-        const std::array<std::string_view, 11u> nextModuleIds{
+        const std::array<std::string_view, 12u> nextModuleIds{
             emitter.basic.id,
             emitter.emitterTransform.id,
+            emitter.attachment.id,
             emitter.spawn.id,
             emitter.shape.id,
             emitter.position.id,
@@ -381,6 +461,12 @@ namespace HIKARI::EDITOR {
                     break;
                 }
             }
+        }
+        for (VFX::VfxBurstKeyData& key : emitter.spawn.burstTimeline) {
+            key.id = AllocateStableId("burst.key");
+        }
+        for (VFX::VfxSpecialOutputData& output : emitter.specialOutputs) {
+            output.id = AllocateStableId("special.output");
         }
         for (const VfxCurveAddress& address : CurveAddresses(emitter)) {
             VFX::VfxCurveData* curve = ResolveVfxCurve(emitter, address);

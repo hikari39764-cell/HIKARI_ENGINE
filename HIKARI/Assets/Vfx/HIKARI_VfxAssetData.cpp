@@ -132,6 +132,36 @@ namespace HIKARI::VFX {
         }
     }
 
+    std::string_view ToString(VfxAttachmentMode value) noexcept {
+        return value == VfxAttachmentMode::Owner
+            ? "Owner"
+            : value == VfxAttachmentMode::OwnerSocket
+                ? "OwnerSocket"
+                : "World";
+    }
+
+    std::string_view ToString(VfxFollowMode value) noexcept {
+        switch (value) {
+        case VfxFollowMode::Position: return "Position";
+        case VfxFollowMode::Rotation: return "Rotation";
+        case VfxFollowMode::Transform: return "Transform";
+        case VfxFollowMode::None:
+        default: return "None";
+        }
+    }
+
+    std::string_view ToString(VfxSpecialOutputType value) noexcept {
+        switch (value) {
+        case VfxSpecialOutputType::ScreenImpulse:
+            return "ScreenImpulse";
+        case VfxSpecialOutputType::SkinnedAfterimage:
+            return "SkinnedAfterimage";
+        case VfxSpecialOutputType::WeaponPathDistortion:
+        default:
+            return "WeaponPathDistortion";
+        }
+    }
+
     bool TryParseVfxValueType(
         std::string_view text,
         VfxValueType& outValue) noexcept {
@@ -280,6 +310,44 @@ namespace HIKARI::VFX {
         }, outValue);
     }
 
+    bool TryParseVfxAttachmentMode(
+        std::string_view text,
+        VfxAttachmentMode& outValue) noexcept {
+
+        return ParseEnum(text, {
+            { "World", VfxAttachmentMode::World },
+            { "Owner", VfxAttachmentMode::Owner },
+            { "OwnerSocket", VfxAttachmentMode::OwnerSocket },
+            // Source v4 preview aliases accepted only during migration.
+            { "Socket", VfxAttachmentMode::OwnerSocket },
+        }, outValue);
+    }
+
+    bool TryParseVfxFollowMode(
+        std::string_view text,
+        VfxFollowMode& outValue) noexcept {
+
+        return ParseEnum(text, {
+            { "None", VfxFollowMode::None },
+            { "Position", VfxFollowMode::Position },
+            { "Rotation", VfxFollowMode::Rotation },
+            { "Transform", VfxFollowMode::Transform },
+        }, outValue);
+    }
+
+    bool TryParseVfxSpecialOutputType(
+        std::string_view text,
+        VfxSpecialOutputType& outValue) noexcept {
+
+        return ParseEnum(text, {
+            { "WeaponPathDistortion",
+                VfxSpecialOutputType::WeaponPathDistortion },
+            { "ScreenImpulse", VfxSpecialOutputType::ScreenImpulse },
+            { "SkinnedAfterimage",
+                VfxSpecialOutputType::SkinnedAfterimage },
+        }, outValue);
+    }
+
     VfxFloatDistributionData MakeVfxFloatConstant(float value) noexcept {
         return { VfxDistributionMode::Constant, value, value, 0u };
     }
@@ -330,6 +398,7 @@ namespace HIKARI::VFX {
         emitter.basic.id = "module.basic";
         emitter.basic.lifetime = MakeVfxFloatConstant(1.0f);
         emitter.emitterTransform.id = "module.emitter_transform";
+        emitter.attachment.id = "module.attachment";
         emitter.spawn.id = "module.spawn";
         emitter.shape.id = "module.shape";
         emitter.shape.radius = MakeVfxFloatConstant(0.0f);

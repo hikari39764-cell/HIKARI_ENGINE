@@ -21,7 +21,8 @@ namespace HIKARI::RENDER3D::COMBAT_VFX {
         std::array<MATH::Mat4, kMaximumCombatAfterimageJoints> jointPalette{};
         uint32_t jointCount = 0u;
         uint8_t skinned = 0u;
-        uint8_t reserved[3]{};
+        uint8_t silhouette = 1u;
+        uint8_t reserved[2]{};
         uint32_t silhouetteIndex = 0u;
         float ageSeconds = 0.0f;
         float lifetimeSeconds = 0.28f;

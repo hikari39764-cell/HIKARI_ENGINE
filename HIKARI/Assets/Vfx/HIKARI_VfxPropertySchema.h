@@ -13,6 +13,7 @@ namespace HIKARI::VFX {
     enum class VfxModuleKind : uint8_t {
         Basic,
         EmitterTransform,
+        Attachment,
         Spawn,
         Shape,
         Position,
@@ -148,6 +149,7 @@ namespace HIKARI::VFX {
 
     inline std::string_view ToString(VfxModuleKind value) noexcept {
         switch (value) {
+        case VfxModuleKind::Attachment: return "Attachment";
         case VfxModuleKind::EmitterTransform: return "EmitterTransform";
         case VfxModuleKind::Spawn: return "Spawn";
         case VfxModuleKind::Shape: return "Shape";
@@ -194,12 +196,14 @@ namespace HIKARI::VFX {
         std::string_view moduleId,
         VfxModuleKind& outKind) noexcept {
 
-        const std::array<std::pair<std::string_view, VfxModuleKind>, 11u>
+        const std::array<std::pair<std::string_view, VfxModuleKind>, 12u>
             modules{
                 std::pair{ std::string_view(emitter.basic.id),
                     VfxModuleKind::Basic },
                 std::pair{ std::string_view(emitter.emitterTransform.id),
                     VfxModuleKind::EmitterTransform },
+                std::pair{ std::string_view(emitter.attachment.id),
+                    VfxModuleKind::Attachment },
                 std::pair{ std::string_view(emitter.spawn.id),
                     VfxModuleKind::Spawn },
                 std::pair{ std::string_view(emitter.shape.id),

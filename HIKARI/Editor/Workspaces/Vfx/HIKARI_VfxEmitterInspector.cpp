@@ -151,6 +151,11 @@ namespace HIKARI::EDITOR {
         } else if (selection_.kind ==
                    VfxWorkspaceSelectionKind::Bindings) {
             emitterInspectorPage_ = VfxEmitterInspectorPage::Bindings;
+        } else if (selection_.kind ==
+                   VfxWorkspaceSelectionKind::SpecialOutput) {
+            // Output profiles are authored on Common. Route hierarchy clicks
+            // back here even when the user was previously on Spawn/Render.
+            emitterInspectorPage_ = VfxEmitterInspectorPage::Common;
         }
 
         const VfxEmitterInspectorPage requestedPage =
@@ -178,6 +183,24 @@ namespace HIKARI::EDITOR {
                 *this, database, emitter.id, statusMessage_);
             emitterEditor.Text("Name", "name", emitter.name);
             emitterEditor.Unsigned("Sibling Order", "order", emitter.order);
+            emitterEditor.Float(
+                "Start Delay (seconds)",
+                "startDelay",
+                emitter.startDelay,
+                0.01f,
+                0.0f,
+                document_.Asset().durationSeconds > 0.0f
+                    ? document_.Asset().durationSeconds
+                    : 3600.0f);
+            emitterEditor.Float(
+                "Active Duration (0 = until asset end)",
+                "activeDuration",
+                emitter.activeDuration,
+                0.01f,
+                0.0f,
+                document_.Asset().durationSeconds > 0.0f
+                    ? document_.Asset().durationSeconds
+                    : 3600.0f);
 
             ImGui::SeparatorText("Basic");
             VfxInspectorPropertyEditor basicEditor(
@@ -210,6 +233,268 @@ namespace HIKARI::EDITOR {
                 "Scale",
                 "transform.scale",
                 emitter.emitterTransform.transform.scale);
+
+            ImGui::SeparatorText("Attachment / Follow");
+            VfxInspectorPropertyEditor attachmentEditor(
+                *this,
+                database,
+                emitter.attachment.id,
+                statusMessage_);
+            constexpr std::array<std::string_view, 3u> attachmentModes{
+                "World", "Owner", "OwnerSocket"
+            };
+            attachmentEditor.Choice(
+                "Attachment Mode",
+                "mode",
+                VFX::ToString(emitter.attachment.mode),
+                attachmentModes.data(),
+                attachmentModes.size());
+            constexpr std::array<std::string_view, 4u> followModes{
+                "None", "Position", "Rotation", "Transform"
+            };
+            attachmentEditor.Choice(
+                "Follow",
+                "follow",
+                VFX::ToString(emitter.attachment.follow),
+                followModes.data(),
+                followModes.size());
+            if (emitter.attachment.mode == VFX::VfxAttachmentMode::OwnerSocket) {
+                attachmentEditor.Text(
+                    "Socket Name",
+                    "socketName",
+                    emitter.attachment.socketName);
+            }
+            attachmentEditor.Vec3(
+                "Local Offset",
+                "offset.position",
+                emitter.attachment.offset.position);
+            attachmentEditor.Vec3(
+                "Local Rotation (degrees)",
+                "offset.rotationEulerDegrees",
+                emitter.attachment.offset.rotationEulerDegrees,
+                0.1f);
+            attachmentEditor.Vec3(
+                "Local Scale",
+                "offset.scale",
+                emitter.attachment.offset.scale);
+
+            ImGui::SeparatorText("Typed Special Outputs");
+            constexpr std::array<std::string_view, 3u> specialOutputTypes{
+                "WeaponPathDistortion", "ScreenImpulse", "SkinnedAfterimage"
+            };
+            if (emitter.specialOutputs.empty()) {
+                ImGui::TextDisabled(
+                    "No special output profiles. Add one to expose the typed renderer profile.");
+            } else if (selection_.kind ==
+                       VfxWorkspaceSelectionKind::SpecialOutput) {
+                ImGui::TextDisabled(
+                    "Editing selected special output profile: %s",
+                    selection_.targetId.c_str());
+            }
+            bool removeOutput = false;
+            std::string removeOutputId{};
+            for (const VFX::VfxSpecialOutputData& output :
+                 emitter.specialOutputs) {
+                if (selection_.kind ==
+                        VfxWorkspaceSelectionKind::SpecialOutput &&
+                    selection_.targetId != output.id) {
+                    continue;
+                }
+                ImGui::PushID(output.id.c_str());
+                ImGui::Separator();
+                if (ImGui::Selectable(
+                        output.id.c_str(),
+                        selection_.kind ==
+                            VfxWorkspaceSelectionKind::SpecialOutput &&
+                        selection_.targetId == output.id)) {
+                    Select({ VfxWorkspaceSelectionKind::SpecialOutput,
+                        output.id, emitter.id });
+                }
+                VfxInspectorPropertyEditor outputEditor(
+                    *this, database, output.id, statusMessage_);
+                outputEditor.Bool("Enabled", "enabled", output.enabled);
+                outputEditor.Choice(
+                    "Profile",
+                    "type",
+                    VFX::ToString(output.type),
+                    specialOutputTypes.data(),
+                    specialOutputTypes.size());
+                switch (output.type) {
+                case VFX::VfxSpecialOutputType::ScreenImpulse:
+                    outputEditor.Float(
+                        "Duration", "screenImpulse.durationSeconds",
+                        output.screenImpulse.durationSeconds, 0.01f,
+                        VFX::kVfxScreenDurationMin,
+                        VFX::kVfxScreenDurationMax);
+                    outputEditor.Float(
+                        "Max Radius", "screenImpulse.maxRadius",
+                        output.screenImpulse.maxRadius, 0.01f,
+                        VFX::kVfxScreenRadiusMin,
+                        VFX::kVfxScreenRadiusMax);
+                    outputEditor.Float(
+                        "Ring Thickness", "screenImpulse.ringThickness",
+                        output.screenImpulse.ringThickness, 0.001f,
+                        VFX::kVfxScreenRingThicknessMin,
+                        VFX::kVfxScreenRingThicknessMax);
+                    outputEditor.Float(
+                        "Distortion", "screenImpulse.distortion",
+                        output.screenImpulse.distortion, 0.01f,
+                        VFX::kVfxScreenDistortionMin,
+                        VFX::kVfxScreenDistortionMax);
+                    outputEditor.Float(
+                        "Chromatic Aberration", "screenImpulse.chromaticAberration",
+                        output.screenImpulse.chromaticAberration, 0.001f,
+                        VFX::kVfxScreenChromaticMin,
+                        VFX::kVfxScreenChromaticMax);
+                    outputEditor.Float(
+                        "Flash", "screenImpulse.flash",
+                        output.screenImpulse.flash, 0.01f,
+                        VFX::kVfxScreenFlashMin,
+                        VFX::kVfxScreenFlashMax);
+                    outputEditor.Float(
+                        "Intensity", "screenImpulse.intensity",
+                        output.screenImpulse.intensity, 0.01f,
+                        VFX::kVfxScreenIntensityMin,
+                        VFX::kVfxScreenIntensityMax);
+                    outputEditor.Color(
+                        "Color", "screenImpulse.color", output.screenImpulse.color);
+                    outputEditor.Float(
+                        "Wave Frequency", "screenImpulse.waveFrequency",
+                        output.screenImpulse.waveFrequency, 0.01f,
+                        VFX::kVfxScreenWaveFrequencyMin,
+                        VFX::kVfxScreenWaveFrequencyMax);
+                    outputEditor.Float(
+                        "Wave Amplitude", "screenImpulse.waveAmplitude",
+                        output.screenImpulse.waveAmplitude, 0.01f,
+                        VFX::kVfxScreenWaveAmplitudeMin,
+                        VFX::kVfxScreenWaveAmplitudeMax);
+                    outputEditor.Float(
+                        "Wave Damping", "screenImpulse.waveDamping",
+                        output.screenImpulse.waveDamping, 0.01f,
+                        VFX::kVfxScreenWaveDampingMin,
+                        VFX::kVfxScreenWaveDampingMax);
+                    outputEditor.Unsigned(
+                        "Wave Count", "screenImpulse.waveCount",
+                        output.screenImpulse.waveCount,
+                        VFX::kVfxScreenImpulseWaveCountMin,
+                        VFX::kVfxScreenImpulseWaveCountMax);
+                    break;
+                case VFX::VfxSpecialOutputType::SkinnedAfterimage:
+                    outputEditor.Unsigned(
+                        "Sample Count", "skinnedAfterimage.sampleCount",
+                        output.skinnedAfterimage.sampleCount,
+                        VFX::kVfxAfterimageSampleCountMin,
+                        VFX::kVfxAfterimageSampleCountMax);
+                    outputEditor.Float(
+                        "Lifetime", "skinnedAfterimage.lifetimeSeconds",
+                        output.skinnedAfterimage.lifetimeSeconds, 0.01f,
+                        VFX::kVfxAfterimageLifetimeMin,
+                        VFX::kVfxAfterimageLifetimeMax);
+                    outputEditor.Float(
+                        "Opacity", "skinnedAfterimage.opacity",
+                        output.skinnedAfterimage.opacity, 0.01f,
+                        VFX::kVfxAfterimageOpacityMin,
+                        VFX::kVfxAfterimageOpacityMax);
+                    outputEditor.Float(
+                        "Fresnel", "skinnedAfterimage.fresnel",
+                        output.skinnedAfterimage.fresnel, 0.01f,
+                        VFX::kVfxAfterimageFresnelMin,
+                        VFX::kVfxAfterimageFresnelMax);
+                    outputEditor.Float(
+                        "Dissolve", "skinnedAfterimage.dissolve",
+                        output.skinnedAfterimage.dissolve, 0.01f,
+                        VFX::kVfxAfterimageDissolveMin,
+                        VFX::kVfxAfterimageDissolveMax);
+                    outputEditor.Float(
+                        "Shell Offset", "skinnedAfterimage.shellOffset",
+                        output.skinnedAfterimage.shellOffset, 0.001f,
+                        VFX::kVfxAfterimageShellOffsetMin,
+                        VFX::kVfxAfterimageShellOffsetMax);
+                    outputEditor.Color(
+                        "Color", "skinnedAfterimage.color",
+                        output.skinnedAfterimage.color);
+                    outputEditor.Float(
+                        "Intensity", "skinnedAfterimage.intensity",
+                        output.skinnedAfterimage.intensity, 0.01f,
+                        VFX::kVfxAfterimageIntensityMin,
+                        VFX::kVfxAfterimageIntensityMax);
+                    break;
+                case VFX::VfxSpecialOutputType::WeaponPathDistortion:
+                default:
+                    outputEditor.Float(
+                        "Distortion", "weaponPathDistortion.distortion",
+                        output.weaponPathDistortion.distortion, 0.01f,
+                        VFX::kVfxWeaponDistortionMin,
+                        VFX::kVfxWeaponDistortionMax);
+                    outputEditor.Float(
+                        "Blur", "weaponPathDistortion.blur",
+                        output.weaponPathDistortion.blur, 0.01f,
+                        VFX::kVfxWeaponBlurMin,
+                        VFX::kVfxWeaponBlurMax);
+                    outputEditor.Float(
+                        "Opacity", "weaponPathDistortion.opacity",
+                        output.weaponPathDistortion.opacity, 0.01f,
+                        VFX::kVfxWeaponOpacityMin,
+                        VFX::kVfxWeaponOpacityMax);
+                    outputEditor.Float(
+                        "Emissive", "weaponPathDistortion.emissive",
+                        output.weaponPathDistortion.emissive, 0.01f,
+                        VFX::kVfxWeaponEmissiveMin,
+                        VFX::kVfxWeaponEmissiveMax);
+                    outputEditor.Float(
+                        "Flow", "weaponPathDistortion.flow",
+                        output.weaponPathDistortion.flow, 0.01f,
+                        VFX::kVfxWeaponFlowMin,
+                        VFX::kVfxWeaponFlowMax);
+                    outputEditor.Float(
+                        "Width", "weaponPathDistortion.width",
+                        output.weaponPathDistortion.width, 0.001f,
+                        VFX::kVfxWeaponWidthMin,
+                        VFX::kVfxWeaponWidthMax);
+                    outputEditor.Float(
+                        "Lifetime", "weaponPathDistortion.lifetimeSeconds",
+                        output.weaponPathDistortion.lifetimeSeconds, 0.01f,
+                        VFX::kVfxWeaponLifetimeMin,
+                        VFX::kVfxWeaponLifetimeMax);
+                    outputEditor.Color(
+                        "Body Color", "weaponPathDistortion.bodyColor",
+                        output.weaponPathDistortion.bodyColor);
+                    outputEditor.Color(
+                        "Edge Color", "weaponPathDistortion.edgeColor",
+                        output.weaponPathDistortion.edgeColor);
+                    break;
+                }
+                if (ImGui::SmallButton("Remove Output")) {
+                    removeOutput = true;
+                    removeOutputId = output.id;
+                }
+                ImGui::PopID();
+            }
+            const auto addOutput = [this, &emitter](
+                VFX::VfxSpecialOutputType type) {
+                std::string outputId{};
+                std::string message{};
+                if (!AddSpecialOutput(
+                        emitter.id, type, {}, outputId, message)) {
+                    statusMessage_ = message;
+                }
+            };
+            if (ImGui::Button("Add WeaponPathDistortion Output")) {
+                addOutput(VFX::VfxSpecialOutputType::WeaponPathDistortion);
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Add ScreenImpulse Output")) {
+                addOutput(VFX::VfxSpecialOutputType::ScreenImpulse);
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Add SkinnedAfterimage Output")) {
+                addOutput(VFX::VfxSpecialOutputType::SkinnedAfterimage);
+            }
+            if (removeOutput) {
+                std::string message{};
+                (void)RemoveSpecialOutput(removeOutputId, message);
+                statusMessage_ = message;
+            }
             break;
         }
         case VfxEmitterInspectorPage::Spawn: {

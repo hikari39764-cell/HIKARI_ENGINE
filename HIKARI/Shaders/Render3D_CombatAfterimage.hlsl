@@ -138,9 +138,12 @@ float4 PSMain(VSOutput input) : SV_TARGET
     float shimmer = 0.75f + 0.25f * sin(
         dot(input.worldPosition, float3(2.1f, 3.7f, 1.4f)) +
         input.uv.x * 6.28318f);
+    const float fresnelCoverage = gColor.a > 0.5f
+        ? (0.22f + 0.78f * fresnel)
+        : fresnel;
     float alpha = saturate(
         gEffect0.x * gEffect0.y * remaining * remaining * dissolve *
-        (0.22f + 0.78f * fresnel));
+        fresnelCoverage);
     float3 color = gColor.rgb * shimmer *
         (0.72f + 0.85f * fresnel) * gEffect0.y;
     return float4(color * alpha, alpha);

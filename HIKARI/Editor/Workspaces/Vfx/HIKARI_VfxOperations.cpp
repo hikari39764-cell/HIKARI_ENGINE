@@ -3,7 +3,8 @@
 #include "Assets/Vfx/HIKARI_VfxPresetRegistry.h"
 
 #include <string>
-#include <string>
+#include <cstdint>
+#include <limits>
 
 #include <json.hpp>
 
@@ -333,6 +334,279 @@ namespace HIKARI::EDITOR {
                 description["vfxAssetGuid"] =
                     controller.GetDocument().GetAssetGuid().value;
                 return Success(message, std::move(description));
+            },
+        });
+
+        registry.Register({
+            "vfx.burst.add",
+            "Add an editable emitter-local burst key",
+            "vfx",
+            {
+                Parameter(
+                    "emitterId",
+                    EditorOperationParameterType::String,
+                    true,
+                    "Stable emitter ID"),
+                Parameter(
+                    "time",
+                    EditorOperationParameterType::Float,
+                    true,
+                    "Burst time in the emitter active window"),
+                Parameter(
+                    "count",
+                    EditorOperationParameterType::Int,
+                    true,
+                    "Particles emitted by the burst key"),
+                Parameter(
+                    "requestedId",
+                    EditorOperationParameterType::String,
+                    false,
+                    "Optional stable burst key ID"),
+            },
+            [&controller, databaseProvider](const nlohmann::json& parameters) {
+                EditorOperationResult result{};
+                AssetDatabase* database = RequireDatabase(
+                    databaseProvider, result);
+                if (database == nullptr ||
+                    !EnsureDocument(controller, *database, result)) {
+                    return result;
+                }
+                const nlohmann::json& countNode = parameters.at("count");
+                uint64_t count = 0u;
+                if (countNode.is_number_integer()) {
+                    const int64_t signedCount = countNode.get<int64_t>();
+                    if (signedCount < 0) {
+                        return Failure(
+                            "VFX_BURST_ADD_FAILED",
+                            "Burst count must be non-negative");
+                    }
+                    count = static_cast<uint64_t>(signedCount);
+                } else if (countNode.is_number_unsigned()) {
+                    count = countNode.get<uint64_t>();
+                } else {
+                    return Failure(
+                        "VFX_BURST_ADD_FAILED",
+                        "Burst count must be an integer");
+                }
+                if (count > (std::numeric_limits<uint32_t>::max)()) {
+                    return Failure(
+                        "VFX_BURST_ADD_FAILED",
+                        "Burst count exceeds uint32 range");
+                }
+                std::string id{};
+                std::string message{};
+                if (!controller.AddBurstKey(
+                        parameters.at("emitterId").get<std::string>(),
+                        parameters.at("time").get<float>(),
+                        static_cast<uint32_t>(count),
+                        parameters.value("requestedId", ""),
+                        id,
+                        message)) {
+                    return Failure("VFX_BURST_ADD_FAILED", message);
+                }
+                return Success(message, ContextData(controller, id));
+            },
+        });
+
+        registry.Register({
+            "vfx.burst.set",
+            "Update an emitter-local burst key through one authoring transaction",
+            "vfx",
+            {
+                Parameter(
+                    "keyId",
+                    EditorOperationParameterType::String,
+                    true,
+                    "Stable burst key ID"),
+                Parameter(
+                    "time",
+                    EditorOperationParameterType::Float,
+                    true,
+                    "Burst time in the emitter active window"),
+                Parameter(
+                    "count",
+                    EditorOperationParameterType::Int,
+                    true,
+                    "Particles emitted by the burst key"),
+            },
+            [&controller](const nlohmann::json& parameters) {
+                const nlohmann::json& countNode = parameters.at("count");
+                uint64_t count = 0u;
+                if (countNode.is_number_integer()) {
+                    const int64_t signedCount = countNode.get<int64_t>();
+                    if (signedCount < 0) {
+                        return Failure(
+                            "VFX_BURST_SET_FAILED",
+                            "Burst count must be non-negative");
+                    }
+                    count = static_cast<uint64_t>(signedCount);
+                } else if (countNode.is_number_unsigned()) {
+                    count = countNode.get<uint64_t>();
+                } else {
+                    return Failure(
+                        "VFX_BURST_SET_FAILED",
+                        "Burst count must be an integer");
+                }
+                if (count > (std::numeric_limits<uint32_t>::max)()) {
+                    return Failure(
+                        "VFX_BURST_SET_FAILED",
+                        "Burst count exceeds uint32 range");
+                }
+                std::string message{};
+                return controller.SetBurstKey(
+                        parameters.at("keyId").get<std::string>(),
+                        parameters.at("time").get<float>(),
+                        static_cast<uint32_t>(count),
+                        message)
+                    ? Success(message, ContextData(controller,
+                        parameters.at("keyId").get<std::string>()))
+                    : Failure("VFX_BURST_SET_FAILED", message);
+            },
+        });
+
+        registry.Register({
+            "vfx.burst.remove",
+            "Remove one editable emitter-local burst key",
+            "vfx",
+            {
+                Parameter(
+                    "keyId",
+                    EditorOperationParameterType::String,
+                    true,
+                    "Stable burst key ID"),
+            },
+            [&controller](const nlohmann::json& parameters) {
+                std::string message{};
+                return controller.RemoveBurstKey(
+                        parameters.at("keyId").get<std::string>(),
+                        message)
+                    ? Success(message, ContextData(controller))
+                    : Failure("VFX_BURST_REMOVE_FAILED", message);
+            },
+        });
+
+        registry.Register({
+            "vfx.special_output.add",
+            "Add a typed VFX special output profile",
+            "vfx",
+            {
+                Parameter(
+                    "emitterId",
+                    EditorOperationParameterType::String,
+                    true,
+                    "Stable emitter ID"),
+                Parameter(
+                    "type",
+                    EditorOperationParameterType::String,
+                    true,
+                    "WeaponPathDistortion, ScreenImpulse, or SkinnedAfterimage"),
+                Parameter(
+                    "requestedId",
+                    EditorOperationParameterType::String,
+                    false,
+                    "Optional stable output ID"),
+            },
+            [&controller, databaseProvider](const nlohmann::json& parameters) {
+                EditorOperationResult result{};
+                AssetDatabase* database = RequireDatabase(
+                    databaseProvider, result);
+                if (database == nullptr ||
+                    !EnsureDocument(controller, *database, result)) {
+                    return result;
+                }
+                VFX::VfxSpecialOutputType type{};
+                if (!VFX::TryParseVfxSpecialOutputType(
+                        parameters.at("type").get<std::string>(), type)) {
+                    return Failure(
+                        "VFX_SPECIAL_OUTPUT_ADD_FAILED",
+                        "Unknown VFX special output type");
+                }
+                std::string id{};
+                std::string message{};
+                if (!controller.AddSpecialOutput(
+                        parameters.at("emitterId").get<std::string>(),
+                        type,
+                        parameters.value("requestedId", ""),
+                        id,
+                        message)) {
+                    return Failure(
+                        "VFX_SPECIAL_OUTPUT_ADD_FAILED", message);
+                }
+                return Success(message, ContextData(controller, id));
+            },
+        });
+
+        registry.Register({
+            "vfx.special_output.set",
+            "Set a typed special output profile field through the canonical transaction",
+            "vfx",
+            {
+                Parameter(
+                    "outputId",
+                    EditorOperationParameterType::String,
+                    true,
+                    "Stable special output ID"),
+                Parameter(
+                    "property",
+                    EditorOperationParameterType::String,
+                    true,
+                    "Profile property path returned by target.describe"),
+                Parameter(
+                    "value",
+                    EditorOperationParameterType::Json,
+                    true,
+                    "Typed profile value"),
+            },
+            [&controller, databaseProvider](const nlohmann::json& parameters) {
+                EditorOperationResult result{};
+                AssetDatabase* database = RequireDatabase(
+                    databaseProvider, result);
+                if (database == nullptr ||
+                    !EnsureDocument(controller, *database, result)) {
+                    return result;
+                }
+                const std::string outputId =
+                    parameters.at("outputId").get<std::string>();
+                if (controller.FindSpecialOutput(outputId) == nullptr) {
+                    return Failure(
+                        "VFX_SPECIAL_OUTPUT_NOT_FOUND",
+                        "VFX special output was not found");
+                }
+                std::string message{};
+                if (!controller.SetProperty(
+                        outputId,
+                        parameters.at("property").get<std::string>(),
+                        parameters.at("value"),
+                        message,
+                        0u,
+                        database)) {
+                    return Failure("VFX_SPECIAL_OUTPUT_REJECTED", message);
+                }
+                nlohmann::json description{};
+                (void)DescribeVfxTarget(controller, outputId, description);
+                return Success(message, std::move(description));
+            },
+        });
+
+        registry.Register({
+            "vfx.special_output.remove",
+            "Remove a typed VFX special output profile",
+            "vfx",
+            {
+                Parameter(
+                    "outputId",
+                    EditorOperationParameterType::String,
+                    true,
+                    "Stable special output ID"),
+            },
+            [&controller](const nlohmann::json& parameters) {
+                std::string message{};
+                return controller.RemoveSpecialOutput(
+                        parameters.at("outputId").get<std::string>(),
+                        message)
+                    ? Success(message, ContextData(controller))
+                    : Failure(
+                        "VFX_SPECIAL_OUTPUT_REMOVE_FAILED", message);
             },
         });
 

@@ -24,6 +24,11 @@ namespace HIKARI::VFX {
                 IsFinite(value.z) && IsFinite(value.w);
         }
 
+        bool IsNonNegative(const MATH::Vec4& value) noexcept {
+            return value.x >= 0.0f && value.y >= 0.0f &&
+                value.z >= 0.0f && value.w >= 0.0f;
+        }
+
         bool IsValidDistribution(
             const ParticleDistributionFloat& value) noexcept {
 
@@ -245,6 +250,7 @@ namespace HIKARI::VFX {
         uint64_t totalCapacity = 0u;
         uint64_t totalInputLinks = 0u;
         std::unordered_set<std::string> emitterIds{};
+        std::unordered_set<std::string> specialOutputIds{};
         for (uint32_t index = 0u;
              index < program.emitters.size();
              ++index) {
@@ -287,6 +293,20 @@ namespace HIKARI::VFX {
                 !IsFinite(simulation.coneAngleRadians) ||
                 simulation.coneAngleRadians < 0.0f ||
                 simulation.coneAngleRadians > 3.14159265358979323846f ||
+                !IsFinite(simulation.shapeBoxHalfExtents) ||
+                simulation.shapeBoxHalfExtents.x < 0.0f ||
+                simulation.shapeBoxHalfExtents.y < 0.0f ||
+                simulation.shapeBoxHalfExtents.z < 0.0f ||
+                !IsFinite(simulation.shapeCylinderHeight) ||
+                simulation.shapeCylinderHeight < 0.0f ||
+                !IsFinite(simulation.shapeCircleInnerRadius) ||
+                simulation.shapeCircleInnerRadius < 0.0f ||
+                simulation.shapeCircleEmitOnEdge > 1u ||
+                !IsFinite(simulation.shapeEdgeLength) ||
+                simulation.shapeEdgeLength < 0.0f ||
+                (simulation.shape == ParticleShape::Circle &&
+                 simulation.shapeCircleInnerRadius >
+                    simulation.shapeRadius.minimum) ||
                 !IsValidDistribution(simulation.radialSpeed) ||
                 !IsValidAnimated(simulation.position) ||
                 !IsValidAnimated(simulation.rotationRadians) ||
@@ -360,6 +380,192 @@ namespace HIKARI::VFX {
                 return false;
             }
             totalCapacity += simulation.capacity;
+
+            if (!IsFinite(emitter.startDelay) ||
+                !IsFinite(emitter.activeDuration) ||
+                emitter.startDelay < 0.0f || emitter.activeDuration < 0.0f ||
+                emitter.startDelay > 3600.0f ||
+                emitter.activeDuration > 3600.0f ||
+                emitter.startDelay > program.durationSeconds ||
+                (emitter.activeDuration > 0.0f &&
+                 emitter.startDelay + emitter.activeDuration >
+                    program.durationSeconds) ||
+                emitter.attachment.mode != VfxAttachmentMode::World &&
+                    emitter.attachment.mode != VfxAttachmentMode::Owner &&
+                    emitter.attachment.mode !=
+                        VfxAttachmentMode::OwnerSocket ||
+                emitter.attachment.follow != VfxFollowMode::None &&
+                    emitter.attachment.follow != VfxFollowMode::Position &&
+                    emitter.attachment.follow != VfxFollowMode::Rotation &&
+                    emitter.attachment.follow != VfxFollowMode::Transform ||
+                emitter.attachment.mode == VfxAttachmentMode::OwnerSocket &&
+                    emitter.attachment.socketName.empty() ||
+                emitter.attachment.socketName.size() >
+                    kMaximumVfxProgramStringBytes ||
+                !IsFinite(emitter.attachment.offset.position) ||
+                !IsFinite(emitter.attachment.offset.rotationEulerDegrees) ||
+                !IsFinite(emitter.attachment.offset.scale) ||
+                emitter.attachment.offset.scale.x == 0.0f ||
+                emitter.attachment.offset.scale.y == 0.0f ||
+                emitter.attachment.offset.scale.z == 0.0f) {
+                outError = "VFX program emitter activation/attachment is invalid";
+                return false;
+            }
+
+            if (emitter.burstTimeline.size() >
+                kMaximumVfxProgramBurstKeys) {
+                outError = "VFX program burst timeline is too large";
+                return false;
+            }
+            std::unordered_set<std::string> burstIds{};
+            float previousBurstTime = 0.0f;
+            bool hasPreviousBurstTime = false;
+            for (const VfxBurstKeyData& key : emitter.burstTimeline) {
+                if (key.id.empty() ||
+                    key.id.size() > kMaximumVfxProgramStringBytes ||
+                    !burstIds.emplace(key.id).second ||
+                    !IsFinite(key.time) || key.time < 0.0f ||
+                    key.time > 3600.0f || key.count == 0u ||
+                    key.count > simulation.capacity) {
+                    outError = "VFX program burst timeline is invalid";
+                    return false;
+                }
+                if (hasPreviousBurstTime && key.time < previousBurstTime) {
+                    outError = "VFX program burst timeline is not sorted";
+                    return false;
+                }
+                previousBurstTime = key.time;
+                hasPreviousBurstTime = true;
+                const double effectiveActiveDuration =
+                    emitter.activeDuration > 0.0f
+                    ? static_cast<double>(emitter.activeDuration)
+                    : (std::max)(
+                        0.0,
+                        static_cast<double>(program.durationSeconds) -
+                            static_cast<double>(emitter.startDelay));
+                if (static_cast<double>(key.time) >
+                    effectiveActiveDuration) {
+                    outError =
+                        "VFX program burst key exceeds emitter activation";
+                    return false;
+                }
+            }
+            if (emitter.burstCount > simulation.capacity) {
+                outError = "VFX program burst count exceeds capacity";
+                return false;
+            }
+
+            if (emitter.specialOutputs.size() >
+                kMaximumVfxProgramSpecialOutputs) {
+                outError = "VFX program special output table is too large";
+                return false;
+            }
+            for (const VfxSpecialOutputData& output :
+                 emitter.specialOutputs) {
+                if (output.id.empty() ||
+                    output.id.size() > kMaximumVfxProgramStringBytes ||
+                    !specialOutputIds.emplace(output.id).second ||
+                    (output.type !=
+                        VfxSpecialOutputType::WeaponPathDistortion &&
+                     output.type != VfxSpecialOutputType::ScreenImpulse &&
+                     output.type != VfxSpecialOutputType::SkinnedAfterimage)) {
+                    outError = "VFX program special output table is invalid";
+                    return false;
+                }
+                const auto& weapon = output.weaponPathDistortion;
+                const auto& screen = output.screenImpulse;
+                const auto& afterimage = output.skinnedAfterimage;
+                if (
+                    (output.type ==
+                        VfxSpecialOutputType::WeaponPathDistortion &&
+                     (!IsFinite(weapon.distortion) ||
+                      !IsFinite(weapon.blur) ||
+                      !IsFinite(weapon.opacity) ||
+                      !IsFinite(weapon.emissive) ||
+                      !IsFinite(weapon.flow) ||
+                      !IsFinite(weapon.width) ||
+                      !IsFinite(weapon.lifetimeSeconds) ||
+                      !IsFinite(weapon.bodyColor) ||
+                      !IsFinite(weapon.edgeColor) ||
+                      !IsNonNegative(weapon.bodyColor) ||
+                      !IsNonNegative(weapon.edgeColor) ||
+                      weapon.distortion < kVfxWeaponDistortionMin ||
+                      weapon.distortion > kVfxWeaponDistortionMax ||
+                      weapon.blur < kVfxWeaponBlurMin ||
+                      weapon.blur > kVfxWeaponBlurMax ||
+                      weapon.opacity < kVfxWeaponOpacityMin ||
+                      weapon.opacity > kVfxWeaponOpacityMax ||
+                      weapon.emissive < kVfxWeaponEmissiveMin ||
+                      weapon.emissive > kVfxWeaponEmissiveMax ||
+                      weapon.flow < kVfxWeaponFlowMin ||
+                      weapon.flow > kVfxWeaponFlowMax ||
+                      weapon.width < kVfxWeaponWidthMin ||
+                      weapon.width > kVfxWeaponWidthMax ||
+                      weapon.lifetimeSeconds < kVfxWeaponLifetimeMin ||
+                      weapon.lifetimeSeconds > kVfxWeaponLifetimeMax)) ||
+                    (output.type == VfxSpecialOutputType::ScreenImpulse &&
+                     (!IsFinite(screen.durationSeconds) ||
+                      !IsFinite(screen.maxRadius) ||
+                      !IsFinite(screen.ringThickness) ||
+                      !IsFinite(screen.distortion) ||
+                      !IsFinite(screen.chromaticAberration) ||
+                      !IsFinite(screen.flash) ||
+                      !IsFinite(screen.intensity) ||
+                      !IsFinite(screen.color) ||
+                      !IsNonNegative(screen.color) ||
+                      !IsFinite(screen.waveFrequency) ||
+                      !IsFinite(screen.waveAmplitude) ||
+                      !IsFinite(screen.waveDamping) ||
+                      screen.durationSeconds < kVfxScreenDurationMin ||
+                      screen.durationSeconds > kVfxScreenDurationMax ||
+                      screen.maxRadius < kVfxScreenRadiusMin ||
+                      screen.maxRadius > kVfxScreenRadiusMax ||
+                      screen.ringThickness < kVfxScreenRingThicknessMin ||
+                      screen.ringThickness > kVfxScreenRingThicknessMax ||
+                      screen.distortion < kVfxScreenDistortionMin ||
+                      screen.distortion > kVfxScreenDistortionMax ||
+                      screen.chromaticAberration < kVfxScreenChromaticMin ||
+                      screen.chromaticAberration > kVfxScreenChromaticMax ||
+                      screen.flash < kVfxScreenFlashMin ||
+                      screen.flash > kVfxScreenFlashMax ||
+                      screen.intensity < kVfxScreenIntensityMin ||
+                      screen.intensity > kVfxScreenIntensityMax ||
+                      screen.waveFrequency < kVfxScreenWaveFrequencyMin ||
+                      screen.waveFrequency > kVfxScreenWaveFrequencyMax ||
+                      screen.waveAmplitude < kVfxScreenWaveAmplitudeMin ||
+                      screen.waveAmplitude > kVfxScreenWaveAmplitudeMax ||
+                      screen.waveDamping < kVfxScreenWaveDampingMin ||
+                      screen.waveDamping > kVfxScreenWaveDampingMax ||
+                      screen.waveCount < kVfxScreenImpulseWaveCountMin ||
+                      screen.waveCount > kVfxScreenImpulseWaveCountMax)) ||
+                    (output.type ==
+                        VfxSpecialOutputType::SkinnedAfterimage &&
+                     (!IsFinite(afterimage.lifetimeSeconds) ||
+                      !IsFinite(afterimage.opacity) ||
+                      !IsFinite(afterimage.fresnel) ||
+                      !IsFinite(afterimage.dissolve) ||
+                      !IsFinite(afterimage.shellOffset) ||
+                      !IsFinite(afterimage.color) ||
+                      !IsNonNegative(afterimage.color) ||
+                      !IsFinite(afterimage.intensity) ||
+                      afterimage.lifetimeSeconds < kVfxAfterimageLifetimeMin ||
+                      afterimage.lifetimeSeconds > kVfxAfterimageLifetimeMax ||
+                      afterimage.opacity < kVfxAfterimageOpacityMin ||
+                      afterimage.opacity > kVfxAfterimageOpacityMax ||
+                      afterimage.fresnel < kVfxAfterimageFresnelMin ||
+                      afterimage.fresnel > kVfxAfterimageFresnelMax ||
+                      afterimage.dissolve < kVfxAfterimageDissolveMin ||
+                      afterimage.dissolve > kVfxAfterimageDissolveMax ||
+                      afterimage.shellOffset < kVfxAfterimageShellOffsetMin ||
+                      afterimage.shellOffset > kVfxAfterimageShellOffsetMax ||
+                      afterimage.intensity < kVfxAfterimageIntensityMin ||
+                      afterimage.intensity > kVfxAfterimageIntensityMax ||
+                      afterimage.sampleCount < kVfxAfterimageSampleCountMin ||
+                      afterimage.sampleCount > kVfxAfterimageSampleCountMax))) {
+                    outError = "VFX program special output profile is invalid";
+                    return false;
+                }
+            }
 
             if (emitter.inputLinks.size() >
                 kMaximumVfxProgramLinksPerEmitter) {

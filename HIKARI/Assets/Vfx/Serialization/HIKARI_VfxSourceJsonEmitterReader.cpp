@@ -1,10 +1,188 @@
 #include "Assets/Vfx/Serialization/HIKARI_VfxSourceJsonInternal.h"
 
+#include <algorithm>
 #include <utility>
+#include <limits>
+
+#include "Assets/Vfx/HIKARI_VfxProgram.h"
 
 namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
     namespace {
         using Json = nlohmann::json;
+
+        bool ReadVec4(const Json& node, MATH::Vec4& outValue) {
+            if (!node.is_array() || node.size() != 4u ||
+                !node[0].is_number() || !node[1].is_number() ||
+                !node[2].is_number() || !node[3].is_number()) {
+                return false;
+            }
+            outValue = {
+                node[0].get<float>(),
+                node[1].get<float>(),
+                node[2].get<float>(),
+                node[3].get<float>(),
+            };
+            return true;
+        }
+
+        bool ReadUint32(
+            const Json& node,
+            uint32_t& outValue) {
+
+            if (node.is_number_unsigned()) {
+                const uint64_t value = node.get<uint64_t>();
+                if (value > (std::numeric_limits<uint32_t>::max)()) {
+                    return false;
+                }
+                outValue = static_cast<uint32_t>(value);
+                return true;
+            }
+            if (!node.is_number_integer()) return false;
+            const int64_t value = node.get<int64_t>();
+            if (value < 0 || static_cast<uint64_t>(value) >
+                (std::numeric_limits<uint32_t>::max)()) {
+                return false;
+            }
+            outValue = static_cast<uint32_t>(value);
+            return true;
+        }
+
+        bool ReadAttachment(
+            const Json& node,
+            VfxAttachmentData& outAttachment) {
+
+            if (!node.is_object()) return false;
+            VfxAttachmentData value = outAttachment;
+            if (!TryParseVfxAttachmentMode(
+                    node.value("mode", std::string{}), value.mode) ||
+                !TryParseVfxFollowMode(
+                    node.value("follow", std::string{}), value.follow) ||
+                (node.contains("socketName") &&
+                 !node["socketName"].is_string()) ||
+                (node.contains("offset") &&
+                 !ReadTransform(node["offset"], value.offset))) {
+                return false;
+            }
+            if (node.contains("socketName")) {
+                value.socketName = node["socketName"].get<std::string>();
+            }
+            outAttachment = std::move(value);
+            return true;
+        }
+
+        bool ReadSpecialOutput(
+            const Json& node,
+            VfxSpecialOutputData& outOutput) {
+
+            if (!node.is_object() ||
+                !node.contains("id") || !node["id"].is_string() ||
+                !TryParseVfxSpecialOutputType(
+                    node.value("type", std::string{}), outOutput.type) ||
+                (node.contains("enabled") &&
+                 !node["enabled"].is_boolean())) {
+                return false;
+            }
+            VfxSpecialOutputData value = outOutput;
+            value.id = node["id"].get<std::string>();
+            value.enabled = node.value("enabled", true);
+
+            const auto readFloat = [](const Json& object,
+                                      const char* key,
+                                      float& destination) {
+                if (!object.contains(key)) return true;
+                if (!object[key].is_number()) return false;
+                destination = object[key].get<float>();
+                return true;
+            };
+            const auto readUnsigned = [](const Json& object,
+                                         const char* key,
+                                         uint32_t& destination) {
+                if (!object.contains(key)) return true;
+                return ReadUint32(object[key], destination);
+            };
+
+            if (node.contains("weaponPathDistortion")) {
+                const Json& profile = node["weaponPathDistortion"];
+                if (!profile.is_object() ||
+                    !readFloat(profile, "distortion",
+                        value.weaponPathDistortion.distortion) ||
+                    !readFloat(profile, "blur",
+                        value.weaponPathDistortion.blur) ||
+                    !readFloat(profile, "opacity",
+                        value.weaponPathDistortion.opacity) ||
+                    !readFloat(profile, "emissive",
+                        value.weaponPathDistortion.emissive) ||
+                    !readFloat(profile, "flow",
+                        value.weaponPathDistortion.flow) ||
+                    !readFloat(profile, "width",
+                        value.weaponPathDistortion.width) ||
+                    !readFloat(profile, "lifetimeSeconds",
+                        value.weaponPathDistortion.lifetimeSeconds) ||
+                    (profile.contains("bodyColor") &&
+                     !ReadVec4(profile["bodyColor"],
+                        value.weaponPathDistortion.bodyColor)) ||
+                    (profile.contains("edgeColor") &&
+                     !ReadVec4(profile["edgeColor"],
+                        value.weaponPathDistortion.edgeColor))) {
+                    return false;
+                }
+            }
+            if (node.contains("screenImpulse")) {
+                const Json& profile = node["screenImpulse"];
+                if (!profile.is_object() ||
+                    !readFloat(profile, "durationSeconds",
+                        value.screenImpulse.durationSeconds) ||
+                    !readFloat(profile, "maxRadius",
+                        value.screenImpulse.maxRadius) ||
+                    !readFloat(profile, "ringThickness",
+                        value.screenImpulse.ringThickness) ||
+                    !readFloat(profile, "distortion",
+                        value.screenImpulse.distortion) ||
+                    !readFloat(profile, "chromaticAberration",
+                        value.screenImpulse.chromaticAberration) ||
+                    !readFloat(profile, "flash",
+                        value.screenImpulse.flash) ||
+                    !readFloat(profile, "intensity",
+                        value.screenImpulse.intensity) ||
+                    (profile.contains("color") &&
+                     !ReadVec4(profile["color"], value.screenImpulse.color)) ||
+                    !readFloat(profile, "waveFrequency",
+                        value.screenImpulse.waveFrequency) ||
+                    !readFloat(profile, "waveAmplitude",
+                        value.screenImpulse.waveAmplitude) ||
+                    !readFloat(profile, "waveDamping",
+                        value.screenImpulse.waveDamping) ||
+                    !readUnsigned(profile, "waveCount",
+                        value.screenImpulse.waveCount)) {
+                    return false;
+                }
+            }
+            if (node.contains("skinnedAfterimage")) {
+                const Json& profile = node["skinnedAfterimage"];
+                if (!profile.is_object() ||
+                    !readUnsigned(profile, "sampleCount",
+                        value.skinnedAfterimage.sampleCount) ||
+                    !readFloat(profile, "lifetimeSeconds",
+                        value.skinnedAfterimage.lifetimeSeconds) ||
+                    !readFloat(profile, "opacity",
+                        value.skinnedAfterimage.opacity) ||
+                    !readFloat(profile, "fresnel",
+                        value.skinnedAfterimage.fresnel) ||
+                    !readFloat(profile, "dissolve",
+                        value.skinnedAfterimage.dissolve) ||
+                    !readFloat(profile, "shellOffset",
+                        value.skinnedAfterimage.shellOffset) ||
+                    (profile.contains("color") &&
+                     !ReadVec4(profile["color"],
+                        value.skinnedAfterimage.color)) ||
+                    !readFloat(profile, "intensity",
+                        value.skinnedAfterimage.intensity)) {
+                    return false;
+                }
+            }
+            outOutput = std::move(value);
+            return true;
+        }
     }
 
     bool ReadVfxSourceEmitter(
@@ -22,15 +200,35 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
             !node.contains("name") || !node["name"].is_string() ||
             !node.contains("parentEmitterId") ||
             !node["parentEmitterId"].is_string() ||
-            !node.contains("order") ||
-            !node["order"].is_number_unsigned()) {
+            !node.contains("order")) {
             return false;
         }
         emitter.id = node["id"].get<std::string>();
         emitter.name = node["name"].get<std::string>();
         emitter.parentEmitterId =
             node["parentEmitterId"].get<std::string>();
-        emitter.order = node["order"].get<uint32_t>();
+        if (!ReadUint32(node["order"], emitter.order)) return false;
+        // Legacy documents do not have an attachment module. Derive its
+        // migrated stable ID from the emitter so several legacy emitters do
+        // not collide in the asset-wide ID namespace.
+        emitter.attachment.id = emitter.id + ".attachment";
+        if (node.contains("startDelay")) {
+            if (!node["startDelay"].is_number()) return false;
+            emitter.startDelay = node["startDelay"].get<float>();
+        } else if (node.contains("startDelaySeconds")) {
+            if (!node["startDelaySeconds"].is_number()) return false;
+            emitter.startDelay =
+                node["startDelaySeconds"].get<float>();
+        }
+        if (node.contains("activeDuration")) {
+            if (!node["activeDuration"].is_number()) return false;
+            emitter.activeDuration =
+                node["activeDuration"].get<float>();
+        } else if (node.contains("activeDurationSeconds")) {
+            if (!node["activeDurationSeconds"].is_number()) return false;
+            emitter.activeDuration =
+                node["activeDurationSeconds"].get<float>();
+        }
 
         const Json& modules = node["modules"];
         constexpr const char* kModuleNames[] = {
@@ -76,26 +274,95 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
             return false;
         }
 
+        if (modules.contains("attachment")) {
+            const Json& attachment = modules["attachment"];
+            if (!attachment.is_object() ||
+                !attachment.contains("id") ||
+                !attachment["id"].is_string() ||
+                !ReadAttachment(attachment, emitter.attachment)) {
+                return false;
+            }
+            emitter.attachment.id =
+                attachment["id"].get<std::string>();
+        }
+
         emitter.spawn.id = spawn["id"].get<std::string>();
         if (!spawn.contains("ratePerSecond") ||
             !spawn["ratePerSecond"].is_number() ||
             !spawn.contains("burstCount") ||
-            !spawn["burstCount"].is_number_unsigned() ||
-            !spawn.contains("maximumParticles") ||
-            !spawn["maximumParticles"].is_number_unsigned()) {
+            !spawn.contains("maximumParticles")) {
             return false;
         }
         emitter.spawn.ratePerSecond =
             spawn["ratePerSecond"].get<float>();
-        emitter.spawn.burstCount = spawn["burstCount"].get<uint32_t>();
+        if (!ReadUint32(spawn["burstCount"], emitter.spawn.burstCount)) {
+            return false;
+        }
+        if (spawn.contains("burstTimeline")) {
+            if (!spawn["burstTimeline"].is_array() ||
+                spawn["burstTimeline"].size() >
+                    kMaximumVfxProgramBurstKeys) {
+                return false;
+            }
+            for (const Json& item : spawn["burstTimeline"]) {
+                if (!item.is_object() ||
+                    !item.contains("id") || !item["id"].is_string() ||
+                    !item.contains("time") ||
+                    !item["time"].is_number() ||
+                    !item.contains("count") ||
+                    (!item["count"].is_number_unsigned() &&
+                     !item["count"].is_number_integer())) {
+                    return false;
+                }
+                uint32_t count = 0u;
+                if (!ReadUint32(item["count"], count)) return false;
+                emitter.spawn.burstTimeline.push_back({
+                    item["id"].get<std::string>(),
+                    item["time"].get<float>(),
+                    count,
+                });
+            }
+        }
+        if (emitter.spawn.burstTimeline.empty() &&
+            emitter.spawn.burstCount > 0u) {
+            emitter.spawn.burstTimeline.push_back({
+                emitter.spawn.id + ".burst.legacy",
+                0.0f,
+                emitter.spawn.burstCount });
+        }
+        if (!emitter.spawn.burstTimeline.empty()) {
+            std::sort(
+                emitter.spawn.burstTimeline.begin(),
+                emitter.spawn.burstTimeline.end(),
+                [](const VfxBurstKeyData& left,
+                   const VfxBurstKeyData& right) {
+                    if (left.time != right.time) {
+                        return left.time < right.time;
+                    }
+                    return left.id < right.id;
+                });
+            const auto atStart = std::find_if(
+                emitter.spawn.burstTimeline.begin(),
+                emitter.spawn.burstTimeline.end(),
+                [](const VfxBurstKeyData& key) {
+                    return key.time == 0.0f;
+                });
+            emitter.spawn.burstCount = atStart !=
+                emitter.spawn.burstTimeline.end()
+                ? atStart->count
+                : 0u;
+        }
         if (sourceVersion >= 3u &&
             !TryParseVfxParticleCapacityMode(
                 spawn.value("capacityMode", std::string{}),
                 emitter.spawn.capacityMode)) {
             return false;
         }
-        emitter.spawn.maximumParticles =
-            spawn["maximumParticles"].get<uint32_t>();
+        if (!ReadUint32(
+                spawn["maximumParticles"],
+                emitter.spawn.maximumParticles)) {
+            return false;
+        }
 
         emitter.shape.id = shape["id"].get<std::string>();
         if (!TryParseVfxShapeType(
@@ -223,12 +490,7 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
             const char* name,
             uint32_t& outValue) {
             if (!renderCommon.contains(name)) return true;
-            if (!renderCommon[name].is_number_unsigned() &&
-                !renderCommon[name].is_number_integer()) {
-                return false;
-            }
-            outValue = renderCommon[name].get<uint32_t>();
-            return true;
+            return ReadUint32(renderCommon[name], outValue);
         };
         const auto readOptionalBool = [&renderCommon](
             const char* name,
@@ -274,12 +536,11 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
             return false;
         }
         if (renderShape.contains("ribbonSegmentCount")) {
-            if (!renderShape["ribbonSegmentCount"].is_number_unsigned() &&
-                !renderShape["ribbonSegmentCount"].is_number_integer()) {
+            if (!ReadUint32(
+                    renderShape["ribbonSegmentCount"],
+                    emitter.renderShape.ribbonSegmentCount)) {
                 return false;
             }
-            emitter.renderShape.ribbonSegmentCount =
-                renderShape["ribbonSegmentCount"].get<uint32_t>();
         }
         if (renderShape.contains("ribbonWidth")) {
             if (!renderShape["ribbonWidth"].is_number()) {
@@ -303,12 +564,11 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
                 renderShape["ringInnerRadius"].get<float>();
         }
         if (renderShape.contains("ringSegmentCount")) {
-            if (!renderShape["ringSegmentCount"].is_number_unsigned() &&
-                !renderShape["ringSegmentCount"].is_number_integer()) {
+            if (!ReadUint32(
+                    renderShape["ringSegmentCount"],
+                    emitter.renderShape.ringSegmentCount)) {
                 return false;
             }
-            emitter.renderShape.ringSegmentCount =
-                renderShape["ringSegmentCount"].get<uint32_t>();
         }
         if (renderShape.contains("ringStartAngleDegrees")) {
             if (!renderShape["ringStartAngleDegrees"].is_number()) {
@@ -323,6 +583,19 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
             }
             emitter.renderShape.ringEndAngleDegrees =
                 renderShape["ringEndAngleDegrees"].get<float>();
+        }
+
+        if (node.contains("specialOutputs")) {
+            if (!node["specialOutputs"].is_array() ||
+                node["specialOutputs"].size() >
+                    kMaximumVfxProgramSpecialOutputs) {
+                return false;
+            }
+            for (const Json& item : node["specialOutputs"]) {
+                VfxSpecialOutputData output{};
+                if (!ReadSpecialOutput(item, output)) return false;
+                emitter.specialOutputs.push_back(std::move(output));
+            }
         }
 
         for (const Json& item : node["inputLinks"]) {

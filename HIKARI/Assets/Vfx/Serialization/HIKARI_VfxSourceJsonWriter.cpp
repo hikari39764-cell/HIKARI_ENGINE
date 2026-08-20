@@ -177,6 +177,64 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
             };
         }
 
+        Json WriteAttachment(const VfxAttachmentData& value) {
+            return {
+                { "id", value.id },
+                { "mode", ToString(value.mode) },
+                { "follow", ToString(value.follow) },
+                { "socketName", value.socketName },
+                { "offset", WriteTransform(value.offset) },
+            };
+        }
+
+        Json WriteSpecialOutput(const VfxSpecialOutputData& value) {
+            return {
+                { "id", value.id },
+                { "type", ToString(value.type) },
+                { "enabled", value.enabled },
+                { "weaponPathDistortion", {
+                    { "distortion", value.weaponPathDistortion.distortion },
+                    { "blur", value.weaponPathDistortion.blur },
+                    { "opacity", value.weaponPathDistortion.opacity },
+                    { "emissive", value.weaponPathDistortion.emissive },
+                    { "flow", value.weaponPathDistortion.flow },
+                    { "width", value.weaponPathDistortion.width },
+                    { "lifetimeSeconds",
+                        value.weaponPathDistortion.lifetimeSeconds },
+                    { "bodyColor", WriteVec4(
+                        value.weaponPathDistortion.bodyColor) },
+                    { "edgeColor", WriteVec4(
+                        value.weaponPathDistortion.edgeColor) },
+                } },
+                { "screenImpulse", {
+                    { "durationSeconds", value.screenImpulse.durationSeconds },
+                    { "maxRadius", value.screenImpulse.maxRadius },
+                    { "ringThickness", value.screenImpulse.ringThickness },
+                    { "distortion", value.screenImpulse.distortion },
+                    { "chromaticAberration",
+                        value.screenImpulse.chromaticAberration },
+                    { "flash", value.screenImpulse.flash },
+                    { "intensity", value.screenImpulse.intensity },
+                    { "color", WriteVec4(value.screenImpulse.color) },
+                    { "waveFrequency", value.screenImpulse.waveFrequency },
+                    { "waveAmplitude", value.screenImpulse.waveAmplitude },
+                    { "waveDamping", value.screenImpulse.waveDamping },
+                    { "waveCount", value.screenImpulse.waveCount },
+                } },
+                { "skinnedAfterimage", {
+                    { "sampleCount", value.skinnedAfterimage.sampleCount },
+                    { "lifetimeSeconds",
+                        value.skinnedAfterimage.lifetimeSeconds },
+                    { "opacity", value.skinnedAfterimage.opacity },
+                    { "fresnel", value.skinnedAfterimage.fresnel },
+                    { "dissolve", value.skinnedAfterimage.dissolve },
+                    { "shellOffset", value.skinnedAfterimage.shellOffset },
+                    { "color", WriteVec4(value.skinnedAfterimage.color) },
+                    { "intensity", value.skinnedAfterimage.intensity },
+                } },
+            };
+        }
+
         Json WriteEmitter(const VfxEmitterData& emitter) {
             Json links = Json::array();
             auto sortedLinks = emitter.inputLinks;
@@ -200,11 +258,54 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
                 });
             }
 
+            auto sortedBursts = emitter.spawn.burstTimeline;
+            if (sortedBursts.empty() && emitter.spawn.burstCount > 0u) {
+                sortedBursts.push_back({
+                    emitter.spawn.id + ".burst.legacy",
+                    0.0f,
+                    emitter.spawn.burstCount });
+            }
+            std::sort(
+                sortedBursts.begin(),
+                sortedBursts.end(),
+                [](const auto& left, const auto& right) {
+                    if (left.time != right.time) {
+                        return left.time < right.time;
+                    }
+                    return left.id < right.id;
+                });
+            Json burstTimeline = Json::array();
+            uint32_t legacyBurstCount = 0u;
+            for (const VfxBurstKeyData& key : sortedBursts) {
+                burstTimeline.push_back({
+                    { "id", key.id },
+                    { "time", key.time },
+                    { "count", key.count },
+                });
+                if (legacyBurstCount == 0u && key.time == 0.0f) {
+                    legacyBurstCount = key.count;
+                }
+            }
+
+            auto sortedOutputs = emitter.specialOutputs;
+            std::sort(
+                sortedOutputs.begin(),
+                sortedOutputs.end(),
+                [](const auto& left, const auto& right) {
+                    return left.id < right.id;
+                });
+            Json specialOutputs = Json::array();
+            for (const VfxSpecialOutputData& output : sortedOutputs) {
+                specialOutputs.push_back(WriteSpecialOutput(output));
+            }
+
             return {
                 { "id", emitter.id },
                 { "name", emitter.name },
                 { "parentEmitterId", emitter.parentEmitterId },
                 { "order", emitter.order },
+                { "startDelay", emitter.startDelay },
+                { "activeDuration", emitter.activeDuration },
                 { "modules", {
                     { "basic", {
                         { "id", emitter.basic.id },
@@ -217,10 +318,14 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
                         { "transform", WriteTransform(
                             emitter.emitterTransform.transform) },
                     } },
+                    { "attachment", WriteAttachment(emitter.attachment) },
                     { "spawn", {
                         { "id", emitter.spawn.id },
                         { "ratePerSecond", emitter.spawn.ratePerSecond },
-                        { "burstCount", emitter.spawn.burstCount },
+                        // Keep the v3 field for old tools; burstTimeline is
+                        // authoritative whenever it contains keys.
+                        { "burstCount", legacyBurstCount },
+                        { "burstTimeline", std::move(burstTimeline) },
                         { "capacityMode", ToString(
                             emitter.spawn.capacityMode) },
                         { "maximumParticles",
@@ -314,6 +419,7 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
                             emitter.renderShape.ringEndAngleDegrees },
                     } },
                 } },
+                { "specialOutputs", std::move(specialOutputs) },
                 { "inputLinks", std::move(links) },
             };
         }

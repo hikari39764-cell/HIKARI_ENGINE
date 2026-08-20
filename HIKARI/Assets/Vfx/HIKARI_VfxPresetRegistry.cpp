@@ -58,6 +58,7 @@ namespace HIKARI::VFX::PRESETS {
             qualify(emitter.id);
             qualify(emitter.basic.id);
             qualify(emitter.emitterTransform.id);
+            qualify(emitter.attachment.id);
             qualify(emitter.spawn.id);
             qualify(emitter.shape.id);
             qualify(emitter.position.id);
@@ -67,6 +68,12 @@ namespace HIKARI::VFX::PRESETS {
             qualify(emitter.color.id);
             qualify(emitter.renderCommon.id);
             qualify(emitter.renderShape.id);
+            for (VfxBurstKeyData& key : emitter.spawn.burstTimeline) {
+                qualify(key.id);
+            }
+            for (VfxSpecialOutputData& output : emitter.specialOutputs) {
+                qualify(output.id);
+            }
             const auto qualifyCurve = [&qualify](VfxCurveData& curve) {
                 for (VfxCurveKeyData& key : curve.keys) {
                     qualify(key.id);

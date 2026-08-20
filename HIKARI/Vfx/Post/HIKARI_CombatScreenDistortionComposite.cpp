@@ -137,9 +137,8 @@ VS_OUT main(uint vid : SV_VertexID)
 
             CommonParams localParams = params;
             if (!maskApplied) {
-                localParams.user[15].y = 0.0f;
-                localParams.user[15].z = 0.0f;
-                localParams.user[15].w = 0.0f;
+                localParams.pad0 = -1.0f;
+                localParams.pad1 = 0.0f;
             }
             const UINT64 byteOffset =
                 static_cast<UINT64>(slot) * constantStride_;

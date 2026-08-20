@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <string>
 
 #if defined(HIKARI_WITH_EDITOR)
 #include "imgui.h"
@@ -51,6 +52,23 @@ namespace HIKARI::EDITOR {
             std::snprintf(label, sizeof(label), "%.2fs", seconds);
             const ImVec2 size = ImGui::CalcTextSize(label);
             drawList.AddText({ x - size.x * 0.5f, y }, color, label);
+        }
+
+        uint64_t TimelineMergeGroup(
+            std::string_view targetId,
+            std::string_view propertyId) noexcept {
+
+            uint64_t hash = 1469598103934665603ull;
+            const auto append = [&hash](std::string_view text) {
+                for (const unsigned char character : text) {
+                    hash ^= character;
+                    hash *= 1099511628211ull;
+                }
+            };
+            append(targetId);
+            append("/");
+            append(propertyId);
+            return hash != 0u ? hash : 1u;
         }
 #endif
     } // namespace
@@ -271,6 +289,159 @@ namespace HIKARI::EDITOR {
                 xToTime(mouse.x),
                 static_cast<unsigned int>(std::lround(
                     xToTime(mouse.x) * kTimelineFramesPerSecond)));
+        }
+
+        // Authoring rows intentionally live beside the preview ruler. They
+        // edit the source asset through the same controller transactions used
+        // by the Inspector, so seeking the playhead never masquerades as a
+        // key edit.
+        ImGui::SeparatorText("Emitter activation / burst keys");
+        const VFX::VfxAssetData snapshot = document_.Asset();
+        for (const VFX::VfxEmitterData& emitter : snapshot.emitters) {
+            ImGui::PushID(emitter.id.c_str());
+            ImGui::Text("%s", emitter.name.c_str());
+            ImGui::SameLine();
+            ImGui::TextDisabled("[%s]", emitter.id.c_str());
+
+            float startDelay = emitter.startDelay;
+            ImGui::SetNextItemWidth(128.0f);
+            if (ImGui::DragFloat(
+                    "Start Delay",
+                    &startDelay,
+                    0.01f,
+                    0.0f,
+                    duration,
+                    "%.3f s")) {
+                std::string message{};
+                (void)SetProperty(
+                    emitter.id,
+                    "startDelay",
+                    startDelay,
+                    message,
+                    TimelineMergeGroup(emitter.id, "startDelay"));
+                statusMessage_ = message;
+            }
+            if (ImGui::IsItemDeactivatedAfterEdit()) {
+                SealPropertyEdit();
+            }
+            ImGui::SameLine();
+            float activeDuration = emitter.activeDuration;
+            const float activeDurationMaximum = (std::max)(
+                0.0f, duration - startDelay);
+            ImGui::SetNextItemWidth(160.0f);
+            if (ImGui::DragFloat(
+                    "Active Duration (0 = end)",
+                    &activeDuration,
+                    0.01f,
+                    0.0f,
+                    activeDurationMaximum,
+                    "%.3f s")) {
+                std::string message{};
+                (void)SetProperty(
+                    emitter.id,
+                    "activeDuration",
+                    activeDuration,
+                    message,
+                    TimelineMergeGroup(emitter.id, "activeDuration"));
+                statusMessage_ = message;
+            }
+            if (ImGui::IsItemDeactivatedAfterEdit()) {
+                SealPropertyEdit();
+            }
+
+            const float localDuration = emitter.activeDuration > 0.0f
+                ? emitter.activeDuration
+                : (std::max)(0.0f, duration - emitter.startDelay);
+            ImGui::TextDisabled(
+                "Burst keys are emitter-local (0..%.3f s)",
+                localDuration);
+            bool removeBurst = false;
+            std::string removeBurstId{};
+            for (const VFX::VfxBurstKeyData& key :
+                 emitter.spawn.burstTimeline) {
+                ImGui::PushID(key.id.c_str());
+                if (ImGui::Selectable(
+                        key.id.c_str(),
+                        selection_.kind == VfxWorkspaceSelectionKind::BurstKey &&
+                            selection_.targetId == key.id)) {
+                    Select({ VfxWorkspaceSelectionKind::BurstKey, key.id,
+                        emitter.id });
+                }
+                ImGui::SameLine();
+                float keyTime = key.time;
+                ImGui::SetNextItemWidth(112.0f);
+                if (ImGui::DragFloat(
+                        "Time",
+                        &keyTime,
+                        0.01f,
+                        0.0f,
+                        localDuration,
+                        "%.3f s")) {
+                    std::string message{};
+                    (void)SetBurstKey(
+                        key.id,
+                        keyTime,
+                        key.count,
+                        message,
+                        TimelineMergeGroup(key.id, "time"));
+                    statusMessage_ = message;
+                }
+                if (ImGui::IsItemDeactivatedAfterEdit()) {
+                    SealPropertyEdit();
+                }
+                ImGui::SameLine();
+                uint32_t keyCount = key.count;
+                ImGui::SetNextItemWidth(112.0f);
+                if (ImGui::DragScalar(
+                        "Count",
+                        ImGuiDataType_U32,
+                        &keyCount,
+                        1.0f,
+                        nullptr,
+                        &emitter.spawn.maximumParticles)) {
+                    std::string message{};
+                    (void)SetBurstKey(
+                        key.id,
+                        key.time,
+                        keyCount,
+                        message,
+                        TimelineMergeGroup(key.id, "count"));
+                    statusMessage_ = message;
+                }
+                if (ImGui::IsItemDeactivatedAfterEdit()) {
+                    SealPropertyEdit();
+                }
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Remove")) {
+                    removeBurst = true;
+                    removeBurstId = key.id;
+                }
+                ImGui::PopID();
+            }
+            if (ImGui::SmallButton("Add Burst Key at Playhead")) {
+                const float localTime = std::clamp(
+                    previewElapsedSeconds_ - emitter.startDelay,
+                    0.0f,
+                    localDuration);
+                std::string keyId{};
+                std::string message{};
+                if (!AddBurstKey(
+                        emitter.id,
+                        localTime,
+                        1u,
+                        {},
+                        keyId,
+                        message)) {
+                    statusMessage_ = message;
+                }
+            }
+            if (removeBurst) {
+                std::string message{};
+                (void)RemoveBurstKey(removeBurstId, message);
+                statusMessage_ = message;
+            }
+            ImGui::Separator();
+            ImGui::PopID();
         }
 #endif
     }

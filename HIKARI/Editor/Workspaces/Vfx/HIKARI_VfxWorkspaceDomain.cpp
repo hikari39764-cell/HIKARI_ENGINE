@@ -63,6 +63,8 @@ namespace HIKARI::EDITOR {
         case VFX::VfxModuleKind::Basic: return emitter.basic.id;
         case VFX::VfxModuleKind::EmitterTransform:
             return emitter.emitterTransform.id;
+        case VFX::VfxModuleKind::Attachment:
+            return emitter.attachment.id;
         case VFX::VfxModuleKind::Spawn: return emitter.spawn.id;
         case VFX::VfxModuleKind::Shape: return emitter.shape.id;
         case VFX::VfxModuleKind::Position: return emitter.position.id;

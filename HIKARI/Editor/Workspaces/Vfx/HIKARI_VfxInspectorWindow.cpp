@@ -77,6 +77,28 @@ namespace HIKARI::EDITOR {
                 DrawLinkInspector(database, *emitter, *link);
             }
         } else if (selection_.kind ==
+                   VfxWorkspaceSelectionKind::BurstKey) {
+            if (const VFX::VfxBurstKeyData* key =
+                    FindBurstKey(selection_.targetId)) {
+                const VFX::VfxBurstKeyData snapshot = *key;
+                VfxInspectorPropertyEditor editor(
+                    *this, database, snapshot.id, statusMessage_);
+                ImGui::TextDisabled("BURST KEY");
+                editor.Float(
+                    "Time (local active)",
+                    "time",
+                    snapshot.time,
+                    0.002f,
+                    0.0f,
+                    3600.0f);
+                editor.Unsigned(
+                    "Count",
+                    "count",
+                    snapshot.count,
+                    1u,
+                    emitter->spawn.maximumParticles);
+            }
+        } else if (selection_.kind ==
                    VfxWorkspaceSelectionKind::CurveKey) {
             if (const VFX::VfxCurveKeyData* key =
                     FindCurveKey(selection_.targetId)) {

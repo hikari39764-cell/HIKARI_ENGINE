@@ -217,7 +217,7 @@ namespace HIKARI::RENDER3D::COMBAT_VFX {
                 draw.color.x,
                 draw.color.y,
                 draw.color.z,
-                1.0f };
+                draw.silhouette != 0u ? 1.0f : 0.0f };
             for (uint32_t jointIndex = 0u;
                 jointIndex < kJointCount;
                 ++jointIndex) {

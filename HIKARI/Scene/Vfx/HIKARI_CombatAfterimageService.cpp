@@ -17,11 +17,20 @@
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_PresentationTransformService.h"
 #include "Scene/HIKARI_World.h"
+#include "Scene/Vfx/HIKARI_VfxSpecialOutputBridge.h"
 
 namespace HIKARI::VFX {
     namespace {
         using AfterimageDraw =
             RENDER3D::COMBAT_VFX::CombatAfterimageDraw;
+
+        template<class T>
+        bool ProfileSilhouette(const T& profile) noexcept {
+            if constexpr (requires { profile.silhouette; }) {
+                return profile.silhouette;
+            }
+            return true;
+        }
 
         // A draw record carries a bounded 128-joint palette.  Keep the CPU
         // capture budget deliberately small so a burst cannot consume an
@@ -89,11 +98,11 @@ namespace HIKARI::VFX {
                 !IsFiniteVector(request.color)) {
                 return false;
             }
-            return request.intensity > 0.0f &&
+            return request.intensity >= 0.0f &&
                 request.uniformScale > 0.0f &&
                 request.lifetimeUnscaledSeconds > 0.0f &&
-                request.opacity > 0.0f && request.fresnelPower > 0.0f &&
-                request.dissolveStrength > 0.0f &&
+                request.opacity >= 0.0f && request.fresnelPower >= 0.0f &&
+                request.dissolveStrength >= 0.0f &&
                 request.shellOffsetWorld >= 0.0f;
         }
 
@@ -250,6 +259,7 @@ namespace HIKARI::VFX {
         bool hasLastCapture = false;
 
         uint32_t silhouetteCount = 4u;
+        bool silhouette = true;
         float lifetimeSeconds = 0.28f;
         float opacity = 0.62f;
         float intensity = 1.0f;
@@ -361,6 +371,7 @@ namespace HIKARI::VFX {
             }
 
             state.silhouetteCount = request.silhouetteCount;
+            state.silhouette = request.silhouette;
             state.lifetimeSeconds = SanitizePositive(
                 request.lifetimeUnscaledSeconds,
                 kMinimumLifetime,
@@ -414,6 +425,84 @@ namespace HIKARI::VFX {
         catch (...) {
             return false;
         }
+    }
+
+    bool CombatAfterimageService::Capture(
+        World& world,
+        const CombatAfterimageRequest& request,
+        const VfxSpecialOutputData& output) noexcept {
+
+        if (!output.enabled ||
+            output.type != VfxSpecialOutputType::SkinnedAfterimage) {
+            return false;
+        }
+        const VfxSkinnedAfterimageProfile& profile =
+            output.skinnedAfterimage;
+        CombatAfterimageRequest configured = request;
+        const float intensityScale = std::clamp(
+            request.intensity, 0.0f, 8.0f);
+        const float opacityScale = std::clamp(
+            request.opacity, 0.0f, 1.0f);
+        const float colorAlpha = std::clamp(
+            std::isfinite(profile.color.w) ? profile.color.w : 1.0f,
+            0.0f,
+            1.0f);
+        configured.intensity = profile.intensity * intensityScale;
+        configured.silhouette = ProfileSilhouette(profile);
+        configured.lifetimeUnscaledSeconds = profile.lifetimeSeconds;
+        // The existing afterimage frame carries RGB; use authored color A as
+        // the profile's visibility multiplier so it is not a dead Inspector
+        // field while preserving the renderer's compact frame contract.
+        configured.opacity = profile.opacity * opacityScale * colorAlpha;
+        configured.silhouetteCount = std::clamp(
+            profile.sampleCount,
+            3u,
+            RENDER3D::COMBAT_VFX::kMaximumCombatAfterimageSilhouettes);
+        configured.fresnelPower = profile.fresnel;
+        configured.dissolveStrength = profile.dissolve;
+        configured.shellOffsetWorld = profile.shellOffset;
+        configured.color = {
+            profile.color.x,
+            profile.color.y,
+            profile.color.z };
+        return Capture(world, configured);
+    }
+
+    bool CombatAfterimageService::Capture(
+        World& world,
+        const CombatAfterimageRequest& request,
+        const VfxSkinnedAfterimageProfile& profile) noexcept {
+
+        VfxSpecialOutputData output{};
+        output.type = VfxSpecialOutputType::SkinnedAfterimage;
+        output.skinnedAfterimage = profile;
+        return Capture(world, request, output);
+    }
+
+    bool CombatAfterimageService::Capture(
+        World& world,
+        const CombatAfterimageRequest& request,
+        const VfxProgram& program) noexcept {
+
+        return Capture(world, request, program, {});
+    }
+
+    bool CombatAfterimageService::Capture(
+        World& world,
+        const CombatAfterimageRequest& request,
+        const VfxProgram& program,
+        std::string_view outputId) noexcept {
+
+        const VfxSpecialOutputData* output = FindVfxSpecialOutput(
+            program,
+            outputId,
+            VfxSpecialOutputType::SkinnedAfterimage);
+        if (output == nullptr) {
+            return outputId.empty()
+                ? Capture(world, request)
+                : false;
+        }
+        return Capture(world, request, *output);
     }
 
     void CombatAfterimageService::Tick(
@@ -512,6 +601,7 @@ namespace HIKARI::VFX {
                     }
                     AfterimageDraw draw = captured;
                     draw.silhouetteIndex = silhouetteIndex;
+                    draw.silhouette = state.silhouette ? 1u : 0u;
                     draw.ageSeconds = age;
                     draw.lifetimeSeconds = state.lifetimeSeconds;
                     draw.opacity = std::clamp(

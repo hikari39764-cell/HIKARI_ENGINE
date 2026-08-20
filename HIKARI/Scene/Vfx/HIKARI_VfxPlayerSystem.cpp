@@ -79,9 +79,11 @@ namespace HIKARI {
                 StopState(state);
             }
             states_.clear();
-            if (playbackService_ != nullptr) {
-                playbackService_->Update(frame.frameIndex, 0.0f);
-            }
+            // RenderSubmissionSystem owns the world-service tick even when
+            // the component-driven slot system is inactive. Do not publish
+            // a zero-delta update here: it would consume this frame's
+            // de-duplication token and make the later presentation tick drop
+            // the actual game delta for public VfxView playback.
             return;
         }
 

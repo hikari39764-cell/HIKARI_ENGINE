@@ -142,6 +142,16 @@ namespace HIKARI::RENDER3D::COMBAT_VFX {
         debugState_.maskExtentReady = pass.width != 0u && pass.height != 0u;
         debugState_.vertexCount = source.weaponTrailVertexCount;
         debugState_.activeTrailCount = source.activeWeaponTrailCount;
+        distortionStrengthScale_ = std::clamp(
+            std::isfinite(source.distortionStrengthScale)
+                ? source.distortionStrengthScale
+                : 1.0f,
+            0.0f,
+            8.0f);
+        blurScale_ = std::clamp(
+            std::isfinite(source.blurScale) ? source.blurScale : 1.0f,
+            0.0f,
+            8.0f);
 
         // Mark the view invalid before doing any work. A frame with no
         // samples, a resize, or a lost device must not expose the previous
@@ -232,8 +242,8 @@ namespace HIKARI::RENDER3D::COMBAT_VFX {
         constants.screenParams = {
             1.0f / static_cast<float>((std::max)(1u, pass.width)),
             1.0f / static_cast<float>((std::max)(1u, pass.height)),
-            2.25f,
-            1.0f };
+            2.25f * blurScale_,
+            distortionStrengthScale_ };
         std::memcpy(frame.constantMapped, &constants, sizeof(constants));
 
         ID3D12GraphicsCommandList* cmd = graphics.cmdList;
@@ -753,6 +763,8 @@ namespace HIKARI::RENDER3D::COMBAT_VFX {
         debugState_ = {};
         lastLoggedFailure_ = WeaponTrailRendererFailure::None;
         readyLogged_ = false;
+        distortionStrengthScale_ = 1.0f;
+        blurScale_ = 1.0f;
     }
 
 } // namespace HIKARI::RENDER3D::COMBAT_VFX

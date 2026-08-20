@@ -22,6 +22,7 @@
 #include "Scene/Vfx/HIKARI_ActionPostReactionService.h"
 #include "Scene/Vfx/HIKARI_CombatAfterimageService.h"
 #include "Scene/Vfx/HIKARI_CombatPresentationService.h"
+#include "Scene/Vfx/HIKARI_VfxAttachmentResolver.h"
 
 namespace HIKARI {
 
@@ -432,6 +433,9 @@ namespace HIKARI {
         success = services.Register(state_->runtime.physicsWorldService) && success;
         success = state_->runtime.extensionHost.RegisterWorldServices(services) &&
             success;
+        VFX::ConfigureVfxWorldAttachmentResolver(
+            state_->runtime.world,
+            state_->runtime.vfxPlaybackService);
         return success;
     }
     bool DocumentSceneBase::BuildSystemScheduleFromDocument() {

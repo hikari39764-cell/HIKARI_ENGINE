@@ -55,6 +55,8 @@ namespace HIKARI::EDITOR {
         Link,
         CurveKey,
         ColorStop,
+        BurstKey,
+        SpecialOutput,
     };
 
     enum class VfxEmitterInspectorPage : uint8_t {
@@ -197,6 +199,31 @@ namespace HIKARI::EDITOR {
             std::string_view propertyId,
             std::string_view stopId,
             std::string& outMessage);
+        bool AddBurstKey(
+            std::string_view emitterId,
+            float time,
+            uint32_t count,
+            std::string_view requestedId,
+            std::string& outId,
+            std::string& outMessage);
+        bool SetBurstKey(
+            std::string_view keyId,
+            float time,
+            uint32_t count,
+            std::string& outMessage,
+            uint64_t mergeGroup = 0u);
+        bool RemoveBurstKey(
+            std::string_view keyId,
+            std::string& outMessage);
+        bool AddSpecialOutput(
+            std::string_view emitterId,
+            VFX::VfxSpecialOutputType type,
+            std::string_view requestedId,
+            std::string& outId,
+            std::string& outMessage);
+        bool RemoveSpecialOutput(
+            std::string_view outputId,
+            std::string& outMessage);
         bool SetProperty(
             std::string_view targetId,
             std::string_view propertyId,
@@ -283,6 +310,12 @@ namespace HIKARI::EDITOR {
             const VFX::VfxEmitterData** outEmitter = nullptr,
             std::string* outModuleId = nullptr,
             std::string* outPropertyId = nullptr) const noexcept;
+        const VFX::VfxBurstKeyData* FindBurstKey(
+            std::string_view keyId,
+            const VFX::VfxEmitterData** outEmitter = nullptr) const noexcept;
+        const VFX::VfxSpecialOutputData* FindSpecialOutput(
+            std::string_view outputId,
+            const VFX::VfxEmitterData** outEmitter = nullptr) const noexcept;
 
     private:
         bool RequestOpenAsset(

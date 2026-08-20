@@ -148,6 +148,23 @@ float4 main(PSInput input) : SV_TARGET
         const float flashIntensity = max(
             gUser[index * 4u + 3u].x,
             0.0f);
+        const float waveFrequency = clamp(
+            gUser[index * 4u + 3u].y,
+            0.05f,
+            8.0f);
+        const float waveAmplitude = clamp(
+            gUser[index * 4u + 3u].z,
+            0.0f,
+            8.0f);
+        const float packedDamping = max(
+            gUser[index * 4u + 3u].w,
+            16.0f);
+        const uint profileWaveCount = min(
+            (uint)max(floor(packedDamping / 16.0f), 1.0f),
+            4u);
+        const float waveDamping = max(
+            packedDamping - (float)profileWaveCount * 16.0f,
+            0.05f);
 
         float2 delta = input.uv - centerUv;
         delta.x *= aspect;
@@ -167,8 +184,9 @@ float4 main(PSInput input) : SV_TARGET
             thickness);
 
         const float angle = atan2(direction.y, direction.x);
-        const float organic = sin(angle * 11.0f + age * 19.0f) *
-            thickness * 0.12f;
+        const float organic = sin(
+            angle * 11.0f * waveFrequency + age * 19.0f * waveFrequency) *
+            thickness * 0.12f * waveAmplitude;
         const float distortedDistance = distanceToCenter + organic;
         const float inner = exp(-pow(
             (distortedDistance - radius + thickness * 0.62f) /
@@ -179,7 +197,7 @@ float4 main(PSInput input) : SV_TARGET
                 max(thickness, 0.001f),
             2.0f) * 1.15f);
         const float signedWarp = clamp(
-            distortion * intensity * envelope * 1.30f *
+            distortion * intensity * envelope * waveAmplitude * 1.30f *
                 (outer - inner * 0.96f),
             -0.12f,
             0.12f);
@@ -194,15 +212,34 @@ float4 main(PSInput input) : SV_TARGET
             max(radius * radius * 0.42f, 1.0e-5f)) *
             flashEnvelope * flashIntensity * intensity;
 
-        const float echoAge = saturate((age - 0.11f) / 0.89f);
-        const float echoEnvelope = smoothstep(0.10f, 0.24f, age) *
-            (1.0f - smoothstep(0.78f, 1.0f, age));
-        const float echoRadius = maximumRadius *
-            lerp(0.08f, 1.08f, 1.0f - pow(1.0f - echoAge, 2.2f));
-        const float echo = HikariRing(
-            distanceToCenter,
-            echoRadius,
-            thickness * 1.30f) * echoEnvelope * intensity * 0.28f;
+        float echo = 0.0f;
+        [unroll]
+        for (uint echoIndex = 1u; echoIndex <= 4u; ++echoIndex)
+        {
+            if (echoIndex > profileWaveCount)
+            {
+                continue;
+            }
+            const float layer = (float)(echoIndex - 1u);
+            const float delay = 0.11f + layer * 0.045f;
+            const float echoAge = saturate((age - delay) /
+                max(1.0f - delay, 0.05f));
+            const float echoEnvelope = smoothstep(
+                delay,
+                delay + 0.13f,
+                age) *
+                (1.0f - smoothstep(0.78f, 1.0f, age)) *
+                exp(-waveDamping * layer * 0.45f);
+            const float echoRadius = maximumRadius *
+                lerp(0.08f + layer * 0.035f,
+                    1.08f + layer * 0.06f,
+                    1.0f - pow(1.0f - echoAge, 2.2f));
+            echo += HikariRing(
+                distanceToCenter,
+                echoRadius,
+                thickness * (1.30f + layer * 0.12f)) *
+                echoEnvelope * intensity * 0.28f * waveAmplitude;
+        }
 
         const float lensWeight = saturate(edge * 0.94f + echo * 0.28f);
         const float3 refracted = HikariSampleFiveTap(

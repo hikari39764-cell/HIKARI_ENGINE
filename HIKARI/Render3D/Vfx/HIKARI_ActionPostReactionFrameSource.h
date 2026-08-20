@@ -23,7 +23,12 @@ namespace HIKARI::RENDER3D::COMBAT_VFX {
         MATH::Vec3 color{ 0.32f, 0.78f, 1.0f };
         float chromaticShift = 0.0035f;
         float flashIntensity = 0.42f;
-        float reserved[3] = { 0.0f, 0.0f, 0.0f };
+        // Typed HVFX wave shaping. These are consumed by both the guard-only
+        // and mask-composite post shaders; they are not renderer defaults.
+        float waveFrequency = 1.0f;
+        float waveAmplitude = 1.0f;
+        float waveDamping = 1.0f;
+        uint32_t waveCount = 1u;
     };
 
     struct PerfectGuardShockwaveFrameSource {

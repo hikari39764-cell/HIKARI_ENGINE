@@ -1,6 +1,7 @@
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <string>
 #include <utility>
@@ -83,6 +84,30 @@ namespace HIKARI::EDITOR {
                 return false;
             }
             return true;
+        }
+
+        float EmitterActiveDuration(
+            const VFX::VfxAssetData& asset,
+            const VFX::VfxEmitterData& emitter) noexcept {
+
+            return emitter.activeDuration > 0.0f
+                ? emitter.activeDuration
+                : (std::max)(
+                    0.0f,
+                    asset.durationSeconds - emitter.startDelay);
+        }
+
+        void SortBurstTimeline(VFX::VfxEmitterData& emitter) {
+            std::sort(
+                emitter.spawn.burstTimeline.begin(),
+                emitter.spawn.burstTimeline.end(),
+                [](const VFX::VfxBurstKeyData& left,
+                   const VFX::VfxBurstKeyData& right) {
+                    if (left.time != right.time) {
+                        return left.time < right.time;
+                    }
+                    return left.id < right.id;
+                });
         }
 
     } // namespace
@@ -418,6 +443,206 @@ namespace HIKARI::EDITOR {
             return false;
         }
         outMessage = "VFX property updated";
+        statusMessage_ = outMessage;
+        return true;
+    }
+
+    bool VfxWorkspaceController::AddBurstKey(
+        std::string_view emitterId,
+        float time,
+        uint32_t count,
+        std::string_view requestedId,
+        std::string& outId,
+        std::string& outMessage) {
+
+        const VFX::VfxEmitterData* emitter = FindEmitter(emitterId);
+        if (emitter == nullptr) {
+            outMessage = "VFX emitter was not found";
+            return false;
+        }
+        if (!std::isfinite(time) || time < 0.0f ||
+            time > EmitterActiveDuration(document_.Asset(), *emitter) ||
+            count == 0u ||
+            count > emitter->spawn.maximumParticles) {
+            outMessage =
+                "Burst key time/count must fit the emitter timeline and "
+                "particle capacity";
+            return false;
+        }
+        const std::string id = requestedId.empty()
+            ? AllocateStableId("burst.key")
+            : std::string(requestedId);
+        if (ContainsStableId(id)) {
+            outMessage = "VFX stable ID already exists: " + id;
+            return false;
+        }
+        VFX::VfxAssetData next = document_.Asset();
+        VFX::VfxEmitterData* mutableEmitter =
+            FindEmitterMutable(next, emitterId);
+        if (mutableEmitter == nullptr) {
+            outMessage = "VFX emitter was not found";
+            return false;
+        }
+        mutableEmitter->spawn.burstTimeline.push_back({ id, time, count });
+        SortBurstTimeline(*mutableEmitter);
+        if (!ApplyAsset(std::move(next), outMessage)) return false;
+        outId = id;
+        Select({ VfxWorkspaceSelectionKind::BurstKey, id,
+            std::string(emitterId) });
+        outMessage = "VFX burst key created";
+        statusMessage_ = outMessage;
+        return true;
+    }
+
+    bool VfxWorkspaceController::SetBurstKey(
+        std::string_view keyId,
+        float time,
+        uint32_t count,
+        std::string& outMessage,
+        uint64_t mergeGroup) {
+
+        const VFX::VfxEmitterData* owner = nullptr;
+        const VFX::VfxBurstKeyData* key = FindBurstKey(keyId, &owner);
+        if (key == nullptr || owner == nullptr) {
+            outMessage = "VFX burst key was not found";
+            return false;
+        }
+        if (!std::isfinite(time) || time < 0.0f ||
+            time > EmitterActiveDuration(document_.Asset(), *owner) ||
+            count == 0u ||
+            count > owner->spawn.maximumParticles) {
+            outMessage =
+                "Burst key time/count must fit the emitter timeline and "
+                "particle capacity";
+            return false;
+        }
+        VFX::VfxAssetData next = document_.Asset();
+        VFX::VfxEmitterData* mutableEmitter =
+            FindEmitterMutable(next, owner->id);
+        if (mutableEmitter == nullptr) {
+            outMessage = "VFX emitter was not found";
+            return false;
+        }
+        const auto found = std::find_if(
+            mutableEmitter->spawn.burstTimeline.begin(),
+            mutableEmitter->spawn.burstTimeline.end(),
+            [keyId](const VFX::VfxBurstKeyData& candidate) {
+                return candidate.id == keyId;
+            });
+        if (found == mutableEmitter->spawn.burstTimeline.end()) {
+            outMessage = "VFX burst key was not found";
+            return false;
+        }
+        found->time = time;
+        found->count = count;
+        SortBurstTimeline(*mutableEmitter);
+        if (!ApplyAsset(std::move(next), outMessage, mergeGroup)) {
+            return false;
+        }
+        outMessage = "VFX burst key updated";
+        statusMessage_ = outMessage;
+        return true;
+    }
+
+    bool VfxWorkspaceController::RemoveBurstKey(
+        std::string_view keyId,
+        std::string& outMessage) {
+
+        const VFX::VfxEmitterData* owner = nullptr;
+        if (FindBurstKey(keyId, &owner) == nullptr || owner == nullptr) {
+            outMessage = "VFX burst key was not found";
+            return false;
+        }
+        const std::string ownerId = owner->id;
+        VFX::VfxAssetData next = document_.Asset();
+        VFX::VfxEmitterData* mutableEmitter =
+            FindEmitterMutable(next, ownerId);
+        if (mutableEmitter == nullptr) {
+            outMessage = "VFX emitter was not found";
+            return false;
+        }
+        std::erase_if(
+            mutableEmitter->spawn.burstTimeline,
+            [keyId](const VFX::VfxBurstKeyData& candidate) {
+                return candidate.id == keyId;
+        });
+        if (!ApplyAsset(std::move(next), outMessage)) return false;
+        Select({ VfxWorkspaceSelectionKind::Emitter, ownerId, ownerId });
+        outMessage = "VFX burst key removed";
+        statusMessage_ = outMessage;
+        return true;
+    }
+
+    bool VfxWorkspaceController::AddSpecialOutput(
+        std::string_view emitterId,
+        VFX::VfxSpecialOutputType type,
+        std::string_view requestedId,
+        std::string& outId,
+        std::string& outMessage) {
+
+        if (FindEmitter(emitterId) == nullptr) {
+            outMessage = "VFX emitter was not found";
+            return false;
+        }
+        if (type != VFX::VfxSpecialOutputType::WeaponPathDistortion &&
+            type != VFX::VfxSpecialOutputType::ScreenImpulse &&
+            type != VFX::VfxSpecialOutputType::SkinnedAfterimage) {
+            outMessage = "VFX special output type is invalid";
+            return false;
+        }
+        const std::string id = requestedId.empty()
+            ? AllocateStableId("special.output")
+            : std::string(requestedId);
+        if (ContainsStableId(id)) {
+            outMessage = "VFX stable ID already exists: " + id;
+            return false;
+        }
+        VFX::VfxAssetData next = document_.Asset();
+        VFX::VfxEmitterData* mutableEmitter =
+            FindEmitterMutable(next, emitterId);
+        if (mutableEmitter == nullptr) {
+            outMessage = "VFX emitter was not found";
+            return false;
+        }
+        VFX::VfxSpecialOutputData output{};
+        output.id = id;
+        output.type = type;
+        mutableEmitter->specialOutputs.push_back(std::move(output));
+        if (!ApplyAsset(std::move(next), outMessage)) return false;
+        outId = id;
+        Select({ VfxWorkspaceSelectionKind::SpecialOutput, id,
+            std::string(emitterId) });
+        outMessage = "VFX special output created";
+        statusMessage_ = outMessage;
+        return true;
+    }
+
+    bool VfxWorkspaceController::RemoveSpecialOutput(
+        std::string_view outputId,
+        std::string& outMessage) {
+
+        const VFX::VfxEmitterData* owner = nullptr;
+        if (FindSpecialOutput(outputId, &owner) == nullptr ||
+            owner == nullptr) {
+            outMessage = "VFX special output was not found";
+            return false;
+        }
+        const std::string ownerId = owner->id;
+        VFX::VfxAssetData next = document_.Asset();
+        VFX::VfxEmitterData* mutableEmitter =
+            FindEmitterMutable(next, ownerId);
+        if (mutableEmitter == nullptr) {
+            outMessage = "VFX emitter was not found";
+            return false;
+        }
+        std::erase_if(
+            mutableEmitter->specialOutputs,
+            [outputId](const VFX::VfxSpecialOutputData& output) {
+                return output.id == outputId;
+        });
+        if (!ApplyAsset(std::move(next), outMessage)) return false;
+        Select({ VfxWorkspaceSelectionKind::Emitter, ownerId, ownerId });
+        outMessage = "VFX special output removed";
         statusMessage_ = outMessage;
         return true;
     }

@@ -309,11 +309,17 @@ namespace HIKARI::VFX {
                     VfxDistributionMode::RandomRange
                 ? emitter.basic.lifetime.maximum
                 : emitter.basic.lifetime.minimum;
+            const double emitterWindow = emitter.activeDuration > 0.0f
+                ? static_cast<double>(emitter.activeDuration)
+                : (std::max)(
+                    0.0,
+                    static_cast<double>(asset.durationSeconds) -
+                        static_cast<double>(emitter.startDelay));
             const double continuousWindow = asset.loop
                 ? maximumLifetime
                 : (std::min)(
                     maximumLifetime,
-                    static_cast<double>(asset.durationSeconds));
+                    emitterWindow);
             const uint64_t continuousCapacity =
                 emitter.spawn.ratePerSecond > 0.0f
                 ? static_cast<uint64_t>(std::ceil(
@@ -322,7 +328,16 @@ namespace HIKARI::VFX {
                 : 0u;
 
             uint64_t overlappingBursts = 1u;
-            if (asset.loop && emitter.spawn.burstCount > 0u &&
+            uint64_t burstTotal = emitter.spawn.burstTimeline.empty()
+                ? emitter.spawn.burstCount
+                : 0u;
+            if (!emitter.spawn.burstTimeline.empty()) {
+                for (const VfxBurstKeyData& key :
+                     emitter.spawn.burstTimeline) {
+                    burstTotal += key.count;
+                }
+            }
+            if (asset.loop && burstTotal > 0u &&
                 asset.durationSeconds > 0.0f) {
                 overlappingBursts = (std::max)(
                     uint64_t{ 1u },
@@ -331,7 +346,7 @@ namespace HIKARI::VFX {
                         static_cast<double>(asset.durationSeconds))));
             }
             const uint64_t burstCapacity =
-                static_cast<uint64_t>(emitter.spawn.burstCount) *
+                burstTotal *
                 overlappingBursts;
             const uint64_t required = (std::max)(
                 uint64_t{ 1u },
@@ -346,6 +361,39 @@ namespace HIKARI::VFX {
                 aligned,
                 static_cast<uint64_t>(
                     emitter.spawn.maximumParticles)));
+        }
+
+        std::vector<VfxBurstKeyData> CompileBurstTimeline(
+            const VfxSpawnModuleData& source) {
+
+            auto keys = source.burstTimeline;
+            if (keys.empty() && source.burstCount > 0u) {
+                keys.push_back({
+                    source.id + ".burst.legacy",
+                    0.0f,
+                    source.burstCount });
+            }
+            std::sort(
+                keys.begin(),
+                keys.end(),
+                [](const auto& left, const auto& right) {
+                    if (left.time != right.time) {
+                        return left.time < right.time;
+                    }
+                    return left.id < right.id;
+                });
+            return keys;
+        }
+
+        uint32_t LegacyBurstCount(
+            const std::vector<VfxBurstKeyData>& keys) noexcept {
+
+            const auto found = std::find_if(
+                keys.begin(), keys.end(),
+                [](const VfxBurstKeyData& key) {
+                    return key.time == 0.0f;
+                });
+            return found == keys.end() ? 0u : found->count;
         }
 
         ParticleBillboardMode ConvertBillboard(
@@ -455,8 +503,12 @@ namespace HIKARI::VFX {
                 emitter.parentEmitterIndex = parent->second;
             }
             emitter.transform = source.emitterTransform.transform;
+            emitter.startDelay = source.startDelay;
+            emitter.activeDuration = source.activeDuration;
+            emitter.attachment = source.attachment;
             emitter.spawnRatePerSecond = source.spawn.ratePerSecond;
-            emitter.burstCount = source.spawn.burstCount;
+            emitter.burstTimeline = CompileBurstTimeline(source.spawn);
+            emitter.burstCount = LegacyBurstCount(emitter.burstTimeline);
             emitter.authoredOverrides.enabled = source.basic.enabled ? 1u : 0u;
             emitter.simulation.capacity =
                 CompileParticleCapacity(asset, source);
@@ -535,6 +587,14 @@ namespace HIKARI::VFX {
             emitter.render.ringEndAngleRadians =
                 source.renderShape.ringEndAngleDegrees *
                 kDegreesToRadians;
+            emitter.specialOutputs = source.specialOutputs;
+            std::sort(
+                emitter.specialOutputs.begin(),
+                emitter.specialOutputs.end(),
+                [](const VfxSpecialOutputData& left,
+                    const VfxSpecialOutputData& right) {
+                    return left.id < right.id;
+                });
 
             auto links = source.inputLinks;
             std::sort(

@@ -5,12 +5,19 @@
 #include <sstream>
 
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
+#include "Scene/Vfx/HIKARI_VfxSpecialOutputBridge.h"
 
 namespace HIKARI::VFX {
     namespace {
         constexpr float kMinimumDurationSeconds = 0.03f;
         constexpr float kMaximumDurationSeconds = 2.0f;
         constexpr float kMaximumTickSeconds = 0.25f;
+        constexpr float kDefaultDurationSeconds = 0.52f;
+        constexpr float kDefaultMaximumScreenRadius = 0.46f;
+        constexpr float kDefaultRingThickness = 0.055f;
+        constexpr float kDefaultDistortionStrength = 0.020f;
+        constexpr float kDefaultChromaticShift = 0.0035f;
+        constexpr float kDefaultFlashIntensity = 0.42f;
 
         float FiniteOr(float value, float fallback) noexcept {
             return std::isfinite(value) ? value : fallback;
@@ -23,6 +30,20 @@ namespace HIKARI::VFX {
             float maximum) noexcept {
             return std::clamp(
                 FiniteOr(value, fallback), minimum, maximum);
+        }
+
+        float ActionScale(
+            float requestValue,
+            float defaultValue) noexcept {
+            if (!std::isfinite(requestValue) ||
+                !std::isfinite(defaultValue) ||
+                defaultValue <= 0.0f) {
+                return 1.0f;
+            }
+            return std::clamp(
+                requestValue / defaultValue,
+                0.0f,
+                8.0f);
         }
 
         MATH::Vec3 ClampColor(const MATH::Vec3& value) noexcept {
@@ -65,22 +86,22 @@ namespace HIKARI::VFX {
         result.worldPosition = SanitizePosition(request.worldPosition);
         result.durationSeconds = ClampFinite(
             request.durationSeconds,
-            0.52f,
+            kDefaultDurationSeconds,
             kMinimumDurationSeconds,
             kMaximumDurationSeconds);
         result.maximumScreenRadius = ClampFinite(
             request.maximumScreenRadius,
-            0.46f,
+            kDefaultMaximumScreenRadius,
             0.02f,
             1.5f);
         result.ringThickness = ClampFinite(
             request.ringThickness,
-            0.055f,
+            kDefaultRingThickness,
             0.001f,
             0.35f);
         result.distortionStrength = ClampFinite(
             request.distortionStrength,
-            0.020f,
+            kDefaultDistortionStrength,
             0.0f,
             0.25f);
         result.intensity = ClampFinite(
@@ -91,14 +112,30 @@ namespace HIKARI::VFX {
         result.color = ClampColor(request.color);
         result.chromaticShift = ClampFinite(
             request.chromaticShift,
-            0.0035f,
+            kDefaultChromaticShift,
             0.0f,
             0.05f);
         result.flashIntensity = ClampFinite(
             request.flashIntensity,
-            0.42f,
+            kDefaultFlashIntensity,
             0.0f,
             4.0f);
+        result.waveFrequency = ClampFinite(
+            request.waveFrequency,
+            1.0f,
+            0.05f,
+            8.0f);
+        result.waveAmplitude = ClampFinite(
+            request.waveAmplitude,
+            1.0f,
+            0.0f,
+            8.0f);
+        result.waveDamping = ClampFinite(
+            request.waveDamping,
+            1.0f,
+            0.05f,
+            8.0f);
+        result.waveCount = std::clamp(request.waveCount, 1u, 4u);
         result.ageSeconds = 0.0f;
         return result;
     }
@@ -213,6 +250,108 @@ namespace HIKARI::VFX {
             }
             frameSource_.waves[frameSource_.count++] = active.frame;
         }
+    }
+
+    bool ActionPostReactionService::TriggerPerfectGuardShockwave(
+        const PerfectGuardShockwaveRequest& request,
+        const VfxSpecialOutputData& output) noexcept {
+
+        if (!output.enabled ||
+            output.type != VfxSpecialOutputType::ScreenImpulse) {
+            return false;
+        }
+        const VfxScreenImpulseProfile& profile = output.screenImpulse;
+        PerfectGuardShockwaveRequest configured = request;
+        // Request fields are action-level multipliers normalized against the
+        // legacy defaults. The authored HVFX profile remains the predictable
+        // art baseline while callers can independently scale each dimension.
+        const float durationScale = ActionScale(
+            request.durationSeconds,
+            kDefaultDurationSeconds);
+        const float radiusScale = ActionScale(
+            request.maximumScreenRadius,
+            kDefaultMaximumScreenRadius);
+        const float thicknessScale = ActionScale(
+            request.ringThickness,
+            kDefaultRingThickness);
+        const float distortionScale = ActionScale(
+            request.distortionStrength,
+            kDefaultDistortionStrength);
+        const float chromaticScale = ActionScale(
+            request.chromaticShift,
+            kDefaultChromaticShift);
+        const float flashScale = ActionScale(
+            request.flashIntensity,
+            kDefaultFlashIntensity);
+        const float intensityScale = ActionScale(request.intensity, 1.0f);
+        const float colorAlpha = std::clamp(
+            std::isfinite(profile.color.w) ? profile.color.w : 1.0f,
+            0.0f,
+            1.0f);
+        configured.durationSeconds =
+            profile.durationSeconds * durationScale;
+        configured.maximumScreenRadius =
+            profile.maxRadius * radiusScale;
+        configured.ringThickness =
+            profile.ringThickness * thicknessScale;
+        configured.distortionStrength =
+            profile.distortion * distortionScale;
+        configured.chromaticShift =
+            profile.chromaticAberration * chromaticScale;
+        // Profile color alpha is an authored visibility multiplier for the
+        // existing RGB-only post frame contract; it scales flash and wave
+        // intensity rather than becoming an ignored Inspector field.
+        configured.flashIntensity = profile.flash * flashScale * colorAlpha;
+        configured.intensity = profile.intensity * intensityScale * colorAlpha;
+        configured.color = {
+            profile.color.x,
+            profile.color.y,
+            profile.color.z };
+        configured.waveFrequency = profile.waveFrequency;
+        configured.waveAmplitude = profile.waveAmplitude;
+        configured.waveDamping = profile.waveDamping;
+        configured.waveCount = profile.waveCount;
+        return TriggerPerfectGuardShockwave(configured);
+    }
+
+    bool ActionPostReactionService::TriggerPerfectGuardShockwave(
+        const PerfectGuardShockwaveRequest& request,
+        const VfxScreenImpulseProfile& profile) noexcept {
+
+        VfxSpecialOutputData output{};
+        output.type = VfxSpecialOutputType::ScreenImpulse;
+        output.screenImpulse = profile;
+        return TriggerPerfectGuardShockwave(request, output);
+    }
+
+    bool ActionPostReactionService::TriggerPerfectGuardShockwave(
+        const PerfectGuardShockwaveRequest& request,
+        const VfxProgram& program) noexcept {
+
+        return TriggerPerfectGuardShockwave(
+            request,
+            program,
+            {});
+    }
+
+    bool ActionPostReactionService::TriggerPerfectGuardShockwave(
+        const PerfectGuardShockwaveRequest& request,
+        const VfxProgram& program,
+        std::string_view outputId) noexcept {
+
+        const VfxSpecialOutputData* output = FindVfxSpecialOutput(
+            program,
+            outputId,
+            VfxSpecialOutputType::ScreenImpulse);
+        if (output == nullptr) {
+            // Only the id-less overload retains compatibility fallback. A
+            // profiled request with an explicit id fails closed when the
+            // compiled profile is absent or has the wrong type.
+            return outputId.empty()
+                ? TriggerPerfectGuardShockwave(request)
+                : false;
+        }
+        return TriggerPerfectGuardShockwave(request, *output);
     }
 
     void ActionPostReactionService::Reset() noexcept {

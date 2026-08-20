@@ -18,7 +18,7 @@ namespace HIKARI::RENDER3D::COMBAT_VFX {
         // the trail crosses a silhouette.
         MATH::Vec3 tangentWorld{ 0.0f, 0.0f, 1.0f };
         MATH::Vec3 normalWorld{ 0.0f, 1.0f, 0.0f };
-        // x = phase, y = coverage, z = blur hint, w = edge/accent hint.
+        // x = phase, y = coverage, z = authored blur, w = distortion strength.
         MATH::Vec4 flowData{};
     };
 
@@ -32,6 +32,10 @@ namespace HIKARI::RENDER3D::COMBAT_VFX {
         uint64_t revision = 0u;
         float unscaledTimeSeconds = 0.0f;
         float reserved[3] = { 0.0f, 0.0f, 0.0f };
+        // Frame-local typed HVFX profile projection. The mask renderer owns
+        // the GPU interpretation; Scene only publishes sanitized values.
+        float distortionStrengthScale = 1.0f;
+        float blurScale = 1.0f;
 
         bool HasWeaponTrails() const noexcept {
             return weaponTrailVertices != nullptr &&

@@ -33,6 +33,10 @@ namespace HIKARI::POST {
             MATH::Vec3 color{ 0.32f, 0.78f, 1.0f };
             float chromaticShift = 0.0035f;
             float flashIntensity = 0.42f;
+            float waveFrequency = 1.0f;
+            float waveAmplitude = 1.0f;
+            float waveDamping = 1.0f;
+            uint32_t waveCount = 1u;
         };
 
         // A frame-local mask supplied by the combat trail/impact renderer.  The
@@ -237,6 +241,28 @@ namespace HIKARI::POST {
                         : 0.42f,
                     0.0f,
                     4.0f);
+                candidate.waveFrequency = std::clamp(
+                    std::isfinite(sourceWave.waveFrequency)
+                        ? sourceWave.waveFrequency
+                        : 1.0f,
+                    0.05f,
+                    8.0f);
+                candidate.waveAmplitude = std::clamp(
+                    std::isfinite(sourceWave.waveAmplitude)
+                        ? sourceWave.waveAmplitude
+                        : 1.0f,
+                    0.0f,
+                    8.0f);
+                candidate.waveDamping = std::clamp(
+                    std::isfinite(sourceWave.waveDamping)
+                        ? sourceWave.waveDamping
+                        : 1.0f,
+                    0.05f,
+                    8.0f);
+                candidate.waveCount = std::clamp(
+                    sourceWave.waveCount,
+                    1u,
+                    4u);
 
                 // A scene can be submitted by more than one compatible render
                 // view.  Merge distinct reactions, but do not amplify the same
@@ -288,7 +314,7 @@ namespace HIKARI::POST {
                 4.0f);
             sanitized.blur = std::clamp(
                 std::isfinite(sanitized.blur) ? sanitized.blur : 1.0f,
-                0.05f,
+                0.0f,
                 8.0f);
             debugState_.maskProvided = debugState_.maskProvided ||
                 sanitized.texture.resource != nullptr;
@@ -368,18 +394,17 @@ namespace HIKARI::POST {
                     wave.chromaticShift };
                 params.user[base + 3u] = {
                     wave.flashIntensity,
-                    0.0f,
-                    0.0f,
-                    0.0f };
+                    wave.waveFrequency,
+                    wave.waveAmplitude,
+                    wave.waveDamping +
+                        static_cast<float>(wave.waveCount) * 16.0f };
             }
-            // The fourth wave's unused payload lanes carry the optional mask
-            // controls.  Wave 3 only consumes .x (flashIntensity), so the
-            // existing parameter ABI remains intact for the guard-only path.
-            params.user[15].y = mask_.IsValid(frameIndex_)
-                ? 1.0f : 0.0f;
-            params.user[15].z = mask_.IsValid(frameIndex_)
-                ? mask_.strength : 0.0f;
-            params.user[15].w = mask_.IsValid(frameIndex_)
+            // Keep mask controls in the padding lanes so wave 3 retains its
+            // full typed profile payload. Negative pad0 disables the mask;
+            // non-negative pad0 carries strength and pad1 carries blur.
+            params.pad0 = mask_.IsValid(frameIndex_)
+                ? mask_.strength : -1.0f;
+            params.pad1 = mask_.IsValid(frameIndex_)
                 ? mask_.blur : 0.0f;
         }
 
