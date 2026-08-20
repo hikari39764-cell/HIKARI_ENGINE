@@ -30,6 +30,8 @@
 #include "Render3D/Temporal/HIKARI_TemporalMotionVectorPass.h"
 #include "Render3D/Temporal/HIKARI_TemporalResourceSystem.h"
 #include "Render3D/Upscaling/HIKARI_StreamlineRuntime.h"
+#include "Render3D/Vfx/HIKARI_CombatAfterimageRenderer.h"
+#include "Render3D/Vfx/HIKARI_WeaponTrailRenderer.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
 
 namespace HIKARI::RENDER3D::PIPELINE {
@@ -37,6 +39,8 @@ namespace HIKARI::RENDER3D::PIPELINE {
     namespace {
         REFLECTION::ScreenSpaceReflectionRenderer gSsrRenderer{};
         FEATURES::StylizedScreenFeatureRenderer gStylizedScreenFeatures{};
+        COMBAT_VFX::CombatAfterimageRenderer gCombatAfterimageRenderer{};
+        COMBAT_VFX::WeaponTrailRenderer gWeaponTrailRenderer{};
         FEATURES::RenderFeaturePlan gLastRenderFeaturePlan{};
 
         bool RebindPostRenderTarget(void*) { return POST::PostSystem::RebindCurrentRenderTarget(); }
@@ -155,7 +159,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
             const float sunUvY = sun.screenSunPosition.y;
             const float maximumExtent = (std::max)(
                 settings.haloRadius,
-                settings.streakLength);
+                (std::max)(settings.streakLength, settings.shaftLength));
             if (!std::isfinite(sunUvX) || !std::isfinite(sunUvY) ||
                 sunUvX < -maximumExtent || sunUvX > 1.0f + maximumExtent ||
                 sunUvY < -maximumExtent || sunUvY > 1.0f + maximumExtent) {
@@ -188,6 +192,9 @@ namespace HIKARI::RENDER3D::PIPELINE {
             frame.occlusionRadius = settings.occlusionRadius;
             frame.edgeFade = settings.edgeFade;
             frame.maxRadiance = settings.maxRadiance;
+            frame.shaftIntensity = settings.shaftIntensity;
+            frame.shaftLength = settings.shaftLength;
+            frame.shaftDecay = settings.shaftDecay;
             POST::PostSystem::SetSunGlareFrame(frame);
         }
     }
@@ -598,6 +605,46 @@ namespace HIKARI::RENDER3D::PIPELINE {
                 postOpaqueResources);
         }
 
+        bool combatAfterimageOk = true;
+        if (opaqueOk && depthAwareOk && transparentOk &&
+            cameraCb != nullptr &&
+            view.combatAfterimageFrameSource != nullptr &&
+            view.combatAfterimageFrameSource->frameIndex == frame.frameIndex &&
+            view.combatAfterimageFrameSource->HasAfterimages()) {
+            combatAfterimageOk = gCombatAfterimageRenderer.Render(
+                frame.graphics,
+                frame.targetAccess,
+                *view.combatAfterimageFrameSource,
+                *cameraCb);
+        }
+
+        bool weaponTrailOk = true;
+        if (opaqueOk && depthAwareOk && transparentOk &&
+            combatAfterimageOk &&
+            cameraCb != nullptr &&
+            view.combatPresentationFrameSource != nullptr &&
+            view.combatPresentationFrameSource->frameIndex == frame.frameIndex &&
+            view.combatPresentationFrameSource->HasWeaponTrails()) {
+            weaponTrailOk = gWeaponTrailRenderer.Render(
+                screenSpaceContext,
+                *view.combatPresentationFrameSource,
+                cameraCb->viewProj);
+            if (weaponTrailOk) {
+                const COMBAT_VFX::WeaponTrailDistortionMaskView trailMask =
+                    gWeaponTrailRenderer.GetDistortionMask();
+                if (trailMask.IsValid() &&
+                    trailMask.frameIndex == frame.frameIndex) {
+                    POST::PostSystem::ActionScreenDistortionMask postMask{};
+                    postMask.texture = trailMask.texture;
+                    postMask.srvCpu = trailMask.srvCpu;
+                    postMask.frameIndex = trailMask.frameIndex;
+                    postMask.strength = trailMask.strengthScale;
+                    postMask.blur = trailMask.blurScale;
+                    POST::PostSystem::SetActionScreenDistortionMask(postMask);
+                }
+            }
+        }
+
         FEATURES::RenderFeatureAvailability featureAvailability{};
         featureAvailability.width = frame.renderWidth;
         featureAvailability.height = frame.renderHeight;
@@ -656,7 +703,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
                     frame.graphics,
                     postOpaqueResources);
         }
-        if (opaqueOk && depthAwareOk &&
+        if (opaqueOk && depthAwareOk && combatAfterimageOk && weaponTrailOk &&
             featurePassesOk &&
             gLastRenderFeaturePlan.screenCompositePassRequired) {
             const RenderTextureView finalSceneColor =
@@ -692,8 +739,20 @@ namespace HIKARI::RENDER3D::PIPELINE {
             }
         }
 
+        // Copy the scene-owned reaction into Post while the render camera for
+        // this frame is still authoritative.  The effect is composited later,
+        // after temporal resolve and exposure measurement, before bloom.
+        if (cameraCb != nullptr &&
+            view.actionPostReactionFrameSource != nullptr) {
+            POST::PostSystem::SetActionScreenImpulseFrame(
+                *view.actionPostReactionFrameSource,
+                cameraCb->viewProj,
+                frame.frameIndex);
+        }
+
         MESHRENDERER::EndFrame();
-        return opaqueOk && depthAwareOk && transparentOk && featurePassesOk;
+        return opaqueOk && depthAwareOk && transparentOk &&
+            combatAfterimageOk && weaponTrailOk && featurePassesOk;
     }
 
     bool RenderMeshCaptureOpaqueFrame(
@@ -737,6 +796,11 @@ namespace HIKARI::RENDER3D::PIPELINE {
 
     const FEATURES::RenderFeaturePlan& GetLastRenderFeaturePlan() {
         return gLastRenderFeaturePlan;
+    }
+
+    void ShutdownCombatPresentationRenderers() {
+        gCombatAfterimageRenderer.Release();
+        gWeaponTrailRenderer.Release();
     }
 
 } // namespace HIKARI::RENDER3D::PIPELINE

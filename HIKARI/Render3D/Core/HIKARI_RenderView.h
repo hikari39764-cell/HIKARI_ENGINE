@@ -10,6 +10,12 @@ namespace HIKARI::RENDER3D {
         struct ParticleRenderFrameSource;
     }
 
+    namespace COMBAT_VFX {
+        struct CombatAfterimageFrameSource;
+        struct CombatPresentationFrameSource;
+        struct PerfectGuardShockwaveFrameSource;
+    }
+
     struct RenderViewId {
         uint64_t value = 0;
 
@@ -41,6 +47,12 @@ namespace HIKARI::RENDER3D {
         const ResolvedCameraFrame* cameraFrame = nullptr;
         const PARTICLES::ParticleRenderFrameSource* particleFrameSource =
             nullptr;
+        const COMBAT_VFX::CombatPresentationFrameSource*
+            combatPresentationFrameSource = nullptr;
+        const COMBAT_VFX::CombatAfterimageFrameSource*
+            combatAfterimageFrameSource = nullptr;
+        const COMBAT_VFX::PerfectGuardShockwaveFrameSource*
+            actionPostReactionFrameSource = nullptr;
     };
 
     inline constexpr RenderViewId kPrimaryRenderViewId{ 1 };

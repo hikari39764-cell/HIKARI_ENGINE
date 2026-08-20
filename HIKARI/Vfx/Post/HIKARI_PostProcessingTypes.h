@@ -42,6 +42,9 @@ namespace HIKARI::POST {
         float occlusionRadius = 0.05f;
         float edgeFade = 0.15f;
         float maxRadiance = 4.0f;
+        float shaftIntensity = 0.0f;
+        float shaftLength = 0.55f;
+        float shaftDecay = 0.94f;
     };
 
     struct SunGlareDebugStats {

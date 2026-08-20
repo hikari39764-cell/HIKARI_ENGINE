@@ -114,24 +114,34 @@ namespace HIKARI::SKYRENDERER {
             result.streakLength = SanitizeFiniteRange(
                 result.streakLength, 0.15f, 0.0f, 2.0f);
             result.occlusionRadius = SanitizeFiniteRange(
-                result.occlusionRadius, 0.012f, 0.0f, 2.0f);
+                result.occlusionRadius, 0.012f, 0.0f, 0.25f);
             result.edgeFade = SanitizeFiniteRange(
                 result.edgeFade, 0.15f, 0.0f, 1.0f);
             result.maxRadiance = SanitizeFiniteRange(
                 result.maxRadiance, 4.0f, 0.0f, 64.0f);
+            result.shaftIntensity = SanitizeFiniteRange(
+                result.shaftIntensity, 0.0f, 0.0f, 8.0f);
+            result.shaftLength = SanitizeFiniteRange(
+                result.shaftLength, 0.55f, 0.01f, 2.0f);
+            result.shaftDecay = SanitizeFiniteRange(
+                result.shaftDecay, 0.94f, 0.5f, 0.999f);
             return result;
         }
 
-        float EstimateAtmosphereSunTransmittance(
+        MATH::Vec3 EstimateAtmosphereSunTransmittance(
             const AtmosphereSettings& atmosphere,
             const MATH::Vec3& sunDirection) noexcept {
-            // This is the CPU-side source-to-ground term used by the narrow
-            // glare/frame contract. It deliberately uses the same optical
-            // coefficients and scale heights as the LUT/analytic shaders;
-            // the view-path transmittance remains part of sky scattering.
-            if (!std::isfinite(sunDirection.y) || sunDirection.y <= -0.05f) {
-                return 0.0f;
-            }
+            // Match the GPU atmosphere's spherical ground-to-space optical
+            // path closely enough for the disk, glare, fog, and water to
+            // share one observed solar term.  This is deliberately a small
+            // fixed integral: the full view-path scattering remains GPU-owned.
+            if (!std::isfinite(sunDirection.y)) return {};
+            constexpr uint32_t kSampleCount = 24u;
+            const float planetRadius = SanitizeFiniteRange(
+                atmosphere.planetRadius, 6360000.0f, 1.0f, 100000000.0f);
+            const float atmosphereHeight = SanitizeFiniteRange(
+                atmosphere.atmosphereHeight, 80000.0f, 1.0f, 1000000.0f);
+            const float topRadius = planetRadius + atmosphereHeight;
             const float rayleighHeight = SanitizeFiniteRange(
                 atmosphere.rayleighScaleHeight,
                 8000.0f,
@@ -152,49 +162,72 @@ namespace HIKARI::SKYRENDERER {
                 25000.0f,
                 0.0f,
                 1000000.0f);
-            const float secant = 1.0f / std::max(
-                0.05f,
-                SanitizeFiniteRange(sunDirection.y, 1.0f, -1.0f, 1.0f));
-            const float ozoneColumn = ozoneWidth * std::exp(
-                -ozoneCenter / ozoneWidth);
+            const float observerRadius = planetRadius + 2.0f;
+            const float mu = SanitizeFiniteRange(
+                sunDirection.y, 1.0f, -1.0f, 1.0f);
+            const float topDiscriminant = observerRadius * observerRadius *
+                (mu * mu - 1.0f) + topRadius * topRadius;
+            if (topDiscriminant <= 0.0f) return {};
+            const float topDistance = -observerRadius * mu +
+                std::sqrt(topDiscriminant);
+            if (!std::isfinite(topDistance) || topDistance <= 0.0f) return {};
+            const float groundDiscriminant = observerRadius * observerRadius *
+                (mu * mu - 1.0f) + planetRadius * planetRadius;
+            if (groundDiscriminant >= 0.0f) {
+                const float groundDistance = -observerRadius * mu -
+                    std::sqrt(groundDiscriminant);
+                if (groundDistance > 0.0f && groundDistance < topDistance) {
+                    return {};
+                }
+            }
+
+            const float stepLength = topDistance /
+                static_cast<float>(kSampleCount);
+            float rayleighColumn = 0.0f;
+            float mieColumn = 0.0f;
+            float ozoneColumn = 0.0f;
+            for (uint32_t sample = 0u; sample < kSampleCount; ++sample) {
+                const float distance =
+                    (static_cast<float>(sample) + 0.5f) * stepLength;
+                const float radiusSquared = observerRadius * observerRadius +
+                    distance * distance +
+                    2.0f * observerRadius * mu * distance;
+                const float height = std::max(
+                    0.0f,
+                    std::sqrt(std::max(radiusSquared, 0.0f)) - planetRadius);
+                rayleighColumn += std::exp(-height / rayleighHeight) * stepLength;
+                mieColumn += std::exp(-height / mieHeight) * stepLength;
+                ozoneColumn += std::exp(
+                    -std::abs(height - ozoneCenter) / ozoneWidth) * stepLength;
+            }
             const auto coefficient = [](float value, float fallback) {
                 return SanitizeFiniteRange(value, fallback, 0.0f, 1.0f);
             };
             const MATH::Vec3 opticalDepth{
                 (coefficient(atmosphere.rayleighScattering.x, 5.8e-6f) *
-                    rayleighHeight +
+                    rayleighColumn +
                     coefficient(atmosphere.mieScattering.x, 3.996e-6f) *
-                        mieHeight +
+                        mieColumn +
                     coefficient(atmosphere.ozoneAbsorption.x, 6.5e-7f) *
-                        ozoneColumn) *
-                    secant,
+                        ozoneColumn),
                 (coefficient(atmosphere.rayleighScattering.y, 13.5e-6f) *
-                    rayleighHeight +
+                    rayleighColumn +
                     coefficient(atmosphere.mieScattering.y, 3.996e-6f) *
-                        mieHeight +
+                        mieColumn +
                     coefficient(atmosphere.ozoneAbsorption.y, 1.881e-6f) *
-                        ozoneColumn) *
-                    secant,
+                        ozoneColumn),
                 (coefficient(atmosphere.rayleighScattering.z, 33.1e-6f) *
-                    rayleighHeight +
+                    rayleighColumn +
                     coefficient(atmosphere.mieScattering.z, 3.996e-6f) *
-                        mieHeight +
+                        mieColumn +
                     coefficient(atmosphere.ozoneAbsorption.z, 8.5e-8f) *
-                        ozoneColumn) *
-                    secant,
+                        ozoneColumn),
             };
-            const MATH::Vec3 transmittance{
+            return {
                 std::exp(-std::clamp(opticalDepth.x, 0.0f, 32.0f)),
                 std::exp(-std::clamp(opticalDepth.y, 0.0f, 32.0f)),
                 std::exp(-std::clamp(opticalDepth.z, 0.0f, 32.0f)),
             };
-            return SanitizeFiniteRange(
-                transmittance.x * 0.2126f +
-                    transmittance.y * 0.7152f +
-                    transmittance.z * 0.0722f,
-                0.0f,
-                0.0f,
-                1.0f);
         }
 
         AtmosphereFrameData BuildAtmosphereFrameDataInternal(
@@ -206,7 +239,8 @@ namespace HIKARI::SKYRENDERER {
                 sun.direction,
                 { 0.4f, -1.0f, -0.6f });
             result.sunDirection = directional * -1.0f;
-            result.sunColor = SanitizeRadianceColor(sun.color);
+            result.sunSourceColor = SanitizeRadianceColor(sun.color);
+            result.sunColor = result.sunSourceColor;
             const float directionalIntensity = sun.enabled
                 ? SanitizeFiniteRange(sun.intensity, 0.0f, 0.0f, 64.0f)
                 : 0.0f;
@@ -226,15 +260,36 @@ namespace HIKARI::SKYRENDERER {
                         -16.0f,
                         16.0f))
                 : 1.0f;
-            result.sunRadiance = SanitizeFiniteRange(
+            result.sunSourceRadiance = SanitizeFiniteRange(
                 directionalIntensity * solarScale,
                 0.0f,
                 0.0f,
                 256.0f);
             if (result.atmosphereEnabled) {
-                result.sunRadiance *= EstimateAtmosphereSunTransmittance(
+                result.sunTransmittance = EstimateAtmosphereSunTransmittance(
                     environment.atmosphere,
                     result.sunDirection);
+            } else {
+                result.sunTransmittance = { 1.0f, 1.0f, 1.0f };
+            }
+            const float transmittanceLuminance = SanitizeFiniteRange(
+                result.sunTransmittance.x * 0.2126f +
+                    result.sunTransmittance.y * 0.7152f +
+                    result.sunTransmittance.z * 0.0722f,
+                0.0f,
+                0.0f,
+                1.0f);
+            result.sunRadiance = result.sunSourceRadiance *
+                transmittanceLuminance;
+            if (transmittanceLuminance > 1.0e-5f) {
+                result.sunColor = SanitizeRadianceColor({
+                    result.sunSourceColor.x * result.sunTransmittance.x /
+                        transmittanceLuminance,
+                    result.sunSourceColor.y * result.sunTransmittance.y /
+                        transmittanceLuminance,
+                    result.sunSourceColor.z * result.sunTransmittance.z /
+                        transmittanceLuminance,
+                });
             }
             result.sunAngularRadius = result.atmosphereEnabled
                 ? SanitizeFiniteRange(
@@ -773,7 +828,19 @@ namespace HIKARI::SKYRENDERER {
         constants.cpu->horizonPower = { settings.horizonColor.x, settings.horizonColor.y, settings.horizonColor.z, std::max(0.01f, settings.horizonPower) };
         constants.cpu->groundYaw = { settings.groundColor.x, settings.groundColor.y, settings.groundColor.z, settings.yaw };
         constants.cpu->tintMode = { settings.tint.x, settings.tint.y, settings.tint.z, static_cast<float>(renderMode) };
-        constants.cpu->sunDirectionIntensity = { sunDir.x, sunDir.y, sunDir.z, settings.showSunDisk ? settings.sunDiskIntensity * sunIntensity : 0.0f };
+        const float sunDiskSourceRadiance =
+            renderMode == SkyMode::Atmosphere &&
+            g.atmosphereFrame.atmosphereEnabled
+                ? g.atmosphereFrame.sunSourceRadiance
+                : sunIntensity;
+        constants.cpu->sunDirectionIntensity = {
+            sunDir.x,
+            sunDir.y,
+            sunDir.z,
+            settings.showSunDisk
+                ? settings.sunDiskIntensity * sunDiskSourceRadiance
+                : 0.0f,
+        };
         constants.cpu->sunSizeParams = { std::max(0.0001f, settings.sunDiskSize), settings.ambientFromSky, settings.reflectionIntensity, sunIntensity };
         bool atmosphereLutsReady = false;
         if (renderMode == SkyMode::Atmosphere &&
@@ -818,7 +885,13 @@ namespace HIKARI::SKYRENDERER {
                     1.0f,
                     0.0f,
                     8.0f),
-                SanitizeFiniteRange(atmosphere.sunExposure, 0.0f, -16.0f, 16.0f),
+                SanitizeFiniteRange(
+                    g.atmosphereFrame.sunTransmittance.x * 0.2126f +
+                        g.atmosphereFrame.sunTransmittance.y * 0.7152f +
+                        g.atmosphereFrame.sunTransmittance.z * 0.0722f,
+                    0.0f,
+                    0.0f,
+                    1.0f),
                 SanitizeFiniteRange(atmosphere.groundAlbedo, 0.1f, 0.0f, 1.0f),
             };
             constants.atmosphereCpu->sunDirection = {
@@ -828,10 +901,10 @@ namespace HIKARI::SKYRENDERER {
                 1.0f,
             };
             constants.atmosphereCpu->sunColorRadiance = {
-                g.atmosphereFrame.sunColor.x,
-                g.atmosphereFrame.sunColor.y,
-                g.atmosphereFrame.sunColor.z,
-                g.atmosphereFrame.sunRadiance,
+                g.atmosphereFrame.sunSourceColor.x,
+                g.atmosphereFrame.sunSourceColor.y,
+                g.atmosphereFrame.sunSourceColor.z,
+                g.atmosphereFrame.sunSourceRadiance,
             };
 
             if (atmosphere.preferLut) {
@@ -937,7 +1010,12 @@ namespace HIKARI::SKYRENDERER {
         g.environmentData.atmosphereAnalyticFallback =
             g.environmentData.atmosphereEnabled && !atmosphereLutsReady;
         g.environmentData.sunDirection = g.atmosphereFrame.sunDirection;
+        g.environmentData.sunSourceColor = g.atmosphereFrame.sunSourceColor;
         g.environmentData.sunColor = g.atmosphereFrame.sunColor;
+        g.environmentData.sunTransmittance =
+            g.atmosphereFrame.sunTransmittance;
+        g.environmentData.sunSourceRadiance =
+            g.atmosphereFrame.sunSourceRadiance;
         g.environmentData.sunRadiance = g.atmosphereFrame.sunRadiance;
         g.environmentData.sunAngularRadius = g.atmosphereFrame.sunAngularRadius;
         g.environmentData.sunGlare = g.atmosphereFrame.sunGlare;

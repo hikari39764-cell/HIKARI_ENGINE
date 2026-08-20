@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -11,7 +12,10 @@
 #include "Render3D/Color/HIKARI_AutomaticExposure.h"
 #include "Render3D/Color/HIKARI_ExposureState.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
+#include "Render3D/HIKARI_Math3D.h"
+#include "Render3D/Vfx/HIKARI_ActionPostReactionFrameSource.h"
 #include "Scene/HIKARI_SceneTransitionBus.h"
+#include "Vfx/Post/HIKARI_ActionScreenImpulseProvider.h"
 #include "Vfx/Post/HIKARI_PostChain.h"
 #include "Vfx/Post/HIKARI_PostCommon.h"
 #include "Vfx/Post/HIKARI_PostProcessingTypes.h"
@@ -22,6 +26,7 @@ namespace HIKARI::POST {
 
     class PostEffect;
     class QuadDrawer;
+    class CombatScreenDistortionComposite;
 
     class PostProcessingStage {
     public:
@@ -45,12 +50,25 @@ namespace HIKARI::POST {
         void SetFxaaSettings(const FxaaSettings& settings);
         void SetSunGlareFrame(const SunGlareFrame& frame);
         void ClearSunGlareFrame();
+        void SetActionScreenImpulseFrame(
+            const RENDER3D::COMBAT_VFX::PerfectGuardShockwaveFrameSource& source,
+            const MATH::Mat4& viewProj,
+            uint64_t frameIndex);
+        // Optional frame-local mask for weapon trails/impact accents.  The
+        // composite copies this SRV into its own descriptor heap and never
+        // retains the caller's resource beyond the current HDR resolve.
+        using ActionScreenDistortionMask =
+            ActionScreenImpulseProvider::Mask;
+        void SetActionScreenDistortionMask(
+            const ActionScreenDistortionMask& mask);
         void SetTransitionState(const TransitionVisualState& state);
         void ClearTransitionState();
 
         const FxaaSettings& GetFxaaSettings() const;
         const BloomDebugStats& GetBloomDebugStats() const;
         const SunGlareDebugStats& GetSunGlareDebugStats() const;
+        const ActionScreenImpulseProvider::DebugState&
+            GetActionScreenImpulseDebugState() const;
         const CommonParams& GetCommonParams() const;
         const RENDER3D::COLOR::ExposureFrameState&
             GetExposureState() const;
@@ -88,12 +106,16 @@ namespace HIKARI::POST {
         bool EnsureFxaaEffect();
         bool EnsureBloomEffects(uint32_t blurPairCount);
         bool EnsureSunGlareEffect();
+        bool EnsureActionScreenImpulseEffect();
         bool EnsureSunGlareTarget(int width, int height);
         bool EnsureLdrTarget(int width, int height, DXGI_FORMAT format);
         bool EnsureTemporalOutput(int width, int height, DXGI_FORMAT format);
         bool ApplySunGlare(
             RenderTarget2D& source,
             RenderTarget2D& sceneDepthOwner,
+            QuadDrawer& quad);
+        RenderTarget2D* ApplyActionScreenImpulse(
+            RenderTarget2D& source,
             QuadDrawer& quad);
         RenderTarget2D* ApplyBloom(RenderTarget2D& source, QuadDrawer& quad);
         RenderTarget2D* ApplyFxaa(RenderTarget2D& source, QuadDrawer& quad);
@@ -104,6 +126,7 @@ namespace HIKARI::POST {
         PostChain bloomChain_{};
         PostChain transitionChain_{};
         PostChain fxaaChain_{};
+        PostChain actionScreenImpulseChain_{};
         RenderTarget2D ldrTarget_{};
         RenderTarget2D temporalOutput_{};
         RenderTarget2D sunGlareTarget_{};
@@ -129,6 +152,13 @@ namespace HIKARI::POST {
         CommonParams toneMappingParams_{};
         std::unique_ptr<PostEffect> fxaaEffect_{};
         CommonParams fxaaParams_{};
+        std::unique_ptr<PostEffect> actionScreenImpulseEffect_{};
+        ActionScreenImpulseProvider actionScreenImpulseProvider_{};
+        std::unique_ptr<CombatScreenDistortionComposite>
+            actionScreenDistortionComposite_{};
+        uint32_t lastActionProjectionRejectReason_ = 0u;
+        bool actionCompositeFailureLogged_ = false;
+        bool actionScreenRequestWasActive_ = false;
         bool dumpNextFrame_ = false;
         bool transitionActive_ = false;
         std::string activeTransitionProfileId_{};

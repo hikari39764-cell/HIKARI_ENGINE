@@ -14,6 +14,7 @@
 #include "Assets/Models/HIKARI_ModelAsset.h"
 #include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Core/Math/HIKARI_MathValidation.h"
+#include "Core/HIKARI_TimeService.h"
 #include "Input/Runtime/HIKARI_InputService.h"
 #include "Physics/HIKARI_KinematicMotionService.h"
 #include "Physics/HIKARI_PhysicsTypes.h"
@@ -31,6 +32,10 @@
 #include "Scene/HIKARI_World.h"
 #include "Scene/Components/HIKARI_AnimatorComponent.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
+#include "Scene/Vfx/HIKARI_ActionPostReactionService.h"
+#include "Scene/Vfx/HIKARI_CombatAfterimageService.h"
+#include "Scene/Vfx/HIKARI_CombatPresentationService.h"
+#include "Scene/Vfx/HIKARI_VfxPlaybackService.h"
 
 namespace HIKARI {
     namespace {
@@ -191,6 +196,63 @@ namespace HIKARI {
 
         bool IsFiniteNonNegative(float value) noexcept {
             return std::isfinite(value) && value >= 0.0f;
+        }
+
+        bool IsFiniteNonNegative(const GameProjectFloat3& value) noexcept {
+            return IsFinite(value) &&
+                value.x >= 0.0f && value.y >= 0.0f && value.z >= 0.0f;
+        }
+
+        bool HasNonZeroReserved(
+            const uint8_t* values,
+            size_t count) noexcept {
+            if (values == nullptr) {
+                return true;
+            }
+            for (size_t index = 0u; index < count; ++index) {
+                if (values[index] != 0u) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        bool IsFiniteNonZeroRotation(
+            const GameProjectQuat& value) noexcept;
+
+        bool IsValidTransform(
+            const GameProjectTransform& transform) noexcept {
+            return IsFinite(transform.position) &&
+                IsFinite(transform.rotation) &&
+                IsFinite(transform.scale) &&
+                IsFiniteNonZeroRotation(transform.rotation) &&
+                transform.scale.x > 0.0f &&
+                transform.scale.y > 0.0f &&
+                transform.scale.z > 0.0f;
+        }
+
+        bool ToCombatEffectKind(
+            GameProjectCombatEffectType source,
+            VFX::CombatWorldEffectKind& outKind) noexcept {
+            switch (source) {
+            case GameProjectCombatEffectType::LightImpact:
+                outKind = VFX::CombatWorldEffectKind::LightImpact;
+                return true;
+            case GameProjectCombatEffectType::HeavyImpact:
+                outKind = VFX::CombatWorldEffectKind::HeavyImpact;
+                return true;
+            case GameProjectCombatEffectType::SkillImpact:
+                outKind = VFX::CombatWorldEffectKind::SkillImpact;
+                return true;
+            case GameProjectCombatEffectType::PerfectGuardBurst:
+                outKind = VFX::CombatWorldEffectKind::PerfectGuardBurst;
+                return true;
+            case GameProjectCombatEffectType::DodgeAfterimage:
+                outKind = VFX::CombatWorldEffectKind::DodgeAfterimage;
+                return true;
+            default:
+                return false;
+            }
         }
 
         bool IsFiniteNonZeroDirection(
@@ -392,6 +454,16 @@ namespace HIKARI {
     TimeDilationView GameProjectSdkAccess::MakeTimeDilationView(
         World& world) noexcept {
         return TimeDilationView(&world);
+    }
+
+    PresentationVfxView GameProjectSdkAccess::MakePresentationVfxView(
+        World& world) noexcept {
+        try {
+            return PresentationVfxView(&world);
+        }
+        catch (...) {
+            return {};
+        }
     }
 
     bool InputView::GetAction(
@@ -1485,6 +1557,192 @@ namespace HIKARI {
         }
         catch (...) {
             return 1.0f;
+        }
+    }
+
+    bool PresentationVfxView::PlayWorldEffect(
+        const GameProjectCombatWorldEffectRequest& request) const noexcept {
+        try {
+            if (world_ == nullptr || request.sourceId == 0u ||
+                HasNonZeroReserved(request.reserved, sizeof(request.reserved)) ||
+                !IsValidTransform(request.transform) ||
+                !IsFiniteNonZeroDirection(request.direction) ||
+                !IsFinitePositive(request.scale) ||
+                !IsFinitePositive(request.intensity)) {
+                return false;
+            }
+
+            World* world = static_cast<World*>(world_);
+            const RuntimeObjectHandle owner = DecodeRuntimeHandle(
+                request.ownerObjectHandle);
+            if (!owner.IsValid() || world->FindObject(owner) == nullptr) {
+                return false;
+            }
+
+            VFX::CombatWorldEffectKind kind{};
+            if (!ToCombatEffectKind(request.effect, kind)) {
+                return false;
+            }
+            VFX::CombatPresentationService* combat =
+                world->Services().Find<VFX::CombatPresentationService>();
+            VFX::VfxPlaybackService* playback =
+                world->Services().Find<VFX::VfxPlaybackService>();
+            if (combat == nullptr || playback == nullptr) {
+                return false;
+            }
+
+            VFX::CombatWorldEffectRequest runtimeRequest{};
+            runtimeRequest.ownerObject = owner;
+            runtimeRequest.sourceId = request.sourceId;
+            runtimeRequest.position = ToRuntime(request.transform.position);
+            runtimeRequest.rotation = ToRuntime(request.transform.rotation);
+            runtimeRequest.scale = ToRuntime(request.transform.scale);
+            runtimeRequest.direction = ToRuntime(request.direction);
+            runtimeRequest.uniformScale = request.scale;
+            runtimeRequest.intensity = request.intensity;
+            runtimeRequest.randomSeed = request.randomSeed;
+            runtimeRequest.kind = kind;
+            const bool particleAccepted =
+                combat->PlayWorldEffect(*playback, runtimeRequest);
+            if (kind != VFX::CombatWorldEffectKind::DodgeAfterimage) {
+                return particleAccepted;
+            }
+
+            // DodgeAfterimage is a presentation intent, not a particle
+            // implementation.  Particles provide only mist/droplets; the
+            // engine-private service freezes the owner's current skinned pose
+            // and ignores the old particle-box transform offset.
+            VFX::CombatAfterimageService* afterimages =
+                world->Services().Find<VFX::CombatAfterimageService>();
+            if (afterimages == nullptr) {
+                return false;
+            }
+            const uint64_t frameIndex = TIME::GetFrameContext().frameIndex;
+            VFX::CombatAfterimageRequest afterimageRequest{};
+            afterimageRequest.ownerObject = owner;
+            afterimageRequest.sourceId = request.sourceId;
+            afterimageRequest.sequence =
+                static_cast<uint64_t>(request.randomSeed);
+            afterimageRequest.randomSeed = request.randomSeed;
+            afterimageRequest.frameIndex = frameIndex;
+            afterimageRequest.intensity = request.intensity;
+            afterimageRequest.uniformScale = request.scale;
+            afterimageRequest.silhouetteCount =
+                request.intensity >= 1.35f ? 5u : 4u;
+            afterimageRequest.lifetimeUnscaledSeconds = std::clamp(
+                0.24f + request.intensity * 0.055f,
+                0.22f,
+                0.36f);
+            afterimageRequest.opacity = std::clamp(
+                0.50f + request.intensity * 0.11f,
+                0.46f,
+                0.78f);
+            afterimageRequest.fresnelPower = 2.75f;
+            afterimageRequest.dissolveStrength = 1.15f;
+            afterimageRequest.shellOffsetWorld = 0.009f;
+            afterimageRequest.color = { 0.08f, 0.66f, 1.0f };
+            const bool silhouetteAccepted = afterimages->Capture(
+                *world,
+                afterimageRequest);
+            return particleAccepted && silhouetteAccepted;
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
+    bool PresentationVfxView::SubmitWeaponTrail(
+        const GameProjectWeaponTrailSample& sample) const noexcept {
+        try {
+            if (world_ == nullptr || sample.sourceId == 0u ||
+                sample.reserved != 0u ||
+                !IsFinite(sample.bladeBaseWorld) ||
+                !IsFinite(sample.bladeTipWorld) ||
+                !IsFiniteNonNegative(sample.bodyColor) ||
+                !IsFiniteNonNegative(sample.edgeColor) ||
+                !IsFinitePositive(sample.lifetimeUnscaledSeconds) ||
+                !IsFinitePositive(sample.emissiveIntensity) ||
+                !IsFiniteNonNegative(sample.opacity) ||
+                sample.opacity > 1.0f ||
+                !IsFiniteNonNegative(sample.flowStrength)) {
+                return false;
+            }
+
+            World* world = static_cast<World*>(world_);
+            const RuntimeObjectHandle owner = DecodeRuntimeHandle(
+                sample.ownerObjectHandle);
+            if (!owner.IsValid() || world->FindObject(owner) == nullptr) {
+                return false;
+            }
+            VFX::CombatPresentationService* combat =
+                world->Services().Find<VFX::CombatPresentationService>();
+            if (combat == nullptr) {
+                return false;
+            }
+
+            VFX::WeaponTrailSampleRequest runtimeRequest{};
+            runtimeRequest.ownerObject = owner;
+            runtimeRequest.sourceId = sample.sourceId;
+            runtimeRequest.bladeBaseWorld = ToRuntime(sample.bladeBaseWorld);
+            runtimeRequest.bladeTipWorld = ToRuntime(sample.bladeTipWorld);
+            runtimeRequest.bodyColor = ToRuntime(sample.bodyColor);
+            runtimeRequest.edgeColor = ToRuntime(sample.edgeColor);
+            runtimeRequest.lifetimeUnscaledSeconds =
+                sample.lifetimeUnscaledSeconds;
+            runtimeRequest.opacity = sample.opacity;
+            runtimeRequest.emissiveIntensity = sample.emissiveIntensity;
+            runtimeRequest.flowStrength = sample.flowStrength;
+            return combat->SubmitWeaponTrail(
+                runtimeRequest,
+                TIME::GetFrameContext().frameIndex);
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
+    bool PresentationVfxView::TriggerPerfectGuardWave(
+        const GameProjectPerfectGuardWaveRequest& request) const noexcept {
+        try {
+            if (world_ == nullptr || request.sourceId == 0u ||
+                request.reserved != 0u ||
+                !IsFinite(request.worldCenter) ||
+                !IsFiniteNonNegative(request.color) ||
+                !IsFinitePositive(request.durationUnscaledSeconds) ||
+                !IsFinitePositive(request.maximumScreenRadius) ||
+                !IsFinitePositive(request.ringThickness) ||
+                !IsFiniteNonNegative(request.distortionStrength) ||
+                !IsFiniteNonNegative(request.chromaticAberration) ||
+                !IsFiniteNonNegative(request.flashIntensity) ||
+                !IsFinitePositive(request.intensity)) {
+                return false;
+            }
+
+            World* world = static_cast<World*>(world_);
+            VFX::ActionPostReactionService* reaction =
+                world->Services().Find<VFX::ActionPostReactionService>();
+            if (reaction == nullptr) {
+                return false;
+            }
+
+            VFX::ActionPostReactionService::PerfectGuardShockwaveRequest
+                runtimeRequest{};
+            runtimeRequest.sourceId = request.sourceId;
+            runtimeRequest.sequence = request.sequence;
+            runtimeRequest.frameIndex = TIME::GetFrameContext().frameIndex;
+            runtimeRequest.worldPosition = ToRuntime(request.worldCenter);
+            runtimeRequest.color = ToRuntime(request.color);
+            runtimeRequest.durationSeconds = request.durationUnscaledSeconds;
+            runtimeRequest.maximumScreenRadius = request.maximumScreenRadius;
+            runtimeRequest.ringThickness = request.ringThickness;
+            runtimeRequest.distortionStrength = request.distortionStrength;
+            runtimeRequest.chromaticShift = request.chromaticAberration;
+            runtimeRequest.flashIntensity = request.flashIntensity;
+            runtimeRequest.intensity = request.intensity;
+            return reaction->TriggerPerfectGuardShockwave(runtimeRequest);
+        }
+        catch (...) {
+            return false;
         }
     }
 

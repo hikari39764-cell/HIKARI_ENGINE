@@ -59,6 +59,8 @@ namespace HIKARI {
             World& world) noexcept;
         static TimeDilationView MakeTimeDilationView(
             World& world) noexcept;
+        static PresentationVfxView MakePresentationVfxView(
+            World& world) noexcept;
         static GameComponentContext MakeGameComponentContext(
             GameProjectComponentAdapter& adapter,
             GameObject& object,

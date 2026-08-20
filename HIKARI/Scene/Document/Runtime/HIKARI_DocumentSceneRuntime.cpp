@@ -19,6 +19,9 @@
 #include "Scene/HIKARI_RuntimeSceneContext.h"
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
 #include "Scene/Lighting/HIKARI_LightingAuthoringModel.h"
+#include "Scene/Vfx/HIKARI_ActionPostReactionService.h"
+#include "Scene/Vfx/HIKARI_CombatAfterimageService.h"
+#include "Scene/Vfx/HIKARI_CombatPresentationService.h"
 
 namespace HIKARI {
 
@@ -348,6 +351,11 @@ namespace HIKARI {
             });
         state_->runtime.vfxPlaybackService.
             SetReliableRenderDeliveryEnabled(true);
+        if (!state_->runtime.combatPresentationService.Prewarm()) {
+            HIKARI_LOG_WARN(
+                "[Vfx] combat presentation prewarm failed; "
+                "runtime will retry lazily");
+        }
 
         std::string physicsSettingsMessage{};
         if (!state_->runtime.physicsSettings.Load(
@@ -386,6 +394,12 @@ namespace HIKARI {
         success = services.Register(state_->runtime.bindingStore) && success;
         success = services.Register(
             state_->runtime.vfxPlaybackService) && success;
+        success = services.Register(
+            state_->runtime.combatPresentationService) && success;
+        success = services.Register(
+            state_->runtime.combatAfterimageService) && success;
+        success = services.Register(
+            state_->runtime.actionPostReactionService) && success;
         success = services.Register(
             state_->runtime.waterSurfaceQueryService) && success;
         success = services.Register(
@@ -506,6 +520,9 @@ namespace HIKARI {
     bool DocumentSceneBase::RebuildRuntimeWorld() {
         SERVICES::GetActionTimeDilationService().ReleaseOwner(
             &state_->runtime.world);
+        state_->runtime.combatPresentationService.Reset();
+        state_->runtime.combatAfterimageService.Reset();
+        state_->runtime.actionPostReactionService.Reset();
         LIGHTING_AUTHORING::SynchronizeLegacyLightingViews(
             state_->identity.document);
         state_->runtime.systemScheduler.DetachWorld(state_->runtime.world);

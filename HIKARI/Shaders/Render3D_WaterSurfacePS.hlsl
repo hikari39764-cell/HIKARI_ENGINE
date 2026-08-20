@@ -5,6 +5,7 @@
 #include "Include/Surface/HIKARI_WaterSpectralSlope.hlsli"
 #include "Include/Surface/HIKARI_ScreenSpaceReflectionTrace.hlsli"
 #include "Include/Surface/HIKARI_SurfaceTransmission.hlsli"
+#include "Include/Water/HIKARI_WaterOptics.hlsli"
 
 float HikariSampleLiquidCoverage(
     HikariWaterSurfaceParams p,
@@ -30,87 +31,6 @@ float HikariSampleLiquidCoverage(
     const float c01 = gSandSurfaceHeights[base + y1 * stride + x0];
     const float c11 = gSandSurfaceHeights[base + y1 * stride + x1];
     return lerp(lerp(c00, c10, tx), lerp(c01, c11, tx), ty);
-}
-
-float HikariWaterHash21(float2 value)
-{
-    value = frac(value * float2(123.34f, 456.21f));
-    value += dot(value, value + 45.32f);
-    return frac(value.x * value.y);
-}
-
-float HikariWaterValueNoise(float2 value)
-{
-    const float2 cell = floor(value);
-    const float2 local = frac(value);
-    const float2 blend = local * local * (3.0f - 2.0f * local);
-    const float n00 = HikariWaterHash21(cell);
-    const float n10 = HikariWaterHash21(cell + float2(1.0f, 0.0f));
-    const float n01 = HikariWaterHash21(cell + float2(0.0f, 1.0f));
-    const float n11 = HikariWaterHash21(cell + float2(1.0f, 1.0f));
-    return lerp(
-        lerp(n00, n10, blend.x),
-        lerp(n01, n11, blend.x),
-        blend.y);
-}
-
-float HikariWaterLayeredNoise(float2 localXZ, float time)
-{
-    float noise = 0.0f;
-    noise += HikariWaterValueNoise(
-        localXZ * 0.34f + float2(0.08f, 0.05f) * time);
-    noise += HikariWaterValueNoise(
-        localXZ * 0.63f + 13.7f + float2(-0.06f, 0.09f) * time);
-    noise += HikariWaterValueNoise(
-        localXZ * 1.17f + 29.3f + float2(0.10f, -0.04f) * time);
-    return noise * (1.0f / 3.0f);
-}
-
-float3 HikariWaterResolveMicroNormal(
-    float3 geometricNormal,
-    float4 tangentWS,
-    float2 localXZ,
-    float time,
-    float strength,
-    bool anime)
-{
-    const float3 n = HikariSafeNormalize(
-        geometricNormal,
-        float3(0.0f, 1.0f, 0.0f));
-    const float3 tangentFallbackAxis = abs(n.y) < 0.999f
-        ? float3(0.0f, 1.0f, 0.0f)
-        : float3(1.0f, 0.0f, 0.0f);
-    const float3 tangentFallback = HikariSafeNormalize(
-        cross(tangentFallbackAxis, n),
-        float3(1.0f, 0.0f, 0.0f));
-    float3 tangent = tangentWS.xyz - n * dot(tangentWS.xyz, n);
-    tangent = HikariSafeNormalize(
-        length(tangent) > 1.0e-5f
-            ? tangent
-            : tangentFallback,
-        tangentFallback);
-    const float tangentSign =
-        HikariFiniteOr(tangentWS.w, 1.0f) < 0.0f ? -1.0f : 1.0f;
-    const float3 bitangent = HikariSafeNormalize(
-        cross(n, tangent) * tangentSign,
-        cross(n, tangentFallback) * tangentSign);
-
-    const float2 direction0 = normalize(float2(0.82f, 0.57f));
-    const float2 direction1 = normalize(float2(-0.41f, 0.91f));
-    const float phase0 =
-        dot(localXZ, direction0) * (anime ? 1.25f : 2.10f) -
-        time * 1.15f;
-    const float phase1 =
-        dot(localXZ, direction1) * (anime ? 2.35f : 4.25f) -
-        time * 1.73f;
-    const float2 gradient =
-        direction0 * cos(phase0) * 0.55f +
-        direction1 * cos(phase1) * 0.28f;
-    const float amplitude = strength * (anime ? 0.12f : 0.20f);
-    return HikariSafeNormalize(
-        n - tangent * gradient.x * amplitude -
-        bitangent * gradient.y * amplitude,
-        n);
 }
 
 struct HikariWaterDepthSample
@@ -184,9 +104,20 @@ float3 HikariSampleWaterRefraction(
     float2 screenUv,
     HikariWaterDepthSample centerDepth,
     float distortionStrength,
+    float3 authoredFallback,
     out float opticalDistance,
     out float refractionConfidence)
 {
+    const float3 viewDirection = HikariSafeNormalize(
+        gCameraPos.xyz - input.worldPosWS,
+        normalWS);
+    const float3 refractedDirection = HikariSafeNormalize(
+        refract(-viewDirection, normalWS, 1.0f / 1.333f),
+        reflect(-viewDirection, normalWS));
+    const float3 skyFallback = HikariWaterResolveSkyFallback(
+        refractedDirection,
+        authoredFallback,
+        1.0f);
     float2 projectedOffset = 0.0f.xx;
     HikariProjectWorldDirectionToUvOffset(
         input.worldPosWS,
@@ -244,27 +175,38 @@ float3 HikariSampleWaterRefraction(
     refractionConfidence = saturate(HikariFiniteOr(
         candidateConfidence,
         0.0f));
+    const float fallbackOpticalDistance = max(
+        4.0f,
+        HikariFiniteOr(centerDepth.opticalDistance, 0.0f));
     opticalDistance = lerp(
-        HikariFiniteOr(centerDepth.opticalDistance, 64.0f),
+        centerDepth.valid
+            ? HikariFiniteOr(centerDepth.opticalDistance, 4.0f)
+            : fallbackOpticalDistance,
         HikariFiniteOr(candidateOpticalDistance, 0.0f),
         refractionConfidence);
-    opticalDistance = max(HikariFiniteOr(opticalDistance, 64.0f), 0.0f);
+    opticalDistance = max(HikariFiniteOr(
+        opticalDistance,
+        fallbackOpticalDistance), 0.0f);
     const float3 sampledCenterColor =
         gSceneColorTex.Sample(gLinearClamp, screenUv).rgb;
-    const float3 centerColor = max(
-        HikariFiniteOr(sampledCenterColor, 0.0f.xxx),
-        0.0f.xxx);
+    const float3 centerColor = HikariWaterResolveSceneCapture(
+        sampledCenterColor,
+        skyFallback,
+        centerDepth.valid ? 1.0f : 0.0f,
+        0.90f);
     const float3 sampledCandidateColor = candidateValid
         ? gSceneColorTex.Sample(gLinearClamp, candidateUv).rgb
         : centerColor;
     const float3 candidateColor = candidateValid
-        ? max(
-            HikariFiniteOr(sampledCandidateColor, centerColor),
-            0.0f.xxx)
+        ? HikariWaterResolveSceneCapture(
+            sampledCandidateColor,
+            skyFallback,
+            1.0f,
+            candidateConfidence)
         : centerColor;
     return HikariFiniteOr(
         lerp(centerColor, candidateColor, refractionConfidence),
-        centerColor);
+        skyFallback);
 }
 
 float3 EvaluateWaterLocalLights(
@@ -342,12 +284,12 @@ float HikariWaterAnimeSparkleMask(
     const float2 cellPosition = frac(gridPosition) - 0.5f;
     const float2 center = (
         float2(
-            HikariWaterHash21(cellId + float2(11.0f, 37.0f)),
-            HikariWaterHash21(cellId + float2(53.0f, 19.0f))) -
+            HikariWaterOpticsHash21(cellId + float2(11.0f, 37.0f)),
+            HikariWaterOpticsHash21(cellId + float2(53.0f, 19.0f))) -
         0.5f.xx) * 0.48f;
-    const float angle = HikariWaterHash21(
+    const float angle = HikariWaterOpticsHash21(
         cellId + float2(29.0f, 71.0f)) * 6.28318530718f;
-    const float phase = HikariWaterHash21(
+    const float phase = HikariWaterOpticsHash21(
         cellId + float2(83.0f, 43.0f)) * 6.28318530718f;
     const float2 markPosition = HikariWaterRotate2D(
         cellPosition - center,
@@ -382,43 +324,6 @@ float HikariWaterAnimeSparkleMask(
     const float crestGate = smoothstep(0.16f, 0.62f, compression);
     return mark * phaseGate * sunGate * crestGate *
         lerp(0.35f, 1.0f, density);
-}
-
-float3 HikariWaterSoftCompressHdr(
-    float3 radiance,
-    float knee)
-{
-    const float3 safeRadiance = max(
-        HikariFiniteOr(radiance, 0.0f.xxx),
-        0.0f.xxx);
-    const float safeKnee = max(
-        HikariFiniteOr(knee, 0.30f),
-        0.01f);
-    return safeRadiance / (1.0f.xxx + safeRadiance * safeKnee);
-}
-
-float3 HikariWaterApplyReflectionBudget(
-    float3 radiance,
-    float reflectionStrength)
-{
-    const float gain = clamp(HikariFiniteOr(
-        reflectionStrength,
-        0.62f), 0.0f, 2.0f);
-    const float3 safeRadiance = max(
-        HikariFiniteOr(radiance, 0.0f.xxx),
-        0.0f.xxx);
-    const float peak = max(
-        max(safeRadiance.r, safeRadiance.g),
-        safeRadiance.b);
-    // 有理 knee により全 provider と glint lobe を同じ scene-linear 予算へ
-    // 収め、低 radiance の形は過度に平坦化しない。
-    // At gain=1 the old 0.8 asymptote sat below the default 0.8 bloom
-    // threshold, so even a strong summer sun could never produce a readable
-    // HDR water highlight. Keep the provider sum bounded, but leave enough
-    // scene-linear headroom for tone mapping and bloom to preserve the lobe.
-    const float budget = max(0.10f, gain * 1.50f);
-    const float budgetScale = budget / max(budget + peak, 1.0e-4f);
-    return safeRadiance * budgetScale * gain;
 }
 
 float4 HikariShadeWaterSurface(
@@ -465,13 +370,6 @@ float4 HikariShadeWaterSurface(
     const float3 stableSurfaceNormalWS = input.isFrontFace
         ? stableSurfaceNormalUnflipped
         : -stableSurfaceNormalUnflipped;
-    float3 normalWS = HikariWaterResolveMicroNormal(
-        geometricNormal,
-        input.tangentWS,
-        localXZ,
-        animationTime,
-        p.microWaveStrength,
-        anime);
     const float3 toCamera = gCameraPos.xyz - input.worldPosWS;
     const float distanceToCamera = max(HikariFiniteOr(
         length(toCamera),
@@ -480,6 +378,16 @@ float4 HikariShadeWaterSurface(
     const float3 light = HikariSafeNormalize(
         -gDirectionalDir.xyz,
         float3(0.0f, 1.0f, 0.0f));
+    float3 normalWS = HikariWaterResolveMicroNormal(
+        geometricNormal,
+        input.tangentWS,
+        localXZ,
+        animationTime,
+        p.microWaveStrength,
+        anime,
+        p.windDirectionRadians,
+        p.windSpeed,
+        distanceToCamera);
     const float2 worldXZ = HikariFiniteOr(
         input.worldPosWS.xz,
         0.0f.xx);
@@ -537,25 +445,31 @@ float4 HikariShadeWaterSurface(
         screenUv,
         centerDepth,
         distortionStrength,
+        p.scatteringColor,
         opticalDistance,
         refractionConfidence);
 
-    const float3 transmittance = saturate(HikariFiniteOr(
-        HikariReferenceTransmittance(
-            p.depthTransmittance,
-            p.absorptionDistance,
-            opticalDistance),
-        1.0f.xxx));
+    const float3 transmittance = HikariWaterResolveBeerLambert(
+        p.depthTransmittance,
+        p.absorptionDistance,
+        opticalDistance);
     const float3 safeScatteringColor = max(
         HikariFiniteOr(p.scatteringColor, 0.0f.xxx),
         0.0015f.xxx);
-    const float3 transmittedBase = HikariFiniteOr(
-        sceneRefraction * transmittance +
-            safeScatteringColor * (1.0f.xxx - transmittance),
-        safeScatteringColor);
-    // Beer-Lambert remains the authored transport term, while the bounded
-    // scattering floor prevents a valid deep-water sample from collapsing to
-    // black when refraction and exposure are both low.
+    const float3 sunRadiance = HikariWaterResolveSunRadiance();
+    const float3 transmittedBase =
+        HikariWaterResolveSingleLayerScattering(
+            sceneRefraction,
+            safeScatteringColor,
+            transmittance,
+            view,
+            light,
+            sunRadiance,
+            max(p.directSunStrength, 0.0f),
+            realistic);
+    // Beer-Lambert remains the authored transport term. The single-layer
+    // solar lobe makes clear water readable without replacing the scene
+    // capture or inventing an unbounded emissive contribution.
     const float3 transmissionFloor = max(
         safeScatteringColor * (anime ? 0.12f : 0.08f),
         float3(0.0015f, 0.004f, 0.006f));
@@ -628,17 +542,21 @@ float4 HikariShadeWaterSurface(
             0.0f.xxx,
             0.0f),
         0.0f.xxx);
-    const float approximateFresnel = saturate(HikariFiniteOr(
-        HikariFresnelSchlick(
-            saturate(dot(normalWS, view)),
-            waterF0.xxx).x,
-        waterF0));
-    const float fresnel = realistic
-        ? HikariWaterExactDielectricFresnel(
+    const float fresnel = HikariWaterResolveFresnel(
+        dot(normalWS, view),
+        realistic);
+    const float3 reflectionDirection = HikariSafeNormalize(
+        reflect(-view, normalWS),
+        normalWS);
+    const float3 providerEnvironmentReflection =
+        HikariWaterResolveEnvironmentFallback(
+            environmentReflection,
+            reflectionDirection,
             dot(normalWS, view),
+            fresnel,
+            roughness,
             1.0f,
-            1.333f)
-        : approximateFresnel;
+            safeScatteringColor);
     HikariScreenSpaceReflectionTraceConfig waterSsrConfig;
     waterSsrConfig.valid =
         gScreenSpaceTraceValid != 0u &&
@@ -680,23 +598,18 @@ float4 HikariShadeWaterSurface(
             gViewProj,
             gInvViewProj,
             waterSsrConfig);
-    const float waterSsrReplacementWeight = saturate(HikariFiniteOr(
-        waterSsr.confidence * gScreenSpaceReflectionParams0.x,
-        0.0f));
-    // Ambient IBL already evaluates its own BRDF/Fresnel response through
-    // reflectionContext. Only the raw SSR radiance receives the water Fresnel
-    // factor before it replaces the IBL provider.
-    const float3 providerEnvironmentReflection = max(
-        HikariFiniteOr(environmentReflection, 0.0f.xxx),
-        0.0f.xxx);
-    const float3 resolvedEnvironmentReflection = HikariFiniteOr(
-        lerp(
+    // Preserve the existing SSR -> probe/IBL -> sky order. An invalid SSR
+    // hit cannot replace a valid provider with black; the helper also uses a
+    // max() sky fallback rather than adding a second reflection lobe.
+    const float3 resolvedEnvironmentReflection =
+        HikariWaterResolveSsrReplacement(
             providerEnvironmentReflection,
-            HikariFiniteOr(
-                waterSsr.radiance,
-                providerEnvironmentReflection) * fresnel,
-            waterSsrReplacementWeight),
-        providerEnvironmentReflection);
+            waterSsr,
+            fresnel,
+            max(HikariFiniteOr(
+                gScreenSpaceReflectionParams0.x,
+                0.0f),
+                0.0f));
 
     if (gDebugView == HIKARI_DEBUG_VIEW_SSR_CONFIDENCE)
     {
@@ -712,7 +625,7 @@ float4 HikariShadeWaterSurface(
     }
 
     const float layeredNoise = anime
-        ? HikariWaterLayeredNoise(localXZ, animationTime)
+        ? HikariWaterOpticsLayeredNoise(localXZ, animationTime)
         : 0.5f;
     const float shoreFoam = centerDepth.valid
         ? 1.0f - smoothstep(0.18f, 1.65f, columnDepth)
@@ -795,13 +708,28 @@ float4 HikariShadeWaterSurface(
             compressedSummer,
             compressionStep * 0.24f);
         const float deepGraphicWeight = saturate(
-            0.68f + depthStep1 * 0.12f +
-            depthStep2 * 0.08f + compressionStep * 0.06f);
+            0.22f + depthStep1 * 0.10f +
+            depthStep2 * 0.08f + compressionStep * 0.05f);
         const float graphicWeight = lerp(
             deepGraphicWeight,
             p.shallowGraphicWeight,
             shallowMask);
-        color = lerp(transmissionTerm, graphicBody, graphicWeight);
+        // Anime ramp is a bounded tint over the physical transport. It must
+        // not replace Beer-Lambert transmission or erase a valid reflection
+        // provider, which was the source of the old flat blue body.
+        const float3 transmissionReference = max(
+            transmittedColor,
+            float3(0.045f, 0.045f, 0.045f));
+        const float3 graphicTint = clamp(
+            graphicBody / transmissionReference,
+            0.55f.xxx,
+            1.85f.xxx);
+        color = max(
+            transmissionTerm * lerp(
+                1.0f.xxx,
+                graphicTint,
+                saturate(graphicWeight * 0.78f)),
+            transmissionTerm * 0.55f);
 
         const float3 halfVector = HikariSafeNormalize(
             light + view,
@@ -823,13 +751,6 @@ float4 HikariShadeWaterSurface(
             p.glintDensity,
             p.glintFlowSpeed,
             p.ribbonWidth);
-        const float3 sunRadiance = HikariWaterSoftCompressHdr(
-            HikariFiniteOr(
-                gDirectionalColor.rgb * max(
-                    HikariFiniteOr(gDirectionalIntensity, 0.0f),
-                    0.0f),
-                0.0f.xxx),
-            0.28f);
         const float glintMask = saturate(
             sunRibbon * 0.36f + sparkle);
         // Anime sparkle is a bounded directional-sun lobe, never an
@@ -858,10 +779,8 @@ float4 HikariShadeWaterSurface(
             shallowSummer,
             float3(0.16f, 0.84f, 0.88f),
             0.62f);
-        color = lerp(
-            color,
-            crestRibbonColor,
-            crestRibbon * (0.34f + 0.20f * sunStep));
+        color += crestRibbonColor *
+            (crestRibbon * (0.10f + 0.08f * sunStep));
 
         const float foamCoverage = HikariWaterSmoothBand(foam, 0.08f);
         const float foamCore = HikariWaterSmoothBand(foam, 0.43f);

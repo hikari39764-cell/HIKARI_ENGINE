@@ -66,7 +66,10 @@ bool EqualSunGlareSettings(const SunGlareSettings &lhs,
          lhs.streakLength == rhs.streakLength &&
          lhs.occlusionRadius == rhs.occlusionRadius &&
          lhs.edgeFade == rhs.edgeFade &&
-         lhs.maxRadiance == rhs.maxRadiance;
+         lhs.maxRadiance == rhs.maxRadiance &&
+         lhs.shaftIntensity == rhs.shaftIntensity &&
+         lhs.shaftLength == rhs.shaftLength &&
+         lhs.shaftDecay == rhs.shaftDecay;
 }
 
 bool EqualVec2(const MATH::Vec2 &lhs, const MATH::Vec2 &rhs) {
@@ -214,8 +217,13 @@ bool AreSceneEnvironmentValuesEqual(const SceneEnvironment &lhs,
       lhs.fog.startDistance != rhs.fog.startDistance ||
       lhs.fog.endDistance != rhs.fog.endDistance ||
       lhs.fog.heightFalloff != rhs.fog.heightFalloff ||
+      lhs.fog.baseHeight != rhs.fog.baseHeight ||
       lhs.fog.anisotropy != rhs.fog.anisotropy ||
       lhs.fog.temporalWeight != rhs.fog.temporalWeight ||
+      lhs.fog.scatteringIntensity != rhs.fog.scatteringIntensity ||
+      lhs.fog.ambientScatteringStrength !=
+          rhs.fog.ambientScatteringStrength ||
+      lhs.fog.sunShaftStrength != rhs.fog.sunShaftStrength ||
       lhs.fog.useSkyHorizonColor != rhs.fog.useSkyHorizonColor ||
       lhs.toneMapping.enabled != rhs.toneMapping.enabled ||
       lhs.toneMapping.exposureMode != rhs.toneMapping.exposureMode ||

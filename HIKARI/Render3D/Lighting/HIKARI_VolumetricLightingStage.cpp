@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
+#include <cstddef>
 #include <cstring>
 
 #include <d3dx12.h>
@@ -44,6 +46,7 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
             MATH::Vec4 directionalDirIntensity{};
             MATH::Vec4 directionalColorShadow{};
             MATH::Vec4 ambientColorIntensity{};
+            MATH::Vec4 volumetricOptics{};
             MATH::Vec4 volumeSize{};
             MATH::Vec4 frameParams{};
             MATH::Vec4 debugAndLocalLightDepth{};
@@ -58,7 +61,7 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
         };
 
         static_assert(
-            sizeof(VolumetricConstants) == 608u);
+            sizeof(VolumetricConstants) == 624u);
 
         struct VolumeResource {
             ComPtr<ID3D12Resource> texture{};
@@ -94,6 +97,7 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
             bool resourcesReady = false;
             bool prepared = false;
             bool volumeHistoryValid = false;
+            uint64_t lastSettingsSignature = 0u;
         };
 
         StageState& State() {
@@ -122,6 +126,53 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
             case RenderDebugView::VolumetricDepthSlice: return 3u;
             default: return 0u;
             }
+        }
+
+        void HashBytes(
+            uint64_t& hash,
+            const void* data,
+            size_t size) noexcept {
+            const auto* bytes = static_cast<const uint8_t*>(data);
+            for (size_t index = 0u; index < size; ++index) {
+                hash ^= static_cast<uint64_t>(bytes[index]);
+                hash *= 1099511628211ull;
+            }
+        }
+
+        uint64_t HashVolumetricSettings(
+            const SceneEnvironment& environment,
+            VolumetricLightingQuality quality) noexcept {
+            uint64_t hash = 1469598103934665603ull;
+            const auto Add = [&hash](const auto& value) {
+                HashBytes(hash, &value, sizeof(value));
+            };
+            Add(environment.fog.enabled);
+            Add(environment.fog.volumetric);
+            Add(environment.fog.color);
+            Add(environment.fog.density);
+            Add(environment.fog.startDistance);
+            Add(environment.fog.endDistance);
+            Add(environment.fog.heightFalloff);
+            Add(environment.fog.baseHeight);
+            Add(environment.fog.anisotropy);
+            Add(environment.fog.temporalWeight);
+            Add(environment.fog.scatteringIntensity);
+            Add(environment.fog.ambientScatteringStrength);
+            Add(environment.fog.sunShaftStrength);
+            Add(environment.fog.useSkyHorizonColor);
+            Add(environment.sky.horizonColor);
+            Add(environment.sky.tint);
+            Add(environment.sky.exposure);
+            Add(environment.directional.enabled);
+            Add(environment.directional.direction);
+            Add(environment.directional.color);
+            Add(environment.directional.intensity);
+            Add(environment.directionalShadow.enabled);
+            Add(environment.directionalShadow.strength);
+            Add(environment.ambient.color);
+            Add(environment.ambient.intensity);
+            Add(quality);
+            return hash == 0u ? 1u : hash;
         }
 
         void ReleaseView(RenderResourceView& view) {
@@ -463,19 +514,20 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
         };
         constants.cameraPos = frame.camera.cameraPos;
         constants.prevCameraPos = frame.camera.prevCameraPos;
-        // The sky renderer publishes the scene-linear, tinted horizon
-        // radiance used by the actual sky pass.  Reusing that contract lets
-        // the shared volumetric integral converge to the same horizon at far
-        // water distances; it does not add a water-owned fog/color path.
+        // Prepare runs before the current frame's SkyRenderer pass.  Resolve
+        // the authored horizon directly instead of reading last frame's sky
+        // cache, so inspector edits and scene switches cannot seed stale fog.
         MATH::Vec3 fogColor = environment.fog.color;
-        const SKYRENDERER::SkyEnvironmentData& skyData =
-            SKYRENDERER::GetEnvironmentData();
-        if (environment.fog.useSkyHorizonColor && skyData.valid) {
-            const float skyExposure = (std::max)(0.0f, skyData.exposure);
+        if (environment.fog.useSkyHorizonColor && environment.sky.enabled) {
+            const float skyExposure =
+                (std::max)(0.0f, environment.sky.exposure);
             fogColor = {
-                skyData.horizonColor.x * skyExposure,
-                skyData.horizonColor.y * skyExposure,
-                skyData.horizonColor.z * skyExposure
+                environment.sky.horizonColor.x * environment.sky.tint.x *
+                    skyExposure,
+                environment.sky.horizonColor.y * environment.sky.tint.y *
+                    skyExposure,
+                environment.sky.horizonColor.z * environment.sky.tint.z *
+                    skyExposure
             };
         }
         constants.fogColorDensity = {
@@ -488,6 +540,31 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
             (std::max)(0.0f, environment.fog.heightFalloff),
             std::clamp(environment.fog.anisotropy, -0.8f, 0.8f)
         };
+        const SKYRENDERER::AtmosphereFrameData atmosphereFrame =
+            SKYRENDERER::BuildAtmosphereFrameData(environment);
+        const float sunTransmittanceLuminance = std::clamp(
+            atmosphereFrame.sunTransmittance.x * 0.2126f +
+                atmosphereFrame.sunTransmittance.y * 0.7152f +
+                atmosphereFrame.sunTransmittance.z * 0.0722f,
+            1.0e-4f,
+            1.0f);
+        const MATH::Vec3 solarTint{
+            std::clamp(
+                atmosphereFrame.sunTransmittance.x /
+                    sunTransmittanceLuminance,
+                0.35f,
+                2.0f),
+            std::clamp(
+                atmosphereFrame.sunTransmittance.y /
+                    sunTransmittanceLuminance,
+                0.35f,
+                2.0f),
+            std::clamp(
+                atmosphereFrame.sunTransmittance.z /
+                    sunTransmittanceLuminance,
+                0.35f,
+                2.0f),
+        };
         constants.directionalDirIntensity = {
             environment.directional.direction.x,
             environment.directional.direction.y,
@@ -495,9 +572,9 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
             environment.directional.enabled ? (std::max)(0.0f, environment.directional.intensity) : 0.0f
         };
         constants.directionalColorShadow = {
-            environment.directional.color.x,
-            environment.directional.color.y,
-            environment.directional.color.z,
+            environment.directional.color.x * solarTint.x,
+            environment.directional.color.y * solarTint.y,
+            environment.directional.color.z * solarTint.z,
             std::clamp(environment.directionalShadow.strength, 0.0f, 1.0f)
         };
         constants.ambientColorIntensity = {
@@ -506,6 +583,27 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
             environment.ambient.color.z,
             (std::max)(0.0f, environment.ambient.intensity)
         };
+        constants.volumetricOptics = {
+            std::isfinite(environment.fog.baseHeight)
+                ? environment.fog.baseHeight
+                : 0.0f,
+            std::clamp(environment.fog.scatteringIntensity, 0.0f, 8.0f),
+            std::clamp(
+                environment.fog.ambientScatteringStrength,
+                0.0f,
+                8.0f),
+            std::clamp(environment.fog.sunShaftStrength, 0.0f, 8.0f),
+        };
+
+        const uint64_t settingsSignature =
+            HashVolumetricSettings(environment, quality);
+        if (state.lastSettingsSignature != 0u &&
+            state.lastSettingsSignature != settingsSignature &&
+            state.volumeHistoryValid) {
+            state.volumeHistoryValid = false;
+            ++state.stats.historyResetCount;
+        }
+        state.lastSettingsSignature = settingsSignature;
         const bool historyValid = state.volumeHistoryValid && frame.historyValid && !frame.resetHistory;
         constants.volumeSize = {
             static_cast<float>(state.stats.froxelWidth),
@@ -717,6 +815,7 @@ namespace HIKARI::RENDER3D::VOLUMETRIC {
         state.stats = {};
         state.writeIndex = 0;
         state.preparedFrameIndex = 0;
+        state.lastSettingsSignature = 0u;
         state.debugView = RenderDebugView::None;
         state.pipelineReady = false;
         state.resourcesReady = false;

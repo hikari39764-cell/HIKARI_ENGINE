@@ -575,11 +575,17 @@ namespace HIKARI::SCENE::SERIALIZATION {
         out["sunGlare"]["streakLength"] = SanitizeCloudFloat(
             glare.streakLength, glareDefaults.streakLength, 0.0f, 2.0f);
         out["sunGlare"]["occlusionRadius"] = SanitizeCloudFloat(
-            glare.occlusionRadius, glareDefaults.occlusionRadius, 0.0f, 2.0f);
+            glare.occlusionRadius, glareDefaults.occlusionRadius, 0.0f, 0.25f);
         out["sunGlare"]["edgeFade"] = SanitizeCloudFloat(
             glare.edgeFade, glareDefaults.edgeFade, 0.0f, 1.0f);
         out["sunGlare"]["maxRadiance"] = SanitizeCloudFloat(
             glare.maxRadiance, glareDefaults.maxRadiance, 0.0f, 64.0f);
+        out["sunGlare"]["shaftIntensity"] = SanitizeCloudFloat(
+            glare.shaftIntensity, glareDefaults.shaftIntensity, 0.0f, 8.0f);
+        out["sunGlare"]["shaftLength"] = SanitizeCloudFloat(
+            glare.shaftLength, glareDefaults.shaftLength, 0.01f, 2.0f);
+        out["sunGlare"]["shaftDecay"] = SanitizeCloudFloat(
+            glare.shaftDecay, glareDefaults.shaftDecay, 0.5f, 0.999f);
 
         const StylizedCloudSettings cloudDefaults{};
         const StylizedCloudSettings& clouds = environment.clouds;
@@ -679,8 +685,15 @@ namespace HIKARI::SCENE::SERIALIZATION {
         out["fog"]["startDistance"] = environment.fog.startDistance;
         out["fog"]["endDistance"] = environment.fog.endDistance;
         out["fog"]["heightFalloff"] = environment.fog.heightFalloff;
+        out["fog"]["baseHeight"] = environment.fog.baseHeight;
         out["fog"]["anisotropy"] = environment.fog.anisotropy;
         out["fog"]["temporalWeight"] = environment.fog.temporalWeight;
+        out["fog"]["scatteringIntensity"] =
+            environment.fog.scatteringIntensity;
+        out["fog"]["ambientScatteringStrength"] =
+            environment.fog.ambientScatteringStrength;
+        out["fog"]["sunShaftStrength"] =
+            environment.fog.sunShaftStrength;
         out["fog"]["useSkyHorizonColor"] = environment.fog.useSkyHorizonColor;
 
         out["toneMapping"]["enabled"] = environment.toneMapping.enabled;
@@ -1019,11 +1032,29 @@ namespace HIKARI::SCENE::SERIALIZATION {
             glare.streakLength = ReadAtmosphereMember(
                 glareNode, "streakLength", defaults.streakLength, 0.0f, 2.0f);
             glare.occlusionRadius = ReadAtmosphereMember(
-                glareNode, "occlusionRadius", defaults.occlusionRadius, 0.0f, 2.0f);
+                glareNode, "occlusionRadius", defaults.occlusionRadius, 0.0f, 0.25f);
             glare.edgeFade = ReadAtmosphereMember(
                 glareNode, "edgeFade", defaults.edgeFade, 0.0f, 1.0f);
             glare.maxRadiance = ReadAtmosphereMember(
                 glareNode, "maxRadiance", defaults.maxRadiance, 0.0f, 64.0f);
+            glare.shaftIntensity = ReadAtmosphereMember(
+                glareNode,
+                "shaftIntensity",
+                defaults.shaftIntensity,
+                0.0f,
+                8.0f);
+            glare.shaftLength = ReadAtmosphereMember(
+                glareNode,
+                "shaftLength",
+                defaults.shaftLength,
+                0.01f,
+                2.0f);
+            glare.shaftDecay = ReadAtmosphereMember(
+                glareNode,
+                "shaftDecay",
+                defaults.shaftDecay,
+                0.5f,
+                0.999f);
         }
 
         if (node.contains("clouds") && node["clouds"].is_object()) {
@@ -1195,8 +1226,18 @@ namespace HIKARI::SCENE::SERIALIZATION {
             outEnvironment.fog.startDistance = fog.value("startDistance", outEnvironment.fog.startDistance);
             outEnvironment.fog.endDistance = fog.value("endDistance", outEnvironment.fog.endDistance);
             outEnvironment.fog.heightFalloff = fog.value("heightFalloff", outEnvironment.fog.heightFalloff);
+            outEnvironment.fog.baseHeight = fog.value("baseHeight", outEnvironment.fog.baseHeight);
             outEnvironment.fog.anisotropy = fog.value("anisotropy", outEnvironment.fog.anisotropy);
             outEnvironment.fog.temporalWeight = fog.value("temporalWeight", outEnvironment.fog.temporalWeight);
+            outEnvironment.fog.scatteringIntensity = fog.value(
+                "scatteringIntensity",
+                outEnvironment.fog.scatteringIntensity);
+            outEnvironment.fog.ambientScatteringStrength = fog.value(
+                "ambientScatteringStrength",
+                outEnvironment.fog.ambientScatteringStrength);
+            outEnvironment.fog.sunShaftStrength = fog.value(
+                "sunShaftStrength",
+                outEnvironment.fog.sunShaftStrength);
             outEnvironment.fog.useSkyHorizonColor = fog.value("useSkyHorizonColor", outEnvironment.fog.useSkyHorizonColor);
         }
 

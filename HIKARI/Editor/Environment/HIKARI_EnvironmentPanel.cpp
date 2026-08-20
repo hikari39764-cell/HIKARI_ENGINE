@@ -342,6 +342,17 @@ EnvironmentPanel::Draw(SceneEnvironment &environment,
       ImGui::DragFloat(
           TEXT::Localize("ui.environment.sunGlareMaxRadiance").c_str(),
           &glare.maxRadiance, 0.05f, 0.0f, 64.0f);
+      ImGui::SeparatorText(
+          TEXT::Localize("ui.environment.sunShafts").c_str());
+      ImGui::DragFloat(
+          TEXT::Localize("ui.environment.sunShaftIntensity").c_str(),
+          &glare.shaftIntensity, 0.01f, 0.0f, 8.0f);
+      ImGui::DragFloat(
+          TEXT::Localize("ui.environment.sunShaftLength").c_str(),
+          &glare.shaftLength, 0.01f, 0.01f, 2.0f);
+      ImGui::SliderFloat(
+          TEXT::Localize("ui.environment.sunShaftDecay").c_str(),
+          &glare.shaftDecay, 0.5f, 0.999f);
       ImGui::TreePop();
     }
     if (ImGui::TreeNode(
@@ -484,12 +495,24 @@ EnvironmentPanel::Draw(SceneEnvironment &environment,
     ImGui::DragFloat(
         TEXT::Localize("ui.environment.heightFalloff").c_str(),
         &environment.fog.heightFalloff, 0.001f, 0.0f, 2.0f);
+    ImGui::DragFloat(
+        TEXT::Localize("ui.environment.fogBaseHeight").c_str(),
+        &environment.fog.baseHeight, 0.1f, -10000.0f, 10000.0f);
     ImGui::SliderFloat(
         TEXT::Localize("ui.environment.anisotropy").c_str(),
         &environment.fog.anisotropy, -0.8f, 0.8f);
     ImGui::SliderFloat(
         TEXT::Localize("ui.environment.temporalWeight").c_str(),
         &environment.fog.temporalWeight, 0.0f, 0.98f);
+    ImGui::DragFloat(
+        TEXT::Localize("ui.environment.volumetricScatteringIntensity").c_str(),
+        &environment.fog.scatteringIntensity, 0.01f, 0.0f, 8.0f);
+    ImGui::DragFloat(
+        TEXT::Localize("ui.environment.volumetricAmbientStrength").c_str(),
+        &environment.fog.ambientScatteringStrength, 0.01f, 0.0f, 8.0f);
+    ImGui::DragFloat(
+        TEXT::Localize("ui.environment.volumetricSunShaftStrength").c_str(),
+        &environment.fog.sunShaftStrength, 0.01f, 0.0f, 8.0f);
     ImGui::Checkbox(
         TEXT::Localize("ui.environment.useSkyHorizonColor").c_str(),
         &environment.fog.useSkyHorizonColor);

@@ -188,6 +188,18 @@ namespace HIKARI {
         }
     }
 
+    PresentationVfxView WorldView::GetPresentationVfx() const noexcept {
+        try {
+            World* world = GameProjectSdkAccess::GetWorld(*this);
+            return world != nullptr
+                ? GameProjectSdkAccess::MakePresentationVfxView(*world)
+                : PresentationVfxView{};
+        }
+        catch (...) {
+            return {};
+        }
+    }
+
     GameObject* GameProjectSdkAccess::GetObject(
         const ObjectView& view) noexcept {
         return static_cast<GameObject*>(view.object_);

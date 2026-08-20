@@ -199,6 +199,9 @@ namespace HIKARI {
         MESHRENDERER::ReleaseParticleNamespace(
             state_->runtime.vfxPlaybackService.GetPlaybackNamespace());
         state_->runtime.vfxPlaybackService.Reset();
+        state_->runtime.combatPresentationService.Reset();
+        state_->runtime.combatAfterimageService.Reset();
+        state_->runtime.actionPostReactionService.Reset();
         state_->runtime.fixedStepClock.Reset();
         state_->runtime.initialized = false;
         RuntimeSceneContext::SetCurrentWorld(nullptr);
@@ -471,8 +474,14 @@ namespace HIKARI {
                     &state_->runtime.vfxPlaybackService.GetRenderInput(),
                     &state_->assets.Registry(),
                     state_->runtime.materialExternalValueSnapshot.get(),
-                };
+            };
             primaryView.particleFrameSource = &particleFrameSource;
+            primaryView.combatPresentationFrameSource =
+                &state_->runtime.combatPresentationService.GetFrameSource();
+            primaryView.combatAfterimageFrameSource =
+                &state_->runtime.combatAfterimageService.GetFrameSource();
+            primaryView.actionPostReactionFrameSource =
+                &state_->runtime.actionPostReactionService.GetFrameSource();
             MODELRENDERER::RenderAll(
                 graphics,
                 primaryView,

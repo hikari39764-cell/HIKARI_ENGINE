@@ -286,4 +286,63 @@ namespace HIKARI {
         uint32_t reserved = 0u;
     };
 
+    // Engine-owned combat presentation presets. These identify stable
+    // presentation intents rather than renderer assets, so GameProjects do
+    // not receive VFX programs, texture handles, or particle services.
+    enum class GameProjectCombatEffectType : uint8_t {
+        LightImpact = 0,
+        HeavyImpact = 1,
+        SkillImpact = 2,
+        PerfectGuardBurst = 3,
+        DodgeAfterimage = 4,
+    };
+
+    struct GameProjectCombatWorldEffectRequest {
+        uint64_t ownerObjectHandle = 0u;
+        uint64_t sourceId = 0u;
+        GameProjectTransform transform{};
+        GameProjectFloat3 direction{ 0.0f, 1.0f, 0.0f };
+        float scale = 1.0f;
+        float intensity = 1.0f;
+        uint32_t randomSeed = 0u;
+        GameProjectCombatEffectType effect =
+            GameProjectCombatEffectType::LightImpact;
+        uint8_t reserved[3] = { 0u, 0u, 0u };
+    };
+
+    // One evaluated blade sample. The engine owns history, discontinuity
+    // rejection, lifetime and the transparent render pass. Callers submit
+    // world-space base/tip positions only while a trail should be visible.
+    struct GameProjectWeaponTrailSample {
+        uint64_t ownerObjectHandle = 0u;
+        uint64_t sourceId = 0u;
+        GameProjectFloat3 bladeBaseWorld{};
+        GameProjectFloat3 bladeTipWorld{};
+        GameProjectFloat3 bodyColor{ 0.08f, 0.52f, 0.92f };
+        GameProjectFloat3 edgeColor{ 0.72f, 0.96f, 1.0f };
+        float lifetimeUnscaledSeconds = 0.14f;
+        float opacity = 0.72f;
+        float emissiveIntensity = 1.35f;
+        float flowStrength = 0.65f;
+        uint32_t reserved = 0u;
+    };
+
+    // A transient HDR scene-color reaction. The world center is projected by
+    // the render view; UI is composed later and is never distorted. Sequence
+    // lets the engine reject duplicate perfect-guard delivery in one source.
+    struct GameProjectPerfectGuardWaveRequest {
+        uint64_t sourceId = 0u;
+        uint64_t sequence = 0u;
+        GameProjectFloat3 worldCenter{};
+        GameProjectFloat3 color{ 0.34f, 0.82f, 1.0f };
+        float durationUnscaledSeconds = 0.52f;
+        float maximumScreenRadius = 0.46f;
+        float ringThickness = 0.055f;
+        float distortionStrength = 0.020f;
+        float chromaticAberration = 0.0035f;
+        float flashIntensity = 0.42f;
+        float intensity = 1.0f;
+        uint32_t reserved = 0u;
+    };
+
 } // namespace HIKARI

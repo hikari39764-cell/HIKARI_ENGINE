@@ -4,17 +4,29 @@
 #include <cmath>
 #include <sstream>
 
+#include "Core/HIKARI_TimeService.h"
 #include "Core/HIKARI_Logger.h"
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
-#include "Gfx/HIKARI_D3D12DebugTools.h"
 #include "Gfx/HIKARI_GfxDebugConfig.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
+#include "Vfx/Post/HIKARI_CombatScreenDistortionComposite.h"
 #include "Vfx/Post/HIKARI_PostEffect.h"
 #include "Vfx/Post/HIKARI_PostQuadDrawer.h"
 
 namespace HIKARI::POST {
+    namespace {
+        void WriteCombatVfxLog(const std::string& message) noexcept {
+            try {
+                DEBUGLOG::WriteRenderLogLine(message);
+            }
+            catch (...) {
+            }
+        }
+    }
 
-    PostProcessingStage::PostProcessingStage() = default;
+    PostProcessingStage::PostProcessingStage()
+        : actionScreenDistortionComposite_(
+            std::make_unique<CombatScreenDistortionComposite>()) {}
     PostProcessingStage::~PostProcessingStage() = default;
 
     void PostProcessingStage::UpdateContext(const GFX::Context& context) {
@@ -24,6 +36,12 @@ namespace HIKARI::POST {
         bloomChain_.UpdateContext(context);
         transitionChain_.UpdateContext(context);
         fxaaChain_.UpdateContext(context);
+        actionScreenImpulseChain_.UpdateContext(context);
+        if (!actionScreenDistortionComposite_) {
+            actionScreenDistortionComposite_ =
+                std::make_unique<CombatScreenDistortionComposite>();
+        }
+        actionScreenDistortionComposite_->UpdateContext(context);
         ldrTarget_.UpdateContext(context);
         temporalOutput_.UpdateContext(context);
         sunGlareTarget_.UpdateContext(context);
@@ -32,6 +50,8 @@ namespace HIKARI::POST {
         bloomChain_.SetDebugName("PostProcessing.Bloom");
         transitionChain_.SetDebugName("PostProcessing.TransitionHDR");
         fxaaChain_.SetDebugName("PostProcessing.FXAA");
+        actionScreenImpulseChain_.SetDebugName(
+            "PostProcessing.ActionScreenImpulse");
     }
 
     void PostProcessingStage::Shutdown() {
@@ -41,7 +61,12 @@ namespace HIKARI::POST {
         bloomChain_.Finalize();
         transitionChain_.Finalize();
         fxaaChain_.Finalize();
+        actionScreenImpulseChain_.Finalize();
         activeBloomEffects_.clear();
+        actionScreenImpulseEffect_.reset();
+        if (actionScreenDistortionComposite_) {
+            actionScreenDistortionComposite_->Shutdown();
+        }
         sunGlareEffect_.reset();
         toneMappingEffect_.reset();
         fxaaEffect_.reset();
@@ -53,6 +78,11 @@ namespace HIKARI::POST {
         sunGlareFrame_ = {};
         sunGlareDebugStats_ = {};
         activeBloomBlurPairCount_ = 0;
+        actionScreenImpulseProvider_.BeginFrame(0u);
+        actionScreenImpulseProvider_.MutableDebugState() = {};
+        lastActionProjectionRejectReason_ = 0u;
+        actionCompositeFailureLogged_ = false;
+        actionScreenRequestWasActive_ = false;
         dumpNextFrame_ = false;
     }
 
@@ -65,6 +95,8 @@ namespace HIKARI::POST {
         commonParams_.deltaTime = deltaTime;
         elapsedTime_ += deltaTime;
         commonParams_.time = elapsedTime_;
+        actionScreenImpulseProvider_.BeginFrame(
+            TIME::GetFrameContext().frameIndex);
         exposureState_ = automaticExposureMeter_.BeginFrame(
             toneMappingSettings_.exposureMode,
             toneMappingSettings_.exposure,
@@ -246,6 +278,21 @@ namespace HIKARI::POST {
         sunGlareDebugStats_ = {};
     }
 
+    void PostProcessingStage::SetActionScreenImpulseFrame(
+        const RENDER3D::COMBAT_VFX::PerfectGuardShockwaveFrameSource& source,
+        const MATH::Mat4& viewProj,
+        uint64_t frameIndex) {
+        actionScreenImpulseProvider_.Submit(
+            frameIndex,
+            viewProj,
+            source);
+    }
+
+    void PostProcessingStage::SetActionScreenDistortionMask(
+        const PostProcessingStage::ActionScreenDistortionMask& mask) {
+        actionScreenImpulseProvider_.SubmitMask(mask);
+    }
+
     void PostProcessingStage::SetTransitionState(
         const TransitionVisualState& state) {
         if (!state.active) {
@@ -311,6 +358,11 @@ namespace HIKARI::POST {
         return sunGlareDebugStats_;
     }
 
+    const ActionScreenImpulseProvider::DebugState&
+        PostProcessingStage::GetActionScreenImpulseDebugState() const {
+        return actionScreenImpulseProvider_.GetDebugState();
+    }
+
     const CommonParams& PostProcessingStage::GetCommonParams() const {
         return commonParams_;
     }
@@ -369,6 +421,25 @@ namespace HIKARI::POST {
             return false;
         }
         sunGlareEffect_ = std::move(effect);
+        return true;
+    }
+
+    bool PostProcessingStage::EnsureActionScreenImpulseEffect() {
+        if (actionScreenImpulseEffect_ &&
+            actionScreenImpulseChain_.HasAny()) {
+            return true;
+        }
+        if (!actionScreenImpulseEffect_) {
+            auto effect = std::make_unique<PostEffect>();
+            if (!effect->LoadPixelShader(
+                    L"HIKARI/Shaders/Post_ActionScreenImpulse.hlsl")) {
+                LogState("Action screen impulse effect load failed");
+                return false;
+            }
+            actionScreenImpulseEffect_ = std::move(effect);
+        }
+        actionScreenImpulseChain_.Clear();
+        actionScreenImpulseChain_.Add(actionScreenImpulseEffect_.get());
         return true;
     }
 
@@ -521,6 +592,12 @@ namespace HIKARI::POST {
                 static_cast<float>(sceneDepthOwner.GetWidth()),
                 static_cast<float>(sceneDepthOwner.GetHeight())
             };
+            sunGlareParams_.user[4] = {
+                sunGlareFrame_.shaftIntensity,
+                sunGlareFrame_.shaftLength,
+                sunGlareFrame_.shaftDecay,
+                0.0f
+            };
             sunGlareEffect_->ApplyCommonParams(sunGlareParams_);
             rendered = sunGlareEffect_->BindAndDraw(quad);
         }
@@ -622,6 +699,129 @@ namespace HIKARI::POST {
         return bloomOutput;
     }
 
+    RenderTarget2D* PostProcessingStage::ApplyActionScreenImpulse(
+        RenderTarget2D& source,
+        QuadDrawer& quad) {
+        auto& debug = actionScreenImpulseProvider_.MutableDebugState();
+        const uint64_t absoluteFrame =
+            TIME::GetFrameContext().frameIndex;
+        debug.frameIndex = absoluteFrame;
+        debug.gfxFrameSlot = context_.frameIndex;
+        debug.requested = actionScreenImpulseProvider_.IsCurrent(
+            absoluteFrame);
+        debug.activeWaveCount = actionScreenImpulseProvider_.GetCount();
+        debug.sourceFrameIndex = actionScreenImpulseProvider_.GetSourceFrameIndex();
+        debug.submitFrameIndex = actionScreenImpulseProvider_.GetFrameIndex();
+        const auto& mask = actionScreenImpulseProvider_.GetMask();
+        debug.maskProvided = mask.texture.resource != nullptr;
+        const bool maskForFrame = mask.IsValid(absoluteFrame);
+        debug.maskCompatible = maskForFrame &&
+            source.GetResource() != nullptr;
+        if (!debug.requested || source.GetResource() == nullptr) {
+            debug.bypassed = true;
+            if (debug.sourceWaveCount != 0u &&
+                debug.projectionRejectCount != 0u &&
+                debug.lastRejectReason !=
+                    lastActionProjectionRejectReason_) {
+                std::ostringstream stream;
+                stream << "[CombatVfx][ScreenDistortion] wave projection rejected"
+                    << " reason=" << debug.lastRejectReason
+                    << " sourceCount=" << debug.sourceWaveCount
+                    << " rejected=" << debug.projectionRejectCount
+                    << " frame=" << absoluteFrame;
+                WriteCombatVfxLog(stream.str());
+                lastActionProjectionRejectReason_ =
+                    debug.lastRejectReason;
+            }
+            if (!debug.requested) {
+                actionScreenRequestWasActive_ = false;
+                if (debug.sourceWaveCount == 0u) {
+                    lastActionProjectionRejectReason_ = 0u;
+                    actionCompositeFailureLogged_ = false;
+                }
+            }
+            return &source;
+        }
+        lastActionProjectionRejectReason_ = 0u;
+        debug.providerReady = true;
+
+        CommonParams params = commonParams_;
+        actionScreenImpulseProvider_.ApplyParams(params);
+
+        // This pass is deliberately separate from the one-SRV general post
+        // chain: it binds scene+t1 mask in a frame-local heap and therefore
+        // supports both guard-only waves and mask-only trail distortion.
+        if (actionScreenDistortionComposite_) {
+            RenderTarget2D* compositeOutput = nullptr;
+            bool maskApplied = false;
+            if (actionScreenDistortionComposite_->Execute(
+                    source,
+                    debug.maskCompatible ? &mask : nullptr,
+                    params,
+                    absoluteFrame,
+                    compositeOutput,
+                    maskApplied)) {
+                debug.pipelineReady = true;
+                debug.executed = compositeOutput != nullptr &&
+                    compositeOutput != &source &&
+                    compositeOutput->GetResource() != nullptr;
+                debug.maskApplied = maskApplied;
+                debug.composited = debug.executed;
+                if (debug.composited) {
+                    if (!actionScreenRequestWasActive_) {
+                        std::ostringstream stream;
+                        stream << "[CombatVfx][ScreenDistortion] composited"
+                            << " waves=" << debug.activeWaveCount
+                            << " mask=" << debug.maskApplied
+                            << " frame=" << absoluteFrame;
+                        WriteCombatVfxLog(stream.str());
+                    }
+                    actionScreenRequestWasActive_ = true;
+                    actionCompositeFailureLogged_ = false;
+                    return compositeOutput;
+                }
+                debug.failed = true;
+            }
+        }
+
+        // A one-SRV fallback keeps the guard reaction visible if the
+        // optional two-texture path cannot initialize (for example while a
+        // device is being recreated).  It intentionally ignores the mask.
+        if (debug.maskCompatible && !actionCompositeFailureLogged_) {
+            WriteCombatVfxLog(
+                "[CombatVfx][ScreenDistortion] dedicated composite failed; "
+                "trail mask cannot use the guard-only fallback");
+            actionCompositeFailureLogged_ = true;
+        }
+        if (!EnsureActionScreenImpulseEffect()) {
+            debug.failed = true;
+            return &source;
+        }
+        debug.pipelineReady = true;
+
+        RenderTarget2D* output = actionScreenImpulseChain_.Execute(
+            source,
+            quad,
+            params);
+        debug.executed = output != nullptr && output != &source &&
+            output->GetResource() != nullptr;
+        debug.maskApplied = false;
+        debug.composited = debug.executed;
+        if (!debug.composited) {
+            debug.failed = true;
+            return &source;
+        }
+        if (!actionScreenRequestWasActive_) {
+            std::ostringstream stream;
+            stream << "[CombatVfx][ScreenDistortion] guard fallback composited"
+                << " waves=" << debug.activeWaveCount
+                << " frame=" << absoluteFrame;
+            WriteCombatVfxLog(stream.str());
+        }
+        actionScreenRequestWasActive_ = true;
+        return output;
+    }
+
     RenderTarget2D* PostProcessingStage::ApplyFxaa(
         RenderTarget2D& source,
         QuadDrawer& quad) {
@@ -660,6 +860,21 @@ namespace HIKARI::POST {
         }
         if (!debugOutput) {
             (void)automaticExposureMeter_.QueueMeasurement(*output);
+            // This is deliberately after temporal/global HDR processing and
+            // after exposure measurement, but before bloom so the bright ring
+            // and flash participate in the same bloom extraction as scene HDR.
+            output = ApplyActionScreenImpulse(*output, quad);
+        }
+        else {
+            auto& actionDebug =
+                actionScreenImpulseProvider_.MutableDebugState();
+            const uint64_t absoluteFrame =
+                TIME::GetFrameContext().frameIndex;
+            actionDebug.frameIndex = absoluteFrame;
+            actionDebug.gfxFrameSlot = context_.frameIndex;
+            actionDebug.requested =
+                actionScreenImpulseProvider_.IsCurrent(absoluteFrame);
+            actionDebug.bypassed = actionDebug.requested;
         }
         RenderTarget2D* bloom = debugOutput ? nullptr : ApplyBloom(*output, quad);
         if (bloom && bloom->GetResource()) {
@@ -775,6 +990,36 @@ namespace HIKARI::POST {
             << " bloomPasses=" << bloomDebugStats_.passCount
             << " sunGlare=" << sunGlareDebugStats_.active
             << " sunGlareRequested=" << sunGlareDebugStats_.requested
+            << " actionScreenImpulse="
+            << actionScreenImpulseProvider_.GetDebugState().composited
+            << " actionScreenImpulseRequested="
+            << actionScreenImpulseProvider_.GetDebugState().requested
+            << " actionScreenImpulseWaves="
+            << actionScreenImpulseProvider_.GetDebugState().activeWaveCount
+            << " actionScreenImpulseSourceFrame="
+            << actionScreenImpulseProvider_.GetDebugState().sourceFrameIndex
+            << " actionScreenImpulseSubmitFrame="
+            << actionScreenImpulseProvider_.GetDebugState().submitFrameIndex
+            << " actionScreenImpulseGfxSlot="
+            << actionScreenImpulseProvider_.GetDebugState().gfxFrameSlot
+            << " actionScreenImpulseProjected="
+            << actionScreenImpulseProvider_.GetDebugState().projectedWaveCount
+            << " actionScreenImpulseDropped="
+            << actionScreenImpulseProvider_.GetDebugState().droppedWaveCount
+            << " actionScreenImpulseRejects="
+            << actionScreenImpulseProvider_.GetDebugState().projectionRejectCount
+            << " actionScreenImpulseRejectReason="
+            << actionScreenImpulseProvider_.GetDebugState().lastRejectReason
+            << " actionScreenImpulseMask="
+            << actionScreenImpulseProvider_.GetDebugState().maskApplied
+            << " actionScreenImpulseMaskProvided="
+            << actionScreenImpulseProvider_.GetDebugState().maskProvided
+            << " actionScreenImpulseMaskCompatible="
+            << actionScreenImpulseProvider_.GetDebugState().maskCompatible
+            << " actionScreenImpulseFailed="
+            << actionScreenImpulseProvider_.GetDebugState().failed
+            << " actionScreenImpulseBypassed="
+            << actionScreenImpulseProvider_.GetDebugState().bypassed
             << " toneCurve=" << toneMappingSettings_.enabled
             << " exposureMode="
             << RENDER3D::COLOR::ToString(exposureState_.mode)

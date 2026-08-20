@@ -97,9 +97,27 @@ namespace HIKARI::POST {
     void PostSystem::SetFxaaSettings(const FxaaSettings& settings) { processingStage_.SetFxaaSettings(settings); }
     void PostSystem::SetSunGlareFrame(const SunGlareFrame& frame) { processingStage_.SetSunGlareFrame(frame); }
     void PostSystem::ClearSunGlareFrame() { processingStage_.ClearSunGlareFrame(); }
+    void PostSystem::SetActionScreenImpulseFrame(
+        const RENDER3D::COMBAT_VFX::PerfectGuardShockwaveFrameSource& source,
+        const MATH::Mat4& viewProj,
+        uint64_t frameIndex) {
+        processingStage_.SetActionScreenImpulseFrame(
+            source,
+            viewProj,
+            frameIndex);
+    }
+    void PostSystem::SetActionScreenDistortionMask(
+        const PostSystem::ActionScreenDistortionMask& mask) {
+        processingStage_.SetActionScreenDistortionMask(
+            mask);
+    }
     const PostSystem::FxaaSettings& PostSystem::GetFxaaSettings() { return processingStage_.GetFxaaSettings(); }
     const PostSystem::BloomDebugStats& PostSystem::GetBloomDebugStats() { return processingStage_.GetBloomDebugStats(); }
     const PostSystem::SunGlareDebugStats& PostSystem::GetSunGlareDebugStats() { return processingStage_.GetSunGlareDebugStats(); }
+    const PostSystem::ActionScreenImpulseDebugState&
+        PostSystem::GetActionScreenImpulseDebugState() {
+        return processingStage_.GetActionScreenImpulseDebugState();
+    }
     const RENDER3D::COLOR::ExposureFrameState&
         PostSystem::GetExposureState() {
         return processingStage_.GetExposureState();

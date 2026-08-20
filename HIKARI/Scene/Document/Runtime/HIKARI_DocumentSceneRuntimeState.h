@@ -28,6 +28,9 @@
 #include "Scene/Features/HIKARI_RuntimeExtension.h"
 #include "Scene/Features/HIKARI_RuntimeFeatureCatalog.h"
 #include "Scene/Sand/HIKARI_SandSurfaceQueryService.h"
+#include "Scene/Vfx/HIKARI_ActionPostReactionService.h"
+#include "Scene/Vfx/HIKARI_CombatAfterimageService.h"
+#include "Scene/Vfx/HIKARI_CombatPresentationService.h"
 #include "Scene/Vfx/HIKARI_VfxPlaybackService.h"
 #include "Scene/Water/HIKARI_WaterSurfaceQueryService.h"
 
@@ -57,6 +60,9 @@ namespace HIKARI {
             MaterialExternalValueSnapshot>
             materialExternalValueSnapshot{};
         VFX::VfxPlaybackService vfxPlaybackService{};
+        VFX::CombatPresentationService combatPresentationService{};
+        VFX::CombatAfterimageService combatAfterimageService{};
+        VFX::ActionPostReactionService actionPostReactionService{};
         // composition root が所有し、WaterSurfaceQueryService は借用する。
         std::unique_ptr<WATER::IWaterBathymetryProvider>
             waterBathymetryProvider{};

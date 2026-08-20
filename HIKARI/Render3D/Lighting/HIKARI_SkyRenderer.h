@@ -61,10 +61,13 @@ namespace HIKARI::SKYRENDERER {
         bool atmosphereLutsReady = false;
         bool atmosphereAnalyticFallback = false;
         MATH::Vec3 sunDirection{ 0.0f, 1.0f, 0.0f };
+        MATH::Vec3 sunSourceColor{ 1.0f, 1.0f, 1.0f };
         MATH::Vec3 sunColor{ 1.0f, 1.0f, 1.0f };
-        // Scene-linear source radiance after the shared source-to-ground
-        // atmosphere transmittance estimate; directional light intensity
-        // remains the sole surface-light authority.
+        MATH::Vec3 sunTransmittance{ 1.0f, 1.0f, 1.0f };
+        // Source radiance drives atmosphere integration.  Observed radiance
+        // drives the disk/glare only; directional light intensity remains the
+        // sole direct surface-light authority.
+        float sunSourceRadiance = 0.0f;
         float sunRadiance = 0.0f;
         MATH::Vec3 rayleighScattering{ 0.0f, 0.0f, 0.0f };
         MATH::Vec3 mieScattering{ 0.0f, 0.0f, 0.0f };
@@ -93,7 +96,10 @@ namespace HIKARI::SKYRENDERER {
         bool lutsReady = false;
         bool usingAnalyticFallback = false;
         MATH::Vec3 sunDirection{ 0.0f, 1.0f, 0.0f };
+        MATH::Vec3 sunSourceColor{ 1.0f, 1.0f, 1.0f };
         MATH::Vec3 sunColor{ 1.0f, 1.0f, 1.0f };
+        MATH::Vec3 sunTransmittance{ 1.0f, 1.0f, 1.0f };
+        float sunSourceRadiance = 0.0f;
         float sunRadiance = 0.0f;
         float sunAngularRadius = 0.004675f;
         MATH::Vec2 screenSunPosition{ 0.5f, 0.5f };

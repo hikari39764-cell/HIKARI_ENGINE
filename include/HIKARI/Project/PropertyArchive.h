@@ -31,7 +31,23 @@ namespace HIKARI {
 
         std::string ReadString(
             std::string_view name,
-            std::string_view fallback = {}) const;
+            std::string_view fallback = {}) const {
+            if (!Contains(name)) {
+                return std::string(fallback);
+            }
+            const size_t size = GetStringSize(name);
+            if (size == 0u) {
+                return {};
+            }
+            std::string value(size, '\0');
+            if (!CopyString(
+                    name,
+                    value.data(),
+                    value.size() + 1u)) {
+                return std::string(fallback);
+            }
+            return value;
+        }
 
     private:
         friend struct GameProjectSdkAccess;

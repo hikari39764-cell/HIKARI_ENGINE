@@ -24,6 +24,16 @@ float HikariDepthIsSky(float depth)
     return step(0.999995f, depth);
 }
 
+float HikariSampleSkyVisibility(float2 uv)
+{
+    if (any(uv < 0.0f) || any(uv > 1.0f))
+    {
+        return 0.0f;
+    }
+    return HikariDepthIsSky(
+        gSceneDepth.SampleLevel(gLinearClamp, uv, 0.0f));
+}
+
 float HikariResolveSunVisibility(float2 sunUv)
 {
     const float2 depthSize = max(gUser[3].zw, float2(1.0f, 1.0f));
@@ -61,6 +71,62 @@ float HikariResolveSunVisibility(float2 sunUv)
     return visibility / 9.0f;
 }
 
+float HikariResolveRadialShaft(
+    float2 pixelUv,
+    float2 sunUv,
+    float shaftLength,
+    float shaftDecay,
+    float sourceRadius)
+{
+    static const uint kShaftSampleCount = 24u;
+    const float aspect = max(
+        gResolutionX / max(gResolutionY, 1.0f),
+        0.1f);
+    const float2 toSun = sunUv - pixelUv;
+    const float radialDistance = length(float2(toSun.x * aspect, toSun.y));
+    const float reach = saturate(
+        shaftLength / max(radialDistance, 1.0e-4f));
+    const float envelope = 1.0f - smoothstep(
+        shaftLength * 0.12f,
+        shaftLength,
+        radialDistance);
+    if (envelope <= 0.0f)
+    {
+        return 0.0f;
+    }
+
+    const float2 stepUv = toSun * reach /
+        (float)kShaftSampleCount;
+    float2 sampleUv = pixelUv;
+    float decayWeight = 1.0f;
+    float weightSum = 0.0f;
+    float accumulated = 0.0f;
+    float pathVisibility = HikariSampleSkyVisibility(pixelUv);
+    const float radiusSquared = max(
+        sourceRadius * sourceRadius,
+        1.0e-6f);
+    [unroll]
+    for (uint sampleIndex = 0u;
+         sampleIndex < kShaftSampleCount;
+         ++sampleIndex)
+    {
+        sampleUv += stepUv;
+        const float sky = HikariSampleSkyVisibility(sampleUv);
+        // Keep some path memory so a silhouette near the solar disk creates a
+        // readable ray instead of turning the entire pass off abruptly.
+        pathVisibility = lerp(pathVisibility, sky, 0.42f);
+        const float2 sourceDelta = float2(
+            (sampleUv.x - sunUv.x) * aspect,
+            sampleUv.y - sunUv.y);
+        const float source = exp(
+            -dot(sourceDelta, sourceDelta) / radiusSquared);
+        accumulated += source * pathVisibility * decayWeight;
+        weightSum += source * decayWeight;
+        decayWeight *= shaftDecay;
+    }
+    return saturate(accumulated / max(weightSum, 1.0e-4f)) * envelope;
+}
+
 float4 main(PSInput input) : SV_TARGET
 {
     const float2 sunUv = gUser[0].xy;
@@ -73,6 +139,9 @@ float4 main(PSInput input) : SV_TARGET
     const float streakIntensity = max(gUser[2].z, 0.0f);
     const float streakLength = max(gUser[2].w, 0.001f);
     const float edgeFadeDistance = max(gUser[3].y, 0.001f);
+    const float shaftIntensity = max(gUser[4].x, 0.0f);
+    const float shaftLength = max(gUser[4].y, 0.01f);
+    const float shaftDecay = clamp(gUser[4].z, 0.5f, 0.999f);
 
     const float screenEdgeDistance = min(
         min(sunUv.x, 1.0f - sunUv.x),
@@ -86,11 +155,8 @@ float4 main(PSInput input) : SV_TARGET
         return 0.0f.xxxx;
     }
 
-    const float visibility = HikariResolveSunVisibility(sunUv) * edgeVisibility;
-    if (visibility <= 0.0f)
-    {
-        return 0.0f.xxxx;
-    }
+    const float visibility =
+        HikariResolveSunVisibility(sunUv) * edgeVisibility;
 
     float2 delta = input.uv - sunUv;
     delta.x *= max(gResolutionX / max(gResolutionY, 1.0f), 0.1f);
@@ -106,8 +172,17 @@ float4 main(PSInput input) : SV_TARGET
         exp(-abs(delta.x) / streakLength) *
         streakIntensity;
 
-    const float shape = core + halo * 0.38f + horizontalStreak;
-    float3 glare = sunColor * (shape * intensity * visibility);
+    const float coreAndHalo =
+        (core + halo * 0.38f + horizontalStreak) * visibility;
+    const float shaft = HikariResolveRadialShaft(
+        input.uv,
+        sunUv,
+        shaftLength,
+        shaftDecay,
+        max(haloRadius * 0.42f, coreRadius * 5.0f)) *
+        shaftIntensity * edgeVisibility;
+    float3 glare = sunColor *
+        ((coreAndHalo + shaft) * intensity);
     glare = min(max(glare, 0.0f.xxx), maxRadiance.xxx);
     if (!all(isfinite(glare)))
     {

@@ -14,6 +14,7 @@ cbuffer VolumetricCB : register(b0)
     float4 gDirectionalDirIntensity;
     float4 gDirectionalColorShadow;
     float4 gAmbientColorIntensity;
+    float4 gVolumetricOptics; // base height, scatter gain, ambient gain, solar shaft gain
     float4 gVolumeSize;
     float4 gFrameParams;
     float gVolumetricDebugMode;
@@ -115,8 +116,10 @@ float3 EvaluateLighting(
     uint localLightDepthSlice,
     float3 directionalRadiance)
 {
-    float3 lighting = gAmbientColorIntensity.rgb * gAmbientColorIntensity.a;
+    float3 lighting = gAmbientColorIntensity.rgb *
+        gAmbientColorIntensity.a * max(gVolumetricOptics.z, 0.0f);
     lighting += directionalRadiance *
+        max(gVolumetricOptics.w, 0.0f) *
         lerp(
             1.0f,
             ShadowVisibility(worldPosition, cameraForward),
@@ -208,7 +211,11 @@ void InjectAndIntegrateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     {
         const float stepLength = max(0.001f, distanceToCamera - previousDistance);
         const float3 worldPosition = gCameraPos.xyz + ray * distanceToCamera;
-        const float heightDensity = exp(-max(worldPosition.y, 0.0f) * gFogDistances.z);
+        const float heightAboveBase = max(
+            worldPosition.y - gVolumetricOptics.x,
+            0.0f);
+        const float heightDensity = exp(
+            -heightAboveBase * gFogDistances.z);
         const float extinction = max(0.0f, gFogColorDensity.a) * heightDensity;
         const float stepTransmittance = exp(-extinction * stepLength);
         const uint localLightDepthSlice =
@@ -222,7 +229,8 @@ void InjectAndIntegrateCS(uint3 dispatchThreadId : SV_DispatchThreadID)
             localLightDepthSlice,
             directionalRadiance);
         const float3 stepScattering = lighting * gFogColorDensity.rgb *
-            (1.0f - stepTransmittance);
+            (1.0f - stepTransmittance) *
+            max(gVolumetricOptics.y, 0.0f);
         integratedScattering += integratedTransmittance * stepScattering;
         integratedTransmittance *= stepTransmittance;
 

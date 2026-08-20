@@ -84,6 +84,8 @@ namespace HIKARI {
             GetCamera() const noexcept;
         HIKARI_GAME_PROJECT_SDK_API TimeDilationView
             GetTimeDilation() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API PresentationVfxView
+            GetPresentationVfx() const noexcept;
 
         template<class Component, class Visitor>
         bool ForEachComponent(

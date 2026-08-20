@@ -113,6 +113,12 @@ namespace HIKARI {
         float occlusionRadius = 0.012f;
         float edgeFade = 0.15f;
         float maxRadiance = 4.0f;
+        // Depth-backed radial shafts are an artistic readability supplement
+        // to the froxel volume, not a second fog/light owner.  A zero default
+        // preserves the appearance of scenes authored before this contract.
+        float shaftIntensity = 0.0f;
+        float shaftLength = 0.55f;
+        float shaftDecay = 0.94f;
     };
 
     struct SkySettings {
@@ -258,8 +264,12 @@ namespace HIKARI {
         float startDistance = 10.0f;
         float endDistance = 80.0f;
         float heightFalloff = 0.0f;
+        float baseHeight = 0.0f;
         float anisotropy = 0.2f;
         float temporalWeight = 0.9f;
+        float scatteringIntensity = 1.0f;
+        float ambientScatteringStrength = 1.0f;
+        float sunShaftStrength = 1.0f;
         bool useSkyHorizonColor = false;
     };
 

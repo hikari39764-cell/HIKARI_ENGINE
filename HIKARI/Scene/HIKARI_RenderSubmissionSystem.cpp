@@ -18,6 +18,9 @@
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/Terrain/HIKARI_TerrainGrassModelFactory.h"
 #include "Scene/HIKARI_World.h"
+#include "Scene/Vfx/HIKARI_ActionPostReactionService.h"
+#include "Scene/Vfx/HIKARI_CombatAfterimageService.h"
+#include "Scene/Vfx/HIKARI_CombatPresentationService.h"
 #include <Vfx/Common/HIKARI_FxTypes.h>
 
 #include <utility>
@@ -48,6 +51,27 @@ namespace HIKARI {
     namespace {
         std::filesystem::path NormalizeProjectRoot(std::filesystem::path projectRoot) {
             return projectRoot.empty() ? std::filesystem::path{} : projectRoot.lexically_normal();
+        }
+
+        void TickPresentationServices(
+            World& world,
+            const FrameContext& frame) noexcept {
+            try {
+                if (auto* combat = world.Services().Find<
+                        VFX::CombatPresentationService>()) {
+                    combat->Tick(frame.frameIndex, frame.unscaledDt);
+                }
+                if (auto* afterimage = world.Services().Find<
+                        VFX::CombatAfterimageService>()) {
+                    afterimage->Tick(frame.frameIndex, frame.unscaledDt);
+                }
+                if (auto* reaction = world.Services().Find<
+                        VFX::ActionPostReactionService>()) {
+                    reaction->Tick(frame.unscaledDt, frame.frameIndex);
+                }
+            }
+            catch (...) {
+            }
         }
 
         void SubmitDebugOverlays(World& world, RenderSubmissionDebugStats& stats) {
@@ -190,6 +214,8 @@ namespace HIKARI {
         sDebugStats_.runtimeSpecialShadowModelCount = 0;
         sDebugStats_.routeMode = RenderSubmissionRouteMode::GpuDrivenMainline;
         sDebugStats_.gpuDrivenMainRouteActive = true;
+
+        TickPresentationServices(world, frame);
 
         if (!sGpuDrivenSceneSyncInitialized_) {
             sSceneRenderCacheSync_.Sync(

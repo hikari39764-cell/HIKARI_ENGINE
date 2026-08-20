@@ -1,15 +1,19 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 
 #include <DirectXMath.h>
 
 #include "Gfx/HIKARI_GfxContext.h"
+#include "Render3D/HIKARI_Math3D.h"
 #include "Render3D/Color/HIKARI_AutomaticExposure.h"
 #include "Render3D/Color/HIKARI_ExposureState.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Render3D/Resources/HIKARI_RenderTextureView.h"
+#include "Render3D/Vfx/HIKARI_ActionPostReactionFrameSource.h"
 #include "Scene/HIKARI_SceneTransitionBus.h"
+#include "Vfx/Post/HIKARI_ActionScreenImpulseProvider.h"
 #include "Vfx/Post/HIKARI_PostProcessingTypes.h"
 #include "Vfx/Post/HIKARI_PostQuadDrawer.h"
 #include "Vfx/Post/HIKARI_PresentationFrame.h"
@@ -34,6 +38,10 @@ namespace HIKARI::POST {
         using FxaaSettings = POST::FxaaSettings;
         using SunGlareFrame = POST::SunGlareFrame;
         using SunGlareDebugStats = POST::SunGlareDebugStats;
+        using ActionScreenImpulseDebugState =
+            POST::ActionScreenImpulseProvider::DebugState;
+        using ActionScreenDistortionMask =
+            POST::ActionScreenImpulseProvider::Mask;
 
         static void Initialize(const GFX::Context& context);
         static void UpdateContext(const GFX::Context& context);
@@ -53,9 +61,19 @@ namespace HIKARI::POST {
         static void SetFxaaSettings(const FxaaSettings& settings);
         static void SetSunGlareFrame(const SunGlareFrame& frame);
         static void ClearSunGlareFrame();
+        // Copies the current perfect-guard source and render camera for the
+        // post-temporal HDR impulse. No scene/service pointer is retained.
+        static void SetActionScreenImpulseFrame(
+            const RENDER3D::COMBAT_VFX::PerfectGuardShockwaveFrameSource& source,
+            const MATH::Mat4& viewProj,
+            uint64_t frameIndex);
+        static void SetActionScreenDistortionMask(
+            const ActionScreenDistortionMask& mask);
         static const FxaaSettings& GetFxaaSettings();
         static const BloomDebugStats& GetBloomDebugStats();
         static const SunGlareDebugStats& GetSunGlareDebugStats();
+        static const ActionScreenImpulseDebugState&
+            GetActionScreenImpulseDebugState();
         static const RENDER3D::COLOR::ExposureFrameState&
             GetExposureState();
         static const RENDER3D::COLOR::AutomaticExposureDebugState&

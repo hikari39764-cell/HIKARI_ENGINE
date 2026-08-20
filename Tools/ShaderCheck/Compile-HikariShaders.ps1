@@ -133,6 +133,13 @@ $entries = @(
     @{ Shader = "HIKARI/Shaders/Post_ScreenSpaceReflections.hlsl"; Entry = "PSResolve"; Target = "ps_6_0" }
     @{ Shader = "HIKARI/Shaders/Post_StylizedScreenFeatures.hlsl"; Entry = "VSMain"; Target = "vs_6_0" }
     @{ Shader = "HIKARI/Shaders/Post_StylizedScreenFeatures.hlsl"; Entry = "PSMain"; Target = "ps_6_0" }
+    @{ Shader = "HIKARI/Shaders/Render3D_WeaponTrail.hlsl"; Entry = "VSMain"; Target = "vs_6_0"; Group = "CombatVfx"; WarningsAsErrors = $true }
+    @{ Shader = "HIKARI/Shaders/Render3D_WeaponTrail.hlsl"; Entry = "PSMain"; Target = "ps_6_0"; Group = "CombatVfx"; WarningsAsErrors = $true }
+    @{ Shader = "HIKARI/Shaders/Render3D_CombatAfterimage.hlsl"; Entry = "VSMain"; Target = "vs_6_0"; Group = "CombatVfx"; WarningsAsErrors = $true }
+    @{ Shader = "HIKARI/Shaders/Render3D_CombatAfterimage.hlsl"; Entry = "VSStaticMain"; Target = "vs_6_0"; Group = "CombatVfx"; WarningsAsErrors = $true }
+    @{ Shader = "HIKARI/Shaders/Render3D_CombatAfterimage.hlsl"; Entry = "PSMain"; Target = "ps_6_0"; Group = "CombatVfx"; WarningsAsErrors = $true }
+    @{ Shader = "HIKARI/Shaders/Post_ActionScreenImpulse.hlsl"; Entry = "main"; Target = "ps_6_0"; Group = "CombatVfx"; WarningsAsErrors = $true }
+    @{ Shader = "HIKARI/Shaders/Post_CombatScreenDistortionComposite.hlsl"; Entry = "main"; Target = "ps_6_0"; Group = "CombatVfx"; WarningsAsErrors = $true }
 )
 
 if (-not [string]::IsNullOrWhiteSpace($Group)) {

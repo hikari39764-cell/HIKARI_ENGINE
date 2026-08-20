@@ -23,6 +23,7 @@
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Material/HIKARI_DefaultPbrResources.h"
 #include "Render3D/Material/Program/HIKARI_MaterialProgramRegistry.h"
+#include "Render3D/Pipeline/HIKARI_RenderFramePipeline.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 #include "Render3D/Resources/HIKARI_ClusterGeometryResourceSystem.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
@@ -338,6 +339,8 @@ namespace HIKARI {
             }
             MESHRENDERER::ShutdownParticleGpuDrivenPass();
             HIKARI_LOG_INFO("Particle GPU-driven pass finalized.");
+            RENDER3D::PIPELINE::ShutdownCombatPresentationRenderers();
+            HIKARI_LOG_INFO("Combat presentation renderers finalized.");
             MESHRENDERER::ShutdownOceanSpectrumRuntime();
             HIKARI_LOG_INFO("Ocean spectrum runtime finalized.");
             HIKARI::POST::PostSystem::Shutdown();

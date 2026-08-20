@@ -17,8 +17,12 @@ namespace HIKARI::ATMOSPHERE {
         MATH::Vec4 rayleighScattering{};
         MATH::Vec4 mieScattering{};
         MATH::Vec4 ozoneAbsorption{};
+        // ozone width, aerial strength, ground solar transmittance luminance,
+        // ground albedo.
         MATH::Vec4 ozoneParams{};
         MATH::Vec4 sunDirection{};
+        // Extraterrestrial/source solar color and scene-linear radiance.  The
+        // observed disk term applies ozoneParams.z exactly once.
         MATH::Vec4 sunColorRadiance{};
     };
 

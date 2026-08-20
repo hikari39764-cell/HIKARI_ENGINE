@@ -15,15 +15,17 @@ cbuffer AtmosphereCB : register(b1)
     float4 gAtmosphereRayleigh;           // scattering RGB, sun angular radius
     float4 gAtmosphereMie;                // scattering RGB, anisotropy
     float4 gAtmosphereOzone;              // absorption RGB, center height
-    float4 gAtmosphereOzoneParams;        // width, sun scale, exposure, albedo
+    float4 gAtmosphereOzoneParams;        // width, aerial, observer sun T, albedo
     float4 gAtmosphereSunDirection;       // authoritative direction, enabled/LUT flag
-    float4 gAtmosphereSunColorRadiance;   // authoritative color, radiance
+    float4 gAtmosphereSunColorRadiance;   // source color, source radiance
 };
 
 Texture2D gSkyTex2D : register(t0);
 TextureCube gSkyCube : register(t1);
 Texture2D gAtmosphereSkyView : register(t2);
 SamplerState gLinearClamp : register(s0);
+
+#include "Include/Atmosphere/HIKARI_AtmosphereScattering.hlsli"
 
 struct PSInput
 {
@@ -114,82 +116,37 @@ float3 AddSunDisk(float3 color, float3 dir)
     return color + sun * intensity;
 }
 
-float3 AtmosphereSafeNormalize(float3 value)
-{
-    const float lengthSquared = dot(value, value);
-    return all(isfinite(value)) && lengthSquared > 1.0e-8f
-        ? value * rsqrt(lengthSquared)
-        : float3(0.0f, 1.0f, 0.0f);
-}
-
 float3 EvaluateAtmosphereSky(float3 dir)
 {
-    dir = AtmosphereSafeNormalize(dir);
-    const float3 sunDirection = AtmosphereSafeNormalize(
-        gAtmosphereSunDirection.xyz);
-    const float altitude = max(0.0f, dir.y) *
-        max(1.0f, gAtmospherePlanetParams.y -
-            gAtmospherePlanetParams.x);
-    const float rayleighDensity = exp(
-        -altitude / max(1.0f, gAtmospherePlanetParams.z));
-    const float mieDensity = exp(
-        -altitude / max(1.0f, gAtmospherePlanetParams.w));
-    const float ozoneBand = exp(
-        -abs(altitude - gAtmosphereOzone.a) /
-        max(1.0f, gAtmosphereOzoneParams.x));
-    const float sunCosine = dot(dir, sunDirection);
-    const float rayleighPhase = 0.05968310366f *
-        (1.0f + sunCosine * sunCosine);
-    const float mieG = clamp(gAtmosphereMie.a, -0.95f, 0.95f);
-    const float miePhase = 0.07957747155f *
-        (1.0f - mieG * mieG) /
-        pow(max(1.0e-3f, 1.0f + mieG * mieG -
-            2.0f * mieG * sunCosine), 1.5f);
-    const float3 extinction =
-        gAtmosphereRayleigh.rgb * rayleighDensity +
-        gAtmosphereMie.rgb * mieDensity +
-        gAtmosphereOzone.rgb * ozoneBand;
-    const float pathLength = lerp(0.12f, 1.0f, saturate(1.0f - dir.y)) *
-        max(1.0f, gAtmospherePlanetParams.y -
-            gAtmospherePlanetParams.x);
-    const float3 transmittance = exp(-max(0.0f.xxx, extinction * pathLength));
-    const float3 integratedScattering =
-        1.0f.xxx - exp(-max(0.0f.xxx, extinction * pathLength));
-    const float aerialPerspectiveStrength =
-        max(0.0f, gAtmosphereOzoneParams.y);
-    const float3 scatteringShare =
-        (gAtmosphereRayleigh.rgb * rayleighDensity * rayleighPhase +
-         gAtmosphereMie.rgb * mieDensity * miePhase) /
-        max(extinction, 1.0e-6f.xxx);
-    const float3 singleScattering =
-        gAtmosphereSunColorRadiance.rgb *
-        max(0.0f, gAtmosphereSunColorRadiance.a) *
-        integratedScattering * scatteringShare * transmittance *
-        aerialPerspectiveStrength;
-    const float horizon = pow(saturate(1.0f - abs(dir.y)), 0.35f);
-    const float3 groundBounce = gSkyGroundYaw.rgb *
-        max(0.0f, gAtmosphereOzoneParams.a) *
-        (0.12f + 0.28f * horizon);
-    return max(0.0f.xxx, singleScattering + groundBounce);
+    const float3 observer = float3(
+        0.0f,
+        HikariAtmospherePlanetRadius() + 1.0f,
+        0.0f);
+    return HikariAtmosphereEvaluateSkyRadiance(
+        observer,
+        dir,
+        gSkyGroundYaw.rgb,
+        gAtmosphereOzoneParams.w,
+        gAtmosphereOzoneParams.y);
 }
 
 float3 AddAtmosphereSunDisk(float3 color, float3 dir)
 {
-    const float3 sunDirection = AtmosphereSafeNormalize(
-        gAtmosphereSunDirection.xyz);
-    const float radius = max(0.0001f, gAtmosphereRayleigh.a);
-    const float cosine = dot(AtmosphereSafeNormalize(dir), sunDirection);
-    const float disk = smoothstep(
-        cos(radius * 1.5f),
-        cos(radius),
-        cosine);
-    return color + disk *
-        gAtmosphereSunColorRadiance.rgb *
-        max(0.0f, gAtmosphereSunColorRadiance.a);
+    // SkyCB owns the narrow disk's observer radiance and show/hide policy;
+    // the shared atmosphere helper applies the observer-side transmittance
+    // from OzoneParams.z exactly once.
+    const float observerDiskIntensity = max(
+        0.0f,
+        HikariAtmosphereFiniteOr(gSkySunDirectionIntensity.w, 0.0f));
+    return color + HikariAtmosphereEvaluateSunDisk(
+        dir,
+        max(0.0f.xxx, gAtmosphereSunColorRadiance.rgb) *
+            observerDiskIntensity);
 }
 
 float3 SampleAtmosphereSkyView(float3 dir)
 {
+    dir = HikariAtmosphereSafeNormalize(dir);
     const float2 uv = float2(
         atan2(dir.z, dir.x) * 0.15915494309f + 0.5f,
         saturate(0.5f * dir.y + 0.5f));

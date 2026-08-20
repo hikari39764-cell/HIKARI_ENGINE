@@ -196,4 +196,25 @@ namespace HIKARI {
         void* world_ = nullptr;
     };
 
+    class PresentationVfxView {
+    public:
+        PresentationVfxView() = default;
+
+        bool IsValid() const noexcept { return world_ != nullptr; }
+
+        HIKARI_GAME_PROJECT_SDK_API bool PlayWorldEffect(
+            const GameProjectCombatWorldEffectRequest& request)
+            const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool SubmitWeaponTrail(
+            const GameProjectWeaponTrailSample& sample) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool TriggerPerfectGuardWave(
+            const GameProjectPerfectGuardWaveRequest& request)
+            const noexcept;
+
+    private:
+        friend struct GameProjectSdkAccess;
+        explicit PresentationVfxView(void* world) noexcept : world_(world) {}
+        void* world_ = nullptr;
+    };
+
 } // namespace HIKARI

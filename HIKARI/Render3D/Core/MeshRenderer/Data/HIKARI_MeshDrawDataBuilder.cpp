@@ -465,7 +465,12 @@ namespace HIKARI::MESHRENDERER {
             out.atmosphereOzoneParams = {
                 std::max(1.0f, skyData.ozoneWidth),
                 std::clamp(skyData.aerialPerspectiveStrength, 0.0f, 8.0f),
-                skyData.sunExposure,
+                std::clamp(
+                    skyData.sunTransmittance.x * 0.2126f +
+                        skyData.sunTransmittance.y * 0.7152f +
+                        skyData.sunTransmittance.z * 0.0722f,
+                    0.0f,
+                    1.0f),
                 std::clamp(skyData.groundAlbedo, 0.0f, 1.0f),
             };
             out.atmosphereSunDirection = {
@@ -475,10 +480,10 @@ namespace HIKARI::MESHRENDERER {
                 skyData.atmosphereLutsReady ? 2.0f : 1.0f,
             };
             out.atmosphereSunColorRadiance = {
-                std::max(0.0f, skyData.sunColor.x),
-                std::max(0.0f, skyData.sunColor.y),
-                std::max(0.0f, skyData.sunColor.z),
-                std::max(0.0f, skyData.sunRadiance),
+                std::max(0.0f, skyData.sunSourceColor.x),
+                std::max(0.0f, skyData.sunSourceColor.y),
+                std::max(0.0f, skyData.sunSourceColor.z),
+                std::max(0.0f, skyData.sunSourceRadiance),
             };
         }
     }
