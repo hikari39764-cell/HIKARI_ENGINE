@@ -61,6 +61,12 @@ namespace HIKARI::POST {
             ActionScreenImpulseProvider::Mask;
         void SetActionScreenDistortionMask(
             const ActionScreenDistortionMask& mask);
+        // Frame-local scene-linear HDR accent emitted by the same weapon
+        // path geometry as the distortion mask.
+        using ActionScreenDistortionAccent =
+            ActionScreenImpulseProvider::Mask;
+        void SetActionScreenDistortionAccent(
+            const ActionScreenDistortionAccent& accent);
         void SetTransitionState(const TransitionVisualState& state);
         void ClearTransitionState();
 

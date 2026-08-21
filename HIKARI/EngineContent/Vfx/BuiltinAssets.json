@@ -36,6 +36,13 @@
           "sha256": "496A212733EB4E93C230F654F1FC1460E8A6389D2F1B13F2B945EC124A375742"
         }
       ]
+    },
+    {
+      "id": "hikari.original.comic_vfx",
+      "name": "HIKARI Original Comic Combat Masks",
+      "version": "1.0",
+      "license": "Project-Originated",
+      "licenseFile": "Vfx/Licenses/HIKARI-Original-Comic-Vfx.txt"
     }
   ],
   "assets": [
@@ -206,6 +213,104 @@
       "upstreamPath": "Explosion01_5x5.tga",
       "sha256": "8DC027C67B5EBC70D49C37086E2E999D8642FB85DA9AD95B33FB081039F85E2F",
       "sourceSha256": "4AF82AF6311C0FB4D106DE7768DDA851C26F65CF2C1679938294878C250482EC"
+    },
+    {
+      "id": "engine.vfx.texture.comic_burst",
+      "type": "Texture",
+      "path": "Vfx/Textures/Cooked/comic_burst.htex",
+      "sourcePath": "Vfx/Textures/comic_burst.png",
+      "colorSpace": "Srgb",
+      "usage": "BaseColor",
+      "compression": "BC7",
+      "mipPolicy": "Generate",
+      "sourceId": "hikari.original.comic_vfx",
+      "upstreamPath": "Original procedural hard-edge starburst mask",
+      "sha256": "C93A78A17436FF9D77E29CDC0E2CF6C9B5EAE2282084100DE3824F357F1B1CD1",
+      "sourceSha256": "609526DC92B981B6CC357B803BDD97C9F07EAC9500EF7A68B74D8F867509F5DF"
+    },
+    {
+      "id": "engine.vfx.texture.comic_slash_wedge",
+      "type": "Texture",
+      "path": "Vfx/Textures/Cooked/comic_slash_wedge.htex",
+      "sourcePath": "Vfx/Textures/comic_slash_wedge.png",
+      "colorSpace": "Srgb",
+      "usage": "BaseColor",
+      "compression": "BC7",
+      "mipPolicy": "Generate",
+      "sourceId": "hikari.original.comic_vfx",
+      "upstreamPath": "Original procedural hard-edge curved slash mask",
+      "sha256": "1F83D5A3CA22A94D07CA0D0A22D71A874CC030883368F6C5047B09797C81E711",
+      "sourceSha256": "EB28CA1D8A684FE3A7885F9D001C123E19F42B9F4970C5B41639F51C93746B42"
+    },
+    {
+      "id": "engine.vfx.texture.comic_quad_shard",
+      "type": "Texture",
+      "path": "Vfx/Textures/Cooked/comic_quad_shard.htex",
+      "sourcePath": "Vfx/Textures/comic_quad_shard.png",
+      "colorSpace": "Srgb",
+      "usage": "BaseColor",
+      "compression": "BC7",
+      "mipPolicy": "Generate",
+      "sourceId": "hikari.original.comic_vfx",
+      "upstreamPath": "Original procedural quadrilateral impact fragment mask",
+      "sha256": "487FF23263478B60FDEBB4DA9DB2D04DEB5B4A16CB162759A859C2A641CDAF85",
+      "sourceSha256": "FAEE9ED3E691F9A8731A984DAA1F882B1146F3633C847F7A33CB152026CA9DA9"
+    },
+    {
+      "id": "engine.vfx.texture.comic_broken_ring",
+      "type": "Texture",
+      "path": "Vfx/Textures/Cooked/comic_broken_ring.htex",
+      "sourcePath": "Vfx/Textures/comic_broken_ring.png",
+      "colorSpace": "Srgb",
+      "usage": "BaseColor",
+      "compression": "BC7",
+      "mipPolicy": "Generate",
+      "sourceId": "hikari.original.comic_vfx",
+      "upstreamPath": "Original procedural segmented shock-ring mask",
+      "sha256": "7C5A08292BE4DF145EDCC6F74DE9B137D52E1CFDB4D57875A1BA43866AFCEF66",
+      "sourceSha256": "95A8AA1B297A32FE0631352F0A9BE4A67C1166832949C7900FE85F5D361ECBE9"
+    },
+    {
+      "id": "engine.vfx.texture.comic_speed_lines",
+      "type": "Texture",
+      "path": "Vfx/Textures/Cooked/comic_speed_lines.htex",
+      "sourcePath": "Vfx/Textures/comic_speed_lines.png",
+      "colorSpace": "Srgb",
+      "usage": "BaseColor",
+      "compression": "BC7",
+      "mipPolicy": "Generate",
+      "sourceId": "hikari.original.comic_vfx",
+      "upstreamPath": "Original procedural radial speed-line mask",
+      "sha256": "587BBF832C37D85ECF994B08E13C235570CB8C13F04400288482EE700ABE02EA",
+      "sourceSha256": "264FD11606C034DC5168E558E7678F8D6ADDE4EB6704A23C1B1FF00A02FAAC83"
+    },
+    {
+      "id": "engine.vfx.texture.comic_ground_crack",
+      "type": "Texture",
+      "path": "Vfx/Textures/Cooked/comic_ground_crack.htex",
+      "sourcePath": "Vfx/Textures/comic_ground_crack.png",
+      "colorSpace": "Srgb",
+      "usage": "BaseColor",
+      "compression": "BC7",
+      "mipPolicy": "Generate",
+      "sourceId": "hikari.original.comic_vfx",
+      "upstreamPath": "Original procedural branching ground-crack mask",
+      "sha256": "312D171B43E30FDF016D08B974B0DDA72DD02252BB8F21AA2C106120C623F25B",
+      "sourceSha256": "ECE5170C95AE6AE6A63BD9F0E1075A3E1AE6845D0E64786E93971E14738F2468"
+    },
+    {
+      "id": "engine.vfx.texture.comic_smoke_puff",
+      "type": "Texture",
+      "path": "Vfx/Textures/Cooked/comic_smoke_puff.htex",
+      "sourcePath": "Vfx/Textures/comic_smoke_puff.png",
+      "colorSpace": "Srgb",
+      "usage": "BaseColor",
+      "compression": "BC7",
+      "mipPolicy": "Generate",
+      "sourceId": "hikari.original.comic_vfx",
+      "upstreamPath": "Original procedural offset-outline smoke puff",
+      "sha256": "B98A8396FB94272281D89C8F8A26625094FCD60F556268E71E96A7EBFF82665E",
+      "sourceSha256": "4C691F2D78777B1585FABE268AF8BAFBA56B62B3523339688457780136A91416"
     }
   ]
 }

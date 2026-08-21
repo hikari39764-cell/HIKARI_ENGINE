@@ -429,6 +429,11 @@ namespace HIKARI {
         if (!document.environment.sky.skyAsset.empty()) {
             deps.skyAssetIds.insert(document.environment.sky.skyAsset);
         }
+        if (document.environment.sky.mode == SkyMode::Texture2D &&
+            !document.environment.sky.panoramaCloudAsset.empty()) {
+            deps.skyAssetIds.insert(
+                document.environment.sky.panoramaCloudAsset);
+        }
         deps.lightingSceneHash =
             ASSETS::LIGHTING::BuildLightingSceneHash(document);
         deps.lightingBakeAuthoringHashes =
@@ -562,6 +567,23 @@ namespace HIKARI {
         for (const std::string& skyId : dependencies.skyAssetIds) {
             const auto* descriptor = assetRegistry.FindAs<SkyAssetDescriptor>(AssetId{ skyId });
             if (!descriptor) {
+                if (const auto* textureDescriptor =
+                        assetRegistry.FindAs<TextureAssetDescriptor>(
+                            AssetId{ skyId });
+                    textureDescriptor != nullptr &&
+                    textureDescriptor->dimension ==
+                        TextureAssetDimension::Texture2D) {
+                    const RENDER3D::TextureResourceColorSpace colorSpace =
+                        textureDescriptor->colorSpace ==
+                            TextureAssetColorSpace::Linear
+                        ? RENDER3D::TextureResourceColorSpace::Linear
+                        : RENDER3D::TextureResourceColorSpace::Srgb;
+                    AddTextureRequest(
+                        loadPlan,
+                        "runtime_sky_panorama/" + skyId,
+                        textureDescriptor->sourcePath,
+                        colorSpace);
+                }
                 continue;
             }
 

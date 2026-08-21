@@ -160,6 +160,7 @@ cbuffer SkyEnvironmentCB : register(b5)
 #define gSkyHorizonPower gSkyParams.z
 #define gSkyYaw gSkyParams.w
 #define gSkyTint gSkyTintLighting.rgb
+#define gSkyTextureDescriptorIndexPlusOne gSkyTintLighting.w
 #define gAtmospherePlanetRadius gAtmospherePlanetParams.x
 #define gAtmosphereTopRadius gAtmospherePlanetParams.y
 #define gAtmosphereRayleighScaleHeight gAtmospherePlanetParams.z
@@ -191,9 +192,11 @@ Texture2D<float> gScreenSpaceDepthPyramid : register(t2, space7);
 Texture2D<float4> gScreenSpacePackedSurface : register(t3, space7);
 cbuffer ScreenSpaceTraceControlCB : register(b10)
 {
-    uint gScreenSpaceTraceValid;
+    uint gScreenSpaceTraceFlags;
     uint gScreenSpaceDepthPyramidMipCount;
 };
+static const uint HIKARI_SCREEN_SPACE_DEPTH_TRACE_VALID = 1u << 0;
+static const uint HIKARI_SCREEN_SPACE_SCENE_COLOR_CAPTURE_VALID = 1u << 1;
 // Light probe volume: SH9 係数を係数ごとに 1 枚の Texture3D (RGB=係数) に
 // 焼き、hardware trilinear で係数を補間する。9 枚は root param LightProbeSh の
 // descriptor table として連続確保される。
@@ -203,6 +206,7 @@ SamplerState gLinearWrap : register(s0);
 SamplerComparisonState gShadowSampler : register(s1);
 SamplerState gLinearClamp : register(s2);
 SamplerState gPointClamp : register(s3);
+SamplerState gSkyPanoramaSampler : register(s4);
 
 #include "Include/HIKARI_PbrCommon.hlsli"
 #include "Include/HIKARI_SkyEnvironmentCommon.hlsli"

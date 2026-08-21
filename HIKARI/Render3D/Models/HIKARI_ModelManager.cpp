@@ -12,6 +12,10 @@ namespace HIKARI {
     namespace {
 
         void ClearModelSourceData(ModelAsset& asset) {
+            ++asset.sourceRevision;
+            if (asset.sourceRevision == 0u) {
+                asset.sourceRevision = 1u;
+            }
             asset.nodes.clear();
             asset.meshes.clear();
             asset.materials.clear();

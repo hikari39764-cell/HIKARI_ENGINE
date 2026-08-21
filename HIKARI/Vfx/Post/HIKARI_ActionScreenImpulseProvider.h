@@ -48,10 +48,11 @@ namespace HIKARI::POST {
             bool IsActive() const noexcept { return weight > 0.0f; }
         };
 
-        // A frame-local mask supplied by the combat trail/impact renderer.  The
-        // producer owns the resource and its state transition; the post pass
-        // copies this CPU SRV into its own two-slot heap and never retains the
-        // view beyond the current resolve.
+        // A frame-local texture supplied by the combat trail/impact renderer.
+        // The producer owns the resource and its state transition; the post
+        // pass copies this CPU SRV into its own frame-local descriptor heap and
+        // never retains the view beyond the current resolve. The same value
+        // contract is used for the distortion mask and the HDR accent.
         struct Mask {
             RENDER3D::RenderTextureView texture{};
             D3D12_CPU_DESCRIPTOR_HANDLE srvCpu{};
@@ -88,6 +89,9 @@ namespace HIKARI::POST {
             bool maskProvided = false;
             bool maskCompatible = false;
             bool maskApplied = false;
+            bool accentProvided = false;
+            bool accentCompatible = false;
+            bool accentApplied = false;
             bool cinematicGradeProvided = false;
             bool cinematicGradeApplied = false;
             float cinematicGradeWeight = 0.0f;
@@ -108,13 +112,17 @@ namespace HIKARI::POST {
             count_ = 0u;
             waves_ = {};
             mask_ = {};
+            accent_ = {};
             cinematicGrade_ = {};
             debugState_ = {};
             debugState_.frameIndex = frameIndex;
             debugState_.submitFrameIndex = frameIndex;
             debugState_.maskProvided = mask_.texture.resource != nullptr;
             debugState_.maskCompatible = mask_.IsValid(frameIndex);
-            debugState_.requested = mask_.IsValid(frameIndex);
+            debugState_.accentProvided = accent_.texture.resource != nullptr;
+            debugState_.accentCompatible = accent_.IsValid(frameIndex);
+            debugState_.requested = mask_.IsValid(frameIndex) ||
+                accent_.IsValid(frameIndex);
         }
 
         void Submit(
@@ -122,18 +130,33 @@ namespace HIKARI::POST {
             const MATH::Mat4& viewProj,
             const RENDER3D::COMBAT_VFX::PerfectGuardShockwaveFrameSource& source)
             noexcept {
-            BeginFrame(frameIndex);
             const uint32_t sourceCount = std::min<uint32_t>(
                 source.count,
                 kMaximumWaveCount);
             const bool sourceHasCinematicGrade =
                 source.HasActiveCinematicGrade();
+            if (!frameOpen_) {
+                BeginFrame(frameIndex);
+            }
+            else if (frameIndex_ != frameIndex) {
+                // BeginFrame is the canonical monotonic frame owner. A stale
+                // or out-of-order secondary view must never rewind the
+                // provider and erase work already accepted for this frame.
+                debugState_.submitFrameIndex = frameIndex;
+                debugState_.sourceWaveCount = std::min<uint32_t>(
+                    kMaximumWaveCount,
+                    debugState_.sourceWaveCount + sourceCount);
+                debugState_.droppedWaveCount += sourceCount;
+                RegisterProjectionReject(5u);
+                return;
+            }
             debugState_.sourceWaveCount = std::min<uint32_t>(
                 kMaximumWaveCount,
                 debugState_.sourceWaveCount + sourceCount);
             debugState_.submitFrameIndex = frameIndex;
             debugState_.requested = count_ != 0u || sourceCount != 0u ||
-                sourceHasCinematicGrade || mask_.IsValid(frameIndex);
+                sourceHasCinematicGrade || mask_.IsValid(frameIndex) ||
+                accent_.IsValid(frameIndex);
             debugState_.cinematicGradeProvided =
                 debugState_.cinematicGradeProvided ||
                 sourceHasCinematicGrade;
@@ -354,8 +377,14 @@ namespace HIKARI::POST {
                 debugState_.maskCompatible = false;
                 return;
             }
-            if (!frameOpen_ || frameIndex_ != mask.frameIndex) {
+            if (!frameOpen_) {
                 BeginFrame(mask.frameIndex);
+            }
+            else if (frameIndex_ != mask.frameIndex) {
+                debugState_.maskProvided = debugState_.maskProvided ||
+                    mask.texture.resource != nullptr;
+                debugState_.maskCompatible = mask_.IsValid(frameIndex_);
+                return;
             }
             Mask sanitized = mask;
             sanitized.strength = std::clamp(
@@ -405,11 +434,76 @@ namespace HIKARI::POST {
             SubmitMask(mask);
         }
 
+        void SubmitAccent(const Mask& accent) noexcept {
+            if (accent.frameIndex == 0u) {
+                debugState_.accentProvided =
+                    debugState_.accentProvided ||
+                    accent.texture.resource != nullptr;
+                debugState_.accentCompatible = false;
+                return;
+            }
+            if (!frameOpen_) {
+                BeginFrame(accent.frameIndex);
+            }
+            else if (frameIndex_ != accent.frameIndex) {
+                debugState_.accentProvided = debugState_.accentProvided ||
+                    accent.texture.resource != nullptr;
+                debugState_.accentCompatible = accent_.IsValid(frameIndex_);
+                return;
+            }
+            Mask sanitized = accent;
+            sanitized.strength = std::clamp(
+                std::isfinite(sanitized.strength)
+                    ? sanitized.strength
+                    : 1.0f,
+                0.0f,
+                8.0f);
+            sanitized.blur = std::clamp(
+                std::isfinite(sanitized.blur) ? sanitized.blur : 1.0f,
+                0.0f,
+                8.0f);
+            debugState_.accentProvided = debugState_.accentProvided ||
+                sanitized.texture.resource != nullptr;
+            if (!sanitized.IsValid(frameIndex_)) {
+                debugState_.accentCompatible =
+                    accent_.IsValid(frameIndex_);
+                return;
+            }
+            if (accent_.IsValid(frameIndex_) &&
+                accent_.texture.resource == sanitized.texture.resource) {
+                accent_.strength = (std::max)(
+                    accent_.strength,
+                    sanitized.strength);
+                accent_.blur = (std::max)(accent_.blur, sanitized.blur);
+            }
+            else {
+                accent_ = sanitized;
+            }
+            debugState_.accentCompatible = true;
+            debugState_.requested = true;
+        }
+
+        void SubmitAccent(
+            const RENDER3D::RenderTextureView& texture,
+            D3D12_CPU_DESCRIPTOR_HANDLE srvCpu,
+            uint64_t frameIndex,
+            float strength = 1.0f,
+            float blur = 0.0f) noexcept {
+            Mask accent{};
+            accent.texture = texture;
+            accent.srvCpu = srvCpu;
+            accent.frameIndex = frameIndex;
+            accent.strength = strength;
+            accent.blur = blur;
+            SubmitAccent(accent);
+        }
+
         bool IsCurrent(uint64_t frameIndex) const noexcept {
             return frameIndex_ == frameIndex &&
                 ((sourceSubmitted_ &&
                     (count_ != 0u || cinematicGrade_.IsActive())) ||
-                    mask_.IsValid(frameIndex));
+                    mask_.IsValid(frameIndex) ||
+                    accent_.IsValid(frameIndex));
         }
 
         uint64_t GetFrameIndex() const noexcept { return frameIndex_; }
@@ -422,6 +516,7 @@ namespace HIKARI::POST {
                 (count_ != 0u || cinematicGrade_.IsActive());
         }
         const Mask& GetMask() const noexcept { return mask_; }
+        const Mask& GetAccent() const noexcept { return accent_; }
         const CinematicGrade& GetCinematicGrade() const noexcept {
             return cinematicGrade_;
         }
@@ -483,6 +578,7 @@ namespace HIKARI::POST {
         uint32_t count_ = 0u;
         std::array<Wave, kMaximumWaveCount> waves_{};
         Mask mask_{};
+        Mask accent_{};
         CinematicGrade cinematicGrade_{};
         DebugState debugState_{};
     };

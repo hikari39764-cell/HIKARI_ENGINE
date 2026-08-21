@@ -101,6 +101,7 @@ EnvironmentPanel::Draw(SceneEnvironment &environment,
         "ui.environment.preset.warmIndoor",
         "ui.environment.preset.freshSummer",
         "ui.environment.preset.goldenHour",
+        "ui.environment.preset.layeredPanorama",
     };
     const int presetCount =
         static_cast<int>(sizeof(presetKeys) / sizeof(presetKeys[0]));
@@ -152,7 +153,14 @@ EnvironmentPanel::Draw(SceneEnvironment &environment,
                      static_cast<int>(skyModeNames.size()))) {
       environment.sky.mode = static_cast<SkyMode>(std::clamp(skyMode, 0, 4));
     }
-    DrawSkyAssetPicker(assetRegistry, assetDatabase, environment.sky.skyAsset);
+    if (environment.sky.mode == SkyMode::Texture2D) {
+      DrawPanoramaTextureAssetPicker(
+          assetDatabase,
+          "ui.environment.panoramaBackgroundAsset",
+          environment.sky.skyAsset);
+    } else {
+      DrawSkyAssetPicker(assetRegistry, assetDatabase, environment.sky.skyAsset);
+    }
     ImGui::DragFloat(
         TEXT::Localize("ui.environment.skyScale").c_str(),
         &environment.sky.scale, 0.01f, 0.0001f, 1000.0f);
@@ -168,6 +176,32 @@ EnvironmentPanel::Draw(SceneEnvironment &environment,
     ImGui::Checkbox(
         TEXT::Localize("ui.environment.followCamera").c_str(),
         &environment.sky.followCamera);
+
+    if (environment.sky.mode == SkyMode::Texture2D &&
+        ImGui::TreeNode(
+            TEXT::Localize("ui.environment.panoramaCloudLayer").c_str())) {
+      ImGui::Checkbox(
+          TEXT::Localize("ui.environment.panoramaCloudEnabled").c_str(),
+          &environment.sky.panoramaCloudEnabled);
+      DrawPanoramaTextureAssetPicker(
+          assetDatabase,
+          "ui.environment.panoramaCloudAsset",
+          environment.sky.panoramaCloudAsset);
+      ImGui::DragFloat2(
+          TEXT::Localize("ui.environment.panoramaCloudScrollSpeed").c_str(),
+          &environment.sky.panoramaCloudScrollSpeed.x,
+          0.0001f,
+          -0.1f,
+          0.1f,
+          "%.4f");
+      ImGui::DragFloat(
+          TEXT::Localize("ui.environment.panoramaCloudOpacity").c_str(),
+          &environment.sky.panoramaCloudOpacity,
+          0.01f,
+          0.0f,
+          1.0f);
+      ImGui::TreePop();
+    }
 
     if (environment.sky.mode == SkyMode::Gradient ||
         environment.sky.mode == SkyMode::Cubemap) {

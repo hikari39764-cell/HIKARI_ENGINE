@@ -11,10 +11,13 @@ cbuffer CommonParams : register(b0)
     // x=weight, y=monochrome, z=chromatic separation in pixels,
     // w=contrast. This is frame-local and independent from radial waves.
     float4 gActionCinematicGrade;
+    // x=HDR accent strength, y=accent blur hint, z=accent enabled.
+    float4 gWeaponAccentParams;
 };
 
 Texture2D<float4> gSceneTex : register(t0);
 Texture2D<float4> gMaskTex : register(t1);
+Texture2D<float4> gAccentTex : register(t2);
 SamplerState gLinearClamp : register(s0);
 
 struct PSInput
@@ -455,6 +458,87 @@ float4 main(PSInput input) : SV_TARGET
             tearEnergy * expandedCoverage * 0.055f +
             coverage * blurHint * 0.018f);
         resolved += float3(0.78f, 0.92f, 1.05f) * airRim;
+    }
+
+    const float accentEnabled = gWeaponAccentParams.z > 0.5f
+        ? 1.0f
+        : 0.0f;
+    if (accentEnabled > 0.5f)
+    {
+        uint accentWidth = 1u;
+        uint accentHeight = 1u;
+        gAccentTex.GetDimensions(accentWidth, accentHeight);
+        const float2 accentTexel = float2(
+            1.0f / max((float)accentWidth, 1.0f),
+            1.0f / max((float)accentHeight, 1.0f));
+        const float4 accentSample = gAccentTex.SampleLevel(
+            gLinearClamp,
+            uv,
+            0.0f);
+        const float coverage = saturate(accentSample.a);
+        if (coverage > 1.0e-4f)
+        {
+            const float coverageRight = gAccentTex.SampleLevel(
+                gLinearClamp,
+                saturate(uv + float2(accentTexel.x * 2.0f, 0.0f)),
+                0.0f).a;
+            const float coverageLeft = gAccentTex.SampleLevel(
+                gLinearClamp,
+                saturate(uv - float2(accentTexel.x * 2.0f, 0.0f)),
+                0.0f).a;
+            const float coverageDown = gAccentTex.SampleLevel(
+                gLinearClamp,
+                saturate(uv + float2(0.0f, accentTexel.y * 2.0f)),
+                0.0f).a;
+            const float coverageUp = gAccentTex.SampleLevel(
+                gLinearClamp,
+                saturate(uv - float2(0.0f, accentTexel.y * 2.0f)),
+                0.0f).a;
+            const float2 gradient = float2(
+                coverageRight - coverageLeft,
+                coverageDown - coverageUp);
+            const float gradientLength = length(gradient);
+            const float2 normal = gradientLength > 1.0e-5f
+                ? gradient / gradientLength
+                : float2(0.0f, 1.0f);
+            const float2 tangent = float2(-normal.y, normal.x);
+            const float blur = clamp(gWeaponAccentParams.y, 0.0f, 8.0f);
+            const float2 drag = tangent * accentTexel *
+                (1.5f + blur * 5.0f);
+            const float3 accentNearA = HikariFiniteColor(
+                gAccentTex.SampleLevel(
+                    gLinearClamp,
+                    saturate(uv + drag),
+                    0.0f).rgb);
+            const float3 accentNearB = HikariFiniteColor(
+                gAccentTex.SampleLevel(
+                    gLinearClamp,
+                    saturate(uv - drag),
+                    0.0f).rgb);
+            const float3 accentFar = HikariFiniteColor(
+                gAccentTex.SampleLevel(
+                    gLinearClamp,
+                    saturate(uv + drag * 2.2f),
+                    0.0f).rgb);
+            const float3 accentBody = HikariFiniteColor(accentSample.rgb);
+            const float3 draggedColor = accentBody * 0.52f +
+                (accentNearA + accentNearB) * 0.18f +
+                accentFar * 0.12f;
+            const float edge = saturate(
+                abs(coverage - max(max(
+                    coverageRight,
+                    coverageLeft), max(coverageDown, coverageUp))) *
+                4.0f);
+            const float strength = clamp(gWeaponAccentParams.x, 0.0f, 8.0f);
+            const float crisp = smoothstep(0.015f, 0.34f, coverage);
+            const float energy = strength * crisp;
+            // RGB remains scene-linear HDR.  Add a small edge lift and a
+            // restrained chromatic shoulder so bloom sees the hot core while
+            // the distortion mask remains the dominant air-tear signal.
+            resolved += draggedColor * energy;
+            resolved += float3(1.04f, 0.92f, 0.78f) *
+                (edge * energy * 0.085f);
+        }
     }
 
     const float gradeWeight = saturate(gActionCinematicGrade.x);

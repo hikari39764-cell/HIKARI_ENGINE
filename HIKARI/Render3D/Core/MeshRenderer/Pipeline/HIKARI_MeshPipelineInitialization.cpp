@@ -546,11 +546,22 @@ namespace HIKARI::MESHRENDERER {
         pointClampSampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
         pointClampSampler.MaxLOD = D3D12_FLOAT32_MAX;
 
+        D3D12_STATIC_SAMPLER_DESC skyPanoramaSampler{};
+        skyPanoramaSampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+        skyPanoramaSampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+        skyPanoramaSampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        skyPanoramaSampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        skyPanoramaSampler.ShaderRegister = 4;
+        skyPanoramaSampler.RegisterSpace = 0;
+        skyPanoramaSampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        skyPanoramaSampler.MaxLOD = D3D12_FLOAT32_MAX;
+
         const D3D12_STATIC_SAMPLER_DESC staticSamplers[] = {
             linearWrapSampler,
             shadowSampler,
             linearClampSampler,
-            pointClampSampler
+            pointClampSampler,
+            skyPanoramaSampler
         };
 
         D3D12_ROOT_SIGNATURE_DESC rsDesc{};

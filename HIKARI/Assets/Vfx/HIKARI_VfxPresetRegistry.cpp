@@ -1,5 +1,7 @@
 #include "Assets/Vfx/HIKARI_VfxPresetRegistry.h"
 
+#include "Assets/Vfx/Internal/HIKARI_VfxComicPresetLibrary.h"
+
 #include <utility>
 
 namespace HIKARI::VFX::PRESETS {
@@ -37,6 +39,12 @@ namespace HIKARI::VFX::PRESETS {
                     "Directional cone streaks with gravity arcs" },
                 { "sparkler", "Sparkler", "Ambient",
                     "High-rate point emitter with random streaks" },
+                { "comic_hit", "Comic Hit", "Comic",
+                    "Hard starburst with dark ink backing and quadrilateral fragments" },
+                { "comic_slash", "Comic Slash", "Comic",
+                    "Layered hard-edge slash wedge with graphic debris" },
+                { "comic_ground_slam", "Comic Ground Slam", "Comic",
+                    "Horizontal broken ring, radial cracks and speed-line compression" },
             };
             return catalog;
         }
@@ -226,6 +234,8 @@ namespace HIKARI::VFX::PRESETS {
             } else if (id == "sparkler") {
                 SetStandardTexture(asset, 0u,
                     "engine.vfx.texture.star_glint");
+            } else if (INTERNAL::ApplyComicPresetTextures(id, asset)) {
+                // The comic preset library owns its texture composition.
             } else {
                 SetStandardTexture(asset, 0u,
                     "engine.vfx.texture.soft_disc");
@@ -779,6 +789,9 @@ namespace HIKARI::VFX::PRESETS {
             if (id == "shockwave_ring") return BuildShockwaveRing();
             if (id == "fountain") return BuildFountain();
             if (id == "sparkler") return BuildSparkler();
+            if (INTERNAL::IsComicPresetId(id)) {
+                return INTERNAL::BuildComicPreset(id);
+            }
             return BuildBasicSprite();
         }();
         ApplyPresetTextures(id, asset);

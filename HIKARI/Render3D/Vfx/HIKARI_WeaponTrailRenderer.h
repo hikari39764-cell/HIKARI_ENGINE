@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cmath>
 
 #include <d3d12.h>
 #include <wrl/client.h>
@@ -46,6 +47,24 @@ namespace HIKARI::RENDER3D::COMBAT_VFX {
         }
     };
 
+    // Borrowed frame-local HDR accent view produced by the same trail
+    // geometry pass as the distortion mask.  The renderer owns the target and
+    // descriptor; Post consumes this value only for the tagged frame.
+    struct WeaponTrailAccentView {
+        RenderTextureView texture{};
+        D3D12_CPU_DESCRIPTOR_HANDLE srvCpu{};
+        uint64_t frameIndex = 0u;
+        float intensityScale = 1.0f;
+
+        bool IsValid() const noexcept {
+            return texture.IsSampleable() &&
+                srvCpu.ptr != 0u &&
+                frameIndex != 0u &&
+                std::isfinite(intensityScale) &&
+                intensityScale > 0.0f;
+        }
+    };
+
     struct WeaponTrailRendererDebugState {
         bool requested = false;
         bool maskExtentReady = false;
@@ -53,6 +72,7 @@ namespace HIKARI::RENDER3D::COMBAT_VFX {
         bool rendered = false;
         bool composited = false;
         bool maskReady = false;
+        bool accentReady = false;
         uint32_t vertexCount = 0u;
         uint32_t triangleCount = 0u;
         uint32_t nonDegenerateTriangleCount = 0u;
@@ -60,6 +80,7 @@ namespace HIKARI::RENDER3D::COMBAT_VFX {
         uint32_t maskWidth = 0u;
         uint32_t maskHeight = 0u;
         uint64_t maskFrame = 0u;
+        uint64_t accentFrame = 0u;
         WeaponTrailRendererFailure failureReason =
             WeaponTrailRendererFailure::None;
     };
@@ -83,6 +104,14 @@ namespace HIKARI::RENDER3D::COMBAT_VFX {
                 distortionStrengthScale_,
                 blurScale_,
                 distortionMaskView_.valid };
+        }
+
+        WeaponTrailAccentView GetAccent() const noexcept {
+            return {
+                accentView_,
+                accentSrvCpu_,
+                accentFrame_,
+                accentIntensityScale_ };
         }
 
         // Kept as a narrow SRV-only accessor for callers that only need the
@@ -121,6 +150,8 @@ namespace HIKARI::RENDER3D::COMBAT_VFX {
         bool ClearDistortionMask(const GFX::Context& graphics) noexcept;
         D3D12_CPU_DESCRIPTOR_HANDLE GetDistortionMaskRtv(
             uint32_t frameSlot) const noexcept;
+        D3D12_CPU_DESCRIPTOR_HANDLE GetAccentRtv(
+            uint32_t frameSlot) const noexcept;
         void ReleaseDistortionMask() noexcept;
         void ReleaseFrame(FrameResources& frame) noexcept;
         void SetFailure(WeaponTrailRendererFailure failure) noexcept;
@@ -129,17 +160,30 @@ namespace HIKARI::RENDER3D::COMBAT_VFX {
         Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSignature_{};
         Microsoft::WRL::ComPtr<ID3D12PipelineState> pipelineState_{};
         std::array<FrameResources, GFX::kFrameResourceCount> frames_{};
+        // Borrowed identity only; all owned resources are released before a
+        // different device is admitted.
+        ID3D12Device* deviceIdentity_ = nullptr;
         Microsoft::WRL::ComPtr<ID3D12Resource> distortionMaskTarget_{};
         Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> distortionMaskRtvHeap_{};
         UINT distortionMaskRtvDescriptorSize_ = 0u;
         D3D12_CPU_DESCRIPTOR_HANDLE distortionMaskSrvCpu_{};
         TextureResourceHandle distortionMaskTexture_{};
+        Microsoft::WRL::ComPtr<ID3D12Resource> accentTarget_{};
+        TextureResourceHandle accentTexture_{};
         D3D12_RESOURCE_STATES distortionMaskState_ =
             D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        D3D12_RESOURCE_STATES accentState_ =
+            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
         RenderTextureView distortionMaskView_{};
+        RenderTextureView accentView_{};
         uint32_t distortionMaskWidth_ = 0u;
         uint32_t distortionMaskHeight_ = 0u;
+        uint32_t accentWidth_ = 0u;
+        uint32_t accentHeight_ = 0u;
         uint64_t distortionMaskFrame_ = 0u;
+        uint64_t accentFrame_ = 0u;
+        D3D12_CPU_DESCRIPTOR_HANDLE accentSrvCpu_{};
+        float accentIntensityScale_ = 1.0f;
         float distortionStrengthScale_ = 1.0f;
         float blurScale_ = 1.0f;
         WeaponTrailRendererDebugState debugState_{};

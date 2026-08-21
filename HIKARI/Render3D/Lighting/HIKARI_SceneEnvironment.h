@@ -125,6 +125,13 @@ namespace HIKARI {
         bool enabled = true;
         SkyMode mode = SkyMode::Cubemap;
         std::string skyAsset = "DefaultSky";
+        // Optional equirectangular foreground layer for Texture2D skies.  The
+        // base panorama remains owned by skyAsset; this layer is composed by
+        // its own render stage so the volumetric cloud owner stays separate.
+        bool panoramaCloudEnabled = false;
+        std::string panoramaCloudAsset{};
+        MATH::Vec2 panoramaCloudScrollSpeed{ 0.0015f, 0.0f };
+        float panoramaCloudOpacity = 1.0f;
         float scale = 1.0f;
         float yaw = 0.0f;
         // Scene-linear sky radiance multiplier. Kept as "exposure" in serialized

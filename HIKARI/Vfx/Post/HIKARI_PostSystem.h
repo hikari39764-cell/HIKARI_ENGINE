@@ -42,6 +42,8 @@ namespace HIKARI::POST {
             POST::ActionScreenImpulseProvider::DebugState;
         using ActionScreenDistortionMask =
             POST::ActionScreenImpulseProvider::Mask;
+        using ActionScreenDistortionAccent =
+            POST::ActionScreenImpulseProvider::Mask;
 
         static void Initialize(const GFX::Context& context);
         static void UpdateContext(const GFX::Context& context);
@@ -69,6 +71,8 @@ namespace HIKARI::POST {
             uint64_t frameIndex);
         static void SetActionScreenDistortionMask(
             const ActionScreenDistortionMask& mask);
+        static void SetActionScreenDistortionAccent(
+            const ActionScreenDistortionAccent& accent);
         static const FxaaSettings& GetFxaaSettings();
         static const BloomDebugStats& GetBloomDebugStats();
         static const SunGlareDebugStats& GetSunGlareDebugStats();

@@ -535,6 +535,29 @@ namespace HIKARI::RENDER3D::LIGHTING {
                 assetRegistry.FindAs<SkyAssetDescriptor>(
                     AssetId{ skyId });
             if (descriptor == nullptr) {
+                if (const auto* texture =
+                        assetRegistry.FindAs<TextureAssetDescriptor>(
+                            AssetId{ skyId });
+                    texture != nullptr &&
+                    texture->dimension == TextureAssetDimension::Texture2D) {
+                    skyManager.RegisterOrUpdateAsset(SkyAsset{
+                        texture->id.value,
+                        {},
+                        texture->sourcePath,
+                        SkyMode::Texture2D,
+                        texture->colorSpace ==
+                            TextureAssetColorSpace::Linear,
+                    });
+                    runtimeData.skyLoaded = true;
+                    if (runtimeData.activeSkyAssetId.empty()) {
+                        runtimeData.activeSkyAssetId = texture->id.value;
+                    }
+                    AppendMessage(
+                        messages,
+                        "[LightingRuntimeLoader][Sky] registered Texture2D panorama: " +
+                            texture->id.value);
+                    continue;
+                }
                 if (skyId == kDefaultSkyAssetName) {
                     const DefaultSkyEnvironmentResult defaultSky =
                         ActivateDefaultSkyEnvironment(skyManager);
@@ -552,7 +575,6 @@ namespace HIKARI::RENDER3D::LIGHTING {
                             defaultSky.message);
                     continue;
                 }
-                IBL::Reset();
                 AppendMessage(
                     messages,
                     "[LightingRuntimeLoader][Sky] descriptor missing: " +
@@ -584,7 +606,6 @@ namespace HIKARI::RENDER3D::LIGHTING {
                 descriptor->id.value;
 
             if (!descriptor->hasIbl) {
-                IBL::Reset();
                 AppendMessage(
                     messages,
                     "[LightingRuntimeLoader][IBL] sky has no IBL artifacts: " +
@@ -624,9 +645,17 @@ namespace HIKARI::RENDER3D::LIGHTING {
                 brdf,
                 descriptor->prefilteredMipCount);
             runtimeData.globalIblLoaded =
-                IsTextureResourceValid(irradiance) ||
-                IsTextureResourceValid(prefiltered) ||
+                IsTextureResourceValid(irradiance) &&
+                IsTextureResourceValid(prefiltered) &&
                 IsTextureResourceValid(brdf);
+        }
+
+        if (!runtimeData.globalIblLoaded) {
+            // The visible panorama/gradient/atmosphere is the only valid
+            // fallback when no matching convolved artifacts were authored.
+            // Reset once after the full set so a missing auxiliary sky cannot
+            // erase a later valid provider during iteration.
+            IBL::Reset();
         }
     }
 

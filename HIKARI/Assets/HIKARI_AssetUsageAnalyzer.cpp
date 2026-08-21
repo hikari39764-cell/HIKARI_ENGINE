@@ -162,6 +162,12 @@ namespace HIKARI {
             assetDatabase,
             summary);
         AddReference(
+            document.environment.sky.panoramaCloudAsset,
+            "Scene Environment",
+            "Panorama Cloud Layer",
+            assetDatabase,
+            summary);
+        AddReference(
             document.environment.reflectionProbe.sourceCubemapAsset,
             "Scene Environment",
             "Reflection Probe Cubemap",

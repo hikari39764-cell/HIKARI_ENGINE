@@ -138,6 +138,17 @@ namespace HIKARI::RENDER3D::COMBAT_VFX {
             return false;
         }
         const GFX::Context& graphics = *pass.graphics;
+        if (graphics.device != nullptr &&
+            graphics.device != deviceIdentity_) {
+            // The global renderer must never reuse PSOs, heaps or targets
+            // created by a previous D3D12 device. Context replacement is
+            // rare, but treating it as a full local teardown is safer than
+            // letting stale COM resources cross the device boundary.
+            if (deviceIdentity_ != nullptr) {
+                Release();
+            }
+            deviceIdentity_ = graphics.device;
+        }
         debugState_.requested = source.HasWeaponTrails();
         debugState_.maskExtentReady = pass.width != 0u && pass.height != 0u;
         debugState_.vertexCount = source.weaponTrailVertexCount;
@@ -158,6 +169,8 @@ namespace HIKARI::RENDER3D::COMBAT_VFX {
         // mask to a later post pass.
         distortionMaskView_.valid = false;
         distortionMaskFrame_ = 0u;
+        accentView_.valid = false;
+        accentFrame_ = 0u;
         if (!source.HasWeaponTrails()) {
             if (graphics.cmdList != nullptr && distortionMaskTarget_ != nullptr) {
                 (void)ClearDistortionMask(graphics);
@@ -249,7 +262,9 @@ namespace HIKARI::RENDER3D::COMBAT_VFX {
         ID3D12GraphicsCommandList* cmd = graphics.cmdList;
         const D3D12_CPU_DESCRIPTOR_HANDLE distortionMaskRtv =
             GetDistortionMaskRtv(graphics.frameIndex);
-        if (distortionMaskRtv.ptr == 0u) {
+        const D3D12_CPU_DESCRIPTOR_HANDLE accentRtv =
+            GetAccentRtv(graphics.frameIndex);
+        if (distortionMaskRtv.ptr == 0u || accentRtv.ptr == 0u) {
             pass.renderTargetAccess.EndDepthRead();
             SetFailure(WeaponTrailRendererFailure::MaskDescriptor);
             return false;
@@ -261,6 +276,10 @@ namespace HIKARI::RENDER3D::COMBAT_VFX {
             distortionMaskTarget_.Get(),
             nullptr,
             distortionMaskRtv);
+        graphics.device->CreateRenderTargetView(
+            accentTarget_.Get(),
+            nullptr,
+            accentRtv);
         GFX::PIX::ScopedGpuEvent event(
             cmd,
             GFX::PIX::kColorRender,
@@ -278,9 +297,19 @@ namespace HIKARI::RENDER3D::COMBAT_VFX {
             distortionMaskTarget_.Get(),
             distortionMaskState_,
             D3D12_RESOURCE_STATE_RENDER_TARGET);
+        TransitionResource(
+            cmd,
+            accentTarget_.Get(),
+            accentState_,
+            D3D12_RESOURCE_STATE_RENDER_TARGET);
         const float clearValue[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
         cmd->ClearRenderTargetView(
             distortionMaskRtv,
+            clearValue,
+            0u,
+            nullptr);
+        cmd->ClearRenderTargetView(
+            accentRtv,
             clearValue,
             0u,
             nullptr);
@@ -296,9 +325,12 @@ namespace HIKARI::RENDER3D::COMBAT_VFX {
         };
         cmd->RSSetViewports(1u, &viewport);
         cmd->RSSetScissorRects(1u, &scissor);
+        const D3D12_CPU_DESCRIPTOR_HANDLE renderTargets[2] = {
+            distortionMaskRtv,
+            accentRtv };
         cmd->OMSetRenderTargets(
-            1u,
-            &distortionMaskRtv,
+            2u,
+            renderTargets,
             FALSE,
             &pass.readOnlySceneDsv);
         const D3D12_VERTEX_BUFFER_VIEW vertexView{
@@ -316,6 +348,11 @@ namespace HIKARI::RENDER3D::COMBAT_VFX {
             distortionMaskTarget_.Get(),
             distortionMaskState_,
             D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+        TransitionResource(
+            cmd,
+            accentTarget_.Get(),
+            accentState_,
+            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
         pass.renderTargetAccess.EndDepthRead();
         if (!pass.renderTargetAccess.Rebind()) {
             SetFailure(WeaponTrailRendererFailure::RenderTargetRebind);
@@ -330,6 +367,14 @@ namespace HIKARI::RENDER3D::COMBAT_VFX {
         distortionMaskView_.height = distortionMaskHeight_;
         distortionMaskView_.mipCount = 1u;
         distortionMaskView_.state = distortionMaskState_;
+        accentView_.resource = accentTarget_.Get();
+        accentView_.srv =
+            GetTextureResourceSrvGpuHandle(accentTexture_);
+        accentView_.format = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        accentView_.width = accentWidth_;
+        accentView_.height = accentHeight_;
+        accentView_.mipCount = 1u;
+        accentView_.state = accentState_;
         // IsSampleable() deliberately includes the producer-owned `valid`
         // bit.  Calling it while assigning that bit makes a freshly rendered
         // view permanently false.  Validate the raw handoff first, then mark
@@ -339,20 +384,32 @@ namespace HIKARI::RENDER3D::COMBAT_VFX {
             distortionMaskView_.srv.ptr != 0u &&
             distortionMaskView_.width != 0u &&
             distortionMaskView_.height != 0u;
+        accentView_.valid =
+            accentView_.resource != nullptr &&
+            accentView_.srv.ptr != 0u &&
+            accentView_.width != 0u &&
+            accentView_.height != 0u;
         if (!distortionMaskView_.IsSampleable() ||
-            distortionMaskSrvCpu_.ptr == 0u) {
+            distortionMaskSrvCpu_.ptr == 0u ||
+            !accentView_.IsSampleable() ||
+            accentSrvCpu_.ptr == 0u) {
             distortionMaskFrame_ = 0u;
+            accentFrame_ = 0u;
             SetFailure(WeaponTrailRendererFailure::InvalidMaskView);
             return false;
         }
         // graphics.frameIndex is only the 0..N upload-resource slot. The
         // source frame is the absolute presentation frame used for freshness.
         distortionMaskFrame_ = source.frameIndex;
+        accentFrame_ = source.frameIndex;
+        accentIntensityScale_ = 1.0f;
         debugState_.rendered = true;
         debugState_.maskReady = true;
+        debugState_.accentReady = true;
         debugState_.maskWidth = distortionMaskWidth_;
         debugState_.maskHeight = distortionMaskHeight_;
         debugState_.maskFrame = distortionMaskFrame_;
+        debugState_.accentFrame = accentFrame_;
         // This pass deliberately does not composite into the main HDR target.
         debugState_.composited = false;
         if (!readyLogged_) {
@@ -368,6 +425,7 @@ namespace HIKARI::RENDER3D::COMBAT_VFX {
                     " extent=" +
                     std::to_string(debugState_.maskWidth) + "x" +
                     std::to_string(debugState_.maskHeight) +
+                    " mrtAccent=1" +
                     " frame=" +
                     std::to_string(debugState_.maskFrame));
                 readyLogged_ = true;
@@ -477,6 +535,9 @@ namespace HIKARI::RENDER3D::COMBAT_VFX {
         blend.DestBlendAlpha = D3D12_BLEND_ONE;
         blend.BlendOpAlpha = D3D12_BLEND_OP_ADD;
         blend.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+        D3D12_RENDER_TARGET_BLEND_DESC& accentBlend =
+            desc.BlendState.RenderTarget[1];
+        accentBlend = blend;
         desc.SampleMask = UINT_MAX;
         desc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
         desc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
@@ -493,8 +554,9 @@ namespace HIKARI::RENDER3D::COMBAT_VFX {
             input,
             static_cast<UINT>(std::size(input)) };
         desc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-        desc.NumRenderTargets = 1u;
+        desc.NumRenderTargets = 2u;
         desc.RTVFormats[0] = DXGI_FORMAT_R16G16B16A16_FLOAT;
+        desc.RTVFormats[1] = DXGI_FORMAT_R16G16B16A16_FLOAT;
         desc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
         desc.SampleDesc.Count = 1u;
         return HIKARI_DX_CHECK(
@@ -577,6 +639,8 @@ namespace HIKARI::RENDER3D::COMBAT_VFX {
         height = (std::max)(1u, height);
         if (distortionMaskTarget_ != nullptr &&
             distortionMaskTexture_ &&
+            accentTarget_ != nullptr &&
+            accentTexture_ &&
             distortionMaskWidth_ == width &&
             distortionMaskHeight_ == height) {
             return true;
@@ -588,7 +652,7 @@ namespace HIKARI::RENDER3D::COMBAT_VFX {
         if (distortionMaskRtvHeap_ == nullptr) {
             D3D12_DESCRIPTOR_HEAP_DESC heapDesc{};
             heapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-            heapDesc.NumDescriptors = GFX::kFrameResourceCount;
+            heapDesc.NumDescriptors = GFX::kFrameResourceCount * 2u;
             if (!HIKARI_DX_CHECK(
                     device->CreateDescriptorHeap(
                         &heapDesc,
@@ -654,12 +718,52 @@ namespace HIKARI::RENDER3D::COMBAT_VFX {
             ReleaseDistortionMask();
             return false;
         }
+
+        D3D12_CLEAR_VALUE accentClearValue{};
+        accentClearValue.Format = kMaskFormat;
+        if (!HIKARI_DX_CHECK(
+                device->CreateCommittedResource(
+                    &heapProperties,
+                    D3D12_HEAP_FLAG_NONE,
+                    &textureDesc,
+                    D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+                    &accentClearValue,
+                    IID_PPV_ARGS(accentTarget_.GetAddressOf())),
+                "WeaponTrail::CreateAccentTarget")) {
+            ReleaseDistortionMask();
+            return false;
+        }
+        accentTarget_->SetName(L"HIKARI.Combat.WeaponTrailAccent");
+        RenderResourceDesc accentResourceDesc{};
+        accentResourceDesc.usage =
+            RenderResourceUsageFlags::RenderTarget |
+            RenderResourceUsageFlags::ShaderResource;
+        accentResourceDesc.lifetime = RenderResourceLifetime::External;
+        accentResourceDesc.debugName = "combat_weapon_trail_hdr_accent";
+        accentResourceDesc.sourceKey = "render/combat/weapon_trail_hdr_accent";
+        accentResourceDesc.width = width;
+        accentResourceDesc.height = height;
+        accentResourceDesc.mipLevels = 1u;
+        accentResourceDesc.depthOrArraySize = 1u;
+        accentResourceDesc.format = kMaskFormat;
+        accentTexture_ = RegisterTextureResourceFromNative(
+            accentTarget_.Get(),
+            kMaskFormat,
+            std::move(accentResourceDesc));
+        if (!accentTexture_) {
+            ReleaseDistortionMask();
+            return false;
+        }
         distortionMaskWidth_ = width;
         distortionMaskHeight_ = height;
+        accentWidth_ = width;
+        accentHeight_ = height;
         distortionMaskSrvCpu_ =
             GetTextureResourceSrvCpuHandle(distortionMaskTexture_);
         distortionMaskState_ =
             D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        accentSrvCpu_ = GetTextureResourceSrvCpuHandle(accentTexture_);
+        accentState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
         distortionMaskView_ = {
             distortionMaskTarget_.Get(),
             GetTextureResourceSrvGpuHandle(distortionMaskTexture_),
@@ -669,26 +773,47 @@ namespace HIKARI::RENDER3D::COMBAT_VFX {
             1u,
             distortionMaskState_,
             false };
+        accentView_ = {
+            accentTarget_.Get(),
+            GetTextureResourceSrvGpuHandle(accentTexture_),
+            kMaskFormat,
+            width,
+            height,
+            1u,
+            accentState_,
+            false };
         distortionMaskFrame_ = 0u;
-        return distortionMaskView_.srv.ptr != 0u;
+        accentFrame_ = 0u;
+        return distortionMaskView_.srv.ptr != 0u &&
+            accentView_.srv.ptr != 0u;
     }
 
     bool WeaponTrailRenderer::ClearDistortionMask(
         const GFX::Context& graphics) noexcept {
         distortionMaskView_.valid = false;
         distortionMaskFrame_ = 0u;
-        if (graphics.cmdList == nullptr || distortionMaskTarget_ == nullptr) {
+        accentView_.valid = false;
+        accentFrame_ = 0u;
+        if (graphics.cmdList == nullptr || distortionMaskTarget_ == nullptr ||
+            accentTarget_ == nullptr) {
             return false;
         }
         const D3D12_CPU_DESCRIPTOR_HANDLE distortionMaskRtv =
             GetDistortionMaskRtv(graphics.frameIndex);
-        if (graphics.device == nullptr || distortionMaskRtv.ptr == 0u) {
+        const D3D12_CPU_DESCRIPTOR_HANDLE accentRtv =
+            GetAccentRtv(graphics.frameIndex);
+        if (graphics.device == nullptr || distortionMaskRtv.ptr == 0u ||
+            accentRtv.ptr == 0u) {
             return false;
         }
         graphics.device->CreateRenderTargetView(
             distortionMaskTarget_.Get(),
             nullptr,
             distortionMaskRtv);
+        graphics.device->CreateRenderTargetView(
+            accentTarget_.Get(),
+            nullptr,
+            accentRtv);
         TransitionResource(
             graphics.cmdList,
             distortionMaskTarget_.Get(),
@@ -702,10 +827,26 @@ namespace HIKARI::RENDER3D::COMBAT_VFX {
             nullptr);
         TransitionResource(
             graphics.cmdList,
+            accentTarget_.Get(),
+            accentState_,
+            D3D12_RESOURCE_STATE_RENDER_TARGET);
+        graphics.cmdList->ClearRenderTargetView(
+            accentRtv,
+            clearValue,
+            0u,
+            nullptr);
+        TransitionResource(
+            graphics.cmdList,
             distortionMaskTarget_.Get(),
             distortionMaskState_,
             D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+        TransitionResource(
+            graphics.cmdList,
+            accentTarget_.Get(),
+            accentState_,
+            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
         distortionMaskView_.state = distortionMaskState_;
+        accentView_.state = accentState_;
         return true;
     }
 
@@ -720,6 +861,22 @@ namespace HIKARI::RENDER3D::COMBAT_VFX {
             GetCPUDescriptorHandleForHeapStart();
         handle.ptr += static_cast<SIZE_T>(
             frameSlot % GFX::kFrameResourceCount) *
+            distortionMaskRtvDescriptorSize_ * 2u;
+        return handle;
+    }
+
+    D3D12_CPU_DESCRIPTOR_HANDLE WeaponTrailRenderer::GetAccentRtv(
+        uint32_t frameSlot) const noexcept {
+        D3D12_CPU_DESCRIPTOR_HANDLE handle{};
+        if (distortionMaskRtvHeap_ == nullptr ||
+            distortionMaskRtvDescriptorSize_ == 0u) {
+            return handle;
+        }
+        handle = distortionMaskRtvHeap_->
+            GetCPUDescriptorHandleForHeapStart();
+        handle.ptr += static_cast<SIZE_T>(
+            frameSlot % GFX::kFrameResourceCount) *
+            distortionMaskRtvDescriptorSize_ * 2u +
             distortionMaskRtvDescriptorSize_;
         return handle;
     }
@@ -730,13 +887,24 @@ namespace HIKARI::RENDER3D::COMBAT_VFX {
         }
         distortionMaskTexture_ = {};
         distortionMaskTarget_.Reset();
+        if (accentTexture_) {
+            (void)ReleaseTextureResource(accentTexture_);
+        }
+        accentTexture_ = {};
+        accentTarget_.Reset();
         distortionMaskSrvCpu_ = {};
+        accentSrvCpu_ = {};
         distortionMaskWidth_ = 0u;
         distortionMaskHeight_ = 0u;
+        accentWidth_ = 0u;
+        accentHeight_ = 0u;
         distortionMaskState_ =
             D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        accentState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
         distortionMaskView_ = {};
+        accentView_ = {};
         distortionMaskFrame_ = 0u;
+        accentFrame_ = 0u;
     }
 
     void WeaponTrailRenderer::ReleaseFrame(
@@ -765,6 +933,8 @@ namespace HIKARI::RENDER3D::COMBAT_VFX {
         readyLogged_ = false;
         distortionStrengthScale_ = 1.0f;
         blurScale_ = 1.0f;
+        accentIntensityScale_ = 1.0f;
+        deviceIdentity_ = nullptr;
     }
 
 } // namespace HIKARI::RENDER3D::COMBAT_VFX

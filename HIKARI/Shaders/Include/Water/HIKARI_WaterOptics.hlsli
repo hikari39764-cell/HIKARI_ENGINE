@@ -186,6 +186,45 @@ float3 HikariWaterResolveSceneCapture(
         65504.0f.xxx);
 }
 
+float3 HikariWaterBlendWithSceneHorizon(
+    float3 waterColor,
+    float3 capturedSceneColor,
+    float3 stableSurfaceNormal,
+    float3 viewDirection,
+    float distanceToCamera,
+    float opaqueReceiverValidity)
+{
+    const float3 safeWater = min(
+        max(HikariFiniteOr(waterColor, 0.0f.xxx), 0.0f.xxx),
+        65504.0f.xxx);
+    const float3 safeScene = min(
+        max(HikariFiniteOr(capturedSceneColor, safeWater), 0.0f.xxx),
+        65504.0f.xxx);
+    if (saturate(HikariFiniteOr(opaqueReceiverValidity, 0.0f)) > 0.5f)
+    {
+        return safeWater;
+    }
+
+    // Clear depth means the refracted SceneColor is the actual visible sky.
+    // At a distant grazing angle, converge to that exact panorama sample so
+    // Texture2D skies and water cannot form two independently coloured
+    // horizons. Nearby water keeps its authored scattering and reflections.
+    const float3 safeNormal = HikariSafeNormalize(
+        stableSurfaceNormal,
+        float3(0.0f, 1.0f, 0.0f));
+    const float3 safeView = HikariSafeNormalize(
+        viewDirection,
+        float3(0.0f, 0.0f, 1.0f));
+    const float grazing = 1.0f - saturate(abs(dot(safeNormal, safeView)));
+    const float angularWeight = smoothstep(0.58f, 0.96f, grazing);
+    const float distanceWeight = smoothstep(
+        32.0f,
+        160.0f,
+        max(HikariFiniteOr(distanceToCamera, 0.0f), 0.0f));
+    const float horizonWeight = saturate(angularWeight * distanceWeight);
+    return lerp(safeWater, safeScene, horizonWeight);
+}
+
 float3 HikariWaterResolveBeerLambert(
     float3 transmittanceAtReferenceDistance,
     float referenceDistance,

@@ -25,6 +25,7 @@
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Debug/HIKARI_Renderer3D_Debug.h"
 #include "Render3D/Lighting/HIKARI_DefaultSkyEnvironment.h"
+#include "Render3D/Lighting/HIKARI_PanoramaSkyLayerStage.h"
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 #include "Render3D/Vfx/HIKARI_ParticleRenderInput.h"
@@ -1331,6 +1332,11 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
             selected->request.cameraFrame.camera,
             effectiveEnvironment,
             modelManager,
+            skyManager);
+        (void)PANORAMA_SKY::RenderPanoramaSkyLayer(
+            GFX::GetCurrentContext(),
+            selected->request.cameraFrame.camera,
+            effectiveEnvironment.sky,
             skyManager);
         MESHRENDERER::EditorInteractiveRenderSettings renderSettings =
             ResolveRenderSettings(

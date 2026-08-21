@@ -457,6 +457,21 @@ namespace HIKARI::SCENE::SERIALIZATION {
         out["sky"]["enabled"] = environment.sky.enabled;
         out["sky"]["mode"] = ToString(environment.sky.mode);
         out["sky"]["skyAsset"] = environment.sky.skyAsset;
+        out["sky"]["panoramaCloudEnabled"] =
+            environment.sky.panoramaCloudEnabled;
+        out["sky"]["panoramaCloudAsset"] =
+            environment.sky.panoramaCloudAsset;
+        out["sky"]["panoramaCloudScrollSpeed"] = JsonMath::ToJsonArray(
+            SanitizeCloudVec2(
+                environment.sky.panoramaCloudScrollSpeed,
+                SkySettings{}.panoramaCloudScrollSpeed,
+                -1.0f,
+                1.0f));
+        out["sky"]["panoramaCloudOpacity"] = SanitizeCloudFloat(
+            environment.sky.panoramaCloudOpacity,
+            SkySettings{}.panoramaCloudOpacity,
+            0.0f,
+            1.0f);
         out["sky"]["scale"] = environment.sky.scale;
         out["sky"]["yaw"] = environment.sky.yaw;
         out["sky"]["exposure"] = environment.sky.exposure;
@@ -857,6 +872,25 @@ namespace HIKARI::SCENE::SERIALIZATION {
             outEnvironment.sky.enabled = sky.value("enabled", outEnvironment.sky.enabled);
             outEnvironment.sky.mode = ParseSkyMode(sky.value("mode", nlohmann::json{}), outEnvironment.sky.mode);
             outEnvironment.sky.skyAsset = sky.value("skyAsset", outEnvironment.sky.skyAsset);
+            outEnvironment.sky.panoramaCloudEnabled = sky.value(
+                "panoramaCloudEnabled",
+                outEnvironment.sky.panoramaCloudEnabled);
+            outEnvironment.sky.panoramaCloudAsset = sky.value(
+                "panoramaCloudAsset",
+                outEnvironment.sky.panoramaCloudAsset);
+            outEnvironment.sky.panoramaCloudScrollSpeed = ReadCloudVec2(
+                sky.value(
+                    "panoramaCloudScrollSpeed",
+                    nlohmann::json::array()),
+                outEnvironment.sky.panoramaCloudScrollSpeed,
+                -1.0f,
+                1.0f);
+            outEnvironment.sky.panoramaCloudOpacity = ReadCloudMember(
+                sky,
+                "panoramaCloudOpacity",
+                outEnvironment.sky.panoramaCloudOpacity,
+                0.0f,
+                1.0f);
             outEnvironment.sky.scale = sky.value("scale", outEnvironment.sky.scale);
             outEnvironment.sky.yaw = sky.value("yaw", outEnvironment.sky.yaw);
             outEnvironment.sky.exposure = sky.value("exposure", outEnvironment.sky.exposure);

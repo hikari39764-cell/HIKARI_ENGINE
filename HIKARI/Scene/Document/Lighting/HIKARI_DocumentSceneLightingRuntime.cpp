@@ -4,6 +4,7 @@
 #include "Assets/Lighting/HIKARI_LightingBakeDependencyHash.h"
 #include "Core/HIKARI_Logger.h"
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
+#include "Render3D/Lighting/HIKARI_PanoramaSkyLayerStage.h"
 #include "Render3D/Lighting/HIKARI_LightProbeVolumeRuntime.h"
 #include "Scene/Lighting/HIKARI_SceneLightingSet.h"
 
@@ -18,6 +19,7 @@ namespace HIKARI {
              const SkySettings& after)
         {
             return before.skyAsset != after.skyAsset ||
+                   before.panoramaCloudAsset != after.panoramaCloudAsset ||
                    before.mode != after.mode;
         }
 
@@ -69,6 +71,11 @@ namespace HIKARI {
         if (!state_->lighting.environment.sky.skyAsset.empty()) {
             deps.skyAssetIds.insert(state_->lighting.environment.sky.skyAsset);
         }
+        if (state_->lighting.environment.sky.mode == SkyMode::Texture2D &&
+            !state_->lighting.environment.sky.panoramaCloudAsset.empty()) {
+            deps.skyAssetIds.insert(
+                state_->lighting.environment.sky.panoramaCloudAsset);
+        }
         deps.lightingSceneHash =
             ASSETS::LIGHTING::BuildLightingSceneHash(
                 state_->identity.document);
@@ -88,6 +95,8 @@ namespace HIKARI {
             state_->identity.currentSceneAssetGuid.value);
 
         SKYRENDERER::InvalidateSkyTextureCache();
+        RENDER3D::PANORAMA_SKY::
+            InvalidatePanoramaSkyLayerTextureCache();
 
         if (!ok) {
             HIKARI_LOG_WARN("[LightingRuntime] failed to preload lighting dependency.");

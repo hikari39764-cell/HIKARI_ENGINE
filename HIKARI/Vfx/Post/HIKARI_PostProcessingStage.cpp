@@ -293,6 +293,11 @@ namespace HIKARI::POST {
         actionScreenImpulseProvider_.SubmitMask(mask);
     }
 
+    void PostProcessingStage::SetActionScreenDistortionAccent(
+        const PostProcessingStage::ActionScreenDistortionAccent& accent) {
+        actionScreenImpulseProvider_.SubmitAccent(accent);
+    }
+
     void PostProcessingStage::SetTransitionState(
         const TransitionVisualState& state) {
         if (!state.active) {
@@ -716,10 +721,15 @@ namespace HIKARI::POST {
         debug.maskProvided = mask.texture.resource != nullptr;
         const auto& cinematicGrade =
             actionScreenImpulseProvider_.GetCinematicGrade();
+        const auto& accent = actionScreenImpulseProvider_.GetAccent();
+        debug.accentProvided = accent.texture.resource != nullptr;
         debug.cinematicGradeProvided = cinematicGrade.IsActive();
         debug.cinematicGradeWeight = cinematicGrade.weight;
         const bool maskForFrame = mask.IsValid(absoluteFrame);
+        const bool accentForFrame = accent.IsValid(absoluteFrame);
         debug.maskCompatible = maskForFrame &&
+            source.GetResource() != nullptr;
+        debug.accentCompatible = accentForFrame &&
             source.GetResource() != nullptr;
         if (!debug.requested || source.GetResource() == nullptr) {
             debug.bypassed = true;
@@ -753,24 +763,28 @@ namespace HIKARI::POST {
         actionScreenImpulseProvider_.ApplyParams(params);
 
         // This pass is deliberately separate from the one-SRV general post
-        // chain: it binds scene+t1 mask in a frame-local heap and therefore
-        // supports both guard-only waves and mask-only trail distortion.
+        // chain: it binds scene+t1 mask+t2 accent in a frame-local heap and
+        // therefore supports guard-only waves and the same-path trail layers.
         if (actionScreenDistortionComposite_) {
             RenderTarget2D* compositeOutput = nullptr;
             bool maskApplied = false;
+            bool accentApplied = false;
             if (actionScreenDistortionComposite_->Execute(
                     source,
                     debug.maskCompatible ? &mask : nullptr,
+                    debug.accentCompatible ? &accent : nullptr,
                     cinematicGrade,
                     params,
                     absoluteFrame,
                     compositeOutput,
-                    maskApplied)) {
+                    maskApplied,
+                    accentApplied)) {
                 debug.pipelineReady = true;
                 debug.executed = compositeOutput != nullptr &&
                     compositeOutput != &source &&
                     compositeOutput->GetResource() != nullptr;
                 debug.maskApplied = maskApplied;
+                debug.accentApplied = accentApplied;
                 debug.cinematicGradeApplied =
                     debug.executed && cinematicGrade.IsActive();
                 debug.composited = debug.executed;
@@ -780,6 +794,7 @@ namespace HIKARI::POST {
                         stream << "[CombatVfx][ScreenDistortion] composited"
                             << " waves=" << debug.activeWaveCount
                             << " mask=" << debug.maskApplied
+                            << " accent=" << debug.accentApplied
                             << " grade=" << debug.cinematicGradeApplied
                             << " frame=" << absoluteFrame;
                         WriteCombatVfxLog(stream.str());

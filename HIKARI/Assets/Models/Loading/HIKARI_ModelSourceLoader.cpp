@@ -37,6 +37,7 @@ namespace HIKARI::ASSETS::MODELS {
         bool LoadCookedModel(ModelAsset& asset) {
             const std::string runtimePath = asset.GetSourcePath();
             const std::string runtimeName = asset.GetName();
+            const uint64_t runtimeSourceRevision = asset.sourceRevision;
 
             ModelAsset cooked{};
             std::string message{};
@@ -47,6 +48,10 @@ namespace HIKARI::ASSETS::MODELS {
             cooked.SetName(runtimeName.empty() ? cooked.id.value : runtimeName);
             cooked.SetSourcePath(runtimePath);
             asset = std::move(cooked);
+            // Loading a cooked payload replaces the object in place. Keep the
+            // manager-owned runtime generation so resolved animation pointers
+            // from the previous payload remain detectably stale.
+            asset.sourceRevision = runtimeSourceRevision;
             return true;
         }
 

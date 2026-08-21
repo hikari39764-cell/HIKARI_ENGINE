@@ -8,6 +8,7 @@ static const uint HIKARI_WATER_SURFACE_GPU_FLAG_ENABLED = 1u << 0;
 static const uint HIKARI_WATER_SURFACE_GPU_FLAG_CAMERA_CENTERED_OCEAN = 1u << 1;
 static const uint HIKARI_WATER_SURFACE_WAVE_COUNT = 4u;
 static const float HIKARI_WATER_TIME_WRAP_SECONDS = 4096.0f;
+static const float HIKARI_WATER_MAXIMUM_HORIZONTAL_SLOPE = 0.92f;
 static const float HIKARI_WATER_SHADING_ANIME_SUMMER = 0.0f;
 static const float HIKARI_WATER_SHADING_REALISTIC_CLEAR_SUMMER = 1.0f;
 
@@ -304,6 +305,29 @@ float HikariWrapWaterSimulationTime(float simulationTime, float timeScale)
         HIKARI_WATER_TIME_WRAP_SECONDS) * safeTimeScale;
 }
 
+float HikariResolveWaterHorizontalSlopeScale(
+    HikariWaterSurfaceParams p)
+{
+    float totalMaximumSlope = 0.0f;
+    [unroll]
+    for (uint index = 0u; index < HIKARI_WATER_SURFACE_WAVE_COUNT; ++index)
+    {
+        if (index >= p.waveCount)
+        {
+            continue;
+        }
+        const HikariWaterWaveParams wave = p.waves[index];
+        totalMaximumSlope += p.choppiness * wave.steepness *
+            wave.amplitude * wave.waveNumber;
+    }
+    const float safeSlope = max(HikariFiniteOr(
+        totalMaximumSlope,
+        HIKARI_WATER_MAXIMUM_HORIZONTAL_SLOPE), 0.0f);
+    return safeSlope > HIKARI_WATER_MAXIMUM_HORIZONTAL_SLOPE
+        ? HIKARI_WATER_MAXIMUM_HORIZONTAL_SLOPE / safeSlope
+        : 1.0f;
+}
+
 HikariWaterSurfaceEvaluation HikariEvaluateWaterSurface(
     HikariWaterSurfaceParams p,
     float3 sourceLocalPosition,
@@ -315,8 +339,8 @@ HikariWaterSurfaceEvaluation HikariEvaluateWaterSurface(
     float3 tangentZ = float3(0.0f, 0.0f, 1.0f);
     const float animationTime =
         HikariWrapWaterSimulationTime(simulationTime, p.timeScale);
-    const float inverseWaveCount = rcp((float)max(p.waveCount, 1u));
-
+    const float horizontalSlopeScale =
+        HikariResolveWaterHorizontalSlopeScale(p);
     [unroll]
     for (uint index = 0u; index < HIKARI_WATER_SURFACE_WAVE_COUNT; ++index)
     {
@@ -336,8 +360,8 @@ HikariWaterSurfaceEvaluation HikariEvaluateWaterSurface(
         float cosine;
         sincos(phase, sine, cosine);
         const float horizontalAmplitude =
-            p.choppiness * wave.steepness * inverseWaveCount /
-            wave.waveNumber;
+            p.choppiness * wave.steepness * wave.amplitude *
+            horizontalSlopeScale;
 
         result.positionLocal.xz +=
             wave.direction * horizontalAmplitude * cosine;

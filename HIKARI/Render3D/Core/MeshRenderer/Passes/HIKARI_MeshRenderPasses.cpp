@@ -213,6 +213,14 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                 ? frame.materialProgramResourceBuffer->
                     GetGPUVirtualAddress()
                 : 0u;
+        if (frame.cameraMapped != nullptr) {
+            bindings.cameraPosition = {
+                frame.cameraMapped->cameraPos.x,
+                frame.cameraMapped->cameraPos.y,
+                frame.cameraMapped->cameraPos.z,
+            };
+            bindings.cameraPositionValid = true;
+        }
         return gMeshRendererState.particlePass.
             ExecuteForwardTransparent(graphics, bindings);
     }

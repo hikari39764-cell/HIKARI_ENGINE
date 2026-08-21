@@ -1,0 +1,15 @@
+HIKARI Original Comic Combat Masks
+
+These seven masks are original project assets authored for HIKARI. They were
+generated from deterministic geometric definitions without third-party image
+or texture input. They may be used and modified with the HIKARI project under
+the project's own licensing terms.
+
+Asset set:
+- Comic Burst
+- Comic Slash Wedge
+- Comic Quad Shard
+- Comic Broken Ring
+- Comic Speed Lines
+- Comic Ground Crack
+- Comic Smoke Puff

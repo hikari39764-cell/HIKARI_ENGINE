@@ -26,6 +26,58 @@ namespace HIKARI::WATER {
             return { transformed.x, transformed.y, transformed.z };
         }
 
+        bool ResolveWorldPlanePoint(
+            const WaterSurfaceSnapshotEntry& surface,
+            const MATH::Vec2& worldXZ,
+            MATH::Vec3& outPoint) noexcept {
+
+            const MATH::Vec3 origin = TransformPoint(
+                surface.world,
+                { 0.0f, 0.0f, 0.0f });
+            const MATH::Vec3 normal = MATH::Normalize(TransformVector(
+                surface.normalMatrix,
+                { 0.0f, 1.0f, 0.0f }));
+            if (MATH::Length(normal) <= 1.0e-6f ||
+                std::abs(normal.y) <= 1.0e-5f) {
+                return false;
+            }
+            outPoint = {
+                worldXZ.x,
+                origin.y -
+                    (normal.x * (worldXZ.x - origin.x) +
+                        normal.z * (worldXZ.y - origin.z)) / normal.y,
+                worldXZ.y
+            };
+            return std::isfinite(outPoint.x) &&
+                std::isfinite(outPoint.y) &&
+                std::isfinite(outPoint.z);
+        }
+
+        MATH::Vec2 WorldDeltaToLocalXZ(
+            const WaterSurfaceSnapshotEntry& surface,
+            const MATH::Vec2& worldDelta) noexcept {
+
+            const MATH::Vec3 basisX = TransformVector(
+                surface.world,
+                { 1.0f, 0.0f, 0.0f });
+            const MATH::Vec3 basisZ = TransformVector(
+                surface.world,
+                { 0.0f, 0.0f, 1.0f });
+            const float determinant =
+                basisX.x * basisZ.z - basisX.z * basisZ.x;
+            if (!std::isfinite(determinant) ||
+                std::abs(determinant) <= 1.0e-6f) {
+                return worldDelta;
+            }
+            const float inverseDeterminant = 1.0f / determinant;
+            return {
+                (worldDelta.x * basisZ.z -
+                    worldDelta.y * basisZ.x) * inverseDeterminant,
+                (basisX.x * worldDelta.y -
+                    basisX.z * worldDelta.x) * inverseDeterminant
+            };
+        }
+
         bool MatrixEqual(
             const MATH::Mat4& left,
             const MATH::Mat4& right) noexcept {
@@ -73,6 +125,9 @@ namespace HIKARI::WATER {
             uint64_t revision,
             WaterSurfaceSample& outSample) noexcept {
 
+            const bool cameraCenteredOcean =
+                surface.settings.geometryMode ==
+                    WaterSurfaceGeometryMode::CameraCenteredOcean;
             const MATH::Vec3 queryLocal = TransformPoint(
                 surface.inverseWorld,
                 query.positionWS);
@@ -80,19 +135,56 @@ namespace HIKARI::WATER {
             const WaterSurfaceEvaluation evaluation =
                 EvaluateWaterSurfaceAtHorizontalPosition(
                     surface.settings,
-                    { queryLocal.x, queryLocal.z },
+                    cameraCenteredOcean
+                        ? MATH::Vec2{
+                            query.positionWS.x,
+                            query.positionWS.z }
+                        : MATH::Vec2{
+                            queryLocal.x,
+                            queryLocal.z },
                     query.timeSeconds,
                     &sourceLocalXZ);
-            if (std::abs(sourceLocalXZ.x) > surface.halfExtents.x ||
-                std::abs(sourceLocalXZ.y) > surface.halfExtents.y) {
+            if (!cameraCenteredOcean &&
+                (std::abs(sourceLocalXZ.x) > surface.halfExtents.x ||
+                    std::abs(sourceLocalXZ.y) > surface.halfExtents.y)) {
                 return false;
             }
-            const MATH::Vec3 positionWS = TransformPoint(
-                surface.world,
-                evaluation.positionLocal);
-            MATH::Vec3 normalWS = MATH::Normalize(TransformVector(
-                surface.normalMatrix,
-                evaluation.normalLocal));
+            MATH::Vec3 positionWS{};
+            MATH::Vec3 normalWS{};
+            if (cameraCenteredOcean) {
+                MATH::Vec3 baseWorld{};
+                if (!ResolveWorldPlanePoint(
+                        surface,
+                        sourceLocalXZ,
+                        baseWorld)) {
+                    return false;
+                }
+                const MATH::Vec3 baseLocal = TransformPoint(
+                    surface.inverseWorld,
+                    baseWorld);
+                const MATH::Vec2 localHorizontalDelta =
+                    WorldDeltaToLocalXZ(
+                        surface,
+                        {
+                            evaluation.positionLocal.x - sourceLocalXZ.x,
+                            evaluation.positionLocal.z - sourceLocalXZ.y
+                        });
+                positionWS = TransformPoint(
+                    surface.world,
+                    {
+                        baseLocal.x + localHorizontalDelta.x,
+                        baseLocal.y + evaluation.positionLocal.y,
+                        baseLocal.z + localHorizontalDelta.y
+                    });
+                normalWS = MATH::Normalize(evaluation.normalLocal);
+            } else {
+                positionWS = TransformPoint(
+                    surface.world,
+                    evaluation.positionLocal);
+                normalWS = MATH::Normalize(TransformVector(
+                    surface.normalMatrix,
+                    evaluation.normalLocal));
+            }
             if (MATH::Length(normalWS) <= 1.0e-6f) {
                 normalWS = { 0.0f, 1.0f, 0.0f };
             }
@@ -112,9 +204,26 @@ namespace HIKARI::WATER {
             if (HasSampleField(
                     query.requestedFields,
                     WaterSurfaceSampleField::Velocity)) {
-                outSample.velocityWS = TransformVector(
-                    surface.world,
-                    evaluation.velocityLocal);
+                if (cameraCenteredOcean) {
+                    const MATH::Vec2 localHorizontalVelocity =
+                        WorldDeltaToLocalXZ(
+                            surface,
+                            {
+                                evaluation.velocityLocal.x,
+                                evaluation.velocityLocal.z
+                            });
+                    outSample.velocityWS = TransformVector(
+                        surface.world,
+                        {
+                            localHorizontalVelocity.x,
+                            evaluation.velocityLocal.y,
+                            localHorizontalVelocity.y
+                        });
+                } else {
+                    outSample.velocityWS = TransformVector(
+                        surface.world,
+                        evaluation.velocityLocal);
+                }
                 outSample.validFields = outSample.validFields |
                     WaterSurfaceSampleField::Velocity;
             }

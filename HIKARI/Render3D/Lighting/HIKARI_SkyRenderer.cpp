@@ -89,6 +89,40 @@ namespace HIKARI::SKYRENDERER {
             };
         }
 
+        void LogPanoramaTextureQuality(
+            const std::string& path,
+            RENDER3D::TextureResourceHandle resource) {
+            const RENDER3D::RenderResourceRecord* record =
+                RENDER3D::GetTextureResourceRecord(resource);
+            if (record == nullptr) {
+                return;
+            }
+
+            const uint64_t width = record->desc.width;
+            const uint32_t height = record->desc.height;
+            const uint32_t mipCount =
+                RENDER3D::GetTextureResourceMipCount(resource);
+            std::ostringstream summary{};
+            summary << "[SkyRenderer][PanoramaTexture] path=" << path
+                    << " size=" << width << "x" << height
+                    << " mips=" << mipCount;
+            HIKARI_LOG_INFO(summary.str());
+
+            const float aspect = height > 0u
+                ? static_cast<float>(width) / static_cast<float>(height)
+                : 0.0f;
+            if (height == 0u || std::abs(aspect - 2.0f) > 0.02f) {
+                HIKARI_LOG_WARN(
+                    "[SkyRenderer][PanoramaTexture] expected a 2:1 "
+                    "equirectangular texture: " + path);
+            }
+            if (mipCount <= 1u) {
+                HIKARI_LOG_WARN(
+                    "[SkyRenderer][PanoramaTexture] texture has no mip chain; "
+                    "reimport it as mipmapped HTEX: " + path);
+            }
+        }
+
         uint64_t HashAtmosphereConstants(
             const AtmosphereCB& constants) noexcept {
             const auto* bytes = reinterpret_cast<const uint8_t*>(&constants);
@@ -549,7 +583,9 @@ namespace HIKARI::SKYRENDERER {
 
             D3D12_STATIC_SAMPLER_DESC linearClampSampler{};
             linearClampSampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-            linearClampSampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+            // Equirectangular panoramas and the atmosphere azimuth are
+            // periodic horizontally; V remains clamped at the poles.
+            linearClampSampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
             linearClampSampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
             linearClampSampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
             linearClampSampler.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
@@ -644,10 +680,22 @@ namespace HIKARI::SKYRENDERER {
                 g.textureResource = {};
                 g.textureHandle = -1;
                 if (!skyAsset->texturePath.empty()) {
-                    g.textureResource = RENDER3D::LoadTextureResource(
+                    g.textureResource =
+                        RENDER3D::LoadTextureResourceWithColorSpace(
                         "sky_renderer/scene_sky",
-                        skyAsset->texturePath);
-                    g.textureHandle = RENDER3D::GetTextureResourceBackendHandle(g.textureResource);
+                        skyAsset->texturePath,
+                        skyAsset->textureIsLinear
+                            ? RENDER3D::TextureResourceColorSpace::Linear
+                            : RENDER3D::TextureResourceColorSpace::Srgb);
+                    g.textureHandle =
+                        RENDER3D::GetTextureResourceBackendHandle(
+                            g.textureResource);
+                    if (RENDER3D::IsTextureResourceValid(
+                            g.textureResource)) {
+                        LogPanoramaTextureQuality(
+                            skyAsset->texturePath,
+                            g.textureResource);
+                    }
                 }
             }
             return g.textureResource;

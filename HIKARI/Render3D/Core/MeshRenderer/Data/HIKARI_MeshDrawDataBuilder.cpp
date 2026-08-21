@@ -414,7 +414,10 @@ namespace HIKARI::MESHRENDERER {
             skyData.tint.x,
             skyData.tint.y,
             skyData.tint.z,
-            1.0f
+            skyData.mode == SkyMode::Texture2D &&
+                    skyData.textureHandle >= 0
+                ? static_cast<float>(skyData.textureHandle + 1)
+                : 0.0f
         };
 
         const bool atmosphereEnabled =
@@ -426,6 +429,13 @@ namespace HIKARI::MESHRENDERER {
             // the BRDF LUT, but force diffuse/specular sky sampling through
             // the shared atmosphere evaluator until dynamic atmosphere IBL
             // baking is available.
+            out.iblParams.x = 0.0f;
+            out.iblParams.y = 0.0f;
+        }
+        if (skyData.mode == SkyMode::Texture2D) {
+            // A custom panorama without its own convolved artifacts must not
+            // reflect a stale/default cubemap. The shared shader sky provider
+            // supplies the authored panorama and analytic BRDF fallback.
             out.iblParams.x = 0.0f;
             out.iblParams.y = 0.0f;
         }

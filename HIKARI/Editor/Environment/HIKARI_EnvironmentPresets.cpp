@@ -190,6 +190,18 @@ void ApplyEnvironmentPreset(SceneEnvironment &environment, int presetIndex) {
     environment.fog.ambientScatteringStrength = 0.45f;
     environment.fog.sunShaftStrength = 1.75f;
     break;
+  case 9: // Layered Panorama Sky
+    environment.sky.enabled = true;
+    environment.sky.mode = SkyMode::Texture2D;
+    environment.sky.panoramaCloudEnabled = true;
+    environment.sky.panoramaCloudScrollSpeed = {0.0015f, 0.0f};
+    environment.sky.panoramaCloudOpacity = 1.0f;
+    environment.sky.showSunDisk = false;
+    // The panorama foreground is a separate lightweight sky layer.  Preserve
+    // the volumetric implementation, but keep it disabled for this preset so
+    // both cloud representations are never stacked accidentally.
+    environment.clouds.enabled = false;
+    break;
   case 0:
   default:
     environment = SceneEnvironment{};

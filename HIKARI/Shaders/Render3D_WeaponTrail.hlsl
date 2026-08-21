@@ -88,8 +88,17 @@ float2 ProjectWorldDirectionToUv(
     return (directionNdc - centerNdc) * float2(0.5f, -0.5f);
 }
 
-float4 PSMain(WeaponTrailPixel input) : SV_TARGET
+struct WeaponTrailOutput
 {
+    float4 distortion : SV_TARGET0;
+    float4 accent : SV_TARGET1;
+};
+
+WeaponTrailOutput PSMain(WeaponTrailPixel input)
+{
+    WeaponTrailOutput output;
+    output.distortion = 0.0f.xxxx;
+    output.accent = 0.0f.xxxx;
     const float along = saturate(input.uv.x);
     const float across = saturate(input.uv.y);
     const float signedAcross = across * 2.0f - 1.0f;
@@ -106,7 +115,7 @@ float4 PSMain(WeaponTrailPixel input) : SV_TARGET
         historyFade * historyTail;
     if (alpha <= 1.0e-4f)
     {
-        return float4(0.0f, 0.0f, 0.0f, 0.0f);
+        return output;
     }
 
     // The service supplies a slash-path tangent. The vector mask must encode
@@ -165,5 +174,43 @@ float4 PSMain(WeaponTrailPixel input) : SV_TARGET
     //   RG = signed UV refraction vector, always normal to the slash path;
     //   B  = coverage, including the independently authored edge accent;
     //   A  = blur hint only, so blur=0 cannot be resurrected by emissive.
-    return float4(vectorOffset, coverage, blurHint);
+    output.distortion = float4(vectorOffset, coverage, blurHint);
+
+    // The path is intentionally emitted once into two render targets.  The
+    // mask remains the air-tear source; this second output is a scene-linear
+    // HDR accent consumed after temporal resolve and before bloom.  Keeping
+    // the accent derived from the same signed sheet prevents the common
+    // failure mode where a decorative ribbon drifts away from the actual
+    // weapon path.
+    const float coreWidth = lerp(0.12f, 0.23f, saturate(input.flowStrength));
+    const float core = exp(-pow(
+        abs(signedAcross) / max(coreWidth, 0.035f),
+        2.0f) * 2.8f);
+    const float sharpEdge = smoothstep(0.30f, 0.92f, abs(signedAcross)) *
+        (1.0f - smoothstep(0.94f, 1.0f, abs(signedAcross)));
+    const float tailDissolve = smoothstep(
+        0.02f,
+        0.20f,
+        1.0f - along) * (1.0f - smoothstep(0.72f, 1.0f, along));
+    const float accentBreakup = saturate(
+        tearNoise * 0.70f + flowSignal * 0.20f + 0.10f);
+    const float tension = saturate(
+        core * 0.78f + sharpEdge * 0.42f +
+        tailDissolve * accentBreakup * 0.28f);
+    const float accentCoverage = saturate(
+        alpha * tension * (0.72f + input.emissiveIntensity * 0.18f));
+    const float accentEnergy = max(input.emissiveIntensity, 0.0f) *
+        (1.45f + saturate(input.flowStrength) * 0.90f) *
+        accentCoverage;
+    const float3 authoredColor = max(input.color.rgb, 0.0f.xxx);
+    // Keep authored chroma in scene-linear space and use a sharp white-hot
+    // core so stylized motion reads through bloom without becoming a flat
+    // opaque decal.
+    const float3 coreColor = lerp(
+        authoredColor,
+        max(authoredColor, 0.72f.xxx),
+        saturate(core * 0.86f));
+    const float3 accentColor = coreColor * accentEnergy;
+    output.accent = float4(accentColor, accentCoverage);
+    return output;
 }

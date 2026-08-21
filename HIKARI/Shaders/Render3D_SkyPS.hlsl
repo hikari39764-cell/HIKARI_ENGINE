@@ -26,6 +26,7 @@ Texture2D gAtmosphereSkyView : register(t2);
 SamplerState gLinearClamp : register(s0);
 
 #include "Include/Atmosphere/HIKARI_AtmosphereScattering.hlsli"
+#include "Include/Sky/HIKARI_EquirectangularSampling.hlsli"
 
 struct PSInput
 {
@@ -62,15 +63,6 @@ float3 ReconstructWorldRay(float2 ndc)
         return float3(0.0f, 0.0f, 1.0f);
     }
     return direction * rsqrt(lengthSquared);
-}
-
-float2 DirectionToLatLongUv(float3 dir)
-{
-    const float invPi = 0.31830988618f;
-    const float invTwoPi = 0.15915494309f;
-    float u = atan2(dir.z, dir.x) * invTwoPi + 0.5f;
-    float v = asin(clamp(dir.y, -1.0f, 1.0f)) * -invPi + 0.5f;
-    return float2(u, v);
 }
 
 float3 SampleGradient(float3 dir)
@@ -173,9 +165,20 @@ float4 main(PSInput input) : SV_TARGET
     }
     else if (mode == 3u)
     {
-        sky = gSkyTex2D.Sample(
+        const float2 panoramaUv =
+            HikariDirectionToEquirectangularUv(skySampleDir);
+        float2 panoramaDerivativeX;
+        float2 panoramaDerivativeY;
+        HikariResolveEquirectangularGradients(
+            skySampleDir,
+            panoramaUv,
+            panoramaDerivativeX,
+            panoramaDerivativeY);
+        sky = gSkyTex2D.SampleGrad(
             gLinearClamp,
-            DirectionToLatLongUv(skySampleDir)).rgb;
+            panoramaUv,
+            panoramaDerivativeX,
+            panoramaDerivativeY).rgb;
     }
 
     if (mode != 4u)

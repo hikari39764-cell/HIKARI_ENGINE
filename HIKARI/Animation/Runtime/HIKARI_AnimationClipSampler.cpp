@@ -227,23 +227,41 @@ namespace HIKARI::ANIMATION {
         bool loop,
         AnimationLocalPose& outPose,
         float* outNormalizedTime) {
-        BuildBindPose(model, outPose);
         const AnimationClip* clip = ResolveAnimationClip(model, reference);
         if (clip == nullptr) {
+            BuildBindPose(model, outPose);
             if (outNormalizedTime != nullptr) *outNormalizedTime = 0.0f;
             return false;
         }
 
+        return SampleResolvedAnimationClip(
+            model,
+            *clip,
+            timeSeconds,
+            loop,
+            outPose,
+            outNormalizedTime);
+    }
+
+    bool SampleResolvedAnimationClip(
+        const ModelAsset& model,
+        const AnimationClip& clip,
+        float timeSeconds,
+        bool loop,
+        AnimationLocalPose& outPose,
+        float* outNormalizedTime) {
+        BuildBindPose(model, outPose);
+
         const float sampleTime = ResolveSampleTime(
             timeSeconds,
             loop,
-            clip->durationSec);
+            clip.durationSec);
         if (outNormalizedTime != nullptr) {
-            *outNormalizedTime = clip->durationSec > 1.0e-5f
-                ? ClampUnit(sampleTime / clip->durationSec)
+            *outNormalizedTime = clip.durationSec > 1.0e-5f
+                ? ClampUnit(sampleTime / clip.durationSec)
                 : 0.0f;
         }
-        for (const NodeAnimationChannel& channel : clip->channels) {
+        for (const NodeAnimationChannel& channel : clip.channels) {
             if (channel.targetNode < 0 ||
                 channel.targetNode >=
                     static_cast<int>(outPose.nodes.size())) {
@@ -320,124 +338,365 @@ namespace HIKARI::ANIMATION {
             return false;
         }
 
-        int rootNode = -1;
-        for (size_t index = 0u; index < model.nodes.size(); ++index) {
-            if (model.nodes[index].name == maskRootNodeName) {
-                rootNode = static_cast<int>(index);
-                break;
-            }
+        AnimationPoseSubtreeCache cache{};
+        if (!PrepareAnimationPoseSubtreeCache(
+                model,
+                maskRootNodeName,
+                {},
+                cache)) {
+            return false;
         }
-        if (rootNode < 0) {
+        return BlendAnimationPoseSubtreeCached(
+            model,
+            from,
+            to,
+            cache,
+            weight,
+            outPose,
+            rootAlignment);
+    }
+
+    bool PrepareAnimationPoseSubtreeCache(
+        const ModelAsset& model,
+        std::string_view maskRootNodeName,
+        const AnimationClipReference& clipReference,
+        AnimationPoseSubtreeCache& outCache) {
+        outCache.Reset();
+        if (model.nodes.empty() || maskRootNodeName.empty()) {
             return false;
         }
 
-        const float safeWeight = ClampUnit(weight);
-        AnimationLocalPose candidate = from;
-        if (safeWeight <= 0.0f) {
-            outPose = std::move(candidate);
-            return true;
-        }
-
-        MATH::Quat alignedRootRotation =
-            to.nodes[static_cast<size_t>(rootNode)].rotation;
-        if (rootAlignment ==
-            AnimationSubtreeRootAlignment::PreserveModelRotation) {
-            std::vector<MATH::Mat4> baseGlobals{};
-            std::vector<MATH::Mat4> overlayGlobals{};
-            const int parentNode = model.nodes[
-                static_cast<size_t>(rootNode)].parent;
-            if (!POSE_EVALUATION::BuildNodeGlobalMatrices(
-                    model, &from, baseGlobals) ||
-                !POSE_EVALUATION::BuildNodeGlobalMatrices(
-                    model, &to, overlayGlobals) ||
-                static_cast<size_t>(rootNode) >= overlayGlobals.size()) {
-                return false;
-            }
-
-            const MATH::Mat4 parentGlobal = parentNode >= 0
-                ? baseGlobals[static_cast<size_t>(parentNode)]
-                : MATH::Mat4::Identity();
-            const MATH::Mat4 alignedLocal =
-                MATH::Inverse(parentGlobal) *
-                overlayGlobals[static_cast<size_t>(rootNode)];
-            MATH::Vec3 ignoredTranslation{};
-            MATH::Vec3 ignoredScale{};
-            if (!MATH::DecomposeTRS(
-                    alignedLocal,
-                    ignoredTranslation,
-                    alignedRootRotation,
-                    ignoredScale) ||
-                !MATH::IsFinite(alignedRootRotation)) {
+        const AnimationClip* clip = nullptr;
+        if (!clipReference.IsEmpty()) {
+            clip = ResolveAnimationClip(model, clipReference);
+            if (clip == nullptr) {
                 return false;
             }
         }
 
+        int rootNode = -1;
+        if (!POSE_EVALUATION::ResolveNodeByExactName(
+                model,
+                maskRootNodeName,
+                rootNode)) {
+            return false;
+        }
+
+        std::vector<size_t> subtreeNodes{};
+        subtreeNodes.reserve(model.nodes.size());
         const size_t nodeCount = model.nodes.size();
-        const int rootMotionNode =
-            POSE_EVALUATION::ResolveRootNode(model);
         for (size_t index = 0u; index < nodeCount; ++index) {
-            if (static_cast<int>(index) == rootMotionNode) {
-                // Root motion is produced from the base/cross-fade pose. A
-                // masked overlay must never reintroduce authored root
-                // translation or rotation into the published pose.
-                continue;
-            }
             int cursor = static_cast<int>(index);
             bool inSubtree = false;
-            // Follow parent links instead of trusting children arrays.  The
-            // import contract permits both representations, while the
-            // bounded walk also protects the evaluator from malformed
-            // parent cycles.
             for (size_t step = 0u; step <= nodeCount; ++step) {
                 if (cursor == rootNode) {
                     inSubtree = true;
                     break;
                 }
-                if (cursor < 0 ||
-                    cursor >= static_cast<int>(nodeCount)) {
+                if (!POSE_EVALUATION::IsValidNodeIndex(model, cursor)) {
                     break;
                 }
                 cursor = model.nodes[static_cast<size_t>(cursor)].parent;
             }
-            if (!inSubtree) {
-                continue;
+            if (inSubtree) {
+                subtreeNodes.push_back(index);
             }
+        }
 
-            const Transform3D& fromNode = from.nodes[index];
-            const Transform3D& toNode = to.nodes[index];
-            const MATH::Quat targetRotation =
-                static_cast<int>(index) == rootNode
-                    ? alignedRootRotation
-                    : toNode.rotation;
-            if (!MATH::IsFinite(fromNode.position) ||
-                !MATH::IsFinite(fromNode.rotation) ||
-                !MATH::IsFinite(fromNode.scale) ||
-                !MATH::IsFinite(toNode.position) ||
-                !MATH::IsFinite(targetRotation) ||
-                !MATH::IsFinite(toNode.scale)) {
+        // Store the parent chain in evaluation order (highest ancestor first)
+        // so root-alignment can compose only the chain it actually needs.
+        std::vector<int> rootPath{};
+        rootPath.reserve(nodeCount);
+        int cursor = rootNode;
+        bool reachedHierarchyRoot = false;
+        for (size_t step = 0u; step <= nodeCount; ++step) {
+            if (!POSE_EVALUATION::IsValidNodeIndex(model, cursor)) {
                 return false;
             }
-
-            Transform3D& result = candidate.nodes[index];
-            result.position = Lerp(
-                fromNode.position,
-                toNode.position,
-                safeWeight);
-            result.rotation = Nlerp(
-                fromNode.rotation,
-                targetRotation,
-                safeWeight);
-            result.scale = Lerp(
-                fromNode.scale,
-                toNode.scale,
-                safeWeight);
-            // Animation clip sampling is TRS-authoritative.  Do not carry
-            // an explicit matrix or a private Transform3D parent pointer
-            // from either source pose into the blended local pose.
-            result.useExplicitMatrix = false;
-            result.explicitMatrix = {};
+            rootPath.push_back(cursor);
+            const int parent = model.nodes[static_cast<size_t>(cursor)].parent;
+            if (parent < 0) {
+                reachedHierarchyRoot = true;
+                break;
+            }
+            cursor = parent;
         }
-        outPose = std::move(candidate);
+        if (!reachedHierarchyRoot || rootPath.empty() ||
+            rootPath.size() > nodeCount) {
+            return false;
+        }
+        std::reverse(rootPath.begin(), rootPath.end());
+
+        outCache.model = &model;
+        outCache.modelSourceRevision = model.sourceRevision;
+        outCache.clip = clip;
+        outCache.maskRootNode = rootNode;
+        outCache.rootMotionNode = POSE_EVALUATION::ResolveRootNode(model);
+        outCache.subtreeNodes = std::move(subtreeNodes);
+        outCache.rootPath = std::move(rootPath);
+        outCache.overlayPose.nodes.reserve(model.nodes.size());
+        outCache.valid = true;
+        return true;
+    }
+
+    namespace {
+
+        bool IsValidRootAlignment(
+            AnimationSubtreeRootAlignment rootAlignment) noexcept {
+            return rootAlignment ==
+                    AnimationSubtreeRootAlignment::ParentLocal ||
+                rootAlignment ==
+                    AnimationSubtreeRootAlignment::PreserveModelRotation;
+        }
+
+        bool ValidateCachedSubtree(
+            const ModelAsset& model,
+            const AnimationLocalPose& from,
+            const AnimationLocalPose& to,
+            const AnimationPoseSubtreeCache& cache,
+            bool validateValues) noexcept {
+            if (!cache.valid || cache.model != &model ||
+                cache.modelSourceRevision != model.sourceRevision ||
+                model.nodes.empty() ||
+                !from.IsValidFor(model.nodes.size()) ||
+                !to.IsValidFor(model.nodes.size()) ||
+                !POSE_EVALUATION::IsValidNodeIndex(
+                    model, cache.maskRootNode) ||
+                cache.rootPath.empty()) {
+                return false;
+            }
+            if (!validateValues) {
+                return true;
+            }
+            for (const size_t index : cache.subtreeNodes) {
+                if (index >= model.nodes.size() ||
+                    static_cast<int>(index) == cache.rootMotionNode) {
+                    continue;
+                }
+                const Transform3D& fromNode = from.nodes[index];
+                const Transform3D& toNode = to.nodes[index];
+                if (!MATH::IsFinite(fromNode.position) ||
+                    !MATH::IsFinite(fromNode.rotation) ||
+                    !MATH::IsFinite(fromNode.scale) ||
+                    !MATH::IsFinite(toNode.position) ||
+                    !MATH::IsFinite(toNode.rotation) ||
+                    !MATH::IsFinite(toNode.scale)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        bool ResolveAlignedRootRotation(
+            const ModelAsset& model,
+            const AnimationLocalPose& from,
+            const AnimationLocalPose& to,
+            const AnimationPoseSubtreeCache& cache,
+            AnimationSubtreeRootAlignment rootAlignment,
+            MATH::Quat& outRotation) noexcept {
+            outRotation = to.nodes[static_cast<size_t>(
+                cache.maskRootNode)].rotation;
+            if (rootAlignment ==
+                AnimationSubtreeRootAlignment::ParentLocal) {
+                return MATH::IsFinite(outRotation);
+            }
+
+            MATH::Mat4 baseParentGlobal = MATH::Mat4::Identity();
+            MATH::Mat4 overlayRootGlobal = MATH::Mat4::Identity();
+            for (size_t pathIndex = 0u;
+                pathIndex < cache.rootPath.size();
+                ++pathIndex) {
+                const int nodeIndex = cache.rootPath[pathIndex];
+                if (!POSE_EVALUATION::IsValidNodeIndex(
+                        model,
+                        nodeIndex)) {
+                    return false;
+                }
+                const size_t index = static_cast<size_t>(nodeIndex);
+                overlayRootGlobal = overlayRootGlobal *
+                    POSE_EVALUATION::GetNodeLocalMatrix(
+                        model,
+                        index,
+                        &to);
+                // The final element is the masked root.  Its parent global
+                // must be computed from the base pose only.
+                if (pathIndex + 1u < cache.rootPath.size()) {
+                    baseParentGlobal = baseParentGlobal *
+                        POSE_EVALUATION::GetNodeLocalMatrix(
+                            model,
+                            index,
+                            &from);
+                }
+            }
+
+            const MATH::Mat4 alignedLocal =
+                MATH::Inverse(baseParentGlobal) * overlayRootGlobal;
+            MATH::Vec3 ignoredTranslation{};
+            MATH::Vec3 ignoredScale{};
+            if (!MATH::DecomposeTRS(
+                    alignedLocal,
+                    ignoredTranslation,
+                    outRotation,
+                    ignoredScale) ||
+                !MATH::IsFinite(outRotation)) {
+                return false;
+            }
+            return true;
+        }
+
+        void BlendCachedNodes(
+            const AnimationLocalPose& from,
+            const AnimationLocalPose& to,
+            const AnimationPoseSubtreeCache& cache,
+            float safeWeight,
+            const MATH::Quat& alignedRootRotation,
+            AnimationLocalPose& outPose) {
+            outPose.nodes = from.nodes;
+            for (const size_t index : cache.subtreeNodes) {
+                if (index >= from.nodes.size() ||
+                    static_cast<int>(index) == cache.rootMotionNode) {
+                    continue;
+                }
+                const Transform3D& fromNode = from.nodes[index];
+                const Transform3D& toNode = to.nodes[index];
+                const MATH::Quat& targetRotation =
+                    static_cast<int>(index) == cache.maskRootNode
+                    ? alignedRootRotation
+                    : toNode.rotation;
+                Transform3D& result = outPose.nodes[index];
+                result.position = Lerp(
+                    fromNode.position,
+                    toNode.position,
+                    safeWeight);
+                result.rotation = Nlerp(
+                    fromNode.rotation,
+                    targetRotation,
+                    safeWeight);
+                result.scale = Lerp(
+                    fromNode.scale,
+                    toNode.scale,
+                    safeWeight);
+                result.useExplicitMatrix = false;
+                result.explicitMatrix = {};
+            }
+        }
+
+        void ApplyCachedNodesInPlace(
+            AnimationLocalPose& inOutPose,
+            const AnimationLocalPose& to,
+            const AnimationPoseSubtreeCache& cache,
+            float safeWeight,
+            const MATH::Quat& alignedRootRotation) {
+            for (const size_t index : cache.subtreeNodes) {
+                if (index >= inOutPose.nodes.size() ||
+                    static_cast<int>(index) == cache.rootMotionNode) {
+                    continue;
+                }
+                const Transform3D& fromNode = inOutPose.nodes[index];
+                const Transform3D& toNode = to.nodes[index];
+                const MATH::Quat targetRotation =
+                    static_cast<int>(index) == cache.maskRootNode
+                    ? alignedRootRotation
+                    : toNode.rotation;
+                Transform3D& result = inOutPose.nodes[index];
+                result.position = Lerp(
+                    fromNode.position,
+                    toNode.position,
+                    safeWeight);
+                result.rotation = Nlerp(
+                    fromNode.rotation,
+                    targetRotation,
+                    safeWeight);
+                result.scale = Lerp(
+                    fromNode.scale,
+                    toNode.scale,
+                    safeWeight);
+                result.useExplicitMatrix = false;
+                result.explicitMatrix = {};
+            }
+        }
+
+    } // namespace
+
+    bool BlendAnimationPoseSubtreeCached(
+        const ModelAsset& model,
+        const AnimationLocalPose& from,
+        const AnimationLocalPose& to,
+        const AnimationPoseSubtreeCache& cache,
+        float weight,
+        AnimationLocalPose& outPose,
+        AnimationSubtreeRootAlignment rootAlignment) {
+        if (!std::isfinite(weight) ||
+            !IsValidRootAlignment(rootAlignment) ||
+            !ValidateCachedSubtree(model, from, to, cache, false)) {
+            return false;
+        }
+
+        const float safeWeight = ClampUnit(weight);
+        if (safeWeight <= 0.0f) {
+            outPose.nodes = from.nodes;
+            return true;
+        }
+        if (!ValidateCachedSubtree(model, from, to, cache, true)) {
+            return false;
+        }
+
+        MATH::Quat alignedRootRotation{};
+        if (!ResolveAlignedRootRotation(
+                model,
+                from,
+                to,
+                cache,
+                rootAlignment,
+                alignedRootRotation)) {
+            return false;
+        }
+        BlendCachedNodes(
+            from,
+            to,
+            cache,
+            safeWeight,
+            alignedRootRotation,
+            outPose);
+        return true;
+    }
+
+    bool ApplyAnimationPoseSubtreeInPlace(
+        const ModelAsset& model,
+        AnimationLocalPose& inOutPose,
+        const AnimationLocalPose& to,
+        const AnimationPoseSubtreeCache& cache,
+        float weight,
+        AnimationSubtreeRootAlignment rootAlignment) {
+        if (!std::isfinite(weight) ||
+            !IsValidRootAlignment(rootAlignment) ||
+            !ValidateCachedSubtree(model, inOutPose, to, cache, false)) {
+            return false;
+        }
+
+        const float safeWeight = ClampUnit(weight);
+        if (safeWeight <= 0.0f) {
+            return true;
+        }
+        if (!ValidateCachedSubtree(model, inOutPose, to, cache, true)) {
+            return false;
+        }
+        MATH::Quat alignedRootRotation{};
+        if (!ResolveAlignedRootRotation(
+                model,
+                inOutPose,
+                to,
+                cache,
+                rootAlignment,
+                alignedRootRotation)) {
+            return false;
+        }
+        ApplyCachedNodesInPlace(
+            inOutPose,
+            to,
+            cache,
+            safeWeight,
+            alignedRootRotation);
         return true;
     }
 

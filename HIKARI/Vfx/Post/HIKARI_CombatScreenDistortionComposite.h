@@ -29,11 +29,13 @@ namespace HIKARI::POST {
         bool Execute(
             RenderTarget2D& source,
             const ActionScreenImpulseProvider::Mask* mask,
+            const ActionScreenImpulseProvider::Mask* accent,
             const ActionScreenImpulseProvider::CinematicGrade& cinematicGrade,
             const CommonParams& params,
             uint64_t frameIndex,
             RenderTarget2D*& output,
-            bool& maskApplied);
+            bool& maskApplied,
+            bool& accentApplied);
 
     private:
         struct Impl;

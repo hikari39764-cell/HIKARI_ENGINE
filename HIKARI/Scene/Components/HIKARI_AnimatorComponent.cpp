@@ -451,6 +451,75 @@ namespace HIKARI {
         float targetWeight,
         float blendSeconds,
         ANIMATION::AnimationSubtreeRootAlignment rootAlignment) {
+        SetMaskedPoseLayerView(
+            clipName,
+            maskRootNodeName,
+            normalizedTime,
+            targetWeight,
+            blendSeconds,
+            rootAlignment);
+    }
+
+    bool AnimatorComponent::SetMaskedPoseLayerResolved(
+        std::string_view clipName,
+        std::string_view maskRootNodeName,
+        float normalizedTime,
+        float targetWeight,
+        float blendSeconds,
+        const ModelAsset& model,
+        ANIMATION::AnimationSubtreeRootAlignment rootAlignment) {
+        if (clipName.empty() || maskRootNodeName.empty() ||
+            !std::isfinite(normalizedTime) ||
+            !std::isfinite(targetWeight) ||
+            !std::isfinite(blendSeconds) ||
+            (rootAlignment !=
+                    ANIMATION::AnimationSubtreeRootAlignment::ParentLocal &&
+                rootAlignment != ANIMATION::AnimationSubtreeRootAlignment::
+                    PreserveModelRotation)) {
+            return false;
+        }
+
+        const bool cacheMatches = maskedPoseLayerCache_.valid &&
+            maskedPoseLayerCache_.model == &model &&
+            maskedPoseLayerCache_.modelSourceRevision ==
+                model.sourceRevision &&
+            maskedPoseLayer_.active &&
+            maskedPoseLayer_.clip.fallbackName == clipName &&
+            maskedPoseLayer_.maskRootNodeName == maskRootNodeName &&
+            maskedPoseLayer_.rootAlignment == rootAlignment;
+        ANIMATION::AnimationPoseSubtreeCache candidate{};
+        if (!cacheMatches) {
+            ANIMATION::AnimationClipReference clipReference{};
+            clipReference.fallbackName = std::string(clipName);
+            if (!ANIMATION::PrepareAnimationPoseSubtreeCache(
+                    model,
+                    maskRootNodeName,
+                    clipReference,
+                    candidate)) {
+                return false;
+            }
+        }
+
+        SetMaskedPoseLayerView(
+            clipName,
+            maskRootNodeName,
+            normalizedTime,
+            targetWeight,
+            blendSeconds,
+            rootAlignment);
+        if (maskedPoseLayer_.active && !cacheMatches) {
+            maskedPoseLayerCache_ = std::move(candidate);
+        }
+        return true;
+    }
+
+    void AnimatorComponent::SetMaskedPoseLayerView(
+        std::string_view clipName,
+        std::string_view maskRootNodeName,
+        float normalizedTime,
+        float targetWeight,
+        float blendSeconds,
+        ANIMATION::AnimationSubtreeRootAlignment rootAlignment) {
         if (clipName.empty() || maskRootNodeName.empty()) {
             ResetMaskedPoseLayer();
             return;
@@ -483,12 +552,17 @@ namespace HIKARI {
 
         if (!sameLayer) {
             layer.clip = {};
-            layer.clip.fallbackName = std::move(clipName);
-            layer.maskRootNodeName = std::move(maskRootNodeName);
+            layer.clip.fallbackName.assign(
+                clipName.data(),
+                clipName.size());
+            layer.maskRootNodeName.assign(
+                maskRootNodeName.data(),
+                maskRootNodeName.size());
             layer.rootAlignment = rootAlignment;
             layer.currentWeight = 0.0f;
             layer.blendStartWeight = 0.0f;
             layer.blendElapsedSec = 0.0f;
+            maskedPoseLayerCache_.Reset();
         }
 
         layer.active = true;
@@ -535,6 +609,36 @@ namespace HIKARI {
     const AnimatorComponent::MaskedPoseLayerState&
         AnimatorComponent::GetMaskedPoseLayer() const noexcept {
         return maskedPoseLayer_;
+    }
+
+    bool AnimatorComponent::PrepareMaskedPoseLayer(
+        const ModelAsset& model) {
+        if (!maskedPoseLayer_.active ||
+            maskedPoseLayer_.clip.IsEmpty() ||
+            maskedPoseLayer_.maskRootNodeName.empty()) {
+            return false;
+        }
+        if (maskedPoseLayerCache_.valid &&
+            maskedPoseLayerCache_.model == &model &&
+            maskedPoseLayerCache_.modelSourceRevision ==
+                model.sourceRevision) {
+            return true;
+        }
+        return ANIMATION::PrepareAnimationPoseSubtreeCache(
+            model,
+            maskedPoseLayer_.maskRootNodeName,
+            maskedPoseLayer_.clip,
+            maskedPoseLayerCache_);
+    }
+
+    ANIMATION::AnimationPoseSubtreeCache&
+        AnimatorComponent::GetMaskedPoseLayerCache() noexcept {
+        return maskedPoseLayerCache_;
+    }
+
+    const ANIMATION::AnimationPoseSubtreeCache&
+        AnimatorComponent::GetMaskedPoseLayerCache() const noexcept {
+        return maskedPoseLayerCache_;
     }
 
     void AnimatorComponent::AdvanceMaskedPoseLayer(
@@ -590,6 +694,7 @@ namespace HIKARI {
 
     void AnimatorComponent::ResetMaskedPoseLayer() noexcept {
         maskedPoseLayer_ = {};
+        maskedPoseLayerCache_.Reset();
     }
 
 } // namespace HIKARI

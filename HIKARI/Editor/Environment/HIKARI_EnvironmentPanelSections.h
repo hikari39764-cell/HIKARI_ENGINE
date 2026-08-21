@@ -17,6 +17,10 @@ void DrawEnvironmentLightingControls(SceneEnvironment &environment);
 bool DrawSkyAssetPicker(const AssetRegistry *assetRegistry,
                         const AssetDatabase *assetDatabase, std::string &value);
 
+bool DrawPanoramaTextureAssetPicker(const AssetDatabase *assetDatabase,
+                                    const char *labelKey,
+                                    std::string &value);
+
 bool DrawReflectionProbeAssetPicker(const AssetRegistry *assetRegistry,
                                     const AssetDatabase *assetDatabase,
                                     std::string &value);

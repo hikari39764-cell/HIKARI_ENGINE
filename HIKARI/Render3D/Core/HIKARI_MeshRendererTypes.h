@@ -180,6 +180,7 @@ namespace HIKARI::MESHRENDERER {
         MATH::Vec4 skyHorizonReflection{};
         MATH::Vec4 skyGroundAmbient{};
         MATH::Vec4 skyParams{};
+        // rgb tint, w Texture2D user-SRV descriptor index plus one.
         MATH::Vec4 skyTintLighting{};
         MATH::Vec4 iblParams{};
         ReflectionProbeGpuData reflectionProbes[2]{};

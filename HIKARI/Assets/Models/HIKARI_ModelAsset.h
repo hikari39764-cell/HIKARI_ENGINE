@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -55,6 +56,10 @@ namespace HIKARI {
         AssetId id{};
         std::string sourcePath;
         State state = State::Unloaded;
+        // Monotonic in-memory source generation. Runtime caches may retain
+        // resolved node/clip pointers only while this value still matches;
+        // it is intentionally not serialized into HMODEL payloads.
+        uint64_t sourceRevision = 1u;
         std::vector<ModelNode> nodes;
         std::vector<MeshAsset> meshes;
         std::vector<MaterialAsset> materials;

@@ -2,6 +2,7 @@
 #define HIKARI_SKY_ENVIRONMENT_COMMON_HLSLI
 
 #include "Atmosphere/HIKARI_AtmosphereScattering.hlsli"
+#include "Sky/HIKARI_EquirectangularSampling.hlsli"
 
 float3 HikariRotateSkyYaw(float3 dir, float yaw)
 {
@@ -114,6 +115,31 @@ float3 HikariSampleSkyEnvironment(float3 dir)
         sky = gSkyCube.Sample(
             gLinearWrap,
             cubeDir).rgb;
+        sky *= max(gSkyTint, 0.0f.xxx);
+        sky *= max(0.0f, gSkyExposure);
+    }
+    else if (mode == 3u && gSkyTextureDescriptorIndexPlusOne > 0.5f)
+    {
+        const float3 panoramaDirection = normalize(
+            HikariRotateSkyYaw(dir, gSkyYaw));
+        const float2 panoramaUv =
+            HikariDirectionToEquirectangularUv(panoramaDirection);
+        float2 panoramaDerivativeX;
+        float2 panoramaDerivativeY;
+        HikariResolveEquirectangularGradients(
+            panoramaDirection,
+            panoramaUv,
+            panoramaDerivativeX,
+            panoramaDerivativeY);
+        const uint panoramaDescriptorIndex =
+            (uint)(gSkyTextureDescriptorIndexPlusOne + 0.5f) - 1u;
+        sky = HikariSampleMaterialTextureGrad(
+            panoramaDescriptorIndex,
+            gSkyPanoramaSampler,
+            panoramaUv,
+            panoramaDerivativeX,
+            panoramaDerivativeY,
+            float4(sky, 1.0f)).rgb;
         sky *= max(gSkyTint, 0.0f.xxx);
         sky *= max(0.0f, gSkyExposure);
     }

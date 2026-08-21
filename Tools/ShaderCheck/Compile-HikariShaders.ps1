@@ -51,6 +51,7 @@ $entries = @(
     @{ Shader = "HIKARI/Shaders/Render3D_VisibilityOverlayPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
     @{ Shader = "HIKARI/Shaders/Render3D_SkyVS.hlsl"; Entry = "main"; Target = "vs_6_0" },
     @{ Shader = "HIKARI/Shaders/Render3D_SkyPS.hlsl"; Entry = "main"; Target = "ps_6_0"; Group = "Atmosphere"; WarningsAsErrors = $true },
+    @{ Shader = "HIKARI/Shaders/Render3D_PanoramaSkyLayerPS.hlsl"; Entry = "main"; Target = "ps_6_0"; Group = "Atmosphere"; WarningsAsErrors = $true },
     # StylizedClouds is a strict, independently runnable shader group.  Noise
     # generation is compute; trace, temporal reprojection and composite remain
     # graphics entries so the MRT/depth contract cannot be hidden by a compute

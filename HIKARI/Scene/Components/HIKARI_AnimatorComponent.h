@@ -3,7 +3,7 @@
 #include <string>
 #include <string_view>
 
-#include "Animation/Runtime/HIKARI_AnimationPose.h"
+#include "Animation/Runtime/HIKARI_AnimationClipSampler.h"
 #include "HIKARI_IComponent.h"
 
 namespace HIKARI { class ModelAsset; }
@@ -121,11 +121,39 @@ namespace HIKARI {
             float blendSeconds,
             ANIMATION::AnimationSubtreeRootAlignment rootAlignment =
                 ANIMATION::AnimationSubtreeRootAlignment::ParentLocal);
+
+        // Resolved bridge path.  The model is supplied by the owning
+        // ModelComponent so clip/root validation and subtree topology are
+        // cached once instead of repeating string scans in every frame.
+        bool SetMaskedPoseLayerResolved(
+            std::string_view clipName,
+            std::string_view maskRootNodeName,
+            float normalizedTime,
+            float targetWeight,
+            float blendSeconds,
+            const ModelAsset& model,
+            ANIMATION::AnimationSubtreeRootAlignment rootAlignment =
+                ANIMATION::AnimationSubtreeRootAlignment::ParentLocal);
         void ClearMaskedPoseLayer(float blendOutSeconds = 0.0f);
         const MaskedPoseLayerState& GetMaskedPoseLayer() const noexcept;
 
+        // AnimationSystem uses the resolved cache to sample and blend the
+        // overlay without allocating full-pose temporaries each frame.
+        bool PrepareMaskedPoseLayer(const ModelAsset& model);
+        ANIMATION::AnimationPoseSubtreeCache&
+            GetMaskedPoseLayerCache() noexcept;
+        const ANIMATION::AnimationPoseSubtreeCache&
+            GetMaskedPoseLayerCache() const noexcept;
+
     private:
         void ClearTransition() noexcept;
+        void SetMaskedPoseLayerView(
+            std::string_view clipName,
+            std::string_view maskRootNodeName,
+            float normalizedTime,
+            float targetWeight,
+            float blendSeconds,
+            ANIMATION::AnimationSubtreeRootAlignment rootAlignment);
         void AdvanceMaskedPoseLayer(float deltaTimeSec) noexcept;
         void ResetMaskedPoseLayer() noexcept;
 
@@ -151,6 +179,7 @@ namespace HIKARI {
         bool transitionSourceLoop_ = true;
 
         MaskedPoseLayerState maskedPoseLayer_{};
+        ANIMATION::AnimationPoseSubtreeCache maskedPoseLayerCache_{};
     };
 
 } // namespace HIKARI

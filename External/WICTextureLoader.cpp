@@ -126,8 +126,16 @@ namespace HIKARI {
             // ===== GPU 纹理=====
          
    
+            // この簡易 WIC 経路は mip 0 だけをアップロードする。MipLevels=0
+            // (完全な mip chain) のリソースを作ると、未初期化の下位 mip が
+            // Sample/ SampleGrad から参照され、黒い領域として現れる。
             CD3DX12_RESOURCE_DESC texDesc =
-                CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R8G8B8A8_UNORM, w, h);
+                CD3DX12_RESOURCE_DESC::Tex2D(
+                    DXGI_FORMAT_R8G8B8A8_UNORM,
+                    w,
+                    h,
+                    1u,
+                    1u);
 
             CD3DX12_HEAP_PROPERTIES defaultHeapProps(D3D12_HEAP_TYPE_DEFAULT); // 先放到局部变量
 

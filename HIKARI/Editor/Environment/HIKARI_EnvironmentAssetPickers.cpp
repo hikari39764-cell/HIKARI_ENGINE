@@ -179,6 +179,31 @@ bool DrawSkyAssetPicker(const AssetRegistry *assetRegistry,
   return changed;
 }
 
+bool DrawPanoramaTextureAssetPicker(const AssetDatabase *assetDatabase,
+                                    const char *labelKey,
+                                    std::string &value) {
+  const std::string label = TEXT::Localize(labelKey);
+  if (assetDatabase) {
+    return EDITOR::DrawAssetField(
+        assetDatabase,
+        EDITOR::AssetFieldOptions{
+            label,
+            AssetType::Texture,
+            true,
+            false,
+            true},
+        value);
+  }
+
+  char assetBuffer[256]{};
+  std::strncpy(assetBuffer, value.c_str(), sizeof(assetBuffer) - 1);
+  if (ImGui::InputText(label.c_str(), assetBuffer, sizeof(assetBuffer))) {
+    value = assetBuffer;
+    return true;
+  }
+  return false;
+}
+
 bool DrawReflectionProbeAssetPicker(const AssetRegistry *assetRegistry,
                                     const AssetDatabase *assetDatabase,
                                     std::string &value) {

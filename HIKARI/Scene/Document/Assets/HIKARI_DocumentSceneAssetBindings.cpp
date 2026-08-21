@@ -60,6 +60,25 @@ namespace HIKARI {
             return false;
         }
 
+        bool HasMissingSkyResourceDescriptors(
+            const AssetRegistry& registry,
+            const std::unordered_set<std::string>& assetIds) {
+
+            for (const std::string& assetId : assetIds) {
+                if (assetId.empty()) {
+                    continue;
+                }
+                const AssetDescriptor* descriptor =
+                    registry.FindDescriptor(assetId);
+                if (descriptor == nullptr ||
+                    (descriptor->type != AssetType::Sky &&
+                     descriptor->type != AssetType::Texture)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         bool IsCookedTextureRuntimePath(const std::filesystem::path& path) {
             if (ASSETS::SEMANTICS::ClassifyCookedAssetFormat(path) ==
                 CookedAssetFormat::HTEX) {
@@ -224,9 +243,8 @@ namespace HIKARI {
                 registry_,
                 AssetType::VfxEffect,
                 dependencies.vfxAssetIds) ||
-            HasMissingAssetDescriptors(
+            HasMissingSkyResourceDescriptors(
                 registry_,
-                AssetType::Sky,
                 dependencies.skyAssetIds);
     }
 

@@ -15,6 +15,11 @@ bool EqualFloat4(const DirectX::XMFLOAT4 &lhs, const DirectX::XMFLOAT4 &rhs) {
 bool EqualSkySettings(const SkySettings &lhs, const SkySettings &rhs) {
   return lhs.enabled == rhs.enabled && lhs.mode == rhs.mode &&
          lhs.skyAsset == rhs.skyAsset && lhs.scale == rhs.scale &&
+         lhs.panoramaCloudEnabled == rhs.panoramaCloudEnabled &&
+         lhs.panoramaCloudAsset == rhs.panoramaCloudAsset &&
+         lhs.panoramaCloudScrollSpeed.x == rhs.panoramaCloudScrollSpeed.x &&
+         lhs.panoramaCloudScrollSpeed.y == rhs.panoramaCloudScrollSpeed.y &&
+         lhs.panoramaCloudOpacity == rhs.panoramaCloudOpacity &&
          lhs.yaw == rhs.yaw && lhs.exposure == rhs.exposure &&
          EqualVec3(lhs.tint, rhs.tint) &&
          lhs.followCamera == rhs.followCamera &&

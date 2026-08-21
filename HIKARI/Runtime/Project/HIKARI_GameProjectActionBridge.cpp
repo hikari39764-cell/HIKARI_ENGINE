@@ -759,15 +759,27 @@ namespace HIKARI {
             }
             GameObject* object = FindObject(
                 static_cast<World*>(world_), objectHandle);
-            if (object == nullptr ||
-                !HasClipIfModelLoaded(*object, clipName) ||
-                !HasNodeIfModelLoaded(*object, maskRootNodeName)) {
+            if (object == nullptr) {
                 return false;
             }
             AnimatorComponent* animator = object->GetComponent<
                 AnimatorComponent>();
             if (animator == nullptr) {
                 return false;
+            }
+            const ModelComponent* modelComponent = object->GetComponent<
+                ModelComponent>();
+            const ModelAsset* modelAsset = modelComponent != nullptr
+                ? modelComponent->GetModelAsset()
+                : nullptr;
+            if (modelAsset != nullptr) {
+                return animator->SetMaskedPoseLayerResolved(
+                    clipName,
+                    maskRootNodeName,
+                    normalizedTime,
+                    targetWeight,
+                    blendSeconds,
+                    *modelAsset);
             }
             animator->SetMaskedPoseLayer(
                 std::string(clipName),
@@ -816,15 +828,28 @@ namespace HIKARI {
             }
             GameObject* object = FindObject(
                 static_cast<World*>(world_), objectHandle);
-            if (object == nullptr ||
-                !HasClipIfModelLoaded(*object, clipName) ||
-                !HasNodeIfModelLoaded(*object, maskRootNodeName)) {
+            if (object == nullptr) {
                 return false;
             }
             AnimatorComponent* animator = object->GetComponent<
                 AnimatorComponent>();
             if (animator == nullptr) {
                 return false;
+            }
+            const ModelComponent* modelComponent = object->GetComponent<
+                ModelComponent>();
+            const ModelAsset* modelAsset = modelComponent != nullptr
+                ? modelComponent->GetModelAsset()
+                : nullptr;
+            if (modelAsset != nullptr) {
+                return animator->SetMaskedPoseLayerResolved(
+                    clipName,
+                    maskRootNodeName,
+                    normalizedTime,
+                    targetWeight,
+                    blendSeconds,
+                    *modelAsset,
+                    runtimeAlignment);
             }
             animator->SetMaskedPoseLayer(
                 std::string(clipName),

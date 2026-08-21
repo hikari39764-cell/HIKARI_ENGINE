@@ -46,6 +46,8 @@ namespace HIKARI::RENDER3D::PARTICLES {
         D3D12_GPU_VIRTUAL_ADDRESS materialData = 0u;
         D3D12_GPU_VIRTUAL_ADDRESS materialParameters = 0u;
         D3D12_GPU_VIRTUAL_ADDRESS materialResources = 0u;
+        MATH::Vec3 cameraPosition{ 0.0f, 0.0f, 0.0f };
+        bool cameraPositionValid = false;
     };
 
     // Owned by MeshRendererState. This object has no target-owning Render

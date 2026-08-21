@@ -1,6 +1,7 @@
 #include "Vfx/Post/HIKARI_CombatScreenDistortionComposite.h"
 
 #include <cstring>
+#include <algorithm>
 #include <string>
 
 #include <d3dcommon.h>
@@ -18,6 +19,7 @@ namespace HIKARI::POST {
         struct alignas(16) CombatScreenCompositeParams final {
             CommonParams common{};
             DirectX::XMFLOAT4 cinematicGrade{};
+            DirectX::XMFLOAT4 weaponAccent{};
         };
 
         static_assert(sizeof(CombatScreenCompositeParams) % 16u == 0u);
@@ -103,13 +105,16 @@ VS_OUT main(uint vid : SV_VertexID)
         bool Execute(
             RenderTarget2D& source,
             const ActionScreenImpulseProvider::Mask* mask,
+            const ActionScreenImpulseProvider::Mask* accent,
             const ActionScreenImpulseProvider::CinematicGrade& cinematicGrade,
             const CommonParams& params,
             uint64_t frameIndex,
             RenderTarget2D*& output,
-            bool& maskApplied) {
+            bool& maskApplied,
+            bool& accentApplied) {
             output = nullptr;
             maskApplied = false;
+            accentApplied = false;
             if (context_.device == nullptr || context_.cmdList == nullptr ||
                 source.GetResource() == nullptr || source.GetSrvHeap() == nullptr ||
                 source.GetSrvGpu().ptr == 0u) {
@@ -125,7 +130,12 @@ VS_OUT main(uint vid : SV_VertexID)
                 mask != nullptr && mask->IsValid(frameIndex)
                 ? mask
                 : nullptr;
+            const ActionScreenImpulseProvider::Mask* validAccent =
+                accent != nullptr && accent->IsValid(frameIndex)
+                ? accent
+                : nullptr;
             maskApplied = validMask != nullptr;
+            accentApplied = validAccent != nullptr;
             source.TransitionColor(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 
             FrameResources& frame = frameResources_[slot];
@@ -142,6 +152,13 @@ VS_OUT main(uint vid : SV_VertexID)
             } else if (!CopySrv(source, frame, 1u)) {
                 return false;
             }
+            if (validAccent != nullptr) {
+                if (!CopySrv(*validAccent, frame, 2u)) {
+                    return false;
+                }
+            } else if (!CopySrv(source, frame, 2u)) {
+                return false;
+            }
 
             CombatScreenCompositeParams localParams{};
             localParams.common = params;
@@ -154,6 +171,15 @@ VS_OUT main(uint vid : SV_VertexID)
                 cinematicGrade.monochromeStrength,
                 cinematicGrade.chromaticSeparationPixels,
                 cinematicGrade.contrastStrength };
+            localParams.weaponAccent = {
+                validAccent != nullptr
+                    ? std::clamp(validAccent->strength, 0.0f, 8.0f)
+                    : 0.0f,
+                validAccent != nullptr
+                    ? std::clamp(validAccent->blur, 0.0f, 8.0f)
+                    : 0.0f,
+                validAccent != nullptr ? 1.0f : 0.0f,
+                0.0f };
             const UINT64 byteOffset =
                 static_cast<UINT64>(slot) * constantStride_;
             std::memcpy(mappedPtr_ + byteOffset,
@@ -177,7 +203,6 @@ VS_OUT main(uint vid : SV_VertexID)
             cmd->DrawInstanced(3, 1, 0, 0);
             target.EndCapture();
             output = &target;
-            (void)frameIndex;
             return true;
         }
 
@@ -251,7 +276,7 @@ VS_OUT main(uint vid : SV_VertexID)
         bool CreateRootSignature() {
             D3D12_DESCRIPTOR_RANGE range{};
             range.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-            range.NumDescriptors = 2u;
+            range.NumDescriptors = 3u;
             range.BaseShaderRegister = 0u;
             range.RegisterSpace = 0u;
             range.OffsetInDescriptorsFromTableStart =
@@ -347,7 +372,7 @@ VS_OUT main(uint vid : SV_VertexID)
         bool CreateFrameDescriptorHeap(FrameResources& frame) {
             D3D12_DESCRIPTOR_HEAP_DESC description{};
             description.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-            description.NumDescriptors = 2u;
+            description.NumDescriptors = 3u;
             description.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
             const HRESULT hr = context_.device->CreateDescriptorHeap(
                 &description,
@@ -410,7 +435,7 @@ VS_OUT main(uint vid : SV_VertexID)
             const RenderTarget2D& source,
             FrameResources& frame,
             uint32_t index) {
-            if (index >= 2u || source.GetSrvHeap() == nullptr ||
+            if (index >= 3u || source.GetSrvHeap() == nullptr ||
                 source.GetSrvGpu().ptr == 0u) {
                 return false;
             }
@@ -432,7 +457,7 @@ VS_OUT main(uint vid : SV_VertexID)
             const ActionScreenImpulseProvider::Mask& source,
             FrameResources& frame,
             uint32_t index) {
-            if (index >= 2u || source.texture.resource == nullptr ||
+            if (index >= 3u || source.texture.resource == nullptr ||
                 !source.texture.IsSampleable() || source.srvCpu.ptr == 0u) {
                 return false;
             }
@@ -486,22 +511,26 @@ VS_OUT main(uint vid : SV_VertexID)
     bool CombatScreenDistortionComposite::Execute(
         RenderTarget2D& source,
         const ActionScreenImpulseProvider::Mask* mask,
+        const ActionScreenImpulseProvider::Mask* accent,
         const ActionScreenImpulseProvider::CinematicGrade& cinematicGrade,
         const CommonParams& params,
         uint64_t frameIndex,
         RenderTarget2D*& output,
-        bool& maskApplied) {
+        bool& maskApplied,
+        bool& accentApplied) {
         if (!impl_) {
             impl_ = std::make_unique<Impl>();
         }
         return impl_->Execute(
             source,
             mask,
+            accent,
             cinematicGrade,
             params,
             frameIndex,
             output,
-            maskApplied);
+            maskApplied,
+            accentApplied);
     }
 
 } // namespace HIKARI::POST

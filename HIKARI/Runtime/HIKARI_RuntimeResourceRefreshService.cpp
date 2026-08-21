@@ -19,6 +19,16 @@
 
 namespace HIKARI {
 
+    namespace {
+        bool IsActiveSkyTexture(
+            const DocumentSceneBase& scene,
+            const std::string& assetId) {
+            const SkySettings& sky = scene.GetSceneEnvironment().sky;
+            return sky.skyAsset == assetId ||
+                sky.panoramaCloudAsset == assetId;
+        }
+    }
+
     RuntimeResourceRefreshReport RuntimeResourceRefreshService::RefreshAsset(
         DocumentSceneBase& scene,
         const AssetId& assetId) {
@@ -30,6 +40,9 @@ namespace HIKARI {
         if (const auto* texture = registry.FindAs<TextureAssetDescriptor>(assetId)) {
             if (RefreshTextureAsset(scene, *texture, report)) {
                 ReloadCurrentSceneModelDependencies(scene, report);
+                if (IsActiveSkyTexture(scene, texture->id.value)) {
+                    scene.RefreshLightingRuntime();
+                }
             }
         } else if (const auto* sky = registry.FindAs<SkyAssetDescriptor>(assetId)) {
             RefreshSkyAsset(scene, *sky, report);
@@ -53,11 +66,18 @@ namespace HIKARI {
         scene.ReloadAssets();
 
         bool textureTouched = false;
+        bool skyTextureTouched = false;
         bool modelTouched = false;
         const AssetRegistry& registry = scene.GetAssetRegistry();
         for (const AssetId& assetId : assetIds) {
             if (const auto* texture = registry.FindAs<TextureAssetDescriptor>(assetId)) {
-                textureTouched = RefreshTextureAsset(scene, *texture, report) || textureTouched;
+                const bool refreshed =
+                    RefreshTextureAsset(scene, *texture, report);
+                textureTouched = refreshed || textureTouched;
+                skyTextureTouched =
+                    (refreshed &&
+                     IsActiveSkyTexture(scene, texture->id.value)) ||
+                    skyTextureTouched;
             } else if (const auto* sky = registry.FindAs<SkyAssetDescriptor>(assetId)) {
                 RefreshSkyAsset(scene, *sky, report);
             } else if (const auto* model = registry.FindAs<ModelAssetDescriptor>(assetId)) {
@@ -74,6 +94,9 @@ namespace HIKARI {
             ReloadCurrentSceneModelDependencies(scene, report);
         } else if (modelTouched) {
             report.modelReboundComponentCount += scene.RebindModelComponents();
+        }
+        if (skyTextureTouched) {
+            scene.RefreshLightingRuntime();
         }
 
         return report;
@@ -108,6 +131,10 @@ namespace HIKARI {
         for (const std::string& skyId : dependencies.skyAssetIds) {
             if (const auto* sky = registry.FindAs<SkyAssetDescriptor>(AssetId{ skyId })) {
                 RefreshSkyAsset(scene, *sky, report);
+            } else if (const auto* texture =
+                           registry.FindAs<TextureAssetDescriptor>(
+                               AssetId{ skyId })) {
+                RefreshTextureAsset(scene, *texture, report);
             } else {
                 ++report.failedCount;
                 AppendMessage(report, "Missing sky dependency: " + skyId);

@@ -380,7 +380,7 @@ namespace HIKARI {
                     AuthoringFieldDescriptor{
                         kWaveSteepnessIds[index],
                         "Steepness",
-                        "Horizontal Gerstner steepness before global Choppiness."
+                        "Horizontal Gerstner displacement as a fraction of this wave's Amplitude, before global Choppiness and the shared non-folding slope budget."
                     },
                     wave.steepness,
                     0.0f,

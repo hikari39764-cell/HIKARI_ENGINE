@@ -486,8 +486,15 @@ namespace HIKARI::MESHRENDERER {
             traceInputValid &&
             depthPyramidSrv.ptr != 0 &&
             packedSurfaceSrv.ptr != 0;
+        constexpr uint32_t kDepthTraceValid = 1u << 0;
+        constexpr uint32_t kSceneColorCaptureValid = 1u << 1;
+        const bool sceneColorCaptureValid =
+            ctx.passResources.opaqueSceneColor.IsSampleable();
         const uint32_t constants[2] = {
-            boundTraceValid ? 1u : 0u,
+            (boundTraceValid ? kDepthTraceValid : 0u) |
+                (sceneColorCaptureValid
+                    ? kSceneColorCaptureValid
+                    : 0u),
             boundTraceValid ? depthPyramid.mipCount : 0u
         };
         ctx.cmd->SetGraphicsRoot32BitConstants(

@@ -19,6 +19,7 @@
 #include "Render2D/HIKARI_DxTexture.h"
 #include "Render3D/Lighting/HIKARI_VolumetricLightingStage.h"
 #include "Render3D/Lighting/HIKARI_StylizedCloudStage.h"
+#include "Render3D/Lighting/HIKARI_PanoramaSkyLayerStage.h"
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Material/HIKARI_DefaultPbrResources.h"
@@ -357,6 +358,7 @@ namespace HIKARI {
             RENDER3D::TEMPORAL::ShutdownMotionVectorPass();
             RENDER3D::TEMPORAL::ShutdownTemporalResourceSystem();
             RENDER3D::CLOUDS::ShutdownStylizedCloudStage();
+            RENDER3D::PANORAMA_SKY::ShutdownPanoramaSkyLayerStage();
             RENDER3D::VOLUMETRIC::ShutdownVolumetricLightingStage();
             SKYRENDERER::ShutdownAtmosphereRuntime();
             RENDER3D::WATER::ShutdownWaterVisibleDepth();

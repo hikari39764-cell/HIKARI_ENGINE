@@ -91,6 +91,8 @@ namespace HIKARI::WATER {
         MATH::Mat4 inverseWorld = MATH::Mat4::Identity();
         MATH::Mat4 normalMatrix = MATH::Mat4::Identity();
         WaterSurfaceSettings settings{};
+        // FiniteAuthored uses these as hard bounds. CameraCenteredOcean is an
+        // infinite query domain and keeps them only as authored mesh metadata.
         MATH::Vec2 halfExtents{};
         float maximumHorizontalDisplacement = 0.0f;
     };

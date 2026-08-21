@@ -25,6 +25,7 @@
 #include "Render3D/Views/HIKARI_EditorInteractiveViewRenderer.h"
 #endif
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
+#include "Render3D/Lighting/HIKARI_PanoramaSkyLayerStage.h"
 #include "Render3D/Lighting/HIKARI_LocalLightList.h"
 #include "Scene/Features/HIKARI_RuntimeFeatureIds.h"
 #include "Scene/Sequencer/Drivers/HIKARI_CameraSequenceTrackDriver.h"
@@ -462,6 +463,11 @@ namespace HIKARI {
                 renderCamera,
                 activeEnvironment,
                 state_->assets.Models(),
+                state_->lighting.sky);
+            (void)RENDER3D::PANORAMA_SKY::RenderPanoramaSkyLayer(
+                graphics,
+                renderCamera,
+                activeEnvironment.sky,
                 state_->lighting.sky);
             if (DrawDebugHelpers()) {
                 state_->editor.componentGizmoRenderer.SubmitWorldGizmos(

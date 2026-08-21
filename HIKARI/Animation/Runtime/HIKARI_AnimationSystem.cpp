@@ -78,8 +78,10 @@ namespace HIKARI {
 
         void ApplyMaskedPoseLayer(
             const ModelAsset& model,
-            const AnimatorComponent::MaskedPoseLayerState& layer,
+            AnimatorComponent& animator,
             ANIMATION::AnimationLocalPose& inOutPose) {
+            const AnimatorComponent::MaskedPoseLayerState& layer =
+                animator.GetMaskedPoseLayer();
             if (!layer.active ||
                 layer.clip.IsEmpty() ||
                 layer.maskRootNodeName.empty() ||
@@ -89,39 +91,37 @@ namespace HIKARI {
                 return;
             }
 
-            const AnimationClip* clip =
-                ANIMATION::ResolveAnimationClip(model, layer.clip);
-            if (clip == nullptr ||
-                !std::isfinite(clip->durationSec) ||
-                clip->durationSec <= 0.0f) {
+            if (!animator.PrepareMaskedPoseLayer(model)) {
+                return;
+            }
+            ANIMATION::AnimationPoseSubtreeCache& cache =
+                animator.GetMaskedPoseLayerCache();
+            if (cache.clip == nullptr ||
+                !std::isfinite(cache.clip->durationSec) ||
+                cache.clip->durationSec <= 0.0f) {
                 return;
             }
 
-            ANIMATION::AnimationLocalPose overlayPose{};
             const float sampleTime = std::clamp(
                 layer.normalizedTime,
                 0.0f,
-                1.0f) * clip->durationSec;
-            if (!ANIMATION::SampleAnimationClip(
+                1.0f) * cache.clip->durationSec;
+            if (!ANIMATION::SampleResolvedAnimationClip(
                     model,
-                    layer.clip,
+                    *cache.clip,
                     sampleTime,
                     false,
-                    overlayPose)) {
+                    cache.overlayPose)) {
                 return;
             }
 
-            ANIMATION::AnimationLocalPose blended{};
-            if (ANIMATION::BlendAnimationPoseSubtree(
+            (void)ANIMATION::ApplyAnimationPoseSubtreeInPlace(
                     model,
                     inOutPose,
-                    overlayPose,
-                    layer.maskRootNodeName,
+                    cache.overlayPose,
+                    cache,
                     layer.currentWeight,
-                    blended,
-                    layer.rootAlignment)) {
-                inOutPose = std::move(blended);
-            }
+                    layer.rootAlignment);
         }
 
         MATH::Quat DivideRotation(
@@ -330,7 +330,7 @@ namespace HIKARI {
                 if (snapshot.valid) {
                     ApplyMaskedPoseLayer(
                         *modelAsset,
-                        animator.GetMaskedPoseLayer(),
+                        animator,
                         snapshot.localPose);
                 }
                 const bool poseChanged = poseService_->Publish(

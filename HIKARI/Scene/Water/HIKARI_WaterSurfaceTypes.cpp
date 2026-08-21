@@ -10,6 +10,7 @@ namespace HIKARI::WATER {
         constexpr float kTwoPi = 6.28318530717958647692f;
         constexpr float kGravity = 9.81f;
         constexpr float kTimeWrapSeconds = 4096.0f;
+        constexpr float kMaximumHorizontalSlope = 0.92f;
         constexpr float kMinimumShallowBlendDepthDelta = 1.0e-3f;
         constexpr float kMaximumShallowDepth = 1000.0f;
 
@@ -62,6 +63,26 @@ namespace HIKARI::WATER {
         float SmoothStep01(float value) noexcept {
             const float t = std::clamp(value, 0.0f, 1.0f);
             return t * t * (3.0f - 2.0f * t);
+        }
+
+        float ResolveHorizontalSlopeScale(
+            const WaterSurfaceSettings& settings) noexcept {
+
+            float totalMaximumSlope = 0.0f;
+            for (const WaterGerstnerWave& wave : settings.waves) {
+                if (wave.amplitude <= 1.0e-7f ||
+                    wave.wavelength <= 1.0e-7f) {
+                    continue;
+                }
+                const float waveNumber = kTwoPi / wave.wavelength;
+                totalMaximumSlope += settings.choppiness *
+                    wave.steepness * wave.amplitude * waveNumber;
+            }
+            if (!std::isfinite(totalMaximumSlope) ||
+                totalMaximumSlope <= kMaximumHorizontalSlope) {
+                return std::isfinite(totalMaximumSlope) ? 1.0f : 0.0f;
+            }
+            return kMaximumHorizontalSlope / totalMaximumSlope;
         }
     }
 
@@ -385,9 +406,8 @@ namespace HIKARI::WATER {
 
         const float animationTime =
             WrappedTime(timeSeconds) * settings.timeScale;
-        const float inverseWaveCount =
-            1.0f / static_cast<float>(kMaxWaterWaves);
-
+        const float horizontalSlopeScale =
+            ResolveHorizontalSlopeScale(settings);
         for (const WaterGerstnerWave& wave : settings.waves) {
             if (wave.amplitude <= 1.0e-7f ||
                 wave.wavelength <= 1.0e-7f) {
@@ -409,8 +429,8 @@ namespace HIKARI::WATER {
             const float sine = std::sin(phase);
             const float cosine = std::cos(phase);
             const float horizontalAmplitude =
-                settings.choppiness * wave.steepness *
-                inverseWaveCount / waveNumber;
+                settings.choppiness * wave.steepness * wave.amplitude *
+                horizontalSlopeScale;
 
             result.positionLocal.x +=
                 directionX * horizontalAmplitude * cosine;
@@ -470,7 +490,11 @@ namespace HIKARI::WATER {
             FiniteOr(deformedLocalXZ.y, 0.0f)
         };
         WaterSurfaceEvaluation evaluation{};
-        for (uint32_t iteration = 0u; iteration < 4u; ++iteration) {
+        // Amplitude-coupled choppiness can legitimately move a tall authored
+        // wave farther than the legacy wavelength-only approximation. Keep a
+        // bounded fixed solve, but give it enough contractions to preserve
+        // buoyancy/render parity for those larger yet valid waves.
+        for (uint32_t iteration = 0u; iteration < 8u; ++iteration) {
             evaluation = EvaluateWaterSurface(
                 settings,
                 source,
@@ -490,14 +514,15 @@ namespace HIKARI::WATER {
 
         const WaterSurfaceSettings settings =
             SanitizeWaterSurfaceSettings(rawSettings);
+        const float horizontalSlopeScale =
+            ResolveHorizontalSlopeScale(settings);
         float maximum = 0.0f;
         for (const WaterGerstnerWave& wave : settings.waves) {
             if (wave.amplitude <= 1.0e-7f) {
                 continue;
             }
-            const float waveNumber = kTwoPi / wave.wavelength;
-            maximum += settings.choppiness * wave.steepness /
-                (waveNumber * static_cast<float>(kMaxWaterWaves));
+            maximum += settings.choppiness * wave.steepness *
+                wave.amplitude * horizontalSlopeScale;
         }
         return maximum;
     }

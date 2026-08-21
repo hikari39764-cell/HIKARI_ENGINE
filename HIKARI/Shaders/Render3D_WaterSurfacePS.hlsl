@@ -189,11 +189,16 @@ float3 HikariSampleWaterRefraction(
         fallbackOpticalDistance), 0.0f);
     const float3 sampledCenterColor =
         gSceneColorTex.Sample(gLinearClamp, screenUv).rgb;
+    const bool centerCaptureValid =
+        (gScreenSpaceTraceFlags &
+            HIKARI_SCREEN_SPACE_SCENE_COLOR_CAPTURE_VALID) != 0u &&
+        HikariIsFiniteFloat3(sampledCenterColor) &&
+        all(abs(sampledCenterColor) < 65504.0f.xxx);
     const float3 centerColor = HikariWaterResolveSceneCapture(
         sampledCenterColor,
         skyFallback,
-        centerDepth.valid ? 1.0f : 0.0f,
-        0.90f);
+        centerCaptureValid ? 1.0f : 0.0f,
+        1.0f);
     const float3 sampledCandidateColor = candidateValid
         ? gSceneColorTex.Sample(gLinearClamp, candidateUv).rgb
         : centerColor;
@@ -559,7 +564,8 @@ float4 HikariShadeWaterSurface(
             safeScatteringColor);
     HikariScreenSpaceReflectionTraceConfig waterSsrConfig;
     waterSsrConfig.valid =
-        gScreenSpaceTraceValid != 0u &&
+        (gScreenSpaceTraceFlags &
+            HIKARI_SCREEN_SPACE_DEPTH_TRACE_VALID) != 0u &&
         gScreenSpaceReflectionParams0.x > 0.0f
             ? 1u
             : 0u;
@@ -848,9 +854,22 @@ float4 HikariShadeWaterSurface(
         : float3(0.015f, 0.18f, 0.24f);
     const bool colorFitsHdrTarget = HikariIsFiniteFloat3(color) &&
         all(abs(color) < 65504.0f.xxx);
-    const float3 resolvedColor = colorFitsHdrTarget
+    const float3 finiteColor = colorFitsHdrTarget
         ? max(color, 0.0f.xxx)
         : summerFallback;
+
+    // Water used to return before the shared forward fog path and also
+    // discarded the captured panorama whenever scene depth was clear. Fog the
+    // authored water first, then converge only the distant clear-depth edge
+    // to the real captured sky sample for a continuous water/sky horizon.
+    const float3 foggedColor = ApplyFog(finiteColor, input.worldPosWS);
+    const float3 resolvedColor = HikariWaterBlendWithSceneHorizon(
+        foggedColor,
+        sceneRefraction,
+        geometricNormal,
+        view,
+        distanceToCamera,
+        centerDepth.valid ? 1.0f : 0.0f);
 
     // SceneColor は上で明示的に合成済み。alpha=1 の premultiplied blend で
     // destination の二重取り込みを避ける。

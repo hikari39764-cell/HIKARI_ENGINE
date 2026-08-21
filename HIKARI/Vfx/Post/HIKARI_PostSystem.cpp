@@ -111,6 +111,11 @@ namespace HIKARI::POST {
         processingStage_.SetActionScreenDistortionMask(
             mask);
     }
+    void PostSystem::SetActionScreenDistortionAccent(
+        const PostSystem::ActionScreenDistortionAccent& accent) {
+        processingStage_.SetActionScreenDistortionAccent(
+            accent);
+    }
     const PostSystem::FxaaSettings& PostSystem::GetFxaaSettings() { return processingStage_.GetFxaaSettings(); }
     const PostSystem::BloomDebugStats& PostSystem::GetBloomDebugStats() { return processingStage_.GetBloomDebugStats(); }
     const PostSystem::SunGlareDebugStats& PostSystem::GetSunGlareDebugStats() { return processingStage_.GetSunGlareDebugStats(); }

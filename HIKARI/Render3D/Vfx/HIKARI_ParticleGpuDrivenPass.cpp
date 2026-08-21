@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <cmath>
 #include <cstring>
 #include <functional>
 #include <limits>
@@ -79,6 +80,7 @@ namespace HIKARI::RENDER3D::PARTICLES {
         struct DrawItem {
             ParticleEmitterInstanceKey key{};
             ParticleEmitterRenderParameters render{};
+            MATH::Vec3 worldPosition{ 0.0f, 0.0f, 0.0f };
             uint32_t particleOffset = 0u;
             uint32_t particleCapacity = 0u;
             uint32_t aliveIndexBase = 0u;
@@ -86,6 +88,11 @@ namespace HIKARI::RENDER3D::PARTICLES {
             uint32_t drawIndex = 0u;
             bool materialReady = false;
             ResolvedParticleMaterial resolvedMaterial{};
+        };
+
+        struct DrawOrderEntry {
+            uint32_t itemIndex = 0u;
+            float cameraDistanceSquared = 0.0f;
         };
 
         uint32_t AlignParticleCount(uint32_t value) noexcept {
@@ -124,6 +131,7 @@ namespace HIKARI::RENDER3D::PARTICLES {
             ParticleEmitterInstanceKeyHasher> allocations{};
         std::vector<FreeRange> freeRanges{};
         std::vector<DrawItem> drawItems{};
+        std::vector<DrawOrderEntry> drawOrder{};
         std::unordered_set<std::string> residentStandardTextures{};
         ParticleGpuDrivenPassStats stats{};
         uint32_t emitterPageCapacity = 0u;
@@ -838,6 +846,7 @@ namespace HIKARI::RENDER3D::PARTICLES {
                 DrawItem item{};
                 item.key = submission.key;
                 item.render = submission.render;
+                item.worldPosition = submission.worldPosition;
                 item.particleOffset = allocation->offset;
                 item.particleCapacity = allocation->activeCapacity;
                 item.aliveIndexBase = allocation->offset;
@@ -1002,7 +1011,52 @@ namespace HIKARI::RENDER3D::PARTICLES {
             context.cmdList->SetGraphicsRootDescriptorTable(
                 6u,
                 texturePool);
-            for (const DrawItem& item : drawItems) {
+            drawOrder.clear();
+            drawOrder.reserve(drawItems.size());
+            for (uint32_t itemIndex = 0u;
+                 itemIndex < static_cast<uint32_t>(drawItems.size());
+                 ++itemIndex) {
+                float distanceSquared = 0.0f;
+                if (bindings.cameraPositionValid) {
+                    const MATH::Vec3 delta =
+                        drawItems[itemIndex].worldPosition -
+                        bindings.cameraPosition;
+                    distanceSquared =
+                        delta.x * delta.x +
+                        delta.y * delta.y +
+                        delta.z * delta.z;
+                    if (!std::isfinite(distanceSquared)) {
+                        distanceSquared = 0.0f;
+                    }
+                }
+                drawOrder.push_back({ itemIndex, distanceSquared });
+            }
+            if (bindings.cameraPositionValid) {
+                std::sort(
+                    drawOrder.begin(),
+                    drawOrder.end(),
+                    [&](const DrawOrderEntry& lhs,
+                        const DrawOrderEntry& rhs) {
+                        const DrawItem& lhsItem = drawItems[lhs.itemIndex];
+                        const DrawItem& rhsItem = drawItems[rhs.itemIndex];
+                        const uint32_t lhsQueue =
+                            lhsItem.render.depthTest ? 0u : 1u;
+                        const uint32_t rhsQueue =
+                            rhsItem.render.depthTest ? 0u : 1u;
+                        if (lhsQueue != rhsQueue) {
+                            return lhsQueue < rhsQueue;
+                        }
+                        if (lhsQueue == 0u &&
+                            lhs.cameraDistanceSquared !=
+                                rhs.cameraDistanceSquared) {
+                            return lhs.cameraDistanceSquared >
+                                rhs.cameraDistanceSquared;
+                        }
+                        return lhs.itemIndex < rhs.itemIndex;
+                    });
+            }
+            for (const DrawOrderEntry& order : drawOrder) {
+                const DrawItem& item = drawItems[order.itemIndex];
                 const uint32_t blendIndex =
                     item.render.blendMode == ParticleBlendMode::Additive
                         ? 1u
@@ -1098,6 +1152,7 @@ namespace HIKARI::RENDER3D::PARTICLES {
             allocations.clear();
             freeRanges.clear();
             drawItems.clear();
+            drawOrder.clear();
             residentStandardTextures.clear();
             stats = {};
             emitterPageCapacity = 0u;

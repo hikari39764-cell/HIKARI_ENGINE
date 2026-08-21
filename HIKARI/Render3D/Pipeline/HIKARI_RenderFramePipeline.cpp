@@ -600,9 +600,10 @@ namespace HIKARI::RENDER3D::PIPELINE {
             GFX::GPU_PROFILE::ScopedGpuTimer gpuTransparent(
                 frame.graphics.cmdList,
                 GFX::GPU_PROFILE::Pass::ForwardTransparent);
-            transparentOk = MESHRENDERER::RenderForwardTransparentPass(
-                frame.graphics,
-                postOpaqueResources);
+            transparentOk = frame.targetAccess.Rebind() &&
+                MESHRENDERER::RenderForwardTransparentPass(
+                    frame.graphics,
+                    postOpaqueResources);
         }
 
         bool combatAfterimageOk = true;
@@ -641,6 +642,28 @@ namespace HIKARI::RENDER3D::PIPELINE {
                     postMask.strength = trailMask.strengthScale;
                     postMask.blur = trailMask.blurScale;
                     POST::PostSystem::SetActionScreenDistortionMask(postMask);
+                }
+                const COMBAT_VFX::WeaponTrailAccentView trailAccent =
+                    gWeaponTrailRenderer.GetAccent();
+                if (trailAccent.IsValid() &&
+                    trailAccent.frameIndex == frame.frameIndex) {
+                    POST::PostSystem::ActionScreenDistortionAccent
+                        postAccent{};
+                    postAccent.texture = trailAccent.texture;
+                    postAccent.srvCpu = trailAccent.srvCpu;
+                    postAccent.frameIndex = trailAccent.frameIndex;
+                    postAccent.strength = trailAccent.intensityScale;
+                    // The distortion sheet and the new colored HDR accent are
+                    // separate presentation layers. Preserve the established
+                    // optical warp, while allowing the accent to inherit a
+                    // restrained along-path drag so it reads as stylized
+                    // motion energy instead of a one-pixel emissive line.
+                    postAccent.blur = std::clamp(
+                        trailMask.blurScale * 0.70f,
+                        0.0f,
+                        3.0f);
+                    POST::PostSystem::SetActionScreenDistortionAccent(
+                        postAccent);
                 }
             }
         }
