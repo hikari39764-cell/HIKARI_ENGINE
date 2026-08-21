@@ -66,6 +66,19 @@ namespace HIKARI {
     enum class GameProjectAnimationSocketSpace : uint8_t {
         Local = 0,
         World = 1,
+        // Final render-presentation world space.  Gameplay and physics
+        // queries continue to use World, which remains authoritative.
+        PresentationWorld = 2,
+    };
+
+    enum class GameProjectAnimationLayerRootAlignment : uint8_t {
+        // Preserve the sampled node-local root transform. This is the
+        // compatible choice for overlays authored against the same parent.
+        ParentLocal = 0,
+        // Preserve the sampled root's model-space rotation while leaving
+        // translation and scale under the advancing base pose. Use this for
+        // a full-body clip layered over a different locomotion pelvis.
+        PreserveModelRotation = 1,
     };
 
     // Translation and rotation are expressed in character/model axes. The
@@ -342,6 +355,19 @@ namespace HIKARI {
         float chromaticAberration = 0.0035f;
         float flashIntensity = 0.42f;
         float intensity = 1.0f;
+        uint32_t reserved = 0u;
+    };
+
+    // Frame-local full-screen action grade. The caller submits this every
+    // presentation frame while the effect is visible; the engine never
+    // retains a GameProject pointer or changes gameplay time from this view.
+    struct GameProjectActionCinematicGradeRequest {
+        uint64_t sourceId = 0u;
+        int32_t priority = 0;
+        float weight = 0.0f;
+        float monochromeStrength = 0.0f;
+        float chromaticSeparationPixels = 0.0f;
+        float contrastStrength = 0.0f;
         uint32_t reserved = 0u;
     };
 

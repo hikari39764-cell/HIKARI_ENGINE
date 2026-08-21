@@ -105,6 +105,8 @@ namespace HIKARI {
             float blendStartWeight = 0.0f;
             float blendDurationSec = 0.0f;
             float blendElapsedSec = 0.0f;
+            ANIMATION::AnimationSubtreeRootAlignment rootAlignment =
+                ANIMATION::AnimationSubtreeRootAlignment::ParentLocal;
             bool active = false;
         };
 
@@ -116,7 +118,9 @@ namespace HIKARI {
             std::string maskRootNodeName,
             float normalizedTime,
             float targetWeight,
-            float blendSeconds);
+            float blendSeconds,
+            ANIMATION::AnimationSubtreeRootAlignment rootAlignment =
+                ANIMATION::AnimationSubtreeRootAlignment::ParentLocal);
         void ClearMaskedPoseLayer(float blendOutSeconds = 0.0f);
         const MaskedPoseLayerState& GetMaskedPoseLayer() const noexcept;
 

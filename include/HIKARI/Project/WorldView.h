@@ -7,6 +7,7 @@
 
 #include "HIKARI/Project/ActionViews.h"
 #include "HIKARI/Project/GameProjectSdk.h"
+#include "HIKARI/Project/PresentationViews.h"
 #include "HIKARI/Project/ValueTypes.h"
 #include "HIKARI/Project/VfxView.h"
 
@@ -85,6 +86,8 @@ namespace HIKARI {
             GetCamera() const noexcept;
         HIKARI_GAME_PROJECT_SDK_API TimeDilationView
             GetTimeDilation() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API PresentationModelView
+            GetPresentationModels() const noexcept;
         HIKARI_GAME_PROJECT_SDK_API PresentationVfxView
             GetPresentationVfx() const noexcept;
         HIKARI_GAME_PROJECT_SDK_API VfxView

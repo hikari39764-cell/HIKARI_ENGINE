@@ -12,7 +12,7 @@
 
 namespace HIKARI::POST {
 
-    // Frame-local copy of the perfect-guard reaction.  The provider is fed
+    // Frame-local copy of combat screen reactions. The provider is fed
     // before HDR resolve and never stores a pointer into a scene service.
     // The projected center is deliberately captured with the render camera
     // used for the same frame so temporal/post processing cannot observe a
@@ -37,6 +37,15 @@ namespace HIKARI::POST {
             float waveAmplitude = 1.0f;
             float waveDamping = 1.0f;
             uint32_t waveCount = 1u;
+        };
+
+        struct CinematicGrade {
+            float weight = 0.0f;
+            float monochromeStrength = 0.0f;
+            float chromaticSeparationPixels = 0.0f;
+            float contrastStrength = 0.0f;
+
+            bool IsActive() const noexcept { return weight > 0.0f; }
         };
 
         // A frame-local mask supplied by the combat trail/impact renderer.  The
@@ -79,6 +88,9 @@ namespace HIKARI::POST {
             bool maskProvided = false;
             bool maskCompatible = false;
             bool maskApplied = false;
+            bool cinematicGradeProvided = false;
+            bool cinematicGradeApplied = false;
+            float cinematicGradeWeight = 0.0f;
         };
 
         void BeginFrame(uint64_t frameIndex) noexcept {
@@ -96,6 +108,7 @@ namespace HIKARI::POST {
             count_ = 0u;
             waves_ = {};
             mask_ = {};
+            cinematicGrade_ = {};
             debugState_ = {};
             debugState_.frameIndex = frameIndex;
             debugState_.submitFrameIndex = frameIndex;
@@ -113,13 +126,18 @@ namespace HIKARI::POST {
             const uint32_t sourceCount = std::min<uint32_t>(
                 source.count,
                 kMaximumWaveCount);
+            const bool sourceHasCinematicGrade =
+                source.HasActiveCinematicGrade();
             debugState_.sourceWaveCount = std::min<uint32_t>(
                 kMaximumWaveCount,
                 debugState_.sourceWaveCount + sourceCount);
             debugState_.submitFrameIndex = frameIndex;
             debugState_.requested = count_ != 0u || sourceCount != 0u ||
-                mask_.IsValid(frameIndex);
-            if (sourceCount == 0u) {
+                sourceHasCinematicGrade || mask_.IsValid(frameIndex);
+            debugState_.cinematicGradeProvided =
+                debugState_.cinematicGradeProvided ||
+                sourceHasCinematicGrade;
+            if (sourceCount == 0u && !sourceHasCinematicGrade) {
                 return;
             }
             if (source.frameIndex != 0u &&
@@ -134,6 +152,40 @@ namespace HIKARI::POST {
             sourceFrameIndex_ = source.frameIndex;
             sourceSubmitted_ = true;
             debugState_.sourceFrameIndex = sourceFrameIndex_;
+            if (sourceHasCinematicGrade) {
+                CinematicGrade candidate{};
+                candidate.weight = std::clamp(
+                    std::isfinite(source.cinematicGrade.weight)
+                        ? source.cinematicGrade.weight
+                        : 0.0f,
+                    0.0f,
+                    1.0f);
+                candidate.monochromeStrength = std::clamp(
+                    std::isfinite(
+                        source.cinematicGrade.monochromeStrength)
+                        ? source.cinematicGrade.monochromeStrength
+                        : 0.0f,
+                    0.0f,
+                    1.0f);
+                candidate.chromaticSeparationPixels = std::clamp(
+                    std::isfinite(
+                        source.cinematicGrade.chromaticSeparationPixels)
+                        ? source.cinematicGrade.chromaticSeparationPixels
+                        : 0.0f,
+                    0.0f,
+                    24.0f);
+                candidate.contrastStrength = std::clamp(
+                    std::isfinite(source.cinematicGrade.contrastStrength)
+                        ? source.cinematicGrade.contrastStrength
+                        : 0.0f,
+                    0.0f,
+                    2.0f);
+                if (candidate.weight > cinematicGrade_.weight) {
+                    cinematicGrade_ = candidate;
+                }
+                debugState_.cinematicGradeWeight =
+                    cinematicGrade_.weight;
+            }
             for (uint32_t index = 0u;
                 index < sourceCount && count_ < kMaximumWaveCount;
                 ++index) {
@@ -355,7 +407,8 @@ namespace HIKARI::POST {
 
         bool IsCurrent(uint64_t frameIndex) const noexcept {
             return frameIndex_ == frameIndex &&
-                ((sourceSubmitted_ && count_ != 0u) ||
+                ((sourceSubmitted_ &&
+                    (count_ != 0u || cinematicGrade_.IsActive())) ||
                     mask_.IsValid(frameIndex));
         }
 
@@ -365,9 +418,13 @@ namespace HIKARI::POST {
         }
         uint32_t GetCount() const noexcept { return count_; }
         bool HasSource() const noexcept {
-            return sourceSubmitted_ && count_ != 0u;
+            return sourceSubmitted_ &&
+                (count_ != 0u || cinematicGrade_.IsActive());
         }
         const Mask& GetMask() const noexcept { return mask_; }
+        const CinematicGrade& GetCinematicGrade() const noexcept {
+            return cinematicGrade_;
+        }
         const Wave& GetWave(uint32_t index) const noexcept {
             return waves_[(std::min)(index, kMaximumWaveCount - 1u)];
         }
@@ -426,6 +483,7 @@ namespace HIKARI::POST {
         uint32_t count_ = 0u;
         std::array<Wave, kMaximumWaveCount> waves_{};
         Mask mask_{};
+        CinematicGrade cinematicGrade_{};
         DebugState debugState_{};
     };
 

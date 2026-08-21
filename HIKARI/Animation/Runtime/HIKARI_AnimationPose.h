@@ -11,6 +11,11 @@
 
 namespace HIKARI::ANIMATION {
 
+    enum class AnimationSubtreeRootAlignment : uint8_t {
+        ParentLocal = 0,
+        PreserveModelRotation = 1,
+    };
+
     struct AnimationClipReference {
         AssetId modelAssetId{};
         AnimationClipId clipId{};

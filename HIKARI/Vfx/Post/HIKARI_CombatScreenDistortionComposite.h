@@ -29,6 +29,7 @@ namespace HIKARI::POST {
         bool Execute(
             RenderTarget2D& source,
             const ActionScreenImpulseProvider::Mask* mask,
+            const ActionScreenImpulseProvider::CinematicGrade& cinematicGrade,
             const CommonParams& params,
             uint64_t frameIndex,
             RenderTarget2D*& output,

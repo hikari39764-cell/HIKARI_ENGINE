@@ -37,6 +37,14 @@ namespace HIKARI {
             std::string_view label,
             char* value,
             size_t capacity);
+        // Typed picker for the formal model/material binding asset. The value
+        // remains a caller-owned fixed buffer so no STL state crosses the SDK
+        // boundary.
+        HIKARI_GAME_PROJECT_SDK_API bool ModelMaterialSetAssetGuid(
+            std::string_view propertyId,
+            std::string_view label,
+            char* value,
+            size_t capacity);
         HIKARI_GAME_PROJECT_SDK_API bool Vec2(
             std::string_view label,
             float& x,

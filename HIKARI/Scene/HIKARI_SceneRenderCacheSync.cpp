@@ -8,17 +8,21 @@
 #include <map>
 #include <memory>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 #include "Animation/Runtime/HIKARI_AnimationPoseService.h"
 #include "Assets/HIKARI_AssetRegistry.h"
+#include "Assets/HIKARI_AssetTypes.h"
 #include "Core/Hashing/HIKARI_FnvHash.h"
+#include "Core/HIKARI_Logger.h"
 #include "Render3D/Core/HIKARI_BoundsUtils.h"
 #include "Render3D/Core/HIKARI_Material.h"
 #include "Render3D/Procedural/HIKARI_ProceduralModelFactory.h"
 #include "Render3D/Runtime/HIKARI_RenderModelCache.h"
 #include "Render3D/Runtime/HIKARI_SceneRenderCache.h"
 #include "Render3D/Runtime/HIKARI_SceneSurfaceFloatPool.h"
+#include "Render3D/Models/HIKARI_ModelManager.h"
 #include "Render3D/Water/HIKARI_WaterSurfaceRenderData.h"
 #include "Render3D/Sand/HIKARI_SandSurfaceRenderData.h"
 #include "Scene/Components/HIKARI_ProceduralMeshComponent.h"
@@ -26,6 +30,8 @@
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelRenderableAssetResolver.h"
 #include "Scene/HIKARI_GameObject.h"
+#include "Scene/HIKARI_PresentationModelService.h"
+#include "Scene/HIKARI_PresentationModelRenderProjection.h"
 #include "Scene/HIKARI_PresentationTransformService.h"
 #include "Scene/HIKARI_World.h"
 #include "Scene/Water/HIKARI_WaterSurfaceComponent.h"
@@ -1311,6 +1317,16 @@ namespace HIKARI {
             const RENDER3D::RUNTIME::SceneRenderCache*,
             TERRAIN::TerrainGrassRenderProjectionState>
             terrainGrassProjections{};
+        std::unordered_set<std::string>
+            presentationMissingAssetsLogged{};
+        std::unordered_set<std::string>
+            presentationAttachmentDiagnosticsLogged{};
+        std::unordered_set<std::string>
+            presentationMaterialDiagnosticsLogged{};
+        std::unordered_map<
+            const RENDER3D::RUNTIME::SceneRenderCache*,
+            PRESENTATION_MODEL::MaterialStorageByRenderObject>
+            presentationMaterialOverrides{};
     };
 
     SceneRenderCacheSync::SceneRenderCacheSync()
@@ -1318,6 +1334,15 @@ namespace HIKARI {
     }
 
     SceneRenderCacheSync::~SceneRenderCacheSync() = default;
+
+    void SceneRenderCacheSync::Clear() noexcept {
+        state_->terrainProjections.clear();
+        state_->terrainGrassProjections.clear();
+        state_->presentationMissingAssetsLogged.clear();
+        state_->presentationAttachmentDiagnosticsLogged.clear();
+        state_->presentationMaterialDiagnosticsLogged.clear();
+        state_->presentationMaterialOverrides.clear();
+    }
 
     const SceneRenderCacheSync::DebugStats&
         SceneRenderCacheSync::GetDebugStats() const noexcept {
@@ -1336,10 +1361,13 @@ namespace HIKARI {
         uint64_t frameIndex,
         const AssetRegistry* assetRegistry,
         std::filesystem::path projectRoot,
-        RENDER3D::RenderViewPurpose purpose) {
+        RENDER3D::RenderViewPurpose purpose,
+        ModelManager* modelManager) {
 
         PROCEDURAL::PumpClusteredGeometryWarmUps();
         sceneRenderCache.BeginSync(frameIndex);
+        auto& presentationMaterials =
+            state_->presentationMaterialOverrides[&sceneRenderCache];
         auto& terrainProjections =
             state_->terrainProjections[&sceneRenderCache];
         terrainProjections.clear();
@@ -1356,6 +1384,27 @@ namespace HIKARI {
             world.Services().Find<ANIMATION::AnimationPoseService>();
         const SAND::SandSurfaceQueryService* sandSurfaceQuery =
             world.Services().Find<SAND::SandSurfaceQueryService>();
+
+        std::vector<uint64_t> occupiedObjectIds{};
+        occupiedObjectIds.reserve(world.GetObjects().size());
+        for (const auto& object : world.GetObjects()) {
+            if (object != nullptr) {
+                occupiedObjectIds.push_back(object->GetRenderStableId());
+            }
+        }
+        PresentationModelService* presentationModels = world.Services().Find<
+            PresentationModelService>();
+        if (presentationModels != nullptr) {
+            presentationModels->PrepareForRender(
+                frameIndex,
+                occupiedObjectIds);
+            for (const uint64_t removedId :
+                    presentationModels->GetRemovedRenderObjectIds()) {
+                sceneRenderCache.Remove(
+                    RENDER3D::RUNTIME::SceneRenderObjectId{ removedId });
+                presentationMaterials.erase(removedId);
+            }
+        }
 
         world.ForEachObjectWith<ModelComponent>([&](GameObject& object, ModelComponent& model) {
             // World 蜀肴ｧ狗ｯ峨�ｮ繧ｿ繧､繝溘Φ繧ｰ縺ｫ萓晏ｭ倥○縺壹∵緒逕ｻ蜷梧悄縺ｮ縺溘�ｳ縺ｫ
@@ -1403,9 +1452,27 @@ namespace HIKARI {
             }
         });
 
+        PRESENTATION_MODEL::SyncRenderObjects(
+            world,
+            presentationModels,
+            renderModelCache,
+            sceneRenderCache,
+            assetRegistry,
+            modelManager,
+            clusteredGeometryPaths.GetProjectRoot(),
+            presentationTransforms,
+            animationPoses,
+            presentationMaterials,
+            state_->presentationMissingAssetsLogged,
+            state_->presentationAttachmentDiagnosticsLogged,
+            state_->presentationMaterialDiagnosticsLogged);
+
         sceneRenderCache.EndSync();
         sceneRenderCache.PreRenderSync();
         world.AcknowledgeAllRenderObjects();
+        if (presentationModels != nullptr) {
+            presentationModels->AcknowledgeRenderFrame();
+        }
     }
 
     void SceneRenderCacheSync::SyncDirty(
@@ -1415,10 +1482,13 @@ namespace HIKARI {
         uint64_t frameIndex,
         const AssetRegistry* assetRegistry,
         std::filesystem::path projectRoot,
-        RENDER3D::RenderViewPurpose purpose) {
+        RENDER3D::RenderViewPurpose purpose,
+        ModelManager* modelManager) {
 
         PROCEDURAL::PumpClusteredGeometryWarmUps();
         sceneRenderCache.BeginPatchSync(frameIndex);
+        auto& presentationMaterials =
+            state_->presentationMaterialOverrides[&sceneRenderCache];
         auto& terrainProjections =
             state_->terrainProjections[&sceneRenderCache];
         auto& terrainGrassProjections =
@@ -1441,6 +1511,27 @@ namespace HIKARI {
             world.Services().Find<ANIMATION::AnimationPoseService>();
         const SAND::SandSurfaceQueryService* sandSurfaceQuery =
             world.Services().Find<SAND::SandSurfaceQueryService>();
+
+        std::vector<uint64_t> occupiedObjectIds{};
+        occupiedObjectIds.reserve(world.GetObjects().size());
+        for (const auto& object : world.GetObjects()) {
+            if (object != nullptr) {
+                occupiedObjectIds.push_back(object->GetRenderStableId());
+            }
+        }
+        PresentationModelService* presentationModels = world.Services().Find<
+            PresentationModelService>();
+        if (presentationModels != nullptr) {
+            presentationModels->PrepareForRender(
+                frameIndex,
+                occupiedObjectIds);
+            for (const uint64_t removedId :
+                    presentationModels->GetRemovedRenderObjectIds()) {
+                sceneRenderCache.Remove(
+                    RENDER3D::RUNTIME::SceneRenderObjectId{ removedId });
+                presentationMaterials.erase(removedId);
+            }
+        }
 
         // built-in material の公開 revision は必ずしも GameObject を dirty にしない。
         // patch 前に live な terrain owner を再 projection し、置換前の runtime
@@ -1508,6 +1599,21 @@ namespace HIKARI {
             }
         }
 
+        PRESENTATION_MODEL::SyncRenderObjects(
+            world,
+            presentationModels,
+            renderModelCache,
+            sceneRenderCache,
+            assetRegistry,
+            modelManager,
+            clusteredGeometryPaths.GetProjectRoot(),
+            presentationTransforms,
+            animationPoses,
+            presentationMaterials,
+            state_->presentationMissingAssetsLogged,
+            state_->presentationAttachmentDiagnosticsLogged,
+            state_->presentationMaterialDiagnosticsLogged);
+
         // Material asset は既存 runtime Material object へ publish する。
         // revision の変化だけでは owning GameObject は dirty にならないため、
         // この frame の SceneRenderCache snapshot が authoritative GPU Scene source
@@ -1554,6 +1660,9 @@ namespace HIKARI {
         sceneRenderCache.EndPatchSync();
         sceneRenderCache.PreRenderSync();
         world.AcknowledgeRenderDirtyObjects();
+        if (presentationModels != nullptr) {
+            presentationModels->AcknowledgeRenderFrame();
+        }
     }
 
 }

@@ -130,7 +130,8 @@ namespace HIKARI::DOCUMENT_SCENE_BAKING {
                 HIKARI::TIME::GetFrameContext();
             RenderSubmissionSystem::SetAssetContext(
                 &scene.state_->assets.Registry(),
-                scene.state_->assets.Database().GetProjectRoot());
+                scene.state_->assets.Database().GetProjectRoot(),
+                &scene.state_->assets.Models());
             scene.state_->runtime.systemScheduler.PreRender(
                 scene.state_->runtime.world,
                 frame);

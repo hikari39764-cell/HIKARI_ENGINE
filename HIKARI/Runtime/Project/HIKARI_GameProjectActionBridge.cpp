@@ -26,6 +26,7 @@
 #include "HIKARI/Project/WorldView.h"
 #include "Scene/Camera/HIKARI_CameraRigService.h"
 #include "Scene/HIKARI_GameObject.h"
+#include "Scene/HIKARI_PresentationTransformService.h"
 #include "Scene/HIKARI_RuntimeObjectHandle.h"
 #include "Scene/HIKARI_RuntimeWorldServices.h"
 #include "Scene/HIKARI_SceneObjectId.h"
@@ -53,6 +54,17 @@ namespace HIKARI {
                 std::isfinite(value.y) &&
                 std::isfinite(value.z) &&
                 std::isfinite(value.w);
+        }
+
+        bool IsFinite(const MATH::Mat4& value) noexcept {
+            for (size_t column = 0u; column < 4u; ++column) {
+                for (size_t row = 0u; row < 4u; ++row) {
+                    if (!std::isfinite(value.m[column][row])) {
+                        return false;
+                    }
+                }
+            }
+            return true;
         }
 
         MATH::Vec3 ToRuntime(const GameProjectFloat3& value) noexcept {
@@ -770,6 +782,64 @@ namespace HIKARI {
         }
     }
 
+    bool AnimationView::SetMaskedPoseLayerWithRootAlignment(
+        uint64_t objectHandle,
+        std::string_view clipName,
+        std::string_view maskRootNodeName,
+        float normalizedTime,
+        float targetWeight,
+        float blendSeconds,
+        GameProjectAnimationLayerRootAlignment rootAlignment)
+        const noexcept {
+        try {
+            if (clipName.empty() || maskRootNodeName.empty() ||
+                !std::isfinite(normalizedTime) ||
+                normalizedTime < 0.0f || normalizedTime > 1.0f ||
+                !std::isfinite(targetWeight) ||
+                targetWeight < 0.0f || targetWeight > 1.0f ||
+                !IsFiniteNonNegative(blendSeconds)) {
+                return false;
+            }
+            ANIMATION::AnimationSubtreeRootAlignment runtimeAlignment{};
+            switch (rootAlignment) {
+            case GameProjectAnimationLayerRootAlignment::ParentLocal:
+                runtimeAlignment = ANIMATION::
+                    AnimationSubtreeRootAlignment::ParentLocal;
+                break;
+            case GameProjectAnimationLayerRootAlignment::
+                    PreserveModelRotation:
+                runtimeAlignment = ANIMATION::
+                    AnimationSubtreeRootAlignment::PreserveModelRotation;
+                break;
+            default:
+                return false;
+            }
+            GameObject* object = FindObject(
+                static_cast<World*>(world_), objectHandle);
+            if (object == nullptr ||
+                !HasClipIfModelLoaded(*object, clipName) ||
+                !HasNodeIfModelLoaded(*object, maskRootNodeName)) {
+                return false;
+            }
+            AnimatorComponent* animator = object->GetComponent<
+                AnimatorComponent>();
+            if (animator == nullptr) {
+                return false;
+            }
+            animator->SetMaskedPoseLayer(
+                std::string(clipName),
+                std::string(maskRootNodeName),
+                normalizedTime,
+                targetWeight,
+                blendSeconds,
+                runtimeAlignment);
+            return true;
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
     bool AnimationView::ClearMaskedPoseLayer(
         uint64_t objectHandle,
         float blendOutSeconds) const noexcept {
@@ -930,6 +1000,8 @@ namespace HIKARI {
                 return false;
             }
             ANIMATION::AnimationSocketSpace runtimeSpace{};
+            MATH::Mat4 authoritativeObjectWorld{};
+            bool usePresentationWorld = false;
             switch (space) {
             case GameProjectAnimationSocketSpace::Local:
                 runtimeSpace = ANIMATION::AnimationSocketSpace::Local;
@@ -937,6 +1009,23 @@ namespace HIKARI {
             case GameProjectAnimationSocketSpace::World:
                 runtimeSpace = ANIMATION::AnimationSocketSpace::World;
                 break;
+            case GameProjectAnimationSocketSpace::PresentationWorld: {
+                authoritativeObjectWorld =
+                    object->GetTransform().GetWorldMatrix();
+                const PresentationTransformService* presentationTransforms =
+                    world->Services().Find<PresentationTransformService>();
+                MATH::Mat4 presentationWorld{};
+                if (presentationTransforms != nullptr &&
+                    presentationTransforms->TryGetWorldMatrix(
+                        object->GetRuntimeHandle(),
+                        presentationWorld) &&
+                    IsFinite(presentationWorld)) {
+                    authoritativeObjectWorld = presentationWorld;
+                }
+                runtimeSpace = ANIMATION::AnimationSocketSpace::World;
+                usePresentationWorld = true;
+                break;
+            }
             default:
                 return false;
             }
@@ -947,13 +1036,22 @@ namespace HIKARI {
                 ? poses->Find(object->GetRuntimeHandle())
                 : nullptr;
             Transform3D resolved{};
-            if (!sockets->Resolve(
+            const bool socketResolved = usePresentationWorld
+                ? sockets->Resolve(
+                    *asset,
+                    pose.get(),
+                    authoritativeObjectWorld,
+                    socketName,
+                    runtimeSpace,
+                    resolved)
+                : sockets->Resolve(
                     *object,
                     *asset,
                     pose.get(),
                     socketName,
                     runtimeSpace,
-                    resolved) ||
+                    resolved);
+            if (!socketResolved ||
                 !MATH::IsFinite(resolved.position) ||
                 !MATH::IsFinite(resolved.rotation) ||
                 !MATH::IsFinite(resolved.scale)) {
@@ -1740,6 +1838,51 @@ namespace HIKARI {
             runtimeRequest.flashIntensity = request.flashIntensity;
             runtimeRequest.intensity = request.intensity;
             return reaction->TriggerPerfectGuardShockwave(runtimeRequest);
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
+    bool PresentationVfxView::SubmitActionCinematicGrade(
+        const GameProjectActionCinematicGradeRequest& request)
+        const noexcept {
+        try {
+            if (world_ == nullptr || request.sourceId == 0u ||
+                request.reserved != 0u ||
+                !std::isfinite(request.weight) ||
+                !std::isfinite(request.monochromeStrength) ||
+                !std::isfinite(request.chromaticSeparationPixels) ||
+                !std::isfinite(request.contrastStrength) ||
+                request.weight < 0.0f || request.weight > 1.0f ||
+                request.monochromeStrength < 0.0f ||
+                request.monochromeStrength > 1.0f ||
+                request.chromaticSeparationPixels < 0.0f ||
+                request.chromaticSeparationPixels > 24.0f ||
+                request.contrastStrength < 0.0f ||
+                request.contrastStrength > 2.0f) {
+                return false;
+            }
+
+            World* world = static_cast<World*>(world_);
+            VFX::ActionPostReactionService* reaction =
+                world->Services().Find<VFX::ActionPostReactionService>();
+            if (reaction == nullptr) {
+                return false;
+            }
+
+            VFX::ActionPostReactionService::ActionCinematicGradeRequest
+                runtimeRequest{};
+            runtimeRequest.sourceId = request.sourceId;
+            runtimeRequest.frameIndex = TIME::GetFrameContext().frameIndex;
+            runtimeRequest.priority = request.priority;
+            runtimeRequest.weight = request.weight;
+            runtimeRequest.monochromeStrength =
+                request.monochromeStrength;
+            runtimeRequest.chromaticSeparationPixels =
+                request.chromaticSeparationPixels;
+            runtimeRequest.contrastStrength = request.contrastStrength;
+            return reaction->SubmitActionCinematicGrade(runtimeRequest);
         }
         catch (...) {
             return false;

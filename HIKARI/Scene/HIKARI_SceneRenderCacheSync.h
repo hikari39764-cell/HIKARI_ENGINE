@@ -9,6 +9,7 @@
 namespace HIKARI {
 
     class AssetRegistry;
+    class ModelManager;
     class World;
 
     namespace RENDER3D::RUNTIME {
@@ -35,6 +36,8 @@ namespace HIKARI {
         SceneRenderCacheSync(const SceneRenderCacheSync&) = delete;
         SceneRenderCacheSync& operator=(const SceneRenderCacheSync&) = delete;
 
+        void Clear() noexcept;
+
         void Sync(
             World& world,
             RENDER3D::RUNTIME::RenderModelCache& renderModelCache,
@@ -43,7 +46,8 @@ namespace HIKARI {
             const AssetRegistry* assetRegistry = nullptr,
             std::filesystem::path projectRoot = {},
             RENDER3D::RenderViewPurpose purpose =
-                RENDER3D::RenderViewPurpose::Game);
+                RENDER3D::RenderViewPurpose::Game,
+            ModelManager* modelManager = nullptr);
 
         void SyncDirty(
             World& world,
@@ -53,7 +57,8 @@ namespace HIKARI {
             const AssetRegistry* assetRegistry = nullptr,
             std::filesystem::path projectRoot = {},
             RENDER3D::RenderViewPurpose purpose =
-                RENDER3D::RenderViewPurpose::Game);
+                RENDER3D::RenderViewPurpose::Game,
+            ModelManager* modelManager = nullptr);
 
         const DebugStats& GetDebugStats() const noexcept;
         void ResetDebugStats() noexcept;

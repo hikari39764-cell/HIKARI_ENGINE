@@ -72,7 +72,8 @@ namespace HIKARI {
             RENDER3D::RenderViewPurpose::Game);
         RenderSubmissionSystem::SetAssetContext(
             &scene.state_->assets.Registry(),
-            projectRoot);
+            projectRoot,
+            &scene.state_->assets.Models());
         scene.state_->runtime.systemScheduler.PreRender(
             scene.state_->runtime.world,
             HIKARI::TIME::GetFrameContext());

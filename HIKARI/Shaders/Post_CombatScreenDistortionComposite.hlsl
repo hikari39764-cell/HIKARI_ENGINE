@@ -8,6 +8,9 @@ cbuffer CommonParams : register(b0)
     float gResolutionY;
     float2 gCommonPadding;
     float4 gUser[16];
+    // x=weight, y=monochrome, z=chromatic separation in pixels,
+    // w=contrast. This is frame-local and independent from radial waves.
+    float4 gActionCinematicGrade;
 };
 
 Texture2D<float4> gSceneTex : register(t0);
@@ -42,6 +45,44 @@ float HikariNoise(float2 uv)
 {
     const float2 cell = floor(uv * float2(811.0f, 457.0f));
     return frac(sin(dot(cell, float2(127.1f, 311.7f))) * 43758.5453f);
+}
+
+float HikariGradeHash(float2 value)
+{
+    value = frac(value * float2(123.34f, 456.21f));
+    value += dot(value, value + 45.32f);
+    return frac(value.x * value.y);
+}
+
+float HikariGradeNoise(float2 value)
+{
+    const float2 cell = floor(value);
+    const float2 local = frac(value);
+    const float2 ease = local * local * (3.0f - 2.0f * local);
+    const float n00 = HikariGradeHash(cell);
+    const float n10 = HikariGradeHash(cell + float2(1.0f, 0.0f));
+    const float n01 = HikariGradeHash(cell + float2(0.0f, 1.0f));
+    const float n11 = HikariGradeHash(cell + float2(1.0f, 1.0f));
+    return lerp(
+        lerp(n00, n10, ease.x),
+        lerp(n01, n11, ease.x),
+        ease.y);
+}
+
+float HikariCinematicGradeField(float2 uv, float aspect)
+{
+    // Keep the field frame-stable. Animating the noise itself produces a
+    // crawling dither, while advancing one threshold through a stable field
+    // reads as an ink/lens dissolve even during the deliberately short entry.
+    const float2 domain = float2(uv.x * aspect, uv.y);
+    const float low = HikariGradeNoise(
+        domain * float2(4.2f, 3.7f) + float2(1.71f, 4.13f));
+    const float detail = HikariGradeNoise(
+        domain * float2(10.6f, 9.4f) + float2(7.23f, 2.91f));
+    const float diagonalSweep = saturate(
+        uv.x * 0.58f + (1.0f - uv.y) * 0.42f);
+    return saturate(low * 0.56f + detail * 0.24f +
+        diagonalSweep * 0.20f);
 }
 
 float3 HikariRefractedScene(
@@ -414,6 +455,103 @@ float4 main(PSInput input) : SV_TARGET
             tearEnergy * expandedCoverage * 0.055f +
             coverage * blurHint * 0.018f);
         resolved += float3(0.78f, 0.92f, 1.05f) * airRim;
+    }
+
+    const float gradeWeight = saturate(gActionCinematicGrade.x);
+    if (gradeWeight > 0.0001f)
+    {
+        const float monochromeStrength =
+            saturate(gActionCinematicGrade.y);
+        const float separationPixels =
+            clamp(gActionCinematicGrade.z, 0.0f, 24.0f);
+        const float contrastStrength =
+            clamp(gActionCinematicGrade.w, 0.0f, 2.0f);
+        const float2 safeResolution = float2(
+            max(gResolutionX, 1.0f),
+            max(gResolutionY, 1.0f));
+        const float safeAspect = safeResolution.x / safeResolution.y;
+
+        // A scalar full-screen fade still looks like a cut when its authored
+        // entry is only a few frames long. Advance a soft threshold through a
+        // stable spatial field so every intermediate frame has a readable,
+        // coherent dissolve boundary. Exit naturally traverses it in reverse.
+        const float gradeField = HikariCinematicGradeField(uv, safeAspect);
+        const float gradeThreshold = lerp(-0.14f, 1.14f, gradeWeight);
+        const float dissolveSoftness = 0.105f;
+        const float localGradeWeight = smoothstep(
+            gradeField - dissolveSoftness,
+            gradeField + dissolveSoftness,
+            gradeThreshold);
+        const float dissolveBoundary =
+            (1.0f - smoothstep(
+                0.018f,
+                0.092f,
+                abs(gradeField - gradeThreshold))) *
+            smoothstep(0.015f, 0.10f, gradeWeight) *
+            (1.0f - smoothstep(0.90f, 0.995f, gradeWeight));
+
+        float2 radial = uv - 0.5f.xx;
+        radial.x *= safeAspect;
+        const float radialLength = length(radial);
+        const float2 radialDirection = radialLength > 1.0e-5f
+            ? normalize(float2(radial.x / safeAspect, radial.y))
+            : float2(1.0f, 0.0f);
+        const float2 diagonalDirection = normalize(float2(0.86f, -0.51f));
+        const float2 separationDirection = normalize(
+            radialDirection * 0.62f + diagonalDirection * 0.38f);
+        const float2 separationTangent = float2(
+            -separationDirection.y,
+            separationDirection.x);
+        const float edgeWeight = smoothstep(0.05f, 0.74f, radialLength);
+        const float separationScale = separationPixels *
+            lerp(0.82f, 1.28f, edgeWeight);
+        const float2 redOffset = separationDirection *
+            separationScale / safeResolution;
+        const float2 greenOffset = separationTangent *
+            separationScale * 0.52f / safeResolution;
+        const float2 blueOffset = -separationDirection *
+            separationScale * 1.08f / safeResolution;
+        const float3 redSample = HikariScene(uv + redOffset);
+        const float3 greenSample = HikariScene(uv + greenOffset);
+        const float3 blueSample = HikariScene(uv + blueOffset);
+        const float3 luminanceWeights =
+            float3(0.2126f, 0.7152f, 0.0722f);
+        const float baseLuminance = dot(resolved, luminanceWeights);
+        const float contrastGain = 1.0f + contrastStrength;
+        const float contrastedLuminance = max(
+            (baseLuminance - 0.18f) * contrastGain + 0.18f,
+            0.0f);
+        const float3 contrastedColor = max(
+            (resolved - 0.18f.xxx) * contrastGain + 0.18f.xxx,
+            0.0f.xxx);
+
+        // Build the monochrome result from three independently displaced
+        // luminance samples. The R/G/B fringe therefore survives full
+        // desaturation instead of being erased by a later grayscale lerp.
+        float3 separatedMonochrome = float3(
+            dot(redSample, luminanceWeights),
+            dot(greenSample, luminanceWeights),
+            dot(blueSample, luminanceWeights));
+        separatedMonochrome = max(
+            (separatedMonochrome - 0.18f.xxx) * contrastGain + 0.18f.xxx,
+            0.0f.xxx);
+        const float separationWeight =
+            saturate(separationPixels / 5.5f) *
+            lerp(0.82f, 1.0f, edgeWeight);
+        const float3 monochromeTarget = lerp(
+            contrastedLuminance.xxx,
+            separatedMonochrome,
+            separationWeight);
+        const float3 gradeTarget = lerp(
+            contrastedColor,
+            monochromeTarget,
+            monochromeStrength);
+        resolved = lerp(resolved, gradeTarget, localGradeWeight);
+
+        // A short neutral-blue contact line makes the advancing boundary
+        // legible on flat fog/sky without turning it into another decal ring.
+        resolved += float3(0.80f, 0.91f, 1.05f) *
+            dissolveBoundary * (0.010f + baseLuminance * 0.018f);
     }
 
     if (!all(isfinite(resolved)))

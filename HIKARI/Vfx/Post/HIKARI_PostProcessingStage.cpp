@@ -714,6 +714,10 @@ namespace HIKARI::POST {
         debug.submitFrameIndex = actionScreenImpulseProvider_.GetFrameIndex();
         const auto& mask = actionScreenImpulseProvider_.GetMask();
         debug.maskProvided = mask.texture.resource != nullptr;
+        const auto& cinematicGrade =
+            actionScreenImpulseProvider_.GetCinematicGrade();
+        debug.cinematicGradeProvided = cinematicGrade.IsActive();
+        debug.cinematicGradeWeight = cinematicGrade.weight;
         const bool maskForFrame = mask.IsValid(absoluteFrame);
         debug.maskCompatible = maskForFrame &&
             source.GetResource() != nullptr;
@@ -757,6 +761,7 @@ namespace HIKARI::POST {
             if (actionScreenDistortionComposite_->Execute(
                     source,
                     debug.maskCompatible ? &mask : nullptr,
+                    cinematicGrade,
                     params,
                     absoluteFrame,
                     compositeOutput,
@@ -766,6 +771,8 @@ namespace HIKARI::POST {
                     compositeOutput != &source &&
                     compositeOutput->GetResource() != nullptr;
                 debug.maskApplied = maskApplied;
+                debug.cinematicGradeApplied =
+                    debug.executed && cinematicGrade.IsActive();
                 debug.composited = debug.executed;
                 if (debug.composited) {
                     if (!actionScreenRequestWasActive_) {
@@ -773,6 +780,7 @@ namespace HIKARI::POST {
                         stream << "[CombatVfx][ScreenDistortion] composited"
                             << " waves=" << debug.activeWaveCount
                             << " mask=" << debug.maskApplied
+                            << " grade=" << debug.cinematicGradeApplied
                             << " frame=" << absoluteFrame;
                         WriteCombatVfxLog(stream.str());
                     }
@@ -786,11 +794,13 @@ namespace HIKARI::POST {
 
         // A one-SRV fallback keeps the guard reaction visible if the
         // optional two-texture path cannot initialize (for example while a
-        // device is being recreated).  It intentionally ignores the mask.
-        if (debug.maskCompatible && !actionCompositeFailureLogged_) {
+        // device is being recreated). It intentionally cannot reproduce the
+        // mask or persistent cinematic grade.
+        if ((debug.maskCompatible || cinematicGrade.IsActive()) &&
+            !actionCompositeFailureLogged_) {
             WriteCombatVfxLog(
                 "[CombatVfx][ScreenDistortion] dedicated composite failed; "
-                "trail mask cannot use the guard-only fallback");
+                "trail mask/cinematic grade cannot use the guard-only fallback");
             actionCompositeFailureLogged_ = true;
         }
         if (!EnsureActionScreenImpulseEffect()) {
@@ -1016,6 +1026,10 @@ namespace HIKARI::POST {
             << actionScreenImpulseProvider_.GetDebugState().maskProvided
             << " actionScreenImpulseMaskCompatible="
             << actionScreenImpulseProvider_.GetDebugState().maskCompatible
+            << " actionScreenImpulseGrade="
+            << actionScreenImpulseProvider_.GetDebugState().cinematicGradeApplied
+            << " actionScreenImpulseGradeWeight="
+            << actionScreenImpulseProvider_.GetDebugState().cinematicGradeWeight
             << " actionScreenImpulseFailed="
             << actionScreenImpulseProvider_.GetDebugState().failed
             << " actionScreenImpulseBypassed="

@@ -19,6 +19,7 @@
 #include "Render3D/Material/Program/HIKARI_MaterialParameterProjection.h"
 #include "Scene/HIKARI_ComponentRegistry.h"
 #include "Scene/HIKARI_ComponentSystemPolicy.h"
+#include "Scene/HIKARI_PresentationModelService.h"
 #include "Scene/HIKARI_PresentationTransformService.h"
 #include "Scene/HIKARI_RuntimeWorldServices.h"
 #include "Scene/HIKARI_SceneRuntimeBuilder.h"
@@ -68,6 +69,7 @@ namespace HIKARI {
             waterBathymetryProvider{};
         WATER::WaterSurfaceQueryService waterSurfaceQueryService{};
         SAND::SandSurfaceQueryService sandSurfaceQueryService{};
+        PresentationModelService presentationModelService{};
         PresentationTransformService presentationTransformService{};
         RuntimeExtensionHost extensionHost{};
         RuntimeFeatureCatalog featureCatalog{};

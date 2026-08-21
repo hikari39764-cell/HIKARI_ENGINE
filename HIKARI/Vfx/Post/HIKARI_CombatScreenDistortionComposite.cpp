@@ -15,6 +15,13 @@ namespace HIKARI::POST {
 
     namespace {
 
+        struct alignas(16) CombatScreenCompositeParams final {
+            CommonParams common{};
+            DirectX::XMFLOAT4 cinematicGrade{};
+        };
+
+        static_assert(sizeof(CombatScreenCompositeParams) % 16u == 0u);
+
         constexpr const char* kCombatDistortionFullscreenVs = R"(
 struct VS_OUT {
   float4 pos : SV_POSITION;
@@ -96,6 +103,7 @@ VS_OUT main(uint vid : SV_VertexID)
         bool Execute(
             RenderTarget2D& source,
             const ActionScreenImpulseProvider::Mask* mask,
+            const ActionScreenImpulseProvider::CinematicGrade& cinematicGrade,
             const CommonParams& params,
             uint64_t frameIndex,
             RenderTarget2D*& output,
@@ -135,11 +143,17 @@ VS_OUT main(uint vid : SV_VertexID)
                 return false;
             }
 
-            CommonParams localParams = params;
+            CombatScreenCompositeParams localParams{};
+            localParams.common = params;
             if (!maskApplied) {
-                localParams.pad0 = -1.0f;
-                localParams.pad1 = 0.0f;
+                localParams.common.pad0 = -1.0f;
+                localParams.common.pad1 = 0.0f;
             }
+            localParams.cinematicGrade = {
+                cinematicGrade.weight,
+                cinematicGrade.monochromeStrength,
+                cinematicGrade.chromaticSeparationPixels,
+                cinematicGrade.contrastStrength };
             const UINT64 byteOffset =
                 static_cast<UINT64>(slot) * constantStride_;
             std::memcpy(mappedPtr_ + byteOffset,
@@ -300,7 +314,7 @@ VS_OUT main(uint vid : SV_VertexID)
         }
 
         bool CreateConstantBuffer() {
-            constantStride_ = Align256(sizeof(CommonParams));
+            constantStride_ = Align256(sizeof(CombatScreenCompositeParams));
             const UINT64 size = static_cast<UINT64>(constantStride_) *
                 GFX::kFrameResourceCount;
             CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_UPLOAD);
@@ -472,6 +486,7 @@ VS_OUT main(uint vid : SV_VertexID)
     bool CombatScreenDistortionComposite::Execute(
         RenderTarget2D& source,
         const ActionScreenImpulseProvider::Mask* mask,
+        const ActionScreenImpulseProvider::CinematicGrade& cinematicGrade,
         const CommonParams& params,
         uint64_t frameIndex,
         RenderTarget2D*& output,
@@ -482,6 +497,7 @@ VS_OUT main(uint vid : SV_VertexID)
         return impl_->Execute(
             source,
             mask,
+            cinematicGrade,
             params,
             frameIndex,
             output,

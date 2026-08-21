@@ -31,15 +31,36 @@ namespace HIKARI::RENDER3D::COMBAT_VFX {
         uint32_t waveCount = 1u;
     };
 
+    // Frame-local cinematic color treatment. It is intentionally independent
+    // from radial guard waves so a precision-dodge shot can hold through a
+    // counter and leave on the authored recovery beat.
+    struct ActionCinematicGradeFrame {
+        float weight = 0.0f;
+        float monochromeStrength = 0.0f;
+        float chromaticSeparationPixels = 0.0f;
+        float contrastStrength = 0.0f;
+        uint32_t active = 0u;
+        uint32_t reserved[3] = { 0u, 0u, 0u };
+
+        bool IsActive() const noexcept {
+            return active != 0u && weight > 0.0f;
+        }
+    };
+
     struct PerfectGuardShockwaveFrameSource {
         uint64_t frameIndex = 0u;
         uint32_t count = 0u;
         uint32_t reserved = 0u;
         std::array<PerfectGuardShockwaveFrame,
             kMaximumPerfectGuardShockwaves> waves{};
+        ActionCinematicGradeFrame cinematicGrade{};
 
         bool HasActiveWaves() const noexcept {
             return count != 0u;
+        }
+
+        bool HasActiveCinematicGrade() const noexcept {
+            return cinematicGrade.IsActive();
         }
 
         const PerfectGuardShockwaveFrame& operator[](

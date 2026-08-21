@@ -12,8 +12,8 @@ namespace HIKARI::VFX {
 
     struct VfxProgram;
 
-    // Scene-owned, presentation-time reaction state for perfect guard only.
-    // It owns no GPU resources and never changes gameplay or time scale.
+    // Scene-owned, presentation-time combat reactions. It owns no GPU
+    // resources and never changes gameplay or time scale.
     class ActionPostReactionService final {
     public:
         struct PerfectGuardShockwaveRequest {
@@ -33,6 +33,16 @@ namespace HIKARI::VFX {
             float waveAmplitude = 1.0f;
             float waveDamping = 1.0f;
             uint32_t waveCount = 1u;
+        };
+
+        struct ActionCinematicGradeRequest {
+            uint64_t sourceId = 0u;
+            uint64_t frameIndex = 0u;
+            int32_t priority = 0;
+            float weight = 0.0f;
+            float monochromeStrength = 0.0f;
+            float chromaticSeparationPixels = 0.0f;
+            float contrastStrength = 0.0f;
         };
 
         static constexpr uint32_t kMaximumWaveCount =
@@ -63,6 +73,11 @@ namespace HIKARI::VFX {
             const PerfectGuardShockwaveRequest& request,
             const VfxProgram& program,
             std::string_view outputId) noexcept;
+
+        // Frame-local arbitration for full-screen action grading. Callers
+        // submit every visible frame; an omitted frame clears the grade.
+        bool SubmitActionCinematicGrade(
+            const ActionCinematicGradeRequest& request) noexcept;
 
         // Uses unscaled presentation time so hit-stop cannot freeze the
         // screen reaction. Delta is bounded to keep a stalled frame finite.
@@ -98,6 +113,12 @@ namespace HIKARI::VFX {
             const PerfectGuardShockwaveRequest& request) noexcept;
         void RebuildFrameSource() noexcept;
         void Remember(const PerfectGuardShockwaveRequest& request) noexcept;
+        static RENDER3D::COMBAT_VFX::ActionCinematicGradeFrame
+            SanitizeGrade(
+                const ActionCinematicGradeRequest& request) noexcept;
+        static bool IsPreferredGrade(
+            const ActionCinematicGradeRequest& candidate,
+            const ActionCinematicGradeRequest& current) noexcept;
 
         std::array<ActiveWave, kMaximumWaveCount> activeWaves_{};
         std::array<DedupRecord, kDedupRecordCount> dedupRecords_{};
@@ -105,6 +126,8 @@ namespace HIKARI::VFX {
         uint64_t frameIndex_ = 0u;
         uint64_t lastTickFrame_ = 0u;
         bool hasTicked_ = false;
+        ActionCinematicGradeRequest gradeRequest_{};
+        bool gradeSubmitted_ = false;
         RENDER3D::COMBAT_VFX::PerfectGuardShockwaveFrameSource frameSource_{};
     };
 

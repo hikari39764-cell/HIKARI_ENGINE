@@ -118,7 +118,8 @@ namespace HIKARI {
                     overlayPose,
                     layer.maskRootNodeName,
                     layer.currentWeight,
-                    blended)) {
+                    blended,
+                    layer.rootAlignment)) {
                 inOutPose = std::move(blended);
             }
         }

@@ -189,6 +189,11 @@ namespace HIKARI {
         state_->runtime.animationStateMachineRuntimeService.Clear();
         state_->runtime.systemScheduler.DetachWorld(state_->runtime.world);
         state_->runtime.systemScheduler.Clear();
+        state_->runtime.presentationModelService.Clear();
+        // RenderSubmissionSystem owns process-static scene/GPU caches.  The
+        // next World may reuse the same asset context, which otherwise would
+        // skip invalidation and retain render-only presentation objects.
+        RenderSubmissionSystem::InvalidateSceneResources(false);
         // Components detach while World services (including RuntimeBinding)
         // are still available, so SDK contexts can release owned writers.
         state_->runtime.world.Clear();
@@ -405,7 +410,10 @@ namespace HIKARI {
 
         state_->runtime.world.Render();
         const FrameContext& frame = HIKARI::TIME::GetFrameContext();
-        RenderSubmissionSystem::SetAssetContext(&state_->assets.Registry(), state_->assets.Database().GetProjectRoot());
+        RenderSubmissionSystem::SetAssetContext(
+            &state_->assets.Registry(),
+            state_->assets.Database().GetProjectRoot(),
+            &state_->assets.Models());
         state_->runtime.systemScheduler.PreRender(state_->runtime.world, frame);
         state_->runtime.systemScheduler.Render(state_->runtime.world, frame);
         state_->runtime.systemScheduler.PostRender(state_->runtime.world, frame);

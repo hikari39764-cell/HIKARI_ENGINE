@@ -71,6 +71,11 @@ namespace HIKARI {
     bool DocumentSceneBase::ApplySystemRuntimeChanges() {
         state_->runtime.systemScheduler.DetachWorld(state_->runtime.world);
         state_->runtime.systemScheduler.Clear();
+        // Presentation submissions belong to the exact World instance.  A
+        // rebuild can happen after LateUpdate but before Render, so stale
+        // records must not survive merely because the absolute frame token is
+        // still current.
+        state_->runtime.presentationModelService.Clear();
         state_->runtime.fixedStepClock.Reset();
         // プロシージャルキャッシュは settings キーで不変なので、
         // シーン再構築ごとに破棄せずプロセス内で再利用する。
@@ -390,6 +395,7 @@ namespace HIKARI {
             state_->runtime.waterBathymetryProvider.get());
 
         WorldServiceRegistry& services = state_->runtime.world.Services();
+        state_->runtime.presentationModelService.Clear();
         services.Clear();
         bool success = services.Register(SERVICES::GetInputService());
         success = services.Register(state_->runtime.bindingStore) && success;
@@ -423,6 +429,8 @@ namespace HIKARI {
         success = services.Register(state_->runtime.characterMotionStateService) &&
             success;
         success = services.Register(state_->runtime.kinematicMotionService) && success;
+        success = services.Register(
+            state_->runtime.presentationModelService) && success;
         success = services.Register(state_->runtime.presentationTransformService) &&
             success;
         success = services.Register(state_->runtime.collisionGeometryStore) &&
@@ -531,6 +539,11 @@ namespace HIKARI {
             state_->identity.document);
         state_->runtime.systemScheduler.DetachWorld(state_->runtime.world);
         state_->runtime.systemScheduler.Clear();
+        // Presentation records are owned by the exact runtime World. A
+        // rebuild can occur after LateUpdate while the absolute frame token
+        // is still current, so the old world's render-only attachments must
+        // not survive into the replacement world.
+        state_->runtime.presentationModelService.Clear();
         state_->runtime.fixedStepClock.Reset();
         // プロシージャルキャッシュは settings キーで不変なので、
         // シーン再構築ごとに破棄せずプロセス内で再利用する。

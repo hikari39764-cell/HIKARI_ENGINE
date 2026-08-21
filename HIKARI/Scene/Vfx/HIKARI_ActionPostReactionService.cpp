@@ -18,6 +18,8 @@ namespace HIKARI::VFX {
         constexpr float kDefaultDistortionStrength = 0.020f;
         constexpr float kDefaultChromaticShift = 0.0035f;
         constexpr float kDefaultFlashIntensity = 0.42f;
+        constexpr float kMaximumGradeChromaticPixels = 24.0f;
+        constexpr float kMaximumGradeContrast = 2.0f;
 
         float FiniteOr(float value, float fallback) noexcept {
             return std::isfinite(value) ? value : fallback;
@@ -152,6 +154,71 @@ namespace HIKARI::VFX {
             (nextDedupRecord_ + 1u) % dedupRecords_.size();
     }
 
+    RENDER3D::COMBAT_VFX::ActionCinematicGradeFrame
+        ActionPostReactionService::SanitizeGrade(
+            const ActionCinematicGradeRequest& request) noexcept {
+
+        RENDER3D::COMBAT_VFX::ActionCinematicGradeFrame result{};
+        result.weight = ClampFinite(request.weight, 0.0f, 0.0f, 1.0f);
+        result.monochromeStrength = ClampFinite(
+            request.monochromeStrength,
+            0.0f,
+            0.0f,
+            1.0f);
+        result.chromaticSeparationPixels = ClampFinite(
+            request.chromaticSeparationPixels,
+            0.0f,
+            0.0f,
+            kMaximumGradeChromaticPixels);
+        result.contrastStrength = ClampFinite(
+            request.contrastStrength,
+            0.0f,
+            0.0f,
+            kMaximumGradeContrast);
+        result.active = result.weight > 0.0f ? 1u : 0u;
+        return result;
+    }
+
+    bool ActionPostReactionService::IsPreferredGrade(
+        const ActionCinematicGradeRequest& candidate,
+        const ActionCinematicGradeRequest& current) noexcept {
+
+        if (candidate.priority != current.priority) {
+            return candidate.priority > current.priority;
+        }
+        if (candidate.weight != current.weight) {
+            return candidate.weight > current.weight;
+        }
+        return candidate.sourceId < current.sourceId;
+    }
+
+    bool ActionPostReactionService::SubmitActionCinematicGrade(
+        const ActionCinematicGradeRequest& request) noexcept {
+
+        if (request.sourceId == 0u || request.frameIndex == 0u ||
+            !std::isfinite(request.weight) ||
+            !std::isfinite(request.monochromeStrength) ||
+            !std::isfinite(request.chromaticSeparationPixels) ||
+            !std::isfinite(request.contrastStrength) ||
+            request.weight < 0.0f || request.monochromeStrength < 0.0f ||
+            request.chromaticSeparationPixels < 0.0f ||
+            request.contrastStrength < 0.0f) {
+            return false;
+        }
+
+        if (!gradeSubmitted_ ||
+            gradeRequest_.frameIndex != request.frameIndex) {
+            gradeRequest_ = request;
+            gradeSubmitted_ = true;
+        }
+        else if (IsPreferredGrade(request, gradeRequest_)) {
+            gradeRequest_ = request;
+        }
+        frameIndex_ = request.frameIndex;
+        RebuildFrameSource();
+        return true;
+    }
+
     bool ActionPostReactionService::TriggerPerfectGuardShockwave(
         const PerfectGuardShockwaveRequest& request) noexcept {
 
@@ -214,6 +281,10 @@ namespace HIKARI::VFX {
         hasTicked_ = true;
         lastTickFrame_ = frameIndex;
         frameIndex_ = frameIndex;
+        if (!gradeSubmitted_ || gradeRequest_.frameIndex != frameIndex) {
+            gradeRequest_ = {};
+            gradeSubmitted_ = false;
+        }
         const float delta = std::clamp(
             FiniteOr(unscaledDeltaSeconds, 0.0f),
             0.0f,
@@ -249,6 +320,9 @@ namespace HIKARI::VFX {
                 continue;
             }
             frameSource_.waves[frameSource_.count++] = active.frame;
+        }
+        if (gradeSubmitted_ && gradeRequest_.frameIndex == frameIndex_) {
+            frameSource_.cinematicGrade = SanitizeGrade(gradeRequest_);
         }
     }
 
@@ -361,6 +435,8 @@ namespace HIKARI::VFX {
         frameIndex_ = 0u;
         lastTickFrame_ = 0u;
         hasTicked_ = false;
+        gradeRequest_ = {};
+        gradeSubmitted_ = false;
         frameSource_ = {};
     }
 

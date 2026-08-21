@@ -14,6 +14,7 @@
 namespace HIKARI {
 
     class AssetRegistry;
+    class ModelManager;
 
     enum class RenderSubmissionRouteMode : uint8_t {
         GpuDrivenMainline,
@@ -46,7 +47,8 @@ namespace HIKARI {
 
         static void SetAssetContext(
             const AssetRegistry* assetRegistry,
-            std::filesystem::path projectRoot);
+            std::filesystem::path projectRoot,
+            ModelManager* modelManager = nullptr);
         static void SetRenderViewPurpose(
             RENDER3D::RenderViewPurpose purpose);
         static RENDER3D::RenderViewPurpose GetRenderViewPurpose();
@@ -69,6 +71,7 @@ namespace HIKARI {
         static bool sGpuDrivenSceneSyncInitialized_;
         static RENDER3D::RenderViewPurpose sRenderViewPurpose_;
         static const AssetRegistry* sAssetRegistry_;
+        static ModelManager* sModelManager_;
         static std::filesystem::path sProjectRoot_;
     };
 

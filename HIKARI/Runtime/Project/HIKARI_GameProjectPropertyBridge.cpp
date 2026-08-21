@@ -99,6 +99,24 @@ namespace {
         return true;
     }
 
+    bool ReadStringBuffer(
+        const char* source,
+        size_t capacity,
+        std::string& outValue) noexcept {
+        if (source == nullptr || capacity == 0u) {
+            return false;
+        }
+        size_t count = 0u;
+        while (count < capacity && source[count] != '\0') {
+            ++count;
+        }
+        if (count == capacity) {
+            return false;
+        }
+        outValue.assign(source, count);
+        return true;
+    }
+
     BINDING::ValueType ToRuntimeBindingType(
         GameProjectBindingValueType type) noexcept {
 
@@ -419,6 +437,40 @@ namespace {
         std::memcpy(value, editable.data(), count);
         value[count] = '\0';
         return true;
+    }
+
+    bool GameProjectInspector::ModelMaterialSetAssetGuid(
+        std::string_view propertyId,
+        std::string_view label,
+        char* value,
+        size_t capacity) {
+        if (propertyId.empty() || value == nullptr || capacity == 0u) {
+            return false;
+        }
+        auto* builder =
+            static_cast<IInspectorBuilder*>(builder_);
+        if (builder == nullptr) {
+            return false;
+        }
+
+        std::string editable{};
+        if (!ReadStringBuffer(value, capacity, editable)) {
+            return false;
+        }
+        const std::string original = editable;
+        const AuthoringFieldDescriptor field{
+            propertyId,
+            label.empty() ? propertyId : label,
+            "Formal Material Set asset GUID for a model presentation."
+        };
+        const bool pickerChanged = builder->AssetIdPicker(
+            field,
+            AssetType::ModelMaterialBinding,
+            editable);
+        if (!CopyStringToReference(editable, value, capacity)) {
+            return false;
+        }
+        return pickerChanged || original != editable;
     }
 
     bool GameProjectInspector::Vec2(

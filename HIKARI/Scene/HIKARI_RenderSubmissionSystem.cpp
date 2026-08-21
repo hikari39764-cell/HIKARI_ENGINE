@@ -11,6 +11,7 @@
 #include "Render3D/HIKARI_Renderer3D.h"
 #include "Render3D/Procedural/HIKARI_ProceduralModelFactory.h"
 #include "Render3D/Render/HIKARI_ModelRenderer.h"
+#include "Render3D/Models/HIKARI_ModelManager.h"
 #include "Render3D/Shadow/HIKARI_ShadowMapRenderer.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelRenderableAssetResolver.h"
@@ -30,6 +31,7 @@ namespace HIKARI {
 
     RenderSubmissionDebugStats RenderSubmissionSystem::sDebugStats_{};
     const AssetRegistry* RenderSubmissionSystem::sAssetRegistry_ = nullptr;
+    ModelManager* RenderSubmissionSystem::sModelManager_ = nullptr;
     std::filesystem::path RenderSubmissionSystem::sProjectRoot_{};
     RENDER3D::RUNTIME::SceneRenderCache RenderSubmissionSystem::sSceneRenderCache_{};
     RENDER3D::GPUDRIVEN::GpuSceneRegistry RenderSubmissionSystem::sGpuSceneRegistry_{};
@@ -126,7 +128,8 @@ namespace HIKARI {
 
     void RenderSubmissionSystem::SetAssetContext(
         const AssetRegistry* assetRegistry,
-        std::filesystem::path projectRoot) {
+        std::filesystem::path projectRoot,
+        ModelManager* modelManager) {
 
         std::filesystem::path normalizedProjectRoot = NormalizeProjectRoot(std::move(projectRoot));
         // 初回描画時のパイプライン初期化とプロシージャル既定プリミティブの
@@ -138,12 +141,15 @@ namespace HIKARI {
                 normalizedProjectRoot);
         }
         const bool assetContextChanged = sAssetRegistry_ != assetRegistry;
+        const bool modelManagerChanged = sModelManager_ != modelManager;
         const bool projectRootChanged = sProjectRoot_ != normalizedProjectRoot;
-        if (!assetContextChanged && !projectRootChanged) {
+        if (!assetContextChanged && !modelManagerChanged &&
+            !projectRootChanged) {
             return;
         }
 
         sAssetRegistry_ = assetRegistry;
+        sModelManager_ = modelManager;
         sProjectRoot_ = std::move(normalizedProjectRoot);
         InvalidateSceneResources(projectRootChanged);
     }
@@ -166,6 +172,7 @@ namespace HIKARI {
 
     void RenderSubmissionSystem::InvalidateSubmissionRouting() {
         sSceneRenderCache_.Clear();
+        sSceneRenderCacheSync_.Clear();
         sGpuSceneRegistry_.Clear();
         sGpuSceneRegistryValid_ = false;
         sGpuDrivenSceneSyncInitialized_ = false;
@@ -236,7 +243,8 @@ namespace HIKARI {
                 frame.frameIndex,
                 sAssetRegistry_,
                 sProjectRoot_,
-                sRenderViewPurpose_);
+                sRenderViewPurpose_,
+                sModelManager_);
             sGpuDrivenSceneSyncInitialized_ = true;
         } else {
             sSceneRenderCacheSync_.SyncDirty(
@@ -246,7 +254,8 @@ namespace HIKARI {
                 frame.frameIndex,
                 sAssetRegistry_,
                 sProjectRoot_,
-                sRenderViewPurpose_);
+                sRenderViewPurpose_,
+                sModelManager_);
         }
 
         RENDER3D::GPUDRIVEN::GpuSceneRegistrySyncInput gpuSceneInput{};

@@ -41,13 +41,17 @@ namespace HIKARI::ANIMATION {
     // The model hierarchy is the authority for the subtree; an invalid
     // hierarchy, missing root, or mismatched pose is rejected without
     // modifying outPose.  This remains an animation-runtime primitive so
-    // callers do not need to own or duplicate model-node traversal.
+    // callers do not need to own or duplicate model-node traversal.  A
+    // model-rotation-aligned root keeps a full-body-authored upper-body pose
+    // facing as authored when its animated pelvis is replaced by locomotion.
     bool BlendAnimationPoseSubtree(
         const ModelAsset& model,
         const AnimationLocalPose& from,
         const AnimationLocalPose& to,
         std::string_view maskRootNodeName,
         float weight,
-        AnimationLocalPose& outPose);
+        AnimationLocalPose& outPose,
+        AnimationSubtreeRootAlignment rootAlignment =
+            AnimationSubtreeRootAlignment::ParentLocal);
 
 } // namespace HIKARI::ANIMATION

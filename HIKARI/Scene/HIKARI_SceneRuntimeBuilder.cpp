@@ -242,7 +242,7 @@ namespace HIKARI {
             modelManager.LoadAssetNow(descriptor.id.value);
         }
 
-        ModelAsset* ResolveModelAssetNow(
+        ModelAsset* ResolveModelAssetNowInternal(
             ModelManager& modelManager,
             const AssetRegistry& assetRegistry,
             const std::string& assetId) {
@@ -275,29 +275,18 @@ namespace HIKARI {
                 return;
             }
 
-            MaterialRuntimeBuilder builder{};
-            auto& programRegistry =
-                RENDER3D::MATERIAL::GetRuntimeMaterialProgramRegistry();
             const auto applyMaterial = [&modelComponent,
-                &assetRegistry,
-                &builder,
-                &programRegistry](
+                &assetRegistry](
                     uint32_t materialIndex,
                     const MaterialAssetDescriptor& descriptor,
                     bool inheritModelTextures) {
-
-                auto runtimeMaterial = std::make_unique<Material>();
-                if (!builder.BuildRuntimeMaterial(
-                        descriptor.sourceData,
-                        descriptor.compileResult,
-                        assetRegistry,
-                        programRegistry,
-                        *runtimeMaterial,
-                        descriptor.id.value)) {
+                auto runtimeMaterial = BuildRuntimeMaterialOverride(
+                    assetRegistry,
+                    descriptor,
+                    inheritModelTextures);
+                if (runtimeMaterial == nullptr) {
                     return false;
                 }
-                runtimeMaterial->SetInheritModelTextures(
-                    inheritModelTextures);
                 modelComponent.SetRuntimeMaterialOverride(
                     materialIndex,
                     std::move(runtimeMaterial));
@@ -397,6 +386,39 @@ namespace HIKARI {
                 });
         }
 
+    }
+
+    std::unique_ptr<Material> BuildRuntimeMaterialOverride(
+        const AssetRegistry& assetRegistry,
+        const MaterialAssetDescriptor& descriptor,
+        bool inheritModelTextures) {
+
+        auto runtimeMaterial = std::make_unique<Material>();
+        MaterialRuntimeBuilder builder{};
+        auto& programRegistry =
+            RENDER3D::MATERIAL::GetRuntimeMaterialProgramRegistry();
+        if (!builder.BuildRuntimeMaterial(
+                descriptor.sourceData,
+                descriptor.compileResult,
+                assetRegistry,
+                programRegistry,
+                *runtimeMaterial,
+                descriptor.id.value)) {
+            return nullptr;
+        }
+        runtimeMaterial->SetInheritModelTextures(inheritModelTextures);
+        return runtimeMaterial;
+    }
+
+    ModelAsset* ResolveModelAssetNow(
+        ModelManager& modelManager,
+        const AssetRegistry& assetRegistry,
+        const std::string& assetId) {
+
+        return ResolveModelAssetNowInternal(
+            modelManager,
+            assetRegistry,
+            assetId);
     }
 
     SceneDependencySet SceneRuntimeBuilder::CollectDependencies(

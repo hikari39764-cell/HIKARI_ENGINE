@@ -449,8 +449,16 @@ namespace HIKARI {
         std::string maskRootNodeName,
         float normalizedTime,
         float targetWeight,
-        float blendSeconds) {
+        float blendSeconds,
+        ANIMATION::AnimationSubtreeRootAlignment rootAlignment) {
         if (clipName.empty() || maskRootNodeName.empty()) {
+            ResetMaskedPoseLayer();
+            return;
+        }
+        if (rootAlignment !=
+                ANIMATION::AnimationSubtreeRootAlignment::ParentLocal &&
+            rootAlignment != ANIMATION::AnimationSubtreeRootAlignment::
+                PreserveModelRotation) {
             ResetMaskedPoseLayer();
             return;
         }
@@ -468,7 +476,8 @@ namespace HIKARI {
         MaskedPoseLayerState& layer = maskedPoseLayer_;
         const bool sameLayer = layer.active &&
             layer.clip.fallbackName == clipName &&
-            layer.maskRootNodeName == maskRootNodeName;
+            layer.maskRootNodeName == maskRootNodeName &&
+            layer.rootAlignment == rootAlignment;
         const bool targetChanged = !sameLayer ||
             std::abs(layer.targetWeight - safeTargetWeight) > 1.0e-5f;
 
@@ -476,6 +485,7 @@ namespace HIKARI {
             layer.clip = {};
             layer.clip.fallbackName = std::move(clipName);
             layer.maskRootNodeName = std::move(maskRootNodeName);
+            layer.rootAlignment = rootAlignment;
             layer.currentWeight = 0.0f;
             layer.blendStartWeight = 0.0f;
             layer.blendElapsedSec = 0.0f;

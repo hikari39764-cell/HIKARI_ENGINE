@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -16,6 +17,9 @@ namespace HIKARI {
     class AssetRegistry;
     class ComponentRegistry;
     class ModelManager;
+    class Material;
+    struct MaterialAssetDescriptor;
+    class ModelAsset;
     class SkyManager;
     class World;
     struct SceneDocument;
@@ -32,6 +36,20 @@ namespace HIKARI {
             lightingBakeAuthoringHashes{};
         RENDER3D::LIGHTING::SceneLightingSet lighting{};
     };
+
+    // Resolves and loads a registered model through the canonical runtime
+    // ModelManager path. Callers must not invoke importers directly.
+    ModelAsset* ResolveModelAssetNow(
+        ModelManager& modelManager,
+        const AssetRegistry& assetRegistry,
+        const std::string& assetId);
+
+    // Builds the same runtime Material object used by ModelComponent's
+    // formal Material Set projection. The caller owns the returned value.
+    std::unique_ptr<Material> BuildRuntimeMaterialOverride(
+        const AssetRegistry& assetRegistry,
+        const MaterialAssetDescriptor& descriptor,
+        bool inheritModelTextures);
 
     class SceneRuntimeBuilder {
     public:

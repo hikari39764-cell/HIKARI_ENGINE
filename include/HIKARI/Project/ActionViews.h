@@ -79,6 +79,18 @@ namespace HIKARI {
             float normalizedTime,
             float targetWeight,
             float blendSeconds) const noexcept;
+        // Variant for full-body-authored overlays whose mask root would
+        // otherwise inherit an unrelated locomotion-parent orientation.
+        HIKARI_GAME_PROJECT_SDK_API bool
+            SetMaskedPoseLayerWithRootAlignment(
+                uint64_t objectHandle,
+                std::string_view clipName,
+                std::string_view maskRootNodeName,
+                float normalizedTime,
+                float targetWeight,
+                float blendSeconds,
+                GameProjectAnimationLayerRootAlignment rootAlignment)
+                const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool ClearMaskedPoseLayer(
             uint64_t objectHandle,
             float blendOutSeconds) const noexcept;
@@ -210,6 +222,9 @@ namespace HIKARI {
             const GameProjectWeaponTrailSample& sample) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool TriggerPerfectGuardWave(
             const GameProjectPerfectGuardWaveRequest& request)
+            const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool SubmitActionCinematicGrade(
+            const GameProjectActionCinematicGradeRequest& request)
             const noexcept;
         // Profiled methods use all-new request layouts so older callers keep
         // the exact legacy ABI.  The profile GUID/output id is resolved by

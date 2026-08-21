@@ -307,12 +307,16 @@ namespace HIKARI::ANIMATION {
         const AnimationLocalPose& to,
         std::string_view maskRootNodeName,
         float weight,
-        AnimationLocalPose& outPose) {
+        AnimationLocalPose& outPose,
+        AnimationSubtreeRootAlignment rootAlignment) {
         if (!std::isfinite(weight) ||
             model.nodes.empty() ||
             !from.IsValidFor(model.nodes.size()) ||
             !to.IsValidFor(model.nodes.size()) ||
-            maskRootNodeName.empty()) {
+            maskRootNodeName.empty() ||
+            (rootAlignment != AnimationSubtreeRootAlignment::ParentLocal &&
+                rootAlignment !=
+                    AnimationSubtreeRootAlignment::PreserveModelRotation)) {
             return false;
         }
 
@@ -332,6 +336,40 @@ namespace HIKARI::ANIMATION {
         if (safeWeight <= 0.0f) {
             outPose = std::move(candidate);
             return true;
+        }
+
+        MATH::Quat alignedRootRotation =
+            to.nodes[static_cast<size_t>(rootNode)].rotation;
+        if (rootAlignment ==
+            AnimationSubtreeRootAlignment::PreserveModelRotation) {
+            std::vector<MATH::Mat4> baseGlobals{};
+            std::vector<MATH::Mat4> overlayGlobals{};
+            const int parentNode = model.nodes[
+                static_cast<size_t>(rootNode)].parent;
+            if (!POSE_EVALUATION::BuildNodeGlobalMatrices(
+                    model, &from, baseGlobals) ||
+                !POSE_EVALUATION::BuildNodeGlobalMatrices(
+                    model, &to, overlayGlobals) ||
+                static_cast<size_t>(rootNode) >= overlayGlobals.size()) {
+                return false;
+            }
+
+            const MATH::Mat4 parentGlobal = parentNode >= 0
+                ? baseGlobals[static_cast<size_t>(parentNode)]
+                : MATH::Mat4::Identity();
+            const MATH::Mat4 alignedLocal =
+                MATH::Inverse(parentGlobal) *
+                overlayGlobals[static_cast<size_t>(rootNode)];
+            MATH::Vec3 ignoredTranslation{};
+            MATH::Vec3 ignoredScale{};
+            if (!MATH::DecomposeTRS(
+                    alignedLocal,
+                    ignoredTranslation,
+                    alignedRootRotation,
+                    ignoredScale) ||
+                !MATH::IsFinite(alignedRootRotation)) {
+                return false;
+            }
         }
 
         const size_t nodeCount = model.nodes.size();
@@ -367,11 +405,15 @@ namespace HIKARI::ANIMATION {
 
             const Transform3D& fromNode = from.nodes[index];
             const Transform3D& toNode = to.nodes[index];
+            const MATH::Quat targetRotation =
+                static_cast<int>(index) == rootNode
+                    ? alignedRootRotation
+                    : toNode.rotation;
             if (!MATH::IsFinite(fromNode.position) ||
                 !MATH::IsFinite(fromNode.rotation) ||
                 !MATH::IsFinite(fromNode.scale) ||
                 !MATH::IsFinite(toNode.position) ||
-                !MATH::IsFinite(toNode.rotation) ||
+                !MATH::IsFinite(targetRotation) ||
                 !MATH::IsFinite(toNode.scale)) {
                 return false;
             }
@@ -383,7 +425,7 @@ namespace HIKARI::ANIMATION {
                 safeWeight);
             result.rotation = Nlerp(
                 fromNode.rotation,
-                toNode.rotation,
+                targetRotation,
                 safeWeight);
             result.scale = Lerp(
                 fromNode.scale,
