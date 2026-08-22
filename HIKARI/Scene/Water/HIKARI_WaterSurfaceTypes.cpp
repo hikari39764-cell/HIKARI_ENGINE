@@ -193,9 +193,9 @@ namespace HIKARI::WATER {
             settings.transmissionStrength = 1.0f;
             settings.shadowStrength = 0.82f;
             settings.reflectionStrength = 1.0f;
-            settings.sunGlintStrength = 0.0f;
-            settings.glintDensity = 0.0f;
-            settings.glintFlowSpeed = 0.0f;
+            settings.sunGlintStrength = 0.64f;
+            settings.glintDensity = 0.46f;
+            settings.glintFlowSpeed = 0.38f;
             settings.ribbonWidth = 0.08f;
             settings.windDirectionDeg = 28.0f;
             settings.windSpeed = 14.0f;

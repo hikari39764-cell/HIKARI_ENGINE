@@ -8,15 +8,8 @@
 // size, object name, preset identity, or camera height to promote finite
 // authored water.
 static const float HIKARI_OCEAN_EPSILON = 1.0e-4f;
-static const float HIKARI_OCEAN_EDGE_MARGIN = 1.05f;
 static const float HIKARI_OCEAN_MIN_SNAP_CELL = 1.0e-3f;
-// A malformed/degenerate inverse projection must not turn one water vertex
-// into NaN/Inf and poison the whole draw.  The fallback remains deliberately
-// conservative (8 authored half-extents) while the valid path is bounded to
-// a finite 256x expansion and an absolute world-scale ceiling.
-static const float HIKARI_OCEAN_FALLBACK_FAR_EXTENT_RATIO = 8.0f;
-static const float HIKARI_OCEAN_MAX_FAR_EXTENT_RATIO = 256.0f;
-static const float HIKARI_OCEAN_MAX_FAR_HALF_EXTENT = 1.0e6f;
+static const float HIKARI_OCEAN_FOCUS_NDC_Y = -0.35f;
 
 float2 HikariOceanSafeHalfExtent(float2 extent, float2 fallbackExtent)
 {
@@ -26,37 +19,6 @@ float2 HikariOceanSafeHalfExtent(float2 extent, float2 fallbackExtent)
     return max(
         HikariFiniteOr(abs(extent), safeFallback),
         HIKARI_OCEAN_EPSILON.xx);
-}
-
-float2 HikariOceanFallbackFarHalfExtent(float2 authoredHalfExtent)
-{
-    const float2 safeAuthored =
-        HikariOceanSafeHalfExtent(authoredHalfExtent, 1.0f.xx);
-    const float2 ratioLimit =
-        safeAuthored * HIKARI_OCEAN_FALLBACK_FAR_EXTENT_RATIO;
-    const float2 absoluteLimit = HIKARI_OCEAN_MAX_FAR_HALF_EXTENT.xx;
-    return max(
-        safeAuthored,
-        min(ratioLimit, absoluteLimit));
-}
-
-float2 HikariOceanSanitizeFarHalfExtent(
-    float2 candidate,
-    float2 authoredHalfExtent)
-{
-    const float2 safeAuthored =
-        HikariOceanSafeHalfExtent(authoredHalfExtent, 1.0f.xx);
-    const float2 ratioLimit =
-        safeAuthored * HIKARI_OCEAN_MAX_FAR_EXTENT_RATIO;
-    const float2 absoluteLimit = HIKARI_OCEAN_MAX_FAR_HALF_EXTENT.xx;
-    const float2 boundedLimit = max(
-        safeAuthored,
-        min(ratioLimit, absoluteLimit));
-    return max(
-        safeAuthored,
-        min(
-            HikariFiniteOr(abs(candidate), HikariOceanFallbackFarHalfExtent(safeAuthored)),
-            boundedLimit));
 }
 
 float2 HikariOceanSnapCameraXZ(float2 cameraLocalXZ, float2 snapCellSize)
@@ -85,13 +47,6 @@ float2 HikariOceanWorldToLocalXZ(float4x4 world, float2 worldXZ)
     return float2(
         (delta.x * basisZ.y - delta.y * basisZ.x) * inverseDeterminant,
         (basisX.x * delta.y - basisX.y * delta.x) * inverseDeterminant);
-}
-
-float2 HikariOceanLocalDeltaToWorldXZ(float4x4 world, float2 localDelta)
-{
-    const float2 basisX = float2(world._11, world._31);
-    const float2 basisZ = float2(world._13, world._33);
-    return basisX * localDelta.x + basisZ * localDelta.y;
 }
 
 float2 HikariOceanWorldDeltaToLocalXZ(float4x4 world, float2 worldDelta)
@@ -209,6 +164,42 @@ float3 HikariOceanUnprojectFarPoint(
     return HikariFiniteOr(world.xyz, 0.0f.xxx);
 }
 
+float2 HikariOceanResolveGridCenterWorldXZ(
+    float4x4 world,
+    float4x4 invViewProj,
+    float4 cameraPosition)
+{
+    const float2 fallbackCenter = HikariFiniteOr(
+        cameraPosition.xz,
+        0.0f.xx);
+    const float planeWorldY =
+        mul(world, float4(0.0f, 0.0f, 0.0f, 1.0f)).y;
+    const float3 farWorld = HikariOceanUnprojectFarPoint(
+        invViewProj,
+        float2(0.0f, HIKARI_OCEAN_FOCUS_NDC_Y));
+    const float3 ray = farWorld - cameraPosition.xyz;
+    const float rayLengthSquared = dot(ray, ray);
+    if (!HikariIsFiniteFloat(planeWorldY) ||
+        !HikariIsFiniteFloat3(ray) ||
+        !HikariIsFiniteFloat(rayLengthSquared) ||
+        rayLengthSquared <= HIKARI_OCEAN_EPSILON ||
+        abs(ray.y) <= HIKARI_OCEAN_EPSILON)
+    {
+        return fallbackCenter;
+    }
+    const float planeDistance =
+        (planeWorldY - cameraPosition.y) / ray.y;
+    if (!HikariIsFiniteFloat(planeDistance) ||
+        planeDistance <= HIKARI_OCEAN_EPSILON)
+    {
+        return fallbackCenter;
+    }
+    const float3 hit = cameraPosition.xyz + ray * planeDistance;
+    return HikariIsFiniteFloat3(hit)
+        ? hit.xz
+        : fallbackCenter;
+}
+
 float3 HikariOceanWorldNormalToLocal(
     float4x4 world,
     float3 worldNormal)
@@ -223,144 +214,6 @@ float3 HikariOceanWorldNormalToLocal(
     return length(localNormal) > HIKARI_OCEAN_EPSILON
         ? normalize(localNormal)
         : float3(0.0f, 1.0f, 0.0f);
-}
-
-float2 HikariOceanResolveFarHalfExtent(
-    float4x4 world,
-    float4x4 invViewProj,
-    float4 cameraPosition,
-    float2 cameraWorldXZ,
-    float2 authoredHalfExtent)
-{
-    const float planeWorldY =
-        mul(world, float4(0.0f, 0.0f, 0.0f, 1.0f)).y;
-    const float2 safeAuthoredHalfExtent =
-        HikariOceanSafeHalfExtent(authoredHalfExtent, 1.0f.xx);
-    if (!HikariIsFiniteFloat(planeWorldY))
-    {
-        return HikariOceanFallbackFarHalfExtent(safeAuthoredHalfExtent);
-    }
-    float2 farHalfExtent = safeAuthoredHalfExtent;
-    const float2 cameraLocalXZ = HikariOceanWorldToLocalXZ(
-        world,
-        cameraWorldXZ);
-    if (!HikariIsFiniteFloat2(cameraLocalXZ) ||
-        !HikariIsFiniteFloat3(cameraPosition.xyz))
-    {
-        return HikariOceanFallbackFarHalfExtent(safeAuthoredHalfExtent);
-    }
-    [unroll]
-    for (uint corner = 0u; corner < 4u; ++corner)
-    {
-        const float2 ndc = float2(
-            (corner & 1u) != 0u ? 1.0f : -1.0f,
-            (corner & 2u) != 0u ? 1.0f : -1.0f);
-        const float3 farWorld = HikariOceanUnprojectFarPoint(
-            invViewProj,
-            ndc);
-        if (!HikariIsFiniteFloat3(farWorld))
-        {
-            continue;
-        }
-        const float3 ray = farWorld - cameraPosition.xyz;
-        const float rayY = ray.y;
-        float3 hit = farWorld;
-        if (HikariIsFiniteFloat3(ray) &&
-            HikariIsFiniteFloat(rayY) &&
-            abs(rayY) > HIKARI_OCEAN_EPSILON)
-        {
-            const float planeDistance =
-                (planeWorldY - cameraPosition.y) / rayY;
-            if (HikariIsFiniteFloat(planeDistance) &&
-                planeDistance > HIKARI_OCEAN_EPSILON)
-            {
-                hit = cameraPosition.xyz + ray * planeDistance;
-            }
-        }
-        if (!HikariIsFiniteFloat3(hit))
-        {
-            continue;
-        }
-        const float2 localHit = HikariOceanWorldToLocalXZ(world, hit.xz);
-        if (!HikariIsFiniteFloat2(localHit))
-        {
-            continue;
-        }
-        farHalfExtent = max(
-            farHalfExtent,
-            abs(localHit - cameraLocalXZ));
-    }
-    return HikariOceanSanitizeFarHalfExtent(
-        farHalfExtent * HIKARI_OCEAN_EDGE_MARGIN,
-        safeAuthoredHalfExtent);
-}
-
-float HikariOceanResolveTanHalfFovY(
-    float4x4 invViewProj,
-    float4 cameraPosition)
-{
-    const float3 safeCamera = HikariFiniteOr(cameraPosition.xyz, 0.0f.xxx);
-    const float3 centerDelta =
-        HikariOceanUnprojectFarPoint(invViewProj, float2(0.0f, 0.0f)) -
-        safeCamera;
-    const float3 topDelta =
-        HikariOceanUnprojectFarPoint(invViewProj, float2(0.0f, 1.0f)) -
-        safeCamera;
-    const float centerLengthSquared = dot(centerDelta, centerDelta);
-    const float topLengthSquared = dot(topDelta, topDelta);
-    if (!HikariIsFiniteFloat3(centerDelta) ||
-        !HikariIsFiniteFloat3(topDelta) ||
-        !HikariIsFiniteFloat(centerLengthSquared) ||
-        !HikariIsFiniteFloat(topLengthSquared) ||
-        centerLengthSquared <= HIKARI_OCEAN_EPSILON ||
-        topLengthSquared <= HIKARI_OCEAN_EPSILON)
-    {
-        return 1.0f;
-    }
-    const float3 centerRay = centerDelta * rsqrt(centerLengthSquared);
-    const float3 topRay = topDelta * rsqrt(topLengthSquared);
-    const float sine = length(cross(centerRay, topRay));
-    const float cosine = max(dot(centerRay, topRay), HIKARI_OCEAN_EPSILON);
-    const float tanHalfFovY = sine / cosine;
-    return HikariIsFiniteFloat(tanHalfFovY)
-        ? clamp(tanHalfFovY, HIKARI_OCEAN_EPSILON, 100.0f)
-        : 1.0f;
-}
-
-float HikariOceanProjectedCellPixels(
-    float worldCellSize,
-    float viewDistance,
-    float tanHalfFovY,
-    float screenHeight)
-{
-    if (!HikariIsFiniteFloat(worldCellSize) ||
-        !HikariIsFiniteFloat(viewDistance) ||
-        !HikariIsFiniteFloat(tanHalfFovY) ||
-        !HikariIsFiniteFloat(screenHeight))
-    {
-        return 0.0f;
-    }
-    const float safeDistance = max(abs(viewDistance), HIKARI_OCEAN_EPSILON);
-    const float safeTanHalfFovY = max(abs(tanHalfFovY), HIKARI_OCEAN_EPSILON);
-    const float safeScreenHeight = max(abs(screenHeight), 1.0f);
-    const float projectedPixels = safeScreenHeight * abs(worldCellSize) /
-        (2.0f * safeTanHalfFovY * safeDistance);
-    return HikariIsFiniteFloat(projectedPixels)
-        ? max(projectedPixels, 0.0f)
-        : 0.0f;
-}
-
-float HikariOceanHighFrequencyFade(
-    float projectedCellPixels,
-    float radialNormalized)
-{
-    // 0.75..1.5 px is the continuous footprint transition.  The normalized
-    // radial term keeps the extended edge from carrying high-frequency
-    // geometric choppiness after the authored grid has been stretched.
-    const float footprint = saturate(
-        (max(projectedCellPixels, 0.0f) - 0.75f) / 0.75f);
-    const float radial = 1.0f - smoothstep(0.55f, 1.0f, saturate(radialNormalized));
-    return saturate(min(footprint, radial));
 }
 
 float2 HikariOceanWorldAnchoredXZ(

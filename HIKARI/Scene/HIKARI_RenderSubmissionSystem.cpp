@@ -13,11 +13,13 @@
 #include "Render3D/Render/HIKARI_ModelRenderer.h"
 #include "Render3D/Models/HIKARI_ModelManager.h"
 #include "Render3D/Shadow/HIKARI_ShadowMapRenderer.h"
+#include "Render2D/HIKARI_GameUiEffectRenderer.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelRenderableAssetResolver.h"
 #include "Scene/Components/HIKARI_ProceduralMeshComponent.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/Terrain/HIKARI_TerrainGrassModelFactory.h"
+#include "Scene/Ui/HIKARI_GameUiPresentationService.h"
 #include "Scene/HIKARI_World.h"
 #include "Scene/Vfx/HIKARI_ActionPostReactionService.h"
 #include "Scene/Vfx/HIKARI_CombatAfterimageService.h"
@@ -81,6 +83,12 @@ namespace HIKARI {
                 if (auto* reaction = world.Services().Find<
                         VFX::ActionPostReactionService>()) {
                     reaction->Tick(frame.unscaledDt, frame.frameIndex);
+                }
+                if (auto* gameUi = world.Services().Find<
+                        GAME_UI::GameUiPresentationService>()) {
+                    gameUi->Tick(frame.frameIndex);
+                    GAME_UI::SetGameUiFrameSource(
+                        &gameUi->GetFrameSource());
                 }
             }
             catch (...) {

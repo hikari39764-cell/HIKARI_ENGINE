@@ -331,6 +331,49 @@ float HikariWaterAnimeSparkleMask(
         lerp(0.35f, 1.0f, density);
 }
 
+float HikariWaterRealisticSunGlitterLobe(
+    float3 normalWS,
+    float3 viewDirection,
+    float3 lightDirection,
+    float roughness,
+    float glintDensity,
+    float slopeVariance)
+{
+    // Sun glitter is a continuous microfacet-lighting lobe. Surface motion is
+    // already carried by the geometric and spectral normals; imposing a
+    // second thresholded sine lattice here produces the regular white oval
+    // grid that does not exist on real water.
+    const float3 halfVector = HikariSafeNormalize(
+        lightDirection + viewDirection,
+        normalWS);
+    const float alignment = saturate(dot(normalWS, halfVector));
+    const float density = saturate(HikariFiniteOr(glintDensity, 0.46f));
+    const float variance = saturate(HikariFiniteOr(slopeVariance, 0.0f));
+    const float safeRoughness = clamp(
+        HikariFiniteOr(roughness, 0.12f),
+        0.02f,
+        0.45f);
+    const float threshold = clamp(
+        lerp(0.9985f, 0.9845f, density) -
+            safeRoughness * 0.010f - variance * 0.008f,
+        0.965f,
+        0.999f);
+    const float lobeWidth = max(
+        fwidth(alignment) * 2.0f,
+        0.0012f + safeRoughness * 0.004f + variance * 0.003f);
+    const float sunFacet = smoothstep(
+        threshold - lobeWidth,
+        min(threshold + lobeWidth, 0.9999f),
+        alignment);
+    const float surfaceLit = smoothstep(
+        0.0f,
+        0.08f,
+        dot(normalWS, lightDirection));
+    const float varianceSupport = saturate(
+        0.22f + density * 0.38f + sqrt(variance) * 0.55f);
+    return saturate(sunFacet * surfaceLit * varianceSupport);
+}
+
 float4 HikariShadeWaterSurface(
     PSInput input,
     HikariMeshObjectData waterObjectData)
@@ -656,7 +699,7 @@ float4 HikariShadeWaterSurface(
         resolvedEnvironmentReflection,
         0.0f.xxx);
     const float3 localTerm = HikariFiniteOr(
-        localReflection * (realistic ? 1.0f : 0.35f),
+        localReflection * (realistic ? 1.0f : 0.62f),
         0.0f.xxx);
 
     float3 color;
@@ -734,7 +777,7 @@ float4 HikariShadeWaterSurface(
             transmissionTerm * lerp(
                 1.0f.xxx,
                 graphicTint,
-                saturate(graphicWeight * 0.78f)),
+                saturate(graphicWeight * 0.64f)),
             transmissionTerm * 0.55f);
 
         const float3 halfVector = HikariSafeNormalize(
@@ -757,8 +800,13 @@ float4 HikariShadeWaterSurface(
             p.glintDensity,
             p.glintFlowSpeed,
             p.ribbonWidth);
+        const float stylizedDetailWeight = 1.0f - smoothstep(
+            90.0f,
+            240.0f,
+            distanceToCamera);
         const float glintMask = saturate(
-            sunRibbon * 0.36f + sparkle);
+            sunRibbon * lerp(0.12f, 0.36f, stylizedDetailWeight) +
+            sparkle * stylizedDetailWeight);
         // Anime sparkle is a bounded directional-sun lobe, never an
         // unconditional emissive lift. Its energy joins the same reflection
         // budget as sky/SSR and local/direct PBR.
@@ -766,13 +814,13 @@ float4 HikariShadeWaterSurface(
             (glintMask * max(p.sunGlintStrength, 0.0f) *
                 max(p.directSunStrength, 0.0f) * directShadow * 0.45f);
         const float environmentWeight = lerp(
-            0.52f + 0.28f * fresnel,
+            0.68f + 0.22f * fresnel,
             1.0f,
             shallowMask);
         const float3 reflectionEnergy =
             environmentTerm * environmentWeight +
-            directionalReflection * 0.72f +
-            localTerm * 0.35f +
+            directionalReflection * 0.88f +
+            localTerm +
             animeSunGlint;
         color += HikariWaterApplyReflectionBudget(
             reflectionEnergy,
@@ -786,7 +834,8 @@ float4 HikariShadeWaterSurface(
             float3(0.16f, 0.84f, 0.88f),
             0.62f);
         color += crestRibbonColor *
-            (crestRibbon * (0.10f + 0.08f * sunStep));
+            (crestRibbon * stylizedDetailWeight *
+                (0.10f + 0.08f * sunStep));
 
         const float foamCoverage = HikariWaterSmoothBand(foam, 0.08f);
         const float foamCore = HikariWaterSmoothBand(foam, 0.43f);
@@ -810,8 +859,22 @@ float4 HikariShadeWaterSurface(
         // RealisticClearSummer uses the physical transport term plus one
         // shared reflection budget. SSR replaces the sky provider only when
         // its confidence is valid; no branch can manufacture emissive light.
+        const float realisticGlitterMask =
+            HikariWaterRealisticSunGlitterLobe(
+                normalWS,
+                view,
+                light,
+                roughness,
+                p.glintDensity,
+                microSlope.variance);
+        const float3 realisticSunGlitter = sunRadiance *
+            (realisticGlitterMask *
+                max(p.sunGlintStrength, 0.0f) *
+                max(p.directSunStrength, 0.0f) *
+                directShadow * 0.52f);
         const float3 reflectionEnergy =
-            environmentTerm + directionalReflection + localTerm;
+            environmentTerm + directionalReflection + localTerm +
+            realisticSunGlitter;
         color = transmissionTerm + HikariWaterApplyReflectionBudget(
             reflectionEnergy,
             p.reflectionStrength);
@@ -863,9 +926,14 @@ float4 HikariShadeWaterSurface(
     // authored water first, then converge only the distant clear-depth edge
     // to the real captured sky sample for a continuous water/sky horizon.
     const float3 foggedColor = ApplyFog(finiteColor, input.worldPosWS);
+    const float3 explicitHorizonSky = HikariWaterResolveSkyFallback(
+        -view,
+        p.scatteringColor,
+        1.0f);
     const float3 resolvedColor = HikariWaterBlendWithSceneHorizon(
         foggedColor,
         sceneRefraction,
+        explicitHorizonSky,
         geometricNormal,
         view,
         distanceToCamera,

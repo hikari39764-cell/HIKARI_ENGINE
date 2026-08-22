@@ -16,6 +16,7 @@
 #include "Project/HIKARI_ProjectContext.h"
 #include "Render2D/HIKARI_Camera.h"
 #include "Render2D/HIKARI_DxRenderer.h"
+#include "Render2D/HIKARI_GameUiEffectRenderer.h"
 #include "Render2D/HIKARI_DxTexture.h"
 #include "Render3D/Lighting/HIKARI_VolumetricLightingStage.h"
 #include "Render3D/Lighting/HIKARI_StylizedCloudStage.h"
@@ -346,6 +347,7 @@ namespace HIKARI {
             HIKARI_LOG_INFO("Ocean spectrum runtime finalized.");
             HIKARI::POST::PostSystem::Shutdown();
             HIKARI_LOG_INFO("PostSystem shutdown.");
+            GAME_UI::ShutdownGameUiRenderer();
             DX::DxRenderer::Finalize();
             HIKARI_LOG_INFO("DxRenderer finalized.");
             RENDER3D::MATERIAL::ResetRuntimeMaterialProgramRegistry();

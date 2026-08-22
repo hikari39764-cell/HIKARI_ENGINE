@@ -357,6 +357,8 @@ namespace HIKARI {
             });
         state_->runtime.vfxPlaybackService.
             SetReliableRenderDeliveryEnabled(true);
+        state_->runtime.gameUiPresentationService.SetProjectRoot(
+            state_->assets.Database().GetProjectRoot());
         if (!state_->runtime.combatPresentationService.Prewarm()) {
             HIKARI_LOG_WARN(
                 "[Vfx] combat presentation prewarm failed; "
@@ -407,6 +409,8 @@ namespace HIKARI {
             state_->runtime.combatAfterimageService) && success;
         success = services.Register(
             state_->runtime.actionPostReactionService) && success;
+        success = services.Register(
+            state_->runtime.gameUiPresentationService) && success;
         success = services.Register(
             state_->runtime.waterSurfaceQueryService) && success;
         success = services.Register(
@@ -535,6 +539,7 @@ namespace HIKARI {
         state_->runtime.combatPresentationService.Reset();
         state_->runtime.combatAfterimageService.Reset();
         state_->runtime.actionPostReactionService.Reset();
+        state_->runtime.gameUiPresentationService.Reset();
         LIGHTING_AUTHORING::SynchronizeLegacyLightingViews(
             state_->identity.document);
         state_->runtime.systemScheduler.DetachWorld(state_->runtime.world);

@@ -224,6 +224,18 @@ namespace HIKARI {
         }
     }
 
+    UiView WorldView::GetUi() const noexcept {
+        try {
+            World* world = GameProjectSdkAccess::GetWorld(*this);
+            return world != nullptr
+                ? GameProjectSdkAccess::MakeUiView(*world)
+                : UiView{};
+        }
+        catch (...) {
+            return {};
+        }
+    }
+
     GameObject* GameProjectSdkAccess::GetObject(
         const ObjectView& view) noexcept {
         return static_cast<GameObject*>(view.object_);

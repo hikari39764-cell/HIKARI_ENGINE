@@ -221,8 +221,8 @@ namespace HIKARI {
             builder.FloatRange(
                 AuthoringFieldDescriptor{
                     WaterSurfaceComponentPropertyIds::SunGlintStrength,
-                    "Anime Sun Glint",
-                    "Bounded direct-sun sparkle contribution for Anime Summer; it shares the direct-sun energy budget."
+                    "Sun Glitter Strength",
+                    "Bounded direct-sun glitter for both formal presets. Anime Summer uses graphic marks; Realistic Clear Summer uses moving half-vector facets."
                 },
                 settings_.sunGlintStrength,
                 0.0f,
@@ -231,8 +231,8 @@ namespace HIKARI {
             builder.FloatRange(
                 AuthoringFieldDescriptor{
                     WaterSurfaceComponentPropertyIds::GlintDensity,
-                    "Glint Density",
-                    "Density of sparkle marks in local water space."
+                    "Sun Glitter Density",
+                    "Coverage of light-driven sparkle marks or resolved realistic sun facets in water space."
                 },
                 settings_.glintDensity,
                 0.0f,
@@ -242,7 +242,7 @@ namespace HIKARI {
                 AuthoringFieldDescriptor{
                     WaterSurfaceComponentPropertyIds::GlintFlowSpeed,
                     "Glint Flow Speed",
-                    "Animation speed of the stylized sparkle phase."
+                    "Animation rate of the world-anchored glitter phase; the energy still comes from the directional sun."
                 },
                 settings_.glintFlowSpeed,
                 0.0f,
@@ -251,8 +251,8 @@ namespace HIKARI {
             builder.FloatRange(
                 AuthoringFieldDescriptor{
                     WaterSurfaceComponentPropertyIds::RibbonWidth,
-                    "Ribbon Width",
-                    "Normalized width of the broad stylized highlight ribbon."
+                    "Anime Ribbon Width",
+                    "Normalized width of the Anime Summer graphic highlight ribbon; Realistic Clear Summer ignores this control."
                 },
                 settings_.ribbonWidth,
                 0.02f,

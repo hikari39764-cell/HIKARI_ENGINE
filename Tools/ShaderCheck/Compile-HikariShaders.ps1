@@ -141,6 +141,8 @@ $entries = @(
     @{ Shader = "HIKARI/Shaders/Render3D_CombatAfterimage.hlsl"; Entry = "PSMain"; Target = "ps_6_0"; Group = "CombatVfx"; WarningsAsErrors = $true }
     @{ Shader = "HIKARI/Shaders/Post_ActionScreenImpulse.hlsl"; Entry = "main"; Target = "ps_6_0"; Group = "CombatVfx"; WarningsAsErrors = $true }
     @{ Shader = "HIKARI/Shaders/Post_CombatScreenDistortionComposite.hlsl"; Entry = "main"; Target = "ps_6_0"; Group = "CombatVfx"; WarningsAsErrors = $true }
+    @{ Shader = "HIKARI/Shaders/Render2D_GameUiEffect.hlsl"; Entry = "VSMain"; Target = "vs_6_0"; Group = "GameUi"; WarningsAsErrors = $true }
+    @{ Shader = "HIKARI/Shaders/Render2D_GameUiEffect.hlsl"; Entry = "PSMain"; Target = "ps_6_0"; Group = "GameUi"; WarningsAsErrors = $true }
 )
 
 if (-not [string]::IsNullOrWhiteSpace($Group)) {

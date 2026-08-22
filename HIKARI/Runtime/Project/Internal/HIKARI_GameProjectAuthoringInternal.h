@@ -10,6 +10,7 @@
 #include "HIKARI/Project/GameSystem.h"
 #include "HIKARI/Project/PresentationViews.h"
 #include "HIKARI/Project/RuntimeRegistration.h"
+#include "HIKARI/Project/UiView.h"
 #include "Scene/Components/HIKARI_IComponent.h"
 #include "Scene/HIKARI_ISystem.h"
 
@@ -65,6 +66,8 @@ namespace HIKARI {
         static PresentationVfxView MakePresentationVfxView(
             World& world) noexcept;
         static VfxView MakeVfxView(
+            World& world) noexcept;
+        static UiView MakeUiView(
             World& world) noexcept;
         static GameComponentContext MakeGameComponentContext(
             GameProjectComponentAdapter& adapter,

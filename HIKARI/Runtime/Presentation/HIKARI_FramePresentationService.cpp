@@ -13,6 +13,7 @@
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Render2D/HIKARI_Camera.h"
 #include "Render2D/HIKARI_DxRenderer.h"
+#include "Render2D/HIKARI_GameUiEffectRenderer.h"
 #include "Render2D/HIKARI_DxTexture.h"
 #include "Render2D/HIKARI_Renderer.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
@@ -260,6 +261,7 @@ namespace HIKARI {
             gGpuFrameReady = true;
 
             HIKARI::RENDERER::BeginFrame();
+            HIKARI::GAME_UI::BeginGameUiFrame();
             ApplyFrameSceneCaptureSize();
             HIKARI::POST::PostSystem::UpdateCommonParams(frame.gameDt);
             HIKARI::POST::PostSystem::BeginSceneCapture();
@@ -357,6 +359,17 @@ namespace HIKARI {
                     GFX::GPU_PROFILE::Pass::UiLayers);
                 HIKARI::RENDERER::RenderLayerRange(
                     HIKARI::RENDERER::RenderLayer::UI,
+                    HIKARI::RENDERER::RenderLayer::UI,
+                    false);
+                if (!HIKARI::GAME_UI::RenderGameUiFrame(
+                        HIKARI::TIME::GetFrameContext().frameIndex,
+                        gLogicalScreenWidth,
+                        gLogicalScreenHeight)) {
+                    HIKARI_LOG_ERROR(
+                        "Game project UI effect rendering failed.");
+                }
+                HIKARI::RENDERER::RenderLayerRange(
+                    HIKARI::RENDERER::RenderLayer::Debug,
                     HIKARI::RENDERER::RenderLayer::Debug,
                     true);
             }

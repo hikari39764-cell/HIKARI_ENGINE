@@ -189,6 +189,7 @@ float3 HikariWaterResolveSceneCapture(
 float3 HikariWaterBlendWithSceneHorizon(
     float3 waterColor,
     float3 capturedSceneColor,
+    float3 explicitSkyRadiance,
     float3 stableSurfaceNormal,
     float3 viewDirection,
     float distanceToCamera,
@@ -200,15 +201,44 @@ float3 HikariWaterBlendWithSceneHorizon(
     const float3 safeScene = min(
         max(HikariFiniteOr(capturedSceneColor, safeWater), 0.0f.xxx),
         65504.0f.xxx);
+    const float3 safeSky = min(
+        max(HikariFiniteOr(explicitSkyRadiance, safeWater), 0.0f.xxx),
+        65504.0f.xxx);
     if (saturate(HikariFiniteOr(opaqueReceiverValidity, 0.0f)) > 0.5f)
     {
         return safeWater;
     }
 
-    // Clear depth means the refracted SceneColor is the actual visible sky.
-    // At a distant grazing angle, converge to that exact panorama sample so
-    // Texture2D skies and water cannot form two independently coloured
-    // horizons. Nearby water keeps its authored scattering and reflections.
+    // Some sky paths are composited after the opaque SceneColor snapshot. In
+    // that case a finite black clear color is not a valid sky sample. Use the
+    // active sky model as the authority and accept captured SceneColor only
+    // when it carries a credible amount of that radiance. Texture2D
+    // panoramas remain authoritative because their captured radiance passes
+    // this gate; procedural/atmosphere skies cannot create a black horizon
+    // merely because their snapshot is empty.
+    const float capturedLuminance = dot(
+        safeScene,
+        float3(0.2126f, 0.7152f, 0.0722f));
+    const float skyLuminance = dot(
+        safeSky,
+        float3(0.2126f, 0.7152f, 0.0722f));
+    const float lowCaptureThreshold = skyLuminance * 0.025f;
+    const float highCaptureThreshold = max(
+        skyLuminance * 0.18f,
+        lowCaptureThreshold + 1.0e-4f);
+    const float captureConfidence = skyLuminance > 1.0e-4f
+        ? smoothstep(
+            lowCaptureThreshold,
+            highCaptureThreshold,
+            capturedLuminance)
+        : 1.0f;
+    const float3 horizonRadiance = lerp(
+        safeSky,
+        safeScene,
+        captureConfidence);
+
+    // At a distant grazing angle converge to resolved sky radiance. Nearby
+    // water keeps its authored scattering, reflection and foam.
     const float3 safeNormal = HikariSafeNormalize(
         stableSurfaceNormal,
         float3(0.0f, 1.0f, 0.0f));
@@ -222,7 +252,7 @@ float3 HikariWaterBlendWithSceneHorizon(
         160.0f,
         max(HikariFiniteOr(distanceToCamera, 0.0f), 0.0f));
     const float horizonWeight = saturate(angularWeight * distanceWeight);
-    return lerp(safeWater, safeScene, horizonWeight);
+    return lerp(safeWater, horizonRadiance, horizonWeight);
 }
 
 float3 HikariWaterResolveBeerLambert(

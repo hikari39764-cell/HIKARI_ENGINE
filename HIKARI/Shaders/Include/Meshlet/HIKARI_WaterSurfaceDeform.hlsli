@@ -48,105 +48,35 @@ void HikariApplyWaterSurfaceDeformWithWorld(
         const float2 snapCellSize = HikariOceanResolveSnapCell(
             safeAuthoredHalfExtent,
             instance.clusterIndexCount);
-        const float2 cameraLocalXZ = HikariOceanWorldToLocalXZ(
+        const float2 gridCenterWorldXZ =
+            HikariOceanResolveGridCenterWorldXZ(
+                deformationWorld,
+                gInvViewProj,
+                gCameraPos);
+        const float2 gridCenterLocalXZ = HikariOceanWorldToLocalXZ(
             deformationWorld,
-            gCameraPos.xz);
-        const float2 snappedCameraLocalXZ = HikariOceanSnapCameraXZ(
-            cameraLocalXZ,
+            gridCenterWorldXZ);
+        const float2 snappedGridCenterLocalXZ = HikariOceanSnapCameraXZ(
+            gridCenterLocalXZ,
             snapCellSize);
-        const float2 farHalfExtent = HikariOceanResolveFarHalfExtent(
-            deformationWorld,
-            gInvViewProj,
-            gCameraPos,
-            gCameraPos.xz,
-            safeAuthoredHalfExtent);
-        const float2 extentRatio = clamp(
-            HikariFiniteOr(
-                farHalfExtent / safeAuthoredHalfExtent,
-                HIKARI_OCEAN_FALLBACK_FAR_EXTENT_RATIO.xx),
-            1.0f.xx,
-            HIKARI_OCEAN_MAX_FAR_EXTENT_RATIO.xx);
         const float2 centeredUv = HikariOceanResolveAuthoredCenteredXZ(
             authoredPosition.xz,
             uv1,
             p.authoredCenterXZ,
             safeAuthoredHalfExtent);
-        const float2 gradedUv = centeredUv +
-            (extentRatio - 1.0f.xx) *
-            centeredUv * centeredUv * centeredUv;
-        localPosition.xz = snappedCameraLocalXZ +
-            safeAuthoredHalfExtent * gradedUv;
+        // CameraCenteredOcean is a stable translated authored lattice.  The
+        // Scene render-data bridge has already applied the one authoritative
+        // wavelength-to-grid sampling filter.  Stretching this same lattice
+        // toward the far plane and filtering it again can reduce every valid
+        // carrier to zero, producing a perfectly flat ocean while the finite
+        // route still shows the same waves.
+        localPosition.xz = snappedGridCenterLocalXZ +
+            safeAuthoredHalfExtent * centeredUv;
         oceanBaseLocalPosition = localPosition;
         phasePosition = localPosition;
         worldAnchorXZ = HikariOceanWorldAnchoredXZ(
             deformationWorld,
             phasePosition);
-
-        const float2 worldCell = HikariOceanLocalDeltaToWorldXZ(
-            deformationWorld,
-            snapCellSize);
-        const float viewDistance = length(
-            mul(deformationWorld, float4(phasePosition, 1.0f)).xyz -
-            gCameraPos.xyz);
-        const float tanHalfFovY = HikariOceanResolveTanHalfFovY(
-            gInvViewProj,
-            gCameraPos);
-        const float projectedCellPixels = HikariOceanProjectedCellPixels(
-            length(worldCell),
-            viewDistance,
-            tanHalfFovY,
-            gScreenParams.y);
-        const float2 normalizedOffset =
-            (phasePosition.xz - snappedCameraLocalXZ) /
-            max(farHalfExtent, HIKARI_OCEAN_EPSILON.xx);
-        const float highFrequencyFade = HikariOceanHighFrequencyFade(
-            projectedCellPixels,
-            length(normalizedOffset));
-        // Long-wave height remains intact.  The horizontal high-frequency
-        // choppiness fades continuously by projected footprint and radius;
-        // short-wave vertical height/steepness follows the same footprint
-        // with a wavelength/index-weighted floor so stretched far cells do
-        // not alias while the primary swell remains present.
-        [unroll]
-        for (uint waveIndex = 0u;
-             waveIndex < HIKARI_WATER_SURFACE_WAVE_COUNT;
-             ++waveIndex)
-        {
-            if (waveIndex >= p.waveCount)
-            {
-                continue;
-            }
-            const float wavelength =
-                6.28318530718f /
-                max(p.waves[waveIndex].waveNumber, 1.0e-4f);
-            const float wavelengthShortness = waveIndex == 0u
-                ? 0.0f
-                : saturate((4.0f - wavelength) / 3.0f);
-            const float indexShortness = waveIndex == 0u
-                ? 0.0f
-                : waveIndex == 1u
-                    ? 0.35f
-                    : waveIndex == 2u
-                        ? 0.75f
-                        : 1.0f;
-            const float minAmplitudeFactor = waveIndex == 0u
-                ? 1.0f
-                : waveIndex == 1u
-                    ? 0.55f
-                    : waveIndex == 2u
-                        ? 0.22f
-                        : 0.10f;
-            const float highFrequencyWeight = max(
-                wavelengthShortness,
-                indexShortness);
-            const float amplitudeFade = lerp(
-                1.0f,
-                minAmplitudeFactor,
-                (1.0f - highFrequencyFade) * highFrequencyWeight);
-            p.waves[waveIndex].amplitude *= amplitudeFade;
-            p.waves[waveIndex].steepness *= amplitudeFade;
-        }
-        p.choppiness *= highFrequencyFade;
 
         // HikariEvaluateWaterSurface uses sourceLocalPosition for both phase
         // and output.  Feed it the final world anchor for stable phase, then
@@ -174,14 +104,13 @@ void HikariApplyWaterSurfaceDeformWithWorld(
             p.shortWaveStrength,
             p.capillaryStrength);
     }
-    if (oceanSpectrum.connected != 0u)
-    {
-        // The frequency-domain field is the optional high-frequency geometry
-        // authority for RealisticClearSummer. Keeping the analytic carriers
-        // active at the same time would double count the short-wave energy.
-        p.waveCount = 0u;
-        p.choppiness = 0.0f;
-    }
+    // Authored carriers remain the macro-geometry authority and match the CPU
+    // water query.  The optional spectrum is a bounded residual/detail field;
+    // replacing all carriers with it made realistic water visually flat and
+    // caused render/query disagreement.
+    const float spectrumResidualWeight = oceanSpectrum.connected != 0u
+        ? 0.42f
+        : 0.0f;
 
     const HikariWaterSurfaceEvaluation evaluation =
         HikariEvaluateWaterSurface(
@@ -201,8 +130,9 @@ void HikariApplyWaterSurfaceDeformWithWorld(
                 0.25f,
                 1.35f);
             worldDisplacement += oceanSpectrum.displacement.xz *
-                horizontalScale;
-            verticalDisplacement += oceanSpectrum.displacement.y;
+                horizontalScale * spectrumResidualWeight;
+            verticalDisplacement += oceanSpectrum.displacement.y *
+                spectrumResidualWeight;
         }
         localPosition.xz = oceanBaseLocalPosition.xz +
             HikariOceanWorldDeltaToLocalXZ(
@@ -222,19 +152,50 @@ void HikariApplyWaterSurfaceDeformWithWorld(
                 1.35f);
             localPosition.xz += HikariOceanWorldDeltaToLocalXZ(
                 deformationWorld,
-                oceanSpectrum.displacement.xz * horizontalScale);
-            localPosition.y += oceanSpectrum.displacement.y;
+                oceanSpectrum.displacement.xz * horizontalScale *
+                    spectrumResidualWeight);
+            localPosition.y += oceanSpectrum.displacement.y *
+                spectrumResidualWeight;
         }
     }
     if (oceanSpectrum.connected != 0u)
     {
-        const float3 spectrumNormalWS = normalize(float3(
-            -oceanSpectrum.macroSlope.x,
-            1.0f,
-            -oceanSpectrum.macroSlope.y));
-        localNormal = HikariOceanWorldNormalToLocal(
-            deformationWorld,
-            spectrumNormalWS);
+        if (p.cameraCenteredOcean)
+        {
+            const float3 analyticNormalWS = normalize(
+                evaluation.normalLocal);
+            const float analyticNormalY = max(
+                analyticNormalWS.y,
+                0.10f);
+            const float2 analyticSlope =
+                -analyticNormalWS.xz / analyticNormalY;
+            const float2 combinedSlope = analyticSlope +
+                oceanSpectrum.macroSlope * spectrumResidualWeight;
+            const float3 combinedNormalWS = normalize(float3(
+                -combinedSlope.x,
+                1.0f,
+                -combinedSlope.y));
+            localNormal = HikariOceanWorldNormalToLocal(
+                deformationWorld,
+                combinedNormalWS);
+        }
+        else
+        {
+            const float3 spectrumNormalLocal =
+                HikariOceanWorldNormalToLocal(
+                    deformationWorld,
+                    normalize(float3(
+                        -oceanSpectrum.macroSlope.x,
+                        1.0f,
+                        -oceanSpectrum.macroSlope.y)));
+            const float3 localUp = HikariOceanWorldNormalToLocal(
+                deformationWorld,
+                float3(0.0f, 1.0f, 0.0f));
+            localNormal = normalize(
+                evaluation.normalLocal +
+                (spectrumNormalLocal - localUp) *
+                    spectrumResidualWeight);
+        }
     }
     else
     {
@@ -250,7 +211,10 @@ void HikariApplyWaterSurfaceDeformWithWorld(
     waterSurfaceData = float3(
         surfaceDomain,
         oceanSpectrum.connected != 0u
-            ? saturate(1.0f - oceanSpectrum.jacobian)
+            ? max(
+                evaluation.compression,
+                saturate(1.0f - oceanSpectrum.jacobian) *
+                    spectrumResidualWeight)
             : evaluation.compression);
 }
 
