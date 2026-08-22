@@ -35,6 +35,7 @@ namespace HIKARI::EDITOR {
             case AssetType::Sequence: return "Sequence";
             case AssetType::AnimationStateMachine:
                 return "Animation State Machine";
+            case AssetType::Dialogue: return "Dialogue";
             default: return "Asset";
             }
         }

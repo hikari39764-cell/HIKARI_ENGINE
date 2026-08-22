@@ -125,6 +125,7 @@ namespace HIKARI::EDITOR {
         activation.animationStateMachineAssetGuid =
             request.animationStateMachineAssetGuid;
         activation.vfxAssetGuid = request.vfxAssetGuid;
+        activation.dialogueAssetGuid = request.dialogueAssetGuid;
         activeWorkspace_ = request.workspaceId;
 
         return activation;

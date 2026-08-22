@@ -5,6 +5,8 @@
 #include "Scene/Components/HIKARI_CameraFollowComponent.h"
 #include "Scene/Components/HIKARI_CharacterInputComponent.h"
 #include "Scene/Components/HIKARI_CharacterLocomotionComponent.h"
+#include "Scene/Components/HIKARI_DialogueInteractorComponent.h"
+#include "Scene/Components/HIKARI_DialogueTriggerComponent.h"
 #include "Scene/Components/HIKARI_ColliderComponent.h"
 #include "Scene/Components/HIKARI_PhysicsBodyComponent.h"
 #include "Scene/Components/HIKARI_ProceduralMeshComponent.h"
@@ -34,6 +36,10 @@ namespace HIKARI {
     void CameraFollowComponent::BuildInspector(IInspectorBuilder&) {}
     void CharacterInputComponent::BuildInspector(IInspectorBuilder&) {}
     void CharacterLocomotionComponent::BuildInspector(
+        IInspectorBuilder&) {}
+    void DialogueInteractorComponent::BuildInspector(
+        IInspectorBuilder&) {}
+    void DialogueTriggerComponent::BuildInspector(
         IInspectorBuilder&) {}
     void ColliderComponent::BuildInspector(IInspectorBuilder&) {}
     void PhysicsBodyComponent::BuildInspector(IInspectorBuilder&) {}

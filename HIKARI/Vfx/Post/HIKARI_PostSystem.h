@@ -93,6 +93,10 @@ namespace HIKARI::POST {
         static bool IsSceneCaptureActive();
         static bool HasCurrentRenderTarget();
         static bool RebindCurrentRenderTarget();
+        // Restores the full presentation back buffer for Editor host UI after
+        // a tool-owned offscreen render. Unlike RebindCurrentRenderTarget,
+        // this does not require an active Scene capture layer.
+        static bool RebindPresentationBackBuffer();
         static RENDER3D::RenderTextureView GetCurrentRenderTargetDepthView();
         static D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentRenderTargetDsv();
         static D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentRenderTargetReadOnlyDsv();

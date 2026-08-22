@@ -78,6 +78,13 @@ void HandleRecordActivated(const AssetRecord &record,
         record.displayName;
     return;
   }
+  if (record.type == AssetType::Dialogue) {
+    activatedAsset = AssetWorkspaceActivation{record.type, record.guid};
+    lastOperationMessage =
+        TEXT::Localize("ui.assetBrowser.dialogueOpenRequested") +
+        record.displayName;
+    return;
+  }
   if (record.type == AssetType::Model) {
     activatedAsset = AssetWorkspaceActivation{record.type, record.guid};
     lastOperationMessage =
@@ -278,6 +285,16 @@ void DrawRecordContextMenu(
     if (ImGui::MenuItem(
             TEXT::Localize(
                 "ui.assetBrowser.openStateMachine").c_str())) {
+      SelectRecord(record, selection);
+      HandleRecordActivated(record, lastOperationMessage, activatedAsset);
+    }
+    ImGui::Separator();
+  }
+
+  if (record.type == AssetType::Dialogue) {
+    if (ImGui::MenuItem(
+            TEXT::Localize(
+                "ui.assetBrowser.openDialogue").c_str())) {
       SelectRecord(record, selection);
       HandleRecordActivated(record, lastOperationMessage, activatedAsset);
     }

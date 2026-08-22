@@ -322,6 +322,79 @@ namespace HIKARI::EDITOR {
         return FindRuntimeObject(scene, id);
     }
 
+    GameObject* CreateDialogueTriggerObject(
+        DocumentSceneBase& scene,
+        const CreateObjectRequest& request) {
+
+        CreateObjectRequest objectRequest = request;
+        if (objectRequest.name.empty()) {
+            objectRequest.name = "Dialogue Trigger";
+        }
+
+        SceneObjectData object = BuildBaseObject(
+            scene, nullptr, objectRequest);
+        const SceneObjectId id = object.id;
+
+        object.components.push_back(SceneComponentData{
+            "PhysicsBodyComponent",
+            {
+                { "enabled", true },
+                { "motionType", "Static" },
+                { "mass", 1.0f },
+                { "gravityScale", 0.0f },
+                { "linearDamping", 0.0f },
+                { "angularDamping", 0.0f },
+                { "allowSleeping", true },
+                { "continuousCollision", false },
+                { "initialLinearVelocity", { 0.0f, 0.0f, 0.0f } },
+                { "initialAngularVelocity", { 0.0f, 0.0f, 0.0f } },
+                { "lockTranslation", { 0.0f, 0.0f, 0.0f } },
+                { "lockRotation", { 0.0f, 0.0f, 0.0f } }
+            }
+        });
+        object.components.push_back(SceneComponentData{
+            "ColliderComponent",
+            {
+                { "enabled", true },
+                { "fitMode", "Manual" },
+                { "shape", "Box" },
+                { "collisionAssetId", "" },
+                { "center", { 0.0f, 1.0f, 0.0f } },
+                { "rotation", { 0.0f, 0.0f, 0.0f } },
+                { "size", { 4.0f, 2.0f, 4.0f } },
+                { "radius", 1.0f },
+                { "height", 2.0f },
+                { "trigger", true },
+                { "material", {
+                    { "friction", 0.5f },
+                    { "restitution", 0.0f },
+                    { "density", 1.0f }
+                } },
+                { "filter", {
+                    { "layer", 1u },
+                    { "mask", 0xFFFFFFFFu }
+                } }
+            }
+        });
+        object.components.push_back(SceneComponentData{
+            "DialogueTriggerComponent",
+            {
+                { "enabled", true },
+                { "dialogueAssetGuid", "" },
+                { "locale", "ja-JP" },
+                { "activation", "OnEnter" },
+                { "interactAction", "Gameplay.Interact" },
+                { "pauseWorld", true },
+                { "oneShot", false }
+            }
+        });
+
+        NormalizeSceneComponentIds(object);
+        scene.GetSceneDocument().objects.push_back(std::move(object));
+        scene.RebuildRuntimeWorld();
+        return FindRuntimeObject(scene, id);
+    }
+
     GameObject* CreateReflectionProbeObject(
         DocumentSceneBase& scene,
         const CreateObjectRequest& request) {

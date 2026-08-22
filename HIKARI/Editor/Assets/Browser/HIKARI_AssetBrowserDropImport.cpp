@@ -105,6 +105,9 @@ SuggestedTargetDirectory(const std::filesystem::path &currentDirectory,
   if (type == AssetType::AnimationStateMachine) {
     return "Assets/Animations";
   }
+  if (type == AssetType::Dialogue) {
+    return "Assets/Dialogues";
+  }
   return "Assets/Textures";
 }
 

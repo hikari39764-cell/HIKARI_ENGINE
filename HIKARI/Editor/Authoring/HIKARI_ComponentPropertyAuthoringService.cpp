@@ -64,6 +64,7 @@ namespace HIKARI::EDITOR {
             case AssetType::Sequence: return "Sequence";
             case AssetType::AnimationStateMachine:
                 return "AnimationStateMachine";
+            case AssetType::Dialogue: return "Dialogue";
             case AssetType::ModelMaterialBinding:
                 return "ModelMaterialBinding";
             case AssetType::Unknown: return "Unknown";

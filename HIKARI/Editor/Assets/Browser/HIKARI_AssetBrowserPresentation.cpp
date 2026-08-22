@@ -206,6 +206,8 @@ ImVec4 TypeBadgeColor(AssetType type) {
     return ImVec4(0.72f, 0.68f, 1.0f, 1.0f);
   case AssetType::AnimationStateMachine:
     return ImVec4(0.40f, 0.84f, 0.78f, 1.0f);
+  case AssetType::Dialogue:
+    return ImVec4(0.36f, 0.68f, 1.0f, 1.0f);
   default:
     return ImVec4(0.72f, 0.74f, 0.78f, 1.0f);
   }

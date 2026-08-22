@@ -54,6 +54,13 @@ namespace HIKARI::ASSETS::SEMANTICS {
                 ".hanimsm",
             },
             {
+                AssetImporterKind::Dialogue,
+                AssetType::Dialogue,
+                "DialogueAssetImporter",
+                3u,
+                ".hdialogue",
+            },
+            {
                 AssetImporterKind::Material,
                 AssetType::Material,
                 "MaterialImporter",
@@ -132,6 +139,7 @@ namespace HIKARI::ASSETS::SEMANTICS {
         case AssetType::VfxEffect: return "VfxEffect";
         case AssetType::Sequence: return "Sequence";
         case AssetType::AnimationStateMachine: return "AnimationStateMachine";
+        case AssetType::Dialogue: return "Dialogue";
         case AssetType::ModelMaterialBinding: return "ModelMaterialBinding";
         case AssetType::Unknown:
         default: return "Unknown";
@@ -151,6 +159,7 @@ namespace HIKARI::ASSETS::SEMANTICS {
         if (text == "AnimationStateMachine") {
             return AssetType::AnimationStateMachine;
         }
+        if (text == "Dialogue") return AssetType::Dialogue;
         if (text == "ModelMaterialBinding") {
             return AssetType::ModelMaterialBinding;
         }
@@ -213,6 +222,8 @@ namespace HIKARI::ASSETS::SEMANTICS {
             kind = AssetImporterKind::Sequence;
         } else if (extension == ".hanimsm") {
             kind = AssetImporterKind::AnimationStateMachine;
+        } else if (extension == ".hdialogue") {
+            kind = AssetImporterKind::Dialogue;
         } else if (EndsWith(genericPath, ".material.json")) {
             kind = AssetImporterKind::Material;
         } else if (extension == ".hmodelmaterial") {

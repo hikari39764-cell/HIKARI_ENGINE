@@ -65,6 +65,8 @@ std::string ToAssetTypeText(AssetType type) {
     return TEXT::Localize("ui.assetBrowser.typeSequence");
   case AssetType::AnimationStateMachine:
     return TEXT::Localize("ui.assetBrowser.typeAnimationStateMachine");
+  case AssetType::Dialogue:
+    return TEXT::Localize("ui.assetBrowser.typeDialogue");
   case AssetType::Unknown:
   default:
     return ASSETS::SEMANTICS::ToString(type).data();

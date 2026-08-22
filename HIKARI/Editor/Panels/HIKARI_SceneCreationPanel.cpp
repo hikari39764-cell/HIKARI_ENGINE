@@ -98,6 +98,13 @@ namespace HIKARI::EDITOR {
             CreateSandSurfaceObject(scene, context, selectionSync);
         }
 
+        const std::string dialogueTriggerLabel =
+            TEXT::Localize("ui.sceneCreation.dialogueTrigger");
+        if (Matches(dialogueTriggerLabel.c_str(), search) &&
+            ImGui::MenuItem(dialogueTriggerLabel.c_str())) {
+            CreateDialogueTriggerObject(scene, context, selectionSync);
+        }
+
         const bool showReflectionProbe =
             Matches(
                 TEXT::Localize(
@@ -406,6 +413,37 @@ namespace HIKARI::EDITOR {
             context.nextSceneObjectId);
         historyRequest_ = SceneObjectAuthoringHistoryRequest{
             "Create Sand Surface",
+            beforeObjects,
+            scene.GetSceneDocument().objects,
+            beforeCamera,
+            scene.GetSceneDocument().camera,
+            dirtyBefore
+        };
+    }
+
+    void SceneCreationPanel::CreateDialogueTriggerObject(
+        DocumentSceneBase& scene,
+        EditorContext& context,
+        const SelectionSyncService& selectionSync) {
+
+        const bool dirtyBefore =
+            context.sceneDirty || scene.HasUnsavedSceneChanges();
+        const std::vector<SceneObjectData> beforeObjects =
+            scene.GetSceneDocument().objects;
+        const SceneCameraSettings beforeCamera =
+            scene.GetSceneDocument().camera;
+        CreateObjectRequest request{};
+        request.position = ComputeObjectPlacementInView(scene.GetCamera());
+        GameObject* object = EDITOR::CreateDialogueTriggerObject(
+            scene,
+            request);
+        context.selection.SelectObject(scene.GetWorld(), object);
+        context.sceneDirty = true;
+        selectionSync.SyncNextSceneObjectId(
+            scene,
+            context.nextSceneObjectId);
+        historyRequest_ = SceneObjectAuthoringHistoryRequest{
+            "Create Dialogue Trigger",
             beforeObjects,
             scene.GetSceneDocument().objects,
             beforeCamera,

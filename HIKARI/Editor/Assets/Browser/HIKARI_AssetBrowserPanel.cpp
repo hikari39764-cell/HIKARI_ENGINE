@@ -225,7 +225,7 @@ void AssetBrowserPanel::DrawContents(AssetDatabase &assetDatabase,
         searchBuffer_.size(),
         (std::max)(220.0f, ImGui::GetContentRegionAvail().x * 0.42f));
     ImGui::SameLine();
-    const std::array<std::string, 10> TypeFilterItems{
+    const std::array<std::string, 11> TypeFilterItems{
         TEXT::Localize("ui.assetBrowser.filterAll"),
         TEXT::Localize("ui.assetBrowser.filterTexture"),
         TEXT::Localize("ui.assetBrowser.filterModel"),
@@ -235,9 +235,10 @@ void AssetBrowserPanel::DrawContents(AssetDatabase &assetDatabase,
         TEXT::Localize("ui.assetBrowser.filterVfx"),
         TEXT::Localize("ui.assetBrowser.filterSequence"),
         TEXT::Localize("ui.assetBrowser.filterAnimationStateMachine"),
+        TEXT::Localize("ui.assetBrowser.filterDialogue"),
         TEXT::Localize("ui.assetBrowser.filterMaterialSet"),
     };
-    const char *TypeFilterItemPtrs[10]{};
+    const char *TypeFilterItemPtrs[11]{};
     for (size_t index = 0; index < TypeFilterItems.size(); ++index) {
         TypeFilterItemPtrs[index] = TypeFilterItems[index].c_str();
     };

@@ -24,6 +24,8 @@ namespace HIKARI::EDITOR {
         case AssetType::Sequence: return EditorGlyph::Sequence;
         case AssetType::AnimationStateMachine:
             return EditorGlyph::StateMachine;
+        case AssetType::Dialogue:
+            return EditorGlyph::File;
         case AssetType::Unknown:
         default:
             return EditorGlyph::File;
@@ -47,6 +49,8 @@ namespace HIKARI::EDITOR {
         case AssetType::Sequence: return ImVec4(0.62f, 0.58f, 0.94f, 1.0f);
         case AssetType::AnimationStateMachine:
             return ImVec4(0.30f, 0.82f, 0.72f, 1.0f);
+        case AssetType::Dialogue:
+            return ImVec4(0.34f, 0.68f, 1.0f, 1.0f);
         case AssetType::Unknown:
         default:
             return GetEditorThemePalette().textMuted;

@@ -8,6 +8,7 @@
 #include "Editor/Workspaces/ModelMaterial/HIKARI_ModelMaterialNodeQuery.h"
 #include "Editor/Workspaces/RuntimeBinding/HIKARI_RuntimeBindingOperations.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxOperations.h"
+#include "Editor/Workspaces/Dialogue/HIKARI_DialogueOperations.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
 #include <utility>
@@ -476,6 +477,10 @@ namespace HIKARI {
                     ? &aiOperationScene_->GetAssetDatabase()
                     : nullptr;
             });
+        EDITOR::RegisterDialogueOperations(
+            operationRegistry_,
+            dialogueWorkspaceController_,
+            [this]() { return aiOperationScene_; });
         EDITOR::RegisterComponentAuthoringOperations(
             operationRegistry_,
             EDITOR::ComponentAuthoringOperationContext{

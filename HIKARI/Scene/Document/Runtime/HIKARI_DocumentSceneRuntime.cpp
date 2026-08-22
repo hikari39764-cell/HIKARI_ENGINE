@@ -412,6 +412,8 @@ namespace HIKARI {
         success = services.Register(
             state_->runtime.gameUiPresentationService) && success;
         success = services.Register(
+            state_->runtime.dialogueSessionService) && success;
+        success = services.Register(
             state_->runtime.waterSurfaceQueryService) && success;
         success = services.Register(
             state_->runtime.sandSurfaceQueryService) && success;
@@ -426,6 +428,8 @@ namespace HIKARI {
         success = services.Register(state_->runtime.animationRootMotionService) &&
             success;
         success = services.Register(state_->runtime.animationStateMachineAssets) &&
+            success;
+        success = services.Register(state_->runtime.dialogueAssets) &&
             success;
         success = services.Register(state_->runtime.animationStateMachineRuntimeService) &&
             success;
@@ -540,6 +544,7 @@ namespace HIKARI {
         state_->runtime.combatAfterimageService.Reset();
         state_->runtime.actionPostReactionService.Reset();
         state_->runtime.gameUiPresentationService.Reset();
+        state_->runtime.dialogueSessionService.Reset(&state_->runtime.world);
         LIGHTING_AUTHORING::SynchronizeLegacyLightingViews(
             state_->identity.document);
         state_->runtime.systemScheduler.DetachWorld(state_->runtime.world);

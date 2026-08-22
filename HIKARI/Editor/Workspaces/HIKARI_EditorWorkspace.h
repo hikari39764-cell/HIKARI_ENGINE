@@ -17,6 +17,7 @@ namespace HIKARI::EDITOR {
         AnimationStateMachine,
         RuntimeBinding,
         Vfx,
+        Dialogue,
         TerrainSurface,
         Count,
     };
@@ -30,6 +31,7 @@ namespace HIKARI::EDITOR {
         std::optional<AssetGuid> materialAssetGuid{};
         std::optional<AssetGuid> animationStateMachineAssetGuid{};
         std::optional<AssetGuid> vfxAssetGuid{};
+        std::optional<AssetGuid> dialogueAssetGuid{};
     };
     
 	// エディタワークスペースのアクティベーション情報を表す構造体
@@ -42,6 +44,7 @@ namespace HIKARI::EDITOR {
         std::optional<AssetGuid> materialAssetGuid{};
         std::optional<AssetGuid> animationStateMachineAssetGuid{};
         std::optional<AssetGuid> vfxAssetGuid{};
+        std::optional<AssetGuid> dialogueAssetGuid{};
     };
 
 } // namespace HIKARI::EDITOR

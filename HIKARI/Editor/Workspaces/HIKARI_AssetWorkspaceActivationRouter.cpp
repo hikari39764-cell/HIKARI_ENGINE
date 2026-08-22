@@ -35,6 +35,10 @@ namespace HIKARI::EDITOR {
             request.workspaceId = EditorWorkspaceId::Vfx;
             request.vfxAssetGuid = activation.guid;
             break;
+        case AssetType::Dialogue:
+            request.workspaceId = EditorWorkspaceId::Dialogue;
+            request.dialogueAssetGuid = activation.guid;
+            break;
         default:
             return route;
         }

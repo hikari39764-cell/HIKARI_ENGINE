@@ -25,6 +25,7 @@
 #include "Importers/HIKARI_ModelMaterialBindingImporter.h"
 #include "Importers/HIKARI_ModelImporter.h"
 #include "Importers/HIKARI_AnimationStateMachineAssetImporter.h"
+#include "Importers/HIKARI_DialogueAssetImporter.h"
 #include "Importers/HIKARI_SceneAssetImporter.h"
 #include "Importers/HIKARI_SequenceAssetImporter.h"
 #include "Importers/HIKARI_SkyCubemapImporter.h"
@@ -163,6 +164,7 @@ namespace HIKARI {
                 return 5;
             case AssetType::Sequence:
             case AssetType::AnimationStateMachine:
+            case AssetType::Dialogue:
                 return 5;
             default:
                 return 6;
@@ -1289,6 +1291,8 @@ namespace HIKARI {
         importerRegistry_.Register(std::make_unique<SequenceAssetImporter>());
         importerRegistry_.Register(
             std::make_unique<AnimationStateMachineAssetImporter>());
+        importerRegistry_.Register(
+            std::make_unique<DialogueAssetImporter>());
         importerRegistry_.Register(std::make_unique<MaterialImporter>());
         importerRegistry_.Register(
             std::make_unique<ModelMaterialBindingImporter>());
@@ -1308,6 +1312,7 @@ namespace HIKARI {
             assetsRoot_ / "Shaders",
             assetsRoot_ / "Scenes",
             assetsRoot_ / "AnimationStateMachines",
+            assetsRoot_ / "Dialogues",
             assetsRoot_ / "Sequences",
             libraryRoot_,
             libraryRoot_ / "Imported",

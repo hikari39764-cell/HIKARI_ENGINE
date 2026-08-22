@@ -173,6 +173,130 @@ float4 PSMain(VSOutput input) : SV_Target0
         color.rgb = lerp(color.rgb, shifted.bgr, 0.45 * pulse);
         color = ApplyOutline(color, input.uv, 4.0, 1.4 * pulse);
     }
+    else if (effect == 10u)
+    {
+        const float distance = gTexture.Sample(gSampler, input.uv).a;
+        const float antialias = max(fwidth(distance) * 1.35, 0.004);
+        const float fillAlpha = smoothstep(
+            0.5 - antialias,
+            0.5 + antialias,
+            distance) * gTint.a;
+        const float outlineEdge = 0.5 - min(intensity, 12.0) * 0.020;
+        const float outlineField = smoothstep(
+            outlineEdge - antialias,
+            outlineEdge + antialias,
+            distance);
+        const float outlineAlpha = max(
+            outlineField - fillAlpha,
+            0.0) * gEffectColor.a;
+        const float2 shadowUv = input.uv - gParams1.xy * gTexelSize;
+        const float shadowDistance = gTexture.Sample(
+            gSampler,
+            shadowUv).a;
+        const float shadowField = smoothstep(
+            outlineEdge - antialias,
+            outlineEdge + antialias,
+            shadowDistance);
+        const float shadowAlpha = max(
+            shadowField - max(fillAlpha, outlineField),
+            0.0) * gHighlightColor.a * progress;
+
+        float3 premultiplied = gHighlightColor.rgb * shadowAlpha;
+        float alpha = shadowAlpha;
+        premultiplied = gEffectColor.rgb * outlineAlpha +
+            premultiplied * (1.0 - outlineAlpha);
+        alpha = outlineAlpha + alpha * (1.0 - outlineAlpha);
+        premultiplied = gTint.rgb * fillAlpha +
+            premultiplied * (1.0 - fillAlpha);
+        alpha = fillAlpha + alpha * (1.0 - fillAlpha);
+        color = float4(
+            alpha > 1.0e-5 ? premultiplied / alpha : 0.0.xxx,
+            alpha);
+    }
+    else if (effect == 11u)
+    {
+        // A single authored dialogue panel remains intact. The transition is
+        // a directional ink-edge reveal and never assumes separate white and
+        // offset layers in the source artwork.
+        const float diagonal = input.uv.x * 0.82 + input.uv.y * 0.18;
+        const float threshold = lerp(-0.14, 1.14, progress);
+        const float edgeNoise =
+            (Hash21(floor(input.uv * float2(120.0, 42.0))) - 0.5) * 0.045;
+        const float reveal = 1.0 - smoothstep(
+            threshold - 0.055,
+            threshold + 0.055,
+            diagonal + edgeNoise);
+        const float edge = 1.0 - smoothstep(
+            0.012,
+            0.070,
+            abs(diagonal + edgeNoise - threshold));
+        color.a *= reveal;
+        color.rgb = lerp(
+            color.rgb,
+            gHighlightColor.rgb,
+            edge * gHighlightColor.a * intensity);
+        color = ApplyOutline(color, input.uv, 2.5, 0.75 * intensity);
+    }
+    else if (effect == 12u || effect == 13u)
+    {
+        const float selected = effect == 13u ? 1.0 : 0.0;
+        const float sweep = 1.0 - smoothstep(
+            0.035,
+            0.16,
+            abs(frac(input.uv.x - time * 1.35) - 0.5));
+        const float pulse = 0.5 + 0.5 * sin(time * 8.0);
+        color.rgb += gHighlightColor.rgb * color.a * selected *
+            (0.18 + sweep * 0.42) * intensity;
+        color = ApplyOutline(
+            color,
+            input.uv,
+            2.0 + selected * 2.0,
+            0.75 + selected * (0.65 + pulse * 0.35));
+    }
+    else if (effect == 14u)
+    {
+        const float distance = gTexture.Sample(gSampler, input.uv).a;
+        const float antialias = max(fwidth(distance) * 1.45, 0.004);
+        const float outerEdge = 0.5 - min(intensity, 12.0) * 0.026;
+        const float outer = smoothstep(
+            outerEdge - antialias * 2.0,
+            0.5 + antialias,
+            distance);
+        const float core = smoothstep(
+            0.5 - antialias,
+            0.5 + antialias,
+            distance);
+        const float halo = saturate(outer - core * 0.28);
+        const float glowAlpha = halo * gTint.a * min(time, 8.0);
+        color = float4(gTint.rgb, saturate(glowAlpha));
+    }
+    else if (effect == 15u)
+    {
+        // Dialogue portraits keep one texture resident while focus moves
+        // between the two authored slots. Entry uses a restrained diagonal
+        // edge reveal; speaker changes use focus-driven color/scale on CPU.
+        const float2 portraitUv = gParams1.x < 0.0
+            ? float2(1.0 - input.uv.x, input.uv.y)
+            : input.uv;
+        color = gTexture.Sample(gSampler, portraitUv) * gTint;
+        const float diagonal = portraitUv.x * 0.78 + portraitUv.y * 0.22;
+        const float edgeNoise =
+            (Hash21(floor(portraitUv * float2(88.0, 64.0))) - 0.5) * 0.035;
+        const float threshold = lerp(-0.10, 1.10, progress);
+        const float reveal = 1.0 - smoothstep(
+            threshold - 0.060,
+            threshold + 0.060,
+            diagonal + edgeNoise);
+        const float edge = 1.0 - smoothstep(
+            0.012,
+            0.070,
+            abs(diagonal + edgeNoise - threshold));
+        const float focus = fill;
+        const float luminance = dot(color.rgb, float3(0.299, 0.587, 0.114));
+        color.rgb = lerp(luminance.xxx, color.rgb, 0.38 + focus * 0.62);
+        color.rgb += gEffectColor.rgb * edge * intensity * color.a;
+        color.a *= reveal;
+    }
 
     return color;
 }

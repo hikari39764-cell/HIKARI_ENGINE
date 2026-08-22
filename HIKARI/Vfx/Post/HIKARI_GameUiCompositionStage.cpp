@@ -2,6 +2,7 @@
 
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Render2D/HIKARI_DxRenderer.h"
+#include "Render2D/HIKARI_GameUiEffectRenderer.h"
 #include "Vfx/Post/HIKARI_PostQuadDrawer.h"
 
 #include <array>
@@ -17,7 +18,9 @@ namespace HIKARI::POST {
         context_ = context;
         hudlessColor_.UpdateContext(context);
         uiColorAndAlpha_.UpdateContext(context);
+        dialogueBackdropColor_.UpdateContext(context);
         finalColor_.UpdateContext(context);
+        backdropComposite_.UpdateContext(context);
     }
 
     void GameUiCompositionStage::Shutdown() {
@@ -26,7 +29,9 @@ namespace HIKARI::POST {
         }
         hudlessColor_.Finalize();
         uiColorAndAlpha_.Finalize();
+        dialogueBackdropColor_.Finalize();
         finalColor_.Finalize();
+        backdropComposite_.Shutdown();
         active_ = false;
         InvalidateFrame();
     }
@@ -66,6 +71,10 @@ namespace HIKARI::POST {
                 uiColorAndAlpha_,
                 "Presentation.UiColorAndAlpha",
                 { 0.0f, 0.0f, 0.0f, 0.0f }) &&
+            ensureTarget(
+                dialogueBackdropColor_,
+                "Presentation.DialogueBackdropColor",
+                { 0.0f, 0.0f, 0.0f, 1.0f }) &&
             ensureTarget(
                 finalColor_,
                 "Presentation.FinalColor",
@@ -137,6 +146,17 @@ namespace HIKARI::POST {
                 sceneColor.GetSrvGpu());
             hudlessColor_.EndCapture();
             hudless = &hudlessColor_;
+        }
+
+        GameProjectUiBackdropRequest backdrop{};
+        if (GAME_UI::GetGameUiBackdropRequest(frameIndex, backdrop) &&
+            backdrop.progress > 0.0f &&
+            backdropComposite_.Execute(
+                *hudless,
+                dialogueBackdropColor_,
+                quad,
+                backdrop)) {
+            hudless = &dialogueBackdropColor_;
         }
 
         uiColorAndAlpha_.BeginCapture(0.0f, 0.0f, 0.0f, 0.0f);

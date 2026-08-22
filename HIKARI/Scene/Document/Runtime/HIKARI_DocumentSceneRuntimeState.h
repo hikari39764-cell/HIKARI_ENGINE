@@ -7,9 +7,11 @@
 #include "Animation/Runtime/HIKARI_AnimationSocketService.h"
 #include "Animation/StateMachine/HIKARI_AnimationStateMachineRuntimeService.h"
 #include "Assets/Animation/HIKARI_AnimationStateMachineAssetStore.h"
+#include "Assets/Dialogue/HIKARI_DialogueAssetStore.h"
 #include "Core/HIKARI_FixedStepClock.h"
 #include "Gameplay/Motion/HIKARI_CharacterMotionStateService.h"
 #include "Gameplay/Motion/HIKARI_MotionIntentService.h"
+#include "Gameplay/Dialogue/HIKARI_DialogueSessionService.h"
 #include "Physics/HIKARI_KinematicMotionService.h"
 #include "Physics/HIKARI_PhysicsCollisionGeometryStore.h"
 #include "Physics/HIKARI_PhysicsProjectSettings.h"
@@ -66,6 +68,7 @@ namespace HIKARI {
         VFX::CombatAfterimageService combatAfterimageService{};
         VFX::ActionPostReactionService actionPostReactionService{};
         GAME_UI::GameUiPresentationService gameUiPresentationService{};
+        DIALOGUE::DialogueSessionService dialogueSessionService{};
         // composition root が所有し、WaterSurfaceQueryService は借用する。
         std::unique_ptr<WATER::IWaterBathymetryProvider>
             waterBathymetryProvider{};
@@ -82,6 +85,7 @@ namespace HIKARI {
         ComponentRegistry componentRegistry{};
         SceneRuntimeBuilder builder{};
         AnimationStateMachineAssetStore animationStateMachineAssets{};
+        DialogueAssetStore dialogueAssets{};
         bool playActive = false;
         bool inputContextSnapshotValid = false;
         bool editorInputContextWasActive = false;

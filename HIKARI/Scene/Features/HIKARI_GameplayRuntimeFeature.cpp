@@ -8,12 +8,15 @@
 #include "Scene/Components/HIKARI_CharacterInputComponent.h"
 #include "Scene/Components/HIKARI_CharacterLocomotionComponent.h"
 #include "Scene/Components/HIKARI_SpawnPointComponent.h"
+#include "Scene/Components/HIKARI_DialogueInteractorComponent.h"
+#include "Scene/Components/HIKARI_DialogueTriggerComponent.h"
 #include "Scene/Features/HIKARI_RuntimeFeature.h"
 #include "Scene/Features/HIKARI_RuntimeFeatureIds.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
 #include "Scene/HIKARI_CharacterInputSystem.h"
 #include "Scene/HIKARI_CharacterLocomotionSystem.h"
 #include "Scene/HIKARI_CharacterMotionStateSystem.h"
+#include "Scene/HIKARI_DialogueRuntimeSystem.h"
 #include "Scene/HIKARI_ComponentRegistry.h"
 #include "Scene/HIKARI_ComponentSystemPolicy.h"
 #include "Scene/HIKARI_SceneDocument.h"
@@ -75,20 +78,23 @@ namespace HIKARI {
 
             std::span<const std::string_view>
                 GetComponentTypeNames() const noexcept override {
-                static constexpr std::array<std::string_view, 3> names{
+                static constexpr std::array<std::string_view, 5> names{
                     "CharacterInputComponent",
                     "CharacterLocomotionComponent",
-                    "SpawnPointComponent"
+                    "SpawnPointComponent",
+                    "DialogueInteractorComponent",
+                    "DialogueTriggerComponent"
                 };
                 return names;
             }
 
             std::span<const std::string_view>
                 GetSystemIds() const noexcept override {
-                static constexpr std::array<std::string_view, 3> ids{
+                static constexpr std::array<std::string_view, 4> ids{
                     "CharacterInputSystem",
                     "CharacterLocomotionSystem",
-                    "CharacterMotionStateSystem"
+                    "CharacterMotionStateSystem",
+                    "DialogueRuntimeSystem"
                 };
                 return ids;
             }
@@ -222,12 +228,88 @@ namespace HIKARI {
                     "Spawn Point",
                     "Names a reusable spawn location in the scene.");
 
+                ComponentTypeInfo dialogueInteractor{};
+                dialogueInteractor.typeName =
+                    "DialogueInteractorComponent";
+                dialogueInteractor.factory = []()
+                    -> std::unique_ptr<IComponent> {
+                    return std::make_unique<
+                        DialogueInteractorComponent>();
+                };
+                dialogueInteractor.initializeDefaults = [](
+                    const SceneObjectData&,
+                    nlohmann::json& properties) {
+                    properties = { { "enabled", true } };
+                };
+                dialogueInteractor.presentation = GameplayPresentation(
+                    "Dialogue Interactor",
+                    "Marks an actor that can enter and activate dialogue trigger volumes.");
+
+                ComponentTypeInfo dialogueTrigger{};
+                dialogueTrigger.typeName = "DialogueTriggerComponent";
+                dialogueTrigger.factory = []()
+                    -> std::unique_ptr<IComponent> {
+                    return std::make_unique<DialogueTriggerComponent>();
+                };
+                dialogueTrigger.requiredComponents = {
+                    "PhysicsBodyComponent",
+                    "ColliderComponent"
+                };
+                dialogueTrigger.initializeDefaults = [](
+                    const SceneObjectData&,
+                    nlohmann::json& properties) {
+                    properties = {
+                        { "enabled", true },
+                        { "dialogueAssetGuid", "" },
+                        { "locale", "ja-JP" },
+                        { "activation", "OnEnter" },
+                        { "interactAction", "Gameplay.Interact" },
+                        { "pauseWorld", true },
+                        { "oneShot", false },
+                    };
+                };
+                dialogueTrigger.configureDependencies = [](
+                    SceneObjectData& object,
+                    const std::vector<std::string>& added) {
+                    if (WasDependencyAdded(
+                            added,
+                            "PhysicsBodyComponent")) {
+                        if (SceneComponentData* body = FindComponentData(
+                                object,
+                                "PhysicsBodyComponent")) {
+                            body->properties["motionType"] = "Static";
+                            body->properties["gravityScale"] = 0.0f;
+                            body->properties["allowSleeping"] = true;
+                        }
+                    }
+                    if (WasDependencyAdded(added, "ColliderComponent")) {
+                        if (SceneComponentData* collider = FindComponentData(
+                                object,
+                                "ColliderComponent")) {
+                            collider->properties["fitMode"] = "Manual";
+                            collider->properties["shape"] = "Box";
+                            collider->properties["center"] = {
+                                0.0f, 1.0f, 0.0f };
+                            collider->properties["size"] = {
+                                4.0f, 2.0f, 4.0f };
+                            collider->properties["trigger"] = true;
+                        }
+                    }
+                };
+                dialogueTrigger.presentation = GameplayPresentation(
+                    "Dialogue Trigger",
+                    "Binds a formal Dialogue asset to an editable physics trigger volume.");
+
                 bool success = componentRegistry.Register(
                     std::move(locomotion));
                 success = componentRegistry.Register(
                     std::move(input)) && success;
                 success = componentRegistry.Register(
                     std::move(spawnPoint)) && success;
+                success = componentRegistry.Register(
+                    std::move(dialogueInteractor)) && success;
+                success = componentRegistry.Register(
+                    std::move(dialogueTrigger)) && success;
 
                 success = systemTypeRegistry.Register(
                     SystemTypeInfo{
@@ -238,6 +320,17 @@ namespace HIKARI {
                                 CharacterInputSystem>();
                         },
                         "Character Input",
+                        std::string(RuntimeFeatureIds::GameplayBasic)
+                    }) && success;
+                success = systemTypeRegistry.Register(
+                    SystemTypeInfo{
+                        "DialogueRuntimeSystem",
+                        [](const nlohmann::json&)
+                            -> std::unique_ptr<ISystem> {
+                            return std::make_unique<
+                                DialogueRuntimeSystem>();
+                        },
+                        "Dialogue Runtime",
                         std::string(RuntimeFeatureIds::GameplayBasic)
                     }) && success;
                 success = systemTypeRegistry.Register(
@@ -279,6 +372,12 @@ namespace HIKARI {
                         "CharacterLocomotionComponent",
                         "CharacterMotionStateSystem",
                         130
+                    }) && success;
+                success = componentSystemPolicy.Register(
+                    ComponentSystemRule{
+                        "DialogueTriggerComponent",
+                        "DialogueRuntimeSystem",
+                        85
                     }) && success;
                 return success;
             }

@@ -1,6 +1,8 @@
 #include "Scene/Components/HIKARI_CharacterInputComponent.h"
 #include "Scene/Components/HIKARI_CharacterLocomotionComponent.h"
 #include "Scene/Components/HIKARI_SpawnPointComponent.h"
+#include "Scene/Components/HIKARI_DialogueInteractorComponent.h"
+#include "Scene/Components/HIKARI_DialogueTriggerComponent.h"
 
 #include <algorithm>
 #include <array>
@@ -8,6 +10,7 @@
 #include <string_view>
 
 #include "Editor/Inspectors/HIKARI_IInspectorBuilder.h"
+#include "Assets/HIKARI_AssetTypes.h"
 #include "Input/Runtime/HIKARI_InputService.h"
 #include "Physics/HIKARI_KinematicMotionService.h"
 #include "Scene/HIKARI_WorldServiceRegistry.h"
@@ -234,6 +237,47 @@ namespace HIKARI {
         IInspectorBuilder& builder) {
         builder.String("Spawn Point ID", spawnPointId_);
         builder.Bool("Enabled", enabled_);
+    }
+
+    void DialogueInteractorComponent::BuildInspector(
+        IInspectorBuilder& builder) {
+        builder.Bool("Enabled", enabled_);
+        builder.Text(
+            "This actor can activate Dialogue Trigger volumes.");
+    }
+
+    void DialogueTriggerComponent::BuildInspector(
+        IInspectorBuilder& builder) {
+        builder.Bool("Enabled", enabled_);
+        builder.AssetIdPicker(
+            "Dialogue Asset",
+            AssetType::Dialogue,
+            dialogueAssetGuid_.value);
+        builder.String("Locale", locale_);
+        int activation = static_cast<int>(activation_);
+        constexpr std::array<const char*, 2> activationModes{
+            "On Enter", "Interact"
+        };
+        if (builder.Choice(
+                "Activation",
+                activation,
+                activationModes)) {
+            activation_ = static_cast<DialogueTriggerActivation>(
+                std::clamp(activation, 0, 1));
+        }
+        if (activation_ == DialogueTriggerActivation::Interact) {
+            builder.InputActionIdPicker(
+                "Interact Action",
+                INPUT::InputActionValueType::Button,
+                interactActionId_);
+        }
+        builder.Bool("Pause World During Dialogue", pauseWorld_);
+        builder.Bool("One Shot", oneShot_);
+        builder.Text(
+            "Edit the paired Collider size and center to author the trigger range. The collider must remain a Trigger.");
+        if (!dialogueAssetGuid_.IsValid()) {
+            builder.Text("Assign a Dialogue asset before play.");
+        }
     }
 
 } // namespace HIKARI

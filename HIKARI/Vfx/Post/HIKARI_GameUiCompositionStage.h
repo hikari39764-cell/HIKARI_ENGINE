@@ -3,6 +3,7 @@
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render2D/HIKARI_RenderTarget2D.h"
 #include "Vfx/Post/HIKARI_PresentationFrame.h"
+#include "Vfx/Post/HIKARI_GameUiBackdropComposite.h"
 
 namespace HIKARI::POST {
 
@@ -36,7 +37,9 @@ namespace HIKARI::POST {
         GFX::Context context_{};
         RenderTarget2D hudlessColor_{};
         RenderTarget2D uiColorAndAlpha_{};
+        RenderTarget2D dialogueBackdropColor_{};
         RenderTarget2D finalColor_{};
+        GameUiBackdropComposite backdropComposite_{};
         PresentationFrameResources frame_{};
         bool active_ = false;
     };

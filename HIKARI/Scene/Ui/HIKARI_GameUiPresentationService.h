@@ -21,6 +21,17 @@ namespace HIKARI::GAME_UI {
         bool SubmitSprite(
             std::string_view assetPathBelowAssets,
             const GameProjectUiSpriteRequest& request) noexcept;
+        bool SubmitText(
+            std::string_view fontAssetPathBelowAssets,
+            std::string_view utf8Text,
+            const GameProjectUiTextRequest& request) noexcept;
+        bool SubmitStyledText(
+            std::string_view fontAssetPathBelowAssets,
+            std::string_view utf8Text,
+            const GameProjectUiTextRequest& request,
+            const GameUiTextEffectStyle& style) noexcept;
+        bool SubmitBackdrop(
+            const GameProjectUiBackdropRequest& request) noexcept;
 
         void Tick(uint64_t frameIndex) noexcept;
         void Reset() noexcept;
@@ -38,6 +49,8 @@ namespace HIKARI::GAME_UI {
         std::unordered_map<std::string, std::filesystem::path>
             resolvedAssetPaths_{};
         std::vector<GameUiSpriteDraw> pending_{};
+        std::vector<GameUiTextDraw> pendingTexts_{};
+        std::vector<GameUiBackdropDraw> pendingBackdrops_{};
         GameUiFrameSource frameSource_{};
         uint64_t nextSequence_ = 1u;
         uint64_t revision_ = 0u;

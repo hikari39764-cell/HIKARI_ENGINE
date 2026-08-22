@@ -24,6 +24,7 @@ namespace HIKARI {
         VfxEffect,
         Sequence,
         AnimationStateMachine,
+        Dialogue,
         ModelMaterialBinding,
         Unknown
     };

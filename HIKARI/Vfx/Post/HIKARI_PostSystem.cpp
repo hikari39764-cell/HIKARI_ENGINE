@@ -223,6 +223,15 @@ namespace HIKARI::POST {
     bool PostSystem::IsSceneCaptureActive() { return captureStage_.IsActive(); }
     bool PostSystem::HasCurrentRenderTarget() { return initialized_ && captureStage_.HasCurrentTarget(); }
     bool PostSystem::RebindCurrentRenderTarget() { return captureStage_.RebindCurrentTarget(); }
+    bool PostSystem::RebindPresentationBackBuffer() {
+        if (!initialized_ || context_.cmdList == nullptr ||
+            context_.rtv.ptr == 0u || context_.backBufferWidth <= 0 ||
+            context_.backBufferHeight <= 0) {
+            return false;
+        }
+        presentationStage_.BindBackBufferFullViewport();
+        return true;
+    }
     RENDER3D::RenderTextureView PostSystem::GetCurrentRenderTargetDepthView() {
         return captureStage_.GetCurrentDepthView();
     }

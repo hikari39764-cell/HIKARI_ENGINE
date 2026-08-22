@@ -236,6 +236,16 @@ namespace HIKARI {
                         "Animation State Machine",
                         assetDatabase,
                         summary);
+                } else if (component.type ==
+                        "DialogueTriggerComponent") {
+                    AddReference(
+                        component.properties.value(
+                            "dialogueAssetGuid",
+                            std::string{}),
+                        owner,
+                        "Dialogue Trigger",
+                        assetDatabase,
+                        summary);
                 } else if (component.type == "VfxPlayerComponent") {
                     const auto slots = component.properties.find("slots");
                     if (slots != component.properties.end() &&

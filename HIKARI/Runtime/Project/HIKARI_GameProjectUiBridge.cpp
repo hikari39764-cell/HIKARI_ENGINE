@@ -35,4 +35,43 @@ namespace HIKARI {
         }
     }
 
+    bool UiView::SubmitText(
+        std::string_view projectRelativeFontAssetPath,
+        std::string_view utf8Text,
+        const GameProjectUiTextRequest& request) const noexcept {
+        try {
+            World* world = static_cast<World*>(world_);
+            if (world == nullptr) {
+                return false;
+            }
+            GAME_UI::GameUiPresentationService* service =
+                world->Services().Find<
+                    GAME_UI::GameUiPresentationService>();
+            return service != nullptr && service->SubmitText(
+                projectRelativeFontAssetPath,
+                utf8Text,
+                request);
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
+    bool UiView::SubmitBackdrop(
+        const GameProjectUiBackdropRequest& request) const noexcept {
+        try {
+            World* world = static_cast<World*>(world_);
+            if (world == nullptr) {
+                return false;
+            }
+            GAME_UI::GameUiPresentationService* service =
+                world->Services().Find<
+                    GAME_UI::GameUiPresentationService>();
+            return service != nullptr && service->SubmitBackdrop(request);
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
 } // namespace HIKARI

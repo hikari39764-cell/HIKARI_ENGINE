@@ -63,6 +63,8 @@ AssetType TypeFromFilterIndex(int index) {
   case 8:
     return AssetType::AnimationStateMachine;
   case 9:
+    return AssetType::Dialogue;
+  case 10:
     return AssetType::ModelMaterialBinding;
   default:
     return AssetType::Unknown;
@@ -255,6 +257,8 @@ const char *ToCompactTypeBadge(AssetType type) {
     return "SEQ";
   case AssetType::AnimationStateMachine:
     return "ASM";
+  case AssetType::Dialogue:
+    return "DLG";
   case AssetType::Unknown:
   default:
     return "UNK";

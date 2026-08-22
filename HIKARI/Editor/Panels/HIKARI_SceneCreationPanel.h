@@ -60,6 +60,11 @@ namespace HIKARI {
                 EditorContext& context,
                 const SelectionSyncService& selectionSync);
 
+            void CreateDialogueTriggerObject(
+                DocumentSceneBase& scene,
+                EditorContext& context,
+                const SelectionSyncService& selectionSync);
+
             PrimitiveCreationDialog primitiveCreationDialog_{};
             std::optional<SceneObjectAuthoringHistoryRequest>
                 historyRequest_{};

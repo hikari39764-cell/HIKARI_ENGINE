@@ -16,6 +16,35 @@ namespace HIKARI {
         CounterAvailable = 7u,
         CounterPressed = 8u,
         RejectedPulse = 9u,
+        TextSdf = 10u,
+        DialoguePanelReveal = 11u,
+        DialogueChoiceIdle = 12u,
+        DialogueChoiceSelected = 13u,
+        TextSdfGlow = 14u,
+        DialoguePortraitFocus = 15u,
+    };
+
+    // Submission flags are shared by sprites, text and backdrop requests.
+    // Modal elements remain visible when the winning backdrop requests HUD
+    // suppression. The suppression bit is meaningful on backdrops only.
+    inline constexpr uint32_t kGameProjectUiSubmissionModal = 1u << 0u;
+    inline constexpr uint32_t kGameProjectUiSuppressNonModal = 1u << 1u;
+
+    enum class GameProjectUiTextAlign : uint8_t {
+        Left = 0u,
+        Center = 1u,
+        Right = 2u,
+    };
+
+    enum class GameProjectUiVerticalAlign : uint8_t {
+        Top = 0u,
+        Center = 1u,
+        Bottom = 2u,
+    };
+
+    enum class GameProjectUiTextWrap : uint8_t {
+        None = 0u,
+        Character = 1u,
     };
 
     struct GameProjectUiColor {
@@ -63,9 +92,79 @@ namespace HIKARI {
         uint8_t reserved[7]{};
     };
 
+    // UTF-8 text is copied synchronously by UiView::SubmitText. The font path
+    // is project-relative below Assets and may point to a TTF, OTF, or TTC
+    // file. Text layout values use the same reference-canvas contract as
+    // GameProjectUiSpriteRequest.
+    struct GameProjectUiTextRequest {
+        uint64_t sourceId = 0u;
+        int32_t order = 0;
+        uint32_t flags = 0u;
+
+        float referenceWidth = 1920.0f;
+        float referenceHeight = 1080.0f;
+        float x = 0.0f;
+        float y = 0.0f;
+        float maxWidth = 1.0f;
+        float maxHeight = 1.0f;
+        float pivotX = 0.0f;
+        float pivotY = 0.0f;
+        float rotationRadians = 0.0f;
+
+        float pixelHeight = 32.0f;
+        float lineHeightMultiplier = 1.15f;
+        float letterSpacing = 0.0f;
+        float revealAmount = 1.0f;
+        float effectProgress = 1.0f;
+        float effectIntensity = 1.0f;
+        float timeSeconds = 0.0f;
+        float outlineWidth = 1.5f;
+        float shadowOffsetX = 2.0f;
+        float shadowOffsetY = 2.0f;
+
+        GameProjectUiColor textColor{};
+        GameProjectUiColor outlineColor{
+            0.0156863f,
+            0.1686275f,
+            0.5058824f,
+            1.0f };
+        GameProjectUiColor shadowColor{
+            0.0f,
+            0.0f,
+            0.0f,
+            0.55f };
+        GameProjectUiTextAlign horizontalAlign =
+            GameProjectUiTextAlign::Left;
+        GameProjectUiVerticalAlign verticalAlign =
+            GameProjectUiVerticalAlign::Top;
+        GameProjectUiTextWrap wrap = GameProjectUiTextWrap::Character;
+        uint8_t reserved[5]{};
+    };
+
+    struct GameProjectUiBackdropRequest {
+        uint64_t sourceId = 0u;
+        int32_t priority = 0;
+        uint32_t flags = 0u;
+        float dimAmount = 0.35f;
+        float blurRadiusPixels = 4.0f;
+        float desaturation = 0.15f;
+        float vignette = 0.20f;
+        float progress = 1.0f;
+        GameProjectUiColor tint{
+            0.0156863f,
+            0.0352941f,
+            0.1019608f,
+            1.0f };
+        uint8_t reserved[8]{};
+    };
+
     static_assert(std::is_standard_layout_v<GameProjectUiColor>);
     static_assert(std::is_trivially_copyable_v<GameProjectUiColor>);
     static_assert(std::is_standard_layout_v<GameProjectUiSpriteRequest>);
     static_assert(std::is_trivially_copyable_v<GameProjectUiSpriteRequest>);
+    static_assert(std::is_standard_layout_v<GameProjectUiTextRequest>);
+    static_assert(std::is_trivially_copyable_v<GameProjectUiTextRequest>);
+    static_assert(std::is_standard_layout_v<GameProjectUiBackdropRequest>);
+    static_assert(std::is_trivially_copyable_v<GameProjectUiBackdropRequest>);
 
 } // namespace HIKARI

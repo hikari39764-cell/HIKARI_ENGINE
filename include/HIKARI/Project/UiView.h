@@ -23,6 +23,14 @@ namespace HIKARI {
             std::string_view projectRelativeAssetPath,
             const GameProjectUiSpriteRequest& request) const noexcept;
 
+        HIKARI_GAME_PROJECT_SDK_API bool SubmitText(
+            std::string_view projectRelativeFontAssetPath,
+            std::string_view utf8Text,
+            const GameProjectUiTextRequest& request) const noexcept;
+
+        HIKARI_GAME_PROJECT_SDK_API bool SubmitBackdrop(
+            const GameProjectUiBackdropRequest& request) const noexcept;
+
     private:
         friend struct GameProjectSdkAccess;
 

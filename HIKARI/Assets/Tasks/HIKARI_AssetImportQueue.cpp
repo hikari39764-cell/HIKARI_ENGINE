@@ -72,6 +72,7 @@ namespace HIKARI {
             case AssetType::Scene:
             case AssetType::Sequence:
             case AssetType::AnimationStateMachine:
+            case AssetType::Dialogue:
                 return 5;
             default:
                 return 6;

@@ -174,6 +174,8 @@ namespace HIKARI {
         state_->assets.SequenceAssets().SetAssetDatabase(&state_->assets.Database());
         state_->camera.sequencePlayback.SetAssetStore(&state_->assets.SequenceAssets());
         state_->runtime.animationStateMachineAssets.SetAssetDatabase(&state_->assets.Database());
+        state_->runtime.dialogueAssets.SetAssetDatabase(
+            &state_->assets.Database());
         if (!OpenStartupSceneAsset()) {
             CreateTransientEmptySceneDocument();
             RebuildRuntimeWorld();
@@ -187,6 +189,8 @@ namespace HIKARI {
         state_->camera.rigService.Clear();
         state_->assets.SequenceAssets().Clear();
         state_->runtime.animationStateMachineAssets.Clear();
+        state_->runtime.dialogueSessionService.Reset(&state_->runtime.world);
+        state_->runtime.dialogueAssets.Clear();
         state_->runtime.animationStateMachineRuntimeService.Clear();
         state_->runtime.systemScheduler.DetachWorld(state_->runtime.world);
         state_->runtime.systemScheduler.Clear();

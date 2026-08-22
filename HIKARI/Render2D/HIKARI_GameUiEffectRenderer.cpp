@@ -6,6 +6,7 @@
 #include <cstring>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include <d3dx12.h>
 #include <wrl/client.h>
@@ -17,6 +18,7 @@
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
 #include "Render2D/HIKARI_DxTexture.h"
+#include "Render2D/HIKARI_GameUiTextLayout.h"
 
 namespace HIKARI::GAME_UI {
     namespace {
@@ -63,6 +65,18 @@ namespace HIKARI::GAME_UI {
         };
 
         RendererState g{};
+        RendererState gPreview{};
+
+        struct ResolvedDraw {
+            int textureHandle = -1;
+            GameProjectUiSpriteRequest request{};
+            float u0 = 0.0f;
+            float v0 = 0.0f;
+            float u1 = 1.0f;
+            float v1 = 1.0f;
+            uint64_t submissionSequence = 0u;
+            uint32_t elementSequence = 0u;
+        };
 
         bool IsFinite(float value) noexcept {
             return std::isfinite(value);
@@ -79,27 +93,27 @@ namespace HIKARI::GAME_UI {
             frame = {};
         }
 
-        void ReleasePipeline() noexcept {
-            for (FrameResources& frame : g.frames) {
+        void ReleasePipeline(RendererState& state) noexcept {
+            for (FrameResources& frame : state.frames) {
                 ReleaseFrame(frame);
             }
-            g.pipeline.Reset();
-            g.rootSignature.Reset();
-            g.textureHandles.clear();
-            g.deviceIdentity = nullptr;
-            g.compileFailureLogged = false;
+            state.pipeline.Reset();
+            state.rootSignature.Reset();
+            state.textureHandles.clear();
+            state.deviceIdentity = nullptr;
+            state.compileFailureLogged = false;
         }
 
-        bool EnsurePipeline(ID3D12Device* device) {
+        bool EnsurePipeline(RendererState& state, ID3D12Device* device) {
             if (device == nullptr) {
                 return false;
             }
-            if (g.deviceIdentity != nullptr &&
-                g.deviceIdentity != device) {
-                ReleasePipeline();
+            if (state.deviceIdentity != nullptr &&
+                state.deviceIdentity != device) {
+                ReleasePipeline(state);
             }
-            g.deviceIdentity = device;
-            if (g.rootSignature != nullptr && g.pipeline != nullptr) {
+            state.deviceIdentity = device;
+            if (state.rootSignature != nullptr && state.pipeline != nullptr) {
                 return true;
             }
 
@@ -154,7 +168,7 @@ namespace HIKARI::GAME_UI {
                         0u,
                         signature->GetBufferPointer(),
                         signature->GetBufferSize(),
-                        IID_PPV_ARGS(g.rootSignature.GetAddressOf())),
+                        IID_PPV_ARGS(state.rootSignature.GetAddressOf())),
                     "GameUi::CreateRootSignature")) {
                 return false;
             }
@@ -171,10 +185,10 @@ namespace HIKARI::GAME_UI {
                     "PSMain",
                     GFX::ShaderStage::Pixel,
                     pixelShader.GetAddressOf())) {
-                if (!g.compileFailureLogged) {
+                if (!state.compileFailureLogged) {
                     DEBUGLOG::PushRenderError(
                         "[GameUi][ERROR] effect shader compile failed.");
-                    g.compileFailureLogged = true;
+                    state.compileFailureLogged = true;
                 }
                 return false;
             }
@@ -188,7 +202,7 @@ namespace HIKARI::GAME_UI {
                     D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0u },
             };
             D3D12_GRAPHICS_PIPELINE_STATE_DESC desc{};
-            desc.pRootSignature = g.rootSignature.Get();
+            desc.pRootSignature = state.rootSignature.Get();
             desc.VS = {
                 vertexShader->GetBufferPointer(),
                 vertexShader->GetBufferSize() };
@@ -224,10 +238,10 @@ namespace HIKARI::GAME_UI {
             const bool created = HIKARI_DX_CHECK(
                 device->CreateGraphicsPipelineState(
                     &desc,
-                    IID_PPV_ARGS(g.pipeline.GetAddressOf())),
+                    IID_PPV_ARGS(state.pipeline.GetAddressOf())),
                 "GameUi::CreateEffectPipeline");
             if (created) {
-                g.compileFailureLogged = false;
+                state.compileFailureLogged = false;
             }
             return created;
         }
@@ -292,9 +306,9 @@ namespace HIKARI::GAME_UI {
             return true;
         }
 
-        int ResolveTexture(const std::string& path) {
-            auto found = g.textureHandles.find(path);
-            if (found != g.textureHandles.end() &&
+        int ResolveTexture(RendererState& state, const std::string& path) {
+            auto found = state.textureHandles.find(path);
+            if (found != state.textureHandles.end() &&
                 DXTEX::DxTextureManager::IsTextureHandleValid(
                     found->second)) {
                 return found->second;
@@ -304,7 +318,7 @@ namespace HIKARI::GAME_UI {
                 name,
                 path);
             if (handle >= 0) {
-                g.textureHandles[path] = handle;
+                state.textureHandles[path] = handle;
             }
             return handle;
         }
@@ -313,7 +327,11 @@ namespace HIKARI::GAME_UI {
             UiVertex* destination,
             const GameProjectUiSpriteRequest& request,
             int logicalWidth,
-            int logicalHeight) noexcept {
+            int logicalHeight,
+            float u0,
+            float v0,
+            float u1,
+            float v1) noexcept {
             const float scale = (std::min)(
                 static_cast<float>(logicalWidth) /
                     request.referenceWidth,
@@ -345,12 +363,12 @@ namespace HIKARI::GAME_UI {
             const auto lb = rotate(x, y + height);
             const auto rb = rotate(x + width, y + height);
             const UiVertex vertices[kVerticesPerSprite] = {
-                { lt[0], lt[1], 0.0f, 0.0f },
-                { rt[0], rt[1], 1.0f, 0.0f },
-                { lb[0], lb[1], 0.0f, 1.0f },
-                { lb[0], lb[1], 0.0f, 1.0f },
-                { rt[0], rt[1], 1.0f, 0.0f },
-                { rb[0], rb[1], 1.0f, 1.0f },
+                { lt[0], lt[1], u0, v0 },
+                { rt[0], rt[1], u1, v0 },
+                { lb[0], lb[1], u0, v1 },
+                { lb[0], lb[1], u0, v1 },
+                { rt[0], rt[1], u1, v0 },
+                { rb[0], rb[1], u1, v1 },
             };
             std::memcpy(
                 destination,
@@ -375,29 +393,84 @@ namespace HIKARI::GAME_UI {
         g.source = source;
     }
 
-    bool RenderGameUiFrame(
+    static bool RenderGameUiSource(
+        RendererState& state,
+        const GameUiFrameSource* source,
         uint64_t frameIndex,
         int logicalWidth,
         int logicalHeight) noexcept {
         try {
-            const GameUiFrameSource* source = g.source;
-            if (source == nullptr || !source->HasSprites() ||
+            if (source == nullptr || !source->HasDraws() ||
                 source->frameIndex != frameIndex) {
                 return true;
             }
             const GFX::Context& graphics = GFX::GetCurrentContext();
             if (graphics.device == nullptr || graphics.cmdList == nullptr ||
                 logicalWidth <= 0 || logicalHeight <= 0 ||
-                !EnsurePipeline(graphics.device)) {
+                !EnsurePipeline(state, graphics.device)) {
                 return false;
             }
 
-            FrameResources& frame = g.frames[
+            std::vector<GameUiTextGlyphDraw> textGlyphs{};
+            if (!BuildGameUiTextGlyphDraws(
+                    source->texts,
+                    textGlyphs)) {
+                return false;
+            }
+            std::vector<ResolvedDraw> resolved{};
+            resolved.reserve(source->sprites.size() + textGlyphs.size());
+            for (const GameUiSpriteDraw& draw : source->sprites) {
+                const int texture = ResolveTexture(
+                    state, draw.absoluteAssetPath);
+                if (texture < 0) {
+                    continue;
+                }
+                ResolvedDraw item{};
+                item.textureHandle = texture;
+                item.request = draw.request;
+                item.submissionSequence = draw.submissionSequence;
+                resolved.push_back(std::move(item));
+            }
+            for (const GameUiTextGlyphDraw& glyph : textGlyphs) {
+                if (glyph.textureHandle < 0) {
+                    continue;
+                }
+                ResolvedDraw item{};
+                item.textureHandle = glyph.textureHandle;
+                item.request = glyph.request;
+                item.u0 = glyph.u0;
+                item.v0 = glyph.v0;
+                item.u1 = glyph.u1;
+                item.v1 = glyph.v1;
+                item.submissionSequence = glyph.submissionSequence;
+                item.elementSequence = glyph.glyphSequence;
+                resolved.push_back(std::move(item));
+            }
+            std::stable_sort(
+                resolved.begin(),
+                resolved.end(),
+                [](const ResolvedDraw& lhs, const ResolvedDraw& rhs) {
+                    if (lhs.request.order != rhs.request.order) {
+                        return lhs.request.order < rhs.request.order;
+                    }
+                    if (lhs.request.sourceId != rhs.request.sourceId) {
+                        return lhs.request.sourceId < rhs.request.sourceId;
+                    }
+                    if (lhs.submissionSequence != rhs.submissionSequence) {
+                        return lhs.submissionSequence < rhs.submissionSequence;
+                    }
+                    return lhs.elementSequence < rhs.elementSequence;
+                });
+            if (resolved.empty()) {
+                return true;
+            }
+
+            FrameResources& frame = state.frames[
                 graphics.frameIndex % GFX::kFrameResourceCount];
             if (!EnsureFrameResources(
                     graphics.device,
                     frame,
-                    source->sprites.size())) {
+                    resolved.size())) {
                 return false;
             }
 
@@ -412,15 +485,14 @@ namespace HIKARI::GAME_UI {
                 GFX::PIX::kColorEditor,
                 "Game UI Shader Effects");
             cmd->SetDescriptorHeaps(1u, &textureHeap);
-            cmd->SetGraphicsRootSignature(g.rootSignature.Get());
-            cmd->SetPipelineState(g.pipeline.Get());
+            cmd->SetGraphicsRootSignature(state.rootSignature.Get());
+            cmd->SetPipelineState(state.pipeline.Get());
             cmd->IASetPrimitiveTopology(
                 D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
             size_t drawIndex = 0u;
-            for (const GameUiSpriteDraw& draw : source->sprites) {
-                const int texture = ResolveTexture(
-                    draw.absoluteAssetPath);
+            for (const ResolvedDraw& draw : resolved) {
+                const int texture = draw.textureHandle;
                 if (texture < 0) {
                     continue;
                 }
@@ -440,7 +512,11 @@ namespace HIKARI::GAME_UI {
                     vertices,
                     draw.request,
                     logicalWidth,
-                    logicalHeight);
+                    logicalHeight,
+                    draw.u0,
+                    draw.v0,
+                    draw.u1,
+                    draw.v1);
                 UiConstants constants{};
                 constants.screenSize[0] =
                     static_cast<float>(logicalWidth);
@@ -497,9 +573,50 @@ namespace HIKARI::GAME_UI {
         }
     }
 
+    bool RenderGameUiFrame(
+        uint64_t frameIndex,
+        int logicalWidth,
+        int logicalHeight) noexcept {
+        return RenderGameUiSource(
+            g,
+            g.source,
+            frameIndex,
+            logicalWidth,
+            logicalHeight);
+    }
+
+    bool RenderGameUiPreviewFrame(
+        const GameUiFrameSource& source,
+        uint64_t frameIndex,
+        int logicalWidth,
+        int logicalHeight) noexcept {
+        return RenderGameUiSource(
+            gPreview,
+            &source,
+            frameIndex,
+            logicalWidth,
+            logicalHeight);
+    }
+
+    bool GetGameUiBackdropRequest(
+        uint64_t frameIndex,
+        GameProjectUiBackdropRequest& outRequest) noexcept {
+        outRequest = {};
+        const GameUiFrameSource* source = g.source;
+        if (source == nullptr || source->frameIndex != frameIndex ||
+            !source->hasBackdrop) {
+            return false;
+        }
+        outRequest = source->backdrop.request;
+        return true;
+    }
+
     void ShutdownGameUiRenderer() noexcept {
         g.source = nullptr;
-        ReleasePipeline();
+        gPreview.source = nullptr;
+        ShutdownGameUiTextLayout();
+        ReleasePipeline(g);
+        ReleasePipeline(gPreview);
     }
 
 } // namespace HIKARI::GAME_UI

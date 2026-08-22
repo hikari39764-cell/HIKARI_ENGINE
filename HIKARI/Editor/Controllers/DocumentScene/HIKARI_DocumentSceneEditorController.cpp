@@ -1866,6 +1866,9 @@ namespace HIKARI {
             animationStateMachineWorkspaceController_.ApplyWorkspaceActivation(
                 scene,
                 *activation);
+            dialogueWorkspaceController_.ApplyWorkspaceActivation(
+                scene,
+                *activation);
             if (activation->current ==
                     EDITOR::EditorWorkspaceId::RuntimeBinding) {
                 std::string message{};
@@ -1924,6 +1927,28 @@ namespace HIKARI {
                     workspaceHost_.GetVfxPreviewView(),
                     static_cast<uint64_t>(ImGui::GetFrameCount()),
                     ImGui::GetIO().DeltaTime,
+                    commandRouter_);
+            if (result.exitToSceneRequested) {
+                EDITOR::EditorWorkspaceOpenRequest request{};
+                request.workspaceId = EDITOR::EditorWorkspaceId::Scene;
+                (void)workspaceHost_.RequestOpen(std::move(request));
+            }
+            if (!result.statusMessage.empty()) {
+                viewportDropMessage_ = result.statusMessage;
+            }
+            DrawPendingSceneOpenModal(scene);
+            return;
+        }
+
+        if (workspaceHost_.IsActive(
+                EDITOR::EditorWorkspaceId::Dialogue)) {
+            SERVICES::SetEditorGameViewportSize(0, 0, false);
+            dialogueWorkspaceController_.DrawDockSpace(
+                workspaceHost_.ConsumeReset(
+                    EDITOR::EditorWorkspaceId::Dialogue));
+            const EDITOR::DialogueWorkspaceResult result =
+                dialogueWorkspaceController_.Draw(
+                    scene,
                     commandRouter_);
             if (result.exitToSceneRequested) {
                 EDITOR::EditorWorkspaceOpenRequest request{};
