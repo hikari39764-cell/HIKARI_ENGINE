@@ -17,6 +17,7 @@ namespace HIKARI::RENDER3D::SURFACE {
         RenderTextureView opaqueSceneColor{};
         RenderTextureView packedSurface{};
         RenderTextureView surfaceFeatureMask{};
+        RenderTextureView stylizedOutlineStyle{};
         RenderTextureView ambientOcclusion{};
         RenderTextureView motionVectors{};
         RenderTextureView motionMetadata{};
@@ -37,6 +38,12 @@ namespace HIKARI::RENDER3D::SURFACE {
 
         bool HasStylizedFeatureMask() const noexcept {
             return surfaceFeatureMask.IsSampleable();
+        }
+
+        bool HasStylizedOutlineStyle() const noexcept {
+            return stylizedOutlineStyle.IsSampleable() &&
+                stylizedOutlineStyle.width == surfaceFeatureMask.width &&
+                stylizedOutlineStyle.height == surfaceFeatureMask.height;
         }
 
         bool HasCurrentDepthHierarchy() const noexcept {

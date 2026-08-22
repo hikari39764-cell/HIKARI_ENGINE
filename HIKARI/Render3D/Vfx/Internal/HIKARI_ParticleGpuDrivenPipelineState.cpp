@@ -254,7 +254,12 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
         textureRange.NumDescriptors = GFX::DESCRIPTOR::kUserSrvCount;
         textureRange.BaseShaderRegister = 20u;
 
-        std::array<D3D12_ROOT_PARAMETER, 9u> parameters{};
+        D3D12_DESCRIPTOR_RANGE sceneDepthRange{};
+        sceneDepthRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+        sceneDepthRange.NumDescriptors = 1u;
+        sceneDepthRange.BaseShaderRegister = 3u;
+
+        std::array<D3D12_ROOT_PARAMETER, 10u> parameters{};
         parameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
         parameters[0].Descriptor.ShaderRegister = 0u;
         for (uint32_t index = 1u; index <= 5u; ++index) {
@@ -285,22 +290,31 @@ namespace HIKARI::RENDER3D::PARTICLES::INTERNAL {
         parameters[8].Constants.ShaderRegister = 7u;
         parameters[8].Constants.Num32BitValues = 4u;
         parameters[8].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        parameters[9].ParameterType =
+            D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+        parameters[9].DescriptorTable.NumDescriptorRanges = 1u;
+        parameters[9].DescriptorTable.pDescriptorRanges = &sceneDepthRange;
+        parameters[9].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
 
-        D3D12_STATIC_SAMPLER_DESC sampler{};
-        sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
-        sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-        sampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-        sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
-        sampler.ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
-        sampler.MaxLOD = D3D12_FLOAT32_MAX;
-        sampler.ShaderRegister = 0u;
-        sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        std::array<D3D12_STATIC_SAMPLER_DESC, 2u> samplers{};
+        samplers[0].Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+        samplers[0].AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        samplers[0].AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        samplers[0].AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        samplers[0].ComparisonFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+        samplers[0].MaxLOD = D3D12_FLOAT32_MAX;
+        samplers[0].ShaderRegister = 0u;
+        samplers[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        samplers[1] = samplers[0];
+        samplers[1].Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
+        samplers[1].ShaderRegister = 1u;
 
         D3D12_ROOT_SIGNATURE_DESC rootDescription{};
         rootDescription.NumParameters = static_cast<UINT>(parameters.size());
         rootDescription.pParameters = parameters.data();
-        rootDescription.NumStaticSamplers = 1u;
-        rootDescription.pStaticSamplers = &sampler;
+        rootDescription.NumStaticSamplers =
+            static_cast<UINT>(samplers.size());
+        rootDescription.pStaticSamplers = samplers.data();
         if (!CreateRootSignature(
                 device,
                 rootDescription,

@@ -702,6 +702,77 @@ namespace HIKARI::VFX {
                     "render material mode is invalid",
                     emitter.renderCommon.id);
             }
+            const bool validDepthMode =
+                emitter.renderCommon.depthMode ==
+                    VfxParticleDepthMode::WorldOccluded ||
+                emitter.renderCommon.depthMode ==
+                    VfxParticleDepthMode::SoftIntersection ||
+                emitter.renderCommon.depthMode ==
+                    VfxParticleDepthMode::ContactSurface ||
+                emitter.renderCommon.depthMode ==
+                    VfxParticleDepthMode::ForegroundAccent;
+            const bool validShaderStyle =
+                emitter.renderCommon.shaderStyle ==
+                    VfxParticleShaderStyle::Default ||
+                emitter.renderCommon.shaderStyle ==
+                    VfxParticleShaderStyle::CombatCut ||
+                emitter.renderCommon.shaderStyle ==
+                    VfxParticleShaderStyle::CombatImpact ||
+                emitter.renderCommon.shaderStyle ==
+                    VfxParticleShaderStyle::CombatGround ||
+                emitter.renderCommon.shaderStyle ==
+                    VfxParticleShaderStyle::ComicSmoke ||
+                emitter.renderCommon.shaderStyle ==
+                    VfxParticleShaderStyle::ProjectileNeedle;
+            const bool validSoftIntersection =
+                IsFinite(
+                    emitter.renderCommon.softIntersectionDistance) &&
+                (emitter.renderCommon.depthMode !=
+                    VfxParticleDepthMode::SoftIntersection ||
+                 (
+                 emitter.renderCommon.softIntersectionDistance >= 0.001f &&
+                 emitter.renderCommon.softIntersectionDistance <= 10.0f));
+            const bool validContactBias =
+                IsFinite(emitter.renderCommon.depthBias) &&
+                (emitter.renderCommon.depthMode !=
+                    VfxParticleDepthMode::ContactSurface ||
+                 (
+                 emitter.renderCommon.depthBias >= 0.0f &&
+                 emitter.renderCommon.depthBias <= 0.02f));
+            const bool validStylizedProfile =
+                IsFinite(emitter.renderCommon.shaderOutlineColor) &&
+                IsFinite(emitter.renderCommon.shaderCoreColor) &&
+                IsFinite(emitter.renderCommon.shaderOutlineWidth) &&
+                IsFinite(emitter.renderCommon.shaderEdgeHardness) &&
+                IsFinite(
+                    emitter.renderCommon.shaderEmissiveIntensity) &&
+                IsFinite(emitter.renderCommon.shaderBreakupScale) &&
+                IsFinite(emitter.renderCommon.shaderBreakupStrength) &&
+                (emitter.renderCommon.shaderStyle ==
+                    VfxParticleShaderStyle::Default ||
+                 (
+                 IsNonNegative(
+                    emitter.renderCommon.shaderOutlineColor) &&
+                 IsNonNegative(emitter.renderCommon.shaderCoreColor) &&
+                 emitter.renderCommon.shaderOutlineWidth >= 0.0f &&
+                 emitter.renderCommon.shaderOutlineWidth <= 0.49f &&
+                 emitter.renderCommon.shaderEdgeHardness >= 0.0f &&
+                 emitter.renderCommon.shaderEdgeHardness <= 1.0f &&
+                 emitter.renderCommon.shaderEmissiveIntensity >= 0.0f &&
+                 emitter.renderCommon.shaderEmissiveIntensity <= 64.0f &&
+                 emitter.renderCommon.shaderBreakupScale >= 0.1f &&
+                 emitter.renderCommon.shaderBreakupScale <= 64.0f &&
+                 emitter.renderCommon.shaderBreakupStrength >= 0.0f &&
+                 emitter.renderCommon.shaderBreakupStrength <= 1.0f));
+            if (!validDepthMode || !validShaderStyle ||
+                !validSoftIntersection || !validContactBias ||
+                !validStylizedProfile) {
+                AddError(
+                    diagnostics,
+                    "Vfx.InvalidParticlePresentation",
+                    "particle depth or stylized shader parameters are invalid",
+                    emitter.renderCommon.id);
+            }
             if (emitter.renderCommon.colorTextureAssetGuid.IsValid() &&
                 !IsVfxBuiltinTextureAssetId(
                     emitter.renderCommon.colorTextureAssetGuid.value) &&

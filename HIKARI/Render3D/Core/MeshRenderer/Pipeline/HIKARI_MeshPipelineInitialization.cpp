@@ -727,8 +727,10 @@ namespace HIKARI::MESHRENDERER {
                 store.geometryFeatureMaskPsBlob->GetBufferPointer(),
                 store.geometryFeatureMaskPsBlob->GetBufferSize()
             };
-            geometryFeatureMaskPsoDesc.NumRenderTargets = 2u;
+            geometryFeatureMaskPsoDesc.NumRenderTargets = 3u;
             geometryFeatureMaskPsoDesc.RTVFormats[1] = DXGI_FORMAT_R32G32_UINT;
+            geometryFeatureMaskPsoDesc.RTVFormats[2] =
+                DXGI_FORMAT_R8G8B8A8_UNORM;
             const bool staticPipelineReady = SUCCEEDED(
                 device->CreateGraphicsPipelineState(
                     &geometryFeatureMaskPsoDesc,

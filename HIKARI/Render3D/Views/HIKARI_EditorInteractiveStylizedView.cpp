@@ -163,8 +163,11 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         };
         outSurfaces.packedSurface = surfaceBuffer_.GetPackedSurfaceView();
         outSurfaces.surfaceFeatureMask = surfaceBuffer_.GetFeatureMaskView();
+        outSurfaces.stylizedOutlineStyle =
+            surfaceBuffer_.GetStylizedOutlineStyleView();
         return outSurfaces.HasOpaqueSurface() &&
-            outSurfaces.HasStylizedFeatureMask();
+            outSurfaces.HasStylizedFeatureMask() &&
+            outSurfaces.HasStylizedOutlineStyle();
     }
 
     bool EditorInteractiveStylizedView::Resolve(

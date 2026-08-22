@@ -55,6 +55,8 @@ namespace HIKARI::RENDER3D::FEATURES {
         debugState_.transientBytes = plan.transientBytes;
         debugState_.inputsReady = surfaces.HasOpaqueSurface() &&
             surfaces.HasStylizedFeatureMask();
+        debugState_.materialStyleReady =
+            surfaces.HasStylizedOutlineStyle();
         debugState_.scheduledFeatureMask =
             BuildScheduledFeatureMask(plan);
         if (!debugState_.requested || !debugState_.inputsReady ||
@@ -78,7 +80,7 @@ namespace HIKARI::RENDER3D::FEATURES {
             1.0f / static_cast<float>((std::max)(1u, surfaces.sceneDepth.height))
         };
         constants.edgeParams = {
-            std::clamp(settings.thicknessPixels, 0.5f, 6.0f),
+            std::clamp(settings.thicknessPixels, 0.25f, 8.0f),
             std::clamp(settings.depthThreshold, 0.00001f, 0.25f),
             std::clamp(settings.normalThreshold, 0.001f, 1.0f),
             std::clamp(settings.intensity, 0.0f, 1.0f)
@@ -107,6 +109,8 @@ namespace HIKARI::RENDER3D::FEATURES {
                 RenderFeatureKind::GeometryOutline)].compatibilityFallback
                 ? 1u
                 : 0u;
+        constants.featureFlags[2] =
+            debugState_.materialStyleReady ? 1u : 0u;
         constants.viewProj = settings.viewProj;
         std::memcpy(
             constantMapped_ + static_cast<size_t>(constantStride_) * frameSlot,
@@ -134,6 +138,11 @@ namespace HIKARI::RENDER3D::FEATURES {
         cmd->SetGraphicsRootDescriptorTable(3u, surfaces.packedSurface.srv);
         cmd->SetGraphicsRootDescriptorTable(
             4u, surfaces.surfaceFeatureMask.srv);
+        cmd->SetGraphicsRootDescriptorTable(
+            5u,
+            debugState_.materialStyleReady
+                ? surfaces.stylizedOutlineStyle.srv
+                : surfaces.packedSurface.srv);
         D3D12_VIEWPORT viewport{};
         viewport.Width = static_cast<float>(surfaces.sceneDepth.width);
         viewport.Height = static_cast<float>(surfaces.sceneDepth.height);
@@ -162,8 +171,8 @@ namespace HIKARI::RENDER3D::FEATURES {
             return false;
         }
 
-        std::array<D3D12_DESCRIPTOR_RANGE, 4u> ranges{};
-        std::array<D3D12_ROOT_PARAMETER, 5u> parameters{};
+        std::array<D3D12_DESCRIPTOR_RANGE, 5u> ranges{};
+        std::array<D3D12_ROOT_PARAMETER, 6u> parameters{};
         parameters[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
         parameters[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
         parameters[0].Descriptor.ShaderRegister = 0u;

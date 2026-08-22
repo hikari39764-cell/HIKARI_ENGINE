@@ -460,15 +460,15 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(
         CommitMaterialMutation(std::move(before), "Change outline mode", scene);
       }
       trackItem();
+      drawParameter("parameter.outlineColor", "Color", "Color");
+      drawParameter("parameter.outlineThickness", "Thickness", "Thickness");
+      DrawOutlineThicknessPresets(scene, source, graph);
       if (current != 1) {
-        drawParameter("parameter.outlineColor", "Color", "Color");
-        drawParameter("parameter.outlineThickness", "Thickness", "Thickness");
-        DrawOutlineThicknessPresets(scene, source, graph);
         ImGui::TextDisabled(MESHRENDERER::HasGeometryOutlineFeatureBackend() ? "Geometry backend: ready (closed meshes work best)" : "Geometry backend: unavailable; check renderer diagnostics");
       }
       if (current != 0) {
         ImGui::TextDisabled(
-            "Screen outline uses the View profile and supports hair cards.");
+            "Screen backend: per-material color and pixel thickness; supports hair cards.");
       }
     }
   } else if (node.kind == MaterialNodeKind::HairShadow) {

@@ -1011,6 +1011,13 @@ namespace HIKARI::RENDER3D::PARTICLES {
             context.cmdList->SetGraphicsRootDescriptorTable(
                 6u,
                 texturePool);
+            const bool sceneDepthAvailable =
+                bindings.sceneDepth.ptr != 0u;
+            context.cmdList->SetGraphicsRootDescriptorTable(
+                9u,
+                sceneDepthAvailable
+                    ? bindings.sceneDepth
+                    : texturePool);
             drawOrder.clear();
             drawOrder.reserve(drawItems.size());
             for (uint32_t itemIndex = 0u;
@@ -1040,9 +1047,15 @@ namespace HIKARI::RENDER3D::PARTICLES {
                         const DrawItem& lhsItem = drawItems[lhs.itemIndex];
                         const DrawItem& rhsItem = drawItems[rhs.itemIndex];
                         const uint32_t lhsQueue =
-                            lhsItem.render.depthTest ? 0u : 1u;
+                            lhsItem.render.depthMode ==
+                                ParticleDepthMode::ForegroundAccent
+                            ? 1u
+                            : 0u;
                         const uint32_t rhsQueue =
-                            rhsItem.render.depthTest ? 0u : 1u;
+                            rhsItem.render.depthMode ==
+                                ParticleDepthMode::ForegroundAccent
+                            ? 1u
+                            : 0u;
                         if (lhsQueue != rhsQueue) {
                             return lhsQueue < rhsQueue;
                         }
@@ -1062,7 +1075,10 @@ namespace HIKARI::RENDER3D::PARTICLES {
                         ? 1u
                         : 0u;
                 const uint32_t depthIndex =
-                    item.render.depthTest ? 1u : 0u;
+                    item.render.depthMode ==
+                        ParticleDepthMode::ForegroundAccent
+                    ? 0u
+                    : 1u;
                 const uint32_t shapeIndex =
                     item.render.shape == ParticleRenderShape::Sprite
                         ? 0u
@@ -1113,6 +1129,32 @@ namespace HIKARI::RENDER3D::PARTICLES {
                     item.render.flipbookFramesPerSecond,
                     std::bit_cast<float>(flipbookGrid),
                     std::bit_cast<float>(flipbookPlayback));
+                constants.depthMode = static_cast<uint32_t>(
+                    item.render.depthMode);
+                constants.shaderStyle = static_cast<uint32_t>(
+                    item.render.shaderStyle);
+                constants.sceneDepthAvailable =
+                    sceneDepthAvailable ? 1u : 0u;
+                constants.depthAndStyleParams = MakeGpuParticleFloat4(
+                    item.render.softIntersectionDistance,
+                    item.render.depthBias,
+                    item.render.shaderOutlineWidth,
+                    item.render.shaderEdgeHardness);
+                constants.shaderParams = MakeGpuParticleFloat4(
+                    item.render.shaderEmissiveIntensity,
+                    item.render.shaderBreakupScale,
+                    item.render.shaderBreakupStrength,
+                    0.0f);
+                constants.shaderOutlineColor = MakeGpuParticleFloat4(
+                    item.render.shaderOutlineColor.x,
+                    item.render.shaderOutlineColor.y,
+                    item.render.shaderOutlineColor.z,
+                    item.render.shaderOutlineColor.w);
+                constants.shaderCoreColor = MakeGpuParticleFloat4(
+                    item.render.shaderCoreColor.x,
+                    item.render.shaderCoreColor.y,
+                    item.render.shaderCoreColor.z,
+                    item.render.shaderCoreColor.w);
                 context.cmdList->SetGraphicsRoot32BitConstants(
                     7u,
                     sizeof(constants) / sizeof(uint32_t),

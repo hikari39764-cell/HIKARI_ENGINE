@@ -98,8 +98,8 @@ void ModelMaterialWorkspaceController::DrawOutlineThicknessPresets(
   applyThickness(4.0f, "Thick");
   if (ImGui::IsItemHovered()) {
     ImGui::SetTooltip(
-        "Geometry outline thickness is measured in screen pixels and "
-        "clamped to 0.25..8. Screen mode is view-space.");
+        "Outline thickness is measured in screen pixels and clamped to "
+        "0.25..8 for both Geometry and Screen modes.");
   }
 #else
   (void)scene;

@@ -15,6 +15,8 @@ static const uint HIKARI_STYLIZED_ROLE_HYBRID = 1u << 13u;
 static const uint HIKARI_STYLIZED_AUTO_GROUP = 1u << 31u;
 static const uint HIKARI_STYLIZED_FACE_HAIR_STRENGTH_SHIFT = 16u;
 static const uint HIKARI_STYLIZED_FACE_HAIR_OFFSET_SHIFT = 24u;
+static const float HIKARI_STYLIZED_OUTLINE_MIN_PIXELS = 0.25f;
+static const float HIKARI_STYLIZED_OUTLINE_MAX_PIXELS = 8.0f;
 
 static const uint HIKARI_PROGRAM_FLAG_TEMPLATE_SKIN_MASK = 1u << 17u;
 static const uint HIKARI_PROGRAM_FLAG_TEMPLATE_FACE_MASK = 1u << 18u;
@@ -96,6 +98,27 @@ bool HikariStylizedGroupsMatch(uint left, uint right)
     const bool autoGroup =
         ((left | right) & HIKARI_STYLIZED_AUTO_GROUP) != 0u;
     return autoGroup ? left == right : (left & right) != 0u;
+}
+
+float4 HikariEncodeStylizedOutlineStyle(float4 outline)
+{
+    return float4(
+        saturate(outline.rgb),
+        saturate(clamp(
+            outline.w,
+            HIKARI_STYLIZED_OUTLINE_MIN_PIXELS,
+            HIKARI_STYLIZED_OUTLINE_MAX_PIXELS) /
+            HIKARI_STYLIZED_OUTLINE_MAX_PIXELS));
+}
+
+float4 HikariDecodeStylizedOutlineStyle(float4 encodedStyle)
+{
+    return float4(
+        saturate(encodedStyle.rgb),
+        clamp(
+            encodedStyle.a * HIKARI_STYLIZED_OUTLINE_MAX_PIXELS,
+            HIKARI_STYLIZED_OUTLINE_MIN_PIXELS,
+            HIKARI_STYLIZED_OUTLINE_MAX_PIXELS));
 }
 
 #endif

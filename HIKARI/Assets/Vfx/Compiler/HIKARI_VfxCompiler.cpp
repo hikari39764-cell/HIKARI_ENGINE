@@ -295,6 +295,42 @@ namespace HIKARI::VFX {
                 : ParticleMaterialMode::StandardUnlit;
         }
 
+        ParticleDepthMode ConvertDepthMode(
+            VfxParticleDepthMode mode) noexcept {
+
+            switch (mode) {
+            case VfxParticleDepthMode::SoftIntersection:
+                return ParticleDepthMode::SoftIntersection;
+            case VfxParticleDepthMode::ContactSurface:
+                return ParticleDepthMode::ContactSurface;
+            case VfxParticleDepthMode::ForegroundAccent:
+                return ParticleDepthMode::ForegroundAccent;
+            case VfxParticleDepthMode::WorldOccluded:
+            default:
+                return ParticleDepthMode::WorldOccluded;
+            }
+        }
+
+        ParticleShaderStyle ConvertShaderStyle(
+            VfxParticleShaderStyle style) noexcept {
+
+            switch (style) {
+            case VfxParticleShaderStyle::CombatCut:
+                return ParticleShaderStyle::CombatCut;
+            case VfxParticleShaderStyle::CombatImpact:
+                return ParticleShaderStyle::CombatImpact;
+            case VfxParticleShaderStyle::CombatGround:
+                return ParticleShaderStyle::CombatGround;
+            case VfxParticleShaderStyle::ComicSmoke:
+                return ParticleShaderStyle::ComicSmoke;
+            case VfxParticleShaderStyle::ProjectileNeedle:
+                return ParticleShaderStyle::ProjectileNeedle;
+            case VfxParticleShaderStyle::Default:
+            default:
+                return ParticleShaderStyle::Default;
+            }
+        }
+
         uint32_t CompileParticleCapacity(
             const VfxAssetData& asset,
             const VfxEmitterData& emitter) noexcept {
@@ -554,7 +590,27 @@ namespace HIKARI::VFX {
                 source.renderCommon.materialAssetGuid.value;
             emitter.render.blendMode = ConvertBlend(
                 source.renderCommon.blendMode);
-            emitter.render.depthTest = source.renderCommon.depthTest;
+            emitter.render.depthMode = ConvertDepthMode(
+                source.renderCommon.depthMode);
+            emitter.render.softIntersectionDistance =
+                source.renderCommon.softIntersectionDistance;
+            emitter.render.depthBias = source.renderCommon.depthBias;
+            emitter.render.shaderStyle = ConvertShaderStyle(
+                source.renderCommon.shaderStyle);
+            emitter.render.shaderOutlineColor =
+                source.renderCommon.shaderOutlineColor;
+            emitter.render.shaderCoreColor =
+                source.renderCommon.shaderCoreColor;
+            emitter.render.shaderOutlineWidth =
+                source.renderCommon.shaderOutlineWidth;
+            emitter.render.shaderEdgeHardness =
+                source.renderCommon.shaderEdgeHardness;
+            emitter.render.shaderEmissiveIntensity =
+                source.renderCommon.shaderEmissiveIntensity;
+            emitter.render.shaderBreakupScale =
+                source.renderCommon.shaderBreakupScale;
+            emitter.render.shaderBreakupStrength =
+                source.renderCommon.shaderBreakupStrength;
             emitter.render.flipbookColumns =
                 source.renderCommon.flipbookColumns;
             emitter.render.flipbookRows =

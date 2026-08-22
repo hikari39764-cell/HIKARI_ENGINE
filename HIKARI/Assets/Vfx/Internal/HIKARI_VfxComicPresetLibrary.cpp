@@ -19,7 +19,8 @@ namespace HIKARI::VFX::PRESETS::INTERNAL {
             ink.basic.lifetime = MakeVfxFloatConstant(0.16f);
             ink.position.radialSpeed = MakeVfxFloatConstant(0.0f);
             ink.renderCommon.blendMode = VfxBlendMode::Alpha;
-            ink.renderCommon.depthTest = true;
+            ink.renderCommon.depthMode =
+                VfxParticleDepthMode::WorldOccluded;
             ink.scale.value.mode = VfxAnimatedValueMode::Easing;
             ink.scale.value.easing.start =
                 MakeVfxVec3Constant({ 0.72f, 0.72f, 0.72f });
@@ -37,7 +38,8 @@ namespace HIKARI::VFX::PRESETS::INTERNAL {
             color.basic.lifetime = MakeVfxFloatConstant(0.13f);
             color.position.radialSpeed = MakeVfxFloatConstant(0.0f);
             color.renderCommon.blendMode = VfxBlendMode::Alpha;
-            color.renderCommon.depthTest = true;
+            color.renderCommon.depthMode =
+                VfxParticleDepthMode::WorldOccluded;
             color.scale.value.mode = VfxAnimatedValueMode::Easing;
             color.scale.value.easing.start =
                 MakeVfxVec3Constant({ 0.54f, 0.54f, 0.54f });
@@ -60,7 +62,8 @@ namespace HIKARI::VFX::PRESETS::INTERNAL {
             shards.position.radialSpeed = {
                 VfxDistributionMode::RandomRange, 2.4f, 5.4f, 0u };
             shards.renderCommon.blendMode = VfxBlendMode::Alpha;
-            shards.renderCommon.depthTest = true;
+            shards.renderCommon.depthMode =
+                VfxParticleDepthMode::WorldOccluded;
             shards.renderShape.billboardMode =
                 VfxBillboardMode::DirectionalBillboard;
             shards.scale.value.fixed =
@@ -85,7 +88,8 @@ namespace HIKARI::VFX::PRESETS::INTERNAL {
             ink.basic.lifetime = MakeVfxFloatConstant(0.22f);
             ink.position.radialSpeed = MakeVfxFloatConstant(0.0f);
             ink.renderCommon.blendMode = VfxBlendMode::Alpha;
-            ink.renderCommon.depthTest = true;
+            ink.renderCommon.depthMode =
+                VfxParticleDepthMode::WorldOccluded;
             ink.scale.value.mode = VfxAnimatedValueMode::Easing;
             ink.scale.value.easing.start =
                 MakeVfxVec3Constant({ 0.80f, 0.80f, 0.80f });
@@ -103,7 +107,8 @@ namespace HIKARI::VFX::PRESETS::INTERNAL {
             body.basic.lifetime = MakeVfxFloatConstant(0.18f);
             body.position.radialSpeed = MakeVfxFloatConstant(0.0f);
             body.renderCommon.blendMode = VfxBlendMode::Alpha;
-            body.renderCommon.depthTest = true;
+            body.renderCommon.depthMode =
+                VfxParticleDepthMode::WorldOccluded;
             body.scale.value.mode = VfxAnimatedValueMode::Easing;
             body.scale.value.easing.start =
                 MakeVfxVec3Constant({ 0.67f, 0.67f, 0.67f });
@@ -150,7 +155,8 @@ namespace HIKARI::VFX::PRESETS::INTERNAL {
             cracks.basic.lifetime = MakeVfxFloatConstant(0.46f);
             cracks.position.radialSpeed = MakeVfxFloatConstant(0.0f);
             cracks.renderCommon.blendMode = VfxBlendMode::Alpha;
-            cracks.renderCommon.depthTest = true;
+            cracks.renderCommon.depthMode =
+                VfxParticleDepthMode::ContactSurface;
             cracks.renderShape.billboardMode = VfxBillboardMode::Fixed;
             cracks.rotation.eulerDegrees.fixed =
                 MakeVfxVec3Constant({ 90.0f, 0.0f, 0.0f });
@@ -172,7 +178,8 @@ namespace HIKARI::VFX::PRESETS::INTERNAL {
             ring.basic.lifetime = MakeVfxFloatConstant(0.28f);
             ring.position.radialSpeed = MakeVfxFloatConstant(0.0f);
             ring.renderCommon.blendMode = VfxBlendMode::Alpha;
-            ring.renderCommon.depthTest = true;
+            ring.renderCommon.depthMode =
+                VfxParticleDepthMode::ContactSurface;
             ring.renderShape.billboardMode = VfxBillboardMode::Fixed;
             ring.rotation.eulerDegrees.fixed =
                 MakeVfxVec3Constant({ 90.0f, 0.0f, 0.0f });
@@ -194,7 +201,8 @@ namespace HIKARI::VFX::PRESETS::INTERNAL {
             lines.basic.lifetime = MakeVfxFloatConstant(0.18f);
             lines.position.radialSpeed = MakeVfxFloatConstant(0.0f);
             lines.renderCommon.blendMode = VfxBlendMode::Alpha;
-            lines.renderCommon.depthTest = true;
+            lines.renderCommon.depthMode =
+                VfxParticleDepthMode::WorldOccluded;
             lines.renderShape.billboardMode = VfxBillboardMode::Fixed;
             lines.rotation.eulerDegrees.fixed =
                 MakeVfxVec3Constant({ 90.0f, 0.0f, 0.0f });

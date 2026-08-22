@@ -251,6 +251,14 @@ namespace HIKARI::EDITOR {
             if (leaf == "materialMode") {
                 return { "StandardUnlit", "CustomMaterial" };
             }
+            if (leaf == "depthMode") {
+                return { "WorldOccluded", "SoftIntersection",
+                    "ContactSurface", "ForegroundAccent" };
+            }
+            if (leaf == "shaderStyle") {
+                return { "Default", "CombatCut", "CombatImpact",
+                    "CombatGround", "ComicSmoke", "ProjectileNeedle" };
+            }
             if (leaf == "capacityMode") {
                 return { "Automatic", "Fixed" };
             }

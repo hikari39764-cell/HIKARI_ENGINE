@@ -458,9 +458,7 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
             !renderCommon["materialAssetGuid"].is_string() ||
             !TryParseVfxBlendMode(
                 renderCommon.value("blendMode", std::string{}),
-                emitter.renderCommon.blendMode) ||
-            !renderCommon.contains("depthTest") ||
-            !renderCommon["depthTest"].is_boolean()) {
+                emitter.renderCommon.blendMode)) {
             return false;
         }
         emitter.renderCommon.materialAssetGuid = AssetGuid{
@@ -484,8 +482,61 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
                     ? VfxMaterialMode::CustomMaterial
                     : VfxMaterialMode::StandardUnlit;
         }
-        emitter.renderCommon.depthTest =
-            renderCommon["depthTest"].get<bool>();
+        if (sourceVersion >= 5u) {
+            if (!TryParseVfxParticleDepthMode(
+                    renderCommon.value("depthMode", std::string{}),
+                    emitter.renderCommon.depthMode) ||
+                !TryParseVfxParticleShaderStyle(
+                    renderCommon.value("shaderStyle", std::string{}),
+                    emitter.renderCommon.shaderStyle) ||
+                !renderCommon.contains("softIntersectionDistance") ||
+                !renderCommon["softIntersectionDistance"].is_number() ||
+                !renderCommon.contains("depthBias") ||
+                !renderCommon["depthBias"].is_number() ||
+                !renderCommon.contains("shaderOutlineColor") ||
+                !ReadVec4(
+                    renderCommon["shaderOutlineColor"],
+                    emitter.renderCommon.shaderOutlineColor) ||
+                !renderCommon.contains("shaderCoreColor") ||
+                !ReadVec4(
+                    renderCommon["shaderCoreColor"],
+                    emitter.renderCommon.shaderCoreColor) ||
+                !renderCommon.contains("shaderOutlineWidth") ||
+                !renderCommon["shaderOutlineWidth"].is_number() ||
+                !renderCommon.contains("shaderEdgeHardness") ||
+                !renderCommon["shaderEdgeHardness"].is_number() ||
+                !renderCommon.contains("shaderEmissiveIntensity") ||
+                !renderCommon["shaderEmissiveIntensity"].is_number() ||
+                !renderCommon.contains("shaderBreakupScale") ||
+                !renderCommon["shaderBreakupScale"].is_number() ||
+                !renderCommon.contains("shaderBreakupStrength") ||
+                !renderCommon["shaderBreakupStrength"].is_number()) {
+                return false;
+            }
+            emitter.renderCommon.softIntersectionDistance =
+                renderCommon["softIntersectionDistance"].get<float>();
+            emitter.renderCommon.depthBias =
+                renderCommon["depthBias"].get<float>();
+            emitter.renderCommon.shaderOutlineWidth =
+                renderCommon["shaderOutlineWidth"].get<float>();
+            emitter.renderCommon.shaderEdgeHardness =
+                renderCommon["shaderEdgeHardness"].get<float>();
+            emitter.renderCommon.shaderEmissiveIntensity =
+                renderCommon["shaderEmissiveIntensity"].get<float>();
+            emitter.renderCommon.shaderBreakupScale =
+                renderCommon["shaderBreakupScale"].get<float>();
+            emitter.renderCommon.shaderBreakupStrength =
+                renderCommon["shaderBreakupStrength"].get<float>();
+        } else {
+            if (!renderCommon.contains("depthTest") ||
+                !renderCommon["depthTest"].is_boolean()) {
+                return false;
+            }
+            emitter.renderCommon.depthMode =
+                renderCommon["depthTest"].get<bool>()
+                    ? VfxParticleDepthMode::WorldOccluded
+                    : VfxParticleDepthMode::ForegroundAccent;
+        }
         const auto readOptionalUnsigned = [&renderCommon](
             const char* name,
             uint32_t& outValue) {

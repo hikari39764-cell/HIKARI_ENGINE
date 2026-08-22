@@ -423,6 +423,8 @@ namespace HIKARI::RENDER3D::PIPELINE {
         MESHRENDERER::SetAmbientOcclusionRuntimeEnabled(screenResult.ssaoRendered);
         sceneTextures.packedSurface = screenResult.packedSurface;
         sceneTextures.surfaceFeatureMask = screenResult.surfaceFeatureMask;
+        sceneTextures.stylizedOutlineStyle =
+            screenResult.stylizedOutlineStyle;
         sceneTextures.ambientOcclusion = screenResult.ambientOcclusion;
         sceneTextures.currentSceneDepthPyramid =
             screenResult.currentSceneDepthPyramid;
@@ -462,6 +464,8 @@ namespace HIKARI::RENDER3D::PIPELINE {
             MESHRENDERER::SetAmbientOcclusionRuntimeEnabled(screenResult.ssaoRendered);
             sceneTextures.packedSurface = screenResult.packedSurface;
             sceneTextures.surfaceFeatureMask = screenResult.surfaceFeatureMask;
+            sceneTextures.stylizedOutlineStyle =
+                screenResult.stylizedOutlineStyle;
             sceneTextures.ambientOcclusion = screenResult.ambientOcclusion;
             sceneTextures.currentSceneDepthPyramid =
                 screenResult.currentSceneDepthPyramid;
@@ -600,10 +604,15 @@ namespace HIKARI::RENDER3D::PIPELINE {
             GFX::GPU_PROFILE::ScopedGpuTimer gpuTransparent(
                 frame.graphics.cmdList,
                 GFX::GPU_PROFILE::Pass::ForwardTransparent);
-            transparentOk = frame.targetAccess.Rebind() &&
-                MESHRENDERER::RenderForwardTransparentPass(
-                    frame.graphics,
-                    postOpaqueResources);
+            if (POST::PostSystem::BeginCurrentRenderTargetDepthRead()) {
+                transparentOk =
+                    MESHRENDERER::RenderForwardTransparentPass(
+                        frame.graphics,
+                        postOpaqueResources);
+                POST::PostSystem::EndCurrentRenderTargetDepthRead();
+            } else {
+                transparentOk = false;
+            }
         }
 
         bool combatAfterimageOk = true;

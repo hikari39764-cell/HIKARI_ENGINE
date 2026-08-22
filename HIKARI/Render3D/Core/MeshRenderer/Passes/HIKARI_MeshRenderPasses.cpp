@@ -192,7 +192,8 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
 
     bool ExecutePreparedParticleForwardTransparent(
         const GFX::Context& graphics,
-        D3D12_GPU_VIRTUAL_ADDRESS cameraAddress) {
+        D3D12_GPU_VIRTUAL_ADDRESS cameraAddress,
+        const MeshPassResources& passResources) {
 
         if (!gMeshRendererState.particlePass.HasDrawWork()) {
             return true;
@@ -213,6 +214,9 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                 ? frame.materialProgramResourceBuffer->
                     GetGPUVirtualAddress()
                 : 0u;
+        if (passResources.sceneDepth.IsSampleable()) {
+            bindings.sceneDepth = passResources.sceneDepth.srv;
+        }
         if (frame.cameraMapped != nullptr) {
             bindings.cameraPosition = {
                 frame.cameraMapped->cameraPos.x,
@@ -423,7 +427,8 @@ namespace HIKARI::MESHRENDERER {
                 graphics,
                 frame.cameraCB != nullptr
                     ? frame.cameraCB->GetGPUVirtualAddress()
-                    : 0u);
+                    : 0u,
+                passResources);
         return surfaceExecuted && particlesExecuted;
     }
 

@@ -38,6 +38,7 @@ struct PSOutput
 {
     float4 packedSurface : SV_Target0;
     uint2 featureMask : SV_Target1;
+    float4 outlineStyle : SV_Target2;
 };
 #endif
 
@@ -137,6 +138,11 @@ float4 main(PSInput input) : SV_TARGET
             instance.postGroupMask,
             instance.objectIdLow,
             instance.objectIdHigh));
+    output.outlineStyle = HikariEncodeStylizedOutlineStyle(
+        HikariLoadMaterialProgramParameter(
+            materialData,
+            19u,
+            float4(0.025f, 0.030f, 0.045f, 2.0f)));
     return output;
 #else
     return packedSurface;

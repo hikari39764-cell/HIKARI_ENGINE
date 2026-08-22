@@ -10,10 +10,10 @@
 
 namespace HIKARI::VFX {
 
-    // Source v4 adds emitter activation, burst keys, attachment semantics and
-    // typed non-particle output profiles. Readers still accept v2/v3 and
-    // materialize the missing fields from the defaults below.
-    inline constexpr uint32_t kVfxSourceVersion = 4u;
+    // Source v5 replaces the ambiguous particle depth-test boolean with an
+    // explicit depth policy and adds the shader-led stylized particle profile.
+    // Readers still accept v2-v4 and materialize the new fields from defaults.
+    inline constexpr uint32_t kVfxSourceVersion = 5u;
 
     enum class VfxValueType : uint8_t {
         Bool,
@@ -56,6 +56,22 @@ namespace HIKARI::VFX {
     enum class VfxMaterialMode : uint8_t {
         StandardUnlit,
         CustomMaterial,
+    };
+
+    enum class VfxParticleDepthMode : uint8_t {
+        WorldOccluded,
+        SoftIntersection,
+        ContactSurface,
+        ForegroundAccent,
+    };
+
+    enum class VfxParticleShaderStyle : uint8_t {
+        Default,
+        CombatCut,
+        CombatImpact,
+        CombatGround,
+        ComicSmoke,
+        ProjectileNeedle,
     };
 
     enum class VfxParticleCapacityMode : uint8_t {
@@ -439,7 +455,20 @@ namespace HIKARI::VFX {
         AssetGuid colorTextureAssetGuid{};
         AssetGuid materialAssetGuid{};
         VfxBlendMode blendMode = VfxBlendMode::Alpha;
-        bool depthTest = true;
+        VfxParticleDepthMode depthMode =
+            VfxParticleDepthMode::WorldOccluded;
+        float softIntersectionDistance = 0.15f;
+        float depthBias = 0.00035f;
+        VfxParticleShaderStyle shaderStyle =
+            VfxParticleShaderStyle::Default;
+        MATH::Vec4 shaderOutlineColor{
+            0.035f, 0.075f, 0.32f, 1.0f };
+        MATH::Vec4 shaderCoreColor{ 1.0f, 1.0f, 1.0f, 1.0f };
+        float shaderOutlineWidth = 0.12f;
+        float shaderEdgeHardness = 0.88f;
+        float shaderEmissiveIntensity = 0.0f;
+        float shaderBreakupScale = 7.0f;
+        float shaderBreakupStrength = 0.0f;
         uint32_t flipbookColumns = 1u;
         uint32_t flipbookRows = 1u;
         uint32_t flipbookFrameCount = 1u;
@@ -501,6 +530,8 @@ namespace HIKARI::VFX {
     std::string_view ToString(VfxRenderShapeType value) noexcept;
     std::string_view ToString(VfxBlendMode value) noexcept;
     std::string_view ToString(VfxMaterialMode value) noexcept;
+    std::string_view ToString(VfxParticleDepthMode value) noexcept;
+    std::string_view ToString(VfxParticleShaderStyle value) noexcept;
     std::string_view ToString(VfxParticleCapacityMode value) noexcept;
     std::string_view ToString(VfxBillboardMode value) noexcept;
     std::string_view ToString(VfxCurveInterpolation value) noexcept;
@@ -527,6 +558,12 @@ namespace HIKARI::VFX {
     bool TryParseVfxMaterialMode(
         std::string_view text,
         VfxMaterialMode& outValue) noexcept;
+    bool TryParseVfxParticleDepthMode(
+        std::string_view text,
+        VfxParticleDepthMode& outValue) noexcept;
+    bool TryParseVfxParticleShaderStyle(
+        std::string_view text,
+        VfxParticleShaderStyle& outValue) noexcept;
     bool TryParseVfxParticleCapacityMode(
         std::string_view text,
         VfxParticleCapacityMode& outValue) noexcept;

@@ -384,7 +384,27 @@ namespace HIKARI::VFX::SERIALIZATION::INTERNAL {
                             emitter.renderCommon.materialAssetGuid.value },
                         { "blendMode", ToString(
                             emitter.renderCommon.blendMode) },
-                        { "depthTest", emitter.renderCommon.depthTest },
+                        { "depthMode", ToString(
+                            emitter.renderCommon.depthMode) },
+                        { "softIntersectionDistance",
+                            emitter.renderCommon.softIntersectionDistance },
+                        { "depthBias", emitter.renderCommon.depthBias },
+                        { "shaderStyle", ToString(
+                            emitter.renderCommon.shaderStyle) },
+                        { "shaderOutlineColor", WriteVec4(
+                            emitter.renderCommon.shaderOutlineColor) },
+                        { "shaderCoreColor", WriteVec4(
+                            emitter.renderCommon.shaderCoreColor) },
+                        { "shaderOutlineWidth",
+                            emitter.renderCommon.shaderOutlineWidth },
+                        { "shaderEdgeHardness",
+                            emitter.renderCommon.shaderEdgeHardness },
+                        { "shaderEmissiveIntensity",
+                            emitter.renderCommon.shaderEmissiveIntensity },
+                        { "shaderBreakupScale",
+                            emitter.renderCommon.shaderBreakupScale },
+                        { "shaderBreakupStrength",
+                            emitter.renderCommon.shaderBreakupStrength },
                         { "flipbookColumns",
                             emitter.renderCommon.flipbookColumns },
                         { "flipbookRows",

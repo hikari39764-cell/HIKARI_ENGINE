@@ -46,6 +46,9 @@ namespace HIKARI::RENDER3D::SURFACE {
     void SceneSurfaceBuffer::ResetResources(bool releaseDescriptors) {
         GFX::RetireD3D12ObjectForCurrentFrame(packedSurface_, "SceneSurfaceBuffer.PackedSurface");
         GFX::RetireD3D12ObjectForCurrentFrame(featureMask_, "SceneSurfaceBuffer.FeatureMask");
+        GFX::RetireD3D12ObjectForCurrentFrame(
+            stylizedOutlineStyle_,
+            "SceneSurfaceBuffer.StylizedOutlineStyle");
         GFX::RetireD3D12ObjectForCurrentFrame(rtvHeap_, "SceneSurfaceBuffer.RTVHeap");
         if (releaseDescriptors) {
             for (RenderResourceView& view : packedSurfaceSrvs_) {
@@ -60,22 +63,33 @@ namespace HIKARI::RENDER3D::SURFACE {
                     view = {};
                 }
             }
+            for (RenderResourceView& view : stylizedOutlineStyleSrvs_) {
+                if (view.IsValid()) {
+                    (void)ReleaseRenderResourceDescriptor(view);
+                    view = {};
+                }
+            }
             packedSurfaceSrvGenerations_.fill(0u);
             featureMaskSrvGenerations_.fill(0u);
+            stylizedOutlineStyleSrvGenerations_.fill(0u);
         }
         packedSurfaceRtv_ = {};
         featureMaskRtv_ = {};
+        stylizedOutlineStyleRtv_ = {};
         rtvDescriptorSize_ = 0u;
         width_ = 0;
         height_ = 0;
         packedSurfaceState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
         featureMaskState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        stylizedOutlineStyleState_ =
+            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
     }
 
     void SceneSurfaceBuffer::Release() {
         ResetResources(true);
         packedSurfaceGeneration_ = 0u;
         featureMaskGeneration_ = 0u;
+        stylizedOutlineStyleGeneration_ = 0u;
         activeFrameSlot_ = 0u;
     }
 
@@ -125,7 +139,7 @@ namespace HIKARI::RENDER3D::SURFACE {
 
         D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc{};
         rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-        rtvHeapDesc.NumDescriptors = 2;
+        rtvHeapDesc.NumDescriptors = 3;
         hr = device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(rtvHeap_.GetAddressOf()));
         if (!HIKARI_DX_CHECK(hr, "SceneSurfaceBuffer::Create RTV heap")) {
             return false;
@@ -136,6 +150,8 @@ namespace HIKARI::RENDER3D::SURFACE {
             D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
         featureMaskRtv_ = packedSurfaceRtv_;
         featureMaskRtv_.ptr += rtvDescriptorSize_;
+        stylizedOutlineStyleRtv_ = featureMaskRtv_;
+        stylizedOutlineStyleRtv_.ptr += rtvDescriptorSize_;
         device->CreateRenderTargetView(
             packedSurface_.Get(),
             nullptr,
@@ -172,13 +188,39 @@ namespace HIKARI::RENDER3D::SURFACE {
                     featureMaskGeneration_ = 1u;
                 }
             }
+            if (stylizedOutlineStyle_ != nullptr) {
+                GFX::RetireD3D12ObjectForCurrentFrame(
+                    stylizedOutlineStyle_,
+                    "SceneSurfaceBuffer.StylizedOutlineStyle");
+                stylizedOutlineStyleState_ =
+                    D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+                ++stylizedOutlineStyleGeneration_;
+                if (stylizedOutlineStyleGeneration_ == 0u) {
+                    stylizedOutlineStyleGeneration_ = 1u;
+                }
+            }
             return true;
         }
-        if (featureMask_ != nullptr) {
-            return PublishFeatureMaskSrv(graphics);
+        if (featureMask_ != nullptr && stylizedOutlineStyle_ != nullptr) {
+            return PublishFeatureMaskSrv(graphics) &&
+                PublishStylizedOutlineStyleSrv(graphics);
+        }
+        if (featureMask_ != nullptr || stylizedOutlineStyle_ != nullptr) {
+            GFX::RetireD3D12ObjectForCurrentFrame(
+                featureMask_, "SceneSurfaceBuffer.FeatureMask");
+            GFX::RetireD3D12ObjectForCurrentFrame(
+                stylizedOutlineStyle_,
+                "SceneSurfaceBuffer.StylizedOutlineStyle");
+            featureMaskState_ =
+                D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+            stylizedOutlineStyleState_ =
+                D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+            ++featureMaskGeneration_;
+            ++stylizedOutlineStyleGeneration_;
         }
         if (graphics.device == nullptr || graphics.srvHeap == nullptr ||
-            width_ == 0u || height_ == 0u || featureMaskRtv_.ptr == 0u) {
+            width_ == 0u || height_ == 0u || featureMaskRtv_.ptr == 0u ||
+            stylizedOutlineStyleRtv_.ptr == 0u) {
             return false;
         }
 
@@ -197,6 +239,7 @@ namespace HIKARI::RENDER3D::SURFACE {
             1,
             0,
             D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
+        Microsoft::WRL::ComPtr<ID3D12Resource> featureMaskReplacement{};
         if (!HIKARI_DX_CHECK(
                 graphics.device->CreateCommittedResource(
                     &heapProps,
@@ -204,19 +247,60 @@ namespace HIKARI::RENDER3D::SURFACE {
                     &textureDescription,
                     D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
                     &clearValue,
-                    IID_PPV_ARGS(featureMask_.GetAddressOf())),
+                    IID_PPV_ARGS(featureMaskReplacement.GetAddressOf())),
                 "SceneSurfaceBuffer::Create feature mask")) {
             return false;
         }
+
+        const D3D12_CLEAR_VALUE outlineStyleClearValue{
+            kStylizedOutlineStyleFormat,
+            { 0.025f, 0.030f, 0.045f, 0.25f }
+        };
+        const auto outlineStyleDescription = CD3DX12_RESOURCE_DESC::Tex2D(
+            kStylizedOutlineStyleFormat,
+            width_,
+            height_,
+            1,
+            1,
+            1,
+            0,
+            D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET);
+        Microsoft::WRL::ComPtr<ID3D12Resource>
+            stylizedOutlineStyleReplacement{};
+        if (!HIKARI_DX_CHECK(
+                graphics.device->CreateCommittedResource(
+                    &heapProps,
+                    D3D12_HEAP_FLAG_NONE,
+                    &outlineStyleDescription,
+                    D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE,
+                    &outlineStyleClearValue,
+                    IID_PPV_ARGS(
+                        stylizedOutlineStyleReplacement.GetAddressOf())),
+                "SceneSurfaceBuffer::Create stylized outline style")) {
+            return false;
+        }
+        featureMask_.Swap(featureMaskReplacement);
+        stylizedOutlineStyle_.Swap(stylizedOutlineStyleReplacement);
         graphics.device->CreateRenderTargetView(
             featureMask_.Get(), nullptr, featureMaskRtv_);
+        graphics.device->CreateRenderTargetView(
+            stylizedOutlineStyle_.Get(), nullptr, stylizedOutlineStyleRtv_);
         featureMaskState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        stylizedOutlineStyleState_ =
+            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
         ++featureMaskGeneration_;
         if (featureMaskGeneration_ == 0u) {
             featureMaskGeneration_ = 1u;
         }
+        ++stylizedOutlineStyleGeneration_;
+        if (stylizedOutlineStyleGeneration_ == 0u) {
+            stylizedOutlineStyleGeneration_ = 1u;
+        }
         featureMask_->SetName(L"HIKARI.SceneSurface.StylizedFeatureMask");
-        return PublishFeatureMaskSrv(graphics);
+        stylizedOutlineStyle_->SetName(
+            L"HIKARI.SceneSurface.StylizedOutlineStyle");
+        return PublishFeatureMaskSrv(graphics) &&
+            PublishStylizedOutlineStyleSrv(graphics);
     }
 
     bool SceneSurfaceBuffer::PublishPackedSurfaceSrv(
@@ -279,6 +363,37 @@ namespace HIKARI::RENDER3D::SURFACE {
         return true;
     }
 
+    bool SceneSurfaceBuffer::PublishStylizedOutlineStyleSrv(
+        const GFX::Context& graphics) {
+
+        if (stylizedOutlineStyle_ == nullptr || graphics.device == nullptr) {
+            return false;
+        }
+        UpdateRenderResourceDescriptorPoolContext(graphics);
+        RenderResourceView& view =
+            stylizedOutlineStyleSrvs_[activeFrameSlot_];
+        if (!view.IsValid()) {
+            view = AllocateRenderResourceDescriptor();
+        }
+        if (!view.IsValid()) {
+            return false;
+        }
+        if (stylizedOutlineStyleSrvGenerations_[activeFrameSlot_] !=
+            stylizedOutlineStyleGeneration_) {
+            D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
+            srv.Format = kStylizedOutlineStyleFormat;
+            srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+            srv.Shader4ComponentMapping =
+                D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+            srv.Texture2D.MipLevels = 1u;
+            graphics.device->CreateShaderResourceView(
+                stylizedOutlineStyle_.Get(), &srv, view.cpu);
+            stylizedOutlineStyleSrvGenerations_[activeFrameSlot_] =
+                stylizedOutlineStyleGeneration_;
+        }
+        return true;
+    }
+
     void SceneSurfaceBuffer::BeginWrite(
         ID3D12GraphicsCommandList* cmd,
         D3D12_CPU_DESCRIPTOR_HANDLE depthDsv) {
@@ -303,6 +418,17 @@ namespace HIKARI::RENDER3D::SURFACE {
             cmd->ResourceBarrier(1, &barrier);
             featureMaskState_ = D3D12_RESOURCE_STATE_RENDER_TARGET;
         }
+        if (HasStylizedOutlineStyle() &&
+            stylizedOutlineStyleState_ !=
+                D3D12_RESOURCE_STATE_RENDER_TARGET) {
+            auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+                stylizedOutlineStyle_.Get(),
+                stylizedOutlineStyleState_,
+                D3D12_RESOURCE_STATE_RENDER_TARGET);
+            cmd->ResourceBarrier(1, &barrier);
+            stylizedOutlineStyleState_ =
+                D3D12_RESOURCE_STATE_RENDER_TARGET;
+        }
 
         const float clear[] = { 0.5f, 0.5f, 1.0f, 0.0f };
         cmd->ClearRenderTargetView(packedSurfaceRtv_, clear, 0, nullptr);
@@ -311,11 +437,20 @@ namespace HIKARI::RENDER3D::SURFACE {
             cmd->ClearRenderTargetView(
                 featureMaskRtv_, maskClear, 0, nullptr);
         }
-        const D3D12_CPU_DESCRIPTOR_HANDLE renderTargets[]{
-            packedSurfaceRtv_, featureMaskRtv_
+        const float outlineStyleClear[]{
+            0.025f, 0.030f, 0.045f, 0.25f
         };
+        if (HasStylizedOutlineStyle()) {
+            cmd->ClearRenderTargetView(
+                stylizedOutlineStyleRtv_, outlineStyleClear, 0, nullptr);
+        }
+        const D3D12_CPU_DESCRIPTOR_HANDLE renderTargets[]{
+            packedSurfaceRtv_, featureMaskRtv_, stylizedOutlineStyleRtv_
+        };
+        const bool writeStylizedSurfaces =
+            HasFeatureMask() && HasStylizedOutlineStyle();
         cmd->OMSetRenderTargets(
-            HasFeatureMask() ? 2u : 1u,
+            writeStylizedSurfaces ? 3u : 1u,
             renderTargets,
             FALSE,
             depthDsv.ptr != 0 ? &depthDsv : nullptr);
@@ -351,6 +486,17 @@ namespace HIKARI::RENDER3D::SURFACE {
             cmd->ResourceBarrier(1, &barrier);
             featureMaskState_ = D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
         }
+        if (HasStylizedOutlineStyle() &&
+            stylizedOutlineStyleState_ !=
+                D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE) {
+            auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+                stylizedOutlineStyle_.Get(),
+                stylizedOutlineStyleState_,
+                D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+            cmd->ResourceBarrier(1, &barrier);
+            stylizedOutlineStyleState_ =
+                D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE;
+        }
     }
 
     bool SceneSurfaceBuffer::IsValid() const {
@@ -382,6 +528,28 @@ namespace HIKARI::RENDER3D::SURFACE {
             featureMask_.Get(), featureMaskSrvs_[activeFrameSlot_].gpu,
             kFeatureMaskFormat, width_, height_, 1,
             featureMaskState_, HasFeatureMask()
+        };
+    }
+
+    bool SceneSurfaceBuffer::HasStylizedOutlineStyle() const {
+        return stylizedOutlineStyle_ != nullptr &&
+            stylizedOutlineStyleSrvs_[activeFrameSlot_].IsValid() &&
+            stylizedOutlineStyleSrvGenerations_[activeFrameSlot_] ==
+                stylizedOutlineStyleGeneration_ &&
+            stylizedOutlineStyleRtv_.ptr != 0u;
+    }
+
+    RenderTextureView
+        SceneSurfaceBuffer::GetStylizedOutlineStyleView() const {
+        return {
+            stylizedOutlineStyle_.Get(),
+            stylizedOutlineStyleSrvs_[activeFrameSlot_].gpu,
+            kStylizedOutlineStyleFormat,
+            width_,
+            height_,
+            1,
+            stylizedOutlineStyleState_,
+            HasStylizedOutlineStyle()
         };
     }
 

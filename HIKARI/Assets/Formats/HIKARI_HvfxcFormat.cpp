@@ -560,7 +560,17 @@ namespace HIKARI::VFX {
                 writer.WriteEnum(emitter.render.blendMode);
                 writer.WriteEnum(emitter.render.shape);
                 writer.WriteEnum(emitter.render.billboardMode);
-                writer.WriteBool(emitter.render.depthTest);
+                writer.WriteEnum(emitter.render.depthMode);
+                writer.Write(emitter.render.softIntersectionDistance);
+                writer.Write(emitter.render.depthBias);
+                writer.WriteEnum(emitter.render.shaderStyle);
+                WriteVec4(writer, emitter.render.shaderOutlineColor);
+                WriteVec4(writer, emitter.render.shaderCoreColor);
+                writer.Write(emitter.render.shaderOutlineWidth);
+                writer.Write(emitter.render.shaderEdgeHardness);
+                writer.Write(emitter.render.shaderEmissiveIntensity);
+                writer.Write(emitter.render.shaderBreakupScale);
+                writer.Write(emitter.render.shaderBreakupStrength);
                 writer.Write(emitter.render.flipbookColumns);
                 writer.Write(emitter.render.flipbookRows);
                 writer.Write(emitter.render.flipbookFrameCount);
@@ -721,7 +731,23 @@ namespace HIKARI::VFX {
                     !reader.ReadEnum(emitter.render.blendMode) ||
                     !reader.ReadEnum(emitter.render.shape) ||
                     !reader.ReadEnum(emitter.render.billboardMode) ||
-                    !reader.ReadBool(emitter.render.depthTest) ||
+                    !reader.ReadEnum(emitter.render.depthMode) ||
+                    !reader.Read(
+                        emitter.render.softIntersectionDistance) ||
+                    !reader.Read(emitter.render.depthBias) ||
+                    !reader.ReadEnum(emitter.render.shaderStyle) ||
+                    !ReadVec4(
+                        reader,
+                        emitter.render.shaderOutlineColor) ||
+                    !ReadVec4(
+                        reader,
+                        emitter.render.shaderCoreColor) ||
+                    !reader.Read(emitter.render.shaderOutlineWidth) ||
+                    !reader.Read(emitter.render.shaderEdgeHardness) ||
+                    !reader.Read(
+                        emitter.render.shaderEmissiveIntensity) ||
+                    !reader.Read(emitter.render.shaderBreakupScale) ||
+                    !reader.Read(emitter.render.shaderBreakupStrength) ||
                     !reader.Read(emitter.render.flipbookColumns) ||
                     !reader.Read(emitter.render.flipbookRows) ||
                     !reader.Read(emitter.render.flipbookFrameCount) ||

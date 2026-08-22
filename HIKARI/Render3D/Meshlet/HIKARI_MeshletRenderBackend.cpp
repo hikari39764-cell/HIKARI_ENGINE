@@ -429,26 +429,32 @@ namespace HIKARI::RENDER3D::MESHLET {
             ID3D12PipelineState** outPipelineState,
             DXGI_FORMAT secondaryRenderTargetFormat = DXGI_FORMAT_UNKNOWN,
             D3D12_COMPARISON_FUNC depthFunction =
-                D3D12_COMPARISON_FUNC_LESS_EQUAL) {
+                D3D12_COMPARISON_FUNC_LESS_EQUAL,
+            DXGI_FORMAT tertiaryRenderTargetFormat = DXGI_FORMAT_UNKNOWN) {
 
             if (device == nullptr ||
                 rootSignature == nullptr ||
                 amplificationShader == nullptr ||
                 meshShader == nullptr ||
                 (pixelShader == nullptr && hasRenderTarget) ||
+                (tertiaryRenderTargetFormat != DXGI_FORMAT_UNKNOWN &&
+                 secondaryRenderTargetFormat == DXGI_FORMAT_UNKNOWN) ||
                 outPipelineState == nullptr) {
                 return false;
             }
 
             D3D12_RT_FORMAT_ARRAY renderTargets{};
             renderTargets.NumRenderTargets = hasRenderTarget
-                ? (secondaryRenderTargetFormat != DXGI_FORMAT_UNKNOWN
-                    ? 2u
-                    : 1u)
+                ? (tertiaryRenderTargetFormat != DXGI_FORMAT_UNKNOWN
+                    ? 3u
+                    : secondaryRenderTargetFormat != DXGI_FORMAT_UNKNOWN
+                        ? 2u
+                        : 1u)
                 : 0u;
             if (hasRenderTarget) {
                 renderTargets.RTFormats[0] = renderTargetFormat;
                 renderTargets.RTFormats[1] = secondaryRenderTargetFormat;
+                renderTargets.RTFormats[2] = tertiaryRenderTargetFormat;
             }
 
             CD3DX12_RASTERIZER_DESC rasterizer(D3D12_DEFAULT);
@@ -863,7 +869,9 @@ namespace HIKARI::RENDER3D::MESHLET {
                     true,
                     GeometryFeatureMaskDebugName(bucket),
                     geometryFeatureMaskPipelineStates_[bucketIndex].GetAddressOf(),
-                    DXGI_FORMAT_R32G32_UINT)) {
+                    DXGI_FORMAT_R32G32_UINT,
+                    D3D12_COMPARISON_FUNC_LESS_EQUAL,
+                    DXGI_FORMAT_R8G8B8A8_UNORM)) {
                     ++stats_.pipelineCreateReadyCount;
                 }
             }

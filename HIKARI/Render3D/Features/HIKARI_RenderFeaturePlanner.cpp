@@ -9,11 +9,15 @@ namespace HIKARI::RENDER3D::FEATURES {
             return (available & required) == required;
         }
 
-        uint64_t SurfaceBytes(
+        uint64_t SurfacePixelCount(
             const RenderFeatureAvailability& availability) noexcept {
             return static_cast<uint64_t>((std::max)(1u, availability.width)) *
-                static_cast<uint64_t>((std::max)(1u, availability.height)) *
-                8u;
+                static_cast<uint64_t>((std::max)(1u, availability.height));
+        }
+
+        uint64_t SurfaceBytes(
+            const RenderFeatureAvailability& availability) noexcept {
+            return SurfacePixelCount(availability) * 8u;
         }
     }
 
@@ -137,8 +141,10 @@ namespace HIKARI::RENDER3D::FEATURES {
         if (plan.screenCompositePassRequired) {
             ++plan.passCount;
             plan.requiresFeatureMask = true;
-            // R32G32_UINT feature/group mask plus one R16G16B16A16 scene snapshot.
-            plan.transientBytes = SurfaceBytes(availability) * 2u;
+            // R32G32_UINT feature/group mask, R8G8B8A8 per-material outline
+            // style, and one R16G16B16A16 scene snapshot.
+            plan.transientBytes = SurfaceBytes(availability) * 2u +
+                SurfacePixelCount(availability) * 4u;
             for (RenderFeaturePlanEntry& entry : plan.entries) {
                 if (entry.scheduled &&
                     (entry.kind == RenderFeatureKind::ScreenOutline ||

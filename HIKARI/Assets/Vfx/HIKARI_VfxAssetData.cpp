@@ -66,6 +66,38 @@ namespace HIKARI::VFX {
             : "StandardUnlit";
     }
 
+    std::string_view ToString(VfxParticleDepthMode value) noexcept {
+        switch (value) {
+        case VfxParticleDepthMode::SoftIntersection:
+            return "SoftIntersection";
+        case VfxParticleDepthMode::ContactSurface:
+            return "ContactSurface";
+        case VfxParticleDepthMode::ForegroundAccent:
+            return "ForegroundAccent";
+        case VfxParticleDepthMode::WorldOccluded:
+        default:
+            return "WorldOccluded";
+        }
+    }
+
+    std::string_view ToString(VfxParticleShaderStyle value) noexcept {
+        switch (value) {
+        case VfxParticleShaderStyle::CombatCut:
+            return "CombatCut";
+        case VfxParticleShaderStyle::CombatImpact:
+            return "CombatImpact";
+        case VfxParticleShaderStyle::CombatGround:
+            return "CombatGround";
+        case VfxParticleShaderStyle::ComicSmoke:
+            return "ComicSmoke";
+        case VfxParticleShaderStyle::ProjectileNeedle:
+            return "ProjectileNeedle";
+        case VfxParticleShaderStyle::Default:
+        default:
+            return "Default";
+        }
+    }
+
     std::string_view ToString(VfxParticleCapacityMode value) noexcept {
         return value == VfxParticleCapacityMode::Fixed
             ? "Fixed"
@@ -307,6 +339,32 @@ namespace HIKARI::VFX {
             { "EaseIn", VfxEasingFunction::EaseIn },
             { "EaseOut", VfxEasingFunction::EaseOut },
             { "EaseInOut", VfxEasingFunction::EaseInOut },
+        }, outValue);
+    }
+
+    bool TryParseVfxParticleDepthMode(
+        std::string_view text,
+        VfxParticleDepthMode& outValue) noexcept {
+
+        return ParseEnum(text, {
+            { "WorldOccluded", VfxParticleDepthMode::WorldOccluded },
+            { "SoftIntersection", VfxParticleDepthMode::SoftIntersection },
+            { "ContactSurface", VfxParticleDepthMode::ContactSurface },
+            { "ForegroundAccent", VfxParticleDepthMode::ForegroundAccent },
+        }, outValue);
+    }
+
+    bool TryParseVfxParticleShaderStyle(
+        std::string_view text,
+        VfxParticleShaderStyle& outValue) noexcept {
+
+        return ParseEnum(text, {
+            { "Default", VfxParticleShaderStyle::Default },
+            { "CombatCut", VfxParticleShaderStyle::CombatCut },
+            { "CombatImpact", VfxParticleShaderStyle::CombatImpact },
+            { "CombatGround", VfxParticleShaderStyle::CombatGround },
+            { "ComicSmoke", VfxParticleShaderStyle::ComicSmoke },
+            { "ProjectileNeedle", VfxParticleShaderStyle::ProjectileNeedle },
         }, outValue);
     }
 

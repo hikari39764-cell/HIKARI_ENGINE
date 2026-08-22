@@ -346,6 +346,59 @@ namespace HIKARI::VFX {
                     ParticleBillboardMode::DirectionalBillboard &&
                  emitter.render.billboardMode !=
                     ParticleBillboardMode::Fixed) ||
+                (emitter.render.depthMode !=
+                    ParticleDepthMode::WorldOccluded &&
+                 emitter.render.depthMode !=
+                    ParticleDepthMode::SoftIntersection &&
+                 emitter.render.depthMode !=
+                    ParticleDepthMode::ContactSurface &&
+                 emitter.render.depthMode !=
+                    ParticleDepthMode::ForegroundAccent) ||
+                (emitter.render.shaderStyle !=
+                    ParticleShaderStyle::Default &&
+                 emitter.render.shaderStyle !=
+                    ParticleShaderStyle::CombatCut &&
+                 emitter.render.shaderStyle !=
+                    ParticleShaderStyle::CombatImpact &&
+                 emitter.render.shaderStyle !=
+                    ParticleShaderStyle::CombatGround &&
+                 emitter.render.shaderStyle !=
+                    ParticleShaderStyle::ComicSmoke &&
+                 emitter.render.shaderStyle !=
+                    ParticleShaderStyle::ProjectileNeedle) ||
+                !IsFinite(emitter.render.softIntersectionDistance) ||
+                (emitter.render.depthMode ==
+                    ParticleDepthMode::SoftIntersection &&
+                 (
+                  emitter.render.softIntersectionDistance < 0.001f ||
+                  emitter.render.softIntersectionDistance > 10.0f)) ||
+                !IsFinite(emitter.render.depthBias) ||
+                (emitter.render.depthMode ==
+                    ParticleDepthMode::ContactSurface &&
+                 (
+                  emitter.render.depthBias < 0.0f ||
+                  emitter.render.depthBias > 0.02f)) ||
+                !IsFinite(emitter.render.shaderOutlineColor) ||
+                !IsFinite(emitter.render.shaderCoreColor) ||
+                !IsFinite(emitter.render.shaderOutlineWidth) ||
+                !IsFinite(emitter.render.shaderEdgeHardness) ||
+                !IsFinite(emitter.render.shaderEmissiveIntensity) ||
+                !IsFinite(emitter.render.shaderBreakupScale) ||
+                !IsFinite(emitter.render.shaderBreakupStrength) ||
+                (emitter.render.shaderStyle !=
+                    ParticleShaderStyle::Default &&
+                 (!IsNonNegative(emitter.render.shaderOutlineColor) ||
+                  !IsNonNegative(emitter.render.shaderCoreColor) ||
+                  emitter.render.shaderOutlineWidth < 0.0f ||
+                  emitter.render.shaderOutlineWidth > 0.49f ||
+                  emitter.render.shaderEdgeHardness < 0.0f ||
+                  emitter.render.shaderEdgeHardness > 1.0f ||
+                  emitter.render.shaderEmissiveIntensity < 0.0f ||
+                  emitter.render.shaderEmissiveIntensity > 64.0f ||
+                  emitter.render.shaderBreakupScale < 0.1f ||
+                  emitter.render.shaderBreakupScale > 64.0f ||
+                  emitter.render.shaderBreakupStrength < 0.0f ||
+                  emitter.render.shaderBreakupStrength > 1.0f)) ||
                 emitter.render.ribbonSegmentCount < 2u ||
                 emitter.render.ribbonSegmentCount > 64u ||
                 emitter.render.ringSegmentCount < 3u ||

@@ -71,7 +71,7 @@ namespace HIKARI::ASSETS::SEMANTICS {
                 AssetImporterKind::VfxEffect,
                 AssetType::VfxEffect,
                 "VfxAssetImporter",
-                5u,
+                6u,
                 ".hvfx",
             },
         } };

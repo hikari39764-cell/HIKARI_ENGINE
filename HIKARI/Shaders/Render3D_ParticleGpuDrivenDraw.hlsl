@@ -2,6 +2,7 @@
 #include "Include/HIKARI_MeshMaterialData.hlsli"
 #include "Include/Material/HIKARI_MaterialProgramData.hlsli"
 #include "Include/Material/HIKARI_MaterialExpression.hlsli"
+#include "Include/Surface/HIKARI_ScreenSpaceGeometry.hlsli"
 
 static const uint HIKARI_PARTICLE_ROTATED_BILLBOARD = 0u;
 static const uint HIKARI_PARTICLE_FIXED_Y_AXIS = 1u;
@@ -9,6 +10,16 @@ static const uint HIKARI_PARTICLE_DIRECTIONAL_BILLBOARD = 2u;
 static const uint HIKARI_PARTICLE_FIXED = 3u;
 static const uint HIKARI_PARTICLE_MAX_SEGMENTS = 64u;
 static const uint HIKARI_PARTICLE_MATERIAL_ALPHA_MASK = 1u << 1u;
+static const uint HIKARI_PARTICLE_DEPTH_WORLD_OCCLUDED = 0u;
+static const uint HIKARI_PARTICLE_DEPTH_SOFT_INTERSECTION = 1u;
+static const uint HIKARI_PARTICLE_DEPTH_CONTACT_SURFACE = 2u;
+static const uint HIKARI_PARTICLE_DEPTH_FOREGROUND_ACCENT = 3u;
+static const uint HIKARI_PARTICLE_STYLE_DEFAULT = 0u;
+static const uint HIKARI_PARTICLE_STYLE_COMBAT_CUT = 1u;
+static const uint HIKARI_PARTICLE_STYLE_COMBAT_IMPACT = 2u;
+static const uint HIKARI_PARTICLE_STYLE_COMBAT_GROUND = 3u;
+static const uint HIKARI_PARTICLE_STYLE_COMIC_SMOKE = 4u;
+static const uint HIKARI_PARTICLE_STYLE_PROJECTILE_NEEDLE = 5u;
 
 struct Particle
 {
@@ -22,7 +33,9 @@ struct Particle
 
 StructuredBuffer<Particle> gDrawParticles : register(t1);
 StructuredBuffer<uint> gAliveParticleIndices : register(t2);
+Texture2D<float> gParticleSceneDepth : register(t3);
 SamplerState gParticleSampler : register(s0);
+SamplerState gParticleDepthSampler : register(s1);
 
 cbuffer CameraConstants : register(b0)
 {
@@ -42,6 +55,14 @@ cbuffer ParticleDrawConstants : register(b1)
     uint gSegmentCount;
     float4 gRenderShapeParamsA;
     float4 gRenderShapeParamsB;
+    uint gDepthMode;
+    uint gShaderStyle;
+    uint gSceneDepthAvailable;
+    uint gParticleReserved;
+    float4 gDepthAndStyleParams;
+    float4 gShaderParams;
+    float4 gShaderOutlineColor;
+    float4 gShaderCoreColor;
 };
 
 struct ParticleVertex
@@ -54,6 +75,8 @@ struct ParticleVertex
     float3 worldTangent : TEXCOORD3;
     float2 localUv : TEXCOORD4;
     nointerpolation uint flipbookFrame : TEXCOORD5;
+    nointerpolation float normalizedAge : TEXCOORD6;
+    nointerpolation float randomValue : TEXCOORD7;
 };
 
 float4 SampleParticleAtlasTexture(
@@ -312,10 +335,23 @@ ParticleVertex BuildParticleVertex(
     output.localUv = uv;
     output.flipbookFrame = frame;
     output.position = mul(gViewProjection, float4(worldPosition, 1.0f));
+    if (gDepthMode == HIKARI_PARTICLE_DEPTH_CONTACT_SURFACE)
+    {
+        output.position.z = max(
+            0.0f,
+            output.position.z -
+                max(gDepthAndStyleParams.y, 0.0f) * output.position.w);
+    }
     output.color = particle.color;
     output.worldPosition = worldPosition;
     output.worldNormal = normal;
     output.worldTangent = right;
+    output.normalizedAge = saturate(
+        max(particle.positionAge.w, 0.0f) /
+        max(particle.velocityLifetime.w, 1.0e-5f));
+    output.randomValue = frac(
+        float(asuint(particle.physicsPositionSeed.w)) *
+        0.00000011920928955078125f);
     return output;
 }
 
@@ -426,6 +462,228 @@ void ParticleStripMS(
     }
 }
 
+float HikariParticleHash21(float2 value)
+{
+    const float3 p = frac(float3(value.xyx) * 0.1031f);
+    const float3 q = p + dot(p, p.yzx + 33.33f);
+    return frac((q.x + q.y) * q.z);
+}
+
+float HikariParticleValueNoise(float2 value)
+{
+    const float2 cell = floor(value);
+    const float2 local = frac(value);
+    const float2 blend = local * local * (3.0f - 2.0f * local);
+    const float lower = lerp(
+        HikariParticleHash21(cell),
+        HikariParticleHash21(cell + float2(1.0f, 0.0f)),
+        blend.x);
+    const float upper = lerp(
+        HikariParticleHash21(cell + float2(0.0f, 1.0f)),
+        HikariParticleHash21(cell + 1.0f.xx),
+        blend.x);
+    return lerp(lower, upper, blend.y);
+}
+
+float2 HikariParticleRotate2D(float2 value, float angle)
+{
+    const float sine = sin(angle);
+    const float cosine = cos(angle);
+    return float2(
+        value.x * cosine + value.y * sine,
+        value.y * cosine - value.x * sine);
+}
+
+float HikariParticleTaperedStrokeDistance(
+    float2 position,
+    float angle,
+    float start,
+    float lengthValue,
+    float rootHalfWidth,
+    float tipHalfWidth)
+{
+    const float2 local = HikariParticleRotate2D(position, angle);
+    const float progress = saturate(
+        (local.x - start) / max(lengthValue, 1.0e-4f));
+    const float halfWidth = lerp(rootHalfWidth, tipHalfWidth, progress);
+    return max(
+        abs(local.y) - halfWidth,
+        max(start - local.x, local.x - (start + lengthValue)));
+}
+
+float HikariParticleStyleDistance(
+    float2 position,
+    uint style,
+    float randomValue,
+    float normalizedAge)
+{
+    if (style == HIKARI_PARTICLE_STYLE_COMBAT_CUT)
+    {
+        const float curve =
+            sin((position.x + 1.0f) * 2.4f + randomValue * 3.1f) *
+            0.11f * (1.0f - saturate(abs(position.x)));
+        const float halfWidth = 0.055f +
+            0.245f * pow(saturate(1.0f - abs(position.x)), 0.72f);
+        return max(
+            abs(position.y - curve) - halfWidth,
+            abs(position.x) - 0.98f);
+    }
+    if (style == HIKARI_PARTICLE_STYLE_COMBAT_IMPACT)
+    {
+        const float radius = length(position);
+        const float angle = atan2(position.y, position.x);
+        const float ray = pow(
+            abs(cos(angle * 4.0f + randomValue * 1.7f)),
+            9.0f);
+        const float silhouette = 0.37f + 0.34f * ray;
+        return radius - silhouette;
+    }
+    if (style == HIKARI_PARTICLE_STYLE_COMBAT_GROUND)
+    {
+        const float radius = length(position);
+        const float angle = atan2(position.y, position.x);
+        const float ringRadius = 0.61f +
+            sin(angle * 6.0f + randomValue * 6.28318531f) * 0.018f;
+        const float ring = abs(radius - ringRadius) - 0.065f;
+        const float phase = randomValue * 6.28318531f;
+        const float crackA = HikariParticleTaperedStrokeDistance(
+            position,
+            phase,
+            0.14f,
+            0.72f,
+            0.048f,
+            0.006f);
+        const float crackB = HikariParticleTaperedStrokeDistance(
+            position,
+            phase + 2.19f,
+            0.19f,
+            0.58f,
+            0.038f,
+            0.005f);
+        const float crackC = HikariParticleTaperedStrokeDistance(
+            position,
+            phase + 4.34f,
+            0.22f,
+            0.48f,
+            0.032f,
+            0.004f);
+        return min(ring, min(crackA, min(crackB, crackC)));
+    }
+    if (style == HIKARI_PARTICLE_STYLE_COMIC_SMOKE)
+    {
+        const float swell = lerp(0.88f, 1.08f, normalizedAge);
+        const float d0 = length(
+            (position - float2(-0.28f, 0.04f)) /
+            float2(0.58f, 0.54f)) - swell;
+        const float d1 = length(
+            (position - float2(0.30f, 0.08f)) /
+            float2(0.55f, 0.50f)) - swell;
+        const float d2 = length(
+            (position - float2(0.02f, -0.27f)) /
+            float2(0.70f, 0.48f)) - swell;
+        const float d3 = length(
+            (position - float2(0.0f, 0.30f)) /
+            float2(0.48f, 0.43f)) - swell;
+        return min(min(d0, d1), min(d2, d3));
+    }
+    if (style == HIKARI_PARTICLE_STYLE_PROJECTILE_NEEDLE)
+    {
+        const float taper = 0.025f +
+            0.14f * pow(saturate(1.0f - abs(position.x)), 0.65f);
+        return max(
+            abs(position.y) - taper,
+            abs(position.x) - 0.99f);
+    }
+    return -1.0f;
+}
+
+void HikariEvaluateStylizedParticle(
+    ParticleVertex input,
+    out float coverage,
+    out float coreCoverage,
+    out float breakupKeep)
+{
+    const float2 position = input.localUv * 2.0f - 1.0f;
+    const float distance = HikariParticleStyleDistance(
+        position,
+        gShaderStyle,
+        input.randomValue,
+        input.normalizedAge);
+    const float edgeHardness = saturate(gDepthAndStyleParams.w);
+    const float antiAlias = max(fwidth(distance), 6.0e-4f) *
+        lerp(2.60f, 1.05f, edgeHardness);
+    const float outlineWidth = saturate(gDepthAndStyleParams.z);
+    const float outerCoverage = 1.0f - smoothstep(
+        -antiAlias,
+        antiAlias,
+        distance - outlineWidth);
+    coreCoverage = 1.0f - smoothstep(
+        -antiAlias,
+        antiAlias,
+        distance + outlineWidth * 0.45f);
+
+    const float breakupScale = max(gShaderParams.y, 0.1f);
+    const float breakupStrength = saturate(gShaderParams.z);
+    const float2 noisePosition = float2(
+        position.x * 0.80f + position.y * 0.60f,
+        position.y * 0.80f - position.x * 0.60f) * breakupScale +
+        float2(input.randomValue * 17.0f, input.randomValue * 29.0f);
+    const float breakupNoise =
+        HikariParticleValueNoise(noisePosition) * 0.68f +
+        HikariParticleValueNoise(
+            noisePosition * 2.07f + float2(11.3f, 7.1f)) * 0.32f;
+    const float breakupFilterWidth = max(fwidth(breakupNoise) * 1.35f, 0.025f);
+    const float organicBreakup = smoothstep(
+        0.34f - breakupFilterWidth,
+        0.56f + breakupFilterWidth,
+        breakupNoise);
+    const float breakupEdgeBand = smoothstep(
+        -max(0.18f, outlineWidth * 2.5f),
+        antiAlias * 2.0f,
+        distance);
+    const float breakupAmount = saturate(
+        breakupStrength *
+        smoothstep(0.52f, 1.0f, input.normalizedAge) *
+        breakupEdgeBand);
+    breakupKeep = lerp(1.0f, organicBreakup, breakupAmount);
+    coverage = outerCoverage * breakupKeep;
+    coreCoverage *= breakupKeep;
+}
+
+float HikariResolveParticleDepthFade(ParticleVertex input)
+{
+    if (gDepthMode != HIKARI_PARTICLE_DEPTH_SOFT_INTERSECTION ||
+        gSceneDepthAvailable == 0u)
+    {
+        return 1.0f;
+    }
+    const float2 uv = HikariScreenUvFromSvPosition(
+        input.position,
+        gScreenParams.zw);
+    if (!HikariIsScreenUvInsideTexelGuard(uv, gScreenParams.zw))
+    {
+        return 1.0f;
+    }
+    const float sceneDepth = gParticleSceneDepth.SampleLevel(
+        gParticleDepthSampler,
+        uv,
+        0.0f);
+    float3 sceneWorldPosition = 0.0f.xxx;
+    if (!HikariReconstructWorldPosition(
+            uv,
+            sceneDepth,
+            gInverseViewProjection,
+            sceneWorldPosition))
+    {
+        return 1.0f;
+    }
+    const float separation = distance(
+        sceneWorldPosition,
+        input.worldPosition);
+    return saturate(
+        separation / max(gDepthAndStyleParams.x, 1.0e-3f));
+}
+
 float4 ParticlePS(ParticleVertex input) : SV_TARGET
 {
     HikariMeshMaterialData materialData =
@@ -529,6 +787,38 @@ float4 ParticlePS(ParticleVertex input) : SV_TARGET
     {
         alpha *= materialColor.a;
     }
+    if (gShaderStyle != HIKARI_PARTICLE_STYLE_DEFAULT)
+    {
+        float styleCoverage = 0.0f;
+        float coreCoverage = 0.0f;
+        float breakupKeep = 1.0f;
+        HikariEvaluateStylizedParticle(
+            input,
+            styleCoverage,
+            coreCoverage,
+            breakupKeep);
+        const float coreRatio = saturate(
+            coreCoverage / max(styleCoverage, 1.0e-4f));
+        const float4 styleColor = lerp(
+            gShaderOutlineColor,
+            gShaderCoreColor,
+            coreRatio);
+        alpha *= styleCoverage * styleColor.a;
+        alpha *= HikariResolveParticleDepthFade(input);
+        clip(styleCoverage - 1.0e-4f);
+        clip(alpha - max(alphaClipThreshold, 0.001f));
+        const float intensity = lerp(
+            0.82f,
+            1.0f,
+            saturate(max(input.color.r, max(input.color.g, input.color.b))));
+        const float3 stylizedColor = styleColor.rgb * intensity;
+        const float3 stylizedEmissive = gShaderCoreColor.rgb *
+            coreCoverage * max(gShaderParams.x, 0.0f);
+        const float3 straightStylized =
+            stylizedColor + stylizedEmissive;
+        return float4(straightStylized * alpha, alpha);
+    }
+    alpha *= HikariResolveParticleDepthFade(input);
     clip(alpha - alphaClipThreshold);
     const float3 straightColor =
         input.color.rgb * materialColor.rgb + emissive;

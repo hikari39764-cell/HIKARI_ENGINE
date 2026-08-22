@@ -16,6 +16,7 @@ Texture2D<float4> gSceneColor : register(t0);
 Texture2D<float> gSceneDepth : register(t1);
 Texture2D<float4> gPackedSurface : register(t2);
 Texture2D<uint2> gSurfaceFeatureMask : register(t3);
+Texture2D<float4> gStylizedOutlineStyle : register(t4);
 SamplerState gPointClamp : register(s0);
 
 struct FullscreenVertex
@@ -57,6 +58,22 @@ bool IsOutlineSurface(uint featureMask)
         (gFeatureFlags.x & (1u << 0u)) != 0u &&
         (featureMask & HIKARI_STYLIZED_FEATURE_GEOMETRY_OUTLINE) != 0u;
     return screenOutline || geometryFallback;
+}
+
+float4 ResolveOutlineStyle(int2 pixel)
+{
+    if (gFeatureFlags.z != 0u)
+    {
+        return HikariDecodeStylizedOutlineStyle(
+            gStylizedOutlineStyle.Load(
+                int3(ClampSurfacePixel(pixel), 0)));
+    }
+    return float4(
+        gOutlineColor.rgb,
+        clamp(
+            gEdgeParams.x,
+            HIKARI_STYLIZED_OUTLINE_MIN_PIXELS,
+            HIKARI_STYLIZED_OUTLINE_MAX_PIXELS));
 }
 
 float ResolveEdge(
@@ -139,7 +156,8 @@ float4 PSMain(FullscreenVertex input) : SV_TARGET
         gPointClamp, input.uv, 0.0f);
     const float3 centerNormal = HikariDecodeOctahedralNormal(
         gPackedSurface.SampleLevel(gPointClamp, input.uv, 0.0f).rg);
-    const float2 texel = gScreenParams.zw * gEdgeParams.x;
+    const float4 outlineStyle = ResolveOutlineStyle(centerPixel);
+    const float2 texel = gScreenParams.zw * outlineStyle.w;
     float edge = 0.0f;
     if (IsOutlineSurface(centerFeature.x))
     {
@@ -156,5 +174,5 @@ float4 PSMain(FullscreenVertex input) : SV_TARGET
         (1.0f - ResolveFaceHairShadow(
             centerPixel, centerDepth, centerFeature));
     const float blend = smoothstep(0.85f, 1.15f, edge) * gEdgeParams.w;
-    return float4(lerp(color, gOutlineColor.rgb, blend), scene.a);
+    return float4(lerp(color, outlineStyle.rgb, blend), scene.a);
 }

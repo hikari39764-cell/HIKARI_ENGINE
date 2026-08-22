@@ -75,6 +75,22 @@ namespace HIKARI::RENDER3D::PARTICLES {
         CustomMaterial,
     };
 
+    enum class ParticleDepthMode : uint32_t {
+        WorldOccluded,
+        SoftIntersection,
+        ContactSurface,
+        ForegroundAccent,
+    };
+
+    enum class ParticleShaderStyle : uint32_t {
+        Default,
+        CombatCut,
+        CombatImpact,
+        CombatGround,
+        ComicSmoke,
+        ProjectileNeedle,
+    };
+
     // Keep these values synchronized with VfxBillboardMode and the particle
     // shader constants. Values 0 and 1 preserve cooked-program compatibility.
     enum class ParticleBillboardMode : uint32_t {
@@ -249,7 +265,18 @@ namespace HIKARI::RENDER3D::PARTICLES {
         ParticleRenderShape shape = ParticleRenderShape::Sprite;
         ParticleBillboardMode billboardMode =
             ParticleBillboardMode::RotatedBillboard;
-        bool depthTest = true;
+        ParticleDepthMode depthMode = ParticleDepthMode::WorldOccluded;
+        float softIntersectionDistance = 0.15f;
+        float depthBias = 0.00035f;
+        ParticleShaderStyle shaderStyle = ParticleShaderStyle::Default;
+        MATH::Vec4 shaderOutlineColor{
+            0.035f, 0.075f, 0.32f, 1.0f };
+        MATH::Vec4 shaderCoreColor{ 1.0f, 1.0f, 1.0f, 1.0f };
+        float shaderOutlineWidth = 0.12f;
+        float shaderEdgeHardness = 0.88f;
+        float shaderEmissiveIntensity = 0.0f;
+        float shaderBreakupScale = 7.0f;
+        float shaderBreakupStrength = 0.0f;
         uint32_t flipbookColumns = 1u;
         uint32_t flipbookRows = 1u;
         uint32_t flipbookFrameCount = 1u;

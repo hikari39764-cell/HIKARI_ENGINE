@@ -506,6 +506,10 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
                 state.surfaceBuffer.HasFeatureMask()) {
                 result.surfaceFeatureMask =
                     state.surfaceBuffer.GetFeatureMaskView();
+                if (state.surfaceBuffer.HasStylizedOutlineStyle()) {
+                    result.stylizedOutlineStyle =
+                        state.surfaceBuffer.GetStylizedOutlineStyleView();
+                }
             }
         }
         if (!state.geometryValid ||

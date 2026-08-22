@@ -755,10 +755,100 @@ namespace HIKARI::EDITOR {
                 VFX::ToString(emitter.renderCommon.blendMode),
                 blendModes.data(),
                 blendModes.size());
-            renderCommonEditor.Bool(
-                "Depth Test",
-                "depthTest",
-                emitter.renderCommon.depthTest);
+            constexpr std::array<std::string_view, 4u> depthModes{
+                "WorldOccluded",
+                "SoftIntersection",
+                "ContactSurface",
+                "ForegroundAccent",
+            };
+            renderCommonEditor.Choice(
+                "Depth Policy",
+                "depthMode",
+                VFX::ToString(emitter.renderCommon.depthMode),
+                depthModes.data(),
+                depthModes.size());
+            if (emitter.renderCommon.depthMode ==
+                VFX::VfxParticleDepthMode::SoftIntersection) {
+                renderCommonEditor.Float(
+                    "Soft Intersection Distance",
+                    "softIntersectionDistance",
+                    emitter.renderCommon.softIntersectionDistance,
+                    0.01f,
+                    0.001f,
+                    10.0f);
+            }
+            if (emitter.renderCommon.depthMode ==
+                VFX::VfxParticleDepthMode::ContactSurface) {
+                renderCommonEditor.Float(
+                    "Surface Depth Bias",
+                    "depthBias",
+                    emitter.renderCommon.depthBias,
+                    0.00005f,
+                    0.0f,
+                    0.02f);
+            }
+
+            ImGui::SeparatorText("Shader Style");
+            constexpr std::array<std::string_view, 6u> shaderStyles{
+                "Default",
+                "CombatCut",
+                "CombatImpact",
+                "CombatGround",
+                "ComicSmoke",
+                "ProjectileNeedle",
+            };
+            renderCommonEditor.Choice(
+                "Style",
+                "shaderStyle",
+                VFX::ToString(emitter.renderCommon.shaderStyle),
+                shaderStyles.data(),
+                shaderStyles.size());
+            if (emitter.renderCommon.shaderStyle !=
+                VFX::VfxParticleShaderStyle::Default) {
+                renderCommonEditor.Color(
+                    "Outline Color",
+                    "shaderOutlineColor",
+                    emitter.renderCommon.shaderOutlineColor);
+                renderCommonEditor.Color(
+                    "Core Color",
+                    "shaderCoreColor",
+                    emitter.renderCommon.shaderCoreColor);
+                renderCommonEditor.Float(
+                    "Outline Width",
+                    "shaderOutlineWidth",
+                    emitter.renderCommon.shaderOutlineWidth,
+                    0.005f,
+                    0.0f,
+                    0.49f);
+                renderCommonEditor.Float(
+                    "Edge Hardness",
+                    "shaderEdgeHardness",
+                    emitter.renderCommon.shaderEdgeHardness,
+                    0.01f,
+                    0.0f,
+                    1.0f);
+                renderCommonEditor.Float(
+                    "HDR Emissive",
+                    "shaderEmissiveIntensity",
+                    emitter.renderCommon.shaderEmissiveIntensity,
+                    0.05f,
+                    0.0f,
+                    64.0f);
+                renderCommonEditor.Float(
+                    "Breakup Scale",
+                    "shaderBreakupScale",
+                    emitter.renderCommon.shaderBreakupScale,
+                    0.1f,
+                    0.1f,
+                    64.0f);
+                renderCommonEditor.Float(
+                    "Breakup Strength",
+                    "shaderBreakupStrength",
+                    emitter.renderCommon.shaderBreakupStrength,
+                    0.01f,
+                    0.0f,
+                    1.0f);
+            }
             ImGui::SeparatorText("Flipbook");
             renderCommonEditor.Unsigned(
                 "Columns",

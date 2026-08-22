@@ -69,6 +69,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         RENDER3D::DEPTH::DepthPyramidView currentSceneDepthPyramid{};
         RENDER3D::RenderTextureView packedSurface{};
         RENDER3D::RenderTextureView surfaceFeatureMask{};
+        RENDER3D::RenderTextureView stylizedOutlineStyle{};
         RENDER3D::RenderTextureView ambientOcclusion{};
         RENDER3D::TextureResourceHandle fallbackAoTextureResource{};
         int fallbackAoTextureHandle = -1;

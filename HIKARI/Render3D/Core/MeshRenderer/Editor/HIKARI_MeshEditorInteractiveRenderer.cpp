@@ -403,8 +403,16 @@ namespace HIKARI::MESHRENDERER {
             }
             settings.targetAccess.EndDepthRead();
         }
-        const GeometryBackendExecutionResult transparentResult =
-            ExecuteEditorInteractiveGeometryBackendPlan(
+        GeometryBackendExecutionResult transparentResult{};
+        bool particleResult = true;
+        const bool hasParticleWork =
+            gMeshRendererState.particlePass.HasDrawWork();
+        if (hasTransparentSource || hasParticleWork) {
+            if (!passResources.sceneDepth.IsSampleable() ||
+                !settings.targetAccess.BeginDepthRead()) {
+                return EditorInteractiveMeshRenderResult::ForwardPassFailed;
+            }
+            transparentResult = ExecuteEditorInteractiveGeometryBackendPlan(
                 graphics,
                 RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardTransparent,
                 passResources,
@@ -412,10 +420,12 @@ namespace HIKARI::MESHRENDERER {
                 RENDER3D::MESHLET::MeshletPipelineKind::ForwardTransparent,
                 layer,
                 overrides);
-        const bool particleResult =
-            ExecutePreparedParticleForwardTransparent(
+            particleResult = ExecutePreparedParticleForwardTransparent(
                 graphics,
-                overrides.cameraAddress);
+                overrides.cameraAddress,
+                passResources);
+            settings.targetAccess.EndDepthRead();
+        }
         const bool sceneRendered = opaqueResult.gpuBackendExecuted ||
             depthAwareResult.gpuBackendExecuted ||
             transparentResult.gpuBackendExecuted ||

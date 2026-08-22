@@ -28,6 +28,7 @@ namespace HIKARI::RENDER3D::FEATURES {
     struct StylizedScreenFeatureDebugState {
         bool requested = false;
         bool inputsReady = false;
+        bool materialStyleReady = false;
         bool pipelineReady = false;
         bool rendered = false;
         uint32_t scheduledFeatureMask = 0u;

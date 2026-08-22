@@ -821,7 +821,7 @@ void InitializeReadyMadeMaterialNode(MaterialAssetData& material,
                         Value(MaterialValueType::Float1, 2.0f));
         EnsureParameter(graph, "parameter.outlineColor", "Outline Color",
                         Value(MaterialValueType::Float3, 0.025f, 0.030f, 0.045f));
-        EnsureParameter(graph, "parameter.outlineThickness", "Geometry Thickness",
+        EnsureParameter(graph, "parameter.outlineThickness", "Outline Thickness",
                         Value(MaterialValueType::Float1, 2.0f));
         break;
     case MaterialNodeKind::HairShadow:
