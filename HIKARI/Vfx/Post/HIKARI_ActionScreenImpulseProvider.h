@@ -44,8 +44,15 @@ namespace HIKARI::POST {
             float monochromeStrength = 0.0f;
             float chromaticSeparationPixels = 0.0f;
             float contrastStrength = 0.0f;
+            float boostWeight = 0.0f;
+            float boostEdgeIntensity = 0.0f;
+            float boostEdgeWidth = 0.20f;
+            float boostChromaticSeparationPixels = 0.0f;
 
-            bool IsActive() const noexcept { return weight > 0.0f; }
+            bool IsActive() const noexcept {
+                return weight > 0.0f ||
+                    (boostWeight > 0.0f && boostEdgeIntensity > 0.0f);
+            }
         };
 
         // A frame-local texture supplied by the combat trail/impact renderer.
@@ -95,6 +102,9 @@ namespace HIKARI::POST {
             bool cinematicGradeProvided = false;
             bool cinematicGradeApplied = false;
             float cinematicGradeWeight = 0.0f;
+            bool boostGradeProvided = false;
+            bool boostGradeApplied = false;
+            float boostGradeWeight = 0.0f;
         };
 
         void BeginFrame(uint64_t frameIndex) noexcept {
@@ -135,6 +145,8 @@ namespace HIKARI::POST {
                 kMaximumWaveCount);
             const bool sourceHasCinematicGrade =
                 source.HasActiveCinematicGrade();
+            const bool sourceHasBoostGrade =
+                source.HasActiveBoostGrade();
             if (!frameOpen_) {
                 BeginFrame(frameIndex);
             }
@@ -155,12 +167,16 @@ namespace HIKARI::POST {
                 debugState_.sourceWaveCount + sourceCount);
             debugState_.submitFrameIndex = frameIndex;
             debugState_.requested = count_ != 0u || sourceCount != 0u ||
-                sourceHasCinematicGrade || mask_.IsValid(frameIndex) ||
+                sourceHasCinematicGrade || sourceHasBoostGrade ||
+                mask_.IsValid(frameIndex) ||
                 accent_.IsValid(frameIndex);
             debugState_.cinematicGradeProvided =
                 debugState_.cinematicGradeProvided ||
                 sourceHasCinematicGrade;
-            if (sourceCount == 0u && !sourceHasCinematicGrade) {
+            debugState_.boostGradeProvided =
+                debugState_.boostGradeProvided || sourceHasBoostGrade;
+            if (sourceCount == 0u && !sourceHasCinematicGrade &&
+                !sourceHasBoostGrade) {
                 return;
             }
             if (source.frameIndex != 0u &&
@@ -208,6 +224,40 @@ namespace HIKARI::POST {
                 }
                 debugState_.cinematicGradeWeight =
                     cinematicGrade_.weight;
+            }
+            if (sourceHasBoostGrade) {
+                const float candidateWeight = std::clamp(
+                    std::isfinite(source.boostGrade.weight)
+                        ? source.boostGrade.weight
+                        : 0.0f,
+                    0.0f,
+                    1.0f);
+                if (candidateWeight > cinematicGrade_.boostWeight) {
+                    cinematicGrade_.boostWeight = candidateWeight;
+                    cinematicGrade_.boostEdgeIntensity = std::clamp(
+                        std::isfinite(source.boostGrade.edgeIntensity)
+                            ? source.boostGrade.edgeIntensity
+                            : 0.0f,
+                        0.0f,
+                        4.0f);
+                    cinematicGrade_.boostEdgeWidth = std::clamp(
+                        std::isfinite(source.boostGrade.edgeWidth)
+                            ? source.boostGrade.edgeWidth
+                            : 0.20f,
+                        0.01f,
+                        0.80f);
+                    cinematicGrade_.boostChromaticSeparationPixels =
+                        std::clamp(
+                            std::isfinite(
+                                source.boostGrade.chromaticSeparationPixels)
+                                ? source.boostGrade.
+                                    chromaticSeparationPixels
+                                : 0.0f,
+                            0.0f,
+                            16.0f);
+                }
+                debugState_.boostGradeWeight =
+                    cinematicGrade_.boostWeight;
             }
             for (uint32_t index = 0u;
                 index < sourceCount && count_ < kMaximumWaveCount;

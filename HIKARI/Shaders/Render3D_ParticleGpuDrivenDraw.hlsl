@@ -611,7 +611,7 @@ void HikariEvaluateStylizedParticle(
         input.normalizedAge);
     const float edgeHardness = saturate(gDepthAndStyleParams.w);
     const float antiAlias = max(fwidth(distance), 6.0e-4f) *
-        lerp(2.60f, 1.05f, edgeHardness);
+        lerp(2.85f, 1.35f, edgeHardness);
     const float outlineWidth = saturate(gDepthAndStyleParams.z);
     const float outerCoverage = 1.0f - smoothstep(
         -antiAlias,
@@ -620,7 +620,7 @@ void HikariEvaluateStylizedParticle(
     coreCoverage = 1.0f - smoothstep(
         -antiAlias,
         antiAlias,
-        distance + outlineWidth * 0.45f);
+        distance + outlineWidth * 0.18f);
 
     const float breakupScale = max(gShaderParams.y, 0.1f);
     const float breakupStrength = saturate(gShaderParams.z);
@@ -693,6 +693,12 @@ float4 ParticlePS(ParticleVertex input) : SV_TARGET
     float3 emissive = materialData.emissiveFactor.rgb *
         materialData.emissiveFactor.w;
     float alphaClipThreshold = 0.001f;
+    const uint flipbookGrid = asuint(gRenderShapeParamsB.z);
+    const uint columns = max(flipbookGrid & 0xffu, 1u);
+    const uint rows = max((flipbookGrid >> 8u) & 0xffu, 1u);
+    bool hasAuthoredStylizedMask = false;
+    float authoredMaskCenter = 1.0f;
+    float authoredMaskOuter = 1.0f;
     const bool hasMaterialExpression =
         materialData.materialProgramIndex !=
         HIKARI_STANDARD_PBR_MATERIAL_PROGRAM;
@@ -750,9 +756,6 @@ float4 ParticlePS(ParticleVertex input) : SV_TARGET
             input.uv);
         if (materialData.hasBaseColorTexture != 0u)
         {
-            const uint flipbookGrid = asuint(gRenderShapeParamsB.z);
-            const uint columns = max(flipbookGrid & 0xffu, 1u);
-            const uint rows = max((flipbookGrid >> 8u) & 0xffu, 1u);
             materialColor *= SampleParticleAtlasTexture(
                 materialData.baseColorTextureDescriptorIndex,
                 columns > 1u || rows > 1u
@@ -762,6 +765,74 @@ float4 ParticlePS(ParticleVertex input) : SV_TARGET
                 columns,
                 rows,
                 1.0f.xxxx);
+            if (gShaderStyle != HIKARI_PARTICLE_STYLE_DEFAULT &&
+                columns == 1u && rows == 1u)
+            {
+                // Production combat masks own the silhouette. Dilate their
+                // alpha in screen-pixel units to create a stable dark-blue
+                // outline instead of intersecting the authored arc with the
+                // old analytic lens/card shape.
+                hasAuthoredStylizedMask = true;
+                authoredMaskCenter = saturate(materialColor.a);
+                const float outlinePixels = clamp(
+                    0.60f + saturate(gDepthAndStyleParams.z) * 18.0f,
+                    0.65f,
+                    1.80f);
+                const float2 du = ddx(baseColorUv) * outlinePixels;
+                const float2 dv = ddy(baseColorUv) * outlinePixels;
+                const float2 diagonalA = (du + dv) * 0.70710678f;
+                const float2 diagonalB = (du - dv) * 0.70710678f;
+                const float baseAlpha = saturate(materialData.baseColor.a);
+                authoredMaskOuter = authoredMaskCenter;
+                authoredMaskOuter = max(authoredMaskOuter,
+                    HikariSampleMaterialTexture(
+                        materialData.baseColorTextureDescriptorIndex,
+                        gParticleSampler,
+                        baseColorUv + du,
+                        1.0f.xxxx).a * baseAlpha);
+                authoredMaskOuter = max(authoredMaskOuter,
+                    HikariSampleMaterialTexture(
+                        materialData.baseColorTextureDescriptorIndex,
+                        gParticleSampler,
+                        baseColorUv - du,
+                        1.0f.xxxx).a * baseAlpha);
+                authoredMaskOuter = max(authoredMaskOuter,
+                    HikariSampleMaterialTexture(
+                        materialData.baseColorTextureDescriptorIndex,
+                        gParticleSampler,
+                        baseColorUv + dv,
+                        1.0f.xxxx).a * baseAlpha);
+                authoredMaskOuter = max(authoredMaskOuter,
+                    HikariSampleMaterialTexture(
+                        materialData.baseColorTextureDescriptorIndex,
+                        gParticleSampler,
+                        baseColorUv - dv,
+                        1.0f.xxxx).a * baseAlpha);
+                authoredMaskOuter = max(authoredMaskOuter,
+                    HikariSampleMaterialTexture(
+                        materialData.baseColorTextureDescriptorIndex,
+                        gParticleSampler,
+                        baseColorUv + diagonalA,
+                        1.0f.xxxx).a * baseAlpha);
+                authoredMaskOuter = max(authoredMaskOuter,
+                    HikariSampleMaterialTexture(
+                        materialData.baseColorTextureDescriptorIndex,
+                        gParticleSampler,
+                        baseColorUv - diagonalA,
+                        1.0f.xxxx).a * baseAlpha);
+                authoredMaskOuter = max(authoredMaskOuter,
+                    HikariSampleMaterialTexture(
+                        materialData.baseColorTextureDescriptorIndex,
+                        gParticleSampler,
+                        baseColorUv + diagonalB,
+                        1.0f.xxxx).a * baseAlpha);
+                authoredMaskOuter = max(authoredMaskOuter,
+                    HikariSampleMaterialTexture(
+                        materialData.baseColorTextureDescriptorIndex,
+                        gParticleSampler,
+                        baseColorUv - diagonalB,
+                        1.0f.xxxx).a * baseAlpha);
+            }
         }
         if (materialData.hasEmissiveTexture != 0u)
         {
@@ -782,6 +853,9 @@ float4 ParticlePS(ParticleVertex input) : SV_TARGET
             alphaClipThreshold = max(materialData.pbrParams.w, 0.0f);
         }
     }
+    const float rawParticleAlpha = max(input.color.a, 0.0f);
+    const float shaderOverdrive = saturate(
+        (rawParticleAlpha - 1.0f) * 0.25f);
     float alpha = input.color.a * opacity;
     if (!hasMaterialExpression)
     {
@@ -789,14 +863,38 @@ float4 ParticlePS(ParticleVertex input) : SV_TARGET
     }
     if (gShaderStyle != HIKARI_PARTICLE_STYLE_DEFAULT)
     {
+        // Profiled combat effects reserve HDR alpha above one as a transient
+        // shader-overdrive carrier. The excess is transported through the
+        // existing VFX color multiplier, so neither the particle layout nor
+        // the cooked format needs another runtime field. Keep the default
+        // material path untouched and bound only stylized visible opacity.
+        alpha = min(rawParticleAlpha, 1.0f) * opacity;
+        if (!hasMaterialExpression && !hasAuthoredStylizedMask)
+        {
+            alpha *= materialColor.a;
+        }
         float styleCoverage = 0.0f;
         float coreCoverage = 0.0f;
         float breakupKeep = 1.0f;
-        HikariEvaluateStylizedParticle(
-            input,
-            styleCoverage,
-            coreCoverage,
-            breakupKeep);
+        if (hasAuthoredStylizedMask)
+        {
+            styleCoverage = smoothstep(
+                0.015f,
+                0.92f,
+                authoredMaskOuter);
+            coreCoverage = smoothstep(
+                0.20f,
+                0.78f,
+                authoredMaskCenter);
+        }
+        else
+        {
+            HikariEvaluateStylizedParticle(
+                input,
+                styleCoverage,
+                coreCoverage,
+                breakupKeep);
+        }
         const float coreRatio = saturate(
             coreCoverage / max(styleCoverage, 1.0e-4f));
         const float4 styleColor = lerp(
@@ -814,8 +912,27 @@ float4 ParticlePS(ParticleVertex input) : SV_TARGET
         const float3 stylizedColor = styleColor.rgb * intensity;
         const float3 stylizedEmissive = gShaderCoreColor.rgb *
             coreCoverage * max(gShaderParams.x, 0.0f);
-        const float3 straightStylized =
-            stylizedColor + stylizedEmissive;
+        const float phase = frac(
+            dot(input.localUv, float2(2.85f, -1.95f)) +
+            input.normalizedAge * 1.70f + input.randomValue * 3.10f);
+        const float movingCut = 1.0f - smoothstep(
+            0.065f,
+            0.205f,
+            abs(phase - 0.50f));
+        const float whiteCore = pow(coreRatio, 0.42f);
+        const float3 overdriveColor = lerp(
+            float3(0.04f, 0.58f, 1.22f),
+            1.0f.xxx,
+            whiteCore);
+        const float interiorEnergy = coreCoverage *
+            smoothstep(0.16f, 0.82f, coreRatio);
+        const float overdriveEnergy = shaderOverdrive *
+            (0.36f + 0.44f * movingCut) *
+            interiorEnergy;
+        const float3 straightStylized = stylizedColor +
+            stylizedEmissive * (1.0f +
+                0.85f * shaderOverdrive * interiorEnergy) +
+            overdriveColor * overdriveEnergy;
         return float4(straightStylized * alpha, alpha);
     }
     alpha *= HikariResolveParticleDepthFade(input);

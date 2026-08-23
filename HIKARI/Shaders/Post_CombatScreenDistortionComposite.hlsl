@@ -11,6 +11,9 @@ cbuffer CommonParams : register(b0)
     // x=weight, y=monochrome, z=chromatic separation in pixels,
     // w=contrast. This is frame-local and independent from radial waves.
     float4 gActionCinematicGrade;
+    // x=weight, y=edge intensity, z=edge width in normalized screen space,
+    // w=chromatic separation in pixels.
+    float4 gActionBoostGrade;
     // x=HDR accent strength, y=accent blur hint, z=accent enabled.
     float4 gWeaponAccentParams;
 };
@@ -636,6 +639,98 @@ float4 main(PSInput input) : SV_TARGET
         // legible on flat fog/sky without turning it into another decal ring.
         resolved += float3(0.80f, 0.91f, 1.05f) *
             dissolveBoundary * (0.010f + baseLuminance * 0.018f);
+    }
+
+    const float boostWeight = saturate(gActionBoostGrade.x);
+    const float boostIntensity = clamp(gActionBoostGrade.y, 0.0f, 4.0f);
+    if (boostWeight > 0.0001f && boostIntensity > 0.0001f)
+    {
+        const float2 safeResolution = float2(
+            max(gResolutionX, 1.0f),
+            max(gResolutionY, 1.0f));
+        const float edgeWidth = clamp(
+            gActionBoostGrade.z,
+            0.01f,
+            0.48f);
+        const float chromaticPixels = clamp(
+            gActionBoostGrade.w,
+            0.0f,
+            16.0f);
+        const float2 distanceToEdge = min(uv, 1.0f.xx - uv);
+        const float nearestEdge = min(distanceToEdge.x, distanceToEdge.y);
+        // Keep the energy attached to the actual screen perimeter. The old
+        // implementation drew two continuous iso-distance contours, which
+        // inevitably read as a large rectangular HUD frame. A steep edge
+        // falloff plus broken, tapered streaks preserves the powered-up
+        // feeling without outlining the viewport.
+        const float normalizedDepth = saturate(
+            nearestEdge / max(edgeWidth, 0.0001f));
+        const float edgeField = pow(1.0f - normalizedDepth, 2.35f);
+        const bool closestEdgeIsVertical =
+            distanceToEdge.x < distanceToEdge.y;
+        const float alongEdge = closestEdgeIsVertical ? uv.y : uv.x;
+        const float sidePhase = closestEdgeIsVertical ? 1.73f : 0.0f;
+        const float fastWave = 0.5f + 0.5f * sin(
+            alongEdge * 41.0f - gTime * 7.2f + sidePhase);
+        const float slowWave = 0.5f + 0.5f * sin(
+            alongEdge * 15.0f + gTime * 2.7f + sidePhase * 0.7f);
+        const float brokenFast = smoothstep(0.72f, 0.96f, fastWave);
+        const float brokenSlow = smoothstep(0.66f, 0.94f, slowWave);
+        const float centerTaper = pow(
+            saturate(abs(alongEdge - 0.5f) * 1.72f),
+            0.70f);
+        const float cornerTaper = saturate(
+            (abs(uv.x - 0.5f) + abs(uv.y - 0.5f) - 0.42f) * 2.5f);
+        const float inwardShard = smoothstep(
+            0.70f,
+            0.98f,
+            sin(
+                alongEdge * 29.0f -
+                normalizedDepth * 9.0f +
+                gTime * 3.4f + sidePhase) * 0.5f + 0.5f);
+        const float streak = saturate(
+            brokenFast * 0.58f +
+            brokenSlow * 0.28f +
+            inwardShard * 0.34f);
+        const float activePulse = 0.90f +
+            0.10f * sin(gTime * 4.6f);
+        const float energyMask = saturate(
+            edgeField *
+            (0.055f + streak * (0.28f + 0.22f * cornerTaper)) *
+            lerp(0.58f, 1.0f, centerTaper));
+
+        float2 outward = uv - 0.5f.xx;
+        const float outwardLength = length(outward);
+        outward = outwardLength > 1.0e-5f
+            ? outward / outwardLength
+            : float2(1.0f, 0.0f);
+        const float2 chromaticOffset = outward *
+            chromaticPixels / safeResolution;
+        const float3 redSample = HikariScene(uv + chromaticOffset);
+        const float3 blueSample = HikariScene(uv - chromaticOffset);
+        const float3 separated = float3(
+            redSample.r,
+            resolved.g,
+            blueSample.b);
+        const float chromaticWeight = saturate(
+            boostWeight * energyMask * chromaticPixels / 8.0f);
+        resolved = lerp(
+            resolved,
+            separated,
+            chromaticWeight * 0.34f);
+
+        const float weightedEnergy = boostWeight * boostIntensity *
+            activePulse * energyMask;
+        const float3 deepBlue = float3(0.025f, 0.10f, 0.72f);
+        const float3 hotCyan = float3(0.38f, 1.08f, 1.65f);
+        const float3 edgeColor = lerp(
+            deepBlue,
+            hotCyan,
+            saturate(0.18f + 0.82f * streak));
+        resolved *= 1.0f - edgeField * boostWeight * 0.035f;
+        resolved += edgeColor * weightedEnergy * 0.135f;
+        resolved += 1.10f.xxx * edgeField * brokenFast *
+            boostWeight * boostIntensity * 0.020f;
     }
 
     if (!all(isfinite(resolved)))

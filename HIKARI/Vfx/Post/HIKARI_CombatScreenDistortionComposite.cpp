@@ -19,6 +19,7 @@ namespace HIKARI::POST {
         struct alignas(16) CombatScreenCompositeParams final {
             CommonParams common{};
             DirectX::XMFLOAT4 cinematicGrade{};
+            DirectX::XMFLOAT4 boostGrade{};
             DirectX::XMFLOAT4 weaponAccent{};
         };
 
@@ -171,6 +172,11 @@ VS_OUT main(uint vid : SV_VertexID)
                 cinematicGrade.monochromeStrength,
                 cinematicGrade.chromaticSeparationPixels,
                 cinematicGrade.contrastStrength };
+            localParams.boostGrade = {
+                cinematicGrade.boostWeight,
+                cinematicGrade.boostEdgeIntensity,
+                cinematicGrade.boostEdgeWidth,
+                cinematicGrade.boostChromaticSeparationPixels };
             localParams.weaponAccent = {
                 validAccent != nullptr
                     ? std::clamp(validAccent->strength, 0.0f, 8.0f)

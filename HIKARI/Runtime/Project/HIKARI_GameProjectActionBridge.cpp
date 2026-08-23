@@ -1914,4 +1914,48 @@ namespace HIKARI {
         }
     }
 
+    bool PresentationVfxView::SubmitActionBoostGrade(
+        const GameProjectActionBoostGradeRequest& request)
+        const noexcept {
+        try {
+            if (world_ == nullptr || request.sourceId == 0u ||
+                request.reserved != 0u ||
+                !std::isfinite(request.weight) ||
+                !std::isfinite(request.edgeIntensity) ||
+                !std::isfinite(request.edgeWidth) ||
+                !std::isfinite(request.chromaticSeparationPixels) ||
+                request.weight < 0.0f || request.weight > 1.0f ||
+                request.edgeIntensity < 0.0f ||
+                request.edgeIntensity > 4.0f ||
+                request.edgeWidth < 0.01f ||
+                request.edgeWidth > 0.80f ||
+                request.chromaticSeparationPixels < 0.0f ||
+                request.chromaticSeparationPixels > 16.0f) {
+                return false;
+            }
+
+            World* world = static_cast<World*>(world_);
+            VFX::ActionPostReactionService* reaction =
+                world->Services().Find<VFX::ActionPostReactionService>();
+            if (reaction == nullptr) {
+                return false;
+            }
+
+            VFX::ActionPostReactionService::ActionBoostGradeRequest
+                runtimeRequest{};
+            runtimeRequest.sourceId = request.sourceId;
+            runtimeRequest.frameIndex = TIME::GetFrameContext().frameIndex;
+            runtimeRequest.priority = request.priority;
+            runtimeRequest.weight = request.weight;
+            runtimeRequest.edgeIntensity = request.edgeIntensity;
+            runtimeRequest.edgeWidth = request.edgeWidth;
+            runtimeRequest.chromaticSeparationPixels =
+                request.chromaticSeparationPixels;
+            return reaction->SubmitActionBoostGrade(runtimeRequest);
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
 } // namespace HIKARI

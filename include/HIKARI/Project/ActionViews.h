@@ -226,6 +226,9 @@ namespace HIKARI {
         HIKARI_GAME_PROJECT_SDK_API bool SubmitActionCinematicGrade(
             const GameProjectActionCinematicGradeRequest& request)
             const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool SubmitActionBoostGrade(
+            const GameProjectActionBoostGradeRequest& request)
+            const noexcept;
         // Profiled methods use all-new request layouts so older callers keep
         // the exact legacy ABI.  The profile GUID/output id is resolved by
         // the engine's compiled HVFX registry.

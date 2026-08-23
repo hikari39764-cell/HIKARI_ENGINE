@@ -371,4 +371,17 @@ namespace HIKARI {
         uint32_t reserved = 0u;
     };
 
+    // Frame-local Burst presentation. Unlike a cinematic grade this keeps
+    // gameplay color readable and concentrates a hard, animated energy
+    // treatment around the screen perimeter. Submit every visible frame.
+    struct GameProjectActionBoostGradeRequest {
+        uint64_t sourceId = 0u;
+        int32_t priority = 0;
+        float weight = 0.0f;
+        float edgeIntensity = 0.0f;
+        float edgeWidth = 0.20f;
+        float chromaticSeparationPixels = 0.0f;
+        uint32_t reserved = 0u;
+    };
+
 } // namespace HIKARI

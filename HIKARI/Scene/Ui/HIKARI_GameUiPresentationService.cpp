@@ -130,7 +130,7 @@ namespace HIKARI::GAME_UI {
                 !IsFinite(request.highlightColor) ||
                 static_cast<uint32_t>(request.effect) >
                     static_cast<uint32_t>(
-                        GameProjectUiEffect::DialoguePortraitFocus)) {
+                        GameProjectUiEffect::HudIdleEnergy)) {
                 return false;
             }
 

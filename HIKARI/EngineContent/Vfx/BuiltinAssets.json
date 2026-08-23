@@ -43,6 +43,13 @@
       "version": "1.0",
       "license": "Project-Originated",
       "licenseFile": "Vfx/Licenses/HIKARI-Original-Comic-Vfx.txt"
+    },
+    {
+      "id": "hikari.imagegen.anime_v2_vfx",
+      "name": "HIKARI Anime V2 Combat Masks",
+      "version": "1.0",
+      "license": "Project-Originated",
+      "licenseFile": "Vfx/Licenses/HIKARI-ImageGen-Anime-V2-Vfx.txt"
     }
   ],
   "assets": [
@@ -311,6 +318,118 @@
       "upstreamPath": "Original procedural offset-outline smoke puff",
       "sha256": "B98A8396FB94272281D89C8F8A26625094FCD60F556268E71E96A7EBFF82665E",
       "sourceSha256": "4C691F2D78777B1585FABE268AF8BAFBA56B62B3523339688457780136A91416"
+    },
+    {
+      "id": "engine.vfx.texture.anime_v2_slash_crescent",
+      "type": "Texture",
+      "path": "Vfx/Textures/Cooked/anime_v2_slash_crescent.htex",
+      "sourcePath": "Vfx/Textures/anime_v2_slash_crescent.png",
+      "colorSpace": "Srgb",
+      "usage": "BaseColor",
+      "compression": "BC7",
+      "mipPolicy": "Generate",
+      "sourceId": "hikari.imagegen.anime_v2_vfx",
+      "upstreamPath": "ImageGen V2 atlas cell 1; alpha restored and isolated by HIKARI",
+      "sha256": "BFDAB2EA0B837B915B54E84FA4CE0AFF234394933C4AC8F401E1BF16C7D7C0B6",
+      "sourceSha256": "417C333AC98076533A9E6C355659009D42ACC5F0D557B5F8CFCBADB34792C7E3"
+    },
+    {
+      "id": "engine.vfx.texture.anime_v2_spin_arc",
+      "type": "Texture",
+      "path": "Vfx/Textures/Cooked/anime_v2_spin_arc.htex",
+      "sourcePath": "Vfx/Textures/anime_v2_spin_arc.png",
+      "colorSpace": "Srgb",
+      "usage": "BaseColor",
+      "compression": "BC7",
+      "mipPolicy": "Generate",
+      "sourceId": "hikari.imagegen.anime_v2_vfx",
+      "upstreamPath": "ImageGen V2 atlas cell 2; alpha restored and isolated by HIKARI",
+      "sha256": "9DA87825024F1D17AF8AA9F9BA126AC4666E8AA2E66E6749A7B728F8F90CF8C4",
+      "sourceSha256": "B62BBC710CD59E1DFC11F594A09F054808F8CD65024A7ECBDCDC15803D7F219A"
+    },
+    {
+      "id": "engine.vfx.texture.anime_v2_broken_ring",
+      "type": "Texture",
+      "path": "Vfx/Textures/Cooked/anime_v2_broken_ring.htex",
+      "sourcePath": "Vfx/Textures/anime_v2_broken_ring.png",
+      "colorSpace": "Srgb",
+      "usage": "BaseColor",
+      "compression": "BC7",
+      "mipPolicy": "Generate",
+      "sourceId": "hikari.imagegen.anime_v2_vfx",
+      "upstreamPath": "ImageGen V2 atlas cell 3; alpha restored and isolated by HIKARI",
+      "sha256": "B07F8AEA01B4A2CF9A4B6BC65531AFFE0C236AB49082369E4048BD0EAF28D107",
+      "sourceSha256": "7717BB2CFED01BB83D4E4EC2F2B21F5D0BDB5A9CDDFB5B6451E3AE13BE0387AA"
+    },
+    {
+      "id": "engine.vfx.texture.anime_v2_radial_lines",
+      "type": "Texture",
+      "path": "Vfx/Textures/Cooked/anime_v2_radial_lines.htex",
+      "sourcePath": "Vfx/Textures/anime_v2_radial_lines.png",
+      "colorSpace": "Srgb",
+      "usage": "BaseColor",
+      "compression": "BC7",
+      "mipPolicy": "Generate",
+      "sourceId": "hikari.imagegen.anime_v2_vfx",
+      "upstreamPath": "ImageGen V2 atlas cell 4; alpha restored and isolated by HIKARI",
+      "sha256": "B520C18ACA2ACE4BD6907729881005BF17FC780FD6F58F487300F7C73C3B3372",
+      "sourceSha256": "58A873DE81AFF3556048BBA0D8097C1F96A3CF3E917E15209B095CC21B5E0240"
+    },
+    {
+      "id": "engine.vfx.texture.anime_v2_impact_crack",
+      "type": "Texture",
+      "path": "Vfx/Textures/Cooked/anime_v2_impact_crack.htex",
+      "sourcePath": "Vfx/Textures/anime_v2_impact_crack.png",
+      "colorSpace": "Srgb",
+      "usage": "BaseColor",
+      "compression": "BC7",
+      "mipPolicy": "Generate",
+      "sourceId": "hikari.imagegen.anime_v2_vfx",
+      "upstreamPath": "ImageGen V2 atlas cell 5; alpha restored and isolated by HIKARI",
+      "sha256": "8E4114407BCEE827810A470EA339787E676B47A654E5B4DA43714469F172F22C",
+      "sourceSha256": "74CD497ECA9EE9B25C3A0A174334AD1E48A1998F03D66F62B4715E8C347A192C"
+    },
+    {
+      "id": "engine.vfx.texture.anime_v2_energy_shards",
+      "type": "Texture",
+      "path": "Vfx/Textures/Cooked/anime_v2_energy_shards.htex",
+      "sourcePath": "Vfx/Textures/anime_v2_energy_shards.png",
+      "colorSpace": "Srgb",
+      "usage": "BaseColor",
+      "compression": "BC7",
+      "mipPolicy": "Generate",
+      "sourceId": "hikari.imagegen.anime_v2_vfx",
+      "upstreamPath": "ImageGen V2 atlas cell 6; alpha restored and isolated by HIKARI",
+      "sha256": "A9D8CE63C927DCDAA54D2A036826A75C98C67EA0244A83C6954870D8A2AA14C9",
+      "sourceSha256": "B1494D23110022C7CBEA5342CF5406A9BF9953565635024DAF16264D59F7D4DA"
+    },
+    {
+      "id": "engine.vfx.texture.anime_v2_comic_smoke",
+      "type": "Texture",
+      "path": "Vfx/Textures/Cooked/anime_v2_comic_smoke.htex",
+      "sourcePath": "Vfx/Textures/anime_v2_comic_smoke.png",
+      "colorSpace": "Srgb",
+      "usage": "BaseColor",
+      "compression": "BC7",
+      "mipPolicy": "Generate",
+      "sourceId": "hikari.imagegen.anime_v2_vfx",
+      "upstreamPath": "ImageGen V2 atlas cell 7; alpha restored and isolated by HIKARI",
+      "sha256": "5288BAA9ABC76417AD39345E9AF2C90270115BE1451262E5A3A71EBD444C6EF2",
+      "sourceSha256": "DC7059986CF720939A8F20EB4C91BD08CCBC20BCAF5567FCA2680211471D2C7B"
+    },
+    {
+      "id": "engine.vfx.texture.anime_v2_vertical_cut",
+      "type": "Texture",
+      "path": "Vfx/Textures/Cooked/anime_v2_vertical_cut.htex",
+      "sourcePath": "Vfx/Textures/anime_v2_vertical_cut.png",
+      "colorSpace": "Srgb",
+      "usage": "BaseColor",
+      "compression": "BC7",
+      "mipPolicy": "Generate",
+      "sourceId": "hikari.imagegen.anime_v2_vfx",
+      "upstreamPath": "ImageGen V2 atlas cell 8; alpha restored and isolated by HIKARI",
+      "sha256": "9BFFB66E4FF3AD4A0C9347A165D177780201B1F5A2601A3B01129388520713A9",
+      "sourceSha256": "B91D83F064FCFDAAFC7A703691DBDC2A688D58C109AFEDEEA1C95337D4AC1F37"
     }
   ]
 }

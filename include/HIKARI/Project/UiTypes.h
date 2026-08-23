@@ -22,6 +22,11 @@ namespace HIKARI {
         DialogueChoiceSelected = 13u,
         TextSdfGlow = 14u,
         DialoguePortraitFocus = 15u,
+        BurstGauge = 16u,
+        BurstGaugeActive = 17u,
+        ItemChargeIdle = 18u,
+        ItemChargeUse = 19u,
+        HudIdleEnergy = 20u,
     };
 
     // Submission flags are shared by sprites, text and backdrop requests.

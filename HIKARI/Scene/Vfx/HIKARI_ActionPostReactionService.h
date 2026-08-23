@@ -45,6 +45,16 @@ namespace HIKARI::VFX {
             float contrastStrength = 0.0f;
         };
 
+        struct ActionBoostGradeRequest {
+            uint64_t sourceId = 0u;
+            uint64_t frameIndex = 0u;
+            int32_t priority = 0;
+            float weight = 0.0f;
+            float edgeIntensity = 0.0f;
+            float edgeWidth = 0.20f;
+            float chromaticSeparationPixels = 0.0f;
+        };
+
         static constexpr uint32_t kMaximumWaveCount =
             RENDER3D::COMBAT_VFX::kMaximumPerfectGuardShockwaves;
 
@@ -78,6 +88,8 @@ namespace HIKARI::VFX {
         // submit every visible frame; an omitted frame clears the grade.
         bool SubmitActionCinematicGrade(
             const ActionCinematicGradeRequest& request) noexcept;
+        bool SubmitActionBoostGrade(
+            const ActionBoostGradeRequest& request) noexcept;
 
         // Uses unscaled presentation time so hit-stop cannot freeze the
         // screen reaction. Delta is bounded to keep a stalled frame finite.
@@ -119,6 +131,12 @@ namespace HIKARI::VFX {
         static bool IsPreferredGrade(
             const ActionCinematicGradeRequest& candidate,
             const ActionCinematicGradeRequest& current) noexcept;
+        static RENDER3D::COMBAT_VFX::ActionBoostGradeFrame
+            SanitizeBoostGrade(
+                const ActionBoostGradeRequest& request) noexcept;
+        static bool IsPreferredBoostGrade(
+            const ActionBoostGradeRequest& candidate,
+            const ActionBoostGradeRequest& current) noexcept;
 
         std::array<ActiveWave, kMaximumWaveCount> activeWaves_{};
         std::array<DedupRecord, kDedupRecordCount> dedupRecords_{};
@@ -128,6 +146,8 @@ namespace HIKARI::VFX {
         bool hasTicked_ = false;
         ActionCinematicGradeRequest gradeRequest_{};
         bool gradeSubmitted_ = false;
+        ActionBoostGradeRequest boostGradeRequest_{};
+        bool boostGradeSubmitted_ = false;
         RENDER3D::COMBAT_VFX::PerfectGuardShockwaveFrameSource frameSource_{};
     };
 

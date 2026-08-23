@@ -47,6 +47,20 @@ namespace HIKARI::RENDER3D::COMBAT_VFX {
         }
     };
 
+    struct ActionBoostGradeFrame {
+        float weight = 0.0f;
+        float edgeIntensity = 0.0f;
+        float edgeWidth = 0.20f;
+        float chromaticSeparationPixels = 0.0f;
+        uint32_t active = 0u;
+        uint32_t reserved[3] = { 0u, 0u, 0u };
+
+        bool IsActive() const noexcept {
+            return active != 0u && weight > 0.0f &&
+                edgeIntensity > 0.0f;
+        }
+    };
+
     struct PerfectGuardShockwaveFrameSource {
         uint64_t frameIndex = 0u;
         uint32_t count = 0u;
@@ -54,6 +68,7 @@ namespace HIKARI::RENDER3D::COMBAT_VFX {
         std::array<PerfectGuardShockwaveFrame,
             kMaximumPerfectGuardShockwaves> waves{};
         ActionCinematicGradeFrame cinematicGrade{};
+        ActionBoostGradeFrame boostGrade{};
 
         bool HasActiveWaves() const noexcept {
             return count != 0u;
@@ -61,6 +76,10 @@ namespace HIKARI::RENDER3D::COMBAT_VFX {
 
         bool HasActiveCinematicGrade() const noexcept {
             return cinematicGrade.IsActive();
+        }
+
+        bool HasActiveBoostGrade() const noexcept {
+            return boostGrade.IsActive();
         }
 
         const PerfectGuardShockwaveFrame& operator[](

@@ -20,6 +20,9 @@ namespace HIKARI::VFX {
         constexpr float kDefaultFlashIntensity = 0.42f;
         constexpr float kMaximumGradeChromaticPixels = 24.0f;
         constexpr float kMaximumGradeContrast = 2.0f;
+        constexpr float kMaximumBoostEdgeIntensity = 4.0f;
+        constexpr float kMaximumBoostEdgeWidth = 0.80f;
+        constexpr float kMaximumBoostChromaticPixels = 16.0f;
 
         float FiniteOr(float value, float fallback) noexcept {
             return std::isfinite(value) ? value : fallback;
@@ -219,6 +222,72 @@ namespace HIKARI::VFX {
         return true;
     }
 
+    RENDER3D::COMBAT_VFX::ActionBoostGradeFrame
+        ActionPostReactionService::SanitizeBoostGrade(
+            const ActionBoostGradeRequest& request) noexcept {
+
+        RENDER3D::COMBAT_VFX::ActionBoostGradeFrame result{};
+        result.weight = ClampFinite(request.weight, 0.0f, 0.0f, 1.0f);
+        result.edgeIntensity = ClampFinite(
+            request.edgeIntensity,
+            0.0f,
+            0.0f,
+            kMaximumBoostEdgeIntensity);
+        result.edgeWidth = ClampFinite(
+            request.edgeWidth,
+            0.20f,
+            0.01f,
+            kMaximumBoostEdgeWidth);
+        result.chromaticSeparationPixels = ClampFinite(
+            request.chromaticSeparationPixels,
+            0.0f,
+            0.0f,
+            kMaximumBoostChromaticPixels);
+        result.active = result.weight > 0.0f &&
+            result.edgeIntensity > 0.0f ? 1u : 0u;
+        return result;
+    }
+
+    bool ActionPostReactionService::IsPreferredBoostGrade(
+        const ActionBoostGradeRequest& candidate,
+        const ActionBoostGradeRequest& current) noexcept {
+
+        if (candidate.priority != current.priority) {
+            return candidate.priority > current.priority;
+        }
+        if (candidate.weight != current.weight) {
+            return candidate.weight > current.weight;
+        }
+        return candidate.sourceId < current.sourceId;
+    }
+
+    bool ActionPostReactionService::SubmitActionBoostGrade(
+        const ActionBoostGradeRequest& request) noexcept {
+
+        if (request.sourceId == 0u || request.frameIndex == 0u ||
+            !std::isfinite(request.weight) ||
+            !std::isfinite(request.edgeIntensity) ||
+            !std::isfinite(request.edgeWidth) ||
+            !std::isfinite(request.chromaticSeparationPixels) ||
+            request.weight < 0.0f || request.edgeIntensity < 0.0f ||
+            request.edgeWidth < 0.0f ||
+            request.chromaticSeparationPixels < 0.0f) {
+            return false;
+        }
+
+        if (!boostGradeSubmitted_ ||
+            boostGradeRequest_.frameIndex != request.frameIndex) {
+            boostGradeRequest_ = request;
+            boostGradeSubmitted_ = true;
+        }
+        else if (IsPreferredBoostGrade(request, boostGradeRequest_)) {
+            boostGradeRequest_ = request;
+        }
+        frameIndex_ = request.frameIndex;
+        RebuildFrameSource();
+        return true;
+    }
+
     bool ActionPostReactionService::TriggerPerfectGuardShockwave(
         const PerfectGuardShockwaveRequest& request) noexcept {
 
@@ -285,6 +354,11 @@ namespace HIKARI::VFX {
             gradeRequest_ = {};
             gradeSubmitted_ = false;
         }
+        if (!boostGradeSubmitted_ ||
+            boostGradeRequest_.frameIndex != frameIndex) {
+            boostGradeRequest_ = {};
+            boostGradeSubmitted_ = false;
+        }
         const float delta = std::clamp(
             FiniteOr(unscaledDeltaSeconds, 0.0f),
             0.0f,
@@ -323,6 +397,11 @@ namespace HIKARI::VFX {
         }
         if (gradeSubmitted_ && gradeRequest_.frameIndex == frameIndex_) {
             frameSource_.cinematicGrade = SanitizeGrade(gradeRequest_);
+        }
+        if (boostGradeSubmitted_ &&
+            boostGradeRequest_.frameIndex == frameIndex_) {
+            frameSource_.boostGrade =
+                SanitizeBoostGrade(boostGradeRequest_);
         }
     }
 
@@ -437,6 +516,8 @@ namespace HIKARI::VFX {
         hasTicked_ = false;
         gradeRequest_ = {};
         gradeSubmitted_ = false;
+        boostGradeRequest_ = {};
+        boostGradeSubmitted_ = false;
         frameSource_ = {};
     }
 

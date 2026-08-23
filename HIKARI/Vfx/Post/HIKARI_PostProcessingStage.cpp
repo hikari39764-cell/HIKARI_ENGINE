@@ -725,6 +725,10 @@ namespace HIKARI::POST {
         debug.accentProvided = accent.texture.resource != nullptr;
         debug.cinematicGradeProvided = cinematicGrade.IsActive();
         debug.cinematicGradeWeight = cinematicGrade.weight;
+        debug.boostGradeProvided =
+            cinematicGrade.boostWeight > 0.0f &&
+            cinematicGrade.boostEdgeIntensity > 0.0f;
+        debug.boostGradeWeight = cinematicGrade.boostWeight;
         const bool maskForFrame = mask.IsValid(absoluteFrame);
         const bool accentForFrame = accent.IsValid(absoluteFrame);
         debug.maskCompatible = maskForFrame &&
@@ -786,7 +790,10 @@ namespace HIKARI::POST {
                 debug.maskApplied = maskApplied;
                 debug.accentApplied = accentApplied;
                 debug.cinematicGradeApplied =
-                    debug.executed && cinematicGrade.IsActive();
+                    debug.executed && cinematicGrade.weight > 0.0f;
+                debug.boostGradeApplied = debug.executed &&
+                    cinematicGrade.boostWeight > 0.0f &&
+                    cinematicGrade.boostEdgeIntensity > 0.0f;
                 debug.composited = debug.executed;
                 if (debug.composited) {
                     if (!actionScreenRequestWasActive_) {
@@ -796,6 +803,7 @@ namespace HIKARI::POST {
                             << " mask=" << debug.maskApplied
                             << " accent=" << debug.accentApplied
                             << " grade=" << debug.cinematicGradeApplied
+                            << " boost=" << debug.boostGradeApplied
                             << " frame=" << absoluteFrame;
                         WriteCombatVfxLog(stream.str());
                     }

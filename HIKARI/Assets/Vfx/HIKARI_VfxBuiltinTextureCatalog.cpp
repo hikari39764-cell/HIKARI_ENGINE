@@ -4,7 +4,7 @@
 
 namespace HIKARI::VFX {
     namespace {
-        constexpr std::array<VfxBuiltinTextureDescriptor, 19u>
+        constexpr std::array<VfxBuiltinTextureDescriptor, 27u>
             kBuiltinTextures{ {
                 { "engine.vfx.texture.soft_disc", "Soft Disc" },
                 { "engine.vfx.texture.lens_flare", "Lens Flare" },
@@ -25,6 +25,14 @@ namespace HIKARI::VFX {
                 { "engine.vfx.texture.comic_speed_lines", "Comic Speed Lines" },
                 { "engine.vfx.texture.comic_ground_crack", "Comic Ground Crack" },
                 { "engine.vfx.texture.comic_smoke_puff", "Comic Smoke Puff" },
+                { "engine.vfx.texture.anime_v2_slash_crescent", "Anime V2 Slash Crescent" },
+                { "engine.vfx.texture.anime_v2_spin_arc", "Anime V2 Spin Arc" },
+                { "engine.vfx.texture.anime_v2_broken_ring", "Anime V2 Broken Ring" },
+                { "engine.vfx.texture.anime_v2_radial_lines", "Anime V2 Radial Lines" },
+                { "engine.vfx.texture.anime_v2_impact_crack", "Anime V2 Impact Crack" },
+                { "engine.vfx.texture.anime_v2_energy_shards", "Anime V2 Energy Shards" },
+                { "engine.vfx.texture.anime_v2_comic_smoke", "Anime V2 Comic Smoke" },
+                { "engine.vfx.texture.anime_v2_vertical_cut", "Anime V2 Vertical Cut" },
             } };
     }
 

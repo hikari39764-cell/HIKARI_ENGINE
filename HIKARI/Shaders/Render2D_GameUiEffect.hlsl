@@ -297,6 +297,84 @@ float4 PSMain(VSOutput input) : SV_Target0
         color.rgb += gEffectColor.rgb * edge * intensity * color.a;
         color.a *= reveal;
     }
+    else if (effect == 16u || effect == 17u)
+    {
+        // Burst never turns its uncharged range transparent.  The authored
+        // Front remains fully readable: charge is blue/white energy and the
+        // remainder is a neutral grey silhouette of the same artwork.
+        const float active = effect == 17u ? 1.0 : 0.0;
+        const float charged = 1.0 - step(fill, input.uv.x);
+        const float luminance = dot(color.rgb, float3(0.299, 0.587, 0.114));
+        const float3 neutral = lerp(
+            float3(0.25, 0.28, 0.33),
+            luminance.xxx,
+            0.22);
+        const float stream = 0.5 + 0.5 * sin(
+            (input.uv.x * 13.0 - time * (2.2 + active * 2.8) +
+                input.uv.y * 2.0) * 6.2831853);
+        const float leading = 1.0 - smoothstep(
+            0.008,
+            0.045,
+            abs(input.uv.x - fill));
+        const float readyPulse = smoothstep(0.94, 1.0, fill) *
+            (0.5 + 0.5 * sin(time * 8.0));
+        float3 chargedColor = color.rgb;
+        chargedColor += gHighlightColor.rgb *
+            (stream * (0.09 + active * 0.13) +
+                leading * (0.52 + active * 0.34) +
+                readyPulse * 0.20) * intensity * color.a;
+        chargedColor = lerp(
+            chargedColor,
+            gHighlightColor.rgb,
+            active * (0.08 + stream * 0.13) * intensity * color.a);
+        color.rgb = lerp(neutral, chargedColor, charged);
+        color = ApplyOutline(
+            color,
+            input.uv,
+            2.0 + active * 1.0,
+            (0.75 + active * 0.55 + readyPulse * 0.30) * intensity);
+    }
+    else if (effect == 18u || effect == 19u)
+    {
+        const float available = step(0.5, fill);
+        const float luminance = dot(color.rgb, float3(0.299, 0.587, 0.114));
+        color.rgb = lerp(
+            lerp(float3(0.24, 0.27, 0.31), luminance.xxx, 0.18),
+            color.rgb,
+            available);
+        const float phase = time * 3.7 + progress * 4.13;
+        const float sweep = 1.0 - smoothstep(
+            0.035,
+            0.16,
+            abs(frac(input.uv.x + input.uv.y * 0.35 - phase) - 0.5));
+        const float usePulse = effect == 19u
+            ? sin(saturate(progress) * 3.14159265)
+            : 0.0;
+        color.rgb += gHighlightColor.rgb * color.a * available * intensity *
+            (sweep * 0.18 + usePulse * 0.58);
+        color = ApplyOutline(
+            color,
+            input.uv,
+            2.0 + usePulse * 2.0,
+            (0.68 + usePulse * 0.90) * intensity);
+    }
+    else if (effect == 20u)
+    {
+        const float diagonal = frac(
+            input.uv.x * 2.4 + input.uv.y * 0.75 - time * 0.34);
+        const float sweep = 1.0 - smoothstep(
+            0.045,
+            0.18,
+            abs(diagonal - 0.5));
+        const float pulse = 0.5 + 0.5 * sin(time * 2.6);
+        color.rgb += gHighlightColor.rgb * color.a * intensity *
+            (sweep * 0.16 + pulse * 0.035);
+        color = ApplyOutline(
+            color,
+            input.uv,
+            2.0,
+            (0.45 + pulse * 0.18) * intensity);
+    }
 
     return color;
 }
