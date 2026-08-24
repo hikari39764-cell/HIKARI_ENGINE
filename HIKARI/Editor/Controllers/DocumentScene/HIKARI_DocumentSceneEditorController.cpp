@@ -4,6 +4,7 @@
 #include "Core/Text/HIKARI_Localization.h"
 
 #include <algorithm>
+#include <limits>
 #include "Assets/Material/HIKARI_MaterialAssetData.h"
 #include "Assets/HIKARI_AssetImportState.h"
 #include "Core/HIKARI_Logger.h"
@@ -810,6 +811,188 @@ namespace HIKARI {
             { "objectId", target->GetDocumentId().value },
             { "componentId", documentComponent->id.value },
             { "presetId", presetId },
+            { "workspace", "terrain_surface" },
+        };
+        return result;
+    }
+
+    EDITOR::EditorOperationResult
+    DocumentSceneEditorController::ExecuteAiTerrainProceduralGenerate(
+        const nlohmann::json& parameters) {
+        EDITOR::EditorOperationResult result{};
+        DocumentSceneBase* scene = aiOperationScene_;
+        if (scene == nullptr) {
+            result.code = "NO_SCENE";
+            result.message = "场景上下文不可用";
+            return result;
+        }
+
+        std::optional<SceneObjectId> objectId{};
+        if (!ReadOptionalSceneObjectId(parameters, objectId, result)) {
+            return result;
+        }
+        const EDITOR::SceneObjectTargetResolution resolution =
+            EDITOR::ResolveSceneObjectTarget(
+                *scene,
+                objectId,
+                parameters.value("name", std::string{}));
+        if (!resolution.IsResolved() || resolution.runtimeObject == nullptr) {
+            return TargetResolutionFailure(resolution);
+        }
+        TerrainSurfaceComponent* terrain = resolution.runtimeObject->
+            GetComponent<TerrainSurfaceComponent>();
+        if (terrain == nullptr || resolution.documentObject == nullptr) {
+            result.code = "TERRAIN_COMPONENT_NOT_FOUND";
+            result.message = "目标对象没有可编辑的 TerrainSurfaceComponent";
+            return result;
+        }
+
+        SceneComponentData* documentComponent = nullptr;
+        for (SceneComponentData& component :
+             resolution.documentObject->components) {
+            if (component.type == "TerrainSurfaceComponent") {
+                documentComponent = &component;
+                break;
+            }
+        }
+        if (documentComponent == nullptr) {
+            result.code = "TERRAIN_DOCUMENT_COMPONENT_NOT_FOUND";
+            result.message = "目标地形没有对应的 SceneDocument 组件";
+            return result;
+        }
+
+        TERRAIN::TerrainProceduralSpec spec{};
+        const std::string mode = parameters.value(
+            "mode", std::string("noise_hills"));
+        if (!TERRAIN::TryParseTerrainProceduralMode(mode, spec.mode)) {
+            result.code = "INVALID_TERRAIN_PROCEDURAL_MODE";
+            result.message = "未知的程序化地形类型: " + mode;
+            return result;
+        }
+        const std::string blendMode = parameters.value(
+            "blendMode", std::string("add"));
+        if (!TERRAIN::TryParseTerrainProceduralBlendMode(
+                blendMode, spec.blendMode)) {
+            result.code = "INVALID_TERRAIN_PROCEDURAL_BLEND_MODE";
+            result.message = "未知的程序化地形混合方式: " + blendMode;
+            return result;
+        }
+        const auto readUnsigned64 = [&parameters](
+            const char* key,
+            uint64_t fallback) noexcept {
+            const auto found = parameters.find(key);
+            if (found == parameters.end()) {
+                return fallback;
+            }
+            if (found->is_number_unsigned()) {
+                return found->get<uint64_t>();
+            }
+            if (found->is_number_integer()) {
+                const int64_t value = found->get<int64_t>();
+                return value >= 0 ? static_cast<uint64_t>(value) : fallback;
+            }
+            return fallback;
+        };
+        const auto readUnsigned32 = [&readUnsigned64](
+            const char* key,
+            uint32_t fallback) noexcept {
+            return static_cast<uint32_t>(std::min<uint64_t>(
+                readUnsigned64(key, fallback),
+                static_cast<uint64_t>((std::numeric_limits<uint32_t>::max)())));
+        };
+        spec.seed = readUnsigned64("seed", spec.seed);
+        spec.centerX = parameters.value("centerX", spec.centerX);
+        spec.centerZ = parameters.value("centerZ", spec.centerZ);
+        spec.extentX = parameters.value("extentX", spec.extentX);
+        spec.extentZ = parameters.value("extentZ", spec.extentZ);
+        spec.amplitude = parameters.value("amplitude", spec.amplitude);
+        spec.baseHeight = parameters.value("baseHeight", spec.baseHeight);
+        spec.scale = parameters.value("scale", spec.scale);
+        spec.edgeFalloff = parameters.value("edgeFalloff", spec.edgeFalloff);
+        spec.blendAmount = parameters.value(
+            "blendAmount", spec.blendAmount);
+        spec.directionDegrees = parameters.value(
+            "directionDegrees", spec.directionDegrees);
+        spec.octaves = readUnsigned32("octaves", spec.octaves);
+        spec = TERRAIN::SanitizeTerrainProceduralSpec(spec);
+
+        terrain->BeginGeometryEditBatch();
+        TERRAIN::TerrainProceduralPreview preview{};
+        const bool applied = terrain->ApplyProceduralTerrain(spec, preview);
+        (void)terrain->EndGeometryEditBatch();
+        nlohmann::json beforeDelta{};
+        nlohmann::json afterDelta{};
+        const bool hasDelta = terrain->ConsumeGeometryEditDelta(
+            beforeDelta, afterDelta);
+        if (!applied && preview.budgetExceeded) {
+            result.code = "TERRAIN_PROCEDURAL_BUDGET_EXCEEDED";
+            result.message =
+                "程序化地形范围超过可安全撤销的生成预算，请缩小范围或分块生成";
+            result.data = {
+                { "objectId", resolution.runtimeObject->GetDocumentId().value },
+                { "candidateVertices", preview.candidateVertices },
+                { "maximumCandidateVertices",
+                    TERRAIN::kTerrainProceduralMaximumCandidateVertices },
+            };
+            return result;
+        }
+        if (!applied) {
+            result.ok = true;
+            result.code = "NO_CHANGE";
+            result.message = "程序化地形范围没有产生变化";
+            result.data = {
+                { "objectId", resolution.runtimeObject->GetDocumentId().value },
+                { "affectedChunks", preview.affectedChunks },
+                { "affectedVertices", preview.affectedVertices },
+            };
+            return result;
+        }
+        if (!hasDelta ||
+            !EDITOR::ApplyTerrainSurfaceEditDelta(
+                documentComponent->properties, afterDelta)) {
+            // The runtime edit is provisional until the keyed document delta
+            // is admitted. Restore the authoritative serialized component so
+            // an internal history failure cannot leave runtime and document
+            // terrain out of sync.
+            terrain->Deserialize(documentComponent->properties);
+            result.code = "TERRAIN_PROCEDURAL_TRANSACTION_FAILED";
+            result.message = "程序化地形差分写入失败，运行时改动已回滚";
+            return result;
+        }
+
+        const bool externalDirtyBefore =
+            historyExternalDirty_ ||
+            ((context_.sceneDirty || scene->HasUnsavedSceneChanges()) &&
+                !documentHistory_.IsDirty());
+        CommitAppliedDocumentCommand(
+            *scene,
+            EDITOR::MakeSceneTerrainSurfaceEditDeltaHistoryCommand(
+                TEXT::Localize("ui.terrain.proceduralHistory"),
+                resolution.runtimeObject->GetDocumentId(),
+                documentComponent->id,
+                std::move(beforeDelta),
+                std::move(afterDelta),
+                EDITOR::EditorDocumentImpact::RuntimeWorld),
+            0u,
+            externalDirtyBefore,
+            EDITOR::EditorDocumentImpact::None);
+        SelectViewportObjects(
+            *scene,
+            { resolution.runtimeObject->GetDocumentId() },
+            EditorObjectSelectionMode::Replace);
+        EDITOR::EditorWorkspaceOpenRequest request{};
+        request.workspaceId = EDITOR::EditorWorkspaceId::TerrainSurface;
+        (void)workspaceHost_.RequestOpen(std::move(request));
+        result.ok = true;
+        result.code = "OK";
+        result.message = "已生成程序化地形，并写入一次可撤销的地形差分";
+        result.data = {
+            { "objectId", resolution.runtimeObject->GetDocumentId().value },
+            { "affectedChunks", preview.affectedChunks },
+            { "newChunks", preview.newChunks },
+            { "affectedVertices", preview.affectedVertices },
+            { "mode", TERRAIN::ToString(spec.mode) },
+            { "seed", spec.seed },
             { "workspace", "terrain_surface" },
         };
         return result;
@@ -2119,7 +2302,9 @@ namespace HIKARI {
                 std::unique_ptr<EDITOR::IEditorDocumentCommand> command =
                     terrainResult.terrainDelta
                         ? EDITOR::MakeSceneTerrainSurfaceEditDeltaHistoryCommand(
-                            "Fill Terrain Surface Layer",
+                            terrainResult.historyLabel.empty()
+                                ? "Edit Terrain Surface"
+                                : terrainResult.historyLabel,
                             terrainResult.objectId,
                             terrainResult.componentId,
                             std::move(terrainResult.beforePatch),

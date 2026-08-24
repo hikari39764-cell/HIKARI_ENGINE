@@ -362,6 +362,8 @@ namespace HIKARI {
             next.chunkCells,
             1u,
             TERRAIN::kTerrainChunkMaxCells);
+        next.chunkCellSize = TERRAIN::SanitizeTerrainChunkCellSize(
+            next.chunkCellSize);
         next.stylization = TERRAIN::SanitizeTerrainStylizationSettings(
             next.stylization);
         next.grass = TERRAIN::SanitizeTerrainGrassSettings(next.grass);
@@ -529,8 +531,7 @@ namespace HIKARI {
     }
 
     float TerrainSurfaceComponent::GetChunkWorldSize() const noexcept {
-        return static_cast<float>(GetChunkCells()) *
-            (std::max)(surface_.chunkCellSize, 0.01f);
+        return TERRAIN::TerrainChunkWorldSize(surface_);
     }
 
     TERRAIN::TerrainGrassPlacementSnapshot
@@ -1594,6 +1595,208 @@ namespace HIKARI {
         return true;
     }
 
+    bool TerrainSurfaceComponent::ApplyProceduralTerrain(
+        const TERRAIN::TerrainProceduralSpec& rawSpec,
+        TERRAIN::TerrainProceduralPreview& outPreview) {
+        const TERRAIN::TerrainProceduralSpec spec =
+            TERRAIN::SanitizeTerrainProceduralSpec(rawSpec);
+        outPreview = TERRAIN::PreviewTerrainProcedural(surface_, spec);
+        if (!outPreview.valid) {
+            return false;
+        }
+
+        const float chunkSize = GetChunkWorldSize();
+        const uint32_t cells = GetChunkCells();
+        if (!std::isfinite(chunkSize) || chunkSize <= 1.0e-4f || cells == 0u) {
+            return false;
+        }
+        const float cellSize = chunkSize / static_cast<float>(cells);
+        const auto keyMin = TERRAIN::TerrainChunkKeyFromWorld(
+            spec.centerX - spec.extentX,
+            spec.centerZ - spec.extentZ,
+            chunkSize);
+        const auto keyMax = TERRAIN::TerrainChunkKeyFromWorld(
+            spec.centerX + spec.extentX,
+            spec.centerZ + spec.extentZ,
+            chunkSize);
+
+        bool changed = false;
+        bool coverageChanged = false;
+        std::vector<TERRAIN::TerrainChunkKey> touchedChunks{};
+        touchedChunks.reserve(outPreview.affectedChunks);
+        const auto chunkWouldChange = [&](
+            const TERRAIN::TerrainChunk& chunk,
+            int32_t chunkX,
+            int32_t chunkZ) noexcept {
+            const uint32_t stride = chunk.cells + 1u;
+            for (uint32_t vz = 0u; vz <= chunk.cells; ++vz) {
+                for (uint32_t vx = 0u; vx <= chunk.cells; ++vx) {
+                    const float localX = static_cast<float>(chunkX) *
+                            chunkSize + static_cast<float>(vx) * cellSize;
+                    const float localZ = static_cast<float>(chunkZ) *
+                            chunkSize + static_cast<float>(vz) * cellSize;
+                    const float mask =
+                        TERRAIN::EvaluateTerrainProceduralMask(
+                            spec, localX, localZ);
+                    if (mask <= 1.0e-5f) {
+                        continue;
+                    }
+                    const std::size_t index =
+                        static_cast<std::size_t>(vz) * stride + vx;
+                    const float oldHeight = chunk.heights[index];
+                    const float oldCoverage = chunk.coverage[index];
+                    const float generated =
+                        TERRAIN::EvaluateTerrainProceduralHeight(
+                            spec, localX, localZ);
+                    const float target = spec.baseHeight + generated;
+                    const float amount = std::clamp(
+                        spec.blendAmount * mask, 0.0f, 1.0f);
+                    float nextHeight = oldHeight;
+                    switch (spec.blendMode) {
+                    case TERRAIN::TerrainProceduralBlendMode::Add:
+                        nextHeight += generated * amount;
+                        break;
+                    case TERRAIN::TerrainProceduralBlendMode::Replace:
+                        nextHeight += (target - nextHeight) * amount;
+                        break;
+                    case TERRAIN::TerrainProceduralBlendMode::Max:
+                        nextHeight +=
+                            ((std::max)(nextHeight, target) - nextHeight) *
+                            amount;
+                        break;
+                    }
+                    const float coverageTarget = (std::max)(
+                        oldCoverage,
+                        mask);
+                    const float nextCoverage = oldCoverage +
+                        (coverageTarget - oldCoverage) * spec.blendAmount;
+                    if (std::fabs(nextHeight - oldHeight) > 1.0e-7f ||
+                        std::fabs(nextCoverage - oldCoverage) > 1.0e-7f) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        };
+        for (int32_t z = keyMin.z; z <= keyMax.z; ++z) {
+            for (int32_t x = keyMin.x; x <= keyMax.x; ++x) {
+                const TERRAIN::TerrainChunkKey key{ x, z };
+                const auto found = surface_.chunks.find(key);
+                TERRAIN::TerrainChunk candidate{};
+                const TERRAIN::TerrainChunk* sourceChunk = nullptr;
+                if (found == surface_.chunks.end()) {
+                    candidate = TERRAIN::MakeTerrainChunk(
+                        cells,
+                        GetLayerCount());
+                    std::fill(
+                        candidate.coverage.begin(),
+                        candidate.coverage.end(),
+                        0.0f);
+                    (void)SeedChunkFromNeighborEdges(key, candidate);
+                    sourceChunk = &candidate;
+                } else if (TERRAIN::TerrainChunkValid(found->second)) {
+                    sourceChunk = &found->second;
+                }
+                // Admit a new sparse chunk only after evaluating the exact
+                // initialized grid and confirming a reversible height or
+                // coverage delta. Tiny positive blends must remain no-ops.
+                if (sourceChunk == nullptr ||
+                    !chunkWouldChange(*sourceChunk, x, z)) {
+                    continue;
+                }
+
+                TERRAIN::TerrainChunk& chunk =
+                    found == surface_.chunks.end()
+                        ? EnsureChunk(key)
+                        : found->second;
+                if (!TERRAIN::TerrainChunkValid(chunk)) {
+                    continue;
+                }
+                CaptureChunkBeforeEdit(key);
+                touchedChunks.push_back(key);
+                const uint32_t stride = chunk.cells + 1u;
+                bool chunkChanged = false;
+                for (uint32_t vz = 0u; vz <= chunk.cells; ++vz) {
+                    for (uint32_t vx = 0u; vx <= chunk.cells; ++vx) {
+                        const float localX = static_cast<float>(x) * chunkSize +
+                            static_cast<float>(vx) * cellSize;
+                        const float localZ = static_cast<float>(z) * chunkSize +
+                            static_cast<float>(vz) * cellSize;
+                        const float mask =
+                            TERRAIN::EvaluateTerrainProceduralMask(
+                                spec, localX, localZ);
+                        if (mask <= 1.0e-5f) {
+                            continue;
+                        }
+                        const std::size_t index =
+                            static_cast<std::size_t>(vz) * stride + vx;
+                        float& height = chunk.heights[index];
+                        const float oldHeight = height;
+                        const float generated =
+                            TERRAIN::EvaluateTerrainProceduralHeight(
+                                spec, localX, localZ);
+                        const float target = spec.baseHeight + generated;
+                        const float amount = std::clamp(
+                            spec.blendAmount * mask, 0.0f, 1.0f);
+                        switch (spec.blendMode) {
+                        case TERRAIN::TerrainProceduralBlendMode::Add:
+                            height += generated * amount;
+                            break;
+                        case TERRAIN::TerrainProceduralBlendMode::Replace:
+                            height += (target - height) * amount;
+                            break;
+                        case TERRAIN::TerrainProceduralBlendMode::Max:
+                            height += ((std::max)(height, target) - height) *
+                                amount;
+                            break;
+                        }
+                        float& coverage = chunk.coverage[index];
+                        const float oldCoverage = coverage;
+                        // Procedural generation is non-destructive to
+                        // authored terrain footprint: every mode only grows
+                        // coverage. Island/Coast creates a radial shoreline
+                        // on empty terrain, but deliberately does not erase
+                        // existing land or hand-authored holes outside its
+                        // positive mask. Blend Amount controls both height
+                        // and footprint admission.
+                        const float coverageTarget = (std::max)(
+                            coverage,
+                            mask);
+                        coverage += (coverageTarget - coverage) *
+                            spec.blendAmount;
+                        const bool heightWasChanged =
+                            std::fabs(height - oldHeight) > 1.0e-7f;
+                        const bool vertexCoverageChanged =
+                            std::fabs(coverage - oldCoverage) > 1.0e-7f;
+                        chunkChanged = chunkChanged || heightWasChanged ||
+                            vertexCoverageChanged;
+                        changed = changed || chunkChanged;
+                        coverageChanged = coverageChanged ||
+                            vertexCoverageChanged;
+                        if (vertexCoverageChanged) {
+                            MarkCoverageVertexDirty(key, vx, vz);
+                        }
+                    }
+                }
+                if (chunkChanged) {
+                    MarkChunkChanged(key);
+                }
+            }
+        }
+        if (!changed) {
+            return false;
+        }
+
+        coverageChanged = StitchChunkBorders(touchedChunks) || coverageChanged;
+        ++revision_;
+        MarkGeometryChanged();
+        if (coverageChanged) {
+            ++coverageRevision_;
+        }
+        NotifyRenderStateDirty();
+        return true;
+    }
+
     void TerrainSurfaceComponent::ResetTerrain() {
         if (surface_.chunks.empty()) {
             return;
@@ -1862,8 +2065,8 @@ namespace HIKARI {
             }
         };
 
-        const float cellSize = (std::max)(
-            surface_.chunkCellSize, 0.01f);
+        const float cellSize = TERRAIN::SanitizeTerrainChunkCellSize(
+            surface_.chunkCellSize);
         const float width = (std::max)(
             surface_.shoreline.edgeFalloff, 0.0f);
         const bool fullRebuild =
@@ -2388,8 +2591,8 @@ namespace HIKARI {
                         GetChunkWorldSize() * 0.02f);
             }
         }
-        const float cellSize = (std::max)(
-            surface_.chunkCellSize, 0.01f);
+        const float cellSize = TERRAIN::SanitizeTerrainChunkCellSize(
+            surface_.chunkCellSize);
         const float horizontalDistance = std::sqrt(
             localDirection.x * localDirection.x +
             localDirection.z * localDirection.z) * marchDistance;

@@ -449,6 +449,48 @@ namespace HIKARI {
                 return ExecuteAiTerrainFillLayer(parameters);
             },
         });
+        operationRegistry_.Register({
+            "terrain.generate_procedural",
+            "Generate deterministic hills, islands, ridges, basins, or dunes into a TerrainSurface range.",
+            "terrain_surface",
+            {
+                P("objectId", EditorOperationParameterType::Int,
+                  false, "scene.objects.query 返回的稳定 SceneObjectId"),
+                P("name", EditorOperationParameterType::String,
+                  false, "仅兼容发现；重名时必须改用 objectId"),
+                P("mode", EditorOperationParameterType::String,
+                  true, "noise_hills/island_coast/ridge/basin_crater/dunes"),
+                P("blendMode", EditorOperationParameterType::String,
+                  false, "add/replace/max，默认 add"),
+                P("seed", EditorOperationParameterType::Int,
+                  false, "确定性生成种子"),
+                P("centerX", EditorOperationParameterType::Float,
+                  false, "地形本地 X 中心"),
+                P("centerZ", EditorOperationParameterType::Float,
+                  false, "地形本地 Z 中心"),
+                P("extentX", EditorOperationParameterType::Float,
+                  false, "本地 X 半范围"),
+                P("extentZ", EditorOperationParameterType::Float,
+                  false, "本地 Z 半范围"),
+                P("amplitude", EditorOperationParameterType::Float,
+                  false, "高度振幅"),
+                P("baseHeight", EditorOperationParameterType::Float,
+                  false, "替换模式基准高度"),
+                P("scale", EditorOperationParameterType::Float,
+                  false, "特征尺度"),
+                P("edgeFalloff", EditorOperationParameterType::Float,
+                  false, "边缘衰减"),
+                P("blendAmount", EditorOperationParameterType::Float,
+                  false, "混合量"),
+                P("directionDegrees", EditorOperationParameterType::Float,
+                  false, "脊线/沙丘方向"),
+                P("octaves", EditorOperationParameterType::Int,
+                  false, "噪声层数"),
+            },
+            [this](const nlohmann::json& parameters) {
+                return ExecuteAiTerrainProceduralGenerate(parameters);
+            },
+        });
         EDITOR::RegisterModelCollisionOperations(
             operationRegistry_,
             modelCollisionWorkspaceController_,

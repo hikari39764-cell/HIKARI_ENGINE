@@ -1,6 +1,7 @@
 #pragma once
 
 #include <json.hpp>
+#include <string>
 
 #include "Editor/HIKARI_EditorContext.h"
 #include "Scene/HIKARI_SceneComponentId.h"
@@ -20,6 +21,7 @@ namespace HIKARI {
             bool componentChanged = false;
             bool editActive = false;
             bool terrainDelta = false;
+            std::string historyLabel{};
             bool placeSelectionRequested = false;
             SceneObjectId terrainTargetObjectId{};
             float placementOffset = 0.0f;

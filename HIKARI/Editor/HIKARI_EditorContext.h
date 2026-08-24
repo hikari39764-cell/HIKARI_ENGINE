@@ -8,6 +8,7 @@
 #include "Runtime/HIKARI_RuntimeResourceRefreshService.h"
 #include "Scene/Debug/HIKARI_ComponentGizmoRegistry.h"
 #include "Scene/Debug/HIKARI_ViewportDebugState.h"
+#include "Scene/Terrain/HIKARI_TerrainProcedural.h"
 
 namespace HIKARI {
 
@@ -48,6 +49,7 @@ namespace HIKARI {
         Paint,
         Foliage,
         Place,
+        Generate,
     };
 
     struct EditorTransformGizmoState {
@@ -74,6 +76,11 @@ namespace HIKARI {
         bool hasHit = false;
         MATH::Vec3 hitPoint{};
         float placementOffset = 0.0f;
+        TERRAIN::TerrainProceduralSpec procedural{};
+        TERRAIN::TerrainProceduralPreview proceduralPreview{};
+        bool proceduralPreviewRequested = false;
+        SceneObjectId proceduralPreviewObjectId{};
+        uint64_t proceduralPreviewTerrainRevision = 0u;
     };
 
     struct ViewportWindowState {

@@ -10,6 +10,7 @@
 #include "Render3D/HIKARI_Math3D.h"
 #include "Scene/Components/HIKARI_IComponent.h"
 #include "Scene/Terrain/HIKARI_TerrainChunks.h"
+#include "Scene/Terrain/HIKARI_TerrainProcedural.h"
 #include "Scene/Terrain/HIKARI_TerrainSurface.h"
 
 namespace HIKARI {
@@ -81,6 +82,13 @@ namespace HIKARI {
             float target,
             const MATH::Vec3& localPos,
             float deltaSeconds = 1.0f);
+
+        // Bake one deterministic procedural profile into the existing sparse
+        // heightfield. Callers that need Undo must wrap the call in one
+        // BeginGeometryEditBatch/EndGeometryEditBatch transaction.
+        bool ApplyProceduralTerrain(
+            const TERRAIN::TerrainProceduralSpec& spec,
+            TERRAIN::TerrainProceduralPreview& outPreview);
 
         void ResetTerrain();
 

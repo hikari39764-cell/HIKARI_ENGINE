@@ -18,6 +18,7 @@ $registryFiles = @(
     'HIKARI\Editor\Workspaces\ModelCollision\HIKARI_ModelCollisionOperations.cpp',
     'HIKARI\Editor\Workspaces\AnimationStateMachine\HIKARI_AnimationStateMachineOperations.cpp',
     'HIKARI\Editor\Workspaces\Cinematics\HIKARI_CinematicsOperations.cpp',
+    'HIKARI\Editor\Workspaces\Dialogue\HIKARI_DialogueOperations.cpp',
     'HIKARI\Editor\Workspaces\ModelMaterial\HIKARI_ModelMaterialAssetOperations.cpp',
     'HIKARI\Editor\Workspaces\ModelMaterial\HIKARI_ModelMaterialOperations.cpp',
     'HIKARI\Editor\Workspaces\RuntimeBinding\HIKARI_RuntimeBindingOperations.cpp',

@@ -158,4 +158,23 @@ namespace HIKARI::TERRAIN {
         TerrainChunkMap chunks{};
     };
 
+    constexpr float kTerrainMinimumChunkCellSize = 0.01f;
+    constexpr float kTerrainMaximumChunkCellSize = 1024.0f;
+
+    inline float SanitizeTerrainChunkCellSize(float value) noexcept {
+        return std::clamp(
+            std::isfinite(value) ? value : 0.25f,
+            kTerrainMinimumChunkCellSize,
+            kTerrainMaximumChunkCellSize);
+    }
+
+    inline float TerrainChunkWorldSize(
+        const TerrainSurface& surface) noexcept {
+        return static_cast<float>((std::clamp)(
+            surface.chunkCells,
+            1u,
+            kTerrainChunkMaxCells)) *
+            SanitizeTerrainChunkCellSize(surface.chunkCellSize);
+    }
+
 } // namespace HIKARI::TERRAIN

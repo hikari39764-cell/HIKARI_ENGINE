@@ -605,14 +605,31 @@ float HikariResolveStylizedOutlinePixels()
     // retain a readable ink edge.
     const float authoredWidth = saturate(gDepthAndStyleParams.z);
     return authoredWidth > 1.0e-5f
-        ? clamp(0.55f + authoredWidth * 12.0f, 0.55f, 2.30f)
+        ? clamp(0.65f + authoredWidth * 12.0f, 0.65f, 2.60f)
         : 0.0f;
+}
+
+float HikariResolveStylizedGlowPixels()
+{
+    const float outlinePixels = HikariResolveStylizedOutlinePixels();
+    if (outlinePixels <= 1.0e-5f)
+    {
+        return 0.0f;
+    }
+
+    // Ink and bloom serve different readability jobs. Keep the ink line
+    // bounded and derive a wider, low-opacity HDR halo from emissive energy.
+    // This prevents artists from having to inflate an opaque outline just to
+    // make a hit survive exposure and bloom.
+    const float emissiveEnergy = saturate(gShaderParams.x / 5.0f);
+    return outlinePixels + lerp(1.45f, 3.35f, emissiveEnergy);
 }
 
 void HikariEvaluateStylizedParticle(
     ParticleVertex input,
     out float coverage,
     out float coreCoverage,
+    out float glowCoverage,
     out float breakupKeep)
 {
     const float2 position = input.localUv * 2.0f - 1.0f;
@@ -627,15 +644,29 @@ void HikariEvaluateStylizedParticle(
         lerp(2.35f, 1.10f, edgeHardness);
     const float outlinePixels = HikariResolveStylizedOutlinePixels();
     const float outlineDistance = edgePixelDistance * outlinePixels;
-    const float outerCoverage = 1.0f - smoothstep(
+    const float glowDistance = edgePixelDistance *
+        HikariResolveStylizedGlowPixels();
+    float outerCoverage = 1.0f - smoothstep(
         -antiAlias,
         antiAlias,
         distance - outlineDistance);
+    glowCoverage = 1.0f - smoothstep(
+        -antiAlias * 1.65f,
+        antiAlias * 2.15f,
+        distance - glowDistance);
     coreCoverage = 1.0f - smoothstep(
         -antiAlias,
         antiAlias,
         distance + edgePixelDistance * 0.22f);
     coreCoverage = min(coreCoverage, outerCoverage);
+    if (outlinePixels <= 1.0e-5f)
+    {
+        // A zero authored outline is an explicit style choice. Collapse the
+        // outer/glow domains onto the core so the later premultiplied halo
+        // cannot manufacture a border that the asset disabled.
+        outerCoverage = coreCoverage;
+        glowCoverage = coreCoverage;
+    }
 
     const float breakupScale = max(gShaderParams.y, 0.1f);
     const float breakupStrength = saturate(gShaderParams.z);
@@ -663,6 +694,7 @@ void HikariEvaluateStylizedParticle(
     breakupKeep = lerp(1.0f, organicBreakup, breakupAmount);
     coverage = outerCoverage * breakupKeep;
     coreCoverage *= breakupKeep;
+    glowCoverage = max(coverage, glowCoverage * breakupKeep);
 }
 
 float HikariResolveParticleDepthFade(ParticleVertex input)
@@ -728,6 +760,8 @@ float4 ParticlePS(ParticleVertex input) : SV_TARGET
     float authoredMaskCenter = 1.0f;
     float authoredMaskOuter = 1.0f;
     float authoredMaskNeighborhood = 1.0f;
+    float authoredMaskGlowNeighborhood = 0.0f;
+    float authoredMaskOutlinePixels = 0.0f;
     const bool hasMaterialExpression =
         materialData.materialProgramIndex !=
         HIKARI_STANDARD_PBR_MATERIAL_PROGRAM;
@@ -805,10 +839,17 @@ float4 ParticlePS(ParticleVertex input) : SV_TARGET
                 authoredMaskCenter = saturate(materialColor.a);
                 const float outlinePixels =
                     HikariResolveStylizedOutlinePixels();
+                authoredMaskOutlinePixels = outlinePixels;
+                if (outlinePixels > 1.0e-5f)
+                {
                 const float2 du = ddx(baseColorUv) * outlinePixels;
                 const float2 dv = ddy(baseColorUv) * outlinePixels;
                 const float2 diagonalA = (du + dv) * 0.70710678f;
                 const float2 diagonalB = (du - dv) * 0.70710678f;
+                const float glowPixels =
+                    HikariResolveStylizedGlowPixels();
+                const float2 glowDu = ddx(baseColorUv) * glowPixels;
+                const float2 glowDv = ddy(baseColorUv) * glowPixels;
                 const float baseAlpha = saturate(materialData.baseColor.a);
                 authoredMaskOuter = authoredMaskCenter;
                 const uint maskTexture =
@@ -849,6 +890,20 @@ float4 ParticlePS(ParticleVertex input) : SV_TARGET
                     maskDiagonalAPositive + maskDiagonalANegative +
                     maskDiagonalBPositive + maskDiagonalBNegative;
                 authoredMaskNeighborhood = authoredMaskSum / 9.0f;
+                const float authoredGlowMaskSum =
+                    HikariSampleAuthoredParticleMask(
+                        maskTexture, baseColorUv + glowDu, baseAlpha) +
+                    HikariSampleAuthoredParticleMask(
+                        maskTexture, baseColorUv - glowDu, baseAlpha) +
+                    HikariSampleAuthoredParticleMask(
+                        maskTexture, baseColorUv + glowDv, baseAlpha) +
+                    HikariSampleAuthoredParticleMask(
+                        maskTexture, baseColorUv - glowDv, baseAlpha);
+                // Four wide taps are enough for bloom-bound coverage; the
+                // inner ink already owns eight-direction morphology. Avoid a
+                // second eight-tap ring on every combat-particle pixel.
+                authoredMaskGlowNeighborhood = authoredGlowMaskSum / 4.0f;
+                }
             }
         }
         if (materialData.hasEmissiveTexture != 0u)
@@ -892,6 +947,7 @@ float4 ParticlePS(ParticleVertex input) : SV_TARGET
         }
         float styleCoverage = 0.0f;
         float coreCoverage = 0.0f;
+        float glowCoverage = 0.0f;
         float breakupKeep = 1.0f;
         if (hasAuthoredStylizedMask)
         {
@@ -907,10 +963,26 @@ float4 ParticlePS(ParticleVertex input) : SV_TARGET
             const float coherentOuter = max(
                 authoredMaskCenter,
                 authoredMaskNeighborhood * 1.75f);
-            const float dilationWeight = smoothstep(
-                0.72f,
-                0.96f,
-                authoredHardness);
+            // A single opaque neighbour must never become the whole ink
+            // silhouette. Preserve a limited amount of max dilation for crisp
+            // corners, but keep the coherent neighbourhood as the owner of
+            // the edge so imported masks cannot turn into hard card blocks.
+            const float maximumDilationWeight = 0.62f;
+            // Max dilation is useful around supported corners, but a lone
+            // opaque neighbour is usually texture noise or an atlas/card
+            // edge. Require neighbourhood support before that neighbour can
+            // influence the ink silhouette. One of nine taps (0.111) stays
+            // below the gate while coherent stroke edges retain the authored
+            // hard-corner response.
+            const float neighborhoodSupport = smoothstep(
+                0.14f,
+                0.44f,
+                authoredMaskNeighborhood);
+            const float dilationWeight = maximumDilationWeight *
+                neighborhoodSupport * smoothstep(
+                    0.72f,
+                    0.96f,
+                    authoredHardness);
             const float stableOuter = lerp(
                 coherentOuter,
                 authoredMaskOuter,
@@ -942,15 +1014,39 @@ float4 ParticlePS(ParticleVertex input) : SV_TARGET
                 0.34f,
                 0.58f,
                 authoredHardness);
-            styleCoverage = smoothstep(
-                outerThreshold - maskFilterWidth,
-                outerThreshold + maskFilterWidth,
-                stableOuter) * cardCoverage;
-            coreCoverage = smoothstep(
+            const float filteredCoreCoverage = smoothstep(
                 coreThreshold - maskFilterWidth,
                 coreThreshold + maskFilterWidth,
                 authoredMaskCenter) * cardCoverage;
-            coreCoverage = min(coreCoverage, styleCoverage);
+            if (authoredMaskOutlinePixels <= 1.0e-5f)
+            {
+                styleCoverage = filteredCoreCoverage;
+                coreCoverage = filteredCoreCoverage;
+                glowCoverage = 0.0f;
+            }
+            else
+            {
+                styleCoverage = smoothstep(
+                    outerThreshold - maskFilterWidth,
+                    outerThreshold + maskFilterWidth,
+                    stableOuter) * cardCoverage;
+                coreCoverage = min(filteredCoreCoverage, styleCoverage);
+                const float coherentGlow = neighborhoodSupport * max(
+                    stableOuter * 0.32f,
+                    authoredMaskGlowNeighborhood * 1.30f);
+                const float glowFilterWidth = max(
+                    fwidth(coherentGlow) * 1.85f,
+                    0.024f);
+                const float glowCardCoverage = smoothstep(
+                    0.0f,
+                    cardPixelWidth * 3.25f,
+                    cardEdgeDistance);
+                glowCoverage = smoothstep(
+                    0.045f - glowFilterWidth,
+                    0.24f + glowFilterWidth,
+                    coherentGlow) * glowCardCoverage;
+                glowCoverage = max(styleCoverage, glowCoverage);
+            }
         }
         else
         {
@@ -958,6 +1054,7 @@ float4 ParticlePS(ParticleVertex input) : SV_TARGET
                 input,
                 styleCoverage,
                 coreCoverage,
+                glowCoverage,
                 breakupKeep);
         }
         const float outlineCoverage = max(
@@ -966,6 +1063,7 @@ float4 ParticlePS(ParticleVertex input) : SV_TARGET
         const float coreRatio = saturate(
             coreCoverage /
                 max(coreCoverage + outlineCoverage, 1.0e-4f));
+        float styleAlpha = alpha;
         if (hasAuthoredStylizedMask)
         {
             const float authoredHardness = saturate(
@@ -974,7 +1072,7 @@ float4 ParticlePS(ParticleVertex input) : SV_TARGET
                 0.78f,
                 0.96f,
                 authoredHardness);
-            alpha *= lerp(
+            styleAlpha *= lerp(
                 outlineOpacity,
                 1.0f,
                 coreRatio);
@@ -983,10 +1081,22 @@ float4 ParticlePS(ParticleVertex input) : SV_TARGET
             gShaderOutlineColor,
             gShaderCoreColor,
             coreRatio);
-        alpha *= styleCoverage * styleColor.a;
-        alpha *= HikariResolveParticleDepthFade(input);
-        clip(styleCoverage - 1.0e-4f);
-        clip(alpha - max(alphaClipThreshold, 0.001f));
+        const float depthFade = HikariResolveParticleDepthFade(input);
+        styleAlpha = saturate(
+            styleAlpha * styleCoverage * styleColor.a * depthFade);
+        const bool stylizedOutlineEnabled =
+            HikariResolveStylizedOutlinePixels() > 1.0e-5f;
+        const float outerGlowCoverage = stylizedOutlineEnabled
+            ? saturate(glowCoverage * (1.0f - styleCoverage))
+            : 0.0f;
+        const float emissiveEnergy = saturate(gShaderParams.x / 5.0f);
+        const float glowAlpha = saturate(
+            alpha * outerGlowCoverage * gShaderOutlineColor.a *
+            lerp(0.10f, 0.22f, emissiveEnergy) * depthFade);
+        const float finalAlpha = saturate(
+            styleAlpha + glowAlpha * (1.0f - styleAlpha));
+        clip(max(styleCoverage, glowCoverage) - 1.0e-4f);
+        clip(finalAlpha - max(alphaClipThreshold, 0.001f));
         const float intensity = lerp(
             0.82f,
             1.0f,
@@ -1015,7 +1125,18 @@ float4 ParticlePS(ParticleVertex input) : SV_TARGET
             stylizedEmissive * (1.0f +
                 0.85f * shaderOverdrive * interiorEnergy) +
             overdriveColor * overdriveEnergy;
-        return float4(straightStylized * alpha, alpha);
+        const float3 glowColor = lerp(
+            gShaderOutlineColor.rgb,
+            gShaderCoreColor.rgb,
+            0.30f);
+        const float glowRadiance = lerp(
+            0.85f,
+            2.15f,
+            emissiveEnergy) * (1.0f + 0.35f * shaderOverdrive);
+        const float3 premultipliedStylized =
+            straightStylized * styleAlpha +
+            glowColor * glowAlpha * glowRadiance;
+        return float4(premultipliedStylized, finalAlpha);
     }
     alpha *= HikariResolveParticleDepthFade(input);
     clip(alpha - alphaClipThreshold);

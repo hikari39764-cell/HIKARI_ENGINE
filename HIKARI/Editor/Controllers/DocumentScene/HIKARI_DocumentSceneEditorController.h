@@ -143,6 +143,8 @@ namespace HIKARI {
             const nlohmann::json& parameters);
         EDITOR::EditorOperationResult ExecuteAiTerrainFillLayer(
             const nlohmann::json& parameters);
+        EDITOR::EditorOperationResult ExecuteAiTerrainProceduralGenerate(
+            const nlohmann::json& parameters);
         EDITOR::EditorOperationResult ExecuteAiSceneObjectQuery(
             bool snapshot);
         EDITOR::EditorOperationResult ExecuteAiSceneQuery(

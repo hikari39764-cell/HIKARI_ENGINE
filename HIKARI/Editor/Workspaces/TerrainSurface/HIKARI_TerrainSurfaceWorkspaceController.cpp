@@ -224,6 +224,16 @@ namespace HIKARI::EDITOR {
             documentComponent != nullptr &&
             result.objectId.value != 0u &&
             result.componentId.value != 0u;
+        if (!canAuthor ||
+            context.terrainTool.proceduralPreviewObjectId != result.objectId ||
+            (terrain != nullptr &&
+                context.terrainTool.proceduralPreviewTerrainRevision !=
+                    terrain->GetRevision())) {
+            context.terrainTool.proceduralPreview = {};
+            context.terrainTool.proceduralPreviewRequested = false;
+            context.terrainTool.proceduralPreviewObjectId = {};
+            context.terrainTool.proceduralPreviewTerrainRevision = 0u;
+        }
         result.terrainTargetObjectId = result.objectId;
         if (canAuthor) {
             // Runtime component has already resolved schema migrations and
@@ -268,7 +278,8 @@ namespace HIKARI::EDITOR {
                         context.terrainTool.paint =
                             EditorTerrainPaintMode::Sand;
                     } else if (page == EditorTerrainWorkspacePage::Place ||
-                        page == EditorTerrainWorkspacePage::Foliage) {
+                        page == EditorTerrainWorkspacePage::Foliage ||
+                        page == EditorTerrainWorkspacePage::Generate) {
                         context.terrainTool.active = false;
                     }
                 }
@@ -287,6 +298,9 @@ namespace HIKARI::EDITOR {
             pageButton(
                 EditorTerrainWorkspacePage::Place,
                 "ui.terrain.pagePlace");
+            pageButton(
+                EditorTerrainWorkspacePage::Generate,
+                "ui.terrain.pageGenerate");
 
             ImGui::Spacing();
             if (selected != nullptr) {
@@ -501,6 +515,259 @@ namespace HIKARI::EDITOR {
                 }
                 ImGui::EndDisabled();
             }
+
+            if (context.terrainTool.page ==
+                    EditorTerrainWorkspacePage::Generate) {
+                ImGui::SeparatorText(
+                    TEXT::Localize("ui.terrain.procedural").c_str());
+                TERRAIN::TerrainProceduralSpec& spec =
+                    context.terrainTool.procedural;
+                spec = TERRAIN::SanitizeTerrainProceduralSpec(spec);
+                bool proceduralChanged = false;
+                static const struct {
+                    TERRAIN::TerrainProceduralMode mode;
+                    const char* key;
+                } kProceduralModes[] = {
+                    { TERRAIN::TerrainProceduralMode::NoiseHills,
+                        "ui.terrain.proceduralNoiseHills" },
+                    { TERRAIN::TerrainProceduralMode::IslandCoast,
+                        "ui.terrain.proceduralIslandCoast" },
+                    { TERRAIN::TerrainProceduralMode::Ridge,
+                        "ui.terrain.proceduralRidge" },
+                    { TERRAIN::TerrainProceduralMode::BasinCrater,
+                        "ui.terrain.proceduralBasinCrater" },
+                    { TERRAIN::TerrainProceduralMode::Dunes,
+                        "ui.terrain.proceduralDunes" },
+                };
+                int modeIndex = static_cast<int>(spec.mode);
+                std::vector<std::string> modeLabels{};
+                std::vector<const char*> modeItems{};
+                modeLabels.reserve(std::size(kProceduralModes));
+                modeItems.reserve(std::size(kProceduralModes));
+                for (std::size_t i = 0; i < std::size(kProceduralModes); ++i) {
+                    modeLabels.push_back(TEXT::Localize(kProceduralModes[i].key));
+                    modeItems.push_back(modeLabels.back().c_str());
+                }
+                if (ImGui::Combo(
+                        TEXT::Localize("ui.terrain.proceduralMode").c_str(),
+                        &modeIndex,
+                        modeItems.data(),
+                        static_cast<int>(modeItems.size()))) {
+                    spec.mode = kProceduralModes[
+                            std::clamp(modeIndex, 0,
+                            static_cast<int>(std::size(kProceduralModes)) - 1)].mode;
+                    proceduralChanged = true;
+                }
+                static const struct {
+                    TERRAIN::TerrainProceduralBlendMode mode;
+                    const char* key;
+                } kBlendModes[] = {
+                    { TERRAIN::TerrainProceduralBlendMode::Add,
+                        "ui.terrain.proceduralBlendAdd" },
+                    { TERRAIN::TerrainProceduralBlendMode::Replace,
+                        "ui.terrain.proceduralBlendReplace" },
+                    { TERRAIN::TerrainProceduralBlendMode::Max,
+                        "ui.terrain.proceduralBlendMax" },
+                };
+                int blendIndex = static_cast<int>(spec.blendMode);
+                std::vector<std::string> blendLabels{};
+                std::vector<const char*> blendItems{};
+                blendLabels.reserve(std::size(kBlendModes));
+                blendItems.reserve(std::size(kBlendModes));
+                for (std::size_t i = 0; i < std::size(kBlendModes); ++i) {
+                    blendLabels.push_back(TEXT::Localize(kBlendModes[i].key));
+                    blendItems.push_back(blendLabels.back().c_str());
+                }
+                if (ImGui::Combo(
+                        TEXT::Localize("ui.terrain.proceduralBlend").c_str(),
+                        &blendIndex,
+                        blendItems.data(),
+                        static_cast<int>(blendItems.size()))) {
+                    spec.blendMode = kBlendModes[
+                            std::clamp(blendIndex, 0,
+                            static_cast<int>(std::size(kBlendModes)) - 1)].mode;
+                    proceduralChanged = true;
+                }
+                uint64_t seed = spec.seed;
+                if (ImGui::InputScalar(
+                        TEXT::Localize("ui.terrain.proceduralSeed").c_str(),
+                        ImGuiDataType_U64,
+                        &seed)) {
+                    spec.seed = seed;
+                    proceduralChanged = true;
+                }
+                proceduralChanged = ImGui::DragFloat(
+                    TEXT::Localize("ui.terrain.proceduralCenterX").c_str(),
+                    &spec.centerX, 0.05f, -8192.0f, 8192.0f, "%.2f") ||
+                    proceduralChanged;
+                proceduralChanged = ImGui::DragFloat(
+                    TEXT::Localize("ui.terrain.proceduralCenterZ").c_str(),
+                    &spec.centerZ, 0.05f, -8192.0f, 8192.0f, "%.2f") ||
+                    proceduralChanged;
+                ImGui::BeginDisabled(!context.terrainTool.hasHit ||
+                    terrain == nullptr);
+                if (ImGui::Button(
+                        TEXT::Localize(
+                            "ui.terrain.proceduralUseHitCenter").c_str())) {
+                    const MATH::Vec3 localHit = terrain->WorldToLocal(
+                        context.terrainTool.hitPoint);
+                    spec.centerX = localHit.x;
+                    spec.centerZ = localHit.z;
+                    proceduralChanged = true;
+                }
+                ImGui::EndDisabled();
+                proceduralChanged = ImGui::DragFloat(
+                    TEXT::Localize("ui.terrain.proceduralExtentX").c_str(),
+                    &spec.extentX, 0.05f, 0.5f, 2048.0f, "%.2f m") ||
+                    proceduralChanged;
+                proceduralChanged = ImGui::DragFloat(
+                    TEXT::Localize("ui.terrain.proceduralExtentZ").c_str(),
+                    &spec.extentZ, 0.05f, 0.5f, 2048.0f, "%.2f m") ||
+                    proceduralChanged;
+                proceduralChanged = ImGui::DragFloat(
+                    TEXT::Localize("ui.terrain.proceduralAmplitude").c_str(),
+                    &spec.amplitude, 0.01f, -64.0f, 64.0f, "%.3f m") ||
+                    proceduralChanged;
+                const bool baseHeightEnabled = spec.blendMode !=
+                    TERRAIN::TerrainProceduralBlendMode::Add;
+                ImGui::BeginDisabled(!baseHeightEnabled);
+                proceduralChanged = ImGui::DragFloat(
+                    TEXT::Localize("ui.terrain.proceduralBaseHeight").c_str(),
+                    &spec.baseHeight, 0.01f, -64.0f, 64.0f, "%.3f m") ||
+                    proceduralChanged;
+                ImGui::EndDisabled();
+                if (!baseHeightEnabled) {
+                    ImGui::TextDisabled(
+                        "%s",
+                        TEXT::Localize(
+                            "ui.terrain.proceduralBaseHeightAddHint").c_str());
+                }
+                proceduralChanged = ImGui::DragFloat(
+                    TEXT::Localize("ui.terrain.proceduralScale").c_str(),
+                    &spec.scale, 0.05f, 0.25f, 512.0f, "%.2f m") ||
+                    proceduralChanged;
+                proceduralChanged = ImGui::SliderFloat(
+                    TEXT::Localize("ui.terrain.proceduralEdgeFalloff").c_str(),
+                    &spec.edgeFalloff, 0.01f, 1.0f, "%.3f") ||
+                    proceduralChanged;
+                proceduralChanged = ImGui::SliderFloat(
+                    TEXT::Localize("ui.terrain.proceduralBlendAmount").c_str(),
+                    &spec.blendAmount, 0.0f, 1.0f, "%.3f") ||
+                    proceduralChanged;
+                proceduralChanged = ImGui::SliderFloat(
+                    TEXT::Localize("ui.terrain.proceduralDirection").c_str(),
+                    &spec.directionDegrees, -180.0f, 180.0f, "%.1f deg") ||
+                    proceduralChanged;
+                int octaves = static_cast<int>(spec.octaves);
+                if (ImGui::SliderInt(
+                        TEXT::Localize("ui.terrain.proceduralOctaves").c_str(),
+                        &octaves, 1, 8)) {
+                    spec.octaves = static_cast<uint32_t>(octaves);
+                    proceduralChanged = true;
+                }
+                if (proceduralChanged) {
+                    context.terrainTool.proceduralPreview = {};
+                    context.terrainTool.proceduralPreviewRequested = false;
+                    context.terrainTool.proceduralPreviewObjectId = {};
+                    context.terrainTool.proceduralPreviewTerrainRevision = 0u;
+                }
+                if (ImGui::Button(
+                        TEXT::Localize("ui.terrain.proceduralPreview").c_str(),
+                        ImVec2(-1.0f, ImGui::GetFrameHeight() * 1.15f))) {
+                    context.terrainTool.proceduralPreviewRequested = true;
+                }
+                if (terrain != nullptr &&
+                    context.terrainTool.proceduralPreviewRequested) {
+                    context.terrainTool.proceduralPreview =
+                        TERRAIN::PreviewTerrainProcedural(
+                            terrain->GetSurface(), spec);
+                    context.terrainTool.proceduralPreviewObjectId =
+                        result.objectId;
+                    context.terrainTool.proceduralPreviewTerrainRevision =
+                        terrain->GetRevision();
+                    context.terrainTool.proceduralPreviewRequested = false;
+                }
+                if (terrain != nullptr &&
+                    context.terrainTool.proceduralPreview.budgetExceeded) {
+                    ImGui::TextWrapped(
+                        "%s",
+                        TEXT::Localize(
+                            "ui.terrain.proceduralBudgetExceeded").c_str());
+                } else if (terrain != nullptr &&
+                    context.terrainTool.proceduralPreview.valid) {
+                    const TERRAIN::TerrainProceduralPreview& preview =
+                        context.terrainTool.proceduralPreview;
+                    if (preview.valid) {
+                        ImGui::Text(
+                            "%s: %u / %u, %s: %llu",
+                            TEXT::Localize(
+                                "ui.terrain.proceduralPreviewChunks").c_str(),
+                            preview.affectedChunks,
+                            preview.newChunks,
+                            TEXT::Localize(
+                                "ui.terrain.proceduralPreviewVertices").c_str(),
+                            static_cast<unsigned long long>(
+                                preview.affectedVertices));
+                        ImGui::TextDisabled(
+                            "%s: %.2f .. %.2f",
+                            TEXT::Localize(
+                                "ui.terrain.proceduralPreviewHeight").c_str(),
+                            preview.minimumGeneratedHeight,
+                            preview.maximumGeneratedHeight);
+                    }
+                } else {
+                    ImGui::TextDisabled(
+                        "%s",
+                        TEXT::Localize(
+                            "ui.terrain.proceduralNoPreview").c_str());
+                }
+                const bool canGenerate = canAuthor &&
+                    context.terrainTool.proceduralPreview.valid;
+                ImGui::BeginDisabled(!canGenerate);
+                if (ImGui::Button(
+                        TEXT::Localize("ui.terrain.proceduralApply").c_str(),
+                        ImVec2(-1.0f, ImGui::GetFrameHeight() * 1.35f))) {
+                    terrain->BeginGeometryEditBatch();
+                    TERRAIN::TerrainProceduralPreview appliedPreview{};
+                    const bool applied = terrain->ApplyProceduralTerrain(
+                        spec, appliedPreview);
+                    (void)terrain->EndGeometryEditBatch();
+                    nlohmann::json beforeDelta{};
+                    nlohmann::json afterDelta{};
+                    const bool hasDelta = terrain->ConsumeGeometryEditDelta(
+                        beforeDelta, afterDelta);
+                    if (applied && hasDelta &&
+                        ApplyTerrainSurfaceEditDelta(
+                            documentComponent->properties, afterDelta)) {
+                        result.beforePatch = std::move(beforeDelta);
+                        result.afterPatch = std::move(afterDelta);
+                        result.componentChanged = true;
+                        result.terrainDelta = true;
+                        result.historyLabel = TEXT::Localize(
+                            "ui.terrain.proceduralHistory");
+                        context.terrainTool.proceduralPreview = appliedPreview;
+                        context.terrainTool.proceduralPreviewObjectId =
+                            result.objectId;
+                        context.terrainTool.proceduralPreviewTerrainRevision =
+                            terrain->GetRevision();
+                    } else if (applied) {
+                        // Runtime mutation is provisional until the keyed
+                        // document delta is admitted. Restore the document's
+                        // authoritative state if history serialization fails.
+                        terrain->Deserialize(documentComponent->properties);
+                        context.terrainTool.proceduralPreview = {};
+                        context.terrainTool.proceduralPreviewObjectId = {};
+                        context.terrainTool.proceduralPreviewTerrainRevision =
+                            0u;
+                    }
+                    discreteFillTransaction = true;
+                }
+                ImGui::EndDisabled();
+                ImGui::TextWrapped(
+                    "%s",
+                    TEXT::Localize(
+                        "ui.terrain.proceduralHint").c_str());
+            }
         }
         ImGui::End();
 
@@ -605,6 +872,8 @@ namespace HIKARI::EDITOR {
                                     std::move(afterDelta);
                                 result.componentChanged = true;
                                 result.terrainDelta = true;
+                                result.historyLabel =
+                                    TEXT::Localize("ui.terrain.fillLayerHistory");
                             }
                             // A no-op fill is still a discrete command
                             // boundary: close any prior slider merge and do

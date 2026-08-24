@@ -484,6 +484,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Terrain/HIKARI_TerrainGrass.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Terrain/HIKARI_TerrainGrassModelFactory.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Terrain/HIKARI_TerrainGrassRenderProjection.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Terrain/HIKARI_TerrainProcedural.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Terrain/HIKARI_TerrainSurfaceComponent.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Features/HIKARI_BuoyancySystem.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/HIKARI_SceneRuntimeBuilder.cpp"
