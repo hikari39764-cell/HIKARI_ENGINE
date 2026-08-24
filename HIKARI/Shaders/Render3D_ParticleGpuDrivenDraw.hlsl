@@ -597,6 +597,18 @@ float HikariParticleStyleDistance(
     return -1.0f;
 }
 
+float HikariResolveStylizedOutlinePixels()
+{
+    // Existing HVFX assets author this value in the legacy normalized range.
+    // Convert it once to a bounded screen-pixel width so large particles do
+    // not expose a giant outline/card silhouette while small particles still
+    // retain a readable ink edge.
+    const float authoredWidth = saturate(gDepthAndStyleParams.z);
+    return authoredWidth > 1.0e-5f
+        ? clamp(0.55f + authoredWidth * 12.0f, 0.55f, 2.30f)
+        : 0.0f;
+}
+
 void HikariEvaluateStylizedParticle(
     ParticleVertex input,
     out float coverage,
@@ -610,17 +622,20 @@ void HikariEvaluateStylizedParticle(
         input.randomValue,
         input.normalizedAge);
     const float edgeHardness = saturate(gDepthAndStyleParams.w);
-    const float antiAlias = max(fwidth(distance), 6.0e-4f) *
-        lerp(2.85f, 1.35f, edgeHardness);
-    const float outlineWidth = saturate(gDepthAndStyleParams.z);
+    const float edgePixelDistance = max(fwidth(distance), 6.0e-4f);
+    const float antiAlias = edgePixelDistance *
+        lerp(2.35f, 1.10f, edgeHardness);
+    const float outlinePixels = HikariResolveStylizedOutlinePixels();
+    const float outlineDistance = edgePixelDistance * outlinePixels;
     const float outerCoverage = 1.0f - smoothstep(
         -antiAlias,
         antiAlias,
-        distance - outlineWidth);
+        distance - outlineDistance);
     coreCoverage = 1.0f - smoothstep(
         -antiAlias,
         antiAlias,
-        distance + outlineWidth * 0.18f);
+        distance + edgePixelDistance * 0.22f);
+    coreCoverage = min(coreCoverage, outerCoverage);
 
     const float breakupScale = max(gShaderParams.y, 0.1f);
     const float breakupStrength = saturate(gShaderParams.z);
@@ -638,7 +653,7 @@ void HikariEvaluateStylizedParticle(
         0.56f + breakupFilterWidth,
         breakupNoise);
     const float breakupEdgeBand = smoothstep(
-        -max(0.18f, outlineWidth * 2.5f),
+        -max(edgePixelDistance * 1.5f, outlineDistance),
         antiAlias * 2.0f,
         distance);
     const float breakupAmount = saturate(
@@ -684,6 +699,19 @@ float HikariResolveParticleDepthFade(ParticleVertex input)
         separation / max(gDepthAndStyleParams.x, 1.0e-3f));
 }
 
+float HikariSampleAuthoredParticleMask(
+    uint textureDescriptorIndex,
+    float2 uv,
+    float baseAlpha)
+{
+    return saturate(
+        HikariSampleMaterialTexture(
+            textureDescriptorIndex,
+            gParticleSampler,
+            uv,
+            1.0f.xxxx).a * baseAlpha);
+}
+
 float4 ParticlePS(ParticleVertex input) : SV_TARGET
 {
     HikariMeshMaterialData materialData =
@@ -699,6 +727,7 @@ float4 ParticlePS(ParticleVertex input) : SV_TARGET
     bool hasAuthoredStylizedMask = false;
     float authoredMaskCenter = 1.0f;
     float authoredMaskOuter = 1.0f;
+    float authoredMaskNeighborhood = 1.0f;
     const bool hasMaterialExpression =
         materialData.materialProgramIndex !=
         HIKARI_STANDARD_PBR_MATERIAL_PROGRAM;
@@ -774,64 +803,52 @@ float4 ParticlePS(ParticleVertex input) : SV_TARGET
                 // old analytic lens/card shape.
                 hasAuthoredStylizedMask = true;
                 authoredMaskCenter = saturate(materialColor.a);
-                const float outlinePixels = clamp(
-                    0.60f + saturate(gDepthAndStyleParams.z) * 18.0f,
-                    0.65f,
-                    1.80f);
+                const float outlinePixels =
+                    HikariResolveStylizedOutlinePixels();
                 const float2 du = ddx(baseColorUv) * outlinePixels;
                 const float2 dv = ddy(baseColorUv) * outlinePixels;
                 const float2 diagonalA = (du + dv) * 0.70710678f;
                 const float2 diagonalB = (du - dv) * 0.70710678f;
                 const float baseAlpha = saturate(materialData.baseColor.a);
                 authoredMaskOuter = authoredMaskCenter;
-                authoredMaskOuter = max(authoredMaskOuter,
-                    HikariSampleMaterialTexture(
-                        materialData.baseColorTextureDescriptorIndex,
-                        gParticleSampler,
-                        baseColorUv + du,
-                        1.0f.xxxx).a * baseAlpha);
-                authoredMaskOuter = max(authoredMaskOuter,
-                    HikariSampleMaterialTexture(
-                        materialData.baseColorTextureDescriptorIndex,
-                        gParticleSampler,
-                        baseColorUv - du,
-                        1.0f.xxxx).a * baseAlpha);
-                authoredMaskOuter = max(authoredMaskOuter,
-                    HikariSampleMaterialTexture(
-                        materialData.baseColorTextureDescriptorIndex,
-                        gParticleSampler,
-                        baseColorUv + dv,
-                        1.0f.xxxx).a * baseAlpha);
-                authoredMaskOuter = max(authoredMaskOuter,
-                    HikariSampleMaterialTexture(
-                        materialData.baseColorTextureDescriptorIndex,
-                        gParticleSampler,
-                        baseColorUv - dv,
-                        1.0f.xxxx).a * baseAlpha);
-                authoredMaskOuter = max(authoredMaskOuter,
-                    HikariSampleMaterialTexture(
-                        materialData.baseColorTextureDescriptorIndex,
-                        gParticleSampler,
-                        baseColorUv + diagonalA,
-                        1.0f.xxxx).a * baseAlpha);
-                authoredMaskOuter = max(authoredMaskOuter,
-                    HikariSampleMaterialTexture(
-                        materialData.baseColorTextureDescriptorIndex,
-                        gParticleSampler,
-                        baseColorUv - diagonalA,
-                        1.0f.xxxx).a * baseAlpha);
-                authoredMaskOuter = max(authoredMaskOuter,
-                    HikariSampleMaterialTexture(
-                        materialData.baseColorTextureDescriptorIndex,
-                        gParticleSampler,
-                        baseColorUv + diagonalB,
-                        1.0f.xxxx).a * baseAlpha);
-                authoredMaskOuter = max(authoredMaskOuter,
-                    HikariSampleMaterialTexture(
-                        materialData.baseColorTextureDescriptorIndex,
-                        gParticleSampler,
-                        baseColorUv - diagonalB,
-                        1.0f.xxxx).a * baseAlpha);
+                const uint maskTexture =
+                    materialData.baseColorTextureDescriptorIndex;
+                const float maskDuPositive = HikariSampleAuthoredParticleMask(
+                    maskTexture, baseColorUv + du, baseAlpha);
+                const float maskDuNegative = HikariSampleAuthoredParticleMask(
+                    maskTexture, baseColorUv - du, baseAlpha);
+                const float maskDvPositive = HikariSampleAuthoredParticleMask(
+                    maskTexture, baseColorUv + dv, baseAlpha);
+                const float maskDvNegative = HikariSampleAuthoredParticleMask(
+                    maskTexture, baseColorUv - dv, baseAlpha);
+                const float maskDiagonalAPositive =
+                    HikariSampleAuthoredParticleMask(
+                        maskTexture, baseColorUv + diagonalA, baseAlpha);
+                const float maskDiagonalANegative =
+                    HikariSampleAuthoredParticleMask(
+                        maskTexture, baseColorUv - diagonalA, baseAlpha);
+                const float maskDiagonalBPositive =
+                    HikariSampleAuthoredParticleMask(
+                        maskTexture, baseColorUv + diagonalB, baseAlpha);
+                const float maskDiagonalBNegative =
+                    HikariSampleAuthoredParticleMask(
+                        maskTexture, baseColorUv - diagonalB, baseAlpha);
+                authoredMaskOuter = max(
+                    authoredMaskOuter,
+                    max(
+                        max(maskDuPositive, maskDuNegative),
+                        max(maskDvPositive, maskDvNegative)));
+                authoredMaskOuter = max(
+                    authoredMaskOuter,
+                    max(
+                        max(maskDiagonalAPositive, maskDiagonalANegative),
+                        max(maskDiagonalBPositive, maskDiagonalBNegative)));
+                const float authoredMaskSum = authoredMaskCenter +
+                    maskDuPositive + maskDuNegative +
+                    maskDvPositive + maskDvNegative +
+                    maskDiagonalAPositive + maskDiagonalANegative +
+                    maskDiagonalBPositive + maskDiagonalBNegative;
+                authoredMaskNeighborhood = authoredMaskSum / 9.0f;
             }
         }
         if (materialData.hasEmissiveTexture != 0u)
@@ -878,14 +895,62 @@ float4 ParticlePS(ParticleVertex input) : SV_TARGET
         float breakupKeep = 1.0f;
         if (hasAuthoredStylizedMask)
         {
+            // Authored combat masks already contain antialiased coverage.
+            // A pure max-neighbour dilation promoted isolated texture flecks
+            // and edge texels into opaque outline blocks, while also making
+            // the authoring Edge Hardness parameter a no-op. Blend towards a
+            // coherent neighbourhood for softer skill profiles, keep the old
+            // dilation for deliberately hard impact profiles, and feather the
+            // physical sprite boundary so no clipped card edge can survive.
+            const float authoredHardness = saturate(
+                gDepthAndStyleParams.w);
+            const float coherentOuter = max(
+                authoredMaskCenter,
+                authoredMaskNeighborhood * 1.75f);
+            const float dilationWeight = smoothstep(
+                0.72f,
+                0.96f,
+                authoredHardness);
+            const float stableOuter = lerp(
+                coherentOuter,
+                authoredMaskOuter,
+                dilationWeight);
+            const float cardEdgeDistance = min(
+                min(input.localUv.x, 1.0f - input.localUv.x),
+                min(input.localUv.y, 1.0f - input.localUv.y));
+            const float cardPixelWidth = max(
+                max(fwidth(input.localUv.x), fwidth(input.localUv.y)),
+                1.0e-5f);
+            const float cardCoverage = smoothstep(
+                0.0f,
+                cardPixelWidth * lerp(
+                    2.75f,
+                    1.25f,
+                    authoredHardness),
+                cardEdgeDistance);
+            const float maskFilterWidth = max(
+                max(
+                    fwidth(stableOuter),
+                    fwidth(authoredMaskCenter)) *
+                    lerp(1.45f, 0.82f, authoredHardness),
+                0.018f);
+            const float outerThreshold = lerp(
+                0.22f,
+                0.46f,
+                authoredHardness);
+            const float coreThreshold = lerp(
+                0.34f,
+                0.58f,
+                authoredHardness);
             styleCoverage = smoothstep(
-                0.015f,
-                0.92f,
-                authoredMaskOuter);
+                outerThreshold - maskFilterWidth,
+                outerThreshold + maskFilterWidth,
+                stableOuter) * cardCoverage;
             coreCoverage = smoothstep(
-                0.20f,
-                0.78f,
-                authoredMaskCenter);
+                coreThreshold - maskFilterWidth,
+                coreThreshold + maskFilterWidth,
+                authoredMaskCenter) * cardCoverage;
+            coreCoverage = min(coreCoverage, styleCoverage);
         }
         else
         {
@@ -895,8 +960,25 @@ float4 ParticlePS(ParticleVertex input) : SV_TARGET
                 coreCoverage,
                 breakupKeep);
         }
+        const float outlineCoverage = max(
+            styleCoverage - coreCoverage,
+            0.0f);
         const float coreRatio = saturate(
-            coreCoverage / max(styleCoverage, 1.0e-4f));
+            coreCoverage /
+                max(coreCoverage + outlineCoverage, 1.0e-4f));
+        if (hasAuthoredStylizedMask)
+        {
+            const float authoredHardness = saturate(
+                gDepthAndStyleParams.w);
+            const float outlineOpacity = lerp(
+                0.78f,
+                0.96f,
+                authoredHardness);
+            alpha *= lerp(
+                outlineOpacity,
+                1.0f,
+                coreRatio);
+        }
         const float4 styleColor = lerp(
             gShaderOutlineColor,
             gShaderCoreColor,

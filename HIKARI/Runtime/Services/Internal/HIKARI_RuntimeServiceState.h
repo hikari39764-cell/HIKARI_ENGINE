@@ -7,6 +7,7 @@
 #include "Runtime/HIKARI_GamePresentationController.h"
 #include "Runtime/HIKARI_RuntimeHost.h"
 #include "Runtime/Services/HIKARI_ActionTimeDilationService.h"
+#include "Runtime/Services/HIKARI_GameProjectSaveStorageService.h"
 
 #include <cstdint>
 #include <string>
@@ -17,12 +18,14 @@ namespace HIKARI::SERVICES::INTERNAL {
         PLATFORM::Win32Window window{};
         INPUT::InputService inputService{};
         ActionTimeDilationService actionTimeDilationService{};
+        GameProjectSaveStorageService gameProjectSaveStorage{};
         RUNTIME::GamePresentationController gamePresentationController{};
         GFX::Dx12Core core{};
         bool comInitialized = false;
         RuntimeHostMode runtimeHostMode = RuntimeHostMode::Game;
         bool enableImGui = false;
         bool enableEditorUI = false;
+        bool runtimeSessionEndRequested = false;
         std::string runtimeStartupSceneGuid{};
         std::vector<std::string> runtimeExportedSceneGuids{};
         bool gpuFrameReady = false;

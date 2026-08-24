@@ -37,6 +37,10 @@ namespace HIKARI::EDITOR {
         if (auto* documentScene =
                 dynamic_cast<DocumentSceneBase*>(
                     runtimeApp_.GetCurrentScene())) {
+            if (SERVICES::ConsumeRuntimeSessionEndRequest()) {
+                editorPlaySession_.RequestStop(
+                    PlayStopReason::WindowClose);
+            }
             editorPlaySession_.Update(*documentScene);
         }
     }

@@ -1,7 +1,9 @@
 #include "HIKARI/Project/WorldView.h"
 
 #include <algorithm>
+#include <cmath>
 
+#include "Core/Math/HIKARI_MathValidation.h"
 #include "Runtime/Binding/HIKARI_RuntimeBindingStore.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
 #include "Scene/HIKARI_GameObject.h"
@@ -273,6 +275,41 @@ namespace HIKARI {
         return { position.x, position.y, position.z };
     }
 
+    bool ObjectView::GetWorldTransform(
+        GameProjectTransform& outTransform) const noexcept {
+        outTransform = {};
+        try {
+            const GameObject* object =
+                GameProjectSdkAccess::GetObject(*this);
+            if (object == nullptr) {
+                return false;
+            }
+            MATH::Vec3 position{};
+            MATH::Quat rotation = MATH::Quat::Identity();
+            MATH::Vec3 scale{ 1.0f, 1.0f, 1.0f };
+            if (!MATH::DecomposeTRS(
+                    object->GetTransform().GetWorldMatrix(),
+                    position,
+                    rotation,
+                    scale) ||
+                !MATH::IsFinite(position) ||
+                !MATH::IsFinite(rotation) ||
+                !MATH::IsFinite(scale)) {
+                return false;
+            }
+            outTransform.position = { position.x, position.y, position.z };
+            outTransform.rotation = {
+                rotation.x, rotation.y, rotation.z, rotation.w
+            };
+            outTransform.scale = { scale.x, scale.y, scale.z };
+            return true;
+        }
+        catch (...) {
+            outTransform = {};
+            return false;
+        }
+    }
+
     bool ObjectView::SetLocalPosition(
         GameProjectFloat3 position) const noexcept {
         GameObject* object =
@@ -297,6 +334,42 @@ namespace HIKARI {
         return object != nullptr
             ? GameProjectSdkAccess::MakeObjectView(*object)
             : ObjectView{};
+    }
+
+    SceneFlowView WorldView::GetSceneFlow() const noexcept {
+        try {
+            World* world = GameProjectSdkAccess::GetWorld(*this);
+            return world != nullptr
+                ? GameProjectSdkAccess::MakeSceneFlowView(*world)
+                : SceneFlowView{};
+        }
+        catch (...) {
+            return {};
+        }
+    }
+
+    SaveGameView WorldView::GetSaveGame() const noexcept {
+        try {
+            World* world = GameProjectSdkAccess::GetWorld(*this);
+            return world != nullptr
+                ? GameProjectSdkAccess::MakeSaveGameView(*world)
+                : SaveGameView{};
+        }
+        catch (...) {
+            return {};
+        }
+    }
+
+    RuntimeSessionView WorldView::GetRuntimeSession() const noexcept {
+        try {
+            World* world = GameProjectSdkAccess::GetWorld(*this);
+            return world != nullptr
+                ? GameProjectSdkAccess::MakeRuntimeSessionView(*world)
+                : RuntimeSessionView{};
+        }
+        catch (...) {
+            return {};
+        }
     }
 
     bool WorldView::ReadVariable(

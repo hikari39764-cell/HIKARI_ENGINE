@@ -50,6 +50,8 @@ namespace HIKARI {
             auto& gInputService = INTERNAL::GetRuntimeServiceState().inputService;
             auto& gActionTimeDilationService =
                 INTERNAL::GetRuntimeServiceState().actionTimeDilationService;
+            auto& gGameProjectSaveStorage =
+                INTERNAL::GetRuntimeServiceState().gameProjectSaveStorage;
             auto& gGamePresentationController =
                 INTERNAL::GetRuntimeServiceState().gamePresentationController;
             auto& gComInitialized =
@@ -59,6 +61,8 @@ namespace HIKARI {
             auto& gEnableImGui = INTERNAL::GetRuntimeServiceState().enableImGui;
             auto& gEnableEditorUI =
                 INTERNAL::GetRuntimeServiceState().enableEditorUI;
+            auto& gRuntimeSessionEndRequested =
+                INTERNAL::GetRuntimeServiceState().runtimeSessionEndRequested;
             auto& gRuntimeStartupSceneGuid =
                 INTERNAL::GetRuntimeServiceState().runtimeStartupSceneGuid;
             auto& gRuntimeExportedSceneGuids =
@@ -91,6 +95,10 @@ namespace HIKARI {
             return gActionTimeDilationService;
         }
 
+        GameProjectSaveStorageService& GetGameProjectSaveStorageService() {
+            return gGameProjectSaveStorage;
+        }
+
         bool IsEditorHost() { return IsEditorHostMode(gRuntimeHostMode); }
 
         bool IsStandaloneGameHost() { return IsStandaloneGameHostMode(gRuntimeHostMode); }
@@ -103,6 +111,28 @@ namespace HIKARI {
             return IsEditorHost() &&
                 IsEditorUIEnabled() &&
                 !IsInProcessGamePresentationActive();
+        }
+
+        int GetLogicalScreenWidth() { return gLogicalScreenWidth; }
+
+        int GetLogicalScreenHeight() { return gLogicalScreenHeight; }
+
+        void RequestRuntimeSessionEnd() {
+            gRuntimeSessionEndRequested = true;
+        }
+
+        bool IsRuntimeSessionEndRequested() {
+            return gRuntimeSessionEndRequested;
+        }
+
+        bool ConsumeRuntimeSessionEndRequest() {
+            const bool requested = gRuntimeSessionEndRequested;
+            gRuntimeSessionEndRequested = false;
+            return requested;
+        }
+
+        void ClearRuntimeSessionEndRequest() {
+            gRuntimeSessionEndRequested = false;
         }
 
         const std::string& GetRuntimeStartupSceneGuid() { return gRuntimeStartupSceneGuid; }
@@ -125,6 +155,7 @@ namespace HIKARI {
             const char* title,
             const RUNTIME::HostBootstrapConfig& cfg) {
             gActionTimeDilationService.Reset();
+            gRuntimeSessionEndRequested = false;
             const bool enableFrameGenerationPlugins =
                 IsEditorHostMode(cfg.hostMode) ||
                 (IsStandaloneGameHostMode(cfg.hostMode) &&
@@ -276,6 +307,21 @@ namespace HIKARI {
                 HIKARI_LOG_ERROR("Input service initialization failed.");
                 return false;
             }
+            if (projectContext.IsOpen()) {
+                std::string saveStorageMessage{};
+                if (!gGameProjectSaveStorage.Configure(
+                        projectContext.GetRoot(),
+                        {},
+                        &saveStorageMessage)) {
+                    HIKARI_LOG_ERROR(
+                        "GameProject save storage initialization failed: " +
+                        saveStorageMessage);
+                    return false;
+                }
+            }
+            else {
+                gGameProjectSaveStorage.Reset();
+            }
             gInputService.Contexts().SetActive(
                 "Editor", IsEditorHost());
             gInputService.Contexts().SetActive(
@@ -315,6 +361,8 @@ namespace HIKARI {
         void FinalizeAll() {
             HIKARI_LOG_INFO("HIKARI shutdown started.");
             gActionTimeDilationService.Reset();
+            gGameProjectSaveStorage.Reset();
+            gRuntimeSessionEndRequested = false;
             gInputService.Shutdown();
             if (IsInProcessGamePresentationActive() &&
                 !EndInProcessGamePresentation()) {

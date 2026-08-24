@@ -113,6 +113,14 @@ namespace HIKARI {
                 state_->editor.viewportDebugViewState;
             state_->editor.selectedGizmoObjectSnapshot =
                 state_->editor.selectedGizmoObjectId;
+            state_->editor.sceneIdSnapshot =
+                state_->identity.sceneId;
+            state_->editor.scenePathSnapshot =
+                state_->identity.scenePath;
+            state_->editor.sceneAssetGuidSnapshot =
+                state_->identity.currentSceneAssetGuid;
+            state_->editor.documentRevisionSnapshot =
+                state_->identity.documentRevision;
             state_->editor.documentSnapshot = state_->identity.document;
             state_->editor.environmentSnapshot =
                 state_->lighting.environment;
@@ -124,6 +132,14 @@ namespace HIKARI {
             // the editor, including unsaved component changes. Rebuilding
             // from disk here silently discarded the latest authoring state.
             if (!RebuildRuntimeWorld()) {
+                state_->identity.sceneId =
+                    std::move(state_->editor.sceneIdSnapshot);
+                state_->identity.scenePath =
+                    std::move(state_->editor.scenePathSnapshot);
+                state_->identity.currentSceneAssetGuid =
+                    state_->editor.sceneAssetGuidSnapshot;
+                state_->identity.documentRevision =
+                    state_->editor.documentRevisionSnapshot;
                 state_->identity.document =
                     std::move(
                         state_->editor.documentSnapshot);
@@ -228,6 +244,18 @@ namespace HIKARI {
             return true;
         }
 
+        // Runtime scene flow is allowed to replace the live document and its
+        // identity while Play is active.  Restore both halves before the
+        // editor World is rebuilt; otherwise a later editor auto-save can
+        // write the restored document through the runtime target's path.
+        state_->identity.sceneId =
+            std::move(state_->editor.sceneIdSnapshot);
+        state_->identity.scenePath =
+            std::move(state_->editor.scenePathSnapshot);
+        state_->identity.currentSceneAssetGuid =
+            state_->editor.sceneAssetGuidSnapshot;
+        state_->identity.documentRevision =
+            state_->editor.documentRevisionSnapshot;
         state_->identity.document = std::move(state_->editor.documentSnapshot);
         state_->lighting.environment =
             state_->editor.environmentSnapshot;
@@ -594,7 +622,9 @@ namespace HIKARI {
         state_->lighting.environment = state_->identity.document.environment;
         state_->lighting.environment.directional.direction = MATH::Normalize(state_->lighting.environment.directional.direction);
 
-        RuntimeSceneContext::SetCurrentWorld(&state_->runtime.world);
+        RuntimeSceneContext::SetCurrentWorld(
+            &state_->runtime.world,
+            state_->identity.sceneId);
         RuntimeSceneContext::ResolvePendingSceneEntry(state_->runtime.world, state_->identity.sceneId);
 
         if (built) {

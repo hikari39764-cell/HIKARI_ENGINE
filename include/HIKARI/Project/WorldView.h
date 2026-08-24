@@ -7,6 +7,7 @@
 
 #include "HIKARI/Project/ActionViews.h"
 #include "HIKARI/Project/GameProjectSdk.h"
+#include "HIKARI/Project/GameFlowViews.h"
 #include "HIKARI/Project/PresentationViews.h"
 #include "HIKARI/Project/UiView.h"
 #include "HIKARI/Project/ValueTypes.h"
@@ -30,6 +31,8 @@ namespace HIKARI {
             GetName() const noexcept;
         HIKARI_GAME_PROJECT_SDK_API GameProjectFloat3
             GetLocalPosition() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool GetWorldTransform(
+            GameProjectTransform& outTransform) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool SetLocalPosition(
             GameProjectFloat3 position) const noexcept;
 
@@ -95,6 +98,12 @@ namespace HIKARI {
             GetVfx() const noexcept;
         HIKARI_GAME_PROJECT_SDK_API UiView
             GetUi() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API SceneFlowView
+            GetSceneFlow() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API SaveGameView
+            GetSaveGame() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API RuntimeSessionView
+            GetRuntimeSession() const noexcept;
 
         template<class Component, class Visitor>
         bool ForEachComponent(

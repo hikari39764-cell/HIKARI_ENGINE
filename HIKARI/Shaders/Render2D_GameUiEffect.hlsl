@@ -54,6 +54,24 @@ float SampleExpandedAlpha(float2 uv, float radius)
     return alpha;
 }
 
+float SampleContractedAlpha(float2 uv, float radius)
+{
+    const float2 texel = gTexelSize * radius;
+    float alpha = gTexture.Sample(gSampler, uv).a;
+    alpha = min(alpha, gTexture.Sample(gSampler, uv + float2(texel.x, 0.0)).a);
+    alpha = min(alpha, gTexture.Sample(gSampler, uv - float2(texel.x, 0.0)).a);
+    alpha = min(alpha, gTexture.Sample(gSampler, uv + float2(0.0, texel.y)).a);
+    alpha = min(alpha, gTexture.Sample(gSampler, uv - float2(0.0, texel.y)).a);
+    return alpha;
+}
+
+float SampleAlphaEdge(float2 uv, float radius)
+{
+    return saturate(
+        SampleExpandedAlpha(uv, radius) -
+        SampleContractedAlpha(uv, radius));
+}
+
 float4 ApplyOutline(float4 color, float2 uv, float width, float strength)
 {
     const float expanded = SampleExpandedAlpha(uv, width);
@@ -61,6 +79,34 @@ float4 ApplyOutline(float4 color, float2 uv, float width, float strength)
     color.rgb = lerp(color.rgb, gEffectColor.rgb, outline);
     color.a = max(color.a, outline * gEffectColor.a);
     return color;
+}
+
+float2 SafeDirection(float2 direction)
+{
+    const float lengthSquared = dot(direction, direction);
+    return lengthSquared > 1.0e-5
+        ? direction * rsqrt(lengthSquared)
+        : float2(1.0, 0.0);
+}
+
+float4 ApplyTitleOutline(
+    float4 source,
+    float2 uv,
+    float radius,
+    float strength,
+    float visibility,
+    float4 outlineColor)
+{
+    // Title artwork is authored with transparent margins. Keep a complete,
+    // opaque silhouette around those margins instead of letting a reveal or
+    // focus pass turn the edge into a barely visible translucent halo.
+    const float sourceAlpha = gTexture.Sample(gSampler, uv).a * gTint.a;
+    const float expanded = SampleExpandedAlpha(uv, radius) * gTint.a;
+    const float outline = saturate(expanded - sourceAlpha) *
+        strength * saturate(visibility);
+    source.rgb = lerp(source.rgb, outlineColor.rgb, saturate(outline));
+    source.a = max(source.a, outline * outlineColor.a);
+    return source;
 }
 
 float4 PSMain(VSOutput input) : SV_Target0
@@ -374,6 +420,170 @@ float4 PSMain(VSOutput input) : SV_Target0
             input.uv,
             2.0,
             (0.45 + pulse * 0.18) * intensity);
+    }
+    else if (effect == 21u)
+    {
+        const float2 direction = SafeDirection(gParams1.xy);
+        const float projected = dot(input.uv - 0.5.xx, direction) + 0.5;
+        const float threshold = lerp(-0.18, 1.18, progress);
+        const float reveal = 1.0 - smoothstep(
+            threshold - 0.060,
+            threshold + 0.060,
+            projected);
+        const float revealEdge = 1.0 - smoothstep(
+            0.012,
+            0.080,
+            abs(projected - threshold));
+        const float sheenCenter = threshold - 0.035;
+        const float sheen = 1.0 - smoothstep(
+            0.020,
+            0.115,
+            abs(projected - sheenCenter));
+        color.a *= reveal;
+        color.rgb = lerp(
+            color.rgb,
+            gHighlightColor.rgb,
+            saturate((revealEdge * 0.72 + sheen * 0.38) * intensity));
+        color = ApplyTitleOutline(
+            color,
+            input.uv,
+            2.0 + intensity * 2.0,
+            0.18 + intensity * 0.32,
+            reveal,
+            gEffectColor);
+    }
+    else if (effect == 22u)
+    {
+        const float2 direction = SafeDirection(gParams1.xy);
+        const float projected = dot(input.uv - 0.5.xx, direction) + 0.5;
+        const float bandCenter = frac(time * 0.12 + progress * 0.37) * 1.34 -
+            0.17;
+        const float band = 1.0 - smoothstep(
+            0.025,
+            0.16,
+            abs(projected - bandCenter));
+        const float secondaryBand = 1.0 - smoothstep(
+            0.016,
+            0.095,
+            abs(projected - bandCenter + 0.15));
+        const float sourceAlpha = gTexture.Sample(gSampler, input.uv).a *
+            gTint.a;
+        const float alphaEdge = SampleAlphaEdge(input.uv, 1.75) * gTint.a;
+        const float edgeFlow = alphaEdge *
+            saturate(band * 0.82 + secondaryBand * 0.36);
+        const float interiorGlint = sourceAlpha * band * 0.14;
+        const float pulse = 0.5 + 0.5 * sin(time * 1.35);
+        color.rgb = lerp(
+            color.rgb,
+            gEffectColor.rgb,
+            saturate(edgeFlow * intensity * 0.92));
+        color.rgb = lerp(
+            color.rgb,
+            gHighlightColor.rgb,
+            saturate((edgeFlow * 0.72 + interiorGlint) * intensity));
+        color.rgb += gHighlightColor.rgb * edgeFlow * 0.08 * intensity *
+            color.a;
+        color = ApplyTitleOutline(
+            color,
+            input.uv,
+            2.1 + pulse * 0.45,
+            0.16 + pulse * 0.08 + intensity * 0.36,
+            1.0,
+            gEffectColor);
+    }
+    else if (effect == 23u)
+    {
+        const float2 direction = SafeDirection(gParams1.xy);
+        const float projected = dot(input.uv - 0.5.xx, direction) + 0.5;
+        const float threshold = lerp(-0.16, 1.16, progress);
+        const float reveal = 1.0 - smoothstep(
+            threshold - 0.075,
+            threshold + 0.075,
+            projected);
+        const float edge = 1.0 - smoothstep(
+            0.015,
+            0.10,
+            abs(projected - threshold));
+        color.a *= reveal;
+        color.rgb = lerp(
+            color.rgb,
+            gHighlightColor.rgb,
+            saturate(edge * 0.85 * intensity));
+        color = ApplyTitleOutline(
+            color,
+            input.uv,
+            2.0 + intensity * 1.5,
+            0.16 + intensity * 0.45,
+            reveal,
+            gEffectColor);
+    }
+    else if (effect == 24u)
+    {
+        const float pulse = 0.5 + 0.5 * sin(time * 1.75);
+        const float sweepCenter = frac(time * 0.16 + progress * 0.21) * 1.36 -
+            0.18;
+        const float projected = input.uv.x * 0.92 + input.uv.y * 0.08;
+        const float sweep = 1.0 - smoothstep(
+            0.022,
+            0.15,
+            abs(projected - sweepCenter));
+        const float alphaEdge = SampleAlphaEdge(input.uv, 1.85) * gTint.a;
+        const float movingEdge = alphaEdge * sweep;
+        const float restingEdge = alphaEdge * (0.16 + pulse * 0.10);
+        color.rgb = lerp(
+            color.rgb,
+            gEffectColor.rgb,
+            saturate((restingEdge + movingEdge * 0.88) * intensity));
+        color.rgb = lerp(
+            color.rgb,
+            gHighlightColor.rgb,
+            saturate(movingEdge * 0.70 * intensity));
+        color.rgb += gEffectColor.rgb * movingEdge * 0.08 * intensity *
+            color.a;
+        color = ApplyTitleOutline(
+            color,
+            input.uv,
+            2.1 + pulse * 0.55,
+            0.12 + intensity * (0.54 + pulse * 0.14),
+            1.0,
+            gEffectColor);
+    }
+    else if (effect == 25u)
+    {
+        const float press = sin(saturate(progress) * 3.14159265);
+        const float sweep = 1.0 - smoothstep(
+            0.018,
+            0.14,
+            abs(frac(input.uv.x * 1.15 + input.uv.y * 0.18 -
+                progress * 1.2) - 0.5));
+        color.rgb = lerp(
+            color.rgb,
+            gHighlightColor.rgb,
+            saturate((press * 0.66 + sweep * 0.38) * intensity));
+        color.rgb += gEffectColor.rgb * press * 0.20 * intensity * color.a;
+        color = ApplyTitleOutline(
+            color,
+            input.uv,
+            2.2 + press * 1.0,
+            0.18 + intensity * (0.55 + press * 0.20),
+            1.0,
+            gEffectColor);
+    }
+    else if (effect == 26u)
+    {
+        const float luminance = dot(color.rgb, float3(0.299, 0.587, 0.114));
+        // Disabled entries stay fully legible and keep their silhouette; the
+        // state is communicated by desaturation and a restrained outline,
+        // never by clipping or making the sprite disappear.
+        color.rgb = lerp(color.rgb, luminance.xxx, 0.86);
+        color.rgb *= 0.62;
+        color = ApplyTitleOutline(
+            color,
+            input.uv,
+            3.5,
+            0.84,
+            1.0,
+            float4(0.32, 0.36, 0.43, 0.92));
     }
 
     return color;

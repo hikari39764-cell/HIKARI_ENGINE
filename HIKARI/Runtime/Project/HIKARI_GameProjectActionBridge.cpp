@@ -21,6 +21,7 @@
 #include "Physics/HIKARI_PhysicsWorldService.h"
 #include "Render3D/Core/HIKARI_Camera3D.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
+#include "Runtime/Presentation/HIKARI_GamePresentationService.h"
 #include "Runtime/Services/HIKARI_ActionTimeDilationService.h"
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
 #include "HIKARI/Project/WorldView.h"
@@ -533,6 +534,105 @@ namespace HIKARI {
         }
         catch (...) {
             return 0u;
+        }
+    }
+
+    bool InputView::GetPointerState(
+        GameProjectPointerState& outState) const noexcept {
+        outState = {};
+        try {
+            if (world_ == nullptr ||
+                (!SERVICES::IsStandaloneGameHost() &&
+                    !SERVICES::IsInProcessGamePresentationActive())) {
+                return false;
+            }
+            auto* world = static_cast<World*>(world_);
+            const INPUT::InputService* input = world->Services().Find<
+                INPUT::InputService>();
+            const int width = SERVICES::GetLogicalScreenWidth();
+            const int height = SERVICES::GetLogicalScreenHeight();
+            if (input == nullptr || width <= 0 || height <= 0) {
+                return false;
+            }
+            const INPUT::InputDeviceState& devices =
+                input->GetSnapshot().GetDevices();
+            if (!std::isfinite(devices.mouseX) ||
+                !std::isfinite(devices.mouseY)) {
+                return false;
+            }
+            outState.x = devices.mouseX;
+            outState.y = devices.mouseY;
+            outState.normalizedX = std::clamp(
+                devices.mouseX / static_cast<float>(width),
+                0.0f,
+                1.0f);
+            outState.normalizedY = std::clamp(
+                devices.mouseY / static_cast<float>(height),
+                0.0f,
+                1.0f);
+            outState.primaryDown = devices.mouseButtons[0] != 0u ? 1u : 0u;
+            outState.secondaryDown = devices.mouseButtons[1] != 0u ? 1u : 0u;
+            outState.valid = 1u;
+            outState.logicalWidth = static_cast<uint32_t>(width);
+            outState.logicalHeight = static_cast<uint32_t>(height);
+            return true;
+        }
+        catch (...) {
+            outState = {};
+            return false;
+        }
+    }
+
+    bool InputView::SetContextActive(
+        std::string_view contextId,
+        uint8_t active) const noexcept {
+        try {
+            if (world_ == nullptr || contextId.empty()) {
+                return false;
+            }
+            auto* world = static_cast<World*>(world_);
+            INPUT::InputService* input = world->Services().Find<
+                INPUT::InputService>();
+            if (input == nullptr) {
+                return false;
+            }
+            input->Contexts().SetActive(
+                std::string(contextId),
+                active != 0u);
+            return true;
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
+    bool InputView::SetUiInteractionActive(
+        uint8_t active) const noexcept {
+        try {
+            if (world_ == nullptr) {
+                return false;
+            }
+            auto* world = static_cast<World*>(world_);
+            INPUT::InputService* input = world->Services().Find<
+                INPUT::InputService>();
+            if (input == nullptr) {
+                return false;
+            }
+            if (active != 0u) {
+                input->SetMouseCaptureMode(INPUT::MouseCaptureMode::Free);
+                input->ClearMouseCaptureRegion();
+            }
+            else {
+                input->SetMouseCaptureMode(
+                    SERVICES::IsStandaloneGameHost() ||
+                        SERVICES::IsInProcessGamePresentationActive()
+                    ? INPUT::MouseCaptureMode::Relative
+                    : INPUT::MouseCaptureMode::Free);
+            }
+            return true;
+        }
+        catch (...) {
+            return false;
         }
     }
 
@@ -1222,6 +1322,38 @@ namespace HIKARI {
         }
     }
 
+    bool MotionView::RequestTeleport(
+        const GameProjectKinematicTeleport& teleport) const noexcept {
+        try {
+            if (world_ == nullptr || teleport.sourceId == 0u ||
+                !IsFinite(teleport.position) ||
+                !IsFiniteNonZeroRotation(teleport.rotation) ||
+                HasNonZeroReserved(teleport.reserved, 3u)) {
+                return false;
+            }
+            World* world = static_cast<World*>(world_);
+            GameObject* object = FindObject(world, teleport.objectHandle);
+            PHYSICS::KinematicMotionService* service =
+                world->Services().Find<PHYSICS::KinematicMotionService>();
+            if (object == nullptr || service == nullptr) {
+                return false;
+            }
+            PHYSICS::KinematicTeleportRequest request{};
+            request.pose.position = ToRuntime(teleport.position);
+            request.pose.rotation = ToRuntime(teleport.rotation);
+            request.clearVelocity = teleport.clearVelocity != 0u;
+            service->RequestTeleport(
+                object->GetRuntimeHandle(),
+                teleport.sourceId,
+                teleport.priority,
+                request);
+            return true;
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
     bool MotionView::GetKinematicState(
         uint64_t objectHandle,
         GameProjectKinematicState& outState) const noexcept {
@@ -1391,6 +1523,61 @@ namespace HIKARI {
                 outHits[index] = ToProjectHit(hits[index]);
             }
             return static_cast<uint32_t>(count);
+        }
+        catch (...) {
+            return 0u;
+        }
+    }
+
+    uint32_t PhysicsQueryView::ReadTriggerEvents(
+        GameProjectPhysicsTriggerEvent* outEvents,
+        uint32_t capacity) const noexcept {
+        try {
+            if (world_ == nullptr || outEvents == nullptr || capacity == 0u) {
+                return 0u;
+            }
+            const auto* world = static_cast<const World*>(world_);
+            const auto events = world->FixedEvents().Read<
+                PHYSICS::PhysicsContactEvent>();
+            uint32_t written = 0u;
+            for (const PHYSICS::PhysicsContactEvent& event : events) {
+                if (!event.isTrigger || written >= capacity) {
+                    continue;
+                }
+                GameProjectPhysicsTriggerEvent result{};
+                result.objectA = event.objectA.ToValue();
+                result.objectB = event.objectB.ToValue();
+                result.bodyA = event.bodyA.ToValue();
+                result.bodyB = event.bodyB.ToValue();
+                result.sourceShapeIdA = event.shapeKeyA.sourceShapeId;
+                result.sourceShapeIdB = event.shapeKeyB.sourceShapeId;
+                result.position = FiniteOr(event.position);
+                result.normal = FiniteOr(event.normal);
+                result.penetrationDepth = std::isfinite(event.penetrationDepth)
+                    ? event.penetrationDepth
+                    : 0.0f;
+                result.impulse = std::isfinite(event.impulse)
+                    ? event.impulse
+                    : 0.0f;
+                result.shapeIndexA = event.shapeIndexA;
+                result.shapeIndexB = event.shapeIndexB;
+                result.componentOrdinalA = event.shapeKeyA.componentOrdinal;
+                result.componentOrdinalB = event.shapeKeyB.componentOrdinal;
+                switch (event.phase) {
+                case PHYSICS::PhysicsContactPhase::Persist:
+                    result.phase = GameProjectPhysicsContactPhase::Persist;
+                    break;
+                case PHYSICS::PhysicsContactPhase::End:
+                    result.phase = GameProjectPhysicsContactPhase::End;
+                    break;
+                case PHYSICS::PhysicsContactPhase::Begin:
+                default:
+                    result.phase = GameProjectPhysicsContactPhase::Begin;
+                    break;
+                }
+                outEvents[written++] = result;
+            }
+            return written;
         }
         catch (...) {
             return 0u;

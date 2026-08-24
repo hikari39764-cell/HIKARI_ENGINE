@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -24,6 +25,7 @@ namespace HIKARI {
         std::string transitionProfileId{ "Default" };
         bool useTransition = true;
         bool preserveGameplayState = false;
+        uint64_t userData = 0u;
     };
 
     class SceneTransitionBus {

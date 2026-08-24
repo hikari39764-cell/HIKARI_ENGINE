@@ -4,6 +4,7 @@
 #include "Runtime/HIKARI_RuntimeHost.h"
 #include "Runtime/Host/HIKARI_HostBootstrapConfig.h"
 #include "Runtime/Services/HIKARI_ActionTimeDilationService.h"
+#include "Runtime/Services/HIKARI_GameProjectSaveStorageService.h"
 
 #include <string>
 #include <vector>
@@ -13,12 +14,20 @@ namespace HIKARI::SERVICES {
     INPUT::InputService& GetInputService();
     const INPUT::InputSnapshot& GetInputSnapshot();
     ActionTimeDilationService& GetActionTimeDilationService();
+    GameProjectSaveStorageService& GetGameProjectSaveStorageService();
 
     bool IsEditorHost();
     bool IsStandaloneGameHost();
     bool IsImGuiEnabled();
     bool IsEditorUIEnabled();
     bool ShouldProduceEditorUiFrame();
+    int GetLogicalScreenWidth();
+    int GetLogicalScreenHeight();
+
+    void RequestRuntimeSessionEnd();
+    bool IsRuntimeSessionEndRequested();
+    bool ConsumeRuntimeSessionEndRequest();
+    void ClearRuntimeSessionEndRequest();
 
     const std::string& GetRuntimeStartupSceneGuid();
     const std::vector<std::string>& GetRuntimeExportedSceneGuids();

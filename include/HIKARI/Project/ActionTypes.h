@@ -47,6 +47,23 @@ namespace HIKARI {
         uint8_t released = 0u;
     };
 
+    // Pointer coordinates are expressed in the active presentation's logical
+    // client pixels. normalizedX/Y are clamped to [0, 1]. Embedded editor
+    // views that do not own a standalone presentation surface report valid=0
+    // so GameProjects can keep keyboard/gamepad navigation authoritative.
+    struct GameProjectPointerState {
+        float x = 0.0f;
+        float y = 0.0f;
+        float normalizedX = 0.0f;
+        float normalizedY = 0.0f;
+        uint8_t primaryDown = 0u;
+        uint8_t secondaryDown = 0u;
+        uint8_t valid = 0u;
+        uint8_t reserved = 0u;
+        uint32_t logicalWidth = 0u;
+        uint32_t logicalHeight = 0u;
+    };
+
     struct GameProjectAnimationState {
         uint64_t clipId = 0u;
         uint64_t poseRevision = 0u;
@@ -132,6 +149,19 @@ namespace HIKARI {
         uint32_t reserved = 0u;
     };
 
+    // A one-shot authoritative teleport consumed by the kinematic physics
+    // owner. Save/load and checkpoint restoration use this instead of writing
+    // ObjectView transforms behind the solver.
+    struct GameProjectKinematicTeleport {
+        uint64_t objectHandle = 0u;
+        uint64_t sourceId = 0u;
+        int32_t priority = 0;
+        GameProjectFloat3 position{};
+        GameProjectQuat rotation{};
+        uint8_t clearVelocity = 1u;
+        uint8_t reserved[3] = { 0u, 0u, 0u };
+    };
+
     enum class GameProjectGroundState : uint8_t {
         OnGround = 0,
         OnSteepGround = 1,
@@ -214,6 +244,34 @@ namespace HIKARI {
         uint32_t shapeIndex = 0u;
         uint32_t componentOrdinal = 0u;
         uint8_t isTrigger = 0u;
+        uint8_t reserved[7] = { 0u, 0u, 0u, 0u, 0u, 0u, 0u };
+    };
+
+    enum class GameProjectPhysicsContactPhase : uint8_t {
+        Begin = 0u,
+        Persist = 1u,
+        End = 2u,
+    };
+
+    // Frame-local fixed-event copy. Runtime handles are valid only in the
+    // current World and must never be serialized into a save payload.
+    struct GameProjectPhysicsTriggerEvent {
+        uint64_t objectA = 0u;
+        uint64_t objectB = 0u;
+        uint64_t bodyA = 0u;
+        uint64_t bodyB = 0u;
+        uint64_t sourceShapeIdA = 0u;
+        uint64_t sourceShapeIdB = 0u;
+        GameProjectFloat3 position{};
+        GameProjectFloat3 normal{};
+        float penetrationDepth = 0.0f;
+        float impulse = 0.0f;
+        uint32_t shapeIndexA = 0u;
+        uint32_t shapeIndexB = 0u;
+        uint32_t componentOrdinalA = 0u;
+        uint32_t componentOrdinalB = 0u;
+        GameProjectPhysicsContactPhase phase =
+            GameProjectPhysicsContactPhase::Begin;
         uint8_t reserved[7] = { 0u, 0u, 0u, 0u, 0u, 0u, 0u };
     };
 

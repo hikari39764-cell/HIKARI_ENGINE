@@ -27,6 +27,14 @@ namespace HIKARI {
         ItemChargeIdle = 18u,
         ItemChargeUse = 19u,
         HudIdleEnergy = 20u,
+        // Title-screen effects are appended to preserve the serialized/UI
+        // effect values used by existing game projects.
+        TitleLogoReveal = 21u,
+        TitleLogoIdleSheen = 22u,
+        TitleMenuReveal = 23u,
+        TitleMenuFocus = 24u,
+        TitleMenuPress = 25u,
+        TitleMenuDisabled = 26u,
     };
 
     // Submission flags are shared by sprites, text and backdrop requests.

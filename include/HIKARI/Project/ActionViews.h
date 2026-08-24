@@ -24,6 +24,13 @@ namespace HIKARI {
             GetLastActiveDevice() const noexcept;
         HIKARI_GAME_PROJECT_SDK_API uint64_t
             GetFrameIndex() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool GetPointerState(
+            GameProjectPointerState& outState) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool SetContextActive(
+            std::string_view contextId,
+            uint8_t active) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool SetUiInteractionActive(
+            uint8_t active) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool SetGamepadVibration(
             float lowFrequency,
             float highFrequency,
@@ -131,6 +138,8 @@ namespace HIKARI {
                 const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool SubmitMotionDelta(
             const GameProjectKinematicMotionDelta& delta) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool RequestTeleport(
+            const GameProjectKinematicTeleport& teleport) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool GetKinematicState(
             uint64_t objectHandle,
             GameProjectKinematicState& outState) const noexcept;
@@ -156,6 +165,9 @@ namespace HIKARI {
         HIKARI_GAME_PROJECT_SDK_API uint32_t Overlap(
             const GameProjectPhysicsOverlapQuery& query,
             GameProjectPhysicsHit* outHits,
+            uint32_t capacity) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API uint32_t ReadTriggerEvents(
+            GameProjectPhysicsTriggerEvent* outEvents,
             uint32_t capacity) const noexcept;
 
     private:

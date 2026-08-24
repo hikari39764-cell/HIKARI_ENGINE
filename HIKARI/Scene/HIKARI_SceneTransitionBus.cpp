@@ -58,7 +58,10 @@ namespace HIKARI {
         case TransitionState::SwitchingScene: {
             if (!pendingRequest_->targetSceneAssetGuid.empty()) {
                 // Scene Asset GUID は現在の DocumentScene に直接渡す。
-                RuntimeSceneContext::SetPendingSceneEntry(pendingRequest_->targetSceneAssetGuid, pendingRequest_->targetSpawnPointId);
+                RuntimeSceneContext::SetPendingSceneEntry(
+                    pendingRequest_->targetSceneAssetGuid,
+                    pendingRequest_->targetSpawnPointId,
+                    pendingRequest_->userData);
                 IScene* currentScene = sceneManager_.GetCurrentScene();
                 DocumentSceneBase* documentScene = dynamic_cast<DocumentSceneBase*>(currentScene);
                 const bool opened = documentScene &&
@@ -66,6 +69,7 @@ namespace HIKARI {
                 lastSceneLoadedFromCache_ = false;
 
                 if (!opened) {
+                    RuntimeSceneContext::ClearPendingSceneEntry();
                     state_ = TransitionState::Idle;
                     pendingRequest_.reset();
                     break;

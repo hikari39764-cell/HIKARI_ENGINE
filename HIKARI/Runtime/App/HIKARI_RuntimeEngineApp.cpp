@@ -122,7 +122,9 @@ namespace HIKARI::RUNTIME {
     }
 
     bool RuntimeEngineApp::ShouldExitHost() const {
-        return standaloneRuntimeEntryFailed_;
+        return standaloneRuntimeEntryFailed_ ||
+            (SERVICES::IsStandaloneGameHost() &&
+                SERVICES::IsRuntimeSessionEndRequested());
     }
 
     IScene* RuntimeEngineApp::GetCurrentScene() {
