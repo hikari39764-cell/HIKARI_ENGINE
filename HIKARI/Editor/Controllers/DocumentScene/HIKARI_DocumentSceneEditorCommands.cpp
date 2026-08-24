@@ -64,13 +64,6 @@ namespace HIKARI {
         }
 
         if (workspaceHost_.IsActive(
-                EDITOR::EditorWorkspaceId::CombatAction)) {
-            combatActionWorkspaceController_.BindDocumentCommands(
-                commandRouter_, scene);
-            return;
-        }
-
-        if (workspaceHost_.IsActive(
                 EDITOR::EditorWorkspaceId::ModelCollision)) {
             modelCollisionWorkspaceController_.BindDocumentCommands(
                 commandRouter_,

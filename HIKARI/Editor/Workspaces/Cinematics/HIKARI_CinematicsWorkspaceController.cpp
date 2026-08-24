@@ -176,17 +176,14 @@ void CinematicsWorkspaceController::BindDocumentCommands(
       "cinematics.redo");
 }
 
-void CinematicsWorkspaceController::PrepareForRuntimePlay(
-    DocumentSceneBase &scene) {
+void CinematicsWorkspaceController::PrepareForRuntimePlay() {
   directorViewPanel_.ExitPilot();
-  sequencePresentationPanel_.Reset(&scene.GetWorld());
 }
 
 void CinematicsWorkspaceController::OnCinematicsDocumentRestored(
     DocumentSceneBase &scene, EditorWorkspaceHost &workspaceHost) {
 
   cameraTimelinePanel_.ResetForScene();
-  sequencePresentationPanel_.Reset(&scene.GetWorld());
   RestoreTimelinePreview(scene, workspaceHost);
   timelinePreviewOwned_ = false;
   timelinePreviewShotId_ = 0;
@@ -206,7 +203,6 @@ void CinematicsWorkspaceController::ApplyWorkspaceActivation(
 
   if (activation.previous == EditorWorkspaceId::Cinematics &&
       activation.current != EditorWorkspaceId::Cinematics) {
-    sequencePresentationPanel_.RestoreActorPreview(scene.GetWorld());
     cameraTimelinePanel_.PausePlayback();
     timelinePreviewOwned_ = false;
     timelinePreviewShotId_ = 0;
@@ -303,11 +299,6 @@ void CinematicsWorkspaceController::SyncSceneIdentity(
 
   directorViewPanel_.ResetForScene();
   cameraTimelinePanel_.ResetForScene();
-  if (sceneChanged) {
-    sequencePresentationPanel_.Reset();
-  } else {
-    sequencePresentationPanel_.Reset(&scene.GetWorld());
-  }
   cameraPreviewOwned_ = false;
   timelinePreviewOwned_ = false;
   timelinePreviewShotId_ = 0;

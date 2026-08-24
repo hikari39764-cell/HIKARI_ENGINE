@@ -63,8 +63,6 @@ std::string ToAssetTypeText(AssetType type) {
     return TEXT::Localize("ui.assetBrowser.typeVfx");
   case AssetType::Sequence:
     return TEXT::Localize("ui.assetBrowser.typeSequence");
-  case AssetType::CombatAction:
-    return TEXT::Localize("ui.assetBrowser.typeCombatAction");
   case AssetType::AnimationStateMachine:
     return TEXT::Localize("ui.assetBrowser.typeAnimationStateMachine");
   case AssetType::Dialogue:

@@ -23,7 +23,6 @@ namespace HIKARI {
         Particle,
         VfxEffect,
         Sequence,
-        CombatAction,
         AnimationStateMachine,
         Dialogue,
         ModelMaterialBinding,

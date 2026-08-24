@@ -4,7 +4,6 @@
 #include <utility>
 
 #include "Scene/Sequencer/Serialization/HIKARI_CameraAnimationTrackJson.h"
-#include "Scene/Sequencer/Serialization/HIKARI_PresentationTrackJson.h"
 
 namespace HIKARI {
 
@@ -210,9 +209,6 @@ namespace HIKARI {
                 DeserializeLegacyShots(sequenceNode, sequence);
             }
             DeserializeCameraAnimationTracksJson(sequenceNode, sequence);
-            SEQUENCER::DeserializePresentationTracksJson(
-                sequenceNode,
-                sequence);
             NormalizeCinematicSequence(sequence);
             return sequence;
         }
@@ -333,9 +329,6 @@ namespace HIKARI {
             }
             sequenceNode["tracks"].push_back(std::move(cameraTrackNode));
             SerializeCameraAnimationTracksJson(
-                sequence,
-                sequenceNode["tracks"]);
-            SEQUENCER::SerializePresentationTracksJson(
                 sequence,
                 sequenceNode["tracks"]);
             output["sequences"].push_back(std::move(sequenceNode));

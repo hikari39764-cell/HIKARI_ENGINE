@@ -378,9 +378,6 @@ namespace HIKARI {
                     EDITOR::EditorWorkspaceId::Dialogue,
                     "menu.workspace.dialogue" },
                 std::pair{
-                    EDITOR::EditorWorkspaceId::CombatAction,
-                    "menu.workspace.combatAction" },
-                std::pair{
                     EDITOR::EditorWorkspaceId::TerrainSurface,
                     "menu.workspace.terrainSurface" },
             };

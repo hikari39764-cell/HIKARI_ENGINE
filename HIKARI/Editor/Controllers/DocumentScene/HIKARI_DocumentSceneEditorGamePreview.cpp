@@ -72,7 +72,7 @@ namespace HIKARI {
     bool DocumentSceneEditorController::PrepareGamePreview(
         DocumentSceneBase& scene) {
 #if defined(HIKARI_WITH_EDITOR)
-        cinematicsWorkspaceController_.PrepareForRuntimePlay(scene);
+        cinematicsWorkspaceController_.PrepareForRuntimePlay();
         const AssetGuid& sceneGuid = scene.GetCurrentSceneAssetGuid();
         if (!sceneGuid.IsValid()) {
             viewportDropMessage_ =

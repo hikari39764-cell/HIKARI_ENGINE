@@ -14,7 +14,6 @@ namespace HIKARI::ASSETS::SEMANTICS {
         Model,
         Scene,
         Sequence,
-        CombatAction,
         AnimationStateMachine,
         Dialogue,
         Material,

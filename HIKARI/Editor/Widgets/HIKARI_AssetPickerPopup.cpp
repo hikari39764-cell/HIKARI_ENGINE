@@ -29,7 +29,6 @@ namespace HIKARI::EDITOR {
             case AssetType::Animation: return "Animation";
             case AssetType::Particle: return "Particle";
             case AssetType::Sequence: return "Sequence";
-            case AssetType::CombatAction: return "Combat Action";
             case AssetType::AnimationStateMachine:
                 return "Animation State Machine";
             case AssetType::Dialogue: return "Dialogue";
@@ -49,7 +48,6 @@ namespace HIKARI::EDITOR {
             case AssetType::Material: return "[Mat]";
             case AssetType::VfxEffect: return "[V]";
             case AssetType::Sequence: return "[Seq]";
-            case AssetType::CombatAction: return "[Act]";
             case AssetType::AnimationStateMachine: return "[ASM]";
             case AssetType::Dialogue: return "[DLG]";
             case AssetType::ModelMaterialBinding: return "[Set]";

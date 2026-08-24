@@ -22,7 +22,6 @@ namespace HIKARI::EDITOR {
         case AssetType::VfxEffect:
             return EditorGlyph::Vfx;
         case AssetType::Sequence: return EditorGlyph::Sequence;
-        case AssetType::CombatAction: return EditorGlyph::Animation;
         case AssetType::AnimationStateMachine:
             return EditorGlyph::StateMachine;
         case AssetType::Dialogue:
@@ -48,8 +47,6 @@ namespace HIKARI::EDITOR {
         case AssetType::VfxEffect:
             return ImVec4(0.94f, 0.48f, 0.66f, 1.0f);
         case AssetType::Sequence: return ImVec4(0.62f, 0.58f, 0.94f, 1.0f);
-        case AssetType::CombatAction:
-            return ImVec4(1.0f, 0.50f, 0.28f, 1.0f);
         case AssetType::AnimationStateMachine:
             return ImVec4(0.30f, 0.82f, 0.72f, 1.0f);
         case AssetType::Dialogue:

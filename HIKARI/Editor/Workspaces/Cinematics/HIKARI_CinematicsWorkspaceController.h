@@ -12,7 +12,6 @@
 #include "Editor/Workspaces/HIKARI_EditorWorkspaceHost.h"
 #include "Editor/Workspaces/Sequence/HIKARI_SequenceEditorDocumentToolbar.h"
 #include "Editor/Workspaces/Sequence/HIKARI_SequenceLibraryPanel.h"
-#include "Editor/Workspaces/Sequence/HIKARI_SequencePresentationPanel.h"
 #include "Scene/HIKARI_CameraDirector.h"
 #include "Scene/HIKARI_SceneObjectId.h"
 
@@ -38,7 +37,7 @@ public:
   void DrawDockSpace(bool resetDefaultDockLayout) const;
   void SyncSceneIdentity(DocumentSceneBase &scene,
                          EditorWorkspaceHost &workspaceHost);
-  void PrepareForRuntimePlay(DocumentSceneBase &scene);
+  void PrepareForRuntimePlay();
   void OnCinematicsDocumentRestored(DocumentSceneBase &scene,
                                     EditorWorkspaceHost &workspaceHost);
   void ApplyWorkspaceActivation(DocumentSceneBase &scene,
@@ -87,11 +86,6 @@ private:
   void DrawTimelineWindow(DocumentSceneBase &scene, EditorContext &context,
                           EditorWorkspaceHost &workspaceHost,
                           CinematicsWorkspaceResult &result);
-  void DrawPresentationTracksWindow(
-      DocumentSceneBase &scene, EditorContext &context,
-      CinematicsWorkspaceResult &result);
-  void DrawSequenceInspectorWindow(
-      DocumentSceneBase &scene, CinematicsWorkspaceResult &result);
 
   void ApplyCameraOverviewAction(DocumentSceneBase &scene,
                                  const CameraOverviewAction &action,
@@ -120,7 +114,6 @@ private:
   SequenceEditorDocumentController sequenceDocumentController_{};
   SequenceEditorDocumentToolbar sequenceDocumentToolbar_{};
   SequenceLibraryPanel sequenceLibraryPanel_{};
-  SequencePresentationPanel sequencePresentationPanel_{};
   DirectorViewPanel directorViewPanel_{};
   bool sequenceLibraryVisible_ = true;
   bool cameraPreviewOwned_ = false;

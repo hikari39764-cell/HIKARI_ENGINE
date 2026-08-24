@@ -29,7 +29,6 @@
 #include "Render3D/Lighting/HIKARI_LocalLightList.h"
 #include "Scene/Features/HIKARI_RuntimeFeatureIds.h"
 #include "Scene/Sequencer/Drivers/HIKARI_CameraSequenceTrackDriver.h"
-#include "Scene/Sequencer/Drivers/HIKARI_PresentationSequenceTrackDriver.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
 #include "Vfx/Post/HIKARI_PostProfile.h"
 #include "Scene/HIKARI_RuntimeSceneContext.h"
@@ -140,11 +139,6 @@ namespace HIKARI {
                 state_->camera.director,
                 state_->runtime.world,
                 state_->camera.editorCamera));
-        (void)state_->camera.sequencePlayback.RegisterDriver(
-            std::make_unique<SEQUENCER::PresentationSequenceTrackDriver>(
-                state_->runtime.world,
-                state_->runtime.vfxPlaybackService,
-                SERVICES::GetActionTimeDilationService()));
     }
 
     DocumentSceneBase::~DocumentSceneBase() = default;
@@ -249,12 +243,6 @@ namespace HIKARI {
                 CameraControlInputContext::EditorViewport);
         }
         state_->runtime.systemScheduler.PreUpdate(state_->runtime.world, frame);
-        if (state_->runtime.playActive && IsRuntimeFeatureActive(
-                RuntimeFeatureIds::Cinematics)) {
-            // Presentation tracks must resolve before AnimationSystem and
-            // render submission consume the authored pose/VFX state.
-            state_->camera.sequencePlayback.Update(frame.gameDt);
-        }
         state_->runtime.world.Update(dt);
 
         const FixedStepFramePlan fixedPlan =
@@ -297,6 +285,10 @@ namespace HIKARI {
         (void)state_->runtime.bindingStore.PublishSnapshot();
 
         if (state_->runtime.playActive) {
+            if (IsRuntimeFeatureActive(
+                    RuntimeFeatureIds::Cinematics)) {
+                state_->camera.sequencePlayback.Update(dt);
+            }
             state_->camera.resolvedFrame = state_->camera.director.Resolve(
                 state_->runtime.world,
                 state_->camera.gameplayCamera,

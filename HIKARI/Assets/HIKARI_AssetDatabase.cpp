@@ -28,7 +28,6 @@
 #include "Importers/HIKARI_DialogueAssetImporter.h"
 #include "Importers/HIKARI_SceneAssetImporter.h"
 #include "Importers/HIKARI_SequenceAssetImporter.h"
-#include "Importers/HIKARI_CombatActionAssetImporter.h"
 #include "Importers/HIKARI_SkyCubemapImporter.h"
 #include "Importers/HIKARI_TextureImportBackend_DirectXTex.h"
 #include "Importers/HIKARI_TextureImporter.h"
@@ -164,7 +163,6 @@ namespace HIKARI {
             case AssetType::Scene:
                 return 5;
             case AssetType::Sequence:
-            case AssetType::CombatAction:
             case AssetType::AnimationStateMachine:
             case AssetType::Dialogue:
                 return 5;
@@ -1291,8 +1289,6 @@ namespace HIKARI {
         importerRegistry_.Register(std::make_unique<ModelImporter>());
         importerRegistry_.Register(std::make_unique<SceneAssetImporter>());
         importerRegistry_.Register(std::make_unique<SequenceAssetImporter>());
-        importerRegistry_.Register(
-            std::make_unique<CombatActionAssetImporter>());
         importerRegistry_.Register(
             std::make_unique<AnimationStateMachineAssetImporter>());
         importerRegistry_.Register(

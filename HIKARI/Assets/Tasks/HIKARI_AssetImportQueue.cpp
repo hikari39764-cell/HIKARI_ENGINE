@@ -71,7 +71,6 @@ namespace HIKARI {
                 return 5;
             case AssetType::Scene:
             case AssetType::Sequence:
-            case AssetType::CombatAction:
             case AssetType::AnimationStateMachine:
             case AssetType::Dialogue:
                 return 5;

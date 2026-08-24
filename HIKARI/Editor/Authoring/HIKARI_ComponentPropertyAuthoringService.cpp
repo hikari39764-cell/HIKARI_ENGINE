@@ -62,7 +62,6 @@ namespace HIKARI::EDITOR {
             case AssetType::Particle: return "Particle";
             case AssetType::VfxEffect: return "VfxEffect";
             case AssetType::Sequence: return "Sequence";
-            case AssetType::CombatAction: return "Combat Action";
             case AssetType::AnimationStateMachine:
                 return "AnimationStateMachine";
             case AssetType::Dialogue: return "Dialogue";

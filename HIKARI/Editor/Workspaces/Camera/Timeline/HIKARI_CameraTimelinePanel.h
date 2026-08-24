@@ -31,11 +31,6 @@ public:
   void PausePlayback();
   void SuspendPreview();
   CinematicSequence *GetActiveSequence(SceneCinematicsSettings &settings);
-  float GetTimeSeconds() const noexcept;
-  bool IsPlaying() const noexcept;
-  bool Seek(SceneCinematicsSettings &settings, float timeSeconds);
-  const SEQUENCER::SequenceBindingContext &GetPreviewBindings() const noexcept;
-  SEQUENCER::SequenceBindingContext &GetPreviewBindings() noexcept;
 
 private:
   bool EnsureActiveSequence(SceneCinematicsSettings &settings);
