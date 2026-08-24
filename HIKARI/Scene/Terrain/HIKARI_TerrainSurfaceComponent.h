@@ -1,5 +1,8 @@
 #pragma once
 
+#include <map>
+#include <optional>
+#include <string>
 #include <string_view>
 #include <unordered_map>
 #include <vector>
@@ -85,6 +88,12 @@ namespace HIKARI {
         // revision は stroke 終了時に 1 回だけ commit する。
         void BeginGeometryEditBatch() noexcept;
         bool EndGeometryEditBatch() noexcept;
+        // 直前の geometry edit batch が触れた chunk だけを、Undo/Redo 用の
+        // before/after delta として返す。巨大な TerrainSurface 全体を stroke
+        // ごとに複製しない。返却後は delta を破棄する。
+        bool ConsumeGeometryEditDelta(
+            nlohmann::json& outBeforeDelta,
+            nlohmann::json& outAfterDelta);
 
         // ── 物理 / 変形 ───────────────────────────────────
         // ワールド XZ の地形高さをサンプルする。chunk が無い場所は false。
@@ -116,6 +125,10 @@ namespace HIKARI {
         uint64_t GetGeometryRevision() const noexcept;
         uint64_t GetCoverageRevision() const noexcept;
         uint64_t GetCollisionRevision() const noexcept;
+        // Render bridge は内容配列を毎 frame hash せず、この authored chunk
+        // revision で差分を判定する。存在しない chunk は 0。
+        uint64_t GetChunkRevision(
+            const TERRAIN::TerrainChunkKey& key) const noexcept;
 
         // chunk 走査用。描画・衝突・変形システムがここから chunk を得る。
         const TERRAIN::TerrainChunkMap& GetChunks() const noexcept;
@@ -142,6 +155,10 @@ namespace HIKARI {
     private:
         void NotifyRenderStateDirty();
         void MarkGeometryChanged() noexcept;
+        void CaptureChunkBeforeEdit(
+            const TERRAIN::TerrainChunkKey& key);
+        void MarkChunkChanged(
+            const TERRAIN::TerrainChunkKey& key) noexcept;
         void InvalidateCoverageCache() noexcept;
         bool TryReadCoverageVertex(
             int32_t globalX,
@@ -182,8 +199,17 @@ namespace HIKARI {
         uint64_t geometryRevision_ = 0u;
         uint64_t coverageRevision_ = 1u;
         uint64_t collisionRevision_ = 0u;
+        uint64_t nextChunkRevision_ = 1u;
+        std::map<TERRAIN::TerrainChunkKey, uint64_t> chunkRevisions_{};
         bool geometryEditBatchActive_ = false;
         bool geometryEditBatchDirty_ = false;
+        bool geometryEditDeltaReady_ = false;
+        std::string geometryEditBeforePresetId_{};
+        std::vector<std::string> geometryEditBeforeLayerPresetIds_{};
+        std::map<
+            TERRAIN::TerrainChunkKey,
+            std::optional<TERRAIN::TerrainChunk>>
+            geometryEditBeforeChunks_{};
         mutable uint64_t coverageCacheRevision_ = 0u;
         mutable std::unordered_map<uint64_t, float> coverageCache_{};
         mutable std::unordered_map<uint64_t, float>

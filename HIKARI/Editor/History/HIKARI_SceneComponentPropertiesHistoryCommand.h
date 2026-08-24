@@ -6,6 +6,7 @@
 #include <json.hpp>
 
 #include "Editor/History/HIKARI_EditorDocumentHistory.h"
+#include "Editor/History/HIKARI_TerrainSurfaceEditDelta.h"
 
 namespace HIKARI::EDITOR {
 
@@ -31,6 +32,19 @@ namespace HIKARI::EDITOR {
             SceneComponentId componentId,
             nlohmann::json beforePatch,
             nlohmann::json afterPatch,
+            EditorDocumentImpact impact =
+                EditorDocumentImpact::RuntimeWorld);
+
+    // Terrain stroke 専用の chunk-key delta。properties["chunks"] 全体を
+    // 履歴へ複製せず、触れた chunk の追加/更新/削除と layer mapping だけを
+    // 安定 key で適用する。
+    std::unique_ptr<IEditorDocumentCommand>
+        MakeSceneTerrainSurfaceEditDeltaHistoryCommand(
+            std::string label,
+            SceneObjectId objectId,
+            SceneComponentId componentId,
+            nlohmann::json beforeDelta,
+            nlohmann::json afterDelta,
             EditorDocumentImpact impact =
                 EditorDocumentImpact::RuntimeWorld);
 

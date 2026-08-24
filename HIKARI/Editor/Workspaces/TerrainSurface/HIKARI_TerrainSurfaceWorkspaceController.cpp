@@ -3,6 +3,7 @@
 #include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
 #include "Editor/HIKARI_EditorViewportInput.h"
+#include "Editor/History/HIKARI_SceneComponentPropertiesHistoryCommand.h"
 #include "Editor/Workspaces/HIKARI_EditorWorkspaceHost.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/HIKARI_GameObject.h"
@@ -14,7 +15,6 @@
 #include "Scene/Terrain/HIKARI_TerrainSurfaceComponent.h"
 
 #include <algorithm>
-#include <array>
 #include <string>
 #include <vector>
 
@@ -102,38 +102,6 @@ namespace HIKARI::EDITOR {
             EditorTerrainToolMode::Terrace,
         };
 
-        constexpr std::array<const char*, 14> kTerrainPatchKeys{{
-            "_schemaVersion",
-            "presetId",
-            "heightScale",
-            "material",
-            "stylization",
-            "deform",
-            "shoreline",
-            "layerPresetIds",
-            "brush",
-            "grass",
-            "chunked",
-            "chunkCells",
-            "chunkCellSize",
-            "chunks",
-        }};
-
-        nlohmann::json ExtractTerrainFullPatch(
-            const nlohmann::json& properties) {
-            nlohmann::json patch = nlohmann::json::object();
-            if (!properties.is_object()) {
-                return patch;
-            }
-            for (const char* key : kTerrainPatchKeys) {
-                const auto found = properties.find(key);
-                if (found != properties.end()) {
-                    patch[key] = *found;
-                }
-            }
-            return patch;
-        }
-
         void ApplyTerrainSettingsPatch(
             nlohmann::json& properties,
             const nlohmann::json& patch) {
@@ -159,7 +127,7 @@ namespace HIKARI::EDITOR {
         }
         const ImGuiViewport* viewport = ImGui::GetMainViewport();
         const ImGuiID dockspaceId =
-            ImGui::GetID("HIKARI_TerrainSurfaceDockSpace_v2");
+            ImGui::GetID("HIKARI_TerrainSurfaceDockSpace_v3");
         if (ImGui::DockBuilderGetNode(dockspaceId) == nullptr ||
             resetDefaultDockLayout) {
             ImGui::DockBuilderRemoveNode(dockspaceId);
@@ -175,11 +143,11 @@ namespace HIKARI::EDITOR {
             ImGuiID rightTop = 0u;
             ImGuiID rightBottom = 0u;
             ImGui::DockBuilderSplitNode(
-                centerNode, ImGuiDir_Left, 0.18f, &leftNode, &centerNode);
+                centerNode, ImGuiDir_Left, 0.22f, &leftNode, &centerNode);
             ImGui::DockBuilderSplitNode(
-                centerNode, ImGuiDir_Right, 0.26f, &rightNode, &centerNode);
+                centerNode, ImGuiDir_Right, 0.29f, &rightNode, &centerNode);
             ImGui::DockBuilderSplitNode(
-                rightNode, ImGuiDir_Up, 0.55f, &rightTop, &rightBottom);
+                rightNode, ImGuiDir_Up, 0.48f, &rightTop, &rightBottom);
 
             ImGui::DockBuilderDockWindow(
                 TEXT::LocalizeWindow(
@@ -214,7 +182,24 @@ namespace HIKARI::EDITOR {
         const std::vector<TERRAIN::SurfacePreset>& layers =
             TERRAIN::SurfaceLayerRegistry::Get().Layers();
 
-        GameObject* selected = context.selection.selectedObject;
+        GameObject* selected = context.terrainTool.targetObjectId.value != 0u
+            ? scene.GetWorld().FindObject(
+                context.terrainTool.targetObjectId)
+            : nullptr;
+        if (selected == nullptr ||
+            selected->GetComponent<TerrainSurfaceComponent>() == nullptr) {
+            GameObject* activeSelection = context.selection.selectedObject;
+            if (activeSelection != nullptr &&
+                activeSelection->GetComponent<TerrainSurfaceComponent>() !=
+                    nullptr) {
+                selected = activeSelection;
+                context.terrainTool.targetObjectId =
+                    activeSelection->GetDocumentId();
+            } else {
+                selected = nullptr;
+                context.terrainTool.targetObjectId = {};
+            }
+        }
         TerrainSurfaceComponent* terrain =
             selected != nullptr
                 ? selected->GetComponent<TerrainSurfaceComponent>()
@@ -239,6 +224,7 @@ namespace HIKARI::EDITOR {
             documentComponent != nullptr &&
             result.objectId.value != 0u &&
             result.componentId.value != 0u;
+        result.terrainTargetObjectId = result.objectId;
         if (canAuthor) {
             // Runtime component has already resolved schema migrations and
             // defaults. Serializing its small settings view gives Undo a
@@ -251,8 +237,73 @@ namespace HIKARI::EDITOR {
         // 左: ブラシツール
         if (ImGui::Begin((TEXT::Localize("ui.terrain.tools") +
                 "###TerrainSurface/Tools").c_str())) {
-            ImGui::TextUnformatted(
-                TEXT::Localize("ui.terrain.tool").c_str());
+            const float pageWidth =
+                (ImGui::GetContentRegionAvail().x -
+                    ImGui::GetStyle().ItemSpacing.x) * 0.5f;
+            const auto pageButton = [&](
+                EditorTerrainWorkspacePage page,
+                const char* labelKey) {
+                const bool selectedPage =
+                    context.terrainTool.page == page;
+                if (selectedPage) {
+                    ImGui::PushStyleColor(
+                        ImGuiCol_Button,
+                        ImVec4(0.18f, 0.42f, 0.70f, 0.92f));
+                }
+                const bool pressed = ImGui::Button(
+                    (TEXT::Localize(labelKey) + "##TerrainPage/" +
+                        std::to_string(static_cast<uint32_t>(page))).c_str(),
+                    ImVec2(pageWidth, 0.0f));
+                if (selectedPage) {
+                    ImGui::PopStyleColor();
+                }
+                if (pressed) {
+                    context.terrainTool.page = page;
+                    if (page == EditorTerrainWorkspacePage::Sculpt) {
+                        context.terrainTool.paint =
+                            EditorTerrainPaintMode::None;
+                    } else if (page == EditorTerrainWorkspacePage::Paint &&
+                        context.terrainTool.paint ==
+                            EditorTerrainPaintMode::None) {
+                        context.terrainTool.paint =
+                            EditorTerrainPaintMode::Sand;
+                    } else if (page == EditorTerrainWorkspacePage::Place ||
+                        page == EditorTerrainWorkspacePage::Foliage) {
+                        context.terrainTool.active = false;
+                    }
+                }
+            };
+            pageButton(
+                EditorTerrainWorkspacePage::Sculpt,
+                "ui.terrain.pageSculpt");
+            ImGui::SameLine();
+            pageButton(
+                EditorTerrainWorkspacePage::Paint,
+                "ui.terrain.pagePaint");
+            pageButton(
+                EditorTerrainWorkspacePage::Foliage,
+                "ui.terrain.pageFoliage");
+            ImGui::SameLine();
+            pageButton(
+                EditorTerrainWorkspacePage::Place,
+                "ui.terrain.pagePlace");
+
+            ImGui::Spacing();
+            if (selected != nullptr) {
+                ImGui::TextDisabled(
+                    "%s: %s",
+                    TEXT::Localize("ui.terrain.activeTarget").c_str(),
+                    selected->GetName().c_str());
+            } else {
+                ImGui::TextDisabled(
+                    "%s",
+                    TEXT::Localize("ui.terrain.selectTerrain").c_str());
+            }
+
+            if (context.terrainTool.page ==
+                    EditorTerrainWorkspacePage::Sculpt) {
+                ImGui::SeparatorText(
+                    TEXT::Localize("ui.terrain.tool").c_str());
             const float toolWidth =
                 (ImGui::GetContentRegionAvail().x -
                     ImGui::GetStyle().ItemSpacing.x) * 0.5f;
@@ -295,9 +346,12 @@ namespace HIKARI::EDITOR {
                     ImGui::SameLine();
                 }
             }
+            }
 
-            ImGui::SeparatorText(
-                TEXT::Localize("ui.terrain.paintPreset").c_str());
+            if (context.terrainTool.page ==
+                    EditorTerrainWorkspacePage::Paint) {
+                ImGui::SeparatorText(
+                    TEXT::Localize("ui.terrain.paintPreset").c_str());
             if (ImGui::RadioButton(
                     TEXT::Localize("ui.terrain.none").c_str(),
                     context.terrainTool.paint ==
@@ -340,9 +394,14 @@ namespace HIKARI::EDITOR {
                     context.terrainTool.active = true;
                 }
             }
+            }
 
-            ImGui::SeparatorText(
-                TEXT::Localize("ui.terrain.brush").c_str());
+            if (context.terrainTool.page ==
+                    EditorTerrainWorkspacePage::Sculpt ||
+                context.terrainTool.page ==
+                    EditorTerrainWorkspacePage::Paint) {
+                ImGui::SeparatorText(
+                    TEXT::Localize("ui.terrain.brush").c_str());
             if (terrain != nullptr) {
                 TERRAIN::TerrainBrush brush = terrain->GetBrush();
                 bool brushChanged = false;
@@ -390,6 +449,58 @@ namespace HIKARI::EDITOR {
             ImGui::TextWrapped(
                 "%s",
                 TEXT::Localize("ui.terrain.brushHint").c_str());
+            }
+
+            if (context.terrainTool.page ==
+                    EditorTerrainWorkspacePage::Foliage) {
+                ImGui::SeparatorText(
+                    TEXT::Localize("ui.terrain.grass").c_str());
+                ImGui::TextWrapped(
+                    "%s",
+                    TEXT::Localize("ui.terrain.foliageHint").c_str());
+                if (terrain != nullptr) {
+                    const TERRAIN::TerrainGrassSettings& grass =
+                        terrain->GetGrassSettings();
+                    ImGui::Text(
+                        "%s: %u",
+                        TEXT::Localize("ui.terrain.placementBudget").c_str(),
+                        grass.maxClumps);
+                    ImGui::TextDisabled(
+                        "%s",
+                        TEXT::Localize("ui.terrain.foliageDetailsHint").c_str());
+                }
+            }
+
+            if (context.terrainTool.page ==
+                    EditorTerrainWorkspacePage::Place) {
+                ImGui::SeparatorText(
+                    TEXT::Localize("ui.terrain.placeObjects").c_str());
+                ImGui::TextWrapped(
+                    "%s",
+                    TEXT::Localize("ui.terrain.placeHint").c_str());
+                ImGui::SliderFloat(
+                    TEXT::Localize("ui.terrain.placementOffset").c_str(),
+                    &context.terrainTool.placementOffset,
+                    -2.0f,
+                    2.0f,
+                    "%.3f m");
+                const std::size_t selectedProps =
+                    context.selection.GetSelectedObjectCount();
+                ImGui::TextDisabled(
+                    "%s: %zu",
+                    TEXT::Localize("ui.terrain.selectedObjects").c_str(),
+                    selectedProps);
+                const bool canPlace = canAuthor && selectedProps > 0u;
+                ImGui::BeginDisabled(!canPlace);
+                if (ImGui::Button(
+                        TEXT::Localize("ui.terrain.placeOnSurface").c_str(),
+                        ImVec2(-1.0f, ImGui::GetFrameHeight() * 1.35f))) {
+                    result.placeSelectionRequested = true;
+                    result.placementOffset =
+                        context.terrainTool.placementOffset;
+                }
+                ImGui::EndDisabled();
+            }
         }
         ImGui::End();
 
@@ -401,15 +512,48 @@ namespace HIKARI::EDITOR {
             scene.GetWorld().ForEachObjectWith<TerrainSurfaceComponent>(
                 [&](GameObject& object, TerrainSurfaceComponent&) {
                     const bool isSelected =
-                        context.selection.selectedObject == &object;
+                        context.terrainTool.targetObjectId ==
+                            object.GetDocumentId();
                     if (ImGui::Selectable(
                             object.GetName().c_str(),
                             isSelected)) {
-                        context.selection.SelectObject(
-                            scene.GetWorld(),
-                            &object);
+                        context.terrainTool.targetObjectId =
+                            object.GetDocumentId();
                     }
                 });
+
+            if (terrain != nullptr) {
+                const TERRAIN::TerrainSurface& surface =
+                    terrain->GetSurface();
+                const std::size_t chunkCount = surface.chunks.size();
+                const std::size_t verticesPerChunk =
+                    TERRAIN::TerrainChunkVertexCount(
+                        terrain->GetChunkCells());
+                const double authoredArea =
+                    static_cast<double>(chunkCount) *
+                    terrain->GetChunkWorldSize() *
+                    terrain->GetChunkWorldSize();
+                ImGui::SeparatorText(
+                    TEXT::Localize("ui.terrain.statistics").c_str());
+                ImGui::Text(
+                    "%s: %zu",
+                    TEXT::Localize("ui.terrain.chunkCount").c_str(),
+                    chunkCount);
+                ImGui::Text(
+                    "%s: %zu",
+                    TEXT::Localize("ui.terrain.vertexCount").c_str(),
+                    chunkCount * verticesPerChunk);
+                ImGui::Text(
+                    "%s: %.1f m2",
+                    TEXT::Localize("ui.terrain.authoredArea").c_str(),
+                    authoredArea);
+                ImGui::TextDisabled(
+                    "%s: %u x %u @ %.3f m",
+                    TEXT::Localize("ui.terrain.chunkResolution").c_str(),
+                    terrain->GetChunkCells(),
+                    terrain->GetChunkCells(),
+                    surface.chunkCellSize);
+            }
 
             ImGui::SeparatorText(
                 TEXT::Localize("ui.terrain.surfacePresets").c_str());
@@ -439,15 +583,29 @@ namespace HIKARI::EDITOR {
                             isCurrent,
                         ImGuiSelectableFlags_AllowDoubleClick)) {
                         if (canAuthor) {
-                            result.beforePatch = ExtractTerrainFullPatch(
-                                documentComponent->properties);
                             // Preset の click は地形全体の材質 fill とする。
-                            // layer weight は component が所有し、workspace は
-                            // 下の既存 document transaction へ結果だけ渡す。
+                            // 大きい chunk 配列の全コピーはせず、component の
+                            // keyed edit journal から差分だけを history へ渡す。
+                            terrain->BeginGeometryEditBatch();
                             const bool fillChanged =
                                 terrain->FillLayer(layer.id);
-                            runtimeComponentChanged = fillChanged ||
-                                runtimeComponentChanged;
+                            (void)terrain->EndGeometryEditBatch();
+                            nlohmann::json beforeDelta{};
+                            nlohmann::json afterDelta{};
+                            const bool hasDelta =
+                                terrain->ConsumeGeometryEditDelta(
+                                    beforeDelta, afterDelta);
+                            if (fillChanged && hasDelta &&
+                                ApplyTerrainSurfaceEditDelta(
+                                    documentComponent->properties,
+                                    afterDelta)) {
+                                result.beforePatch =
+                                    std::move(beforeDelta);
+                                result.afterPatch =
+                                    std::move(afterDelta);
+                                result.componentChanged = true;
+                                result.terrainDelta = true;
+                            }
                             // A no-op fill is still a discrete command
                             // boundary: close any prior slider merge and do
                             // not let the button press inherit it.
@@ -478,8 +636,9 @@ namespace HIKARI::EDITOR {
                 bool deformChanged = false;
                 bool stylizationChanged = false;
                 bool grassChanged = false;
-                ImGui::SeparatorText(
-                    TEXT::Localize("ui.terrain.shoreline").c_str());
+                if (ImGui::CollapsingHeader(
+                        TEXT::Localize("ui.terrain.shoreline").c_str(),
+                        ImGuiTreeNodeFlags_DefaultOpen)) {
                 shorelineChanged |= ImGui::SliderFloat(
                     TEXT::Localize("ui.terrain.edgeFalloff").c_str(),
                     &shoreline.edgeFalloff, 0.0f, 40.0f, "%.2f");
@@ -489,9 +648,10 @@ namespace HIKARI::EDITOR {
                 shorelineChanged |= ImGui::SliderFloat(
                     TEXT::Localize("ui.terrain.wetness").c_str(),
                     &shoreline.wetness, 0.0f, 1.0f, "%.2f");
+                }
 
-                ImGui::SeparatorText(
-                    TEXT::Localize("ui.terrain.deform").c_str());
+                if (ImGui::CollapsingHeader(
+                        TEXT::Localize("ui.terrain.deform").c_str())) {
                 deformChanged |= ImGui::SliderFloat(
                     TEXT::Localize("ui.terrain.maxDepth").c_str(),
                     &deform.maxDepth, 0.0f, 2.0f, "%.3f");
@@ -546,9 +706,11 @@ namespace HIKARI::EDITOR {
                     TEXT::Localize("ui.terrain.recoveryDelay").c_str(),
                     &deform.recoveryDelaySeconds,
                     0.0f, 30.0f, "%.2f s");
+                }
 
-                ImGui::SeparatorText(
-                    TEXT::Localize("ui.terrain.stylization").c_str());
+                if (ImGui::CollapsingHeader(
+                        TEXT::Localize("ui.terrain.stylization").c_str(),
+                        ImGuiTreeNodeFlags_DefaultOpen)) {
                 stylizationChanged |= ImGui::SliderFloat(
                     TEXT::Localize("ui.terrain.textureScale").c_str(),
                     &stylization.textureScale, 0.1f, 8.0f, "%.2f");
@@ -579,9 +741,14 @@ namespace HIKARI::EDITOR {
                     0.0f,
                     1.0f,
                     "%.3f");
+                }
 
-                ImGui::SeparatorText(
-                    TEXT::Localize("ui.terrain.grass").c_str());
+                if (ImGui::CollapsingHeader(
+                        TEXT::Localize("ui.terrain.grass").c_str(),
+                        context.terrainTool.page ==
+                                EditorTerrainWorkspacePage::Foliage
+                            ? ImGuiTreeNodeFlags_DefaultOpen
+                            : ImGuiTreeNodeFlags_None)) {
                 grassChanged |= ImGui::Checkbox(
                     (TEXT::Localize("ui.terrain.grassEnabled") +
                         "##TerrainGrass").c_str(),
@@ -668,6 +835,7 @@ namespace HIKARI::EDITOR {
                     grass.maxClumps = static_cast<uint32_t>(maxClumps);
                     grassChanged = true;
                 }
+                }
 
                 if (shorelineChanged) {
                     if (canAuthor) {
@@ -704,17 +872,12 @@ namespace HIKARI::EDITOR {
         // and the AI operation each remain one discrete transaction.
         result.editActive = canAuthor && !discreteFillTransaction &&
             ImGui::IsAnyItemActive();
-        if (runtimeComponentChanged && canAuthor) {
-            // Fill は chunk の layer weight まで transaction に渡す。
+        if (runtimeComponentChanged && canAuthor &&
+            !result.terrainDelta) {
             // Slider/grass/stylization は settings-only patch を保ち、巨大な
             // chunk array の複製と runtime Deserialize churn を避ける。
-            if (discreteFillTransaction) {
-                terrain->Serialize(result.afterPatch);
-            } else {
-                terrain->SerializeSettings(result.afterPatch);
-            }
-            result.componentChanged =
-                result.afterPatch != result.beforePatch;
+            terrain->SerializeSettings(result.afterPatch);
+            result.componentChanged = result.afterPatch != result.beforePatch;
             if (result.componentChanged) {
                 ApplyTerrainSettingsPatch(
                     documentComponent->properties,

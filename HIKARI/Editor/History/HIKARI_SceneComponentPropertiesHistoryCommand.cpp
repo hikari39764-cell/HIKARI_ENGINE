@@ -167,6 +167,73 @@ namespace HIKARI::EDITOR {
             EditorDocumentImpact impact_ = EditorDocumentImpact::RuntimeWorld;
         };
 
+        class SceneTerrainSurfaceEditDeltaHistoryCommand final :
+            public IEditorDocumentCommand {
+        public:
+            SceneTerrainSurfaceEditDeltaHistoryCommand(
+                std::string label,
+                SceneObjectId objectId,
+                SceneComponentId componentId,
+                nlohmann::json beforeDelta,
+                nlohmann::json afterDelta,
+                EditorDocumentImpact impact)
+                : label_(std::move(label)),
+                  objectId_(objectId),
+                  componentId_(componentId),
+                  beforeDelta_(std::move(beforeDelta)),
+                  afterDelta_(std::move(afterDelta)),
+                  impact_(impact) {
+            }
+
+            const std::string& GetLabel() const noexcept override {
+                return label_;
+            }
+
+            EditorDocumentImpact GetImpact() const noexcept override {
+                return impact_;
+            }
+
+            void Undo(SceneDocument& document) const override {
+                Apply(document, beforeDelta_);
+            }
+
+            void Redo(SceneDocument& document) const override {
+                Apply(document, afterDelta_);
+            }
+
+            bool TryMergeApplied(
+                const IEditorDocumentCommand&) override {
+                // Each drag is one explicit authoring transaction. Never
+                // merge two strokes across a pointer release boundary.
+                return false;
+            }
+
+        private:
+            void Apply(
+                SceneDocument& document,
+                const nlohmann::json& delta) const {
+                SceneObjectData* object =
+                    FindSceneObjectData(document, objectId_);
+                if (object == nullptr) {
+                    return;
+                }
+                SceneComponentData* component =
+                    FindSceneComponent(*object, componentId_);
+                if (component == nullptr) {
+                    return;
+                }
+                (void)ApplyTerrainSurfaceEditDelta(
+                    component->properties, delta);
+            }
+
+            std::string label_{};
+            SceneObjectId objectId_{};
+            SceneComponentId componentId_{};
+            nlohmann::json beforeDelta_ = nlohmann::json::object();
+            nlohmann::json afterDelta_ = nlohmann::json::object();
+            EditorDocumentImpact impact_ = EditorDocumentImpact::RuntimeWorld;
+        };
+
     } // namespace
 
     std::unique_ptr<IEditorDocumentCommand>
@@ -203,6 +270,24 @@ namespace HIKARI::EDITOR {
                 componentId,
                 std::move(beforePatch),
                 std::move(afterPatch),
+                impact);
+    }
+
+    std::unique_ptr<IEditorDocumentCommand>
+        MakeSceneTerrainSurfaceEditDeltaHistoryCommand(
+            std::string label,
+            SceneObjectId objectId,
+            SceneComponentId componentId,
+            nlohmann::json beforeDelta,
+            nlohmann::json afterDelta,
+            EditorDocumentImpact impact) {
+        return std::make_unique<
+            SceneTerrainSurfaceEditDeltaHistoryCommand>(
+                std::move(label),
+                objectId,
+                componentId,
+                std::move(beforeDelta),
+                std::move(afterDelta),
                 impact);
     }
 

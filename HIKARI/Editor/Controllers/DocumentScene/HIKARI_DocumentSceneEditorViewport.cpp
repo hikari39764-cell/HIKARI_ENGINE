@@ -559,7 +559,21 @@ namespace HIKARI {
         const EDITOR::SceneViewportRect& viewport,
         bool viewportHovered) {
 #if defined(HIKARI_WITH_EDITOR)
-        GameObject* selected = context_.selection.selectedObject;
+        GameObject* selected = context_.terrainTool.targetObjectId.value != 0u
+            ? scene.GetWorld().FindObject(
+                context_.terrainTool.targetObjectId)
+            : nullptr;
+        if (selected == nullptr ||
+            selected->GetComponent<TerrainSurfaceComponent>() == nullptr) {
+            GameObject* activeSelection = context_.selection.selectedObject;
+            if (activeSelection != nullptr &&
+                activeSelection->GetComponent<TerrainSurfaceComponent>() !=
+                    nullptr) {
+                selected = activeSelection;
+                context_.terrainTool.targetObjectId =
+                    activeSelection->GetDocumentId();
+            }
+        }
         TerrainSurfaceComponent* terrain =
             selected != nullptr
                 ? selected->GetComponent<TerrainSurfaceComponent>()
@@ -608,8 +622,6 @@ namespace HIKARI {
             sandBrushTargetObjectId_ = {};
             sandBrushTargetRuntimeHandle_ = {};
             sandBrushTargetComponentId_ = {};
-            sandBrushBeforeComponentProperties_ =
-                nlohmann::json::object();
             sandBrushPreviousLocalHit_ = {};
             sandBrushHasPreviousLocalHit_ = false;
             sandBrushDirtyBefore_ = false;
@@ -645,12 +657,25 @@ namespace HIKARI {
             (void)strokeTerrain->EndGeometryEditBatch();
             const bool strokeChanged = sandBrushStrokeChanged_;
             if (!strokeChanged) {
+                nlohmann::json discardedBefore{};
+                nlohmann::json discardedAfter{};
+                (void)strokeTerrain->ConsumeGeometryEditDelta(
+                    discardedBefore, discardedAfter);
                 resetStrokeState();
                 return;
             }
 
-            nlohmann::json serialized = nlohmann::json::object();
-            strokeTerrain->Serialize(serialized);
+            nlohmann::json beforeDelta = nlohmann::json::object();
+            nlohmann::json afterDelta = nlohmann::json::object();
+            if (!strokeTerrain->ConsumeGeometryEditDelta(
+                    beforeDelta, afterDelta)) {
+                (void)selectionSync_.RebuildRuntimeWorldWithSelectionSync(
+                    scene,
+                    context_.selection,
+                    context_.nextSceneObjectId);
+                resetStrokeState();
+                return;
+            }
             SceneObjectData* documentObject = FindSceneObjectData(
                 scene.GetSceneDocument(),
                 strokeObjectId);
@@ -668,7 +693,15 @@ namespace HIKARI {
                 resetStrokeState();
                 return;
             }
-            documentComponent->properties = serialized;
+            if (!EDITOR::ApplyTerrainSurfaceEditDelta(
+                    documentComponent->properties, afterDelta)) {
+                (void)selectionSync_.RebuildRuntimeWorldWithSelectionSync(
+                    scene,
+                    context_.selection,
+                    context_.nextSceneObjectId);
+                resetStrokeState();
+                return;
+            }
 
             std::string label =
                 context_.terrainTool.paint != EditorTerrainPaintMode::None
@@ -676,12 +709,12 @@ namespace HIKARI {
                     : "Sculpt Sand Terrain";
             CommitAppliedDocumentCommand(
                 scene,
-                EDITOR::MakeSceneComponentPropertiesHistoryCommand(
+                EDITOR::MakeSceneTerrainSurfaceEditDeltaHistoryCommand(
                     std::move(label),
                     strokeObjectId,
                     strokeComponentId,
-                    std::move(sandBrushBeforeComponentProperties_),
-                    std::move(serialized),
+                    std::move(beforeDelta),
+                    std::move(afterDelta),
                     EDITOR::EditorDocumentImpact::RuntimeWorld),
                 0,
                 sandBrushDirtyBefore_ && !documentHistory_.IsDirty(),
@@ -927,8 +960,6 @@ namespace HIKARI {
                 // 始める。Undo 不能な地形編集を先に適用しない。
                 if (documentComponent != nullptr &&
                     documentComponent->id.value != 0u) {
-                    sandBrushBeforeComponentProperties_ =
-                        documentComponent->properties;
                     sandBrushDirtyBefore_ =
                         context_.sceneDirty ||
                         scene.HasUnsavedSceneChanges();

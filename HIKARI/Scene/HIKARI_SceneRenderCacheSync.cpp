@@ -14,7 +14,6 @@
 #include "Animation/Runtime/HIKARI_AnimationPoseService.h"
 #include "Assets/HIKARI_AssetRegistry.h"
 #include "Assets/HIKARI_AssetTypes.h"
-#include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Core/HIKARI_Logger.h"
 #include "Render3D/Core/HIKARI_BoundsUtils.h"
 #include "Render3D/Core/HIKARI_Material.h"
@@ -231,11 +230,18 @@ namespace HIKARI {
         };
 
         struct TerrainProjectionState {
+            struct AuthoredChunkState {
+                uint64_t revision = 0u;
+                float minHeight = 0.0f;
+                float maxHeight = 0.0f;
+            };
+
             RuntimeObjectHandle sourceObject{};
             TerrainProjectionLayout layout{};
             bool layoutValid = false;
             uint64_t authoredRevision = 0u;
-            std::map<TERRAIN::TerrainChunkKey, uint64_t> authoredHashes{};
+            std::map<TERRAIN::TerrainChunkKey, AuthoredChunkState>
+                authoredChunks{};
             std::map<TERRAIN::TerrainChunkKey, uint64_t> runtimeRevisions{};
             std::map<
                 TERRAIN::TerrainChunkKey,
@@ -256,28 +262,6 @@ namespace HIKARI {
             bool warmSettingsValid = false;
             bool warmPending = false;
         };
-
-        uint64_t HashTerrainChunk(const TERRAIN::TerrainChunk& chunk) {
-            uint64_t hash = HASH::kFnv1a64OffsetBasis;
-            hash = HASH::Fnv1aBytes(
-                hash, &chunk.cells, sizeof(chunk.cells));
-            hash = HASH::Fnv1aBytes(
-                hash, &chunk.layerCount, sizeof(chunk.layerCount));
-            const auto append = [&hash](const std::vector<float>& values) {
-                const uint64_t size = static_cast<uint64_t>(values.size());
-                hash = HASH::Fnv1aBytes(hash, &size, sizeof(size));
-                if (!values.empty()) {
-                    hash = HASH::Fnv1aBytes(
-                        hash,
-                        values.data(),
-                        values.size() * sizeof(float));
-                }
-            };
-            append(chunk.heights);
-            append(chunk.coverage);
-            append(chunk.layerWeights);
-            return hash;
-        }
 
         void AppendChangedChunk(
             std::vector<TERRAIN::TerrainChunkKey>& chunks,
@@ -445,35 +429,54 @@ namespace HIKARI {
             if (!state.layoutValid ||
                 state.authoredRevision != authoredRevision) {
 
-                float authoredMin =
-                    (std::numeric_limits<float>::max)();
-                float authoredMax =
-                    (std::numeric_limits<float>::lowest)();
                 for (const auto& [key, chunk] : chunks) {
-                    const uint64_t hash = HashTerrainChunk(chunk);
-                    const auto old = state.authoredHashes.find(key);
-                    if (old == state.authoredHashes.end() ||
-                        old->second != hash) {
+                    const uint64_t chunkRevision =
+                        terrain.GetChunkRevision(key);
+                    const auto old = state.authoredChunks.find(key);
+                    if (old == state.authoredChunks.end() ||
+                        old->second.revision != chunkRevision) {
                         AppendChangedChunk(state.changedChunks, key);
-                    }
-                    state.authoredHashes[key] = hash;
-                    for (const float height : chunk.heights) {
-                        if (!std::isfinite(height)) {
-                            continue;
+                        TerrainProjectionState::AuthoredChunkState next{};
+                        next.revision = chunkRevision;
+                        float chunkMin =
+                            (std::numeric_limits<float>::max)();
+                        float chunkMax =
+                            (std::numeric_limits<float>::lowest)();
+                        for (const float height : chunk.heights) {
+                            if (!std::isfinite(height)) {
+                                continue;
+                            }
+                            chunkMin = (std::min)(chunkMin, height);
+                            chunkMax = (std::max)(chunkMax, height);
                         }
-                        authoredMin = (std::min)(authoredMin, height);
-                        authoredMax = (std::max)(authoredMax, height);
+                        next.minHeight = std::isfinite(chunkMin)
+                            ? chunkMin : 0.0f;
+                        next.maxHeight = std::isfinite(chunkMax)
+                            ? chunkMax : 0.0f;
+                        state.authoredChunks[key] = next;
                     }
                 }
-                for (auto it = state.authoredHashes.begin();
-                    it != state.authoredHashes.end();) {
+                for (auto it = state.authoredChunks.begin();
+                    it != state.authoredChunks.end();) {
 
                     if (chunks.find(it->first) != chunks.end()) {
                         ++it;
                         continue;
                     }
                     AppendChangedChunk(state.changedChunks, it->first);
-                    it = state.authoredHashes.erase(it);
+                    it = state.authoredChunks.erase(it);
+                }
+                float authoredMin =
+                    (std::numeric_limits<float>::max)();
+                float authoredMax =
+                    (std::numeric_limits<float>::lowest)();
+                for (const auto& [key, chunkState] :
+                    state.authoredChunks) {
+                    (void)key;
+                    authoredMin = (std::min)(
+                        authoredMin, chunkState.minHeight);
+                    authoredMax = (std::max)(
+                        authoredMax, chunkState.maxHeight);
                 }
                 state.authoredMinHeight = std::isfinite(authoredMin)
                     ? authoredMin : 0.0f;

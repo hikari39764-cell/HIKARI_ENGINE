@@ -43,6 +43,13 @@ namespace HIKARI {
         Erase,
     };
 
+    enum class EditorTerrainWorkspacePage : uint8_t {
+        Sculpt,
+        Paint,
+        Foliage,
+        Place,
+    };
+
     struct EditorTransformGizmoState {
         bool enabled = true;
         EditorTransformGizmoOperation operation = EditorTransformGizmoOperation::Translate;
@@ -55,11 +62,18 @@ namespace HIKARI {
 
     // 地形工作区のセッション状態。ドキュメントには保存しない。
     struct EditorTerrainToolState {
+        // Terrain target is independent from the scene selection. This keeps
+        // sculpting stable and lets Place operate on selected props without
+        // losing the active terrain.
+        SceneObjectId targetObjectId{};
+        EditorTerrainWorkspacePage page =
+            EditorTerrainWorkspacePage::Sculpt;
         EditorTerrainToolMode mode = EditorTerrainToolMode::Raise;
         EditorTerrainPaintMode paint = EditorTerrainPaintMode::None;
         bool active = false;
         bool hasHit = false;
         MATH::Vec3 hitPoint{};
+        float placementOffset = 0.0f;
     };
 
     struct ViewportWindowState {

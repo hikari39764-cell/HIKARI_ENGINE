@@ -53,6 +53,26 @@ namespace HIKARI {
             return out;
         }
 
+        nlohmann::json SerializeTerrainChunkDeltaEntry(
+            const TERRAIN::TerrainChunkKey& key,
+            const std::optional<TERRAIN::TerrainChunk>& chunk) {
+            nlohmann::json entry{
+                { "x", key.x },
+                { "z", key.z },
+                { "exists", chunk.has_value() },
+            };
+            if (!chunk.has_value()) {
+                return entry;
+            }
+            entry["cells"] = chunk->cells;
+            entry["layerCount"] = chunk->layerCount;
+            entry["heights"] = SerializeFloatArray(chunk->heights);
+            entry["coverage"] = SerializeFloatArray(chunk->coverage);
+            entry["layerWeights"] =
+                SerializeFloatArray(chunk->layerWeights);
+            return entry;
+        }
+
         std::vector<float> ReadFloatArray(
             const nlohmann::json& source,
             const char* key,
@@ -303,6 +323,16 @@ namespace HIKARI {
             return true;
         }
 
+        bool TerrainChunkEqual(
+            const TERRAIN::TerrainChunk& lhs,
+            const TERRAIN::TerrainChunk& rhs) noexcept {
+            return lhs.cells == rhs.cells &&
+                lhs.layerCount == rhs.layerCount &&
+                lhs.heights == rhs.heights &&
+                lhs.coverage == rhs.coverage &&
+                lhs.layerWeights == rhs.layerWeights;
+        }
+
         bool TerrainSettingsEqual(
             const TERRAIN::TerrainSurface& lhs,
             const TERRAIN::TerrainSurface& rhs) noexcept {
@@ -348,6 +378,14 @@ namespace HIKARI {
 
         const TERRAIN::TerrainSurface previous = surface_;
         surface_ = std::move(next);
+        for (auto it = chunkRevisions_.begin();
+            it != chunkRevisions_.end();) {
+            if (surface_.chunks.contains(it->first)) {
+                ++it;
+            } else {
+                it = chunkRevisions_.erase(it);
+            }
+        }
         const bool chunkPayloadChanged =
             !TerrainChunkGeometryEqual(previous.chunks, surface_.chunks) ||
             !TerrainChunkCoverageEqual(previous.chunks, surface_.chunks) ||
@@ -464,6 +502,15 @@ namespace HIKARI {
         return collisionRevision_;
     }
 
+    uint64_t TerrainSurfaceComponent::GetChunkRevision(
+        const TERRAIN::TerrainChunkKey& key) const noexcept {
+        if (!surface_.chunks.contains(key)) {
+            return 0u;
+        }
+        const auto found = chunkRevisions_.find(key);
+        return found != chunkRevisions_.end() ? found->second : 0u;
+    }
+
     uint32_t TerrainSurfaceComponent::GetLayerCount() const noexcept {
         return (std::max)(
             static_cast<uint32_t>(surface_.layerPresetIds.size()), 1u);
@@ -563,10 +610,14 @@ namespace HIKARI {
         next.presetId = targetId;
         next.layerPresetIds[static_cast<std::size_t>(layerIndex)] = targetId;
         for (auto& [key, chunk] : next.chunks) {
-            (void)key;
-            changed = TERRAIN::FillTerrainChunkLayer(
+            CaptureChunkBeforeEdit(key);
+            const bool chunkChanged = TERRAIN::FillTerrainChunkLayer(
                 chunk,
-                static_cast<uint32_t>(layerIndex)) || changed;
+                static_cast<uint32_t>(layerIndex));
+            if (chunkChanged) {
+                MarkChunkChanged(key);
+            }
+            changed = chunkChanged || changed;
         }
         if (!changed) {
             return false;
@@ -662,6 +713,7 @@ namespace HIKARI {
         int32_t seedLayer) {
         auto it = surface_.chunks.find(key);
         if (it == surface_.chunks.end()) {
+            CaptureChunkBeforeEdit(key);
             it = surface_.chunks
                      .emplace(
                          key,
@@ -694,6 +746,7 @@ namespace HIKARI {
                 }
             }
             MarkCoverageChunkDirty(key);
+            MarkChunkChanged(key);
         }
         return it->second;
     }
@@ -841,6 +894,13 @@ namespace HIKARI {
             return false;
         }
 
+        // Seam normalization may update either side of a border. Capture the
+        // entire local seam island before the first write so terrain Undo is
+        // complete without copying unrelated chunks.
+        for (const TERRAIN::TerrainChunkKey& key : affected) {
+            CaptureChunkBeforeEdit(key);
+        }
+
         bool coverageChanged = false;
 
         uint32_t layerCount = GetLayerCount();
@@ -963,6 +1023,7 @@ namespace HIKARI {
                     }
                 }
             }
+            MarkChunkChanged(key);
         }
         return coverageChanged;
     }
@@ -1132,6 +1193,7 @@ namespace HIKARI {
                 TERRAIN::TerrainChunk& chunk,
                 const MATH::Vec2& chunkOrigin) {
                 touchedChunks.push_back(key);
+                CaptureChunkBeforeEdit(key);
                 const uint32_t stride = chunk.cells + 1u;
                 const BrushVertexRange range = ResolveBrushVertexRange(
                     localPos,
@@ -1342,6 +1404,7 @@ namespace HIKARI {
                 TERRAIN::TerrainChunk& chunk,
                 const MATH::Vec2& chunkOrigin) {
                 touchedChunks.push_back(key);
+                CaptureChunkBeforeEdit(key);
                 // 層数が足りなければ拡張する。
                 if (chunk.layerCount <= layer) {
                     if (!TERRAIN::EnsureTerrainChunkLayerCount(
@@ -1476,6 +1539,7 @@ namespace HIKARI {
                 TERRAIN::TerrainChunk& chunk,
                 const MATH::Vec2& chunkOrigin) {
                 touchedChunks.push_back(key);
+                CaptureChunkBeforeEdit(key);
                 const uint32_t stride = chunk.cells + 1u;
                 const BrushVertexRange range = ResolveBrushVertexRange(
                     localPos,
@@ -1534,7 +1598,14 @@ namespace HIKARI {
         if (surface_.chunks.empty()) {
             return;
         }
+        if (geometryEditBatchActive_) {
+            for (const auto& [key, chunk] : surface_.chunks) {
+                (void)chunk;
+                CaptureChunkBeforeEdit(key);
+            }
+        }
         surface_.chunks.clear();
+        chunkRevisions_.clear();
         ++revision_;
         MarkGeometryChanged();
         ++coverageRevision_;
@@ -1548,6 +1619,10 @@ namespace HIKARI {
         }
         geometryEditBatchActive_ = true;
         geometryEditBatchDirty_ = false;
+        geometryEditDeltaReady_ = false;
+        geometryEditBeforeChunks_.clear();
+        geometryEditBeforePresetId_ = surface_.presetId;
+        geometryEditBeforeLayerPresetIds_ = surface_.layerPresetIds;
     }
 
     bool TerrainSurfaceComponent::EndGeometryEditBatch() noexcept {
@@ -1557,11 +1632,91 @@ namespace HIKARI {
         geometryEditBatchActive_ = false;
         const bool changed = geometryEditBatchDirty_;
         geometryEditBatchDirty_ = false;
+        geometryEditDeltaReady_ = true;
         if (changed) {
             ++geometryRevision_;
             ++collisionRevision_;
         }
         return changed;
+    }
+
+    bool TerrainSurfaceComponent::ConsumeGeometryEditDelta(
+        nlohmann::json& outBeforeDelta,
+        nlohmann::json& outAfterDelta) {
+        outBeforeDelta = nlohmann::json::object();
+        outAfterDelta = nlohmann::json::object();
+        if (geometryEditBatchActive_ || !geometryEditDeltaReady_) {
+            return false;
+        }
+
+        nlohmann::json beforeChunks = nlohmann::json::array();
+        nlohmann::json afterChunks = nlohmann::json::array();
+        for (const auto& [key, before] : geometryEditBeforeChunks_) {
+            std::optional<TERRAIN::TerrainChunk> after{};
+            if (const auto found = surface_.chunks.find(key);
+                found != surface_.chunks.end()) {
+                after = found->second;
+            }
+            const bool equal = before.has_value() == after.has_value() &&
+                (!before.has_value() ||
+                    TerrainChunkEqual(*before, *after));
+            if (equal) {
+                continue;
+            }
+            beforeChunks.push_back(
+                SerializeTerrainChunkDeltaEntry(key, before));
+            afterChunks.push_back(
+                SerializeTerrainChunkDeltaEntry(key, after));
+        }
+
+        const bool presetChanged =
+            geometryEditBeforePresetId_ != surface_.presetId;
+        if (presetChanged) {
+            outBeforeDelta["presetId"] = geometryEditBeforePresetId_;
+            outAfterDelta["presetId"] = surface_.presetId;
+        }
+        const bool layerMappingChanged =
+            geometryEditBeforeLayerPresetIds_ != surface_.layerPresetIds;
+        if (layerMappingChanged) {
+            outBeforeDelta["layerPresetIds"] =
+                geometryEditBeforeLayerPresetIds_;
+            outAfterDelta["layerPresetIds"] = surface_.layerPresetIds;
+        }
+        if (!beforeChunks.empty()) {
+            outBeforeDelta["chunks"] = std::move(beforeChunks);
+            outAfterDelta["chunks"] = std::move(afterChunks);
+        }
+
+        geometryEditBeforeChunks_.clear();
+        geometryEditBeforePresetId_.clear();
+        geometryEditBeforeLayerPresetIds_.clear();
+        geometryEditDeltaReady_ = false;
+        return presetChanged || layerMappingChanged ||
+            outBeforeDelta.contains("chunks");
+    }
+
+    void TerrainSurfaceComponent::CaptureChunkBeforeEdit(
+        const TERRAIN::TerrainChunkKey& key) {
+        if (!geometryEditBatchActive_ ||
+            geometryEditBeforeChunks_.contains(key)) {
+            return;
+        }
+        if (const auto found = surface_.chunks.find(key);
+            found != surface_.chunks.end()) {
+            geometryEditBeforeChunks_.emplace(key, found->second);
+        } else {
+            geometryEditBeforeChunks_.emplace(key, std::nullopt);
+        }
+    }
+
+    void TerrainSurfaceComponent::MarkChunkChanged(
+        const TERRAIN::TerrainChunkKey& key) noexcept {
+        chunkRevisions_[key] = nextChunkRevision_++;
+        if (nextChunkRevision_ == 0u) {
+            // 0 is reserved for a missing chunk. Wrap is practically
+            // unreachable, but keep the contract explicit.
+            nextChunkRevision_ = 1u;
+        }
     }
 
     void TerrainSurfaceComponent::MarkGeometryChanged() noexcept {

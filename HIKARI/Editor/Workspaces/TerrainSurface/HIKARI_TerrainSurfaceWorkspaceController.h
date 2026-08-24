@@ -19,6 +19,10 @@ namespace HIKARI {
             nlohmann::json afterPatch = nlohmann::json::object();
             bool componentChanged = false;
             bool editActive = false;
+            bool terrainDelta = false;
+            bool placeSelectionRequested = false;
+            SceneObjectId terrainTargetObjectId{};
+            float placementOffset = 0.0f;
         };
 
         class TerrainSurfaceWorkspaceController {

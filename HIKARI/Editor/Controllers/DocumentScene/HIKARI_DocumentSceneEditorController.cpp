@@ -24,6 +24,7 @@
 #include "Editor/Views/HIKARI_EditorViewInstance.h"
 #include "Editor/Widgets/HIKARI_MaterialTextureSlotWidget.h"
 #include "Editor/Workspaces/RuntimeBinding/HIKARI_RuntimeBindingReferenceIndex.h"
+#include "Editor/Workspaces/TerrainSurface/HIKARI_TerrainPlacementAuthoring.h"
 #include "Editor/Workspaces/HIKARI_AssetWorkspaceActivationRouter.h"
 #include "Editor/HIKARI_EditorViewportInput.h"
 #include "Runtime/Presentation/HIKARI_FramePresentationService.h"
@@ -2115,20 +2116,63 @@ namespace HIKARI {
                 scene,
                 context_);
             if (terrainResult.componentChanged) {
+                std::unique_ptr<EDITOR::IEditorDocumentCommand> command =
+                    terrainResult.terrainDelta
+                        ? EDITOR::MakeSceneTerrainSurfaceEditDeltaHistoryCommand(
+                            "Fill Terrain Surface Layer",
+                            terrainResult.objectId,
+                            terrainResult.componentId,
+                            std::move(terrainResult.beforePatch),
+                            std::move(terrainResult.afterPatch),
+                            EDITOR::EditorDocumentImpact::RuntimeWorld)
+                        : EDITOR::MakeSceneComponentPropertiesPatchHistoryCommand(
+                            "Edit Terrain Surface Settings",
+                            terrainResult.objectId,
+                            terrainResult.componentId,
+                            std::move(terrainResult.beforePatch),
+                            std::move(terrainResult.afterPatch),
+                            EDITOR::EditorDocumentImpact::RuntimeWorld);
                 CommitAppliedDocumentCommand(
                     scene,
-                    EDITOR::MakeSceneComponentPropertiesPatchHistoryCommand(
-                        "Edit Terrain Surface Settings",
-                        terrainResult.objectId,
-                        terrainResult.componentId,
-                        std::move(terrainResult.beforePatch),
-                        std::move(terrainResult.afterPatch),
-                        EDITOR::EditorDocumentImpact::RuntimeWorld),
+                    std::move(command),
                     terrainResult.editActive
                         ? kTerrainSurfaceWorkspaceMergeGroup
                         : 0u,
                     externalDirtyBefore,
                     EDITOR::EditorDocumentImpact::None);
+            }
+            if (terrainResult.placeSelectionRequested) {
+                std::vector<SceneObjectData> beforeObjects =
+                    scene.GetSceneDocument().objects;
+                const SceneCameraSettings beforeCamera =
+                    scene.GetSceneDocument().camera;
+                const EDITOR::TerrainPlacementResult placement =
+                    EDITOR::PlaceSelectedObjectsOnTerrain(
+                        scene,
+                        context_.selection,
+                        terrainResult.terrainTargetObjectId,
+                        terrainResult.placementOffset);
+                if (!placement.changedObjectIds.empty()) {
+                    CommitSceneObjectAuthoringHistory(
+                        scene,
+                        SceneObjectAuthoringHistoryRequest{
+                            "Place Objects on Terrain",
+                            std::move(beforeObjects),
+                            scene.GetSceneDocument().objects,
+                            beforeCamera,
+                            scene.GetSceneDocument().camera,
+                            externalDirtyBefore,
+                            true,
+                            false,
+                        });
+                    viewportDropMessage_ =
+                        "Placed " + std::to_string(
+                            placement.changedObjectIds.size()) +
+                        " object(s) on terrain.";
+                } else {
+                    viewportDropMessage_ =
+                        "No selected object intersects the active terrain.";
+                }
             }
             if (!terrainResult.editActive) {
                 documentHistory_.SealMerge();

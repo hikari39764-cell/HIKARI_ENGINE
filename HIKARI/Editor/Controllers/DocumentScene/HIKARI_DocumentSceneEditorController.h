@@ -225,8 +225,6 @@ namespace HIKARI {
         SceneObjectId sandBrushTargetObjectId_{};
         RuntimeObjectHandle sandBrushTargetRuntimeHandle_{};
         SceneComponentId sandBrushTargetComponentId_{};
-        nlohmann::json sandBrushBeforeComponentProperties_ =
-            nlohmann::json::object();
         MATH::Vec3 sandBrushPreviousLocalHit_{};
         bool sandBrushHasPreviousLocalHit_ = false;
         bool sandBrushDirtyBefore_ = false;
