@@ -48,6 +48,12 @@ namespace HIKARI {
         SEQUENCER::NormalizeCameraTransformTrack(
             sequence.cameraTransformTrack);
         SEQUENCER::NormalizeCameraLensTrack(sequence.cameraLensTrack);
+        SEQUENCER::NormalizeActorAnimationTrack(
+            sequence.actorAnimationTrack);
+        SEQUENCER::NormalizeSequenceVfxTrack(sequence.vfxTrack);
+        SEQUENCER::NormalizeSequenceTimeDilationTrack(
+            sequence.timeDilationTrack);
+        SEQUENCER::NormalizeSequenceSignalTrack(sequence.signalTrack);
         sequence.durationSeconds = std::clamp(
             (std::max)(
                 FiniteOr(
@@ -155,7 +161,15 @@ namespace HIKARI {
             SEQUENCER::GetCameraTransformTrackContentEnd(
                 sequence.cameraTransformTrack),
             SEQUENCER::GetCameraLensTrackContentEnd(
-                sequence.cameraLensTrack)
+                sequence.cameraLensTrack),
+            SEQUENCER::GetActorAnimationTrackContentEnd(
+                sequence.actorAnimationTrack),
+            SEQUENCER::GetSequenceVfxTrackContentEnd(
+                sequence.vfxTrack),
+            SEQUENCER::GetSequenceTimeDilationTrackContentEnd(
+                sequence.timeDilationTrack),
+            SEQUENCER::GetSequenceSignalTrackContentEnd(
+                sequence.signalTrack)
         });
     }
 

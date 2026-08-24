@@ -40,7 +40,7 @@ void CinematicsWorkspaceController::DrawDockSpace(
   }
 
   const ImGuiViewport *viewport = ImGui::GetMainViewport();
-  const ImGuiID dockspaceId = ImGui::GetID("HIKARI_CinematicsDockSpace_v4");
+  const ImGuiID dockspaceId = ImGui::GetID("HIKARI_CinematicsDockSpace_v5");
   const ImGuiDockNodeFlags dockspaceFlags = ImGuiDockNodeFlags_None;
   const bool needsDefaultLayout =
       ImGui::DockBuilderGetNode(dockspaceId) == nullptr;
@@ -76,6 +76,12 @@ void CinematicsWorkspaceController::DrawDockSpace(
     ImGui::DockBuilderDockWindow("Cameras###Cinematics/Cameras", cameraNode);
     ImGui::DockBuilderDockWindow("Timeline###Cinematics/Timeline",
                                  timelineNode);
+    ImGui::DockBuilderDockWindow(
+        "Presentation Tracks###Cinematics/PresentationTracks",
+        timelineNode);
+    ImGui::DockBuilderDockWindow(
+        "Sequence Inspector###Cinematics/SequenceInspector",
+        cameraNode);
     ImGui::DockBuilderFinish(dockspaceId);
   }
   ImGui::DockSpaceOverViewport(dockspaceId, viewport, dockspaceFlags);
@@ -129,6 +135,8 @@ CinematicsWorkspaceResult CinematicsWorkspaceController::Draw(
   }
 
   DrawTimelineWindow(scene, context, workspaceHost, result);
+  DrawPresentationTracksWindow(scene, context, result);
+  DrawSequenceInspectorWindow(scene, result);
   DrawDirectorViewWindow(scene, context, selectionSync, workspaceHost);
   result.toggleGamePreviewRequested =
       DrawGameViewWindow(scene, playSession, workspaceHost);

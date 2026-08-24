@@ -61,10 +61,12 @@ AssetType TypeFromFilterIndex(int index) {
   case 7:
     return AssetType::Sequence;
   case 8:
-    return AssetType::AnimationStateMachine;
+    return AssetType::CombatAction;
   case 9:
-    return AssetType::Dialogue;
+    return AssetType::AnimationStateMachine;
   case 10:
+    return AssetType::Dialogue;
+  case 11:
     return AssetType::ModelMaterialBinding;
   default:
     return AssetType::Unknown;
@@ -255,6 +257,8 @@ const char *ToCompactTypeBadge(AssetType type) {
     return "PTC";
   case AssetType::Sequence:
     return "SEQ";
+  case AssetType::CombatAction:
+    return "ACT";
   case AssetType::AnimationStateMachine:
     return "ASM";
   case AssetType::Dialogue:

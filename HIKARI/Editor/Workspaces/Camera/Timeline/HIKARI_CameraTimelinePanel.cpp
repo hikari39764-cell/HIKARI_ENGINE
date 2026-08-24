@@ -437,6 +437,32 @@ CameraTimelinePanel::GetActiveSequence(SceneCinematicsSettings &settings) {
              : nullptr;
 }
 
+float CameraTimelinePanel::GetTimeSeconds() const noexcept {
+  return player_.GetTimeSeconds();
+}
+
+bool CameraTimelinePanel::IsPlaying() const noexcept {
+  return player_.IsPlaying();
+}
+
+bool CameraTimelinePanel::Seek(SceneCinematicsSettings &settings,
+                               float timeSeconds) {
+  player_.Pause();
+  previewEnabled_ = true;
+  previewCutPending_ = true;
+  return player_.Seek(settings, timeSeconds);
+}
+
+const SEQUENCER::SequenceBindingContext &
+CameraTimelinePanel::GetPreviewBindings() const noexcept {
+  return bindingPanel_.GetPreviewBindings();
+}
+
+SEQUENCER::SequenceBindingContext &
+CameraTimelinePanel::GetPreviewBindings() noexcept {
+  return bindingPanel_.GetPreviewBindings();
+}
+
 bool CameraTimelinePanel::EnsureActiveSequence(
     SceneCinematicsSettings &settings) {
 

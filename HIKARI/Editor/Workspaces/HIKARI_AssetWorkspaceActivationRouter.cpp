@@ -39,6 +39,10 @@ namespace HIKARI::EDITOR {
             request.workspaceId = EditorWorkspaceId::Dialogue;
             request.dialogueAssetGuid = activation.guid;
             break;
+        case AssetType::CombatAction:
+            request.workspaceId = EditorWorkspaceId::CombatAction;
+            request.combatActionAssetGuid = activation.guid;
+            break;
         default:
             return route;
         }

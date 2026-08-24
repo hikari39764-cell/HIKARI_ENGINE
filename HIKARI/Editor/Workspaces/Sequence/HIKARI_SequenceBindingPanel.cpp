@@ -33,9 +33,15 @@ bool HasCameraComponent(const SceneObjectData &object) noexcept {
                      });
 }
 
-bool IsBindingUsed(const CinematicSequence &sequence,
-                   SEQUENCER::SequenceBindingId bindingId) noexcept {
+bool HasAnimatorComponent(const SceneObjectData &object) noexcept {
+  return std::any_of(object.components.begin(), object.components.end(),
+                     [](const SceneComponentData &component) {
+                       return component.type == "AnimatorComponent";
+                     });
+}
 
+bool UsesCameraBinding(const CinematicSequence &sequence,
+                       SEQUENCER::SequenceBindingId bindingId) noexcept {
   return std::any_of(sequence.cameraCutTrack.clips.begin(),
                      sequence.cameraCutTrack.clips.end(),
                      [bindingId](const SEQUENCER::CameraCutClip &clip) {
@@ -51,6 +57,33 @@ bool IsBindingUsed(const CinematicSequence &sequence,
                      sequence.cameraLensTrack.channels.end(),
                      [bindingId](const SEQUENCER::CameraLensChannel &channel) {
                        return channel.cameraBindingId == bindingId;
+                     });
+}
+
+bool UsesActorBinding(const CinematicSequence &sequence,
+                      SEQUENCER::SequenceBindingId bindingId) noexcept {
+  return std::any_of(
+      sequence.actorAnimationTrack.clips.begin(),
+      sequence.actorAnimationTrack.clips.end(),
+      [bindingId](const SEQUENCER::ActorAnimationClip &clip) {
+        return clip.actorBindingId == bindingId;
+      });
+}
+
+bool IsBindingUsed(const CinematicSequence &sequence,
+                   SEQUENCER::SequenceBindingId bindingId) noexcept {
+
+  return UsesCameraBinding(sequence, bindingId) ||
+         UsesActorBinding(sequence, bindingId) ||
+         std::any_of(sequence.vfxTrack.cues.begin(),
+                     sequence.vfxTrack.cues.end(),
+                     [bindingId](const SEQUENCER::SequenceVfxCue &cue) {
+                       return cue.ownerBindingId == bindingId;
+                     }) ||
+         std::any_of(sequence.signalTrack.cues.begin(),
+                     sequence.signalTrack.cues.end(),
+                     [bindingId](const SEQUENCER::SequenceSignalCue &cue) {
+                       return cue.targetBindingId == bindingId;
                      });
 }
 
@@ -79,8 +112,10 @@ std::string MakeUniqueSlotName(const SEQUENCER::SequenceBindingTable &bindings,
 }
 
 #if defined(HIKARI_WITH_EDITOR)
-bool DrawCameraObjectCombo(const char *label, const SceneDocument &document,
-                           SceneObjectId &selectedObjectId) {
+bool DrawSceneObjectCombo(const char *label, const SceneDocument &document,
+                          const CinematicSequence &sequence,
+                          SEQUENCER::SequenceBindingId bindingId,
+                          SceneObjectId &selectedObjectId) {
 
   const SceneObjectData *selected = FindSceneObject(document, selectedObjectId);
   const std::string preview =
@@ -96,7 +131,10 @@ bool DrawCameraObjectCombo(const char *label, const SceneDocument &document,
       changed = true;
     }
     for (const SceneObjectData &object : document.objects) {
-      if (!HasCameraComponent(object)) {
+      const bool cameraBinding = UsesCameraBinding(sequence, bindingId);
+      const bool actorBinding = UsesActorBinding(sequence, bindingId);
+      if ((cameraBinding && !HasCameraComponent(object)) ||
+          (actorBinding && !HasAnimatorComponent(object))) {
         continue;
       }
       const bool isSelected = object.id == selectedObjectId;
@@ -118,19 +156,28 @@ bool DrawCameraObjectCombo(const char *label, const SceneDocument &document,
 #endif
 
 void ConvertToPortableSlot(const SceneDocument &document,
-                           SEQUENCER::SequenceBindingTable &bindings,
+                           CinematicSequence &sequence,
                            SEQUENCER::SequenceBinding &binding,
                            SEQUENCER::SequenceBindingContext &previewBindings) {
 
   const SceneObjectId previousObject = binding.sceneObjectId;
+  const bool cameraBinding = UsesCameraBinding(sequence, binding.id);
+  const bool actorBinding = UsesActorBinding(sequence, binding.id);
   const std::string baseName =
       previousObject.value != 0
-          ? BuildCameraPreviewSlotName(document, previousObject)
-          : "Camera." +
-              SEQUENCER::NormalizeSequenceBindingSlotName(
-                  binding.name);
+          ? (cameraBinding
+                 ? BuildCameraPreviewSlotName(document, previousObject)
+                 : (actorBinding ? "Actor." : "Object.") +
+                       SEQUENCER::NormalizeSequenceBindingSlotName(
+                           FindSceneObject(document, previousObject) != nullptr
+                               ? FindSceneObject(document, previousObject)->name
+                               : binding.name))
+          : (cameraBinding ? "Camera."
+                           : (actorBinding ? "Actor." : "Object.")) +
+                SEQUENCER::NormalizeSequenceBindingSlotName(binding.name);
   binding.targetKind = SEQUENCER::SequenceBindingTargetKind::Slot;
-  binding.slotName = MakeUniqueSlotName(bindings, baseName, binding.id);
+  binding.slotName = MakeUniqueSlotName(
+      sequence.bindings, baseName, binding.id);
   binding.sceneObjectId = {};
   if (previousObject.value != 0) {
     (void)previewBindings.Bind(binding.id, previousObject);
@@ -154,10 +201,11 @@ SEQUENCER::SequenceBindingId FindOrCreatePortableCameraBinding(
     SceneObjectId previewObject{};
     if (previewBindings.Resolve(sequence.bindings, binding.id, previewObject) &&
         previewObject == cameraObjectId) {
-      if (IsBindingUsed(sequence, binding.id)) {
+      if (UsesCameraBinding(sequence, binding.id)) {
         return binding.id;
       }
-      if (!availableBindingId.IsValid()) {
+      if (!IsBindingUsed(sequence, binding.id) &&
+          !availableBindingId.IsValid()) {
         availableBindingId = binding.id;
       }
     }
@@ -190,6 +238,43 @@ SEQUENCER::SequenceBindingId FindOrCreatePortableCameraBinding(
   return bindingId;
 }
 
+SEQUENCER::SequenceBindingId FindOrCreatePortableActorBinding(
+    const SceneDocument &document, CinematicSequence &sequence,
+    SceneObjectId actorObjectId,
+    SEQUENCER::SequenceBindingContext &previewBindings) {
+
+  if (actorObjectId.value == 0) return {};
+  SEQUENCER::SequenceBindingId availableBindingId{};
+  for (const SEQUENCER::SequenceBinding &binding : sequence.bindings) {
+    if (binding.targetKind != SEQUENCER::SequenceBindingTargetKind::Slot) {
+      continue;
+    }
+    SceneObjectId previewObject{};
+    if (previewBindings.Resolve(sequence.bindings, binding.id, previewObject) &&
+        previewObject == actorObjectId) {
+      if (UsesActorBinding(sequence, binding.id)) return binding.id;
+      if (!IsBindingUsed(sequence, binding.id) &&
+          !availableBindingId.IsValid()) {
+        availableBindingId = binding.id;
+      }
+    }
+  }
+  if (availableBindingId.IsValid()) return availableBindingId;
+  const SceneObjectData *object = FindSceneObject(document, actorObjectId);
+  const std::string baseName = "Actor." +
+      SEQUENCER::NormalizeSequenceBindingSlotName(
+          object != nullptr ? object->name
+                            : "Object" + std::to_string(actorObjectId.value));
+  const std::string slotName = MakeUniqueSlotName(sequence.bindings, baseName);
+  const SEQUENCER::SequenceBindingId bindingId =
+      SEQUENCER::FindOrCreateSlotBinding(
+          sequence.bindings, slotName, object != nullptr ? object->name : slotName);
+  if (bindingId.IsValid()) {
+    (void)previewBindings.Bind(bindingId, actorObjectId);
+  }
+  return bindingId;
+}
+
 SequenceBindingPanelResult
 SequenceBindingPanel::Draw(const SceneDocument &document,
                            CinematicSequence &sequence,
@@ -203,9 +288,9 @@ SequenceBindingPanel::Draw(const SceneDocument &document,
     return result;
   }
   ImGui::TextDisabled(
-      portableAsset ? "Slots are saved in the asset; Preview Cameras are "
-                      "resolved from this scene."
-                    : "Embedded sequences may bind directly to scene cameras.");
+      portableAsset ? "Slots are saved in the asset; preview objects are "
+                      "resolved from the active scene."
+                    : "Embedded sequences may bind directly to scene objects.");
 
   const bool hasDirectBindings =
       std::any_of(sequence.bindings.begin(), sequence.bindings.end(),
@@ -221,7 +306,7 @@ SequenceBindingPanel::Draw(const SceneDocument &document,
       for (SEQUENCER::SequenceBinding &binding : sequence.bindings) {
         if (binding.targetKind ==
             SEQUENCER::SequenceBindingTargetKind::SceneObject) {
-          ConvertToPortableSlot(document, sequence.bindings, binding,
+          ConvertToPortableSlot(document, sequence, binding,
                                 previewBindings_);
         }
       }
@@ -240,7 +325,7 @@ SequenceBindingPanel::Draw(const SceneDocument &document,
   }
   if (ImGui::SmallButton("Add Binding Slot")) {
     const std::string slotName =
-        MakeUniqueSlotName(sequence.bindings, "Camera.Slot");
+        MakeUniqueSlotName(sequence.bindings, "Object.Slot");
     (void)SEQUENCER::FindOrCreateSlotBinding(sequence.bindings, slotName,
                                              slotName);
     result.sequenceChanged = true;
@@ -276,7 +361,7 @@ SequenceBindingPanel::Draw(const SceneDocument &document,
     if (ImGui::BeginCombo("Target Kind", typeLabel)) {
       if (ImGui::Selectable("Slot", slotBinding)) {
         if (!slotBinding) {
-          ConvertToPortableSlot(document, sequence.bindings, binding,
+          ConvertToPortableSlot(document, sequence, binding,
                                 previewBindings_);
           result.sequenceChanged = true;
         }
@@ -312,20 +397,26 @@ SequenceBindingPanel::Draw(const SceneDocument &document,
       SceneObjectId previewObject{};
       (void)previewBindings_.Resolve(sequence.bindings, binding.id,
                                      previewObject);
-      if (DrawCameraObjectCombo("Preview Camera", document, previewObject)) {
+      const char *previewLabel = UsesCameraBinding(sequence, binding.id)
+                                     ? "Preview Camera"
+                                     : (UsesActorBinding(sequence, binding.id)
+                                            ? "Preview Actor"
+                                            : "Preview Object");
+      if (DrawSceneObjectCombo(previewLabel, document, sequence, binding.id,
+                               previewObject)) {
         if (previewObject.value == 0) {
           (void)previewBindings_.Unbind(binding.id);
         } else {
           (void)previewBindings_.Bind(binding.id, previewObject);
         }
       }
-    } else if (DrawCameraObjectCombo("Scene Camera", document,
-                                     binding.sceneObjectId)) {
+    } else if (DrawSceneObjectCombo("Scene Object", document, sequence,
+                                    binding.id, binding.sceneObjectId)) {
       result.sequenceChanged = true;
     }
     const bool bindingUsed = IsBindingUsed(sequence, binding.id);
     if (bindingUsed) {
-      ImGui::TextDisabled("Used by one or more camera tracks");
+      ImGui::TextDisabled("Used by one or more sequence tracks");
     } else if (ImGui::SmallButton("Remove Unused Binding")) {
       bindingToRemove = binding.id;
     }

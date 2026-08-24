@@ -93,6 +93,18 @@ namespace HIKARI::EDITOR {
             EditorViewCameraSourceKind::OwnedEditorCamera;
         terrain.execution =
             EditorViewExecutionMode::PrimaryFullQuality;
+
+        EditorViewInstance& action =
+            View(BuiltInViewSlot::CombatActionPreview);
+        action.renderViewId = kCombatActionPreviewRenderViewId;
+        action.role = EditorViewRole::Preview;
+        action.purpose = RENDER3D::RenderViewPurpose::EditorScene;
+        action.cameraBinding.kind =
+            EditorViewCameraSourceKind::OwnedEditorCamera;
+        action.execution =
+            EditorViewExecutionMode::SecondaryEditorScene;
+        action.visualization.shadingMode = EditorViewShadingMode::Lit;
+        action.visualization.displayExposure = 1.0f;
     }
 
     bool EditorWorkspaceHost::RequestOpen(EditorWorkspaceOpenRequest request) {
@@ -126,6 +138,7 @@ namespace HIKARI::EDITOR {
             request.animationStateMachineAssetGuid;
         activation.vfxAssetGuid = request.vfxAssetGuid;
         activation.dialogueAssetGuid = request.dialogueAssetGuid;
+        activation.combatActionAssetGuid = request.combatActionAssetGuid;
         activeWorkspace_ = request.workspaceId;
 
         return activation;
@@ -229,6 +242,16 @@ namespace HIKARI::EDITOR {
     const EditorViewInstance&
         EditorWorkspaceHost::GetTerrainSurfaceGameView() const noexcept {
         return View(BuiltInViewSlot::TerrainSurfaceGame);
+    }
+
+    EditorViewInstance&
+        EditorWorkspaceHost::GetCombatActionPreviewView() noexcept {
+        return View(BuiltInViewSlot::CombatActionPreview);
+    }
+
+    const EditorViewInstance&
+        EditorWorkspaceHost::GetCombatActionPreviewView() const noexcept {
+        return View(BuiltInViewSlot::CombatActionPreview);
     }
 
     EditorViewInstance* EditorWorkspaceHost::FindView(

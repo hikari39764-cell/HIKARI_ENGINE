@@ -102,6 +102,9 @@ SuggestedTargetDirectory(const std::filesystem::path &currentDirectory,
   if (type == AssetType::Sequence) {
     return "Assets/Sequences";
   }
+  if (type == AssetType::CombatAction) {
+    return "Assets/Actions";
+  }
   if (type == AssetType::AnimationStateMachine) {
     return "Assets/Animations";
   }

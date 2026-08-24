@@ -14,6 +14,7 @@ set(HIKARI_RUNTIME_FOUNDATION_SOURCES)
 set(HIKARI_RUNTIME_ASSET_SOURCES)
 set(HIKARI_RUNTIME_PROJECT_SOURCES)
 set(HIKARI_RUNTIME_SCENE_SOURCES)
+set(HIKARI_RUNTIME_SEQUENCER_SOURCES)
 set(HIKARI_RUNTIME_PHYSICS_SOURCES)
 set(HIKARI_RUNTIME_GFX_SOURCES)
 set(HIKARI_RUNTIME_RENDER3D_SOURCES)
@@ -40,6 +41,8 @@ foreach(runtime_source IN LISTS HIKARI_RUNTIME_SOURCES)
         list(APPEND HIKARI_RUNTIME_ASSET_SOURCES "${runtime_source}")
     elseif(runtime_relative_path MATCHES "^HIKARI/Project/")
         list(APPEND HIKARI_RUNTIME_PROJECT_SOURCES "${runtime_source}")
+    elseif(runtime_relative_path MATCHES "^HIKARI/Scene/Sequencer/")
+        list(APPEND HIKARI_RUNTIME_SEQUENCER_SOURCES "${runtime_source}")
     elseif(runtime_relative_path MATCHES "^HIKARI/(Scene|Animation|Gameplay)/")
         list(APPEND HIKARI_RUNTIME_SCENE_SOURCES "${runtime_source}")
     elseif(runtime_relative_path MATCHES "^HIKARI/Physics/")
@@ -70,6 +73,7 @@ set(
     HIKARI_RUNTIME_ASSET_SOURCES
     HIKARI_RUNTIME_PROJECT_SOURCES
     HIKARI_RUNTIME_SCENE_SOURCES
+    HIKARI_RUNTIME_SEQUENCER_SOURCES
     HIKARI_RUNTIME_PHYSICS_SOURCES
     HIKARI_RUNTIME_GFX_SOURCES
     HIKARI_RUNTIME_RENDER3D_SOURCES
@@ -137,6 +141,7 @@ function(hikari_define_runtime_modules output_variable)
         "hikari_runtime_assets|HIKARI_RUNTIME_ASSET_SOURCES"
         "hikari_runtime_project|HIKARI_RUNTIME_PROJECT_SOURCES"
         "hikari_runtime_scene|HIKARI_RUNTIME_SCENE_SOURCES"
+        "hikari_runtime_sequencer|HIKARI_RUNTIME_SEQUENCER_SOURCES"
         "hikari_runtime_physics|HIKARI_RUNTIME_PHYSICS_SOURCES"
         "hikari_runtime_gfx|HIKARI_RUNTIME_GFX_SOURCES"
         "hikari_runtime_render3d|HIKARI_RUNTIME_RENDER3D_SOURCES"

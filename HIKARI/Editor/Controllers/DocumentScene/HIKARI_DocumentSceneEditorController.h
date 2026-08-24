@@ -41,6 +41,7 @@
 #include "Editor/Workspaces/RuntimeBinding/HIKARI_RuntimeBindingWorkspaceController.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
 #include "Editor/Workspaces/Dialogue/HIKARI_DialogueWorkspaceController.h"
+#include "Editor/Workspaces/CombatAction/HIKARI_CombatActionWorkspaceController.h"
 #include "Editor/Workspaces/TerrainSurface/HIKARI_TerrainSurfaceWorkspaceController.h"
 #include "Editor/HIKARI_SelectionSyncService.h"
 #include "Editor/HIKARI_StatsPanel.h"
@@ -104,6 +105,8 @@ namespace HIKARI {
             runtimeBindingWorkspaceController_{};
         EDITOR::VfxWorkspaceController vfxWorkspaceController_{};
         EDITOR::DialogueWorkspaceController dialogueWorkspaceController_{};
+        EDITOR::CombatActionWorkspaceController
+            combatActionWorkspaceController_{};
         EDITOR::TerrainSurfaceWorkspaceController
             terrainSurfaceWorkspaceController_{};
         DebugCameraPanel debugCameraPanel_{};

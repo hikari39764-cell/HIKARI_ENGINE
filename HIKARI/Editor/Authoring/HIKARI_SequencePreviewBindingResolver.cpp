@@ -36,6 +36,22 @@ namespace HIKARI::EDITOR {
                 });
         }
 
+        bool HasAnimatorComponent(const SceneObjectData& object) noexcept {
+            return std::any_of(
+                object.components.begin(),
+                object.components.end(),
+                [](const SceneComponentData& component) {
+                    return component.type == "AnimatorComponent";
+                });
+        }
+
+        bool StartsWith(
+            std::string_view value,
+            std::string_view prefix) noexcept {
+            return value.size() >= prefix.size() &&
+                value.substr(0, prefix.size()) == prefix;
+        }
+
         bool IsMatchingSequencePlayer(
             const SceneComponentData& component,
             const AssetGuid& sequenceAssetGuid) {
@@ -94,8 +110,13 @@ namespace HIKARI::EDITOR {
                         const SceneObjectData* camera = FindSceneObject(
                             document,
                             objectId);
+                        const bool needsCamera = StartsWith(
+                            slotName, "Camera.");
+                        const bool needsActor = StartsWith(
+                            slotName, "Actor.");
                         if (camera == nullptr ||
-                            !HasCameraComponent(*camera)) {
+                            (needsCamera && !HasCameraComponent(*camera)) ||
+                            (needsActor && !HasAnimatorComponent(*camera))) {
                             continue;
                         }
                         if (foundCandidate && candidate != objectId) {
@@ -140,6 +161,35 @@ namespace HIKARI::EDITOR {
             if (!foundCandidate) {
                 return false;
             }
+            outObjectId = candidate;
+            return true;
+        }
+
+        bool TryResolveGeneratedActorSlot(
+            const SceneDocument& document,
+            const std::string& slotName,
+            SceneObjectId& outObjectId) {
+
+            if (!StartsWith(slotName, "Actor.")) return false;
+            const std::string_view authoredName =
+                std::string_view(slotName).substr(6);
+            bool foundCandidate = false;
+            SceneObjectId candidate{};
+            for (const SceneObjectData& object : document.objects) {
+                if (!HasAnimatorComponent(object)) continue;
+                const std::string canonical =
+                    SEQUENCER::NormalizeSequenceBindingSlotName(
+                        object.name);
+                if (authoredName != canonical &&
+                    !IsGeneratedCameraPreviewSlot(
+                        std::string(authoredName), canonical)) {
+                    continue;
+                }
+                if (foundCandidate && candidate != object.id) return false;
+                candidate = object.id;
+                foundCandidate = true;
+            }
+            if (!foundCandidate) return false;
             outObjectId = candidate;
             return true;
         }
@@ -209,10 +259,14 @@ namespace HIKARI::EDITOR {
             const bool restored =
                 persistentResult == PersistentBindingResult::Resolved ||
                 (persistentResult == PersistentBindingResult::NotFound &&
-                    TryResolveGeneratedCameraSlot(
-                        document,
-                        binding.slotName,
-                        objectId));
+                    (TryResolveGeneratedCameraSlot(
+                         document,
+                         binding.slotName,
+                         objectId) ||
+                     TryResolveGeneratedActorSlot(
+                         document,
+                         binding.slotName,
+                         objectId)));
             if (restored && outBindings.Bind(binding.id, objectId)) {
                 ++restoredCount;
             }

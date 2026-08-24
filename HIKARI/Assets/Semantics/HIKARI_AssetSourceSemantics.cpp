@@ -47,6 +47,13 @@ namespace HIKARI::ASSETS::SEMANTICS {
                 ".hsequence",
             },
             {
+                AssetImporterKind::CombatAction,
+                AssetType::CombatAction,
+                "CombatActionAssetImporter",
+                1u,
+                ".haction",
+            },
+            {
                 AssetImporterKind::AnimationStateMachine,
                 AssetType::AnimationStateMachine,
                 "AnimationStateMachineAssetImporter",
@@ -138,6 +145,7 @@ namespace HIKARI::ASSETS::SEMANTICS {
         case AssetType::Particle: return "Particle";
         case AssetType::VfxEffect: return "VfxEffect";
         case AssetType::Sequence: return "Sequence";
+        case AssetType::CombatAction: return "CombatAction";
         case AssetType::AnimationStateMachine: return "AnimationStateMachine";
         case AssetType::Dialogue: return "Dialogue";
         case AssetType::ModelMaterialBinding: return "ModelMaterialBinding";
@@ -156,6 +164,9 @@ namespace HIKARI::ASSETS::SEMANTICS {
         if (text == "Particle") return AssetType::Particle;
         if (text == "VfxEffect" || text == "Vfx") return AssetType::VfxEffect;
         if (text == "Sequence") return AssetType::Sequence;
+        if (text == "CombatAction" || text == "Action") {
+            return AssetType::CombatAction;
+        }
         if (text == "AnimationStateMachine") {
             return AssetType::AnimationStateMachine;
         }
@@ -220,6 +231,8 @@ namespace HIKARI::ASSETS::SEMANTICS {
             kind = AssetImporterKind::Scene;
         } else if (extension == ".hsequence") {
             kind = AssetImporterKind::Sequence;
+        } else if (extension == ".haction") {
+            kind = AssetImporterKind::CombatAction;
         } else if (extension == ".hanimsm") {
             kind = AssetImporterKind::AnimationStateMachine;
         } else if (extension == ".hdialogue") {

@@ -2053,6 +2053,9 @@ namespace HIKARI {
             dialogueWorkspaceController_.ApplyWorkspaceActivation(
                 scene,
                 *activation);
+            combatActionWorkspaceController_.ApplyWorkspaceActivation(
+                scene,
+                *activation);
             if (activation->current ==
                     EDITOR::EditorWorkspaceId::RuntimeBinding) {
                 std::string message{};
@@ -2137,6 +2140,37 @@ namespace HIKARI {
             if (result.exitToSceneRequested) {
                 EDITOR::EditorWorkspaceOpenRequest request{};
                 request.workspaceId = EDITOR::EditorWorkspaceId::Scene;
+                (void)workspaceHost_.RequestOpen(std::move(request));
+            }
+            if (!result.statusMessage.empty()) {
+                viewportDropMessage_ = result.statusMessage;
+            }
+            DrawPendingSceneOpenModal(scene);
+            return;
+        }
+
+        if (workspaceHost_.IsActive(
+                EDITOR::EditorWorkspaceId::CombatAction)) {
+            SERVICES::SetEditorGameViewportSize(0, 0, false);
+            combatActionWorkspaceController_.DrawDockSpace(
+                workspaceHost_.ConsumeReset(
+                    EDITOR::EditorWorkspaceId::CombatAction));
+            const EDITOR::CombatActionWorkspaceResult result =
+                combatActionWorkspaceController_.Draw(
+                    scene,
+                    context_,
+                    selectionSync_,
+                    workspaceHost_,
+                    commandRouter_);
+            if (result.exitToSceneRequested) {
+                EDITOR::EditorWorkspaceOpenRequest request{};
+                request.workspaceId = EDITOR::EditorWorkspaceId::Scene;
+                (void)workspaceHost_.RequestOpen(std::move(request));
+            }
+            if (result.openSequenceAssetGuid) {
+                EDITOR::EditorWorkspaceOpenRequest request{};
+                request.workspaceId = EDITOR::EditorWorkspaceId::Cinematics;
+                request.sequenceAssetGuid = result.openSequenceAssetGuid;
                 (void)workspaceHost_.RequestOpen(std::move(request));
             }
             if (!result.statusMessage.empty()) {

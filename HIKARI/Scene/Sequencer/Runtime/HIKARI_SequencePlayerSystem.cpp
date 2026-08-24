@@ -66,7 +66,7 @@ namespace HIKARI {
         runtimePlayState_ = nullptr;
     }
 
-    void SequencePlayerSystem::Update(
+    void SequencePlayerSystem::PreUpdate(
         World& world,
         const FrameContext&) {
 

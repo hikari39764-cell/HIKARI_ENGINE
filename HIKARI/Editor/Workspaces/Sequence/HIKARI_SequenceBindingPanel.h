@@ -15,6 +15,11 @@ SEQUENCER::SequenceBindingId FindOrCreatePortableCameraBinding(
     SceneObjectId cameraObjectId,
     SEQUENCER::SequenceBindingContext &previewBindings);
 
+SEQUENCER::SequenceBindingId FindOrCreatePortableActorBinding(
+    const SceneDocument &document, CinematicSequence &sequence,
+    SceneObjectId actorObjectId,
+    SEQUENCER::SequenceBindingContext &previewBindings);
+
 class SequenceBindingPanel {
 public:
   SequenceBindingPanelResult Draw(const SceneDocument &document,

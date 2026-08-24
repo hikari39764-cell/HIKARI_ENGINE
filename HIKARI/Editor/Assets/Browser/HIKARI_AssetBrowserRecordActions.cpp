@@ -85,6 +85,11 @@ void HandleRecordActivated(const AssetRecord &record,
         record.displayName;
     return;
   }
+  if (record.type == AssetType::CombatAction) {
+    activatedAsset = AssetWorkspaceActivation{record.type, record.guid};
+    lastOperationMessage = "Open Combat Action: " + record.displayName;
+    return;
+  }
   if (record.type == AssetType::Model) {
     activatedAsset = AssetWorkspaceActivation{record.type, record.guid};
     lastOperationMessage =
@@ -295,6 +300,14 @@ void DrawRecordContextMenu(
     if (ImGui::MenuItem(
             TEXT::Localize(
                 "ui.assetBrowser.openDialogue").c_str())) {
+      SelectRecord(record, selection);
+      HandleRecordActivated(record, lastOperationMessage, activatedAsset);
+    }
+    ImGui::Separator();
+  }
+
+  if (record.type == AssetType::CombatAction) {
+    if (ImGui::MenuItem("Open in Combat Action")) {
       SelectRecord(record, selection);
       HandleRecordActivated(record, lastOperationMessage, activatedAsset);
     }
