@@ -5,6 +5,7 @@
 #include <cfloat>
 #include <cmath>
 #include <cstring>
+#include <limits>
 #include <optional>
 #include <span>
 #include <string>
@@ -17,6 +18,7 @@
 #include "Scene/HIKARI_RuntimeWorldServices.h"
 #include "Scene/HIKARI_World.h"
 #include "Scene/Sand/HIKARI_SandSurfaceQueryService.h"
+#include "Scene/Terrain/HIKARI_SurfaceLayerRegistry.h"
 #include "Scene/Terrain/HIKARI_SurfacePreset.h"
 #include "Scene/Terrain/HIKARI_TerrainInteraction.h"
 #include "Scene/Terrain/HIKARI_TerrainSurfaceResponse.h"
@@ -408,12 +410,17 @@ namespace HIKARI {
         std::vector<SAND::SandSurfaceSnapshotEntry> entries{};
         std::unordered_set<uint64_t> activeTerrainObjects{};
         bool publishNeeded = !hasPublishedSnapshot_;
+        TERRAIN::SurfaceLayerRegistry::Get().RegisterBuiltins();
+        const uint64_t layerRegistryRevision =
+            TERRAIN::SurfaceLayerRegistry::Get().GetRevision();
 
         world.ForEachObjectWith<TerrainSurfaceComponent>(
             [&](GameObject& object, TerrainSurfaceComponent& terrain) {
                 const uint64_t objectKey = object.GetRenderStableId();
                 activeTerrainObjects.insert(objectKey);
-                ObjectChunks& bucket = objects_[objectKey];
+                auto [bucketIt, insertedBucket] =
+                    objects_.try_emplace(objectKey);
+                ObjectChunks& bucket = bucketIt->second;
                 const TERRAIN::TerrainSurface& surface =
                     terrain.GetSurface();
                 const float chunkSize = terrain.GetChunkWorldSize();
@@ -423,13 +430,26 @@ namespace HIKARI {
 
                 const uint64_t revision = terrain.GetRevision();
                 const bool revisionChanged =
-                    bucket.lastRevision != revision;
+                    insertedBucket || bucket.lastRevision != revision;
                 bucket.lastRevision = revision;
                 const uint64_t coverageRevision =
                     terrain.GetCoverageRevision();
                 const bool coverageRevisionChanged =
+                    insertedBucket ||
                     bucket.lastCoverageRevision != coverageRevision;
                 bucket.lastCoverageRevision = coverageRevision;
+                const bool layerRegistryChanged = insertedBucket ||
+                    bucket.lastLayerRegistryRevision !=
+                        layerRegistryRevision;
+                bucket.lastLayerRegistryRevision = layerRegistryRevision;
+                const bool bucketSettingsChanged = !bucket.hasSettings ||
+                    !SAND::SandSurfaceSettingsEqual(
+                        bucket.lastSettings, nextSettings);
+                bucket.lastSettings = nextSettings;
+                bucket.hasSettings = true;
+                bucket.chunkWorldSize = chunkSize;
+                bucket.maximumStampRadius = (std::max)(
+                    nextSettings.stampRadius, 0.0f);
                 // 高さ場はローカル空間。スタンプ源をローカルへ写す逆行列を
                 // キャッシュする（オブジェクトが動いたら毎フレーム新鮮に）。
                 bucket.localToWorld =
@@ -463,6 +483,33 @@ namespace HIKARI {
                     bucket.scaleX = 1.0f;
                     bucket.scaleY = 1.0f;
                     bucket.scaleZ = 1.0f;
+                }
+
+                const bool authoredRefreshNeeded = insertedBucket ||
+                    revisionChanged || coverageRevisionChanged ||
+                    layerRegistryChanged || bucketSettingsChanged ||
+                    bucket.chunks.size() != surface.chunks.size() ||
+                    bucket.authoredCoverageSignatures.size() !=
+                        surface.chunks.size();
+                if (!authoredRefreshNeeded) {
+                    for (const uint64_t stateKey :
+                            bucket.dirtySnapshotKeys) {
+                        const auto state = bucket.chunks.find(stateKey);
+                        if (state == bucket.chunks.end() ||
+                            state->second == nullptr) {
+                            continue;
+                        }
+                        SAND::SandChunkRuntimeSnapshotPtr immutable =
+                            SAND::MakeSandChunkRuntimeSnapshot(
+                                *state->second);
+                        bucket.snapshots.insert_or_assign(
+                            stateKey, std::move(immutable));
+                        bucket.snapshotRevisions.insert_or_assign(
+                            stateKey, state->second->stateRevision);
+                        publishNeeded = true;
+                    }
+                    bucket.dirtySnapshotKeys.clear();
+                    return;
                 }
 
                 bool coverageTopologyChanged =
@@ -633,7 +680,7 @@ namespace HIKARI {
                     // 独立比較する。これにより TerrainSurface revision が同じでも
                     // registry の変更を検出できる。
                     authoredChanged = authoredChanged || layerPolicyChanged;
-                    const bool settingsChanged = created ||
+                    const bool stateSettingsChanged = created ||
                         !SAND::SandSurfaceSettingsEqual(
                             state->settings, nextSettings);
                     bucket.authoredHeightSignatures[stateKey] =
@@ -655,7 +702,7 @@ namespace HIKARI {
                         // 筆刷内容だけでなく grid/chunk 尺度の変更も同じ経路で
                         // 再同期し、古い stride で query / imprint しない。
                         SyncChunkFromAuthored(*state, authored, surface);
-                    } else if (settingsChanged) {
+                    } else if (stateSettingsChanged) {
                         ++state->stateRevision;
                     }
                     if (created || layoutChanged ||
@@ -682,8 +729,11 @@ namespace HIKARI {
                             ++state->stateRevision;
                         }
                     }
-                    SAND::SandSurfaceSnapshotEntry entry{};
-                    entry.object = object.GetRuntimeHandle();
+                    if (state->hasDeformation) {
+                        bucket.activeDeformationKeys.insert(stateKey);
+                    } else {
+                        bucket.activeDeformationKeys.erase(stateKey);
+                    }
                     const auto snapshotRevision =
                         bucket.snapshotRevisions.find(stateKey);
                     auto snapshot = bucket.snapshots.find(stateKey);
@@ -695,18 +745,10 @@ namespace HIKARI {
                         bucket.snapshots[stateKey] = immutable;
                         bucket.snapshotRevisions[stateKey] =
                             state->stateRevision;
-                        entry.chunk = std::move(immutable);
                         publishNeeded = true;
-                    } else {
-                        entry.chunk = snapshot->second;
                     }
-                    entry.localToWorld = bucket.localToWorld;
-                    entry.worldToLocal = bucket.worldToLocal;
-                    entry.normalMatrix =
-                        MATH::BuildNormalMatrixFromWorld(
-                            bucket.localToWorld);
-                    entries.push_back(std::move(entry));
                 }
+                bucket.dirtySnapshotKeys.clear();
 
                 // 消えた chunk を状態表から落とす。
                 for (auto it = bucket.chunks.begin();
@@ -721,6 +763,8 @@ namespace HIKARI {
                         bucket.authoredHeightSignatures.erase(it->first);
                         bucket.authoredLayerPolicySignatures.erase(it->first);
                         bucket.authoredCoverageSignatures.erase(it->first);
+                        bucket.activeDeformationKeys.erase(it->first);
+                        bucket.dirtySnapshotKeys.erase(it->first);
                         publishNeeded = true;
                         it = bucket.chunks.erase(it);
                     } else {
@@ -739,6 +783,58 @@ namespace HIKARI {
         }
 
         if (publishNeeded) {
+            std::size_t entryCount = 0u;
+            for (const auto& [objectKey, bucket] : objects_) {
+                (void)objectKey;
+                entryCount += bucket.snapshots.size();
+            }
+            entries.reserve(entryCount);
+            std::vector<uint64_t> orderedObjectKeys{};
+            orderedObjectKeys.reserve(objects_.size());
+            for (const auto& [objectKey, bucket] : objects_) {
+                (void)bucket;
+                orderedObjectKeys.push_back(objectKey);
+            }
+            std::sort(
+                orderedObjectKeys.begin(), orderedObjectKeys.end());
+            std::vector<uint64_t> orderedSnapshotKeys{};
+            for (const uint64_t objectKey : orderedObjectKeys) {
+                const auto bucketIt = objects_.find(objectKey);
+                if (bucketIt == objects_.end()) {
+                    continue;
+                }
+                const ObjectChunks& bucket = bucketIt->second;
+                if (bucket.owner == nullptr) {
+                    continue;
+                }
+                orderedSnapshotKeys.clear();
+                orderedSnapshotKeys.reserve(bucket.snapshots.size());
+                for (const auto& [stateKey, snapshot] : bucket.snapshots) {
+                    if (snapshot != nullptr) {
+                        orderedSnapshotKeys.push_back(stateKey);
+                    }
+                }
+                std::sort(
+                    orderedSnapshotKeys.begin(),
+                    orderedSnapshotKeys.end());
+                const MATH::Mat4 normalMatrix =
+                    MATH::BuildNormalMatrixFromWorld(
+                        bucket.localToWorld);
+                for (const uint64_t stateKey : orderedSnapshotKeys) {
+                    const auto snapshot = bucket.snapshots.find(stateKey);
+                    if (snapshot == bucket.snapshots.end() ||
+                        snapshot->second == nullptr) {
+                        continue;
+                    }
+                    SAND::SandSurfaceSnapshotEntry entry{};
+                    entry.object = bucket.owner->GetRuntimeHandle();
+                    entry.chunk = snapshot->second;
+                    entry.localToWorld = bucket.localToWorld;
+                    entry.worldToLocal = bucket.worldToLocal;
+                    entry.normalMatrix = normalMatrix;
+                    entries.push_back(std::move(entry));
+                }
+            }
             queryService_->PublishSnapshot(std::move(entries));
             hasPublishedSnapshot_ = true;
         }
@@ -848,15 +944,8 @@ namespace HIKARI {
                 // 偽装せず、球・足・車輪へ同じ animation profile を再利用する。
                 float responseRadiusX = footprintRadiusX;
                 float responseRadiusZ = footprintRadiusZ;
-                float authoredStampRadius = 0.0f;
-                for (const auto& [stateKey, state] : bucket.chunks) {
-                    (void)stateKey;
-                    authoredStampRadius = (std::max)(
-                        authoredStampRadius,
-                        state != nullptr
-                            ? state->settings.stampRadius
-                            : 0.0f);
-                }
+                const float authoredStampRadius =
+                    bucket.maximumStampRadius;
                 if (req.footprint.kind ==
                         TERRAIN::TerrainFootprintKind::Sphere) {
                     responseRadiusX = (std::max)(
@@ -903,11 +992,14 @@ namespace HIKARI {
                 std::vector<SAND::SandChunkRuntimeState*> candidates{};
                 float minimumCellSize = FLT_MAX;
                 float responseMaxDepth = 0.0f;
-                for (auto& [stateKey, state] : bucket.chunks) {
-                    (void)stateKey;
+                const auto appendCandidate = [&] (
+                    const SAND::SandChunkRuntimeStatePtr& state) {
+                    if (state == nullptr) {
+                        return;
+                    }
                     const float size = state->chunkWorldSize;
                     if (size <= 1.0e-4f) {
-                        continue;
+                        return;
                     }
                     const float localX =
                         cLocal.x - state->chunkOriginLocal.x;
@@ -917,10 +1009,10 @@ namespace HIKARI {
                         localX > size + responseBoundsX ||
                         localZ < -responseBoundsZ ||
                         localZ > size + responseBoundsZ) {
-                        continue;
+                        return;
                     }
                     if (!state->settings.deformationEnabled) {
-                        continue;
+                        return;
                     }
                     candidates.push_back(state.get());
                     minimumCellSize = (std::min)(
@@ -929,6 +1021,92 @@ namespace HIKARI {
                     responseMaxDepth = (std::max)(
                         responseMaxDepth,
                         (std::max)(state->settings.maxDepth, 0.0f));
+                };
+
+                // Uniform chunk grid なので footprint の local bounds から
+                // key 範囲を直接求める。通常の足跡は 1～4 chunk lookup で
+                // 完結し、terrain 全体の chunk 数へ比例しない。
+                const float candidateChunkSize = bucket.chunkWorldSize;
+                const auto toChunkCoordinate = [](
+                    double localCoordinate,
+                    float size,
+                    int32_t& outCoordinate) noexcept {
+                    if (!std::isfinite(localCoordinate) ||
+                        !std::isfinite(size) || size <= 1.0e-4f) {
+                        return false;
+                    }
+                    const double value = std::floor(
+                        localCoordinate / static_cast<double>(size));
+                    if (value < static_cast<double>(
+                            (std::numeric_limits<int32_t>::min)()) ||
+                        value > static_cast<double>(
+                            (std::numeric_limits<int32_t>::max)())) {
+                        return false;
+                    }
+                    outCoordinate = static_cast<int32_t>(value);
+                    return true;
+                };
+                int32_t minimumChunkX = 0;
+                int32_t minimumChunkZ = 0;
+                int32_t maximumChunkX = 0;
+                int32_t maximumChunkZ = 0;
+                const bool keyRangeValid = toChunkCoordinate(
+                        static_cast<double>(cLocal.x - responseBoundsX),
+                        candidateChunkSize,
+                        minimumChunkX) &&
+                    toChunkCoordinate(
+                        static_cast<double>(cLocal.z - responseBoundsZ),
+                        candidateChunkSize,
+                        minimumChunkZ) &&
+                    toChunkCoordinate(
+                        static_cast<double>(cLocal.x + responseBoundsX),
+                        candidateChunkSize,
+                        maximumChunkX) &&
+                    toChunkCoordinate(
+                        static_cast<double>(cLocal.z + responseBoundsZ),
+                        candidateChunkSize,
+                        maximumChunkZ);
+                if (!keyRangeValid) {
+                    continue;
+                }
+                const uint64_t rangeWidth = static_cast<uint64_t>(
+                    static_cast<int64_t>(maximumChunkX) -
+                    static_cast<int64_t>(minimumChunkX) + 1);
+                const uint64_t rangeHeight = static_cast<uint64_t>(
+                    static_cast<int64_t>(maximumChunkZ) -
+                    static_cast<int64_t>(minimumChunkZ) + 1);
+                const uint64_t directLookupBudget =
+                    static_cast<uint64_t>(bucket.chunks.size()) * 4u + 16u;
+                const bool useDirectLookup = rangeHeight == 0u ||
+                    rangeWidth <= directLookupBudget / rangeHeight;
+                if (useDirectLookup) {
+                    candidates.reserve(static_cast<std::size_t>((std::min)(
+                        rangeWidth * rangeHeight,
+                        static_cast<uint64_t>(bucket.chunks.size()))));
+                    for (int64_t z = minimumChunkZ;
+                        z <= static_cast<int64_t>(maximumChunkZ);
+                        ++z) {
+                        for (int64_t x = minimumChunkX;
+                            x <= static_cast<int64_t>(maximumChunkX);
+                            ++x) {
+                            const auto found = bucket.chunks.find(
+                                ChunkStateKey({
+                                    static_cast<int32_t>(x),
+                                    static_cast<int32_t>(z),
+                                }));
+                            if (found != bucket.chunks.end()) {
+                                appendCandidate(found->second);
+                            }
+                        }
+                    }
+                } else {
+                    // 巨大な authored footprint は lookup 空間より実在 chunk
+                    // を 1 回だけ走査する方が有界。通常キャラクターはこの
+                    // fallback へ入らない。
+                    for (const auto& [stateKey, state] : bucket.chunks) {
+                        (void)stateKey;
+                        appendCandidate(state);
+                    }
                 }
                 if (candidates.empty()) {
                     continue;
@@ -1113,6 +1291,10 @@ namespace HIKARI {
                             req.footprint.edgeSoftness,
                             depth,
                             refreshHoldOnly)) {
+                        const uint64_t stateKey =
+                            ChunkStateKey(state->key);
+                        bucket.activeDeformationKeys.insert(stateKey);
+                        bucket.dirtySnapshotKeys.insert(stateKey);
                         changedTerrainObjects.insert(objKey);
                     }
                 }
@@ -1120,10 +1302,23 @@ namespace HIKARI {
         }
 
         for (auto& [objKey, bucket] : objects_) {
-            for (auto& [stateKey, state] : bucket.chunks) {
-                (void)stateKey;
-                if (RelaxChunk(*state, safeDt)) {
+            for (auto active = bucket.activeDeformationKeys.begin();
+                active != bucket.activeDeformationKeys.end();) {
+                const uint64_t stateKey = *active;
+                const auto state = bucket.chunks.find(stateKey);
+                if (state == bucket.chunks.end() ||
+                    state->second == nullptr) {
+                    active = bucket.activeDeformationKeys.erase(active);
+                    continue;
+                }
+                if (RelaxChunk(*state->second, safeDt)) {
+                    bucket.dirtySnapshotKeys.insert(stateKey);
                     changedTerrainObjects.insert(objKey);
+                }
+                if (!state->second->hasDeformation) {
+                    active = bucket.activeDeformationKeys.erase(active);
+                } else {
+                    ++active;
                 }
             }
             if (StitchRuntimeBorders(bucket)) {
@@ -1140,16 +1335,44 @@ namespace HIKARI {
     }
 
     bool SandSurfaceSystem::StitchRuntimeBorders(ObjectChunks& bucket) {
-        const bool anyDeformation = std::any_of(
-            bucket.chunks.begin(),
-            bucket.chunks.end(),
-            [](const auto& item) {
-                return item.second != nullptr &&
-                    item.second->hasDeformation;
-            });
-        if (!anyDeformation) {
+        if (bucket.activeDeformationKeys.empty()) {
             return false;
         }
+        std::unordered_set<uint64_t> stitchKeySet{};
+        stitchKeySet.reserve(
+            bucket.activeDeformationKeys.size() * 9u);
+        for (const uint64_t activeKey :
+                bucket.activeDeformationKeys) {
+            const int32_t activeX = static_cast<int32_t>(
+                static_cast<uint32_t>(activeKey >> 32u));
+            const int32_t activeZ = static_cast<int32_t>(
+                static_cast<uint32_t>(activeKey & 0xFFFFFFFFu));
+            for (int32_t dz = -1; dz <= 1; ++dz) {
+                for (int32_t dx = -1; dx <= 1; ++dx) {
+                    const int64_t x = static_cast<int64_t>(activeX) + dx;
+                    const int64_t z = static_cast<int64_t>(activeZ) + dz;
+                    if (x < (std::numeric_limits<int32_t>::min)() ||
+                        x > (std::numeric_limits<int32_t>::max)() ||
+                        z < (std::numeric_limits<int32_t>::min)() ||
+                        z > (std::numeric_limits<int32_t>::max)()) {
+                        continue;
+                    }
+                    const uint64_t candidateKey = ChunkStateKey({
+                        static_cast<int32_t>(x),
+                        static_cast<int32_t>(z),
+                    });
+                    if (bucket.chunks.contains(candidateKey)) {
+                        stitchKeySet.insert(candidateKey);
+                    }
+                }
+            }
+        }
+        if (stitchKeySet.size() < 2u) {
+            return false;
+        }
+        std::vector<uint64_t> stitchKeys(
+            stitchKeySet.begin(), stitchKeySet.end());
+        std::sort(stitchKeys.begin(), stitchKeys.end());
         struct BoundaryValue {
             float elastic = 0.0f;
             float plastic = 0.0f;
@@ -1157,7 +1380,7 @@ namespace HIKARI {
             uint32_t count = 0u;
         };
         std::unordered_map<uint64_t, BoundaryValue> shared{};
-        shared.reserve(bucket.chunks.size() * 256u);
+        shared.reserve(stitchKeys.size() * 256u);
         const auto globalKey = [](int32_t x, int32_t z) noexcept {
             return (static_cast<uint64_t>(
                         static_cast<uint32_t>(x)) << 32u) |
@@ -1169,8 +1392,14 @@ namespace HIKARI {
             }
         };
 
-        for (const auto& [stateKey, state] : bucket.chunks) {
-            (void)stateKey;
+        for (const uint64_t stateKey : stitchKeys) {
+            const auto foundState = bucket.chunks.find(stateKey);
+            if (foundState == bucket.chunks.end() ||
+                foundState->second == nullptr) {
+                continue;
+            }
+            const SAND::SandChunkRuntimeStatePtr& state =
+                foundState->second;
             const uint32_t cells = state->cells;
             const uint32_t stride = cells + 1u;
             const std::size_t count =
@@ -1211,8 +1440,14 @@ namespace HIKARI {
         }
 
         std::unordered_set<SAND::SandChunkRuntimeState*> touched{};
-        for (const auto& [stateKey, state] : bucket.chunks) {
-            (void)stateKey;
+        for (const uint64_t stateKey : stitchKeys) {
+            const auto foundState = bucket.chunks.find(stateKey);
+            if (foundState == bucket.chunks.end() ||
+                foundState->second == nullptr) {
+                continue;
+            }
+            const SAND::SandChunkRuntimeStatePtr& state =
+                foundState->second;
             const uint32_t cells = state->cells;
             const uint32_t stride = cells + 1u;
             const std::size_t count =
@@ -1278,6 +1513,9 @@ namespace HIKARI {
             state->hasDeformation = true;
             RebuildCombinedHeights(*state);
             ++state->stateRevision;
+            const uint64_t stateKey = ChunkStateKey(state->key);
+            bucket.activeDeformationKeys.insert(stateKey);
+            bucket.dirtySnapshotKeys.insert(stateKey);
         }
         return !touched.empty();
     }

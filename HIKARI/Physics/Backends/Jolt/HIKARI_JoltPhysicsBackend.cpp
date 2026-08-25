@@ -33,6 +33,7 @@ namespace HIKARI::PHYSICS::JOLT_BACKEND {
         constexpr uint32_t kMaximumBodyPairs = 65536;
         constexpr uint32_t kMaximumContactConstraints = 16384;
         constexpr size_t kTemporaryAllocatorBytes = 32u * 1024u * 1024u;
+        constexpr unsigned int kMaximumWorkerThreads = 8u;
 
         class BroadPhaseLayers final
             : public JPH::BroadPhaseLayerInterface {
@@ -259,8 +260,15 @@ namespace HIKARI::PHYSICS::JOLT_BACKEND {
             kTemporaryAllocatorBytes);
         const unsigned int hardwareThreads =
             (std::max)(1u, std::thread::hardware_concurrency());
-        const int workerThreads = static_cast<int>(
-            hardwareThreads > 1u ? hardwareThreads - 1u : 1u);
+        // 小～中規模のゲームシーンで論理 CPU 数だけ worker を生成すると、
+        // 実仕事より wake/schedule の fan-out が大きくなる。Jolt の並列性は
+        // 保ちつつ、1 world が占有する worker 数を有界にする。
+        const unsigned int requestedWorkerThreads =
+            hardwareThreads > 1u ? hardwareThreads - 1u : 1u;
+        const int workerThreads = static_cast<int>((std::clamp)(
+            requestedWorkerThreads,
+            1u,
+            kMaximumWorkerThreads));
         jobSystem_ = std::make_unique<JPH::JobSystemThreadPool>(
             JPH::cMaxPhysicsJobs,
             JPH::cMaxPhysicsBarriers,

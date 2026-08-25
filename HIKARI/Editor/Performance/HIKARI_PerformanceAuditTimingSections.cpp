@@ -55,9 +55,15 @@ void DrawFrameSummary(const RuntimePerformanceSnapshot &s) {
     ImGui::Text("FPS %.1f", s.fpsRaw);
     if (s.cpu.valid) {
       ImGui::Text("CPU frame %.3f ms", cpuFrameMs);
+      const CPU_PROFILE::PassTiming &frameTiming =
+          s.cpu.passes[static_cast<size_t>(CPU_PROFILE::Pass::Frame)];
+      ImGui::Text("avg %.3f / p95 %.3f ms", frameTiming.averageMs,
+                  frameTiming.p95Ms);
     } else {
       ImGui::TextDisabled("CPU timing waiting");
     }
+    ImGui::Text("fixed %u / dropped %.2f ms", s.fixedStepsThisFrame,
+                static_cast<double>(s.droppedFixedTimeSeconds) * 1000.0);
 
     ImGui::TableNextColumn();
     ImGui::TextColored(StatusColor(gpuDrivenReady), "GPU scene %s",
@@ -90,34 +96,101 @@ void DrawCpuTimingTable(const RuntimePerformanceSnapshot &s) {
   ImGui::Text("Frame %llu, scopes %u, frame %.3f ms",
               static_cast<unsigned long long>(s.cpu.frameIndex),
               CountValidCpuPasses(s.cpu), frameMs);
+  const CPU_PROFILE::PassTiming &frameTiming =
+      s.cpu.passes[static_cast<size_t>(CPU_PROFILE::Pass::Frame)];
+  ImGui::Text("Rolling %u frames: avg %.3f / p95 %.3f / p99 %.3f / max %.3f ms",
+              frameTiming.rollingSampleCount, frameTiming.averageMs,
+              frameTiming.p95Ms, frameTiming.p99Ms,
+              frameTiming.maximumMs);
   ImGui::TextDisabled("Inclusive timings; nested scopes are not additive.");
 
-  if (ImGui::BeginTable("CpuFrameTimingTable", 4,
+  const auto drawTimingRow = [frameMs](
+                                 const CPU_PROFILE::PassTiming &timing) {
+    ImGui::TableNextRow();
+    ImGui::TableSetColumnIndex(0);
+    ImGui::TextUnformatted(timing.name);
+    ImGui::TableSetColumnIndex(1);
+    ImGui::Text("%.3f", timing.cpuMs);
+    ImGui::TableSetColumnIndex(2);
+    ImGui::Text("%.3f", timing.averageMs);
+    ImGui::TableSetColumnIndex(3);
+    ImGui::Text("%.3f", timing.p95Ms);
+    ImGui::TableSetColumnIndex(4);
+    ImGui::Text("%.3f", timing.p99Ms);
+    ImGui::TableSetColumnIndex(5);
+    ImGui::Text("%.3f", timing.maximumMs);
+    ImGui::TableSetColumnIndex(6);
+    ImGui::Text("%u", timing.callCount);
+    ImGui::TableSetColumnIndex(7);
+    ImGui::ProgressBar(
+        static_cast<float>((std::min)(1.0, timing.cpuMs / frameMs)),
+        ImVec2(-1.0f, 0.0f), "");
+  };
+
+  if (ImGui::BeginTable("CpuFrameTimingTable", 8,
                         ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_RowBg |
                             ImGuiTableFlags_SizingStretchProp)) {
     ImGui::TableSetupColumn("Scope", ImGuiTableColumnFlags_WidthFixed, 190.0f);
-    ImGui::TableSetupColumn("CPU ms", ImGuiTableColumnFlags_WidthFixed, 90.0f);
+    ImGui::TableSetupColumn("Now", ImGuiTableColumnFlags_WidthFixed, 70.0f);
+    ImGui::TableSetupColumn("Avg", ImGuiTableColumnFlags_WidthFixed, 70.0f);
+    ImGui::TableSetupColumn("P95", ImGuiTableColumnFlags_WidthFixed, 70.0f);
+    ImGui::TableSetupColumn("P99", ImGuiTableColumnFlags_WidthFixed, 70.0f);
+    ImGui::TableSetupColumn("Max", ImGuiTableColumnFlags_WidthFixed, 70.0f);
     ImGui::TableSetupColumn("Calls", ImGuiTableColumnFlags_WidthFixed, 70.0f);
     ImGui::TableSetupColumn("Frame Share");
     ImGui::TableHeadersRow();
 
     for (size_t i = 0; i < s.cpu.passes.size(); ++i) {
       const CPU_PROFILE::PassTiming &timing = s.cpu.passes[i];
-      if (!timing.valid) {
+      if (!timing.valid && timing.maximumMs <= 0.0) {
         continue;
       }
+      drawTimingRow(timing);
+    }
+    ImGui::EndTable();
+  }
 
-      ImGui::TableNextRow();
-      ImGui::TableSetColumnIndex(0);
-      ImGui::TextUnformatted(timing.name);
-      ImGui::TableSetColumnIndex(1);
-      ImGui::Text("%.3f", timing.cpuMs);
-      ImGui::TableSetColumnIndex(2);
-      ImGui::Text("%u", timing.callCount);
-      ImGui::TableSetColumnIndex(3);
-      ImGui::ProgressBar(
-          static_cast<float>((std::min)(1.0, timing.cpuMs / frameMs)),
-          ImVec2(-1.0f, 0.0f), "");
+  std::array<const CPU_PROFILE::PassTiming *,
+             CPU_PROFILE::kMaximumDynamicPasses>
+      systemTimings{};
+  uint32_t systemTimingCount = 0u;
+  for (uint32_t index = 0u; index < s.cpu.dynamicPassCount; ++index) {
+    const CPU_PROFILE::PassTiming &timing = s.cpu.dynamicPasses[index];
+    if (timing.valid || timing.maximumMs > 0.0) {
+      systemTimings[systemTimingCount++] = &timing;
+    }
+  }
+  std::sort(systemTimings.begin(),
+            systemTimings.begin() + systemTimingCount,
+            [](const CPU_PROFILE::PassTiming *lhs,
+               const CPU_PROFILE::PassTiming *rhs) {
+              if (lhs->p95Ms != rhs->p95Ms) {
+                return lhs->p95Ms > rhs->p95Ms;
+              }
+              return lhs->averageMs > rhs->averageMs;
+            });
+
+  ImGui::SeparatorText("Scene System CPU");
+  ImGui::TextDisabled(
+      "Frame scopes aggregate variable updates; Fixed scopes aggregate all fixed callbacks.");
+  if (systemTimingCount == 0u) {
+    ImGui::TextDisabled("System timing data is waiting for an active Scene.");
+  } else if (ImGui::BeginTable(
+                 "CpuSystemTimingTable", 8,
+                 ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_RowBg |
+                     ImGuiTableFlags_SizingStretchProp)) {
+    ImGui::TableSetupColumn("System / Phase",
+                            ImGuiTableColumnFlags_WidthFixed, 250.0f);
+    ImGui::TableSetupColumn("Now", ImGuiTableColumnFlags_WidthFixed, 70.0f);
+    ImGui::TableSetupColumn("Avg", ImGuiTableColumnFlags_WidthFixed, 70.0f);
+    ImGui::TableSetupColumn("P95", ImGuiTableColumnFlags_WidthFixed, 70.0f);
+    ImGui::TableSetupColumn("P99", ImGuiTableColumnFlags_WidthFixed, 70.0f);
+    ImGui::TableSetupColumn("Max", ImGuiTableColumnFlags_WidthFixed, 70.0f);
+    ImGui::TableSetupColumn("Calls", ImGuiTableColumnFlags_WidthFixed, 70.0f);
+    ImGui::TableSetupColumn("Frame Share");
+    ImGui::TableHeadersRow();
+    for (uint32_t index = 0u; index < systemTimingCount; ++index) {
+      drawTimingRow(*systemTimings[index]);
     }
     ImGui::EndTable();
   }

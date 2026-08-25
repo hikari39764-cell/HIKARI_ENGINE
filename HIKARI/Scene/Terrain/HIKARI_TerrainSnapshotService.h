@@ -6,18 +6,20 @@
 #include <memory>
 #include <mutex>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace HIKARI::TERRAIN {
 
     // 地形/地表 feature の query service が共有する immutable snapshot store。
     // publish/clear は atomic に切り替わり、reader は常に同じ revision を読む。
-    template <typename TEntry>
+    template <typename TEntry, typename TIndex = std::monostate>
     class TerrainSnapshotService {
     public:
         struct Snapshot {
             uint64_t revision = 0u;
             std::vector<TEntry> entries{};
+            TIndex index{};
         };
 
         std::shared_ptr<const Snapshot> Current() const noexcept {
@@ -35,10 +37,17 @@ namespace HIKARI::TERRAIN {
         }
 
         void Publish(std::vector<TEntry> entries) {
+            Publish(std::move(entries), TIndex{});
+        }
+
+        void Publish(
+            std::vector<TEntry> entries,
+            TIndex index) {
             const uint64_t nextRevision = revision_.load() + 1u;
             auto next = std::make_shared<Snapshot>();
             next->revision = nextRevision;
             next->entries = std::move(entries);
+            next->index = std::move(index);
 
             std::lock_guard<std::mutex> lock(publishMutex_);
             snapshot_.store(

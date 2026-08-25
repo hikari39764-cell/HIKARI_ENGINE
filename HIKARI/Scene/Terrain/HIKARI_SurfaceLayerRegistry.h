@@ -41,10 +41,12 @@ namespace HIKARI::TERRAIN {
             for (SurfacePreset& existing : layers_) {
                 if (existing.id == preset.id) {
                     existing = preset;
+                    ++revision_;
                     return;
                 }
             }
             layers_.push_back(preset);
+            ++revision_;
         }
 
         const std::vector<SurfacePreset>& Layers() const noexcept {
@@ -53,6 +55,10 @@ namespace HIKARI::TERRAIN {
 
         std::size_t Count() const noexcept {
             return layers_.size();
+        }
+
+        uint64_t GetRevision() const noexcept {
+            return revision_;
         }
 
         const SurfacePreset* Find(std::string_view id) const noexcept {
@@ -79,6 +85,7 @@ namespace HIKARI::TERRAIN {
 
     private:
         bool initialized_ = false;
+        uint64_t revision_ = 0u;
         std::vector<SurfacePreset> layers_{};
     };
 

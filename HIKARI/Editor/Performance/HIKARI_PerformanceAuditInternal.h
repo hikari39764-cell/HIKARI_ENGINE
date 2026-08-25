@@ -38,6 +38,8 @@ namespace HIKARI::EDITOR::PERFORMANCE_AUDIT {
 #if defined(HIKARI_WITH_EDITOR)
 struct RuntimePerformanceSnapshot {
   float fpsRaw = 0.0f;
+  uint32_t fixedStepsThisFrame = 0u;
+  float droppedFixedTimeSeconds = 0.0f;
   RenderSubmissionDebugStats submission{};
   RENDER3D::RUNTIME::SceneRenderCache::Stats scene{};
   RENDER3D::GPUDRIVEN::GpuSceneRegistryStats gpuRegistry{};

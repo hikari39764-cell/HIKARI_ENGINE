@@ -157,7 +157,7 @@ namespace HIKARI {
         state_->camera.debugCamera.Reset({ 0.0f, 2.0f, -6.0f }, 0.0f, 0.0f);
         state_->runtime.fixedStepClock.SetSettings(FixedStepSettings{
             TIME::GetFixedDeltaSeconds(),
-            8,
+            3,
             0.25f
         });
         state_->runtime.fixedStepClock.Reset();

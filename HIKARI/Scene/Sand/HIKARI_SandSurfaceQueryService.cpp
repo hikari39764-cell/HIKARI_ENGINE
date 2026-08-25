@@ -4,13 +4,30 @@
 #include <array>
 #include <cfloat>
 #include <cmath>
+#include <limits>
 #include <optional>
 #include <unordered_set>
 
+#include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Core/Math/HIKARI_NormalMatrix.h"
 #include "Scene/Terrain/HIKARI_SurfaceLayerRegistry.h"
 
 namespace HIKARI::SAND {
+
+    std::size_t SandSurfaceSnapshotChunkKeyHash::operator()(
+        const SandSurfaceSnapshotChunkKey& key) const noexcept {
+        uint64_t hash = HASH::Fnv1aCombine(
+            HASH::kFnv1a64OffsetBasis, key.object);
+        hash = HASH::Fnv1aCombine(
+            hash,
+            static_cast<uint64_t>(
+                static_cast<uint32_t>(key.chunkX)));
+        hash = HASH::Fnv1aCombine(
+            hash,
+            static_cast<uint64_t>(
+                static_cast<uint32_t>(key.chunkZ)));
+        return static_cast<std::size_t>(hash);
+    }
 
     namespace {
         MATH::Vec3 TransformPoint(
@@ -388,49 +405,115 @@ namespace HIKARI::SAND {
 
         const auto sampleObjectLocal =
             [&](RuntimeObjectHandle object,
+                float chunkWorldSize,
                 float objectLocalX,
                 float objectLocalZ,
                 float& height,
                 float& coverage) {
                 bool sampled = false;
                 float bestCoverage = -FLT_MAX;
-                for (const SandSurfaceSnapshotEntry& candidate :
-                    current->entries) {
-                    if (candidate.object != object || !candidate.chunk) {
-                        continue;
+                const auto toChunkCoordinate = [](
+                    double coordinate,
+                    float size,
+                    int32_t& outCoordinate) noexcept {
+                    if (!std::isfinite(coordinate) ||
+                        !std::isfinite(size) || size <= 1.0e-4f) {
+                        return false;
                     }
-                    const SandChunkRuntimeState& candidateChunk =
-                        *candidate.chunk;
-                    const float candidateSize =
-                        candidateChunk.chunkWorldSize;
-                    if (candidateSize <= 1.0e-4f) {
-                        continue;
+                    const double value = std::floor(
+                        coordinate / static_cast<double>(size));
+                    if (value < static_cast<double>(
+                            (std::numeric_limits<int32_t>::min)()) ||
+                        value > static_cast<double>(
+                            (std::numeric_limits<int32_t>::max)())) {
+                        return false;
                     }
-                    const float x = objectLocalX -
-                        candidateChunk.chunkOriginLocal.x;
-                    const float z = objectLocalZ -
-                        candidateChunk.chunkOriginLocal.y;
-                    constexpr float epsilon = 1.0e-3f;
-                    if (x < -epsilon || x > candidateSize + epsilon ||
-                        z < -epsilon || z > candidateSize + epsilon) {
-                        continue;
-                    }
-                    float candidateHeight = 0.0f;
-                    float candidateCoverage = 0.0f;
-                    if (!SampleChunkLocalSurface(
-                            candidateChunk,
-                            x,
-                            z,
-                            candidateHeight,
-                            candidateCoverage)) {
-                        continue;
-                    }
-                    // 共有境界では、より実体側の chunk を採用する。
-                    if (!sampled || candidateCoverage > bestCoverage) {
-                        sampled = true;
-                        bestCoverage = candidateCoverage;
-                        height = candidateHeight;
-                        coverage = candidateCoverage;
+                    outCoordinate = static_cast<int32_t>(value);
+                    return true;
+                };
+                int32_t centerX = 0;
+                int32_t centerZ = 0;
+                if (!toChunkCoordinate(
+                        objectLocalX,
+                        chunkWorldSize,
+                        centerX) ||
+                    !toChunkCoordinate(
+                        objectLocalZ,
+                        chunkWorldSize,
+                        centerZ)) {
+                    return false;
+                }
+                // 1 点が接する grid chunk は最大 4 個。1-cell ring なら map を
+                // 全走査せず負座標・境界上の従来 epsilon 挙動も保持できる。
+                for (int32_t dz = -1; dz <= 1; ++dz) {
+                    for (int32_t dx = -1; dx <= 1; ++dx) {
+                        const int64_t candidateX =
+                            static_cast<int64_t>(centerX) + dx;
+                        const int64_t candidateZ =
+                            static_cast<int64_t>(centerZ) + dz;
+                        if (candidateX <
+                                (std::numeric_limits<int32_t>::min)() ||
+                            candidateX >
+                                (std::numeric_limits<int32_t>::max)() ||
+                            candidateZ <
+                                (std::numeric_limits<int32_t>::min)() ||
+                            candidateZ >
+                                (std::numeric_limits<int32_t>::max)()) {
+                            continue;
+                        }
+                        const auto indexed =
+                            current->index.chunkEntryIndices.find({
+                                object.ToValue(),
+                                static_cast<int32_t>(candidateX),
+                                static_cast<int32_t>(candidateZ),
+                            });
+                        if (indexed ==
+                                current->index.chunkEntryIndices.end() ||
+                            indexed->second >= current->entries.size()) {
+                            continue;
+                        }
+                        const SandSurfaceSnapshotEntry& candidate =
+                            current->entries[indexed->second];
+                        if (candidate.object != object ||
+                            !candidate.chunk) {
+                            continue;
+                        }
+                        const SandChunkRuntimeState& candidateChunk =
+                            *candidate.chunk;
+                        const float candidateSize =
+                            candidateChunk.chunkWorldSize;
+                        if (candidateSize <= 1.0e-4f) {
+                            continue;
+                        }
+                        const float x = objectLocalX -
+                            candidateChunk.chunkOriginLocal.x;
+                        const float z = objectLocalZ -
+                            candidateChunk.chunkOriginLocal.y;
+                        constexpr float epsilon = 1.0e-3f;
+                        if (x < -epsilon ||
+                            x > candidateSize + epsilon ||
+                            z < -epsilon ||
+                            z > candidateSize + epsilon) {
+                            continue;
+                        }
+                        float candidateHeight = 0.0f;
+                        float candidateCoverage = 0.0f;
+                        if (!SampleChunkLocalSurface(
+                                candidateChunk,
+                                x,
+                                z,
+                                candidateHeight,
+                                candidateCoverage)) {
+                            continue;
+                        }
+                        // 共有境界では、より実体側の chunk を採用する。
+                        if (!sampled ||
+                            candidateCoverage > bestCoverage) {
+                            sampled = true;
+                            bestCoverage = candidateCoverage;
+                            height = candidateHeight;
+                            coverage = candidateCoverage;
+                        }
                     }
                 }
                 return sampled;
@@ -438,12 +521,14 @@ namespace HIKARI::SAND {
 
         float bestDistance = FLT_MAX;
         bool foundSurface = false;
-        std::unordered_set<uint64_t> processedObjects{};
-        for (const SandSurfaceSnapshotEntry& entry : current->entries) {
-            if (!entry.chunk) {
+        for (const std::size_t entryIndex :
+                current->index.objectEntryIndices) {
+            if (entryIndex >= current->entries.size()) {
                 continue;
             }
-            if (!processedObjects.insert(entry.object.ToValue()).second) {
+            const SandSurfaceSnapshotEntry& entry =
+                current->entries[entryIndex];
+            if (!entry.chunk) {
                 continue;
             }
             const SandChunkRuntimeState& chunk = *entry.chunk;
@@ -453,6 +538,7 @@ namespace HIKARI::SAND {
             float coverage = 0.0f;
             if (!sampleObjectLocal(
                     entry.object,
+                    chunk.chunkWorldSize,
                     queryLocal.x,
                     queryLocal.z,
                     localHeight,
@@ -467,6 +553,7 @@ namespace HIKARI::SAND {
                 float neighborCoverage = coverage;
                 (void)sampleObjectLocal(
                     entry.object,
+                    chunk.chunkWorldSize,
                     x,
                     z,
                     neighborHeight,
@@ -519,13 +606,18 @@ namespace HIKARI::SAND {
         if (!current) {
             return false;
         }
-        for (const SandSurfaceSnapshotEntry& entry : current->entries) {
-            if (entry.object == object &&
-                entry.chunk &&
-                entry.chunk->key == key) {
-                outChunk = entry.chunk;
-                return true;
-            }
+        const auto indexed = current->index.chunkEntryIndices.find({
+            object.ToValue(), key.x, key.z });
+        if (indexed == current->index.chunkEntryIndices.end() ||
+            indexed->second >= current->entries.size()) {
+            return false;
+        }
+        const SandSurfaceSnapshotEntry& entry =
+            current->entries[indexed->second];
+        if (entry.object == object && entry.chunk &&
+            entry.chunk->key == key) {
+            outChunk = entry.chunk;
+            return true;
         }
         return false;
     }
@@ -540,7 +632,33 @@ namespace HIKARI::SAND {
 
     void SandSurfaceQueryService::PublishSnapshot(
         std::vector<SandSurfaceSnapshotEntry> entries) {
-        snapshotStore_.Publish(std::move(entries));
+        SandSurfaceSnapshotIndex index{};
+        index.objectEntryIndices.reserve(entries.size());
+        index.chunkEntryIndices.reserve(entries.size());
+        std::unordered_set<uint64_t> indexedObjects{};
+        indexedObjects.reserve(entries.size());
+        for (std::size_t entryIndex = 0u;
+            entryIndex < entries.size();
+            ++entryIndex) {
+            const SandSurfaceSnapshotEntry& entry = entries[entryIndex];
+            if (!entry.chunk) {
+                continue;
+            }
+            const uint64_t objectKey = entry.object.ToValue();
+            if (indexedObjects.insert(objectKey).second) {
+                index.objectEntryIndices.push_back(entryIndex);
+            }
+            index.chunkEntryIndices.insert_or_assign(
+                SandSurfaceSnapshotChunkKey{
+                    objectKey,
+                    entry.chunk->key.x,
+                    entry.chunk->key.z,
+                },
+                entryIndex);
+        }
+        snapshotStore_.Publish(
+            std::move(entries),
+            std::move(index));
     }
 
     void SandSurfaceQueryService::Clear() {

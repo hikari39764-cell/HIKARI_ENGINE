@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <unordered_map>
 #include <vector>
 
 #include "Render3D/HIKARI_Math3D.h"
@@ -87,6 +88,30 @@ namespace HIKARI::SAND {
         MATH::Mat4 normalMatrix{};
     };
 
+    struct SandSurfaceSnapshotChunkKey {
+        uint64_t object = 0u;
+        int32_t chunkX = 0;
+        int32_t chunkZ = 0;
+
+        bool operator==(
+            const SandSurfaceSnapshotChunkKey&) const noexcept = default;
+    };
+
+    struct SandSurfaceSnapshotChunkKeyHash {
+        std::size_t operator()(
+            const SandSurfaceSnapshotChunkKey& key) const noexcept;
+    };
+
+    // lookup と entry を同じ immutable atomic snapshot で公開し、reader が
+    // 古い chunk vector と新しい spatial index を混在させない。
+    struct SandSurfaceSnapshotIndex {
+        std::vector<std::size_t> objectEntryIndices{};
+        std::unordered_map<
+            SandSurfaceSnapshotChunkKey,
+            std::size_t,
+            SandSurfaceSnapshotChunkKeyHash> chunkEntryIndices{};
+    };
+
     // ワールド空間で疎 chunk 化された地形への問い合わせ。
     // フォロワー・水面 bathymetry・描画 bridge が共有する。
     class SandSurfaceQueryService final {
@@ -131,7 +156,9 @@ namespace HIKARI::SAND {
         void Clear();
 
     private:
-        TERRAIN::TerrainSnapshotService<SandSurfaceSnapshotEntry>
+        TERRAIN::TerrainSnapshotService<
+            SandSurfaceSnapshotEntry,
+            SandSurfaceSnapshotIndex>
             snapshotStore_{};
     };
 

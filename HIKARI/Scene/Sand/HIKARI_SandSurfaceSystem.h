@@ -4,6 +4,7 @@
 #include <memory>
 #include <span>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "Scene/HIKARI_ISystem.h"
@@ -77,10 +78,19 @@ namespace HIKARI {
                 authoredLayerPolicySignatures{};
             std::unordered_map<uint64_t, uint64_t>
                 authoredCoverageSignatures{};
+            // simulation / snapshot は authored chunk 総数ではなく、実際に
+            // 形状が変化した sparse set だけを fixed tick で処理する。
+            std::unordered_set<uint64_t> activeDeformationKeys{};
+            std::unordered_set<uint64_t> dirtySnapshotKeys{};
             uint64_t lastRevision = 0u;
             uint64_t lastCoverageRevision = 0u;
+            uint64_t lastLayerRegistryRevision = 0u;
             float lastCoverageEdgeFalloff = 0.0f;
             bool hasCoverageProjectionSettings = false;
+            SAND::SandSurfaceSettings lastSettings{};
+            bool hasSettings = false;
+            float chunkWorldSize = 0.0f;
+            float maximumStampRadius = 0.0f;
             // 高さ場はオブジェクトローカル空間。スタンプ源のワールド中心を
             // ここに掛けてローカルへそろえる（Refresh で 1 度だけ計算）。
             MATH::Mat4 localToWorld{};

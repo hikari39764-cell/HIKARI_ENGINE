@@ -6,6 +6,7 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 #include "Scene/HIKARI_ISystem.h"
 namespace HIKARI {
 
@@ -41,6 +42,10 @@ private:
         int executionOrder = 0;
         uint64_t insertionIndex = 0;
         std::unique_ptr<ISystem> system{};
+        CPU_PROFILE::DynamicPassHandle frameTiming =
+            CPU_PROFILE::kInvalidDynamicPassHandle;
+        CPU_PROFILE::DynamicPassHandle fixedTiming =
+            CPU_PROFILE::kInvalidDynamicPassHandle;
     };
 
     std::vector<SystemEntry> systems_{};

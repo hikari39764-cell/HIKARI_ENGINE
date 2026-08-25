@@ -155,6 +155,8 @@ RuntimePerformanceSnapshot BuildSnapshot() {
   RuntimePerformanceSnapshot out{};
   const FrameContext &frame = TIME::GetFrameContext();
   out.fpsRaw = frame.rawDt > 0.0f ? 1.0f / frame.rawDt : 0.0f;
+  out.fixedStepsThisFrame = frame.fixedStepsThisFrame;
+  out.droppedFixedTimeSeconds = frame.droppedFixedTime;
   out.submission = RenderSubmissionSystem::GetDebugStats();
   out.scene = RenderSubmissionSystem::GetSceneRenderCacheStats();
   out.gpuRegistry = RenderSubmissionSystem::GetGpuSceneRegistryStats();

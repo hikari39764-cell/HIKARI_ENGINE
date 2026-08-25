@@ -22,11 +22,18 @@ bool SystemScheduler::AddSystem(
         return false;
     }
 
+    const std::string frameTimingName =
+        "System/" + systemId + "/Frame";
+    const std::string fixedTimingName =
+        "System/" + systemId + "/Fixed";
+
     systems_.push_back(SystemEntry{
         std::move(systemId),
         executionOrder,
         nextInsertionIndex_++,
-        std::move(system)
+        std::move(system),
+        CPU_PROFILE::RegisterDynamicPass(frameTimingName),
+        CPU_PROFILE::RegisterDynamicPass(fixedTimingName)
     });
     std::stable_sort(
         systems_.begin(),
@@ -76,6 +83,7 @@ void SystemScheduler::DetachWorld(World& world) {
 
 void SystemScheduler::PreUpdate(World& world, const FrameContext& frame) {
     for (const SystemEntry& entry : systems_) {
+        CPU_PROFILE::ScopedDynamicCpuTimer timer(entry.frameTiming);
         entry.system->PreUpdate(world, frame);
     }
 }
@@ -85,6 +93,7 @@ void SystemScheduler::PreFixedUpdate(
     const FrameContext& frame) {
 
     for (const SystemEntry& entry : systems_) {
+        CPU_PROFILE::ScopedDynamicCpuTimer timer(entry.fixedTiming);
         entry.system->PreFixedUpdate(world, frame);
     }
 }
@@ -94,6 +103,7 @@ void SystemScheduler::FixedUpdate(
     const FrameContext& frame) {
 
     for (const SystemEntry& entry : systems_) {
+        CPU_PROFILE::ScopedDynamicCpuTimer timer(entry.fixedTiming);
         entry.system->FixedUpdate(world, frame);
     }
 }
@@ -103,36 +113,42 @@ void SystemScheduler::PostFixedUpdate(
     const FrameContext& frame) {
 
     for (const SystemEntry& entry : systems_) {
+        CPU_PROFILE::ScopedDynamicCpuTimer timer(entry.fixedTiming);
         entry.system->PostFixedUpdate(world, frame);
     }
 }
 
 void SystemScheduler::Update(World& world, const FrameContext& frame) {
     for (const SystemEntry& entry : systems_) {
+        CPU_PROFILE::ScopedDynamicCpuTimer timer(entry.frameTiming);
         entry.system->Update(world, frame);
     }
 }
 
 void SystemScheduler::LateUpdate(World& world, const FrameContext& frame) {
     for (const SystemEntry& entry : systems_) {
+        CPU_PROFILE::ScopedDynamicCpuTimer timer(entry.frameTiming);
         entry.system->LateUpdate(world, frame);
     }
 }
 
 void SystemScheduler::PreRender(World& world, const FrameContext& frame) {
     for (const SystemEntry& entry : systems_) {
+        CPU_PROFILE::ScopedDynamicCpuTimer timer(entry.frameTiming);
         entry.system->PreRender(world, frame);
     }
 }
 
 void SystemScheduler::Render(World& world, const FrameContext& frame) {
     for (const SystemEntry& entry : systems_) {
+        CPU_PROFILE::ScopedDynamicCpuTimer timer(entry.frameTiming);
         entry.system->Render(world, frame);
     }
 }
 
 void SystemScheduler::PostRender(World& world, const FrameContext& frame) {
     for (const SystemEntry& entry : systems_) {
+        CPU_PROFILE::ScopedDynamicCpuTimer timer(entry.frameTiming);
         entry.system->PostRender(world, frame);
     }
 }

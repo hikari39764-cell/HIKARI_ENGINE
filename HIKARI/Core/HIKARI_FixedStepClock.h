@@ -6,7 +6,7 @@ namespace HIKARI {
 
     struct FixedStepSettings {
         float stepSeconds = 1.0f / 60.0f;
-        uint32_t maxStepsPerFrame = 8;
+        uint32_t maxStepsPerFrame = 3;
         float maxAccumulatedSeconds = 0.25f;
     };
 
