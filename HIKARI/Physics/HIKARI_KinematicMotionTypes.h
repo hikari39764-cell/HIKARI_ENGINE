@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <string>
 
@@ -13,16 +15,64 @@ namespace HIKARI::PHYSICS {
         kCharacterLocomotionMotionSource = 1u;
 
     struct KinematicControllerSettings {
-        float maximumSlopeAngleRadians = 0.87266463f;
-        float stepUpHeight = 0.4f;
-        float stickToFloorDistance = 0.5f;
-        float stepForwardTestDistance = 0.15f;
+        float maximumSlopeAngleRadians = 0.73303829f;
+        float stepUpHeight = 0.25f;
+        float stickToFloorDistance = 0.28f;
+        float stepForwardTestDistance = 0.30f;
         float characterPadding = 0.02f;
         float predictiveContactDistance = 0.1f;
         float penetrationRecoverySpeed = 1.0f;
+        float edgeProbeDistance = 0.45f;
+        float edgeProbeRadius = 0.18f;
+        float maximumGroundedDrop = 0.35f;
         uint32_t maximumCollisionHits = 256u;
+        bool cancelVelocityTowardsSteepSlopes = true;
+        bool edgeGuardEnabled = true;
         bool enhancedInternalEdgeRemoval = true;
     };
+
+    struct KinematicTraversalSupportSample {
+        bool hasHit = false;
+        float heightDelta = 0.0f;
+        float normalUpDot = 0.0f;
+        float horizontalDistance = 0.0f;
+    };
+
+    // Ground traversal is evaluated after locomotion, root motion and
+    // knockback have been combined. This contract keeps small terrain relief
+    // traversable while rejecting steep support and unsupported ledges.
+    inline bool IsKinematicTraversalSupportWalkable(
+        const KinematicControllerSettings& settings,
+        const KinematicTraversalSupportSample& sample) noexcept {
+
+        if (!settings.edgeGuardEnabled) {
+            return true;
+        }
+        if (!sample.hasHit ||
+            !std::isfinite(sample.heightDelta) ||
+            !std::isfinite(sample.normalUpDot) ||
+            !std::isfinite(sample.horizontalDistance)) {
+            return false;
+        }
+
+        const float slopeRadians = std::clamp(
+            settings.maximumSlopeAngleRadians,
+            0.0f,
+            1.55334306f);
+        const float horizontalDistance = (std::max)(
+            sample.horizontalDistance, 0.0f);
+        const float padding = (std::max)(
+            settings.characterPadding, 0.0f);
+        const float maximumRise = (std::max)(
+            (std::max)(settings.stepUpHeight, 0.0f),
+            std::tan(slopeRadians) * horizontalDistance) + padding;
+        const float maximumDrop = (std::max)(
+            settings.maximumGroundedDrop, 0.0f) + padding;
+        const float minimumUpDot = std::cos(slopeRadians);
+        return sample.normalUpDot >= minimumUpDot &&
+            sample.heightDelta <= maximumRise &&
+            sample.heightDelta >= -maximumDrop;
+    }
 
     struct KinematicMotionRequest {
         // A transient fixed-tick collision exception. Physics still filters

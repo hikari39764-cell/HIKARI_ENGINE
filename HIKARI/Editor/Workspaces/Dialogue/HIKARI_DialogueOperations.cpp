@@ -6,6 +6,7 @@
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Editor/Commands/HIKARI_EditorOperationRegistry.h"
 #include "Editor/Workspaces/Dialogue/HIKARI_DialogueWorkspaceController.h"
+#include "Editor/Workspaces/HIKARI_EditorWorkspaceHost.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
 namespace HIKARI::EDITOR {
@@ -42,23 +43,102 @@ namespace HIKARI::EDITOR {
             result.message = "Open or create a dialogue document first.";
             return false;
         }
+
+        EditorOperationResult PendingConfirmation(std::string message) {
+            EditorOperationResult result{};
+            result.code = "PENDING_CONFIRMATION";
+            result.message = std::move(message);
+            result.hints = {
+                "Use dialogue.save before retrying, or answer the visible "
+                "Save / Discard / Cancel confirmation in the editor.",
+            };
+            return result;
+        }
+
+        void RevealDialogueWorkspace(
+            EditorWorkspaceHost& workspaceHost,
+            const AssetGuid& assetGuid = {}) {
+            EditorWorkspaceOpenRequest request{};
+            request.workspaceId = EditorWorkspaceId::Dialogue;
+            if (assetGuid.IsValid()) {
+                request.dialogueAssetGuid = assetGuid;
+            }
+            (void)workspaceHost.RequestOpen(std::move(request));
+        }
+
+        void WriteDocumentState(
+            const DialogueWorkspaceController& controller,
+            EditorOperationResult& result) {
+            result.data["workspace"] = "dialogue";
+            result.data["open"] = controller.IsDocumentOpen();
+            result.data["dirty"] = controller.IsDocumentDirty();
+            const AssetGuid& guid = controller.GetDocumentAssetGuid();
+            result.data["assetGuid"] =
+                guid.IsValid() ? guid.value : std::string{};
+            if (controller.IsDocumentOpen()) {
+                result.data["name"] = controller.GetDefinition().name;
+            }
+        }
     }
 
     void RegisterDialogueOperations(
         EditorOperationRegistry& registry,
         DialogueWorkspaceController& controller,
+        EditorWorkspaceHost& workspaceHost,
         std::function<DocumentSceneBase*()> sceneProvider) {
+        registry.Register({
+            "dialogue.list_assets",
+            "List Dialogue assets in the current project.",
+            "dialogue",
+            {},
+            [&controller, sceneProvider](const nlohmann::json&) {
+                EditorOperationResult result{};
+                DocumentSceneBase* scene = nullptr;
+                if (!RequireScene(sceneProvider, result, scene)) return result;
+                result.data["assets"] = nlohmann::json::array();
+                for (const DialogueAssetListEntry& asset :
+                    controller.ListAssets(scene->GetAssetDatabase())) {
+                    nlohmann::json item{
+                        { "guid", asset.guid.value },
+                        { "name", asset.name },
+                        { "path", asset.sourcePath.generic_string() },
+                        { "open", asset.current },
+                    };
+                    result.data["assets"].push_back(item);
+                    result.details.push_back(item.dump());
+                }
+                result.ok = true;
+                result.code = "OK";
+                result.message = "Returned " + std::to_string(
+                    result.data["assets"].size()) + " Dialogue assets.";
+                return result;
+            },
+        });
         registry.Register({
             "dialogue.new_asset",
             "Create a new formal Dialogue document.",
             "dialogue",
             {},
-            [&controller](const nlohmann::json&) {
+            [&controller, &workspaceHost, sceneProvider](const nlohmann::json&) {
                 EditorOperationResult result{};
+                DocumentSceneBase* scene = nullptr;
+                if (!RequireScene(sceneProvider, result, scene)) return result;
                 std::string message{};
-                result.ok = controller.NewAsset(message);
-                result.code = result.ok ? "OK" : "UNSAVED_CHANGES";
+                if (!controller.RequestNewAsset(message)) {
+                    if (controller.HasPendingConfirmation()) {
+                        return PendingConfirmation(
+                            "Current Dialogue has unsaved changes; creation "
+                            "has not run.");
+                    }
+                    result.code = "NEW_ASSET_FAILED";
+                    result.message = std::move(message);
+                    return result;
+                }
+                RevealDialogueWorkspace(workspaceHost);
+                result.ok = true;
+                result.code = "OK";
                 result.message = std::move(message);
+                WriteDocumentState(controller, result);
                 return result;
             },
         });
@@ -69,7 +149,8 @@ namespace HIKARI::EDITOR {
             { Parameter(
                 "assetGuid", EditorOperationParameterType::String,
                 true, "Dialogue asset guid") },
-            [&controller, sceneProvider](const nlohmann::json& parameters) {
+            [&controller, &workspaceHost, sceneProvider](
+                const nlohmann::json& parameters) {
                 EditorOperationResult result{};
                 DocumentSceneBase* scene = nullptr;
                 if (!RequireScene(sceneProvider, result, scene)) return result;
@@ -88,10 +169,22 @@ namespace HIKARI::EDITOR {
                     return result;
                 }
                 std::string message{};
-                result.ok = controller.OpenAsset(
-                    scene->GetAssetDatabase(), guid, message);
-                result.code = result.ok ? "OK" : "OPEN_FAILED";
+                if (!controller.RequestOpenAsset(
+                        scene->GetAssetDatabase(), guid, message)) {
+                    if (controller.HasPendingConfirmation()) {
+                        return PendingConfirmation(
+                            "Current Dialogue has unsaved changes; the new "
+                            "asset has not been opened.");
+                    }
+                    result.code = "OPEN_FAILED";
+                    result.message = std::move(message);
+                    return result;
+                }
+                RevealDialogueWorkspace(workspaceHost, guid);
+                result.ok = true;
+                result.code = "OK";
                 result.message = std::move(message);
+                WriteDocumentState(controller, result);
                 return result;
             },
         });
@@ -106,9 +199,64 @@ namespace HIKARI::EDITOR {
                 DocumentSceneBase* scene = nullptr;
                 if (!RequireScene(sceneProvider, result, scene)) return result;
                 std::string message{};
-                result.ok = controller.Save(*scene, message);
+                result.ok = controller.SaveDialogue(*scene, message);
                 result.code = result.ok ? "OK" : "SAVE_FAILED";
                 result.message = std::move(message);
+                WriteDocumentState(controller, result);
+                return result;
+            },
+        });
+        registry.Register({
+            "dialogue.revert",
+            "Revert the current saved Dialogue asset.",
+            "dialogue",
+            {},
+            [&controller, sceneProvider](const nlohmann::json&) {
+                EditorOperationResult result{};
+                if (!RequireDocument(controller, result)) return result;
+                DocumentSceneBase* scene = nullptr;
+                if (!RequireScene(sceneProvider, result, scene)) return result;
+                std::string message{};
+                if (!controller.RequestRevert(
+                        scene->GetAssetDatabase(), message)) {
+                    if (controller.HasPendingConfirmation()) {
+                        return PendingConfirmation(
+                            "Revert requires confirmation because the current "
+                            "Dialogue is dirty.");
+                    }
+                    result.code = "REVERT_FAILED";
+                    result.message = std::move(message);
+                    return result;
+                }
+                result.ok = true;
+                result.code = "OK";
+                result.message = std::move(message);
+                WriteDocumentState(controller, result);
+                return result;
+            },
+        });
+        registry.Register({
+            "dialogue.close_asset",
+            "Close the current Dialogue asset.",
+            "dialogue",
+            {},
+            [&controller](const nlohmann::json&) {
+                EditorOperationResult result{};
+                std::string message{};
+                if (!controller.RequestCloseAsset(message)) {
+                    if (controller.HasPendingConfirmation()) {
+                        return PendingConfirmation(
+                            "Closing the current Dialogue requires "
+                            "confirmation because it is dirty.");
+                    }
+                    result.code = "CLOSE_FAILED";
+                    result.message = std::move(message);
+                    return result;
+                }
+                result.ok = true;
+                result.code = "OK";
+                result.message = std::move(message);
+                WriteDocumentState(controller, result);
                 return result;
             },
         });
@@ -164,6 +312,9 @@ namespace HIKARI::EDITOR {
                         std::string(issue.error ? "ERROR " : "WARN ") +
                         issue.path + ": " + issue.message);
                 }
+                WriteDocumentState(controller, result);
+                result.data["entryNodeId"] = definition.entryNodeId;
+                result.data["nodeCount"] = definition.nodes.size();
                 return result;
             },
         });

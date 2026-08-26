@@ -54,6 +54,59 @@ namespace HIKARI::TERRAIN {
         float edgeSoftness = 0.35f;
     };
 
+    // 自動接触 producer が 1 fixed tick で発行できる sweep を制限する。
+    // Kinematic の teleport / 不正な大移動を通常移動として細分化すると、
+    // downstream の terrain chunk work が移動距離に比例して無制限に増える。
+    inline constexpr uint32_t kTerrainInteractionMaxSweepSamples = 8u;
+
+    struct TerrainInteractionSweepPlan {
+        uint32_t sampleCount = 1u;
+        bool discontinuity = false;
+    };
+
+    inline TerrainInteractionSweepPlan PlanTerrainInteractionSweep(
+        float travel,
+        float footprintRadius,
+        float stepSeconds) noexcept {
+
+        const float safeTravel = std::isfinite(travel)
+            ? (std::max)(travel, 0.0f)
+            : 0.0f;
+        const float safeRadius = std::isfinite(footprintRadius)
+            ? (std::max)(footprintRadius, 0.01f)
+            : 0.01f;
+        const float safeStepSeconds = std::isfinite(stepSeconds)
+            ? (std::max)(stepSeconds, 0.0f)
+            : 0.0f;
+        const float discontinuityDistance = (std::max)({
+            2.0f,
+            safeRadius * 8.0f,
+            safeStepSeconds * 80.0f,
+        });
+        if (!std::isfinite(travel) ||
+            safeTravel > discontinuityDistance) {
+            return { 1u, true };
+        }
+
+        const float sampleSpacing = (std::max)(
+            safeRadius * 0.35f, 0.01f);
+        const double requestedSamples = safeTravel > 1.0e-5f
+            ? std::ceil(
+                static_cast<double>(safeTravel) /
+                static_cast<double>(sampleSpacing))
+            : 1.0;
+        const uint32_t boundedSamples = requestedSamples >=
+                static_cast<double>(kTerrainInteractionMaxSweepSamples)
+            ? kTerrainInteractionMaxSweepSamples
+            : (std::max)(
+                1u,
+                static_cast<uint32_t>(requestedSamples));
+        return {
+            boundedSamples,
+            false,
+        };
+    }
+
     // Physics、character pose、wheel、gameplay の各 adapter が発行し、
     // Terrain/Sand response だけが消費する唯一の実行時接触契約。
     // positionWS は Sphere では球心、その他では接触面の中心を表す。

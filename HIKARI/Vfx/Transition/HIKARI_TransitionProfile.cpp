@@ -3,6 +3,7 @@
 #include <algorithm>
 
 #include <json.hpp>
+#include "Core/Content/HIKARI_EngineContentContext.h"
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
 #include "Vfx/Parameters/HIKARI_VfxParameterValues.h"
 #include "Vfx/Serialization/HIKARI_VfxParameterJson.h"
@@ -15,7 +16,17 @@ bool TransitionProfile::LoadById(const std::string& profileId, TransitionProfile
     if (profileId.empty()) {
         return false;
     }
-    return outProfile.LoadFromJson(std::string("Data/transition_profiles/") + profileId + ".json");
+    const std::filesystem::path engineProfile =
+        CONTENT::GetEngineContentContext().Resolve(
+            std::filesystem::path("Transitions") /
+                (profileId + ".json"));
+    if (!engineProfile.empty() && outProfile.LoadFromJson(
+            engineProfile.generic_string())) {
+        return true;
+    }
+    // Legacy project-local profiles remain readable during migration.
+    return outProfile.LoadFromJson(
+        std::string("Data/transition_profiles/") + profileId + ".json");
 }
 
 bool TransitionProfile::LoadFromJson(const std::string& path) {
@@ -32,6 +43,12 @@ bool TransitionProfile::LoadFromJson(const std::string& path) {
     shaderId = root.value("shaderId", shaderId);
     outDuration = root.value("outDuration", outDuration);
     inDuration = root.value("inDuration", inDuration);
+    waitForCameraReady = root.value(
+        "waitForCameraReady", waitForCameraReady);
+    cameraReadyTimeout = std::clamp(
+        root.value("cameraReadyTimeout", cameraReadyTimeout),
+        0.0f,
+        5.0f);
 
     VFX::SERIALIZATION::ReadParameterDescriptorsFromJson(
         root.value("params", nlohmann::json{}),

@@ -120,6 +120,7 @@ $entries = @(
     @{ Shader = "HIKARI/Shaders/Post_AniPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
     @{ Shader = "HIKARI/Shaders/Post_CinematicGradePS.hlsl"; Entry = "main"; Target = "ps_6_0" },
     @{ Shader = "HIKARI/Shaders/Post_TransitionLinearWipePS.hlsl"; Entry = "main"; Target = "ps_6_0" },
+    @{ Shader = "HIKARI/Shaders/Post_TransitionBurnDissolvePS.hlsl"; Entry = "main"; Target = "ps_6_0"; Group = "Transitions"; WarningsAsErrors = $true },
     @{ Shader = "HIKARI/Shaders/Post_SSAOPS.hlsl"; Entry = "VSMain"; Target = "vs_6_0" },
     @{ Shader = "HIKARI/Shaders/Post_SSAOPS.hlsl"; Entry = "PSMain"; Target = "ps_6_0" },
     @{ Shader = "HIKARI/Shaders/Post_SSAOPS.hlsl"; Entry = "PSMainOptimizedHigh"; Target = "ps_6_0" },

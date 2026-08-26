@@ -172,6 +172,8 @@ namespace HIKARI::VFX {
                 return "shockwave_ring";
             case CombatWorldEffectKind::DodgeAfterimage:
                 return "projectile_trail";
+            case CombatWorldEffectKind::DangerTelegraph:
+                return "shockwave_ring";
             case CombatWorldEffectKind::SkillImpact:
                 return "burst_explosion";
             case CombatWorldEffectKind::LightImpact:
@@ -203,6 +205,42 @@ namespace HIKARI::VFX {
         void AuthorCombatProgram(
             CombatWorldEffectKind kind,
             VfxAssetData& asset) {
+            if (kind == CombatWorldEffectKind::DangerTelegraph) {
+                asset.name = "Combat Danger Telegraph";
+                asset.loop = false;
+                asset.durationSeconds = 0.22f;
+                if (asset.emitters.empty()) {
+                    return;
+                }
+                asset.emitters.resize(1u);
+                VfxEmitterData& ring = asset.emitters.front();
+                ring.order = 0u;
+                ring.name = "Danger Ground Ring";
+                ring.spawn.ratePerSecond = 0.0f;
+                ring.spawn.burstCount = 1u;
+                ring.spawn.maximumParticles = 4u;
+                ring.basic.lifetime = MakeVfxFloatConstant(0.20f);
+                ring.position.radialSpeed = MakeVfxFloatConstant(0.0f);
+                ring.forces.gravity = { 0.0f, 0.0f, 0.0f };
+                ring.renderCommon.blendMode = VfxBlendMode::Additive;
+                ring.renderShape.type = VfxRenderShapeType::Sprite;
+                ring.renderShape.billboardMode = VfxBillboardMode::Fixed;
+                ring.rotation.eulerDegrees.mode =
+                    VfxAnimatedValueMode::Fixed;
+                ring.rotation.eulerDegrees.fixed = MakeVfxVec3Constant(
+                    { 90.0f, 0.0f, 0.0f });
+                ring.scale.value.mode = VfxAnimatedValueMode::Easing;
+                ring.scale.value.easing.start = MakeVfxVec3Constant(
+                    { 1.94f, 1.94f, 1.94f });
+                ring.scale.value.easing.end = MakeVfxVec3Constant(
+                    { 2.02f, 2.02f, 2.02f });
+                SetWaterGradient(
+                    ring,
+                    { 1.0f, 0.025f, 0.008f, 0.82f },
+                    { 1.0f, 0.18f, 0.018f, 0.0f });
+                return;
+            }
+
             if (kind == CombatWorldEffectKind::DodgeAfterimage) {
                 asset.name = "Combat Dodge Water Mist and Drops";
                 asset.loop = false;
@@ -491,6 +529,7 @@ namespace HIKARI::VFX {
             case CombatWorldEffectKind::SkillImpact: return 1.48f;
             case CombatWorldEffectKind::PerfectGuardBurst: return 1.36f;
             case CombatWorldEffectKind::DodgeAfterimage: return 1.0f;
+            case CombatWorldEffectKind::DangerTelegraph: return 1.0f;
             case CombatWorldEffectKind::LightImpact:
             default: return 0.92f;
             }

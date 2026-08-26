@@ -55,6 +55,9 @@ namespace HIKARI {
         float timer_ = 0.0f;
         float transitionOutDuration_ = 0.2f;
         float transitionInDuration_ = 0.2f;
+        float cameraReadyWaitSeconds_ = 0.0f;
+        float cameraReadyTimeout_ = 1.25f;
+        bool waitForCameraReady_ = false;
         bool lastSceneLoadedFromCache_ = false;
         std::string activeTransitionProfileId_{ "noise_wipe" };
     };

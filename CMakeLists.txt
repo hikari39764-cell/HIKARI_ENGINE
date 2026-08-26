@@ -69,6 +69,10 @@ set(
     ${HIKARI_RUNTIME_PUBLIC_LINK_LIBRARIES}
     ${HIKARI_RUNTIME_PRIVATE_LINK_LIBRARIES})
 hikari_define_runtime_modules(HIKARI_RUNTIME_MODULE_TARGETS)
+target_link_libraries(
+    hikari_runtime_navigation
+    PRIVATE
+        HIKARI::RecastNavigation)
 if(HIKARI_WITH_EDITOR_BUILD)
     target_link_libraries(
         hikari_runtime_assets
@@ -101,10 +105,27 @@ target_link_libraries(
         ${HIKARI_RUNTIME_MODULE_TARGETS}
         ${HIKARI_RUNTIME_PUBLIC_LINK_LIBRARIES}
         ${HIKARI_RUNTIME_PRIVATE_LINK_LIBRARIES})
+
+add_executable(HIKARI_NavigationRuntimeContracts EXCLUDE_FROM_ALL)
+target_sources(
+    HIKARI_NavigationRuntimeContracts
+    PRIVATE
+        "${HIKARI_SOURCE_ROOT}/Tools/Tests/HIKARI_NavigationRuntimeContracts.cpp"
+        "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Host/HIKARI_RuntimeComponentToolingStubs.cpp")
+target_link_libraries(
+    HIKARI_NavigationRuntimeContracts
+    PRIVATE
+        HIKARI::Runtime)
+hikari_configure_engine_target(HIKARI_NavigationRuntimeContracts)
+hikari_configure_runtime_deployment(
+    HIKARI_NavigationRuntimeContracts
+    OUTPUT_NAME "HIKARI_NavigationRuntimeContracts"
+    NO_INSTALL)
 set_property(
     SOURCE
         "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Features/HIKARI_RuntimeFeatureCatalog.cpp"
         "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectActionBridge.cpp"
+        "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectNavigationBridge.cpp"
         "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectGameFlowBridge.cpp"
         "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectPresentationBridge.cpp"
         "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectUiBridge.cpp"

@@ -59,6 +59,21 @@ namespace HIKARI {
         float GetStepForwardTestDistance() const noexcept {
             return stepForwardTestDistance_;
         }
+        float GetEdgeProbeDistance() const noexcept {
+            return edgeProbeDistance_;
+        }
+        float GetEdgeProbeRadius() const noexcept {
+            return edgeProbeRadius_;
+        }
+        float GetMaximumGroundedDrop() const noexcept {
+            return maximumGroundedDrop_;
+        }
+        bool GetCancelVelocityTowardsSteepSlopes() const noexcept {
+            return cancelVelocityTowardsSteepSlopes_;
+        }
+        bool GetEdgeGuardEnabled() const noexcept {
+            return edgeGuardEnabled_;
+        }
         float GetCharacterPadding() const noexcept {
             return characterPadding_;
         }
@@ -78,6 +93,7 @@ namespace HIKARI {
         bool GetRotateToMove() const noexcept { return rotateToMove_; }
 
     private:
+        static constexpr uint32_t kTraversalProfileVersion = 2u;
         void ClampSettings() noexcept;
 
         bool enabled_ = true;
@@ -95,14 +111,19 @@ namespace HIKARI {
         float jumpBufferSeconds_ = 0.12f;
         float groundGraceSeconds_ = 0.10f;
         float maximumFallSpeed_ = 55.0f;
-        float maximumSlopeAngleDegrees_ = 50.0f;
-        float stepHeight_ = 0.4f;
-        float stickToFloorDistance_ = 0.5f;
-        float stepForwardTestDistance_ = 0.15f;
+        float maximumSlopeAngleDegrees_ = 42.0f;
+        float stepHeight_ = 0.25f;
+        float stickToFloorDistance_ = 0.28f;
+        float stepForwardTestDistance_ = 0.30f;
+        float edgeProbeDistance_ = 0.45f;
+        float edgeProbeRadius_ = 0.18f;
+        float maximumGroundedDrop_ = 0.35f;
         float characterPadding_ = 0.02f;
         float predictiveContactDistance_ = 0.1f;
         float penetrationRecoverySpeed_ = 1.0f;
         uint32_t maximumCollisionHits_ = 256u;
+        bool cancelVelocityTowardsSteepSlopes_ = true;
+        bool edgeGuardEnabled_ = true;
         bool enhancedInternalEdgeRemoval_ = true;
         float inputDeadZone_ = 0.08f;
         bool rotateToMove_ = true;

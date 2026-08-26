@@ -257,6 +257,42 @@ namespace {
         }
     }
 
+    bool PropertyReader::ReadTextureAssetReference(
+        std::string_view name,
+        GameProjectUiTextureReference& outReference) const noexcept {
+        outReference = {};
+        try {
+            const nlohmann::json* value = FindProperty(properties_, name);
+            if (value == nullptr) {
+                return false;
+            }
+            if (value->is_string()) {
+                return CopyFixedString(value, outReference.assetGuid);
+            }
+            if (!value->is_object()) {
+                return false;
+            }
+            const nlohmann::json* guid = FindObjectMember(
+                *value, "assetGuid", "guid");
+            const nlohmann::json* path = FindObjectMember(
+                *value, "assetPath", "sourcePath");
+            const bool guidFits = CopyFixedString(
+                guid, outReference.assetGuid);
+            const bool pathFits = CopyFixedString(
+                path, outReference.assetPath);
+            if ((guid != nullptr && !guidFits) ||
+                (path != nullptr && !pathFits)) {
+                outReference = {};
+                return false;
+            }
+            return true;
+        }
+        catch (...) {
+            outReference = {};
+            return false;
+        }
+    }
+
     size_t PropertyReader::GetStringSize(
         std::string_view name) const noexcept {
         const nlohmann::json* value =
@@ -348,6 +384,24 @@ namespace {
     void PropertyWriter::WriteVfxAssetReference(
         std::string_view name,
         const GameProjectVfxAssetReference& reference) {
+        const std::string guid = ReadFixedString(reference.assetGuid);
+        const std::string path = ReadFixedString(reference.assetPath);
+        if ((reference.assetGuid[0] != '\0' && guid.empty()) ||
+            (reference.assetPath[0] != '\0' && path.empty())) {
+            return;
+        }
+        if (nlohmann::json* object =
+                GetPropertyObject(properties_)) {
+            (*object)[std::string(name)] = {
+                { "assetGuid", guid },
+                { "assetPath", path }
+            };
+        }
+    }
+
+    void PropertyWriter::WriteTextureAssetReference(
+        std::string_view name,
+        const GameProjectUiTextureReference& reference) {
         const std::string guid = ReadFixedString(reference.assetGuid);
         const std::string path = ReadFixedString(reference.assetPath);
         if ((reference.assetGuid[0] != '\0' && guid.empty()) ||
@@ -624,6 +678,95 @@ namespace {
                 reference.assetPath[0] = '\0';
             }
         } else if (reference.assetGuid[0] == '\0') {
+            reference.assetPath[0] = '\0';
+        }
+
+        return pickerChanged ||
+            previousGuid != ReadFixedString(reference.assetGuid) ||
+            previousPath != ReadFixedString(reference.assetPath);
+    }
+
+    bool GameProjectInspector::TextureAssetReference(
+        std::string_view label,
+        GameProjectUiTextureReference& reference) {
+        return TextureAssetReference(label, label, reference);
+    }
+
+    bool GameProjectInspector::TextureAssetReference(
+        std::string_view propertyId,
+        std::string_view label,
+        GameProjectUiTextureReference& reference) {
+        auto* builder =
+            static_cast<IInspectorBuilder*>(builder_);
+        if (builder == nullptr || propertyId.empty()) {
+            return false;
+        }
+
+        const std::string previousGuid =
+            ReadFixedString(reference.assetGuid);
+        const std::string previousPath =
+            ReadFixedString(reference.assetPath);
+        const GameProjectUiTextureReference original = reference;
+        if ((reference.assetGuid[0] != '\0' && previousGuid.empty()) ||
+            (reference.assetPath[0] != '\0' && previousPath.empty())) {
+            return false;
+        }
+
+        const InspectorContext& context = builder->GetContext();
+        const AssetRecord* record = nullptr;
+        if (context.assetDatabase != nullptr &&
+            reference.assetGuid[0] == '\0' &&
+            reference.assetPath[0] != '\0') {
+            record = context.assetDatabase->FindByPath(
+                std::filesystem::path(
+                    ReadFixedString(reference.assetPath)));
+            if (record != nullptr && record->type == AssetType::Texture) {
+                if (!CopyStringToReference(
+                        record->guid.value,
+                        reference.assetGuid,
+                        sizeof(reference.assetGuid))) {
+                    reference = original;
+                    return false;
+                }
+            }
+        }
+
+        std::string guid = ReadFixedString(reference.assetGuid);
+        const AuthoringFieldDescriptor field{
+            propertyId,
+            label.empty() ? propertyId : label,
+            "Texture asset GUID with a synchronized source path fallback."
+        };
+        const bool pickerChanged = builder->AssetIdPicker(
+            field,
+            AssetType::Texture,
+            guid);
+        if (!CopyStringToReference(
+                guid,
+                reference.assetGuid,
+                sizeof(reference.assetGuid))) {
+            reference = original;
+            return false;
+        }
+
+        if (context.assetDatabase != nullptr &&
+            reference.assetGuid[0] != '\0') {
+            record = context.assetDatabase->FindByGuid(AssetGuid{ guid });
+            if (record != nullptr && record->type == AssetType::Texture) {
+                if (!CopyStringToReference(
+                        record->sourcePath.generic_string(),
+                        reference.assetPath,
+                        sizeof(reference.assetPath))) {
+                    reference = original;
+                    return false;
+                }
+            }
+            else if (previousGuid !=
+                    ReadFixedString(reference.assetGuid)) {
+                reference.assetPath[0] = '\0';
+            }
+        }
+        else if (reference.assetGuid[0] == '\0') {
             reference.assetPath[0] = '\0';
         }
 

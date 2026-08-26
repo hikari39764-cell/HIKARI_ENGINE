@@ -227,6 +227,12 @@ namespace HIKARI {
             state_->runtime.fixedStepClock.SetSettings(settings);
         }
         state_->runtime.world.BeginFrame(frame.frameIndex);
+        if (state_->runtime.playActive) {
+            // One owner-revision gate per frame; individual SDK queries read
+            // the immutable prepared Detour snapshot in O(path work).
+            (void)state_->runtime.navigationWorldService.Synchronize(
+                state_->runtime.world);
+        }
         state_->runtime.bindingStore.BeginFrame(frame.frameIndex);
         state_->camera.rigService.BeginFrame(frame.frameIndex);
         if (state_->runtime.playActive && state_->camera.runtimePreviewCameraActive) {

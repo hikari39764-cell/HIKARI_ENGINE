@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cmath>
 #include <cstring>
 #include <iterator>
 #include <limits>
@@ -9,10 +10,13 @@
 #include <string>
 
 #include "Assets/HIKARI_AssetGuid.h"
+#include "Audio/HIKARI_Audio.h"
+#include "Gameplay/Dialogue/HIKARI_DialogueSessionService.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
 #include "Runtime/Services/HIKARI_GameProjectSaveStorageService.h"
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
 #include "Scene/HIKARI_RuntimeSceneContext.h"
+#include "Scene/HIKARI_RuntimeObjectHandle.h"
 #include "Scene/HIKARI_SceneTransitionBus.h"
 #include "Scene/HIKARI_World.h"
 
@@ -25,6 +29,12 @@ namespace HIKARI {
                     RuntimeSceneContext::GetCurrentWorld() == runtimeWorld
                 ? runtimeWorld
                 : nullptr;
+        }
+
+        RuntimeObjectHandle DecodeRuntimeHandle(uint64_t value) noexcept {
+            return RuntimeObjectHandle{
+                static_cast<uint32_t>(value & 0xffffffffull),
+                static_cast<uint32_t>(value >> 32u) };
         }
 
         bool CopyUtf8(
@@ -68,6 +78,52 @@ namespace HIKARI {
         return SceneFlowView(&world);
     }
 
+    DialogueView GameProjectSdkAccess::MakeDialogueView(
+        World& world) noexcept {
+        return DialogueView(&world);
+    }
+
+    AudioView GameProjectSdkAccess::MakeAudioView(
+        World& world) noexcept {
+        return AudioView(&world);
+    }
+
+    bool AudioView::SetBusVolume(
+        GameProjectAudioBus bus,
+        float linearVolume) const noexcept {
+        try {
+            if (CurrentWorld(world_) == nullptr ||
+                !std::isfinite(linearVolume)) {
+                return false;
+            }
+            AUDIO::SetBusVolume(
+                bus == GameProjectAudioBus::Bgm
+                    ? AUDIO::AudioBus::Bgm
+                    : AUDIO::AudioBus::Se,
+                linearVolume);
+            return true;
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
+    float AudioView::GetBusVolume(
+        GameProjectAudioBus bus) const noexcept {
+        try {
+            if (CurrentWorld(world_) == nullptr) {
+                return 0.0f;
+            }
+            return AUDIO::GetBusVolume(
+                bus == GameProjectAudioBus::Bgm
+                    ? AUDIO::AudioBus::Bgm
+                    : AUDIO::AudioBus::Se);
+        }
+        catch (...) {
+            return 0.0f;
+        }
+    }
+
     SaveGameView GameProjectSdkAccess::MakeSaveGameView(
         World& world) noexcept {
         return SaveGameView(&world);
@@ -95,6 +151,85 @@ namespace HIKARI {
         }
         catch (...) {
             outLength = 0u;
+            return false;
+        }
+    }
+
+    bool SceneFlowView::IsTransitioning() const noexcept {
+        try {
+            if (CurrentWorld(world_) == nullptr) {
+                return false;
+            }
+            const SceneTransitionBus* bus =
+                RuntimeSceneContext::GetTransitionBus();
+            return bus != nullptr && bus->IsTransitioning();
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
+    bool DialogueView::Start(
+        std::string_view assetGuid,
+        uint64_t actorObjectHandle,
+        std::string_view locale,
+        uint8_t pauseWorld) const noexcept {
+        try {
+            World* world = CurrentWorld(world_);
+            if (world == nullptr || !IsValidAssetGuid(assetGuid) ||
+                actorObjectHandle == 0u || locale.size() > 32u) {
+                return false;
+            }
+            DIALOGUE::DialogueSessionService* service =
+                world->Services().Find<
+                    DIALOGUE::DialogueSessionService>();
+            const RuntimeObjectHandle actor = DecodeRuntimeHandle(
+                actorObjectHandle);
+            if (service == nullptr || service->IsActive() ||
+                world->FindObject(actor) == nullptr) {
+                return false;
+            }
+            return service->Start(
+                *world,
+                AssetGuid{ std::string(assetGuid) },
+                std::string(locale),
+                actor,
+                actor,
+                pauseWorld != 0u);
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
+    bool DialogueView::IsActive() const noexcept {
+        try {
+            World* world = CurrentWorld(world_);
+            DIALOGUE::DialogueSessionService* service = world != nullptr
+                ? world->Services().Find<
+                    DIALOGUE::DialogueSessionService>()
+                : nullptr;
+            return service != nullptr && service->IsActive();
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
+    bool DialogueView::Stop() const noexcept {
+        try {
+            World* world = CurrentWorld(world_);
+            DIALOGUE::DialogueSessionService* service = world != nullptr
+                ? world->Services().Find<
+                    DIALOGUE::DialogueSessionService>()
+                : nullptr;
+            if (service == nullptr || !service->IsActive()) {
+                return false;
+            }
+            service->Stop(*world, "game-project-stop");
+            return true;
+        }
+        catch (...) {
             return false;
         }
     }

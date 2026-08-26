@@ -120,6 +120,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         std::vector<std::vector<MATH::Mat4>> meshShaderJointPalettes_{};
         std::vector<SAND::SandSurfaceGpuData> sandSurfaceGpuData_{};
         const std::vector<float>* sandSurfaceHeights_ = nullptr;
+        uint64_t sandSurfaceHeightVersion_ = 0;
         std::vector<uint32_t> forwardOpaqueResidentRecordIndices_{};
         std::vector<uint32_t> depthPrepassOccluderRecordIndices_{};
         std::vector<uint32_t> forwardDepthAwareResidentRecordIndices_{};

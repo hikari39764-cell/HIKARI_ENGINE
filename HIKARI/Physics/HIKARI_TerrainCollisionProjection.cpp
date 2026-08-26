@@ -8,6 +8,7 @@
 #include <exception>
 #include <functional>
 #include <limits>
+#include <set>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -292,6 +293,115 @@ namespace HIKARI::PHYSICS {
                         " lattice spacing is not representable in float coordinates";
                     return false;
                 }
+            }
+            return true;
+        }
+
+        bool ValidateTerrainChunkInputOnly(
+            const TerrainSurfaceComponent& terrain,
+            const TERRAIN::TerrainChunkKey& key,
+            const TERRAIN::TerrainChunk& chunk,
+            std::string& diagnostic) {
+            const TERRAIN::TerrainSurface& surface = terrain.GetSurface();
+            if (!std::isfinite(surface.chunkCellSize)) {
+                diagnostic = "chunkCellSize is not finite";
+                return false;
+            }
+            if (!std::isfinite(surface.shoreline.edgeFalloff) ||
+                !std::isfinite(surface.shoreline.edgeDepth) ||
+                !std::isfinite(surface.deform.rimStrength)) {
+                diagnostic =
+                    "shoreline/deform collision settings are not finite";
+                return false;
+            }
+
+            const uint32_t expectedCells = terrain.GetChunkCells();
+            const float cellSize = (std::max)(
+                surface.chunkCellSize, 0.01f);
+            const float chunkSize =
+                static_cast<float>(expectedCells) * cellSize;
+            const std::string label = ChunkLabel(key);
+            if (expectedCells == 0u ||
+                expectedCells > static_cast<uint32_t>(
+                    (std::numeric_limits<int32_t>::max)()) ||
+                !std::isfinite(cellSize) ||
+                !std::isfinite(chunkSize) || chunkSize <= 0.0f) {
+                diagnostic = "derived terrain scale is invalid";
+                return false;
+            }
+            if (chunk.cells != expectedCells ||
+                !TERRAIN::TerrainChunkValid(chunk)) {
+                diagnostic = label +
+                    " metadata or buffers differ from the surface lattice";
+                return false;
+            }
+
+            const std::size_t vertexCount =
+                TERRAIN::TerrainChunkVertexCount(chunk.cells);
+            for (std::size_t index = 0u;
+                index < vertexCount;
+                ++index) {
+                if (!std::isfinite(chunk.heights[index]) ||
+                    !std::isfinite(chunk.coverage[index])) {
+                    diagnostic = label +
+                        " contains non-finite height or coverage data";
+                    return false;
+                }
+            }
+
+            const int64_t minX =
+                static_cast<int64_t>(key.x) * expectedCells;
+            const int64_t minZ =
+                static_cast<int64_t>(key.z) * expectedCells;
+            const int64_t maxX = minX + expectedCells;
+            const int64_t maxZ = minZ + expectedCells;
+            constexpr int64_t latticeMin = static_cast<int64_t>(
+                (std::numeric_limits<int32_t>::min)()) + 1;
+            constexpr int64_t latticeMax = static_cast<int64_t>(
+                (std::numeric_limits<int32_t>::max)()) - 1;
+            if (minX < latticeMin || maxX > latticeMax ||
+                minZ < latticeMin || maxZ > latticeMax) {
+                diagnostic = label +
+                    " exceeds the supported global lattice range";
+                return false;
+            }
+
+            const double originX = static_cast<double>(minX) * cellSize;
+            const double originZ = static_cast<double>(minZ) * cellSize;
+            const double endX = static_cast<double>(maxX) * cellSize;
+            const double endZ = static_cast<double>(maxZ) * cellSize;
+            if (!std::isfinite(originX) ||
+                !std::isfinite(originZ) ||
+                !std::isfinite(endX) ||
+                !std::isfinite(endZ) ||
+                std::fabs(originX) >
+                    (std::numeric_limits<float>::max)() ||
+                std::fabs(originZ) >
+                    (std::numeric_limits<float>::max)() ||
+                std::fabs(endX) >
+                    (std::numeric_limits<float>::max)() ||
+                std::fabs(endZ) >
+                    (std::numeric_limits<float>::max)()) {
+                diagnostic = label + " produces non-finite coordinates";
+                return false;
+            }
+            const float firstX = static_cast<float>(originX);
+            const float nextX = static_cast<float>(
+                static_cast<double>(minX + 1) * cellSize);
+            const float previousX = static_cast<float>(
+                static_cast<double>(maxX - 1) * cellSize);
+            const float lastX = static_cast<float>(endX);
+            const float firstZ = static_cast<float>(originZ);
+            const float nextZ = static_cast<float>(
+                static_cast<double>(minZ + 1) * cellSize);
+            const float previousZ = static_cast<float>(
+                static_cast<double>(maxZ - 1) * cellSize);
+            const float lastZ = static_cast<float>(endZ);
+            if (!(firstX < nextX) || !(previousX < lastX) ||
+                !(firstZ < nextZ) || !(previousZ < lastZ)) {
+                diagnostic = label +
+                    " lattice spacing is not representable in float coordinates";
+                return false;
             }
             return true;
         }
@@ -647,6 +757,113 @@ namespace HIKARI::PHYSICS {
             std::string diagnostic_{};
         };
 
+        void AppendTerrainChunkGeometry(
+            const TerrainSurfaceComponent& terrain,
+            const TERRAIN::TerrainSurface& surface,
+            const TERRAIN::TerrainChunkKey& chunkKey,
+            const TERRAIN::TerrainChunk& chunk,
+            TerrainGeometryBuilder& builder) {
+            const uint32_t cells = terrain.GetChunkCells();
+            const uint32_t stride = cells + 1u;
+            const std::size_t vertexCount =
+                static_cast<std::size_t>(stride) * stride;
+            const float cellSize = (std::max)(
+                surface.chunkCellSize, 0.01f);
+            std::vector<CoverageVertex> vertices(vertexCount);
+            const int64_t globalOriginX =
+                static_cast<int64_t>(chunkKey.x) * cells;
+            const int64_t globalOriginZ =
+                static_cast<int64_t>(chunkKey.z) * cells;
+            for (uint32_t z = 0u; z <= cells; ++z) {
+                for (uint32_t x = 0u; x <= cells; ++x) {
+                    const std::size_t index =
+                        static_cast<std::size_t>(z) * stride + x;
+                    const AuthoredLatticeKey lattice{
+                        globalOriginX + x,
+                        globalOriginZ + z };
+                    const float localX = static_cast<float>(
+                        static_cast<double>(lattice.x) * cellSize);
+                    const float localZ = static_cast<float>(
+                        static_cast<double>(lattice.z) * cellSize);
+                    const float coverage = terrain.SampleLocalCoverage({
+                        localX, 0.0f, localZ });
+                    float authoredHeight = chunk.heights[index];
+                    TERRAIN::TerrainCanonicalVertexSource canonical{};
+                    if (TERRAIN::TryResolveTerrainCanonicalVertex(
+                            surface.chunks,
+                            chunkKey,
+                            x,
+                            z,
+                            canonical) &&
+                        canonical.chunk != nullptr) {
+                        const uint32_t canonicalStride =
+                            canonical.chunk->cells + 1u;
+                        const std::size_t canonicalIndex =
+                            static_cast<std::size_t>(canonical.localZ) *
+                                canonicalStride +
+                            canonical.localX;
+                        authoredHeight =
+                            canonical.chunk->heights[canonicalIndex];
+                    }
+                    const float effectiveHeight =
+                        SAND::EvaluateSandSurfaceEffectiveHeight(
+                            authoredHeight,
+                            coverage,
+                            surface.shoreline.edgeDepth,
+                            surface.deform.rimStrength);
+                    vertices[index] = CoverageVertex{
+                        lattice,
+                        { localX, effectiveHeight, localZ },
+                        coverage };
+                }
+            }
+            const auto at = [&](uint32_t x, uint32_t z)
+                -> const CoverageVertex& {
+                return vertices[
+                    static_cast<std::size_t>(z) * stride + x];
+            };
+            for (uint32_t z = 0u; z < cells; ++z) {
+                for (uint32_t x = 0u; x < cells; ++x) {
+                    // +Y winding。Jolt / Recast の terrain projection は同じ
+                    // coverage-clipped topology を消費する。
+                    builder.AppendCoverageClippedTriangle(
+                        at(x, z),
+                        at(x, z + 1u),
+                        at(x + 1u, z));
+                    builder.AppendCoverageClippedTriangle(
+                        at(x + 1u, z),
+                        at(x, z + 1u),
+                        at(x + 1u, z + 1u));
+                }
+            }
+        }
+
+        bool FinalizeProjectionGeometry(
+            TerrainGeometryBuilder& builder,
+            TerrainCollisionProjection& result) {
+            PhysicsGeometryBuffer geometry{};
+            if (!builder.Finalize(geometry, result.diagnostic)) {
+                return false;
+            }
+            if (geometry.indices.empty()) {
+                result.buildSucceeded = true;
+                return true;
+            }
+            const std::size_t triangleCount = geometry.indices.size() / 3u;
+            if (triangleCount >
+                (std::numeric_limits<uint32_t>::max)()) {
+                result.diagnostic =
+                    "terrain collision exceeds uint32 triangle capacity";
+                return false;
+            }
+            result.triangleCount = static_cast<uint32_t>(triangleCount);
+            result.geometry =
+                std::make_shared<PhysicsGeometryBuffer>(
+                    std::move(geometry));
+            result.buildSucceeded = true;
+            return true;
+        }
+
         TerrainCollisionProjection BuildTerrainCollisionProjectionImpl(
             RuntimeObjectHandle object,
             const TerrainSurfaceComponent& terrain) {
@@ -662,86 +879,41 @@ namespace HIKARI::PHYSICS {
                 return result;
             }
 
-            const uint32_t cells = terrain.GetChunkCells();
-            const float cellSize = (std::max)(
-                surface.chunkCellSize, 0.01f);
             TerrainGeometryBuilder builder{};
             for (const auto& [chunkKey, chunk] : surface.chunks) {
-                const uint32_t stride = cells + 1u;
-                const std::size_t vertexCount =
-                    static_cast<std::size_t>(stride) * stride;
-                std::vector<CoverageVertex> vertices(vertexCount);
-                const int64_t globalOriginX =
-                    static_cast<int64_t>(chunkKey.x) * cells;
-                const int64_t globalOriginZ =
-                    static_cast<int64_t>(chunkKey.z) * cells;
-                for (uint32_t z = 0u; z <= cells; ++z) {
-                    for (uint32_t x = 0u; x <= cells; ++x) {
-                        const std::size_t index =
-                            static_cast<std::size_t>(z) * stride + x;
-                        const AuthoredLatticeKey lattice{
-                            globalOriginX + x,
-                            globalOriginZ + z };
-                        const float localX = static_cast<float>(
-                            static_cast<double>(lattice.x) * cellSize);
-                        const float localZ = static_cast<float>(
-                            static_cast<double>(lattice.z) * cellSize);
-                        const float coverage =
-                            terrain.SampleLocalCoverage({
-                                localX, 0.0f, localZ });
-                        const float effectiveHeight =
-                            SAND::EvaluateSandSurfaceEffectiveHeight(
-                                chunk.heights[index],
-                                coverage,
-                                surface.shoreline.edgeDepth,
-                                surface.deform.rimStrength);
-                        vertices[index] = CoverageVertex{
-                            lattice,
-                            { localX, effectiveHeight, localZ },
-                            coverage };
-                    }
-                }
-                const auto at = [&](uint32_t x, uint32_t z)
-                    -> const CoverageVertex& {
-                    return vertices[
-                        static_cast<std::size_t>(z) * stride + x];
-                };
-                for (uint32_t z = 0u; z < cells; ++z) {
-                    for (uint32_t x = 0u; x < cells; ++x) {
-                        // +Y winding。source lattice と clip edge の index を
-                        // 共有し、Jolt の active-edge 判定へ正しい topology を渡す。
-                        builder.AppendCoverageClippedTriangle(
-                            at(x, z),
-                            at(x, z + 1u),
-                            at(x + 1u, z));
-                        builder.AppendCoverageClippedTriangle(
-                            at(x + 1u, z),
-                            at(x, z + 1u),
-                            at(x + 1u, z + 1u));
-                    }
-                }
+                AppendTerrainChunkGeometry(
+                    terrain, surface, chunkKey, chunk, builder);
             }
+            (void)FinalizeProjectionGeometry(builder, result);
+            return result;
+        }
 
-            PhysicsGeometryBuffer geometry{};
-            if (!builder.Finalize(geometry, result.diagnostic)) {
-                return result;
-            }
-            if (geometry.indices.empty()) {
+        TerrainCollisionProjection BuildTerrainChunkCollisionProjectionImpl(
+            RuntimeObjectHandle object,
+            const TerrainSurfaceComponent& terrain,
+            const TERRAIN::TerrainChunkKey& key) {
+            TerrainCollisionProjection result =
+                MakeProjectionBase(object, terrain);
+            result.sourceRevision = terrain.GetChunkRevision(key);
+            result.authoredRevision = result.sourceRevision;
+            result.contentRevision = result.sourceRevision ==
+                    (std::numeric_limits<uint64_t>::max)()
+                ? (std::numeric_limits<uint64_t>::max)()
+                : result.sourceRevision + 1u;
+            const TERRAIN::TerrainSurface& surface = terrain.GetSurface();
+            const auto found = surface.chunks.find(key);
+            if (found == surface.chunks.end()) {
                 result.buildSucceeded = true;
                 return result;
             }
-            const std::size_t triangleCount = geometry.indices.size() / 3u;
-            if (triangleCount >
-                (std::numeric_limits<uint32_t>::max)()) {
-                result.diagnostic =
-                    "terrain collision exceeds uint32 triangle capacity";
+            if (!ValidateTerrainChunkInputOnly(
+                    terrain, key, found->second, result.diagnostic)) {
                 return result;
             }
-            result.triangleCount = static_cast<uint32_t>(triangleCount);
-            result.geometry =
-                std::make_shared<PhysicsGeometryBuffer>(
-                    std::move(geometry));
-            result.buildSucceeded = true;
+            TerrainGeometryBuilder builder{};
+            AppendTerrainChunkGeometry(
+                terrain, surface, key, found->second, builder);
+            (void)FinalizeProjectionGeometry(builder, result);
             return result;
         }
     }
@@ -766,74 +938,261 @@ namespace HIKARI::PHYSICS {
         }
     }
 
+    TerrainCollisionProjection BuildTerrainChunkCollisionProjection(
+        RuntimeObjectHandle object,
+        const TerrainSurfaceComponent& terrain,
+        const TERRAIN::TerrainChunkKey& key) {
+        try {
+            return BuildTerrainChunkCollisionProjectionImpl(
+                object, terrain, key);
+        } catch (const std::exception& error) {
+            TerrainCollisionProjection result =
+                MakeProjectionBase(object, terrain);
+            result.diagnostic =
+                "terrain chunk collision build exception: " +
+                std::string(error.what());
+            return result;
+        } catch (...) {
+            TerrainCollisionProjection result =
+                MakeProjectionBase(object, terrain);
+            result.diagnostic =
+                "terrain chunk collision build failed unexpectedly";
+            return result;
+        }
+    }
+
     void TerrainCollisionProjectionCache::Refresh(World& world) {
         std::unordered_set<uint64_t> active{};
         world.ForEachObjectWith<TerrainSurfaceComponent>(
             [&](GameObject& object, TerrainSurfaceComponent& terrain) {
                 const RuntimeObjectHandle handle =
                     object.GetRuntimeHandle();
-                const uint64_t key = handle.ToValue();
+                const uint64_t ownerKey = handle.ToValue();
                 const uint64_t sourceRevision =
                     terrain.GetCollisionRevision();
-                active.insert(key);
+                active.insert(ownerKey);
 
-                const auto found = entries_.find(key);
-                if (found != entries_.end() &&
-                    found->second.sourceRevision == sourceRevision) {
-                    rejectedRevisions_.erase(key);
+                auto [ownerIt, inserted] =
+                    entries_.try_emplace(ownerKey);
+                OwnerCacheEntry& owner = ownerIt->second;
+                if (!inserted &&
+                    owner.projection.object == handle &&
+                    owner.sourceRevision == sourceRevision) {
                     return;
                 }
-                const auto rejected = rejectedRevisions_.find(key);
-                if (rejected != rejectedRevisions_.end() &&
-                    rejected->second == sourceRevision) {
-                    return;
+
+                const TERRAIN::TerrainSurface& surface =
+                    terrain.GetSurface();
+                std::vector<TERRAIN::TerrainChunkKey> changedKeys{};
+                bool fullRebuild = inserted ||
+                    owner.projection.object != handle;
+                if (!fullRebuild) {
+                    fullRebuild =
+                        !terrain.TryGetChangedChunkKeys(
+                            owner.chunkChangeRevision,
+                            changedKeys) ||
+                        (changedKeys.empty() &&
+                            owner.sourceRevision != sourceRevision);
+                }
+
+                std::set<TERRAIN::TerrainChunkKey> dirtyKeys{};
+                if (fullRebuild) {
+                    for (const auto& [chunkKey, chunk] : surface.chunks) {
+                        (void)chunk;
+                        dirtyKeys.insert(chunkKey);
+                    }
+                    for (const auto& [chunkKey, shape] : owner.chunks) {
+                        (void)shape;
+                        dirtyKeys.insert(chunkKey);
+                    }
+                } else {
+                    const float chunkSize = terrain.GetChunkWorldSize();
+                    const float falloff = (std::max)(
+                        surface.shoreline.edgeFalloff,
+                        surface.chunkCellSize);
+                    const int32_t dependencyRadius = (std::max)(
+                        1,
+                        static_cast<int32_t>(std::ceil(
+                            falloff /
+                            (std::max)(chunkSize, 1.0e-4f))));
+                    for (const TERRAIN::TerrainChunkKey changed :
+                            changedKeys) {
+                        for (int32_t dz = -dependencyRadius;
+                            dz <= dependencyRadius;
+                            ++dz) {
+                            for (int32_t dx = -dependencyRadius;
+                                dx <= dependencyRadius;
+                                ++dx) {
+                                const int64_t candidateX =
+                                    static_cast<int64_t>(changed.x) + dx;
+                                const int64_t candidateZ =
+                                    static_cast<int64_t>(changed.z) + dz;
+                                if (candidateX <
+                                        (std::numeric_limits<int32_t>::min)() ||
+                                    candidateX >
+                                        (std::numeric_limits<int32_t>::max)() ||
+                                    candidateZ <
+                                        (std::numeric_limits<int32_t>::min)() ||
+                                    candidateZ >
+                                        (std::numeric_limits<int32_t>::max)()) {
+                                    continue;
+                                }
+                                dirtyKeys.insert({
+                                    static_cast<int32_t>(candidateX),
+                                    static_cast<int32_t>(candidateZ),
+                                });
+                            }
+                        }
+                    }
+                }
+
+                bool buildFailed = false;
+                std::string firstDiagnostic{};
+                for (const TERRAIN::TerrainChunkKey chunkKey : dirtyKeys) {
+                    const auto authored = surface.chunks.find(chunkKey);
+                    if (authored == surface.chunks.end()) {
+                        owner.chunks.erase(chunkKey);
+                        owner.rejectedChunkRevisions.erase(chunkKey);
+                        continue;
+                    }
+                    uint64_t attemptRevision = sourceRevision;
+                    const uint64_t chunkRevision =
+                        terrain.GetChunkRevision(chunkKey);
+                    attemptRevision ^= chunkRevision +
+                        0x9E3779B97F4A7C15ull +
+                        (attemptRevision << 6u) +
+                        (attemptRevision >> 2u);
+                    const auto rejected =
+                        owner.rejectedChunkRevisions.find(chunkKey);
+                    if (rejected !=
+                            owner.rejectedChunkRevisions.end() &&
+                        rejected->second == attemptRevision) {
+                        buildFailed = true;
+                        continue;
+                    }
+
+                    TerrainCollisionProjection chunkProjection =
+                        BuildTerrainChunkCollisionProjection(
+                            handle, terrain, chunkKey);
+                    if (!chunkProjection.buildSucceeded) {
+                        buildFailed = true;
+                        owner.rejectedChunkRevisions.insert_or_assign(
+                            chunkKey, attemptRevision);
+                        if (firstDiagnostic.empty()) {
+                            firstDiagnostic = chunkProjection.diagnostic;
+                        }
+                        HIKARI_LOG_WARN(
+                            "[TerrainCollision] chunk projection rejected object=" +
+                            std::to_string(ownerKey) +
+                            " chunk=(" +
+                            std::to_string(chunkKey.x) + "," +
+                            std::to_string(chunkKey.z) + ") revision=" +
+                            std::to_string(sourceRevision) +
+                            " reason=" +
+                            (chunkProjection.diagnostic.empty()
+                                ? std::string("unknown build failure")
+                                : chunkProjection.diagnostic));
+                        // 当該 chunk の既存 shape は last-known-good として保持。
+                        continue;
+                    }
+
+                    owner.rejectedChunkRevisions.erase(chunkKey);
+                    if (chunkProjection.geometry == nullptr ||
+                        chunkProjection.triangleCount == 0u) {
+                        owner.chunks.erase(chunkKey);
+                        continue;
+                    }
+                    TerrainCollisionChunkShape shape{};
+                    shape.key = chunkKey;
+                    shape.sourceRevision = chunkRevision;
+                    shape.contentRevision = attemptRevision != 0u
+                        ? attemptRevision
+                        : 1u;
+                    shape.triangleCount =
+                        chunkProjection.triangleCount;
+                    shape.geometry =
+                        std::move(chunkProjection.geometry);
+                    owner.chunks.insert_or_assign(
+                        chunkKey, std::move(shape));
+                }
+
+                for (auto it = owner.chunks.begin();
+                    it != owner.chunks.end();) {
+                    if (surface.chunks.contains(it->first)) {
+                        ++it;
+                    } else {
+                        owner.rejectedChunkRevisions.erase(it->first);
+                        it = owner.chunks.erase(it);
+                    }
                 }
 
                 TerrainCollisionProjection projection =
-                    BuildTerrainCollisionProjection(handle, terrain);
-                if (!projection.buildSucceeded) {
-                    rejectedRevisions_.insert_or_assign(
-                        key, sourceRevision);
-                    HIKARI_LOG_WARN(
-                        "[TerrainCollision] projection rejected object=" +
-                        std::to_string(key) +
-                        " revision=" +
-                        std::to_string(sourceRevision) +
-                        " reason=" +
-                        (projection.diagnostic.empty()
-                            ? std::string("unknown build failure")
-                            : projection.diagnostic));
-                    // 既存 entry は last-known-good として保持する。
-                    return;
+                    MakeProjectionBase(handle, terrain);
+                projection.sourceRevision = sourceRevision;
+                projection.authoredRevision =
+                    terrain.GetGeometryRevision();
+                projection.buildSucceeded = !buildFailed;
+                projection.diagnostic = buildFailed
+                    ? (firstDiagnostic.empty()
+                        ? std::string(
+                            "one or more terrain chunks retained last-known-good collision")
+                        : firstDiagnostic)
+                    : std::string{};
+                projection.chunkShapes.reserve(owner.chunks.size());
+                std::size_t vertexCount = 0u;
+                uint64_t contentRevision = sourceRevision != 0u
+                    ? sourceRevision
+                    : 1u;
+                for (const auto& [chunkKey, shape] : owner.chunks) {
+                    projection.chunkShapes.push_back(shape);
+                    if (projection.triangleCount <=
+                        (std::numeric_limits<uint32_t>::max)() -
+                            shape.triangleCount) {
+                        projection.triangleCount += shape.triangleCount;
+                    } else {
+                        projection.triangleCount =
+                            (std::numeric_limits<uint32_t>::max)();
+                    }
+                    if (shape.geometry != nullptr) {
+                        vertexCount += shape.geometry->vertices.size();
+                    }
+                    contentRevision ^=
+                        static_cast<uint64_t>(
+                            static_cast<uint32_t>(chunkKey.x)) +
+                        0x9E3779B97F4A7C15ull +
+                        (contentRevision << 6u) +
+                        (contentRevision >> 2u);
+                    contentRevision ^=
+                        static_cast<uint64_t>(
+                            static_cast<uint32_t>(chunkKey.z)) +
+                        shape.contentRevision +
+                        (contentRevision << 6u) +
+                        (contentRevision >> 2u);
                 }
+                projection.contentRevision = contentRevision != 0u
+                    ? contentRevision
+                    : 1u;
+                owner.projection = std::move(projection);
+                owner.sourceRevision = sourceRevision;
+                owner.chunkChangeRevision =
+                    terrain.GetChunkChangeRevision();
 
-                rejectedRevisions_.erase(key);
-                if (projection.geometry != nullptr) {
-                    HIKARI_LOG_INFO(
-                        "[TerrainCollision] object=" +
-                        std::to_string(key) +
-                        " vertices=" +
-                        std::to_string(
-                            projection.geometry->vertices.size()) +
-                        " triangles=" +
-                        std::to_string(projection.triangleCount) +
-                        " revision=" +
-                        std::to_string(projection.authoredRevision));
-                }
-                entries_.insert_or_assign(key, std::move(projection));
+                HIKARI_LOG_INFO(
+                    "[TerrainCollision] object=" +
+                    std::to_string(ownerKey) +
+                    " shapes=" +
+                    std::to_string(owner.projection.chunkShapes.size()) +
+                    " vertices=" + std::to_string(vertexCount) +
+                    " triangles=" +
+                    std::to_string(owner.projection.triangleCount) +
+                    " revision=" +
+                    std::to_string(
+                        owner.projection.authoredRevision));
             });
 
         for (auto it = entries_.begin(); it != entries_.end();) {
             if (!active.contains(it->first)) {
                 it = entries_.erase(it);
-            } else {
-                ++it;
-            }
-        }
-        for (auto it = rejectedRevisions_.begin();
-            it != rejectedRevisions_.end();) {
-            if (!active.contains(it->first)) {
-                it = rejectedRevisions_.erase(it);
             } else {
                 ++it;
             }
@@ -844,12 +1203,13 @@ namespace HIKARI::PHYSICS {
         TerrainCollisionProjectionCache::Find(
             RuntimeObjectHandle object) const noexcept {
         const auto found = entries_.find(object.ToValue());
-        return found != entries_.end() ? &found->second : nullptr;
+        return found != entries_.end()
+            ? &found->second.projection
+            : nullptr;
     }
 
     void TerrainCollisionProjectionCache::Clear() noexcept {
         entries_.clear();
-        rejectedRevisions_.clear();
     }
 
 } // namespace HIKARI::PHYSICS

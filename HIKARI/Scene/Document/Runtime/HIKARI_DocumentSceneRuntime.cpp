@@ -206,6 +206,10 @@ namespace HIKARI {
         inputContexts.SetActive("Editor", false);
         inputContexts.SetActive("Gameplay", true);
         state_->runtime.playActive = true;
+        // Navigation is prepared at the Play boundary so the first enemy
+        // query cannot synchronously scan and build the whole terrain.
+        (void)state_->runtime.navigationWorldService.Synchronize(
+            state_->runtime.world);
         state_->runtime.fixedStepClock.Reset();
         HIKARI_LOG_INFO("Document scene entered runtime Play state.");
         return true;
@@ -475,6 +479,8 @@ namespace HIKARI {
             success;
         success = services.Register(state_->runtime.physicsSettings) && success;
         success = services.Register(state_->runtime.physicsWorldService) && success;
+        success = services.Register(
+            state_->runtime.navigationWorldService) && success;
         success = state_->runtime.extensionHost.RegisterWorldServices(services) &&
             success;
         VFX::ConfigureVfxWorldAttachmentResolver(

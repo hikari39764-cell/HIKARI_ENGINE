@@ -349,6 +349,34 @@ namespace HIKARI {
         uint32_t reserved[4] = { 0u, 0u, 0u, 0u };
     };
 
+    // Collision-aware relationship-shot extension for the built-in follow
+    // camera. The framing request still owns the two subjects and timing;
+    // this profile adds a stable shoulder choice plus final-pose FOV/roll.
+    // CameraFollow resolves the shot before wall collision and may suppress
+    // ordinary post-collision modifiers while the shot has weight.
+    struct GameProjectCameraRelationshipShotProfile {
+        // -1 prefers the left candidate, +1 the right candidate, and 0 lets
+        // CameraFollow choose solely from scene clearance.
+        float preferredSide = 0.0f;
+        float shoulderAngleDegrees = 24.0f;
+        float verticalFovOffsetRadians = 0.0f;
+        float rollRadians = 0.0f;
+        // The preferred side is retained when its clearance is within this
+        // many world units of the best candidate.
+        float sideClearanceBias = 0.35f;
+        // Signed world-unit change to the authored follow distance. Negative
+        // values dolly in; positive values pull back. CameraFollow applies
+        // this before the canonical wall-collision solve.
+        float distanceOffset = 0.0f;
+        // Collision-pivot crane plus relationship-space focus composition.
+        // Positive lateral focus follows the selected relationship side.
+        float pivotHeightOffset = 0.0f;
+        float focusLateralOffset = 0.0f;
+        float focusHeightOffset = 0.0f;
+        uint8_t suppressModifiers = 1u;
+        uint8_t reserved[3] = { 0u, 0u, 0u };
+    };
+
     struct GameProjectTimeDilationRequest {
         uint64_t sourceId = 0u;
         int32_t priority = 0;
@@ -366,6 +394,7 @@ namespace HIKARI {
         SkillImpact = 2,
         PerfectGuardBurst = 3,
         DodgeAfterimage = 4,
+        DangerTelegraph = 5,
     };
 
     struct GameProjectCombatWorldEffectRequest {

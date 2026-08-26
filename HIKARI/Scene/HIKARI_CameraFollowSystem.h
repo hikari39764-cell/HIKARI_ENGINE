@@ -5,6 +5,7 @@
 namespace HIKARI {
 
     struct RuntimePlayStateService;
+    struct GameplayCameraService;
     class PresentationTransformService;
     namespace CAMERA { class CameraRigService; }
     namespace GAMEPLAY { class MotionIntentService; }
@@ -30,6 +31,7 @@ namespace HIKARI {
         const PresentationTransformService*
             presentationTransforms_ = nullptr;
         const RuntimePlayStateService* runtimePlayState_ = nullptr;
+        const GameplayCameraService* gameplayCameraService_ = nullptr;
     };
 
 } // namespace HIKARI

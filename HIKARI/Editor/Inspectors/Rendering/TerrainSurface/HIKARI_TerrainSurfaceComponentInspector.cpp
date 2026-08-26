@@ -260,7 +260,10 @@ namespace HIKARI {
                     TEXT::Localize("ui.terrain.strength"),
                     TEXT::Localize("ui.terrain.desc.strength")
                 },
-                surface_.brush.strength, 0.0f, 1.0f, 0.01f);
+                surface_.brush.strength,
+                0.0f,
+                TERRAIN::kTerrainBrushMaximumStrength,
+                0.05f);
             builder.FloatRange(
                 AuthoringFieldDescriptor{
                     "terrain.brush.hardness",
@@ -268,6 +271,16 @@ namespace HIKARI {
                     TEXT::Localize("ui.terrain.desc.hardness")
                 },
                 surface_.brush.hardness, 0.0f, 1.0f, 0.01f);
+            builder.FloatRange(
+                AuthoringFieldDescriptor{
+                    "terrain.brush.flattenHeight",
+                    TEXT::Localize("ui.terrain.flattenHeight"),
+                    TEXT::Localize("ui.terrain.desc.flattenHeight")
+                },
+                surface_.brush.flattenHeight,
+                -256.0f,
+                256.0f,
+                0.1f);
             builder.FloatRange(
                 AuthoringFieldDescriptor{
                     "terrain.brush.falloff",
@@ -305,6 +318,46 @@ namespace HIKARI {
                 0.05f,
                 8.0f,
                 0.05f);
+            builder.FloatRange(
+                AuthoringFieldDescriptor{
+                    "terrain.brush.shaftDepth",
+                    TEXT::Localize("ui.terrain.shaftDepth"),
+                    TEXT::Localize("ui.terrain.desc.shaftDepth")
+                },
+                surface_.brush.shaftDepth,
+                0.05f,
+                256.0f,
+                0.1f);
+            builder.FloatRange(
+                AuthoringFieldDescriptor{
+                    "terrain.brush.shaftWallWidth",
+                    TEXT::Localize("ui.terrain.shaftWallWidth"),
+                    TEXT::Localize("ui.terrain.desc.shaftWallWidth")
+                },
+                surface_.brush.shaftWallWidth,
+                0.01f,
+                100.0f,
+                0.05f);
+            builder.FloatRange(
+                AuthoringFieldDescriptor{
+                    "terrain.brush.noiseAmplitude",
+                    TEXT::Localize("ui.terrain.noiseAmplitude"),
+                    TEXT::Localize("ui.terrain.desc.noiseAmplitude")
+                },
+                surface_.brush.noiseAmplitude,
+                0.0f,
+                16.0f,
+                0.05f);
+            builder.FloatRange(
+                AuthoringFieldDescriptor{
+                    "terrain.brush.noiseScale",
+                    TEXT::Localize("ui.terrain.noiseScale"),
+                    TEXT::Localize("ui.terrain.desc.noiseScale")
+                },
+                surface_.brush.noiseScale,
+                0.05f,
+                512.0f,
+                0.1f);
         }
         NotifyRenderStateDirty();
     }

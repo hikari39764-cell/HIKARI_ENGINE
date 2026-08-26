@@ -1,10 +1,12 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "Assets/HIKARI_AssetGuid.h"
 #include "Editor/Commands/HIKARI_EditorCommandRouter.h"
@@ -47,8 +49,15 @@ namespace HIKARI::EDITOR {
     };
 
     struct DialogueWorkspaceResult {
-        bool exitToSceneRequested = false;
+        std::optional<EditorWorkspaceOpenRequest> workspaceRequest{};
         std::string statusMessage{};
+    };
+
+    struct DialogueAssetListEntry {
+        AssetGuid guid{};
+        std::string name{};
+        std::filesystem::path sourcePath{};
+        bool current = false;
     };
 
     class DialogueWorkspaceController {
@@ -68,15 +77,34 @@ namespace HIKARI::EDITOR {
             DocumentSceneBase& scene);
 
         bool Save(DocumentSceneBase& scene, std::string& outMessage);
+        bool SaveDialogue(DocumentSceneBase& scene, std::string& outMessage);
         bool Undo(std::string& outMessage);
         bool Redo(std::string& outMessage);
-        bool NewAsset(std::string& outMessage);
-        bool OpenAsset(
+        bool RequestNewAsset(std::string& outMessage);
+        bool RequestOpenAsset(
             AssetDatabase& database,
             const AssetGuid& assetGuid,
             std::string& outMessage);
+        bool RequestCloseAsset(std::string& outMessage);
+        bool RequestRevert(AssetDatabase& database, std::string& outMessage);
+        bool RequestWorkspaceTransition(
+            EditorWorkspaceOpenRequest request,
+            std::string& outMessage);
+        bool HasPendingConfirmation() const noexcept;
+        bool PendingActionSupportsSave() const noexcept;
+        const char* GetPendingConfirmationText() const noexcept;
+        bool ConfirmSaveThenContinue(
+            DocumentSceneBase& scene,
+            std::string& outMessage);
+        bool ConfirmDiscardAndContinue(
+            DocumentSceneBase& scene,
+            std::string& outMessage);
+        void CancelPending() noexcept;
+        std::vector<DialogueAssetListEntry> ListAssets(
+            const AssetDatabase& database) const;
         bool IsDocumentOpen() const noexcept;
         bool IsDocumentDirty() const noexcept;
+        const AssetGuid& GetDocumentAssetGuid() const noexcept;
 
         const DIALOGUE::DialogueDefinition& GetDefinition() const noexcept;
         const DIALOGUE::DialogueProjectStyle& GetStyle() const noexcept;
@@ -86,7 +114,6 @@ namespace HIKARI::EDITOR {
         friend void DrawDialogueWorkspaceWindows(
             DialogueWorkspaceController& controller,
             DocumentSceneBase& scene,
-            DialogueWorkspaceResult& result,
             EditorCommandRouter& commandRouter);
 
         DIALOGUE::DialogueNode* SelectedNode() noexcept;
@@ -102,12 +129,37 @@ namespace HIKARI::EDITOR {
         std::string AllocateNodeId(std::string_view prefix) const;
         std::string AllocateSpeakerId() const;
         void AddNode(DIALOGUE::DialogueNodeType type);
+        bool CanBindSelectedToNextNode() const noexcept;
+        bool BindSelectedToNextNode(std::string& outMessage);
         void AddSpeaker();
         bool DeleteSelectedSpeaker(std::string& outMessage);
         bool DeleteSelectedNode(std::string& outMessage);
         bool RenameSelectedNode(
             std::string newId,
             std::string& outMessage);
+        bool SaveStyle(DocumentSceneBase& scene, std::string& outMessage);
+        bool SaveAll(DocumentSceneBase& scene, std::string& outMessage);
+        bool ApplyPending(DocumentSceneBase& scene, std::string& outMessage);
+        bool ApplyNewAsset(std::string& outMessage);
+        bool ApplyOpenAsset(
+            AssetDatabase& database,
+            const AssetGuid& assetGuid,
+            std::string& outMessage);
+
+        enum class PendingDocumentAction : uint8_t {
+            None = 0u,
+            NewAsset,
+            OpenAsset,
+            CloseAsset,
+            Revert,
+            WorkspaceTransition,
+        };
+
+        struct PendingAction {
+            PendingDocumentAction kind = PendingDocumentAction::None;
+            AssetGuid assetGuid{};
+            std::optional<EditorWorkspaceOpenRequest> workspaceRequest{};
+        };
 
         DialogueEditorDocument document_{};
         DialogueStyleEditorDocument styleDocument_{};
@@ -120,7 +172,13 @@ namespace HIKARI::EDITOR {
         std::string nodeIdDraft_{};
         std::string nodeIdDraftOwner_{};
         std::string statusMessage_{};
+        std::array<char, 128u> assetSearch_{};
         std::filesystem::path projectRoot_{};
+        PendingAction pendingAction_{};
+        std::optional<EditorWorkspaceOpenRequest>
+            deferredWorkspaceRequest_{};
+        bool requestUnsavedDocumentDialog_ = false;
+        bool autoBindNewNodes_ = true;
         std::unique_ptr<DialoguePreviewRenderer> previewRenderer_{};
         DialoguePreviewElement previewElement_ =
             DialoguePreviewElement::None;
@@ -138,7 +196,6 @@ namespace HIKARI::EDITOR {
     void DrawDialogueWorkspaceWindows(
         DialogueWorkspaceController& controller,
         DocumentSceneBase& scene,
-        DialogueWorkspaceResult& result,
         EditorCommandRouter& commandRouter);
 
 } // namespace HIKARI::EDITOR

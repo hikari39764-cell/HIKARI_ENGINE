@@ -65,7 +65,8 @@ namespace HIKARI {
             void ApplyModifiers(
                 SceneObjectId cameraObjectId,
                 bool duringOverride,
-                Camera3D& camera) const;
+                Camera3D& camera,
+                float weightScale = 1.0f) const;
 
             // 指定カメラの現在のランタイム状態を取得（診断・デバッグ用）
             CameraRigRuntimeStatus GetStatus(

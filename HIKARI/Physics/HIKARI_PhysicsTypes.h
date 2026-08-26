@@ -209,7 +209,7 @@ namespace HIKARI::PHYSICS {
         RuntimeObjectHandle object{};
         std::vector<PhysicsShapeDesc> shapes{};
         float mass = 70.0f;
-        float maxSlopeAngleRadians = 0.87266463f;
+        float maxSlopeAngleRadians = 0.73303829f;
         float characterPadding = 0.02f;
         float predictiveContactDistance = 0.1f;
         float penetrationRecoverySpeed = 1.0f;
@@ -237,9 +237,13 @@ namespace HIKARI::PHYSICS {
 
     struct PhysicsCharacterStepSettings {
         MATH::Vec3 gravity{ 0.0f, -9.81f, 0.0f };
-        float stepUpHeight = 0.4f;
-        float stickToFloorDistance = 0.5f;
-        float stepForwardTestDistance = 0.15f;
+        float stepUpHeight = 0.25f;
+        float stickToFloorDistance = 0.28f;
+        float stepForwardTestDistance = 0.30f;
+        // Jolt owns steep-contact projection because it has the complete
+        // active contact set. Generic traversal support probing remains in
+        // PhysicsSystem after all fixed-tick motion sources are combined.
+        bool cancelVelocityTowardsSteepSlopes = true;
         // Valid only for this character solve. The backend must not mutate
         // the authored body collision layers for a transient action.
         RuntimeObjectHandle ignoredCollisionObject{};

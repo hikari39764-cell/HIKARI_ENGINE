@@ -74,6 +74,8 @@ namespace HIKARI::RENDER3D::TERRAIN {
                 slot.heightMapped[0] = 0.0f;
                 slot.recordCount = 1u;
                 slot.heightCount = 1u;
+                slot.heightContentVersion = 0u;
+                slot.hasHeightContentVersion = false;
             }
             recordCapacity_ = recordCapacity;
             heightCapacity_ = heightCapacity;
@@ -83,7 +85,8 @@ namespace HIKARI::RENDER3D::TERRAIN {
         bool UploadFrame(
             uint32_t frameIndex,
             const std::vector<TRecord>* records,
-            const std::vector<float>* heights = nullptr) {
+            const std::vector<float>* heights = nullptr,
+            uint64_t heightContentVersion = 0u) {
 
             activeSlotIndex_ =
                 frameIndex % GFX::kFrameResourceCount;
@@ -107,6 +110,8 @@ namespace HIKARI::RENDER3D::TERRAIN {
                 slot->heightMapped[0] = 0.0f;
                 slot->recordCount = 1u;
                 slot->heightCount = 1u;
+                slot->heightContentVersion = 0u;
+                slot->hasHeightContentVersion = false;
             };
             // 容量を両方検証してから一文字も payload を書かない。失敗 slot は
             // sentinel のみに戻し、以前の record と新しい offset を混在させない。
@@ -127,14 +132,24 @@ namespace HIKARI::RENDER3D::TERRAIN {
                 slot->recordCount = recordCount;
             }
 
-            slot->heightMapped[0] = 0.0f;
-            slot->heightCount = 1u;
-            if (heightCount > 1u) {
-                std::memcpy(
-                    slot->heightMapped + 1u,
-                    heights->data() + 1u,
-                    sizeof(float) * (heightCount - 1u));
-                slot->heightCount = heightCount;
+            const bool heightPayloadCurrent =
+                heightContentVersion != 0u &&
+                slot->hasHeightContentVersion &&
+                slot->heightContentVersion == heightContentVersion &&
+                slot->heightCount == heightCount;
+            if (!heightPayloadCurrent) {
+                slot->heightMapped[0] = 0.0f;
+                slot->heightCount = 1u;
+                if (heightCount > 1u) {
+                    std::memcpy(
+                        slot->heightMapped + 1u,
+                        heights->data() + 1u,
+                        sizeof(float) * (heightCount - 1u));
+                    slot->heightCount = heightCount;
+                }
+                slot->heightContentVersion = heightContentVersion;
+                slot->hasHeightContentVersion =
+                    heightContentVersion != 0u;
             }
             return true;
         }
@@ -182,6 +197,8 @@ namespace HIKARI::RENDER3D::TERRAIN {
             float* heightMapped = nullptr;
             std::size_t recordCount = 0u;
             std::size_t heightCount = 0u;
+            uint64_t heightContentVersion = 0u;
+            bool hasHeightContentVersion = false;
         };
 
         FrameSlot* ActiveSlot() {

@@ -203,7 +203,13 @@ namespace HIKARI::CAMERA {
     void CameraRigService::ApplyModifiers(
         SceneObjectId cameraObjectId,
         bool duringOverride,
-        Camera3D& camera) const {
+        Camera3D& camera,
+        float weightScale) const {
+
+        const float resolvedWeightScale = std::clamp(
+            std::isfinite(weightScale) ? weightScale : 1.0f,
+            0.0f,
+            1.0f);
 
         std::vector<const CameraModifierSubmission*> applicable;
         applicable.reserve(modifiers_.size());
@@ -251,7 +257,10 @@ namespace HIKARI::CAMERA {
         float verticalFov = camera.GetFovYRad();
         float localRoll = 0.0f;
         for (const CameraModifierSubmission* modifier : applicable) {
-            const float weight = std::clamp(modifier->weight, 0.0f, 1.0f);
+            const float weight = std::clamp(
+                modifier->weight,
+                0.0f,
+                1.0f) * resolvedWeightScale;
             const auto toWorld = [right, up, forward](
                 const MATH::Vec3& local) {
                 return right * local.x + up * local.y +
@@ -327,7 +336,10 @@ namespace HIKARI::CAMERA {
         if (!MATH::IsFinite(pose.eye) || !MATH::IsFinite(pose.target) ||
             !MATH::IsFinite(pose.up) ||
             MATH::Length(pose.target - pose.eye) <= kViewEpsilon ||
-            MATH::Length(pose.up) <= kViewEpsilon) {
+            MATH::Length(pose.up) <= kViewEpsilon ||
+            !std::isfinite(pose.modifierWeightScale) ||
+            pose.modifierWeightScale < 0.0f ||
+            pose.modifierWeightScale > 1.0f) {
             return false;
         }
         return !pose.overrideVerticalFov ||
@@ -390,7 +402,31 @@ namespace HIKARI::CAMERA {
             submission.dynamics.distanceContractSmoothSeconds >= 0.0f &&
             std::isfinite(submission.dynamics.yawDeadZoneDegrees) &&
             submission.dynamics.yawDeadZoneDegrees >= 0.0f &&
-            submission.dynamics.yawDeadZoneDegrees <= 180.0f;
+            submission.dynamics.yawDeadZoneDegrees <= 180.0f &&
+            std::isfinite(submission.relationshipPreferredSide) &&
+            submission.relationshipPreferredSide >= -1.0f &&
+            submission.relationshipPreferredSide <= 1.0f &&
+            std::isfinite(
+                submission.relationshipShoulderAngleDegrees) &&
+            submission.relationshipShoulderAngleDegrees >= 0.0f &&
+            submission.relationshipShoulderAngleDegrees <= 75.0f &&
+            std::isfinite(
+                submission.relationshipVerticalFovOffsetRadians) &&
+            std::abs(submission.relationshipVerticalFovOffsetRadians) <=
+                1.5f &&
+            std::isfinite(submission.relationshipRollRadians) &&
+            std::abs(submission.relationshipRollRadians) <= 3.14159265f &&
+            std::isfinite(submission.relationshipSideClearanceBias) &&
+            submission.relationshipSideClearanceBias >= 0.0f &&
+            submission.relationshipSideClearanceBias <= 5.0f &&
+            std::isfinite(submission.relationshipDistanceOffset) &&
+            std::abs(submission.relationshipDistanceOffset) <= 10.0f &&
+            std::isfinite(submission.relationshipPivotHeightOffset) &&
+            std::abs(submission.relationshipPivotHeightOffset) <= 5.0f &&
+            std::isfinite(submission.relationshipFocusLateralOffset) &&
+            std::abs(submission.relationshipFocusLateralOffset) <= 5.0f &&
+            std::isfinite(submission.relationshipFocusHeightOffset) &&
+            std::abs(submission.relationshipFocusHeightOffset) <= 5.0f;
     }
 
 } // namespace HIKARI::CAMERA

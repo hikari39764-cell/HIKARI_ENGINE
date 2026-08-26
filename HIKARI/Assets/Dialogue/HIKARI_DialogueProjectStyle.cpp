@@ -172,6 +172,14 @@ namespace HIKARI::DIALOGUE {
                 projectRoot,
                 style.theme.choiceAssetPath,
                 "UI/Dialogue/Choose_Back.png");
+            UseDefaultAssetIfPresent(
+                projectRoot,
+                style.theme.advanceGamepadAssetPath,
+                "UI/Dialogue/Continue_Gamepad.png");
+            UseDefaultAssetIfPresent(
+                projectRoot,
+                style.theme.advanceMouseAssetPath,
+                "UI/Dialogue/Continue_Mouse.png");
         }
         NormalizeDialogueProjectStyle(style);
         return style;

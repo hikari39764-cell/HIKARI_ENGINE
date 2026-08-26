@@ -1,5 +1,10 @@
 #include "HIKARI_Audio.h"
 
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <unordered_map>
+
 #include "HIKARI_IAudioBackend.h"
 #include "Backends/HIKARI_AudioBackend_XAudio2.h"
 
@@ -8,6 +13,24 @@ namespace HIKARI::AUDIO {
 static std::unique_ptr<IAudioBackend> g_backend{};
 
 namespace {
+
+struct PlayingAudioRecord {
+    float sourceVolume = 1.0f;
+    AudioBus bus = AudioBus::Se;
+};
+
+std::array<float, 2u> g_busVolumes{ 1.0f, 1.0f };
+std::unordered_map<int, PlayingAudioRecord> g_playing{};
+
+size_t BusIndex(AudioBus bus) noexcept {
+    return bus == AudioBus::Bgm ? 0u : 1u;
+}
+
+float SafeVolume(float value) noexcept {
+    return std::isfinite(value)
+        ? std::clamp(value, 0.0f, 1.0f)
+        : 1.0f;
+}
 
 class NullAudioBackend final : public IAudioBackend {
 public:
@@ -55,14 +78,83 @@ void Shutdown() {
         g_backend->Shutdown();
         g_backend.reset();
     }
+    g_playing.clear();
 }
 
 int Load(const char* path) { return g_backend ? g_backend->Load(path) : -1; }
-int Play(int soundHandle, bool loop, float volume) { return g_backend ? g_backend->Play(soundHandle, loop, volume) : -1; }
-void Stop(int playHandle) { if (g_backend) g_backend->Stop(playHandle); }
+int Play(int soundHandle, bool loop, float volume) {
+    return PlayOnBus(soundHandle, loop, volume, AudioBus::Se);
+}
+int PlayOnBus(
+    int soundHandle,
+    bool loop,
+    float volume,
+    AudioBus bus) {
+    if (!g_backend) {
+        return -1;
+    }
+    const float sourceVolume = SafeVolume(volume);
+    const int playHandle = g_backend->Play(
+        soundHandle,
+        loop,
+        sourceVolume * g_busVolumes[BusIndex(bus)]);
+    if (playHandle >= 0) {
+        g_playing[playHandle] = PlayingAudioRecord{
+            sourceVolume,
+            bus };
+    }
+    return playHandle;
+}
+void Stop(int playHandle) {
+    if (g_backend) g_backend->Stop(playHandle);
+    g_playing.erase(playHandle);
+}
 void Pause(int playHandle) { if (g_backend) g_backend->Pause(playHandle); }
 void Resume(int playHandle) { if (g_backend) g_backend->Resume(playHandle); }
-void SetVolume(int playHandle, float volume) { if (g_backend) g_backend->SetVolume(playHandle, volume); }
-bool IsPlaying(int playHandle) { return g_backend ? g_backend->IsPlaying(playHandle) : false; }
+void SetVolume(int playHandle, float volume) {
+    if (!g_backend) return;
+    const float sourceVolume = SafeVolume(volume);
+    const auto found = g_playing.find(playHandle);
+    if (found == g_playing.end()) {
+        g_backend->SetVolume(playHandle, sourceVolume);
+        return;
+    }
+    found->second.sourceVolume = sourceVolume;
+    g_backend->SetVolume(
+        playHandle,
+        sourceVolume * g_busVolumes[BusIndex(found->second.bus)]);
+}
+bool IsPlaying(int playHandle) {
+    const bool playing = g_backend && g_backend->IsPlaying(playHandle);
+    if (!playing) {
+        g_playing.erase(playHandle);
+    }
+    return playing;
+}
+
+void SetBusVolume(AudioBus bus, float volume) {
+    const size_t index = BusIndex(bus);
+    g_busVolumes[index] = SafeVolume(volume);
+    if (!g_backend) {
+        return;
+    }
+    for (auto iterator = g_playing.begin();
+         iterator != g_playing.end();) {
+        if (!g_backend->IsPlaying(iterator->first)) {
+            iterator = g_playing.erase(iterator);
+            continue;
+        }
+        if (iterator->second.bus == bus) {
+            g_backend->SetVolume(
+                iterator->first,
+                iterator->second.sourceVolume * g_busVolumes[index]);
+        }
+        ++iterator;
+    }
+}
+
+float GetBusVolume(AudioBus bus) {
+    return g_busVolumes[BusIndex(bus)];
+}
 
 } // namespace HIKARI::AUDIO

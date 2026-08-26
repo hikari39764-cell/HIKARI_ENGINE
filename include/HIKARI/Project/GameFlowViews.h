@@ -27,10 +27,30 @@ namespace HIKARI {
             uint8_t useTransition = 1u) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool ConsumeSceneEntry(
             GameProjectSceneEntry& outEntry) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool IsTransitioning() const noexcept;
 
     private:
         friend struct GameProjectSdkAccess;
         explicit SceneFlowView(void* world) noexcept : world_(world) {}
+        void* world_ = nullptr;
+    };
+
+    class DialogueView {
+    public:
+        DialogueView() = default;
+        bool IsValid() const noexcept { return world_ != nullptr; }
+
+        HIKARI_GAME_PROJECT_SDK_API bool Start(
+            std::string_view assetGuid,
+            uint64_t actorObjectHandle,
+            std::string_view locale = "ja-JP",
+            uint8_t pauseWorld = 1u) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool IsActive() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool Stop() const noexcept;
+
+    private:
+        friend struct GameProjectSdkAccess;
+        explicit DialogueView(void* world) noexcept : world_(world) {}
         void* world_ = nullptr;
     };
 

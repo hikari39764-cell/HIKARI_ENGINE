@@ -4,6 +4,7 @@
 #include <string>
 
 #include "Core/HIKARI_Logger.h"
+#include "Core/HIKARI_TimeService.h"
 #include "Runtime/HIKARI_RuntimeLaunchConfig.h"
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
 #include "Scene/Scenes/HIKARI_GameDocumentScene.h"
@@ -92,7 +93,11 @@ namespace HIKARI::RUNTIME {
             }
         }
 
-        sceneTransitionBus_.Update(deltaTime);
+        // Scene transitions are host/UI flow and must keep advancing while
+        // gameplay is paused by a dialogue, guide, or pause menu. The scene
+        // itself still receives the scaled game delta above.
+        sceneTransitionBus_.Update(
+            TIME::GetFrameContext().unscaledDt);
         const TransitionVisualState visualState =
             sceneTransitionBus_.GetVisualState();
         if (visualState.active) {

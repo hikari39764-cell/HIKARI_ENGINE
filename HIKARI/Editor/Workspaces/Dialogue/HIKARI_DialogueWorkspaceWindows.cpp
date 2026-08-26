@@ -29,6 +29,8 @@ namespace HIKARI::EDITOR {
         constexpr ImVec4 kModified{ 1.0f, 0.72f, 0.25f, 1.0f };
         constexpr ImVec4 kError{ 1.0f, 0.38f, 0.35f, 1.0f };
         constexpr ImVec4 kReady{ 0.36f, 0.86f, 0.58f, 1.0f };
+        constexpr const char* kUnsavedDialoguePopup =
+            "Unsaved Dialogue Documents###Dialogue/UnsavedDocuments";
 
         uint64_t MergeGroup(std::string_view field) noexcept {
             uint64_t hash = 1469598103934665603ull;
@@ -37,6 +39,26 @@ namespace HIKARI::EDITOR {
                 hash *= 1099511628211ull;
             }
             return hash != 0u ? hash : 1u;
+        }
+
+        bool ContainsCaseInsensitive(
+            std::string_view value,
+            std::string_view filter) {
+            if (filter.empty()) {
+                return true;
+            }
+            const auto lower = [](unsigned char character) {
+                return static_cast<char>(std::tolower(character));
+            };
+            std::string loweredValue(value);
+            std::string loweredFilter(filter);
+            std::transform(
+                loweredValue.begin(), loweredValue.end(),
+                loweredValue.begin(), lower);
+            std::transform(
+                loweredFilter.begin(), loweredFilter.end(),
+                loweredFilter.begin(), lower);
+            return loweredValue.find(loweredFilter) != std::string::npos;
         }
 
         bool InputString(
@@ -459,7 +481,6 @@ namespace HIKARI::EDITOR {
     void DrawDialogueWorkspaceWindows(
         DialogueWorkspaceController& controller,
         DocumentSceneBase& scene,
-        DialogueWorkspaceResult& result,
         EditorCommandRouter& commandRouter) {
 #if defined(HIKARI_WITH_EDITOR)
         (void)commandRouter;
@@ -628,13 +649,96 @@ namespace HIKARI::EDITOR {
                     "One Dialogue asset is one complete conversation. Add steps below, "
                     "then connect Continue and Choice targets in Properties.");
                 ImGui::Spacing();
-                ImGui::TextDisabled("CURRENT EVENT");
-                ImGui::TextWrapped("%s", definition.name.c_str());
+                ImGui::SeparatorText("DIALOGUE ASSETS");
+                ImGui::SetNextItemWidth(-1.0f);
+                ImGui::InputTextWithHint(
+                    "##DialogueAssetSearch",
+                    "Search Dialogue assets",
+                    controller.assetSearch_.data(),
+                    controller.assetSearch_.size());
+                const std::string_view search(
+                    controller.assetSearch_.data());
+                const std::vector<DialogueAssetListEntry> assets =
+                    controller.ListAssets(database);
+                bool listedAsset = false;
+                for (const DialogueAssetListEntry& asset : assets) {
+                    if (!ContainsCaseInsensitive(asset.name, search) &&
+                        !ContainsCaseInsensitive(
+                            asset.sourcePath.generic_string(), search)) {
+                        continue;
+                    }
+                    listedAsset = true;
+                    const std::string label =
+                        (asset.current ? "[OPEN]  " : "") + asset.name +
+                        "##DialogueAsset/" + asset.guid.value;
+                    if (DrawFullWidthSelectable(
+                            label.c_str(), asset.current, 30.0f)) {
+                        (void)controller.RequestOpenAsset(
+                            database,
+                            asset.guid,
+                            controller.statusMessage_);
+                    }
+                    if (ImGui::IsItemHovered()) {
+                        ImGui::SetTooltip(
+                            "%s",
+                            asset.sourcePath.generic_string().c_str());
+                    }
+                }
+                if (!listedAsset) {
+                    ImGui::TextDisabled("No matching Dialogue assets");
+                }
                 if (ImGui::Button(
                         "New Dialogue Event", ImVec2(-1.0f, 0.0f))) {
-                    (void)controller.NewAsset(controller.statusMessage_);
+                    (void)controller.RequestNewAsset(
+                        controller.statusMessage_);
+                }
+
+                if (!controller.document_.IsOpen()) {
+                    ImGui::Spacing();
+                    ImGui::TextWrapped(
+                        "Open an existing Dialogue asset above, or create a new event.");
+                }
+                else {
+                ImGui::TextDisabled("CURRENT EVENT");
+                ImGui::TextWrapped(
+                    "%s%s",
+                    definition.name.c_str(),
+                    controller.document_.IsDirty() ? "  *" : "");
+                if (ImGui::BeginTable(
+                        "##DialogueCurrentActions",
+                        2,
+                        ImGuiTableFlags_SizingStretchSame |
+                            ImGuiTableFlags_NoPadOuterX)) {
+                    ImGui::TableNextColumn();
+                    if (ImGui::Button(
+                            "Revert",
+                            ImVec2(ImGui::GetContentRegionAvail().x, 0.0f))) {
+                        (void)controller.RequestRevert(
+                            database,
+                            controller.statusMessage_);
+                    }
+                    ImGui::TableNextColumn();
+                    if (ImGui::Button(
+                            "Close",
+                            ImVec2(ImGui::GetContentRegionAvail().x, 0.0f))) {
+                        (void)controller.RequestCloseAsset(
+                            controller.statusMessage_);
+                    }
+                    ImGui::EndTable();
                 }
                 ImGui::SeparatorText("STORY STEPS");
+                if (ImGui::Checkbox(
+                        "Auto-link inserted step",
+                        &controller.autoBindNewNodes_)) {
+                    controller.statusMessage_ = controller.autoBindNewNodes_
+                        ? "New story steps will be linked automatically"
+                        : "Automatic story-step linking disabled";
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip(
+                        "Insert after the selected step, link the current "
+                        "continuation to it, and preserve the old target.");
+                }
                 if (ImGui::Button("+ Add Story Step", ImVec2(-1.0f, 0.0f))) {
                     ImGui::OpenPopup("AddDialogueStep");
                 }
@@ -672,21 +776,36 @@ namespace HIKARI::EDITOR {
                     ImGui::PopID();
                 }
                 ImGui::Spacing();
+                ImGui::BeginDisabled(
+                    !controller.CanBindSelectedToNextNode());
+                if (ImGui::Button(
+                        "Bind Selected to Next Step",
+                        ImVec2(-1.0f, 0.0f))) {
+                    (void)controller.BindSelectedToNextNode(
+                        controller.statusMessage_);
+                }
+                ImGui::EndDisabled();
+                if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                    ImGui::SetTooltip(
+                        "Link this Line or Event to the following list item. "
+                        "For a Choice, select the option first.");
+                }
                 ImGui::BeginDisabled(definition.nodes.size() <= 1u);
                 if (ImGui::Button("Remove Step", ImVec2(-1.0f, 0.0f))) {
                     (void)controller.DeleteSelectedNode(controller.statusMessage_);
                 }
                 ImGui::EndDisabled();
+                }
             }
             }
             ImGui::EndChild();
             ImGui::Separator();
             if (ImGui::Button("Back to Scene", ImVec2(-1.0f, 0.0f))) {
-                if (controller.IsDocumentDirty()) {
-                    controller.statusMessage_ =
-                        "Save the UI style and dialogue event before leaving";
-                }
-                else result.exitToSceneRequested = true;
+                EditorWorkspaceOpenRequest request{};
+                request.workspaceId = EditorWorkspaceId::Scene;
+                (void)controller.RequestWorkspaceTransition(
+                    std::move(request),
+                    controller.statusMessage_);
             }
         }
         ImGui::End();
@@ -1014,6 +1133,12 @@ namespace HIKARI::EDITOR {
                     changed = DrawTextureAssetField(
                         "Choice panel", database,
                         style.theme.choiceAssetPath) || changed;
+                    changed = DrawTextureAssetField(
+                        "Continue - Gamepad", database,
+                        style.theme.advanceGamepadAssetPath) || changed;
+                    changed = DrawTextureAssetField(
+                        "Continue - Mouse", database,
+                        style.theme.advanceMouseAssetPath) || changed;
                     if (changed) recordStyle(std::move(before), "style.art", false);
                     ImGui::Spacing();
                     ImGui::TextWrapped(
@@ -1029,6 +1154,30 @@ namespace HIKARI::EDITOR {
                             style.theme.referenceWidth = size[0];
                             style.theme.referenceHeight = size[1];
                             recordStyle(std::move(before), "style.canvas");
+                        }
+                        seal();
+                    }
+                    if (ImGui::CollapsingHeader(
+                            "Continue prompt",
+                            ImGuiTreeNodeFlags_DefaultOpen)) {
+                        before = style;
+                        bool promptChanged = ImGui::DragFloat2(
+                            "Prompt position",
+                            &style.theme.advancePromptX,
+                            1.0f,
+                            -4096.0f,
+                            4096.0f,
+                            "%.0f");
+                        promptChanged = ImGui::SliderFloat(
+                            "Prompt scale",
+                            &style.theme.advancePromptScale,
+                            0.20f,
+                            4.0f,
+                            "%.2fx") || promptChanged;
+                        if (promptChanged) {
+                            recordStyle(
+                                std::move(before),
+                                "style.advancePromptLayout");
                         }
                         seal();
                     }
@@ -1217,6 +1366,25 @@ namespace HIKARI::EDITOR {
                     changed = ImGui::SliderFloat(
                         "Text speed", &style.theme.charactersPerSecond,
                         5.0f, 120.0f, "%.0f chars/s") || changed;
+                    ImGui::SeparatorText("Continue prompt");
+                    changed = ImGui::SliderFloat(
+                        "Prompt cycle",
+                        &style.theme.advancePromptPulseSeconds,
+                        0.20f,
+                        3.0f,
+                        "%.2f s") || changed;
+                    changed = ImGui::SliderFloat(
+                        "Prompt bob",
+                        &style.theme.advancePromptBobDistance,
+                        0.0f,
+                        32.0f,
+                        "%.1f px") || changed;
+                    changed = ImGui::SliderFloat(
+                        "Prompt pulse scale",
+                        &style.theme.advancePromptScaleAmount,
+                        0.0f,
+                        0.20f,
+                        "%.3f") || changed;
                     ImGui::SeparatorText("Portrait focus");
                     changed = DrawColor(
                         "Speaking portrait",
@@ -1262,6 +1430,13 @@ namespace HIKARI::EDITOR {
                 }
             }
             else {
+                if (!controller.document_.IsOpen()) {
+                    ImGui::TextColored(kAccent, "DIALOGUE EVENT");
+                    ImGui::TextWrapped(
+                        "No Dialogue asset is open. Select an existing asset "
+                        "or create a new event in Dialogue Tools.");
+                }
+                else {
                 ImGui::TextColored(kAccent, "DIALOGUE EVENT");
                 ImGui::TextWrapped(
                     "Edit the selected story step here. The center preview uses "
@@ -1467,6 +1642,7 @@ namespace HIKARI::EDITOR {
                     ImGui::TextColored(kError, "Dialogue needs attention");
                     ImGui::TextWrapped("%s", issues.front().message.c_str());
                 }
+                }
             }
 
             if (!controller.statusMessage_.empty()) {
@@ -1475,10 +1651,49 @@ namespace HIKARI::EDITOR {
             }
         }
         ImGui::End();
+
+        if (controller.requestUnsavedDocumentDialog_) {
+            ImGui::OpenPopup(kUnsavedDialoguePopup);
+            controller.requestUnsavedDocumentDialog_ = false;
+        }
+        if (ImGui::BeginPopupModal(
+                kUnsavedDialoguePopup,
+                nullptr,
+                ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::TextWrapped(
+                "%s",
+                controller.GetPendingConfirmationText());
+            ImGui::Spacing();
+            if (controller.PendingActionSupportsSave()) {
+                if (ImGui::Button(
+                        "Save and Continue", ImVec2(150.0f, 0.0f))) {
+                    if (controller.ConfirmSaveThenContinue(
+                            scene,
+                            controller.statusMessage_)) {
+                        ImGui::CloseCurrentPopup();
+                    }
+                }
+                ImGui::SameLine();
+            }
+            if (ImGui::Button(
+                    "Discard and Continue", ImVec2(170.0f, 0.0f))) {
+                if (controller.ConfirmDiscardAndContinue(
+                        scene,
+                        controller.statusMessage_)) {
+                    ImGui::CloseCurrentPopup();
+                }
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel", ImVec2(90.0f, 0.0f))) {
+                controller.CancelPending();
+                controller.statusMessage_ = "Dialogue action cancelled";
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndPopup();
+        }
 #else
         (void)controller;
         (void)scene;
-        (void)result;
         (void)commandRouter;
 #endif
     }

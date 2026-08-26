@@ -227,6 +227,7 @@ namespace HIKARI::RENDER3D::RUNTIME {
         uint64_t GetSurfaceVersion() const;
         uint64_t GetSurfaceRoutingVersion() const;
         uint64_t GetSurfaceDataVersion() const;
+        uint64_t GetSurfaceFloatPoolVersion() const;
         const Stats& GetStats() const;
 
     private:
@@ -252,6 +253,7 @@ namespace HIKARI::RENDER3D::RUNTIME {
         uint64_t surfaceVersion_ = 0;
         uint64_t surfaceRoutingVersion_ = 0;
         uint64_t surfaceDataVersion_ = 0;
+        uint64_t surfaceFloatPoolVersion_ = 0;
         bool surfaceTopologyDirty_ = true;
         bool surfaceRoutingDirty_ = true;
         bool surfaceDataDirty_ = true;

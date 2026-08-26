@@ -24,10 +24,15 @@ namespace HIKARI {
         activeTransitionProfileId_ = request.transitionProfileId;
         transitionOutDuration_ = 0.2f;
         transitionInDuration_ = 0.2f;
+        waitForCameraReady_ = false;
+        cameraReadyTimeout_ = 1.25f;
+        cameraReadyWaitSeconds_ = 0.0f;
         TransitionProfile profile{};
         if (TransitionProfile::LoadById(request.transitionProfileId, profile)) {
             transitionOutDuration_ = (std::max)(0.0f, profile.outDuration);
             transitionInDuration_ = (std::max)(0.0f, profile.inDuration);
+            waitForCameraReady_ = profile.waitForCameraReady;
+            cameraReadyTimeout_ = profile.cameraReadyTimeout;
         }
         state_ = request.useTransition ? TransitionState::TransitionOut : TransitionState::SwitchingScene;
         timer_ = 0.0f;
@@ -78,6 +83,7 @@ namespace HIKARI {
                 if (pendingRequest_->useTransition) {
                     state_ = TransitionState::TransitionIn;
                     timer_ = 0.0f;
+                    cameraReadyWaitSeconds_ = 0.0f;
                 } else {
                     state_ = TransitionState::Idle;
                     pendingRequest_.reset();
@@ -89,6 +95,12 @@ namespace HIKARI {
         }
 
         case TransitionState::TransitionIn:
+            if (waitForCameraReady_ &&
+                !RuntimeSceneContext::IsCameraReady() &&
+                cameraReadyWaitSeconds_ < cameraReadyTimeout_) {
+                cameraReadyWaitSeconds_ += (std::max)(0.0f, dt);
+                break;
+            }
             timer_ += (std::max)(0.0f, dt);
             if (timer_ >= transitionInDuration_) {
                 state_ = TransitionState::Idle;

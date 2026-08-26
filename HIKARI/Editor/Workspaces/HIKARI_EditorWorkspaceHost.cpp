@@ -107,6 +107,15 @@ namespace HIKARI::EDITOR {
         return true;
     }
 
+    const EditorWorkspaceOpenRequest*
+        EditorWorkspaceHost::PeekPending() const noexcept {
+        return pendingOpenRequest_ ? &*pendingOpenRequest_ : nullptr;
+    }
+
+    void EditorWorkspaceHost::CancelPending() noexcept {
+        pendingOpenRequest_.reset();
+    }
+
     std::optional<EditorWorkspaceActivation> EditorWorkspaceHost::ApplyPending() {
         if (!pendingOpenRequest_) {
             return std::nullopt;

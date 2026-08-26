@@ -7,6 +7,7 @@
 
 #include "Core/HIKARI_Logger.h"
 #include "Physics/HIKARI_KinematicMotionService.h"
+#include "Physics/HIKARI_PhysicsCollisionGeometryStore.h"
 #include "Physics/HIKARI_PhysicsRuntimeStatusService.h"
 #include "Physics/HIKARI_PhysicsSceneBridge.h"
 #include "Physics/HIKARI_PhysicsWorldService.h"
@@ -34,7 +35,12 @@ namespace HIKARI::PHYSICS {
             return;
         }
         lastReconcileFrame_ = frameIndex;
-        std::unordered_set<uint64_t> liveObjects{};
+        std::unordered_set<uint64_t> observedObjects{};
+        observedObjects.reserve(world.GetObjects().size());
+        const uint64_t collisionGeometrySourceRevision =
+            collisionGeometryStore_ != nullptr
+                ? collisionGeometryStore_->GetSourceRevision()
+                : 0u;
         for (const auto& objectOwner : world.GetObjects()) {
             if (!objectOwner) {
                 continue;
@@ -44,14 +50,74 @@ namespace HIKARI::PHYSICS {
             const RuntimeObjectHandle objectHandle =
                 object.GetRuntimeHandle();
             const uint64_t objectKey = objectHandle.ToValue();
+            observedObjects.insert(objectKey);
             auto retained = bindings_.find(objectKey);
             BodyBinding* retainedBinding = retained != bindings_.end()
                 ? &retained->second
                 : nullptr;
-            PhysicsBodyCreateInfo createInfo{};
-            MATH::Vec3 worldScale{};
             const TerrainCollisionProjection* terrainProjection =
                 terrainCollisionProjections_.Find(objectHandle);
+            const uint64_t sourceSignature =
+                ComputePhysicsBodyDefinitionSourceSignature(
+                    object,
+                    collisionGeometrySourceRevision,
+                    terrainProjection,
+                    retainedBinding != nullptr
+                        ? &retainedBinding->definitionWorldScale
+                        : nullptr);
+            const auto cachedSource =
+                definitionSourceSignatures_.find(objectKey);
+            const bool sourceUnchanged =
+                cachedSource != definitionSourceSignatures_.end() &&
+                cachedSource->second == sourceSignature;
+            const auto recoverReadyStatus = [&] (
+                BodyBinding& binding) {
+                if (runtimeStatus_ == nullptr) {
+                    return;
+                }
+                const PhysicsBodyRuntimeStatus* existing =
+                    runtimeStatus_->FindBodyStatus(objectHandle);
+                const bool needsRecovery = existing == nullptr ||
+                    existing->state != PhysicsBodyRuntimeState::Ready ||
+                    existing->error != PhysicsErrorCode::None;
+                if (!needsRecovery) {
+                    return;
+                }
+                PhysicsBodyRuntimeStatus status{};
+                status.object = objectHandle;
+                status.body = binding.body;
+                status.requestedMotionType =
+                    binding.requestedMotionType;
+                status.effectiveMotionType =
+                    binding.effectiveMotionType;
+                status.state = PhysicsBodyRuntimeState::Ready;
+                status.definitionSignature =
+                    binding.definitionSignature;
+                status.sourceRevision = binding.sourceRevision;
+                status.shapeCount = static_cast<uint32_t>(
+                    binding.shapes.size());
+                status.awake = binding.currentFixedState.awake;
+                status.message =
+                    "physics body definition recovered";
+                runtimeStatus_->SetBodyStatus(std::move(status));
+                runtimeStatus_->SetBodyDebugShapes(
+                    objectHandle,
+                    binding.shapes);
+            };
+            if (sourceUnchanged &&
+                !failures_.contains(objectKey)) {
+                if (retainedBinding != nullptr) {
+                    recoverReadyStatus(*retainedBinding);
+                }
+                // binding が無ければ、この同一 source は body definition を
+                // 持たないことを前回 reconcile で確認済み。
+                continue;
+            }
+            definitionSourceSignatures_.insert_or_assign(
+                objectKey, sourceSignature);
+
+            PhysicsBodyCreateInfo createInfo{};
+            MATH::Vec3 worldScale{};
             PhysicsBodyBuildResult build =
                 BuildPhysicsBodyCreateInfo(
                     object,
@@ -82,7 +148,6 @@ namespace HIKARI::PHYSICS {
                 continue;
             }
 
-            liveObjects.insert(objectKey);
             if (!build.success) {
                 ReportFailure(
                     objectHandle,
@@ -104,36 +169,7 @@ namespace HIKARI::PHYSICS {
                 retainedBinding->definitionSignature == signature) {
                 failures_.erase(objectKey);
                 retainedBinding->sourceRevision = build.sourceRevision;
-                if (runtimeStatus_ != nullptr) {
-                    const PhysicsBodyRuntimeStatus* existing =
-                        runtimeStatus_->FindBodyStatus(objectHandle);
-                    const bool needsRecovery = existing == nullptr ||
-                        existing->state != PhysicsBodyRuntimeState::Ready ||
-                        existing->error != PhysicsErrorCode::None;
-                    if (needsRecovery) {
-                        PhysicsBodyRuntimeStatus status{};
-                        status.object = objectHandle;
-                        status.body = retainedBinding->body;
-                        status.requestedMotionType =
-                            retainedBinding->requestedMotionType;
-                        status.effectiveMotionType =
-                            retainedBinding->effectiveMotionType;
-                        status.state = PhysicsBodyRuntimeState::Ready;
-                        status.definitionSignature = signature;
-                        status.sourceRevision = build.sourceRevision;
-                        status.shapeCount = static_cast<uint32_t>(
-                            createInfo.shapes.size());
-                        status.awake =
-                            retainedBinding->currentFixedState.awake;
-                        status.message =
-                            "physics body definition recovered";
-                        runtimeStatus_->SetBodyStatus(
-                            std::move(status));
-                        runtimeStatus_->SetBodyDebugShapes(
-                            objectHandle,
-                            createInfo.shapes);
-                    }
-                }
+                recoverReadyStatus(*retainedBinding);
                 continue;
             }
             if (!ShouldRetryFailure(
@@ -226,7 +262,7 @@ namespace HIKARI::PHYSICS {
         }
 
         for (auto it = bindings_.begin(); it != bindings_.end();) {
-            if (liveObjects.contains(it->first)) {
+            if (observedObjects.contains(it->first)) {
                 ++it;
                 continue;
             }
@@ -245,6 +281,14 @@ namespace HIKARI::PHYSICS {
             failures_.erase(it->first);
             it = bindings_.erase(it);
         }
+        for (auto it = definitionSourceSignatures_.begin();
+            it != definitionSourceSignatures_.end();) {
+            if (observedObjects.contains(it->first)) {
+                ++it;
+            } else {
+                it = definitionSourceSignatures_.erase(it);
+            }
+        }
     }
 
     void PhysicsSystem::DestroyBindings() noexcept {
@@ -260,6 +304,7 @@ namespace HIKARI::PHYSICS {
             }
         }
         bindings_.clear();
+        definitionSourceSignatures_.clear();
         if (kinematicMotion_ != nullptr) {
             kinematicMotion_->Clear();
         }

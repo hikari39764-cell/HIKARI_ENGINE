@@ -280,4 +280,93 @@ namespace HIKARI::TERRAIN {
     // 疎 chunk テーブル。キー順走査で安定した draw / 衝突順を保つ。
     using TerrainChunkMap = std::map<TerrainChunkKey, TerrainChunk>;
 
+    // 共有 lattice 頂点の authoritative source。chunk の +X / +Z 端は
+    // 隣接する正方向 chunk が存在すればそちらを優先する。これは従来の
+    // owner-wide terrain projection と SampleLocalRaw が使う探索順と同じで、
+    // 古い scene に残る seam 値の不一致を描画・衝突へ露出させない。
+    struct TerrainCanonicalVertexSource {
+        TerrainChunkKey key{};
+        const TerrainChunk* chunk = nullptr;
+        uint32_t localX = 0u;
+        uint32_t localZ = 0u;
+    };
+
+    inline bool TryResolveTerrainCanonicalVertex(
+        const TerrainChunkMap& chunks,
+        const TerrainChunkKey& sourceKey,
+        uint32_t sourceX,
+        uint32_t sourceZ,
+        TerrainCanonicalVertexSource& outSource) noexcept {
+
+        outSource = {};
+        const auto source = chunks.find(sourceKey);
+        if (source == chunks.end() ||
+            !TerrainChunkValid(source->second) ||
+            sourceX > source->second.cells ||
+            sourceZ > source->second.cells) {
+            return false;
+        }
+
+        const int64_t cells = static_cast<int64_t>(source->second.cells);
+        const int64_t globalX =
+            static_cast<int64_t>(sourceKey.x) * cells + sourceX;
+        const int64_t globalZ =
+            static_cast<int64_t>(sourceKey.z) * cells + sourceZ;
+        const auto floorDiv = [cells](int64_t value) noexcept {
+            int64_t quotient = value / cells;
+            if (value % cells < 0) {
+                --quotient;
+            }
+            return quotient;
+        };
+        const int64_t baseX = floorDiv(globalX);
+        const int64_t baseZ = floorDiv(globalZ);
+        if (baseX < (std::numeric_limits<int32_t>::min)() ||
+            baseX > (std::numeric_limits<int32_t>::max)() ||
+            baseZ < (std::numeric_limits<int32_t>::min)() ||
+            baseZ > (std::numeric_limits<int32_t>::max)()) {
+            return false;
+        }
+
+        constexpr int32_t offsets[2] = { 0, -1 };
+        for (const int32_t dz : offsets) {
+            for (const int32_t dx : offsets) {
+                const int64_t candidateX = baseX + dx;
+                const int64_t candidateZ = baseZ + dz;
+                if (candidateX <
+                        (std::numeric_limits<int32_t>::min)() ||
+                    candidateX >
+                        (std::numeric_limits<int32_t>::max)() ||
+                    candidateZ <
+                        (std::numeric_limits<int32_t>::min)() ||
+                    candidateZ >
+                        (std::numeric_limits<int32_t>::max)()) {
+                    continue;
+                }
+                const TerrainChunkKey candidateKey{
+                    static_cast<int32_t>(candidateX),
+                    static_cast<int32_t>(candidateZ),
+                };
+                const auto candidate = chunks.find(candidateKey);
+                if (candidate == chunks.end() ||
+                    !TerrainChunkValid(candidate->second) ||
+                    candidate->second.cells != source->second.cells) {
+                    continue;
+                }
+                const int64_t localX = globalX - candidateX * cells;
+                const int64_t localZ = globalZ - candidateZ * cells;
+                if (localX < 0 || localX > cells ||
+                    localZ < 0 || localZ > cells) {
+                    continue;
+                }
+                outSource.key = candidateKey;
+                outSource.chunk = &candidate->second;
+                outSource.localX = static_cast<uint32_t>(localX);
+                outSource.localZ = static_cast<uint32_t>(localZ);
+                return true;
+            }
+        }
+        return false;
+    }
+
 } // namespace HIKARI::TERRAIN

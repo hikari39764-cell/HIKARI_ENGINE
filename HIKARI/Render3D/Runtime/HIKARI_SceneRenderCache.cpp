@@ -373,6 +373,7 @@ namespace HIKARI::RENDER3D::RUNTIME {
         surfaceVersion_ = 0;
         surfaceRoutingVersion_ = 0;
         surfaceDataVersion_ = 0;
+        surfaceFloatPoolVersion_ = 0;
         surfaceTopologyDirty_ = true;
         surfaceRoutingDirty_ = true;
         surfaceDataDirty_ = true;
@@ -723,6 +724,10 @@ namespace HIKARI::RENDER3D::RUNTIME {
         if (packedStateChanged && surfaceDataVersion_ == dataVersionBeforePacking) {
             ++surfaceDataVersion_;
         }
+        ++surfaceFloatPoolVersion_;
+        if (surfaceFloatPoolVersion_ == 0u) {
+            ++surfaceFloatPoolVersion_;
+        }
         surfaceFloatPoolDirty_ = false;
         RefreshStats();
     }
@@ -764,6 +769,10 @@ namespace HIKARI::RENDER3D::RUNTIME {
 
     uint64_t SceneRenderCache::GetSurfaceDataVersion() const {
         return surfaceDataVersion_;
+    }
+
+    uint64_t SceneRenderCache::GetSurfaceFloatPoolVersion() const {
+        return surfaceFloatPoolVersion_;
     }
 
     const SceneRenderCache::Stats& SceneRenderCache::GetStats() const {

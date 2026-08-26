@@ -9,6 +9,7 @@
 #include "HIKARI/Project/GameComponent.h"
 #include "HIKARI/Project/GameSystem.h"
 #include "HIKARI/Project/GameFlowViews.h"
+#include "HIKARI/Project/NavigationView.h"
 #include "HIKARI/Project/PresentationViews.h"
 #include "HIKARI/Project/RuntimeRegistration.h"
 #include "HIKARI/Project/UiView.h"
@@ -52,11 +53,15 @@ namespace HIKARI {
             World& world) noexcept;
         static InputView MakeInputView(
             World& world) noexcept;
+        static AudioView MakeAudioView(
+            World& world) noexcept;
         static AnimationView MakeAnimationView(
             World& world) noexcept;
         static MotionView MakeMotionView(
             World& world) noexcept;
         static PhysicsQueryView MakePhysicsQueryView(
+            World& world) noexcept;
+        static NavigationView MakeNavigationView(
             World& world) noexcept;
         static CameraView MakeCameraView(
             World& world) noexcept;
@@ -71,6 +76,8 @@ namespace HIKARI {
         static UiView MakeUiView(
             World& world) noexcept;
         static SceneFlowView MakeSceneFlowView(
+            World& world) noexcept;
+        static DialogueView MakeDialogueView(
             World& world) noexcept;
         static SaveGameView MakeSaveGameView(
             World& world) noexcept;

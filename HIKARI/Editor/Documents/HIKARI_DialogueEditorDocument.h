@@ -21,6 +21,7 @@ namespace HIKARI::EDITOR {
             std::string& outMessage);
         bool Save(AssetDatabase& database, std::string& outMessage);
         bool Revert(const AssetDatabase& database, std::string& outMessage);
+        void Close() noexcept;
 
         DIALOGUE::DialogueDefinition& Definition() noexcept;
         const DIALOGUE::DialogueDefinition& Definition() const noexcept;

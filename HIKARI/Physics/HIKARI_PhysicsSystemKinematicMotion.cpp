@@ -294,6 +294,119 @@ namespace HIKARI::PHYSICS {
             const bool ascendingAwayFromGround = jumpApplied ||
                 velocity.y - supportVerticalVelocity >
                     kGroundDetachSpeed;
+            // Ground traversal policy is evaluated after locomotion, root
+            // motion, external velocity and knockback have been combined.
+            // This prevents action movement from bypassing the same ledge and
+            // slope rules that ordinary locomotion observes.
+            const bool allowGroundTraversal = onGround &&
+                !binding.kinematicJumpActive &&
+                !ascendingAwayFromGround;
+            bool traversalBlocked = false;
+            if (allowGroundTraversal &&
+                request.controller.edgeGuardEnabled) {
+                const MATH::Vec3 relativeHorizontal{
+                    velocity.x - before.groundVelocity.x,
+                    0.0f,
+                    velocity.z - before.groundVelocity.z
+                };
+                const float horizontalSpeed =
+                    MATH::Length(relativeHorizontal);
+                if (horizontalSpeed > 1.0e-4f) {
+                    const MATH::Vec3 direction =
+                        relativeHorizontal * (1.0f / horizontalSpeed);
+                    const float probeDistance = (std::max)(
+                        request.controller.edgeProbeDistance,
+                        horizontalSpeed * frame.fixedDt);
+                    const float slopeRadians = std::clamp(
+                        request.controller.maximumSlopeAngleRadians,
+                        0.0f,
+                        1.55334306f);
+                    const float padding = (std::max)(
+                        request.controller.characterPadding, 0.0f);
+                    const float upwardReach = (std::max)(
+                        (std::max)(
+                            request.controller.stepUpHeight, 0.0f),
+                        std::tan(slopeRadians) * probeDistance) +
+                        padding;
+                    const float maximumDrop = (std::max)(
+                        request.controller.maximumGroundedDrop, 0.0f);
+
+                    uint32_t layerMask = 0u;
+                    for (const PhysicsShapeDesc& shape : binding.shapes) {
+                        if (!shape.isTrigger) {
+                            layerMask |= shape.filter.mask;
+                        }
+                    }
+                    PhysicsHit supportHit{};
+                    bool hasSupport = false;
+                    const PhysicsBackendCapabilities capabilities =
+                        service_->GetCapabilities();
+                    if (layerMask != 0u && capabilities.shapeCast) {
+                        PhysicsShapeCastQuery query{};
+                        query.shape.type = PhysicsShapeType::Sphere;
+                        query.shape.radius = (std::max)(
+                            request.controller.edgeProbeRadius, 0.01f);
+                        query.startPose.position = {
+                            before.groundPosition.x +
+                                direction.x * probeDistance,
+                            before.groundPosition.y + upwardReach +
+                                query.shape.radius,
+                            before.groundPosition.z +
+                                direction.z * probeDistance
+                        };
+                        query.direction = { 0.0f, -1.0f, 0.0f };
+                        query.maxDistance = upwardReach + maximumDrop +
+                            query.shape.radius * 2.0f + padding;
+                        query.filter.layerMask = layerMask;
+                        query.filter.includeTriggers = false;
+                        query.filter.ignoredObject = binding.object;
+                        hasSupport = service_->ShapeCast(query, supportHit);
+                    } else if (layerMask != 0u && capabilities.raycast) {
+                        PhysicsRaycastQuery query{};
+                        query.origin = {
+                            before.groundPosition.x +
+                                direction.x * probeDistance,
+                            before.groundPosition.y + upwardReach,
+                            before.groundPosition.z +
+                                direction.z * probeDistance
+                        };
+                        query.direction = { 0.0f, -1.0f, 0.0f };
+                        query.maxDistance = upwardReach + maximumDrop +
+                            padding;
+                        query.filter.layerMask = layerMask;
+                        query.filter.includeTriggers = false;
+                        query.filter.ignoredObject = binding.object;
+                        hasSupport = service_->Raycast(query, supportHit);
+                    }
+
+                    if (layerMask != 0u &&
+                        (capabilities.shapeCast || capabilities.raycast)) {
+                        const float normalLengthSq = MATH::Dot(
+                            supportHit.normal, supportHit.normal);
+                        const float normalUpDot = hasSupport &&
+                                normalLengthSq > 1.0e-10f
+                            ? supportHit.normal.y /
+                                std::sqrt(normalLengthSq)
+                            : 0.0f;
+                        traversalBlocked =
+                            !IsKinematicTraversalSupportWalkable(
+                                request.controller,
+                                {
+                                    hasSupport,
+                                    hasSupport
+                                        ? supportHit.position.y -
+                                            before.groundPosition.y
+                                        : 0.0f,
+                                    normalUpDot,
+                                    probeDistance,
+                                });
+                        if (traversalBlocked) {
+                            velocity.x = before.groundVelocity.x;
+                            velocity.z = before.groundVelocity.z;
+                        }
+                    }
+                }
+            }
 
             if (!service_->SetCharacterVelocity(
                     binding.kinematicSolver,
@@ -305,12 +418,12 @@ namespace HIKARI::PHYSICS {
             step.gravity = gravity;
             step.ignoredCollisionObject =
                 request.ignoredCollisionObject;
+            step.cancelVelocityTowardsSteepSlopes =
+                allowGroundTraversal &&
+                request.controller.cancelVelocityTowardsSteepSlopes;
             // Step and floor-snap helpers are ground traversal policies. A
             // jump keeps them disabled for its complete airborne lifecycle,
             // including descent, until the solver confirms a real landing.
-            const bool allowGroundTraversal = onGround &&
-                !binding.kinematicJumpActive &&
-                !ascendingAwayFromGround;
             if (allowGroundTraversal) {
                 step.stepUpHeight = request.controller.stepUpHeight;
                 step.stickToFloorDistance =
@@ -333,6 +446,7 @@ namespace HIKARI::PHYSICS {
                 setError("unable to read the kinematic motion result");
                 continue;
             }
+            after.hitWall = after.hitWall || traversalBlocked;
             if (binding.kinematicJumpActive && after.hitCeiling &&
                 after.linearVelocity.y > 0.0f) {
                 after.linearVelocity.y = 0.0f;

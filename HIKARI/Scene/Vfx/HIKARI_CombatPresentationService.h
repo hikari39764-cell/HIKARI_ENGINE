@@ -22,6 +22,7 @@ namespace HIKARI::VFX {
         SkillImpact = 2,
         PerfectGuardBurst = 3,
         DodgeAfterimage = 4,
+        DangerTelegraph = 5,
         Count,
     };
 

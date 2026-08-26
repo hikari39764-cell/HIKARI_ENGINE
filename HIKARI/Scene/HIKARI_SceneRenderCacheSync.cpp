@@ -600,7 +600,12 @@ namespace HIKARI {
                 ++stats.terrainResponseWarmPendingCount;
             }
 
+            // float pool budget で response grid が authored より小さくなる場合、
+            // 最初の接触を理由に地形全体を粗い topology へ切り替えない。
+            // 同じ grid 以上だけを response model として採用し、凹み更新時も
+            // authored topology を安定させる。
             const bool useResponseGrid = responseModelReady &&
+                responseGrid >= authoredGrid &&
                 (responseGridActive || responseGrid > authoredGrid);
             const uint32_t gridRes = useResponseGrid
                 ? responseGrid

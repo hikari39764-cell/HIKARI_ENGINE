@@ -28,6 +28,7 @@ namespace HIKARI::DIALOGUE {
         size_t selectedChoice = 0u;
         float sessionElapsed = 0.0f;
         float revealAmount = 1.0f;
+        bool useGamepadAdvancePrompt = false;
         DialoguePortraitPresentationState leftPortrait{};
         DialoguePortraitPresentationState rightPortrait{};
     };

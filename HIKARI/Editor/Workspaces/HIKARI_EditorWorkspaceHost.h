@@ -14,6 +14,8 @@ namespace HIKARI::EDITOR {
         EditorWorkspaceHost();
 
         bool RequestOpen(EditorWorkspaceOpenRequest request);
+        const EditorWorkspaceOpenRequest* PeekPending() const noexcept;
+        void CancelPending() noexcept;
         std::optional<EditorWorkspaceActivation> ApplyPending();
 
         EditorWorkspaceId GetActive() const noexcept;

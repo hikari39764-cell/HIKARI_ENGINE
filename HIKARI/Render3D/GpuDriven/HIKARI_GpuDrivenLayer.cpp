@@ -292,7 +292,10 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                     : nullptr,
                 frameSource_ != nullptr
                     ? frameSource_->sandSurfaceHeights
-                    : nullptr);
+                    : nullptr,
+                frameSource_ != nullptr
+                    ? frameSource_->sandSurfaceHeightVersion
+                    : 0u);
         sceneUploadStats_.sandSurfaceDataResident =
             sandSurfaceDataResident;
         if (sceneBuffer_ != nullptr) {

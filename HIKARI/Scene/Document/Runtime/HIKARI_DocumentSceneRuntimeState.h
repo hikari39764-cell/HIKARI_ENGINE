@@ -24,6 +24,7 @@
 #include "Scene/HIKARI_PresentationModelService.h"
 #include "Scene/HIKARI_PresentationTransformService.h"
 #include "Scene/HIKARI_RuntimeWorldServices.h"
+#include "Scene/Navigation/HIKARI_NavigationWorldService.h"
 #include "Scene/HIKARI_SceneRuntimeBuilder.h"
 #include "Scene/HIKARI_SystemScheduler.h"
 #include "Scene/HIKARI_SystemTypeRegistry.h"
@@ -57,6 +58,7 @@ namespace HIKARI {
         PHYSICS::PhysicsCollisionGeometryStore collisionGeometryStore{};
         PHYSICS::PhysicsRuntimeStatusService physicsStatusService{};
         PHYSICS::PhysicsProjectSettings physicsSettings{};
+        NAVIGATION::NavigationWorldService navigationWorldService{};
         BINDING::RuntimeBindingStore bindingStore{};
         std::shared_ptr<const BINDING::Snapshot>
             materialProjectionSourceSnapshot{};

@@ -132,6 +132,10 @@ namespace HIKARI::PHYSICS {
             presentationTransforms_ = nullptr;
         const RuntimePlayStateService* runtimePlayState_ = nullptr;
         std::unordered_map<uint64_t, BodyBinding> bindings_{};
+        // 完全な body descriptor を確保する前に軽量 source signature を見る。
+        // 未変更 terrain は毎 frame 数百 chunk shape を再構築/hash しない。
+        std::unordered_map<uint64_t, uint64_t>
+            definitionSourceSignatures_{};
         std::unordered_map<uint64_t, ReconcileFailure> failures_{};
         TerrainCollisionProjectionCache terrainCollisionProjections_{};
         PhysicsStepResult lastStepResult_{};

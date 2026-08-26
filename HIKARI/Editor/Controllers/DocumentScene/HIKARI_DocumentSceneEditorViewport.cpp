@@ -25,6 +25,7 @@
 #include "Vfx/Post/HIKARI_PostSystem.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <utility>
 
@@ -599,6 +600,13 @@ namespace HIKARI {
                 return TERRAIN::TerrainBrushMode::Ridge;
             case EditorTerrainToolMode::Terrace:
                 return TERRAIN::TerrainBrushMode::Terrace;
+            case EditorTerrainToolMode::Shaft:
+                return TERRAIN::TerrainBrushMode::Shaft;
+            case EditorTerrainToolMode::Noise:
+                return TERRAIN::TerrainBrushMode::Noise;
+            case EditorTerrainToolMode::Hole:
+            case EditorTerrainToolMode::CliffOpening:
+            case EditorTerrainToolMode::Ramp:
             case EditorTerrainToolMode::Raise:
             default:
                 return TERRAIN::TerrainBrushMode::Raise;
@@ -706,7 +714,22 @@ namespace HIKARI {
             std::string label =
                 context_.terrainTool.paint != EditorTerrainPaintMode::None
                     ? "Paint Terrain Surface"
-                    : "Sculpt Sand Terrain";
+                    : context_.terrainTool.mode ==
+                            EditorTerrainToolMode::Hole
+                        ? "Edit Terrain Hole"
+                    : context_.terrainTool.mode ==
+                            EditorTerrainToolMode::CliffOpening
+                        ? "Cut Cliff Opening"
+                    : context_.terrainTool.mode ==
+                            EditorTerrainToolMode::Shaft
+                        ? "Create Terrain Shaft"
+                    : context_.terrainTool.mode ==
+                            EditorTerrainToolMode::Noise
+                        ? "Noise Terrain Surface"
+                    : context_.terrainTool.mode ==
+                            EditorTerrainToolMode::Ramp
+                        ? "Create Terrain Ramp"
+                        : "Sculpt Terrain Surface";
             CommitAppliedDocumentCommand(
                 scene,
                 EDITOR::MakeSceneTerrainSurfaceEditDeltaHistoryCommand(
@@ -720,6 +743,48 @@ namespace HIKARI {
                 sandBrushDirtyBefore_ && !documentHistory_.IsDirty(),
                 EDITOR::EditorDocumentImpact::None);
             resetStrokeState();
+        };
+
+        const auto beginStroke = [&]() -> bool {
+            if (sandTerrainStrokeActive_) {
+                return true;
+            }
+            if (selected == nullptr || terrain == nullptr) {
+                return false;
+            }
+            SceneObjectData* documentObject =
+                selectionSync_.FindDocumentObjectByRuntime(
+                    scene,
+                    selected);
+            SceneComponentData* documentComponent = nullptr;
+            if (documentObject != nullptr) {
+                for (SceneComponentData& component :
+                    documentObject->components) {
+                    if (component.type == "TerrainSurfaceComponent") {
+                        documentComponent = &component;
+                        break;
+                    }
+                }
+            }
+            // 履歴対象を安定 ID で確定できる場合だけ live mutation を
+            // 始める。Undo 不能な地形編集を先に適用しない。
+            if (documentComponent == nullptr ||
+                documentComponent->id.value == 0u) {
+                return false;
+            }
+            sandBrushDirtyBefore_ =
+                context_.sceneDirty ||
+                scene.HasUnsavedSceneChanges();
+            sandBrushTargetObjectId_ = selected->GetDocumentId();
+            sandBrushTargetRuntimeHandle_ =
+                selected->GetRuntimeHandle();
+            sandBrushTargetComponentId_ = documentComponent->id;
+            sandBrushStrokeChanged_ = false;
+            sandBrushPreviousLocalHit_ = {};
+            sandBrushHasPreviousLocalHit_ = false;
+            terrain->BeginGeometryEditBatch();
+            sandTerrainStrokeActive_ = true;
+            return true;
         };
 
         if (!workspaceHost_.IsActive(
@@ -786,8 +851,18 @@ namespace HIKARI {
                 setTool(EditorTerrainToolMode::Mound);
             } else if (ImGui::IsKeyPressed(ImGuiKey_6, false)) {
                 setTool(EditorTerrainToolMode::Pit);
+            } else if (ImGui::IsKeyPressed(ImGuiKey_7, false)) {
+                setTool(EditorTerrainToolMode::Ridge);
+            } else if (ImGui::IsKeyPressed(ImGuiKey_8, false)) {
+                setTool(EditorTerrainToolMode::Terrace);
+            } else if (ImGui::IsKeyPressed(ImGuiKey_9, false)) {
+                setTool(EditorTerrainToolMode::Shaft);
+            } else if (ImGui::IsKeyPressed(ImGuiKey_0, false)) {
+                setTool(EditorTerrainToolMode::Hole);
             } else if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
                 context_.terrainTool.active = false;
+                context_.terrainTool.rampAnchorSet = false;
+                context_.terrainTool.sampleHeightRequested = false;
                 finishStroke();
             }
             if (context_.terrainTool.active) {
@@ -828,6 +903,8 @@ namespace HIKARI {
 
         const bool pointerDown =
             ImGui::IsMouseDown(ImGuiMouseButton_Left);
+        const bool pointerClicked =
+            ImGui::IsMouseClicked(ImGuiMouseButton_Left);
 
         MATH::Vec3 worldHit{};
         MATH::Vec3 worldHitNormal{};
@@ -860,19 +937,33 @@ namespace HIKARI {
                 brushColor = IM_COL32(240, 90, 90, 245);
             } else if (context_.terrainTool.mode ==
                     EditorTerrainToolMode::Lower ||
-                context_.terrainTool.mode == EditorTerrainToolMode::Pit) {
+                context_.terrainTool.mode == EditorTerrainToolMode::Pit ||
+                context_.terrainTool.mode == EditorTerrainToolMode::Shaft ||
+                context_.terrainTool.mode == EditorTerrainToolMode::Hole ||
+                context_.terrainTool.mode ==
+                    EditorTerrainToolMode::CliffOpening) {
                 brushColor = IM_COL32(250, 130, 90, 245);
             } else if (context_.terrainTool.mode ==
                 EditorTerrainToolMode::Smooth) {
                 brushColor = IM_COL32(120, 220, 160, 245);
             } else if (context_.terrainTool.mode ==
-                EditorTerrainToolMode::Flatten) {
+                    EditorTerrainToolMode::Flatten ||
+                context_.terrainTool.mode == EditorTerrainToolMode::Ramp) {
                 brushColor = IM_COL32(200, 170, 250, 245);
+            } else if (context_.terrainTool.mode ==
+                    EditorTerrainToolMode::Noise) {
+                brushColor = IM_COL32(245, 210, 90, 245);
             }
 
             // ブラシを実際の高さ場に沿って貼り付けて描く。
             const float brushRadiusLocal = getBrushRadius();
             const MATH::Vec3 localHit = terrain->WorldToLocal(worldHit);
+            const MATH::Vec3 localHitNormal =
+                terrain->WorldNormalToLocal(worldHitNormal);
+            constexpr float kCliffOpeningMaximumUpDot = 0.82f;
+            const bool cliffOpeningSurface =
+                std::fabs(worldHitNormal.y) <=
+                    kCliffOpeningMaximumUpDot;
             const MATH::Mat4 viewProjection = camera.GetViewProj();
             const auto projectToScreen = [&](
                 const MATH::Vec3& worldPos,
@@ -925,12 +1016,16 @@ namespace HIKARI {
                     previousValid = valid;
                 }
             };
-            drawGroundRing(brushRadiusLocal, 48, 2.0f);
-            const float innerRadius =
-                brushRadiusLocal *
-                std::clamp(previewBrush.hardness, 0.0f, 1.0f);
-            if (innerRadius > 0.01f) {
-                drawGroundRing(innerRadius, 32, 1.0f);
+            if (context_.terrainTool.mode !=
+                    EditorTerrainToolMode::CliffOpening &&
+                context_.terrainTool.mode != EditorTerrainToolMode::Ramp) {
+                drawGroundRing(brushRadiusLocal, 48, 2.0f);
+                const float innerRadius =
+                    brushRadiusLocal *
+                    std::clamp(previewBrush.hardness, 0.0f, 1.0f);
+                if (innerRadius > 0.01f) {
+                    drawGroundRing(innerRadius, 32, 1.0f);
+                }
             }
             ImVec2 centerScreen{};
             if (projectToScreen(worldHit, centerScreen)) {
@@ -938,42 +1033,151 @@ namespace HIKARI {
                     centerScreen, 3.0f, brushColor, 12);
             }
 
+            if (context_.terrainTool.mode ==
+                    EditorTerrainToolMode::Ramp &&
+                context_.terrainTool.rampAnchorSet) {
+                const MATH::Vec3 rampStartWorld = terrain->LocalToWorld(
+                    context_.terrainTool.rampStartLocal);
+                ImVec2 rampStartScreen{};
+                ImVec2 rampEndScreen{};
+                if (projectToScreen(rampStartWorld, rampStartScreen) &&
+                    projectToScreen(worldHit, rampEndScreen)) {
+                    drawList->AddLine(
+                        rampStartScreen,
+                        rampEndScreen,
+                        brushColor,
+                        3.0f);
+                    drawList->AddCircleFilled(
+                        rampStartScreen,
+                        4.0f,
+                        brushColor,
+                        12);
+                }
+            }
+
+            if (context_.terrainTool.mode ==
+                    EditorTerrainToolMode::CliffOpening &&
+                cliffOpeningSurface) {
+                MATH::Vec3 openingRight = MATH::Cross(
+                    { 0.0f, 1.0f, 0.0f },
+                    localHitNormal);
+                if (MATH::Dot(openingRight, openingRight) <= 1.0e-8f) {
+                    openingRight = { 1.0f, 0.0f, 0.0f };
+                }
+                openingRight = MATH::Normalize(openingRight);
+                const MATH::Vec3 openingUp = MATH::Normalize(
+                    MATH::Cross(localHitNormal, openingRight));
+                const float halfWidth =
+                    context_.terrainTool.openingWidth * 0.5f;
+                const float halfHeight =
+                    context_.terrainTool.openingHeight * 0.5f;
+                std::array<MATH::Vec3, 4u> corners{
+                    localHit - openingRight * halfWidth -
+                        openingUp * halfHeight,
+                    localHit + openingRight * halfWidth -
+                        openingUp * halfHeight,
+                    localHit + openingRight * halfWidth +
+                        openingUp * halfHeight,
+                    localHit - openingRight * halfWidth +
+                        openingUp * halfHeight,
+                };
+                std::array<ImVec2, 4u> screens{};
+                bool valid = true;
+                for (std::size_t index = 0u;
+                    index < corners.size();
+                    ++index) {
+                    corners[index] = terrain->LocalToWorld(corners[index]) +
+                        worldHitNormal * 0.025f;
+                    valid = projectToScreen(
+                        corners[index], screens[index]) && valid;
+                }
+                if (valid) {
+                    for (std::size_t index = 0u;
+                        index < screens.size();
+                        ++index) {
+                        drawList->AddLine(
+                            screens[index],
+                            screens[(index + 1u) % screens.size()],
+                            brushColor,
+                            2.5f);
+                    }
+                }
+            }
+
+            if (context_.terrainTool.sampleHeightRequested &&
+                pointerClicked) {
+                context_.terrainTool.sampleHeightRequested = false;
+                context_.terrainTool.sampledHeight = localHit.y;
+                context_.terrainTool.sampledHeightReady = true;
+                finishStroke();
+                return;
+            }
+
+            if (context_.terrainTool.mode ==
+                    EditorTerrainToolMode::CliffOpening) {
+                finishStroke();
+                if (!pointerClicked) {
+                    return;
+                }
+                if (!cliffOpeningSurface) {
+                    viewportDropMessage_ = TEXT::Localize(
+                        "ui.terrain.openingRequiresWall");
+                    return;
+                }
+                if (beginStroke()) {
+                    TERRAIN::TerrainOpeningSpec opening{};
+                    opening.center = localHit;
+                    opening.normal = localHitNormal;
+                    opening.width = context_.terrainTool.openingWidth;
+                    opening.height = context_.terrainTool.openingHeight;
+                    opening.depth = context_.terrainTool.openingDepth;
+                    opening.feather = context_.terrainTool.openingFeather;
+                    sandBrushStrokeChanged_ =
+                        terrain->ApplyOpeningAtLocal(opening);
+                    finishStroke();
+                }
+                return;
+            }
+
+            if (context_.terrainTool.mode ==
+                    EditorTerrainToolMode::Ramp) {
+                finishStroke();
+                if (!pointerClicked) {
+                    return;
+                }
+                if (!context_.terrainTool.rampAnchorSet) {
+                    context_.terrainTool.rampStartLocal = localHit;
+                    context_.terrainTool.rampAnchorSet = true;
+                    return;
+                }
+                if (beginStroke()) {
+                    TERRAIN::TerrainRampSpec ramp{};
+                    ramp.start = context_.terrainTool.rampStartLocal;
+                    ramp.end = localHit;
+                    ramp.halfWidth =
+                        context_.terrainTool.rampHalfWidth;
+                    ramp.shoulderWidth =
+                        context_.terrainTool.rampShoulderWidth;
+                    ramp.blendAmount =
+                        context_.terrainTool.rampBlendAmount;
+                    sandBrushStrokeChanged_ =
+                        terrain->ApplyRampAtLocal(ramp);
+                    finishStroke();
+                }
+                context_.terrainTool.rampAnchorSet = false;
+                return;
+            }
+
             const EditorTerrainPaintMode paint =
                 context_.terrainTool.paint;
             if (pointerDown && !sandTerrainStrokeActive_) {
-                SceneObjectData* documentObject =
-                    selectionSync_.FindDocumentObjectByRuntime(
-                        scene,
-                        selected);
-                SceneComponentData* documentComponent = nullptr;
-                if (documentObject != nullptr) {
-                    for (SceneComponentData& component :
-                        documentObject->components) {
-                        if (component.type ==
-                            "TerrainSurfaceComponent") {
-                            documentComponent = &component;
-                            break;
-                        }
-                    }
-                }
-                // 履歴対象を安定 ID で確定できる場合だけ live mutation を
-                // 始める。Undo 不能な地形編集を先に適用しない。
-                if (documentComponent != nullptr &&
-                    documentComponent->id.value != 0u) {
-                    sandBrushDirtyBefore_ =
-                        context_.sceneDirty ||
-                        scene.HasUnsavedSceneChanges();
-                    sandBrushTargetObjectId_ =
-                        selected->GetDocumentId();
-                    sandBrushTargetRuntimeHandle_ =
-                        selected->GetRuntimeHandle();
-                    sandBrushTargetComponentId_ =
-                        documentComponent->id;
-                    sandBrushStrokeChanged_ = false;
-                    sandBrushPreviousLocalHit_ = {};
-                    sandBrushHasPreviousLocalHit_ = false;
-                    terrain->BeginGeometryEditBatch();
-                    sandTerrainStrokeActive_ = true;
+                if (beginStroke() && context_.terrainTool.mode ==
+                        EditorTerrainToolMode::Shaft) {
+                    TERRAIN::TerrainBrush shaftBrush =
+                        terrain->GetBrush();
+                    shaftBrush.flattenHeight =
+                        localHit.y - shaftBrush.shaftDepth;
+                    terrain->SetBrush(shaftBrush);
                 }
             }
 
@@ -1072,8 +1276,18 @@ namespace HIKARI {
                         break;
                     case EditorTerrainPaintMode::None:
                     default:
-                        sampleChanged = terrain->SculptAtLocal(
-                            sampleLocal, sampleDeltaSeconds);
+                        if (context_.terrainTool.mode ==
+                                EditorTerrainToolMode::Hole) {
+                            sampleChanged = terrain->PaintCoverageAtLocal(
+                                io.KeyShift ? 1.0f : 0.0f,
+                                sampleLocal,
+                                sampleDeltaSeconds);
+                        }
+                        else {
+                            sampleChanged = terrain->SculptAtLocal(
+                                sampleLocal,
+                                sampleDeltaSeconds);
+                        }
                         break;
                     }
                     frameChanged = frameChanged || sampleChanged;

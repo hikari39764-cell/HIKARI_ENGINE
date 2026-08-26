@@ -71,6 +71,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         const std::vector<WATER::WaterSurfaceGpuData>* waterSurfaceGpuData = nullptr;
         const std::vector<SAND::SandSurfaceGpuData>* sandSurfaceGpuData = nullptr;
         const std::vector<float>* sandSurfaceHeights = nullptr;
+        uint64_t sandSurfaceHeightVersion = 0;
         uint64_t layoutVersion = 0;
         uint64_t sourceVersion = 0;
         uint64_t dirtyBaseSourceVersion = 0;

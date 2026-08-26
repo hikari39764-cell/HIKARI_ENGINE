@@ -3,6 +3,7 @@
 #include "Core/HIKARI_MathConfig.h"
 
 #include <algorithm>
+#include <cmath>
 #include <string>
 
 namespace HIKARI {
@@ -34,6 +35,7 @@ namespace HIKARI {
 
     void CharacterLocomotionComponent::Serialize(
         nlohmann::json& out) const {
+        out["traversalProfileVersion"] = kTraversalProfileVersion;
         out["enabled"] = enabled_;
         out["motionPriority"] = motionPriority_;
         out["movementSpace"] = ToString(movementSpace_);
@@ -52,12 +54,18 @@ namespace HIKARI {
         out["stepHeight"] = stepHeight_;
         out["stickToFloorDistance"] = stickToFloorDistance_;
         out["stepForwardTestDistance"] = stepForwardTestDistance_;
+        out["edgeProbeDistance"] = edgeProbeDistance_;
+        out["edgeProbeRadius"] = edgeProbeRadius_;
+        out["maximumGroundedDrop"] = maximumGroundedDrop_;
         out["characterPadding"] = characterPadding_;
         out["predictiveContactDistance"] =
             predictiveContactDistance_;
         out["penetrationRecoverySpeed"] =
             penetrationRecoverySpeed_;
         out["maximumCollisionHits"] = maximumCollisionHits_;
+        out["cancelVelocityTowardsSteepSlopes"] =
+            cancelVelocityTowardsSteepSlopes_;
+        out["edgeGuardEnabled"] = edgeGuardEnabled_;
         out["enhancedInternalEdgeRemoval"] =
             enhancedInternalEdgeRemoval_;
         out["inputDeadZone"] = inputDeadZone_;
@@ -66,6 +74,8 @@ namespace HIKARI {
 
     void CharacterLocomotionComponent::Deserialize(
         const nlohmann::json& in) {
+        const uint32_t traversalProfileVersion = in.value(
+            "traversalProfileVersion", 0u);
         enabled_ = in.value("enabled", enabled_);
         motionPriority_ = in.value("motionPriority", motionPriority_);
         if (const auto found = in.find("movementSpace");
@@ -97,6 +107,12 @@ namespace HIKARI {
             "stickToFloorDistance", stickToFloorDistance_);
         stepForwardTestDistance_ = in.value(
             "stepForwardTestDistance", stepForwardTestDistance_);
+        edgeProbeDistance_ = in.value(
+            "edgeProbeDistance", edgeProbeDistance_);
+        edgeProbeRadius_ = in.value(
+            "edgeProbeRadius", edgeProbeRadius_);
+        maximumGroundedDrop_ = in.value(
+            "maximumGroundedDrop", maximumGroundedDrop_);
         characterPadding_ = in.value(
             "characterPadding", characterPadding_);
         predictiveContactDistance_ = in.value(
@@ -105,11 +121,40 @@ namespace HIKARI {
             "penetrationRecoverySpeed", penetrationRecoverySpeed_);
         maximumCollisionHits_ = in.value(
             "maximumCollisionHits", maximumCollisionHits_);
+        cancelVelocityTowardsSteepSlopes_ = in.value(
+            "cancelVelocityTowardsSteepSlopes",
+            cancelVelocityTowardsSteepSlopes_);
+        edgeGuardEnabled_ = in.value(
+            "edgeGuardEnabled", edgeGuardEnabled_);
         enhancedInternalEdgeRemoval_ = in.value(
             "enhancedInternalEdgeRemoval",
             enhancedInternalEdgeRemoval_);
         inputDeadZone_ = in.value("inputDeadZone", inputDeadZone_);
         rotateToMove_ = in.value("rotateToMove", rotateToMove_);
+        if (traversalProfileVersion < kTraversalProfileVersion) {
+            const auto migrateLegacyDefault = [](
+                float& value,
+                float legacyValue,
+                float productionValue) noexcept {
+                if (std::fabs(value - legacyValue) <= 1.0e-5f) {
+                    value = productionValue;
+                }
+            };
+            migrateLegacyDefault(
+                maximumSlopeAngleDegrees_, 50.0f, 42.0f);
+            migrateLegacyDefault(stepHeight_, 0.4f, 0.25f);
+            migrateLegacyDefault(
+                stickToFloorDistance_, 0.5f, 0.28f);
+            migrateLegacyDefault(
+                stepForwardTestDistance_, 0.15f, 0.30f);
+            if (!in.contains("edgeGuardEnabled")) {
+                // Legacy third-person player controllers are camera-relative.
+                // World/object-relative AI remains on the cheaper Jolt slope
+                // path until its Navigation profile requests an edge guard.
+                edgeGuardEnabled_ =
+                    movementSpace_ == CharacterMovementSpace::Camera;
+            }
+        }
         ClampSettings();
     }
 
@@ -132,6 +177,12 @@ namespace HIKARI {
             stickToFloorDistance_, 0.0f);
         stepForwardTestDistance_ = (std::max)(
             stepForwardTestDistance_, 0.0f);
+        edgeProbeDistance_ = (std::clamp)(
+            edgeProbeDistance_, 0.05f, 5.0f);
+        edgeProbeRadius_ = (std::clamp)(
+            edgeProbeRadius_, 0.01f, 2.0f);
+        maximumGroundedDrop_ = (std::clamp)(
+            maximumGroundedDrop_, 0.0f, 5.0f);
         characterPadding_ = (std::clamp)(
             characterPadding_, 0.001f, 1.0f);
         predictiveContactDistance_ = (std::max)(

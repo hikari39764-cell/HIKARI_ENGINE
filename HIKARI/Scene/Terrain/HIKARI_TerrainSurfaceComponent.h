@@ -2,6 +2,7 @@
 
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -10,6 +11,7 @@
 #include "Render3D/HIKARI_Math3D.h"
 #include "Scene/Components/HIKARI_IComponent.h"
 #include "Scene/Terrain/HIKARI_TerrainChunks.h"
+#include "Scene/Terrain/HIKARI_TerrainChunkChangeJournal.h"
 #include "Scene/Terrain/HIKARI_TerrainProcedural.h"
 #include "Scene/Terrain/HIKARI_TerrainSurface.h"
 
@@ -62,6 +64,12 @@ namespace HIKARI {
         bool SculptAtLocal(
             const MATH::Vec3& localPos,
             float deltaSeconds = 1.0f / 60.0f);
+        // A ramp is a discrete two-point authoring operation. Callers own the
+        // surrounding geometry edit batch and one document transaction.
+        bool ApplyRampAtLocal(
+            const TERRAIN::TerrainRampSpec& spec);
+        bool ApplyOpeningAtLocal(
+            const TERRAIN::TerrainOpeningSpec& spec);
         // 層ペイント。presetId の層を worldPos 周辺へ塗る。
         // deltaSeconds=1 は単発 authoring command の従来強度を保つ。
         // 連続 stroke は実フレーム時間を渡して FPS 非依存にする。
@@ -137,6 +145,12 @@ namespace HIKARI {
         // revision で差分を判定する。存在しない chunk は 0。
         uint64_t GetChunkRevision(
             const TERRAIN::TerrainChunkKey& key) const noexcept;
+        uint64_t GetChunkChangeRevision() const noexcept;
+        // Returns false when the requested interval was evicted or contains
+        // a topology/global-settings event that requires a full owner sync.
+        bool TryGetChangedChunkKeys(
+            uint64_t sinceRevision,
+            std::vector<TERRAIN::TerrainChunkKey>& outKeys) const;
 
         // chunk 走査用。描画・衝突・変形システムがここから chunk を得る。
         const TERRAIN::TerrainChunkMap& GetChunks() const noexcept;
@@ -152,6 +166,8 @@ namespace HIKARI {
         // この変換でローカル座標へそろえ、描画と一致させる。
         MATH::Vec3 WorldToLocal(const MATH::Vec3& worldPos) const noexcept;
         MATH::Vec3 LocalToWorld(const MATH::Vec3& localPos) const noexcept;
+        MATH::Vec3 WorldNormalToLocal(
+            const MATH::Vec3& worldNormal) const noexcept;
 
         // Workspace の軽量 authoring transaction 用。巨大な chunk 配列を
         // 複製せず、preset / brush / edge / deform 設定だけを直列化する。
@@ -161,12 +177,18 @@ namespace HIKARI {
         void BuildInspector(IInspectorBuilder& builder) override;
 
     private:
+        // Runtime document rebuild は既に所有している大きな chunk payload を
+        // move し、公開 const& API だけが必要な 1 回の copy を担当する。
+        void SetSurfaceOwned(TERRAIN::TerrainSurface surface);
         void NotifyRenderStateDirty();
         void MarkGeometryChanged() noexcept;
         void CaptureChunkBeforeEdit(
             const TERRAIN::TerrainChunkKey& key);
         void MarkChunkChanged(
             const TERRAIN::TerrainChunkKey& key) noexcept;
+        void RecordChunkChange(
+            const TERRAIN::TerrainChunkKey& key) noexcept;
+        void RecordFullChunkChange() noexcept;
         void InvalidateCoverageCache() noexcept;
         bool TryReadCoverageVertex(
             int32_t globalX,
@@ -184,9 +206,11 @@ namespace HIKARI {
             float localZ,
             float& outHeight,
             float& outCoverage) const noexcept;
-        void StitchChunkBorders();
         bool StitchChunkBorders(
-            const std::vector<TERRAIN::TerrainChunkKey>& touchedChunks);
+            const std::vector<TERRAIN::TerrainChunkKey>& touchedChunks,
+            std::set<TERRAIN::TerrainChunkKey>& changedChunks,
+            bool* outHeightChanged = nullptr,
+            bool* outLayersChanged = nullptr);
         TERRAIN::TerrainChunk& EnsureChunk(
             const TERRAIN::TerrainChunkKey& key,
             int32_t seedLayer = -1);
@@ -209,6 +233,7 @@ namespace HIKARI {
         uint64_t collisionRevision_ = 0u;
         uint64_t nextChunkRevision_ = 1u;
         std::map<TERRAIN::TerrainChunkKey, uint64_t> chunkRevisions_{};
+        TERRAIN::TerrainChunkChangeJournal chunkChangeJournal_{};
         bool geometryEditBatchActive_ = false;
         bool geometryEditBatchDirty_ = false;
         bool geometryEditDeltaReady_ = false;

@@ -15,6 +15,7 @@
 #include "Scene/Terrain/HIKARI_TerrainSurfaceComponent.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -39,6 +40,11 @@ namespace HIKARI::EDITOR {
             // the editor glyph atlas receives dedicated icons.
             case EditorTerrainToolMode::Ridge: return EditorGlyph::TerrainMound;
             case EditorTerrainToolMode::Terrace: return EditorGlyph::TerrainFlatten;
+            case EditorTerrainToolMode::Shaft: return EditorGlyph::TerrainPit;
+            case EditorTerrainToolMode::Hole: return EditorGlyph::TerrainPit;
+            case EditorTerrainToolMode::CliffOpening: return EditorGlyph::TerrainPit;
+            case EditorTerrainToolMode::Ramp: return EditorGlyph::TerrainFlatten;
+            case EditorTerrainToolMode::Noise: return EditorGlyph::TerrainMound;
             }
             return EditorGlyph::TerrainRaise;
         }
@@ -100,6 +106,11 @@ namespace HIKARI::EDITOR {
             EditorTerrainToolMode::Pit,
             EditorTerrainToolMode::Ridge,
             EditorTerrainToolMode::Terrace,
+            EditorTerrainToolMode::Shaft,
+            EditorTerrainToolMode::Hole,
+            EditorTerrainToolMode::CliffOpening,
+            EditorTerrainToolMode::Ramp,
+            EditorTerrainToolMode::Noise,
         };
 
         void ApplyTerrainSettingsPatch(
@@ -243,6 +254,7 @@ namespace HIKARI::EDITOR {
         }
         bool runtimeComponentChanged = false;
         bool discreteFillTransaction = false;
+        bool settingsEditActive = false;
 
         // 左: ブラシツール
         if (ImGui::Begin((TEXT::Localize("ui.terrain.tools") +
@@ -323,13 +335,17 @@ namespace HIKARI::EDITOR {
                     ImGui::GetStyle().ItemSpacing.x) * 0.5f;
             static const char* kToolIds[] = {
                 "R##t", "L##t", "S##t", "F##t", "M##t", "P##t",
-                "G##t", "T##t"
+                "G##t", "T##t", "H##t", "O##t", "C##t", "A##t",
+                "N##t"
             };
             static const char* kToolNameKeys[] = {
                 "ui.terrain.toolRaise", "ui.terrain.toolLower",
                 "ui.terrain.toolSmooth", "ui.terrain.toolFlatten",
                 "ui.terrain.toolMound", "ui.terrain.toolPit",
-                "ui.terrain.toolRidge", "ui.terrain.toolTerrace"
+                "ui.terrain.toolRidge", "ui.terrain.toolTerrace",
+                "ui.terrain.toolShaft", "ui.terrain.toolHole",
+                "ui.terrain.toolCliffOpening", "ui.terrain.toolRamp",
+                "ui.terrain.toolNoise"
             };
             for (std::size_t i = 0; i < std::size(kSculptTools); ++i) {
                 const EditorTerrainToolMode mode = kSculptTools[i];
@@ -340,10 +356,14 @@ namespace HIKARI::EDITOR {
                 const ImVec4 tint =
                     (mode == EditorTerrainToolMode::Raise ||
                         mode == EditorTerrainToolMode::Mound ||
-                        mode == EditorTerrainToolMode::Ridge)
+                        mode == EditorTerrainToolMode::Ridge ||
+                        mode == EditorTerrainToolMode::Noise)
                         ? ImVec4(0.25f, 0.55f, 0.95f, 1.0f)
                         : (mode == EditorTerrainToolMode::Lower ||
-                            mode == EditorTerrainToolMode::Pit)
+                            mode == EditorTerrainToolMode::Pit ||
+                            mode == EditorTerrainToolMode::Shaft ||
+                            mode == EditorTerrainToolMode::Hole ||
+                            mode == EditorTerrainToolMode::CliffOpening)
                             ? ImVec4(0.95f, 0.45f, 0.25f, 1.0f)
                             : ImVec4(0.35f, 0.75f, 0.45f, 1.0f);
                 const std::string localizedToolName = TEXT::Localize(
@@ -351,6 +371,10 @@ namespace HIKARI::EDITOR {
                 if (ToolButton(
                         mode, kToolIds[i], localizedToolName.c_str(),
                         isActive, tint, toolWidth)) {
+                    if (context.terrainTool.mode != mode) {
+                        context.terrainTool.rampAnchorSet = false;
+                        context.terrainTool.sampleHeightRequested = false;
+                    }
                     context.terrainTool.mode = mode;
                     context.terrainTool.paint =
                         EditorTerrainPaintMode::None;
@@ -419,12 +443,44 @@ namespace HIKARI::EDITOR {
             if (terrain != nullptr) {
                 TERRAIN::TerrainBrush brush = terrain->GetBrush();
                 bool brushChanged = false;
+                if (context.terrainTool.sampledHeightReady) {
+                    brush.flattenHeight =
+                        context.terrainTool.sampledHeight;
+                    context.terrainTool.sampledHeightReady = false;
+                    brushChanged = true;
+                }
                 brushChanged |= ImGui::SliderFloat(
                     TEXT::Localize("ui.terrain.radius").c_str(),
-                    &brush.radius, 0.1f, 20.0f, "%.2f");
+                    &brush.radius, 0.1f, 100.0f, "%.2f m");
                 brushChanged |= ImGui::SliderFloat(
                     TEXT::Localize("ui.terrain.strength").c_str(),
-                    &brush.strength, 0.0f, 1.0f, "%.3f");
+                    &brush.strength,
+                    0.0f,
+                    TERRAIN::kTerrainBrushMaximumStrength,
+                    "%.3f");
+                ImGui::TextDisabled(
+                    "%s",
+                    TEXT::Localize("ui.terrain.strengthPresets").c_str());
+                constexpr float kStrengthPresets[]{ 0.25f, 1.0f, 4.0f, 8.0f };
+                constexpr const char* kStrengthPresetLabels[]{
+                    "0.25##TerrainStrength/0",
+                    "1##TerrainStrength/1",
+                    "4##TerrainStrength/2",
+                    "8##TerrainStrength/3",
+                };
+                for (std::size_t presetIndex = 0u;
+                    presetIndex < std::size(kStrengthPresets);
+                    ++presetIndex) {
+                    if (presetIndex > 0u) {
+                        ImGui::SameLine();
+                    }
+                    const float preset = kStrengthPresets[presetIndex];
+                    if (ImGui::SmallButton(
+                            kStrengthPresetLabels[presetIndex])) {
+                        brush.strength = preset;
+                        brushChanged = true;
+                    }
+                }
                 brushChanged |= ImGui::SliderFloat(
                     TEXT::Localize("ui.terrain.hardness").c_str(),
                     &brush.hardness, 0.0f, 1.0f, "%.3f");
@@ -449,8 +505,149 @@ namespace HIKARI::EDITOR {
                     0.05f,
                     8.0f,
                     "%.2f m");
+                if (context.terrainTool.mode ==
+                        EditorTerrainToolMode::Flatten) {
+                    ImGui::SeparatorText(
+                        TEXT::Localize("ui.terrain.flattenSettings").c_str());
+                    brushChanged |= ImGui::InputFloat(
+                        TEXT::Localize("ui.terrain.flattenHeight").c_str(),
+                        &brush.flattenHeight,
+                        0.1f,
+                        1.0f,
+                        "%.3f m");
+                    if (ImGui::Button(
+                            TEXT::Localize(
+                                "ui.terrain.sampleHeight").c_str(),
+                            ImVec2(-1.0f, 0.0f))) {
+                        context.terrainTool.sampleHeightRequested = true;
+                        context.terrainTool.active = true;
+                    }
+                }
+                else if (context.terrainTool.mode ==
+                        EditorTerrainToolMode::Shaft) {
+                    ImGui::SeparatorText(
+                        TEXT::Localize("ui.terrain.shaftSettings").c_str());
+                    brushChanged |= ImGui::SliderFloat(
+                        TEXT::Localize("ui.terrain.shaftDepth").c_str(),
+                        &brush.shaftDepth,
+                        0.05f,
+                        64.0f,
+                        "%.2f m");
+                    brushChanged |= ImGui::SliderFloat(
+                        TEXT::Localize("ui.terrain.shaftWallWidth").c_str(),
+                        &brush.shaftWallWidth,
+                        0.05f,
+                        (std::max)(brush.radius, 0.05f),
+                        "%.2f m");
+                }
+                else if (context.terrainTool.mode ==
+                        EditorTerrainToolMode::CliffOpening) {
+                    ImGui::SeparatorText(
+                        TEXT::Localize(
+                            "ui.terrain.openingSettings").c_str());
+                    ImGui::SliderFloat(
+                        TEXT::Localize("ui.terrain.openingWidth").c_str(),
+                        &context.terrainTool.openingWidth,
+                        0.10f,
+                        64.0f,
+                        "%.2f m");
+                    ImGui::SliderFloat(
+                        TEXT::Localize("ui.terrain.openingHeight").c_str(),
+                        &context.terrainTool.openingHeight,
+                        0.10f,
+                        64.0f,
+                        "%.2f m");
+                    ImGui::SliderFloat(
+                        TEXT::Localize("ui.terrain.openingDepth").c_str(),
+                        &context.terrainTool.openingDepth,
+                        0.10f,
+                        64.0f,
+                        "%.2f m");
+                    const float maximumOpeningFeather = (std::min)({
+                        context.terrainTool.openingWidth,
+                        context.terrainTool.openingHeight,
+                        context.terrainTool.openingDepth }) * 0.5f;
+                    ImGui::SliderFloat(
+                        TEXT::Localize("ui.terrain.openingFeather").c_str(),
+                        &context.terrainTool.openingFeather,
+                        0.0f,
+                        maximumOpeningFeather,
+                        "%.2f m");
+                    ImGui::TextWrapped(
+                        "%s",
+                        TEXT::Localize(
+                            "ui.terrain.openingHint").c_str());
+                }
+                else if (context.terrainTool.mode ==
+                        EditorTerrainToolMode::Ramp) {
+                    ImGui::SeparatorText(
+                        TEXT::Localize("ui.terrain.rampSettings").c_str());
+                    ImGui::SliderFloat(
+                        TEXT::Localize("ui.terrain.rampHalfWidth").c_str(),
+                        &context.terrainTool.rampHalfWidth,
+                        0.05f,
+                        64.0f,
+                        "%.2f m");
+                    ImGui::SliderFloat(
+                        TEXT::Localize("ui.terrain.rampShoulderWidth").c_str(),
+                        &context.terrainTool.rampShoulderWidth,
+                        0.0f,
+                        64.0f,
+                        "%.2f m");
+                    ImGui::SliderFloat(
+                        TEXT::Localize("ui.terrain.rampBlend").c_str(),
+                        &context.terrainTool.rampBlendAmount,
+                        0.0f,
+                        1.0f,
+                        "%.3f");
+                    ImGui::TextWrapped(
+                        "%s",
+                        TEXT::Localize(
+                            context.terrainTool.rampAnchorSet
+                                ? "ui.terrain.rampChooseEnd"
+                                : "ui.terrain.rampChooseStart").c_str());
+                    if (context.terrainTool.rampAnchorSet &&
+                        ImGui::Button(
+                            TEXT::Localize("ui.terrain.cancelRamp").c_str(),
+                            ImVec2(-1.0f, 0.0f))) {
+                        context.terrainTool.rampAnchorSet = false;
+                    }
+                }
+                else if (context.terrainTool.mode ==
+                        EditorTerrainToolMode::Noise) {
+                    ImGui::SeparatorText(
+                        TEXT::Localize("ui.terrain.noiseSettings").c_str());
+                    brushChanged |= ImGui::SliderFloat(
+                        TEXT::Localize("ui.terrain.noiseAmplitude").c_str(),
+                        &brush.noiseAmplitude,
+                        0.0f,
+                        4.0f,
+                        "%.3f");
+                    brushChanged |= ImGui::SliderFloat(
+                        TEXT::Localize("ui.terrain.noiseScale").c_str(),
+                        &brush.noiseScale,
+                        0.05f,
+                        128.0f,
+                        "%.2f m");
+                    uint32_t noiseSeed = brush.noiseSeed;
+                    if (ImGui::InputScalar(
+                            TEXT::Localize("ui.terrain.noiseSeed").c_str(),
+                            ImGuiDataType_U32,
+                            &noiseSeed)) {
+                        brush.noiseSeed = noiseSeed;
+                        brushChanged = true;
+                    }
+                }
+                else if (context.terrainTool.mode ==
+                        EditorTerrainToolMode::Hole) {
+                    ImGui::TextWrapped(
+                        "%s",
+                        TEXT::Localize("ui.terrain.holeHint").c_str());
+                }
                 if (brushChanged) {
                     if (canAuthor) {
+                        settingsEditActive = settingsEditActive ||
+                            ImGui::GetActiveID() != 0u;
                         terrain->SetBrush(brush);
                         runtimeComponentChanged = true;
                     }
@@ -784,6 +981,11 @@ namespace HIKARI::EDITOR {
                     if (ImGui::Selectable(
                             object.GetName().c_str(),
                             isSelected)) {
+                        if (context.terrainTool.targetObjectId !=
+                                object.GetDocumentId()) {
+                            context.terrainTool.rampAnchorSet = false;
+                            context.terrainTool.sampleHeightRequested = false;
+                        }
                         context.terrainTool.targetObjectId =
                             object.GetDocumentId();
                     }
@@ -1130,6 +1332,11 @@ namespace HIKARI::EDITOR {
                         runtimeComponentChanged = true;
                     }
                 }
+                if (shorelineChanged || deformChanged ||
+                    stylizationChanged || grassChanged) {
+                    settingsEditActive = settingsEditActive ||
+                        ImGui::GetActiveID() != 0u;
+                }
             } else {
                 ImGui::TextDisabled(
                     TEXT::Localize("ui.terrain.selectTerrain").c_str());
@@ -1140,7 +1347,7 @@ namespace HIKARI::EDITOR {
         // slider stroke. Keep it out of the workspace merge group so Undo
         // and the AI operation each remain one discrete transaction.
         result.editActive = canAuthor && !discreteFillTransaction &&
-            ImGui::IsAnyItemActive();
+            settingsEditActive;
         if (runtimeComponentChanged && canAuthor &&
             !result.terrainDelta) {
             // Slider/grass/stylization は settings-only patch を保ち、巨大な

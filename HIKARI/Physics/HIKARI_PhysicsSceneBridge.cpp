@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <bit>
 #include <cmath>
+#include <limits>
 
 #include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Core/Math/HIKARI_MathValidation.h"
@@ -93,6 +94,55 @@ namespace HIKARI::PHYSICS {
             HashFloat(seed, value.y);
             HashFloat(seed, value.z);
             HashFloat(seed, value.w);
+        }
+
+        void HashBodyDefinitionFields(
+            uint64_t& signature,
+            const PhysicsBodyDesc& body,
+            const MATH::Vec3& worldScale,
+            const MATH::Vec3& initialLinearVelocity,
+            const MATH::Vec3& initialAngularVelocity) noexcept {
+            HashValue(signature, static_cast<uint64_t>(body.motionType));
+            HashFloat(signature, body.mass);
+            HashFloat(signature, body.gravityScale);
+            HashFloat(signature, body.linearDamping);
+            HashFloat(signature, body.angularDamping);
+            HashValue(signature, body.allowSleeping);
+            HashValue(signature, body.continuousCollision);
+            HashValue(signature, body.lockTranslationX);
+            HashValue(signature, body.lockTranslationY);
+            HashValue(signature, body.lockTranslationZ);
+            HashValue(signature, body.lockRotationX);
+            HashValue(signature, body.lockRotationY);
+            HashValue(signature, body.lockRotationZ);
+            HashVec3(signature, worldScale);
+            HashVec3(signature, initialLinearVelocity);
+            HashVec3(signature, initialAngularVelocity);
+        }
+
+        void HashShapeDefinitionFields(
+            uint64_t& signature,
+            const PhysicsShapeDesc& shape) noexcept {
+            HashValue(signature, shape.key.sourceShapeId);
+            HashValue(signature, shape.key.componentOrdinal);
+            HashValue(signature, static_cast<uint64_t>(shape.type));
+            HashVec3(signature, shape.localCenter);
+            HashQuat(signature, shape.localRotation);
+            HashVec3(signature, shape.halfExtents);
+            HashFloat(signature, shape.radius);
+            HashFloat(signature, shape.height);
+            HashVec3(signature, shape.localScale);
+            HashValue(signature, shape.vertexOffset);
+            HashValue(signature, shape.vertexCount);
+            HashValue(signature, shape.indexOffset);
+            HashValue(signature, shape.indexCount);
+            HashValue(signature, shape.geometryContentRevision);
+            HashValue(signature, shape.isTrigger);
+            HashFloat(signature, shape.material.friction);
+            HashFloat(signature, shape.material.restitution);
+            HashFloat(signature, shape.material.density);
+            HashValue(signature, shape.filter.layer);
+            HashValue(signature, shape.filter.mask);
         }
 
         bool IsLegacyTerrainFloorCollider(
@@ -204,6 +254,22 @@ namespace HIKARI::PHYSICS {
             retainedDefinitionScale);
 
         outCreateInfo = {};
+        // Terrain page は数百の immutable chunk shape を公開し得る。source
+        // gate が rebuild を許可した時だけ、正確な容量を先に確保する。
+        const std::size_t terrainShapeCapacity = terrainProjection != nullptr
+            ? (!terrainProjection->chunkShapes.empty()
+                ? terrainProjection->chunkShapes.size()
+                : (terrainProjection->geometry != nullptr ? 1u : 0u))
+            : 0u;
+        const std::size_t authoredShapeCapacity =
+            object.GetComponents().size();
+        if (authoredShapeCapacity <= outCreateInfo.shapes.max_size() &&
+            terrainShapeCapacity <=
+                outCreateInfo.shapes.max_size() -
+                    authoredShapeCapacity) {
+            outCreateInfo.shapes.reserve(
+                terrainShapeCapacity + authoredShapeCapacity);
+        }
         outCreateInfo.initialPose = pose;
         const PhysicsBodyComponent* bodyComponent =
             object.GetComponent<PhysicsBodyComponent>();
@@ -216,34 +282,62 @@ namespace HIKARI::PHYSICS {
         }
         uint32_t componentOrdinal = 0u;
         bool appendFailed = false;
-        if (terrainProjection != nullptr &&
-            terrainProjection->geometry != nullptr &&
-            terrainProjection->geometry->vertices.size() >= 3u &&
-            terrainProjection->geometry->indices.size() >= 3u) {
+        bool terrainCollisionAppended = false;
+        const auto appendTerrainShape = [&] (
+            const std::shared_ptr<const PhysicsGeometryBuffer>& geometry,
+            uint64_t contentRevision,
+            uint32_t terrainShapeOrdinal) {
+            if (geometry == nullptr ||
+                geometry->vertices.size() < 3u ||
+                geometry->indices.size() < 3u ||
+                geometry->vertices.size() >
+                    (std::numeric_limits<uint32_t>::max)() ||
+                geometry->indices.size() >
+                    (std::numeric_limits<uint32_t>::max)()) {
+                return;
+            }
             PhysicsShapeDesc terrainShape{};
             // "TERRAIN"。authored Collider component の ordinal と衝突しない
             // domain-owned stable shape identity。
             terrainShape.key.sourceShapeId =
                 kTerrainCollisionShapeSourceId;
+            terrainShape.key.componentOrdinal = terrainShapeOrdinal;
             terrainShape.type = PhysicsShapeType::TriangleMesh;
             terrainShape.localScale = Absolute(outWorldScale);
-            terrainShape.geometry = terrainProjection->geometry;
+            terrainShape.geometry = geometry;
             terrainShape.vertexCount = static_cast<uint32_t>(
-                terrainProjection->geometry->vertices.size());
+                geometry->vertices.size());
             terrainShape.indexCount = static_cast<uint32_t>(
-                terrainProjection->geometry->indices.size());
+                geometry->indices.size());
             terrainShape.geometryContentRevision =
-                terrainProjection->contentRevision;
+                contentRevision;
             terrainShape.material = PhysicsMaterialDesc{
                 0.8f, 0.0f, 1.0f };
             terrainShape.filter = PhysicsCollisionFilter{
                 1u, 0xFFFFFFFFu };
             outCreateInfo.shapes.push_back(std::move(terrainShape));
+            terrainCollisionAppended = true;
             result.hasDefinition = true;
-            result.sourceRevision ^= terrainProjection->contentRevision +
+            result.sourceRevision ^= contentRevision +
                 0x9E3779B97F4A7C15ull +
                 (result.sourceRevision << 6u) +
                 (result.sourceRevision >> 2u);
+        };
+        if (terrainProjection != nullptr) {
+            uint32_t terrainShapeOrdinal = 1u;
+            for (const TerrainCollisionChunkShape& chunk :
+                    terrainProjection->chunkShapes) {
+                appendTerrainShape(
+                    chunk.geometry,
+                    chunk.contentRevision,
+                    terrainShapeOrdinal++);
+            }
+            if (!terrainCollisionAppended) {
+                appendTerrainShape(
+                    terrainProjection->geometry,
+                    terrainProjection->contentRevision,
+                    0u);
+            }
         }
         object.ForEachComponent<ColliderComponent>(
             [&](const ColliderComponent& collider) {
@@ -254,7 +348,7 @@ namespace HIKARI::PHYSICS {
                 // 旧 sand factory が保存した仮の 40x0.2x40 床だけを精密に
                 // 無視する。新しい domain-owned terrain mesh と二重衝突させず、
                 // ユーザーが追加した別寸法の trigger/collider は保持する。
-                if (terrainProjection != nullptr &&
+                if (terrainCollisionAppended &&
                     IsLegacyTerrainFloorCollider(collider)) {
                     return;
                 }
@@ -317,45 +411,105 @@ namespace HIKARI::PHYSICS {
         const MATH::Vec3& worldScale) noexcept {
         uint64_t signature = HASH::kFnv1a64OffsetBasis;
         const PhysicsBodyDesc& body = createInfo.body;
-        HashValue(signature, static_cast<uint64_t>(body.motionType));
-        HashFloat(signature, body.mass);
-        HashFloat(signature, body.gravityScale);
-        HashFloat(signature, body.linearDamping);
-        HashFloat(signature, body.angularDamping);
-        HashValue(signature, body.allowSleeping);
-        HashValue(signature, body.continuousCollision);
-        HashValue(signature, body.lockTranslationX);
-        HashValue(signature, body.lockTranslationY);
-        HashValue(signature, body.lockTranslationZ);
-        HashValue(signature, body.lockRotationX);
-        HashValue(signature, body.lockRotationY);
-        HashValue(signature, body.lockRotationZ);
-        HashVec3(signature, worldScale);
-        HashVec3(signature, createInfo.initialLinearVelocity);
-        HashVec3(signature, createInfo.initialAngularVelocity);
+        HashBodyDefinitionFields(
+            signature,
+            body,
+            worldScale,
+            createInfo.initialLinearVelocity,
+            createInfo.initialAngularVelocity);
         HashValue(signature, createInfo.shapes.size());
         for (const PhysicsShapeDesc& shape : createInfo.shapes) {
-            HashValue(signature, shape.key.sourceShapeId);
-            HashValue(signature, shape.key.componentOrdinal);
-            HashValue(signature, static_cast<uint64_t>(shape.type));
-            HashVec3(signature, shape.localCenter);
-            HashQuat(signature, shape.localRotation);
-            HashVec3(signature, shape.halfExtents);
-            HashFloat(signature, shape.radius);
-            HashFloat(signature, shape.height);
-            HashVec3(signature, shape.localScale);
-            HashValue(signature, shape.vertexOffset);
-            HashValue(signature, shape.vertexCount);
-            HashValue(signature, shape.indexOffset);
-            HashValue(signature, shape.indexCount);
-            HashValue(signature, shape.geometryContentRevision);
-            HashValue(signature, shape.isTrigger);
-            HashFloat(signature, shape.material.friction);
-            HashFloat(signature, shape.material.restitution);
-            HashFloat(signature, shape.material.density);
-            HashValue(signature, shape.filter.layer);
-            HashValue(signature, shape.filter.mask);
+            HashShapeDefinitionFields(signature, shape);
         }
+        return signature;
+    }
+
+    uint64_t ComputePhysicsBodyDefinitionSourceSignature(
+        const GameObject& object,
+        uint64_t collisionGeometrySourceRevision,
+        const TerrainCollisionProjection* terrainProjection,
+        const MATH::Vec3* retainedDefinitionScale) noexcept {
+        uint64_t signature = HASH::kFnv1a64OffsetBasis;
+        HashValue(signature, object.GetRuntimeHandle().ToValue());
+        HashValue(signature, collisionGeometrySourceRevision);
+
+        PhysicsPose pose{};
+        MATH::Vec3 measuredScale{};
+        const bool transformValid = TryGetPhysicsWorldPoseAndScale(
+                object, pose, measuredScale) &&
+            MATH::IsFinite(measuredScale) &&
+            measuredScale.x > 0.0f &&
+            measuredScale.y > 0.0f &&
+            measuredScale.z > 0.0f;
+        HashValue(signature, transformValid ? 1u : 0u);
+        MATH::Vec3 definitionScale{};
+        if (transformValid) {
+            definitionScale = ResolvePhysicsDefinitionScale(
+                measuredScale, retainedDefinitionScale);
+        } else {
+            // 不正行列にも安定した retry key が必要。padding を混ぜないよう
+            // 全 scalar を明示的に hash する。
+            const MATH::Mat4 world =
+                object.GetTransform().GetWorldMatrix();
+            for (int column = 0; column < 4; ++column) {
+                for (int row = 0; row < 4; ++row) {
+                    HashFloat(signature, world.m[column][row]);
+                }
+            }
+        }
+
+        const PhysicsBodyComponent* bodyComponent =
+            object.GetComponent<PhysicsBodyComponent>();
+        const PhysicsBodyDesc body = BuildBody(object, bodyComponent);
+        const bool bodyEnabled = bodyComponent != nullptr &&
+            bodyComponent->IsEnabled();
+        const MATH::Vec3 initialLinearVelocity = bodyEnabled
+            ? bodyComponent->GetInitialLinearVelocity()
+            : MATH::Vec3{};
+        const MATH::Vec3 initialAngularVelocity = bodyEnabled
+            ? bodyComponent->GetInitialAngularVelocity()
+            : MATH::Vec3{};
+        HashValue(signature, bodyComponent != nullptr ? 1u : 0u);
+        HashBodyDefinitionFields(
+            signature,
+            body,
+            definitionScale,
+            initialLinearVelocity,
+            initialAngularVelocity);
+
+        HashValue(signature, terrainProjection != nullptr ? 1u : 0u);
+        if (terrainProjection != nullptr) {
+            HashValue(signature, terrainProjection->sourceRevision);
+            HashValue(signature, terrainProjection->contentRevision);
+            HashValue(signature, terrainProjection->chunkShapes.size());
+            HashValue(
+                signature,
+                terrainProjection->geometry != nullptr ? 1u : 0u);
+        }
+
+        uint32_t componentOrdinal = 0u;
+        object.ForEachComponent<ColliderComponent>(
+            [&](const ColliderComponent& collider) {
+                ++componentOrdinal;
+                HashValue(signature, componentOrdinal);
+                HashValue(signature, collider.IsEnabled() ? 1u : 0u);
+                HashValue(
+                    signature,
+                    static_cast<uint64_t>(collider.GetFitMode()));
+                HashValue(
+                    signature,
+                    HASH::Fnv1aString(
+                        collider.GetCollisionGeometryAssetId()));
+                if (!collider.IsEnabled()) {
+                    return;
+                }
+                // allocation-free な proxy でも Geometry fit provider を解決し、
+                // terrain shape を実体化せず model 由来寸法を gate に含める。
+                const PhysicsShapeDesc shape = BuildPhysicsShapeDesc(
+                    collider, definitionScale, componentOrdinal);
+                HashShapeDefinitionFields(signature, shape);
+            });
+        HashValue(signature, componentOrdinal);
         return signature;
     }
 

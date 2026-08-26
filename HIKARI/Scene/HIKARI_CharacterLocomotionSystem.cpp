@@ -296,6 +296,12 @@ namespace HIKARI {
                     locomotion.GetStickToFloorDistance();
                 request.controller.stepForwardTestDistance =
                     locomotion.GetStepForwardTestDistance();
+                request.controller.edgeProbeDistance =
+                    locomotion.GetEdgeProbeDistance();
+                request.controller.edgeProbeRadius =
+                    locomotion.GetEdgeProbeRadius();
+                request.controller.maximumGroundedDrop =
+                    locomotion.GetMaximumGroundedDrop();
                 request.controller.characterPadding =
                     locomotion.GetCharacterPadding();
                 request.controller.predictiveContactDistance =
@@ -304,6 +310,10 @@ namespace HIKARI {
                     locomotion.GetPenetrationRecoverySpeed();
                 request.controller.maximumCollisionHits =
                     locomotion.GetMaximumCollisionHits();
+                request.controller.cancelVelocityTowardsSteepSlopes =
+                    locomotion.GetCancelVelocityTowardsSteepSlopes();
+                request.controller.edgeGuardEnabled =
+                    locomotion.GetEdgeGuardEnabled();
                 request.controller.enhancedInternalEdgeRemoval =
                     locomotion.GetEnhancedInternalEdgeRemoval();
                 kinematicMotionService_->SubmitMove(

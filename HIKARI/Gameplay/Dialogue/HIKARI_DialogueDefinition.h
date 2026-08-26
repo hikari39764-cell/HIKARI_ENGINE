@@ -89,6 +89,8 @@ namespace HIKARI::DIALOGUE {
         std::string dialoguePanelAssetPath{};
         std::string speakerPlateAssetPath{};
         std::string choiceAssetPath{};
+        std::string advanceGamepadAssetPath{};
+        std::string advanceMouseAssetPath{};
 
         float referenceWidth = 1920.0f;
         float referenceHeight = 1080.0f;
@@ -134,6 +136,15 @@ namespace HIKARI::DIALOGUE {
         float choiceTextRotationDegrees = 0.0f;
         float choiceTextScale = 1.0f;
         DialogueTextStyle choiceTextStyle{};
+
+        // Bottom-centre anchor and natural-size scale for the device-aware
+        // continue prompt. Each supplied texture keeps its authored aspect.
+        float advancePromptX = 1685.0f;
+        float advancePromptY = 970.0f;
+        float advancePromptScale = 1.0f;
+        float advancePromptPulseSeconds = 0.90f;
+        float advancePromptBobDistance = 7.0f;
+        float advancePromptScaleAmount = 0.06f;
 
         float panelRevealSeconds = 0.22f;
         float charactersPerSecond = 34.0f;

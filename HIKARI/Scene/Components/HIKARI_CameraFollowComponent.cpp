@@ -108,9 +108,37 @@ namespace HIKARI {
         out["autoRecenterSpeedDegreesPerSecond"] =
             autoRecenterSpeedDegreesPerSecond_;
         out["collisionEnabled"] = collisionEnabled_;
+        out["collisionStaticOnly"] = collisionStaticOnly_;
         out["collisionRadius"] = collisionRadius_;
         out["collisionPadding"] = collisionPadding_;
         out["collisionLayerMask"] = collisionLayerMask_;
+        out["screenCompositionEnabled"] = screenCompositionEnabled_;
+        out["screenCompositionPrimaryAnchorX"] =
+            screenCompositionPrimaryAnchorX_;
+        out["screenCompositionPrimaryAnchorY"] =
+            screenCompositionPrimaryAnchorY_;
+        out["screenCompositionSecondaryAnchorX"] =
+            screenCompositionSecondaryAnchorX_;
+        out["screenCompositionSecondaryAnchorY"] =
+            screenCompositionSecondaryAnchorY_;
+        out["screenCompositionSoftZoneHalfWidth"] =
+            screenCompositionSoftZoneHalfWidth_;
+        out["screenCompositionSoftZoneHalfHeight"] =
+            screenCompositionSoftZoneHalfHeight_;
+        out["screenCompositionHardZoneHalfWidth"] =
+            screenCompositionHardZoneHalfWidth_;
+        out["screenCompositionHardZoneHalfHeight"] =
+            screenCompositionHardZoneHalfHeight_;
+        out["screenCompositionPreferredShoulderAngleDegrees"] =
+            screenCompositionPreferredShoulderAngleDegrees_;
+        out["screenCompositionMaximumShoulderAngleDegrees"] =
+            screenCompositionMaximumShoulderAngleDegrees_;
+        out["screenCompositionFocusHeightBias"] =
+            screenCompositionFocusHeightBias_;
+        out["screenCompositionHardResponseScale"] =
+            screenCompositionHardResponseScale_;
+        out["screenCompositionCollisionCenteringStrength"] =
+            screenCompositionCollisionCenteringStrength_;
     }
 
     void CameraFollowComponent::Deserialize(const nlohmann::json& in) {
@@ -213,6 +241,9 @@ namespace HIKARI {
         collisionEnabled_ = in.value(
             "collisionEnabled",
             collisionEnabled_);
+        collisionStaticOnly_ = in.value(
+            "collisionStaticOnly",
+            collisionStaticOnly_);
         collisionRadius_ = in.value(
             "collisionRadius",
             collisionRadius_);
@@ -222,6 +253,48 @@ namespace HIKARI {
         collisionLayerMask_ = in.value(
             "collisionLayerMask",
             collisionLayerMask_);
+        screenCompositionEnabled_ = in.value(
+            "screenCompositionEnabled",
+            screenCompositionEnabled_);
+        screenCompositionPrimaryAnchorX_ = in.value(
+            "screenCompositionPrimaryAnchorX",
+            screenCompositionPrimaryAnchorX_);
+        screenCompositionPrimaryAnchorY_ = in.value(
+            "screenCompositionPrimaryAnchorY",
+            screenCompositionPrimaryAnchorY_);
+        screenCompositionSecondaryAnchorX_ = in.value(
+            "screenCompositionSecondaryAnchorX",
+            screenCompositionSecondaryAnchorX_);
+        screenCompositionSecondaryAnchorY_ = in.value(
+            "screenCompositionSecondaryAnchorY",
+            screenCompositionSecondaryAnchorY_);
+        screenCompositionSoftZoneHalfWidth_ = in.value(
+            "screenCompositionSoftZoneHalfWidth",
+            screenCompositionSoftZoneHalfWidth_);
+        screenCompositionSoftZoneHalfHeight_ = in.value(
+            "screenCompositionSoftZoneHalfHeight",
+            screenCompositionSoftZoneHalfHeight_);
+        screenCompositionHardZoneHalfWidth_ = in.value(
+            "screenCompositionHardZoneHalfWidth",
+            screenCompositionHardZoneHalfWidth_);
+        screenCompositionHardZoneHalfHeight_ = in.value(
+            "screenCompositionHardZoneHalfHeight",
+            screenCompositionHardZoneHalfHeight_);
+        screenCompositionPreferredShoulderAngleDegrees_ = in.value(
+            "screenCompositionPreferredShoulderAngleDegrees",
+            screenCompositionPreferredShoulderAngleDegrees_);
+        screenCompositionMaximumShoulderAngleDegrees_ = in.value(
+            "screenCompositionMaximumShoulderAngleDegrees",
+            screenCompositionMaximumShoulderAngleDegrees_);
+        screenCompositionFocusHeightBias_ = in.value(
+            "screenCompositionFocusHeightBias",
+            screenCompositionFocusHeightBias_);
+        screenCompositionHardResponseScale_ = in.value(
+            "screenCompositionHardResponseScale",
+            screenCompositionHardResponseScale_);
+        screenCompositionCollisionCenteringStrength_ = in.value(
+            "screenCompositionCollisionCenteringStrength",
+            screenCompositionCollisionCenteringStrength_);
 
         ClampSettings();
         ResetRuntimeState();
@@ -348,6 +421,31 @@ namespace HIKARI {
         runtimeFramingFocusOffset_ = {};
         runtimeFramingFocusVelocity_ = {};
         runtimeFramingDistanceVelocity_ = 0.0f;
+        runtimeRelationshipShotInitialized_ = false;
+        runtimeRelationshipShotHasSubmission_ = false;
+        runtimeRelationshipPreferredSide_ = 0.0f;
+        runtimeRelationshipShoulderAngleDegrees_ = 0.0f;
+        runtimeRelationshipVerticalFovOffsetRadians_ = 0.0f;
+        runtimeRelationshipRollRadians_ = 0.0f;
+        runtimeRelationshipSideClearanceBias_ = 0.0f;
+        runtimeRelationshipDistanceOffset_ = 0.0f;
+        runtimeRelationshipPivotHeightOffset_ = 0.0f;
+        runtimeRelationshipFocusLateralOffset_ = 0.0f;
+        runtimeRelationshipFocusHeightOffset_ = 0.0f;
+        runtimeRelationshipSuppressModifiers_ = false;
+        runtimeRelationshipYawOffsetDegrees_ = 0.0f;
+        runtimeRelationshipWeight_ = 0.0f;
+        runtimeRelationshipWeightVelocity_ = 0.0f;
+        runtimeScreenCompositionActive_ = false;
+        runtimeScreenCompositionSide_ = 1.0f;
+        runtimeScreenCompositionPrimaryX_ = 0.5f;
+        runtimeScreenCompositionPrimaryY_ = 0.5f;
+        runtimeScreenCompositionSecondaryX_ = 0.5f;
+        runtimeScreenCompositionSecondaryY_ = 0.5f;
+        runtimeScreenCompositionSoftViolation_ = false;
+        runtimeScreenCompositionHardViolation_ = false;
+        runtimeScreenCompositionCollisionBlend_ = 0.0f;
+        runtimeScreenCompositionCollisionBlendVelocity_ = 0.0f;
         runtimeInitialized_ = true;
     }
 
@@ -446,6 +544,107 @@ namespace HIKARI {
             0.0f);
     }
 
+    void CameraFollowComponent::SetRuntimeScreenCompositionState(
+        bool active,
+        float side,
+        float primaryX,
+        float primaryY,
+        float secondaryX,
+        float secondaryY,
+        bool softViolation,
+        bool hardViolation,
+        float collisionBlend,
+        float collisionBlendVelocity) noexcept {
+
+        runtimeScreenCompositionActive_ = active;
+        runtimeScreenCompositionSide_ = side >= 0.0f ? 1.0f : -1.0f;
+        runtimeScreenCompositionPrimaryX_ = FiniteOr(primaryX, 0.5f);
+        runtimeScreenCompositionPrimaryY_ = FiniteOr(primaryY, 0.5f);
+        runtimeScreenCompositionSecondaryX_ = FiniteOr(
+            secondaryX,
+            0.5f);
+        runtimeScreenCompositionSecondaryY_ = FiniteOr(
+            secondaryY,
+            0.5f);
+        runtimeScreenCompositionSoftViolation_ = softViolation;
+        runtimeScreenCompositionHardViolation_ = hardViolation;
+        runtimeScreenCompositionCollisionBlend_ = std::clamp(
+            FiniteOr(collisionBlend, 0.0f),
+            0.0f,
+            1.0f);
+        runtimeScreenCompositionCollisionBlendVelocity_ = FiniteOr(
+            collisionBlendVelocity,
+            0.0f);
+    }
+
+    void CameraFollowComponent::SetRuntimeRelationshipShotState(
+        bool hasSubmission,
+        float preferredSide,
+        float shoulderAngleDegrees,
+        float verticalFovOffsetRadians,
+        float rollRadians,
+        float sideClearanceBias,
+        float distanceOffset,
+        float pivotHeightOffset,
+        float focusLateralOffset,
+        float focusHeightOffset,
+        bool suppressModifiers,
+        float yawOffsetDegrees,
+        float weight,
+        float weightVelocity) noexcept {
+
+        runtimeRelationshipShotInitialized_ = true;
+        runtimeRelationshipShotHasSubmission_ = hasSubmission;
+        runtimeRelationshipPreferredSide_ = std::clamp(
+            FiniteOr(preferredSide, 0.0f),
+            -1.0f,
+            1.0f);
+        runtimeRelationshipShoulderAngleDegrees_ = std::clamp(
+            NonNegativeFinite(shoulderAngleDegrees, 0.0f),
+            0.0f,
+            75.0f);
+        runtimeRelationshipVerticalFovOffsetRadians_ = std::clamp(
+            FiniteOr(verticalFovOffsetRadians, 0.0f),
+            -1.5f,
+            1.5f);
+        runtimeRelationshipRollRadians_ = std::clamp(
+            FiniteOr(rollRadians, 0.0f),
+            -3.14159265f,
+            3.14159265f);
+        runtimeRelationshipSideClearanceBias_ = std::clamp(
+            NonNegativeFinite(sideClearanceBias, 0.0f),
+            0.0f,
+            5.0f);
+        runtimeRelationshipDistanceOffset_ = std::clamp(
+            FiniteOr(distanceOffset, 0.0f),
+            -10.0f,
+            10.0f);
+        runtimeRelationshipPivotHeightOffset_ = std::clamp(
+            FiniteOr(pivotHeightOffset, 0.0f),
+            -5.0f,
+            5.0f);
+        runtimeRelationshipFocusLateralOffset_ = std::clamp(
+            FiniteOr(focusLateralOffset, 0.0f),
+            -5.0f,
+            5.0f);
+        runtimeRelationshipFocusHeightOffset_ = std::clamp(
+            FiniteOr(focusHeightOffset, 0.0f),
+            -5.0f,
+            5.0f);
+        runtimeRelationshipSuppressModifiers_ = suppressModifiers;
+        runtimeRelationshipYawOffsetDegrees_ = std::clamp(
+            FiniteOr(yawOffsetDegrees, 0.0f),
+            -75.0f,
+            75.0f);
+        runtimeRelationshipWeight_ = std::clamp(
+            FiniteOr(weight, 0.0f),
+            0.0f,
+            1.0f);
+        runtimeRelationshipWeightVelocity_ = FiniteOr(
+            weightVelocity,
+            0.0f);
+    }
+
     void CameraFollowComponent::SetRuntimeOrbit(
         float yawDegrees,
         float pitchDegrees,
@@ -521,6 +720,31 @@ namespace HIKARI {
         runtimeFramingFocusOffset_ = {};
         runtimeFramingFocusVelocity_ = {};
         runtimeFramingDistanceVelocity_ = 0.0f;
+        runtimeRelationshipShotInitialized_ = false;
+        runtimeRelationshipShotHasSubmission_ = false;
+        runtimeRelationshipPreferredSide_ = 0.0f;
+        runtimeRelationshipShoulderAngleDegrees_ = 0.0f;
+        runtimeRelationshipVerticalFovOffsetRadians_ = 0.0f;
+        runtimeRelationshipRollRadians_ = 0.0f;
+        runtimeRelationshipSideClearanceBias_ = 0.0f;
+        runtimeRelationshipDistanceOffset_ = 0.0f;
+        runtimeRelationshipPivotHeightOffset_ = 0.0f;
+        runtimeRelationshipFocusLateralOffset_ = 0.0f;
+        runtimeRelationshipFocusHeightOffset_ = 0.0f;
+        runtimeRelationshipSuppressModifiers_ = false;
+        runtimeRelationshipYawOffsetDegrees_ = 0.0f;
+        runtimeRelationshipWeight_ = 0.0f;
+        runtimeRelationshipWeightVelocity_ = 0.0f;
+        runtimeScreenCompositionActive_ = false;
+        runtimeScreenCompositionSide_ = 1.0f;
+        runtimeScreenCompositionPrimaryX_ = 0.5f;
+        runtimeScreenCompositionPrimaryY_ = 0.5f;
+        runtimeScreenCompositionSecondaryX_ = 0.5f;
+        runtimeScreenCompositionSecondaryY_ = 0.5f;
+        runtimeScreenCompositionSoftViolation_ = false;
+        runtimeScreenCompositionHardViolation_ = false;
+        runtimeScreenCompositionCollisionBlend_ = 0.0f;
+        runtimeScreenCompositionCollisionBlendVelocity_ = 0.0f;
     }
 
     void CameraFollowComponent::ClampSettings() noexcept {
@@ -580,6 +804,80 @@ namespace HIKARI {
             NonNegativeFinite(collisionRadius_, 0.25f),
             0.01f);
         collisionPadding_ = NonNegativeFinite(collisionPadding_, 0.08f);
+        screenCompositionPrimaryAnchorX_ = std::clamp(
+            FiniteOr(screenCompositionPrimaryAnchorX_, 0.38f),
+            0.05f,
+            0.95f);
+        screenCompositionPrimaryAnchorY_ = std::clamp(
+            FiniteOr(screenCompositionPrimaryAnchorY_, 0.58f),
+            0.05f,
+            0.95f);
+        screenCompositionSecondaryAnchorX_ = std::clamp(
+            FiniteOr(screenCompositionSecondaryAnchorX_, 0.62f),
+            0.05f,
+            0.95f);
+        if (screenCompositionPrimaryAnchorX_ >
+            screenCompositionSecondaryAnchorX_) {
+            std::swap(
+                screenCompositionPrimaryAnchorX_,
+                screenCompositionSecondaryAnchorX_);
+        }
+        if (screenCompositionSecondaryAnchorX_ -
+                screenCompositionPrimaryAnchorX_ < 0.04f) {
+            const float center = std::clamp(
+                (screenCompositionPrimaryAnchorX_ +
+                    screenCompositionSecondaryAnchorX_) * 0.5f,
+                0.07f,
+                0.93f);
+            screenCompositionPrimaryAnchorX_ = center - 0.02f;
+            screenCompositionSecondaryAnchorX_ = center + 0.02f;
+        }
+        screenCompositionSecondaryAnchorY_ = std::clamp(
+            FiniteOr(screenCompositionSecondaryAnchorY_, 0.46f),
+            0.05f,
+            0.95f);
+        screenCompositionSoftZoneHalfWidth_ = std::clamp(
+            FiniteOr(screenCompositionSoftZoneHalfWidth_, 0.075f),
+            0.0f,
+            0.45f);
+        screenCompositionSoftZoneHalfHeight_ = std::clamp(
+            FiniteOr(screenCompositionSoftZoneHalfHeight_, 0.10f),
+            0.0f,
+            0.45f);
+        screenCompositionHardZoneHalfWidth_ = std::clamp(
+            FiniteOr(screenCompositionHardZoneHalfWidth_, 0.20f),
+            screenCompositionSoftZoneHalfWidth_ + 0.01f,
+            0.50f);
+        screenCompositionHardZoneHalfHeight_ = std::clamp(
+            FiniteOr(screenCompositionHardZoneHalfHeight_, 0.24f),
+            screenCompositionSoftZoneHalfHeight_ + 0.01f,
+            0.50f);
+        screenCompositionPreferredShoulderAngleDegrees_ = std::clamp(
+            FiniteOr(
+                screenCompositionPreferredShoulderAngleDegrees_,
+                32.0f),
+            0.0f,
+            89.0f);
+        screenCompositionMaximumShoulderAngleDegrees_ = std::clamp(
+            FiniteOr(
+                screenCompositionMaximumShoulderAngleDegrees_,
+                58.0f),
+            screenCompositionPreferredShoulderAngleDegrees_,
+            89.0f);
+        screenCompositionFocusHeightBias_ = std::clamp(
+            FiniteOr(screenCompositionFocusHeightBias_, 0.22f),
+            -5.0f,
+            5.0f);
+        screenCompositionHardResponseScale_ = std::clamp(
+            FiniteOr(screenCompositionHardResponseScale_, 0.45f),
+            0.10f,
+            1.0f);
+        screenCompositionCollisionCenteringStrength_ = std::clamp(
+            FiniteOr(
+                screenCompositionCollisionCenteringStrength_,
+                0.72f),
+            0.0f,
+            1.0f);
     }
 
 } // namespace HIKARI

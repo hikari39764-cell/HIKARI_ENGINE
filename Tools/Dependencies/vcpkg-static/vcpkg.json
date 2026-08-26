@@ -3,7 +3,8 @@
   "name": "hikari-static-runtime-dependencies",
   "version-string": "0.1.0",
   "dependencies": [
-    "joltphysics"
+    "joltphysics",
+    "recastnavigation"
   ],
   "builtin-baseline": "4bca8fd8654e5ba76f92661db7bfe954768ad8ef"
 }

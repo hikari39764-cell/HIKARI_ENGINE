@@ -1483,21 +1483,26 @@ namespace HIKARI {
             : positionWS;
         previousCenters_.insert_or_assign(contactKey, positionWS);
 
-        const MATH::Vec3 delta = positionWS - previous;
-        const float travel = std::sqrt(MATH::Dot(delta, delta));
+        const MATH::Vec3 observedDelta = positionWS - previous;
+        const float observedTravel = std::sqrt(MATH::Dot(
+            observedDelta, observedDelta));
         const float footprintRadius = (std::max)({
             footprint.halfExtentsWS.x,
             footprint.halfExtentsWS.y,
             footprint.verticalRadiusWS });
-        const float stepLength = footprintRadius * 0.35f;
-        const uint32_t steps = hasPrevious && travel > 1.0e-5f
-            ? stepLength > 1.0e-8f
-                ? (std::max)(
-                    1u,
-                    static_cast<uint32_t>(std::ceil(
-                        travel / stepLength)))
-                : 1u
-            : 1u;
+        const TERRAIN::TerrainInteractionSweepPlan sweepPlan =
+            TERRAIN::PlanTerrainInteractionSweep(
+                hasPrevious ? observedTravel : 0.0f,
+                footprintRadius,
+                stepSeconds);
+        // discontinuity は現在点を 1 回だけ発行し、teleport 経路全体を
+        // terrain stamp へ変換しない。previousCenters_ は既に現在点へ進めた
+        // ため、次 tick は通常の連続 sweep へ戻る。
+        const MATH::Vec3 sweepStart = sweepPlan.discontinuity
+            ? positionWS
+            : previous;
+        const MATH::Vec3 delta = positionWS - sweepStart;
+        const uint32_t steps = sweepPlan.sampleCount;
         const MATH::Vec3 velocity = stepSeconds > 1.0e-6f
             ? delta * (1.0f / stepSeconds)
             : MATH::Vec3{};
@@ -1506,8 +1511,9 @@ namespace HIKARI {
         const float sampleImpulse = normalImpulseNs /
             static_cast<float>(steps);
 
-        // 静止時は現在点を 1 回だけ発行する。移動時も previous を再発行せず、
-        // (previous,current] の sweep sample だけを出して重複 stamp を防ぐ。
+        // 静止時と discontinuity は現在点を 1 回だけ発行する。通常移動も
+        // previous を再発行せず、(previous,current] の bounded sample だけを
+        // 出して重複 stamp と 1 tick の無制限 fan-out を防ぐ。
         for (uint32_t step = 1u; step <= steps; ++step) {
             const float t = static_cast<float>(step) /
                 static_cast<float>(steps);
@@ -1518,7 +1524,7 @@ namespace HIKARI {
             sample.phase = step == 1u
                 ? phase
                 : TERRAIN::TerrainInteractionPhase::Persist;
-            sample.positionWS = previous + delta * t;
+            sample.positionWS = sweepStart + delta * t;
             sample.normalWS = normalWS;
             sample.relativeVelocityWS = velocity;
             sample.footprint = footprint;

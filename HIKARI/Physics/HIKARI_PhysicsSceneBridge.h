@@ -39,6 +39,15 @@ namespace HIKARI::PHYSICS {
         const PhysicsBodyCreateInfo& createInfo,
         const MATH::Vec3& worldScale) noexcept;
 
+    // 完全な definition は数百の immutable terrain chunk shape を含み得る。
+    // allocation-free な source signature で body definition の全入力を先に
+    // 検証し、同一なら巨大な descriptor payload の構築自体を省略する。
+    uint64_t ComputePhysicsBodyDefinitionSourceSignature(
+        const GameObject& object,
+        uint64_t collisionGeometrySourceRevision,
+        const TerrainCollisionProjection* terrainProjection = nullptr,
+        const MATH::Vec3* retainedDefinitionScale = nullptr) noexcept;
+
     bool TryGetPhysicsWorldPoseAndScale(
         const GameObject& object,
         PhysicsPose& outPose,

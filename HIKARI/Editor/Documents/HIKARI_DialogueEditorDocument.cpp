@@ -68,6 +68,16 @@ namespace HIKARI::EDITOR {
             : (outMessage = "Save this dialogue before reverting", false);
     }
 
+    void DialogueEditorDocument::Close() noexcept {
+        assetGuid_ = {};
+        definition_ = {};
+        history_.clear();
+        historyCursor_ = 0u;
+        savedHistoryCursor_.reset();
+        openMergeGroup_ = 0u;
+        open_ = false;
+    }
+
     DIALOGUE::DialogueDefinition&
         DialogueEditorDocument::Definition() noexcept {
         return definition_;

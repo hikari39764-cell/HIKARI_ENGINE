@@ -177,6 +177,11 @@ namespace HIKARI::PHYSICS::JOLT_BACKEND {
         extended.mWalkStairsStepForwardTest = (std::max)(
             stepSettings.stepForwardTestDistance,
             0.0f);
+        if (stepSettings.cancelVelocityTowardsSteepSlopes) {
+            character->SetLinearVelocity(
+                character->CancelVelocityTowardsSteepSlopes(
+                    character->GetLinearVelocity()));
+        }
 
         if (!SetActiveCharacterIgnoredObject(
                 handle,

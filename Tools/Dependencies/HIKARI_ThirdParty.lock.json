@@ -11,7 +11,8 @@
         "installRoot": "vcpkg_installed",
         "packages": [
           "assimp",
-          "joltphysics"
+          "joltphysics",
+          "recastnavigation"
         ]
       },
       {
@@ -20,12 +21,22 @@
         "triplet": "x64-windows-static",
         "installRoot": "vcpkg_installed_static",
         "packages": [
-          "joltphysics"
+          "joltphysics",
+          "recastnavigation"
         ]
       }
     ]
   },
   "dependencies": [
+    {
+      "name": "Recast Navigation",
+      "version": "1.6.0",
+      "kind": "vcpkg-configured-runtime",
+      "source": "https://github.com/recastnavigation/recastnavigation/releases/tag/v1.6.0",
+      "versionEvidence": "vcpkg.json and Tools/Dependencies/vcpkg-static/vcpkg.json",
+      "licenseEvidence": "vcpkg_installed_static/x64-windows-static/share/recastnavigation/copyright",
+      "restore": "Debug links the x64-windows /MDd Recast and Detour artifacts; EditorRelease and Shipping link x64-windows-static /MT artifacts. HIKARI exposes only its own value-only navigation SDK view."
+    },
     {
       "name": "DirectXTex",
       "version": "2.1.1",

@@ -13,6 +13,67 @@ namespace HIKARI::TERRAIN {
         Rim = 1u,
     };
 
+    // runtime response は elastic / plastic の 2 channel を持つが、地形の
+    // 最終変位上限は両者の合計に対する契約である。chunk 境界で channel を
+    // 別々の source から選ぶと同じ凹みを二重計上するため、常に pair で扱う。
+    struct TerrainSurfaceDisplacementChannels {
+        float elastic = 0.0f;
+        float plastic = 0.0f;
+
+        float Combined() const noexcept {
+            return elastic + plastic;
+        }
+    };
+
+    inline TerrainSurfaceDisplacementChannels
+        ClampTerrainSurfaceDisplacementChannels(
+            TerrainSurfaceDisplacementChannels channels,
+            float minimumHeight,
+            float maximumHeight) noexcept {
+
+        float safeMinimum = std::isfinite(minimumHeight)
+            ? minimumHeight
+            : 0.0f;
+        float safeMaximum = std::isfinite(maximumHeight)
+            ? maximumHeight
+            : 0.0f;
+        if (safeMinimum > safeMaximum) {
+            std::swap(safeMinimum, safeMaximum);
+        }
+
+        channels.plastic = std::clamp(
+            std::isfinite(channels.plastic) ? channels.plastic : 0.0f,
+            safeMinimum,
+            safeMaximum);
+        channels.elastic = std::clamp(
+            std::isfinite(channels.elastic) ? channels.elastic : 0.0f,
+            safeMinimum - channels.plastic,
+            safeMaximum - channels.plastic);
+        return channels;
+    }
+
+    // 凹みは rim より優先し、凹み同士なら深い方、rim 同士なら高い方を
+    // 採用する。同じ合計値では elastic が少ない pair を選び、保持済みの痕跡を
+    // transient response へ戻したり、相殺 channel を温存したりしない。
+    inline TerrainSurfaceDisplacementChannels
+        SelectTerrainSurfaceDisplacementChannels(
+            TerrainSurfaceDisplacementChannels current,
+            TerrainSurfaceDisplacementChannels candidate) noexcept {
+
+        const float currentTotal = current.Combined();
+        const float candidateTotal = candidate.Combined();
+        const bool depressionPresent =
+            currentTotal < 0.0f || candidateTotal < 0.0f;
+        if ((depressionPresent && candidateTotal < currentTotal) ||
+            (!depressionPresent && candidateTotal > currentTotal) ||
+            (candidateTotal == currentTotal &&
+             std::fabs(candidate.elastic) <
+                std::fabs(current.elastic))) {
+            return candidate;
+        }
+        return current;
+    }
+
     // 移動 stamp の rim が一つ前の depression を持ち上げると、軌跡が
     // 現在位置だけへ置換される。凹みを優先して合成し、rim は未変形面または
     // 既存 rim だけを押し上げる。順番に依存しない animation response 契約。

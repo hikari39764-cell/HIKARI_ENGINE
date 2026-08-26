@@ -4,6 +4,7 @@
 #include <string_view>
 
 #include "HIKARI/Project/GameProjectSdk.h"
+#include "HIKARI/Project/UiTypes.h"
 #include "HIKARI/Project/ValueTypes.h"
 #include "HIKARI/Project/VfxTypes.h"
 
@@ -67,6 +68,13 @@ namespace HIKARI {
             std::string_view propertyId,
             std::string_view label,
             GameProjectVfxAssetReference& reference);
+        HIKARI_GAME_PROJECT_SDK_API bool TextureAssetReference(
+            std::string_view label,
+            GameProjectUiTextureReference& reference);
+        HIKARI_GAME_PROJECT_SDK_API bool TextureAssetReference(
+            std::string_view propertyId,
+            std::string_view label,
+            GameProjectUiTextureReference& reference);
 
         bool AssetReference(
             std::string_view label,

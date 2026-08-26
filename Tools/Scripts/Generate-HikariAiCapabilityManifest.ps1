@@ -69,19 +69,19 @@ $capabilities = @{}
 foreach ($entry in [regex]::Matches(
     $builtinMatch.Groups[1].Value,
     '\{\s*"([a-z][a-z0-9._]+)"\s*,\s*"([^"]+)"\s*,\s*"(stable|planned|unsupported)"\s*\}')) {
-    $capabilities[$entry.Groups[1].Value] = @{
+    $capabilities[$entry.Groups[1].Value] = [ordered]@{
         id = $entry.Groups[1].Value
-        status = $entry.Groups[3].Value
         summary = $entry.Groups[2].Value
+        status = $entry.Groups[3].Value
     }
 }
 
 foreach ($id in $operations.Keys) {
     if (-not $capabilities.ContainsKey($id)) {
-        $capabilities[$id] = @{
+        $capabilities[$id] = [ordered]@{
             id = $id
-            status = 'stable'
             summary = $operations[$id]
+            status = 'stable'
         }
     }
 }

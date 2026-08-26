@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <limits>
 #include <numbers>
 
 #include "Core/HIKARI_FrameContext.h"
@@ -14,9 +15,11 @@
 #include "Scene/Camera/HIKARI_CameraRigService.h"
 #include "Scene/Components/HIKARI_CameraComponent.h"
 #include "Scene/Components/HIKARI_CameraFollowComponent.h"
+#include "Scene/Components/HIKARI_PhysicsBodyComponent.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_PresentationTransformService.h"
 #include "Scene/HIKARI_RuntimeWorldServices.h"
+#include "Scene/HIKARI_RuntimeSceneContext.h"
 #include "Scene/HIKARI_World.h"
 
 namespace HIKARI {
@@ -28,6 +31,16 @@ namespace HIKARI {
         constexpr float kInputEpsilon = 1.0e-4f;
         constexpr float kViewEpsilon = 1.0e-5f;
         constexpr float kBackwardMovementThreshold = -0.1f;
+        constexpr float kDefaultGameplayAspect = 16.0f / 9.0f;
+        constexpr float kMinimumGameplayAspect = 0.01f;
+        constexpr float kCompositionMinimumDepth = 0.05f;
+        constexpr float kCompositionPitchSearchRangeDegrees = 18.0f;
+        constexpr float kCompositionTargetWeightFadeStart = 0.30f;
+        constexpr float kCompositionTargetWeightFadeEnd = 0.48f;
+        constexpr float kCompositionTargetPredictionSeconds = 0.08f;
+        constexpr float kCompositionMaximumPredictionDistance = 0.65f;
+        constexpr int kCompositionYawSearchSamples = 17;
+        constexpr int kCompositionPitchSearchSamples = 13;
 
         float DegreesToRadians(float degrees) noexcept {
             return degrees * std::numbers::pi_v<float> / 180.0f;
@@ -65,6 +78,20 @@ namespace HIKARI {
                 return target;
             }
             return current + std::copysign(maxDelta, delta);
+        }
+
+        float Lerp(float from, float to, float amount) noexcept {
+            return from + (to - from) * std::clamp(amount, 0.0f, 1.0f);
+        }
+
+        float ScreenCompositionPolicyWeight(float targetWeight) noexcept {
+            const float normalized = std::clamp(
+                (targetWeight - kCompositionTargetWeightFadeStart) /
+                    (kCompositionTargetWeightFadeEnd -
+                        kCompositionTargetWeightFadeStart),
+                0.0f,
+                1.0f);
+            return normalized * normalized * (3.0f - 2.0f * normalized);
         }
 
         float SmoothDampScalar(
@@ -216,6 +243,459 @@ namespace HIKARI {
             });
         }
 
+        float ResolveGameplayAspect(
+            const GameplayCameraService* cameraService) noexcept {
+
+            if (cameraService != nullptr && cameraService->camera != nullptr) {
+                const float aspect = cameraService->camera->GetAspect();
+                if (std::isfinite(aspect) &&
+                    aspect >= kMinimumGameplayAspect) {
+                    return aspect;
+                }
+            }
+            return kDefaultGameplayAspect;
+        }
+
+        float ResolveGameplayVerticalFov(
+            const GameplayCameraService* cameraService,
+            float fallbackVerticalFovRadians) noexcept {
+
+            if (cameraService != nullptr && cameraService->camera != nullptr) {
+                const float verticalFovRadians =
+                    cameraService->camera->GetFovYRad();
+                if (std::isfinite(verticalFovRadians) &&
+                    verticalFovRadians >= DegreesToRadians(1.0f) &&
+                    verticalFovRadians <= DegreesToRadians(179.0f)) {
+                    return verticalFovRadians;
+                }
+            }
+            return fallbackVerticalFovRadians;
+        }
+
+        struct ViewportProjection {
+            float x = 0.5f;
+            float y = 0.5f;
+            float depth = 0.0f;
+            bool valid = false;
+        };
+
+        ViewportProjection ProjectPointToViewport(
+            const MATH::Vec3& eye,
+            const MATH::Vec3& lookAt,
+            const MATH::Vec3& point,
+            float verticalFovRadians,
+            float aspect) noexcept {
+
+            ViewportProjection result{};
+            MATH::Vec3 forward = MATH::Normalize(lookAt - eye);
+            if (!MATH::IsFinite(forward) ||
+                MATH::Length(forward) <= kViewEpsilon) {
+                return result;
+            }
+            MATH::Vec3 right = MATH::Normalize(MATH::Cross(
+                MATH::Vec3{ 0.0f, 1.0f, 0.0f },
+                forward));
+            if (!MATH::IsFinite(right) ||
+                MATH::Length(right) <= kViewEpsilon) {
+                right = MATH::Normalize(MATH::Cross(
+                    MATH::Vec3{ 1.0f, 0.0f, 0.0f },
+                    forward));
+            }
+            if (!MATH::IsFinite(right) ||
+                MATH::Length(right) <= kViewEpsilon) {
+                return result;
+            }
+            const MATH::Vec3 up = MATH::Normalize(MATH::Cross(
+                forward,
+                right));
+            const MATH::Vec3 relative = point - eye;
+            const float depth = MATH::Dot(relative, forward);
+            const float clampedFov = std::clamp(
+                verticalFovRadians,
+                DegreesToRadians(1.0f),
+                DegreesToRadians(179.0f));
+            const float tanHalfFov = std::tan(clampedFov * 0.5f);
+            if (!std::isfinite(depth) ||
+                depth <= kCompositionMinimumDepth ||
+                !std::isfinite(tanHalfFov) ||
+                tanHalfFov <= kViewEpsilon ||
+                !std::isfinite(aspect) ||
+                aspect < kMinimumGameplayAspect) {
+                return result;
+            }
+
+            const float ndcX = MATH::Dot(relative, right) /
+                (depth * tanHalfFov * aspect);
+            const float ndcY = MATH::Dot(relative, up) /
+                (depth * tanHalfFov);
+            if (!std::isfinite(ndcX) || !std::isfinite(ndcY)) {
+                return result;
+            }
+            result.x = ndcX * 0.5f + 0.5f;
+            result.y = -ndcY * 0.5f + 0.5f;
+            result.depth = depth;
+            result.valid = true;
+            return result;
+        }
+
+        struct ScreenCompositionTargets {
+            float primaryX = 0.5f;
+            float primaryY = 0.5f;
+            float secondaryX = 0.5f;
+            float secondaryY = 0.5f;
+            float softHalfWidth = 0.075f;
+            float softHalfHeight = 0.10f;
+            float hardHalfWidth = 0.20f;
+            float hardHalfHeight = 0.24f;
+        };
+
+        ScreenCompositionTargets BuildCompositionTargets(
+            const CameraFollowComponent& component,
+            float side,
+            float framingWeight,
+            float collisionBlend) noexcept {
+
+            const bool secondaryOnRight = side >= 0.0f;
+            const float basePrimaryX = secondaryOnRight
+                ? component.GetScreenCompositionPrimaryAnchorX()
+                : 1.0f - component.GetScreenCompositionPrimaryAnchorX();
+            const float baseSecondaryX = secondaryOnRight
+                ? component.GetScreenCompositionSecondaryAnchorX()
+                : 1.0f - component.GetScreenCompositionSecondaryAnchorX();
+            const float safePrimaryX = secondaryOnRight ? 0.45f : 0.55f;
+            const float safeSecondaryX = secondaryOnRight ? 0.55f : 0.45f;
+            const float weight = std::clamp(framingWeight, 0.0f, 1.0f);
+            const float collision = std::clamp(
+                collisionBlend *
+                    component.GetScreenCompositionCollisionCenteringStrength(),
+                0.0f,
+                1.0f);
+
+            ScreenCompositionTargets result{};
+            const float primaryX = Lerp(0.5f, basePrimaryX, weight);
+            const float secondaryX = Lerp(0.5f, baseSecondaryX, weight);
+            result.primaryX = Lerp(
+                primaryX,
+                Lerp(0.5f, safePrimaryX, weight),
+                collision);
+            result.secondaryX = Lerp(
+                secondaryX,
+                Lerp(0.5f, safeSecondaryX, weight),
+                collision);
+            result.primaryY = Lerp(
+                Lerp(
+                    0.5f,
+                    component.GetScreenCompositionPrimaryAnchorY(),
+                    weight),
+                Lerp(0.5f, 0.54f, weight),
+                collision);
+            result.secondaryY = Lerp(
+                Lerp(
+                    0.5f,
+                    component.GetScreenCompositionSecondaryAnchorY(),
+                    weight),
+                Lerp(0.5f, 0.49f, weight),
+                collision);
+            result.softHalfWidth = std::clamp(
+                component.GetScreenCompositionSoftZoneHalfWidth() +
+                    0.035f * collision,
+                0.0f,
+                0.48f);
+            result.softHalfHeight = std::clamp(
+                component.GetScreenCompositionSoftZoneHalfHeight() +
+                    0.030f * collision,
+                0.0f,
+                0.48f);
+            result.hardHalfWidth = std::clamp(
+                component.GetScreenCompositionHardZoneHalfWidth() +
+                    0.025f * collision,
+                result.softHalfWidth + 0.01f,
+                0.50f);
+            result.hardHalfHeight = std::clamp(
+                component.GetScreenCompositionHardZoneHalfHeight() +
+                    0.025f * collision,
+                result.softHalfHeight + 0.01f,
+                0.50f);
+            return result;
+        }
+
+        float AccumulateZoneCost(
+            float value,
+            float anchor,
+            float softHalfExtent,
+            float hardHalfExtent,
+            bool& outSoftViolation,
+            bool& outHardViolation) noexcept {
+
+            if (!std::isfinite(value)) {
+                outSoftViolation = true;
+                outHardViolation = true;
+                return 1000.0f;
+            }
+            const float error = std::abs(value - anchor);
+            if (error <= softHalfExtent) {
+                return 0.0f;
+            }
+            outSoftViolation = true;
+            if (error > hardHalfExtent) {
+                outHardViolation = true;
+            }
+            const float range = (std::max)(
+                hardHalfExtent - softHalfExtent,
+                0.01f);
+            float normalized = (error - softHalfExtent) / range;
+            if (normalized > 1.0f) {
+                normalized = 1.0f + (normalized - 1.0f) * 2.5f;
+            }
+            return normalized * normalized;
+        }
+
+        struct ScreenCompositionEvaluation {
+            ViewportProjection primary{};
+            ViewportProjection secondary{};
+            float cost = std::numeric_limits<float>::max();
+            bool horizontalSoftViolation = true;
+            bool horizontalHardViolation = true;
+            bool verticalSoftViolation = true;
+            bool verticalHardViolation = true;
+
+            bool HasSoftViolation() const noexcept {
+                return horizontalSoftViolation || verticalSoftViolation;
+            }
+            bool HasHardViolation() const noexcept {
+                return horizontalHardViolation || verticalHardViolation;
+            }
+        };
+
+        ScreenCompositionEvaluation EvaluateScreenComposition(
+            const MATH::Vec3& primary,
+            const MATH::Vec3& secondary,
+            const MATH::Vec3& eye,
+            const MATH::Vec3& lookAt,
+            float verticalFovRadians,
+            float aspect,
+            const ScreenCompositionTargets& targets) noexcept {
+
+            ScreenCompositionEvaluation result{};
+            result.primary = ProjectPointToViewport(
+                eye,
+                lookAt,
+                primary,
+                verticalFovRadians,
+                aspect);
+            result.secondary = ProjectPointToViewport(
+                eye,
+                lookAt,
+                secondary,
+                verticalFovRadians,
+                aspect);
+            if (!result.primary.valid || !result.secondary.valid) {
+                return result;
+            }
+
+            result.horizontalSoftViolation = false;
+            result.horizontalHardViolation = false;
+            result.verticalSoftViolation = false;
+            result.verticalHardViolation = false;
+            float horizontalCost = 0.0f;
+            horizontalCost += AccumulateZoneCost(
+                result.primary.x,
+                targets.primaryX,
+                targets.softHalfWidth,
+                targets.hardHalfWidth,
+                result.horizontalSoftViolation,
+                result.horizontalHardViolation);
+            horizontalCost += AccumulateZoneCost(
+                result.secondary.x,
+                targets.secondaryX,
+                targets.softHalfWidth,
+                targets.hardHalfWidth,
+                result.horizontalSoftViolation,
+                result.horizontalHardViolation);
+            float verticalCost = 0.0f;
+            verticalCost += AccumulateZoneCost(
+                result.primary.y,
+                targets.primaryY,
+                targets.softHalfHeight,
+                targets.hardHalfHeight,
+                result.verticalSoftViolation,
+                result.verticalHardViolation);
+            verticalCost += AccumulateZoneCost(
+                result.secondary.y,
+                targets.secondaryY,
+                targets.softHalfHeight,
+                targets.hardHalfHeight,
+                result.verticalSoftViolation,
+                result.verticalHardViolation);
+            result.cost = horizontalCost + verticalCost * 0.60f;
+            return result;
+        }
+
+        float SearchCompositionYaw(
+            const CameraFollowComponent& component,
+            const MATH::Vec3& primary,
+            const MATH::Vec3& secondary,
+            const MATH::Vec3& lookAt,
+            float relationYaw,
+            float side,
+            float pitch,
+            float distance,
+            float verticalFovRadians,
+            float aspect,
+            float framingWeight,
+            float collisionBlend,
+            const ScreenCompositionTargets& targets) noexcept {
+
+            const float collisionDamping = 1.0f - std::clamp(
+                collisionBlend *
+                    component.GetScreenCompositionCollisionCenteringStrength() *
+                    0.72f,
+                0.0f,
+                0.90f);
+            const float maximumAngle =
+                component.GetScreenCompositionMaximumShoulderAngleDegrees() *
+                framingWeight * collisionDamping;
+            const float preferredAngle = std::min(
+                maximumAngle,
+                component.GetScreenCompositionPreferredShoulderAngleDegrees() *
+                    framingWeight * collisionDamping);
+            if (maximumAngle <= kInputEpsilon) {
+                return relationYaw;
+            }
+
+            float bestYaw = relationYaw + side * preferredAngle;
+            float bestCost = std::numeric_limits<float>::max();
+            float bestOffset = preferredAngle;
+            for (int sample = 0;
+                sample < kCompositionYawSearchSamples;
+                ++sample) {
+                const float amount = static_cast<float>(sample) /
+                    static_cast<float>(kCompositionYawSearchSamples - 1);
+                const float offset = maximumAngle * amount;
+                const float candidateYaw = relationYaw + side * offset;
+                const MATH::Vec3 eye = primary + OrbitDirection(
+                    candidateYaw,
+                    pitch) * distance;
+                const ScreenCompositionEvaluation evaluation =
+                    EvaluateScreenComposition(
+                        primary,
+                        secondary,
+                        eye,
+                        lookAt,
+                        verticalFovRadians,
+                        aspect,
+                        targets);
+                const float regularization = maximumAngle > kViewEpsilon
+                    ? (offset - preferredAngle) / maximumAngle
+                    : 0.0f;
+                const float cost = evaluation.cost +
+                    regularization * regularization * 0.08f;
+                if (cost < bestCost) {
+                    bestCost = cost;
+                    bestOffset = offset;
+                    bestYaw = candidateYaw;
+                }
+            }
+
+            float step = maximumAngle /
+                static_cast<float>(kCompositionYawSearchSamples - 1);
+            for (int iteration = 0; iteration < 3; ++iteration) {
+                for (float direction : { -1.0f, 1.0f }) {
+                    const float offset = std::clamp(
+                        bestOffset + direction * step,
+                        0.0f,
+                        maximumAngle);
+                    const float candidateYaw = relationYaw + side * offset;
+                    const MATH::Vec3 eye = primary + OrbitDirection(
+                        candidateYaw,
+                        pitch) * distance;
+                    const ScreenCompositionEvaluation evaluation =
+                        EvaluateScreenComposition(
+                            primary,
+                            secondary,
+                            eye,
+                            lookAt,
+                            verticalFovRadians,
+                            aspect,
+                            targets);
+                    const float regularization = maximumAngle > kViewEpsilon
+                        ? (offset - preferredAngle) / maximumAngle
+                        : 0.0f;
+                    const float cost = evaluation.cost +
+                        regularization * regularization * 0.08f;
+                    if (cost < bestCost) {
+                        bestCost = cost;
+                        bestOffset = offset;
+                        bestYaw = candidateYaw;
+                    }
+                }
+                step *= 0.5f;
+            }
+            return WrapDegrees(bestYaw);
+        }
+
+        float SearchCompositionPitch(
+            const CameraFollowComponent& component,
+            const MATH::Vec3& primary,
+            const MATH::Vec3& secondary,
+            const MATH::Vec3& lookAt,
+            float yaw,
+            float preferredPitch,
+            float distance,
+            float verticalFovRadians,
+            float aspect,
+            float framingWeight,
+            const ScreenCompositionTargets& targets) noexcept {
+
+            const float range = kCompositionPitchSearchRangeDegrees *
+                std::clamp(framingWeight, 0.0f, 1.0f);
+            const float minimumPitch = std::clamp(
+                preferredPitch - range,
+                component.GetMinimumPitchDegrees(),
+                component.GetMaximumPitchDegrees());
+            const float maximumPitch = std::clamp(
+                preferredPitch + range,
+                minimumPitch,
+                component.GetMaximumPitchDegrees());
+            float bestPitch = std::clamp(
+                preferredPitch,
+                minimumPitch,
+                maximumPitch);
+            float bestCost = std::numeric_limits<float>::max();
+            for (int sample = 0;
+                sample < kCompositionPitchSearchSamples;
+                ++sample) {
+                const float amount = static_cast<float>(sample) /
+                    static_cast<float>(kCompositionPitchSearchSamples - 1);
+                const float candidatePitch = Lerp(
+                    minimumPitch,
+                    maximumPitch,
+                    amount);
+                const MATH::Vec3 eye = primary + OrbitDirection(
+                    yaw,
+                    candidatePitch) * distance;
+                const ScreenCompositionEvaluation evaluation =
+                    EvaluateScreenComposition(
+                        primary,
+                        secondary,
+                        eye,
+                        lookAt,
+                        verticalFovRadians,
+                        aspect,
+                        targets);
+                const float regularization = range > kViewEpsilon
+                    ? (candidatePitch - preferredPitch) / range
+                    : 0.0f;
+                const float cost = evaluation.cost +
+                    regularization * regularization * 0.10f;
+                if (cost < bestCost) {
+                    bestCost = cost;
+                    bestPitch = candidatePitch;
+                }
+            }
+            return bestPitch;
+        }
+
         GameObject* ResolveTargetObject(
             World& world,
             GameObject& cameraObject,
@@ -263,7 +743,24 @@ namespace HIKARI {
             return -RadiansToDegrees(std::atan2(forward.x, forward.z));
         }
 
+        bool IsCameraCollisionBlocker(
+            World& world,
+            RuntimeObjectHandle objectHandle,
+            bool staticOnly) noexcept {
+
+            if (!staticOnly) {
+                return true;
+            }
+            const GameObject* object = world.FindObject(objectHandle);
+            const PhysicsBodyComponent* body = object != nullptr
+                ? object->GetComponent<PhysicsBodyComponent>()
+                : nullptr;
+            return body == nullptr || !body->IsEnabled() ||
+                body->GetMotionType() == PHYSICS::PhysicsMotionType::Static;
+        }
+
         float ResolveCollisionDistance(
+            World& world,
             PHYSICS::PhysicsWorldService* physics,
             const CameraFollowComponent& component,
             const GameObject& target,
@@ -278,27 +775,54 @@ namespace HIKARI {
                 return desiredDistance;
             }
 
-            PHYSICS::PhysicsShapeCastQuery query{};
-            query.shape.type = PHYSICS::PhysicsShapeType::Sphere;
-            query.shape.radius = component.GetCollisionRadius();
-            query.startPose.position = pivot;
-            query.startPose.rotation = MATH::Quat::Identity();
-            query.direction = direction;
-            query.maxDistance = desiredDistance;
-            query.filter.layerMask = component.GetCollisionLayerMask();
-            query.filter.includeTriggers = false;
-            query.filter.ignoredObject = target.GetRuntimeHandle();
+            float traveledDistance = 0.0f;
+            RuntimeObjectHandle ignoredObject = target.GetRuntimeHandle();
+            for (int pass = 0; pass < 4; ++pass) {
+                const float remainingDistance =
+                    desiredDistance - traveledDistance;
+                if (remainingDistance <= kViewEpsilon) {
+                    return desiredDistance;
+                }
 
-            PHYSICS::PhysicsHit hit{};
-            if (!physics->ShapeCast(query, hit)) {
-                return desiredDistance;
+                PHYSICS::PhysicsShapeCastQuery query{};
+                query.shape.type = PHYSICS::PhysicsShapeType::Sphere;
+                query.shape.radius = component.GetCollisionRadius();
+                query.startPose.position =
+                    pivot + direction * traveledDistance;
+                query.startPose.rotation = MATH::Quat::Identity();
+                query.direction = direction;
+                query.maxDistance = remainingDistance;
+                query.filter.layerMask = component.GetCollisionLayerMask();
+                query.filter.includeTriggers = false;
+                query.filter.ignoredObject = ignoredObject;
+
+                PHYSICS::PhysicsHit hit{};
+                if (!physics->ShapeCast(query, hit)) {
+                    return desiredDistance;
+                }
+                if (!IsCameraCollisionBlocker(
+                        world,
+                        hit.object,
+                        component.GetCollisionStaticOnly())) {
+                    const float skipDistance = (std::max)(
+                        hit.distance + component.GetCollisionRadius() * 2.0f +
+                            component.GetCollisionPadding(),
+                        0.05f);
+                    traveledDistance += skipDistance;
+                    ignoredObject = hit.object;
+                    continue;
+                }
+
+                const float limitedDistance = std::clamp(
+                    traveledDistance + hit.distance -
+                        component.GetCollisionPadding(),
+                    component.GetMinimumDistance(),
+                    desiredDistance);
+                outLimited =
+                    limitedDistance + kViewEpsilon < desiredDistance;
+                return limitedDistance;
             }
-            const float limitedDistance = std::clamp(
-                hit.distance - component.GetCollisionPadding(),
-                component.GetMinimumDistance(),
-                desiredDistance);
-            outLimited = limitedDistance + kViewEpsilon < desiredDistance;
-            return limitedDistance;
+            return desiredDistance;
         }
     }
 
@@ -313,6 +837,8 @@ namespace HIKARI {
             PresentationTransformService>();
         runtimePlayState_ = world.Services().Find<
             RuntimePlayStateService>();
+        gameplayCameraService_ = world.Services().Find<
+            GameplayCameraService>();
     }
 
     void CameraFollowSystem::OnWorldDetached(World&) {
@@ -322,6 +848,7 @@ namespace HIKARI {
         physicsService_ = nullptr;
         presentationTransforms_ = nullptr;
         runtimePlayState_ = nullptr;
+        gameplayCameraService_ = nullptr;
     }
 
     void CameraFollowSystem::LateUpdate(
@@ -354,7 +881,7 @@ namespace HIKARI {
         world.ForEachObjectWith<CameraComponent, CameraFollowComponent>(
             [this, input, dt, cameraDt, frameIndex = frame.frameIndex](
                 GameObject& cameraObject,
-                CameraComponent&,
+                CameraComponent& cameraComponent,
                 CameraFollowComponent& component) {
                 if (!component.IsEnabled()) {
                     component.ResetRuntimeState();
@@ -465,6 +992,55 @@ namespace HIKARI {
                 const bool suppressZoomInput = hasFramingSubmission
                     ? targetFraming.suppressZoomInput
                     : component.GetRuntimeFramingSuppressZoomInput();
+                const bool relationshipShotSubmission =
+                    hasFramingSubmission && targetFraming.relationshipShot;
+                const bool hadRelationshipShotState =
+                    component.HasRuntimeRelationshipShotState();
+                const float relationshipPreferredSide =
+                    relationshipShotSubmission
+                    ? targetFraming.relationshipPreferredSide
+                    : component.GetRuntimeRelationshipPreferredSide();
+                const float relationshipShoulderAngleDegrees =
+                    relationshipShotSubmission
+                    ? targetFraming.relationshipShoulderAngleDegrees
+                    : component.GetRuntimeRelationshipShoulderAngleDegrees();
+                const float relationshipVerticalFovOffsetRadians =
+                    relationshipShotSubmission
+                    ? targetFraming.relationshipVerticalFovOffsetRadians
+                    : component.
+                        GetRuntimeRelationshipVerticalFovOffsetRadians();
+                const float relationshipRollRadians =
+                    relationshipShotSubmission
+                    ? targetFraming.relationshipRollRadians
+                    : component.GetRuntimeRelationshipRollRadians();
+                const float relationshipSideClearanceBias =
+                    relationshipShotSubmission
+                    ? targetFraming.relationshipSideClearanceBias
+                    : component.GetRuntimeRelationshipSideClearanceBias();
+                const float relationshipDistanceOffset =
+                    relationshipShotSubmission
+                    ? targetFraming.relationshipDistanceOffset
+                    : component.GetRuntimeRelationshipDistanceOffset();
+                const float relationshipPivotHeightOffset =
+                    relationshipShotSubmission
+                    ? targetFraming.relationshipPivotHeightOffset
+                    : component.GetRuntimeRelationshipPivotHeightOffset();
+                const float relationshipFocusLateralOffset =
+                    relationshipShotSubmission
+                    ? targetFraming.relationshipFocusLateralOffset
+                    : component.GetRuntimeRelationshipFocusLateralOffset();
+                const float relationshipFocusHeightOffset =
+                    relationshipShotSubmission
+                    ? targetFraming.relationshipFocusHeightOffset
+                    : component.GetRuntimeRelationshipFocusHeightOffset();
+                const bool relationshipSuppressModifiers =
+                    relationshipShotSubmission
+                    ? targetFraming.relationshipSuppressModifiers
+                    : component.GetRuntimeRelationshipSuppressModifiers();
+                float relationshipYawOffsetDegrees =
+                    hadRelationshipShotState
+                    ? component.GetRuntimeRelationshipYawOffsetDegrees()
+                    : 0.0f;
                 const bool targetHandleChanged = hasFramingSubmission &&
                     (!hadFramingSubmission ||
                         framingTarget != previousFramingTarget ||
@@ -519,8 +1095,9 @@ namespace HIKARI {
                         framingSwitchRemainingSeconds > kInputEpsilon;
                 }
 
-                MATH::Vec3 secondaryPivot =
+                const MATH::Vec3 previousSecondaryPivot =
                     component.GetRuntimeFramingSecondaryPivot();
+                MATH::Vec3 secondaryPivot = previousSecondaryPivot;
                 MATH::Vec3 secondaryPivotVelocity = component
                     .GetRuntimeFramingSecondaryPivotVelocity();
                 if (framingStateDormant) {
@@ -597,6 +1174,37 @@ namespace HIKARI {
                     framingWeight,
                     0.0f,
                     1.0f);
+                const float previousRelationshipWeight =
+                    hadRelationshipShotState
+                    ? component.GetRuntimeRelationshipWeight()
+                    : 0.0f;
+                float relationshipWeightVelocity =
+                    hadRelationshipShotState
+                    ? component.GetRuntimeRelationshipWeightVelocity()
+                    : 0.0f;
+                const float desiredRelationshipWeight =
+                    relationshipShotSubmission && secondaryTarget != nullptr
+                    ? std::clamp(targetFraming.weight, 0.0f, 1.0f)
+                    : 0.0f;
+                const float relationshipSmoothSeconds =
+                    desiredRelationshipWeight >
+                            previousRelationshipWeight + kInputEpsilon
+                    ? framingDynamics.enterSmoothSeconds
+                    : framingDynamics.exitSmoothSeconds;
+                const float relationshipWeight = SmoothDampScalar(
+                    previousRelationshipWeight,
+                    desiredRelationshipWeight,
+                    relationshipWeightVelocity,
+                    relationshipSmoothSeconds,
+                    -1.0f,
+                    cameraDt);
+                const float clampedRelationshipWeight = std::clamp(
+                    relationshipWeight,
+                    0.0f,
+                    1.0f);
+                const bool relationshipShotResponseActive =
+                    desiredRelationshipWeight > kInputEpsilon ||
+                    clampedRelationshipWeight > kInputEpsilon;
                 const bool hasTargetFraming =
                     secondaryTarget != nullptr &&
                     hasFramingSubmission &&
@@ -674,70 +1282,6 @@ namespace HIKARI {
                     lookIdleSeconds += cameraDt;
                 }
 
-                float framingYawVelocity = hadFramingState
-                    ? component.GetRuntimeFramingYawVelocity()
-                    : 0.0f;
-                float framingPitchVelocity = hadFramingState
-                    ? component.GetRuntimeFramingPitchVelocity()
-                    : 0.0f;
-                if (framingResponseActive) {
-                    MATH::Vec3 targetDirection = secondaryPivot - pivot;
-                    targetDirection.y = 0.0f;
-                    if (framingYawSpeed <= kInputEpsilon) {
-                        framingYawVelocity = 0.0f;
-                    } else if (MATH::IsFinite(targetDirection) &&
-                        MATH::Length(targetDirection) > kViewEpsilon) {
-                        targetDirection = MATH::Normalize(targetDirection);
-                        const float targetYaw = -RadiansToDegrees(std::atan2(
-                            targetDirection.x,
-                            targetDirection.z));
-                        const float yawError = WrapDegrees(targetYaw - yaw);
-                        const float deadZone = std::clamp(
-                            framingDynamics.yawDeadZoneDegrees,
-                            0.0f,
-                            180.0f);
-                        const float outsideDeadZone = (std::max)(
-                            std::abs(yawError) - deadZone,
-                            0.0f);
-                        const float yawTarget = yaw +
-                            (yawError >= 0.0f ? 1.0f : -1.0f) *
-                            outsideDeadZone * clampedFramingWeight;
-                        yaw = SmoothDampAngle(
-                            yaw,
-                            yawTarget,
-                            framingYawVelocity,
-                            framingDynamics.yawSmoothSeconds,
-                            (std::max)(
-                                framingYawSpeed,
-                                0.0f) * clampedFramingWeight,
-                            cameraDt);
-                    } else {
-                        framingYawVelocity = 0.0f;
-                    }
-                    const float preferredPitch = std::clamp(
-                        framingPreferredPitch,
-                        component.GetMinimumPitchDegrees(),
-                        component.GetMaximumPitchDegrees());
-                    const float pitchTarget = pitch +
-                        (preferredPitch - pitch) * clampedFramingWeight;
-                    if (framingPitchTrackingSpeed <= kInputEpsilon) {
-                        framingPitchVelocity = 0.0f;
-                    } else {
-                        pitch = SmoothDampScalar(
-                            pitch,
-                            pitchTarget,
-                            framingPitchVelocity,
-                            framingDynamics.pitchSmoothSeconds,
-                            framingPitchTrackingSpeed *
-                                clampedFramingWeight,
-                            cameraDt);
-                    }
-                    lookIdleSeconds = 0.0f;
-                } else {
-                    framingYawVelocity = 0.0f;
-                    framingPitchVelocity = 0.0f;
-                }
-
                 if (std::abs(zoom) > kInputEpsilon) {
                     const bool gamepadZoom = input != nullptr &&
                         input->GetLastActiveDevice() ==
@@ -751,6 +1295,452 @@ namespace HIKARI {
                     desiredDistance,
                     component.GetMinimumDistance(),
                     component.GetMaximumDistance());
+
+                const float followAmount = SmoothFactor(
+                    component.GetFollowSmooth(), dt);
+                const MATH::Vec3 trackedFollowPivot =
+                    component.GetRuntimeFollowPivot() +
+                    (pivot - component.GetRuntimeFollowPivot()) *
+                        followAmount;
+                MATH::Vec3 followPivot = trackedFollowPivot;
+                if (relationshipShotResponseActive) {
+                    followPivot.y += relationshipPivotHeightOffset *
+                        clampedRelationshipWeight;
+                }
+                float compositionCollisionBlend = hadFramingState
+                    ? component.GetRuntimeScreenCompositionCollisionBlend()
+                    : 0.0f;
+                float compositionCollisionBlendVelocity = hadFramingState
+                    ? component
+                        .GetRuntimeScreenCompositionCollisionBlendVelocity()
+                    : 0.0f;
+                float compositionSide = hadFramingState
+                    ? component.GetRuntimeScreenCompositionSide()
+                    : 1.0f;
+                const float screenCompositionWeight =
+                    clampedFramingWeight * ScreenCompositionPolicyWeight(
+                        framingTargetWeight);
+                const bool screenCompositionActive =
+                    component.IsScreenCompositionEnabled() &&
+                    secondaryTarget != nullptr &&
+                    framingResponseActive &&
+                    screenCompositionWeight > kInputEpsilon;
+
+                MATH::Vec3 focusVelocity = hadFramingState
+                    ? component.GetRuntimeFramingFocusVelocity()
+                    : MATH::Vec3{};
+                MATH::Vec3 focusOffset = hadFramingState
+                    ? component.GetRuntimeFramingFocusOffset()
+                    : MATH::Vec3{};
+                const float focusWeight =
+                    std::clamp(framingTargetWeight, 0.0f, 1.0f) *
+                    clampedFramingWeight;
+                MATH::Vec3 desiredFocusOffset =
+                    (secondaryPivot - followPivot) * focusWeight;
+                if (relationshipShotResponseActive) {
+                    MATH::Vec3 relationshipForward =
+                        secondaryPivot - followPivot;
+                    relationshipForward.y = 0.0f;
+                    if (MATH::IsFinite(relationshipForward) &&
+                        MATH::Length(relationshipForward) > kViewEpsilon) {
+                        relationshipForward = MATH::Normalize(
+                            relationshipForward);
+                        const MATH::Vec3 relationshipRight{
+                            relationshipForward.z,
+                            0.0f,
+                            -relationshipForward.x };
+                        const float relationshipSide =
+                            std::abs(relationshipYawOffsetDegrees) > 0.01f
+                            ? relationshipYawOffsetDegrees >= 0.0f
+                                ? 1.0f
+                                : -1.0f
+                            : 0.0f;
+                        desiredFocusOffset = desiredFocusOffset +
+                            relationshipRight *
+                                (relationshipFocusLateralOffset *
+                                    relationshipSide *
+                                    clampedRelationshipWeight);
+                    }
+                    desiredFocusOffset.y +=
+                        relationshipFocusHeightOffset *
+                            clampedRelationshipWeight;
+                }
+                if (screenCompositionActive) {
+                    const float collisionHeightReduction = 1.0f -
+                        std::clamp(
+                            compositionCollisionBlend *
+                                component
+                                    .GetScreenCompositionCollisionCenteringStrength() *
+                                0.50f,
+                            0.0f,
+                            0.85f);
+                    desiredFocusOffset.y +=
+                        component.GetScreenCompositionFocusHeightBias() *
+                        screenCompositionWeight * collisionHeightReduction;
+                }
+                focusOffset = SmoothDampVector(
+                    focusOffset,
+                    desiredFocusOffset,
+                    focusVelocity,
+                    framingDynamics.focusSmoothSeconds,
+                    cameraDt);
+                const bool focusResponseActive = framingResponseActive ||
+                    MATH::Length(focusOffset) > kViewEpsilon ||
+                    MATH::Length(focusVelocity) > kViewEpsilon;
+                const MATH::Vec3 lookAt = focusResponseActive
+                    ? followPivot + focusOffset
+                    : component.GetRuntimeLookAt() +
+                        (pivot - component.GetRuntimeLookAt()) *
+                        SmoothFactor(component.GetLookSmooth(), dt);
+
+                float framingDistance = desiredDistance;
+                if (secondaryTarget != nullptr) {
+                    MATH::Vec3 separation = secondaryPivot - pivot;
+                    separation.y = 0.0f;
+                    const float separationLength = MATH::Length(separation);
+                    const float scaledSeparation =
+                        std::isfinite(separationLength)
+                        ? separationLength * framingDistanceScale
+                        : framingMaximumDistanceOffset;
+                    const float distanceOffset = std::min(
+                        framingMaximumDistanceOffset,
+                        std::isfinite(scaledSeparation)
+                        ? scaledSeparation
+                        : framingMaximumDistanceOffset);
+                    framingDistance = std::clamp(
+                        desiredDistance +
+                            distanceOffset * clampedFramingWeight,
+                        component.GetMinimumDistance(),
+                        component.GetMaximumDistance());
+                }
+                if (relationshipShotResponseActive) {
+                    framingDistance = std::clamp(
+                        framingDistance + relationshipDistanceOffset *
+                            clampedRelationshipWeight,
+                        component.GetMinimumDistance(),
+                        component.GetMaximumDistance());
+                }
+
+                const float compositionDistance = std::clamp(
+                    std::isfinite(component.GetRuntimeDistance())
+                        ? component.GetRuntimeDistance()
+                        : framingDistance,
+                    component.GetMinimumDistance(),
+                    component.GetMaximumDistance());
+                // An active relationship shot owns the pose FOV. Starting
+                // from the authored component FOV prevents the previous
+                // frame's relationship offset and ordinary modifiers from
+                // being accumulated again on every LateUpdate.
+                float verticalFovRadians = relationshipShotResponseActive
+                    ? cameraComponent.GetFovYRad()
+                    : ResolveGameplayVerticalFov(
+                        gameplayCameraService_,
+                        cameraComponent.GetFovYRad());
+                if (relationshipShotResponseActive) {
+                    verticalFovRadians = std::clamp(
+                        verticalFovRadians +
+                            relationshipVerticalFovOffsetRadians *
+                                clampedRelationshipWeight,
+                        DegreesToRadians(5.0f),
+                        DegreesToRadians(150.0f));
+                }
+                const float gameplayAspect = ResolveGameplayAspect(
+                    gameplayCameraService_);
+                MATH::Vec3 compositionSecondaryPivot = secondaryPivot;
+                if (screenCompositionActive && hadFramingSubmission &&
+                    !targetHandleChanged && !framingSwitchActive &&
+                    cameraDt > kViewEpsilon) {
+                    MATH::Vec3 prediction =
+                        (secondaryPivot - previousSecondaryPivot) *
+                        (kCompositionTargetPredictionSeconds / cameraDt);
+                    const float predictionLength = MATH::Length(prediction);
+                    if (MATH::IsFinite(prediction) &&
+                        std::isfinite(predictionLength) &&
+                        predictionLength > kCompositionMaximumPredictionDistance) {
+                        prediction = prediction *
+                            (kCompositionMaximumPredictionDistance /
+                                predictionLength);
+                    }
+                    if (MATH::IsFinite(prediction)) {
+                        compositionSecondaryPivot =
+                            compositionSecondaryPivot + prediction;
+                    }
+                }
+                MATH::Vec3 targetDirection = secondaryPivot - pivot;
+                targetDirection.y = 0.0f;
+                const bool hasRelationDirection =
+                    MATH::IsFinite(targetDirection) &&
+                    MATH::Length(targetDirection) > kViewEpsilon;
+                float relationYaw = yaw;
+                if (hasRelationDirection) {
+                    targetDirection = MATH::Normalize(targetDirection);
+                    relationYaw = -RadiansToDegrees(std::atan2(
+                        targetDirection.x,
+                        targetDirection.z));
+                }
+                float compositionRelationYaw = relationYaw;
+                MATH::Vec3 compositionTargetDirection =
+                    compositionSecondaryPivot - pivot;
+                compositionTargetDirection.y = 0.0f;
+                if (screenCompositionActive &&
+                    MATH::IsFinite(compositionTargetDirection) &&
+                    MATH::Length(compositionTargetDirection) > kViewEpsilon) {
+                    compositionTargetDirection = MATH::Normalize(
+                        compositionTargetDirection);
+                    compositionRelationYaw = -RadiansToDegrees(std::atan2(
+                        compositionTargetDirection.x,
+                        compositionTargetDirection.z));
+                }
+
+                const bool chooseRelationshipSide =
+                    relationshipShotSubmission && hasRelationDirection &&
+                    (!hadRelationshipShotState || targetHandleChanged ||
+                        !component.HasRuntimeRelationshipShotSubmission());
+                if (chooseRelationshipSide) {
+                    const float shoulderAngle = std::clamp(
+                        relationshipShoulderAngleDegrees,
+                        0.0f,
+                        75.0f);
+                    const float preferredSign =
+                        std::abs(relationshipPreferredSide) > 0.10f
+                        ? relationshipPreferredSide >= 0.0f ? 1.0f : -1.0f
+                        : compositionSide >= 0.0f ? 1.0f : -1.0f;
+                    const float preferredOffset =
+                        preferredSign * shoulderAngle;
+                    const float alternateOffset = -preferredOffset;
+                    const auto clearanceForOffset = [&](float yawOffset) {
+                        bool limited = false;
+                        return ResolveCollisionDistance(
+                            *cameraObject.GetWorld(),
+                            physicsService_,
+                            component,
+                            *target,
+                            followPivot,
+                            OrbitDirection(
+                                WrapDegrees(relationYaw + yawOffset),
+                                framingPreferredPitch),
+                            framingDistance,
+                            limited);
+                    };
+                    const float preferredClearance =
+                        clearanceForOffset(preferredOffset);
+                    const float alternateClearance =
+                        clearanceForOffset(alternateOffset);
+                    const float centeredClearance =
+                        clearanceForOffset(0.0f);
+                    const float bestOtherClearance = (std::max)(
+                        alternateClearance,
+                        centeredClearance);
+                    if (preferredClearance +
+                            relationshipSideClearanceBias >=
+                        bestOtherClearance) {
+                        relationshipYawOffsetDegrees = preferredOffset;
+                    }
+                    else if (alternateClearance >= centeredClearance) {
+                        relationshipYawOffsetDegrees = alternateOffset;
+                    }
+                    else {
+                        relationshipYawOffsetDegrees = 0.0f;
+                    }
+                    if (std::abs(relationshipYawOffsetDegrees) > 0.01f) {
+                        compositionSide = relationshipYawOffsetDegrees >= 0.0f
+                            ? 1.0f
+                            : -1.0f;
+                    }
+                    else {
+                        compositionSide = preferredSign;
+                    }
+                }
+                else if (relationshipShotSubmission &&
+                    hasRelationDirection &&
+                    std::abs(relationshipYawOffsetDegrees) > 0.01f) {
+                    // Keep the collision-selected side fixed, but allow the
+                    // authored shoulder magnitude to evolve with the shot.
+                    relationshipYawOffsetDegrees =
+                        (relationshipYawOffsetDegrees >= 0.0f
+                            ? 1.0f
+                            : -1.0f) *
+                        std::clamp(
+                            relationshipShoulderAngleDegrees,
+                            0.0f,
+                            75.0f);
+                }
+
+                if (!relationshipShotResponseActive &&
+                    screenCompositionActive && hasRelationDirection &&
+                    (framingStateDormant || targetHandleChanged ||
+                        !component.IsRuntimeScreenCompositionActive())) {
+                    const MATH::Vec3 currentEye = followPivot +
+                        OrbitDirection(yaw, pitch) * compositionDistance;
+                    const ViewportProjection primaryProjection =
+                        ProjectPointToViewport(
+                            currentEye,
+                            lookAt,
+                            followPivot,
+                            verticalFovRadians,
+                            gameplayAspect);
+                    const ViewportProjection secondaryProjection =
+                        ProjectPointToViewport(
+                            currentEye,
+                            lookAt,
+                            secondaryPivot,
+                            verticalFovRadians,
+                            gameplayAspect);
+                    if (primaryProjection.valid && secondaryProjection.valid &&
+                        std::abs(
+                            secondaryProjection.x - primaryProjection.x) >
+                            0.015f) {
+                        compositionSide = secondaryProjection.x >=
+                            primaryProjection.x
+                            ? 1.0f
+                            : -1.0f;
+                    } else {
+                        const float currentShoulder = WrapDegrees(
+                            yaw - relationYaw);
+                        if (std::abs(currentShoulder) > 3.0f) {
+                            compositionSide = currentShoulder >= 0.0f
+                                ? 1.0f
+                                : -1.0f;
+                        }
+                    }
+                }
+
+                const ScreenCompositionTargets compositionTargets =
+                    BuildCompositionTargets(
+                        component,
+                        compositionSide,
+                        screenCompositionWeight,
+                        compositionCollisionBlend);
+                const MATH::Vec3 compositionEye = followPivot +
+                    OrbitDirection(yaw, pitch) * compositionDistance;
+                const ScreenCompositionEvaluation currentComposition =
+                    screenCompositionActive
+                    ? EvaluateScreenComposition(
+                        followPivot,
+                        compositionSecondaryPivot,
+                        compositionEye,
+                        lookAt,
+                        verticalFovRadians,
+                        gameplayAspect,
+                        compositionTargets)
+                    : ScreenCompositionEvaluation{};
+
+                float framingYawVelocity = hadFramingState
+                    ? component.GetRuntimeFramingYawVelocity()
+                    : 0.0f;
+                float framingPitchVelocity = hadFramingState
+                    ? component.GetRuntimeFramingPitchVelocity()
+                    : 0.0f;
+                if (framingResponseActive) {
+                    if (framingYawSpeed <= kInputEpsilon) {
+                        framingYawVelocity = 0.0f;
+                    } else if (hasRelationDirection) {
+                        float targetYaw = relationYaw;
+                        float yawResponseWeight = clampedFramingWeight;
+                        float yawSmoothSeconds =
+                            framingDynamics.yawSmoothSeconds;
+                        if (relationshipShotResponseActive) {
+                            targetYaw = WrapDegrees(
+                                relationYaw +
+                                    relationshipYawOffsetDegrees);
+                            yawResponseWeight = clampedRelationshipWeight;
+                        }
+                        else if (screenCompositionActive) {
+                            targetYaw = currentComposition
+                                .horizontalSoftViolation
+                                ? SearchCompositionYaw(
+                                    component,
+                                    followPivot,
+                                    compositionSecondaryPivot,
+                                    lookAt,
+                                    compositionRelationYaw,
+                                    compositionSide,
+                                    pitch,
+                                    compositionDistance,
+                                    verticalFovRadians,
+                                    gameplayAspect,
+                                    screenCompositionWeight,
+                                    compositionCollisionBlend,
+                                    compositionTargets)
+                                : yaw;
+                            if (currentComposition
+                                .horizontalHardViolation) {
+                                yawSmoothSeconds *= component
+                                    .GetScreenCompositionHardResponseScale();
+                            }
+                        }
+                        const float yawError = WrapDegrees(targetYaw - yaw);
+                        const float deadZone = std::clamp(
+                            framingDynamics.yawDeadZoneDegrees,
+                            0.0f,
+                            180.0f);
+                        const float outsideDeadZone = (std::max)(
+                            std::abs(yawError) - deadZone,
+                            0.0f);
+                        const float yawTarget = yaw +
+                            (yawError >= 0.0f ? 1.0f : -1.0f) *
+                            outsideDeadZone * yawResponseWeight;
+                        yaw = SmoothDampAngle(
+                            yaw,
+                            yawTarget,
+                            framingYawVelocity,
+                            yawSmoothSeconds,
+                            (std::max)(
+                                framingYawSpeed,
+                                0.0f) * yawResponseWeight,
+                            cameraDt);
+                    } else {
+                        framingYawVelocity = 0.0f;
+                    }
+
+                    const float preferredPitch = std::clamp(
+                        framingPreferredPitch,
+                        component.GetMinimumPitchDegrees(),
+                        component.GetMaximumPitchDegrees());
+                    float resolvedPitchTarget = preferredPitch;
+                    float pitchSmoothSeconds =
+                        framingDynamics.pitchSmoothSeconds;
+                    if (screenCompositionActive) {
+                        resolvedPitchTarget = currentComposition
+                            .verticalSoftViolation
+                            ? SearchCompositionPitch(
+                                component,
+                                followPivot,
+                                compositionSecondaryPivot,
+                                lookAt,
+                                yaw,
+                                preferredPitch,
+                                compositionDistance,
+                                verticalFovRadians,
+                                gameplayAspect,
+                                screenCompositionWeight,
+                                compositionTargets)
+                            : pitch;
+                        if (currentComposition.verticalHardViolation) {
+                            pitchSmoothSeconds *= component
+                                .GetScreenCompositionHardResponseScale();
+                        }
+                    }
+                    const float pitchTarget = pitch +
+                        (resolvedPitchTarget - pitch) *
+                            clampedFramingWeight;
+                    if (framingPitchTrackingSpeed <= kInputEpsilon) {
+                        framingPitchVelocity = 0.0f;
+                    } else {
+                        pitch = SmoothDampScalar(
+                            pitch,
+                            pitchTarget,
+                            framingPitchVelocity,
+                            pitchSmoothSeconds,
+                            framingPitchTrackingSpeed *
+                                clampedFramingWeight,
+                            cameraDt);
+                    }
+                    lookIdleSeconds = 0.0f;
+                } else {
+                    framingYawVelocity = 0.0f;
+                    framingPitchVelocity = 0.0f;
+                }
 
                 const float targetSpeed = dt > kViewEpsilon
                     ? MATH::Length(
@@ -787,63 +1777,11 @@ namespace HIKARI {
                     pitch,
                     component.GetMinimumPitchDegrees(),
                     component.GetMaximumPitchDegrees());
-
-                const float followAmount = SmoothFactor(
-                    component.GetFollowSmooth(), dt);
-                const MATH::Vec3 followPivot =
-                    component.GetRuntimeFollowPivot() +
-                    (pivot - component.GetRuntimeFollowPivot()) *
-                        followAmount;
-                MATH::Vec3 focusVelocity = hadFramingState
-                    ? component.GetRuntimeFramingFocusVelocity()
-                    : MATH::Vec3{};
-                MATH::Vec3 focusOffset = hadFramingState
-                    ? component.GetRuntimeFramingFocusOffset()
-                    : MATH::Vec3{};
-                const float focusWeight =
-                    std::clamp(framingTargetWeight, 0.0f, 1.0f) *
-                    clampedFramingWeight;
-                const MATH::Vec3 desiredFocusOffset =
-                    (secondaryPivot - followPivot) * focusWeight;
-                focusOffset = SmoothDampVector(
-                    focusOffset,
-                    desiredFocusOffset,
-                    focusVelocity,
-                    framingDynamics.focusSmoothSeconds,
-                    cameraDt);
-                const bool focusResponseActive = framingResponseActive ||
-                    MATH::Length(focusOffset) > kViewEpsilon ||
-                    MATH::Length(focusVelocity) > kViewEpsilon;
-                const MATH::Vec3 lookAt = focusResponseActive
-                    ? followPivot + focusOffset
-                    : component.GetRuntimeLookAt() +
-                        (pivot - component.GetRuntimeLookAt()) *
-                        SmoothFactor(component.GetLookSmooth(), dt);
                 const MATH::Vec3 orbitDirection = OrbitDirection(yaw, pitch);
-
-                float framingDistance = desiredDistance;
-                if (secondaryTarget != nullptr) {
-                    MATH::Vec3 separation = secondaryPivot - pivot;
-                    separation.y = 0.0f;
-                    const float separationLength = MATH::Length(separation);
-                    const float scaledSeparation =
-                        std::isfinite(separationLength)
-                        ? separationLength * framingDistanceScale
-                        : framingMaximumDistanceOffset;
-                    const float distanceOffset = std::min(
-                        framingMaximumDistanceOffset,
-                        std::isfinite(scaledSeparation)
-                        ? scaledSeparation
-                        : framingMaximumDistanceOffset);
-                    framingDistance = std::clamp(
-                        desiredDistance +
-                            distanceOffset * clampedFramingWeight,
-                        component.GetMinimumDistance(),
-                        component.GetMaximumDistance());
-                }
 
                 bool collisionLimited = false;
                 const float collisionDistance = ResolveCollisionDistance(
+                    *cameraObject.GetWorld(),
                     physicsService_,
                     component,
                     *target,
@@ -896,6 +1834,45 @@ namespace HIKARI {
                 const MATH::Vec3 eye =
                     followPivot + orbitDirection * resolvedDistance;
 
+                const float collisionRange = (std::max)(
+                    framingDistance - component.GetMinimumDistance(),
+                    0.01f);
+                const float collisionPressure = collisionLimited
+                    ? std::clamp(
+                        (framingDistance - resolvedDistance) /
+                            collisionRange * 1.4f,
+                        0.0f,
+                        1.0f)
+                    : 0.0f;
+                const float collisionBlendSmoothSeconds =
+                    collisionPressure > compositionCollisionBlend
+                    ? 0.10f
+                    : 0.28f;
+                compositionCollisionBlend = SmoothDampScalar(
+                    compositionCollisionBlend,
+                    screenCompositionActive ? collisionPressure : 0.0f,
+                    compositionCollisionBlendVelocity,
+                    collisionBlendSmoothSeconds,
+                    -1.0f,
+                    cameraDt);
+                const ScreenCompositionTargets finalCompositionTargets =
+                    BuildCompositionTargets(
+                        component,
+                        compositionSide,
+                        screenCompositionWeight,
+                        compositionCollisionBlend);
+                const ScreenCompositionEvaluation finalComposition =
+                    screenCompositionActive
+                    ? EvaluateScreenComposition(
+                        followPivot,
+                        secondaryPivot,
+                        eye,
+                        lookAt,
+                        verticalFovRadians,
+                        gameplayAspect,
+                        finalCompositionTargets)
+                    : ScreenCompositionEvaluation{};
+
                 component.SetRuntimeOrbit(
                     yaw,
                     pitch,
@@ -906,7 +1883,7 @@ namespace HIKARI {
                     eye,
                     lookAt,
                     collisionLimited);
-                component.SetRuntimeTracking(followPivot, pivot);
+                component.SetRuntimeTracking(trackedFollowPivot, pivot);
                 component.SetRuntimeFramingState(
                     hasFramingSubmission,
                     framingTarget,
@@ -932,6 +1909,42 @@ namespace HIKARI {
                     focusOffset,
                     focusVelocity,
                     distanceVelocity);
+                component.SetRuntimeRelationshipShotState(
+                    relationshipShotSubmission,
+                    relationshipPreferredSide,
+                    relationshipShoulderAngleDegrees,
+                    relationshipVerticalFovOffsetRadians,
+                    relationshipRollRadians,
+                    relationshipSideClearanceBias,
+                    relationshipDistanceOffset,
+                    relationshipPivotHeightOffset,
+                    relationshipFocusLateralOffset,
+                    relationshipFocusHeightOffset,
+                    relationshipSuppressModifiers,
+                    relationshipYawOffsetDegrees,
+                    clampedRelationshipWeight,
+                    relationshipWeightVelocity);
+                component.SetRuntimeScreenCompositionState(
+                    screenCompositionActive,
+                    compositionSide,
+                    screenCompositionActive
+                        ? finalComposition.primary.x
+                        : 0.5f,
+                    screenCompositionActive
+                        ? finalComposition.primary.y
+                        : 0.5f,
+                    screenCompositionActive
+                        ? finalComposition.secondary.x
+                        : 0.5f,
+                    screenCompositionActive
+                        ? finalComposition.secondary.y
+                        : 0.5f,
+                    screenCompositionActive &&
+                        finalComposition.HasSoftViolation(),
+                    screenCompositionActive &&
+                        finalComposition.HasHardViolation(),
+                    compositionCollisionBlend,
+                    compositionCollisionBlendVelocity);
 
                 CAMERA::CameraRigSubmission submission{};
                 submission.cameraObjectId =
@@ -940,8 +1953,34 @@ namespace HIKARI {
                 submission.priority = component.GetPriority();
                 submission.pose.eye = eye;
                 submission.pose.target = lookAt;
-                submission.pose.up = { 0.0f, 1.0f, 0.0f };
-                (void)rigService_->SubmitPose(submission);
+                MATH::Vec3 resolvedUp{ 0.0f, 1.0f, 0.0f };
+                if (relationshipShotResponseActive &&
+                    std::abs(relationshipRollRadians) > kViewEpsilon) {
+                    const MATH::Vec3 viewForward = MATH::Normalize(
+                        lookAt - eye);
+                    if (MATH::Length(viewForward) > kViewEpsilon) {
+                        const float roll = relationshipRollRadians *
+                            clampedRelationshipWeight;
+                        const MATH::Vec3 viewRight = MATH::Normalize(
+                            MATH::Cross(resolvedUp, viewForward));
+                        resolvedUp = MATH::Normalize(
+                            resolvedUp * std::cos(roll) +
+                            viewRight * std::sin(roll));
+                    }
+                }
+                submission.pose.up = resolvedUp;
+                submission.pose.overrideVerticalFov =
+                    relationshipShotResponseActive;
+                submission.pose.verticalFovRadians = verticalFovRadians;
+                submission.pose.modifierWeightScale =
+                    relationshipShotResponseActive &&
+                        relationshipSuppressModifiers
+                    ? 1.0f - clampedRelationshipWeight
+                    : 1.0f;
+                if (rigService_->SubmitPose(submission)) {
+                    RuntimeSceneContext::MarkCameraReady(
+                        *cameraObject.GetWorld());
+                }
             });
     }
 

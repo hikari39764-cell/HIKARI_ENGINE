@@ -1,9 +1,18 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <type_traits>
 
 namespace HIKARI {
+
+    inline constexpr size_t kGameProjectUiTextureGuidCapacity = 96u;
+    inline constexpr size_t kGameProjectUiTexturePathCapacity = 512u;
+
+    struct GameProjectUiTextureReference {
+        char assetGuid[kGameProjectUiTextureGuidCapacity]{};
+        char assetPath[kGameProjectUiTexturePathCapacity]{};
+    };
 
     enum class GameProjectUiEffect : uint8_t {
         None = 0u,
@@ -173,6 +182,10 @@ namespace HIKARI {
 
     static_assert(std::is_standard_layout_v<GameProjectUiColor>);
     static_assert(std::is_trivially_copyable_v<GameProjectUiColor>);
+    static_assert(std::is_standard_layout_v<
+        GameProjectUiTextureReference>);
+    static_assert(std::is_trivially_copyable_v<
+        GameProjectUiTextureReference>);
     static_assert(std::is_standard_layout_v<GameProjectUiSpriteRequest>);
     static_assert(std::is_trivially_copyable_v<GameProjectUiSpriteRequest>);
     static_assert(std::is_standard_layout_v<GameProjectUiTextRequest>);

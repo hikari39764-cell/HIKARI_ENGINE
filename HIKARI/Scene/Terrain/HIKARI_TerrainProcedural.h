@@ -197,6 +197,14 @@ namespace HIKARI::TERRAIN {
         const TerrainProceduralSpec& spec,
         float localX,
         float localZ) noexcept;
+    // World-anchored deterministic noise shared by procedural generation and
+    // the local Noise brush. It deliberately excludes footprint/mask logic.
+    float EvaluateTerrainAuthoringNoise(
+        float localX,
+        float localZ,
+        uint64_t seed,
+        float scale,
+        uint32_t octaves = 4u) noexcept;
     TerrainProceduralPreview PreviewTerrainProcedural(
         const TerrainSurface& surface,
         const TerrainProceduralSpec& spec) noexcept;

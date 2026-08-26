@@ -19,6 +19,8 @@ public:
 
     float outDuration = 0.25f;
     float inDuration = 0.25f;
+    bool waitForCameraReady = false;
+    float cameraReadyTimeout = 1.25f;
 
     std::vector<VFX::ParamDesc> params;
     std::array<DirectX::XMFLOAT4, 16> values{};

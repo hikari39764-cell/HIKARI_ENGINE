@@ -283,11 +283,20 @@ namespace HIKARI {
                 fallbackCamera.GetFarZ());
         }
 
+        float requestedModifierWeightScale = 1.0f;
+        if (requestedSourceValid && rigService != nullptr) {
+            CAMERA::CameraRigSubmission resolvedPose{};
+            if (rigService->TryResolvePose(requestedSource, resolvedPose)) {
+                requestedModifierWeightScale =
+                    resolvedPose.pose.modifierWeightScale;
+            }
+        }
         if (requestedSourceValid && rigService != nullptr) {
             rigService->ApplyModifiers(
                 requestedSource,
                 winningOverride != nullptr,
-                targetCamera);
+                targetCamera,
+                requestedModifierWeightScale);
         }
 
         const SceneObjectId resolvedSource = requestedSourceValid
@@ -341,10 +350,17 @@ namespace HIKARI {
                 fallbackCamera.GetNearZ(),
                 fallbackCamera.GetFarZ());
         } else if (rigService != nullptr) {
+            CAMERA::CameraRigSubmission basePose{};
+            float baseModifierWeightScale = 1.0f;
+            if (rigService->TryResolvePose(gameplaySource, basePose)) {
+                baseModifierWeightScale =
+                    basePose.pose.modifierWeightScale;
+            }
             rigService->ApplyModifiers(
                 gameplaySource,
                 false,
-                baseControlCamera);
+                baseControlCamera,
+                baseModifierWeightScale);
         }
 
         activeOverrideAffectsControlBasis_ =

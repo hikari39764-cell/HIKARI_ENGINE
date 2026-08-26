@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <iterator>
 #include <utility>
 
 #include "Assets/Dialogue/HIKARI_DialogueAssetStore.h"
@@ -37,21 +38,11 @@ namespace HIKARI::EDITOR {
             }
         }
         if (activation.dialogueAssetGuid) {
-            if (document_.IsDirty() &&
-                document_.GetAssetGuid() != *activation.dialogueAssetGuid) {
-                statusMessage_ =
-                    "Save or revert the current dialogue before opening another asset";
-                return;
-            }
-            (void)OpenAsset(
+            (void)RequestOpenAsset(
                 scene.GetAssetDatabase(),
                 *activation.dialogueAssetGuid,
                 statusMessage_);
             activePage_ = DialogueWorkspacePage::Story;
-        }
-        else if (!document_.IsOpen()) {
-            document_.New();
-            if (statusMessage_.empty()) statusMessage_ = "New dialogue";
         }
         NormalizeSelection();
         NormalizeSpeakerSelection();
@@ -62,7 +53,10 @@ namespace HIKARI::EDITOR {
         EditorCommandRouter& commandRouter) {
         DialogueWorkspaceResult result{};
         DrawDialogueWorkspaceWindows(
-            *this, scene, result, commandRouter);
+            *this, scene, commandRouter);
+        result.workspaceRequest =
+            std::move(deferredWorkspaceRequest_);
+        deferredWorkspaceRequest_.reset();
         result.statusMessage = statusMessage_;
         return result;
     }
@@ -97,17 +91,17 @@ namespace HIKARI::EDITOR {
         DocumentSceneBase& scene,
         std::string& outMessage) {
         if (activePage_ == DialogueWorkspacePage::Style) {
-            const bool saved = styleDocument_.Save(
-                projectRoot_,
-                scene.GetAssetDatabase(),
-                outMessage);
-            if (saved) {
-                if (auto* store = scene.GetWorld().Services().Find<
-                        DialogueAssetStore>()) {
-                    store->InvalidateProjectStyle();
-                }
-            }
-            return saved;
+            return SaveStyle(scene, outMessage);
+        }
+        return SaveDialogue(scene, outMessage);
+    }
+
+    bool DialogueWorkspaceController::SaveDialogue(
+        DocumentSceneBase& scene,
+        std::string& outMessage) {
+        if (!document_.IsOpen()) {
+            outMessage = "Open or create a Dialogue asset first";
+            return false;
         }
         const bool saved = document_.Save(
             scene.GetAssetDatabase(), outMessage);
@@ -118,6 +112,41 @@ namespace HIKARI::EDITOR {
             }
         }
         return saved;
+    }
+
+    bool DialogueWorkspaceController::SaveStyle(
+        DocumentSceneBase& scene,
+        std::string& outMessage) {
+        if (!styleDocument_.IsOpen()) {
+            outMessage = "Dialogue UI style is not open";
+            return false;
+        }
+        const bool saved = styleDocument_.Save(
+            projectRoot_,
+            scene.GetAssetDatabase(),
+            outMessage);
+        if (saved) {
+            if (auto* store = scene.GetWorld().Services().Find<
+                    DialogueAssetStore>()) {
+                store->InvalidateProjectStyle();
+            }
+        }
+        return saved;
+    }
+
+    bool DialogueWorkspaceController::SaveAll(
+        DocumentSceneBase& scene,
+        std::string& outMessage) {
+        if (styleDocument_.IsDirty() &&
+            !SaveStyle(scene, outMessage)) {
+            return false;
+        }
+        if (document_.IsDirty() &&
+            !SaveDialogue(scene, outMessage)) {
+            return false;
+        }
+        outMessage = "Dialogue documents saved";
+        return true;
     }
 
     bool DialogueWorkspaceController::Undo(std::string& outMessage) {
@@ -158,11 +187,8 @@ namespace HIKARI::EDITOR {
         return true;
     }
 
-    bool DialogueWorkspaceController::NewAsset(std::string& outMessage) {
-        if (document_.IsDirty()) {
-            outMessage = "Current dialogue has unsaved changes";
-            return false;
-        }
+    bool DialogueWorkspaceController::ApplyNewAsset(
+        std::string& outMessage) {
         document_.New();
         selectedNodeId_ = document_.Definition().entryNodeId;
         selectedChoiceIndex_.reset();
@@ -170,17 +196,12 @@ namespace HIKARI::EDITOR {
         return true;
     }
 
-    bool DialogueWorkspaceController::OpenAsset(
+    bool DialogueWorkspaceController::ApplyOpenAsset(
         AssetDatabase& database,
         const AssetGuid& assetGuid,
         std::string& outMessage) {
         if (!assetGuid.IsValid()) {
             outMessage = "Select a Dialogue asset to open";
-            return false;
-        }
-        if (document_.IsDirty() &&
-            document_.GetAssetGuid() != assetGuid) {
-            outMessage = "Current dialogue has unsaved changes";
             return false;
         }
         if (!document_.Open(database, assetGuid, outMessage)) return false;
@@ -191,12 +212,283 @@ namespace HIKARI::EDITOR {
         return true;
     }
 
+    bool DialogueWorkspaceController::RequestNewAsset(
+        std::string& outMessage) {
+        if (document_.IsDirty()) {
+            pendingAction_ = { PendingDocumentAction::NewAsset, {}, {} };
+            requestUnsavedDocumentDialog_ = true;
+            outMessage = "Current dialogue has unsaved changes";
+            return false;
+        }
+        return ApplyNewAsset(outMessage);
+    }
+
+    bool DialogueWorkspaceController::RequestOpenAsset(
+        AssetDatabase& database,
+        const AssetGuid& assetGuid,
+        std::string& outMessage) {
+        if (!assetGuid.IsValid()) {
+            outMessage = "Select a Dialogue asset to open";
+            return false;
+        }
+        if (document_.IsOpen() &&
+            document_.GetAssetGuid() == assetGuid) {
+            outMessage = "Dialogue asset is already open";
+            return true;
+        }
+        if (document_.IsDirty()) {
+            pendingAction_ = {
+                PendingDocumentAction::OpenAsset,
+                assetGuid,
+                {},
+            };
+            requestUnsavedDocumentDialog_ = true;
+            outMessage = "Current dialogue has unsaved changes";
+            return false;
+        }
+        return ApplyOpenAsset(database, assetGuid, outMessage);
+    }
+
+    bool DialogueWorkspaceController::RequestCloseAsset(
+        std::string& outMessage) {
+        if (!document_.IsOpen()) {
+            outMessage = "No Dialogue asset is open";
+            return true;
+        }
+        if (document_.IsDirty()) {
+            pendingAction_ = { PendingDocumentAction::CloseAsset, {}, {} };
+            requestUnsavedDocumentDialog_ = true;
+            outMessage = "Current dialogue has unsaved changes";
+            return false;
+        }
+        document_.Close();
+        selectedNodeId_.clear();
+        selectedChoiceIndex_.reset();
+        outMessage = "Dialogue asset closed";
+        return true;
+    }
+
+    bool DialogueWorkspaceController::RequestRevert(
+        AssetDatabase& database,
+        std::string& outMessage) {
+        if (!document_.IsOpen() ||
+            !document_.GetAssetGuid().IsValid()) {
+            outMessage = "Only a saved Dialogue asset can be reverted";
+            return false;
+        }
+        if (document_.IsDirty()) {
+            pendingAction_ = { PendingDocumentAction::Revert, {}, {} };
+            requestUnsavedDocumentDialog_ = true;
+            outMessage = "Reverting will discard unsaved dialogue changes";
+            return false;
+        }
+        const bool reverted = document_.Revert(database, outMessage);
+        if (reverted) {
+            selectedNodeId_ = document_.Definition().entryNodeId;
+            selectedChoiceIndex_.reset();
+        }
+        return reverted;
+    }
+
+    bool DialogueWorkspaceController::RequestWorkspaceTransition(
+        EditorWorkspaceOpenRequest request,
+        std::string& outMessage) {
+        if (request.workspaceId == EditorWorkspaceId::Dialogue) {
+            outMessage = "Dialogue workspace is already active";
+            return false;
+        }
+        if (IsDocumentDirty()) {
+            pendingAction_ = {
+                PendingDocumentAction::WorkspaceTransition,
+                {},
+                std::move(request),
+            };
+            requestUnsavedDocumentDialog_ = true;
+            outMessage = "Dialogue documents have unsaved changes";
+            return false;
+        }
+        deferredWorkspaceRequest_ = std::move(request);
+        outMessage = "Leaving Dialogue workspace";
+        return true;
+    }
+
+    bool DialogueWorkspaceController::HasPendingConfirmation()
+        const noexcept {
+        return pendingAction_.kind != PendingDocumentAction::None;
+    }
+
+    bool DialogueWorkspaceController::PendingActionSupportsSave()
+        const noexcept {
+        return pendingAction_.kind != PendingDocumentAction::None &&
+            pendingAction_.kind != PendingDocumentAction::Revert;
+    }
+
+    const char* DialogueWorkspaceController::GetPendingConfirmationText()
+        const noexcept {
+        switch (pendingAction_.kind) {
+        case PendingDocumentAction::NewAsset:
+            return "Save changes before creating a new Dialogue asset?";
+        case PendingDocumentAction::OpenAsset:
+            return "Save changes before opening another Dialogue asset?";
+        case PendingDocumentAction::CloseAsset:
+            return "Save changes before closing the Dialogue asset?";
+        case PendingDocumentAction::Revert:
+            return "Discard current changes and reload the saved Dialogue asset?";
+        case PendingDocumentAction::WorkspaceTransition:
+            return "Save Dialogue and UI style changes before leaving this workspace?";
+        case PendingDocumentAction::None:
+        default:
+            return "Save changes to the current Dialogue documents?";
+        }
+    }
+
+    bool DialogueWorkspaceController::ApplyPending(
+        DocumentSceneBase& scene,
+        std::string& outMessage) {
+        const PendingAction action = std::move(pendingAction_);
+        pendingAction_ = {};
+        switch (action.kind) {
+        case PendingDocumentAction::NewAsset:
+            return ApplyNewAsset(outMessage);
+        case PendingDocumentAction::OpenAsset:
+            return ApplyOpenAsset(
+                scene.GetAssetDatabase(),
+                action.assetGuid,
+                outMessage);
+        case PendingDocumentAction::CloseAsset:
+            document_.Close();
+            selectedNodeId_.clear();
+            selectedChoiceIndex_.reset();
+            outMessage = "Dialogue asset closed";
+            return true;
+        case PendingDocumentAction::Revert: {
+            const bool reverted = document_.Revert(
+                scene.GetAssetDatabase(), outMessage);
+            if (reverted) {
+                selectedNodeId_ = document_.Definition().entryNodeId;
+                selectedChoiceIndex_.reset();
+            }
+            return reverted;
+        }
+        case PendingDocumentAction::WorkspaceTransition:
+            if (!action.workspaceRequest) {
+                outMessage = "Workspace transition target is missing";
+                return false;
+            }
+            deferredWorkspaceRequest_ = std::move(*action.workspaceRequest);
+            outMessage = "Dialogue workspace transition confirmed";
+            return true;
+        case PendingDocumentAction::None:
+        default:
+            outMessage = "No pending Dialogue action";
+            return false;
+        }
+    }
+
+    bool DialogueWorkspaceController::ConfirmSaveThenContinue(
+        DocumentSceneBase& scene,
+        std::string& outMessage) {
+        if (!HasPendingConfirmation()) {
+            outMessage = "No pending Dialogue action";
+            return false;
+        }
+        if (!PendingActionSupportsSave()) {
+            outMessage = "This Dialogue action only supports discard or cancel";
+            return false;
+        }
+        const bool saveAll = pendingAction_.kind ==
+            PendingDocumentAction::WorkspaceTransition;
+        if (saveAll) {
+            if (!SaveAll(scene, outMessage)) {
+                return false;
+            }
+        }
+        else if (document_.IsDirty() &&
+            !SaveDialogue(scene, outMessage)) {
+            return false;
+        }
+        return ApplyPending(scene, outMessage);
+    }
+
+    bool DialogueWorkspaceController::ConfirmDiscardAndContinue(
+        DocumentSceneBase& scene,
+        std::string& outMessage) {
+        if (!HasPendingConfirmation()) {
+            return false;
+        }
+        if (pendingAction_.kind ==
+                PendingDocumentAction::WorkspaceTransition) {
+            if (document_.IsDirty()) {
+                if (document_.GetAssetGuid().IsValid()) {
+                    if (!document_.Revert(
+                            scene.GetAssetDatabase(), outMessage)) {
+                        return false;
+                    }
+                }
+                else {
+                    document_.Close();
+                    selectedNodeId_.clear();
+                    selectedChoiceIndex_.reset();
+                }
+            }
+            if (styleDocument_.IsDirty()) {
+                styleDocument_.DiscardChanges(
+                    projectRoot_,
+                    scene.GetAssetDatabase());
+            }
+        }
+        return ApplyPending(scene, outMessage);
+    }
+
+    void DialogueWorkspaceController::CancelPending() noexcept {
+        pendingAction_ = {};
+        requestUnsavedDocumentDialog_ = false;
+    }
+
+    std::vector<DialogueAssetListEntry>
+        DialogueWorkspaceController::ListAssets(
+            const AssetDatabase& database) const {
+        std::vector<DialogueAssetListEntry> result{};
+        for (const AssetRecord* record :
+            database.CollectByType(AssetType::Dialogue)) {
+            if (record == nullptr || !record->guid.IsValid()) {
+                continue;
+            }
+            result.push_back(DialogueAssetListEntry{
+                record->guid,
+                record->displayName.empty()
+                    ? record->sourcePath.stem().string()
+                    : record->displayName,
+                record->sourcePath,
+                document_.IsOpen() &&
+                    document_.GetAssetGuid() == record->guid,
+            });
+        }
+        std::sort(
+            result.begin(),
+            result.end(),
+            [](const DialogueAssetListEntry& lhs,
+                const DialogueAssetListEntry& rhs) {
+                if (lhs.name != rhs.name) {
+                    return lhs.name < rhs.name;
+                }
+                return lhs.sourcePath.generic_string() <
+                    rhs.sourcePath.generic_string();
+            });
+        return result;
+    }
+
     bool DialogueWorkspaceController::IsDocumentOpen() const noexcept {
         return document_.IsOpen();
     }
 
     bool DialogueWorkspaceController::IsDocumentDirty() const noexcept {
         return document_.IsDirty() || styleDocument_.IsDirty();
+    }
+
+    const AssetGuid&
+        DialogueWorkspaceController::GetDocumentAssetGuid() const noexcept {
+        return document_.GetAssetGuid();
     }
 
     const DIALOGUE::DialogueDefinition&
@@ -317,29 +609,206 @@ namespace HIKARI::EDITOR {
         DIALOGUE::DialogueNodeType type) {
         auto before = document_.Definition();
         auto& definition = document_.Definition();
+        const auto selected = std::find_if(
+            definition.nodes.begin(),
+            definition.nodes.end(),
+            [this](const DIALOGUE::DialogueNode& candidate) {
+                return candidate.id == selectedNodeId_;
+            });
+        const bool hasSelected = selected != definition.nodes.end();
+        const size_t selectedIndex = hasSelected
+            ? static_cast<size_t>(
+                std::distance(definition.nodes.begin(), selected))
+            : definition.nodes.size();
+        std::optional<size_t> selectedChoice = selectedChoiceIndex_;
+        if (hasSelected &&
+            selected->type == DIALOGUE::DialogueNodeType::Choice &&
+            (!selectedChoice ||
+                *selectedChoice >= selected->choices.size()) &&
+            selected->choices.size() == 1u) {
+            selectedChoice = 0u;
+        }
+        std::string inheritedTarget{};
+        if (hasSelected) {
+            if (selected->type == DIALOGUE::DialogueNodeType::Line ||
+                selected->type == DIALOGUE::DialogueNodeType::Event) {
+                inheritedTarget = selected->nextNodeId;
+            }
+            else if (selected->type ==
+                    DIALOGUE::DialogueNodeType::Choice &&
+                selectedChoice &&
+                *selectedChoice < selected->choices.size()) {
+                inheritedTarget =
+                    selected->choices[*selectedChoice].nextNodeId;
+            }
+        }
+        if (inheritedTarget.empty() ||
+            inheritedTarget == selectedNodeId_ ||
+            DIALOGUE::FindDialogueNode(
+                definition, inheritedTarget) == nullptr) {
+            inheritedTarget.clear();
+            if (hasSelected && selectedIndex + 1u <
+                    definition.nodes.size()) {
+                inheritedTarget =
+                    definition.nodes[selectedIndex + 1u].id;
+            }
+            else {
+                const auto end = std::find_if(
+                    definition.nodes.begin(),
+                    definition.nodes.end(),
+                    [this](const DIALOGUE::DialogueNode& candidate) {
+                        return candidate.id != selectedNodeId_ &&
+                            candidate.type ==
+                                DIALOGUE::DialogueNodeType::End;
+                    });
+                if (end != definition.nodes.end()) {
+                    inheritedTarget = end->id;
+                }
+            }
+        }
+
         DIALOGUE::DialogueNode node{};
         node.type = type;
         node.id = AllocateNodeId(type == DIALOGUE::DialogueNodeType::End
             ? "end" : "node");
+        const std::string newNodeId = node.id;
         if (type == DIALOGUE::DialogueNodeType::Line) {
             node.text.values[editingLocale_] = "New line";
-            node.nextNodeId = definition.entryNodeId;
+            node.nextNodeId = inheritedTarget;
         }
         else if (type == DIALOGUE::DialogueNodeType::Choice) {
             DIALOGUE::DialogueChoice choice{};
             choice.id = "choice1";
             choice.text.values[editingLocale_] = "Choice";
-            choice.nextNodeId = definition.entryNodeId;
+            choice.nextNodeId = inheritedTarget;
             node.choices.push_back(std::move(choice));
         }
         else if (type == DIALOGUE::DialogueNodeType::Event) {
             node.eventId = "Dialogue.Event";
-            node.nextNodeId = definition.entryNodeId;
+            node.nextNodeId = inheritedTarget;
         }
-        definition.nodes.push_back(std::move(node));
-        selectedNodeId_ = definition.nodes.back().id;
+
+        const size_t insertIndex = hasSelected
+            ? selectedIndex + 1u
+            : definition.nodes.size();
+        definition.nodes.insert(
+            definition.nodes.begin() + insertIndex,
+            std::move(node));
+
+        bool autoBound = false;
+        if (autoBindNewNodes_ && hasSelected) {
+            DIALOGUE::DialogueNode& predecessor =
+                definition.nodes[selectedIndex];
+            if (predecessor.type == DIALOGUE::DialogueNodeType::Line ||
+                predecessor.type == DIALOGUE::DialogueNodeType::Event) {
+                predecessor.nextNodeId = newNodeId;
+                autoBound = true;
+            }
+            else if (predecessor.type ==
+                    DIALOGUE::DialogueNodeType::Choice &&
+                selectedChoice &&
+                *selectedChoice < predecessor.choices.size()) {
+                predecessor.choices[*selectedChoice].nextNodeId =
+                    newNodeId;
+                autoBound = true;
+            }
+        }
+
+        selectedNodeId_ = newNodeId;
         selectedChoiceIndex_.reset();
         RecordMutation(std::move(before));
+        statusMessage_ = autoBound
+            ? "Story step inserted and linked after the previous step"
+            : "Story step inserted after the selected step";
+    }
+
+    bool DialogueWorkspaceController::CanBindSelectedToNextNode()
+        const noexcept {
+        if (!document_.IsOpen()) {
+            return false;
+        }
+        const auto& nodes = document_.Definition().nodes;
+        const auto selected = std::find_if(
+            nodes.begin(),
+            nodes.end(),
+            [this](const DIALOGUE::DialogueNode& candidate) {
+                return candidate.id == selectedNodeId_;
+            });
+        if (selected == nodes.end() ||
+            std::next(selected) == nodes.end()) {
+            return false;
+        }
+        if (selected->type == DIALOGUE::DialogueNodeType::Line ||
+            selected->type == DIALOGUE::DialogueNodeType::Event) {
+            return true;
+        }
+        if (selected->type != DIALOGUE::DialogueNodeType::Choice) {
+            return false;
+        }
+        return (selectedChoiceIndex_ &&
+                *selectedChoiceIndex_ < selected->choices.size()) ||
+            selected->choices.size() == 1u;
+    }
+
+    bool DialogueWorkspaceController::BindSelectedToNextNode(
+        std::string& outMessage) {
+        if (!document_.IsOpen()) {
+            outMessage = "Open or create a Dialogue asset first";
+            return false;
+        }
+        auto& definition = document_.Definition();
+        const auto selected = std::find_if(
+            definition.nodes.begin(),
+            definition.nodes.end(),
+            [this](const DIALOGUE::DialogueNode& candidate) {
+                return candidate.id == selectedNodeId_;
+            });
+        if (selected == definition.nodes.end()) {
+            outMessage = "Select a story step first";
+            return false;
+        }
+        const auto next = std::next(selected);
+        if (next == definition.nodes.end()) {
+            outMessage = "The selected step is already the final list item";
+            return false;
+        }
+
+        std::string* target = nullptr;
+        if (selected->type == DIALOGUE::DialogueNodeType::Line ||
+            selected->type == DIALOGUE::DialogueNodeType::Event) {
+            target = &selected->nextNodeId;
+        }
+        else if (selected->type == DIALOGUE::DialogueNodeType::Choice) {
+            size_t choiceIndex = selected->choices.size();
+            if (selectedChoiceIndex_ &&
+                *selectedChoiceIndex_ < selected->choices.size()) {
+                choiceIndex = *selectedChoiceIndex_;
+            }
+            else if (selected->choices.size() == 1u) {
+                choiceIndex = 0u;
+            }
+            if (choiceIndex < selected->choices.size()) {
+                target = &selected->choices[choiceIndex].nextNodeId;
+            }
+        }
+        if (target == nullptr) {
+            outMessage = selected->type ==
+                    DIALOGUE::DialogueNodeType::Choice
+                ? "Select the Choice option to bind"
+                : "End steps cannot continue to another step";
+            return false;
+        }
+        if (*target == next->id) {
+            outMessage = "Selected step is already linked to the next step";
+            return true;
+        }
+
+        auto before = definition;
+        *target = next->id;
+        const std::string targetId = next->id;
+        RecordMutation(std::move(before));
+        outMessage = "Linked selected step to " + targetId;
+        return true;
     }
 
     void DialogueWorkspaceController::AddSpeaker() {

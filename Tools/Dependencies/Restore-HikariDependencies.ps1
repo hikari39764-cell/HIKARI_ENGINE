@@ -45,7 +45,7 @@ if ($LASTEXITCODE -ne 0) {
     --x-install-root $staticInstallRoot `
     --triplet x64-windows-static
 if ($LASTEXITCODE -ne 0) {
-    throw 'Restoring the x64-windows-static Jolt dependency failed.'
+    throw 'Restoring the x64-windows-static runtime dependencies failed.'
 }
 
 Write-Host 'Pinned HIKARI vcpkg dependencies restored.'

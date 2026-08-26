@@ -1,0 +1,51 @@
+{
+  "id": "summer_burn",
+  "displayName": "Summer Monochrome Burn",
+  "shaderId": "Post_TransitionBurnDissolvePS",
+  "outDuration": 0.72,
+  "inDuration": 0.42,
+  "waitForCameraReady": true,
+  "cameraReadyTimeout": 1.5,
+  "params": [
+    {
+      "key": "noiseScale",
+      "label": "Burn Noise Scale",
+      "type": "Float",
+      "ref": { "slot": 0, "channel": 0 },
+      "defaultValues": [3.25, 0.0, 0.0, 0.0],
+      "minValues": [0.75, 0.0, 0.0, 0.0],
+      "maxValues": [9.0, 0.0, 0.0, 0.0],
+      "speed": 0.05
+    },
+    {
+      "key": "softness",
+      "label": "Burn Edge Softness",
+      "type": "Float",
+      "ref": { "slot": 0, "channel": 1 },
+      "defaultValues": [0.045, 0.0, 0.0, 0.0],
+      "minValues": [0.005, 0.0, 0.0, 0.0],
+      "maxValues": [0.25, 0.0, 0.0, 0.0],
+      "speed": 0.002
+    },
+    {
+      "key": "monochrome",
+      "label": "Monochrome Strength",
+      "type": "Float",
+      "ref": { "slot": 0, "channel": 2 },
+      "defaultValues": [0.92, 0.0, 0.0, 0.0],
+      "minValues": [0.0, 0.0, 0.0, 0.0],
+      "maxValues": [1.0, 0.0, 0.0, 0.0],
+      "speed": 0.01
+    },
+    {
+      "key": "chromaticPixels",
+      "label": "Chromatic Separation",
+      "type": "Float",
+      "ref": { "slot": 0, "channel": 3 },
+      "defaultValues": [5.0, 0.0, 0.0, 0.0],
+      "minValues": [0.0, 0.0, 0.0, 0.0],
+      "maxValues": [24.0, 0.0, 0.0, 0.0],
+      "speed": 0.25
+    }
+  ]
+}

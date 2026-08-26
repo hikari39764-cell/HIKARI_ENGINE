@@ -150,6 +150,7 @@ namespace HIKARI {
         if (builder.Button("Use Third-Person Movement")) {
             movementSpace_ = CharacterMovementSpace::Camera;
             rotateToMove_ = true;
+            edgeGuardEnabled_ = true;
         }
         builder.Float("Maximum Speed", maximumSpeed_);
         builder.Float("Sprint Multiplier", sprintMultiplier_);
@@ -171,6 +172,13 @@ namespace HIKARI {
         builder.Float("Step Height", stepHeight_);
         builder.Float("Floor Snap Distance", stickToFloorDistance_);
         builder.Float("Step Forward Test", stepForwardTestDistance_);
+        builder.Bool(
+            "Cancel Uphill Motion On Steep Slopes",
+            cancelVelocityTowardsSteepSlopes_);
+        builder.Bool("Prevent Grounded Edge Fall", edgeGuardEnabled_);
+        builder.Float("Edge Probe Distance", edgeProbeDistance_);
+        builder.Float("Edge Probe Radius", edgeProbeRadius_);
+        builder.Float("Maximum Grounded Drop", maximumGroundedDrop_);
         builder.Float("Contact Padding", characterPadding_);
         builder.Float(
             "Predictive Contact Distance",

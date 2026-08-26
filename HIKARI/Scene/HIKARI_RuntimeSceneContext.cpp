@@ -15,6 +15,7 @@ namespace HIKARI {
     std::optional<ResolvedSceneEntry> RuntimeSceneContext::resolvedEntry_{};
     World* RuntimeSceneContext::currentWorld_ = nullptr;
     std::string RuntimeSceneContext::currentSceneId_{};
+    bool RuntimeSceneContext::cameraReady_ = false;
 
     void RuntimeSceneContext::SetTransitionBus(SceneTransitionBus* bus) {
         transitionBus_ = bus;
@@ -34,6 +35,7 @@ namespace HIKARI {
         std::string sceneId) {
         currentWorld_ = world;
         currentSceneId_ = world != nullptr ? std::move(sceneId) : std::string{};
+        cameraReady_ = false;
         if (world == nullptr) {
             // Resolved entries contain runtime-world placement. They must not
             // survive a teardown and later be consumed by a rebuilt World
@@ -48,6 +50,19 @@ namespace HIKARI {
 
     const std::string& RuntimeSceneContext::GetCurrentSceneId() {
         return currentSceneId_;
+    }
+
+    void RuntimeSceneContext::MarkCameraReady(
+        const World& world) noexcept {
+        if (&world == currentWorld_) {
+            cameraReady_ = true;
+        }
+    }
+
+    bool RuntimeSceneContext::IsCameraReady(
+        const World* world) noexcept {
+        return cameraReady_ && currentWorld_ != nullptr &&
+            (world == nullptr || world == currentWorld_);
     }
 
     void RuntimeSceneContext::SetPendingSceneEntry(

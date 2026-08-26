@@ -425,6 +425,9 @@ namespace HIKARI::DIALOGUE {
         state.selectedChoice = selectedChoice_;
         state.sessionElapsed = sessionElapsed_;
         state.revealAmount = CurrentRevealAmount();
+        state.useGamepadAdvancePrompt =
+            SERVICES::GetInputService().GetSnapshot().GetLastActiveDevice() ==
+            INPUT::InputDeviceKind::Gamepad;
         state.leftPortrait = DialoguePortraitPresentationState{
             leftPortrait_.speakerId,
             leftPortrait_.presence,
@@ -775,6 +778,69 @@ namespace HIKARI::DIALOGUE {
                     body,
                     bodyText,
                     bodyStyle);
+            }
+
+            if (state.node->type == DialogueNodeType::Line) {
+                std::string_view promptAsset =
+                    state.useGamepadAdvancePrompt
+                    ? std::string_view(theme.advanceGamepadAssetPath)
+                    : std::string_view(theme.advanceMouseAssetPath);
+                if (promptAsset.empty()) {
+                    promptAsset = state.useGamepadAdvancePrompt
+                        ? std::string_view(theme.advanceMouseAssetPath)
+                        : std::string_view(theme.advanceGamepadAssetPath);
+                }
+                const float revealInput = std::clamp(
+                    (state.revealAmount - 0.92f) / 0.08f,
+                    0.0f,
+                    1.0f);
+                const float promptReveal = revealInput * revealInput *
+                    (3.0f - 2.0f * revealInput) * easedOpening;
+                if (!promptAsset.empty() && promptReveal > 0.001f) {
+                    constexpr float kGamepadWidth = 59.0f;
+                    constexpr float kGamepadHeight = 104.0f;
+                    constexpr float kMouseWidth = 55.0f;
+                    constexpr float kMouseHeight = 112.0f;
+                    const float phase = state.sessionElapsed /
+                        (std::max)(theme.advancePromptPulseSeconds, 0.20f) *
+                        6.28318530718f;
+                    const float wave = 0.5f + 0.5f * std::sin(phase);
+                    const float animatedScale = theme.advancePromptScale *
+                        (1.0f + theme.advancePromptScaleAmount * wave);
+                    const float naturalWidth =
+                        state.useGamepadAdvancePrompt
+                        ? kGamepadWidth
+                        : kMouseWidth;
+                    const float naturalHeight =
+                        state.useGamepadAdvancePrompt
+                        ? kGamepadHeight
+                        : kMouseHeight;
+                    const float width = naturalWidth * animatedScale;
+                    const float height = naturalHeight * animatedScale;
+
+                    GameProjectUiSpriteRequest prompt{};
+                    prompt.sourceId = base + 5u;
+                    prompt.order = 935;
+                    prompt.flags = kGameProjectUiSubmissionModal;
+                    prompt.referenceWidth = theme.referenceWidth;
+                    prompt.referenceHeight = theme.referenceHeight;
+                    prompt.x = theme.advancePromptX - width * 0.5f;
+                    prompt.y = theme.advancePromptY - height +
+                        std::sin(phase) * theme.advancePromptBobDistance;
+                    prompt.width = width;
+                    prompt.height = height;
+                    prompt.pivotX = 0.5f;
+                    prompt.pivotY = 1.0f;
+                    prompt.effectProgress = promptReveal;
+                    prompt.effectIntensity = 0.32f + wave * 0.18f;
+                    prompt.timeSeconds = state.sessionElapsed;
+                    prompt.tint = White(
+                        promptReveal * (0.78f + wave * 0.22f));
+                    prompt.effectColor = InkBlue();
+                    prompt.highlightColor = White();
+                    prompt.effect = GameProjectUiEffect::DialoguePanelReveal;
+                    (void)service.SubmitSprite(promptAsset, prompt);
+                }
             }
 
             if (state.node->type != DialogueNodeType::Choice) {

@@ -112,6 +112,27 @@ namespace HIKARI {
             std::string_view socketName,
             GameProjectAnimationSocketSpace space,
             GameProjectTransform& outTransform) const noexcept;
+        // Samples one non-looping clip at an explicit gameplay time and
+        // resolves all requested sockets from that same pose. This is the
+        // fixed-step combat path; it does not mutate Animator playback.
+        HIKARI_GAME_PROJECT_SDK_API bool SampleSocketTransformsAtTime(
+            uint64_t objectHandle,
+            std::string_view clipName,
+            float timeSeconds,
+            uint8_t stripRootMotion,
+            const std::string_view* socketNames,
+            uint32_t socketCount,
+            GameProjectAnimationSocketSpace space,
+            GameProjectTransform* outTransforms) const noexcept;
+        // Evaluates authored root displacement over one explicit non-looping
+        // clip interval. Translation remains in character/model axes and the
+        // caller routes it through MotionView; no Scene transform is written.
+        HIKARI_GAME_PROJECT_SDK_API bool SampleRootMotionDeltaAtTime(
+            uint64_t objectHandle,
+            std::string_view clipName,
+            float previousTimeSeconds,
+            float currentTimeSeconds,
+            GameProjectRootMotionDelta& outDelta) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool ConsumeRootMotion(
             uint64_t objectHandle,
             uint64_t fixedTickIndex,
@@ -188,12 +209,18 @@ namespace HIKARI {
             const GameProjectCameraRollModifier& modifier) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool GetControlPose(
             GameProjectCameraPose& outPose) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool IsReady() const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool SubmitTargetFraming(
             const GameProjectCameraTargetFramingRequest& request)
             const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool SubmitTargetFramingWithDynamics(
             const GameProjectCameraTargetFramingRequest& request,
             const GameProjectCameraTargetFramingDynamics& dynamics)
+            const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool SubmitRelationshipShot(
+            const GameProjectCameraTargetFramingRequest& request,
+            const GameProjectCameraTargetFramingDynamics& dynamics,
+            const GameProjectCameraRelationshipShotProfile& profile)
             const noexcept;
 
     private:

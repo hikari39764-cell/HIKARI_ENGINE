@@ -32,6 +32,11 @@ namespace HIKARI {
         Pit,
         Ridge,
         Terrace,
+        Shaft,
+        Hole,
+        CliffOpening,
+        Ramp,
+        Noise,
     };
 
     enum class EditorTerrainPaintMode : uint8_t {
@@ -75,6 +80,18 @@ namespace HIKARI {
         bool active = false;
         bool hasHit = false;
         MATH::Vec3 hitPoint{};
+        bool sampleHeightRequested = false;
+        bool sampledHeightReady = false;
+        float sampledHeight = 0.0f;
+        bool rampAnchorSet = false;
+        MATH::Vec3 rampStartLocal{};
+        float rampHalfWidth = 2.0f;
+        float rampShoulderWidth = 1.0f;
+        float rampBlendAmount = 1.0f;
+        float openingWidth = 3.0f;
+        float openingHeight = 3.0f;
+        float openingDepth = 2.0f;
+        float openingFeather = 0.20f;
         float placementOffset = 0.0f;
         TERRAIN::TerrainProceduralSpec procedural{};
         TERRAIN::TerrainProceduralPreview proceduralPreview{};

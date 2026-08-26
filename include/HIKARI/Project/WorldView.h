@@ -6,8 +6,10 @@
 #include <utility>
 
 #include "HIKARI/Project/ActionViews.h"
+#include "HIKARI/Project/AudioView.h"
 #include "HIKARI/Project/GameProjectSdk.h"
 #include "HIKARI/Project/GameFlowViews.h"
+#include "HIKARI/Project/NavigationView.h"
 #include "HIKARI/Project/PresentationViews.h"
 #include "HIKARI/Project/UiView.h"
 #include "HIKARI/Project/ValueTypes.h"
@@ -80,12 +82,16 @@ namespace HIKARI {
             GameProjectEventRecord& outEvent) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API InputView
             GetInput() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API AudioView
+            GetAudio() const noexcept;
         HIKARI_GAME_PROJECT_SDK_API AnimationView
             GetAnimation() const noexcept;
         HIKARI_GAME_PROJECT_SDK_API MotionView
             GetMotion() const noexcept;
         HIKARI_GAME_PROJECT_SDK_API PhysicsQueryView
             GetPhysicsQueries() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API NavigationView
+            GetNavigation() const noexcept;
         HIKARI_GAME_PROJECT_SDK_API CameraView
             GetCamera() const noexcept;
         HIKARI_GAME_PROJECT_SDK_API TimeDilationView
@@ -100,6 +106,8 @@ namespace HIKARI {
             GetUi() const noexcept;
         HIKARI_GAME_PROJECT_SDK_API SceneFlowView
             GetSceneFlow() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API DialogueView
+            GetDialogue() const noexcept;
         HIKARI_GAME_PROJECT_SDK_API SaveGameView
             GetSaveGame() const noexcept;
         HIKARI_GAME_PROJECT_SDK_API RuntimeSessionView

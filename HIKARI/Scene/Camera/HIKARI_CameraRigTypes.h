@@ -29,6 +29,10 @@ namespace HIKARI::CAMERA {
         MATH::Vec3 up{ 0.0f, 1.0f, 0.0f };
         bool overrideVerticalFov = false;
         float verticalFovRadians = 0.0f;
+        // Scales ordinary post-pose modifiers during an engine-owned camera
+        // handoff. A continuous value avoids reintroducing a one-frame pop
+        // when an exclusive relationship shot enters or releases.
+        float modifierWeightScale = 1.0f;
     };
 
     struct CameraRigSubmission {
@@ -90,6 +94,17 @@ namespace HIKARI::CAMERA {
         bool suppressOrbitInput = true;
         bool suppressZoomInput = true;
         CameraTargetFramingDynamics dynamics{};
+        bool relationshipShot = false;
+        float relationshipPreferredSide = 0.0f;
+        float relationshipShoulderAngleDegrees = 0.0f;
+        float relationshipVerticalFovOffsetRadians = 0.0f;
+        float relationshipRollRadians = 0.0f;
+        float relationshipSideClearanceBias = 0.0f;
+        float relationshipDistanceOffset = 0.0f;
+        float relationshipPivotHeightOffset = 0.0f;
+        float relationshipFocusLateralOffset = 0.0f;
+        float relationshipFocusHeightOffset = 0.0f;
+        bool relationshipSuppressModifiers = false;
     };
 
     struct CameraRigRuntimeStatus {

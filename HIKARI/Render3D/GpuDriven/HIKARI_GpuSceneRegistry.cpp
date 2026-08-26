@@ -53,6 +53,16 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             return value;
         }
 
+        uint64_t BuildSurfaceHeightContentVersion(
+            uint64_t residencyEpoch,
+            uint64_t floatPoolVersion) {
+            uint64_t value = HASH::kFnv1a64OffsetBasis;
+            value = HashAppend(value, residencyEpoch);
+            value = HashAppend(value, floatPoolVersion);
+            // 0 は upload cache を無効化する sentinel。
+            return value != 0u ? value : 1u;
+        }
+
         uint32_t PassInstanceFlag(GpuDrivenPassKind passKind) {
             using RUNTIME::SurfaceGpuSceneInstanceFlags;
             switch (passKind) {
@@ -983,6 +993,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         sandSurfaceGpuData_.push_back(
             SAND::BuildSandSurfaceGpuDataSentinel());
         sandSurfaceHeights_ = nullptr;
+        sandSurfaceHeightVersion_ = 0;
         forwardOpaqueResidentRecordIndices_.clear();
         depthPrepassOccluderRecordIndices_.clear();
         forwardDepthAwareResidentRecordIndices_.clear();
@@ -1038,6 +1049,10 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         const uint64_t layoutVersion = input.sceneCache->GetSurfaceVersion();
         const uint64_t routingVersion = input.sceneCache->GetSurfaceRoutingVersion();
         const uint64_t dataVersion = input.sceneCache->GetSurfaceDataVersion();
+        const uint64_t heightVersion =
+            BuildSurfaceHeightContentVersion(
+                residencyEpoch_,
+                input.sceneCache->GetSurfaceFloatPoolVersion());
         const uint32_t surfaceCount =
             NUMERIC::SaturateToUint32(input.sceneCache->GetSurfaceInstances().size());
 
@@ -1058,6 +1073,8 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
 
         ClearFrameDirtyRanges();
         if (dataVersion_ == dataVersion) {
+            sandSurfaceHeightVersion_ = heightVersion;
+            sceneSource_.sandSurfaceHeightVersion = heightVersion;
             sceneSource_.dirtyBaseSourceVersion = sceneSource_.sourceVersion;
             return;
         }
@@ -1069,6 +1086,8 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         }
 
         dataVersion_ = dataVersion;
+        sandSurfaceHeightVersion_ = heightVersion;
+        sceneSource_.sandSurfaceHeightVersion = heightVersion;
         sceneSource_.layoutVersion =
             BuildSourceLayoutVersion(
                 residencyEpoch_,
@@ -1145,6 +1164,10 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             SAND::BuildSandSurfaceGpuDataSentinel());
         sandSurfaceHeights_ =
             input.sceneCache->GetSandSurfaceHeights();
+        sandSurfaceHeightVersion_ =
+            BuildSurfaceHeightContentVersion(
+                residencyEpoch_,
+                input.sceneCache->GetSurfaceFloatPoolVersion());
         for (GpuSceneSurfaceRecord& record : surfaceRecords_) {
             if (!record.valid || !record.sandSurface) {
                 record.sandSurfaceGpuDataIndex = 0u;
@@ -1805,6 +1828,8 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         sceneSource_.waterSurfaceGpuData = &waterSurfaceGpuData_;
         sceneSource_.sandSurfaceGpuData = &sandSurfaceGpuData_;
         sceneSource_.sandSurfaceHeights = sandSurfaceHeights_;
+        sceneSource_.sandSurfaceHeightVersion =
+            sandSurfaceHeightVersion_;
         const uint32_t sharedPrimaryCount =
             NUMERIC::SaturateToUint32(globalGpuSceneInstances_.size());
         uint32_t cursor = sharedPrimaryCount;

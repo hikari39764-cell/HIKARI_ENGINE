@@ -46,6 +46,10 @@ namespace HIKARI::SAND {
         // renderer はこれを境界に authored 解像度から response 解像度へ切り替える。
         bool responseGridActive = false;
         bool hasDeformation = false;
+        // hasDeformation は保持中の塑性痕跡、needsRelaxation は System 内で
+        // fixed tick 緩和を続ける短期応答を表す。古い足跡を残したまま
+        // 高頻度処理から外し、immutable query snapshot はこの lifecycle を使わない。
+        bool needsRelaxation = false;
         uint64_t stateRevision = 1u;
     };
 

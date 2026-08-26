@@ -145,6 +145,36 @@ target_include_directories(
     SYSTEM INTERFACE
         "${HIKARI_VCPKG_INCLUDE_DIR}")
 
+find_package(
+    recastnavigation 1.6.0 EXACT CONFIG REQUIRED
+    PATHS
+        "${HIKARI_VCPKG_DYNAMIC_ROOT}/x64-windows/share/recastnavigation"
+    NO_DEFAULT_PATH)
+foreach(recast_library IN ITEMS Recast Detour)
+    set(recast_target "RecastNavigation::${recast_library}")
+    if(NOT TARGET "${recast_target}")
+        message(FATAL_ERROR "Missing pinned Recast target: ${recast_target}")
+    endif()
+    set(recast_static_release
+        "${HIKARI_VCPKG_STATIC_ROOT}/x64-windows-static/lib/${recast_library}.lib")
+    hikari_require_dependency_file(
+        "${recast_static_release}"
+        "${recast_target} static release library")
+    set_target_properties(
+        "${recast_target}"
+        PROPERTIES
+            IMPORTED_CONFIGURATIONS "Debug;Release;EditorRelease;Shipping"
+            IMPORTED_LOCATION_EDITORRELEASE "${recast_static_release}"
+            IMPORTED_LOCATION_SHIPPING "${recast_static_release}")
+endforeach()
+add_library(HIKARI_RecastNavigation INTERFACE)
+add_library(HIKARI::RecastNavigation ALIAS HIKARI_RecastNavigation)
+target_link_libraries(
+    HIKARI_RecastNavigation
+    INTERFACE
+        RecastNavigation::Recast
+        RecastNavigation::Detour)
+
 set(
     HIKARI_COACD_ROOT
     "${HIKARI_SOURCE_ROOT}/ThirdParty/CoACD")

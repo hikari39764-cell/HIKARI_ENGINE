@@ -13,6 +13,9 @@ include_guard(GLOBAL)
 set(HIKARI_RUNTIME_FOUNDATION_SOURCES)
 set(HIKARI_RUNTIME_ASSET_SOURCES)
 set(HIKARI_RUNTIME_PROJECT_SOURCES)
+set(HIKARI_RUNTIME_NAVIGATION_SOURCES)
+set(HIKARI_RUNTIME_ANIMATION_SOURCES)
+set(HIKARI_RUNTIME_GAMEPLAY_SOURCES)
 set(HIKARI_RUNTIME_SCENE_SOURCES)
 set(HIKARI_RUNTIME_PHYSICS_SOURCES)
 set(HIKARI_RUNTIME_GFX_SOURCES)
@@ -40,7 +43,13 @@ foreach(runtime_source IN LISTS HIKARI_RUNTIME_SOURCES)
         list(APPEND HIKARI_RUNTIME_ASSET_SOURCES "${runtime_source}")
     elseif(runtime_relative_path MATCHES "^HIKARI/Project/")
         list(APPEND HIKARI_RUNTIME_PROJECT_SOURCES "${runtime_source}")
-    elseif(runtime_relative_path MATCHES "^HIKARI/(Scene|Animation|Gameplay)/")
+    elseif(runtime_relative_path MATCHES "^HIKARI/Scene/Navigation/")
+        list(APPEND HIKARI_RUNTIME_NAVIGATION_SOURCES "${runtime_source}")
+    elseif(runtime_relative_path MATCHES "^HIKARI/Animation/")
+        list(APPEND HIKARI_RUNTIME_ANIMATION_SOURCES "${runtime_source}")
+    elseif(runtime_relative_path MATCHES "^HIKARI/Gameplay/")
+        list(APPEND HIKARI_RUNTIME_GAMEPLAY_SOURCES "${runtime_source}")
+    elseif(runtime_relative_path MATCHES "^HIKARI/Scene/")
         list(APPEND HIKARI_RUNTIME_SCENE_SOURCES "${runtime_source}")
     elseif(runtime_relative_path MATCHES "^HIKARI/Physics/")
         list(APPEND HIKARI_RUNTIME_PHYSICS_SOURCES "${runtime_source}")
@@ -69,6 +78,9 @@ set(
     HIKARI_RUNTIME_FOUNDATION_SOURCES
     HIKARI_RUNTIME_ASSET_SOURCES
     HIKARI_RUNTIME_PROJECT_SOURCES
+    HIKARI_RUNTIME_NAVIGATION_SOURCES
+    HIKARI_RUNTIME_ANIMATION_SOURCES
+    HIKARI_RUNTIME_GAMEPLAY_SOURCES
     HIKARI_RUNTIME_SCENE_SOURCES
     HIKARI_RUNTIME_PHYSICS_SOURCES
     HIKARI_RUNTIME_GFX_SOURCES
@@ -136,6 +148,9 @@ function(hikari_define_runtime_modules output_variable)
         "hikari_runtime_foundation|HIKARI_RUNTIME_FOUNDATION_SOURCES"
         "hikari_runtime_assets|HIKARI_RUNTIME_ASSET_SOURCES"
         "hikari_runtime_project|HIKARI_RUNTIME_PROJECT_SOURCES"
+        "hikari_runtime_navigation|HIKARI_RUNTIME_NAVIGATION_SOURCES"
+        "hikari_runtime_animation|HIKARI_RUNTIME_ANIMATION_SOURCES"
+        "hikari_runtime_gameplay|HIKARI_RUNTIME_GAMEPLAY_SOURCES"
         "hikari_runtime_scene|HIKARI_RUNTIME_SCENE_SOURCES"
         "hikari_runtime_physics|HIKARI_RUNTIME_PHYSICS_SOURCES"
         "hikari_runtime_gfx|HIKARI_RUNTIME_GFX_SOURCES"

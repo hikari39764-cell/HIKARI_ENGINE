@@ -522,6 +522,7 @@ namespace HIKARI {
         EDITOR::RegisterDialogueOperations(
             operationRegistry_,
             dialogueWorkspaceController_,
+            workspaceHost_,
             [this]() { return aiOperationScene_; });
         EDITOR::RegisterComponentAuthoringOperations(
             operationRegistry_,

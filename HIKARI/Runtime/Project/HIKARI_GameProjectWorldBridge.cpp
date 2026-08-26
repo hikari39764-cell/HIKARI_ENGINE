@@ -166,6 +166,30 @@ namespace HIKARI {
         }
     }
 
+    AudioView WorldView::GetAudio() const noexcept {
+        try {
+            World* world = GameProjectSdkAccess::GetWorld(*this);
+            return world != nullptr
+                ? GameProjectSdkAccess::MakeAudioView(*world)
+                : AudioView{};
+        }
+        catch (...) {
+            return {};
+        }
+    }
+
+    NavigationView WorldView::GetNavigation() const noexcept {
+        try {
+            World* world = GameProjectSdkAccess::GetWorld(*this);
+            return world != nullptr
+                ? GameProjectSdkAccess::MakeNavigationView(*world)
+                : NavigationView{};
+        }
+        catch (...) {
+            return {};
+        }
+    }
+
     CameraView WorldView::GetCamera() const noexcept {
         try {
             World* world = GameProjectSdkAccess::GetWorld(*this);
@@ -342,6 +366,18 @@ namespace HIKARI {
             return world != nullptr
                 ? GameProjectSdkAccess::MakeSceneFlowView(*world)
                 : SceneFlowView{};
+        }
+        catch (...) {
+            return {};
+        }
+    }
+
+    DialogueView WorldView::GetDialogue() const noexcept {
+        try {
+            World* world = GameProjectSdkAccess::GetWorld(*this);
+            return world != nullptr
+                ? GameProjectSdkAccess::MakeDialogueView(*world)
+                : DialogueView{};
         }
         catch (...) {
             return {};

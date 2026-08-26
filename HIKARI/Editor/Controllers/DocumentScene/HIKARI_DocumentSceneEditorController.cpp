@@ -2014,6 +2014,22 @@ namespace HIKARI {
         if (resetDockingLayoutRequested) {
             workspaceHost_.RequestResetActiveLayout();
         }
+        if (workspaceHost_.IsActive(
+                EDITOR::EditorWorkspaceId::Dialogue) &&
+            dialogueWorkspaceController_.IsDocumentDirty()) {
+            const EDITOR::EditorWorkspaceOpenRequest* pendingRequest =
+                workspaceHost_.PeekPending();
+            if (pendingRequest != nullptr &&
+                pendingRequest->workspaceId !=
+                    EDITOR::EditorWorkspaceId::Dialogue) {
+                EDITOR::EditorWorkspaceOpenRequest guardedRequest =
+                    *pendingRequest;
+                workspaceHost_.CancelPending();
+                (void)dialogueWorkspaceController_.RequestWorkspaceTransition(
+                    std::move(guardedRequest),
+                    viewportDropMessage_);
+            }
+        }
         if (const std::optional<EDITOR::EditorWorkspaceActivation> activation =
                 workspaceHost_.ApplyPending()) {
             const auto isSceneOwnedWorkspace =
@@ -2134,10 +2150,9 @@ namespace HIKARI {
                 dialogueWorkspaceController_.Draw(
                     scene,
                     commandRouter_);
-            if (result.exitToSceneRequested) {
-                EDITOR::EditorWorkspaceOpenRequest request{};
-                request.workspaceId = EDITOR::EditorWorkspaceId::Scene;
-                (void)workspaceHost_.RequestOpen(std::move(request));
+            if (result.workspaceRequest) {
+                (void)workspaceHost_.RequestOpen(
+                    std::move(*result.workspaceRequest));
             }
             if (!result.statusMessage.empty()) {
                 viewportDropMessage_ = result.statusMessage;

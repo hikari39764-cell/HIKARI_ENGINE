@@ -1,6 +1,7 @@
 #include "Runtime/Project/HIKARI_GameProjectActionBridge.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <memory>
@@ -29,6 +30,7 @@
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_PresentationTransformService.h"
 #include "Scene/HIKARI_RuntimeObjectHandle.h"
+#include "Scene/HIKARI_RuntimeSceneContext.h"
 #include "Scene/HIKARI_RuntimeWorldServices.h"
 #include "Scene/HIKARI_SceneObjectId.h"
 #include "Scene/HIKARI_World.h"
@@ -263,6 +265,9 @@ namespace HIKARI {
             case GameProjectCombatEffectType::DodgeAfterimage:
                 outKind = VFX::CombatWorldEffectKind::DodgeAfterimage;
                 return true;
+            case GameProjectCombatEffectType::DangerTelegraph:
+                outKind = VFX::CombatWorldEffectKind::DangerTelegraph;
+                return true;
             default:
                 return false;
             }
@@ -435,6 +440,103 @@ namespace HIKARI {
             }
             outObjectId = object->GetDocumentId();
             return outObjectId.value != 0u;
+        }
+
+        bool BuildCameraTargetFramingSubmission(
+            World& world,
+            const GameProjectCameraTargetFramingRequest& request,
+            const GameProjectCameraTargetFramingDynamics& dynamics,
+            CAMERA::CameraTargetFramingSubmission& submission) noexcept {
+
+            if (request.sourceId == 0u ||
+                request.targetObjectHandle == 0u ||
+                !IsFinite(request.targetPivotOffset) ||
+                !std::isfinite(request.targetWeight) ||
+                request.targetWeight < 0.0f ||
+                request.targetWeight > 1.0f ||
+                !std::isfinite(
+                    request.yawTrackingSpeedDegreesPerSecond) ||
+                request.yawTrackingSpeedDegreesPerSecond < 0.0f ||
+                !std::isfinite(request.preferredPitchDegrees) ||
+                !std::isfinite(
+                    request.pitchTrackingSpeedDegreesPerSecond) ||
+                request.pitchTrackingSpeedDegreesPerSecond < 0.0f ||
+                !std::isfinite(request.distanceScale) ||
+                request.distanceScale < 0.0f ||
+                !std::isfinite(request.maximumDistanceOffset) ||
+                request.maximumDistanceOffset < 0.0f ||
+                !std::isfinite(request.weight) ||
+                request.weight < 0.0f || request.weight > 1.0f ||
+                !std::isfinite(dynamics.enterSmoothSeconds) ||
+                dynamics.enterSmoothSeconds < 0.0f ||
+                !std::isfinite(dynamics.exitSmoothSeconds) ||
+                dynamics.exitSmoothSeconds < 0.0f ||
+                !std::isfinite(dynamics.targetSwitchSmoothSeconds) ||
+                dynamics.targetSwitchSmoothSeconds < 0.0f ||
+                !std::isfinite(dynamics.yawSmoothSeconds) ||
+                dynamics.yawSmoothSeconds < 0.0f ||
+                !std::isfinite(dynamics.pitchSmoothSeconds) ||
+                dynamics.pitchSmoothSeconds < 0.0f ||
+                !std::isfinite(dynamics.focusSmoothSeconds) ||
+                dynamics.focusSmoothSeconds < 0.0f ||
+                !std::isfinite(dynamics.distanceExpandSmoothSeconds) ||
+                dynamics.distanceExpandSmoothSeconds < 0.0f ||
+                !std::isfinite(dynamics.distanceContractSmoothSeconds) ||
+                dynamics.distanceContractSmoothSeconds < 0.0f ||
+                !std::isfinite(dynamics.yawDeadZoneDegrees) ||
+                dynamics.yawDeadZoneDegrees < 0.0f ||
+                dynamics.yawDeadZoneDegrees > 180.0f) {
+                return false;
+            }
+
+            GameObject* target = FindObject(
+                &world,
+                request.targetObjectHandle);
+            if (target == nullptr || !ToCameraObjectId(
+                    world,
+                    request.cameraObjectHandle,
+                    submission.cameraObjectId)) {
+                return false;
+            }
+            submission.targetObject = target->GetRuntimeHandle();
+            submission.sourceId = request.sourceId;
+            submission.priority = request.priority;
+            submission.targetPivotOffset = ToRuntime(
+                request.targetPivotOffset);
+            submission.targetWeight = request.targetWeight;
+            submission.yawTrackingSpeedDegreesPerSecond =
+                request.yawTrackingSpeedDegreesPerSecond;
+            submission.preferredPitchDegrees =
+                request.preferredPitchDegrees;
+            submission.pitchTrackingSpeedDegreesPerSecond =
+                request.pitchTrackingSpeedDegreesPerSecond;
+            submission.distanceScale = request.distanceScale;
+            submission.maximumDistanceOffset =
+                request.maximumDistanceOffset;
+            submission.weight = request.weight;
+            submission.suppressOrbitInput =
+                request.suppressOrbitInput != 0u;
+            submission.suppressZoomInput =
+                request.suppressZoomInput != 0u;
+            submission.dynamics.enterSmoothSeconds =
+                dynamics.enterSmoothSeconds;
+            submission.dynamics.exitSmoothSeconds =
+                dynamics.exitSmoothSeconds;
+            submission.dynamics.targetSwitchSmoothSeconds =
+                dynamics.targetSwitchSmoothSeconds;
+            submission.dynamics.yawSmoothSeconds =
+                dynamics.yawSmoothSeconds;
+            submission.dynamics.pitchSmoothSeconds =
+                dynamics.pitchSmoothSeconds;
+            submission.dynamics.focusSmoothSeconds =
+                dynamics.focusSmoothSeconds;
+            submission.dynamics.distanceExpandSmoothSeconds =
+                dynamics.distanceExpandSmoothSeconds;
+            submission.dynamics.distanceContractSmoothSeconds =
+                dynamics.distanceContractSmoothSeconds;
+            submission.dynamics.yawDeadZoneDegrees =
+                dynamics.yawDeadZoneDegrees;
+            return true;
         }
 
     } // namespace
@@ -1193,6 +1295,216 @@ namespace HIKARI {
         }
     }
 
+    bool AnimationView::SampleSocketTransformsAtTime(
+        uint64_t objectHandle,
+        std::string_view clipName,
+        float timeSeconds,
+        uint8_t stripRootMotion,
+        const std::string_view* socketNames,
+        uint32_t socketCount,
+        GameProjectAnimationSocketSpace space,
+        GameProjectTransform* outTransforms) const noexcept {
+        constexpr uint32_t kMaximumSampledSockets = 8u;
+        if (outTransforms != nullptr) {
+            for (uint32_t index = 0u; index < socketCount; ++index) {
+                outTransforms[index] = {};
+            }
+        }
+        try {
+            if (world_ == nullptr || clipName.empty() ||
+                !std::isfinite(timeSeconds) || timeSeconds < 0.0f ||
+                stripRootMotion > 1u || socketNames == nullptr ||
+                outTransforms == nullptr || socketCount == 0u ||
+                socketCount > kMaximumSampledSockets) {
+                return false;
+            }
+            World* world = static_cast<World*>(world_);
+            GameObject* object = FindObject(world, objectHandle);
+            const ModelComponent* model = object != nullptr
+                ? object->GetComponent<ModelComponent>()
+                : nullptr;
+            const ModelAsset* asset = model != nullptr
+                ? model->GetModelAsset()
+                : nullptr;
+            if (object == nullptr || asset == nullptr) {
+                return false;
+            }
+
+            ANIMATION::AnimationClipReference reference{};
+            reference.fallbackName = std::string(clipName);
+            ANIMATION::AnimationLocalPose sampledPose{};
+            if (!ANIMATION::SampleAnimationClip(
+                    *asset,
+                    reference,
+                    timeSeconds,
+                    false,
+                    sampledPose)) {
+                return false;
+            }
+            if (stripRootMotion != 0u &&
+                !ANIMATION::POSE_EVALUATION::StripRootMotionFromPose(
+                    *asset, sampledPose)) {
+                return false;
+            }
+            std::vector<MATH::Mat4> globals{};
+            if (!ANIMATION::POSE_EVALUATION::BuildNodeGlobalMatrices(
+                    *asset, &sampledPose, globals)) {
+                return false;
+            }
+
+            bool worldSpace = false;
+            MATH::Mat4 objectWorld = MATH::Mat4::Identity();
+            switch (space) {
+            case GameProjectAnimationSocketSpace::Local:
+                break;
+            case GameProjectAnimationSocketSpace::World:
+                objectWorld = object->GetTransform().GetWorldMatrix();
+                worldSpace = true;
+                break;
+            case GameProjectAnimationSocketSpace::PresentationWorld: {
+                objectWorld = object->GetTransform().GetWorldMatrix();
+                const PresentationTransformService* presentation =
+                    world->Services().Find<PresentationTransformService>();
+                MATH::Mat4 presented{};
+                if (presentation != nullptr &&
+                    presentation->TryGetWorldMatrix(
+                        object->GetRuntimeHandle(), presented) &&
+                    IsFinite(presented)) {
+                    objectWorld = presented;
+                }
+                worldSpace = true;
+                break;
+            }
+            default:
+                return false;
+            }
+            if (worldSpace && !IsFinite(objectWorld)) {
+                return false;
+            }
+
+            std::array<Transform3D, kMaximumSampledSockets> resolved{};
+            for (uint32_t index = 0u; index < socketCount; ++index) {
+                int nodeIndex = -1;
+                if (socketNames[index].empty() ||
+                    !ANIMATION::POSE_EVALUATION::ResolveNodeByExactName(
+                        *asset, socketNames[index], nodeIndex) ||
+                    nodeIndex < 0 ||
+                    static_cast<size_t>(nodeIndex) >= globals.size()) {
+                    return false;
+                }
+                const MATH::Mat4 socketMatrix = worldSpace
+                    ? objectWorld * globals[static_cast<size_t>(nodeIndex)]
+                    : globals[static_cast<size_t>(nodeIndex)];
+                if (!ANIMATION::POSE_EVALUATION::DecomposeTransform(
+                        socketMatrix, resolved[index]) ||
+                    !MATH::IsFinite(resolved[index].position) ||
+                    !MATH::IsFinite(resolved[index].rotation) ||
+                    !MATH::IsFinite(resolved[index].scale)) {
+                    return false;
+                }
+            }
+            for (uint32_t index = 0u; index < socketCount; ++index) {
+                outTransforms[index].position =
+                    ToProject(resolved[index].position);
+                outTransforms[index].rotation =
+                    ToProject(resolved[index].rotation);
+                outTransforms[index].scale =
+                    ToProject(resolved[index].scale);
+            }
+            return true;
+        }
+        catch (...) {
+            if (outTransforms != nullptr) {
+                for (uint32_t index = 0u; index < socketCount; ++index) {
+                    outTransforms[index] = {};
+                }
+            }
+            return false;
+        }
+    }
+
+    bool AnimationView::SampleRootMotionDeltaAtTime(
+        uint64_t objectHandle,
+        std::string_view clipName,
+        float previousTimeSeconds,
+        float currentTimeSeconds,
+        GameProjectRootMotionDelta& outDelta) const noexcept {
+        outDelta = {};
+        try {
+            if (world_ == nullptr || clipName.empty() ||
+                !std::isfinite(previousTimeSeconds) ||
+                !std::isfinite(currentTimeSeconds) ||
+                previousTimeSeconds < 0.0f ||
+                currentTimeSeconds < previousTimeSeconds) {
+                return false;
+            }
+            World* world = static_cast<World*>(world_);
+            GameObject* object = FindObject(world, objectHandle);
+            const ModelComponent* model = object != nullptr
+                ? object->GetComponent<ModelComponent>()
+                : nullptr;
+            const ModelAsset* asset = model != nullptr
+                ? model->GetModelAsset()
+                : nullptr;
+            if (object == nullptr || asset == nullptr) {
+                return false;
+            }
+
+            ANIMATION::AnimationClipReference reference{};
+            reference.fallbackName = std::string(clipName);
+            ANIMATION::AnimationPoseSnapshot previous{};
+            ANIMATION::AnimationPoseSnapshot current{};
+            if (!ANIMATION::SampleAnimationClip(
+                    *asset,
+                    reference,
+                    previousTimeSeconds,
+                    false,
+                    previous.localPose,
+                    &previous.normalizedTime) ||
+                !ANIMATION::SampleAnimationClip(
+                    *asset,
+                    reference,
+                    currentTimeSeconds,
+                    false,
+                    current.localPose,
+                    &current.normalizedTime) ||
+                !ANIMATION::POSE_EVALUATION::CaptureRootMotionSample(
+                    *asset,
+                    previous.localPose,
+                    previous.rootMotionSample) ||
+                !ANIMATION::POSE_EVALUATION::CaptureRootMotionSample(
+                    *asset,
+                    current.localPose,
+                    current.rootMotionSample)) {
+                return false;
+            }
+            previous.primaryClip = reference;
+            current.primaryClip = reference;
+            previous.valid = true;
+            current.valid = true;
+            previous.loop = false;
+            current.loop = false;
+            previous.playbackSpeed = 1.0f;
+            current.playbackSpeed = 1.0f;
+            ANIMATION::AnimationRootMotionDelta sampled{};
+            if (!ANIMATION::EvaluateAnimationRootMotion(
+                    *asset, &previous, current, sampled) ||
+                !sampled.valid ||
+                !MATH::IsFinite(sampled.translation) ||
+                !MATH::IsFinite(sampled.rotation)) {
+                return false;
+            }
+            outDelta.translation = ToProject(sampled.translation);
+            outDelta.rotation = ToProject(sampled.rotation);
+            outDelta.valid = 1u;
+            return true;
+        }
+        catch (...) {
+            outDelta = {};
+            return false;
+        }
+    }
+
     bool AnimationView::ConsumeRootMotion(
         uint64_t objectHandle,
         uint64_t fixedTickIndex,
@@ -1709,6 +2021,17 @@ namespace HIKARI {
         }
     }
 
+    bool CameraView::IsReady() const noexcept {
+        try {
+            return world_ != nullptr &&
+                RuntimeSceneContext::IsCameraReady(
+                    static_cast<World*>(world_));
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
     bool CameraView::SubmitTargetFraming(
         const GameProjectCameraTargetFramingRequest& request)
         const noexcept {
@@ -1720,102 +2043,91 @@ namespace HIKARI {
         const GameProjectCameraTargetFramingDynamics& dynamics)
         const noexcept {
         try {
-            if (world_ == nullptr || request.sourceId == 0u ||
-                request.targetObjectHandle == 0u ||
-                !IsFinite(request.targetPivotOffset) ||
-                !std::isfinite(request.targetWeight) ||
-                request.targetWeight < 0.0f ||
-                request.targetWeight > 1.0f ||
-                !std::isfinite(
-                    request.yawTrackingSpeedDegreesPerSecond) ||
-                request.yawTrackingSpeedDegreesPerSecond < 0.0f ||
-                !std::isfinite(request.preferredPitchDegrees) ||
-                !std::isfinite(
-                    request.pitchTrackingSpeedDegreesPerSecond) ||
-                request.pitchTrackingSpeedDegreesPerSecond < 0.0f ||
-                !std::isfinite(request.distanceScale) ||
-                request.distanceScale < 0.0f ||
-                !std::isfinite(request.maximumDistanceOffset) ||
-                request.maximumDistanceOffset < 0.0f ||
-                !std::isfinite(request.weight) ||
-                request.weight < 0.0f || request.weight > 1.0f ||
-                !std::isfinite(dynamics.enterSmoothSeconds) ||
-                dynamics.enterSmoothSeconds < 0.0f ||
-                !std::isfinite(dynamics.exitSmoothSeconds) ||
-                dynamics.exitSmoothSeconds < 0.0f ||
-                !std::isfinite(dynamics.targetSwitchSmoothSeconds) ||
-                dynamics.targetSwitchSmoothSeconds < 0.0f ||
-                !std::isfinite(dynamics.yawSmoothSeconds) ||
-                dynamics.yawSmoothSeconds < 0.0f ||
-                !std::isfinite(dynamics.pitchSmoothSeconds) ||
-                dynamics.pitchSmoothSeconds < 0.0f ||
-                !std::isfinite(dynamics.focusSmoothSeconds) ||
-                dynamics.focusSmoothSeconds < 0.0f ||
-                !std::isfinite(dynamics.distanceExpandSmoothSeconds) ||
-                dynamics.distanceExpandSmoothSeconds < 0.0f ||
-                !std::isfinite(dynamics.distanceContractSmoothSeconds) ||
-                dynamics.distanceContractSmoothSeconds < 0.0f ||
-                !std::isfinite(dynamics.yawDeadZoneDegrees) ||
-                dynamics.yawDeadZoneDegrees < 0.0f ||
-                dynamics.yawDeadZoneDegrees > 180.0f) {
+            if (world_ == nullptr) {
                 return false;
             }
-
             World* world = static_cast<World*>(world_);
-            GameObject* target = FindObject(
-                world,
-                request.targetObjectHandle);
             CAMERA::CameraRigService* service = world->Services().Find<
                 CAMERA::CameraRigService>();
-            if (target == nullptr || service == nullptr) {
-                return false;
-            }
-
             CAMERA::CameraTargetFramingSubmission submission{};
-            if (!ToCameraObjectId(
+            if (service == nullptr || !BuildCameraTargetFramingSubmission(
                     *world,
-                    request.cameraObjectHandle,
-                    submission.cameraObjectId)) {
+                    request,
+                    dynamics,
+                    submission)) {
                 return false;
             }
-            submission.targetObject = target->GetRuntimeHandle();
-            submission.sourceId = request.sourceId;
-            submission.priority = request.priority;
-            submission.targetPivotOffset = ToRuntime(
-                request.targetPivotOffset);
-            submission.targetWeight = request.targetWeight;
-            submission.yawTrackingSpeedDegreesPerSecond =
-                request.yawTrackingSpeedDegreesPerSecond;
-            submission.preferredPitchDegrees =
-                request.preferredPitchDegrees;
-            submission.pitchTrackingSpeedDegreesPerSecond =
-                request.pitchTrackingSpeedDegreesPerSecond;
-            submission.distanceScale = request.distanceScale;
-            submission.maximumDistanceOffset =
-                request.maximumDistanceOffset;
-            submission.weight = request.weight;
-            submission.suppressOrbitInput =
-                request.suppressOrbitInput != 0u;
-            submission.suppressZoomInput =
-                request.suppressZoomInput != 0u;
-            submission.dynamics.enterSmoothSeconds =
-                dynamics.enterSmoothSeconds;
-            submission.dynamics.exitSmoothSeconds =
-                dynamics.exitSmoothSeconds;
-            submission.dynamics.targetSwitchSmoothSeconds =
-                dynamics.targetSwitchSmoothSeconds;
-            submission.dynamics.yawSmoothSeconds =
-                dynamics.yawSmoothSeconds;
-            submission.dynamics.pitchSmoothSeconds =
-                dynamics.pitchSmoothSeconds;
-            submission.dynamics.focusSmoothSeconds =
-                dynamics.focusSmoothSeconds;
-            submission.dynamics.distanceExpandSmoothSeconds =
-                dynamics.distanceExpandSmoothSeconds;
-            submission.dynamics.distanceContractSmoothSeconds =
-                dynamics.distanceContractSmoothSeconds;
-            submission.dynamics.yawDeadZoneDegrees =
-                dynamics.yawDeadZoneDegrees;
+            return service->SubmitTargetFraming(submission);
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
+    bool CameraView::SubmitRelationshipShot(
+        const GameProjectCameraTargetFramingRequest& request,
+        const GameProjectCameraTargetFramingDynamics& dynamics,
+        const GameProjectCameraRelationshipShotProfile& profile)
+        const noexcept {
+        try {
+            if (world_ == nullptr ||
+                !std::isfinite(profile.preferredSide) ||
+                profile.preferredSide < -1.0f ||
+                profile.preferredSide > 1.0f ||
+                !std::isfinite(profile.shoulderAngleDegrees) ||
+                profile.shoulderAngleDegrees < 0.0f ||
+                profile.shoulderAngleDegrees > 75.0f ||
+                !std::isfinite(profile.verticalFovOffsetRadians) ||
+                std::abs(profile.verticalFovOffsetRadians) > 1.5f ||
+                !std::isfinite(profile.rollRadians) ||
+                std::abs(profile.rollRadians) > 3.14159265f ||
+                !std::isfinite(profile.sideClearanceBias) ||
+                profile.sideClearanceBias < 0.0f ||
+                profile.sideClearanceBias > 5.0f ||
+                !std::isfinite(profile.distanceOffset) ||
+                std::abs(profile.distanceOffset) > 10.0f ||
+                !std::isfinite(profile.pivotHeightOffset) ||
+                std::abs(profile.pivotHeightOffset) > 5.0f ||
+                !std::isfinite(profile.focusLateralOffset) ||
+                std::abs(profile.focusLateralOffset) > 5.0f ||
+                !std::isfinite(profile.focusHeightOffset) ||
+                std::abs(profile.focusHeightOffset) > 5.0f ||
+                profile.suppressModifiers > 1u ||
+                profile.reserved[0] != 0u ||
+                profile.reserved[1] != 0u ||
+                profile.reserved[2] != 0u) {
+                return false;
+            }
+            World* world = static_cast<World*>(world_);
+            CAMERA::CameraRigService* service = world->Services().Find<
+                CAMERA::CameraRigService>();
+            CAMERA::CameraTargetFramingSubmission submission{};
+            if (service == nullptr || !BuildCameraTargetFramingSubmission(
+                    *world,
+                    request,
+                    dynamics,
+                    submission)) {
+                return false;
+            }
+            submission.relationshipShot = true;
+            submission.relationshipPreferredSide = profile.preferredSide;
+            submission.relationshipShoulderAngleDegrees =
+                profile.shoulderAngleDegrees;
+            submission.relationshipVerticalFovOffsetRadians =
+                profile.verticalFovOffsetRadians;
+            submission.relationshipRollRadians = profile.rollRadians;
+            submission.relationshipSideClearanceBias =
+                profile.sideClearanceBias;
+            submission.relationshipDistanceOffset =
+                profile.distanceOffset;
+            submission.relationshipPivotHeightOffset =
+                profile.pivotHeightOffset;
+            submission.relationshipFocusLateralOffset =
+                profile.focusLateralOffset;
+            submission.relationshipFocusHeightOffset =
+                profile.focusHeightOffset;
+            submission.relationshipSuppressModifiers =
+                profile.suppressModifiers != 0u;
             return service->SubmitTargetFraming(submission);
         }
         catch (...) {

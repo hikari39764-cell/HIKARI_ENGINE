@@ -6,6 +6,7 @@
 #include <string_view>
 
 #include "HIKARI/Project/GameProjectSdk.h"
+#include "HIKARI/Project/UiTypes.h"
 #include "HIKARI/Project/ValueTypes.h"
 #include "HIKARI/Project/VfxTypes.h"
 
@@ -32,6 +33,9 @@ namespace HIKARI {
         HIKARI_GAME_PROJECT_SDK_API bool ReadVfxAssetReference(
             std::string_view name,
             GameProjectVfxAssetReference& outReference) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool ReadTextureAssetReference(
+            std::string_view name,
+            GameProjectUiTextureReference& outReference) const noexcept;
 
         bool ReadAssetReference(
             std::string_view name,
@@ -95,6 +99,9 @@ namespace HIKARI {
         HIKARI_GAME_PROJECT_SDK_API void WriteVfxAssetReference(
             std::string_view name,
             const GameProjectVfxAssetReference& reference);
+        HIKARI_GAME_PROJECT_SDK_API void WriteTextureAssetReference(
+            std::string_view name,
+            const GameProjectUiTextureReference& reference);
 
         void WriteAssetReference(
             std::string_view name,

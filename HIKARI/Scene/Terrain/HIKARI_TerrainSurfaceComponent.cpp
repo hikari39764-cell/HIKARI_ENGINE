@@ -117,6 +117,23 @@ namespace HIKARI {
             return std::lerp(edgeT, smooth, std::clamp(falloff, 0.0f, 1.0f));
         }
 
+        // Target-blend tools use a continuous response instead of clamping
+        // strength * dt. This preserves nearly identical low-strength feel,
+        // remains stable up to the production 8x limit, and is independent
+        // from 30/60/120 Hz editor frame cadence.
+        float BrushResponse(
+            float strength,
+            float deltaSeconds,
+            float falloff) noexcept {
+            const float rate = (std::max)(strength, 0.0f) *
+                (std::max)(falloff, 0.0f);
+            const float dt = std::clamp(deltaSeconds, 0.0f, 1.0f);
+            return std::clamp(
+                1.0f - std::exp(-rate * dt),
+                0.0f,
+                1.0f);
+        }
+
         uint64_t PackTerrainVertexKey(
             int32_t x,
             int32_t z) noexcept {
@@ -268,61 +285,6 @@ namespace HIKARI {
                 lhs.maxClumps == rhs.maxClumps;
         }
 
-        bool TerrainChunkGeometryEqual(
-            const TERRAIN::TerrainChunkMap& lhs,
-            const TERRAIN::TerrainChunkMap& rhs) {
-            if (lhs.size() != rhs.size()) {
-                return false;
-            }
-            auto left = lhs.begin();
-            auto right = rhs.begin();
-            for (; left != lhs.end(); ++left, ++right) {
-                if (left->first != right->first ||
-                    left->second.cells != right->second.cells ||
-                    left->second.heights != right->second.heights) {
-                    return false;
-                }
-            }
-            return true;
-        }
-
-        bool TerrainChunkCoverageEqual(
-            const TERRAIN::TerrainChunkMap& lhs,
-            const TERRAIN::TerrainChunkMap& rhs) {
-            if (lhs.size() != rhs.size()) {
-                return false;
-            }
-            auto left = lhs.begin();
-            auto right = rhs.begin();
-            for (; left != lhs.end(); ++left, ++right) {
-                if (left->first != right->first ||
-                    left->second.cells != right->second.cells ||
-                    left->second.coverage != right->second.coverage) {
-                    return false;
-                }
-            }
-            return true;
-        }
-
-        bool TerrainChunkLayersEqual(
-            const TERRAIN::TerrainChunkMap& lhs,
-            const TERRAIN::TerrainChunkMap& rhs) {
-            if (lhs.size() != rhs.size()) {
-                return false;
-            }
-            auto left = lhs.begin();
-            auto right = rhs.begin();
-            for (; left != lhs.end(); ++left, ++right) {
-                if (left->first != right->first ||
-                    left->second.cells != right->second.cells ||
-                    left->second.layerCount != right->second.layerCount ||
-                    left->second.layerWeights != right->second.layerWeights) {
-                    return false;
-                }
-            }
-            return true;
-        }
-
         bool TerrainChunkEqual(
             const TERRAIN::TerrainChunk& lhs,
             const TERRAIN::TerrainChunk& rhs) noexcept {
@@ -357,7 +319,11 @@ namespace HIKARI {
 
     void TerrainSurfaceComponent::SetSurface(
         const TERRAIN::TerrainSurface& surface) {
-        TERRAIN::TerrainSurface next = surface;
+        SetSurfaceOwned(surface);
+    }
+
+    void TerrainSurfaceComponent::SetSurfaceOwned(
+        TERRAIN::TerrainSurface next) {
         next.chunkCells = (std::clamp)(
             next.chunkCells,
             1u,
@@ -378,8 +344,98 @@ namespace HIKARI {
             }
         }
 
-        const TERRAIN::TerrainSurface previous = surface_;
+        bool chunkGeometryChanged = false;
+        bool chunkCoverageChanged = false;
+        bool chunkLayersChanged = false;
+        bool chunkTopologyChanged = false;
+        std::vector<TERRAIN::TerrainChunkKey> payloadChangedChunks{};
+        payloadChangedChunks.reserve(next.chunks.size());
+        auto previousChunk = surface_.chunks.begin();
+        auto nextChunk = next.chunks.begin();
+        while (previousChunk != surface_.chunks.end() ||
+            nextChunk != next.chunks.end()) {
+
+            if (previousChunk == surface_.chunks.end() ||
+                (nextChunk != next.chunks.end() &&
+                    nextChunk->first < previousChunk->first)) {
+                chunkGeometryChanged = true;
+                chunkCoverageChanged = true;
+                chunkLayersChanged = true;
+                chunkTopologyChanged = true;
+                payloadChangedChunks.push_back(nextChunk->first);
+                ++nextChunk;
+                continue;
+            }
+            if (nextChunk == next.chunks.end() ||
+                previousChunk->first < nextChunk->first) {
+                chunkGeometryChanged = true;
+                chunkCoverageChanged = true;
+                chunkLayersChanged = true;
+                chunkTopologyChanged = true;
+                ++previousChunk;
+                continue;
+            }
+
+            const TERRAIN::TerrainChunk& previousPayload =
+                previousChunk->second;
+            const TERRAIN::TerrainChunk& nextPayload = nextChunk->second;
+            const bool cellsChanged =
+                previousPayload.cells != nextPayload.cells;
+            const bool geometryPayloadChanged = cellsChanged ||
+                previousPayload.heights != nextPayload.heights;
+            const bool coveragePayloadChanged = cellsChanged ||
+                previousPayload.coverage != nextPayload.coverage;
+            const bool layersPayloadChanged = cellsChanged ||
+                previousPayload.layerCount != nextPayload.layerCount ||
+                previousPayload.layerWeights != nextPayload.layerWeights;
+            chunkGeometryChanged = chunkGeometryChanged ||
+                geometryPayloadChanged;
+            chunkCoverageChanged = chunkCoverageChanged ||
+                coveragePayloadChanged;
+            chunkLayersChanged = chunkLayersChanged || layersPayloadChanged;
+            if (geometryPayloadChanged || coveragePayloadChanged ||
+                layersPayloadChanged) {
+                payloadChangedChunks.push_back(nextChunk->first);
+            }
+            ++previousChunk;
+            ++nextChunk;
+        }
+
+        bool geometryChanged =
+            surface_.chunkCells != next.chunkCells ||
+            surface_.chunkCellSize != next.chunkCellSize ||
+            surface_.heightScale != next.heightScale ||
+            chunkGeometryChanged;
+        bool coverageChanged =
+            surface_.chunkCells != next.chunkCells ||
+            surface_.chunkCellSize != next.chunkCellSize ||
+            chunkCoverageChanged;
+        bool layersChanged =
+            surface_.layerPresetIds != next.layerPresetIds ||
+            chunkLayersChanged;
+        const bool settingsChanged =
+            !TerrainSettingsEqual(surface_, next);
+        if (!geometryChanged && !coverageChanged && !layersChanged &&
+            !settingsChanged) {
+            return;
+        }
+
+        const bool fullChunkProjectionChanged =
+            chunkTopologyChanged ||
+            surface_.chunkCells != next.chunkCells ||
+            surface_.chunkCellSize != next.chunkCellSize ||
+            settingsChanged;
+        const bool coverageCachePolicyChanged =
+            chunkTopologyChanged ||
+            surface_.chunkCells != next.chunkCells ||
+            surface_.chunkCellSize != next.chunkCellSize ||
+            surface_.shoreline.edgeFalloff !=
+                next.shoreline.edgeFalloff;
+
         surface_ = std::move(next);
+        if (fullChunkProjectionChanged) {
+            RecordFullChunkChange();
+        }
         for (auto it = chunkRevisions_.begin();
             it != chunkRevisions_.end();) {
             if (surface_.chunks.contains(it->first)) {
@@ -388,31 +444,23 @@ namespace HIKARI {
                 it = chunkRevisions_.erase(it);
             }
         }
-        const bool chunkPayloadChanged =
-            !TerrainChunkGeometryEqual(previous.chunks, surface_.chunks) ||
-            !TerrainChunkCoverageEqual(previous.chunks, surface_.chunks) ||
-            !TerrainChunkLayersEqual(previous.chunks, surface_.chunks);
-        if (chunkPayloadChanged) {
-            StitchChunkBorders();
-        }
-
-        const bool geometryChanged =
-            previous.chunkCells != surface_.chunkCells ||
-            previous.chunkCellSize != surface_.chunkCellSize ||
-            previous.heightScale != surface_.heightScale ||
-            !TerrainChunkGeometryEqual(previous.chunks, surface_.chunks);
-        const bool coverageChanged =
-            previous.chunkCells != surface_.chunkCells ||
-            previous.chunkCellSize != surface_.chunkCellSize ||
-            !TerrainChunkCoverageEqual(previous.chunks, surface_.chunks);
-        const bool layersChanged =
-            previous.layerPresetIds != surface_.layerPresetIds ||
-            !TerrainChunkLayersEqual(previous.chunks, surface_.chunks);
-        const bool settingsChanged =
-            !TerrainSettingsEqual(previous, surface_);
-        if (!geometryChanged && !coverageChanged && !layersChanged &&
-            !settingsChanged) {
-            return;
+        std::set<TERRAIN::TerrainChunkKey> changedChunks{};
+        if (!payloadChangedChunks.empty()) {
+            changedChunks = std::set<TERRAIN::TerrainChunkKey>(
+                payloadChangedChunks.begin(),
+                payloadChangedChunks.end());
+            bool seamHeightChanged = false;
+            bool seamLayersChanged = false;
+            coverageChanged = StitchChunkBorders(
+                payloadChangedChunks,
+                changedChunks,
+                &seamHeightChanged,
+                &seamLayersChanged) || coverageChanged;
+            geometryChanged = geometryChanged || seamHeightChanged;
+            layersChanged = layersChanged || seamLayersChanged;
+            for (const TERRAIN::TerrainChunkKey& key : changedChunks) {
+                MarkChunkChanged(key);
+            }
         }
 
         ++revision_;
@@ -424,7 +472,15 @@ namespace HIKARI {
             if (!geometryChanged) {
                 ++collisionRevision_;
             }
-            InvalidateCoverageCache();
+            if (coverageCachePolicyChanged || changedChunks.empty()) {
+                // Topology/grid/falloff changes invalidate the distance-field
+                // domain. Lost history deliberately falls back owner-wide.
+                InvalidateCoverageCache();
+            } else {
+                for (const TERRAIN::TerrainChunkKey key : changedChunks) {
+                    MarkCoverageChunkDirty(key);
+                }
+            }
         }
         NotifyRenderStateDirty();
     }
@@ -451,6 +507,7 @@ namespace HIKARI {
             return;
         }
         surface_.stylization = sanitized;
+        RecordFullChunkChange();
         ++revision_;
         // 見た目だけの変更なので geometry / coverage revision は無効化せず、
         // 地形衝突 lattice も再構築しない。
@@ -511,6 +568,19 @@ namespace HIKARI {
         }
         const auto found = chunkRevisions_.find(key);
         return found != chunkRevisions_.end() ? found->second : 0u;
+    }
+
+    uint64_t TerrainSurfaceComponent::GetChunkChangeRevision() const noexcept {
+        return chunkChangeJournal_.GetRevision();
+    }
+
+    bool TerrainSurfaceComponent::TryGetChangedChunkKeys(
+        uint64_t sinceRevision,
+        std::vector<TERRAIN::TerrainChunkKey>& outKeys) const {
+
+        return chunkChangeJournal_.TryGetChangedChunkKeys(
+            sinceRevision,
+            outKeys);
     }
 
     uint32_t TerrainSurfaceComponent::GetLayerCount() const noexcept {
@@ -605,9 +675,11 @@ namespace HIKARI {
             next.layerPresetIds.resize(
                 static_cast<std::size_t>(layerIndex) + 1u);
         }
-        bool changed = next.presetId != targetId ||
+        const bool presetMetadataChanged =
+            next.presetId != targetId ||
             next.layerPresetIds[static_cast<std::size_t>(layerIndex)] !=
                 targetId;
+        bool changed = presetMetadataChanged;
         next.presetId = targetId;
         next.layerPresetIds[static_cast<std::size_t>(layerIndex)] = targetId;
         for (auto& [key, chunk] : next.chunks) {
@@ -628,6 +700,9 @@ namespace HIKARI {
         // render 側だけを一度 dirty にする。SetSurface は地形形状の更新
         // 用で、ここから呼ぶと不要な collision rebuild を起こす。
         surface_ = std::move(next);
+        if (presetMetadataChanged) {
+            RecordFullChunkChange();
+        }
         ++revision_;
         NotifyRenderStateDirty();
         return true;
@@ -678,6 +753,7 @@ namespace HIKARI {
             current.rimStrength != deform.rimStrength &&
             surface_.shoreline.edgeDepth <= 1.0e-4f;
         surface_.deform = deform;
+        RecordFullChunkChange();
         ++revision_;
         if (collisionGeometryChanged) {
             MarkGeometryChanged();
@@ -698,6 +774,7 @@ namespace HIKARI {
         const bool collisionGeometryChanged = coverageChanged ||
             current.edgeDepth != shoreline.edgeDepth;
         surface_.shoreline = shoreline;
+        RecordFullChunkChange();
         ++revision_;
         if (collisionGeometryChanged) {
             MarkGeometryChanged();
@@ -840,6 +917,31 @@ namespace HIKARI {
         return { local.x, local.y, local.z };
     }
 
+    MATH::Vec3 TerrainSurfaceComponent::WorldNormalToLocal(
+        const MATH::Vec3& worldNormal) const noexcept {
+        const GameObject* owner = GetOwner();
+        MATH::Vec3 localNormal = worldNormal;
+        if (owner != nullptr) {
+            const MATH::Mat4 world =
+                owner->GetTransform().GetWorldMatrix();
+            // world normal = inverse-transpose(world) * local normal,
+            // therefore the inverse mapping is transpose(world).
+            localNormal = {
+                world.m[0][0] * worldNormal.x +
+                    world.m[0][1] * worldNormal.y +
+                    world.m[0][2] * worldNormal.z,
+                world.m[1][0] * worldNormal.x +
+                    world.m[1][1] * worldNormal.y +
+                    world.m[1][2] * worldNormal.z,
+                world.m[2][0] * worldNormal.x +
+                    world.m[2][1] * worldNormal.y +
+                    world.m[2][2] * worldNormal.z };
+        }
+        return MATH::Dot(localNormal, localNormal) > 1.0e-12f
+            ? MATH::Normalize(localNormal)
+            : MATH::Vec3{ 0.0f, 0.0f, 1.0f };
+    }
+
     MATH::Vec3 TerrainSurfaceComponent::LocalToWorld(
         const MATH::Vec3& localPos) const noexcept {
         const GameObject* owner = GetOwner();
@@ -856,21 +958,18 @@ namespace HIKARI {
         return { world.x, world.y, world.z };
     }
 
-    void TerrainSurfaceComponent::StitchChunkBorders() {
-        if (surface_.chunks.empty()) {
-            return;
-        }
-        std::vector<TERRAIN::TerrainChunkKey> allChunks{};
-        allChunks.reserve(surface_.chunks.size());
-        for (const auto& [key, chunk] : surface_.chunks) {
-            (void)chunk;
-            allChunks.push_back(key);
-        }
-        (void)StitchChunkBorders(allChunks);
-    }
-
     bool TerrainSurfaceComponent::StitchChunkBorders(
-        const std::vector<TERRAIN::TerrainChunkKey>& touchedChunks) {
+        const std::vector<TERRAIN::TerrainChunkKey>& touchedChunks,
+        std::set<TERRAIN::TerrainChunkKey>& changedChunks,
+        bool* outHeightChanged,
+        bool* outLayersChanged) {
+
+        if (outHeightChanged != nullptr) {
+            *outHeightChanged = false;
+        }
+        if (outLayersChanged != nullptr) {
+            *outLayersChanged = false;
+        }
         if (touchedChunks.empty() || surface_.chunks.empty()) {
             return false;
         }
@@ -881,9 +980,19 @@ namespace HIKARI {
         for (const TERRAIN::TerrainChunkKey& touched : touchedChunks) {
             for (int32_t dz = -1; dz <= 1; ++dz) {
                 for (int32_t dx = -1; dx <= 1; ++dx) {
+                    const int64_t candidateX =
+                        static_cast<int64_t>(touched.x) + dx;
+                    const int64_t candidateZ =
+                        static_cast<int64_t>(touched.z) + dz;
+                    if (candidateX < (std::numeric_limits<int32_t>::min)() ||
+                        candidateX > (std::numeric_limits<int32_t>::max)() ||
+                        candidateZ < (std::numeric_limits<int32_t>::min)() ||
+                        candidateZ > (std::numeric_limits<int32_t>::max)()) {
+                        continue;
+                    }
                     const TERRAIN::TerrainChunkKey candidate{
-                        touched.x + dx,
-                        touched.z + dz
+                        static_cast<int32_t>(candidateX),
+                        static_cast<int32_t>(candidateZ)
                     };
                     if (surface_.chunks.contains(candidate)) {
                         affected.insert(candidate);
@@ -933,6 +1042,10 @@ namespace HIKARI {
             }
             chunk.layerCount = layerCount;
             chunk.layerWeights = std::move(expanded);
+            changedChunks.insert(key);
+            if (outLayersChanged != nullptr) {
+                *outLayersChanged = true;
+            }
         }
 
         struct BorderValue {
@@ -978,6 +1091,9 @@ namespace HIKARI {
             const uint32_t stride = cells + 1u;
             const std::size_t vertexCount =
                 TERRAIN::TerrainChunkVertexCount(cells);
+            bool chunkHeightChanged = false;
+            bool chunkCoverageChanged = false;
+            bool chunkLayersChanged = false;
             for (uint32_t z = 0u; z <= cells; ++z) {
                 for (uint32_t x = 0u; x <= cells; ++x) {
                     if (x != 0u && x != cells &&
@@ -992,23 +1108,31 @@ namespace HIKARI {
                         static_cast<float>((std::max)(value.count, 1u));
                     const std::size_t index =
                         static_cast<std::size_t>(z) * stride + x;
+                    const float oldHeight = chunk.heights[index];
                     const float oldCoverage = chunk.coverage[index];
-                    chunk.heights[index] =
+                    const float nextHeight =
                         static_cast<float>(value.height) * inv;
-                    chunk.coverage[index] = std::clamp(
+                    const float nextCoverage = std::clamp(
                         static_cast<float>(value.coverage) * inv,
                         0.0f,
                         1.0f);
-                    if (std::fabs(
-                            chunk.coverage[index] - oldCoverage) >
-                        1.0e-7f) {
+                    if (std::fabs(nextHeight - oldHeight) > 1.0e-7f) {
+                        chunk.heights[index] = nextHeight;
+                        chunkHeightChanged = true;
+                    }
+                    if (std::fabs(nextCoverage - oldCoverage) > 1.0e-7f) {
+                        chunk.coverage[index] = nextCoverage;
+                        chunkCoverageChanged = true;
                         coverageChanged = true;
                         MarkCoverageVertexDirty(key, x, z);
                     }
+                    std::array<float, TERRAIN::kTerrainChunkMaxLayers>
+                        oldWeights{};
                     float total = 0.0f;
                     for (uint32_t layer = 0u; layer < layerCount; ++layer) {
                         float& weight = chunk.layerWeights[
                             static_cast<std::size_t>(layer) * vertexCount + index];
+                        oldWeights[layer] = weight;
                         weight = (std::max)(
                             static_cast<float>(value.weights[layer]) * inv,
                             0.0f);
@@ -1022,9 +1146,29 @@ namespace HIKARI {
                                 static_cast<std::size_t>(layer) * vertexCount + index] /= total;
                         }
                     }
+                    for (uint32_t layer = 0u; layer < layerCount; ++layer) {
+                        float& weight = chunk.layerWeights[
+                            static_cast<std::size_t>(layer) * vertexCount + index];
+                        if (std::fabs(weight - oldWeights[layer]) > 1.0e-7f) {
+                            chunkLayersChanged = true;
+                        } else {
+                            // Do not publish sub-epsilon averaging noise as
+                            // authored content or generate a false revision.
+                            weight = oldWeights[layer];
+                        }
+                    }
                 }
             }
-            MarkChunkChanged(key);
+            if (chunkHeightChanged || chunkCoverageChanged ||
+                chunkLayersChanged) {
+                changedChunks.insert(key);
+            }
+            if (chunkHeightChanged && outHeightChanged != nullptr) {
+                *outHeightChanged = true;
+            }
+            if (chunkLayersChanged && outLayersChanged != nullptr) {
+                *outLayersChanged = true;
+            }
         }
         return coverageChanged;
     }
@@ -1182,10 +1326,19 @@ namespace HIKARI {
         const float ridgePerpendicularZ = ridgeAxisX;
         const float ridgeWidth = brush.radius * std::lerp(
             0.55f, 0.10f, brush.ridgeSharpness);
+        const float shaftFloorRadius = (std::max)(
+            0.0f,
+            brush.radius - (std::min)(
+                brush.shaftWallWidth,
+                brush.radius));
+        const float shaftWallWidth = (std::max)(
+            brush.radius - shaftFloorRadius,
+            cellSize);
 
         bool changed = false;
         bool coverageChanged = false;
         std::vector<TERRAIN::TerrainChunkKey> touchedChunks{};
+        std::set<TERRAIN::TerrainChunkKey> changedChunks{};
         ForEachChunkInBrushLocal(
             localPos,
             brush.radius,
@@ -1205,6 +1358,7 @@ namespace HIKARI {
                 if (!range.IsValid()) {
                     return;
                 }
+                bool chunkChanged = false;
                 for (uint32_t z = range.minZ; z <= range.maxZ; ++z) {
                     for (uint32_t x = range.minX; x <= range.maxX; ++x) {
                         const float lx = chunkOrigin.x +
@@ -1271,10 +1425,10 @@ namespace HIKARI {
                             break;
                         case TERRAIN::TerrainBrushMode::Flatten: {
                             const float target = brush.flattenHeight;
-                            h += (target - h) * std::clamp(
-                                brush.strength * dtScale * falloff,
-                                0.0f,
-                                1.0f);
+                            h += (target - h) * BrushResponse(
+                                brush.strength,
+                                dtScale,
+                                falloff);
                             break;
                         }
                         case TERRAIN::TerrainBrushMode::Smooth: {
@@ -1293,10 +1447,10 @@ namespace HIKARI {
                             }
                             if (n > 1u) {
                                 const float avg = sum / static_cast<float>(n);
-                                h += (avg - h) * std::clamp(
-                                    brush.strength * dtScale * falloff,
-                                    0.0f,
-                                    1.0f);
+                                h += (avg - h) * BrushResponse(
+                                    brush.strength,
+                                    dtScale,
+                                    falloff);
                             }
                             break;
                         }
@@ -1314,19 +1468,53 @@ namespace HIKARI {
                             const float step = (std::max)(
                                 brush.terraceStepHeight, 0.05f);
                             const float stepped = std::round(h / step) * step;
-                            const float blend = std::clamp(
-                                brush.strength * dtScale * 60.0f * falloff,
-                                0.0f,
-                                1.0f);
+                            const float blend = BrushResponse(
+                                brush.strength * 60.0f,
+                                dtScale,
+                                falloff);
                             h += (stepped - h) * blend;
+                            break;
+                        }
+                        case TERRAIN::TerrainBrushMode::Shaft: {
+                            float target = brush.flattenHeight;
+                            if (dist > shaftFloorRadius) {
+                                const float wallT = std::clamp(
+                                    (dist - shaftFloorRadius) /
+                                        shaftWallWidth,
+                                    0.0f,
+                                    1.0f);
+                                const float smoothWall = wallT * wallT *
+                                    (3.0f - 2.0f * wallT);
+                                target = std::lerp(
+                                    brush.flattenHeight,
+                                    oldHeight,
+                                    smoothWall);
+                            }
+                            h += (target - h) * BrushResponse(
+                                brush.strength * 2.0f,
+                                dtScale,
+                                falloff);
+                            break;
+                        }
+                        case TERRAIN::TerrainBrushMode::Noise: {
+                            const float noise =
+                                TERRAIN::EvaluateTerrainAuthoringNoise(
+                                    lx,
+                                    lz,
+                                    brush.noiseSeed,
+                                    brush.noiseScale,
+                                    4u);
+                            h += amount * brush.noiseAmplitude * noise;
                             break;
                         }
                         }
                         const bool vertexCoverageChanged =
                             std::fabs(coverage - oldCoverage) > 1.0e-7f;
-                        changed = changed ||
+                        const bool vertexChanged =
                             std::fabs(h - oldHeight) > 1.0e-7f ||
                             vertexCoverageChanged;
+                        changed = changed || vertexChanged;
+                        chunkChanged = chunkChanged || vertexChanged;
                         coverageChanged = coverageChanged ||
                             vertexCoverageChanged;
                         if (vertexCoverageChanged) {
@@ -1334,17 +1522,275 @@ namespace HIKARI {
                         }
                     }
                 }
+                if (chunkChanged) {
+                    changedChunks.insert(key);
+                }
             });
         if (!changed) {
             return false;
         }
         coverageChanged =
-            StitchChunkBorders(touchedChunks) || coverageChanged;
+            StitchChunkBorders(touchedChunks, changedChunks) ||
+            coverageChanged;
+        for (const TERRAIN::TerrainChunkKey& key : changedChunks) {
+            MarkChunkChanged(key);
+        }
         ++revision_;
         MarkGeometryChanged();
         if (coverageChanged) {
             ++coverageRevision_;
         }
+        NotifyRenderStateDirty();
+        return true;
+    }
+
+    bool TerrainSurfaceComponent::ApplyRampAtLocal(
+        const TERRAIN::TerrainRampSpec& rawSpec) {
+        const TERRAIN::TerrainRampSpec spec =
+            TERRAIN::SanitizeTerrainRampSpec(rawSpec);
+        const float segmentX = spec.end.x - spec.start.x;
+        const float segmentZ = spec.end.z - spec.start.z;
+        const float segmentLengthSquared =
+            segmentX * segmentX + segmentZ * segmentZ;
+        if (segmentLengthSquared <= 1.0e-6f ||
+            spec.blendAmount <= 1.0e-6f) {
+            return false;
+        }
+        const float segmentLength = std::sqrt(segmentLengthSquared);
+        const float outerWidth = spec.halfWidth + spec.shoulderWidth;
+        const MATH::Vec3 center{
+            (spec.start.x + spec.end.x) * 0.5f,
+            (spec.start.y + spec.end.y) * 0.5f,
+            (spec.start.z + spec.end.z) * 0.5f };
+        const float searchRadius = segmentLength * 0.5f + outerWidth;
+        const float chunkSize = GetChunkWorldSize();
+        const uint32_t cells = GetChunkCells();
+        const float cellSize = chunkSize / static_cast<float>(cells);
+
+        bool changed = false;
+        bool coverageChanged = false;
+        std::vector<TERRAIN::TerrainChunkKey> touchedChunks{};
+        std::set<TERRAIN::TerrainChunkKey> changedChunks{};
+        ForEachChunkInBrushLocal(
+            center,
+            searchRadius,
+            false,
+            [&](const TERRAIN::TerrainChunkKey& key,
+                TERRAIN::TerrainChunk& chunk,
+                const MATH::Vec2& chunkOrigin) {
+                touchedChunks.push_back(key);
+                CaptureChunkBeforeEdit(key);
+                const uint32_t stride = chunk.cells + 1u;
+                const BrushVertexRange range = ResolveBrushVertexRange(
+                    center,
+                    searchRadius,
+                    chunkOrigin,
+                    cellSize,
+                    chunk.cells);
+                if (!range.IsValid()) {
+                    return;
+                }
+                bool chunkChanged = false;
+                for (uint32_t z = range.minZ; z <= range.maxZ; ++z) {
+                    for (uint32_t x = range.minX; x <= range.maxX; ++x) {
+                        const float localX = chunkOrigin.x +
+                            static_cast<float>(x) * cellSize;
+                        const float localZ = chunkOrigin.y +
+                            static_cast<float>(z) * cellSize;
+                        const float fromStartX = localX - spec.start.x;
+                        const float fromStartZ = localZ - spec.start.z;
+                        const float along = std::clamp(
+                            (fromStartX * segmentX +
+                                fromStartZ * segmentZ) /
+                                segmentLengthSquared,
+                            0.0f,
+                            1.0f);
+                        const float closestX =
+                            spec.start.x + segmentX * along;
+                        const float closestZ =
+                            spec.start.z + segmentZ * along;
+                        const float distanceX = localX - closestX;
+                        const float distanceZ = localZ - closestZ;
+                        const float distance = std::sqrt(
+                            distanceX * distanceX +
+                            distanceZ * distanceZ);
+                        if (distance >= outerWidth) {
+                            continue;
+                        }
+                        float mask = 1.0f;
+                        if (distance > spec.halfWidth &&
+                            spec.shoulderWidth > 1.0e-5f) {
+                            const float edge = std::clamp(
+                                1.0f - (distance - spec.halfWidth) /
+                                    spec.shoulderWidth,
+                                0.0f,
+                                1.0f);
+                            mask = edge * edge * (3.0f - 2.0f * edge);
+                        }
+                        const std::size_t index =
+                            static_cast<std::size_t>(z) * stride + x;
+                        float& height = chunk.heights[index];
+                        float& coverage = chunk.coverage[index];
+                        const float oldHeight = height;
+                        const float oldCoverage = coverage;
+                        const float targetHeight = std::lerp(
+                            spec.start.y,
+                            spec.end.y,
+                            along);
+                        height = std::lerp(
+                            height,
+                            targetHeight,
+                            spec.blendAmount * mask);
+                        coverage = (std::max)(coverage, mask);
+                        const bool vertexCoverageChanged =
+                            std::fabs(coverage - oldCoverage) > 1.0e-7f;
+                        const bool vertexChanged =
+                            std::fabs(height - oldHeight) > 1.0e-7f ||
+                            vertexCoverageChanged;
+                        changed = changed || vertexChanged;
+                        chunkChanged = chunkChanged || vertexChanged;
+                        coverageChanged = coverageChanged ||
+                            vertexCoverageChanged;
+                        if (vertexCoverageChanged) {
+                            MarkCoverageVertexDirty(key, x, z);
+                        }
+                    }
+                }
+                if (chunkChanged) {
+                    changedChunks.insert(key);
+                }
+            });
+        if (!changed) {
+            return false;
+        }
+        coverageChanged =
+            StitchChunkBorders(touchedChunks, changedChunks) ||
+            coverageChanged;
+        for (const TERRAIN::TerrainChunkKey& key : changedChunks) {
+            MarkChunkChanged(key);
+        }
+        ++revision_;
+        MarkGeometryChanged();
+        if (coverageChanged) {
+            ++coverageRevision_;
+        }
+        NotifyRenderStateDirty();
+        return true;
+    }
+
+    bool TerrainSurfaceComponent::ApplyOpeningAtLocal(
+        const TERRAIN::TerrainOpeningSpec& rawSpec) {
+        const TERRAIN::TerrainOpeningSpec spec =
+            TERRAIN::SanitizeTerrainOpeningSpec(rawSpec);
+        MATH::Vec3 right = MATH::Cross(
+            { 0.0f, 1.0f, 0.0f },
+            spec.normal);
+        if (MATH::Dot(right, right) <= 1.0e-8f) {
+            right = MATH::Cross(
+                { 0.0f, 0.0f, 1.0f },
+                spec.normal);
+        }
+        if (MATH::Dot(right, right) <= 1.0e-8f) {
+            return false;
+        }
+        right = MATH::Normalize(right);
+        const MATH::Vec3 openingUp = MATH::Normalize(
+            MATH::Cross(spec.normal, right));
+        const float halfWidth = spec.width * 0.5f;
+        const float halfHeight = spec.height * 0.5f;
+        const float halfDepth = spec.depth * 0.5f;
+        const float searchRadius = std::sqrt(
+            halfWidth * halfWidth +
+            halfHeight * halfHeight +
+            halfDepth * halfDepth);
+        const float chunkSize = GetChunkWorldSize();
+        const uint32_t cells = GetChunkCells();
+        const float cellSize = chunkSize / static_cast<float>(cells);
+
+        bool changed = false;
+        std::vector<TERRAIN::TerrainChunkKey> touchedChunks{};
+        std::set<TERRAIN::TerrainChunkKey> changedChunks{};
+        ForEachChunkInBrushLocal(
+            spec.center,
+            searchRadius,
+            false,
+            [&](const TERRAIN::TerrainChunkKey& key,
+                TERRAIN::TerrainChunk& chunk,
+                const MATH::Vec2& chunkOrigin) {
+                touchedChunks.push_back(key);
+                CaptureChunkBeforeEdit(key);
+                const uint32_t stride = chunk.cells + 1u;
+                const BrushVertexRange range = ResolveBrushVertexRange(
+                    spec.center,
+                    searchRadius,
+                    chunkOrigin,
+                    cellSize,
+                    chunk.cells);
+                if (!range.IsValid()) {
+                    return;
+                }
+                bool chunkChanged = false;
+                for (uint32_t z = range.minZ; z <= range.maxZ; ++z) {
+                    for (uint32_t x = range.minX; x <= range.maxX; ++x) {
+                        const std::size_t index =
+                            static_cast<std::size_t>(z) * stride + x;
+                        const MATH::Vec3 vertex{
+                            chunkOrigin.x +
+                                static_cast<float>(x) * cellSize,
+                            chunk.heights[index],
+                            chunkOrigin.y +
+                                static_cast<float>(z) * cellSize };
+                        const MATH::Vec3 relative =
+                            vertex - spec.center;
+                        const float localRight = std::fabs(
+                            MATH::Dot(relative, right));
+                        const float localUp = std::fabs(
+                            MATH::Dot(relative, openingUp));
+                        const float localDepth = std::fabs(
+                            MATH::Dot(relative, spec.normal));
+                        const float edgeDistance = (std::min)({
+                            halfWidth - localRight,
+                            halfHeight - localUp,
+                            halfDepth - localDepth });
+                        if (edgeDistance < 0.0f) {
+                            continue;
+                        }
+                        float openingWeight = 1.0f;
+                        if (spec.feather > 1.0e-5f) {
+                            const float t = std::clamp(
+                                edgeDistance / spec.feather,
+                                0.0f,
+                                1.0f);
+                            openingWeight = t * t * (3.0f - 2.0f * t);
+                        }
+                        float& coverage = chunk.coverage[index];
+                        const float oldCoverage = coverage;
+                        coverage = std::lerp(
+                            coverage,
+                            0.0f,
+                            openingWeight);
+                        if (std::fabs(coverage - oldCoverage) <= 1.0e-7f) {
+                            continue;
+                        }
+                        changed = true;
+                        chunkChanged = true;
+                        MarkCoverageVertexDirty(key, x, z);
+                    }
+                }
+                if (chunkChanged) {
+                    changedChunks.insert(key);
+                }
+            });
+        if (!changed) {
+            return false;
+        }
+        (void)StitchChunkBorders(touchedChunks, changedChunks);
+        for (const TERRAIN::TerrainChunkKey& key : changedChunks) {
+            MarkChunkChanged(key);
+        }
+        ++revision_;
+        MarkGeometryChanged();
+        ++coverageRevision_;
         NotifyRenderStateDirty();
         return true;
     }
@@ -1397,6 +1843,7 @@ namespace HIKARI {
         const float cellSize = chunkSize / static_cast<float>(cells);
 
         std::vector<TERRAIN::TerrainChunkKey> touchedChunks{};
+        std::set<TERRAIN::TerrainChunkKey> changedChunks{};
         ForEachChunkInBrushLocal(
             localPos,
             brush.radius,
@@ -1406,6 +1853,7 @@ namespace HIKARI {
                 const MATH::Vec2& chunkOrigin) {
                 touchedChunks.push_back(key);
                 CaptureChunkBeforeEdit(key);
+                bool chunkChanged = false;
                 // 層数が足りなければ拡張する。
                 if (chunk.layerCount <= layer) {
                     if (!TERRAIN::EnsureTerrainChunkLayerCount(
@@ -1414,6 +1862,7 @@ namespace HIKARI {
                         return;
                     }
                     changed = true;
+                    chunkChanged = true;
                 }
 
                 const uint32_t stride = chunk.cells + 1u;
@@ -1447,10 +1896,10 @@ namespace HIKARI {
                         }
                         const std::size_t cell =
                             static_cast<std::size_t>(z) * stride + x;
-                        const float amount = std::clamp(
-                            brush.strength * dtScale * falloff,
-                            0.0f,
-                            1.0f);
+                        const float amount = BrushResponse(
+                            brush.strength,
+                            dtScale,
+                            falloff);
                         const float oldCoverage = chunk.coverage[cell];
                         const float oldTargetWeight = chunk.layerWeights[
                             static_cast<std::size_t>(layer) * count + cell];
@@ -1477,11 +1926,13 @@ namespace HIKARI {
                         const bool vertexCoverageChanged =
                             std::fabs(chunk.coverage[cell] - oldCoverage) >
                                 1.0e-7f;
-                        changed = changed ||
+                        const bool vertexChanged =
                             std::fabs(chunk.layerWeights[
                                 static_cast<std::size_t>(layer) * count + cell] -
                                 oldTargetWeight) > 1.0e-7f ||
                             vertexCoverageChanged;
+                        changed = changed || vertexChanged;
+                        chunkChanged = chunkChanged || vertexChanged;
                         coverageChanged = coverageChanged ||
                             vertexCoverageChanged;
                         if (vertexCoverageChanged) {
@@ -1489,13 +1940,20 @@ namespace HIKARI {
                         }
                     }
                 }
+                if (chunkChanged) {
+                    changedChunks.insert(key);
+                }
             },
             static_cast<int32_t>(layer));
         if (!changed) {
             return false;
         }
         coverageChanged =
-            StitchChunkBorders(touchedChunks) || coverageChanged;
+            StitchChunkBorders(touchedChunks, changedChunks) ||
+            coverageChanged;
+        for (const TERRAIN::TerrainChunkKey& key : changedChunks) {
+            MarkChunkChanged(key);
+        }
         ++revision_;
         if (coverageChanged) {
             MarkGeometryChanged();
@@ -1532,6 +1990,7 @@ namespace HIKARI {
 
         bool changed = false;
         std::vector<TERRAIN::TerrainChunkKey> touchedChunks{};
+        std::set<TERRAIN::TerrainChunkKey> changedChunks{};
         ForEachChunkInBrushLocal(
             localPos,
             brush.radius,
@@ -1551,6 +2010,7 @@ namespace HIKARI {
                 if (!range.IsValid()) {
                     return;
                 }
+                bool chunkChanged = false;
                 for (uint32_t z = range.minZ; z <= range.maxZ; ++z) {
                     for (uint32_t x = range.minX; x <= range.maxX; ++x) {
                         const float lx = chunkOrigin.x +
@@ -1571,23 +2031,31 @@ namespace HIKARI {
                         float& c = chunk.coverage[
                             static_cast<std::size_t>(z) * stride + x];
                         const float oldCoverage = c;
-                        c += (goal - c) * std::clamp(
-                            brush.strength * dtScale * falloff,
-                            0.0f,
-                            1.0f);
+                        c += (goal - c) * BrushResponse(
+                            brush.strength,
+                            dtScale,
+                            falloff);
                         const bool vertexCoverageChanged =
                             std::fabs(c - oldCoverage) > 1.0e-7f;
                         changed = changed || vertexCoverageChanged;
+                        chunkChanged = chunkChanged ||
+                            vertexCoverageChanged;
                         if (vertexCoverageChanged) {
                             MarkCoverageVertexDirty(key, x, z);
                         }
                     }
                 }
+                if (chunkChanged) {
+                    changedChunks.insert(key);
+                }
             });
         if (!changed) {
             return false;
         }
-        (void)StitchChunkBorders(touchedChunks);
+        (void)StitchChunkBorders(touchedChunks, changedChunks);
+        for (const TERRAIN::TerrainChunkKey& key : changedChunks) {
+            MarkChunkChanged(key);
+        }
         ++revision_;
         MarkGeometryChanged();
         ++coverageRevision_;
@@ -1624,6 +2092,7 @@ namespace HIKARI {
         bool coverageChanged = false;
         std::vector<TERRAIN::TerrainChunkKey> touchedChunks{};
         touchedChunks.reserve(outPreview.affectedChunks);
+        std::set<TERRAIN::TerrainChunkKey> changedChunks{};
         const auto chunkWouldChange = [&](
             const TERRAIN::TerrainChunk& chunk,
             int32_t chunkX,
@@ -1779,7 +2248,7 @@ namespace HIKARI {
                     }
                 }
                 if (chunkChanged) {
-                    MarkChunkChanged(key);
+                    changedChunks.insert(key);
                 }
             }
         }
@@ -1787,7 +2256,12 @@ namespace HIKARI {
             return false;
         }
 
-        coverageChanged = StitchChunkBorders(touchedChunks) || coverageChanged;
+        coverageChanged =
+            StitchChunkBorders(touchedChunks, changedChunks) ||
+            coverageChanged;
+        for (const TERRAIN::TerrainChunkKey& key : changedChunks) {
+            MarkChunkChanged(key);
+        }
         ++revision_;
         MarkGeometryChanged();
         if (coverageChanged) {
@@ -1809,6 +2283,7 @@ namespace HIKARI {
         }
         surface_.chunks.clear();
         chunkRevisions_.clear();
+        RecordFullChunkChange();
         ++revision_;
         MarkGeometryChanged();
         ++coverageRevision_;
@@ -1920,6 +2395,16 @@ namespace HIKARI {
             // unreachable, but keep the contract explicit.
             nextChunkRevision_ = 1u;
         }
+        RecordChunkChange(key);
+    }
+
+    void TerrainSurfaceComponent::RecordChunkChange(
+        const TERRAIN::TerrainChunkKey& key) noexcept {
+        chunkChangeJournal_.RecordChunk(key);
+    }
+
+    void TerrainSurfaceComponent::RecordFullChunkChange() noexcept {
+        chunkChangeJournal_.RecordFullRebuild();
     }
 
     void TerrainSurfaceComponent::MarkGeometryChanged() noexcept {
@@ -2069,7 +2554,7 @@ namespace HIKARI {
             surface_.chunkCellSize);
         const float width = (std::max)(
             surface_.shoreline.edgeFalloff, 0.0f);
-        const bool fullRebuild =
+        bool fullRebuild =
             coverageCacheFullRebuild_ ||
             !coverageCacheInitialized_ ||
             !coverageDirtyValid_;
@@ -2174,29 +2659,55 @@ namespace HIKARI {
             const int64_t chunkMaxX = floorDiv(evalMaxX);
             const int64_t chunkMinZ = floorDiv(evalMinZ) - 1;
             const int64_t chunkMaxZ = floorDiv(evalMaxZ);
-            for (int64_t chunkZ = chunkMinZ;
-                chunkZ <= chunkMaxZ;
-                ++chunkZ) {
-                for (int64_t chunkX = chunkMinX;
-                    chunkX <= chunkMaxX;
-                    ++chunkX) {
-                    if (chunkX <
-                            (std::numeric_limits<int32_t>::min)() ||
-                        chunkX >
-                            (std::numeric_limits<int32_t>::max)() ||
-                        chunkZ <
-                            (std::numeric_limits<int32_t>::min)() ||
-                        chunkZ >
-                            (std::numeric_limits<int32_t>::max)()) {
-                        continue;
-                    }
-                    const TERRAIN::TerrainChunkKey key{
-                        static_cast<int32_t>(chunkX),
-                        static_cast<int32_t>(chunkZ)
-                    };
-                    const auto found = surface_.chunks.find(key);
-                    if (found != surface_.chunks.end()) {
-                        appendChunk(found->first, found->second);
+            const uint64_t chunkSpanX = static_cast<uint64_t>(
+                chunkMaxX - chunkMinX + 1);
+            const uint64_t chunkSpanZ = static_cast<uint64_t>(
+                chunkMaxZ - chunkMinZ + 1);
+            const uint64_t candidateChunkCount = chunkSpanX != 0u &&
+                    chunkSpanZ <=
+                        (std::numeric_limits<uint64_t>::max)() / chunkSpanX
+                ? chunkSpanX * chunkSpanZ
+                : (std::numeric_limits<uint64_t>::max)();
+            const uint64_t liveChunkCount = surface_.chunks.size();
+            const uint64_t regionalBudget = liveChunkCount <=
+                    (std::numeric_limits<uint64_t>::max)() / 4u
+                ? liveChunkCount * 4u
+                : (std::numeric_limits<uint64_t>::max)();
+            if (candidateChunkCount > regionalBudget) {
+                // A very wide but legal shoreline falloff must never expand
+                // an empty coordinate square. Rebuilding the sparse owner is
+                // O(live chunks) and preserves the exact distance field.
+                fullRebuild = true;
+                coverageCache_.clear();
+                coverageDistanceCache_.clear();
+                for (const auto& [chunkKey, chunk] : surface_.chunks) {
+                    appendChunk(chunkKey, chunk);
+                }
+            } else {
+                for (int64_t chunkZ = chunkMinZ;
+                    chunkZ <= chunkMaxZ;
+                    ++chunkZ) {
+                    for (int64_t chunkX = chunkMinX;
+                        chunkX <= chunkMaxX;
+                        ++chunkX) {
+                        if (chunkX <
+                                (std::numeric_limits<int32_t>::min)() ||
+                            chunkX >
+                                (std::numeric_limits<int32_t>::max)() ||
+                            chunkZ <
+                                (std::numeric_limits<int32_t>::min)() ||
+                            chunkZ >
+                                (std::numeric_limits<int32_t>::max)()) {
+                            continue;
+                        }
+                        const TERRAIN::TerrainChunkKey key{
+                            static_cast<int32_t>(chunkX),
+                            static_cast<int32_t>(chunkZ)
+                        };
+                        const auto found = surface_.chunks.find(key);
+                        if (found != surface_.chunks.end()) {
+                            appendChunk(found->first, found->second);
+                        }
                     }
                 }
             }
@@ -2749,6 +3260,11 @@ namespace HIKARI {
                 { "ridgeDirectionDegrees", s.brush.ridgeDirectionDegrees },
                 { "ridgeSharpness", s.brush.ridgeSharpness },
                 { "terraceStepHeight", s.brush.terraceStepHeight },
+                { "shaftDepth", s.brush.shaftDepth },
+                { "shaftWallWidth", s.brush.shaftWallWidth },
+                { "noiseAmplitude", s.brush.noiseAmplitude },
+                { "noiseScale", s.brush.noiseScale },
+                { "noiseSeed", s.brush.noiseSeed },
             } },
             { "grass", TERRAIN::SerializeTerrainGrassSettings(s.grass) },
         };
@@ -2994,6 +3510,16 @@ namespace HIKARI {
                 *brush,
                 "terraceStepHeight",
                 surface.brush.terraceStepHeight);
+            surface.brush.shaftDepth = JSONREAD::NumberMemberOr(
+                *brush, "shaftDepth", surface.brush.shaftDepth);
+            surface.brush.shaftWallWidth = JSONREAD::NumberMemberOr(
+                *brush, "shaftWallWidth", surface.brush.shaftWallWidth);
+            surface.brush.noiseAmplitude = JSONREAD::NumberMemberOr(
+                *brush, "noiseAmplitude", surface.brush.noiseAmplitude);
+            surface.brush.noiseScale = JSONREAD::NumberMemberOr(
+                *brush, "noiseScale", surface.brush.noiseScale);
+            surface.brush.noiseSeed = JSONREAD::UnsignedMemberOr(
+                *brush, "noiseSeed", surface.brush.noiseSeed);
         }
 
         if (schemaVersion >= 9u) {
@@ -3043,7 +3569,7 @@ namespace HIKARI {
             }
         }
 
-        SetSurface(surface);
+        SetSurfaceOwned(std::move(surface));
     }
 
 } // namespace HIKARI

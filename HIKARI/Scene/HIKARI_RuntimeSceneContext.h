@@ -36,6 +36,8 @@ namespace HIKARI {
             std::string sceneId = {});
         static World* GetCurrentWorld();
         static const std::string& GetCurrentSceneId();
+        static void MarkCameraReady(const World& world) noexcept;
+        static bool IsCameraReady(const World* world = nullptr) noexcept;
         static void ResolvePendingSceneEntry(const World& world, const std::string& sceneId);
         static std::optional<ResolvedSceneEntry> GetResolvedSceneEntry();
         static std::optional<ResolvedSceneEntry> ConsumeResolvedSceneEntry(
@@ -49,6 +51,7 @@ namespace HIKARI {
         static std::optional<ResolvedSceneEntry> resolvedEntry_;
         static World* currentWorld_;
         static std::string currentSceneId_;
+        static bool cameraReady_;
     };
 
 } // namespace HIKARI

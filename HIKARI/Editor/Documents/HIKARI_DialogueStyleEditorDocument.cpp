@@ -51,6 +51,21 @@ namespace HIKARI::EDITOR {
         return true;
     }
 
+    void DialogueStyleEditorDocument::DiscardChanges(
+        const std::filesystem::path& projectRoot,
+        const AssetDatabase& database) {
+        std::string message{};
+        if (Open(projectRoot, database, message)) {
+            return;
+        }
+        style_ = DIALOGUE::MakeDefaultDialogueProjectStyle(projectRoot);
+        DIALOGUE::ResolveDialogueProjectStyleAssets(style_, database);
+        open_ = true;
+        // Discard must allow workspace exit even when the project has never
+        // saved a style file. The default projection is clean session state.
+        ResetHistory(true);
+    }
+
     DIALOGUE::DialogueProjectStyle&
         DialogueStyleEditorDocument::Style() noexcept {
         return style_;

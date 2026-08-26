@@ -24,6 +24,9 @@ namespace HIKARI::EDITOR {
             const std::filesystem::path& projectRoot,
             const AssetDatabase& database,
             std::string& outMessage);
+        void DiscardChanges(
+            const std::filesystem::path& projectRoot,
+            const AssetDatabase& database);
 
         DIALOGUE::DialogueProjectStyle& Style() noexcept;
         const DIALOGUE::DialogueProjectStyle& Style() const noexcept;

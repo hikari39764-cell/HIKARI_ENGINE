@@ -155,6 +155,8 @@ namespace HIKARI::DIALOGUE {
                 { "dialoguePanelAssetPath", theme.dialoguePanelAssetPath },
                 { "speakerPlateAssetPath", theme.speakerPlateAssetPath },
                 { "choiceAssetPath", theme.choiceAssetPath },
+                { "advanceGamepadAssetPath", theme.advanceGamepadAssetPath },
+                { "advanceMouseAssetPath", theme.advanceMouseAssetPath },
                 { "referenceSize", {
                     theme.referenceWidth, theme.referenceHeight } },
                 { "panelRect", {
@@ -196,6 +198,15 @@ namespace HIKARI::DIALOGUE {
                 { "choiceTextScale", theme.choiceTextScale },
                 { "choiceTextStyle",
                     SerializeTextStyle(theme.choiceTextStyle) },
+                { "advancePromptAnchor", {
+                    theme.advancePromptX, theme.advancePromptY } },
+                { "advancePromptScale", theme.advancePromptScale },
+                { "advancePromptPulseSeconds",
+                    theme.advancePromptPulseSeconds },
+                { "advancePromptBobDistance",
+                    theme.advancePromptBobDistance },
+                { "advancePromptScaleAmount",
+                    theme.advancePromptScaleAmount },
                 { "panelRevealSeconds", theme.panelRevealSeconds },
                 { "charactersPerSecond", theme.charactersPerSecond },
                 { "backdropDim", theme.backdropDim },
@@ -293,6 +304,12 @@ namespace HIKARI::DIALOGUE {
                 "speakerPlateAssetPath", theme.speakerPlateAssetPath);
             theme.choiceAssetPath = node.value(
                 "choiceAssetPath", theme.choiceAssetPath);
+            theme.advanceGamepadAssetPath = node.value(
+                "advanceGamepadAssetPath",
+                theme.advanceGamepadAssetPath);
+            theme.advanceMouseAssetPath = node.value(
+                "advanceMouseAssetPath",
+                theme.advanceMouseAssetPath);
             float reference[2]{
                 theme.referenceWidth, theme.referenceHeight };
             float panel[4]{
@@ -313,6 +330,8 @@ namespace HIKARI::DIALOGUE {
             float choiceText[4]{
                 theme.choiceTextOffsetX, theme.choiceTextOffsetY,
                 theme.choiceTextWidth, theme.choiceTextHeight };
+            float advancePromptAnchor[2]{
+                theme.advancePromptX, theme.advancePromptY };
             if (!ReadFloatArray(node, "referenceSize", reference, 2u) ||
                 !ReadFloatArray(node, "panelRect", panel, 4u) ||
                 !ReadFloatArray(
@@ -323,6 +342,9 @@ namespace HIKARI::DIALOGUE {
                 !ReadFloatArray(node, "choiceRect", choice, 4u) ||
                 !ReadFloatArray(
                     node, "choiceTextRect", choiceText, 4u) ||
+                !ReadFloatArray(
+                    node, "advancePromptAnchor",
+                    advancePromptAnchor, 2u) ||
                 !DeserializeTextStyle(
                     node, "speakerTextStyle", theme.speakerTextStyle) ||
                 !DeserializeTextStyle(
@@ -357,6 +379,8 @@ namespace HIKARI::DIALOGUE {
             theme.choiceTextOffsetY = choiceText[1];
             theme.choiceTextWidth = choiceText[2];
             theme.choiceTextHeight = choiceText[3];
+            theme.advancePromptX = advancePromptAnchor[0];
+            theme.advancePromptY = advancePromptAnchor[1];
             theme.speakerPixelHeight = node.value(
                 "speakerPixelHeight", theme.speakerPixelHeight);
             theme.speakerTextRotationDegrees = node.value(
@@ -379,6 +403,17 @@ namespace HIKARI::DIALOGUE {
                 theme.choiceTextRotationDegrees);
             theme.choiceTextScale = node.value(
                 "choiceTextScale", theme.choiceTextScale);
+            theme.advancePromptScale = node.value(
+                "advancePromptScale", theme.advancePromptScale);
+            theme.advancePromptPulseSeconds = node.value(
+                "advancePromptPulseSeconds",
+                theme.advancePromptPulseSeconds);
+            theme.advancePromptBobDistance = node.value(
+                "advancePromptBobDistance",
+                theme.advancePromptBobDistance);
+            theme.advancePromptScaleAmount = node.value(
+                "advancePromptScaleAmount",
+                theme.advancePromptScaleAmount);
             theme.panelRevealSeconds = node.value(
                 "panelRevealSeconds", theme.panelRevealSeconds);
             theme.charactersPerSecond = node.value(
@@ -518,6 +553,20 @@ namespace HIKARI::DIALOGUE {
             theme.bodyTextScale, 0.1f, 8.0f);
         theme.choiceTextScale = std::clamp(
             theme.choiceTextScale, 0.1f, 8.0f);
+        if (!std::isfinite(theme.advancePromptX)) {
+            theme.advancePromptX = 1685.0f;
+        }
+        if (!std::isfinite(theme.advancePromptY)) {
+            theme.advancePromptY = 970.0f;
+        }
+        theme.advancePromptScale = std::clamp(
+            theme.advancePromptScale, 0.1f, 8.0f);
+        theme.advancePromptPulseSeconds = std::clamp(
+            theme.advancePromptPulseSeconds, 0.20f, 4.0f);
+        theme.advancePromptBobDistance = std::clamp(
+            theme.advancePromptBobDistance, 0.0f, 64.0f);
+        theme.advancePromptScaleAmount = std::clamp(
+            theme.advancePromptScaleAmount, 0.0f, 0.30f);
         if (!std::isfinite(theme.choiceTextOffsetX)) {
             theme.choiceTextOffsetX = 34.0f;
         }
@@ -573,6 +622,16 @@ namespace HIKARI::DIALOGUE {
             add(true, "theme.choiceAssetPath",
                 "Choice panel must be a project-relative asset path");
         }
+        if (!theme.advanceGamepadAssetPath.empty() &&
+            !IsSafeAssetPath(theme.advanceGamepadAssetPath)) {
+            add(true, "theme.advanceGamepadAssetPath",
+                "Gamepad continue prompt must be a project-relative asset path");
+        }
+        if (!theme.advanceMouseAssetPath.empty() &&
+            !IsSafeAssetPath(theme.advanceMouseAssetPath)) {
+            add(true, "theme.advanceMouseAssetPath",
+                "Mouse continue prompt must be a project-relative asset path");
+        }
         const float positiveValues[] = {
             theme.referenceWidth, theme.referenceHeight,
             theme.panelWidth, theme.panelHeight,
@@ -580,6 +639,8 @@ namespace HIKARI::DIALOGUE {
             theme.choiceTextWidth, theme.choiceTextHeight,
             theme.bodyPixelHeight, theme.speakerTextScale,
             theme.bodyTextScale, theme.choiceTextScale,
+            theme.advancePromptScale,
+            theme.advancePromptPulseSeconds,
             theme.panelRevealSeconds,
             theme.charactersPerSecond };
         if (std::any_of(
@@ -602,6 +663,13 @@ namespace HIKARI::DIALOGUE {
             !std::isfinite(theme.choiceTextOffsetY)) {
             add(true, "theme.choiceTextRect",
                 "Choice text offsets must be finite");
+        }
+        if (!std::isfinite(theme.advancePromptX) ||
+            !std::isfinite(theme.advancePromptY) ||
+            !std::isfinite(theme.advancePromptBobDistance) ||
+            !std::isfinite(theme.advancePromptScaleAmount)) {
+            add(true, "theme.advancePrompt",
+                "Continue prompt layout and animation must be finite");
         }
         if (!IsValidTextStyle(theme.speakerTextStyle)) {
             add(true, "theme.speakerTextStyle",

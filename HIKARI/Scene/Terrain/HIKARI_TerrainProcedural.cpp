@@ -125,6 +125,25 @@ namespace HIKARI::TERRAIN {
             : RectMask(spec, localX, localZ);
     }
 
+    float EvaluateTerrainAuthoringNoise(
+        float localX,
+        float localZ,
+        uint64_t seed,
+        float scale,
+        uint32_t octaves) noexcept {
+        const float safeX = std::isfinite(localX) ? localX : 0.0f;
+        const float safeZ = std::isfinite(localZ) ? localZ : 0.0f;
+        const float safeScale = std::clamp(
+            std::isfinite(scale) ? scale : 2.0f,
+            0.05f,
+            512.0f);
+        return FractalNoise(
+            safeX / safeScale,
+            safeZ / safeScale,
+            seed,
+            std::clamp(octaves, 1u, 8u));
+    }
+
     float EvaluateTerrainProceduralHeight(
         const TerrainProceduralSpec& rawSpec,
         float localX,

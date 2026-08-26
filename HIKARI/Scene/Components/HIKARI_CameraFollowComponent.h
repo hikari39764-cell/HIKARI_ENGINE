@@ -72,10 +72,59 @@ namespace HIKARI {
         bool IsCollisionEnabled() const noexcept {
             return collisionEnabled_;
         }
+        bool GetCollisionStaticOnly() const noexcept {
+            return collisionStaticOnly_;
+        }
         float GetCollisionRadius() const noexcept;
         float GetCollisionPadding() const noexcept;
         uint32_t GetCollisionLayerMask() const noexcept {
             return collisionLayerMask_;
+        }
+
+        bool IsScreenCompositionEnabled() const noexcept {
+            return screenCompositionEnabled_;
+        }
+        float GetScreenCompositionPrimaryAnchorX() const noexcept {
+            return screenCompositionPrimaryAnchorX_;
+        }
+        float GetScreenCompositionPrimaryAnchorY() const noexcept {
+            return screenCompositionPrimaryAnchorY_;
+        }
+        float GetScreenCompositionSecondaryAnchorX() const noexcept {
+            return screenCompositionSecondaryAnchorX_;
+        }
+        float GetScreenCompositionSecondaryAnchorY() const noexcept {
+            return screenCompositionSecondaryAnchorY_;
+        }
+        float GetScreenCompositionSoftZoneHalfWidth() const noexcept {
+            return screenCompositionSoftZoneHalfWidth_;
+        }
+        float GetScreenCompositionSoftZoneHalfHeight() const noexcept {
+            return screenCompositionSoftZoneHalfHeight_;
+        }
+        float GetScreenCompositionHardZoneHalfWidth() const noexcept {
+            return screenCompositionHardZoneHalfWidth_;
+        }
+        float GetScreenCompositionHardZoneHalfHeight() const noexcept {
+            return screenCompositionHardZoneHalfHeight_;
+        }
+        float GetScreenCompositionPreferredShoulderAngleDegrees()
+            const noexcept {
+            return screenCompositionPreferredShoulderAngleDegrees_;
+        }
+        float GetScreenCompositionMaximumShoulderAngleDegrees()
+            const noexcept {
+            return screenCompositionMaximumShoulderAngleDegrees_;
+        }
+        float GetScreenCompositionFocusHeightBias() const noexcept {
+            return screenCompositionFocusHeightBias_;
+        }
+        float GetScreenCompositionHardResponseScale() const noexcept {
+            return screenCompositionHardResponseScale_;
+        }
+        float GetScreenCompositionCollisionCenteringStrength()
+            const noexcept {
+            return screenCompositionCollisionCenteringStrength_;
         }
 
         bool HasRuntimeState() const noexcept { return runtimeInitialized_; }
@@ -181,6 +230,82 @@ namespace HIKARI {
         float GetRuntimeFramingDistanceVelocity() const noexcept {
             return runtimeFramingDistanceVelocity_;
         }
+        bool HasRuntimeRelationshipShotState() const noexcept {
+            return runtimeRelationshipShotInitialized_;
+        }
+        bool HasRuntimeRelationshipShotSubmission() const noexcept {
+            return runtimeRelationshipShotHasSubmission_;
+        }
+        float GetRuntimeRelationshipPreferredSide() const noexcept {
+            return runtimeRelationshipPreferredSide_;
+        }
+        float GetRuntimeRelationshipShoulderAngleDegrees() const noexcept {
+            return runtimeRelationshipShoulderAngleDegrees_;
+        }
+        float GetRuntimeRelationshipVerticalFovOffsetRadians() const noexcept {
+            return runtimeRelationshipVerticalFovOffsetRadians_;
+        }
+        float GetRuntimeRelationshipRollRadians() const noexcept {
+            return runtimeRelationshipRollRadians_;
+        }
+        float GetRuntimeRelationshipSideClearanceBias() const noexcept {
+            return runtimeRelationshipSideClearanceBias_;
+        }
+        float GetRuntimeRelationshipDistanceOffset() const noexcept {
+            return runtimeRelationshipDistanceOffset_;
+        }
+        float GetRuntimeRelationshipPivotHeightOffset() const noexcept {
+            return runtimeRelationshipPivotHeightOffset_;
+        }
+        float GetRuntimeRelationshipFocusLateralOffset() const noexcept {
+            return runtimeRelationshipFocusLateralOffset_;
+        }
+        float GetRuntimeRelationshipFocusHeightOffset() const noexcept {
+            return runtimeRelationshipFocusHeightOffset_;
+        }
+        bool GetRuntimeRelationshipSuppressModifiers() const noexcept {
+            return runtimeRelationshipSuppressModifiers_;
+        }
+        float GetRuntimeRelationshipYawOffsetDegrees() const noexcept {
+            return runtimeRelationshipYawOffsetDegrees_;
+        }
+        float GetRuntimeRelationshipWeight() const noexcept {
+            return runtimeRelationshipWeight_;
+        }
+        float GetRuntimeRelationshipWeightVelocity() const noexcept {
+            return runtimeRelationshipWeightVelocity_;
+        }
+        bool IsRuntimeScreenCompositionActive() const noexcept {
+            return runtimeScreenCompositionActive_;
+        }
+        float GetRuntimeScreenCompositionSide() const noexcept {
+            return runtimeScreenCompositionSide_;
+        }
+        float GetRuntimeScreenCompositionPrimaryX() const noexcept {
+            return runtimeScreenCompositionPrimaryX_;
+        }
+        float GetRuntimeScreenCompositionPrimaryY() const noexcept {
+            return runtimeScreenCompositionPrimaryY_;
+        }
+        float GetRuntimeScreenCompositionSecondaryX() const noexcept {
+            return runtimeScreenCompositionSecondaryX_;
+        }
+        float GetRuntimeScreenCompositionSecondaryY() const noexcept {
+            return runtimeScreenCompositionSecondaryY_;
+        }
+        bool GetRuntimeScreenCompositionSoftViolation() const noexcept {
+            return runtimeScreenCompositionSoftViolation_;
+        }
+        bool GetRuntimeScreenCompositionHardViolation() const noexcept {
+            return runtimeScreenCompositionHardViolation_;
+        }
+        float GetRuntimeScreenCompositionCollisionBlend() const noexcept {
+            return runtimeScreenCompositionCollisionBlend_;
+        }
+        float GetRuntimeScreenCompositionCollisionBlendVelocity()
+            const noexcept {
+            return runtimeScreenCompositionCollisionBlendVelocity_;
+        }
 
         void InitializeRuntimeState(
             const MATH::Vec3& eye,
@@ -223,6 +348,32 @@ namespace HIKARI {
             const MATH::Vec3& focusOffset,
             const MATH::Vec3& focusVelocity,
             float distanceVelocity) noexcept;
+        void SetRuntimeRelationshipShotState(
+            bool hasSubmission,
+            float preferredSide,
+            float shoulderAngleDegrees,
+            float verticalFovOffsetRadians,
+            float rollRadians,
+            float sideClearanceBias,
+            float distanceOffset,
+            float pivotHeightOffset,
+            float focusLateralOffset,
+            float focusHeightOffset,
+            bool suppressModifiers,
+            float yawOffsetDegrees,
+            float weight,
+            float weightVelocity) noexcept;
+        void SetRuntimeScreenCompositionState(
+            bool active,
+            float side,
+            float primaryX,
+            float primaryY,
+            float secondaryX,
+            float secondaryY,
+            bool softViolation,
+            bool hardViolation,
+            float collisionBlend,
+            float collisionBlendVelocity) noexcept;
         void ResetRuntimeState() noexcept;
 
     private:
@@ -259,9 +410,28 @@ namespace HIKARI {
         float autoRecenterSpeedDegreesPerSecond_ = 90.0f;
 
         bool collisionEnabled_ = true;
+        bool collisionStaticOnly_ = true;
         float collisionRadius_ = 0.25f;
         float collisionPadding_ = 0.08f;
         uint32_t collisionLayerMask_ = 0xFFFFFFFFu;
+
+        // Normalized viewport anchors use a top-left origin.  These defaults
+        // frame a two-subject duel around the thirds while leaving a generous
+        // soft region for ordinary locomotion.
+        bool screenCompositionEnabled_ = true;
+        float screenCompositionPrimaryAnchorX_ = 0.38f;
+        float screenCompositionPrimaryAnchorY_ = 0.58f;
+        float screenCompositionSecondaryAnchorX_ = 0.62f;
+        float screenCompositionSecondaryAnchorY_ = 0.46f;
+        float screenCompositionSoftZoneHalfWidth_ = 0.075f;
+        float screenCompositionSoftZoneHalfHeight_ = 0.10f;
+        float screenCompositionHardZoneHalfWidth_ = 0.20f;
+        float screenCompositionHardZoneHalfHeight_ = 0.24f;
+        float screenCompositionPreferredShoulderAngleDegrees_ = 32.0f;
+        float screenCompositionMaximumShoulderAngleDegrees_ = 58.0f;
+        float screenCompositionFocusHeightBias_ = 0.22f;
+        float screenCompositionHardResponseScale_ = 0.45f;
+        float screenCompositionCollisionCenteringStrength_ = 0.72f;
 
         bool runtimeInitialized_ = false;
         float runtimeYawDegrees_ = 0.0f;
@@ -300,6 +470,33 @@ namespace HIKARI {
         MATH::Vec3 runtimeFramingFocusOffset_{};
         MATH::Vec3 runtimeFramingFocusVelocity_{};
         float runtimeFramingDistanceVelocity_ = 0.0f;
+
+        bool runtimeRelationshipShotInitialized_ = false;
+        bool runtimeRelationshipShotHasSubmission_ = false;
+        float runtimeRelationshipPreferredSide_ = 0.0f;
+        float runtimeRelationshipShoulderAngleDegrees_ = 0.0f;
+        float runtimeRelationshipVerticalFovOffsetRadians_ = 0.0f;
+        float runtimeRelationshipRollRadians_ = 0.0f;
+        float runtimeRelationshipSideClearanceBias_ = 0.0f;
+        float runtimeRelationshipDistanceOffset_ = 0.0f;
+        float runtimeRelationshipPivotHeightOffset_ = 0.0f;
+        float runtimeRelationshipFocusLateralOffset_ = 0.0f;
+        float runtimeRelationshipFocusHeightOffset_ = 0.0f;
+        bool runtimeRelationshipSuppressModifiers_ = false;
+        float runtimeRelationshipYawOffsetDegrees_ = 0.0f;
+        float runtimeRelationshipWeight_ = 0.0f;
+        float runtimeRelationshipWeightVelocity_ = 0.0f;
+
+        bool runtimeScreenCompositionActive_ = false;
+        float runtimeScreenCompositionSide_ = 1.0f;
+        float runtimeScreenCompositionPrimaryX_ = 0.5f;
+        float runtimeScreenCompositionPrimaryY_ = 0.5f;
+        float runtimeScreenCompositionSecondaryX_ = 0.5f;
+        float runtimeScreenCompositionSecondaryY_ = 0.5f;
+        bool runtimeScreenCompositionSoftViolation_ = false;
+        bool runtimeScreenCompositionHardViolation_ = false;
+        float runtimeScreenCompositionCollisionBlend_ = 0.0f;
+        float runtimeScreenCompositionCollisionBlendVelocity_ = 0.0f;
     };
 
 } // namespace HIKARI
