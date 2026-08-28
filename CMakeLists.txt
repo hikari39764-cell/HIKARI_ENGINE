@@ -256,6 +256,9 @@ hikari_add_runtime_contract(
 hikari_add_runtime_contract(
     HIKARI_SceneSurfaceSemanticSmoke
     "Tools/Tests/HIKARI_SceneSurfaceSemanticSmoke.cpp")
+hikari_add_runtime_contract(
+    HIKARI_RenderFrameGraphPlanSmoke
+    "Tools/Tests/HIKARI_RenderFrameGraphPlanSmoke.cpp")
 
 enable_testing()
 foreach(runtime_contract IN ITEMS
@@ -266,7 +269,8 @@ foreach(runtime_contract IN ITEMS
     HIKARI_WorldComponentIndexSmoke
     HIKARI_RenderGraphSmoke
     HIKARI_RenderGraphCapacitySmoke
-    HIKARI_SceneSurfaceSemanticSmoke)
+    HIKARI_SceneSurfaceSemanticSmoke
+    HIKARI_RenderFrameGraphPlanSmoke)
     add_test(
         NAME "${runtime_contract}"
         COMMAND "$<TARGET_FILE:${runtime_contract}>")

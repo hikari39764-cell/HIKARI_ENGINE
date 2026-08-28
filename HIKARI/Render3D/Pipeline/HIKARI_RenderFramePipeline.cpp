@@ -2,7 +2,6 @@
 #include "Gfx/HIKARI_GfxContext.h"
 
 #include <algorithm>
-#include <cmath>
 #include <string>
 
 #include "Core/HIKARI_Logger.h"
@@ -17,32 +16,21 @@
 #include "Render3D/Features/HIKARI_StylizedScreenFeatureRenderer.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Render3D/Lighting/HIKARI_LocalLightList.h"
-#include "Render3D/Lighting/HIKARI_SkyRenderer.h"
-#include "Render3D/Lighting/HIKARI_StylizedCloudStage.h"
 #include "Render3D/Lighting/HIKARI_VolumetricLightingStage.h"
 #include "Render3D/Water/HIKARI_WaterVisibleDepth.h"
 #include "Render3D/Pipeline/HIKARI_RenderFrameContext.h"
-#include "Render3D/Reflection/HIKARI_ScreenSpaceReflectionRenderer.h"
+#include "Render3D/Pipeline/HIKARI_RenderFrameGraphStage.h"
 #include "Render3D/Surface/HIKARI_SceneSurfaceSet.h"
 #include "Render3D/ScreenSpace/HIKARI_ScreenSpacePasses.h"
 #include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
-#include "Render3D/Temporal/HIKARI_TemporalGeometryPass.h"
-#include "Render3D/Temporal/HIKARI_TemporalMotionVectorPass.h"
 #include "Render3D/Temporal/HIKARI_TemporalResourceSystem.h"
 #include "Render3D/Upscaling/HIKARI_StreamlineRuntime.h"
-#include "Render3D/Vfx/HIKARI_CombatAfterimageRenderer.h"
-#include "Render3D/Vfx/HIKARI_GroundTelegraphRenderer.h"
-#include "Render3D/Vfx/HIKARI_WeaponTrailRenderer.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
 
 namespace HIKARI::RENDER3D::PIPELINE {
 
     namespace {
-        REFLECTION::ScreenSpaceReflectionRenderer gSsrRenderer{};
         FEATURES::StylizedScreenFeatureRenderer gStylizedScreenFeatures{};
-        COMBAT_VFX::CombatAfterimageRenderer gCombatAfterimageRenderer{};
-        COMBAT_VFX::GroundTelegraphRenderer gGroundTelegraphRenderer{};
-        COMBAT_VFX::WeaponTrailRenderer gWeaponTrailRenderer{};
         FEATURES::RenderFeaturePlan gLastRenderFeaturePlan{};
 
         bool RebindPostRenderTarget(void*) { return POST::PostSystem::RebindCurrentRenderTarget(); }
@@ -115,21 +103,6 @@ namespace HIKARI::RENDER3D::PIPELINE {
             return context;
         }
 
-        MESHRENDERER::MeshPassResources BuildMeshPassResources(
-            const SURFACE::SceneSurfaceSet& textures,
-            int fallbackAoTextureHandle) {
-            MESHRENDERER::MeshPassResources resources{};
-            resources.sceneDepth = textures.sceneDepth;
-            resources.opaqueSceneColor = textures.sceneColorOpaque;
-            resources.packedSceneSurface = textures.packedSurface;
-            resources.ambientOcclusion = textures.ambientOcclusion;
-            resources.depthPyramid = textures.currentSceneDepthPyramid.valid
-                ? textures.currentSceneDepthPyramid
-                : textures.visibilityDepthPyramid;
-            resources.fallbackAoTextureHandle = fallbackAoTextureHandle;
-            return resources;
-        }
-
         bool ShouldRunSceneDepthPrepass(
             const RENDER3D::RenderQualitySettings& settings) {
 
@@ -143,61 +116,6 @@ namespace HIKARI::RENDER3D::PIPELINE {
             default:
                 return true;
             }
-        }
-
-        void PrepareSunGlareFrame(
-            const Camera3D& camera,
-            const SceneEnvironment& environment) {
-            POST::SunGlareFrame frame{};
-            const SKYRENDERER::AtmosphereFrameData sun =
-                SKYRENDERER::BuildAtmosphereFrameData(environment, camera);
-            const SunGlareSettings& settings = sun.sunGlare;
-            if (!sun.valid || !sun.screenSunVisible ||
-                !settings.enabled || sun.sunRadiance <= 0.0f) {
-                POST::PostSystem::SetSunGlareFrame(frame);
-                return;
-            }
-            const float sunUvX = sun.screenSunPosition.x;
-            const float sunUvY = sun.screenSunPosition.y;
-            const float maximumExtent = (std::max)(
-                settings.haloRadius,
-                (std::max)(settings.streakLength, settings.shaftLength));
-            if (!std::isfinite(sunUvX) || !std::isfinite(sunUvY) ||
-                sunUvX < -maximumExtent || sunUvX > 1.0f + maximumExtent ||
-                sunUvY < -maximumExtent || sunUvY > 1.0f + maximumExtent) {
-                POST::PostSystem::SetSunGlareFrame(frame);
-                return;
-            }
-
-            const float angularRadius = std::clamp(
-                sun.sunAngularRadius,
-                0.0005f,
-                0.035f);
-            const float halfFov = (std::max)(camera.GetFovYRad() * 0.5f, 0.01f);
-            const float coreRadius = std::clamp(
-                0.5f * std::tan(angularRadius) / std::tan(halfFov),
-                0.001f,
-                0.04f);
-
-            frame.enabled = true;
-            frame.sunUvX = sunUvX;
-            frame.sunUvY = sunUvY;
-            frame.coreRadius = coreRadius;
-            frame.colorR = sun.sunColor.x;
-            frame.colorG = sun.sunColor.y;
-            frame.colorB = sun.sunColor.z;
-            frame.intensity = settings.intensity * sun.sunRadiance;
-            frame.haloRadius = settings.haloRadius;
-            frame.haloFalloff = settings.haloFalloff;
-            frame.streakIntensity = settings.streakIntensity;
-            frame.streakLength = settings.streakLength;
-            frame.occlusionRadius = settings.occlusionRadius;
-            frame.edgeFade = settings.edgeFade;
-            frame.maxRadiance = settings.maxRadiance;
-            frame.shaftIntensity = settings.shaftIntensity;
-            frame.shaftLength = settings.shaftLength;
-            frame.shaftDecay = settings.shaftDecay;
-            POST::PostSystem::SetSunGlareFrame(frame);
         }
     }
 
@@ -213,7 +131,6 @@ namespace HIKARI::RENDER3D::PIPELINE {
         }
 
         const Camera3D& camera = view.cameraFrame->camera;
-        PrepareSunGlareFrame(camera, environment);
         RENDER3D::SetRenderDebugOutputView(debugView);
         const RENDER3D::RenderDebugOutputRoute& debugRoute =
             RENDER3D::GetRenderDebugOutputRoute();
@@ -425,8 +342,6 @@ namespace HIKARI::RENDER3D::PIPELINE {
         MESHRENDERER::SetAmbientOcclusionRuntimeEnabled(screenResult.ssaoRendered);
         sceneTextures.packedSurface = screenResult.packedSurface;
         sceneTextures.surfaceFeatureMask = screenResult.surfaceFeatureMask;
-        sceneTextures.stylizedOutlineStyle =
-            screenResult.stylizedOutlineStyle;
         sceneTextures.ambientOcclusion = screenResult.ambientOcclusion;
         sceneTextures.currentSceneDepthPyramid =
             screenResult.currentSceneDepthPyramid;
@@ -438,129 +353,36 @@ namespace HIKARI::RENDER3D::PIPELINE {
                 screenResult.fallbackAoTextureHandle);
         MESHRENDERER::MeshPassResources postOpaqueResources = opaqueResources;
 
-        bool opaqueOk = false;
-        {
-            GFX::PIX::ScopedGpuEvent pixForward(
-                frame.graphics.cmdList,
-                GFX::PIX::kColorRender,
-                "ForwardOpaque");
-            GFX::GPU_PROFILE::ScopedGpuTimer gpuForward(
-                frame.graphics.cmdList,
-                GFX::GPU_PROFILE::Pass::ForwardOpaque);
-            opaqueOk = MESHRENDERER::RenderForwardOpaquePass(
-                frame.graphics,
-                opaqueResources);
-        }
-        if (opaqueOk && cameraCb != nullptr) {
-            const bool postOpaqueOk =
-                RENDER3D::SCREENSPACE::ExecuteScreenSpacePostOpaquePasses(
-                    RENDER3D::SCREENSPACE::GetScreenSpaceRuntimeState(),
-                    screenSpaceContext,
-                    *cameraCb,
-                    environment,
-                    screenResult);
-            if (!postOpaqueOk) {
-                MESHRENDERER::EndFrame();
-                return false;
-            }
-            MESHRENDERER::SetAmbientOcclusionRuntimeEnabled(screenResult.ssaoRendered);
-            sceneTextures.packedSurface = screenResult.packedSurface;
-            sceneTextures.surfaceFeatureMask = screenResult.surfaceFeatureMask;
-            sceneTextures.stylizedOutlineStyle =
-                screenResult.stylizedOutlineStyle;
-            sceneTextures.ambientOcclusion = screenResult.ambientOcclusion;
-            sceneTextures.currentSceneDepthPyramid =
-                screenResult.currentSceneDepthPyramid;
-            sceneTextures.visibilityDepthPyramid =
-                screenResult.visibilityDepthPyramid;
-            postOpaqueResources = BuildMeshPassResources(
-                sceneTextures,
-                screenResult.fallbackAoTextureHandle);
-        }
-        if (opaqueOk) {
-            // Clouds are composed after opaque depth/color but before motion
-            // vectors and transparent geometry. This keeps scene geometry in
-            // front of the atmosphere while transparent surfaces remain able
-            // to render over it.
-            (void)RENDER3D::CLOUDS::ExecuteStylizedCloudStage(
-                frame,
-                temporalFrame,
-                environment.clouds,
-                renderQuality.stylizedCloudQuality);
-        }
-        if (opaqueOk) {
-            const RENDER3D::TEMPORAL::TemporalInputs temporalInputs =
-                RENDER3D::TEMPORAL::BuildTemporalInputs(
-                    sceneTextures.sceneDepth,
-                    sceneTextures.sceneColorOpaque);
-            sceneTextures.reactiveMask = temporalInputs.reactiveMask;
-            sceneTextures.transparencyMask = temporalInputs.transparencyMask;
-            sceneTextures.invalidDepthMotionMask =
-                temporalInputs.invalidDepthMotionMask;
-            sceneTextures.historyColor = temporalInputs.historyColorRead;
-            sceneTextures.historyDepth = temporalInputs.historyDepthRead;
-            bool motionVectorsWritten = false;
-            if (temporalInputs.motionVectors.valid &&
-                sceneTextures.sceneDepth.IsSampleable() &&
-                screenSpaceContext.renderTargetAccess.BeginDepthRead()) {
-                motionVectorsWritten =
-                    RENDER3D::TEMPORAL::ExecuteMotionVectorPass(
-                        frame.graphics,
-                        temporalInputs);
-                if (motionVectorsWritten &&
-                    screenSpaceContext.readOnlySceneDsv.ptr != 0) {
-                    (void)RENDER3D::TEMPORAL::ExecuteTemporalGeometryPass(
-                        frame.graphics,
-                        temporalInputs,
-                        screenSpaceContext.readOnlySceneDsv);
-                }
-                screenSpaceContext.renderTargetAccess.EndDepthRead();
-                if (!screenSpaceContext.renderTargetAccess.Rebind()) {
-                    MESHRENDERER::EndFrame();
-                    return false;
-                }
-            }
-            sceneTextures.motionVectors = motionVectorsWritten
-                ? temporalInputs.motionVectors
-                : RenderTextureView{};
-            sceneTextures.motionMetadata = motionVectorsWritten
-                ? temporalInputs.motionMetadata
-                : RenderTextureView{};
-            RENDER3D::TEMPORAL::MarkMotionVectorsWritten(motionVectorsWritten);
-        } else {
-            RENDER3D::TEMPORAL::MarkMotionVectorsWritten(false);
-        }
         const bool hasDepthAwareWork = MESHRENDERER::HasDepthAwarePassWork();
         const bool hasTransparentWork = MESHRENDERER::HasForwardTransparentPassWork();
         const bool hasSsrWork =
             environment.screenSpaceReflections.enabled &&
             environment.screenSpaceReflections.quality !=
                 ScreenSpaceReflectionQuality::Off;
+        const RenderFrameGraphStageResult graphStage =
+            ExecuteRenderFrameGraphStage(
+                RenderFrameGraphStageContext{
+                    frame,
+                    screenSpaceContext,
+                    temporalFrame,
+                    environment,
+                    renderQuality,
+                    cameraCb,
+                    screenResult,
+                    sceneTextures,
+                    opaqueResources,
+                    postOpaqueResources,
+                    debugView,
+                    hasDepthAwareWork,
+                    hasTransparentWork,
+                    hasSsrWork
+                });
+        if (!graphStage.completed) {
+            MESHRENDERER::EndFrame();
+            return false;
+        }
+        const bool opaqueOk = graphStage.opaqueSucceeded;
         bool depthAwareOk = true;
-        if (opaqueOk &&
-            (hasDepthAwareWork || hasTransparentWork || hasSsrWork)) {
-            const RenderTextureView sceneColorOpaque =
-                POST::PostSystem::CaptureSceneColorSnapshot();
-            if (sceneColorOpaque.IsSampleable()) {
-                sceneTextures.sceneColorOpaque = sceneColorOpaque;
-                postOpaqueResources.opaqueSceneColor = sceneColorOpaque;
-                RENDER3D::TEMPORAL::SetTemporalCompositionBase(
-                    sceneColorOpaque.srv);
-                if (!POST::PostSystem::RebindCurrentRenderTarget()) {
-                    MESHRENDERER::EndFrame();
-                    return false;
-                }
-            }
-        }
-        if (opaqueOk && hasSsrWork && cameraCb != nullptr) {
-            (void)gSsrRenderer.Render(
-                frame.graphics,
-                frame.targetAccess,
-                sceneTextures,
-                *cameraCb,
-                environment.screenSpaceReflections,
-                debugView);
-        }
         if (opaqueOk && hasDepthAwareWork) {
             GFX::PIX::ScopedGpuEvent pixDepthAware(
                 frame.graphics.cmdList,
@@ -601,21 +423,8 @@ namespace HIKARI::RENDER3D::PIPELINE {
             }
         }
 
-        if (opaqueOk && depthAwareOk && cameraCb != nullptr &&
-            view.combatPresentationFrameSource != nullptr &&
-            view.combatPresentationFrameSource->frameIndex ==
-                frame.frameIndex &&
-            view.combatPresentationFrameSource->HasGroundTelegraphs()) {
-            (void)gGroundTelegraphRenderer.Render(
-                frame.graphics,
-                frame.targetAccess,
-                *view.combatPresentationFrameSource,
-                *cameraCb);
-        }
-
         bool transparentOk = true;
-        if (opaqueOk && depthAwareOk &&
-            hasTransparentWork) {
+        if (opaqueOk && depthAwareOk && hasTransparentWork) {
             GFX::PIX::ScopedGpuEvent pixTransparent(
                 frame.graphics.cmdList,
                 GFX::PIX::kColorRender,
@@ -623,77 +432,9 @@ namespace HIKARI::RENDER3D::PIPELINE {
             GFX::GPU_PROFILE::ScopedGpuTimer gpuTransparent(
                 frame.graphics.cmdList,
                 GFX::GPU_PROFILE::Pass::ForwardTransparent);
-            if (POST::PostSystem::BeginCurrentRenderTargetDepthRead()) {
-                transparentOk =
-                    MESHRENDERER::RenderForwardTransparentPass(
-                        frame.graphics,
-                        postOpaqueResources);
-                POST::PostSystem::EndCurrentRenderTargetDepthRead();
-            } else {
-                transparentOk = false;
-            }
-        }
-
-        bool combatAfterimageOk = true;
-        if (opaqueOk && depthAwareOk && transparentOk &&
-            cameraCb != nullptr &&
-            view.combatAfterimageFrameSource != nullptr &&
-            view.combatAfterimageFrameSource->frameIndex == frame.frameIndex &&
-            view.combatAfterimageFrameSource->HasAfterimages()) {
-            combatAfterimageOk = gCombatAfterimageRenderer.Render(
+            transparentOk = MESHRENDERER::RenderForwardTransparentPass(
                 frame.graphics,
-                frame.targetAccess,
-                *view.combatAfterimageFrameSource,
-                *cameraCb);
-        }
-
-        bool weaponTrailOk = true;
-        if (opaqueOk && depthAwareOk && transparentOk &&
-            combatAfterimageOk &&
-            cameraCb != nullptr &&
-            view.combatPresentationFrameSource != nullptr &&
-            view.combatPresentationFrameSource->frameIndex == frame.frameIndex &&
-            view.combatPresentationFrameSource->HasWeaponTrails()) {
-            weaponTrailOk = gWeaponTrailRenderer.Render(
-                screenSpaceContext,
-                *view.combatPresentationFrameSource,
-                cameraCb->viewProj);
-            if (weaponTrailOk) {
-                const COMBAT_VFX::WeaponTrailDistortionMaskView trailMask =
-                    gWeaponTrailRenderer.GetDistortionMask();
-                if (trailMask.IsValid() &&
-                    trailMask.frameIndex == frame.frameIndex) {
-                    POST::PostSystem::ActionScreenDistortionMask postMask{};
-                    postMask.texture = trailMask.texture;
-                    postMask.srvCpu = trailMask.srvCpu;
-                    postMask.frameIndex = trailMask.frameIndex;
-                    postMask.strength = trailMask.strengthScale;
-                    postMask.blur = trailMask.blurScale;
-                    POST::PostSystem::SetActionScreenDistortionMask(postMask);
-                }
-                const COMBAT_VFX::WeaponTrailAccentView trailAccent =
-                    gWeaponTrailRenderer.GetAccent();
-                if (trailAccent.IsValid() &&
-                    trailAccent.frameIndex == frame.frameIndex) {
-                    POST::PostSystem::ActionScreenDistortionAccent
-                        postAccent{};
-                    postAccent.texture = trailAccent.texture;
-                    postAccent.srvCpu = trailAccent.srvCpu;
-                    postAccent.frameIndex = trailAccent.frameIndex;
-                    postAccent.strength = trailAccent.intensityScale;
-                    // The distortion sheet and the new colored HDR accent are
-                    // separate presentation layers. Preserve the established
-                    // optical warp, while allowing the accent to inherit a
-                    // restrained along-path drag so it reads as stylized
-                    // motion energy instead of a one-pixel emissive line.
-                    postAccent.blur = std::clamp(
-                        trailMask.blurScale * 0.70f,
-                        0.0f,
-                        3.0f);
-                    POST::PostSystem::SetActionScreenDistortionAccent(
-                        postAccent);
-                }
-            }
+                postOpaqueResources);
         }
 
         FEATURES::RenderFeatureAvailability featureAvailability{};
@@ -755,7 +496,6 @@ namespace HIKARI::RENDER3D::PIPELINE {
                     postOpaqueResources);
         }
         if (opaqueOk && depthAwareOk &&
-            combatAfterimageOk && weaponTrailOk &&
             featurePassesOk &&
             gLastRenderFeaturePlan.screenCompositePassRequired) {
             // Geometry/visibility feature passes draw in place. Capture after
@@ -799,20 +539,8 @@ namespace HIKARI::RENDER3D::PIPELINE {
             }
         }
 
-        // Copy the scene-owned reaction into Post while the render camera for
-        // this frame is still authoritative.  The effect is composited later,
-        // after temporal resolve and exposure measurement, before bloom.
-        if (cameraCb != nullptr &&
-            view.actionPostReactionFrameSource != nullptr) {
-            POST::PostSystem::SetActionScreenImpulseFrame(
-                *view.actionPostReactionFrameSource,
-                cameraCb->viewProj,
-                frame.frameIndex);
-        }
-
         MESHRENDERER::EndFrame();
-        return opaqueOk && depthAwareOk && transparentOk &&
-            combatAfterimageOk && weaponTrailOk && featurePassesOk;
+        return opaqueOk && depthAwareOk && transparentOk && featurePassesOk;
     }
 
     bool RenderMeshCaptureOpaqueFrame(
@@ -856,18 +584,6 @@ namespace HIKARI::RENDER3D::PIPELINE {
 
     const FEATURES::RenderFeaturePlan& GetLastRenderFeaturePlan() {
         return gLastRenderFeaturePlan;
-    }
-
-    bool InitializeCombatPresentationRenderers(
-        const GFX::Context& graphics) {
-        return graphics.device != nullptr &&
-            gGroundTelegraphRenderer.Initialize(graphics.device);
-    }
-
-    void ShutdownCombatPresentationRenderers() {
-        gCombatAfterimageRenderer.Release();
-        gGroundTelegraphRenderer.Release();
-        gWeaponTrailRenderer.Release();
     }
 
 } // namespace HIKARI::RENDER3D::PIPELINE
