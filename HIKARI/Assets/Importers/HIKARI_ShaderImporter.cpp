@@ -139,6 +139,8 @@ namespace HIKARI {
             std::string& outError) {
             GFX::ShaderCookRequest request{};
             request.projectShaderRoot = projectShaderRoot;
+            request.primarySourceRoot =
+                GFX::ShaderCookIncludeRoot::Project;
             request.sourcePath = manifest.sourcePath;
             request.engineSdkIncludeRoot =
                 GFX::ResolveShaderSourcePath(

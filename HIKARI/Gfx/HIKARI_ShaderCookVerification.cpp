@@ -18,18 +18,28 @@ namespace HIKARI::GFX {
                 outError = "shader dependency verification count is invalid";
                 return false;
             }
-            INTERNAL::ShaderCookRoot projectRoot{};
+            INTERNAL::ShaderCookRoot sourceRoot{};
             std::vector<INTERNAL::ShaderCookRoot> includeRoots{};
             if (!INTERNAL::BuildShaderCookRoots(
                     request,
                     includeRoots,
-                    projectRoot,
+                    sourceRoot,
+                    outError)) {
+                return false;
+            }
+            INTERNAL::ShaderCookFile expectedPrimary{};
+            if (!INTERNAL::ReadShaderCookFile(
+                    sourceRoot,
+                    request.sourcePath,
+                    ".hlsl",
+                    expectedPrimary,
                     outError)) {
                 return false;
             }
             std::unordered_set<std::string> logicalPaths{};
             std::string previous{};
             uint64_t totalBytes = 0u;
+            bool hasPrimary = false;
             for (const ShaderCookDependency& dependency : dependencies) {
                 const std::string key =
                     TEXT::ToLowerAsciiCopy(dependency.logicalPath);
@@ -46,15 +56,27 @@ namespace HIKARI::GFX {
                 }
                 INTERNAL::ShaderCookFile verified{};
                 if (!INTERNAL::ReadShaderCookLogicalDependency(
-                        projectRoot,
+                        sourceRoot,
                         includeRoots,
                         dependency,
                         verified,
                         outError)) {
                     return false;
                 }
+                hasPrimary = hasPrimary ||
+                    (dependency.logicalPath ==
+                        expectedPrimary.dependency.logicalPath &&
+                     dependency.byteSize ==
+                        expectedPrimary.dependency.byteSize &&
+                     dependency.contentHash ==
+                        expectedPrimary.dependency.contentHash);
                 totalBytes += dependency.byteSize;
                 previous = dependency.logicalPath;
+            }
+            if (!hasPrimary) {
+                outError =
+                    "shader dependency closure is missing its primary source";
+                return false;
             }
             outError.clear();
             return true;

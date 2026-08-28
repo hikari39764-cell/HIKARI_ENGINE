@@ -129,13 +129,25 @@ namespace HIKARI::GFX::INTERNAL {
     bool BuildShaderCookRoots(
         const ShaderCookRequest& request,
         std::vector<ShaderCookRoot>& outIncludeRoots,
-        ShaderCookRoot& outProjectRoot,
+        ShaderCookRoot& outSourceRoot,
         std::string& outError) {
-        if (!MakeRoot(
-                ShaderCookIncludeRoot::Project,
-                request.projectShaderRoot,
-                outProjectRoot,
+        const auto physicalRoot = [&request](
+            ShaderCookIncludeRoot kind)
+                -> const std::filesystem::path& {
+            return kind == ShaderCookIncludeRoot::Project
+                ? request.projectShaderRoot
+                : request.engineSdkIncludeRoot;
+        };
+        if (request.primarySourceRoot >=
+                ShaderCookIncludeRoot::Count ||
+            !MakeRoot(
+                request.primarySourceRoot,
+                physicalRoot(request.primarySourceRoot),
+                outSourceRoot,
                 outError)) {
+            if (outError.empty()) {
+                outError = "shader primary source root is invalid";
+            }
             return false;
         }
         std::vector<ShaderCookIncludeRoot> roots = request.includeRoots;
@@ -148,13 +160,13 @@ namespace HIKARI::GFX::INTERNAL {
         resolved.reserve(roots.size());
         for (ShaderCookIncludeRoot kind : roots) {
             ShaderCookRoot root{};
-            if (kind == ShaderCookIncludeRoot::Project) {
-                root = outProjectRoot;
+            if (kind == request.primarySourceRoot) {
+                root = outSourceRoot;
             }
-            else if (kind == ShaderCookIncludeRoot::EngineSdk) {
+            else if (kind < ShaderCookIncludeRoot::Count) {
                 if (!MakeRoot(
                         kind,
-                        request.engineSdkIncludeRoot,
+                        physicalRoot(kind),
                         root,
                         outError)) {
                     return false;
@@ -243,25 +255,30 @@ namespace HIKARI::GFX::INTERNAL {
     }
 
     bool ReadShaderCookLogicalDependency(
-        const ShaderCookRoot& projectRoot,
+        const ShaderCookRoot& sourceRoot,
         const std::vector<ShaderCookRoot>& includeRoots,
         const ShaderCookDependency& expected,
         ShaderCookFile& outFile,
         std::string& outError) {
         const ShaderCookRoot* owner = nullptr;
         std::string_view relative{};
-        if (expected.logicalPath.rfind("Project/", 0u) == 0u) {
-            owner = &projectRoot;
-            relative = std::string_view(expected.logicalPath).substr(8u);
+        const std::string sourcePrefix =
+            sourceRoot.logicalPrefix + "/";
+        if (expected.logicalPath.rfind(sourcePrefix, 0u) == 0u) {
+            owner = &sourceRoot;
+            relative = std::string_view(expected.logicalPath).substr(
+                sourcePrefix.size());
         }
-        else if (expected.logicalPath.rfind("EngineSdk/", 0u) == 0u) {
+        else {
             for (const ShaderCookRoot& root : includeRoots) {
-                if (root.kind == ShaderCookIncludeRoot::EngineSdk) {
+                const std::string prefix = root.logicalPrefix + "/";
+                if (expected.logicalPath.rfind(prefix, 0u) == 0u) {
                     owner = &root;
+                    relative = std::string_view(
+                        expected.logicalPath).substr(prefix.size());
                     break;
                 }
             }
-            relative = std::string_view(expected.logicalPath).substr(10u);
         }
         const std::string extension = TEXT::ToLowerAsciiCopy(
             std::filesystem::path(expected.logicalPath)

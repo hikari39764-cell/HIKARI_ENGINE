@@ -159,17 +159,17 @@ namespace HIKARI::GFX::INTERNAL {
         class IncludePlanner {
         public:
             IncludePlanner(
-                const ShaderCookRoot& projectRoot,
+                const ShaderCookRoot& sourceRoot,
                 const std::vector<ShaderCookRoot>& includeRoots,
                 std::shared_ptr<ShaderIncludePlan> plan)
-                : projectRoot_(projectRoot),
+                : sourceRoot_(sourceRoot),
                   includeRoots_(includeRoots),
                   plan_(std::move(plan)) {}
             bool Build(
                 const ShaderCookFile& source,
                 std::string& outError) {
                 totalBytes_ = source.dependency.byteSize;
-                return Walk(projectRoot_, source, outError);
+                return Walk(sourceRoot_, source, outError);
             }
         private:
             bool IsRootEnabled(ShaderCookIncludeRoot kind) const noexcept {
@@ -255,7 +255,9 @@ namespace HIKARI::GFX::INTERNAL {
                         "shader include must use .hlsl, .hlsli, or .h";
                     return false;
                 }
-                if (directive.quoted && IsRootEnabled(parentRoot.kind)) {
+                if (directive.quoted &&
+                    (parentRoot.kind == sourceRoot_.kind ||
+                     IsRootEnabled(parentRoot.kind))) {
                     ShaderCookFile local{};
                     std::string ignored{};
                     if (ReadShaderCookPhysicalFile(
@@ -361,7 +363,7 @@ namespace HIKARI::GFX::INTERNAL {
                 visited_.insert(key);
                 return true;
             }
-            ShaderCookRoot projectRoot_{};
+            ShaderCookRoot sourceRoot_{};
             std::vector<ShaderCookRoot> includeRoots_{};
             std::shared_ptr<ShaderIncludePlan> plan_{};
             std::unordered_set<std::string> visiting_{};
@@ -378,13 +380,13 @@ namespace HIKARI::GFX::INTERNAL {
     } // namespace
     bool BuildShaderIncludePlan(
         const ShaderCookFile& source,
-        const ShaderCookRoot& projectRoot,
+        const ShaderCookRoot& sourceRoot,
         const std::vector<ShaderCookRoot>& includeRoots,
         std::shared_ptr<const ShaderIncludePlan>& outPlan,
         std::string& outError) {
         try {
             auto plan = std::make_shared<ShaderIncludePlan>();
-            IncludePlanner planner(projectRoot, includeRoots, plan);
+            IncludePlanner planner(sourceRoot, includeRoots, plan);
             if (!planner.Build(source, outError)) {
                 return false;
             }

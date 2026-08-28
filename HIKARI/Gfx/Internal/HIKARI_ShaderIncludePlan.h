@@ -22,7 +22,7 @@ namespace HIKARI::GFX::INTERNAL {
 
     bool BuildShaderIncludePlan(
         const ShaderCookFile& source,
-        const ShaderCookRoot& projectRoot,
+        const ShaderCookRoot& sourceRoot,
         const std::vector<ShaderCookRoot>& includeRoots,
         std::shared_ptr<const ShaderIncludePlan>& outPlan,
         std::string& outError);

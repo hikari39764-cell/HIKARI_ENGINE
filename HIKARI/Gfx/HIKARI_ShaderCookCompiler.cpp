@@ -134,10 +134,12 @@ namespace HIKARI::GFX {
             }
             std::vector<std::wstring> owned{};
             owned.reserve(canonical.size() + 1u);
+            const size_t sourcePrefixEnd = logicalSource.find('/');
             const std::string_view sourceArgument =
-                logicalSource.rfind("Project/", 0u) == 0u
-                    ? std::string_view(logicalSource).substr(8u)
-                    : std::string_view(logicalSource);
+                sourcePrefixEnd == std::string::npos
+                    ? std::string_view(logicalSource)
+                    : std::string_view(logicalSource).substr(
+                        sourcePrefixEnd + 1u);
             owned.push_back(WidenUtf8(sourceArgument));
             if (owned.back().empty()) {
                 outError = "logical shader source is not valid UTF-8";
@@ -221,19 +223,19 @@ namespace HIKARI::GFX {
                 outOutput = std::move(output);
                 return false;
             }
-            INTERNAL::ShaderCookRoot projectRoot{};
+            INTERNAL::ShaderCookRoot sourceRoot{};
             std::vector<INTERNAL::ShaderCookRoot> includeRoots{};
             if (!INTERNAL::BuildShaderCookRoots(
                     request,
                     includeRoots,
-                    projectRoot,
+                    sourceRoot,
                     output.diagnostics)) {
                 outOutput = std::move(output);
                 return false;
             }
             INTERNAL::ShaderCookFile source{};
             if (!INTERNAL::ReadShaderCookFile(
-                    projectRoot,
+                    sourceRoot,
                     request.sourcePath,
                     ".hlsl",
                     source,
@@ -244,7 +246,7 @@ namespace HIKARI::GFX {
             std::shared_ptr<const INTERNAL::ShaderIncludePlan> includePlan{};
             if (!INTERNAL::BuildShaderIncludePlan(
                     source,
-                    projectRoot,
+                    sourceRoot,
                     includeRoots,
                     includePlan,
                     output.diagnostics)) {

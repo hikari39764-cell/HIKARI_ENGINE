@@ -76,6 +76,8 @@ namespace HIKARI::GFX {
     struct ShaderCookRequest {
         std::filesystem::path projectShaderRoot{};
         std::filesystem::path engineSdkIncludeRoot{};
+        ShaderCookIncludeRoot primarySourceRoot =
+            ShaderCookIncludeRoot::Project;
         std::filesystem::path sourcePath{};
         std::vector<ShaderCookEntryRequest> entries{};
         std::vector<ShaderCookDefine> defines{};

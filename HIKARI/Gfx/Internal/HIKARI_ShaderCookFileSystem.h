@@ -24,7 +24,7 @@ namespace HIKARI::GFX::INTERNAL {
     bool BuildShaderCookRoots(
         const ShaderCookRequest& request,
         std::vector<ShaderCookRoot>& outIncludeRoots,
-        ShaderCookRoot& outProjectRoot,
+        ShaderCookRoot& outSourceRoot,
         std::string& outError);
 
     bool ReadShaderCookFile(
@@ -42,7 +42,7 @@ namespace HIKARI::GFX::INTERNAL {
         std::string& outError);
 
     bool ReadShaderCookLogicalDependency(
-        const ShaderCookRoot& projectRoot,
+        const ShaderCookRoot& sourceRoot,
         const std::vector<ShaderCookRoot>& includeRoots,
         const ShaderCookDependency& expected,
         ShaderCookFile& outFile,
