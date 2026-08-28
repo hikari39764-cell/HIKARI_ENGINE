@@ -21,28 +21,36 @@ namespace HIKARI {
             visitor == nullptr) {
             return false;
         }
-        const World::StructureReadScope structureRead =
-            world->AcquireStructureReadScope();
-        for (const auto& object : world->GetObjects()) {
-            if (!object) {
-                continue;
-            }
-            for (const auto& component : object->GetComponents()) {
-                auto* adapter = dynamic_cast<
-                    GameProjectComponentAdapter*>(component.get());
-                if (adapter == nullptr ||
-                    adapter->GetTypeName() != typeName) {
+        bool completed = true;
+        {
+            const World::StructureReadScope structureRead =
+                world->AcquireStructureReadScope();
+            for (const auto& object : world->GetObjects()) {
+                if (!object) {
                     continue;
                 }
-                if (!visitor(
-                        context,
-                        GameProjectSdkAccess::MakeObjectView(*object),
-                        adapter->GetGameComponent())) {
-                    return false;
+                for (const auto& component : object->GetComponents()) {
+                    auto* adapter = dynamic_cast<
+                        GameProjectComponentAdapter*>(component.get());
+                    if (adapter == nullptr ||
+                        adapter->GetTypeName() != typeName) {
+                        continue;
+                    }
+                    if (!visitor(
+                            context,
+                            GameProjectSdkAccess::MakeObjectView(*object),
+                            adapter->GetGameComponent())) {
+                        completed = false;
+                        break;
+                    }
+                }
+                if (!completed) {
+                    break;
                 }
             }
         }
-        return true;
+        (void)world->FlushQueuedCommands(WorldCommandPhase::QueryEnd);
+        return completed;
     }
 
 } // namespace HIKARI

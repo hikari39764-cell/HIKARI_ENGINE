@@ -71,10 +71,13 @@ namespace HIKARI {
     } // namespace
 
     World::World()
-        : ownerThread_(std::this_thread::get_id()),
-          runtimeIdentity_(RegisterRuntimeWorld(
-              *this,
-              ownerThread_)) {
+        : ownerThread_(std::this_thread::get_id()) {
+        pendingCommands_.reserve(kWorldCommandInitialCapacity);
+        executionCommands_.reserve(kWorldCommandInitialCapacity);
+        commandFailures_.reserve(kWorldCommandFailureCapacity);
+        runtimeIdentity_ = RegisterRuntimeWorld(
+            *this,
+            ownerThread_);
     }
 
     void World::UnregisterRuntimeIdentity() noexcept {

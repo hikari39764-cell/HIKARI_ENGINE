@@ -1,7 +1,6 @@
 #include "Scene/HIKARI_World.h"
 
 #include <algorithm>
-#include <limits>
 #include <stdexcept>
 
 #include "Core/HIKARI_Logger.h"
@@ -123,25 +122,6 @@ namespace HIKARI {
         return DestroyObject(object);
     }
 
-    GameObject* World::FindObject(
-        RuntimeObjectHandle handle) noexcept {
-        if (!IsOwnerThread()) {
-            return nullptr;
-        }
-        if (!handle.IsValid() || handle.slot >= objectSlots_.size()) {
-            return nullptr;
-        }
-        const ObjectSlot& slot = objectSlots_[handle.slot];
-        return slot.generation == handle.generation
-            ? slot.object
-            : nullptr;
-    }
-
-    const GameObject* World::FindObject(
-        RuntimeObjectHandle handle) const noexcept {
-        return const_cast<World*>(this)->FindObject(handle);
-    }
-
     GameObject* World::FindObject(SceneObjectId id) noexcept {
         if (!IsOwnerThread()) {
             return nullptr;
@@ -166,11 +146,22 @@ namespace HIKARI {
                 "[World] Update rejected outside the owner thread.");
             return;
         }
-        const StructureReadScope structureRead =
-            AcquireStructureReadScope();
-        for (const auto& object : objects_) {
-            object->Update(dt);
+        (void)FlushQueuedCommands(
+            WorldCommandPhase::ComponentUpdateBegin);
+        try {
+            const StructureReadScope structureRead =
+                AcquireStructureReadScope();
+            for (const auto& object : objects_) {
+                object->Update(dt);
+            }
         }
+        catch (...) {
+            (void)FlushQueuedCommands(
+                WorldCommandPhase::ComponentUpdateEnd);
+            throw;
+        }
+        (void)FlushQueuedCommands(
+            WorldCommandPhase::ComponentUpdateEnd);
     }
 
     void World::Render() {
@@ -205,7 +196,9 @@ namespace HIKARI {
                 "[World] Clear rejected outside the owner thread.");
             return;
         }
-        if (!CanMutateStructure()) {
+        if (structureReadDepth_ != 0u ||
+            commandFlushActive_ ||
+            commandApplyActive_) {
             HIKARI_LOG_ERROR(
                 "[World] Clear rejected during structure traversal.");
             return;
@@ -218,27 +211,57 @@ namespace HIKARI {
         }
         removedRenderObjectIds_.reserve(
             removedRenderObjectIds_.size() + objects_.size());
-        const StructureReadScope structureRead =
-            AcquireStructureReadScope();
-        for (const auto& object : objects_) {
-            if (object) {
-                (void)object->SetParent(nullptr);
+        worldClosing_ = true;
+        try {
+            for (const PendingWorldCommand& command : pendingCommands_) {
+                RecordCommandFailure(
+                    command,
+                    command.kind == WorldCommandKind::Spawn
+                        ? WorldMutationResult::CommandCanceled
+                        : WorldMutationResult::WorldClosing,
+                    WorldCommandPhase::WorldClear);
             }
-        }
-        for (const auto& object : objects_) {
-            if (object) {
-                MarkRenderObjectRemoved(object->GetRenderStableId());
-                object->DetachComponents();
-                ReleaseObjectHandle(object->GetRuntimeHandle());
-                object->SetRuntimeHandle({});
-                object->SetOwnerWorld(nullptr);
+            pendingCommands_.clear();
+            executionCommands_.clear();
+            for (uint32_t slotIndex = 0u;
+                slotIndex < objectSlots_.size();
+                ++slotIndex) {
+                const ObjectSlotState state =
+                    objectSlots_[slotIndex].state;
+                if (state == ObjectSlotState::Reserved ||
+                    state == ObjectSlotState::ReservedCanceled) {
+                    RecycleObjectSlot(slotIndex);
+                }
             }
+
+            const StructureReadScope structureRead =
+                AcquireStructureReadScope();
+            for (const auto& object : objects_) {
+                if (object) {
+                    (void)object->SetParent(nullptr);
+                }
+            }
+            for (const auto& object : objects_) {
+                if (object) {
+                    MarkRenderObjectRemoved(
+                        object->GetRenderStableId());
+                    object->DetachComponents();
+                    ReleaseObjectHandle(object->GetRuntimeHandle());
+                    object->SetRuntimeHandle({});
+                    object->SetOwnerWorld(nullptr);
+                }
+            }
+            objects_.clear();
+            objectsByDocumentId_.clear();
+            renderDirtyObjects_.clear();
+            frameEvents_.Clear();
+            fixedEvents_.Clear();
         }
-        objects_.clear();
-        objectsByDocumentId_.clear();
-        renderDirtyObjects_.clear();
-        frameEvents_.Clear();
-        fixedEvents_.Clear();
+        catch (...) {
+            worldClosing_ = false;
+            throw;
+        }
+        worldClosing_ = false;
     }
 
     const std::vector<std::unique_ptr<GameObject>>&
@@ -328,57 +351,17 @@ namespace HIKARI {
 
     void World::BeginFrame(uint64_t frameIndex) noexcept {
         frameEvents_.BeginScope(frameIndex);
+        commandFailures_.clear();
+        commandFailureOverflowCount_ = 0u;
+        try {
+            (void)FlushQueuedCommands(WorldCommandPhase::BeginFrame);
+        }
+        catch (...) {
+        }
     }
 
     void World::BeginFixedStep(uint64_t fixedTickIndex) noexcept {
         fixedEvents_.BeginScope(fixedTickIndex);
-    }
-
-    RuntimeObjectHandle World::AllocateObjectHandle(
-        GameObject* object) {
-        if (!freeObjectSlots_.empty()) {
-            const uint32_t slotIndex = freeObjectSlots_.back();
-            freeObjectSlots_.pop_back();
-            ObjectSlot& slot = objectSlots_[slotIndex];
-            slot.object = object;
-            return RuntimeObjectHandle{
-                slotIndex,
-                slot.generation
-            };
-        }
-
-        if (objectSlots_.size() >=
-            static_cast<size_t>(
-                (std::numeric_limits<uint32_t>::max)())) {
-            return {};
-        }
-        const uint32_t slotIndex =
-            static_cast<uint32_t>(objectSlots_.size());
-        const size_t nextSlotCount = objectSlots_.size() + 1u;
-        objectSlots_.reserve(nextSlotCount);
-        freeObjectSlots_.reserve(nextSlotCount);
-        objectSlots_.push_back(ObjectSlot{ object, 1u });
-        return RuntimeObjectHandle{ slotIndex, 1u };
-    }
-
-    void World::ReleaseObjectHandle(RuntimeObjectHandle handle) {
-        if (!handle.IsValid() || handle.slot >= objectSlots_.size()) {
-            return;
-        }
-        ObjectSlot& slot = objectSlots_[handle.slot];
-        if (slot.generation != handle.generation ||
-            slot.object == nullptr) {
-            return;
-        }
-        slot.object = nullptr;
-        if (slot.generation ==
-            (std::numeric_limits<uint32_t>::max)()) {
-            // generation を巻き戻すと古い handle が再び有効になるため、
-            // 上限に達した slot は再利用しない。
-            return;
-        }
-        ++slot.generation;
-        freeObjectSlots_.push_back(handle.slot);
     }
 
     bool World::OnDocumentIdChanged(

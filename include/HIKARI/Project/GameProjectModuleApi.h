@@ -12,10 +12,10 @@ namespace HIKARI {
 
 namespace HIKARI::RUNTIME {
 
-    // ABI 4 begins the Platform Foundation 2.0 boundary. Object views resolve
-    // generation-checked handles and the source SDK deliberately drops the
-    // ABI 3 WorldView contract.
-    inline constexpr uint32_t kGameProjectModuleAbiVersion = 4u;
+    // ABI 5 formalizes queued structural commands in GameProject callbacks.
+    // Reject ABI 4 modules so the host never silently changes Spawn/Destroy
+    // completion semantics for an already-built project DLL.
+    inline constexpr uint32_t kGameProjectModuleAbiVersion = 5u;
     inline constexpr char kGameProjectModuleApiEntryPoint[] =
         "HIKARI_GetGameProjectModuleApi";
 

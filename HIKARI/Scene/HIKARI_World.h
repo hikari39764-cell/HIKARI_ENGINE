@@ -2,32 +2,16 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 #include "HIKARI_GameObject.h"
+#include "Scene/HIKARI_WorldCommands.h"
 #include "Scene/HIKARI_WorldEventStream.h"
 #include "Scene/HIKARI_WorldServiceRegistry.h"
 namespace HIKARI {
-
-    enum class WorldMutationResult : uint8_t {
-        Success,
-        WrongThread,
-        MutationDisallowed,
-        InvalidObjectHandle,
-        InvalidParentHandle,
-        ParentCycle,
-        InvalidParentMode,
-        TransformNotInvertible,
-        TransformDecompositionFailed,
-        HierarchyRejected
-    };
-
-    enum class WorldParentMode : uint8_t {
-        KeepLocal,
-        KeepWorld
-    };
 
     enum class RuntimeWorldAccessResult : uint8_t {
         Success,
@@ -68,6 +52,22 @@ namespace HIKARI {
             RuntimeObjectHandle object,
             RuntimeObjectHandle parent = {},
             WorldParentMode mode = WorldParentMode::KeepLocal);
+        WorldCommandSubmission SubmitSpawn(
+            std::string_view name,
+            const Transform3D& localTransform,
+            RuntimeObjectHandle parent = {});
+        WorldCommandSubmission SubmitDestroy(
+            RuntimeObjectHandle object);
+        WorldCommandSubmission SubmitSetParent(
+            RuntimeObjectHandle object,
+            RuntimeObjectHandle parent,
+            WorldParentMode mode);
+        uint32_t FlushQueuedCommands(WorldCommandPhase phase);
+        uint32_t GetCommandFailureCount() const noexcept;
+        bool ReadCommandFailure(
+            uint32_t index,
+            WorldCommandFailure& outFailure) const noexcept;
+        uint32_t GetCommandFailureOverflowCount() const noexcept;
         WorldMutationResult SetWorldTransform(
             RuntimeObjectHandle object,
             const Transform3D& transform);
@@ -113,7 +113,11 @@ namespace HIKARI {
             uint64_t identity,
             RuntimeWorldAccessResult* outAccess = nullptr) noexcept;
         bool CanMutateStructure() const noexcept {
-            return IsOwnerThread() && structureReadDepth_ == 0u;
+            return IsOwnerThread() &&
+                structureReadDepth_ == 0u &&
+                !worldClosing_ &&
+                ((!commandFlushActive_ && pendingCommands_.empty()) ||
+                 commandApplyActive_);
         }
         [[nodiscard]] StructureReadScope AcquireStructureReadScope() noexcept {
             return StructureReadScope(*this);
@@ -152,13 +156,49 @@ namespace HIKARI {
     private:
         friend class GameObject;
 
+        bool CanEnterStructureCallback() const noexcept {
+            return IsOwnerThread() &&
+                structureReadDepth_ == 0u &&
+                !commandFlushActive_ &&
+                !worldClosing_;
+        }
+
+        enum class ObjectSlotState : uint8_t {
+            Free,
+            Reserved,
+            ReservedCanceled,
+            Live,
+            Retired
+        };
+
         struct ObjectSlot {
             GameObject* object = nullptr;
             uint32_t generation = 1;
+            uint32_t reservationToken = 0u;
+            ObjectSlotState state = ObjectSlotState::Free;
         };
 
         RuntimeObjectHandle AllocateObjectHandle(GameObject* object);
+        RuntimeObjectHandle ReserveObjectHandle();
+        bool CommitReservedObjectHandle(
+            RuntimeObjectHandle handle,
+            GameObject* object) noexcept;
+        void ReleaseReservedObjectHandle(
+            RuntimeObjectHandle handle) noexcept;
+        bool IsReservedObjectHandle(
+            RuntimeObjectHandle handle) const noexcept;
+        bool IsKnownObjectHandle(
+            RuntimeObjectHandle handle) const noexcept;
+        void RecycleObjectSlot(uint32_t slotIndex) noexcept;
         void ReleaseObjectHandle(RuntimeObjectHandle handle);
+        WorldCommandSubmission QueueCommand(PendingWorldCommand command);
+        uint32_t AllocateCommandToken() noexcept;
+        void RecordCommandFailure(
+            const PendingWorldCommand& command,
+            WorldMutationResult result,
+            WorldCommandPhase phase) noexcept;
+        WorldMutationResult ApplyQueuedSpawn(
+            const PendingWorldCommand& command);
         void UnregisterRuntimeIdentity() noexcept;
         bool OnDocumentIdChanged(
             GameObject* object,
@@ -174,9 +214,18 @@ namespace HIKARI {
         WorldServiceRegistry services_{};
         WorldEventStream frameEvents_{};
         WorldEventStream fixedEvents_{};
+        std::vector<PendingWorldCommand> pendingCommands_{};
+        std::vector<PendingWorldCommand> executionCommands_{};
+        std::vector<WorldCommandFailure> commandFailures_{};
         std::thread::id ownerThread_{};
         uint64_t runtimeIdentity_ = 0u;
+        uint64_t nextCommandSequence_ = 1u;
+        uint32_t nextCommandToken_ = 1u;
+        uint32_t commandFailureOverflowCount_ = 0u;
         uint32_t structureReadDepth_ = 0u;
+        bool commandFlushActive_ = false;
+        bool commandApplyActive_ = false;
+        bool worldClosing_ = false;
     };
 
 } // namespace HIKARI

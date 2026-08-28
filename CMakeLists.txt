@@ -238,6 +238,24 @@ hikari_add_runtime_contract(
 hikari_add_runtime_contract(
     HIKARI_WorldSdkSmoke
     "Tools/Tests/HIKARI_WorldSdkSmoke.cpp")
+hikari_add_runtime_contract(
+    HIKARI_WorldCommandSchedulerSmoke
+    "Tools/Tests/HIKARI_WorldCommandSchedulerSmoke.cpp")
+
+enable_testing()
+foreach(runtime_contract IN ITEMS
+    HIKARI_GameComponentBindingLifecycleSmoke
+    HIKARI_WorldSdkSmoke
+    HIKARI_WorldCommandSchedulerSmoke)
+    add_test(
+        NAME "${runtime_contract}"
+        COMMAND "$<TARGET_FILE:${runtime_contract}>")
+    set_tests_properties(
+        "${runtime_contract}"
+        PROPERTIES
+            LABELS "RuntimeContracts"
+            TIMEOUT 30)
+endforeach()
 
 if(HIKARI_WITH_EDITOR_BUILD)
     add_library(HIKARI_Editor STATIC)

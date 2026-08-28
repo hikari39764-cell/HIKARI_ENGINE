@@ -66,7 +66,10 @@ namespace HIKARI {
         HIKARI_GAME_PROJECT_SDK_API uint64_t GetObjectCount() const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool CanMutateStructure() const noexcept;
         // Structural commands apply immediately only outside protected World
-        // traversal. Calls made inside one return MutationRejected.
+        // traversal. Calls made inside one return Queued and are applied by the
+        // owning Runtime at the next deterministic command boundary. A queued
+        // Spawn returns its reserved handle, but FindObject remains invalid
+        // until that command materializes successfully.
         HIKARI_GAME_PROJECT_SDK_API GameProjectWorldResult SpawnObject(
             const GameProjectSpawnObjectDesc& desc) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API GameProjectWorldResult DestroyObject(
@@ -76,6 +79,14 @@ namespace HIKARI {
             GameProjectObjectHandle parent,
             GameProjectParentMode mode =
                 GameProjectParentMode::KeepLocal) const noexcept;
+        // Flush-time failures remain readable until the next BeginFrame.
+        HIKARI_GAME_PROJECT_SDK_API uint32_t
+            GetCommandFailureCount() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool ReadCommandFailure(
+            uint32_t index,
+            GameProjectWorldCommandFailure& outFailure) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API uint32_t
+            GetCommandFailureOverflowCount() const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool ReadVariable(
             std::string_view variableId,
             GameProjectBindingValue& outValue) const noexcept;

@@ -12,6 +12,15 @@
 namespace HIKARI {
     namespace {
 
+        static_assert(
+            static_cast<uint8_t>(WorldCommandKind::SetParent) ==
+            static_cast<uint8_t>(
+                GameProjectWorldCommandKind::SetParent));
+        static_assert(
+            static_cast<uint8_t>(WorldCommandPhase::SystemPostRender) ==
+            static_cast<uint8_t>(
+                GameProjectWorldCommandPhase::SystemPostRender));
+
         bool TryReadObjectName(
             const GameProjectSpawnObjectDesc& desc,
             std::string& outName) {
@@ -144,10 +153,6 @@ namespace HIKARI {
         if (world == nullptr) {
             return PROJECT::INTERNAL::MakeWorldAccessFailure(access);
         }
-        if (!world->CanMutateStructure()) {
-            return PROJECT::INTERNAL::MakeWorldResult(
-                GameProjectWorldResultCode::MutationRejected);
-        }
         if (HasNonZeroReserved(desc)) {
             return PROJECT::INTERNAL::MakeWorldResult(
                 GameProjectWorldResultCode::InvalidRequest);
@@ -169,7 +174,7 @@ namespace HIKARI {
                 GameProjectWorldResultCode::InvalidTransform);
         }
 
-        GameObject* parent = nullptr;
+        RuntimeObjectHandle parent{};
         if (!desc.parent.IsNull()) {
             if (!PROJECT::INTERNAL::IsObjectHandleForWorld(
                     desc.parent,
@@ -177,43 +182,19 @@ namespace HIKARI {
                 return PROJECT::INTERNAL::MakeWorldResult(
                     GameProjectWorldResultCode::InvalidParent);
             }
-            parent = world->FindObject(
-                PROJECT::INTERNAL::DecodeRuntimeHandle(desc.parent));
-            if (parent == nullptr) {
-                return PROJECT::INTERNAL::MakeWorldResult(
-                    GameProjectWorldResultCode::InvalidParent);
-            }
+            parent = PROJECT::INTERNAL::DecodeRuntimeHandle(desc.parent);
         }
 
-        GameObject* object = nullptr;
         try {
-            object = world->CreateObject(name);
-            if (object == nullptr) {
-                return PROJECT::INTERNAL::MakeWorldResult(
-                    GameProjectWorldResultCode::InternalError);
-            }
-            (void)object->SetLocalTransform(
-                PROJECT::INTERNAL::ToRuntimeTransform(
-                    desc.localTransform));
-            if (parent != nullptr && !object->SetParent(parent)) {
-                (void)world->DestroyObject(object);
-                return PROJECT::INTERNAL::MakeWorldResult(
-                    GameProjectWorldResultCode::MutationRejected);
-            }
-            return PROJECT::INTERNAL::MakeWorldResult(
-                GameProjectWorldResultCode::Success,
-                PROJECT::INTERNAL::EncodeRuntimeHandle(
-                    *world,
-                    object->GetRuntimeHandle()));
+            return PROJECT::INTERNAL::ToProjectCommandSubmission(
+                *world,
+                world->SubmitSpawn(
+                    name,
+                    PROJECT::INTERNAL::ToRuntimeTransform(
+                        desc.localTransform),
+                    parent));
         }
         catch (...) {
-            if (object != nullptr && object->GetWorld() == world) {
-                try {
-                    (void)world->DestroyObject(object);
-                }
-                catch (...) {
-                }
-            }
             return PROJECT::INTERNAL::MakeWorldResult(
                 GameProjectWorldResultCode::InternalError);
         }
@@ -237,10 +218,9 @@ namespace HIKARI {
         const RuntimeObjectHandle runtimeHandle =
             PROJECT::INTERNAL::DecodeRuntimeHandle(object);
         try {
-            return PROJECT::INTERNAL::ToProjectMutationResult(
+            return PROJECT::INTERNAL::ToProjectCommandSubmission(
                 *world,
-                world->DestroyObject(runtimeHandle),
-                runtimeHandle);
+                world->SubmitDestroy(runtimeHandle));
         }
         catch (...) {
             return PROJECT::INTERNAL::MakeWorldResult(
@@ -292,19 +272,62 @@ namespace HIKARI {
         const RuntimeObjectHandle objectHandle =
             PROJECT::INTERNAL::DecodeRuntimeHandle(object);
         try {
-            return PROJECT::INTERNAL::ToProjectMutationResult(
+            return PROJECT::INTERNAL::ToProjectCommandSubmission(
                 *world,
-                world->SetParent(
+                world->SubmitSetParent(
                     objectHandle,
                     PROJECT::INTERNAL::DecodeRuntimeHandle(parent),
-                    runtimeMode),
-                objectHandle);
+                    runtimeMode));
         }
         catch (...) {
             return PROJECT::INTERNAL::MakeWorldResult(
                 GameProjectWorldResultCode::InternalError,
                 object);
         }
+    }
+
+    uint32_t WorldView::GetCommandFailureCount() const noexcept {
+        const World* world = GameProjectSdkAccess::GetWorld(*this);
+        return world != nullptr
+            ? world->GetCommandFailureCount()
+            : 0u;
+    }
+
+    bool WorldView::ReadCommandFailure(
+        uint32_t index,
+        GameProjectWorldCommandFailure& outFailure) const noexcept {
+        World* world = GameProjectSdkAccess::GetWorld(*this);
+        if (world == nullptr) {
+            return false;
+        }
+        WorldCommandFailure failure{};
+        if (!world->ReadCommandFailure(index, failure)) {
+            return false;
+        }
+        outFailure.commandToken = failure.token;
+        outFailure.kind = static_cast<GameProjectWorldCommandKind>(
+            failure.kind);
+        outFailure.code = PROJECT::INTERNAL::ToProjectMutationResult(
+            *world,
+            failure.result,
+            failure.object).code;
+        outFailure.phase =
+            static_cast<GameProjectWorldCommandPhase>(failure.phase);
+        outFailure.reserved = 0u;
+        outFailure.object = PROJECT::INTERNAL::EncodeRuntimeHandle(
+            *world,
+            failure.object);
+        outFailure.parent = PROJECT::INTERNAL::EncodeRuntimeHandle(
+            *world,
+            failure.parent);
+        return true;
+    }
+
+    uint32_t WorldView::GetCommandFailureOverflowCount() const noexcept {
+        const World* world = GameProjectSdkAccess::GetWorld(*this);
+        return world != nullptr
+            ? world->GetCommandFailureOverflowCount()
+            : 0u;
     }
 
 } // namespace HIKARI

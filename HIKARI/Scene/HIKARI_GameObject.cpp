@@ -217,7 +217,7 @@ namespace HIKARI {
         if (ownerWorld_ == nullptr) {
             return attach();
         }
-        if (!ownerWorld_->CanMutateStructure()) {
+        if (!ownerWorld_->CanEnterStructureCallback()) {
             return nullptr;
         }
         const World::StructureReadScope structureRead =

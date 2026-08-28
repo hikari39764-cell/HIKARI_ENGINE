@@ -50,6 +50,10 @@ namespace HIKARI::PROJECT::INTERNAL {
             return MakeWorldResult(
                 GameProjectWorldResultCode::Success,
                 EncodeRuntimeHandle(world, object));
+        case WorldMutationResult::Queued:
+            return MakeWorldResult(
+                GameProjectWorldResultCode::Queued,
+                EncodeRuntimeHandle(world, object));
         case WorldMutationResult::WrongThread:
             return MakeWorldResult(
                 GameProjectWorldResultCode::WrongThread,
@@ -57,6 +61,22 @@ namespace HIKARI::PROJECT::INTERNAL {
         case WorldMutationResult::MutationDisallowed:
             return MakeWorldResult(
                 GameProjectWorldResultCode::MutationRejected,
+                EncodeRuntimeHandle(world, object));
+        case WorldMutationResult::CommandQueueFull:
+            return MakeWorldResult(
+                GameProjectWorldResultCode::CommandQueueFull,
+                EncodeRuntimeHandle(world, object));
+        case WorldMutationResult::WorldClosing:
+            return MakeWorldResult(
+                GameProjectWorldResultCode::WorldClosing,
+                EncodeRuntimeHandle(world, object));
+        case WorldMutationResult::CommandCanceled:
+            return MakeWorldResult(
+                GameProjectWorldResultCode::CommandCanceled,
+                EncodeRuntimeHandle(world, object));
+        case WorldMutationResult::InvalidName:
+            return MakeWorldResult(
+                GameProjectWorldResultCode::InvalidName,
                 EncodeRuntimeHandle(world, object));
         case WorldMutationResult::InvalidObjectHandle:
             return MakeWorldResult(
@@ -76,11 +96,26 @@ namespace HIKARI::PROJECT::INTERNAL {
         case WorldMutationResult::TransformNotInvertible:
         case WorldMutationResult::TransformDecompositionFailed:
         case WorldMutationResult::HierarchyRejected:
-        default:
             return MakeWorldResult(
                 GameProjectWorldResultCode::MutationRejected,
                 EncodeRuntimeHandle(world, object));
+        case WorldMutationResult::InternalError:
+        default:
+            return MakeWorldResult(
+                GameProjectWorldResultCode::InternalError,
+                EncodeRuntimeHandle(world, object));
         }
+    }
+
+    inline GameProjectWorldResult ToProjectCommandSubmission(
+        const World& world,
+        const WorldCommandSubmission& submission) noexcept {
+        GameProjectWorldResult result = ToProjectMutationResult(
+            world,
+            submission.result,
+            submission.object);
+        result.reserved = submission.token;
+        return result;
     }
 
     inline GameProjectWorldResult MakeWorldAccessFailure(

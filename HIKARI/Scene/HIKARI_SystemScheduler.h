@@ -12,6 +12,7 @@ namespace HIKARI {
 
 class World;
 struct FrameContext;
+enum class WorldCommandPhase : uint8_t;
 
 class SystemScheduler {
 public:
@@ -37,6 +38,17 @@ public:
     void PostRender(World& world, const FrameContext& frame);
 
 private:
+    using FrameCallback = void (ISystem::*)(
+        World&,
+        const FrameContext&);
+
+    void ExecuteFramePhase(
+        World& world,
+        const FrameContext& frame,
+        WorldCommandPhase phase,
+        FrameCallback callback,
+        bool flushAfterEach);
+
     struct SystemEntry {
         std::string systemId{};
         int executionOrder = 0;

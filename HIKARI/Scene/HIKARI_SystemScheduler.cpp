@@ -69,88 +69,158 @@ std::vector<std::string> SystemScheduler::GetExecutionOrder() const {
     return order;
 }
 
+void SystemScheduler::ExecuteFramePhase(
+    World& world,
+    const FrameContext& frame,
+    WorldCommandPhase phase,
+    FrameCallback callback,
+    bool flushAfterEach) {
+    const bool fixedPhase =
+        phase == WorldCommandPhase::SystemPreFixedUpdate ||
+        phase == WorldCommandPhase::SystemFixedUpdate ||
+        phase == WorldCommandPhase::SystemPostFixedUpdate;
+    for (const SystemEntry& entry : systems_) {
+        CPU_PROFILE::ScopedDynamicCpuTimer timer(
+            fixedPhase ? entry.fixedTiming : entry.frameTiming);
+        try {
+            const World::StructureReadScope structureRead =
+                world.AcquireStructureReadScope();
+            (entry.system.get()->*callback)(world, frame);
+        }
+        catch (...) {
+            (void)world.FlushQueuedCommands(phase);
+            throw;
+        }
+        if (flushAfterEach) {
+            (void)world.FlushQueuedCommands(phase);
+        }
+    }
+}
+
 void SystemScheduler::AttachWorld(World& world) {
     for (const SystemEntry& entry : systems_) {
-        entry.system->OnWorldAttached(world);
+        try {
+            const World::StructureReadScope structureRead =
+                world.AcquireStructureReadScope();
+            entry.system->OnWorldAttached(world);
+        }
+        catch (...) {
+            (void)world.FlushQueuedCommands(
+                WorldCommandPhase::SystemAttach);
+            throw;
+        }
+        (void)world.FlushQueuedCommands(
+            WorldCommandPhase::SystemAttach);
     }
 }
 
 void SystemScheduler::DetachWorld(World& world) {
     for (const SystemEntry& entry : systems_) {
-        entry.system->OnWorldDetached(world);
+        try {
+            const World::StructureReadScope structureRead =
+                world.AcquireStructureReadScope();
+            entry.system->OnWorldDetached(world);
+        }
+        catch (...) {
+            (void)world.FlushQueuedCommands(
+                WorldCommandPhase::SystemDetach);
+            throw;
+        }
+        (void)world.FlushQueuedCommands(
+            WorldCommandPhase::SystemDetach);
     }
 }
 
 void SystemScheduler::PreUpdate(World& world, const FrameContext& frame) {
-    for (const SystemEntry& entry : systems_) {
-        CPU_PROFILE::ScopedDynamicCpuTimer timer(entry.frameTiming);
-        entry.system->PreUpdate(world, frame);
-    }
+    ExecuteFramePhase(
+        world,
+        frame,
+        WorldCommandPhase::SystemPreUpdate,
+        &ISystem::PreUpdate,
+        true);
 }
 
 void SystemScheduler::PreFixedUpdate(
     World& world,
     const FrameContext& frame) {
 
-    for (const SystemEntry& entry : systems_) {
-        CPU_PROFILE::ScopedDynamicCpuTimer timer(entry.fixedTiming);
-        entry.system->PreFixedUpdate(world, frame);
-    }
+    ExecuteFramePhase(
+        world,
+        frame,
+        WorldCommandPhase::SystemPreFixedUpdate,
+        &ISystem::PreFixedUpdate,
+        true);
 }
 
 void SystemScheduler::FixedUpdate(
     World& world,
     const FrameContext& frame) {
 
-    for (const SystemEntry& entry : systems_) {
-        CPU_PROFILE::ScopedDynamicCpuTimer timer(entry.fixedTiming);
-        entry.system->FixedUpdate(world, frame);
-    }
+    ExecuteFramePhase(
+        world,
+        frame,
+        WorldCommandPhase::SystemFixedUpdate,
+        &ISystem::FixedUpdate,
+        true);
 }
 
 void SystemScheduler::PostFixedUpdate(
     World& world,
     const FrameContext& frame) {
 
-    for (const SystemEntry& entry : systems_) {
-        CPU_PROFILE::ScopedDynamicCpuTimer timer(entry.fixedTiming);
-        entry.system->PostFixedUpdate(world, frame);
-    }
+    ExecuteFramePhase(
+        world,
+        frame,
+        WorldCommandPhase::SystemPostFixedUpdate,
+        &ISystem::PostFixedUpdate,
+        true);
 }
 
 void SystemScheduler::Update(World& world, const FrameContext& frame) {
-    for (const SystemEntry& entry : systems_) {
-        CPU_PROFILE::ScopedDynamicCpuTimer timer(entry.frameTiming);
-        entry.system->Update(world, frame);
-    }
+    ExecuteFramePhase(
+        world,
+        frame,
+        WorldCommandPhase::SystemUpdate,
+        &ISystem::Update,
+        true);
 }
 
 void SystemScheduler::LateUpdate(World& world, const FrameContext& frame) {
-    for (const SystemEntry& entry : systems_) {
-        CPU_PROFILE::ScopedDynamicCpuTimer timer(entry.frameTiming);
-        entry.system->LateUpdate(world, frame);
-    }
+    ExecuteFramePhase(
+        world,
+        frame,
+        WorldCommandPhase::SystemLateUpdate,
+        &ISystem::LateUpdate,
+        true);
 }
 
 void SystemScheduler::PreRender(World& world, const FrameContext& frame) {
-    for (const SystemEntry& entry : systems_) {
-        CPU_PROFILE::ScopedDynamicCpuTimer timer(entry.frameTiming);
-        entry.system->PreRender(world, frame);
-    }
+    ExecuteFramePhase(
+        world,
+        frame,
+        WorldCommandPhase::SystemPreRender,
+        &ISystem::PreRender,
+        true);
 }
 
 void SystemScheduler::Render(World& world, const FrameContext& frame) {
-    for (const SystemEntry& entry : systems_) {
-        CPU_PROFILE::ScopedDynamicCpuTimer timer(entry.frameTiming);
-        entry.system->Render(world, frame);
-    }
+    ExecuteFramePhase(
+        world,
+        frame,
+        WorldCommandPhase::SystemRender,
+        &ISystem::Render,
+        true);
 }
 
 void SystemScheduler::PostRender(World& world, const FrameContext& frame) {
-    for (const SystemEntry& entry : systems_) {
-        CPU_PROFILE::ScopedDynamicCpuTimer timer(entry.frameTiming);
-        entry.system->PostRender(world, frame);
-    }
+    ExecuteFramePhase(
+        world,
+        frame,
+        WorldCommandPhase::SystemPostRender,
+        &ISystem::PostRender,
+        true);
+    (void)world.FlushQueuedCommands(
+        WorldCommandPhase::SystemPostRender);
 }
 
 } // namespace HIKARI
