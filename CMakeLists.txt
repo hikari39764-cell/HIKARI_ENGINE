@@ -76,7 +76,8 @@ target_link_libraries(
     PRIVATE
         mfplat
         mfreadwrite
-        mfuuid)
+        mfuuid
+        Bcrypt)
 target_link_libraries(
     hikari_runtime_navigation
     PRIVATE
@@ -259,6 +260,9 @@ hikari_add_runtime_contract(
 hikari_add_runtime_contract(
     HIKARI_RenderFrameGraphPlanSmoke
     "Tools/Tests/HIKARI_RenderFrameGraphPlanSmoke.cpp")
+hikari_add_runtime_contract(
+    HIKARI_ShaderSourceManifestSmoke
+    "Tools/Tests/HIKARI_ShaderSourceManifestSmoke.cpp")
 
 enable_testing()
 foreach(runtime_contract IN ITEMS
@@ -270,7 +274,8 @@ foreach(runtime_contract IN ITEMS
     HIKARI_RenderGraphSmoke
     HIKARI_RenderGraphCapacitySmoke
     HIKARI_SceneSurfaceSemanticSmoke
-    HIKARI_RenderFrameGraphPlanSmoke)
+    HIKARI_RenderFrameGraphPlanSmoke
+    HIKARI_ShaderSourceManifestSmoke)
     add_test(
         NAME "${runtime_contract}"
         COMMAND "$<TARGET_FILE:${runtime_contract}>")
