@@ -39,10 +39,6 @@ namespace HIKARI {
 
     namespace {
         constexpr std::string_view kSourceMetaSuffix = ".hikari.asset.json";
-        constexpr uint32_t kArtifactManifestVersion = 1;
-
-
-
         bool EndsWith(std::string_view text, std::string_view suffix) {
             return text.size() >= suffix.size() &&
                 text.substr(text.size() - suffix.size()) == suffix;
@@ -567,7 +563,7 @@ namespace HIKARI {
                 ? record->sourcePath.stem().string()
                 : record->displayName;
             record->artifactManifest.manifestVersion =
-                kArtifactManifestVersion;
+                kAssetArtifactManifestVersion;
             record->artifactManifest.guid = record->guid;
             record->artifactManifest.sourcePath =
                 record->sourcePath.generic_string();
@@ -691,7 +687,7 @@ namespace HIKARI {
         }
 
         record->artifactManifest.manifestVersion =
-            kArtifactManifestVersion;
+            kAssetArtifactManifestVersion;
         record->artifactManifest.guid = record->guid;
         record->artifactManifest.sourcePath =
             record->sourcePath.generic_string();
@@ -1545,7 +1541,7 @@ namespace HIKARI {
         }
 
         const uint32_t manifestVersion = root.value("manifestVersion", 0u);
-        if (manifestVersion != kArtifactManifestVersion) {
+        if (manifestVersion != kAssetArtifactManifestVersion) {
             HIKARI_LOG_WARN("[AssetDatabase] unsupported artifact manifest version: " +
                 absoluteManifestPath.generic_string());
             return false;
@@ -1578,7 +1574,7 @@ namespace HIKARI {
         }
 
         nlohmann::json root{
-            { "manifestVersion", kArtifactManifestVersion },
+            { "manifestVersion", kAssetArtifactManifestVersion },
             { "guid", record.guid.value },
             { "sourcePath", record.sourcePath.generic_string() },
             { "importerId", record.meta.importerId },

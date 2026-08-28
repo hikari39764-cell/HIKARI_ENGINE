@@ -8,6 +8,8 @@
 
 namespace HIKARI {
 
+    inline constexpr uint32_t kAssetArtifactManifestVersion = 1u;
+
     struct AssetDependencyDesc {
         AssetGuid guid{};
         std::string path{};
@@ -21,7 +23,7 @@ namespace HIKARI {
     };
 
     struct AssetArtifactManifest {
-        uint32_t manifestVersion = 1;
+        uint32_t manifestVersion = kAssetArtifactManifestVersion;
 
         AssetGuid guid{};
         std::string sourcePath{};

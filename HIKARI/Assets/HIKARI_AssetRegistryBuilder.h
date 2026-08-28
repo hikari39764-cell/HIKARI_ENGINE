@@ -7,7 +7,9 @@ namespace HIKARI {
 
     class AssetRegistryBuilder {
     public:
-        bool AppendToRegistry(const AssetDatabase& assetDatabase, AssetRegistry& registry) const;
+        bool RebuildRegistry(
+            const AssetDatabase& assetDatabase,
+            AssetRegistry& liveRegistry) const;
     };
 
 } // namespace HIKARI

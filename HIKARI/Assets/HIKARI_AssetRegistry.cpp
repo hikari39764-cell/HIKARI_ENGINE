@@ -29,7 +29,10 @@ namespace HIKARI {
         }
 
         const std::string id = descriptor->id.value;
-        descriptors_[id] = std::move(descriptor);
+        if (descriptors_.contains(id)) {
+            return false;
+        }
+        descriptors_.emplace(id, std::move(descriptor));
         AdvanceRevision();
         return true;
     }

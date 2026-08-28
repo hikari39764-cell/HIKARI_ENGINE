@@ -99,15 +99,13 @@ namespace HIKARI {
         }
 
         // AssetDatabase 郢ｧ雋樣ｫｪ闕ｳﾂ邵ｺ・ｮ騾具ｽｻ鬪ｭ・ｲ陷医・竊堤ｸｺ蜉ｱ窶ｻ runtime descriptor 郢ｧ蜑・ｽｽ諛奇ｽ企ｶ・ｴ邵ｺ蜷ｶﾂ繝ｻ
-        // Build into an isolated registry. A corrupt asset must not replace
-        // the last complete live registry with a partial rebuild.
-        AssetRegistry stagedRegistry{};
+        // RegistryBuilder owns the isolated rebuild transaction. A corrupt
+        // asset must not replace the last complete live registry.
         AssetRegistryBuilder assetRegistryBuilder{};
-        if (!assetRegistryBuilder.AppendToRegistry(
-                database_, stagedRegistry)) {
+        if (!assetRegistryBuilder.RebuildRegistry(
+                database_, registry_)) {
             return false;
         }
-        registry_.SwapContents(stagedRegistry);
 
         ConfigureModelTextureResolver();
         RenderSubmissionSystem::InvalidateSceneResources(false);

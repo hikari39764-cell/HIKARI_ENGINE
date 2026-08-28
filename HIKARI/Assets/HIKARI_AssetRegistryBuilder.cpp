@@ -17,6 +17,7 @@
 #include "Assets/Material/HIKARI_MaterialAssetLookup.h"
 #include "Assets/Models/MaterialBindings/HIKARI_ModelMaterialBindingAsset.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
+#include "Assets/Shader/Internal/HIKARI_ShaderAssetRegistryAdmission.h"
 #include "Core/Content/HIKARI_EngineContentContext.h"
 #include "Core/HIKARI_Logger.h"
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
@@ -393,10 +394,28 @@ namespace HIKARI {
 
     }
 
-    bool AssetRegistryBuilder::AppendToRegistry(const AssetDatabase& assetDatabase, AssetRegistry& registry) const {
+    bool AssetRegistryBuilder::RebuildRegistry(
+        const AssetDatabase& assetDatabase,
+        AssetRegistry& liveRegistry) const {
+        AssetRegistry registry{};
         bool ok = AppendEngineContentTextures(registry);
         ok = AppendBuiltInMaterials(registry, assetDatabase) && ok;
         ok = AppendBuiltInTerrainMaterials(registry, assetDatabase) && ok;
+
+        const CONTENT::EngineContentContext& content =
+            CONTENT::GetEngineContentContext();
+        const ASSETS::SHADER::INTERNAL::
+            ShaderAssetRegistryAdmissionContext shaderContext{
+                assetDatabase.GetProjectRoot(),
+                content.IsOpen()
+                    ? content.Resolve("Shaders")
+                    : std::filesystem::path{},
+                assetDatabase.IsCookedContent()
+                    ? ASSETS::SHADER::INTERNAL::
+                        ShaderAssetRegistryAdmissionMode::Cooked
+                    : ASSETS::SHADER::INTERNAL::
+                        ShaderAssetRegistryAdmissionMode::Authoring
+            };
 
         for (const AssetRecord* record : assetDatabase.CollectAll()) {
             if (!record || !record->guid.IsValid() || record->duplicateGuid) {
@@ -602,10 +621,20 @@ namespace HIKARI {
                     std::make_shared<const VFX::VfxProgram>(
                         std::move(program));
                 ok = registry.RegisterDescriptor(std::move(descriptor)) && ok;
+            } else if (record->type == AssetType::Shader) {
+                ok = ASSETS::SHADER::INTERNAL::
+                    AppendProjectShaderAssetDescriptor(
+                        shaderContext,
+                        *record,
+                        registry) && ok;
             }
         }
 
-        return ok;
+        if (!ok) {
+            return false;
+        }
+        liveRegistry.SwapContents(registry);
+        return true;
     }
 
 } // namespace HIKARI

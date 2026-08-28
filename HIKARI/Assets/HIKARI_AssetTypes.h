@@ -13,6 +13,10 @@
 
 namespace HIKARI {
 
+    namespace ASSETS::SHADER {
+        struct ShaderCookedArtifact;
+    }
+
     enum class AssetType {
         Model,
         Scene,
@@ -228,6 +232,11 @@ namespace HIKARI {
 
     struct VfxAssetDescriptor final : AssetDescriptor {
         std::shared_ptr<const VFX::VfxProgram> program{};
+    };
+
+    struct ShaderAssetDescriptor final : AssetDescriptor {
+        std::shared_ptr<const ASSETS::SHADER::ShaderCookedArtifact>
+            program{};
     };
 
 } // namespace HIKARI

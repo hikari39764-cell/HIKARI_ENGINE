@@ -300,6 +300,12 @@ hikari_add_runtime_contract(
 hikari_add_runtime_contract(
     HIKARI_ShaderCookProducerSmoke
     "Tools/Tests/HIKARI_ShaderCookProducerSmoke.cpp")
+hikari_add_runtime_contract(
+    HIKARI_ShaderAssetResolverSmoke
+    "Tools/Tests/HIKARI_ShaderAssetResolverSmoke.cpp")
+hikari_add_runtime_contract(
+    HIKARI_ShaderAssetRegistryAdmissionSmoke
+    "Tools/Tests/HIKARI_ShaderAssetRegistryAdmissionSmoke.cpp")
 add_custom_command(
     TARGET HIKARI_ShaderCookProducerSmoke
     POST_BUILD
@@ -329,7 +335,9 @@ foreach(runtime_contract IN ITEMS
     HIKARI_ShaderCookArgumentsSmoke
     HIKARI_ShaderImporterContractSmoke
     HIKARI_ShaderIncludePlanSmoke
-    HIKARI_ShaderCookProducerSmoke)
+    HIKARI_ShaderCookProducerSmoke
+    HIKARI_ShaderAssetResolverSmoke
+    HIKARI_ShaderAssetRegistryAdmissionSmoke)
     add_test(
         NAME "${runtime_contract}"
         COMMAND "$<TARGET_FILE:${runtime_contract}>")
