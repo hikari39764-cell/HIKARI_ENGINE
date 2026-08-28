@@ -11,6 +11,7 @@
 #include <json.hpp>
 
 #include "Authoring/HIKARI_ComponentAuthoringTypes.h"
+#include "HIKARI/Runtime/ComponentTypeId.h"
 
 namespace HIKARI {
 
@@ -42,6 +43,7 @@ namespace HIKARI {
             const InspectorContext& context)>;
 
         std::string typeName{};
+        ComponentTypeId typeId{};
         FactoryFn factory{};
         std::vector<std::string> requiredComponents{};
         std::vector<std::string> optionalComponents{};

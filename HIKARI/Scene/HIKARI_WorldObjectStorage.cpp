@@ -3,6 +3,7 @@
 #include <limits>
 
 #include "Scene/HIKARI_GameObject.h"
+#include "Scene/Internal/HIKARI_WorldCapacity.h"
 
 namespace HIKARI {
 
@@ -64,8 +65,19 @@ namespace HIKARI {
         const uint32_t slotIndex =
             static_cast<uint32_t>(objectSlots_.size());
         const size_t nextSlotCount = objectSlots_.size() + 1u;
-        objectSlots_.reserve(nextSlotCount);
-        freeObjectSlots_.reserve(nextSlotCount);
+        const size_t slotCapacity = INTERNAL::GrowWorldCapacity(
+            (std::max)(
+                objectSlots_.capacity(),
+                freeObjectSlots_.capacity()),
+            nextSlotCount,
+            (std::min)(
+                static_cast<size_t>(
+                    (std::numeric_limits<uint32_t>::max)()),
+                (std::min)(
+                    objectSlots_.max_size(),
+                    freeObjectSlots_.max_size())));
+        objectSlots_.reserve(slotCapacity);
+        freeObjectSlots_.reserve(slotCapacity);
         objectSlots_.push_back(ObjectSlot{
             nullptr,
             1u,

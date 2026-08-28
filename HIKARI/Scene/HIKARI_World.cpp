@@ -4,6 +4,7 @@
 #include <stdexcept>
 
 #include "Core/HIKARI_Logger.h"
+#include "Scene/Internal/HIKARI_WorldCapacity.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_WorldEvents.h"
 
@@ -20,8 +21,16 @@ namespace HIKARI {
         const size_t nextObjectCount = objects_.size() + 1u;
         // dirty list は live object 数を超えない。先に容量を確保することで
         // transform/hierarchy 更新後の dirty 登録を非割り当て経路にする。
-        objects_.reserve(nextObjectCount);
-        renderDirtyObjects_.reserve(nextObjectCount);
+        const size_t objectCapacity = INTERNAL::GrowWorldCapacity(
+            (std::max)(
+                objects_.capacity(),
+                renderDirtyObjects_.capacity()),
+            nextObjectCount,
+            (std::min)(
+                objects_.max_size(),
+                renderDirtyObjects_.max_size()));
+        objects_.reserve(objectCapacity);
+        renderDirtyObjects_.reserve(objectCapacity);
         auto object = std::make_unique<GameObject>(name);
         GameObject* ptr = object.get();
         const RuntimeObjectHandle handle = AllocateObjectHandle(ptr);
@@ -66,8 +75,11 @@ namespace HIKARI {
             throw std::length_error(
                 "World removed render object capacity overflow.");
         }
-        removedRenderObjectIds_.reserve(
-            removedRenderObjectIds_.size() + 1u);
+        const size_t removedCapacity = INTERNAL::GrowWorldCapacity(
+            removedRenderObjectIds_.capacity(),
+            removedRenderObjectIds_.size() + 1u,
+            removedRenderObjectIds_.max_size());
+        removedRenderObjectIds_.reserve(removedCapacity);
         const StructureReadScope structureRead =
             AcquireStructureReadScope();
         frameEvents_.Publish(WorldObjectDestroyedEvent{
@@ -209,8 +221,11 @@ namespace HIKARI {
             throw std::length_error(
                 "World removed render object capacity overflow.");
         }
-        removedRenderObjectIds_.reserve(
-            removedRenderObjectIds_.size() + objects_.size());
+        const size_t removedCapacity = INTERNAL::GrowWorldCapacity(
+            removedRenderObjectIds_.capacity(),
+            removedRenderObjectIds_.size() + objects_.size(),
+            removedRenderObjectIds_.max_size());
+        removedRenderObjectIds_.reserve(removedCapacity);
         worldClosing_ = true;
         try {
             for (const PendingWorldCommand& command : pendingCommands_) {
@@ -223,6 +238,8 @@ namespace HIKARI {
             }
             pendingCommands_.clear();
             executionCommands_.clear();
+            reservationStateJournal_.clear();
+            componentCallbackActive_ = false;
             for (uint32_t slotIndex = 0u;
                 slotIndex < objectSlots_.size();
                 ++slotIndex) {
@@ -253,6 +270,7 @@ namespace HIKARI {
             }
             objects_.clear();
             objectsByDocumentId_.clear();
+            componentBuckets_.clear();
             renderDirtyObjects_.clear();
             frameEvents_.Clear();
             fixedEvents_.Clear();

@@ -8,6 +8,20 @@ namespace HIKARI {
         if (info.typeName.empty() || !info.factory) {
             return false;
         }
+        const ComponentTypeId computedTypeId =
+            MakeComponentTypeId(info.typeName);
+        if (!computedTypeId.IsValid() ||
+            (info.typeId.IsValid() &&
+             info.typeId != computedTypeId)) {
+            return false;
+        }
+        info.typeId = computedTypeId;
+        for (const auto& [registeredName, registered] : byName_) {
+            if (registered.typeId == info.typeId &&
+                registeredName != info.typeName) {
+                return false;
+            }
+        }
         if (info.presentation.displayName.empty()) {
             info.presentation.displayName = info.typeName;
         }
@@ -52,7 +66,9 @@ namespace HIKARI {
         }
 
         std::unique_ptr<IComponent> component = info->factory();
-        return object.AddComponentInstance(std::move(component));
+        return object.AddComponentInstance(
+            std::move(component),
+            info->typeId);
     }
 
 } // namespace HIKARI

@@ -12,10 +12,10 @@ namespace HIKARI {
 
 namespace HIKARI::RUNTIME {
 
-    // ABI 5 formalizes queued structural commands in GameProject callbacks.
-    // Reject ABI 4 modules so the host never silently changes Spawn/Destroy
-    // completion semantics for an already-built project DLL.
-    inline constexpr uint32_t kGameProjectModuleAbiVersion = 5u;
+    // ABI 6 replaces string-scanned component queries with stable type ids and
+    // extends GameComponentDescriptor. Reject ABI 5 modules rather than
+    // interpreting the changed source-level SDK layout.
+    inline constexpr uint32_t kGameProjectModuleAbiVersion = 6u;
     inline constexpr char kGameProjectModuleApiEntryPoint[] =
         "HIKARI_GetGameProjectModuleApi";
 

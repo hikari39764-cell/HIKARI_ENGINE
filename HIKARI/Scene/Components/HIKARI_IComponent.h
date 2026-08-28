@@ -1,7 +1,9 @@
 #pragma once
 
+#include <cstdint>
 #include <exception>
 #include <json.hpp>
+#include <limits>
 #include <string>
 #include <string_view>
 
@@ -10,6 +12,7 @@ namespace HIKARI {
     class IInspectorBuilder;
 
     class GameObject;
+    class World;
 
     class IComponent {
     public:
@@ -47,7 +50,12 @@ namespace HIKARI {
         virtual void BuildInspector(IInspectorBuilder& builder) { (void)builder; }
 
     private:
+        friend class World;
+
         GameObject* owner_ = nullptr;
+        uint64_t worldComponentTypeId_ = 0u;
+        uint32_t worldComponentIndex_ =
+            (std::numeric_limits<uint32_t>::max)();
     };
 
 } // namespace HIKARI

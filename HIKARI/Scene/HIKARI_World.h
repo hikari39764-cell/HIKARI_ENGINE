@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -9,9 +10,12 @@
 #include <vector>
 #include "HIKARI_GameObject.h"
 #include "Scene/HIKARI_WorldCommands.h"
+#include "Scene/HIKARI_WorldComponentIndex.h"
 #include "Scene/HIKARI_WorldEventStream.h"
 #include "Scene/HIKARI_WorldServiceRegistry.h"
 namespace HIKARI {
+
+    struct GameProjectSdkAccess;
 
     enum class RuntimeWorldAccessResult : uint8_t {
         Success,
@@ -56,6 +60,9 @@ namespace HIKARI {
             std::string_view name,
             const Transform3D& localTransform,
             RuntimeObjectHandle parent = {});
+        WorldMutationResult SubmitSpawnBatch(
+            std::span<const WorldSpawnRequest> requests,
+            std::span<WorldCommandSubmission> outSubmissions);
         WorldCommandSubmission SubmitDestroy(
             RuntimeObjectHandle object);
         WorldCommandSubmission SubmitSetParent(
@@ -155,6 +162,12 @@ namespace HIKARI {
 
     private:
         friend class GameObject;
+        friend struct GameProjectSdkAccess;
+
+        using IndexedComponentVisitorFn = bool (*)(
+            void* context,
+            RuntimeObjectHandle object,
+            IComponent* component) noexcept;
 
         bool CanEnterStructureCallback() const noexcept {
             return IsOwnerThread() &&
@@ -162,6 +175,32 @@ namespace HIKARI {
                 !commandFlushActive_ &&
                 !worldClosing_;
         }
+
+        bool PrepareComponentAttachment(
+            IComponent& component,
+            ComponentTypeId declaredTypeId);
+        void CancelComponentAttachment(
+            IComponent& component) noexcept;
+        bool CommitComponentAttachment(
+            GameObject& object,
+            IComponent& component) noexcept;
+        void RemoveComponentFromIndex(
+            IComponent& component) noexcept;
+        bool VisitIndexedComponents(
+            ComponentTypeId typeId,
+            void* context,
+            IndexedComponentVisitorFn visitor) noexcept;
+
+        struct WorldCommandCheckpoint {
+            size_t pendingCommandCount = 0u;
+            size_t reservationJournalCount = 0u;
+        };
+
+        WorldCommandCheckpoint BeginComponentCallback();
+        void CommitComponentCallback(
+            WorldCommandCheckpoint checkpoint) noexcept;
+        void RollbackComponentCallback(
+            WorldCommandCheckpoint checkpoint) noexcept;
 
         enum class ObjectSlotState : uint8_t {
             Free,
@@ -176,6 +215,11 @@ namespace HIKARI {
             uint32_t generation = 1;
             uint32_t reservationToken = 0u;
             ObjectSlotState state = ObjectSlotState::Free;
+        };
+
+        struct ReservedStateJournalEntry {
+            RuntimeObjectHandle object{};
+            ObjectSlotState previousState = ObjectSlotState::Reserved;
         };
 
         RuntimeObjectHandle AllocateObjectHandle(GameObject* object);
@@ -209,6 +253,8 @@ namespace HIKARI {
         std::vector<ObjectSlot> objectSlots_{};
         std::vector<uint32_t> freeObjectSlots_{};
         std::unordered_map<uint64_t, GameObject*> objectsByDocumentId_{};
+        std::unordered_map<uint64_t, WorldComponentBucket>
+            componentBuckets_{};
         std::vector<GameObject*> renderDirtyObjects_{};
         std::vector<uint64_t> removedRenderObjectIds_{};
         WorldServiceRegistry services_{};
@@ -217,6 +263,8 @@ namespace HIKARI {
         std::vector<PendingWorldCommand> pendingCommands_{};
         std::vector<PendingWorldCommand> executionCommands_{};
         std::vector<WorldCommandFailure> commandFailures_{};
+        std::vector<ReservedStateJournalEntry>
+            reservationStateJournal_{};
         std::thread::id ownerThread_{};
         uint64_t runtimeIdentity_ = 0u;
         uint64_t nextCommandSequence_ = 1u;
@@ -225,6 +273,7 @@ namespace HIKARI {
         uint32_t structureReadDepth_ = 0u;
         bool commandFlushActive_ = false;
         bool commandApplyActive_ = false;
+        bool componentCallbackActive_ = false;
         bool worldClosing_ = false;
     };
 

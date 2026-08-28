@@ -7,6 +7,7 @@
 #include "HIKARI/Project/GameComponent.h"
 #include "HIKARI/Project/GameProjectSdk.h"
 #include "HIKARI/Project/GameSystem.h"
+#include "HIKARI/Runtime/ComponentTypeId.h"
 
 namespace HIKARI {
 
@@ -28,6 +29,7 @@ namespace HIKARI {
 
     struct GameComponentDescriptor {
         std::string_view typeName{};
+        ComponentTypeId typeId{};
         std::span<const std::string_view> requiredComponents{};
         std::span<const std::string_view> optionalComponents{};
         std::span<const std::string_view> incompatibleComponents{};

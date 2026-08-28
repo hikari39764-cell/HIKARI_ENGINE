@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <span>
 #include <string_view>
 #include <type_traits>
 #include <utility>
@@ -8,6 +9,7 @@
 #include "HIKARI/Project/GameProjectSdk.h"
 #include "HIKARI/Project/ValueTypes.h"
 #include "HIKARI/Project/WorldTypes.h"
+#include "HIKARI/Runtime/ComponentTypeId.h"
 
 namespace HIKARI {
 
@@ -72,6 +74,15 @@ namespace HIKARI {
         // until that command materializes successfully.
         HIKARI_GAME_PROJECT_SDK_API GameProjectWorldResult SpawnObject(
             const GameProjectSpawnObjectDesc& desc) const noexcept;
+        // Admission-atomic queued batch. Either every item is accepted in
+        // input order or none is accepted. Count is capped by
+        // kGameProjectWorldMaximumSpawnBatchCount. Batch v1 accepts only
+        // already-live parents; same-batch parent references are unsupported.
+        // false means zero items were admitted and outResults contains the
+        // rejection result for every addressable input item.
+        HIKARI_GAME_PROJECT_SDK_API bool SpawnObjects(
+            std::span<const GameProjectSpawnObjectDesc> objects,
+            std::span<GameProjectWorldResult> outResults) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API GameProjectWorldResult DestroyObject(
             GameProjectObjectHandle object) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API GameProjectWorldResult SetParent(
@@ -112,8 +123,10 @@ namespace HIKARI {
             GameProjectEventRecord& outEvent) const noexcept;
 
         template<class Component, class Visitor>
+        // Visits the World-owned typed index in stable attachment order.
+        // Removing an item does not reorder the remaining items.
         bool ForEachComponent(
-            std::string_view typeName,
+            ComponentTypeId typeId,
             Visitor&& visitor) const {
 
             static_assert(
@@ -121,7 +134,7 @@ namespace HIKARI {
             using Callback = std::decay_t<Visitor>;
             Callback callback = std::forward<Visitor>(visitor);
             return VisitComponents(
-                typeName,
+                typeId,
                 &callback,
                 [](void* context,
                     ObjectView object,
@@ -155,7 +168,7 @@ namespace HIKARI {
             : world_(world) {}
 
         HIKARI_GAME_PROJECT_SDK_API bool VisitComponents(
-            std::string_view typeName,
+            ComponentTypeId typeId,
             void* context,
             VisitorFn visitor) const noexcept;
 

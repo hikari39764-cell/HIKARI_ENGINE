@@ -6,6 +6,7 @@
 #include <stdexcept>
 
 #include "Scene/HIKARI_GameObject.h"
+#include "Scene/Internal/HIKARI_WorldCapacity.h"
 
 namespace HIKARI {
 
@@ -150,6 +151,22 @@ namespace HIKARI {
 
         ObjectSlot& slot = objectSlots_[object.slot];
         if (slot.state == ObjectSlotState::Reserved) {
+            if (componentCallbackActive_) {
+                try {
+                    reservationStateJournal_.push_back(
+                        ReservedStateJournalEntry{
+                            object,
+                            slot.state
+                        });
+                }
+                catch (...) {
+                    return {
+                        WorldMutationResult::InternalError,
+                        object,
+                        slot.reservationToken
+                    };
+                }
+            }
             slot.state = ObjectSlotState::ReservedCanceled;
             return {
                 WorldMutationResult::Queued,
@@ -261,8 +278,16 @@ namespace HIKARI {
             return WorldMutationResult::InternalError;
         }
         const size_t nextObjectCount = objects_.size() + 1u;
-        objects_.reserve(nextObjectCount);
-        renderDirtyObjects_.reserve(nextObjectCount);
+        const size_t objectCapacity = INTERNAL::GrowWorldCapacity(
+            (std::max)(
+                objects_.capacity(),
+                renderDirtyObjects_.capacity()),
+            nextObjectCount,
+            (std::min)(
+                objects_.max_size(),
+                renderDirtyObjects_.max_size()));
+        objects_.reserve(objectCapacity);
+        renderDirtyObjects_.reserve(objectCapacity);
 
         auto object = std::make_unique<GameObject>(command.name.data());
         GameObject* ptr = object.get();

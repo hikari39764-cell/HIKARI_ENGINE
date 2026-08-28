@@ -241,12 +241,20 @@ hikari_add_runtime_contract(
 hikari_add_runtime_contract(
     HIKARI_WorldCommandSchedulerSmoke
     "Tools/Tests/HIKARI_WorldCommandSchedulerSmoke.cpp")
+hikari_add_runtime_contract(
+    HIKARI_WorldBatchSmoke
+    "Tools/Tests/HIKARI_WorldBatchSmoke.cpp")
+hikari_add_runtime_contract(
+    HIKARI_WorldComponentIndexSmoke
+    "Tools/Tests/HIKARI_WorldComponentIndexSmoke.cpp")
 
 enable_testing()
 foreach(runtime_contract IN ITEMS
     HIKARI_GameComponentBindingLifecycleSmoke
     HIKARI_WorldSdkSmoke
-    HIKARI_WorldCommandSchedulerSmoke)
+    HIKARI_WorldCommandSchedulerSmoke
+    HIKARI_WorldBatchSmoke
+    HIKARI_WorldComponentIndexSmoke)
     add_test(
         NAME "${runtime_contract}"
         COMMAND "$<TARGET_FILE:${runtime_contract}>")

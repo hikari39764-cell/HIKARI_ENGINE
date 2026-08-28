@@ -3,6 +3,7 @@
 #include <atomic>
 #include <exception>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -39,12 +40,13 @@ namespace {
     }
 
     template<class Callback>
-    void InvokeProjectCallback(
+    bool InvokeProjectCallback(
         std::string_view owner,
         std::string_view callback,
         Callback&& value) noexcept {
         try {
             std::forward<Callback>(value)();
+            return true;
         }
         catch (const std::exception& error) {
             HIKARI_LOG_ERROR(
@@ -58,6 +60,7 @@ namespace {
                 " " + std::string(callback) +
                 " failed with an unknown exception.");
         }
+        return false;
     }
 
 } // namespace
@@ -149,23 +152,30 @@ namespace {
         if (world == nullptr) {
             const ObjectView ownerView =
                 GameProjectSdkAccess::MakeObjectView(owner);
-            InvokeProjectCallback(
+            if (!InvokeProjectCallback(
                 typeName_,
                 "OnAttach",
                 [this, &ownerView]() {
                     component_->OnAttach(ownerView);
-                });
+                })) {
+                throw std::runtime_error(
+                    "Game project component OnAttach failed.");
+            }
             return;
         }
         GameComponentContext context =
             GameProjectSdkAccess::MakeGameComponentContext(
                 *this, owner, *world);
-        InvokeProjectCallback(
+        if (!InvokeProjectCallback(
             typeName_,
             "OnAttach",
             [this, &context]() {
                 component_->OnAttach(context);
-            });
+            })) {
+            ReleaseAllVariables(context.GetWorld());
+            throw std::runtime_error(
+                "Game project component OnAttach failed.");
+        }
     }
 
     void GameProjectComponentAdapter::OnDetach() {
@@ -407,11 +417,19 @@ namespace {
         }
 
         const std::string typeName(descriptor.typeName);
+        const ComponentTypeId computedTypeId =
+            MakeComponentTypeId(typeName);
+        if (!computedTypeId.IsValid() ||
+            (descriptor.typeId.IsValid() &&
+             descriptor.typeId != computedTypeId)) {
+            return false;
+        }
         const CreateGameComponentFn create = descriptor.create;
         const DestroyGameComponentFn destroy = descriptor.destroy;
 
         ComponentTypeInfo info{};
         info.typeName = typeName;
+        info.typeId = computedTypeId;
         info.factory =
             [typeName, create, destroy]()
                 -> std::unique_ptr<IComponent> {

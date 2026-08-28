@@ -11,44 +11,53 @@ extern "C" void HIKARI_LinkGameProjectQueryBridge() noexcept {
 
 namespace HIKARI {
 
+    bool GameProjectSdkAccess::VisitIndexedComponents(
+        World& world,
+        ComponentTypeId typeId,
+        void* context,
+        IndexedComponentVisitorFn visitor) noexcept {
+        return world.VisitIndexedComponents(
+            typeId,
+            context,
+            visitor);
+    }
+
     bool WorldView::VisitComponents(
-        std::string_view typeName,
+        ComponentTypeId typeId,
         void* context,
         VisitorFn visitor) const noexcept {
         World* world = GameProjectSdkAccess::GetWorld(*this);
         if (world == nullptr ||
-            typeName.empty() ||
+            !typeId.IsValid() ||
             visitor == nullptr) {
             return false;
         }
-        bool completed = true;
-        {
-            const World::StructureReadScope structureRead =
-                world->AcquireStructureReadScope();
-            for (const auto& object : world->GetObjects()) {
-                if (!object) {
-                    continue;
-                }
-                for (const auto& component : object->GetComponents()) {
+        struct VisitContext {
+            World* world = nullptr;
+            void* clientContext = nullptr;
+            VisitorFn clientVisitor = nullptr;
+        } visitContext{ world, context, visitor };
+        const bool completed =
+            GameProjectSdkAccess::VisitIndexedComponents(
+                *world,
+                typeId,
+                &visitContext,
+                [](void* opaque,
+                    RuntimeObjectHandle objectHandle,
+                    IComponent* component) noexcept {
+                    auto& visit = *static_cast<VisitContext*>(opaque);
+                    GameObject* object =
+                        visit.world->FindObject(objectHandle);
                     auto* adapter = dynamic_cast<
-                        GameProjectComponentAdapter*>(component.get());
-                    if (adapter == nullptr ||
-                        adapter->GetTypeName() != typeName) {
-                        continue;
-                    }
-                    if (!visitor(
-                            context,
-                            GameProjectSdkAccess::MakeObjectView(*object),
-                            adapter->GetGameComponent())) {
-                        completed = false;
-                        break;
-                    }
-                }
-                if (!completed) {
-                    break;
-                }
-            }
-        }
+                        GameProjectComponentAdapter*>(component);
+                    return object != nullptr &&
+                        adapter != nullptr &&
+                        visit.clientVisitor(
+                            visit.clientContext,
+                            GameProjectSdkAccess::MakeObjectView(
+                                *object),
+                            adapter->GetGameComponent());
+                });
         (void)world->FlushQueuedCommands(WorldCommandPhase::QueryEnd);
         return completed;
     }

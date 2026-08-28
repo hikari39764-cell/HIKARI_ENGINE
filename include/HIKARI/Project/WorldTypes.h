@@ -9,6 +9,8 @@
 namespace HIKARI {
 
     inline constexpr size_t kGameProjectObjectNameCapacity = 128u;
+    inline constexpr size_t
+        kGameProjectWorldMaximumSpawnBatchCount = 256u;
 
     enum class GameProjectWorldResultCode : uint8_t {
         Success = 0u,

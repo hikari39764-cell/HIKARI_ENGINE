@@ -5,6 +5,7 @@
 #include <type_traits>
 #include <utility>
 #include <vector>
+#include "HIKARI/Runtime/ComponentTypeId.h"
 #include "Components/HIKARI_IComponent.h"
 #include "HIKARI_RuntimeObjectHandle.h"
 #include "HIKARI_SceneDocument.h"
@@ -41,12 +42,8 @@ namespace HIKARI {
         T* AddComponent(Args&&... args) {
             static_assert(std::is_base_of_v<IComponent, T>, "T must derive from IComponent");
             auto component = std::make_unique<T>(std::forward<Args>(args)...);
-            T* ptr = component.get();
-            ptr->SetOwner(this);
-            ptr->OnAttach();
-            components_.push_back(std::move(component));
-            MarkRenderStateDirty();
-            return ptr;
+            return static_cast<T*>(
+                AddComponentInstance(std::move(component)));
         }
 
         template<class T>
@@ -97,7 +94,9 @@ namespace HIKARI {
         void Update(float dt);
         void Render();
         void RenderImGui();
-        IComponent* AddComponentInstance(std::unique_ptr<IComponent> component);
+        IComponent* AddComponentInstance(
+            std::unique_ptr<IComponent> component,
+            ComponentTypeId declaredTypeId = {});
 
         const std::vector<std::unique_ptr<IComponent>>& GetComponents() const;
 

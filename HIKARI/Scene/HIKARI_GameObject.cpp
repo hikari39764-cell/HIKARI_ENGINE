@@ -1,8 +1,11 @@
 #include "HIKARI_GameObject.h"
 
 #include <algorithm>
+#include <stdexcept>
 
+#include "Core/HIKARI_Logger.h"
 #include "HIKARI_World.h"
+#include "Scene/Internal/HIKARI_WorldCapacity.h"
 
 namespace HIKARI {
 
@@ -190,46 +193,146 @@ namespace HIKARI {
         }
     }
 
-    IComponent* GameObject::AddComponentInstance(std::unique_ptr<IComponent> component) {
+    IComponent* GameObject::AddComponentInstance(
+        std::unique_ptr<IComponent> component,
+        ComponentTypeId declaredTypeId) {
         if (!component) {
             return nullptr;
         }
-        if (components_.size() >= components_.max_size()) {
-            return nullptr;
-        }
 
-        auto attach = [&]() -> IComponent* {
-            components_.reserve(components_.size() + 1u);
+        const auto reserveComponentSlot = [this]() noexcept {
+            if (components_.size() >= components_.max_size()) {
+                return false;
+            }
+            try {
+                components_.reserve(INTERNAL::GrowWorldCapacity(
+                    components_.capacity(),
+                    components_.size() + 1u,
+                    components_.max_size()));
+                return true;
+            }
+            catch (...) {
+                return false;
+            }
+        };
+
+        if (ownerWorld_ == nullptr) {
+            if (!reserveComponentSlot()) {
+                return nullptr;
+            }
             IComponent* ptr = component.get();
             ptr->SetOwner(this);
             try {
                 ptr->OnAttach();
+                components_.push_back(std::move(component));
             }
             catch (...) {
                 ptr->SetOwner(nullptr);
-                throw;
+                HIKARI_LOG_ERROR(
+                    "[GameObject] component OnAttach failed.");
+                return nullptr;
             }
-            components_.push_back(std::move(component));
             MarkRenderStateDirty();
             return ptr;
-        };
-
-        if (ownerWorld_ == nullptr) {
-            return attach();
         }
         if (!ownerWorld_->CanEnterStructureCallback()) {
             return nullptr;
         }
-        const World::StructureReadScope structureRead =
-            ownerWorld_->AcquireStructureReadScope();
-        return attach();
+        if (!reserveComponentSlot()) {
+            return nullptr;
+        }
+        try {
+            if (!ownerWorld_->PrepareComponentAttachment(
+                    *component,
+                    declaredTypeId)) {
+                return nullptr;
+            }
+        }
+        catch (...) {
+            return nullptr;
+        }
+
+        World::WorldCommandCheckpoint commandCheckpoint{};
+        try {
+            commandCheckpoint =
+                ownerWorld_->BeginComponentCallback();
+        }
+        catch (...) {
+            ownerWorld_->CancelComponentAttachment(*component);
+            return nullptr;
+        }
+
+        IComponent* ptr = component.get();
+        ptr->SetOwner(this);
+        bool attachCompleted = false;
+        bool componentStored = false;
+        bool indexCommitted = false;
+        try {
+            {
+                const World::StructureReadScope structureRead =
+                    ownerWorld_->AcquireStructureReadScope();
+                ptr->OnAttach();
+            }
+            attachCompleted = true;
+            components_.push_back(std::move(component));
+            componentStored = true;
+            if (!ownerWorld_->CommitComponentAttachment(
+                    *this,
+                    *ptr)) {
+                component = std::move(components_.back());
+                components_.pop_back();
+                componentStored = false;
+                throw std::logic_error(
+                    "World component index commit failed.");
+            }
+            indexCommitted = true;
+            MarkRenderStateDirty();
+            ownerWorld_->CommitComponentCallback(
+                commandCheckpoint);
+            return ptr;
+        }
+        catch (...) {
+            if (attachCompleted) {
+                try {
+                    const World::StructureReadScope structureRead =
+                        ownerWorld_->AcquireStructureReadScope();
+                    ptr->OnDetach();
+                }
+                catch (...) {
+                }
+            }
+            if (indexCommitted) {
+                ownerWorld_->RemoveComponentFromIndex(*ptr);
+            }
+            if (componentStored) {
+                component = std::move(components_.back());
+                components_.pop_back();
+            }
+            ownerWorld_->RollbackComponentCallback(
+                commandCheckpoint);
+            ownerWorld_->CancelComponentAttachment(*ptr);
+            ptr->SetOwner(nullptr);
+            HIKARI_LOG_ERROR(
+                "[GameObject] component attachment transaction "
+                "rolled back.");
+            return nullptr;
+        }
     }
 
     void GameObject::DetachComponents() {
         for (size_t index = components_.size(); index-- > 0u;) {
             IComponent* component = components_[index].get();
             if (component != nullptr) {
-                component->OnDetach();
+                try {
+                    component->OnDetach();
+                }
+                catch (...) {
+                    HIKARI_LOG_ERROR(
+                        "[GameObject] component OnDetach failed.");
+                }
+                if (ownerWorld_ != nullptr) {
+                    ownerWorld_->RemoveComponentFromIndex(*component);
+                }
                 component->SetOwner(nullptr);
             }
         }

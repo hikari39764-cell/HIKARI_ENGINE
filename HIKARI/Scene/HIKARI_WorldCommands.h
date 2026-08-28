@@ -14,6 +14,7 @@ namespace HIKARI {
     inline constexpr size_t kWorldCommandInitialCapacity = 128u;
     inline constexpr size_t kWorldCommandMaximumCapacity = 4096u;
     inline constexpr size_t kWorldCommandFailureCapacity = 256u;
+    inline constexpr size_t kWorldSpawnBatchMaximumCapacity = 256u;
 
     enum class WorldMutationResult : uint8_t {
         Success,
@@ -86,6 +87,12 @@ namespace HIKARI {
         MATH::Vec3 position{ 0.0f, 0.0f, 0.0f };
         MATH::Quat rotation = MATH::Quat::Identity();
         MATH::Vec3 scale{ 1.0f, 1.0f, 1.0f };
+    };
+
+    struct WorldSpawnRequest {
+        std::string_view name{};
+        WorldCommandLocalTransform transform{};
+        RuntimeObjectHandle parent{};
     };
 
     struct PendingWorldCommand {

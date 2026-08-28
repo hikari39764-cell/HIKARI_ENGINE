@@ -12,6 +12,7 @@
 #include "HIKARI/Project/RuntimeRegistration.h"
 #include "Scene/Components/HIKARI_IComponent.h"
 #include "Scene/HIKARI_ISystem.h"
+#include "Scene/HIKARI_RuntimeObjectHandle.h"
 
 namespace HIKARI {
 
@@ -39,6 +40,11 @@ namespace HIKARI {
     };
 
     struct GameProjectSdkAccess {
+        using IndexedComponentVisitorFn = bool (*)(
+            void* context,
+            RuntimeObjectHandle object,
+            IComponent* component) noexcept;
+
         static PropertyReader MakePropertyReader(
             const void* properties) noexcept;
         static PropertyWriter MakePropertyWriter(
@@ -59,6 +65,11 @@ namespace HIKARI {
         static World* GetWorld(
             const WorldView& view,
             RuntimeWorldAccessResult* outAccess = nullptr) noexcept;
+        static bool VisitIndexedComponents(
+            World& world,
+            ComponentTypeId typeId,
+            void* context,
+            IndexedComponentVisitorFn visitor) noexcept;
     };
 
     class GameProjectComponentAdapter final
