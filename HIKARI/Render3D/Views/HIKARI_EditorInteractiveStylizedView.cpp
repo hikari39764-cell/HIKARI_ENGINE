@@ -152,10 +152,12 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
             static_cast<uint32_t>(sceneTarget.GetHeight());
         outSurfaces.frameIndex = graphics.frameIndex;
         outSurfaces.viewId = viewId;
-        outSurfaces.opaqueSceneColor = {
+        outSurfaces.sceneColorOpaque = {
             sceneTarget.GetResource(), colorView.gpu, sceneTarget.GetFormat(),
             width, height, 1u, sceneTarget.GetColorState(), true
         };
+        outSurfaces.sceneColorPostOpaque =
+            outSurfaces.sceneColorOpaque;
         outSurfaces.sceneDepth = {
             sceneTarget.GetDepthResource(), depthView.gpu,
             DXGI_FORMAT_R32_FLOAT, width, height, 1u,
@@ -200,7 +202,7 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         if (preparation.writeFeatureMask) {
             inputsReady = PublishSceneSurfaces(
                 sceneTarget, targetGeneration, viewId, surfaces);
-            if (surfaces.opaqueSceneColor.IsSampleable()) {
+            if (surfaces.sceneColorPostOpaque.IsSampleable()) {
                 availability.inputMask |= FEATURES::RenderFeatureInputBit(
                     FEATURES::RenderFeatureInput::SceneColor);
             }

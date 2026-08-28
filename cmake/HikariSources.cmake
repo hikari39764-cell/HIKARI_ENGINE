@@ -209,6 +209,8 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/GpuDriven/HIKARI_GpuDrivenPassDesc.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/GpuDriven/HIKARI_GpuDepthVisibilityLayer.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/GpuDriven/HIKARI_GpuDrivenLayer.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Graph/HIKARI_RenderGraph.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Graph/HIKARI_RenderGraphExecution.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Pipeline/HIKARI_RenderFramePipeline.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Features/HIKARI_RenderFeaturePlanner.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Features/HIKARI_RenderFeatureSceneAnalysis.cpp"

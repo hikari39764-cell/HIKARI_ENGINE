@@ -120,7 +120,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
             int fallbackAoTextureHandle) {
             MESHRENDERER::MeshPassResources resources{};
             resources.sceneDepth = textures.sceneDepth;
-            resources.opaqueSceneColor = textures.opaqueSceneColor;
+            resources.opaqueSceneColor = textures.sceneColorOpaque;
             resources.packedSceneSurface = textures.packedSurface;
             resources.ambientOcclusion = textures.ambientOcclusion;
             resources.depthPyramid = textures.currentSceneDepthPyramid.valid
@@ -492,9 +492,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
             const RENDER3D::TEMPORAL::TemporalInputs temporalInputs =
                 RENDER3D::TEMPORAL::BuildTemporalInputs(
                     sceneTextures.sceneDepth,
-                    sceneTextures.opaqueSceneColor);
-            sceneTextures.motionVectors = temporalInputs.motionVectors;
-            sceneTextures.motionMetadata = temporalInputs.motionMetadata;
+                    sceneTextures.sceneColorOpaque);
             sceneTextures.reactiveMask = temporalInputs.reactiveMask;
             sceneTextures.transparencyMask = temporalInputs.transparencyMask;
             sceneTextures.invalidDepthMotionMask =
@@ -522,6 +520,12 @@ namespace HIKARI::RENDER3D::PIPELINE {
                     return false;
                 }
             }
+            sceneTextures.motionVectors = motionVectorsWritten
+                ? temporalInputs.motionVectors
+                : RenderTextureView{};
+            sceneTextures.motionMetadata = motionVectorsWritten
+                ? temporalInputs.motionMetadata
+                : RenderTextureView{};
             RENDER3D::TEMPORAL::MarkMotionVectorsWritten(motionVectorsWritten);
         } else {
             RENDER3D::TEMPORAL::MarkMotionVectorsWritten(false);
@@ -535,13 +539,13 @@ namespace HIKARI::RENDER3D::PIPELINE {
         bool depthAwareOk = true;
         if (opaqueOk &&
             (hasDepthAwareWork || hasTransparentWork || hasSsrWork)) {
-            const RenderTextureView opaqueSceneColor =
+            const RenderTextureView sceneColorOpaque =
                 POST::PostSystem::CaptureSceneColorSnapshot();
-            if (opaqueSceneColor.IsSampleable()) {
-                sceneTextures.opaqueSceneColor = opaqueSceneColor;
-                postOpaqueResources.opaqueSceneColor = opaqueSceneColor;
+            if (sceneColorOpaque.IsSampleable()) {
+                sceneTextures.sceneColorOpaque = sceneColorOpaque;
+                postOpaqueResources.opaqueSceneColor = sceneColorOpaque;
                 RENDER3D::TEMPORAL::SetTemporalCompositionBase(
-                    opaqueSceneColor.srv);
+                    sceneColorOpaque.srv);
                 if (!POST::PostSystem::RebindCurrentRenderTarget()) {
                     MESHRENDERER::EndFrame();
                     return false;
@@ -754,10 +758,18 @@ namespace HIKARI::RENDER3D::PIPELINE {
             combatAfterimageOk && weaponTrailOk &&
             featurePassesOk &&
             gLastRenderFeaturePlan.screenCompositePassRequired) {
-            const RenderTextureView finalSceneColor =
+            // Geometry/visibility feature passes draw in place. Capture after
+            // them so the isolated full-screen composite preserves their
+            // result while SceneColorPostOpaque remains its immutable input.
+            const RenderTextureView postOpaqueSceneColor =
                 POST::PostSystem::CaptureSceneColorSnapshot();
-            if (finalSceneColor.IsSampleable()) {
-                sceneTextures.opaqueSceneColor = finalSceneColor;
+            if (postOpaqueSceneColor.IsSampleable()) {
+                // The producer currently reuses one physical snapshot. The
+                // opaque version has reached last use, so invalidate it before
+                // publishing the aliased post-opaque version.
+                sceneTextures.sceneColorOpaque = {};
+                sceneTextures.sceneColorPostOpaque =
+                    postOpaqueSceneColor;
                 FEATURES::StylizedScreenFeatureSettings featureSettings{};
                 if (cameraCb != nullptr) {
                     featureSettings.viewProj = cameraCb->viewProj;

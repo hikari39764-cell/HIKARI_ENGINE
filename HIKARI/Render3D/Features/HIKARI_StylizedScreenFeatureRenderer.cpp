@@ -53,7 +53,10 @@ namespace HIKARI::RENDER3D::FEATURES {
         debugState_ = {};
         debugState_.requested = plan.screenCompositePassRequired;
         debugState_.transientBytes = plan.transientBytes;
-        debugState_.inputsReady = surfaces.HasOpaqueSurface() &&
+        debugState_.inputsReady =
+            surfaces.sceneDepth.IsSampleable() &&
+            surfaces.sceneColorPostOpaque.IsSampleable() &&
+            surfaces.packedSurface.IsSampleable() &&
             surfaces.HasStylizedFeatureMask();
         debugState_.materialStyleReady =
             surfaces.HasStylizedOutlineStyle();
@@ -133,7 +136,9 @@ namespace HIKARI::RENDER3D::FEATURES {
             0u,
             constantBuffer_->GetGPUVirtualAddress() +
                 static_cast<UINT64>(constantStride_) * frameSlot);
-        cmd->SetGraphicsRootDescriptorTable(1u, surfaces.opaqueSceneColor.srv);
+        cmd->SetGraphicsRootDescriptorTable(
+            1u,
+            surfaces.sceneColorPostOpaque.srv);
         cmd->SetGraphicsRootDescriptorTable(2u, surfaces.sceneDepth.srv);
         cmd->SetGraphicsRootDescriptorTable(3u, surfaces.packedSurface.srv);
         cmd->SetGraphicsRootDescriptorTable(

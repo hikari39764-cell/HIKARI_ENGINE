@@ -179,7 +179,7 @@ namespace HIKARI::RENDER3D::REFLECTION {
                 static_cast<UINT64>(constantStride_) * frameSlot);
         cmd->SetGraphicsRootDescriptorTable(
             1,
-            surfaces.opaqueSceneColor.srv);
+            surfaces.sceneColorOpaque.srv);
         cmd->SetGraphicsRootDescriptorTable(
             2,
             surfaces.sceneDepth.srv);
@@ -238,7 +238,7 @@ namespace HIKARI::RENDER3D::REFLECTION {
                 static_cast<UINT64>(constantStride_) * frameSlot);
         cmd->SetGraphicsRootDescriptorTable(
             1,
-            surfaces.opaqueSceneColor.srv);
+            surfaces.sceneColorOpaque.srv);
         cmd->SetGraphicsRootDescriptorTable(
             2,
             surfaces.sceneDepth.srv);

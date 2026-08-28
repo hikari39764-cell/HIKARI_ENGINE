@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include "Render3D/Core/HIKARI_Camera3D.h"
+#include "Render3D/Core/HIKARI_RenderViewIdentity.h"
 
 namespace HIKARI::RENDER3D {
 
@@ -15,15 +16,6 @@ namespace HIKARI::RENDER3D {
         struct CombatPresentationFrameSource;
         struct PerfectGuardShockwaveFrameSource;
     }
-
-    struct RenderViewId {
-        uint64_t value = 0;
-
-        bool operator==(const RenderViewId& rhs) const noexcept {
-            return value == rhs.value;
-        }
-    };
-
     enum class RenderViewPurpose : uint8_t {
         Game,
         EditorScene,
@@ -54,7 +46,5 @@ namespace HIKARI::RENDER3D {
         const COMBAT_VFX::PerfectGuardShockwaveFrameSource*
             actionPostReactionFrameSource = nullptr;
     };
-
-    inline constexpr RenderViewId kPrimaryRenderViewId{ 1 };
 
 } // namespace HIKARI::RENDER3D
