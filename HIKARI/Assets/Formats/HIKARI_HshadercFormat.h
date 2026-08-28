@@ -11,7 +11,7 @@
 
 namespace HIKARI::ASSETS::SHADER {
 
-    inline constexpr uint32_t kHshadercFormatVersion = 1u;
+    inline constexpr uint32_t kHshadercFormatVersion = 2u;
     inline constexpr size_t kMaximumHshadercMetadataBytes =
         1024u * 1024u;
 

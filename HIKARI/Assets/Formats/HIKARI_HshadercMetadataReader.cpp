@@ -152,7 +152,8 @@ namespace HIKARI::ASSETS::SHADER::INTERNAL {
             const auto caps = root.find("requiredCaps");
             if (compiler == root.end() ||
                 !HasOnlyKeys(*compiler, {
-                    "id", "version", "binaryHash"
+                    "id", "version", "contractVersion", "binaryHash",
+                    "validatorBinaryHash"
                 }) ||
                 !ReadString(
                     *compiler,
@@ -162,10 +163,18 @@ namespace HIKARI::ASSETS::SHADER::INTERNAL {
                     *compiler,
                     "version",
                     artifact.compiler.version) ||
+                !ReadUnsigned(
+                    *compiler,
+                    "contractVersion",
+                    artifact.compiler.contractVersion) ||
                 !ReadHash(
                     *compiler,
                     "binaryHash",
                     artifact.compiler.binaryHash) ||
+                !ReadHash(
+                    *compiler,
+                    "validatorBinaryHash",
+                    artifact.compiler.validatorBinaryHash) ||
                 engineInterface == root.end() ||
                 !HasOnlyKeys(*engineInterface, {
                     "id", "version", "hash"
@@ -183,11 +192,17 @@ namespace HIKARI::ASSETS::SHADER::INTERNAL {
                     "hash",
                     artifact.engineInterfaceHash) ||
                 rootLayout == root.end() ||
-                !HasOnlyKeys(*rootLayout, { "id", "hash" }) ||
+                !HasOnlyKeys(*rootLayout, {
+                    "id", "version", "hash"
+                }) ||
                 !ReadString(
                     *rootLayout,
                     "id",
                     artifact.rootLayoutId) ||
+                !ReadUnsigned(
+                    *rootLayout,
+                    "version",
+                    artifact.rootLayoutVersion) ||
                 !ReadHash(
                     *rootLayout,
                     "hash",

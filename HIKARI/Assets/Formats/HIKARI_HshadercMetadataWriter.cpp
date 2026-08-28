@@ -31,8 +31,11 @@ namespace HIKARI::ASSETS::SHADER::INTERNAL {
         root["compiler"] = {
             { "id", artifact.compiler.id },
             { "version", artifact.compiler.version },
+            { "contractVersion", artifact.compiler.contractVersion },
             { "binaryHash", HASH::ToHex(
                 artifact.compiler.binaryHash) },
+            { "validatorBinaryHash", HASH::ToHex(
+                artifact.compiler.validatorBinaryHash) },
         };
         root["engineInterface"] = {
             { "id", artifact.engineInterfaceId },
@@ -42,6 +45,7 @@ namespace HIKARI::ASSETS::SHADER::INTERNAL {
         };
         root["rootLayout"] = {
             { "id", artifact.rootLayoutId },
+            { "version", artifact.rootLayoutVersion },
             { "hash", HASH::ToHex(artifact.rootLayoutHash) },
         };
         root["requiredCaps"] = {

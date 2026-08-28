@@ -10,7 +10,8 @@
 
 namespace HIKARI::ASSETS::SHADER {
 
-    inline constexpr uint32_t kShaderCookedArtifactVersion = 1u;
+    inline constexpr uint32_t kShaderCookedArtifactVersion = 2u;
+    inline constexpr uint32_t kShaderCompilerContractVersion = 1u;
     inline constexpr uint32_t kMaximumShaderDependencyCount = 512u;
     inline constexpr uint32_t kMaximumShaderArgumentCount = 128u;
     inline constexpr uint32_t kMaximumShaderBindingsPerEntry = 512u;
@@ -41,7 +42,9 @@ namespace HIKARI::ASSETS::SHADER {
     struct ShaderCompilerIdentity {
         std::string id{};
         std::string version{};
+        uint32_t contractVersion = 0u;
         HASH::Sha256Digest binaryHash{};
+        HASH::Sha256Digest validatorBinaryHash{};
     };
 
     struct ShaderResourceBinding {
@@ -72,9 +75,10 @@ namespace HIKARI::ASSETS::SHADER {
         std::vector<ShaderSourceDependency> dependencies{};
         ShaderCompilerIdentity compiler{};
         std::string engineInterfaceId{};
-        uint32_t engineInterfaceVersion = 1u;
+        uint32_t engineInterfaceVersion = 0u;
         HASH::Sha256Digest engineInterfaceHash{};
         std::string rootLayoutId{};
+        uint32_t rootLayoutVersion = 0u;
         HASH::Sha256Digest rootLayoutHash{};
         ShaderDeviceCaps requiredCaps{};
         std::vector<ShaderCookedEntry> entries{};

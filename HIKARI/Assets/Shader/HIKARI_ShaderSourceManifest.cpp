@@ -148,7 +148,10 @@ namespace HIKARI::ASSETS::SHADER {
         if (!IsIdentifier(manifest.programId, true) ||
             !IsIdentifier(manifest.engineInterfaceId, true) ||
             !IsIdentifier(manifest.rootLayoutId, true) ||
-            manifest.engineInterfaceVersion == 0u) {
+            manifest.engineInterfaceVersion == 0u ||
+            manifest.engineInterfaceHash.IsZero() ||
+            manifest.rootLayoutVersion == 0u ||
+            manifest.rootLayoutHash.IsZero()) {
             outError = "shader program/interface/root-layout id is invalid";
             return false;
         }

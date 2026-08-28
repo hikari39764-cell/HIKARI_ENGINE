@@ -240,7 +240,10 @@ namespace HIKARI::ASSETS::SHADER {
             artifact.engineInterfaceHash.IsZero() ||
             artifact.rootLayoutHash.IsZero() ||
             artifact.compiler.binaryHash.IsZero() ||
+            artifact.compiler.validatorBinaryHash.IsZero() ||
             artifact.compiler.id != "DXC" ||
+            artifact.compiler.contractVersion !=
+                kShaderCompilerContractVersion ||
             artifact.compiler.version.empty() ||
             artifact.compiler.version.size() >
                 kMaximumShaderIdentifierBytes ||
@@ -292,7 +295,12 @@ namespace HIKARI::ASSETS::SHADER {
         compatibility.engineInterfaceId = artifact.engineInterfaceId;
         compatibility.engineInterfaceVersion =
             artifact.engineInterfaceVersion;
+        compatibility.engineInterfaceHash =
+            artifact.engineInterfaceHash;
         compatibility.rootLayoutId = artifact.rootLayoutId;
+        compatibility.rootLayoutVersion =
+            artifact.rootLayoutVersion;
+        compatibility.rootLayoutHash = artifact.rootLayoutHash;
         compatibility.requiredCaps = artifact.requiredCaps;
         compatibility.includeRoots = {
             ShaderIncludeRoot::Project,

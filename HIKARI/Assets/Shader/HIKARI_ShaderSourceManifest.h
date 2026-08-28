@@ -10,7 +10,7 @@
 
 namespace HIKARI::ASSETS::SHADER {
 
-    inline constexpr uint32_t kShaderSourceManifestVersion = 1u;
+    inline constexpr uint32_t kShaderSourceManifestVersion = 2u;
     inline constexpr std::string_view kShaderSourceManifestSchema =
         "HIKARI.ShaderSource";
     inline constexpr uint32_t kMaximumShaderEntryCount = 64u;
@@ -70,8 +70,11 @@ namespace HIKARI::ASSETS::SHADER {
         std::vector<ShaderDefine> defines{};
         std::vector<ShaderIncludeRoot> includeRoots{};
         std::string engineInterfaceId{};
-        uint32_t engineInterfaceVersion = 1u;
+        uint32_t engineInterfaceVersion = 0u;
+        HASH::Sha256Digest engineInterfaceHash{};
         std::string rootLayoutId{};
+        uint32_t rootLayoutVersion = 0u;
+        HASH::Sha256Digest rootLayoutHash{};
         ShaderDeviceCaps requiredCaps{};
     };
 

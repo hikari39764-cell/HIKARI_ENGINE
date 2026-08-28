@@ -42,6 +42,15 @@ namespace HIKARI::ASSETS::SHADER {
             return true;
         }
 
+        bool ReadRequiredHash(
+            const nlohmann::json& object,
+            const char* key,
+            HASH::Sha256Digest& outHash) {
+            std::string text{};
+            return ReadRequiredString(object, key, text) &&
+                HASH::ParseSha256(text, outHash);
+        }
+
     } // namespace
 
     bool ParseShaderSourceManifest(
@@ -87,7 +96,10 @@ namespace HIKARI::ASSETS::SHADER {
                     "source",
                     "engineInterfaceId",
                     "engineInterfaceVersion",
+                    "engineInterfaceHash",
                     "rootLayoutId",
+                    "rootLayoutVersion",
+                    "rootLayoutHash",
                     "requiredCaps",
                     "entries",
                     "defines",
@@ -108,16 +120,26 @@ namespace HIKARI::ASSETS::SHADER {
                     root,
                     "engineInterfaceId",
                     manifest.engineInterfaceId) ||
+                !ReadRequiredHash(
+                    root,
+                    "engineInterfaceHash",
+                    manifest.engineInterfaceHash) ||
                 !ReadRequiredString(
                     root,
                     "rootLayoutId",
-                    manifest.rootLayoutId)) {
+                    manifest.rootLayoutId) ||
+                !ReadRequiredHash(
+                    root,
+                    "rootLayoutHash",
+                    manifest.rootLayoutHash)) {
                 outError = "shader source manifest is missing required strings";
                 return false;
             }
             manifest.sourcePath = source;
             manifest.engineInterfaceVersion =
                 root.value("engineInterfaceVersion", 0u);
+            manifest.rootLayoutVersion =
+                root.value("rootLayoutVersion", 0u);
 
             const auto caps = root.find("requiredCaps");
             if (caps == root.end() || !caps->is_object()) {
@@ -282,7 +304,12 @@ namespace HIKARI::ASSETS::SHADER {
         root["engineInterfaceId"] = canonical.engineInterfaceId;
         root["engineInterfaceVersion"] =
             canonical.engineInterfaceVersion;
+        root["engineInterfaceHash"] =
+            HASH::ToHex(canonical.engineInterfaceHash);
         root["rootLayoutId"] = canonical.rootLayoutId;
+        root["rootLayoutVersion"] = canonical.rootLayoutVersion;
+        root["rootLayoutHash"] =
+            HASH::ToHex(canonical.rootLayoutHash);
         root["requiredCaps"] = {
             { "minimumShaderModel",
               canonical.requiredCaps.minimumShaderModel },
