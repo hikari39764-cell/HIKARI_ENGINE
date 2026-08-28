@@ -67,7 +67,12 @@ namespace HIKARI::ASSETS::SHADER {
         std::string programId{};
         std::filesystem::path sourcePath{};
         std::vector<ShaderEntryPoint> entries{};
+        // Stage 1 permutations are program-wide; entry-specific define sets
+        // require a later explicit schema version.
         std::vector<ShaderDefine> defines{};
+        // Includes are literal quoted/angle .hlsl, .hlsli, or .h paths. Macro
+        // operands are intentionally unsupported, and every textual branch
+        // must resolve during the bounded preflight plan.
         std::vector<ShaderIncludeRoot> includeRoots{};
         std::string engineInterfaceId{};
         uint32_t engineInterfaceVersion = 0u;

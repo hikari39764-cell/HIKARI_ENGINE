@@ -23,6 +23,20 @@ include(HikariDependencies)
 include(HikariRuntimeDeployment)
 include(HikariSdk)
 
+file(
+    SHA256
+    "${HIKARI_DXC_RUNTIME_ROOT}/dxcompiler.dll"
+    HIKARI_DXC_COOK_COMPILER_SHA256)
+file(
+    SHA256
+    "${HIKARI_DXC_RUNTIME_ROOT}/dxil.dll"
+    HIKARI_DXC_COOK_VALIDATOR_SHA256)
+file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/generated/Gfx/Internal")
+configure_file(
+    "${HIKARI_SOURCE_ROOT}/cmake/Templates/HIKARI_DxcCookToolchainConfig.h.in"
+    "${CMAKE_BINARY_DIR}/generated/Gfx/Internal/HIKARI_DxcCookToolchainConfig.h"
+    @ONLY)
+
 unset(HIKARI_GAME_PROJECT_MANIFEST CACHE)
 
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
@@ -82,6 +96,14 @@ target_link_libraries(
     hikari_runtime_navigation
     PRIVATE
         HIKARI::RecastNavigation)
+target_link_libraries(
+    hikari_runtime_gfx
+    PRIVATE
+        Version)
+target_include_directories(
+    hikari_runtime_gfx
+    PRIVATE
+        "${CMAKE_BINARY_DIR}/generated")
 if(HIKARI_WITH_EDITOR_BUILD)
     target_link_libraries(
         hikari_runtime_assets
@@ -266,6 +288,30 @@ hikari_add_runtime_contract(
 hikari_add_runtime_contract(
     HIKARI_ShaderArtifactFormatSmoke
     "Tools/Tests/HIKARI_ShaderArtifactFormatSmoke.cpp")
+hikari_add_runtime_contract(
+    HIKARI_ShaderCookArgumentsSmoke
+    "Tools/Tests/HIKARI_ShaderCookArgumentsSmoke.cpp")
+hikari_add_runtime_contract(
+    HIKARI_ShaderImporterContractSmoke
+    "Tools/Tests/HIKARI_ShaderImporterContractSmoke.cpp")
+hikari_add_runtime_contract(
+    HIKARI_ShaderIncludePlanSmoke
+    "Tools/Tests/HIKARI_ShaderIncludePlanSmoke.cpp")
+hikari_add_runtime_contract(
+    HIKARI_ShaderCookProducerSmoke
+    "Tools/Tests/HIKARI_ShaderCookProducerSmoke.cpp")
+add_custom_command(
+    TARGET HIKARI_ShaderCookProducerSmoke
+    POST_BUILD
+    COMMAND
+        "${CMAKE_COMMAND}" -E copy_if_different
+        "${HIKARI_DXC_RUNTIME_ROOT}/dxcompiler.dll"
+        "$<TARGET_FILE_DIR:HIKARI_ShaderCookProducerSmoke>"
+    COMMAND
+        "${CMAKE_COMMAND}" -E copy_if_different
+        "${HIKARI_DXC_RUNTIME_ROOT}/dxil.dll"
+        "$<TARGET_FILE_DIR:HIKARI_ShaderCookProducerSmoke>"
+    VERBATIM)
 
 enable_testing()
 foreach(runtime_contract IN ITEMS
@@ -279,7 +325,11 @@ foreach(runtime_contract IN ITEMS
     HIKARI_SceneSurfaceSemanticSmoke
     HIKARI_RenderFrameGraphPlanSmoke
     HIKARI_ShaderSourceManifestSmoke
-    HIKARI_ShaderArtifactFormatSmoke)
+    HIKARI_ShaderArtifactFormatSmoke
+    HIKARI_ShaderCookArgumentsSmoke
+    HIKARI_ShaderImporterContractSmoke
+    HIKARI_ShaderIncludePlanSmoke
+    HIKARI_ShaderCookProducerSmoke)
     add_test(
         NAME "${runtime_contract}"
         COMMAND "$<TARGET_FILE:${runtime_contract}>")

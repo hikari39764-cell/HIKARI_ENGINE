@@ -2,12 +2,11 @@
 
 #include <Windows.h>
 
-#include <algorithm>
 #include <cstring>
 #include <filesystem>
+#include <mutex>
 #include <sstream>
 #include <string>
-#include <string_view>
 #include <vector>
 
 #include <d3dcompiler.h>
@@ -18,6 +17,7 @@
 #include "Core/HIKARI_Logger.h"
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Gfx/HIKARI_DXCheck.h"
+#include "Gfx/Internal/HIKARI_DxcRuntime.h"
 
 #pragma comment(lib, "d3dcompiler.lib")
 
@@ -26,21 +26,6 @@ namespace HIKARI::GFX {
     using Microsoft::WRL::ComPtr;
 
     namespace {
-        struct DxcRuntime {
-            bool attempted = false;
-            bool ready = false;
-            HMODULE dxilModule = nullptr;
-            HMODULE compilerModule = nullptr;
-            DxcCreateInstanceProc createInstance = nullptr;
-            ComPtr<IDxcUtils> utils;
-            ComPtr<IDxcCompiler3> compiler;
-            ComPtr<IDxcIncludeHandler> includeHandler;
-            std::wstring loadedPath{};
-            std::string lastError{};
-        };
-
-        DxcRuntime gDxc{};
-
         bool IsEngineShaderLogicalPath(
             const std::filesystem::path& path) {
 
@@ -92,17 +77,8 @@ namespace HIKARI::GFX {
             if (bytes <= 1) {
                 return {};
             }
-            std::string out(static_cast<size_t>(bytes), '\0');
-            WideCharToMultiByte(
-                CP_UTF8,
-                0,
-                text,
-                -1,
-                out.data(),
-                bytes,
-                nullptr,
-                nullptr);
-            out.pop_back();
+            std::string out(static_cast<size_t>(bytes - 1), '\0');
+            WideCharToMultiByte(CP_UTF8, 0, text, -1, out.data(), bytes, nullptr, nullptr);
             return out;
         }
 
@@ -111,79 +87,6 @@ namespace HIKARI::GFX {
                 return {};
             }
             return std::string(blob->GetStringPointer(), blob->GetStringPointer() + blob->GetStringLength());
-        }
-
-#if defined(HIKARI_SHIPPING)
-        bool IsSafeBytecodeToken(std::string_view token) {
-            if (token.empty()) {
-                return false;
-            }
-            return std::all_of(
-                token.begin(),
-                token.end(),
-                [](unsigned char value) {
-                    return (value >= 'a' && value <= 'z') ||
-                        (value >= 'A' && value <= 'Z') ||
-                        (value >= '0' && value <= '9') ||
-                        value == '_' || value == '-' || value == '.';
-                });
-        }
-#endif
-
-        bool TryLoadPrecompiledEngineShader(
-            const std::filesystem::path& logicalPath,
-            const char* entry,
-            const wchar_t* profile,
-            ID3DBlob** outBlob) {
-#if !defined(HIKARI_SHIPPING)
-            (void)logicalPath;
-            (void)entry;
-            (void)profile;
-            (void)outBlob;
-            return false;
-#else
-            if (outBlob == nullptr || entry == nullptr || profile == nullptr ||
-                logicalPath.is_absolute() ||
-                !IsEngineShaderLogicalPath(logicalPath)) {
-                return false;
-            }
-            const std::string entryToken(entry);
-            const std::string profileToken = NarrowUtf8(profile);
-            if (!IsSafeBytecodeToken(entryToken) ||
-                !IsSafeBytecodeToken(profileToken)) {
-                return false;
-            }
-            const CONTENT::EngineContentContext& content =
-                CONTENT::GetEngineContentContext();
-            if (!content.IsOpen()) {
-                return false;
-            }
-            const std::filesystem::path bytecodePath = content.Resolve(
-                std::filesystem::path("ShaderBytecode") /
-                MakeEngineContentRelativePath(logicalPath) /
-                (entryToken + "_" + profileToken + ".dxil"));
-            std::error_code error{};
-            if (bytecodePath.empty() ||
-                !std::filesystem::is_regular_file(bytecodePath, error) ||
-                error) {
-                return false;
-            }
-            *outBlob = nullptr;
-            const HRESULT result = D3DReadFileToBlob(
-                bytecodePath.c_str(),
-                outBlob);
-            if (SUCCEEDED(result) && *outBlob != nullptr) {
-                return true;
-            }
-            HIKARI_LOG_WARN(
-                "[ShaderCompiler] precompiled DXIL could not be read; "
-                "falling back to DXC: " + bytecodePath.generic_string());
-            if (*outBlob != nullptr) {
-                (*outBlob)->Release();
-                *outBlob = nullptr;
-            }
-            return false;
-#endif
         }
 
         void ReportCompileError(const std::string& message) {
@@ -195,108 +98,6 @@ namespace HIKARI::GFX {
                 DEBUGLOG::PushRenderError(message);
                 HIKARI_LOG_ERROR(message);
             }
-        }
-
-        bool TryLoadDxcFromDirectory(const std::filesystem::path& directory) {
-            const std::filesystem::path dxilPath = directory / L"dxil.dll";
-            const std::filesystem::path compilerPath = directory / L"dxcompiler.dll";
-            if (!std::filesystem::exists(compilerPath)) {
-                return false;
-            }
-
-            if (std::filesystem::exists(dxilPath)) {
-                gDxc.dxilModule = LoadLibraryW(dxilPath.c_str());
-            }
-            gDxc.compilerModule = LoadLibraryW(compilerPath.c_str());
-            if (gDxc.compilerModule == nullptr) {
-                if (gDxc.dxilModule != nullptr) {
-                    FreeLibrary(gDxc.dxilModule);
-                    gDxc.dxilModule = nullptr;
-                }
-                return false;
-            }
-            gDxc.loadedPath = compilerPath.wstring();
-            return true;
-        }
-
-        bool TryLoadDxcDefault() {
-            gDxc.dxilModule = LoadLibraryW(L"dxil.dll");
-            gDxc.compilerModule = LoadLibraryW(L"dxcompiler.dll");
-            if (gDxc.compilerModule == nullptr) {
-                if (gDxc.dxilModule != nullptr) {
-                    FreeLibrary(gDxc.dxilModule);
-                    gDxc.dxilModule = nullptr;
-                }
-                return false;
-            }
-            gDxc.loadedPath = L"dxcompiler.dll";
-            return true;
-        }
-
-        bool TryLoadDxcFromWindowsKits() {
-            const std::filesystem::path kitsBin = L"C:\\Program Files (x86)\\Windows Kits\\10\\bin";
-            if (!std::filesystem::exists(kitsBin)) {
-                return false;
-            }
-
-            std::vector<std::filesystem::path> candidateDirs;
-            for (const auto& entry : std::filesystem::directory_iterator(kitsBin)) {
-                if (!entry.is_directory()) {
-                    continue;
-                }
-                const std::filesystem::path x64Dir = entry.path() / L"x64";
-                if (std::filesystem::exists(x64Dir / L"dxcompiler.dll")) {
-                    candidateDirs.push_back(x64Dir);
-                }
-            }
-            std::sort(candidateDirs.begin(), candidateDirs.end(), std::greater<std::filesystem::path>{});
-            for (const std::filesystem::path& dir : candidateDirs) {
-                if (TryLoadDxcFromDirectory(dir)) {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        bool EnsureDxcRuntime() {
-            if (gDxc.ready) {
-                return true;
-            }
-            if (gDxc.attempted) {
-                return false;
-            }
-            gDxc.attempted = true;
-
-            if (!TryLoadDxcDefault() && !TryLoadDxcFromWindowsKits()) {
-                gDxc.lastError = "[ShaderCompiler][ERROR] dxcompiler.dll was not found. Install/copy DXC runtime before using Shader Model 6.";
-                ReportCompileError(gDxc.lastError);
-                return false;
-            }
-
-            gDxc.createInstance = reinterpret_cast<DxcCreateInstanceProc>(
-                GetProcAddress(gDxc.compilerModule, "DxcCreateInstance"));
-            if (gDxc.createInstance == nullptr) {
-                gDxc.lastError = "[ShaderCompiler][ERROR] DxcCreateInstance was not found in dxcompiler.dll.";
-                ReportCompileError(gDxc.lastError);
-                return false;
-            }
-
-            HRESULT hr = gDxc.createInstance(CLSID_DxcUtils, IID_PPV_ARGS(gDxc.utils.GetAddressOf()));
-            if (!HIKARI_DX_CHECK(hr, "ShaderCompiler::Create DxcUtils")) {
-                return false;
-            }
-            hr = gDxc.createInstance(CLSID_DxcCompiler, IID_PPV_ARGS(gDxc.compiler.GetAddressOf()));
-            if (!HIKARI_DX_CHECK(hr, "ShaderCompiler::Create DxcCompiler")) {
-                return false;
-            }
-            hr = gDxc.utils->CreateDefaultIncludeHandler(gDxc.includeHandler.GetAddressOf());
-            if (!HIKARI_DX_CHECK(hr, "ShaderCompiler::Create IncludeHandler")) {
-                return false;
-            }
-
-            gDxc.ready = true;
-            HIKARI_LOG_INFO("[ShaderCompiler] DXC runtime loaded: " + NarrowUtf8(gDxc.loadedPath.c_str()));
-            return true;
         }
 
         void AppendCommonArgs(
@@ -372,7 +173,14 @@ namespace HIKARI::GFX {
                 return false;
             }
             *outBlob = nullptr;
-            if (!EnsureDxcRuntime()) {
+            INTERNAL::DxcRuntimeSnapshot runtime{};
+            std::string runtimeError{};
+            if (!INTERNAL::AcquireDxcRuntime(
+                    INTERNAL::DxcRuntimePurpose::RuntimeSourceFallback,
+                    runtime,
+                    runtimeError)) {
+                ReportCompileError(
+                    "[ShaderCompiler][ERROR] " + runtimeError);
                 return false;
             }
 
@@ -382,12 +190,14 @@ namespace HIKARI::GFX {
             args.reserve(16);
             AppendCommonArgs(args, owned, sourceName, entry, profile, filePath);
 
+            std::scoped_lock invocationLock(
+                INTERNAL::GetDxcInvocationMutex());
             ComPtr<IDxcResult> result;
-            HRESULT hr = gDxc.compiler->Compile(
+            HRESULT hr = runtime.compiler->Compile(
                 &source,
                 args.data(),
                 static_cast<UINT32>(args.size()),
-                gDxc.includeHandler.Get(),
+                runtime.defaultIncludeHandler.Get(),
                 IID_PPV_ARGS(result.GetAddressOf()));
             if (!HIKARI_DX_CHECK(hr, "ShaderCompiler::Compile")) {
                 return false;
@@ -490,30 +300,28 @@ namespace HIKARI::GFX {
         const wchar_t* profile,
         ID3DBlob** outBlob) {
 
-        if (path == nullptr || outBlob == nullptr) {
+        if (path == nullptr) {
             return false;
         }
-        const std::filesystem::path logicalPath =
-            std::filesystem::path(path).lexically_normal();
-        if (TryLoadPrecompiledEngineShader(
-                logicalPath,
-                entry,
-                profile,
-                outBlob)) {
-            return true;
-        }
-        if (!EnsureDxcRuntime()) {
+        INTERNAL::DxcRuntimeSnapshot runtime{};
+        std::string runtimeError{};
+        if (!INTERNAL::AcquireDxcRuntime(
+                INTERNAL::DxcRuntimePurpose::RuntimeSourceFallback,
+                runtime,
+                runtimeError)) {
+            ReportCompileError(
+                "[ShaderCompiler][ERROR] " + runtimeError);
             return false;
         }
 
         const std::filesystem::path resolvedPath =
-            ResolveShaderSourcePath(logicalPath);
+            ResolveShaderSourcePath(path);
         if (resolvedPath.empty()) {
             return false;
         }
 
         ComPtr<IDxcBlobEncoding> sourceBlob;
-        HRESULT hr = gDxc.utils->LoadFile(
+        HRESULT hr = runtime.utils->LoadFile(
             resolvedPath.c_str(),
             nullptr,
             sourceBlob.GetAddressOf());

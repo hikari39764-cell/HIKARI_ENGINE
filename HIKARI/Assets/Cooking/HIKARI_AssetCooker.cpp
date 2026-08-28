@@ -18,6 +18,7 @@
 #include "Core/HIKARI_Logger.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
 #include "Gameplay/Dialogue/HIKARI_DialogueProjectStyle.h"
+#include "Gfx/HIKARI_ShaderCompiler.h"
 #include "Project/HIKARI_ProjectDescriptor.h"
 #include "Render3D/Procedural/HIKARI_ProceduralModelFactory.h"
 #include "Scene/Components/HIKARI_ProceduralMeshComponent.h"
@@ -274,7 +275,8 @@ namespace HIKARI::ASSETS::COOKING {
             const AssetRecord& record,
             const std::filesystem::path& root,
             const std::filesystem::path& relativePath,
-            std::string& outMessage) {
+            std::string& outMessage,
+            SHADER::ShaderCookedArtifact* outCooked = nullptr) {
 
             std::filesystem::path artifactPath{};
             if (!ResolveContainedFilePath(
@@ -299,6 +301,151 @@ namespace HIKARI::ASSETS::COOKING {
                         : artifactError);
                 return false;
             }
+            if (outCooked != nullptr) {
+                *outCooked = std::move(cooked);
+            }
+            return true;
+        }
+
+        bool ValidateShaderSourceClosureForCook(
+            const AssetRecord& record,
+            const SHADER::ShaderCookedArtifact& artifact,
+            const std::filesystem::path& projectRoot,
+            std::string& outMessage) {
+            const std::filesystem::path projectShaderRoot =
+                projectRoot / "Assets/Shaders";
+            std::error_code ec{};
+            const std::filesystem::path manifestRelative =
+                std::filesystem::relative(
+                    projectRoot / record.sourcePath,
+                    projectShaderRoot,
+                    ec);
+            std::filesystem::path manifestPath{};
+            if (ec || !IsSafeCookedRelativePath(manifestRelative) ||
+                !ResolveContainedFilePath(
+                    projectShaderRoot,
+                    manifestRelative,
+                    manifestPath,
+                    outMessage)) {
+                outMessage =
+                    "Shader manifest resolves outside Assets/Shaders: " +
+                    record.guid.value;
+                return false;
+            }
+            SHADER::ShaderSourceManifest manifest{};
+            HASH::Sha256Digest manifestHash{};
+            if (!SHADER::LoadShaderSourceManifest(
+                    manifestPath,
+                    manifest,
+                    outMessage) ||
+                !SHADER::ComputeShaderSourceManifestHash(
+                    manifest,
+                    manifestHash,
+                    outMessage) ||
+                manifestHash != artifact.manifestHash) {
+                outMessage =
+                    "Shader manifest changed; reimport asset " +
+                    artifact.sourceGuid.value;
+                return false;
+            }
+            const std::string mainLogicalPath = "Project/" +
+                manifest.sourcePath.lexically_normal().generic_string();
+            const bool hasMainSource = std::any_of(
+                artifact.dependencies.begin(),
+                artifact.dependencies.end(),
+                [&mainLogicalPath](
+                    const SHADER::ShaderSourceDependency& dependency) {
+                    return dependency.logicalPath == mainLogicalPath;
+                });
+            if (!hasMainSource ||
+                artifact.programId != manifest.programId ||
+                artifact.engineInterfaceId != manifest.engineInterfaceId ||
+                artifact.engineInterfaceVersion !=
+                    manifest.engineInterfaceVersion ||
+                artifact.engineInterfaceHash !=
+                    manifest.engineInterfaceHash ||
+                artifact.rootLayoutId != manifest.rootLayoutId ||
+                artifact.rootLayoutVersion != manifest.rootLayoutVersion ||
+                artifact.rootLayoutHash != manifest.rootLayoutHash ||
+                artifact.requiredCaps.minimumShaderModel !=
+                    manifest.requiredCaps.minimumShaderModel ||
+                artifact.requiredCaps.minimumRootSignatureVersion !=
+                    manifest.requiredCaps.minimumRootSignatureVersion ||
+                artifact.requiredCaps.requiredFeatureMask !=
+                    manifest.requiredCaps.requiredFeatureMask ||
+                artifact.entries.size() != manifest.entries.size()) {
+                outMessage =
+                    "Shader artifact does not match its current manifest: " +
+                    record.guid.value;
+                return false;
+            }
+            std::vector<SHADER::ShaderEntryPoint> manifestEntries =
+                manifest.entries;
+            std::sort(
+                manifestEntries.begin(),
+                manifestEntries.end(),
+                [](const SHADER::ShaderEntryPoint& lhs,
+                   const SHADER::ShaderEntryPoint& rhs) {
+                    return lhs.id < rhs.id;
+                });
+            for (size_t index = 0u;
+                index < manifestEntries.size();
+                ++index) {
+                const SHADER::ShaderEntryPoint& expected =
+                    manifestEntries[index];
+                const SHADER::ShaderEntryPoint& actual =
+                    artifact.entries[index].entry;
+                if (actual.id != expected.id ||
+                    actual.stage != expected.stage ||
+                    actual.entry != expected.entry ||
+                    actual.profile != expected.profile) {
+                    outMessage =
+                        "Shader artifact entry contract is stale: " +
+                        record.guid.value;
+                    return false;
+                }
+            }
+            const std::filesystem::path engineShaderRoot =
+                GFX::ResolveShaderSourcePath(L"HIKARI/Shaders");
+            for (const SHADER::ShaderSourceDependency& dependency :
+                 artifact.dependencies) {
+                const std::filesystem::path* root = nullptr;
+                std::string_view relative{};
+                if (dependency.logicalPath.rfind("Project/", 0u) == 0u) {
+                    root = &projectShaderRoot;
+                    relative = std::string_view(
+                        dependency.logicalPath).substr(8u);
+                }
+                else if (dependency.logicalPath.rfind(
+                        "EngineSdk/", 0u) == 0u &&
+                    engineShaderRoot.is_absolute()) {
+                    root = &engineShaderRoot;
+                    relative = std::string_view(
+                        dependency.logicalPath).substr(10u);
+                }
+                std::filesystem::path sourcePath{};
+                HASH::Sha256Digest sourceHash{};
+                std::string hashError{};
+                ec.clear();
+                if (root == nullptr || relative.empty() ||
+                    !ResolveContainedFilePath(
+                        *root,
+                        std::filesystem::path(relative),
+                        sourcePath,
+                        outMessage) ||
+                    std::filesystem::file_size(sourcePath, ec) !=
+                        dependency.byteSize || ec ||
+                    !HASH::ComputeFileSha256(
+                        sourcePath,
+                        sourceHash,
+                        hashError) ||
+                    sourceHash != dependency.contentHash) {
+                    outMessage =
+                        "Shader source closure changed; reimport asset " +
+                        artifact.sourceGuid.value;
+                    return false;
+                }
+            }
             return true;
         }
 
@@ -310,6 +457,12 @@ namespace HIKARI::ASSETS::COOKING {
 
             if (record.type != AssetType::Shader) {
                 return true;
+            }
+            if (record.importOutdated) {
+                outMessage =
+                    "Shader asset is outdated and must be reimported: " +
+                    record.guid.value;
+                return false;
             }
 
             const AssetArtifactDesc* primary = nullptr;
@@ -346,11 +499,18 @@ namespace HIKARI::ASSETS::COOKING {
                 return false;
             }
 
+            SHADER::ShaderCookedArtifact cooked{};
             return ValidateShaderArtifactFile(
-                record,
-                projectRoot,
-                primary->path,
-                outMessage);
+                    record,
+                    projectRoot,
+                    primary->path,
+                    outMessage,
+                    &cooked) &&
+                ValidateShaderSourceClosureForCook(
+                    record,
+                    cooked,
+                    projectRoot,
+                    outMessage);
         }
 
         bool RequiresSourcePayload(

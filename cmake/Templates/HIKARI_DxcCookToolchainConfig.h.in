@@ -1,0 +1,10 @@
+#pragma once
+
+namespace HIKARI::GFX::INTERNAL::CONFIG {
+
+    inline constexpr const char* kDxcCookCompilerSha256 =
+        "@HIKARI_DXC_COOK_COMPILER_SHA256@";
+    inline constexpr const char* kDxcCookValidatorSha256 =
+        "@HIKARI_DXC_COOK_VALIDATOR_SHA256@";
+
+} // namespace HIKARI::GFX::INTERNAL::CONFIG

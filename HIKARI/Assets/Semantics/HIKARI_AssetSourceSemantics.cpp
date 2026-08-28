@@ -81,6 +81,13 @@ namespace HIKARI::ASSETS::SEMANTICS {
                 6u,
                 ".hvfx",
             },
+            {
+                AssetImporterKind::Shader,
+                AssetType::Shader,
+                "ShaderImporter",
+                1u,
+                ".hshader under Assets/Shaders",
+            },
         } };
 
         bool EndsWith(std::string_view text, std::string_view suffix) noexcept {
@@ -123,6 +130,10 @@ namespace HIKARI::ASSETS::SEMANTICS {
                 EndsWith(lowerFilename, ".scene.json") ||
                 (extension == ".json" &&
                     lowerPath.find("assets/scenes/") != std::string::npos);
+        }
+
+        bool IsShaderSourcePath(const std::string& lowerPath) noexcept {
+            return lowerPath.rfind("assets/shaders/", 0u) == 0u;
         }
 
     } // namespace
@@ -232,6 +243,9 @@ namespace HIKARI::ASSETS::SEMANTICS {
             kind = AssetImporterKind::ModelMaterialBinding;
         } else if (extension == ".hvfx") {
             kind = AssetImporterKind::VfxEffect;
+        } else if (extension == ".hshader" &&
+            IsShaderSourcePath(genericPath)) {
+            kind = AssetImporterKind::Shader;
         }
 
         return kind == AssetImporterKind::Count
@@ -285,11 +299,14 @@ namespace HIKARI::ASSETS::SEMANTICS {
     bool IsAssetCompanionSource(const std::filesystem::path& path) {
         const std::string extension =
             TEXT::ToLowerAsciiCopy(path.extension().string());
-        return extension == ".bin" || extension == ".mtl";
+        return extension == ".bin" || extension == ".mtl" ||
+            extension == ".hlsl" || extension == ".hlsli" ||
+            extension == ".h";
     }
 
     bool IsSourceOnlyAssetDependencyRole(std::string_view role) noexcept {
-        return role == "SourceBuffer" || role == "SourceCompanion";
+        return role == "SourceBuffer" || role == "SourceCompanion" ||
+            role == "ShaderSource" || role == "ShaderInclude";
     }
 
 } // namespace HIKARI::ASSETS::SEMANTICS

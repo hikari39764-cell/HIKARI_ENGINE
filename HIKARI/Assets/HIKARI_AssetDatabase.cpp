@@ -28,6 +28,7 @@
 #include "Importers/HIKARI_DialogueAssetImporter.h"
 #include "Importers/HIKARI_SceneAssetImporter.h"
 #include "Importers/HIKARI_SequenceAssetImporter.h"
+#include "Importers/HIKARI_ShaderImporter.h"
 #include "Importers/HIKARI_SkyCubemapImporter.h"
 #include "Importers/HIKARI_TextureImportBackend_DirectXTex.h"
 #include "Importers/HIKARI_TextureImporter.h"
@@ -1247,6 +1248,44 @@ namespace HIKARI {
             record.meta.displayName = record.displayName;
         }
 
+        const ASSETS::SEMANTICS::AssetImporterSemantics* sourceSemantics =
+            ASSETS::SEMANTICS::ResolveAssetSourceSemantics(
+                normalizedSource);
+        const bool pathOwnsShader = sourceSemantics != nullptr &&
+            sourceSemantics->kind ==
+                ASSETS::SEMANTICS::AssetImporterKind::Shader;
+        const bool metaClaimsShader =
+            record.meta.type == AssetType::Shader ||
+            record.meta.importerId == "ShaderImporter";
+        if (pathOwnsShader) {
+            const bool mismatched =
+                record.meta.type != sourceSemantics->assetType ||
+                record.meta.importerId != sourceSemantics->importerId;
+            record.type = sourceSemantics->assetType;
+            record.meta.type = sourceSemantics->assetType;
+            record.meta.importerId = sourceSemantics->importerId;
+            if (mismatched) {
+                record.meta.importerVersion = 0u;
+                record.lastImportMessage =
+                    "[AssetDatabase] Shader source ownership repaired";
+                if (createMissingMeta && record.metaExists) {
+                    WriteMeta(record);
+                }
+            }
+        }
+        else if (metaClaimsShader) {
+            record.type = GuessAssetTypeFromPath(normalizedSource);
+            record.meta.type = record.type;
+            record.meta.importerId.clear();
+            record.meta.importerVersion = 0u;
+            record.lastImportMessage =
+                "[AssetDatabase] Shader importer rejected outside "
+                "Assets/Shaders/*.hshader";
+            if (createMissingMeta && record.metaExists) {
+                WriteMeta(record);
+            }
+        }
+
         if (!record.guid.IsValid() && record.meta.guid.IsValid()) {
             record.guid = record.meta.guid;
         }
@@ -1286,6 +1325,7 @@ namespace HIKARI {
             std::make_unique<DirectXTexTextureImportBackend>()));
         importerRegistry_.Register(std::make_unique<TextureImporter>(
             std::make_unique<DirectXTexTextureImportBackend>()));
+        importerRegistry_.Register(std::make_unique<ShaderImporter>());
         importerRegistry_.Register(std::make_unique<ModelImporter>());
         importerRegistry_.Register(std::make_unique<SceneAssetImporter>());
         importerRegistry_.Register(std::make_unique<SequenceAssetImporter>());
@@ -1463,6 +1503,11 @@ namespace HIKARI {
             !ASSETS::SEMANTICS::HasAssetArtifact(
                 record,
                 ASSETS::SEMANTICS::AssetArtifactKind::VfxProgram);
+        const bool shaderNeedsArtifact =
+            record.type == AssetType::Shader &&
+            !ASSETS::SEMANTICS::HasAssetArtifact(
+                record,
+                ASSETS::SEMANTICS::AssetArtifactKind::ShaderProgram);
         record.importOutdated = record.importerMissing ||
             record.artifactMissing ||
             sourceNewerThanArtifact ||
@@ -1472,7 +1517,8 @@ namespace HIKARI {
             modelNeedsArtifact ||
             skyNeedsArtifact ||
             materialNeedsArtifact ||
-            vfxNeedsArtifact;
+            vfxNeedsArtifact ||
+            shaderNeedsArtifact;
 
         const std::filesystem::path reportPath = record.importedDirectory / "import_report.json";
         nlohmann::json report;

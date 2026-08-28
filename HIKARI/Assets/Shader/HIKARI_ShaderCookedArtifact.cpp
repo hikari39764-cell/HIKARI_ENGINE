@@ -116,8 +116,28 @@ namespace HIKARI::ASSETS::SHADER {
                 return false;
             }
 
+            size_t index = 8u;
+            int32_t previousIncludeRoot = -1;
+            while (index < arguments.size() &&
+                arguments[index] == "-I") {
+                if (index + 1u >= arguments.size()) {
+                    return false;
+                }
+                const int32_t includeRoot = arguments[index + 1u] ==
+                        "Project"
+                    ? 0
+                    : arguments[index + 1u] == "EngineSdk"
+                        ? 1
+                        : -1;
+                if (includeRoot <= previousIncludeRoot) {
+                    return false;
+                }
+                previousIncludeRoot = includeRoot;
+                index += 2u;
+            }
+
             std::string_view previousDefine{};
-            for (size_t index = 8u; index < arguments.size(); ++index) {
+            for (; index < arguments.size(); ++index) {
                 const std::string_view argument = arguments[index];
                 if (!argument.starts_with("-D")) {
                     return false;

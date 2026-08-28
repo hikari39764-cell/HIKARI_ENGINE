@@ -13,7 +13,7 @@ namespace HIKARI::ASSETS::SHADER {
     inline constexpr uint32_t kShaderCookedArtifactVersion = 2u;
     inline constexpr uint32_t kShaderCompilerContractVersion = 1u;
     inline constexpr uint32_t kMaximumShaderDependencyCount = 512u;
-    inline constexpr uint32_t kMaximumShaderArgumentCount = 128u;
+    inline constexpr uint32_t kMaximumShaderArgumentCount = 160u;
     inline constexpr uint32_t kMaximumShaderBindingsPerEntry = 512u;
     inline constexpr size_t kMaximumShaderArgumentBytes = 8u * 1024u;
     inline constexpr uint64_t kMaximumShaderDependencyBytes =
