@@ -94,6 +94,13 @@ namespace HIKARI::ASSETS::SEMANTICS {
                 "VfxProgram",
                 true,
             },
+            {
+                AssetArtifactKind::ShaderProgram,
+                AssetType::Shader,
+                CookedAssetFormat::HSHADERC,
+                "ShaderProgram",
+                true,
+            },
         } };
 
     } // namespace
@@ -120,6 +127,7 @@ namespace HIKARI::ASSETS::SEMANTICS {
         case CookedAssetFormat::HSKY: return "HSKY";
         case CookedAssetFormat::HIBL: return "HIBL";
         case CookedAssetFormat::HVFX: return "HVFX";
+        case CookedAssetFormat::HSHADERC: return "HSHADERC";
         case CookedAssetFormat::HPAK: return "HPAK";
         case CookedAssetFormat::Unknown:
         default: return "Unknown";
@@ -140,6 +148,7 @@ namespace HIKARI::ASSETS::SEMANTICS {
             CookedAssetFormat::HSKY,
             CookedAssetFormat::HIBL,
             CookedAssetFormat::HVFX,
+            CookedAssetFormat::HSHADERC,
             CookedAssetFormat::HPAK,
         };
         for (CookedAssetFormat format : formats) {
@@ -164,6 +173,7 @@ namespace HIKARI::ASSETS::SEMANTICS {
         case CookedAssetFormat::HSKY: return ".hsky";
         case CookedAssetFormat::HIBL: return ".hibl";
         case CookedAssetFormat::HVFX: return ".hvfxc";
+        case CookedAssetFormat::HSHADERC: return ".hshaderc";
         case CookedAssetFormat::HPAK: return ".hpak";
         case CookedAssetFormat::Unknown:
         default: return {};
@@ -186,6 +196,7 @@ namespace HIKARI::ASSETS::SEMANTICS {
             CookedAssetFormat::HSKY,
             CookedAssetFormat::HIBL,
             CookedAssetFormat::HVFX,
+            CookedAssetFormat::HSHADERC,
             CookedAssetFormat::HPAK,
         };
         for (CookedAssetFormat format : formats) {

@@ -141,6 +141,7 @@ namespace HIKARI::ASSETS::SEMANTICS {
         case AssetType::AnimationStateMachine: return "AnimationStateMachine";
         case AssetType::Dialogue: return "Dialogue";
         case AssetType::ModelMaterialBinding: return "ModelMaterialBinding";
+        case AssetType::Shader: return "Shader";
         case AssetType::Unknown:
         default: return "Unknown";
         }
@@ -163,6 +164,7 @@ namespace HIKARI::ASSETS::SEMANTICS {
         if (text == "ModelMaterialBinding") {
             return AssetType::ModelMaterialBinding;
         }
+        if (text == "Shader") return AssetType::Shader;
         return AssetType::Unknown;
     }
 

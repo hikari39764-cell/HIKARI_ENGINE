@@ -10,6 +10,7 @@
 #include <utility>
 
 #include "Assets/Cooking/HIKARI_CookedContentManifest.h"
+#include "Assets/Formats/HIKARI_HshadercFormat.h"
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/HIKARI_AssetUsageAnalyzer.h"
 #include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
@@ -205,18 +206,151 @@ namespace HIKARI::ASSETS::COOKING {
 
         bool HasArtifactKind(
             const std::vector<AssetArtifactDesc>& artifacts,
-            ASSETS::SEMANTICS::AssetArtifactKind kind) {
+            ASSETS::SEMANTICS::AssetArtifactKind kind,
+            bool acceptCompatible = true) {
 
             return std::any_of(
                 artifacts.begin(),
                 artifacts.end(),
-                [kind](const AssetArtifactDesc& artifact) {
+                [kind, acceptCompatible](
+                    const AssetArtifactDesc& artifact) {
                     return ASSETS::SEMANTICS::
                         MatchesAssetArtifact(
                             artifact,
                             kind,
-                            true);
+                            acceptCompatible);
                 });
+        }
+
+        bool ResolveContainedFilePath(
+            const std::filesystem::path& root,
+            const std::filesystem::path& relativePath,
+            std::filesystem::path& outResolved,
+            std::string& outMessage) {
+
+            if (!IsSafeCookedRelativePath(relativePath)) {
+                outMessage = "Cooked artifact path is unsafe: " +
+                    relativePath.generic_string();
+                return false;
+            }
+            std::error_code ec{};
+            const std::filesystem::path canonicalRoot =
+                std::filesystem::weakly_canonical(root, ec);
+            if (ec) {
+                outMessage = "Could not resolve cooked artifact root: " +
+                    ec.message();
+                return false;
+            }
+            const std::filesystem::path canonicalFile =
+                std::filesystem::weakly_canonical(
+                    root / relativePath,
+                    ec);
+            if (ec) {
+                outMessage = "Could not resolve cooked artifact path: " +
+                    ec.message();
+                return false;
+            }
+
+            std::string rootKey = TEXT::ToLowerAsciiCopy(
+                canonicalRoot.generic_string());
+            const std::string fileKey = TEXT::ToLowerAsciiCopy(
+                canonicalFile.generic_string());
+            while (!rootKey.empty() && rootKey.back() == '/') {
+                rootKey.pop_back();
+            }
+            if (rootKey.empty() || fileKey.size() <= rootKey.size() ||
+                fileKey.compare(0u, rootKey.size(), rootKey) != 0 ||
+                fileKey[rootKey.size()] != '/') {
+                outMessage =
+                    "Cooked artifact resolves outside its owned root: " +
+                    relativePath.generic_string();
+                return false;
+            }
+            outResolved = canonicalFile;
+            return true;
+        }
+
+        bool ValidateShaderArtifactFile(
+            const AssetRecord& record,
+            const std::filesystem::path& root,
+            const std::filesystem::path& relativePath,
+            std::string& outMessage) {
+
+            std::filesystem::path artifactPath{};
+            if (!ResolveContainedFilePath(
+                    root,
+                    relativePath,
+                    artifactPath,
+                    outMessage)) {
+                return false;
+            }
+            SHADER::ShaderCookedArtifact cooked{};
+            std::string artifactError{};
+            if (!SHADER::ReadHshadercFile(
+                    artifactPath,
+                    cooked,
+                    artifactError) ||
+                cooked.sourceGuid.value != record.guid.value) {
+                outMessage =
+                    "Shader artifact failed strict validation for asset " +
+                    record.guid.value + ": " +
+                    (artifactError.empty()
+                        ? "source GUID mismatch"
+                        : artifactError);
+                return false;
+            }
+            return true;
+        }
+
+        bool ValidateShaderArtifactsForCook(
+            const AssetRecord& record,
+            const std::vector<AssetArtifactDesc>& artifacts,
+            const std::filesystem::path& projectRoot,
+            std::string& outMessage) {
+
+            if (record.type != AssetType::Shader) {
+                return true;
+            }
+
+            const AssetArtifactDesc* primary = nullptr;
+            for (const AssetArtifactDesc& artifact : artifacts) {
+                const bool namesShaderRole =
+                    artifact.role == "ShaderProgram";
+                const bool namesShaderFormat =
+                    artifact.format == "HSHADERC" ||
+                    ASSETS::SEMANTICS::ClassifyCookedAssetFormat(
+                        artifact.path) == CookedAssetFormat::HSHADERC;
+                if (!namesShaderRole && !namesShaderFormat) {
+                    continue;
+                }
+                if (!ASSETS::SEMANTICS::MatchesAssetArtifact(
+                        artifact,
+                        ASSETS::SEMANTICS::
+                            AssetArtifactKind::ShaderProgram) ||
+                    ASSETS::SEMANTICS::ClassifyCookedAssetFormat(
+                        artifact.path) != CookedAssetFormat::HSHADERC ||
+                    primary != nullptr) {
+                    outMessage =
+                        "Shader asset must provide exactly one exact "
+                        "ShaderProgram/HSHADERC artifact: " +
+                        record.guid.value;
+                    return false;
+                }
+                primary = &artifact;
+            }
+            if (primary == nullptr ||
+                !IsSafeCookedRelativePath(primary->path)) {
+                outMessage =
+                    "Shader asset is missing a safe HSHADERC artifact: " +
+                    record.guid.value;
+                return false;
+            }
+
+            return ValidateShaderArtifactFile(
+                record,
+                projectRoot,
+                primary->path,
+                outMessage);
         }
 
         bool RequiresSourcePayload(
@@ -249,6 +383,12 @@ namespace HIKARI::ASSETS::COOKING {
                     artifacts,
                     ASSETS::SEMANTICS::
                         AssetArtifactKind::VfxProgram);
+            case AssetType::Shader:
+                return !HasArtifactKind(
+                    artifacts,
+                    ASSETS::SEMANTICS::
+                        AssetArtifactKind::ShaderProgram,
+                    false);
             default:
                 return true;
             }
@@ -260,7 +400,8 @@ namespace HIKARI::ASSETS::COOKING {
             return type == AssetType::Texture ||
                 type == AssetType::Model ||
                 type == AssetType::Sky ||
-                type == AssetType::VfxEffect;
+                type == AssetType::VfxEffect ||
+                type == AssetType::Shader;
         }
 
         std::filesystem::path MakeRuntimePayloadPath(
@@ -939,6 +1080,13 @@ namespace HIKARI::ASSETS::COOKING {
                     runtimeArtifacts.push_back(artifact);
                 }
             }
+            if (!ValidateShaderArtifactsForCook(
+                    *record,
+                    runtimeArtifacts,
+                    options.projectRoot,
+                    result.message)) {
+                return result;
+            }
             if (RequiresPrimaryArtifact(record->type) &&
                 RequiresSourcePayload(
                     *record,
@@ -1054,20 +1202,48 @@ namespace HIKARI::ASSETS::COOKING {
 
             for (const AssetArtifactDesc& artifact :
                  cookedRecord.artifactManifest.artifacts) {
-                if (!IsSafeCookedRelativePath(
-                        artifact.path) ||
-                    !CopyFile(
-                        options.projectRoot /
-                            artifact.path,
-                        options.contentRoot /
-                            artifact.path,
+                const bool isShaderProgram =
+                    sourceRecord->type == AssetType::Shader &&
+                    ASSETS::SEMANTICS::MatchesAssetArtifact(
+                        artifact,
+                        ASSETS::SEMANTICS::
+                            AssetArtifactKind::ShaderProgram);
+                if (!IsSafeCookedRelativePath(artifact.path)) {
+                    result.message =
+                        "Cooked artifact path is unsafe: " +
+                        artifact.path;
+                    return result;
+                }
+                std::filesystem::path source =
+                    options.projectRoot / artifact.path;
+                std::filesystem::path destination =
+                    options.contentRoot / artifact.path;
+                if (isShaderProgram &&
+                    (!ResolveContainedFilePath(
+                         options.projectRoot,
+                         artifact.path,
+                         source,
+                         result.message) ||
+                     !ResolveContainedFilePath(
+                         options.contentRoot,
+                         artifact.path,
+                         destination,
+                         result.message))) {
+                    return result;
+                }
+                if (!CopyFile(
+                        source,
+                        destination,
                         result.fileCount,
                         result.message)) {
-                    if (result.message.empty()) {
-                        result.message =
-                            "Cooked artifact path is unsafe: " +
-                            artifact.path;
-                    }
+                    return result;
+                }
+                if (isShaderProgram &&
+                    !ValidateShaderArtifactFile(
+                        *sourceRecord,
+                        options.contentRoot,
+                        artifact.path,
+                        result.message)) {
                     return result;
                 }
             }

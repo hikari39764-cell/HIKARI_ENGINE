@@ -263,6 +263,9 @@ hikari_add_runtime_contract(
 hikari_add_runtime_contract(
     HIKARI_ShaderSourceManifestSmoke
     "Tools/Tests/HIKARI_ShaderSourceManifestSmoke.cpp")
+hikari_add_runtime_contract(
+    HIKARI_ShaderArtifactFormatSmoke
+    "Tools/Tests/HIKARI_ShaderArtifactFormatSmoke.cpp")
 
 enable_testing()
 foreach(runtime_contract IN ITEMS
@@ -275,7 +278,8 @@ foreach(runtime_contract IN ITEMS
     HIKARI_RenderGraphCapacitySmoke
     HIKARI_SceneSurfaceSemanticSmoke
     HIKARI_RenderFrameGraphPlanSmoke
-    HIKARI_ShaderSourceManifestSmoke)
+    HIKARI_ShaderSourceManifestSmoke
+    HIKARI_ShaderArtifactFormatSmoke)
     add_test(
         NAME "${runtime_contract}"
         COMMAND "$<TARGET_FILE:${runtime_contract}>")

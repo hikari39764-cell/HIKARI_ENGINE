@@ -26,6 +26,7 @@ namespace HIKARI {
         AnimationStateMachine,
         Dialogue,
         ModelMaterialBinding,
+        Shader,
         Unknown
     };
 
@@ -202,6 +203,7 @@ namespace HIKARI {
         HSKY,
         HIBL,
         HVFX,
+        HSHADERC,
         HPAK,
     };
 

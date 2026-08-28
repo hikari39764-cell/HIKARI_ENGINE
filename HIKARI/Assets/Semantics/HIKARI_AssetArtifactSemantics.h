@@ -22,6 +22,7 @@ namespace HIKARI::ASSETS::SEMANTICS {
         IblPrefiltered,
         BrdfLut,
         VfxProgram,
+        ShaderProgram,
         Count,
     };
 
