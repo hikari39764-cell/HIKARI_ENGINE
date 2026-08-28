@@ -138,6 +138,12 @@ namespace HIKARI {
             }
         }
 
+        // 親子関係を変更する前に必要な容量を確保し、割り当て失敗で
+        // parent_ / children_ / Transform3D::parent_ が半端に分離しないようにする。
+        if (parent != nullptr) {
+            parent->children_.reserve(parent->children_.size() + 1u);
+        }
+
         if (parent_ != nullptr) {
             auto& siblings = parent_->children_;
             siblings.erase(
@@ -188,13 +194,35 @@ namespace HIKARI {
         if (!component) {
             return nullptr;
         }
+        if (components_.size() >= components_.max_size()) {
+            return nullptr;
+        }
 
-        IComponent* ptr = component.get();
-        ptr->SetOwner(this);
-        ptr->OnAttach();
-        components_.push_back(std::move(component));
-        MarkRenderStateDirty();
-        return ptr;
+        auto attach = [&]() -> IComponent* {
+            components_.reserve(components_.size() + 1u);
+            IComponent* ptr = component.get();
+            ptr->SetOwner(this);
+            try {
+                ptr->OnAttach();
+            }
+            catch (...) {
+                ptr->SetOwner(nullptr);
+                throw;
+            }
+            components_.push_back(std::move(component));
+            MarkRenderStateDirty();
+            return ptr;
+        };
+
+        if (ownerWorld_ == nullptr) {
+            return attach();
+        }
+        if (!ownerWorld_->CanMutateStructure()) {
+            return nullptr;
+        }
+        const World::StructureReadScope structureRead =
+            ownerWorld_->AcquireStructureReadScope();
+        return attach();
     }
 
     void GameObject::DetachComponents() {

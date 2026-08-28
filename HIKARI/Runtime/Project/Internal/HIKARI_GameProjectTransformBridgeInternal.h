@@ -1,0 +1,15 @@
+#pragma once
+
+#include "HIKARI/Project/ValueTypes.h"
+#include "Render3D/HIKARI_Transform3D.h"
+
+namespace HIKARI::PROJECT::INTERNAL {
+
+    bool IsValidProjectTransform(
+        const GameProjectTransform& transform) noexcept;
+    Transform3D ToRuntimeTransform(
+        const GameProjectTransform& transform) noexcept;
+    GameProjectTransform ToProjectTransform(
+        const Transform3D& transform) noexcept;
+
+} // namespace HIKARI::PROJECT::INTERNAL

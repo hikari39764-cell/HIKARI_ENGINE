@@ -51,6 +51,8 @@ set(
     HIKARI::DirectXTex
     HIKARI::Jolt
     HIKARI::CoACD
+    d3d12
+    dxgi
     dxguid
     xaudio2)
 set(HIKARI_RUNTIME_PRIVATE_LINK_LIBRARIES)
@@ -197,7 +199,10 @@ set_property(
         "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectUiBridge.cpp"
         "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectVfxBridge.cpp"
         "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectPropertyBridge.cpp"
+        "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectBindingBridge.cpp"
+        "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectQueryBridge.cpp"
         "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectRegistration.cpp"
+        "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectTransformBridge.cpp"
         "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectWorldBridge.cpp"
     APPEND
     PROPERTY
@@ -208,6 +213,31 @@ source_group(
     TREE "${HIKARI_SOURCE_ROOT}"
     FILES
         ${HIKARI_RUNTIME_SOURCES})
+
+function(hikari_add_runtime_contract target_name source_path)
+    add_executable("${target_name}" EXCLUDE_FROM_ALL)
+    target_sources(
+        "${target_name}"
+        PRIVATE
+            "${HIKARI_SOURCE_ROOT}/${source_path}")
+    target_link_libraries(
+        "${target_name}"
+        PRIVATE
+            HIKARI::Runtime)
+    hikari_configure_engine_target("${target_name}")
+    set_target_properties(
+        "${target_name}"
+        PROPERTIES
+            RUNTIME_OUTPUT_DIRECTORY
+                "${CMAKE_BINARY_DIR}/contracts")
+endfunction()
+
+hikari_add_runtime_contract(
+    HIKARI_GameComponentBindingLifecycleSmoke
+    "Tools/Tests/HIKARI_GameComponentBindingLifecycleSmoke.cpp")
+hikari_add_runtime_contract(
+    HIKARI_WorldSdkSmoke
+    "Tools/Tests/HIKARI_WorldSdkSmoke.cpp")
 
 if(HIKARI_WITH_EDITOR_BUILD)
     add_library(HIKARI_Editor STATIC)

@@ -158,7 +158,7 @@ namespace {
             "        \"HIKARI GameProjects require x64 "
             "Visual Studio 2022.\")\n"
             "endif()\n\n"
-            "find_package(HIKARI 1 CONFIG REQUIRED)\n\n"
+            "find_package(HIKARI 2 CONFIG REQUIRED)\n\n"
             "hikari_add_game_project(\n"
             "    NAME \"" + identifier + "\"\n"
             "    SOURCE_DIR Source)\n";
@@ -186,7 +186,7 @@ namespace {
       "name": "debug",
       "displayName": "HIKARI GameProject Debug",
       "inherits": "hikari-project-base",
-      "binaryDir": "${sourceDir}/Library/Build/CMake/sdk-v1/debug",
+      "binaryDir": "${sourceDir}/Library/Build/CMake/sdk-v2/debug",
       "cacheVariables": {
         "CMAKE_CONFIGURATION_TYPES": "Debug",
         "HIKARI_GAME_PROJECT_OUTPUT_ROOT": "${sourceDir}/Library/Build/debug"
@@ -196,7 +196,7 @@ namespace {
       "name": "editor-release",
       "displayName": "HIKARI GameProject Editor Release",
       "inherits": "hikari-project-base",
-      "binaryDir": "${sourceDir}/Library/Build/CMake/sdk-v1/editor-release",
+      "binaryDir": "${sourceDir}/Library/Build/CMake/sdk-v2/editor-release",
       "cacheVariables": {
         "CMAKE_CONFIGURATION_TYPES": "EditorRelease",
         "HIKARI_GAME_PROJECT_OUTPUT_ROOT": "${sourceDir}/Library/Build/editor-release"
@@ -206,7 +206,7 @@ namespace {
       "name": "game-shipping",
       "displayName": "HIKARI GameProject Shipping",
       "inherits": "hikari-project-base",
-      "binaryDir": "${sourceDir}/Library/Build/CMake/sdk-v1/game-shipping",
+      "binaryDir": "${sourceDir}/Library/Build/CMake/sdk-v2/game-shipping",
       "cacheVariables": {
         "CMAKE_CONFIGURATION_TYPES": "Shipping",
         "HIKARI_GAME_PROJECT_OUTPUT_ROOT": "${sourceDir}/Library/Build/game-shipping"

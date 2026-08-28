@@ -382,7 +382,7 @@ $configuration = switch ($Preset) {
 }
 $manifestRoot = Split-Path -Parent $projectManifest
 $projectBuildDirectory = Join-Path `
-    $projectRoot "Library\Build\CMake\sdk-v1\$Preset"
+    $projectRoot "Library\Build\CMake\sdk-v2\$Preset"
 $projectOutputDirectory = Join-Path `
     $projectRoot "Library\Build\$Preset"
 $projectModule = Join-Path `

@@ -5,84 +5,77 @@
 #include <type_traits>
 #include <utility>
 
-#include "HIKARI/Project/ActionViews.h"
-#include "HIKARI/Project/AudioView.h"
 #include "HIKARI/Project/GameProjectSdk.h"
-#include "HIKARI/Project/GameFlowViews.h"
-#include "HIKARI/Project/NavigationView.h"
-#include "HIKARI/Project/PresentationViews.h"
-#include "HIKARI/Project/RuntimeActivityTypes.h"
-#include "HIKARI/Project/TerrainView.h"
-#include "HIKARI/Project/UiView.h"
 #include "HIKARI/Project/ValueTypes.h"
-#include "HIKARI/Project/VfxView.h"
+#include "HIKARI/Project/WorldTypes.h"
 
 namespace HIKARI {
 
     class IGameComponent;
     struct GameProjectSdkAccess;
 
+    // Non-owning identity view. It may be retained, does not extend World
+    // lifetime, resolves World + object generations on every call, and becomes
+    // invalid after either lifetime ends. Use only on the owning runtime thread.
     class ObjectView {
     public:
         ObjectView() = default;
 
-        bool IsValid() const noexcept {
-            return object_ != nullptr;
+        HIKARI_GAME_PROJECT_SDK_API bool IsValid() const noexcept;
+        GameProjectObjectHandle GetHandle() const noexcept {
+            return handle_;
         }
-
-        HIKARI_GAME_PROJECT_SDK_API uint64_t GetHandle() const noexcept;
+        // Returned text is borrowed and remains valid only until the object is
+        // renamed or destroyed.
         HIKARI_GAME_PROJECT_SDK_API std::string_view
             GetName() const noexcept;
-        HIKARI_GAME_PROJECT_SDK_API GameProjectFloat3
-            GetLocalPosition() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool GetLocalTransform(
+            GameProjectTransform& outTransform) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool GetWorldTransform(
             GameProjectTransform& outTransform) const noexcept;
-        HIKARI_GAME_PROJECT_SDK_API bool SetLocalPosition(
-            GameProjectFloat3 position) const noexcept;
-        // Changes only runtime scheduling. Authored enable/visibility values
-        // are preserved and become effective again when activity is Active.
-        HIKARI_GAME_PROJECT_SDK_API bool SetRuntimeActivity(
-            GameProjectRuntimeActivity activity) const noexcept;
-        HIKARI_GAME_PROJECT_SDK_API GameProjectRuntimeActivity
-            GetRuntimeActivity() const noexcept;
-        // Authoring composition hook for project-owned preset components.
-        // Values are persisted by the built-in ModelComponent; the project
-        // never owns renderer resources or material instances directly.
-        HIKARI_GAME_PROJECT_SDK_API bool SetModelAssetGuid(
-            std::string_view assetGuid) const noexcept;
-        HIKARI_GAME_PROJECT_SDK_API bool SetModelMaterialSetAssetGuid(
-            std::string_view materialSetAssetGuid) const noexcept;
-        HIKARI_GAME_PROJECT_SDK_API bool UseImportedModelMaterials()
-            const noexcept;
-        // Reads the first built-in ColliderComponent as one local-space shape.
-        // The caller owns the output value; the view exposes no Physics state.
-        HIKARI_GAME_PROJECT_SDK_API bool GetPrimaryColliderShape(
-            GameProjectPhysicsShape& outShape) const noexcept;
-        // Applies a project composition preset only while the first Collider
-        // is still the untouched engine Box default. Authored collider edits
-        // are never overwritten by later runtime attachment.
-        HIKARI_GAME_PROJECT_SDK_API bool ConfigureDefaultCollider(
-            const GameProjectPhysicsShape& shape) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API GameProjectWorldResult SetLocalTransform(
+            const GameProjectTransform& transform) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API GameProjectWorldResult SetWorldTransform(
+            const GameProjectTransform& transform) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API ObjectView GetParent() const noexcept;
 
     private:
         friend struct GameProjectSdkAccess;
 
-        explicit ObjectView(void* object) noexcept
-            : object_(object) {}
+        explicit ObjectView(
+            GameProjectObjectHandle handle) noexcept
+            : handle_(handle) {}
 
-        void* object_ = nullptr;
+        GameProjectObjectHandle handle_{};
     };
 
+    // Non-owning identity view. It may be retained and becomes invalid when
+    // the World is destroyed. The current SDK is single-writer: all access and
+    // mutation commands run on the owning runtime thread.
     class WorldView {
     public:
         WorldView() = default;
 
-        bool IsValid() const noexcept {
-            return world_ != nullptr;
+        HIKARI_GAME_PROJECT_SDK_API bool IsValid() const noexcept;
+        GameProjectWorldHandle GetHandle() const noexcept {
+            return world_;
         }
 
         HIKARI_GAME_PROJECT_SDK_API ObjectView FindObject(
-            uint64_t handle) const noexcept;
+            GameProjectObjectHandle handle) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API uint64_t GetObjectCount() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool CanMutateStructure() const noexcept;
+        // Structural commands apply immediately only outside protected World
+        // traversal. Calls made inside one return MutationRejected.
+        HIKARI_GAME_PROJECT_SDK_API GameProjectWorldResult SpawnObject(
+            const GameProjectSpawnObjectDesc& desc) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API GameProjectWorldResult DestroyObject(
+            GameProjectObjectHandle object) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API GameProjectWorldResult SetParent(
+            GameProjectObjectHandle object,
+            GameProjectObjectHandle parent,
+            GameProjectParentMode mode =
+                GameProjectParentMode::KeepLocal) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool ReadVariable(
             std::string_view variableId,
             GameProjectBindingValue& outValue) const noexcept;
@@ -95,10 +88,10 @@ namespace HIKARI {
             std::string_view writerId) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool EmitEvent(
             std::string_view eventId,
-            uint64_t sourceObjectHandle = 0) const noexcept;
+            GameProjectObjectHandle sourceObjectHandle = {}) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool EmitEvent(
             std::string_view eventId,
-            uint64_t sourceObjectHandle,
+            GameProjectObjectHandle sourceObjectHandle,
             const GameProjectBindingValue& payload) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API uint32_t GetEventCount(
             std::string_view eventId) const noexcept;
@@ -106,40 +99,6 @@ namespace HIKARI {
             std::string_view eventId,
             uint32_t index,
             GameProjectEventRecord& outEvent) const noexcept;
-        HIKARI_GAME_PROJECT_SDK_API InputView
-            GetInput() const noexcept;
-        HIKARI_GAME_PROJECT_SDK_API AudioView
-            GetAudio() const noexcept;
-        HIKARI_GAME_PROJECT_SDK_API AnimationView
-            GetAnimation() const noexcept;
-        HIKARI_GAME_PROJECT_SDK_API MotionView
-            GetMotion() const noexcept;
-        HIKARI_GAME_PROJECT_SDK_API PhysicsQueryView
-            GetPhysicsQueries() const noexcept;
-        HIKARI_GAME_PROJECT_SDK_API NavigationView
-            GetNavigation() const noexcept;
-        HIKARI_GAME_PROJECT_SDK_API TerrainView
-            GetTerrain() const noexcept;
-        HIKARI_GAME_PROJECT_SDK_API CameraView
-            GetCamera() const noexcept;
-        HIKARI_GAME_PROJECT_SDK_API TimeDilationView
-            GetTimeDilation() const noexcept;
-        HIKARI_GAME_PROJECT_SDK_API PresentationModelView
-            GetPresentationModels() const noexcept;
-        HIKARI_GAME_PROJECT_SDK_API PresentationVfxView
-            GetPresentationVfx() const noexcept;
-        HIKARI_GAME_PROJECT_SDK_API VfxView
-            GetVfx() const noexcept;
-        HIKARI_GAME_PROJECT_SDK_API UiView
-            GetUi() const noexcept;
-        HIKARI_GAME_PROJECT_SDK_API SceneFlowView
-            GetSceneFlow() const noexcept;
-        HIKARI_GAME_PROJECT_SDK_API DialogueView
-            GetDialogue() const noexcept;
-        HIKARI_GAME_PROJECT_SDK_API SaveGameView
-            GetSaveGame() const noexcept;
-        HIKARI_GAME_PROJECT_SDK_API RuntimeSessionView
-            GetRuntimeSession() const noexcept;
 
         template<class Component, class Visitor>
         bool ForEachComponent(
@@ -157,9 +116,14 @@ namespace HIKARI {
                     ObjectView object,
                     IGameComponent* component) noexcept {
                     try {
+                        Component* typed =
+                            dynamic_cast<Component*>(component);
+                        if (typed == nullptr) {
+                            return false;
+                        }
                         (*static_cast<Callback*>(context))(
                             object,
-                            *static_cast<Component*>(component));
+                            *typed);
                         return true;
                     }
                     catch (...) {
@@ -176,7 +140,7 @@ namespace HIKARI {
 
         friend struct GameProjectSdkAccess;
 
-        explicit WorldView(void* world) noexcept
+        explicit WorldView(GameProjectWorldHandle world) noexcept
             : world_(world) {}
 
         HIKARI_GAME_PROJECT_SDK_API bool VisitComponents(
@@ -184,7 +148,7 @@ namespace HIKARI {
             void* context,
             VisitorFn visitor) const noexcept;
 
-        void* world_ = nullptr;
+        GameProjectWorldHandle world_{};
     };
 
 } // namespace HIKARI

@@ -1,32 +1,76 @@
-#include "HIKARI_World.h"
+#include "Scene/HIKARI_World.h"
+
 #include <algorithm>
 #include <limits>
+#include <stdexcept>
+
 #include "Core/HIKARI_Logger.h"
-#include "HIKARI_GameObject.h"
+#include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_WorldEvents.h"
+
 namespace HIKARI {
 
-
-
     GameObject* World::CreateObject(const std::string& name) {
+        if (!CanMutateStructure()) {
+            return nullptr;
+        }
+        if (objects_.size() >= objects_.max_size() ||
+            objects_.size() >= renderDirtyObjects_.max_size()) {
+            return nullptr;
+        }
+        const size_t nextObjectCount = objects_.size() + 1u;
+        // dirty list は live object 数を超えない。先に容量を確保することで
+        // transform/hierarchy 更新後の dirty 登録を非割り当て経路にする。
+        objects_.reserve(nextObjectCount);
+        renderDirtyObjects_.reserve(nextObjectCount);
         auto object = std::make_unique<GameObject>(name);
         GameObject* ptr = object.get();
-        ptr->SetRuntimeHandle(AllocateObjectHandle(ptr));
-        ptr->SetOwnerWorld(this);
-        objects_.push_back(std::move(object));
-        MarkRenderObjectDirty(ptr);
+        const RuntimeObjectHandle handle = AllocateObjectHandle(ptr);
+        if (!handle.IsValid()) {
+            return nullptr;
+        }
+        ptr->SetRuntimeHandle(handle);
+        try {
+            objects_.push_back(std::move(object));
+            ptr->SetOwnerWorld(this);
+        }
+        catch (...) {
+            if (!objects_.empty() && objects_.back().get() == ptr) {
+                ptr->SetOwnerWorld(nullptr);
+                ptr->SetRuntimeHandle({});
+                objects_.pop_back();
+            }
+            ReleaseObjectHandle(handle);
+            throw;
+        }
         return ptr;
     }
 
     World::~World() {
         Clear();
+        UnregisterRuntimeIdentity();
     }
 
-    void World::DestroyObject(GameObject* object) {
+    WorldMutationResult World::DestroyObject(GameObject* object) {
+        if (!IsOwnerThread()) {
+            return WorldMutationResult::WrongThread;
+        }
+        if (!CanMutateStructure()) {
+            return WorldMutationResult::MutationDisallowed;
+        }
         if (object == nullptr || object->ownerWorld_ != this) {
-            return;
+            return WorldMutationResult::InvalidObjectHandle;
         }
 
+        if (removedRenderObjectIds_.size() ==
+            removedRenderObjectIds_.max_size()) {
+            throw std::length_error(
+                "World removed render object capacity overflow.");
+        }
+        removedRenderObjectIds_.reserve(
+            removedRenderObjectIds_.size() + 1u);
+        const StructureReadScope structureRead =
+            AcquireStructureReadScope();
         frameEvents_.Publish(WorldObjectDestroyedEvent{
             object->GetDocumentId(),
             object->GetRuntimeHandle(),
@@ -41,7 +85,10 @@ namespace HIKARI {
         }
         (void)object->SetParent(nullptr);
         renderDirtyObjects_.erase(
-            std::remove(renderDirtyObjects_.begin(), renderDirtyObjects_.end(), object),
+            std::remove(
+                renderDirtyObjects_.begin(),
+                renderDirtyObjects_.end(),
+                object),
             renderDirtyObjects_.end());
         (void)OnDocumentIdChanged(
             object,
@@ -53,13 +100,34 @@ namespace HIKARI {
         object->SetOwnerWorld(nullptr);
 
         objects_.erase(
-            std::remove_if(objects_.begin(), objects_.end(), [object](const std::unique_ptr<GameObject>& candidate) {
-                return candidate.get() == object;
+            std::remove_if(
+                objects_.begin(),
+                objects_.end(),
+                [object](
+                    const std::unique_ptr<GameObject>& candidate) {
+                    return candidate.get() == object;
                 }),
             objects_.end());
+        return WorldMutationResult::Success;
     }
 
-    GameObject* World::FindObject(RuntimeObjectHandle handle) noexcept {
+    WorldMutationResult World::DestroyObject(
+        RuntimeObjectHandle handle) {
+        if (!IsOwnerThread()) {
+            return WorldMutationResult::WrongThread;
+        }
+        GameObject* object = FindObject(handle);
+        if (object == nullptr) {
+            return WorldMutationResult::InvalidObjectHandle;
+        }
+        return DestroyObject(object);
+    }
+
+    GameObject* World::FindObject(
+        RuntimeObjectHandle handle) noexcept {
+        if (!IsOwnerThread()) {
+            return nullptr;
+        }
         if (!handle.IsValid() || handle.slot >= objectSlots_.size()) {
             return nullptr;
         }
@@ -71,12 +139,14 @@ namespace HIKARI {
 
     const GameObject* World::FindObject(
         RuntimeObjectHandle handle) const noexcept {
-
         return const_cast<World*>(this)->FindObject(handle);
     }
 
     GameObject* World::FindObject(SceneObjectId id) noexcept {
-        if (id.value == 0) {
+        if (!IsOwnerThread()) {
+            return nullptr;
+        }
+        if (id.value == 0u) {
             return nullptr;
         }
         const auto found = objectsByDocumentId_.find(id.value);
@@ -85,29 +155,71 @@ namespace HIKARI {
             : nullptr;
     }
 
-    const GameObject* World::FindObject(SceneObjectId id) const noexcept {
+    const GameObject* World::FindObject(
+        SceneObjectId id) const noexcept {
         return const_cast<World*>(this)->FindObject(id);
     }
 
     void World::Update(float dt) {
+        if (!IsOwnerThread()) {
+            HIKARI_LOG_ERROR(
+                "[World] Update rejected outside the owner thread.");
+            return;
+        }
+        const StructureReadScope structureRead =
+            AcquireStructureReadScope();
         for (const auto& object : objects_) {
             object->Update(dt);
         }
     }
 
     void World::Render() {
+        if (!IsOwnerThread()) {
+            HIKARI_LOG_ERROR(
+                "[World] Render rejected outside the owner thread.");
+            return;
+        }
+        const StructureReadScope structureRead =
+            AcquireStructureReadScope();
         for (const auto& object : objects_) {
             object->Render();
         }
     }
 
     void World::RenderImGui() {
+        if (!IsOwnerThread()) {
+            HIKARI_LOG_ERROR(
+                "[World] RenderImGui rejected outside the owner thread.");
+            return;
+        }
+        const StructureReadScope structureRead =
+            AcquireStructureReadScope();
         for (const auto& object : objects_) {
             object->RenderImGui();
         }
     }
 
     void World::Clear() {
+        if (!IsOwnerThread()) {
+            HIKARI_LOG_ERROR(
+                "[World] Clear rejected outside the owner thread.");
+            return;
+        }
+        if (!CanMutateStructure()) {
+            HIKARI_LOG_ERROR(
+                "[World] Clear rejected during structure traversal.");
+            return;
+        }
+        if (objects_.size() >
+            removedRenderObjectIds_.max_size() -
+                removedRenderObjectIds_.size()) {
+            throw std::length_error(
+                "World removed render object capacity overflow.");
+        }
+        removedRenderObjectIds_.reserve(
+            removedRenderObjectIds_.size() + objects_.size());
+        const StructureReadScope structureRead =
+            AcquireStructureReadScope();
         for (const auto& object : objects_) {
             if (object) {
                 (void)object->SetParent(nullptr);
@@ -129,15 +241,18 @@ namespace HIKARI {
         fixedEvents_.Clear();
     }
 
-    const std::vector<std::unique_ptr<GameObject>>& World::GetObjects() const {
+    const std::vector<std::unique_ptr<GameObject>>&
+        World::GetObjects() const {
         return objects_;
     }
 
-    const std::vector<GameObject*>& World::GetRenderDirtyObjects() const {
+    const std::vector<GameObject*>&
+        World::GetRenderDirtyObjects() const {
         return renderDirtyObjects_;
     }
 
-    const std::vector<uint64_t>& World::GetRemovedRenderObjectIds() const {
+    const std::vector<uint64_t>&
+        World::GetRemovedRenderObjectIds() const {
         return removedRenderObjectIds_;
     }
 
@@ -145,19 +260,23 @@ namespace HIKARI {
         if (object == nullptr) {
             return;
         }
-        if (std::find(renderDirtyObjects_.begin(), renderDirtyObjects_.end(), object) !=
-            renderDirtyObjects_.end()) {
+        if (std::find(
+                renderDirtyObjects_.begin(),
+                renderDirtyObjects_.end(),
+                object) != renderDirtyObjects_.end()) {
             return;
         }
         renderDirtyObjects_.push_back(object);
     }
 
     void World::MarkRenderObjectRemoved(uint64_t renderObjectId) {
-        if (renderObjectId == 0) {
+        if (renderObjectId == 0u) {
             return;
         }
-        if (std::find(removedRenderObjectIds_.begin(), removedRenderObjectIds_.end(), renderObjectId) !=
-            removedRenderObjectIds_.end()) {
+        if (std::find(
+                removedRenderObjectIds_.begin(),
+                removedRenderObjectIds_.end(),
+                renderObjectId) != removedRenderObjectIds_.end()) {
             return;
         }
         removedRenderObjectIds_.push_back(renderObjectId);
@@ -215,26 +334,31 @@ namespace HIKARI {
         fixedEvents_.BeginScope(fixedTickIndex);
     }
 
-    RuntimeObjectHandle World::AllocateObjectHandle(GameObject* object) {
+    RuntimeObjectHandle World::AllocateObjectHandle(
+        GameObject* object) {
         if (!freeObjectSlots_.empty()) {
             const uint32_t slotIndex = freeObjectSlots_.back();
             freeObjectSlots_.pop_back();
             ObjectSlot& slot = objectSlots_[slotIndex];
             slot.object = object;
-            if (slot.generation == 0) {
-                slot.generation = 1;
-            }
-            return RuntimeObjectHandle{ slotIndex, slot.generation };
+            return RuntimeObjectHandle{
+                slotIndex,
+                slot.generation
+            };
         }
 
         if (objectSlots_.size() >=
-            static_cast<size_t>((std::numeric_limits<uint32_t>::max)())) {
+            static_cast<size_t>(
+                (std::numeric_limits<uint32_t>::max)())) {
             return {};
         }
         const uint32_t slotIndex =
             static_cast<uint32_t>(objectSlots_.size());
-        objectSlots_.push_back(ObjectSlot{ object, 1 });
-        return RuntimeObjectHandle{ slotIndex, 1 };
+        const size_t nextSlotCount = objectSlots_.size() + 1u;
+        objectSlots_.reserve(nextSlotCount);
+        freeObjectSlots_.reserve(nextSlotCount);
+        objectSlots_.push_back(ObjectSlot{ object, 1u });
+        return RuntimeObjectHandle{ slotIndex, 1u };
     }
 
     void World::ReleaseObjectHandle(RuntimeObjectHandle handle) {
@@ -242,14 +366,18 @@ namespace HIKARI {
             return;
         }
         ObjectSlot& slot = objectSlots_[handle.slot];
-        if (slot.generation != handle.generation || slot.object == nullptr) {
+        if (slot.generation != handle.generation ||
+            slot.object == nullptr) {
             return;
         }
         slot.object = nullptr;
-        ++slot.generation;
-        if (slot.generation == 0) {
-            slot.generation = 1;
+        if (slot.generation ==
+            (std::numeric_limits<uint32_t>::max)()) {
+            // generation を巻き戻すと古い handle が再び有効になるため、
+            // 上限に達した slot は再利用しない。
+            return;
         }
+        ++slot.generation;
         freeObjectSlots_.push_back(handle.slot);
     }
 
@@ -261,7 +389,7 @@ namespace HIKARI {
             return false;
         }
 
-        if (nextId.value != 0) {
+        if (nextId.value != 0u) {
             const auto found = objectsByDocumentId_.find(nextId.value);
             if (found != objectsByDocumentId_.end() &&
                 found->second != object) {
@@ -275,7 +403,7 @@ namespace HIKARI {
             }
         }
 
-        if (previousId.value != 0 && previousId != nextId) {
+        if (previousId.value != 0u && previousId != nextId) {
             const auto previous = objectsByDocumentId_.find(
                 previousId.value);
             if (previous != objectsByDocumentId_.end() &&

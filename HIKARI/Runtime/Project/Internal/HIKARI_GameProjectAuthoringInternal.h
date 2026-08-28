@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -8,12 +9,7 @@
 
 #include "HIKARI/Project/GameComponent.h"
 #include "HIKARI/Project/GameSystem.h"
-#include "HIKARI/Project/GameFlowViews.h"
-#include "HIKARI/Project/NavigationView.h"
-#include "HIKARI/Project/PresentationViews.h"
-#include "HIKARI/Project/TerrainView.h"
 #include "HIKARI/Project/RuntimeRegistration.h"
-#include "HIKARI/Project/UiView.h"
 #include "Scene/Components/HIKARI_IComponent.h"
 #include "Scene/HIKARI_ISystem.h"
 
@@ -26,6 +22,7 @@ namespace HIKARI {
     class IInspectorBuilder;
     class SystemTypeRegistry;
     class World;
+    enum class RuntimeWorldAccessResult : uint8_t;
 
     struct RuntimeFeatureContextAccess {
         static RuntimeFeatureContext Create(
@@ -52,50 +49,16 @@ namespace HIKARI {
             GameObject& object) noexcept;
         static WorldView MakeWorldView(
             World& world) noexcept;
-        static InputView MakeInputView(
-            World& world) noexcept;
-        static AudioView MakeAudioView(
-            World& world) noexcept;
-        static AnimationView MakeAnimationView(
-            World& world) noexcept;
-        static MotionView MakeMotionView(
-            World& world) noexcept;
-        static PhysicsQueryView MakePhysicsQueryView(
-            World& world) noexcept;
-        static NavigationView MakeNavigationView(
-            World& world) noexcept;
-        static TerrainView MakeTerrainView(
-            World& world) noexcept;
-        static CameraView MakeCameraView(
-            World& world) noexcept;
-        static TimeDilationView MakeTimeDilationView(
-            World& world) noexcept;
-        static PresentationModelView MakePresentationModelView(
-            World& world) noexcept;
-        static PresentationVfxView MakePresentationVfxView(
-            World& world) noexcept;
-        static VfxView MakeVfxView(
-            World& world) noexcept;
-        static UiView MakeUiView(
-            World& world) noexcept;
-        static SceneFlowView MakeSceneFlowView(
-            World& world) noexcept;
-        static DialogueView MakeDialogueView(
-            World& world) noexcept;
-        static SaveGameView MakeSaveGameView(
-            World& world) noexcept;
-        static RuntimeSessionView MakeRuntimeSessionView(
-            World& world) noexcept;
         static GameComponentContext MakeGameComponentContext(
             GameProjectComponentAdapter& adapter,
             GameObject& object,
             World& world) noexcept;
         static GameObject* GetObject(
-            const ObjectView& view) noexcept;
+            const ObjectView& view,
+            RuntimeWorldAccessResult* outAccess = nullptr) noexcept;
         static World* GetWorld(
-            const WorldView& view) noexcept;
-        static World* GetWorld(
-            const PresentationModelView& view) noexcept;
+            const WorldView& view,
+            RuntimeWorldAccessResult* outAccess = nullptr) noexcept;
     };
 
     class GameProjectComponentAdapter final

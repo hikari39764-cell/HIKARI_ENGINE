@@ -4,35 +4,20 @@ include(CMakePackageConfigHelpers)
 
 set(
     HIKARI_GAME_PROJECT_SDK_HEADERS
-    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/ActionTypes.h"
-    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/ActionViews.h"
-    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/AudioTypes.h"
-    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/AudioView.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/FrameContext.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/GameComponent.h"
-    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/GameFlowTypes.h"
-    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/GameFlowViews.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/GameProjectModule.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/GameProjectModuleApi.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/GameProjectSdk.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/GameSystem.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/Inspector.h"
-    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/NavigationTypes.h"
-    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/NavigationView.h"
-    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/TerrainView.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/PropertyArchive.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/RuntimeExtension.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/RuntimeFeature.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/RuntimeFeatureRegistration.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/RuntimeRegistration.h"
-    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/RuntimeActivityTypes.h"
-    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/UiTypes.h"
-    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/UiView.h"
-    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/PresentationTypes.h"
-    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/PresentationViews.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/ValueTypes.h"
-    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/VfxTypes.h"
-    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/VfxView.h"
+    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/WorldTypes.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/WorldView.h")
 
 set(
@@ -83,13 +68,6 @@ if(HIKARI_WITH_EDITOR_BUILD)
         "}\n")
 endif()
 
-set(HIKARI_GAME_PROJECT_HOST_FILENAME "HIKARI_Engine.exe")
-if(NOT HIKARI_WITH_EDITOR_BUILD)
-    set(
-        HIKARI_GAME_PROJECT_HOST_FILENAME
-        "${HIKARI_GAME_HOST_OUTPUT_NAME}.exe")
-endif()
-
 configure_package_config_file(
     "${HIKARI_SOURCE_ROOT}/cmake/SDK/HIKARIConfig.cmake.in"
     "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARIConfig.cmake"
@@ -97,11 +75,17 @@ configure_package_config_file(
     NO_SET_AND_CHECK_MACRO)
 write_basic_package_version_file(
     "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARIConfigVersion.cmake"
-    VERSION 1.35.1
+    VERSION 2.0.0
     COMPATIBILITY SameMajorVersion)
 
 function(hikari_configure_game_project_sdk host_target)
     set(_sdk_root "$<TARGET_FILE_DIR:${host_target}>/Sdk")
+    if(MSVC)
+        target_link_options(
+            "${host_target}"
+            PRIVATE
+                "/INCLUDE:HIKARI_LinkGameProjectQueryBridge")
+    endif()
     set(
         _sdk_inputs
         ${HIKARI_GAME_PROJECT_SDK_HEADERS}
