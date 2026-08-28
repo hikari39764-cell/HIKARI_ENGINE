@@ -97,6 +97,8 @@ namespace HIKARI {
                 return GFX::ShaderStage::Amplification;
             case SHADER::ShaderStage::Mesh:
                 return GFX::ShaderStage::Mesh;
+            case SHADER::ShaderStage::Geometry:
+                return GFX::ShaderStage::Geometry;
             case SHADER::ShaderStage::Count:
                 break;
             }

@@ -239,6 +239,7 @@ namespace HIKARI::GFX {
         case ShaderStage::Compute: return L"cs_6_0";
         case ShaderStage::Amplification: return L"as_6_5";
         case ShaderStage::Mesh: return L"ms_6_5";
+        case ShaderStage::Geometry: return L"gs_6_0";
         case ShaderStage::Pixel:
         default: return L"ps_6_0";
         }
@@ -253,6 +254,9 @@ namespace HIKARI::GFX {
         }
         if (legacyProfile[0] == 'c' && legacyProfile[1] == 's') {
             return L"cs_6_0";
+        }
+        if (legacyProfile[0] == 'g' && legacyProfile[1] == 's') {
+            return L"gs_6_0";
         }
         return L"ps_6_0";
     }

@@ -64,6 +64,7 @@ namespace HIKARI::ASSETS::SHADER {
             case ShaderStage::Compute: return "cs_6_0";
             case ShaderStage::Amplification: return "as_6_5";
             case ShaderStage::Mesh: return "ms_6_5";
+            case ShaderStage::Geometry: return "gs_6_0";
             case ShaderStage::Count: break;
             }
             return {};
@@ -93,6 +94,7 @@ namespace HIKARI::ASSETS::SHADER {
         case ShaderStage::Compute: return "Compute";
         case ShaderStage::Amplification: return "Amplification";
         case ShaderStage::Mesh: return "Mesh";
+        case ShaderStage::Geometry: return "Geometry";
         case ShaderStage::Count: break;
         }
         return "Unknown";

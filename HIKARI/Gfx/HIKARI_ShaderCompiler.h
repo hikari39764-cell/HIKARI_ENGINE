@@ -15,7 +15,14 @@ namespace HIKARI::GFX {
         Compute,
         Amplification,
         Mesh,
+        Geometry,
     };
+    static_assert(static_cast<int>(ShaderStage::Vertex) == 0);
+    static_assert(static_cast<int>(ShaderStage::Pixel) == 1);
+    static_assert(static_cast<int>(ShaderStage::Compute) == 2);
+    static_assert(static_cast<int>(ShaderStage::Amplification) == 3);
+    static_assert(static_cast<int>(ShaderStage::Mesh) == 4);
+    static_assert(static_cast<int>(ShaderStage::Geometry) == 5);
 
     const wchar_t* ShaderModel6Profile(ShaderStage stage);
     const wchar_t* UpgradeToShaderModel6Profile(const char* legacyProfile);

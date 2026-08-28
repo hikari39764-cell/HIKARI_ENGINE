@@ -14,6 +14,7 @@ namespace HIKARI::GFX {
             case ShaderStage::Compute: return "cs_6_0";
             case ShaderStage::Amplification: return "as_6_5";
             case ShaderStage::Mesh: return "ms_6_5";
+            case ShaderStage::Geometry: return "gs_6_0";
             }
             return {};
         }

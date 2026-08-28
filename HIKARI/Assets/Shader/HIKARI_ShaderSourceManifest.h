@@ -26,8 +26,15 @@ namespace HIKARI::ASSETS::SHADER {
         Compute,
         Amplification,
         Mesh,
+        Geometry,
         Count,
     };
+    static_assert(static_cast<uint8_t>(ShaderStage::Vertex) == 0u);
+    static_assert(static_cast<uint8_t>(ShaderStage::Pixel) == 1u);
+    static_assert(static_cast<uint8_t>(ShaderStage::Compute) == 2u);
+    static_assert(static_cast<uint8_t>(ShaderStage::Amplification) == 3u);
+    static_assert(static_cast<uint8_t>(ShaderStage::Mesh) == 4u);
+    static_assert(static_cast<uint8_t>(ShaderStage::Geometry) == 5u);
 
     enum class ShaderIncludeRoot : uint8_t {
         Project = 0u,

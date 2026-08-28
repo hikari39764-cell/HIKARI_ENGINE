@@ -1,11 +1,14 @@
 param(
     [string]$DxcPath = "",
     [string]$Group = "",
-    [string]$OutputRoot = "",
     [switch]$VerboseErrors
 )
 
 $ErrorActionPreference = "Stop"
+
+# Transitional source diagnostic only. This script never publishes runtime
+# artifacts; formal built-in HSHADERC production must use the engine-owned
+# GFX::CompileShaderProgramForCook toolchain and the same catalog.
 
 function Find-Dxc {
     param([string]$RequestedPath)
@@ -33,127 +36,41 @@ function Find-Dxc {
     throw "dxc.exe was not found. Pass -DxcPath or install Windows SDK."
 }
 
-$dxc = Find-Dxc $DxcPath
-$resolvedOutputRoot = $null
-if (-not [string]::IsNullOrWhiteSpace($OutputRoot)) {
-    $resolvedOutputRoot = [IO.Path]::GetFullPath($OutputRoot)
-    [IO.Directory]::CreateDirectory($resolvedOutputRoot) | Out-Null
+$repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+$shaderRoot = Join-Path $repoRoot 'HIKARI\Shaders'
+$catalogPath = Join-Path $repoRoot 'HIKARI\Shaders\BuiltinShaderCatalog.json'
+$catalogContract = Join-Path $repoRoot `
+    'Tools\Tests\Test-BuiltinShaderCatalogContracts.ps1'
+& $catalogContract
+if (-not $?) {
+    throw 'Built-in Shader catalog contracts failed.'
+}
+if (-not (Test-Path -LiteralPath $catalogPath -PathType Leaf)) {
+    throw "Built-in shader catalog is missing: $catalogPath"
+}
+$catalog = [System.IO.File]::ReadAllText(
+    $catalogPath,
+    [System.Text.Encoding]::UTF8) | ConvertFrom-Json
+if (
+    $catalog.schema -ne 'HIKARI.BuiltinShaderCatalog' -or
+    $catalog.version -ne 1 -or
+    @($catalog.programs).Count -eq 0) {
+    throw "Built-in shader catalog schema is invalid: $catalogPath"
 }
 
-$entries = @(
-    @{ Shader = "HIKARI/Shaders/Render3D_StaticVS.hlsl"; Entry = "main"; Target = "vs_6_0" },
-    @{ Shader = "HIKARI/Shaders/Render3D_SkinnedVS.hlsl"; Entry = "main"; Target = "vs_6_0" },
-    @{ Shader = "HIKARI/Shaders/Render3D_StaticPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
-    @{ Shader = "HIKARI/Shaders/Render3D_WaterVisibilityPS.hlsl"; Entry = "main"; Target = "ps_6_0"; Group = "WaterVisibility"; WarningsAsErrors = $true },
-    @{ Shader = "HIKARI/Shaders/WaterSpectrum/HIKARI_WaterSpectrumEvolutionCS.hlsl"; Entry = "main"; Target = "cs_6_0"; Group = "WaterSpectrum"; WarningsAsErrors = $true },
-    @{ Shader = "HIKARI/Shaders/WaterSpectrum/HIKARI_WaterSpectrumStockhamCS.hlsl"; Entry = "main"; Target = "cs_6_0"; Group = "WaterSpectrum"; WarningsAsErrors = $true },
-    @{ Shader = "HIKARI/Shaders/WaterSpectrum/HIKARI_WaterSpectrumResolveCS.hlsl"; Entry = "main"; Target = "cs_6_0"; Group = "WaterSpectrum"; WarningsAsErrors = $true },
-    @{ Shader = "HIKARI/Shaders/Render3D_StaticFxPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
-    @{ Shader = "HIKARI/Shaders/Render3D_GeometryAuxPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
-    @{ Shader = "HIKARI/Shaders/Render3D_GeometryAuxFeaturePS.hlsl"; Entry = "main"; Target = "ps_6_0" },
-    @{ Shader = "HIKARI/Shaders/Render3D_GeometryOutlineVS.hlsl"; Entry = "main"; Target = "vs_6_0" },
-    @{ Shader = "HIKARI/Shaders/Render3D_SkinnedGeometryOutlineVS.hlsl"; Entry = "main"; Target = "vs_6_0" },
-    @{ Shader = "HIKARI/Shaders/Render3D_GeometryOutlinePS.hlsl"; Entry = "main"; Target = "ps_6_0" },
-    @{ Shader = "HIKARI/Shaders/Render3D_VisibilityOverlayPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
-    @{ Shader = "HIKARI/Shaders/Render3D_SkyVS.hlsl"; Entry = "main"; Target = "vs_6_0" },
-    @{ Shader = "HIKARI/Shaders/Render3D_SkyPS.hlsl"; Entry = "main"; Target = "ps_6_0"; Group = "Atmosphere"; WarningsAsErrors = $true },
-    @{ Shader = "HIKARI/Shaders/Render3D_PanoramaSkyLayerPS.hlsl"; Entry = "main"; Target = "ps_6_0"; Group = "Atmosphere"; WarningsAsErrors = $true },
-    # StylizedClouds is a strict, independently runnable shader group.  Noise
-    # generation is compute; trace, temporal reprojection and composite remain
-    # graphics entries so the MRT/depth contract cannot be hidden by a compute
-    # substitute.
-    @{ Shader = "HIKARI/Shaders/Render3D_StylizedCloudNoise.hlsl"; Entry = "GenerateStylizedCloudShapeCS"; Target = "cs_6_0"; Group = "StylizedClouds"; WarningsAsErrors = $true },
-    @{ Shader = "HIKARI/Shaders/Render3D_StylizedCloudNoise.hlsl"; Entry = "GenerateStylizedCloudDetailCS"; Target = "cs_6_0"; Group = "StylizedClouds"; WarningsAsErrors = $true },
-    @{ Shader = "HIKARI/Shaders/Render3D_StylizedCloudNoise.hlsl"; Entry = "GenerateStylizedCloudWeatherCS"; Target = "cs_6_0"; Group = "StylizedClouds"; WarningsAsErrors = $true },
-    @{ Shader = "HIKARI/Shaders/Render3D_StylizedCloudPass.hlsl"; Entry = "FullscreenVS"; Target = "vs_6_0"; Group = "StylizedClouds"; WarningsAsErrors = $true },
-    @{ Shader = "HIKARI/Shaders/Render3D_StylizedCloudPass.hlsl"; Entry = "RenderCloudPS"; Target = "ps_6_0"; Group = "StylizedClouds"; WarningsAsErrors = $true },
-    @{ Shader = "HIKARI/Shaders/Render3D_StylizedCloudPass.hlsl"; Entry = "ReprojectCloudPS"; Target = "ps_6_0"; Group = "StylizedClouds"; WarningsAsErrors = $true },
-    @{ Shader = "HIKARI/Shaders/Render3D_StylizedCloudPass.hlsl"; Entry = "CompositeCloudPS"; Target = "ps_6_0"; Group = "StylizedClouds"; WarningsAsErrors = $true },
-    @{ Shader = "HIKARI/Shaders/Render3D_VolumetricLighting.hlsl"; Entry = "InjectAndIntegrateCS"; Target = "cs_6_0" },
-    @{ Shader = "HIKARI/Shaders/Render3D_VolumetricLighting.hlsl"; Entry = "CompositeCS"; Target = "cs_6_0" },
-    @{ Shader = "HIKARI/Shaders/Render3D_ParticleSimulation.hlsl"; Entry = "ResetCS"; Target = "cs_6_0"; Group = "NativeVfx" },
-    @{ Shader = "HIKARI/Shaders/Render3D_ParticleSimulation.hlsl"; Entry = "UpdateCS"; Target = "cs_6_0"; Group = "NativeVfx" },
-    @{ Shader = "HIKARI/Shaders/Render3D_ParticleSimulation.hlsl"; Entry = "SpawnCS"; Target = "cs_6_0"; Group = "NativeVfx" },
-    @{ Shader = "HIKARI/Shaders/Render3D_ParticleGpuDrivenCompute.hlsl"; Entry = "ResetDrawCS"; Target = "cs_6_0"; Group = "NativeVfx" },
-    @{ Shader = "HIKARI/Shaders/Render3D_ParticleGpuDrivenCompute.hlsl"; Entry = "CompactDrawCS"; Target = "cs_6_0"; Group = "NativeVfx" },
-    @{ Shader = "HIKARI/Shaders/Render3D_ParticleGpuDrivenCompute.hlsl"; Entry = "BuildDrawArgsCS"; Target = "cs_6_0"; Group = "NativeVfx" },
-    @{ Shader = "HIKARI/Shaders/Render3D_ParticleGpuDrivenDraw.hlsl"; Entry = "ParticleSpriteMS"; Target = "ms_6_5"; Group = "NativeVfx" },
-    @{ Shader = "HIKARI/Shaders/Render3D_ParticleGpuDrivenDraw.hlsl"; Entry = "ParticleStripMS"; Target = "ms_6_5"; Group = "NativeVfx" },
-    @{ Shader = "HIKARI/Shaders/Render3D_ParticleGpuDrivenDraw.hlsl"; Entry = "ParticlePS"; Target = "ps_6_0"; Group = "NativeVfx" },
-    @{ Shader = "HIKARI/Shaders/Render3D_DebugStrokeVS.hlsl"; Entry = "main"; Target = "vs_6_0" },
-    @{ Shader = "HIKARI/Shaders/Render3D_DebugStrokeGS.hlsl"; Entry = "main"; Target = "gs_6_0" },
-    @{ Shader = "HIKARI/Shaders/Render3D_DebugStrokePS.hlsl"; Entry = "main"; Target = "ps_6_0" },
-    @{ Shader = "HIKARI/Shaders/Render3D_DebugSolidVS.hlsl"; Entry = "main"; Target = "vs_6_0" },
-    @{ Shader = "HIKARI/Shaders/Render3D_DebugSolidPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
-    @{ Shader = "HIKARI/Shaders/Render3D_ShadowStaticVS.hlsl"; Entry = "main"; Target = "vs_6_0" },
-    @{ Shader = "HIKARI/Shaders/Render3D_ShadowSkinnedVS.hlsl"; Entry = "main"; Target = "vs_6_0" },
-    @{ Shader = "HIKARI/Shaders/Render3D_ShadowAlphaPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
-    @{ Shader = "HIKARI/Shaders/DepthPyramid_BuildCS.hlsl"; Entry = "main"; Target = "cs_6_0" },
-    @{ Shader = "HIKARI/Shaders/Render3D_ClusterWorklistCS.hlsl"; Entry = "ExpandPageTasksCS"; Target = "cs_6_0" },
-    @{ Shader = "HIKARI/Shaders/Render3D_ClusterDispatchFinalizeCS.hlsl"; Entry = "FinalizePageTaskDispatchCS"; Target = "cs_6_0" },
-    @{ Shader = "HIKARI/Shaders/Render3D_ClusterMeshletDispatchFinalizeCS.hlsl"; Entry = "FinalizeMeshletDispatchCS"; Target = "cs_6_0" },
-    @{ Shader = "HIKARI/Shaders/Render3D_ClusterFineVisibilityCS.hlsl"; Entry = "CullPageTasksCS"; Target = "cs_6_0" },
-    @{ Shader = "HIKARI/Shaders/Render3D_ClusterTransparentSortCS.hlsl"; Entry = "SortTransparentRangesCS"; Target = "cs_6_0" },
-    @{ Shader = "HIKARI/Shaders/Render3D_GpuTraditionalCommandCompactCS.hlsl"; Entry = "CompactGpuTraditionalCommandStreamCS"; Target = "cs_6_0" },
-    @{ Shader = "HIKARI/Shaders/Render3D_MeshletAS.hlsl"; Entry = "main"; Target = "as_6_5" },
-    @{ Shader = "HIKARI/Shaders/Render3D_MeshletMS.hlsl"; Entry = "main"; Target = "ms_6_5" },
-    @{ Shader = "HIKARI/Shaders/Render3D_MeshletDepthMS.hlsl"; Entry = "main"; Target = "ms_6_5" },
-    @{ Shader = "HIKARI/Shaders/Render3D_MeshletWaterVisibilityMS.hlsl"; Entry = "main"; Target = "ms_6_5"; Group = "WaterVisibility"; WarningsAsErrors = $true },
-    @{ Shader = "HIKARI/Shaders/Render3D_MeshletWaterVisibilityPS.hlsl"; Entry = "main"; Target = "ps_6_0"; Group = "WaterVisibility"; WarningsAsErrors = $true },
-    @{ Shader = "HIKARI/Shaders/Render3D_MeshletShadowMS.hlsl"; Entry = "main"; Target = "ms_6_5" },
-    @{ Shader = "HIKARI/Shaders/Render3D_MeshletDepthPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
-    @{ Shader = "HIKARI/Shaders/Render3D_MeshletGeometryAuxMS.hlsl"; Entry = "main"; Target = "ms_6_5" },
-    @{ Shader = "HIKARI/Shaders/Render3D_MeshletGeometryAuxPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
-    @{ Shader = "HIKARI/Shaders/Render3D_MeshletGeometryAuxFeaturePS.hlsl"; Entry = "main"; Target = "ps_6_0" },
-    @{ Shader = "HIKARI/Shaders/Render3D_MeshletGeometryOutlineMS.hlsl"; Entry = "main"; Target = "ms_6_5" },
-    @{ Shader = "HIKARI/Shaders/Render3D_MeshletShadowPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
-    @{ Shader = "HIKARI/Shaders/Render3D_GpuDrivenOpaqueFullPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
-    @{ Shader = "HIKARI/Shaders/Render3D_GpuDrivenOpaqueAlbedoOnlyPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
-    @{ Shader = "HIKARI/Shaders/Render3D_GpuDrivenOpaqueNoNormalMapPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
-    @{ Shader = "HIKARI/Shaders/Render3D_GpuDrivenOpaqueNoShadowPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
-    @{ Shader = "HIKARI/Shaders/Render3D_GpuDrivenOpaqueNoSsaoPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
-    @{ Shader = "HIKARI/Shaders/Render3D_GpuDrivenOpaqueNoMaterialExtrasPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
-    @{ Shader = "HIKARI/Shaders/Post_ToneMappingPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
-    @{ Shader = "HIKARI/Shaders/Color_AutomaticExposureCS.hlsl"; Entry = "main"; Target = "cs_6_0" },
-    @{ Shader = "HIKARI/Shaders/Post_FXAA.hlsl"; Entry = "main"; Target = "ps_6_0" },
-    @{ Shader = "HIKARI/Shaders/Post_BloomExtractPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
-    @{ Shader = "HIKARI/Shaders/Post_BloomBlurHPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
-    @{ Shader = "HIKARI/Shaders/Post_BloomBlurVPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
-    @{ Shader = "HIKARI/Shaders/Post_SunGlarePS.hlsl"; Entry = "main"; Target = "ps_6_0"; Group = "Atmosphere"; WarningsAsErrors = $true },
-    @{ Shader = "HIKARI/Shaders/Render3D_AtmosphereTransmittanceCS.hlsl"; Entry = "main"; Target = "cs_6_0"; Group = "Atmosphere"; WarningsAsErrors = $true },
-    @{ Shader = "HIKARI/Shaders/Render3D_AtmosphereMultiScatteringCS.hlsl"; Entry = "main"; Target = "cs_6_0"; Group = "Atmosphere"; WarningsAsErrors = $true },
-    @{ Shader = "HIKARI/Shaders/Render3D_AtmosphereSkyViewCS.hlsl"; Entry = "main"; Target = "cs_6_0"; Group = "Atmosphere"; WarningsAsErrors = $true },
-    @{ Shader = "HIKARI/Shaders/Post_AniPS.hlsl"; Entry = "main"; Target = "ps_6_0" },
-    @{ Shader = "HIKARI/Shaders/Post_CinematicGradePS.hlsl"; Entry = "main"; Target = "ps_6_0" },
-    @{ Shader = "HIKARI/Shaders/Post_TransitionLinearWipePS.hlsl"; Entry = "main"; Target = "ps_6_0" },
-    @{ Shader = "HIKARI/Shaders/Post_TransitionBurnDissolvePS.hlsl"; Entry = "main"; Target = "ps_6_0"; Group = "Transitions"; WarningsAsErrors = $true },
-    @{ Shader = "HIKARI/Shaders/Post_SSAOPS.hlsl"; Entry = "VSMain"; Target = "vs_6_0" },
-    @{ Shader = "HIKARI/Shaders/Post_SSAOPS.hlsl"; Entry = "PSMain"; Target = "ps_6_0" },
-    @{ Shader = "HIKARI/Shaders/Post_SSAOPS.hlsl"; Entry = "PSMainOptimizedHigh"; Target = "ps_6_0" },
-    @{ Shader = "HIKARI/Shaders/Post_SSAOPS.hlsl"; Entry = "PSMainDepthOnly"; Target = "ps_6_0" },
-    @{ Shader = "HIKARI/Shaders/Post_SSAOBlurPS.hlsl"; Entry = "VSMain"; Target = "vs_6_0" },
-    @{ Shader = "HIKARI/Shaders/Post_SSAOBlurPS.hlsl"; Entry = "PSMain"; Target = "ps_6_0" },
-    @{ Shader = "HIKARI/Shaders/Post_SSAOBlurPS.hlsl"; Entry = "PSMainUpsample"; Target = "ps_6_0" },
-    @{ Shader = "HIKARI/Shaders/Post_SSAOBlurPS.hlsl"; Entry = "PSMainDepthOnly"; Target = "ps_6_0" },
-    @{ Shader = "HIKARI/Shaders/Post_SSAOBlurPS.hlsl"; Entry = "PSMainUpsampleDepthOnly"; Target = "ps_6_0" },
-    @{ Shader = "HIKARI/Shaders/Post_ScreenSpaceReflections.hlsl"; Entry = "VSMain"; Target = "vs_6_0" },
-    @{ Shader = "HIKARI/Shaders/Post_ScreenSpaceReflections.hlsl"; Entry = "PSTrace"; Target = "ps_6_0" },
-    @{ Shader = "HIKARI/Shaders/Post_ScreenSpaceReflections.hlsl"; Entry = "PSResolve"; Target = "ps_6_0" }
-    @{ Shader = "HIKARI/Shaders/Post_StylizedScreenFeatures.hlsl"; Entry = "VSMain"; Target = "vs_6_0" }
-    @{ Shader = "HIKARI/Shaders/Post_StylizedScreenFeatures.hlsl"; Entry = "PSMain"; Target = "ps_6_0" }
-    @{ Shader = "HIKARI/Shaders/Render3D_WeaponTrail.hlsl"; Entry = "VSMain"; Target = "vs_6_0"; Group = "CombatVfx"; WarningsAsErrors = $true }
-    @{ Shader = "HIKARI/Shaders/Render3D_WeaponTrail.hlsl"; Entry = "PSMain"; Target = "ps_6_0"; Group = "CombatVfx"; WarningsAsErrors = $true }
-    @{ Shader = "HIKARI/Shaders/Render3D_CombatAfterimage.hlsl"; Entry = "VSMain"; Target = "vs_6_0"; Group = "CombatVfx"; WarningsAsErrors = $true }
-    @{ Shader = "HIKARI/Shaders/Render3D_CombatAfterimage.hlsl"; Entry = "VSStaticMain"; Target = "vs_6_0"; Group = "CombatVfx"; WarningsAsErrors = $true }
-    @{ Shader = "HIKARI/Shaders/Render3D_CombatAfterimage.hlsl"; Entry = "PSMain"; Target = "ps_6_0"; Group = "CombatVfx"; WarningsAsErrors = $true }
-    @{ Shader = "HIKARI/Shaders/Render3D_GroundTelegraph.hlsl"; Entry = "VSMain"; Target = "vs_6_0"; Group = "CombatVfx"; WarningsAsErrors = $true }
-    @{ Shader = "HIKARI/Shaders/Render3D_GroundTelegraph.hlsl"; Entry = "PSMain"; Target = "ps_6_0"; Group = "CombatVfx"; WarningsAsErrors = $true }
-    @{ Shader = "HIKARI/Shaders/Post_ActionScreenImpulse.hlsl"; Entry = "main"; Target = "ps_6_0"; Group = "CombatVfx"; WarningsAsErrors = $true }
-    @{ Shader = "HIKARI/Shaders/Post_CombatScreenDistortionComposite.hlsl"; Entry = "main"; Target = "ps_6_0"; Group = "CombatVfx"; WarningsAsErrors = $true }
-    @{ Shader = "HIKARI/Shaders/Render2D_GameUiEffect.hlsl"; Entry = "VSMain"; Target = "vs_6_0"; Group = "GameUi"; WarningsAsErrors = $true }
-    @{ Shader = "HIKARI/Shaders/Render2D_GameUiEffect.hlsl"; Entry = "PSMain"; Target = "ps_6_0"; Group = "GameUi"; WarningsAsErrors = $true }
-    @{ Shader = "HIKARI/Shaders/Post_GameUiBackdrop.hlsl"; Entry = "main"; Target = "ps_6_0"; Group = "GameUi"; WarningsAsErrors = $true }
-)
+$entries = @()
+foreach ($program in $catalog.programs) {
+    foreach ($catalogEntry in $program.entries) {
+        $entries += @{
+            Shader = Join-Path $shaderRoot $program.source
+            Entry = $catalogEntry.entry
+            Target = $catalogEntry.profile
+            Group = $program.group
+            IncludeRoots = @($program.includeRoots)
+            Defines = @($program.defines)
+        }
+    }
+}
 
 if (-not [string]::IsNullOrWhiteSpace($Group)) {
     $entries = @($entries | Where-Object {
@@ -164,37 +81,28 @@ if (-not [string]::IsNullOrWhiteSpace($Group)) {
     }
 }
 
+$dxc = Find-Dxc $DxcPath
 $failures = New-Object System.Collections.Generic.List[object]
 foreach ($entry in $entries) {
-    $arguments = @(
+    $arguments = [System.Collections.Generic.List[string]]::new()
+    $arguments.AddRange([string[]]@(
         '-E', $entry.Entry,
         '-T', $entry.Target,
         '-HV', '2021',
         '-O3',
-        '-I', 'HIKARI/Shaders')
-    if ($entry.ContainsKey('WarningsAsErrors') -and $entry.WarningsAsErrors) {
-        $arguments += '-WX'
-    }
-    $outputPath = 'NUL'
-    if ($resolvedOutputRoot) {
-        $normalizedShader = $entry.Shader.Replace('\', '/')
-        if (-not $normalizedShader.StartsWith(
-                'HIKARI/Shaders/',
-                [StringComparison]::Ordinal)) {
-            throw "Precompiled engine shader is outside HIKARI/Shaders: $normalizedShader"
+        '-WX'))
+    foreach ($includeRoot in $entry.IncludeRoots) {
+        if ($includeRoot -ne 'EngineSdk') {
+            throw "Unsupported built-in Shader include root: $includeRoot"
         }
-        $engineRelative = $normalizedShader.Substring('HIKARI/'.Length)
-        $bytecodeDirectory = Join-Path `
-            $resolvedOutputRoot `
-            $engineRelative.Replace('/', '\')
-        [IO.Directory]::CreateDirectory($bytecodeDirectory) | Out-Null
-        $safeEntry = $entry.Entry -replace '[^A-Za-z0-9_.-]', '_'
-        $safeTarget = $entry.Target -replace '[^A-Za-z0-9_.-]', '_'
-        $outputPath = Join-Path `
-            $bytecodeDirectory `
-            ("{0}_{1}.dxil" -f $safeEntry, $safeTarget)
+        $arguments.Add('-I')
+        $arguments.Add($shaderRoot)
     }
-    $arguments += @('-Fo', $outputPath, $entry.Shader)
+    foreach ($define in $entry.Defines) {
+        $arguments.Add(
+            '-D' + [string]$define.name + '=' + [string]$define.value)
+    }
+    $arguments.AddRange([string[]]@('-Fo', 'NUL', $entry.Shader))
     $output = & $dxc @arguments 2>&1
     if ($LASTEXITCODE -ne 0) {
         $failures.Add([pscustomobject]@{
@@ -214,9 +122,4 @@ if ($failures.Count -gt 0) {
     exit 1
 }
 
-if ($resolvedOutputRoot) {
-    Write-Host ("Shader bytecode bake passed: {0} entries -> {1}" -f `
-        $entries.Count, $resolvedOutputRoot)
-} else {
-    Write-Host ("Shader compile check passed: {0} entries with {1}" -f $entries.Count, $dxc)
-}
+Write-Host ("Shader compile check passed: {0} entries with {1}" -f $entries.Count, $dxc)
