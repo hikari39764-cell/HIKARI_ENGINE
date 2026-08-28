@@ -23,6 +23,73 @@ enum class EditorOperationExecutionPolicy : uint8_t {
     WorkerThread,
 };
 
+enum class EditorOperationKind : uint8_t {
+    Legacy,
+    Query,
+    Mutation,
+    Session,
+};
+
+enum class EditorOperationExposureMask : uint8_t {
+    None = 0,
+    Human = 1u << 0u,
+    BuiltInAi = 1u << 1u,
+    LocalBridge = 1u << 2u,
+    Automation = 1u << 3u,
+    LegacyDefault =
+        (1u << 0u) | (1u << 1u) | (1u << 2u),
+};
+
+constexpr EditorOperationExposureMask operator|(
+    EditorOperationExposureMask lhs,
+    EditorOperationExposureMask rhs) noexcept {
+
+    return static_cast<EditorOperationExposureMask>(
+        static_cast<uint8_t>(lhs) |
+        static_cast<uint8_t>(rhs));
+}
+
+constexpr bool HasEditorOperationExposure(
+    EditorOperationExposureMask value,
+    EditorOperationExposureMask exposure) noexcept {
+
+    return (static_cast<uint8_t>(value) &
+        static_cast<uint8_t>(exposure)) != 0u;
+}
+
+enum class EditorOperationPermission : uint8_t {
+    Legacy,
+    ReadEditorState,
+    ModifyEditorState,
+    ModifyProjectFiles,
+    ExecuteExternalProcess,
+};
+
+enum class EditorOperationRisk : uint8_t {
+    Legacy,
+    Low,
+    Medium,
+    High,
+    Destructive,
+};
+
+enum class EditorOperationRegistrationCode : uint8_t {
+    Unspecified,
+    Registered,
+    MissingId,
+    MissingSummary,
+    MissingWorkspace,
+    MissingExecute,
+    DuplicateId,
+};
+
+struct EditorOperationRegistrationResult {
+    bool ok = false;
+    EditorOperationRegistrationCode code =
+        EditorOperationRegistrationCode::Unspecified;
+    std::string message{};
+};
+
 struct EditorOperationParameter {
     std::string name{};
     EditorOperationParameterType type =
@@ -50,13 +117,22 @@ struct EditorOperationDefinition {
     std::function<EditorOperationResult(const nlohmann::json&)> execute{};
     EditorOperationExecutionPolicy executionPolicy =
         EditorOperationExecutionPolicy::MainThread;
+    // Existing operations retain their current discovery behavior until each
+    // registrar is migrated to an explicit Schema v2 classification.
+    EditorOperationKind kind = EditorOperationKind::Legacy;
+    EditorOperationExposureMask exposureMask =
+        EditorOperationExposureMask::LegacyDefault;
+    EditorOperationPermission permission =
+        EditorOperationPermission::Legacy;
+    EditorOperationRisk risk = EditorOperationRisk::Legacy;
 };
 
 // Unified operation bus: human UI, AI actions and the local bridge all call
 // the same registered operations instead of maintaining parallel dispatchers.
 class EditorOperationRegistry {
 public:
-    void Register(EditorOperationDefinition definition);
+    EditorOperationRegistrationResult Register(
+        EditorOperationDefinition definition);
     bool IsRegistered(const std::string& id) const noexcept;
     EditorOperationResult Validate(
         const EditorOperationDefinition& definition,

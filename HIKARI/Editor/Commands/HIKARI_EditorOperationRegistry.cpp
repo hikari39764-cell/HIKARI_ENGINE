@@ -122,14 +122,70 @@ bool MatchesParameterType(
     return false;
 }
 
+EditorOperationRegistrationResult RejectRegistration(
+    EditorOperationRegistrationCode code,
+    std::string_view id,
+    std::string message) {
+
+    try {
+        std::ostringstream oss;
+        oss << "[EditorOperation] registration rejected id=";
+        AppendOperationIdForLog(oss, id);
+        oss << " reason=" << message;
+        HIKARI_LOG_ERROR(oss.str());
+    } catch (...) {
+    }
+
+    EditorOperationRegistrationResult result{};
+    result.code = code;
+    result.message = std::move(message);
+    return result;
+}
+
 } // namespace
 
-void EditorOperationRegistry::Register(
+EditorOperationRegistrationResult EditorOperationRegistry::Register(
     EditorOperationDefinition definition) {
-    if (definition.id.empty() || !definition.execute) {
-        return;
+
+    if (definition.id.empty()) {
+        return RejectRegistration(
+            EditorOperationRegistrationCode::MissingId,
+            definition.id,
+            "Editor operation ID is required.");
     }
-    operations_[definition.id] = std::move(definition);
+    if (definition.summary.empty()) {
+        return RejectRegistration(
+            EditorOperationRegistrationCode::MissingSummary,
+            definition.id,
+            "Editor operation summary is required.");
+    }
+    if (definition.workspace.empty()) {
+        return RejectRegistration(
+            EditorOperationRegistrationCode::MissingWorkspace,
+            definition.id,
+            "Editor operation workspace is required.");
+    }
+    if (!definition.execute) {
+        return RejectRegistration(
+            EditorOperationRegistrationCode::MissingExecute,
+            definition.id,
+            "Editor operation execute callback is required.");
+    }
+    if (operations_.find(definition.id) != operations_.end()) {
+        return RejectRegistration(
+            EditorOperationRegistrationCode::DuplicateId,
+            definition.id,
+            "Editor operation ID is already registered.");
+    }
+
+    const std::string id = definition.id;
+    operations_.emplace(id, std::move(definition));
+
+    EditorOperationRegistrationResult result{};
+    result.ok = true;
+    result.code = EditorOperationRegistrationCode::Registered;
+    result.message = "Registered editor operation: " + id;
+    return result;
 }
 
 bool EditorOperationRegistry::IsRegistered(
