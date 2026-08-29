@@ -2,25 +2,23 @@
 
 #include <array>
 #include <memory>
+#include <string>
+#include <utility>
 
+#include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
 #include "Scene/Components/HIKARI_ProceduralMeshComponent.h"
 #include "Scene/Components/Rendering/MaterialFx/HIKARI_MaterialFxComponent.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponentAuthoring.h"
 #include "Scene/Features/HIKARI_RuntimeFeature.h"
 #include "Scene/Features/HIKARI_RuntimeFeatureIds.h"
-#include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
 #include "Scene/HIKARI_ComponentRegistry.h"
-#include "Scene/HIKARI_ComponentSystemPolicy.h"
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
 #include "Scene/HIKARI_SceneDocument.h"
 #include "Scene/HIKARI_SystemTypeRegistry.h"
-#include "Scene/Sand/HIKARI_SandSurfaceFollowerComponent.h"
-#include "Scene/Sand/HIKARI_SandSurfaceSystem.h"
-#include "Scene/Terrain/HIKARI_TerrainInteractionSourceSystem.h"
-#include "Scene/Terrain/HIKARI_TerrainSurfaceComponent.h"
 
 namespace HIKARI {
+
     namespace {
         ComponentTypePresentation RenderingPresentation(
             const char* displayName,
@@ -30,7 +28,7 @@ namespace HIKARI {
                 displayName,
                 "Rendering",
                 description,
-                "Rendering"
+                std::string(RuntimeFeatureIds::Rendering)
             };
         }
 
@@ -41,42 +39,37 @@ namespace HIKARI {
             }
 
             std::string_view GetDisplayName() const noexcept override {
-                return "Rendering";
+                return "Rendering Core";
             }
 
             std::string_view GetDescription() const noexcept override {
-                return "Model rendering and procedural geometry support.";
+                return "Model, material, and procedural geometry rendering.";
             }
 
             std::span<const std::string_view>
                 GetComponentTypeNames() const noexcept override {
-                static constexpr std::array<std::string_view, 5> names{
+                static constexpr std::array<std::string_view, 3> names{
                     "ModelComponent",
                     "MaterialFxComponent",
-                    "ProceduralMeshComponent",
-                    "TerrainSurfaceComponent",
-                    "SandSurfaceFollowerComponent"
+                    "ProceduralMeshComponent"
                 };
                 return names;
             }
 
             std::span<const std::string_view>
                 GetSystemIds() const noexcept override {
-                static constexpr std::array<std::string_view, 3> ids{
-                    "ModelRenderSystem",
-                    "TerrainInteractionSourceSystem",
-                    "SandSurfaceSystem"
+                static constexpr std::array<std::string_view, 1> ids{
+                    "ModelRenderSystem"
                 };
                 return ids;
             }
 
             bool Register(RuntimeFeatureContext& context) override {
-                ComponentRegistry& componentRegistry =
+                ComponentRegistry& components =
                     RuntimeFeatureContextAccess::Components(context);
-                SystemTypeRegistry& systemTypeRegistry =
+                SystemTypeRegistry& systems =
                     RuntimeFeatureContextAccess::Systems(context);
-                ComponentSystemPolicy& componentSystemPolicy =
-                    RuntimeFeatureContextAccess::Policy(context);
+
                 ComponentTypeInfo model{};
                 model.typeName = "ModelComponent";
                 model.factory = []() -> std::unique_ptr<IComponent> {
@@ -88,23 +81,19 @@ namespace HIKARI {
                 };
                 model.presentation = RenderingPresentation(
                     "Model",
-                    "Controls the model asset, material slots, visibility, shadows, and render diagnostics.");
+                    "Controls model assets, materials, visibility, and shadows.");
                 model.authoringCommands =
                     BuildModelComponentAuthoringCommands();
 
                 ComponentTypeInfo materialFx{};
                 materialFx.typeName = "MaterialFxComponent";
-                materialFx.factory =
-                    []() -> std::unique_ptr<IComponent> {
+                materialFx.factory = []() -> std::unique_ptr<IComponent> {
                     return std::make_unique<MaterialFxComponent>();
                 };
-                materialFx.requiredComponents = {
-                    "ModelComponent"
-                };
+                materialFx.requiredComponents = { "ModelComponent" };
                 materialFx.initializeDefaults = [](
                     const SceneObjectData&,
                     nlohmann::json& properties) {
-
                     properties = {
                         { "profileId", "" },
                         { "valuesInitialized", false }
@@ -112,7 +101,7 @@ namespace HIKARI {
                 };
                 materialFx.presentation = RenderingPresentation(
                     "Material FX",
-                    "Applies an optional Material FX profile and per-object parameter overrides.");
+                    "Applies a Material FX profile and per-object overrides.");
 
                 ComponentTypeInfo procedural{};
                 procedural.typeName = "ProceduralMeshComponent";
@@ -141,289 +130,32 @@ namespace HIKARI {
                 };
                 procedural.presentation = RenderingPresentation(
                     "Procedural Mesh",
-                    "Generates editable plane, box, sphere, cylinder, or capsule geometry.");
+                    "Generates editable primitive geometry.");
 
-                ComponentTypeInfo terrainSurface{};
-                terrainSurface.typeName = "TerrainSurfaceComponent";
-                terrainSurface.factory =
-                    []() -> std::unique_ptr<IComponent> {
-                    return std::make_unique<TerrainSurfaceComponent>();
-                };
-                terrainSurface.requiredComponents = {
-                    "ModelComponent",
-                    "ProceduralMeshComponent"
-                };
-                terrainSurface.runtimeApplyPolicy =
-                    ComponentRuntimeApplyPolicy::OnEditCommit;
-                terrainSurface.initializeDefaults = [](
-                    const SceneObjectData&,
-                    nlohmann::json& properties) {
-                    TerrainSurfaceComponent defaults{};
-                    defaults.Serialize(properties);
-                };
-                terrainSurface.presentation = RenderingPresentation(
-                    "Terrain Surface",
-                    "Unified editable solid terrain with heightfield and paintable layers.");
-
-                terrainSurface.authoringCommands = {
-                    {
-                        "terrain.surfacePreset",
-                        "Apply a solid surface preset (sand, snow, dirt).",
-                        {
-                            { "presetId", AuthoringCommandParameterType::String, true, "Preset id: sand, snow, or dirt." },
-                        },
-                        [](IComponent& base, const nlohmann::json& args) {
-                            auto* component =
-                                dynamic_cast<TerrainSurfaceComponent*>(&base);
-                            if (component == nullptr) {
-                                return AuthoringCommandResult{
-                                    false,
-                                    "TYPE_MISMATCH",
-                                    "Component is not a terrain surface."
-                                };
-                            }
-                            component->ApplySolidPreset(
-                                args.value(
-                                    "presetId",
-                                    std::string("sand")));
-                            return AuthoringCommandResult{
-                                true,
-                                "OK",
-                                "Terrain solid preset applied."
-                            };
-                        }
-                    },
-                    {
-                        "terrain.sculpt",
-                        "Sculpt one brush stroke in terrain-object local space.",
-                        {
-                            { "localX", AuthoringCommandParameterType::Float, true, "Brush center local X." },
-                            { "localY", AuthoringCommandParameterType::Float, false, "Brush center local Y." },
-                            { "localZ", AuthoringCommandParameterType::Float, true, "Brush center local Z." },
-                        },
-                        [](IComponent& base, const nlohmann::json& args) {
-                            auto* component =
-                                dynamic_cast<TerrainSurfaceComponent*>(&base);
-                            if (component == nullptr) {
-                                return AuthoringCommandResult{
-                                    false,
-                                    "TYPE_MISMATCH",
-                                    "Component is not a terrain surface."
-                                };
-                            }
-                            component->SculptAtLocal({
-                                args.value("localX", 0.0f),
-                                args.value("localY", 0.0f),
-                                args.value("localZ", 0.0f)
-                            });
-                            return AuthoringCommandResult{
-                                true,
-                                "OK",
-                                "Terrain sculpted."
-                            };
-                        }
-                    },
-                    {
-                        "terrain.reset",
-                        "Remove every authored terrain chunk.",
-                        {},
-                        [](IComponent& base, const nlohmann::json&) {
-                            auto* component =
-                                dynamic_cast<TerrainSurfaceComponent*>(&base);
-                            if (component == nullptr) {
-                                return AuthoringCommandResult{
-                                    false,
-                                    "TYPE_MISMATCH",
-                                    "Component is not a terrain surface."
-                                };
-                            }
-                            component->ResetTerrain();
-                            return AuthoringCommandResult{
-                                true,
-                                "OK",
-                                "Terrain reset."
-                            };
-                        }
-                    },
-                    {
-                        "terrain.paintLayer",
-                        "Paint one preset layer stroke in terrain-object local space.",
-                        {
-                            { "presetId", AuthoringCommandParameterType::String, true, "Preset id: sand, snow, or dirt." },
-                            { "localX", AuthoringCommandParameterType::Float, true, "Brush center local X." },
-                            { "localY", AuthoringCommandParameterType::Float, false, "Brush center local Y." },
-                            { "localZ", AuthoringCommandParameterType::Float, true, "Brush center local Z." },
-                        },
-                        [](IComponent& base, const nlohmann::json& args) {
-                            auto* component =
-                                dynamic_cast<TerrainSurfaceComponent*>(&base);
-                            if (component == nullptr) {
-                                return AuthoringCommandResult{
-                                    false,
-                                    "TYPE_MISMATCH",
-                                    "Component is not a terrain surface."
-                                };
-                            }
-                            component->PaintLayerAtLocal(
-                                args.value("presetId", std::string("sand")),
-                                {
-                                    args.value("localX", 0.0f),
-                                    args.value("localY", 0.0f),
-                                    args.value("localZ", 0.0f)
-                                });
-                            return AuthoringCommandResult{
-                                true,
-                                "OK",
-                                "Terrain layer painted."
-                            };
-                        }
-                    },
-                    {
-                        "terrain.paintCoverage",
-                        "Paint or erase coverage in terrain-object local space.",
-                        {
-                            { "target", AuthoringCommandParameterType::Float, true, "Target coverage 1=paint, 0=erase." },
-                            { "localX", AuthoringCommandParameterType::Float, true, "Brush center local X." },
-                            { "localY", AuthoringCommandParameterType::Float, false, "Brush center local Y." },
-                            { "localZ", AuthoringCommandParameterType::Float, true, "Brush center local Z." },
-                        },
-                        [](IComponent& base, const nlohmann::json& args) {
-                            auto* component =
-                                dynamic_cast<TerrainSurfaceComponent*>(&base);
-                            if (component == nullptr) {
-                                return AuthoringCommandResult{
-                                    false,
-                                    "TYPE_MISMATCH",
-                                    "Component is not a terrain surface."
-                                };
-                            }
-                            component->PaintCoverageAtLocal(
-                                args.value("target", 1.0f),
-                                {
-                                    args.value("localX", 0.0f),
-                                    args.value("localY", 0.0f),
-                                    args.value("localZ", 0.0f)
-                                });
-                            return AuthoringCommandResult{
-                                true,
-                                "OK",
-                                "Terrain coverage painted."
-                            };
-                        }
-                    }
-                };
-
-                ComponentTypeInfo sandFollower{};
-                sandFollower.typeName = "SandSurfaceFollowerComponent";
-                sandFollower.factory =
-                    []() -> std::unique_ptr<IComponent> {
-                    return std::make_unique<
-                        SandSurfaceFollowerComponent>();
-                };
-                sandFollower.runtimeApplyPolicy =
-                    ComponentRuntimeApplyPolicy::Immediate;
-                sandFollower.initializeDefaults = [](
-                    const SceneObjectData&,
-                    nlohmann::json& properties) {
-                    SandSurfaceFollowerComponent defaults{};
-                    defaults.Serialize(properties);
-                };
-                sandFollower.presentation = RenderingPresentation(
-                    "Sand Ball Follower",
-                    "Attach this to the protagonist ball so it visually "
-                    "rides the sampled sand height; physics stays "
-                    "authoritative. The sand ground itself uses "
-                    "SandSurfaceComponent.");
-
-                bool success = componentRegistry.Register(
-                    std::move(model));
-                success = componentRegistry.Register(
-                    std::move(materialFx)) && success;
-                success = componentRegistry.Register(
-                    std::move(procedural)) && success;
-                success = componentRegistry.Register(
-                    std::move(terrainSurface)) && success;
-                success = componentRegistry.Register(
-                    std::move(sandFollower)) && success;
-                success = systemTypeRegistry.Register(SystemTypeInfo{
+                bool success = components.Register(std::move(model));
+                success = components.Register(std::move(materialFx)) &&
+                    success;
+                success = components.Register(std::move(procedural)) &&
+                    success;
+                success = systems.Register(SystemTypeInfo{
                     "ModelRenderSystem",
                     [](const nlohmann::json&) -> std::unique_ptr<ISystem> {
                         return std::make_unique<RenderSubmissionSystem>();
                     },
                     "Model Rendering",
-                    "Rendering"
+                    std::string(RuntimeFeatureIds::Rendering)
                 }) && success;
-                success = systemTypeRegistry.Register(SystemTypeInfo{
-                    "TerrainInteractionSourceSystem",
-                    [](const nlohmann::json&) -> std::unique_ptr<ISystem> {
-                        return std::make_unique<
-                            TerrainInteractionSourceSystem>();
-                    },
-                    "Terrain Interaction Sources",
-                    "Rendering"
-                }) && success;
-                success = systemTypeRegistry.Register(SystemTypeInfo{
-                    "SandSurfaceSystem",
-                    [](const nlohmann::json&) -> std::unique_ptr<ISystem> {
-                        return std::make_unique<SandSurfaceSystem>();
-                    },
-                    "Sand Surface",
-                    "Rendering"
-                }) && success;
-                // 地形/砂地のシステムは Scene が明示的な systems 配列で
-                // 上書きしていても、コンポーネントが存在すれば必ず導入する。
-                success = componentSystemPolicy.Register(
-                    ComponentSystemRule{
-                        "TerrainSurfaceComponent",
-                        "TerrainInteractionSourceSystem",
-                        125
-                    }) && success;
-                success = componentSystemPolicy.Register(
-                    ComponentSystemRule{
-                        "SandSurfaceFollowerComponent",
-                        "TerrainInteractionSourceSystem",
-                        125
-                    }) && success;
-                success = componentSystemPolicy.Register(
-                    ComponentSystemRule{
-                        "TerrainSurfaceComponent",
-                        "SandSurfaceSystem",
-                        140
-                    }) && success;
-                success = componentSystemPolicy.Register(
-                    ComponentSystemRule{
-                        "SandSurfaceFollowerComponent",
-                        "SandSurfaceSystem",
-                        140
-                    }) && success;
                 return success;
             }
 
             std::span<const RuntimeSystemDefault>
                 GetDefaultSystems() const noexcept override {
-                static constexpr std::array<
-                    RuntimeSystemDefault,
-                    3> defaults{
-                    RuntimeSystemDefault{
-                        "ModelRenderSystem",
-                        true,
-                        100
-                    },
-                    RuntimeSystemDefault{
-                        "TerrainInteractionSourceSystem",
-                        true,
-                        125
-                    },
-                    RuntimeSystemDefault{
-                        "SandSurfaceSystem",
-                        true,
-                        140
-                    }
-                };
+                static constexpr std::array<RuntimeSystemDefault, 1>
+                    defaults{{ "ModelRenderSystem", true, 100 }};
                 return defaults;
             }
         };
-    }
+    } // namespace
 
     std::unique_ptr<IRuntimeFeature> CreateRenderingRuntimeFeature() {
         return std::make_unique<RenderingRuntimeFeature>();

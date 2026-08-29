@@ -112,7 +112,8 @@ namespace HIKARI {
         bool& GetEnvironmentLightingEnabled();
         bool ReloadAssets();
         bool ReloadSceneDocument();
-        bool RebuildRuntimeWorld();
+        bool RebuildRuntimeWorld(
+            bool reconfigureWorldServices = false);
         bool ApplySystemRuntimeChanges();
         bool ApplyCameraRuntimeChanges();
         bool SetGameDefaultCamera(SceneObjectId cameraObjectId);

@@ -168,6 +168,8 @@ namespace HIKARI {
         if (!ConfigureRuntimeWorldServices()) {
             HIKARI_LOG_ERROR(
                 "[RuntimeExtension] world service registration failed");
+            OnExit();
+            return;
         }
 
         ReloadAssets();
@@ -182,6 +184,9 @@ namespace HIKARI {
         }
     }
     void DocumentSceneBase::OnExit() {
+        if (!state_->runtime.initialized) {
+            return;
+        }
         SERVICES::GetActionTimeDilationService().ReleaseOwner(
             &state_->runtime.world);
         state_->camera.sequencePlayback.Reset();
@@ -203,6 +208,9 @@ namespace HIKARI {
         // are still available, so SDK contexts can release owned writers.
         state_->runtime.world.Clear();
         state_->runtime.world.Services().Clear();
+        state_->runtime.worldServicesConfigured = false;
+        state_->runtime.sandSurfaceQueryService.Clear();
+        state_->runtime.waterSurfaceQueryService.Clear();
         state_->runtime.waterSurfaceQueryService.SetBathymetryProvider(
             nullptr);
         state_->runtime.waterBathymetryProvider.reset();
@@ -690,7 +698,7 @@ namespace HIKARI {
             return false;
         }
         const bool registered = RegisterRuntimeFeatures();
-        const bool rebuilt = RebuildRuntimeWorld();
+        const bool rebuilt = RebuildRuntimeWorld(true);
         return registered && rebuilt;
     }
 

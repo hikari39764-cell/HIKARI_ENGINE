@@ -99,6 +99,7 @@ namespace HIKARI {
         bool gameplayInputContextWasActive = false;
         bool editorDocumentSnapshotValid = false;
         bool editorDocumentDirtySnapshot = false;
+        bool worldServicesConfigured = false;
         bool initialized = false;
     };
 

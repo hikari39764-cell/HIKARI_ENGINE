@@ -354,6 +354,30 @@ namespace HIKARI {
         const bool waterEnabled =
             state_->runtime.featureCatalog.IsFeatureActive(
                 RuntimeFeatureIds::Water);
+        const bool surfaceInteractionEnabled =
+            state_->runtime.featureCatalog.IsFeatureActive(
+                RuntimeFeatureIds::SurfaceInteraction);
+
+        // This method is called only before the first World build or after
+        // every old component/system has detached. Publish an empty registry
+        // first so every failure path is fail-closed instead of retaining
+        // services owned by the previous feature selection.
+        WorldServiceRegistry& services = state_->runtime.world.Services();
+        services.Clear();
+        state_->runtime.worldServicesConfigured = false;
+        state_->runtime.presentationModelService.Clear();
+        state_->runtime.runtimeObjectActivityService.Clear();
+        state_->runtime.sandSurfaceQueryService.Clear();
+        state_->runtime.waterSurfaceQueryService.Clear();
+        state_->runtime.waterSurfaceQueryService.SetBathymetryProvider(
+            nullptr);
+        if (!physicsEnabled) {
+            state_->runtime.physicsWorldService.DetachWorld();
+            (void)state_->runtime.physicsWorldService.RemoveBackend();
+        }
+        if (!waterEnabled || !physicsEnabled) {
+            state_->runtime.waterBathymetryProvider.reset();
+        }
 
         BINDING::Catalog bindingCatalog{};
         const std::filesystem::path bindingCatalogPath =
@@ -437,29 +461,17 @@ namespace HIKARI {
                 return false;
             }
         }
-        else {
-            state_->runtime.physicsWorldService.DetachWorld();
-            (void)state_->runtime.physicsWorldService.RemoveBackend();
-        }
-
         if (waterEnabled && physicsEnabled &&
             !state_->runtime.waterBathymetryProvider) {
             state_->runtime.waterBathymetryProvider =
                 std::make_unique<PhysicsWaterBathymetryProvider>(
                     state_->runtime.physicsWorldService);
         }
-        if (!waterEnabled || !physicsEnabled) {
-            state_->runtime.waterBathymetryProvider.reset();
-        }
         state_->runtime.waterSurfaceQueryService.SetBathymetryProvider(
             waterEnabled
                 ? state_->runtime.waterBathymetryProvider.get()
                 : nullptr);
 
-        WorldServiceRegistry& services = state_->runtime.world.Services();
-        state_->runtime.presentationModelService.Clear();
-        state_->runtime.runtimeObjectActivityService.Clear();
-        services.Clear();
         bool success = services.Register(SERVICES::GetInputService());
         success = services.Register(state_->runtime.bindingStore) && success;
         success = services.Register(
@@ -476,8 +488,8 @@ namespace HIKARI {
             state_->runtime.dialogueSessionService) && success;
         success = (!waterEnabled || services.Register(
             state_->runtime.waterSurfaceQueryService)) && success;
-        success = services.Register(
-            state_->runtime.sandSurfaceQueryService) && success;
+        success = (!surfaceInteractionEnabled || services.Register(
+            state_->runtime.sandSurfaceQueryService)) && success;
         success = services.Register(state_->camera.sequencePlayback) && success;
         success = services.Register(state_->runtime.playStateService) && success;
         success = services.Register(state_->runtime.gameplayCameraService) && success;
@@ -521,10 +533,17 @@ namespace HIKARI {
             state_->runtime.navigationWorldService) && success;
         success = state_->runtime.extensionHost.RegisterWorldServices(services) &&
             success;
+        if (!success) {
+            services.Clear();
+            state_->runtime.waterSurfaceQueryService.SetBathymetryProvider(
+                nullptr);
+            return false;
+        }
         VFX::ConfigureVfxWorldAttachmentResolver(
             state_->runtime.world,
             state_->runtime.vfxPlaybackService);
-        return success;
+        state_->runtime.worldServicesConfigured = true;
+        return true;
     }
     bool DocumentSceneBase::BuildSystemScheduleFromDocument() {
         if (state_->identity.document.systems.empty()) {
@@ -609,7 +628,8 @@ namespace HIKARI {
         }
         return OpenStartupSceneAsset();
     }
-    bool DocumentSceneBase::RebuildRuntimeWorld() {
+    bool DocumentSceneBase::RebuildRuntimeWorld(
+        bool reconfigureWorldServices) {
         SERVICES::GetActionTimeDilationService().ReleaseOwner(
             &state_->runtime.world);
         state_->runtime.combatPresentationService.Reset();
@@ -630,6 +650,20 @@ namespace HIKARI {
         // プロシージャルキャッシュは settings キーで不変なので、
         // シーン再構築ごとに破棄せずプロセス内で再利用する。
         RenderSubmissionSystem::InvalidateSceneResources(false);
+
+        const bool servicesRequireConfiguration =
+            reconfigureWorldServices ||
+            !state_->runtime.worldServicesConfigured;
+        if (servicesRequireConfiguration) {
+            // Component detach callbacks must observe the old service set.
+            // The replacement registry is published only after the old
+            // World has released every service-borrowing component.
+            state_->runtime.world.Clear();
+            if (!ConfigureRuntimeWorldServices()) {
+                RuntimeSceneContext::SetCurrentWorld(nullptr);
+                return false;
+            }
+        }
 
         SceneDependencySet deps = state_->runtime.builder.CollectDependencies(
             state_->identity.document,
@@ -666,17 +700,22 @@ namespace HIKARI {
         state_->lighting.environment = state_->identity.document.environment;
         state_->lighting.environment.directional.direction = MATH::Normalize(state_->lighting.environment.directional.direction);
 
+        if (!built) {
+            RuntimeSceneContext::SetCurrentWorld(nullptr);
+            ApplyCameraRuntimeChanges();
+            return false;
+        }
+
         RuntimeSceneContext::SetCurrentWorld(
             &state_->runtime.world,
             state_->identity.sceneId);
-        RuntimeSceneContext::ResolvePendingSceneEntry(state_->runtime.world, state_->identity.sceneId);
-
-        if (built) {
-            BuildSystemScheduleFromDocument();
-            state_->runtime.systemScheduler.AttachWorld(state_->runtime.world);
-        }
+        RuntimeSceneContext::ResolvePendingSceneEntry(
+            state_->runtime.world,
+            state_->identity.sceneId);
+        BuildSystemScheduleFromDocument();
+        state_->runtime.systemScheduler.AttachWorld(state_->runtime.world);
         ApplyCameraRuntimeChanges();
-        return built;
+        return true;
     }
 
 } // namespace HIKARI

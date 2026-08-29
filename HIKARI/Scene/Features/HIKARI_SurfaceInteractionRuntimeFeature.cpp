@@ -1,0 +1,152 @@
+#include "Scene/Features/HIKARI_SurfaceInteractionRuntimeFeature.h"
+
+#include <array>
+#include <memory>
+#include <string>
+#include <utility>
+
+#include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
+#include "Scene/Features/HIKARI_RuntimeFeature.h"
+#include "Scene/Features/HIKARI_RuntimeFeatureIds.h"
+#include "Scene/HIKARI_ComponentRegistry.h"
+#include "Scene/HIKARI_ComponentSystemPolicy.h"
+#include "Scene/HIKARI_SceneDocument.h"
+#include "Scene/HIKARI_SystemTypeRegistry.h"
+#include "Scene/Sand/HIKARI_SandSurfaceFollowerComponent.h"
+#include "Scene/Sand/HIKARI_SandSurfaceSystem.h"
+#include "Scene/Terrain/HIKARI_TerrainInteractionSourceSystem.h"
+
+namespace HIKARI {
+
+    namespace {
+        class SurfaceInteractionRuntimeFeature final :
+            public IRuntimeFeature {
+        public:
+            std::string_view GetFeatureId() const noexcept override {
+                return RuntimeFeatureIds::SurfaceInteraction;
+            }
+
+            std::string_view GetDisplayName() const noexcept override {
+                return "Surface Interaction";
+            }
+
+            std::string_view GetDescription() const noexcept override {
+                return "Optional terrain contact, deformation, and sampling.";
+            }
+
+            std::span<const std::string_view>
+                GetRequiredFeatureIds() const noexcept override {
+                static constexpr std::array<std::string_view, 2> ids{
+                    RuntimeFeatureIds::Terrain,
+                    RuntimeFeatureIds::Physics
+                };
+                return ids;
+            }
+
+            std::span<const std::string_view>
+                GetComponentTypeNames() const noexcept override {
+                static constexpr std::array<std::string_view, 1> names{
+                    "SandSurfaceFollowerComponent"
+                };
+                return names;
+            }
+
+            std::span<const std::string_view>
+                GetSystemIds() const noexcept override {
+                static constexpr std::array<std::string_view, 2> ids{
+                    "TerrainInteractionSourceSystem",
+                    "SandSurfaceSystem"
+                };
+                return ids;
+            }
+
+            bool Register(RuntimeFeatureContext& context) override {
+                ComponentRegistry& components =
+                    RuntimeFeatureContextAccess::Components(context);
+                SystemTypeRegistry& systems =
+                    RuntimeFeatureContextAccess::Systems(context);
+                ComponentSystemPolicy& policy =
+                    RuntimeFeatureContextAccess::Policy(context);
+
+                ComponentTypeInfo follower{};
+                follower.typeName = "SandSurfaceFollowerComponent";
+                follower.factory = []() -> std::unique_ptr<IComponent> {
+                    return std::make_unique<SandSurfaceFollowerComponent>();
+                };
+                follower.runtimeApplyPolicy =
+                    ComponentRuntimeApplyPolicy::Immediate;
+                follower.initializeDefaults = [](
+                    const SceneObjectData&,
+                    nlohmann::json& properties) {
+                    SandSurfaceFollowerComponent defaults{};
+                    defaults.Serialize(properties);
+                };
+                follower.presentation = ComponentTypePresentation{
+                    "Surface Follower",
+                    "Surface Interaction",
+                    "Keeps a presentation object aligned to a sampled surface.",
+                    std::string(RuntimeFeatureIds::SurfaceInteraction)
+                };
+
+                bool success = components.Register(std::move(follower));
+                success = systems.Register(SystemTypeInfo{
+                    "TerrainInteractionSourceSystem",
+                    [](const nlohmann::json&) -> std::unique_ptr<ISystem> {
+                        return std::make_unique<
+                            TerrainInteractionSourceSystem>();
+                    },
+                    "Terrain Interaction Sources",
+                    std::string(RuntimeFeatureIds::SurfaceInteraction)
+                }) && success;
+                success = systems.Register(SystemTypeInfo{
+                    "SandSurfaceSystem",
+                    [](const nlohmann::json&) -> std::unique_ptr<ISystem> {
+                        return std::make_unique<SandSurfaceSystem>();
+                    },
+                    "Surface Deformation",
+                    std::string(RuntimeFeatureIds::SurfaceInteraction)
+                }) && success;
+                // 明示的な systems 配列で上書きされた Scene でも、対応する
+                // component が存在する場合は interaction system を導入する。
+                for (const ComponentSystemRule& rule : {
+                        ComponentSystemRule{
+                            "TerrainSurfaceComponent",
+                            "TerrainInteractionSourceSystem",
+                            125 },
+                        ComponentSystemRule{
+                            "SandSurfaceFollowerComponent",
+                            "TerrainInteractionSourceSystem",
+                            125 },
+                        ComponentSystemRule{
+                            "TerrainSurfaceComponent",
+                            "SandSurfaceSystem",
+                            140 },
+                        ComponentSystemRule{
+                            "SandSurfaceFollowerComponent",
+                            "SandSurfaceSystem",
+                            140 } }) {
+                    success = policy.Register(rule) && success;
+                }
+                return success;
+            }
+
+            std::span<const RuntimeSystemDefault>
+                GetDefaultSystems() const noexcept override {
+                static constexpr std::array<RuntimeSystemDefault, 2>
+                    defaults{
+                        RuntimeSystemDefault{
+                            "TerrainInteractionSourceSystem", true, 125 },
+                        RuntimeSystemDefault{
+                            "SandSurfaceSystem", true, 140 }
+                    };
+                return defaults;
+            }
+        };
+    } // namespace
+
+    std::unique_ptr<IRuntimeFeature>
+        CreateSurfaceInteractionRuntimeFeature() {
+        return std::make_unique<SurfaceInteractionRuntimeFeature>();
+    }
+
+} // namespace HIKARI
