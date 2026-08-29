@@ -242,7 +242,8 @@ function(hikari_add_runtime_contract target_name source_path)
     target_sources(
         "${target_name}"
         PRIVATE
-            "${HIKARI_SOURCE_ROOT}/${source_path}")
+            "${HIKARI_SOURCE_ROOT}/${source_path}"
+            "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Host/HIKARI_RuntimeComponentToolingStubs.cpp")
     target_link_libraries(
         "${target_name}"
         PRIVATE

@@ -1,10 +1,12 @@
 #pragma once
 #include <cstdint>
+#include <exception>
 #include <memory>
 #include <span>
 #include <string>
 #include <string_view>
 #include <thread>
+#include <type_traits>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -132,32 +134,22 @@ namespace HIKARI {
 
         template<class T, class Fn>
         void ForEachObjectWith(Fn&& fn) {
-            if (!IsOwnerThread()) {
-                return;
-            }
-            const StructureReadScope structureRead =
-                AcquireStructureReadScope();
-            for (const auto& object : objects_) {
-                if (auto* component = object->GetComponent<T>()) {
-                    std::forward<Fn>(fn)(*object, *component);
-                }
-            }
+            static_assert(std::is_base_of_v<IComponent, T>);
+            VisitIndexedComponentType<T>(std::forward<Fn>(fn));
         }
 
         template<class T1, class T2, class Fn>
         void ForEachObjectWith(Fn&& fn) {
-            if (!IsOwnerThread()) {
-                return;
-            }
-            const StructureReadScope structureRead =
-                AcquireStructureReadScope();
-            for (const auto& object : objects_) {
-                auto* c1 = object->GetComponent<T1>();
-                auto* c2 = object->GetComponent<T2>();
-                if (c1 && c2) {
-                    std::forward<Fn>(fn)(*object, *c1, *c2);
+            static_assert(std::is_base_of_v<IComponent, T1>);
+            static_assert(std::is_base_of_v<IComponent, T2>);
+            // T1 is the deterministic attachment-order anchor. Put the more
+            // selective component first at call sites that need a sparse join.
+            auto join = [&](GameObject& object, T1& first) {
+                if (T2* second = object.GetComponent<T2>()) {
+                    fn(object, first, *second);
                 }
-            }
+            };
+            VisitIndexedComponentType<T1>(join);
         }
 
     private:
@@ -168,6 +160,52 @@ namespace HIKARI {
             void* context,
             RuntimeObjectHandle object,
             IComponent* component) noexcept;
+
+        template<class T, class Fn>
+        void VisitIndexedComponentType(Fn&& fn) {
+            if (!IsOwnerThread()) {
+                return;
+            }
+            const ComponentTypeId typeId =
+                ResolveIndexedComponentTypeId<T>();
+            if (!typeId.IsValid()) {
+                return;
+            }
+
+            using Callback = std::remove_reference_t<Fn>;
+            struct VisitContext {
+                World* world = nullptr;
+                Callback* callback = nullptr;
+                std::exception_ptr exception{};
+            };
+            VisitContext context{ this, std::addressof(fn), {} };
+            (void)VisitIndexedComponents(
+                typeId,
+                &context,
+                [](void* rawContext,
+                    RuntimeObjectHandle objectHandle,
+                    IComponent* component) noexcept {
+                    VisitContext& visit =
+                        *static_cast<VisitContext*>(rawContext);
+                    try {
+                        GameObject* object =
+                            visit.world->FindObject(objectHandle);
+                        T* typed = dynamic_cast<T*>(component);
+                        if (object == nullptr || typed == nullptr) {
+                            return false;
+                        }
+                        (*visit.callback)(*object, *typed);
+                        return true;
+                    }
+                    catch (...) {
+                        visit.exception = std::current_exception();
+                        return false;
+                    }
+                });
+            if (context.exception) {
+                std::rethrow_exception(context.exception);
+            }
+        }
 
         bool CanEnterStructureCallback() const noexcept {
             return IsOwnerThread() &&
@@ -190,6 +228,32 @@ namespace HIKARI {
             ComponentTypeId typeId,
             void* context,
             IndexedComponentVisitorFn visitor) noexcept;
+
+        template<class T>
+        ComponentTypeId ResolveIndexedComponentTypeId() const noexcept {
+            ComponentTypeId resolved{};
+            for (const auto& [_, bucket] : componentBuckets_) {
+                if (bucket.components.empty() ||
+                    bucket.head == kInvalidWorldComponentIndex ||
+                    bucket.head >= bucket.components.size()) {
+                    continue;
+                }
+                IComponent* component =
+                    bucket.components[bucket.head].component;
+                if (component == nullptr ||
+                    dynamic_cast<T*>(component) == nullptr) {
+                    continue;
+                }
+                if (resolved.IsValid() && resolved != bucket.typeId) {
+                    // One C++ adapter type may project several declared game
+                    // component ids. Such ambiguous types require the public
+                    // explicit-id query and cannot use this internal helper.
+                    return {};
+                }
+                resolved = bucket.typeId;
+            }
+            return resolved;
+        }
 
         struct WorldCommandCheckpoint {
             size_t pendingCommandCount = 0u;

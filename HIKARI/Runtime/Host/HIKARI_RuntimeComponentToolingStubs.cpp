@@ -1,3 +1,6 @@
+#include "Assets/Models/Loading/HIKARI_AssimpModelLoader.h"
+#include "Assets/Models/Loading/HIKARI_GltfModelLoader.h"
+#include "Assets/Models/Loading/HIKARI_ObjModelLoader.h"
 #include "Scene/Components/HIKARI_AnimationStateMachineComponent.h"
 #include "Scene/Components/HIKARI_AnimatorComponent.h"
 #include "Scene/Components/HIKARI_CameraActivationVolumeComponent.h"
@@ -65,3 +68,13 @@ namespace HIKARI {
         IInspectorBuilder&) {}
 
 } // namespace HIKARI
+
+namespace HIKARI::ASSETS::MODELS {
+
+    // Source-model import belongs to the Editor authoring product. Runtime
+    // and isolated Runtime contract hosts consume cooked model artifacts.
+    bool LoadAssimpModelSource(ModelAsset&) { return false; }
+    bool LoadGltfModelSource(ModelAsset&) { return false; }
+    bool LoadObjModelSource(ModelAsset&) { return false; }
+
+} // namespace HIKARI::ASSETS::MODELS
