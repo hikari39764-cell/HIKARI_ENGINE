@@ -403,18 +403,28 @@ namespace HIKARI::RENDER3D::UPSCALING {
         state.output.UpdateContext(context);
     }
 
-    void ShutdownStreamline() {
+    bool ShutdownStreamline() {
         INTERNAL::StreamlineState& state = INTERNAL::GetState();
-        (void)DeactivateStreamlineFrameGeneration(true);
+        if (!DeactivateStreamlineFrameGeneration(true)) {
+            return false;
+        }
+#if defined(HIKARI_WITH_STREAMLINE)
+        if (state.stats.initialized &&
+            !INTERNAL::RecordResult(
+                state,
+                "slShutdown",
+                slShutdown(),
+                false)) {
+            return false;
+        }
+#endif
+        state.temporalResources = {};
         state.output.Finalize();
         state.outputFormat = DXGI_FORMAT_UNKNOWN;
         state.outputWidth = 0;
         state.outputHeight = 0;
 #if defined(HIKARI_WITH_STREAMLINE)
         state.frameToken = nullptr;
-        if (state.stats.initialized) {
-            (void)INTERNAL::RecordResult(state, "slShutdown", slShutdown(), false);
-        }
         state.stats.initialized = false;
         state.stats.deviceAttached = false;
         state.stats.dlssPluginPresent = false;
@@ -430,19 +440,24 @@ namespace HIKARI::RENDER3D::UPSCALING {
         state.frameGeneration = {};
         state.stats.status = StreamlineRuntimeStatus::AwaitingInitialization;
 #endif
+        return true;
     }
 
-    void ReleaseStreamlineTransientResources() {
+    bool ReleaseStreamlineTransientResources() {
         INTERNAL::StreamlineState& state = INTERNAL::GetState();
-        (void)DeactivateStreamlineFrameGeneration(true);
+        if (!DeactivateStreamlineFrameGeneration(true)) {
+            return false;
+        }
 #if defined(HIKARI_WITH_STREAMLINE)
         if (state.stats.initialized &&
             (state.output.GetResource() != nullptr || state.optionsConfigured)) {
-            (void)INTERNAL::RecordResult(
-                state,
-                "slFreeResources(DLSS)",
-                slFreeResources(sl::kFeatureDLSS, state.viewport),
-                false);
+            if (!INTERNAL::RecordResult(
+                    state,
+                    "slFreeResources(DLSS)",
+                    slFreeResources(sl::kFeatureDLSS, state.viewport),
+                    false)) {
+                return false;
+            }
         }
         state.optionsConfigured = false;
         state.configuredMode = StreamlineDlssMode::Off;
@@ -452,12 +467,14 @@ namespace HIKARI::RENDER3D::UPSCALING {
         state.stats.retryPending = false;
         state.dlssLastFailureResult = sl::Result::eOk;
 #endif
+        state.temporalResources = {};
         state.output.Finalize();
         state.outputWidth = 0;
         state.outputHeight = 0;
         state.outputFormat = DXGI_FORMAT_UNKNOWN;
         state.stats.outputReady = false;
         state.stats.dlssEvaluated = false;
+        return true;
     }
 
     bool IsStreamlineDlssAvailable() {

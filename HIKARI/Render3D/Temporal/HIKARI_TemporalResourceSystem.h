@@ -11,8 +11,20 @@
 
 namespace HIKARI::RENDER3D::TEMPORAL {
 
+    inline constexpr uint32_t kTemporalMaximumResidentViewCount = 2u;
+
+    enum class TemporalResourceReleaseMode : uint8_t {
+        DeferredUntilFence,
+        ImmediateAfterGpuIdle,
+        ImmediateAfterDeviceLost,
+    };
+
     struct TemporalResourceStats {
+        TemporalViewLease view{};
+        TemporalResourceFrame resourceFrame{};
         bool initialized = false;
+        bool active = false;
+        bool contextCompatible = true;
         uint32_t width = 0;
         uint32_t height = 0;
         DXGI_FORMAT motionVectorFormat = DXGI_FORMAT_UNKNOWN;
@@ -48,48 +60,95 @@ namespace HIKARI::RENDER3D::TEMPORAL {
         uint32_t alphaMaskedVelocityDrawCount = 0;
         uint64_t resourceResizeCount = 0;
         uint64_t historyInvalidationCount = 0;
+        uint64_t resourceGeneration = 0;
+        uint64_t rejectedContextCount = 0;
         TemporalHistoryResetReason lastResetReason =
             TemporalHistoryResetReason::FirstFrame;
     };
 
-    void UpdateTemporalResourceSystemContext(const GFX::Context& ctx);
-    bool BeginTemporalResources(const TemporalFrameState& frame);
-    void ShutdownTemporalResourceSystem();
+    bool BeginTemporalResources(
+        const GFX::Context& ctx,
+        const TemporalFrameState& frame,
+        TemporalResourceFrame& outFrame);
+    bool EndTemporalResources(TemporalResourceFrame frame);
+    bool AbortTemporalResources(
+        TemporalResourceFrame frame,
+        TemporalHistoryResetReason reason =
+            TemporalHistoryResetReason::ExplicitReset);
+    bool ReleaseTemporalResources(
+        TemporalViewLease view,
+        TemporalResourceReleaseMode mode);
+    bool ReleaseTemporalView(
+        TemporalViewLease view,
+        TemporalResourceReleaseMode mode);
+    void ShutdownTemporalResourceSystem(
+        TemporalResourceReleaseMode mode =
+            TemporalResourceReleaseMode::ImmediateAfterGpuIdle);
 
-    RenderTarget2D* GetMotionVectorRenderTarget();
-    RenderTarget2D* GetMotionMetadataRenderTarget();
-    RenderTarget2D* GetHistoryColorWriteRenderTarget();
-    RenderTarget2D* GetHistoryDepthWriteRenderTarget();
-    RenderTarget2D* GetTaaResolvedColorRenderTarget();
-    RenderTarget2D* GetReactiveMaskRenderTarget();
-    RenderTarget2D* GetTransparencyMaskRenderTarget();
-    RenderTarget2D* GetInvalidDepthMotionMaskRenderTarget();
-    RenderTarget2D* GetTemporalDebugRenderTarget();
-    bool PrepareSceneColorInput(RenderTarget2D& source);
-    void SetTemporalCompositionBase(D3D12_GPU_DESCRIPTOR_HANDLE sceneColorSrv);
-    D3D12_GPU_DESCRIPTOR_HANDLE GetTemporalCompositionBase();
-    void SetTemporalDebugView(RenderDebugView view);
-    RenderDebugView GetTemporalDebugView();
+    RenderTarget2D* GetMotionVectorRenderTarget(TemporalResourceFrame frame);
+    RenderTarget2D* GetMotionMetadataRenderTarget(TemporalResourceFrame frame);
+    RenderTarget2D* GetHistoryColorWriteRenderTarget(TemporalResourceFrame frame);
+    RenderTarget2D* GetHistoryDepthWriteRenderTarget(TemporalResourceFrame frame);
+    RenderTarget2D* GetTaaResolvedColorRenderTarget(TemporalResourceFrame frame);
+    RenderTarget2D* GetReactiveMaskRenderTarget(TemporalResourceFrame frame);
+    RenderTarget2D* GetTransparencyMaskRenderTarget(TemporalResourceFrame frame);
+    RenderTarget2D* GetInvalidDepthMotionMaskRenderTarget(
+        TemporalResourceFrame frame);
+    RenderTarget2D* GetTemporalDebugRenderTarget(TemporalResourceFrame frame);
+    bool PrepareSceneColorInput(
+        TemporalResourceFrame frame,
+        RenderTarget2D& source);
+    bool SetTemporalCompositionBase(
+        TemporalResourceFrame frame,
+        D3D12_GPU_DESCRIPTOR_HANDLE sceneColorSrv);
+    D3D12_GPU_DESCRIPTOR_HANDLE GetTemporalCompositionBase(
+        TemporalResourceFrame frame);
+    bool SetTemporalDebugView(
+        TemporalResourceFrame frame,
+        RenderDebugView view);
+    RenderDebugView GetTemporalDebugView(TemporalResourceFrame frame);
     bool UpdateTemporalExposure(
+        TemporalResourceFrame frame,
         const COLOR::ExposureFrameState& exposureState);
-    void MarkTemporalMasksWritten(bool written, bool compositionDerived);
-    void SetTemporalGeometryDrawCounts(
+    bool MarkTemporalMasksWritten(
+        TemporalResourceFrame frame,
+        bool written,
+        bool compositionDerived);
+    bool SetTemporalGeometryDrawCounts(
+        TemporalResourceFrame frame,
         uint32_t rigid,
         uint32_t skinned,
         uint32_t alphaMasked);
-    void MarkMotionVectorsWritten(bool written);
-    void MarkTemporalAntiAliasing(bool enabled, bool resolved);
-    void CommitTemporalHistory(bool written);
+    bool MarkMotionVectorsWritten(
+        TemporalResourceFrame frame,
+        bool written);
+    bool MarkTemporalAntiAliasing(
+        TemporalResourceFrame frame,
+        bool enabled,
+        bool resolved);
+    bool MarkTemporalHistoryOutputWritten(
+        TemporalResourceFrame frame,
+        bool colorWritten,
+        bool depthWritten);
+    bool CommitTemporalHistory(
+        TemporalResourceFrame frame,
+        bool written);
 
-    TemporalInputs BuildTemporalInputs(
+    bool TryBuildTemporalPassInputs(
+        TemporalResourceFrame frame,
         const RenderTextureView& sceneDepth,
-        const RenderTextureView& sceneColor);
-    TemporalInputs BuildTemporalInputs(
+        const RenderTextureView& sceneColor,
+        TemporalInputs& outInputs);
+    bool TryBuildTemporalResolveInputs(
+        TemporalResourceFrame frame,
         RenderTarget2D& sceneColorTarget,
-        RenderTarget2D& sceneDepthTarget);
-    TemporalInputs BuildTemporalInputs(RenderTarget2D& sceneTarget);
-    TemporalInputs GetCurrentTemporalInputs();
+        RenderTarget2D& sceneDepthTarget,
+        TemporalInputs& outInputs);
+    bool TryGetTemporalResolveInputs(
+        TemporalResourceFrame frame,
+        TemporalInputs& outInputs);
 
-    const TemporalResourceStats& GetTemporalResourceStats();
+    TemporalResourceStats GetLatestTemporalResourceStats(RenderViewId viewId);
+    uint32_t GetTemporalResidentViewCount();
 
 } // namespace HIKARI::RENDER3D::TEMPORAL

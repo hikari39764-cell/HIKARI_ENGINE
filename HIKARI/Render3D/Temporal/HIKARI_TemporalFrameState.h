@@ -33,6 +33,35 @@ namespace HIKARI::RENDER3D::TEMPORAL {
     static_assert(std::is_standard_layout_v<TemporalViewLease>);
     static_assert(std::is_trivially_copyable_v<TemporalViewLease>);
 
+    // Exact receipt for one active GPU Temporal resource publication. The
+    // generation prevents a released/recreated bundle from accepting stale
+    // target pointers even when the RenderViewId is reused.
+    struct TemporalResourceFrame {
+        TemporalViewLease view{};
+        RenderFrameToken publication{};
+        uint64_t resourceGeneration = 0;
+        uint64_t deviceGeneration = 0;
+
+        bool IsValid() const noexcept {
+            return view.IsValid() &&
+                publication.IsValid() &&
+                view.viewId == publication.viewId &&
+                resourceGeneration != 0u &&
+                deviceGeneration != 0u;
+        }
+
+        bool Matches(TemporalResourceFrame expected) const noexcept {
+            return IsValid() && expected.IsValid() &&
+                view.Matches(expected.view) &&
+                publication.Matches(expected.publication) &&
+                resourceGeneration == expected.resourceGeneration &&
+                deviceGeneration == expected.deviceGeneration;
+        }
+    };
+
+    static_assert(std::is_standard_layout_v<TemporalResourceFrame>);
+    static_assert(std::is_trivially_copyable_v<TemporalResourceFrame>);
+
     enum class TemporalHistoryResetReason : uint32_t {
         None = 0,
         FirstFrame = 1,
@@ -94,6 +123,8 @@ namespace HIKARI::RENDER3D::TEMPORAL {
 
         bool historyValid = false;
         bool resetHistory = true;
+        bool completed = false;
+        bool aborted = false;
         bool temporalResolveAllowed = true;
         bool jitterEnabled = false;
         uint32_t jitterPhase = 0;
@@ -129,6 +160,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
     static_assert(std::is_trivially_copyable_v<TemporalFrameDesc>);
 
     struct TemporalInputs {
+        TemporalResourceFrame resourceFrame{};
         TemporalFrameState frame{};
         COLOR::ExposureFrameState exposureState{};
         RenderTextureView sceneDepth{};
@@ -153,7 +185,11 @@ namespace HIKARI::RENDER3D::TEMPORAL {
     bool AcquireTemporalView(
         RenderViewId viewId,
         TemporalViewLease& outLease);
-    bool ReleaseTemporalView(TemporalViewLease lease);
+    // CPU-state primitive used by the Temporal resource-domain coordinator.
+    // Callers that may own GPU Temporal resources must use the combined
+    // ReleaseTemporalView entry in HIKARI_TemporalResourceSystem.h.
+    bool CanReleaseTemporalFrameViewState(TemporalViewLease lease);
+    bool ReleaseTemporalFrameViewState(TemporalViewLease lease);
     TemporalFrameState BeginTemporalFrame(const TemporalFrameDesc& desc);
     TemporalFrameState GetLatestTemporalFrameState(RenderViewId viewId);
     bool TryGetTemporalFrameState(

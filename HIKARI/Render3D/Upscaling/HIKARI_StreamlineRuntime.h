@@ -96,13 +96,14 @@ namespace HIKARI::RENDER3D::UPSCALING {
     bool BeginStreamlineFrame(uint64_t frameIndex);
     bool SubmitStreamlineFrameConstants(
         const TEMPORAL::TemporalFrameState& frame,
+        TEMPORAL::TemporalResourceFrame resources,
         StreamlineDlssMode mode);
     RenderTarget2D* ExecuteStreamlineDlss(
         const TEMPORAL::TemporalInputs& inputs,
         StreamlineDlssMode mode);
     void MarkStreamlineDlssFallback();
-    void ReleaseStreamlineTransientResources();
-    void ShutdownStreamline();
+    bool ReleaseStreamlineTransientResources();
+    bool ShutdownStreamline();
 
     StreamlineDlssMode ResolveStreamlineDlssMode(
         const RenderQualitySettings& settings);

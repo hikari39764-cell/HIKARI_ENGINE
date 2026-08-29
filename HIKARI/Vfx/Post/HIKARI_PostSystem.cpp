@@ -39,6 +39,9 @@ namespace HIKARI::POST {
     int PostSystem::requestedOutputHeight_ = 0;
     RENDER3D::TEMPORAL::TemporalViewLease PostSystem::temporalView_{};
     RENDER3D::RenderFrameToken PostSystem::temporalFrame_{};
+    RENDER3D::TEMPORAL::TemporalResourceFrame PostSystem::temporalResources_{};
+    RENDER3D::TEMPORAL::TemporalResourceFrame
+        PostSystem::presentationTemporalResources_{};
 
     void PostSystem::Initialize(const GFX::Context& context) {
         UpdateContext(context);
@@ -230,35 +233,112 @@ namespace HIKARI::POST {
 
     bool PostSystem::SetSceneCaptureTemporalFrame(
         RENDER3D::TEMPORAL::TemporalViewLease view,
-        RENDER3D::RenderFrameToken frame) {
+        RENDER3D::RenderFrameToken frame,
+        RENDER3D::TEMPORAL::TemporalResourceFrame resources) {
 
         if (!view.IsValid() ||
             !frame.IsValid() ||
+            !resources.IsValid() ||
             view.viewId != frame.viewId ||
             frame.viewId != RENDER3D::kPrimaryRenderViewId ||
             !captureStage_.IsActive()) {
             return false;
         }
+        if (presentationTemporalResources_.IsValid()) {
+            return false;
+        }
+        if (!resources.view.Matches(view) ||
+            !resources.publication.Matches(frame)) {
+            return false;
+        }
         if (temporalFrame_.IsValid()) {
-            return temporalView_.Matches(view) &&
-                temporalFrame_.Matches(frame);
+            if (!temporalView_.Matches(view) ||
+                !temporalFrame_.Matches(frame)) {
+                return false;
+            }
+            if (!temporalResources_.IsValid()) {
+                temporalResources_ = resources;
+                return true;
+            }
+            return resources.IsValid() &&
+                temporalResources_.Matches(resources);
         }
         temporalView_ = view;
         temporalFrame_ = frame;
+        temporalResources_ = resources;
         return true;
     }
 
-    void PostSystem::AbortSceneCaptureTemporalFrame(
+    bool PostSystem::AbortSceneCaptureTemporalFrame(
         RENDER3D::TEMPORAL::TemporalHistoryResetReason reason) {
 
-        if (temporalView_.IsValid() && temporalFrame_.IsValid()) {
-            (void)RENDER3D::TEMPORAL::AbortTemporalFrame(
-                temporalView_,
-                temporalFrame_,
-                reason);
+        bool closed = true;
+        if (presentationTemporalResources_.IsValid()) {
+            if (RENDER3D::TEMPORAL::AbortTemporalResources(
+                    presentationTemporalResources_,
+                    reason)) {
+                presentationTemporalResources_ = {};
+            } else {
+                closed = false;
+            }
         }
-        temporalView_ = {};
-        temporalFrame_ = {};
+        if (temporalResources_.IsValid()) {
+            if (RENDER3D::TEMPORAL::AbortTemporalResources(
+                    temporalResources_,
+                    reason)) {
+                temporalView_ = {};
+                temporalFrame_ = {};
+                temporalResources_ = {};
+            } else {
+                closed = false;
+            }
+        } else if (temporalView_.IsValid() && temporalFrame_.IsValid()) {
+            bool cpuClosed = RENDER3D::TEMPORAL::AbortTemporalFrame(
+                temporalView_, temporalFrame_, reason);
+            if (!cpuClosed) {
+                RENDER3D::TEMPORAL::TemporalFrameState state{};
+                cpuClosed = RENDER3D::TEMPORAL::TryGetTemporalFrameState(
+                    temporalView_, temporalFrame_, state) && state.completed;
+            }
+            if (cpuClosed) {
+                temporalView_ = {};
+                temporalFrame_ = {};
+            } else {
+                closed = false;
+            }
+        }
+        return closed;
+    }
+
+    bool PostSystem::TryGetPresentationTemporalInputs(
+        RENDER3D::TEMPORAL::TemporalInputs& outInputs) {
+
+        return RENDER3D::TEMPORAL::TryGetTemporalResolveInputs(
+            presentationTemporalResources_,
+            outInputs);
+    }
+
+    bool PostSystem::FinishPresentationTemporalFrame(bool succeeded) {
+        if (!presentationTemporalResources_.IsValid()) {
+            return true;
+        }
+        const auto resources = presentationTemporalResources_;
+        bool completed = succeeded
+            ? RENDER3D::TEMPORAL::EndTemporalResources(resources)
+            : RENDER3D::TEMPORAL::AbortTemporalResources(
+                resources,
+                RENDER3D::TEMPORAL::
+                    TemporalHistoryResetReason::PreviousFrameIncomplete);
+        if (!completed && succeeded) {
+            completed = RENDER3D::TEMPORAL::AbortTemporalResources(
+                resources,
+                RENDER3D::TEMPORAL::
+                    TemporalHistoryResetReason::PreviousFrameIncomplete);
+        }
+        if (completed) {
+            presentationTemporalResources_ = {};
+        }
+        return completed;
     }
 
     bool PostSystem::IsSceneCaptureActive() { return captureStage_.IsActive(); }
@@ -326,21 +406,40 @@ namespace HIKARI::POST {
         const auto& quality = RENDER3D::GetRenderQualitySettings();
         const auto handoffView = temporalView_;
         const auto handoffFrame = temporalFrame_;
+        const auto handoffResources = temporalResources_;
         auto temporal = RENDER3D::TEMPORAL::ExecuteTemporalResolveStage(
             handoffView,
             handoffFrame,
+            handoffResources,
             context_,
             *volumetric,
             *captured,
             quality,
             processingStage_.GetExposureState());
-        (void)RENDER3D::TEMPORAL::AbortTemporalFrame(
-            handoffView,
-            handoffFrame,
-            RENDER3D::TEMPORAL::
-                TemporalHistoryResetReason::PreviousFrameIncomplete);
-        temporalView_ = {};
-        temporalFrame_ = {};
+        RENDER3D::TEMPORAL::TemporalInputs presentationInputs{};
+        bool retainHandoff = false;
+        if (handoffResources.IsValid() &&
+            RENDER3D::TEMPORAL::TryGetTemporalResolveInputs(
+                handoffResources,
+                presentationInputs)) {
+            presentationTemporalResources_ = handoffResources;
+        } else if (handoffResources.IsValid()) {
+            retainHandoff =
+                !RENDER3D::TEMPORAL::AbortTemporalResources(
+                    handoffResources,
+                    RENDER3D::TEMPORAL::
+                        TemporalHistoryResetReason::PreviousFrameIncomplete);
+        }
+        if (!retainHandoff) {
+            (void)RENDER3D::TEMPORAL::AbortTemporalFrame(
+                handoffView,
+                handoffFrame,
+                RENDER3D::TEMPORAL::
+                    TemporalHistoryResetReason::PreviousFrameIncomplete);
+            temporalView_ = {};
+            temporalFrame_ = {};
+            temporalResources_ = {};
+        }
         RenderTarget2D* output = temporal.output ? temporal.output : volumetric;
         if (temporal.requiresOutputNormalization) {
             RenderTarget2D* normalized = processingStage_.NormalizeTemporalOutput(

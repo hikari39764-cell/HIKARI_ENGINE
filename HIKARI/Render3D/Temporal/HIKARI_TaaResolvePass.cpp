@@ -189,12 +189,19 @@ namespace HIKARI::RENDER3D::TEMPORAL {
         ID3D12GraphicsCommandList* cmd = graphics.cmdList;
         ID3D12Device* device = graphics.device;
         ID3D12DescriptorHeap* srvHeap = graphics.srvHeap;
-        RenderTarget2D* historyTarget = GetHistoryColorWriteRenderTarget();
-        RenderTarget2D* historyDepthTarget = GetHistoryDepthWriteRenderTarget();
-        RenderTarget2D* outputTarget = GetTaaResolvedColorRenderTarget();
-        RenderTarget2D* debugTarget = GetTemporalDebugRenderTarget();
+        RenderTarget2D* historyTarget =
+            GetHistoryColorWriteRenderTarget(inputs.resourceFrame);
+        RenderTarget2D* historyDepthTarget =
+            GetHistoryDepthWriteRenderTarget(inputs.resourceFrame);
+        RenderTarget2D* outputTarget =
+            GetTaaResolvedColorRenderTarget(inputs.resourceFrame);
+        RenderTarget2D* debugTarget =
+            GetTemporalDebugRenderTarget(inputs.resourceFrame);
 
-        MarkTemporalAntiAliasing(settings.enabled, false);
+        (void)MarkTemporalAntiAliasing(
+            inputs.resourceFrame,
+            settings.enabled,
+            false);
         if (!settings.enabled ||
             !inputs.frame.temporalResolveAllowed ||
             cmd == nullptr ||
@@ -243,7 +250,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             std::clamp(settings.depthRejection, 0.0001f, 0.05f),
             std::clamp(settings.luminanceRejection, 0.05f, 4.0f),
             std::clamp(settings.sharpness, 0.0f, 1.0f),
-            static_cast<float>(GetTemporalDebugView())
+            static_cast<float>(GetTemporalDebugView(inputs.resourceFrame))
         };
         *constantSlot.mapped = constants;
 
@@ -325,8 +332,19 @@ namespace HIKARI::RENDER3D::TEMPORAL {
         outputTarget->TransitionColor(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
         debugTarget->TransitionColor(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 
-        CommitTemporalHistory(true);
-        MarkTemporalAntiAliasing(true, true);
+        if (!MarkTemporalHistoryOutputWritten(
+                inputs.resourceFrame,
+                true,
+                true)) {
+            return nullptr;
+        }
+        if (!CommitTemporalHistory(inputs.resourceFrame, true)) {
+            return nullptr;
+        }
+        (void)MarkTemporalAntiAliasing(
+            inputs.resourceFrame,
+            true,
+            true);
         return outputTarget;
     }
 

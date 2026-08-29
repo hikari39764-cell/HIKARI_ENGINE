@@ -359,8 +359,10 @@ namespace HIKARI::RENDER3D::TEMPORAL {
 
         ID3D12GraphicsCommandList* cmd = graphics.cmdList;
         ID3D12Device* device = graphics.device;
-        RenderTarget2D* motionTarget = GetMotionVectorRenderTarget();
-        RenderTarget2D* metadataTarget = GetMotionMetadataRenderTarget();
+        RenderTarget2D* motionTarget =
+            GetMotionVectorRenderTarget(inputs.resourceFrame);
+        RenderTarget2D* metadataTarget =
+            GetMotionMetadataRenderTarget(inputs.resourceFrame);
         if (cmd == nullptr ||
             device == nullptr ||
             motionTarget == nullptr ||
@@ -386,7 +388,8 @@ namespace HIKARI::RENDER3D::TEMPORAL {
                 ++alphaMaskedDrawCount;
             }
         }
-        SetTemporalGeometryDrawCounts(
+        (void)SetTemporalGeometryDrawCounts(
+            inputs.resourceFrame,
             rigidDrawCount,
             skinnedDrawCount,
             alphaMaskedDrawCount);

@@ -168,8 +168,10 @@ namespace HIKARI::RENDER3D::TEMPORAL {
         ID3D12GraphicsCommandList* cmd = graphics.cmdList;
         ID3D12Device* device = graphics.device;
         ID3D12DescriptorHeap* srvHeap = graphics.srvHeap;
-        RenderTarget2D* motionTarget = GetMotionVectorRenderTarget();
-        RenderTarget2D* metadataTarget = GetMotionMetadataRenderTarget();
+        RenderTarget2D* motionTarget =
+            GetMotionVectorRenderTarget(inputs.resourceFrame);
+        RenderTarget2D* metadataTarget =
+            GetMotionMetadataRenderTarget(inputs.resourceFrame);
         if (cmd == nullptr ||
             device == nullptr ||
             srvHeap == nullptr ||
@@ -177,18 +179,18 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             metadataTarget == nullptr ||
             !inputs.motionVectors.valid ||
             !inputs.motionMetadata.valid) {
-            MarkMotionVectorsWritten(false);
+            (void)MarkMotionVectorsWritten(inputs.resourceFrame, false);
             return false;
         }
         if (!EnsurePipeline(device)) {
-            MarkMotionVectorsWritten(false);
+            (void)MarkMotionVectorsWritten(inputs.resourceFrame, false);
             return false;
         }
 
         ConstantSlot& constantSlot =
             state.constants[inputs.frame.frameIndex % kFrameSlotCount];
         if (constantSlot.mapped == nullptr || constantSlot.buffer == nullptr) {
-            MarkMotionVectorsWritten(false);
+            (void)MarkMotionVectorsWritten(inputs.resourceFrame, false);
             return false;
         }
 
@@ -216,7 +218,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             GFX::GPU_PROFILE::Pass::TemporalMotionVectors);
 
         if (!inputs.sceneDepth.IsSampleable()) {
-            MarkMotionVectorsWritten(false);
+            (void)MarkMotionVectorsWritten(inputs.resourceFrame, false);
             return false;
         }
 
@@ -259,7 +261,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
         cmd->DrawInstanced(3, 1, 0, 0);
         motionTarget->TransitionColor(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
         metadataTarget->TransitionColor(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-        MarkMotionVectorsWritten(true);
+        (void)MarkMotionVectorsWritten(inputs.resourceFrame, true);
         return true;
     }
 

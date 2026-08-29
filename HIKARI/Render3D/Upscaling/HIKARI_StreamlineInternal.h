@@ -57,6 +57,7 @@ namespace HIKARI::RENDER3D::UPSCALING::INTERNAL {
 
     struct StreamlineState {
         GFX::Context context{};
+        TEMPORAL::TemporalResourceFrame temporalResources{};
         RenderTarget2D output{};
         DXGI_FORMAT outputFormat = DXGI_FORMAT_UNKNOWN;
         uint32_t outputWidth = 0;

@@ -131,10 +131,24 @@ namespace HIKARI {
             PLATFORM::Win32Window* gameWindow =
                 gGamePresentationController.GetGameWindow();
             if (gameWindow == nullptr) {
-                (void)RENDER3D::UPSCALING::
-                    DeactivateStreamlineFrameGeneration(true);
-                if (gGamePresentationController.IsGameSurfaceActive()) {
-                    (void)gGamePresentationController.ReleaseGameSurface(gGraphicsCore);
+                const bool safeToReleaseSurface =
+                    !gGpuFrameReady &&
+                    gGraphicsCore.WaitForIdle() &&
+                    RENDER3D::UPSCALING::
+                        DeactivateStreamlineFrameGeneration(true);
+                if (!safeToReleaseSurface) {
+                    HIKARI_LOG_ERROR(
+                        "Game presentation startup failed before the surface "
+                        "could be released safely; GPU owners are retained.");
+                    return false;
+                }
+                if (gGamePresentationController.IsGameSurfaceActive() &&
+                    !gGamePresentationController.ReleaseGameSurface(
+                        gGraphicsCore)) {
+                    HIKARI_LOG_ERROR(
+                        "Game presentation startup failed and the drained "
+                        "surface could not be released.");
+                    return false;
                 }
                 (void)RENDER3D::UPSCALING::
                     SetStreamlineFrameGenerationFeatureLoaded(false);

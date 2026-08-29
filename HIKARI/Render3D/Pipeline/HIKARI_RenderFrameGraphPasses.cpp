@@ -19,12 +19,34 @@
 namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
     namespace {
         REFLECTION::ScreenSpaceReflectionRenderer gSsrRenderer{};
+
+        bool ValidatePassContext(
+            const GRAPH::RenderGraphPassContext& graphPass,
+            const StageExecutionState& state) noexcept {
+
+            if (state.context == nullptr) {
+                return false;
+            }
+            const RenderFrameGraphStageContext& stage = *state.context;
+            return graphPass.frame.Matches(stage.frame.token) &&
+                stage.temporalFrame.publication.Matches(stage.frame.token) &&
+                stage.temporalFrame.view.viewId == stage.frame.viewId &&
+                stage.temporalResources.IsValid() &&
+                stage.temporalResources.view.Matches(
+                    stage.temporalFrame.view) &&
+                stage.temporalResources.publication.Matches(
+                    stage.frame.token) &&
+                stage.sceneSurfaces.MatchesFrame(stage.frame.token);
+        }
     }
 
     bool ExecuteForwardOpaque(
-        const GRAPH::RenderGraphPassContext&,
+        const GRAPH::RenderGraphPassContext& graphPass,
         void* userData) noexcept {
         auto& state = *static_cast<StageExecutionState*>(userData);
+        if (!ValidatePassContext(graphPass, state)) {
+            return false;
+        }
         try {
             GFX::PIX::ScopedGpuEvent pixForward(
                 state.context->frame.graphics.cmdList,
@@ -46,9 +68,12 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
     }
 
     bool ExecutePostOpaqueSurfaces(
-        const GRAPH::RenderGraphPassContext&,
+        const GRAPH::RenderGraphPassContext& graphPass,
         void* userData) noexcept {
         auto& state = *static_cast<StageExecutionState*>(userData);
+        if (!ValidatePassContext(graphPass, state)) {
+            return false;
+        }
         const RenderFrameGraphStageContext& context = *state.context;
         if (context.cameraConstants == nullptr) {
             return true;
@@ -85,9 +110,12 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
     }
 
     bool ExecuteClouds(
-        const GRAPH::RenderGraphPassContext&,
+        const GRAPH::RenderGraphPassContext& graphPass,
         void* userData) noexcept {
         auto& state = *static_cast<StageExecutionState*>(userData);
+        if (!ValidatePassContext(graphPass, state)) {
+            return false;
+        }
         const RenderFrameGraphStageContext& context = *state.context;
         try {
             (void)CLOUDS::ExecuteStylizedCloudStage(
@@ -103,21 +131,24 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
     }
 
     bool ExecuteMotionVectors(
-        const GRAPH::RenderGraphPassContext&,
+        const GRAPH::RenderGraphPassContext& graphPass,
         void* userData) noexcept {
         auto& state = *static_cast<StageExecutionState*>(userData);
+        if (!ValidatePassContext(graphPass, state)) {
+            return false;
+        }
         const RenderFrameGraphStageContext& context = *state.context;
         bool depthReadActive = false;
         try {
-            const TEMPORAL::TemporalInputs temporalInputs =
-                TEMPORAL::BuildTemporalInputs(
+            TEMPORAL::TemporalInputs temporalInputs{};
+            if (!TEMPORAL::TryBuildTemporalPassInputs(
+                    context.temporalResources,
                     context.sceneSurfaces.sceneDepth,
-                    context.sceneSurfaces.sceneColorOpaque);
-            context.sceneSurfaces.reactiveMask = temporalInputs.reactiveMask;
-            context.sceneSurfaces.transparencyMask =
-                temporalInputs.transparencyMask;
-            context.sceneSurfaces.invalidDepthMotionMask =
-                temporalInputs.invalidDepthMotionMask;
+                    context.sceneSurfaces.sceneColorOpaque,
+                    temporalInputs)) {
+                state.result.motionVectorsWritten = false;
+                return false;
+            }
             context.sceneSurfaces.historyColor =
                 temporalInputs.historyColorRead;
             context.sceneSurfaces.historyDepth =
@@ -151,7 +182,9 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
             context.sceneSurfaces.motionMetadata = written
                 ? temporalInputs.motionMetadata
                 : RenderTextureView{};
-            TEMPORAL::MarkMotionVectorsWritten(written);
+            (void)TEMPORAL::MarkMotionVectorsWritten(
+                context.temporalResources,
+                written);
             state.result.motionVectorsWritten = written;
             return true;
         }
@@ -161,16 +194,21 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
             }
             context.sceneSurfaces.motionVectors = {};
             context.sceneSurfaces.motionMetadata = {};
-            TEMPORAL::MarkMotionVectorsWritten(false);
+            (void)TEMPORAL::MarkMotionVectorsWritten(
+                context.temporalResources,
+                false);
             state.result.motionVectorsWritten = false;
             return false;
         }
     }
 
     bool ExecuteSceneColorOpaqueCapture(
-        const GRAPH::RenderGraphPassContext&,
+        const GRAPH::RenderGraphPassContext& graphPass,
         void* userData) noexcept {
         auto& state = *static_cast<StageExecutionState*>(userData);
+        if (!ValidatePassContext(graphPass, state)) {
+            return false;
+        }
         const RenderFrameGraphStageContext& context = *state.context;
         try {
             const RenderTextureView sceneColorOpaque =
@@ -180,7 +218,9 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
             }
             context.sceneSurfaces.sceneColorOpaque = sceneColorOpaque;
             context.postOpaqueResources.opaqueSceneColor = sceneColorOpaque;
-            TEMPORAL::SetTemporalCompositionBase(sceneColorOpaque.srv);
+            (void)TEMPORAL::SetTemporalCompositionBase(
+                context.temporalResources,
+                sceneColorOpaque.srv);
             state.result.sceneColorOpaquePublished = true;
             return POST::PostSystem::RebindCurrentRenderTarget();
         }
@@ -190,9 +230,12 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
     }
 
     bool ExecuteSsr(
-        const GRAPH::RenderGraphPassContext&,
+        const GRAPH::RenderGraphPassContext& graphPass,
         void* userData) noexcept {
         auto& state = *static_cast<StageExecutionState*>(userData);
+        if (!ValidatePassContext(graphPass, state)) {
+            return false;
+        }
         const RenderFrameGraphStageContext& context = *state.context;
         if (context.cameraConstants == nullptr) {
             return true;

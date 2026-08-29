@@ -343,6 +343,13 @@ namespace HIKARI::RENDER3D::UPSCALING {
             hudlessColor.GetWidth() == state.context.backBufferWidth &&
             hudlessColor.GetHeight() == state.context.backBufferHeight;
         stats.inputsReady =
+            state.stats.frameTokenReady &&
+            state.stats.constantsSubmitted &&
+            temporal.resourceFrame.IsValid() &&
+            temporal.resourceFrame.Matches(state.temporalResources) &&
+            temporal.resourceFrame.view.viewId == kPrimaryRenderViewId &&
+            temporal.resourceFrame.publication.Matches(
+                temporal.frame.publication) &&
             temporal.frame.frameIndex == frameIndex &&
             temporal.sceneDepth.valid &&
             temporal.motionVectors.valid &&
@@ -369,6 +376,9 @@ namespace HIKARI::RENDER3D::UPSCALING {
         }
         if (
             state.frameToken == nullptr ||
+            !state.stats.frameTokenReady ||
+            !state.stats.constantsSubmitted ||
+            !temporal.resourceFrame.Matches(state.temporalResources) ||
             state.stats.frameIndex != frameIndex ||
             !presentationMatches) {
             SetStatus(
@@ -579,7 +589,7 @@ namespace HIKARI::RENDER3D::UPSCALING {
                     slDLSSGSetOptions(state.viewport, options),
                     false)) {
                 ++frameGeneration.stats.failureCount;
-                success = false;
+                return false;
             } else {
                 frameGeneration.stats.optionsConfigured = false;
                 frameGeneration.stats.tagsSubmitted = false;

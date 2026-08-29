@@ -275,6 +275,11 @@ namespace HIKARI::RENDER3D::UPSCALING {
         }
 
         const bool requiredInputsReady =
+            inputs.resourceFrame.IsValid() &&
+            inputs.resourceFrame.Matches(state.temporalResources) &&
+            inputs.resourceFrame.view.viewId == kPrimaryRenderViewId &&
+            inputs.resourceFrame.publication.Matches(
+                inputs.frame.publication) &&
             inputs.sceneColor.valid &&
             inputs.sceneDepth.valid &&
             inputs.motionVectors.valid &&

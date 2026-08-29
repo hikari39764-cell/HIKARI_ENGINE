@@ -148,16 +148,21 @@ namespace HIKARI::RENDER3D::TEMPORAL {
         ID3D12GraphicsCommandList* cmd = graphics.cmdList;
         ID3D12Device* device = graphics.device;
         ID3D12DescriptorHeap* srvHeap = graphics.srvHeap;
-        RenderTarget2D* reactive = GetReactiveMaskRenderTarget();
-        RenderTarget2D* transparency = GetTransparencyMaskRenderTarget();
+        RenderTarget2D* reactive =
+            GetReactiveMaskRenderTarget(inputs.resourceFrame);
+        RenderTarget2D* transparency =
+            GetTransparencyMaskRenderTarget(inputs.resourceFrame);
         RenderTarget2D* invalidDepthMotion =
-            GetInvalidDepthMotionMaskRenderTarget();
+            GetInvalidDepthMotionMaskRenderTarget(inputs.resourceFrame);
         if (cmd == nullptr ||
             device == nullptr ||
             reactive == nullptr ||
             transparency == nullptr ||
             invalidDepthMotion == nullptr) {
-            MarkTemporalMasksWritten(false, false);
+            (void)MarkTemporalMasksWritten(
+                inputs.resourceFrame,
+                false,
+                false);
             return false;
         }
 
@@ -176,7 +181,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
         cmd->ClearRenderTargetView(rtvs[2], clear, 0, nullptr);
 
         const D3D12_GPU_DESCRIPTOR_HANDLE compositionBase =
-            GetTemporalCompositionBase();
+            GetTemporalCompositionBase(inputs.resourceFrame);
         const bool canGenerate =
             srvHeap != nullptr &&
             inputs.sceneColor.valid &&
@@ -216,7 +221,10 @@ namespace HIKARI::RENDER3D::TEMPORAL {
         // Cleared zero masks are a valid opaque-only hint set. When a
         // post-opaque composition base exists, the draw refines them from the
         // actual color difference instead.
-        MarkTemporalMasksWritten(true, canGenerate);
+        (void)MarkTemporalMasksWritten(
+            inputs.resourceFrame,
+            true,
+            canGenerate);
         return true;
     }
 

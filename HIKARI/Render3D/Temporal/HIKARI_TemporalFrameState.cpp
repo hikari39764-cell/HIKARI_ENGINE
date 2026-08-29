@@ -247,6 +247,8 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             rejected.outputHeight = (std::max)(1u, desc.outputHeight);
             rejected.historyValid = false;
             rejected.resetHistory = true;
+            rejected.completed = true;
+            rejected.aborted = true;
             rejected.temporalResolveAllowed = false;
             rejected.resetReason = reason;
             return rejected;
@@ -314,7 +316,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
         return true;
     }
 
-    bool ReleaseTemporalView(TemporalViewLease lease) {
+    bool CanReleaseTemporalFrameViewState(TemporalViewLease lease) {
         if (!lease.IsValid() || !CheckOwnerThread()) {
             return false;
         }
@@ -325,6 +327,18 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             return false;
         }
         if (!found->second.frame.currentFrameCompleted) {
+            return false;
+        }
+        return true;
+    }
+
+    bool ReleaseTemporalFrameViewState(TemporalViewLease lease) {
+        if (!CanReleaseTemporalFrameViewState(lease)) {
+            return false;
+        }
+        TemporalFrameStateSystem& system = System();
+        const auto found = system.views.find(lease.viewId.value);
+        if (found == system.views.end()) {
             return false;
         }
         system.views.erase(found);
@@ -512,12 +526,15 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             return false;
         }
         store.currentFrameCompleted = true;
+        store.current.completed = true;
         if (store.currentFrameResetRequested) {
+            store.current.aborted = true;
             store.hasCommittedCamera = false;
             store.hasCommittedHistory = false;
             return false;
         }
         store.hasCommittedCamera = store.current.camera.valid;
+        store.current.aborted = false;
         store.hasCommittedHistory =
             historyWritten && store.current.camera.valid;
         if (store.hasCommittedCamera) {
@@ -559,6 +576,8 @@ namespace HIKARI::RENDER3D::TEMPORAL {
         }
         store.currentFrameCompleted = true;
         store.currentFrameResetRequested = true;
+        store.current.completed = true;
+        store.current.aborted = true;
         store.hasCommittedCamera = false;
         store.hasCommittedHistory = false;
         const TemporalHistoryResetReason abortReason =

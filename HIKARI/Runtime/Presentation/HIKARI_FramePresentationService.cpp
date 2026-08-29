@@ -394,19 +394,25 @@ namespace HIKARI {
             RENDER3D::UPSCALING::SynchronizeStreamlineFrameGenerationPolicy(
                 RENDER3D::GetRenderQualitySettings());
             if (presentation.HasFrameGenerationInputs()) {
-                const RENDER3D::TEMPORAL::TemporalInputs temporal =
-                    RENDER3D::TEMPORAL::GetCurrentTemporalInputs();
-                (void)RENDER3D::UPSCALING::SubmitStreamlineFrameGenerationInputs(
-                    temporal,
-                    *presentation.hudlessColor,
-                    *presentation.uiColorAndAlpha,
-                    presentation.frameIndex,
-                    IsGamePresentationActive());
+                RENDER3D::TEMPORAL::TemporalInputs temporal{};
+                if (HIKARI::POST::PostSystem::
+                        TryGetPresentationTemporalInputs(temporal)) {
+                    (void)RENDER3D::UPSCALING::
+                        SubmitStreamlineFrameGenerationInputs(
+                            temporal,
+                            *presentation.hudlessColor,
+                            *presentation.uiColorAndAlpha,
+                            presentation.frameIndex,
+                            IsGamePresentationActive());
+                }
             }
 
-            // End every exact Post handoff even when an optional presentation
-            // path skipped temporal resolve. Completed frames are a no-op.
-            AbortActivePrimaryTemporalFrame();
+            if (!HIKARI::POST::PostSystem::
+                    FinishPresentationTemporalFrame(true)) {
+                HIKARI_LOG_ERROR(
+                    "Temporal presentation resource frame did not close.");
+                return false;
+            }
             gPresentationPrepared = true;
             return true;
         }

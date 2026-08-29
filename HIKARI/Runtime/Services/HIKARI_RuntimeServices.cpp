@@ -238,7 +238,7 @@ namespace HIKARI {
             HIKARI_LOG_INFO("Window initialization started.");
             if (!gWindow.Initialize(wTitle.c_str(), cfg.windowWidth, cfg.windowHeight, cfg.resizableWindow)) {
                 HIKARI_LOG_ERROR("Window initialization failed.");
-                RENDER3D::UPSCALING::ShutdownStreamline();
+                (void)RENDER3D::UPSCALING::ShutdownStreamline();
                 return false;
             }
             GFX::PIX::Initialize(gWindow.GetHWND());
@@ -272,7 +272,7 @@ namespace HIKARI {
                     cfg.enableDebugLayer,
                     graphicsCallbacks)) {
                 HIKARI_LOG_ERROR("D3D12 core initialization failed.");
-                RENDER3D::UPSCALING::ShutdownStreamline();
+                (void)RENDER3D::UPSCALING::ShutdownStreamline();
                 return false;
             }
             GFX::FrameSubmissionCallbacks submissionCallbacks{};
@@ -386,75 +386,108 @@ namespace HIKARI {
             gGameProjectSaveStorage.Reset();
             gRuntimeSessionEndRequested = false;
             gInputService.Shutdown();
+            bool presentationTeardownSafe = true;
             if (IsInProcessGamePresentationActive() &&
                 !EndInProcessGamePresentation()) {
                 HIKARI_LOG_ERROR(
                     "In-process presentation could not be fully stopped during shutdown.");
-                (void)RENDER3D::UPSCALING::
-                    DeactivateStreamlineFrameGeneration(true);
-                if (!gGamePresentationController.IsGameSurfaceReleased() &&
-                    gGraphicsCore.WaitForIdle()) {
-                    (void)gGamePresentationController.ReleaseGameSurface(gGraphicsCore);
+                presentationTeardownSafe = false;
+                const bool presentationQueueIdle =
+                    !gGpuFrameReady && gGraphicsCore.WaitForIdle();
+                const bool frameGenerationStopped =
+                    presentationQueueIdle &&
+                    RENDER3D::UPSCALING::
+                        DeactivateStreamlineFrameGeneration(true);
+                if (frameGenerationStopped) {
+                    presentationTeardownSafe =
+                        gGamePresentationController.IsGameSurfaceReleased() ||
+                        gGamePresentationController.ReleaseGameSurface(
+                            gGraphicsCore);
                 }
             }
+            const bool rendererGpuIdle = gGraphicsCore.WaitForIdle();
+            const bool gpuOwnerTeardownEligible =
+                presentationTeardownSafe &&
+                (rendererGpuIdle || gGraphicsCore.IsDeviceLost());
             if (RUNTIME::IEditorUiServices* editorUiServices =
-                    RUNTIME::GetEditorUiServices()) {
-                if (!gGraphicsCore.WaitForIdle()) {
-                    HIKARI_LOG_ERROR(
-                        "GPU idle wait failed before editor UI shutdown.");
-                }
+                    RUNTIME::GetEditorUiServices();
+                editorUiServices != nullptr && gpuOwnerTeardownEligible) {
                 editorUiServices->Shutdown(gWindow);
             }
-            if (!gGraphicsCore.WaitForIdle()) {
+            if (!rendererGpuIdle) {
                 HIKARI_LOG_ERROR(
                     "GPU idle wait failed before renderer resource shutdown.");
             }
-            MESHRENDERER::ShutdownParticleGpuDrivenPass();
-            HIKARI_LOG_INFO("Particle GPU-driven pass finalized.");
-            MESHRENDERER::ShutdownOceanSpectrumRuntime();
-            HIKARI_LOG_INFO("Ocean spectrum runtime finalized.");
-            HIKARI::POST::PostSystem::Shutdown();
-            HIKARI_LOG_INFO("PostSystem shutdown.");
-            GAME_UI::ShutdownGameUiRenderer();
-            DX::DxRenderer::Finalize();
-            HIKARI_LOG_INFO("DxRenderer finalized.");
-            RENDER3D::MATERIAL::ResetRuntimeMaterialProgramRegistry();
-            HIKARI_LOG_INFO("Runtime material programs finalized.");
-            HIKARI::DefaultPbrResources::Shutdown();
-            HIKARI_LOG_INFO("Default PBR resources finalized.");
-            RENDER3D::TEMPORAL::ShutdownTaaResolvePass();
-            RENDER3D::TEMPORAL::ShutdownTemporalMaskPass();
-            RENDER3D::TEMPORAL::ShutdownTemporalGeometryPass();
-            RENDER3D::TEMPORAL::ShutdownMotionVectorPass();
-            RENDER3D::TEMPORAL::ShutdownTemporalResourceSystem();
-            RENDER3D::TEMPORAL::ShutdownTemporalFrameStateSystem();
-            RENDER3D::CLOUDS::ShutdownStylizedCloudStage();
-            RENDER3D::PANORAMA_SKY::ShutdownPanoramaSkyLayerStage();
-            RENDER3D::VOLUMETRIC::ShutdownVolumetricLightingStage();
-            SKYRENDERER::ShutdownAtmosphereRuntime();
-            RENDER3D::WATER::ShutdownWaterVisibleDepth();
-            RENDER3D::ShutdownClusterGeometryResourceSystem();
-            DXTEX::DxTextureManager::Finalize();
-            HIKARI_LOG_INFO("TextureManager finalized.");
-            AUDIO::Shutdown();
-            HIKARI_LOG_INFO("Audio shutdown.");
-            RENDER3D::UPSCALING::ShutdownStreamline();
-            HIKARI_LOG_INFO("Streamline shutdown.");
-            gGamePresentationController.Shutdown();
-            const GFX::GraphicsShutdownResult graphicsShutdownResult =
-                gGraphicsCore.Shutdown();
-            if (graphicsShutdownResult !=
-                GFX::GraphicsShutdownResult::UnsafeWaitFailure) {
-                // Dx12Core drained deferred descriptor callbacks. The
-                // allocator stays alive until every callback has returned.
-                RENDER3D::ShutdownRenderResourceDescriptorPool();
+            const RENDER3D::TEMPORAL::TemporalResourceReleaseMode
+                temporalReleaseMode = rendererGpuIdle
+                    ? RENDER3D::TEMPORAL::TemporalResourceReleaseMode::
+                        ImmediateAfterGpuIdle
+                    : (gGraphicsCore.IsDeviceLost()
+                        ? RENDER3D::TEMPORAL::TemporalResourceReleaseMode::
+                            ImmediateAfterDeviceLost
+                        : RENDER3D::TEMPORAL::TemporalResourceReleaseMode::
+                            DeferredUntilFence);
+            const bool streamlineShutdownSafe =
+                gpuOwnerTeardownEligible &&
+                RENDER3D::UPSCALING::ShutdownStreamline();
+            GFX::GraphicsShutdownResult graphicsShutdownResult =
+                GFX::GraphicsShutdownResult::UnsafeWaitFailure;
+            if (streamlineShutdownSafe) {
+                HIKARI_LOG_INFO("Streamline shutdown.");
+                MESHRENDERER::ShutdownParticleGpuDrivenPass();
+                HIKARI_LOG_INFO("Particle GPU-driven pass finalized.");
+                MESHRENDERER::ShutdownOceanSpectrumRuntime();
+                HIKARI_LOG_INFO("Ocean spectrum runtime finalized.");
+                HIKARI::POST::PostSystem::Shutdown();
+                HIKARI_LOG_INFO("PostSystem shutdown.");
+                GAME_UI::ShutdownGameUiRenderer();
+                DX::DxRenderer::Finalize();
+                HIKARI_LOG_INFO("DxRenderer finalized.");
+                RENDER3D::MATERIAL::ResetRuntimeMaterialProgramRegistry();
+                HIKARI_LOG_INFO("Runtime material programs finalized.");
+                HIKARI::DefaultPbrResources::Shutdown();
+                HIKARI_LOG_INFO("Default PBR resources finalized.");
+                RENDER3D::TEMPORAL::ShutdownTaaResolvePass();
+                RENDER3D::TEMPORAL::ShutdownTemporalMaskPass();
+                RENDER3D::TEMPORAL::ShutdownTemporalGeometryPass();
+                RENDER3D::TEMPORAL::ShutdownMotionVectorPass();
+                RENDER3D::TEMPORAL::ShutdownTemporalResourceSystem(
+                    temporalReleaseMode);
+                RENDER3D::TEMPORAL::ShutdownTemporalFrameStateSystem();
+                RENDER3D::CLOUDS::ShutdownStylizedCloudStage();
+                RENDER3D::PANORAMA_SKY::ShutdownPanoramaSkyLayerStage();
+                RENDER3D::VOLUMETRIC::ShutdownVolumetricLightingStage();
+                SKYRENDERER::ShutdownAtmosphereRuntime();
+                RENDER3D::WATER::ShutdownWaterVisibleDepth();
+                RENDER3D::ShutdownClusterGeometryResourceSystem();
+                DXTEX::DxTextureManager::Finalize();
+                HIKARI_LOG_INFO("TextureManager finalized.");
+                gGamePresentationController.Shutdown();
+                graphicsShutdownResult = gGraphicsCore.Shutdown();
+                if (graphicsShutdownResult !=
+                    GFX::GraphicsShutdownResult::UnsafeWaitFailure) {
+                    // Dx12Core drained deferred descriptor callbacks. The
+                    // allocator remains alive until every callback returns.
+                    RENDER3D::ShutdownRenderResourceDescriptorPool();
+                } else {
+                    HIKARI_LOG_ERROR(
+                        "Descriptor pool retained because GPU shutdown "
+                        "safety could not be established.");
+                }
+            } else if (!gpuOwnerTeardownEligible) {
+                HIKARI_LOG_ERROR(
+                    "GPU idle could not be proven and the device is not "
+                    "reported lost. All GPU owners are retained for process "
+                    "teardown.");
             } else {
                 HIKARI_LOG_ERROR(
-                    "Descriptor pool retained because GPU shutdown safety "
-                    "could not be established.");
+                    "Streamline input completion was not proven. GPU "
+                    "resources are retained for process teardown.");
             }
+            AUDIO::Shutdown();
+            HIKARI_LOG_INFO("Audio shutdown.");
             GFX::ClearCurrentContext();
-            if (graphicsShutdownResult ==
+            if (!streamlineShutdownSafe || graphicsShutdownResult ==
                 GFX::GraphicsShutdownResult::UnsafeWaitFailure) {
                 HIKARI_LOG_ERROR(
                     "D3D12 core retained for unsafe process teardown.");

@@ -39,6 +39,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
     TemporalResolveStageResult ExecuteTemporalResolveStage(
         TemporalViewLease view,
         RenderFrameToken frame,
+        TemporalResourceFrame resources,
         const GFX::Context& graphics,
         RenderTarget2D& sceneColorTarget,
         RenderTarget2D& sceneDepthTarget,

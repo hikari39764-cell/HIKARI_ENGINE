@@ -4,6 +4,7 @@
 
 #include "Render3D/Debug/HIKARI_RenderDebugView.h"
 #include "Render3D/Graph/HIKARI_RenderGraph.h"
+#include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
 
 namespace HIKARI {
     struct SceneEnvironment;
@@ -22,9 +23,6 @@ namespace HIKARI::RENDER3D {
     namespace SURFACE {
         struct SceneSurfaceSet;
     }
-    namespace TEMPORAL {
-        struct TemporalFrameState;
-    }
 }
 
 namespace HIKARI::RENDER3D::PIPELINE {
@@ -36,6 +34,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
         const RenderFrameContext& frame;
         const ScreenSpacePassContext& screenSpace;
         const TEMPORAL::TemporalFrameState& temporalFrame;
+        TEMPORAL::TemporalResourceFrame temporalResources{};
         const SceneEnvironment& environment;
         const RenderQualitySettings& renderQuality;
         const MESHRENDERER::CameraCB* cameraConstants = nullptr;

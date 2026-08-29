@@ -79,6 +79,7 @@ namespace HIKARI::RENDER3D::UPSCALING {
     bool BeginStreamlineFrame(uint64_t frameIndex) {
         INTERNAL::StreamlineState& state = INTERNAL::GetState();
         INTERNAL::ResetFrameStats(state, frameIndex);
+        state.temporalResources = {};
         state.reflex.stats.frameIndex = frameIndex;
         state.reflex.stats.sleepCalled = false;
         state.reflex.stats.markerMask = 0;
@@ -110,8 +111,11 @@ namespace HIKARI::RENDER3D::UPSCALING {
 
     bool SubmitStreamlineFrameConstants(
         const TEMPORAL::TemporalFrameState& frame,
+        TEMPORAL::TemporalResourceFrame resources,
         StreamlineDlssMode mode) {
         INTERNAL::StreamlineState& state = INTERNAL::GetState();
+        state.temporalResources = {};
+        state.stats.constantsSubmitted = false;
         state.stats.mode = mode;
         state.stats.dlssRequested = mode != StreamlineDlssMode::Off;
         state.stats.renderWidth = frame.renderWidth;
@@ -121,12 +125,15 @@ namespace HIKARI::RENDER3D::UPSCALING {
 #if !defined(HIKARI_WITH_STREAMLINE)
         return false;
 #else
-        if (state.frameToken == nullptr ||
+        if (!resources.IsValid() ||
+            resources.view.viewId != kPrimaryRenderViewId ||
+            !resources.view.Matches(frame.view) ||
+            !resources.publication.Matches(frame.publication) ||
+            state.frameToken == nullptr ||
             state.stats.frameIndex != frame.frameIndex ||
             !frame.camera.valid) {
             return false;
         }
-
         const sl::Constants constants = BuildConstants(frame);
         if (!INTERNAL::RecordResult(
                 state,
@@ -134,6 +141,7 @@ namespace HIKARI::RENDER3D::UPSCALING {
                 slSetConstants(constants, *state.frameToken, state.viewport))) {
             return false;
         }
+        state.temporalResources = resources;
         state.stats.constantsSubmitted = true;
         if (!state.stats.retryPending) {
             state.stats.status = StreamlineRuntimeStatus::Ready;

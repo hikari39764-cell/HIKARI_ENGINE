@@ -170,7 +170,9 @@ RuntimePerformanceSnapshot BuildSnapshot() {
   out.volumetric = RENDER3D::VOLUMETRIC::GetVolumetricLightingStats();
   out.temporalFrame = RENDER3D::TEMPORAL::GetLatestTemporalFrameState(
       RENDER3D::kPrimaryRenderViewId);
-  out.temporalResources = RENDER3D::TEMPORAL::GetTemporalResourceStats();
+  out.temporalResources =
+      RENDER3D::TEMPORAL::GetLatestTemporalResourceStats(
+          RENDER3D::kPrimaryRenderViewId);
   out.streamline = RENDER3D::UPSCALING::GetStreamlineDebugStats();
   out.streamlineReflex = RENDER3D::UPSCALING::GetStreamlineReflexStats();
   out.streamlineFrameGeneration =

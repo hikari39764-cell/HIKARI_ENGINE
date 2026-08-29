@@ -44,6 +44,11 @@ namespace HIKARI::RENDER3D::PIPELINE {
                 context.frame.frameIndex,
                 context.frame.viewId) ||
             !context.sceneSurfaces.MatchesFrame(context.frame.token) ||
+            !context.temporalResources.IsValid() ||
+            !context.temporalResources.view.Matches(
+                context.temporalFrame.view) ||
+            !context.temporalResources.publication.Matches(
+                context.frame.token) ||
             !(context.frame.viewId == kPrimaryRenderViewId)) {
             state.result.diagnostic.code =
                 GRAPH::RenderGraphResultCode::InvalidFrame;
@@ -52,7 +57,9 @@ namespace HIKARI::RENDER3D::PIPELINE {
                 state.result.diagnostic.message.size(),
                 "%s",
                 "RenderFrameGraph requires matching primary-view surfaces.");
-            TEMPORAL::MarkMotionVectorsWritten(false);
+            (void)TEMPORAL::MarkMotionVectorsWritten(
+                context.temporalResources,
+                false);
             gLastStageResult = state.result;
             return state.result;
         }
@@ -70,13 +77,17 @@ namespace HIKARI::RENDER3D::PIPELINE {
                 INTERNAL::GetRenderFrameGraphPassCallbacks(),
                 graph)) {
             state.result.diagnostic = graph.GetDiagnostic();
-            TEMPORAL::MarkMotionVectorsWritten(false);
+            (void)TEMPORAL::MarkMotionVectorsWritten(
+                context.temporalResources,
+                false);
             gLastStageResult = state.result;
             return state.result;
         }
         if (!graph.Compile()) {
             state.result.diagnostic = graph.GetDiagnostic();
-            TEMPORAL::MarkMotionVectorsWritten(false);
+            (void)TEMPORAL::MarkMotionVectorsWritten(
+                context.temporalResources,
+                false);
             gLastStageResult = state.result;
             return state.result;
         }
@@ -85,7 +96,9 @@ namespace HIKARI::RENDER3D::PIPELINE {
         state.result.completed = graph.Execute();
         state.result.diagnostic = graph.GetDiagnostic();
         if (!state.result.motionVectorsWritten) {
-            TEMPORAL::MarkMotionVectorsWritten(false);
+            (void)TEMPORAL::MarkMotionVectorsWritten(
+                context.temporalResources,
+                false);
         }
         gLastStageResult = state.result;
 

@@ -12,6 +12,7 @@
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Render3D/Resources/HIKARI_RenderTextureView.h"
 #include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
+#include "Render3D/Temporal/HIKARI_TemporalResourceSystem.h"
 #include "Render3D/Vfx/HIKARI_ActionPostReactionFrameSource.h"
 #include "Scene/HIKARI_SceneTransitionBus.h"
 #include "Vfx/Post/HIKARI_ActionScreenImpulseProvider.h"
@@ -93,9 +94,13 @@ namespace HIKARI::POST {
         static void BeginSceneCapture();
         static bool SetSceneCaptureTemporalFrame(
             RENDER3D::TEMPORAL::TemporalViewLease view,
-            RENDER3D::RenderFrameToken frame);
-        static void AbortSceneCaptureTemporalFrame(
+            RENDER3D::RenderFrameToken frame,
+            RENDER3D::TEMPORAL::TemporalResourceFrame resources);
+        static bool AbortSceneCaptureTemporalFrame(
             RENDER3D::TEMPORAL::TemporalHistoryResetReason reason);
+        static bool TryGetPresentationTemporalInputs(
+            RENDER3D::TEMPORAL::TemporalInputs& outInputs);
+        static bool FinishPresentationTemporalFrame(bool succeeded);
         static bool IsSceneCaptureActive();
         static bool HasCurrentRenderTarget();
         static bool RebindCurrentRenderTarget();
@@ -164,6 +169,9 @@ namespace HIKARI::POST {
         static int requestedOutputHeight_;
         static RENDER3D::TEMPORAL::TemporalViewLease temporalView_;
         static RENDER3D::RenderFrameToken temporalFrame_;
+        static RENDER3D::TEMPORAL::TemporalResourceFrame temporalResources_;
+        static RENDER3D::TEMPORAL::TemporalResourceFrame
+            presentationTemporalResources_;
     };
 
 } // namespace HIKARI::POST

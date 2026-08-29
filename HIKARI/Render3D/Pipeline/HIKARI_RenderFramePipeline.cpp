@@ -243,14 +243,25 @@ namespace HIKARI::RENDER3D::PIPELINE {
         TemporalFrameAbortGuard temporalFrameGuard(
             temporalView,
             frame.token);
-        if (!POST::PostSystem::SetSceneCaptureTemporalFrame(
-                temporalView,
-                frame.token)) {
+        RENDER3D::TEMPORAL::TemporalResourceFrame temporalResources{};
+        const bool temporalResourcesReady =
+            RENDER3D::TEMPORAL::BeginTemporalResources(
+                frame.graphics,
+                temporalFrame,
+                temporalResources);
+        if (!temporalResourcesReady) {
             return false;
         }
-        RENDER3D::TEMPORAL::UpdateTemporalResourceSystemContext(frame.graphics);
-        (void)RENDER3D::TEMPORAL::BeginTemporalResources(temporalFrame);
-        RENDER3D::TEMPORAL::SetTemporalDebugView(
+        if (!POST::PostSystem::SetSceneCaptureTemporalFrame(
+                temporalView,
+                frame.token,
+                temporalResources)) {
+            (void)RENDER3D::TEMPORAL::AbortTemporalResources(
+                temporalResources);
+            return false;
+        }
+        (void)RENDER3D::TEMPORAL::SetTemporalDebugView(
+            temporalResources,
             temporalDebugView ? debugView : RenderDebugView::None);
         const RENDER3D::UPSCALING::StreamlineDlssMode streamlineMode =
             !debugRoute.bypassTemporalUpscaler
@@ -258,6 +269,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
                 : RENDER3D::UPSCALING::StreamlineDlssMode::Off;
         (void)RENDER3D::UPSCALING::SubmitStreamlineFrameConstants(
             temporalFrame,
+            temporalResources,
             streamlineMode);
         if (!POST::PostSystem::HasCurrentRenderTarget() ||
             !POST::PostSystem::RebindCurrentRenderTarget()) {
@@ -421,6 +433,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
                     frame,
                     screenSpaceContext,
                     temporalFrame,
+                    temporalResources,
                     environment,
                     renderQuality,
                     cameraCb,

@@ -18,12 +18,20 @@ namespace HIKARI::RENDER3D::TEMPORAL {
     namespace {
         void RejectTemporalFrame(
             const TemporalFrameState& frame,
+            TemporalResourceFrame resources,
             bool nativeTaaRequested) {
-            MarkTemporalAntiAliasing(nativeTaaRequested, false);
-            (void)AbortTemporalFrame(
-                frame.view,
-                frame.publication,
-                TemporalHistoryResetReason::ExplicitReset);
+            if (resources.IsValid()) {
+                (void)MarkTemporalAntiAliasing(
+                    resources,
+                    nativeTaaRequested,
+                    false);
+                (void)AbortTemporalResources(resources);
+            } else {
+                (void)AbortTemporalFrame(
+                    frame.view,
+                    frame.publication,
+                    TemporalHistoryResetReason::ExplicitReset);
+            }
         }
 
         TaaResolveSettings BuildTaaSettings(const RenderQualitySettings& quality) {
@@ -41,6 +49,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
     TemporalResolveStageResult ExecuteTemporalResolveStage(
         TemporalViewLease view,
         RenderFrameToken publication,
+        TemporalResourceFrame resources,
         const GFX::Context& graphics,
         RenderTarget2D& sceneColorTarget,
         RenderTarget2D& sceneDepthTarget,
@@ -52,6 +61,15 @@ namespace HIKARI::RENDER3D::TEMPORAL {
 
         TemporalFrameState frame{};
         if (!TryGetTemporalFrameState(view, publication, frame)) {
+            return result;
+        }
+        if (!resources.IsValid() ||
+            !resources.view.Matches(view) ||
+            !resources.publication.Matches(publication)) {
+            (void)AbortTemporalFrame(
+                view,
+                publication,
+                TemporalHistoryResetReason::InvalidInput);
             return result;
         }
 
@@ -68,7 +86,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             frame.renderHeight ==
                 static_cast<uint32_t>((std::max)(1, sceneDepthTarget.GetHeight()));
         if (!frameCurrent || !frame.temporalResolveAllowed) {
-            RejectTemporalFrame(frame, false);
+            RejectTemporalFrame(frame, resources, false);
             return result;
         }
 
@@ -77,7 +95,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
         const bool debugRequested = debugRoute.temporalVisualization;
 
         if (debugRoute.active && !debugRequested) {
-            MarkTemporalAntiAliasing(false, false);
+            (void)MarkTemporalAntiAliasing(resources, false, false);
             (void)CompleteTemporalFrame(
                 frame.view,
                 frame.publication,
@@ -99,7 +117,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
 
         result.requested = nativeTaaRequested || streamlineRequested;
         if (!result.requested) {
-            MarkTemporalAntiAliasing(false, false);
+            (void)MarkTemporalAntiAliasing(resources, false, false);
             (void)CompleteTemporalFrame(
                 frame.view,
                 frame.publication,
@@ -116,31 +134,62 @@ namespace HIKARI::RENDER3D::TEMPORAL {
                 : D3D12_GPU_DESCRIPTOR_HANDLE{};
         const bool depthReadActive =
             sceneDepthSrv.ptr != 0 && sceneDepthTarget.BeginDepthShaderRead();
-        if (!depthReadActive || !PrepareSceneColorInput(sceneColorTarget)) {
+        if (!depthReadActive ||
+            !PrepareSceneColorInput(resources, sceneColorTarget)) {
             if (depthReadActive) {
                 sceneDepthTarget.EndDepthShaderRead();
             }
-            RejectTemporalFrame(frame, nativeTaaRequested);
+            RejectTemporalFrame(frame, resources, nativeTaaRequested);
             return result;
         }
 
-        (void)UpdateTemporalExposure(exposureState);
-        const TemporalInputs inputs = BuildTemporalInputs(
-            sceneColorTarget,
-            sceneDepthTarget);
-        const bool masksWritten = ExecuteTemporalMaskPass(graphics, inputs);
+        (void)UpdateTemporalExposure(resources, exposureState);
+        TemporalInputs maskInputs{};
+        if (!TryBuildTemporalResolveInputs(
+                resources,
+                sceneColorTarget,
+                sceneDepthTarget,
+                maskInputs)) {
+            sceneDepthTarget.EndDepthShaderRead();
+            RejectTemporalFrame(frame, resources, nativeTaaRequested);
+            return result;
+        }
+        const bool masksWritten = ExecuteTemporalMaskPass(
+            graphics,
+            maskInputs);
+        TemporalInputs inputs{};
+        if (!TryBuildTemporalResolveInputs(
+                resources,
+                sceneColorTarget,
+                sceneDepthTarget,
+                inputs)) {
+            sceneDepthTarget.EndDepthShaderRead();
+            RejectTemporalFrame(frame, resources, nativeTaaRequested);
+            return result;
+        }
         const TaaResolveSettings taaSettings = BuildTaaSettings(quality);
 
         RenderTarget2D* resolvedTarget = nullptr;
         if (streamlineRequested && masksWritten) {
             resolvedTarget = UPSCALING::ExecuteStreamlineDlss(inputs, streamlineMode);
             if (resolvedTarget != nullptr) {
-                result.backend = TemporalResolveBackend::Streamline;
-                MarkTemporalAntiAliasing(false, false);
-                (void)CompleteTemporalFrame(
+                // Streamline owns its history. Any older native TAA ping-pong
+                // must be invalidated before a future fallback can read it.
+                const bool nativeHistoryInvalidated =
+                    CommitTemporalHistory(inputs.resourceFrame, false);
+                const bool cpuFrameCompleted = CompleteTemporalFrame(
                     inputs.frame.view,
                     inputs.frame.publication,
                     true);
+                if (!nativeHistoryInvalidated || !cpuFrameCompleted) {
+                    resolvedTarget = nullptr;
+                } else {
+                    result.backend = TemporalResolveBackend::Streamline;
+                    (void)MarkTemporalAntiAliasing(
+                        resources,
+                        false,
+                        false);
+                }
             }
         }
 
@@ -156,7 +205,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
         sceneDepthTarget.EndDepthShaderRead();
 
         if (resolvedTarget == nullptr || resolvedTarget->GetResource() == nullptr) {
-            RejectTemporalFrame(frame, nativeTaaRequested);
+            RejectTemporalFrame(frame, resources, nativeTaaRequested);
             return result;
         }
 
@@ -168,7 +217,8 @@ namespace HIKARI::RENDER3D::TEMPORAL {
                 resolvedTarget->GetHeight() != static_cast<int>(frame.outputHeight));
 
         if (debugRequested) {
-            RenderTarget2D* debugTarget = GetTemporalDebugRenderTarget();
+            RenderTarget2D* debugTarget =
+                GetTemporalDebugRenderTarget(resources);
             if (debugTarget != nullptr && debugTarget->GetResource() != nullptr) {
                 result.output = debugTarget;
                 result.requiresOutputNormalization = false;
