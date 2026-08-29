@@ -1,24 +1,53 @@
 #pragma once
 
 #include <cstdint>
+#include <type_traits>
 
 #include "Render3D/Color/HIKARI_ExposureState.h"
+#include "Render3D/Core/HIKARI_RenderFrameToken.h"
+#include "Render3D/Core/HIKARI_RenderView.h"
 #include "Render3D/HIKARI_Math3D.h"
 #include "Render3D/Resources/HIKARI_RenderTextureView.h"
 
-namespace HIKARI {
-    class Camera3D;
-}
-
 namespace HIKARI::RENDER3D::TEMPORAL {
+
+    inline constexpr uint32_t kTemporalMaximumViewCount = 16u;
+
+    struct TemporalViewLease {
+        RenderViewId viewId{};
+        uint64_t generation = 0;
+
+        bool IsValid() const noexcept {
+            return viewId.value != 0u && generation != 0u;
+        }
+
+        bool Matches(TemporalViewLease expected) const noexcept {
+            return IsValid() && expected.IsValid() &&
+                viewId == expected.viewId &&
+                generation == expected.generation;
+        }
+
+        bool operator==(const TemporalViewLease&) const noexcept = default;
+    };
+
+    static_assert(std::is_standard_layout_v<TemporalViewLease>);
+    static_assert(std::is_trivially_copyable_v<TemporalViewLease>);
 
     enum class TemporalHistoryResetReason : uint32_t {
         None = 0,
-        FirstFrame,
-        Resize,
-        CameraCut,
-        InvalidInput,
-        ExplicitReset,
+        FirstFrame = 1,
+        Resize = 2,
+        CameraCut = 3,
+        InvalidInput = 4,
+        ExplicitReset = 5,
+        ProjectionChanged = 6,
+        ConfigurationChanged = 7,
+        ViewPurposeChanged = 8,
+        CameraSourceChanged = 9,
+        FrameDiscontinuity = 10,
+        PreviousFrameIncomplete = 11,
+        InvalidViewLease = 12,
+        InvalidFrameToken = 13,
     };
 
     struct TemporalCameraData {
@@ -51,6 +80,12 @@ namespace HIKARI::RENDER3D::TEMPORAL {
     };
 
     struct TemporalFrameState {
+        TemporalViewLease view{};
+        RenderFrameToken publication{};
+        RenderViewPurpose purpose = RenderViewPurpose::Game;
+        uint64_t cameraSourceObjectId = 0;
+        uint64_t cameraRevision = 0;
+        uint64_t historyConfigurationKey = 0;
         uint64_t frameIndex = 0;
         uint32_t renderWidth = 1;
         uint32_t renderHeight = 1;
@@ -66,18 +101,32 @@ namespace HIKARI::RENDER3D::TEMPORAL {
         TemporalCameraData camera{};
     };
 
+    static_assert(std::is_standard_layout_v<TemporalFrameState>);
+    static_assert(std::is_trivially_copyable_v<TemporalFrameState>);
+
     struct TemporalFrameDesc {
+        TemporalViewLease view{};
+        RenderFrameToken frame{};
+        RenderViewPurpose purpose = RenderViewPurpose::Game;
         const Camera3D* camera = nullptr;
-        uint64_t frameIndex = 0;
+        uint64_t cameraSourceObjectId = 0;
+        uint64_t cameraRevision = 0;
         uint32_t renderWidth = 1;
         uint32_t renderHeight = 1;
         uint32_t outputWidth = 1;
         uint32_t outputHeight = 1;
         bool cameraCut = false;
+        bool projectionChanged = false;
         bool forceHistoryReset = false;
         bool temporalResolveAllowed = true;
         bool jitterEnabled = false;
+        // Stable key for inputs that change the meaning or layout of history.
+        // The default pipeline currently includes AA mode and DLSS quality.
+        uint64_t historyConfigurationKey = 0;
     };
+
+    static_assert(std::is_standard_layout_v<TemporalFrameDesc>);
+    static_assert(std::is_trivially_copyable_v<TemporalFrameDesc>);
 
     struct TemporalInputs {
         TemporalFrameState frame{};
@@ -101,8 +150,28 @@ namespace HIKARI::RENDER3D::TEMPORAL {
 
     const char* ToString(TemporalHistoryResetReason reason);
 
+    bool AcquireTemporalView(
+        RenderViewId viewId,
+        TemporalViewLease& outLease);
+    bool ReleaseTemporalView(TemporalViewLease lease);
     TemporalFrameState BeginTemporalFrame(const TemporalFrameDesc& desc);
-    const TemporalFrameState& GetCurrentTemporalFrameState();
-    void ResetTemporalFrameHistory(TemporalHistoryResetReason reason);
+    TemporalFrameState GetLatestTemporalFrameState(RenderViewId viewId);
+    bool TryGetTemporalFrameState(
+        TemporalViewLease lease,
+        RenderFrameToken expected,
+        TemporalFrameState& outState);
+    bool ResetTemporalFrameHistory(
+        TemporalViewLease lease,
+        TemporalHistoryResetReason reason);
+    bool CompleteTemporalFrame(
+        TemporalViewLease lease,
+        RenderFrameToken frame,
+        bool historyWritten);
+    bool AbortTemporalFrame(
+        TemporalViewLease lease,
+        RenderFrameToken frame,
+        TemporalHistoryResetReason reason);
+    void ShutdownTemporalFrameStateSystem();
+    uint32_t GetTemporalFrameStateViewCount();
 
 } // namespace HIKARI::RENDER3D::TEMPORAL

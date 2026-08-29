@@ -33,6 +33,40 @@ namespace HIKARI::RENDER3D::PIPELINE {
         FEATURES::StylizedScreenFeatureRenderer gStylizedScreenFeatures{};
         FEATURES::RenderFeaturePlan gLastRenderFeaturePlan{};
 
+        class TemporalFrameAbortGuard {
+        public:
+            TemporalFrameAbortGuard(
+                TEMPORAL::TemporalViewLease view,
+                RenderFrameToken frame) noexcept
+                : view_(view), frame_(frame) {}
+
+            ~TemporalFrameAbortGuard() noexcept {
+                if (active_) {
+                    try {
+                        (void)TEMPORAL::AbortTemporalFrame(
+                            view_,
+                            frame_,
+                            TEMPORAL::TemporalHistoryResetReason::
+                                PreviousFrameIncomplete);
+                    } catch (...) {
+                        // The next Begin detects an unfinished publication and
+                        // takes the cold-history path. Never throw from unwind.
+                    }
+                }
+            }
+
+            TemporalFrameAbortGuard(const TemporalFrameAbortGuard&) = delete;
+            TemporalFrameAbortGuard& operator=(
+                const TemporalFrameAbortGuard&) = delete;
+
+            void HandOff() noexcept { active_ = false; }
+
+        private:
+            TEMPORAL::TemporalViewLease view_{};
+            RenderFrameToken frame_{};
+            bool active_ = true;
+        };
+
         bool RebindPostRenderTarget(void*) { return POST::PostSystem::RebindCurrentRenderTarget(); }
         bool BeginPostDepthRead(void*) { return POST::PostSystem::BeginCurrentRenderTargetDepthRead(); }
         void EndPostDepthRead(void*) { POST::PostSystem::EndCurrentRenderTargetDepthRead(); }
@@ -46,6 +80,11 @@ namespace HIKARI::RENDER3D::PIPELINE {
             context.viewId = view.viewId;
             context.purpose = view.purpose;
             context.cameraCut = view.cameraFrame->cameraCut;
+            context.projectionChanged =
+                view.cameraFrame->projectionChanged;
+            context.cameraSourceObjectId =
+                view.cameraFrame->sourceCameraObjectId;
+            context.cameraRevision = view.cameraFrame->revision;
             context.frameIndex = TIME::GetFrameContext().frameIndex;
             context.token = AllocateRenderFrameToken(
                 context.frameIndex,
@@ -160,30 +199,31 @@ namespace HIKARI::RENDER3D::PIPELINE {
             RENDER3D::GetRenderQualitySettings();
         const RENDER3D::RenderAntiAliasingMode antiAliasingMode =
             renderQuality.antiAliasingMode;
-        static bool previousAntiAliasingModeValid = false;
-        static RENDER3D::RenderAntiAliasingMode previousAntiAliasingMode =
-            RENDER3D::RenderAntiAliasingMode::Off;
-        static RENDER3D::DlssQualityMode previousDlssQualityMode =
-            RENDER3D::DlssQualityMode::Quality;
-        if (previousAntiAliasingModeValid &&
-            (previousAntiAliasingMode != antiAliasingMode ||
-                (antiAliasingMode == RENDER3D::RenderAntiAliasingMode::DLSS &&
-                    previousDlssQualityMode != renderQuality.dlssQualityMode))) {
-            RENDER3D::TEMPORAL::ResetTemporalFrameHistory(
-                RENDER3D::TEMPORAL::TemporalHistoryResetReason::ExplicitReset);
-        }
-        previousAntiAliasingMode = antiAliasingMode;
-        previousDlssQualityMode = renderQuality.dlssQualityMode;
-        previousAntiAliasingModeValid = true;
 
         RENDER3D::TEMPORAL::TemporalFrameDesc temporalDesc{};
+        RENDER3D::TEMPORAL::TemporalViewLease temporalView{};
+        if (!RENDER3D::TEMPORAL::AcquireTemporalView(
+                frame.viewId,
+                temporalView)) {
+            return false;
+        }
+        temporalDesc.view = temporalView;
+        temporalDesc.frame = frame.token;
+        temporalDesc.purpose = frame.purpose;
         temporalDesc.camera = &camera;
-        temporalDesc.frameIndex = TIME::GetFrameContext().frameIndex;
+        temporalDesc.cameraSourceObjectId = frame.cameraSourceObjectId;
+        temporalDesc.cameraRevision = frame.cameraRevision;
         temporalDesc.renderWidth = frame.renderWidth;
         temporalDesc.renderHeight = frame.renderHeight;
         temporalDesc.outputWidth = frame.outputWidth;
         temporalDesc.outputHeight = frame.outputHeight;
         temporalDesc.cameraCut = frame.cameraCut;
+        temporalDesc.projectionChanged = frame.projectionChanged;
+        temporalDesc.historyConfigurationKey =
+            static_cast<uint64_t>(antiAliasingMode) |
+            (antiAliasingMode == RENDER3D::RenderAntiAliasingMode::DLSS
+                ? static_cast<uint64_t>(renderQuality.dlssQualityMode) << 32u
+                : 0u);
         const bool temporalDebugView = debugRoute.temporalVisualization;
         const bool volumetricDebugView = debugRoute.volumetricVisualization;
         const bool temporalPipelineAllowed =
@@ -195,6 +235,19 @@ namespace HIKARI::RENDER3D::PIPELINE {
             temporalPipelineAllowed;
         const RENDER3D::TEMPORAL::TemporalFrameState temporalFrame =
             RENDER3D::TEMPORAL::BeginTemporalFrame(temporalDesc);
+        if (!temporalFrame.view.Matches(temporalView) ||
+            !temporalFrame.publication.Matches(frame.token) ||
+            !temporalFrame.camera.valid) {
+            return false;
+        }
+        TemporalFrameAbortGuard temporalFrameGuard(
+            temporalView,
+            frame.token);
+        if (!POST::PostSystem::SetSceneCaptureTemporalFrame(
+                temporalView,
+                frame.token)) {
+            return false;
+        }
         RENDER3D::TEMPORAL::UpdateTemporalResourceSystemContext(frame.graphics);
         (void)RENDER3D::TEMPORAL::BeginTemporalResources(temporalFrame);
         RENDER3D::TEMPORAL::SetTemporalDebugView(
@@ -543,7 +596,12 @@ namespace HIKARI::RENDER3D::PIPELINE {
         }
 
         MESHRENDERER::EndFrame();
-        return opaqueOk && depthAwareOk && transparentOk && featurePassesOk;
+        const bool frameRecorded =
+            opaqueOk && depthAwareOk && transparentOk && featurePassesOk;
+        if (frameRecorded) {
+            temporalFrameGuard.HandOff();
+        }
+        return frameRecorded;
     }
 
     bool RenderMeshCaptureOpaqueFrame(

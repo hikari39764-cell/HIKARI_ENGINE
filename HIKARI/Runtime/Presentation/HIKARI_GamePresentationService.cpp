@@ -154,8 +154,15 @@ namespace HIKARI {
             gPreviewTelemetrySeconds = 0.0;
             gPreviewTelemetryRenderFrames = 0;
             gPreviewTelemetryPresentedFrames = 0;
-            RENDER3D::TEMPORAL::ResetTemporalFrameHistory(
-                RENDER3D::TEMPORAL::TemporalHistoryResetReason::ExplicitReset);
+            RENDER3D::TEMPORAL::TemporalViewLease temporalView{};
+            if (RENDER3D::TEMPORAL::AcquireTemporalView(
+                    RENDER3D::kPrimaryRenderViewId,
+                    temporalView)) {
+                (void)RENDER3D::TEMPORAL::ResetTemporalFrameHistory(
+                    temporalView,
+                    RENDER3D::TEMPORAL::
+                        TemporalHistoryResetReason::ExplicitReset);
+            }
             HIKARI_LOG_INFO("In-process game presentation started.");
             return true;
         }
@@ -234,8 +241,15 @@ namespace HIKARI {
             gPreviewTelemetrySeconds = 0.0;
             gPreviewTelemetryRenderFrames = 0;
             gPreviewTelemetryPresentedFrames = 0;
-            RENDER3D::TEMPORAL::ResetTemporalFrameHistory(
-                RENDER3D::TEMPORAL::TemporalHistoryResetReason::ExplicitReset);
+            RENDER3D::TEMPORAL::TemporalViewLease temporalView{};
+            if (RENDER3D::TEMPORAL::AcquireTemporalView(
+                    RENDER3D::kPrimaryRenderViewId,
+                    temporalView)) {
+                (void)RENDER3D::TEMPORAL::ResetTemporalFrameHistory(
+                    temporalView,
+                    RENDER3D::TEMPORAL::
+                        TemporalHistoryResetReason::ExplicitReset);
+            }
             HIKARI_LOG_INFO("In-process game presentation stopped.");
             if (!featureUnloaded) {
                 HIKARI_LOG_ERROR(

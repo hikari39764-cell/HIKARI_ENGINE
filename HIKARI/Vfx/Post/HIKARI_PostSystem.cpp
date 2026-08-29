@@ -37,6 +37,8 @@ namespace HIKARI::POST {
     int PostSystem::requestedRenderHeight_ = 0;
     int PostSystem::requestedOutputWidth_ = 0;
     int PostSystem::requestedOutputHeight_ = 0;
+    RENDER3D::TEMPORAL::TemporalViewLease PostSystem::temporalView_{};
+    RENDER3D::RenderFrameToken PostSystem::temporalFrame_{};
 
     void PostSystem::Initialize(const GFX::Context& context) {
         UpdateContext(context);
@@ -65,6 +67,9 @@ namespace HIKARI::POST {
     }
 
     void PostSystem::Shutdown() {
+        AbortSceneCaptureTemporalFrame(
+            RENDER3D::TEMPORAL::
+                TemporalHistoryResetReason::PreviousFrameIncomplete);
         if (!initialized_) return;
         captureStage_.Shutdown();
         processingStage_.Shutdown();
@@ -208,6 +213,9 @@ namespace HIKARI::POST {
     }
 
     void PostSystem::BeginSceneCapture() {
+        AbortSceneCaptureTemporalFrame(
+            RENDER3D::TEMPORAL::
+                TemporalHistoryResetReason::PreviousFrameIncomplete);
         if (!initialized_) Initialize(context_);
         int width = 0;
         int height = 0;
@@ -218,6 +226,39 @@ namespace HIKARI::POST {
         if (!initialized_ || !captureStage_.Begin(width, height)) {
             LogFrameState("BeginSceneCapture failed");
         }
+    }
+
+    bool PostSystem::SetSceneCaptureTemporalFrame(
+        RENDER3D::TEMPORAL::TemporalViewLease view,
+        RENDER3D::RenderFrameToken frame) {
+
+        if (!view.IsValid() ||
+            !frame.IsValid() ||
+            view.viewId != frame.viewId ||
+            frame.viewId != RENDER3D::kPrimaryRenderViewId ||
+            !captureStage_.IsActive()) {
+            return false;
+        }
+        if (temporalFrame_.IsValid()) {
+            return temporalView_.Matches(view) &&
+                temporalFrame_.Matches(frame);
+        }
+        temporalView_ = view;
+        temporalFrame_ = frame;
+        return true;
+    }
+
+    void PostSystem::AbortSceneCaptureTemporalFrame(
+        RENDER3D::TEMPORAL::TemporalHistoryResetReason reason) {
+
+        if (temporalView_.IsValid() && temporalFrame_.IsValid()) {
+            (void)RENDER3D::TEMPORAL::AbortTemporalFrame(
+                temporalView_,
+                temporalFrame_,
+                reason);
+        }
+        temporalView_ = {};
+        temporalFrame_ = {};
     }
 
     bool PostSystem::IsSceneCaptureActive() { return captureStage_.IsActive(); }
@@ -260,11 +301,21 @@ namespace HIKARI::POST {
     void PostSystem::EndLightCapture() { captureStage_.EndLightCapture(); }
 
     RenderTarget2D* PostSystem::EndSceneCaptureAndResolveFinal() {
-        if (!initialized_) return nullptr;
+        if (!initialized_) {
+            AbortSceneCaptureTemporalFrame(
+                RENDER3D::TEMPORAL::
+                    TemporalHistoryResetReason::PreviousFrameIncomplete);
+            return nullptr;
+        }
         GFX::GPU_PROFILE::ScopedGpuTimer timer(
             context_.cmdList, GFX::GPU_PROFILE::Pass::PostResolve);
         RenderTarget2D* captured = captureStage_.End();
-        if (!captured) return nullptr;
+        if (!captured) {
+            AbortSceneCaptureTemporalFrame(
+                RENDER3D::TEMPORAL::
+                    TemporalHistoryResetReason::PreviousFrameIncomplete);
+            return nullptr;
+        }
 
         RenderTarget2D* volumetric =
             RENDER3D::VOLUMETRIC::ExecuteVolumetricLightingStage(*captured);
@@ -273,12 +324,23 @@ namespace HIKARI::POST {
         }
 
         const auto& quality = RENDER3D::GetRenderQualitySettings();
+        const auto handoffView = temporalView_;
+        const auto handoffFrame = temporalFrame_;
         auto temporal = RENDER3D::TEMPORAL::ExecuteTemporalResolveStage(
+            handoffView,
+            handoffFrame,
             context_,
             *volumetric,
             *captured,
             quality,
             processingStage_.GetExposureState());
+        (void)RENDER3D::TEMPORAL::AbortTemporalFrame(
+            handoffView,
+            handoffFrame,
+            RENDER3D::TEMPORAL::
+                TemporalHistoryResetReason::PreviousFrameIncomplete);
+        temporalView_ = {};
+        temporalFrame_ = {};
         RenderTarget2D* output = temporal.output ? temporal.output : volumetric;
         if (temporal.requiresOutputNormalization) {
             RenderTarget2D* normalized = processingStage_.NormalizeTemporalOutput(
@@ -290,8 +352,15 @@ namespace HIKARI::POST {
                 output = normalized;
             } else {
                 output = volumetric;
-                RENDER3D::TEMPORAL::ResetTemporalFrameHistory(
-                    RENDER3D::TEMPORAL::TemporalHistoryResetReason::ExplicitReset);
+                RENDER3D::TEMPORAL::TemporalViewLease temporalView{};
+                if (RENDER3D::TEMPORAL::AcquireTemporalView(
+                        RENDER3D::kPrimaryRenderViewId,
+                        temporalView)) {
+                    (void)RENDER3D::TEMPORAL::ResetTemporalFrameHistory(
+                        temporalView,
+                        RENDER3D::TEMPORAL::
+                            TemporalHistoryResetReason::ExplicitReset);
+                }
             }
         }
         return processingStage_.ResolveHdr(

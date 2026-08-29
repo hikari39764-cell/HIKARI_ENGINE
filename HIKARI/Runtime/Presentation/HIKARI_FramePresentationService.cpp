@@ -59,6 +59,12 @@ namespace HIKARI {
                 INTERNAL::GetRuntimeServiceState().editorGameViewportWidth;
             auto& gEditorGameViewportHeight =
                 INTERNAL::GetRuntimeServiceState().editorGameViewportHeight;
+
+            void AbortActivePrimaryTemporalFrame() {
+                POST::PostSystem::AbortSceneCaptureTemporalFrame(
+                    RENDER3D::TEMPORAL::
+                        TemporalHistoryResetReason::PreviousFrameIncomplete);
+            }
         } // namespace
 
         void SetEditorGameViewportSize(int width, int height, bool visible) {
@@ -307,6 +313,7 @@ namespace HIKARI {
                     renderWidth,
                     renderHeight)) {
                 HIKARI_LOG_ERROR("Render2D HDR output target is unavailable.");
+                AbortActivePrimaryTemporalFrame();
                 return false;
             }
 
@@ -343,6 +350,7 @@ namespace HIKARI {
                         gLogicalScreenWidth,
                         gLogicalScreenHeight)) {
                     HIKARI_LOG_ERROR("Game UI composition preparation failed.");
+                    AbortActivePrimaryTemporalFrame();
                     return false;
                 }
             }
@@ -377,6 +385,7 @@ namespace HIKARI {
             if (!HIKARI::POST::PostSystem::FinalizeGameUiComposition(
                     editorViewport)) {
                 HIKARI_LOG_ERROR("Game UI composition finalization failed.");
+                AbortActivePrimaryTemporalFrame();
                 return false;
             }
 
@@ -395,6 +404,9 @@ namespace HIKARI {
                     IsGamePresentationActive());
             }
 
+            // End every exact Post handoff even when an optional presentation
+            // path skipped temporal resolve. Completed frames are a no-op.
+            AbortActivePrimaryTemporalFrame();
             gPresentationPrepared = true;
             return true;
         }

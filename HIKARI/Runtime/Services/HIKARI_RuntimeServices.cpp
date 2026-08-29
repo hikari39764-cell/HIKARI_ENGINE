@@ -427,6 +427,7 @@ namespace HIKARI {
             RENDER3D::TEMPORAL::ShutdownTemporalGeometryPass();
             RENDER3D::TEMPORAL::ShutdownMotionVectorPass();
             RENDER3D::TEMPORAL::ShutdownTemporalResourceSystem();
+            RENDER3D::TEMPORAL::ShutdownTemporalFrameStateSystem();
             RENDER3D::CLOUDS::ShutdownStylizedCloudStage();
             RENDER3D::PANORAMA_SKY::ShutdownPanoramaSkyLayerStage();
             RENDER3D::VOLUMETRIC::ShutdownVolumetricLightingStage();

@@ -11,6 +11,7 @@
 #include "Render3D/Color/HIKARI_ExposureState.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Render3D/Resources/HIKARI_RenderTextureView.h"
+#include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
 #include "Render3D/Vfx/HIKARI_ActionPostReactionFrameSource.h"
 #include "Scene/HIKARI_SceneTransitionBus.h"
 #include "Vfx/Post/HIKARI_ActionScreenImpulseProvider.h"
@@ -90,6 +91,11 @@ namespace HIKARI::POST {
         static void RequestFrameDump();
 
         static void BeginSceneCapture();
+        static bool SetSceneCaptureTemporalFrame(
+            RENDER3D::TEMPORAL::TemporalViewLease view,
+            RENDER3D::RenderFrameToken frame);
+        static void AbortSceneCaptureTemporalFrame(
+            RENDER3D::TEMPORAL::TemporalHistoryResetReason reason);
         static bool IsSceneCaptureActive();
         static bool HasCurrentRenderTarget();
         static bool RebindCurrentRenderTarget();
@@ -156,6 +162,8 @@ namespace HIKARI::POST {
         static int requestedRenderHeight_;
         static int requestedOutputWidth_;
         static int requestedOutputHeight_;
+        static RENDER3D::TEMPORAL::TemporalViewLease temporalView_;
+        static RENDER3D::RenderFrameToken temporalFrame_;
     };
 
 } // namespace HIKARI::POST

@@ -53,6 +53,9 @@ namespace HIKARI::RENDER3D::PIPELINE {
         RenderViewId viewId{ kPrimaryRenderViewId };
         RenderViewPurpose purpose = RenderViewPurpose::Game;
         bool cameraCut = false;
+        bool projectionChanged = false;
+        uint64_t cameraSourceObjectId = 0;
+        uint64_t cameraRevision = 0;
         uint64_t frameIndex = 0;
         RenderFrameToken token{};
         GFX::Context graphics{};

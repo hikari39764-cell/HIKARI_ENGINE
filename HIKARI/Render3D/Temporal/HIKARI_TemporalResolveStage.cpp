@@ -16,9 +16,14 @@
 namespace HIKARI::RENDER3D::TEMPORAL {
 
     namespace {
-        void RejectTemporalFrame(bool nativeTaaRequested) {
+        void RejectTemporalFrame(
+            const TemporalFrameState& frame,
+            bool nativeTaaRequested) {
             MarkTemporalAntiAliasing(nativeTaaRequested, false);
-            ResetTemporalFrameHistory(TemporalHistoryResetReason::ExplicitReset);
+            (void)AbortTemporalFrame(
+                frame.view,
+                frame.publication,
+                TemporalHistoryResetReason::ExplicitReset);
         }
 
         TaaResolveSettings BuildTaaSettings(const RenderQualitySettings& quality) {
@@ -34,6 +39,8 @@ namespace HIKARI::RENDER3D::TEMPORAL {
     }
 
     TemporalResolveStageResult ExecuteTemporalResolveStage(
+        TemporalViewLease view,
+        RenderFrameToken publication,
         const GFX::Context& graphics,
         RenderTarget2D& sceneColorTarget,
         RenderTarget2D& sceneDepthTarget,
@@ -43,12 +50,38 @@ namespace HIKARI::RENDER3D::TEMPORAL {
         TemporalResolveStageResult result{};
         result.output = &sceneColorTarget;
 
+        TemporalFrameState frame{};
+        if (!TryGetTemporalFrameState(view, publication, frame)) {
+            return result;
+        }
+
+        const bool frameCurrent =
+            frame.publication.Matches(publication) &&
+            frame.frameIndex == TIME::GetFrameContext().frameIndex &&
+            frame.camera.valid &&
+            frame.renderWidth ==
+                static_cast<uint32_t>((std::max)(1, sceneColorTarget.GetWidth())) &&
+            frame.renderHeight ==
+                static_cast<uint32_t>((std::max)(1, sceneColorTarget.GetHeight())) &&
+            frame.renderWidth ==
+                static_cast<uint32_t>((std::max)(1, sceneDepthTarget.GetWidth())) &&
+            frame.renderHeight ==
+                static_cast<uint32_t>((std::max)(1, sceneDepthTarget.GetHeight()));
+        if (!frameCurrent || !frame.temporalResolveAllowed) {
+            RejectTemporalFrame(frame, false);
+            return result;
+        }
+
         const RenderDebugOutputRoute& debugRoute =
             GetRenderDebugOutputRoute();
         const bool debugRequested = debugRoute.temporalVisualization;
 
         if (debugRoute.active && !debugRequested) {
             MarkTemporalAntiAliasing(false, false);
+            (void)CompleteTemporalFrame(
+                frame.view,
+                frame.publication,
+                false);
             return result;
         }
 
@@ -67,28 +100,15 @@ namespace HIKARI::RENDER3D::TEMPORAL {
         result.requested = nativeTaaRequested || streamlineRequested;
         if (!result.requested) {
             MarkTemporalAntiAliasing(false, false);
+            (void)CompleteTemporalFrame(
+                frame.view,
+                frame.publication,
+                false);
             return result;
         }
 
-        const TemporalFrameState& frame = GetCurrentTemporalFrameState();
         result.expectedOutputWidth = frame.outputWidth;
         result.expectedOutputHeight = frame.outputHeight;
-
-        const bool frameCurrent =
-            frame.frameIndex == TIME::GetFrameContext().frameIndex &&
-            frame.camera.valid &&
-            frame.renderWidth ==
-                static_cast<uint32_t>((std::max)(1, sceneColorTarget.GetWidth())) &&
-            frame.renderHeight ==
-                static_cast<uint32_t>((std::max)(1, sceneColorTarget.GetHeight())) &&
-            frame.renderWidth ==
-                static_cast<uint32_t>((std::max)(1, sceneDepthTarget.GetWidth())) &&
-            frame.renderHeight ==
-                static_cast<uint32_t>((std::max)(1, sceneDepthTarget.GetHeight()));
-        if (!frameCurrent || !frame.temporalResolveAllowed) {
-            RejectTemporalFrame(nativeTaaRequested);
-            return result;
-        }
 
         const D3D12_GPU_DESCRIPTOR_HANDLE sceneDepthSrv =
             sceneDepthTarget.HasDepth()
@@ -100,7 +120,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             if (depthReadActive) {
                 sceneDepthTarget.EndDepthShaderRead();
             }
-            RejectTemporalFrame(nativeTaaRequested);
+            RejectTemporalFrame(frame, nativeTaaRequested);
             return result;
         }
 
@@ -117,6 +137,10 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             if (resolvedTarget != nullptr) {
                 result.backend = TemporalResolveBackend::Streamline;
                 MarkTemporalAntiAliasing(false, false);
+                (void)CompleteTemporalFrame(
+                    inputs.frame.view,
+                    inputs.frame.publication,
+                    true);
             }
         }
 
@@ -132,7 +156,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
         sceneDepthTarget.EndDepthShaderRead();
 
         if (resolvedTarget == nullptr || resolvedTarget->GetResource() == nullptr) {
-            RejectTemporalFrame(nativeTaaRequested);
+            RejectTemporalFrame(frame, nativeTaaRequested);
             return result;
         }
 

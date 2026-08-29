@@ -583,6 +583,10 @@ namespace HIKARI::RENDER3D::TEMPORAL {
         state.historyWriteIndex = 1u - state.historyReadIndex;
         state.historyColorValid = true;
         state.historyDepthValid = true;
+        (void)CompleteTemporalFrame(
+            state.frame.view,
+            state.frame.publication,
+            true);
         RefreshStats(state);
     }
 

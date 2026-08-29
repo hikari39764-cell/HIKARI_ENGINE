@@ -287,6 +287,9 @@ hikari_add_runtime_contract(
     HIKARI_RenderFrameGraphPlanSmoke
     "Tools/Tests/HIKARI_RenderFrameGraphPlanSmoke.cpp")
 hikari_add_runtime_contract(
+    HIKARI_TemporalFrameStateSmoke
+    "Tools/Tests/HIKARI_TemporalFrameStateSmoke.cpp")
+hikari_add_runtime_contract(
     HIKARI_ShaderSourceManifestSmoke
     "Tools/Tests/HIKARI_ShaderSourceManifestSmoke.cpp")
 hikari_add_runtime_contract(
@@ -338,6 +341,7 @@ foreach(runtime_contract IN ITEMS
     HIKARI_RenderGraphCapacitySmoke
     HIKARI_SceneSurfaceSemanticSmoke
     HIKARI_RenderFrameGraphPlanSmoke
+    HIKARI_TemporalFrameStateSmoke
     HIKARI_ShaderSourceManifestSmoke
     HIKARI_ShaderArtifactFormatSmoke
     HIKARI_ShaderCookArgumentsSmoke

@@ -168,7 +168,8 @@ RuntimePerformanceSnapshot BuildSnapshot() {
   out.ssao = RENDER3D::SCREENSPACE::GetSsaoDebugState();
   out.depthVisibility = RENDER3D::SCREENSPACE::GetDepthVisibilityDebugState();
   out.volumetric = RENDER3D::VOLUMETRIC::GetVolumetricLightingStats();
-  out.temporalFrame = RENDER3D::TEMPORAL::GetCurrentTemporalFrameState();
+  out.temporalFrame = RENDER3D::TEMPORAL::GetLatestTemporalFrameState(
+      RENDER3D::kPrimaryRenderViewId);
   out.temporalResources = RENDER3D::TEMPORAL::GetTemporalResourceStats();
   out.streamline = RENDER3D::UPSCALING::GetStreamlineDebugStats();
   out.streamlineReflex = RENDER3D::UPSCALING::GetStreamlineReflexStats();

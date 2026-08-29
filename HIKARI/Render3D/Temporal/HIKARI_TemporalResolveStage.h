@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include "Gfx/HIKARI_GfxContext.h"
+#include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
 
 namespace HIKARI {
     class RenderTarget2D;
@@ -36,6 +37,8 @@ namespace HIKARI::RENDER3D::TEMPORAL {
     };
 
     TemporalResolveStageResult ExecuteTemporalResolveStage(
+        TemporalViewLease view,
+        RenderFrameToken frame,
         const GFX::Context& graphics,
         RenderTarget2D& sceneColorTarget,
         RenderTarget2D& sceneDepthTarget,
