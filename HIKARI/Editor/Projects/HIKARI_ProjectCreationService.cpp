@@ -392,16 +392,11 @@ namespace {
                         "enabledRuntimeFeatures",
                         nlohmann::json::array({
                             "Rendering",
-                            "Animation",
-                            "Camera",
-                            "Physics",
-                            "GameplayBasic",
-                            "Cinematics",
-                            "Vfx"
+                            "Camera"
                         })
                     },
                     { "startupSceneGuid", "" },
-                    { "version", 4 }
+                    { "version", 5 }
                 },
                 &outMessage) ||
             !WriteTextFile(
