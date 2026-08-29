@@ -7,6 +7,7 @@
 #include <unordered_set>
 #include <utility>
 
+#include "Scene/Features/Internal/HIKARI_RuntimeFeatureRegistrationTransaction.h"
 #include "Scene/Features/HIKARI_RuntimeFeature.h"
 
 namespace HIKARI {
@@ -250,7 +251,21 @@ namespace HIKARI {
                     }
                 }
             }
-            if (dependenciesInstalled && feature->Register(context)) {
+            bool installed = false;
+            if (dependenciesInstalled) {
+                try {
+                    installed =
+                        INTERNAL::RegisterRuntimeFeatureTransactional(
+                            *feature,
+                            context);
+                }
+                catch (...) {
+                    // Snapshot failure occurs before feature mutation. Treat
+                    // the feature as failed without admitting partial state.
+                    installed = false;
+                }
+            }
+            if (installed) {
                 report.installedFeatures.push_back(featureId);
                 activeFeatureIds_.push_back(featureId);
                 continue;

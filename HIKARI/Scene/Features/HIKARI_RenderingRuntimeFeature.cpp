@@ -57,13 +57,14 @@ namespace HIKARI {
 
             std::span<const std::string_view>
                 GetComponentTypeNames() const noexcept override {
-                static constexpr std::array<std::string_view, 9> names{
+                static constexpr std::array<std::string_view, 10> names{
                     "ModelComponent",
                     "MaterialFxComponent",
                     "ProceduralMeshComponent",
                     "TerrainSurfaceComponent",
                     "WaterSurfaceComponent",
                     "SandSurfaceFollowerComponent",
+                    "BuoyancyComponent",
                     "LightComponent",
                     "ReflectionProbeComponent",
                     "IrradianceVolumeComponent"
@@ -73,11 +74,12 @@ namespace HIKARI {
 
             std::span<const std::string_view>
                 GetSystemIds() const noexcept override {
-                static constexpr std::array<std::string_view, 4> ids{
+                static constexpr std::array<std::string_view, 5> ids{
                     "ModelRenderSystem",
                     "WaterSurfaceSystem",
                     "TerrainInteractionSourceSystem",
-                    "SandSurfaceSystem"
+                    "SandSurfaceSystem",
+                    "BuoyancySystem"
                 };
                 return ids;
             }

@@ -99,6 +99,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/HIKARI_CharacterLocomotionSystem.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/HIKARI_ComponentSystemPolicy.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Features/HIKARI_RuntimeFeatureCatalog.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Features/Internal/HIKARI_RuntimeFeatureRegistrationTransaction.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Features/HIKARI_RuntimeExtension.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Features/HIKARI_BuiltInRuntimeFeatures.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Features/HIKARI_RenderingRuntimeFeature.cpp"
