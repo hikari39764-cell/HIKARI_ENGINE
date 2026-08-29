@@ -109,6 +109,14 @@ namespace HIKARI::WATER {
         const WaterSurfaceSettings& settings,
         float maximumVertexSpacing) noexcept;
 
+    // CameraCenteredOcean is an infinite world-horizontal surface. Tilted or
+    // sheared authored planes use the finite route; both render and query
+    // owners must consume this same resolved settings snapshot.
+    WaterSurfaceSettings ResolveWaterSurfaceRuntimeSettings(
+        const WaterSurfaceSettings& settings,
+        float maximumVertexSpacing,
+        const MATH::Mat4& world) noexcept;
+
     WaterSurfaceEvaluation EvaluateWaterSurface(
         const WaterSurfaceSettings& settings,
         const MATH::Vec2& sourceLocalXZ,

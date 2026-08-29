@@ -119,7 +119,8 @@ namespace HIKARI {
         RENDER3D::WATER::WaterSurfaceRenderData
             BuildWaterSurfaceRenderData(
                 const WATER::WaterSurfaceSettings& authoredSettings,
-                const ProceduralMeshComponent& procedural) {
+                const ProceduralMeshComponent& procedural,
+                const MATH::Mat4& world) {
 
             const ProceduralMeshSettings mesh =
                 SanitizeProceduralMeshSettings(
@@ -129,9 +130,10 @@ namespace HIKARI {
             const float spacingZ = mesh.depth /
                 static_cast<float>((std::max)(mesh.segmentsY, 1u));
             const WATER::WaterSurfaceSettings settings =
-                WATER::ResolveWaterSurfaceSettingsForMesh(
+                WATER::ResolveWaterSurfaceRuntimeSettings(
                     authoredSettings,
-                    (std::max)(spacingX, spacingZ));
+                    (std::max)(spacingX, spacingZ),
+                    world);
 
             RENDER3D::WATER::WaterSurfaceRenderData data{};
             data.shadingModel = settings.preset ==
@@ -1296,7 +1298,9 @@ namespace HIKARI {
                     meshKind == ProceduralMeshKind::GridPlane) {
                     desc.waterSurface = true;
                     desc.waterSurfaceData = BuildWaterSurfaceRenderData(
-                        water->GetSettings(), *procedural);
+                        water->GetSettings(),
+                        *procedural,
+                        desc.worldTransform.GetWorldMatrix());
                 }
             }
 

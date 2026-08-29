@@ -388,6 +388,40 @@ namespace HIKARI::WATER {
         return settings;
     }
 
+    WaterSurfaceSettings ResolveWaterSurfaceRuntimeSettings(
+        const WaterSurfaceSettings& rawSettings,
+        float maximumVertexSpacing,
+        const MATH::Mat4& world) noexcept {
+
+        WaterSurfaceSettings settings =
+            ResolveWaterSurfaceSettingsForMesh(
+                rawSettings,
+                maximumVertexSpacing);
+        if (settings.geometryMode !=
+                WaterSurfaceGeometryMode::CameraCenteredOcean) {
+            return settings;
+        }
+
+        const MATH::Vec3 basisX{
+            world.m[0][0], world.m[0][1], world.m[0][2] };
+        const MATH::Vec3 basisY{
+            world.m[1][0], world.m[1][1], world.m[1][2] };
+        const MATH::Vec3 basisZ{
+            world.m[2][0], world.m[2][1], world.m[2][2] };
+        const MATH::Vec3 planeNormal =
+            MATH::Normalize(MATH::Cross(basisZ, basisX));
+        const MATH::Vec3 authoredUp = MATH::Normalize(basisY);
+        constexpr float kMinimumWorldUpAlignment = 0.9999f;
+        if (MATH::Length(planeNormal) <= 1.0e-6f ||
+            MATH::Length(authoredUp) <= 1.0e-6f ||
+            planeNormal.y < kMinimumWorldUpAlignment ||
+            authoredUp.y < kMinimumWorldUpAlignment) {
+            settings.geometryMode =
+                WaterSurfaceGeometryMode::FiniteAuthored;
+        }
+        return settings;
+    }
+
     WaterSurfaceEvaluation EvaluateWaterSurface(
         const WaterSurfaceSettings& rawSettings,
         const MATH::Vec2& sourceLocalXZ,

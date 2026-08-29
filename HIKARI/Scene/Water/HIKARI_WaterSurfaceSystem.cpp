@@ -73,12 +73,11 @@ namespace HIKARI {
             snapshot.inverseWorld = MATH::Inverse(snapshot.world);
             snapshot.normalMatrix =
                 MATH::BuildNormalMatrixFromWorld(snapshot.world);
-            snapshot.settings = authored.geometryMode ==
-                    WATER::WaterSurfaceGeometryMode::CameraCenteredOcean
-                ? WATER::SanitizeWaterSurfaceSettings(authored)
-                : WATER::ResolveWaterSurfaceSettingsForMesh(
+            snapshot.settings =
+                WATER::ResolveWaterSurfaceRuntimeSettings(
                     authored,
-                    (std::max)(spacingX, spacingZ));
+                    (std::max)(spacingX, spacingZ),
+                    snapshot.world);
             snapshot.halfExtents = {
                 mesh.width * 0.5f,
                 mesh.depth * 0.5f
