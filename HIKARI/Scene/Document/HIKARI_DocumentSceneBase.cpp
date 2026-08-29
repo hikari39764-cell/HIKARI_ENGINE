@@ -161,16 +161,16 @@ namespace HIKARI {
             0.25f
         });
         state_->runtime.fixedStepClock.Reset();
+        if (!RegisterRuntimeFeatures()) {
+            HIKARI_LOG_ERROR(
+                "[RuntimeFeature] one or more built-in features failed to install");
+        }
         if (!ConfigureRuntimeWorldServices()) {
             HIKARI_LOG_ERROR(
                 "[RuntimeExtension] world service registration failed");
         }
 
         ReloadAssets();
-        if (!RegisterRuntimeFeatures()) {
-            HIKARI_LOG_ERROR(
-                "[RuntimeFeature] one or more built-in features failed to install");
-        }
         state_->assets.SequenceAssets().SetAssetDatabase(&state_->assets.Database());
         state_->camera.sequencePlayback.SetAssetStore(&state_->assets.SequenceAssets());
         state_->runtime.animationStateMachineAssets.SetAssetDatabase(&state_->assets.Database());
@@ -203,6 +203,11 @@ namespace HIKARI {
         // are still available, so SDK contexts can release owned writers.
         state_->runtime.world.Clear();
         state_->runtime.world.Services().Clear();
+        state_->runtime.waterSurfaceQueryService.SetBathymetryProvider(
+            nullptr);
+        state_->runtime.waterBathymetryProvider.reset();
+        state_->runtime.physicsWorldService.DetachWorld();
+        (void)state_->runtime.physicsWorldService.RemoveBackend();
         state_->runtime.materialProjectionSourceSnapshot.reset();
         state_->runtime.materialExternalValueSnapshot.reset();
         state_->runtime.bindingStore.Clear();

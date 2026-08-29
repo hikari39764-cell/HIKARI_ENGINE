@@ -348,6 +348,13 @@ namespace HIKARI {
     }
 
     bool DocumentSceneBase::ConfigureRuntimeWorldServices() {
+        const bool physicsEnabled =
+            state_->runtime.featureCatalog.IsFeatureActive(
+                RuntimeFeatureIds::Physics);
+        const bool waterEnabled =
+            state_->runtime.featureCatalog.IsFeatureActive(
+                RuntimeFeatureIds::Water);
+
         BINDING::Catalog bindingCatalog{};
         const std::filesystem::path bindingCatalogPath =
             BINDING::GetCatalogPath(
@@ -399,15 +406,17 @@ namespace HIKARI {
                 "runtime will retry lazily");
         }
 
-        std::string physicsSettingsMessage{};
-        if (!state_->runtime.physicsSettings.Load(
-                state_->assets.Database().GetProjectRoot() /
-                    "ProjectSettings/Physics/collision.json",
-                physicsSettingsMessage)) {
-            HIKARI_LOG_WARN(
-                "[Physics] " + physicsSettingsMessage +
-                "; using built-in defaults");
-            state_->runtime.physicsSettings.ResetToDefaults();
+        if (physicsEnabled) {
+            std::string physicsSettingsMessage{};
+            if (!state_->runtime.physicsSettings.Load(
+                    state_->assets.Database().GetProjectRoot() /
+                        "ProjectSettings/Physics/collision.json",
+                    physicsSettingsMessage)) {
+                HIKARI_LOG_WARN(
+                    "[Physics] " + physicsSettingsMessage +
+                    "; using built-in defaults");
+                state_->runtime.physicsSettings.ResetToDefaults();
+            }
         }
         state_->runtime.playStateService.active = &state_->runtime.playActive;
         state_->runtime.gameplayCameraService.camera = &state_->camera.gameplayCamera;
@@ -417,22 +426,35 @@ namespace HIKARI {
             &state_->assets.Registry();
         state_->runtime.runtimeAssetContextService.modelManager =
             &state_->assets.Models();
-        state_->runtime.collisionGeometryStore.SetAssetDatabase(&state_->assets.Database());
-        if (!state_->runtime.physicsWorldService.HasBackend() &&
-            !state_->runtime.physicsWorldService.InstallBackend(
-                PHYSICS::CreateJoltPhysicsBackend())) {
-            HIKARI_LOG_ERROR(
-                "[Physics] failed to install default Jolt backend");
-            return false;
+        if (physicsEnabled) {
+            state_->runtime.collisionGeometryStore.SetAssetDatabase(
+                &state_->assets.Database());
+            if (!state_->runtime.physicsWorldService.HasBackend() &&
+                !state_->runtime.physicsWorldService.InstallBackend(
+                    PHYSICS::CreateJoltPhysicsBackend())) {
+                HIKARI_LOG_ERROR(
+                    "[Physics] failed to install default Jolt backend");
+                return false;
+            }
+        }
+        else {
+            state_->runtime.physicsWorldService.DetachWorld();
+            (void)state_->runtime.physicsWorldService.RemoveBackend();
         }
 
-        if (!state_->runtime.waterBathymetryProvider) {
+        if (waterEnabled && physicsEnabled &&
+            !state_->runtime.waterBathymetryProvider) {
             state_->runtime.waterBathymetryProvider =
                 std::make_unique<PhysicsWaterBathymetryProvider>(
                     state_->runtime.physicsWorldService);
         }
+        if (!waterEnabled || !physicsEnabled) {
+            state_->runtime.waterBathymetryProvider.reset();
+        }
         state_->runtime.waterSurfaceQueryService.SetBathymetryProvider(
-            state_->runtime.waterBathymetryProvider.get());
+            waterEnabled
+                ? state_->runtime.waterBathymetryProvider.get()
+                : nullptr);
 
         WorldServiceRegistry& services = state_->runtime.world.Services();
         state_->runtime.presentationModelService.Clear();
@@ -452,8 +474,8 @@ namespace HIKARI {
             state_->runtime.gameUiPresentationService) && success;
         success = services.Register(
             state_->runtime.dialogueSessionService) && success;
-        success = services.Register(
-            state_->runtime.waterSurfaceQueryService) && success;
+        success = (!waterEnabled || services.Register(
+            state_->runtime.waterSurfaceQueryService)) && success;
         success = services.Register(
             state_->runtime.sandSurfaceQueryService) && success;
         success = services.Register(state_->camera.sequencePlayback) && success;
@@ -479,19 +501,22 @@ namespace HIKARI {
         success = services.Register(state_->runtime.motionIntentService) && success;
         success = services.Register(state_->runtime.characterMotionStateService) &&
             success;
-        success = services.Register(state_->runtime.kinematicMotionService) && success;
+        success = (!physicsEnabled || services.Register(
+            state_->runtime.kinematicMotionService)) && success;
         success = services.Register(
             state_->runtime.presentationModelService) && success;
         success = services.Register(state_->runtime.presentationTransformService) &&
             success;
         success = services.Register(
             state_->runtime.runtimeObjectActivityService) && success;
-        success = services.Register(state_->runtime.collisionGeometryStore) &&
-            success;
-        success = services.Register(state_->runtime.physicsStatusService) &&
-            success;
-        success = services.Register(state_->runtime.physicsSettings) && success;
-        success = services.Register(state_->runtime.physicsWorldService) && success;
+        success = (!physicsEnabled || services.Register(
+            state_->runtime.collisionGeometryStore)) && success;
+        success = (!physicsEnabled || services.Register(
+            state_->runtime.physicsStatusService)) && success;
+        success = (!physicsEnabled || services.Register(
+            state_->runtime.physicsSettings)) && success;
+        success = (!physicsEnabled || services.Register(
+            state_->runtime.physicsWorldService)) && success;
         success = services.Register(
             state_->runtime.navigationWorldService) && success;
         success = state_->runtime.extensionHost.RegisterWorldServices(services) &&
