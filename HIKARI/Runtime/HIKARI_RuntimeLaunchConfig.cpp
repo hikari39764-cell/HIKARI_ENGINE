@@ -5,6 +5,9 @@
 
 #include <algorithm>
 #include <array>
+#include <cerrno>
+#include <cwchar>
+#include <limits>
 #include <string_view>
 #include <system_error>
 #include <utility>
@@ -170,6 +173,45 @@ namespace HIKARI {
                 return std::filesystem::path(
                     arguments[index + 1u]);
             }
+        }
+        return std::nullopt;
+    }
+
+    std::optional<uint32_t>
+        ReadRuntimeCommandLineUint32(
+            std::wstring_view option) {
+
+        const std::vector<std::wstring> arguments =
+            ReadCommandLineArguments();
+        for (size_t index = 1u;
+            index + 1u < arguments.size();
+            ++index) {
+            if (arguments[index] != option) {
+                continue;
+            }
+
+            const std::wstring& valueText =
+                arguments[index + 1u];
+            if (valueText.empty() ||
+                valueText.front() == L'-') {
+                return std::nullopt;
+            }
+            errno = 0;
+            wchar_t* end = nullptr;
+            const unsigned long long value =
+                std::wcstoull(
+                    valueText.c_str(),
+                    &end,
+                    10);
+            if (errno == ERANGE ||
+                end == valueText.c_str() ||
+                end == nullptr ||
+                *end != L'\0' ||
+                value >
+                    (std::numeric_limits<uint32_t>::max)()) {
+                return std::nullopt;
+            }
+            return static_cast<uint32_t>(value);
         }
         return std::nullopt;
     }

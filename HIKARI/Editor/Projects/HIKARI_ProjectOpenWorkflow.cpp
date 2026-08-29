@@ -5,66 +5,12 @@
 #include <vector>
 
 #include "Core/Text/HIKARI_UtfPath.h"
+#include "Editor/Projects/HIKARI_ProjectProcess.h"
 #include "Project/HIKARI_ProjectDescriptor.h"
 #include "Project/Paths/HIKARI_ProjectPath.h"
 
 namespace HIKARI::EDITOR {
 namespace {
-
-    std::wstring QuoteWindowsArgument(
-        const std::wstring& argument) {
-
-        if (argument.empty()) {
-            return L"\"\"";
-        }
-        if (argument.find_first_of(L" \t\n\v\"") ==
-            std::wstring::npos) {
-            return argument;
-        }
-
-        std::wstring quoted{ L'"' };
-        size_t backslashCount = 0u;
-        for (const wchar_t character : argument) {
-            if (character == L'\\') {
-                ++backslashCount;
-                continue;
-            }
-            if (character == L'"') {
-                quoted.append(
-                    backslashCount * 2u + 1u,
-                    L'\\');
-                quoted.push_back(L'"');
-                backslashCount = 0u;
-                continue;
-            }
-            quoted.append(backslashCount, L'\\');
-            backslashCount = 0u;
-            quoted.push_back(character);
-        }
-        quoted.append(backslashCount * 2u, L'\\');
-        quoted.push_back(L'"');
-        return quoted;
-    }
-
-    void AppendArgument(
-        std::wstring& commandLine,
-        const std::wstring& argument) {
-
-        if (!commandLine.empty()) {
-            commandLine.push_back(L' ');
-        }
-        commandLine += QuoteWindowsArgument(argument);
-    }
-
-    std::string MakeWindowsError(
-        const char* action,
-        DWORD error) {
-
-        return std::string(action) +
-            " (Windows error " +
-            std::to_string(error) +
-            ").";
-    }
 
     const char* SelectEditorPreset() noexcept {
 #if defined(_DEBUG)
@@ -92,15 +38,91 @@ namespace {
         const std::filesystem::path& projectRoot,
         std::string& outMessage) {
 
+        return StartRequest(
+            projectRoot,
+            ProjectOpenWorkflowRequest::OpenProject,
+            outMessage);
+    }
+
+    bool ProjectOpenWorkflow::
+        StartRebuildAfterProcessExit(
+            const std::filesystem::path& projectRoot,
+            uint32_t processId,
+            std::string& outMessage) {
+
         if (IsBusy()) {
             outMessage =
                 "A project build is already running.";
             return false;
         }
+        if (processId == 0u ||
+            processId == GetCurrentProcessId()) {
+            state_ = ProjectOpenWorkflowState::Failed;
+            statusMessage_ =
+                "The previous project editor process ID is invalid; "
+                "the rebuild was not started.";
+            outMessage = statusMessage_;
+            return false;
+        }
+
+        shouldExitLauncher_ = false;
+        buildLogPath_.clear();
+        projectRoot_ =
+            PROJECT_PATHS::NormalizeProjectRoot(projectRoot);
+        request_ =
+            ProjectOpenWorkflowRequest::RebuildAndReload;
+        waitProcess_ = OpenProcess(
+            SYNCHRONIZE,
+            FALSE,
+            static_cast<DWORD>(processId));
+        if (waitProcess_ == nullptr) {
+            const DWORD error = GetLastError();
+            if (error == ERROR_INVALID_PARAMETER) {
+                return BeginBuild(
+                    projectRoot_,
+                    request_,
+                    outMessage);
+            }
+            state_ = ProjectOpenWorkflowState::Failed;
+            statusMessage_ =
+                PROJECT_PROCESS::MakeWindowsError(
+                    "Could not wait for the previous project editor",
+                    error);
+            outMessage = statusMessage_;
+            return false;
+        }
+
+        state_ =
+            ProjectOpenWorkflowState::WaitingForEditorExit;
+        statusMessage_ =
+            "Waiting for the previous project editor to close "
+            "before rebuilding its GameProject module...";
+        outMessage.clear();
+        return true;
+    }
+
+    bool ProjectOpenWorkflow::StartRequest(
+        const std::filesystem::path& projectRoot,
+        ProjectOpenWorkflowRequest request,
+        std::string& outMessage) {
+
+        if (IsBusy()) {
+            outMessage =
+                "A project build is already running.";
+            return false;
+        }
+        return BeginBuild(projectRoot, request, outMessage);
+    }
+
+    bool ProjectOpenWorkflow::BeginBuild(
+        const std::filesystem::path& projectRoot,
+        ProjectOpenWorkflowRequest request,
+        std::string& outMessage) {
 
         shouldExitLauncher_ = false;
         projectRoot_ =
             PROJECT_PATHS::NormalizeProjectRoot(projectRoot);
+        request_ = request;
         descriptorPath_ =
             projectRoot_ / kProjectDescriptorFilename;
 
@@ -177,35 +199,50 @@ namespace {
             nullptr);
         if (logHandle == INVALID_HANDLE_VALUE) {
             state_ = ProjectOpenWorkflowState::Failed;
-            statusMessage_ = MakeWindowsError(
-                "Could not create the project build log",
-                GetLastError());
+            statusMessage_ =
+                PROJECT_PROCESS::MakeWindowsError(
+                    "Could not create the project build log",
+                    GetLastError());
             outMessage = statusMessage_;
             return false;
         }
 
         preset_ = SelectEditorPreset();
         std::wstring commandLine{};
-        AppendArgument(commandLine, L"powershell.exe");
-        AppendArgument(commandLine, L"-NoProfile");
-        AppendArgument(commandLine, L"-ExecutionPolicy");
-        AppendArgument(commandLine, L"Bypass");
-        AppendArgument(commandLine, L"-File");
-        AppendArgument(
+        PROJECT_PROCESS::AppendWindowsArgument(
+            commandLine, L"powershell.exe");
+        PROJECT_PROCESS::AppendWindowsArgument(
+            commandLine, L"-NoProfile");
+        PROJECT_PROCESS::AppendWindowsArgument(
+            commandLine, L"-ExecutionPolicy");
+        PROJECT_PROCESS::AppendWindowsArgument(
+            commandLine, L"Bypass");
+        PROJECT_PROCESS::AppendWindowsArgument(
+            commandLine, L"-File");
+        PROJECT_PROCESS::AppendWindowsArgument(
             commandLine,
             buildScript.wstring());
-        AppendArgument(commandLine, L"-Preset");
-        AppendArgument(
+        PROJECT_PROCESS::AppendWindowsArgument(
+            commandLine, L"-Preset");
+        PROJECT_PROCESS::AppendWindowsArgument(
             commandLine,
             TEXT::PathFromUtf8(preset_).wstring());
-        AppendArgument(commandLine, L"-Project");
-        AppendArgument(
+        PROJECT_PROCESS::AppendWindowsArgument(
+            commandLine, L"-Project");
+        PROJECT_PROCESS::AppendWindowsArgument(
             commandLine,
             projectRoot_.wstring());
-        AppendArgument(commandLine, L"-SdkRoot");
-        AppendArgument(
+        PROJECT_PROCESS::AppendWindowsArgument(
+            commandLine, L"-SdkRoot");
+        PROJECT_PROCESS::AppendWindowsArgument(
             commandLine,
             (runtimeRoot_ / "Sdk").wstring());
+        if (request_ ==
+            ProjectOpenWorkflowRequest::RebuildAndReload) {
+            PROJECT_PROCESS::AppendWindowsArgument(
+                commandLine,
+                L"-ForceBuild");
+        }
 
         std::vector<wchar_t> mutableCommandLine(
             commandLine.begin(),
@@ -220,6 +257,40 @@ namespace {
         startupInfo.hStdInput =
             GetStdHandle(STD_INPUT_HANDLE);
 
+        HANDLE buildJob = CreateJobObjectW(
+            nullptr,
+            nullptr);
+        if (buildJob == nullptr) {
+            const DWORD error = GetLastError();
+            CloseHandle(logHandle);
+            state_ = ProjectOpenWorkflowState::Failed;
+            statusMessage_ =
+                PROJECT_PROCESS::MakeWindowsError(
+                    "Could not create the HIKARI project build job",
+                    error);
+            outMessage = statusMessage_;
+            return false;
+        }
+        JOBOBJECT_EXTENDED_LIMIT_INFORMATION jobLimits{};
+        jobLimits.BasicLimitInformation.LimitFlags =
+            JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        if (!SetInformationJobObject(
+                buildJob,
+                JobObjectExtendedLimitInformation,
+                &jobLimits,
+                sizeof(jobLimits))) {
+            const DWORD error = GetLastError();
+            CloseHandle(buildJob);
+            CloseHandle(logHandle);
+            state_ = ProjectOpenWorkflowState::Failed;
+            statusMessage_ =
+                PROJECT_PROCESS::MakeWindowsError(
+                    "Could not configure the HIKARI project build job",
+                    error);
+            outMessage = statusMessage_;
+            return false;
+        }
+
         PROCESS_INFORMATION processInformation{};
         const BOOL created = CreateProcessW(
             nullptr,
@@ -227,7 +298,8 @@ namespace {
             nullptr,
             nullptr,
             TRUE,
-            CREATE_NO_WINDOW |
+            CREATE_SUSPENDED |
+                CREATE_NO_WINDOW |
                 CREATE_UNICODE_ENVIRONMENT,
             nullptr,
             runtimeRoot_.c_str(),
@@ -238,27 +310,112 @@ namespace {
             : GetLastError();
         CloseHandle(logHandle);
         if (!created) {
+            CloseHandle(buildJob);
             state_ = ProjectOpenWorkflowState::Failed;
-            statusMessage_ = MakeWindowsError(
-                "Could not start the HIKARI project build",
-                createError);
+            statusMessage_ =
+                PROJECT_PROCESS::MakeWindowsError(
+                    "Could not start the HIKARI project build",
+                    createError);
+            outMessage = statusMessage_;
+            return false;
+        }
+
+        if (!AssignProcessToJobObject(
+                buildJob,
+                processInformation.hProcess)) {
+            const DWORD error = GetLastError();
+            TerminateProcess(
+                processInformation.hProcess,
+                error);
+            WaitForSingleObject(
+                processInformation.hProcess,
+                5000u);
+            CloseHandle(processInformation.hThread);
+            CloseHandle(processInformation.hProcess);
+            CloseHandle(buildJob);
+            state_ = ProjectOpenWorkflowState::Failed;
+            statusMessage_ =
+                PROJECT_PROCESS::MakeWindowsError(
+                    "Could not contain the HIKARI project build process",
+                    error);
+            outMessage = statusMessage_;
+            return false;
+        }
+        if (ResumeThread(processInformation.hThread) ==
+            static_cast<DWORD>(-1)) {
+            const DWORD error = GetLastError();
+            TerminateJobObject(buildJob, error);
+            CloseHandle(buildJob);
+            WaitForSingleObject(
+                processInformation.hProcess,
+                5000u);
+            CloseHandle(processInformation.hThread);
+            CloseHandle(processInformation.hProcess);
+            state_ = ProjectOpenWorkflowState::Failed;
+            statusMessage_ =
+                PROJECT_PROCESS::MakeWindowsError(
+                    "Could not resume the HIKARI project build process",
+                    error);
             outMessage = statusMessage_;
             return false;
         }
 
         CloseHandle(processInformation.hThread);
         buildProcess_ = processInformation.hProcess;
+        buildJob_ = buildJob;
         state_ = ProjectOpenWorkflowState::Building;
-        statusMessage_ =
-            "Building " + descriptor.name +
-            " with the shared HIKARI " +
-            preset_ + " build...";
+        statusMessage_ = request_ ==
+                ProjectOpenWorkflowRequest::RebuildAndReload
+            ? "Rebuilding " + descriptor.name +
+                " with the shared HIKARI " +
+                preset_ + " SDK before reloading..."
+            : "Building " + descriptor.name +
+                " with the shared HIKARI " +
+                preset_ + " build...";
         outMessage.clear();
         return true;
     }
 
     void ProjectOpenWorkflow::Update() {
-        if (!IsBusy() || buildProcess_ == nullptr) {
+        if (state_ ==
+            ProjectOpenWorkflowState::WaitingForEditorExit) {
+            if (waitProcess_ == nullptr) {
+                state_ = ProjectOpenWorkflowState::Failed;
+                statusMessage_ =
+                    "The previous editor wait handle is unavailable.";
+                return;
+            }
+            const DWORD waitResult =
+                WaitForSingleObject(waitProcess_, 0u);
+            if (waitResult == WAIT_TIMEOUT) {
+                return;
+            }
+            if (waitResult != WAIT_OBJECT_0) {
+                statusMessage_ =
+                    PROJECT_PROCESS::MakeWindowsError(
+                        "Could not observe the previous project editor",
+                        GetLastError());
+                state_ = ProjectOpenWorkflowState::Failed;
+                CloseWaitProcess();
+                return;
+            }
+
+            CloseWaitProcess();
+            const std::filesystem::path projectRoot =
+                projectRoot_;
+            state_ = ProjectOpenWorkflowState::Idle;
+            std::string startMessage{};
+            if (!BeginBuild(
+                    projectRoot,
+                    ProjectOpenWorkflowRequest::RebuildAndReload,
+                    startMessage)) {
+                statusMessage_ = std::move(startMessage);
+            }
+            return;
+        }
+
+        if (state_ != ProjectOpenWorkflowState::Building ||
+            buildProcess_ == nullptr) {
             return;
         }
 
@@ -266,11 +423,12 @@ namespace {
         if (!GetExitCodeProcess(
                 buildProcess_,
                 &exitCode)) {
-            statusMessage_ = MakeWindowsError(
-                "Could not query the HIKARI project build",
-                GetLastError());
+            statusMessage_ =
+                PROJECT_PROCESS::MakeWindowsError(
+                    "Could not query the HIKARI project build",
+                    GetLastError());
             state_ = ProjectOpenWorkflowState::Failed;
-            CloseBuildProcess();
+            CancelBuildProcess();
             return;
         }
         if (exitCode == STILL_ACTIVE) {
@@ -278,6 +436,18 @@ namespace {
         }
 
         CloseBuildProcess();
+        if (exitCode != 0u &&
+            request_ ==
+                ProjectOpenWorkflowRequest::RebuildAndReload) {
+            state_ = ProjectOpenWorkflowState::Failed;
+            statusMessage_ =
+                "GameProject rebuild failed with exit code " +
+                std::to_string(exitCode) +
+                ". The project was not reopened. See " +
+                TEXT::PathToUtf8(buildLogPath_);
+            return;
+        }
+
         const bool useProjectModule = exitCode == 0u;
         std::string launchMessage{};
         if (!LaunchEditor(
@@ -304,7 +474,8 @@ namespace {
     }
 
     void ProjectOpenWorkflow::Shutdown() noexcept {
-        CloseBuildProcess();
+        CancelBuildProcess();
+        CloseWaitProcess();
     }
 
     ProjectOpenWorkflowState
@@ -314,7 +485,8 @@ namespace {
 
     bool ProjectOpenWorkflow::IsBusy() const noexcept {
         return state_ ==
-            ProjectOpenWorkflowState::Building;
+                ProjectOpenWorkflowState::WaitingForEditorExit ||
+            state_ == ProjectOpenWorkflowState::Building;
     }
 
     bool ProjectOpenWorkflow::
@@ -363,57 +535,24 @@ namespace {
             return false;
         }
 
-        std::wstring commandLine{};
-        AppendArgument(
-            commandLine,
-            executable.wstring());
-        AppendArgument(commandLine, L"--project");
-        AppendArgument(
-            commandLine,
-            descriptorPath_.wstring());
+        std::vector<std::wstring> arguments{
+            L"--project",
+            descriptorPath_.wstring(),
+        };
         if (useProjectModule) {
-            AppendArgument(
-                commandLine,
-                L"--project-module");
-            AppendArgument(
-                commandLine,
-                projectModule.wstring());
+            arguments.push_back(L"--project-module");
+            arguments.push_back(projectModule.wstring());
         }
         else {
-            AppendArgument(
-                commandLine,
+            arguments.push_back(
                 L"--allow-missing-project-module");
         }
-        std::vector<wchar_t> mutableCommandLine(
-            commandLine.begin(),
-            commandLine.end());
-        mutableCommandLine.push_back(L'\0');
-
-        STARTUPINFOW startupInfo{};
-        startupInfo.cb = sizeof(startupInfo);
-        PROCESS_INFORMATION processInformation{};
-        if (!CreateProcessW(
-                executable.c_str(),
-                mutableCommandLine.data(),
-                nullptr,
-                nullptr,
-                FALSE,
-                CREATE_NEW_PROCESS_GROUP |
-                    CREATE_UNICODE_ENVIRONMENT,
-                nullptr,
-                projectRoot_.c_str(),
-                &startupInfo,
-                &processInformation)) {
-            outMessage = MakeWindowsError(
-                "Could not start the project editor",
-                GetLastError());
-            return false;
-        }
-
-        CloseHandle(processInformation.hThread);
-        CloseHandle(processInformation.hProcess);
-        outMessage.clear();
-        return true;
+        return PROJECT_PROCESS::LaunchProcess(
+            executable,
+            arguments,
+            projectRoot_,
+            "Could not start the project editor",
+            outMessage);
     }
 
     void ProjectOpenWorkflow::
@@ -422,6 +561,43 @@ namespace {
         if (buildProcess_ != nullptr) {
             CloseHandle(buildProcess_);
             buildProcess_ = nullptr;
+        }
+        if (buildJob_ != nullptr) {
+            CloseHandle(buildJob_);
+            buildJob_ = nullptr;
+        }
+    }
+
+    void ProjectOpenWorkflow::
+        CancelBuildProcess() noexcept {
+
+        if (buildJob_ != nullptr) {
+            TerminateJobObject(buildJob_, 1u);
+            CloseHandle(buildJob_);
+            buildJob_ = nullptr;
+        }
+        else if (buildProcess_ != nullptr) {
+            DWORD exitCode = STILL_ACTIVE;
+            if (GetExitCodeProcess(
+                    buildProcess_,
+                    &exitCode) &&
+                exitCode == STILL_ACTIVE) {
+                TerminateProcess(buildProcess_, 1u);
+            }
+        }
+        if (buildProcess_ != nullptr) {
+            WaitForSingleObject(buildProcess_, 5000u);
+            CloseHandle(buildProcess_);
+            buildProcess_ = nullptr;
+        }
+    }
+
+    void ProjectOpenWorkflow::
+        CloseWaitProcess() noexcept {
+
+        if (waitProcess_ != nullptr) {
+            CloseHandle(waitProcess_);
+            waitProcess_ = nullptr;
         }
     }
 

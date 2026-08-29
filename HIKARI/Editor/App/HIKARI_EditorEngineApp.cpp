@@ -29,7 +29,8 @@ namespace HIKARI::EDITOR {
                     runtimeApp_.GetCurrentScene())) {
             documentSceneEditorController_.Draw(
                 *documentScene,
-                editorPlaySession_);
+                editorPlaySession_,
+                projectSession_);
         }
     }
 
@@ -56,6 +57,11 @@ namespace HIKARI::EDITOR {
 
     bool EditorEngineApp::IsHostTransitioning() const {
         return editorPlaySession_.IsTransitioning();
+    }
+
+    bool EditorEngineApp::ShouldExitHost() const {
+        return projectSession_.ShouldExitHost() ||
+            runtimeApp_.ShouldExitHost();
     }
 
     void EditorEngineApp::Shutdown() {

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
 #include <string>
 
@@ -9,8 +10,14 @@ namespace HIKARI::EDITOR {
 
     enum class ProjectOpenWorkflowState {
         Idle,
+        WaitingForEditorExit,
         Building,
         Failed,
+    };
+
+    enum class ProjectOpenWorkflowRequest {
+        OpenProject,
+        RebuildAndReload,
     };
 
     class ProjectOpenWorkflow {
@@ -27,6 +34,10 @@ namespace HIKARI::EDITOR {
         bool Start(
             const std::filesystem::path& projectRoot,
             std::string& outMessage);
+        bool StartRebuildAfterProcessExit(
+            const std::filesystem::path& projectRoot,
+            uint32_t processId,
+            std::string& outMessage);
         void Update();
         void Shutdown() noexcept;
 
@@ -37,10 +48,20 @@ namespace HIKARI::EDITOR {
         const std::filesystem::path& GetBuildLogPath() const noexcept;
 
     private:
+        bool StartRequest(
+            const std::filesystem::path& projectRoot,
+            ProjectOpenWorkflowRequest request,
+            std::string& outMessage);
+        bool BeginBuild(
+            const std::filesystem::path& projectRoot,
+            ProjectOpenWorkflowRequest request,
+            std::string& outMessage);
         bool LaunchEditor(
             bool useProjectModule,
             std::string& outMessage);
         void CloseBuildProcess() noexcept;
+        void CancelBuildProcess() noexcept;
+        void CloseWaitProcess() noexcept;
 
         std::filesystem::path runtimeRoot_{};
         std::filesystem::path projectRoot_{};
@@ -49,8 +70,12 @@ namespace HIKARI::EDITOR {
         std::string preset_{};
         std::string statusMessage_{};
         HANDLE buildProcess_ = nullptr;
+        HANDLE buildJob_ = nullptr;
+        HANDLE waitProcess_ = nullptr;
         ProjectOpenWorkflowState state_ =
             ProjectOpenWorkflowState::Idle;
+        ProjectOpenWorkflowRequest request_ =
+            ProjectOpenWorkflowRequest::OpenProject;
         bool shouldExitLauncher_ = false;
     };
 

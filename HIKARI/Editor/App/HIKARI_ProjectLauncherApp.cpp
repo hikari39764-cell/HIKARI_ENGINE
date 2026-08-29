@@ -11,6 +11,7 @@
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
 #include "Editor/Style/HIKARI_EditorTheme.h"
 #include "Editor/Style/HIKARI_EditorWidgets.h"
+#include "Project/HIKARI_ProjectDescriptor.h"
 
 #include "imgui.h"
 
@@ -54,11 +55,13 @@ namespace {
 } // namespace
 
     ProjectLauncherApp::ProjectLauncherApp(
-        std::filesystem::path runtimeRoot)
+        std::filesystem::path runtimeRoot,
+        ProjectLauncherStartupRequest startup)
         : runtimeRoot_(
             std::filesystem::absolute(
                 std::move(runtimeRoot))
                 .lexically_normal()),
+          startup_(std::move(startup)),
           openWorkflow_(runtimeRoot_) {
     }
 
@@ -74,6 +77,43 @@ namespace {
         CopyTextToBuffer(
             TEXT::PathToUtf8(defaultParent),
             projectLocation_);
+
+        const bool rebuildWaitInvalid =
+            startup_.rebuildProject.has_value() &&
+            (!startup_.waitForProcessId.has_value() ||
+                *startup_.waitForProcessId == 0u);
+        if (startup_.waitForProcessIdMalformed ||
+            rebuildWaitInvalid) {
+            interactionMessage_ =
+                "The rebuild handoff process ID is invalid; "
+                "the build was not started.";
+        }
+        else if (startup_.rebuildProject) {
+            std::string rebuildMessage{};
+            const std::filesystem::path descriptorPath =
+                ResolveProjectDescriptorPath(
+                    *startup_.rebuildProject);
+            const std::filesystem::path projectRoot =
+                descriptorPath.parent_path();
+            const bool started =
+                openWorkflow_.StartRebuildAfterProcessExit(
+                    projectRoot,
+                    *startup_.waitForProcessId,
+                    rebuildMessage);
+            if (!started) {
+                interactionMessage_ =
+                    std::move(rebuildMessage);
+            }
+            else {
+                std::string touchMessage{};
+                if (!recentProjects_.AddOrTouch(
+                        projectRoot,
+                        &touchMessage)) {
+                    interactionMessage_ =
+                        std::move(touchMessage);
+                }
+            }
+        }
         return true;
     }
 
@@ -530,7 +570,8 @@ namespace {
         ImGui::Dummy(
             ImVec2(0.0f, metrics.spacingSm));
         StatusText(message, tone);
-        if (openWorkflow_.IsBusy()) {
+        if (openWorkflow_.IsBusy() &&
+            !openWorkflow_.GetBuildLogPath().empty()) {
             ImGui::SameLine();
             ImGui::TextDisabled(
                 "Log: %s",

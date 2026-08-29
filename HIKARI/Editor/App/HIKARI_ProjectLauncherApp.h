@@ -1,7 +1,9 @@
 #pragma once
 
 #include <array>
+#include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <string>
 
 #include "Editor/Projects/HIKARI_ProjectOpenWorkflow.h"
@@ -10,11 +12,19 @@
 
 namespace HIKARI::EDITOR {
 
+    struct ProjectLauncherStartupRequest {
+        std::optional<std::filesystem::path>
+            rebuildProject{};
+        std::optional<uint32_t> waitForProcessId{};
+        bool waitForProcessIdMalformed = false;
+    };
+
     class ProjectLauncherApp final
         : public RUNTIME::IHostApplication {
     public:
         explicit ProjectLauncherApp(
-            std::filesystem::path runtimeRoot);
+            std::filesystem::path runtimeRoot,
+            ProjectLauncherStartupRequest startup = {});
 
         bool Initialize() override;
         void Update(float deltaTime) override;
@@ -37,6 +47,7 @@ namespace HIKARI::EDITOR {
         void CreateAndOpenProject();
 
         std::filesystem::path runtimeRoot_{};
+        ProjectLauncherStartupRequest startup_{};
         RecentProjectStore recentProjects_{};
         ProjectOpenWorkflow openWorkflow_;
         std::array<char, 128u> projectName_{};

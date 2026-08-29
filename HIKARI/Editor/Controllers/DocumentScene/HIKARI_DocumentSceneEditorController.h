@@ -53,6 +53,7 @@ namespace HIKARI {
 
     class DocumentSceneBase;
     namespace EDITOR {
+        class EditorProjectSessionController;
         class EditorPlaySession;
     }
 
@@ -63,7 +64,9 @@ namespace HIKARI {
 
         void Draw(
             DocumentSceneBase& scene,
-            EDITOR::EditorPlaySession& playSession);
+            EDITOR::EditorPlaySession& playSession,
+            EDITOR::EditorProjectSessionController&
+                projectSession);
 
     private:
         void RegisterEditorOperations();
@@ -204,6 +207,8 @@ namespace HIKARI {
         // 変化しても、戻ったときの Game View を入場時の視点へ復元する。
         void SnapshotSceneViewCameras(DocumentSceneBase& scene);
         void RestoreSceneViewCameras(DocumentSceneBase& scene);
+        bool HasKnownUnsavedProjectChanges(
+            const DocumentSceneBase& scene) const noexcept;
 
         void RecordCinematicsHistory(
             DocumentSceneBase& scene,

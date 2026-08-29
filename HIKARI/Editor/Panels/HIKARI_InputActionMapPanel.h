@@ -11,6 +11,7 @@ public:
     void RequestOpen() noexcept;
     void DrawLauncher(INPUT::InputService& inputService);
     void DrawModal(INPUT::InputService& inputService);
+    bool IsDirty() const noexcept { return editor_.IsDirty(); }
 
 private:
     InputActionMapEditor editor_{};

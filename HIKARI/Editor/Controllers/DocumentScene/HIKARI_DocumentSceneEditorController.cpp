@@ -20,6 +20,7 @@
 #include "Editor/History/HIKARI_SceneSystemsHistoryCommand.h"
 #include "Editor/Menus/HIKARI_EditorDocumentMenu.h"
 #include "Editor/Play/HIKARI_EditorPlaySession.h"
+#include "Editor/Projects/HIKARI_EditorProjectSession.h"
 #include "Editor/SystemAuthoring/HIKARI_BuiltInSystemAuthoring.h"
 #include "Editor/Tools/HIKARI_BuiltInEditorTools.h"
 #include "Editor/Views/HIKARI_EditorViewInstance.h"
@@ -1967,9 +1968,32 @@ namespace HIKARI {
         sceneViewCameraSnapshotValid_ = false;
     }
 
+    bool DocumentSceneEditorController::
+        HasKnownUnsavedProjectChanges(
+            const DocumentSceneBase& scene) const noexcept {
+
+        return context_.sceneDirty ||
+            scene.HasUnsavedSceneChanges() ||
+            cinematicsWorkspaceController_.
+                IsSequenceDocumentDirty() ||
+            modelCollisionWorkspaceController_.
+                IsDocumentDirty() ||
+            modelMaterialWorkspaceController_.
+                HasUnsavedMaterialChanges() ||
+            animationStateMachineWorkspaceController_.
+                IsDocumentDirty() ||
+            runtimeBindingWorkspaceController_.
+                IsDocumentDirty() ||
+            vfxWorkspaceController_.GetDocument().IsDirty() ||
+            dialogueWorkspaceController_.IsDocumentDirty() ||
+            sceneAuthoringUtilityWindows_.HasUnsavedChanges();
+    }
+
     void DocumentSceneEditorController::Draw(
         DocumentSceneBase& scene,
-        EDITOR::EditorPlaySession& playSession) {
+        EDITOR::EditorPlaySession& playSession,
+        EDITOR::EditorProjectSessionController&
+            projectSession) {
 #if defined(HIKARI_WITH_EDITOR)
         aiOperationScene_ = &scene;
         aiAssistantPanel_.PumpActions();
@@ -2009,7 +2033,13 @@ namespace HIKARI {
             scene.GetDebugCamera(),
             scene.GetEnvironmentLightingEnabled(),
             resetDockingLayoutRequested,
-            commandRouter_);
+            commandRouter_,
+            projectSession,
+            playSession.GetMode() ==
+                    EDITOR::EditorPlayMode::None &&
+                !playSession.IsTransitioning(),
+            HasKnownUnsavedProjectChanges(scene));
+        projectSession.DrawConfirmationDialog();
 
         if (resetDockingLayoutRequested) {
             workspaceHost_.RequestResetActiveLayout();
@@ -2715,6 +2745,7 @@ namespace HIKARI {
 #else
         (void)scene;
         (void)playSession;
+        (void)projectSession;
 #endif
     }
 

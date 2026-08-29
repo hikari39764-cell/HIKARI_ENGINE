@@ -79,4 +79,12 @@ namespace HIKARI::EDITOR {
         sceneSystemsPanel_.SetRuntimeApplyStatus(success);
     }
 
+    bool SceneAuthoringUtilityWindows::
+        HasUnsavedChanges() const noexcept {
+
+        return projectFeaturesPanel_.IsDirty() ||
+            sceneSystemsPanel_.IsDirty() ||
+            inputActionMapPanel_.IsDirty();
+    }
+
 } // namespace HIKARI::EDITOR

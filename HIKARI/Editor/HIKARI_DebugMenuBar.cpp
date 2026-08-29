@@ -5,6 +5,7 @@
 #include "Editor/Menus/HIKARI_EditorDocumentMenu.h"
 #include "Editor/Platform/HIKARI_EditorFileDialog.h"
 #include "Editor/Platform/HIKARI_EditorShellActions.h"
+#include "Editor/Projects/HIKARI_EditorProjectSession.h"
 #include "Editor/Tools/HIKARI_BuiltInEditorTools.h"
 #include "Editor/Tools/HIKARI_EditorToolHost.h"
 #include "Editor/Workspaces/HIKARI_EditorWorkspaceHost.h"
@@ -385,10 +386,18 @@ namespace HIKARI {
         DebugCameraController3D& debugCamera,
         bool& environmentLightingEnabled,
         bool& resetDockingLayoutRequested,
-        EDITOR::EditorCommandRouter& commandRouter) const {
+        EDITOR::EditorCommandRouter& commandRouter,
+        EDITOR::EditorProjectSessionController&
+            projectSession,
+        bool projectTransitionAllowed,
+        bool hasUnsavedProjectChanges) const {
         if (!ImGui::BeginMainMenuBar()) {
             return;
         }
+
+        projectSession.DrawMainMenu(
+            projectTransitionAllowed,
+            hasUnsavedProjectChanges);
 
         if (ImGui::BeginMenu(
                 TEXT::Localize("menu.workspace").c_str())) {
@@ -602,7 +611,10 @@ namespace HIKARI {
         DebugCameraController3D&,
         bool&,
         bool&,
-        EDITOR::EditorCommandRouter&) const {}
+        EDITOR::EditorCommandRouter&,
+        EDITOR::EditorProjectSessionController&,
+        bool,
+        bool) const {}
 #endif
 
 } // namespace HIKARI

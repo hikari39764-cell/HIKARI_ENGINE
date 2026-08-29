@@ -14,6 +14,7 @@ namespace HIKARI {
     class ProjectFeaturesPanel {
     public:
         void Draw(DocumentSceneBase& scene);
+        bool IsDirty() const noexcept { return dirty_; }
 
     private:
         void EnsureLoaded(const std::filesystem::path& projectRoot);

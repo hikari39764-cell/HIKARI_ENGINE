@@ -1,8 +1,11 @@
 #include <Windows.h>
 
+#include <utility>
+
 #include "Editor/App/HIKARI_ProjectLauncherApp.h"
 #include "Editor/Host/HIKARI_EditorUiServices.h"
 #include "Platform/Paths/HIKARI_ExecutablePath.h"
+#include "Runtime/HIKARI_RuntimeLaunchConfig.h"
 #include "Runtime/Host/HIKARI_EngineHostRunner.h"
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
@@ -10,8 +13,21 @@ int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
         return -1;
     }
 
+    HIKARI::EDITOR::ProjectLauncherStartupRequest startup{};
+    startup.rebuildProject =
+        HIKARI::ReadRuntimeCommandLinePath(
+            L"--rebuild-project");
+    startup.waitForProcessId =
+        HIKARI::ReadRuntimeCommandLineUint32(
+            L"--wait-for-process-id");
+    startup.waitForProcessIdMalformed =
+        startup.rebuildProject.has_value() &&
+        (!startup.waitForProcessId.has_value() ||
+            *startup.waitForProcessId == 0u);
+
     HIKARI::EDITOR::ProjectLauncherApp application{
-        HIKARI::PLATFORM::GetExecutableDirectory()
+        HIKARI::PLATFORM::GetExecutableDirectory(),
+        std::move(startup)
     };
     HIKARI::RUNTIME::EngineHostRunOptions options{};
     options.product =

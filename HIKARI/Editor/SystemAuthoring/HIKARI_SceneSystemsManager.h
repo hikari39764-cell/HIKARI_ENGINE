@@ -26,6 +26,9 @@ namespace HIKARI::EDITOR {
     class SceneSystemsManager {
     public:
         void Open();
+        bool IsDirty() const noexcept {
+            return inspector_.IsDirty();
+        }
 
         SceneSystemsManagerResult Draw(
             DocumentSceneBase& scene,

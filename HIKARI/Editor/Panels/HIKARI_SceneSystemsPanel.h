@@ -30,6 +30,9 @@ namespace HIKARI {
             EDITOR::EditorToolHost& toolHost);
 
         void SetRuntimeApplyStatus(bool success);
+        bool IsDirty() const noexcept {
+            return manager_.IsDirty();
+        }
 
     private:
         EDITOR::SceneSystemsManager manager_{};

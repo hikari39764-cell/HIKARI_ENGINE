@@ -30,6 +30,7 @@ namespace HIKARI {
                 EditorToolHost& toolHost);
 
             void SetSystemsRuntimeApplyStatus(bool success);
+            bool HasUnsavedChanges() const noexcept;
 
         private:
             ProjectFeaturesPanel projectFeaturesPanel_{};

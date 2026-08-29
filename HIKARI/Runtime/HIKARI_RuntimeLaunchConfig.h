@@ -5,6 +5,7 @@
 // Editor / Game / ExportedGame など全ホストモードで共有される。
 
 #include <filesystem>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -76,6 +77,12 @@ namespace HIKARI {
     // 例: -project "C:\MyProject"  → option=L"project"
     std::optional<std::filesystem::path>
         ReadRuntimeCommandLinePath(
+            std::wstring_view option);
+
+    // コマンドラインから uint32 値を厳密に読み取る。
+    // 無効な文字列、範囲外、値欠落はいずれも nullopt を返す。
+    std::optional<uint32_t>
+        ReadRuntimeCommandLineUint32(
             std::wstring_view option);
 
     // 値を伴わない内部起動フラグが指定されているかを確認する。
