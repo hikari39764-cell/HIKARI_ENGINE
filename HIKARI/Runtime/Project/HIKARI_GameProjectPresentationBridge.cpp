@@ -1,4 +1,5 @@
 #include "HIKARI/Project/PresentationViews.h"
+#include "HIKARI/Project/WorldView.h"
 
 #include <cmath>
 #include <string>
@@ -81,6 +82,13 @@ namespace HIKARI {
     PresentationModelView GameProjectSdkAccess::MakePresentationModelView(
         World& world) noexcept {
         return PresentationModelView(&world);
+    }
+
+    PresentationModelView WorldView::GetPresentationModels() const noexcept {
+        World* world = GameProjectSdkAccess::GetWorld(*this);
+        return world != nullptr
+            ? GameProjectSdkAccess::MakePresentationModelView(*world)
+            : PresentationModelView{};
     }
 
     bool PresentationModelView::Submit(

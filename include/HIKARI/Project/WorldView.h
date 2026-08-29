@@ -13,7 +13,24 @@
 
 namespace HIKARI {
 
+    class AnimationView;
+    class AudioView;
+    class CameraView;
+    class DialogueView;
     class IGameComponent;
+    class InputView;
+    class MotionView;
+    class NavigationView;
+    class PhysicsQueryView;
+    class PresentationModelView;
+    class PresentationVfxView;
+    class RuntimeSessionView;
+    class SaveGameView;
+    class SceneFlowView;
+    class TerrainView;
+    class TimeDilationView;
+    class UiView;
+    class VfxView;
     struct GameProjectSdkAccess;
 
     // Non-owning identity view. It may be retained, does not extend World
@@ -121,6 +138,33 @@ namespace HIKARI {
             std::string_view eventId,
             uint32_t index,
             GameProjectEventRecord& outEvent) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API InputView GetInput() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API AudioView GetAudio() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API AnimationView
+            GetAnimation() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API MotionView GetMotion() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API PhysicsQueryView
+            GetPhysicsQueries() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API NavigationView
+            GetNavigation() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API TerrainView GetTerrain() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API CameraView GetCamera() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API TimeDilationView
+            GetTimeDilation() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API PresentationModelView
+            GetPresentationModels() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API PresentationVfxView
+            GetPresentationVfx() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API VfxView GetVfx() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API UiView GetUi() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API SceneFlowView
+            GetSceneFlow() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API DialogueView
+            GetDialogue() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API SaveGameView
+            GetSaveGame() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API RuntimeSessionView
+            GetRuntimeSession() const noexcept;
 
         template<class Component, class Visitor>
         // Visits the World-owned typed index in stable attachment order.

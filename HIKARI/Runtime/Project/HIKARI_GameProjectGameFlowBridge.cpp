@@ -1,3 +1,5 @@
+#include "HIKARI/Project/AudioView.h"
+#include "HIKARI/Project/GameFlowViews.h"
 #include "HIKARI/Project/WorldView.h"
 
 #include <algorithm>
@@ -342,6 +344,41 @@ namespace HIKARI {
     RuntimeSessionView GameProjectSdkAccess::MakeRuntimeSessionView(
         World& world) noexcept {
         return RuntimeSessionView(&world);
+    }
+
+    AudioView WorldView::GetAudio() const noexcept {
+        World* world = GameProjectSdkAccess::GetWorld(*this);
+        return world != nullptr
+            ? GameProjectSdkAccess::MakeAudioView(*world)
+            : AudioView{};
+    }
+
+    SceneFlowView WorldView::GetSceneFlow() const noexcept {
+        World* world = GameProjectSdkAccess::GetWorld(*this);
+        return world != nullptr
+            ? GameProjectSdkAccess::MakeSceneFlowView(*world)
+            : SceneFlowView{};
+    }
+
+    DialogueView WorldView::GetDialogue() const noexcept {
+        World* world = GameProjectSdkAccess::GetWorld(*this);
+        return world != nullptr
+            ? GameProjectSdkAccess::MakeDialogueView(*world)
+            : DialogueView{};
+    }
+
+    SaveGameView WorldView::GetSaveGame() const noexcept {
+        World* world = GameProjectSdkAccess::GetWorld(*this);
+        return world != nullptr
+            ? GameProjectSdkAccess::MakeSaveGameView(*world)
+            : SaveGameView{};
+    }
+
+    RuntimeSessionView WorldView::GetRuntimeSession() const noexcept {
+        World* world = GameProjectSdkAccess::GetWorld(*this);
+        return world != nullptr
+            ? GameProjectSdkAccess::MakeRuntimeSessionView(*world)
+            : RuntimeSessionView{};
     }
 
     bool SceneFlowView::GetCurrentSceneAssetGuid(

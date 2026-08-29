@@ -16,6 +16,7 @@
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
 #include "HIKARI/Project/ActionViews.h"
 #include "HIKARI/Project/VfxView.h"
+#include "HIKARI/Project/WorldView.h"
 #include "Scene/HIKARI_RuntimeObjectHandle.h"
 #include "Scene/HIKARI_World.h"
 #include "Scene/Vfx/HIKARI_ActionPostReactionService.h"
@@ -583,6 +584,13 @@ namespace HIKARI {
         catch (...) {
             return {};
         }
+    }
+
+    VfxView WorldView::GetVfx() const noexcept {
+        World* world = GameProjectSdkAccess::GetWorld(*this);
+        return world != nullptr
+            ? GameProjectSdkAccess::MakeVfxView(*world)
+            : VfxView{};
     }
 
     GameProjectVfxPlaybackHandle VfxView::Play(

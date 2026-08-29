@@ -1,4 +1,5 @@
 #include "HIKARI/Project/UiView.h"
+#include "HIKARI/Project/WorldView.h"
 
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
 #include "Scene/HIKARI_World.h"
@@ -13,6 +14,13 @@ namespace HIKARI {
         catch (...) {
             return {};
         }
+    }
+
+    UiView WorldView::GetUi() const noexcept {
+        World* world = GameProjectSdkAccess::GetWorld(*this);
+        return world != nullptr
+            ? GameProjectSdkAccess::MakeUiView(*world)
+            : UiView{};
     }
 
     bool UiView::SubmitSprite(

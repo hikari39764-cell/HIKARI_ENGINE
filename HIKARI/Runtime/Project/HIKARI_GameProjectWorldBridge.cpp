@@ -1,12 +1,15 @@
 #include "HIKARI/Project/WorldView.h"
+#include "HIKARI/Project/TerrainView.h"
 
 #include <array>
+#include <cmath>
 #include <cstring>
 
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectTransformBridgeInternal.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectWorldBridgeInternal.h"
 #include "Scene/HIKARI_GameObject.h"
+#include "Scene/Sand/HIKARI_SandSurfaceQueryService.h"
 #include "Scene/HIKARI_World.h"
 
 namespace HIKARI {
@@ -462,6 +465,50 @@ namespace HIKARI {
         return world != nullptr
             ? world->GetCommandFailureOverflowCount()
             : 0u;
+    }
+
+    TerrainView GameProjectSdkAccess::MakeTerrainView(
+        World& world) noexcept {
+        return TerrainView(&world);
+    }
+
+    TerrainView WorldView::GetTerrain() const noexcept {
+        World* world = GameProjectSdkAccess::GetWorld(*this);
+        return world != nullptr
+            ? GameProjectSdkAccess::MakeTerrainView(*world)
+            : TerrainView{};
+    }
+
+    bool TerrainView::IsSandSurfaceAt(
+        GameProjectFloat3 worldPosition,
+        float maximumVerticalDistance) const noexcept {
+        try {
+            if (world_ == nullptr || !std::isfinite(worldPosition.x) ||
+                !std::isfinite(worldPosition.y) ||
+                !std::isfinite(worldPosition.z) ||
+                !std::isfinite(maximumVerticalDistance) ||
+                maximumVerticalDistance < 0.0f ||
+                maximumVerticalDistance > 10.0f) {
+                return false;
+            }
+            auto* world = static_cast<World*>(world_);
+            SAND::SandSurfaceQueryService* sand =
+                world->Services().Find<SAND::SandSurfaceQueryService>();
+            if (sand == nullptr) {
+                return false;
+            }
+            float height = 0.0f;
+            MATH::Vec3 normal{};
+            return sand->SampleWorldHeight(
+                    { worldPosition.x, worldPosition.y, worldPosition.z },
+                    height,
+                    normal) &&
+                std::abs(worldPosition.y - height) <=
+                    maximumVerticalDistance;
+        }
+        catch (...) {
+            return false;
+        }
     }
 
 } // namespace HIKARI

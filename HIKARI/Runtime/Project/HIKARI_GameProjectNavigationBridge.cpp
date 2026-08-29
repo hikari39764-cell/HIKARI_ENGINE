@@ -1,4 +1,5 @@
 #include "HIKARI/Project/NavigationView.h"
+#include "HIKARI/Project/WorldView.h"
 
 #include <algorithm>
 #include <array>
@@ -49,6 +50,13 @@ namespace HIKARI {
     NavigationView GameProjectSdkAccess::MakeNavigationView(
         World& world) noexcept {
         return NavigationView(&world);
+    }
+
+    NavigationView WorldView::GetNavigation() const noexcept {
+        World* world = GameProjectSdkAccess::GetWorld(*this);
+        return world != nullptr
+            ? GameProjectSdkAccess::MakeNavigationView(*world)
+            : NavigationView{};
     }
 
     bool NavigationView::ProjectPoint(

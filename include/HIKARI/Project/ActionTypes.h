@@ -11,18 +11,7 @@ namespace HIKARI {
         float y = 0.0f;
     };
 
-    struct GameProjectQuat {
-        float x = 0.0f;
-        float y = 0.0f;
-        float z = 0.0f;
-        float w = 1.0f;
-    };
-
-    struct GameProjectTransform {
-        GameProjectFloat3 position{};
-        GameProjectQuat rotation{};
-        GameProjectFloat3 scale{ 1.0f, 1.0f, 1.0f };
-    };
+    using GameProjectQuat = GameProjectQuaternion;
 
     enum class GameProjectInputDevice : uint8_t {
         None = 0,

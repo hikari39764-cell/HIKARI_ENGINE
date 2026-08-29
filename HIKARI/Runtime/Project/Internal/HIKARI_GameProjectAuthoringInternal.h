@@ -16,12 +16,29 @@
 
 namespace HIKARI {
 
+    class AnimationView;
+    class AudioView;
+    class CameraView;
     class ComponentRegistry;
     class ComponentSystemPolicy;
+    class DialogueView;
     class GameProjectComponentAdapter;
     class GameObject;
+    class InputView;
     class IInspectorBuilder;
+    class MotionView;
+    class NavigationView;
+    class PhysicsQueryView;
+    class PresentationModelView;
+    class PresentationVfxView;
+    class RuntimeSessionView;
+    class SaveGameView;
+    class SceneFlowView;
     class SystemTypeRegistry;
+    class TerrainView;
+    class TimeDilationView;
+    class UiView;
+    class VfxView;
     class World;
     enum class RuntimeWorldAccessResult : uint8_t;
 
@@ -55,6 +72,25 @@ namespace HIKARI {
             GameObject& object) noexcept;
         static WorldView MakeWorldView(
             World& world) noexcept;
+        static InputView MakeInputView(World& world) noexcept;
+        static AudioView MakeAudioView(World& world) noexcept;
+        static AnimationView MakeAnimationView(World& world) noexcept;
+        static MotionView MakeMotionView(World& world) noexcept;
+        static PhysicsQueryView MakePhysicsQueryView(World& world) noexcept;
+        static NavigationView MakeNavigationView(World& world) noexcept;
+        static TerrainView MakeTerrainView(World& world) noexcept;
+        static CameraView MakeCameraView(World& world) noexcept;
+        static TimeDilationView MakeTimeDilationView(World& world) noexcept;
+        static PresentationModelView MakePresentationModelView(
+            World& world) noexcept;
+        static PresentationVfxView MakePresentationVfxView(
+            World& world) noexcept;
+        static VfxView MakeVfxView(World& world) noexcept;
+        static UiView MakeUiView(World& world) noexcept;
+        static SceneFlowView MakeSceneFlowView(World& world) noexcept;
+        static DialogueView MakeDialogueView(World& world) noexcept;
+        static SaveGameView MakeSaveGameView(World& world) noexcept;
+        static RuntimeSessionView MakeRuntimeSessionView(World& world) noexcept;
         static GameComponentContext MakeGameComponentContext(
             GameProjectComponentAdapter& adapter,
             GameObject& object,
@@ -65,6 +101,8 @@ namespace HIKARI {
         static World* GetWorld(
             const WorldView& view,
             RuntimeWorldAccessResult* outAccess = nullptr) noexcept;
+        static World* GetWorld(
+            const PresentationModelView& view) noexcept;
         static bool VisitIndexedComponents(
             World& world,
             ComponentTypeId typeId,

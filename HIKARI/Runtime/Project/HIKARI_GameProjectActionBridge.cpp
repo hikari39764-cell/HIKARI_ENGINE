@@ -582,6 +582,55 @@ namespace HIKARI {
         }
     }
 
+    InputView WorldView::GetInput() const noexcept {
+        World* world = GameProjectSdkAccess::GetWorld(*this);
+        return world != nullptr
+            ? GameProjectSdkAccess::MakeInputView(*world)
+            : InputView{};
+    }
+
+    AnimationView WorldView::GetAnimation() const noexcept {
+        World* world = GameProjectSdkAccess::GetWorld(*this);
+        return world != nullptr
+            ? GameProjectSdkAccess::MakeAnimationView(*world)
+            : AnimationView{};
+    }
+
+    MotionView WorldView::GetMotion() const noexcept {
+        World* world = GameProjectSdkAccess::GetWorld(*this);
+        return world != nullptr
+            ? GameProjectSdkAccess::MakeMotionView(*world)
+            : MotionView{};
+    }
+
+    PhysicsQueryView WorldView::GetPhysicsQueries() const noexcept {
+        World* world = GameProjectSdkAccess::GetWorld(*this);
+        return world != nullptr
+            ? GameProjectSdkAccess::MakePhysicsQueryView(*world)
+            : PhysicsQueryView{};
+    }
+
+    CameraView WorldView::GetCamera() const noexcept {
+        World* world = GameProjectSdkAccess::GetWorld(*this);
+        return world != nullptr
+            ? GameProjectSdkAccess::MakeCameraView(*world)
+            : CameraView{};
+    }
+
+    TimeDilationView WorldView::GetTimeDilation() const noexcept {
+        World* world = GameProjectSdkAccess::GetWorld(*this);
+        return world != nullptr
+            ? GameProjectSdkAccess::MakeTimeDilationView(*world)
+            : TimeDilationView{};
+    }
+
+    PresentationVfxView WorldView::GetPresentationVfx() const noexcept {
+        World* world = GameProjectSdkAccess::GetWorld(*this);
+        return world != nullptr
+            ? GameProjectSdkAccess::MakePresentationVfxView(*world)
+            : PresentationVfxView{};
+    }
+
     bool InputView::GetAction(
         std::string_view actionId,
         GameProjectInputActionState& outState) const noexcept {
