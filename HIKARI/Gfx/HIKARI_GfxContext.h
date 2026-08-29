@@ -12,6 +12,7 @@ class GpuDeferredReleaseQueue;
 class ResourceStateTracker;
 
 struct Context {
+    uint64_t deviceGeneration{};
     ID3D12Device* device{};
     ID3D12GraphicsCommandList* cmdList{};
     ID3D12CommandQueue* queue{};

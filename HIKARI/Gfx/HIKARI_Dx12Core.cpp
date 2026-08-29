@@ -5,6 +5,7 @@
 #include <d3d12sdklayers.h>
 #include <dxgi1_6.h>
 #include <d3dx12.h>
+#include <atomic>
 #include <cassert>
 #include <cstdio>
 #include <sstream>
@@ -25,6 +26,20 @@ using Microsoft::WRL::ComPtr;
 namespace HIKARI::GFX {
 
 namespace {
+	std::atomic<uint64_t> gNextDeviceGeneration{ 1u };
+
+	uint64_t AllocateDeviceGeneration() noexcept {
+		uint64_t generation = gNextDeviceGeneration.fetch_add(
+			1u,
+			std::memory_order_relaxed);
+		if (generation == 0u) {
+			generation = gNextDeviceGeneration.fetch_add(
+				1u,
+				std::memory_order_relaxed);
+		}
+		return generation;
+	}
+
 	// バックバッファに対するレターボックスの位置とサイズを計算する。座標とサイズはバックバッファに対するピクセル単位。
     struct LetterboxRect {
         float x;
@@ -117,6 +132,7 @@ bool Dx12Core::Initialize(
     bool enableDebugLayer,
     const GraphicsBootstrapCallbacks& callbacks) {
     HIKARI_LOG_D3D12("Dx12Core initialization started.");
+    shutdownUnsafe_ = false;
 
     graphicsBootstrapCallbacks_ = callbacks;
 
@@ -180,6 +196,7 @@ bool Dx12Core::Initialize(
             return false;
         }
     }
+    deviceGeneration_ = AllocateDeviceGeneration();
     ConfigureD3D12InfoQueue(device_.Get());
     SetD3D12Name(device_.Get(), L"HIKARI D3D12 Device");
     HIKARI_LOG_D3D12("Device created.");
@@ -429,8 +446,20 @@ bool Dx12Core::CreateDepthBuffer() {
     return true;
 }
 // Dx12Core の終了処理。GPU の完了を待ち、リソースを解放する。
-void Dx12Core::Shutdown() {
-    WaitGPU();
+GraphicsShutdownResult Dx12Core::Shutdown() {
+    const bool gpuIdle = WaitGPU();
+    if (!gpuIdle && !deviceLost_) {
+        frameOpen_ = false;
+        shutdownUnsafe_ = true;
+        HIKARI_LOG_ERROR(
+            "Dx12Core shutdown could not prove GPU idle and the device was "
+            "not reported lost. Deferred resources remain retained for "
+            "process teardown.");
+        return GraphicsShutdownResult::UnsafeWaitFailure;
+    }
+    const GraphicsShutdownResult result = gpuIdle
+        ? GraphicsShutdownResult::DrainedAfterGpuIdle
+        : GraphicsShutdownResult::DrainedAfterDeviceLost;
     GPU_PIPELINE_STATS::Shutdown();
     GPU_PROFILE::Shutdown();
     deferredReleaseQueue_.FlushAll();
@@ -440,6 +469,8 @@ void Dx12Core::Shutdown() {
     activeSurface_ = nullptr;
     if (fenceEvent_) CloseHandle(fenceEvent_);
     fenceEvent_ = nullptr;
+    deviceGeneration_ = 0u;
+    return result;
 }
 // フレームの開始処理
 bool Dx12Core::BeginFrame(float clearR, float clearG, float clearB, float clearA) {
@@ -747,9 +778,10 @@ ID3D12Resource* Dx12Core::CurrentBackBuffer() {
 // 現在のコンテキストを構築して返す。Context には、コマンドリストやリソースのハンドルなど、描画に必要な情報が含まれる。
 Context Dx12Core::BuildContext() const {
     Context ctx{};
-    if (deviceLost_) {
+    if (deviceLost_ || shutdownUnsafe_ || deviceGeneration_ == 0u) {
         return ctx;
     }
+    ctx.deviceGeneration = deviceGeneration_;
     ctx.device = device_.Get();
     ctx.cmdList = cmdList_.Get();
     ctx.queue = queue_.Get();

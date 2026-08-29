@@ -434,7 +434,6 @@ namespace HIKARI {
             SKYRENDERER::ShutdownAtmosphereRuntime();
             RENDER3D::WATER::ShutdownWaterVisibleDepth();
             RENDER3D::ShutdownClusterGeometryResourceSystem();
-            RENDER3D::ShutdownRenderResourceDescriptorPool();
             DXTEX::DxTextureManager::Finalize();
             HIKARI_LOG_INFO("TextureManager finalized.");
             AUDIO::Shutdown();
@@ -442,9 +441,26 @@ namespace HIKARI {
             RENDER3D::UPSCALING::ShutdownStreamline();
             HIKARI_LOG_INFO("Streamline shutdown.");
             gGamePresentationController.Shutdown();
-            gGraphicsCore.Shutdown();
+            const GFX::GraphicsShutdownResult graphicsShutdownResult =
+                gGraphicsCore.Shutdown();
+            if (graphicsShutdownResult !=
+                GFX::GraphicsShutdownResult::UnsafeWaitFailure) {
+                // Dx12Core drained deferred descriptor callbacks. The
+                // allocator stays alive until every callback has returned.
+                RENDER3D::ShutdownRenderResourceDescriptorPool();
+            } else {
+                HIKARI_LOG_ERROR(
+                    "Descriptor pool retained because GPU shutdown safety "
+                    "could not be established.");
+            }
             GFX::ClearCurrentContext();
-            HIKARI_LOG_INFO("D3D12 core shutdown.");
+            if (graphicsShutdownResult ==
+                GFX::GraphicsShutdownResult::UnsafeWaitFailure) {
+                HIKARI_LOG_ERROR(
+                    "D3D12 core retained for unsafe process teardown.");
+            } else {
+                HIKARI_LOG_INFO("D3D12 core shutdown.");
+            }
             GFX::PIX::Shutdown();
             gWindow.Shutdown();
             HIKARI_LOG_INFO("Window shutdown.");

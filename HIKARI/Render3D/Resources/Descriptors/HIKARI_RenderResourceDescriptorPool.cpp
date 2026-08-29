@@ -1,5 +1,6 @@
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 
+#include "Core/HIKARI_Logger.h"
 #include "Gfx/HIKARI_DescriptorAllocator.h"
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
 
@@ -12,9 +13,15 @@ namespace HIKARI::RENDER3D {
             GFX::DescriptorAllocator allocator{};
             UINT descriptorSize = 0;
             bool initialized = false;
+            bool contextAvailable = false;
+            bool contextCompatible = true;
+            uint64_t ownerDeviceGeneration = 0;
+            ID3D12Device* ownerDevice = nullptr;
+            ID3D12DescriptorHeap* ownerHeap = nullptr;
             uint32_t allocationCount = 0;
             uint32_t freeCount = 0;
             uint32_t failedAllocationCount = 0;
+            uint32_t rejectedContextUpdateCount = 0;
         };
 
         RenderResourceDescriptorPoolState& State() {
@@ -23,22 +30,52 @@ namespace HIKARI::RENDER3D {
         }
 
         bool HasValidContext(const GFX::Context& ctx) {
-            return ctx.device != nullptr && ctx.srvHeap != nullptr;
+            return ctx.deviceGeneration != 0u &&
+                ctx.device != nullptr &&
+                ctx.srvHeap != nullptr;
         }
 
-        void RefreshContext(RenderResourceDescriptorPoolState& state, const GFX::Context& ctx) {
-            state.context = ctx;
+        bool RefreshContext(
+            RenderResourceDescriptorPoolState& state,
+            const GFX::Context& ctx) {
+
             if (!HasValidContext(ctx)) {
-                return;
+                state.contextAvailable = false;
+                return false;
             }
 
+            if (state.initialized &&
+                (state.ownerDeviceGeneration != ctx.deviceGeneration ||
+                    state.ownerDevice != ctx.device ||
+                    state.ownerHeap != ctx.srvHeap)) {
+                state.contextAvailable = false;
+                state.contextCompatible = false;
+                ++state.rejectedContextUpdateCount;
+                if (state.rejectedContextUpdateCount == 1u) {
+                    HIKARI_LOG_ERROR(
+                        "Render resource descriptor pool rejected an "
+                        "incompatible device or SRV heap context.");
+                }
+                return false;
+            }
+
+            state.context = ctx;
+            state.contextAvailable = true;
+            state.contextCompatible = true;
+            state.ownerDeviceGeneration = ctx.deviceGeneration;
+            state.ownerDevice = ctx.device;
+            state.ownerHeap = ctx.srvHeap;
             state.descriptorSize = ctx.device->GetDescriptorHandleIncrementSize(
                 D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+            return true;
         }
 
         RenderResourceView AllocateDescriptor(RenderResourceDescriptorPoolState& state) {
             RenderResourceView view{};
-            if (!state.initialized || !HasValidContext(state.context)) {
+            if (!state.initialized ||
+                !state.contextAvailable ||
+                !state.contextCompatible ||
+                !HasValidContext(state.context)) {
                 ++state.failedAllocationCount;
                 return view;
             }
@@ -63,7 +100,10 @@ namespace HIKARI::RENDER3D {
             uint32_t count) {
 
             std::vector<RenderResourceView> views{};
-            if (!state.initialized || !HasValidContext(state.context) ||
+            if (!state.initialized ||
+                !state.contextAvailable ||
+                !state.contextCompatible ||
+                !HasValidContext(state.context) ||
                 count == 0u) {
                 ++state.failedAllocationCount;
                 return views;
@@ -96,9 +136,7 @@ namespace HIKARI::RENDER3D {
 
     void UpdateRenderResourceDescriptorPoolContext(const GFX::Context& ctx) {
         RenderResourceDescriptorPoolState& state = State();
-        RefreshContext(state, ctx);
-
-        if (state.initialized || !HasValidContext(ctx)) {
+        if (!RefreshContext(state, ctx) || state.initialized) {
             return;
         }
 
@@ -132,6 +170,8 @@ namespace HIKARI::RENDER3D {
 
         RenderResourceDescriptorPoolState& state = State();
         if (!state.initialized ||
+            !state.contextAvailable ||
+            !state.contextCompatible ||
             !HasValidContext(state.context) ||
             resource == nullptr ||
             numElements == 0) {
@@ -168,6 +208,8 @@ namespace HIKARI::RENDER3D {
 
         RenderResourceDescriptorPoolState& state = State();
         if (!state.initialized ||
+            !state.contextAvailable ||
+            !state.contextCompatible ||
             !HasValidContext(state.context) ||
             resource == nullptr ||
             numElements == 0u) {
@@ -320,7 +362,13 @@ namespace HIKARI::RENDER3D {
         const RenderResourceDescriptorPoolState& state = State();
 
         RenderResourceDescriptorPoolStats stats{};
-        stats.initialized = state.initialized && HasValidContext(state.context);
+        stats.initialized = state.initialized &&
+            state.contextAvailable &&
+            state.contextCompatible &&
+            HasValidContext(state.context);
+        stats.contextAvailable = state.contextAvailable;
+        stats.contextCompatible = state.contextCompatible;
+        stats.deviceGeneration = state.ownerDeviceGeneration;
         stats.begin = state.allocator.GetBegin();
         stats.capacity = state.allocator.GetCount();
         stats.used = state.allocator.GetUsedCount();
@@ -328,6 +376,8 @@ namespace HIKARI::RENDER3D {
         stats.allocationCount = state.allocationCount;
         stats.freeCount = state.freeCount;
         stats.failedAllocationCount = state.failedAllocationCount;
+        stats.rejectedContextUpdateCount =
+            state.rejectedContextUpdateCount;
         return stats;
     }
 

@@ -12,6 +12,9 @@ namespace HIKARI::RENDER3D {
 
     struct RenderResourceDescriptorPoolStats {
         bool initialized = false;
+        bool contextAvailable = false;
+        bool contextCompatible = true;
+        uint64_t deviceGeneration = 0;
         uint32_t begin = 0;
         uint32_t capacity = 0;
         uint32_t used = 0;
@@ -19,6 +22,7 @@ namespace HIKARI::RENDER3D {
         uint32_t allocationCount = 0;
         uint32_t freeCount = 0;
         uint32_t failedAllocationCount = 0;
+        uint32_t rejectedContextUpdateCount = 0;
     };
 
     void UpdateRenderResourceDescriptorPoolContext(const GFX::Context& ctx);

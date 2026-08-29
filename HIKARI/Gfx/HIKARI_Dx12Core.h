@@ -28,6 +28,12 @@ struct GraphicsBootstrapCallbacks {
     std::function<void(IDXGISwapChain4*)> swapChainCreated{};
 };
 
+enum class GraphicsShutdownResult : uint8_t {
+    DrainedAfterGpuIdle,
+    DrainedAfterDeviceLost,
+    UnsafeWaitFailure,
+};
+
 // DX12 デバイス・スワップチェーン・フレームループを統括する中核クラス。
 // 3 重バッファリング（kFrameCount=3）で CPU/GPU の並行動作を実現し、
 // Editor 用と Game 用の二つの PresentationSurface の切り替えを管理する。
@@ -46,7 +52,7 @@ public:
         int h,
         bool enableDebugLayer,
         const GraphicsBootstrapCallbacks& callbacks = {});
-    void Shutdown();
+    [[nodiscard]] GraphicsShutdownResult Shutdown();
 
     // ── フレームループ ──────────────────────────────────────────
 
@@ -115,6 +121,7 @@ private:
     Microsoft::WRL::ComPtr<IDXGIFactory7> factory_;
     Microsoft::WRL::ComPtr<IDXGIAdapter4> adapter_;
     Microsoft::WRL::ComPtr<ID3D12Device> device_;
+    uint64_t deviceGeneration_{};
     Microsoft::WRL::ComPtr<ID3D12CommandQueue> queue_;
 
     // ── コマンドリスト・フレーム管理 ─────────────────────────────
@@ -148,6 +155,7 @@ private:
 
     // ── フラグ類 ──────────────────────────────────────────────────
     bool deviceLost_ = false;
+    bool shutdownUnsafe_ = false;
     bool frameOpen_ = false;
     bool vSyncEnabled_ = false;
     bool tearingSupported_ = false;
