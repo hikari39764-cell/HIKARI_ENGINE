@@ -69,6 +69,13 @@ if(HIKARI_WITH_EDITOR_BUILD)
         "}\n")
 endif()
 
+set(HIKARI_GAME_PROJECT_HOST_FILENAME "HIKARI_Engine.exe")
+if(NOT HIKARI_WITH_EDITOR_BUILD)
+    set(
+        HIKARI_GAME_PROJECT_HOST_FILENAME
+        "${HIKARI_GAME_HOST_OUTPUT_NAME}.exe")
+endif()
+
 configure_package_config_file(
     "${HIKARI_SOURCE_ROOT}/cmake/SDK/HIKARIConfig.cmake.in"
     "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARIConfig.cmake"
