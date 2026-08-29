@@ -116,9 +116,14 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             // HCMESH は全 surface range を一つの packed resource に保持する。
             // mesh / primitive / object ごとに同じ file を再登録せず、path を
             // GPU resource identity とし、range 選択は draw record 側で行う。
-            return BuildStableStringKey(
-                "cluster-geometry-path",
-                record.clusteredGeometryPath);
+            const std::string sourceKey =
+                BuildClusterGeometryResourceSourceKey(
+                    record.clusteredGeometryPath);
+            return sourceKey.empty()
+                ? 0u
+                : BuildStableStringKey(
+                    "cluster-geometry-resource",
+                    sourceKey);
         }
 
         const MaterialAsset* ResolveMaterialAsset(const GpuSceneSurfaceRecord& record) {
@@ -258,7 +263,8 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             }
 
             const std::string clusterSourceKey =
-                BuildSurfaceResourceSourceKey("surface.cluster", ids.clusterGeometryKey);
+                BuildClusterGeometryResourceSourceKey(
+                    clusteredGeometryPath);
             ids.clusterGeometry = RegisterVirtualClusterGeometryResource(
                 clusterSourceKey,
                 BuildSurfaceClusterGeometryDebugName(ids));
@@ -267,7 +273,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             }
 
             const ClusterGeometryResourceHandle loadedClusterGeometry =
-                LoadClusterGeometryResource(clusterSourceKey, clusteredGeometryPath);
+                LoadClusterGeometryResource(clusteredGeometryPath);
             if (loadedClusterGeometry) {
                 ids.clusterGeometry = loadedClusterGeometry;
             }
@@ -742,14 +748,6 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         uint64_t stableKey) {
 
         return BuildSurfaceResourceSourceKey(tag, stableKey);
-    }
-
-    std::string BuildGpuSceneClusterGeometrySourceKey(
-        const std::string& clusteredGeometryPath) {
-
-        return BuildSurfaceResourceSourceKey(
-            "surface.cluster",
-            BuildStableStringKey("cluster-geometry-path", clusteredGeometryPath));
     }
 
     bool GpuSceneSurfaceValidationResult::IsValid() const {

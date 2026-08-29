@@ -42,7 +42,6 @@ namespace HIKARI {
 
     namespace {
         struct RuntimeClusterGeometryLoadRequest {
-            std::string sourceKey{};
             std::filesystem::path path{};
         };
 
@@ -174,18 +173,17 @@ namespace HIKARI {
                 PROJECT_PATHS::ResolveProjectPath(projectRoot, descriptor.clusteredGeometryPath);
             const std::string renderPath = resolvedPath.generic_string();
             const std::string sourceKey =
-                RENDER3D::GPUDRIVEN::BuildGpuSceneClusterGeometrySourceKey(renderPath);
+                RENDER3D::BuildClusterGeometryResourceSourceKey(
+                    resolvedPath);
             if (sourceKey.empty()) {
                 return;
             }
 
-            const std::string dedupeKey = sourceKey + "|" + NormalizePlanPathKey(renderPath);
-            if (!plan.clusterGeometryKeys.insert(dedupeKey).second) {
+            if (!plan.clusterGeometryKeys.insert(sourceKey).second) {
                 return;
             }
 
             plan.clusterGeometryRequests.push_back(RuntimeClusterGeometryLoadRequest{
-                sourceKey,
                 resolvedPath });
         }
 
@@ -209,7 +207,7 @@ namespace HIKARI {
             uint32_t clusterFailed = 0;
             for (const RuntimeClusterGeometryLoadRequest& request : plan.clusterGeometryRequests) {
                 const RENDER3D::ClusterGeometryResourceHandle handle =
-                    RENDER3D::LoadClusterGeometryResource(request.sourceKey, request.path);
+                    RENDER3D::LoadClusterGeometryResource(request.path);
                 if (handle) {
                     ++clusterLoaded;
                 } else {

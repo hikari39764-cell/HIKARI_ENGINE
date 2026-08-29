@@ -255,6 +255,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/GpuDriven/HIKARI_GpuDrivenWorkBuilder.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Meshlet/HIKARI_MeshletRenderBackend.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Resources/HIKARI_ClusterGeometryResourceSystem.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Resources/Internal/HIKARI_ClusterGeometrySourceIdentity.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorAccess.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Resources/HIKARI_RenderResourcePool.cpp"

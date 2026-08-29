@@ -152,9 +152,6 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         std::string_view tag,
         uint64_t stableKey);
 
-    std::string BuildGpuSceneClusterGeometrySourceKey(
-        const std::string& clusteredGeometryPath);
-
     GpuSceneSurfaceValidationResult ValidateGpuSceneSurfaceRecord(
         const GpuSceneSurfaceRecord& record);
 

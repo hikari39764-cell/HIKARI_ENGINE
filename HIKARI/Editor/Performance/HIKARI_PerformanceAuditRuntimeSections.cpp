@@ -61,6 +61,15 @@ void DrawResourceSummaryTable(const RuntimePerformanceSnapshot &s) {
               s.clusterResources.shaderVisibleResourceCount,
               s.clusterResources.missingDescriptorCount,
               s.clusterResources.descriptorAllocationFailedCount);
+    MetricRow("File Reads / GPU Creates / Uploads / Fence Waits",
+              "%u / %u / %u / %u",
+              s.clusterResources.fileReadCount,
+              s.clusterResources.gpuResourceCreateCount,
+              s.clusterResources.uploadSubmitCount,
+              s.clusterResources.fenceWaitCount);
+    MetricRow("Descriptors Allocated / Owner Violations", "%u / %u",
+              s.clusterResources.descriptorAllocationCount,
+              s.clusterResources.ownerThreadViolationCount);
     MetricRow("Descriptor Pool Used / Capacity / Failed", "%u / %u / %u",
               s.descriptorPool.used, s.descriptorPool.capacity,
               s.descriptorPool.failedAllocationCount);

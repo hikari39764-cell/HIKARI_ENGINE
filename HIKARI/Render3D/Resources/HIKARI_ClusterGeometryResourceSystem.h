@@ -23,6 +23,9 @@ namespace HIKARI::RENDER3D {
         std::string sourceKey{};
         std::filesystem::path sourcePath{};
         std::filesystem::file_time_type sourceWriteTime{};
+        uint64_t sourceRevision = 0;
+        uint64_t sourceFileSize = 0;
+        uint64_t sourceValidationFenceValue = 0;
         ClusterGeometryGpuLayout layout{};
         std::vector<CLUSTER::ClusterGeometrySurfaceRange> surfaceRanges{};
         std::vector<CLUSTER::ClusterGeometrySurfaceLodRange> surfaceLodRanges{};
@@ -50,6 +53,12 @@ namespace HIKARI::RENDER3D {
         uint32_t shaderVisibleResourceCount = 0;
         uint32_t missingDescriptorCount = 0;
         uint32_t descriptorAllocationFailedCount = 0;
+        uint32_t fileReadCount = 0;
+        uint32_t gpuResourceCreateCount = 0;
+        uint32_t uploadSubmitCount = 0;
+        uint32_t fenceWaitCount = 0;
+        uint32_t descriptorAllocationCount = 0;
+        uint32_t ownerThreadViolationCount = 0;
         uint32_t upgradedVirtualHandleCount = 0;
         uint32_t surfaceCount = 0;
         uint32_t surfaceLodRangeCount = 0;
@@ -66,17 +75,26 @@ namespace HIKARI::RENDER3D {
     void UpdateClusterGeometryResourceContext(const GFX::Context& ctx);
     void ShutdownClusterGeometryResourceSystem();
 
+    // This resource system is presentation-owner-thread only. Registration,
+    // loading, lookup, range queries, stats, and shutdown must not race.
     // プロシージャル等の実行時生成ジオメトリを、ファイルを介さず
     // packed データのまま登録する。path は LoadClusterGeometryResource の
     // hcmeshPath と一致させる。
     void RegisterClusterGeometryPackedSource(
         const std::string& path,
         CLUSTER::ClusterGeometryPackedBytes packed);
+    // Removal makes the record unavailable immediately. Its GPU allocation
+    // stays retained until replacement or shutdown so in-flight frames remain
+    // valid under deferred-release rules.
     void UnregisterClusterGeometryPackedSource(
         const std::string& path);
 
+    // HCMESH resource identity is owned here. Callers must not derive a
+    // per-object or per-surface alias for the same packed artifact.
+    std::string BuildClusterGeometryResourceSourceKey(
+        const std::filesystem::path& hcmeshPath);
+
     ClusterGeometryResourceHandle LoadClusterGeometryResource(
-        const std::string& sourceKey,
         const std::filesystem::path& hcmeshPath);
 
     const ClusterGeometryResourceRecord* GetClusterGeometryResource(
