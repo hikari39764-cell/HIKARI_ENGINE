@@ -12,9 +12,6 @@
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponentAuthoring.h"
 #include "Scene/Features/HIKARI_RuntimeFeature.h"
 #include "Scene/Features/HIKARI_RuntimeFeatureIds.h"
-#include "Scene/Features/HIKARI_BuoyancyComponent.h"
-#include "Scene/Features/HIKARI_BuoyancySystem.h"
-#include "Scene/Water/HIKARI_WaterSurfaceSystem.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
 #include "Scene/HIKARI_ComponentRegistry.h"
 #include "Scene/HIKARI_ComponentSystemPolicy.h"
@@ -25,7 +22,6 @@
 #include "Scene/Sand/HIKARI_SandSurfaceSystem.h"
 #include "Scene/Terrain/HIKARI_TerrainInteractionSourceSystem.h"
 #include "Scene/Terrain/HIKARI_TerrainSurfaceComponent.h"
-#include "Scene/Water/HIKARI_WaterSurfaceComponent.h"
 
 namespace HIKARI {
     namespace {
@@ -57,14 +53,12 @@ namespace HIKARI {
 
             std::span<const std::string_view>
                 GetComponentTypeNames() const noexcept override {
-                static constexpr std::array<std::string_view, 10> names{
+                static constexpr std::array<std::string_view, 8> names{
                     "ModelComponent",
                     "MaterialFxComponent",
                     "ProceduralMeshComponent",
                     "TerrainSurfaceComponent",
-                    "WaterSurfaceComponent",
                     "SandSurfaceFollowerComponent",
-                    "BuoyancyComponent",
                     "LightComponent",
                     "ReflectionProbeComponent",
                     "IrradianceVolumeComponent"
@@ -74,12 +68,10 @@ namespace HIKARI {
 
             std::span<const std::string_view>
                 GetSystemIds() const noexcept override {
-                static constexpr std::array<std::string_view, 5> ids{
+                static constexpr std::array<std::string_view, 3> ids{
                     "ModelRenderSystem",
-                    "WaterSurfaceSystem",
                     "TerrainInteractionSourceSystem",
-                    "SandSurfaceSystem",
-                    "BuoyancySystem"
+                    "SandSurfaceSystem"
                 };
                 return ids;
             }
@@ -179,27 +171,6 @@ namespace HIKARI {
                     "Terrain Surface",
                     "Unified editable solid terrain with heightfield and paintable layers.");
 
-                ComponentTypeInfo waterSurface{};
-                waterSurface.typeName = "WaterSurfaceComponent";
-                waterSurface.factory =
-                    []() -> std::unique_ptr<IComponent> {
-                    return std::make_unique<WaterSurfaceComponent>();
-                };
-                waterSurface.requiredComponents = {
-                    "ModelComponent",
-                    "ProceduralMeshComponent"
-                };
-                waterSurface.runtimeApplyPolicy =
-                    ComponentRuntimeApplyPolicy::OnEditCommit;
-                waterSurface.initializeDefaults = [](
-                    const SceneObjectData&,
-                    nlohmann::json& properties) {
-                    WaterSurfaceComponent defaults{};
-                    defaults.Serialize(properties);
-                };
-                waterSurface.presentation = RenderingPresentation(
-                    "Water Surface",
-                    "Gerstner-driven animated water surface with stylized or realistic shading.");
                 terrainSurface.authoringCommands = {
                     {
                         "terrain.surfacePreset",
@@ -370,18 +341,6 @@ namespace HIKARI {
                     "authoritative. The sand ground itself uses "
                     "SandSurfaceComponent.");
 
-                ComponentTypeInfo buoyancy{};
-                buoyancy.typeName = "BuoyancyComponent";
-                buoyancy.factory =
-                    []() -> std::unique_ptr<IComponent> {
-                    return std::make_unique<BuoyancyComponent>();
-                };
-                buoyancy.runtimeApplyPolicy =
-                    ComponentRuntimeApplyPolicy::Immediate;
-                buoyancy.presentation = RenderingPresentation(
-                    "Buoyancy",
-                    "Applies a buoyant force to a floating sphere from the water surface query.");
-
                 ComponentTypeInfo light{};
                 light.typeName = "LightComponent";
                 light.factory =
@@ -457,11 +416,7 @@ namespace HIKARI {
                 success = componentRegistry.Register(
                     std::move(terrainSurface)) && success;
                 success = componentRegistry.Register(
-                    std::move(waterSurface)) && success;
-                success = componentRegistry.Register(
                     std::move(sandFollower)) && success;
-                success = componentRegistry.Register(
-                    std::move(buoyancy)) && success;
                 success = componentRegistry.Register(
                     std::move(light)) && success;
                 success = componentRegistry.Register(
@@ -474,14 +429,6 @@ namespace HIKARI {
                         return std::make_unique<RenderSubmissionSystem>();
                     },
                     "Model Rendering",
-                    "Rendering"
-                }) && success;
-                success = systemTypeRegistry.Register(SystemTypeInfo{
-                    "WaterSurfaceSystem",
-                    [](const nlohmann::json&) -> std::unique_ptr<ISystem> {
-                        return std::make_unique<WaterSurfaceSystem>();
-                    },
-                    "Water Surface",
                     "Rendering"
                 }) && success;
                 success = systemTypeRegistry.Register(SystemTypeInfo{
@@ -501,24 +448,10 @@ namespace HIKARI {
                     "Sand Surface",
                     "Rendering"
                 }) && success;
-                success = systemTypeRegistry.Register(SystemTypeInfo{
-                    "BuoyancySystem",
-                    [](const nlohmann::json&) -> std::unique_ptr<ISystem> {
-                        return std::make_unique<BuoyancySystem>();
-                    },
-                    "Buoyancy",
-                    "Gameplay"
-                }) && success;
-                // 水面/砂地のシステムは Scene が明示的な systems 配列で
+                // 地形/砂地のシステムは Scene が明示的な systems 配列で
                 // 上書きしていても、コンポーネントが存在すれば必ず導入する。
                 success = componentSystemPolicy.Register(
                     ComponentSystemRule{
-                        "WaterSurfaceComponent",
-                        "WaterSurfaceSystem",
-                        95
-                    }) && success;
-                success = componentSystemPolicy.Register(
-                    ComponentSystemRule{
                         "TerrainSurfaceComponent",
                         "TerrainInteractionSourceSystem",
                         125
@@ -540,12 +473,6 @@ namespace HIKARI {
                         "SandSurfaceFollowerComponent",
                         "SandSurfaceSystem",
                         140
-                    }) && success;
-                success = componentSystemPolicy.Register(
-                    ComponentSystemRule{
-                        "BuoyancyComponent",
-                        "BuoyancySystem",
-                        90
                     }) && success;
                 return success;
             }
@@ -554,16 +481,11 @@ namespace HIKARI {
                 GetDefaultSystems() const noexcept override {
                 static constexpr std::array<
                     RuntimeSystemDefault,
-                    4> defaults{
+                    3> defaults{
                     RuntimeSystemDefault{
                         "ModelRenderSystem",
                         true,
                         100
-                    },
-                    RuntimeSystemDefault{
-                        "WaterSurfaceSystem",
-                        true,
-                        95
                     },
                     RuntimeSystemDefault{
                         "TerrainInteractionSourceSystem",

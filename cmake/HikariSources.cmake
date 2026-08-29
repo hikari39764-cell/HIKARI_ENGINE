@@ -103,6 +103,8 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Features/HIKARI_RuntimeExtension.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Features/HIKARI_BuiltInRuntimeFeatures.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Features/HIKARI_RenderingRuntimeFeature.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Features/HIKARI_WaterRuntimeFeature.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Features/HIKARI_BuoyancyRuntimeFeature.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Features/HIKARI_AnimationRuntimeFeature.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Features/HIKARI_CameraRuntimeFeature.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Features/HIKARI_PhysicsRuntimeFeature.cpp"
