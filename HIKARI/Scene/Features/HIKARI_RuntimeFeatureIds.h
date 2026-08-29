@@ -13,6 +13,7 @@ namespace HIKARI::RuntimeFeatureIds {
     inline constexpr std::string_view Buoyancy = "Buoyancy";
     inline constexpr std::string_view Animation = "Animation";
     inline constexpr std::string_view Camera = "Camera";
+    inline constexpr std::string_view Navigation = "Navigation";
     inline constexpr std::string_view Physics = "Physics";
     inline constexpr std::string_view GameplayBasic = "GameplayBasic";
     inline constexpr std::string_view Cinematics = "Cinematics";

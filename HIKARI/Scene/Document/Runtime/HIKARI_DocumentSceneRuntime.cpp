@@ -208,8 +208,11 @@ namespace HIKARI {
         state_->runtime.playActive = true;
         // Navigation is prepared at the Play boundary so the first enemy
         // query cannot synchronously scan and build the whole terrain.
-        (void)state_->runtime.navigationWorldService.Synchronize(
-            state_->runtime.world);
+        if (NAVIGATION::NavigationWorldService* navigation =
+                state_->runtime.world.Services().Find<
+                    NAVIGATION::NavigationWorldService>()) {
+            (void)navigation->Synchronize(state_->runtime.world);
+        }
         state_->runtime.fixedStepClock.Reset();
         HIKARI_LOG_INFO("Document scene entered runtime Play state.");
         return true;
@@ -357,6 +360,9 @@ namespace HIKARI {
         const bool surfaceInteractionEnabled =
             state_->runtime.featureCatalog.IsFeatureActive(
                 RuntimeFeatureIds::SurfaceInteraction);
+        const bool navigationEnabled =
+            state_->runtime.featureCatalog.IsFeatureActive(
+                RuntimeFeatureIds::Navigation);
 
         // This method is called only before the first World build or after
         // every old component/system has detached. Publish an empty registry
@@ -369,6 +375,7 @@ namespace HIKARI {
         state_->runtime.runtimeObjectActivityService.Clear();
         state_->runtime.sandSurfaceQueryService.Clear();
         state_->runtime.waterSurfaceQueryService.Clear();
+        state_->runtime.navigationWorldService.Clear();
         state_->runtime.waterSurfaceQueryService.SetBathymetryProvider(
             nullptr);
         if (!physicsEnabled) {
@@ -529,8 +536,8 @@ namespace HIKARI {
             state_->runtime.physicsSettings)) && success;
         success = (!physicsEnabled || services.Register(
             state_->runtime.physicsWorldService)) && success;
-        success = services.Register(
-            state_->runtime.navigationWorldService) && success;
+        success = (!navigationEnabled || services.Register(
+            state_->runtime.navigationWorldService)) && success;
         success = state_->runtime.extensionHost.RegisterWorldServices(services) &&
             success;
         if (!success) {
@@ -641,11 +648,16 @@ namespace HIKARI {
             state_->identity.document);
         state_->runtime.systemScheduler.DetachWorld(state_->runtime.world);
         state_->runtime.systemScheduler.Clear();
+        // Component detach callbacks observe the complete old service set.
+        // Service-owned snapshots are cleared only after every old object
+        // has released its borrowed service references.
+        state_->runtime.world.Clear();
         // Presentation records are owned by the exact runtime World. A
         // rebuild can occur after LateUpdate while the absolute frame token
         // is still current, so the old world's render-only attachments must
         // not survive into the replacement world.
         state_->runtime.presentationModelService.Clear();
+        state_->runtime.navigationWorldService.Clear();
         state_->runtime.fixedStepClock.Reset();
         // プロシージャルキャッシュは settings キーで不変なので、
         // シーン再構築ごとに破棄せずプロセス内で再利用する。
@@ -655,10 +667,6 @@ namespace HIKARI {
             reconfigureWorldServices ||
             !state_->runtime.worldServicesConfigured;
         if (servicesRequireConfiguration) {
-            // Component detach callbacks must observe the old service set.
-            // The replacement registry is published only after the old
-            // World has released every service-borrowing component.
-            state_->runtime.world.Clear();
             if (!ConfigureRuntimeWorldServices()) {
                 RuntimeSceneContext::SetCurrentWorld(nullptr);
                 return false;

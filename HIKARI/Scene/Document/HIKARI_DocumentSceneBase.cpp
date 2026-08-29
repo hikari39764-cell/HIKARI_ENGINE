@@ -211,6 +211,7 @@ namespace HIKARI {
         state_->runtime.worldServicesConfigured = false;
         state_->runtime.sandSurfaceQueryService.Clear();
         state_->runtime.waterSurfaceQueryService.Clear();
+        state_->runtime.navigationWorldService.Clear();
         state_->runtime.waterSurfaceQueryService.SetBathymetryProvider(
             nullptr);
         state_->runtime.waterBathymetryProvider.reset();
@@ -240,11 +241,13 @@ namespace HIKARI {
             state_->runtime.fixedStepClock.SetSettings(settings);
         }
         state_->runtime.world.BeginFrame(frame.frameIndex);
-        if (state_->runtime.playActive) {
+        NAVIGATION::NavigationWorldService* navigation =
+            state_->runtime.world.Services().Find<
+                NAVIGATION::NavigationWorldService>();
+        if (state_->runtime.playActive && navigation != nullptr) {
             // One owner-revision gate per frame; individual SDK queries read
             // the immutable prepared Detour snapshot in O(path work).
-            (void)state_->runtime.navigationWorldService.Synchronize(
-                state_->runtime.world);
+            (void)navigation->Synchronize(state_->runtime.world);
         }
         state_->runtime.bindingStore.BeginFrame(frame.frameIndex);
         state_->camera.rigService.BeginFrame(frame.frameIndex);
