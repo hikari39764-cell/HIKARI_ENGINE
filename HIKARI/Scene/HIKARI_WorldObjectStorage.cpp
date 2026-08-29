@@ -1,11 +1,62 @@
 #include "Scene/HIKARI_World.h"
 
 #include <limits>
+#include <utility>
 
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/Internal/HIKARI_WorldCapacity.h"
 
 namespace HIKARI {
+
+    const std::unique_ptr<GameObject>&
+        World::LiveObjectRange::Iterator::
+            operator*() const noexcept {
+
+        const ObjectSlot& slot = world_->objectSlots_[slot_];
+        return world_->objects_[slot.storageIndex];
+    }
+
+    World::LiveObjectRange::Iterator&
+        World::LiveObjectRange::Iterator::
+            operator++() noexcept {
+
+        slot_ = world_->objectSlots_[slot_].nextLiveSlot;
+        return *this;
+    }
+
+    bool World::LiveObjectRange::Iterator::operator==(
+        const Iterator& other) const noexcept {
+
+        return world_ == other.world_ && slot_ == other.slot_;
+    }
+
+    bool World::LiveObjectRange::Iterator::operator!=(
+        const Iterator& other) const noexcept {
+
+        return !(*this == other);
+    }
+
+    World::LiveObjectRange::Iterator
+        World::LiveObjectRange::begin() const noexcept {
+        return Iterator(
+            world_,
+            world_ != nullptr
+                ? world_->firstLiveObjectSlot_
+                : kInvalidLiveObjectSlot);
+    }
+
+    World::LiveObjectRange::Iterator
+        World::LiveObjectRange::end() const noexcept {
+        return Iterator(world_, kInvalidLiveObjectSlot);
+    }
+
+    size_t World::LiveObjectRange::size() const noexcept {
+        return world_ != nullptr ? world_->liveObjectCount_ : 0u;
+    }
+
+    bool World::LiveObjectRange::empty() const noexcept {
+        return size() == 0u;
+    }
 
     GameObject* World::FindObject(
         RuntimeObjectHandle handle) noexcept {
@@ -25,19 +76,6 @@ namespace HIKARI {
     const GameObject* World::FindObject(
         RuntimeObjectHandle handle) const noexcept {
         return const_cast<World*>(this)->FindObject(handle);
-    }
-
-    RuntimeObjectHandle World::AllocateObjectHandle(
-        GameObject* object) {
-        const RuntimeObjectHandle handle = ReserveObjectHandle();
-        if (!handle.IsValid()) {
-            return {};
-        }
-        if (!CommitReservedObjectHandle(handle, object)) {
-            ReleaseReservedObjectHandle(handle);
-            return {};
-        }
-        return handle;
     }
 
     RuntimeObjectHandle World::ReserveObjectHandle() {
@@ -78,20 +116,19 @@ namespace HIKARI {
                     freeObjectSlots_.max_size())));
         objectSlots_.reserve(slotCapacity);
         freeObjectSlots_.reserve(slotCapacity);
-        objectSlots_.push_back(ObjectSlot{
-            nullptr,
-            1u,
-            0u,
-            ObjectSlotState::Reserved
-        });
+        ObjectSlot slot{};
+        slot.state = ObjectSlotState::Reserved;
+        objectSlots_.push_back(std::move(slot));
         return RuntimeObjectHandle{ slotIndex, 1u };
     }
 
     bool World::CommitReservedObjectHandle(
         RuntimeObjectHandle handle,
-        GameObject* object) noexcept {
+        GameObject* object,
+        size_t storageIndex) noexcept {
         if (!handle.IsValid() ||
             object == nullptr ||
+            storageIndex == kInvalidObjectStorageIndex ||
             handle.slot >= objectSlots_.size()) {
             return false;
         }
@@ -102,8 +139,10 @@ namespace HIKARI {
             return false;
         }
         slot.object = object;
+        slot.storageIndex = storageIndex;
         slot.reservationToken = 0u;
         slot.state = ObjectSlotState::Live;
+        AppendLiveObjectSlot(handle.slot);
         return true;
     }
 
@@ -151,6 +190,9 @@ namespace HIKARI {
         }
         ObjectSlot& slot = objectSlots_[slotIndex];
         slot.object = nullptr;
+        slot.storageIndex = kInvalidObjectStorageIndex;
+        slot.previousLiveSlot = kInvalidLiveObjectSlot;
+        slot.nextLiveSlot = kInvalidLiveObjectSlot;
         slot.reservationToken = 0u;
         if (slot.generation ==
             (std::numeric_limits<uint32_t>::max)()) {
@@ -160,6 +202,48 @@ namespace HIKARI {
         ++slot.generation;
         slot.state = ObjectSlotState::Free;
         freeObjectSlots_.push_back(slotIndex);
+    }
+
+    void World::AppendLiveObjectSlot(
+        uint32_t slotIndex) noexcept {
+
+        ObjectSlot& slot = objectSlots_[slotIndex];
+        slot.previousLiveSlot = lastLiveObjectSlot_;
+        slot.nextLiveSlot = kInvalidLiveObjectSlot;
+        if (lastLiveObjectSlot_ != kInvalidLiveObjectSlot) {
+            objectSlots_[lastLiveObjectSlot_].nextLiveSlot =
+                slotIndex;
+        }
+        else {
+            firstLiveObjectSlot_ = slotIndex;
+        }
+        lastLiveObjectSlot_ = slotIndex;
+        ++liveObjectCount_;
+    }
+
+    void World::RemoveLiveObjectSlot(
+        uint32_t slotIndex) noexcept {
+
+        ObjectSlot& slot = objectSlots_[slotIndex];
+        if (slot.previousLiveSlot != kInvalidLiveObjectSlot) {
+            objectSlots_[slot.previousLiveSlot].nextLiveSlot =
+                slot.nextLiveSlot;
+        }
+        else {
+            firstLiveObjectSlot_ = slot.nextLiveSlot;
+        }
+        if (slot.nextLiveSlot != kInvalidLiveObjectSlot) {
+            objectSlots_[slot.nextLiveSlot].previousLiveSlot =
+                slot.previousLiveSlot;
+        }
+        else {
+            lastLiveObjectSlot_ = slot.previousLiveSlot;
+        }
+        slot.previousLiveSlot = kInvalidLiveObjectSlot;
+        slot.nextLiveSlot = kInvalidLiveObjectSlot;
+        if (liveObjectCount_ > 0u) {
+            --liveObjectCount_;
+        }
     }
 
     void World::ReleaseObjectHandle(RuntimeObjectHandle handle) {
@@ -172,6 +256,7 @@ namespace HIKARI {
             slot.object == nullptr) {
             return;
         }
+        RemoveLiveObjectSlot(handle.slot);
         RecycleObjectSlot(handle.slot);
     }
 

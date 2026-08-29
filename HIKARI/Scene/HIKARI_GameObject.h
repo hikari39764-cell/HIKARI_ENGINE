@@ -1,5 +1,7 @@
 #pragma once
+#include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <string>
 #include <type_traits>
@@ -109,10 +111,14 @@ namespace HIKARI {
     private:
         friend class World;
 
+        static constexpr size_t kInvalidRenderDirtyIndex =
+            (std::numeric_limits<size_t>::max)();
+
         void DetachComponents();
         void SetOwnerWorld(World* world);
         void SetRuntimeHandle(RuntimeObjectHandle handle) noexcept;
         void MarkTransformHierarchyDirty();
+        bool CanMutateOwnedState() const noexcept;
 
         std::string name_;
         SceneObjectId documentId_{};
@@ -123,7 +129,9 @@ namespace HIKARI {
         std::vector<std::unique_ptr<IComponent>> components_;
         World* ownerWorld_ = nullptr;
         uint64_t renderStateRevision_ = 1;
+        size_t renderDirtyIndex_ = kInvalidRenderDirtyIndex;
         bool renderStateDirty_ = true;
+        bool destroying_ = false;
         bool active_ = true;
     };
 

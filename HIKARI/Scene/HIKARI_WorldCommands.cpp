@@ -292,39 +292,46 @@ namespace HIKARI {
         auto object = std::make_unique<GameObject>(command.name.data());
         GameObject* ptr = object.get();
         ptr->SetRuntimeHandle(command.object);
-        ptr->SetOwnerWorld(this);
-        Transform3D localTransform{};
-        localTransform.position = command.transform.position;
-        localTransform.rotation = command.transform.rotation;
-        localTransform.scale = command.transform.scale;
-        (void)ptr->SetLocalTransform(localTransform);
+        bool objectStored = false;
         try {
+            ptr->SetOwnerWorld(this);
+            Transform3D localTransform{};
+            localTransform.position = command.transform.position;
+            localTransform.rotation = command.transform.rotation;
+            localTransform.scale = command.transform.scale;
+            (void)ptr->SetLocalTransform(localTransform);
             if (parent != nullptr && !ptr->SetParent(parent)) {
                 throw std::runtime_error(
                     "Queued World spawn hierarchy rejected.");
             }
-            if (!CommitReservedObjectHandle(command.object, ptr)) {
+            const size_t storageIndex = objects_.size();
+            objects_.push_back(std::move(object));
+            objectStored = true;
+            if (!CommitReservedObjectHandle(
+                    command.object,
+                    ptr,
+                    storageIndex)) {
                 throw std::runtime_error(
                     "Queued World spawn handle commit rejected.");
             }
-            objects_.push_back(std::move(object));
             return WorldMutationResult::Success;
         }
         catch (...) {
             (void)ptr->SetParent(nullptr);
-            renderDirtyObjects_.erase(
-                std::remove(
-                    renderDirtyObjects_.begin(),
-                    renderDirtyObjects_.end(),
-                    ptr),
-                renderDirtyObjects_.end());
+            RemoveRenderObjectDirty(ptr);
             ptr->SetOwnerWorld(nullptr);
             ptr->SetRuntimeHandle({});
             if (slot.state == ObjectSlotState::Live) {
-                slot.state = ObjectSlotState::Reserved;
-                slot.object = nullptr;
+                ReleaseObjectHandle(command.object);
             }
-            ReleaseReservedObjectHandle(command.object);
+            else {
+                ReleaseReservedObjectHandle(command.object);
+            }
+            if (objectStored &&
+                !objects_.empty() &&
+                objects_.back().get() == ptr) {
+                objects_.pop_back();
+            }
             throw;
         }
     }

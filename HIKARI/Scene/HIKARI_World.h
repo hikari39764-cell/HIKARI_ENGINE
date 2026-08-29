@@ -1,6 +1,8 @@
 #pragma once
+#include <cstddef>
 #include <cstdint>
 #include <exception>
+#include <limits>
 #include <memory>
 #include <span>
 #include <string>
@@ -8,6 +10,7 @@
 #include <thread>
 #include <type_traits>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 #include "HIKARI_GameObject.h"
@@ -33,18 +36,67 @@ namespace HIKARI {
             StructureReadScope& operator=(const StructureReadScope&) = delete;
 
             ~StructureReadScope() noexcept {
-                --world_->structureReadDepth_;
+                if (world_ != nullptr) {
+                    --world_->structureReadDepth_;
+                }
+            }
+
+            bool IsValid() const noexcept {
+                return world_ != nullptr;
             }
 
         private:
             friend class World;
 
             explicit StructureReadScope(World& world) noexcept
-                : world_(&world) {
-                ++world_->structureReadDepth_;
+                : world_(world.IsOwnerThread() ? &world : nullptr) {
+                if (world_ != nullptr) {
+                    ++world_->structureReadDepth_;
+                }
             }
 
             World* world_ = nullptr;
+        };
+
+        // Owner-thread transient view in deterministic attachment order.
+        // Iterators must not be retained across any structural mutation.
+        class LiveObjectRange {
+        public:
+            class Iterator {
+            public:
+                const std::unique_ptr<GameObject>&
+                    operator*() const noexcept;
+                Iterator& operator++() noexcept;
+                bool operator==(
+                    const Iterator& other) const noexcept;
+                bool operator!=(
+                    const Iterator& other) const noexcept;
+
+            private:
+                friend class LiveObjectRange;
+
+                Iterator(
+                    const World* world,
+                    uint32_t slot) noexcept
+                    : world_(world), slot_(slot) {}
+
+                const World* world_ = nullptr;
+                uint32_t slot_ = 0u;
+            };
+
+            Iterator begin() const noexcept;
+            Iterator end() const noexcept;
+            size_t size() const noexcept;
+            bool empty() const noexcept;
+
+        private:
+            friend class World;
+
+            explicit LiveObjectRange(
+                const World* world) noexcept
+                : world_(world) {}
+
+            const World* world_ = nullptr;
         };
 
         World();
@@ -96,7 +148,7 @@ namespace HIKARI {
         void RenderImGui();
         void Clear();
 
-        const std::vector<std::unique_ptr<GameObject>>& GetObjects() const;
+        LiveObjectRange GetObjects() const noexcept;
         const std::vector<GameObject*>& GetRenderDirtyObjects() const;
         const std::vector<uint64_t>& GetRemovedRenderObjectIds() const;
         void MarkRenderObjectDirty(GameObject* object);
@@ -224,6 +276,10 @@ namespace HIKARI {
             IComponent& component) noexcept;
         void RemoveComponentFromIndex(
             IComponent& component) noexcept;
+        void RemoveRenderObjectDirty(
+            GameObject* object) noexcept;
+        void RollbackRemovedRenderObjectAdmission(
+            size_t checkpoint) noexcept;
         bool VisitIndexedComponents(
             ComponentTypeId typeId,
             void* context,
@@ -274,9 +330,17 @@ namespace HIKARI {
             Retired
         };
 
+        static constexpr uint32_t kInvalidLiveObjectSlot =
+            (std::numeric_limits<uint32_t>::max)();
+        static constexpr size_t kInvalidObjectStorageIndex =
+            (std::numeric_limits<size_t>::max)();
+
         struct ObjectSlot {
             GameObject* object = nullptr;
-            uint32_t generation = 1;
+            size_t storageIndex = kInvalidObjectStorageIndex;
+            uint32_t previousLiveSlot = kInvalidLiveObjectSlot;
+            uint32_t nextLiveSlot = kInvalidLiveObjectSlot;
+            uint32_t generation = 1u;
             uint32_t reservationToken = 0u;
             ObjectSlotState state = ObjectSlotState::Free;
         };
@@ -286,11 +350,11 @@ namespace HIKARI {
             ObjectSlotState previousState = ObjectSlotState::Reserved;
         };
 
-        RuntimeObjectHandle AllocateObjectHandle(GameObject* object);
         RuntimeObjectHandle ReserveObjectHandle();
         bool CommitReservedObjectHandle(
             RuntimeObjectHandle handle,
-            GameObject* object) noexcept;
+            GameObject* object,
+            size_t storageIndex) noexcept;
         void ReleaseReservedObjectHandle(
             RuntimeObjectHandle handle) noexcept;
         bool IsReservedObjectHandle(
@@ -298,6 +362,8 @@ namespace HIKARI {
         bool IsKnownObjectHandle(
             RuntimeObjectHandle handle) const noexcept;
         void RecycleObjectSlot(uint32_t slotIndex) noexcept;
+        void AppendLiveObjectSlot(uint32_t slotIndex) noexcept;
+        void RemoveLiveObjectSlot(uint32_t slotIndex) noexcept;
         void ReleaseObjectHandle(RuntimeObjectHandle handle);
         WorldCommandSubmission QueueCommand(PendingWorldCommand command);
         uint32_t AllocateCommandToken() noexcept;
@@ -316,11 +382,16 @@ namespace HIKARI {
         std::vector<std::unique_ptr<GameObject>> objects_;
         std::vector<ObjectSlot> objectSlots_{};
         std::vector<uint32_t> freeObjectSlots_{};
+        uint32_t firstLiveObjectSlot_ = kInvalidLiveObjectSlot;
+        uint32_t lastLiveObjectSlot_ = kInvalidLiveObjectSlot;
+        size_t liveObjectCount_ = 0u;
         std::unordered_map<uint64_t, GameObject*> objectsByDocumentId_{};
         std::unordered_map<uint64_t, WorldComponentBucket>
             componentBuckets_{};
         std::vector<GameObject*> renderDirtyObjects_{};
         std::vector<uint64_t> removedRenderObjectIds_{};
+        std::unordered_set<uint64_t>
+            removedRenderObjectIdSet_{};
         WorldServiceRegistry services_{};
         WorldEventStream frameEvents_{};
         WorldEventStream fixedEvents_{};

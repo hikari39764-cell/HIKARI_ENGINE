@@ -18,6 +18,9 @@ namespace HIKARI {
     }
 
     void GameObject::SetName(const std::string& name) {
+        if (!CanMutateOwnedState()) {
+            return;
+        }
         if (name_ == name) {
             return;
         }
@@ -26,6 +29,9 @@ namespace HIKARI {
     }
 
     bool GameObject::SetDocumentId(SceneObjectId id) {
+        if (!CanMutateOwnedState()) {
+            return false;
+        }
         if (documentId_ == id) {
             return true;
         }
@@ -64,6 +70,9 @@ namespace HIKARI {
     }
 
     bool GameObject::SetLocalTransform(const Transform3D& transform) {
+        if (!CanMutateOwnedState()) {
+            return false;
+        }
         if (transform_.HasSameLocalValue(transform)) {
             return false;
         }
@@ -77,6 +86,9 @@ namespace HIKARI {
     }
 
     bool GameObject::SetLocalPosition(const MATH::Vec3& position) {
+        if (!CanMutateOwnedState()) {
+            return false;
+        }
         if (transform_.position.x == position.x &&
             transform_.position.y == position.y &&
             transform_.position.z == position.z) {
@@ -89,6 +101,9 @@ namespace HIKARI {
     }
 
     bool GameObject::SetLocalRotation(const MATH::Quat& rotation) {
+        if (!CanMutateOwnedState()) {
+            return false;
+        }
         if (transform_.rotation.x == rotation.x &&
             transform_.rotation.y == rotation.y &&
             transform_.rotation.z == rotation.z &&
@@ -102,6 +117,9 @@ namespace HIKARI {
     }
 
     bool GameObject::SetLocalScale(const MATH::Vec3& scale) {
+        if (!CanMutateOwnedState()) {
+            return false;
+        }
         if (transform_.scale.x == scale.x &&
             transform_.scale.y == scale.y &&
             transform_.scale.z == scale.z) {
@@ -126,6 +144,9 @@ namespace HIKARI {
     }
 
     bool GameObject::SetParent(GameObject* parent) {
+        if (!CanMutateOwnedState()) {
+            return false;
+        }
         if (parent_ == parent) {
             return true;
         }
@@ -343,6 +364,9 @@ namespace HIKARI {
     }
 
     void GameObject::MarkRenderStateDirty() {
+        if (!CanMutateOwnedState()) {
+            return;
+        }
         ++renderStateRevision_;
         if (!renderStateDirty_) {
             renderStateDirty_ = true;
@@ -353,6 +377,9 @@ namespace HIKARI {
     }
 
     void GameObject::ClearRenderStateDirty() {
+        if (!CanMutateOwnedState()) {
+            return;
+        }
         renderStateDirty_ = false;
     }
 
@@ -393,6 +420,11 @@ namespace HIKARI {
                 child->MarkTransformHierarchyDirty();
             }
         }
+    }
+
+    bool GameObject::CanMutateOwnedState() const noexcept {
+        return !destroying_ &&
+            (ownerWorld_ == nullptr || ownerWorld_->IsOwnerThread());
     }
 
 } // namespace HIKARI
