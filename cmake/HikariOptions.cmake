@@ -43,6 +43,41 @@ else()
 endif()
 
 set(
+    HIKARI_GAME_HOST_OUTPUT_NAME
+    "HIKARI_Game"
+    CACHE STRING
+    "Filename stem for the GameShipping host executable")
+if(HIKARI_PRODUCT STREQUAL "Shipping")
+    if(HIKARI_GAME_HOST_OUTPUT_NAME STREQUAL "" OR
+       HIKARI_GAME_HOST_OUTPUT_NAME STREQUAL "." OR
+       HIKARI_GAME_HOST_OUTPUT_NAME STREQUAL ".." OR
+       HIKARI_GAME_HOST_OUTPUT_NAME MATCHES "[. ]$")
+        message(
+            FATAL_ERROR
+            "HIKARI_GAME_HOST_OUTPUT_NAME must be one safe filename stem.")
+    endif()
+    set(
+        _hikari_game_host_forbidden_characters
+        "/" "\\" "<" ">" ":" "\"" "|" "?" "*")
+    foreach(_hikari_forbidden IN LISTS
+            _hikari_game_host_forbidden_characters)
+        string(
+            FIND
+            "${HIKARI_GAME_HOST_OUTPUT_NAME}"
+            "${_hikari_forbidden}"
+            _hikari_forbidden_index)
+        if(NOT _hikari_forbidden_index EQUAL -1)
+            message(
+                FATAL_ERROR
+                "HIKARI_GAME_HOST_OUTPUT_NAME contains an invalid filename character.")
+        endif()
+    endforeach()
+    unset(_hikari_forbidden)
+    unset(_hikari_forbidden_index)
+    unset(_hikari_game_host_forbidden_characters)
+endif()
+
+set(
     HIKARI_STREAMLINE_MODE
     "AUTO"
     CACHE STRING
@@ -56,3 +91,8 @@ set_property(
 
 message(STATUS "HIKARI product: ${HIKARI_PRODUCT}")
 message(STATUS "HIKARI editor sources: ${HIKARI_WITH_EDITOR_BUILD}")
+if(HIKARI_PRODUCT STREQUAL "Shipping")
+    message(
+        STATUS
+        "HIKARI game host output: ${HIKARI_GAME_HOST_OUTPUT_NAME}.exe")
+endif()

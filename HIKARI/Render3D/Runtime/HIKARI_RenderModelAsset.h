@@ -33,6 +33,8 @@ namespace HIKARI::RENDER3D::RUNTIME {
         bool hasStaticSurfaces = false;
 
         std::vector<RenderModelNodeRecord> nodes{};
+        // HCMESH の node-global bake を剛体アニメーション差分へ戻す基準。
+        std::vector<MATH::Mat4> bindNodeGlobals{};
         // Surface は material 単位で切った描画契約。
         std::vector<RenderSurfaceRecord> surfaces{};
     };

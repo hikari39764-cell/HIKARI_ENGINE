@@ -123,6 +123,7 @@ namespace HIKARI::RENDER3D::RUNTIME {
 
         Transform3D objectWorldTransform{};
         MATH::Mat4 drawWorldMatrix{};
+        MATH::Mat4 clusterWorldMatrix{};
         bool hasDrawWorldMatrix = false;
 
         Bounds localBounds{};

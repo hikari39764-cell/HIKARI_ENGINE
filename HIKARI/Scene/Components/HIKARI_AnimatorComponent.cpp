@@ -59,6 +59,7 @@ namespace HIKARI {
             rootMotionEnabled_);
         playing_ = in.value("playing", autoPlay_);
         finished_ = in.value("finished", finished_);
+        runtimeEvaluationEnabled_ = true;
         secondaryClip_ = {};
         secondaryWeight_ = 0.0f;
         ClearTransition();

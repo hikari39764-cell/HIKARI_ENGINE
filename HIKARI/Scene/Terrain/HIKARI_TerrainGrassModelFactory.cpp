@@ -19,6 +19,7 @@
 #include "Assets/Models/HIKARI_ModelMaterialSlot.h"
 #include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Core/HIKARI_Logger.h"
+#include "Platform/Paths/HIKARI_UserDataPath.h"
 #include "Render3D/Resources/HIKARI_ClusterGeometryResourceSystem.h"
 
 namespace HIKARI::TERRAIN {
@@ -310,9 +311,16 @@ namespace HIKARI::TERRAIN {
         std::filesystem::path ResolveGrassClusterCachePath(
             uint32_t variantIndex,
             const std::filesystem::path& projectRoot) {
-            const std::filesystem::path libraryRoot = projectRoot.empty()
+            std::filesystem::path libraryRoot = projectRoot.empty()
                 ? std::filesystem::path("Library")
                 : projectRoot / "Library";
+#if defined(HIKARI_SHIPPING)
+            const std::filesystem::path runtimeUserRoot =
+                PLATFORM::GetHikariRuntimeUserRoot();
+            if (!runtimeUserRoot.empty()) {
+                libraryRoot = runtimeUserRoot / "Cache";
+            }
+#endif
             const std::string fileName = MakeGrassClusterGuid(variantIndex) +
                 "-hcmesh" +
                 std::to_string(ASSETS::GEOMETRY::kHcmeshVersion) +

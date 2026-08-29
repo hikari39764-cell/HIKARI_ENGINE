@@ -381,12 +381,12 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                 pixelShaderId == "Render3D_StaticFxPS";
 
             key.modelKey = modelKey;
-            const bool animatedPoseRecord =
-                record.hasRuntimeAnimation && !record.skinned;
-            key.clusterGeometryKey =
-                !animatedPoseRecord
-                    ? BuildClusterGeometryKey(record)
-                    : 0;
+            // HCMESH static vertices already contain the bind-time node
+            // transform.  Runtime rigid-node animation is corrected by the
+            // SceneRenderCache clusterWorld matrix (posed * inverse(bind));
+            // keep the cooked cluster route so pose changes remain a dirty
+            // surface patch instead of forcing a scene-wide triangle rebuild.
+            key.clusterGeometryKey = BuildClusterGeometryKey(record);
             key.geometryBackend =
                 key.clusterGeometryKey != 0
                     ? RUNTIME::SurfaceGeometryBackend::ClusterGeometry
@@ -480,7 +480,6 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             // VS/PS の authoritative route を維持する。
             // Blend のパス分割と深度書き込み無効化は key.transparent が所有する。
             key.clusterMainlineEligible =
-                !animatedPoseRecord &&
                 key.geometryBackend == RUNTIME::SurfaceGeometryBackend::ClusterGeometry &&
                 clusterVertexCompatible &&
                 clusterPixelCompatible &&
@@ -669,10 +668,8 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             RUNTIME::SurfaceGpuSceneInstance instance{};
             instance.world = record.drawWorldMatrix;
             instance.normalMatrix = MATH::BuildNormalMatrixFromWorld(record.drawWorldMatrix);
-            // HCMESH は node global めEbake 済みなので、cluster draw では object world だけを渡す、E
-            instance.clusterWorld = record.skinned
-                ? record.drawWorldMatrix
-                : record.objectWorldTransform.GetWorldMatrix();
+            // HCMESH の node bake と剛体アニメーション差分を解決済みの行列を使う。
+            instance.clusterWorld = record.clusterWorldMatrix;
             instance.clusterNormalMatrix = MATH::BuildNormalMatrixFromWorld(instance.clusterWorld);
             instance.boundsCenterRadius =
                 BOUNDS::ComputeCenterRadius(record.worldBounds);
@@ -818,6 +815,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         record.materialIndex = surfaceInstance.materialIndex;
         record.objectWorldTransform = surfaceInstance.objectWorldTransform;
         record.drawWorldMatrix = surfaceInstance.drawWorldMatrix;
+        record.clusterWorldMatrix = surfaceInstance.clusterWorldMatrix;
         record.hasDrawWorldMatrix = surfaceInstance.hasDrawWorldMatrix;
         record.worldBounds = surfaceInstance.worldBounds;
         // Terrain core residency is atomic. Never route an overflowed terrain

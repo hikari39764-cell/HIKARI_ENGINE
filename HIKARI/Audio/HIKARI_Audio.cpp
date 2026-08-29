@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <string>
 #include <unordered_map>
 
 #include "HIKARI_IAudioBackend.h"
@@ -19,11 +20,17 @@ struct PlayingAudioRecord {
     AudioBus bus = AudioBus::Se;
 };
 
-std::array<float, 2u> g_busVolumes{ 1.0f, 1.0f };
+std::array<float, 3u> g_busVolumes{ 1.0f, 1.0f, 1.0f };
 std::unordered_map<int, PlayingAudioRecord> g_playing{};
+std::unordered_map<std::string, int> g_loaded{};
 
 size_t BusIndex(AudioBus bus) noexcept {
-    return bus == AudioBus::Bgm ? 0u : 1u;
+    switch (bus) {
+    case AudioBus::Bgm: return 0u;
+    case AudioBus::Voice: return 2u;
+    case AudioBus::Se:
+    default: return 1u;
+    }
 }
 
 float SafeVolume(float value) noexcept {
@@ -79,9 +86,23 @@ void Shutdown() {
         g_backend.reset();
     }
     g_playing.clear();
+    g_loaded.clear();
 }
 
-int Load(const char* path) { return g_backend ? g_backend->Load(path) : -1; }
+int Load(const char* path) {
+    if (!g_backend || path == nullptr || path[0] == '\0') {
+        return -1;
+    }
+    const auto found = g_loaded.find(path);
+    if (found != g_loaded.end()) {
+        return found->second;
+    }
+    const int handle = g_backend->Load(path);
+    if (handle >= 0) {
+        g_loaded.emplace(path, handle);
+    }
+    return handle;
+}
 int Play(int soundHandle, bool loop, float volume) {
     return PlayOnBus(soundHandle, loop, volume, AudioBus::Se);
 }

@@ -25,6 +25,12 @@ namespace HIKARI {
             std::string_view transitionProfileId,
             uint64_t userData = 0u,
             uint8_t useTransition = 1u) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool RequestSceneWithHeldReveal(
+            std::string_view sceneAssetGuid,
+            std::string_view spawnPointId,
+            std::string_view transitionProfileId,
+            uint64_t userData = 0u) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool ReleaseTransitionIn() const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool ConsumeSceneEntry(
             GameProjectSceneEntry& outEntry) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool IsTransitioning() const noexcept;
@@ -47,6 +53,20 @@ namespace HIKARI {
             uint8_t pauseWorld = 1u) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool IsActive() const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool Stop() const noexcept;
+        // Legacy bulk gate: marks every one-shot DialogueTrigger in the
+        // current World consumed. Persistence code should use the mask APIs
+        // below so completing one dialogue cannot suppress unrelated ones.
+        HIKARI_GAME_PROJECT_SDK_API uint32_t
+            ConsumeOneShotTriggers() const noexcept;
+        // Maps enabled one-shot DialogueTriggers to stable handle order and
+        // captures only the triggers already consumed in this World.
+        HIKARI_GAME_PROJECT_SDK_API uint64_t
+            CaptureOneShotTriggerMask() const noexcept;
+        // Restores the exact per-trigger completion mask into a rebuilt
+        // World. Unlike ConsumeOneShotTriggers this never consumes unrelated
+        // dialogue volumes.
+        HIKARI_GAME_PROJECT_SDK_API uint32_t
+            RestoreOneShotTriggerMask(uint64_t completedMask) const noexcept;
 
     private:
         friend struct GameProjectSdkAccess;

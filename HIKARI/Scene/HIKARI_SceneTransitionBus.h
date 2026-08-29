@@ -25,6 +25,11 @@ namespace HIKARI {
         std::string transitionProfileId{ "Default" };
         bool useTransition = true;
         bool preserveGameplayState = false;
+        // Keep the destination at the fully covered transition-in boundary
+        // until ReleaseTransitionIn() is called. This lets a game project run
+        // modal work (for example an opening dialogue) over a stable black
+        // frame before the authored transition reveals gameplay.
+        bool holdTransitionIn = false;
         uint64_t userData = 0u;
     };
 
@@ -40,6 +45,7 @@ namespace HIKARI {
         explicit SceneTransitionBus(SceneManager& sceneManager);
 
         bool RequestTransition(const SceneTransitionRequest& request);
+        bool ReleaseTransitionIn();
         void Update(float dt);
         bool IsTransitioning() const;
         TransitionState GetState() const;
@@ -58,6 +64,7 @@ namespace HIKARI {
         float cameraReadyWaitSeconds_ = 0.0f;
         float cameraReadyTimeout_ = 1.25f;
         bool waitForCameraReady_ = false;
+        bool transitionInReleased_ = true;
         bool lastSceneLoadedFromCache_ = false;
         std::string activeTransitionProfileId_{ "noise_wipe" };
     };

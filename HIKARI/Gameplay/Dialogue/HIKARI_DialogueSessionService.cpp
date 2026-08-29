@@ -2,6 +2,7 @@
 #include "Gameplay/Dialogue/HIKARI_DialoguePresentation.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <string_view>
 
@@ -171,6 +172,41 @@ namespace HIKARI::DIALOGUE {
             }
             return nullptr;
         };
+        auto findVisualSlot = [&](const DialogueSpeakerProfile& speaker)
+            -> PortraitSlotRuntime* {
+            const DialoguePortraitVisualIdentity identity{
+                speaker.portraitAssetGuid,
+                speaker.resolvedPortraitAssetPath,
+                speaker.offsetX,
+                speaker.offsetY,
+                speaker.scale,
+                speaker.rotationDegrees,
+                speaker.mirror,
+            };
+            const std::array<PortraitSlotRuntime*, 2u> slots{
+                &leftPortrait_, &rightPortrait_ };
+            for (PortraitSlotRuntime* slot : slots) {
+                if (slot->speakerId.empty() &&
+                    slot->assetGuid.empty() &&
+                    slot->assetPath.empty()) {
+                    continue;
+                }
+                const DialoguePortraitVisualIdentity existing{
+                    slot->assetGuid,
+                    slot->assetPath,
+                    slot->offsetX,
+                    slot->offsetY,
+                    slot->scale,
+                    slot->rotationDegrees,
+                    slot->mirror,
+                };
+                if (SameDialoguePortraitVisualIdentity(
+                        existing, identity)) {
+                    return slot;
+                }
+            }
+            return nullptr;
+        };
         const auto dimBoth = [&]() {
             leftPortrait_.targetFocus = 0.0f;
             rightPortrait_.targetFocus = 0.0f;
@@ -178,6 +214,12 @@ namespace HIKARI::DIALOGUE {
 
         if (node.portraitAction == DialoguePortraitAction::Hide) {
             PortraitSlotRuntime* target = findSpeakerSlot(node.speakerId);
+            if (target == nullptr) {
+                if (const DialogueSpeakerProfile* speaker =
+                        FindDialogueSpeaker(*style_, node.speakerId)) {
+                    target = findVisualSlot(*speaker);
+                }
+            }
             if (target == nullptr) {
                 if (node.portraitSlot == DialoguePortraitSlot::Left) {
                     target = &leftPortrait_;
@@ -201,6 +243,14 @@ namespace HIKARI::DIALOGUE {
             *style_,
             node.speakerId);
         PortraitSlotRuntime* target = findSpeakerSlot(node.speakerId);
+        bool reusedVisualSlot = false;
+        // A localized/display-name change can use a different speaker id
+        // while retaining the same visual source. Reuse that slot in place;
+        // the current node still owns the speaker label presented below.
+        if (target == nullptr && speaker != nullptr) {
+            target = findVisualSlot(*speaker);
+            reusedVisualSlot = target != nullptr;
+        }
         if (node.portraitAction == DialoguePortraitAction::Keep) {
             dimBoth();
             if (target != nullptr) target->targetFocus = 1.0f;
@@ -237,8 +287,28 @@ namespace HIKARI::DIALOGUE {
                     : &rightPortrait_;
             }
             target->speakerId = node.speakerId;
+            target->assetGuid = speaker->portraitAssetGuid;
+            target->assetPath = speaker->resolvedPortraitAssetPath;
+            target->offsetX = speaker->offsetX;
+            target->offsetY = speaker->offsetY;
+            target->scale = speaker->scale;
+            target->rotationDegrees = speaker->rotationDegrees;
+            target->mirror = speaker->mirror;
             target->presence = 0.0f;
             target->focus = 0.0f;
+        }
+        else if (target != nullptr && speaker != nullptr &&
+            !reusedVisualSlot) {
+            // The same speaker id may intentionally switch to another
+            // portrait asset; keep the existing slot but refresh its visual
+            // identity so a later alias can still be matched correctly.
+            target->assetGuid = speaker->portraitAssetGuid;
+            target->assetPath = speaker->resolvedPortraitAssetPath;
+            target->offsetX = speaker->offsetX;
+            target->offsetY = speaker->offsetY;
+            target->scale = speaker->scale;
+            target->rotationDegrees = speaker->rotationDegrees;
+            target->mirror = speaker->mirror;
         }
         target->targetPresence = 1.0f;
         dimBoth();

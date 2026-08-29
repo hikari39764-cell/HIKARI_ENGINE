@@ -908,6 +908,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                 record.valid &&
                 record.key.resourceKeyValid &&
                 !record.skinned &&
+                record.key.backendRoute == RUNTIME::SurfaceBackendRoute::StaticVsPs &&
                 (!record.key.materialFx || record.key.waterMaterialFx) &&
                 !record.hasSpecialRenderDebug &&
                 HasValidGpuSceneSubmitPrimitiveTarget(record);
@@ -1808,16 +1809,25 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             materialSource.localGpuSceneInstanceIndex = globalInstanceIndex;
             globalMaterialSources_[globalInstanceIndex] = materialSource;
 
-            const GpuDrivenPassKind dirtyPass =
-                newOpaque ? GpuDrivenPassKind::ForwardOpaque :
-                newDepthOccluder ? GpuDrivenPassKind::DepthPrepass :
-                newDepthAware ? GpuDrivenPassKind::ForwardDepthAware :
-                newTransparent ? GpuDrivenPassKind::ForwardTransparent :
-                GpuDrivenPassKind::Shadow;
-            AppendDirtyRange(
-                sceneSource_.GetPass(dirtyPass).dirtyRanges,
-                globalInstanceIndex,
-                1u);
+            // The primary instance table is shared by every enabled pass.
+            // Publish the dirty record to each pass that references it so a
+            // rigid-node pose patch updates forward, depth, and shadow
+            // consumers in the same frame.
+            const auto appendDirtyRange =
+                [&](GpuDrivenPassKind passKind, bool enabled) {
+                if (!enabled) {
+                    return;
+                }
+                AppendDirtyRange(
+                    sceneSource_.GetPass(passKind).dirtyRanges,
+                    globalInstanceIndex,
+                    1u);
+            };
+            appendDirtyRange(GpuDrivenPassKind::ForwardOpaque, newOpaque);
+            appendDirtyRange(GpuDrivenPassKind::DepthPrepass, newDepthOccluder);
+            appendDirtyRange(GpuDrivenPassKind::ForwardDepthAware, newDepthAware);
+            appendDirtyRange(GpuDrivenPassKind::ForwardTransparent, newTransparent);
+            appendDirtyRange(GpuDrivenPassKind::Shadow, newShadow);
         }
 
         return true;

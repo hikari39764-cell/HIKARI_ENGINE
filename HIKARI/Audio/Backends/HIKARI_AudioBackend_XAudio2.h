@@ -41,6 +41,7 @@ private:
     };
 
     bool LoadWaveFile(const char* path, SoundData& outSound) const;
+    bool LoadMediaFile(const char* path, SoundData& outSound) const;
     void DestroyVoiceSlot(int playHandle);
     void CleanupFinishedVoices();
 
@@ -49,6 +50,8 @@ private:
 
     std::vector<SoundData> sounds_{};
     std::vector<PlayingVoice> voices_{};
+    bool mediaFoundationStarted_ = false;
+    bool comInitialized_ = false;
 };
 
 } // namespace HIKARI::AUDIO

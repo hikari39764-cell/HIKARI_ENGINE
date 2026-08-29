@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string_view>
+
 #include "HIKARI/Project/AudioTypes.h"
 #include "HIKARI/Project/GameProjectSdk.h"
 
@@ -7,8 +9,8 @@ namespace HIKARI {
 
     struct GameProjectSdkAccess;
 
-    // Process-wide mix buses are engine-owned. The view is a narrow runtime
-    // settings port; it neither exposes XAudio2 voices nor owns playback.
+    // Process-wide mix buses and playback remain engine-owned. The view is a
+    // narrow handle-based port and never exposes XAudio2 objects to projects.
     class AudioView {
     public:
         AudioView() = default;
@@ -19,6 +21,24 @@ namespace HIKARI {
             float linearVolume) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API float GetBusVolume(
             GameProjectAudioBus bus) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API GameProjectAudioSoundHandle Load(
+            std::string_view projectRelativePath) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API GameProjectAudioPlaybackHandle Play(
+            GameProjectAudioSoundHandle sound,
+            GameProjectAudioBus bus,
+            uint8_t loop,
+            float linearVolume) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool Stop(
+            GameProjectAudioPlaybackHandle playback) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool Pause(
+            GameProjectAudioPlaybackHandle playback) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool Resume(
+            GameProjectAudioPlaybackHandle playback) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool SetVolume(
+            GameProjectAudioPlaybackHandle playback,
+            float linearVolume) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool IsPlaying(
+            GameProjectAudioPlaybackHandle playback) const noexcept;
 
     private:
         friend struct GameProjectSdkAccess;

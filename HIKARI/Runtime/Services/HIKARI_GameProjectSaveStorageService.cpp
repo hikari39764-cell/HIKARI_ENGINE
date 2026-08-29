@@ -1,5 +1,7 @@
 #include "Runtime/Services/HIKARI_GameProjectSaveStorageService.h"
 
+#include "Platform/Paths/HIKARI_UserDataPath.h"
+
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -145,8 +147,11 @@ namespace HIKARI::SERVICES {
 
         std::filesystem::path normalizedUserRoot = userSaveRoot;
         if (normalizedUserRoot.empty()) {
-            normalizedUserRoot = MakeDefaultUserSaveRoot(
-                normalizedProjectRoot);
+            const std::filesystem::path runtimeUserRoot =
+                PLATFORM::GetHikariRuntimeUserRoot();
+            normalizedUserRoot = runtimeUserRoot.empty()
+                ? MakeDefaultUserSaveRoot(normalizedProjectRoot)
+                : runtimeUserRoot / "Saves";
         }
         if (normalizedUserRoot.empty()) {
             SetMessage(

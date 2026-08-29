@@ -3,7 +3,9 @@
 
 #include <algorithm>
 #include <cctype>
+#include <exception>
 #include <fstream>
+#include <string_view>
 #include <system_error>
 #include <unordered_set>
 #include <utility>
@@ -17,13 +19,16 @@
 #include "Assets/HIKARI_AssetRecord.h"
 #include "Assets/HIKARI_AssetTypes.h"
 #include "Core/HIKARI_Logger.h"
+#include "Core/Text/HIKARI_UtfPath.h"
 #include "Editor/Export/HIKARI_GamePackageManifest.h"
+#include "Editor/Export/HIKARI_GameShippingArtifactValidator.h"
 #include "Editor/Export/HIKARI_NativeRuntimeDeployment.h"
 #include "Project/HIKARI_ProjectContext.h"
 #include "Project/HIKARI_ProjectDescriptor.h"
 #include "Project/HIKARI_ProjectSettings.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettingsJson.h"
+#include "Render3D/Settings/HIKARI_RenderQualityProfileStore.h"
 #include "Render3D/Upscaling/HIKARI_StreamlineDeployment.h"
 #include "Runtime/HIKARI_RuntimeHost.h"
 #endif
@@ -33,6 +38,72 @@ namespace HIKARI::EDITOR {
     namespace {
 #if defined(HIKARI_WITH_EDITOR)
         constexpr const char* kExportOutputFolderName = "HIKARI_Game";
+        constexpr const char* kDefaultExportExecutableName =
+            "HIKARI_Game.exe";
+        constexpr const char* kProjectCookManifestPath =
+            "ProjectSettings/game_export.json";
+
+        struct ProjectCookManifest {
+            std::string executableName{};
+            std::string windowTitle{};
+            std::vector<std::string> sceneGuids{};
+            std::vector<std::filesystem::path> assetRoots{};
+            std::vector<std::filesystem::path> runtimePayloadRoots{};
+        };
+
+        const char* GameExportWindowModeName(
+            GameExportWindowMode mode) noexcept {
+            switch (mode) {
+            case GameExportWindowMode::Windowed:
+                return "Windowed";
+            case GameExportWindowMode::TopmostFullscreen:
+                return "Fullscreen";
+            case GameExportWindowMode::BorderlessFullscreen:
+            default:
+                return "Borderless";
+            }
+        }
+
+        bool ResolveExportExecutableFileName(
+            std::string_view requestedName,
+            std::filesystem::path& outFileName,
+            std::string& outMessage) {
+
+            const std::string_view name = requestedName.empty()
+                ? std::string_view(kDefaultExportExecutableName)
+                : requestedName;
+            if (name.find_first_of("<>:\"/\\|?*") !=
+                    std::string_view::npos ||
+                name.back() == '.' || name.back() == ' ') {
+                outMessage =
+                    "Game export executableName must be one safe filename.";
+                return false;
+            }
+            for (const unsigned char value : name) {
+                if (value < 0x20u) {
+                    outMessage =
+                        "Game export executableName contains a control character.";
+                    return false;
+                }
+            }
+
+            const std::filesystem::path candidate =
+                TEXT::PathFromUtf8(name);
+            if (candidate.empty() || candidate.is_absolute() ||
+                candidate.has_parent_path() ||
+                candidate.filename() != candidate ||
+                candidate.native().size() > 240u ||
+                TEXT::ToLowerAsciiCopy(
+                    TEXT::PathToUtf8(candidate.extension())) != ".exe") {
+                outMessage =
+                    "Game export executableName must be a local .exe filename.";
+                return false;
+            }
+
+            outFileName = candidate;
+            outMessage.clear();
+            return true;
+        }
 
         std::string RelativeFileKey(const std::filesystem::path& path) {
             return TEXT::ToLowerAsciiCopy(path.lexically_normal().generic_string());
@@ -334,9 +405,45 @@ namespace HIKARI::EDITOR {
             return scenes;
         }
 
+        bool ResolveExportRenderQuality(
+            const std::filesystem::path& projectRoot,
+            const GameExportOptions& options,
+            RENDER3D::RenderQualitySettings& outQuality,
+            std::string& errorMessage) {
+            outQuality = RENDER3D::GetRenderQualitySettings();
+            std::string qualityMessage{};
+            if (!RENDER3D::LoadRenderQualityProfile(
+                    projectRoot,
+                    outQuality,
+                    &qualityMessage) &&
+                !qualityMessage.empty()) {
+                errorMessage =
+                    "Could not load project render quality for export: " +
+                    qualityMessage;
+                return false;
+            }
+            switch (options.windowMode) {
+            case GameExportWindowMode::Windowed:
+                outQuality.windowMode =
+                    RENDER3D::WindowPresentationMode::Windowed;
+                break;
+            case GameExportWindowMode::TopmostFullscreen:
+                outQuality.windowMode =
+                    RENDER3D::WindowPresentationMode::Fullscreen;
+                break;
+            case GameExportWindowMode::BorderlessFullscreen:
+            default:
+                outQuality.windowMode =
+                    RENDER3D::WindowPresentationMode::BorderlessWindow;
+                break;
+            }
+            return true;
+        }
+
         bool WriteRuntimeConfig(
             const std::filesystem::path& outputDirectory,
             const GameExportOptions& options,
+            const RENDER3D::RenderQualitySettings& quality,
             std::string& errorMessage) {
             const std::filesystem::path configPath = outputDirectory / "HIKARI" / "runtime_config.json";
             std::error_code ec{};
@@ -346,8 +453,6 @@ namespace HIKARI::EDITOR {
                 return false;
             }
 
-            const RENDER3D::RenderQualitySettings& quality =
-                RENDER3D::GetRenderQualitySettings();
             RENDER3D::RenderResolution windowResolution =
                 RENDER3D::ResolveFixedRenderResolution(quality.windowSize);
             if (windowResolution.width <= 0 || windowResolution.height <= 0) {
@@ -369,6 +474,10 @@ namespace HIKARI::EDITOR {
                     { "renderQuality",
                         RENDER3D::SerializeRenderQualitySettings(quality) },
             };
+
+            if (!options.windowTitle.empty()) {
+                runtime["windowTitle"] = options.windowTitle;
+            }
 
             if (!options.startupSceneGuid.empty()) {
                 runtime["startupSceneGuid"] = options.startupSceneGuid;
@@ -407,13 +516,175 @@ namespace HIKARI::EDITOR {
                     engineContentSource.string();
                 return false;
             }
+            std::unordered_set<std::string> sourceOnlyExclusions{};
+            std::error_code scanError{};
+            std::filesystem::recursive_directory_iterator iterator(
+                engineContentSource,
+                std::filesystem::directory_options::skip_permission_denied,
+                scanError);
+            const std::filesystem::recursive_directory_iterator end{};
+            for (; !scanError && iterator != end;
+                 iterator.increment(scanError)) {
+                if (!iterator->is_regular_file(scanError)) {
+                    scanError.clear();
+                    continue;
+                }
+                const std::filesystem::path relative =
+                    std::filesystem::relative(
+                        iterator->path(), engineContentSource, scanError);
+                if (scanError) {
+                    break;
+                }
+                const std::string key = RelativeFileKey(relative);
+                const bool sandSource =
+                    key.rfind("sand/textures/", 0u) == 0u &&
+                    key.rfind("sand/textures/cooked/", 0u) != 0u;
+                const bool terrainSource =
+                    key.rfind("terrain/sources/", 0u) == 0u ||
+                    (key.rfind("terrain/textures/", 0u) == 0u &&
+                     key.rfind("terrain/textures/cooked/", 0u) != 0u);
+                const bool vfxTextureSource =
+                    key.rfind("vfx/textures/", 0u) == 0u &&
+                    key.rfind("vfx/textures/cooked/", 0u) != 0u;
+                if (sandSource || terrainSource || vfxTextureSource ||
+                    key == "terrain/readme.md") {
+                    sourceOnlyExclusions.insert(key);
+                }
+            }
+            if (scanError) {
+                errorMessage =
+                    "Could not inspect installed EngineContent: " +
+                    scanError.message();
+                return false;
+            }
             if (!CopyDirectoryChecked(
                     engineContentSource,
                     outputDirectory / "EngineContent",
-                    errorMessage)) {
+                    errorMessage,
+                    false,
+                    &sourceOnlyExclusions)) {
                 return false;
             }
             return true;
+        }
+
+        bool LoadProjectCookManifest(
+            const std::filesystem::path& projectRoot,
+            ProjectCookManifest& outManifest,
+            std::string& outMessage) {
+            outManifest = {};
+            outMessage.clear();
+            const std::filesystem::path manifestPath =
+                projectRoot / kProjectCookManifestPath;
+            std::error_code ec{};
+            if (!std::filesystem::exists(manifestPath, ec) || ec) {
+                return true;
+            }
+            try {
+                std::ifstream stream(manifestPath, std::ios::binary);
+                if (!stream) {
+                    outMessage =
+                        "Could not open project game export manifest: " +
+                        manifestPath.generic_string();
+                    return false;
+                }
+                nlohmann::json root{};
+                stream >> root;
+                if (!root.is_object() || root.value("version", 0) != 1) {
+                    outMessage =
+                        "Project game export manifest must use version 1: " +
+                        manifestPath.generic_string();
+                    return false;
+                }
+                const auto windowTitle = root.find("windowTitle");
+                if (windowTitle != root.end()) {
+                    if (!windowTitle->is_string() ||
+                        windowTitle->get_ref<const std::string&>().empty()) {
+                        outMessage =
+                            "Project game export manifest contains an invalid windowTitle: " +
+                            manifestPath.generic_string();
+                        return false;
+                    }
+                    outManifest.windowTitle =
+                        windowTitle->get_ref<const std::string&>();
+                }
+                const auto executableName = root.find("executableName");
+                if (executableName != root.end()) {
+                    if (!executableName->is_string() ||
+                        executableName->get_ref<const std::string&>().empty()) {
+                        outMessage =
+                            "Project game export manifest contains an invalid executableName: " +
+                            manifestPath.generic_string();
+                        return false;
+                    }
+                    outManifest.executableName =
+                        executableName->get_ref<const std::string&>();
+                }
+                const auto readStrings = [&](const char* key,
+                                             auto&& visitor) {
+                    const auto found = root.find(key);
+                    if (found == root.end()) {
+                        return true;
+                    }
+                    if (!found->is_array()) {
+                        return false;
+                    }
+                    for (const auto& node : *found) {
+                        if (!node.is_string() || node.get_ref<
+                                const std::string&>().empty()) {
+                            return false;
+                        }
+                        visitor(node.get_ref<const std::string&>());
+                    }
+                    return true;
+                };
+                if (!readStrings(
+                        "sceneGuids",
+                        [&](const std::string& value) {
+                            outManifest.sceneGuids.push_back(value);
+                        }) ||
+                    !readStrings(
+                        "assetRoots",
+                        [&](const std::string& value) {
+                            outManifest.assetRoots.emplace_back(value);
+                        }) ||
+                    !readStrings(
+                        "runtimePayloadRoots",
+                        [&](const std::string& value) {
+                            outManifest.runtimePayloadRoots.emplace_back(
+                                value);
+                        })) {
+                    outMessage =
+                        "Project game export manifest contains an invalid list: " +
+                        manifestPath.generic_string();
+                    return false;
+                }
+                for (const std::string& guid : outManifest.sceneGuids) {
+                    if (!AssetGuid{ guid }.IsValid()) {
+                        outMessage =
+                            "Project game export manifest contains an invalid scene GUID: " +
+                            guid;
+                        return false;
+                    }
+                }
+                return true;
+            }
+            catch (const std::exception& error) {
+                outMessage =
+                    "Could not parse project game export manifest: " +
+                    std::string(error.what());
+                return false;
+            }
+        }
+
+        std::filesystem::path ResolveInstalledProjectModule(
+            const std::filesystem::path& projectRoot,
+            const std::filesystem::path&) {
+            // Formal exports consume only the installed project product.
+            // Library/build and engine-directory fallbacks can silently mix
+            // incompatible SDK or stale gameplay binaries.
+            return projectRoot / "out" / "install" / "game-shipping" /
+                "HIKARI_GameProject.dll";
         }
 #endif
     }
@@ -442,19 +713,108 @@ namespace HIKARI::EDITOR {
     GameExportResult GameExporter::Export(const GameExportOptions& options) {
 #if defined(HIKARI_WITH_EDITOR)
         const std::filesystem::path projectRoot = FindProjectRoot();
-        const std::filesystem::path sourceExe =
-            projectRoot / "out" / "install" / "game-shipping" / "HIKARI_Engine.exe";
-        const std::filesystem::path sourceProjectModule =
-            sourceExe.parent_path() /
-            "HIKARI_GameProject.dll";
+        GameExportOptions effectiveOptions = options;
+        ProjectCookManifest cookManifest{};
+        std::string cookManifestError{};
+        if (!LoadProjectCookManifest(
+                projectRoot,
+                cookManifest,
+                cookManifestError)) {
+            GameExportResult failure{};
+            failure.message = cookManifestError;
+            return failure;
+        }
+        if (effectiveOptions.windowTitle.empty()) {
+            effectiveOptions.windowTitle = cookManifest.windowTitle;
+        }
+        if (effectiveOptions.executableFileName.empty()) {
+            effectiveOptions.executableFileName =
+                cookManifest.executableName;
+        }
+        ProjectSettingsService projectSettings{};
+        if (projectSettings.Load(projectRoot)) {
+            if (effectiveOptions.startupSceneGuid.empty() &&
+                projectSettings.GetSettings().startupSceneGuid.IsValid()) {
+                effectiveOptions.startupSceneGuid =
+                    projectSettings.GetSettings().startupSceneGuid.value;
+            }
+        }
+        effectiveOptions.sceneGuids.insert(
+            effectiveOptions.sceneGuids.end(),
+            cookManifest.sceneGuids.begin(),
+            cookManifest.sceneGuids.end());
+        if (effectiveOptions.sceneGuids.empty() &&
+            !effectiveOptions.startupSceneGuid.empty()) {
+            // Export() is also used by non-UI callers.  Resolve the canonical
+            // project startup scene here so a first headless export cooks a
+            // deterministic closure instead of silently selecting every
+            // authored asset.
+            effectiveOptions.sceneGuids.push_back(
+                effectiveOptions.startupSceneGuid);
+        }
+        if (!effectiveOptions.startupSceneGuid.empty() &&
+            std::find(
+                effectiveOptions.sceneGuids.begin(),
+                effectiveOptions.sceneGuids.end(),
+                effectiveOptions.startupSceneGuid) ==
+                effectiveOptions.sceneGuids.end()) {
+            // The runtime cannot start from a scene omitted from the cooked
+            // selection.  Keep an explicit story/battle selection valid by
+            // adding the canonical startup scene before sorting/deduping.
+            effectiveOptions.sceneGuids.push_back(
+                effectiveOptions.startupSceneGuid);
+        }
+        std::sort(
+            effectiveOptions.sceneGuids.begin(),
+            effectiveOptions.sceneGuids.end());
+        effectiveOptions.sceneGuids.erase(
+            std::unique(
+                effectiveOptions.sceneGuids.begin(),
+                effectiveOptions.sceneGuids.end()),
+            effectiveOptions.sceneGuids.end());
         const std::filesystem::path outputDirectory =
             ResolveOutputDirectory(projectRoot, options.outputDirectory);
-        const std::filesystem::path outputExe = outputDirectory / "HIKARI_Game.exe";
+        std::filesystem::path outputExecutableFileName{};
+        std::string executableNameError{};
+        if (!ResolveExportExecutableFileName(
+                effectiveOptions.executableFileName,
+                outputExecutableFileName,
+                executableNameError)) {
+            return {
+                false,
+                outputDirectory,
+                std::move(executableNameError),
+            };
+        }
+        effectiveOptions.executableFileName =
+            TEXT::PathToUtf8(outputExecutableFileName);
+        const std::filesystem::path sourceExe =
+            projectRoot / "out" / "install" / "game-shipping" /
+                outputExecutableFileName;
+        const std::filesystem::path sourceProjectModule =
+            ResolveInstalledProjectModule(
+                projectRoot,
+                sourceExe.parent_path());
+        const std::filesystem::path outputExe =
+            outputDirectory / outputExecutableFileName;
         const std::filesystem::path outputProjectModule =
             outputDirectory /
             "HIKARI_GameProject.dll";
-        const RENDER3D::RenderQualitySettings& renderQuality =
-            RENDER3D::GetRenderQualitySettings();
+        GameExportResult result{};
+        result.outputDirectory = outputDirectory;
+
+        std::string errorMessage{};
+        RENDER3D::RenderQualitySettings renderQuality{};
+        if (!ResolveExportRenderQuality(
+                projectRoot,
+                effectiveOptions,
+                renderQuality,
+                errorMessage)) {
+            result.message = errorMessage;
+            HIKARI_LOG_WARN(
+                std::string("[GameExporter] ") + result.message);
+            return result;
+        }
         const RENDER3D::UPSCALING::StreamlineDeploymentOptions
             streamlineDeployment{
                 RENDER3D::IsDlaaAntiAliasingMode(
@@ -465,10 +825,6 @@ namespace HIKARI::EDITOR {
                     RENDER3D::RenderFrameGenerationMode::Dlss,
             };
 
-        GameExportResult result{};
-        result.outputDirectory = outputDirectory;
-
-        std::string errorMessage{};
         std::error_code sourceExeError{};
         if (!std::filesystem::is_regular_file(sourceExe, sourceExeError) ||
             sourceExeError) {
@@ -495,6 +851,16 @@ namespace HIKARI::EDITOR {
             HIKARI_LOG_WARN(
                 std::string("[GameExporter] ") +
                 result.message);
+            return result;
+        }
+        if (!ValidateGameShippingArtifacts(
+                projectRoot,
+                sourceExe,
+                sourceProjectModule,
+                errorMessage)) {
+            result.message = errorMessage;
+            HIKARI_LOG_WARN(
+                std::string("[GameExporter] ") + result.message);
             return result;
         }
 
@@ -530,7 +896,8 @@ namespace HIKARI::EDITOR {
                 errorMessage) ||
             !WriteRuntimeConfig(
                 outputDirectory,
-                options,
+                effectiveOptions,
+                renderQuality,
                 errorMessage) ||
             !CopyInstalledEngineContent(
                 sourceExe.parent_path(),
@@ -545,8 +912,10 @@ namespace HIKARI::EDITOR {
             ASSETS::COOKING::AssetCooker{}.Cook({
                 projectRoot,
                 outputDirectory / "Content",
-                options.startupSceneGuid,
-                options.sceneGuids,
+                effectiveOptions.startupSceneGuid,
+                effectiveOptions.sceneGuids,
+                cookManifest.assetRoots,
+                cookManifest.runtimePayloadRoots,
             });
         if (!cookResult.success) {
             result.message = cookResult.message;
@@ -556,15 +925,20 @@ namespace HIKARI::EDITOR {
             return result;
         }
 
+        const GamePackageManifestOptions packageManifestOptions{
+            effectiveOptions.startupSceneGuid,
+            effectiveOptions.sceneGuids,
+            GameExportWindowModeName(
+                effectiveOptions.windowMode),
+            effectiveOptions.executableFileName,
+        };
         if (!ValidateGamePackageBoundary(
                 outputDirectory,
+                packageManifestOptions,
                 errorMessage) ||
             !WriteGamePackageManifest(
                 outputDirectory,
-                {
-                    options.startupSceneGuid,
-                    options.sceneGuids,
-                },
+                packageManifestOptions,
                 errorMessage)) {
             result.message = errorMessage;
             HIKARI_LOG_WARN(
@@ -576,7 +950,7 @@ namespace HIKARI::EDITOR {
         result.success = true;
         result.message =
             "Exported " +
-            std::to_string(options.sceneGuids.size()) +
+            std::to_string(effectiveOptions.sceneGuids.size()) +
             " scene(s), " +
             std::to_string(cookResult.assetCount) +
             " cooked asset(s), and " +

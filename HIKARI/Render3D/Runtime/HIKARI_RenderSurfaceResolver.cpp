@@ -1,10 +1,23 @@
 #include "Render3D/Runtime/HIKARI_RenderSurfaceResolver.h"
 
+#include <cmath>
+
 #include "Render3D/Core/HIKARI_BoundsUtils.h"
 
 namespace HIKARI::RENDER3D::RUNTIME {
 
     namespace {
+        bool IsFiniteMatrix(const MATH::Mat4& matrix) noexcept {
+            for (int column = 0; column < 4; ++column) {
+                for (int row = 0; row < 4; ++row) {
+                    if (!std::isfinite(matrix.m[column][row])) {
+                        return false;
+                    }
+                }
+            }
+            return true;
+        }
+
         MATH::Mat4 BuildNodeGlobalRecursive(
             const RenderModelAsset& renderModel,
             size_t nodeIndex,
@@ -141,6 +154,42 @@ namespace HIKARI::RENDER3D::RUNTIME {
         }
 
         outDrawWorldMatrix = outDrawWorldMatrix * nodeGlobals[surface.nodeIndex];
+        return true;
+    }
+
+    bool ResolveClusterSurfaceWorldMatrix(
+        const Transform3D& objectWorldTransform,
+        const RenderSurfaceRecord& surface,
+        const std::vector<MATH::Mat4>& posedNodeGlobals,
+        const std::vector<MATH::Mat4>& bindNodeGlobals,
+        bool hasRuntimeAnimation,
+        MATH::Mat4& outClusterWorldMatrix) {
+        outClusterWorldMatrix = objectWorldTransform.GetWorldMatrix();
+        if (surface.IsSkinned()) {
+            return ResolveRenderSurfaceDrawWorldMatrix(
+                objectWorldTransform,
+                surface,
+                posedNodeGlobals,
+                outClusterWorldMatrix);
+        }
+        if (!hasRuntimeAnimation ||
+            surface.nodeIndex == kInvalidRenderModelIndex ||
+            surface.nodeIndex >= posedNodeGlobals.size() ||
+            surface.nodeIndex >= bindNodeGlobals.size()) {
+            return IsFiniteMatrix(outClusterWorldMatrix);
+        }
+
+        // HCMESH の非スキン頂点は bind 時の node global を bake 済み。
+        // 剛体アニメーション子ノードは bind 差分だけを object world に重ねる。
+        const MATH::Mat4 inverseBind = MATH::Inverse(
+            bindNodeGlobals[surface.nodeIndex]);
+        const MATH::Mat4 candidate =
+            objectWorldTransform.GetWorldMatrix() *
+            posedNodeGlobals[surface.nodeIndex] * inverseBind;
+        if (!IsFiniteMatrix(candidate)) {
+            return IsFiniteMatrix(outClusterWorldMatrix);
+        }
+        outClusterWorldMatrix = candidate;
         return true;
     }
 

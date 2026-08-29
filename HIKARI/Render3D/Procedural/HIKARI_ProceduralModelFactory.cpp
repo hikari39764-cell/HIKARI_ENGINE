@@ -21,6 +21,7 @@
 #include "Assets/Models/HIKARI_ModelAsset.h"
 #include "Assets/Models/HIKARI_ModelMaterialSlot.h"
 #include "Core/HIKARI_Logger.h"
+#include "Platform/Paths/HIKARI_UserDataPath.h"
 #include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Render3D/Procedural/HIKARI_ProceduralMeshBuilder.h"
 #include "Render3D/Resources/HIKARI_ClusterGeometryResourceSystem.h"
@@ -188,14 +189,31 @@ namespace HIKARI::PROCEDURAL {
             const ProceduralModelKey& key,
             const std::filesystem::path& projectRoot) {
 
-            const std::filesystem::path libraryRoot = projectRoot.empty()
-                ? std::filesystem::path("Library")
-                : projectRoot / "Library";
             const std::string fileName =
                 MakeClusterGuidValue(key) +
                 "-hcmesh" +
                 std::to_string(ASSETS::GEOMETRY::kHcmeshVersion) +
                 ".hcmesh";
+            std::filesystem::path libraryRoot = projectRoot.empty()
+                ? std::filesystem::path("Library")
+                : projectRoot / "Library";
+#if defined(HIKARI_SHIPPING)
+            const std::filesystem::path packagedPath =
+                (libraryRoot / "Generated" /
+                    "ProceduralCluster" / fileName).lexically_normal();
+            std::error_code packagedError{};
+            if (std::filesystem::is_regular_file(
+                    packagedPath,
+                    packagedError) &&
+                !packagedError) {
+                return packagedPath;
+            }
+            const std::filesystem::path runtimeUserRoot =
+                PLATFORM::GetHikariRuntimeUserRoot();
+            if (!runtimeUserRoot.empty()) {
+                libraryRoot = runtimeUserRoot / "Cache";
+            }
+#endif
             return (libraryRoot / "Generated" /
                 "ProceduralCluster" / fileName).lexically_normal();
         }

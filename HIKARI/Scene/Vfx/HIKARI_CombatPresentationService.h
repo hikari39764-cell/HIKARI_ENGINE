@@ -59,6 +59,40 @@ namespace HIKARI::VFX {
         float blurScale = 1.0f;
     };
 
+    enum class GroundTelegraphShape : uint8_t {
+        Circle = 0u,
+        Sector = 1u,
+    };
+
+    struct GroundTelegraphRequest {
+        RuntimeObjectHandle ownerObject{};
+        uint64_t sourceId = 0u;
+        MATH::Vec3 centerWorld{};
+        MATH::Vec3 directionWorld{ 0.0f, 0.0f, 1.0f };
+        MATH::Vec3 fillColor{ 0.72f, 0.01f, 0.0f };
+        MATH::Vec3 outlineColor{ 1.0f, 0.08f, 0.01f };
+        float radius = 1.0f;
+        float sectorHalfAngleDegrees = 30.0f;
+        float outlineWidthWorld = 0.10f;
+        float fillOpacity = 0.22f;
+        float outlineOpacity = 0.95f;
+        float intensity = 1.0f;
+        float lifetimeUnscaledSeconds = 0.12f;
+        GroundTelegraphShape shape = GroundTelegraphShape::Circle;
+    };
+
+    struct WorldBarrierRequest {
+        RuntimeObjectHandle ownerObject{};
+        uint64_t sourceId = 0u;
+        MATH::Vec3 centerWorld{};
+        MATH::Quat rotationWorld = MATH::Quat::Identity();
+        MATH::Vec3 halfExtents{ 2.0f, 1.5f, 0.20f };
+        MATH::Vec3 color{ 0.10f, 0.48f, 0.82f };
+        float opacity = 0.10f;
+        float interaction = 0.0f;
+        float lifetimeUnscaledSeconds = 0.12f;
+    };
+
     class CombatPresentationService final {
     public:
         CombatPresentationService();
@@ -68,6 +102,12 @@ namespace HIKARI::VFX {
         bool PlayWorldEffect(
             VfxPlaybackService& playback,
             const CombatWorldEffectRequest& request);
+        bool SubmitGroundTelegraph(
+            const GroundTelegraphRequest& request,
+            uint64_t frameIndex) noexcept;
+        bool SubmitWorldBarrier(
+            const WorldBarrierRequest& request,
+            uint64_t frameIndex) noexcept;
         bool SubmitWeaponTrail(
             const WeaponTrailSampleRequest& request,
             uint64_t frameIndex) noexcept;
@@ -93,10 +133,14 @@ namespace HIKARI::VFX {
     private:
         struct TrailSample;
         struct TrailState;
+        struct GroundTelegraphState;
+        struct WorldBarrierState;
 
         std::shared_ptr<const VfxProgram> ResolveProgram(
             CombatWorldEffectKind kind);
         void BuildWeaponTrailFrame() noexcept;
+        void BuildGroundTelegraphFrame() noexcept;
+        void BuildWorldBarrierFrame() noexcept;
 
         std::array<std::shared_ptr<const VfxProgram>,
             static_cast<size_t>(CombatWorldEffectKind::Count)>
@@ -104,6 +148,10 @@ namespace HIKARI::VFX {
         std::vector<TrailState> trails_{};
         std::vector<RENDER3D::COMBAT_VFX::WeaponTrailVertex>
             weaponTrailVertices_{};
+        std::vector<GroundTelegraphState> groundTelegraphs_{};
+        std::vector<RENDER3D::COMBAT_VFX::GroundTelegraphVertex>
+            groundTelegraphVertices_{};
+        std::vector<WorldBarrierState> worldBarriers_{};
         RENDER3D::COMBAT_VFX::CombatPresentationFrameSource frameSource_{};
         uint64_t revision_ = 0u;
         uint64_t lastTickFrame_ = 0u;

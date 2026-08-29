@@ -265,7 +265,8 @@ namespace HIKARI::RENDER3D::RUNTIME {
             uint32_t objectIndex,
             const RenderSurfaceRecord& surface,
             uint32_t surfaceIndex,
-            const std::vector<MATH::Mat4>& nodeGlobals) {
+            const std::vector<MATH::Mat4>& nodeGlobals,
+            const std::vector<MATH::Mat4>& bindNodeGlobals) {
 
             SceneSurfaceInstance instance{};
             instance.objectId = object.desc.id;
@@ -331,6 +332,14 @@ namespace HIKARI::RENDER3D::RUNTIME {
                 surface,
                 nodeGlobals,
                 instance.drawWorldMatrix);
+            const bool hasClusterWorldMatrix =
+                ResolveClusterSurfaceWorldMatrix(
+                    object.desc.worldTransform,
+                    surface,
+                    nodeGlobals,
+                    bindNodeGlobals,
+                    object.desc.hasRuntimeAnimation,
+                    instance.clusterWorldMatrix);
             instance.worldBounds = ResolveRenderSurfaceWorldBounds(
                 object.desc.worldBounds,
                 surface,
@@ -358,6 +367,7 @@ namespace HIKARI::RENDER3D::RUNTIME {
                 IsSurfaceSourceUsable(object) &&
                 HasValidRenderSurfacePrimitive(object.desc.model, surface) &&
                 instance.hasDrawWorldMatrix &&
+                hasClusterWorldMatrix &&
                 BOUNDS::IsUsable(instance.worldBounds);
             return instance;
         }
@@ -816,6 +826,10 @@ namespace HIKARI::RENDER3D::RUNTIME {
 
             const RenderModelAsset& renderModel = *object.desc.renderModel;
             const std::vector<MATH::Mat4> nodeGlobals = BuildObjectNodeGlobals(object);
+            const std::vector<MATH::Mat4>& bindNodeGlobals =
+                object.desc.hasRuntimeAnimation
+                ? renderModel.bindNodeGlobals
+                : nodeGlobals;
             for (size_t surfaceIndex = 0; surfaceIndex < renderModel.surfaces.size(); ++surfaceIndex) {
                 const RenderSurfaceRecord& surface = renderModel.surfaces[surfaceIndex];
                 surfaceInstances_.push_back(BuildSurfaceInstance(
@@ -823,7 +837,8 @@ namespace HIKARI::RENDER3D::RUNTIME {
                     NUMERIC::SaturateToUint32(objectIndex),
                     surface,
                     NUMERIC::SaturateToUint32(surfaceIndex),
-                    nodeGlobals));
+                    nodeGlobals,
+                    bindNodeGlobals));
             }
         }
     }
@@ -841,6 +856,10 @@ namespace HIKARI::RENDER3D::RUNTIME {
 
         const RenderModelAsset& renderModel = *object.desc.renderModel;
         const std::vector<MATH::Mat4> nodeGlobals = BuildObjectNodeGlobals(object);
+        const std::vector<MATH::Mat4>& bindNodeGlobals =
+            object.desc.hasRuntimeAnimation
+            ? renderModel.bindNodeGlobals
+            : nodeGlobals;
         uint32_t updatedSurfaceCount = 0;
         for (size_t surfaceInstanceIndex = 0;
             surfaceInstanceIndex < surfaceInstances_.size();
@@ -862,7 +881,8 @@ namespace HIKARI::RENDER3D::RUNTIME {
                 NUMERIC::SaturateToUint32(objectIndex),
                 renderModel.surfaces[surfaceInstance.surfaceIndex],
                 surfaceInstance.surfaceIndex,
-                nodeGlobals);
+                nodeGlobals,
+                bindNodeGlobals);
             RestorePackedSurfaceMetadata(
                 updatedSurfaceInstance,
                 packedMetadata);

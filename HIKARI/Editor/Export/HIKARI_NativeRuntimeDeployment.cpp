@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <string>
 #include <system_error>
 
 #include "Core/Text/HIKARI_AsciiCase.h"
@@ -24,6 +25,16 @@ namespace HIKARI::EDITOR {
             return TEXT::ToLowerAsciiCopy(
                 path.filename().string()) ==
                 "hikari_gameproject.dll";
+        }
+
+        bool IsSourceImporterRuntime(
+            const std::filesystem::path& path) {
+            const std::string name =
+                TEXT::ToLowerAsciiCopy(path.filename().string());
+            return name.rfind("assimp", 0) == 0 ||
+                name.rfind("coacd", 0) == 0 ||
+                name.rfind("xatlas", 0) == 0 ||
+                name.rfind("directxtex", 0) == 0;
         }
     }
 
@@ -58,7 +69,8 @@ namespace HIKARI::EDITOR {
             const std::filesystem::path source = it->path();
             if (TEXT::ToLowerAsciiCopy(source.extension().string()) != ".dll" ||
                 IsFeatureOwnedRuntime(source) ||
-                IsGameProjectModule(source)) {
+                IsGameProjectModule(source) ||
+                IsSourceImporterRuntime(source)) {
                 continue;
             }
 

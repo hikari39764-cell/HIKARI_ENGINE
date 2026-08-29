@@ -1,4 +1,5 @@
 #include "Editor/Export/HIKARI_GamePackageManifest.h"
+#include "Editor/Export/HIKARI_GamePackageHash.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -12,6 +13,7 @@
 
 #include "Assets/Cooking/HIKARI_CookedContentManifest.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
+#include "Core/Text/HIKARI_UtfPath.h"
 #include "Project/HIKARI_ProjectDescriptor.h"
 
 namespace HIKARI::EDITOR {
@@ -19,7 +21,13 @@ namespace HIKARI::EDITOR {
 
         constexpr char kProductManifestFilename[] =
             "product_manifest.json";
-        constexpr uint32_t kProductManifestFormatVersion = 1u;
+        constexpr uint32_t kProductManifestFormatVersion = 2u;
+
+        struct ManifestFile final {
+            std::string path{};
+            uintmax_t size = 0u;
+            std::string sha256{};
+        };
 
         bool StartsWith(
             std::string_view value,
@@ -34,13 +42,16 @@ namespace HIKARI::EDITOR {
 
             const std::string path =
                 TEXT::ToLowerAsciiCopy(
-                    relativePath.lexically_normal().generic_string());
+                    TEXT::PathToUtf8(
+                        relativePath.lexically_normal()));
             const std::string filename =
                 TEXT::ToLowerAsciiCopy(
-                    relativePath.filename().string());
+                    TEXT::PathToUtf8(
+                        relativePath.filename()));
             const std::string extension =
                 TEXT::ToLowerAsciiCopy(
-                    relativePath.extension().string());
+                    TEXT::PathToUtf8(
+                        relativePath.extension()));
 
             if (StartsWith(path, "assets/") ||
                 StartsWith(path, "source/") ||
@@ -71,14 +82,9 @@ namespace HIKARI::EDITOR {
                 StartsWith(
                     path,
                     "enginecontent/shaders/");
-            const bool installedVfxTexture =
-                StartsWith(
-                    path,
-                    "enginecontent/vfx/textures/") &&
-                (extension == ".png" ||
-                 extension == ".jpg" ||
-                 extension == ".jpeg" ||
-                 extension == ".tga");
+            const bool runtimeAudioPayload = StartsWith(
+                path,
+                "content/runtimepayload/assets/audio/");
             if (extension == ".sln" ||
                 extension == ".vcxproj" ||
                 extension == ".filters" ||
@@ -98,8 +104,18 @@ namespace HIKARI::EDITOR {
                 extension == ".gltf" ||
                 extension == ".glb" ||
                 extension == ".obj" ||
-                (extension == ".tga" &&
-                 !installedVfxTexture) ||
+                extension == ".bin" ||
+                ((extension == ".wav" ||
+                  extension == ".mp3" ||
+                  extension == ".ogg" ||
+                  extension == ".flac" ||
+                  extension == ".aac" ||
+                  extension == ".m4a" ||
+                  extension == ".wma" ||
+                  extension == ".aif" ||
+                  extension == ".aiff") &&
+                 !runtimeAudioPayload) ||
+                extension == ".tga" ||
                 extension == ".psd" ||
                 extension == ".blend") {
                 return true;
@@ -108,7 +124,6 @@ namespace HIKARI::EDITOR {
             if ((extension == ".png" ||
                  extension == ".jpg" ||
                  extension == ".jpeg") &&
-                !installedVfxTexture &&
                 !StartsWith(
                     path,
                     "content/runtimepayload/spine/")) {
@@ -139,6 +154,7 @@ namespace HIKARI::EDITOR {
 
     bool ValidateGamePackageBoundary(
         const std::filesystem::path& packageRoot,
+        const GamePackageManifestOptions& options,
         std::string& outMessage) {
 
         std::error_code ec{};
@@ -152,15 +168,23 @@ namespace HIKARI::EDITOR {
             return false;
         }
 
+        const std::filesystem::path executableFileName =
+            TEXT::PathFromUtf8(
+                options.executableFileName.empty()
+                    ? "HIKARI_Game.exe"
+                    : options.executableFileName);
         for (const std::filesystem::path& required :
              {
-                 std::filesystem::path("HIKARI_Game.exe"),
+                 executableFileName,
                  std::filesystem::path(
                      "HIKARI_GameProject.dll"),
                  std::filesystem::path("dxcompiler.dll"),
                  std::filesystem::path("dxil.dll"),
                  std::filesystem::path(
                      "HIKARI/runtime_config.json"),
+                 std::filesystem::path(
+                     "EngineContent/ShaderBytecode/Shaders/"
+                     "Render3D_StaticPS.hlsl/main_ps_6_0.dxil"),
                  std::filesystem::path("Content") /
                      kProjectDescriptorFilename,
                  std::filesystem::path("Content") /
@@ -229,7 +253,7 @@ namespace HIKARI::EDITOR {
         const GamePackageManifestOptions& options,
         std::string& outMessage) {
 
-        std::vector<std::pair<std::string, uintmax_t>> files{};
+        std::vector<ManifestFile> files{};
         std::error_code ec{};
         std::filesystem::recursive_directory_iterator iterator(
             packageRoot,
@@ -261,9 +285,17 @@ namespace HIKARI::EDITOR {
             if (ec) {
                 break;
             }
-            files.emplace_back(
-                relative.lexically_normal().generic_string(),
-                size);
+            std::string sha256{};
+            if (!ComputeGamePackageFileSha256(
+                    iterator->path(), sha256, &outMessage)) {
+                return false;
+            }
+            files.push_back({
+                TEXT::PathToUtf8(
+                    relative.lexically_normal()),
+                size,
+                std::move(sha256),
+            });
         }
         if (ec) {
             outMessage =
@@ -271,17 +303,23 @@ namespace HIKARI::EDITOR {
                 ec.message();
             return false;
         }
-        std::sort(files.begin(), files.end());
+        std::sort(
+            files.begin(),
+            files.end(),
+            [](const ManifestFile& lhs, const ManifestFile& rhs) {
+                return lhs.path < rhs.path;
+            });
 
         nlohmann::json fileNodes =
             nlohmann::json::array();
         uintmax_t totalBytes = 0u;
-        for (const auto& [path, size] : files) {
+        for (const ManifestFile& file : files) {
             fileNodes.push_back({
-                { "path", path },
-                { "size", size },
+                { "path", file.path },
+                { "size", file.size },
+                { "sha256", file.sha256 },
             });
-            totalBytes += size;
+            totalBytes += file.size;
         }
 
         std::vector<std::string> exportedSceneGuids =
@@ -301,6 +339,12 @@ namespace HIKARI::EDITOR {
                 kProductManifestFormatVersion
             },
             { "product", "HIKARI_Game" },
+            {
+                "executable",
+                options.executableFileName.empty()
+                    ? "HIKARI_Game.exe"
+                    : options.executableFileName
+            },
             { "configuration", "Shipping" },
             {
                 "contentManifest",
@@ -321,6 +365,10 @@ namespace HIKARI::EDITOR {
             {
                 "exportedSceneGuids",
                 exportedSceneGuids
+            },
+            {
+                "defaultWindowMode",
+                options.defaultWindowMode
             },
             { "fileCount", files.size() },
             { "totalBytes", totalBytes },

@@ -66,6 +66,9 @@ private:
     float ReadBindingValue(const InputBinding& binding) const;
     bool IsModifierDown(const std::string& modifier) const;
     uint32_t ResolveGamepadIndex() const;
+    void UpdateLastActiveDevice(
+        const InputDeviceState& previousDevices,
+        float unscaledDeltaSeconds);
     void ResetRuntimeState();
     void EvaluateActions(float dt);
     void SuppressActions();
@@ -83,6 +86,7 @@ private:
     std::string lastError_{};
     float vibrationRemaining_ = 0.0f;
     bool vibrationActive_ = false;
+    float deviceSwitchLockRemainingSeconds_ = 0.0f;
 };
 
 } // namespace HIKARI::INPUT

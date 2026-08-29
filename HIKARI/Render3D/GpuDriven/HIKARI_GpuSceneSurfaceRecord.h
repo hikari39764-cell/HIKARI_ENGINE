@@ -80,6 +80,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
 
         Transform3D objectWorldTransform{};
         MATH::Mat4 drawWorldMatrix{};
+        MATH::Mat4 clusterWorldMatrix{};
         bool hasDrawWorldMatrix = false;
         Bounds worldBounds{};
 

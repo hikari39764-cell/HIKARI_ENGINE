@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "Animation/Runtime/HIKARI_AnimationClipSampler.h"
+#include "Animation/Runtime/HIKARI_AnimationNodeOverrideService.h"
 #include "Animation/Runtime/HIKARI_AnimationPoseService.h"
 #include "Animation/Runtime/HIKARI_AnimationRootMotionService.h"
 #include "Animation/Runtime/HIKARI_AnimationSocketService.h"
@@ -1295,6 +1296,108 @@ namespace HIKARI {
         }
     }
 
+    bool AnimationView::SetEvaluationEnabled(
+        uint64_t objectHandle,
+        uint8_t enabled) const noexcept {
+        try {
+            GameObject* object = FindObject(
+                static_cast<World*>(world_), objectHandle);
+            AnimatorComponent* animator = object != nullptr
+                ? object->GetComponent<AnimatorComponent>()
+                : nullptr;
+            if (animator == nullptr) {
+                return false;
+            }
+            animator->SetRuntimeEvaluationEnabled(enabled != 0u);
+            return true;
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
+    bool AnimationView::SetNodeLocalTransformOffset(
+        uint64_t objectHandle,
+        std::string_view nodeName,
+        const GameProjectTransform& offset) const noexcept {
+        try {
+            World* world = static_cast<World*>(world_);
+            GameObject* object = FindObject(world, objectHandle);
+            ANIMATION::AnimationNodeOverrideService* overrides =
+                world != nullptr
+                ? world->Services().Find<
+                    ANIMATION::AnimationNodeOverrideService>()
+                : nullptr;
+            if (object == nullptr || overrides == nullptr ||
+                nodeName.empty() || !IsValidTransform(offset)) {
+                return false;
+            }
+            Transform3D runtimeOffset{};
+            runtimeOffset.position = ToRuntime(offset.position);
+            runtimeOffset.rotation = MATH::NormalizeQ(
+                ToRuntime(offset.rotation));
+            runtimeOffset.scale = ToRuntime(offset.scale);
+            return overrides->SetLocalOffset(
+                object->GetRuntimeHandle(),
+                nodeName,
+                runtimeOffset);
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
+    bool AnimationView::SetNodeParentLocalTransformOffset(
+        uint64_t objectHandle,
+        std::string_view nodeName,
+        const GameProjectTransform& offset) const noexcept {
+        try {
+            World* world = static_cast<World*>(world_);
+            GameObject* object = FindObject(world, objectHandle);
+            ANIMATION::AnimationNodeOverrideService* overrides =
+                world != nullptr
+                ? world->Services().Find<
+                    ANIMATION::AnimationNodeOverrideService>()
+                : nullptr;
+            if (object == nullptr || overrides == nullptr ||
+                nodeName.empty() || !IsValidTransform(offset)) {
+                return false;
+            }
+            Transform3D runtimeOffset{};
+            runtimeOffset.position = ToRuntime(offset.position);
+            runtimeOffset.rotation = MATH::NormalizeQ(
+                ToRuntime(offset.rotation));
+            runtimeOffset.scale = ToRuntime(offset.scale);
+            return overrides->SetParentLocalOffset(
+                object->GetRuntimeHandle(),
+                nodeName,
+                runtimeOffset);
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
+    bool AnimationView::ClearNodeLocalTransformOffset(
+        uint64_t objectHandle,
+        std::string_view nodeName) const noexcept {
+        try {
+            World* world = static_cast<World*>(world_);
+            GameObject* object = FindObject(world, objectHandle);
+            ANIMATION::AnimationNodeOverrideService* overrides =
+                world != nullptr
+                ? world->Services().Find<
+                    ANIMATION::AnimationNodeOverrideService>()
+                : nullptr;
+            return object != nullptr && overrides != nullptr &&
+                overrides->ClearLocalOffset(
+                    object->GetRuntimeHandle(), nodeName);
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
     bool AnimationView::SampleSocketTransformsAtTime(
         uint64_t objectHandle,
         std::string_view clipName,
@@ -1345,6 +1448,15 @@ namespace HIKARI {
                 !ANIMATION::POSE_EVALUATION::StripRootMotionFromPose(
                     *asset, sampledPose)) {
                 return false;
+            }
+            const ANIMATION::AnimationNodeOverrideService* overrides =
+                world->Services().Find<
+                    ANIMATION::AnimationNodeOverrideService>();
+            if (overrides != nullptr) {
+                (void)overrides->Apply(
+                    *asset,
+                    object->GetRuntimeHandle(),
+                    sampledPose);
             }
             std::vector<MATH::Mat4> globals{};
             if (!ANIMATION::POSE_EVALUATION::BuildNodeGlobalMatrices(
@@ -2267,6 +2379,138 @@ namespace HIKARI {
                 *world,
                 afterimageRequest);
             return particleAccepted && silhouetteAccepted;
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
+    bool PresentationVfxView::SubmitGroundTelegraph(
+        const GameProjectGroundTelegraphRequest& request) const noexcept {
+        try {
+            if (world_ == nullptr || request.sourceId == 0u ||
+                HasNonZeroReserved(request.reserved, sizeof(request.reserved)) ||
+                !IsFinite(request.centerWorld) ||
+                !IsFiniteNonZeroDirection(request.directionWorld) ||
+                !IsFiniteNonNegative(request.fillColor) ||
+                !IsFiniteNonNegative(request.outlineColor) ||
+                !IsFinitePositive(request.radius) ||
+                !std::isfinite(request.sectorHalfAngleDegrees) ||
+                !IsFinitePositive(request.outlineWidthWorld) ||
+                !IsFiniteNonNegative(request.fillOpacity) ||
+                request.fillOpacity > 1.0f ||
+                !IsFiniteNonNegative(request.outlineOpacity) ||
+                request.outlineOpacity > 1.0f ||
+                !IsFinitePositive(request.intensity) ||
+                !IsFinitePositive(request.lifetimeUnscaledSeconds) ||
+                (request.shape !=
+                        GameProjectGroundTelegraphShape::Circle &&
+                    request.shape !=
+                        GameProjectGroundTelegraphShape::Sector)) {
+                return false;
+            }
+            World* world = static_cast<World*>(world_);
+            const RuntimeObjectHandle owner = DecodeRuntimeHandle(
+                request.ownerObjectHandle);
+            if (!owner.IsValid() || world->FindObject(owner) == nullptr) {
+                return false;
+            }
+            VFX::CombatPresentationService* combat =
+                world->Services().Find<VFX::CombatPresentationService>();
+            if (combat == nullptr) {
+                return false;
+            }
+            VFX::GroundTelegraphRequest runtimeRequest{};
+            runtimeRequest.ownerObject = owner;
+            runtimeRequest.sourceId = request.sourceId;
+            runtimeRequest.centerWorld = ToRuntime(request.centerWorld);
+            runtimeRequest.directionWorld = ToRuntime(
+                request.directionWorld);
+            runtimeRequest.fillColor = ToRuntime(request.fillColor);
+            runtimeRequest.outlineColor = ToRuntime(request.outlineColor);
+            runtimeRequest.radius = request.radius;
+            runtimeRequest.sectorHalfAngleDegrees =
+                request.sectorHalfAngleDegrees;
+            runtimeRequest.outlineWidthWorld = request.outlineWidthWorld;
+            runtimeRequest.fillOpacity = request.fillOpacity;
+            runtimeRequest.outlineOpacity = request.outlineOpacity;
+            runtimeRequest.intensity = request.intensity;
+            runtimeRequest.lifetimeUnscaledSeconds =
+                request.lifetimeUnscaledSeconds;
+            runtimeRequest.shape = request.shape ==
+                    GameProjectGroundTelegraphShape::Sector
+                ? VFX::GroundTelegraphShape::Sector
+                : VFX::GroundTelegraphShape::Circle;
+            return combat->SubmitGroundTelegraph(
+                runtimeRequest,
+                TIME::GetFrameContext().frameIndex);
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
+    bool PresentationVfxView::SubmitOcclusionReveal(
+        const GameProjectOcclusionRevealRequest& request) const noexcept {
+        (void)request;
+        // Disabled fail-closed: the rejected shared depth/forward cutout path
+        // made every GPU-scene surface disappear on the real Summer scene.
+        // Keep the SDK symbol for ABI compatibility without mutating player
+        // materials or shared rendering state.
+        return false;
+    }
+
+    bool PresentationVfxView::SubmitWorldBarrier(
+        const GameProjectWorldBarrierRequest& request) const noexcept {
+        try {
+            if (world_ == nullptr || request.sourceId == 0u ||
+                request.reserved != 0u ||
+                !IsValidTransform(request.transform) ||
+                !IsFiniteNonNegative(request.halfExtents) ||
+                request.halfExtents.x <= 0.0f ||
+                request.halfExtents.y <= 0.0f ||
+                request.halfExtents.z <= 0.0f ||
+                !IsFiniteNonNegative(request.color) ||
+                !IsFiniteNonNegative(request.opacity) ||
+                request.opacity > 1.0f ||
+                !IsFiniteNonNegative(request.interaction) ||
+                request.interaction > 1.0f ||
+                !IsFinitePositive(request.lifetimeUnscaledSeconds)) {
+                return false;
+            }
+            World* world = static_cast<World*>(world_);
+            const RuntimeObjectHandle owner = DecodeRuntimeHandle(
+                request.ownerObjectHandle);
+            if (!owner.IsValid() || world->FindObject(owner) == nullptr) {
+                return false;
+            }
+            VFX::CombatPresentationService* combat =
+                world->Services().Find<VFX::CombatPresentationService>();
+            if (combat == nullptr) {
+                return false;
+            }
+            VFX::WorldBarrierRequest runtimeRequest{};
+            runtimeRequest.ownerObject = owner;
+            runtimeRequest.sourceId = request.sourceId;
+            runtimeRequest.centerWorld = ToRuntime(
+                request.transform.position);
+            runtimeRequest.rotationWorld = ToRuntime(
+                request.transform.rotation);
+            runtimeRequest.halfExtents = {
+                request.halfExtents.x *
+                    std::abs(request.transform.scale.x),
+                request.halfExtents.y *
+                    std::abs(request.transform.scale.y),
+                request.halfExtents.z *
+                    std::abs(request.transform.scale.z) };
+            runtimeRequest.color = ToRuntime(request.color);
+            runtimeRequest.opacity = request.opacity;
+            runtimeRequest.interaction = request.interaction;
+            runtimeRequest.lifetimeUnscaledSeconds =
+                request.lifetimeUnscaledSeconds;
+            return combat->SubmitWorldBarrier(
+                runtimeRequest,
+                TIME::GetFrameContext().frameIndex);
         }
         catch (...) {
             return false;

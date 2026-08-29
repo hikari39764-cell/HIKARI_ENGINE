@@ -44,6 +44,7 @@ namespace HIKARI {
         TitleMenuFocus = 24u,
         TitleMenuPress = 25u,
         TitleMenuDisabled = 26u,
+        ItemChargeRecharge = 27u,
     };
 
     // Submission flags are shared by sprites, text and backdrop requests.

@@ -5,6 +5,7 @@
 
 #include "Scene/Components/HIKARI_CameraComponent.h"
 #include "Scene/Camera/HIKARI_CameraRigService.h"
+#include "Scene/HIKARI_CameraFollowSystem.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_World.h"
 
@@ -330,6 +331,26 @@ namespace HIKARI {
         } else if (!sourceChanged) {
             resolvedFrame_.projectionChanged = ProjectionDiffers(resolvedFrame_.camera, targetCamera);
             resolvedFrame_.camera = targetCamera;
+        }
+
+        // CameraFollow の boom collision 後に project modifier と Director
+        // blend が加わるため、通常 gameplay camera は最終 pose をもう一度
+        // Scene-owned safety boundary に通す。明示 cinematic override は authored
+        // camera policy を保持し、phase 1 では対象外とする。
+        if (winningOverride == nullptr && resolvedSource.value != 0u) {
+            const Camera3D unsafeResolvedCamera = resolvedFrame_.camera;
+            CAMERA::GameplayCameraSafetyResult safety{};
+            if (CAMERA::ResolveGameplayCameraSafety(
+                    world,
+                    resolvedSource,
+                    resolvedFrame_.camera,
+                    &safety)) {
+                resolvedFrame_.projectionChanged =
+                    resolvedFrame_.projectionChanged ||
+                    ProjectionDiffers(
+                        unsafeResolvedCamera,
+                        resolvedFrame_.camera);
+            }
         }
 
         resolvedFrame_.sourceCameraObjectId = resolvedSource.value;

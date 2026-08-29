@@ -3,6 +3,7 @@
 #include <memory>
 
 #include "Animation/Runtime/HIKARI_AnimationPoseService.h"
+#include "Animation/Runtime/HIKARI_AnimationNodeOverrideService.h"
 #include "Animation/Runtime/HIKARI_AnimationRootMotionService.h"
 #include "Animation/Runtime/HIKARI_AnimationSocketService.h"
 #include "Animation/StateMachine/HIKARI_AnimationStateMachineRuntimeService.h"
@@ -23,6 +24,7 @@
 #include "Scene/HIKARI_ComponentSystemPolicy.h"
 #include "Scene/HIKARI_PresentationModelService.h"
 #include "Scene/HIKARI_PresentationTransformService.h"
+#include "Scene/HIKARI_RuntimeObjectActivityService.h"
 #include "Scene/HIKARI_RuntimeWorldServices.h"
 #include "Scene/Navigation/HIKARI_NavigationWorldService.h"
 #include "Scene/HIKARI_SceneRuntimeBuilder.h"
@@ -46,7 +48,9 @@ namespace HIKARI {
         FixedStepClock fixedStepClock{};
         RuntimePlayStateService playStateService{};
         GameplayCameraService gameplayCameraService{};
+        RuntimeAssetContextService runtimeAssetContextService{};
         ANIMATION::AnimationPoseService animationPoseService{};
+        ANIMATION::AnimationNodeOverrideService animationNodeOverrideService{};
         ANIMATION::AnimationSocketService animationSocketService{};
         ANIMATION::AnimationRootMotionService animationRootMotionService{};
         ANIMATION::AnimationStateMachineRuntimeService
@@ -78,6 +82,7 @@ namespace HIKARI {
         SAND::SandSurfaceQueryService sandSurfaceQueryService{};
         PresentationModelService presentationModelService{};
         PresentationTransformService presentationTransformService{};
+        RuntimeObjectActivityService runtimeObjectActivityService{};
         RuntimeExtensionHost extensionHost{};
         RuntimeFeatureCatalog featureCatalog{};
         RuntimeFeatureInstallReport featureInstallReport{};

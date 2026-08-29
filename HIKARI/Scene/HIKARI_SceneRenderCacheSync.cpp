@@ -32,6 +32,7 @@
 #include "Scene/HIKARI_PresentationModelService.h"
 #include "Scene/HIKARI_PresentationModelRenderProjection.h"
 #include "Scene/HIKARI_PresentationTransformService.h"
+#include "Scene/HIKARI_RuntimeObjectActivityService.h"
 #include "Scene/HIKARI_World.h"
 #include "Scene/Water/HIKARI_WaterSurfaceComponent.h"
 #include "Scene/Sand/HIKARI_SandSurfaceMaterialBinder.h"
@@ -1131,6 +1132,7 @@ namespace HIKARI {
             const PresentationTransformService* presentationTransforms,
             const ANIMATION::AnimationPoseService* animationPoses,
             const SAND::SandSurfaceQueryService* sandSurfaceQuery,
+            const RuntimeObjectActivityService* runtimeActivityService,
             TerrainProjectionState& terrainProjection,
             SceneRenderCacheSync::DebugStats& syncStats,
             RENDER3D::RenderViewPurpose purpose) {
@@ -1149,6 +1151,10 @@ namespace HIKARI {
             desc.visible =
                 model.IsVisible() &&
                 !debugOnly &&
+                (runtimeActivityService == nullptr ||
+                    runtimeActivityService->Get(
+                        object.GetRuntimeHandle()) !=
+                        GameProjectRuntimeActivity::SuspendedHidden) &&
                 (!lightingBakeCapture ||
                     model.GetIncludeInLightingBake());
 
@@ -1392,6 +1398,8 @@ namespace HIKARI {
             world.Services().Find<ANIMATION::AnimationPoseService>();
         const SAND::SandSurfaceQueryService* sandSurfaceQuery =
             world.Services().Find<SAND::SandSurfaceQueryService>();
+        const RuntimeObjectActivityService* runtimeActivityService =
+            world.Services().Find<RuntimeObjectActivityService>();
 
         std::vector<uint64_t> occupiedObjectIds{};
         occupiedObjectIds.reserve(world.GetObjects().size());
@@ -1436,6 +1444,7 @@ namespace HIKARI {
                 presentationTransforms,
                 animationPoses,
                 sandSurfaceQuery,
+                runtimeActivityService,
                 terrainProjection,
                 state_->debugStats,
                 purpose));
@@ -1519,6 +1528,8 @@ namespace HIKARI {
             world.Services().Find<ANIMATION::AnimationPoseService>();
         const SAND::SandSurfaceQueryService* sandSurfaceQuery =
             world.Services().Find<SAND::SandSurfaceQueryService>();
+        const RuntimeObjectActivityService* runtimeActivityService =
+            world.Services().Find<RuntimeObjectActivityService>();
 
         std::vector<uint64_t> occupiedObjectIds{};
         occupiedObjectIds.reserve(world.GetObjects().size());
@@ -1583,6 +1594,7 @@ namespace HIKARI {
                 presentationTransforms,
                 animationPoses,
                 sandSurfaceQuery,
+                runtimeActivityService,
                 terrainProjection,
                 state_->debugStats,
                 purpose));
@@ -1658,9 +1670,10 @@ namespace HIKARI {
                     renderModelCache,
                     clusteredGeometryPaths,
                     presentationTransforms,
-                    animationPoses,
-                    sandSurfaceQuery,
-                    terrainProjection,
+                            animationPoses,
+                            sandSurfaceQuery,
+                            runtimeActivityService,
+                            terrainProjection,
                     state_->debugStats,
                     purpose));
             });

@@ -58,6 +58,13 @@ namespace HIKARI::DIALOGUE {
     private:
         struct PortraitSlotRuntime {
             std::string speakerId{};
+            std::string assetGuid{};
+            std::string assetPath{};
+            float offsetX = 0.0f;
+            float offsetY = 0.0f;
+            float scale = 1.0f;
+            float rotationDegrees = 0.0f;
+            bool mirror = false;
             float presence = 0.0f;
             float targetPresence = 0.0f;
             float focus = 0.0f;

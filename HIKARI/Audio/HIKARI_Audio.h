@@ -14,6 +14,7 @@ enum class BackendType {
 enum class AudioBus {
     Bgm = 0,
     Se = 1,
+    Voice = 2,
 };
 
 bool Initialize(BackendType type = BackendType::XAudio2);

@@ -44,6 +44,7 @@ namespace HIKARI {
         bool IsOneShot() const noexcept { return oneShot_; }
         bool IsConsumed() const noexcept { return consumed_; }
         void MarkConsumed() noexcept { consumed_ = true; }
+        void SetConsumed(bool consumed) noexcept { consumed_ = consumed; }
 
     private:
         AssetGuid dialogueAssetGuid_{};

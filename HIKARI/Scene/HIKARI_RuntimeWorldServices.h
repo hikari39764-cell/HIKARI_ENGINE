@@ -2,7 +2,9 @@
 
 namespace HIKARI {
 
+    class AssetRegistry;
     class Camera3D;
+    class ModelManager;
 
     struct RuntimePlayStateService {
         const bool* active = nullptr;
@@ -20,6 +22,13 @@ namespace HIKARI {
             return runtimeSceneCameraActive != nullptr &&
                 *runtimeSceneCameraActive;
         }
+    };
+
+    // World-scoped borrowed asset context for narrow project authoring
+    // operations. ModelManager remains the sole loader/cache owner.
+    struct RuntimeAssetContextService {
+        AssetRegistry* assetRegistry = nullptr;
+        ModelManager* modelManager = nullptr;
     };
 
 } // namespace HIKARI

@@ -2,12 +2,20 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 
 #include "Core/Math/HIKARI_MathValidation.h"
+#include "Assets/HIKARI_AssetGuid.h"
 #include "Runtime/Binding/HIKARI_RuntimeBindingStore.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
 #include "Scene/HIKARI_GameObject.h"
+#include "Scene/Components/HIKARI_ColliderComponent.h"
+#include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
 #include "Scene/HIKARI_RuntimeObjectHandle.h"
+#include "Scene/HIKARI_RuntimeObjectActivityService.h"
+#include "Scene/HIKARI_RuntimeWorldServices.h"
+#include "Scene/HIKARI_SceneRuntimeBuilder.h"
+#include "Scene/Sand/HIKARI_SandSurfaceQueryService.h"
 #include "Scene/HIKARI_World.h"
 
 namespace HIKARI {
@@ -104,6 +112,52 @@ namespace HIKARI {
                 : nullptr;
         }
 
+        bool IsFinite(const GameProjectFloat3& value) noexcept {
+            return std::isfinite(value.x) && std::isfinite(value.y) &&
+                std::isfinite(value.z);
+        }
+
+        bool IsFinite(const GameProjectQuat& value) noexcept {
+            return std::isfinite(value.x) && std::isfinite(value.y) &&
+                std::isfinite(value.z) && std::isfinite(value.w);
+        }
+
+        bool ToRuntimeColliderShape(
+            GameProjectPhysicsShapeType type,
+            PHYSICS::PhysicsShapeType& outType) noexcept {
+            switch (type) {
+            case GameProjectPhysicsShapeType::Box:
+                outType = PHYSICS::PhysicsShapeType::Box;
+                return true;
+            case GameProjectPhysicsShapeType::Sphere:
+                outType = PHYSICS::PhysicsShapeType::Sphere;
+                return true;
+            case GameProjectPhysicsShapeType::Capsule:
+                outType = PHYSICS::PhysicsShapeType::Capsule;
+                return true;
+            default:
+                return false;
+            }
+        }
+
+        bool ToProjectColliderShape(
+            PHYSICS::PhysicsShapeType type,
+            GameProjectPhysicsShapeType& outType) noexcept {
+            switch (type) {
+            case PHYSICS::PhysicsShapeType::Box:
+                outType = GameProjectPhysicsShapeType::Box;
+                return true;
+            case PHYSICS::PhysicsShapeType::Sphere:
+                outType = GameProjectPhysicsShapeType::Sphere;
+                return true;
+            case PHYSICS::PhysicsShapeType::Capsule:
+                outType = GameProjectPhysicsShapeType::Capsule;
+                return true;
+            default:
+                return false;
+            }
+        }
+
     } // namespace
 
     ObjectView GameProjectSdkAccess::MakeObjectView(
@@ -114,6 +168,11 @@ namespace HIKARI {
     WorldView GameProjectSdkAccess::MakeWorldView(
         World& world) noexcept {
         return WorldView(&world);
+    }
+
+    TerrainView GameProjectSdkAccess::MakeTerrainView(
+        World& world) noexcept {
+        return TerrainView(&world);
     }
 
     // 公開済みの World bridge から action bridge を参照し、
@@ -187,6 +246,52 @@ namespace HIKARI {
         }
         catch (...) {
             return {};
+        }
+    }
+
+    TerrainView WorldView::GetTerrain() const noexcept {
+        try {
+            World* world = GameProjectSdkAccess::GetWorld(*this);
+            return world != nullptr
+                ? GameProjectSdkAccess::MakeTerrainView(*world)
+                : TerrainView{};
+        }
+        catch (...) {
+            return {};
+        }
+    }
+
+    bool TerrainView::IsSandSurfaceAt(
+        GameProjectFloat3 worldPosition,
+        float maximumVerticalDistance) const noexcept {
+        try {
+            if (world_ == nullptr || !std::isfinite(worldPosition.x) ||
+                !std::isfinite(worldPosition.y) ||
+                !std::isfinite(worldPosition.z) ||
+                !std::isfinite(maximumVerticalDistance) ||
+                maximumVerticalDistance < 0.0f ||
+                maximumVerticalDistance > 10.0f) {
+                return false;
+            }
+            World* world = static_cast<World*>(world_);
+            SAND::SandSurfaceQueryService* sand =
+                world->Services().Find<SAND::SandSurfaceQueryService>();
+            if (sand == nullptr) {
+                return false;
+            }
+            float height = 0.0f;
+            MATH::Vec3 normal{};
+            if (!sand->SampleWorldHeight(
+                    { worldPosition.x, worldPosition.y, worldPosition.z },
+                    height,
+                    normal)) {
+                return false;
+            }
+            return std::abs(worldPosition.y - height) <=
+                maximumVerticalDistance;
+        }
+        catch (...) {
+            return false;
         }
     }
 
@@ -346,6 +451,55 @@ namespace HIKARI {
             });
     }
 
+    bool ObjectView::SetRuntimeActivity(
+        GameProjectRuntimeActivity activity) const noexcept {
+        try {
+            GameObject* object = GameProjectSdkAccess::GetObject(*this);
+            World* world = object != nullptr ? object->GetWorld() : nullptr;
+            RuntimeObjectActivityService* service = world != nullptr
+                ? world->Services().Find<RuntimeObjectActivityService>()
+                : nullptr;
+            if (service == nullptr) {
+                return false;
+            }
+            const RuntimeObjectHandle handle = object->GetRuntimeHandle();
+            const GameProjectRuntimeActivity previous =
+                service->Get(handle);
+            if (!service->Set(handle, activity)) {
+                return false;
+            }
+            if (previous != activity) {
+                // activity は authored visibility を変更せず、render cache
+                // の descriptor だけを次の patch sync で更新する。
+                object->MarkRenderStateDirty();
+            }
+            return true;
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
+    GameProjectRuntimeActivity ObjectView::GetRuntimeActivity()
+        const noexcept {
+        try {
+            const GameObject* object =
+                GameProjectSdkAccess::GetObject(*this);
+            const World* world = object != nullptr
+                ? object->GetWorld()
+                : nullptr;
+            const RuntimeObjectActivityService* service = world != nullptr
+                ? world->Services().Find<RuntimeObjectActivityService>()
+                : nullptr;
+            return service != nullptr
+                ? service->Get(object->GetRuntimeHandle())
+                : GameProjectRuntimeActivity::Active;
+        }
+        catch (...) {
+            return GameProjectRuntimeActivity::Active;
+        }
+    }
+
     ObjectView WorldView::FindObject(
         uint64_t handle) const noexcept {
         World* world = GameProjectSdkAccess::GetWorld(*this);
@@ -369,6 +523,210 @@ namespace HIKARI {
         }
         catch (...) {
             return {};
+        }
+    }
+
+    bool ObjectView::SetModelAssetGuid(
+        std::string_view assetGuid) const noexcept {
+        try {
+            GameObject* object = GameProjectSdkAccess::GetObject(*this);
+            ModelComponent* model = object != nullptr
+                ? object->GetComponent<ModelComponent>()
+                : nullptr;
+            if (model == nullptr || !IsValidAssetGuid(assetGuid)) {
+                return false;
+            }
+            if (model->GetAssetId() != assetGuid) {
+                model->SetAssetId(std::string(assetGuid));
+                World* world = object->GetWorld();
+                RuntimeAssetContextService* assets = world != nullptr
+                    ? world->Services().Find<RuntimeAssetContextService>()
+                    : nullptr;
+                ModelAsset* resolved = assets != nullptr &&
+                        assets->assetRegistry != nullptr &&
+                        assets->modelManager != nullptr
+                    ? ResolveModelAssetNow(
+                        *assets->modelManager,
+                        *assets->assetRegistry,
+                        model->GetAssetId())
+                    : nullptr;
+                // Never leave the prior model pointer paired with the newly
+                // authored identity. A configured world resolves immediately;
+                // an early construction pass resolves through SceneRuntimeBuilder.
+                model->SetModelAsset(resolved);
+            }
+            return true;
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
+    bool ObjectView::SetModelMaterialSetAssetGuid(
+        std::string_view materialSetAssetGuid) const noexcept {
+        try {
+            GameObject* object = GameProjectSdkAccess::GetObject(*this);
+            ModelComponent* model = object != nullptr
+                ? object->GetComponent<ModelComponent>()
+                : nullptr;
+            if (model == nullptr ||
+                !IsValidAssetGuid(materialSetAssetGuid)) {
+                return false;
+            }
+            const AssetGuid guid{ std::string(materialSetAssetGuid) };
+            if (!model->HasAuthoredMaterialSetSelection() ||
+                model->GetMaterialSetAssetGuid() != guid) {
+                model->SetMaterialSetAssetGuid(guid);
+            }
+            return true;
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
+    bool ObjectView::UseImportedModelMaterials() const noexcept {
+        try {
+            GameObject* object = GameProjectSdkAccess::GetObject(*this);
+            ModelComponent* model = object != nullptr
+                ? object->GetComponent<ModelComponent>()
+                : nullptr;
+            if (model == nullptr) {
+                return false;
+            }
+            model->UseImportedModelMaterials();
+            return true;
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
+    bool ObjectView::GetPrimaryColliderShape(
+        GameProjectPhysicsShape& outShape) const noexcept {
+        outShape = {};
+        try {
+            const GameObject* object =
+                GameProjectSdkAccess::GetObject(*this);
+            const ColliderComponent* collider = object != nullptr
+                ? object->GetComponent<ColliderComponent>()
+                : nullptr;
+            if (collider == nullptr || !collider->IsEnabled()) {
+                return false;
+            }
+            const ResolvedColliderShape resolved =
+                collider->ResolveShape();
+            if (!ToProjectColliderShape(
+                    resolved.type, outShape.type)) {
+                return false;
+            }
+            constexpr float kDegreesToRadians =
+                std::numbers::pi_v<float> / 180.0f;
+            const MATH::Quat rotation = MATH::Quat::FromEulerXYZ(
+                resolved.rotationEulerDegrees.x * kDegreesToRadians,
+                resolved.rotationEulerDegrees.y * kDegreesToRadians,
+                resolved.rotationEulerDegrees.z * kDegreesToRadians);
+            outShape.center = {
+                resolved.center.x,
+                resolved.center.y,
+                resolved.center.z };
+            outShape.rotation = {
+                rotation.x, rotation.y, rotation.z, rotation.w };
+            outShape.halfExtents = {
+                resolved.size.x * 0.5f,
+                resolved.size.y * 0.5f,
+                resolved.size.z * 0.5f };
+            outShape.radius = resolved.radius;
+            outShape.height = resolved.height;
+            outShape.isTrigger = collider->IsTrigger() ? 1u : 0u;
+            return true;
+        }
+        catch (...) {
+            outShape = {};
+            return false;
+        }
+    }
+
+    bool ObjectView::ConfigureDefaultCollider(
+        const GameProjectPhysicsShape& shape) const noexcept {
+        try {
+            GameObject* object = GameProjectSdkAccess::GetObject(*this);
+            ColliderComponent* collider = object != nullptr
+                ? object->GetComponent<ColliderComponent>()
+                : nullptr;
+            PHYSICS::PhysicsShapeType runtimeType{};
+            if (collider == nullptr || !IsFinite(shape.center) ||
+                !IsFinite(shape.rotation) || shape.isTrigger > 1u ||
+                shape.reserved[0] != 0u || shape.reserved[1] != 0u ||
+                !ToRuntimeColliderShape(shape.type, runtimeType)) {
+                return false;
+            }
+            const MATH::Quat requestedRotation{
+                shape.rotation.x,
+                shape.rotation.y,
+                shape.rotation.z,
+                shape.rotation.w };
+            const float rotationLengthSquared =
+                requestedRotation.x * requestedRotation.x +
+                requestedRotation.y * requestedRotation.y +
+                requestedRotation.z * requestedRotation.z +
+                requestedRotation.w * requestedRotation.w;
+            if (!std::isfinite(rotationLengthSquared) ||
+                rotationLengthSquared <= 0.000001f) {
+                return false;
+            }
+            const MATH::Quat rotation = MATH::NormalizeQ(
+                requestedRotation);
+            const MATH::Vec3 center{
+                shape.center.x, shape.center.y, shape.center.z };
+            const MATH::Vec3 rotationDegrees =
+                MATH::EulerXYZDegreesFromQuat(rotation);
+            MATH::Vec3 size{ 1.0f, 1.0f, 1.0f };
+            float radius = shape.radius;
+            float height = shape.height;
+            switch (shape.type) {
+            case GameProjectPhysicsShapeType::Box:
+                if (!IsFinite(shape.halfExtents) ||
+                    shape.halfExtents.x <= 0.0f ||
+                    shape.halfExtents.y <= 0.0f ||
+                    shape.halfExtents.z <= 0.0f) {
+                    return false;
+                }
+                size = {
+                    shape.halfExtents.x * 2.0f,
+                    shape.halfExtents.y * 2.0f,
+                    shape.halfExtents.z * 2.0f };
+                break;
+            case GameProjectPhysicsShapeType::Sphere:
+                if (!std::isfinite(radius) || radius <= 0.0f) {
+                    return false;
+                }
+                size = { radius * 2.0f, radius * 2.0f,
+                    radius * 2.0f };
+                height = radius * 2.0f;
+                break;
+            case GameProjectPhysicsShapeType::Capsule:
+                if (!std::isfinite(radius) || radius <= 0.0f ||
+                    !std::isfinite(height) ||
+                    height < radius * 2.0f) {
+                    return false;
+                }
+                size = { radius * 2.0f, height, radius * 2.0f };
+                break;
+            default:
+                return false;
+            }
+            return collider->ConfigureIfPristineManualShape(
+                runtimeType,
+                center,
+                rotationDegrees,
+                size,
+                radius,
+                height,
+                shape.isTrigger != 0u);
+        }
+        catch (...) {
+            return false;
         }
     }
 

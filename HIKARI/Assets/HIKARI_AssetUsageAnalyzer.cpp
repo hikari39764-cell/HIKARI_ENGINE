@@ -146,6 +146,51 @@ namespace HIKARI {
                 }
             }
         }
+
+        bool IsGameProjectAssetGuidProperty(
+            std::string_view propertyName) noexcept {
+            return propertyName.ends_with("AssetGuid") ||
+                propertyName.ends_with("assetGuid");
+        }
+
+        void AddGameProjectPropertyReferences(
+            const nlohmann::json& value,
+            std::string_view propertyName,
+            const std::string& owner,
+            const AssetDatabase& assetDatabase,
+            AssetUsageSummary& summary) {
+            if (value.is_object()) {
+                for (auto it = value.begin(); it != value.end(); ++it) {
+                    AddGameProjectPropertyReferences(
+                        it.value(),
+                        it.key(),
+                        owner,
+                        assetDatabase,
+                        summary);
+                }
+                return;
+            }
+            if (value.is_array()) {
+                for (const nlohmann::json& element : value) {
+                    AddGameProjectPropertyReferences(
+                        element,
+                        propertyName,
+                        owner,
+                        assetDatabase,
+                        summary);
+                }
+                return;
+            }
+            if (value.is_string() &&
+                IsGameProjectAssetGuidProperty(propertyName)) {
+                AddReference(
+                    value.get<std::string>(),
+                    owner,
+                    "GameProject " + std::string(propertyName),
+                    assetDatabase,
+                    summary);
+            }
+        }
     }
 
     AssetUsageSummary AnalyzeAssetUsage(
@@ -287,6 +332,17 @@ namespace HIKARI {
                         assetDatabase,
                         summary);
                 }
+                // GameProject component schemas are owned by their module and
+                // cannot be hard-coded into the engine analyzer. A narrow
+                // AssetGuid naming contract closes over model/VFX/UI presets
+                // such as Summer.MonsterSpawnComponent without scanning
+                // arbitrary strings or source code.
+                AddGameProjectPropertyReferences(
+                    component.properties,
+                    {},
+                    owner,
+                    assetDatabase,
+                    summary);
             }
         }
 

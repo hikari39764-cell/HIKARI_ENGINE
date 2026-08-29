@@ -410,6 +410,65 @@ namespace HIKARI {
         uint8_t reserved[3] = { 0u, 0u, 0u };
     };
 
+    // Renderer-owned ground warning geometry. Circle and Sector are
+    // tessellated directly into the combat presentation pass; no texture,
+    // VFX asset, particle program, or Editor debug primitive is involved.
+    enum class GameProjectGroundTelegraphShape : uint8_t {
+        Circle = 0u,
+        Sector = 1u,
+    };
+
+    struct GameProjectGroundTelegraphRequest {
+        uint64_t ownerObjectHandle = 0u;
+        uint64_t sourceId = 0u;
+        GameProjectFloat3 centerWorld{};
+        GameProjectFloat3 directionWorld{ 0.0f, 0.0f, 1.0f };
+        GameProjectFloat3 fillColor{ 0.72f, 0.01f, 0.0f };
+        GameProjectFloat3 outlineColor{ 1.0f, 0.08f, 0.01f };
+        float radius = 1.0f;
+        float sectorHalfAngleDegrees = 30.0f;
+        float outlineWidthWorld = 0.10f;
+        float fillOpacity = 0.22f;
+        float outlineOpacity = 0.95f;
+        float intensity = 1.0f;
+        float lifetimeUnscaledSeconds = 0.12f;
+        GameProjectGroundTelegraphShape shape =
+            GameProjectGroundTelegraphShape::Circle;
+        uint8_t reserved[3] = { 0u, 0u, 0u };
+    };
+
+    // Reserved camera-occlusion request. SDK 1.28 keeps this value layout for
+    // ABI compatibility, but the rejected shared cutout renderer currently
+    // fails closed and does not alter player or scene materials.
+    struct GameProjectOcclusionRevealRequest {
+        uint64_t ownerObjectHandle = 0u;
+        uint64_t sourceId = 0u;
+        GameProjectFloat3 centerWorld{};
+        // Retained for source/ABI compatibility with SDK 1.28. Cutout does
+        // not tint either the player or the occluder.
+        GameProjectFloat3 color{ 0.22f, 0.72f, 1.0f };
+        float maskRadiusScreenHeight = 0.18f;
+        float maskFeatherScreenHeight = 0.045f;
+        float opacity = 0.78f;
+        float intensity = 1.0f;
+        float lifetimeUnscaledSeconds = 0.10f;
+        uint32_t reserved = 0u;
+    };
+
+    // Transient shader-backed world barrier visualization. Gameplay owns
+    // unlock conditions and blocking; the engine owns procedural geometry.
+    struct GameProjectWorldBarrierRequest {
+        uint64_t ownerObjectHandle = 0u;
+        uint64_t sourceId = 0u;
+        GameProjectTransform transform{};
+        GameProjectFloat3 halfExtents{ 2.0f, 1.5f, 0.20f };
+        GameProjectFloat3 color{ 0.10f, 0.48f, 0.82f };
+        float opacity = 0.10f;
+        float interaction = 0.0f;
+        float lifetimeUnscaledSeconds = 0.12f;
+        uint32_t reserved = 0u;
+    };
+
     // One evaluated blade sample. The engine owns history, discontinuity
     // rejection, lifetime and the transparent render pass. Callers submit
     // world-space base/tip positions only while a trail should be visible.

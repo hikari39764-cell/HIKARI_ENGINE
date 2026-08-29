@@ -11,6 +11,7 @@
 #include "HIKARI/Project/GameFlowViews.h"
 #include "HIKARI/Project/NavigationView.h"
 #include "HIKARI/Project/PresentationViews.h"
+#include "HIKARI/Project/TerrainView.h"
 #include "HIKARI/Project/RuntimeRegistration.h"
 #include "HIKARI/Project/UiView.h"
 #include "Scene/Components/HIKARI_IComponent.h"
@@ -62,6 +63,8 @@ namespace HIKARI {
         static PhysicsQueryView MakePhysicsQueryView(
             World& world) noexcept;
         static NavigationView MakeNavigationView(
+            World& world) noexcept;
+        static TerrainView MakeTerrainView(
             World& world) noexcept;
         static CameraView MakeCameraView(
             World& world) noexcept;

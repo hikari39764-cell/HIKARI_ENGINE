@@ -34,6 +34,8 @@ namespace HIKARI::RENDER3D::PIPELINE {
 
     const FEATURES::RenderFeaturePlan& GetLastRenderFeaturePlan();
 
+    bool InitializeCombatPresentationRenderers(
+        const GFX::Context& graphics);
     void ShutdownCombatPresentationRenderers();
 
 } // namespace HIKARI::RENDER3D::PIPELINE

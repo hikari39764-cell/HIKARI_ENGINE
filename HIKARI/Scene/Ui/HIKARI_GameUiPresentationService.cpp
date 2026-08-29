@@ -5,6 +5,9 @@
 #include <system_error>
 #include <utility>
 
+#include "Assets/HIKARI_AssetDatabase.h"
+#include "Assets/Semantics/HIKARI_AssetArtifactSemantics.h"
+
 namespace HIKARI::GAME_UI {
     namespace {
         bool IsFinite(float value) noexcept {
@@ -63,10 +66,86 @@ namespace HIKARI::GAME_UI {
         if (error) {
             assetsRoot_ = requested.lexically_normal();
         }
+        error.clear();
+        const std::filesystem::path runtimeRequested =
+            projectRoot / "RuntimePayload" / "Assets";
+        runtimePayloadAssetsRoot_ = std::filesystem::weakly_canonical(
+            runtimeRequested, error);
+        if (error) {
+            runtimePayloadAssetsRoot_ = runtimeRequested.lexically_normal();
+        }
         Reset();
     }
 
-    bool GameUiPresentationService::ResolveAssetPath(
+    void GameUiPresentationService::SetAssetDatabase(
+        const AssetDatabase* assetDatabase) noexcept {
+        assetDatabase_ = assetDatabase;
+        resolvedTexturePaths_.clear();
+    }
+
+    bool GameUiPresentationService::ResolveTexturePath(
+        std::string_view relativePath,
+        std::filesystem::path& outPath) noexcept {
+        outPath.clear();
+        try {
+            if (relativePath.empty()) {
+                return false;
+            }
+            const std::string cacheKey{ relativePath };
+            if (const auto found = resolvedTexturePaths_.find(cacheKey);
+                found != resolvedTexturePaths_.end()) {
+                outPath = found->second;
+                return true;
+            }
+            const std::filesystem::path relative{ cacheKey };
+            if (relative.is_absolute() || relative.has_root_path() ||
+                HasParentTraversal(relative)) {
+                return false;
+            }
+            if (assetDatabase_ != nullptr) {
+                const AssetRecord* record = assetDatabase_->FindByPath(
+                    std::filesystem::path("Assets") / relative);
+                if (record != nullptr && record->type == AssetType::Texture) {
+                    const AssetArtifactDesc* artifact =
+                        ASSETS::SEMANTICS::FindCompatibleAssetArtifact(
+                            *record,
+                            ASSETS::SEMANTICS::
+                                AssetArtifactKind::MainTexture);
+                    if (artifact != nullptr && !artifact->path.empty()) {
+                        const std::filesystem::path root =
+                            assetDatabase_->GetProjectRoot().
+                                lexically_normal();
+                        std::error_code error{};
+                        const std::filesystem::path candidate =
+                            std::filesystem::weakly_canonical(
+                                root / artifact->path,
+                                error);
+                        if (!error && IsWithin(root, candidate) &&
+                            std::filesystem::is_regular_file(
+                                candidate,
+                                error) && !error) {
+                            outPath = candidate;
+                            resolvedTexturePaths_.emplace(
+                                cacheKey,
+                                candidate);
+                            return true;
+                        }
+                    }
+                }
+                if (assetDatabase_->IsCookedContent()) {
+                    // Shipping consumes HTEX only. Never fall back to a copied
+                    // PNG/JPG when the cooked registry is authoritative.
+                    return false;
+                }
+            }
+            return ResolveDirectAssetPath(relativePath, outPath);
+        }
+        catch (...) {
+            return false;
+        }
+    }
+
+    bool GameUiPresentationService::ResolveDirectAssetPath(
         std::string_view relativePath,
         std::filesystem::path& outPath) noexcept {
         outPath.clear();
@@ -75,8 +154,8 @@ namespace HIKARI::GAME_UI {
                 return false;
             }
             const std::string cacheKey{ relativePath };
-            if (const auto found = resolvedAssetPaths_.find(cacheKey);
-                found != resolvedAssetPaths_.end()) {
+            if (const auto found = resolvedDirectAssetPaths_.find(cacheKey);
+                found != resolvedDirectAssetPaths_.end()) {
                 outPath = found->second;
                 return true;
             }
@@ -86,19 +165,30 @@ namespace HIKARI::GAME_UI {
                 HasParentTraversal(relative)) {
                 return false;
             }
-            std::error_code error{};
-            const std::filesystem::path candidate =
-                std::filesystem::weakly_canonical(
-                    assetsRoot_ / relative,
-                    error);
-            if (error || !IsWithin(assetsRoot_, candidate) ||
-                !std::filesystem::is_regular_file(candidate, error) ||
-                error) {
-                return false;
+            const std::filesystem::path* roots[]{
+                &assetsRoot_, &runtimePayloadAssetsRoot_ };
+            for (const std::filesystem::path* root : roots) {
+                if (root->empty()) {
+                    continue;
+                }
+                std::error_code error{};
+                const std::filesystem::path candidate =
+                    std::filesystem::weakly_canonical(
+                        *root / relative,
+                        error);
+                if (error || !IsWithin(*root, candidate)) {
+                    continue;
+                }
+                error.clear();
+                if (!std::filesystem::is_regular_file(candidate, error) ||
+                    error) {
+                    continue;
+                }
+                outPath = candidate;
+                resolvedDirectAssetPaths_.emplace(cacheKey, candidate);
+                return true;
             }
-            outPath = candidate;
-            resolvedAssetPaths_.emplace(cacheKey, candidate);
-            return true;
+            return false;
         }
         catch (...) {
             return false;
@@ -135,7 +225,7 @@ namespace HIKARI::GAME_UI {
             }
 
             std::filesystem::path resolved{};
-            if (!ResolveAssetPath(assetPathBelowAssets, resolved)) {
+            if (!ResolveTexturePath(assetPathBelowAssets, resolved)) {
                 return false;
             }
 
@@ -218,7 +308,7 @@ namespace HIKARI::GAME_UI {
             }
 
             std::filesystem::path resolved{};
-            if (!ResolveAssetPath(fontAssetPathBelowAssets, resolved)) {
+            if (!ResolveDirectAssetPath(fontAssetPathBelowAssets, resolved)) {
                 return false;
             }
 
@@ -386,7 +476,8 @@ namespace HIKARI::GAME_UI {
         pending_.clear();
         pendingTexts_.clear();
         pendingBackdrops_.clear();
-        resolvedAssetPaths_.clear();
+        resolvedTexturePaths_.clear();
+        resolvedDirectAssetPaths_.clear();
         frameSource_ = {};
         nextSequence_ = 1u;
         ++revision_;

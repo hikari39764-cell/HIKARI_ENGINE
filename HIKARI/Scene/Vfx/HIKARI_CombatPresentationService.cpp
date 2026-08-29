@@ -1,9 +1,11 @@
 #include "Scene/Vfx/HIKARI_CombatPresentationService.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <iterator>
 #include <limits>
+#include <numbers>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -16,6 +18,10 @@
 namespace HIKARI::VFX {
     namespace {
         constexpr size_t kMaximumTrailCount = 16u;
+        constexpr size_t kMaximumGroundTelegraphCount = 16u;
+        constexpr size_t kMaximumWorldBarrierCount = 32u;
+        constexpr size_t kMaximumVerticesPerGroundTelegraph = 600u;
+        constexpr size_t kMaximumVerticesPerWorldBarrier = 36u;
         constexpr size_t kMaximumSamplesPerTrail = 32u;
         constexpr float kMinimumBladeLength = 0.08f;
         constexpr float kMaximumBladeLength = 4.0f;
@@ -560,7 +566,27 @@ namespace HIKARI::VFX {
         std::vector<TrailSample> samples{};
     };
 
-    CombatPresentationService::CombatPresentationService() = default;
+    struct CombatPresentationService::GroundTelegraphState {
+        GroundTelegraphRequest request{};
+        uint64_t lastSubmissionFrame = 0u;
+        float ageSeconds = 0.0f;
+    };
+
+    struct CombatPresentationService::WorldBarrierState {
+        WorldBarrierRequest request{};
+        uint64_t lastSubmissionFrame = 0u;
+        float ageSeconds = 0.0f;
+    };
+
+    CombatPresentationService::CombatPresentationService() {
+        // Boss warnings are latency-sensitive. Reserve the complete bounded
+        // CPU geometry envelope during World composition, never on release.
+        groundTelegraphVertices_.reserve(
+            kMaximumGroundTelegraphCount *
+                kMaximumVerticesPerGroundTelegraph +
+            kMaximumWorldBarrierCount *
+                kMaximumVerticesPerWorldBarrier);
+    }
     CombatPresentationService::~CombatPresentationService() = default;
 
     std::shared_ptr<const VfxProgram>
@@ -638,6 +664,118 @@ namespace HIKARI::VFX {
             static_cast<uint32_t>(request.sourceId) ^
             static_cast<uint32_t>(request.sourceId >> 32u);
         return playback.PlayDetailed(play).IsAccepted();
+    }
+
+    bool CombatPresentationService::SubmitGroundTelegraph(
+        const GroundTelegraphRequest& request,
+        uint64_t frameIndex) noexcept {
+        if (!request.ownerObject.IsValid() || request.sourceId == 0u ||
+            !IsFinite(request.centerWorld) ||
+            !IsFinite(request.directionWorld) ||
+            !IsFinite(request.fillColor) ||
+            !IsFinite(request.outlineColor) ||
+            !IsFinite(request.radius) ||
+            !IsFinite(request.sectorHalfAngleDegrees) ||
+            !IsFinite(request.outlineWidthWorld) ||
+            !IsFinite(request.fillOpacity) ||
+            !IsFinite(request.outlineOpacity) ||
+            !IsFinite(request.intensity) ||
+            !IsFinite(request.lifetimeUnscaledSeconds) ||
+            request.radius < 0.10f || request.radius > 30.0f ||
+            request.outlineWidthWorld <= 0.0f ||
+            request.outlineWidthWorld >= request.radius * 0.50f ||
+            request.fillOpacity < 0.0f || request.fillOpacity > 1.0f ||
+            request.outlineOpacity < 0.0f ||
+            request.outlineOpacity > 1.0f ||
+            request.intensity <= 0.0f || request.intensity > 4.0f ||
+            request.lifetimeUnscaledSeconds < 0.03f ||
+            request.lifetimeUnscaledSeconds > 0.50f ||
+            (request.shape != GroundTelegraphShape::Circle &&
+                request.shape != GroundTelegraphShape::Sector) ||
+            request.fillColor.x < 0.0f || request.fillColor.y < 0.0f ||
+            request.fillColor.z < 0.0f ||
+            request.outlineColor.x < 0.0f ||
+            request.outlineColor.y < 0.0f ||
+            request.outlineColor.z < 0.0f ||
+            (request.shape == GroundTelegraphShape::Sector &&
+                (request.sectorHalfAngleDegrees < 1.0f ||
+                    request.sectorHalfAngleDegrees > 179.0f))) {
+            return false;
+        }
+        const MATH::Vec3 horizontal{
+            request.directionWorld.x,
+            0.0f,
+            request.directionWorld.z };
+        if (LengthSquared(horizontal) <= 1.0e-8f) {
+            return false;
+        }
+        auto found = std::find_if(
+            groundTelegraphs_.begin(),
+            groundTelegraphs_.end(),
+            [&request](const GroundTelegraphState& state) {
+                return state.request.ownerObject == request.ownerObject &&
+                    state.request.sourceId == request.sourceId;
+            });
+        if (found == groundTelegraphs_.end()) {
+            if (groundTelegraphs_.size() >=
+                    kMaximumGroundTelegraphCount) {
+                return false;
+            }
+            groundTelegraphs_.push_back({});
+            found = std::prev(groundTelegraphs_.end());
+        }
+        found->request = request;
+        found->request.directionWorld = NormalizeSafe(
+            horizontal,
+            { 0.0f, 0.0f, 1.0f });
+        found->lastSubmissionFrame = frameIndex;
+        found->ageSeconds = 0.0f;
+        return true;
+    }
+
+    bool CombatPresentationService::SubmitWorldBarrier(
+        const WorldBarrierRequest& request,
+        uint64_t frameIndex) noexcept {
+        if (!request.ownerObject.IsValid() || request.sourceId == 0u ||
+            !IsFinite(request.centerWorld) ||
+            !IsFinite(request.rotationWorld) ||
+            !IsFinite(request.halfExtents) || !IsFinite(request.color) ||
+            !IsFinite(request.opacity) || !IsFinite(request.interaction) ||
+            !IsFinite(request.lifetimeUnscaledSeconds) ||
+            request.halfExtents.x < 0.05f ||
+            request.halfExtents.y < 0.05f ||
+            request.halfExtents.z < 0.05f ||
+            request.halfExtents.x > 100.0f ||
+            request.halfExtents.y > 100.0f ||
+            request.halfExtents.z > 100.0f ||
+            request.color.x < 0.0f || request.color.y < 0.0f ||
+            request.color.z < 0.0f || request.opacity < 0.0f ||
+            request.opacity > 1.0f || request.interaction < 0.0f ||
+            request.interaction > 1.0f ||
+            request.lifetimeUnscaledSeconds < 0.03f ||
+            request.lifetimeUnscaledSeconds > 0.50f) {
+            return false;
+        }
+        auto found = std::find_if(
+            worldBarriers_.begin(),
+            worldBarriers_.end(),
+            [&request](const WorldBarrierState& state) {
+                return state.request.ownerObject == request.ownerObject &&
+                    state.request.sourceId == request.sourceId;
+            });
+        if (found == worldBarriers_.end()) {
+            if (worldBarriers_.size() >= kMaximumWorldBarrierCount) {
+                return false;
+            }
+            worldBarriers_.push_back({});
+            found = std::prev(worldBarriers_.end());
+        }
+        found->request = request;
+        found->request.rotationWorld = MATH::NormalizeQ(
+            request.rotationWorld);
+        found->lastSubmissionFrame = frameIndex;
+        found->ageSeconds = 0.0f;
+        return true;
     }
 
     bool CombatPresentationService::SubmitWeaponTrail(
@@ -892,7 +1030,27 @@ namespace HIKARI::VFX {
                 return trail.samples.empty() &&
                     frameIndex > trail.lastSubmissionFrame + 2u;
             });
+        for (GroundTelegraphState& telegraph : groundTelegraphs_) {
+            telegraph.ageSeconds += delta;
+        }
+        std::erase_if(
+            groundTelegraphs_,
+            [](const GroundTelegraphState& telegraph) {
+                return telegraph.ageSeconds >=
+                    telegraph.request.lifetimeUnscaledSeconds;
+            });
+        for (WorldBarrierState& barrier : worldBarriers_) {
+            barrier.ageSeconds += delta;
+        }
+        std::erase_if(
+            worldBarriers_,
+            [](const WorldBarrierState& barrier) {
+                return barrier.ageSeconds >=
+                    barrier.request.lifetimeUnscaledSeconds;
+            });
         BuildWeaponTrailFrame();
+        BuildGroundTelegraphFrame();
+        BuildWorldBarrierFrame();
         ++revision_;
         if (revision_ == 0u) {
             revision_ = 1u;
@@ -1067,9 +1225,275 @@ namespace HIKARI::VFX {
                     (std::numeric_limits<uint32_t>::max)())));
     }
 
+    void CombatPresentationService::BuildGroundTelegraphFrame() noexcept {
+        using Vertex = RENDER3D::COMBAT_VFX::GroundTelegraphVertex;
+        groundTelegraphVertices_.clear();
+        frameSource_.activeGroundTelegraphCount = 0u;
+        groundTelegraphVertices_.reserve(
+            groundTelegraphs_.size() *
+                kMaximumVerticesPerGroundTelegraph);
+
+        const auto appendTriangle = [this](
+            const MATH::Vec3& a,
+            const MATH::Vec3& b,
+            const MATH::Vec3& c,
+            const MATH::Vec4& color) {
+            groundTelegraphVertices_.push_back(Vertex{ a, color });
+            groundTelegraphVertices_.push_back(Vertex{ b, color });
+            groundTelegraphVertices_.push_back(Vertex{ c, color });
+        };
+        const auto appendStroke = [&appendTriangle](
+            const MATH::Vec3& from,
+            const MATH::Vec3& to,
+            float width,
+            const MATH::Vec4& color) {
+            const MATH::Vec3 delta = to - from;
+            const MATH::Vec3 horizontal{ delta.x, 0.0f, delta.z };
+            if (LengthSquared(horizontal) <= 1.0e-8f) {
+                return;
+            }
+            const MATH::Vec3 direction = NormalizeSafe(
+                horizontal,
+                { 0.0f, 0.0f, 1.0f });
+            const MATH::Vec3 offset{
+                direction.z * width * 0.5f,
+                0.0f,
+                -direction.x * width * 0.5f };
+            appendTriangle(
+                from - offset,
+                from + offset,
+                to + offset,
+                color);
+            appendTriangle(
+                from - offset,
+                to + offset,
+                to - offset,
+                color);
+        };
+
+        for (const GroundTelegraphState& state : groundTelegraphs_) {
+            const GroundTelegraphRequest& request = state.request;
+            const float life = (std::max)(
+                request.lifetimeUnscaledSeconds,
+                0.03f);
+            const float remaining = 1.0f - std::clamp(
+                state.ageSeconds / life,
+                0.0f,
+                1.0f);
+            const float timePhase = frameSource_.unscaledTimeSeconds * 8.0f +
+                static_cast<float>(request.sourceId & 0xffu) * 0.037f;
+            const float pulse = 0.88f + 0.12f * std::sin(timePhase);
+            const float fade = SmoothStep01(std::clamp(
+                remaining * 4.0f,
+                0.0f,
+                1.0f));
+            const auto color = [fade, pulse, &request](
+                const MATH::Vec3& rgb,
+                float opacity,
+                float pulseWeight) {
+                const float energy = request.intensity *
+                    (1.0f + (pulse - 1.0f) * pulseWeight);
+                return MATH::Vec4{
+                    rgb.x * energy,
+                    rgb.y * energy,
+                    rgb.z * energy,
+                    std::clamp(opacity * fade, 0.0f, 1.0f) };
+            };
+            const MATH::Vec4 fillColor = color(
+                request.fillColor,
+                request.fillOpacity,
+                0.35f);
+            const MATH::Vec4 outlineColor = color(
+                request.outlineColor,
+                request.outlineOpacity,
+                1.0f);
+            const MATH::Vec3 forward = NormalizeSafe(
+                MATH::Vec3{
+                    request.directionWorld.x,
+                    0.0f,
+                    request.directionWorld.z },
+                { 0.0f, 0.0f, 1.0f });
+            const MATH::Vec3 right{
+                forward.z,
+                0.0f,
+                -forward.x };
+            const bool sector =
+                request.shape == GroundTelegraphShape::Sector;
+            const float halfAngleRadians = sector
+                ? request.sectorHalfAngleDegrees *
+                    std::numbers::pi_v<float> / 180.0f
+                : std::numbers::pi_v<float>;
+            const int segments = sector
+                ? std::clamp(
+                    static_cast<int>(std::ceil(
+                        request.sectorHalfAngleDegrees / 180.0f * 64.0f)),
+                    12,
+                    64)
+                : 64;
+            const float innerRadius = (std::max)(
+                0.0f,
+                request.radius - request.outlineWidthWorld);
+            const auto point = [&](float radius, float angle) {
+                return request.centerWorld +
+                    forward * (std::cos(angle) * radius) +
+                    right * (std::sin(angle) * radius);
+            };
+            for (int segment = 0; segment < segments; ++segment) {
+                const float start = -halfAngleRadians +
+                    (2.0f * halfAngleRadians) *
+                        static_cast<float>(segment) /
+                        static_cast<float>(segments);
+                const float end = -halfAngleRadians +
+                    (2.0f * halfAngleRadians) *
+                        static_cast<float>(segment + 1) /
+                        static_cast<float>(segments);
+                const MATH::Vec3 fillStart = point(innerRadius, start);
+                const MATH::Vec3 fillEnd = point(innerRadius, end);
+                appendTriangle(
+                    request.centerWorld,
+                    fillStart,
+                    fillEnd,
+                    fillColor);
+                const MATH::Vec3 outerStart = point(request.radius, start);
+                const MATH::Vec3 outerEnd = point(request.radius, end);
+                appendTriangle(
+                    fillStart,
+                    outerStart,
+                    outerEnd,
+                    outlineColor);
+                appendTriangle(
+                    fillStart,
+                    outerEnd,
+                    fillEnd,
+                    outlineColor);
+            }
+            if (sector) {
+                appendStroke(
+                    request.centerWorld,
+                    point(request.radius, -halfAngleRadians),
+                    request.outlineWidthWorld,
+                    outlineColor);
+                appendStroke(
+                    request.centerWorld,
+                    point(request.radius, halfAngleRadians),
+                    request.outlineWidthWorld,
+                    outlineColor);
+            }
+            ++frameSource_.activeGroundTelegraphCount;
+        }
+        frameSource_.groundTelegraphVertices =
+            groundTelegraphVertices_.empty()
+            ? nullptr
+            : groundTelegraphVertices_.data();
+        frameSource_.groundTelegraphVertexCount = static_cast<uint32_t>(
+            (std::min)(
+                groundTelegraphVertices_.size(),
+                static_cast<size_t>(
+                    (std::numeric_limits<uint32_t>::max)())));
+    }
+
+    void CombatPresentationService::BuildWorldBarrierFrame() noexcept {
+        using Vertex = RENDER3D::COMBAT_VFX::GroundTelegraphVertex;
+        frameSource_.activeWorldBarrierCount = 0u;
+        groundTelegraphVertices_.reserve(
+            groundTelegraphVertices_.size() + worldBarriers_.size() *
+                kMaximumVerticesPerWorldBarrier);
+        constexpr std::array<std::array<uint8_t, 4u>, 6u> faces{
+            std::array<uint8_t, 4u>{ 0u, 1u, 2u, 3u },
+            std::array<uint8_t, 4u>{ 5u, 4u, 7u, 6u },
+            std::array<uint8_t, 4u>{ 4u, 0u, 3u, 7u },
+            std::array<uint8_t, 4u>{ 1u, 5u, 6u, 2u },
+            std::array<uint8_t, 4u>{ 3u, 2u, 6u, 7u },
+            std::array<uint8_t, 4u>{ 4u, 5u, 1u, 0u },
+        };
+        constexpr std::array<MATH::Vec2, 4u> uvs{
+            MATH::Vec2{ 0.0f, 1.0f },
+            MATH::Vec2{ 1.0f, 1.0f },
+            MATH::Vec2{ 1.0f, 0.0f },
+            MATH::Vec2{ 0.0f, 0.0f },
+        };
+        for (const WorldBarrierState& state : worldBarriers_) {
+            const WorldBarrierRequest& request = state.request;
+            const float remaining = 1.0f - std::clamp(
+                state.ageSeconds /
+                    (std::max)(request.lifetimeUnscaledSeconds, 0.03f),
+                0.0f,
+                1.0f);
+            const float fade = SmoothStep01(std::clamp(
+                remaining * 4.0f,
+                0.0f,
+                1.0f));
+            const MATH::Vec4 color{
+                request.color.x,
+                request.color.y,
+                request.color.z,
+                std::clamp(
+                    request.opacity * fade,
+                    0.0f,
+                    1.0f) };
+            const MATH::Vec2 effect{
+                1.0f,
+                request.interaction };
+            const MATH::Vec3& e = request.halfExtents;
+            const std::array<MATH::Vec3, 8u> local{
+                MATH::Vec3{ -e.x, -e.y, -e.z },
+                MATH::Vec3{ e.x, -e.y, -e.z },
+                MATH::Vec3{ e.x, e.y, -e.z },
+                MATH::Vec3{ -e.x, e.y, -e.z },
+                MATH::Vec3{ -e.x, -e.y, e.z },
+                MATH::Vec3{ e.x, -e.y, e.z },
+                MATH::Vec3{ e.x, e.y, e.z },
+                MATH::Vec3{ -e.x, e.y, e.z },
+            };
+            const MATH::Mat4 transform = MATH::Mat4::TRS(
+                request.centerWorld,
+                request.rotationWorld,
+                { 1.0f, 1.0f, 1.0f });
+            std::array<MATH::Vec3, 8u> world{};
+            for (size_t index = 0u; index < local.size(); ++index) {
+                const MATH::Vec4 point = transform.TransformPoint({
+                    local[index].x,
+                    local[index].y,
+                    local[index].z,
+                    1.0f });
+                world[index] = { point.x, point.y, point.z };
+            }
+            const auto append = [this, &world, &color, &effect](
+                uint8_t index,
+                MATH::Vec2 uv) {
+                groundTelegraphVertices_.push_back(Vertex{
+                    world[index],
+                    color,
+                    uv,
+                    effect });
+            };
+            for (const auto& face : faces) {
+                append(face[0], uvs[0]);
+                append(face[1], uvs[1]);
+                append(face[2], uvs[2]);
+                append(face[0], uvs[0]);
+                append(face[2], uvs[2]);
+                append(face[3], uvs[3]);
+            }
+            ++frameSource_.activeWorldBarrierCount;
+        }
+        frameSource_.groundTelegraphVertices =
+            groundTelegraphVertices_.empty()
+            ? nullptr
+            : groundTelegraphVertices_.data();
+        frameSource_.groundTelegraphVertexCount = static_cast<uint32_t>(
+            (std::min)(
+                groundTelegraphVertices_.size(),
+                static_cast<size_t>(
+                    (std::numeric_limits<uint32_t>::max)())));
+    }
+
     void CombatPresentationService::Reset() noexcept {
         trails_.clear();
         weaponTrailVertices_.clear();
+        groundTelegraphs_.clear();
+        worldBarriers_.clear();
+        groundTelegraphVertices_.clear();
         frameSource_ = {};
         revision_ = 0u;
         lastTickFrame_ = 0u;

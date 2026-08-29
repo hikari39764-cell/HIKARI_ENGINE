@@ -10,7 +10,7 @@ if(NOT TARGET HIKARI::GameProjectHost)
             IMPORTED_IMPLIB
                 "${_HIKARI_SDK_ROOT}/lib/HIKARI_Engine.lib"
             IMPORTED_LOCATION
-                "${PACKAGE_PREFIX_DIR}/HIKARI_Engine.exe")
+                "${PACKAGE_PREFIX_DIR}/@HIKARI_GAME_PROJECT_HOST_FILENAME@")
 endif()
 
 if(NOT TARGET HIKARI::GameProjectSdk)

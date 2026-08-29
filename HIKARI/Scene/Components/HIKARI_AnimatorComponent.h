@@ -78,6 +78,16 @@ namespace HIKARI {
         void SetRootMotionEnabled(bool enabled) noexcept;
         bool IsRootMotionEnabled() const noexcept;
 
+        // Runtime-only animation LOD gate. Disabled animators retain their
+        // last published pose without advancing or resampling it. This state
+        // is never serialized into authored Scene data.
+        void SetRuntimeEvaluationEnabled(bool enabled) noexcept {
+            runtimeEvaluationEnabled_ = enabled;
+        }
+        bool IsRuntimeEvaluationEnabled() const noexcept {
+            return runtimeEvaluationEnabled_;
+        }
+
         void SetPlaying(bool playing);
         bool IsPlaying() const;
 
@@ -166,6 +176,7 @@ namespace HIKARI {
         bool loop_ = true;
         bool autoPlay_ = true;
         bool rootMotionEnabled_ = false;
+        bool runtimeEvaluationEnabled_ = true;
         bool playing_ = true;
         bool finished_ = false;
 

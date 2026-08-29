@@ -10,6 +10,10 @@
 #include "HIKARI/Project/UiTypes.h"
 #include "Render2D/HIKARI_GameUiRenderData.h"
 
+namespace HIKARI {
+    class AssetDatabase;
+}
+
 namespace HIKARI::GAME_UI {
 
     // World-owned owner of game-project HUD submissions. The renderer only
@@ -17,6 +21,7 @@ namespace HIKARI::GAME_UI {
     class GameUiPresentationService final {
     public:
         void SetProjectRoot(const std::filesystem::path& projectRoot);
+        void SetAssetDatabase(const AssetDatabase* assetDatabase) noexcept;
 
         bool SubmitSprite(
             std::string_view assetPathBelowAssets,
@@ -41,13 +46,20 @@ namespace HIKARI::GAME_UI {
         }
 
     private:
-        bool ResolveAssetPath(
+        bool ResolveTexturePath(
+            std::string_view relativePath,
+            std::filesystem::path& outPath) noexcept;
+        bool ResolveDirectAssetPath(
             std::string_view relativePath,
             std::filesystem::path& outPath) noexcept;
 
+        const AssetDatabase* assetDatabase_ = nullptr;
         std::filesystem::path assetsRoot_{};
+        std::filesystem::path runtimePayloadAssetsRoot_{};
         std::unordered_map<std::string, std::filesystem::path>
-            resolvedAssetPaths_{};
+            resolvedTexturePaths_{};
+        std::unordered_map<std::string, std::filesystem::path>
+            resolvedDirectAssetPaths_{};
         std::vector<GameUiSpriteDraw> pending_{};
         std::vector<GameUiTextDraw> pendingTexts_{};
         std::vector<GameUiBackdropDraw> pendingBackdrops_{};

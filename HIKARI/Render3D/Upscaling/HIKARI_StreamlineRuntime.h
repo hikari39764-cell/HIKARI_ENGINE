@@ -1,5 +1,7 @@
 #pragma once
 
+#include <filesystem>
+
 #include <cstdint>
 #include <string>
 
@@ -83,7 +85,9 @@ namespace HIKARI::RENDER3D::UPSCALING {
         std::string lastResult{};
     };
 
-    bool InitializeStreamlineEarly(bool enableFrameGenerationPlugins);
+    bool InitializeStreamlineEarly(
+        bool enableFrameGenerationPlugins,
+        const std::filesystem::path& logDirectory = {});
     bool AttachStreamlineDevice(ID3D12Device* device);
     bool SetStreamlineFrameGenerationFeatureLoaded(bool loaded);
     bool IsStreamlineFrameGenerationFeatureLoaded();

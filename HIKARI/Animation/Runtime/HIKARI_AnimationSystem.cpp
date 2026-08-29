@@ -7,6 +7,7 @@
 #include <algorithm>
 
 #include "Animation/Runtime/HIKARI_AnimationClipSampler.h"
+#include "Animation/Runtime/HIKARI_AnimationNodeOverrideService.h"
 #include "Animation/Runtime/HIKARI_AnimationPoseEvaluation.h"
 #include "Animation/Runtime/HIKARI_AnimationPoseService.h"
 #include "Animation/Runtime/HIKARI_AnimationRootMotionService.h"
@@ -14,6 +15,7 @@
 #include "Assets/Models/HIKARI_ModelAsset.h"
 #include "Scene/Components/HIKARI_AnimatorComponent.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
+#include "Scene/HIKARI_RuntimeObjectActivityService.h"
 #include "Scene/HIKARI_World.h"
 
 namespace HIKARI {
@@ -172,6 +174,10 @@ namespace HIKARI {
         publishedObjects_.clear();
         poseService_ = world.Services().Find<
             ANIMATION::AnimationPoseService>();
+        nodeOverrideService_ = world.Services().Find<
+            ANIMATION::AnimationNodeOverrideService>();
+        runtimeActivityService_ = world.Services().Find<
+            RuntimeObjectActivityService>();
         if (auto* rootMotionService = world.Services().Find<
                 ANIMATION::AnimationRootMotionService>()) {
             rootMotionService->Clear();
@@ -180,11 +186,14 @@ namespace HIKARI {
 
     void AnimationSystem::OnWorldDetached(World& world) {
         if (poseService_ != nullptr) poseService_->Clear();
+        if (nodeOverrideService_ != nullptr) nodeOverrideService_->Clear();
         if (auto* rootMotionService = world.Services().Find<
                 ANIMATION::AnimationRootMotionService>()) {
             rootMotionService->Clear();
         }
         poseService_ = nullptr;
+        nodeOverrideService_ = nullptr;
+        runtimeActivityService_ = nullptr;
         publishedObjects_.clear();
     }
 
@@ -210,6 +219,38 @@ namespace HIKARI {
                     if (rootMotionService != nullptr) {
                         rootMotionService->Remove(object.GetRuntimeHandle());
                     }
+                    return;
+                }
+
+                const RuntimeObjectHandle objectHandle =
+                    object.GetRuntimeHandle();
+                const GameProjectRuntimeActivity runtimeActivity =
+                    runtimeActivityService_ != nullptr
+                    ? runtimeActivityService_->Get(objectHandle)
+                    : GameProjectRuntimeActivity::Active;
+                if (runtimeActivity ==
+                        GameProjectRuntimeActivity::SuspendedHidden) {
+                    // hidden actor は pose residency も不要。published list
+                    // から外し、末尾の cleanup で一度だけ解放する。
+                    if (rootMotionService != nullptr) {
+                        rootMotionService->Remove(objectHandle);
+                    }
+                    return;
+                }
+                // A suspended animator keeps its last valid pose resident so
+                // rendering remains stable, but pays no clip sampling,
+                // blending, masked-layer, node-override, or root-motion cost.
+                // Evaluate once when no pose exists yet to avoid freezing a
+                // newly spawned actor in an uninitialized pose.
+                if ((runtimeActivity ==
+                        GameProjectRuntimeActivity::FrozenVisible ||
+                        !animator.IsRuntimeEvaluationEnabled()) &&
+                    poseService_->Find(objectHandle) != nullptr) {
+                    if (rootMotionService != nullptr) {
+                        rootMotionService->Remove(objectHandle);
+                    }
+                    currentObjectKeys.insert(objectHandle.ToValue());
+                    currentObjects.push_back(objectHandle);
                     return;
                 }
 
@@ -332,6 +373,12 @@ namespace HIKARI {
                         *modelAsset,
                         animator,
                         snapshot.localPose);
+                    if (nodeOverrideService_ != nullptr) {
+                        (void)nodeOverrideService_->Apply(
+                            *modelAsset,
+                            object.GetRuntimeHandle(),
+                            snapshot.localPose);
+                    }
                 }
                 const bool poseChanged = poseService_->Publish(
                     object.GetRuntimeHandle(),
@@ -354,6 +401,9 @@ namespace HIKARI {
                 poseService_->Remove(object);
                 if (rootMotionService != nullptr) {
                     rootMotionService->Remove(object);
+                }
+                if (nodeOverrideService_ != nullptr) {
+                    nodeOverrideService_->Remove(object);
                 }
             }
         }

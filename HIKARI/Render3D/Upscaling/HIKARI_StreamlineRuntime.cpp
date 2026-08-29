@@ -107,7 +107,9 @@ namespace HIKARI::RENDER3D::UPSCALING {
         }
     }
 
-    bool InitializeStreamlineEarly(bool enableFrameGenerationPlugins) {
+    bool InitializeStreamlineEarly(
+        bool enableFrameGenerationPlugins,
+        const std::filesystem::path& requestedLogDirectory) {
         INTERNAL::StreamlineState& state = INTERNAL::GetState();
 #if !defined(HIKARI_WITH_STREAMLINE)
         (void)enableFrameGenerationPlugins;
@@ -134,7 +136,10 @@ namespace HIKARI::RENDER3D::UPSCALING {
         }
 
         state.pluginPath = moduleDirectory.wstring();
-        const std::filesystem::path logDirectory = std::filesystem::absolute("logs");
+        const std::filesystem::path logDirectory =
+            requestedLogDirectory.empty()
+            ? std::filesystem::absolute("logs")
+            : requestedLogDirectory;
         std::error_code error{};
         std::filesystem::create_directories(logDirectory, error);
         state.logPath = logDirectory.wstring();

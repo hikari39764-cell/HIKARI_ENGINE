@@ -48,6 +48,8 @@ namespace HIKARI {
         std::optional<bool> enableDebugCamera{};
 
         // ── ウィンドウ設定 ──
+        // メインウィンドウの UTF-8 タイトル
+        std::optional<std::string> windowTitle{};
         // ウィンドウのリサイズを許可するか
         std::optional<bool> resizableWindow{};
         // ウィンドウ幅（ピクセル単位）

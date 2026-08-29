@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -10,5 +11,7 @@ namespace HIKARI::DEBUGLOG {
     std::vector<std::string> GetRecentRenderErrors(size_t maxCount);
     void ClearRenderErrors();
     void WriteRenderLogLine(const std::string& message);
+    void SetRenderLogDirectory(
+        const std::filesystem::path& directory);
 
 }

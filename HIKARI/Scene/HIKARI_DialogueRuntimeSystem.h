@@ -24,6 +24,10 @@ namespace HIKARI {
         struct Candidate {
             RuntimeObjectHandle trigger{};
             RuntimeObjectHandle interactor{};
+            // OnEnter contact can arrive while another dialogue owns the
+            // session. Retain exactly one pending admission until the player
+            // leaves or the session becomes available.
+            bool pendingOnEnter = false;
         };
 
         bool TryAddCandidate(
@@ -37,7 +41,7 @@ namespace HIKARI {
         void PruneCandidates(World& world);
         bool TryStart(
             World& world,
-            const Candidate& candidate);
+            Candidate& candidate);
 
         std::vector<Candidate> candidates_{};
     };

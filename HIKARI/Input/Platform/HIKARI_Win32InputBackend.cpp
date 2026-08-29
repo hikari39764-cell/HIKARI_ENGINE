@@ -299,15 +299,6 @@ void Win32InputBackend::Poll(InputDeviceState& out) {
     }
     externalWheel_ = 0.0f;
 
-    bool keyboardMouseActive = std::abs(out.mouseDeltaX) > 0.0f ||
-        std::abs(out.mouseDeltaY) > 0.0f || std::abs(out.mouseWheel) > 0.0f;
-    keyboardMouseActive = keyboardMouseActive ||
-        std::any_of(out.keyboard.begin(), out.keyboard.end(),
-            [](uint8_t value) { return value != 0; }) ||
-        std::any_of(out.mouseButtons.begin(), out.mouseButtons.end(),
-            [](uint8_t value) { return value != 0; });
-
-    bool gamepadActive = false;
     for (DWORD index = 0; index < out.gamepads.size(); ++index) {
         XINPUT_STATE state{};
         if (::XInputGetState(index, &state) != ERROR_SUCCESS) continue;
@@ -320,17 +311,10 @@ void Win32InputBackend::Poll(InputDeviceState& out) {
         gamepad.rightY = NormalizeThumb(state.Gamepad.sThumbRY);
         gamepad.leftTrigger = state.Gamepad.bLeftTrigger / 255.0f;
         gamepad.rightTrigger = state.Gamepad.bRightTrigger / 255.0f;
-        gamepadActive = gamepadActive || gamepad.buttons != 0 ||
-            std::abs(gamepad.leftX) > 0.15f ||
-            std::abs(gamepad.leftY) > 0.15f ||
-            std::abs(gamepad.rightX) > 0.15f ||
-            std::abs(gamepad.rightY) > 0.15f ||
-            gamepad.leftTrigger > 0.05f || gamepad.rightTrigger > 0.05f;
     }
-    out.lastActiveDevice = gamepadActive
-        ? InputDeviceKind::Gamepad
-        : (keyboardMouseActive ? InputDeviceKind::KeyboardMouse
-                               : InputDeviceKind::None);
+    // Platform polling owns only raw state. InputService compares consecutive
+    // frames and is the single authority for last-active-device arbitration.
+    out.lastActiveDevice = InputDeviceKind::None;
 }
 
 float Win32InputBackend::ReadControl(

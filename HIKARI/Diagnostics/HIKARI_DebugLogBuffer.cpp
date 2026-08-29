@@ -13,10 +13,13 @@ namespace HIKARI::DEBUGLOG {
     namespace {
         std::mutex gMutex;
         std::deque<std::string> gRecentErrors;
+        std::filesystem::path gLogDirectory{};
         constexpr size_t kMaxRecentErrors = 128;
 
         std::filesystem::path GetLogPath() {
-            std::filesystem::path dir = std::filesystem::current_path() / "RendererLog";
+            const std::filesystem::path dir = gLogDirectory.empty()
+                ? std::filesystem::current_path() / "RendererLog"
+                : gLogDirectory;
             std::error_code ec;
             std::filesystem::create_directories(dir, ec);
             return dir / "render_diagnostics.log";
@@ -43,6 +46,12 @@ namespace HIKARI::DEBUGLOG {
         if (out.is_open()) {
             out << line << '\n';
         }
+    }
+
+    void SetRenderLogDirectory(
+        const std::filesystem::path& directory) {
+        std::lock_guard lock(gMutex);
+        gLogDirectory = directory.lexically_normal();
     }
 
     void PushRenderError(std::string message) {

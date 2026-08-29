@@ -123,14 +123,15 @@ namespace HIKARI::RENDER3D::MATERIAL {
 
         auto [sourceIt, inserted] = sourceStates_.try_emplace(sourceIdentity);
         SourceState& source = sourceIt->second;
-        const bool topologyChanged =
+        const bool bindingStorageChanged =
             inserted ||
             !source.valid ||
-            source.layoutVersion != layoutVersion ||
             source.bindings.size() != sourceRecordCount ||
             source.slotTable.size() != sourceRecordCount;
+        const bool layoutChanged =
+            source.layoutVersion != layoutVersion;
 
-        if (topologyChanged) {
+        if (bindingStorageChanged || layoutChanged) {
             syncMode_ = GpuMaterialSourceSyncMode::Full;
         } else if (source.sourceVersion != sourceVersion) {
             syncMode_ =
@@ -156,11 +157,21 @@ namespace HIKARI::RENDER3D::MATERIAL {
 
         if (syncMode_ == GpuMaterialSourceSyncMode::Full) {
             ReleaseSourceReferences(source);
-            if (topologyChanged) {
-                source.bindings.assign(sourceRecordCount, {});
-                source.slotTable.assign(
+            // A scene layout/residency change does not imply that the
+            // material identities changed.  Preserve the existing binding
+            // records and slots so a presentation-model add or an animation
+            // patch cannot transiently route every surface through the
+            // default material.  Resize only the source-record storage; a
+            // changed key is reconciled by ResolveAndBindSource below.
+            if (source.bindings.size() != sourceRecordCount) {
+                source.bindings.resize(sourceRecordCount);
+            }
+            if (source.slotTable.size() != sourceRecordCount) {
+                source.slotTable.resize(
                     sourceRecordCount,
                     kInvalidGpuMaterialIndex);
+            }
+            if (bindingStorageChanged || layoutChanged) {
                 source.bindingVersion = ++bindingVersionCounter_;
             }
             for (SourceBinding& binding : source.bindings) {

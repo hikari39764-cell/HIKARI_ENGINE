@@ -185,8 +185,13 @@ namespace HIKARI::RUNTIME {
         }
 #endif
 
+        const char* resolvedWindowTitle = options.windowTitle;
+        if (runtimeConfig.windowTitle &&
+            !runtimeConfig.windowTitle->empty()) {
+            resolvedWindowTitle = runtimeConfig.windowTitle->c_str();
+        }
         if (!SERVICES::Initialize(
-                options.windowTitle,
+                resolvedWindowTitle,
                 servicesConfig)) {
             GetProjectContext().Close();
             CONTENT::GetEngineContentContext().Close();

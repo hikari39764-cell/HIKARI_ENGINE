@@ -31,6 +31,7 @@
 #include "Render3D/Temporal/HIKARI_TemporalResourceSystem.h"
 #include "Render3D/Upscaling/HIKARI_StreamlineRuntime.h"
 #include "Render3D/Vfx/HIKARI_CombatAfterimageRenderer.h"
+#include "Render3D/Vfx/HIKARI_GroundTelegraphRenderer.h"
 #include "Render3D/Vfx/HIKARI_WeaponTrailRenderer.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
 
@@ -40,6 +41,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
         REFLECTION::ScreenSpaceReflectionRenderer gSsrRenderer{};
         FEATURES::StylizedScreenFeatureRenderer gStylizedScreenFeatures{};
         COMBAT_VFX::CombatAfterimageRenderer gCombatAfterimageRenderer{};
+        COMBAT_VFX::GroundTelegraphRenderer gGroundTelegraphRenderer{};
         COMBAT_VFX::WeaponTrailRenderer gWeaponTrailRenderer{};
         FEATURES::RenderFeaturePlan gLastRenderFeaturePlan{};
 
@@ -595,8 +597,21 @@ namespace HIKARI::RENDER3D::PIPELINE {
             }
         }
 
+        if (opaqueOk && depthAwareOk && cameraCb != nullptr &&
+            view.combatPresentationFrameSource != nullptr &&
+            view.combatPresentationFrameSource->frameIndex ==
+                frame.frameIndex &&
+            view.combatPresentationFrameSource->HasGroundTelegraphs()) {
+            (void)gGroundTelegraphRenderer.Render(
+                frame.graphics,
+                frame.targetAccess,
+                *view.combatPresentationFrameSource,
+                *cameraCb);
+        }
+
         bool transparentOk = true;
-        if (opaqueOk && depthAwareOk && hasTransparentWork) {
+        if (opaqueOk && depthAwareOk &&
+            hasTransparentWork) {
             GFX::PIX::ScopedGpuEvent pixTransparent(
                 frame.graphics.cmdList,
                 GFX::PIX::kColorRender,
@@ -735,7 +750,8 @@ namespace HIKARI::RENDER3D::PIPELINE {
                     frame.graphics,
                     postOpaqueResources);
         }
-        if (opaqueOk && depthAwareOk && combatAfterimageOk && weaponTrailOk &&
+        if (opaqueOk && depthAwareOk &&
+            combatAfterimageOk && weaponTrailOk &&
             featurePassesOk &&
             gLastRenderFeaturePlan.screenCompositePassRequired) {
             const RenderTextureView finalSceneColor =
@@ -830,8 +846,15 @@ namespace HIKARI::RENDER3D::PIPELINE {
         return gLastRenderFeaturePlan;
     }
 
+    bool InitializeCombatPresentationRenderers(
+        const GFX::Context& graphics) {
+        return graphics.device != nullptr &&
+            gGroundTelegraphRenderer.Initialize(graphics.device);
+    }
+
     void ShutdownCombatPresentationRenderers() {
         gCombatAfterimageRenderer.Release();
+        gGroundTelegraphRenderer.Release();
         gWeaponTrailRenderer.Release();
     }
 

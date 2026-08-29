@@ -52,6 +52,14 @@ namespace HIKARI {
         void SetEnabled(bool enabled) noexcept;
         void SetFitMode(ColliderFitMode mode) noexcept;
         void SetShapeType(PHYSICS::PhysicsShapeType type) noexcept;
+        bool ConfigureIfPristineManualShape(
+            PHYSICS::PhysicsShapeType type,
+            const MATH::Vec3& center,
+            const MATH::Vec3& rotationEulerDegrees,
+            const MATH::Vec3& size,
+            float radius,
+            float height,
+            bool trigger) noexcept;
 
     private:
         void ClampSettings() noexcept;

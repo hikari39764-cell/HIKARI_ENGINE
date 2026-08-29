@@ -61,6 +61,9 @@ namespace HIKARI::RENDER3D::UPSCALING {
         }
 
         for (const RuntimeDependency& dependency : kRuntimeDependencies) {
+            if (!IsRequired(dependency.group, options)) {
+                continue;
+            }
             const std::filesystem::path source =
                 sourceDirectory / dependency.fileName;
             const bool present =

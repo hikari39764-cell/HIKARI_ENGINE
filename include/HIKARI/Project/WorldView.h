@@ -11,6 +11,8 @@
 #include "HIKARI/Project/GameFlowViews.h"
 #include "HIKARI/Project/NavigationView.h"
 #include "HIKARI/Project/PresentationViews.h"
+#include "HIKARI/Project/RuntimeActivityTypes.h"
+#include "HIKARI/Project/TerrainView.h"
 #include "HIKARI/Project/UiView.h"
 #include "HIKARI/Project/ValueTypes.h"
 #include "HIKARI/Project/VfxView.h"
@@ -37,6 +39,30 @@ namespace HIKARI {
             GameProjectTransform& outTransform) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool SetLocalPosition(
             GameProjectFloat3 position) const noexcept;
+        // Changes only runtime scheduling. Authored enable/visibility values
+        // are preserved and become effective again when activity is Active.
+        HIKARI_GAME_PROJECT_SDK_API bool SetRuntimeActivity(
+            GameProjectRuntimeActivity activity) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API GameProjectRuntimeActivity
+            GetRuntimeActivity() const noexcept;
+        // Authoring composition hook for project-owned preset components.
+        // Values are persisted by the built-in ModelComponent; the project
+        // never owns renderer resources or material instances directly.
+        HIKARI_GAME_PROJECT_SDK_API bool SetModelAssetGuid(
+            std::string_view assetGuid) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool SetModelMaterialSetAssetGuid(
+            std::string_view materialSetAssetGuid) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool UseImportedModelMaterials()
+            const noexcept;
+        // Reads the first built-in ColliderComponent as one local-space shape.
+        // The caller owns the output value; the view exposes no Physics state.
+        HIKARI_GAME_PROJECT_SDK_API bool GetPrimaryColliderShape(
+            GameProjectPhysicsShape& outShape) const noexcept;
+        // Applies a project composition preset only while the first Collider
+        // is still the untouched engine Box default. Authored collider edits
+        // are never overwritten by later runtime attachment.
+        HIKARI_GAME_PROJECT_SDK_API bool ConfigureDefaultCollider(
+            const GameProjectPhysicsShape& shape) const noexcept;
 
     private:
         friend struct GameProjectSdkAccess;
@@ -92,6 +118,8 @@ namespace HIKARI {
             GetPhysicsQueries() const noexcept;
         HIKARI_GAME_PROJECT_SDK_API NavigationView
             GetNavigation() const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API TerrainView
+            GetTerrain() const noexcept;
         HIKARI_GAME_PROJECT_SDK_API CameraView
             GetCamera() const noexcept;
         HIKARI_GAME_PROJECT_SDK_API TimeDilationView

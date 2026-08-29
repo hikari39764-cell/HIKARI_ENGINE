@@ -391,6 +391,8 @@ namespace HIKARI {
             SetReliableRenderDeliveryEnabled(true);
         state_->runtime.gameUiPresentationService.SetProjectRoot(
             state_->assets.Database().GetProjectRoot());
+        state_->runtime.gameUiPresentationService.SetAssetDatabase(
+            &state_->assets.Database());
         if (!state_->runtime.combatPresentationService.Prewarm()) {
             HIKARI_LOG_WARN(
                 "[Vfx] combat presentation prewarm failed; "
@@ -411,6 +413,10 @@ namespace HIKARI {
         state_->runtime.gameplayCameraService.camera = &state_->camera.gameplayCamera;
         state_->runtime.gameplayCameraService.runtimeSceneCameraActive =
             &state_->camera.runtimeSceneCameraActive;
+        state_->runtime.runtimeAssetContextService.assetRegistry =
+            &state_->assets.Registry();
+        state_->runtime.runtimeAssetContextService.modelManager =
+            &state_->assets.Models();
         state_->runtime.collisionGeometryStore.SetAssetDatabase(&state_->assets.Database());
         if (!state_->runtime.physicsWorldService.HasBackend() &&
             !state_->runtime.physicsWorldService.InstallBackend(
@@ -430,6 +436,7 @@ namespace HIKARI {
 
         WorldServiceRegistry& services = state_->runtime.world.Services();
         state_->runtime.presentationModelService.Clear();
+        state_->runtime.runtimeObjectActivityService.Clear();
         services.Clear();
         bool success = services.Register(SERVICES::GetInputService());
         success = services.Register(state_->runtime.bindingStore) && success;
@@ -452,9 +459,13 @@ namespace HIKARI {
         success = services.Register(state_->camera.sequencePlayback) && success;
         success = services.Register(state_->runtime.playStateService) && success;
         success = services.Register(state_->runtime.gameplayCameraService) && success;
+        success = services.Register(
+            state_->runtime.runtimeAssetContextService) && success;
         success = services.Register(state_->camera.director) && success;
         success = services.Register(state_->camera.rigService) && success;
         success = services.Register(state_->runtime.animationPoseService) && success;
+        success = services.Register(
+            state_->runtime.animationNodeOverrideService) && success;
         success = services.Register(state_->runtime.animationSocketService) &&
             success;
         success = services.Register(state_->runtime.animationRootMotionService) &&
@@ -473,6 +484,8 @@ namespace HIKARI {
             state_->runtime.presentationModelService) && success;
         success = services.Register(state_->runtime.presentationTransformService) &&
             success;
+        success = services.Register(
+            state_->runtime.runtimeObjectActivityService) && success;
         success = services.Register(state_->runtime.collisionGeometryStore) &&
             success;
         success = services.Register(state_->runtime.physicsStatusService) &&

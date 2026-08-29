@@ -16,6 +16,7 @@
 #include "Assets/Semantics/HIKARI_AssetSourceSemantics.h"
 #include "Core/HIKARI_Logger.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
+#include "Gameplay/Dialogue/HIKARI_DialogueProjectStyle.h"
 #include "Project/HIKARI_ProjectDescriptor.h"
 #include "Render3D/Procedural/HIKARI_ProceduralModelFactory.h"
 #include "Scene/Components/HIKARI_ProceduralMeshComponent.h"
@@ -36,6 +37,30 @@ namespace HIKARI::ASSETS::COOKING {
 
             return TEXT::ToLowerAsciiCopy(
                 path.lexically_normal().generic_string());
+        }
+
+        bool IsPathWithinRoot(
+            const std::filesystem::path& path,
+            const std::filesystem::path& root) {
+            const std::string pathKey = MakePathKey(path);
+            std::string rootKey = MakePathKey(root);
+            while (!rootKey.empty() && rootKey.back() == '/') {
+                rootKey.pop_back();
+            }
+            return !rootKey.empty() &&
+                (pathKey == rootKey ||
+                 (pathKey.size() > rootKey.size() &&
+                  pathKey.compare(0u, rootKey.size(), rootKey) == 0 &&
+                  pathKey[rootKey.size()] == '/'));
+        }
+
+        bool IsDeclaredProjectAssetRoot(
+            const std::filesystem::path& root) {
+            if (!IsSafeCookedRelativePath(root)) {
+                return false;
+            }
+            const std::string key = MakePathKey(root);
+            return key == "assets" || key.rfind("assets/", 0u) == 0u;
         }
 
         bool CopyFile(
@@ -360,6 +385,77 @@ namespace HIKARI::ASSETS::COOKING {
                     usage.missingReferences.size();
             }
 
+            const std::vector<const AssetRecord*> allRecords =
+                assetDatabase.CollectAll();
+            for (const std::filesystem::path& root :
+                 options.assetRoots) {
+                if (!IsDeclaredProjectAssetRoot(root)) {
+                    outMessage =
+                        "Cook asset root must be a safe path below Assets: " +
+                        root.generic_string();
+                    return false;
+                }
+                size_t matched = 0u;
+                for (const AssetRecord* record : allRecords) {
+                    if (record != nullptr &&
+                        IsPathWithinRoot(record->sourcePath, root)) {
+                        queueRecord(record);
+                        ++matched;
+                    }
+                }
+                if (matched == 0u) {
+                    outMessage =
+                        "Cook asset root did not resolve any registered assets: " +
+                        root.generic_string();
+                    return false;
+                }
+            }
+
+            const std::filesystem::path dialogueStylePath =
+                options.projectRoot /
+                std::string(DIALOGUE::kDialogueProjectStylePath);
+            std::error_code dialogueStyleError{};
+            if (std::filesystem::is_regular_file(
+                    dialogueStylePath,
+                    dialogueStyleError) &&
+                !dialogueStyleError) {
+                DIALOGUE::DialogueProjectStyle dialogueStyle{};
+                std::string dialogueStyleMessage{};
+                if (!DIALOGUE::LoadDialogueProjectStyle(
+                        options.projectRoot,
+                        dialogueStyle,
+                        &dialogueStyleMessage)) {
+                    outMessage =
+                        "Could not read dialogue UI style while building "
+                        "the cook plan: " + dialogueStyleMessage;
+                    return false;
+                }
+                for (const DIALOGUE::DialogueSpeakerProfile& speaker :
+                     dialogueStyle.speakers) {
+                    if (speaker.portraitAssetGuid.empty()) {
+                        continue;
+                    }
+                    const AssetRecord* portraitRecord =
+                        assetDatabase.FindByGuid(
+                            AssetGuid{ speaker.portraitAssetGuid });
+                    if (portraitRecord == nullptr ||
+                        portraitRecord->type != AssetType::Texture) {
+                        outMessage =
+                            "Dialogue speaker '" + speaker.id +
+                            "' references a missing or non-texture portrait "
+                            "asset: " + speaker.portraitAssetGuid;
+                        return false;
+                    }
+                    queueRecord(portraitRecord);
+                }
+            }
+            else if (dialogueStyleError) {
+                outMessage =
+                    "Could not inspect dialogue UI style while building "
+                    "the cook plan: " + dialogueStyleError.message();
+                return false;
+            }
+
             while (!pendingGuids.empty()) {
                 const std::string guid =
                     std::move(pendingGuids.front());
@@ -505,9 +601,13 @@ namespace HIKARI::ASSETS::COOKING {
                  {
                      std::filesystem::path(
                          "project_settings.json"),
-                     std::filesystem::path(
-                         "render_quality.json"),
-                 }) {
+                      std::filesystem::path(
+                          "render_quality.json"),
+                      std::filesystem::path(
+                          "runtime_bindings.json"),
+                      std::filesystem::path(
+                          "DialogueUiStyle.json"),
+                  }) {
                 std::error_code ec{};
                 const std::filesystem::path source =
                     settingsSource / filename;
@@ -539,6 +639,42 @@ namespace HIKARI::ASSETS::COOKING {
                     fileCount,
                     outMessage)) {
                 return false;
+            }
+            return true;
+        }
+
+        bool CopyDeclaredRuntimePayloads(
+            const AssetCookOptions& options,
+            size_t& fileCount,
+            std::string& outMessage) {
+            std::unordered_set<std::string> copiedRoots{};
+            for (const std::filesystem::path& root :
+                 options.runtimePayloadRoots) {
+                if (!IsDeclaredProjectAssetRoot(root)) {
+                    outMessage =
+                        "Runtime payload root must be a safe path below Assets: " +
+                        root.generic_string();
+                    return false;
+                }
+                if (!copiedRoots.insert(MakePathKey(root)).second) {
+                    continue;
+                }
+                const std::filesystem::path source =
+                    options.projectRoot / root;
+                std::error_code ec{};
+                if (!std::filesystem::is_directory(source, ec) || ec) {
+                    outMessage =
+                        "Declared runtime payload root is missing: " +
+                        source.generic_string();
+                    return false;
+                }
+                if (!CopyDirectory(
+                        source,
+                        options.contentRoot / "RuntimePayload" / root,
+                        fileCount,
+                        outMessage)) {
+                    return false;
+                }
             }
             return true;
         }
@@ -957,6 +1093,10 @@ namespace HIKARI::ASSETS::COOKING {
                 result.fileCount,
                 result.message) ||
             !CopyRuntimeSettingsAndData(
+                options,
+                result.fileCount,
+                result.message) ||
+            !CopyDeclaredRuntimePayloads(
                 options,
                 result.fileCount,
                 result.message) ||

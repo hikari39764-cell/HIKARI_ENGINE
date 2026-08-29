@@ -76,6 +76,12 @@ namespace HIKARI {
         HIKARI_GAME_PROJECT_SDK_API bool SetSpeed(
             uint64_t objectHandle,
             float speed) const noexcept;
+        // Runtime animation-LOD gate. Disabling retains the last evaluated
+        // pose and skips later clip sampling until re-enabled. The target
+        // must own an AnimatorComponent in the current World.
+        HIKARI_GAME_PROJECT_SDK_API bool SetEvaluationEnabled(
+            uint64_t objectHandle,
+            uint8_t enabled) const noexcept;
         // Applies one animation pose to a model-node subtree while the base
         // Animator keeps advancing. Names are consumed synchronously and the
         // layer remains owned by the target Animator until cleared.
@@ -112,6 +118,24 @@ namespace HIKARI {
             std::string_view socketName,
             GameProjectAnimationSocketSpace space,
             GameProjectTransform& outTransform) const noexcept;
+        // Applies an additive node-local offset after animation evaluation.
+        // The engine owns storage and applies the same offset to rendered poses
+        // and explicit gameplay socket samples until cleared or the object dies.
+        HIKARI_GAME_PROJECT_SDK_API bool SetNodeLocalTransformOffset(
+            uint64_t objectHandle,
+            std::string_view nodeName,
+            const GameProjectTransform& offset) const noexcept;
+        // Applies an additive transform in the node parent's local space.
+        // Unlike a node-local offset, its translation is not multiplied by
+        // the node's animated scale. This is the canonical correction path
+        // for hand-held nodes that animate scale for visibility.
+        HIKARI_GAME_PROJECT_SDK_API bool SetNodeParentLocalTransformOffset(
+            uint64_t objectHandle,
+            std::string_view nodeName,
+            const GameProjectTransform& offset) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool ClearNodeLocalTransformOffset(
+            uint64_t objectHandle,
+            std::string_view nodeName) const noexcept;
         // Samples one non-looping clip at an explicit gameplay time and
         // resolves all requested sockets from that same pose. This is the
         // fixed-step combat path; it does not mutate Animator playback.
@@ -256,6 +280,15 @@ namespace HIKARI {
 
         HIKARI_GAME_PROJECT_SDK_API bool PlayWorldEffect(
             const GameProjectCombatWorldEffectRequest& request)
+            const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool SubmitGroundTelegraph(
+            const GameProjectGroundTelegraphRequest& request)
+            const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool SubmitOcclusionReveal(
+            const GameProjectOcclusionRevealRequest& request)
+            const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool SubmitWorldBarrier(
+            const GameProjectWorldBarrierRequest& request)
             const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool SubmitWeaponTrail(
             const GameProjectWeaponTrailSample& sample) const noexcept;

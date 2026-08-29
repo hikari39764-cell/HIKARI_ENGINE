@@ -25,6 +25,7 @@ namespace HIKARI {
         transitionOutDuration_ = 0.2f;
         transitionInDuration_ = 0.2f;
         waitForCameraReady_ = false;
+        transitionInReleased_ = !request.holdTransitionIn;
         cameraReadyTimeout_ = 1.25f;
         cameraReadyWaitSeconds_ = 0.0f;
         TransitionProfile profile{};
@@ -95,6 +96,9 @@ namespace HIKARI {
         }
 
         case TransitionState::TransitionIn:
+            if (!transitionInReleased_) {
+                break;
+            }
             if (waitForCameraReady_ &&
                 !RuntimeSceneContext::IsCameraReady() &&
                 cameraReadyWaitSeconds_ < cameraReadyTimeout_) {
@@ -109,6 +113,24 @@ namespace HIKARI {
             }
             break;
         }
+    }
+
+    bool SceneTransitionBus::ReleaseTransitionIn() {
+        if (!pendingRequest_.has_value() ||
+            !pendingRequest_->holdTransitionIn ||
+            transitionInReleased_) {
+            return false;
+        }
+        if (state_ != TransitionState::SwitchingScene &&
+            state_ != TransitionState::TransitionIn) {
+            return false;
+        }
+        // Destination systems may release during the synchronous scene switch
+        // before the bus assigns TransitionIn. Latch it across that boundary.
+        transitionInReleased_ = true;
+        timer_ = 0.0f;
+        cameraReadyWaitSeconds_ = 0.0f;
+        return true;
     }
 
     bool SceneTransitionBus::IsTransitioning() const {

@@ -17,6 +17,7 @@
 #include "Scene/Components/HIKARI_ColliderComponent.h"
 #include "Scene/Components/HIKARI_PhysicsBodyComponent.h"
 #include "Scene/HIKARI_GameObject.h"
+#include "Scene/HIKARI_RuntimeObjectActivityService.h"
 #include "Scene/HIKARI_RuntimeWorldServices.h"
 #include "Scene/HIKARI_World.h"
 #include "Scene/Sand/HIKARI_SandSurfaceFollowerComponent.h"
@@ -30,6 +31,7 @@ namespace HIKARI {
         constexpr float kDegreesToRadians =
             3.14159265358979323846f / 180.0f;
         constexpr float kMotionEpsilon = 1.0e-5f;
+        constexpr float kStationaryPublishIntervalSeconds = 0.125f;
 
         struct ResolvedInteractionSource {
             TERRAIN::TerrainInteractionSourceKey source{};
@@ -508,6 +510,8 @@ namespace HIKARI {
             world.Services().Find<PHYSICS::PhysicsWorldService>();
         runtimePlayState_ =
             world.Services().Find<RuntimePlayStateService>();
+        runtimeActivityService_ =
+            world.Services().Find<RuntimeObjectActivityService>();
         activeRigidContacts_.clear();
         previousCenters_.clear();
         preFixedPhysicsSources_.clear();
@@ -521,6 +525,7 @@ namespace HIKARI {
         runtimeStatus_ = nullptr;
         physicsWorld_ = nullptr;
         runtimePlayState_ = nullptr;
+        runtimeActivityService_ = nullptr;
         activeRigidContacts_.clear();
         previousCenters_.clear();
         preFixedPhysicsSources_.clear();
@@ -565,6 +570,11 @@ namespace HIKARI {
         preFixedPhysicsSources_.clear();
         world.ForEachObjectWith<PhysicsBodyComponent>(
             [&](GameObject& object, PhysicsBodyComponent&) {
+                if (runtimeActivityService_ != nullptr &&
+                    !runtimeActivityService_->IsActive(
+                        object.GetRuntimeHandle())) {
+                    return;
+                }
                 if (ResolveMotionType(object, runtimeStatus_) ==
                     PHYSICS::PhysicsMotionType::Static) {
                     return;
@@ -685,6 +695,10 @@ namespace HIKARI {
                 terrain->GetComponent<TerrainSurfaceComponent>() == nullptr) {
                 continue;
             }
+            if (runtimeActivityService_ != nullptr &&
+                !runtimeActivityService_->IsActive(sourceObject)) {
+                continue;
+            }
             ResolvedInteractionSource source{};
             if (!ResolveColliderSource(
                     runtimeStatus_,
@@ -747,6 +761,9 @@ namespace HIKARI {
                     ? static_cast<uint32_t>(ordinal64)
                     : 0u };
             const bool sourceValid = sourceObject != nullptr &&
+                (runtimeActivityService_ == nullptr ||
+                    runtimeActivityService_->IsActive(
+                        key.source.object)) &&
                 ordinal64 > 0u &&
                 ordinal64 <=
                     (std::numeric_limits<uint32_t>::max)() &&
@@ -790,7 +807,17 @@ namespace HIKARI {
             const bool canBegin = sourceGenerationValid && targetValid &&
                 !active.submitted &&
                 (!active.kinematic || movedThisStep);
-            if (canMaintain || canBegin) {
+            const float fixedStepSeconds =
+                (std::max)(frame.fixedDt, 0.0f);
+            active.stationaryPublishRemainingSeconds = (std::max)(
+                0.0f,
+                active.stationaryPublishRemainingSeconds -
+                    fixedStepSeconds);
+            const bool shouldPublish = canBegin ||
+                (canMaintain &&
+                    (movedThisStep ||
+                        active.stationaryPublishRemainingSeconds <= 0.0f));
+            if (shouldPublish) {
                 const TERRAIN::TerrainInteractionPhase phase =
                     active.submitted
                     ? TERRAIN::TerrainInteractionPhase::Persist
@@ -829,12 +856,15 @@ namespace HIKARI {
                     active.sourceShapeId,
                     active.definitionSignature);
                 active.submitted = true;
-                active.contactAgeSeconds +=
-                    (std::max)(frame.fixedDt, 0.0f);
+                active.stationaryPublishRemainingSeconds =
+                    kStationaryPublishIntervalSeconds;
                 // 静止中も strength=0 の Persist で recovery hold だけを
                 // 維持する。移動を再開した tick だけ strength=1 に戻す。
-                active.normalImpulseNs = 0.0f;
             }
+            if (canMaintain || canBegin) {
+                active.contactAgeSeconds += fixedStepSeconds;
+            }
+            active.normalImpulseNs = 0.0f;
 
             if (active.endedThisTick || !sourceGenerationValid ||
                 !targetValid) {
@@ -881,6 +911,10 @@ namespace HIKARI {
                     }
                     const RuntimeObjectHandle objectHandle =
                         object.GetRuntimeHandle();
+                    if (runtimeActivityService_ != nullptr &&
+                        !runtimeActivityService_->IsActive(objectHandle)) {
+                        return;
+                    }
                     const PHYSICS::KinematicMotionState* motion =
                         kinematicMotionService_->FindState(objectHandle);
                     if (motion == nullptr ||
@@ -951,6 +985,7 @@ namespace HIKARI {
                                 motion->groundNormal,
                                 footprint,
                                 normalLoadN,
+                                0.0f,
                                 0.0f });
                     ActiveCharacterContact& active = insertedIt->second;
                     const float tangentAlignment = std::fabs(MATH::Dot(
@@ -966,25 +1001,36 @@ namespace HIKARI {
                     active.normalWS = motion->groundNormal;
                     active.footprint = footprint;
                     active.normalLoadN = normalLoadN;
-                    PublishSweptInteraction(
-                        world,
-                        frame,
-                        source,
-                        active.target,
-                        inserted
-                            ? TERRAIN::TerrainInteractionPhase::Begin
-                            : TERRAIN::TerrainInteractionPhase::Persist,
-                        TERRAIN::TerrainInteractionSourceKind::CharacterFoot,
-                        active.positionWS,
-                        active.footprint,
-                        active.normalLoadN,
-                        active.normalWS,
-                        0.0f,
-                        0.0f,
-                        inserted || movingThisStep ? 1.0f : 0.0f,
-                        active.contactAgeSeconds);
-                    active.contactAgeSeconds +=
+                    const float fixedStepSeconds =
                         (std::max)(frame.fixedDt, 0.0f);
+                    active.stationaryPublishRemainingSeconds = (std::max)(
+                        0.0f,
+                        active.stationaryPublishRemainingSeconds -
+                            fixedStepSeconds);
+                    if (inserted || movingThisStep ||
+                        active.stationaryPublishRemainingSeconds <= 0.0f) {
+                        PublishSweptInteraction(
+                            world,
+                            frame,
+                            source,
+                            active.target,
+                            inserted
+                                ? TERRAIN::TerrainInteractionPhase::Begin
+                                : TERRAIN::TerrainInteractionPhase::Persist,
+                            TERRAIN::TerrainInteractionSourceKind::
+                                CharacterFoot,
+                            active.positionWS,
+                            active.footprint,
+                            active.normalLoadN,
+                            active.normalWS,
+                            0.0f,
+                            0.0f,
+                            inserted || movingThisStep ? 1.0f : 0.0f,
+                            active.contactAgeSeconds);
+                        active.stationaryPublishRemainingSeconds =
+                            kStationaryPublishIntervalSeconds;
+                    }
+                    active.contactAgeSeconds += fixedStepSeconds;
                 });
         }
 
@@ -1220,6 +1266,11 @@ namespace HIKARI {
             SourceKeyHash> seen{};
         world.ForEachObjectWith<SandSurfaceFollowerComponent>(
             [&](GameObject& object, SandSurfaceFollowerComponent& follower) {
+                if (runtimeActivityService_ != nullptr &&
+                    !runtimeActivityService_->IsActive(
+                        object.GetRuntimeHandle())) {
+                    return;
+                }
                 // Physics-driven Dynamic/Kinematic collider は contact adapter が
                 // 唯一の producer。Follower compatibility と二重発行しない。
                 if (SuppressFollowerCompatibility(runtimeStatus_, object)) {
@@ -1317,6 +1368,7 @@ namespace HIKARI {
                             center,
                             footprint,
                             0.0f,
+                            0.0f,
                             false });
                 ActiveFollowerContact& active = activeIt->second;
                 const MATH::Vec3 previousPosition = active.positionWS;
@@ -1338,27 +1390,37 @@ namespace HIKARI {
                         ContactKey{ source, bestTarget },
                         previousPosition);
                 }
-                PublishSweptInteraction(
-                    world,
-                    frame,
-                    source,
-                    bestTarget,
-                    active.submitted
-                        ? TERRAIN::TerrainInteractionPhase::Persist
-                        : TERRAIN::TerrainInteractionPhase::Begin,
-                    TERRAIN::TerrainInteractionSourceKind::
-                        FollowerCompatibility,
-                    center,
-                    footprint,
-                    0.0f,
-                    bestNormal,
-                    bestPenetration,
-                    0.0f,
-                    movedThisStep ? 1.0f : 0.0f,
-                    active.contactAgeSeconds);
-                active.submitted = true;
-                active.contactAgeSeconds +=
+                const float fixedStepSeconds =
                     (std::max)(frame.fixedDt, 0.0f);
+                active.stationaryPublishRemainingSeconds = (std::max)(
+                    0.0f,
+                    active.stationaryPublishRemainingSeconds -
+                        fixedStepSeconds);
+                if (!active.submitted || movedThisStep ||
+                    active.stationaryPublishRemainingSeconds <= 0.0f) {
+                    PublishSweptInteraction(
+                        world,
+                        frame,
+                        source,
+                        bestTarget,
+                        active.submitted
+                            ? TERRAIN::TerrainInteractionPhase::Persist
+                            : TERRAIN::TerrainInteractionPhase::Begin,
+                        TERRAIN::TerrainInteractionSourceKind::
+                            FollowerCompatibility,
+                        center,
+                        footprint,
+                        0.0f,
+                        bestNormal,
+                        bestPenetration,
+                        0.0f,
+                        movedThisStep ? 1.0f : 0.0f,
+                        active.contactAgeSeconds);
+                    active.submitted = true;
+                    active.stationaryPublishRemainingSeconds =
+                        kStationaryPublishIntervalSeconds;
+                }
+                active.contactAgeSeconds += fixedStepSeconds;
             });
 
         for (auto it = activeFollowerTargets_.begin();

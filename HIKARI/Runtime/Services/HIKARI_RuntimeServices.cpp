@@ -4,6 +4,7 @@
 #include "Runtime/Services/Internal/HIKARI_RuntimeServiceState.h"
 
 #include <algorithm>
+#include <filesystem>
 #include <iomanip>
 #include <objbase.h>
 #include <sstream>
@@ -11,9 +12,12 @@
 
 #include "Audio/HIKARI_Audio.h"
 #include "Core/HIKARI_Logger.h"
+#include "Core/Text/HIKARI_UtfPath.h"
+#include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Project/HIKARI_ProjectContext.h"
+#include "Platform/Paths/HIKARI_UserDataPath.h"
 #include "Render2D/HIKARI_Camera.h"
 #include "Render2D/HIKARI_DxRenderer.h"
 #include "Render2D/HIKARI_GameUiEffectRenderer.h"
@@ -156,14 +160,32 @@ namespace HIKARI {
             const RUNTIME::HostBootstrapConfig& cfg) {
             gActionTimeDilationService.Reset();
             gRuntimeSessionEndRequested = false;
+            std::filesystem::path runtimeUserRoot{};
+            const ProjectContext& launchProject = GetProjectContext();
+            if (IsStandaloneGameHostMode(cfg.hostMode) &&
+                launchProject.IsOpen()) {
+                runtimeUserRoot = PLATFORM::GetHikariGameUserRoot(
+                    launchProject.GetDescriptor().name);
+            }
+            PLATFORM::SetHikariRuntimeUserRoot(runtimeUserRoot);
+            const std::filesystem::path logRoot = runtimeUserRoot.empty()
+                ? std::filesystem::path{}
+                : runtimeUserRoot / "Logs";
+            DEBUGLOG::SetRenderLogDirectory(
+                logRoot.empty()
+                    ? std::filesystem::path{}
+                    : logRoot / "Renderer");
+            CORE::InitializeLogger(logRoot);
             const bool enableFrameGenerationPlugins =
                 IsEditorHostMode(cfg.hostMode) ||
                 (IsStandaloneGameHostMode(cfg.hostMode) &&
                     RENDER3D::GetRenderQualitySettings().frameGenerationMode ==
                         RENDER3D::RenderFrameGenerationMode::Dlss);
             (void)RENDER3D::UPSCALING::InitializeStreamlineEarly(
-                enableFrameGenerationPlugins);
-            CORE::InitializeLogger();
+                enableFrameGenerationPlugins,
+                logRoot.empty()
+                    ? std::filesystem::path{}
+                    : logRoot / "Streamline");
             HIKARI_LOG_INFO("HIKARI boot started.");
             {
                 const RENDER3D::RenderQualitySettings& quality =
@@ -206,15 +228,15 @@ namespace HIKARI {
                 HIKARI_LOG_ERROR(oss.str());
             }
 
-            wchar_t wTitle[256]{};
-            mbstowcs_s(nullptr, wTitle, title, _TRUNCATE);
+            const std::wstring wTitle = TEXT::PathFromUtf8(
+                title != nullptr ? title : "").wstring();
             gRuntimeWindowBaseTitle = wTitle;
             gPreviewTelemetrySeconds = 0.0;
             gPreviewTelemetryRenderFrames = 0;
             gPreviewTelemetryPresentedFrames = 0;
 
             HIKARI_LOG_INFO("Window initialization started.");
-            if (!gWindow.Initialize(wTitle, cfg.windowWidth, cfg.windowHeight, cfg.resizableWindow)) {
+            if (!gWindow.Initialize(wTitle.c_str(), cfg.windowWidth, cfg.windowHeight, cfg.resizableWindow)) {
                 HIKARI_LOG_ERROR("Window initialization failed.");
                 RENDER3D::UPSCALING::ShutdownStreamline();
                 return false;
@@ -292,6 +314,13 @@ namespace HIKARI {
             HIKARI_LOG_INFO("DxRenderer initialized.");
             POST::PostSystem::Initialize(graphicsContext);
             HIKARI_LOG_INFO("PostSystem initialized.");
+            if (!RENDER3D::PIPELINE::
+                    InitializeCombatPresentationRenderers(
+                        graphicsContext)) {
+                HIKARI_LOG_WARN(
+                    "Combat ground-telegraph renderer unavailable; "
+                    "main scene rendering remains active.");
+            }
             if (AUDIO::Initialize(AUDIO::BackendType::XAudio2)) {
                 HIKARI_LOG_INFO("Audio initialized.");
             }

@@ -14,6 +14,7 @@
 
 #include "Core/HIKARI_FrameContext.h"
 #include "Core/Math/HIKARI_NormalMatrix.h"
+#include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_RuntimeWorldServices.h"
 #include "Scene/HIKARI_World.h"
@@ -29,8 +30,45 @@ namespace HIKARI {
 
     namespace {
         constexpr float kFootprintBasisEpsilon = 1.0e-5f;
-        constexpr float kRecoverySnapEpsilon = 1.0e-4f;
+        constexpr float kRecoverySnapEpsilon = 1.5e-3f;
         constexpr float kDeformableMaskClearThreshold = 1.0e-3f;
+        constexpr float kRelaxationIntervalSeconds = 0.125f;
+
+        CPU_PROFILE::DynamicPassHandle SandRefreshTiming() {
+            static const CPU_PROFILE::DynamicPassHandle handle =
+                CPU_PROFILE::RegisterDynamicPass("Sand/Refresh");
+            return handle;
+        }
+
+        CPU_PROFILE::DynamicPassHandle SandInteractionTiming() {
+            static const CPU_PROFILE::DynamicPassHandle handle =
+                CPU_PROFILE::RegisterDynamicPass("Sand/Interactions");
+            return handle;
+        }
+
+        CPU_PROFILE::DynamicPassHandle SandRelaxTiming() {
+            static const CPU_PROFILE::DynamicPassHandle handle =
+                CPU_PROFILE::RegisterDynamicPass("Sand/RelaxChunk");
+            return handle;
+        }
+
+        CPU_PROFILE::DynamicPassHandle SandStitchTiming() {
+            static const CPU_PROFILE::DynamicPassHandle handle =
+                CPU_PROFILE::RegisterDynamicPass("Sand/StitchBorders");
+            return handle;
+        }
+
+        CPU_PROFILE::DynamicPassHandle SandSnapshotCloneTiming() {
+            static const CPU_PROFILE::DynamicPassHandle handle =
+                CPU_PROFILE::RegisterDynamicPass("Sand/SnapshotClone");
+            return handle;
+        }
+
+        CPU_PROFILE::DynamicPassHandle SandSnapshotPublishTiming() {
+            static const CPU_PROFILE::DynamicPassHandle handle =
+                CPU_PROFILE::RegisterDynamicPass("Sand/SnapshotPublish");
+            return handle;
+        }
 
         uint64_t HashAuthoredHeights(
             const TERRAIN::TerrainChunk& chunk) noexcept {
@@ -163,6 +201,7 @@ namespace HIKARI {
             queryService_->Clear();
             objects_.clear();
             hasPublishedSnapshot_ = false;
+            runtimeSnapshotDirty_ = false;
             Refresh(world);
         }
     }
@@ -179,6 +218,7 @@ namespace HIKARI {
         queryService_ = nullptr;
         objects_.clear();
         hasPublishedSnapshot_ = false;
+        runtimeSnapshotDirty_ = false;
     }
 
     bool SandSurfaceSystem::RaycastBathymetry(
@@ -239,22 +279,33 @@ namespace HIKARI {
 
     void SandSurfaceSystem::PreFixedUpdate(
         World& world,
-        const FrameContext&) {
-        Refresh(world);
+        const FrameContext& frame) {
+        // 同じ render frame の追加 fixed step は authored state を共有する。
+        // 前 step の dirty runtime state は最後の PostFixed でまとめて発行する。
+        if (frame.fixedStepIndex == 0u) {
+            Refresh(world);
+            runtimeSnapshotDirty_ = false;
+        }
     }
 
     void SandSurfaceSystem::PostFixedUpdate(
         World& world,
         const FrameContext& frame) {
-        if (ApplyInteractions(
+        runtimeSnapshotDirty_ = ApplyInteractions(
                 world.FixedEvents().Read<
                     TERRAIN::TerrainInteractionSample>(),
-                frame.fixedDt)) {
+                frame.fixedDt) || runtimeSnapshotDirty_;
+        const uint32_t fixedStepCount = (std::max)(
+            frame.fixedStepsThisFrame, 1u);
+        const bool finalFixedStep =
+            frame.fixedStepIndex + 1u >= fixedStepCount;
+        if (finalFixedStep && runtimeSnapshotDirty_) {
             // SandSurfaceSystem は physics/contact 後の order 140 で動く一方、
             // RenderSubmissionSystem は PreRender order 100 で snapshot を読む。
-            // ここで発行しないと renderer は PreFixed の古い高さを bake して
-            // dirty を消費し、その後の PreRender Refresh は 1 frame 遅すぎる。
+            // 同一 render frame の中間 fixed step は renderer から見えないため、
+            // 最終 step で一度だけ発行して深い snapshot copy を重複させない。
             Refresh(world);
+            runtimeSnapshotDirty_ = false;
         }
     }
 
@@ -266,11 +317,13 @@ namespace HIKARI {
             return;
         }
         Refresh(world);
+        runtimeSnapshotDirty_ = false;
         if (ApplyInteractions(
                 world.FrameEvents().Read<
                     TERRAIN::TerrainInteractionSample>(),
                 std::clamp(frame.unscaledDt, 0.0f, 0.1f))) {
             Refresh(world);
+            runtimeSnapshotDirty_ = false;
         }
     }
 
@@ -354,9 +407,7 @@ namespace HIKARI {
                     [](float value) {
                         return std::fabs(value) > kRecoverySnapEpsilon;
                     });
-            if (!chunk.hasDeformation) {
-                chunk.needsRelaxation = false;
-            }
+            chunk.needsRelaxation = chunk.hasDeformation;
         }
         RebuildCombinedHeights(chunk);
         ++chunk.stateRevision;
@@ -394,6 +445,12 @@ namespace HIKARI {
             chunk.settings.maxDepth, 0.0f) * (std::max)(
                 chunk.settings.rimStrength, 0.0f);
         bool hasDeformation = false;
+        bool activeBoundsValid = false;
+        uint32_t activeMinimumX = (std::max)(chunk.cells, 1u);
+        uint32_t activeMinimumZ = activeMinimumX;
+        uint32_t activeMaximumX = 0u;
+        uint32_t activeMaximumZ = 0u;
+        const uint32_t stride = (std::max)(chunk.cells, 1u) + 1u;
         for (std::size_t i = 0u; i < count; ++i) {
             const TERRAIN::TerrainSurfaceDisplacementChannels channels =
                 TERRAIN::ClampTerrainSurfaceDisplacementChannels(
@@ -408,6 +465,16 @@ namespace HIKARI {
             const float rawDeformation = channels.Combined();
             hasDeformation = hasDeformation ||
                 std::fabs(rawDeformation) > kRecoverySnapEpsilon;
+            if (std::fabs(rawDeformation) > kRecoverySnapEpsilon ||
+                chunk.recoveryHold[i] > 0.0f) {
+                const uint32_t x = static_cast<uint32_t>(i % stride);
+                const uint32_t z = static_cast<uint32_t>(i / stride);
+                activeBoundsValid = true;
+                activeMinimumX = (std::min)(activeMinimumX, x);
+                activeMinimumZ = (std::min)(activeMinimumZ, z);
+                activeMaximumX = (std::max)(activeMaximumX, x);
+                activeMaximumZ = (std::max)(activeMaximumZ, z);
+            }
             chunk.deformHeights[i] =
                 SAND::EvaluateSandChunkFinalHeight(
                     0.0f,
@@ -421,8 +488,79 @@ namespace HIKARI {
                 chunk.settings.deformationEnabled);
         }
         chunk.hasDeformation = hasDeformation;
-        if (!hasDeformation) {
-            chunk.needsRelaxation = false;
+        chunk.needsRelaxation = hasDeformation;
+        chunk.activeBoundsValid = activeBoundsValid;
+        if (activeBoundsValid) {
+            chunk.activeMinimumX = activeMinimumX;
+            chunk.activeMinimumZ = activeMinimumZ;
+            chunk.activeMaximumX = activeMaximumX;
+            chunk.activeMaximumZ = activeMaximumZ;
+        }
+        else {
+            chunk.relaxationAccumulatorSeconds = 0.0f;
+        }
+    }
+
+    void SandSurfaceSystem::RebuildCombinedHeightsInRegion(
+        SAND::SandChunkRuntimeState& chunk,
+        uint32_t minimumX,
+        uint32_t minimumZ,
+        uint32_t maximumX,
+        uint32_t maximumZ) {
+        const uint32_t cells = (std::max)(chunk.cells, 1u);
+        const uint32_t stride = cells + 1u;
+        const std::size_t count =
+            static_cast<std::size_t>(stride) * stride;
+        if (chunk.baseHeights.size() != count ||
+            chunk.elasticHeights.size() != count ||
+            chunk.plasticHeights.size() != count ||
+            chunk.deformHeights.size() != count ||
+            chunk.heights.size() != count ||
+            chunk.deformableMask.size() != count) {
+            RebuildCombinedHeights(chunk);
+            return;
+        }
+        minimumX = (std::min)(minimumX, cells);
+        minimumZ = (std::min)(minimumZ, cells);
+        maximumX = (std::min)(maximumX, cells);
+        maximumZ = (std::min)(maximumZ, cells);
+        if (minimumX > maximumX || minimumZ > maximumZ) {
+            return;
+        }
+
+        const float minimum = -(std::max)(
+            chunk.settings.maxDepth, 0.0f);
+        const float maximum = (std::max)(
+            chunk.settings.maxDepth, 0.0f) * (std::max)(
+                chunk.settings.rimStrength, 0.0f);
+        for (uint32_t z = minimumZ; z <= maximumZ; ++z) {
+            for (uint32_t x = minimumX; x <= maximumX; ++x) {
+                const std::size_t index =
+                    static_cast<std::size_t>(z) * stride + x;
+                const TERRAIN::TerrainSurfaceDisplacementChannels channels =
+                    TERRAIN::ClampTerrainSurfaceDisplacementChannels(
+                        {
+                            chunk.elasticHeights[index],
+                            chunk.plasticHeights[index],
+                        },
+                        minimum,
+                        maximum);
+                chunk.elasticHeights[index] = channels.elastic;
+                chunk.plasticHeights[index] = channels.plastic;
+                const float rawDeformation = channels.Combined();
+                chunk.deformHeights[index] =
+                    SAND::EvaluateSandChunkFinalHeight(
+                        0.0f,
+                        rawDeformation,
+                        chunk.deformableMask[index],
+                        chunk.settings.deformationEnabled);
+                chunk.heights[index] =
+                    SAND::EvaluateSandChunkFinalHeight(
+                        chunk.baseHeights[index],
+                        rawDeformation,
+                        chunk.deformableMask[index],
+                        chunk.settings.deformationEnabled);
+            }
         }
     }
 
@@ -430,6 +568,8 @@ namespace HIKARI {
         if (queryService_ == nullptr) {
             return;
         }
+        CPU_PROFILE::ScopedDynamicCpuTimer refreshTimer(
+            SandRefreshTiming());
 
         std::vector<SAND::SandSurfaceSnapshotEntry> entries{};
         std::unordered_set<uint64_t> activeTerrainObjects{};
@@ -523,9 +663,13 @@ namespace HIKARI {
                             state->second == nullptr) {
                             continue;
                         }
-                        SAND::SandChunkRuntimeSnapshotPtr immutable =
-                            SAND::MakeSandChunkRuntimeSnapshot(
+                        SAND::SandChunkRuntimeSnapshotPtr immutable{};
+                        {
+                            CPU_PROFILE::ScopedDynamicCpuTimer cloneTimer(
+                                SandSnapshotCloneTiming());
+                            immutable = SAND::MakeSandChunkRuntimeSnapshot(
                                 *state->second);
+                        }
                         bucket.snapshots.insert_or_assign(
                             stateKey, std::move(immutable));
                         bucket.snapshotRevisions.insert_or_assign(
@@ -764,8 +908,13 @@ namespace HIKARI {
                     if (snapshot == bucket.snapshots.end() ||
                         snapshotRevision == bucket.snapshotRevisions.end() ||
                         snapshotRevision->second != state->stateRevision) {
-                        SAND::SandChunkRuntimeSnapshotPtr immutable =
-                            SAND::MakeSandChunkRuntimeSnapshot(*state);
+                        SAND::SandChunkRuntimeSnapshotPtr immutable{};
+                        {
+                            CPU_PROFILE::ScopedDynamicCpuTimer cloneTimer(
+                                SandSnapshotCloneTiming());
+                            immutable = SAND::MakeSandChunkRuntimeSnapshot(
+                                *state);
+                        }
                         bucket.snapshots[stateKey] = immutable;
                         bucket.snapshotRevisions[stateKey] =
                             state->stateRevision;
@@ -807,6 +956,8 @@ namespace HIKARI {
         }
 
         if (publishNeeded) {
+            CPU_PROFILE::ScopedDynamicCpuTimer publishTimer(
+                SandSnapshotPublishTiming());
             std::size_t entryCount = 0u;
             for (const auto& [objectKey, bucket] : objects_) {
                 (void)objectKey;
@@ -870,6 +1021,8 @@ namespace HIKARI {
         if (queryService_ == nullptr || objects_.empty()) {
             return false;
         }
+        CPU_PROFILE::ScopedDynamicCpuTimer interactionTimer(
+            SandInteractionTiming());
         const float safeDt = (std::max)(deltaSeconds, 0.0f);
         std::unordered_set<uint64_t> changedTerrainObjects{};
 
@@ -1345,7 +1498,13 @@ namespace HIKARI {
                     ++active;
                 }
             }
-            if (StitchRuntimeBorders(bucket)) {
+            // PreFixed/Update の Refresh は前 tick の dirty snapshot を消費済み。
+            // この時点の key だけが今回実際に値を変えた chunk なので、長時間
+            // contact を保持する全 active set から seam graph を作り直さない。
+            std::vector<uint64_t> stitchSeedKeys(
+                bucket.dirtySnapshotKeys.begin(),
+                bucket.dirtySnapshotKeys.end());
+            if (StitchRuntimeBorders(bucket, stitchSeedKeys)) {
                 changedTerrainObjects.insert(objKey);
             }
         }
@@ -1358,23 +1517,26 @@ namespace HIKARI {
         return !changedTerrainObjects.empty();
     }
 
-    bool SandSurfaceSystem::StitchRuntimeBorders(ObjectChunks& bucket) {
-        if (bucket.activeDeformationKeys.empty()) {
+    bool SandSurfaceSystem::StitchRuntimeBorders(
+        ObjectChunks& bucket,
+        std::span<const uint64_t> dirtyKeys) {
+        if (dirtyKeys.empty()) {
             return false;
         }
+        CPU_PROFILE::ScopedDynamicCpuTimer stitchTimer(
+            SandStitchTiming());
         std::unordered_set<uint64_t> stitchKeySet{};
         stitchKeySet.reserve(
-            bucket.activeDeformationKeys.size() * 9u);
-        for (const uint64_t activeKey :
-                bucket.activeDeformationKeys) {
-            const int32_t activeX = static_cast<int32_t>(
-                static_cast<uint32_t>(activeKey >> 32u));
-            const int32_t activeZ = static_cast<int32_t>(
-                static_cast<uint32_t>(activeKey & 0xFFFFFFFFu));
+            dirtyKeys.size() * 9u);
+        for (const uint64_t dirtyKey : dirtyKeys) {
+            const int32_t dirtyX = static_cast<int32_t>(
+                static_cast<uint32_t>(dirtyKey >> 32u));
+            const int32_t dirtyZ = static_cast<int32_t>(
+                static_cast<uint32_t>(dirtyKey & 0xFFFFFFFFu));
             for (int32_t dz = -1; dz <= 1; ++dz) {
                 for (int32_t dx = -1; dx <= 1; ++dx) {
-                    const int64_t x = static_cast<int64_t>(activeX) + dx;
-                    const int64_t z = static_cast<int64_t>(activeZ) + dz;
+                    const int64_t x = static_cast<int64_t>(dirtyX) + dx;
+                    const int64_t z = static_cast<int64_t>(dirtyZ) + dz;
                     if (x < (std::numeric_limits<int32_t>::min)() ||
                         x > (std::numeric_limits<int32_t>::max)() ||
                         z < (std::numeric_limits<int32_t>::min)() ||
@@ -1410,6 +1572,21 @@ namespace HIKARI {
                         static_cast<uint32_t>(x)) << 32u) |
                 static_cast<uint32_t>(z);
         };
+        const auto forEachBoundaryVertex = [](
+            const SAND::SandChunkRuntimeState& state,
+            auto&& visitor) {
+            const uint32_t cells = state.cells;
+            for (uint32_t x = 0u; x <= cells; ++x) {
+                visitor(x, 0u);
+                if (cells > 0u) {
+                    visitor(x, cells);
+                }
+            }
+            for (uint32_t z = 1u; z < cells; ++z) {
+                visitor(0u, z);
+                visitor(cells, z);
+            }
+        };
         for (const uint64_t stateKey : stitchKeys) {
             const auto foundState = bucket.chunks.find(stateKey);
             if (foundState == bucket.chunks.end() ||
@@ -1427,12 +1604,9 @@ namespace HIKARI {
                 state->recoveryHold.size() != count) {
                 continue;
             }
-            for (uint32_t z = 0u; z <= cells; ++z) {
-                for (uint32_t x = 0u; x <= cells; ++x) {
-                    if (x != 0u && x != cells &&
-                        z != 0u && z != cells) {
-                        continue;
-                    }
+            forEachBoundaryVertex(
+                *state,
+                [&](uint32_t x, uint32_t z) {
                     const int32_t gx = state->key.x *
                         static_cast<int32_t>(cells) +
                         static_cast<int32_t>(x);
@@ -1445,7 +1619,7 @@ namespace HIKARI {
                         (state->deformableMask[index] <=
                             kDeformableMaskClearThreshold ||
                          !std::isfinite(state->deformableMask[index]))) {
-                        continue;
+                        return;
                     }
                     BoundaryValue& value = shared[globalKey(gx, gz)];
                     const float minimum = -(std::max)(
@@ -1470,8 +1644,7 @@ namespace HIKARI {
                     value.hold = (std::max)(
                         value.hold, state->recoveryHold[index]);
                     ++value.count;
-                }
-            }
+                });
         }
 
         std::unordered_set<SAND::SandChunkRuntimeState*> touched{};
@@ -1492,12 +1665,9 @@ namespace HIKARI {
                 state->recoveryHold.size() != count) {
                 continue;
             }
-            for (uint32_t z = 0u; z <= cells; ++z) {
-                for (uint32_t x = 0u; x <= cells; ++x) {
-                    if (x != 0u && x != cells &&
-                        z != 0u && z != cells) {
-                        continue;
-                    }
+            forEachBoundaryVertex(
+                *state,
+                [&](uint32_t x, uint32_t z) {
                     const int32_t gx = state->key.x *
                         static_cast<int32_t>(cells) +
                         static_cast<int32_t>(x);
@@ -1506,7 +1676,7 @@ namespace HIKARI {
                         static_cast<int32_t>(z);
                     const auto found = shared.find(globalKey(gx, gz));
                     if (found == shared.end() || found->second.count < 2u) {
-                        continue;
+                        return;
                     }
                     const std::size_t index =
                         static_cast<std::size_t>(z) * stride + x;
@@ -1524,7 +1694,7 @@ namespace HIKARI {
                             state->recoveryHold[index] = 0.0f;
                             touched.insert(state.get());
                         }
-                        continue;
+                        return;
                     }
                     const BoundaryValue& value = found->second;
                     const float minimum = -(std::max)(
@@ -1560,20 +1730,13 @@ namespace HIKARI {
                         state->recoveryHold[index] = nextHold;
                         touched.insert(state.get());
                     }
-                }
-            }
+                });
         }
 
         for (SAND::SandChunkRuntimeState* state : touched) {
             state->responseGridActive = true;
             RebuildCombinedHeights(*state);
-            state->needsRelaxation = state->hasDeformation &&
-                std::any_of(
-                    state->elasticHeights.begin(),
-                    state->elasticHeights.end(),
-                    [](float value) {
-                        return std::fabs(value) > kRecoverySnapEpsilon;
-                    });
+            state->needsRelaxation = state->hasDeformation;
             ++state->stateRevision;
             const uint64_t stateKey = ChunkStateKey(state->key);
             if (state->needsRelaxation) {
@@ -1684,6 +1847,7 @@ namespace HIKARI {
             static_cast<int32_t>(cells));
 
         bool changed = false;
+        bool holdTouched = false;
         for (int32_t z = minZ; z <= maxZ; ++z) {
             for (int32_t x = minX; x <= maxX; ++x) {
                 const std::size_t vertexIndex =
@@ -1729,9 +1893,13 @@ namespace HIKARI {
 
                 // sleeping Dynamic / 停止 Kinematic は active contact を
                 // 保持するだけで、新しい塑性量を追加しない。
+                const float previousHold =
+                    chunk.recoveryHold[vertexIndex];
                 chunk.recoveryHold[vertexIndex] = (std::max)(
-                    chunk.recoveryHold[vertexIndex],
+                    previousHold,
                     chunk.settings.recoveryDelaySeconds);
+                holdTouched = holdTouched ||
+                    chunk.recoveryHold[vertexIndex] != previousHold;
                 if (holdOnly) {
                     continue;
                 }
@@ -1799,11 +1967,43 @@ namespace HIKARI {
                 }
             }
         }
+        if (changed || holdTouched) {
+            const uint32_t boundsMinimumX =
+                static_cast<uint32_t>(minX);
+            const uint32_t boundsMinimumZ =
+                static_cast<uint32_t>(minZ);
+            const uint32_t boundsMaximumX =
+                static_cast<uint32_t>(maxX);
+            const uint32_t boundsMaximumZ =
+                static_cast<uint32_t>(maxZ);
+            if (!chunk.activeBoundsValid) {
+                chunk.activeMinimumX = boundsMinimumX;
+                chunk.activeMinimumZ = boundsMinimumZ;
+                chunk.activeMaximumX = boundsMaximumX;
+                chunk.activeMaximumZ = boundsMaximumZ;
+                chunk.activeBoundsValid = true;
+            }
+            else {
+                chunk.activeMinimumX = (std::min)(
+                    chunk.activeMinimumX, boundsMinimumX);
+                chunk.activeMinimumZ = (std::min)(
+                    chunk.activeMinimumZ, boundsMinimumZ);
+                chunk.activeMaximumX = (std::max)(
+                    chunk.activeMaximumX, boundsMaximumX);
+                chunk.activeMaximumZ = (std::max)(
+                    chunk.activeMaximumZ, boundsMaximumZ);
+            }
+        }
         if (changed) {
             chunk.responseGridActive = true;
             chunk.hasDeformation = true;
             chunk.needsRelaxation = true;
-            RebuildCombinedHeights(chunk);
+            RebuildCombinedHeightsInRegion(
+                chunk,
+                static_cast<uint32_t>(minX),
+                static_cast<uint32_t>(minZ),
+                static_cast<uint32_t>(maxX),
+                static_cast<uint32_t>(maxZ));
             ++chunk.stateRevision;
         }
         return changed;
@@ -1814,8 +2014,12 @@ namespace HIKARI {
         float fixedDt) {
         if (!chunk.hasDeformation) {
             chunk.needsRelaxation = false;
+            chunk.activeBoundsValid = false;
+            chunk.relaxationAccumulatorSeconds = 0.0f;
             return false;
         }
+        CPU_PROFILE::ScopedDynamicCpuTimer relaxTimer(
+            SandRelaxTiming());
         const uint32_t cells = (std::max)(chunk.cells, 1u);
         const uint32_t stride = cells + 1u;
         const std::size_t vertexCount =
@@ -1828,8 +2032,52 @@ namespace HIKARI {
             return false;
         }
 
+        if (!chunk.activeBoundsValid) {
+            const bool lifecycleChanged = chunk.hasDeformation;
+            chunk.hasDeformation = false;
+            chunk.needsRelaxation = false;
+            chunk.relaxationAccumulatorSeconds = 0.0f;
+            if (lifecycleChanged) {
+                ++chunk.stateRevision;
+            }
+            return lifecycleChanged;
+        }
+
+        // moving imprint は 60 Hz で適用する一方、回復/拡散は蓄積 dt を
+        // 8 Hz で処理する。視覚変形の追従を保ちつつ dormant contact の
+        // fixed cost を 1/7.5 程度へ落とす。
+        const float safeFixedDt = (std::max)(fixedDt, 0.0f);
+        chunk.relaxationAccumulatorSeconds = (std::min)(
+            chunk.relaxationAccumulatorSeconds + safeFixedDt,
+            0.5f);
+        if (chunk.relaxationAccumulatorSeconds + 1.0e-6f <
+                kRelaxationIntervalSeconds) {
+            return false;
+        }
+        const float safeDt = chunk.relaxationAccumulatorSeconds;
+        chunk.relaxationAccumulatorSeconds = 0.0f;
+
+        const uint32_t activeMinX = (std::min)(
+            chunk.activeMinimumX, cells);
+        const uint32_t activeMinZ = (std::min)(
+            chunk.activeMinimumZ, cells);
+        const uint32_t activeMaxX = (std::min)(
+            chunk.activeMaximumX, cells);
+        const uint32_t activeMaxZ = (std::min)(
+            chunk.activeMaximumZ, cells);
+
+        const auto expandMinimum = [](uint32_t value, uint32_t amount) {
+            return value > amount ? value - amount : 0u;
+        };
+        const auto expandMaximum = [cells](uint32_t value, uint32_t amount) {
+            return (std::min)(cells, value + amount);
+        };
+        const uint32_t workMinX = expandMinimum(activeMinX, 1u);
+        const uint32_t workMinZ = expandMinimum(activeMinZ, 1u);
+        const uint32_t workMaxX = expandMaximum(activeMaxX, 1u);
+        const uint32_t workMaxZ = expandMaximum(activeMaxZ, 1u);
+
         bool changed = false;
-        const float safeDt = (std::max)(fixedDt, 0.0f);
         const float elasticKeep = std::exp(
             -(std::max)(chunk.settings.refillPerSecond, 0.0f) *
                 safeDt);
@@ -1846,48 +2094,50 @@ namespace HIKARI {
                 ? std::clamp(value, 0.0f, 1.0f)
                 : 0.0f;
         };
-        for (std::size_t index = 0u;
-            index < vertexCount;
-            ++index) {
-            float& elastic = chunk.elasticHeights[index];
-            float& plastic = chunk.plasticHeights[index];
-            if (maskAt(index) <= kDeformableMaskClearThreshold) {
+        const auto snapRecovered = [](float value) noexcept {
+            return std::isfinite(value) &&
+                std::fabs(value) > kRecoverySnapEpsilon
+                ? value
+                : 0.0f;
+        };
+        for (uint32_t z = workMinZ; z <= workMaxZ; ++z) {
+            for (uint32_t x = workMinX; x <= workMaxX; ++x) {
+                const std::size_t index =
+                    static_cast<std::size_t>(z) * stride + x;
+                float& elastic = chunk.elasticHeights[index];
+                float& plastic = chunk.plasticHeights[index];
+                if (maskAt(index) <= kDeformableMaskClearThreshold) {
+                    changed = changed ||
+                        std::fabs(elastic) > kRecoverySnapEpsilon ||
+                        std::fabs(plastic) > kRecoverySnapEpsilon ||
+                        chunk.recoveryHold[index] > 0.0f;
+                    elastic = 0.0f;
+                    plastic = 0.0f;
+                    chunk.recoveryHold[index] = 0.0f;
+                    continue;
+                }
+                const float snappedElastic = snapRecovered(elastic);
+                const float snappedPlastic = snapRecovered(plastic);
                 changed = changed ||
-                    std::fabs(elastic) > kRecoverySnapEpsilon ||
-                    std::fabs(plastic) > kRecoverySnapEpsilon ||
-                    chunk.recoveryHold[index] > 0.0f;
-                elastic = 0.0f;
-                plastic = 0.0f;
-                chunk.recoveryHold[index] = 0.0f;
-                continue;
-            }
-            const auto snapRecovered = [](float value) noexcept {
-                return std::isfinite(value) &&
-                    std::fabs(value) > kRecoverySnapEpsilon
-                    ? value
-                    : 0.0f;
-            };
-            const float snappedElastic = snapRecovered(elastic);
-            const float snappedPlastic = snapRecovered(plastic);
-            changed = changed ||
-                snappedElastic != elastic || snappedPlastic != plastic;
-            elastic = snappedElastic;
-            plastic = snappedPlastic;
+                    snappedElastic != elastic || snappedPlastic != plastic;
+                elastic = snappedElastic;
+                plastic = snappedPlastic;
 
-            float& hold = chunk.recoveryHold[index];
-            if (hold > 0.0f) {
-                const float nextHold = (std::max)(hold - safeDt, 0.0f);
-                hold = nextHold;
-                continue;
+                float& hold = chunk.recoveryHold[index];
+                if (hold > 0.0f) {
+                    const float nextHold = (std::max)(hold - safeDt, 0.0f);
+                    hold = nextHold;
+                    continue;
+                }
+                const float nextElastic = snapRecovered(
+                    elastic * elasticKeep);
+                const float nextPlastic = snapRecovered(
+                    plastic * plasticKeep);
+                changed = changed ||
+                    nextElastic != elastic || nextPlastic != plastic;
+                elastic = nextElastic;
+                plastic = nextPlastic;
             }
-            const float nextElastic = snapRecovered(
-                elastic * elasticKeep);
-            const float nextPlastic = snapRecovered(
-                plastic * plasticKeep);
-            changed = changed ||
-                nextElastic != elastic || nextPlastic != plastic;
-            elastic = nextElastic;
-            plastic = nextPlastic;
         }
 
         const float diffusion = std::clamp(
@@ -1896,22 +2146,53 @@ namespace HIKARI {
                     chunk.settings.diffusionPerSecond, 0.0f) * safeDt),
             0.0f,
             0.25f);
-        const bool hasElastic = std::any_of(
-            chunk.elasticHeights.begin(),
-            chunk.elasticHeights.end(),
-            [](float value) {
-                return std::fabs(value) > kRecoverySnapEpsilon;
-            });
+        bool hasElastic = false;
+        for (uint32_t z = workMinZ;
+            z <= workMaxZ && !hasElastic;
+            ++z) {
+            for (uint32_t x = workMinX; x <= workMaxX; ++x) {
+                const std::size_t index =
+                    static_cast<std::size_t>(z) * stride + x;
+                if (std::fabs(chunk.elasticHeights[index]) >
+                        kRecoverySnapEpsilon) {
+                    hasElastic = true;
+                    break;
+                }
+            }
+        }
         if (diffusion > 1.0e-4f && hasElastic) {
-            std::copy(
-                chunk.elasticHeights.begin(),
-                chunk.elasticHeights.end(),
-                chunk.elasticScratch.begin());
+            // work bounds の cell が読む 4-neighbor までを snapshot する。
+            // elasticScratch は再利用 buffer なので、この halo 外の古い値を
+            // diffusion source として参照しない。
+            const uint32_t copyMinX = expandMinimum(workMinX, 1u);
+            const uint32_t copyMinZ = expandMinimum(workMinZ, 1u);
+            const uint32_t copyMaxX = expandMaximum(workMaxX, 1u);
+            const uint32_t copyMaxZ = expandMaximum(workMaxZ, 1u);
+            for (uint32_t z = copyMinZ; z <= copyMaxZ; ++z) {
+                const std::size_t begin =
+                    static_cast<std::size_t>(z) * stride + copyMinX;
+                const std::size_t end =
+                    static_cast<std::size_t>(z) * stride + copyMaxX + 1u;
+                std::copy(
+                    chunk.elasticHeights.begin() + begin,
+                    chunk.elasticHeights.begin() + end,
+                    chunk.elasticScratch.begin() + begin);
+            }
             const std::vector<float>& source = chunk.elasticScratch;
             const float keep = 1.0f - diffusion;
             const float neighbor = diffusion * 0.25f;
-            for (uint32_t z = 1u; z < cells; ++z) {
-                for (uint32_t x = 1u; x < cells; ++x) {
+            const uint32_t diffusionMinX = (std::max)(workMinX, 1u);
+            const uint32_t diffusionMinZ = (std::max)(workMinZ, 1u);
+            const uint32_t diffusionMaxX = (std::min)(
+                workMaxX, cells - 1u);
+            const uint32_t diffusionMaxZ = (std::min)(
+                workMaxZ, cells - 1u);
+            for (uint32_t z = diffusionMinZ;
+                z <= diffusionMaxZ;
+                ++z) {
+                for (uint32_t x = diffusionMinX;
+                    x <= diffusionMaxX;
+                    ++x) {
                     const std::size_t index =
                         static_cast<std::size_t>(z) * stride + x;
                     if (chunk.recoveryHold[index] > 0.0f) {
@@ -1945,59 +2226,75 @@ namespace HIKARI {
         const float maximum = (std::max)(
             chunk.settings.maxDepth, 0.0f) * (std::max)(
                 chunk.settings.rimStrength, 0.0f);
-        bool hasTransientElastic = false;
-        for (std::size_t index = 0u;
-            index < vertexCount;
-            ++index) {
-            TERRAIN::TerrainSurfaceDisplacementChannels channels =
-                TERRAIN::ClampTerrainSurfaceDisplacementChannels(
-                    {
-                        chunk.elasticHeights[index],
-                        chunk.plasticHeights[index],
-                    },
-                    minimum,
-                    maximum);
-            if (chunk.recoveryHold[index] <= 0.0f) {
-                // chunk 全体ではなく vertex ごとに lifecycle を閉じる。
-                // seam の両側は同じ hold を共有するため、一方だけが elastic、
-                // 他方だけが plastic になる状態を作らない。
-                const float combined = channels.Combined();
-                const float frozenResponse =
-                    std::fabs(combined) > kRecoverySnapEpsilon
-                    ? combined
-                    : 0.0f;
-                channels = { 0.0f, frozenResponse };
-            } else {
-                hasTransientElastic = hasTransientElastic ||
-                    std::fabs(channels.elastic) > kRecoverySnapEpsilon;
+        bool remains = false;
+        bool nextBoundsValid = false;
+        uint32_t nextMinimumX = cells;
+        uint32_t nextMinimumZ = cells;
+        uint32_t nextMaximumX = 0u;
+        uint32_t nextMaximumZ = 0u;
+        for (uint32_t z = workMinZ; z <= workMaxZ; ++z) {
+            for (uint32_t x = workMinX; x <= workMaxX; ++x) {
+                const std::size_t index =
+                    static_cast<std::size_t>(z) * stride + x;
+                TERRAIN::TerrainSurfaceDisplacementChannels channels =
+                    TERRAIN::ClampTerrainSurfaceDisplacementChannels(
+                        {
+                            chunk.elasticHeights[index],
+                            chunk.plasticHeights[index],
+                        },
+                        minimum,
+                        maximum);
+                if (chunk.recoveryHold[index] <= 0.0f) {
+                    // chunk 全体ではなく vertex ごとに lifecycle を閉じる。
+                    // seam の両側は同じ hold を共有するため、一方だけが elastic、
+                    // 他方だけが plastic になる状態を作らない。
+                    const float combined = channels.Combined();
+                    const float frozenResponse =
+                        std::fabs(combined) > kRecoverySnapEpsilon
+                        ? combined
+                        : 0.0f;
+                    channels = { 0.0f, frozenResponse };
+                }
+                changed = changed ||
+                    channels.elastic != chunk.elasticHeights[index] ||
+                    channels.plastic != chunk.plasticHeights[index];
+                chunk.elasticHeights[index] = channels.elastic;
+                chunk.plasticHeights[index] = channels.plastic;
+                const bool vertexRemains =
+                    std::fabs(channels.elastic) > kRecoverySnapEpsilon ||
+                    std::fabs(channels.plastic) > kRecoverySnapEpsilon;
+                remains = remains || vertexRemains;
+                if (vertexRemains) {
+                    nextBoundsValid = true;
+                    nextMinimumX = (std::min)(nextMinimumX, x);
+                    nextMinimumZ = (std::min)(nextMinimumZ, z);
+                    nextMaximumX = (std::max)(nextMaximumX, x);
+                    nextMaximumZ = (std::max)(nextMaximumZ, z);
+                }
             }
-            changed = changed ||
-                channels.elastic != chunk.elasticHeights[index] ||
-                channels.plastic != chunk.plasticHeights[index];
-            chunk.elasticHeights[index] = channels.elastic;
-            chunk.plasticHeights[index] = channels.plastic;
         }
-
-        const bool remains = std::any_of(
-                chunk.elasticHeights.begin(),
-                chunk.elasticHeights.end(),
-                [](float value) {
-                    return std::fabs(value) > kRecoverySnapEpsilon;
-                }) ||
-            std::any_of(
-                chunk.plasticHeights.begin(),
-                chunk.plasticHeights.end(),
-                [](float value) {
-                    return std::fabs(value) > kRecoverySnapEpsilon;
-                });
         const bool lifecycleChanged =
             chunk.hasDeformation != remains;
         if (changed) {
-            RebuildCombinedHeights(chunk);
-        } else {
-            chunk.hasDeformation = remains;
+            RebuildCombinedHeightsInRegion(
+                chunk,
+                workMinX,
+                workMinZ,
+                workMaxX,
+                workMaxZ);
         }
-        chunk.needsRelaxation = remains && hasTransientElastic;
+        chunk.hasDeformation = remains;
+        chunk.needsRelaxation = remains;
+        chunk.activeBoundsValid = nextBoundsValid;
+        if (nextBoundsValid) {
+            chunk.activeMinimumX = nextMinimumX;
+            chunk.activeMinimumZ = nextMinimumZ;
+            chunk.activeMaximumX = nextMaximumX;
+            chunk.activeMaximumZ = nextMaximumZ;
+        }
+        else {
+            chunk.relaxationAccumulatorSeconds = 0.0f;
+        }
         if (changed || lifecycleChanged) {
             ++chunk.stateRevision;
             return true;

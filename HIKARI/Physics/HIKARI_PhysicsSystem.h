@@ -11,6 +11,7 @@
 namespace HIKARI {
     struct RuntimePlayStateService;
     class PresentationTransformService;
+    class RuntimeObjectActivityService;
 }
 
 namespace HIKARI::PHYSICS {
@@ -130,6 +131,8 @@ namespace HIKARI::PHYSICS {
         KinematicMotionService* kinematicMotion_ = nullptr;
         ::HIKARI::PresentationTransformService*
             presentationTransforms_ = nullptr;
+        const ::HIKARI::RuntimeObjectActivityService*
+            runtimeActivityService_ = nullptr;
         const RuntimePlayStateService* runtimePlayState_ = nullptr;
         std::unordered_map<uint64_t, BodyBinding> bindings_{};
         // 完全な body descriptor を確保する前に軽量 source signature を見る。

@@ -39,6 +39,9 @@ namespace HIKARI {
         constexpr float kCompositionTargetWeightFadeEnd = 0.48f;
         constexpr float kCompositionTargetPredictionSeconds = 0.08f;
         constexpr float kCompositionMaximumPredictionDistance = 0.65f;
+        constexpr float kFinalCameraEmergencyDistance = 0.05f;
+        constexpr float kFinalCameraEmergencyFovDegrees = 10.0f;
+        constexpr float kPrimaryVisibilityVerticalOffset = 0.52f;
         constexpr int kCompositionYawSearchSamples = 17;
         constexpr int kCompositionPitchSearchSamples = 13;
 
@@ -744,7 +747,7 @@ namespace HIKARI {
         }
 
         bool IsCameraCollisionBlocker(
-            World& world,
+            const World& world,
             RuntimeObjectHandle objectHandle,
             bool staticOnly) noexcept {
 
@@ -760,18 +763,19 @@ namespace HIKARI {
         }
 
         float ResolveCollisionDistance(
-            World& world,
-            PHYSICS::PhysicsWorldService* physics,
+            const World& world,
+            const PHYSICS::PhysicsWorldService* physics,
             const CameraFollowComponent& component,
             const GameObject& target,
             const MATH::Vec3& pivot,
             const MATH::Vec3& direction,
             float desiredDistance,
+            float minimumDistance,
             bool& outLimited) {
 
             outLimited = false;
             if (physics == nullptr || !component.IsCollisionEnabled() ||
-                desiredDistance <= component.GetMinimumDistance()) {
+                desiredDistance <= minimumDistance) {
                 return desiredDistance;
             }
 
@@ -816,7 +820,7 @@ namespace HIKARI {
                 const float limitedDistance = std::clamp(
                     traveledDistance + hit.distance -
                         component.GetCollisionPadding(),
-                    component.GetMinimumDistance(),
+                    minimumDistance,
                     desiredDistance);
                 outLimited =
                     limitedDistance + kViewEpsilon < desiredDistance;
@@ -824,7 +828,242 @@ namespace HIKARI {
             }
             return desiredDistance;
         }
+
+        bool IsCameraPointVisible(
+            const World& world,
+            const PHYSICS::PhysicsWorldService* physics,
+            const CameraFollowComponent& component,
+            RuntimeObjectHandle targetHandle,
+            const MATH::Vec3& eye,
+            const MATH::Vec3& point) {
+            if (physics == nullptr) {
+                return true;
+            }
+            MATH::Vec3 delta = point - eye;
+            const float distance = MATH::Length(delta);
+            if (!MATH::IsFinite(delta) || !std::isfinite(distance) ||
+                distance <= kViewEpsilon) {
+                return true;
+            }
+            delta = delta * (1.0f / distance);
+
+            float traveledDistance = 0.0f;
+            RuntimeObjectHandle ignoredObject = targetHandle;
+            for (int pass = 0; pass < 4; ++pass) {
+                const float remainingDistance =
+                    distance - traveledDistance;
+                if (remainingDistance <= kViewEpsilon) {
+                    return true;
+                }
+                PHYSICS::PhysicsRaycastQuery query{};
+                query.origin = eye + delta * traveledDistance;
+                query.direction = delta;
+                query.maxDistance = remainingDistance;
+                query.filter.layerMask = component.GetCollisionLayerMask();
+                query.filter.includeTriggers = false;
+                query.filter.ignoredObject = ignoredObject;
+
+                PHYSICS::PhysicsHit hit{};
+                if (!physics->Raycast(query, hit) ||
+                    hit.object == targetHandle) {
+                    return true;
+                }
+                if (IsCameraCollisionBlocker(
+                        world,
+                        hit.object,
+                        component.GetCollisionStaticOnly())) {
+                    return false;
+                }
+                traveledDistance += (std::max)(
+                    hit.distance + component.GetCollisionPadding(),
+                    0.05f);
+                ignoredObject = hit.object;
+            }
+            return true;
+        }
+
+        bool HasPrimarySubjectVisibility(
+            const World& world,
+            const PHYSICS::PhysicsWorldService* physics,
+            const CameraFollowComponent& component,
+            RuntimeObjectHandle targetHandle,
+            const MATH::Vec3& eye,
+            const MATH::Vec3& primaryPivot) {
+            const std::array<MATH::Vec3, 3u> samples{
+                primaryPivot,
+                primaryPivot + MATH::Vec3{
+                    0.0f, kPrimaryVisibilityVerticalOffset, 0.0f },
+                primaryPivot - MATH::Vec3{
+                    0.0f, kPrimaryVisibilityVerticalOffset, 0.0f },
+            };
+            return std::any_of(
+                samples.begin(),
+                samples.end(),
+                [&](const MATH::Vec3& sample) {
+                    return IsCameraPointVisible(
+                        world,
+                        physics,
+                        component,
+                        targetHandle,
+                        eye,
+                        sample);
+                });
+        }
     }
+
+    namespace CAMERA {
+
+        bool ResolveGameplayCameraSafety(
+            const World& world,
+            SceneObjectId cameraObjectId,
+            Camera3D& camera,
+            GameplayCameraSafetyResult* outResult) {
+            GameplayCameraSafetyResult result{};
+            const auto finish = [&]() {
+                if (outResult != nullptr) {
+                    *outResult = result;
+                }
+            };
+
+            const GameObject* cameraObject =
+                world.FindObject(cameraObjectId);
+            const CameraFollowComponent* component = cameraObject != nullptr
+                ? cameraObject->GetComponent<CameraFollowComponent>()
+                : nullptr;
+            if (component == nullptr || !component->IsEnabled() ||
+                !component->HasRuntimeState() ||
+                !component->IsCollisionEnabled()) {
+                finish();
+                return false;
+            }
+
+            const GameObject* target = world.FindObject(
+                component->GetTargetObjectId());
+            if (target == nullptr &&
+                component->GetUseOwnerAsFallbackTarget()) {
+                target = cameraObject->GetParent();
+            }
+            const PHYSICS::PhysicsWorldService* physics =
+                world.Services().Find<PHYSICS::PhysicsWorldService>();
+            if (target == nullptr || physics == nullptr) {
+                finish();
+                return false;
+            }
+
+            const MATH::Vec3 pivot =
+                component->GetRuntimeFollowPivot();
+            const MATH::Vec3 primaryPivot =
+                component->GetRuntimeTargetPivot();
+            MATH::Vec3 safeEye = camera.GetPosition();
+            MATH::Vec3 safeTarget = camera.GetTarget();
+            MATH::Vec3 desiredOffset = safeEye - pivot;
+            float desiredDistance = MATH::Length(desiredOffset);
+            if (!MATH::IsFinite(pivot) ||
+                !MATH::IsFinite(primaryPivot) ||
+                !MATH::IsFinite(desiredOffset) ||
+                !std::isfinite(desiredDistance) ||
+                desiredDistance <= kViewEpsilon) {
+                finish();
+                return false;
+            }
+
+            result.evaluated = true;
+            result.desiredDistance = desiredDistance;
+            const MATH::Vec3 desiredDirection =
+                desiredOffset * (1.0f / desiredDistance);
+            bool collisionLimited = false;
+            float safeDistance = ResolveCollisionDistance(
+                world,
+                physics,
+                *component,
+                *target,
+                pivot,
+                desiredDirection,
+                desiredDistance,
+                kFinalCameraEmergencyDistance,
+                collisionLimited);
+            safeEye = pivot + desiredDirection * safeDistance;
+            bool primaryVisible = HasPrimarySubjectVisibility(
+                world,
+                physics,
+                *component,
+                target->GetRuntimeHandle(),
+                safeEye,
+                primaryPivot);
+
+            if (!primaryVisible) {
+                const MATH::Vec3 fallbackOffset =
+                    component->GetRuntimeEye() - pivot;
+                const float fallbackDistance = MATH::Length(fallbackOffset);
+                if (MATH::IsFinite(fallbackOffset) &&
+                    std::isfinite(fallbackDistance) &&
+                    fallbackDistance > kViewEpsilon) {
+                    const MATH::Vec3 fallbackDirection =
+                        fallbackOffset * (1.0f / fallbackDistance);
+                    bool fallbackLimited = false;
+                    const float fallbackSafeDistance =
+                        ResolveCollisionDistance(
+                            world,
+                            physics,
+                            *component,
+                            *target,
+                            pivot,
+                            fallbackDirection,
+                            fallbackDistance,
+                            kFinalCameraEmergencyDistance,
+                            fallbackLimited);
+                    const MATH::Vec3 fallbackEye =
+                        pivot + fallbackDirection * fallbackSafeDistance;
+                    if (HasPrimarySubjectVisibility(
+                            world,
+                            physics,
+                            *component,
+                            target->GetRuntimeHandle(),
+                            fallbackEye,
+                            primaryPivot)) {
+                        safeEye = fallbackEye;
+                        safeTarget = component->GetRuntimeLookAt();
+                        safeDistance = fallbackSafeDistance;
+                        collisionLimited = collisionLimited || fallbackLimited;
+                        primaryVisible = true;
+                        result.usedFollowFallback = true;
+                    }
+                }
+            }
+
+            result.collisionLimited = collisionLimited;
+            result.primaryVisible = primaryVisible;
+            result.resolvedDistance = MATH::Length(safeEye - pivot);
+            const float authoredMinimum = (std::max)(
+                component->GetMinimumDistance(),
+                kFinalCameraEmergencyDistance);
+            result.emergencyContraction = collisionLimited &&
+                result.resolvedDistance + kViewEpsilon < authoredMinimum;
+
+            float verticalFov = camera.GetFovYRad();
+            if (result.emergencyContraction) {
+                const float pressure = std::clamp(
+                    1.0f - result.resolvedDistance / authoredMinimum,
+                    0.0f,
+                    1.0f);
+                verticalFov += DegreesToRadians(
+                    kFinalCameraEmergencyFovDegrees) * pressure;
+            }
+            if (!MATH::IsFinite(safeTarget) ||
+                MATH::Length(safeTarget - safeEye) <= kViewEpsilon) {
+                safeTarget = primaryPivot;
+            }
+            camera.SetPerspective(
+                verticalFov,
+                camera.GetAspect(),
+                camera.GetNearZ(),
+                camera.GetFarZ());
+            camera.SetLookAt(safeEye, safeTarget, camera.GetUp());
+            finish();
+            return true;
+        }
+
+    } // namespace CAMERA
 
     void CameraFollowSystem::OnWorldAttached(World& world) {
         rigService_ = world.Services().Find<CAMERA::CameraRigService>();
@@ -1520,6 +1759,7 @@ namespace HIKARI {
                                 WrapDegrees(relationYaw + yawOffset),
                                 framingPreferredPitch),
                             framingDistance,
+                            component.GetMinimumDistance(),
                             limited);
                     };
                     const float preferredClearance =
@@ -1788,6 +2028,7 @@ namespace HIKARI {
                     followPivot,
                     orbitDirection,
                     framingDistance,
+                    component.GetMinimumDistance(),
                     collisionLimited);
                 float resolvedDistance = component.GetRuntimeDistance();
                 float distanceVelocity = hadFramingState

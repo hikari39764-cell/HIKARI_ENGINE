@@ -1,5 +1,6 @@
 #pragma once
 
+#include <filesystem>
 #include <string_view>
 
 namespace HIKARI::CORE {
@@ -11,7 +12,8 @@ namespace HIKARI::CORE {
         D3D12,
     };
 
-    void InitializeLogger();
+    void InitializeLogger(
+        const std::filesystem::path& logDirectory = {});
     void ShutdownLogger();
     void Log(LogLevel level, std::string_view message);
     void LogInfo(std::string_view message);

@@ -5,6 +5,7 @@
 #include <utility>
 
 #include "Render3D/Core/HIKARI_BoundsUtils.h"
+#include "Render3D/Runtime/HIKARI_RenderSurfaceResolver.h"
 
 namespace HIKARI::RENDER3D::RUNTIME {
     namespace {
@@ -148,6 +149,7 @@ namespace HIKARI::RENDER3D::RUNTIME {
 
         if (!source.nodes.empty()) {
             BuildNodeRecords(source, out);
+            out.bindNodeGlobals = BuildRenderModelNodeGlobals(out);
         } else {
             // 旧形式は node 無しでも surface 契約だけを作る。
             BuildLegacySurfaces(source, out);

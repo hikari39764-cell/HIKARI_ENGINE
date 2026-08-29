@@ -58,6 +58,28 @@ function(hikari_configure_runtime_deployment target_name)
             "$<TARGET_FILE_DIR:${target_name}>/EngineContent/Shaders"
         VERBATIM)
 
+    if(HIKARI_PRODUCT STREQUAL "Shipping")
+        find_program(
+            HIKARI_DEPLOY_POWERSHELL_EXECUTABLE
+            NAMES powershell.exe
+            REQUIRED)
+        add_custom_command(
+            TARGET "${target_name}"
+            POST_BUILD
+            COMMAND
+                "${HIKARI_DEPLOY_POWERSHELL_EXECUTABLE}"
+                -NoProfile
+                -ExecutionPolicy Bypass
+                -File
+                    "${HIKARI_SOURCE_ROOT}/Tools/ShaderCheck/Compile-HikariShaders.ps1"
+                -DxcPath
+                    "${HIKARI_DXC_EXECUTABLE}"
+                -OutputRoot
+                    "$<TARGET_FILE_DIR:${target_name}>/EngineContent/ShaderBytecode"
+            WORKING_DIRECTORY "${HIKARI_SOURCE_ROOT}"
+            VERBATIM)
+    endif()
+
     if(NOT HIKARI_DEPLOY_NO_INSTALL)
         install(
             TARGETS "${target_name}"
@@ -77,5 +99,12 @@ function(hikari_configure_runtime_deployment target_name)
                 "${HIKARI_SOURCE_ROOT}/HIKARI/Shaders"
             DESTINATION
                 "EngineContent")
+        if(HIKARI_PRODUCT STREQUAL "Shipping")
+            install(
+                DIRECTORY
+                    "${CMAKE_BINARY_DIR}/bin/EngineContent/ShaderBytecode/"
+                DESTINATION
+                    "EngineContent/ShaderBytecode")
+        endif()
     endif()
 endfunction()

@@ -45,6 +45,7 @@
       "cacheVariables": {
         "CMAKE_CONFIGURATION_TYPES": "Shipping",
         "CMAKE_INSTALL_PREFIX": "${sourceDir}/out/install/game-shipping",
+        "HIKARI_GAME_HOST_OUTPUT_NAME": "HIKARI_Game",
         "HIKARI_PRODUCT": "Shipping"
       }
     }

@@ -1,6 +1,7 @@
 #include "Scene/Components/HIKARI_ColliderComponent.h"
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <string>
 
@@ -248,5 +249,56 @@ namespace HIKARI {
     void ColliderComponent::SetEnabled(bool enabled) noexcept { enabled_ = enabled; }
     void ColliderComponent::SetFitMode(ColliderFitMode mode) noexcept { fitMode_ = mode; }
     void ColliderComponent::SetShapeType(PHYSICS::PhysicsShapeType type) noexcept { shapeType_ = type; }
+
+    bool ColliderComponent::ConfigureIfPristineManualShape(
+        PHYSICS::PhysicsShapeType type,
+        const MATH::Vec3& center,
+        const MATH::Vec3& rotationEulerDegrees,
+        const MATH::Vec3& size,
+        float radius,
+        float height,
+        bool trigger) noexcept {
+        const auto near = [](float lhs, float rhs) noexcept {
+            return std::abs(lhs - rhs) <= 0.0001f;
+        };
+        const auto nearVector = [&near](
+            const MATH::Vec3& lhs,
+            const MATH::Vec3& rhs) noexcept {
+            return near(lhs.x, rhs.x) && near(lhs.y, rhs.y) &&
+                near(lhs.z, rhs.z);
+        };
+        const bool alreadyConfigured =
+            fitMode_ == ColliderFitMode::Manual &&
+            shapeType_ == type &&
+            nearVector(center_, center) &&
+            nearVector(rotationEulerDegrees_, rotationEulerDegrees) &&
+            nearVector(size_, size) && near(radius_, radius) &&
+            near(height_, height) && trigger_ == trigger;
+        if (alreadyConfigured) {
+            return true;
+        }
+        const bool pristine = enabled_ &&
+            fitMode_ == ColliderFitMode::Manual &&
+            shapeType_ == PHYSICS::PhysicsShapeType::Box &&
+            nearVector(center_, {}) &&
+            nearVector(rotationEulerDegrees_, {}) &&
+            nearVector(size_, { 1.0f, 1.0f, 1.0f }) &&
+            near(radius_, 0.5f) && near(height_, 1.0f) &&
+            !trigger_ && collisionGeometryAssetId_.empty();
+        if (!pristine) {
+            return false;
+        }
+        fitMode_ = ColliderFitMode::Manual;
+        shapeType_ = type;
+        center_ = center;
+        rotationEulerDegrees_ = rotationEulerDegrees;
+        size_ = size;
+        radius_ = radius;
+        height_ = height;
+        trigger_ = trigger;
+        collisionGeometryAssetId_.clear();
+        ClampSettings();
+        return true;
+    }
 
 } // namespace HIKARI

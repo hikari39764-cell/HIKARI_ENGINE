@@ -409,6 +409,7 @@ namespace HIKARI::RENDER3D::COMBAT_VFX {
             rootSignature_.Reset();
             return false;
         }
+
         return true;
     }
 

@@ -590,9 +590,10 @@ namespace HIKARI::VFX {
                     1.0f - age / (std::max)(state.lifetimeSeconds, 0.001f),
                     0.0f,
                     1.0f);
-                const float silhouetteOpacity = state.opacity *
-                    remaining * remaining *
-                    (1.0f - 0.08f * static_cast<float>(silhouetteIndex));
+                const float silhouetteOpacity =
+                    state.opacity * remaining * remaining *
+                    (1.0f - 0.08f *
+                        static_cast<float>(silhouetteIndex));
                 for (const AfterimageDraw& captured : snapshot.draws) {
                     if (drawRecords_.size() >=
                         RENDER3D::COMBAT_VFX::

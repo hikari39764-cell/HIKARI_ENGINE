@@ -21,6 +21,14 @@ namespace HIKARI::RENDER3D::RUNTIME {
         const std::vector<MATH::Mat4>& nodeGlobals,
         MATH::Mat4& outDrawWorldMatrix);
 
+    bool ResolveClusterSurfaceWorldMatrix(
+        const Transform3D& objectWorldTransform,
+        const RenderSurfaceRecord& surface,
+        const std::vector<MATH::Mat4>& posedNodeGlobals,
+        const std::vector<MATH::Mat4>& bindNodeGlobals,
+        bool hasRuntimeAnimation,
+        MATH::Mat4& outClusterWorldMatrix);
+
     Bounds ResolveRenderSurfaceWorldBounds(
         const Bounds& fallbackWorldBounds,
         const RenderSurfaceRecord& surface,

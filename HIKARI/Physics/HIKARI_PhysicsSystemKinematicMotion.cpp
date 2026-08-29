@@ -12,6 +12,7 @@
 #include "Physics/HIKARI_PhysicsSceneBridge.h"
 #include "Physics/HIKARI_PhysicsWorldService.h"
 #include "Scene/HIKARI_GameObject.h"
+#include "Scene/HIKARI_RuntimeObjectActivityService.h"
 #include "Scene/HIKARI_World.h"
 
 namespace HIKARI::PHYSICS {
@@ -72,6 +73,13 @@ namespace HIKARI::PHYSICS {
             const bool hasTeleport = kinematicMotion_->ConsumeTeleport(
                 binding.object,
                 teleport);
+            if (runtimeActivityService_ != nullptr &&
+                !runtimeActivityService_->IsActive(binding.object)) {
+                // 非 Active actor の queued motion はここで消費して捨てる。
+                // 再開時に古い入力や root motion が一気に適用されない。
+                binding.kinematicPresentationActive = false;
+                continue;
+            }
             if (!hasMove && !hasMotionDelta && !hasTeleport) {
                 if (binding.effectiveMotionType ==
                         PhysicsMotionType::Kinematic) {

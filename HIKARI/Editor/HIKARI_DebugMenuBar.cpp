@@ -36,6 +36,8 @@ namespace HIKARI {
         std::vector<EDITOR::GameExportSceneInfo> g_exportScenes{};
         std::vector<std::string> g_selectedSceneGuids{};
         std::string g_startupSceneGuid{};
+        EDITOR::GameExportWindowMode g_exportWindowMode =
+            EDITOR::GameExportWindowMode::BorderlessFullscreen;
         bool g_exportScenesLoaded = false;
 
         void CopyTextToExportPathBuffer(const std::string& text) {
@@ -289,6 +291,43 @@ namespace HIKARI {
                     CopyPathToExportPathBuffer(EDITOR::GameExporter::GetDefaultOutputDirectory());
                 }
 
+                const char* windowModePreview =
+                    g_exportWindowMode ==
+                            EDITOR::GameExportWindowMode::Windowed
+                        ? "Windowed"
+                        : g_exportWindowMode ==
+                                EDITOR::GameExportWindowMode::TopmostFullscreen
+                            ? "Topmost Fullscreen"
+                            : "Borderless Fullscreen (Recommended)";
+                if (ImGui::BeginCombo(
+                        "Default Window Mode",
+                        windowModePreview)) {
+                    const std::array modes{
+                        EDITOR::GameExportWindowMode::BorderlessFullscreen,
+                        EDITOR::GameExportWindowMode::Windowed,
+                        EDITOR::GameExportWindowMode::TopmostFullscreen,
+                    };
+                    for (const EDITOR::GameExportWindowMode mode : modes) {
+                        const char* label = mode ==
+                                EDITOR::GameExportWindowMode::Windowed
+                            ? "Windowed"
+                            : mode == EDITOR::GameExportWindowMode::
+                                    TopmostFullscreen
+                                ? "Topmost Fullscreen"
+                                : "Borderless Fullscreen (Recommended)";
+                        const bool selected = g_exportWindowMode == mode;
+                        if (ImGui::Selectable(label, selected)) {
+                            g_exportWindowMode = mode;
+                        }
+                        if (selected) {
+                            ImGui::SetItemDefaultFocus();
+                        }
+                    }
+                    ImGui::EndCombo();
+                }
+                ImGui::TextDisabled(
+                    "Borderless fullscreen is portable and does not force exclusive display ownership.");
+
                 DrawSceneExportControls();
 
                 const bool canExport =
@@ -303,6 +342,7 @@ namespace HIKARI {
                     options.outputDirectory = ExportPathFromBuffer();
                     options.startupSceneGuid = g_startupSceneGuid;
                     options.sceneGuids = SelectedSceneGuidsInDisplayOrder();
+                    options.windowMode = g_exportWindowMode;
                     const EDITOR::GameExportResult result = EDITOR::GameExporter::Export(options);
                     g_exportStatus = result.message;
                     if (result.success) {

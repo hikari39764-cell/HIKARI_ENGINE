@@ -35,6 +35,186 @@ float ActionMagnitude(const InputActionState& state) {
     return std::abs(state.x);
 }
 
+struct InputDeviceActivitySignal {
+    bool active = false;
+    bool digital = false;
+    float strength = 0.0f;
+};
+
+InputDeviceActivitySignal DetectKeyboardMouseActivity(
+    const InputDeviceState& previous,
+    const InputDeviceState& current) noexcept {
+    InputDeviceActivitySignal signal{};
+    for (std::size_t index = 0u;
+        index < current.keyboard.size();
+        ++index) {
+        if (current.keyboard[index] != 0u &&
+            previous.keyboard[index] == 0u) {
+            signal.active = true;
+            signal.digital = true;
+            signal.strength = 1.0f;
+            break;
+        }
+    }
+    for (std::size_t index = 0u;
+        index < current.mouseButtons.size();
+        ++index) {
+        if (current.mouseButtons[index] != 0u &&
+            previous.mouseButtons[index] == 0u) {
+            signal.active = true;
+            signal.digital = true;
+            signal.strength = 1.0f;
+            break;
+        }
+    }
+
+    constexpr float kMouseMotionThreshold = 2.0f;
+    const float mouseMotion = std::sqrt(
+        current.mouseDeltaX * current.mouseDeltaX +
+        current.mouseDeltaY * current.mouseDeltaY);
+    if (std::isfinite(mouseMotion) &&
+        mouseMotion >= kMouseMotionThreshold) {
+        signal.active = true;
+        signal.strength = (std::max)(
+            signal.strength,
+            std::clamp(mouseMotion / 8.0f, 0.0f, 1.0f));
+    }
+    if (std::isfinite(current.mouseWheel) &&
+        std::abs(current.mouseWheel) > 1.0e-4f) {
+        signal.active = true;
+        signal.digital = true;
+        signal.strength = 1.0f;
+    }
+    return signal;
+}
+
+void AccumulateAnalogActivity(
+    float previous,
+    float current,
+    float enterThreshold,
+    float exitThreshold,
+    float deltaThreshold,
+    InputDeviceActivitySignal& signal) noexcept {
+    if (!std::isfinite(previous) || !std::isfinite(current)) {
+        return;
+    }
+    const float currentMagnitude = std::abs(current);
+    const bool crossedDeadZone =
+        currentMagnitude >= enterThreshold &&
+        std::abs(previous) < exitThreshold;
+    const bool changedIntentionally =
+        currentMagnitude >= enterThreshold &&
+        std::abs(current - previous) >= deltaThreshold;
+    if (!crossedDeadZone && !changedIntentionally) {
+        return;
+    }
+    signal.active = true;
+    signal.strength = (std::max)(
+        signal.strength,
+        std::clamp(currentMagnitude, 0.0f, 1.0f));
+}
+
+InputDeviceActivitySignal DetectGamepadActivity(
+    const InputDeviceState& previous,
+    const InputDeviceState& current,
+    uint32_t gamepadIndex) noexcept {
+    InputDeviceActivitySignal signal{};
+    if (gamepadIndex >= current.gamepads.size()) {
+        return signal;
+    }
+    const GamepadState& gamepad = current.gamepads[gamepadIndex];
+    if (!gamepad.connected) {
+        return signal;
+    }
+    const GamepadState& previousGamepad =
+        previous.gamepads[gamepadIndex];
+    if ((gamepad.buttons & ~previousGamepad.buttons) != 0u) {
+        signal.active = true;
+        signal.digital = true;
+        signal.strength = 1.0f;
+    }
+
+    // Prompt/device arbitration uses a wider threshold than gameplay action
+    // maps.  A resting stick may be noisy enough to produce a small gameplay
+    // value, but it must not steal the presentation device from real input.
+    constexpr float kStickEnterThreshold = 0.35f;
+    constexpr float kStickExitThreshold = 0.25f;
+    constexpr float kStickDeltaThreshold = 0.08f;
+    constexpr float kTriggerEnterThreshold = 0.18f;
+    constexpr float kTriggerExitThreshold = 0.10f;
+    constexpr float kTriggerDeltaThreshold = 0.06f;
+    AccumulateAnalogActivity(
+        previousGamepad.leftX,
+        gamepad.leftX,
+        kStickEnterThreshold,
+        kStickExitThreshold,
+        kStickDeltaThreshold,
+        signal);
+    AccumulateAnalogActivity(
+        previousGamepad.leftY,
+        gamepad.leftY,
+        kStickEnterThreshold,
+        kStickExitThreshold,
+        kStickDeltaThreshold,
+        signal);
+    AccumulateAnalogActivity(
+        previousGamepad.rightX,
+        gamepad.rightX,
+        kStickEnterThreshold,
+        kStickExitThreshold,
+        kStickDeltaThreshold,
+        signal);
+    AccumulateAnalogActivity(
+        previousGamepad.rightY,
+        gamepad.rightY,
+        kStickEnterThreshold,
+        kStickExitThreshold,
+        kStickDeltaThreshold,
+        signal);
+    AccumulateAnalogActivity(
+        previousGamepad.leftTrigger,
+        gamepad.leftTrigger,
+        kTriggerEnterThreshold,
+        kTriggerExitThreshold,
+        kTriggerDeltaThreshold,
+        signal);
+    AccumulateAnalogActivity(
+        previousGamepad.rightTrigger,
+        gamepad.rightTrigger,
+        kTriggerEnterThreshold,
+        kTriggerExitThreshold,
+        kTriggerDeltaThreshold,
+        signal);
+    return signal;
+}
+
+InputDeviceKind ResolveActivityCandidate(
+    InputDeviceKind previousDevice,
+    const InputDeviceActivitySignal& keyboardMouse,
+    const InputDeviceActivitySignal& gamepad) noexcept {
+    if (keyboardMouse.active && !gamepad.active) {
+        return InputDeviceKind::KeyboardMouse;
+    }
+    if (gamepad.active && !keyboardMouse.active) {
+        return InputDeviceKind::Gamepad;
+    }
+    if (!keyboardMouse.active && !gamepad.active) {
+        return InputDeviceKind::None;
+    }
+    if (keyboardMouse.digital != gamepad.digital) {
+        return keyboardMouse.digital
+            ? InputDeviceKind::KeyboardMouse
+            : InputDeviceKind::Gamepad;
+    }
+    if (previousDevice == InputDeviceKind::KeyboardMouse ||
+        previousDevice == InputDeviceKind::Gamepad) {
+        return previousDevice;
+    }
+    return gamepad.strength > keyboardMouse.strength
+        ? InputDeviceKind::Gamepad
+        : InputDeviceKind::KeyboardMouse;
+}
+
 } // namespace
 
 InputService::InputService()
@@ -78,6 +258,7 @@ void InputService::ResetRuntimeState() {
     rebindOperation_.Reset();
     rebindPreviousDevices_ = {};
     suppressActionsUntilNeutral_ = false;
+    deviceSwitchLockRemainingSeconds_ = 0.0f;
     if (backend_) backend_->Reset();
 }
 
@@ -88,6 +269,7 @@ void InputService::Shutdown() {
     rebindOperation_.Reset();
     rebindPreviousDevices_ = {};
     suppressActionsUntilNeutral_ = false;
+    deviceSwitchLockRemainingSeconds_ = 0.0f;
 }
 
 void InputService::SetBackend(std::unique_ptr<IInputBackend> backend) {
@@ -122,11 +304,11 @@ void InputService::SetExternalMouseWheel(float delta) {
 
 void InputService::Update(float unscaledDeltaSeconds) {
     if (!backend_) return;
-    const InputDeviceKind previousDevice = snapshot_.devices_.lastActiveDevice;
+    const InputDeviceState previousDevices = snapshot_.devices_;
     backend_->Poll(snapshot_.devices_);
-    if (snapshot_.devices_.lastActiveDevice == InputDeviceKind::None) {
-        snapshot_.devices_.lastActiveDevice = previousDevice;
-    }
+    UpdateLastActiveDevice(
+        previousDevices,
+        (std::max)(unscaledDeltaSeconds, 0.0f));
     ++snapshot_.frameIndex_;
     if (rebindOperation_.IsActive()) {
         std::vector<InputControlActuation> candidates;
@@ -280,6 +462,67 @@ bool InputService::IsModifierDown(const std::string& modifier) const {
 
 uint32_t InputService::ResolveGamepadIndex() const {
     return primaryUser_.GetGamepadIndex().value_or(0u);
+}
+
+void InputService::UpdateLastActiveDevice(
+    const InputDeviceState& previousDevices,
+    float unscaledDeltaSeconds) {
+    const InputDeviceKind previousDevice =
+        previousDevices.lastActiveDevice;
+    deviceSwitchLockRemainingSeconds_ = (std::max)(
+        0.0f,
+        deviceSwitchLockRemainingSeconds_ -
+            (std::max)(unscaledDeltaSeconds, 0.0f));
+
+    const uint32_t gamepadIndex = ResolveGamepadIndex();
+    const bool primaryGamepadConnected =
+        gamepadIndex < snapshot_.devices_.gamepads.size() &&
+        snapshot_.devices_.gamepads[gamepadIndex].connected;
+    if (previousDevice == InputDeviceKind::Gamepad &&
+        !primaryGamepadConnected) {
+        snapshot_.devices_.lastActiveDevice =
+            InputDeviceKind::KeyboardMouse;
+        deviceSwitchLockRemainingSeconds_ = 0.0f;
+        return;
+    }
+
+    const InputDeviceActivitySignal keyboardMouse =
+        DetectKeyboardMouseActivity(
+            previousDevices,
+            snapshot_.devices_);
+    const InputDeviceActivitySignal gamepad =
+        DetectGamepadActivity(
+            previousDevices,
+            snapshot_.devices_,
+            gamepadIndex);
+    const InputDeviceKind candidate = ResolveActivityCandidate(
+        previousDevice,
+        keyboardMouse,
+        gamepad);
+    if (candidate == InputDeviceKind::None ||
+        candidate == previousDevice) {
+        snapshot_.devices_.lastActiveDevice = previousDevice;
+        return;
+    }
+
+    const InputDeviceActivitySignal& candidateSignal =
+        candidate == InputDeviceKind::Gamepad
+        ? gamepad
+        : keyboardMouse;
+    constexpr float kStrongSwitchThreshold = 0.60f;
+    const bool immediateSwitch =
+        previousDevice == InputDeviceKind::None ||
+        candidateSignal.digital ||
+        candidateSignal.strength >= kStrongSwitchThreshold;
+    if (deviceSwitchLockRemainingSeconds_ > 0.0f &&
+        !immediateSwitch) {
+        snapshot_.devices_.lastActiveDevice = previousDevice;
+        return;
+    }
+
+    snapshot_.devices_.lastActiveDevice = candidate;
+    constexpr float kDeviceSwitchLockSeconds = 0.18f;
+    deviceSwitchLockRemainingSeconds_ = kDeviceSwitchLockSeconds;
 }
 
 void InputService::EvaluateActions(float dt) {

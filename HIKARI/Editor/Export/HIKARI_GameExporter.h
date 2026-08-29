@@ -1,10 +1,17 @@
 #pragma once
 
 #include <filesystem>
+#include <cstdint>
 #include <string>
 #include <vector>
 
 namespace HIKARI::EDITOR {
+
+    enum class GameExportWindowMode : uint8_t {
+        Windowed = 0u,
+        BorderlessFullscreen,
+        TopmostFullscreen,
+    };
 
     struct GameExportResult {
         bool success = false;
@@ -21,8 +28,12 @@ namespace HIKARI::EDITOR {
 
     struct GameExportOptions {
         std::filesystem::path outputDirectory{};
+        std::string executableFileName{};
+        std::string windowTitle{};
         std::string startupSceneGuid{};
         std::vector<std::string> sceneGuids{};
+        GameExportWindowMode windowMode =
+            GameExportWindowMode::BorderlessFullscreen;
     };
 
     class GameExporter {

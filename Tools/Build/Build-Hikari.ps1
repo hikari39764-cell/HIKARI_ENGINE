@@ -33,12 +33,55 @@ if (-not [string]::IsNullOrWhiteSpace($Project)) {
     $projectRoot = (Resolve-Path -LiteralPath $projectInput).Path
 }
 
+$gameHostExecutableName = 'HIKARI_Game.exe'
+if ($Preset -eq 'game-shipping' -and $null -ne $projectRoot) {
+    $gameExportSettingsPath = Join-Path `
+        $projectRoot `
+        'ProjectSettings\game_export.json'
+    if (Test-Path -LiteralPath $gameExportSettingsPath -PathType Leaf) {
+        try {
+            $gameExportSettings = Get-Content `
+                -LiteralPath $gameExportSettingsPath `
+                -Raw | ConvertFrom-Json
+        } catch {
+            throw (
+                "Could not parse project game export settings: " +
+                $gameExportSettingsPath)
+        }
+        $executableProperty =
+            $gameExportSettings.PSObject.Properties['executableName']
+        if ($null -ne $executableProperty -and
+            -not [string]::IsNullOrWhiteSpace(
+                [string]$executableProperty.Value)) {
+            $gameHostExecutableName = [string]$executableProperty.Value
+        }
+    }
+}
+if ([IO.Path]::GetFileName($gameHostExecutableName) -cne
+        $gameHostExecutableName -or
+    [IO.Path]::GetExtension($gameHostExecutableName) -ine '.exe' -or
+    $gameHostExecutableName.EndsWith('.') -or
+    $gameHostExecutableName.EndsWith(' ') -or
+    $gameHostExecutableName.IndexOfAny(
+        [IO.Path]::GetInvalidFileNameChars()) -ge 0) {
+    throw (
+        "Project executableName must be one safe .exe filename: " +
+        $gameHostExecutableName)
+}
+$gameHostOutputName =
+    [IO.Path]::GetFileNameWithoutExtension($gameHostExecutableName)
+
 Push-Location $repoRoot
 try {
     # Configure is intentionally incremental and always precedes a build.
     # A failed CMake generation can leave a valid-looking CMakeCache.txt while
     # the selected target project is missing.
-    & $cmake.Source --preset $Preset
+    $configureArguments = @('--preset', $Preset)
+    if ($Preset -eq 'game-shipping') {
+        $configureArguments +=
+            "-DHIKARI_GAME_HOST_OUTPUT_NAME:STRING=$gameHostOutputName"
+    }
+    & $cmake.Source @configureArguments
     if ($LASTEXITCODE -ne 0) {
         throw "CMake configure failed for preset '$Preset'."
     }

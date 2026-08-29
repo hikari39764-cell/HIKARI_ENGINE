@@ -70,6 +70,12 @@ set(
     ${HIKARI_RUNTIME_PRIVATE_LINK_LIBRARIES})
 hikari_define_runtime_modules(HIKARI_RUNTIME_MODULE_TARGETS)
 target_link_libraries(
+    hikari_runtime_foundation
+    PRIVATE
+        mfplat
+        mfreadwrite
+        mfuuid)
+target_link_libraries(
     hikari_runtime_navigation
     PRIVATE
         HIKARI::RecastNavigation)
@@ -120,6 +126,66 @@ hikari_configure_engine_target(HIKARI_NavigationRuntimeContracts)
 hikari_configure_runtime_deployment(
     HIKARI_NavigationRuntimeContracts
     OUTPUT_NAME "HIKARI_NavigationRuntimeContracts"
+    NO_INSTALL)
+
+add_executable(HIKARI_AudioRuntimeContracts EXCLUDE_FROM_ALL)
+target_sources(
+    HIKARI_AudioRuntimeContracts
+    PRIVATE
+        "${HIKARI_SOURCE_ROOT}/Tools/Tests/HIKARI_AudioRuntimeContracts.cpp")
+target_link_libraries(
+    HIKARI_AudioRuntimeContracts
+    PRIVATE
+        HIKARI::Runtime)
+hikari_configure_engine_target(HIKARI_AudioRuntimeContracts)
+hikari_configure_runtime_deployment(
+    HIKARI_AudioRuntimeContracts
+    OUTPUT_NAME "HIKARI_AudioRuntimeContracts"
+    NO_INSTALL)
+
+add_executable(HIKARI_InputDeviceArbitrationContracts EXCLUDE_FROM_ALL)
+target_sources(
+    HIKARI_InputDeviceArbitrationContracts
+    PRIVATE
+        "${HIKARI_SOURCE_ROOT}/Tools/Tests/HIKARI_InputDeviceArbitrationContracts.cpp")
+target_link_libraries(
+    HIKARI_InputDeviceArbitrationContracts
+    PRIVATE
+        HIKARI::Runtime)
+hikari_configure_engine_target(HIKARI_InputDeviceArbitrationContracts)
+hikari_configure_runtime_deployment(
+    HIKARI_InputDeviceArbitrationContracts
+    OUTPUT_NAME "HIKARI_InputDeviceArbitrationContracts"
+    NO_INSTALL)
+
+add_executable(HIKARI_GroundTelegraphContracts EXCLUDE_FROM_ALL)
+target_sources(
+    HIKARI_GroundTelegraphContracts
+    PRIVATE
+        "${HIKARI_SOURCE_ROOT}/Tools/Tests/HIKARI_GroundTelegraphContracts.cpp")
+target_link_libraries(
+    HIKARI_GroundTelegraphContracts
+    PRIVATE
+        HIKARI::Runtime)
+hikari_configure_engine_target(HIKARI_GroundTelegraphContracts)
+hikari_configure_runtime_deployment(
+    HIKARI_GroundTelegraphContracts
+    OUTPUT_NAME "HIKARI_GroundTelegraphContracts"
+    NO_INSTALL)
+
+add_executable(HIKARI_ColliderCompositionContracts EXCLUDE_FROM_ALL)
+target_sources(
+    HIKARI_ColliderCompositionContracts
+    PRIVATE
+        "${HIKARI_SOURCE_ROOT}/Tools/Tests/HIKARI_ColliderCompositionContracts.cpp")
+target_link_libraries(
+    HIKARI_ColliderCompositionContracts
+    PRIVATE
+        HIKARI::Runtime)
+hikari_configure_engine_target(HIKARI_ColliderCompositionContracts)
+hikari_configure_runtime_deployment(
+    HIKARI_ColliderCompositionContracts
+    OUTPUT_NAME "HIKARI_ColliderCompositionContracts"
     NO_INSTALL)
 set_property(
     SOURCE
@@ -219,7 +285,9 @@ else()
         PRIVATE
             HIKARI::Runtime)
     hikari_configure_engine_target(HIKARI_GameHost)
-    hikari_configure_runtime_deployment(HIKARI_GameHost)
+    hikari_configure_runtime_deployment(
+        HIKARI_GameHost
+        OUTPUT_NAME "${HIKARI_GAME_HOST_OUTPUT_NAME}")
     set_target_properties(
         HIKARI_GameHost
         PROPERTIES

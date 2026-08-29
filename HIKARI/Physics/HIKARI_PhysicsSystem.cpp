@@ -11,6 +11,7 @@
 #include "Physics/HIKARI_PhysicsRuntimeStatusService.h"
 #include "Physics/HIKARI_PhysicsWorldService.h"
 #include "Scene/HIKARI_PresentationTransformService.h"
+#include "Scene/HIKARI_RuntimeObjectActivityService.h"
 #include "Scene/HIKARI_RuntimeWorldServices.h"
 #include "Scene/HIKARI_World.h"
 
@@ -32,6 +33,8 @@ namespace HIKARI::PHYSICS {
             world.Services().Find<KinematicMotionService>();
         presentationTransforms_ =
             world.Services().Find<PresentationTransformService>();
+        runtimeActivityService_ =
+            world.Services().Find<RuntimeObjectActivityService>();
         if (runtimeStatus_ != nullptr) {
             runtimeStatus_->Clear();
         }
@@ -83,6 +86,7 @@ namespace HIKARI::PHYSICS {
         runtimeStatus_ = nullptr;
         kinematicMotion_ = nullptr;
         presentationTransforms_ = nullptr;
+        runtimeActivityService_ = nullptr;
         runtimePlayState_ = nullptr;
     }
 

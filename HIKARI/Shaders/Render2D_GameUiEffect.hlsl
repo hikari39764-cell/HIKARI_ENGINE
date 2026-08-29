@@ -404,6 +404,30 @@ float4 PSMain(VSOutput input) : SV_Target0
             2.0 + usePulse * 2.0,
             (0.68 + usePulse * 0.90) * intensity);
     }
+    else if (effect == 27u)
+    {
+        const float recharge = saturate(fill);
+        const float boundary = 1.0 - recharge;
+        const float derivative = max(fwidth(input.uv.y), 0.002);
+        const float charged = smoothstep(
+            boundary - derivative * 1.5,
+            boundary + derivative * 1.5,
+            input.uv.y);
+        const float luminance = dot(
+            color.rgb,
+            float3(0.299, 0.587, 0.114));
+        const float3 emptyColor = lerp(
+            float3(0.20, 0.23, 0.25),
+            luminance.xxx,
+            0.16);
+        const float leading = 1.0 - smoothstep(
+            derivative * 1.5,
+            derivative * 6.0,
+            abs(input.uv.y - boundary));
+        color.rgb = lerp(emptyColor, color.rgb, charged);
+        color.rgb += gHighlightColor.rgb * color.a * leading *
+            (0.30 + 0.18 * sin(time * 5.0)) * intensity;
+    }
     else if (effect == 20u)
     {
         const float diagonal = frac(

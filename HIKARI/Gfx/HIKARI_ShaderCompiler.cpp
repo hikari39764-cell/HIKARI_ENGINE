@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <d3dcompiler.h>
@@ -91,8 +92,17 @@ namespace HIKARI::GFX {
             if (bytes <= 1) {
                 return {};
             }
-            std::string out(static_cast<size_t>(bytes - 1), '\0');
-            WideCharToMultiByte(CP_UTF8, 0, text, -1, out.data(), bytes, nullptr, nullptr);
+            std::string out(static_cast<size_t>(bytes), '\0');
+            WideCharToMultiByte(
+                CP_UTF8,
+                0,
+                text,
+                -1,
+                out.data(),
+                bytes,
+                nullptr,
+                nullptr);
+            out.pop_back();
             return out;
         }
 
@@ -101,6 +111,79 @@ namespace HIKARI::GFX {
                 return {};
             }
             return std::string(blob->GetStringPointer(), blob->GetStringPointer() + blob->GetStringLength());
+        }
+
+#if defined(HIKARI_SHIPPING)
+        bool IsSafeBytecodeToken(std::string_view token) {
+            if (token.empty()) {
+                return false;
+            }
+            return std::all_of(
+                token.begin(),
+                token.end(),
+                [](unsigned char value) {
+                    return (value >= 'a' && value <= 'z') ||
+                        (value >= 'A' && value <= 'Z') ||
+                        (value >= '0' && value <= '9') ||
+                        value == '_' || value == '-' || value == '.';
+                });
+        }
+#endif
+
+        bool TryLoadPrecompiledEngineShader(
+            const std::filesystem::path& logicalPath,
+            const char* entry,
+            const wchar_t* profile,
+            ID3DBlob** outBlob) {
+#if !defined(HIKARI_SHIPPING)
+            (void)logicalPath;
+            (void)entry;
+            (void)profile;
+            (void)outBlob;
+            return false;
+#else
+            if (outBlob == nullptr || entry == nullptr || profile == nullptr ||
+                logicalPath.is_absolute() ||
+                !IsEngineShaderLogicalPath(logicalPath)) {
+                return false;
+            }
+            const std::string entryToken(entry);
+            const std::string profileToken = NarrowUtf8(profile);
+            if (!IsSafeBytecodeToken(entryToken) ||
+                !IsSafeBytecodeToken(profileToken)) {
+                return false;
+            }
+            const CONTENT::EngineContentContext& content =
+                CONTENT::GetEngineContentContext();
+            if (!content.IsOpen()) {
+                return false;
+            }
+            const std::filesystem::path bytecodePath = content.Resolve(
+                std::filesystem::path("ShaderBytecode") /
+                MakeEngineContentRelativePath(logicalPath) /
+                (entryToken + "_" + profileToken + ".dxil"));
+            std::error_code error{};
+            if (bytecodePath.empty() ||
+                !std::filesystem::is_regular_file(bytecodePath, error) ||
+                error) {
+                return false;
+            }
+            *outBlob = nullptr;
+            const HRESULT result = D3DReadFileToBlob(
+                bytecodePath.c_str(),
+                outBlob);
+            if (SUCCEEDED(result) && *outBlob != nullptr) {
+                return true;
+            }
+            HIKARI_LOG_WARN(
+                "[ShaderCompiler] precompiled DXIL could not be read; "
+                "falling back to DXC: " + bytecodePath.generic_string());
+            if (*outBlob != nullptr) {
+                (*outBlob)->Release();
+                *outBlob = nullptr;
+            }
+            return false;
+#endif
         }
 
         void ReportCompileError(const std::string& message) {
@@ -407,15 +490,24 @@ namespace HIKARI::GFX {
         const wchar_t* profile,
         ID3DBlob** outBlob) {
 
-        if (path == nullptr) {
+        if (path == nullptr || outBlob == nullptr) {
             return false;
+        }
+        const std::filesystem::path logicalPath =
+            std::filesystem::path(path).lexically_normal();
+        if (TryLoadPrecompiledEngineShader(
+                logicalPath,
+                entry,
+                profile,
+                outBlob)) {
+            return true;
         }
         if (!EnsureDxcRuntime()) {
             return false;
         }
 
         const std::filesystem::path resolvedPath =
-            ResolveShaderSourcePath(path);
+            ResolveShaderSourcePath(logicalPath);
         if (resolvedPath.empty()) {
             return false;
         }

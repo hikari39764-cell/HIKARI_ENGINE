@@ -51,8 +51,11 @@ namespace HIKARI::CORE {
             }
         }
 
-        std::filesystem::path MakeLogFilePathOnce() {
-            const std::filesystem::path logDir = std::filesystem::current_path() / "logs";
+        std::filesystem::path MakeLogFilePathOnce(
+            const std::filesystem::path& requestedDirectory) {
+            const std::filesystem::path logDir = requestedDirectory.empty()
+                ? std::filesystem::current_path() / "logs"
+                : requestedDirectory;
             std::error_code ec;
             std::filesystem::create_directories(logDir, ec);
             return logDir / ("HIKARI_" + FormatTimestampForFileName() + ".log");
@@ -68,13 +71,15 @@ namespace HIKARI::CORE {
         }
     }
 
-    void InitializeLogger() {
+    void InitializeLogger(
+        const std::filesystem::path& logDirectory) {
         std::lock_guard lock(gLogMutex);
         if (gInitialized) {
             return;
         }
 
-        const std::filesystem::path path = MakeLogFilePathOnce();
+        const std::filesystem::path path = MakeLogFilePathOnce(
+            logDirectory);
         gLogFile.open(path, std::ios::out | std::ios::app);
         gInitialized = true;
     }

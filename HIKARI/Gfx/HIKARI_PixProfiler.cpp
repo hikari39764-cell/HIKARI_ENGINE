@@ -132,13 +132,21 @@ namespace HIKARI::GFX::PIX {
 #endif
 
 #if defined(HIKARI_ENABLE_PIX)
-        bool IsDeferredCapturerLoadRequested() {
+        bool IsEnvironmentFlagEnabled(const wchar_t* name) {
             wchar_t value[16]{};
             const DWORD length = GetEnvironmentVariableW(
-                L"HIKARI_PIX_DEFER_LOAD",
+                name,
                 value,
                 static_cast<DWORD>(sizeof(value) / sizeof(value[0])));
             return length == 1 && value[0] == L'1';
+        }
+
+        bool IsDeferredCapturerLoadRequested() {
+            return IsEnvironmentFlagEnabled(L"HIKARI_PIX_DEFER_LOAD");
+        }
+
+        bool IsEagerCapturerLoadRequested() {
+            return IsEnvironmentFlagEnabled(L"HIKARI_PIX_EAGER_LOAD");
         }
 
         bool TryGetCaptureFileSize(const std::filesystem::path& path, std::uintmax_t& outSize) {
@@ -241,16 +249,22 @@ namespace HIKARI::GFX::PIX {
             return value > 32;
         }
 
-        bool EnsureGpuCapturerLoaded() {
+        bool EnsureGpuCapturerLoaded(bool allowInstalledLibraryLoad) {
             if (gPix.capturerLoaded) {
                 return true;
             }
-            if (gPix.capturerLoadAttempted) {
+
+            HMODULE capturer = GetModuleHandleW(L"WinPixGpuCapturer.dll");
+            if (capturer == nullptr && !allowInstalledLibraryLoad) {
                 return false;
             }
-
-            gPix.capturerLoadAttempted = true;
-            const HMODULE capturer = PIXLoadLatestWinPixGpuCapturerLibrary();
+            if (capturer == nullptr && gPix.capturerLoadAttempted) {
+                return false;
+            }
+            if (capturer == nullptr) {
+                gPix.capturerLoadAttempted = true;
+                capturer = PIXLoadLatestWinPixGpuCapturerLibrary();
+            }
             if (capturer == nullptr) {
                 SetStatus("PIX GPU capturer was not found. Install Microsoft PIX or open the app from PIX.");
                 HIKARI_LOG_WARN("[PIX] WinPixGpuCapturer.dll was not found.");
@@ -271,8 +285,8 @@ namespace HIKARI::GFX::PIX {
                 HIKARI_LOG_WARN(oss.str());
             }
 
-            SetStatus("PIX GPU capturer loaded.");
-            HIKARI_LOG_INFO("[PIX] GPU capturer loaded.");
+            SetStatus("PIX GPU capturer available.");
+            HIKARI_LOG_INFO("[PIX] GPU capturer available.");
             return true;
         }
 #endif
@@ -309,15 +323,27 @@ namespace HIKARI::GFX::PIX {
     void Initialize(void* hwnd) {
         gPix.hwnd = static_cast<HWND>(hwnd);
 #if defined(HIKARI_ENABLE_PIX)
-        // GPU CaptureはD3D12 Device作成前にCapturerを読み込む必要がある。
-        if (IsDeferredCapturerLoadRequested()) {
-            SetStatus("PIX compiled in. GPU capturer load is deferred by HIKARI_PIX_DEFER_LOAD=1.");
-            HIKARI_LOG_WARN("[PIX] GPU capturer load deferred. GPU captures may not include D3D12 work.");
+        // PIXから起動された場合は、注入済みCapturerのみを利用する。
+        if (EnsureGpuCapturerLoaded(false)) {
+            SetStatus("PIX GPU capturer provided by PIX before D3D12 initialization.");
             return;
         }
 
-        if (EnsureGpuCapturerLoaded()) {
-            SetStatus("PIX GPU capturer ready before D3D12 initialization.");
+        // GPU CaptureはD3D12 Device作成前にCapturerを読み込む必要がある。
+        if (IsDeferredCapturerLoadRequested()) {
+            SetStatus("PIX compiled in. GPU capturer load is deferred by HIKARI_PIX_DEFER_LOAD=1.");
+            HIKARI_LOG_INFO("[PIX] GPU capturer load deferred by HIKARI_PIX_DEFER_LOAD=1.");
+            return;
+        }
+
+        if (!IsEagerCapturerLoadRequested()) {
+            SetStatus("PIX GPU capturer is off by default. Launch from PIX or set HIKARI_PIX_EAGER_LOAD=1 before startup.");
+            HIKARI_LOG_INFO("[PIX] GPU capturer not loaded in default-safe mode.");
+            return;
+        }
+
+        if (EnsureGpuCapturerLoaded(true)) {
+            SetStatus("PIX GPU capturer eagerly loaded before D3D12 initialization.");
         }
 #else
         SetStatus("PIX disabled in this build.");
@@ -400,7 +426,9 @@ namespace HIKARI::GFX::PIX {
         if (frameCount == 0) {
             frameCount = 1;
         }
-        if (!EnsureGpuCapturerLoaded()) {
+        if (!EnsureGpuCapturerLoaded(false)) {
+            SetStatus("PIX GPU capturer is not active. Launch from PIX or restart with HIKARI_PIX_EAGER_LOAD=1.");
+            HIKARI_LOG_WARN("[PIX] capture requires launch from PIX or HIKARI_PIX_EAGER_LOAD=1 at startup.");
             return false;
         }
 

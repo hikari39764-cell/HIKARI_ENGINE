@@ -1,6 +1,7 @@
 param(
     [string]$DxcPath = "",
     [string]$Group = "",
+    [string]$OutputRoot = "",
     [switch]$VerboseErrors
 )
 
@@ -33,6 +34,11 @@ function Find-Dxc {
 }
 
 $dxc = Find-Dxc $DxcPath
+$resolvedOutputRoot = $null
+if (-not [string]::IsNullOrWhiteSpace($OutputRoot)) {
+    $resolvedOutputRoot = [IO.Path]::GetFullPath($OutputRoot)
+    [IO.Directory]::CreateDirectory($resolvedOutputRoot) | Out-Null
+}
 
 $entries = @(
     @{ Shader = "HIKARI/Shaders/Render3D_StaticVS.hlsl"; Entry = "main"; Target = "vs_6_0" },
@@ -140,6 +146,8 @@ $entries = @(
     @{ Shader = "HIKARI/Shaders/Render3D_CombatAfterimage.hlsl"; Entry = "VSMain"; Target = "vs_6_0"; Group = "CombatVfx"; WarningsAsErrors = $true }
     @{ Shader = "HIKARI/Shaders/Render3D_CombatAfterimage.hlsl"; Entry = "VSStaticMain"; Target = "vs_6_0"; Group = "CombatVfx"; WarningsAsErrors = $true }
     @{ Shader = "HIKARI/Shaders/Render3D_CombatAfterimage.hlsl"; Entry = "PSMain"; Target = "ps_6_0"; Group = "CombatVfx"; WarningsAsErrors = $true }
+    @{ Shader = "HIKARI/Shaders/Render3D_GroundTelegraph.hlsl"; Entry = "VSMain"; Target = "vs_6_0"; Group = "CombatVfx"; WarningsAsErrors = $true }
+    @{ Shader = "HIKARI/Shaders/Render3D_GroundTelegraph.hlsl"; Entry = "PSMain"; Target = "ps_6_0"; Group = "CombatVfx"; WarningsAsErrors = $true }
     @{ Shader = "HIKARI/Shaders/Post_ActionScreenImpulse.hlsl"; Entry = "main"; Target = "ps_6_0"; Group = "CombatVfx"; WarningsAsErrors = $true }
     @{ Shader = "HIKARI/Shaders/Post_CombatScreenDistortionComposite.hlsl"; Entry = "main"; Target = "ps_6_0"; Group = "CombatVfx"; WarningsAsErrors = $true }
     @{ Shader = "HIKARI/Shaders/Render2D_GameUiEffect.hlsl"; Entry = "VSMain"; Target = "vs_6_0"; Group = "GameUi"; WarningsAsErrors = $true }
@@ -167,7 +175,26 @@ foreach ($entry in $entries) {
     if ($entry.ContainsKey('WarningsAsErrors') -and $entry.WarningsAsErrors) {
         $arguments += '-WX'
     }
-    $arguments += @('-Fo', 'NUL', $entry.Shader)
+    $outputPath = 'NUL'
+    if ($resolvedOutputRoot) {
+        $normalizedShader = $entry.Shader.Replace('\', '/')
+        if (-not $normalizedShader.StartsWith(
+                'HIKARI/Shaders/',
+                [StringComparison]::Ordinal)) {
+            throw "Precompiled engine shader is outside HIKARI/Shaders: $normalizedShader"
+        }
+        $engineRelative = $normalizedShader.Substring('HIKARI/'.Length)
+        $bytecodeDirectory = Join-Path `
+            $resolvedOutputRoot `
+            $engineRelative.Replace('/', '\')
+        [IO.Directory]::CreateDirectory($bytecodeDirectory) | Out-Null
+        $safeEntry = $entry.Entry -replace '[^A-Za-z0-9_.-]', '_'
+        $safeTarget = $entry.Target -replace '[^A-Za-z0-9_.-]', '_'
+        $outputPath = Join-Path `
+            $bytecodeDirectory `
+            ("{0}_{1}.dxil" -f $safeEntry, $safeTarget)
+    }
+    $arguments += @('-Fo', $outputPath, $entry.Shader)
     $output = & $dxc @arguments 2>&1
     if ($LASTEXITCODE -ne 0) {
         $failures.Add([pscustomobject]@{
@@ -187,4 +214,9 @@ if ($failures.Count -gt 0) {
     exit 1
 }
 
-Write-Host ("Shader compile check passed: {0} entries with {1}" -f $entries.Count, $dxc)
+if ($resolvedOutputRoot) {
+    Write-Host ("Shader bytecode bake passed: {0} entries -> {1}" -f `
+        $entries.Count, $resolvedOutputRoot)
+} else {
+    Write-Host ("Shader compile check passed: {0} entries with {1}" -f $entries.Count, $dxc)
+}

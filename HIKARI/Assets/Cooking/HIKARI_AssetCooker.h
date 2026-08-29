@@ -12,6 +12,13 @@ namespace HIKARI::ASSETS::COOKING {
         std::filesystem::path contentRoot{};
         std::string startupSceneGuid{};
         std::vector<std::string> sceneGuids{};
+        // Project-declared roots close over assets referenced from compiled
+        // GameProject code (UI, VFX, model presets, dialogue) that cannot be
+        // discovered by scanning scene JSON alone.
+        std::vector<std::filesystem::path> assetRoots{};
+        // Direct-file consumers such as audio and font/UI presentation use a
+        // quarantined RuntimePayload tree instead of shipping authored Assets.
+        std::vector<std::filesystem::path> runtimePayloadRoots{};
     };
 
     struct AssetCookResult {

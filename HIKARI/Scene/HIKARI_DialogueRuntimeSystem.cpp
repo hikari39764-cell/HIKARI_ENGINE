@@ -42,26 +42,37 @@ namespace HIKARI {
             (trigger->IsOneShot() && trigger->IsConsumed())) {
             return false;
         }
-        const Candidate candidate{ possibleTrigger, possibleInteractor };
-        const bool exists = std::any_of(
+        auto found = std::find_if(
             candidates_.begin(),
             candidates_.end(),
             [&](const Candidate& existing) {
-                return existing.trigger == candidate.trigger &&
-                    existing.interactor == candidate.interactor;
+                return existing.trigger == possibleTrigger &&
+                    existing.interactor == possibleInteractor;
             });
-        if (!exists) {
-            candidates_.push_back(candidate);
+        if (found == candidates_.end()) {
+            candidates_.push_back(Candidate{
+                possibleTrigger,
+                possibleInteractor,
+                trigger->GetActivation() ==
+                    DialogueTriggerActivation::OnEnter });
             std::stable_sort(
                 candidates_.begin(),
                 candidates_.end(),
                 [](const Candidate& lhs, const Candidate& rhs) {
                     return lhs.trigger.ToValue() < rhs.trigger.ToValue();
                 });
+            found = std::find_if(
+                candidates_.begin(),
+                candidates_.end(),
+                [&](const Candidate& existing) {
+                    return existing.trigger == possibleTrigger &&
+                        existing.interactor == possibleInteractor;
+                });
         }
         if (activateOnEnter &&
-            trigger->GetActivation() == DialogueTriggerActivation::OnEnter) {
-            return TryStart(world, candidate);
+            trigger->GetActivation() == DialogueTriggerActivation::OnEnter &&
+            found != candidates_.end()) {
+            return TryStart(world, *found);
         }
         return true;
     }
@@ -100,7 +111,7 @@ namespace HIKARI {
 
     bool DialogueRuntimeSystem::TryStart(
         World& world,
-        const Candidate& candidate) {
+        Candidate& candidate) {
         auto* session = world.Services().Find<
             DIALOGUE::DialogueSessionService>();
         if (session == nullptr || session->IsActive()) {
@@ -120,8 +131,13 @@ namespace HIKARI {
                 candidate.trigger,
                 candidate.interactor,
                 trigger->ShouldPauseWorld())) {
+            // The session was available, so this is an asset/service
+            // rejection rather than ordinary contention. Do not spin every
+            // frame while the player remains inside a broken trigger.
+            candidate.pendingOnEnter = false;
             return false;
         }
+        candidate.pendingOnEnter = false;
         if (trigger->IsOneShot()) trigger->MarkConsumed();
         return true;
     }
@@ -135,9 +151,17 @@ namespace HIKARI {
         session->Update(world, frame);
         if (session->IsActive()) return;
         PruneCandidates(world);
+        // OnEnter contacts that occurred while a previous session was active
+        // are admitted first. A successful start consumes only that
+        // candidate; remaining overlaps stay queued in stable trigger order.
+        for (Candidate& candidate : candidates_) {
+            if (candidate.pendingOnEnter && TryStart(world, candidate)) {
+                return;
+            }
+        }
         const INPUT::InputSnapshot& input =
             SERVICES::GetInputService().GetSnapshot();
-        for (const Candidate& candidate : candidates_) {
+        for (Candidate& candidate : candidates_) {
             GameObject* object = world.FindObject(candidate.trigger);
             const DialogueTriggerComponent* trigger = object != nullptr
                 ? object->GetComponent<DialogueTriggerComponent>()

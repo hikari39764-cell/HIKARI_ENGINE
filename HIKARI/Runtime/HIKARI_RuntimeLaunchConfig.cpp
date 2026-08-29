@@ -216,6 +216,7 @@ namespace HIKARI {
         cfg.enableEditorUI = ReadBool(runtime, "enableEditorUI");
         cfg.enableDebugLayer = ReadBool(runtime, "enableDebugLayer");
         cfg.enableDebugCamera = ReadBool(runtime, "enableDebugCamera");
+        cfg.windowTitle = ReadString(runtime, "windowTitle");
         cfg.resizableWindow = ReadBool(runtime, "resizableWindow");
         cfg.windowWidth = ReadInt(runtime, "windowWidth");
         cfg.windowHeight = ReadInt(runtime, "windowHeight");

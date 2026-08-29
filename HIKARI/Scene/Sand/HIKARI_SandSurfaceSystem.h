@@ -113,8 +113,16 @@ namespace HIKARI {
         bool RelaxChunk(
             SAND::SandChunkRuntimeState& chunk,
             float fixedDt);
-        bool StitchRuntimeBorders(ObjectChunks& bucket);
+        bool StitchRuntimeBorders(
+            ObjectChunks& bucket,
+            std::span<const uint64_t> dirtyKeys);
         void RebuildCombinedHeights(SAND::SandChunkRuntimeState& chunk);
+        void RebuildCombinedHeightsInRegion(
+            SAND::SandChunkRuntimeState& chunk,
+            uint32_t minimumX,
+            uint32_t minimumZ,
+            uint32_t maximumX,
+            uint32_t maximumZ);
         bool ApplyStylizedImprint(
             SAND::SandChunkRuntimeState& chunk,
             TERRAIN::TerrainFootprintKind footprintKind,
@@ -146,6 +154,7 @@ namespace HIKARI {
         // objectKey (render stable id) -> chunk 状態表
         std::unordered_map<uint64_t, ObjectChunks> objects_{};
         bool hasPublishedSnapshot_ = false;
+        bool runtimeSnapshotDirty_ = false;
     };
 
 } // namespace HIKARI

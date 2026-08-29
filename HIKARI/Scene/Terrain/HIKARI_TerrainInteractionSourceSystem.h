@@ -10,6 +10,7 @@
 namespace HIKARI {
 
     class GameObject;
+    class RuntimeObjectActivityService;
     class World;
     class WorldEventStream;
     struct RuntimePlayStateService;
@@ -80,6 +81,7 @@ namespace HIKARI {
             TERRAIN::TerrainInteractionFootprint footprint{};
             float normalLoadN = 0.0f;
             float contactAgeSeconds = 0.0f;
+            float stationaryPublishRemainingSeconds = 0.0f;
             uint64_t sourceShapeId = 0u;
             uint64_t definitionSignature = 0u;
         };
@@ -94,6 +96,7 @@ namespace HIKARI {
             MATH::Vec3 positionWS{};
             TERRAIN::TerrainInteractionFootprint footprint{};
             float contactAgeSeconds = 0.0f;
+            float stationaryPublishRemainingSeconds = 0.0f;
             bool submitted = false;
         };
 
@@ -104,6 +107,7 @@ namespace HIKARI {
             TERRAIN::TerrainInteractionFootprint footprint{};
             float normalLoadN = 0.0f;
             float contactAgeSeconds = 0.0f;
+            float stationaryPublishRemainingSeconds = 0.0f;
         };
 
         struct EditorPreviewContact {
@@ -174,6 +178,7 @@ namespace HIKARI {
         PHYSICS::PhysicsRuntimeStatusService* runtimeStatus_ = nullptr;
         PHYSICS::PhysicsWorldService* physicsWorld_ = nullptr;
         const RuntimePlayStateService* runtimePlayState_ = nullptr;
+        const RuntimeObjectActivityService* runtimeActivityService_ = nullptr;
         std::unordered_map<ContactKey, ActiveRigidContact, ContactKeyHash>
             activeRigidContacts_{};
         std::unordered_map<ContactKey, MATH::Vec3, ContactKeyHash>
