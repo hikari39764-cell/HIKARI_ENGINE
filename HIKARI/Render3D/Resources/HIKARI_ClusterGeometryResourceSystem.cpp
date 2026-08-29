@@ -20,6 +20,8 @@
 namespace HIKARI::RENDER3D {
 
     namespace {
+        constexpr uint32_t kClusterGeometryDescriptorCount = 2u;
+
         struct ClusterGeometryResourceSystemState {
             GFX::Context context{};
             std::unordered_map<std::string, ClusterGeometryResourceRecord> recordsBySourceKey{};
@@ -478,7 +480,6 @@ namespace HIKARI::RENDER3D {
 
         if (sourceKey.empty() || hcmeshPath.empty()) {
             ++state.stats.failedCount;
-            RebuildStats();
             return {};
         }
 
@@ -500,7 +501,6 @@ namespace HIKARI::RENDER3D {
                     ReadSourceWriteTime(hcmeshPath);
             if (memoryHit || fileHit) {
                 ++state.stats.hitCount;
-                RebuildStats();
                 return cached->second.handle;
             }
             ++state.stats.staleReloadCount;
@@ -510,7 +510,15 @@ namespace HIKARI::RENDER3D {
         if (state.context.device == nullptr || state.context.queue == nullptr) {
             ++state.stats.failedCount;
             ++state.stats.missingDeviceCount;
-            RebuildStats();
+            return {};
+        }
+
+        const RenderResourceDescriptorPoolStats descriptorStats =
+            GetRenderResourceDescriptorPoolStats();
+        if (!descriptorStats.initialized ||
+            descriptorStats.free < kClusterGeometryDescriptorCount) {
+            ++state.stats.failedCount;
+            ++state.stats.descriptorAllocationFailedCount;
             return {};
         }
 
@@ -519,11 +527,6 @@ namespace HIKARI::RENDER3D {
             state.memorySourcesByPath.find(pathKey);
         const bool fromMemory =
             memorySource != state.memorySourcesByPath.end();
-        if (fromMemory) {
-            HIKARI_LOG_INFO(
-                "[ClusterGeometry][Load][Memory] sourceKey=" +
-                sourceKey);
-        }
         CLUSTER::ClusterGeometryPackedBytes packed{};
         if (fromMemory) {
             packed = memorySource->second;
@@ -539,7 +542,6 @@ namespace HIKARI::RENDER3D {
                         ? hcmeshPath.generic_string()
                         : readMessage));
                 ++state.stats.failedCount;
-                RebuildStats();
                 return {};
             }
         }
@@ -560,14 +562,12 @@ namespace HIKARI::RENDER3D {
                 metadataUpload) ||
             !ExecuteClusterGeometryUpload(state, geometryUpload, metadataUpload)) {
             ++state.stats.failedCount;
-            RebuildStats();
             return {};
         }
 
         ClusterGeometryResourceHandle handle = FindOrRegisterHandle(sourceKey, hcmeshPath);
         if (!handle) {
             ++state.stats.failedCount;
-            RebuildStats();
             return {};
         }
 
@@ -591,7 +591,6 @@ namespace HIKARI::RENDER3D {
             }
             ++state.stats.failedCount;
             ++state.stats.descriptorAllocationFailedCount;
-            RebuildStats();
             return {};
         }
 
@@ -602,7 +601,6 @@ namespace HIKARI::RENDER3D {
             ReleaseRenderResourceDescriptor(srv);
             ReleaseRenderResourceDescriptor(metadataSrv);
             ++state.stats.failedCount;
-            RebuildStats();
             return {};
         }
 
@@ -620,7 +618,6 @@ namespace HIKARI::RENDER3D {
             }
             ++state.stats.failedCount;
             ++state.stats.descriptorAllocationFailedCount;
-            RebuildStats();
             return {};
         }
 
@@ -653,6 +650,11 @@ namespace HIKARI::RENDER3D {
 
         ++state.stats.loadedCount;
         ++state.stats.upgradedVirtualHandleCount;
+        if (fromMemory) {
+            HIKARI_LOG_INFO(
+                "[ClusterGeometry][Load][Memory] sourceKey=" +
+                sourceKey);
+        }
         RebuildStats();
         return handle;
     }

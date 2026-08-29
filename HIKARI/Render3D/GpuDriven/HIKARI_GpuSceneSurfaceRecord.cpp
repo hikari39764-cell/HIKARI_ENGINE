@@ -106,38 +106,19 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             return HashPointer(model);
         }
 
-        bool IsProceduralModel(const ModelAsset* model) {
-            if (model == nullptr) {
-                return false;
-            }
-            const std::string& sourcePath = model->GetSourcePath();
-            return sourcePath.rfind("procedural://", 0) == 0;
-        }
-
         uint64_t BuildClusterGeometryKey(
             const GpuSceneSurfaceRecord& record) {
 
             if (record.clusteredGeometryPath.empty()) {
                 return 0;
             }
-            if (!IsProceduralModel(record.model)) {
-                return BuildStableStringKey(
-                    "cluster-geometry-path",
-                    record.clusteredGeometryPath);
-            }
 
-            // procedural hcmesh は content-addressed path 単位で共有する。
-            // objectId を含めると scatter instance ごとに同じ GPU resource を
-            // 再登録し、terrain 再投影のたびに resource record が蓄積する。
-            uint64_t key = HashString("procedural-cluster-path");
-            key = HashAppend(key, record.meshIndex);
-            key = HashAppend(key, record.primitiveIndex);
-            // 設定変更で別の hcmesh になるため、パスもキーに含める。
-            return HashAppend(
-                key,
-                BuildStableStringKey(
-                    "cluster-geometry-path",
-                    record.clusteredGeometryPath));
+            // HCMESH は全 surface range を一つの packed resource に保持する。
+            // mesh / primitive / object ごとに同じ file を再登録せず、path を
+            // GPU resource identity とし、range 選択は draw record 側で行う。
+            return BuildStableStringKey(
+                "cluster-geometry-path",
+                record.clusteredGeometryPath);
         }
 
         const MaterialAsset* ResolveMaterialAsset(const GpuSceneSurfaceRecord& record) {
