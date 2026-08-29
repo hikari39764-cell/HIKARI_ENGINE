@@ -6,6 +6,28 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+function Get-HikariRelativePath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Root,
+        [Parameter(Mandatory = $true)]
+        [string]$Target
+    )
+
+    $normalizedRoot = [IO.Path]::GetFullPath($Root).TrimEnd('\', '/')
+    $normalizedTarget = [IO.Path]::GetFullPath($Target)
+    $rootPrefix = $normalizedRoot + [IO.Path]::DirectorySeparatorChar
+    if (-not $normalizedTarget.StartsWith(
+            $rootPrefix,
+            [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Path is outside the expected root: $normalizedTarget"
+    }
+
+    return $normalizedTarget.Substring($rootPrefix.Length).
+        Replace('\', '/')
+}
+
 $package = (Resolve-Path -LiteralPath $PackageRoot).Path
 $productManifest = Join-Path $package 'product_manifest.json'
 if (-not (Test-Path -LiteralPath $productManifest -PathType Leaf)) {
@@ -39,9 +61,9 @@ foreach ($file in @($manifest.files)) {
 }
 $actual = @{}
 foreach ($file in Get-ChildItem -LiteralPath $package -Recurse -File) {
-    $relative = [IO.Path]::GetRelativePath(
-        $package,
-        $file.FullName).Replace('\', '/')
+    $relative = Get-HikariRelativePath `
+        -Root $package `
+        -Target $file.FullName
     if ($relative -eq 'product_manifest.json') {
         continue
     }
