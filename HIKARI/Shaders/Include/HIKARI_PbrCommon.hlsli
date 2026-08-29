@@ -85,9 +85,9 @@ HikariPbrShadingContext HikariBuildPbrShadingContext(
 
     const float ndotView = saturate(dot(normal, view));
     context.ndotView = ndotView;
-    const float alpha = roughness * roughness;
+    const float alpha = context.roughness * context.roughness;
     context.distributionAlphaSquared = alpha * alpha;
-    const float geometryRoughness = roughness + 1.0f;
+    const float geometryRoughness = context.roughness + 1.0f;
     context.geometryK =
         (geometryRoughness * geometryRoughness) / 8.0f;
     context.geometryView =
