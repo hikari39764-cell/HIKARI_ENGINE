@@ -4,9 +4,6 @@
 #include <memory>
 
 #include "Scene/Components/HIKARI_ProceduralMeshComponent.h"
-#include "Scene/Components/Lighting/HIKARI_IrradianceVolumeComponent.h"
-#include "Scene/Components/Lighting/HIKARI_LightComponent.h"
-#include "Scene/Components/Lighting/HIKARI_ReflectionProbeComponent.h"
 #include "Scene/Components/Rendering/MaterialFx/HIKARI_MaterialFxComponent.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponentAuthoring.h"
@@ -53,15 +50,12 @@ namespace HIKARI {
 
             std::span<const std::string_view>
                 GetComponentTypeNames() const noexcept override {
-                static constexpr std::array<std::string_view, 8> names{
+                static constexpr std::array<std::string_view, 5> names{
                     "ModelComponent",
                     "MaterialFxComponent",
                     "ProceduralMeshComponent",
                     "TerrainSurfaceComponent",
-                    "SandSurfaceFollowerComponent",
-                    "LightComponent",
-                    "ReflectionProbeComponent",
-                    "IrradianceVolumeComponent"
+                    "SandSurfaceFollowerComponent"
                 };
                 return names;
             }
@@ -341,72 +335,6 @@ namespace HIKARI {
                     "authoritative. The sand ground itself uses "
                     "SandSurfaceComponent.");
 
-                ComponentTypeInfo light{};
-                light.typeName = "LightComponent";
-                light.factory =
-                    []() -> std::unique_ptr<IComponent> {
-                    return std::make_unique<LightComponent>();
-                };
-                light.runtimeApplyPolicy =
-                    ComponentRuntimeApplyPolicy::Immediate;
-                light.initializeDefaults = [](
-                    const SceneObjectData&,
-                    nlohmann::json& properties) {
-                    LightComponent defaults{};
-                    defaults.Serialize(properties);
-                };
-                light.presentation = ComponentTypePresentation{
-                    "Light",
-                    "Lighting",
-                    "Provides a directional, point, or spot light using the owning object's transform.",
-                    std::string(RuntimeFeatureIds::Rendering)
-                };
-
-                ComponentTypeInfo reflectionProbe{};
-                reflectionProbe.typeName = "ReflectionProbeComponent";
-                reflectionProbe.factory =
-                    []() -> std::unique_ptr<IComponent> {
-                    return std::make_unique<ReflectionProbeComponent>();
-                };
-                reflectionProbe.runtimeApplyPolicy =
-                    ComponentRuntimeApplyPolicy::Immediate;
-                reflectionProbe.initializeDefaults = [](
-                    const SceneObjectData&,
-                    nlohmann::json& properties) {
-                    ReflectionProbeComponent defaults{};
-                    defaults.Serialize(properties);
-                };
-                reflectionProbe.presentation = ComponentTypePresentation{
-                    "Reflection Probe",
-                    "Lighting",
-                    "Captures and blends local specular environment lighting.",
-                    std::string(RuntimeFeatureIds::Rendering)
-                };
-
-                ComponentTypeInfo irradianceVolume{};
-                irradianceVolume.typeName =
-                    "IrradianceVolumeComponent";
-                irradianceVolume.factory =
-                    []() -> std::unique_ptr<IComponent> {
-                    return std::make_unique<
-                        IrradianceVolumeComponent>();
-                };
-                irradianceVolume.runtimeApplyPolicy =
-                    ComponentRuntimeApplyPolicy::Immediate;
-                irradianceVolume.initializeDefaults = [](
-                    const SceneObjectData&,
-                    nlohmann::json& properties) {
-                    IrradianceVolumeComponent defaults{};
-                    defaults.Serialize(properties);
-                };
-                irradianceVolume.presentation =
-                    ComponentTypePresentation{
-                        "Irradiance Volume",
-                        "Lighting",
-                        "Defines a baked diffuse-light probe grid.",
-                        std::string(RuntimeFeatureIds::Rendering)
-                    };
-
                 bool success = componentRegistry.Register(
                     std::move(model));
                 success = componentRegistry.Register(
@@ -417,12 +345,6 @@ namespace HIKARI {
                     std::move(terrainSurface)) && success;
                 success = componentRegistry.Register(
                     std::move(sandFollower)) && success;
-                success = componentRegistry.Register(
-                    std::move(light)) && success;
-                success = componentRegistry.Register(
-                    std::move(reflectionProbe)) && success;
-                success = componentRegistry.Register(
-                    std::move(irradianceVolume)) && success;
                 success = systemTypeRegistry.Register(SystemTypeInfo{
                     "ModelRenderSystem",
                     [](const nlohmann::json&) -> std::unique_ptr<ISystem> {

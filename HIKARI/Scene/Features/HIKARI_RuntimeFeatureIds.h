@@ -5,6 +5,7 @@
 namespace HIKARI::RuntimeFeatureIds {
 
     inline constexpr std::string_view Rendering = "Rendering";
+    inline constexpr std::string_view Lighting = "Lighting";
     inline constexpr std::string_view Water = "Water";
     inline constexpr std::string_view Buoyancy = "Buoyancy";
     inline constexpr std::string_view Animation = "Animation";

@@ -392,6 +392,7 @@ namespace {
                         "enabledRuntimeFeatures",
                         nlohmann::json::array({
                             "Rendering",
+                            "Lighting",
                             "Camera"
                         })
                     },
