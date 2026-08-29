@@ -7,7 +7,7 @@
 #include <span>
 #include <string_view>
 
-#include "Render3D/Core/HIKARI_RenderViewIdentity.h"
+#include "Render3D/Core/HIKARI_RenderFrameToken.h"
 
 namespace HIKARI::RENDER3D::GRAPH {
 
@@ -66,19 +66,11 @@ namespace HIKARI::RENDER3D::GRAPH {
         MutationDuringExecution,
     };
 
-    struct RenderGraphFrameToken {
-        uint64_t frameIndex = 0u;
-        RenderViewId viewId{ kPrimaryRenderViewId };
-        uint32_t generation = 0u;
-
-        bool IsValid() const noexcept {
-            return generation != 0u && viewId.value != 0u;
-        }
-    };
+    using RenderGraphFrameToken = RenderFrameToken;
 
     struct RenderGraphResourceId {
         uint32_t index = kInvalidRenderGraphIndex;
-        uint32_t generation = 0u;
+        uint64_t generation = 0u;
 
         bool IsValid() const noexcept {
             return index != kInvalidRenderGraphIndex &&
@@ -156,9 +148,13 @@ namespace HIKARI::RENDER3D::GRAPH {
     public:
         RenderGraph() noexcept;
 
+        // Standalone graphs may allocate their own token. Any graph that
+        // consumes SceneSurfaceSet resources must use the shared-token
+        // overload below instead.
         bool BeginFrame(
             uint64_t frameIndex,
             RenderViewId viewId = kPrimaryRenderViewId) noexcept;
+        bool BeginFrame(RenderGraphFrameToken frame) noexcept;
 
         RenderGraphResourceId AddResource(
             const RenderGraphResourceDesc& desc) noexcept;

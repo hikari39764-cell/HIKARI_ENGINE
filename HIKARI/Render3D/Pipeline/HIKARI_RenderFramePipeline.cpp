@@ -47,6 +47,9 @@ namespace HIKARI::RENDER3D::PIPELINE {
             context.purpose = view.purpose;
             context.cameraCut = view.cameraFrame->cameraCut;
             context.frameIndex = TIME::GetFrameContext().frameIndex;
+            context.token = AllocateRenderFrameToken(
+                context.frameIndex,
+                context.viewId);
             context.graphics = graphics;
             context.camera = &view.cameraFrame->camera;
             context.environment = &environment;
@@ -150,8 +153,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
         const ScreenSpacePassContext screenSpaceContext =
             BuildScreenSpaceContext(frame);
         SURFACE::SceneSurfaceSet sceneTextures{};
-        sceneTextures.frameIndex = frame.frameIndex;
-        sceneTextures.viewId = frame.viewId;
+        sceneTextures.Reset(frame.token);
         sceneTextures.sceneDepth = frame.scene.depth;
         const RENDER3D::RenderQualitySettings& renderQuality =
             RENDER3D::GetRenderQualitySettings();

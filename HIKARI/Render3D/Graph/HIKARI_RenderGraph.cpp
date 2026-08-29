@@ -16,16 +16,18 @@ namespace HIKARI::RENDER3D::GRAPH {
                 "RenderGraph frame reset rejected during execution.");
             return false;
         }
+        return BeginFrame(AllocateRenderFrameToken(frameIndex, viewId));
+    }
 
-        uint32_t generation = frame_.generation + 1u;
-        if (generation == 0u) {
-            generation = 1u;
+    bool RenderGraph::BeginFrame(
+        RenderGraphFrameToken frame) noexcept {
+        if (executing_) {
+            SetDiagnostic(
+                RenderGraphResultCode::MutationDuringExecution,
+                "RenderGraph frame reset rejected during execution.");
+            return false;
         }
-        frame_ = RenderGraphFrameToken{
-            frameIndex,
-            viewId,
-            generation
-        };
+        frame_ = frame;
         resourceCount_ = 0u;
         passCount_ = 0u;
         useCount_ = 0u;
@@ -36,7 +38,7 @@ namespace HIKARI::RENDER3D::GRAPH {
         if (!frame_.IsValid()) {
             SetDiagnostic(
                 RenderGraphResultCode::InvalidFrame,
-                "RenderGraph requires a non-zero RenderViewId.");
+                "RenderGraph requires a valid frame token.");
             return false;
         }
         ClearDiagnostic();

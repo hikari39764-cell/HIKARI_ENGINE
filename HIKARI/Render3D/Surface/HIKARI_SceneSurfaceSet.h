@@ -2,6 +2,7 @@
 
 #include <cstdint>
 
+#include "Render3D/Core/HIKARI_RenderFrameToken.h"
 #include "Render3D/Core/HIKARI_RenderView.h"
 #include "Render3D/Depth/HIKARI_DepthPyramidLayer.h"
 #include "Render3D/Graph/HIKARI_RenderGraph.h"
@@ -11,8 +12,7 @@ namespace HIKARI::RENDER3D::SURFACE {
     // Immutable, frame-local view of the surfaces shared by screen-space
     // effects. Producers retain allocation, transition, and release ownership.
     struct SceneSurfaceSet {
-        uint64_t frameIndex = 0;
-        RenderViewId viewId{ kPrimaryRenderViewId };
+        RenderFrameToken frame{};
 
         RenderTextureView sceneDepth{};
         RenderTextureView sceneColorOpaque{};
@@ -35,8 +35,30 @@ namespace HIKARI::RENDER3D::SURFACE {
         DEPTH::DepthPyramidView currentSceneDepthPyramid{};
         DEPTH::DepthPyramidView visibilityDepthPyramid{};
 
+        void BeginFrame(
+            uint64_t frameIndex,
+            RenderViewId viewId = kPrimaryRenderViewId) noexcept {
+            Reset(AllocateRenderFrameToken(frameIndex, viewId));
+        }
+
+        void Reset(RenderFrameToken nextFrame) noexcept {
+            *this = SceneSurfaceSet{};
+            frame = nextFrame;
+        }
+
+        bool IsFrameValid() const noexcept {
+            return frame.IsValid();
+        }
+
+        bool MatchesFrame(RenderFrameToken expected) const noexcept {
+            return frame.IsValid() && frame == expected;
+        }
+
         const RenderTextureView* TryGetTexture(
             GRAPH::RenderGraphSemantic semantic) const noexcept {
+            if (!frame.IsValid()) {
+                return nullptr;
+            }
             switch (semantic) {
             case GRAPH::RenderGraphSemantic::SceneDepth:
                 return &sceneDepth;
@@ -63,8 +85,19 @@ namespace HIKARI::RENDER3D::SURFACE {
             }
         }
 
+        const RenderTextureView* TryGetTexture(
+            GRAPH::RenderGraphSemantic semantic,
+            RenderFrameToken expectedFrame) const noexcept {
+            return MatchesFrame(expectedFrame)
+                ? TryGetTexture(semantic)
+                : nullptr;
+        }
+
         const DEPTH::DepthPyramidView* TryGetDepthPyramid(
             GRAPH::RenderGraphSemantic semantic) const noexcept {
+            if (!frame.IsValid()) {
+                return nullptr;
+            }
             switch (semantic) {
             case GRAPH::RenderGraphSemantic::CurrentDepthPyramid:
                 return &currentSceneDepthPyramid;
@@ -75,8 +108,19 @@ namespace HIKARI::RENDER3D::SURFACE {
             }
         }
 
+        const DEPTH::DepthPyramidView* TryGetDepthPyramid(
+            GRAPH::RenderGraphSemantic semantic,
+            RenderFrameToken expectedFrame) const noexcept {
+            return MatchesFrame(expectedFrame)
+                ? TryGetDepthPyramid(semantic)
+                : nullptr;
+        }
+
         bool IsValid(
             GRAPH::RenderGraphSemantic semantic) const noexcept {
+            if (!frame.IsValid()) {
+                return false;
+            }
             if (const RenderTextureView* texture =
                     TryGetTexture(semantic)) {
                 return texture->IsSampleable();
@@ -92,24 +136,34 @@ namespace HIKARI::RENDER3D::SURFACE {
             return false;
         }
 
+        bool IsValid(
+            GRAPH::RenderGraphSemantic semantic,
+            RenderFrameToken expectedFrame) const noexcept {
+            return MatchesFrame(expectedFrame) && IsValid(semantic);
+        }
+
         bool HasOpaqueSurface() const noexcept {
-            return sceneDepth.IsSampleable() &&
+            return frame.IsValid() &&
+                sceneDepth.IsSampleable() &&
                 sceneColorOpaque.IsSampleable() &&
                 packedSurface.IsSampleable();
         }
 
         bool HasStylizedFeatureMask() const noexcept {
-            return surfaceFeatureMask.IsSampleable();
+            return frame.IsValid() && surfaceFeatureMask.IsSampleable();
         }
 
         bool HasStylizedOutlineStyle() const noexcept {
-            return stylizedOutlineStyle.IsSampleable() &&
+            return frame.IsValid() &&
+                stylizedOutlineStyle.IsSampleable() &&
                 stylizedOutlineStyle.width == surfaceFeatureMask.width &&
                 stylizedOutlineStyle.height == surfaceFeatureMask.height;
         }
 
         bool HasCurrentDepthHierarchy() const noexcept {
-            return IsDepthPyramidSampleable(
+            return frame.IsValid() &&
+                sceneDepth.IsSampleable() &&
+                IsDepthPyramidSampleable(
                     currentSceneDepthPyramid) &&
                 currentSceneDepthPyramid.viewKind ==
                     DEPTH::DepthPyramidViewKind::CurrentFrame &&

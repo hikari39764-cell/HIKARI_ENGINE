@@ -1,5 +1,7 @@
 #include "Render3D/Views/HIKARI_EditorInteractiveStylizedView.h"
 
+#include "Core/HIKARI_TimeService.h"
+
 #if defined(HIKARI_WITH_EDITOR)
 
 #include "Render2D/HIKARI_RenderTarget2D.h"
@@ -150,8 +152,9 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
             static_cast<uint32_t>(sceneTarget.GetWidth());
         const uint32_t height =
             static_cast<uint32_t>(sceneTarget.GetHeight());
-        outSurfaces.frameIndex = graphics.frameIndex;
-        outSurfaces.viewId = viewId;
+        outSurfaces.BeginFrame(
+            TIME::GetFrameContext().frameIndex,
+            viewId);
         outSurfaces.sceneColorOpaque = {
             sceneTarget.GetResource(), colorView.gpu, sceneTarget.GetFormat(),
             width, height, 1u, sceneTarget.GetColorState(), true

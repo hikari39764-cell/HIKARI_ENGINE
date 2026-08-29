@@ -40,14 +40,18 @@ namespace HIKARI::RENDER3D::PIPELINE {
         const RenderFrameGraphStageContext& context) noexcept {
         INTERNAL::StageExecutionState state{};
         state.context = &context;
-        if (!(context.frame.viewId == kPrimaryRenderViewId)) {
+        if (!context.frame.token.Matches(
+                context.frame.frameIndex,
+                context.frame.viewId) ||
+            !context.sceneSurfaces.MatchesFrame(context.frame.token) ||
+            !(context.frame.viewId == kPrimaryRenderViewId)) {
             state.result.diagnostic.code =
                 GRAPH::RenderGraphResultCode::InvalidFrame;
             std::snprintf(
                 state.result.diagnostic.message.data(),
                 state.result.diagnostic.message.size(),
                 "%s",
-                "RenderFrameGraph Stage 1 accepts only the primary view.");
+                "RenderFrameGraph requires matching primary-view surfaces.");
             TEMPORAL::MarkMotionVectorsWritten(false);
             gLastStageResult = state.result;
             return state.result;
@@ -59,9 +63,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
                 context.hasSsrWork,
             context.hasSsrWork
         };
-        if (!graph.BeginFrame(
-                context.frame.frameIndex,
-                context.frame.viewId) ||
+        if (!graph.BeginFrame(context.sceneSurfaces.frame) ||
             !INTERNAL::BuildRenderFrameGraphPlan(
                 options,
                 &state,

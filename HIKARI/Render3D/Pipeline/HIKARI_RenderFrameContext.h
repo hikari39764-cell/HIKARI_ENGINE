@@ -5,6 +5,7 @@
 #include <d3d12.h>
 
 #include "Gfx/HIKARI_GfxContext.h"
+#include "Render3D/Core/HIKARI_RenderFrameToken.h"
 #include "Render3D/Core/HIKARI_RenderView.h"
 #include "Render3D/Resources/HIKARI_RenderTextureView.h"
 
@@ -53,6 +54,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
         RenderViewPurpose purpose = RenderViewPurpose::Game;
         bool cameraCut = false;
         uint64_t frameIndex = 0;
+        RenderFrameToken token{};
         GFX::Context graphics{};
         const Camera3D* camera = nullptr;
         const SceneEnvironment* environment = nullptr;
