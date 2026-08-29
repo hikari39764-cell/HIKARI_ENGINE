@@ -273,7 +273,7 @@ namespace HIKARI {
             scene.state_->identity.document,
             &scene.state_->runtime.componentRegistry);
         if (NeedsRuntimeDependencyRegistryRefresh(deps)) {
-            if (ReloadAssets()) {
+            if (scene.ReloadAssets()) {
                 deps = scene.state_->runtime.builder.CollectDependencies(
                     scene.state_->identity.document,
                     &scene.state_->runtime.componentRegistry);
@@ -567,7 +567,15 @@ namespace HIKARI {
     }
 
     bool DocumentSceneBase::ReloadAssets() {
-        return state_->assets.ReloadAssets();
+        const bool reloaded = state_->assets.ReloadAssets();
+        if (reloaded) {
+            // AssetDatabase retains stable object identity across scans, so
+            // pointer equality cannot invalidate cached .hasm definitions.
+            // Publish the new registry first, then discard the old cache;
+            // failed reloads keep the last-known-good definitions intact.
+            state_->runtime.animationStateMachineAssets.Clear();
+        }
+        return reloaded;
     }
 
     bool DocumentSceneBase::RefreshTextureRuntimeByPath(

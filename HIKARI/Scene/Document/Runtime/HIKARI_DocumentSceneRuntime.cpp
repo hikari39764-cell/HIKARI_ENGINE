@@ -370,6 +370,12 @@ namespace HIKARI {
         const bool actionPresentationEnabled =
             state_->runtime.featureCatalog.IsFeatureActive(
                 RuntimeFeatureIds::ActionPresentation);
+        const bool renderingEnabled =
+            state_->runtime.featureCatalog.IsFeatureActive(
+                RuntimeFeatureIds::Rendering);
+        const bool animationEnabled =
+            state_->runtime.featureCatalog.IsFeatureActive(
+                RuntimeFeatureIds::Animation);
 
         // This method is called only before the first World build or after
         // every old component/system has detached. Publish an empty registry
@@ -393,6 +399,13 @@ namespace HIKARI {
         state_->runtime.combatPresentationService.Reset();
         state_->runtime.combatAfterimageService.Reset();
         state_->runtime.actionPostReactionService.Reset();
+        state_->runtime.animationPoseService.Clear();
+        state_->runtime.animationNodeOverrideService.Clear();
+        state_->runtime.animationRootMotionService.Clear();
+        state_->runtime.animationStateMachineRuntimeService.Clear();
+        state_->runtime.animationStateMachineAssets.SetAssetDatabase(
+            animationEnabled ? &state_->assets.Database() : nullptr);
+        state_->runtime.animationStateMachineAssets.Clear();
         state_->runtime.waterSurfaceQueryService.SetBathymetryProvider(
             nullptr);
         if (!physicsEnabled) {
@@ -524,19 +537,20 @@ namespace HIKARI {
             state_->runtime.runtimeAssetContextService) && success;
         success = services.Register(state_->camera.director) && success;
         success = services.Register(state_->camera.rigService) && success;
-        success = services.Register(state_->runtime.animationPoseService) && success;
-        success = services.Register(
-            state_->runtime.animationNodeOverrideService) && success;
-        success = services.Register(state_->runtime.animationSocketService) &&
-            success;
-        success = services.Register(state_->runtime.animationRootMotionService) &&
-            success;
-        success = services.Register(state_->runtime.animationStateMachineAssets) &&
-            success;
+        success = (!animationEnabled || services.Register(
+            state_->runtime.animationPoseService)) && success;
+        success = (!animationEnabled || services.Register(
+            state_->runtime.animationNodeOverrideService)) && success;
+        success = (!renderingEnabled || services.Register(
+            state_->runtime.animationSocketService)) && success;
+        success = (!animationEnabled || services.Register(
+            state_->runtime.animationRootMotionService)) && success;
+        success = (!animationEnabled || services.Register(
+            state_->runtime.animationStateMachineAssets)) && success;
         success = services.Register(state_->runtime.dialogueAssets) &&
             success;
-        success = services.Register(state_->runtime.animationStateMachineRuntimeService) &&
-            success;
+        success = (!animationEnabled || services.Register(
+            state_->runtime.animationStateMachineRuntimeService)) && success;
         success = services.Register(state_->runtime.motionIntentService) && success;
         success = services.Register(state_->runtime.characterMotionStateService) &&
             success;

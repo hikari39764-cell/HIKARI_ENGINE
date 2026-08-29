@@ -175,7 +175,6 @@ namespace HIKARI {
         ReloadAssets();
         state_->assets.SequenceAssets().SetAssetDatabase(&state_->assets.Database());
         state_->camera.sequencePlayback.SetAssetStore(&state_->assets.SequenceAssets());
-        state_->runtime.animationStateMachineAssets.SetAssetDatabase(&state_->assets.Database());
         state_->runtime.dialogueAssets.SetAssetDatabase(
             &state_->assets.Database());
         if (!OpenStartupSceneAsset()) {
@@ -193,10 +192,8 @@ namespace HIKARI {
         state_->camera.currentCameraSequenceHandle = {};
         state_->camera.rigService.Clear();
         state_->assets.SequenceAssets().Clear();
-        state_->runtime.animationStateMachineAssets.Clear();
         state_->runtime.dialogueSessionService.Reset(&state_->runtime.world);
         state_->runtime.dialogueAssets.Clear();
-        state_->runtime.animationStateMachineRuntimeService.Clear();
         state_->runtime.systemScheduler.DetachWorld(state_->runtime.world);
         state_->runtime.systemScheduler.Clear();
         state_->runtime.presentationModelService.Clear();
@@ -212,6 +209,12 @@ namespace HIKARI {
         state_->runtime.sandSurfaceQueryService.Clear();
         state_->runtime.waterSurfaceQueryService.Clear();
         state_->runtime.navigationWorldService.Clear();
+        state_->runtime.animationPoseService.Clear();
+        state_->runtime.animationNodeOverrideService.Clear();
+        state_->runtime.animationRootMotionService.Clear();
+        state_->runtime.animationStateMachineRuntimeService.Clear();
+        state_->runtime.animationStateMachineAssets.SetAssetDatabase(nullptr);
+        state_->runtime.animationStateMachineAssets.Clear();
         state_->runtime.waterSurfaceQueryService.SetBathymetryProvider(
             nullptr);
         state_->runtime.waterBathymetryProvider.reset();
