@@ -223,6 +223,10 @@ namespace HIKARI {
         MESHRENDERER::ReleaseParticleNamespace(
             state_->runtime.vfxPlaybackService.GetPlaybackNamespace());
         state_->runtime.vfxPlaybackService.Reset();
+        state_->runtime.vfxPlaybackService.SetProgramResolver({});
+        state_->runtime.vfxPlaybackService.SetAttachmentResolver({});
+        state_->runtime.vfxPlaybackService.
+            SetReliableRenderDeliveryEnabled(false);
         state_->runtime.combatPresentationService.Reset();
         state_->runtime.combatAfterimageService.Reset();
         state_->runtime.actionPostReactionService.Reset();
@@ -509,19 +513,34 @@ namespace HIKARI {
                 ? RENDER3D::RenderViewPurpose::Game
                 : RENDER3D::RenderViewPurpose::EditorScene;
             primaryView.cameraFrame = &state_->camera.resolvedFrame;
-            const RENDER3D::PARTICLES::ParticleRenderFrameSource
-                particleFrameSource{
-                    &state_->runtime.vfxPlaybackService.GetRenderInput(),
+            VFX::VfxPlaybackService* playback =
+                state_->runtime.world.Services().Find<
+                    VFX::VfxPlaybackService>();
+            RENDER3D::PARTICLES::ParticleRenderFrameSource
+                particleFrameSource{};
+            if (playback != nullptr) {
+                particleFrameSource = {
+                    &playback->GetRenderInput(),
                     &state_->assets.Registry(),
-                    state_->runtime.materialExternalValueSnapshot.get(),
-            };
-            primaryView.particleFrameSource = &particleFrameSource;
-            primaryView.combatPresentationFrameSource =
-                &state_->runtime.combatPresentationService.GetFrameSource();
-            primaryView.combatAfterimageFrameSource =
-                &state_->runtime.combatAfterimageService.GetFrameSource();
-            primaryView.actionPostReactionFrameSource =
-                &state_->runtime.actionPostReactionService.GetFrameSource();
+                    state_->runtime.materialExternalValueSnapshot.get()
+                };
+                primaryView.particleFrameSource = &particleFrameSource;
+            }
+            if (auto* combat = state_->runtime.world.Services().Find<
+                    VFX::CombatPresentationService>()) {
+                primaryView.combatPresentationFrameSource =
+                    &combat->GetFrameSource();
+            }
+            if (auto* afterimages = state_->runtime.world.Services().Find<
+                    VFX::CombatAfterimageService>()) {
+                primaryView.combatAfterimageFrameSource =
+                    &afterimages->GetFrameSource();
+            }
+            if (auto* reactions = state_->runtime.world.Services().Find<
+                    VFX::ActionPostReactionService>()) {
+                primaryView.actionPostReactionFrameSource =
+                    &reactions->GetFrameSource();
+            }
             MODELRENDERER::RenderAll(
                 graphics,
                 primaryView,
@@ -530,10 +549,12 @@ namespace HIKARI {
                 state_->editor.viewportDebugViewState.renderView);
             const auto& particleReceipt =
                 MESHRENDERER::GetParticleGpuDrivenPassStats();
-            if (particleReceipt.simulationAccepted) {
-                (void)state_->runtime.vfxPlaybackService.
-                    AcknowledgeRenderInput(
-                        particleReceipt.simulationAcceptedToken);
+            if (playback != nullptr &&
+                particleReceipt.simulationAccepted &&
+                particleReceipt.simulationAcceptedToken ==
+                    playback->GetRenderInput().GetDeliveryToken()) {
+                (void)playback->AcknowledgeRenderInput(
+                    particleReceipt.simulationAcceptedToken);
             }
             SubmitFrozenCullingCameraDebugFrustum();
             RENDERER3D::RenderAll(

@@ -10,6 +10,7 @@
 #include "Runtime/Binding/HIKARI_RuntimeBindingCatalogJson.h"
 #include "Core/HIKARI_Logger.h"
 #include "Core/Math/HIKARI_MathValidation.h"
+#include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Physics/Backends/Jolt/HIKARI_JoltPhysicsBackend.h"
 #include "Project/HIKARI_ProjectSettings.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
@@ -363,6 +364,12 @@ namespace HIKARI {
         const bool navigationEnabled =
             state_->runtime.featureCatalog.IsFeatureActive(
                 RuntimeFeatureIds::Navigation);
+        const bool vfxEnabled =
+            state_->runtime.featureCatalog.IsFeatureActive(
+                RuntimeFeatureIds::Vfx);
+        const bool actionPresentationEnabled =
+            state_->runtime.featureCatalog.IsFeatureActive(
+                RuntimeFeatureIds::ActionPresentation);
 
         // This method is called only before the first World build or after
         // every old component/system has detached. Publish an empty registry
@@ -376,6 +383,16 @@ namespace HIKARI {
         state_->runtime.sandSurfaceQueryService.Clear();
         state_->runtime.waterSurfaceQueryService.Clear();
         state_->runtime.navigationWorldService.Clear();
+        MESHRENDERER::ReleaseParticleNamespace(
+            state_->runtime.vfxPlaybackService.GetPlaybackNamespace());
+        state_->runtime.vfxPlaybackService.Reset();
+        state_->runtime.vfxPlaybackService.SetProgramResolver({});
+        state_->runtime.vfxPlaybackService.SetAttachmentResolver({});
+        state_->runtime.vfxPlaybackService.
+            SetReliableRenderDeliveryEnabled(false);
+        state_->runtime.combatPresentationService.Reset();
+        state_->runtime.combatAfterimageService.Reset();
+        state_->runtime.actionPostReactionService.Reset();
         state_->runtime.waterSurfaceQueryService.SetBathymetryProvider(
             nullptr);
         if (!physicsEnabled) {
@@ -407,31 +424,34 @@ namespace HIKARI {
                 "[RuntimeBinding] catalog initialization failed");
             return false;
         }
-        state_->runtime.vfxPlaybackService.SetProgramResolver(
-            [registry = &state_->assets.Registry()](
-                const AssetGuid& guid,
-                std::string& outError)
-                -> std::shared_ptr<const VFX::VfxProgram> {
-                const AssetDescriptor* base =
-                    registry->FindDescriptor(guid.value);
-                const auto* descriptor =
-                    dynamic_cast<const VfxAssetDescriptor*>(base);
-                if (descriptor == nullptr || !descriptor->program) {
-                    outError =
-                        "compiled VFX asset is not registered: " +
-                        guid.value;
-                    return {};
-                }
-                outError.clear();
-                return descriptor->program;
-            });
-        state_->runtime.vfxPlaybackService.
-            SetReliableRenderDeliveryEnabled(true);
+        if (vfxEnabled) {
+            state_->runtime.vfxPlaybackService.SetProgramResolver(
+                [registry = &state_->assets.Registry()](
+                    const AssetGuid& guid,
+                    std::string& outError)
+                    -> std::shared_ptr<const VFX::VfxProgram> {
+                    const AssetDescriptor* base =
+                        registry->FindDescriptor(guid.value);
+                    const auto* descriptor =
+                        dynamic_cast<const VfxAssetDescriptor*>(base);
+                    if (descriptor == nullptr || !descriptor->program) {
+                        outError =
+                            "compiled VFX asset is not registered: " +
+                            guid.value;
+                        return {};
+                    }
+                    outError.clear();
+                    return descriptor->program;
+                });
+            state_->runtime.vfxPlaybackService.
+                SetReliableRenderDeliveryEnabled(true);
+        }
         state_->runtime.gameUiPresentationService.SetProjectRoot(
             state_->assets.Database().GetProjectRoot());
         state_->runtime.gameUiPresentationService.SetAssetDatabase(
             &state_->assets.Database());
-        if (!state_->runtime.combatPresentationService.Prewarm()) {
+        if (actionPresentationEnabled &&
+            !state_->runtime.combatPresentationService.Prewarm()) {
             HIKARI_LOG_WARN(
                 "[Vfx] combat presentation prewarm failed; "
                 "runtime will retry lazily");
@@ -481,14 +501,14 @@ namespace HIKARI {
 
         bool success = services.Register(SERVICES::GetInputService());
         success = services.Register(state_->runtime.bindingStore) && success;
-        success = services.Register(
-            state_->runtime.vfxPlaybackService) && success;
-        success = services.Register(
-            state_->runtime.combatPresentationService) && success;
-        success = services.Register(
-            state_->runtime.combatAfterimageService) && success;
-        success = services.Register(
-            state_->runtime.actionPostReactionService) && success;
+        success = (!vfxEnabled || services.Register(
+            state_->runtime.vfxPlaybackService)) && success;
+        success = (!actionPresentationEnabled || services.Register(
+            state_->runtime.combatPresentationService)) && success;
+        success = (!actionPresentationEnabled || services.Register(
+            state_->runtime.combatAfterimageService)) && success;
+        success = (!actionPresentationEnabled || services.Register(
+            state_->runtime.actionPostReactionService)) && success;
         success = services.Register(
             state_->runtime.gameUiPresentationService) && success;
         success = services.Register(
@@ -546,9 +566,11 @@ namespace HIKARI {
                 nullptr);
             return false;
         }
-        VFX::ConfigureVfxWorldAttachmentResolver(
-            state_->runtime.world,
-            state_->runtime.vfxPlaybackService);
+        if (vfxEnabled) {
+            VFX::ConfigureVfxWorldAttachmentResolver(
+                state_->runtime.world,
+                state_->runtime.vfxPlaybackService);
+        }
         state_->runtime.worldServicesConfigured = true;
         return true;
     }
@@ -639,9 +661,6 @@ namespace HIKARI {
         bool reconfigureWorldServices) {
         SERVICES::GetActionTimeDilationService().ReleaseOwner(
             &state_->runtime.world);
-        state_->runtime.combatPresentationService.Reset();
-        state_->runtime.combatAfterimageService.Reset();
-        state_->runtime.actionPostReactionService.Reset();
         state_->runtime.gameUiPresentationService.Reset();
         state_->runtime.dialogueSessionService.Reset(&state_->runtime.world);
         LIGHTING_AUTHORING::SynchronizeLegacyLightingViews(
@@ -652,6 +671,12 @@ namespace HIKARI {
         // Service-owned snapshots are cleared only after every old object
         // has released its borrowed service references.
         state_->runtime.world.Clear();
+        MESHRENDERER::ReleaseParticleNamespace(
+            state_->runtime.vfxPlaybackService.GetPlaybackNamespace());
+        state_->runtime.vfxPlaybackService.Reset();
+        state_->runtime.combatPresentationService.Reset();
+        state_->runtime.combatAfterimageService.Reset();
+        state_->runtime.actionPostReactionService.Reset();
         // Presentation records are owned by the exact runtime World. A
         // rebuild can occur after LateUpdate while the absolute frame token
         // is still current, so the old world's render-only attachments must

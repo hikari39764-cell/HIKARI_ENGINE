@@ -1,5 +1,6 @@
 #include "Scene/Features/HIKARI_BuiltInRuntimeFeatures.h"
 
+#include <array>
 #include <memory>
 
 #include "Scene/Features/HIKARI_AnimationRuntimeFeature.h"
@@ -42,6 +43,38 @@ namespace HIKARI {
                 return true;
             }
         };
+
+        class ActionPresentationRuntimeFeature final :
+            public IRuntimeFeature {
+        public:
+            std::string_view GetFeatureId() const noexcept override {
+                return RuntimeFeatureIds::ActionPresentation;
+            }
+
+            std::string_view GetDisplayName() const noexcept override {
+                return "Action Presentation";
+            }
+
+            std::string_view GetDescription() const noexcept override {
+                return "Optional combat trails, telegraphs, afterimages, "
+                    "and screen reactions.";
+            }
+
+            std::span<const std::string_view>
+                GetRequiredFeatureIds() const noexcept override {
+                static constexpr std::array<std::string_view, 1> ids{
+                    RuntimeFeatureIds::Vfx
+                };
+                return ids;
+            }
+
+            bool Register(RuntimeFeatureContext&) override {
+                // This compatibility capability selects composition-root
+                // World services. Projects that do not opt in use Vfx
+                // directly and carry no action-specific presentation state.
+                return true;
+            }
+        };
     } // namespace
 
     RuntimeFeatureCatalog CreateBuiltInRuntimeFeatureCatalog() {
@@ -60,6 +93,8 @@ namespace HIKARI {
         (void)catalog.Add(CreateGameplayRuntimeFeature());
         (void)catalog.Add(CreateSequenceRuntimeFeature());
         (void)catalog.Add(CreateVfxRuntimeFeature());
+        (void)catalog.Add(
+            std::make_unique<ActionPresentationRuntimeFeature>());
         return catalog;
     }
 

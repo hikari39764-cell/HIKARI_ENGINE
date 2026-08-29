@@ -2,6 +2,7 @@
 
 #include <array>
 #include <memory>
+#include <string>
 
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
 #include "Scene/Components/Rendering/Vfx/HIKARI_GhostPossessionComponent.h"
@@ -80,7 +81,7 @@ namespace HIKARI {
                     "VFX Player",
                     "Rendering/VFX",
                     "Plays one or more reusable VFX assets from runtime events and variables.",
-                    "VFX"
+                    std::string(RuntimeFeatureIds::Vfx)
                 };
                 player.authoringCommands =
                     BuildVfxPlayerComponentAuthoringCommands();
@@ -109,7 +110,7 @@ namespace HIKARI {
                     "Ghost Possession",
                     "Rendering/VFX",
                     "Blends a reusable ghost surface and optional enter, loop, and exit VFX slots.",
-                    "VFX"
+                    std::string(RuntimeFeatureIds::Vfx)
                 };
 
                 bool success = componentRegistry.Register(
@@ -122,7 +123,7 @@ namespace HIKARI {
                         return std::make_unique<GhostPossessionSystem>();
                     },
                     "Ghost Possession",
-                    "VFX"
+                    std::string(RuntimeFeatureIds::Vfx)
                 }) && success;
                 success = systemRegistry.Register(SystemTypeInfo{
                     "VfxPlayerSystem",
@@ -130,7 +131,7 @@ namespace HIKARI {
                         return std::make_unique<VfxPlayerSystem>();
                     },
                     "VFX Player",
-                    "VFX"
+                    std::string(RuntimeFeatureIds::Vfx)
                 }) && success;
                 success = componentSystemPolicy.Register(
                     ComponentSystemRule{
