@@ -314,13 +314,6 @@ namespace HIKARI {
             HIKARI_LOG_INFO("DxRenderer initialized.");
             POST::PostSystem::Initialize(graphicsContext);
             HIKARI_LOG_INFO("PostSystem initialized.");
-            if (!RENDER3D::PIPELINE::
-                    InitializeCombatPresentationRenderers(
-                        graphicsContext)) {
-                HIKARI_LOG_WARN(
-                    "Combat ground-telegraph renderer unavailable; "
-                    "main scene rendering remains active.");
-            }
             if (AUDIO::Initialize(AUDIO::BackendType::XAudio2)) {
                 HIKARI_LOG_INFO("Audio initialized.");
             }
@@ -418,8 +411,6 @@ namespace HIKARI {
             }
             MESHRENDERER::ShutdownParticleGpuDrivenPass();
             HIKARI_LOG_INFO("Particle GPU-driven pass finalized.");
-            RENDER3D::PIPELINE::ShutdownCombatPresentationRenderers();
-            HIKARI_LOG_INFO("Combat presentation renderers finalized.");
             MESHRENDERER::ShutdownOceanSpectrumRuntime();
             HIKARI_LOG_INFO("Ocean spectrum runtime finalized.");
             HIKARI::POST::PostSystem::Shutdown();
