@@ -71,17 +71,20 @@ namespace HIKARI::RENDER3D::GRAPH {
     struct RenderGraphResourceId {
         uint32_t index = kInvalidRenderGraphIndex;
         uint64_t generation = 0u;
+        uint64_t graphGeneration = 0u;
 
         bool IsValid() const noexcept {
             return index != kInvalidRenderGraphIndex &&
-                generation != 0u;
+                generation != 0u &&
+                graphGeneration != 0u;
         }
 
         friend bool operator==(
             RenderGraphResourceId lhs,
             RenderGraphResourceId rhs) noexcept {
             return lhs.index == rhs.index &&
-                lhs.generation == rhs.generation;
+                lhs.generation == rhs.generation &&
+                lhs.graphGeneration == rhs.graphGeneration;
         }
     };
 
@@ -147,6 +150,10 @@ namespace HIKARI::RENDER3D::GRAPH {
     class RenderGraph final {
     public:
         RenderGraph() noexcept;
+        RenderGraph(const RenderGraph&) = delete;
+        RenderGraph& operator=(const RenderGraph&) = delete;
+        RenderGraph(RenderGraph&&) = delete;
+        RenderGraph& operator=(RenderGraph&&) = delete;
 
         // Standalone graphs may allocate their own token. Any graph that
         // consumes SceneSurfaceSet resources must use the shared-token
@@ -222,6 +229,7 @@ namespace HIKARI::RENDER3D::GRAPH {
         void ClearDiagnostic() noexcept;
 
         RenderGraphFrameToken frame_{};
+        uint64_t graphGeneration_ = 0u;
         std::array<ResourceRecord,
             kRenderGraphMaximumResourceCount> resources_{};
         std::array<PassRecord,

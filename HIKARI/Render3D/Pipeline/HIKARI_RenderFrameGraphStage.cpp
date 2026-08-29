@@ -40,7 +40,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
         const RenderFrameGraphStageContext& context) noexcept {
         INTERNAL::StageExecutionState state{};
         state.context = &context;
-        if (!context.frame.token.Matches(
+        if (!context.frame.token.MatchesFrameView(
                 context.frame.frameIndex,
                 context.frame.viewId) ||
             !context.sceneSurfaces.MatchesFrame(context.frame.token) ||

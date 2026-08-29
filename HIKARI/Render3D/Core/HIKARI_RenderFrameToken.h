@@ -1,6 +1,5 @@
 #pragma once
 
-#include <atomic>
 #include <cstdint>
 #include <type_traits>
 
@@ -19,7 +18,14 @@ namespace HIKARI::RENDER3D {
             return viewId.value != 0u && generation != 0u;
         }
 
-        bool Matches(
+        bool Matches(RenderFrameToken expected) const noexcept {
+            return IsValid() && expected.IsValid() &&
+                frameIndex == expected.frameIndex &&
+                viewId == expected.viewId &&
+                generation == expected.generation;
+        }
+
+        bool MatchesFrameView(
             uint64_t expectedFrameIndex,
             RenderViewId expectedViewId) const noexcept {
             return IsValid() &&
@@ -30,25 +36,12 @@ namespace HIKARI::RENDER3D {
         bool operator==(const RenderFrameToken&) const noexcept = default;
     };
 
-    // Publication generations are monotonic within the owning engine module
-    // until uint64 wrap. The frame/view tuple remains part of identity, and
-    // generation zero is permanently reserved for invalid/default tokens.
-    inline RenderFrameToken AllocateRenderFrameToken(
+    // The engine module is the only publication-token issuer. Keeping the
+    // counter out of this header prevents a project DLL from creating an
+    // independent generation domain when this contract becomes public.
+    RenderFrameToken AllocateRenderFrameToken(
         uint64_t frameIndex,
-        RenderViewId viewId) noexcept {
-        static std::atomic<uint64_t> nextGeneration{ 1u };
-        uint64_t generation = 0u;
-        do {
-            generation = nextGeneration.fetch_add(
-                1u,
-                std::memory_order_relaxed);
-        } while (generation == 0u);
-        return RenderFrameToken{
-            frameIndex,
-            viewId,
-            generation
-        };
-    }
+        RenderViewId viewId) noexcept;
 
     static_assert(std::is_standard_layout_v<RenderFrameToken>);
     static_assert(std::is_trivially_copyable_v<RenderFrameToken>);

@@ -176,6 +176,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Debug/Internal/HIKARI_DebugPrimitiveRendererBackend.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Debug/HIKARI_MeshWireDebugRenderer.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Core/HIKARI_Camera3D.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Core/HIKARI_RenderFrameToken.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/HIKARI_Transform3D.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/HIKARI_Math3D.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Assets/Models/HIKARI_ModelAsset.cpp"

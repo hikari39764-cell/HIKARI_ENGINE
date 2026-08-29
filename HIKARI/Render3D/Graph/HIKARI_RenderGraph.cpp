@@ -1,9 +1,25 @@
 #include "Render3D/Graph/HIKARI_RenderGraph.h"
 
+#include <atomic>
 #include <cstdio>
 #include <cstring>
 
 namespace HIKARI::RENDER3D::GRAPH {
+namespace {
+
+    std::atomic<uint64_t> gNextRenderGraphGeneration{ 1u };
+
+    uint64_t AllocateRenderGraphGeneration() noexcept {
+        uint64_t generation = 0u;
+        do {
+            generation = gNextRenderGraphGeneration.fetch_add(
+                1u,
+                std::memory_order_relaxed);
+        } while (generation == 0u);
+        return generation;
+    }
+
+} // namespace
 
     RenderGraph::RenderGraph() noexcept = default;
 
@@ -28,6 +44,7 @@ namespace HIKARI::RENDER3D::GRAPH {
             return false;
         }
         frame_ = frame;
+        graphGeneration_ = 0u;
         resourceCount_ = 0u;
         passCount_ = 0u;
         useCount_ = 0u;
@@ -41,6 +58,7 @@ namespace HIKARI::RENDER3D::GRAPH {
                 "RenderGraph requires a valid frame token.");
             return false;
         }
+        graphGeneration_ = AllocateRenderGraphGeneration();
         ClearDiagnostic();
         return true;
     }
@@ -110,7 +128,8 @@ namespace HIKARI::RENDER3D::GRAPH {
         record.info.imported = desc.imported;
         const RenderGraphResourceId result{
             resourceCount_,
-            frame_.generation
+            frame_.generation,
+            graphGeneration_
         };
         ++resourceCount_;
         compiled_ = false;
@@ -256,6 +275,7 @@ namespace HIKARI::RENDER3D::GRAPH {
         return frame_.IsValid() &&
             resource.IsValid() &&
             resource.generation == frame_.generation &&
+            resource.graphGeneration == graphGeneration_ &&
             resource.index < resourceCount_;
     }
 
@@ -272,7 +292,8 @@ namespace HIKARI::RENDER3D::GRAPH {
             if (resources_[index].info.semantic == semantic) {
                 return RenderGraphResourceId{
                     index,
-                    frame_.generation
+                    frame_.generation,
+                    graphGeneration_
                 };
             }
         }

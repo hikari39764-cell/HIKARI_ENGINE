@@ -68,6 +68,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
 
     // Narrow view consumed by screen-space passes.
     struct ScreenSpacePassContext {
+        RenderFrameToken frame{};
         ID3D12GraphicsCommandList* cmd = nullptr;
         const GFX::Context* graphics = nullptr;
         uint32_t width = 1;

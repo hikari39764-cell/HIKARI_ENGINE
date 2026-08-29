@@ -75,9 +75,11 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
         void PublishVisibilityDepthPyramid(
             ScreenSpaceFrameResult& result,
             DEPTH::DepthPyramidView view,
-            DEPTH::DepthPyramidViewKind viewKind) {
+            DEPTH::DepthPyramidViewKind viewKind,
+            RenderFrameToken publication) {
 
-            if (!view.valid ||
+            if (!publication.IsValid() ||
+                !view.valid ||
                 view.pyramidSrv.ptr == 0 ||
                 view.width == 0 ||
                 view.height == 0) {
@@ -85,15 +87,18 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
             }
 
             view.viewKind = viewKind;
+            view.publication = publication;
             result.hzbBuilt = true;
             result.visibilityDepthPyramid = view;
         }
 
         void PublishCurrentSceneDepthPyramid(
             ScreenSpaceFrameResult& result,
-            DEPTH::DepthPyramidView view) {
+            DEPTH::DepthPyramidView view,
+            RenderFrameToken publication) {
 
-            if (!view.valid ||
+            if (!publication.IsValid() ||
+                !view.valid ||
                 view.sourceKind != DEPTH::DepthPyramidSourceKind::SceneDepth ||
                 view.pyramidSrv.ptr == 0 ||
                 view.width == 0 ||
@@ -102,6 +107,7 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
             }
 
             view.viewKind = DEPTH::DepthPyramidViewKind::CurrentFrame;
+            view.publication = publication;
             result.hzbBuilt = true;
             result.currentSceneDepthPyramid = view;
         }
@@ -223,7 +229,8 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
             PublishVisibilityDepthPyramid(
                 result,
                 currentDepthStats.depthPyramid,
-                DEPTH::DepthPyramidViewKind::CurrentFrame);
+                DEPTH::DepthPyramidViewKind::CurrentFrame,
+                context.frame);
             RecordDepthVisibilitySource(DepthVisibilitySource::CurrentPrepass);
             (void)MESHRENDERER::FinalizeGpuDrivenVisibilityFromDepth(
                 *context.graphics,
@@ -382,7 +389,8 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
                 PublishVisibilityDepthPyramid(
                     result,
                     state.frozenCullingDepthStats.depthPyramid,
-                    DEPTH::DepthPyramidViewKind::History);
+                    DEPTH::DepthPyramidViewKind::History,
+                    context.frame);
                 RecordDepthVisibilitySource(DepthVisibilitySource::Frozen);
                 (void)MESHRENDERER::FinalizeGpuDrivenVisibilityFromDepth(
                     *context.graphics,
@@ -411,7 +419,8 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
             PublishVisibilityDepthPyramid(
                 result,
                 historyDepthStats.depthPyramid,
-                DEPTH::DepthPyramidViewKind::History);
+                DEPTH::DepthPyramidViewKind::History,
+                context.frame);
             RecordDepthVisibilitySource(DepthVisibilitySource::History);
             (void)MESHRENDERER::FinalizeGpuDrivenVisibilityFromDepth(
                 *context.graphics,
@@ -618,7 +627,8 @@ namespace HIKARI::RENDER3D::SCREENSPACE {
                     RecordDepthPyramidSource(DepthVisibilitySource::CurrentSceneDepth);
                     PublishCurrentSceneDepthPyramid(
                         result,
-                        state.depthVisibility.GetStats().depthPyramid);
+                        state.depthVisibility.GetStats().depthPyramid,
+                        context.frame);
                     state.depthVisibilityValid = true;
                     state.depthVisibilityViewProjValid = true;
                     state.depthVisibilityViewProj = cameraCb.viewProj;

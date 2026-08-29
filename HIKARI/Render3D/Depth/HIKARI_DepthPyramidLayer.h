@@ -7,6 +7,7 @@
 #include <wrl/client.h>
 
 #include "Gfx/HIKARI_GfxContext.h"
+#include "Render3D/Core/HIKARI_RenderFrameToken.h"
 #include "Render3D/HIKARI_Math3D.h"
 #include "Render3D/Resources/HIKARI_RenderResourcePool.h"
 
@@ -29,6 +30,11 @@ namespace HIKARI::RENDER3D::DEPTH {
     };
 
     struct DepthPyramidView {
+        // Frame/view publication lease for semantic consumers. Raw producer
+        // snapshots leave it invalid; SceneSurface publication stamps it.
+        // This is distinct from frameIndex below, which identifies the
+        // producer's GFX ring slot and must never be compared to TIME frames.
+        RenderFrameToken publication{};
         bool valid = false;
         DepthPyramidSourceKind sourceKind = DepthPyramidSourceKind::Unknown;
         DepthPyramidDepthConvention depthConvention =

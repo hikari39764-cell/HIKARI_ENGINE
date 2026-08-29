@@ -98,14 +98,20 @@ namespace HIKARI::RENDER3D::SURFACE {
             if (!frame.IsValid()) {
                 return nullptr;
             }
+            const DEPTH::DepthPyramidView* pyramid = nullptr;
             switch (semantic) {
             case GRAPH::RenderGraphSemantic::CurrentDepthPyramid:
-                return &currentSceneDepthPyramid;
+                pyramid = &currentSceneDepthPyramid;
+                break;
             case GRAPH::RenderGraphSemantic::VisibilityDepthPyramid:
-                return &visibilityDepthPyramid;
+                pyramid = &visibilityDepthPyramid;
+                break;
             default:
                 return nullptr;
             }
+            return pyramid->publication.Matches(frame)
+                ? pyramid
+                : nullptr;
         }
 
         const DEPTH::DepthPyramidView* TryGetDepthPyramid(
@@ -163,6 +169,7 @@ namespace HIKARI::RENDER3D::SURFACE {
         bool HasCurrentDepthHierarchy() const noexcept {
             return frame.IsValid() &&
                 sceneDepth.IsSampleable() &&
+                currentSceneDepthPyramid.publication.Matches(frame) &&
                 IsDepthPyramidSampleable(
                     currentSceneDepthPyramid) &&
                 currentSceneDepthPyramid.viewKind ==
@@ -178,7 +185,8 @@ namespace HIKARI::RENDER3D::SURFACE {
     private:
         static bool IsDepthPyramidSampleable(
             const DEPTH::DepthPyramidView& pyramid) noexcept {
-            return pyramid.valid &&
+            return pyramid.publication.IsValid() &&
+                pyramid.valid &&
                 pyramid.viewKind !=
                     DEPTH::DepthPyramidViewKind::Invalid &&
                 pyramid.sourceKind !=

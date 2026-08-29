@@ -95,6 +95,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
             const RenderFrameContext& frame) {
 
             ScreenSpacePassContext context{};
+            context.frame = frame.token;
             context.cmd = frame.graphics.cmdList;
             context.graphics = &frame.graphics;
             context.width = frame.renderWidth;
