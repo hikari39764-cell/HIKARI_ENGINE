@@ -64,6 +64,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
 
     struct GpuSceneSurfaceRecord {
         RUNTIME::SceneRenderObjectId objectId{};
+        uint64_t objectLifetimeGeneration = 0u;
         uint64_t objectVersion = 0;
         uint32_t sourceSurfaceInstanceIndex = RUNTIME::kInvalidRenderSurfaceIndex;
 

@@ -2,17 +2,35 @@
 #include "Gfx/HIKARI_GfxContext.h"
 
 #include <algorithm>
+#include <utility>
 
 #include "Render3D/Core/MeshRenderer/Internal/HIKARI_MeshRendererInternal.h"
 
 namespace HIKARI::MESHRENDERER {
 
     using namespace INTERNAL;
-    void GatherTemporalVelocityDraws(
+    bool GatherTemporalVelocityDraws(
         const GFX::Context& graphics,
-        std::vector<TemporalVelocityDraw>& outDraws) {
+        std::vector<TemporalVelocityDraw>& outDraws,
+        uint32_t maximumDrawCount,
+        uint32_t maximumSkinnedDrawCount) {
 
         outDraws.clear();
+        uint32_t skinnedDrawCount = 0u;
+        const auto appendDraw =
+            [&](TemporalVelocityDraw draw) {
+                if (outDraws.size() >= maximumDrawCount ||
+                    (draw.skinned &&
+                     skinnedDrawCount >= maximumSkinnedDrawCount)) {
+                    outDraws.clear();
+                    return false;
+                }
+                if (draw.skinned) {
+                    ++skinnedDrawCount;
+                }
+                outDraws.push_back(std::move(draw));
+                return true;
+            };
         const RENDER3D::GPUDRIVEN::GpuDrivenPassSource& opaquePass =
             GetSceneSourcePass(
                 RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardOpaque);
@@ -60,6 +78,11 @@ namespace HIKARI::MESHRENDERER {
                 draw.objectId =
                     (static_cast<uint64_t>(instance.objectIdHigh) << 32u) |
                     static_cast<uint64_t>(instance.objectIdLow);
+                draw.objectLifetimeGeneration =
+                    source.objectLifetimeGeneration;
+                draw.objectVersion = source.objectVersion;
+                draw.sourceSurfaceInstanceIndex =
+                    source.sourceSurfaceInstanceIndex;
                 draw.world = instance.world;
                 draw.vertexBuffer = mesh->GetVBView();
                 draw.indexBuffer = mesh->GetIBView();
@@ -70,7 +93,9 @@ namespace HIKARI::MESHRENDERER {
                 draw.alphaMasked =
                     (flags & static_cast<uint32_t>(
                         RENDER3D::RUNTIME::SurfaceGpuSceneInstanceFlags::AlphaMasked)) != 0u;
-                outDraws.push_back(draw);
+                if (!appendDraw(std::move(draw))) {
+                    return false;
+                }
             }
         }
 
@@ -84,7 +109,7 @@ namespace HIKARI::MESHRENDERER {
             stream.executableRecordIndices == nullptr ||
             stream.records == nullptr ||
             stream.jointPalettes == nullptr) {
-            return;
+            return true;
         }
         for (const RENDER3D::RUNTIME::SurfaceDrawCommand& command : *stream.commands) {
             if (!command.drawArgsValid ||
@@ -106,6 +131,11 @@ namespace HIKARI::MESHRENDERER {
 
             TemporalVelocityDraw draw{};
             draw.objectId = record.objectId.value;
+            draw.objectLifetimeGeneration =
+                record.objectLifetimeGeneration;
+            draw.objectVersion = record.objectVersion;
+            draw.sourceSurfaceInstanceIndex =
+                record.sourceSurfaceInstanceIndex;
             draw.world = record.drawWorldMatrix;
             draw.vertexBuffer = command.triangleMeshView.vertexBuffer;
             draw.indexBuffer = command.triangleMeshView.indexBuffer;
@@ -116,8 +146,11 @@ namespace HIKARI::MESHRENDERER {
             draw.doubleSided = record.key.doubleSided;
             draw.alphaMasked = record.key.alphaMasked;
             draw.jointPalette = &(*stream.jointPalettes)[recordIndex];
-            outDraws.push_back(draw);
+            if (!appendDraw(std::move(draw))) {
+                return false;
+            }
         }
+        return true;
     }
 
 

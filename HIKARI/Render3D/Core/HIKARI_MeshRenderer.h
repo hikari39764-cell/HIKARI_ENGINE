@@ -41,6 +41,9 @@ namespace HIKARI::MESHRENDERER {
 
     struct TemporalVelocityDraw {
         uint64_t objectId = 0;
+        uint64_t objectLifetimeGeneration = 0u;
+        uint64_t objectVersion = 0u;
+        uint32_t sourceSurfaceInstanceIndex = UINT32_MAX;
         MATH::Mat4 world{};
         D3D12_VERTEX_BUFFER_VIEW vertexBuffer{};
         D3D12_INDEX_BUFFER_VIEW indexBuffer{};
@@ -120,9 +123,11 @@ namespace HIKARI::MESHRENDERER {
     bool RenderDepthAwarePass(
         const GFX::Context& graphics,
         const MeshPassResources& passResources);
-    void GatherTemporalVelocityDraws(
+    bool GatherTemporalVelocityDraws(
         const GFX::Context& graphics,
-        std::vector<TemporalVelocityDraw>& outDraws);
+        std::vector<TemporalVelocityDraw>& outDraws,
+        uint32_t maximumDrawCount,
+        uint32_t maximumSkinnedDrawCount);
     void SetAmbientOcclusionRuntimeEnabled(bool enabled);
     void EndFrame();
     void RenderAll(

@@ -95,6 +95,7 @@ namespace HIKARI::RENDER3D::RUNTIME {
 
     struct SceneRenderObject {
         SceneRenderObjectDesc desc{};
+        uint64_t lifetimeGeneration = 0u;
 
         bool valid = false;
         bool dirty = true;
@@ -108,6 +109,7 @@ namespace HIKARI::RENDER3D::RUNTIME {
 
     struct SceneSurfaceInstance {
         SceneRenderObjectId objectId{};
+        uint64_t objectLifetimeGeneration = 0u;
         uint64_t objectVersion = 0;
         uint32_t objectIndex = 0;
         uint32_t surfaceIndex = kInvalidRenderSurfaceIndex;

@@ -6,6 +6,7 @@
 #include <unordered_map>
 
 #include "Render3D/Resources/HIKARI_RenderResourcePool.h"
+#include "Render3D/Temporal/Internal/HIKARI_TemporalPassScratch.h"
 #include "Render3D/Temporal/HIKARI_TemporalResourceSystem.h"
 
 namespace HIKARI::RENDER3D::TEMPORAL::DETAIL {
@@ -75,6 +76,7 @@ namespace HIKARI::RENDER3D::TEMPORAL::DETAIL {
         TemporalResourceFrame motionWritten{};
         TemporalResourceFrame masksWritten{};
         TemporalResourceFrame exposureWritten{};
+        TemporalPassScratchState passScratch{};
         TemporalResourceStats stats{};
     };
 

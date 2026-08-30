@@ -178,6 +178,12 @@ namespace HIKARI::RENDER3D::TEMPORAL {
         RenderTextureView transparencyMask{};
         RenderTextureView invalidDepthMotionMask{};
         RenderTextureView debugOutput{};
+
+        bool MatchesResourceFrame() const noexcept {
+            return resourceFrame.IsValid() &&
+                frame.view.Matches(resourceFrame.view) &&
+                frame.publication.Matches(resourceFrame.publication);
+        }
     };
 
     const char* ToString(TemporalHistoryResetReason reason);

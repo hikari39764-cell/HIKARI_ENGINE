@@ -149,6 +149,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             TemporalResourceState& state,
             TemporalResourceReleaseMode mode) {
 
+            ReleaseTemporalPassScratch(state, mode);
             ReleaseExternalTexture(state, state.sceneColor, mode);
             ReleaseTarget(state, state.motionVectors, mode);
             ReleaseTarget(state, state.motionMetadata, mode);
@@ -791,6 +792,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             state.historyDepthValid = false;
             state.historyWritten = {};
             state.historyOutputWritten = {};
+            ClearTemporalGeometryHistory(state);
             state.stats.lastResetReason = verifiedFrame.resetReason;
         }
         state.historyWriteIndex = 1u - state.historyReadIndex;
@@ -833,6 +835,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
         state->historyDepthValid = false;
         state->historyWritten = {};
         state->historyOutputWritten = {};
+        ClearTemporalGeometryHistory(*state);
         ++state->stats.historyInvalidationCount;
         if (!AbortTemporalFrame(
                 frame.view,

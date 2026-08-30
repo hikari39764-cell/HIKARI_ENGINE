@@ -2,44 +2,40 @@
 #include "Gfx/HIKARI_GfxContext.h"
 
 #include <algorithm>
-#include <array>
 #include <cstdint>
+#include <cstring>
 #include <iterator>
 #include <string>
+#include <utility>
 
 #include <d3dx12.h>
 #include <wrl/client.h>
 
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
+#include "Gfx/D3D12/HIKARI_D3D12BufferAlignment.h"
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
 #include "Render2D/HIKARI_RenderTarget2D.h"
 #include "Render3D/Temporal/HIKARI_TemporalResourceSystem.h"
-#include "Render3D/Temporal/Internal/HIKARI_TemporalConstantBufferSlots.h"
+#include "Render3D/Temporal/Internal/HIKARI_TemporalPassScratch.h"
 
 namespace HIKARI::RENDER3D::TEMPORAL {
 
     namespace {
         using Microsoft::WRL::ComPtr;
-        constexpr uint32_t kFrameSlotCount = 3u;
-
         struct TaaResolveConstants {
             MATH::Vec4 screenParams{};
             MATH::Vec4 taaParams{};
             MATH::Vec4 rejectionParams{};
         };
 
-        struct ConstantSlot {
-            ComPtr<ID3D12Resource> buffer{};
-            TaaResolveConstants* mapped = nullptr;
-        };
-
         struct TaaResolvePassState {
             ComPtr<ID3D12RootSignature> rootSignature{};
             ComPtr<ID3D12PipelineState> pipelineState{};
-            std::array<ConstantSlot, kFrameSlotCount> constants{};
+            uint64_t ownerDeviceGeneration = 0u;
+            ID3D12Device* ownerDevice = nullptr;
             bool ready = false;
         };
 
@@ -48,16 +44,27 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             return state;
         }
 
-        bool EnsurePipeline(ID3D12Device* device) {
+        bool EnsurePipeline(const GFX::Context& graphics) {
             TaaResolvePassState& state = State();
-            if (state.ready &&
-                state.rootSignature != nullptr &&
-                state.pipelineState != nullptr) {
-                return true;
-            }
-            if (device == nullptr) {
+            ID3D12Device* device = graphics.device;
+            if (device == nullptr || graphics.deviceGeneration == 0u) {
                 return false;
             }
+            if (state.ready) {
+                return state.ownerDeviceGeneration ==
+                        graphics.deviceGeneration &&
+                    state.ownerDevice == device &&
+                    state.rootSignature != nullptr &&
+                    state.pipelineState != nullptr;
+            }
+            if (state.ownerDeviceGeneration != 0u &&
+                (state.ownerDeviceGeneration != graphics.deviceGeneration ||
+                 state.ownerDevice != device)) {
+                return false;
+            }
+
+            ComPtr<ID3D12RootSignature> rootSignature{};
+            ComPtr<ID3D12PipelineState> pipelineState{};
 
             D3D12_DESCRIPTOR_RANGE ranges[10]{};
             for (uint32_t i = 0; i < static_cast<uint32_t>(std::size(ranges)); ++i) {
@@ -122,11 +129,11 @@ namespace HIKARI::RENDER3D::TEMPORAL {
                 0,
                 sigBlob->GetBufferPointer(),
                 sigBlob->GetBufferSize(),
-                IID_PPV_ARGS(state.rootSignature.GetAddressOf()));
+                IID_PPV_ARGS(rootSignature.GetAddressOf()));
             if (!HIKARI_DX_CHECK(hr, "TaaResolvePass::CreateRootSignature")) {
                 return false;
             }
-            state.rootSignature->SetName(L"HIKARI.Temporal.TaaResolveRootSignature");
+            rootSignature->SetName(L"HIKARI.Temporal.TaaResolveRootSignature");
 
             ComPtr<ID3DBlob> vs;
             ComPtr<ID3DBlob> ps;
@@ -144,7 +151,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             }
 
             D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc{};
-            psoDesc.pRootSignature = state.rootSignature.Get();
+            psoDesc.pRootSignature = rootSignature.Get();
             psoDesc.VS = { vs->GetBufferPointer(), vs->GetBufferSize() };
             psoDesc.PS = { ps->GetBufferPointer(), ps->GetBufferSize() };
             psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
@@ -165,18 +172,18 @@ namespace HIKARI::RENDER3D::TEMPORAL {
 
             hr = device->CreateGraphicsPipelineState(
                 &psoDesc,
-                IID_PPV_ARGS(state.pipelineState.GetAddressOf()));
+                IID_PPV_ARGS(pipelineState.GetAddressOf()));
             if (!HIKARI_DX_CHECK(hr, "TaaResolvePass::CreatePSO")) {
                 return false;
             }
-            state.pipelineState->SetName(L"HIKARI.Temporal.TaaResolvePSO");
+            pipelineState->SetName(L"HIKARI.Temporal.TaaResolvePSO");
 
-            state.ready =
-                INTERNAL::EnsureMappedConstantBufferSlots<TaaResolveConstants>(
-                    device,
-                    state.constants,
-                    L"HIKARI.Temporal.TaaResolveCB");
-            return state.ready;
+            state.rootSignature = std::move(rootSignature);
+            state.pipelineState = std::move(pipelineState);
+            state.ownerDeviceGeneration = graphics.deviceGeneration;
+            state.ownerDevice = device;
+            state.ready = true;
+            return true;
         }
     }
 
@@ -207,6 +214,9 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             cmd == nullptr ||
             device == nullptr ||
             srvHeap == nullptr ||
+            !inputs.MatchesResourceFrame() ||
+            graphics.deviceGeneration !=
+                inputs.resourceFrame.deviceGeneration ||
             historyTarget == nullptr ||
             historyDepthTarget == nullptr ||
             outputTarget == nullptr ||
@@ -224,13 +234,19 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             !inputs.debugOutput.valid) {
             return nullptr;
         }
-        if (!EnsurePipeline(device)) {
+        if (!EnsurePipeline(graphics)) {
             return nullptr;
         }
 
-        ConstantSlot& constantSlot =
-            state.constants[inputs.frame.frameIndex % kFrameSlotCount];
-        if (constantSlot.mapped == nullptr || constantSlot.buffer == nullptr) {
+        DETAIL::TemporalPassUploadSlice constantUpload{};
+        if (!DETAIL::TryAcquireTemporalConstantUpload(
+                graphics,
+                inputs.resourceFrame,
+                DETAIL::TemporalConstantUploadKind::TaaResolve,
+                GFX::AlignD3D12ConstantBufferByteSize(
+                    sizeof(TaaResolveConstants)),
+                L"HIKARI.Temporal.TaaResolveCB",
+                constantUpload)) {
             return nullptr;
         }
 
@@ -252,7 +268,10 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             std::clamp(settings.sharpness, 0.0f, 1.0f),
             static_cast<float>(GetTemporalDebugView(inputs.resourceFrame))
         };
-        *constantSlot.mapped = constants;
+        std::memcpy(
+            constantUpload.mapped,
+            &constants,
+            sizeof(constants));
 
         D3D12_GPU_DESCRIPTOR_HANDLE historySrv =
             historyValid ? inputs.historyColorRead.srv : inputs.sceneColor.srv;
@@ -311,7 +330,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
         cmd->SetPipelineState(state.pipelineState.Get());
         cmd->SetGraphicsRootConstantBufferView(
             0,
-            constantSlot.buffer->GetGPUVirtualAddress());
+            constantUpload.gpuAddress);
         cmd->SetGraphicsRootDescriptorTable(1, inputs.sceneColor.srv);
         cmd->SetGraphicsRootDescriptorTable(2, historySrv);
         cmd->SetGraphicsRootDescriptorTable(3, inputs.motionVectors.srv);
@@ -350,15 +369,10 @@ namespace HIKARI::RENDER3D::TEMPORAL {
 
     void ShutdownTaaResolvePass() {
         TaaResolvePassState& state = State();
-        for (ConstantSlot& slot : state.constants) {
-            if (slot.buffer != nullptr && slot.mapped != nullptr) {
-                slot.buffer->Unmap(0, nullptr);
-            }
-            slot.mapped = nullptr;
-            slot.buffer.Reset();
-        }
         state.pipelineState.Reset();
         state.rootSignature.Reset();
+        state.ownerDeviceGeneration = 0u;
+        state.ownerDevice = nullptr;
         state.ready = false;
     }
 

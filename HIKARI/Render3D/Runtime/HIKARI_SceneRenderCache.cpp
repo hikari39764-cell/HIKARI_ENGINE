@@ -1,6 +1,7 @@
 #include "Render3D/Runtime/HIKARI_SceneRenderCache.h"
 
 #include <algorithm>
+#include <atomic>
 #include <limits>
 
 #include "Core/Numeric/HIKARI_IntegerConversion.h"
@@ -11,6 +12,20 @@
 namespace HIKARI::RENDER3D::RUNTIME {
 
     namespace {
+        std::atomic<uint64_t> gNextObjectLifetimeGeneration{ 1u };
+
+        uint64_t AllocateObjectLifetimeGeneration() noexcept {
+            uint64_t generation = gNextObjectLifetimeGeneration.fetch_add(
+                1u,
+                std::memory_order_relaxed);
+            if (generation == 0u) {
+                generation = gNextObjectLifetimeGeneration.fetch_add(
+                    1u,
+                    std::memory_order_relaxed);
+            }
+            return generation;
+        }
+
         bool EqualVec3(const MATH::Vec3& lhs, const MATH::Vec3& rhs) {
             return lhs.x == rhs.x && lhs.y == rhs.y && lhs.z == rhs.z;
         }
@@ -270,6 +285,8 @@ namespace HIKARI::RENDER3D::RUNTIME {
 
             SceneSurfaceInstance instance{};
             instance.objectId = object.desc.id;
+            instance.objectLifetimeGeneration =
+                object.lifetimeGeneration;
             instance.objectVersion = object.version;
             instance.objectIndex = objectIndex;
             instance.surfaceIndex = surfaceIndex;
@@ -417,6 +434,8 @@ namespace HIKARI::RENDER3D::RUNTIME {
             object.materialDirty = true;
             object.modelDirty = true;
             object.lastTouchedFrame = currentSyncFrame_;
+            object.lifetimeGeneration =
+                AllocateObjectLifetimeGeneration();
             object.version = 1;
 
             indexById_[desc.id.value] = objects_.size();

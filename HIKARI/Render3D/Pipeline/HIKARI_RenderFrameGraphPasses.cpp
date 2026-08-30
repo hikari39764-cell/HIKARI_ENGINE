@@ -162,9 +162,10 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
                 written = TEMPORAL::ExecuteMotionVectorPass(
                     context.frame.graphics,
                     temporalInputs);
-                if (written &&
-                    context.screenSpace.readOnlySceneDsv.ptr != 0u) {
-                    (void)TEMPORAL::ExecuteTemporalGeometryPass(
+                if (written) {
+                    written =
+                        context.screenSpace.readOnlySceneDsv.ptr != 0u &&
+                        TEMPORAL::ExecuteTemporalGeometryPass(
                         context.frame.graphics,
                         temporalInputs,
                         context.screenSpace.readOnlySceneDsv);
@@ -186,7 +187,7 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
                 context.temporalResources,
                 written);
             state.result.motionVectorsWritten = written;
-            return true;
+            return written;
         }
         catch (...) {
             if (depthReadActive) {

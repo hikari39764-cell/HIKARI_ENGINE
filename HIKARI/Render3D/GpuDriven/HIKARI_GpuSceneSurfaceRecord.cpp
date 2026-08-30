@@ -781,6 +781,8 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
 
         GpuSceneSurfaceRecord record{};
         record.objectId = surfaceInstance.objectId;
+        record.objectLifetimeGeneration =
+            surfaceInstance.objectLifetimeGeneration;
         record.objectVersion = surfaceInstance.objectVersion;
         record.sourceSurfaceInstanceIndex = sourceSurfaceInstanceIndex;
         record.sourceSurface = &surfaceInstance;
@@ -963,6 +965,9 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         RUNTIME::SurfaceGpuSceneMaterialSource source{};
         source.model = record.model;
         source.materialOverride = record.materialOverride;
+        source.objectLifetimeGeneration =
+            record.objectLifetimeGeneration;
+        source.objectVersion = record.objectVersion;
         source.sourceRecordIndex = instance.sourceRecordIndex;
         source.sourceSurfaceInstanceIndex = instance.sourceSurfaceInstanceIndex;
         source.materialIndex = record.materialIndex;

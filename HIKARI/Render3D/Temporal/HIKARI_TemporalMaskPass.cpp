@@ -5,6 +5,7 @@
 #include <array>
 #include <cstdint>
 #include <iterator>
+#include <utility>
 
 #include <d3dx12.h>
 #include <wrl/client.h>
@@ -24,6 +25,8 @@ namespace HIKARI::RENDER3D::TEMPORAL {
         struct TemporalMaskPassState {
             ComPtr<ID3D12RootSignature> rootSignature{};
             ComPtr<ID3D12PipelineState> pipelineState{};
+            uint64_t ownerDeviceGeneration = 0u;
+            ID3D12Device* ownerDevice = nullptr;
             bool ready = false;
         };
 
@@ -32,14 +35,27 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             return state;
         }
 
-        bool EnsurePipeline(ID3D12Device* device) {
+        bool EnsurePipeline(const GFX::Context& graphics) {
             TemporalMaskPassState& state = State();
-            if (state.ready && state.rootSignature != nullptr && state.pipelineState != nullptr) {
-                return true;
-            }
-            if (device == nullptr) {
+            ID3D12Device* device = graphics.device;
+            if (device == nullptr || graphics.deviceGeneration == 0u) {
                 return false;
             }
+            if (state.ready) {
+                return state.ownerDeviceGeneration ==
+                        graphics.deviceGeneration &&
+                    state.ownerDevice == device &&
+                    state.rootSignature != nullptr &&
+                    state.pipelineState != nullptr;
+            }
+            if (state.ownerDeviceGeneration != 0u &&
+                (state.ownerDeviceGeneration != graphics.deviceGeneration ||
+                 state.ownerDevice != device)) {
+                return false;
+            }
+
+            ComPtr<ID3D12RootSignature> rootSignature{};
+            ComPtr<ID3D12PipelineState> pipelineState{};
 
             D3D12_DESCRIPTOR_RANGE ranges[2]{};
             for (uint32_t index = 0; index < static_cast<uint32_t>(std::size(ranges)); ++index) {
@@ -91,11 +107,11 @@ namespace HIKARI::RENDER3D::TEMPORAL {
                 0,
                 signature->GetBufferPointer(),
                 signature->GetBufferSize(),
-                IID_PPV_ARGS(state.rootSignature.GetAddressOf()));
+                IID_PPV_ARGS(rootSignature.GetAddressOf()));
             if (!HIKARI_DX_CHECK(hr, "TemporalMaskPass::CreateRootSignature")) {
                 return false;
             }
-            state.rootSignature->SetName(L"HIKARI.Temporal.MaskRootSignature");
+            rootSignature->SetName(L"HIKARI.Temporal.MaskRootSignature");
 
             ComPtr<ID3DBlob> vs;
             ComPtr<ID3DBlob> ps;
@@ -113,7 +129,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             }
 
             D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc{};
-            psoDesc.pRootSignature = state.rootSignature.Get();
+            psoDesc.pRootSignature = rootSignature.Get();
             psoDesc.VS = { vs->GetBufferPointer(), vs->GetBufferSize() };
             psoDesc.PS = { ps->GetBufferPointer(), ps->GetBufferSize() };
             psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
@@ -132,11 +148,15 @@ namespace HIKARI::RENDER3D::TEMPORAL {
 
             hr = device->CreateGraphicsPipelineState(
                 &psoDesc,
-                IID_PPV_ARGS(state.pipelineState.GetAddressOf()));
+                IID_PPV_ARGS(pipelineState.GetAddressOf()));
             if (!HIKARI_DX_CHECK(hr, "TemporalMaskPass::CreatePSO")) {
                 return false;
             }
-            state.pipelineState->SetName(L"HIKARI.Temporal.MaskPSO");
+            pipelineState->SetName(L"HIKARI.Temporal.MaskPSO");
+            state.rootSignature = std::move(rootSignature);
+            state.pipelineState = std::move(pipelineState);
+            state.ownerDeviceGeneration = graphics.deviceGeneration;
+            state.ownerDevice = device;
             state.ready = true;
             return true;
         }
@@ -156,6 +176,9 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             GetInvalidDepthMotionMaskRenderTarget(inputs.resourceFrame);
         if (cmd == nullptr ||
             device == nullptr ||
+            !inputs.MatchesResourceFrame() ||
+            graphics.deviceGeneration !=
+                inputs.resourceFrame.deviceGeneration ||
             reactive == nullptr ||
             transparency == nullptr ||
             invalidDepthMotion == nullptr) {
@@ -186,7 +209,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             srvHeap != nullptr &&
             inputs.sceneColor.valid &&
             compositionBase.ptr != 0 &&
-            EnsurePipeline(device);
+            EnsurePipeline(graphics);
         if (canGenerate) {
             GFX::PIX::ScopedGpuEvent pix(cmd, GFX::PIX::kColorPost, "Temporal.Masks");
             const D3D12_VIEWPORT viewport{
@@ -232,6 +255,8 @@ namespace HIKARI::RENDER3D::TEMPORAL {
         TemporalMaskPassState& state = State();
         state.pipelineState.Reset();
         state.rootSignature.Reset();
+        state.ownerDeviceGeneration = 0u;
+        state.ownerDevice = nullptr;
         state.ready = false;
     }
 

@@ -2,11 +2,10 @@
 #include "Gfx/HIKARI_GfxContext.h"
 
 #include <algorithm>
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include <d3dx12.h>
@@ -21,13 +20,14 @@
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/HIKARI_Mesh.h"
 #include "Render3D/Temporal/HIKARI_TemporalResourceSystem.h"
+#include "Render3D/Temporal/Internal/HIKARI_TemporalPassScratch.h"
+#include "Render3D/Temporal/Internal/HIKARI_TemporalResourceSystemInternal.h"
 
 namespace HIKARI::RENDER3D::TEMPORAL {
 
     namespace {
         using Microsoft::WRL::ComPtr;
 
-        constexpr uint32_t kFrameSlotCount = 3u;
         constexpr uint32_t kMaxJointCount = 128u;
 
         struct GeometryConstants {
@@ -45,125 +45,18 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             MATH::Mat4 previous[kMaxJointCount]{};
         };
 
-        struct UploadSlot {
-            ComPtr<ID3D12Resource> geometryBuffer{};
-            ComPtr<ID3D12Resource> skinBuffer{};
-            uint8_t* geometryMapped = nullptr;
-            uint8_t* skinMapped = nullptr;
-            uint32_t capacity = 0;
-        };
-
-        struct ObjectHistory {
-            MATH::Mat4 world{};
-            std::vector<MATH::Mat4> jointPalette{};
-            uint64_t frameIndex = 0;
-        };
-
         struct TemporalGeometryPassState {
             ComPtr<ID3D12RootSignature> rootSignature{};
             ComPtr<ID3D12PipelineState> staticPso[2]{};
             ComPtr<ID3D12PipelineState> skinnedPso[2]{};
-            std::array<UploadSlot, kFrameSlotCount> uploads{};
-            std::unordered_map<uint64_t, ObjectHistory> history{};
+            uint64_t ownerDeviceGeneration = 0u;
+            ID3D12Device* ownerDevice = nullptr;
             bool ready = false;
         };
 
         TemporalGeometryPassState& State() {
             static TemporalGeometryPassState state{};
             return state;
-        }
-
-        uint32_t GrowCapacity(uint32_t required) {
-            uint32_t capacity = 16u;
-            while (capacity < required && capacity <= (UINT32_MAX / 2u)) {
-                capacity *= 2u;
-            }
-            return (std::max)(capacity, required);
-        }
-
-        void ReleaseUploadSlot(UploadSlot& slot) {
-            if (slot.geometryBuffer != nullptr && slot.geometryMapped != nullptr) {
-                slot.geometryBuffer->Unmap(0, nullptr);
-            }
-            if (slot.skinBuffer != nullptr && slot.skinMapped != nullptr) {
-                slot.skinBuffer->Unmap(0, nullptr);
-            }
-            slot.geometryMapped = nullptr;
-            slot.skinMapped = nullptr;
-            slot.geometryBuffer.Reset();
-            slot.skinBuffer.Reset();
-            slot.capacity = 0;
-        }
-
-        bool CreateUploadBuffer(
-            ID3D12Device* device,
-            UINT64 bytes,
-            const wchar_t* name,
-            ComPtr<ID3D12Resource>& resource,
-            uint8_t*& mapped) {
-
-            const CD3DX12_HEAP_PROPERTIES heap(D3D12_HEAP_TYPE_UPLOAD);
-            const CD3DX12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Buffer(bytes);
-            const HRESULT hr = device->CreateCommittedResource(
-                &heap,
-                D3D12_HEAP_FLAG_NONE,
-                &desc,
-                D3D12_RESOURCE_STATE_GENERIC_READ,
-                nullptr,
-                IID_PPV_ARGS(resource.GetAddressOf()));
-            if (!HIKARI_DX_CHECK(hr, "TemporalGeometryPass::CreateUploadBuffer")) {
-                return false;
-            }
-            resource->SetName(name);
-            const CD3DX12_RANGE readRange(0, 0);
-            if (FAILED(resource->Map(
-                    0,
-                    &readRange,
-                    reinterpret_cast<void**>(&mapped)))) {
-                resource.Reset();
-                mapped = nullptr;
-                return false;
-            }
-            return true;
-        }
-
-        bool EnsureUploadSlot(
-            ID3D12Device* device,
-            UploadSlot& slot,
-            uint32_t drawCount) {
-
-            if (drawCount == 0u) {
-                return true;
-            }
-            if (slot.capacity >= drawCount &&
-                slot.geometryBuffer != nullptr &&
-                slot.skinBuffer != nullptr &&
-                slot.geometryMapped != nullptr &&
-                slot.skinMapped != nullptr) {
-                return true;
-            }
-
-            ReleaseUploadSlot(slot);
-            slot.capacity = GrowCapacity(drawCount);
-            const UINT geometryStride =
-                GFX::AlignD3D12ConstantBufferByteSize(sizeof(GeometryConstants));
-            const UINT skinStride = GFX::AlignD3D12ConstantBufferByteSize(sizeof(SkinConstants));
-            if (!CreateUploadBuffer(
-                    device,
-                    static_cast<UINT64>(geometryStride) * slot.capacity,
-                    L"HIKARI.Temporal.GeometryConstants",
-                    slot.geometryBuffer,
-                    slot.geometryMapped) ||
-                !CreateUploadBuffer(
-                    device,
-                    static_cast<UINT64>(skinStride) * slot.capacity,
-                    L"HIKARI.Temporal.SkinConstants",
-                    slot.skinBuffer,
-                    slot.skinMapped)) {
-                ReleaseUploadSlot(slot);
-                return false;
-            }
-            return true;
         }
 
         bool CreatePipelineVariant(
@@ -210,14 +103,31 @@ namespace HIKARI::RENDER3D::TEMPORAL {
                 IID_PPV_ARGS(outPipeline)));
         }
 
-        bool EnsurePipeline(ID3D12Device* device) {
+        bool EnsurePipeline(const GFX::Context& graphics) {
             TemporalGeometryPassState& state = State();
-            if (state.ready && state.rootSignature != nullptr) {
-                return true;
-            }
-            if (device == nullptr) {
+            ID3D12Device* device = graphics.device;
+            if (device == nullptr || graphics.deviceGeneration == 0u) {
                 return false;
             }
+            if (state.ready) {
+                return state.ownerDeviceGeneration ==
+                        graphics.deviceGeneration &&
+                    state.ownerDevice == device &&
+                    state.rootSignature != nullptr &&
+                    state.staticPso[0] != nullptr &&
+                    state.staticPso[1] != nullptr &&
+                    state.skinnedPso[0] != nullptr &&
+                    state.skinnedPso[1] != nullptr;
+            }
+            if (state.ownerDeviceGeneration != 0u &&
+                (state.ownerDeviceGeneration != graphics.deviceGeneration ||
+                 state.ownerDevice != device)) {
+                return false;
+            }
+
+            ComPtr<ID3D12RootSignature> rootSignature{};
+            ComPtr<ID3D12PipelineState> staticPso[2]{};
+            ComPtr<ID3D12PipelineState> skinnedPso[2]{};
 
             D3D12_ROOT_PARAMETER params[2]{};
             for (uint32_t index = 0; index < 2u; ++index) {
@@ -248,11 +158,11 @@ namespace HIKARI::RENDER3D::TEMPORAL {
                 0,
                 signature->GetBufferPointer(),
                 signature->GetBufferSize(),
-                IID_PPV_ARGS(state.rootSignature.GetAddressOf()));
+                IID_PPV_ARGS(rootSignature.GetAddressOf()));
             if (!HIKARI_DX_CHECK(hr, "TemporalGeometryPass::CreateRootSignature")) {
                 return false;
             }
-            state.rootSignature->SetName(L"HIKARI.Temporal.GeometryRootSignature");
+            rootSignature->SetName(L"HIKARI.Temporal.GeometryRootSignature");
 
             ComPtr<ID3DBlob> staticVs;
             ComPtr<ID3DBlob> skinnedVs;
@@ -295,25 +205,32 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             for (uint32_t doubleSided = 0; doubleSided < 2u; ++doubleSided) {
                 if (!CreatePipelineVariant(
                         device,
-                        state.rootSignature.Get(),
+                        rootSignature.Get(),
                         staticVs.Get(),
                         ps.Get(),
                         staticLayout,
                         static_cast<UINT>(std::size(staticLayout)),
                         doubleSided != 0u,
-                        state.staticPso[doubleSided].GetAddressOf()) ||
+                        staticPso[doubleSided].GetAddressOf()) ||
                     !CreatePipelineVariant(
                         device,
-                        state.rootSignature.Get(),
+                        rootSignature.Get(),
                         skinnedVs.Get(),
                         ps.Get(),
                         skinnedLayout,
                         static_cast<UINT>(std::size(skinnedLayout)),
                         doubleSided != 0u,
-                        state.skinnedPso[doubleSided].GetAddressOf())) {
+                        skinnedPso[doubleSided].GetAddressOf())) {
                     return false;
                 }
             }
+            state.rootSignature = std::move(rootSignature);
+            for (uint32_t index = 0; index < 2u; ++index) {
+                state.staticPso[index] = std::move(staticPso[index]);
+                state.skinnedPso[index] = std::move(skinnedPso[index]);
+            }
+            state.ownerDeviceGeneration = graphics.deviceGeneration;
+            state.ownerDevice = device;
             state.ready = true;
             return true;
         }
@@ -344,11 +261,19 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             }
         }
 
-        uint64_t ResolveHistoryKey(const MESHRENDERER::TemporalVelocityDraw& draw) {
-            if (draw.objectId != 0u) {
-                return draw.objectId;
-            }
-            return static_cast<uint64_t>(draw.vertexBuffer.BufferLocation);
+        DETAIL::TemporalGeometryHistoryKey ResolveHistoryKey(
+            const MESHRENDERER::TemporalVelocityDraw& draw) noexcept {
+
+            return {
+                draw.objectId,
+                draw.objectLifetimeGeneration,
+                static_cast<uint64_t>(draw.vertexBuffer.BufferLocation),
+                static_cast<uint64_t>(draw.indexBuffer.BufferLocation),
+                draw.sourceSurfaceInstanceIndex,
+                draw.startIndex,
+                draw.indexCount,
+                draw.baseVertex
+            };
         }
     }
 
@@ -365,6 +290,9 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             GetMotionMetadataRenderTarget(inputs.resourceFrame);
         if (cmd == nullptr ||
             device == nullptr ||
+            !inputs.MatchesResourceFrame() ||
+            graphics.deviceGeneration !=
+                inputs.resourceFrame.deviceGeneration ||
             motionTarget == nullptr ||
             metadataTarget == nullptr ||
             readOnlyDepthDsv.ptr == 0 ||
@@ -372,15 +300,39 @@ namespace HIKARI::RENDER3D::TEMPORAL {
             !inputs.motionMetadata.valid) {
             return false;
         }
+        DETAIL::TemporalResourceState* temporalState =
+            DETAIL::FindWritableState(inputs.resourceFrame);
+        if (temporalState == nullptr ||
+            !DETAIL::ContextMatchesOwner(*temporalState, graphics)) {
+            return false;
+        }
 
         std::vector<MESHRENDERER::TemporalVelocityDraw> draws;
-        MESHRENDERER::GatherTemporalVelocityDraws(graphics, draws);
+        if (!MESHRENDERER::GatherTemporalVelocityDraws(
+                graphics,
+                draws,
+                DETAIL::kTemporalMaximumGeometryDrawCount,
+                DETAIL::kTemporalMaximumSkinnedDrawCount)) {
+            return false;
+        }
+        if (draws.size() >
+            static_cast<size_t>(
+                DETAIL::kTemporalMaximumGeometryDrawCount)) {
+            return false;
+        }
         uint32_t rigidDrawCount = 0;
         uint32_t skinnedDrawCount = 0;
         uint32_t alphaMaskedDrawCount = 0;
         for (const MESHRENDERER::TemporalVelocityDraw& draw : draws) {
             if (draw.skinned) {
+                if (draw.jointPalette == nullptr) {
+                    return false;
+                }
                 ++skinnedDrawCount;
+                if (skinnedDrawCount >
+                    DETAIL::kTemporalMaximumSkinnedDrawCount) {
+                    return false;
+                }
             } else {
                 ++rigidDrawCount;
             }
@@ -388,30 +340,45 @@ namespace HIKARI::RENDER3D::TEMPORAL {
                 ++alphaMaskedDrawCount;
             }
         }
-        (void)SetTemporalGeometryDrawCounts(
-            inputs.resourceFrame,
-            rigidDrawCount,
-            skinnedDrawCount,
-            alphaMaskedDrawCount);
+        if (!SetTemporalGeometryDrawCounts(
+                inputs.resourceFrame,
+                rigidDrawCount,
+                skinnedDrawCount,
+                alphaMaskedDrawCount)) {
+            return false;
+        }
         TemporalGeometryPassState& state = State();
         if (inputs.frame.resetHistory) {
-            state.history.clear();
+            DETAIL::ClearTemporalGeometryHistory(*temporalState);
         }
         if (draws.empty()) {
+            DETAIL::ClearTemporalGeometryHistory(*temporalState);
             return true;
         }
-        if (!EnsurePipeline(device)) {
+        if (!EnsurePipeline(graphics)) {
             return false;
         }
 
-        UploadSlot& upload =
-            state.uploads[inputs.frame.frameIndex % kFrameSlotCount];
-        if (!EnsureUploadSlot(
-                device,
-                upload,
-                static_cast<uint32_t>(draws.size()))) {
+        const UINT geometryStride =
+            GFX::AlignD3D12ConstantBufferByteSize(
+                sizeof(GeometryConstants));
+        const UINT skinStride =
+            GFX::AlignD3D12ConstantBufferByteSize(
+                sizeof(SkinConstants));
+        const uint64_t geometryBytes =
+            static_cast<uint64_t>(geometryStride) * draws.size();
+        const uint64_t skinBytes =
+            static_cast<uint64_t>(skinStride) * skinnedDrawCount;
+        DETAIL::TemporalGeometryUploadSlice upload{};
+        if (!DETAIL::TryAcquireTemporalGeometryUpload(
+                graphics,
+                inputs.resourceFrame,
+                geometryBytes,
+                skinBytes,
+                upload)) {
             return false;
         }
+        temporalState->passScratch.geometryHistory.reserve(draws.size());
 
         GFX::PIX::ScopedGpuEvent pix(
             cmd,
@@ -443,16 +410,22 @@ namespace HIKARI::RENDER3D::TEMPORAL {
         cmd->SetGraphicsRootSignature(state.rootSignature.Get());
         cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-        const UINT geometryStride = GFX::AlignD3D12ConstantBufferByteSize(sizeof(GeometryConstants));
-        const UINT skinStride = GFX::AlignD3D12ConstantBufferByteSize(sizeof(SkinConstants));
+        auto& geometryHistory =
+            temporalState->passScratch.geometryHistory;
+        uint32_t skinDrawIndex = 0u;
         for (size_t drawIndex = 0; drawIndex < draws.size(); ++drawIndex) {
             const MESHRENDERER::TemporalVelocityDraw& draw = draws[drawIndex];
-            const uint64_t historyKey = ResolveHistoryKey(draw);
-            const auto historyIt = state.history.find(historyKey);
+            const DETAIL::TemporalGeometryHistoryKey historyKey =
+                ResolveHistoryKey(draw);
+            const auto historyIt = historyKey.IsValid()
+                ? geometryHistory.find(historyKey)
+                : geometryHistory.end();
             const bool previousValid =
                 inputs.frame.historyValid &&
-                historyIt != state.history.end() &&
-                historyIt->second.frameIndex + 1u == inputs.frame.frameIndex;
+                historyIt != geometryHistory.end() &&
+                inputs.frame.frameIndex > historyIt->second.frameIndex &&
+                inputs.frame.frameIndex - historyIt->second.frameIndex == 1u &&
+                draw.objectVersion >= historyIt->second.objectVersion;
 
             GeometryConstants geometry{};
             geometry.renderViewProj = inputs.frame.camera.viewProj;
@@ -463,7 +436,7 @@ namespace HIKARI::RENDER3D::TEMPORAL {
                 previousValid ? historyIt->second.world : draw.world;
             geometry.screenParams = inputs.frame.camera.screenParams;
             geometry.temporalParams = {
-                inputs.frame.historyValid ? 1.0f : 0.0f,
+                previousValid ? 1.0f : 0.0f,
                 0.0f,
                 0.0f,
                 0.0f
@@ -473,16 +446,16 @@ namespace HIKARI::RENDER3D::TEMPORAL {
                 &geometry,
                 sizeof(geometry));
 
-            SkinConstants skin{};
-            if (draw.skinned && draw.jointPalette != nullptr) {
+            if (draw.skinned) {
+                SkinConstants skin{};
                 const std::vector<MATH::Mat4>* previousPalette =
                     previousValid ? &historyIt->second.jointPalette : nullptr;
                 FillSkinConstants(*draw.jointPalette, previousPalette, skin);
+                std::memcpy(
+                    upload.skinMapped + skinStride * skinDrawIndex,
+                    &skin,
+                    sizeof(skin));
             }
-            std::memcpy(
-                upload.skinMapped + skinStride * drawIndex,
-                &skin,
-                sizeof(skin));
 
             cmd->SetPipelineState(
                 draw.skinned
@@ -490,12 +463,15 @@ namespace HIKARI::RENDER3D::TEMPORAL {
                     : state.staticPso[draw.doubleSided ? 1u : 0u].Get());
             cmd->SetGraphicsRootConstantBufferView(
                 0,
-                upload.geometryBuffer->GetGPUVirtualAddress() +
+                upload.geometryGpuAddress +
                     static_cast<UINT64>(geometryStride) * drawIndex);
-            cmd->SetGraphicsRootConstantBufferView(
-                1,
-                upload.skinBuffer->GetGPUVirtualAddress() +
-                    static_cast<UINT64>(skinStride) * drawIndex);
+            if (draw.skinned) {
+                cmd->SetGraphicsRootConstantBufferView(
+                    1,
+                    upload.skinGpuAddress +
+                        static_cast<UINT64>(skinStride) * skinDrawIndex);
+                ++skinDrawIndex;
+            }
             cmd->IASetVertexBuffers(0, 1, &draw.vertexBuffer);
             cmd->IASetIndexBuffer(&draw.indexBuffer);
             cmd->DrawIndexedInstanced(
@@ -509,18 +485,34 @@ namespace HIKARI::RENDER3D::TEMPORAL {
         metadataTarget->TransitionColor(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
 
         for (const MESHRENDERER::TemporalVelocityDraw& draw : draws) {
-            ObjectHistory& history = state.history[ResolveHistoryKey(draw)];
-            history.world = draw.world;
-            history.frameIndex = inputs.frame.frameIndex;
-            if (draw.skinned && draw.jointPalette != nullptr) {
-                history.jointPalette = *draw.jointPalette;
+            const DETAIL::TemporalGeometryHistoryKey historyKey =
+                ResolveHistoryKey(draw);
+            if (!historyKey.IsValid()) {
+                continue;
+            }
+            DETAIL::TemporalGeometryObjectHistory& objectHistory =
+                geometryHistory[historyKey];
+            objectHistory.world = draw.world;
+            objectHistory.frameIndex = inputs.frame.frameIndex;
+            objectHistory.objectVersion = draw.objectVersion;
+            if (draw.skinned) {
+                const size_t paletteCount = (std::min)(
+                    draw.jointPalette->size(),
+                    static_cast<size_t>(kMaxJointCount));
+                objectHistory.jointPalette.assign(
+                    draw.jointPalette->begin(),
+                    draw.jointPalette->begin() + paletteCount);
             } else {
-                history.jointPalette.clear();
+                objectHistory.jointPalette.clear();
             }
         }
-        for (auto it = state.history.begin(); it != state.history.end();) {
-            if (it->second.frameIndex + 120u < inputs.frame.frameIndex) {
-                it = state.history.erase(it);
+        for (auto it = geometryHistory.begin();
+             it != geometryHistory.end();) {
+            // Motion history is valid only for consecutive visible frames.
+            // Reappearing geometry intentionally starts cold instead of
+            // inventing velocity across an occlusion/culling gap.
+            if (it->second.frameIndex != inputs.frame.frameIndex) {
+                it = geometryHistory.erase(it);
             } else {
                 ++it;
             }
@@ -530,15 +522,13 @@ namespace HIKARI::RENDER3D::TEMPORAL {
 
     void ShutdownTemporalGeometryPass() {
         TemporalGeometryPassState& state = State();
-        for (UploadSlot& slot : state.uploads) {
-            ReleaseUploadSlot(slot);
-        }
         for (uint32_t index = 0; index < 2u; ++index) {
             state.staticPso[index].Reset();
             state.skinnedPso[index].Reset();
         }
         state.rootSignature.Reset();
-        state.history.clear();
+        state.ownerDeviceGeneration = 0u;
+        state.ownerDevice = nullptr;
         state.ready = false;
     }
 

@@ -30,6 +30,8 @@ struct Context {
     ID3D12Fence* frameFence{};
     uint64_t currentFrameRetireFenceValue{};
 
+    // Physical swapchain/frame-resource slot in [0, kFrameResourceCount).
+    // This is never the engine's monotonic logical frame number.
     uint32_t frameIndex{};
     int backBufferWidth{};
     int backBufferHeight{};

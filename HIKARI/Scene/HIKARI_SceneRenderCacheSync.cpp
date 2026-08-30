@@ -995,11 +995,9 @@ namespace HIKARI {
 
 
         RENDER3D::RUNTIME::SceneRenderObjectId ResolveSceneRenderObjectId(const GameObject& object) {
-            RENDER3D::RUNTIME::SceneRenderObjectId id{ object.GetDocumentId().value };
-            if (!id.IsValid()) {
-                id.value = reinterpret_cast<uint64_t>(&object);
-            }
-            return id;
+            return RENDER3D::RUNTIME::SceneRenderObjectId{
+                object.GetRenderStableId()
+            };
         }
 
         std::string ResolveClusteredGeometryPath(

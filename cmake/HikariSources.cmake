@@ -237,6 +237,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Temporal/HIKARI_TemporalMotionVectorPass.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Temporal/HIKARI_TemporalGeometryPass.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Temporal/HIKARI_TemporalMaskPass.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Temporal/HIKARI_TemporalPassScratch.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Temporal/HIKARI_TemporalResourceAccess.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Temporal/HIKARI_TemporalResourceSystem.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Temporal/HIKARI_TemporalResolveStage.cpp"
