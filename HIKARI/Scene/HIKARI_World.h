@@ -471,6 +471,7 @@ namespace HIKARI {
         std::unordered_map<std::type_index, NativeComponentTypeBinding>
             nativeComponentTypeIds_{};
         std::vector<GameObject*> renderDirtyObjects_{};
+        size_t renderTrackedObjectCount_ = 0u;
         std::vector<uint64_t> removedRenderObjectIds_{};
         std::unordered_set<uint64_t>
             removedRenderObjectIdSet_{};

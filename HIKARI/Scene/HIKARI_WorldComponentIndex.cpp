@@ -247,6 +247,12 @@ namespace HIKARI {
         if (affectsRenderState) {
             --owner->renderStateContributorCount_;
             if (owner->renderStateContributorCount_ == 0u) {
+                if (renderTrackedObjectCount_ == 0u) {
+                    HIKARI_LOG_ERROR(
+                        "[World] render-tracked object count is invalid.");
+                    std::terminate();
+                }
+                --renderTrackedObjectCount_;
                 RemoveRenderObjectDirty(owner);
                 owner->renderStateDirty_ = false;
             }

@@ -392,6 +392,7 @@ namespace HIKARI {
             nativeComponentTypeIds_.clear();
             componentRegistry_ = nullptr;
             renderDirtyObjects_.clear();
+            renderTrackedObjectCount_ = 0u;
             frameEvents_.Clear();
             fixedEvents_.Clear();
         }

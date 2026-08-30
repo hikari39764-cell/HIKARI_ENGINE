@@ -99,6 +99,8 @@ namespace HIKARI {
             : nullptr;
         const bool affectsRenderState =
             typeInfo != nullptr && typeInfo->affectsRenderState;
+        const bool firstRenderContributor = affectsRenderState &&
+            object.renderStateContributorCount_ == 0u;
         if (components.size() >= components.capacity() ||
             components.size() >=
                 static_cast<size_t>(
@@ -108,6 +110,22 @@ namespace HIKARI {
              object.renderStateContributorCount_ ==
                 (std::numeric_limits<uint32_t>::max)())) {
             return false;
+        }
+        if (firstRenderContributor) {
+            if (renderTrackedObjectCount_ >=
+                    renderDirtyObjects_.max_size()) {
+                return false;
+            }
+            try {
+                renderDirtyObjects_.reserve(
+                    INTERNAL::GrowWorldCapacity(
+                        renderDirtyObjects_.capacity(),
+                        renderTrackedObjectCount_ + 1u,
+                        renderDirtyObjects_.max_size()));
+            }
+            catch (...) {
+                return false;
+            }
         }
 
         const uint32_t index =
@@ -176,6 +194,9 @@ namespace HIKARI {
         component.worldComponentIndex_ = index;
         if (affectsRenderState) {
             ++object.renderStateContributorCount_;
+            if (firstRenderContributor) {
+                ++renderTrackedObjectCount_;
+            }
         }
         return true;
     }
