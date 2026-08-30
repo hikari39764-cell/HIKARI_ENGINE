@@ -1,108 +1,23 @@
 #include "HIKARI/Project/WorldView.h"
 #include "HIKARI/Project/TerrainView.h"
 
-#include <array>
 #include <cmath>
-#include <cstring>
 
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
-#include "Runtime/Project/Internal/HIKARI_GameProjectTransformBridgeInternal.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectWorldBridgeInternal.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/Sand/HIKARI_SandSurfaceQueryService.h"
 #include "Scene/HIKARI_World.h"
 
 namespace HIKARI {
-    namespace {
 
-        static_assert(
-            static_cast<uint8_t>(WorldCommandKind::SetParent) ==
-            static_cast<uint8_t>(
-                GameProjectWorldCommandKind::SetParent));
-        static_assert(
-            static_cast<uint8_t>(WorldCommandPhase::SystemPostRender) ==
-            static_cast<uint8_t>(
-                GameProjectWorldCommandPhase::SystemPostRender));
-        static_assert(
-            kWorldSpawnBatchMaximumCapacity ==
-            kGameProjectWorldMaximumSpawnBatchCount);
-
-        bool TryReadObjectName(
-            const GameProjectSpawnObjectDesc& desc,
-            std::string_view& outName) noexcept {
-            const void* terminator = std::memchr(
-                desc.name,
-                '\0',
-                kGameProjectObjectNameCapacity);
-            if (terminator == nullptr) {
-                return false;
-            }
-            const auto* end = static_cast<const char*>(terminator);
-            if (end == desc.name) {
-                return false;
-            }
-            outName = std::string_view(
-                desc.name,
-                static_cast<size_t>(end - desc.name));
-            return true;
-        }
-
-        bool HasNonZeroReserved(
-            const GameProjectSpawnObjectDesc& desc) noexcept {
-            for (uint32_t value : desc.reserved) {
-                if (value != 0u) {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        GameProjectWorldResult SubmitSpawn(
-            World& world,
-            const GameProjectSpawnObjectDesc& desc) noexcept {
-            if (HasNonZeroReserved(desc)) {
-                return PROJECT::INTERNAL::MakeWorldResult(
-                    GameProjectWorldResultCode::InvalidRequest);
-            }
-            std::string_view name{};
-            if (!TryReadObjectName(desc, name)) {
-                return PROJECT::INTERNAL::MakeWorldResult(
-                    GameProjectWorldResultCode::InvalidName);
-            }
-            if (!PROJECT::INTERNAL::IsValidProjectTransform(
-                    desc.localTransform)) {
-                return PROJECT::INTERNAL::MakeWorldResult(
-                    GameProjectWorldResultCode::InvalidTransform);
-            }
-
-            RuntimeObjectHandle parent{};
-            if (!desc.parent.IsNull()) {
-                if (!PROJECT::INTERNAL::IsObjectHandleForWorld(
-                        desc.parent,
-                        world)) {
-                    return PROJECT::INTERNAL::MakeWorldResult(
-                        GameProjectWorldResultCode::InvalidParent);
-                }
-                parent = PROJECT::INTERNAL::DecodeRuntimeHandle(
-                    desc.parent);
-            }
-
-            try {
-                return PROJECT::INTERNAL::ToProjectCommandSubmission(
-                    world,
-                    world.SubmitSpawn(
-                        name,
-                        PROJECT::INTERNAL::ToRuntimeTransform(
-                            desc.localTransform),
-                        parent));
-            }
-            catch (...) {
-                return PROJECT::INTERNAL::MakeWorldResult(
-                    GameProjectWorldResultCode::InternalError);
-            }
-        }
-
-    } // namespace
+    static_assert(
+        static_cast<uint8_t>(WorldCommandKind::SetParent) ==
+        static_cast<uint8_t>(GameProjectWorldCommandKind::SetParent));
+    static_assert(
+        static_cast<uint8_t>(WorldCommandPhase::SystemPostRender) ==
+        static_cast<uint8_t>(
+            GameProjectWorldCommandPhase::SystemPostRender));
 
     ObjectView GameProjectSdkAccess::MakeObjectView(
         GameObject& object) noexcept {
@@ -195,146 +110,6 @@ namespace HIKARI {
     bool WorldView::CanMutateStructure() const noexcept {
         const World* world = GameProjectSdkAccess::GetWorld(*this);
         return world != nullptr && world->CanMutateStructure();
-    }
-
-    GameProjectWorldResult WorldView::SpawnObject(
-        const GameProjectSpawnObjectDesc& desc) const noexcept {
-        RuntimeWorldAccessResult access{};
-        World* world = GameProjectSdkAccess::GetWorld(
-            *this,
-            &access);
-        if (world == nullptr) {
-            return PROJECT::INTERNAL::MakeWorldAccessFailure(access);
-        }
-        return SubmitSpawn(*world, desc);
-    }
-
-    bool WorldView::SpawnObjects(
-        std::span<const GameProjectSpawnObjectDesc> objects,
-        std::span<GameProjectWorldResult> outResults) const noexcept {
-        if (objects.size() != outResults.size()) {
-            return false;
-        }
-        auto fillResults = [&](GameProjectWorldResult result) noexcept {
-            for (GameProjectWorldResult& output : outResults) {
-                output = result;
-            }
-        };
-        if (objects.size() >
-            kGameProjectWorldMaximumSpawnBatchCount) {
-            fillResults(PROJECT::INTERNAL::MakeWorldResult(
-                GameProjectWorldResultCode::InvalidRequest));
-            return false;
-        }
-        if (objects.empty()) {
-            return true;
-        }
-
-        RuntimeWorldAccessResult access{};
-        World* world = GameProjectSdkAccess::GetWorld(
-            *this,
-            &access);
-        if (world == nullptr) {
-            const GameProjectWorldResult failure =
-                PROJECT::INTERNAL::MakeWorldAccessFailure(access);
-            fillResults(failure);
-            return false;
-        }
-
-        std::array<WorldSpawnRequest,
-            kGameProjectWorldMaximumSpawnBatchCount> requests{};
-        for (size_t index = 0u; index < objects.size(); ++index) {
-            const GameProjectSpawnObjectDesc& desc = objects[index];
-            GameProjectWorldResultCode rejection =
-                GameProjectWorldResultCode::Success;
-            std::string_view name{};
-            if (HasNonZeroReserved(desc)) {
-                rejection =
-                    GameProjectWorldResultCode::InvalidRequest;
-            }
-            else if (!TryReadObjectName(desc, name)) {
-                rejection = GameProjectWorldResultCode::InvalidName;
-            }
-            else if (!PROJECT::INTERNAL::IsValidProjectTransform(
-                    desc.localTransform)) {
-                rejection =
-                    GameProjectWorldResultCode::InvalidTransform;
-            }
-
-            RuntimeObjectHandle parent{};
-            if (rejection == GameProjectWorldResultCode::Success &&
-                !desc.parent.IsNull()) {
-                if (!PROJECT::INTERNAL::IsObjectHandleForWorld(
-                        desc.parent,
-                        *world)) {
-                    rejection =
-                        GameProjectWorldResultCode::InvalidParent;
-                }
-                else {
-                    parent = PROJECT::INTERNAL::DecodeRuntimeHandle(
-                        desc.parent);
-                    if (world->FindObject(parent) == nullptr) {
-                        rejection =
-                            GameProjectWorldResultCode::InvalidParent;
-                    }
-                }
-            }
-
-            if (rejection != GameProjectWorldResultCode::Success) {
-                fillResults(PROJECT::INTERNAL::MakeWorldResult(
-                    GameProjectWorldResultCode::MutationRejected));
-                outResults[index] =
-                    PROJECT::INTERNAL::MakeWorldResult(rejection);
-                return false;
-            }
-
-            const Transform3D transform =
-                PROJECT::INTERNAL::ToRuntimeTransform(
-                    desc.localTransform);
-            requests[index] = WorldSpawnRequest{
-                name,
-                WorldCommandLocalTransform{
-                    transform.position,
-                    transform.rotation,
-                    transform.scale
-                },
-                parent
-            };
-        }
-
-        std::array<WorldCommandSubmission,
-            kGameProjectWorldMaximumSpawnBatchCount> submissions{};
-        try {
-            const WorldMutationResult admission =
-                world->SubmitSpawnBatch(
-                    std::span<const WorldSpawnRequest>(
-                        requests.data(),
-                        objects.size()),
-                    std::span<WorldCommandSubmission>(
-                        submissions.data(),
-                        objects.size()));
-            if (admission != WorldMutationResult::Queued) {
-                fillResults(
-                    PROJECT::INTERNAL::ToProjectMutationResult(
-                        *world,
-                        admission));
-                return false;
-            }
-            for (size_t index = 0u;
-                index < objects.size();
-                ++index) {
-                outResults[index] =
-                    PROJECT::INTERNAL::ToProjectCommandSubmission(
-                        *world,
-                        submissions[index]);
-            }
-        }
-        catch (...) {
-            fillResults(PROJECT::INTERNAL::MakeWorldResult(
-                GameProjectWorldResultCode::InternalError));
-            return false;
-        }
-        return true;
     }
 
     GameProjectWorldResult WorldView::DestroyObject(

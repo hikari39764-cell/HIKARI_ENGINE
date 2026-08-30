@@ -100,6 +100,16 @@ namespace HIKARI {
         HIKARI_GAME_PROJECT_SDK_API bool SpawnObjects(
             std::span<const GameProjectSpawnObjectDesc> objects,
             std::span<GameProjectWorldResult> outResults) const noexcept;
+        // SDK 2.4 additive batch. Descriptor arrays and JSON bytes are borrowed
+        // only for this call; accepted data is deep-copied before return. The
+        // batch admission is all-or-none, while flush-time failure rolls back
+        // only the failed object and its structural commands. Project-defined
+        // event/variable/external side effects are not transactionally undone.
+        HIKARI_GAME_PROJECT_SDK_API bool SpawnObjectsWithComponents(
+            const GameProjectSpawnObjectComponentsDesc* objects,
+            uint32_t objectCount,
+            GameProjectWorldResult* outResults,
+            uint32_t resultCount) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API GameProjectWorldResult DestroyObject(
             GameProjectObjectHandle object) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API GameProjectWorldResult SetParent(

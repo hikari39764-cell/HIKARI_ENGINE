@@ -483,6 +483,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectPropertyBridge.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectQueryBridge.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectRegistration.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectSpawnBridge.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectTransformBridge.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectWorldBridge.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectNavigationBridge.cpp"
@@ -627,7 +628,7 @@ string(
     "(HIKARI_RuntimeFeatureCatalog|HIKARI_GameProject("
     "ActionBridge|NavigationBridge|GameFlowBridge|PresentationBridge|"
     "UiBridge|VfxBridge|PropertyBridge|BindingBridge|QueryBridge|"
-    "Registration|TransformBridge|WorldBridge))\\.cpp$")
+    "Registration|SpawnBridge|TransformBridge|WorldBridge))\\.cpp$")
 list(
     FILTER
     HIKARI_GAME_PROJECT_SDK_EXPORT_SOURCES
@@ -635,10 +636,10 @@ list(
     REGEX "${HIKARI_GAME_PROJECT_SDK_EXPORT_PATTERN}")
 unset(HIKARI_GAME_PROJECT_SDK_EXPORT_PATTERN)
 list(LENGTH HIKARI_GAME_PROJECT_SDK_EXPORT_SOURCES hikari_sdk_export_count)
-if(NOT hikari_sdk_export_count EQUAL 13)
+if(NOT hikari_sdk_export_count EQUAL 14)
     message(
         FATAL_ERROR
-        "The GameProject SDK export owner must contain exactly 13 sources.")
+        "The GameProject SDK export owner must contain exactly 14 sources.")
 endif()
 
 set(HIKARI_EDITOR_HOST_SOURCES

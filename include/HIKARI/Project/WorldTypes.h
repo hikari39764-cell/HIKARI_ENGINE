@@ -21,6 +21,16 @@ namespace HIKARI {
     inline constexpr uint32_t kGameProjectWorldQueryDescV1Size = 56u;
     inline constexpr uint32_t kGameProjectWorldQueryRowV1Size = 48u;
     inline constexpr uint32_t kGameProjectWorldQueryResultV1Size = 32u;
+    inline constexpr uint32_t kGameProjectSpawnComponentVersion = 1u;
+    inline constexpr uint32_t kGameProjectSpawnComponentDescV1Size = 40u;
+    inline constexpr uint32_t
+        kGameProjectSpawnObjectComponentsDescV1Size = 232u;
+    inline constexpr uint32_t
+        kGameProjectWorldMaximumSpawnComponentsPerObject = 16u;
+    inline constexpr uint32_t
+        kGameProjectWorldMaximumSpawnComponentBytes = 16u * 1024u;
+    inline constexpr uint32_t
+        kGameProjectWorldMaximumSpawnBatchBytes = 1024u * 1024u;
 
     enum class GameProjectWorldQueryMatch : uint32_t {
         AllRequired = 0u,
@@ -184,6 +194,38 @@ namespace HIKARI {
         uint32_t reserved[4] = { 0u, 0u, 0u, 0u };
     };
 
+    enum class GameProjectSpawnComponentValuesFormat : uint32_t {
+        JsonUtf8Object = 0u,
+        Count,
+    };
+
+    // V1 component arrays use a fixed 40-byte stride. initialValues is borrowed
+    // only for the call and may be null when initialValuesSize is zero. Accepted
+    // JSON bytes are deep-copied by the World before this call returns.
+    struct GameProjectSpawnComponentDesc {
+        uint32_t structSize = kGameProjectSpawnComponentDescV1Size;
+        uint32_t version = kGameProjectSpawnComponentVersion;
+        ComponentTypeId typeId{};
+        const uint8_t* initialValues = nullptr;
+        uint32_t initialValuesSize = 0u;
+        GameProjectSpawnComponentValuesFormat initialValuesFormat =
+            GameProjectSpawnComponentValuesFormat::JsonUtf8Object;
+        uint32_t reserved[2] = { 0u, 0u };
+    };
+
+    // Components are explicit, GameProject-owned registrations in dependency
+    // order. Empty initial values keep constructor defaults. The nested object
+    // keeps the original 200-byte Spawn contract and requires a live parent.
+    struct GameProjectSpawnObjectComponentsDesc {
+        uint32_t structSize =
+            kGameProjectSpawnObjectComponentsDescV1Size;
+        uint32_t version = kGameProjectSpawnComponentVersion;
+        GameProjectSpawnObjectDesc object{};
+        const GameProjectSpawnComponentDesc* components = nullptr;
+        uint32_t componentCount = 0u;
+        uint32_t reserved[3] = { 0u, 0u, 0u };
+    };
+
     enum class GameProjectWorldCommandKind : uint8_t {
         Spawn = 0u,
         Destroy = 1u,
@@ -297,6 +339,44 @@ namespace HIKARI {
     static_assert(offsetof(GameProjectSpawnObjectDesc, localTransform) == 128u);
     static_assert(offsetof(GameProjectSpawnObjectDesc, parent) == 168u);
     static_assert(offsetof(GameProjectSpawnObjectDesc, reserved) == 184u);
+    static_assert(std::is_same_v<std::underlying_type_t<
+        GameProjectSpawnComponentValuesFormat>, uint32_t>);
+    static_assert(std::is_standard_layout_v<
+        GameProjectSpawnComponentDesc>);
+    static_assert(std::is_trivially_copyable_v<
+        GameProjectSpawnComponentDesc>);
+    static_assert(sizeof(GameProjectSpawnComponentDesc) == 40u);
+    static_assert(offsetof(
+        GameProjectSpawnComponentDesc, structSize) == 0u);
+    static_assert(offsetof(
+        GameProjectSpawnComponentDesc, version) == 4u);
+    static_assert(offsetof(
+        GameProjectSpawnComponentDesc, typeId) == 8u);
+    static_assert(offsetof(
+        GameProjectSpawnComponentDesc, initialValues) == 16u);
+    static_assert(offsetof(
+        GameProjectSpawnComponentDesc, initialValuesSize) == 24u);
+    static_assert(offsetof(
+        GameProjectSpawnComponentDesc, initialValuesFormat) == 28u);
+    static_assert(offsetof(
+        GameProjectSpawnComponentDesc, reserved) == 32u);
+    static_assert(std::is_standard_layout_v<
+        GameProjectSpawnObjectComponentsDesc>);
+    static_assert(std::is_trivially_copyable_v<
+        GameProjectSpawnObjectComponentsDesc>);
+    static_assert(sizeof(GameProjectSpawnObjectComponentsDesc) == 232u);
+    static_assert(offsetof(
+        GameProjectSpawnObjectComponentsDesc, structSize) == 0u);
+    static_assert(offsetof(
+        GameProjectSpawnObjectComponentsDesc, version) == 4u);
+    static_assert(offsetof(
+        GameProjectSpawnObjectComponentsDesc, object) == 8u);
+    static_assert(offsetof(
+        GameProjectSpawnObjectComponentsDesc, components) == 208u);
+    static_assert(offsetof(
+        GameProjectSpawnObjectComponentsDesc, componentCount) == 216u);
+    static_assert(offsetof(
+        GameProjectSpawnObjectComponentsDesc, reserved) == 220u);
     static_assert(std::is_standard_layout_v<
         GameProjectWorldCommandFailure>);
     static_assert(std::is_trivially_copyable_v<
