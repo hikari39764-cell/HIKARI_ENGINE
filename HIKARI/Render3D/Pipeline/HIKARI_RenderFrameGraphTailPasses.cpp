@@ -277,4 +277,23 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
         }
     }
 
+    bool ExecutePresentationResume(
+        const GRAPH::RenderGraphPassContext& graphPass,
+        void* userData) noexcept {
+        // This first suffix is intentionally a session-owned marker. It must
+        // not access the Pipeline stack or claim a SceneColorFinal producer.
+        if (userData == nullptr) {
+            return false;
+        }
+        auto& state = *static_cast<StageExecutionState*>(userData);
+        if (state.context != nullptr ||
+            !state.session.IsValid() ||
+            !graphPass.frame.Matches(state.session.surfaces.frame) ||
+            TryGetRenderFrameGraph(state.session) != graphPass.graph) {
+            return false;
+        }
+        state.presentationResumed = true;
+        return true;
+    }
+
 } // namespace HIKARI::RENDER3D::PIPELINE::INTERNAL

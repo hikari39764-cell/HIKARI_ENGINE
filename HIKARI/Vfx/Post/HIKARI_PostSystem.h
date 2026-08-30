@@ -11,6 +11,7 @@
 #include "Render3D/Color/HIKARI_ExposureState.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Render3D/Resources/HIKARI_RenderTextureView.h"
+#include "Render3D/Pipeline/HIKARI_RenderFrameGraphSession.h"
 #include "Render3D/Surface/HIKARI_RenderFrameSurfaceRegistry.h"
 #include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
 #include "Render3D/Temporal/HIKARI_TemporalResourceSystem.h"
@@ -97,6 +98,9 @@ namespace HIKARI::POST {
             uint64_t deviceGeneration);
         static RENDER3D::SURFACE::RenderFrameSurfaceReceipt
             GetSceneCaptureSurfaceReceipt() noexcept;
+        static bool SetSceneCaptureGraphSession(
+            RENDER3D::PIPELINE::RenderFrameGraphSessionReceipt session);
+        static bool ContinueSceneCaptureGraphSession();
         static bool SetSceneCaptureTemporalFrame(
             RENDER3D::TEMPORAL::TemporalViewLease view,
             RENDER3D::RenderFrameToken frame,
@@ -170,6 +174,8 @@ namespace HIKARI::POST {
             presentationTemporalResources_;
         static RENDER3D::SURFACE::RenderFrameSurfaceReceipt
             renderSurfaceReceipt_;
+        static RENDER3D::PIPELINE::RenderFrameGraphSessionReceipt
+            renderGraphSessionReceipt_;
     };
 
 } // namespace HIKARI::POST

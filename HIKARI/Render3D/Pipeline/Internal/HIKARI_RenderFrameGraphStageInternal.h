@@ -1,12 +1,17 @@
 #pragma once
 
 #include "Render3D/Pipeline/HIKARI_RenderFrameGraphStage.h"
+#include "Render3D/Pipeline/HIKARI_RenderFrameGraphSession.h"
 
 namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
 
     struct StageExecutionState {
+        // Borrowed only while the Pipeline prefix executes. A resumable suffix
+        // may use session-owned fields below, but must not retain this pointer.
         const RenderFrameGraphStageContext* context = nullptr;
         RenderFrameGraphStageResult result{};
+        RenderFrameGraphSessionReceipt session{};
+        bool presentationResumed = false;
     };
 
     struct RenderFrameGraphPlanOptions {
@@ -30,6 +35,7 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
         GRAPH::RenderGraphExecuteFn visibilityFeatures = nullptr;
         GRAPH::RenderGraphExecuteFn sceneColorPostOpaqueCapture = nullptr;
         GRAPH::RenderGraphExecuteFn stylizedFeatureComposite = nullptr;
+        GRAPH::RenderGraphExecuteFn presentationResume = nullptr;
     };
 
     struct RenderFrameGraphTailResources {
@@ -100,6 +106,9 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
         const GRAPH::RenderGraphPassContext& context,
         void* userData) noexcept;
     bool ExecuteStylizedFeatureComposite(
+        const GRAPH::RenderGraphPassContext& context,
+        void* userData) noexcept;
+    bool ExecutePresentationResume(
         const GRAPH::RenderGraphPassContext& context,
         void* userData) noexcept;
 

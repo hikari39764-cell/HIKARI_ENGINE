@@ -4,6 +4,7 @@
 
 #include "Render3D/Debug/HIKARI_RenderDebugView.h"
 #include "Render3D/Graph/HIKARI_RenderGraph.h"
+#include "Render3D/Pipeline/HIKARI_RenderFrameGraphSession.h"
 #include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
 
 namespace HIKARI {
@@ -69,11 +70,13 @@ namespace HIKARI::RENDER3D::PIPELINE {
     };
 
     struct RenderFrameGraphStageResult {
-        bool completed = false;
+        bool prefixCompleted = false;
         bool opaqueSucceeded = false;
         bool motionVectorsWritten = false;
         bool sceneColorOpaquePublished = false;
+        bool pausedForPresentation = false;
         uint32_t compiledPassCount = 0u;
+        RenderFrameGraphSessionReceipt session{};
         GRAPH::RenderGraphDiagnostic diagnostic{};
     };
 

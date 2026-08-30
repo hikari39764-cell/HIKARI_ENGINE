@@ -47,8 +47,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
 
     RenderFrameGraphStageResult ExecuteRenderFrameGraphStage(
         const RenderFrameGraphStageContext& context) noexcept {
-        INTERNAL::StageExecutionState state{};
-        state.context = &context;
+        RenderFrameGraphStageResult rejected{};
         if (!context.frame.token.MatchesFrameView(
                 context.frame.frameIndex,
                 context.frame.viewId) ||
@@ -61,64 +60,110 @@ namespace HIKARI::RENDER3D::PIPELINE {
             !context.temporalResources.publication.Matches(
                 context.frame.token) ||
             !(context.frame.viewId == kPrimaryRenderViewId)) {
-            state.result.diagnostic.code =
+            rejected.diagnostic.code =
                 GRAPH::RenderGraphResultCode::InvalidFrame;
             std::snprintf(
-                state.result.diagnostic.message.data(),
-                state.result.diagnostic.message.size(),
+                rejected.diagnostic.message.data(),
+                rejected.diagnostic.message.size(),
                 "%s",
                 "RenderFrameGraph requires matching primary-view surfaces.");
             (void)TEMPORAL::MarkMotionVectorsWritten(
                 context.temporalResources,
                 false);
-            return state.result;
+            return rejected;
         }
-        GRAPH::RenderGraph graph{};
+
+        RenderFrameGraphSessionReceipt session{};
+        if (!BeginRenderFrameGraphSession(
+                context.frame.surfaceReceipt,
+                session)) {
+            rejected.diagnostic.code =
+                GRAPH::RenderGraphResultCode::InvalidExecutionState;
+            std::snprintf(
+                rejected.diagnostic.message.data(),
+                rejected.diagnostic.message.size(),
+                "%s",
+                "RenderFrameGraph could not begin its owning session.");
+            (void)TEMPORAL::MarkMotionVectorsWritten(
+                context.temporalResources,
+                false);
+            return rejected;
+        }
+        GRAPH::RenderGraph* graph =
+            INTERNAL::TryGetRenderFrameGraph(session);
+        INTERNAL::StageExecutionState* state =
+            INTERNAL::TryGetRenderFrameGraphStageState(session);
+        if (graph == nullptr || state == nullptr) {
+            (void)AbortRenderFrameGraphSession(session);
+            rejected.diagnostic.code =
+                GRAPH::RenderGraphResultCode::InvalidExecutionState;
+            return rejected;
+        }
+        state->context = &context;
+        state->session = session;
+        state->presentationResumed = false;
+        state->result.session = session;
+        const auto rejectSession = [&]() noexcept {
+            const RenderFrameGraphStageResult result = state->result;
+            state->context = nullptr;
+            (void)AbortRenderFrameGraphSession(session);
+            return result;
+        };
+
         const INTERNAL::RenderFrameGraphPlanOptions options{
             context.requiresSceneColorOpaque,
             context.hasSsrWork,
             context.hasDepthAwareWork,
             context.hasTransparentWork
         };
-        if (!graph.BeginFrame(
-                context.sceneSurfaces,
-                context.frame.surfaceReceipt) ||
-            !INTERNAL::BuildRenderFrameGraphPlan(
+        if (!INTERNAL::BuildRenderFrameGraphPlan(
                 options,
-                &state,
+                state,
                 INTERNAL::GetRenderFrameGraphPassCallbacks(),
-                graph)) {
-            state.result.diagnostic = graph.GetDiagnostic();
+                *graph)) {
+            state->result.diagnostic = graph->GetDiagnostic();
             (void)TEMPORAL::MarkMotionVectorsWritten(
                 context.temporalResources,
                 false);
-            return state.result;
+            return rejectSession();
         }
-        if (!graph.Compile()) {
-            state.result.diagnostic = graph.GetDiagnostic();
+        if (!graph->Compile()) {
+            state->result.diagnostic = graph->GetDiagnostic();
             (void)TEMPORAL::MarkMotionVectorsWritten(
                 context.temporalResources,
                 false);
-            return state.result;
+            return rejectSession();
         }
 
-        state.result.compiledPassCount = graph.GetCompiledPassCount();
-        state.result.completed = graph.Execute();
-        state.result.diagnostic = graph.GetDiagnostic();
-        if (!state.result.motionVectorsWritten) {
+        state->result.compiledPassCount = graph->GetCompiledPassCount();
+        state->result.prefixCompleted = graph->ExecuteThrough(
+            "RenderFeatures.Composite");
+        state->result.pausedForPresentation =
+            state->result.prefixCompleted &&
+            graph->GetExecutionState().status ==
+                GRAPH::RenderGraphExecutionStatus::Paused;
+        state->result.prefixCompleted =
+            state->result.prefixCompleted &&
+            state->result.pausedForPresentation;
+        state->result.diagnostic = graph->GetDiagnostic();
+        if (!state->result.motionVectorsWritten) {
             (void)TEMPORAL::MarkMotionVectorsWritten(
                 context.temporalResources,
                 false);
         }
+        if (!state->result.prefixCompleted) {
+            return rejectSession();
+        }
+        state->context = nullptr;
         static bool loggedGraphActivation = false;
-        if (!loggedGraphActivation && state.result.completed) {
+        if (!loggedGraphActivation) {
             loggedGraphActivation = true;
             HIKARI_LOG_INFO(
-                "[RenderFrameGraph] active producer-managed graph with " +
-                std::to_string(state.result.compiledPassCount) +
+                "[RenderFrameGraph] active resumable graph with " +
+                std::to_string(state->result.compiledPassCount) +
                 " pass(es).");
         }
-        return state.result;
+        return state->result;
     }
 
 } // namespace HIKARI::RENDER3D::PIPELINE

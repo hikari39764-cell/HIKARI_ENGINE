@@ -375,7 +375,8 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
             &ExecuteGeometryFeatures,
             &ExecuteVisibilityFeatures,
             &ExecuteSceneColorPostOpaqueCapture,
-            &ExecuteStylizedFeatureComposite
+            &ExecuteStylizedFeatureComposite,
+            &ExecutePresentationResume
         };
         return callbacks;
     }

@@ -248,14 +248,31 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
             }
         };
         GRAPH::RenderGraphResourceId compositeComplete{};
+        if (!AddCompletionPass(
+                graph,
+                "RenderFeatures.Composite",
+                "RenderFeatures.Composite.Complete",
+                compositeReads,
+                callbacks.stylizedFeatureComposite,
+                userData,
+                compositeComplete)) {
+            return false;
+        }
+        const std::array resumeReads{
+            ResourceUse{
+                compositeComplete,
+                GRAPH::RenderGraphAccess::ReadDependency
+            }
+        };
+        GRAPH::RenderGraphResourceId presentationResumeComplete{};
         return AddCompletionPass(
             graph,
-            "RenderFeatures.Composite",
-            "RenderFeatures.Composite.Complete",
-            compositeReads,
-            callbacks.stylizedFeatureComposite,
+            "FramePresentation.Resume",
+            "FramePresentation.Resume.Complete",
+            resumeReads,
+            callbacks.presentationResume,
             userData,
-            compositeComplete);
+            presentationResumeComplete);
     }
 
 } // namespace HIKARI::RENDER3D::PIPELINE::INTERNAL

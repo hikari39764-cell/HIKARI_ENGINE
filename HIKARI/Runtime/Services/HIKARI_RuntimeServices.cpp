@@ -29,6 +29,7 @@
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Material/HIKARI_DefaultPbrResources.h"
 #include "Render3D/Material/Program/HIKARI_MaterialProgramRegistry.h"
+#include "Render3D/Pipeline/HIKARI_RenderFrameGraphSession.h"
 #include "Render3D/Pipeline/HIKARI_RenderFramePipeline.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 #include "Render3D/Resources/HIKARI_ClusterGeometryResourceSystem.h"
@@ -441,6 +442,16 @@ namespace HIKARI {
                 HIKARI_LOG_INFO("Ocean spectrum runtime finalized.");
                 HIKARI::POST::PostSystem::Shutdown();
                 HIKARI_LOG_INFO("PostSystem shutdown.");
+                if (!RENDER3D::PIPELINE::
+                        ShutdownRenderFrameGraphSessions()) {
+                    HIKARI_LOG_ERROR(
+                        "Render frame graph session shutdown rejected "
+                        "the current thread or retained an active session.");
+                }
+                else {
+                    HIKARI_LOG_INFO(
+                        "Render frame graph sessions shutdown.");
+                }
                 if (!RENDER3D::SURFACE::
                         ShutdownRenderFrameSurfaceRegistry()) {
                     HIKARI_LOG_ERROR(

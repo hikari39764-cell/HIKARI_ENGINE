@@ -44,6 +44,8 @@ namespace HIKARI::POST {
         PostSystem::presentationTemporalResources_{};
     RENDER3D::SURFACE::RenderFrameSurfaceReceipt
         PostSystem::renderSurfaceReceipt_{};
+    RENDER3D::PIPELINE::RenderFrameGraphSessionReceipt
+        PostSystem::renderGraphSessionReceipt_{};
 
     void PostSystem::Initialize(const GFX::Context& context) {
         UpdateContext(context);
@@ -261,6 +263,40 @@ namespace HIKARI::POST {
         return renderSurfaceReceipt_;
     }
 
+    bool PostSystem::SetSceneCaptureGraphSession(
+        RENDER3D::PIPELINE::RenderFrameGraphSessionReceipt session) {
+        if (!session.IsValid() ||
+            !renderSurfaceReceipt_.IsValid() ||
+            !session.surfaces.Matches(renderSurfaceReceipt_) ||
+            renderGraphSessionReceipt_.IsValid() ||
+            !RENDER3D::PIPELINE::IsRenderFrameGraphSessionCurrent(session)) {
+            return false;
+        }
+        renderGraphSessionReceipt_ = session;
+        return true;
+    }
+
+    bool PostSystem::ContinueSceneCaptureGraphSession() {
+        if (!renderGraphSessionReceipt_.IsValid()) {
+            return true;
+        }
+        const auto session = renderGraphSessionReceipt_;
+        if (!RENDER3D::PIPELINE::ContinueRenderFrameGraphSession(session)) {
+            if (RENDER3D::PIPELINE::AbortRenderFrameGraphSession(session)) {
+                renderGraphSessionReceipt_ = {};
+            }
+            return false;
+        }
+        if (!RENDER3D::PIPELINE::EndRenderFrameGraphSession(session)) {
+            if (RENDER3D::PIPELINE::AbortRenderFrameGraphSession(session)) {
+                renderGraphSessionReceipt_ = {};
+            }
+            return false;
+        }
+        renderGraphSessionReceipt_ = {};
+        return true;
+    }
+
     bool PostSystem::SetSceneCaptureTemporalFrame(
         RENDER3D::TEMPORAL::TemporalViewLease view,
         RENDER3D::RenderFrameToken frame,
@@ -307,6 +343,15 @@ namespace HIKARI::POST {
         RENDER3D::TEMPORAL::TemporalHistoryResetReason reason) {
 
         bool closed = true;
+        if (renderGraphSessionReceipt_.IsValid()) {
+            if (RENDER3D::PIPELINE::AbortRenderFrameGraphSession(
+                    renderGraphSessionReceipt_)) {
+                renderGraphSessionReceipt_ = {};
+            }
+            else {
+                closed = false;
+            }
+        }
         if (presentationTemporalResources_.IsValid()) {
             if (RENDER3D::TEMPORAL::AbortTemporalResources(
                     presentationTemporalResources_,
@@ -345,7 +390,15 @@ namespace HIKARI::POST {
             closed = false;
         }
         if (renderSurfaceReceipt_.IsValid()) {
-            if (RENDER3D::SURFACE::AbortRenderFrameSurfaces(
+            const bool dependentsClosed =
+                !renderGraphSessionReceipt_.IsValid() &&
+                !presentationTemporalResources_.IsValid() &&
+                !temporalResources_.IsValid() &&
+                !temporalView_.IsValid() &&
+                !temporalFrame_.IsValid() &&
+                !captureStage_.IsActive();
+            if (dependentsClosed &&
+                RENDER3D::SURFACE::AbortRenderFrameSurfaces(
                     renderSurfaceReceipt_)) {
                 renderSurfaceReceipt_ = {};
             }
@@ -365,6 +418,12 @@ namespace HIKARI::POST {
     }
 
     bool PostSystem::FinishPresentationTemporalFrame(bool succeeded) {
+        if (renderGraphSessionReceipt_.IsValid()) {
+            (void)AbortSceneCaptureTemporalFrame(
+                RENDER3D::TEMPORAL::
+                    TemporalHistoryResetReason::PreviousFrameIncomplete);
+            return false;
+        }
         bool temporalClosed = true;
         bool temporalCommitted = succeeded;
         if (presentationTemporalResources_.IsValid()) {

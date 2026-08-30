@@ -44,6 +44,8 @@ namespace HIKARI {
                 INTERNAL::GetRuntimeServiceState().gpuFrameReady;
             auto& gPresentationPrepared =
                 INTERNAL::GetRuntimeServiceState().presentationPrepared;
+            auto& gSceneLayersRendered =
+                INTERNAL::GetRuntimeServiceState().sceneLayersRendered;
             auto& gHasPendingWindowResize =
                 INTERNAL::GetRuntimeServiceState().hasPendingWindowResize;
             auto& gPendingWindowWidth =
@@ -263,6 +265,7 @@ namespace HIKARI {
             (void)cfg;
             gGpuFrameReady = false;
             gPresentationPrepared = false;
+            gSceneLayersRendered = false;
             GFX::PIX::ScopedCpuEvent pixCpuFrame(GFX::PIX::kColorFrame, "Services.BeginFrame");
             gActionTimeDilationService.ApplyPending();
             const FrameContext& frame = HIKARI::TIME::BeginFrame();
@@ -347,7 +350,7 @@ namespace HIKARI {
                 return false;
             }
 
-            {
+            if (!gSceneLayersRendered) {
                 GFX::PIX::ScopedGpuEvent pixScene(
                     GFX::GetCurrentContext().cmdList,
                     GFX::PIX::kColorRender,
@@ -359,6 +362,14 @@ namespace HIKARI {
                     HIKARI::RENDERER::RenderLayer::Background,
                     HIKARI::RENDERER::RenderLayer::VFX,
                     false);
+                gSceneLayersRendered = true;
+            }
+            if (!HIKARI::POST::PostSystem::
+                    ContinueSceneCaptureGraphSession()) {
+                HIKARI_LOG_ERROR(
+                    "Render frame graph presentation continuation failed.");
+                AbortActivePrimaryTemporalFrame();
+                return false;
             }
 
             const bool editorViewport =

@@ -560,7 +560,15 @@ namespace HIKARI::RENDER3D::PIPELINE {
                         hasSsrWork ||
                         stylizedScreenMaskRequired
                 });
-        if (!graphStage.completed) {
+        if (!graphStage.prefixCompleted ||
+            !graphStage.pausedForPresentation ||
+            !graphStage.session.IsValid()) {
+            MESHRENDERER::EndFrame();
+            return false;
+        }
+        if (!POST::PostSystem::SetSceneCaptureGraphSession(
+                graphStage.session)) {
+            (void)AbortRenderFrameGraphSession(graphStage.session);
             MESHRENDERER::EndFrame();
             return false;
         }
