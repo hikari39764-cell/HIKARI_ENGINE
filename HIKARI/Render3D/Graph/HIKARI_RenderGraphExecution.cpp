@@ -27,9 +27,13 @@ namespace HIKARI::RENDER3D::GRAPH {
             ++resourceIndex) {
             RenderGraphResourceInfo& info =
                 resources_[resourceIndex].info;
+            resources_[resourceIndex].binding = {};
             info.writerPassIndex = kInvalidRenderGraphIndex;
             info.firstUseOrder = kInvalidRenderGraphIndex;
             info.lastUseOrder = kInvalidRenderGraphIndex;
+        }
+        if (!PrepareImportedSurfaceBindings()) {
+            return false;
         }
 
         for (uint32_t passIndex = 0u;
@@ -168,46 +172,6 @@ namespace HIKARI::RENDER3D::GRAPH {
 
         compiledPassCount_ = passCount_;
         compiled_ = true;
-        ClearDiagnostic();
-        return true;
-    }
-
-    bool RenderGraph::Execute() noexcept {
-        if (!compiled_) {
-            SetDiagnostic(
-                RenderGraphResultCode::NotCompiled,
-                "RenderGraph execute requires a successful compile.");
-            return false;
-        }
-        if (executing_) {
-            SetDiagnostic(
-                RenderGraphResultCode::MutationDuringExecution,
-                "RenderGraph recursive execution rejected.");
-            return false;
-        }
-
-        executing_ = true;
-        for (uint32_t order = 0u;
-            order < compiledPassCount_;
-            ++order) {
-            const uint32_t passIndex = compiledOrder_[order];
-            const PassRecord& pass = passes_[passIndex];
-            const RenderGraphPassContext context{
-                this,
-                frame_,
-                passIndex,
-                std::string_view(pass.id.data())
-            };
-            if (!pass.execute(context, pass.userData)) {
-                executing_ = false;
-                SetDiagnostic(
-                    RenderGraphResultCode::ExecuteFailed,
-                    "RenderGraph pass execute callback failed.",
-                    passIndex);
-                return false;
-            }
-        }
-        executing_ = false;
         ClearDiagnostic();
         return true;
     }
@@ -467,6 +431,10 @@ namespace HIKARI::RENDER3D::GRAPH {
         case RenderGraphResultCode::CycleDetected: return "CycleDetected";
         case RenderGraphResultCode::NotCompiled: return "NotCompiled";
         case RenderGraphResultCode::ExecuteFailed: return "ExecuteFailed";
+        case RenderGraphResultCode::MissingSurfacePublication:
+            return "MissingSurfacePublication";
+        case RenderGraphResultCode::SurfacePublicationMismatch:
+            return "SurfacePublicationMismatch";
         case RenderGraphResultCode::MutationDuringExecution:
             return "MutationDuringExecution";
         }

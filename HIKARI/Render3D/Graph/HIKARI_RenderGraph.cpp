@@ -44,6 +44,8 @@ namespace {
             return false;
         }
         frame_ = frame;
+        sceneSurfaces_ = nullptr;
+        sceneSurfaceDeviceGeneration_ = 0u;
         graphGeneration_ = 0u;
         resourceCount_ = 0u;
         passCount_ = 0u;
@@ -363,6 +365,20 @@ namespace {
             outInfo.firstUseOrder = kInvalidRenderGraphIndex;
             outInfo.lastUseOrder = kInvalidRenderGraphIndex;
         }
+        return true;
+    }
+
+    bool RenderGraph::GetSurfaceBinding(
+        RenderGraphResourceId resource,
+        RenderGraphSurfaceBinding& outBinding) const noexcept {
+        outBinding = {};
+        if (!compiled_ || !IsResourceValid(resource) ||
+            resources_[resource.index].info.kind !=
+                RenderGraphResourceKind::SceneSurface ||
+            !resources_[resource.index].binding.valid) {
+            return false;
+        }
+        outBinding = resources_[resource.index].binding;
         return true;
     }
 

@@ -9,6 +9,7 @@
 
 #include "Render3D/Core/HIKARI_RenderFrameToken.h"
 #include "Render3D/Graph/HIKARI_RenderGraphSurfaceContract.h"
+#include "Render3D/Surface/HIKARI_SceneSurfaceSet.h"
 
 namespace HIKARI::RENDER3D::GRAPH {
 
@@ -87,6 +88,8 @@ namespace HIKARI::RENDER3D::GRAPH {
         CycleDetected,
         NotCompiled,
         ExecuteFailed,
+        MissingSurfacePublication,
+        SurfacePublicationMismatch,
         MutationDuringExecution,
     };
 
@@ -184,10 +187,17 @@ namespace HIKARI::RENDER3D::GRAPH {
         uint32_t lastUseOrder = kInvalidRenderGraphIndex;
     };
 
-    // Fixed-capacity, frame/view-local pass planner. Stage 1 owns dependency
-    // validation and execution order only; Scene, GPU resources, barriers,
-    // descriptors, queues, materials, lights, and mesh submission stay with
-    // their existing owners.
+    struct RenderGraphSurfaceBinding {
+        SURFACE::SceneSurfaceDescriptor descriptor{};
+        RenderTextureView texture{};
+        DEPTH::DepthPyramidView depthPyramid{};
+        bool valid = false;
+    };
+
+    // Fixed-capacity, frame/view-local graph. It owns dependency order and
+    // resource-ID snapshots of producer-owned SceneSurface publications.
+    // Allocation, barriers, descriptors, queues, materials, lights, and mesh
+    // submission stay with their existing owners until the encoder stage.
     class RenderGraph final {
     public:
         RenderGraph() noexcept;
@@ -203,6 +213,7 @@ namespace HIKARI::RENDER3D::GRAPH {
             uint64_t frameIndex,
             RenderViewId viewId = kPrimaryRenderViewId) noexcept;
         bool BeginFrame(RenderFrameToken frame) noexcept;
+        bool BeginFrame(SURFACE::SceneSurfaceSet& surfaces) noexcept;
 
         RenderGraphResourceId AddResource(
             const RenderGraphResourceDesc& desc) noexcept;
@@ -233,6 +244,9 @@ namespace HIKARI::RENDER3D::GRAPH {
         bool GetResourceInfo(
             RenderGraphResourceId resource,
             RenderGraphResourceInfo& outInfo) const noexcept;
+        bool GetSurfaceBinding(
+            RenderGraphResourceId resource,
+            RenderGraphSurfaceBinding& outBinding) const noexcept;
         bool GetCompiledPassIndex(
             uint32_t order,
             uint32_t& outPassIndex) const noexcept;
@@ -245,6 +259,7 @@ namespace HIKARI::RENDER3D::GRAPH {
         struct ResourceRecord {
             std::array<char, kRenderGraphIdentifierCapacity> id{};
             RenderGraphResourceInfo info{};
+            RenderGraphSurfaceBinding binding{};
         };
 
         struct PassRecord {
@@ -268,6 +283,12 @@ namespace HIKARI::RENDER3D::GRAPH {
         bool IsAccessAllowed(
             const RenderGraphResourceInfo& resource,
             RenderGraphAccess access) const noexcept;
+        bool PrepareImportedSurfaceBindings() noexcept;
+        bool CaptureSurfaceBinding(
+            uint32_t resourceIndex,
+            const SURFACE::SceneSurfaceLease* baseline,
+            uint32_t passIndex,
+            bool write) noexcept;
         void SetDiagnostic(
             RenderGraphResultCode code,
             const char* message,
@@ -276,6 +297,8 @@ namespace HIKARI::RENDER3D::GRAPH {
         void ClearDiagnostic() noexcept;
 
         RenderFrameToken frame_{};
+        SURFACE::SceneSurfaceSet* sceneSurfaces_ = nullptr;
+        uint64_t sceneSurfaceDeviceGeneration_ = 0u;
         uint64_t graphGeneration_ = 0u;
         std::array<ResourceRecord,
             kRenderGraphMaximumResourceCount> resources_{};

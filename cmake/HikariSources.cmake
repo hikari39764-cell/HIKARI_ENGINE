@@ -226,6 +226,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/GpuDriven/HIKARI_GpuDrivenLayer.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Graph/HIKARI_RenderGraph.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Graph/HIKARI_RenderGraphExecution.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Graph/HIKARI_RenderGraphSurfaceExecution.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Pipeline/HIKARI_RenderFrameGraphPasses.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Pipeline/HIKARI_RenderFrameGraphPlan.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Pipeline/HIKARI_RenderFrameGraphStage.cpp"

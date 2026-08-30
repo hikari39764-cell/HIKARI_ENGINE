@@ -107,7 +107,7 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
         }
         const RenderFrameGraphStageContext& context = *state.context;
         if (context.cameraConstants == nullptr) {
-            return true;
+            return false;
         }
         try {
             if (!SCREENSPACE::ExecuteScreenSpacePostOpaquePasses(
@@ -173,13 +173,20 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
             return false;
         }
         const RenderFrameGraphStageContext& context = *state.context;
+        const bool supportedPurpose =
+            context.frame.purpose == RenderViewPurpose::Game ||
+            context.frame.purpose == RenderViewPurpose::EditorScene;
+        if (!context.environment.clouds.enabled ||
+            context.environment.clouds.density <= 0.0f ||
+            !supportedPurpose) {
+            return true;
+        }
         try {
-            (void)CLOUDS::ExecuteStylizedCloudStage(
+            return CLOUDS::ExecuteStylizedCloudStage(
                 context.frame,
                 context.temporalFrame,
                 context.environment.clouds,
                 context.renderQuality.stylizedCloudQuality);
-            return true;
         }
         catch (...) {
             return false;
@@ -337,15 +344,18 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
         if (context.cameraConstants == nullptr) {
             return true;
         }
+        if (!context.sceneSurfaces.HasOpaqueSurface() ||
+            !context.sceneSurfaces.HasCurrentDepthHierarchy()) {
+            return true;
+        }
         try {
-            (void)gSsrRenderer.Render(
+            return gSsrRenderer.Render(
                 context.frame.graphics,
                 context.frame.targetAccess,
                 context.sceneSurfaces,
                 *context.cameraConstants,
                 context.environment.screenSpaceReflections,
                 context.debugView);
-            return true;
         }
         catch (...) {
             return false;

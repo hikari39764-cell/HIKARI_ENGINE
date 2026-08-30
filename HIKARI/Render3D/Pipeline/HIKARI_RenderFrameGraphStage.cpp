@@ -83,7 +83,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
             context.requiresSceneColorOpaque,
             context.hasSsrWork
         };
-        if (!graph.BeginFrame(context.sceneSurfaces.GetFrameToken()) ||
+        if (!graph.BeginFrame(context.sceneSurfaces) ||
             !INTERNAL::BuildRenderFrameGraphPlan(
                 options,
                 &state,
