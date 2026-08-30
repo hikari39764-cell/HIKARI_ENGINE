@@ -61,7 +61,8 @@ namespace HIKARI {
             World* world_ = nullptr;
         };
 
-        // Owner-thread transient view in deterministic attachment order.
+        // GameObject-backed owner-thread transient view in deterministic
+        // attachment order. World mass rows use VisitMassObjects instead.
         // Iterators must not be retained across any structural mutation.
         class LiveObjectRange {
         public:
@@ -120,11 +121,19 @@ namespace HIKARI {
         WorldMutationResult SubmitSpawnBatch(
             std::span<const WorldSpawnRequest> requests,
             std::span<WorldCommandSubmission> outSubmissions);
+        WorldMutationResult SubmitMassSpawnBatch(
+            const WorldMassSpawnBatchRequest& request,
+            std::span<WorldCommandSubmission> outSubmissions);
+        WorldMutationResult SubmitMassDestroyBatch(
+            std::span<const RuntimeObjectHandle> objects,
+            std::span<WorldCommandSubmission> outSubmissions);
         // Borrowed composition-root registry. Bind only while the World is
         // empty; Clear retains it through component detach and releases it
         // after object and component-index teardown completes.
         bool BindComponentRegistry(
             const ComponentRegistry* registry) noexcept;
+        bool BindMassSchemaRegistry(
+            const WorldMassSchemaRegistry* registry) noexcept;
         WorldCommandSubmission SubmitDestroy(
             RuntimeObjectHandle object);
         WorldCommandSubmission SubmitSetParent(
@@ -154,6 +163,10 @@ namespace HIKARI {
         bool TryGetWorldTransform(
             RuntimeObjectHandle object,
             Transform3D& outTransform) const noexcept;
+        size_t GetMassObjectCount(ComponentTypeId typeId) const noexcept;
+        const WorldMassSchema* FindMassSchema(
+            ComponentTypeId typeId) const noexcept;
+        size_t GetTotalObjectCount() const noexcept;
         GameObject* FindObject(SceneObjectId id) noexcept;
         const GameObject* FindObject(SceneObjectId id) const noexcept;
 
@@ -281,6 +294,9 @@ namespace HIKARI {
             RuntimeObjectHandle object,
             IComponent* const* components,
             uint32_t componentCount) noexcept;
+        using MassObjectVisitorFn = bool (*)(
+            void* context,
+            WorldMassMutableRow& row) noexcept;
 
         template<class T, class Fn>
         bool VisitIndexedComponentType(Fn&& fn) {
@@ -369,6 +385,18 @@ namespace HIKARI {
             const WorldComponentQueryPlan& plan,
             void* context,
             IndexedComponentVisitorFn visitor) noexcept;
+        bool VisitMassObjects(
+            ComponentTypeId typeId,
+            void* context,
+            MassObjectVisitorFn visitor) noexcept;
+        WorldMutationResult SetMassTransformIfPresent(
+            RuntimeObjectHandle object,
+            const Transform3D& transform,
+            bool& outIsMassObject) noexcept;
+        bool TryGetMassTransformIfPresent(
+            RuntimeObjectHandle object,
+            Transform3D& outTransform,
+            bool& outIsMassObject) const noexcept;
 
         template<class T>
         ComponentTypeId ResolveIndexedComponentTypeId() const noexcept {
@@ -401,6 +429,12 @@ namespace HIKARI {
             Retired
         };
 
+        enum class ObjectStorageKind : uint8_t {
+            None,
+            GameObject,
+            Mass,
+        };
+
         static constexpr uint32_t kInvalidLiveObjectSlot =
             (std::numeric_limits<uint32_t>::max)();
         static constexpr size_t kInvalidObjectStorageIndex =
@@ -409,11 +443,13 @@ namespace HIKARI {
         struct ObjectSlot {
             GameObject* object = nullptr;
             size_t storageIndex = kInvalidObjectStorageIndex;
+            ComponentTypeId massTypeId{};
             uint32_t previousLiveSlot = kInvalidLiveObjectSlot;
             uint32_t nextLiveSlot = kInvalidLiveObjectSlot;
             uint32_t generation = 1u;
             uint32_t reservationToken = 0u;
             ObjectSlotState state = ObjectSlotState::Free;
+            ObjectStorageKind storageKind = ObjectStorageKind::None;
         };
 
         struct ReservedStateJournalEntry {
@@ -432,9 +468,15 @@ namespace HIKARI {
         };
 
         RuntimeObjectHandle ReserveObjectHandle();
+        bool ReserveObjectHandleBatch(
+            std::span<RuntimeObjectHandle> outHandles) noexcept;
         bool CommitReservedObjectHandle(
             RuntimeObjectHandle handle,
             GameObject* object,
+            size_t storageIndex) noexcept;
+        bool CommitReservedMassObjectHandle(
+            RuntimeObjectHandle handle,
+            ComponentTypeId typeId,
             size_t storageIndex) noexcept;
         void ReleaseReservedObjectHandle(
             RuntimeObjectHandle handle) noexcept;
@@ -442,17 +484,27 @@ namespace HIKARI {
             RuntimeObjectHandle handle) const noexcept;
         bool IsKnownObjectHandle(
             RuntimeObjectHandle handle) const noexcept;
+        bool TryGetMassObjectLocation(
+            RuntimeObjectHandle handle,
+            ComponentTypeId& outTypeId,
+            size_t& outStorageIndex) const noexcept;
         void RecycleObjectSlot(uint32_t slotIndex) noexcept;
         void AppendLiveObjectSlot(uint32_t slotIndex) noexcept;
         void RemoveLiveObjectSlot(uint32_t slotIndex) noexcept;
         void ReleaseObjectHandle(RuntimeObjectHandle handle);
         WorldCommandSubmission QueueCommand(PendingWorldCommand command);
+        void ReleaseSpawnCommandReservations(
+            const PendingWorldCommand& command) noexcept;
         uint32_t AllocateCommandToken() noexcept;
         void RecordCommandFailure(
             const PendingWorldCommand& command,
             WorldMutationResult result,
             WorldCommandPhase phase) noexcept;
         WorldMutationResult ApplyQueuedSpawn(
+            const PendingWorldCommand& command);
+        WorldMutationResult ApplyQueuedMassSpawnBatch(
+            const PendingWorldCommand& command);
+        WorldMutationResult ApplyQueuedMassDestroyBatch(
             const PendingWorldCommand& command);
         void UnregisterRuntimeIdentity() noexcept;
         bool OnDocumentIdChanged(
@@ -461,6 +513,7 @@ namespace HIKARI {
             SceneObjectId nextId);
 
         std::vector<std::unique_ptr<GameObject>> objects_;
+        WorldMassStore massStore_{};
         std::vector<ObjectSlot> objectSlots_{};
         std::vector<uint32_t> freeObjectSlots_{};
         uint32_t firstLiveObjectSlot_ = kInvalidLiveObjectSlot;
@@ -484,6 +537,7 @@ namespace HIKARI {
         std::vector<PendingWorldCommand> pendingCommands_{};
         std::vector<PendingWorldCommand> executionCommands_{};
         const ComponentRegistry* componentRegistry_ = nullptr;
+        const WorldMassSchemaRegistry* massSchemaRegistry_ = nullptr;
         std::vector<WorldCommandFailure> commandFailures_{};
         std::vector<ReservedStateJournalEntry>
             reservationStateJournal_{};

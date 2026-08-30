@@ -7,6 +7,8 @@
 #include "HIKARI/Project/GameComponent.h"
 #include "HIKARI/Project/GameProjectSdk.h"
 #include "HIKARI/Project/GameSystem.h"
+#include "HIKARI/Project/WorldTypes.h"
+#include "HIKARI/Project/WorldMassTypes.h"
 #include "HIKARI/Runtime/ComponentTypeId.h"
 
 namespace HIKARI {
@@ -104,6 +106,26 @@ namespace HIKARI {
             return RegisterSystemRaw(descriptor);
         }
 
+        template<class Data>
+        bool RegisterMassData(
+            ComponentTypeId typeId,
+            uint64_t layoutHash,
+            uint32_t schemaVersion = 1u) {
+            static_assert(std::is_standard_layout_v<Data>);
+            static_assert(std::is_trivially_copyable_v<Data>);
+            static_assert(std::is_default_constructible_v<Data>);
+            static_assert(sizeof(Data) <=
+                kGameProjectWorldMaximumMassPodBytes);
+            static_assert(alignof(Data) <= alignof(std::max_align_t));
+            GameProjectMassDataTypeDesc descriptor{};
+            descriptor.typeId = typeId;
+            descriptor.layoutHash = layoutHash;
+            descriptor.schemaVersion = schemaVersion;
+            descriptor.dataSize = sizeof(Data);
+            descriptor.dataAlignment = alignof(Data);
+            return RegisterMassDataRaw(descriptor);
+        }
+
         HIKARI_GAME_PROJECT_SDK_API bool BindComponentSystem(
             ComponentSystemBinding binding);
 
@@ -112,9 +134,11 @@ namespace HIKARI {
 
         RuntimeFeatureContext(
             void* componentRegistry,
+            void* massSchemaRegistry,
             void* systemTypeRegistry,
             void* componentSystemPolicy) noexcept
             : componentRegistry_(componentRegistry),
+              massSchemaRegistry_(massSchemaRegistry),
               systemTypeRegistry_(systemTypeRegistry),
               componentSystemPolicy_(componentSystemPolicy) {}
 
@@ -122,8 +146,11 @@ namespace HIKARI {
             GameComponentDescriptor descriptor);
         HIKARI_GAME_PROJECT_SDK_API bool RegisterSystemRaw(
             GameSystemDescriptor descriptor);
+        HIKARI_GAME_PROJECT_SDK_API bool RegisterMassDataRaw(
+            const GameProjectMassDataTypeDesc& descriptor);
 
         void* componentRegistry_ = nullptr;
+        void* massSchemaRegistry_ = nullptr;
         void* systemTypeRegistry_ = nullptr;
         void* componentSystemPolicy_ = nullptr;
     };

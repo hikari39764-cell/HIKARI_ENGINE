@@ -1,6 +1,7 @@
 #include "Scene/HIKARI_World.h"
 
 #include <limits>
+#include <stdexcept>
 #include <utility>
 
 #include "Scene/HIKARI_GameObject.h"
@@ -95,7 +96,8 @@ namespace HIKARI {
         }
         const ObjectSlot& slot = objectSlots_[handle.slot];
         return slot.generation == handle.generation &&
-            slot.state == ObjectSlotState::Live
+            slot.state == ObjectSlotState::Live &&
+            slot.storageKind == ObjectStorageKind::GameObject
             ? slot.object
             : nullptr;
     }
@@ -111,7 +113,10 @@ namespace HIKARI {
             freeObjectSlots_.pop_back();
             ObjectSlot& slot = objectSlots_[slotIndex];
             if (slot.state != ObjectSlotState::Free ||
-                slot.object != nullptr) {
+                slot.object != nullptr ||
+                slot.storageKind != ObjectStorageKind::None ||
+                slot.massTypeId.IsValid() ||
+                slot.storageIndex != kInvalidObjectStorageIndex) {
                 return {};
             }
             slot.reservationToken = 0u;
@@ -149,6 +154,56 @@ namespace HIKARI {
         return RuntimeObjectHandle{ slotIndex, 1u };
     }
 
+    bool World::ReserveObjectHandleBatch(
+        std::span<RuntimeObjectHandle> outHandles) noexcept {
+        if (outHandles.empty()) {
+            return true;
+        }
+        size_t reservedCount = 0u;
+        try {
+            const size_t newSlotCount =
+                outHandles.size() > freeObjectSlots_.size()
+                ? outHandles.size() - freeObjectSlots_.size()
+                : 0u;
+            if (newSlotCount >
+                static_cast<size_t>(
+                    (std::numeric_limits<uint32_t>::max)()) -
+                    objectSlots_.size()) {
+                return false;
+            }
+            const size_t nextSlotCount =
+                objectSlots_.size() + newSlotCount;
+            const size_t slotCapacity = INTERNAL::GrowWorldCapacity(
+                (std::max)(
+                    objectSlots_.capacity(),
+                    freeObjectSlots_.capacity()),
+                nextSlotCount,
+                (std::min)(
+                    static_cast<size_t>(
+                        (std::numeric_limits<uint32_t>::max)()),
+                    (std::min)(
+                        objectSlots_.max_size(),
+                        freeObjectSlots_.max_size())));
+            objectSlots_.reserve(slotCapacity);
+            freeObjectSlots_.reserve(slotCapacity);
+            for (; reservedCount < outHandles.size(); ++reservedCount) {
+                outHandles[reservedCount] = ReserveObjectHandle();
+                if (!outHandles[reservedCount].IsValid()) {
+                    throw std::runtime_error(
+                        "World batch handle reservation failed.");
+                }
+            }
+            return true;
+        }
+        catch (...) {
+            for (size_t index = 0u; index < reservedCount; ++index) {
+                ReleaseReservedObjectHandle(outHandles[index]);
+                outHandles[index] = {};
+            }
+            return false;
+        }
+    }
+
     bool World::CommitReservedObjectHandle(
         RuntimeObjectHandle handle,
         GameObject* object,
@@ -162,14 +217,42 @@ namespace HIKARI {
         ObjectSlot& slot = objectSlots_[handle.slot];
         if (slot.generation != handle.generation ||
             slot.state != ObjectSlotState::Reserved ||
-            slot.object != nullptr) {
+            slot.object != nullptr ||
+            slot.storageKind != ObjectStorageKind::None ||
+            slot.massTypeId.IsValid()) {
             return false;
         }
         slot.object = object;
         slot.storageIndex = storageIndex;
+        slot.massTypeId = {};
         slot.reservationToken = 0u;
         slot.state = ObjectSlotState::Live;
+        slot.storageKind = ObjectStorageKind::GameObject;
         AppendLiveObjectSlot(handle.slot);
+        return true;
+    }
+
+    bool World::CommitReservedMassObjectHandle(
+        RuntimeObjectHandle handle,
+        ComponentTypeId typeId,
+        size_t storageIndex) noexcept {
+        if (!handle.IsValid() || !typeId.IsValid() ||
+            storageIndex == kInvalidObjectStorageIndex ||
+            handle.slot >= objectSlots_.size()) {
+            return false;
+        }
+        ObjectSlot& slot = objectSlots_[handle.slot];
+        if (slot.generation != handle.generation ||
+            slot.state != ObjectSlotState::Reserved ||
+            slot.object != nullptr ||
+            slot.storageKind != ObjectStorageKind::None) {
+            return false;
+        }
+        slot.storageIndex = storageIndex;
+        slot.massTypeId = typeId;
+        slot.reservationToken = 0u;
+        slot.state = ObjectSlotState::Live;
+        slot.storageKind = ObjectStorageKind::Mass;
         return true;
     }
 
@@ -182,7 +265,8 @@ namespace HIKARI {
         if (slot.generation != handle.generation ||
             (slot.state != ObjectSlotState::Reserved &&
              slot.state != ObjectSlotState::ReservedCanceled) ||
-            slot.object != nullptr) {
+             slot.object != nullptr ||
+             slot.storageKind != ObjectStorageKind::None) {
             return;
         }
         RecycleObjectSlot(handle.slot);
@@ -211,6 +295,29 @@ namespace HIKARI {
              slot.state == ObjectSlotState::Live);
     }
 
+    bool World::TryGetMassObjectLocation(
+        RuntimeObjectHandle handle,
+        ComponentTypeId& outTypeId,
+        size_t& outStorageIndex) const noexcept {
+        outTypeId = {};
+        outStorageIndex = kInvalidObjectStorageIndex;
+        if (!handle.IsValid() || handle.slot >= objectSlots_.size()) {
+            return false;
+        }
+        const ObjectSlot& slot = objectSlots_[handle.slot];
+        if (slot.generation != handle.generation ||
+            slot.state != ObjectSlotState::Live ||
+            slot.storageKind != ObjectStorageKind::Mass ||
+            slot.object != nullptr ||
+            !slot.massTypeId.IsValid() ||
+            slot.storageIndex == kInvalidObjectStorageIndex) {
+            return false;
+        }
+        outTypeId = slot.massTypeId;
+        outStorageIndex = slot.storageIndex;
+        return true;
+    }
+
     void World::RecycleObjectSlot(uint32_t slotIndex) noexcept {
         if (slotIndex >= objectSlots_.size()) {
             return;
@@ -218,9 +325,11 @@ namespace HIKARI {
         ObjectSlot& slot = objectSlots_[slotIndex];
         slot.object = nullptr;
         slot.storageIndex = kInvalidObjectStorageIndex;
+        slot.massTypeId = {};
         slot.previousLiveSlot = kInvalidLiveObjectSlot;
         slot.nextLiveSlot = kInvalidLiveObjectSlot;
         slot.reservationToken = 0u;
+        slot.storageKind = ObjectStorageKind::None;
         if (slot.generation ==
             (std::numeric_limits<uint32_t>::max)()) {
             slot.state = ObjectSlotState::Retired;
@@ -280,6 +389,7 @@ namespace HIKARI {
         ObjectSlot& slot = objectSlots_[handle.slot];
         if (slot.generation != handle.generation ||
             slot.state != ObjectSlotState::Live ||
+            slot.storageKind != ObjectStorageKind::GameObject ||
             slot.object == nullptr) {
             return;
         }

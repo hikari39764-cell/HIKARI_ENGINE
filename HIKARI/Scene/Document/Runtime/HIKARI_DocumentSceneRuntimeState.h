@@ -44,7 +44,6 @@
 namespace HIKARI {
 
     struct DocumentSceneRuntimeState {
-        World world{};
         FixedStepClock fixedStepClock{};
         RuntimePlayStateService playStateService{};
         GameplayCameraService gameplayCameraService{};
@@ -90,9 +89,12 @@ namespace HIKARI {
         SystemTypeRegistry systemTypeRegistry{};
         SystemScheduler systemScheduler{};
         ComponentRegistry componentRegistry{};
+        WorldMassSchemaRegistry massSchemaRegistry{};
         SceneRuntimeBuilder builder{};
         AnimationStateMachineAssetStore animationStateMachineAssets{};
         DialogueAssetStore dialogueAssets{};
+        // World borrows registries/services above and must be destroyed first.
+        World world{};
         bool playActive = false;
         bool inputContextSnapshotValid = false;
         bool editorInputContextWasActive = false;

@@ -72,7 +72,6 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Gameplay/Motion/HIKARI_MotionIntentService.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Gameplay/Motion/HIKARI_CharacterMotionStateService.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Components/HIKARI_CharacterInputComponent.cpp"
-    "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Components/HIKARI_DialogueInteractorComponent.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Components/HIKARI_DialogueTriggerComponent.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Components/HIKARI_CharacterLocomotionComponent.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/HIKARI_CharacterMotionStateSystem.cpp"
@@ -486,6 +485,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectModuleLibrary.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectBindingBridge.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectPropertyBridge.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectMassBridge.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectQueryBridge.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectRegistration.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectSpawnBridge.cpp"
@@ -557,6 +557,8 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/HIKARI_WorldComponentTransactions.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/HIKARI_WorldHierarchy.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/HIKARI_WorldIdentity.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/HIKARI_WorldMassLifecycle.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/HIKARI_WorldMassStore.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/HIKARI_WorldObjectStorage.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/HIKARI_WorldSpawnBatch.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Components/Rendering/MaterialFx/HIKARI_MaterialFxComponent.cpp"
@@ -632,7 +634,7 @@ string(
     HIKARI_GAME_PROJECT_SDK_EXPORT_PATTERN
     "(HIKARI_RuntimeFeatureCatalog|HIKARI_GameProject("
     "ActionBridge|NavigationBridge|GameFlowBridge|PresentationBridge|"
-    "UiBridge|VfxBridge|PropertyBridge|BindingBridge|QueryBridge|"
+    "UiBridge|VfxBridge|PropertyBridge|BindingBridge|MassBridge|QueryBridge|"
     "Registration|SpawnBridge|TransformBridge|WorldBridge))\\.cpp$")
 list(
     FILTER
@@ -641,10 +643,10 @@ list(
     REGEX "${HIKARI_GAME_PROJECT_SDK_EXPORT_PATTERN}")
 unset(HIKARI_GAME_PROJECT_SDK_EXPORT_PATTERN)
 list(LENGTH HIKARI_GAME_PROJECT_SDK_EXPORT_SOURCES hikari_sdk_export_count)
-if(NOT hikari_sdk_export_count EQUAL 14)
+if(NOT hikari_sdk_export_count EQUAL 15)
     message(
         FATAL_ERROR
-        "The GameProject SDK export owner must contain exactly 14 sources.")
+        "The GameProject SDK export owner must contain exactly 15 sources.")
 endif()
 
 set(HIKARI_EDITOR_HOST_SOURCES

@@ -257,6 +257,9 @@ hikari_add_runtime_contract(
     HIKARI_WorldQuerySdkSmoke
     "Tools/Tests/HIKARI_WorldQuerySdkSmoke.cpp")
 hikari_add_runtime_contract(
+    HIKARI_WorldMassStoreSmoke
+    "Tools/Tests/HIKARI_WorldMassStoreSmoke.cpp")
+hikari_add_runtime_contract(
     HIKARI_RuntimeFeatureTransactionSmoke
     "Tools/Tests/HIKARI_RuntimeFeatureTransactionSmoke.cpp")
 hikari_add_runtime_contract(
@@ -312,6 +315,7 @@ foreach(runtime_contract IN ITEMS
     HIKARI_WorldBatchSmoke
     HIKARI_WorldComponentIndexSmoke
     HIKARI_WorldQuerySdkSmoke
+    HIKARI_WorldMassStoreSmoke
     HIKARI_RuntimeFeatureTransactionSmoke
     HIKARI_RenderGraphSmoke
     HIKARI_RenderGraphCapacitySmoke

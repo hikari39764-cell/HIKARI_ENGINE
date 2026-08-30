@@ -354,10 +354,7 @@ namespace HIKARI {
                     command,
                     WorldMutationResult::CommandCanceled,
                     WorldCommandPhase::Unknown);
-                if (command.kind == WorldCommandKind::Spawn &&
-                    IsReservedObjectHandle(command.object)) {
-                    ReleaseReservedObjectHandle(command.object);
-                }
+                ReleaseSpawnCommandReservations(command);
             }
             pendingCommands_.resize(
                 checkpoint.pendingCommandCount);

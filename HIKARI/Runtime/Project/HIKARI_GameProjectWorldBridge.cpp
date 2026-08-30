@@ -103,7 +103,7 @@ namespace HIKARI {
     uint64_t WorldView::GetObjectCount() const noexcept {
         const World* world = GameProjectSdkAccess::GetWorld(*this);
         return world != nullptr
-            ? static_cast<uint64_t>(world->GetObjects().size())
+            ? static_cast<uint64_t>(world->GetTotalObjectCount())
             : 0u;
     }
 

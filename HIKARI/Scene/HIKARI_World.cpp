@@ -83,11 +83,25 @@ namespace HIKARI {
         if (registry == nullptr || !IsOwnerThread() || worldClosing_ ||
             structureReadDepth_ != 0u ||
             commandFlushActive_ || commandApplyActive_ ||
-            !objects_.empty() || !pendingCommands_.empty() ||
+            !objects_.empty() || massStore_.GetTotalCount() != 0u ||
+            !pendingCommands_.empty() ||
             !executionCommands_.empty()) {
             return false;
         }
         componentRegistry_ = registry;
+        return true;
+    }
+
+    bool World::BindMassSchemaRegistry(
+        const WorldMassSchemaRegistry* registry) noexcept {
+        if (registry == nullptr || !IsOwnerThread() || worldClosing_ ||
+            structureReadDepth_ != 0u ||
+            commandFlushActive_ || commandApplyActive_ ||
+            !objects_.empty() || massStore_.GetTotalCount() != 0u ||
+            !pendingCommands_.empty() || !executionCommands_.empty()) {
+            return false;
+        }
+        massSchemaRegistry_ = registry;
         return true;
     }
 
@@ -210,11 +224,73 @@ namespace HIKARI {
         if (!IsOwnerThread()) {
             return WorldMutationResult::WrongThread;
         }
-        GameObject* object = FindObject(handle);
-        if (object == nullptr) {
+        if (!handle.IsValid() || handle.slot >= objectSlots_.size()) {
             return WorldMutationResult::InvalidObjectHandle;
         }
-        return DestroyObject(object);
+        const ObjectSlot& slot = objectSlots_[handle.slot];
+        if (slot.generation != handle.generation ||
+            slot.state != ObjectSlotState::Live) {
+            return WorldMutationResult::InvalidObjectHandle;
+        }
+        if (slot.storageKind == ObjectStorageKind::GameObject) {
+            return DestroyObject(slot.object);
+        }
+        if (slot.storageKind != ObjectStorageKind::Mass ||
+            slot.object != nullptr ||
+            !slot.massTypeId.IsValid() ||
+            slot.storageIndex == kInvalidObjectStorageIndex) {
+            return WorldMutationResult::InternalError;
+        }
+        if (!CanMutateStructure()) {
+            return WorldMutationResult::MutationDisallowed;
+        }
+
+        const ComponentTypeId typeId = slot.massTypeId;
+        const size_t removedIndex = slot.storageIndex;
+        const size_t count = massStore_.GetCount(typeId);
+        if (removedIndex >= count || count == 0u) {
+            return WorldMutationResult::InternalError;
+        }
+        RuntimeObjectHandle expectedMoved{};
+        if (removedIndex + 1u != count) {
+            WorldMassMutableRow lastRow{};
+            if (!massStore_.TryGetMutableRow(
+                    typeId,
+                    count - 1u,
+                    lastRow)) {
+                return WorldMutationResult::InternalError;
+            }
+            expectedMoved = lastRow.object;
+            if (!expectedMoved.IsValid() ||
+                expectedMoved.slot >= objectSlots_.size()) {
+                return WorldMutationResult::InternalError;
+            }
+            const ObjectSlot& movedSlot =
+                objectSlots_[expectedMoved.slot];
+            if (movedSlot.generation != expectedMoved.generation ||
+                movedSlot.state != ObjectSlotState::Live ||
+                movedSlot.storageKind != ObjectStorageKind::Mass ||
+                movedSlot.massTypeId != typeId ||
+                movedSlot.storageIndex != count - 1u) {
+                return WorldMutationResult::InternalError;
+            }
+        }
+
+        RuntimeObjectHandle movedObject{};
+        if (!massStore_.Remove(
+                typeId,
+                removedIndex,
+                handle,
+                movedObject)) {
+            return WorldMutationResult::InternalError;
+        }
+        if (movedObject.IsValid()) {
+            objectSlots_[movedObject.slot].storageIndex = removedIndex;
+        }
+        RecycleObjectSlot(handle.slot);
+        return movedObject == expectedMoved
+            ? WorldMutationResult::Success
+            : WorldMutationResult::InternalError;
     }
 
     GameObject* World::FindObject(SceneObjectId id) noexcept {
@@ -341,7 +417,8 @@ namespace HIKARI {
             for (const PendingWorldCommand& command : pendingCommands_) {
                 RecordCommandFailure(
                     command,
-                    command.kind == WorldCommandKind::Spawn
+                    (command.kind == WorldCommandKind::Spawn ||
+                     command.kind == WorldCommandKind::SpawnMass)
                         ? WorldMutationResult::CommandCanceled
                         : WorldMutationResult::WorldClosing,
                     WorldCommandPhase::WorldClear);
@@ -386,11 +463,22 @@ namespace HIKARI {
                     objectSlots_[slotIndex].generation
                 });
             }
+            for (uint32_t slotIndex = 0u;
+                slotIndex < objectSlots_.size();
+                ++slotIndex) {
+                const ObjectSlot& slot = objectSlots_[slotIndex];
+                if (slot.state == ObjectSlotState::Live &&
+                    slot.storageKind == ObjectStorageKind::Mass) {
+                    RecycleObjectSlot(slotIndex);
+                }
+            }
+            massStore_.Clear();
             objects_.clear();
             objectsByDocumentId_.clear();
             componentBuckets_.clear();
             nativeComponentTypeIds_.clear();
             componentRegistry_ = nullptr;
+            massSchemaRegistry_ = nullptr;
             renderDirtyObjects_.clear();
             renderTrackedObjectCount_ = 0u;
             frameEvents_.Clear();
@@ -405,6 +493,24 @@ namespace HIKARI {
 
     World::LiveObjectRange World::GetObjects() const noexcept {
         return LiveObjectRange(IsOwnerThread() ? this : nullptr);
+    }
+
+    size_t World::GetMassObjectCount(
+        ComponentTypeId typeId) const noexcept {
+        return IsOwnerThread() ? massStore_.GetCount(typeId) : 0u;
+    }
+
+    const WorldMassSchema* World::FindMassSchema(
+        ComponentTypeId typeId) const noexcept {
+        return IsOwnerThread() && massSchemaRegistry_ != nullptr
+            ? massSchemaRegistry_->Find(typeId)
+            : nullptr;
+    }
+
+    size_t World::GetTotalObjectCount() const noexcept {
+        return IsOwnerThread()
+            ? liveObjectCount_ + massStore_.GetTotalCount()
+            : 0u;
     }
 
     const std::vector<GameObject*>&

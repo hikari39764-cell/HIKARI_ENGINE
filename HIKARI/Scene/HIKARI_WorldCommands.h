@@ -12,6 +12,7 @@
 #include "HIKARI/Runtime/ComponentTypeId.h"
 #include "Render3D/HIKARI_Math3D.h"
 #include "Scene/HIKARI_RuntimeObjectHandle.h"
+#include "Scene/HIKARI_WorldMassStore.h"
 
 namespace HIKARI {
 
@@ -22,6 +23,9 @@ namespace HIKARI {
     inline constexpr size_t kWorldCommandMaximumCapacity = 4096u;
     inline constexpr size_t kWorldCommandFailureCapacity = 256u;
     inline constexpr size_t kWorldSpawnBatchMaximumCapacity = 256u;
+    inline constexpr size_t kWorldMassSpawnBatchMaximumCapacity = 1024u;
+    inline constexpr size_t kWorldMassMaximumBatchPayloadBytes =
+        1024u * 1024u;
     inline constexpr size_t
         kWorldSpawnMaximumComponentsPerObject = 16u;
     inline constexpr size_t
@@ -59,7 +63,9 @@ namespace HIKARI {
     enum class WorldCommandKind : uint8_t {
         Spawn,
         Destroy,
-        SetParent
+        SetParent,
+        SpawnMass,
+        DestroyMass,
     };
 
     enum class WorldCommandPhase : uint8_t {
@@ -126,8 +132,41 @@ namespace HIKARI {
         std::vector<WorldSpawnComponentPayload> components{};
     };
 
-    struct WorldSpawnBatchPayload {
+    enum class WorldCommandPayloadKind : uint8_t {
+        Spawn,
+        SpawnMass,
+        DestroyMass,
+    };
+
+    struct WorldCommandPayload {
+        explicit WorldCommandPayload(
+            WorldCommandPayloadKind value) noexcept
+            : kind(value) {}
+
+        WorldCommandPayloadKind kind;
+    };
+
+    struct WorldSpawnBatchPayload final : WorldCommandPayload {
+        WorldSpawnBatchPayload() noexcept
+            : WorldCommandPayload(WorldCommandPayloadKind::Spawn) {}
         std::vector<WorldSpawnObjectPayload> objects{};
+    };
+
+    struct WorldMassSpawnBatchPayload final : WorldCommandPayload {
+        WorldMassSpawnBatchPayload() noexcept
+            : WorldCommandPayload(WorldCommandPayloadKind::SpawnMass) {}
+        WorldMassSchema schema{};
+        std::vector<RuntimeObjectHandle> objects{};
+        std::vector<GameProjectTransform> transforms{};
+        std::vector<GameProjectFloat3> velocities{};
+        std::vector<std::byte> podBytes{};
+        size_t podStride = 0u;
+    };
+
+    struct WorldMassDestroyBatchPayload final : WorldCommandPayload {
+        WorldMassDestroyBatchPayload() noexcept
+            : WorldCommandPayload(WorldCommandPayloadKind::DestroyMass) {}
+        std::vector<RuntimeObjectHandle> objects{};
     };
 
     namespace INTERNAL {
@@ -135,6 +174,9 @@ namespace HIKARI {
             const ComponentRegistry* registry,
             std::span<const WorldSpawnRequest> requests,
             std::shared_ptr<WorldSpawnBatchPayload>& outPayload) noexcept;
+        WorldMutationResult BuildWorldMassSpawnBatchPayload(
+            const WorldMassSpawnBatchRequest& request,
+            std::shared_ptr<WorldMassSpawnBatchPayload>& outPayload) noexcept;
     }
 
     struct PendingWorldCommand {
@@ -146,8 +188,8 @@ namespace HIKARI {
         WorldParentMode parentMode = WorldParentMode::KeepLocal;
         WorldCommandLocalTransform transform{};
         std::array<char, kWorldCommandObjectNameCapacity> name{};
-        std::shared_ptr<const WorldSpawnBatchPayload> spawnPayload{};
-        uint32_t spawnPayloadIndex = 0u;
+        std::shared_ptr<const WorldCommandPayload> payload{};
+        uint32_t payloadIndex = 0u;
     };
 
     static_assert(sizeof(WorldCommandLocalTransform) == 40u);

@@ -294,6 +294,7 @@ namespace HIKARI {
     }
     bool DocumentSceneBase::RegisterRuntimeFeatures() {
         state_->runtime.componentRegistry.Clear();
+        state_->runtime.massSchemaRegistry.Clear();
         state_->runtime.systemTypeRegistry.Clear();
         state_->runtime.componentSystemPolicy.Clear();
         state_->runtime.featureCatalog = CreateBuiltInRuntimeFeatureCatalog();
@@ -316,6 +317,7 @@ namespace HIKARI {
         RuntimeFeatureContext context =
             RuntimeFeatureContextAccess::Create(
             state_->runtime.componentRegistry,
+            state_->runtime.massSchemaRegistry,
             state_->runtime.systemTypeRegistry,
             state_->runtime.componentSystemPolicy);
         state_->runtime.featureInstallReport =
@@ -742,7 +744,14 @@ namespace HIKARI {
                     ? " objectId=" + std::to_string(issue.objectId.value)
                     : std::string{}));
         }
-        const bool built = state_->runtime.builder.BuildWorldFromDocument(state_->identity.document, state_->runtime.world, state_->assets.Registry(), state_->runtime.componentRegistry, state_->assets.Models(), state_->lighting.sky);
+        const bool built = state_->runtime.builder.BuildWorldFromDocument(
+            state_->identity.document,
+            state_->runtime.world,
+            state_->assets.Registry(),
+            state_->runtime.componentRegistry,
+            state_->runtime.massSchemaRegistry,
+            state_->assets.Models(),
+            state_->lighting.sky);
 
         state_->lighting.environment = state_->identity.document.environment;
         state_->lighting.environment.directional.direction = MATH::Normalize(state_->lighting.environment.directional.direction);

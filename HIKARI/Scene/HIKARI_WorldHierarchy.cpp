@@ -165,6 +165,14 @@ namespace HIKARI {
         if (worldClosing_) {
             return WorldMutationResult::WorldClosing;
         }
+        bool massObject = false;
+        const WorldMutationResult massResult = SetMassTransformIfPresent(
+            objectHandle,
+            transform,
+            massObject);
+        if (massObject) {
+            return massResult;
+        }
         GameObject* object = FindObject(objectHandle);
         if (object == nullptr || object->destroying_) {
             return WorldMutationResult::InvalidObjectHandle;
@@ -183,6 +191,17 @@ namespace HIKARI {
         const Transform3D& transform) {
         if (!IsOwnerThread()) {
             return WorldMutationResult::WrongThread;
+        }
+        if (worldClosing_) {
+            return WorldMutationResult::WorldClosing;
+        }
+        bool massObject = false;
+        const WorldMutationResult massResult = SetMassTransformIfPresent(
+            objectHandle,
+            transform,
+            massObject);
+        if (massObject) {
+            return massResult;
         }
         GameObject* object = FindObject(objectHandle);
         if (object == nullptr || object->destroying_) {
@@ -217,6 +236,14 @@ namespace HIKARI {
         if (!IsOwnerThread()) {
             return false;
         }
+        bool massObject = false;
+        const bool massResult = TryGetMassTransformIfPresent(
+            objectHandle,
+            outTransform,
+            massObject);
+        if (massObject) {
+            return massResult;
+        }
         const GameObject* object = FindObject(objectHandle);
         return object != nullptr &&
             TryDecomposeLocalTransform(
@@ -230,6 +257,14 @@ namespace HIKARI {
         Transform3D& outTransform) const noexcept {
         if (!IsOwnerThread()) {
             return false;
+        }
+        bool massObject = false;
+        const bool massResult = TryGetMassTransformIfPresent(
+            objectHandle,
+            outTransform,
+            massObject);
+        if (massObject) {
+            return massResult;
         }
         const GameObject* object = FindObject(objectHandle);
         return object != nullptr &&

@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <array>
 #include <cstring>
-#include <limits>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -76,9 +75,6 @@ namespace HIKARI {
 
         const size_t previousCommandCount =
             pendingCommands_.size();
-        std::array<RuntimeObjectHandle,
-            kWorldSpawnBatchMaximumCapacity> reservedHandles{};
-        size_t reservedCount = 0u;
         try {
             const size_t nextCommandCount =
                 previousCommandCount + requests.size();
@@ -87,59 +83,31 @@ namespace HIKARI {
                     pendingCommands_.capacity(),
                     nextCommandCount,
                     kWorldCommandMaximumCapacity));
-
-            const size_t newSlotCount =
-                requests.size() > freeObjectSlots_.size()
-                ? requests.size() - freeObjectSlots_.size()
-                : 0u;
-            if (newSlotCount >
-                static_cast<size_t>(
-                    (std::numeric_limits<uint32_t>::max)()) -
-                    objectSlots_.size()) {
-                return rejectAll(
-                    WorldMutationResult::InternalError);
-            }
-            const size_t nextSlotCount =
-                objectSlots_.size() + newSlotCount;
-            const size_t slotCapacity =
-                INTERNAL::GrowWorldCapacity(
-                    (std::max)(
-                        objectSlots_.capacity(),
-                        freeObjectSlots_.capacity()),
-                    nextSlotCount,
-                    (std::min)(
-                        static_cast<size_t>(
-                            (std::numeric_limits<uint32_t>::max)()),
-                        (std::min)(
-                            objectSlots_.max_size(),
-                            freeObjectSlots_.max_size())));
-            objectSlots_.reserve(slotCapacity);
-            freeObjectSlots_.reserve(slotCapacity);
-
             if (requests.size() >
                     objects_.max_size() - objects_.size()) {
-                return rejectAll(
-                    WorldMutationResult::InternalError);
+                return rejectAll(WorldMutationResult::InternalError);
             }
             const size_t nextObjectCount =
                 objects_.size() + requests.size();
-            const size_t objectCapacity =
-                INTERNAL::GrowWorldCapacity(
-                    objects_.capacity(),
-                    nextObjectCount,
-                    objects_.max_size());
-            objects_.reserve(objectCapacity);
-
-            for (; reservedCount < requests.size();
-                ++reservedCount) {
-                reservedHandles[reservedCount] =
-                    ReserveObjectHandle();
-                if (!reservedHandles[reservedCount].IsValid()) {
-                    throw std::runtime_error(
-                        "World batch handle reservation failed.");
-                }
-            }
-
+            objects_.reserve(INTERNAL::GrowWorldCapacity(
+                objects_.capacity(),
+                nextObjectCount,
+                objects_.max_size()));
+        }
+        catch (...) {
+            return rejectAll(WorldMutationResult::InternalError);
+        }
+        std::array<RuntimeObjectHandle,
+            kWorldSpawnBatchMaximumCapacity> reservedHandles{};
+        const std::span reservedSpan{
+            reservedHandles.data(),
+            requests.size()
+        };
+        if (!ReserveObjectHandleBatch(reservedSpan)) {
+            return rejectAll(WorldMutationResult::InternalError);
+        }
+        const size_t reservedCount = requests.size();
+        try {
             for (size_t index = 0u;
                 index < requests.size();
                 ++index) {
@@ -154,8 +122,8 @@ namespace HIKARI {
                 command.object = reservedHandles[index];
                 command.parent = request.parent;
                 command.transform = request.transform;
-                command.spawnPayload = spawnPayload;
-                command.spawnPayloadIndex =
+                command.payload = spawnPayload;
+                command.payloadIndex =
                     static_cast<uint32_t>(index);
                 std::memcpy(
                     command.name.data(),
@@ -222,14 +190,18 @@ namespace HIKARI {
         }
 
         const WorldSpawnObjectPayload* payload = nullptr;
-        if (command.spawnPayload != nullptr) {
-            if (command.spawnPayloadIndex >=
-                command.spawnPayload->objects.size()) {
+        if (command.payload != nullptr) {
+            if (command.payload->kind != WorldCommandPayloadKind::Spawn) {
                 return rejectReserved(
                     WorldMutationResult::InvalidComponentData);
             }
-            payload = &command.spawnPayload->objects[
-                command.spawnPayloadIndex];
+            const auto* spawnPayload = static_cast<
+                const WorldSpawnBatchPayload*>(command.payload.get());
+            if (command.payloadIndex >= spawnPayload->objects.size()) {
+                return rejectReserved(
+                    WorldMutationResult::InvalidComponentData);
+            }
+            payload = &spawnPayload->objects[command.payloadIndex];
         }
         struct PreparedComponent {
             std::unique_ptr<IComponent> component{};

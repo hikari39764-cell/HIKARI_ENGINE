@@ -246,6 +246,8 @@ namespace HIKARI {
         Spawn = 0u,
         Destroy = 1u,
         SetParent = 2u,
+        SpawnMass = 3u,
+        DestroyMass = 4u,
     };
 
     enum class GameProjectWorldCommandPhase : uint8_t {

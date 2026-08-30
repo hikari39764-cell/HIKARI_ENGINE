@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstddef>
+#include <cstring>
 #include <memory>
 #include <tuple>
 #include <type_traits>
@@ -113,6 +114,90 @@ namespace HIKARI {
                         typed);
                 }
                 catch (...) {
+                    return GameProjectWorldQueryVisitResult::Error;
+                }
+            });
+    }
+
+    template<class Data, class Visitor>
+    GameProjectWorldQueryResult WorldView::ForEachMassObject(
+        ComponentTypeId typeId,
+        Visitor&& visitor) const {
+        static_assert(std::is_standard_layout_v<Data>);
+        static_assert(std::is_trivially_copyable_v<Data>);
+        static_assert(std::is_default_constructible_v<Data>);
+        using Callback = std::decay_t<Visitor>;
+        using CallbackResult = std::invoke_result_t<
+            Callback&,
+            GameProjectObjectHandle,
+            GameProjectFloat3&,
+            GameProjectQuaternion&,
+            GameProjectFloat3&,
+            GameProjectFloat3&,
+            Data&>;
+        static_assert(std::is_void_v<CallbackResult> ||
+            std::is_same_v<CallbackResult, bool> ||
+            std::is_same_v<CallbackResult,
+                GameProjectWorldQueryVisitResult>);
+
+        Callback callback = std::forward<Visitor>(visitor);
+        struct VisitContext {
+            Callback* callback = nullptr;
+        } context{ std::addressof(callback) };
+        return QueryMassObjects(
+            typeId,
+            &context,
+            [](void* opaque,
+                GameProjectWorldMassRow* row) noexcept {
+                if (row == nullptr || row->position == nullptr ||
+                    row->rotation == nullptr || row->scale == nullptr ||
+                    row->velocity == nullptr || row->podData == nullptr ||
+                    row->podSize != sizeof(Data) ||
+                    row->podAlignment != alignof(Data)) {
+                    return GameProjectWorldQueryVisitResult::Error;
+                }
+                VisitContext& visit =
+                    *static_cast<VisitContext*>(opaque);
+                Data data{};
+                std::memcpy(&data, row->podData, sizeof(Data));
+                try {
+                    GameProjectWorldQueryVisitResult result =
+                        GameProjectWorldQueryVisitResult::Continue;
+                    if constexpr (std::is_void_v<CallbackResult>) {
+                        (*visit.callback)(
+                            row->object,
+                            *row->position,
+                            *row->rotation,
+                            *row->scale,
+                            *row->velocity,
+                            data);
+                    }
+                    else if constexpr (std::is_same_v<
+                            CallbackResult, bool>) {
+                        result = (*visit.callback)(
+                            row->object,
+                            *row->position,
+                            *row->rotation,
+                            *row->scale,
+                            *row->velocity,
+                            data)
+                            ? GameProjectWorldQueryVisitResult::Continue
+                            : GameProjectWorldQueryVisitResult::Stop;
+                    }
+                    else {
+                        result = (*visit.callback)(
+                            row->object,
+                            *row->position,
+                            *row->rotation,
+                            *row->scale,
+                            *row->velocity,
+                            data);
+                    }
+                    std::memcpy(row->podData, &data, sizeof(Data));
+                    return result;
+                }
+                catch (...) {
+                    std::memcpy(row->podData, &data, sizeof(Data));
                     return GameProjectWorldQueryVisitResult::Error;
                 }
             });

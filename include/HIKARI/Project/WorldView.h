@@ -9,6 +9,7 @@
 #include "HIKARI/Project/GameProjectSdk.h"
 #include "HIKARI/Project/ValueTypes.h"
 #include "HIKARI/Project/WorldTypes.h"
+#include "HIKARI/Project/WorldMassTypes.h"
 #include "HIKARI/Runtime/ComponentTypeId.h"
 
 namespace HIKARI {
@@ -82,6 +83,9 @@ namespace HIKARI {
 
         HIKARI_GAME_PROJECT_SDK_API ObjectView FindObject(
             GameProjectObjectHandle handle) const noexcept;
+        // Total live identity count, including GameObject-backed and mass
+        // objects. Mass handles are accessed through the mass query API rather
+        // than ObjectView.
         HIKARI_GAME_PROJECT_SDK_API uint64_t GetObjectCount() const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool CanMutateStructure() const noexcept;
         // SDK 2.5 additive non-structural batch. The World is resolved once,
@@ -96,6 +100,28 @@ namespace HIKARI {
             uint32_t writeCount,
             GameProjectWorldResult* outResults,
             uint32_t resultCount) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API uint64_t GetMassObjectCount(
+            ComponentTypeId typeId) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool SpawnMassObjects(
+            const GameProjectWorldMassSpawnBatchDesc& batch,
+            GameProjectWorldResult* outResults,
+            uint32_t resultCount) const noexcept;
+        HIKARI_GAME_PROJECT_SDK_API bool DestroyMassObjects(
+            const GameProjectObjectHandle* objects,
+            uint32_t objectCount,
+            GameProjectWorldResult* outResults,
+            uint32_t resultCount) const noexcept;
+        // Valid queries flush QueryEnd after the callback scope closes. Rows,
+        // pointers and POD bytes are borrowed only for the callback.
+        HIKARI_GAME_PROJECT_SDK_API GameProjectWorldQueryResult
+            QueryMassObjects(
+                ComponentTypeId typeId,
+                void* context,
+                GameProjectWorldMassCallback callback) const noexcept;
+        template<class Data, class Visitor>
+        GameProjectWorldQueryResult ForEachMassObject(
+            ComponentTypeId typeId,
+            Visitor&& visitor) const;
         // Structural commands apply immediately only outside protected World
         // traversal. Calls made inside one return Queued and are applied by the
         // owning Runtime at the next deterministic command boundary. A queued

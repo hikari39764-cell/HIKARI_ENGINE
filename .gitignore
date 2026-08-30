@@ -409,4 +409,7 @@ vcpkg_installed_static/
 /Tests/Fixtures/Projects/EmptyProject/ProjectSettings/AssetMeta/
 /Tests/Fixtures/Projects/EmptyProject/ProjectSettings/Input/
 /Tests/Fixtures/Projects/EmptyProject/ProjectSettings/asset_pipeline.json
+/Samples/MassEntityLab/ProjectSettings/AssetMeta/
+/Samples/MassEntityLab/ProjectSettings/Input/
+/Samples/MassEntityLab/ProjectSettings/asset_pipeline.json
 

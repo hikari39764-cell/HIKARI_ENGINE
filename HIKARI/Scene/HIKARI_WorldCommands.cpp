@@ -1,7 +1,9 @@
 #include "Scene/HIKARI_World.h"
 
 #include <array>
+#include <cmath>
 #include <cstring>
+#include <limits>
 #include <memory>
 #include <string>
 
@@ -10,6 +12,36 @@
 #include "Scene/HIKARI_ComponentRegistry.h"
 
 namespace HIKARI {
+
+    namespace {
+
+        bool IsFinite(const GameProjectFloat3& value) noexcept {
+            return std::isfinite(value.x) &&
+                std::isfinite(value.y) &&
+                std::isfinite(value.z);
+        }
+
+        bool IsFinite(const GameProjectQuaternion& value) noexcept {
+            return std::isfinite(value.x) &&
+                std::isfinite(value.y) &&
+                std::isfinite(value.z) &&
+                std::isfinite(value.w);
+        }
+
+        bool IsValidMassTransform(
+            const GameProjectTransform& value) noexcept {
+            const double rotationLengthSquared =
+                static_cast<double>(value.rotation.x) * value.rotation.x +
+                static_cast<double>(value.rotation.y) * value.rotation.y +
+                static_cast<double>(value.rotation.z) * value.rotation.z +
+                static_cast<double>(value.rotation.w) * value.rotation.w;
+            return IsFinite(value.position) &&
+                IsFinite(value.scale) &&
+                IsFinite(value.rotation) &&
+                rotationLengthSquared > 1.0e-12;
+        }
+
+    } // namespace
 
     WorldMutationResult INTERNAL::BuildWorldSpawnBatchPayload(
         const ComponentRegistry* registry,
@@ -136,6 +168,65 @@ namespace HIKARI {
         }
     }
 
+    WorldMutationResult INTERNAL::BuildWorldMassSpawnBatchPayload(
+        const WorldMassSpawnBatchRequest& request,
+        std::shared_ptr<WorldMassSpawnBatchPayload>& outPayload) noexcept {
+        outPayload.reset();
+        const size_t count = request.transforms.size();
+        if (!IsValidWorldMassSchema(request.schema) ||
+            count == 0u ||
+            count > kWorldMassSpawnBatchMaximumCapacity ||
+            request.velocities.size() != count ||
+            request.podData == nullptr ||
+            request.podStride < request.schema.podSize ||
+            request.schema.podSize >
+                kWorldMassMaximumBatchPayloadBytes / count) {
+            return WorldMutationResult::InvalidComponentData;
+        }
+        if (count - 1u >
+                (std::numeric_limits<size_t>::max)() /
+                    request.podStride) {
+            return WorldMutationResult::InvalidComponentData;
+        }
+        const size_t lastByteOffset =
+            (count - 1u) * request.podStride;
+        if (request.schema.podSize >
+                (std::numeric_limits<size_t>::max)() - lastByteOffset ||
+            lastByteOffset + request.schema.podSize >
+                request.podDataByteCount) {
+            return WorldMutationResult::InvalidComponentData;
+        }
+        try {
+            auto payload = std::make_shared<WorldMassSpawnBatchPayload>();
+            payload->schema = request.schema;
+            payload->podStride =
+                (static_cast<size_t>(request.schema.podSize) +
+                    request.schema.podAlignment - 1u) &
+                ~(static_cast<size_t>(request.schema.podAlignment) - 1u);
+            payload->transforms.reserve(count);
+            payload->velocities.reserve(count);
+            payload->podBytes.resize(count * payload->podStride);
+            for (size_t index = 0u; index < count; ++index) {
+                if (!IsValidMassTransform(request.transforms[index]) ||
+                    !IsFinite(request.velocities[index])) {
+                    return WorldMutationResult::InvalidComponentData;
+                }
+                payload->transforms.push_back(request.transforms[index]);
+                payload->velocities.push_back(request.velocities[index]);
+                std::memcpy(
+                    payload->podBytes.data() + index * payload->podStride,
+                    request.podData + index * request.podStride,
+                    request.schema.podSize);
+            }
+            outPayload = std::move(payload);
+            return WorldMutationResult::Success;
+        }
+        catch (...) {
+            outPayload.reset();
+            return WorldMutationResult::InternalError;
+        }
+    }
+
     uint32_t World::AllocateCommandToken() noexcept {
         uint32_t token = nextCommandToken_++;
         if (token == 0u) {
@@ -181,6 +272,29 @@ namespace HIKARI {
             object,
             token
         };
+    }
+
+    void World::ReleaseSpawnCommandReservations(
+        const PendingWorldCommand& command) noexcept {
+        if (command.kind == WorldCommandKind::Spawn) {
+            if (IsReservedObjectHandle(command.object)) {
+                ReleaseReservedObjectHandle(command.object);
+            }
+            return;
+        }
+        if (command.kind != WorldCommandKind::SpawnMass ||
+            command.payload == nullptr ||
+            command.payload->kind != WorldCommandPayloadKind::SpawnMass) {
+            return;
+        }
+        const auto* payload = static_cast<
+            const WorldMassSpawnBatchPayload*>(command.payload.get());
+        for (const RuntimeObjectHandle object :
+            payload->objects) {
+            if (IsReservedObjectHandle(object)) {
+                ReleaseReservedObjectHandle(object);
+            }
+        }
     }
 
     WorldCommandSubmission World::SubmitSpawn(
@@ -422,6 +536,14 @@ namespace HIKARI {
                         command.parentMode);
                     commandApplyActive_ = false;
                     break;
+                case WorldCommandKind::SpawnMass:
+                    result = ApplyQueuedMassSpawnBatch(command);
+                    break;
+                case WorldCommandKind::DestroyMass:
+                    commandApplyActive_ = true;
+                    result = ApplyQueuedMassDestroyBatch(command);
+                    commandApplyActive_ = false;
+                    break;
                 default:
                     result = WorldMutationResult::InternalError;
                     break;
@@ -432,13 +554,11 @@ namespace HIKARI {
                 spawnMaterializationObject_ = nullptr;
                 componentCallbackActive_ = false;
                 reservationStateJournal_.clear();
-                if (command.kind == WorldCommandKind::Spawn &&
-                    IsReservedObjectHandle(command.object)) {
-                    ReleaseReservedObjectHandle(command.object);
-                }
+                ReleaseSpawnCommandReservations(command);
                 result = WorldMutationResult::InternalError;
             }
             if (result != WorldMutationResult::Success) {
+                ReleaseSpawnCommandReservations(command);
                 RecordCommandFailure(command, result, phase);
             }
             ++executedCount;

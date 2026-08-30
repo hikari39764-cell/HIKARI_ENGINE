@@ -10,8 +10,12 @@ namespace HIKARI {
             return "DialogueInteractorComponent";
         }
 
-        void Serialize(nlohmann::json& out) const override;
-        void Deserialize(const nlohmann::json& in) override;
+        void Serialize(nlohmann::json& out) const override {
+            out["enabled"] = enabled_;
+        }
+        void Deserialize(const nlohmann::json& in) override {
+            enabled_ = in.value("enabled", enabled_);
+        }
         void BuildInspector(IInspectorBuilder& builder) override;
 
         bool IsEnabled() const noexcept { return enabled_; }

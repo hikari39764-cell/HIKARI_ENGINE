@@ -41,6 +41,8 @@ namespace HIKARI {
     class UiView;
     class VfxView;
     class World;
+    class WorldMassSchemaRegistry;
+    struct WorldMassMutableRow;
     enum class RuntimeWorldAccessResult : uint8_t;
     enum class WorldComponentQueryAnchor : uint8_t;
     enum class WorldComponentQueryCardinality : uint8_t;
@@ -48,10 +50,13 @@ namespace HIKARI {
     struct RuntimeFeatureContextAccess {
         static RuntimeFeatureContext Create(
             ComponentRegistry& componentRegistry,
+            WorldMassSchemaRegistry& massSchemaRegistry,
             SystemTypeRegistry& systemTypeRegistry,
             ComponentSystemPolicy& componentSystemPolicy) noexcept;
 
         static ComponentRegistry& Components(
+            RuntimeFeatureContext& context) noexcept;
+        static WorldMassSchemaRegistry& MassSchemas(
             RuntimeFeatureContext& context) noexcept;
         static SystemTypeRegistry& Systems(
             RuntimeFeatureContext& context) noexcept;
@@ -65,6 +70,9 @@ namespace HIKARI {
             RuntimeObjectHandle object,
             IComponent* const* components,
             uint32_t componentCount) noexcept;
+        using MassObjectVisitorFn = bool (*)(
+            void* context,
+            WorldMassMutableRow& row) noexcept;
 
         static PropertyReader MakePropertyReader(
             const void* properties) noexcept;
@@ -115,6 +123,11 @@ namespace HIKARI {
             WorldComponentQueryAnchor anchor,
             void* context,
             IndexedComponentVisitorFn visitor) noexcept;
+        static bool VisitMassObjects(
+            World& world,
+            ComponentTypeId typeId,
+            void* context,
+            MassObjectVisitorFn visitor) noexcept;
     };
 
     class GameProjectComponentAdapter final

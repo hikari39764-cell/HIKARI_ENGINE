@@ -688,12 +688,19 @@ namespace HIKARI {
         World& world,
         const AssetRegistry& assetRegistry,
         const ComponentRegistry& componentRegistry,
+        const WorldMassSchemaRegistry& massSchemaRegistry,
         ModelManager& modelManager,
         SkyManager&) const try {
         world.Clear();
         if (!world.BindComponentRegistry(&componentRegistry)) {
             HIKARI_LOG_ERROR(
                 "[SceneRuntime] component registry binding rejected.");
+            return false;
+        }
+        if (!world.BindMassSchemaRegistry(&massSchemaRegistry)) {
+            HIKARI_LOG_ERROR(
+                "[SceneRuntime] mass schema registry binding rejected.");
+            world.Clear();
             return false;
         }
 

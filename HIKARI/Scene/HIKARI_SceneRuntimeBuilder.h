@@ -13,15 +13,14 @@
 namespace HIKARI {
 
     class ComponentRegistry;
-
     class AssetRegistry;
-    class ComponentRegistry;
     class ModelManager;
     class Material;
     struct MaterialAssetDescriptor;
     class ModelAsset;
     class SkyManager;
     class World;
+    class WorldMassSchemaRegistry;
     struct SceneDocument;
 
     struct SceneDependencySet {
@@ -69,6 +68,7 @@ namespace HIKARI {
             World& world,
             const AssetRegistry& assetRegistry,
             const ComponentRegistry& componentRegistry,
+            const WorldMassSchemaRegistry& massSchemaRegistry,
             ModelManager& modelManager,
             SkyManager& skyManager) const;
     };

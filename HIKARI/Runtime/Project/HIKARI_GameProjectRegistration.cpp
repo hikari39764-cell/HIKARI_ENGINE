@@ -17,6 +17,7 @@
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_SystemTypeRegistry.h"
 #include "Scene/HIKARI_World.h"
+#include "Scene/HIKARI_WorldMassStore.h"
 
 namespace HIKARI {
 namespace {
@@ -67,10 +68,12 @@ namespace {
 
     RuntimeFeatureContext RuntimeFeatureContextAccess::Create(
         ComponentRegistry& componentRegistry,
+        WorldMassSchemaRegistry& massSchemaRegistry,
         SystemTypeRegistry& systemTypeRegistry,
         ComponentSystemPolicy& componentSystemPolicy) noexcept {
         return RuntimeFeatureContext(
             &componentRegistry,
+            &massSchemaRegistry,
             &systemTypeRegistry,
             &componentSystemPolicy);
     }
@@ -246,6 +249,12 @@ namespace {
         const nlohmann::json& in) {
         std::string diagnostic{};
         (void)TryDeserialize(in, diagnostic);
+    }
+
+    WorldMassSchemaRegistry& RuntimeFeatureContextAccess::MassSchemas(
+        RuntimeFeatureContext& context) noexcept {
+        return *static_cast<WorldMassSchemaRegistry*>(
+            context.massSchemaRegistry_);
     }
 
     bool GameProjectComponentAdapter::TryDeserialize(
@@ -580,6 +589,24 @@ namespace {
             std::move(defaultSettings);
         return RuntimeFeatureContextAccess::Systems(*this).
             Register(std::move(info));
+    }
+
+    bool RuntimeFeatureContext::RegisterMassDataRaw(
+        const GameProjectMassDataTypeDesc& descriptor) {
+        if (massSchemaRegistry_ == nullptr ||
+            descriptor.structSize != kGameProjectMassDataTypeDescV1Size ||
+            descriptor.version != kGameProjectWorldMassVersion ||
+            descriptor.reserved != 0u) {
+            return false;
+        }
+        return RuntimeFeatureContextAccess::MassSchemas(*this).Register(
+            WorldMassSchema{
+                descriptor.typeId,
+                descriptor.layoutHash,
+                descriptor.schemaVersion,
+                descriptor.dataSize,
+                descriptor.dataAlignment
+            });
     }
 
     bool RuntimeFeatureContext::BindComponentSystem(

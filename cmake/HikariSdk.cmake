@@ -34,6 +34,7 @@ set(
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/ValueTypes.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/VfxTypes.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/VfxView.h"
+    "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/WorldMassTypes.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/WorldTypes.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/WorldQuery.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/WorldView.h")
@@ -100,7 +101,7 @@ configure_package_config_file(
     NO_SET_AND_CHECK_MACRO)
 write_basic_package_version_file(
     "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARIConfigVersion.cmake"
-    VERSION 2.5.0
+    VERSION 2.6.0
     COMPATIBILITY SameMajorVersion)
 
 function(hikari_configure_game_project_sdk host_target)
