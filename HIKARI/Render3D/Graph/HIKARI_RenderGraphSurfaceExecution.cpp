@@ -389,19 +389,6 @@ namespace HIKARI::RENDER3D::GRAPH {
                     return false;
                 }
             }
-            for (uint32_t offset = 0u;
-                offset < pass.readCount;
-                ++offset) {
-                if (!validateRead(
-                        uses_[pass.readBegin + offset],
-                        passIndex)) {
-                    executing_ = false;
-                    executionState_.status =
-                        RenderGraphExecutionStatus::Failed;
-                    executionState_.failurePassIndex = passIndex;
-                    return false;
-                }
-            }
             std::array<SURFACE::SceneSurfaceLease,
                 kRenderGraphMaximumResourceUseCount> writeBaselines{};
             if (sceneSurfaces_ != nullptr) {
@@ -449,6 +436,19 @@ namespace HIKARI::RENDER3D::GRAPH {
                     "RenderGraph surface receipt changed during a pass.",
                     passIndex);
                 return false;
+            }
+            for (uint32_t offset = 0u;
+                offset < pass.readCount;
+                ++offset) {
+                if (!validateRead(
+                        uses_[pass.readBegin + offset],
+                        passIndex)) {
+                    executing_ = false;
+                    executionState_.status =
+                        RenderGraphExecutionStatus::Failed;
+                    executionState_.failurePassIndex = passIndex;
+                    return false;
+                }
             }
             for (uint32_t offset = 0u;
                 offset < pass.writeCount;
