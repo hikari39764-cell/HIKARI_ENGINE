@@ -80,7 +80,9 @@ namespace HIKARI::RENDER3D::PIPELINE {
             context.hasDepthAwareWork,
             context.hasTransparentWork
         };
-        if (!graph.BeginFrame(context.sceneSurfaces) ||
+        if (!graph.BeginFrame(
+                context.sceneSurfaces,
+                context.frame.surfaceReceipt) ||
             !INTERNAL::BuildRenderFrameGraphPlan(
                 options,
                 &state,

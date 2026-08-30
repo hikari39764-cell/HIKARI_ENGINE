@@ -9,6 +9,7 @@
 
 #include "Render3D/Core/HIKARI_RenderFrameToken.h"
 #include "Render3D/Graph/HIKARI_RenderGraphSurfaceContract.h"
+#include "Render3D/Surface/HIKARI_RenderFrameSurfaceRegistry.h"
 #include "Render3D/Surface/HIKARI_SceneSurfaceSet.h"
 
 namespace HIKARI::RENDER3D::GRAPH {
@@ -91,6 +92,25 @@ namespace HIKARI::RENDER3D::GRAPH {
         MissingSurfacePublication,
         SurfacePublicationMismatch,
         MutationDuringExecution,
+        InvalidExecutionState,
+        PassNotFound,
+        ExecutionAborted,
+    };
+
+    enum class RenderGraphExecutionStatus : uint8_t {
+        NotStarted = 0u,
+        Paused,
+        Completed,
+        Failed,
+        Count,
+    };
+
+    struct RenderGraphExecutionState {
+        RenderGraphExecutionStatus status =
+            RenderGraphExecutionStatus::NotStarted;
+        uint32_t nextOrder = 0u;
+        uint32_t lastPassIndex = kInvalidRenderGraphIndex;
+        uint32_t failurePassIndex = kInvalidRenderGraphIndex;
     };
 
     struct RenderGraphResourceId {
@@ -158,6 +178,9 @@ namespace HIKARI::RENDER3D::GRAPH {
         std::span<const RenderGraphResourceUse> reads{};
         std::span<const RenderGraphResourceUse> writes{};
         RenderGraphExecuteFn execute = nullptr;
+        // Borrowed until execution reaches Completed/Failed or is explicitly
+        // aborted. A phased graph must keep every not-yet-run callback state
+        // in the same owning frame session as the graph.
         void* userData = nullptr;
     };
 
@@ -214,12 +237,20 @@ namespace HIKARI::RENDER3D::GRAPH {
             RenderViewId viewId = kPrimaryRenderViewId) noexcept;
         bool BeginFrame(RenderFrameToken frame) noexcept;
         bool BeginFrame(SURFACE::SceneSurfaceSet& surfaces) noexcept;
+        bool BeginFrame(
+            SURFACE::SceneSurfaceSet& surfaces,
+            SURFACE::RenderFrameSurfaceReceipt receipt) noexcept;
 
         RenderGraphResourceId AddResource(
             const RenderGraphResourceDesc& desc) noexcept;
         bool AddPass(const RenderGraphPassDesc& desc) noexcept;
         bool Compile() noexcept;
         bool Execute() noexcept;
+        // Executes through and including passId. A successful non-terminal
+        // range enters Paused; continuation is forward-only and never replays.
+        bool ExecuteThrough(std::string_view passId) noexcept;
+        bool ContinueExecute() noexcept;
+        bool AbortExecution() noexcept;
 
         RenderFrameToken GetFrameToken() const noexcept {
             return frame_;
@@ -235,6 +266,9 @@ namespace HIKARI::RENDER3D::GRAPH {
         }
         bool IsCompiled() const noexcept {
             return compiled_;
+        }
+        RenderGraphExecutionState GetExecutionState() const noexcept {
+            return executionState_;
         }
         bool IsResourceValid(
             RenderGraphResourceId resource) const noexcept;
@@ -289,6 +323,8 @@ namespace HIKARI::RENDER3D::GRAPH {
             const SURFACE::SceneSurfaceLease* baseline,
             uint32_t passIndex,
             bool write) noexcept;
+        bool ValidateLiveSurfaceBinding() const noexcept;
+        bool ExecuteCompiledRange(uint32_t endOrderExclusive) noexcept;
         void SetDiagnostic(
             RenderGraphResultCode code,
             const char* message,
@@ -298,6 +334,7 @@ namespace HIKARI::RENDER3D::GRAPH {
 
         RenderFrameToken frame_{};
         SURFACE::SceneSurfaceSet* sceneSurfaces_ = nullptr;
+        SURFACE::RenderFrameSurfaceReceipt surfaceReceipt_{};
         uint64_t sceneSurfaceDeviceGeneration_ = 0u;
         uint64_t graphGeneration_ = 0u;
         std::array<ResourceRecord,
@@ -315,6 +352,7 @@ namespace HIKARI::RENDER3D::GRAPH {
         uint32_t passCount_ = 0u;
         uint32_t useCount_ = 0u;
         uint32_t compiledPassCount_ = 0u;
+        RenderGraphExecutionState executionState_{};
         bool compiled_ = false;
         bool executing_ = false;
     };

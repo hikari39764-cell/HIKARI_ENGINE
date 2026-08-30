@@ -5,10 +5,18 @@
 namespace HIKARI::RENDER3D::GRAPH {
 
     bool RenderGraph::Compile() noexcept {
-        if (executing_) {
+        if (executing_ ||
+            executionState_.status !=
+                RenderGraphExecutionStatus::NotStarted) {
+            if (!executing_ && executionState_.status ==
+                    RenderGraphExecutionStatus::Failed) {
+                return false;
+            }
             SetDiagnostic(
-                RenderGraphResultCode::MutationDuringExecution,
-                "RenderGraph compile rejected during execution.");
+                executing_
+                    ? RenderGraphResultCode::MutationDuringExecution
+                    : RenderGraphResultCode::InvalidExecutionState,
+                "RenderGraph compile rejected after execution began.");
             return false;
         }
         if (!frame_.IsValid()) {
@@ -20,6 +28,7 @@ namespace HIKARI::RENDER3D::GRAPH {
 
         compiled_ = false;
         compiledPassCount_ = 0u;
+        executionState_ = {};
         outgoingEdges_.fill(0u);
         compiledOrder_.fill(kInvalidRenderGraphIndex);
         for (uint32_t resourceIndex = 0u;
@@ -171,6 +180,7 @@ namespace HIKARI::RENDER3D::GRAPH {
         }
 
         compiledPassCount_ = passCount_;
+        executionState_ = {};
         compiled_ = true;
         ClearDiagnostic();
         return true;
@@ -437,6 +447,12 @@ namespace HIKARI::RENDER3D::GRAPH {
             return "SurfacePublicationMismatch";
         case RenderGraphResultCode::MutationDuringExecution:
             return "MutationDuringExecution";
+        case RenderGraphResultCode::InvalidExecutionState:
+            return "InvalidExecutionState";
+        case RenderGraphResultCode::PassNotFound:
+            return "PassNotFound";
+        case RenderGraphResultCode::ExecutionAborted:
+            return "ExecutionAborted";
         }
         return "Unknown";
     }

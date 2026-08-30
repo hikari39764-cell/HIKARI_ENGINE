@@ -26,31 +26,30 @@ namespace {
     bool RenderGraph::BeginFrame(
         uint64_t frameIndex,
         RenderViewId viewId) noexcept {
-        if (executing_) {
-            SetDiagnostic(
-                RenderGraphResultCode::MutationDuringExecution,
-                "RenderGraph frame reset rejected during execution.");
-            return false;
-        }
         return BeginFrame(AllocateRenderFrameToken(frameIndex, viewId));
     }
 
     bool RenderGraph::BeginFrame(
         RenderFrameToken frame) noexcept {
-        if (executing_) {
+        if (executing_ ||
+            executionState_.status == RenderGraphExecutionStatus::Paused) {
             SetDiagnostic(
-                RenderGraphResultCode::MutationDuringExecution,
-                "RenderGraph frame reset rejected during execution.");
+                executing_
+                    ? RenderGraphResultCode::MutationDuringExecution
+                    : RenderGraphResultCode::InvalidExecutionState,
+                "RenderGraph frame reset rejected while execution is active or paused.");
             return false;
         }
         frame_ = frame;
         sceneSurfaces_ = nullptr;
+        surfaceReceipt_ = {};
         sceneSurfaceDeviceGeneration_ = 0u;
         graphGeneration_ = 0u;
         resourceCount_ = 0u;
         passCount_ = 0u;
         useCount_ = 0u;
         compiledPassCount_ = 0u;
+        executionState_ = {};
         compiled_ = false;
         outgoingEdges_.fill(0u);
         compiledOrder_.fill(kInvalidRenderGraphIndex);
@@ -67,10 +66,18 @@ namespace {
 
     RenderGraphResourceId RenderGraph::AddResource(
         const RenderGraphResourceDesc& desc) noexcept {
-        if (executing_) {
+        if (executing_ ||
+            executionState_.status !=
+                RenderGraphExecutionStatus::NotStarted) {
+            if (!executing_ && executionState_.status ==
+                    RenderGraphExecutionStatus::Failed) {
+                return {};
+            }
             SetDiagnostic(
-                RenderGraphResultCode::MutationDuringExecution,
-                "RenderGraph resource mutation rejected during execution.");
+                executing_
+                    ? RenderGraphResultCode::MutationDuringExecution
+                    : RenderGraphResultCode::InvalidExecutionState,
+                "RenderGraph resource mutation rejected after execution began.");
             return {};
         }
         if (!frame_.IsValid()) {
@@ -145,10 +152,18 @@ namespace {
 
     bool RenderGraph::AddPass(
         const RenderGraphPassDesc& desc) noexcept {
-        if (executing_) {
+        if (executing_ ||
+            executionState_.status !=
+                RenderGraphExecutionStatus::NotStarted) {
+            if (!executing_ && executionState_.status ==
+                    RenderGraphExecutionStatus::Failed) {
+                return false;
+            }
             SetDiagnostic(
-                RenderGraphResultCode::MutationDuringExecution,
-                "RenderGraph pass mutation rejected during execution.");
+                executing_
+                    ? RenderGraphResultCode::MutationDuringExecution
+                    : RenderGraphResultCode::InvalidExecutionState,
+                "RenderGraph pass mutation rejected after execution began.");
             return false;
         }
         if (!frame_.IsValid()) {
@@ -372,13 +387,22 @@ namespace {
         RenderGraphResourceId resource,
         RenderGraphSurfaceBinding& outBinding) const noexcept {
         outBinding = {};
-        if (!compiled_ || !IsResourceValid(resource) ||
+        if (!compiled_ || !ValidateLiveSurfaceBinding() ||
+            !IsResourceValid(resource) ||
             resources_[resource.index].info.kind !=
                 RenderGraphResourceKind::SceneSurface ||
             !resources_[resource.index].binding.valid) {
             return false;
         }
-        outBinding = resources_[resource.index].binding;
+        const RenderGraphSurfaceBinding& binding =
+            resources_[resource.index].binding;
+        if (sceneSurfaces_ != nullptr &&
+            !sceneSurfaces_->IsLeaseCurrent(
+                resources_[resource.index].info.semantic,
+                binding.descriptor.publication.lease)) {
+            return false;
+        }
+        outBinding = binding;
         return true;
     }
 
