@@ -378,13 +378,16 @@ namespace HIKARI {
         if (!CanMutateOwnedState()) {
             return;
         }
-        ++renderStateRevision_;
-        if (!renderStateDirty_) {
-            renderStateDirty_ = true;
+        if (renderStateContributorCount_ == 0u) {
+            ++renderStateRevision_;
+            renderStateDirty_ = false;
+            return;
         }
         if (ownerWorld_ != nullptr) {
             ownerWorld_->MarkRenderObjectDirty(this);
         }
+        ++renderStateRevision_;
+        renderStateDirty_ = true;
     }
 
     void GameObject::ClearRenderStateDirty() {
@@ -414,8 +417,13 @@ namespace HIKARI {
 
     void GameObject::SetOwnerWorld(World* world) {
         ownerWorld_ = world;
-        if (ownerWorld_ != nullptr) {
+        if (ownerWorld_ != nullptr &&
+            renderStateContributorCount_ != 0u) {
+            renderStateDirty_ = true;
             ownerWorld_->MarkRenderObjectDirty(this);
+        }
+        else if (renderStateContributorCount_ == 0u) {
+            renderStateDirty_ = false;
         }
     }
 

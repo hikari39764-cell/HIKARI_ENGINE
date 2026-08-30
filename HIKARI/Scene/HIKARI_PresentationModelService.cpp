@@ -47,12 +47,18 @@ namespace HIKARI {
 
         void AddUnique(
             std::vector<uint64_t>& ids,
+            std::unordered_set<uint64_t>& membership,
             uint64_t id) {
-            if (id == 0u ||
-                std::find(ids.begin(), ids.end(), id) != ids.end()) {
+            if (id == 0u || !membership.insert(id).second) {
                 return;
             }
-            ids.push_back(id);
+            try {
+                ids.push_back(id);
+            }
+            catch (...) {
+                membership.erase(id);
+                throw;
+            }
         }
     }
 
@@ -123,6 +129,7 @@ namespace HIKARI {
                 record.visible = submission.visible;
                 record.castShadow = submission.castShadow;
                 record.receiveShadow = submission.receiveShadow;
+                removedRenderObjectIdSet_.erase(record.renderObjectId);
                 removedRenderObjectIds_.erase(
                     std::remove(
                         removedRenderObjectIds_.begin(),
@@ -176,6 +183,7 @@ namespace HIKARI {
             }
             AddUnique(
                 removedRenderObjectIds_,
+                removedRenderObjectIdSet_,
                 found->second.renderObjectId);
             const uint64_t renderObjectId = found->second.renderObjectId;
             records_.erase(found);
@@ -201,14 +209,19 @@ namespace HIKARI {
         uint64_t frameIndex,
         std::span<const uint64_t> occupiedObjectIds) noexcept {
         try {
-            std::vector<uint64_t> occupiedIds{};
+            frameRecords_.clear();
+            if (records_.empty()) {
+                return;
+            }
+            std::unordered_set<uint64_t> occupiedIds{};
             occupiedIds.reserve(
                 occupiedObjectIds.size() + records_.size());
             for (const uint64_t id : occupiedObjectIds) {
-                AddUnique(occupiedIds, id);
+                if (id != 0u) {
+                    occupiedIds.insert(id);
+                }
             }
 
-            frameRecords_.clear();
             frameRecords_.reserve(records_.size());
             for (auto it = records_.begin(); it != records_.end();) {
                 const auto touched = touchedFrames_.find(it->first);
@@ -216,6 +229,7 @@ namespace HIKARI {
                     touched->second != frameIndex) {
                     AddUnique(
                         removedRenderObjectIds_,
+                        removedRenderObjectIdSet_,
                         it->second.renderObjectId);
                     touchedFrames_.erase(it->first);
                     it = records_.erase(it);
@@ -224,25 +238,28 @@ namespace HIKARI {
 
                 PresentationModelRecord& record = it->second;
                 if (record.renderObjectId == 0u ||
-                    std::find(
-                        occupiedIds.begin(),
-                        occupiedIds.end(),
-                        record.renderObjectId) != occupiedIds.end()) {
+                    occupiedIds.contains(record.renderObjectId)) {
                     const uint64_t oldId = record.renderObjectId;
                     record.renderObjectId = AllocateRenderObjectId(
                         occupiedIds);
                     if (record.renderObjectId == 0u) {
-                        AddUnique(removedRenderObjectIds_, oldId);
+                        AddUnique(
+                            removedRenderObjectIds_,
+                            removedRenderObjectIdSet_,
+                            oldId);
                         touchedFrames_.erase(it->first);
                         it = records_.erase(it);
                         continue;
                     }
                     if (oldId != 0u) {
-                        AddUnique(removedRenderObjectIds_, oldId);
+                        AddUnique(
+                            removedRenderObjectIds_,
+                            removedRenderObjectIdSet_,
+                            oldId);
                     }
                     AdvanceRevision();
                 }
-                AddUnique(occupiedIds, record.renderObjectId);
+                occupiedIds.insert(record.renderObjectId);
                 frameRecords_.push_back(record);
                 ++it;
             }
@@ -254,6 +271,7 @@ namespace HIKARI {
 
     void PresentationModelService::AcknowledgeRenderFrame() noexcept {
         removedRenderObjectIds_.clear();
+        removedRenderObjectIdSet_.clear();
     }
 
     void PresentationModelService::Clear() noexcept {
@@ -261,6 +279,7 @@ namespace HIKARI {
             for (const auto& entry : records_) {
                 AddUnique(
                     removedRenderObjectIds_,
+                    removedRenderObjectIdSet_,
                     entry.second.renderObjectId);
             }
             records_.clear();
@@ -276,7 +295,7 @@ namespace HIKARI {
     }
 
     uint64_t PresentationModelService::AllocateRenderObjectId(
-        const std::vector<uint64_t>& occupiedIds) noexcept {
+        const std::unordered_set<uint64_t>& occupiedIds) noexcept {
         for (uint64_t attempts = 0u; attempts <
                 (std::numeric_limits<uint32_t>::max)(); ++attempts) {
             uint64_t candidate = nextRenderObjectId_;
@@ -288,10 +307,7 @@ namespace HIKARI {
             if (candidate == 0u ||
                 (candidate & kPresentationIdMask) !=
                     kPresentationIdPrefix ||
-                std::find(
-                    occupiedIds.begin(),
-                    occupiedIds.end(),
-                    candidate) != occupiedIds.end()) {
+                occupiedIds.contains(candidate)) {
                 continue;
             }
             bool usedByRecord = false;

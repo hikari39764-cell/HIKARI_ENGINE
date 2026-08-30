@@ -62,6 +62,7 @@ namespace HIKARI {
         uint32_t nextObject = kInvalidWorldComponentIndex;
         uint64_t attachSequence = 0u;
         uint64_t objectAttachSequence = 0u;
+        bool affectsRenderState = false;
     };
 
     struct WorldComponentBucket {

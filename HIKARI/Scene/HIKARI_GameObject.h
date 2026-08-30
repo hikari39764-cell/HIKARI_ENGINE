@@ -131,7 +131,8 @@ namespace HIKARI {
         World* ownerWorld_ = nullptr;
         uint64_t renderStateRevision_ = 1;
         size_t renderDirtyIndex_ = kInvalidRenderDirtyIndex;
-        bool renderStateDirty_ = true;
+        uint32_t renderStateContributorCount_ = 0u;
+        bool renderStateDirty_ = false;
         bool destroying_ = false;
         bool active_ = true;
     };

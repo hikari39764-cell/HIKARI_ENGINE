@@ -21,6 +21,13 @@ namespace HIKARI {
             std::atomic<uint64_t> nextIdentity{ 1u };
         };
 
+        struct RuntimeWorldThreadCache {
+            uint64_t identity = 0u;
+            World* world = nullptr;
+        };
+
+        thread_local RuntimeWorldThreadCache gRuntimeWorldThreadCache{};
+
         RuntimeWorldRegistry& GetRuntimeWorldRegistry() {
             static RuntimeWorldRegistry* registry =
                 new RuntimeWorldRegistry{};
@@ -58,6 +65,9 @@ namespace HIKARI {
             if (identity == 0u) {
                 return;
             }
+            if (gRuntimeWorldThreadCache.identity == identity) {
+                gRuntimeWorldThreadCache = {};
+            }
             try {
                 RuntimeWorldRegistry& registry =
                     GetRuntimeWorldRegistry();
@@ -94,6 +104,13 @@ namespace HIKARI {
         if (identity == 0u) {
             return nullptr;
         }
+        if (gRuntimeWorldThreadCache.identity == identity &&
+            gRuntimeWorldThreadCache.world != nullptr) {
+            if (outAccess != nullptr) {
+                *outAccess = RuntimeWorldAccessResult::Success;
+            }
+            return gRuntimeWorldThreadCache.world;
+        }
         try {
             RuntimeWorldRegistry& registry = GetRuntimeWorldRegistry();
             std::scoped_lock lock(registry.mutex);
@@ -112,6 +129,10 @@ namespace HIKARI {
             if (outAccess != nullptr) {
                 *outAccess = RuntimeWorldAccessResult::Success;
             }
+            gRuntimeWorldThreadCache = {
+                identity,
+                found->second.world
+            };
             return found->second.world;
         }
         catch (...) {

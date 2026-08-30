@@ -28,8 +28,10 @@ namespace HIKARI {
                     static_cast<double>(rotation.w)));
         }
 
-        bool IsValidProjectTransform(
-            const GameProjectTransform& transform) noexcept {
+        bool TryToRuntimeTransform(
+            const GameProjectTransform& transform,
+            Transform3D& outTransform) noexcept {
+            outTransform = {};
             const double quaternionLength =
                 QuaternionLength(transform.rotation);
             const bool fieldsValid = IsFinite(transform.position) &&
@@ -46,8 +48,26 @@ namespace HIKARI {
             if (!fieldsValid) {
                 return false;
             }
+            const double inverseLength = 1.0 / quaternionLength;
+            Transform3D candidate{};
+            candidate.position = {
+                transform.position.x,
+                transform.position.y,
+                transform.position.z
+            };
+            candidate.rotation = {
+                static_cast<float>(transform.rotation.x * inverseLength),
+                static_cast<float>(transform.rotation.y * inverseLength),
+                static_cast<float>(transform.rotation.z * inverseLength),
+                static_cast<float>(transform.rotation.w * inverseLength)
+            };
+            candidate.scale = {
+                transform.scale.x,
+                transform.scale.y,
+                transform.scale.z
+            };
             const MATH::Mat4 localMatrix =
-                ToRuntimeTransform(transform).GetLocalMatrix();
+                candidate.GetLocalMatrix();
             for (int column = 0; column < 4; ++column) {
                 for (int row = 0; row < 4; ++row) {
                     if (!std::isfinite(localMatrix.m[column][row])) {
@@ -55,38 +75,20 @@ namespace HIKARI {
                     }
                 }
             }
+            outTransform = candidate;
             return true;
+        }
+
+        bool IsValidProjectTransform(
+            const GameProjectTransform& transform) noexcept {
+            Transform3D converted{};
+            return TryToRuntimeTransform(transform, converted);
         }
 
         Transform3D ToRuntimeTransform(
             const GameProjectTransform& transform) noexcept {
-            const double inverseLength =
-                1.0 / QuaternionLength(transform.rotation);
             Transform3D result{};
-            result.position = {
-                transform.position.x,
-                transform.position.y,
-                transform.position.z
-            };
-            result.rotation = {
-                static_cast<float>(
-                    static_cast<double>(transform.rotation.x) *
-                    inverseLength),
-                static_cast<float>(
-                    static_cast<double>(transform.rotation.y) *
-                    inverseLength),
-                static_cast<float>(
-                    static_cast<double>(transform.rotation.z) *
-                    inverseLength),
-                static_cast<float>(
-                    static_cast<double>(transform.rotation.w) *
-                    inverseLength)
-            };
-            result.scale = {
-                transform.scale.x,
-                transform.scale.y,
-                transform.scale.z
-            };
+            (void)TryToRuntimeTransform(transform, result);
             return result;
         }
 
@@ -177,14 +179,16 @@ namespace HIKARI {
                 : PROJECT::INTERNAL::MakeWorldResult(
                     GameProjectWorldResultCode::InvalidObject);
         }
-        if (!PROJECT::INTERNAL::IsValidProjectTransform(transform)) {
+        Transform3D runtimeTransform{};
+        if (!PROJECT::INTERNAL::TryToRuntimeTransform(
+                transform,
+                runtimeTransform)) {
             return PROJECT::INTERNAL::MakeWorldResult(
                 GameProjectWorldResultCode::InvalidTransform,
                 handle_);
         }
         try {
-            (void)object->SetLocalTransform(
-                PROJECT::INTERNAL::ToRuntimeTransform(transform));
+            (void)object->SetLocalTransform(runtimeTransform);
             return PROJECT::INTERNAL::MakeWorldResult(
                 GameProjectWorldResultCode::Success,
                 handle_);
@@ -207,7 +211,10 @@ namespace HIKARI {
                 : PROJECT::INTERNAL::MakeWorldResult(
                     GameProjectWorldResultCode::InvalidObject);
         }
-        if (!PROJECT::INTERNAL::IsValidProjectTransform(transform)) {
+        Transform3D runtimeTransform{};
+        if (!PROJECT::INTERNAL::TryToRuntimeTransform(
+                transform,
+                runtimeTransform)) {
             return PROJECT::INTERNAL::MakeWorldResult(
                 GameProjectWorldResultCode::InvalidTransform,
                 handle_);
@@ -224,7 +231,7 @@ namespace HIKARI {
                 *world,
                 world->SetWorldTransform(
                     handle,
-                    PROJECT::INTERNAL::ToRuntimeTransform(transform)),
+                    runtimeTransform),
                 handle);
         }
         catch (...) {

@@ -6,6 +6,7 @@
 #include <typeindex>
 
 #include "Core/HIKARI_Logger.h"
+#include "Scene/HIKARI_ComponentRegistry.h"
 #include "Scene/Components/HIKARI_IComponent.h"
 #include "Scene/Internal/HIKARI_WorldCapacity.h"
 
@@ -93,11 +94,19 @@ namespace HIKARI {
 
         WorldComponentBucket& bucket = found->second;
         auto& components = bucket.components;
+        const ComponentTypeInfo* typeInfo = componentRegistry_ != nullptr
+            ? componentRegistry_->Find(bucket.typeId)
+            : nullptr;
+        const bool affectsRenderState =
+            typeInfo != nullptr && typeInfo->affectsRenderState;
         if (components.size() >= components.capacity() ||
             components.size() >=
                 static_cast<size_t>(
                     (std::numeric_limits<uint32_t>::max)()) ||
-            bucket.nextAttachSequence == 0u) {
+            bucket.nextAttachSequence == 0u ||
+            (affectsRenderState &&
+             object.renderStateContributorCount_ ==
+                (std::numeric_limits<uint32_t>::max)())) {
             return false;
         }
 
@@ -130,7 +139,8 @@ namespace HIKARI {
                     : kInvalidWorldComponentIndex,
                 kInvalidWorldComponentIndex,
                 bucket.nextAttachSequence,
-                firstComponentInserted ? bucket.nextAttachSequence : 0u
+                firstComponentInserted ? bucket.nextAttachSequence : 0u,
+                affectsRenderState
             });
         }
         catch (...) {
@@ -164,6 +174,9 @@ namespace HIKARI {
             bucket.objectTail = index;
         }
         component.worldComponentIndex_ = index;
+        if (affectsRenderState) {
+            ++object.renderStateContributorCount_;
+        }
         return true;
     }
 

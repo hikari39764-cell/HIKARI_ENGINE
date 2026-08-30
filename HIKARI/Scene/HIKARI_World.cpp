@@ -1,6 +1,7 @@
 #include "Scene/HIKARI_World.h"
 
 #include <algorithm>
+#include <exception>
 #include <stdexcept>
 
 #include "Core/HIKARI_Logger.h"
@@ -15,23 +16,15 @@ namespace HIKARI {
         if (!CanMutateStructure()) {
             return nullptr;
         }
-        if (objects_.size() >= objects_.max_size() ||
-            objects_.size() >= renderDirtyObjects_.max_size()) {
+        if (objects_.size() >= objects_.max_size()) {
             return nullptr;
         }
         const size_t nextObjectCount = objects_.size() + 1u;
-        // dirty list は live object 数を超えない。先に容量を確保することで
-        // transform/hierarchy 更新後の dirty 登録を非割り当て経路にする。
         const size_t objectCapacity = INTERNAL::GrowWorldCapacity(
-            (std::max)(
-                objects_.capacity(),
-                renderDirtyObjects_.capacity()),
+            objects_.capacity(),
             nextObjectCount,
-            (std::min)(
-                objects_.max_size(),
-                renderDirtyObjects_.max_size()));
+            objects_.max_size());
         objects_.reserve(objectCapacity);
-        renderDirtyObjects_.reserve(objectCapacity);
         auto object = std::make_unique<GameObject>(name);
         GameObject* ptr = object.get();
         const size_t storageIndex = objects_.size();
@@ -76,6 +69,11 @@ namespace HIKARI {
     }
 
     World::~World() {
+        if (!IsOwnerThread()) {
+            HIKARI_LOG_ERROR(
+                "[World] destruction rejected outside the owner thread.");
+            std::terminate();
+        }
         Clear();
         UnregisterRuntimeIdentity();
     }
@@ -144,21 +142,23 @@ namespace HIKARI {
             }
         }
 
-        if (removedRenderObjectIds_.size() ==
-            removedRenderObjectIds_.max_size()) {
-            throw std::length_error(
-                "World removed render object capacity overflow.");
-        }
-        const size_t removedCapacity = INTERNAL::GrowWorldCapacity(
-            removedRenderObjectIds_.capacity(),
-            removedRenderObjectIds_.size() + 1u,
-            removedRenderObjectIds_.max_size());
-        removedRenderObjectIds_.reserve(removedCapacity);
-        removedRenderObjectIdSet_.reserve(
-            removedRenderObjectIdSet_.size() + 1u);
         const size_t removedAdmissionCheckpoint =
             removedRenderObjectIds_.size();
-        MarkRenderObjectRemoved(object->GetRenderStableId());
+        if (object->renderStateContributorCount_ != 0u) {
+            if (removedRenderObjectIds_.size() ==
+                removedRenderObjectIds_.max_size()) {
+                throw std::length_error(
+                    "World removed render object capacity overflow.");
+            }
+            const size_t removedCapacity = INTERNAL::GrowWorldCapacity(
+                removedRenderObjectIds_.capacity(),
+                removedRenderObjectIds_.size() + 1u,
+                removedRenderObjectIds_.max_size());
+            removedRenderObjectIds_.reserve(removedCapacity);
+            removedRenderObjectIdSet_.reserve(
+                removedRenderObjectIdSet_.size() + 1u);
+            MarkRenderObjectRemoved(object->GetRenderStableId());
+        }
         const StructureReadScope structureRead =
             AcquireStructureReadScope();
         try {
@@ -299,8 +299,14 @@ namespace HIKARI {
                 "[World] Clear rejected during structure traversal.");
             return;
         }
-        componentRegistry_ = nullptr;
-        if (objects_.size() >
+        size_t renderRemovalCount = 0u;
+        for (const auto& object : GetObjects()) {
+            if (object != nullptr &&
+                object->renderStateContributorCount_ != 0u) {
+                ++renderRemovalCount;
+            }
+        }
+        if (renderRemovalCount >
             removedRenderObjectIds_.max_size() -
                 removedRenderObjectIds_.size()) {
             throw std::length_error(
@@ -312,13 +318,14 @@ namespace HIKARI {
             const size_t removedCapacity =
                 INTERNAL::GrowWorldCapacity(
                     removedRenderObjectIds_.capacity(),
-                    removedRenderObjectIds_.size() + objects_.size(),
+                    removedRenderObjectIds_.size() + renderRemovalCount,
                     removedRenderObjectIds_.max_size());
             removedRenderObjectIds_.reserve(removedCapacity);
             removedRenderObjectIdSet_.reserve(
-                removedRenderObjectIdSet_.size() + objects_.size());
+                removedRenderObjectIdSet_.size() + renderRemovalCount);
             for (const auto& object : GetObjects()) {
-                if (object) {
+                if (object != nullptr &&
+                    object->renderStateContributorCount_ != 0u) {
                     MarkRenderObjectRemoved(
                         object->GetRenderStableId());
                 }
@@ -383,6 +390,7 @@ namespace HIKARI {
             objectsByDocumentId_.clear();
             componentBuckets_.clear();
             nativeComponentTypeIds_.clear();
+            componentRegistry_ = nullptr;
             renderDirtyObjects_.clear();
             frameEvents_.Clear();
             fixedEvents_.Clear();

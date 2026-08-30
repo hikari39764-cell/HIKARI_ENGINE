@@ -75,6 +75,7 @@ namespace HIKARI {
                 model.factory = []() -> std::unique_ptr<IComponent> {
                     return std::make_unique<ModelComponent>();
                 };
+                model.affectsRenderState = true;
                 model.optionalComponents = {
                     "MaterialFxComponent",
                     "ProceduralMeshComponent"

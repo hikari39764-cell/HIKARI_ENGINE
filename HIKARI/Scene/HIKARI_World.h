@@ -121,7 +121,8 @@ namespace HIKARI {
             std::span<const WorldSpawnRequest> requests,
             std::span<WorldCommandSubmission> outSubmissions);
         // Borrowed composition-root registry. Bind only while the World is
-        // empty; Clear always releases the borrow before any fallible work.
+        // empty; Clear retains it through component detach and releases it
+        // after object and component-index teardown completes.
         bool BindComponentRegistry(
             const ComponentRegistry* registry) noexcept;
         WorldCommandSubmission SubmitDestroy(

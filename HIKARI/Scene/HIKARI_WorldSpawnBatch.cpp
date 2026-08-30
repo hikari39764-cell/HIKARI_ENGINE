@@ -117,10 +117,7 @@ namespace HIKARI {
             freeObjectSlots_.reserve(slotCapacity);
 
             if (requests.size() >
-                    objects_.max_size() - objects_.size() ||
-                requests.size() >
-                    renderDirtyObjects_.max_size() -
-                        renderDirtyObjects_.size()) {
+                    objects_.max_size() - objects_.size()) {
                 return rejectAll(
                     WorldMutationResult::InternalError);
             }
@@ -128,15 +125,10 @@ namespace HIKARI {
                 objects_.size() + requests.size();
             const size_t objectCapacity =
                 INTERNAL::GrowWorldCapacity(
-                    (std::max)(
-                        objects_.capacity(),
-                        renderDirtyObjects_.capacity()),
+                    objects_.capacity(),
                     nextObjectCount,
-                    (std::min)(
-                        objects_.max_size(),
-                        renderDirtyObjects_.max_size()));
+                    objects_.max_size());
             objects_.reserve(objectCapacity);
-            renderDirtyObjects_.reserve(objectCapacity);
 
             for (; reservedCount < requests.size();
                 ++reservedCount) {
@@ -303,21 +295,15 @@ namespace HIKARI {
             }
         }
 
-        if (objects_.size() >= objects_.max_size() ||
-            objects_.size() >= renderDirtyObjects_.max_size()) {
+        if (objects_.size() >= objects_.max_size()) {
             return rejectReserved(WorldMutationResult::InternalError);
         }
         const size_t nextObjectCount = objects_.size() + 1u;
         const size_t objectCapacity = INTERNAL::GrowWorldCapacity(
-            (std::max)(
-                objects_.capacity(),
-                renderDirtyObjects_.capacity()),
+            objects_.capacity(),
             nextObjectCount,
-            (std::min)(
-                objects_.max_size(),
-                renderDirtyObjects_.max_size()));
+            objects_.max_size());
         objects_.reserve(objectCapacity);
-        renderDirtyObjects_.reserve(objectCapacity);
 
         auto object = std::make_unique<GameObject>(command.name.data());
         GameObject* ptr = object.get();

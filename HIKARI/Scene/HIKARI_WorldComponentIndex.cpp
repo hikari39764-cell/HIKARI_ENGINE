@@ -56,6 +56,9 @@ namespace HIKARI {
 
         WorldComponentBucket& bucket = found->second;
         auto& components = bucket.components;
+        const ComponentTypeId componentTypeId{
+            component.worldComponentTypeId_ };
+        GameObject* owner = component.GetOwner();
         const uint32_t index = component.worldComponentIndex_;
         if (index >= components.size() ||
             components[index].component != &component) {
@@ -65,6 +68,13 @@ namespace HIKARI {
         }
 
         const IndexedWorldComponent removed = components[index];
+        const bool affectsRenderState = removed.affectsRenderState;
+        if (affectsRenderState &&
+            (owner == nullptr || owner->renderStateContributorCount_ == 0u)) {
+            HIKARI_LOG_ERROR(
+                "[World] render-state contributor invariant failed.");
+            std::terminate();
+        }
         const uint64_t objectKey = removed.object.ToValue();
         auto firstForObject = bucket.firstByObject.find(objectKey);
         if (objectKey == 0u ||
@@ -75,7 +85,6 @@ namespace HIKARI {
         }
         if (firstForObject->second == index) {
             uint32_t replacementIndex = kInvalidWorldComponentIndex;
-            GameObject* owner = component.GetOwner();
             if (owner != nullptr) {
                 for (const auto& candidate : owner->components_) {
                     if (candidate.get() != &component &&
@@ -234,7 +243,14 @@ namespace HIKARI {
         }
         RemoveNativeComponentTypeBinding(
             component,
-            ComponentTypeId{ component.worldComponentTypeId_ });
+            componentTypeId);
+        if (affectsRenderState) {
+            --owner->renderStateContributorCount_;
+            if (owner->renderStateContributorCount_ == 0u) {
+                RemoveRenderObjectDirty(owner);
+                owner->renderStateDirty_ = false;
+            }
+        }
         CancelComponentAttachment(component);
     }
 

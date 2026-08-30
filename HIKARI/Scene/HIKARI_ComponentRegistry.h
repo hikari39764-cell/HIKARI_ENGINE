@@ -54,6 +54,7 @@ namespace HIKARI {
         std::vector<std::string> optionalComponents{};
         std::vector<std::string> incompatibleComponents{};
         bool allowMultiple = false;
+        bool affectsRenderState = false;
         ComponentRegistrationSource registrationSource =
             ComponentRegistrationSource::Engine;
         ComponentRuntimeApplyPolicy runtimeApplyPolicy =

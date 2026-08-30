@@ -1403,16 +1403,19 @@ namespace HIKARI {
         const RuntimeObjectActivityService* runtimeActivityService =
             world.Services().Find<RuntimeObjectActivityService>();
 
-        std::vector<uint64_t> occupiedObjectIds{};
-        occupiedObjectIds.reserve(world.GetObjects().size());
-        for (const auto& object : world.GetObjects()) {
-            if (object != nullptr) {
-                occupiedObjectIds.push_back(object->GetRenderStableId());
-            }
-        }
         PresentationModelService* presentationModels = world.Services().Find<
             PresentationModelService>();
         if (presentationModels != nullptr) {
+            std::vector<uint64_t> occupiedObjectIds{};
+            if (presentationModels->HasRecords()) {
+                occupiedObjectIds.reserve(world.GetObjects().size());
+                for (const auto& object : world.GetObjects()) {
+                    if (object != nullptr) {
+                        occupiedObjectIds.push_back(
+                            object->GetRenderStableId());
+                    }
+                }
+            }
             presentationModels->PrepareForRender(
                 frameIndex,
                 occupiedObjectIds);
@@ -1533,16 +1536,19 @@ namespace HIKARI {
         const RuntimeObjectActivityService* runtimeActivityService =
             world.Services().Find<RuntimeObjectActivityService>();
 
-        std::vector<uint64_t> occupiedObjectIds{};
-        occupiedObjectIds.reserve(world.GetObjects().size());
-        for (const auto& object : world.GetObjects()) {
-            if (object != nullptr) {
-                occupiedObjectIds.push_back(object->GetRenderStableId());
-            }
-        }
         PresentationModelService* presentationModels = world.Services().Find<
             PresentationModelService>();
         if (presentationModels != nullptr) {
+            std::vector<uint64_t> occupiedObjectIds{};
+            if (presentationModels->HasRecords()) {
+                occupiedObjectIds.reserve(world.GetObjects().size());
+                for (const auto& object : world.GetObjects()) {
+                    if (object != nullptr) {
+                        occupiedObjectIds.push_back(
+                            object->GetRenderStableId());
+                    }
+                }
+            }
             presentationModels->PrepareForRender(
                 frameIndex,
                 occupiedObjectIds);

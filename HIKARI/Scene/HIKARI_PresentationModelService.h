@@ -4,6 +4,7 @@
 #include <span>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "Render3D/HIKARI_Transform3D.h"
@@ -65,6 +66,7 @@ namespace HIKARI {
         void PrepareForRender(
             uint64_t frameIndex,
             std::span<const uint64_t> occupiedObjectIds) noexcept;
+        bool HasRecords() const noexcept { return !records_.empty(); }
 
         void AcknowledgeRenderFrame() noexcept;
 
@@ -101,12 +103,13 @@ namespace HIKARI {
 
         void AdvanceRevision() noexcept;
         uint64_t AllocateRenderObjectId(
-            const std::vector<uint64_t>& occupiedIds) noexcept;
+            const std::unordered_set<uint64_t>& occupiedIds) noexcept;
 
         std::unordered_map<Key, PresentationModelRecord, KeyHash> records_{};
         std::unordered_map<Key, uint64_t, KeyHash> touchedFrames_{};
         std::vector<PresentationModelRecord> frameRecords_{};
         std::vector<uint64_t> removedRenderObjectIds_{};
+        std::unordered_set<uint64_t> removedRenderObjectIdSet_{};
         uint64_t nextRenderObjectId_ = 0xA000000000000001ull;
         uint64_t revision_ = 1u;
     };
