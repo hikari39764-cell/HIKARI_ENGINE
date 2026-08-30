@@ -398,7 +398,10 @@ namespace {
             resources_[resource.index].binding;
         if (sceneSurfaces_ != nullptr &&
             !sceneSurfaces_->IsLeaseCurrent(
-                resources_[resource.index].info.semantic,
+                RenderGraphSurfaceKey{
+                    resources_[resource.index].info.semantic,
+                    resources_[resource.index].info.phase
+                },
                 binding.descriptor.publication.lease)) {
             return false;
         }

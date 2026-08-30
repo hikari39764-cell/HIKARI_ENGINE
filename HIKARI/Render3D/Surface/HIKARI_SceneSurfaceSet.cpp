@@ -1,21 +1,28 @@
 #include "Render3D/Surface/HIKARI_SceneSurfaceSet.h"
 namespace HIKARI::RENDER3D::SURFACE {
     namespace {
-        constexpr size_t SemanticIndex(
-            GRAPH::RenderGraphSemantic semantic) noexcept {
-            return static_cast<size_t>(semantic);
+        constexpr size_t SurfaceIndex(
+            GRAPH::RenderGraphSurfaceKey key) noexcept {
+            return static_cast<size_t>(key.semantic) *
+                static_cast<size_t>(GRAPH::RenderGraphSemanticPhase::Count) +
+                static_cast<size_t>(key.phase);
         }
 
-        bool IsKnownSemantic(
-            GRAPH::RenderGraphSemantic semantic) noexcept {
-            const size_t index = SemanticIndex(semantic);
-            return semantic != GRAPH::RenderGraphSemantic::None &&
-                index < DETAIL::kSceneSurfaceDescriptions.size();
+        bool IsKnownKey(
+            GRAPH::RenderGraphSurfaceKey key) noexcept {
+            return IsSceneSurfaceKeyAllowed(key);
+        }
+
+        constexpr GRAPH::RenderGraphSurfaceKey Key(
+            GRAPH::RenderGraphSemantic semantic,
+            GRAPH::RenderGraphSemanticPhase phase) noexcept {
+            return { semantic, phase };
         }
     }
 
     bool SceneSurfaceLease::IsValid() const noexcept {
-        return frame.IsValid() &&
+        return IsSceneSurfaceKeyAllowed(key) &&
+            frame.IsValid() &&
             deviceGeneration != 0u &&
             publicationGeneration != 0u &&
             storageGeneration != 0u;
@@ -32,6 +39,7 @@ namespace HIKARI::RENDER3D::SURFACE {
     bool SceneSurfaceLease::Matches(
         SceneSurfaceLease expected) const noexcept {
         return IsValid() && expected.IsValid() &&
+            key.Matches(expected.key) &&
             frame.Matches(expected.frame) &&
             deviceGeneration == expected.deviceGeneration &&
             publicationGeneration == expected.publicationGeneration &&
@@ -39,7 +47,7 @@ namespace HIKARI::RENDER3D::SURFACE {
     }
 
     bool SceneSurfacePublication::IsAvailable() const noexcept {
-        return semantic != GRAPH::RenderGraphSemantic::None &&
+        return IsSceneSurfaceKeyAllowed(key) &&
             producer != SceneSurfaceProducer::None &&
             availability != SceneSurfaceAvailability::Unavailable &&
             lease.IsValid();
@@ -94,16 +102,16 @@ namespace HIKARI::RENDER3D::SURFACE {
     }
 
     bool SceneSurfaceSet::PublishTexture(
-        GRAPH::RenderGraphSemantic semantic,
+        GRAPH::RenderGraphSurfaceKey key,
         const RenderTextureView& texture,
         SceneSurfaceProducer producer,
         SceneSurfaceAvailability availability) noexcept {
         if (!ValidateTexturePublication(
-                semantic,
+                key,
                 texture,
                 producer,
                 availability) ||
-            TryGetPublication(semantic) != nullptr) {
+            TryGetPublication(key) != nullptr) {
             return false;
         }
         if (renderWidth_ == 0u || renderHeight_ == 0u) {
@@ -111,13 +119,14 @@ namespace HIKARI::RENDER3D::SURFACE {
             renderHeight_ = texture.height;
         }
 
-        const size_t index = SemanticIndex(semantic);
+        const size_t index = SurfaceIndex(key);
         textures_[index] = texture;
         depthPyramids_[index] = {};
         SceneSurfacePublication publication{};
-        publication.semantic = semantic;
+        publication.key = key;
         publication.producer = producer;
         publication.availability = availability;
+        publication.lease.key = key;
         publication.lease.frame = frame_;
         publication.lease.deviceGeneration = deviceGeneration_;
         publication.lease.publicationGeneration =
@@ -129,88 +138,97 @@ namespace HIKARI::RENDER3D::SURFACE {
     }
 
     bool SceneSurfaceSet::PublishTextureAlias(
-        GRAPH::RenderGraphSemantic targetSemantic,
-        GRAPH::RenderGraphSemantic sourceSemantic,
+        GRAPH::RenderGraphSurfaceKey target,
+        GRAPH::RenderGraphSurfaceKey source,
         SceneSurfaceProducer producer) noexcept {
-        if (!IsKnownSemantic(targetSemantic) ||
-            producer == SceneSurfaceProducer::None ||
-            (GetSceneSurfaceSemanticDesc(targetSemantic).
-                allowedProducerMask &
+        if (!IsKnownKey(target) || !IsKnownKey(source)) {
+            return false;
+        }
+        const SceneSurfaceSemanticDesc& targetDesc =
+            GetSceneSurfaceSemanticDesc(target.semantic);
+        const SceneSurfaceSemanticDesc& sourceDesc =
+            GetSceneSurfaceSemanticDesc(source.semantic);
+        if (producer == SceneSurfaceProducer::None ||
+            targetDesc.lifetime == SceneSurfaceLifetime::History ||
+            sourceDesc.lifetime == SceneSurfaceLifetime::History ||
+            (targetDesc.allowedProducerMask &
              SceneSurfaceProducerBit(producer)) == 0u ||
-            TryGetPublication(targetSemantic) != nullptr) {
+            TryGetPublication(target) != nullptr) {
             return false;
         }
         const SceneSurfacePublication* sourcePublication =
-            TryGetPublication(sourceSemantic);
+            TryGetPublication(source);
         const RenderTextureView* sourceTexture =
-            TryGetTexture(sourceSemantic);
+            TryGetTexture(source);
         if (sourcePublication == nullptr ||
             sourceTexture == nullptr ||
             sourcePublication->availability ==
                 SceneSurfaceAvailability::Alias ||
-            GetSceneSurfaceSemanticDesc(targetSemantic).resourceKind !=
+            targetDesc.resourceKind !=
                 SceneSurfaceResourceKind::Texture2D ||
-            GetSceneSurfaceSemanticDesc(targetSemantic).format !=
+            targetDesc.format !=
                 ClassifySceneSurfaceFormat(sourceTexture->format)) {
             return false;
         }
 
-        const size_t index = SemanticIndex(targetSemantic);
+        const size_t index = SurfaceIndex(target);
         textures_[index] = *sourceTexture;
         SceneSurfacePublication publication{};
-        publication.semantic = targetSemantic;
+        publication.key = target;
         publication.producer = producer;
         publication.availability = SceneSurfaceAvailability::Alias;
+        publication.lease.key = target;
         publication.lease.frame = frame_;
         publication.lease.deviceGeneration = deviceGeneration_;
         publication.lease.publicationGeneration =
             AllocatePublicationGeneration();
         publication.lease.storageGeneration =
             sourcePublication->lease.storageGeneration;
-        publication.aliasSourceSemantic = sourceSemantic;
+        publication.aliasSourceKey = source;
         publication.aliasSourceLease = sourcePublication->lease;
         publications_[index] = publication;
         return publication.IsAvailable();
     }
 
     bool SceneSurfaceSet::PublishDepthPyramid(
-        GRAPH::RenderGraphSemantic semantic,
+        GRAPH::RenderGraphSurfaceKey key,
         const DEPTH::DepthPyramidView& pyramid,
         SceneSurfaceProducer producer,
         SceneSurfaceAvailability availability) noexcept {
-        if (!IsKnownSemantic(semantic) ||
-            GetSceneSurfaceSemanticDesc(semantic).resourceKind !=
+        if (!IsKnownKey(key) ||
+            GetSceneSurfaceSemanticDesc(key.semantic).resourceKind !=
                 SceneSurfaceResourceKind::DepthPyramid ||
             producer == SceneSurfaceProducer::None ||
-            (GetSceneSurfaceSemanticDesc(semantic).allowedProducerMask &
+            (GetSceneSurfaceSemanticDesc(key.semantic).allowedProducerMask &
              SceneSurfaceProducerBit(producer)) == 0u ||
             (availability != SceneSurfaceAvailability::Imported &&
              availability != SceneSurfaceAvailability::Produced) ||
             !pyramid.publication.Matches(frame_) ||
             !IsDepthPyramidSampleable(pyramid) ||
-            (semantic ==
+            (key.semantic ==
                     GRAPH::RenderGraphSemantic::CurrentDepthPyramid &&
                 (pyramid.viewKind !=
                         DEPTH::DepthPyramidViewKind::CurrentFrame ||
                  pyramid.sourceKind !=
                         DEPTH::DepthPyramidSourceKind::SceneDepth)) ||
-            (semantic ==
+            (key.semantic ==
                     GRAPH::RenderGraphSemantic::VisibilityDepthPyramid &&
                 pyramid.sourceKind !=
                     DEPTH::DepthPyramidSourceKind::VisibilityPrepass &&
                 pyramid.sourceKind !=
                     DEPTH::DepthPyramidSourceKind::SceneDepth) ||
-            TryGetPublication(semantic) != nullptr) {
+            TryGetPublication(key) != nullptr) {
             return false;
         }
 
-        const size_t index = SemanticIndex(semantic);
+        const size_t index = SurfaceIndex(key);
         depthPyramids_[index] = pyramid;
         textures_[index] = {};
         SceneSurfacePublication publication{};
-        publication.semantic = semantic;
+        publication.key = key;
         publication.producer = producer;
         publication.availability = availability;
+        publication.lease.key = key;
         publication.lease.frame = frame_;
         publication.lease.deviceGeneration = deviceGeneration_;
         publication.lease.publicationGeneration =
@@ -222,11 +240,11 @@ namespace HIKARI::RENDER3D::SURFACE {
     }
 
     bool SceneSurfaceSet::Invalidate(
-        GRAPH::RenderGraphSemantic semantic) noexcept {
-        if (!IsKnownSemantic(semantic)) {
+        GRAPH::RenderGraphSurfaceKey key) noexcept {
+        if (!IsKnownKey(key)) {
             return false;
         }
-        const size_t index = SemanticIndex(semantic);
+        const size_t index = SurfaceIndex(key);
         const SceneSurfaceLease invalidatedLease =
             publications_[index].lease;
         textures_[index] = {};
@@ -240,7 +258,7 @@ namespace HIKARI::RENDER3D::SURFACE {
                     publications_[aliasIndex];
                 if (candidate.availability ==
                         SceneSurfaceAvailability::Alias &&
-                    candidate.aliasSourceSemantic == semantic &&
+                    candidate.aliasSourceKey == key &&
                     candidate.aliasSourceLease.Matches(invalidatedLease)) {
                     textures_[aliasIndex] = {};
                     depthPyramids_[aliasIndex] = {};
@@ -252,84 +270,68 @@ namespace HIKARI::RENDER3D::SURFACE {
     }
 
     const RenderTextureView* SceneSurfaceSet::TryGetTexture(
-        GRAPH::RenderGraphSemantic semantic) const noexcept {
-        if (!IsKnownSemantic(semantic) ||
-            GetSceneSurfaceSemanticDesc(semantic).resourceKind !=
+        GRAPH::RenderGraphSurfaceKey key) const noexcept {
+        if (!IsKnownKey(key) ||
+            GetSceneSurfaceSemanticDesc(key.semantic).resourceKind !=
                 SceneSurfaceResourceKind::Texture2D) {
             return nullptr;
         }
-        const size_t index = SemanticIndex(semantic);
+        const size_t index = SurfaceIndex(key);
         return IsPublicationCurrent(publications_[index]) &&
             textures_[index].IsSampleable()
                 ? &textures_[index]
                 : nullptr;
     }
 
-    const RenderTextureView* SceneSurfaceSet::TryGetTexture(
-        GRAPH::RenderGraphSemantic semantic,
-        RenderFrameToken expectedFrame) const noexcept {
-        return MatchesFrame(expectedFrame)
-            ? TryGetTexture(semantic)
-            : nullptr;
-    }
-
     const DEPTH::DepthPyramidView* SceneSurfaceSet::TryGetDepthPyramid(
-        GRAPH::RenderGraphSemantic semantic) const noexcept {
-        if (!IsKnownSemantic(semantic) ||
-            GetSceneSurfaceSemanticDesc(semantic).resourceKind !=
+        GRAPH::RenderGraphSurfaceKey key) const noexcept {
+        if (!IsKnownKey(key) ||
+            GetSceneSurfaceSemanticDesc(key.semantic).resourceKind !=
                 SceneSurfaceResourceKind::DepthPyramid) {
             return nullptr;
         }
-        const size_t index = SemanticIndex(semantic);
+        const size_t index = SurfaceIndex(key);
         return IsPublicationCurrent(publications_[index]) &&
             IsDepthPyramidSampleable(depthPyramids_[index])
                 ? &depthPyramids_[index]
                 : nullptr;
     }
 
-    const DEPTH::DepthPyramidView* SceneSurfaceSet::TryGetDepthPyramid(
-        GRAPH::RenderGraphSemantic semantic,
-        RenderFrameToken expectedFrame) const noexcept {
-        return MatchesFrame(expectedFrame)
-            ? TryGetDepthPyramid(semantic)
-            : nullptr;
-    }
-
     const SceneSurfacePublication* SceneSurfaceSet::TryGetPublication(
-        GRAPH::RenderGraphSemantic semantic) const noexcept {
-        if (!IsKnownSemantic(semantic)) {
+        GRAPH::RenderGraphSurfaceKey key) const noexcept {
+        if (!IsKnownKey(key)) {
             return nullptr;
         }
         const SceneSurfacePublication& publication =
-            publications_[SemanticIndex(semantic)];
+            publications_[SurfaceIndex(key)];
         return IsPublicationCurrent(publication)
             ? &publication
             : nullptr;
     }
 
     bool SceneSurfaceSet::IsLeaseCurrent(
-        GRAPH::RenderGraphSemantic semantic,
+        GRAPH::RenderGraphSurfaceKey key,
         SceneSurfaceLease lease) const noexcept {
         const SceneSurfacePublication* publication =
-            TryGetPublication(semantic);
+            TryGetPublication(key);
         return publication != nullptr &&
             publication->lease.Matches(lease);
     }
 
     bool SceneSurfaceSet::TryDescribe(
-        GRAPH::RenderGraphSemantic semantic,
+        GRAPH::RenderGraphSurfaceKey key,
         SceneSurfaceDescriptor& outDescriptor) const noexcept {
         outDescriptor = {};
         const SceneSurfacePublication* publication =
-            TryGetPublication(semantic);
+            TryGetPublication(key);
         if (publication == nullptr) {
             return false;
         }
-        outDescriptor.semantic = GetSceneSurfaceSemanticDesc(semantic);
+        outDescriptor.semantic = GetSceneSurfaceSemanticDesc(key.semantic);
         outDescriptor.publication = *publication;
         if (outDescriptor.semantic.resourceKind ==
                 SceneSurfaceResourceKind::Texture2D) {
-            const RenderTextureView* texture = TryGetTexture(semantic);
+            const RenderTextureView* texture = TryGetTexture(key);
             if (texture == nullptr) {
                 return false;
             }
@@ -340,7 +342,7 @@ namespace HIKARI::RENDER3D::SURFACE {
             return outDescriptor.sampleable;
         }
         const DEPTH::DepthPyramidView* pyramid =
-            TryGetDepthPyramid(semantic);
+            TryGetDepthPyramid(key);
         if (pyramid == nullptr) {
             return false;
         }
@@ -352,48 +354,48 @@ namespace HIKARI::RENDER3D::SURFACE {
     }
 
     bool SceneSurfaceSet::IsValid(
-        GRAPH::RenderGraphSemantic semantic) const noexcept {
-        return TryGetTexture(semantic) != nullptr ||
-            TryGetDepthPyramid(semantic) != nullptr;
-    }
-
-    bool SceneSurfaceSet::IsValid(
-        GRAPH::RenderGraphSemantic semantic,
-        RenderFrameToken expectedFrame) const noexcept {
-        return MatchesFrame(expectedFrame) && IsValid(semantic);
+        GRAPH::RenderGraphSurfaceKey key) const noexcept {
+        return TryGetPublication(key) != nullptr;
     }
 
     bool SceneSurfaceSet::HasOpaqueSurface() const noexcept {
-        return TryGetTexture(GRAPH::RenderGraphSemantic::SceneDepth) !=
+        using Semantic = GRAPH::RenderGraphSemantic;
+        using Phase = GRAPH::RenderGraphSemanticPhase;
+        return TryGetTexture(Key(Semantic::SceneDepth, Phase::Imported)) !=
                 nullptr &&
-            TryGetTexture(GRAPH::RenderGraphSemantic::SceneColorOpaque) !=
+            TryGetTexture(Key(Semantic::SceneColorOpaque, Phase::Opaque)) !=
                 nullptr &&
-            TryGetTexture(GRAPH::RenderGraphSemantic::PackedSurface) !=
+            TryGetTexture(Key(Semantic::PackedSurface, Phase::PostOpaque)) !=
                 nullptr;
     }
 
     bool SceneSurfaceSet::HasStylizedFeatureMask() const noexcept {
-        return TryGetTexture(
-            GRAPH::RenderGraphSemantic::SurfaceFeatureMask) != nullptr;
+        return TryGetTexture(Key(
+            GRAPH::RenderGraphSemantic::SurfaceFeatureMask,
+            GRAPH::RenderGraphSemanticPhase::PostOpaque)) != nullptr;
     }
 
     bool SceneSurfaceSet::HasStylizedOutlineStyle() const noexcept {
-        const RenderTextureView* style = TryGetTexture(
-            GRAPH::RenderGraphSemantic::StylizedOutlineStyle);
-        const RenderTextureView* mask = TryGetTexture(
-            GRAPH::RenderGraphSemantic::SurfaceFeatureMask);
+        using Semantic = GRAPH::RenderGraphSemantic;
+        using Phase = GRAPH::RenderGraphSemanticPhase;
+        const RenderTextureView* style = TryGetTexture(Key(
+            Semantic::StylizedOutlineStyle, Phase::PostOpaque));
+        const RenderTextureView* mask = TryGetTexture(Key(
+            Semantic::SurfaceFeatureMask, Phase::PostOpaque));
         return style != nullptr && mask != nullptr &&
             style->width == mask->width &&
             style->height == mask->height;
     }
 
     bool SceneSurfaceSet::HasCurrentDepthHierarchy() const noexcept {
-        const RenderTextureView* sceneDepth = TryGetTexture(
-            GRAPH::RenderGraphSemantic::SceneDepth);
-        const RenderTextureView* packedSurface = TryGetTexture(
-            GRAPH::RenderGraphSemantic::PackedSurface);
-        const DEPTH::DepthPyramidView* pyramid = TryGetDepthPyramid(
-            GRAPH::RenderGraphSemantic::CurrentDepthPyramid);
+        using Semantic = GRAPH::RenderGraphSemantic;
+        using Phase = GRAPH::RenderGraphSemanticPhase;
+        const RenderTextureView* sceneDepth = TryGetTexture(Key(
+            Semantic::SceneDepth, Phase::Imported));
+        const RenderTextureView* packedSurface = TryGetTexture(Key(
+            Semantic::PackedSurface, Phase::PostOpaque));
+        const DEPTH::DepthPyramidView* pyramid = TryGetDepthPyramid(Key(
+            Semantic::CurrentDepthPyramid, Phase::PostOpaque));
         return sceneDepth != nullptr &&
             packedSurface != nullptr &&
             pyramid != nullptr &&
@@ -406,12 +408,12 @@ namespace HIKARI::RENDER3D::SURFACE {
     }
 
     bool SceneSurfaceSet::ValidateTexturePublication(
-        GRAPH::RenderGraphSemantic semantic,
+        GRAPH::RenderGraphSurfaceKey key,
         const RenderTextureView& texture,
         SceneSurfaceProducer producer,
         SceneSurfaceAvailability availability) const noexcept {
         if (!IsFrameValid() ||
-            !IsKnownSemantic(semantic) ||
+            !IsKnownKey(key) ||
             producer == SceneSurfaceProducer::None ||
             (availability != SceneSurfaceAvailability::Imported &&
              availability != SceneSurfaceAvailability::Produced) ||
@@ -419,7 +421,7 @@ namespace HIKARI::RENDER3D::SURFACE {
             return false;
         }
         const SceneSurfaceSemanticDesc& desc =
-            GetSceneSurfaceSemanticDesc(semantic);
+            GetSceneSurfaceSemanticDesc(key.semantic);
         return desc.resourceKind == SceneSurfaceResourceKind::Texture2D &&
             (desc.allowedProducerMask &
              SceneSurfaceProducerBit(producer)) != 0u &&
@@ -439,6 +441,7 @@ namespace HIKARI::RENDER3D::SURFACE {
     bool SceneSurfaceSet::IsPublicationCurrent(
         const SceneSurfacePublication& publication) const noexcept {
         if (!publication.IsAvailable() ||
+            !publication.key.Matches(publication.lease.key) ||
             !publication.lease.MatchesFrameDevice(
                 frame_,
                 deviceGeneration_)) {
@@ -448,12 +451,11 @@ namespace HIKARI::RENDER3D::SURFACE {
                 SceneSurfaceAvailability::Alias) {
             return true;
         }
-        if (!IsKnownSemantic(publication.aliasSourceSemantic)) {
+        if (!IsKnownKey(publication.aliasSourceKey)) {
             return false;
         }
         const SceneSurfacePublication& source =
-            publications_[SemanticIndex(
-                publication.aliasSourceSemantic)];
+            publications_[SurfaceIndex(publication.aliasSourceKey)];
         return source.IsAvailable() &&
             source.lease.Matches(publication.aliasSourceLease);
     }

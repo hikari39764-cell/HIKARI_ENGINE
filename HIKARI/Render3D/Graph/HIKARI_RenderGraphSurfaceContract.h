@@ -5,6 +5,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <type_traits>
 
 namespace HIKARI::RENDER3D::GRAPH {
 
@@ -42,6 +43,37 @@ namespace HIKARI::RENDER3D::GRAPH {
         HistoryWrite,
         Count,
     };
+
+    struct RenderGraphSurfaceKey {
+        RenderGraphSemantic semantic = RenderGraphSemantic::None;
+        RenderGraphSemanticPhase phase = RenderGraphSemanticPhase::None;
+
+        constexpr bool IsValid() const noexcept {
+            return semantic > RenderGraphSemantic::None &&
+                semantic < RenderGraphSemantic::Count &&
+                phase > RenderGraphSemanticPhase::None &&
+                phase < RenderGraphSemanticPhase::Count;
+        }
+
+        constexpr bool Matches(RenderGraphSurfaceKey expected) const noexcept {
+            return IsValid() && expected.IsValid() &&
+                semantic == expected.semantic && phase == expected.phase;
+        }
+
+        bool operator==(const RenderGraphSurfaceKey&) const noexcept = default;
+    };
+
+    static_assert(std::is_standard_layout_v<RenderGraphSurfaceKey>);
+    static_assert(std::is_trivially_copyable_v<RenderGraphSurfaceKey>);
+    static_assert(sizeof(RenderGraphSurfaceKey) == 4u);
+
+    constexpr uint32_t RenderGraphSemanticPhaseBit(
+        RenderGraphSemanticPhase phase) noexcept {
+        return phase > RenderGraphSemanticPhase::None &&
+            phase < RenderGraphSemanticPhase::Count
+            ? 1u << static_cast<uint8_t>(phase)
+            : 0u;
+    }
 
 } // namespace HIKARI::RENDER3D::GRAPH
 
@@ -134,6 +166,7 @@ namespace HIKARI::RENDER3D::SURFACE {
         SceneSurfaceLifetime lifetime = SceneSurfaceLifetime::FrameLocal;
         SceneSurfaceFallbackPolicy fallback =
             SceneSurfaceFallbackPolicy::SkipProvider;
+        uint32_t allowedPhaseMask = 0u;
         uint32_t allowedAccessMask = 0u;
         uint64_t allowedProducerMask = 0u;
     };
@@ -147,6 +180,42 @@ namespace HIKARI::RENDER3D::SURFACE {
     }
 
     namespace DETAIL {
+        constexpr uint32_t AllowedSurfacePhases(
+            GRAPH::RenderGraphSemantic semantic) noexcept {
+            using Semantic = GRAPH::RenderGraphSemantic;
+            using Phase = GRAPH::RenderGraphSemanticPhase;
+            const auto bit = [](Phase phase) constexpr {
+                return GRAPH::RenderGraphSemanticPhaseBit(phase);
+            };
+            switch (semantic) {
+            case Semantic::SceneDepth: return bit(Phase::Imported);
+            case Semantic::SceneColorOpaque: return bit(Phase::Opaque);
+            case Semantic::SceneColorPostOpaque: return bit(Phase::PostOpaque);
+            case Semantic::SceneColorFinal: return bit(Phase::Final);
+            case Semantic::PackedSurface:
+            case Semantic::AmbientOcclusion:
+            case Semantic::VisibilityDepthPyramid:
+                return bit(Phase::PreOpaque) | bit(Phase::PostOpaque);
+            case Semantic::SurfaceFeatureMask:
+            case Semantic::CurrentDepthPyramid:
+            case Semantic::StylizedOutlineStyle:
+                return bit(Phase::PostOpaque);
+            case Semantic::MotionVectors:
+            case Semantic::MotionMetadata:
+            case Semantic::ReactiveMask:
+            case Semantic::TransparencyMask:
+            case Semantic::InvalidDepthMotionMask:
+                return bit(Phase::Temporal);
+            case Semantic::HistoryColor:
+            case Semantic::HistoryDepth:
+                return bit(Phase::HistoryRead) | bit(Phase::HistoryWrite);
+            case Semantic::None:
+            case Semantic::Count:
+                return 0u;
+            }
+            return 0u;
+        }
+
         constexpr uint64_t AllowedSurfaceProducers(
             GRAPH::RenderGraphSemantic semantic) noexcept {
             using Semantic = GRAPH::RenderGraphSemantic;
@@ -211,6 +280,7 @@ namespace HIKARI::RENDER3D::SURFACE {
                 format,
                 lifetime,
                 fallback,
+                AllowedSurfacePhases(semantic),
                 accessMask,
                 AllowedSurfaceProducers(semantic)
             };
@@ -311,6 +381,13 @@ namespace HIKARI::RENDER3D::SURFACE {
         return index < DETAIL::kSceneSurfaceDescriptions.size()
             ? DETAIL::kSceneSurfaceDescriptions[index]
             : DETAIL::kSceneSurfaceDescriptions[0];
+    }
+
+    inline bool IsSceneSurfaceKeyAllowed(
+        GRAPH::RenderGraphSurfaceKey key) noexcept {
+        return key.IsValid() &&
+            (GetSceneSurfaceSemanticDesc(key.semantic).allowedPhaseMask &
+             GRAPH::RenderGraphSemanticPhaseBit(key.phase)) != 0u;
     }
 
 } // namespace HIKARI::RENDER3D::SURFACE

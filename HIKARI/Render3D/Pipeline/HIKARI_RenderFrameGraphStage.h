@@ -82,6 +82,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
 
     MESHRENDERER::MeshPassResources BuildMeshPassResources(
         const SURFACE::SceneSurfaceSet& surfaces,
+        GRAPH::RenderGraphSemanticPhase phase,
         int fallbackAoTextureHandle);
 
     RenderFrameGraphStageResult ExecuteRenderFrameGraphStage(

@@ -22,15 +22,28 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
 
         bool ReplaceTexturePublication(
             SURFACE::SceneSurfaceSet& surfaces,
-            GRAPH::RenderGraphSemantic semantic,
+            GRAPH::RenderGraphSurfaceKey key,
             const RenderTextureView& texture,
             SURFACE::SceneSurfaceProducer producer,
             SURFACE::SceneSurfaceAvailability availability =
-                SURFACE::SceneSurfaceAvailability::Produced) noexcept {
-            (void)surfaces.Invalidate(semantic);
-            return !texture.IsSampleable() ||
-                surfaces.PublishTexture(
-                    semantic,
+                SURFACE::SceneSurfaceAvailability::Produced,
+            GRAPH::RenderGraphSurfaceKey aliasSource = {}) noexcept {
+            (void)surfaces.Invalidate(key);
+            if (!texture.IsSampleable()) {
+                return true;
+            }
+            const RenderTextureView* source =
+                surfaces.TryGetTexture(aliasSource);
+            const bool sameStorage = source != nullptr &&
+                source->format == texture.format &&
+                source->width == texture.width &&
+                source->height == texture.height &&
+                source->mipCount == texture.mipCount &&
+                source->MatchesPhysicalView(texture);
+            return sameStorage
+                ? surfaces.PublishTextureAlias(key, aliasSource, producer)
+                : surfaces.PublishTexture(
+                    key,
                     texture,
                     producer,
                     availability);
@@ -38,13 +51,13 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
 
         bool ReplaceDepthPyramidPublication(
             SURFACE::SceneSurfaceSet& surfaces,
-            GRAPH::RenderGraphSemantic semantic,
+            GRAPH::RenderGraphSurfaceKey key,
             const DEPTH::DepthPyramidView& pyramid,
             SURFACE::SceneSurfaceProducer producer) noexcept {
-            (void)surfaces.Invalidate(semantic);
+            (void)surfaces.Invalidate(key);
             return !pyramid.valid ||
                 surfaces.PublishDepthPyramid(
-                    semantic,
+                    key,
                     pyramid,
                     producer);
         }
@@ -118,43 +131,70 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
             }
             MESHRENDERER::SetAmbientOcclusionRuntimeEnabled(
                 context.screenResult.ssaoRendered);
+            (void)context.sceneSurfaces.Invalidate(
+                GRAPH::RenderGraphSurfaceKey{
+                    GRAPH::RenderGraphSemantic::VisibilityDepthPyramid,
+                    GRAPH::RenderGraphSemanticPhase::PreOpaque });
             if (!ReplaceTexturePublication(
                     context.sceneSurfaces,
-                    GRAPH::RenderGraphSemantic::PackedSurface,
+                    GRAPH::RenderGraphSurfaceKey{
+                        GRAPH::RenderGraphSemantic::PackedSurface,
+                        GRAPH::RenderGraphSemanticPhase::PostOpaque },
                     context.screenResult.packedSurface,
-                    SURFACE::SceneSurfaceProducer::SceneSurfaceAux) ||
+                    SURFACE::SceneSurfaceProducer::SceneSurfaceAux,
+                    SURFACE::SceneSurfaceAvailability::Produced,
+                    GRAPH::RenderGraphSurfaceKey{
+                        GRAPH::RenderGraphSemantic::PackedSurface,
+                        GRAPH::RenderGraphSemanticPhase::PreOpaque }) ||
                 !ReplaceTexturePublication(
                     context.sceneSurfaces,
-                    GRAPH::RenderGraphSemantic::SurfaceFeatureMask,
+                    GRAPH::RenderGraphSurfaceKey{
+                        GRAPH::RenderGraphSemantic::SurfaceFeatureMask,
+                        GRAPH::RenderGraphSemanticPhase::PostOpaque },
                     context.screenResult.surfaceFeatureMask,
                     SURFACE::SceneSurfaceProducer::SceneSurfaceAux) ||
                 !ReplaceTexturePublication(
                     context.sceneSurfaces,
-                    GRAPH::RenderGraphSemantic::StylizedOutlineStyle,
+                    GRAPH::RenderGraphSurfaceKey{
+                        GRAPH::RenderGraphSemantic::StylizedOutlineStyle,
+                        GRAPH::RenderGraphSemanticPhase::PostOpaque },
                     context.screenResult.stylizedOutlineStyle,
                     SURFACE::SceneSurfaceProducer::SceneSurfaceAux) ||
                 (context.screenResult.ssaoRendered
                     ? !ReplaceTexturePublication(
                         context.sceneSurfaces,
-                        GRAPH::RenderGraphSemantic::AmbientOcclusion,
+                        GRAPH::RenderGraphSurfaceKey{
+                            GRAPH::RenderGraphSemantic::AmbientOcclusion,
+                            GRAPH::RenderGraphSemanticPhase::PostOpaque },
                         context.screenResult.ambientOcclusion,
-                        SURFACE::SceneSurfaceProducer::Ssao)
+                        SURFACE::SceneSurfaceProducer::Ssao,
+                        SURFACE::SceneSurfaceAvailability::Produced,
+                        GRAPH::RenderGraphSurfaceKey{
+                            GRAPH::RenderGraphSemantic::AmbientOcclusion,
+                            GRAPH::RenderGraphSemanticPhase::PreOpaque })
                     : !context.sceneSurfaces.Invalidate(
-                        GRAPH::RenderGraphSemantic::AmbientOcclusion)) ||
+                        GRAPH::RenderGraphSurfaceKey{
+                            GRAPH::RenderGraphSemantic::AmbientOcclusion,
+                            GRAPH::RenderGraphSemanticPhase::PostOpaque })) ||
                 !ReplaceDepthPyramidPublication(
                     context.sceneSurfaces,
-                    GRAPH::RenderGraphSemantic::CurrentDepthPyramid,
+                    GRAPH::RenderGraphSurfaceKey{
+                        GRAPH::RenderGraphSemantic::CurrentDepthPyramid,
+                        GRAPH::RenderGraphSemanticPhase::PostOpaque },
                     context.screenResult.currentSceneDepthPyramid,
                     SURFACE::SceneSurfaceProducer::DepthPyramid) ||
                 !ReplaceDepthPyramidPublication(
                     context.sceneSurfaces,
-                    GRAPH::RenderGraphSemantic::VisibilityDepthPyramid,
+                    GRAPH::RenderGraphSurfaceKey{
+                        GRAPH::RenderGraphSemantic::VisibilityDepthPyramid,
+                        GRAPH::RenderGraphSemanticPhase::PostOpaque },
                     context.screenResult.visibilityDepthPyramid,
                     SURFACE::SceneSurfaceProducer::DepthPyramid)) {
                 return false;
             }
             context.postOpaqueResources = BuildMeshPassResources(
                 context.sceneSurfaces,
+                GRAPH::RenderGraphSemanticPhase::PostOpaque,
                 context.screenResult.fallbackAoTextureHandle);
             return true;
         }
@@ -204,10 +244,14 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
             TEMPORAL::TemporalInputs temporalInputs{};
             const RenderTextureView* sceneDepth =
                 context.sceneSurfaces.TryGetTexture(
-                    GRAPH::RenderGraphSemantic::SceneDepth);
+                    GRAPH::RenderGraphSurfaceKey{
+                        GRAPH::RenderGraphSemantic::SceneDepth,
+                        GRAPH::RenderGraphSemanticPhase::Imported });
             const RenderTextureView* sceneColorOpaque =
                 context.sceneSurfaces.TryGetTexture(
-                    GRAPH::RenderGraphSemantic::SceneColorOpaque);
+                    GRAPH::RenderGraphSurfaceKey{
+                        GRAPH::RenderGraphSemantic::SceneColorOpaque,
+                        GRAPH::RenderGraphSemanticPhase::Opaque });
             const RenderTextureView noSceneColor{};
             if (sceneDepth == nullptr) {
                 return false;
@@ -222,19 +266,6 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
                 state.result.motionVectorsWritten = false;
                 return false;
             }
-            if (!ReplaceTexturePublication(
-                    context.sceneSurfaces,
-                    GRAPH::RenderGraphSemantic::HistoryColor,
-                    temporalInputs.historyColorRead,
-                    SURFACE::SceneSurfaceProducer::TemporalHistory) ||
-                !ReplaceTexturePublication(
-                    context.sceneSurfaces,
-                    GRAPH::RenderGraphSemantic::HistoryDepth,
-                    temporalInputs.historyDepthRead,
-                    SURFACE::SceneSurfaceProducer::TemporalHistory)) {
-                return false;
-            }
-
             bool written = false;
             if (temporalInputs.motionVectors.valid &&
                 sceneDepth->IsSampleable() &&
@@ -260,14 +291,18 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
 
             if (!ReplaceTexturePublication(
                     context.sceneSurfaces,
-                    GRAPH::RenderGraphSemantic::MotionVectors,
+                    GRAPH::RenderGraphSurfaceKey{
+                        GRAPH::RenderGraphSemantic::MotionVectors,
+                        GRAPH::RenderGraphSemanticPhase::Temporal },
                     written
                         ? temporalInputs.motionVectors
                         : RenderTextureView{},
                     SURFACE::SceneSurfaceProducer::TemporalMotion) ||
                 !ReplaceTexturePublication(
                     context.sceneSurfaces,
-                    GRAPH::RenderGraphSemantic::MotionMetadata,
+                    GRAPH::RenderGraphSurfaceKey{
+                        GRAPH::RenderGraphSemantic::MotionMetadata,
+                        GRAPH::RenderGraphSemanticPhase::Temporal },
                     written
                         ? temporalInputs.motionMetadata
                         : RenderTextureView{},
@@ -285,9 +320,13 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
                 context.screenSpace.renderTargetAccess.EndDepthRead();
             }
             (void)context.sceneSurfaces.Invalidate(
-                GRAPH::RenderGraphSemantic::MotionVectors);
+                GRAPH::RenderGraphSurfaceKey{
+                    GRAPH::RenderGraphSemantic::MotionVectors,
+                    GRAPH::RenderGraphSemanticPhase::Temporal });
             (void)context.sceneSurfaces.Invalidate(
-                GRAPH::RenderGraphSemantic::MotionMetadata);
+                GRAPH::RenderGraphSurfaceKey{
+                    GRAPH::RenderGraphSemantic::MotionMetadata,
+                    GRAPH::RenderGraphSemanticPhase::Temporal });
             (void)TEMPORAL::MarkMotionVectorsWritten(
                 context.temporalResources,
                 false);
@@ -312,7 +351,9 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
                 return false;
             }
             if (!context.sceneSurfaces.PublishTexture(
-                    GRAPH::RenderGraphSemantic::SceneColorOpaque,
+                    GRAPH::RenderGraphSurfaceKey{
+                        GRAPH::RenderGraphSemantic::SceneColorOpaque,
+                        GRAPH::RenderGraphSemanticPhase::Opaque },
                     sceneColorOpaque,
                     SURFACE::SceneSurfaceProducer::SceneColorCapture)) {
                 return false;

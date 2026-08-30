@@ -197,14 +197,14 @@ namespace HIKARI::RENDER3D::PIPELINE {
 
         bool PublishOptionalTexture(
             SURFACE::SceneSurfaceSet& surfaces,
-            GRAPH::RenderGraphSemantic semantic,
+            GRAPH::RenderGraphSurfaceKey key,
             const RenderTextureView& texture,
             SURFACE::SceneSurfaceProducer producer,
             SURFACE::SceneSurfaceAvailability availability =
                 SURFACE::SceneSurfaceAvailability::Produced) noexcept {
             return !texture.IsSampleable() ||
                 surfaces.PublishTexture(
-                    semantic,
+                    key,
                     texture,
                     producer,
                     availability);
@@ -212,11 +212,11 @@ namespace HIKARI::RENDER3D::PIPELINE {
 
         bool PublishOptionalDepthPyramid(
             SURFACE::SceneSurfaceSet& surfaces,
-            GRAPH::RenderGraphSemantic semantic,
+            GRAPH::RenderGraphSurfaceKey key,
             const DEPTH::DepthPyramidView& pyramid) noexcept {
             return !pyramid.valid ||
                 surfaces.PublishDepthPyramid(
-                    semantic,
+                    key,
                     pyramid,
                     SURFACE::SceneSurfaceProducer::DepthPyramid);
         }
@@ -261,7 +261,10 @@ namespace HIKARI::RENDER3D::PIPELINE {
         PostSurfaceFrameAbortGuard surfaceFrameGuard{};
         SURFACE::SceneSurfaceSet& sceneTextures = *sceneTextureRegistry;
         if (!sceneTextures.PublishTexture(
-                GRAPH::RenderGraphSemantic::SceneDepth,
+                GRAPH::RenderGraphSurfaceKey{
+                    GRAPH::RenderGraphSemantic::SceneDepth,
+                    GRAPH::RenderGraphSemanticPhase::Imported
+                },
                 frame.scene.depth,
                 SURFACE::SceneSurfaceProducer::PostSceneDepth,
                 SURFACE::SceneSurfaceAvailability::Imported)) {
@@ -491,32 +494,27 @@ namespace HIKARI::RENDER3D::PIPELINE {
         MESHRENDERER::SetAmbientOcclusionRuntimeEnabled(screenResult.ssaoRendered);
         if (!PublishOptionalTexture(
                 sceneTextures,
-                GRAPH::RenderGraphSemantic::PackedSurface,
+                GRAPH::RenderGraphSurfaceKey{
+                    GRAPH::RenderGraphSemantic::PackedSurface,
+                    GRAPH::RenderGraphSemanticPhase::PreOpaque
+                },
                 screenResult.packedSurface,
-                SURFACE::SceneSurfaceProducer::SceneSurfaceAux) ||
-            !PublishOptionalTexture(
-                sceneTextures,
-                GRAPH::RenderGraphSemantic::SurfaceFeatureMask,
-                screenResult.surfaceFeatureMask,
-                SURFACE::SceneSurfaceProducer::SceneSurfaceAux) ||
-            !PublishOptionalTexture(
-                sceneTextures,
-                GRAPH::RenderGraphSemantic::StylizedOutlineStyle,
-                screenResult.stylizedOutlineStyle,
                 SURFACE::SceneSurfaceProducer::SceneSurfaceAux) ||
             (screenResult.ssaoRendered &&
              !PublishOptionalTexture(
                 sceneTextures,
-                GRAPH::RenderGraphSemantic::AmbientOcclusion,
+                GRAPH::RenderGraphSurfaceKey{
+                    GRAPH::RenderGraphSemantic::AmbientOcclusion,
+                    GRAPH::RenderGraphSemanticPhase::PreOpaque
+                },
                 screenResult.ambientOcclusion,
                 SURFACE::SceneSurfaceProducer::Ssao)) ||
             !PublishOptionalDepthPyramid(
                 sceneTextures,
-                GRAPH::RenderGraphSemantic::CurrentDepthPyramid,
-                screenResult.currentSceneDepthPyramid) ||
-            !PublishOptionalDepthPyramid(
-                sceneTextures,
-                GRAPH::RenderGraphSemantic::VisibilityDepthPyramid,
+                GRAPH::RenderGraphSurfaceKey{
+                    GRAPH::RenderGraphSemantic::VisibilityDepthPyramid,
+                    GRAPH::RenderGraphSemanticPhase::PreOpaque
+                },
                 screenResult.visibilityDepthPyramid)) {
             MESHRENDERER::EndFrame();
             return false;
@@ -524,6 +522,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
         MESHRENDERER::MeshPassResources opaqueResources =
             BuildMeshPassResources(
                 sceneTextures,
+                GRAPH::RenderGraphSemanticPhase::PreOpaque,
                 screenResult.fallbackAoTextureHandle);
         MESHRENDERER::MeshPassResources postOpaqueResources = opaqueResources;
         FEATURES::RenderFeaturePlan renderFeaturePlan{};

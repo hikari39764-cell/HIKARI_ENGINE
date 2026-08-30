@@ -14,6 +14,7 @@
 namespace HIKARI::RENDER3D::SURFACE {
 
     struct SceneSurfaceLease {
+        GRAPH::RenderGraphSurfaceKey key{};
         RenderFrameToken frame{};
         uint64_t deviceGeneration = 0u;
         uint64_t publicationGeneration = 0u;
@@ -27,14 +28,12 @@ namespace HIKARI::RENDER3D::SURFACE {
     };
 
     struct SceneSurfacePublication {
-        GRAPH::RenderGraphSemantic semantic =
-            GRAPH::RenderGraphSemantic::None;
+        GRAPH::RenderGraphSurfaceKey key{};
         SceneSurfaceProducer producer = SceneSurfaceProducer::None;
         SceneSurfaceAvailability availability =
             SceneSurfaceAvailability::Unavailable;
         SceneSurfaceLease lease{};
-        GRAPH::RenderGraphSemantic aliasSourceSemantic =
-            GRAPH::RenderGraphSemantic::None;
+        GRAPH::RenderGraphSurfaceKey aliasSourceKey{};
         SceneSurfaceLease aliasSourceLease{};
 
         bool IsAvailable() const noexcept;
@@ -72,23 +71,23 @@ namespace HIKARI::RENDER3D::SURFACE {
             uint64_t deviceGeneration) noexcept;
 
         bool PublishTexture(
-            GRAPH::RenderGraphSemantic semantic,
+            GRAPH::RenderGraphSurfaceKey key,
             const RenderTextureView& texture,
             SceneSurfaceProducer producer,
             SceneSurfaceAvailability availability =
                 SceneSurfaceAvailability::Produced) noexcept;
         bool PublishTextureAlias(
-            GRAPH::RenderGraphSemantic targetSemantic,
-            GRAPH::RenderGraphSemantic sourceSemantic,
+            GRAPH::RenderGraphSurfaceKey target,
+            GRAPH::RenderGraphSurfaceKey source,
             SceneSurfaceProducer producer) noexcept;
         bool PublishDepthPyramid(
-            GRAPH::RenderGraphSemantic semantic,
+            GRAPH::RenderGraphSurfaceKey key,
             const DEPTH::DepthPyramidView& pyramid,
             SceneSurfaceProducer producer,
             SceneSurfaceAvailability availability =
                 SceneSurfaceAvailability::Produced) noexcept;
         bool Invalidate(
-            GRAPH::RenderGraphSemantic semantic) noexcept;
+            GRAPH::RenderGraphSurfaceKey key) noexcept;
 
         bool IsFrameValid() const noexcept {
             return frame_.IsValid() && deviceGeneration_ != 0u;
@@ -102,29 +101,18 @@ namespace HIKARI::RENDER3D::SURFACE {
         }
 
         const RenderTextureView* TryGetTexture(
-            GRAPH::RenderGraphSemantic semantic) const noexcept;
-        const RenderTextureView* TryGetTexture(
-            GRAPH::RenderGraphSemantic semantic,
-            RenderFrameToken expectedFrame) const noexcept;
+            GRAPH::RenderGraphSurfaceKey key) const noexcept;
         const DEPTH::DepthPyramidView* TryGetDepthPyramid(
-            GRAPH::RenderGraphSemantic semantic) const noexcept;
-        const DEPTH::DepthPyramidView* TryGetDepthPyramid(
-            GRAPH::RenderGraphSemantic semantic,
-            RenderFrameToken expectedFrame) const noexcept;
+            GRAPH::RenderGraphSurfaceKey key) const noexcept;
         const SceneSurfacePublication* TryGetPublication(
-            GRAPH::RenderGraphSemantic semantic) const noexcept;
+            GRAPH::RenderGraphSurfaceKey key) const noexcept;
         bool IsLeaseCurrent(
-            GRAPH::RenderGraphSemantic semantic,
+            GRAPH::RenderGraphSurfaceKey key,
             SceneSurfaceLease lease) const noexcept;
         bool TryDescribe(
-            GRAPH::RenderGraphSemantic semantic,
+            GRAPH::RenderGraphSurfaceKey key,
             SceneSurfaceDescriptor& outDescriptor) const noexcept;
-
-        bool IsValid(
-            GRAPH::RenderGraphSemantic semantic) const noexcept;
-        bool IsValid(
-            GRAPH::RenderGraphSemantic semantic,
-            RenderFrameToken expectedFrame) const noexcept;
+        bool IsValid(GRAPH::RenderGraphSurfaceKey key) const noexcept;
         bool HasOpaqueSurface() const noexcept;
         bool HasStylizedFeatureMask() const noexcept;
         bool HasStylizedOutlineStyle() const noexcept;
@@ -133,9 +121,13 @@ namespace HIKARI::RENDER3D::SURFACE {
     private:
         static constexpr size_t kSemanticCount =
             static_cast<size_t>(GRAPH::RenderGraphSemantic::Count);
+        static constexpr size_t kPhaseCount =
+            static_cast<size_t>(GRAPH::RenderGraphSemanticPhase::Count);
+        static constexpr size_t kSurfaceSlotCount =
+            kSemanticCount * kPhaseCount;
 
         bool ValidateTexturePublication(
-            GRAPH::RenderGraphSemantic semantic,
+            GRAPH::RenderGraphSurfaceKey key,
             const RenderTextureView& texture,
             SceneSurfaceProducer producer,
             SceneSurfaceAvailability availability) const noexcept;
@@ -155,10 +147,10 @@ namespace HIKARI::RENDER3D::SURFACE {
         uint64_t nextStorageGeneration_ = 1u;
         uint32_t renderWidth_ = 0u;
         uint32_t renderHeight_ = 0u;
-        std::array<RenderTextureView, kSemanticCount> textures_{};
-        std::array<DEPTH::DepthPyramidView, kSemanticCount>
+        std::array<RenderTextureView, kSurfaceSlotCount> textures_{};
+        std::array<DEPTH::DepthPyramidView, kSurfaceSlotCount>
             depthPyramids_{};
-        std::array<SceneSurfacePublication, kSemanticCount>
+        std::array<SceneSurfacePublication, kSurfaceSlotCount>
             publications_{};
     };
 

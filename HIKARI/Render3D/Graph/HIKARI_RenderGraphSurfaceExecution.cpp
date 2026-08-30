@@ -73,10 +73,12 @@ namespace HIKARI::RENDER3D::GRAPH {
             record.info.kind != RenderGraphResourceKind::SceneSurface) {
             return true;
         }
+        const RenderGraphSurfaceKey key{
+            record.info.semantic,
+            record.info.phase
+        };
         SURFACE::SceneSurfaceDescriptor descriptor{};
-        if (!sceneSurfaces_->TryDescribe(
-                record.info.semantic,
-                descriptor)) {
+        if (!sceneSurfaces_->TryDescribe(key, descriptor)) {
             if (record.info.requirement ==
                 RenderGraphResourceRequirement::Optional) {
                 return true;
@@ -93,7 +95,7 @@ namespace HIKARI::RENDER3D::GRAPH {
         const SURFACE::SceneSurfacePublication& publication =
             descriptor.publication;
         if (descriptor.semantic.semantic != record.info.semantic ||
-            publication.semantic != record.info.semantic ||
+            !publication.key.Matches(key) ||
             !publication.lease.frame.Matches(frame_) ||
             publication.lease.deviceGeneration !=
                 sceneSurfaceDeviceGeneration_ ||
@@ -114,9 +116,7 @@ namespace HIKARI::RENDER3D::GRAPH {
         if (descriptor.semantic.resourceKind ==
                 SURFACE::SceneSurfaceResourceKind::Texture2D) {
             const RenderTextureView* texture =
-                sceneSurfaces_->TryGetTexture(
-                    record.info.semantic,
-                    frame_);
+                sceneSurfaces_->TryGetTexture(key);
             if (texture == nullptr) {
                 SetDiagnostic(
                     RenderGraphResultCode::SurfacePublicationMismatch,
@@ -129,9 +129,7 @@ namespace HIKARI::RENDER3D::GRAPH {
         }
         else {
             const DEPTH::DepthPyramidView* pyramid =
-                sceneSurfaces_->TryGetDepthPyramid(
-                    record.info.semantic,
-                    frame_);
+                sceneSurfaces_->TryGetDepthPyramid(key);
             if (pyramid == nullptr) {
                 SetDiagnostic(
                     RenderGraphResultCode::SurfacePublicationMismatch,
@@ -317,10 +315,13 @@ namespace HIKARI::RENDER3D::GRAPH {
                 return true;
             }
             if (!record.binding.valid) {
+                const RenderGraphSurfaceKey key{
+                    record.info.semantic,
+                    record.info.phase
+                };
                 if (record.info.requirement ==
                     RenderGraphResourceRequirement::Optional) {
-                    if (sceneSurfaces_->TryGetPublication(
-                            record.info.semantic) != nullptr) {
+                    if (sceneSurfaces_->TryGetPublication(key) != nullptr) {
                         SetDiagnostic(
                             RenderGraphResultCode::
                                 SurfacePublicationMismatch,
@@ -341,12 +342,16 @@ namespace HIKARI::RENDER3D::GRAPH {
             }
             const auto& lease =
                 record.binding.descriptor.publication.lease;
+            const RenderGraphSurfaceKey key{
+                record.info.semantic,
+                record.info.phase
+            };
             if (!lease.frame.Matches(frame_) ||
                 lease.deviceGeneration != sceneSurfaceDeviceGeneration_ ||
                 record.binding.descriptor.publication.producer !=
                     record.info.expectedProducer ||
                 !sceneSurfaces_->IsLeaseCurrent(
-                    record.info.semantic,
+                    key,
                     lease)) {
                 SetDiagnostic(
                     RenderGraphResultCode::SurfacePublicationMismatch,
@@ -403,7 +408,10 @@ namespace HIKARI::RENDER3D::GRAPH {
                     }
                     const auto* publication =
                         sceneSurfaces_->TryGetPublication(
-                            resources_[use.resource.index].info.semantic);
+                            RenderGraphSurfaceKey{
+                                resources_[use.resource.index].info.semantic,
+                                resources_[use.resource.index].info.phase
+                            });
                     if (publication != nullptr) {
                         writeBaselines[offset] = publication->lease;
                     }

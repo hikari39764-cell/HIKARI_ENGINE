@@ -18,5 +18,15 @@ namespace HIKARI::RENDER3D {
         bool IsSampleable() const noexcept {
             return valid && srv.ptr != 0 && width != 0 && height != 0;
         }
+        bool MatchesPhysicalView(
+            const RenderTextureView& expected) const noexcept {
+            if (srv.ptr == 0u || srv.ptr != expected.srv.ptr) {
+                return false;
+            }
+            if (resource == nullptr || expected.resource == nullptr) {
+                return resource == nullptr && expected.resource == nullptr;
+            }
+            return resource == expected.resource;
+        }
     };
 } // namespace HIKARI::RENDER3D

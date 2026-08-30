@@ -133,18 +133,27 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
                 availability.inputMask |= FEATURES::RenderFeatureInputBit(
                     FEATURES::RenderFeatureInput::SceneColor);
             }
-            if (context.sceneSurfaces.IsValid(
-                    GRAPH::RenderGraphSemantic::SceneDepth)) {
+            if (context.sceneSurfaces.TryGetTexture(
+                    GRAPH::RenderGraphSurfaceKey{
+                        GRAPH::RenderGraphSemantic::SceneDepth,
+                        GRAPH::RenderGraphSemanticPhase::Imported }) !=
+                    nullptr) {
                 availability.inputMask |= FEATURES::RenderFeatureInputBit(
                     FEATURES::RenderFeatureInput::SceneDepth);
             }
-            if (context.sceneSurfaces.IsValid(
-                    GRAPH::RenderGraphSemantic::PackedSurface)) {
+            if (context.sceneSurfaces.TryGetTexture(
+                    GRAPH::RenderGraphSurfaceKey{
+                        GRAPH::RenderGraphSemantic::PackedSurface,
+                        GRAPH::RenderGraphSemanticPhase::PostOpaque }) !=
+                    nullptr) {
                 availability.inputMask |= FEATURES::RenderFeatureInputBit(
                     FEATURES::RenderFeatureInput::SurfaceNormals);
             }
-            if (context.sceneSurfaces.IsValid(
-                    GRAPH::RenderGraphSemantic::SurfaceFeatureMask)) {
+            if (context.sceneSurfaces.TryGetTexture(
+                    GRAPH::RenderGraphSurfaceKey{
+                        GRAPH::RenderGraphSemantic::SurfaceFeatureMask,
+                        GRAPH::RenderGraphSemanticPhase::PostOpaque }) !=
+                    nullptr) {
                 availability.inputMask |= FEATURES::RenderFeatureInputBit(
                     FEATURES::RenderFeatureInput::SurfaceFeatureMask);
             }
@@ -225,7 +234,9 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
                     POST::SceneColorSnapshotKind::PostOpaque);
             return snapshot.IsSampleable() &&
                 context.sceneSurfaces.PublishTexture(
-                    GRAPH::RenderGraphSemantic::SceneColorPostOpaque,
+                    GRAPH::RenderGraphSurfaceKey{
+                        GRAPH::RenderGraphSemantic::SceneColorPostOpaque,
+                        GRAPH::RenderGraphSemanticPhase::PostOpaque },
                     snapshot,
                     SURFACE::SceneSurfaceProducer::SceneColorCapture);
         }

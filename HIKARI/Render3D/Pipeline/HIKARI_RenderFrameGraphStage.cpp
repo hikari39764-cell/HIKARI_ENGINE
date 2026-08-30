@@ -13,32 +13,42 @@
 namespace HIKARI::RENDER3D::PIPELINE {
     MESHRENDERER::MeshPassResources BuildMeshPassResources(
         const SURFACE::SceneSurfaceSet& surfaces,
+        GRAPH::RenderGraphSemanticPhase phase,
         int fallbackAoTextureHandle) {
         MESHRENDERER::MeshPassResources resources{};
+        if (phase != GRAPH::RenderGraphSemanticPhase::PreOpaque &&
+            phase != GRAPH::RenderGraphSemanticPhase::PostOpaque) {
+            return resources;
+        }
+        using Semantic = GRAPH::RenderGraphSemantic;
+        using SurfaceKey = GRAPH::RenderGraphSurfaceKey;
         if (const RenderTextureView* view = surfaces.TryGetTexture(
-                GRAPH::RenderGraphSemantic::SceneDepth)) {
+                SurfaceKey{
+                    Semantic::SceneDepth,
+                    GRAPH::RenderGraphSemanticPhase::Imported })) {
             resources.sceneDepth = *view;
         }
         if (const RenderTextureView* view = surfaces.TryGetTexture(
-                GRAPH::RenderGraphSemantic::SceneColorOpaque)) {
+                SurfaceKey{
+                    Semantic::SceneColorOpaque,
+                    GRAPH::RenderGraphSemanticPhase::Opaque })) {
             resources.opaqueSceneColor = *view;
         }
         if (const RenderTextureView* view = surfaces.TryGetTexture(
-                GRAPH::RenderGraphSemantic::PackedSurface)) {
+                SurfaceKey{ Semantic::PackedSurface, phase })) {
             resources.packedSceneSurface = *view;
         }
         if (const RenderTextureView* view = surfaces.TryGetTexture(
-                GRAPH::RenderGraphSemantic::AmbientOcclusion)) {
+                SurfaceKey{ Semantic::AmbientOcclusion, phase })) {
             resources.ambientOcclusion = *view;
         }
         if (const DEPTH::DepthPyramidView* pyramid =
                 surfaces.TryGetDepthPyramid(
-                    GRAPH::RenderGraphSemantic::CurrentDepthPyramid)) {
+                    SurfaceKey{ Semantic::CurrentDepthPyramid, phase })) {
             resources.depthPyramid = *pyramid;
         } else if (const DEPTH::DepthPyramidView* visibilityPyramid =
                 surfaces.TryGetDepthPyramid(
-                    GRAPH::RenderGraphSemantic::
-                        VisibilityDepthPyramid)) {
+                    SurfaceKey{ Semantic::VisibilityDepthPyramid, phase })) {
             resources.depthPyramid = *visibilityPyramid;
         }
         resources.fallbackAoTextureHandle = fallbackAoTextureHandle;

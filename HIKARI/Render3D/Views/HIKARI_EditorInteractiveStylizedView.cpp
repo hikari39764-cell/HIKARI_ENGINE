@@ -165,29 +165,38 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
             DXGI_FORMAT_R32_FLOAT, width, height, 1u,
             sceneTarget.GetDepthState(), true
         };
+        using Semantic = GRAPH::RenderGraphSemantic;
+        using Phase = GRAPH::RenderGraphSemanticPhase;
         if (!outSurfaces.PublishTexture(
-                GRAPH::RenderGraphSemantic::SceneColorOpaque,
+                GRAPH::RenderGraphSurfaceKey{
+                    Semantic::SceneColorOpaque, Phase::Opaque },
                 sceneColor,
                 SURFACE::SceneSurfaceProducer::EditorInteractive) ||
             !outSurfaces.PublishTextureAlias(
-                GRAPH::RenderGraphSemantic::SceneColorPostOpaque,
-                GRAPH::RenderGraphSemantic::SceneColorOpaque,
+                GRAPH::RenderGraphSurfaceKey{
+                    Semantic::SceneColorPostOpaque, Phase::PostOpaque },
+                GRAPH::RenderGraphSurfaceKey{
+                    Semantic::SceneColorOpaque, Phase::Opaque },
                 SURFACE::SceneSurfaceProducer::EditorInteractive) ||
             !outSurfaces.PublishTexture(
-                GRAPH::RenderGraphSemantic::SceneDepth,
+                GRAPH::RenderGraphSurfaceKey{
+                    Semantic::SceneDepth, Phase::Imported },
                 sceneDepth,
                 SURFACE::SceneSurfaceProducer::EditorInteractive,
                 SURFACE::SceneSurfaceAvailability::Imported) ||
             !outSurfaces.PublishTexture(
-                GRAPH::RenderGraphSemantic::PackedSurface,
+                GRAPH::RenderGraphSurfaceKey{
+                    Semantic::PackedSurface, Phase::PostOpaque },
                 surfaceBuffer_.GetPackedSurfaceView(),
                 SURFACE::SceneSurfaceProducer::EditorInteractive) ||
             !outSurfaces.PublishTexture(
-                GRAPH::RenderGraphSemantic::SurfaceFeatureMask,
+                GRAPH::RenderGraphSurfaceKey{
+                    Semantic::SurfaceFeatureMask, Phase::PostOpaque },
                 surfaceBuffer_.GetFeatureMaskView(),
                 SURFACE::SceneSurfaceProducer::EditorInteractive) ||
             !outSurfaces.PublishTexture(
-                GRAPH::RenderGraphSemantic::StylizedOutlineStyle,
+                GRAPH::RenderGraphSurfaceKey{
+                    Semantic::StylizedOutlineStyle, Phase::PostOpaque },
                 surfaceBuffer_.GetStylizedOutlineStyleView(),
                 SURFACE::SceneSurfaceProducer::EditorInteractive)) {
             return false;
@@ -227,23 +236,27 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         if (preparation.writeFeatureMask) {
             inputsReady = PublishSceneSurfaces(
                 sceneTarget, targetGeneration, viewId, surfaces);
-            if (surfaces.IsValid(
-                    GRAPH::RenderGraphSemantic::SceneColorPostOpaque)) {
+            using Semantic = GRAPH::RenderGraphSemantic;
+            using Phase = GRAPH::RenderGraphSemanticPhase;
+            if (surfaces.TryGetTexture(GRAPH::RenderGraphSurfaceKey{
+                    Semantic::SceneColorPostOpaque,
+                    Phase::PostOpaque }) != nullptr) {
                 availability.inputMask |= FEATURES::RenderFeatureInputBit(
                     FEATURES::RenderFeatureInput::SceneColor);
             }
-            if (surfaces.IsValid(
-                    GRAPH::RenderGraphSemantic::SceneDepth)) {
+            if (surfaces.TryGetTexture(GRAPH::RenderGraphSurfaceKey{
+                    Semantic::SceneDepth, Phase::Imported }) != nullptr) {
                 availability.inputMask |= FEATURES::RenderFeatureInputBit(
                     FEATURES::RenderFeatureInput::SceneDepth);
             }
-            if (surfaces.IsValid(
-                    GRAPH::RenderGraphSemantic::PackedSurface)) {
+            if (surfaces.TryGetTexture(GRAPH::RenderGraphSurfaceKey{
+                    Semantic::PackedSurface, Phase::PostOpaque }) != nullptr) {
                 availability.inputMask |= FEATURES::RenderFeatureInputBit(
                     FEATURES::RenderFeatureInput::SurfaceNormals);
             }
-            if (surfaces.IsValid(
-                    GRAPH::RenderGraphSemantic::SurfaceFeatureMask)) {
+            if (surfaces.TryGetTexture(GRAPH::RenderGraphSurfaceKey{
+                    Semantic::SurfaceFeatureMask,
+                    Phase::PostOpaque }) != nullptr) {
                 availability.inputMask |= FEATURES::RenderFeatureInputBit(
                     FEATURES::RenderFeatureInput::SurfaceFeatureMask);
             }

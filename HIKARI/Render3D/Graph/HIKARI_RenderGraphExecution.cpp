@@ -258,18 +258,11 @@ namespace HIKARI::RENDER3D::GRAPH {
                 "Required-fail semantics cannot be optional imports.");
             return false;
         }
-        const bool historyPhase =
-            desc.phase == RenderGraphSemanticPhase::HistoryRead ||
-            desc.phase == RenderGraphSemanticPhase::HistoryWrite;
-        if ((canonicalContract.lifetime ==
-                SURFACE::SceneSurfaceLifetime::History &&
-             !historyPhase) ||
-            (canonicalContract.lifetime ==
-                SURFACE::SceneSurfaceLifetime::FrameLocal &&
-             historyPhase)) {
+        if (!SURFACE::IsSceneSurfaceKeyAllowed(
+                RenderGraphSurfaceKey{ desc.semantic, desc.phase })) {
             SetDiagnostic(
                 RenderGraphResultCode::SemanticContractMismatch,
-                "RenderGraph phase does not match semantic lifetime.");
+                "RenderGraph phase is not allowed by the semantic catalog.");
             return false;
         }
         return true;

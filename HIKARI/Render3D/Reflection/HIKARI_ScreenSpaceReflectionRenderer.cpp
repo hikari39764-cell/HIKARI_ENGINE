@@ -79,16 +79,22 @@ namespace HIKARI::RENDER3D::REFLECTION {
         debugState_.requested =
             settings.enabled &&
             settings.quality != ScreenSpaceReflectionQuality::Off;
+        using Semantic = GRAPH::RenderGraphSemantic;
+        using Phase = GRAPH::RenderGraphSemanticPhase;
         const RenderTextureView* sceneColorOpaque =
             surfaces.TryGetTexture(
-                GRAPH::RenderGraphSemantic::SceneColorOpaque);
+                GRAPH::RenderGraphSurfaceKey{
+                    Semantic::SceneColorOpaque, Phase::Opaque });
         const RenderTextureView* sceneDepth = surfaces.TryGetTexture(
-            GRAPH::RenderGraphSemantic::SceneDepth);
+            GRAPH::RenderGraphSurfaceKey{
+                Semantic::SceneDepth, Phase::Imported });
         const RenderTextureView* packedSurface = surfaces.TryGetTexture(
-            GRAPH::RenderGraphSemantic::PackedSurface);
+            GRAPH::RenderGraphSurfaceKey{
+                Semantic::PackedSurface, Phase::PostOpaque });
         const DEPTH::DepthPyramidView* currentDepthPyramid =
             surfaces.TryGetDepthPyramid(
-                GRAPH::RenderGraphSemantic::CurrentDepthPyramid);
+                GRAPH::RenderGraphSurfaceKey{
+                    Semantic::CurrentDepthPyramid, Phase::PostOpaque });
         debugState_.sceneSurfaceReady = surfaces.HasOpaqueSurface();
         debugState_.currentHzbReady = surfaces.HasCurrentDepthHierarchy();
         debugState_.hzbMipCount =

@@ -53,17 +53,24 @@ namespace HIKARI::RENDER3D::FEATURES {
         debugState_ = {};
         debugState_.requested = plan.screenCompositePassRequired;
         debugState_.transientBytes = plan.transientBytes;
+        using Semantic = GRAPH::RenderGraphSemantic;
+        using Phase = GRAPH::RenderGraphSemanticPhase;
         const RenderTextureView* sceneDepth = surfaces.TryGetTexture(
-            GRAPH::RenderGraphSemantic::SceneDepth);
+            GRAPH::RenderGraphSurfaceKey{
+                Semantic::SceneDepth, Phase::Imported });
         const RenderTextureView* sceneColorPostOpaque =
             surfaces.TryGetTexture(
-                GRAPH::RenderGraphSemantic::SceneColorPostOpaque);
+                GRAPH::RenderGraphSurfaceKey{
+                    Semantic::SceneColorPostOpaque, Phase::PostOpaque });
         const RenderTextureView* packedSurface = surfaces.TryGetTexture(
-            GRAPH::RenderGraphSemantic::PackedSurface);
+            GRAPH::RenderGraphSurfaceKey{
+                Semantic::PackedSurface, Phase::PostOpaque });
         const RenderTextureView* featureMask = surfaces.TryGetTexture(
-            GRAPH::RenderGraphSemantic::SurfaceFeatureMask);
+            GRAPH::RenderGraphSurfaceKey{
+                Semantic::SurfaceFeatureMask, Phase::PostOpaque });
         const RenderTextureView* outlineStyle = surfaces.TryGetTexture(
-            GRAPH::RenderGraphSemantic::StylizedOutlineStyle);
+            GRAPH::RenderGraphSurfaceKey{
+                Semantic::StylizedOutlineStyle, Phase::PostOpaque });
         debugState_.inputsReady =
             sceneDepth != nullptr &&
             sceneColorPostOpaque != nullptr &&
