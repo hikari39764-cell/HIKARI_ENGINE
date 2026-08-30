@@ -137,81 +137,94 @@ target_link_libraries(
         ${HIKARI_RUNTIME_PUBLIC_LINK_LIBRARIES}
         ${HIKARI_RUNTIME_PRIVATE_LINK_LIBRARIES})
 
-add_executable(HIKARI_NavigationRuntimeContracts EXCLUDE_FROM_ALL)
-target_sources(
+function(hikari_add_runtime_contract target_name source_path)
+    set(options NO_TOOLING_STUBS)
+    cmake_parse_arguments(
+        HIKARI_CONTRACT
+        "${options}"
+        ""
+        ""
+        ${ARGN})
+
+    set(
+        hikari_contract_sources
+        "${HIKARI_SOURCE_ROOT}/${source_path}")
+    if(NOT HIKARI_CONTRACT_NO_TOOLING_STUBS)
+        list(APPEND
+            hikari_contract_sources
+            "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Host/HIKARI_RuntimeComponentToolingStubs.cpp")
+    endif()
+
+    add_executable("${target_name}" EXCLUDE_FROM_ALL)
+    target_sources(
+        "${target_name}"
+        PRIVATE
+            ${hikari_contract_sources})
+    target_link_libraries(
+        "${target_name}"
+        PRIVATE
+            HIKARI::Runtime)
+    hikari_configure_engine_target("${target_name}")
+
+    set(hikari_contract_output_directory "${CMAKE_BINARY_DIR}/tests")
+    set_target_properties(
+        "${target_name}"
+        PROPERTIES
+            FOLDER "Tests/RuntimeContracts"
+            EXCLUDE_FROM_DEFAULT_BUILD TRUE
+            ARCHIVE_OUTPUT_DIRECTORY "${hikari_contract_output_directory}"
+            RUNTIME_OUTPUT_DIRECTORY "${hikari_contract_output_directory}"
+            PDB_OUTPUT_DIRECTORY "${hikari_contract_output_directory}"
+            COMPILE_PDB_OUTPUT_DIRECTORY
+                "${hikari_contract_output_directory}"
+            VS_DEBUGGER_WORKING_DIRECTORY "${HIKARI_SOURCE_ROOT}")
+    foreach(configuration IN ITEMS Debug EditorRelease Shipping)
+        string(TOUPPER "${configuration}" configuration_upper)
+        set_target_properties(
+            "${target_name}"
+            PROPERTIES
+                "EXCLUDE_FROM_DEFAULT_BUILD_${configuration_upper}" TRUE
+                "ARCHIVE_OUTPUT_DIRECTORY_${configuration_upper}"
+                    "${hikari_contract_output_directory}"
+                "RUNTIME_OUTPUT_DIRECTORY_${configuration_upper}"
+                    "${hikari_contract_output_directory}"
+                "PDB_OUTPUT_DIRECTORY_${configuration_upper}"
+                    "${hikari_contract_output_directory}"
+                "COMPILE_PDB_OUTPUT_DIRECTORY_${configuration_upper}"
+                    "${hikari_contract_output_directory}")
+    endforeach()
+
+    foreach(runtime_file IN LISTS HIKARI_RUNTIME_DEPENDENCIES)
+        add_custom_command(
+            TARGET "${target_name}"
+            POST_BUILD
+            COMMAND
+                "${CMAKE_COMMAND}" -E copy_if_different
+                "${runtime_file}"
+                "$<TARGET_FILE_DIR:${target_name}>"
+            VERBATIM)
+    endforeach()
+endfunction()
+
+hikari_add_runtime_contract(
     HIKARI_NavigationRuntimeContracts
-    PRIVATE
-        "${HIKARI_SOURCE_ROOT}/Tools/Tests/HIKARI_NavigationRuntimeContracts.cpp"
-        "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Host/HIKARI_RuntimeComponentToolingStubs.cpp")
-target_link_libraries(
-    HIKARI_NavigationRuntimeContracts
-    PRIVATE
-        HIKARI::Runtime)
-hikari_configure_engine_target(HIKARI_NavigationRuntimeContracts)
-hikari_configure_runtime_deployment(
-    HIKARI_NavigationRuntimeContracts
-    OUTPUT_NAME "HIKARI_NavigationRuntimeContracts"
-    NO_INSTALL)
-
-add_executable(HIKARI_AudioRuntimeContracts EXCLUDE_FROM_ALL)
-target_sources(
+    "Tools/Tests/HIKARI_NavigationRuntimeContracts.cpp")
+hikari_add_runtime_contract(
     HIKARI_AudioRuntimeContracts
-    PRIVATE
-        "${HIKARI_SOURCE_ROOT}/Tools/Tests/HIKARI_AudioRuntimeContracts.cpp")
-target_link_libraries(
-    HIKARI_AudioRuntimeContracts
-    PRIVATE
-        HIKARI::Runtime)
-hikari_configure_engine_target(HIKARI_AudioRuntimeContracts)
-hikari_configure_runtime_deployment(
-    HIKARI_AudioRuntimeContracts
-    OUTPUT_NAME "HIKARI_AudioRuntimeContracts"
-    NO_INSTALL)
-
-add_executable(HIKARI_InputDeviceArbitrationContracts EXCLUDE_FROM_ALL)
-target_sources(
+    "Tools/Tests/HIKARI_AudioRuntimeContracts.cpp"
+    NO_TOOLING_STUBS)
+hikari_add_runtime_contract(
     HIKARI_InputDeviceArbitrationContracts
-    PRIVATE
-        "${HIKARI_SOURCE_ROOT}/Tools/Tests/HIKARI_InputDeviceArbitrationContracts.cpp")
-target_link_libraries(
-    HIKARI_InputDeviceArbitrationContracts
-    PRIVATE
-        HIKARI::Runtime)
-hikari_configure_engine_target(HIKARI_InputDeviceArbitrationContracts)
-hikari_configure_runtime_deployment(
-    HIKARI_InputDeviceArbitrationContracts
-    OUTPUT_NAME "HIKARI_InputDeviceArbitrationContracts"
-    NO_INSTALL)
-
-add_executable(HIKARI_GroundTelegraphContracts EXCLUDE_FROM_ALL)
-target_sources(
+    "Tools/Tests/HIKARI_InputDeviceArbitrationContracts.cpp"
+    NO_TOOLING_STUBS)
+hikari_add_runtime_contract(
     HIKARI_GroundTelegraphContracts
-    PRIVATE
-        "${HIKARI_SOURCE_ROOT}/Tools/Tests/HIKARI_GroundTelegraphContracts.cpp")
-target_link_libraries(
-    HIKARI_GroundTelegraphContracts
-    PRIVATE
-        HIKARI::Runtime)
-hikari_configure_engine_target(HIKARI_GroundTelegraphContracts)
-hikari_configure_runtime_deployment(
-    HIKARI_GroundTelegraphContracts
-    OUTPUT_NAME "HIKARI_GroundTelegraphContracts"
-    NO_INSTALL)
-
-add_executable(HIKARI_ColliderCompositionContracts EXCLUDE_FROM_ALL)
-target_sources(
+    "Tools/Tests/HIKARI_GroundTelegraphContracts.cpp"
+    NO_TOOLING_STUBS)
+hikari_add_runtime_contract(
     HIKARI_ColliderCompositionContracts
-    PRIVATE
-        "${HIKARI_SOURCE_ROOT}/Tools/Tests/HIKARI_ColliderCompositionContracts.cpp")
-target_link_libraries(
-    HIKARI_ColliderCompositionContracts
-    PRIVATE
-        HIKARI::Runtime)
-hikari_configure_engine_target(HIKARI_ColliderCompositionContracts)
-hikari_configure_runtime_deployment(
-    HIKARI_ColliderCompositionContracts
-    OUTPUT_NAME "HIKARI_ColliderCompositionContracts"
-    NO_INSTALL)
+    "Tools/Tests/HIKARI_ColliderCompositionContracts.cpp"
+    NO_TOOLING_STUBS)
 set_property(
     SOURCE
         ${HIKARI_GAME_PROJECT_SDK_EXPORT_SOURCES}
@@ -224,25 +237,6 @@ source_group(
     TREE "${HIKARI_SOURCE_ROOT}"
     FILES
         ${HIKARI_RUNTIME_SOURCES})
-
-function(hikari_add_runtime_contract target_name source_path)
-    add_executable("${target_name}" EXCLUDE_FROM_ALL)
-    target_sources(
-        "${target_name}"
-        PRIVATE
-            "${HIKARI_SOURCE_ROOT}/${source_path}"
-            "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Host/HIKARI_RuntimeComponentToolingStubs.cpp")
-    target_link_libraries(
-        "${target_name}"
-        PRIVATE
-            HIKARI::Runtime)
-    hikari_configure_engine_target("${target_name}")
-    set_target_properties(
-        "${target_name}"
-        PROPERTIES
-            RUNTIME_OUTPUT_DIRECTORY
-                "${CMAKE_BINARY_DIR}/contracts")
-endfunction()
 
 hikari_add_runtime_contract(
     HIKARI_GameComponentBindingLifecycleSmoke
@@ -310,19 +304,6 @@ hikari_add_runtime_contract(
 hikari_add_runtime_contract(
     HIKARI_BuiltinShaderCatalogSmoke
     "Tools/Tests/HIKARI_BuiltinShaderCatalogSmoke.cpp")
-add_custom_command(
-    TARGET HIKARI_ShaderCookProducerSmoke
-    POST_BUILD
-    COMMAND
-        "${CMAKE_COMMAND}" -E copy_if_different
-        "${HIKARI_DXC_RUNTIME_ROOT}/dxcompiler.dll"
-        "$<TARGET_FILE_DIR:HIKARI_ShaderCookProducerSmoke>"
-    COMMAND
-        "${CMAKE_COMMAND}" -E copy_if_different
-        "${HIKARI_DXC_RUNTIME_ROOT}/dxil.dll"
-        "$<TARGET_FILE_DIR:HIKARI_ShaderCookProducerSmoke>"
-    VERBATIM)
-
 enable_testing()
 foreach(runtime_contract IN ITEMS
     HIKARI_GameComponentBindingLifecycleSmoke
