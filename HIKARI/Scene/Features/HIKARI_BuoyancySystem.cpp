@@ -44,6 +44,7 @@ namespace HIKARI {
         }
 
         world.ForEachObjectWith<BuoyancyComponent, ColliderComponent>(
+            WorldComponentQueryAnchor::FirstRequiredType,
             [&](GameObject& object,
                 BuoyancyComponent& buoyancy,
                 ColliderComponent& collider) {

@@ -1118,6 +1118,7 @@ namespace HIKARI {
             : nullptr;
 
         world.ForEachObjectWith<CameraComponent, CameraFollowComponent>(
+            WorldComponentQueryAnchor::FirstRequiredType,
             [this, input, dt, cameraDt, frameIndex = frame.frameIndex](
                 GameObject& cameraObject,
                 CameraComponent& cameraComponent,

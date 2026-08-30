@@ -29,7 +29,9 @@ namespace HIKARI {
     }
 
     bool GameObject::SetDocumentId(SceneObjectId id) {
-        if (!CanMutateOwnedState()) {
+        if (!CanMutateOwnedState() ||
+            (ownerWorld_ != nullptr &&
+             !ownerWorld_->CanMutateStructure())) {
             return false;
         }
         if (documentId_ == id) {
@@ -144,6 +146,14 @@ namespace HIKARI {
     }
 
     bool GameObject::SetParent(GameObject* parent) {
+        if (ownerWorld_ != nullptr &&
+            !ownerWorld_->CanMutateStructure()) {
+            return false;
+        }
+        return SetParentInternal(parent);
+    }
+
+    bool GameObject::SetParentInternal(GameObject* parent) {
         if (!CanMutateOwnedState()) {
             return false;
         }

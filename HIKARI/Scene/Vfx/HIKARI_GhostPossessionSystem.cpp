@@ -115,6 +115,7 @@ namespace HIKARI {
         world.ForEachObjectWith<
             GhostPossessionComponent,
             MaterialFxComponent>(
+            WorldComponentQueryAnchor::SmallestUniqueBucket,
             [this, runtimeActive, deltaSeconds, &seen](
                 GameObject& object,
                 GhostPossessionComponent& component,

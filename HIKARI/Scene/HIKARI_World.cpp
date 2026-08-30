@@ -161,11 +161,12 @@ namespace HIKARI {
         }
         while (!object->children_.empty()) {
             GameObject* child = object->children_.back();
-            if (child == nullptr || !child->SetParent(nullptr)) {
+            if (child == nullptr ||
+                !child->SetParentInternal(nullptr)) {
                 object->children_.pop_back();
             }
         }
-        (void)object->SetParent(nullptr);
+        (void)object->SetParentInternal(nullptr);
         (void)OnDocumentIdChanged(
             object,
             object->GetDocumentId(),
@@ -341,7 +342,7 @@ namespace HIKARI {
                 AcquireStructureReadScope();
             for (const auto& object : GetObjects()) {
                 if (object) {
-                    (void)object->SetParent(nullptr);
+                    (void)object->SetParentInternal(nullptr);
                 }
             }
             for (const auto& object : GetObjects()) {
@@ -364,6 +365,7 @@ namespace HIKARI {
             objects_.clear();
             objectsByDocumentId_.clear();
             componentBuckets_.clear();
+            nativeComponentTypeIds_.clear();
             renderDirtyObjects_.clear();
             frameEvents_.Clear();
             fixedEvents_.Clear();

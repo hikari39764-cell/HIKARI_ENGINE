@@ -12,14 +12,31 @@ namespace HIKARI {
         World::LiveObjectRange::Iterator::
             operator*() const noexcept {
 
+        static const std::unique_ptr<GameObject> empty{};
+        if (world_ == nullptr ||
+            !world_->IsOwnerThread() ||
+            slot_ == kInvalidLiveObjectSlot ||
+            slot_ >= world_->objectSlots_.size()) {
+            return empty;
+        }
         const ObjectSlot& slot = world_->objectSlots_[slot_];
-        return world_->objects_[slot.storageIndex];
+        return slot.storageIndex < world_->objects_.size()
+            ? world_->objects_[slot.storageIndex]
+            : empty;
     }
 
     World::LiveObjectRange::Iterator&
         World::LiveObjectRange::Iterator::
             operator++() noexcept {
 
+        if (world_ == nullptr ||
+            !world_->IsOwnerThread() ||
+            slot_ == kInvalidLiveObjectSlot ||
+            slot_ >= world_->objectSlots_.size()) {
+            world_ = nullptr;
+            slot_ = kInvalidLiveObjectSlot;
+            return *this;
+        }
         slot_ = world_->objectSlots_[slot_].nextLiveSlot;
         return *this;
     }
@@ -38,20 +55,30 @@ namespace HIKARI {
 
     World::LiveObjectRange::Iterator
         World::LiveObjectRange::begin() const noexcept {
+        const World* iterationWorld =
+            world_ != nullptr && world_->IsOwnerThread()
+                ? world_
+                : nullptr;
         return Iterator(
-            world_,
-            world_ != nullptr
-                ? world_->firstLiveObjectSlot_
+            iterationWorld,
+            iterationWorld != nullptr
+                ? iterationWorld->firstLiveObjectSlot_
                 : kInvalidLiveObjectSlot);
     }
 
     World::LiveObjectRange::Iterator
         World::LiveObjectRange::end() const noexcept {
-        return Iterator(world_, kInvalidLiveObjectSlot);
+        return Iterator(
+            world_ != nullptr && world_->IsOwnerThread()
+                ? world_
+                : nullptr,
+            kInvalidLiveObjectSlot);
     }
 
     size_t World::LiveObjectRange::size() const noexcept {
-        return world_ != nullptr ? world_->liveObjectCount_ : 0u;
+        return world_ != nullptr && world_->IsOwnerThread()
+            ? world_->liveObjectCount_
+            : 0u;
     }
 
     bool World::LiveObjectRange::empty() const noexcept {

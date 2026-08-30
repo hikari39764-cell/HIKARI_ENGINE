@@ -91,6 +91,7 @@ namespace HIKARI {
         world.ForEachObjectWith<
             WaterSurfaceComponent,
             ProceduralMeshComponent>(
+            WorldComponentQueryAnchor::FirstRequiredType,
             [&](GameObject& object,
                 WaterSurfaceComponent& water,
                 ProceduralMeshComponent& procedural) {

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -60,7 +61,8 @@ namespace HIKARI {
         using IndexedComponentVisitorFn = bool (*)(
             void* context,
             RuntimeObjectHandle object,
-            IComponent* component) noexcept;
+            IComponent* const* components,
+            uint32_t componentCount) noexcept;
 
         static PropertyReader MakePropertyReader(
             const void* properties) noexcept;
@@ -105,7 +107,7 @@ namespace HIKARI {
             const PresentationModelView& view) noexcept;
         static bool VisitIndexedComponents(
             World& world,
-            ComponentTypeId typeId,
+            std::span<const ComponentTypeId> typeIds,
             void* context,
             IndexedComponentVisitorFn visitor) noexcept;
     };

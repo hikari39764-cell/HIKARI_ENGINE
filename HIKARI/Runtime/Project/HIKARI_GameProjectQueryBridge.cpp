@@ -1,5 +1,7 @@
 #include "HIKARI/Project/WorldView.h"
 
+#include <array>
+
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_World.h"
@@ -13,11 +15,22 @@ namespace HIKARI {
 
     bool GameProjectSdkAccess::VisitIndexedComponents(
         World& world,
-        ComponentTypeId typeId,
+        std::span<const ComponentTypeId> typeIds,
         void* context,
         IndexedComponentVisitorFn visitor) noexcept {
+        const WorldComponentQueryPlan plan{
+            typeIds,
+            WorldComponentQueryMatch::All,
+            typeIds.size() == 1u
+                ? WorldComponentQueryCardinality::AllEntries
+                : WorldComponentQueryCardinality::FirstPerObject,
+            typeIds.size() == 1u
+                ? WorldComponentQueryAnchor::FirstRequiredType
+                : WorldComponentQueryAnchor::SmallestUniqueBucket,
+            WorldComponentQueryOrder::AnchorAttachment
+        };
         return world.VisitIndexedComponents(
-            typeId,
+            plan,
             context,
             visitor);
     }
@@ -37,19 +50,25 @@ namespace HIKARI {
             void* clientContext = nullptr;
             VisitorFn clientVisitor = nullptr;
         } visitContext{ world, context, visitor };
+        const std::array typeIds{ typeId };
         const bool completed =
             GameProjectSdkAccess::VisitIndexedComponents(
                 *world,
-                typeId,
+                typeIds,
                 &visitContext,
                 [](void* opaque,
                     RuntimeObjectHandle objectHandle,
-                    IComponent* component) noexcept {
+                    IComponent* const* components,
+                    uint32_t componentCount) noexcept {
                     auto& visit = *static_cast<VisitContext*>(opaque);
+                    if (components == nullptr || componentCount != 1u) {
+                        return false;
+                    }
                     GameObject* object =
                         visit.world->FindObject(objectHandle);
                     auto* adapter = dynamic_cast<
-                        GameProjectComponentAdapter*>(component);
+                        GameProjectComponentAdapter*>(
+                            components[0]);
                     return object != nullptr &&
                         adapter != nullptr &&
                         visit.clientVisitor(

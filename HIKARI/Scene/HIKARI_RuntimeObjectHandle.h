@@ -25,6 +25,17 @@ namespace HIKARI {
                 (static_cast<uint64_t>(slot) + 1u);
         }
 
+        static RuntimeObjectHandle FromValue(uint64_t value) noexcept {
+            const uint32_t encodedSlot = static_cast<uint32_t>(value);
+            const uint32_t decodedGeneration =
+                static_cast<uint32_t>(value >> 32u);
+            return encodedSlot != 0u && decodedGeneration != 0u
+                ? RuntimeObjectHandle{
+                    encodedSlot - 1u,
+                    decodedGeneration }
+                : RuntimeObjectHandle{};
+        }
+
         bool operator==(const RuntimeObjectHandle& rhs) const noexcept {
             return slot == rhs.slot && generation == rhs.generation;
         }

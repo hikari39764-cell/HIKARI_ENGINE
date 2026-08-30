@@ -110,23 +110,6 @@ namespace HIKARI::PRESENTATION_MODEL {
             return true;
         }
 
-        GameObject* FindOwner(
-            World& world,
-            uint64_t ownerObjectHandle) noexcept {
-
-            if (ownerObjectHandle == 0u) {
-                return nullptr;
-            }
-            for (const auto& candidate : world.GetObjects()) {
-                if (candidate != nullptr &&
-                    candidate->GetRuntimeHandle().ToValue() ==
-                        ownerObjectHandle) {
-                    return candidate.get();
-                }
-            }
-            return nullptr;
-        }
-
         bool ResolveWorldMatrix(
             const PresentationModelRecord& record,
             World& world,
@@ -140,7 +123,9 @@ namespace HIKARI::PRESENTATION_MODEL {
                 return IsFiniteMatrix(outWorldMatrix);
             }
 
-            GameObject* owner = FindOwner(world, record.ownerObjectHandle);
+            GameObject* owner = world.FindObject(
+                RuntimeObjectHandle::FromValue(
+                    record.ownerObjectHandle));
             if (owner == nullptr) {
                 return false;
             }

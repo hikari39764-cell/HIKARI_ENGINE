@@ -83,7 +83,8 @@ namespace HIKARI {
         world.ForEachObjectWith<
             AnimationStateMachineComponent,
             AnimatorComponent>(
-            [this, &currentKeys, &currentObjects](
+            WorldComponentQueryAnchor::SmallestUniqueBucket,
+            [this, &world, &currentKeys, &currentObjects](
                 GameObject& object,
                 AnimationStateMachineComponent& controller,
                 AnimatorComponent& animator) {
@@ -142,7 +143,10 @@ namespace HIKARI {
                 }
 
                 const ModelComponent* model =
-                    object.GetComponent<ModelComponent>();
+                    dynamic_cast<ModelComponent*>(
+                        world.FindFirstIndexedComponent(
+                            MakeComponentTypeId("ModelComponent"),
+                            handle));
                 const ModelAsset* modelAsset = model != nullptr
                     ? model->GetModelAsset()
                     : nullptr;

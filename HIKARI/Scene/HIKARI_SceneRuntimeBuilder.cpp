@@ -375,6 +375,7 @@ namespace HIKARI {
             world.ForEachObjectWith<
                 ModelComponent,
                 TerrainSurfaceComponent>(
+                WorldComponentQueryAnchor::SmallestUniqueBucket,
                 [&](GameObject&,
                     ModelComponent& modelComponent,
                     TerrainSurfaceComponent&) {

@@ -300,7 +300,8 @@ namespace HIKARI {
             localTransform.rotation = command.transform.rotation;
             localTransform.scale = command.transform.scale;
             (void)ptr->SetLocalTransform(localTransform);
-            if (parent != nullptr && !ptr->SetParent(parent)) {
+            if (parent != nullptr &&
+                !ptr->SetParentInternal(parent)) {
                 throw std::runtime_error(
                     "Queued World spawn hierarchy rejected.");
             }
@@ -317,7 +318,7 @@ namespace HIKARI {
             return WorldMutationResult::Success;
         }
         catch (...) {
-            (void)ptr->SetParent(nullptr);
+            (void)ptr->SetParentInternal(nullptr);
             RemoveRenderObjectDirty(ptr);
             ptr->SetOwnerWorld(nullptr);
             ptr->SetRuntimeHandle({});

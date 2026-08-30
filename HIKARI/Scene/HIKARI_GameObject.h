@@ -117,6 +117,7 @@ namespace HIKARI {
         void DetachComponents();
         void SetOwnerWorld(World* world);
         void SetRuntimeHandle(RuntimeObjectHandle handle) noexcept;
+        bool SetParentInternal(GameObject* parent);
         void MarkTransformHierarchyDirty();
         bool CanMutateOwnedState() const noexcept;
 

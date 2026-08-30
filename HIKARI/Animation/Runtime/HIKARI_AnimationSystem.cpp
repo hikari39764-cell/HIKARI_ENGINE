@@ -209,6 +209,7 @@ namespace HIKARI {
         std::vector<RuntimeObjectHandle> currentObjects{};
 
         world.ForEachObjectWith<ModelComponent, AnimatorComponent>(
+            WorldComponentQueryAnchor::SmallestUniqueBucket,
             [this, &frame, rootMotionService, &currentObjectKeys, &currentObjects](
                 GameObject& object,
                 ModelComponent& model,

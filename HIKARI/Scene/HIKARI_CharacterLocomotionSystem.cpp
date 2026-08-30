@@ -176,6 +176,7 @@ namespace HIKARI {
         world.ForEachObjectWith<
             CharacterLocomotionComponent,
             PhysicsBodyComponent>(
+            WorldComponentQueryAnchor::FirstRequiredType,
             [this, &frame, camera, worldGravity](
                 GameObject& object,
                 CharacterLocomotionComponent& locomotion,
