@@ -28,7 +28,7 @@ namespace HIKARI::GFX::DESCRIPTOR {
     constexpr UINT kSystemSrvBegin = kSrvHeapCapacity - kSystemSrvReservedCount;
 
     enum class SystemSrv : UINT {
-        SceneColor = kSystemSrvBegin + 0,
+        SceneColorFrame0 = kSystemSrvBegin + 0,
         SceneDepth = kSystemSrvBegin + 1,
         EditorViewport = kSystemSrvBegin + 2,
         ImGuiFont = kSystemSrvBegin + 3,
@@ -40,12 +40,12 @@ namespace HIKARI::GFX::DESCRIPTOR {
         SsaoRaw = kSystemSrvBegin + 8,
         SsaoBlurred = kSystemSrvBegin + 9,
         SsaoResolved = kSystemSrvBegin + 10,
-        // +11 は旧 LightProbeSh (StructuredBuffer) の空きスロット。
-        MeshObjectData = kSystemSrvBegin + 12,
-        MeshMaterialData = kSystemSrvBegin + 13,
-        MeshSurfaceGpuScene = kSystemSrvBegin + 14,
-        ShadowSurfaceGpuScene = kSystemSrvBegin + 15,
-        ShadowMaterialData = kSystemSrvBegin + 16,
+        SceneColorPostOpaqueFrame0 = kSystemSrvBegin + 11,
+        SceneColorFrame1 = kSystemSrvBegin + 12,
+        SceneColorFrame2 = kSystemSrvBegin + 13,
+        SceneColorPostOpaqueFrame1 = kSystemSrvBegin + 14,
+        SceneColorPostOpaqueFrame2 = kSystemSrvBegin + 15,
+        // +16 は将来の固定 SRV 用に未割り当て。
         PostSceneDepth = kSystemSrvBegin + 17,
 
         MeshObjectDataFrame0 = kSystemSrvBegin + 18,
@@ -110,6 +110,24 @@ namespace HIKARI::GFX::DESCRIPTOR {
         return ToIndex(firstFrameSlot) + (frameIndex % GFX::kFrameResourceCount);
     }
 
+    constexpr SystemSrv SceneColorFrameSlot(
+        bool postOpaque,
+        uint32_t frameIndex) {
+        const uint32_t slot = frameIndex % GFX::kFrameResourceCount;
+        if (postOpaque) {
+            return slot == 0u
+                ? SystemSrv::SceneColorPostOpaqueFrame0
+                : (slot == 1u
+                    ? SystemSrv::SceneColorPostOpaqueFrame1
+                    : SystemSrv::SceneColorPostOpaqueFrame2);
+        }
+        return slot == 0u
+            ? SystemSrv::SceneColorFrame0
+            : (slot == 1u
+                ? SystemSrv::SceneColorFrame1
+                : SystemSrv::SceneColorFrame2);
+    }
+
     inline D3D12_CPU_DESCRIPTOR_HANDLE CpuAt(
         ID3D12DescriptorHeap* heap,
         UINT descriptorSize,
@@ -157,7 +175,12 @@ namespace HIKARI::GFX::DESCRIPTOR {
     static_assert(kGpuDepthVisibilityTransientDescriptorBegin == kDepthPyramidTransientDescriptorBegin);
     static_assert(kGpuDepthVisibilityTransientDescriptorEnd == kDepthPyramidTransientDescriptorEnd);
     static_assert(kClusterCullFallbackHzbSrv < kSrvHeapCapacity);
-    static_assert(ToIndex(SystemSrv::SceneColor) < kSrvHeapCapacity);
+    static_assert(ToIndex(SystemSrv::SceneColorFrame0) < kSrvHeapCapacity);
+    static_assert(ToIndex(SystemSrv::SceneColorFrame2) < kSrvHeapCapacity);
+    static_assert(ToIndex(SystemSrv::SceneColorPostOpaqueFrame0) <
+        kSrvHeapCapacity);
+    static_assert(ToIndex(SystemSrv::SceneColorPostOpaqueFrame2) <
+        kSrvHeapCapacity);
     static_assert(ToIndex(SystemSrv::SceneDepth) < kSrvHeapCapacity);
     static_assert(ToIndex(SystemSrv::EditorViewport) < kSrvHeapCapacity);
     static_assert(ToIndex(SystemSrv::ImGuiFont) < kSrvHeapCapacity);
@@ -176,11 +199,6 @@ namespace HIKARI::GFX::DESCRIPTOR {
     static_assert(ToIndex(SystemSrv::SsaoRaw) < kSrvHeapCapacity);
     static_assert(ToIndex(SystemSrv::SsaoBlurred) < kSrvHeapCapacity);
     static_assert(ToIndex(SystemSrv::SsaoResolved) < kSrvHeapCapacity);
-    static_assert(ToIndex(SystemSrv::MeshObjectData) < kSrvHeapCapacity);
-    static_assert(ToIndex(SystemSrv::MeshMaterialData) < kSrvHeapCapacity);
-    static_assert(ToIndex(SystemSrv::MeshSurfaceGpuScene) < kSrvHeapCapacity);
-    static_assert(ToIndex(SystemSrv::ShadowSurfaceGpuScene) < kSrvHeapCapacity);
-    static_assert(ToIndex(SystemSrv::ShadowMaterialData) < kSrvHeapCapacity);
     static_assert(ToIndex(SystemSrv::PostSceneDepth) < kSrvHeapCapacity);
     static_assert(ToIndex(SystemSrv::MeshObjectDataFrame0) < kSrvHeapCapacity);
     static_assert(ToIndex(SystemSrv::MeshObjectDataFrame2) < kSrvHeapCapacity);

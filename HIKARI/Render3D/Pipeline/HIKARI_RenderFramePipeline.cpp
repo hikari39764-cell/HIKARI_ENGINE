@@ -444,7 +444,11 @@ namespace HIKARI::RENDER3D::PIPELINE {
                     debugView,
                     hasDepthAwareWork,
                     hasTransparentWork,
-                    hasSsrWork
+                    hasSsrWork,
+                    hasDepthAwareWork ||
+                        hasTransparentWork ||
+                        hasSsrWork ||
+                        stylizedScreenMaskRequired
                 });
         if (!graphStage.completed) {
             MESHRENDERER::EndFrame();
@@ -570,13 +574,12 @@ namespace HIKARI::RENDER3D::PIPELINE {
             // Geometry/visibility feature passes draw in place. Capture after
             // them so the isolated full-screen composite preserves their
             // result while SceneColorPostOpaque remains its immutable input.
+            // SceneColorOpaque is a distinct physical snapshot retained by
+            // Temporal masks until resolve completes.
             const RenderTextureView postOpaqueSceneColor =
-                POST::PostSystem::CaptureSceneColorSnapshot();
+                POST::PostSystem::CaptureSceneColorSnapshot(
+                    POST::SceneColorSnapshotKind::PostOpaque);
             if (postOpaqueSceneColor.IsSampleable()) {
-                // The producer currently reuses one physical snapshot. The
-                // opaque version has reached last use, so invalidate it before
-                // publishing the aliased post-opaque version.
-                sceneTextures.sceneColorOpaque = {};
                 sceneTextures.sceneColorPostOpaque =
                     postOpaqueSceneColor;
                 FEATURES::StylizedScreenFeatureSettings featureSettings{};
@@ -605,6 +608,8 @@ namespace HIKARI::RENDER3D::PIPELINE {
                     sceneTextures,
                     gLastRenderFeaturePlan,
                     featureSettings);
+            } else {
+                featurePassesOk = false;
             }
         }
 

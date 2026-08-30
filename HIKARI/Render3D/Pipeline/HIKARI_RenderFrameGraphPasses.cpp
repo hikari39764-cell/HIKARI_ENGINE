@@ -213,15 +213,18 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
         const RenderFrameGraphStageContext& context = *state.context;
         try {
             const RenderTextureView sceneColorOpaque =
-                POST::PostSystem::CaptureSceneColorSnapshot();
+                POST::PostSystem::CaptureSceneColorSnapshot(
+                    POST::SceneColorSnapshotKind::Opaque);
             if (!sceneColorOpaque.IsSampleable()) {
-                return true;
+                return false;
             }
             context.sceneSurfaces.sceneColorOpaque = sceneColorOpaque;
             context.postOpaqueResources.opaqueSceneColor = sceneColorOpaque;
-            (void)TEMPORAL::SetTemporalCompositionBase(
-                context.temporalResources,
-                sceneColorOpaque.srv);
+            if (!TEMPORAL::SetTemporalCompositionBase(
+                    context.temporalResources,
+                    sceneColorOpaque.srv)) {
+                return false;
+            }
             state.result.sceneColorOpaquePublished = true;
             return POST::PostSystem::RebindCurrentRenderTarget();
         }

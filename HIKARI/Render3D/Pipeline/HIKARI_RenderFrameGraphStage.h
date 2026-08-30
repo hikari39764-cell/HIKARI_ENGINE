@@ -46,6 +46,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
         bool hasDepthAwareWork = false;
         bool hasTransparentWork = false;
         bool hasSsrWork = false;
+        bool requiresSceneColorOpaque = false;
     };
 
     struct RenderFrameGraphStageResult {

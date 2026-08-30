@@ -361,11 +361,13 @@ namespace HIKARI::POST {
     bool PostSystem::BeginCurrentRenderTargetDepthRead() { return captureStage_.BeginCurrentDepthRead(); }
     void PostSystem::EndCurrentRenderTargetDepthRead() { captureStage_.EndCurrentDepthRead(); }
 
-    RENDER3D::RenderTextureView PostSystem::CaptureSceneColorSnapshot() {
-        return captureStage_.CaptureSceneColorSnapshot();
+    RENDER3D::RenderTextureView PostSystem::CaptureSceneColorSnapshot(
+        SceneColorSnapshotKind kind) {
+        return captureStage_.CaptureSceneColorSnapshot(kind);
     }
-    RENDER3D::RenderTextureView PostSystem::GetSceneColorSnapshotView() {
-        return captureStage_.GetSceneColorSnapshotView();
+    RENDER3D::RenderTextureView PostSystem::GetSceneColorSnapshotView(
+        SceneColorSnapshotKind kind) {
+        return captureStage_.GetSceneColorSnapshotView(kind);
     }
 
     bool PostSystem::IsEditorViewportReady() {

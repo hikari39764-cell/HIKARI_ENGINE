@@ -1,5 +1,8 @@
 #pragma once
 
+#include <array>
+#include <cstddef>
+#include <cstdint>
 #include <stack>
 #include <string>
 
@@ -7,6 +10,7 @@
 #include "Render2D/HIKARI_RenderTarget2D.h"
 #include "Render3D/Resources/HIKARI_RenderTextureView.h"
 #include "Vfx/Post/HIKARI_PostQuadDrawer.h"
+#include "Vfx/Post/HIKARI_SceneColorSnapshot.h"
 
 namespace HIKARI::POST {
 
@@ -29,8 +33,10 @@ namespace HIKARI::POST {
         bool BeginCurrentDepthRead();
         void EndCurrentDepthRead();
 
-        RENDER3D::RenderTextureView CaptureSceneColorSnapshot();
-        RENDER3D::RenderTextureView GetSceneColorSnapshotView() const;
+        RENDER3D::RenderTextureView CaptureSceneColorSnapshot(
+            SceneColorSnapshotKind kind);
+        RENDER3D::RenderTextureView GetSceneColorSnapshotView(
+            SceneColorSnapshotKind kind) const;
 
         void SetAmbientColor(float r, float g, float b);
         void BeginLightCapture();
@@ -52,26 +58,45 @@ namespace HIKARI::POST {
         std::string DumpState() const;
 
     private:
+        static constexpr size_t kSnapshotKindCount =
+            static_cast<size_t>(SceneColorSnapshotKind::Count);
+
         struct LayerInfo {
             RenderTarget2D* target = nullptr;
             PostChain* chain = nullptr;
         };
 
         bool EnsureSceneTargets(int width, int height);
-        bool EnsureSceneColorSnapshot();
-        void RefreshSceneColorSrv();
+        bool EnsureSceneColorSnapshot(SceneColorSnapshotKind kind);
+        void RefreshSceneColorSrv(SceneColorSnapshotKind kind);
 
         GFX::Context context_{};
         RenderTarget2D sceneTarget_{};
-        RenderTarget2D sceneColorSnapshot_{};
+        std::array<
+            RenderTarget2D,
+            kSnapshotKindCount>
+            sceneColorSnapshots_{};
         RenderTarget2D lightTarget_{};
         std::stack<LayerInfo> layers_{};
-        D3D12_CPU_DESCRIPTOR_HANDLE sceneColorSrvCpu_{};
-        D3D12_GPU_DESCRIPTOR_HANDLE sceneColorSrvGpu_{};
+        std::array<
+            std::array<
+                D3D12_CPU_DESCRIPTOR_HANDLE,
+                GFX::kFrameResourceCount>,
+            kSnapshotKindCount>
+            sceneColorSrvCpu_{};
+        std::array<
+            std::array<
+                D3D12_GPU_DESCRIPTOR_HANDLE,
+                GFX::kFrameResourceCount>,
+            kSnapshotKindCount>
+            sceneColorSrvGpu_{};
         float ambientColor_[3] = { 1.0f, 1.0f, 1.0f };
         float lightClearColor_[3] = { 1.0f, 1.0f, 1.0f };
         bool active_ = false;
-        bool sceneColorReady_ = false;
+        std::array<
+            bool,
+            kSnapshotKindCount>
+            sceneColorReady_{};
         bool lightingEnabled_ = false;
     };
 

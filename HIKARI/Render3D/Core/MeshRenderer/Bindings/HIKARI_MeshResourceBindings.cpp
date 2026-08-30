@@ -397,7 +397,7 @@ namespace HIKARI::MESHRENDERER {
                 ctx.graphics->srvHeap,
                 descriptorSize,
                 GFX::DESCRIPTOR::ToIndex(
-                    GFX::DESCRIPTOR::SystemSrv::SceneColor));
+                    GFX::DESCRIPTOR::SystemSrv::SceneColorFrame0));
         }
         if (spectrumTable.ptr != 0u) {
             BindDescriptorTableCached(

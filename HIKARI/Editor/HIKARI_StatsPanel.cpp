@@ -84,7 +84,8 @@ namespace HIKARI {
             ImGui::Text(
                 "Deferred Releases Pending: %zu",
                 GFX::GetCurrentDeferredReleaseCount());
-            const auto sceneColor = POST::PostSystem::GetSceneColorSnapshotView();
+            const auto sceneColor = POST::PostSystem::GetSceneColorSnapshotView(
+                POST::SceneColorSnapshotKind::Opaque);
             ImGui::Text("SceneColor Ready: %s",
                 sceneColor.IsSampleable() ? "Yes" : "No");
             ImGui::Text("SceneColor Size: %u x %u", sceneColor.width, sceneColor.height);

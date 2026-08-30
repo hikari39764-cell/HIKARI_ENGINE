@@ -11,22 +11,54 @@
 
 namespace HIKARI::POST {
 
+    namespace {
+        constexpr size_t SnapshotIndex(
+            SceneColorSnapshotKind kind) noexcept {
+            return static_cast<size_t>(kind);
+        }
+
+        bool IsValidSnapshotKind(
+            SceneColorSnapshotKind kind) noexcept {
+            return SnapshotIndex(kind) <
+                static_cast<size_t>(SceneColorSnapshotKind::Count);
+        }
+
+        const char* SnapshotDebugName(
+            SceneColorSnapshotKind kind) noexcept {
+            return kind == SceneColorSnapshotKind::Opaque
+                ? "SceneCapture.ColorOpaque"
+                : "SceneCapture.ColorPostOpaque";
+        }
+
+        GFX::DESCRIPTOR::SystemSrv SnapshotDescriptor(
+            SceneColorSnapshotKind kind,
+            uint32_t frameIndex) noexcept {
+            return GFX::DESCRIPTOR::SceneColorFrameSlot(
+                kind == SceneColorSnapshotKind::PostOpaque,
+                frameIndex);
+        }
+    }
+
     void SceneCaptureStage::UpdateContext(const GFX::Context& context) {
         context_ = context;
         sceneTarget_.UpdateContext(context);
-        sceneColorSnapshot_.UpdateContext(context);
+        for (RenderTarget2D& snapshot : sceneColorSnapshots_) {
+            snapshot.UpdateContext(context);
+        }
         lightTarget_.UpdateContext(context);
     }
 
     void SceneCaptureStage::Shutdown() {
         sceneTarget_.Finalize();
-        sceneColorSnapshot_.Finalize();
+        for (RenderTarget2D& snapshot : sceneColorSnapshots_) {
+            snapshot.Finalize();
+        }
         lightTarget_.Finalize();
         while (!layers_.empty()) layers_.pop();
-        sceneColorSrvCpu_ = {};
-        sceneColorSrvGpu_ = {};
+        sceneColorSrvCpu_.fill({});
+        sceneColorSrvGpu_.fill({});
         active_ = false;
-        sceneColorReady_ = false;
+        sceneColorReady_.fill(false);
         lightingEnabled_ = false;
     }
 
@@ -68,7 +100,7 @@ namespace HIKARI::POST {
     }
 
     bool SceneCaptureStage::Begin(int width, int height) {
-        sceneColorReady_ = false;
+        sceneColorReady_.fill(false);
         lightingEnabled_ = false;
         while (!layers_.empty()) layers_.pop();
         if (!EnsureSceneTargets(width, height)) {
@@ -132,67 +164,109 @@ namespace HIKARI::POST {
         if (HasCurrentTarget()) layers_.top().target->EndDepthRead();
     }
 
-    bool SceneCaptureStage::EnsureSceneColorSnapshot() {
-        if (!sceneTarget_.GetResource()) return false;
-        const bool invalid = !sceneColorSnapshot_.GetResource() ||
-            sceneColorSnapshot_.GetWidth() != sceneTarget_.GetWidth() ||
-            sceneColorSnapshot_.GetHeight() != sceneTarget_.GetHeight() ||
-            sceneColorSnapshot_.GetFormat() != sceneTarget_.GetFormat() ||
-            sceneColorSnapshot_.HasDepth();
+    bool SceneCaptureStage::EnsureSceneColorSnapshot(
+        SceneColorSnapshotKind kind) {
+        if (!IsValidSnapshotKind(kind) || !sceneTarget_.GetResource()) {
+            return false;
+        }
+        RenderTarget2D& snapshot =
+            sceneColorSnapshots_[SnapshotIndex(kind)];
+        const bool invalid = !snapshot.GetResource() ||
+            snapshot.GetWidth() != sceneTarget_.GetWidth() ||
+            snapshot.GetHeight() != sceneTarget_.GetHeight() ||
+            snapshot.GetFormat() != sceneTarget_.GetFormat() ||
+            snapshot.HasDepth();
         if (!invalid) return true;
-        sceneColorSnapshot_.Finalize();
-        sceneColorSnapshot_.SetDebugName("SceneCapture.ColorSnapshot");
-        if (!sceneColorSnapshot_.Init(
+        snapshot.Finalize();
+        snapshot.SetDebugName(SnapshotDebugName(kind));
+        if (!snapshot.Init(
                 sceneTarget_.GetWidth(), sceneTarget_.GetHeight(),
                 sceneTarget_.GetFormat(), false, { 0, 0, 0, 1 })) return false;
-        RefreshSceneColorSrv();
         return true;
     }
 
-    void SceneCaptureStage::RefreshSceneColorSrv() {
-        if (!context_.device || !context_.srvHeap || !sceneColorSnapshot_.GetResource()) {
-            sceneColorSrvCpu_ = {};
-            sceneColorSrvGpu_ = {};
-            sceneColorReady_ = false;
+    void SceneCaptureStage::RefreshSceneColorSrv(
+        SceneColorSnapshotKind kind) {
+        if (!IsValidSnapshotKind(kind)) {
+            return;
+        }
+        const size_t snapshotIndex = SnapshotIndex(kind);
+        const uint32_t frameSlot =
+            context_.frameIndex % GFX::kFrameResourceCount;
+        RenderTarget2D& snapshot = sceneColorSnapshots_[snapshotIndex];
+        if (!context_.device || !context_.srvHeap || !snapshot.GetResource()) {
+            sceneColorSrvCpu_[snapshotIndex][frameSlot] = {};
+            sceneColorSrvGpu_[snapshotIndex][frameSlot] = {};
+            sceneColorReady_[snapshotIndex] = false;
             return;
         }
         const UINT size = context_.device->GetDescriptorHandleIncrementSize(
             D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-        const UINT index = GFX::DESCRIPTOR::ToIndex(GFX::DESCRIPTOR::SystemSrv::SceneColor);
-        sceneColorSrvCpu_ = GFX::DESCRIPTOR::CpuAt(context_.srvHeap, size, index);
-        sceneColorSrvGpu_ = GFX::DESCRIPTOR::GpuAt(context_.srvHeap, size, index);
+        const UINT index = GFX::DESCRIPTOR::ToIndex(
+            SnapshotDescriptor(kind, context_.frameIndex));
+        sceneColorSrvCpu_[snapshotIndex][frameSlot] =
+            GFX::DESCRIPTOR::CpuAt(context_.srvHeap, size, index);
+        sceneColorSrvGpu_[snapshotIndex][frameSlot] =
+            GFX::DESCRIPTOR::GpuAt(context_.srvHeap, size, index);
         D3D12_SHADER_RESOURCE_VIEW_DESC desc{};
-        desc.Format = sceneColorSnapshot_.GetFormat();
+        desc.Format = snapshot.GetFormat();
         desc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
         desc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
         desc.Texture2D.MipLevels = 1;
         context_.device->CreateShaderResourceView(
-            sceneColorSnapshot_.GetResource(), &desc, sceneColorSrvCpu_);
+            snapshot.GetResource(),
+            &desc,
+            sceneColorSrvCpu_[snapshotIndex][frameSlot]);
     }
 
-    RENDER3D::RenderTextureView SceneCaptureStage::CaptureSceneColorSnapshot() {
-        if (!active_ || !EnsureSceneColorSnapshot() || !context_.cmdList) return {};
+    RENDER3D::RenderTextureView SceneCaptureStage::CaptureSceneColorSnapshot(
+        SceneColorSnapshotKind kind) {
+        if (!active_ ||
+            !EnsureSceneColorSnapshot(kind) ||
+            !context_.cmdList) {
+            return {};
+        }
+        const size_t snapshotIndex = SnapshotIndex(kind);
+        RenderTarget2D& snapshot = sceneColorSnapshots_[snapshotIndex];
+        RefreshSceneColorSrv(kind);
+        const uint32_t frameSlot =
+            context_.frameIndex % GFX::kFrameResourceCount;
+        if (sceneColorSrvGpu_[snapshotIndex][frameSlot].ptr == 0u) {
+            return {};
+        }
         sceneTarget_.TransitionColor(D3D12_RESOURCE_STATE_COPY_SOURCE);
-        sceneColorSnapshot_.TransitionColor(D3D12_RESOURCE_STATE_COPY_DEST);
+        snapshot.TransitionColor(D3D12_RESOURCE_STATE_COPY_DEST);
         GFX::PIX::ScopedGpuEvent event(
-            context_.cmdList, GFX::PIX::kColorPost, "SceneCapture.ColorSnapshot");
+            context_.cmdList,
+            GFX::PIX::kColorPost,
+            SnapshotDebugName(kind));
         context_.cmdList->CopyResource(
-            sceneColorSnapshot_.GetResource(), sceneTarget_.GetResource());
-        sceneColorSnapshot_.TransitionColor(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+            snapshot.GetResource(), sceneTarget_.GetResource());
+        snapshot.TransitionColor(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
         sceneTarget_.TransitionColor(D3D12_RESOURCE_STATE_RENDER_TARGET);
-        sceneColorReady_ = true;
-        return GetSceneColorSnapshotView();
+        sceneColorReady_[snapshotIndex] = true;
+        return GetSceneColorSnapshotView(kind);
     }
 
-    RENDER3D::RenderTextureView SceneCaptureStage::GetSceneColorSnapshotView() const {
+    RENDER3D::RenderTextureView SceneCaptureStage::GetSceneColorSnapshotView(
+        SceneColorSnapshotKind kind) const {
+        if (!IsValidSnapshotKind(kind)) {
+            return {};
+        }
+        const size_t snapshotIndex = SnapshotIndex(kind);
+        const uint32_t frameSlot =
+            context_.frameIndex % GFX::kFrameResourceCount;
+        const RenderTarget2D& snapshot =
+            sceneColorSnapshots_[snapshotIndex];
         return {
-            sceneColorSnapshot_.GetResource(), sceneColorSrvGpu_,
-            sceneColorSnapshot_.GetFormat(),
-            static_cast<uint32_t>(sceneColorSnapshot_.GetWidth()),
-            static_cast<uint32_t>(sceneColorSnapshot_.GetHeight()), 1,
-            sceneColorSnapshot_.GetColorState(), sceneColorReady_ &&
-                sceneColorSnapshot_.GetResource() != nullptr &&
-                sceneColorSrvGpu_.ptr != 0
+            snapshot.GetResource(),
+            sceneColorSrvGpu_[snapshotIndex][frameSlot],
+            snapshot.GetFormat(),
+            static_cast<uint32_t>(snapshot.GetWidth()),
+            static_cast<uint32_t>(snapshot.GetHeight()), 1,
+            snapshot.GetColorState(), sceneColorReady_[snapshotIndex] &&
+                snapshot.GetResource() != nullptr &&
+                sceneColorSrvGpu_[snapshotIndex][frameSlot].ptr != 0
         };
     }
 
@@ -256,11 +330,19 @@ namespace HIKARI::POST {
     std::string SceneCaptureStage::DumpState() const {
         std::ostringstream stream;
         stream << "[SceneCaptureStage] active=" << active_
-            << " sceneColor=" << sceneColorReady_
+            << " sceneColorOpaque="
+            << sceneColorReady_[SnapshotIndex(
+                SceneColorSnapshotKind::Opaque)]
+            << " sceneColorPostOpaque="
+            << sceneColorReady_[SnapshotIndex(
+                SceneColorSnapshotKind::PostOpaque)]
             << " lighting=" << lightingEnabled_
             << " layers=" << layers_.size()
             << "\n  " << sceneTarget_.DumpState()
-            << "\n  " << sceneColorSnapshot_.DumpState()
+            << "\n  " << sceneColorSnapshots_[SnapshotIndex(
+                SceneColorSnapshotKind::Opaque)].DumpState()
+            << "\n  " << sceneColorSnapshots_[SnapshotIndex(
+                SceneColorSnapshotKind::PostOpaque)].DumpState()
             << "\n  " << lightTarget_.DumpState();
         return stream.str();
     }

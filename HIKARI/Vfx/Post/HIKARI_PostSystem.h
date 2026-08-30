@@ -19,6 +19,7 @@
 #include "Vfx/Post/HIKARI_PostProcessingTypes.h"
 #include "Vfx/Post/HIKARI_PostQuadDrawer.h"
 #include "Vfx/Post/HIKARI_PresentationFrame.h"
+#include "Vfx/Post/HIKARI_SceneColorSnapshot.h"
 
 namespace HIKARI {
     class RenderTarget2D;
@@ -135,8 +136,10 @@ namespace HIKARI::POST {
         static int GetEditorViewportWidth();
         static int GetEditorViewportHeight();
 
-        static RENDER3D::RenderTextureView CaptureSceneColorSnapshot();
-        static RENDER3D::RenderTextureView GetSceneColorSnapshotView();
+        static RENDER3D::RenderTextureView CaptureSceneColorSnapshot(
+            SceneColorSnapshotKind kind);
+        static RENDER3D::RenderTextureView GetSceneColorSnapshotView(
+            SceneColorSnapshotKind kind);
 
         static void SetAmbientColor(float r, float g, float b);
         static void BeginLightCapture();
