@@ -42,6 +42,8 @@ namespace HIKARI {
     class VfxView;
     class World;
     enum class RuntimeWorldAccessResult : uint8_t;
+    enum class WorldComponentQueryAnchor : uint8_t;
+    enum class WorldComponentQueryCardinality : uint8_t;
 
     struct RuntimeFeatureContextAccess {
         static RuntimeFeatureContext Create(
@@ -105,9 +107,12 @@ namespace HIKARI {
             RuntimeWorldAccessResult* outAccess = nullptr) noexcept;
         static World* GetWorld(
             const PresentationModelView& view) noexcept;
+        static bool IsWorldClosing(const World& world) noexcept;
         static bool VisitIndexedComponents(
             World& world,
             std::span<const ComponentTypeId> typeIds,
+            WorldComponentQueryCardinality cardinality,
+            WorldComponentQueryAnchor anchor,
             void* context,
             IndexedComponentVisitorFn visitor) noexcept;
     };

@@ -214,19 +214,7 @@ hikari_configure_runtime_deployment(
     NO_INSTALL)
 set_property(
     SOURCE
-        "${HIKARI_SOURCE_ROOT}/HIKARI/Scene/Features/HIKARI_RuntimeFeatureCatalog.cpp"
-        "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectActionBridge.cpp"
-        "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectNavigationBridge.cpp"
-        "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectGameFlowBridge.cpp"
-        "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectPresentationBridge.cpp"
-        "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectUiBridge.cpp"
-        "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectVfxBridge.cpp"
-        "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectPropertyBridge.cpp"
-        "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectBindingBridge.cpp"
-        "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectQueryBridge.cpp"
-        "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectRegistration.cpp"
-        "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectTransformBridge.cpp"
-        "${HIKARI_SOURCE_ROOT}/HIKARI/Runtime/Project/HIKARI_GameProjectWorldBridge.cpp"
+        ${HIKARI_GAME_PROJECT_SDK_EXPORT_SOURCES}
     APPEND
     PROPERTY
         COMPILE_DEFINITIONS
@@ -271,6 +259,9 @@ hikari_add_runtime_contract(
 hikari_add_runtime_contract(
     HIKARI_WorldComponentIndexSmoke
     "Tools/Tests/HIKARI_WorldComponentIndexSmoke.cpp")
+hikari_add_runtime_contract(
+    HIKARI_WorldQuerySdkSmoke
+    "Tools/Tests/HIKARI_WorldQuerySdkSmoke.cpp")
 hikari_add_runtime_contract(
     HIKARI_RuntimeFeatureTransactionSmoke
     "Tools/Tests/HIKARI_RuntimeFeatureTransactionSmoke.cpp")
@@ -336,6 +327,7 @@ foreach(runtime_contract IN ITEMS
     HIKARI_WorldCommandSchedulerSmoke
     HIKARI_WorldBatchSmoke
     HIKARI_WorldComponentIndexSmoke
+    HIKARI_WorldQuerySdkSmoke
     HIKARI_RuntimeFeatureTransactionSmoke
     HIKARI_RenderGraphSmoke
     HIKARI_RenderGraphCapacitySmoke

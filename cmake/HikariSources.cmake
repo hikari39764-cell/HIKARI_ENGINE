@@ -617,6 +617,30 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/SpineDefaultExtensionShim.cpp"
 )
 
+# Public GameProject SDK exports have one compile/link owner. Keeping these
+# translation units in a dedicated archive lets each Host retain the complete
+# SDK surface without whole-archiving the broader runtime composition module.
+set(HIKARI_GAME_PROJECT_SDK_EXPORT_SOURCES ${HIKARI_RUNTIME_SOURCES})
+string(
+    CONCAT
+    HIKARI_GAME_PROJECT_SDK_EXPORT_PATTERN
+    "(HIKARI_RuntimeFeatureCatalog|HIKARI_GameProject("
+    "ActionBridge|NavigationBridge|GameFlowBridge|PresentationBridge|"
+    "UiBridge|VfxBridge|PropertyBridge|BindingBridge|QueryBridge|"
+    "Registration|TransformBridge|WorldBridge))\\.cpp$")
+list(
+    FILTER
+    HIKARI_GAME_PROJECT_SDK_EXPORT_SOURCES
+    INCLUDE
+    REGEX "${HIKARI_GAME_PROJECT_SDK_EXPORT_PATTERN}")
+unset(HIKARI_GAME_PROJECT_SDK_EXPORT_PATTERN)
+list(LENGTH HIKARI_GAME_PROJECT_SDK_EXPORT_SOURCES hikari_sdk_export_count)
+if(NOT hikari_sdk_export_count EQUAL 13)
+    message(
+        FATAL_ERROR
+        "The GameProject SDK export owner must contain exactly 13 sources.")
+endif()
+
 set(HIKARI_EDITOR_HOST_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Host/HIKARI_EditorHostMain.cpp"
 )

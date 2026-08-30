@@ -2,15 +2,130 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <type_traits>
 
 #include "HIKARI/Project/ValueTypes.h"
+#include "HIKARI/Runtime/ComponentTypeId.h"
 
 namespace HIKARI {
+
+    class IGameComponent;
 
     inline constexpr size_t kGameProjectObjectNameCapacity = 128u;
     inline constexpr size_t
         kGameProjectWorldMaximumSpawnBatchCount = 256u;
+    inline constexpr uint32_t kGameProjectWorldQueryVersion = 1u;
+    inline constexpr uint32_t kGameProjectWorldQueryMaximumTermCount = 8u;
+    inline constexpr uint32_t kGameProjectWorldQueryTermV1Size = 24u;
+    inline constexpr uint32_t kGameProjectWorldQueryDescV1Size = 56u;
+    inline constexpr uint32_t kGameProjectWorldQueryRowV1Size = 48u;
+    inline constexpr uint32_t kGameProjectWorldQueryResultV1Size = 32u;
+
+    enum class GameProjectWorldQueryMatch : uint32_t {
+        AllRequired = 0u,
+        Count,
+    };
+
+    enum class GameProjectWorldQueryCardinality : uint32_t {
+        AllEntries = 0u,
+        FirstPerObject,
+        Count,
+    };
+
+    enum class GameProjectWorldQueryAnchor : uint32_t {
+        FirstRequiredTerm = 0u,
+        SmallestUniqueBucket,
+        Count,
+    };
+
+    enum class GameProjectWorldQueryOrder : uint32_t {
+        AnchorAttachment = 0u,
+        Count,
+    };
+
+    enum class GameProjectWorldQueryVisitResult : uint32_t {
+        Continue = 0u,
+        Stop,
+        Error,
+        Count,
+    };
+
+    enum class GameProjectWorldQueryResultCode : uint32_t {
+        Success = 0u,
+        Stopped,
+        InvalidWorld,
+        WrongThread,
+        InvalidRequest,
+        TooManyTerms,
+        InvalidTerm,
+        Unsupported,
+        WorldClosing,
+        CallbackError,
+        InternalError,
+    };
+
+    // V1 term arrays have a fixed 24-byte stride; structSize must match V1.
+    struct GameProjectWorldQueryTerm {
+        uint32_t structSize = kGameProjectWorldQueryTermV1Size;
+        uint32_t version = kGameProjectWorldQueryVersion;
+        ComponentTypeId typeId{};
+        uint32_t reserved[2] = { 0u, 0u };
+    };
+
+    // Terms are required and row components use the same term order. One-term
+    // queries may visit AllEntries (including allowMultiple); multi-term v1
+    // queries use FirstPerObject. SmallestUniqueBucket ties use term order.
+    struct GameProjectWorldQueryDesc {
+        uint32_t structSize = kGameProjectWorldQueryDescV1Size;
+        uint32_t version = kGameProjectWorldQueryVersion;
+        const GameProjectWorldQueryTerm* terms = nullptr;
+        uint32_t termCount = 0u;
+        GameProjectWorldQueryMatch match =
+            GameProjectWorldQueryMatch::AllRequired;
+        GameProjectWorldQueryCardinality cardinality =
+            GameProjectWorldQueryCardinality::FirstPerObject;
+        GameProjectWorldQueryAnchor anchor =
+            GameProjectWorldQueryAnchor::SmallestUniqueBucket;
+        GameProjectWorldQueryOrder order =
+            GameProjectWorldQueryOrder::AnchorAttachment;
+        uint32_t reserved[4] = { 0u, 0u, 0u, 0u };
+    };
+
+    // Callback-scoped borrowed row. Do not retain the row, component array, or
+    // component pointers; the object handle itself may be copied and retained.
+    struct GameProjectWorldQueryRow {
+        uint32_t structSize = kGameProjectWorldQueryRowV1Size;
+        uint32_t version = kGameProjectWorldQueryVersion;
+        GameProjectObjectHandle object{};
+        IGameComponent* const* components = nullptr;
+        uint32_t componentCount = 0u;
+        uint32_t reserved[3] = { 0u, 0u, 0u };
+    };
+
+    // rowsVisited counts delivered callback rows. QueryEnd command failures are
+    // reported through WorldView's existing command-failure APIs, not here.
+    struct GameProjectWorldQueryResult {
+        uint32_t structSize = kGameProjectWorldQueryResultV1Size;
+        uint32_t version = kGameProjectWorldQueryVersion;
+        GameProjectWorldQueryResultCode code =
+            GameProjectWorldQueryResultCode::InvalidRequest;
+        GameProjectWorldQueryVisitResult callbackResult =
+            GameProjectWorldQueryVisitResult::Continue;
+        uint64_t rowsVisited = 0u;
+        uint32_t diagnosticTermIndex =
+            (std::numeric_limits<uint32_t>::max)();
+        uint32_t reserved = 0u;
+
+        constexpr bool Succeeded() const noexcept {
+            return code == GameProjectWorldQueryResultCode::Success;
+        }
+    };
+
+    using GameProjectWorldQueryCallback =
+        GameProjectWorldQueryVisitResult (*)(
+            void* context,
+            const GameProjectWorldQueryRow* row) noexcept;
 
     enum class GameProjectWorldResultCode : uint8_t {
         Success = 0u,
@@ -110,6 +225,63 @@ namespace HIKARI {
 
     static_assert(std::is_standard_layout_v<GameProjectObjectHandle>);
     static_assert(std::is_trivially_copyable_v<GameProjectObjectHandle>);
+    static_assert(std::is_standard_layout_v<GameProjectWorldQueryTerm>);
+    static_assert(std::is_same_v<std::underlying_type_t<
+        GameProjectWorldQueryMatch>, uint32_t>);
+    static_assert(std::is_same_v<std::underlying_type_t<
+        GameProjectWorldQueryCardinality>, uint32_t>);
+    static_assert(std::is_same_v<std::underlying_type_t<
+        GameProjectWorldQueryAnchor>, uint32_t>);
+    static_assert(std::is_same_v<std::underlying_type_t<
+        GameProjectWorldQueryOrder>, uint32_t>);
+    static_assert(std::is_same_v<std::underlying_type_t<
+        GameProjectWorldQueryVisitResult>, uint32_t>);
+    static_assert(std::is_same_v<std::underlying_type_t<
+        GameProjectWorldQueryResultCode>, uint32_t>);
+    static_assert(std::is_trivially_copyable_v<
+        GameProjectWorldQueryTerm>);
+    static_assert(sizeof(GameProjectWorldQueryTerm) == 24u);
+    static_assert(offsetof(GameProjectWorldQueryTerm, structSize) == 0u);
+    static_assert(offsetof(GameProjectWorldQueryTerm, version) == 4u);
+    static_assert(offsetof(GameProjectWorldQueryTerm, typeId) == 8u);
+    static_assert(offsetof(GameProjectWorldQueryTerm, reserved) == 16u);
+    static_assert(std::is_standard_layout_v<GameProjectWorldQueryDesc>);
+    static_assert(std::is_trivially_copyable_v<
+        GameProjectWorldQueryDesc>);
+    static_assert(sizeof(GameProjectWorldQueryDesc) == 56u);
+    static_assert(offsetof(GameProjectWorldQueryDesc, structSize) == 0u);
+    static_assert(offsetof(GameProjectWorldQueryDesc, version) == 4u);
+    static_assert(offsetof(GameProjectWorldQueryDesc, terms) == 8u);
+    static_assert(offsetof(GameProjectWorldQueryDesc, termCount) == 16u);
+    static_assert(offsetof(GameProjectWorldQueryDesc, match) == 20u);
+    static_assert(offsetof(GameProjectWorldQueryDesc, cardinality) == 24u);
+    static_assert(offsetof(GameProjectWorldQueryDesc, anchor) == 28u);
+    static_assert(offsetof(GameProjectWorldQueryDesc, order) == 32u);
+    static_assert(offsetof(GameProjectWorldQueryDesc, reserved) == 36u);
+    static_assert(std::is_standard_layout_v<GameProjectWorldQueryRow>);
+    static_assert(std::is_trivially_copyable_v<GameProjectWorldQueryRow>);
+    static_assert(sizeof(GameProjectWorldQueryRow) == 48u);
+    static_assert(offsetof(GameProjectWorldQueryRow, structSize) == 0u);
+    static_assert(offsetof(GameProjectWorldQueryRow, version) == 4u);
+    static_assert(offsetof(GameProjectWorldQueryRow, object) == 8u);
+    static_assert(offsetof(GameProjectWorldQueryRow, components) == 24u);
+    static_assert(offsetof(GameProjectWorldQueryRow, componentCount) == 32u);
+    static_assert(offsetof(GameProjectWorldQueryRow, reserved) == 36u);
+    static_assert(std::is_standard_layout_v<GameProjectWorldQueryResult>);
+    static_assert(std::is_trivially_copyable_v<
+        GameProjectWorldQueryResult>);
+    static_assert(sizeof(GameProjectWorldQueryResult) == 32u);
+    static_assert(offsetof(GameProjectWorldQueryResult, structSize) == 0u);
+    static_assert(offsetof(GameProjectWorldQueryResult, version) == 4u);
+    static_assert(offsetof(GameProjectWorldQueryResult, code) == 8u);
+    static_assert(offsetof(
+        GameProjectWorldQueryResult,
+        callbackResult) == 12u);
+    static_assert(offsetof(GameProjectWorldQueryResult, rowsVisited) == 16u);
+    static_assert(offsetof(
+        GameProjectWorldQueryResult,
+        diagnosticTermIndex) == 24u);
+    static_assert(offsetof(GameProjectWorldQueryResult, reserved) == 28u);
     static_assert(std::is_standard_layout_v<GameProjectTransform>);
     static_assert(std::is_trivially_copyable_v<GameProjectTransform>);
     static_assert(std::is_standard_layout_v<GameProjectWorldResult>);

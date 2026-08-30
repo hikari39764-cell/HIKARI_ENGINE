@@ -13,6 +13,7 @@ include_guard(GLOBAL)
 set(HIKARI_RUNTIME_FOUNDATION_SOURCES)
 set(HIKARI_RUNTIME_ASSET_SOURCES)
 set(HIKARI_RUNTIME_PROJECT_SOURCES)
+set(HIKARI_RUNTIME_GAME_PROJECT_SDK_SOURCES)
 set(HIKARI_RUNTIME_NAVIGATION_SOURCES)
 set(HIKARI_RUNTIME_ANIMATION_SOURCES)
 set(HIKARI_RUNTIME_GAMEPLAY_SOURCES)
@@ -32,7 +33,12 @@ foreach(runtime_source IN LISTS HIKARI_RUNTIME_SOURCES)
         "${runtime_source}")
     string(REPLACE "\\" "/" runtime_relative_path "${runtime_relative_path}")
 
-    if(
+    if(runtime_source IN_LIST HIKARI_GAME_PROJECT_SDK_EXPORT_SOURCES)
+        list(
+            APPEND
+            HIKARI_RUNTIME_GAME_PROJECT_SDK_SOURCES
+            "${runtime_source}")
+    elseif(
         runtime_relative_path MATCHES
         "^HIKARI/(Core|Diagnostics|Platform|Input|Audio)/" OR
         runtime_relative_path STREQUAL "External/WICTextureLoader.cpp" OR
@@ -83,6 +89,7 @@ set(
     HIKARI_RUNTIME_FOUNDATION_SOURCES
     HIKARI_RUNTIME_ASSET_SOURCES
     HIKARI_RUNTIME_PROJECT_SOURCES
+    HIKARI_RUNTIME_GAME_PROJECT_SDK_SOURCES
     HIKARI_RUNTIME_NAVIGATION_SOURCES
     HIKARI_RUNTIME_ANIMATION_SOURCES
     HIKARI_RUNTIME_GAMEPLAY_SOURCES
@@ -153,6 +160,7 @@ function(hikari_define_runtime_modules output_variable)
         "hikari_runtime_foundation|HIKARI_RUNTIME_FOUNDATION_SOURCES"
         "hikari_runtime_assets|HIKARI_RUNTIME_ASSET_SOURCES"
         "hikari_runtime_project|HIKARI_RUNTIME_PROJECT_SOURCES"
+        "hikari_runtime_game_project_sdk|HIKARI_RUNTIME_GAME_PROJECT_SDK_SOURCES"
         "hikari_runtime_navigation|HIKARI_RUNTIME_NAVIGATION_SOURCES"
         "hikari_runtime_animation|HIKARI_RUNTIME_ANIMATION_SOURCES"
         "hikari_runtime_gameplay|HIKARI_RUNTIME_GAMEPLAY_SOURCES"

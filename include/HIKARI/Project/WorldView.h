@@ -165,6 +165,24 @@ namespace HIKARI {
             GetSaveGame() const noexcept;
         HIKARI_GAME_PROJECT_SDK_API RuntimeSessionView
             GetRuntimeSession() const noexcept;
+        // Additive C++ SDK export; this is not the module's extern-C ABI table.
+        // Invalid queries invoke no callback and do not flush commands.
+        // Valid queries attempt QueryEnd after traversal. When nested in an
+        // enclosing World read scope, that owner's deterministic phase boundary
+        // performs the flush. Failures use the existing command-failure readers.
+        HIKARI_GAME_PROJECT_SDK_API GameProjectWorldQueryResult
+            QueryComponents(
+                const GameProjectWorldQueryDesc& desc,
+                void* context,
+                GameProjectWorldQueryCallback callback) const noexcept;
+
+        template<class... Components, class Visitor>
+        // Definition is opt-in through WorldQuery.h to keep this base view light.
+        // typeIds must address at least sizeof...(Components) contiguous IDs.
+        GameProjectWorldQueryResult ForEachComponents(
+            const ComponentTypeId* typeIds,
+            GameProjectWorldQueryAnchor anchor,
+            Visitor&& visitor) const;
 
         template<class Component, class Visitor>
         // Visits the World-owned typed index in stable attachment order.
