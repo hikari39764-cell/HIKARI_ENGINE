@@ -3,28 +3,17 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
-#include <condition_variable>
 #include <deque>
 #include <exception>
 #include <mutex>
-#include <thread>
 #include <utility>
+
+#include "Core/Tasks/HIKARI_TaskExecutor.h"
 
 namespace HIKARI {
 
     namespace {
         using Clock = std::chrono::steady_clock;
-
-        uint32_t ResolveWorkerCount(uint32_t requested) {
-            if (requested > 0u) {
-                return (std::clamp)(requested, 1u, 8u);
-            }
-            const uint32_t hardware = std::thread::hardware_concurrency();
-            if (hardware <= 2u) {
-                return 1u;
-            }
-            return (std::clamp)(hardware - 1u, 1u, 4u);
-        }
     }
 
     struct AssetTaskService::Impl {
@@ -49,27 +38,12 @@ namespace HIKARI {
         };
 
         explicit Impl(uint32_t requestedWorkerCount)
-            : workerCount(ResolveWorkerCount(requestedWorkerCount)) {
-
-            workers.reserve(workerCount);
-            for (uint32_t index = 0u; index < workerCount; ++index) {
-                workers.emplace_back([this]() {
-                    WorkerMain();
-                });
-            }
-        }
+            : executor(requestedWorkerCount) {}
 
         ~Impl() {
+            stopping.store(true, std::memory_order_relaxed);
             {
-                std::lock_guard lock(queueMutex);
-                stopping = true;
-                for (const QueuedTask& task : queuedTasks) {
-                    if (task.state) {
-                        task.state->cancellationRequested.store(
-                            true,
-                            std::memory_order_relaxed);
-                    }
-                }
+                std::lock_guard lock(stateListMutex);
                 for (const std::shared_ptr<SharedState>& state : states) {
                     if (state) {
                         state->cancellationRequested.store(
@@ -78,88 +52,71 @@ namespace HIKARI {
                     }
                 }
             }
-            queueCondition.notify_all();
-            for (std::thread& worker : workers) {
-                if (worker.joinable()) {
-                    worker.join();
-                }
-            }
+            executor.StopAccepting();
+            executor.WaitIdle();
         }
 
-        void WorkerMain() {
-            for (;;) {
-                QueuedTask task{};
+        void ExecuteTask(QueuedTask task) {
+            const std::shared_ptr<SharedState>& state = task.state;
+            if (!state) {
+                return;
+            }
+
+            AssetTaskOutcome outcome{};
+            if (state->cancellationRequested.load(
+                    std::memory_order_relaxed)) {
+                outcome = AssetTaskOutcome::Canceled(
+                    "canceled before the task started");
+            } else {
                 {
-                    std::unique_lock lock(queueMutex);
-                    queueCondition.wait(lock, [this]() {
-                        return stopping || !queuedTasks.empty();
-                    });
-                    if (stopping && queuedTasks.empty()) {
-                        return;
-                    }
-                    task = std::move(queuedTasks.front());
-                    queuedTasks.pop_front();
+                    std::lock_guard lock(state->mutex);
+                    state->startedAt = Clock::now();
+                    state->snapshot.state = AssetTaskState::Running;
+                    state->snapshot.progress.stage = "Starting";
                 }
 
-                const std::shared_ptr<SharedState>& state = task.state;
-                if (!state) {
-                    continue;
-                }
-
-                AssetTaskOutcome outcome{};
-                if (state->cancellationRequested.load(
-                        std::memory_order_relaxed)) {
-                    outcome = AssetTaskOutcome::Canceled(
-                        "canceled before the task started");
-                } else {
-                    {
-                        std::lock_guard lock(state->mutex);
-                        state->startedAt = Clock::now();
-                        state->snapshot.state = AssetTaskState::Running;
-                        state->snapshot.progress.stage = "Starting";
-                    }
-
-                    std::weak_ptr<SharedState> weakState = state;
-                    AssetTaskContext context{
-                        [weakState]() {
-                            const std::shared_ptr<SharedState> locked =
-                                weakState.lock();
-                            return !locked ||
-                                locked->cancellationRequested.load(
-                                    std::memory_order_relaxed);
-                        },
-                        [weakState](AssetTaskProgress progress) {
-                            const std::shared_ptr<SharedState> locked =
-                                weakState.lock();
-                            if (!locked) {
-                                return;
-                            }
-                            progress.normalized = (std::clamp)(
-                                progress.normalized,
-                                0.0f,
-                                1.0f);
-                            std::lock_guard stateLock(locked->mutex);
-                            locked->snapshot.progress =
-                                std::move(progress);
+                std::weak_ptr<SharedState> weakState = state;
+                AssetTaskContext context{
+                    [weakState]() {
+                        const std::shared_ptr<SharedState> locked =
+                            weakState.lock();
+                        return !locked ||
+                            locked->cancellationRequested.load(
+                                std::memory_order_relaxed);
+                    },
+                    [weakState](AssetTaskProgress progress) {
+                        const std::shared_ptr<SharedState> locked =
+                            weakState.lock();
+                        if (!locked) {
+                            return;
                         }
-                    };
-
-                    try {
-                        if (task.request.work) {
-                            outcome = task.request.work(context);
-                        } else {
-                            outcome = AssetTaskOutcome::Failed(
-                                "task has no work callback");
-                        }
-                    } catch (const std::exception& error) {
-                        outcome = AssetTaskOutcome::Failed(
-                            std::string("task exception: ") + error.what());
-                    } catch (...) {
-                        outcome = AssetTaskOutcome::Failed(
-                            "task exception: unknown");
+                        progress.normalized = (std::clamp)(
+                            progress.normalized,
+                            0.0f,
+                            1.0f);
+                        std::lock_guard stateLock(locked->mutex);
+                        locked->snapshot.progress =
+                            std::move(progress);
                     }
-                }
+                };
 
+                try {
+                    if (task.request.work) {
+                        outcome = task.request.work(context);
+                    } else {
+                        outcome = AssetTaskOutcome::Failed(
+                            "task has no work callback");
+                    }
+                } catch (const std::exception& error) {
+                    outcome = AssetTaskOutcome::Failed(
+                        std::string("task exception: ") + error.what());
+                } catch (...) {
+                    outcome = AssetTaskOutcome::Failed(
+                        "task exception: unknown");
+                }
+            }
+
+            try {
                 {
                     std::lock_guard lock(state->mutex);
                     state->snapshot.state = AssetTaskState::Finalizing;
@@ -175,21 +132,25 @@ namespace HIKARI {
                     });
                 }
             }
+            catch (...) {
+                // The executor cannot deliver a domain completion if its
+                // queue allocation fails. Close the snapshot instead of
+                // leaving a task permanently stuck in Finalizing.
+                std::lock_guard lock(state->mutex);
+                state->finishedAt = Clock::now();
+                state->snapshot.state = AssetTaskState::Failed;
+            }
         }
 
-        uint32_t workerCount = 1u;
         std::atomic<AssetTaskId> nextTaskId{ 1u };
-        mutable std::mutex queueMutex{};
-        std::condition_variable queueCondition{};
-        std::deque<QueuedTask> queuedTasks{};
-        std::vector<std::thread> workers{};
-        bool stopping = false;
+        std::atomic_bool stopping{ false };
 
         mutable std::mutex stateListMutex{};
         std::vector<std::shared_ptr<SharedState>> states{};
 
         mutable std::mutex completionMutex{};
         std::deque<FinishedTask> finishedTasks{};
+        TASKS::TaskExecutor executor;
     };
 
     AssetTaskOutcome AssetTaskOutcome::Succeeded(std::string message) {
@@ -242,7 +203,8 @@ namespace HIKARI {
     AssetTaskService::~AssetTaskService() = default;
 
     AssetTaskId AssetTaskService::Submit(AssetTaskRequest request) {
-        if (!impl_ || !request.work) {
+        if (!impl_ || !request.work ||
+            impl_->stopping.load(std::memory_order_relaxed)) {
             return 0u;
         }
 
@@ -274,14 +236,18 @@ namespace HIKARI {
                     });
             }
         }
-        {
-            std::lock_guard lock(impl_->queueMutex);
-            impl_->queuedTasks.push_back(Impl::QueuedTask{
-                state,
-                std::move(request)
-            });
+        Impl* const owner = impl_.get();
+        if (!impl_->executor.Submit(
+                [owner, task = Impl::QueuedTask{
+                    state,
+                    std::move(request)
+                }]() mutable {
+                    owner->ExecuteTask(std::move(task));
+                })) {
+            std::lock_guard lock(impl_->stateListMutex);
+            std::erase(impl_->states, state);
+            return 0u;
         }
-        impl_->queueCondition.notify_one();
         return id;
     }
 
@@ -463,7 +429,7 @@ namespace HIKARI {
     }
 
     uint32_t AssetTaskService::GetWorkerCount() const noexcept {
-        return impl_ ? impl_->workerCount : 0u;
+        return impl_ ? impl_->executor.GetWorkerCount() : 0u;
     }
 
     const char* ToString(AssetTaskState state) noexcept {

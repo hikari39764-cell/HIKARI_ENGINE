@@ -34,6 +34,17 @@ namespace HIKARI {
         const GameProjectWorldMassRenderProxyDesc& lhs,
         const GameProjectWorldMassRenderProxyDesc& rhs) noexcept;
 
+    namespace INTERNAL {
+
+        bool IsFiniteWorldMassVector(
+            const GameProjectFloat3& value) noexcept;
+        bool IsValidWorldMassTransform(
+            const GameProjectFloat3& position,
+            const GameProjectQuaternion& rotation,
+            const GameProjectFloat3& scale) noexcept;
+
+    } // namespace INTERNAL
+
     class WorldMassSchemaRegistry {
     public:
         bool Register(WorldMassSchema schema) noexcept;
@@ -98,6 +109,31 @@ namespace HIKARI {
         }
     };
 
+    // Owner-thread scheduling seam. The scheduler copies this borrowed view
+    // into value-owned worker snapshots before dispatching any job.
+    struct WorldMassSchedulingSnapshotView {
+        WorldMassSchema schema{};
+        size_t podStride = 0u;
+        uint64_t mutationVersion = 0u;
+        std::span<const RuntimeObjectHandle> objects{};
+        std::span<const GameProjectFloat3> positions{};
+        std::span<const GameProjectQuaternion> rotations{};
+        std::span<const GameProjectFloat3> scales{};
+        std::span<const GameProjectFloat3> velocities{};
+        std::span<const std::byte> podBytes{};
+    };
+
+    struct WorldMassSchedulingOutputView {
+        size_t firstRow = 0u;
+        std::span<const RuntimeObjectHandle> expectedObjects{};
+        std::span<const GameProjectFloat3> positions{};
+        std::span<const GameProjectQuaternion> rotations{};
+        std::span<const GameProjectFloat3> scales{};
+        std::span<const GameProjectFloat3> velocities{};
+        std::span<const std::byte> podBytes{};
+        uint32_t writeMask = 0u;
+    };
+
     class WorldMassStore {
     public:
         using MutableVisitorFn = bool (*)(
@@ -108,6 +144,13 @@ namespace HIKARI {
             void* context,
             const WorldMassRenderPublicationReceipt& receipt,
             std::span<const WorldMassRenderStoreView> stores) noexcept;
+
+        WorldMassStore() = default;
+        ~WorldMassStore() = default;
+
+    private:
+        friend class World;
+        friend class SystemScheduler;
 
         bool CanUseSchema(const WorldMassSchema& schema) const noexcept;
         bool AppendBatch(
@@ -129,10 +172,6 @@ namespace HIKARI {
             size_t rowIndex,
             RuntimeObjectHandle object,
             RuntimeObjectHandle& outMovedObject) noexcept;
-        bool TryGetMutableRow(
-            ComponentTypeId typeId,
-            size_t rowIndex,
-            WorldMassMutableRow& outRow) noexcept;
         bool VisitMutable(
             ComponentTypeId typeId,
             void* context,
@@ -162,7 +201,18 @@ namespace HIKARI {
             const WorldMassRenderPublicationReceipt& receipt) noexcept;
         void Clear() noexcept;
 
-    private:
+        bool TryGetObject(
+            ComponentTypeId typeId,
+            size_t rowIndex,
+            RuntimeObjectHandle& outObject) const noexcept;
+        bool GetSchedulingSnapshot(
+            ComponentTypeId typeId,
+            WorldMassSchedulingSnapshotView& outView) const noexcept;
+        bool ApplySchedulingOutputs(
+            ComponentTypeId typeId,
+            uint64_t expectedMutationVersion,
+            std::span<const WorldMassSchedulingOutputView> outputs) noexcept;
+
         struct Store {
             WorldMassSchema schema{};
             size_t podStride = 0u;
@@ -182,6 +232,7 @@ namespace HIKARI {
             uint64_t renderDirtyBaseSourceVersion = 1u;
             uint64_t publishedSourceVersion = 0u;
             uint64_t publishedGeneration = 0u;
+            uint64_t mutationVersion = 1u;
             bool renderDirtyIndicesSorted = true;
             bool renderDirtyAll = false;
             bool hasRenderProxy = false;
@@ -216,6 +267,7 @@ namespace HIKARI {
             size_t rowIndex) noexcept;
         static void AdvanceRenderSourceVersion(Store& store) noexcept;
         static void AdvanceRenderLayoutVersion(Store& store) noexcept;
+        static void AdvanceMutationVersion(Store& store) noexcept;
         static void RebuildRenderDirtyRanges(Store& store);
         static void ClearAcknowledgedRenderDirty(Store& store) noexcept;
         static bool HasChangedTransform(

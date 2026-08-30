@@ -5,6 +5,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <vector>
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 #include "Scene/HIKARI_ISystem.h"
@@ -16,11 +17,18 @@ enum class WorldCommandPhase : uint8_t;
 
 class SystemScheduler {
 public:
+    SystemScheduler();
+    ~SystemScheduler();
+
+    SystemScheduler(const SystemScheduler&) = delete;
+    SystemScheduler& operator=(const SystemScheduler&) = delete;
+
     void Clear();
 
     bool AddSystem(std::string systemId, int executionOrder, std::unique_ptr<ISystem> system);
     bool HasSystem(std::string_view systemId) const;
     size_t GetSystemCount() const;
+    uint64_t GetParallelMassFailureCount() const noexcept;
     std::vector<std::string> GetExecutionOrder() const;
 
     void AttachWorld(World& world);
@@ -38,6 +46,8 @@ public:
     void PostRender(World& world, const FrameContext& frame);
 
 private:
+    struct SystemEntry;
+
     using FrameCallback = void (ISystem::*)(
         World&,
         const FrameContext&);
@@ -48,6 +58,17 @@ private:
         WorldCommandPhase phase,
         FrameCallback callback,
         bool flushAfterEach);
+    bool IsOwnerThread() const noexcept;
+    bool ExecuteParallelMassSystem(
+        World& world,
+        const FrameContext& frame,
+        const SystemEntry& entry,
+        const IMassWorkerSystem& system);
+    void WaitForParallelIdle() noexcept;
+    void ReleaseParallelRuntime() noexcept;
+    void DiscardParallelSystemScratch(const ISystem* system) noexcept;
+
+    struct ParallelRuntime;
 
     struct SystemEntry {
         std::string systemId{};
@@ -61,7 +82,10 @@ private:
     };
 
     std::vector<SystemEntry> systems_{};
+    const std::thread::id ownerThread_{};
     uint64_t nextInsertionIndex_ = 0;
+    uint64_t parallelMassFailureCount_ = 0u;
+    std::unique_ptr<ParallelRuntime> parallelRuntime_{};
 };
 
 } // namespace HIKARI

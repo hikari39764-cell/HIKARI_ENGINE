@@ -21,6 +21,10 @@ namespace {
     static_assert(
         static_cast<uint8_t>(WorldCommandKind::DestroyMass) ==
         static_cast<uint8_t>(GameProjectWorldCommandKind::DestroyMass));
+    static_assert(
+        static_cast<uint8_t>(WorldCommandKind::ParallelMassSystem) ==
+        static_cast<uint8_t>(
+            GameProjectWorldCommandKind::ParallelMassSystem));
 
     template<size_t Count>
     bool HasNonZeroReserved(const uint32_t (&values)[Count]) noexcept {

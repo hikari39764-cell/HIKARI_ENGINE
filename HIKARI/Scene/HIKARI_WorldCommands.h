@@ -66,6 +66,7 @@ namespace HIKARI {
         SetParent,
         SpawnMass,
         DestroyMass,
+        ParallelMassSystem,
     };
 
     enum class WorldCommandPhase : uint8_t {

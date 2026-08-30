@@ -8,7 +8,6 @@
 #include "Scene/Components/HIKARI_CameraActivationVolumeComponent.h"
 #include "Scene/Components/HIKARI_CameraComponent.h"
 #include "Scene/Components/HIKARI_SpawnPointComponent.h"
-#include "Scene/Debug/HIKARI_BuiltInComponentGizmoProviders.h"
 #include "Scene/Debug/HIKARI_ComponentGizmoRegistry.h"
 #include "Scene/Debug/Internal/HIKARI_ComponentGizmoDrawing.h"
 #include "Scene/HIKARI_GameObject.h"

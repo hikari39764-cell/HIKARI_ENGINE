@@ -8,7 +8,6 @@
 #include "Scene/Components/Lighting/HIKARI_IrradianceVolumeComponent.h"
 #include "Scene/Components/Lighting/HIKARI_LightComponent.h"
 #include "Scene/Components/Lighting/HIKARI_ReflectionProbeComponent.h"
-#include "Scene/Debug/HIKARI_BuiltInComponentGizmoProviders.h"
 #include "Scene/Debug/HIKARI_ComponentGizmoRegistry.h"
 #include "Scene/Debug/Internal/HIKARI_ComponentGizmoDrawing.h"
 #include "Scene/HIKARI_GameObject.h"

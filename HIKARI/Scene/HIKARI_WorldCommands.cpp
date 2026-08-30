@@ -1,7 +1,6 @@
 #include "Scene/HIKARI_World.h"
 
 #include <array>
-#include <cmath>
 #include <cstring>
 #include <limits>
 #include <memory>
@@ -12,36 +11,6 @@
 #include "Scene/HIKARI_ComponentRegistry.h"
 
 namespace HIKARI {
-
-    namespace {
-
-        bool IsFinite(const GameProjectFloat3& value) noexcept {
-            return std::isfinite(value.x) &&
-                std::isfinite(value.y) &&
-                std::isfinite(value.z);
-        }
-
-        bool IsFinite(const GameProjectQuaternion& value) noexcept {
-            return std::isfinite(value.x) &&
-                std::isfinite(value.y) &&
-                std::isfinite(value.z) &&
-                std::isfinite(value.w);
-        }
-
-        bool IsValidMassTransform(
-            const GameProjectTransform& value) noexcept {
-            const double rotationLengthSquared =
-                static_cast<double>(value.rotation.x) * value.rotation.x +
-                static_cast<double>(value.rotation.y) * value.rotation.y +
-                static_cast<double>(value.rotation.z) * value.rotation.z +
-                static_cast<double>(value.rotation.w) * value.rotation.w;
-            return IsFinite(value.position) &&
-                IsFinite(value.scale) &&
-                IsFinite(value.rotation) &&
-                rotationLengthSquared > 1.0e-12;
-        }
-
-    } // namespace
 
     WorldMutationResult INTERNAL::BuildWorldSpawnBatchPayload(
         const ComponentRegistry* registry,
@@ -207,8 +176,12 @@ namespace HIKARI {
             payload->velocities.reserve(count);
             payload->podBytes.resize(count * payload->podStride);
             for (size_t index = 0u; index < count; ++index) {
-                if (!IsValidMassTransform(request.transforms[index]) ||
-                    !IsFinite(request.velocities[index])) {
+                if (!INTERNAL::IsValidWorldMassTransform(
+                        request.transforms[index].position,
+                        request.transforms[index].rotation,
+                        request.transforms[index].scale) ||
+                    !INTERNAL::IsFiniteWorldMassVector(
+                        request.velocities[index])) {
                     return WorldMutationResult::InvalidComponentData;
                 }
                 payload->transforms.push_back(request.transforms[index]);
@@ -500,6 +473,22 @@ namespace HIKARI {
             result,
             command.object,
             command.parent,
+            phase
+        });
+    }
+
+    void World::RecordParallelMassSystemFailure(
+        WorldCommandPhase phase) noexcept {
+        if (commandFailures_.size() >= kWorldCommandFailureCapacity) {
+            ++commandFailureOverflowCount_;
+            return;
+        }
+        commandFailures_.push_back(WorldCommandFailure{
+            0u,
+            WorldCommandKind::ParallelMassSystem,
+            WorldMutationResult::InternalError,
+            {},
+            {},
             phase
         });
     }

@@ -23,6 +23,7 @@
 namespace HIKARI {
 
     class ComponentRegistry;
+    class SystemScheduler;
     struct GameProjectSdkAccess;
 
     enum class RuntimeWorldAccessResult : uint8_t {
@@ -294,6 +295,7 @@ namespace HIKARI {
 
     private:
         friend class GameObject;
+        friend class SystemScheduler;
         friend struct GameProjectSdkAccess;
 
         using IndexedComponentVisitorFn = bool (*)(
@@ -506,6 +508,8 @@ namespace HIKARI {
         void RecordCommandFailure(
             const PendingWorldCommand& command,
             WorldMutationResult result,
+            WorldCommandPhase phase) noexcept;
+        void RecordParallelMassSystemFailure(
             WorldCommandPhase phase) noexcept;
         WorldMutationResult ApplyQueuedSpawn(
             const PendingWorldCommand& command);

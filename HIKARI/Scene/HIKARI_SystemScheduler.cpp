@@ -3,14 +3,40 @@
 #include <algorithm>
 #include <utility>
 
+#include "Core/HIKARI_FrameContext.h"
+#include "HIKARI/Project/MassSystem.h"
 #include "Scene/HIKARI_ISystem.h"
 #include "Scene/HIKARI_World.h"
 
 namespace HIKARI {
 
-void SystemScheduler::Clear() {
-    systems_.clear();
-    nextInsertionIndex_ = 0;
+namespace {
+
+    bool MatchesMassSystemPhase(
+        GameProjectMassSystemPhase schedulePhase,
+        WorldCommandPhase phase) noexcept {
+        switch (schedulePhase) {
+        case GameProjectMassSystemPhase::PreUpdate:
+            return phase == WorldCommandPhase::SystemPreUpdate;
+        case GameProjectMassSystemPhase::PreFixedUpdate:
+            return phase == WorldCommandPhase::SystemPreFixedUpdate;
+        case GameProjectMassSystemPhase::FixedUpdate:
+            return phase == WorldCommandPhase::SystemFixedUpdate;
+        case GameProjectMassSystemPhase::PostFixedUpdate:
+            return phase == WorldCommandPhase::SystemPostFixedUpdate;
+        case GameProjectMassSystemPhase::Update:
+            return phase == WorldCommandPhase::SystemUpdate;
+        case GameProjectMassSystemPhase::LateUpdate:
+            return phase == WorldCommandPhase::SystemLateUpdate;
+        default:
+            return false;
+        }
+    }
+
+} // namespace
+
+bool SystemScheduler::IsOwnerThread() const noexcept {
+    return std::this_thread::get_id() == ownerThread_;
 }
 
 bool SystemScheduler::AddSystem(
@@ -18,7 +44,8 @@ bool SystemScheduler::AddSystem(
     int executionOrder,
     std::unique_ptr<ISystem> system) {
 
-    if (systemId.empty() || !system || HasSystem(systemId)) {
+    if (!IsOwnerThread() || systemId.empty() || !system ||
+        HasSystem(systemId)) {
         return false;
     }
 
@@ -48,6 +75,9 @@ bool SystemScheduler::AddSystem(
 }
 
 bool SystemScheduler::HasSystem(std::string_view systemId) const {
+    if (!IsOwnerThread()) {
+        return false;
+    }
     return std::any_of(
         systems_.begin(),
         systems_.end(),
@@ -57,11 +87,18 @@ bool SystemScheduler::HasSystem(std::string_view systemId) const {
 }
 
 size_t SystemScheduler::GetSystemCount() const {
-    return systems_.size();
+    return IsOwnerThread() ? systems_.size() : 0u;
+}
+
+uint64_t SystemScheduler::GetParallelMassFailureCount() const noexcept {
+    return IsOwnerThread() ? parallelMassFailureCount_ : 0u;
 }
 
 std::vector<std::string> SystemScheduler::GetExecutionOrder() const {
     std::vector<std::string> order;
+    if (!IsOwnerThread()) {
+        return order;
+    }
     order.reserve(systems_.size());
     for (const SystemEntry& entry : systems_) {
         order.push_back(entry.systemId);
@@ -75,6 +112,9 @@ void SystemScheduler::ExecuteFramePhase(
     WorldCommandPhase phase,
     FrameCallback callback,
     bool flushAfterEach) {
+    if (!IsOwnerThread() || !world.IsOwnerThread()) {
+        return;
+    }
     const bool fixedPhase =
         phase == WorldCommandPhase::SystemPreFixedUpdate ||
         phase == WorldCommandPhase::SystemFixedUpdate ||
@@ -82,6 +122,43 @@ void SystemScheduler::ExecuteFramePhase(
     for (const SystemEntry& entry : systems_) {
         CPU_PROFILE::ScopedDynamicCpuTimer timer(
             fixedPhase ? entry.fixedTiming : entry.frameTiming);
+        const auto* massSystem =
+            dynamic_cast<const IMassWorkerSystem*>(entry.system.get());
+        if (massSystem != nullptr &&
+            massSystem->GetMassSystemSchedule().access.typeId.IsValid() &&
+            MatchesMassSystemPhase(
+                massSystem->GetMassSystemSchedule().phase,
+                phase)) {
+            bool completed = false;
+            try {
+                completed = ExecuteParallelMassSystem(
+                    world,
+                    frame,
+                    entry,
+                    *massSystem);
+            }
+            catch (...) {
+                ++parallelMassFailureCount_;
+                DiscardParallelSystemScratch(entry.system.get());
+                world.RecordParallelMassSystemFailure(phase);
+                if (flushAfterEach) {
+                    (void)world.FlushQueuedCommands(phase);
+                }
+                throw;
+            }
+            if (flushAfterEach) {
+                (void)world.FlushQueuedCommands(phase);
+            }
+            if (!completed) {
+                ++parallelMassFailureCount_;
+                DiscardParallelSystemScratch(entry.system.get());
+                world.RecordParallelMassSystemFailure(phase);
+                // Do not let later systems observe a partially failed Mass
+                // phase. Earlier systems remain committed at their barriers.
+                return;
+            }
+            continue;
+        }
         try {
             const World::StructureReadScope structureRead =
                 world.AcquireStructureReadScope();
@@ -98,6 +175,9 @@ void SystemScheduler::ExecuteFramePhase(
 }
 
 void SystemScheduler::AttachWorld(World& world) {
+    if (!IsOwnerThread() || !world.IsOwnerThread()) {
+        return;
+    }
     for (const SystemEntry& entry : systems_) {
         try {
             const World::StructureReadScope structureRead =
@@ -115,6 +195,10 @@ void SystemScheduler::AttachWorld(World& world) {
 }
 
 void SystemScheduler::DetachWorld(World& world) {
+    if (!IsOwnerThread() || !world.IsOwnerThread()) {
+        return;
+    }
+    ReleaseParallelRuntime();
     for (const SystemEntry& entry : systems_) {
         try {
             const World::StructureReadScope structureRead =

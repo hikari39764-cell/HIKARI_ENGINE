@@ -57,8 +57,15 @@ namespace HIKARI {
             return false;
         }
         for (size_t index = 0u; index < sourceIndices.size(); ++index) {
+            const uint32_t sourceIndex = sourceIndices[index];
             if (!objects[index].IsValid() ||
-                sourceIndices[index] >= transforms.size()) {
+                sourceIndex >= transforms.size() ||
+                !INTERNAL::IsValidWorldMassTransform(
+                    transforms[sourceIndex].position,
+                    transforms[sourceIndex].rotation,
+                    transforms[sourceIndex].scale) ||
+                !INTERNAL::IsFiniteWorldMassVector(
+                    velocities[sourceIndex])) {
                 return false;
             }
         }
@@ -213,6 +220,7 @@ namespace HIKARI {
         }
         outFirstRowIndex = previousCount;
         totalCount_ += objects.size();
+        AdvanceMutationVersion(store);
         return true;
     }
 
@@ -252,6 +260,9 @@ namespace HIKARI {
             AdvanceRenderLayoutVersion(*store);
         }
         totalCount_ -= objects.size();
+        if (!objects.empty()) {
+            AdvanceMutationVersion(*store);
+        }
         return true;
     }
 
@@ -316,6 +327,7 @@ namespace HIKARI {
             AdvanceRenderLayoutVersion(store);
         }
         --totalCount_;
+        AdvanceMutationVersion(store);
         return true;
     }
 
@@ -332,80 +344,17 @@ namespace HIKARI {
             outMovedObject);
     }
 
-    bool WorldMassStore::VisitMutable(
-        ComponentTypeId typeId,
-        void* context,
-        MutableVisitorFn visitor) noexcept {
-        Store* store = FindStore(typeId);
-        if (store == nullptr) {
-            return true;
-        }
-        if (visitor == nullptr) {
-            return false;
-        }
-        bool completed = true;
-        bool renderChanged = false;
-        for (size_t rowIndex = 0u;
-            rowIndex < store->objects.size();
-            ++rowIndex) {
-            const WorldMassRenderInstance before =
-                store->hasRenderProxy
-                ? store->renderInstances[rowIndex]
-                : WorldMassRenderInstance{};
-            WorldMassMutableRow row{
-                store->objects[rowIndex],
-                &store->positions[rowIndex],
-                &store->rotations[rowIndex],
-                &store->scales[rowIndex],
-                &store->velocities[rowIndex],
-                store->podBytes.data() + rowIndex * store->podStride,
-                store->schema.podSize,
-                store->schema.podAlignment
-            };
-            const bool continueVisit = visitor(context, rowIndex, row);
-            if (store->hasRenderProxy && HasChangedTransform(
-                    store->positions[rowIndex],
-                    store->rotations[rowIndex],
-                    store->scales[rowIndex],
-                    before)) {
-                store->renderInstances[rowIndex] = BuildRenderInstance(
-                    store->objects[rowIndex],
-                    store->positions[rowIndex],
-                    store->rotations[rowIndex],
-                    store->scales[rowIndex]);
-                MarkRenderDirty(*store, rowIndex);
-                renderChanged = true;
-            }
-            if (!continueVisit) {
-                completed = false;
-                break;
-            }
-        }
-        if (renderChanged) {
-            AdvanceRenderSourceVersion(*store);
-        }
-        return completed;
-    }
-
-    bool WorldMassStore::TryGetMutableRow(
+    bool WorldMassStore::TryGetObject(
         ComponentTypeId typeId,
         size_t rowIndex,
-        WorldMassMutableRow& outRow) noexcept {
-        outRow = {};
-        Store* store = FindStore(typeId);
+        RuntimeObjectHandle& outObject) const noexcept {
+        outObject = {};
+        const Store* store = FindStore(typeId);
         if (store == nullptr || rowIndex >= store->objects.size()) {
             return false;
         }
-        outRow.object = store->objects[rowIndex];
-        outRow.position = &store->positions[rowIndex];
-        outRow.rotation = &store->rotations[rowIndex];
-        outRow.scale = &store->scales[rowIndex];
-        outRow.velocity = &store->velocities[rowIndex];
-        outRow.podData =
-            store->podBytes.data() + rowIndex * store->podStride;
-        outRow.podSize = store->schema.podSize;
-        outRow.podAlignment = store->schema.podAlignment;
-        return true;
+        outObject = store->objects[rowIndex];
+        return outObject.IsValid();
     }
 
     bool WorldMassStore::TryGetTransformFromStore(
@@ -472,11 +421,40 @@ namespace HIKARI {
         RuntimeObjectHandle object,
         const GameProjectTransform& transform) noexcept {
         Store* store = FindStore(typeId);
-        return store != nullptr && SetTransformInStore(
-            *store,
-            rowIndex,
-            object,
-            transform);
+        if (store == nullptr ||
+            !INTERNAL::IsValidWorldMassTransform(
+                transform.position,
+                transform.rotation,
+                transform.scale) ||
+            rowIndex >= store->objects.size() ||
+            store->objects[rowIndex] != object) {
+            return false;
+        }
+        const bool changed =
+            std::memcmp(
+                &store->positions[rowIndex],
+                &transform.position,
+                sizeof(transform.position)) != 0 ||
+            std::memcmp(
+                &store->rotations[rowIndex],
+                &transform.rotation,
+                sizeof(transform.rotation)) != 0 ||
+            std::memcmp(
+                &store->scales[rowIndex],
+                &transform.scale,
+                sizeof(transform.scale)) != 0;
+        if (!changed) {
+            return true;
+        }
+        if (!SetTransformInStore(
+                *store,
+                rowIndex,
+                object,
+                transform)) {
+            return false;
+        }
+        AdvanceMutationVersion(*store);
+        return true;
     }
 
     size_t WorldMassStore::GetCount(ComponentTypeId typeId) const noexcept {

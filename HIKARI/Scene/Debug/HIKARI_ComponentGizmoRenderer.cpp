@@ -1,13 +1,17 @@
 #include "Scene/Debug/HIKARI_ComponentGizmoRenderer.h"
 
-#include "Scene/Debug/HIKARI_BuiltInComponentGizmoProviders.h"
+#include "Scene/Debug/HIKARI_ColliderGizmoProvider.h"
+#include "Scene/Debug/Internal/HIKARI_CameraGizmoProviders.h"
+#include "Scene/Debug/Internal/HIKARI_LightingGizmoProviders.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_World.h"
 
 namespace HIKARI {
 
     ComponentGizmoRenderer::ComponentGizmoRenderer() {
-        RegisterBuiltInComponentGizmoProviders(registry_);
+        RegisterCameraGizmoProviders(registry_);
+        RegisterLightingGizmoProviders(registry_);
+        RegisterColliderGizmoProvider(registry_);
     }
 
     ComponentGizmoRegistry& ComponentGizmoRenderer::Registry() noexcept {

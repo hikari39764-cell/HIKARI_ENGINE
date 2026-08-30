@@ -1,7 +1,9 @@
 #include "HIKARI/Project/RuntimeRegistration.h"
 
+#include <algorithm>
 #include <atomic>
 #include <exception>
+#include <iterator>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -353,10 +355,14 @@ namespace {
     GameProjectSystemAdapter::GameProjectSystemAdapter(
         std::string systemId,
         IGameSystem* system,
-        DestroyGameSystemFn destroy) noexcept
+        DestroyGameSystemFn destroy,
+        GameProjectMassSystemScheduleDesc massSchedule,
+        ExecuteGameProjectMassPartitionFn executeMass) noexcept
         : systemId_(std::move(systemId)),
           system_(system),
-          destroy_(destroy) {
+          destroy_(destroy),
+          massSchedule_(massSchedule),
+          executeMass_(executeMass) {
     }
 
     GameProjectSystemAdapter::~GameProjectSystemAdapter() {
@@ -368,6 +374,20 @@ namespace {
 
     std::string_view GameProjectSystemAdapter::GetName() const {
         return systemId_;
+    }
+
+    const GameProjectMassSystemScheduleDesc&
+        GameProjectSystemAdapter::GetMassSystemSchedule() const noexcept {
+        return massSchedule_;
+    }
+
+    bool GameProjectSystemAdapter::ExecuteMassPartition(
+        const GameProjectMassPartitionInput& input,
+        GameProjectMassPartitionOutput& output,
+        const GameProjectMassCommandWriter& commands,
+        const FrameContext& frame) const noexcept {
+        return system_ != nullptr && executeMass_ != nullptr &&
+            executeMass_(system_, &input, &output, &commands, &frame);
     }
 
 #define HIKARI_INVOKE_GAME_SYSTEM(Name, Method)                         \
@@ -521,12 +541,17 @@ namespace {
             Register(std::move(info));
     }
 
-    bool RuntimeFeatureContext::RegisterSystemRaw(
-        GameSystemDescriptor descriptor) {
-        if (systemTypeRegistry_ == nullptr ||
-            descriptor.systemId.empty() ||
+namespace {
+
+    bool RegisterGameSystemType(
+        SystemTypeRegistry& registry,
+        GameSystemDescriptor descriptor,
+        const GameProjectMassSystemScheduleDesc* massSchedule,
+        ExecuteGameProjectMassPartitionFn executeMass) {
+        if (descriptor.systemId.empty() ||
             descriptor.create == nullptr ||
-            descriptor.destroy == nullptr) {
+            descriptor.destroy == nullptr ||
+            ((massSchedule == nullptr) != (executeMass == nullptr))) {
             return false;
         }
 
@@ -549,10 +574,14 @@ namespace {
             destroy(defaults);
         }
 
+        const GameProjectMassSystemScheduleDesc copiedMassSchedule =
+            massSchedule != nullptr
+                ? *massSchedule
+                : GameProjectMassSystemScheduleDesc{};
         SystemTypeInfo info{};
         info.systemId = systemId;
         info.factory =
-            [systemId, create, destroy](
+            [systemId, create, destroy, copiedMassSchedule, executeMass](
                 const nlohmann::json& settings)
                 -> std::unique_ptr<ISystem> {
                 IGameSystem* system = create();
@@ -577,7 +606,9 @@ namespace {
                     GameProjectSystemAdapter>(
                         systemId,
                         system,
-                        destroy);
+                        destroy,
+                        copiedMassSchedule,
+                        executeMass);
             };
         info.displayName =
             descriptor.displayName.empty()
@@ -587,8 +618,38 @@ namespace {
             std::string(descriptor.featureId);
         info.settings.defaultSettings =
             std::move(defaultSettings);
-        return RuntimeFeatureContextAccess::Systems(*this).
-            Register(std::move(info));
+        info.hasParallelMassSchedule = massSchedule != nullptr;
+        info.parallelMassSchedule = copiedMassSchedule;
+        return registry.Register(std::move(info));
+    }
+
+} // namespace
+
+    bool RuntimeFeatureContext::RegisterSystemRaw(
+        GameSystemDescriptor descriptor) {
+        return systemTypeRegistry_ != nullptr &&
+            RegisterGameSystemType(
+                RuntimeFeatureContextAccess::Systems(*this),
+                descriptor,
+                nullptr,
+                nullptr);
+    }
+
+    bool RuntimeFeatureContext::RegisterParallelMassSystemRaw(
+        GameSystemDescriptor descriptor,
+        const GameProjectMassSystemScheduleDesc& schedule,
+        ExecuteGameProjectMassPartitionFn execute) {
+        return systemTypeRegistry_ != nullptr &&
+            massSchemaRegistry_ != nullptr &&
+            execute != nullptr &&
+            IsValidParallelMassSystemSchedule(schedule) &&
+            RuntimeFeatureContextAccess::MassSchemas(*this).Find(
+                schedule.access.typeId) != nullptr &&
+            RegisterGameSystemType(
+                RuntimeFeatureContextAccess::Systems(*this),
+                descriptor,
+                &schedule,
+                execute);
     }
 
     bool RuntimeFeatureContext::RegisterMassDataRaw(

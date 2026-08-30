@@ -426,11 +426,19 @@ namespace {
         if (transform.useExplicitMatrix) {
             return WorldMutationResult::TransformDecompositionFailed;
         }
+        const GameProjectTransform massTransform =
+            ToMassTransform(transform);
+        if (!INTERNAL::IsValidWorldMassTransform(
+                massTransform.position,
+                massTransform.rotation,
+                massTransform.scale)) {
+            return WorldMutationResult::TransformDecompositionFailed;
+        }
         return massStore_.SetTransform(
             typeId,
             storageIndex,
             object,
-            ToMassTransform(transform))
+            massTransform)
             ? WorldMutationResult::Success
             : WorldMutationResult::InternalError;
     }

@@ -2,9 +2,8 @@
 
 #include <algorithm>
 #include <array>
-#include <condition_variable>
+#include <atomic>
 #include <cstring>
-#include <deque>
 #include <filesystem>
 #include <iomanip>
 #include <memory>
@@ -12,15 +11,16 @@
 #include <sstream>
 #include <string>
 #include <system_error>
-#include <thread>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
 
 #include "Assets/Geometry/HIKARI_ClusteredGeometryCooker.h"
 #include "Assets/Geometry/HIKARI_HcmeshFormat.h"
 #include "Assets/Models/HIKARI_ModelAsset.h"
 #include "Assets/Models/HIKARI_ModelMaterialSlot.h"
 #include "Core/HIKARI_Logger.h"
+#include "Core/Tasks/HIKARI_TaskExecutor.h"
 #include "Platform/Paths/HIKARI_UserDataPath.h"
 #include "Core/Hashing/HIKARI_FnvHash.h"
 #include "Render3D/Procedural/HIKARI_ProceduralMeshBuilder.h"
@@ -409,59 +409,36 @@ namespace HIKARI::PROCEDURAL {
 
         class ClusterWarmUpWorker final {
         public:
-            ClusterWarmUpWorker()
-                : thread_([this]() { Run(); }) {
-            }
-
+            ClusterWarmUpWorker() = default;
             ~ClusterWarmUpWorker() {
-                {
-                    std::scoped_lock lock(mutex_);
-                    stop_ = true;
-                    jobs_.clear();
-                }
-                condition_.notify_one();
-                if (thread_.joinable()) {
-                    thread_.join();
-                }
+                executor_.StopAccepting();
+                executor_.WaitIdle();
             }
 
-            void Enqueue(ClusterWarmUpJob job) {
-                {
-                    std::scoped_lock lock(mutex_);
-                    jobs_.push_back(std::move(job));
-                }
-                condition_.notify_one();
+            bool Enqueue(ClusterWarmUpJob job) {
+                return executor_.Submit(
+                    [this, job = std::move(job)]() mutable {
+                        Execute(std::move(job));
+                    });
             }
 
-            void Drain(std::vector<ClusterWarmUpResult>& outResults) {
+            bool Drain(std::vector<ClusterWarmUpResult>& outResults) {
                 std::scoped_lock lock(mutex_);
-                while (!results_.empty()) {
-                    outResults.push_back(std::move(results_.front()));
-                    results_.pop_front();
-                }
+                outResults.clear();
+                outResults.swap(results_);
+                return !resultQueueFailed_.exchange(
+                    false,
+                    std::memory_order_relaxed);
             }
 
         private:
-            void Run() {
-                for (;;) {
-                    ClusterWarmUpJob job{};
-                    {
-                        std::unique_lock lock(mutex_);
-                        condition_.wait(lock, [this]() {
-                            return stop_ || !jobs_.empty();
-                        });
-                        if (stop_ && jobs_.empty()) {
-                            return;
-                        }
-                        job = std::move(jobs_.front());
-                        jobs_.pop_front();
-                    }
-
-                    ClusterWarmUpResult result{};
-                    result.key = job.key;
-                    result.path = job.path;
-                    result.normalizedPath = job.normalizedPath;
-                    result.generation = job.generation;
+            void Execute(ClusterWarmUpJob job) {
+                ClusterWarmUpResult result{};
+                result.key = job.key;
+                result.path = job.path;
+                result.normalizedPath = job.normalizedPath;
+                result.generation = job.generation;
+                try {
                     result.model = BuildModel(job.key, false);
                     if (result.model != nullptr) {
                         if (job.cookClusteredGeometry) {
@@ -478,19 +455,28 @@ namespace HIKARI::PROCEDURAL {
                             result.success = true;
                         }
                     }
-                    {
-                        std::scoped_lock lock(mutex_);
-                        results_.push_back(std::move(result));
-                    }
+                }
+                catch (...) {
+                    result.model.reset();
+                    result.packed = {};
+                    result.packedValid = false;
+                    result.success = false;
+                }
+                try {
+                    std::scoped_lock lock(mutex_);
+                    results_.push_back(std::move(result));
+                }
+                catch (...) {
+                    resultQueueFailed_.store(
+                        true,
+                        std::memory_order_relaxed);
                 }
             }
 
             std::mutex mutex_{};
-            std::condition_variable condition_{};
-            std::deque<ClusterWarmUpJob> jobs_{};
-            std::deque<ClusterWarmUpResult> results_{};
-            bool stop_ = false;
-            std::thread thread_{};
+            std::vector<ClusterWarmUpResult> results_{};
+            std::atomic_bool resultQueueFailed_{ false };
+            TASKS::TaskExecutor executor_{ 1u };
         };
 
         std::unique_ptr<ClusterWarmUpWorker>&
@@ -593,13 +579,15 @@ namespace HIKARI::PROCEDURAL {
             return;
         }
 
-        GetClusterWarmUpWorker().Enqueue(ClusterWarmUpJob{
-            key,
-            path,
-            normalizedPath,
-            gWarmUpGeneration,
-            !pathExists,
-        });
+        if (!GetClusterWarmUpWorker().Enqueue(ClusterWarmUpJob{
+                key,
+                path,
+                normalizedPath,
+                gWarmUpGeneration,
+                !pathExists,
+            })) {
+            gPendingClusterWarmUps.erase(normalizedPath);
+        }
     }
 
     bool TryGetWarmedClusteredGeometry(
@@ -643,7 +631,11 @@ namespace HIKARI::PROCEDURAL {
         if (!worker) {
             return;
         }
-        worker->Drain(results);
+        if (!worker->Drain(results)) {
+            // A completion could not be queued. Release main-thread pending
+            // admission so the request can be retried instead of wedging.
+            gPendingClusterWarmUps.clear();
+        }
         for (ClusterWarmUpResult& result : results) {
             gPendingClusterWarmUps.erase(result.normalizedPath);
             if (result.generation != gWarmUpGeneration) {
@@ -692,13 +684,14 @@ namespace HIKARI::PROCEDURAL {
         ProceduralMeshSettings settings{};
         settings.kind = kDefaultWarmUpKinds[gWarmUpIndex];
         settings = SanitizeProceduralMeshSettings(settings);
-        (void)GetOrCreateClusteredGeometryPath(
-            settings,
-            projectRoot);
+        RequestClusteredGeometryWarmUp(settings, projectRoot);
         ++gWarmUpIndex;
     }
 
     void ClearCache() {
+        // Finish and release the domain worker before invalidating caches so
+        // no old generation can keep cooking or writing after Clear returns.
+        GetClusterWarmUpWorkerStorage().reset();
         ++gWarmUpGeneration;
         gPendingClusterWarmUps.clear();
         gCache.clear();

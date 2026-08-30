@@ -253,14 +253,12 @@ namespace HIKARI {
         }
         RuntimeObjectHandle expectedMoved{};
         if (removedIndex + 1u != count) {
-            WorldMassMutableRow lastRow{};
-            if (!massStore_.TryGetMutableRow(
+            if (!massStore_.TryGetObject(
                     typeId,
                     count - 1u,
-                    lastRow)) {
+                    expectedMoved)) {
                 return WorldMutationResult::InternalError;
             }
-            expectedMoved = lastRow.object;
             if (!expectedMoved.IsValid() ||
                 expectedMoved.slot >= objectSlots_.size()) {
                 return WorldMutationResult::InternalError;

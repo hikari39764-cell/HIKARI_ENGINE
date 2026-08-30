@@ -10,9 +10,14 @@
 
 #include <json.hpp>
 
+#include "HIKARI/Project/MassSystem.h"
+
 namespace HIKARI {
 
 class ISystem;
+
+bool IsValidParallelMassSystemSchedule(
+    const GameProjectMassSystemScheduleDesc& schedule) noexcept;
 
 struct SystemSettingsContract {
     using MigrateFn = std::function<bool(
@@ -41,6 +46,8 @@ struct SystemTypeInfo {
     std::string displayName{};
     std::string featureId{};
     SystemSettingsContract settings{};
+    bool hasParallelMassSchedule = false;
+    GameProjectMassSystemScheduleDesc parallelMassSchedule{};
 };
 
 class SystemTypeRegistry {

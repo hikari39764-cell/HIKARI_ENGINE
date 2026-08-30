@@ -6,6 +6,10 @@ namespace HIKARI {
 
 class World;
 struct FrameContext;
+struct GameProjectMassSystemScheduleDesc;
+struct GameProjectMassPartitionInput;
+struct GameProjectMassPartitionOutput;
+struct GameProjectMassCommandWriter;
 
 class ISystem {
 public:
@@ -26,6 +30,21 @@ public:
     virtual void PreRender(World&, const FrameContext&) {}
     virtual void Render(World&, const FrameContext&) {}
     virtual void PostRender(World&, const FrameContext&) {}
+};
+
+// Opt-in sibling interface. Existing ISystem vtables and serial behavior stay
+// unchanged; SystemScheduler discovers only explicit Mass worker adapters.
+class IMassWorkerSystem {
+public:
+    virtual ~IMassWorkerSystem() = default;
+
+    virtual const GameProjectMassSystemScheduleDesc&
+        GetMassSystemSchedule() const noexcept = 0;
+    virtual bool ExecuteMassPartition(
+        const GameProjectMassPartitionInput& input,
+        GameProjectMassPartitionOutput& output,
+        const GameProjectMassCommandWriter& commands,
+        const FrameContext& frame) const noexcept = 0;
 };
 
 } // namespace HIKARI

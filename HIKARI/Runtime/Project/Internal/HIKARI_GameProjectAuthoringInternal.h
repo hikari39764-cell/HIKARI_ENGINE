@@ -170,12 +170,15 @@ namespace HIKARI {
     };
 
     class GameProjectSystemAdapter final
-        : public ISystem {
+        : public ISystem,
+          public IMassWorkerSystem {
     public:
         GameProjectSystemAdapter(
             std::string systemId,
             IGameSystem* system,
-            DestroyGameSystemFn destroy) noexcept;
+            DestroyGameSystemFn destroy,
+            GameProjectMassSystemScheduleDesc massSchedule = {},
+            ExecuteGameProjectMassPartitionFn executeMass = nullptr) noexcept;
         ~GameProjectSystemAdapter() override;
 
         std::string_view GetName() const override;
@@ -208,11 +211,20 @@ namespace HIKARI {
         void PostRender(
             World& world,
             const FrameContext& frame) override;
+        const GameProjectMassSystemScheduleDesc&
+            GetMassSystemSchedule() const noexcept override;
+        bool ExecuteMassPartition(
+            const GameProjectMassPartitionInput& input,
+            GameProjectMassPartitionOutput& output,
+            const GameProjectMassCommandWriter& commands,
+            const FrameContext& frame) const noexcept override;
 
     private:
         std::string systemId_{};
         IGameSystem* system_ = nullptr;
         DestroyGameSystemFn destroy_ = nullptr;
+        GameProjectMassSystemScheduleDesc massSchedule_{};
+        ExecuteGameProjectMassPartitionFn executeMass_ = nullptr;
     };
 
 } // namespace HIKARI

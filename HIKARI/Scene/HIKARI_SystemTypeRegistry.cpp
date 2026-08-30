@@ -10,6 +10,12 @@ namespace HIKARI {
 
 namespace {
     constexpr const char* kSettingsVersionKey = "_schemaVersion";
+    constexpr uint32_t kMassSystemFieldMask =
+        static_cast<uint32_t>(GameProjectMassSystemField::Transform) |
+        static_cast<uint32_t>(GameProjectMassSystemField::Velocity) |
+        static_cast<uint32_t>(GameProjectMassSystemField::ProjectData);
+    constexpr uint32_t kMassSystemFlagMask =
+        static_cast<uint32_t>(GameProjectMassSystemFlags::AllowDestroy);
 
     void MergeMissingSettings(
         const nlohmann::json& defaults,
@@ -31,6 +37,40 @@ namespace {
             }
         }
     }
+}
+
+bool IsValidParallelMassSystemSchedule(
+    const GameProjectMassSystemScheduleDesc& schedule) noexcept {
+    const bool allowDestroy = (schedule.flags &
+        static_cast<uint32_t>(
+            GameProjectMassSystemFlags::AllowDestroy)) != 0u;
+    bool reservedClear = true;
+    for (const uint32_t value : schedule.reserved) {
+        reservedClear = reservedClear && value == 0u;
+    }
+    return schedule.structSize ==
+            kGameProjectMassSystemScheduleDescV1Size &&
+        schedule.version == kGameProjectMassSystemVersion &&
+        schedule.access.structSize ==
+            kGameProjectMassSystemAccessDescV1Size &&
+        schedule.access.version == kGameProjectMassSystemVersion &&
+        schedule.access.typeId.IsValid() &&
+        (schedule.access.readMask | schedule.access.writeMask) != 0u &&
+        ((schedule.access.readMask | schedule.access.writeMask) &
+            ~kMassSystemFieldMask) == 0u &&
+        schedule.access.flags == 0u &&
+        schedule.access.reserved == 0u &&
+        schedule.phase < GameProjectMassSystemPhase::Count &&
+        schedule.partitionSize >=
+            kGameProjectMassSystemMinimumPartitionSize &&
+        schedule.partitionSize <=
+            kGameProjectMassSystemMaximumPartitionSize &&
+        schedule.maximumDestroyCommandsPerPartition <=
+            kGameProjectMassSystemMaximumDestroyCommandsPerPartition &&
+        (schedule.flags & ~kMassSystemFlagMask) == 0u &&
+        allowDestroy ==
+            (schedule.maximumDestroyCommandsPerPartition != 0u) &&
+        reservedClear;
 }
 
 bool SystemSettingsContract::IsConfigured() const noexcept {
