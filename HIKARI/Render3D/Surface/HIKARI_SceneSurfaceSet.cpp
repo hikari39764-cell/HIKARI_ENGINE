@@ -6,9 +6,6 @@ namespace HIKARI::RENDER3D::SURFACE {
             return static_cast<size_t>(semantic);
         }
 
-        constexpr size_t kSemanticCount =
-            static_cast<size_t>(GRAPH::RenderGraphSemantic::Count);
-
         bool IsKnownSemantic(
             GRAPH::RenderGraphSemantic semantic) noexcept {
             const size_t index = SemanticIndex(semantic);
@@ -187,7 +184,8 @@ namespace HIKARI::RENDER3D::SURFACE {
             producer == SceneSurfaceProducer::None ||
             (GetSceneSurfaceSemanticDesc(semantic).allowedProducerMask &
              SceneSurfaceProducerBit(producer)) == 0u ||
-            availability == SceneSurfaceAvailability::Unavailable ||
+            (availability != SceneSurfaceAvailability::Imported &&
+             availability != SceneSurfaceAvailability::Produced) ||
             !pyramid.publication.Matches(frame_) ||
             !IsDepthPyramidSampleable(pyramid) ||
             (semantic ==
@@ -415,7 +413,8 @@ namespace HIKARI::RENDER3D::SURFACE {
         if (!IsFrameValid() ||
             !IsKnownSemantic(semantic) ||
             producer == SceneSurfaceProducer::None ||
-            availability == SceneSurfaceAvailability::Unavailable ||
+            (availability != SceneSurfaceAvailability::Imported &&
+             availability != SceneSurfaceAvailability::Produced) ||
             !texture.IsSampleable()) {
             return false;
         }

@@ -8,6 +8,7 @@
 #include <string_view>
 
 #include "Render3D/Core/HIKARI_RenderFrameToken.h"
+#include "Render3D/Graph/HIKARI_RenderGraphSurfaceContract.h"
 
 namespace HIKARI::RENDER3D::GRAPH {
 
@@ -18,28 +19,6 @@ namespace HIKARI::RENDER3D::GRAPH {
     inline constexpr uint32_t kInvalidRenderGraphIndex =
         (std::numeric_limits<uint32_t>::max)();
 
-    enum class RenderGraphSemantic : uint16_t {
-        None = 0u,
-        SceneDepth,
-        SceneColorOpaque,
-        SceneColorPostOpaque,
-        SceneColorFinal,
-        PackedSurface,
-        SurfaceFeatureMask,
-        MotionVectors,
-        MotionMetadata,
-        CurrentDepthPyramid,
-        VisibilityDepthPyramid,
-        HistoryColor,
-        HistoryDepth,
-        StylizedOutlineStyle,
-        AmbientOcclusion,
-        ReactiveMask,
-        TransparencyMask,
-        InvalidDepthMotionMask,
-        Count,
-    };
-
     enum class RenderGraphAccess : uint8_t {
         ReadSampled = 0u,
         ReadDepth,
@@ -49,6 +28,43 @@ namespace HIKARI::RENDER3D::GRAPH {
         WriteDepth,
         WriteUav,
         CopyDestination,
+        ReadDependency,
+        WriteDependency,
+        Count,
+    };
+
+    constexpr uint32_t RenderGraphAccessBit(
+        RenderGraphAccess access) noexcept {
+        return access < RenderGraphAccess::Count
+            ? 1u << static_cast<uint8_t>(access)
+            : 0u;
+    }
+
+    inline constexpr uint32_t kRenderGraphPhysicalAccessMask =
+        RenderGraphAccessBit(RenderGraphAccess::ReadSampled) |
+        RenderGraphAccessBit(RenderGraphAccess::ReadDepth) |
+        RenderGraphAccessBit(RenderGraphAccess::ReadUav) |
+        RenderGraphAccessBit(RenderGraphAccess::CopySource) |
+        RenderGraphAccessBit(RenderGraphAccess::WriteColor) |
+        RenderGraphAccessBit(RenderGraphAccess::WriteDepth) |
+        RenderGraphAccessBit(RenderGraphAccess::WriteUav) |
+        RenderGraphAccessBit(RenderGraphAccess::CopyDestination);
+
+    inline constexpr uint32_t kRenderGraphDependencyAccessMask =
+        RenderGraphAccessBit(RenderGraphAccess::ReadDependency) |
+        RenderGraphAccessBit(RenderGraphAccess::WriteDependency);
+
+    enum class RenderGraphResourceKind : uint8_t {
+        Internal = 0u,
+        SceneSurface,
+        CompletionMarker,
+        Count,
+    };
+
+    enum class RenderGraphResourceRequirement : uint8_t {
+        Required = 0u,
+        Optional,
+        Count,
     };
 
     enum class RenderGraphResultCode : uint8_t {
@@ -61,6 +77,9 @@ namespace HIKARI::RENDER3D::GRAPH {
         DuplicateSemantic,
         InvalidResource,
         InvalidAccess,
+        AccessNotAllowed,
+        SemanticContractMismatch,
+        ProducerNotAllowed,
         DuplicateUse,
         ReadWriteConflict,
         DuplicateWriter,
@@ -70,8 +89,6 @@ namespace HIKARI::RENDER3D::GRAPH {
         ExecuteFailed,
         MutationDuringExecution,
     };
-
-    using RenderGraphFrameToken = RenderFrameToken;
 
     struct RenderGraphResourceId {
         uint32_t index = kInvalidRenderGraphIndex;
@@ -96,6 +113,8 @@ namespace HIKARI::RENDER3D::GRAPH {
     struct RenderGraphResourceUse {
         RenderGraphResourceId resource{};
         RenderGraphAccess access = RenderGraphAccess::ReadSampled;
+        SURFACE::SceneSurfaceProducer producer =
+            SURFACE::SceneSurfaceProducer::None;
     };
 
     struct RenderGraphResourceDesc {
@@ -103,16 +122,26 @@ namespace HIKARI::RENDER3D::GRAPH {
         RenderGraphSemantic semantic = RenderGraphSemantic::None;
         // Imported resources remain producer-managed: Stage 1 records access
         // and lifetime but never allocates, transitions, aliases, or releases
-        // their GPU storage. Non-imported records are logical versions that
-        // require one producer pass; they do not allocate GPU storage either.
+        // their GPU storage. Non-imported surfaces and completion markers
+        // require one producer; consumed internal resources do as well.
         bool imported = false;
+        RenderGraphResourceKind kind = RenderGraphResourceKind::Internal;
+        // Internal resources must explicitly declare their permitted physical
+        // accesses. SceneSurface resources derive access from the catalog;
+        // completion markers only accept dependency accesses.
+        uint32_t declaredAccessMask = 0u;
+        RenderGraphSemanticPhase phase = RenderGraphSemanticPhase::None;
+        RenderGraphResourceRequirement requirement =
+            RenderGraphResourceRequirement::Required;
+        SURFACE::SceneSurfaceProducer expectedProducer =
+            SURFACE::SceneSurfaceProducer::None;
     };
 
     class RenderGraph;
 
     struct RenderGraphPassContext {
         const RenderGraph* graph = nullptr;
-        RenderGraphFrameToken frame{};
+        RenderFrameToken frame{};
         uint32_t passIndex = kInvalidRenderGraphIndex;
         std::string_view passId{};
     };
@@ -143,6 +172,13 @@ namespace HIKARI::RENDER3D::GRAPH {
     struct RenderGraphResourceInfo {
         RenderGraphSemantic semantic = RenderGraphSemantic::None;
         bool imported = false;
+        RenderGraphResourceKind kind = RenderGraphResourceKind::Internal;
+        uint32_t declaredAccessMask = 0u;
+        RenderGraphSemanticPhase phase = RenderGraphSemanticPhase::None;
+        RenderGraphResourceRequirement requirement =
+            RenderGraphResourceRequirement::Required;
+        SURFACE::SceneSurfaceProducer expectedProducer =
+            SURFACE::SceneSurfaceProducer::None;
         uint32_t writerPassIndex = kInvalidRenderGraphIndex;
         uint32_t firstUseOrder = kInvalidRenderGraphIndex;
         uint32_t lastUseOrder = kInvalidRenderGraphIndex;
@@ -166,7 +202,7 @@ namespace HIKARI::RENDER3D::GRAPH {
         bool BeginFrame(
             uint64_t frameIndex,
             RenderViewId viewId = kPrimaryRenderViewId) noexcept;
-        bool BeginFrame(RenderGraphFrameToken frame) noexcept;
+        bool BeginFrame(RenderFrameToken frame) noexcept;
 
         RenderGraphResourceId AddResource(
             const RenderGraphResourceDesc& desc) noexcept;
@@ -174,7 +210,7 @@ namespace HIKARI::RENDER3D::GRAPH {
         bool Compile() noexcept;
         bool Execute() noexcept;
 
-        RenderGraphFrameToken GetFrameToken() const noexcept {
+        RenderFrameToken GetFrameToken() const noexcept {
             return frame_;
         }
         uint32_t GetResourceCount() const noexcept {
@@ -192,7 +228,8 @@ namespace HIKARI::RENDER3D::GRAPH {
         bool IsResourceValid(
             RenderGraphResourceId resource) const noexcept;
         RenderGraphResourceId FindSemanticResource(
-            RenderGraphSemantic semantic) const noexcept;
+            RenderGraphSemantic semantic,
+            RenderGraphSemanticPhase phase) const noexcept;
         bool GetResourceInfo(
             RenderGraphResourceId resource,
             RenderGraphResourceInfo& outInfo) const noexcept;
@@ -224,8 +261,13 @@ namespace HIKARI::RENDER3D::GRAPH {
         bool CopyIdentifier(
             std::string_view id,
             std::array<char, kRenderGraphIdentifierCapacity>& out) noexcept;
+        bool ValidateResourceDesc(
+            const RenderGraphResourceDesc& desc) noexcept;
         bool IsReadAccess(RenderGraphAccess access) const noexcept;
         bool IsWriteAccess(RenderGraphAccess access) const noexcept;
+        bool IsAccessAllowed(
+            const RenderGraphResourceInfo& resource,
+            RenderGraphAccess access) const noexcept;
         void SetDiagnostic(
             RenderGraphResultCode code,
             const char* message,
@@ -233,7 +275,7 @@ namespace HIKARI::RENDER3D::GRAPH {
             uint32_t resourceIndex = kInvalidRenderGraphIndex) noexcept;
         void ClearDiagnostic() noexcept;
 
-        RenderGraphFrameToken frame_{};
+        RenderFrameToken frame_{};
         uint64_t graphGeneration_ = 0u;
         std::array<ResourceRecord,
             kRenderGraphMaximumResourceCount> resources_{};
@@ -255,6 +297,7 @@ namespace HIKARI::RENDER3D::GRAPH {
     };
 
     const char* ToString(RenderGraphSemantic semantic) noexcept;
+    const char* ToString(RenderGraphSemanticPhase phase) noexcept;
     const char* ToString(RenderGraphResultCode code) noexcept;
 
     static_assert(

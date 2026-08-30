@@ -55,6 +55,23 @@ namespace HIKARI::RENDER3D::GRAPH {
             }
         }
 
+        for (uint32_t resourceIndex = 0u;
+            resourceIndex < resourceCount_;
+            ++resourceIndex) {
+            const RenderGraphResourceInfo& info =
+                resources_[resourceIndex].info;
+            if (!info.imported &&
+                info.kind != RenderGraphResourceKind::Internal &&
+                info.writerPassIndex == kInvalidRenderGraphIndex) {
+                SetDiagnostic(
+                    RenderGraphResultCode::MissingProducer,
+                    "RenderGraph surface or completion marker has no producer.",
+                    kInvalidRenderGraphIndex,
+                    resourceIndex);
+                return false;
+            }
+        }
+
         std::array<uint32_t,
             kRenderGraphMaximumPassCount> indegrees{};
         for (uint32_t passIndex = 0u;
@@ -193,6 +210,267 @@ namespace HIKARI::RENDER3D::GRAPH {
         executing_ = false;
         ClearDiagnostic();
         return true;
+    }
+
+    bool RenderGraph::ValidateResourceDesc(
+        const RenderGraphResourceDesc& desc) noexcept {
+        if (desc.semantic >= RenderGraphSemantic::Count ||
+            desc.kind >= RenderGraphResourceKind::Count ||
+            desc.requirement >= RenderGraphResourceRequirement::Count ||
+            desc.expectedProducer >= SURFACE::SceneSurfaceProducer::Count ||
+            desc.phase >= RenderGraphSemanticPhase::Count) {
+            SetDiagnostic(
+                RenderGraphResultCode::InvalidResource,
+                "RenderGraph resource metadata contains an invalid enum value.");
+            return false;
+        }
+
+        if (desc.kind == RenderGraphResourceKind::CompletionMarker) {
+            if (desc.semantic != RenderGraphSemantic::None ||
+                desc.imported ||
+                desc.declaredAccessMask != 0u ||
+                desc.phase != RenderGraphSemanticPhase::None ||
+                desc.requirement != RenderGraphResourceRequirement::Required ||
+                desc.expectedProducer !=
+                    SURFACE::SceneSurfaceProducer::None) {
+                SetDiagnostic(
+                    RenderGraphResultCode::SemanticContractMismatch,
+                    "Completion markers cannot declare surface metadata.");
+                return false;
+            }
+            return true;
+        }
+
+        if (desc.kind == RenderGraphResourceKind::Internal) {
+            if (desc.semantic != RenderGraphSemantic::None ||
+                desc.phase != RenderGraphSemanticPhase::None ||
+                desc.requirement != RenderGraphResourceRequirement::Required ||
+                desc.expectedProducer !=
+                    SURFACE::SceneSurfaceProducer::None ||
+                desc.declaredAccessMask == 0u ||
+                (desc.declaredAccessMask &
+                    ~kRenderGraphPhysicalAccessMask) != 0u) {
+                SetDiagnostic(
+                    RenderGraphResultCode::SemanticContractMismatch,
+                    "Internal resources require an explicit physical access contract.");
+                return false;
+            }
+            return true;
+        }
+
+        const SURFACE::SceneSurfaceSemanticDesc& canonicalContract =
+            SURFACE::GetSceneSurfaceSemanticDesc(desc.semantic);
+        if (desc.semantic == RenderGraphSemantic::None ||
+            desc.declaredAccessMask != 0u ||
+            desc.phase == RenderGraphSemanticPhase::None) {
+            SetDiagnostic(
+                RenderGraphResultCode::SemanticContractMismatch,
+                "RenderGraph resource does not match the semantic catalog.");
+            return false;
+        }
+        if (!SURFACE::SceneSurfaceProducerAllowed(
+                canonicalContract,
+                desc.expectedProducer)) {
+            SetDiagnostic(
+                RenderGraphResultCode::ProducerNotAllowed,
+                "RenderGraph resource producer is not allowed by the semantic.");
+            return false;
+        }
+        if (desc.requirement == RenderGraphResourceRequirement::Optional &&
+            canonicalContract.fallback ==
+                SURFACE::SceneSurfaceFallbackPolicy::RequiredFail) {
+            SetDiagnostic(
+                RenderGraphResultCode::SemanticContractMismatch,
+                "Required-fail semantics cannot be optional imports.");
+            return false;
+        }
+        const bool historyPhase =
+            desc.phase == RenderGraphSemanticPhase::HistoryRead ||
+            desc.phase == RenderGraphSemanticPhase::HistoryWrite;
+        if ((canonicalContract.lifetime ==
+                SURFACE::SceneSurfaceLifetime::History &&
+             !historyPhase) ||
+            (canonicalContract.lifetime ==
+                SURFACE::SceneSurfaceLifetime::FrameLocal &&
+             historyPhase)) {
+            SetDiagnostic(
+                RenderGraphResultCode::SemanticContractMismatch,
+                "RenderGraph phase does not match semantic lifetime.");
+            return false;
+        }
+        return true;
+    }
+
+    bool RenderGraph::IsReadAccess(
+        RenderGraphAccess access) const noexcept {
+        switch (access) {
+        case RenderGraphAccess::ReadSampled:
+        case RenderGraphAccess::ReadDepth:
+        case RenderGraphAccess::ReadUav:
+        case RenderGraphAccess::CopySource:
+        case RenderGraphAccess::ReadDependency:
+            return true;
+        default:
+            return false;
+        }
+    }
+
+    bool RenderGraph::IsWriteAccess(
+        RenderGraphAccess access) const noexcept {
+        switch (access) {
+        case RenderGraphAccess::WriteColor:
+        case RenderGraphAccess::WriteDepth:
+        case RenderGraphAccess::WriteUav:
+        case RenderGraphAccess::CopyDestination:
+        case RenderGraphAccess::WriteDependency:
+            return true;
+        default:
+            return false;
+        }
+    }
+
+    bool RenderGraph::IsAccessAllowed(
+        const RenderGraphResourceInfo& resource,
+        RenderGraphAccess access) const noexcept {
+        const uint32_t accessBit = RenderGraphAccessBit(access);
+        if (accessBit == 0u) {
+            return false;
+        }
+        if (resource.kind == RenderGraphResourceKind::CompletionMarker) {
+            return (kRenderGraphDependencyAccessMask & accessBit) != 0u;
+        }
+        if (resource.kind == RenderGraphResourceKind::Internal) {
+            return (resource.declaredAccessMask & accessBit) != 0u;
+        }
+        if ((kRenderGraphDependencyAccessMask & accessBit) != 0u) {
+            return false;
+        }
+        SURFACE::SceneSurfaceAccess semanticAccess =
+            SURFACE::SceneSurfaceAccess::None;
+        switch (access) {
+        case RenderGraphAccess::ReadSampled:
+            semanticAccess = SURFACE::SceneSurfaceAccess::Sampled;
+            break;
+        case RenderGraphAccess::ReadDepth:
+            semanticAccess = SURFACE::SceneSurfaceAccess::ReadDepth;
+            break;
+        case RenderGraphAccess::ReadUav:
+            semanticAccess = SURFACE::SceneSurfaceAccess::ReadUav;
+            break;
+        case RenderGraphAccess::CopySource:
+            semanticAccess = SURFACE::SceneSurfaceAccess::CopySource;
+            break;
+        case RenderGraphAccess::WriteColor:
+            semanticAccess = SURFACE::SceneSurfaceAccess::WriteColor;
+            break;
+        case RenderGraphAccess::WriteDepth:
+            semanticAccess = SURFACE::SceneSurfaceAccess::WriteDepth;
+            break;
+        case RenderGraphAccess::WriteUav:
+            semanticAccess = SURFACE::SceneSurfaceAccess::WriteUav;
+            break;
+        case RenderGraphAccess::CopyDestination:
+            semanticAccess = SURFACE::SceneSurfaceAccess::CopyDestination;
+            break;
+        case RenderGraphAccess::ReadDependency:
+        case RenderGraphAccess::WriteDependency:
+        case RenderGraphAccess::Count:
+            return false;
+        }
+        const SURFACE::SceneSurfaceSemanticDesc& semanticContract =
+            SURFACE::GetSceneSurfaceSemanticDesc(resource.semantic);
+        return (semanticContract.allowedAccessMask &
+                SURFACE::SceneSurfaceAccessBit(semanticAccess)) != 0u;
+    }
+
+    const char* ToString(RenderGraphSemantic semantic) noexcept {
+        switch (semantic) {
+        case RenderGraphSemantic::None: return "None";
+        case RenderGraphSemantic::SceneDepth: return "SceneDepth";
+        case RenderGraphSemantic::SceneColorOpaque:
+            return "SceneColorOpaque";
+        case RenderGraphSemantic::SceneColorPostOpaque:
+            return "SceneColorPostOpaque";
+        case RenderGraphSemantic::SceneColorFinal:
+            return "SceneColorFinal";
+        case RenderGraphSemantic::PackedSurface: return "PackedSurface";
+        case RenderGraphSemantic::SurfaceFeatureMask:
+            return "SurfaceFeatureMask";
+        case RenderGraphSemantic::MotionVectors: return "MotionVectors";
+        case RenderGraphSemantic::MotionMetadata: return "MotionMetadata";
+        case RenderGraphSemantic::CurrentDepthPyramid:
+            return "CurrentDepthPyramid";
+        case RenderGraphSemantic::VisibilityDepthPyramid:
+            return "VisibilityDepthPyramid";
+        case RenderGraphSemantic::HistoryColor: return "HistoryColor";
+        case RenderGraphSemantic::HistoryDepth: return "HistoryDepth";
+        case RenderGraphSemantic::StylizedOutlineStyle:
+            return "StylizedOutlineStyle";
+        case RenderGraphSemantic::AmbientOcclusion:
+            return "AmbientOcclusion";
+        case RenderGraphSemantic::ReactiveMask: return "ReactiveMask";
+        case RenderGraphSemantic::TransparencyMask:
+            return "TransparencyMask";
+        case RenderGraphSemantic::InvalidDepthMotionMask:
+            return "InvalidDepthMotionMask";
+        case RenderGraphSemantic::Count: break;
+        }
+        return "Unknown";
+    }
+
+    const char* ToString(RenderGraphSemanticPhase phase) noexcept {
+        switch (phase) {
+        case RenderGraphSemanticPhase::None: return "None";
+        case RenderGraphSemanticPhase::Imported: return "Imported";
+        case RenderGraphSemanticPhase::PreOpaque: return "PreOpaque";
+        case RenderGraphSemanticPhase::Opaque: return "Opaque";
+        case RenderGraphSemanticPhase::PostOpaque: return "PostOpaque";
+        case RenderGraphSemanticPhase::Temporal: return "Temporal";
+        case RenderGraphSemanticPhase::Final: return "Final";
+        case RenderGraphSemanticPhase::HistoryRead: return "HistoryRead";
+        case RenderGraphSemanticPhase::HistoryWrite: return "HistoryWrite";
+        case RenderGraphSemanticPhase::Count: break;
+        }
+        return "Unknown";
+    }
+
+    const char* ToString(RenderGraphResultCode code) noexcept {
+        switch (code) {
+        case RenderGraphResultCode::Success: return "Success";
+        case RenderGraphResultCode::InvalidFrame: return "InvalidFrame";
+        case RenderGraphResultCode::InvalidIdentifier:
+            return "InvalidIdentifier";
+        case RenderGraphResultCode::CapacityExceeded:
+            return "CapacityExceeded";
+        case RenderGraphResultCode::DuplicateResourceId:
+            return "DuplicateResourceId";
+        case RenderGraphResultCode::DuplicatePassId:
+            return "DuplicatePassId";
+        case RenderGraphResultCode::DuplicateSemantic:
+            return "DuplicateSemantic";
+        case RenderGraphResultCode::InvalidResource:
+            return "InvalidResource";
+        case RenderGraphResultCode::InvalidAccess: return "InvalidAccess";
+        case RenderGraphResultCode::AccessNotAllowed:
+            return "AccessNotAllowed";
+        case RenderGraphResultCode::SemanticContractMismatch:
+            return "SemanticContractMismatch";
+        case RenderGraphResultCode::ProducerNotAllowed:
+            return "ProducerNotAllowed";
+        case RenderGraphResultCode::DuplicateUse: return "DuplicateUse";
+        case RenderGraphResultCode::ReadWriteConflict:
+            return "ReadWriteConflict";
+        case RenderGraphResultCode::DuplicateWriter:
+            return "DuplicateWriter";
+        case RenderGraphResultCode::MissingProducer:
+            return "MissingProducer";
+        case RenderGraphResultCode::CycleDetected: return "CycleDetected";
+        case RenderGraphResultCode::NotCompiled: return "NotCompiled";
+        case RenderGraphResultCode::ExecuteFailed: return "ExecuteFailed";
+        case RenderGraphResultCode::MutationDuringExecution:
+            return "MutationDuringExecution";
+        }
+        return "Unknown";
     }
 
 } // namespace HIKARI::RENDER3D::GRAPH

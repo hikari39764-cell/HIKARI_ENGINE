@@ -2,18 +2,39 @@
 
 #include <array>
 
+#include "Render3D/Graph/HIKARI_RenderGraphSurfaceContract.h"
+
 namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
     namespace {
-        GRAPH::RenderGraphResourceId AddResource(
+        GRAPH::RenderGraphResourceId AddSurfaceResource(
             GRAPH::RenderGraph& graph,
             std::string_view id,
             GRAPH::RenderGraphSemantic semantic,
-            bool imported) noexcept {
-            return graph.AddResource(GRAPH::RenderGraphResourceDesc{
-                id,
-                semantic,
-                imported
-            });
+            bool imported,
+            GRAPH::RenderGraphSemanticPhase phase =
+                GRAPH::RenderGraphSemanticPhase::None,
+            SURFACE::SceneSurfaceProducer producer =
+                SURFACE::SceneSurfaceProducer::None,
+            GRAPH::RenderGraphResourceRequirement requirement =
+                GRAPH::RenderGraphResourceRequirement::Required) noexcept {
+            GRAPH::RenderGraphResourceDesc desc{};
+            desc.id = id;
+            desc.semantic = semantic;
+            desc.imported = imported;
+            desc.kind = GRAPH::RenderGraphResourceKind::SceneSurface;
+            desc.phase = phase;
+            desc.requirement = requirement;
+            desc.expectedProducer = producer;
+            return graph.AddResource(desc);
+        }
+
+        GRAPH::RenderGraphResourceId AddCompletionMarker(
+            GRAPH::RenderGraph& graph,
+            std::string_view id) noexcept {
+            GRAPH::RenderGraphResourceDesc desc{};
+            desc.id = id;
+            desc.kind = GRAPH::RenderGraphResourceKind::CompletionMarker;
+            return graph.AddResource(desc);
         }
     }
 
@@ -22,66 +43,91 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
         void* userData,
         const RenderFrameGraphPassCallbacks& callbacks,
         GRAPH::RenderGraph& graph) noexcept {
-        const auto sceneDepth = AddResource(
+        const auto sceneDepth = AddSurfaceResource(
             graph,
             "SceneDepth",
             GRAPH::RenderGraphSemantic::SceneDepth,
-            true);
-        const auto packedSurfaceInput = AddResource(
+            true,
+            GRAPH::RenderGraphSemanticPhase::Imported,
+            SURFACE::SceneSurfaceProducer::PostSceneDepth);
+        const auto packedSurfaceInput = AddSurfaceResource(
             graph,
             "PackedSurface.PreOpaque",
-            GRAPH::RenderGraphSemantic::None,
-            true);
-        const auto packedSurface = AddResource(
+            GRAPH::RenderGraphSemantic::PackedSurface,
+            true,
+            GRAPH::RenderGraphSemanticPhase::PreOpaque,
+            SURFACE::SceneSurfaceProducer::SceneSurfaceAux,
+            GRAPH::RenderGraphResourceRequirement::Optional);
+        const auto packedSurface = AddSurfaceResource(
             graph,
             "PackedSurface",
             GRAPH::RenderGraphSemantic::PackedSurface,
-            false);
-        const auto currentDepthPyramid = AddResource(
+            false,
+            GRAPH::RenderGraphSemanticPhase::PostOpaque,
+            SURFACE::SceneSurfaceProducer::SceneSurfaceAux,
+            GRAPH::RenderGraphResourceRequirement::Optional);
+        const auto currentDepthPyramid = AddSurfaceResource(
             graph,
             "CurrentDepthPyramid",
             GRAPH::RenderGraphSemantic::CurrentDepthPyramid,
-            false);
-        const auto forwardDepthPyramid = AddResource(
+            false,
+            GRAPH::RenderGraphSemanticPhase::PostOpaque,
+            SURFACE::SceneSurfaceProducer::DepthPyramid,
+            GRAPH::RenderGraphResourceRequirement::Optional);
+        const auto forwardDepthPyramid = AddSurfaceResource(
             graph,
             "DepthPyramid.Forward",
-            GRAPH::RenderGraphSemantic::None,
-            true);
-        const auto ambientOcclusion = AddResource(
+            GRAPH::RenderGraphSemantic::VisibilityDepthPyramid,
+            true,
+            GRAPH::RenderGraphSemanticPhase::PreOpaque,
+            SURFACE::SceneSurfaceProducer::DepthPyramid,
+            GRAPH::RenderGraphResourceRequirement::Optional);
+        const auto ambientOcclusion = AddSurfaceResource(
             graph,
             "AmbientOcclusion.Forward",
-            GRAPH::RenderGraphSemantic::None,
-            true);
-        const auto surfaceFeatureMask = AddResource(
+            GRAPH::RenderGraphSemantic::AmbientOcclusion,
+            true,
+            GRAPH::RenderGraphSemanticPhase::PreOpaque,
+            SURFACE::SceneSurfaceProducer::Ssao,
+            GRAPH::RenderGraphResourceRequirement::Optional);
+        const auto surfaceFeatureMask = AddSurfaceResource(
             graph,
             "SurfaceFeatureMask",
             GRAPH::RenderGraphSemantic::SurfaceFeatureMask,
-            false);
-        const auto forwardComplete = AddResource(
+            false,
+            GRAPH::RenderGraphSemanticPhase::PostOpaque,
+            SURFACE::SceneSurfaceProducer::SceneSurfaceAux,
+            GRAPH::RenderGraphResourceRequirement::Optional);
+        const auto stylizedOutlineStyle = AddSurfaceResource(
             graph,
-            "ForwardOpaque.Complete",
-            GRAPH::RenderGraphSemantic::None,
-            false);
-        const auto postOpaqueComplete = AddResource(
-            graph,
-            "PostOpaqueSurfaces.Complete",
-            GRAPH::RenderGraphSemantic::None,
-            false);
-        const auto cloudsComplete = AddResource(
-            graph,
-            "Clouds.Complete",
-            GRAPH::RenderGraphSemantic::None,
-            false);
-        const auto motionVectors = AddResource(
+            "StylizedOutlineStyle",
+            GRAPH::RenderGraphSemantic::StylizedOutlineStyle,
+            false,
+            GRAPH::RenderGraphSemanticPhase::PostOpaque,
+            SURFACE::SceneSurfaceProducer::SceneSurfaceAux,
+            GRAPH::RenderGraphResourceRequirement::Optional);
+        const auto forwardComplete = AddCompletionMarker(
+            graph, "ForwardOpaque.Complete");
+        const auto postOpaqueComplete = AddCompletionMarker(
+            graph, "PostOpaqueSurfaces.Complete");
+        const auto cloudsComplete = AddCompletionMarker(
+            graph, "Clouds.Complete");
+        const auto motionComplete = AddCompletionMarker(
+            graph, "MotionVectors.Complete");
+        const auto motionVectors = AddSurfaceResource(
             graph,
             "MotionVectors",
             GRAPH::RenderGraphSemantic::MotionVectors,
-            false);
-        const auto motionMetadata = AddResource(
+            false,
+            GRAPH::RenderGraphSemanticPhase::Temporal,
+            SURFACE::SceneSurfaceProducer::TemporalMotion);
+        const auto motionMetadata = AddSurfaceResource(
             graph,
             "MotionMetadata",
             GRAPH::RenderGraphSemantic::MotionMetadata,
-            false);
+            false,
+            GRAPH::RenderGraphSemanticPhase::Temporal,
+            SURFACE::SceneSurfaceProducer::TemporalMotion);
         if (!sceneDepth.IsValid() ||
             !packedSurfaceInput.IsValid() ||
             !packedSurface.IsValid() ||
@@ -89,9 +135,11 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
             !forwardDepthPyramid.IsValid() ||
             !ambientOcclusion.IsValid() ||
             !surfaceFeatureMask.IsValid() ||
+            !stylizedOutlineStyle.IsValid() ||
             !forwardComplete.IsValid() ||
             !postOpaqueComplete.IsValid() ||
             !cloudsComplete.IsValid() ||
+            !motionComplete.IsValid() ||
             !motionVectors.IsValid() ||
             !motionMetadata.IsValid()) {
             return false;
@@ -118,7 +166,7 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
         const std::array forwardWrites{
             GRAPH::RenderGraphResourceUse{
                 forwardComplete,
-                GRAPH::RenderGraphAccess::WriteColor
+                GRAPH::RenderGraphAccess::WriteDependency
             }
         };
         if (!graph.AddPass(GRAPH::RenderGraphPassDesc{
@@ -134,7 +182,7 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
         const std::array postReads{
             GRAPH::RenderGraphResourceUse{
                 forwardComplete,
-                GRAPH::RenderGraphAccess::ReadSampled
+                GRAPH::RenderGraphAccess::ReadDependency
             },
             GRAPH::RenderGraphResourceUse{
                 sceneDepth,
@@ -144,19 +192,27 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
         const std::array postWrites{
             GRAPH::RenderGraphResourceUse{
                 postOpaqueComplete,
-                GRAPH::RenderGraphAccess::WriteColor
+                GRAPH::RenderGraphAccess::WriteDependency
             },
             GRAPH::RenderGraphResourceUse{
                 packedSurface,
-                GRAPH::RenderGraphAccess::WriteColor
+                GRAPH::RenderGraphAccess::WriteColor,
+                SURFACE::SceneSurfaceProducer::SceneSurfaceAux
             },
             GRAPH::RenderGraphResourceUse{
                 currentDepthPyramid,
-                GRAPH::RenderGraphAccess::WriteUav
+                GRAPH::RenderGraphAccess::WriteUav,
+                SURFACE::SceneSurfaceProducer::DepthPyramid
             },
             GRAPH::RenderGraphResourceUse{
                 surfaceFeatureMask,
-                GRAPH::RenderGraphAccess::WriteColor
+                GRAPH::RenderGraphAccess::WriteColor,
+                SURFACE::SceneSurfaceProducer::SceneSurfaceAux
+            },
+            GRAPH::RenderGraphResourceUse{
+                stylizedOutlineStyle,
+                GRAPH::RenderGraphAccess::WriteColor,
+                SURFACE::SceneSurfaceProducer::SceneSurfaceAux
             }
         };
         if (!graph.AddPass(GRAPH::RenderGraphPassDesc{
@@ -172,7 +228,7 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
         const std::array cloudReads{
             GRAPH::RenderGraphResourceUse{
                 postOpaqueComplete,
-                GRAPH::RenderGraphAccess::ReadSampled
+                GRAPH::RenderGraphAccess::ReadDependency
             },
             GRAPH::RenderGraphResourceUse{
                 sceneDepth,
@@ -182,7 +238,7 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
         const std::array cloudWrites{
             GRAPH::RenderGraphResourceUse{
                 cloudsComplete,
-                GRAPH::RenderGraphAccess::WriteColor
+                GRAPH::RenderGraphAccess::WriteDependency
             }
         };
         if (!graph.AddPass(GRAPH::RenderGraphPassDesc{
@@ -202,17 +258,23 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
             },
             GRAPH::RenderGraphResourceUse{
                 cloudsComplete,
-                GRAPH::RenderGraphAccess::ReadSampled
+                GRAPH::RenderGraphAccess::ReadDependency
             }
         };
         const std::array motionWrites{
             GRAPH::RenderGraphResourceUse{
                 motionVectors,
-                GRAPH::RenderGraphAccess::WriteColor
+                GRAPH::RenderGraphAccess::WriteColor,
+                SURFACE::SceneSurfaceProducer::TemporalMotion
             },
             GRAPH::RenderGraphResourceUse{
                 motionMetadata,
-                GRAPH::RenderGraphAccess::WriteColor
+                GRAPH::RenderGraphAccess::WriteColor,
+                SURFACE::SceneSurfaceProducer::TemporalMotion
+            },
+            GRAPH::RenderGraphResourceUse{
+                motionComplete,
+                GRAPH::RenderGraphAccess::WriteDependency
             }
         };
         if (!graph.AddPass(GRAPH::RenderGraphPassDesc{
@@ -227,24 +289,27 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
 
         GRAPH::RenderGraphResourceId sceneColorOpaque{};
         if (options.captureSceneColor) {
-            sceneColorOpaque = AddResource(
+            sceneColorOpaque = AddSurfaceResource(
                 graph,
                 "SceneColorOpaque",
                 GRAPH::RenderGraphSemantic::SceneColorOpaque,
-                false);
+                false,
+                GRAPH::RenderGraphSemanticPhase::Opaque,
+                SURFACE::SceneSurfaceProducer::SceneColorCapture);
             if (!sceneColorOpaque.IsValid()) {
                 return false;
             }
             const std::array captureReads{
                 GRAPH::RenderGraphResourceUse{
-                    motionVectors,
-                    GRAPH::RenderGraphAccess::ReadSampled
+                    motionComplete,
+                    GRAPH::RenderGraphAccess::ReadDependency
                 }
             };
             const std::array captureWrites{
                 GRAPH::RenderGraphResourceUse{
                     sceneColorOpaque,
-                    GRAPH::RenderGraphAccess::CopyDestination
+                    GRAPH::RenderGraphAccess::CopyDestination,
+                    SURFACE::SceneSurfaceProducer::SceneColorCapture
                 }
             };
             if (!graph.AddPass(GRAPH::RenderGraphPassDesc{
@@ -260,14 +325,6 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
 
         if (options.includeSsr) {
             if (!sceneColorOpaque.IsValid()) {
-                return false;
-            }
-            const auto ssrComplete = AddResource(
-                graph,
-                "SSR.Complete",
-                GRAPH::RenderGraphSemantic::None,
-                false);
-            if (!ssrComplete.IsValid()) {
                 return false;
             }
             const std::array ssrReads{
@@ -288,16 +345,10 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
                     GRAPH::RenderGraphAccess::ReadSampled
                 }
             };
-            const std::array ssrWrites{
-                GRAPH::RenderGraphResourceUse{
-                    ssrComplete,
-                    GRAPH::RenderGraphAccess::WriteColor
-                }
-            };
             if (!graph.AddPass(GRAPH::RenderGraphPassDesc{
                     "ScreenSpaceReflections",
                     ssrReads,
-                    ssrWrites,
+                    {},
                     callbacks.ssr,
                     userData
                 })) {
