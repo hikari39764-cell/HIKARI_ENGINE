@@ -3,6 +3,7 @@
 #include <array>
 
 #include "Render3D/Cluster/HIKARI_ClusterGpuCullingPass.h"
+#include "Render3D/Runtime/HIKARI_MassRenderProxy.h"
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
 
@@ -205,7 +206,9 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             return result;
         }
 
-        std::array<CLUSTER::ClusterGpuCullingSourceRange, kGpuDrivenPassCount> ranges{};
+        std::array<
+            CLUSTER::ClusterGpuCullingSourceRange,
+            kGpuDrivenPassCount + 2u> ranges{};
         size_t rangeCount = 0;
 
         if (context.frame != nullptr) {
@@ -240,6 +243,33 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             }
         }
 
+        const auto appendMassRange = [&] (
+            GpuDrivenPassKind passKind,
+            CLUSTER::ClusterGpuCullingPassKind clusterPass) {
+            if (context.massGpuSceneGpuAddress == 0u ||
+                context.massGpuSceneInstanceCount == 0u ||
+                (context.passMask & MakeGpuDrivenPassMask(passKind)) == 0u) {
+                return;
+            }
+            ranges[rangeCount] = {
+                RUNTIME::kMassRenderProxyIndexBit,
+                context.massGpuSceneInstanceCount,
+                clusterPass,
+                0u,
+                0u
+            };
+            ++rangeCount;
+            ++result.sourcePassCount;
+            result.sourceInstanceCount +=
+                context.massGpuSceneInstanceCount;
+        };
+        appendMassRange(
+            GpuDrivenPassKind::ForwardOpaque,
+            CLUSTER::ClusterGpuCullingPassKind::ForwardOpaque);
+        appendMassRange(
+            GpuDrivenPassKind::DepthPrepass,
+            CLUSTER::ClusterGpuCullingPassKind::DepthPrepass);
+
         CLUSTER::ClusterGpuDepthOcclusionDesc depthOcclusion{};
         depthOcclusion.enabled = context.depthOcclusion.enabled;
         depthOcclusion.hzbSrv = context.depthOcclusion.hzbSrv;
@@ -257,6 +287,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             context.cameraPosition,
             context.geometryPoolSrv,
             context.surfaceGpuSceneGpuAddress,
+            context.massGpuSceneGpuAddress,
             rangeCount != 0 ? ranges.data() : nullptr,
             rangeCount,
             depthOcclusion,

@@ -1,3 +1,4 @@
+#define HIKARI_MASS_GPU_SCENE_DISABLED 1
 static const uint MATERIAL_ALPHA_MASK = 1u << 1;
 static const uint HIKARI_INVALID_MESHLET_SHADOW_MATERIAL_INDEX = 0xffffffffu;
 

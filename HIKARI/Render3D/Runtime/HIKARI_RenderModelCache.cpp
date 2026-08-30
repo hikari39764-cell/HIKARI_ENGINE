@@ -10,9 +10,11 @@ namespace HIKARI::RENDER3D::RUNTIME {
         ++stats_.requestCount;
 
         const auto found = cache_.find(&source);
-        if (found != cache_.end()) {
+        if (found != cache_.end() &&
+            found->second.sourceRevision == source.sourceRevision &&
+            found->second.asset != nullptr) {
             ++stats_.hitCount;
-            return found->second.get();
+            return found->second.asset.get();
         }
 
         ++stats_.missCount;
@@ -20,7 +22,10 @@ namespace HIKARI::RENDER3D::RUNTIME {
         (void)BuildRenderModelAsset(source, *runtimeAsset, nullptr);
 
         const RenderModelAsset* raw = runtimeAsset.get();
-        cache_.emplace(&source, std::move(runtimeAsset));
+        cache_[&source] = Entry{
+            source.sourceRevision,
+            std::move(runtimeAsset)
+        };
         RefreshCacheStats();
         return raw;
     }
@@ -45,9 +50,9 @@ namespace HIKARI::RENDER3D::RUNTIME {
         uint64_t surfaceCount = 0;
         uint64_t invalidModelCount = 0;
         for (const auto& entry : cache_) {
-            if (entry.second != nullptr) {
-                surfaceCount += entry.second->surfaces.size();
-                if (!entry.second->valid) {
+            if (entry.second.asset != nullptr) {
+                surfaceCount += entry.second.asset->surfaces.size();
+                if (!entry.second.asset->valid) {
                     ++invalidModelCount;
                 }
             }

@@ -59,7 +59,7 @@ namespace HIKARI::MODELRENDERER {
         SHADOW::Reset();
     }
 
-    void RenderAll(
+    MESHRENDERER::MeshRendererFrameResult RenderAll(
         const GFX::Context& graphics,
         const RENDER3D::RenderViewContext& view,
         const SceneEnvironment& environment,
@@ -67,14 +67,14 @@ namespace HIKARI::MODELRENDERER {
         RenderDebugView debugView) {
 
         if (view.cameraFrame == nullptr || !view.cameraFrame->valid) {
-            return;
+            return {};
         }
 
         const Camera3D& camera = view.cameraFrame->camera;
         BeginModelRendererFrame(ModelRendererFrameKind::MainView);
         SHADOW::BeginFrame(graphics, environment, camera);
         SHADOW::RenderDirectionalShadowMap(graphics);
-        MESHRENDERER::RenderAll(
+        return MESHRENDERER::RenderAll(
             graphics,
             view,
             environment,

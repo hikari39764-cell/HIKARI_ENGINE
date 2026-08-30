@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
+#include "Render3D/GpuDriven/HIKARI_MassGpuScene.h"
 
 namespace HIKARI::MESHRENDERER::INTERNAL {
     void UploadGpuDrivenSceneFrame(const GFX::Context& graphics) {
@@ -26,6 +27,24 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         uploadDesc.materialBindingVersion =
             gMeshRendererState.gpuMaterialRegistry.GetBindingVersion(
                 sourceIdentity);
+        const auto* massSource =
+            gMeshRendererState.gpuDrivenSceneSource.mass;
+        const uintptr_t massSourceIdentity =
+            reinterpret_cast<uintptr_t>(massSource);
+        const std::span<const uint32_t> massMaterialBindings =
+            massSource != nullptr
+                ? gMeshRendererState.gpuMaterialRegistry.GetSourceBindings(
+                    massSourceIdentity)
+                : std::span<const uint32_t>{};
+        uploadDesc.massMaterialSlotBySourceRecord =
+            massMaterialBindings.data();
+        uploadDesc.massMaterialSourceRecordCount =
+            massMaterialBindings.size();
+        uploadDesc.massMaterialBindingVersion =
+            massSource != nullptr
+                ? gMeshRendererState.gpuMaterialRegistry.GetBindingVersion(
+                    massSourceIdentity)
+                : 0u;
         const RENDER3D::GPUDRIVEN::GpuDrivenSceneUploadStats& uploadStats =
             gMeshRendererState.gpuDrivenLayer.UploadSceneFrame(uploadDesc);
         gMeshRendererState.debugStats.gpuSceneUpload = uploadStats;
@@ -161,6 +180,31 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             reinterpret_cast<uintptr_t>(
                 gMeshRendererState.gpuDrivenSceneSourceIdentity),
             gMeshRendererState.gpuDrivenSceneSource);
+        const RENDER3D::GPUDRIVEN::MassGpuSceneSource* mass =
+            gMeshRendererState.gpuDrivenSceneSource.mass;
+        if (mass == nullptr) {
+            return;
+        }
+        const uintptr_t sourceIdentity =
+            reinterpret_cast<uintptr_t>(mass);
+        const RENDER3D::MATERIAL::GpuMaterialSourceSyncMode syncMode =
+            gMeshRendererState.gpuMaterialRegistry.BeginSourceSync(
+                sourceIdentity,
+                mass->layoutVersion,
+                mass->materialVersion,
+                mass->materialVersion,
+                static_cast<uint32_t>(mass->materialSources.size()));
+        if (syncMode ==
+            RENDER3D::MATERIAL::GpuMaterialSourceSyncMode::None) {
+            return;
+        }
+        MeshDrawContext drawCtx =
+            BuildDrawContext(graphics, false, MeshDrawPassKind::Forward, {});
+        (void)PrepareSurfaceGpuSceneMaterialSources(
+            drawCtx,
+            mass->materialSources.data(),
+            mass->materialSources.size());
+        gMeshRendererState.gpuMaterialRegistry.EndSourceSync();
     }
 
     void UpdateTraditionalCommandStreamStats() {

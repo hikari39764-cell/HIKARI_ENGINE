@@ -291,7 +291,7 @@ HikariWaterSurfaceParams HikariLoadWaterSurfaceParams(
     uint surfaceGpuSceneIndex)
 {
     const HikariSurfaceGpuSceneInstance instance =
-        gSurfaceGpuSceneBuffer[surfaceGpuSceneIndex];
+        HikariGetSurfaceGpuSceneInstanceAt(surfaceGpuSceneIndex);
     return HikariLoadWaterSurfaceParamsFromDataIndex(
         instance.surfaceFeatureDataIndex);
 }

@@ -45,6 +45,8 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         MATH::Vec3 cameraPosition{};
         D3D12_GPU_DESCRIPTOR_HANDLE geometryPoolSrv{};
         D3D12_GPU_VIRTUAL_ADDRESS surfaceGpuSceneGpuAddress = 0;
+        D3D12_GPU_VIRTUAL_ADDRESS massGpuSceneGpuAddress = 0;
+        uint32_t massGpuSceneInstanceCount = 0u;
         const GpuDrivenFrame* frame = nullptr;
         uint32_t passMask = 0xffffffffu;
         bool collectCounterReadback = true;

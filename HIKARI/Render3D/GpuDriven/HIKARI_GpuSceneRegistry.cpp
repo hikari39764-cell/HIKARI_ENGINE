@@ -86,6 +86,60 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             }
         }
 
+        RUNTIME::SurfaceGpuSceneBuildStats BuildPassStatsFromGlobalScene(
+            const std::vector<uint32_t>& recordIndices,
+            const std::vector<uint32_t>& globalIndexByRecord,
+            const std::vector<RUNTIME::SurfaceGpuSceneInstance>& instances) {
+            using ResourceFlag = RUNTIME::SurfaceGpuSceneResourceFlags;
+            RUNTIME::SurfaceGpuSceneBuildStats stats{};
+            const uint32_t meshMaterialFlags =
+                static_cast<uint32_t>(ResourceFlag::Mesh) |
+                static_cast<uint32_t>(ResourceFlag::Material);
+            const uint32_t clusterFlag = static_cast<uint32_t>(
+                ResourceFlag::ClusterGeometry);
+            const uint32_t shaderVisibleFlag = static_cast<uint32_t>(
+                ResourceFlag::ClusterGeometryShaderVisible);
+            const uint32_t surfaceRangeFlag = static_cast<uint32_t>(
+                ResourceFlag::ClusterGeometrySurfaceRange);
+            for (const uint32_t recordIndex : recordIndices) {
+                if (recordIndex >= globalIndexByRecord.size()) {
+                    ++stats.skippedInvalidRecordCount;
+                    continue;
+                }
+                const uint32_t globalIndex =
+                    globalIndexByRecord[recordIndex];
+                if (globalIndex == RUNTIME::kInvalidRenderSurfaceIndex ||
+                    globalIndex >= instances.size()) {
+                    ++stats.skippedInvalidRecordCount;
+                    continue;
+                }
+                const RUNTIME::SurfaceGpuSceneInstance& instance =
+                    instances[globalIndex];
+                ++stats.instanceCount;
+                if ((instance.resourceFlags & meshMaterialFlags) ==
+                    meshMaterialFlags) {
+                    ++stats.resourceBackedInstanceCount;
+                } else {
+                    ++stats.missingResourceHandleInstanceCount;
+                }
+                if ((instance.resourceFlags & clusterFlag) != 0u) {
+                    ++stats.clusterResourceInstanceCount;
+                    if ((instance.resourceFlags & shaderVisibleFlag) != 0u) {
+                        ++stats.clusterShaderVisibleInstanceCount;
+                    }
+                    if ((instance.resourceFlags & surfaceRangeFlag) != 0u) {
+                        ++stats.clusterSurfaceRangeInstanceCount;
+                    } else {
+                        ++stats.clusterMissingSurfaceRangeInstanceCount;
+                    }
+                }
+            }
+            stats.commandCount = stats.instanceCount;
+            stats.maxCommandInstanceCount =
+                stats.instanceCount != 0u ? 1u : 0u;
+            return stats;
+        }
+
         float ComputeWorldBoundsRadius(const Bounds& bounds) {
             const float ex = (bounds.max.x - bounds.min.x) * 0.5f;
             const float ey = (bounds.max.y - bounds.min.y) * 0.5f;
@@ -1008,24 +1062,9 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         forwardDepthAwareStaticTraditionalRecordIndices_.clear();
         forwardTransparentStaticTraditionalRecordIndices_.clear();
         shadowStaticTraditionalRecordIndices_.clear();
-        forwardOpaqueGpuSceneIndexByRecord_.clear();
-        depthPrepassGpuSceneIndexByRecord_.clear();
-        forwardDepthAwareGpuSceneIndexByRecord_.clear();
-        forwardTransparentGpuSceneIndexByRecord_.clear();
-        shadowGpuSceneIndexByRecord_.clear();
         globalGpuSceneIndexByRecord_.clear();
         globalGpuSceneInstances_.clear();
         globalMaterialSources_.clear();
-        forwardOpaqueGpuSceneInstances_.clear();
-        forwardOpaqueMaterialSources_.clear();
-        depthPrepassGpuSceneInstances_.clear();
-        depthPrepassMaterialSources_.clear();
-        forwardDepthAwareGpuSceneInstances_.clear();
-        forwardDepthAwareMaterialSources_.clear();
-        forwardTransparentGpuSceneInstances_.clear();
-        forwardTransparentMaterialSources_.clear();
-        shadowGpuSceneInstances_.clear();
-        shadowMaterialSources_.clear();
         forwardOpaqueTraditionalStream_.Clear();
         forwardDepthAwareTraditionalStream_.Clear();
         forwardTransparentTraditionalStream_.Clear();
@@ -1342,72 +1381,6 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                 shadowResidentRecordIndices_,
                 true);
 
-        const auto buildPass =
-            [&](GpuDrivenPassKind passKind,
-                const std::vector<uint32_t>& recordIndices,
-                std::vector<uint32_t>& indexByRecord,
-                std::vector<RUNTIME::SurfaceGpuSceneInstance>& instances,
-                std::vector<RUNTIME::SurfaceGpuSceneMaterialSource>& materialSources) {
-            indexByRecord.assign(
-                surfaceRecords_.size(),
-                RUNTIME::kInvalidRenderSurfaceIndex);
-            RUNTIME::SurfaceGpuSceneBuildStats passStats =
-                BuildGpuSceneInstanceList(
-                surfaceRecords_,
-                    recordIndices,
-                    instances,
-                    materialSources);
-            for (uint32_t localInstanceIndex = 0;
-                localInstanceIndex < recordIndices.size();
-                ++localInstanceIndex) {
-
-                const uint32_t recordIndex = recordIndices[localInstanceIndex];
-                if (recordIndex < indexByRecord.size()) {
-                    indexByRecord[recordIndex] = localInstanceIndex;
-                }
-                if (localInstanceIndex < instances.size()) {
-                    instances[localInstanceIndex].flags |=
-                        PassInstanceFlag(passKind);
-                }
-            }
-            return passStats;
-        };
-
-        stats_.forwardOpaqueGpuSceneStats =
-            buildPass(
-                GpuDrivenPassKind::ForwardOpaque,
-                forwardOpaqueResidentRecordIndices_,
-                forwardOpaqueGpuSceneIndexByRecord_,
-                forwardOpaqueGpuSceneInstances_,
-                forwardOpaqueMaterialSources_);
-        stats_.depthPrepassGpuSceneStats =
-            buildPass(
-                GpuDrivenPassKind::DepthPrepass,
-                depthPrepassOccluderRecordIndices_,
-                depthPrepassGpuSceneIndexByRecord_,
-                depthPrepassGpuSceneInstances_,
-                depthPrepassMaterialSources_);
-        stats_.forwardDepthAwareGpuSceneStats =
-            buildPass(
-                GpuDrivenPassKind::ForwardDepthAware,
-                forwardDepthAwareResidentRecordIndices_,
-                forwardDepthAwareGpuSceneIndexByRecord_,
-                forwardDepthAwareGpuSceneInstances_,
-                forwardDepthAwareMaterialSources_);
-        stats_.forwardTransparentGpuSceneStats =
-            buildPass(
-                GpuDrivenPassKind::ForwardTransparent,
-                forwardTransparentResidentRecordIndices_,
-                forwardTransparentGpuSceneIndexByRecord_,
-                forwardTransparentGpuSceneInstances_,
-                forwardTransparentMaterialSources_);
-        (void)buildPass(
-            GpuDrivenPassKind::Shadow,
-            shadowResidentRecordIndices_,
-            shadowGpuSceneIndexByRecord_,
-            shadowGpuSceneInstances_,
-            shadowMaterialSources_);
-
         globalGpuSceneIndexByRecord_.assign(
             surfaceRecords_.size(),
             RUNTIME::kInvalidRenderSurfaceIndex);
@@ -1483,6 +1456,27 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         markGlobalPass(
             GpuDrivenPassKind::Shadow,
             shadowResidentRecordIndices_);
+
+        stats_.forwardOpaqueGpuSceneStats =
+            BuildPassStatsFromGlobalScene(
+                forwardOpaqueResidentRecordIndices_,
+                globalGpuSceneIndexByRecord_,
+                globalGpuSceneInstances_);
+        stats_.depthPrepassGpuSceneStats =
+            BuildPassStatsFromGlobalScene(
+                depthPrepassOccluderRecordIndices_,
+                globalGpuSceneIndexByRecord_,
+                globalGpuSceneInstances_);
+        stats_.forwardDepthAwareGpuSceneStats =
+            BuildPassStatsFromGlobalScene(
+                forwardDepthAwareResidentRecordIndices_,
+                globalGpuSceneIndexByRecord_,
+                globalGpuSceneInstances_);
+        stats_.forwardTransparentGpuSceneStats =
+            BuildPassStatsFromGlobalScene(
+                forwardTransparentResidentRecordIndices_,
+                globalGpuSceneIndexByRecord_,
+                globalGpuSceneInstances_);
 
         const auto buildTraditionalStreamStats =
             [](const TraditionalIndirectStream& stream) {

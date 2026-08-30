@@ -57,6 +57,32 @@ void DrawRenderPathTable(const RuntimePerformanceSnapshot &s) {
               static_cast<size_t>(s.mesh.gpuSceneUpload.uploadedFullScene),
               static_cast<size_t>(s.mesh.gpuSceneUpload.patchedDirtyRanges),
               static_cast<size_t>(s.mesh.gpuSceneUpload.reusedResidentFrame));
+    MetricRow("Mass Stores / Instances / Dirty Ranges", "%u / %u / %u",
+              s.submission.massRenderStoreCount,
+              s.submission.massRenderInstanceCount,
+              s.submission.massRenderDirtyRangeCount);
+    MetricRow("Mass Templates Missing / Unsupported", "%u / %u",
+              s.submission.massRenderMissingTemplateCount,
+              s.submission.massRenderUnsupportedTemplateCount);
+    MetricRow("Mass GPU Resident / Upload Ranges / Overflow", "%zu / %zu / %zu",
+              s.mesh.gpuSceneUpload.massBufferStats.residentInstanceCount,
+              s.mesh.gpuSceneUpload.massBufferStats.uploadRangeCount,
+              s.mesh.gpuSceneUpload.massBufferStats.overflowInstanceCount);
+    MetricRow("Mass GPU Upload KB / Resource Growth", "%.2f / %u",
+              static_cast<double>(
+                  s.mesh.gpuSceneUpload.massBufferStats.uploadedBytes) /
+              1024.0,
+              s.mesh.gpuSceneUpload.massBufferStats.resourceGrowthCount);
+    MetricRow("Mass GPU Full / Dirty / Reuse", "%s / %s / %s",
+              s.mesh.gpuSceneUpload.massBufferStats.uploadedFullScene
+                  ? "yes" : "no",
+              s.mesh.gpuSceneUpload.massBufferStats.patchedDirtyRanges
+                  ? "yes" : "no",
+              s.mesh.gpuSceneUpload.massBufferStats.reusedResidentFrame
+                  ? "yes" : "no");
+    MetricRow("Mass Material Visits / Missing", "%zu / %zu",
+              s.mesh.gpuSceneUpload.massBufferStats.materialBindingVisitCount,
+              s.mesh.gpuSceneUpload.massBufferStats.materialBindingMissingCount);
     MetricRow("GPU Scene Instances Opaque / DepthPre / Shadow", "%u / %u / %zu",
               s.gpuRegistry.forwardOpaqueGpuSceneStats.instanceCount,
               s.gpuRegistry.depthPrepassGpuSceneStats.instanceCount,

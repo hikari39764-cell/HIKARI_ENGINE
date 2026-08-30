@@ -190,12 +190,19 @@ namespace HIKARI::MESHRENDERER {
         materialDataRange.RegisterSpace = 0;
         materialDataRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-        D3D12_DESCRIPTOR_RANGE surfaceGpuSceneRange{};
-        surfaceGpuSceneRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-        surfaceGpuSceneRange.NumDescriptors = 1;
-        surfaceGpuSceneRange.BaseShaderRegister = 17;
-        surfaceGpuSceneRange.RegisterSpace = 0;
-        surfaceGpuSceneRange.OffsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
+        D3D12_DESCRIPTOR_RANGE surfaceGpuSceneRanges[2]{};
+        surfaceGpuSceneRanges[0].RangeType =
+            D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+        surfaceGpuSceneRanges[0].NumDescriptors = 1;
+        surfaceGpuSceneRanges[0].BaseShaderRegister = 17;
+        surfaceGpuSceneRanges[0].RegisterSpace = 0;
+        surfaceGpuSceneRanges[0].OffsetInDescriptorsFromTableStart = 0u;
+        surfaceGpuSceneRanges[1].RangeType =
+            D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
+        surfaceGpuSceneRanges[1].NumDescriptors = 1;
+        surfaceGpuSceneRanges[1].BaseShaderRegister = 0;
+        surfaceGpuSceneRanges[1].RegisterSpace = 8;
+        surfaceGpuSceneRanges[1].OffsetInDescriptorsFromTableStart = 1u;
 
         D3D12_DESCRIPTOR_RANGE materialTexturePoolRange{};
         materialTexturePoolRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
@@ -377,8 +384,10 @@ namespace HIKARI::MESHRENDERER {
 
         params[ROOT_PARAM::SurfaceGpuScene].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
         params[ROOT_PARAM::SurfaceGpuScene].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
-        params[ROOT_PARAM::SurfaceGpuScene].DescriptorTable.NumDescriptorRanges = 1;
-        params[ROOT_PARAM::SurfaceGpuScene].DescriptorTable.pDescriptorRanges = &surfaceGpuSceneRange;
+        params[ROOT_PARAM::SurfaceGpuScene].DescriptorTable.NumDescriptorRanges =
+            static_cast<UINT>(std::size(surfaceGpuSceneRanges));
+        params[ROOT_PARAM::SurfaceGpuScene].DescriptorTable.pDescriptorRanges =
+            surfaceGpuSceneRanges;
 
         params[ROOT_PARAM::SurfaceGpuSceneControl].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
         params[ROOT_PARAM::SurfaceGpuSceneControl].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;

@@ -403,6 +403,14 @@ namespace HIKARI::MESHRENDERER {
                 passResources,
                 MeshDrawPassKind::Forward,
                 RENDER3D::MESHLET::MeshletPipelineKind::ForwardOpaque);
+        const bool massSubmissionResident =
+            gMeshRendererState.gpuDrivenLayer.GetSceneUploadStats().
+                massSceneResident &&
+            gMeshRendererState.gpuDrivenLayer.GetFrameContext().scene.
+                massInstanceCount != 0u;
+        if (massSubmissionResident && backendResult.meshShaderExecuted) {
+            gMeshRendererState.massForwardOpaqueSubmissionCommitted = true;
+        }
         return backendResult.gpuBackendExecuted;
     }
 

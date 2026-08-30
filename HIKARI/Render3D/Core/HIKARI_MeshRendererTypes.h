@@ -32,6 +32,17 @@ namespace HIKARI::MESHRENDERER {
         WireOnly,
     };
 
+    struct MeshRendererFrameResult {
+        bool frameRendered = false;
+        bool massSubmissionRequired = false;
+        bool massSubmissionCommitted = false;
+
+        bool CanAcknowledgeMassRenderPublication() const noexcept {
+            return frameRendered &&
+                (!massSubmissionRequired || massSubmissionCommitted);
+        }
+    };
+
     struct CameraCB {
         MATH::Mat4 viewProj{};
         MATH::Mat4 invViewProj{};

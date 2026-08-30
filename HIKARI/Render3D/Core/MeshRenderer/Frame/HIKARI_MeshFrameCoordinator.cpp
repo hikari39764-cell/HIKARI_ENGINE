@@ -110,7 +110,13 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
     bool HasGpuDrivenPassSource(
         RENDER3D::GPUDRIVEN::GpuDrivenPassKind passKind) {
 
-        return GetSceneSourcePass(passKind).HasGpuSceneRange();
+        const bool massPass =
+            passKind == RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardOpaque ||
+            passKind == RENDER3D::GPUDRIVEN::GpuDrivenPassKind::DepthPrepass ||
+            passKind == RENDER3D::GPUDRIVEN::GpuDrivenPassKind::GeometryAux;
+        return GetSceneSourcePass(passKind).HasGpuSceneRange() ||
+            (massPass &&
+                gMeshRendererState.gpuDrivenSceneSource.HasMassInstances());
     }
 
     MeshRendererTraditionalIndirectHydrationContext
@@ -456,7 +462,8 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
     }
 
     bool HasGpuDrivenSceneSource() {
-        return gMeshRendererState.gpuDrivenSceneSource.HasAnyGpuSceneRanges();
+        return gMeshRendererState.gpuDrivenSceneSource.
+            HasAnyGpuSceneInstances();
     }
 
 

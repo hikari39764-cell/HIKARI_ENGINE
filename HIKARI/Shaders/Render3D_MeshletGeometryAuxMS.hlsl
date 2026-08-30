@@ -110,7 +110,8 @@ void main(
     ByteAddressBuffer geometry =
         gClusterGeometryPool[NonUniformResourceIndex(resolved.clusterGeometryPoolIndex)];
     HikariSurfaceGpuSceneInstance instance =
-        gSurfaceGpuSceneBuffer[resolved.visible.gpuSceneInstanceIndex];
+        HikariGetSurfaceGpuSceneInstanceAt(
+            resolved.visible.gpuSceneInstanceIndex);
 
     for (uint vertexSlot = groupIndex;
          vertexSlot < resolved.vertexCount;

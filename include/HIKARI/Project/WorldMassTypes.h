@@ -11,11 +11,32 @@ namespace HIKARI {
     inline constexpr uint32_t kGameProjectWorldMassVersion = 1u;
     inline constexpr uint32_t kGameProjectMassDataTypeDescV1Size = 40u;
     inline constexpr uint32_t
+        kGameProjectWorldMassRenderProxyDescV1Size = 160u;
+    inline constexpr uint32_t
         kGameProjectWorldMassSpawnBatchDescV1Size = 72u;
     inline constexpr uint32_t kGameProjectWorldMassRowV1Size = 80u;
     inline constexpr uint32_t
         kGameProjectWorldMaximumMassSpawnBatchCount = 1024u;
     inline constexpr uint32_t kGameProjectWorldMaximumMassPodBytes = 1024u;
+
+    enum class GameProjectWorldMassRenderGeometry : uint32_t {
+        ModelAsset = 0u,
+        BuiltInBox = 1u,
+        BuiltInSphere = 2u,
+    };
+
+    enum class GameProjectWorldMassRenderFlags : uint32_t {
+        None = 0u,
+        ReceiveShadow = 1u << 0u,
+    };
+
+    constexpr GameProjectWorldMassRenderFlags operator|(
+        GameProjectWorldMassRenderFlags lhs,
+        GameProjectWorldMassRenderFlags rhs) noexcept {
+        return static_cast<GameProjectWorldMassRenderFlags>(
+            static_cast<uint32_t>(lhs) |
+            static_cast<uint32_t>(rhs));
+    }
 
     struct GameProjectMassDataTypeDesc {
         uint32_t structSize = kGameProjectMassDataTypeDescV1Size;
@@ -26,6 +47,29 @@ namespace HIKARI {
         uint32_t dataSize = 0u;
         uint32_t dataAlignment = 0u;
         uint32_t reserved = 0u;
+    };
+
+    // One immutable render binding is registered for a mass data schema. A
+    // ModelAsset binding uses an exact cooked AssetGuid; built-in geometry
+    // requires an empty GUID. Resources and backend handles remain engine
+    // owned and are never copied into each mass row.
+    struct GameProjectWorldMassRenderProxyDesc {
+        uint32_t structSize =
+            kGameProjectWorldMassRenderProxyDescV1Size;
+        uint32_t version = kGameProjectWorldMassVersion;
+        ComponentTypeId typeId{};
+        uint64_t layoutHash = 0u;
+        uint32_t schemaVersion = 1u;
+        GameProjectWorldMassRenderGeometry geometry =
+            GameProjectWorldMassRenderGeometry::ModelAsset;
+        uint32_t flags = static_cast<uint32_t>(
+            GameProjectWorldMassRenderFlags::ReceiveShadow);
+        uint32_t reserved0 = 0u;
+        char modelAssetGuid[96]{};
+        uint32_t meshIndex = 0u;
+        uint32_t primitiveIndex = 0u;
+        uint32_t materialIndex = 0u;
+        uint32_t reserved[3] = { 0u, 0u, 0u };
     };
 
     // All pointed-to arrays are borrowed only for SpawnMassObjects. POD rows
@@ -77,6 +121,27 @@ namespace HIKARI {
     static_assert(offsetof(GameProjectMassDataTypeDesc, dataSize) == 28u);
     static_assert(offsetof(
         GameProjectMassDataTypeDesc, dataAlignment) == 32u);
+    static_assert(std::is_standard_layout_v<
+        GameProjectWorldMassRenderProxyDesc>);
+    static_assert(std::is_trivially_copyable_v<
+        GameProjectWorldMassRenderProxyDesc>);
+    static_assert(sizeof(GameProjectWorldMassRenderProxyDesc) == 160u);
+    static_assert(offsetof(
+        GameProjectWorldMassRenderProxyDesc, typeId) == 8u);
+    static_assert(offsetof(
+        GameProjectWorldMassRenderProxyDesc, layoutHash) == 16u);
+    static_assert(offsetof(
+        GameProjectWorldMassRenderProxyDesc, geometry) == 28u);
+    static_assert(offsetof(
+        GameProjectWorldMassRenderProxyDesc, flags) == 32u);
+    static_assert(offsetof(
+        GameProjectWorldMassRenderProxyDesc, modelAssetGuid) == 40u);
+    static_assert(offsetof(
+        GameProjectWorldMassRenderProxyDesc, meshIndex) == 136u);
+    static_assert(offsetof(
+        GameProjectWorldMassRenderProxyDesc, primitiveIndex) == 140u);
+    static_assert(offsetof(
+        GameProjectWorldMassRenderProxyDesc, materialIndex) == 144u);
     static_assert(std::is_standard_layout_v<
         GameProjectWorldMassSpawnBatchDesc>);
     static_assert(std::is_trivially_copyable_v<

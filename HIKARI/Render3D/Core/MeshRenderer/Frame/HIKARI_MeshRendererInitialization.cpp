@@ -1,6 +1,7 @@
 #include "Render3D/Core/MeshRenderer/Internal/HIKARI_MeshRendererInternal.h"
 #include "Gfx/HIKARI_GfxContext.h"
 
+#include <array>
 #include <string>
 
 #include "Core/HIKARI_Logger.h"
@@ -21,27 +22,42 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         const UINT descriptorSize =
             device->GetDescriptorHandleIncrementSize(
                 D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-        const UINT surfaceGpuSceneSrvIndex =
-            GFX::DESCRIPTOR::ToFrameIndex(
-                GFX::DESCRIPTOR::SystemSrv::MeshSurfaceGpuSceneFrame0,
-                0u);
-        const D3D12_CPU_DESCRIPTOR_HANDLE surfaceGpuSceneSrvCpu =
-            GFX::DESCRIPTOR::CpuAt(
-                srvHeap,
-                descriptorSize,
-                surfaceGpuSceneSrvIndex);
-        const D3D12_GPU_DESCRIPTOR_HANDLE surfaceGpuSceneSrvGpu =
-            GFX::DESCRIPTOR::GpuAt(
-                srvHeap,
-                descriptorSize,
-                surfaceGpuSceneSrvIndex);
+        std::array<
+            D3D12_CPU_DESCRIPTOR_HANDLE,
+            GFX::kFrameResourceCount> surfaceGpuSceneSrvCpu{};
+        std::array<
+            D3D12_GPU_DESCRIPTOR_HANDLE,
+            GFX::kFrameResourceCount> surfaceGpuSceneSrvGpu{};
+        for (uint32_t frameIndex = 0u;
+            frameIndex < GFX::kFrameResourceCount;
+            ++frameIndex) {
+            const UINT surfaceGpuSceneSrvIndex =
+                GFX::DESCRIPTOR::ToIndex(
+                    GFX::DESCRIPTOR::MeshSurfaceGpuSceneFrameSlot(
+                        frameIndex));
+            surfaceGpuSceneSrvCpu[frameIndex] =
+                GFX::DESCRIPTOR::CpuAt(
+                    srvHeap,
+                    descriptorSize,
+                    surfaceGpuSceneSrvIndex);
+            surfaceGpuSceneSrvGpu[frameIndex] =
+                GFX::DESCRIPTOR::GpuAt(
+                    srvHeap,
+                    descriptorSize,
+                    surfaceGpuSceneSrvIndex);
+        }
         if (!gMeshRendererState.surfaceGpuSceneBuffer.Initialize(
                 device,
                 surfaceGpuSceneSrvCpu,
-                surfaceGpuSceneSrvGpu,
-                descriptorSize)) {
+                surfaceGpuSceneSrvGpu)) {
             DEBUGLOG::PushRenderError(
                 "[MeshRenderer][WARN] SurfaceGpuScene buffer initialization failed. GPU-driven mesh pass will be unavailable.");
+        }
+        if (!gMeshRendererState.massGpuSceneBuffer.Initialize(
+                device,
+                srvHeap)) {
+            DEBUGLOG::PushRenderError(
+                "[MeshRenderer][WARN] Mass GPU scene admission failed. Compact mass rendering will be unavailable.");
         }
         if (!gMeshRendererState.waterSurfaceGpuFrameBuffer.Initialize(device)) {
             DEBUGLOG::PushRenderError(
@@ -129,6 +145,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         gMeshRendererState.clusterGpuDrivenProducer.Attach(&gMeshRendererState.clusterGpuCullingPass);
         gMeshRendererState.gpuDrivenLayer.Attach(
             &gMeshRendererState.surfaceGpuSceneBuffer,
+            &gMeshRendererState.massGpuSceneBuffer,
             &gMeshRendererState.traditionalCommandStreamBuffer,
             &gMeshRendererState.clusterGpuDrivenProducer,
             &gMeshRendererState.waterSurfaceGpuFrameBuffer,

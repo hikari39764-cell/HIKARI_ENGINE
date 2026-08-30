@@ -355,7 +355,7 @@ namespace HIKARI::RENDER3D::CLUSTER {
         hzbRange.OffsetInDescriptorsFromTableStart =
             D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND;
 
-        D3D12_ROOT_PARAMETER params[11]{};
+        D3D12_ROOT_PARAMETER params[12]{};
         params[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
         params[0].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
         params[0].Descriptor.ShaderRegister = 0;
@@ -401,6 +401,11 @@ namespace HIKARI::RENDER3D::CLUSTER {
         params[10].ParameterType = D3D12_ROOT_PARAMETER_TYPE_UAV;
         params[10].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
         params[10].Descriptor.ShaderRegister = 7;
+
+        params[11].ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
+        params[11].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+        params[11].Descriptor.ShaderRegister = 0;
+        params[11].Descriptor.RegisterSpace = 8;
 
         D3D12_ROOT_SIGNATURE_DESC rootDesc{};
         rootDesc.NumParameters = static_cast<UINT>(std::size(params));
@@ -1179,6 +1184,12 @@ namespace HIKARI::RENDER3D::CLUSTER {
                 globalCounters.visibleClusterListReservedCount;
             stats_.gpuVisibleClusterListOverflowCount =
                 globalCounters.visibleClusterListOverflowCount;
+            stats_.overflowInstanceCount =
+                static_cast<size_t>(stats_.gpuPageTaskOverflowCount) +
+                static_cast<size_t>(stats_.gpuOverflowCount) +
+                static_cast<size_t>(stats_.gpuDrawCommandOverflowCount) +
+                static_cast<size_t>(
+                    stats_.gpuVisibleClusterListOverflowCount);
             stats_.gpuLod0SelectedCount =
                 globalCounters.lod0SelectedCount;
             stats_.gpuLod1SelectedCount =
@@ -1300,6 +1311,7 @@ namespace HIKARI::RENDER3D::CLUSTER {
         const MATH::Vec3& cameraPosition,
         D3D12_GPU_DESCRIPTOR_HANDLE clusterGeometryPoolSrv,
         D3D12_GPU_VIRTUAL_ADDRESS surfaceGpuSceneGpuAddress,
+        D3D12_GPU_VIRTUAL_ADDRESS massGpuSceneGpuAddress,
         const ClusterGpuCullingSourceRange* ranges,
         size_t rangeCount,
         const ClusterGpuDepthOcclusionDesc& depthOcclusion,
@@ -1567,6 +1579,11 @@ namespace HIKARI::RENDER3D::CLUSTER {
         commandList->SetComputeRootUnorderedAccessView(
             10,
             visibleClusterListBuffer_->GetGPUVirtualAddress());
+        commandList->SetComputeRootShaderResourceView(
+            11,
+            massGpuSceneGpuAddress != 0u
+                ? massGpuSceneGpuAddress
+                : surfaceGpuSceneGpuAddress);
 
         size_t expandWorkgroupCount = 0;
         {

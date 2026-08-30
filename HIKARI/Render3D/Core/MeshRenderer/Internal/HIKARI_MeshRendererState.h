@@ -18,6 +18,7 @@
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenFrame.h"
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenLayer.h"
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenSceneSource.h"
+#include "Render3D/GpuDriven/HIKARI_MassGpuSceneFrameBuffer.h"
 #include "Render3D/GpuDriven/HIKARI_SurfaceGpuSceneFrameBuffer.h"
 #include "Render3D/GpuDriven/CommandStream/HIKARI_GpuTraditionalCommandStreamBuffer.h"
 #include "Render3D/Material/HIKARI_GpuMaterialRegistry.h"
@@ -83,6 +84,9 @@ namespace HIKARI::MESHRENDERER {
         std::array<
             RENDER3D::RenderResourceView,
             GFX::kFrameResourceCount> surfaceGpuSceneViews{};
+        std::array<
+            RENDER3D::RenderResourceView,
+            GFX::kFrameResourceCount> massGpuSceneNullViews{};
         RENDER3D::GPUDRIVEN::SurfaceGpuSceneFrameBuffer
             surfaceGpuSceneBuffer{};
         RENDER3D::WATER::WaterSurfaceGpuFrameBuffer
@@ -126,6 +130,7 @@ namespace HIKARI::MESHRENDERER {
         RENDER3D::MATERIAL::GpuMaterialRegistry gpuMaterialRegistry{};
         std::vector<RENDER3D::MATERIAL::GpuMaterialUploadRange> materialUploadRanges{};
         RENDER3D::GPUDRIVEN::SurfaceGpuSceneFrameBuffer surfaceGpuSceneBuffer{};
+        RENDER3D::GPUDRIVEN::MassGpuSceneFrameBuffer massGpuSceneBuffer{};
         RENDER3D::WATER::WaterSurfaceGpuFrameBuffer waterSurfaceGpuFrameBuffer{};
         RENDER3D::WATER::SPECTRUM::OceanSpectrumRuntime oceanSpectrumRuntime{};
         RENDER3D::SAND::SandSurfaceGpuFrameBuffer sandSurfaceGpuFrameBuffer{};
@@ -146,6 +151,7 @@ namespace HIKARI::MESHRENDERER {
         RENDER3D::GPUDRIVEN::GpuDrivenSceneSource gpuDrivenSceneSource{};
         const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource* gpuDrivenSceneSourceIdentity = nullptr;
         RENDER3D::GPUDRIVEN::GpuDrivenSceneResidency gpuDrivenSceneResidency{};
+        bool massForwardOpaqueSubmissionCommitted = false;
 
     };
 

@@ -1,3 +1,4 @@
+#define HIKARI_MASS_GPU_SCENE_DISABLED 1
 cbuffer ShadowCameraCB : register(b0)
 {
     float4x4 gLightViewProj;

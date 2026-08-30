@@ -304,6 +304,7 @@ namespace HIKARI::SHADOW::INTERNAL {
         gShadowRendererState.clusterGpuDrivenProducer.Attach(&gShadowRendererState.clusterGpuCullingPass);
         gShadowRendererState.gpuDrivenLayer.Attach(
             &gShadowRendererState.surfaceGpuSceneBuffer,
+            nullptr,
             &gShadowRendererState.traditionalCommandStreamBuffer,
             &gShadowRendererState.clusterGpuDrivenProducer,
             nullptr,

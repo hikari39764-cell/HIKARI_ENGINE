@@ -12,6 +12,7 @@
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenFrameContext.h"
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenProducer.h"
 #include "Render3D/GpuDriven/HIKARI_SurfaceGpuSceneFrameBuffer.h"
+#include "Render3D/GpuDriven/HIKARI_MassGpuSceneFrameBuffer.h"
 #include "Render3D/GpuDriven/CommandStream/HIKARI_GpuTraditionalCommandStreamBuffer.h"
 #include "Render3D/Water/HIKARI_WaterSurfaceGpuFrameBuffer.h"
 #include "Render3D/Sand/HIKARI_SandSurfaceGpuFrameBuffer.h"
@@ -39,6 +40,8 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         bool sandSurfaceDataResident = false;
         std::array<uint32_t, kGpuDrivenPassCount> passInstanceCounts{};
         SurfaceGpuSceneFrameBufferStats bufferStats{};
+        MassGpuSceneFrameBufferStats massBufferStats{};
+        bool massSceneResident = false;
         bool waterSurfaceDataResident = false;
     };
 
@@ -48,6 +51,9 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         const uint32_t* materialSlotBySourceRecord = nullptr;
         size_t materialSourceRecordCount = 0;
         uint64_t materialBindingVersion = 0;
+        const uint32_t* massMaterialSlotBySourceRecord = nullptr;
+        size_t massMaterialSourceRecordCount = 0u;
+        uint64_t massMaterialBindingVersion = 0u;
         uint32_t frameIndex = 0;
         bool allowDirtyRangePatching = true;
     };
@@ -76,6 +82,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
 
         void Attach(
             SurfaceGpuSceneFrameBuffer* sceneBuffer,
+            MassGpuSceneFrameBuffer* massSceneBuffer,
             GpuTraditionalCommandStreamBuffer* traditionalCommandStreamBuffer,
             IGpuDrivenProducer* producer,
             WATER::WaterSurfaceGpuFrameBuffer* waterSurfaceBuffer = nullptr,
@@ -140,6 +147,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         };
 
         SurfaceGpuSceneFrameBuffer* sceneBuffer_ = nullptr;
+        MassGpuSceneFrameBuffer* massSceneBuffer_ = nullptr;
         WATER::WaterSurfaceGpuFrameBuffer* waterSurfaceBuffer_ = nullptr;
         SAND::SandSurfaceGpuFrameBuffer* sandSurfaceBuffer_ = nullptr;
         GpuTraditionalCommandStreamBuffer* traditionalCommandStreamBuffer_ = nullptr;

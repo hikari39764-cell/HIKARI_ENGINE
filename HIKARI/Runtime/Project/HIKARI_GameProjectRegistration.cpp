@@ -609,6 +609,13 @@ namespace {
             });
     }
 
+    bool RuntimeFeatureContext::RegisterMassRenderProxy(
+        const GameProjectWorldMassRenderProxyDesc& descriptor) {
+        return massSchemaRegistry_ != nullptr &&
+            RuntimeFeatureContextAccess::MassSchemas(*this).
+                RegisterRenderProxy(descriptor);
+    }
+
     bool RuntimeFeatureContext::BindComponentSystem(
         ComponentSystemBinding binding) {
         if (componentSystemPolicy_ == nullptr) {

@@ -45,7 +45,7 @@ namespace HIKARI::MODELRENDERER {
     void ResetFrame();
     void ResetModelRendererFrameStats();
     void BeginModelRendererFrame(ModelRendererFrameKind kind);
-    void RenderAll(
+    MESHRENDERER::MeshRendererFrameResult RenderAll(
         const GFX::Context& graphics,
         const RENDER3D::RenderViewContext& view,
         const SceneEnvironment& environment,

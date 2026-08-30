@@ -24,6 +24,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
     };
 
     struct GpuSceneSurfaceRecord;
+    struct MassGpuSceneSource;
 
     struct GpuDrivenTraditionalIndirectView {
         const std::vector<GpuSceneSurfaceRecord>* records = nullptr;
@@ -71,6 +72,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         const std::vector<WATER::WaterSurfaceGpuData>* waterSurfaceGpuData = nullptr;
         const std::vector<SAND::SandSurfaceGpuData>* sandSurfaceGpuData = nullptr;
         const std::vector<float>* sandSurfaceHeights = nullptr;
+        const MassGpuSceneSource* mass = nullptr;
         uint64_t sandSurfaceHeightVersion = 0;
         uint64_t layoutVersion = 0;
         uint64_t sourceVersion = 0;
@@ -84,6 +86,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         bool HasAnyGpuSceneRanges() const;
         bool HasAnyGpuSceneInstances() const;
         bool HasAnyDirtyGpuSceneRanges() const;
+        bool HasMassInstances() const;
         size_t CountGpuSceneInstances() const;
     };
 

@@ -6,6 +6,7 @@
 #include <string_view>
 
 #include "Render3D/GpuDriven/HIKARI_GpuSceneRegistry.h"
+#include "Render3D/GpuDriven/HIKARI_MassGpuScene.h"
 #include "Render3D/Core/HIKARI_RenderView.h"
 #include "Render3D/Runtime/HIKARI_SceneRenderCache.h"
 #include "Scene/HIKARI_SceneRenderCacheSync.h"
@@ -35,6 +36,11 @@ namespace HIKARI {
         int runtimeSpecialModelCount = 0;
         int runtimeSpecialForwardModelCount = 0;
         int runtimeSpecialShadowModelCount = 0;
+        uint32_t massRenderStoreCount = 0u;
+        uint32_t massRenderInstanceCount = 0u;
+        uint32_t massRenderDirtyRangeCount = 0u;
+        uint32_t massRenderMissingTemplateCount = 0u;
+        uint32_t massRenderUnsupportedTemplateCount = 0u;
         RenderSubmissionRouteMode routeMode = RenderSubmissionRouteMode::GpuDrivenMainline;
         bool gpuDrivenMainRouteActive = false;
     };
@@ -44,6 +50,9 @@ namespace HIKARI {
         std::string_view GetName() const override { return "RenderSubmissionSystem"; }
 
         void PreRender(World& world, const FrameContext& frame) override;
+        static void AcknowledgeMassRenderFrame(
+            World& world,
+            const FrameContext& frame);
 
         static void SetAssetContext(
             const AssetRegistry* assetRegistry,
@@ -66,9 +75,17 @@ namespace HIKARI {
         static RenderSubmissionDebugStats sDebugStats_;
         static RENDER3D::RUNTIME::SceneRenderCache sSceneRenderCache_;
         static RENDER3D::GPUDRIVEN::GpuSceneRegistry sGpuSceneRegistry_;
+        static RENDER3D::GPUDRIVEN::MassGpuSceneRegistry
+            sMassGpuSceneRegistry_;
+        static RENDER3D::GPUDRIVEN::GpuDrivenSceneSource
+            sCombinedGpuSceneSource_;
         static SceneRenderCacheSync sSceneRenderCacheSync_;
         static bool sGpuSceneRegistryValid_;
         static bool sGpuDrivenSceneSyncInitialized_;
+        static uint64_t sSubmissionWorldIdentity_;
+        static uint64_t sPendingMassPublicationGeneration_;
+        static uint64_t sPendingMassPublicationFrameIndex_;
+        static uint64_t sPendingMassSourceVersion_;
         static RENDER3D::RenderViewPurpose sRenderViewPurpose_;
         static const AssetRegistry* sAssetRegistry_;
         static ModelManager* sModelManager_;

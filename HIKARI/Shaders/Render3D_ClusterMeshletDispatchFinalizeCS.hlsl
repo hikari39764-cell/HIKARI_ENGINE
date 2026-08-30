@@ -3,6 +3,17 @@
 [numthreads(1, 1, 1)]
 void FinalizeMeshletDispatchCS(uint3 dispatchThreadId : SV_DispatchThreadID)
 {
+    bool overflowed =
+        gClusterCullCounters.Load(
+            HIKARI_CLUSTER_CULL_COUNTER_PAGE_TASK_OVERFLOW_COUNT) != 0u ||
+        gClusterCullCounters.Load(
+            HIKARI_CLUSTER_CULL_COUNTER_OVERFLOW_COUNT) != 0u ||
+        gClusterCullCounters.Load(
+            HIKARI_CLUSTER_CULL_COUNTER_BACK_FACE_DRAW_OVERFLOW_COUNT) != 0u ||
+        gClusterCullCounters.Load(
+            HIKARI_CLUSTER_CULL_COUNTER_DOUBLE_SIDED_DRAW_OVERFLOW_COUNT) != 0u ||
+        gClusterCullCounters.Load(
+            HIKARI_CLUSTER_CULL_COUNTER_VISIBLE_CLUSTER_LIST_OVERFLOW_COUNT) != 0u;
     [unroll]
     for (uint passKind = 0u; passKind < HIKARI_CLUSTER_CULL_PASS_COUNT; ++passKind)
     {
@@ -23,7 +34,9 @@ void FinalizeMeshletDispatchCS(uint3 dispatchThreadId : SV_DispatchThreadID)
                 passKind,
                 bucket,
                 1u);
-            meshletArgument.threadGroupCountX = clampedDrawCount;
+            meshletArgument.threadGroupCountX = overflowed
+                ? 0u
+                : clampedDrawCount;
             meshletArgument.threadGroupCountY = 1u;
             meshletArgument.threadGroupCountZ = 1u;
             meshletArgument.reserved0 = 0u;

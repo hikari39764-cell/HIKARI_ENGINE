@@ -182,6 +182,13 @@ namespace HIKARI {
         void MarkRenderObjectRemoved(uint64_t renderObjectId);
         void AcknowledgeRenderDirtyObjects();
         void AcknowledgeAllRenderObjects();
+        bool PublishMassRenderProxies(
+            uint64_t frameIndex,
+            void* context,
+            WorldMassStore::RenderPublicationVisitorFn visitor,
+            WorldMassRenderPublicationReceipt& outReceipt) noexcept;
+        bool AcknowledgeMassRenderProxies(
+            const WorldMassRenderPublicationReceipt& receipt) noexcept;
 
         WorldServiceRegistry& Services() noexcept;
         const WorldServiceRegistry& Services() const noexcept;

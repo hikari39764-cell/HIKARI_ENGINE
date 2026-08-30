@@ -13,8 +13,22 @@ namespace HIKARI {
             return "CharacterInputComponent";
         }
 
-        void Serialize(nlohmann::json& out) const override;
-        void Deserialize(const nlohmann::json& in) override;
+        void Serialize(nlohmann::json& out) const override {
+            out["enabled"] = enabled_;
+            out["priority"] = priority_;
+            out["moveAction"] = moveActionId_;
+            out["lookAction"] = lookActionId_;
+            out["jumpAction"] = jumpActionId_;
+            out["sprintAction"] = sprintActionId_;
+        }
+        void Deserialize(const nlohmann::json& in) override {
+            enabled_ = in.value("enabled", enabled_);
+            priority_ = in.value("priority", priority_);
+            moveActionId_ = in.value("moveAction", moveActionId_);
+            lookActionId_ = in.value("lookAction", lookActionId_);
+            jumpActionId_ = in.value("jumpAction", jumpActionId_);
+            sprintActionId_ = in.value("sprintAction", sprintActionId_);
+        }
         void BuildInspector(IInspectorBuilder& builder) override;
 
         bool IsEnabled() const noexcept { return enabled_; }

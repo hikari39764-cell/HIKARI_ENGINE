@@ -88,6 +88,10 @@ static const uint HIKARI_SURFACE_GPU_SCENE_RESOURCE_CLUSTER_GEOMETRY_LOD_RANGES 
 
 StructuredBuffer<HikariSurfaceGpuSceneInstance> gSurfaceGpuSceneBuffer : register(t17);
 
+#if !defined(HIKARI_MASS_GPU_SCENE_DISABLED)
+#include "Include/HIKARI_MassGpuScene.hlsli"
+#endif
+
 #ifndef HIKARI_SURFACE_GPU_SCENE_SKIP_CONTROL_CB
 cbuffer SurfaceGpuSceneControlCB : register(b8)
 {
@@ -98,15 +102,23 @@ cbuffer SurfaceGpuSceneControlCB : register(b8)
 };
 #endif
 
+HikariSurfaceGpuSceneInstance HikariGetSurfaceGpuSceneInstanceAt(uint absoluteIndex)
+{
+#if defined(HIKARI_MASS_GPU_SCENE_DISABLED)
+    return gSurfaceGpuSceneBuffer[absoluteIndex];
+#else
+    if (HikariIsMassGpuSceneIndex(absoluteIndex))
+    {
+        return HikariGetMassSurfaceGpuSceneInstanceAt(absoluteIndex);
+    }
+    return gSurfaceGpuSceneBuffer[absoluteIndex];
+#endif
+}
+
 #ifndef HIKARI_SURFACE_GPU_SCENE_SKIP_CONTROL_HELPERS
 uint HikariGetSurfaceGpuSceneAbsoluteIndex(uint instanceId)
 {
     return gSurfaceGpuSceneBaseIndex + instanceId;
-}
-
-HikariSurfaceGpuSceneInstance HikariGetSurfaceGpuSceneInstanceAt(uint absoluteIndex)
-{
-    return gSurfaceGpuSceneBuffer[absoluteIndex];
 }
 
 HikariSurfaceGpuSceneInstance HikariGetSurfaceGpuSceneInstance(uint instanceId)

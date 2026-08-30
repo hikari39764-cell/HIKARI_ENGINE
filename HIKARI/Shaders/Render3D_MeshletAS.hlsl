@@ -232,7 +232,8 @@ void main(uint groupIndex : SV_GroupIndex, uint3 groupId : SV_GroupID)
     {
         ByteAddressBuffer metadata =
             gClusterGeometryPool[NonUniformResourceIndex(clusterMetadataPoolIndex)];
-        instance = gSurfaceGpuSceneBuffer[visible.gpuSceneInstanceIndex];
+        instance = HikariGetSurfaceGpuSceneInstanceAt(
+            visible.gpuSceneInstanceIndex);
         cluster = HikariLoadMeshCluster(metadata, header, clusterIndex);
         clusterValid =
             cluster.indexCount != 0u &&

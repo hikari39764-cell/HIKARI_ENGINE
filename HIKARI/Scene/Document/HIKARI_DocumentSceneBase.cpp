@@ -544,12 +544,18 @@ namespace HIKARI {
                 primaryView.actionPostReactionFrameSource =
                     &reactions->GetFrameSource();
             }
-            MODELRENDERER::RenderAll(
-                graphics,
-                primaryView,
-                activeEnvironment,
-                sceneLighting,
-                state_->editor.viewportDebugViewState.renderView);
+            const MESHRENDERER::MeshRendererFrameResult modelFrame =
+                MODELRENDERER::RenderAll(
+                    graphics,
+                    primaryView,
+                    activeEnvironment,
+                    sceneLighting,
+                    state_->editor.viewportDebugViewState.renderView);
+            if (modelFrame.CanAcknowledgeMassRenderPublication()) {
+                RenderSubmissionSystem::AcknowledgeMassRenderFrame(
+                    state_->runtime.world,
+                    frame);
+            }
             const auto& particleReceipt =
                 MESHRENDERER::GetParticleGpuDrivenPassStats();
             if (playback != nullptr &&

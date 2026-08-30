@@ -7,55 +7,6 @@
 #include "Scene/Internal/HIKARI_WorldCapacity.h"
 
 namespace HIKARI {
-
-    bool IsValidWorldMassSchema(
-        const WorldMassSchema& schema) noexcept {
-        return schema.typeId.IsValid() &&
-            schema.layoutHash != 0u &&
-            schema.schemaVersion != 0u &&
-            schema.podSize != 0u &&
-            schema.podSize <= kWorldMassMaximumPodBytes &&
-            schema.podAlignment != 0u &&
-            schema.podAlignment <= alignof(std::max_align_t) &&
-            (schema.podAlignment & (schema.podAlignment - 1u)) == 0u;
-    }
-
-    bool IsSameWorldMassSchema(
-        const WorldMassSchema& lhs,
-        const WorldMassSchema& rhs) noexcept {
-        return lhs.typeId == rhs.typeId &&
-            lhs.layoutHash == rhs.layoutHash &&
-            lhs.schemaVersion == rhs.schemaVersion &&
-            lhs.podSize == rhs.podSize &&
-            lhs.podAlignment == rhs.podAlignment;
-    }
-
-    bool WorldMassSchemaRegistry::Register(
-        WorldMassSchema schema) noexcept {
-        if (!IsValidWorldMassSchema(schema)) {
-            return false;
-        }
-        try {
-            return schemas_.emplace(schema.typeId.value, schema).second;
-        }
-        catch (...) {
-            return false;
-        }
-    }
-
-    void WorldMassSchemaRegistry::Clear() noexcept {
-        schemas_.clear();
-    }
-
-    const WorldMassSchema* WorldMassSchemaRegistry::Find(
-        ComponentTypeId typeId) const noexcept {
-        if (!typeId.IsValid()) {
-            return nullptr;
-        }
-        const auto found = schemas_.find(typeId.value);
-        return found != schemas_.end() ? &found->second : nullptr;
-    }
-
     size_t WorldMassStore::AlignUp(
         size_t value,
         size_t alignment) noexcept {
@@ -85,6 +36,7 @@ namespace HIKARI {
 
     bool WorldMassStore::AppendBatch(
         const WorldMassSchema& schema,
+        const GameProjectWorldMassRenderProxyDesc* renderProxy,
         std::span<const RuntimeObjectHandle> objects,
         std::span<const GameProjectTransform> transforms,
         std::span<const GameProjectFloat3> velocities,
@@ -96,7 +48,12 @@ namespace HIKARI {
         if (objects.empty() || objects.size() != sourceIndices.size() ||
             transforms.size() != velocities.size() ||
             podData == nullptr || podStride < schema.podSize ||
-            !IsValidWorldMassSchema(schema)) {
+            !IsValidWorldMassSchema(schema) ||
+            (renderProxy != nullptr &&
+                (!IsValidWorldMassRenderProxy(*renderProxy) ||
+                    renderProxy->typeId != schema.typeId ||
+                    renderProxy->layoutHash != schema.layoutHash ||
+                    renderProxy->schemaVersion != schema.schemaVersion))) {
             return false;
         }
         for (size_t index = 0u; index < sourceIndices.size(); ++index) {
@@ -113,12 +70,56 @@ namespace HIKARI {
             store.podStride = AlignUp(
                 schema.podSize,
                 schema.podAlignment);
+            if (renderProxy != nullptr) {
+                store.renderProxy = *renderProxy;
+                store.hasRenderProxy = true;
+                try {
+                    renderStoreTypeOrder_.push_back(schema.typeId.value);
+                    std::sort(
+                        renderStoreTypeOrder_.begin(),
+                        renderStoreTypeOrder_.end());
+                }
+                catch (...) {
+                    const auto ordered = std::lower_bound(
+                        renderStoreTypeOrder_.begin(),
+                        renderStoreTypeOrder_.end(),
+                        schema.typeId.value);
+                    if (ordered != renderStoreTypeOrder_.end() &&
+                        *ordered == schema.typeId.value) {
+                        renderStoreTypeOrder_.erase(ordered);
+                    }
+                    stores_.erase(schema.typeId.value);
+                    throw;
+                }
+            }
         }
-        else if (!IsSameWorldMassSchema(store.schema, schema)) {
+        else if (!IsSameWorldMassSchema(store.schema, schema) ||
+            store.hasRenderProxy != (renderProxy != nullptr) ||
+            (renderProxy != nullptr &&
+                !IsSameWorldMassRenderProxy(
+                    store.renderProxy,
+                    *renderProxy))) {
             return false;
         }
+        const auto rollbackInsertedStore = [&]() noexcept {
+            if (!inserted) {
+                return;
+            }
+            if (store.hasRenderProxy) {
+                const auto ordered = std::lower_bound(
+                    renderStoreTypeOrder_.begin(),
+                    renderStoreTypeOrder_.end(),
+                    schema.typeId.value);
+                if (ordered != renderStoreTypeOrder_.end() &&
+                    *ordered == schema.typeId.value) {
+                    renderStoreTypeOrder_.erase(ordered);
+                }
+            }
+            stores_.erase(schema.typeId.value);
+        };
         if (objects.size() > store.objects.max_size() -
             store.objects.size()) {
+            rollbackInsertedStore();
             return false;
         }
         const size_t nextCount = store.objects.size() + objects.size();
@@ -130,37 +131,87 @@ namespace HIKARI {
                 store.positions.max_size(),
                 store.rotations.max_size(),
                 store.scales.max_size(),
-                store.velocities.max_size()
+                store.velocities.max_size(),
+                store.hasRenderProxy
+                    ? store.renderInstances.max_size()
+                    : store.objects.max_size()
             }));
         if (capacity >
             store.podBytes.max_size() / store.podStride) {
+            rollbackInsertedStore();
             return false;
         }
-        store.objects.reserve(capacity);
-        store.positions.reserve(capacity);
-        store.rotations.reserve(capacity);
-        store.scales.reserve(capacity);
-        store.velocities.reserve(capacity);
-        store.podBytes.reserve(capacity * store.podStride);
-
-        outFirstRowIndex = store.objects.size();
+        const size_t previousCount = store.objects.size();
         const size_t firstByteOffset =
-            outFirstRowIndex * store.podStride;
-        store.podBytes.resize(nextCount * store.podStride);
+            previousCount * store.podStride;
+        try {
+            store.objects.reserve(capacity);
+            store.positions.reserve(capacity);
+            store.rotations.reserve(capacity);
+            store.scales.reserve(capacity);
+            store.velocities.reserve(capacity);
+            store.podBytes.reserve(capacity * store.podStride);
+            if (store.hasRenderProxy) {
+                store.renderInstances.reserve(capacity);
+                store.renderDirtyIndices.reserve(capacity);
+                store.renderDirtyListPositions.reserve(capacity);
+            }
+            store.objects.resize(nextCount);
+            store.positions.resize(nextCount);
+            store.rotations.resize(nextCount);
+            store.scales.resize(nextCount);
+            store.velocities.resize(nextCount);
+            store.podBytes.resize(nextCount * store.podStride);
+            if (store.hasRenderProxy) {
+                store.renderInstances.resize(nextCount);
+                store.renderDirtyListPositions.resize(
+                    nextCount,
+                    UINT32_MAX);
+            }
+        }
+        catch (...) {
+            store.objects.resize(previousCount);
+            store.positions.resize(previousCount);
+            store.rotations.resize(previousCount);
+            store.scales.resize(previousCount);
+            store.velocities.resize(previousCount);
+            store.podBytes.resize(previousCount * store.podStride);
+            store.renderInstances.resize(
+                store.hasRenderProxy ? previousCount : 0u);
+            store.renderDirtyListPositions.resize(
+                store.hasRenderProxy ? previousCount : 0u);
+            rollbackInsertedStore();
+            return false;
+        }
         for (size_t index = 0u; index < objects.size(); ++index) {
             const size_t sourceIndex = sourceIndices[index];
-            store.objects.push_back(objects[index]);
-            store.positions.push_back(transforms[sourceIndex].position);
-            store.rotations.push_back(transforms[sourceIndex].rotation);
-            store.scales.push_back(transforms[sourceIndex].scale);
-            store.velocities.push_back(velocities[sourceIndex]);
+            const size_t targetIndex = previousCount + index;
+            store.objects[targetIndex] = objects[index];
+            store.positions[targetIndex] =
+                transforms[sourceIndex].position;
+            store.rotations[targetIndex] =
+                transforms[sourceIndex].rotation;
+            store.scales[targetIndex] = transforms[sourceIndex].scale;
+            store.velocities[targetIndex] = velocities[sourceIndex];
             const size_t targetByteOffset =
                 firstByteOffset + index * store.podStride;
             std::memcpy(
                 store.podBytes.data() + targetByteOffset,
                 podData + sourceIndex * podStride,
                 schema.podSize);
+            if (store.hasRenderProxy) {
+                store.renderInstances[targetIndex] = BuildRenderInstance(
+                    objects[index],
+                    store.positions[targetIndex],
+                    store.rotations[targetIndex],
+                    store.scales[targetIndex]);
+                MarkRenderDirty(store, targetIndex);
+            }
         }
+        if (store.hasRenderProxy) {
+            AdvanceRenderLayoutVersion(store);
+        }
+        outFirstRowIndex = previousCount;
         totalCount_ += objects.size();
         return true;
     }
@@ -187,6 +238,19 @@ namespace HIKARI {
         store->scales.resize(firstRowIndex);
         store->velocities.resize(firstRowIndex);
         store->podBytes.resize(firstRowIndex * store->podStride);
+        if (store->hasRenderProxy) {
+            if (!store->renderDirtyAll) {
+                for (size_t row = store->renderInstances.size();
+                    row > firstRowIndex;
+                    --row) {
+                    RemoveRenderDirty(*store, row - 1u);
+                }
+            }
+            store->renderInstances.resize(firstRowIndex);
+            store->renderDirtyListPositions.resize(firstRowIndex);
+            store->renderDirtyRanges.clear();
+            AdvanceRenderLayoutVersion(*store);
+        }
         totalCount_ -= objects.size();
         return true;
     }
@@ -202,6 +266,9 @@ namespace HIKARI {
             return false;
         }
         const size_t lastIndex = store.objects.size() - 1u;
+        if (store.hasRenderProxy && !store.renderDirtyAll) {
+            RemoveRenderDirty(store, rowIndex);
+        }
         if (rowIndex != lastIndex) {
             outMovedObject = store.objects[lastIndex];
             store.objects[rowIndex] = outMovedObject;
@@ -209,6 +276,25 @@ namespace HIKARI {
             store.rotations[rowIndex] = store.rotations[lastIndex];
             store.scales[rowIndex] = store.scales[lastIndex];
             store.velocities[rowIndex] = store.velocities[lastIndex];
+            if (store.hasRenderProxy) {
+                store.renderInstances[rowIndex] =
+                    store.renderInstances[lastIndex];
+                if (!store.renderDirtyAll) {
+                    const uint32_t movedDirtyPosition =
+                        store.renderDirtyListPositions[lastIndex];
+                    if (movedDirtyPosition != UINT32_MAX &&
+                        movedDirtyPosition <
+                            store.renderDirtyIndices.size()) {
+                        store.renderDirtyIndices[movedDirtyPosition] =
+                            static_cast<uint32_t>(rowIndex);
+                        store.renderDirtyListPositions[rowIndex] =
+                            movedDirtyPosition;
+                        store.renderDirtyListPositions[lastIndex] =
+                            UINT32_MAX;
+                        store.renderDirtyIndicesSorted = false;
+                    }
+                }
+            }
             std::memmove(
                 store.podBytes.data() + rowIndex * store.podStride,
                 store.podBytes.data() + lastIndex * store.podStride,
@@ -220,6 +306,15 @@ namespace HIKARI {
         store.scales.pop_back();
         store.velocities.pop_back();
         store.podBytes.resize(lastIndex * store.podStride);
+        if (store.hasRenderProxy) {
+            store.renderInstances.pop_back();
+            store.renderDirtyListPositions.pop_back();
+            if (rowIndex != lastIndex) {
+                MarkRenderDirty(store, rowIndex);
+            }
+            store.renderDirtyRanges.clear();
+            AdvanceRenderLayoutVersion(store);
+        }
         --totalCount_;
         return true;
     }
@@ -248,9 +343,15 @@ namespace HIKARI {
         if (visitor == nullptr) {
             return false;
         }
+        bool completed = true;
+        bool renderChanged = false;
         for (size_t rowIndex = 0u;
             rowIndex < store->objects.size();
             ++rowIndex) {
+            const WorldMassRenderInstance before =
+                store->hasRenderProxy
+                ? store->renderInstances[rowIndex]
+                : WorldMassRenderInstance{};
             WorldMassMutableRow row{
                 store->objects[rowIndex],
                 &store->positions[rowIndex],
@@ -261,11 +362,29 @@ namespace HIKARI {
                 store->schema.podSize,
                 store->schema.podAlignment
             };
-            if (!visitor(context, rowIndex, row)) {
-                return false;
+            const bool continueVisit = visitor(context, rowIndex, row);
+            if (store->hasRenderProxy && HasChangedTransform(
+                    store->positions[rowIndex],
+                    store->rotations[rowIndex],
+                    store->scales[rowIndex],
+                    before)) {
+                store->renderInstances[rowIndex] = BuildRenderInstance(
+                    store->objects[rowIndex],
+                    store->positions[rowIndex],
+                    store->rotations[rowIndex],
+                    store->scales[rowIndex]);
+                MarkRenderDirty(*store, rowIndex);
+                renderChanged = true;
+            }
+            if (!continueVisit) {
+                completed = false;
+                break;
             }
         }
-        return true;
+        if (renderChanged) {
+            AdvanceRenderSourceVersion(*store);
+        }
+        return completed;
     }
 
     bool WorldMassStore::TryGetMutableRow(
@@ -326,9 +445,24 @@ namespace HIKARI {
             store.objects[rowIndex] != object) {
             return false;
         }
+        const bool renderChanged = store.hasRenderProxy &&
+            HasChangedTransform(
+                transform.position,
+                transform.rotation,
+                transform.scale,
+                store.renderInstances[rowIndex]);
         store.positions[rowIndex] = transform.position;
         store.rotations[rowIndex] = transform.rotation;
         store.scales[rowIndex] = transform.scale;
+        if (renderChanged) {
+            store.renderInstances[rowIndex] = BuildRenderInstance(
+                object,
+                transform.position,
+                transform.rotation,
+                transform.scale);
+            MarkRenderDirty(store, rowIndex);
+            AdvanceRenderSourceVersion(store);
+        }
         return true;
     }
 
@@ -356,7 +490,11 @@ namespace HIKARI {
 
     void WorldMassStore::Clear() noexcept {
         stores_.clear();
+        renderStoreTypeOrder_.clear();
+        renderPublicationViews_.clear();
         totalCount_ = 0u;
+        activeRenderPublication_ = {};
+        renderPublicationInProgress_ = false;
     }
 
 } // namespace HIKARI

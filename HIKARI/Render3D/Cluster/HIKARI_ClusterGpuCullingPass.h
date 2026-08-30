@@ -33,6 +33,7 @@ namespace HIKARI::RENDER3D::CLUSTER {
             const MATH::Vec3& cameraPosition,
             D3D12_GPU_DESCRIPTOR_HANDLE clusterGeometryPoolSrv,
             D3D12_GPU_VIRTUAL_ADDRESS surfaceGpuSceneGpuAddress,
+            D3D12_GPU_VIRTUAL_ADDRESS massGpuSceneGpuAddress,
             const ClusterGpuCullingSourceRange* ranges,
             size_t rangeCount,
             const ClusterGpuDepthOcclusionDesc& depthOcclusion,

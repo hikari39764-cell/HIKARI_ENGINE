@@ -126,6 +126,11 @@ namespace HIKARI {
             return RegisterMassDataRaw(descriptor);
         }
 
+        // Registers one schema-level render binding. This is independent of
+        // entity count and never creates per-entity model/component records.
+        HIKARI_GAME_PROJECT_SDK_API bool RegisterMassRenderProxy(
+            const GameProjectWorldMassRenderProxyDesc& descriptor);
+
         HIKARI_GAME_PROJECT_SDK_API bool BindComponentSystem(
             ComponentSystemBinding binding);
 

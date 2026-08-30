@@ -27,9 +27,14 @@ namespace HIKARI::RENDER3D::RUNTIME {
         const Stats& GetStats() const;
 
     private:
+        struct Entry {
+            uint64_t sourceRevision = 0u;
+            std::unique_ptr<RenderModelAsset> asset{};
+        };
+
         void RefreshCacheStats();
 
-        std::unordered_map<const ModelAsset*, std::unique_ptr<RenderModelAsset>> cache_;
+        std::unordered_map<const ModelAsset*, Entry> cache_;
         Stats stats_{};
     };
 

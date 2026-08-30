@@ -14,6 +14,7 @@ namespace HIKARI::MESHRENDERER {
     namespace {
         void InvalidateGpuDrivenSceneResidency() {
             gMeshRendererState.surfaceGpuSceneBuffer.InvalidateResidency();
+            gMeshRendererState.massGpuSceneBuffer.InvalidateResidency();
             gMeshRendererState.gpuDrivenSceneResidency.Reset();
             gMeshRendererState.gpuDrivenLayer.ResetFrame();
         }
@@ -192,7 +193,7 @@ namespace HIKARI::MESHRENDERER {
         gMeshRendererState.frameObjectIndex = 0;
     }
 
-    void RenderAll(
+    MeshRendererFrameResult RenderAll(
         const GFX::Context& graphics,
         const RENDER3D::RenderViewContext& view,
         const SceneEnvironment& environment,
@@ -200,16 +201,26 @@ namespace HIKARI::MESHRENDERER {
         RenderDebugView debugView) {
 
         if (view.cameraFrame == nullptr || !view.cameraFrame->valid) {
-            return;
+            return {};
         }
+        const bool massSubmissionRequired =
+            gMeshRendererState.gpuDrivenSceneSource.HasMassInstances();
+        gMeshRendererState.massForwardOpaqueSubmissionCommitted = false;
         SetParticleFrameSource(view.particleFrameSource);
-        (void)RENDER3D::PIPELINE::RenderMeshLightingFrame(
-            graphics,
-            view,
-            environment,
-            lighting,
-            debugView);
+        const bool rendered =
+            RENDER3D::PIPELINE::RenderMeshLightingFrame(
+                graphics,
+                view,
+                environment,
+                lighting,
+                debugView);
         SetParticleFrameSource(nullptr);
+        return MeshRendererFrameResult{
+            rendered,
+            massSubmissionRequired,
+            rendered &&
+                gMeshRendererState.massForwardOpaqueSubmissionCommitted
+        };
     }
 
     const MeshRendererDebugStats& GetDebugStats() {
@@ -223,6 +234,11 @@ namespace HIKARI::MESHRENDERER {
     const RENDER3D::MATERIAL::GpuMaterialRegistryStats&
         GetGpuMaterialRegistryStats() {
         return gMeshRendererState.gpuMaterialRegistry.GetStats();
+    }
+
+    const RENDER3D::GPUDRIVEN::MassGpuSceneFrameBufferStats&
+        GetMassGpuSceneFrameBufferStats() {
+        return gMeshRendererState.massGpuSceneBuffer.GetStats();
     }
 
     const RENDER3D::PARTICLES::ParticleGpuDrivenPassStats&

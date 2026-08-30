@@ -75,23 +75,16 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         CPU_PROFILE::ScopedCpuTimer cpuTimer(
             CPU_PROFILE::Pass::MeshPrepare);
         UploadGpuDrivenSceneFrame(graphics);
-        if (!gMeshRendererState.gpuDrivenSceneResidency.resident) {
+        const bool legacyRequired =
+            gMeshRendererState.gpuDrivenSceneSource.
+                HasAnyGpuSceneRanges();
+        const bool legacyReady = !legacyRequired ||
+            gMeshRendererState.gpuDrivenSceneResidency.resident;
+        if (legacyReady) {
+            BuildGpuDrivenFrameState();
+        } else {
             gMeshRendererState.gpuDrivenFrame.Reset();
-            gMeshRendererState.clusterGpuDrivenProducer.BeginFrame(false);
-            gMeshRendererState.gpuDrivenLayer.ImportProducerOutput(
-                gMeshRendererState.clusterGpuDrivenProducer.BuildFrameOutput());
-            gMeshRendererState.meshletRenderBackend.ResetFrame();
-            UpdateMeshletBackendDebugStats();
-            SyncGpuDrivenBackendAvailability();
-            RENDER3D::GPUDRIVEN::GpuDrivenCommandFrameDesc commandFrameDesc{};
-            commandFrameDesc.commandList = graphics.cmdList;
-            commandFrameDesc.frameIndex = graphics.frameIndex;
-            gMeshRendererState.gpuDrivenLayer.BuildCommandFrame(commandFrameDesc);
-            UpdateTraditionalCommandStreamStats();
-            UpdateGpuDrivenCommandStreamDebugStats();
-            return;
         }
-        BuildGpuDrivenFrameState();
         BuildGpuDrivenWorkFrame(
             graphics,
             nullptr,
@@ -124,6 +117,11 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             RENDER3D::GetClusterGeometryPoolSrvGpuHandle(graphics);
         workContext.surfaceGpuSceneGpuAddress =
             gMeshRendererState.surfaceGpuSceneBuffer.GetGpuVirtualAddress();
+        workContext.massGpuSceneGpuAddress =
+            gMeshRendererState.massGpuSceneBuffer.GetGpuVirtualAddress();
+        workContext.massGpuSceneInstanceCount =
+            gMeshRendererState.gpuDrivenLayer.GetFrameContext().scene.
+                massInstanceCount;
         workContext.frame = &gMeshRendererState.gpuDrivenFrame;
         workContext.passMask = passMask;
         workContext.collectCounterReadback = collectCounterReadback;

@@ -283,6 +283,10 @@ namespace {
         try {
             appended = massStore_.AppendBatch(
                 payload.schema,
+                massSchemaRegistry_ != nullptr
+                    ? massSchemaRegistry_->FindRenderProxy(
+                        payload.schema.typeId)
+                    : nullptr,
                 activeObjectSpan,
                 payload.transforms,
                 payload.velocities,
@@ -454,6 +458,32 @@ namespace {
         }
         outTransform = FromMassTransform(transform);
         return true;
+    }
+
+    bool World::PublishMassRenderProxies(
+        uint64_t frameIndex,
+        void* context,
+        WorldMassStore::RenderPublicationVisitorFn visitor,
+        WorldMassRenderPublicationReceipt& outReceipt) noexcept {
+        outReceipt = {};
+        if (!IsOwnerThread() || worldClosing_ || visitor == nullptr) {
+            return false;
+        }
+        const StructureReadScope structureRead =
+            AcquireStructureReadScope();
+        return massStore_.PublishRenderStores(
+            runtimeIdentity_,
+            frameIndex,
+            context,
+            visitor,
+            outReceipt);
+    }
+
+    bool World::AcknowledgeMassRenderProxies(
+        const WorldMassRenderPublicationReceipt& receipt) noexcept {
+        return IsOwnerThread() && !worldClosing_ &&
+            receipt.worldIdentity == runtimeIdentity_ &&
+            massStore_.AcknowledgeRenderStores(receipt);
     }
 
 } // namespace HIKARI

@@ -10,12 +10,20 @@ namespace HIKARI {
     public:
         std::string_view GetTypeName() const override { return "SpawnPointComponent"; }
 
-        void Serialize(nlohmann::json& out) const override;
-        void Deserialize(const nlohmann::json& in) override;
+        void Serialize(nlohmann::json& out) const override {
+            out["spawnPointId"] = spawnPointId_;
+            out["enabled"] = enabled_;
+        }
+        void Deserialize(const nlohmann::json& in) override {
+            spawnPointId_ = in.value("spawnPointId", spawnPointId_);
+            enabled_ = in.value("enabled", enabled_);
+        }
         void BuildInspector(IInspectorBuilder& builder) override;
 
-        const std::string& GetSpawnPointId() const;
-        bool IsEnabled() const;
+        const std::string& GetSpawnPointId() const {
+            return spawnPointId_;
+        }
+        bool IsEnabled() const { return enabled_; }
 
     private:
         std::string spawnPointId_{ "DefaultSpawn" };

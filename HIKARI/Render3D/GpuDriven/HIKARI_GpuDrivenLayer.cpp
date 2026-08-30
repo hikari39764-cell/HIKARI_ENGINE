@@ -6,6 +6,7 @@
 #include "Core/HIKARI_Logger.h"
 #include "Core/Numeric/HIKARI_IntegerConversion.h"
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenSceneSource.h"
+#include "Render3D/GpuDriven/HIKARI_MassGpuScene.h"
 #include "Render3D/GpuDriven/HIKARI_SurfaceGpuSceneFrameBuffer.h"
 #include "Render3D/GpuDriven/CommandStream/HIKARI_GpuTraditionalCommandStreamBuffer.h"
 
@@ -233,22 +234,26 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
 
     void GpuDrivenLayer::Attach(
         SurfaceGpuSceneFrameBuffer* sceneBuffer,
+        MassGpuSceneFrameBuffer* massSceneBuffer,
         GpuTraditionalCommandStreamBuffer* traditionalCommandStreamBuffer,
         IGpuDrivenProducer* producer,
         WATER::WaterSurfaceGpuFrameBuffer* waterSurfaceBuffer,
         SAND::SandSurfaceGpuFrameBuffer* sandSurfaceBuffer) {
 
         sceneBuffer_ = sceneBuffer;
+        massSceneBuffer_ = massSceneBuffer;
         waterSurfaceBuffer_ = waterSurfaceBuffer;
         sandSurfaceBuffer_ = sandSurfaceBuffer;
         traditionalCommandStreamBuffer_ = traditionalCommandStreamBuffer;
         producer_ = producer;
         frameContext_.scene.instanceBuffer = sceneBuffer_;
+        frameContext_.scene.massInstanceBuffer = massSceneBuffer_;
     }
 
     void GpuDrivenLayer::ResetFrame() {
         frameContext_ = {};
         frameContext_.scene.instanceBuffer = sceneBuffer_;
+        frameContext_.scene.massInstanceBuffer = massSceneBuffer_;
         frameSource_ = nullptr;
         sceneUploadStats_ = {};
         commandFrameStats_ = {};
@@ -273,6 +278,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
 
         sceneUploadStats_ = {};
         frameContext_.scene.instanceBuffer = sceneBuffer_;
+        frameContext_.scene.massInstanceBuffer = massSceneBuffer_;
         const bool waterSurfaceDataResident =
             waterSurfaceBuffer_ == nullptr ||
             waterSurfaceBuffer_->UploadFrame(
@@ -301,10 +307,35 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         if (sceneBuffer_ != nullptr) {
             sceneBuffer_->BeginFrame(desc.frameIndex);
         }
-
+        const GpuDrivenSceneSource* source = frameSource_;
+        const bool massSceneResident =
+            massSceneBuffer_ == nullptr
+                ? source == nullptr || !source->HasMassInstances()
+                : massSceneBuffer_->UploadFrame(
+                    desc.frameIndex,
+                    desc.commandList,
+                    source != nullptr ? source->mass : nullptr,
+                    {
+                        desc.massMaterialSlotBySourceRecord,
+                        desc.massMaterialSourceRecordCount
+                    },
+                    desc.massMaterialBindingVersion);
+        sceneUploadStats_.massSceneResident = massSceneResident;
+        if (massSceneBuffer_ != nullptr) {
+            sceneUploadStats_.massBufferStats =
+                massSceneBuffer_->GetStats();
+        }
+        frameContext_.scene.massInstanceCount =
+            massSceneResident && source != nullptr && source->mass != nullptr
+                ? NUMERIC::SaturateToUint32(
+                    source->mass->instances.size())
+                : 0u;
+        InitializePassExecutionStates(source);
+        RefreshPassExecutionStates();
         // surface payload と Scene records は同じ frame transaction。どちらかの
-        // upload が失敗した frame へ、offset を持つ instance record を送信しない。
-        if (sceneBuffer_ == nullptr || frameSource_ == nullptr ||
+        // upload が失敗した frame へ、offset を持つ legacy instance record は
+        // 送信しない。独立した Mass residency はこの失敗から隔離する。
+        if (sceneBuffer_ == nullptr || source == nullptr ||
             !waterSurfaceDataResident || !sandSurfaceDataResident) {
             if (sceneBuffer_ != nullptr) {
                 sceneBuffer_->ResetFrame();
@@ -314,29 +345,34 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                 desc.residency->Reset();
             }
             UploadSurfaceGpuSceneFrame(0u, 0u, 0u, 0u, 0u, 0u, false);
+            frameContext_.stats.sourceInstanceCount +=
+                frameContext_.scene.massInstanceCount;
             return sceneUploadStats_;
         }
 
-        const GpuDrivenSceneSource& source = *frameSource_;
+        const GpuDrivenSceneSource& sceneSource = *source;
         sceneUploadStats_.sourceInstanceCount =
-            source.sourceInstanceCount != 0u
-                ? source.sourceInstanceCount
-                : source.CountGpuSceneInstances();
+            sceneSource.sourceInstanceCount != 0u
+                ? sceneSource.sourceInstanceCount
+                : sceneSource.CountGpuSceneInstances();
         for (size_t passIndex = 0u;
             passIndex < kGpuDrivenPassCount;
             ++passIndex) {
 
             sceneUploadStats_.passInstanceCounts[passIndex] =
-                NUMERIC::SaturateToUint32(CountPassInstances(source.passes[passIndex]));
+                NUMERIC::SaturateToUint32(
+                    CountPassInstances(sceneSource.passes[passIndex]));
         }
 
-        const uint64_t layoutVersion = source.layoutVersion;
-        const uint64_t sourceVersion = source.sourceVersion;
+        const uint64_t layoutVersion = sceneSource.layoutVersion;
+        const uint64_t sourceVersion = sceneSource.sourceVersion;
         const uintptr_t sourceIdentity =
             reinterpret_cast<uintptr_t>(frameSource_);
         const size_t sourceInstanceCount =
             sceneUploadStats_.sourceInstanceCount;
-        if (!SceneSourceLayoutTilesInstanceBuffer(source, sourceInstanceCount)) {
+        if (!SceneSourceLayoutTilesInstanceBuffer(
+                sceneSource,
+                sourceInstanceCount)) {
             static uint64_t warnedLayoutVersion = ~0ull;
             if (warnedLayoutVersion != layoutVersion) {
                 warnedLayoutVersion = layoutVersion;
@@ -354,12 +390,12 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
                 sourceVersion);
         const bool activeFramePatchable =
             desc.allowDirtyRangePatching &&
-            source.HasAnyDirtyGpuSceneRanges() &&
+            sceneSource.HasAnyDirtyGpuSceneRanges() &&
             sceneBuffer_->CanPatchFrame(
                 sourceIdentity,
                 sourceInstanceCount,
                 layoutVersion,
-                source.dirtyBaseSourceVersion);
+                sceneSource.dirtyBaseSourceVersion);
 
         if (sourceInstanceCount == 0u) {
             sceneBuffer_->ResetFrame();
@@ -371,14 +407,14 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             sceneBuffer_->ReuseFrame(sourceInstanceCount);
         } else if (activeFramePatchable) {
             sceneBuffer_->ReuseFrame(sourceInstanceCount);
-            if (PatchDirtySceneRanges(*sceneBuffer_, source)) {
+            if (PatchDirtySceneRanges(*sceneBuffer_, sceneSource)) {
                 sceneUploadStats_.patchedDirtyRanges = true;
             } else {
-                UploadFullScene(*sceneBuffer_, source);
+                UploadFullScene(*sceneBuffer_, sceneSource);
                 sceneUploadStats_.uploadedFullScene = true;
             }
         } else {
-            UploadFullScene(*sceneBuffer_, source);
+            UploadFullScene(*sceneBuffer_, sceneSource);
             sceneUploadStats_.uploadedFullScene = true;
         }
 
@@ -423,16 +459,20 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         UploadSurfaceGpuSceneFrame(
             NUMERIC::SaturateToUint32(sourceInstanceCount),
             ResolvePassBaseIndex(
-                source.GetPass(GpuDrivenPassKind::ForwardOpaque)),
+                sceneSource.GetPass(GpuDrivenPassKind::ForwardOpaque)),
             ResolvePassBaseIndex(
-                source.GetPass(GpuDrivenPassKind::DepthPrepass)),
+                sceneSource.GetPass(GpuDrivenPassKind::DepthPrepass)),
             ResolvePassBaseIndex(
-                source.GetPass(GpuDrivenPassKind::ForwardDepthAware)),
+                sceneSource.GetPass(GpuDrivenPassKind::ForwardDepthAware)),
             ResolvePassBaseIndex(
-                source.GetPass(GpuDrivenPassKind::ForwardTransparent)),
+                sceneSource.GetPass(GpuDrivenPassKind::ForwardTransparent)),
             ResolvePassBaseIndex(
-                source.GetPass(GpuDrivenPassKind::Shadow)),
+                sceneSource.GetPass(GpuDrivenPassKind::Shadow)),
             sceneUploadStats_.sceneResident);
+        InitializePassExecutionStates(&sceneSource);
+        RefreshPassExecutionStates();
+        frameContext_.stats.sourceInstanceCount +=
+            frameContext_.scene.massInstanceCount;
         return sceneUploadStats_;
     }
 
@@ -738,11 +778,26 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
 
             const GpuDrivenPassSource& passSource =
                 source->GetPass(state.sourcePass);
-            state.hasSource = passSource.HasGpuSceneRange();
-            state.clusterEligible = passSource.clusterEligible;
+            const bool legacySource =
+                sceneUploadStats_.sceneResident &&
+                passSource.HasGpuSceneRange();
+            const bool massSource =
+                sceneUploadStats_.massSceneResident &&
+                source->HasMassInstances() &&
+                (state.sourcePass == GpuDrivenPassKind::ForwardOpaque ||
+                 state.sourcePass == GpuDrivenPassKind::DepthPrepass);
+            state.hasSource = legacySource || massSource;
+            state.clusterEligible =
+                (legacySource && passSource.clusterEligible) || massSource;
             state.sourceInstanceCount =
-                static_cast<size_t>(passSource.gpuSceneInstanceCount);
+                (legacySource
+                    ? static_cast<size_t>(passSource.gpuSceneInstanceCount)
+                    : 0u) +
+                (massSource
+                    ? source->mass->instances.size()
+                    : 0u);
             state.hasTraditionalIndirectCommands =
+                legacySource &&
                 passSource.traditionalIndirect.HasCommands();
             state.traditionalIndirectCommandCount =
                 passSource.traditionalIndirect.CommandCount();

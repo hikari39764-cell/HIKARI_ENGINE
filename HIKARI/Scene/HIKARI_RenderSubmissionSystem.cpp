@@ -1,10 +1,12 @@
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
 
 #include "Assets/HIKARI_AssetRegistry.h"
+#include "Assets/HIKARI_AssetTypes.h"
 #include "Core/HIKARI_FrameContext.h"
 #include "Diagnostics/HIKARI_CpuFrameProfiler.h"
 #include "Render3D/Core/HIKARI_BoundsUtils.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
+#include "Render3D/GpuDriven/HIKARI_MassGpuSceneFrameBuffer.h"
 #include "Render3D/Core/HIKARI_Camera3D.h"
 #include "Assets/Models/HIKARI_ModelAsset.h"
 #include "Render3D/Debug/HIKARI_MeshWireDebugRenderer.h"
@@ -21,6 +23,7 @@
 #include "Scene/Terrain/HIKARI_TerrainGrassModelFactory.h"
 #include "Scene/Ui/HIKARI_GameUiPresentationService.h"
 #include "Scene/HIKARI_World.h"
+#include "Scene/HIKARI_SceneRuntimeBuilder.h"
 #include "Scene/Vfx/HIKARI_ActionPostReactionService.h"
 #include "Scene/Vfx/HIKARI_CombatAfterimageService.h"
 #include "Scene/Vfx/HIKARI_CombatPresentationService.h"
@@ -28,6 +31,7 @@
 #include <Vfx/Common/HIKARI_FxTypes.h>
 
 #include <utility>
+#include <string>
 
 namespace HIKARI {
 
@@ -37,9 +41,17 @@ namespace HIKARI {
     std::filesystem::path RenderSubmissionSystem::sProjectRoot_{};
     RENDER3D::RUNTIME::SceneRenderCache RenderSubmissionSystem::sSceneRenderCache_{};
     RENDER3D::GPUDRIVEN::GpuSceneRegistry RenderSubmissionSystem::sGpuSceneRegistry_{};
+    RENDER3D::GPUDRIVEN::MassGpuSceneRegistry
+        RenderSubmissionSystem::sMassGpuSceneRegistry_{};
+    RENDER3D::GPUDRIVEN::GpuDrivenSceneSource
+        RenderSubmissionSystem::sCombinedGpuSceneSource_{};
     SceneRenderCacheSync RenderSubmissionSystem::sSceneRenderCacheSync_{};
     bool RenderSubmissionSystem::sGpuSceneRegistryValid_ = false;
     bool RenderSubmissionSystem::sGpuDrivenSceneSyncInitialized_ = false;
+    uint64_t RenderSubmissionSystem::sSubmissionWorldIdentity_ = 0u;
+    uint64_t RenderSubmissionSystem::sPendingMassPublicationGeneration_ = 0u;
+    uint64_t RenderSubmissionSystem::sPendingMassPublicationFrameIndex_ = 0u;
+    uint64_t RenderSubmissionSystem::sPendingMassSourceVersion_ = 0u;
     RENDER3D::RenderViewPurpose
         RenderSubmissionSystem::sRenderViewPurpose_ =
             RENDER3D::RenderViewPurpose::Game;
@@ -132,6 +144,160 @@ namespace HIKARI {
                 }
             });
         }
+
+        struct ResolvedMassRenderModel {
+            const ModelAsset* model = nullptr;
+            std::string clusteredGeometryPath{};
+        };
+
+        bool ResolveMassRenderModel(
+            const GameProjectWorldMassRenderProxyDesc& proxy,
+            const AssetRegistry* assetRegistry,
+            ModelManager* modelManager,
+            const std::filesystem::path& projectRoot,
+            ResolvedMassRenderModel& outResolved) {
+            outResolved = {};
+            ProceduralMeshSettings proceduralSettings{};
+            bool procedural = false;
+            switch (proxy.geometry) {
+            case GameProjectWorldMassRenderGeometry::BuiltInBox:
+                proceduralSettings.kind = ProceduralMeshKind::Box;
+                procedural = true;
+                break;
+            case GameProjectWorldMassRenderGeometry::BuiltInSphere:
+                proceduralSettings.kind = ProceduralMeshKind::Sphere;
+                proceduralSettings.sphereSlices = 12u;
+                proceduralSettings.sphereStacks = 8u;
+                procedural = true;
+                break;
+            case GameProjectWorldMassRenderGeometry::ModelAsset:
+                break;
+            default:
+                return false;
+            }
+            if (procedural) {
+                if (PROCEDURAL::TryGetWarmedClusteredGeometry(
+                        proceduralSettings,
+                        projectRoot,
+                        outResolved.model,
+                        outResolved.clusteredGeometryPath)) {
+                    return outResolved.model != nullptr &&
+                        !outResolved.clusteredGeometryPath.empty();
+                }
+                PROCEDURAL::RequestClusteredGeometryWarmUp(
+                    proceduralSettings,
+                    projectRoot);
+                return false;
+            }
+            if (assetRegistry == nullptr || modelManager == nullptr ||
+                proxy.modelAssetGuid[0] == '\0') {
+                return false;
+            }
+            const std::string assetGuid(proxy.modelAssetGuid);
+            const auto* descriptor =
+                assetRegistry->FindAs<ModelAssetDescriptor>(
+                    AssetId{ assetGuid });
+            if (descriptor == nullptr) {
+                return false;
+            }
+            outResolved.model = ResolveModelAssetNow(
+                *modelManager,
+                *assetRegistry,
+                descriptor->id.value);
+            if (outResolved.model == nullptr ||
+                outResolved.model->GetState() != ModelAsset::State::Loaded ||
+                descriptor->clusteredGeometryPath.empty()) {
+                outResolved = {};
+                return false;
+            }
+            std::filesystem::path clusterPath =
+                descriptor->clusteredGeometryPath;
+            if (!clusterPath.is_absolute() && !projectRoot.empty()) {
+                clusterPath = projectRoot / clusterPath;
+            }
+            outResolved.clusteredGeometryPath =
+                clusterPath.lexically_normal().generic_string();
+            return !outResolved.clusteredGeometryPath.empty();
+        }
+
+        struct MassRenderSyncContext {
+            RENDER3D::GPUDRIVEN::MassGpuSceneRegistry* registry = nullptr;
+            const AssetRegistry* assetRegistry = nullptr;
+            ModelManager* modelManager = nullptr;
+            RENDER3D::RUNTIME::RenderModelCache* renderModelCache = nullptr;
+            const std::filesystem::path* projectRoot = nullptr;
+            uint64_t worldIdentity = 0u;
+            uint64_t frameIndex = 0u;
+        };
+
+        bool SyncMassRenderStores(
+            void* rawContext,
+            const WorldMassRenderPublicationReceipt& receipt,
+            std::span<const WorldMassRenderStoreView> stores) noexcept {
+            try {
+                auto& context = *static_cast<MassRenderSyncContext*>(
+                    rawContext);
+                if (context.registry == nullptr ||
+                    context.renderModelCache == nullptr ||
+                    context.worldIdentity == 0u ||
+                    receipt.worldIdentity != context.worldIdentity ||
+                    receipt.frameIndex != context.frameIndex ||
+                    receipt.generation == 0u) {
+                    return false;
+                }
+                context.registry->BeginSync(
+                    context.worldIdentity,
+                    context.frameIndex,
+                    receipt.generation);
+                for (const WorldMassRenderStoreView& store : stores) {
+                    if (store.proxy == nullptr) {
+                        context.registry->Clear();
+                        return false;
+                    }
+                    ResolvedMassRenderModel resolved{};
+                    if (context.projectRoot == nullptr ||
+                        !ResolveMassRenderModel(
+                        *store.proxy,
+                        context.assetRegistry,
+                        context.modelManager,
+                        *context.projectRoot,
+                        resolved) ||
+                        !context.registry->AddStore(
+                            RENDER3D::GPUDRIVEN::MassGpuSceneStoreInput{
+                                {
+                                    store.typeId.value,
+                                    resolved.model,
+                                    store.proxy->meshIndex,
+                                    store.proxy->primitiveIndex,
+                                    store.proxy->materialIndex,
+                                    (store.proxy->flags &
+                                        static_cast<uint32_t>(
+                                            GameProjectWorldMassRenderFlags::
+                                                ReceiveShadow)) != 0u,
+                                    resolved.clusteredGeometryPath
+                                },
+                                store.instances,
+                                store.dirtyRanges,
+                                store.layoutVersion,
+                                store.sourceVersion,
+                                store.dirtyBaseSourceVersion
+                            })) {
+                        context.registry->Clear();
+                        return false;
+                    }
+                }
+                return context.registry->EndSync(
+                    *context.renderModelCache);
+            }
+            catch (...) {
+                auto& context = *static_cast<MassRenderSyncContext*>(
+                    rawContext);
+                if (context.registry != nullptr) {
+                    context.registry->Clear();
+                }
+                return false;
+            }
+        }
     }
 
     void RenderSubmissionSystem::SetAssetContext(
@@ -179,11 +345,19 @@ namespace HIKARI {
     }
 
     void RenderSubmissionSystem::InvalidateSubmissionRouting() {
+        MESHRENDERER::SetGpuDrivenSceneSource(nullptr);
+        SHADOW::SetGpuDrivenSceneSource(nullptr);
         sSceneRenderCache_.Clear();
         sSceneRenderCacheSync_.Clear();
         sGpuSceneRegistry_.Clear();
+        sMassGpuSceneRegistry_.Clear();
+        sCombinedGpuSceneSource_.Reset();
         sGpuSceneRegistryValid_ = false;
         sGpuDrivenSceneSyncInitialized_ = false;
+        sSubmissionWorldIdentity_ = 0u;
+        sPendingMassPublicationGeneration_ = 0u;
+        sPendingMassPublicationFrameIndex_ = 0u;
+        sPendingMassSourceVersion_ = 0u;
     }
 
     void RenderSubmissionSystem::InvalidateSurfaceResourceBindings() {
@@ -194,9 +368,7 @@ namespace HIKARI {
         MODELRENDERER::GetRenderModelCache().Clear();
         InvalidateSubmissionRouting();
         MESHRENDERER::InvalidateMaterialFxPipelineCache();
-        MESHRENDERER::SetGpuDrivenSceneSource(nullptr);
         SHADOW::InvalidateSceneCache();
-        SHADOW::SetGpuDrivenSceneSource(nullptr);
         if (clearProceduralCache) {
             PROCEDURAL::ClearCache();
             TERRAIN::ClearTerrainGrassModelCache();
@@ -238,8 +410,18 @@ namespace HIKARI {
         sDebugStats_.runtimeSpecialModelCount = 0;
         sDebugStats_.runtimeSpecialForwardModelCount = 0;
         sDebugStats_.runtimeSpecialShadowModelCount = 0;
+        sDebugStats_.massRenderStoreCount = 0u;
+        sDebugStats_.massRenderInstanceCount = 0u;
+        sDebugStats_.massRenderDirtyRangeCount = 0u;
+        sDebugStats_.massRenderMissingTemplateCount = 0u;
+        sDebugStats_.massRenderUnsupportedTemplateCount = 0u;
         sDebugStats_.routeMode = RenderSubmissionRouteMode::GpuDrivenMainline;
         sDebugStats_.gpuDrivenMainRouteActive = true;
+
+        if (sSubmissionWorldIdentity_ != world.GetRuntimeIdentity()) {
+            InvalidateSubmissionRouting();
+            sSubmissionWorldIdentity_ = world.GetRuntimeIdentity();
+        }
 
         TickPresentationServices(world, frame);
 
@@ -271,9 +453,51 @@ namespace HIKARI {
         sGpuSceneRegistry_.SyncForwardFromSceneCache(gpuSceneInput);
         sGpuSceneRegistryValid_ = true;
 
+        MassRenderSyncContext massContext{
+            &sMassGpuSceneRegistry_,
+            sAssetRegistry_,
+            sModelManager_,
+            &MODELRENDERER::GetRenderModelCache(),
+            &sProjectRoot_,
+            world.GetRuntimeIdentity(),
+            frame.frameIndex
+        };
+        WorldMassRenderPublicationReceipt massReceipt{};
+        const bool massPublished = world.PublishMassRenderProxies(
+            frame.frameIndex,
+            &massContext,
+            &SyncMassRenderStores,
+            massReceipt);
+        if (massPublished) {
+            sPendingMassPublicationGeneration_ = massReceipt.generation;
+            sPendingMassPublicationFrameIndex_ = massReceipt.frameIndex;
+            sPendingMassSourceVersion_ =
+                sMassGpuSceneRegistry_.GetSource().sourceVersion;
+        } else {
+            sMassGpuSceneRegistry_.Clear();
+            sPendingMassPublicationGeneration_ = 0u;
+            sPendingMassPublicationFrameIndex_ = 0u;
+            sPendingMassSourceVersion_ = 0u;
+        }
+        const auto& massStats = sMassGpuSceneRegistry_.GetStats();
+        sDebugStats_.massRenderStoreCount = massStats.storeCount;
+        sDebugStats_.massRenderInstanceCount =
+            massStats.sourceInstanceCount;
+        sDebugStats_.massRenderDirtyRangeCount =
+            massStats.dirtyRangeCount;
+        sDebugStats_.massRenderMissingTemplateCount =
+            massStats.missingTemplateCount;
+        sDebugStats_.massRenderUnsupportedTemplateCount =
+            massStats.unsupportedTemplateCount;
+
+        sCombinedGpuSceneSource_ =
+            sGpuSceneRegistry_.GetSceneSource();
+        sCombinedGpuSceneSource_.mass =
+            &sMassGpuSceneRegistry_.GetSource();
+
         if (sGpuSceneRegistryValid_) {
             MESHRENDERER::SetGpuDrivenSceneSource(
-                &sGpuSceneRegistry_.GetSceneSource());
+                &sCombinedGpuSceneSource_);
         } else {
             MESHRENDERER::SetGpuDrivenSceneSource(nullptr);
         }
@@ -293,6 +517,34 @@ namespace HIKARI {
                 RENDER3D::RenderViewPurpose::LightProbeCapture;
         if (!lightingBakeCapture) {
             SubmitDebugOverlays(world, sDebugStats_);
+        }
+    }
+
+    void RenderSubmissionSystem::AcknowledgeMassRenderFrame(
+        World& world,
+        const FrameContext& frame) {
+        if (sPendingMassPublicationGeneration_ == 0u) {
+            return;
+        }
+        const auto& stats =
+            MESHRENDERER::GetMassGpuSceneFrameBufferStats();
+        if (stats.sceneResident &&
+            stats.worldIdentity == world.GetRuntimeIdentity() &&
+            stats.sourceVersion == sPendingMassSourceVersion_ &&
+            stats.publicationFrameIndex ==
+                sPendingMassPublicationFrameIndex_ &&
+            stats.publicationFrameIndex == frame.frameIndex &&
+            stats.publicationGeneration ==
+                sPendingMassPublicationGeneration_ &&
+            world.AcknowledgeMassRenderProxies(
+                WorldMassRenderPublicationReceipt{
+                    world.GetRuntimeIdentity(),
+                    sPendingMassPublicationGeneration_,
+                    sPendingMassPublicationFrameIndex_
+                })) {
+            sPendingMassPublicationGeneration_ = 0u;
+            sPendingMassPublicationFrameIndex_ = 0u;
+            sPendingMassSourceVersion_ = 0u;
         }
     }
 

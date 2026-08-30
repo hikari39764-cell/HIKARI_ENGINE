@@ -6,8 +6,9 @@
 #include <unordered_map>
 #include <vector>
 
-#include "HIKARI/Project/ValueTypes.h"
+#include "HIKARI/Project/WorldMassTypes.h"
 #include "HIKARI/Runtime/ComponentTypeId.h"
+#include "Render3D/Runtime/HIKARI_MassRenderProxy.h"
 #include "Scene/HIKARI_RuntimeObjectHandle.h"
 
 namespace HIKARI {
@@ -27,16 +28,28 @@ namespace HIKARI {
     bool IsSameWorldMassSchema(
         const WorldMassSchema& lhs,
         const WorldMassSchema& rhs) noexcept;
+    bool IsValidWorldMassRenderProxy(
+        const GameProjectWorldMassRenderProxyDesc& descriptor) noexcept;
+    bool IsSameWorldMassRenderProxy(
+        const GameProjectWorldMassRenderProxyDesc& lhs,
+        const GameProjectWorldMassRenderProxyDesc& rhs) noexcept;
 
     class WorldMassSchemaRegistry {
     public:
         bool Register(WorldMassSchema schema) noexcept;
+        bool RegisterRenderProxy(
+            const GameProjectWorldMassRenderProxyDesc& descriptor) noexcept;
         void Clear() noexcept;
         const WorldMassSchema* Find(
+            ComponentTypeId typeId) const noexcept;
+        const GameProjectWorldMassRenderProxyDesc* FindRenderProxy(
             ComponentTypeId typeId) const noexcept;
 
     private:
         std::unordered_map<uint64_t, WorldMassSchema> schemas_{};
+        std::unordered_map<
+            uint64_t,
+            GameProjectWorldMassRenderProxyDesc> renderProxies_{};
     };
 
     struct WorldMassSpawnBatchRequest {
@@ -59,16 +72,47 @@ namespace HIKARI {
         uint32_t podAlignment = 0u;
     };
 
+    using WorldMassRenderInstance =
+        RENDER3D::RUNTIME::MassRenderTransform;
+
+    using WorldMassRenderDirtyRange =
+        RENDER3D::RUNTIME::MassRenderDirtyRange;
+
+    struct WorldMassRenderStoreView {
+        ComponentTypeId typeId{};
+        const GameProjectWorldMassRenderProxyDesc* proxy = nullptr;
+        std::span<const WorldMassRenderInstance> instances{};
+        std::span<const WorldMassRenderDirtyRange> dirtyRanges{};
+        uint64_t layoutVersion = 0u;
+        uint64_t sourceVersion = 0u;
+        uint64_t dirtyBaseSourceVersion = 0u;
+    };
+
+    struct WorldMassRenderPublicationReceipt {
+        uint64_t worldIdentity = 0u;
+        uint64_t generation = 0u;
+        uint64_t frameIndex = 0u;
+
+        bool IsValid() const noexcept {
+            return worldIdentity != 0u && generation != 0u;
+        }
+    };
+
     class WorldMassStore {
     public:
         using MutableVisitorFn = bool (*)(
             void* context,
             size_t rowIndex,
             WorldMassMutableRow& row) noexcept;
+        using RenderPublicationVisitorFn = bool (*)(
+            void* context,
+            const WorldMassRenderPublicationReceipt& receipt,
+            std::span<const WorldMassRenderStoreView> stores) noexcept;
 
         bool CanUseSchema(const WorldMassSchema& schema) const noexcept;
         bool AppendBatch(
             const WorldMassSchema& schema,
+            const GameProjectWorldMassRenderProxyDesc* renderProxy,
             std::span<const RuntimeObjectHandle> objects,
             std::span<const GameProjectTransform> transforms,
             std::span<const GameProjectFloat3> velocities,
@@ -105,6 +149,17 @@ namespace HIKARI {
             const GameProjectTransform& transform) noexcept;
         size_t GetCount(ComponentTypeId typeId) const noexcept;
         size_t GetTotalCount() const noexcept;
+        bool PublishRenderStores(
+            uint64_t worldIdentity,
+            uint64_t frameIndex,
+            void* context,
+            RenderPublicationVisitorFn visitor,
+            WorldMassRenderPublicationReceipt& outReceipt) noexcept;
+        // Primary-view v1 is latest-publication-wins. A successful newer
+        // publication invalidates an older unacknowledged receipt, but dirty
+        // rows remain admitted until the current receipt is acknowledged.
+        bool AcknowledgeRenderStores(
+            const WorldMassRenderPublicationReceipt& receipt) noexcept;
         void Clear() noexcept;
 
     private:
@@ -117,6 +172,19 @@ namespace HIKARI {
             std::vector<GameProjectFloat3> scales{};
             std::vector<GameProjectFloat3> velocities{};
             std::vector<std::byte> podBytes{};
+            GameProjectWorldMassRenderProxyDesc renderProxy{};
+            std::vector<WorldMassRenderInstance> renderInstances{};
+            std::vector<uint32_t> renderDirtyIndices{};
+            std::vector<uint32_t> renderDirtyListPositions{};
+            std::vector<WorldMassRenderDirtyRange> renderDirtyRanges{};
+            uint64_t renderLayoutVersion = 1u;
+            uint64_t renderSourceVersion = 1u;
+            uint64_t renderDirtyBaseSourceVersion = 1u;
+            uint64_t publishedSourceVersion = 0u;
+            uint64_t publishedGeneration = 0u;
+            bool renderDirtyIndicesSorted = true;
+            bool renderDirtyAll = false;
+            bool hasRenderProxy = false;
         };
 
         bool RemoveFromStore(
@@ -135,11 +203,36 @@ namespace HIKARI {
             RuntimeObjectHandle object,
             const GameProjectTransform& transform) noexcept;
         static size_t AlignUp(size_t value, size_t alignment) noexcept;
+        static WorldMassRenderInstance BuildRenderInstance(
+            RuntimeObjectHandle object,
+            const GameProjectFloat3& position,
+            const GameProjectQuaternion& rotation,
+            const GameProjectFloat3& scale) noexcept;
+        static void MarkRenderDirty(
+            Store& store,
+            size_t rowIndex) noexcept;
+        static void RemoveRenderDirty(
+            Store& store,
+            size_t rowIndex) noexcept;
+        static void AdvanceRenderSourceVersion(Store& store) noexcept;
+        static void AdvanceRenderLayoutVersion(Store& store) noexcept;
+        static void RebuildRenderDirtyRanges(Store& store);
+        static void ClearAcknowledgedRenderDirty(Store& store) noexcept;
+        static bool HasChangedTransform(
+            const GameProjectFloat3& position,
+            const GameProjectQuaternion& rotation,
+            const GameProjectFloat3& scale,
+            const WorldMassRenderInstance& before) noexcept;
         Store* FindStore(ComponentTypeId typeId) noexcept;
         const Store* FindStore(ComponentTypeId typeId) const noexcept;
 
         std::unordered_map<uint64_t, Store> stores_{};
+        std::vector<uint64_t> renderStoreTypeOrder_{};
+        std::vector<WorldMassRenderStoreView> renderPublicationViews_{};
         size_t totalCount_ = 0u;
+        uint64_t nextRenderPublicationGeneration_ = 1u;
+        WorldMassRenderPublicationReceipt activeRenderPublication_{};
+        bool renderPublicationInProgress_ = false;
     };
 
 } // namespace HIKARI

@@ -22,10 +22,14 @@ namespace HIKARI::GFX::DESCRIPTOR {
     constexpr UINT kSystemSrvAuxUsedCount = kDepthPyramidTransientDescriptorCount + 1;
     constexpr UINT kSystemSrvReservedCount =
         kSystemSrvFixedCount + kSystemSrvDynamicCount + kSystemSrvAuxUsedCount;
-    constexpr UINT kSrvHeapCapacity = kUserSrvCount + kSystemSrvReservedCount;
+    constexpr UINT kMeshGpuSceneTableDescriptorCount =
+        GFX::kFrameResourceCount * 2u;
+    constexpr UINT kSrvHeapCapacity =
+        kUserSrvCount + kSystemSrvReservedCount +
+        kMeshGpuSceneTableDescriptorCount;
 
     constexpr UINT kUserSrvBegin = 0;
-    constexpr UINT kSystemSrvBegin = kSrvHeapCapacity - kSystemSrvReservedCount;
+    constexpr UINT kSystemSrvBegin = kUserSrvCount;
 
     enum class SystemSrv : UINT {
         SceneColorFrame0 = kSystemSrvBegin + 0,
@@ -54,16 +58,15 @@ namespace HIKARI::GFX::DESCRIPTOR {
         MeshMaterialDataFrame0 = kSystemSrvBegin + 21,
         MeshMaterialDataFrame1 = kSystemSrvBegin + 22,
         MeshMaterialDataFrame2 = kSystemSrvBegin + 23,
-        MeshSurfaceGpuSceneFrame0 = kSystemSrvBegin + 24,
-        MeshSurfaceGpuSceneFrame1 = kSystemSrvBegin + 25,
-        MeshSurfaceGpuSceneFrame2 = kSystemSrvBegin + 26,
+        // +24..+26 are retired fixed SurfaceGPUScene descriptors. The active
+        // mesh table is an interleaved legacy/mass pair after the bounded
+        // system ranges so Editor and primary views can bind the same table.
         ShadowSurfaceGpuSceneFrame0 = kSystemSrvBegin + 27,
         ShadowSurfaceGpuSceneFrame1 = kSystemSrvBegin + 28,
         ShadowSurfaceGpuSceneFrame2 = kSystemSrvBegin + 29,
         ShadowMaterialDataFrame0 = kSystemSrvBegin + 30,
         ShadowMaterialDataFrame1 = kSystemSrvBegin + 31,
         ShadowMaterialDataFrame2 = kSystemSrvBegin + 32,
-
         // SH 係数 Texture3D ×9 (連続必須、descriptor table で一括バインド)。
         LightProbeShVolume0 = kSystemSrvBegin + 33,
         LightProbeShVolume1 = kSystemSrvBegin + 34,
@@ -84,6 +87,19 @@ namespace HIKARI::GFX::DESCRIPTOR {
         LightProbeShVolumeSecondary6 = kSystemSrvBegin + 48,
         LightProbeShVolumeSecondary7 = kSystemSrvBegin + 49,
         LightProbeShVolumeSecondary8 = kSystemSrvBegin + 50,
+
+        MeshSurfaceGpuSceneFrame0 =
+            kSystemSrvBegin + kSystemSrvReservedCount,
+        MeshMassRenderProxyFrame0 =
+            kSystemSrvBegin + kSystemSrvReservedCount + 1,
+        MeshSurfaceGpuSceneFrame1 =
+            kSystemSrvBegin + kSystemSrvReservedCount + 2,
+        MeshMassRenderProxyFrame1 =
+            kSystemSrvBegin + kSystemSrvReservedCount + 3,
+        MeshSurfaceGpuSceneFrame2 =
+            kSystemSrvBegin + kSystemSrvReservedCount + 4,
+        MeshMassRenderProxyFrame2 =
+            kSystemSrvBegin + kSystemSrvReservedCount + 5,
     };
 
     constexpr UINT kSystemSrvUsedCount = kSystemSrvFixedCount;
@@ -108,6 +124,24 @@ namespace HIKARI::GFX::DESCRIPTOR {
 
     constexpr UINT ToFrameIndex(SystemSrv firstFrameSlot, uint32_t frameIndex) {
         return ToIndex(firstFrameSlot) + (frameIndex % GFX::kFrameResourceCount);
+    }
+
+    constexpr SystemSrv MeshSurfaceGpuSceneFrameSlot(
+        uint32_t frameIndex) {
+        switch (frameIndex % GFX::kFrameResourceCount) {
+        case 1u: return SystemSrv::MeshSurfaceGpuSceneFrame1;
+        case 2u: return SystemSrv::MeshSurfaceGpuSceneFrame2;
+        default: return SystemSrv::MeshSurfaceGpuSceneFrame0;
+        }
+    }
+
+    constexpr SystemSrv MeshMassRenderProxyFrameSlot(
+        uint32_t frameIndex) {
+        switch (frameIndex % GFX::kFrameResourceCount) {
+        case 1u: return SystemSrv::MeshMassRenderProxyFrame1;
+        case 2u: return SystemSrv::MeshMassRenderProxyFrame2;
+        default: return SystemSrv::MeshMassRenderProxyFrame0;
+        }
     }
 
     constexpr SystemSrv SceneColorFrameSlot(
@@ -208,6 +242,15 @@ namespace HIKARI::GFX::DESCRIPTOR {
     static_assert(ToIndex(SystemSrv::MeshSurfaceGpuSceneFrame2) < kSrvHeapCapacity);
     static_assert(ToIndex(SystemSrv::ShadowSurfaceGpuSceneFrame0) < kSrvHeapCapacity);
     static_assert(ToIndex(SystemSrv::ShadowSurfaceGpuSceneFrame2) < kSrvHeapCapacity);
+    static_assert(ToIndex(SystemSrv::MeshMassRenderProxyFrame2) <
+        kSrvHeapCapacity);
+    static_assert(
+        ToIndex(SystemSrv::MeshMassRenderProxyFrame0) ==
+            ToIndex(SystemSrv::MeshSurfaceGpuSceneFrame0) + 1u &&
+        ToIndex(SystemSrv::MeshMassRenderProxyFrame1) ==
+            ToIndex(SystemSrv::MeshSurfaceGpuSceneFrame1) + 1u &&
+        ToIndex(SystemSrv::MeshMassRenderProxyFrame2) ==
+            ToIndex(SystemSrv::MeshSurfaceGpuSceneFrame2) + 1u);
     static_assert(ToIndex(SystemSrv::ShadowMaterialDataFrame0) < kSrvHeapCapacity);
     static_assert(ToIndex(SystemSrv::ShadowMaterialDataFrame2) < kSrvHeapCapacity);
     static_assert(

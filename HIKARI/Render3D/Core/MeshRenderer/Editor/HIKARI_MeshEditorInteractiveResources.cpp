@@ -103,6 +103,13 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             }
             view = {};
         }
+        for (RENDER3D::RenderResourceView& view :
+            gMeshRendererState.editorInteractive.massGpuSceneNullViews) {
+            if (view.IsValid()) {
+                (void)RENDER3D::ReleaseRenderResourceDescriptor(view);
+            }
+            view = {};
+        }
         gMeshRendererState.editorInteractive.initialized = false;
     }
 
@@ -175,6 +182,9 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
         std::array<
             D3D12_GPU_DESCRIPTOR_HANDLE,
             GFX::kFrameResourceCount> sceneSrvGpu{};
+        const UINT descriptorSize =
+            device->GetDescriptorHandleIncrementSize(
+                D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
         for (uint32_t frameIndex = 0;
             frameIndex < GFX::kFrameResourceCount;
             ++frameIndex) {
@@ -182,12 +192,29 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             RENDER3D::RenderResourceView& view =
                 gMeshRendererState.editorInteractive.surfaceGpuSceneViews[frameIndex];
             view = RENDER3D::AllocateRenderResourceDescriptor();
-            if (!view.IsValid()) {
+            RENDER3D::RenderResourceView& massNullView =
+                gMeshRendererState.editorInteractive.
+                    massGpuSceneNullViews[frameIndex];
+            massNullView = RENDER3D::AllocateRenderResourceDescriptor();
+            if (!view.IsValid() || !massNullView.IsValid() ||
+                massNullView.gpu.ptr != view.gpu.ptr + descriptorSize) {
                 ResetEditorInteractiveResources();
                 return false;
             }
             sceneSrvCpu[frameIndex] = view.cpu;
             sceneSrvGpu[frameIndex] = view.gpu;
+            D3D12_SHADER_RESOURCE_VIEW_DESC nullMassSrv{};
+            nullMassSrv.Shader4ComponentMapping =
+                D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+            nullMassSrv.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+            nullMassSrv.Format = DXGI_FORMAT_UNKNOWN;
+            nullMassSrv.Buffer.NumElements = 1u;
+            nullMassSrv.Buffer.StructureByteStride = sizeof(
+                RENDER3D::RUNTIME::MassRenderProxyGpuRecord);
+            device->CreateShaderResourceView(
+                nullptr,
+                &nullMassSrv,
+                massNullView.cpu);
         }
 
         if (!gMeshRendererState.editorInteractive.surfaceGpuSceneBuffer.Initialize(
@@ -217,6 +244,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
             &gMeshRendererState.editorInteractive.clusterGpuCullingPass);
         gMeshRendererState.editorInteractive.gpuDrivenLayer.Attach(
             &gMeshRendererState.editorInteractive.surfaceGpuSceneBuffer,
+            nullptr,
             nullptr,
             &gMeshRendererState.editorInteractive.clusterGpuDrivenProducer,
             &gMeshRendererState.editorInteractive.waterSurfaceGpuFrameBuffer,

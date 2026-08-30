@@ -23,6 +23,10 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         dispatchContext.geometryPoolSrv = context.geometryPoolSrv;
         dispatchContext.surfaceGpuSceneGpuAddress =
             context.surfaceGpuSceneGpuAddress;
+        dispatchContext.massGpuSceneGpuAddress =
+            context.massGpuSceneGpuAddress;
+        dispatchContext.massGpuSceneInstanceCount =
+            context.massGpuSceneInstanceCount;
         dispatchContext.frame = context.frame;
         dispatchContext.passMask = context.passMask;
         dispatchContext.collectCounterReadback = context.collectCounterReadback;

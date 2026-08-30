@@ -11,8 +11,22 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
 
     struct GeometryBackendExecutionResult {
         bool gpuBackendExecuted = false;
+        bool meshShaderExecuted = false;
+        bool traditionalIndirectExecuted = false;
         RENDER3D::GPUDRIVEN::GeometryBackendKind executedGpuBackend =
             RENDER3D::GPUDRIVEN::GeometryBackendKind::GpuDrivenTraditionalVsPs;
+
+        void RecordExecutedBackend(
+            RENDER3D::GPUDRIVEN::GeometryBackendKind backend) noexcept {
+            gpuBackendExecuted = true;
+            executedGpuBackend = backend;
+            meshShaderExecuted = meshShaderExecuted ||
+                backend == RENDER3D::GPUDRIVEN::GeometryBackendKind::
+                    GpuDrivenMeshShader;
+            traditionalIndirectExecuted = traditionalIndirectExecuted ||
+                backend == RENDER3D::GPUDRIVEN::GeometryBackendKind::
+                    GpuDrivenTraditionalVsPs;
+        }
     };
 
 #if defined(HIKARI_WITH_EDITOR)

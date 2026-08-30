@@ -573,6 +573,7 @@ namespace HIKARI::RENDER3D::MESHLET {
         }
 
         Microsoft::WRL::ComPtr<ID3DBlob> amplificationShader;
+        Microsoft::WRL::ComPtr<ID3DBlob> shadowAmplificationShader;
         Microsoft::WRL::ComPtr<ID3DBlob> forwardMeshShader;
         Microsoft::WRL::ComPtr<ID3DBlob> shadowMeshShader;
         Microsoft::WRL::ComPtr<ID3DBlob> depthMeshShader;
@@ -608,11 +609,21 @@ namespace HIKARI::RENDER3D::MESHLET {
             IsPipelineRequested(
                 pipelineMask_, MeshletPipelineKind::GeometryOutline);
         bool waterVisibilityShadersReady = true;
-        if (!GFX::CompileShaderFileSm6(
-            L"HIKARI/Shaders/Render3D_MeshletAS.hlsl",
-            "main",
-            GFX::ShaderStage::Amplification,
-            amplificationShader.GetAddressOf())) {
+        if ((pipelineMask_ & MeshletPipelineMask::MainRenderer) != 0u) {
+            if (!GFX::CompileShaderFileSm6(
+                    L"HIKARI/Shaders/Render3D_MeshletAS.hlsl",
+                    "main",
+                    GFX::ShaderStage::Amplification,
+                    amplificationShader.GetAddressOf())) {
+                return false;
+            }
+        }
+        if (needsShadowMeshShader &&
+            !GFX::CompileShaderFileSm6(
+                L"HIKARI/Shaders/Render3D_MeshletShadowAS.hlsl",
+                "main",
+                GFX::ShaderStage::Amplification,
+                shadowAmplificationShader.GetAddressOf())) {
             return false;
         }
         if (needsForwardMeshShader &&
@@ -698,7 +709,7 @@ namespace HIKARI::RENDER3D::MESHLET {
         }
         if (IsPipelineRequested(pipelineMask_, MeshletPipelineKind::Shadow) &&
             !GFX::CompileShaderFileSm6(
-                L"HIKARI/Shaders/Render3D_MeshletDepthPS.hlsl",
+                L"HIKARI/Shaders/Render3D_MeshletShadowPS.hlsl",
                 "main",
                 GFX::ShaderStage::Pixel,
                 shadowPixelShader.GetAddressOf())) {
@@ -823,7 +834,7 @@ namespace HIKARI::RENDER3D::MESHLET {
                 if (CreateMeshletPipelineState(
                     device,
                     rootSignature,
-                    amplificationShader.Get(),
+                    shadowAmplificationShader.Get(),
                     shadowMeshShader.Get(),
                     shadowPixelShader.Get(),
                     DXGI_FORMAT_UNKNOWN,

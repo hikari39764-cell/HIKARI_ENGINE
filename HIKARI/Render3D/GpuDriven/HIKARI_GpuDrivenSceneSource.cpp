@@ -1,6 +1,7 @@
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenSceneSource.h"
 
 #include "Render3D/GpuDriven/HIKARI_GpuSceneSurfaceRecord.h"
+#include "Render3D/GpuDriven/HIKARI_MassGpuScene.h"
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
 
@@ -112,6 +113,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
         waterSurfaceGpuData = nullptr;
         sandSurfaceGpuData = nullptr;
         sandSurfaceHeights = nullptr;
+        mass = nullptr;
         sandSurfaceHeightVersion = 0;
         layoutVersion = 0;
         sourceVersion = 0;
@@ -142,7 +144,7 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
     }
 
     bool GpuDrivenSceneSource::HasAnyGpuSceneInstances() const {
-        return HasAnyGpuSceneRanges();
+        return HasAnyGpuSceneRanges() || HasMassInstances();
     }
 
     bool GpuDrivenSceneSource::HasAnyDirtyGpuSceneRanges() const {
@@ -152,6 +154,10 @@ namespace HIKARI::RENDER3D::GPUDRIVEN {
             }
         }
         return false;
+    }
+
+    bool GpuDrivenSceneSource::HasMassInstances() const {
+        return mass != nullptr && mass->HasInstances();
     }
 
     size_t GpuDrivenSceneSource::CountGpuSceneInstances() const {

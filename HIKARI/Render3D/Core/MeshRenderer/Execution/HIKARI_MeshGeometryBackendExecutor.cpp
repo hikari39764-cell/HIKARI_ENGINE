@@ -487,8 +487,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                 meshletPipelineKind)) {
                 continue;
             }
-            result.gpuBackendExecuted = true;
-            result.executedGpuBackend = backend;
+            result.RecordExecutedBackend(backend);
         }
         return result;
     }
@@ -520,8 +519,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                     &bindingOverrides)) {
                 continue;
             }
-            result.gpuBackendExecuted = true;
-            result.executedGpuBackend = backend;
+            result.RecordExecutedBackend(backend);
         }
         return result;
     }
@@ -548,8 +546,7 @@ namespace HIKARI::MESHRENDERER::INTERNAL {
                 RENDER3D::MESHLET::MeshletPipelineKind::DepthPrepass)) {
                 continue;
             }
-            result.gpuBackendExecuted = true;
-            result.executedGpuBackend = backend;
+            result.RecordExecutedBackend(backend);
         }
         return result;
     }

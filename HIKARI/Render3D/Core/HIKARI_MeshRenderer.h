@@ -24,6 +24,7 @@ namespace HIKARI::RENDER3D {
     namespace GPUDRIVEN {
         struct GpuDrivenSceneSource;
         struct GpuDepthVisibilityStats;
+        struct MassGpuSceneFrameBufferStats;
     }
     namespace SURFACE {
         class SceneSurfaceBuffer;
@@ -130,7 +131,7 @@ namespace HIKARI::MESHRENDERER {
         uint32_t maximumSkinnedDrawCount);
     void SetAmbientOcclusionRuntimeEnabled(bool enabled);
     void EndFrame();
-    void RenderAll(
+    MeshRendererFrameResult RenderAll(
         const GFX::Context& graphics,
         const RENDER3D::RenderViewContext& view,
         const SceneEnvironment& environment,
@@ -191,6 +192,8 @@ namespace HIKARI::MESHRENDERER {
     const MeshRendererDebugStats& GetDebugStats();
     const RENDER3D::MATERIAL::GpuMaterialRegistryStats&
         GetGpuMaterialRegistryStats();
+    const RENDER3D::GPUDRIVEN::MassGpuSceneFrameBufferStats&
+        GetMassGpuSceneFrameBufferStats();
     const RENDER3D::PARTICLES::ParticleGpuDrivenPassStats&
         GetParticleGpuDrivenPassStats();
 
