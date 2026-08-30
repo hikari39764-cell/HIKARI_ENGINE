@@ -32,6 +32,7 @@
 #include "Render3D/Pipeline/HIKARI_RenderFramePipeline.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 #include "Render3D/Resources/HIKARI_ClusterGeometryResourceSystem.h"
+#include "Render3D/Surface/HIKARI_RenderFrameSurfaceRegistry.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Render3D/Temporal/HIKARI_TaaResolvePass.h"
 #include "Render3D/Temporal/HIKARI_TemporalGeometryPass.h"
@@ -440,6 +441,16 @@ namespace HIKARI {
                 HIKARI_LOG_INFO("Ocean spectrum runtime finalized.");
                 HIKARI::POST::PostSystem::Shutdown();
                 HIKARI_LOG_INFO("PostSystem shutdown.");
+                if (!RENDER3D::SURFACE::
+                        ShutdownRenderFrameSurfaceRegistry()) {
+                    HIKARI_LOG_ERROR(
+                        "Render frame surface registry shutdown rejected "
+                        "the current thread.");
+                }
+                else {
+                    HIKARI_LOG_INFO(
+                        "Render frame surface registry shutdown.");
+                }
                 GAME_UI::ShutdownGameUiRenderer();
                 DX::DxRenderer::Finalize();
                 HIKARI_LOG_INFO("DxRenderer finalized.");

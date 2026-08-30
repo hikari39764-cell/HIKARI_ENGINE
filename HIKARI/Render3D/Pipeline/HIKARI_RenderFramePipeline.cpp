@@ -19,6 +19,7 @@
 #include "Render3D/Pipeline/HIKARI_RenderFrameContext.h"
 #include "Render3D/Pipeline/HIKARI_RenderFrameGraphStage.h"
 #include "Render3D/Surface/HIKARI_SceneSurfaceSet.h"
+#include "Render3D/Surface/HIKARI_RenderFrameSurfaceRegistry.h"
 #include "Render3D/ScreenSpace/HIKARI_ScreenSpacePasses.h"
 #include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
 #include "Render3D/Temporal/HIKARI_TemporalResourceSystem.h"
@@ -64,6 +65,34 @@ namespace HIKARI::RENDER3D::PIPELINE {
             bool active_ = true;
         };
 
+        class PostSurfaceFrameAbortGuard {
+        public:
+            PostSurfaceFrameAbortGuard() noexcept = default;
+            ~PostSurfaceFrameAbortGuard() noexcept {
+                if (!active_) {
+                    return;
+                }
+                try {
+                    (void)POST::PostSystem::AbortSceneCaptureTemporalFrame(
+                        TEMPORAL::TemporalHistoryResetReason::
+                            PreviousFrameIncomplete);
+                }
+                catch (...) {
+                    // Runtime shutdown retries the exact retained receipts.
+                }
+            }
+
+            PostSurfaceFrameAbortGuard(
+                const PostSurfaceFrameAbortGuard&) = delete;
+            PostSurfaceFrameAbortGuard& operator=(
+                const PostSurfaceFrameAbortGuard&) = delete;
+
+            void HandOff() noexcept { active_ = false; }
+
+        private:
+            bool active_ = true;
+        };
+
         bool RebindPostRenderTarget(void*) { return POST::PostSystem::RebindCurrentRenderTarget(); }
         bool BeginPostDepthRead(void*) { return POST::PostSystem::BeginCurrentRenderTargetDepthRead(); }
         void EndPostDepthRead(void*) { POST::PostSystem::EndCurrentRenderTargetDepthRead(); }
@@ -83,10 +112,18 @@ namespace HIKARI::RENDER3D::PIPELINE {
                 view.cameraFrame->sourceCameraObjectId;
             context.cameraRevision = view.cameraFrame->revision;
             context.frameIndex = TIME::GetFrameContext().frameIndex;
-            context.token = AllocateRenderFrameToken(
-                context.frameIndex,
-                context.viewId);
             context.graphics = graphics;
+            const SURFACE::RenderFrameSurfaceReceipt surfaceReceipt =
+                POST::PostSystem::GetSceneCaptureSurfaceReceipt();
+            if (surfaceReceipt.IsValid() &&
+                surfaceReceipt.frame.MatchesFrameView(
+                    context.frameIndex,
+                    context.viewId) &&
+                surfaceReceipt.deviceGeneration ==
+                    context.graphics.deviceGeneration) {
+                context.token = surfaceReceipt.frame;
+                context.surfaceReceipt = surfaceReceipt;
+            }
             context.camera = &view.cameraFrame->camera;
             context.environment = &environment;
             context.scene.dsv = POST::PostSystem::GetCurrentRenderTargetDsv();
@@ -215,10 +252,14 @@ namespace HIKARI::RENDER3D::PIPELINE {
             "RenderFrame.MeshLighting");
         const ScreenSpacePassContext screenSpaceContext =
             BuildScreenSpaceContext(frame);
-        SURFACE::SceneSurfaceSet sceneTextures{};
-        sceneTextures.Reset(
-            frame.token,
-            frame.graphics.deviceGeneration);
+        SURFACE::SceneSurfaceSet* sceneTextureRegistry =
+            SURFACE::TryGetRenderFrameSurfaces(frame.surfaceReceipt);
+        if (sceneTextureRegistry == nullptr ||
+            !frame.surfaceReceipt.frame.Matches(frame.token)) {
+            return false;
+        }
+        PostSurfaceFrameAbortGuard surfaceFrameGuard{};
+        SURFACE::SceneSurfaceSet& sceneTextures = *sceneTextureRegistry;
         if (!sceneTextures.PublishTexture(
                 GRAPH::RenderGraphSemantic::SceneDepth,
                 frame.scene.depth,
@@ -291,6 +332,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
                 temporalResources);
             return false;
         }
+        temporalFrameGuard.HandOff();
         (void)RENDER3D::TEMPORAL::SetTemporalDebugView(
             temporalResources,
             temporalDebugView ? debugView : RenderDebugView::None);
@@ -523,7 +565,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
             return false;
         }
         MESHRENDERER::EndFrame();
-        temporalFrameGuard.HandOff();
+        surfaceFrameGuard.HandOff();
         return true;
     }
 

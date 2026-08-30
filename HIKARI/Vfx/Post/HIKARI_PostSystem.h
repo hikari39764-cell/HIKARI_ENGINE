@@ -11,6 +11,7 @@
 #include "Render3D/Color/HIKARI_ExposureState.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Render3D/Resources/HIKARI_RenderTextureView.h"
+#include "Render3D/Surface/HIKARI_RenderFrameSurfaceRegistry.h"
 #include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
 #include "Render3D/Temporal/HIKARI_TemporalResourceSystem.h"
 #include "Render3D/Vfx/HIKARI_ActionPostReactionFrameSource.h"
@@ -28,7 +29,6 @@ namespace HIKARI {
 namespace HIKARI::POST {
 
     class PostEffect;
-    class PostChain;
     class GameUiCompositionStage;
     class PostPresentationStage;
     class PostProcessingStage;
@@ -92,7 +92,11 @@ namespace HIKARI::POST {
         static void LogFrameState(const char* reason);
         static void RequestFrameDump();
 
-        static void BeginSceneCapture();
+        static bool BeginSceneCapture(
+            RENDER3D::RenderFrameToken frame,
+            uint64_t deviceGeneration);
+        static RENDER3D::SURFACE::RenderFrameSurfaceReceipt
+            GetSceneCaptureSurfaceReceipt() noexcept;
         static bool SetSceneCaptureTemporalFrame(
             RENDER3D::TEMPORAL::TemporalViewLease view,
             RENDER3D::RenderFrameToken frame,
@@ -142,14 +146,6 @@ namespace HIKARI::POST {
         static void BeginLightCapture();
         static void EndLightCapture();
 
-        static void BeginLayer(
-            PostChain& chain,
-            float r = 0,
-            float g = 0,
-            float b = 0,
-            float a = 0);
-        static void EndLayer(BlendOption blendMode = BlendOption::Alpha);
-
     private:
         static RenderTarget2D* EndSceneCaptureAndResolveFinal();
         static RenderTarget2D* ResolveFinalSceneToLdr(
@@ -172,6 +168,8 @@ namespace HIKARI::POST {
         static RENDER3D::TEMPORAL::TemporalResourceFrame temporalResources_;
         static RENDER3D::TEMPORAL::TemporalResourceFrame
             presentationTemporalResources_;
+        static RENDER3D::SURFACE::RenderFrameSurfaceReceipt
+            renderSurfaceReceipt_;
     };
 
 } // namespace HIKARI::POST

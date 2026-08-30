@@ -14,7 +14,6 @@
 #include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
 #include "Render3D/Temporal/HIKARI_TemporalResolveStage.h"
 #include "Vfx/Post/HIKARI_GameUiCompositionStage.h"
-#include "Vfx/Post/HIKARI_PostChain.h"
 #include "Vfx/Post/HIKARI_PostPresentationStage.h"
 #include "Vfx/Post/HIKARI_PostProcessingStage.h"
 #include "Vfx/Post/HIKARI_SceneCaptureStage.h"
@@ -24,6 +23,7 @@ namespace HIKARI::POST {
     namespace {
         constexpr int kMinViewportSize = 16;
         constexpr int kMaxViewportSize = 8192;
+
     }
 
     bool PostSystem::initialized_ = false;
@@ -42,6 +42,8 @@ namespace HIKARI::POST {
     RENDER3D::TEMPORAL::TemporalResourceFrame PostSystem::temporalResources_{};
     RENDER3D::TEMPORAL::TemporalResourceFrame
         PostSystem::presentationTemporalResources_{};
+    RENDER3D::SURFACE::RenderFrameSurfaceReceipt
+        PostSystem::renderSurfaceReceipt_{};
 
     void PostSystem::Initialize(const GFX::Context& context) {
         UpdateContext(context);
@@ -215,20 +217,48 @@ namespace HIKARI::POST {
                 : PRESENTATION::kDefaultLogicalHeight);
     }
 
-    void PostSystem::BeginSceneCapture() {
-        AbortSceneCaptureTemporalFrame(
-            RENDER3D::TEMPORAL::
-                TemporalHistoryResetReason::PreviousFrameIncomplete);
+    bool PostSystem::BeginSceneCapture(
+        RENDER3D::RenderFrameToken frame,
+        uint64_t deviceGeneration) {
+        if (!frame.IsValid() ||
+            frame.viewId != RENDER3D::kPrimaryRenderViewId ||
+            frame.frameIndex != TIME::GetFrameContext().frameIndex ||
+            deviceGeneration == 0u ||
+            deviceGeneration != context_.deviceGeneration) {
+            return false;
+        }
+        if (!AbortSceneCaptureTemporalFrame(
+                RENDER3D::TEMPORAL::
+                    TemporalHistoryResetReason::PreviousFrameIncomplete)) {
+            return false;
+        }
         if (!initialized_) Initialize(context_);
+        RENDER3D::SURFACE::RenderFrameSurfaceReceipt receipt{};
+        if (!initialized_ ||
+            !RENDER3D::SURFACE::BeginRenderFrameSurfaces(
+                frame,
+                deviceGeneration,
+                receipt)) {
+            return false;
+        }
         int width = 0;
         int height = 0;
         GetSceneCaptureSize(width, height);
         presentationStage_.InvalidateEditorOutput();
         processingStage_.ClearSunGlareFrame();
         processingStage_.UpdateCommonParams(0.0f, width, height);
-        if (!initialized_ || !captureStage_.Begin(width, height)) {
+        if (!captureStage_.Begin(width, height)) {
+            (void)RENDER3D::SURFACE::AbortRenderFrameSurfaces(receipt);
             LogFrameState("BeginSceneCapture failed");
+            return false;
         }
+        renderSurfaceReceipt_ = receipt;
+        return true;
+    }
+
+    RENDER3D::SURFACE::RenderFrameSurfaceReceipt
+        PostSystem::GetSceneCaptureSurfaceReceipt() noexcept {
+        return renderSurfaceReceipt_;
     }
 
     bool PostSystem::SetSceneCaptureTemporalFrame(
@@ -241,14 +271,18 @@ namespace HIKARI::POST {
             !resources.IsValid() ||
             view.viewId != frame.viewId ||
             frame.viewId != RENDER3D::kPrimaryRenderViewId ||
-            !captureStage_.IsActive()) {
+            !captureStage_.IsActive() ||
+            !renderSurfaceReceipt_.IsValid() ||
+            !renderSurfaceReceipt_.frame.Matches(frame)) {
             return false;
         }
         if (presentationTemporalResources_.IsValid()) {
             return false;
         }
         if (!resources.view.Matches(view) ||
-            !resources.publication.Matches(frame)) {
+            !resources.publication.Matches(frame) ||
+            resources.deviceGeneration !=
+                renderSurfaceReceipt_.deviceGeneration) {
             return false;
         }
         if (temporalFrame_.IsValid()) {
@@ -307,6 +341,18 @@ namespace HIKARI::POST {
                 closed = false;
             }
         }
+        if (captureStage_.IsActive() && !captureStage_.Abort()) {
+            closed = false;
+        }
+        if (renderSurfaceReceipt_.IsValid()) {
+            if (RENDER3D::SURFACE::AbortRenderFrameSurfaces(
+                    renderSurfaceReceipt_)) {
+                renderSurfaceReceipt_ = {};
+            }
+            else {
+                closed = false;
+            }
+        }
         return closed;
     }
 
@@ -319,26 +365,49 @@ namespace HIKARI::POST {
     }
 
     bool PostSystem::FinishPresentationTemporalFrame(bool succeeded) {
-        if (!presentationTemporalResources_.IsValid()) {
-            return true;
+        bool temporalClosed = true;
+        bool temporalCommitted = succeeded;
+        if (presentationTemporalResources_.IsValid()) {
+            const auto resources = presentationTemporalResources_;
+            if (succeeded) {
+                temporalClosed =
+                    RENDER3D::TEMPORAL::EndTemporalResources(resources);
+                if (!temporalClosed) {
+                    temporalCommitted = false;
+                    temporalClosed =
+                        RENDER3D::TEMPORAL::AbortTemporalResources(
+                            resources,
+                            RENDER3D::TEMPORAL::
+                                TemporalHistoryResetReason::
+                                    PreviousFrameIncomplete);
+                }
+            }
+            else {
+                temporalCommitted = false;
+                temporalClosed =
+                    RENDER3D::TEMPORAL::AbortTemporalResources(
+                        resources,
+                        RENDER3D::TEMPORAL::
+                            TemporalHistoryResetReason::
+                                PreviousFrameIncomplete);
+            }
+            if (temporalClosed) {
+                presentationTemporalResources_ = {};
+            }
         }
-        const auto resources = presentationTemporalResources_;
-        bool completed = succeeded
-            ? RENDER3D::TEMPORAL::EndTemporalResources(resources)
-            : RENDER3D::TEMPORAL::AbortTemporalResources(
-                resources,
-                RENDER3D::TEMPORAL::
-                    TemporalHistoryResetReason::PreviousFrameIncomplete);
-        if (!completed && succeeded) {
-            completed = RENDER3D::TEMPORAL::AbortTemporalResources(
-                resources,
-                RENDER3D::TEMPORAL::
-                    TemporalHistoryResetReason::PreviousFrameIncomplete);
+
+        bool surfacesClosed = true;
+        if (renderSurfaceReceipt_.IsValid()) {
+            surfacesClosed = temporalClosed && temporalCommitted
+                ? RENDER3D::SURFACE::EndRenderFrameSurfaces(
+                    renderSurfaceReceipt_)
+                : RENDER3D::SURFACE::AbortRenderFrameSurfaces(
+                    renderSurfaceReceipt_);
+            if (surfacesClosed) {
+                renderSurfaceReceipt_ = {};
+            }
         }
-        if (completed) {
-            presentationTemporalResources_ = {};
-        }
-        return completed;
+        return temporalClosed && surfacesClosed;
     }
 
     bool PostSystem::IsSceneCaptureActive() { return captureStage_.IsActive(); }
@@ -575,17 +644,6 @@ namespace HIKARI::POST {
 
     const PresentationFrameResources& PostSystem::GetPresentationFrameResources() {
         return gameUiCompositionStage_.GetFrameResources();
-    }
-
-    void PostSystem::BeginLayer(
-        PostChain& chain, float r, float g, float b, float a) {
-        if (!captureStage_.IsActive()) BeginSceneCapture();
-        captureStage_.BeginLayer(chain, r, g, b, a);
-    }
-
-    void PostSystem::EndLayer(BlendOption blendMode) {
-        captureStage_.EndLayer(
-            blendMode, quad_, processingStage_.GetCommonParams());
     }
 
 } // namespace HIKARI::POST

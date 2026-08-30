@@ -6,8 +6,6 @@
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
 #include "Gfx/HIKARI_PixProfiler.h"
-#include "Vfx/Post/HIKARI_PostChain.h"
-#include "Vfx/Post/HIKARI_PostCommon.h"
 
 namespace HIKARI::POST {
 
@@ -54,7 +52,7 @@ namespace HIKARI::POST {
             snapshot.Finalize();
         }
         lightTarget_.Finalize();
-        while (!layers_.empty()) layers_.pop();
+        currentTarget_ = nullptr;
         sceneColorSrvCpu_.fill({});
         sceneColorSrvGpu_.fill({});
         active_ = false;
@@ -102,43 +100,54 @@ namespace HIKARI::POST {
     bool SceneCaptureStage::Begin(int width, int height) {
         sceneColorReady_.fill(false);
         lightingEnabled_ = false;
-        while (!layers_.empty()) layers_.pop();
+        currentTarget_ = nullptr;
         if (!EnsureSceneTargets(width, height)) {
             active_ = false;
             return false;
         }
-        layers_.push({ &sceneTarget_, nullptr });
+        currentTarget_ = &sceneTarget_;
         sceneTarget_.BeginCapture(0, 0, 0, 1);
         active_ = true;
         return true;
     }
 
     RenderTarget2D* SceneCaptureStage::End() {
-        if (!active_ || layers_.empty() || layers_.top().target == nullptr) return nullptr;
-        RenderTarget2D* target = layers_.top().target;
+        if (!active_ || currentTarget_ == nullptr) return nullptr;
+        if (currentTarget_ == &lightTarget_) {
+            EndLightCapture();
+        }
+        RenderTarget2D* target = currentTarget_;
         target->EndCapture();
-        layers_.pop();
+        currentTarget_ = nullptr;
         active_ = false;
         return target;
+    }
+
+    bool SceneCaptureStage::Abort() {
+        if (!active_) {
+            currentTarget_ = nullptr;
+            return true;
+        }
+        return End() != nullptr;
     }
 
     bool SceneCaptureStage::IsActive() const { return active_; }
 
     bool SceneCaptureStage::HasCurrentTarget() const {
-        return active_ && !layers_.empty() && layers_.top().target &&
-            layers_.top().target->IsInitialized() &&
-            layers_.top().target->GetResource();
+        return active_ && currentTarget_ != nullptr &&
+            currentTarget_->IsInitialized() &&
+            currentTarget_->GetResource();
     }
 
     bool SceneCaptureStage::RebindCurrentTarget() {
         if (!HasCurrentTarget()) return false;
-        layers_.top().target->Rebind();
+        currentTarget_->Rebind();
         return true;
     }
 
     RENDER3D::RenderTextureView SceneCaptureStage::GetCurrentDepthView() const {
-        if (!HasCurrentTarget() || !layers_.top().target->HasDepth()) return {};
-        const RenderTarget2D& target = *layers_.top().target;
+        if (!HasCurrentTarget() || !currentTarget_->HasDepth()) return {};
+        const RenderTarget2D& target = *currentTarget_;
         return {
             target.GetDepthResource(), target.GetDepthSrvGpu(),
             DXGI_FORMAT_R32_FLOAT, static_cast<uint32_t>(target.GetWidth()),
@@ -149,19 +158,19 @@ namespace HIKARI::POST {
     }
 
     D3D12_CPU_DESCRIPTOR_HANDLE SceneCaptureStage::GetCurrentDsv() const {
-        return HasCurrentTarget() ? layers_.top().target->GetDsvHandle() : D3D12_CPU_DESCRIPTOR_HANDLE{};
+        return HasCurrentTarget() ? currentTarget_->GetDsvHandle() : D3D12_CPU_DESCRIPTOR_HANDLE{};
     }
 
     D3D12_CPU_DESCRIPTOR_HANDLE SceneCaptureStage::GetCurrentReadOnlyDsv() const {
-        return HasCurrentTarget() ? layers_.top().target->GetReadOnlyDsvHandle() : D3D12_CPU_DESCRIPTOR_HANDLE{};
+        return HasCurrentTarget() ? currentTarget_->GetReadOnlyDsvHandle() : D3D12_CPU_DESCRIPTOR_HANDLE{};
     }
 
     bool SceneCaptureStage::BeginCurrentDepthRead() {
-        return HasCurrentTarget() && layers_.top().target->BeginDepthRead();
+        return HasCurrentTarget() && currentTarget_->BeginDepthRead();
     }
 
     void SceneCaptureStage::EndCurrentDepthRead() {
-        if (HasCurrentTarget()) layers_.top().target->EndDepthRead();
+        if (HasCurrentTarget()) currentTarget_->EndDepthRead();
     }
 
     bool SceneCaptureStage::EnsureSceneColorSnapshot(
@@ -276,55 +285,25 @@ namespace HIKARI::POST {
 
     void SceneCaptureStage::BeginLightCapture() {
         if (!active_ || !lightTarget_.GetResource()) return;
-        if (!layers_.empty()) layers_.top().target->EndCapture();
+        if (currentTarget_ != nullptr) currentTarget_->EndCapture();
         lightingEnabled_ = true;
         lightTarget_.BeginCapture(
             ambientColor_[0], ambientColor_[1], ambientColor_[2], 1);
-        layers_.push({ &lightTarget_, nullptr });
+        currentTarget_ = &lightTarget_;
     }
 
     void SceneCaptureStage::EndLightCapture() {
-        if (!active_ || layers_.empty()) return;
-        if (layers_.top().target == &lightTarget_) {
+        if (!active_ || currentTarget_ == nullptr) return;
+        if (currentTarget_ == &lightTarget_) {
             lightTarget_.EndCapture();
-            layers_.pop();
+            currentTarget_ = &sceneTarget_;
         }
-        if (!layers_.empty()) layers_.top().target->Rebind();
+        if (currentTarget_ != nullptr) currentTarget_->Rebind();
     }
 
     bool SceneCaptureStage::IsLightingEnabled() const { return lightingEnabled_; }
     RenderTarget2D* SceneCaptureStage::GetLightTarget() {
         return lightingEnabled_ ? &lightTarget_ : nullptr;
-    }
-
-    void SceneCaptureStage::BeginLayer(
-        PostChain& chain, float r, float g, float b, float a) {
-        if (!active_ || layers_.empty()) return;
-        RenderTarget2D* previous = layers_.top().target;
-        chain.UpdateContext(context_);
-        chain.PrepareBuffers(previous->GetWidth(), previous->GetHeight());
-        RenderTarget2D* layer = chain.GetPing();
-        previous->EndCapture();
-        layer->BeginCapture(r, g, b, a);
-        layers_.push({ layer, &chain });
-    }
-
-    void SceneCaptureStage::EndLayer(
-        BlendOption blendMode,
-        QuadDrawer& quad,
-        const CommonParams& commonParams) {
-        if (layers_.size() <= 1) return;
-        LayerInfo current = layers_.top();
-        layers_.pop();
-        current.target->EndCapture();
-        RenderTarget2D* processed = current.chain && current.chain->HasAny()
-            ? current.chain->Execute(*current.target, quad, commonParams)
-            : current.target;
-        RenderTarget2D* previous = layers_.top().target;
-        previous->Rebind();
-        if (quad.SetOutputFormat(previous->GetFormat())) {
-            quad.DrawBlended(processed->GetSrvHeap(), processed->GetSrvGpu(), blendMode);
-        }
     }
 
     std::string SceneCaptureStage::DumpState() const {
@@ -337,7 +316,7 @@ namespace HIKARI::POST {
             << sceneColorReady_[SnapshotIndex(
                 SceneColorSnapshotKind::PostOpaque)]
             << " lighting=" << lightingEnabled_
-            << " layers=" << layers_.size()
+            << " target=" << (currentTarget_ != nullptr)
             << "\n  " << sceneTarget_.DumpState()
             << "\n  " << sceneColorSnapshots_[SnapshotIndex(
                 SceneColorSnapshotKind::Opaque)].DumpState()

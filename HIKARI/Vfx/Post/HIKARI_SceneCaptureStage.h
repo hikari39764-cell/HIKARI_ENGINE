@@ -3,19 +3,14 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <stack>
 #include <string>
 
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render2D/HIKARI_RenderTarget2D.h"
 #include "Render3D/Resources/HIKARI_RenderTextureView.h"
-#include "Vfx/Post/HIKARI_PostQuadDrawer.h"
 #include "Vfx/Post/HIKARI_SceneColorSnapshot.h"
 
 namespace HIKARI::POST {
-
-    class PostChain;
-    struct CommonParams;
 
     class SceneCaptureStage {
     public:
@@ -24,6 +19,7 @@ namespace HIKARI::POST {
 
         bool Begin(int width, int height);
         RenderTarget2D* End();
+        bool Abort();
         bool IsActive() const;
         bool HasCurrentTarget() const;
         bool RebindCurrentTarget();
@@ -44,27 +40,11 @@ namespace HIKARI::POST {
         bool IsLightingEnabled() const;
         RenderTarget2D* GetLightTarget();
 
-        void BeginLayer(
-            PostChain& chain,
-            float r,
-            float g,
-            float b,
-            float a);
-        void EndLayer(
-            BlendOption blendMode,
-            QuadDrawer& quad,
-            const CommonParams& commonParams);
-
         std::string DumpState() const;
 
     private:
         static constexpr size_t kSnapshotKindCount =
             static_cast<size_t>(SceneColorSnapshotKind::Count);
-
-        struct LayerInfo {
-            RenderTarget2D* target = nullptr;
-            PostChain* chain = nullptr;
-        };
 
         bool EnsureSceneTargets(int width, int height);
         bool EnsureSceneColorSnapshot(SceneColorSnapshotKind kind);
@@ -77,7 +57,7 @@ namespace HIKARI::POST {
             kSnapshotKindCount>
             sceneColorSnapshots_{};
         RenderTarget2D lightTarget_{};
-        std::stack<LayerInfo> layers_{};
+        RenderTarget2D* currentTarget_ = nullptr;
         std::array<
             std::array<
                 D3D12_CPU_DESCRIPTOR_HANDLE,

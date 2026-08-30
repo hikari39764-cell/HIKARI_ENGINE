@@ -18,6 +18,7 @@
 #include "Render2D/HIKARI_Renderer.h"
 #include "Render3D/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 #include "Render3D/Resources/HIKARI_ClusterGeometryResourceSystem.h"
+#include "Render3D/Core/HIKARI_RenderFrameToken.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Render3D/Temporal/HIKARI_TemporalFrameState.h"
 #include "Render3D/Temporal/HIKARI_TemporalResourceSystem.h"
@@ -64,6 +65,23 @@ namespace HIKARI {
                 POST::PostSystem::AbortSceneCaptureTemporalFrame(
                     RENDER3D::TEMPORAL::
                         TemporalHistoryResetReason::PreviousFrameIncomplete);
+            }
+
+            void CloseFailedBeginFrame() {
+                HIKARI::RENDERER::ClearSubmittedCommands();
+                AbortActivePrimaryTemporalFrame();
+                RENDER3D::UPSCALING::EndStreamlineReflexSimulation();
+                gGraphicsCore.SetVSyncEnabled(
+                    RENDER3D::GetRenderQualitySettings().vSync);
+                if (!gGraphicsCore.EndFrame()) {
+                    HIKARI_LOG_ERROR(
+                        "D3D12 failed to close an aborted begin-frame.");
+                }
+                (void)RENDER3D::UPSCALING::
+                    CaptureStreamlineFrameGenerationCompletionAfterPresent();
+                gGpuFrameReady = false;
+                GFX::PIX::Update();
+                CPU_PROFILE::EndFrame();
             }
         } // namespace
 
@@ -266,11 +284,23 @@ namespace HIKARI {
             }
             gGpuFrameReady = true;
 
-            HIKARI::RENDERER::BeginFrame();
-            HIKARI::GAME_UI::BeginGameUiFrame();
             ApplyFrameSceneCaptureSize();
             HIKARI::POST::PostSystem::UpdateCommonParams(frame.gameDt);
-            HIKARI::POST::PostSystem::BeginSceneCapture();
+            const RENDER3D::RenderFrameToken renderFrame =
+                RENDER3D::AllocateRenderFrameToken(
+                    frame.frameIndex,
+                    RENDER3D::kPrimaryRenderViewId);
+            if (!HIKARI::POST::PostSystem::BeginSceneCapture(
+                    renderFrame,
+                    GFX::GetCurrentContext().deviceGeneration)) {
+                HIKARI_LOG_ERROR(
+                    "Scene capture surface frame initialization failed.");
+                CloseFailedBeginFrame();
+                return false;
+            }
+
+            HIKARI::RENDERER::BeginFrame();
+            HIKARI::GAME_UI::BeginGameUiFrame();
 
             DX::DxRenderer::BeginFrame();
             PLATFORM::Win32Window* inputWindow =

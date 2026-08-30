@@ -6,6 +6,7 @@
 
 #include "Gfx/HIKARI_GfxContext.h"
 #include "Render3D/Core/HIKARI_RenderFrameToken.h"
+#include "Render3D/Surface/HIKARI_RenderFrameSurfaceRegistry.h"
 #include "Render3D/Core/HIKARI_RenderView.h"
 #include "Render3D/Resources/HIKARI_RenderTextureView.h"
 
@@ -58,6 +59,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
         uint64_t cameraRevision = 0;
         uint64_t frameIndex = 0;
         RenderFrameToken token{};
+        SURFACE::RenderFrameSurfaceReceipt surfaceReceipt{};
         GFX::Context graphics{};
         const Camera3D* camera = nullptr;
         const SceneEnvironment* environment = nullptr;
