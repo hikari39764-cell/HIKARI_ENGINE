@@ -1,41 +1,38 @@
 #include "Render3D/Pipeline/Internal/HIKARI_RenderFrameGraphStageInternal.h"
 
 #include <array>
+#include <cstddef>
+#include <span>
 
 #include "Render3D/Graph/HIKARI_RenderGraphSurfaceContract.h"
 
 namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
-    namespace {
-        GRAPH::RenderGraphResourceId AddSurfaceResource(
-            GRAPH::RenderGraph& graph,
-            std::string_view id,
-            GRAPH::RenderGraphSemantic semantic,
-            bool imported,
-            GRAPH::RenderGraphSemanticPhase phase =
-                GRAPH::RenderGraphSemanticPhase::None,
-            SURFACE::SceneSurfaceProducer producer =
-                SURFACE::SceneSurfaceProducer::None,
-            GRAPH::RenderGraphResourceRequirement requirement =
-                GRAPH::RenderGraphResourceRequirement::Required) noexcept {
-            GRAPH::RenderGraphResourceDesc desc{};
-            desc.id = id;
-            desc.semantic = semantic;
-            desc.imported = imported;
-            desc.kind = GRAPH::RenderGraphResourceKind::SceneSurface;
-            desc.phase = phase;
-            desc.requirement = requirement;
-            desc.expectedProducer = producer;
-            return graph.AddResource(desc);
-        }
+    GRAPH::RenderGraphResourceId AddRenderFrameGraphSurfaceResource(
+        GRAPH::RenderGraph& graph,
+        std::string_view id,
+        GRAPH::RenderGraphSemantic semantic,
+        bool imported,
+        GRAPH::RenderGraphSemanticPhase phase,
+        SURFACE::SceneSurfaceProducer producer,
+        GRAPH::RenderGraphResourceRequirement requirement) noexcept {
+        GRAPH::RenderGraphResourceDesc desc{};
+        desc.id = id;
+        desc.semantic = semantic;
+        desc.imported = imported;
+        desc.kind = GRAPH::RenderGraphResourceKind::SceneSurface;
+        desc.phase = phase;
+        desc.requirement = requirement;
+        desc.expectedProducer = producer;
+        return graph.AddResource(desc);
+    }
 
-        GRAPH::RenderGraphResourceId AddCompletionMarker(
-            GRAPH::RenderGraph& graph,
-            std::string_view id) noexcept {
-            GRAPH::RenderGraphResourceDesc desc{};
-            desc.id = id;
-            desc.kind = GRAPH::RenderGraphResourceKind::CompletionMarker;
-            return graph.AddResource(desc);
-        }
+    GRAPH::RenderGraphResourceId AddRenderFrameGraphCompletionMarker(
+        GRAPH::RenderGraph& graph,
+        std::string_view id) noexcept {
+        GRAPH::RenderGraphResourceDesc desc{};
+        desc.id = id;
+        desc.kind = GRAPH::RenderGraphResourceKind::CompletionMarker;
+        return graph.AddResource(desc);
     }
 
     bool BuildRenderFrameGraphPlan(
@@ -43,14 +40,14 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
         void* userData,
         const RenderFrameGraphPassCallbacks& callbacks,
         GRAPH::RenderGraph& graph) noexcept {
-        const auto sceneDepth = AddSurfaceResource(
+        const auto sceneDepth = AddRenderFrameGraphSurfaceResource(
             graph,
             "SceneDepth",
             GRAPH::RenderGraphSemantic::SceneDepth,
             true,
             GRAPH::RenderGraphSemanticPhase::Imported,
             SURFACE::SceneSurfaceProducer::PostSceneDepth);
-        const auto packedSurfaceInput = AddSurfaceResource(
+        const auto packedSurfaceInput = AddRenderFrameGraphSurfaceResource(
             graph,
             "PackedSurface.PreOpaque",
             GRAPH::RenderGraphSemantic::PackedSurface,
@@ -58,7 +55,7 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
             GRAPH::RenderGraphSemanticPhase::PreOpaque,
             SURFACE::SceneSurfaceProducer::SceneSurfaceAux,
             GRAPH::RenderGraphResourceRequirement::Optional);
-        const auto packedSurface = AddSurfaceResource(
+        const auto packedSurface = AddRenderFrameGraphSurfaceResource(
             graph,
             "PackedSurface",
             GRAPH::RenderGraphSemantic::PackedSurface,
@@ -66,7 +63,7 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
             GRAPH::RenderGraphSemanticPhase::PostOpaque,
             SURFACE::SceneSurfaceProducer::SceneSurfaceAux,
             GRAPH::RenderGraphResourceRequirement::Optional);
-        const auto currentDepthPyramid = AddSurfaceResource(
+        const auto currentDepthPyramid = AddRenderFrameGraphSurfaceResource(
             graph,
             "CurrentDepthPyramid",
             GRAPH::RenderGraphSemantic::CurrentDepthPyramid,
@@ -74,7 +71,7 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
             GRAPH::RenderGraphSemanticPhase::PostOpaque,
             SURFACE::SceneSurfaceProducer::DepthPyramid,
             GRAPH::RenderGraphResourceRequirement::Optional);
-        const auto forwardDepthPyramid = AddSurfaceResource(
+        const auto forwardDepthPyramid = AddRenderFrameGraphSurfaceResource(
             graph,
             "DepthPyramid.Forward",
             GRAPH::RenderGraphSemantic::VisibilityDepthPyramid,
@@ -82,7 +79,7 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
             GRAPH::RenderGraphSemanticPhase::PreOpaque,
             SURFACE::SceneSurfaceProducer::DepthPyramid,
             GRAPH::RenderGraphResourceRequirement::Optional);
-        const auto ambientOcclusion = AddSurfaceResource(
+        const auto ambientOcclusionInput = AddRenderFrameGraphSurfaceResource(
             graph,
             "AmbientOcclusion.Forward",
             GRAPH::RenderGraphSemantic::AmbientOcclusion,
@@ -90,7 +87,24 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
             GRAPH::RenderGraphSemanticPhase::PreOpaque,
             SURFACE::SceneSurfaceProducer::Ssao,
             GRAPH::RenderGraphResourceRequirement::Optional);
-        const auto surfaceFeatureMask = AddSurfaceResource(
+        const auto ambientOcclusion = AddRenderFrameGraphSurfaceResource(
+            graph,
+            "AmbientOcclusion",
+            GRAPH::RenderGraphSemantic::AmbientOcclusion,
+            false,
+            GRAPH::RenderGraphSemanticPhase::PostOpaque,
+            SURFACE::SceneSurfaceProducer::Ssao,
+            GRAPH::RenderGraphResourceRequirement::Optional);
+        const auto visibilityDepthPyramid =
+            AddRenderFrameGraphSurfaceResource(
+                graph,
+                "VisibilityDepthPyramid",
+                GRAPH::RenderGraphSemantic::VisibilityDepthPyramid,
+                false,
+                GRAPH::RenderGraphSemanticPhase::PostOpaque,
+                SURFACE::SceneSurfaceProducer::DepthPyramid,
+                GRAPH::RenderGraphResourceRequirement::Optional);
+        const auto surfaceFeatureMask = AddRenderFrameGraphSurfaceResource(
             graph,
             "SurfaceFeatureMask",
             GRAPH::RenderGraphSemantic::SurfaceFeatureMask,
@@ -98,7 +112,7 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
             GRAPH::RenderGraphSemanticPhase::PostOpaque,
             SURFACE::SceneSurfaceProducer::SceneSurfaceAux,
             GRAPH::RenderGraphResourceRequirement::Optional);
-        const auto stylizedOutlineStyle = AddSurfaceResource(
+        const auto stylizedOutlineStyle = AddRenderFrameGraphSurfaceResource(
             graph,
             "StylizedOutlineStyle",
             GRAPH::RenderGraphSemantic::StylizedOutlineStyle,
@@ -106,22 +120,24 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
             GRAPH::RenderGraphSemanticPhase::PostOpaque,
             SURFACE::SceneSurfaceProducer::SceneSurfaceAux,
             GRAPH::RenderGraphResourceRequirement::Optional);
-        const auto forwardComplete = AddCompletionMarker(
+        const auto forwardComplete = AddRenderFrameGraphCompletionMarker(
             graph, "ForwardOpaque.Complete");
-        const auto postOpaqueComplete = AddCompletionMarker(
+        const auto postOpaqueComplete = AddRenderFrameGraphCompletionMarker(
             graph, "PostOpaqueSurfaces.Complete");
-        const auto cloudsComplete = AddCompletionMarker(
+        const auto cloudsComplete = AddRenderFrameGraphCompletionMarker(
             graph, "Clouds.Complete");
-        const auto motionComplete = AddCompletionMarker(
+        const auto motionComplete = AddRenderFrameGraphCompletionMarker(
             graph, "MotionVectors.Complete");
-        const auto motionVectors = AddSurfaceResource(
+        const auto preTailComplete = AddRenderFrameGraphCompletionMarker(
+            graph, "PrimarySurfacePasses.Complete");
+        const auto motionVectors = AddRenderFrameGraphSurfaceResource(
             graph,
             "MotionVectors",
             GRAPH::RenderGraphSemantic::MotionVectors,
             false,
             GRAPH::RenderGraphSemanticPhase::Temporal,
             SURFACE::SceneSurfaceProducer::TemporalMotion);
-        const auto motionMetadata = AddSurfaceResource(
+        const auto motionMetadata = AddRenderFrameGraphSurfaceResource(
             graph,
             "MotionMetadata",
             GRAPH::RenderGraphSemantic::MotionMetadata,
@@ -133,13 +149,16 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
             !packedSurface.IsValid() ||
             !currentDepthPyramid.IsValid() ||
             !forwardDepthPyramid.IsValid() ||
+            !ambientOcclusionInput.IsValid() ||
             !ambientOcclusion.IsValid() ||
+            !visibilityDepthPyramid.IsValid() ||
             !surfaceFeatureMask.IsValid() ||
             !stylizedOutlineStyle.IsValid() ||
             !forwardComplete.IsValid() ||
             !postOpaqueComplete.IsValid() ||
             !cloudsComplete.IsValid() ||
             !motionComplete.IsValid() ||
+            !preTailComplete.IsValid() ||
             !motionVectors.IsValid() ||
             !motionMetadata.IsValid()) {
             return false;
@@ -159,7 +178,7 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
                 GRAPH::RenderGraphAccess::ReadSampled
             },
             GRAPH::RenderGraphResourceUse{
-                ambientOcclusion,
+                ambientOcclusionInput,
                 GRAPH::RenderGraphAccess::ReadSampled
             }
         };
@@ -203,6 +222,16 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
                 currentDepthPyramid,
                 GRAPH::RenderGraphAccess::WriteUav,
                 SURFACE::SceneSurfaceProducer::DepthPyramid
+            },
+            GRAPH::RenderGraphResourceUse{
+                visibilityDepthPyramid,
+                GRAPH::RenderGraphAccess::WriteUav,
+                SURFACE::SceneSurfaceProducer::DepthPyramid
+            },
+            GRAPH::RenderGraphResourceUse{
+                ambientOcclusion,
+                GRAPH::RenderGraphAccess::WriteColor,
+                SURFACE::SceneSurfaceProducer::Ssao
             },
             GRAPH::RenderGraphResourceUse{
                 surfaceFeatureMask,
@@ -261,7 +290,7 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
                 GRAPH::RenderGraphAccess::ReadDependency
             }
         };
-        const std::array motionWrites{
+        std::array<GRAPH::RenderGraphResourceUse, 4u> motionWrites{
             GRAPH::RenderGraphResourceUse{
                 motionVectors,
                 GRAPH::RenderGraphAccess::WriteColor,
@@ -275,12 +304,23 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
             GRAPH::RenderGraphResourceUse{
                 motionComplete,
                 GRAPH::RenderGraphAccess::WriteDependency
-            }
+            },
+            GRAPH::RenderGraphResourceUse{}
         };
+        std::size_t motionWriteCount = 3u;
+        if (!options.captureSceneColor) {
+            motionWrites[motionWriteCount++] =
+                GRAPH::RenderGraphResourceUse{
+                    preTailComplete,
+                    GRAPH::RenderGraphAccess::WriteDependency
+                };
+        }
         if (!graph.AddPass(GRAPH::RenderGraphPassDesc{
                 "MotionVectors",
                 motionReads,
-                motionWrites,
+                std::span(
+                    motionWrites.data(),
+                    motionWriteCount),
                 callbacks.motionVectors,
                 userData
             })) {
@@ -289,7 +329,7 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
 
         GRAPH::RenderGraphResourceId sceneColorOpaque{};
         if (options.captureSceneColor) {
-            sceneColorOpaque = AddSurfaceResource(
+            sceneColorOpaque = AddRenderFrameGraphSurfaceResource(
                 graph,
                 "SceneColorOpaque",
                 GRAPH::RenderGraphSemantic::SceneColorOpaque,
@@ -305,17 +345,28 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
                     GRAPH::RenderGraphAccess::ReadDependency
                 }
             };
-            const std::array captureWrites{
+            std::array<GRAPH::RenderGraphResourceUse, 2u> captureWrites{
                 GRAPH::RenderGraphResourceUse{
                     sceneColorOpaque,
                     GRAPH::RenderGraphAccess::CopyDestination,
                     SURFACE::SceneSurfaceProducer::SceneColorCapture
-                }
+                },
+                GRAPH::RenderGraphResourceUse{}
             };
+            std::size_t captureWriteCount = 1u;
+            if (!options.includeSsr) {
+                captureWrites[captureWriteCount++] =
+                    GRAPH::RenderGraphResourceUse{
+                        preTailComplete,
+                        GRAPH::RenderGraphAccess::WriteDependency
+                    };
+            }
             if (!graph.AddPass(GRAPH::RenderGraphPassDesc{
                     "SceneColorOpaque.Capture",
                     captureReads,
-                    captureWrites,
+                    std::span(
+                        captureWrites.data(),
+                        captureWriteCount),
                     callbacks.sceneColorOpaqueCapture,
                     userData
                 })) {
@@ -345,17 +396,38 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
                     GRAPH::RenderGraphAccess::ReadSampled
                 }
             };
+            const std::array ssrWrites{
+                GRAPH::RenderGraphResourceUse{
+                    preTailComplete,
+                    GRAPH::RenderGraphAccess::WriteDependency
+                }
+            };
             if (!graph.AddPass(GRAPH::RenderGraphPassDesc{
                     "ScreenSpaceReflections",
                     ssrReads,
-                    {},
+                    ssrWrites,
                     callbacks.ssr,
                     userData
                 })) {
                 return false;
             }
         }
-        return true;
+        return BuildRenderFrameGraphTailPlan(
+            options,
+            userData,
+            callbacks,
+            RenderFrameGraphTailResources{
+                preTailComplete,
+                sceneDepth,
+                sceneColorOpaque,
+                packedSurface,
+                ambientOcclusion,
+                currentDepthPyramid,
+                visibilityDepthPyramid,
+                surfaceFeatureMask,
+                stylizedOutlineStyle
+            },
+            graph);
     }
 
 } // namespace HIKARI::RENDER3D::PIPELINE::INTERNAL

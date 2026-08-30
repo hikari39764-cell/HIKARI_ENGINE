@@ -17,6 +17,14 @@ namespace HIKARI::MESHRENDERER {
 
 namespace HIKARI::RENDER3D {
     struct RenderQualitySettings;
+    namespace FEATURES {
+        struct RenderFeaturePlan;
+        struct RenderFeatureRequestSet;
+        class StylizedScreenFeatureRenderer;
+    }
+    namespace LIGHTING {
+        struct SceneLightingSet;
+    }
     namespace SCREENSPACE {
         struct ScreenSpaceFrameResult;
     }
@@ -30,6 +38,16 @@ namespace HIKARI::RENDER3D::PIPELINE {
     struct RenderFrameContext;
     struct ScreenSpacePassContext;
 
+    struct RenderFrameGraphFeatureContext {
+        const LIGHTING::SceneLightingSet& lighting;
+        const FEATURES::RenderFeatureRequestSet& requests;
+        FEATURES::RenderFeaturePlan& plan;
+        FEATURES::StylizedScreenFeatureRenderer& renderer;
+        bool enabled = true;
+        bool geometryBackendReady = false;
+        bool visibilityBackendReady = false;
+    };
+
     struct RenderFrameGraphStageContext {
         const RenderFrameContext& frame;
         const ScreenSpacePassContext& screenSpace;
@@ -37,6 +55,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
         TEMPORAL::TemporalResourceFrame temporalResources{};
         const SceneEnvironment& environment;
         const RenderQualitySettings& renderQuality;
+        RenderFrameGraphFeatureContext features;
         const MESHRENDERER::CameraCB* cameraConstants = nullptr;
         SCREENSPACE::ScreenSpaceFrameResult& screenResult;
         SURFACE::SceneSurfaceSet& sceneSurfaces;

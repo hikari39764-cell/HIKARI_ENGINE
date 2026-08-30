@@ -11,13 +11,11 @@
 #include "Render3D/Core/HIKARI_MeshPassResources.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
 #include "Render3D/Debug/HIKARI_RenderDebugOutput.h"
-#include "Render3D/Features/HIKARI_RenderFeaturePlanner.h"
 #include "Render3D/Features/HIKARI_RenderFeatureSceneAnalysis.h"
 #include "Render3D/Features/HIKARI_StylizedScreenFeatureRenderer.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Render3D/Lighting/HIKARI_LocalLightList.h"
 #include "Render3D/Lighting/HIKARI_VolumetricLightingStage.h"
-#include "Render3D/Water/HIKARI_WaterVisibleDepth.h"
 #include "Render3D/Pipeline/HIKARI_RenderFrameContext.h"
 #include "Render3D/Pipeline/HIKARI_RenderFrameGraphStage.h"
 #include "Render3D/Surface/HIKARI_SceneSurfaceSet.h"
@@ -497,6 +495,15 @@ namespace HIKARI::RENDER3D::PIPELINE {
                     temporalResources,
                     environment,
                     renderQuality,
+                    RenderFrameGraphFeatureContext{
+                        lighting,
+                        featureRequests,
+                        gLastRenderFeaturePlan,
+                        gStylizedScreenFeatures,
+                        !debugRoute.active,
+                        geometryOutlineBackendReady,
+                        visibilityOverlayBackendReady
+                    },
                     cameraCb,
                     screenResult,
                     sceneTextures,
@@ -515,181 +522,9 @@ namespace HIKARI::RENDER3D::PIPELINE {
             MESHRENDERER::EndFrame();
             return false;
         }
-        const bool opaqueOk = graphStage.opaqueSucceeded;
-        bool depthAwareOk = true;
-        if (opaqueOk && hasDepthAwareWork) {
-            GFX::PIX::ScopedGpuEvent pixDepthAware(
-                frame.graphics.cmdList,
-                GFX::PIX::kColorRender,
-                "DepthAware");
-            GFX::GPU_PROFILE::ScopedGpuTimer gpuDepthAware(
-                frame.graphics.cmdList,
-                GFX::GPU_PROFILE::Pass::DepthAware);
-            if (POST::PostSystem::BeginCurrentRenderTargetDepthRead()) {
-                depthAwareOk = MESHRENDERER::RenderDepthAwarePass(
-                    frame.graphics,
-                    postOpaqueResources);
-                if (depthAwareOk &&
-                    RENDER3D::VOLUMETRIC::IsVolumetricLightingActive()) {
-                    GFX::PIX::ScopedGpuEvent pixWaterVisibility(
-                        frame.graphics.cmdList,
-                        GFX::PIX::kColorRender,
-                        "WaterVisibilityDepth");
-                    GFX::GPU_PROFILE::ScopedGpuTimer gpuWaterVisibility(
-                        frame.graphics.cmdList,
-                        GFX::GPU_PROFILE::Pass::WaterVisibilityDepth);
-                    const RENDER3D::WATER::WaterVisibleDepthView waterDepth =
-                        RENDER3D::WATER::RenderWaterVisibleDepth(
-                            frame.graphics,
-                            postOpaqueResources,
-                            postOpaqueResources.sceneDepth.width,
-                            postOpaqueResources.sceneDepth.height,
-                            frame.frameIndex,
-                            postOpaqueResources.sceneDepth.resource);
-                    if (waterDepth.IsValid()) {
-                        RENDER3D::VOLUMETRIC::
-                            SetVolumetricVisibleWaterDepth(waterDepth);
-                    }
-                }
-                POST::PostSystem::EndCurrentRenderTargetDepthRead();
-            } else {
-                depthAwareOk = false;
-            }
-        }
-
-        bool transparentOk = true;
-        if (opaqueOk && depthAwareOk && hasTransparentWork) {
-            GFX::PIX::ScopedGpuEvent pixTransparent(
-                frame.graphics.cmdList,
-                GFX::PIX::kColorRender,
-                "ForwardTransparent");
-            GFX::GPU_PROFILE::ScopedGpuTimer gpuTransparent(
-                frame.graphics.cmdList,
-                GFX::GPU_PROFILE::Pass::ForwardTransparent);
-            transparentOk = MESHRENDERER::RenderForwardTransparentPass(
-                frame.graphics,
-                postOpaqueResources);
-        }
-
-        FEATURES::RenderFeatureAvailability featureAvailability{};
-        featureAvailability.width = frame.renderWidth;
-        featureAvailability.height = frame.renderHeight;
-        featureAvailability.enabledMask = debugRoute.active ? 0u : 0xffffffffu;
-        featureAvailability.inputMask = 0u;
-        if (geometryOutlineBackendReady) {
-            featureAvailability.inputMask |=
-                FEATURES::RenderFeatureInputBit(
-                    FEATURES::RenderFeatureInput::GeometryBackend);
-        }
-        if (visibilityOverlayBackendReady) {
-            featureAvailability.inputMask |=
-                FEATURES::RenderFeatureInputBit(
-                    FEATURES::RenderFeatureInput::VisibilityBackend);
-        }
-        if (frame.targetAccess.rebind != nullptr) {
-            featureAvailability.inputMask |=
-                FEATURES::RenderFeatureInputBit(
-                    FEATURES::RenderFeatureInput::SceneColor);
-        }
-        if (sceneTextures.IsValid(
-                GRAPH::RenderGraphSemantic::SceneDepth)) {
-            featureAvailability.inputMask |=
-                FEATURES::RenderFeatureInputBit(
-                    FEATURES::RenderFeatureInput::SceneDepth);
-        }
-        if (sceneTextures.IsValid(
-                GRAPH::RenderGraphSemantic::PackedSurface)) {
-            featureAvailability.inputMask |=
-                FEATURES::RenderFeatureInputBit(
-                    FEATURES::RenderFeatureInput::SurfaceNormals);
-        }
-        if (sceneTextures.IsValid(
-                GRAPH::RenderGraphSemantic::SurfaceFeatureMask)) {
-            featureAvailability.inputMask |=
-                FEATURES::RenderFeatureInputBit(
-                    FEATURES::RenderFeatureInput::SurfaceFeatureMask);
-        }
-        gLastRenderFeaturePlan = FEATURES::BuildRenderFeaturePlan(
-            featureRequests,
-            featureAvailability);
-        bool featurePassesOk = true;
-        const auto& geometryFeature = gLastRenderFeaturePlan.entries[
-            static_cast<size_t>(FEATURES::RenderFeatureKind::GeometryOutline)];
-        if (opaqueOk && depthAwareOk &&
-            geometryFeature.scheduled &&
-            !geometryFeature.compatibilityFallback) {
-            featurePassesOk = frame.targetAccess.Rebind() &&
-                MESHRENDERER::RenderGeometryOutlineFeaturePass(
-                    frame.graphics,
-                    postOpaqueResources);
-        }
-        const auto& visibilityFeature = gLastRenderFeaturePlan.entries[
-            static_cast<size_t>(FEATURES::RenderFeatureKind::VisibilityOverlay)];
-        if (featurePassesOk && opaqueOk && depthAwareOk &&
-            visibilityFeature.scheduled) {
-            featurePassesOk = frame.targetAccess.Rebind() &&
-                MESHRENDERER::RenderVisibilityOverlayFeaturePass(
-                    frame.graphics,
-                    postOpaqueResources);
-        }
-        if (opaqueOk && depthAwareOk &&
-            featurePassesOk &&
-            gLastRenderFeaturePlan.screenCompositePassRequired) {
-            // Geometry/visibility feature passes draw in place. Capture after
-            // them so the isolated full-screen composite preserves their
-            // result while SceneColorPostOpaque remains its immutable input.
-            // SceneColorOpaque is a distinct physical snapshot retained by
-            // Temporal masks until resolve completes.
-            const RenderTextureView postOpaqueSceneColor =
-                POST::PostSystem::CaptureSceneColorSnapshot(
-                    POST::SceneColorSnapshotKind::PostOpaque);
-            if (postOpaqueSceneColor.IsSampleable()) {
-                if (!sceneTextures.PublishTexture(
-                        GRAPH::RenderGraphSemantic::SceneColorPostOpaque,
-                        postOpaqueSceneColor,
-                        SURFACE::SceneSurfaceProducer::SceneColorCapture)) {
-                    featurePassesOk = false;
-                }
-                FEATURES::StylizedScreenFeatureSettings featureSettings{};
-                if (cameraCb != nullptr) {
-                    featureSettings.viewProj = cameraCb->viewProj;
-                }
-                if (const LIGHTING::SceneLightProvider* directional =
-                        LIGHTING::SelectDirectionalLight(lighting)) {
-                    featureSettings.directionalLightWS[0] =
-                        directional->direction.x;
-                    featureSettings.directionalLightWS[1] =
-                        directional->direction.y;
-                    featureSettings.directionalLightWS[2] =
-                        directional->direction.z;
-                } else {
-                    featureSettings.directionalLightWS[0] =
-                        environment.directional.direction.x;
-                    featureSettings.directionalLightWS[1] =
-                        environment.directional.direction.y;
-                    featureSettings.directionalLightWS[2] =
-                        environment.directional.direction.z;
-                }
-                if (featurePassesOk) {
-                    featurePassesOk = gStylizedScreenFeatures.Render(
-                        frame.graphics,
-                        frame.targetAccess,
-                        sceneTextures,
-                        gLastRenderFeaturePlan,
-                        featureSettings);
-                }
-            } else {
-                featurePassesOk = false;
-            }
-        }
-
         MESHRENDERER::EndFrame();
-        const bool frameRecorded =
-            opaqueOk && depthAwareOk && transparentOk && featurePassesOk;
-        if (frameRecorded) {
-            temporalFrameGuard.HandOff();
-        }
-        return frameRecorded;
+        temporalFrameGuard.HandOff();
+        return true;
     }
 
     bool RenderMeshCaptureOpaqueFrame(

@@ -81,7 +81,9 @@ namespace HIKARI::RENDER3D::PIPELINE {
         GRAPH::RenderGraph graph{};
         const INTERNAL::RenderFrameGraphPlanOptions options{
             context.requiresSceneColorOpaque,
-            context.hasSsrWork
+            context.hasSsrWork,
+            context.hasDepthAwareWork,
+            context.hasTransparentWork
         };
         if (!graph.BeginFrame(context.sceneSurfaces) ||
             !INTERNAL::BuildRenderFrameGraphPlan(

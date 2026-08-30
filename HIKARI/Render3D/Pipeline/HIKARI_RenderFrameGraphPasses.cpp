@@ -20,27 +20,6 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
     namespace {
         REFLECTION::ScreenSpaceReflectionRenderer gSsrRenderer{};
 
-        bool ValidatePassContext(
-            const GRAPH::RenderGraphPassContext& graphPass,
-            const StageExecutionState& state) noexcept {
-
-            if (state.context == nullptr) {
-                return false;
-            }
-            const RenderFrameGraphStageContext& stage = *state.context;
-            return graphPass.frame.Matches(stage.frame.token) &&
-                stage.temporalFrame.publication.Matches(stage.frame.token) &&
-                stage.temporalFrame.view.viewId == stage.frame.viewId &&
-                stage.temporalResources.IsValid() &&
-                stage.temporalResources.view.Matches(
-                    stage.temporalFrame.view) &&
-                stage.temporalResources.publication.Matches(
-                    stage.frame.token) &&
-                stage.sceneSurfaces.MatchesFrame(stage.frame.token) &&
-                stage.sceneSurfaces.GetDeviceGeneration() ==
-                    stage.frame.graphics.deviceGeneration;
-        }
-
         bool ReplaceTexturePublication(
             SURFACE::SceneSurfaceSet& surfaces,
             GRAPH::RenderGraphSemantic semantic,
@@ -71,11 +50,30 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
         }
     }
 
+    bool ValidateRenderFrameGraphPassContext(
+        const GRAPH::RenderGraphPassContext& graphPass,
+        const StageExecutionState& state) noexcept {
+
+        if (state.context == nullptr) {
+            return false;
+        }
+        const RenderFrameGraphStageContext& stage = *state.context;
+        return graphPass.frame.Matches(stage.frame.token) &&
+            stage.temporalFrame.publication.Matches(stage.frame.token) &&
+            stage.temporalFrame.view.viewId == stage.frame.viewId &&
+            stage.temporalResources.IsValid() &&
+            stage.temporalResources.view.Matches(stage.temporalFrame.view) &&
+            stage.temporalResources.publication.Matches(stage.frame.token) &&
+            stage.sceneSurfaces.MatchesFrame(stage.frame.token) &&
+            stage.sceneSurfaces.GetDeviceGeneration() ==
+                stage.frame.graphics.deviceGeneration;
+    }
+
     bool ExecuteForwardOpaque(
         const GRAPH::RenderGraphPassContext& graphPass,
         void* userData) noexcept {
         auto& state = *static_cast<StageExecutionState*>(userData);
-        if (!ValidatePassContext(graphPass, state)) {
+        if (!ValidateRenderFrameGraphPassContext(graphPass, state)) {
             return false;
         }
         try {
@@ -102,7 +100,7 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
         const GRAPH::RenderGraphPassContext& graphPass,
         void* userData) noexcept {
         auto& state = *static_cast<StageExecutionState*>(userData);
-        if (!ValidatePassContext(graphPass, state)) {
+        if (!ValidateRenderFrameGraphPassContext(graphPass, state)) {
             return false;
         }
         const RenderFrameGraphStageContext& context = *state.context;
@@ -169,7 +167,7 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
         const GRAPH::RenderGraphPassContext& graphPass,
         void* userData) noexcept {
         auto& state = *static_cast<StageExecutionState*>(userData);
-        if (!ValidatePassContext(graphPass, state)) {
+        if (!ValidateRenderFrameGraphPassContext(graphPass, state)) {
             return false;
         }
         const RenderFrameGraphStageContext& context = *state.context;
@@ -197,7 +195,7 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
         const GRAPH::RenderGraphPassContext& graphPass,
         void* userData) noexcept {
         auto& state = *static_cast<StageExecutionState*>(userData);
-        if (!ValidatePassContext(graphPass, state)) {
+        if (!ValidateRenderFrameGraphPassContext(graphPass, state)) {
             return false;
         }
         const RenderFrameGraphStageContext& context = *state.context;
@@ -302,7 +300,7 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
         const GRAPH::RenderGraphPassContext& graphPass,
         void* userData) noexcept {
         auto& state = *static_cast<StageExecutionState*>(userData);
-        if (!ValidatePassContext(graphPass, state)) {
+        if (!ValidateRenderFrameGraphPassContext(graphPass, state)) {
             return false;
         }
         const RenderFrameGraphStageContext& context = *state.context;
@@ -337,7 +335,7 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
         const GRAPH::RenderGraphPassContext& graphPass,
         void* userData) noexcept {
         auto& state = *static_cast<StageExecutionState*>(userData);
-        if (!ValidatePassContext(graphPass, state)) {
+        if (!ValidateRenderFrameGraphPassContext(graphPass, state)) {
             return false;
         }
         const RenderFrameGraphStageContext& context = *state.context;
@@ -370,7 +368,14 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
             &ExecuteClouds,
             &ExecuteMotionVectors,
             &ExecuteSceneColorOpaqueCapture,
-            &ExecuteSsr
+            &ExecuteSsr,
+            &ExecuteDepthAware,
+            &ExecuteForwardTransparent,
+            &ExecuteRenderFeaturePlan,
+            &ExecuteGeometryFeatures,
+            &ExecuteVisibilityFeatures,
+            &ExecuteSceneColorPostOpaqueCapture,
+            &ExecuteStylizedFeatureComposite
         };
         return callbacks;
     }

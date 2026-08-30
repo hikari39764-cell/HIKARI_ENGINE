@@ -12,6 +12,8 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
     struct RenderFrameGraphPlanOptions {
         bool captureSceneColor = false;
         bool includeSsr = false;
+        bool includeDepthAware = false;
+        bool includeTransparent = false;
     };
 
     struct RenderFrameGraphPassCallbacks {
@@ -21,7 +23,45 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
         GRAPH::RenderGraphExecuteFn motionVectors = nullptr;
         GRAPH::RenderGraphExecuteFn sceneColorOpaqueCapture = nullptr;
         GRAPH::RenderGraphExecuteFn ssr = nullptr;
+        GRAPH::RenderGraphExecuteFn depthAware = nullptr;
+        GRAPH::RenderGraphExecuteFn transparent = nullptr;
+        GRAPH::RenderGraphExecuteFn featurePlan = nullptr;
+        GRAPH::RenderGraphExecuteFn geometryFeatures = nullptr;
+        GRAPH::RenderGraphExecuteFn visibilityFeatures = nullptr;
+        GRAPH::RenderGraphExecuteFn sceneColorPostOpaqueCapture = nullptr;
+        GRAPH::RenderGraphExecuteFn stylizedFeatureComposite = nullptr;
     };
+
+    struct RenderFrameGraphTailResources {
+        GRAPH::RenderGraphResourceId completionDependency{};
+        GRAPH::RenderGraphResourceId sceneDepth{};
+        GRAPH::RenderGraphResourceId sceneColorOpaque{};
+        GRAPH::RenderGraphResourceId packedSurface{};
+        GRAPH::RenderGraphResourceId ambientOcclusion{};
+        GRAPH::RenderGraphResourceId currentDepthPyramid{};
+        GRAPH::RenderGraphResourceId visibilityDepthPyramid{};
+        GRAPH::RenderGraphResourceId surfaceFeatureMask{};
+        GRAPH::RenderGraphResourceId stylizedOutlineStyle{};
+    };
+
+    bool ValidateRenderFrameGraphPassContext(
+        const GRAPH::RenderGraphPassContext& graphPass,
+        const StageExecutionState& state) noexcept;
+
+    GRAPH::RenderGraphResourceId AddRenderFrameGraphSurfaceResource(
+        GRAPH::RenderGraph& graph,
+        std::string_view id,
+        GRAPH::RenderGraphSemantic semantic,
+        bool imported,
+        GRAPH::RenderGraphSemanticPhase phase =
+            GRAPH::RenderGraphSemanticPhase::None,
+        SURFACE::SceneSurfaceProducer producer =
+            SURFACE::SceneSurfaceProducer::None,
+        GRAPH::RenderGraphResourceRequirement requirement =
+            GRAPH::RenderGraphResourceRequirement::Required) noexcept;
+    GRAPH::RenderGraphResourceId AddRenderFrameGraphCompletionMarker(
+        GRAPH::RenderGraph& graph,
+        std::string_view id) noexcept;
 
     bool ExecuteForwardOpaque(
         const GRAPH::RenderGraphPassContext& context,
@@ -41,6 +81,27 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
     bool ExecuteSsr(
         const GRAPH::RenderGraphPassContext& context,
         void* userData) noexcept;
+    bool ExecuteDepthAware(
+        const GRAPH::RenderGraphPassContext& context,
+        void* userData) noexcept;
+    bool ExecuteForwardTransparent(
+        const GRAPH::RenderGraphPassContext& context,
+        void* userData) noexcept;
+    bool ExecuteRenderFeaturePlan(
+        const GRAPH::RenderGraphPassContext& context,
+        void* userData) noexcept;
+    bool ExecuteGeometryFeatures(
+        const GRAPH::RenderGraphPassContext& context,
+        void* userData) noexcept;
+    bool ExecuteVisibilityFeatures(
+        const GRAPH::RenderGraphPassContext& context,
+        void* userData) noexcept;
+    bool ExecuteSceneColorPostOpaqueCapture(
+        const GRAPH::RenderGraphPassContext& context,
+        void* userData) noexcept;
+    bool ExecuteStylizedFeatureComposite(
+        const GRAPH::RenderGraphPassContext& context,
+        void* userData) noexcept;
 
     const RenderFrameGraphPassCallbacks&
         GetRenderFrameGraphPassCallbacks() noexcept;
@@ -49,6 +110,12 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
         const RenderFrameGraphPlanOptions& options,
         void* userData,
         const RenderFrameGraphPassCallbacks& callbacks,
+        GRAPH::RenderGraph& graph) noexcept;
+    bool BuildRenderFrameGraphTailPlan(
+        const RenderFrameGraphPlanOptions& options,
+        void* userData,
+        const RenderFrameGraphPassCallbacks& callbacks,
+        const RenderFrameGraphTailResources& resources,
         GRAPH::RenderGraph& graph) noexcept;
 
 } // namespace HIKARI::RENDER3D::PIPELINE::INTERNAL
