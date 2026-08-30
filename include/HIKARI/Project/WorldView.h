@@ -84,6 +84,18 @@ namespace HIKARI {
             GameProjectObjectHandle handle) const noexcept;
         HIKARI_GAME_PROJECT_SDK_API uint64_t GetObjectCount() const noexcept;
         HIKARI_GAME_PROJECT_SDK_API bool CanMutateStructure() const noexcept;
+        // SDK 2.5 additive non-structural batch. The World is resolved once,
+        // then each valid item is applied immediately in input order. Items
+        // are independent: false means at least one item failed or the batch
+        // shape was invalid; successful items are not rolled back. Duplicate
+        // handles are allowed and the later transform wins. Arrays are
+        // borrowed only for this call and count is capped by
+        // kGameProjectWorldMaximumTransformWriteBatchCount.
+        HIKARI_GAME_PROJECT_SDK_API bool SetLocalTransforms(
+            const GameProjectWorldTransformWrite* writes,
+            uint32_t writeCount,
+            GameProjectWorldResult* outResults,
+            uint32_t resultCount) const noexcept;
         // Structural commands apply immediately only outside protected World
         // traversal. Calls made inside one return Queued and are applied by the
         // owning Runtime at the next deterministic command boundary. A queued

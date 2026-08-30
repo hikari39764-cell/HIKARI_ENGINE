@@ -156,6 +156,28 @@ namespace HIKARI {
         return WorldMutationResult::Success;
     }
 
+    WorldMutationResult World::SetLocalTransform(
+        RuntimeObjectHandle objectHandle,
+        const Transform3D& transform) {
+        if (!IsOwnerThread()) {
+            return WorldMutationResult::WrongThread;
+        }
+        if (worldClosing_) {
+            return WorldMutationResult::WorldClosing;
+        }
+        GameObject* object = FindObject(objectHandle);
+        if (object == nullptr || object->destroying_) {
+            return WorldMutationResult::InvalidObjectHandle;
+        }
+        try {
+            (void)object->SetLocalTransform(transform);
+            return WorldMutationResult::Success;
+        }
+        catch (...) {
+            return WorldMutationResult::InternalError;
+        }
+    }
+
     WorldMutationResult World::SetWorldTransform(
         RuntimeObjectHandle objectHandle,
         const Transform3D& transform) {
@@ -163,7 +185,7 @@ namespace HIKARI {
             return WorldMutationResult::WrongThread;
         }
         GameObject* object = FindObject(objectHandle);
-        if (object == nullptr) {
+        if (object == nullptr || object->destroying_) {
             return WorldMutationResult::InvalidObjectHandle;
         }
 

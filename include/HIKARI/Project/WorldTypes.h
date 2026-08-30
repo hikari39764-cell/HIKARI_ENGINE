@@ -15,6 +15,12 @@ namespace HIKARI {
     inline constexpr size_t kGameProjectObjectNameCapacity = 128u;
     inline constexpr size_t
         kGameProjectWorldMaximumSpawnBatchCount = 256u;
+    inline constexpr uint32_t
+        kGameProjectWorldTransformWriteVersion = 1u;
+    inline constexpr uint32_t
+        kGameProjectWorldTransformWriteV1Size = 72u;
+    inline constexpr uint32_t
+        kGameProjectWorldMaximumTransformWriteBatchCount = 1024u;
     inline constexpr uint32_t kGameProjectWorldQueryVersion = 1u;
     inline constexpr uint32_t kGameProjectWorldQueryMaximumTermCount = 8u;
     inline constexpr uint32_t kGameProjectWorldQueryTermV1Size = 24u;
@@ -187,6 +193,16 @@ namespace HIKARI {
         }
     };
 
+    // V1 arrays have a fixed 72-byte stride. Writes are borrowed for one
+    // synchronous WorldView::SetLocalTransforms call and are never queued.
+    struct GameProjectWorldTransformWrite {
+        uint32_t structSize = kGameProjectWorldTransformWriteV1Size;
+        uint32_t version = kGameProjectWorldTransformWriteVersion;
+        GameProjectObjectHandle object{};
+        GameProjectTransform localTransform{};
+        uint32_t reserved[2] = { 0u, 0u };
+    };
+
     struct GameProjectSpawnObjectDesc {
         char name[kGameProjectObjectNameCapacity]{};
         GameProjectTransform localTransform{};
@@ -332,6 +348,26 @@ namespace HIKARI {
     static_assert(offsetof(GameProjectWorldResult, code) == 0u);
     static_assert(offsetof(GameProjectWorldResult, object) == 8u);
     static_assert(offsetof(GameProjectWorldResult, reserved) == 24u);
+    static_assert(std::is_standard_layout_v<
+        GameProjectWorldTransformWrite>);
+    static_assert(std::is_trivially_copyable_v<
+        GameProjectWorldTransformWrite>);
+    static_assert(sizeof(GameProjectWorldTransformWrite) == 72u);
+    static_assert(offsetof(
+        GameProjectWorldTransformWrite,
+        structSize) == 0u);
+    static_assert(offsetof(
+        GameProjectWorldTransformWrite,
+        version) == 4u);
+    static_assert(offsetof(
+        GameProjectWorldTransformWrite,
+        object) == 8u);
+    static_assert(offsetof(
+        GameProjectWorldTransformWrite,
+        localTransform) == 24u);
+    static_assert(offsetof(
+        GameProjectWorldTransformWrite,
+        reserved) == 64u);
     static_assert(std::is_standard_layout_v<GameProjectSpawnObjectDesc>);
     static_assert(std::is_trivially_copyable_v<GameProjectSpawnObjectDesc>);
     static_assert(sizeof(GameProjectSpawnObjectDesc) == 200u);

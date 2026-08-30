@@ -5,7 +5,6 @@
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectTransformBridgeInternal.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectWorldBridgeInternal.h"
-#include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_World.h"
 
 namespace HIKARI {
@@ -171,13 +170,16 @@ namespace HIKARI {
     GameProjectWorldResult ObjectView::SetLocalTransform(
         const GameProjectTransform& transform) const noexcept {
         RuntimeWorldAccessResult access{};
-        GameObject* object =
-            GameProjectSdkAccess::GetObject(*this, &access);
-        if (object == nullptr) {
-            return access == RuntimeWorldAccessResult::WrongThread
-                ? PROJECT::INTERNAL::MakeWorldAccessFailure(access)
-                : PROJECT::INTERNAL::MakeWorldResult(
-                    GameProjectWorldResultCode::InvalidObject);
+        World* world = World::ResolveRuntimeWorld(
+            handle_.world.value,
+            &access);
+        if (world == nullptr) {
+            return PROJECT::INTERNAL::MakeWorldAccessFailure(access);
+        }
+        if (!PROJECT::INTERNAL::IsObjectHandleForWorld(handle_, *world)) {
+            return PROJECT::INTERNAL::MakeWorldResult(
+                GameProjectWorldResultCode::InvalidObject,
+                handle_);
         }
         Transform3D runtimeTransform{};
         if (!PROJECT::INTERNAL::TryToRuntimeTransform(
@@ -187,29 +189,27 @@ namespace HIKARI {
                 GameProjectWorldResultCode::InvalidTransform,
                 handle_);
         }
-        try {
-            (void)object->SetLocalTransform(runtimeTransform);
-            return PROJECT::INTERNAL::MakeWorldResult(
-                GameProjectWorldResultCode::Success,
-                handle_);
-        }
-        catch (...) {
-            return PROJECT::INTERNAL::MakeWorldResult(
-                GameProjectWorldResultCode::InternalError,
-                handle_);
-        }
+        const RuntimeObjectHandle handle =
+            PROJECT::INTERNAL::DecodeRuntimeHandle(handle_);
+        return PROJECT::INTERNAL::ToProjectMutationResult(
+            *world,
+            world->SetLocalTransform(handle, runtimeTransform),
+            handle);
     }
 
     GameProjectWorldResult ObjectView::SetWorldTransform(
         const GameProjectTransform& transform) const noexcept {
         RuntimeWorldAccessResult access{};
-        GameObject* object =
-            GameProjectSdkAccess::GetObject(*this, &access);
-        if (object == nullptr) {
-            return access == RuntimeWorldAccessResult::WrongThread
-                ? PROJECT::INTERNAL::MakeWorldAccessFailure(access)
-                : PROJECT::INTERNAL::MakeWorldResult(
-                    GameProjectWorldResultCode::InvalidObject);
+        World* world = World::ResolveRuntimeWorld(
+            handle_.world.value,
+            &access);
+        if (world == nullptr) {
+            return PROJECT::INTERNAL::MakeWorldAccessFailure(access);
+        }
+        if (!PROJECT::INTERNAL::IsObjectHandleForWorld(handle_, *world)) {
+            return PROJECT::INTERNAL::MakeWorldResult(
+                GameProjectWorldResultCode::InvalidObject,
+                handle_);
         }
         Transform3D runtimeTransform{};
         if (!PROJECT::INTERNAL::TryToRuntimeTransform(
@@ -220,12 +220,8 @@ namespace HIKARI {
                 handle_);
         }
 
-        World* world = object->GetWorld();
-        if (world == nullptr) {
-            return PROJECT::INTERNAL::MakeWorldResult(
-                GameProjectWorldResultCode::InvalidWorld);
-        }
-        const RuntimeObjectHandle handle = object->GetRuntimeHandle();
+        const RuntimeObjectHandle handle =
+            PROJECT::INTERNAL::DecodeRuntimeHandle(handle_);
         try {
             return PROJECT::INTERNAL::ToProjectMutationResult(
                 *world,
@@ -239,6 +235,99 @@ namespace HIKARI {
                 GameProjectWorldResultCode::InternalError,
                 handle_);
         }
+    }
+
+    bool WorldView::SetLocalTransforms(
+        const GameProjectWorldTransformWrite* writes,
+        uint32_t writeCount,
+        GameProjectWorldResult* outResults,
+        uint32_t resultCount) const noexcept {
+        if (writeCount != resultCount) {
+            return false;
+        }
+        if (writeCount == 0u) {
+            return true;
+        }
+        const auto fillResults = [&](GameProjectWorldResult result) noexcept {
+            if (outResults != nullptr) {
+                for (uint32_t index = 0u; index < resultCount; ++index) {
+                    outResults[index] = result;
+                }
+            }
+        };
+        if (writes == nullptr || outResults == nullptr ||
+            writeCount >
+                kGameProjectWorldMaximumTransformWriteBatchCount) {
+            fillResults(PROJECT::INTERNAL::MakeWorldResult(
+                GameProjectWorldResultCode::InvalidRequest));
+            return false;
+        }
+
+        RuntimeWorldAccessResult access{};
+        World* world = GameProjectSdkAccess::GetWorld(*this, &access);
+        if (world == nullptr) {
+            fillResults(PROJECT::INTERNAL::MakeWorldAccessFailure(access));
+            return false;
+        }
+        if (GameProjectSdkAccess::IsWorldClosing(*world)) {
+            fillResults(PROJECT::INTERNAL::MakeWorldResult(
+                GameProjectWorldResultCode::WorldClosing));
+            return false;
+        }
+
+        bool allSucceeded = true;
+        for (uint32_t index = 0u; index < writeCount; ++index) {
+            const GameProjectWorldTransformWrite& write = writes[index];
+            const GameProjectObjectHandle objectHandle = write.object;
+            if (write.version != kGameProjectWorldTransformWriteVersion) {
+                outResults[index] = PROJECT::INTERNAL::MakeWorldResult(
+                    GameProjectWorldResultCode::Unsupported,
+                    objectHandle);
+                allSucceeded = false;
+                continue;
+            }
+            if (write.structSize !=
+                    kGameProjectWorldTransformWriteV1Size ||
+                write.reserved[0] != 0u || write.reserved[1] != 0u) {
+                outResults[index] = PROJECT::INTERNAL::MakeWorldResult(
+                    GameProjectWorldResultCode::InvalidRequest,
+                    objectHandle);
+                allSucceeded = false;
+                continue;
+            }
+            if (!PROJECT::INTERNAL::IsObjectHandleForWorld(
+                    objectHandle,
+                    *world)) {
+                outResults[index] = PROJECT::INTERNAL::MakeWorldResult(
+                    GameProjectWorldResultCode::InvalidObject,
+                    objectHandle);
+                allSucceeded = false;
+                continue;
+            }
+            const RuntimeObjectHandle runtimeHandle =
+                PROJECT::INTERNAL::DecodeRuntimeHandle(objectHandle);
+            Transform3D runtimeTransform{};
+            if (!PROJECT::INTERNAL::TryToRuntimeTransform(
+                    write.localTransform,
+                    runtimeTransform)) {
+                outResults[index] = PROJECT::INTERNAL::MakeWorldResult(
+                    GameProjectWorldResultCode::InvalidTransform,
+                    objectHandle);
+                allSucceeded = false;
+                continue;
+            }
+            outResults[index] =
+                PROJECT::INTERNAL::ToProjectMutationResult(
+                    *world,
+                    world->SetLocalTransform(
+                        runtimeHandle,
+                        runtimeTransform),
+                    runtimeHandle);
+            if (!outResults[index].Succeeded()) {
+                allSucceeded = false;
+            }
+        }
+        return allSucceeded;
     }
 
 } // namespace HIKARI

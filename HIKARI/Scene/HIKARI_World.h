@@ -137,6 +137,9 @@ namespace HIKARI {
             uint32_t index,
             WorldCommandFailure& outFailure) const noexcept;
         uint32_t GetCommandFailureOverflowCount() const noexcept;
+        WorldMutationResult SetLocalTransform(
+            RuntimeObjectHandle object,
+            const Transform3D& transform);
         WorldMutationResult SetWorldTransform(
             RuntimeObjectHandle object,
             const Transform3D& transform);
