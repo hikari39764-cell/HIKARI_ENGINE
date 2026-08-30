@@ -24,6 +24,7 @@ namespace HIKARI {
     private:
         std::unique_ptr<IScene> current_;
         std::unique_ptr<IScene> pending_;
+        bool hasPendingSceneChange_ = false;
         bool pendingCallOnEnter_ = true;
         bool pendingCallOnExitCurrent_ = true;
     };

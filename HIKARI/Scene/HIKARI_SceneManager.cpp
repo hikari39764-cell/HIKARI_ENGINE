@@ -6,6 +6,7 @@ namespace HIKARI {
 
     void SceneManager::ChangeScene(std::unique_ptr<IScene> next, bool callOnEnterNext, bool callOnExitCurrent) {
         pending_ = std::move(next);
+        hasPendingSceneChange_ = true;
         pendingCallOnEnter_ = callOnEnterNext;
         pendingCallOnExitCurrent_ = callOnExitCurrent;
     }
@@ -42,7 +43,7 @@ namespace HIKARI {
     }
 
     void SceneManager::CommitPendingScene() {
-        if (!pending_) {
+        if (!hasPendingSceneChange_) {
             return;
         }
 
@@ -56,6 +57,7 @@ namespace HIKARI {
             current_->OnEnter();
         }
 
+        hasPendingSceneChange_ = false;
         pendingCallOnEnter_ = true;
         pendingCallOnExitCurrent_ = true;
     }
