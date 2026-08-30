@@ -12,9 +12,10 @@
 namespace HIKARI {
 
     bool World::PrepareComponentAttachment(
+        GameObject& object,
         IComponent& component,
         ComponentTypeId declaredTypeId) {
-        if (!CanEnterStructureCallback() ||
+        if (!CanEnterStructureCallback(&object) ||
             component.worldComponentTypeId_ != 0u ||
             component.worldComponentIndex_ !=
                 kInvalidWorldComponentIndex) {
@@ -243,9 +244,9 @@ namespace HIKARI {
     }
 
     World::WorldCommandCheckpoint
-        World::BeginComponentCallback() {
+        World::BeginComponentCallback(GameObject& object) {
         if (componentCallbackActive_ ||
-            !CanEnterStructureCallback()) {
+            !CanEnterStructureCallback(&object)) {
             throw std::logic_error(
                 "World component callback transaction rejected.");
         }
@@ -268,7 +269,8 @@ namespace HIKARI {
         if (!componentCallbackActive_) {
             return;
         }
-        if (checkpoint.reservationJournalCount <=
+        if (spawnMaterializationObject_ == nullptr &&
+            checkpoint.reservationJournalCount <=
             reservationStateJournal_.size()) {
             reservationStateJournal_.resize(
                 checkpoint.reservationJournalCount);
@@ -281,6 +283,13 @@ namespace HIKARI {
         if (!componentCallbackActive_) {
             return;
         }
+
+        RollbackCommandCheckpoint(checkpoint);
+        componentCallbackActive_ = false;
+    }
+
+    void World::RollbackCommandCheckpoint(
+        WorldCommandCheckpoint checkpoint) noexcept {
 
         for (size_t index = reservationStateJournal_.size();
             index-- > checkpoint.reservationJournalCount;) {
@@ -319,7 +328,6 @@ namespace HIKARI {
             pendingCommands_.resize(
                 checkpoint.pendingCommandCount);
         }
-        componentCallbackActive_ = false;
     }
 
 } // namespace HIKARI

@@ -1,14 +1,140 @@
 #include "Scene/HIKARI_World.h"
 
-#include <algorithm>
+#include <array>
 #include <cstring>
 #include <memory>
-#include <stdexcept>
+#include <string>
 
-#include "Scene/HIKARI_GameObject.h"
-#include "Scene/Internal/HIKARI_WorldCapacity.h"
+#include <json.hpp>
+
+#include "Scene/HIKARI_ComponentRegistry.h"
 
 namespace HIKARI {
+
+    WorldMutationResult INTERNAL::BuildWorldSpawnBatchPayload(
+        const ComponentRegistry* registry,
+        std::span<const WorldSpawnRequest> requests,
+        std::shared_ptr<WorldSpawnBatchPayload>& outPayload) noexcept {
+        outPayload.reset();
+        try {
+            bool hasComponentPayload = false;
+            size_t totalPayloadBytes = 0u;
+            for (const WorldSpawnRequest& request : requests) {
+                if (request.components.size() >
+                    kWorldSpawnMaximumComponentsPerObject) {
+                    return WorldMutationResult::InvalidComponentData;
+                }
+                if (request.components.empty()) {
+                    continue;
+                }
+                if (registry == nullptr) {
+                    return WorldMutationResult::InvalidComponentType;
+                }
+                hasComponentPayload = true;
+                std::array<const ComponentTypeInfo*,
+                    kWorldSpawnMaximumComponentsPerObject> infos{};
+                for (size_t componentIndex = 0u;
+                    componentIndex < request.components.size();
+                    ++componentIndex) {
+                    const WorldSpawnComponentRequest& component =
+                        request.components[componentIndex];
+                    const ComponentTypeInfo* info =
+                        registry->Find(component.typeId);
+                    if (info == nullptr || !info->factory ||
+                        info->registrationSource !=
+                            ComponentRegistrationSource::GameProject) {
+                        return WorldMutationResult::InvalidComponentType;
+                    }
+                    for (size_t prior = 0u;
+                        prior < componentIndex;
+                        ++prior) {
+                        if (request.components[prior].typeId ==
+                                component.typeId &&
+                            !info->allowMultiple) {
+                            return WorldMutationResult::InvalidComponentData;
+                        }
+                    }
+                    const size_t byteCount =
+                        component.initialValuesJson.size();
+                    if (byteCount >
+                            kWorldSpawnMaximumComponentPayloadBytes ||
+                        totalPayloadBytes >
+                            kWorldSpawnMaximumBatchPayloadBytes - byteCount) {
+                        return WorldMutationResult::InvalidComponentData;
+                    }
+                    totalPayloadBytes += byteCount;
+                    if (!component.initialValuesJson.empty()) {
+                        const nlohmann::json values =
+                            nlohmann::json::parse(
+                                component.initialValuesJson.begin(),
+                                component.initialValuesJson.end(),
+                                nullptr,
+                                false);
+                        if (values.is_discarded() || !values.is_object()) {
+                            return WorldMutationResult::InvalidComponentData;
+                        }
+                    }
+                    infos[componentIndex] = info;
+                }
+                for (size_t componentIndex = 0u;
+                    componentIndex < request.components.size();
+                    ++componentIndex) {
+                    const ComponentTypeInfo& info = *infos[componentIndex];
+                    for (const std::string& required :
+                        info.requiredComponents) {
+                        const ComponentTypeId requiredId =
+                            MakeComponentTypeId(required);
+                        bool foundBefore = false;
+                        for (size_t prior = 0u;
+                            prior < componentIndex;
+                            ++prior) {
+                            foundBefore = foundBefore ||
+                                request.components[prior].typeId == requiredId;
+                        }
+                        if (!foundBefore) {
+                            return WorldMutationResult::InvalidComponentData;
+                        }
+                    }
+                    for (const std::string& incompatible :
+                        info.incompatibleComponents) {
+                        const ComponentTypeId incompatibleId =
+                            MakeComponentTypeId(incompatible);
+                        for (const WorldSpawnComponentRequest& candidate :
+                            request.components) {
+                            if (candidate.typeId == incompatibleId) {
+                                return WorldMutationResult::
+                                    InvalidComponentData;
+                            }
+                        }
+                    }
+                }
+            }
+            if (!hasComponentPayload) {
+                return WorldMutationResult::Success;
+            }
+            outPayload = std::make_shared<WorldSpawnBatchPayload>();
+            outPayload->objects.resize(requests.size());
+            for (size_t objectIndex = 0u;
+                objectIndex < requests.size();
+                ++objectIndex) {
+                const auto components = requests[objectIndex].components;
+                auto& owned = outPayload->objects[objectIndex].components;
+                owned.reserve(components.size());
+                for (const WorldSpawnComponentRequest& component :
+                    components) {
+                    owned.push_back(WorldSpawnComponentPayload{
+                        component.typeId,
+                        std::string(component.initialValuesJson)
+                    });
+                }
+            }
+            return WorldMutationResult::Success;
+        }
+        catch (...) {
+            outPayload.reset();
+            return WorldMutationResult::InternalError;
+        }
+    }
 
     uint32_t World::AllocateCommandToken() noexcept {
         uint32_t token = nextCommandToken_++;
@@ -245,98 +371,6 @@ namespace HIKARI {
         return QueueCommand(std::move(command));
     }
 
-    WorldMutationResult World::ApplyQueuedSpawn(
-        const PendingWorldCommand& command) {
-        if (!command.object.IsValid() ||
-            command.object.slot >= objectSlots_.size()) {
-            return WorldMutationResult::InvalidObjectHandle;
-        }
-        ObjectSlot& slot = objectSlots_[command.object.slot];
-        if (slot.generation != command.object.generation) {
-            return WorldMutationResult::InvalidObjectHandle;
-        }
-        if (slot.state == ObjectSlotState::ReservedCanceled) {
-            ReleaseReservedObjectHandle(command.object);
-            return WorldMutationResult::CommandCanceled;
-        }
-        if (slot.state != ObjectSlotState::Reserved) {
-            return WorldMutationResult::InvalidObjectHandle;
-        }
-
-        GameObject* parent = nullptr;
-        if (command.parent.IsValid()) {
-            parent = FindObject(command.parent);
-            if (parent == nullptr) {
-                ReleaseReservedObjectHandle(command.object);
-                return WorldMutationResult::InvalidParentHandle;
-            }
-        }
-
-        if (objects_.size() >= objects_.max_size() ||
-            objects_.size() >= renderDirtyObjects_.max_size()) {
-            ReleaseReservedObjectHandle(command.object);
-            return WorldMutationResult::InternalError;
-        }
-        const size_t nextObjectCount = objects_.size() + 1u;
-        const size_t objectCapacity = INTERNAL::GrowWorldCapacity(
-            (std::max)(
-                objects_.capacity(),
-                renderDirtyObjects_.capacity()),
-            nextObjectCount,
-            (std::min)(
-                objects_.max_size(),
-                renderDirtyObjects_.max_size()));
-        objects_.reserve(objectCapacity);
-        renderDirtyObjects_.reserve(objectCapacity);
-
-        auto object = std::make_unique<GameObject>(command.name.data());
-        GameObject* ptr = object.get();
-        ptr->SetRuntimeHandle(command.object);
-        bool objectStored = false;
-        try {
-            ptr->SetOwnerWorld(this);
-            Transform3D localTransform{};
-            localTransform.position = command.transform.position;
-            localTransform.rotation = command.transform.rotation;
-            localTransform.scale = command.transform.scale;
-            (void)ptr->SetLocalTransform(localTransform);
-            if (parent != nullptr &&
-                !ptr->SetParentInternal(parent)) {
-                throw std::runtime_error(
-                    "Queued World spawn hierarchy rejected.");
-            }
-            const size_t storageIndex = objects_.size();
-            objects_.push_back(std::move(object));
-            objectStored = true;
-            if (!CommitReservedObjectHandle(
-                    command.object,
-                    ptr,
-                    storageIndex)) {
-                throw std::runtime_error(
-                    "Queued World spawn handle commit rejected.");
-            }
-            return WorldMutationResult::Success;
-        }
-        catch (...) {
-            (void)ptr->SetParentInternal(nullptr);
-            RemoveRenderObjectDirty(ptr);
-            ptr->SetOwnerWorld(nullptr);
-            ptr->SetRuntimeHandle({});
-            if (slot.state == ObjectSlotState::Live) {
-                ReleaseObjectHandle(command.object);
-            }
-            else {
-                ReleaseReservedObjectHandle(command.object);
-            }
-            if (objectStored &&
-                !objects_.empty() &&
-                objects_.back().get() == ptr) {
-                objects_.pop_back();
-            }
-            throw;
-        }
-    }
-
     void World::RecordCommandFailure(
         const PendingWorldCommand& command,
         WorldMutationResult result,
@@ -395,6 +429,9 @@ namespace HIKARI {
             }
             catch (...) {
                 commandApplyActive_ = false;
+                spawnMaterializationObject_ = nullptr;
+                componentCallbackActive_ = false;
+                reservationStateJournal_.clear();
                 if (command.kind == WorldCommandKind::Spawn &&
                     IsReservedObjectHandle(command.object)) {
                     ReleaseReservedObjectHandle(command.object);
@@ -407,6 +444,9 @@ namespace HIKARI {
             ++executedCount;
         }
         commandApplyActive_ = false;
+        spawnMaterializationObject_ = nullptr;
+        componentCallbackActive_ = false;
+        reservationStateJournal_.clear();
         commandFlushActive_ = false;
         executionCommands_.clear();
         return executedCount;

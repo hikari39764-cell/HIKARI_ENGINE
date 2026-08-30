@@ -293,7 +293,8 @@ namespace HIKARI {
         }
         if (structureReadDepth_ != 0u ||
             commandFlushActive_ ||
-            commandApplyActive_) {
+            commandApplyActive_ ||
+            spawnMaterializationObject_ != nullptr) {
             HIKARI_LOG_ERROR(
                 "[World] Clear rejected during structure traversal.");
             return;
@@ -341,6 +342,7 @@ namespace HIKARI {
             pendingCommands_.clear();
             executionCommands_.clear();
             reservationStateJournal_.clear();
+            spawnMaterializationObject_ = nullptr;
             componentCallbackActive_ = false;
             for (uint32_t slotIndex = 0u;
                 slotIndex < objectSlots_.size();

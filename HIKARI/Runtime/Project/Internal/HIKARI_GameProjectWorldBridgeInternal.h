@@ -99,6 +99,18 @@ namespace HIKARI::PROJECT::INTERNAL {
             return MakeWorldResult(
                 GameProjectWorldResultCode::MutationRejected,
                 EncodeRuntimeHandle(world, object));
+        case WorldMutationResult::InvalidComponentType:
+            return MakeWorldResult(
+                GameProjectWorldResultCode::Unsupported,
+                EncodeRuntimeHandle(world, object));
+        case WorldMutationResult::InvalidComponentData:
+            return MakeWorldResult(
+                GameProjectWorldResultCode::InvalidRequest,
+                EncodeRuntimeHandle(world, object));
+        case WorldMutationResult::ComponentInitializationFailed:
+            return MakeWorldResult(
+                GameProjectWorldResultCode::MutationRejected,
+                EncodeRuntimeHandle(world, object));
         case WorldMutationResult::InternalError:
         default:
             return MakeWorldResult(

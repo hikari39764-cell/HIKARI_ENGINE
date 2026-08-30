@@ -3,18 +3,31 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
+#include <span>
+#include <string>
 #include <string_view>
+#include <vector>
 
+#include "HIKARI/Runtime/ComponentTypeId.h"
 #include "Render3D/HIKARI_Math3D.h"
 #include "Scene/HIKARI_RuntimeObjectHandle.h"
 
 namespace HIKARI {
+
+    class ComponentRegistry;
 
     inline constexpr size_t kWorldCommandObjectNameCapacity = 128u;
     inline constexpr size_t kWorldCommandInitialCapacity = 128u;
     inline constexpr size_t kWorldCommandMaximumCapacity = 4096u;
     inline constexpr size_t kWorldCommandFailureCapacity = 256u;
     inline constexpr size_t kWorldSpawnBatchMaximumCapacity = 256u;
+    inline constexpr size_t
+        kWorldSpawnMaximumComponentsPerObject = 16u;
+    inline constexpr size_t
+        kWorldSpawnMaximumComponentPayloadBytes = 16u * 1024u;
+    inline constexpr size_t
+        kWorldSpawnMaximumBatchPayloadBytes = 1024u * 1024u;
 
     enum class WorldMutationResult : uint8_t {
         Success,
@@ -32,6 +45,9 @@ namespace HIKARI {
         TransformNotInvertible,
         TransformDecompositionFailed,
         HierarchyRejected,
+        InvalidComponentType,
+        InvalidComponentData,
+        ComponentInitializationFailed,
         InternalError
     };
 
@@ -89,11 +105,37 @@ namespace HIKARI {
         MATH::Vec3 scale{ 1.0f, 1.0f, 1.0f };
     };
 
+    struct WorldSpawnComponentRequest {
+        ComponentTypeId typeId{};
+        std::string_view initialValuesJson{};
+    };
+
     struct WorldSpawnRequest {
         std::string_view name{};
         WorldCommandLocalTransform transform{};
         RuntimeObjectHandle parent{};
+        std::span<const WorldSpawnComponentRequest> components{};
     };
+
+    struct WorldSpawnComponentPayload {
+        ComponentTypeId typeId{};
+        std::string initialValuesJson{};
+    };
+
+    struct WorldSpawnObjectPayload {
+        std::vector<WorldSpawnComponentPayload> components{};
+    };
+
+    struct WorldSpawnBatchPayload {
+        std::vector<WorldSpawnObjectPayload> objects{};
+    };
+
+    namespace INTERNAL {
+        WorldMutationResult BuildWorldSpawnBatchPayload(
+            const ComponentRegistry* registry,
+            std::span<const WorldSpawnRequest> requests,
+            std::shared_ptr<WorldSpawnBatchPayload>& outPayload) noexcept;
+    }
 
     struct PendingWorldCommand {
         uint64_t sequence = 0u;
@@ -104,6 +146,8 @@ namespace HIKARI {
         WorldParentMode parentMode = WorldParentMode::KeepLocal;
         WorldCommandLocalTransform transform{};
         std::array<char, kWorldCommandObjectNameCapacity> name{};
+        std::shared_ptr<const WorldSpawnBatchPayload> spawnPayload{};
+        uint32_t spawnPayloadIndex = 0u;
     };
 
     static_assert(sizeof(WorldCommandLocalTransform) == 40u);

@@ -335,17 +335,15 @@ namespace HIKARI {
             }
             return completed;
         }
-
-        bool CanEnterStructureCallback() const noexcept {
+        bool CanEnterStructureCallback(const GameObject* object) const noexcept {
             return IsOwnerThread() &&
                 structureReadDepth_ == 0u &&
-                !commandFlushActive_ &&
+                (!commandFlushActive_ || spawnMaterializationObject_ == object) &&
                 !worldClosing_;
         }
 
-        bool PrepareComponentAttachment(
-            IComponent& component,
-            ComponentTypeId declaredTypeId);
+        bool PrepareComponentAttachment(GameObject& object,
+            IComponent& component, ComponentTypeId declaredTypeId);
         void CancelComponentAttachment(
             IComponent& component) noexcept;
         bool CommitComponentAttachment(
@@ -384,11 +382,12 @@ namespace HIKARI {
             size_t reservationJournalCount = 0u;
         };
 
-        WorldCommandCheckpoint BeginComponentCallback();
+        WorldCommandCheckpoint BeginComponentCallback(GameObject& object);
         void CommitComponentCallback(
             WorldCommandCheckpoint checkpoint) noexcept;
         void RollbackComponentCallback(
             WorldCommandCheckpoint checkpoint) noexcept;
+        void RollbackCommandCheckpoint(WorldCommandCheckpoint) noexcept;
 
         enum class ObjectSlotState : uint8_t {
             Free,
@@ -491,6 +490,7 @@ namespace HIKARI {
         uint32_t structureReadDepth_ = 0u;
         bool commandFlushActive_ = false;
         bool commandApplyActive_ = false;
+        GameObject* spawnMaterializationObject_ = nullptr;
         bool componentCallbackActive_ = false;
         bool worldClosing_ = false;
     };

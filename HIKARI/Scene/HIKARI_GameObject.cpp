@@ -266,7 +266,7 @@ namespace HIKARI {
             MarkRenderStateDirty();
             return ptr;
         }
-        if (!ownerWorld_->CanEnterStructureCallback()) {
+        if (!ownerWorld_->CanEnterStructureCallback(this)) {
             return nullptr;
         }
         if (!reserveComponentSlot()) {
@@ -274,6 +274,7 @@ namespace HIKARI {
         }
         try {
             if (!ownerWorld_->PrepareComponentAttachment(
+                    *this,
                     *component,
                     declaredTypeId)) {
                 return nullptr;
@@ -286,7 +287,7 @@ namespace HIKARI {
         World::WorldCommandCheckpoint commandCheckpoint{};
         try {
             commandCheckpoint =
-                ownerWorld_->BeginComponentCallback();
+                ownerWorld_->BeginComponentCallback(*this);
         }
         catch (...) {
             ownerWorld_->CancelComponentAttachment(*component);
