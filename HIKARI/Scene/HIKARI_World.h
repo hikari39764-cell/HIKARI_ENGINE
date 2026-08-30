@@ -22,6 +22,7 @@
 #include "Scene/HIKARI_WorldServiceRegistry.h"
 namespace HIKARI {
 
+    class ComponentRegistry;
     struct GameProjectSdkAccess;
 
     enum class RuntimeWorldAccessResult : uint8_t {
@@ -119,6 +120,10 @@ namespace HIKARI {
         WorldMutationResult SubmitSpawnBatch(
             std::span<const WorldSpawnRequest> requests,
             std::span<WorldCommandSubmission> outSubmissions);
+        // Borrowed composition-root registry. Bind only while the World is
+        // empty; Clear always releases the borrow before any fallible work.
+        bool BindComponentRegistry(
+            const ComponentRegistry* registry) noexcept;
         WorldCommandSubmission SubmitDestroy(
             RuntimeObjectHandle object);
         WorldCommandSubmission SubmitSetParent(
@@ -474,6 +479,7 @@ namespace HIKARI {
         WorldEventStream fixedEvents_{};
         std::vector<PendingWorldCommand> pendingCommands_{};
         std::vector<PendingWorldCommand> executionCommands_{};
+        const ComponentRegistry* componentRegistry_ = nullptr;
         std::vector<WorldCommandFailure> commandFailures_{};
         std::vector<ReservedStateJournalEntry>
             reservationStateJournal_{};

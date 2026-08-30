@@ -132,6 +132,9 @@ namespace HIKARI {
         void Update(float deltaTime) override;
         void Serialize(nlohmann::json& out) const override;
         void Deserialize(const nlohmann::json& in) override;
+        bool TryDeserialize(
+            const nlohmann::json& in,
+            std::string& outDiagnostic) override;
         void BuildInspector(IInspectorBuilder& builder) override;
 
         IGameComponent* GetGameComponent() noexcept;

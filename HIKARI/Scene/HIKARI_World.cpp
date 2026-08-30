@@ -4,6 +4,7 @@
 #include <stdexcept>
 
 #include "Core/HIKARI_Logger.h"
+#include "Scene/HIKARI_ComponentRegistry.h"
 #include "Scene/Internal/HIKARI_WorldCapacity.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_WorldEvents.h"
@@ -77,6 +78,19 @@ namespace HIKARI {
     World::~World() {
         Clear();
         UnregisterRuntimeIdentity();
+    }
+
+    bool World::BindComponentRegistry(
+        const ComponentRegistry* registry) noexcept {
+        if (registry == nullptr || !IsOwnerThread() || worldClosing_ ||
+            structureReadDepth_ != 0u ||
+            commandFlushActive_ || commandApplyActive_ ||
+            !objects_.empty() || !pendingCommands_.empty() ||
+            !executionCommands_.empty()) {
+            return false;
+        }
+        componentRegistry_ = registry;
+        return true;
     }
 
     WorldMutationResult World::DestroyObject(GameObject* object) {
@@ -284,6 +298,7 @@ namespace HIKARI {
                 "[World] Clear rejected during structure traversal.");
             return;
         }
+        componentRegistry_ = nullptr;
         if (objects_.size() >
             removedRenderObjectIds_.max_size() -
                 removedRenderObjectIds_.size()) {

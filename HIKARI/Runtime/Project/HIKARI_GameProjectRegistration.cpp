@@ -244,17 +244,29 @@ namespace {
 
     void GameProjectComponentAdapter::Deserialize(
         const nlohmann::json& in) {
+        std::string diagnostic{};
+        (void)TryDeserialize(in, diagnostic);
+    }
+
+    bool GameProjectComponentAdapter::TryDeserialize(
+        const nlohmann::json& in,
+        std::string& outDiagnostic) {
         if (component_ == nullptr) {
-            return;
+            outDiagnostic = "GameProject component instance is unavailable.";
+            return false;
         }
         const PropertyReader reader =
             GameProjectSdkAccess::MakePropertyReader(&in);
-        InvokeProjectCallback(
+        const bool loaded = InvokeProjectCallback(
             typeName_,
             "LoadProperties",
             [this, &reader]() {
                 component_->LoadProperties(reader);
             });
+        outDiagnostic = loaded
+            ? std::string{}
+            : "GameProject LoadProperties failed; see the engine log.";
+        return loaded;
     }
 
     void GameProjectComponentAdapter::BuildInspector(
@@ -456,6 +468,8 @@ namespace {
         info.incompatibleComponents =
             CopyNames(descriptor.incompatibleComponents);
         info.allowMultiple = descriptor.allowMultiple;
+        info.registrationSource =
+            ComponentRegistrationSource::GameProject;
         info.runtimeApplyPolicy =
             descriptor.applyPolicy ==
                 GameComponentApplyPolicy::OnEditCommit

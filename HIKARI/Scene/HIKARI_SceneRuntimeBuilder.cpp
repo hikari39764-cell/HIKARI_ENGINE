@@ -689,13 +689,25 @@ namespace HIKARI {
         const AssetRegistry& assetRegistry,
         const ComponentRegistry& componentRegistry,
         ModelManager& modelManager,
-        SkyManager&) const {
+        SkyManager&) const try {
         world.Clear();
+        if (!world.BindComponentRegistry(&componentRegistry)) {
+            HIKARI_LOG_ERROR(
+                "[SceneRuntime] component registry binding rejected.");
+            return false;
+        }
 
         constexpr float kDegToRad = std::numbers::pi_v<float> / 180.0f;
 
         for (const SceneObjectData& objectData : document.objects) {
             GameObject* object = world.CreateObject(objectData.name);
+            if (object == nullptr) {
+                HIKARI_LOG_ERROR(
+                    "[SceneRuntime] object creation failed: " +
+                    objectData.name);
+                world.Clear();
+                return false;
+            }
             if (!object->SetDocumentId(objectData.id)) {
                 HIKARI_LOG_ERROR(
                     "[SceneRuntime] duplicate object id rejected: " +
@@ -713,13 +725,23 @@ namespace HIKARI {
             (void)object->SetLocalTransform(localTransform);
 
             for (const SceneComponentData& componentData : objectData.components) {
-                IComponent* component = componentRegistry.AddComponentToObject(*object, componentData.type);
-                if (!component) {
+                const ComponentTypeInfo* componentInfo =
+                    componentRegistry.Find(componentData.type);
+                if (componentInfo == nullptr) {
                     HIKARI_LOG_WARN(
                         "[SceneRuntime] unavailable component skipped: " +
                         componentData.type +
                         " objectId=" + std::to_string(objectData.id.value));
                     continue;
+                }
+                std::unique_ptr<IComponent> component =
+                    componentInfo->factory();
+                if (component == nullptr) {
+                    HIKARI_LOG_ERROR(
+                        "[SceneRuntime] component factory failed: " +
+                        componentData.type);
+                    world.Clear();
+                    return false;
                 }
                 std::string deserializeDiagnostic{};
                 if (!component->TryDeserialize(
@@ -734,8 +756,18 @@ namespace HIKARI {
                     world.Clear();
                     return false;
                 }
+                IComponent* attached = object->AddComponentInstance(
+                    std::move(component),
+                    componentInfo->typeId);
+                if (attached == nullptr) {
+                    HIKARI_LOG_ERROR(
+                        "[SceneRuntime] component attachment failed: " +
+                        componentData.type);
+                    world.Clear();
+                    return false;
+                }
 
-                if (auto* modelComponent = dynamic_cast<ModelComponent*>(component)) {
+                if (auto* modelComponent = dynamic_cast<ModelComponent*>(attached)) {
                     modelComponent->SetModelAsset(ResolveModelAssetNow(
                         modelManager,
                         assetRegistry,
@@ -786,6 +818,18 @@ namespace HIKARI {
         }
 
         return true;
+    }
+    catch (...) {
+        HIKARI_LOG_ERROR(
+            "[SceneRuntime] World build failed with an exception.");
+        try {
+            world.Clear();
+        }
+        catch (...) {
+            HIKARI_LOG_ERROR(
+                "[SceneRuntime] World cleanup also failed.");
+        }
+        return false;
     }
 
 } // namespace HIKARI

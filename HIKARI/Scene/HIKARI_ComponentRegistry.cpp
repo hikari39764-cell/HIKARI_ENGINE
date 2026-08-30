@@ -1,7 +1,5 @@
 #include "HIKARI_ComponentRegistry.h"
 
-#include "HIKARI_GameObject.h"
-
 namespace HIKARI {
 
     bool ComponentRegistry::Register(ComponentTypeInfo info) {
@@ -16,20 +14,42 @@ namespace HIKARI {
             return false;
         }
         info.typeId = computedTypeId;
-        for (const auto& [registeredName, registered] : byName_) {
-            if (registered.typeId == info.typeId &&
-                registeredName != info.typeName) {
-                return false;
-            }
+        if (byId_.find(info.typeId.value) != byId_.end()) {
+            return false;
         }
         if (info.presentation.displayName.empty()) {
             info.presentation.displayName = info.typeName;
         }
         const std::string typeName = info.typeName;
-        return byName_.emplace(typeName, std::move(info)).second;
+        try {
+            const auto inserted = byName_.emplace(
+                typeName,
+                std::move(info));
+            if (!inserted.second) {
+                return false;
+            }
+            try {
+                const auto idInserted = byId_.emplace(
+                    inserted.first->second.typeId.value,
+                    inserted.first->first);
+                if (!idInserted.second) {
+                    byName_.erase(inserted.first);
+                    return false;
+                }
+            }
+            catch (...) {
+                byName_.erase(inserted.first);
+                return false;
+            }
+            return true;
+        }
+        catch (...) {
+            return false;
+        }
     }
 
     void ComponentRegistry::Clear() noexcept {
+        byId_.clear();
         byName_.clear();
     }
 
@@ -39,6 +59,19 @@ namespace HIKARI {
             return nullptr;
         }
         return &it->second;
+    }
+
+    const ComponentTypeInfo* ComponentRegistry::Find(
+        ComponentTypeId typeId) const noexcept {
+        if (!typeId.IsValid()) {
+            return nullptr;
+        }
+        const auto found = byId_.find(typeId.value);
+        if (found == byId_.end()) {
+            return nullptr;
+        }
+        const auto type = byName_.find(found->second);
+        return type != byName_.end() ? &type->second : nullptr;
     }
 
     std::vector<std::string> ComponentRegistry::GetTypeNames() const {
@@ -57,18 +90,6 @@ namespace HIKARI {
             infos.push_back(&info);
         }
         return infos;
-    }
-
-    IComponent* ComponentRegistry::AddComponentToObject(GameObject& object, std::string_view typeName) const {
-        const ComponentTypeInfo* info = Find(typeName);
-        if (!info) {
-            return nullptr;
-        }
-
-        std::unique_ptr<IComponent> component = info->factory();
-        return object.AddComponentInstance(
-            std::move(component),
-            info->typeId);
     }
 
 } // namespace HIKARI

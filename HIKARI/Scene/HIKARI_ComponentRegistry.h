@@ -32,6 +32,11 @@ namespace HIKARI {
         OnEditCommit,
     };
 
+    enum class ComponentRegistrationSource : uint8_t {
+        Engine,
+        GameProject,
+    };
+
     struct ComponentTypeInfo {
         using FactoryFn = std::function<std::unique_ptr<IComponent>()>;
         using InitializeDefaultsFn = std::function<void(const SceneObjectData& object, nlohmann::json& properties)>;
@@ -49,6 +54,8 @@ namespace HIKARI {
         std::vector<std::string> optionalComponents{};
         std::vector<std::string> incompatibleComponents{};
         bool allowMultiple = false;
+        ComponentRegistrationSource registrationSource =
+            ComponentRegistrationSource::Engine;
         ComponentRuntimeApplyPolicy runtimeApplyPolicy =
             ComponentRuntimeApplyPolicy::Immediate;
         InitializeDefaultsFn initializeDefaults{};
@@ -64,13 +71,13 @@ namespace HIKARI {
         bool Register(ComponentTypeInfo info);
         void Clear() noexcept;
         const ComponentTypeInfo* Find(std::string_view typeName) const;
+        const ComponentTypeInfo* Find(ComponentTypeId typeId) const noexcept;
         std::vector<std::string> GetTypeNames() const;
         std::vector<const ComponentTypeInfo*> GetTypeInfos() const;
 
-        IComponent* AddComponentToObject(GameObject& object, std::string_view typeName) const;
-
     private:
         std::unordered_map<std::string, ComponentTypeInfo> byName_{};
+        std::unordered_map<uint64_t, std::string> byId_{};
     };
 
 } // namespace HIKARI
