@@ -11,10 +11,6 @@
 #include "Render3D/Temporal/HIKARI_TemporalResourceSystem.h"
 
 namespace HIKARI::RENDER3D::PIPELINE {
-    namespace {
-        RenderFrameGraphStageResult gLastStageResult{};
-    }
-
     MESHRENDERER::MeshPassResources BuildMeshPassResources(
         const SURFACE::SceneSurfaceSet& surfaces,
         int fallbackAoTextureHandle) {
@@ -75,7 +71,6 @@ namespace HIKARI::RENDER3D::PIPELINE {
             (void)TEMPORAL::MarkMotionVectorsWritten(
                 context.temporalResources,
                 false);
-            gLastStageResult = state.result;
             return state.result;
         }
         GRAPH::RenderGraph graph{};
@@ -95,7 +90,6 @@ namespace HIKARI::RENDER3D::PIPELINE {
             (void)TEMPORAL::MarkMotionVectorsWritten(
                 context.temporalResources,
                 false);
-            gLastStageResult = state.result;
             return state.result;
         }
         if (!graph.Compile()) {
@@ -103,7 +97,6 @@ namespace HIKARI::RENDER3D::PIPELINE {
             (void)TEMPORAL::MarkMotionVectorsWritten(
                 context.temporalResources,
                 false);
-            gLastStageResult = state.result;
             return state.result;
         }
 
@@ -115,8 +108,6 @@ namespace HIKARI::RENDER3D::PIPELINE {
                 context.temporalResources,
                 false);
         }
-        gLastStageResult = state.result;
-
         static bool loggedGraphActivation = false;
         if (!loggedGraphActivation && state.result.completed) {
             loggedGraphActivation = true;
@@ -126,11 +117,6 @@ namespace HIKARI::RENDER3D::PIPELINE {
                 " pass(es).");
         }
         return state.result;
-    }
-
-    const RenderFrameGraphStageResult&
-        GetLastRenderFrameGraphStageResult() noexcept {
-        return gLastStageResult;
     }
 
 } // namespace HIKARI::RENDER3D::PIPELINE

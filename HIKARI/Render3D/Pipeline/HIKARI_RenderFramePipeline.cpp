@@ -29,7 +29,6 @@ namespace HIKARI::RENDER3D::PIPELINE {
 
     namespace {
         FEATURES::StylizedScreenFeatureRenderer gStylizedScreenFeatures{};
-        FEATURES::RenderFeaturePlan gLastRenderFeaturePlan{};
 
         class TemporalFrameAbortGuard {
         public:
@@ -485,6 +484,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
                 sceneTextures,
                 screenResult.fallbackAoTextureHandle);
         MESHRENDERER::MeshPassResources postOpaqueResources = opaqueResources;
+        FEATURES::RenderFeaturePlan renderFeaturePlan{};
 
         const RenderFrameGraphStageResult graphStage =
             ExecuteRenderFrameGraphStage(
@@ -498,7 +498,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
                     RenderFrameGraphFeatureContext{
                         lighting,
                         featureRequests,
-                        gLastRenderFeaturePlan,
+                        renderFeaturePlan,
                         gStylizedScreenFeatures,
                         !debugRoute.active,
                         geometryOutlineBackendReady,
@@ -564,10 +564,6 @@ namespace HIKARI::RENDER3D::PIPELINE {
             MESHRENDERER::RenderForwardOpaquePass(graphics, captureResources);
         MESHRENDERER::EndFrame();
         return opaqueOk;
-    }
-
-    const FEATURES::RenderFeaturePlan& GetLastRenderFeaturePlan() {
-        return gLastRenderFeaturePlan;
     }
 
 } // namespace HIKARI::RENDER3D::PIPELINE

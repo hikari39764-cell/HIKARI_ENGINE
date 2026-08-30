@@ -84,7 +84,4 @@ namespace HIKARI::RENDER3D::PIPELINE {
     RenderFrameGraphStageResult ExecuteRenderFrameGraphStage(
         const RenderFrameGraphStageContext& context) noexcept;
 
-    const RenderFrameGraphStageResult&
-        GetLastRenderFrameGraphStageResult() noexcept;
-
 } // namespace HIKARI::RENDER3D::PIPELINE

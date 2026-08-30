@@ -120,9 +120,6 @@ namespace HIKARI::POST {
             int uiLogicalHeight = 0);
         static bool FinalizeGameUiComposition(bool editorViewport);
         static const PresentationFrameResources& GetPresentationFrameResources();
-        static void EndSceneCaptureAndPresent();
-        static bool EndSceneCaptureToEditorViewport();
-
         static void SetSceneCaptureSize(
             int renderWidth,
             int renderHeight,

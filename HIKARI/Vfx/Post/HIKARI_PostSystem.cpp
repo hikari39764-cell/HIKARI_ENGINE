@@ -577,24 +577,6 @@ namespace HIKARI::POST {
         return gameUiCompositionStage_.GetFrameResources();
     }
 
-    bool PostSystem::EndSceneCaptureToEditorViewport() {
-        if (!captureStage_.IsActive()) {
-            return IsEditorViewportReady();
-        }
-        return
-            PrepareGameUiComposition(true) &&
-            FinalizeGameUiComposition(true);
-    }
-
-    void PostSystem::EndSceneCaptureAndPresent() {
-        if (!captureStage_.IsActive()) {
-            return;
-        }
-        if (PrepareGameUiComposition(false)) {
-            (void)FinalizeGameUiComposition(false);
-        }
-    }
-
     void PostSystem::BeginLayer(
         PostChain& chain, float r, float g, float b, float a) {
         if (!captureStage_.IsActive()) BeginSceneCapture();
