@@ -55,6 +55,11 @@ foreach(runtime_source IN LISTS HIKARI_RUNTIME_SOURCES)
         list(APPEND HIKARI_RUNTIME_PHYSICS_SOURCES "${runtime_source}")
     elseif(runtime_relative_path MATCHES "^HIKARI/(Gfx|Render2D|Vfx)/")
         list(APPEND HIKARI_RUNTIME_GFX_SOURCES "${runtime_source}")
+    elseif(runtime_relative_path STREQUAL
+        "HIKARI/Render3D/Surface/HIKARI_SceneSurfaceSet.cpp")
+        # SceneSurfaceSet is the core semantic handoff consumed by Pipeline
+        # and Graph. Concrete Surface render targets remain feature-owned.
+        list(APPEND HIKARI_RUNTIME_RENDER3D_SOURCES "${runtime_source}")
     elseif(
         runtime_relative_path MATCHES
         "^HIKARI/Render3D/(Color|Features|Lighting|Reflection|Sand|ScreenSpace|Shadow|Surface|Vfx|Water)/")

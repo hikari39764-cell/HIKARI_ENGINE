@@ -79,22 +79,42 @@ namespace HIKARI::RENDER3D::REFLECTION {
         debugState_.requested =
             settings.enabled &&
             settings.quality != ScreenSpaceReflectionQuality::Off;
+        const RenderTextureView* sceneColorOpaque =
+            surfaces.TryGetTexture(
+                GRAPH::RenderGraphSemantic::SceneColorOpaque);
+        const RenderTextureView* sceneDepth = surfaces.TryGetTexture(
+            GRAPH::RenderGraphSemantic::SceneDepth);
+        const RenderTextureView* packedSurface = surfaces.TryGetTexture(
+            GRAPH::RenderGraphSemantic::PackedSurface);
+        const DEPTH::DepthPyramidView* currentDepthPyramid =
+            surfaces.TryGetDepthPyramid(
+                GRAPH::RenderGraphSemantic::CurrentDepthPyramid);
         debugState_.sceneSurfaceReady = surfaces.HasOpaqueSurface();
         debugState_.currentHzbReady = surfaces.HasCurrentDepthHierarchy();
         debugState_.hzbMipCount =
-            surfaces.currentSceneDepthPyramid.mipCount;
+            currentDepthPyramid != nullptr
+                ? currentDepthPyramid->mipCount
+                : 0u;
         debugState_.maxDistance = settings.maxDistance;
         debugState_.maxRoughness = settings.maxRoughness;
         debugState_.maxSteps =
             ResolveScreenSpaceReflectionMaxSteps(settings.quality);
         debugState_.traceWidth =
-            (surfaces.sceneDepth.width + 1u) / 2u;
+            sceneDepth != nullptr
+                ? (sceneDepth->width + 1u) / 2u
+                : 0u;
         debugState_.traceHeight =
-            (surfaces.sceneDepth.height + 1u) / 2u;
+            sceneDepth != nullptr
+                ? (sceneDepth->height + 1u) / 2u
+                : 0u;
 
         if (!debugState_.requested ||
             !debugState_.sceneSurfaceReady ||
             !debugState_.currentHzbReady ||
+            sceneColorOpaque == nullptr ||
+            sceneDepth == nullptr ||
+            packedSurface == nullptr ||
+            currentDepthPyramid == nullptr ||
             graphics.device == nullptr ||
             graphics.cmdList == nullptr ||
             graphics.srvHeap == nullptr) {
@@ -117,12 +137,12 @@ namespace HIKARI::RENDER3D::REFLECTION {
         constants.invViewProj = camera.invViewProj;
         constants.cameraPosition = camera.cameraPos;
         constants.screenParams = {
-            static_cast<float>(surfaces.sceneDepth.width),
-            static_cast<float>(surfaces.sceneDepth.height),
+            static_cast<float>(sceneDepth->width),
+            static_cast<float>(sceneDepth->height),
             1.0f / static_cast<float>(
-                (std::max)(1u, surfaces.sceneDepth.width)),
+                (std::max)(1u, sceneDepth->width)),
                 1.0f / static_cast<float>(
-                    (std::max)(1u, surfaces.sceneDepth.height))
+                    (std::max)(1u, sceneDepth->height))
         };
         constants.traceScreenParams = {
             static_cast<float>(traceWidth_),
@@ -142,7 +162,7 @@ namespace HIKARI::RENDER3D::REFLECTION {
             static_cast<float>(
                 (std::max)(
                     1u,
-                    surfaces.currentSceneDepthPyramid.mipCount)),
+                    currentDepthPyramid->mipCount)),
             std::clamp(settings.edgeFade, 0.01f, 0.35f)
         };
         constants.frameParams = {
@@ -179,16 +199,16 @@ namespace HIKARI::RENDER3D::REFLECTION {
                 static_cast<UINT64>(constantStride_) * frameSlot);
         cmd->SetGraphicsRootDescriptorTable(
             1,
-            surfaces.sceneColorOpaque.srv);
+            sceneColorOpaque->srv);
         cmd->SetGraphicsRootDescriptorTable(
             2,
-            surfaces.sceneDepth.srv);
+            sceneDepth->srv);
         cmd->SetGraphicsRootDescriptorTable(
             3,
-            surfaces.packedSurface.srv);
+            packedSurface->srv);
         cmd->SetGraphicsRootDescriptorTable(
             4,
-            surfaces.currentSceneDepthPyramid.pyramidSrv);
+            currentDepthPyramid->pyramidSrv);
         cmd->IASetPrimitiveTopology(
             D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         cmd->IASetVertexBuffers(0, 0, nullptr);
@@ -238,16 +258,16 @@ namespace HIKARI::RENDER3D::REFLECTION {
                 static_cast<UINT64>(constantStride_) * frameSlot);
         cmd->SetGraphicsRootDescriptorTable(
             1,
-            surfaces.sceneColorOpaque.srv);
+            sceneColorOpaque->srv);
         cmd->SetGraphicsRootDescriptorTable(
             2,
-            surfaces.sceneDepth.srv);
+            sceneDepth->srv);
         cmd->SetGraphicsRootDescriptorTable(
             3,
-            surfaces.packedSurface.srv);
+            packedSurface->srv);
         cmd->SetGraphicsRootDescriptorTable(
             4,
-            surfaces.currentSceneDepthPyramid.pyramidSrv);
+            currentDepthPyramid->pyramidSrv);
         cmd->SetGraphicsRootDescriptorTable(5, traceSrv_);
         cmd->DrawInstanced(3, 1, 0, 0);
         targetAccess.EndDepthRead();

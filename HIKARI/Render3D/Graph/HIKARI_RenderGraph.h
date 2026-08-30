@@ -32,6 +32,11 @@ namespace HIKARI::RENDER3D::GRAPH {
         VisibilityDepthPyramid,
         HistoryColor,
         HistoryDepth,
+        StylizedOutlineStyle,
+        AmbientOcclusion,
+        ReactiveMask,
+        TransparencyMask,
+        InvalidDepthMotionMask,
         Count,
     };
 

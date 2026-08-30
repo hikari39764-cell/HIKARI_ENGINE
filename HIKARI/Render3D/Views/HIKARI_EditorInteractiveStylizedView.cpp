@@ -154,22 +154,44 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
             static_cast<uint32_t>(sceneTarget.GetHeight());
         outSurfaces.BeginFrame(
             TIME::GetFrameContext().frameIndex,
-            viewId);
-        outSurfaces.sceneColorOpaque = {
+            viewId,
+            graphics.deviceGeneration);
+        const RenderTextureView sceneColor{
             sceneTarget.GetResource(), colorView.gpu, sceneTarget.GetFormat(),
             width, height, 1u, sceneTarget.GetColorState(), true
         };
-        outSurfaces.sceneColorPostOpaque =
-            outSurfaces.sceneColorOpaque;
-        outSurfaces.sceneDepth = {
+        const RenderTextureView sceneDepth{
             sceneTarget.GetDepthResource(), depthView.gpu,
             DXGI_FORMAT_R32_FLOAT, width, height, 1u,
             sceneTarget.GetDepthState(), true
         };
-        outSurfaces.packedSurface = surfaceBuffer_.GetPackedSurfaceView();
-        outSurfaces.surfaceFeatureMask = surfaceBuffer_.GetFeatureMaskView();
-        outSurfaces.stylizedOutlineStyle =
-            surfaceBuffer_.GetStylizedOutlineStyleView();
+        if (!outSurfaces.PublishTexture(
+                GRAPH::RenderGraphSemantic::SceneColorOpaque,
+                sceneColor,
+                SURFACE::SceneSurfaceProducer::EditorInteractive) ||
+            !outSurfaces.PublishTextureAlias(
+                GRAPH::RenderGraphSemantic::SceneColorPostOpaque,
+                GRAPH::RenderGraphSemantic::SceneColorOpaque,
+                SURFACE::SceneSurfaceProducer::EditorInteractive) ||
+            !outSurfaces.PublishTexture(
+                GRAPH::RenderGraphSemantic::SceneDepth,
+                sceneDepth,
+                SURFACE::SceneSurfaceProducer::EditorInteractive,
+                SURFACE::SceneSurfaceAvailability::Imported) ||
+            !outSurfaces.PublishTexture(
+                GRAPH::RenderGraphSemantic::PackedSurface,
+                surfaceBuffer_.GetPackedSurfaceView(),
+                SURFACE::SceneSurfaceProducer::EditorInteractive) ||
+            !outSurfaces.PublishTexture(
+                GRAPH::RenderGraphSemantic::SurfaceFeatureMask,
+                surfaceBuffer_.GetFeatureMaskView(),
+                SURFACE::SceneSurfaceProducer::EditorInteractive) ||
+            !outSurfaces.PublishTexture(
+                GRAPH::RenderGraphSemantic::StylizedOutlineStyle,
+                surfaceBuffer_.GetStylizedOutlineStyleView(),
+                SURFACE::SceneSurfaceProducer::EditorInteractive)) {
+            return false;
+        }
         return outSurfaces.HasOpaqueSurface() &&
             outSurfaces.HasStylizedFeatureMask() &&
             outSurfaces.HasStylizedOutlineStyle();
@@ -205,19 +227,23 @@ namespace HIKARI::RENDER3D::EDITORVIEW {
         if (preparation.writeFeatureMask) {
             inputsReady = PublishSceneSurfaces(
                 sceneTarget, targetGeneration, viewId, surfaces);
-            if (surfaces.sceneColorPostOpaque.IsSampleable()) {
+            if (surfaces.IsValid(
+                    GRAPH::RenderGraphSemantic::SceneColorPostOpaque)) {
                 availability.inputMask |= FEATURES::RenderFeatureInputBit(
                     FEATURES::RenderFeatureInput::SceneColor);
             }
-            if (surfaces.sceneDepth.IsSampleable()) {
+            if (surfaces.IsValid(
+                    GRAPH::RenderGraphSemantic::SceneDepth)) {
                 availability.inputMask |= FEATURES::RenderFeatureInputBit(
                     FEATURES::RenderFeatureInput::SceneDepth);
             }
-            if (surfaces.packedSurface.IsSampleable()) {
+            if (surfaces.IsValid(
+                    GRAPH::RenderGraphSemantic::PackedSurface)) {
                 availability.inputMask |= FEATURES::RenderFeatureInputBit(
                     FEATURES::RenderFeatureInput::SurfaceNormals);
             }
-            if (surfaces.surfaceFeatureMask.IsSampleable()) {
+            if (surfaces.IsValid(
+                    GRAPH::RenderGraphSemantic::SurfaceFeatureMask)) {
                 availability.inputMask |= FEATURES::RenderFeatureInputBit(
                     FEATURES::RenderFeatureInput::SurfaceFeatureMask);
             }

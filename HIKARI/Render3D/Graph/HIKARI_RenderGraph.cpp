@@ -422,6 +422,15 @@ namespace {
             return "VisibilityDepthPyramid";
         case RenderGraphSemantic::HistoryColor: return "HistoryColor";
         case RenderGraphSemantic::HistoryDepth: return "HistoryDepth";
+        case RenderGraphSemantic::StylizedOutlineStyle:
+            return "StylizedOutlineStyle";
+        case RenderGraphSemantic::AmbientOcclusion:
+            return "AmbientOcclusion";
+        case RenderGraphSemantic::ReactiveMask: return "ReactiveMask";
+        case RenderGraphSemantic::TransparencyMask:
+            return "TransparencyMask";
+        case RenderGraphSemantic::InvalidDepthMotionMask:
+            return "InvalidDepthMotionMask";
         case RenderGraphSemantic::Count: break;
         }
         return "Unknown";

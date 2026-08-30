@@ -19,18 +19,31 @@ namespace HIKARI::RENDER3D::PIPELINE {
         const SURFACE::SceneSurfaceSet& surfaces,
         int fallbackAoTextureHandle) {
         MESHRENDERER::MeshPassResources resources{};
-        resources.sceneDepth = surfaces.sceneDepth;
-        resources.opaqueSceneColor = surfaces.sceneColorOpaque;
-        resources.packedSceneSurface = surfaces.packedSurface;
-        resources.ambientOcclusion = surfaces.ambientOcclusion;
-        if (surfaces.IsValid(
-                GRAPH::RenderGraphSemantic::CurrentDepthPyramid)) {
-            resources.depthPyramid = surfaces.currentSceneDepthPyramid;
+        if (const RenderTextureView* view = surfaces.TryGetTexture(
+                GRAPH::RenderGraphSemantic::SceneDepth)) {
+            resources.sceneDepth = *view;
         }
-        else if (surfaces.IsValid(
-                     GRAPH::RenderGraphSemantic::
+        if (const RenderTextureView* view = surfaces.TryGetTexture(
+                GRAPH::RenderGraphSemantic::SceneColorOpaque)) {
+            resources.opaqueSceneColor = *view;
+        }
+        if (const RenderTextureView* view = surfaces.TryGetTexture(
+                GRAPH::RenderGraphSemantic::PackedSurface)) {
+            resources.packedSceneSurface = *view;
+        }
+        if (const RenderTextureView* view = surfaces.TryGetTexture(
+                GRAPH::RenderGraphSemantic::AmbientOcclusion)) {
+            resources.ambientOcclusion = *view;
+        }
+        if (const DEPTH::DepthPyramidView* pyramid =
+                surfaces.TryGetDepthPyramid(
+                    GRAPH::RenderGraphSemantic::CurrentDepthPyramid)) {
+            resources.depthPyramid = *pyramid;
+        } else if (const DEPTH::DepthPyramidView* visibilityPyramid =
+                surfaces.TryGetDepthPyramid(
+                    GRAPH::RenderGraphSemantic::
                         VisibilityDepthPyramid)) {
-            resources.depthPyramid = surfaces.visibilityDepthPyramid;
+            resources.depthPyramid = *visibilityPyramid;
         }
         resources.fallbackAoTextureHandle = fallbackAoTextureHandle;
         return resources;
@@ -44,6 +57,8 @@ namespace HIKARI::RENDER3D::PIPELINE {
                 context.frame.frameIndex,
                 context.frame.viewId) ||
             !context.sceneSurfaces.MatchesFrame(context.frame.token) ||
+            context.sceneSurfaces.GetDeviceGeneration() !=
+                context.frame.graphics.deviceGeneration ||
             !context.temporalResources.IsValid() ||
             !context.temporalResources.view.Matches(
                 context.temporalFrame.view) ||
@@ -68,7 +83,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
             context.requiresSceneColorOpaque,
             context.hasSsrWork
         };
-        if (!graph.BeginFrame(context.sceneSurfaces.frame) ||
+        if (!graph.BeginFrame(context.sceneSurfaces.GetFrameToken()) ||
             !INTERNAL::BuildRenderFrameGraphPlan(
                 options,
                 &state,

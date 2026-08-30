@@ -36,7 +36,38 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
                     stage.temporalFrame.view) &&
                 stage.temporalResources.publication.Matches(
                     stage.frame.token) &&
-                stage.sceneSurfaces.MatchesFrame(stage.frame.token);
+                stage.sceneSurfaces.MatchesFrame(stage.frame.token) &&
+                stage.sceneSurfaces.GetDeviceGeneration() ==
+                    stage.frame.graphics.deviceGeneration;
+        }
+
+        bool ReplaceTexturePublication(
+            SURFACE::SceneSurfaceSet& surfaces,
+            GRAPH::RenderGraphSemantic semantic,
+            const RenderTextureView& texture,
+            SURFACE::SceneSurfaceProducer producer,
+            SURFACE::SceneSurfaceAvailability availability =
+                SURFACE::SceneSurfaceAvailability::Produced) noexcept {
+            (void)surfaces.Invalidate(semantic);
+            return !texture.IsSampleable() ||
+                surfaces.PublishTexture(
+                    semantic,
+                    texture,
+                    producer,
+                    availability);
+        }
+
+        bool ReplaceDepthPyramidPublication(
+            SURFACE::SceneSurfaceSet& surfaces,
+            GRAPH::RenderGraphSemantic semantic,
+            const DEPTH::DepthPyramidView& pyramid,
+            SURFACE::SceneSurfaceProducer producer) noexcept {
+            (void)surfaces.Invalidate(semantic);
+            return !pyramid.valid ||
+                surfaces.PublishDepthPyramid(
+                    semantic,
+                    pyramid,
+                    producer);
         }
     }
 
@@ -89,16 +120,41 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
             }
             MESHRENDERER::SetAmbientOcclusionRuntimeEnabled(
                 context.screenResult.ssaoRendered);
-            context.sceneSurfaces.packedSurface =
-                context.screenResult.packedSurface;
-            context.sceneSurfaces.surfaceFeatureMask =
-                context.screenResult.surfaceFeatureMask;
-            context.sceneSurfaces.ambientOcclusion =
-                context.screenResult.ambientOcclusion;
-            context.sceneSurfaces.currentSceneDepthPyramid =
-                context.screenResult.currentSceneDepthPyramid;
-            context.sceneSurfaces.visibilityDepthPyramid =
-                context.screenResult.visibilityDepthPyramid;
+            if (!ReplaceTexturePublication(
+                    context.sceneSurfaces,
+                    GRAPH::RenderGraphSemantic::PackedSurface,
+                    context.screenResult.packedSurface,
+                    SURFACE::SceneSurfaceProducer::SceneSurfaceAux) ||
+                !ReplaceTexturePublication(
+                    context.sceneSurfaces,
+                    GRAPH::RenderGraphSemantic::SurfaceFeatureMask,
+                    context.screenResult.surfaceFeatureMask,
+                    SURFACE::SceneSurfaceProducer::SceneSurfaceAux) ||
+                !ReplaceTexturePublication(
+                    context.sceneSurfaces,
+                    GRAPH::RenderGraphSemantic::StylizedOutlineStyle,
+                    context.screenResult.stylizedOutlineStyle,
+                    SURFACE::SceneSurfaceProducer::SceneSurfaceAux) ||
+                (context.screenResult.ssaoRendered
+                    ? !ReplaceTexturePublication(
+                        context.sceneSurfaces,
+                        GRAPH::RenderGraphSemantic::AmbientOcclusion,
+                        context.screenResult.ambientOcclusion,
+                        SURFACE::SceneSurfaceProducer::Ssao)
+                    : !context.sceneSurfaces.Invalidate(
+                        GRAPH::RenderGraphSemantic::AmbientOcclusion)) ||
+                !ReplaceDepthPyramidPublication(
+                    context.sceneSurfaces,
+                    GRAPH::RenderGraphSemantic::CurrentDepthPyramid,
+                    context.screenResult.currentSceneDepthPyramid,
+                    SURFACE::SceneSurfaceProducer::DepthPyramid) ||
+                !ReplaceDepthPyramidPublication(
+                    context.sceneSurfaces,
+                    GRAPH::RenderGraphSemantic::VisibilityDepthPyramid,
+                    context.screenResult.visibilityDepthPyramid,
+                    SURFACE::SceneSurfaceProducer::DepthPyramid)) {
+                return false;
+            }
             context.postOpaqueResources = BuildMeshPassResources(
                 context.sceneSurfaces,
                 context.screenResult.fallbackAoTextureHandle);
@@ -141,22 +197,42 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
         bool depthReadActive = false;
         try {
             TEMPORAL::TemporalInputs temporalInputs{};
+            const RenderTextureView* sceneDepth =
+                context.sceneSurfaces.TryGetTexture(
+                    GRAPH::RenderGraphSemantic::SceneDepth);
+            const RenderTextureView* sceneColorOpaque =
+                context.sceneSurfaces.TryGetTexture(
+                    GRAPH::RenderGraphSemantic::SceneColorOpaque);
+            const RenderTextureView noSceneColor{};
+            if (sceneDepth == nullptr) {
+                return false;
+            }
             if (!TEMPORAL::TryBuildTemporalPassInputs(
                     context.temporalResources,
-                    context.sceneSurfaces.sceneDepth,
-                    context.sceneSurfaces.sceneColorOpaque,
+                    *sceneDepth,
+                    sceneColorOpaque != nullptr
+                        ? *sceneColorOpaque
+                        : noSceneColor,
                     temporalInputs)) {
                 state.result.motionVectorsWritten = false;
                 return false;
             }
-            context.sceneSurfaces.historyColor =
-                temporalInputs.historyColorRead;
-            context.sceneSurfaces.historyDepth =
-                temporalInputs.historyDepthRead;
+            if (!ReplaceTexturePublication(
+                    context.sceneSurfaces,
+                    GRAPH::RenderGraphSemantic::HistoryColor,
+                    temporalInputs.historyColorRead,
+                    SURFACE::SceneSurfaceProducer::TemporalHistory) ||
+                !ReplaceTexturePublication(
+                    context.sceneSurfaces,
+                    GRAPH::RenderGraphSemantic::HistoryDepth,
+                    temporalInputs.historyDepthRead,
+                    SURFACE::SceneSurfaceProducer::TemporalHistory)) {
+                return false;
+            }
 
             bool written = false;
             if (temporalInputs.motionVectors.valid &&
-                context.sceneSurfaces.sceneDepth.IsSampleable() &&
+                sceneDepth->IsSampleable() &&
                 context.screenSpace.renderTargetAccess.BeginDepthRead()) {
                 depthReadActive = true;
                 written = TEMPORAL::ExecuteMotionVectorPass(
@@ -177,12 +253,22 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
                 }
             }
 
-            context.sceneSurfaces.motionVectors = written
-                ? temporalInputs.motionVectors
-                : RenderTextureView{};
-            context.sceneSurfaces.motionMetadata = written
-                ? temporalInputs.motionMetadata
-                : RenderTextureView{};
+            if (!ReplaceTexturePublication(
+                    context.sceneSurfaces,
+                    GRAPH::RenderGraphSemantic::MotionVectors,
+                    written
+                        ? temporalInputs.motionVectors
+                        : RenderTextureView{},
+                    SURFACE::SceneSurfaceProducer::TemporalMotion) ||
+                !ReplaceTexturePublication(
+                    context.sceneSurfaces,
+                    GRAPH::RenderGraphSemantic::MotionMetadata,
+                    written
+                        ? temporalInputs.motionMetadata
+                        : RenderTextureView{},
+                    SURFACE::SceneSurfaceProducer::TemporalMotion)) {
+                return false;
+            }
             (void)TEMPORAL::MarkMotionVectorsWritten(
                 context.temporalResources,
                 written);
@@ -193,8 +279,10 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
             if (depthReadActive) {
                 context.screenSpace.renderTargetAccess.EndDepthRead();
             }
-            context.sceneSurfaces.motionVectors = {};
-            context.sceneSurfaces.motionMetadata = {};
+            (void)context.sceneSurfaces.Invalidate(
+                GRAPH::RenderGraphSemantic::MotionVectors);
+            (void)context.sceneSurfaces.Invalidate(
+                GRAPH::RenderGraphSemantic::MotionMetadata);
             (void)TEMPORAL::MarkMotionVectorsWritten(
                 context.temporalResources,
                 false);
@@ -218,7 +306,12 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
             if (!sceneColorOpaque.IsSampleable()) {
                 return false;
             }
-            context.sceneSurfaces.sceneColorOpaque = sceneColorOpaque;
+            if (!context.sceneSurfaces.PublishTexture(
+                    GRAPH::RenderGraphSemantic::SceneColorOpaque,
+                    sceneColorOpaque,
+                    SURFACE::SceneSurfaceProducer::SceneColorCapture)) {
+                return false;
+            }
             context.postOpaqueResources.opaqueSceneColor = sceneColorOpaque;
             if (!TEMPORAL::SetTemporalCompositionBase(
                     context.temporalResources,

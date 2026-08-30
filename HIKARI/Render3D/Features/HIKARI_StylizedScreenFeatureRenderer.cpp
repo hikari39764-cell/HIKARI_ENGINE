@@ -53,12 +53,24 @@ namespace HIKARI::RENDER3D::FEATURES {
         debugState_ = {};
         debugState_.requested = plan.screenCompositePassRequired;
         debugState_.transientBytes = plan.transientBytes;
+        const RenderTextureView* sceneDepth = surfaces.TryGetTexture(
+            GRAPH::RenderGraphSemantic::SceneDepth);
+        const RenderTextureView* sceneColorPostOpaque =
+            surfaces.TryGetTexture(
+                GRAPH::RenderGraphSemantic::SceneColorPostOpaque);
+        const RenderTextureView* packedSurface = surfaces.TryGetTexture(
+            GRAPH::RenderGraphSemantic::PackedSurface);
+        const RenderTextureView* featureMask = surfaces.TryGetTexture(
+            GRAPH::RenderGraphSemantic::SurfaceFeatureMask);
+        const RenderTextureView* outlineStyle = surfaces.TryGetTexture(
+            GRAPH::RenderGraphSemantic::StylizedOutlineStyle);
         debugState_.inputsReady =
-            surfaces.sceneDepth.IsSampleable() &&
-            surfaces.sceneColorPostOpaque.IsSampleable() &&
-            surfaces.packedSurface.IsSampleable() &&
-            surfaces.HasStylizedFeatureMask();
+            sceneDepth != nullptr &&
+            sceneColorPostOpaque != nullptr &&
+            packedSurface != nullptr &&
+            featureMask != nullptr;
         debugState_.materialStyleReady =
+            outlineStyle != nullptr &&
             surfaces.HasStylizedOutlineStyle();
         debugState_.scheduledFeatureMask =
             BuildScheduledFeatureMask(plan);
@@ -77,10 +89,10 @@ namespace HIKARI::RENDER3D::FEATURES {
             graphics.frameIndex % GFX::kFrameResourceCount;
         ScreenFeatureConstants constants{};
         constants.screenParams = {
-            static_cast<float>(surfaces.sceneDepth.width),
-            static_cast<float>(surfaces.sceneDepth.height),
-            1.0f / static_cast<float>((std::max)(1u, surfaces.sceneDepth.width)),
-            1.0f / static_cast<float>((std::max)(1u, surfaces.sceneDepth.height))
+            static_cast<float>(sceneDepth->width),
+            static_cast<float>(sceneDepth->height),
+            1.0f / static_cast<float>((std::max)(1u, sceneDepth->width)),
+            1.0f / static_cast<float>((std::max)(1u, sceneDepth->height))
         };
         constants.edgeParams = {
             std::clamp(settings.thicknessPixels, 0.25f, 8.0f),
@@ -138,24 +150,24 @@ namespace HIKARI::RENDER3D::FEATURES {
                 static_cast<UINT64>(constantStride_) * frameSlot);
         cmd->SetGraphicsRootDescriptorTable(
             1u,
-            surfaces.sceneColorPostOpaque.srv);
-        cmd->SetGraphicsRootDescriptorTable(2u, surfaces.sceneDepth.srv);
-        cmd->SetGraphicsRootDescriptorTable(3u, surfaces.packedSurface.srv);
+            sceneColorPostOpaque->srv);
+        cmd->SetGraphicsRootDescriptorTable(2u, sceneDepth->srv);
+        cmd->SetGraphicsRootDescriptorTable(3u, packedSurface->srv);
         cmd->SetGraphicsRootDescriptorTable(
-            4u, surfaces.surfaceFeatureMask.srv);
+            4u, featureMask->srv);
         cmd->SetGraphicsRootDescriptorTable(
             5u,
             debugState_.materialStyleReady
-                ? surfaces.stylizedOutlineStyle.srv
-                : surfaces.packedSurface.srv);
+                ? outlineStyle->srv
+                : packedSurface->srv);
         D3D12_VIEWPORT viewport{};
-        viewport.Width = static_cast<float>(surfaces.sceneDepth.width);
-        viewport.Height = static_cast<float>(surfaces.sceneDepth.height);
+        viewport.Width = static_cast<float>(sceneDepth->width);
+        viewport.Height = static_cast<float>(sceneDepth->height);
         viewport.MaxDepth = 1.0f;
         const D3D12_RECT scissor{
             0, 0,
-            static_cast<LONG>(surfaces.sceneDepth.width),
-            static_cast<LONG>(surfaces.sceneDepth.height)
+            static_cast<LONG>(sceneDepth->width),
+            static_cast<LONG>(sceneDepth->height)
         };
         cmd->RSSetViewports(1u, &viewport);
         cmd->RSSetScissorRects(1u, &scissor);

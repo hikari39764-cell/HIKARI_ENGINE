@@ -160,6 +160,32 @@ namespace HIKARI::RENDER3D::PIPELINE {
                 return true;
             }
         }
+
+        bool PublishOptionalTexture(
+            SURFACE::SceneSurfaceSet& surfaces,
+            GRAPH::RenderGraphSemantic semantic,
+            const RenderTextureView& texture,
+            SURFACE::SceneSurfaceProducer producer,
+            SURFACE::SceneSurfaceAvailability availability =
+                SURFACE::SceneSurfaceAvailability::Produced) noexcept {
+            return !texture.IsSampleable() ||
+                surfaces.PublishTexture(
+                    semantic,
+                    texture,
+                    producer,
+                    availability);
+        }
+
+        bool PublishOptionalDepthPyramid(
+            SURFACE::SceneSurfaceSet& surfaces,
+            GRAPH::RenderGraphSemantic semantic,
+            const DEPTH::DepthPyramidView& pyramid) noexcept {
+            return !pyramid.valid ||
+                surfaces.PublishDepthPyramid(
+                    semantic,
+                    pyramid,
+                    SURFACE::SceneSurfaceProducer::DepthPyramid);
+        }
     }
 
     bool RenderMeshLightingFrame(
@@ -193,8 +219,16 @@ namespace HIKARI::RENDER3D::PIPELINE {
         const ScreenSpacePassContext screenSpaceContext =
             BuildScreenSpaceContext(frame);
         SURFACE::SceneSurfaceSet sceneTextures{};
-        sceneTextures.Reset(frame.token);
-        sceneTextures.sceneDepth = frame.scene.depth;
+        sceneTextures.Reset(
+            frame.token,
+            frame.graphics.deviceGeneration);
+        if (!sceneTextures.PublishTexture(
+                GRAPH::RenderGraphSemantic::SceneDepth,
+                frame.scene.depth,
+                SURFACE::SceneSurfaceProducer::PostSceneDepth,
+                SURFACE::SceneSurfaceAvailability::Imported)) {
+            return false;
+        }
         const RENDER3D::RenderQualitySettings& renderQuality =
             RENDER3D::GetRenderQualitySettings();
         const RENDER3D::RenderAntiAliasingMode antiAliasingMode =
@@ -301,6 +335,14 @@ namespace HIKARI::RENDER3D::PIPELINE {
         const FEATURES::RenderFeatureRequestSet featureRequests =
             FEATURES::AnalyzeRenderFeatureRequests(
                 MESHRENDERER::GetActiveGpuDrivenSceneSource());
+        const bool hasDepthAwareWork =
+            MESHRENDERER::HasDepthAwarePassWork();
+        const bool hasTransparentWork =
+            MESHRENDERER::HasForwardTransparentPassWork();
+        const bool hasSsrWork =
+            environment.screenSpaceReflections.enabled &&
+            environment.screenSpaceReflections.quality !=
+                ScreenSpaceReflectionQuality::Off;
         const bool stylizedFeatureMaskBackendReady =
             MESHRENDERER::HasStylizedFeatureMaskBackend();
         const bool geometryOutlineBackendReady =
@@ -319,7 +361,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
         RENDER3D::SCREENSPACE::ScreenSpaceSurfaceRequirements
             screenSurfaceRequirements{};
         screenSurfaceRequirements.requirePackedSurface =
-            stylizedScreenMaskRequired;
+            stylizedScreenMaskRequired || hasSsrWork;
         screenSurfaceRequirements.requireFeatureMask =
             stylizedScreenMaskRequired;
         (void)RENDER3D::VOLUMETRIC::PrepareVolumetricLightingFrame(
@@ -408,25 +450,44 @@ namespace HIKARI::RENDER3D::PIPELINE {
         }
 
         MESHRENDERER::SetAmbientOcclusionRuntimeEnabled(screenResult.ssaoRendered);
-        sceneTextures.packedSurface = screenResult.packedSurface;
-        sceneTextures.surfaceFeatureMask = screenResult.surfaceFeatureMask;
-        sceneTextures.ambientOcclusion = screenResult.ambientOcclusion;
-        sceneTextures.currentSceneDepthPyramid =
-            screenResult.currentSceneDepthPyramid;
-        sceneTextures.visibilityDepthPyramid =
-            screenResult.visibilityDepthPyramid;
+        if (!PublishOptionalTexture(
+                sceneTextures,
+                GRAPH::RenderGraphSemantic::PackedSurface,
+                screenResult.packedSurface,
+                SURFACE::SceneSurfaceProducer::SceneSurfaceAux) ||
+            !PublishOptionalTexture(
+                sceneTextures,
+                GRAPH::RenderGraphSemantic::SurfaceFeatureMask,
+                screenResult.surfaceFeatureMask,
+                SURFACE::SceneSurfaceProducer::SceneSurfaceAux) ||
+            !PublishOptionalTexture(
+                sceneTextures,
+                GRAPH::RenderGraphSemantic::StylizedOutlineStyle,
+                screenResult.stylizedOutlineStyle,
+                SURFACE::SceneSurfaceProducer::SceneSurfaceAux) ||
+            (screenResult.ssaoRendered &&
+             !PublishOptionalTexture(
+                sceneTextures,
+                GRAPH::RenderGraphSemantic::AmbientOcclusion,
+                screenResult.ambientOcclusion,
+                SURFACE::SceneSurfaceProducer::Ssao)) ||
+            !PublishOptionalDepthPyramid(
+                sceneTextures,
+                GRAPH::RenderGraphSemantic::CurrentDepthPyramid,
+                screenResult.currentSceneDepthPyramid) ||
+            !PublishOptionalDepthPyramid(
+                sceneTextures,
+                GRAPH::RenderGraphSemantic::VisibilityDepthPyramid,
+                screenResult.visibilityDepthPyramid)) {
+            MESHRENDERER::EndFrame();
+            return false;
+        }
         MESHRENDERER::MeshPassResources opaqueResources =
             BuildMeshPassResources(
                 sceneTextures,
                 screenResult.fallbackAoTextureHandle);
         MESHRENDERER::MeshPassResources postOpaqueResources = opaqueResources;
 
-        const bool hasDepthAwareWork = MESHRENDERER::HasDepthAwarePassWork();
-        const bool hasTransparentWork = MESHRENDERER::HasForwardTransparentPassWork();
-        const bool hasSsrWork =
-            environment.screenSpaceReflections.enabled &&
-            environment.screenSpaceReflections.quality !=
-                ScreenSpaceReflectionQuality::Off;
         const RenderFrameGraphStageResult graphStage =
             ExecuteRenderFrameGraphStage(
                 RenderFrameGraphStageContext{
@@ -530,17 +591,20 @@ namespace HIKARI::RENDER3D::PIPELINE {
                 FEATURES::RenderFeatureInputBit(
                     FEATURES::RenderFeatureInput::SceneColor);
         }
-        if (sceneTextures.sceneDepth.IsSampleable()) {
+        if (sceneTextures.IsValid(
+                GRAPH::RenderGraphSemantic::SceneDepth)) {
             featureAvailability.inputMask |=
                 FEATURES::RenderFeatureInputBit(
                     FEATURES::RenderFeatureInput::SceneDepth);
         }
-        if (sceneTextures.packedSurface.IsSampleable()) {
+        if (sceneTextures.IsValid(
+                GRAPH::RenderGraphSemantic::PackedSurface)) {
             featureAvailability.inputMask |=
                 FEATURES::RenderFeatureInputBit(
                     FEATURES::RenderFeatureInput::SurfaceNormals);
         }
-        if (sceneTextures.surfaceFeatureMask.IsSampleable()) {
+        if (sceneTextures.IsValid(
+                GRAPH::RenderGraphSemantic::SurfaceFeatureMask)) {
             featureAvailability.inputMask |=
                 FEATURES::RenderFeatureInputBit(
                     FEATURES::RenderFeatureInput::SurfaceFeatureMask);
@@ -580,8 +644,12 @@ namespace HIKARI::RENDER3D::PIPELINE {
                 POST::PostSystem::CaptureSceneColorSnapshot(
                     POST::SceneColorSnapshotKind::PostOpaque);
             if (postOpaqueSceneColor.IsSampleable()) {
-                sceneTextures.sceneColorPostOpaque =
-                    postOpaqueSceneColor;
+                if (!sceneTextures.PublishTexture(
+                        GRAPH::RenderGraphSemantic::SceneColorPostOpaque,
+                        postOpaqueSceneColor,
+                        SURFACE::SceneSurfaceProducer::SceneColorCapture)) {
+                    featurePassesOk = false;
+                }
                 FEATURES::StylizedScreenFeatureSettings featureSettings{};
                 if (cameraCb != nullptr) {
                     featureSettings.viewProj = cameraCb->viewProj;
@@ -602,12 +670,14 @@ namespace HIKARI::RENDER3D::PIPELINE {
                     featureSettings.directionalLightWS[2] =
                         environment.directional.direction.z;
                 }
-                featurePassesOk = gStylizedScreenFeatures.Render(
-                    frame.graphics,
-                    frame.targetAccess,
-                    sceneTextures,
-                    gLastRenderFeaturePlan,
-                    featureSettings);
+                if (featurePassesOk) {
+                    featurePassesOk = gStylizedScreenFeatures.Render(
+                        frame.graphics,
+                        frame.targetAccess,
+                        sceneTextures,
+                        gLastRenderFeaturePlan,
+                        featureSettings);
+                }
             } else {
                 featurePassesOk = false;
             }
