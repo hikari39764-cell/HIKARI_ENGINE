@@ -1,29 +1,12 @@
 #include "Render3D/Pipeline/Internal/HIKARI_RenderFrameGraphStageInternal.h"
 
 #include <array>
-#include <atomic>
-#include <cmath>
 #include <cstdio>
-#include <string>
 #include <string_view>
 
 #include "Render3D/Pipeline/HIKARI_RenderFrameContext.h"
 
 namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
-
-namespace {
-    std::atomic<uint64_t> gNextProjectPassCommandGeneration{ 1u };
-
-    uint64_t AllocateProjectPassCommandGeneration() noexcept {
-        uint64_t generation = 0u;
-        do {
-            generation = gNextProjectPassCommandGeneration.fetch_add(
-                1u,
-                std::memory_order_relaxed);
-        } while (generation == 0u);
-        return generation;
-    }
-} // namespace
 
 GRAPH::RenderGraphSemantic MapProjectRenderSemantic(
     GameProjectRenderSurfaceSemantic value) noexcept {
@@ -49,6 +32,8 @@ GRAPH::RenderGraphSemantic MapProjectRenderSemantic(
     case Source::TransparencyMask: return Target::TransparencyMask;
     case Source::InvalidDepthMotionMask:
         return Target::InvalidDepthMotionMask;
+    case Source::ProjectDispatchOutput:
+        return Target::ProjectDispatchOutput;
     case Source::None:
     case Source::Count:
         return Target::None;
@@ -130,75 +115,6 @@ namespace {
         return SURFACE::IsSceneSurfaceKeyAllowed(key) &&
             (contract.allowedAccessMask &
                 SURFACE::SceneSurfaceAccessBit(surfaceAccess)) != 0u;
-    }
-
-    bool FindPassDescriptor(
-        const RenderFrameProjectExtensionSink& extensions,
-        std::string_view stableId,
-        GameProjectRenderPassDesc& outDescriptor) noexcept {
-        outDescriptor = {};
-        if (!extensions.CanExecutePasses()) {
-            return false;
-        }
-        uint32_t count = 0u;
-        if (!extensions.getPassCount(extensions.context, count)) {
-            return false;
-        }
-        if (count > kGameProjectRenderMaximumPassCount) {
-            return false;
-        }
-        for (uint32_t index = 0u; index < count; ++index) {
-            GameProjectRenderPassDesc descriptor{};
-            if (!extensions.describePass(
-                    extensions.context,
-                    index,
-                    descriptor) ||
-                !descriptor.IsValid()) {
-                return false;
-            }
-            if (std::string_view(descriptor.stableId) == stableId) {
-                outDescriptor = descriptor;
-                return true;
-            }
-        }
-        return false;
-    }
-
-    bool ClearWorkingColor(
-        void* opaque,
-        uint64_t commandGeneration,
-        float red,
-        float green,
-        float blue,
-        float alpha) noexcept {
-        auto* gate = static_cast<ProjectRenderCommandGate*>(opaque);
-        if (gate == nullptr) {
-            return false;
-        }
-        const std::lock_guard lock(gate->mutex);
-        if (!gate->active || commandGeneration == 0u ||
-            commandGeneration != gate->generation) {
-            return false;
-        }
-        if (gate->ownerThread != std::this_thread::get_id()) {
-            gate->failed = true;
-            return false;
-        }
-        if (gate->failed || gate->context == nullptr ||
-            gate->pass.target !=
-                GameProjectRenderPassTarget::WorkingSceneColor ||
-            !gate->frame.Matches(gate->context->frame.token) ||
-            !std::isfinite(red) || !std::isfinite(green) ||
-            !std::isfinite(blue) || !std::isfinite(alpha)) {
-            gate->failed = true;
-            return false;
-        }
-        if (!gate->context->frame.targetAccess.ClearColor(
-                red, green, blue, alpha)) {
-            gate->failed = true;
-            return false;
-        }
-        return true;
     }
 
 } // namespace
@@ -322,16 +238,35 @@ bool BuildProjectRenderPassChain(
         if (!marker.IsValid()) {
             return false;
         }
-        const std::array writes{
+        std::array<GRAPH::RenderGraphResourceUse, 2u> writes{
             GRAPH::RenderGraphResourceUse{
                 marker,
                 GRAPH::RenderGraphAccess::WriteDependency
-            }
+            },
+            GRAPH::RenderGraphResourceUse{}
         };
+        size_t writeCount = 1u;
+        if (descriptor.target ==
+                GameProjectRenderPassTarget::ProjectDispatchOutput) {
+            const GRAPH::RenderGraphResourceId output =
+                graph.FindSemanticResource(
+                    GRAPH::RenderGraphSemantic::ProjectDispatchOutput,
+                    GRAPH::RenderGraphSemanticPhase::PostOpaque);
+            if (!output.IsValid()) {
+                return RejectExtension(
+                    graph,
+                    "Project Dispatch output is missing from this graph.");
+            }
+            writes[writeCount++] = {
+                output,
+                GRAPH::RenderGraphAccess::WriteUav,
+                SURFACE::SceneSurfaceProducer::ProjectDispatch
+            };
+        }
         if (!graph.AddPass(GRAPH::RenderGraphPassDesc{
                 descriptor.stableId,
                 std::span(reads.data(), readCount),
-                writes,
+                std::span(writes.data(), writeCount),
                 execute,
                 userData
             })) {
@@ -383,113 +318,34 @@ bool ProjectRenderPassesRequireSceneColorOpaque(
     return false;
 }
 
-bool ExecuteProjectRenderPass(
-    const GRAPH::RenderGraphPassContext& graphPass,
-    void* userData) noexcept {
-    auto& state = *static_cast<StageExecutionState*>(userData);
-    if (!ValidateRenderFrameGraphPassContext(graphPass, state)) {
-        return false;
-    }
-    const RenderFrameGraphStageContext& context = *state.context;
-    const RenderFrameProjectExtensionSink& extensions =
-        context.frame.projectRenderExtensions;
+bool ProjectRenderPassesRequireDispatchOutput(
+    const RenderFrameProjectExtensionSink& extensions,
+    GameProjectRenderViewPurpose purpose) noexcept {
     if (!extensions.CanExecutePasses()) {
         return false;
     }
-    GameProjectRenderPassDesc descriptor{};
-    if (!FindPassDescriptor(
-            extensions,
-            graphPass.passId,
-            descriptor)) {
+    uint32_t count = 0u;
+    if (!extensions.getPassCount(extensions.context, count) ||
+        count > kGameProjectRenderMaximumPassCount) {
         return false;
     }
-    const uint32_t purposeBit = GameProjectRenderViewPurposeBit(
-        MapProjectRenderPurpose(context.frame.purpose));
-    if ((descriptor.viewPurposeMask & purposeBit) == 0u) {
-        return false;
-    }
-
-    ProjectRenderFrameStorage storage{};
-    if (!BuildProjectRenderFrameView(
-            context,
-            std::span(
-                descriptor.resources,
-                descriptor.resourceUseCount),
-            false,
-            storage)) {
-        return false;
-    }
-    ProjectRenderCommandGate* gate = state.projectCommandGate;
-    if (gate == nullptr) {
-        return false;
-    }
-    uint64_t commandGeneration = 0u;
-    {
-        const std::lock_guard lock(gate->mutex);
-        if (gate->active) {
-            return false;
+    const uint32_t purposeBit = GameProjectRenderViewPurposeBit(purpose);
+    for (uint32_t index = 0u; index < count; ++index) {
+        GameProjectRenderPassDesc descriptor{};
+        if (extensions.describePass(
+                extensions.context,
+                index,
+                descriptor) &&
+            descriptor.IsValid() &&
+            (descriptor.viewPurposeMask & purposeBit) != 0u &&
+            descriptor.target ==
+                GameProjectRenderPassTarget::ProjectDispatchOutput &&
+            (descriptor.flags &
+                GameProjectRenderPassFlag::ComputeCommands) != 0u) {
+            return true;
         }
-        gate->context = &context;
-        gate->pass = descriptor;
-        gate->frame = graphPass.frame;
-        gate->ownerThread = std::this_thread::get_id();
-        gate->generation = AllocateProjectPassCommandGeneration();
-        commandGeneration = gate->generation;
-        gate->active = true;
-        gate->failed = false;
-        gate->failureReportedThisPass = false;
     }
-    GameProjectRenderPassContext pass{};
-    pass.frame = &storage.frame;
-    pass.encoder.context = gate;
-    pass.encoder.commandGeneration = commandGeneration;
-    pass.encoder.clearWorkingColor = &ClearWorkingColor;
-    pass.encoder.capabilityMask = static_cast<uint32_t>(
-        GameProjectRenderCommandCapability::ClearWorkingColor);
-    if ((descriptor.flags &
-            GameProjectRenderPassFlag::ShaderCommands) != 0u) {
-        pass.encoder.version = kGameProjectRenderCommandEncoderVersion;
-        pass.encoder.drawFullscreen =
-            &ExecuteProjectFullscreenShaderCommand;
-        pass.encoder.capabilityMask |= static_cast<uint32_t>(
-            GameProjectRenderCommandCapability::ShaderCommands);
-    }
-    bool callbackEntered = false;
-    const bool executed = extensions.executePass(
-        extensions.context,
-        descriptor.stableId,
-        pass,
-        callbackEntered);
-    bool commandFailed = false;
-    {
-        const std::lock_guard lock(gate->mutex);
-        commandFailed = gate->failed;
-        if (callbackEntered && (!executed || commandFailed)) {
-            if (!gate->failureReportedThisPass) {
-                ReportProjectRenderPassFailure(
-                    *gate,
-                    std::string("[ProjectRenderPass][ERROR] ") +
-                        descriptor.stableId +
-                        (executed
-                            ? ": a project render command was rejected"
-                            : ": project callback returned failure"));
-            }
-        }
-        else if (callbackEntered) {
-            ClearProjectRenderPassFailure(*gate, descriptor.stableId);
-        }
-        gate->context = nullptr;
-        gate->pass = {};
-        gate->frame = {};
-        gate->ownerThread = {};
-        gate->generation = 0u;
-        gate->active = false;
-        gate->failed = false;
-        gate->failureReportedThisPass = false;
-    }
-    // Only a callback that actually entered project code is isolated.
-    // Scheduler/engine admission failures remain fail-closed.
-    return callbackEntered;
+    return false;
 }
 
 } // namespace HIKARI::RENDER3D::PIPELINE::INTERNAL

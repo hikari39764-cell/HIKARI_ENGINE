@@ -51,6 +51,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
             slot.projectCommandGate.generation = 0u;
             slot.projectCommandGate.active = false;
             slot.projectCommandGate.failed = false;
+            slot.projectCommandGate.commandSubmitted = false;
             slot.projectCommandGate.failureReportedThisPass = false;
         }
 

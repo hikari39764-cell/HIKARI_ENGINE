@@ -380,6 +380,8 @@ namespace HIKARI::RENDER3D::GRAPH {
             return "TransparencyMask";
         case RenderGraphSemantic::InvalidDepthMotionMask:
             return "InvalidDepthMotionMask";
+        case RenderGraphSemantic::ProjectDispatchOutput:
+            return "ProjectDispatchOutput";
         case RenderGraphSemantic::Count: break;
         }
         return "Unknown";

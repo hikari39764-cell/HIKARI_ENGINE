@@ -271,6 +271,30 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
                 projectPassesComplete)) {
             return false;
         }
+        if (resources.projectDispatchOutput.IsValid()) {
+            const std::array resolveReads{
+                ResourceUse{
+                    projectPassesComplete,
+                    GRAPH::RenderGraphAccess::ReadDependency
+                },
+                ResourceUse{
+                    resources.projectDispatchOutput,
+                    GRAPH::RenderGraphAccess::CopySource
+                }
+            };
+            GRAPH::RenderGraphResourceId resolveComplete{};
+            if (!AddCompletionPass(
+                    graph,
+                    "ProjectDispatchOutput.Resolve",
+                    "ProjectDispatchOutput.Resolve.Complete",
+                    resolveReads,
+                    callbacks.projectDispatchResolve,
+                    userData,
+                    resolveComplete)) {
+                return false;
+            }
+            projectPassesComplete = resolveComplete;
+        }
         const std::array observerReads{
             ResourceUse{
                 projectPassesComplete,

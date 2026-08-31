@@ -234,6 +234,8 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Pipeline/HIKARI_RenderFrameGraphTailPlan.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Pipeline/HIKARI_RenderFrameGraphStage.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Pipeline/HIKARI_RenderFramePipeline.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Pipeline/HIKARI_ProjectComputeShaderRuntime.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Pipeline/HIKARI_ProjectDispatchOutput.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Pipeline/HIKARI_ProjectFullscreenShaderRuntime.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Pipeline/HIKARI_RenderFrameProjectObserver.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Pipeline/HIKARI_RenderFrameProjectPasses.cpp"

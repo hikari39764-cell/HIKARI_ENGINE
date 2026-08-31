@@ -31,6 +31,7 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
             kGameProjectRenderMaximumPassCount * 2u> reportedFailures{};
         bool active = false;
         bool failed = false;
+        bool commandSubmitted = false;
         bool failureReportedThisPass = false;
     };
 
@@ -77,6 +78,7 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
         GRAPH::RenderGraphExecuteFn sceneColorPostOpaqueCapture = nullptr;
         GRAPH::RenderGraphExecuteFn stylizedFeatureComposite = nullptr;
         GRAPH::RenderGraphExecuteFn projectRenderPass = nullptr;
+        GRAPH::RenderGraphExecuteFn projectDispatchResolve = nullptr;
         GRAPH::RenderGraphExecuteFn projectRenderObserver = nullptr;
         GRAPH::RenderGraphExecuteFn presentationResume = nullptr;
     };
@@ -91,6 +93,7 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
         GRAPH::RenderGraphResourceId visibilityDepthPyramid{};
         GRAPH::RenderGraphResourceId surfaceFeatureMask{};
         GRAPH::RenderGraphResourceId stylizedOutlineStyle{};
+        GRAPH::RenderGraphResourceId projectDispatchOutput{};
     };
 
     bool ValidateRenderFrameGraphPassContext(
@@ -158,6 +161,13 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
         void* context,
         uint64_t commandGeneration,
         const GameProjectFullscreenDrawDesc* draw) noexcept;
+    bool ExecuteProjectComputeShaderCommand(
+        void* context,
+        uint64_t commandGeneration,
+        const GameProjectComputeDispatchDesc* dispatch) noexcept;
+    bool ExecuteProjectDispatchResolve(
+        const GRAPH::RenderGraphPassContext& context,
+        void* userData) noexcept;
     void ReportProjectRenderPassFailure(
         ProjectRenderCommandGate& gate,
         std::string message) noexcept;
@@ -209,6 +219,9 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
         GRAPH::RenderGraph& graph,
         GRAPH::RenderGraphResourceId& outDependency) noexcept;
     bool ProjectRenderPassesRequireSceneColorOpaque(
+        const RenderFrameProjectExtensionSink& extensions,
+        GameProjectRenderViewPurpose purpose) noexcept;
+    bool ProjectRenderPassesRequireDispatchOutput(
         const RenderFrameProjectExtensionSink& extensions,
         GameProjectRenderViewPurpose purpose) noexcept;
 

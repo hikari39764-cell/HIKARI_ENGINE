@@ -222,8 +222,10 @@ bool SystemScheduler::ExecuteRenderPass(
         GameProjectRenderCommandCapability::ClearWorkingColor);
     constexpr uint32_t kShaderCapability = static_cast<uint32_t>(
         GameProjectRenderCommandCapability::ShaderCommands);
+    constexpr uint32_t kComputeCapability = static_cast<uint32_t>(
+        GameProjectRenderCommandCapability::ComputeCommands);
     constexpr uint32_t kKnownCapabilities =
-        kClearCapability | kShaderCapability;
+        kClearCapability | kShaderCapability | kComputeCapability;
     if (!IsOwnerThread()) {
         return false;
     }
@@ -247,14 +249,13 @@ bool SystemScheduler::ExecuteRenderPass(
             kGameProjectRenderCommandEncoderV1Size ||
         (context.encoder.version != kGameProjectRenderPassVersion &&
          context.encoder.version !=
-            kGameProjectRenderCommandEncoderVersion) ||
+            kGameProjectRenderCommandEncoderVersion &&
+         context.encoder.version !=
+            kGameProjectRenderComputeCommandEncoderVersion) ||
         context.encoder.context == nullptr ||
         context.encoder.commandGeneration == 0u ||
-        context.encoder.clearWorkingColor == nullptr ||
         (context.encoder.capabilityMask & ~kKnownCapabilities) != 0u ||
-        (context.encoder.capabilityMask & kClearCapability) == 0u ||
         context.encoder.reservedV1 != 0u ||
-        HasNonZero(context.encoder.reserved) ||
         HasNonZero(context.reserved)) {
         ++renderPassFailureCount_;
         return false;
@@ -275,14 +276,35 @@ bool SystemScheduler::ExecuteRenderPass(
         const bool expectsShaderCommands =
             (descriptor.flags &
                 GameProjectRenderPassFlag::ShaderCommands) != 0u;
-        const bool encoderMatches = expectsShaderCommands
-            ? context.encoder.version ==
-                    kGameProjectRenderCommandEncoderVersion &&
-                context.encoder.drawFullscreen != nullptr &&
-                (context.encoder.capabilityMask & kShaderCapability) != 0u
-            : context.encoder.version == kGameProjectRenderPassVersion &&
+        const bool expectsComputeCommands =
+            (descriptor.flags &
+                GameProjectRenderPassFlag::ComputeCommands) != 0u;
+        bool encoderMatches = false;
+        if (expectsComputeCommands) {
+            encoderMatches = context.encoder.version ==
+                    kGameProjectRenderComputeCommandEncoderVersion &&
+                context.encoder.clearWorkingColor == nullptr &&
                 context.encoder.drawFullscreen == nullptr &&
-                (context.encoder.capabilityMask & kShaderCapability) == 0u;
+                context.encoder.dispatchCompute != nullptr &&
+                context.encoder.capabilityMask == kComputeCapability;
+        }
+        else if (expectsShaderCommands) {
+            encoderMatches = context.encoder.version ==
+                    kGameProjectRenderCommandEncoderVersion &&
+                context.encoder.clearWorkingColor != nullptr &&
+                context.encoder.drawFullscreen != nullptr &&
+                context.encoder.dispatchCompute == nullptr &&
+                context.encoder.capabilityMask ==
+                    (kClearCapability | kShaderCapability);
+        }
+        else {
+            encoderMatches = context.encoder.version ==
+                    kGameProjectRenderPassVersion &&
+                context.encoder.clearWorkingColor != nullptr &&
+                context.encoder.drawFullscreen == nullptr &&
+                context.encoder.dispatchCompute == nullptr &&
+                context.encoder.capabilityMask == kClearCapability;
+        }
         if (!encoderMatches || !IsValidRenderPassDesc(descriptor)) {
             ++renderPassFailureCount_;
             return false;

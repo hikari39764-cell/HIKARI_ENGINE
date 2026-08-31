@@ -157,6 +157,29 @@ namespace HIKARI::POST {
         return currentTarget_->ClearColor(r, g, b, a);
     }
 
+    bool SceneCaptureStage::CopyToCurrentColor(
+        ID3D12Resource* source,
+        DXGI_FORMAT format,
+        uint32_t width,
+        uint32_t height) {
+        if (!HasCurrentTarget() || context_.cmdList == nullptr ||
+            source == nullptr || source == currentTarget_->GetResource() ||
+            format != currentTarget_->GetFormat() ||
+            width != static_cast<uint32_t>(currentTarget_->GetWidth()) ||
+            height != static_cast<uint32_t>(currentTarget_->GetHeight())) {
+            return false;
+        }
+        const D3D12_RESOURCE_STATES previous =
+            currentTarget_->GetColorState();
+        currentTarget_->TransitionColor(D3D12_RESOURCE_STATE_COPY_DEST);
+        context_.cmdList->CopyResource(
+            currentTarget_->GetResource(),
+            source);
+        currentTarget_->TransitionColor(previous);
+        currentTarget_->Rebind();
+        return true;
+    }
+
     RENDER3D::RenderTextureView SceneCaptureStage::GetCurrentDepthView() const {
         if (!HasCurrentTarget() || !currentTarget_->HasDepth()) return {};
         const RenderTarget2D& target = *currentTarget_;

@@ -29,12 +29,19 @@ namespace HIKARI::RENDER3D::PIPELINE {
             float green,
             float blue,
             float alpha) noexcept;
+        using CopyColorFromCallback = bool (*)(
+            void* userData,
+            ID3D12Resource* source,
+            DXGI_FORMAT format,
+            uint32_t width,
+            uint32_t height) noexcept;
 
         void* userData = nullptr;
         RebindCallback rebind = nullptr;
         BeginDepthReadCallback beginDepthRead = nullptr;
         EndDepthReadCallback endDepthRead = nullptr;
         ClearColorCallback clearColor = nullptr;
+        CopyColorFromCallback copyColorFrom = nullptr;
 
         bool Rebind() const {
             return rebind != nullptr && rebind(userData);
@@ -57,6 +64,15 @@ namespace HIKARI::RENDER3D::PIPELINE {
             float alpha) const noexcept {
             return clearColor != nullptr && clearColor(
                 userData, red, green, blue, alpha);
+        }
+
+        bool CopyColorFrom(
+            ID3D12Resource* source,
+            DXGI_FORMAT format,
+            uint32_t width,
+            uint32_t height) const noexcept {
+            return copyColorFrom != nullptr && copyColorFrom(
+                userData, source, format, width, height);
         }
     };
 

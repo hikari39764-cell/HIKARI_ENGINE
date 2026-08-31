@@ -34,7 +34,8 @@ namespace HIKARI {
         ReactiveMask = 15u,
         TransparencyMask = 16u,
         InvalidDepthMotionMask = 17u,
-        Count = 18u,
+        ProjectDispatchOutput = 18u,
+        Count = 19u,
     };
 
     enum class GameProjectRenderSurfacePhase : uint8_t {

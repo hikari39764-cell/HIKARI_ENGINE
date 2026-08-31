@@ -45,6 +45,11 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
              ProjectRenderPassesRequireSceneColorOpaque(
                 *options.projectExtensions,
                 options.projectPurpose));
+        const bool includeProjectDispatchOutput =
+            options.projectExtensions != nullptr &&
+            ProjectRenderPassesRequireDispatchOutput(
+                *options.projectExtensions,
+                options.projectPurpose);
         const auto sceneDepth = AddRenderFrameGraphSurfaceResource(
             graph,
             "SceneDepth",
@@ -125,6 +130,17 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
             GRAPH::RenderGraphSemanticPhase::PostOpaque,
             SURFACE::SceneSurfaceProducer::SceneSurfaceAux,
             GRAPH::RenderGraphResourceRequirement::Optional);
+        GRAPH::RenderGraphResourceId projectDispatchOutput{};
+        if (includeProjectDispatchOutput) {
+            projectDispatchOutput = AddRenderFrameGraphSurfaceResource(
+                graph,
+                "ProjectDispatchOutput",
+                GRAPH::RenderGraphSemantic::ProjectDispatchOutput,
+                false,
+                GRAPH::RenderGraphSemanticPhase::PostOpaque,
+                SURFACE::SceneSurfaceProducer::ProjectDispatch,
+                GRAPH::RenderGraphResourceRequirement::Optional);
+        }
         const auto forwardComplete = AddRenderFrameGraphCompletionMarker(
             graph, "ForwardOpaque.Complete");
         const auto postOpaqueComplete = AddRenderFrameGraphCompletionMarker(
@@ -159,6 +175,8 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
             !visibilityDepthPyramid.IsValid() ||
             !surfaceFeatureMask.IsValid() ||
             !stylizedOutlineStyle.IsValid() ||
+            (includeProjectDispatchOutput &&
+                !projectDispatchOutput.IsValid()) ||
             !forwardComplete.IsValid() ||
             !postOpaqueComplete.IsValid() ||
             !cloudsComplete.IsValid() ||
@@ -430,7 +448,8 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
                 currentDepthPyramid,
                 visibilityDepthPyramid,
                 surfaceFeatureMask,
-                stylizedOutlineStyle
+                stylizedOutlineStyle,
+                projectDispatchOutput
             },
             graph);
     }

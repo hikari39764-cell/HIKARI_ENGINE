@@ -111,6 +111,20 @@ namespace HIKARI::RENDER3D::PIPELINE {
                 return false;
             }
         }
+        bool CopyPostColorFrom(
+            void*,
+            ID3D12Resource* source,
+            DXGI_FORMAT format,
+            uint32_t width,
+            uint32_t height) noexcept {
+            try {
+                return POST::PostSystem::CopyToCurrentRenderTargetColor(
+                    source, format, width, height);
+            }
+            catch (...) {
+                return false;
+            }
+        }
 
         RenderFrameContext BuildRenderFrameContext(
             const GFX::Context& graphics,
@@ -150,6 +164,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
             context.targetAccess.beginDepthRead = BeginPostDepthRead;
             context.targetAccess.endDepthRead = EndPostDepthRead;
             context.targetAccess.clearColor = ClearPostColor;
+            context.targetAccess.copyColorFrom = CopyPostColorFrom;
 
             int renderWidth = 0;
             int renderHeight = 0;

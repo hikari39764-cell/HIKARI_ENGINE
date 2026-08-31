@@ -118,6 +118,11 @@ namespace HIKARI::POST {
             float green,
             float blue,
             float alpha);
+        static bool CopyToCurrentRenderTargetColor(
+            ID3D12Resource* source,
+            DXGI_FORMAT format,
+            uint32_t width,
+            uint32_t height);
         // Restores the full presentation back buffer for Editor host UI after
         // a tool-owned offscreen render. Unlike RebindCurrentRenderTarget,
         // this does not require an active Scene capture layer.

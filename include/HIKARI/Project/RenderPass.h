@@ -5,6 +5,7 @@
 #include <type_traits>
 
 #include "HIKARI/Project/RenderFrame.h"
+#include "HIKARI/Project/RenderDispatch.h"
 #include "HIKARI/Project/RenderShader.h"
 
 namespace HIKARI {
@@ -19,6 +20,8 @@ namespace HIKARI {
     inline constexpr uint32_t kGameProjectRenderCommandEncoderV1Size = 56u;
     inline constexpr uint32_t kGameProjectRenderPassContextV1Size = 88u;
     inline constexpr uint32_t kGameProjectRenderCommandEncoderVersion = 2u;
+    inline constexpr uint32_t
+        kGameProjectRenderComputeCommandEncoderVersion = 3u;
 
     enum class GameProjectRenderPassAnchor : uint32_t {
         PostOpaqueBeforeObserver = 0u,
@@ -28,7 +31,8 @@ namespace HIKARI {
     enum class GameProjectRenderPassTarget : uint32_t {
         None = 0u,
         WorkingSceneColor = 1u,
-        Count = 2u,
+        ProjectDispatchOutput = 2u,
+        Count = 3u,
     };
 
     enum class GameProjectRenderPassResourceRequirement : uint8_t {
@@ -41,11 +45,14 @@ namespace HIKARI {
         None = 0u,
         ClearWorkingColor = 1u << 0u,
         ShaderCommands = 1u << 1u,
+        ComputeCommands = 1u << 2u,
     };
 
     namespace GameProjectRenderPassFlag {
         inline constexpr uint32_t ShaderCommands = 1u << 0u;
-        inline constexpr uint32_t All = ShaderCommands;
+        inline constexpr uint32_t ComputeCommands = 1u << 1u;
+        inline constexpr uint32_t All =
+            ShaderCommands | ComputeCommands;
     }
 
     constexpr uint32_t GameProjectRenderViewPurposeBit(
@@ -148,18 +155,27 @@ namespace HIKARI {
                     return false;
                 }
             }
+            const bool shaderCommands =
+                (flags & GameProjectRenderPassFlag::ShaderCommands) != 0u;
+            const bool computeCommands =
+                (flags & GameProjectRenderPassFlag::ComputeCommands) != 0u;
             if (structSize != kGameProjectRenderPassDescV1Size ||
                 version != kGameProjectRenderPassVersion ||
                 anchor !=
                     GameProjectRenderPassAnchor::PostOpaqueBeforeObserver ||
-                target !=
-                    GameProjectRenderPassTarget::WorkingSceneColor ||
+                target <= GameProjectRenderPassTarget::None ||
+                target >= GameProjectRenderPassTarget::Count ||
                 viewPurposeMask == 0u ||
                 (viewPurposeMask &
                     ~kGameProjectRenderPassV1PurposeMask) != 0u ||
                 resourceUseCount >
                     kGameProjectRenderPassMaximumResourceUseCount ||
-                (flags & ~GameProjectRenderPassFlag::All) != 0u) {
+                (flags & ~GameProjectRenderPassFlag::All) != 0u ||
+                (shaderCommands && computeCommands) ||
+                (computeCommands && target !=
+                    GameProjectRenderPassTarget::ProjectDispatchOutput) ||
+                (!computeCommands && target !=
+                    GameProjectRenderPassTarget::WorkingSceneColor)) {
                 return false;
             }
             for (const uint32_t value : reserved) {
@@ -219,8 +235,19 @@ namespace HIKARI {
                     }
                 }
             }
-            if ((flags & GameProjectRenderPassFlag::ShaderCommands) != 0u &&
-                !hasSampledInput) {
+            if ((shaderCommands || computeCommands) && !hasSampledInput) {
+                return false;
+            }
+            if (computeCommands &&
+                (resourceUseCount != 1u ||
+                 resources[0].semantic !=
+                    GameProjectRenderSurfaceSemantic::SceneColorOpaque ||
+                 resources[0].phase !=
+                    GameProjectRenderSurfacePhase::Opaque ||
+                 resources[0].requirement !=
+                    GameProjectRenderPassResourceRequirement::Required ||
+                 resources[0].access !=
+                    GameProjectRenderSurfaceAccess::Sampled)) {
                 return false;
             }
             return true;
@@ -246,7 +273,7 @@ namespace HIKARI {
         uint32_t capabilityMask = 0u;
         uint32_t reservedV1 = 0u;
         DrawGameProjectFullscreenShaderFn drawFullscreen = nullptr;
-        uint32_t reserved[2] = { 0u, 0u };
+        DispatchGameProjectComputeShaderFn dispatchCompute = nullptr;
 
         bool ClearWorkingColor(
             float red,
@@ -257,7 +284,9 @@ namespace HIKARI {
                 GameProjectRenderCommandCapability::ClearWorkingColor);
             return structSize == kGameProjectRenderCommandEncoderV1Size &&
                 (version == kGameProjectRenderPassVersion ||
-                 version == kGameProjectRenderCommandEncoderVersion) &&
+                 version == kGameProjectRenderCommandEncoderVersion ||
+                 version ==
+                    kGameProjectRenderComputeCommandEncoderVersion) &&
                 context != nullptr && commandGeneration != 0u &&
                 clearWorkingColor != nullptr &&
                 (capabilityMask & capability) != 0u &&
@@ -278,11 +307,28 @@ namespace HIKARI {
                 version != kGameProjectRenderCommandEncoderVersion ||
                 context == nullptr || commandGeneration == 0u ||
                 drawFullscreen == nullptr || reservedV1 != 0u ||
-                reserved[0] != 0u || reserved[1] != 0u ||
                 (capabilityMask & capability) == 0u) {
                 return false;
             }
             return drawFullscreen(context, commandGeneration, &draw);
+        }
+
+        bool DispatchCompute(
+            const GameProjectComputeDispatchDesc& dispatch) const noexcept {
+            const uint32_t capability = static_cast<uint32_t>(
+                GameProjectRenderCommandCapability::ComputeCommands);
+            if (structSize != kGameProjectRenderCommandEncoderV1Size ||
+                version !=
+                    kGameProjectRenderComputeCommandEncoderVersion ||
+                context == nullptr || commandGeneration == 0u ||
+                dispatchCompute == nullptr || reservedV1 != 0u ||
+                (capabilityMask & capability) == 0u) {
+                return false;
+            }
+            return dispatchCompute(
+                context,
+                commandGeneration,
+                &dispatch);
         }
     };
 
@@ -321,6 +367,8 @@ namespace HIKARI {
         GameProjectRenderCommandEncoder, commandGeneration) == 16u);
     static_assert(offsetof(
         GameProjectRenderCommandEncoder, drawFullscreen) == 40u);
+    static_assert(offsetof(
+        GameProjectRenderCommandEncoder, dispatchCompute) == 48u);
     static_assert(std::is_standard_layout_v<GameProjectRenderPassContext>);
     static_assert(std::is_trivially_copyable_v<
         GameProjectRenderPassContext>);

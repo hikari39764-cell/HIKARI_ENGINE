@@ -28,6 +28,7 @@ namespace HIKARI::RENDER3D::GRAPH {
         ReactiveMask,
         TransparencyMask,
         InvalidDepthMotionMask,
+        ProjectDispatchOutput,
         Count,
     };
 
@@ -93,6 +94,7 @@ namespace HIKARI::RENDER3D::SURFACE {
         FeatureComposite,
         EditorInteractive,
         PostFinal,
+        ProjectDispatch,
         Count,
     };
 
@@ -199,6 +201,7 @@ namespace HIKARI::RENDER3D::SURFACE {
             case Semantic::SurfaceFeatureMask:
             case Semantic::CurrentDepthPyramid:
             case Semantic::StylizedOutlineStyle:
+            case Semantic::ProjectDispatchOutput:
                 return bit(Phase::PostOpaque);
             case Semantic::MotionVectors:
             case Semantic::MotionMetadata:
@@ -234,6 +237,8 @@ namespace HIKARI::RENDER3D::SURFACE {
                     SceneSurfaceProducerBit(Producer::EditorInteractive);
             case Semantic::SceneColorFinal:
                 return SceneSurfaceProducerBit(Producer::PostFinal);
+            case Semantic::ProjectDispatchOutput:
+                return SceneSurfaceProducerBit(Producer::ProjectDispatch);
             case Semantic::PackedSurface:
             case Semantic::SurfaceFeatureMask:
             case Semantic::StylizedOutlineStyle:
@@ -372,6 +377,11 @@ namespace HIKARI::RENDER3D::SURFACE {
                     Kind::Texture2D, Format::R8Unorm,
                     Lifetime::FrameLocal, Fallback::NoHistory,
                     SurfaceAccessMask(Access::Sampled, Access::WriteColor)),
+                SurfaceDesc(Semantic::ProjectDispatchOutput,
+                    Kind::Texture2D, Format::R16G16B16A16Float,
+                    Lifetime::FrameLocal, Fallback::SkipProvider,
+                    SurfaceAccessMask(Access::Sampled, Access::WriteUav,
+                        Access::CopySource)),
             };
     }
 

@@ -40,6 +40,8 @@ namespace {
         case Source::TransparencyMask: return Target::TransparencyMask;
         case Source::InvalidDepthMotionMask:
             return Target::InvalidDepthMotionMask;
+        case Source::ProjectDispatchOutput:
+            return Target::ProjectDispatchOutput;
         case Source::None:
         case Source::Count:
             return Target::None;
@@ -284,6 +286,10 @@ bool BuildProjectRenderFrameView(
         for (uint16_t semanticValue = 1u;
             semanticValue < static_cast<uint16_t>(Semantic::Count);
             ++semanticValue) {
+            if (static_cast<Semantic>(semanticValue) ==
+                Semantic::ProjectDispatchOutput) {
+                continue;
+            }
             for (uint8_t phaseValue = 1u;
                 phaseValue < static_cast<uint8_t>(Phase::Count);
                 ++phaseValue) {

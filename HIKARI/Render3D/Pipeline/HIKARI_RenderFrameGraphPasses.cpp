@@ -7,6 +7,7 @@
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Render3D/Lighting/HIKARI_StylizedCloudStage.h"
 #include "Render3D/Pipeline/HIKARI_RenderFrameContext.h"
+#include "Render3D/Pipeline/HIKARI_ProjectComputeShaderRuntime.h"
 #include "Render3D/Pipeline/HIKARI_ProjectFullscreenShaderRuntime.h"
 #include "Render3D/Reflection/HIKARI_ScreenSpaceReflectionRenderer.h"
 #include "Render3D/ScreenSpace/HIKARI_ScreenSpacePasses.h"
@@ -419,6 +420,7 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
             &ExecuteSceneColorPostOpaqueCapture,
             &ExecuteStylizedFeatureComposite,
             &ExecuteProjectRenderPass,
+            &ExecuteProjectDispatchResolve,
             &ExecuteProjectRenderObserver,
             &ExecutePresentationResume
         };
@@ -426,6 +428,7 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
     }
 
     void ReleaseRenderFrameGraphPassResources() noexcept {
+        ReleaseProjectComputeShaderRuntime();
         ReleaseProjectFullscreenShaderRuntime();
         try {
             gSsrRenderer.Release();

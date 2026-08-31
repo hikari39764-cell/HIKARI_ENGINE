@@ -480,6 +480,14 @@ namespace HIKARI::POST {
         return initialized_ && captureStage_.ClearCurrentColor(
             red, green, blue, alpha);
     }
+    bool PostSystem::CopyToCurrentRenderTargetColor(
+        ID3D12Resource* source,
+        DXGI_FORMAT format,
+        uint32_t width,
+        uint32_t height) {
+        return initialized_ && captureStage_.CopyToCurrentColor(
+            source, format, width, height);
+    }
     bool PostSystem::RebindPresentationBackBuffer() {
         if (!initialized_ || context_.cmdList == nullptr ||
             context_.rtv.ptr == 0u || context_.backBufferWidth <= 0 ||
