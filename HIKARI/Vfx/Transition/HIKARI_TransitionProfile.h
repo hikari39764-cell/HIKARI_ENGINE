@@ -15,7 +15,8 @@ class TransitionProfile {
 public:
     std::string id;
     std::string displayName;
-    std::string shaderId;
+    std::string programId;
+    std::string entryId = "Main";
 
     float outDuration = 0.25f;
     float inDuration = 0.25f;

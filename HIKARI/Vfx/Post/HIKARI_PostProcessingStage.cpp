@@ -134,22 +134,23 @@ namespace HIKARI::POST {
         if (rebuild) {
             PostProfile profile{};
             if (!PostProfile::LoadById(profileId, profile)) {
-                ClearGlobalProfile();
                 return false;
             }
-            globalChain_.Clear();
-            activeGlobalEffects_.clear();
-            activeGlobalEffects_.reserve(profile.passes.size());
+            std::vector<std::unique_ptr<PostEffect>> effects{};
+            effects.reserve(profile.passes.size());
             for (const auto& pass : profile.passes) {
                 auto effect = std::make_unique<PostEffect>();
-                std::wstring path = L"HIKARI/Shaders/";
-                path += std::wstring(pass.shaderId.begin(), pass.shaderId.end());
-                path += L".hlsl";
-                if (!effect->LoadPixelShader(path.c_str())) {
-                    continue;
+                if (!effect->LoadBuiltinPixelShader(
+                        pass.programId,
+                        pass.entryId)) {
+                    return false;
                 }
+                effects.push_back(std::move(effect));
+            }
+            globalChain_.Clear();
+            activeGlobalEffects_ = std::move(effects);
+            for (const auto& effect : activeGlobalEffects_) {
                 globalChain_.Add(effect.get());
-                activeGlobalEffects_.push_back(std::move(effect));
             }
             activeGlobalProfile_ = std::move(profile);
             activeGlobalProfileId_ = profileId;
@@ -310,26 +311,31 @@ namespace HIKARI::POST {
             : state.profileId;
         if (activeTransitionProfileId_ != profileId || !transitionEffect_) {
             TransitionProfile profile{};
-            if (!TransitionProfile::LoadById(profileId, profile)) {
+            bool profileReady =
+                TransitionProfile::LoadById(profileId, profile);
+            if (!profileReady) {
                 profileId = "noise_wipe";
-                if (!TransitionProfile::LoadById(profileId, profile)) {
-                    ClearTransitionState();
-                    return;
-                }
+                profileReady =
+                    TransitionProfile::LoadById(profileId, profile);
             }
-            auto effect = std::make_unique<PostEffect>();
-            std::wstring path = L"HIKARI/Shaders/";
-            path += std::wstring(profile.shaderId.begin(), profile.shaderId.end());
-            path += L".hlsl";
-            if (!effect->LoadPixelShader(path.c_str())) {
-                ClearTransitionState();
+            std::unique_ptr<PostEffect> effect{};
+            if (profileReady) {
+                effect = std::make_unique<PostEffect>();
+                profileReady = effect->LoadBuiltinPixelShader(
+                    profile.programId,
+                    profile.entryId);
+            }
+            if (profileReady) {
+                activeTransitionProfile_ = std::move(profile);
+                activeTransitionProfileId_ = profileId;
+                transitionEffect_ = std::move(effect);
+                transitionChain_.Clear();
+                transitionChain_.Add(transitionEffect_.get());
+            }
+            else if (!transitionEffect_) {
+                transitionActive_ = false;
                 return;
             }
-            activeTransitionProfile_ = std::move(profile);
-            activeTransitionProfileId_ = profileId;
-            transitionEffect_ = std::move(effect);
-            transitionChain_.Clear();
-            transitionChain_.Add(transitionEffect_.get());
         }
         transitionActive_ = true;
         transitionParams_ = commonParams_;

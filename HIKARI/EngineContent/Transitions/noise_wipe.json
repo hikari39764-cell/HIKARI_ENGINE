@@ -1,7 +1,8 @@
 {
   "id": "noise_wipe",
   "displayName": "Noise Wipe",
-  "shaderId": "Post_TransitionLinearWipePS",
+  "programId": "HIKARI.EngineShader.Post_TransitionLinearWipePS",
+  "entryId": "Main",
   "outDuration": 0.25,
   "inDuration": 0.25,
   "waitForCameraReady": false,

@@ -1,26 +1,7 @@
+#include "Include/Post/HIKARI_PostEffectInterface.hlsli"
+
 Texture2D gTex : register(t0);
 SamplerState gSamp : register(s0);
-
-cbuffer CommonParams : register(b0)
-{
-    float time;
-    float deltaTime;
-    float combo;
-    float intensity;
-
-    float resolutionX;
-    float resolutionY;
-    float pad0;
-    float pad1;
-
-    float4 user[16];
-};
-
-struct PS_IN
-{
-    float4 pos : SV_POSITION;
-    float2 uv : TEXCOORD0;
-};
 
 float2 GradientHash(float2 cell)
 {
@@ -71,7 +52,8 @@ float BurnFbm(float2 value)
 
 float BurnField(float2 screenUv, float scale)
 {
-    const float aspect = max(resolutionX, 1.0) / max(resolutionY, 1.0);
+    const float aspect = max(gResolutionX, 1.0) /
+        max(gResolutionY, 1.0);
     float2 coordinate = screenUv - 0.5;
     coordinate.x *= aspect;
     coordinate *= scale;
@@ -86,22 +68,22 @@ float BurnField(float2 screenUv, float scale)
     return saturate(organic * 0.91 + directional);
 }
 
-float4 main(PS_IN input) : SV_TARGET
+float4 main(HikariPostEffectInput input) : SV_TARGET
 {
-    const float progress = saturate(user[14].x);
-    const bool transitionIn = user[14].y > 0.5;
+    const float progress = saturate(gUser[14].x);
+    const bool transitionIn = gUser[14].y > 0.5;
     const float cover = transitionIn ? 1.0 - progress : progress;
-    const float scale = max(0.75, user[0].x);
-    const float softness = max(0.004, user[0].y);
-    const float monochrome = saturate(user[0].z);
-    const float chromaticPixels = max(0.0, user[0].w);
+    const float scale = max(0.75, gUser[0].x);
+    const float softness = max(0.004, gUser[0].y);
+    const float monochrome = saturate(gUser[0].z);
+    const float chromaticPixels = max(0.0, gUser[0].w);
 
     const float2 resolution = max(
-        float2(resolutionX, resolutionY), 1.0.xx);
+        float2(gResolutionX, gResolutionY), 1.0.xx);
     // SV_POSITION remains global for the complete render target. Building the
     // field from it prevents local quad UVs or sub-pass state from imprinting
     // rectangular boundaries into the dissolve.
-    const float2 screenUv = saturate(input.pos.xy / resolution);
+    const float2 screenUv = saturate(input.position.xy / resolution);
     const float2 texel = 1.0 / resolution;
     const float gradeEnter = smoothstep(0.015, 0.10, cover);
     const float gradeExit = 1.0 - smoothstep(0.50, 0.78, cover);
@@ -140,7 +122,8 @@ float4 main(PS_IN input) : SV_TARGET
         edgeWidth * 3.5,
         edgeDistance)) * edgeActive;
     const float emberVariation = 0.82 +
-        GradientNoise(screenUv * float2(37.0, 23.0) + time * 0.35) * 0.28;
+        GradientNoise(screenUv * float2(37.0, 23.0) +
+            gTime * 0.35) * 0.28;
     const float3 ember =
         float3(2.20, 0.34, 0.025) * hotCore * emberVariation +
         float3(1.15, 0.075, 0.008) * outerGlow * 0.34;

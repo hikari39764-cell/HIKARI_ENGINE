@@ -1,43 +1,24 @@
+#include "Include/Post/HIKARI_PostEffectInterface.hlsli"
+
 Texture2D gTex : register(t0);
 SamplerState gSamp : register(s0);
 
 #include "Include/Post/HIKARI_PostHash.hlsli"
 #include "Include/Post/HIKARI_PostColorGrade.hlsli"
 
-cbuffer CommonParams : register(b0)
+float4 main(HikariPostEffectInput input) : SV_TARGET
 {
-    float time;
-    float deltaTime;
-    float combo;
-    float intensity;
+    float2 uv = input.uv;
 
-    float resolutionX;
-    float resolutionY;
-    float pad0;
-    float pad1;
+    float vignette     = gUser[0].x;
+    float chroma       = gUser[0].y;
+    float saturation   = gUser[0].z;
+    float contrast     = gUser[0].w;
 
-    float4 user[16];
-};
-
-struct PS_IN
-{
-    float4 pos : SV_POSITION;
-    float2 uv  : TEXCOORD0;
-};
-
-float4 main(PS_IN i) : SV_TARGET
-{
-    float2 uv = i.uv;
-
-    float vignette     = user[0].x;
-    float chroma       = user[0].y;
-    float saturation   = user[0].z;
-    float contrast     = user[0].w;
-
-    float gain         = user[1].x;
-    float grainAmount  = user[1].y;
-    float scanlineAmp  = user[1].z;
-    float scanlineFreq = user[1].w;
+    float gain         = gUser[1].x;
+    float grainAmount  = gUser[1].y;
+    float scanlineAmp  = gUser[1].z;
+    float scanlineFreq = gUser[1].w;
 
     float2 ca = float2(chroma, 0.0);
     float r = gTex.Sample(gSamp, uv + ca).r;
@@ -54,11 +35,12 @@ float4 main(PS_IN i) : SV_TARGET
     float vig = 1.0 - dot(center, center) * vignette;
     color *= saturate(vig);
 
-    float scanline = 1.0 + sin(uv.y * scanlineFreq + time * 1.5) * scanlineAmp;
+    float scanline = 1.0 +
+        sin(uv.y * scanlineFreq + gTime * 1.5) * scanlineAmp;
     color *= scanline;
 
     float grain = HikariHash12(
-        uv * float2(resolutionX, resolutionY) + time * 31.7) - 0.5;
+        uv * float2(gResolutionX, gResolutionY) + gTime * 31.7) - 0.5;
     color += grain * grainAmount;
 
     return float4(saturate(color), 1.0);

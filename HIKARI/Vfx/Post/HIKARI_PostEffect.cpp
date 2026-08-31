@@ -3,14 +3,10 @@
 #include "Assets/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
 #include "Assets/Shader/HIKARI_PostEffectShaderContract.h"
 #include "Core/HIKARI_TimeService.h"
-#include "Gfx/HIKARI_D3DBlobCompat.h"
-#include "Gfx/HIKARI_ShaderCompiler.h"
-#include <Windows.h>
 #include <algorithm>
 #include <span>
 #include <string>
 #include <utility>
-#include <d3dcommon.h>
 #include <cstring>
 #include <d3dx12.h>
 #include <limits>
@@ -18,8 +14,6 @@
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
-
-using Microsoft::WRL::ComPtr;
 
 namespace HIKARI {
     namespace POST {
@@ -116,22 +110,6 @@ namespace HIKARI {
             constantDrawCursors_.fill(0u);
             return true;
         }
-        bool PostEffect::LoadPixelShader(const wchar_t* path)
-        {
-            ComPtr<ID3DBlob> blob{};
-            if (!GFX::CompileShaderFileSm6(
-                    path,
-                    "main",
-                    GFX::ShaderStage::Pixel,
-                    blob.GetAddressOf())) {
-                DEBUGLOG::PushRenderError("[PostEffect][ERROR] SM6 pixel shader compile failed.");
-                return false;
-            }
-            psBlob_ = std::move(blob);
-            psLease_ = {};
-            return true;
-        }
-
         bool PostEffect::LoadBuiltinPixelShader(
             std::string_view programId,
             std::string_view entryId)
@@ -169,7 +147,6 @@ namespace HIKARI {
                     (diagnostic.empty() ? resolved.diagnostic : diagnostic));
                 return false;
             }
-            psBlob_.Reset();
             psLease_ = std::move(resolved.lease);
             return true;
         }
@@ -194,7 +171,7 @@ namespace HIKARI {
         bool PostEffect::BindAndDraw(QuadDrawer& drawer)
         {
             const std::span<const uint8_t> cooked = psLease_.GetDxil();
-            if (!psBlob_ && cooked.empty()) { return false; }
+            if (cooked.empty()) { return false; }
             if (!CreateConstantBuffer()) {
                 return false;
             }
@@ -229,10 +206,7 @@ namespace HIKARI {
                 allocationIndex * constantStride_;
             memcpy(mappedPtr_ + byteOffset, &params_, sizeof(params_));
 
-            const bool shaderReady = !cooked.empty()
-                ? drawer.SetPixelShader(cooked)
-                : drawer.SetPixelShader(psBlob_.Get());
-            if (!shaderReady) {
+            if (!drawer.SetPixelShader(cooked)) {
                 return false;
             }
             drawer.SetConstantBuffer(

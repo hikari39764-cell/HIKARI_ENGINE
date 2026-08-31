@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 
 namespace HIKARI::VFX {
         
@@ -51,12 +52,54 @@ struct ParamDesc {
 
 struct PassDescriptor {
     std::string passName;
-    std::string shaderId;
+    std::string programId;
+    std::string entryId = "Main";
     CompositeMode composite = CompositeMode::Alpha;
     bool depthTest = false;
     bool depthWrite = false;
     bool doubleSided = false;
 };
+
+inline bool TryNormalizeBuiltinShaderProgramId(
+    std::string_view programId,
+    std::string_view legacyShaderId,
+    std::string& outProgramId) {
+    if (!programId.empty()) {
+        outProgramId = programId;
+        return true;
+    }
+    if (!legacyShaderId.starts_with("Post_")) {
+        return false;
+    }
+    for (const char value : legacyShaderId) {
+        const bool alphaNumeric =
+            (value >= 'a' && value <= 'z') ||
+            (value >= 'A' && value <= 'Z') ||
+            (value >= '0' && value <= '9');
+        if (!alphaNumeric && value != '_') {
+            return false;
+        }
+    }
+    outProgramId = "HIKARI.EngineShader.";
+    outProgramId.append(legacyShaderId);
+    return true;
+}
+
+inline bool IsStableFxProfileId(std::string_view value) {
+    if (value.empty() || value.size() > 64u) {
+        return false;
+    }
+    for (const char character : value) {
+        const bool alphaNumeric =
+            (character >= 'a' && character <= 'z') ||
+            (character >= 'A' && character <= 'Z') ||
+            (character >= '0' && character <= '9');
+        if (!alphaNumeric && character != '_' && character != '-') {
+            return false;
+        }
+    }
+    return true;
+}
 
 struct VariantKey {
     std::string shaderId;

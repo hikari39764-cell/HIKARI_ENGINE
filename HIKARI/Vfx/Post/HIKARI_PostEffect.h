@@ -6,7 +6,6 @@
 #include <d3d12.h>
 #include <DirectXMath.h>
 #include "Assets/Shader/HIKARI_ShaderAssetResolver.h"
-#include "Gfx/HIKARI_D3DBlobCompat.h"
 #include "Vfx/Post/HIKARI_PostCommon.h"
 #include "Gfx/HIKARI_GfxContext.h"
 
@@ -22,9 +21,6 @@ namespace HIKARI {
             ~PostEffect();
             static void UpdateContext(const GFX::Context& ctx);
 
-            // Transitional source path for data-driven Profile/Transition
-            // entries that do not yet own stable built-in program IDs.
-            bool LoadPixelShader(const wchar_t* path);
             bool LoadBuiltinPixelShader(
                 std::string_view programId,
                 std::string_view entryId = "Main");
@@ -44,7 +40,6 @@ namespace HIKARI {
             static constexpr uint32_t kConstantDrawCapacityPerFrame = 32u;
 
             static GFX::Context context_;
-            Microsoft::WRL::ComPtr<ID3DBlob> psBlob_;
             ASSETS::SHADER::ShaderAssetEntryLease psLease_{};
 
             Microsoft::WRL::ComPtr<ID3D12Resource> constantBuffer_;
