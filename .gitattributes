@@ -55,6 +55,7 @@ HIKARI/EngineContent/**/*.png filter=lfs diff=lfs merge=lfs -text
 HIKARI/EngineContent/**/*.tga filter=lfs diff=lfs merge=lfs -text
 HIKARI/Shaders/Project/Fullscreen.hlsli text eol=lf
 HIKARI/Shaders/Include/Post/HIKARI_PostEffectInterface.hlsli text eol=lf
+HIKARI/Shaders/Include/Color/HIKARI_AutomaticExposureInterface.hlsli text eol=lf
 
 ###############################################################################
 # diff behavior for common document formats

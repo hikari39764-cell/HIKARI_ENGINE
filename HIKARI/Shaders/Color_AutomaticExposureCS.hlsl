@@ -1,16 +1,11 @@
-cbuffer MeteringConstants : register(b0)
-{
-    uint gWidth;
-    uint gHeight;
-    uint2 gPadding;
-};
+#include "Include/Color/HIKARI_AutomaticExposureInterface.hlsli"
 
-Texture2D<float4> gSceneColor : register(t0);
-RWStructuredBuffer<float4> gMeasurement : register(u0);
-
-groupshared float gLogLuminance[64];
-groupshared float gLinearLuminance[64];
-groupshared float gSampleWeight[64];
+groupshared float gLogLuminance[
+    HIKARI_AUTOMATIC_EXPOSURE_THREAD_COUNT];
+groupshared float gLinearLuminance[
+    HIKARI_AUTOMATIC_EXPOSURE_THREAD_COUNT];
+groupshared float gSampleWeight[
+    HIKARI_AUTOMATIC_EXPOSURE_THREAD_COUNT];
 
 float HikariMeteringWeight(float logLuminance)
 {
@@ -34,11 +29,11 @@ float HikariHalton(uint index, uint base)
     return result;
 }
 
-[numthreads(64, 1, 1)]
+[numthreads(HIKARI_AUTOMATIC_EXPOSURE_THREAD_COUNT, 1, 1)]
 void main(uint3 dispatchThreadId : SV_DispatchThreadID)
 {
     const uint threadIndex = dispatchThreadId.x;
-    const uint gridWidth = 64u;
+    const uint gridWidth = HIKARI_AUTOMATIC_EXPOSURE_THREAD_COUNT;
     const uint gridHeight = 36u;
     const uint sampleCount = gridWidth * gridHeight;
 
@@ -47,7 +42,7 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
     float weightSum = 0.0f;
     for (uint sampleIndex = threadIndex;
         sampleIndex < sampleCount;
-        sampleIndex += 64u)
+        sampleIndex += HIKARI_AUTOMATIC_EXPOSURE_THREAD_COUNT)
     {
         uint2 gridCoord = uint2(
             sampleIndex % gridWidth,
@@ -84,7 +79,9 @@ void main(uint3 dispatchThreadId : SV_DispatchThreadID)
     GroupMemoryBarrierWithGroupSync();
 
     [unroll]
-    for (uint stride = 32u; stride > 0u; stride >>= 1u)
+    for (uint stride = HIKARI_AUTOMATIC_EXPOSURE_THREAD_COUNT / 2u;
+        stride > 0u;
+        stride >>= 1u)
     {
         if (threadIndex < stride)
         {

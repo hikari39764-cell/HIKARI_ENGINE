@@ -6,15 +6,20 @@
 #include <cstddef>
 #include <cstring>
 #include <limits>
+#include <span>
+#include <string>
+#include <utility>
 
 #include <d3d12.h>
 #include <d3dx12.h>
 #include <wrl.h>
 
+#include "Assets/Shader/HIKARI_AutomaticExposureShaderContract.h"
+#include "Assets/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
 #include "Gfx/HIKARI_D3D12DebugTools.h"
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
-#include "Gfx/HIKARI_ShaderCompiler.h"
+#include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
 #include "Render2D/HIKARI_RenderTarget2D.h"
 
 namespace HIKARI::RENDER3D::COLOR {
@@ -52,6 +57,7 @@ namespace HIKARI::RENDER3D::COLOR {
         GFX::Context context{};
         ComPtr<ID3D12RootSignature> rootSignature{};
         ComPtr<ID3D12PipelineState> pipelineState{};
+        ASSETS::SHADER::ShaderAssetEntryLease shaderLease{};
         ComPtr<ID3D12DescriptorHeap> descriptorHeap{};
         ComPtr<ID3D12Resource> measurementBuffer{};
         std::array<ReadbackSlot, GFX::kFrameResourceCount> readbackSlots{};
@@ -69,6 +75,7 @@ namespace HIKARI::RENDER3D::COLOR {
         bool IsInitialized() const noexcept {
             return rootSignature != nullptr &&
                 pipelineState != nullptr &&
+                static_cast<bool>(shaderLease) &&
                 descriptorHeap != nullptr &&
                 measurementBuffer != nullptr &&
                 readbackSlots[0].buffer != nullptr;
@@ -91,6 +98,7 @@ namespace HIKARI::RENDER3D::COLOR {
                 measurementBuffer,
                 context,
                 "AutomaticExposure.MeasurementBuffer");
+            shaderLease = {};
             for (ReadbackSlot& slot : readbackSlots) {
                 GFX::RetireD3D12ObjectForFrame(
                     slot.buffer,
@@ -173,21 +181,42 @@ namespace HIKARI::RENDER3D::COLOR {
         }
 
         bool CreatePipeline(ID3D12Device* device) {
-            ComPtr<ID3DBlob> shader{};
-            if (!GFX::CompileShaderFileSm6(
-                    L"HIKARI/Shaders/Color_AutomaticExposureCS.hlsl",
-                    "main",
-                    GFX::ShaderStage::Compute,
-                    shader.GetAddressOf())) {
+            const GFX::ShaderDeviceCapabilities capabilities =
+                GFX::QueryShaderDeviceCapabilities(device);
+            const ASSETS::SHADER::ShaderAssetContractExpectation contract =
+                ASSETS::SHADER::MakeAutomaticExposureShaderContract({
+                    capabilities.shaderModel,
+                    capabilities.rootSignatureVersion,
+                    capabilities.featureMask
+                });
+            ASSETS::SHADER::ShaderAssetResolveResult resolved =
+                ASSETS::SHADER::ResolveBuiltinShaderEntry(
+                    "HIKARI.EngineShader.Color_AutomaticExposureCS",
+                    { "Main",
+                      ASSETS::SHADER::ShaderStage::Compute,
+                      "cs_6_0" },
+                    contract);
+            const ASSETS::SHADER::ShaderCookedArtifact* artifact =
+                resolved ? resolved.lease.GetArtifact() : nullptr;
+            const ASSETS::SHADER::ShaderCookedEntry* entry =
+                resolved ? resolved.lease.GetEntry() : nullptr;
+            std::string diagnostic{};
+            if (!resolved || artifact == nullptr || entry == nullptr ||
+                !ASSETS::SHADER::ValidateAutomaticExposureShaderArtifact(
+                    *artifact,
+                    *entry,
+                    diagnostic)) {
+                return false;
+            }
+            const std::span<const uint8_t> shader =
+                resolved.lease.GetDxil();
+            if (shader.empty()) {
                 return false;
             }
 
             D3D12_COMPUTE_PIPELINE_STATE_DESC description{};
             description.pRootSignature = rootSignature.Get();
-            description.CS = {
-                shader->GetBufferPointer(),
-                shader->GetBufferSize()
-            };
+            description.CS = { shader.data(), shader.size() };
             const HRESULT result =
                 device->CreateComputePipelineState(
                     &description,
@@ -200,6 +229,7 @@ namespace HIKARI::RENDER3D::COLOR {
             GFX::SetD3D12Name(
                 pipelineState.Get(),
                 L"Automatic Exposure Meter PSO");
+            shaderLease = std::move(resolved.lease);
             return true;
         }
 
@@ -299,6 +329,7 @@ namespace HIKARI::RENDER3D::COLOR {
             }
             ReleaseResources();
             if (context.device == nullptr ||
+                context.deviceGeneration == 0u ||
                 !CreateRootSignature(context.device) ||
                 !CreatePipeline(context.device) ||
                 !CreateResources(context.device)) {
@@ -374,7 +405,9 @@ namespace HIKARI::RENDER3D::COLOR {
         const GFX::Context& context) {
 
         if (impl_->context.device != nullptr &&
-            impl_->context.device != context.device) {
+            (impl_->context.device != context.device ||
+             impl_->context.deviceGeneration !=
+                context.deviceGeneration)) {
             impl_->ReleaseResources();
         }
         impl_->context = context;

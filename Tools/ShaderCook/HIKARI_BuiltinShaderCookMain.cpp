@@ -9,6 +9,7 @@
 #include <json.hpp>
 
 #include "Assets/Formats/HIKARI_HshadercFormat.h"
+#include "Assets/Shader/HIKARI_AutomaticExposureShaderContract.h"
 #include "Assets/Shader/HIKARI_BuiltinShaderCatalog.h"
 #include "Assets/Shader/HIKARI_PostEffectShaderContract.h"
 #include "Assets/Shader/HIKARI_ShaderCookedArtifactBuilder.h"
@@ -127,6 +128,15 @@ namespace {
             !SHADER::ValidatePostEffectShaderArtifact(
                 artifact,
                 outError)) {
+            return false;
+        }
+        if (program.contract.engineInterfaceId ==
+                SHADER::kAutomaticExposureEngineInterfaceId &&
+            (artifact.entries.size() != 1u ||
+             !SHADER::ValidateAutomaticExposureShaderArtifact(
+                artifact,
+                artifact.entries.front(),
+                outError))) {
             return false;
         }
         std::vector<uint8_t> bytes{};
