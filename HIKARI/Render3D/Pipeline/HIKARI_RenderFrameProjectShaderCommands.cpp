@@ -1,6 +1,8 @@
 #include "Render3D/Pipeline/Internal/HIKARI_RenderFrameGraphStageInternal.h"
 
+#include <algorithm>
 #include <string>
+#include <utility>
 
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Render3D/Pipeline/HIKARI_ProjectFullscreenShaderRuntime.h"
@@ -8,6 +10,61 @@
 #include "Render3D/Surface/HIKARI_SceneSurfaceSet.h"
 
 namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
+
+void ReportProjectRenderPassFailure(
+    ProjectRenderCommandGate& gate,
+    std::string message) noexcept {
+    try {
+        gate.failureReportedThisPass = true;
+        const std::string_view stableId = gate.pass.stableId;
+        const uint64_t worldIdentity = gate.context != nullptr
+            ? gate.context->frame.projectRenderExtensions.worldIdentity
+            : 0u;
+        const auto duplicate = std::find_if(
+            gate.reportedFailures.begin(),
+            gate.reportedFailures.end(),
+            [worldIdentity, stableId, &message](
+                const ProjectRenderFailureRecord& failure) {
+                return failure.worldIdentity == worldIdentity &&
+                    failure.stableId == stableId &&
+                    failure.message == message;
+            });
+        if (duplicate != gate.reportedFailures.end()) {
+            return;
+        }
+        auto selected = std::find_if(
+            gate.reportedFailures.begin(),
+            gate.reportedFailures.end(),
+            [](const ProjectRenderFailureRecord& failure) {
+                return failure.stableId.empty();
+            });
+        if (selected == gate.reportedFailures.end()) {
+            selected = gate.reportedFailures.begin();
+        }
+        selected->worldIdentity = worldIdentity;
+        selected->stableId = stableId;
+        selected->message = message;
+        DEBUGLOG::PushRenderError(std::move(message));
+    }
+    catch (...) {
+        // Diagnostics must never widen a project extension failure into an
+        // engine render failure.
+    }
+}
+
+void ClearProjectRenderPassFailure(
+    ProjectRenderCommandGate& gate,
+    std::string_view stableId) noexcept {
+    const uint64_t worldIdentity = gate.context != nullptr
+        ? gate.context->frame.projectRenderExtensions.worldIdentity
+        : 0u;
+    for (ProjectRenderFailureRecord& failure : gate.reportedFailures) {
+        if (failure.worldIdentity == worldIdentity &&
+            failure.stableId == stableId) {
+            failure = {};
+        }
+    }
+}
 
 bool ExecuteProjectFullscreenShaderCommand(
     void* opaque,
@@ -74,9 +131,10 @@ bool ExecuteProjectFullscreenShaderCommand(
             gate->context->frame.renderHeight,
             diagnostic)) {
         gate->failed = true;
-        DEBUGLOG::PushRenderError(
+        ReportProjectRenderPassFailure(
+            *gate,
             std::string("[ProjectRenderPass][Shader][ERROR] ") +
-            gate->pass.stableId + ": " + diagnostic);
+                gate->pass.stableId + ": " + diagnostic);
         return false;
     }
     return true;

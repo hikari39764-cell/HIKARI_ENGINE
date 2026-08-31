@@ -8,6 +8,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 #include "Render2D/HIKARI_DxTexture.h"
 #include "Assets/HIKARI_AssetRegistryBuilder.h"
@@ -28,6 +29,44 @@
 
 namespace HIKARI {
     namespace {
+#if defined(HIKARI_WITH_EDITOR)
+        bool ImportOutdatedShaderArtifacts(AssetDatabase& database) {
+            if (database.IsCookedContent()) {
+                return true;
+            }
+
+            std::vector<AssetGuid> shaderGuids{};
+            for (const AssetRecord* record :
+                database.CollectByType(AssetType::Shader)) {
+                if (record != nullptr && record->importOutdated) {
+                    shaderGuids.push_back(record->guid);
+                }
+            }
+            if (shaderGuids.empty()) {
+                return true;
+            }
+
+            const AssetImportBatchResult imported =
+                database.ImportAssets(shaderGuids);
+            if (imported.failed != 0 ||
+                imported.succeeded !=
+                    static_cast<int>(shaderGuids.size())) {
+                HIKARI_LOG_ERROR(
+                    "[ShaderImporter] authoring startup cook failed. "
+                    "attempted=" + std::to_string(imported.attempted) +
+                    " succeeded=" + std::to_string(imported.succeeded) +
+                    " failed=" + std::to_string(imported.failed));
+                return false;
+            }
+
+            HIKARI_LOG_INFO(
+                "[ShaderImporter] authoring startup cooked " +
+                std::to_string(imported.succeeded) +
+                " outdated shader asset(s).");
+            return true;
+        }
+#endif
+
         ASSETS::MODELS::MaterialSlotResolution ResolveOverrideSlot(
             const ModelAsset* model,
             const ModelMaterialOverrideSlot& slot) {
@@ -97,6 +136,11 @@ namespace HIKARI {
         if (!database_.ScanAssets(true)) {
             return false;
         }
+#if defined(HIKARI_WITH_EDITOR)
+        if (!ImportOutdatedShaderArtifacts(database_)) {
+            return false;
+        }
+#endif
 
         // AssetDatabase 郢ｧ雋樣ｫｪ闕ｳﾂ邵ｺ・ｮ騾具ｽｻ鬪ｭ・ｲ陷医・竊堤ｸｺ蜉ｱ窶ｻ runtime descriptor 郢ｧ蜑・ｽｽ諛奇ｽ企ｶ・ｴ邵ｺ蜷ｶﾂ繝ｻ
         // RegistryBuilder owns the isolated rebuild transaction. A corrupt

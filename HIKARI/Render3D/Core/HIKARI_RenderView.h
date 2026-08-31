@@ -54,7 +54,8 @@ namespace HIKARI::RENDER3D {
         using ExecutePassFn = bool (*)(
             void* context,
             const char* stableId,
-            const GameProjectRenderPassContext& pass) noexcept;
+            const GameProjectRenderPassContext& pass,
+            bool& outCallbackEntered) noexcept;
 
         void* context = nullptr;
         ObserveFn observe = nullptr;

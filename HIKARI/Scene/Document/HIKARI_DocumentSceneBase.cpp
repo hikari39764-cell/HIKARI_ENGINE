@@ -536,9 +536,13 @@ namespace HIKARI {
                 },
                 [](void* context,
                     const char* stableId,
-                    const GameProjectRenderPassContext& pass) noexcept {
+                    const GameProjectRenderPassContext& pass,
+                    bool& outCallbackEntered) noexcept {
                     return static_cast<SystemScheduler*>(context)->
-                        ExecuteRenderPass(stableId, pass);
+                        ExecuteRenderPass(
+                            stableId,
+                            pass,
+                            &outCallbackEntered);
                 },
                 state_->runtime.world.GetRuntimeIdentity()
             };

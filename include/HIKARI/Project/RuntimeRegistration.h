@@ -196,6 +196,9 @@ namespace HIKARI {
         // Registers one graph-owned custom pass. The System must also be
         // activated in the World schedule. Its callback runs synchronously on
         // the render owner thread and may not retain context or encoder data.
+        // Once engine admission succeeds, false/exception is reported and
+        // isolated to this pass; already submitted target writes are not
+        // rolled back.
         template<class System>
         bool RegisterRenderPassSystem(
             GameSystemDescriptor descriptor,

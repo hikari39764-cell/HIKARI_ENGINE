@@ -4,6 +4,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstdio>
+#include <string>
 #include <string_view>
 
 #include "Render3D/Pipeline/HIKARI_RenderFrameContext.h"
@@ -436,6 +437,7 @@ bool ExecuteProjectRenderPass(
         commandGeneration = gate->generation;
         gate->active = true;
         gate->failed = false;
+        gate->failureReportedThisPass = false;
     }
     GameProjectRenderPassContext pass{};
     pass.frame = &storage.frame;
@@ -452,14 +454,30 @@ bool ExecuteProjectRenderPass(
         pass.encoder.capabilityMask |= static_cast<uint32_t>(
             GameProjectRenderCommandCapability::ShaderCommands);
     }
+    bool callbackEntered = false;
     const bool executed = extensions.executePass(
         extensions.context,
         descriptor.stableId,
-        pass);
+        pass,
+        callbackEntered);
     bool commandFailed = false;
     {
         const std::lock_guard lock(gate->mutex);
         commandFailed = gate->failed;
+        if (callbackEntered && (!executed || commandFailed)) {
+            if (!gate->failureReportedThisPass) {
+                ReportProjectRenderPassFailure(
+                    *gate,
+                    std::string("[ProjectRenderPass][ERROR] ") +
+                        descriptor.stableId +
+                        (executed
+                            ? ": a project render command was rejected"
+                            : ": project callback returned failure"));
+            }
+        }
+        else if (callbackEntered) {
+            ClearProjectRenderPassFailure(*gate, descriptor.stableId);
+        }
         gate->context = nullptr;
         gate->pass = {};
         gate->frame = {};
@@ -467,8 +485,11 @@ bool ExecuteProjectRenderPass(
         gate->generation = 0u;
         gate->active = false;
         gate->failed = false;
+        gate->failureReportedThisPass = false;
     }
-    return executed && !commandFailed;
+    // Only a callback that actually entered project code is isolated.
+    // Scheduler/engine admission failures remain fail-closed.
+    return callbackEntered;
 }
 
 } // namespace HIKARI::RENDER3D::PIPELINE::INTERNAL

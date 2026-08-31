@@ -51,6 +51,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
             slot.projectCommandGate.generation = 0u;
             slot.projectCommandGate.active = false;
             slot.projectCommandGate.failed = false;
+            slot.projectCommandGate.failureReportedThisPass = false;
         }
 
         bool CheckOwnerThread(
@@ -222,12 +223,15 @@ namespace HIKARI::RENDER3D::PIPELINE {
             return false;
         }
         for (SessionSlot& slot : state.slots) {
-            if (!slot.active) {
-                continue;
-            }
-            if (!CloseSlot(slot, true)) {
+            if (slot.active && !CloseSlot(slot, true)) {
                 return false;
             }
+            const std::lock_guard gateLock(slot.projectCommandGate.mutex);
+            for (INTERNAL::ProjectRenderFailureRecord& failure :
+                slot.projectCommandGate.reportedFailures) {
+                failure = {};
+            }
+            slot.projectCommandGate.failureReportedThisPass = false;
         }
         state.ownerThread = {};
         state.ownerThreadAssigned = false;

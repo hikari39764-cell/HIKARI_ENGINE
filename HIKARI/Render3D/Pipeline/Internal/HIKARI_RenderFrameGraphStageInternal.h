@@ -3,6 +3,8 @@
 #include <array>
 #include <mutex>
 #include <span>
+#include <string>
+#include <string_view>
 #include <thread>
 
 #include "HIKARI/Project/RenderPass.h"
@@ -11,6 +13,12 @@
 
 namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
 
+    struct ProjectRenderFailureRecord {
+        uint64_t worldIdentity = 0u;
+        std::string stableId{};
+        std::string message{};
+    };
+
     struct ProjectRenderCommandGate {
         std::mutex mutex{};
         const RenderFrameGraphStageContext* context = nullptr;
@@ -18,8 +26,12 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
         RenderFrameToken frame{};
         std::thread::id ownerThread{};
         uint64_t generation = 0u;
+        std::array<
+            ProjectRenderFailureRecord,
+            kGameProjectRenderMaximumPassCount * 2u> reportedFailures{};
         bool active = false;
         bool failed = false;
+        bool failureReportedThisPass = false;
     };
 
     struct StageExecutionState {
@@ -146,6 +158,12 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
         void* context,
         uint64_t commandGeneration,
         const GameProjectFullscreenDrawDesc* draw) noexcept;
+    void ReportProjectRenderPassFailure(
+        ProjectRenderCommandGate& gate,
+        std::string message) noexcept;
+    void ClearProjectRenderPassFailure(
+        ProjectRenderCommandGate& gate,
+        std::string_view stableId) noexcept;
     bool ExecuteProjectRenderObserver(
         const GRAPH::RenderGraphPassContext& context,
         void* userData) noexcept;

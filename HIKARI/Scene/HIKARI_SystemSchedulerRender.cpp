@@ -213,7 +213,11 @@ bool SystemScheduler::DescribeRenderPass(
 
 bool SystemScheduler::ExecuteRenderPass(
     const char* stableId,
-    const GameProjectRenderPassContext& context) noexcept {
+    const GameProjectRenderPassContext& context,
+    bool* outCallbackEntered) noexcept {
+    if (outCallbackEntered != nullptr) {
+        *outCallbackEntered = false;
+    }
     constexpr uint32_t kClearCapability = static_cast<uint32_t>(
         GameProjectRenderCommandCapability::ClearWorkingColor);
     constexpr uint32_t kShaderCapability = static_cast<uint32_t>(
@@ -279,8 +283,14 @@ bool SystemScheduler::ExecuteRenderPass(
             : context.encoder.version == kGameProjectRenderPassVersion &&
                 context.encoder.drawFullscreen == nullptr &&
                 (context.encoder.capabilityMask & kShaderCapability) == 0u;
-        if (!encoderMatches || !IsValidRenderPassDesc(descriptor) ||
-            !pass->ExecuteRenderPass(context)) {
+        if (!encoderMatches || !IsValidRenderPassDesc(descriptor)) {
+            ++renderPassFailureCount_;
+            return false;
+        }
+        if (outCallbackEntered != nullptr) {
+            *outCallbackEntered = true;
+        }
+        if (!pass->ExecuteRenderPass(context)) {
             ++renderPassFailureCount_;
             return false;
         }

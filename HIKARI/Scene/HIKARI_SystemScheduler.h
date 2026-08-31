@@ -41,7 +41,8 @@ public:
         GameProjectRenderPassDesc& outDescriptor) const noexcept;
     bool ExecuteRenderPass(
         const char* stableId,
-        const GameProjectRenderPassContext& context) noexcept;
+        const GameProjectRenderPassContext& context,
+        bool* outCallbackEntered = nullptr) noexcept;
 
     void AttachWorld(World& world);
     void DetachWorld(World& world);
