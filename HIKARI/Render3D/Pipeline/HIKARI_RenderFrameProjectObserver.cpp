@@ -265,56 +265,92 @@ namespace {
 
 } // namespace
 
-bool ExecuteProjectRenderObserver(
-    const GRAPH::RenderGraphPassContext& graphPass,
-    void* userData) noexcept {
-    auto& state = *static_cast<StageExecutionState*>(userData);
-    if (!ValidateRenderFrameGraphPassContext(graphPass, state)) {
-        return false;
-    }
-    const RenderFrameGraphStageContext& context = *state.context;
-    if (!context.frame.projectRenderObserver.IsValid()) {
-        return true;
-    }
+GameProjectRenderViewPurpose MapProjectRenderPurpose(
+    RenderViewPurpose purpose) noexcept {
+    return ToProjectPurpose(purpose);
+}
 
-    std::array<GameProjectRenderSurfaceDesc,
-        kGameProjectRenderMaximumSurfaceCount> surfaces{};
+bool BuildProjectRenderFrameView(
+    const RenderFrameGraphStageContext& context,
+    std::span<const GameProjectRenderPassResourceUse> resources,
+    bool includeAllPublishedSurfaces,
+    ProjectRenderFrameStorage& storage) noexcept {
+    storage = {};
     uint32_t surfaceCount = 0u;
     bool surfaceListTruncated = false;
-    using Semantic = GRAPH::RenderGraphSemantic;
-    using Phase = GRAPH::RenderGraphSemanticPhase;
-    for (uint16_t semanticValue = 1u;
-        semanticValue < static_cast<uint16_t>(Semantic::Count);
-        ++semanticValue) {
-        for (uint8_t phaseValue = 1u;
-            phaseValue < static_cast<uint8_t>(Phase::Count);
-            ++phaseValue) {
-            SURFACE::SceneSurfaceDescriptor source{};
-            if (!context.sceneSurfaces.TryDescribe(
-                    GRAPH::RenderGraphSurfaceKey{
-                        static_cast<Semantic>(semanticValue),
-                        static_cast<Phase>(phaseValue)
-                    },
-                    source)) {
-                continue;
+    if (includeAllPublishedSurfaces) {
+        using Semantic = GRAPH::RenderGraphSemantic;
+        using Phase = GRAPH::RenderGraphSemanticPhase;
+        for (uint16_t semanticValue = 1u;
+            semanticValue < static_cast<uint16_t>(Semantic::Count);
+            ++semanticValue) {
+            for (uint8_t phaseValue = 1u;
+                phaseValue < static_cast<uint8_t>(Phase::Count);
+                ++phaseValue) {
+                SURFACE::SceneSurfaceDescriptor source{};
+                if (!context.sceneSurfaces.TryDescribe(
+                        GRAPH::RenderGraphSurfaceKey{
+                            static_cast<Semantic>(semanticValue),
+                            static_cast<Phase>(phaseValue)
+                        },
+                        source)) {
+                    continue;
+                }
+                if (!AppendProjectSurface(
+                        source,
+                        storage.surfaces,
+                        surfaceCount)) {
+                    surfaceListTruncated = true;
+                    break;
+                }
             }
-            if (!AppendProjectSurface(source, surfaces, surfaceCount)) {
-                surfaceListTruncated = true;
+            if (surfaceListTruncated) {
                 break;
             }
         }
-        if (surfaceListTruncated) {
-            break;
+    }
+    else {
+        for (const GameProjectRenderPassResourceUse& use : resources) {
+            const GRAPH::RenderGraphSemantic semantic =
+                MapProjectRenderSemantic(use.semantic);
+            const GRAPH::RenderGraphSemanticPhase phase =
+                MapProjectRenderPhase(use.phase);
+            if (semantic == GRAPH::RenderGraphSemantic::None ||
+                phase == GRAPH::RenderGraphSemanticPhase::None) {
+                return false;
+            }
+            SURFACE::SceneSurfaceDescriptor source{};
+            if (!context.sceneSurfaces.TryDescribe(
+                    GRAPH::RenderGraphSurfaceKey{
+                        semantic,
+                        phase },
+                    source)) {
+                if (use.requirement ==
+                    GameProjectRenderPassResourceRequirement::Required) {
+                    return false;
+                }
+                continue;
+            }
+            const uint32_t requestedAccess =
+                static_cast<uint32_t>(use.access);
+            if ((ToProjectReadAccessMask(
+                    source.semantic.allowedAccessMask) &
+                    requestedAccess) == 0u ||
+                !AppendProjectSurface(
+                    source,
+                    storage.surfaces,
+                    surfaceCount)) {
+                return false;
+            }
         }
     }
 
-    const GameProjectRenderCameraFrame camera =
-        BuildProjectCameraFrame(context);
-    GameProjectRenderFrameView frame{};
+    storage.camera = BuildProjectCameraFrame(context);
+    GameProjectRenderFrameView& frame = storage.frame;
     frame.frame = ToProjectFrameToken(context.frame.token);
     frame.stage = GameProjectRenderObserverStage::PostOpaque;
     frame.purpose = ToProjectPurpose(context.frame.purpose);
-    frame.flags = camera.flags;
+    frame.flags = storage.camera.flags;
     if (surfaceListTruncated) {
         frame.flags |= static_cast<uint32_t>(
             GameProjectRenderFrameFlags::SurfaceListTruncated);
@@ -333,16 +369,16 @@ bool ExecuteProjectRenderObserver(
         surfaceCount != 0u && !surfaceListTruncated
         ? surfaceCapability
         : 0u;
-    if ((camera.flags & static_cast<uint32_t>(
+    if ((storage.camera.flags & static_cast<uint32_t>(
             GameProjectRenderFrameFlags::CameraValid)) != 0u) {
         frame.validCapabilityMask |= cameraCapability;
     }
     frame.surfaceCount = surfaceCount;
-    frame.surfaces = surfaces.data();
-    frame.camera = &camera;
+    frame.surfaces = storage.surfaces.data();
+    frame.camera = &storage.camera;
     frame.viewGeneration = context.temporalFrame.view.generation;
     frame.worldIdentity =
-        context.frame.projectRenderObserver.worldIdentity;
+        context.frame.projectRenderExtensions.worldIdentity;
 
     const TEMPORAL::TemporalResourceStats temporal =
         TEMPORAL::GetLatestTemporalResourceStats(context.frame.viewId);
@@ -358,9 +394,31 @@ bool ExecuteProjectRenderObserver(
         frame.availableCapabilityMask |= exposureCapability;
         frame.validCapabilityMask |= exposureCapability;
     }
-    (void)context.frame.projectRenderObserver.observe(
-        context.frame.projectRenderObserver.context,
-        frame);
+    return true;
+}
+
+bool ExecuteProjectRenderObserver(
+    const GRAPH::RenderGraphPassContext& graphPass,
+    void* userData) noexcept {
+    auto& state = *static_cast<StageExecutionState*>(userData);
+    if (!ValidateRenderFrameGraphPassContext(graphPass, state)) {
+        return false;
+    }
+    const RenderFrameGraphStageContext& context = *state.context;
+    if (!context.frame.projectRenderExtensions.CanObserve()) {
+        return true;
+    }
+    ProjectRenderFrameStorage storage{};
+    if (!BuildProjectRenderFrameView(
+            context,
+            {},
+            true,
+            storage)) {
+        return false;
+    }
+    (void)context.frame.projectRenderExtensions.observe(
+        context.frame.projectRenderExtensions.context,
+        storage.frame);
     return true;
 }
 

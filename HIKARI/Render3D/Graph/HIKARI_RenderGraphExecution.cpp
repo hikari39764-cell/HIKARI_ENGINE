@@ -432,6 +432,8 @@ namespace HIKARI::RENDER3D::GRAPH {
         case RenderGraphResultCode::MissingProducer:
             return "MissingProducer";
         case RenderGraphResultCode::CycleDetected: return "CycleDetected";
+        case RenderGraphResultCode::ExtensionRejected:
+            return "ExtensionRejected";
         case RenderGraphResultCode::NotCompiled: return "NotCompiled";
         case RenderGraphResultCode::ExecuteFailed: return "ExecuteFailed";
         case RenderGraphResultCode::MissingSurfacePublication:

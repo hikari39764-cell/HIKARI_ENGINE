@@ -124,7 +124,9 @@ namespace HIKARI::RENDER3D::PIPELINE {
             context.requiresSceneColorOpaque,
             context.hasSsrWork,
             context.hasDepthAwareWork,
-            context.hasTransparentWork
+            context.hasTransparentWork,
+            &context.frame.projectRenderExtensions,
+            INTERNAL::MapProjectRenderPurpose(context.frame.purpose)
         };
         if (!INTERNAL::BuildRenderFrameGraphPlan(
                 options,

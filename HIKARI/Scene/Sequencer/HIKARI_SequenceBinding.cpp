@@ -1,11 +1,29 @@
 #include "Scene/Sequencer/HIKARI_SequenceBinding.h"
+#include "Scene/Sequencer/HIKARI_SequenceBindingNaming.h"
 
 #include <algorithm>
+#include <cctype>
 #include <limits>
 #include <unordered_set>
 #include <utility>
 
 namespace HIKARI::SEQUENCER {
+
+    std::string NormalizeSequenceBindingSlotName(
+        std::string value) {
+        for (char& character : value) {
+            const unsigned char byte =
+                static_cast<unsigned char>(character);
+            if (!std::isalnum(byte) &&
+                character != '_' && character != '.') {
+                character = '_';
+            }
+        }
+        while (!value.empty() && value.back() == '_') {
+            value.pop_back();
+        }
+        return value.empty() ? std::string("Camera") : value;
+    }
 
     void NormalizeSequenceBindings(SequenceBindingTable& bindings) {
         std::unordered_set<uint64_t> usedIds{};

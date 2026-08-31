@@ -23,6 +23,7 @@ namespace HIKARI::POST {
         bool IsActive() const;
         bool HasCurrentTarget() const;
         bool RebindCurrentTarget();
+        bool ClearCurrentColor(float r, float g, float b, float a);
         RENDER3D::RenderTextureView GetCurrentDepthView() const;
         D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentDsv() const;
         D3D12_CPU_DESCRIPTOR_HANDLE GetCurrentReadOnlyDsv() const;

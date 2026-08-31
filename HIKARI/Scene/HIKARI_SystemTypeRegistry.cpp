@@ -86,6 +86,11 @@ bool IsValidRenderObserverDesc(
         reservedClear;
 }
 
+bool IsValidRenderPassDesc(
+    const GameProjectRenderPassDesc& pass) noexcept {
+    return pass.IsValid();
+}
+
 bool SystemSettingsContract::IsConfigured() const noexcept {
     return version != 0 ||
         (defaultSettings.is_object() && !defaultSettings.empty()) ||
@@ -95,8 +100,21 @@ bool SystemSettingsContract::IsConfigured() const noexcept {
 }
 
 bool SystemTypeRegistry::Register(SystemTypeInfo info) {
-    if (info.systemId.empty() || !info.factory) {
+    if (info.systemId.empty() || !info.factory ||
+        (info.hasRenderObserver &&
+            !IsValidRenderObserverDesc(info.renderObserver)) ||
+        (info.hasRenderPass &&
+            !IsValidRenderPassDesc(info.renderPass))) {
         return false;
+    }
+    if (info.hasRenderPass) {
+        const std::string_view passId(info.renderPass.stableId);
+        for (const auto& [_, registered] : byName_) {
+            if (registered.hasRenderPass &&
+                std::string_view(registered.renderPass.stableId) == passId) {
+                return false;
+            }
+        }
     }
     if (info.displayName.empty()) {
         info.displayName = info.systemId;

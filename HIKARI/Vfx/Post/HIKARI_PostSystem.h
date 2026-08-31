@@ -113,6 +113,11 @@ namespace HIKARI::POST {
         static bool IsSceneCaptureActive();
         static bool HasCurrentRenderTarget();
         static bool RebindCurrentRenderTarget();
+        static bool ClearCurrentRenderTargetColor(
+            float red,
+            float green,
+            float blue,
+            float alpha);
         // Restores the full presentation back buffer for Editor host UI after
         // a tool-owned offscreen render. Unlike RebindCurrentRenderTarget,
         // this does not require an active Scene capture layer.

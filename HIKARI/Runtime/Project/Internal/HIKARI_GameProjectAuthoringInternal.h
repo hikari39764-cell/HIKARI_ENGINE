@@ -169,21 +169,36 @@ namespace HIKARI {
         DestroyGameComponentFn destroy_ = nullptr;
     };
 
+    struct GameProjectSystemExtensions {
+        GameProjectMassSystemScheduleDesc massSchedule{};
+        ExecuteGameProjectMassPartitionFn executeMass = nullptr;
+        GameProjectRenderObserverDesc renderObserver{};
+        ObserveGameProjectRenderFrameFn observeRender = nullptr;
+        GameProjectRenderPassDesc renderPass{};
+        ExecuteGameProjectRenderPassFn executeRenderPass = nullptr;
+
+        GameProjectSystemExtensions() noexcept {
+            renderObserver.structSize = 0u;
+            renderObserver.version = 0u;
+            renderObserver.stage = GameProjectRenderObserverStage::Count;
+            renderPass.structSize = 0u;
+            renderPass.version = 0u;
+            renderPass.anchor = GameProjectRenderPassAnchor::Count;
+            renderPass.target = GameProjectRenderPassTarget::Count;
+        }
+    };
+
     class GameProjectSystemAdapter final
         : public ISystem,
           public IMassWorkerSystem,
-          public IRenderFrameObserverSystem {
+          public IRenderFrameObserverSystem,
+          public IRenderFramePassSystem {
     public:
         GameProjectSystemAdapter(
             std::string systemId,
             IGameSystem* system,
             DestroyGameSystemFn destroy,
-            GameProjectMassSystemScheduleDesc massSchedule = {},
-            ExecuteGameProjectMassPartitionFn executeMass = nullptr,
-            GameProjectRenderObserverDesc renderObserver = {
-                0u, 0u, GameProjectRenderObserverStage::Count,
-                0u, { 0u, 0u, 0u, 0u } },
-            ObserveGameProjectRenderFrameFn observeRender = nullptr) noexcept;
+            GameProjectSystemExtensions extensions = {}) noexcept;
         ~GameProjectSystemAdapter() override;
 
         std::string_view GetName() const override;
@@ -227,15 +242,17 @@ namespace HIKARI {
             GetRenderObserverDesc() const noexcept override;
         bool ObserveRenderFrame(
             const GameProjectRenderFrameView& frame) const noexcept override;
+        const GameProjectRenderPassDesc&
+            GetRenderPassDesc() const noexcept override;
+        bool ExecuteRenderPass(
+            const GameProjectRenderPassContext& context) const noexcept
+            override;
 
     private:
         std::string systemId_{};
         IGameSystem* system_ = nullptr;
         DestroyGameSystemFn destroy_ = nullptr;
-        GameProjectMassSystemScheduleDesc massSchedule_{};
-        ExecuteGameProjectMassPartitionFn executeMass_ = nullptr;
-        GameProjectRenderObserverDesc renderObserver_{};
-        ObserveGameProjectRenderFrameFn observeRender_ = nullptr;
+        GameProjectSystemExtensions extensions_{};
     };
 
 } // namespace HIKARI

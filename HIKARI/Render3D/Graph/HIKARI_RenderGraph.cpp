@@ -64,6 +64,22 @@ namespace {
         return true;
     }
 
+    bool RenderGraph::RejectBuild(
+        RenderGraphResultCode code,
+        const char* message) noexcept {
+        if (executing_ || compiled_ ||
+            executionState_.status !=
+                RenderGraphExecutionStatus::NotStarted ||
+            code == RenderGraphResultCode::Success) {
+            SetDiagnostic(
+                RenderGraphResultCode::InvalidExecutionState,
+                "RenderGraph build rejection requires a mutable graph.");
+            return false;
+        }
+        SetDiagnostic(code, message);
+        return false;
+    }
+
     RenderGraphResourceId RenderGraph::AddResource(
         const RenderGraphResourceDesc& desc) noexcept {
         if (executing_ ||

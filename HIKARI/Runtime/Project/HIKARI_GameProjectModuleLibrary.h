@@ -27,10 +27,6 @@ namespace HIKARI::RUNTIME {
         bool LoadForLaunch(
             bool allowMissing,
             std::string& outMessage);
-        bool Load(
-            const std::filesystem::path& modulePath,
-            std::string& outMessage);
-        void Reset() noexcept;
 
         bool IsLoaded() const noexcept;
         std::string_view GetModuleId() const noexcept;
@@ -40,6 +36,14 @@ namespace HIKARI::RUNTIME {
         const std::filesystem::path& GetModulePath() const noexcept;
 
     private:
+        // In-process module replacement is intentionally unsupported. Runtime
+        // extensions and System factories borrow DLL code until app teardown;
+        // project rebuild uses the process handoff workflow instead.
+        bool Load(
+            const std::filesystem::path& modulePath,
+            std::string& outMessage);
+        void Reset() noexcept;
+
         void* libraryHandle_ = nullptr;
         const GameProjectModuleApi* api_ = nullptr;
         void* instance_ = nullptr;

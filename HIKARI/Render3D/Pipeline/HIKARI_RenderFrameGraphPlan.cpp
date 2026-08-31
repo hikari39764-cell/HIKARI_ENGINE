@@ -40,6 +40,11 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
         void* userData,
         const RenderFrameGraphPassCallbacks& callbacks,
         GRAPH::RenderGraph& graph) noexcept {
+        const bool captureSceneColor = options.captureSceneColor ||
+            (options.projectExtensions != nullptr &&
+             ProjectRenderPassesRequireSceneColorOpaque(
+                *options.projectExtensions,
+                options.projectPurpose));
         const auto sceneDepth = AddRenderFrameGraphSurfaceResource(
             graph,
             "SceneDepth",
@@ -308,7 +313,7 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
             GRAPH::RenderGraphResourceUse{}
         };
         std::size_t motionWriteCount = 3u;
-        if (!options.captureSceneColor) {
+        if (!captureSceneColor) {
             motionWrites[motionWriteCount++] =
                 GRAPH::RenderGraphResourceUse{
                     preTailComplete,
@@ -328,7 +333,7 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
         }
 
         GRAPH::RenderGraphResourceId sceneColorOpaque{};
-        if (options.captureSceneColor) {
+        if (captureSceneColor) {
             sceneColorOpaque = AddRenderFrameGraphSurfaceResource(
                 graph,
                 "SceneColorOpaque",

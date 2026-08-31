@@ -258,9 +258,22 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
                 compositeComplete)) {
             return false;
         }
+        GRAPH::RenderGraphResourceId projectPassesComplete =
+            compositeComplete;
+        if (options.projectExtensions != nullptr &&
+            !BuildProjectRenderPassChain(
+                *options.projectExtensions,
+                options.projectPurpose,
+                compositeComplete,
+                callbacks.projectRenderPass,
+                userData,
+                graph,
+                projectPassesComplete)) {
+            return false;
+        }
         const std::array observerReads{
             ResourceUse{
-                compositeComplete,
+                projectPassesComplete,
                 GRAPH::RenderGraphAccess::ReadDependency
             }
         };

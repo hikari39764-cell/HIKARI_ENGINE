@@ -16,7 +16,7 @@ namespace HIKARI::RENDER3D::GRAPH {
 
     inline constexpr uint32_t kRenderGraphMaximumResourceCount = 64u;
     inline constexpr uint32_t kRenderGraphMaximumPassCount = 64u;
-    inline constexpr uint32_t kRenderGraphMaximumResourceUseCount = 128u;
+    inline constexpr uint32_t kRenderGraphMaximumResourceUseCount = 256u;
     inline constexpr size_t kRenderGraphIdentifierCapacity = 64u;
     inline constexpr uint32_t kInvalidRenderGraphIndex =
         (std::numeric_limits<uint32_t>::max)();
@@ -87,6 +87,7 @@ namespace HIKARI::RENDER3D::GRAPH {
         DuplicateWriter,
         MissingProducer,
         CycleDetected,
+        ExtensionRejected,
         NotCompiled,
         ExecuteFailed,
         MissingSurfacePublication,
@@ -244,6 +245,9 @@ namespace HIKARI::RENDER3D::GRAPH {
         RenderGraphResourceId AddResource(
             const RenderGraphResourceDesc& desc) noexcept;
         bool AddPass(const RenderGraphPassDesc& desc) noexcept;
+        bool RejectBuild(
+            RenderGraphResultCode code,
+            const char* message) noexcept;
         bool Compile() noexcept;
         bool Execute() noexcept;
         // Executes through and including passId. A successful non-terminal

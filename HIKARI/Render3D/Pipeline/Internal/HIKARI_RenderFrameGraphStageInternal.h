@@ -1,9 +1,26 @@
 #pragma once
 
+#include <array>
+#include <mutex>
+#include <span>
+#include <thread>
+
+#include "HIKARI/Project/RenderPass.h"
 #include "Render3D/Pipeline/HIKARI_RenderFrameGraphStage.h"
 #include "Render3D/Pipeline/HIKARI_RenderFrameGraphSession.h"
 
 namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
+
+    struct ProjectRenderCommandGate {
+        std::mutex mutex{};
+        const RenderFrameGraphStageContext* context = nullptr;
+        GameProjectRenderPassDesc pass{};
+        RenderFrameToken frame{};
+        std::thread::id ownerThread{};
+        uint64_t generation = 0u;
+        bool active = false;
+        bool failed = false;
+    };
 
     struct StageExecutionState {
         // Borrowed only while the Pipeline prefix executes. A resumable suffix
@@ -11,6 +28,7 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
         const RenderFrameGraphStageContext* context = nullptr;
         RenderFrameGraphStageResult result{};
         RenderFrameGraphSessionReceipt session{};
+        ProjectRenderCommandGate* projectCommandGate = nullptr;
         bool presentationResumed = false;
     };
 
@@ -19,6 +37,17 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
         bool includeSsr = false;
         bool includeDepthAware = false;
         bool includeTransparent = false;
+        const RenderFrameProjectExtensionSink* projectExtensions = nullptr;
+        GameProjectRenderViewPurpose projectPurpose =
+            GameProjectRenderViewPurpose::Game;
+    };
+
+    struct ProjectRenderFrameStorage {
+        std::array<
+            GameProjectRenderSurfaceDesc,
+            kGameProjectRenderMaximumSurfaceCount> surfaces{};
+        GameProjectRenderCameraFrame camera{};
+        GameProjectRenderFrameView frame{};
     };
 
     struct RenderFrameGraphPassCallbacks {
@@ -35,6 +64,7 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
         GRAPH::RenderGraphExecuteFn visibilityFeatures = nullptr;
         GRAPH::RenderGraphExecuteFn sceneColorPostOpaqueCapture = nullptr;
         GRAPH::RenderGraphExecuteFn stylizedFeatureComposite = nullptr;
+        GRAPH::RenderGraphExecuteFn projectRenderPass = nullptr;
         GRAPH::RenderGraphExecuteFn projectRenderObserver = nullptr;
         GRAPH::RenderGraphExecuteFn presentationResume = nullptr;
     };
@@ -109,6 +139,9 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
     bool ExecuteStylizedFeatureComposite(
         const GRAPH::RenderGraphPassContext& context,
         void* userData) noexcept;
+    bool ExecuteProjectRenderPass(
+        const GRAPH::RenderGraphPassContext& context,
+        void* userData) noexcept;
     bool ExecuteProjectRenderObserver(
         const GRAPH::RenderGraphPassContext& context,
         void* userData) noexcept;
@@ -131,5 +164,30 @@ namespace HIKARI::RENDER3D::PIPELINE::INTERNAL {
         const RenderFrameGraphPassCallbacks& callbacks,
         const RenderFrameGraphTailResources& resources,
         GRAPH::RenderGraph& graph) noexcept;
+
+    bool BuildProjectRenderFrameView(
+        const RenderFrameGraphStageContext& context,
+        std::span<const GameProjectRenderPassResourceUse> resources,
+        bool includeAllPublishedSurfaces,
+        ProjectRenderFrameStorage& storage) noexcept;
+    GRAPH::RenderGraphSemantic MapProjectRenderSemantic(
+        GameProjectRenderSurfaceSemantic semantic) noexcept;
+    GRAPH::RenderGraphSemanticPhase MapProjectRenderPhase(
+        GameProjectRenderSurfacePhase phase) noexcept;
+    GRAPH::RenderGraphAccess MapProjectRenderAccess(
+        GameProjectRenderSurfaceAccess access) noexcept;
+    GameProjectRenderViewPurpose MapProjectRenderPurpose(
+        RenderViewPurpose purpose) noexcept;
+    bool BuildProjectRenderPassChain(
+        const RenderFrameProjectExtensionSink& extensions,
+        GameProjectRenderViewPurpose purpose,
+        GRAPH::RenderGraphResourceId dependency,
+        GRAPH::RenderGraphExecuteFn execute,
+        void* userData,
+        GRAPH::RenderGraph& graph,
+        GRAPH::RenderGraphResourceId& outDependency) noexcept;
+    bool ProjectRenderPassesRequireSceneColorOpaque(
+        const RenderFrameProjectExtensionSink& extensions,
+        GameProjectRenderViewPurpose purpose) noexcept;
 
 } // namespace HIKARI::RENDER3D::PIPELINE::INTERNAL

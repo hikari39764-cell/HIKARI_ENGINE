@@ -356,17 +356,11 @@ namespace {
         std::string systemId,
         IGameSystem* system,
         DestroyGameSystemFn destroy,
-        GameProjectMassSystemScheduleDesc massSchedule,
-        ExecuteGameProjectMassPartitionFn executeMass,
-        GameProjectRenderObserverDesc renderObserver,
-        ObserveGameProjectRenderFrameFn observeRender) noexcept
+        GameProjectSystemExtensions extensions) noexcept
         : systemId_(std::move(systemId)),
           system_(system),
           destroy_(destroy),
-          massSchedule_(massSchedule),
-          executeMass_(executeMass),
-          renderObserver_(renderObserver),
-          observeRender_(observeRender) {
+          extensions_(extensions) {
     }
 
     GameProjectSystemAdapter::~GameProjectSystemAdapter() {
@@ -382,7 +376,7 @@ namespace {
 
     const GameProjectMassSystemScheduleDesc&
         GameProjectSystemAdapter::GetMassSystemSchedule() const noexcept {
-        return massSchedule_;
+        return extensions_.massSchedule;
     }
 
     bool GameProjectSystemAdapter::ExecuteMassPartition(
@@ -390,19 +384,32 @@ namespace {
         GameProjectMassPartitionOutput& output,
         const GameProjectMassCommandWriter& commands,
         const FrameContext& frame) const noexcept {
-        return system_ != nullptr && executeMass_ != nullptr &&
-            executeMass_(system_, &input, &output, &commands, &frame);
+        return system_ != nullptr && extensions_.executeMass != nullptr &&
+            extensions_.executeMass(
+                system_, &input, &output, &commands, &frame);
     }
 
     const GameProjectRenderObserverDesc&
         GameProjectSystemAdapter::GetRenderObserverDesc() const noexcept {
-        return renderObserver_;
+        return extensions_.renderObserver;
     }
 
     bool GameProjectSystemAdapter::ObserveRenderFrame(
         const GameProjectRenderFrameView& frame) const noexcept {
-        return system_ != nullptr && observeRender_ != nullptr &&
-            observeRender_(system_, &frame);
+        return system_ != nullptr && extensions_.observeRender != nullptr &&
+            extensions_.observeRender(system_, &frame);
+    }
+
+    const GameProjectRenderPassDesc&
+        GameProjectSystemAdapter::GetRenderPassDesc() const noexcept {
+        return extensions_.renderPass;
+    }
+
+    bool GameProjectSystemAdapter::ExecuteRenderPass(
+        const GameProjectRenderPassContext& context) const noexcept {
+        return system_ != nullptr &&
+            extensions_.executeRenderPass != nullptr &&
+            extensions_.executeRenderPass(system_, &context);
     }
 
 #define HIKARI_INVOKE_GAME_SYSTEM(Name, Method)                         \
@@ -561,15 +568,10 @@ namespace {
     bool RegisterGameSystemType(
         SystemTypeRegistry& registry,
         GameSystemDescriptor descriptor,
-        const GameProjectMassSystemScheduleDesc* massSchedule,
-        ExecuteGameProjectMassPartitionFn executeMass,
-        const GameProjectRenderObserverDesc* renderObserver,
-        ObserveGameProjectRenderFrameFn observeRender) {
+        GameProjectSystemExtensions extensions) {
         if (descriptor.systemId.empty() ||
             descriptor.create == nullptr ||
-            descriptor.destroy == nullptr ||
-            ((massSchedule == nullptr) != (executeMass == nullptr)) ||
-            ((renderObserver == nullptr) != (observeRender == nullptr))) {
+            descriptor.destroy == nullptr) {
             return false;
         }
 
@@ -592,26 +594,10 @@ namespace {
             destroy(defaults);
         }
 
-        const GameProjectMassSystemScheduleDesc copiedMassSchedule =
-            massSchedule != nullptr
-                ? *massSchedule
-                : GameProjectMassSystemScheduleDesc{};
-        const GameProjectRenderObserverDesc copiedRenderObserver =
-            renderObserver != nullptr
-                ? *renderObserver
-                : GameProjectRenderObserverDesc{
-                    0u,
-                    0u,
-                    GameProjectRenderObserverStage::Count,
-                    0u,
-                    { 0u, 0u, 0u, 0u }
-                };
         SystemTypeInfo info{};
         info.systemId = systemId;
         info.factory =
-            [systemId, create, destroy,
-                copiedMassSchedule, executeMass,
-                copiedRenderObserver, observeRender](
+            [systemId, create, destroy, extensions](
                 const nlohmann::json& settings)
                 -> std::unique_ptr<ISystem> {
                 IGameSystem* system = create();
@@ -637,10 +623,7 @@ namespace {
                         systemId,
                         system,
                         destroy,
-                        copiedMassSchedule,
-                        executeMass,
-                        copiedRenderObserver,
-                        observeRender);
+                        extensions);
             };
         info.displayName =
             descriptor.displayName.empty()
@@ -650,10 +633,12 @@ namespace {
             std::string(descriptor.featureId);
         info.settings.defaultSettings =
             std::move(defaultSettings);
-        info.hasParallelMassSchedule = massSchedule != nullptr;
-        info.parallelMassSchedule = copiedMassSchedule;
-        info.hasRenderObserver = renderObserver != nullptr;
-        info.renderObserver = copiedRenderObserver;
+        info.hasParallelMassSchedule = extensions.executeMass != nullptr;
+        info.parallelMassSchedule = extensions.massSchedule;
+        info.hasRenderObserver = extensions.observeRender != nullptr;
+        info.renderObserver = extensions.renderObserver;
+        info.hasRenderPass = extensions.executeRenderPass != nullptr;
+        info.renderPass = extensions.renderPass;
         return registry.Register(std::move(info));
     }
 
@@ -665,16 +650,16 @@ namespace {
             RegisterGameSystemType(
                 RuntimeFeatureContextAccess::Systems(*this),
                 descriptor,
-                nullptr,
-                nullptr,
-                nullptr,
-                nullptr);
+                GameProjectSystemExtensions{});
     }
 
     bool RuntimeFeatureContext::RegisterParallelMassSystemRaw(
         GameSystemDescriptor descriptor,
         const GameProjectMassSystemScheduleDesc& schedule,
         ExecuteGameProjectMassPartitionFn execute) {
+        GameProjectSystemExtensions extensions{};
+        extensions.massSchedule = schedule;
+        extensions.executeMass = execute;
         return systemTypeRegistry_ != nullptr &&
             massSchemaRegistry_ != nullptr &&
             execute != nullptr &&
@@ -684,26 +669,39 @@ namespace {
             RegisterGameSystemType(
                 RuntimeFeatureContextAccess::Systems(*this),
                 descriptor,
-                &schedule,
-                execute,
-                nullptr,
-                nullptr);
+                extensions);
     }
 
     bool RuntimeFeatureContext::RegisterRenderObserverSystemRaw(
         GameSystemDescriptor descriptor,
         const GameProjectRenderObserverDesc& observer,
         ObserveGameProjectRenderFrameFn observe) {
+        GameProjectSystemExtensions extensions{};
+        extensions.renderObserver = observer;
+        extensions.observeRender = observe;
         return systemTypeRegistry_ != nullptr &&
             observe != nullptr &&
             IsValidRenderObserverDesc(observer) &&
             RegisterGameSystemType(
                 RuntimeFeatureContextAccess::Systems(*this),
                 descriptor,
-                nullptr,
-                nullptr,
-                &observer,
-                observe);
+                extensions);
+    }
+
+    bool RuntimeFeatureContext::RegisterRenderPassSystemRaw(
+        GameSystemDescriptor descriptor,
+        const GameProjectRenderPassDesc& pass,
+        ExecuteGameProjectRenderPassFn execute) {
+        GameProjectSystemExtensions extensions{};
+        extensions.renderPass = pass;
+        extensions.executeRenderPass = execute;
+        return systemTypeRegistry_ != nullptr &&
+            execute != nullptr &&
+            IsValidRenderPassDesc(pass) &&
+            RegisterGameSystemType(
+                RuntimeFeatureContextAccess::Systems(*this),
+                descriptor,
+                extensions);
     }
 
     bool RuntimeFeatureContext::RegisterMassDataRaw(

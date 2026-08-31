@@ -145,6 +145,18 @@ namespace HIKARI::POST {
         return true;
     }
 
+    bool SceneCaptureStage::ClearCurrentColor(
+        float r,
+        float g,
+        float b,
+        float a) {
+        if (!HasCurrentTarget()) {
+            return false;
+        }
+        currentTarget_->Rebind();
+        return currentTarget_->ClearColor(r, g, b, a);
+    }
+
     RENDER3D::RenderTextureView SceneCaptureStage::GetCurrentDepthView() const {
         if (!HasCurrentTarget() || !currentTarget_->HasDepth()) return {};
         const RenderTarget2D& target = *currentTarget_;

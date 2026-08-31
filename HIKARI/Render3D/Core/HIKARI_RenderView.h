@@ -7,6 +7,8 @@
 
 namespace HIKARI {
     struct GameProjectRenderFrameView;
+    struct GameProjectRenderPassDesc;
+    struct GameProjectRenderPassContext;
 }
 
 namespace HIKARI::RENDER3D {
@@ -37,17 +39,36 @@ namespace HIKARI::RENDER3D {
         bool valid = false;
     };
 
-    struct RenderFrameObserverSink {
+    struct RenderFrameProjectExtensionSink {
         using ObserveFn = bool (*)(
             void* context,
             const GameProjectRenderFrameView& frame) noexcept;
+        using GetPassCountFn = bool (*)(
+            void* context,
+            uint32_t& outCount) noexcept;
+        using DescribePassFn = bool (*)(
+            void* context,
+            uint32_t index,
+            GameProjectRenderPassDesc& outDescriptor) noexcept;
+        using ExecutePassFn = bool (*)(
+            void* context,
+            const char* stableId,
+            const GameProjectRenderPassContext& pass) noexcept;
 
         void* context = nullptr;
         ObserveFn observe = nullptr;
+        GetPassCountFn getPassCount = nullptr;
+        DescribePassFn describePass = nullptr;
+        ExecutePassFn executePass = nullptr;
         uint64_t worldIdentity = 0u;
 
-        bool IsValid() const noexcept {
+        bool CanObserve() const noexcept {
             return context != nullptr && observe != nullptr &&
+                worldIdentity != 0u;
+        }
+        bool CanExecutePasses() const noexcept {
+            return context != nullptr && getPassCount != nullptr &&
+                describePass != nullptr && executePass != nullptr &&
                 worldIdentity != 0u;
         }
     };
@@ -64,7 +85,7 @@ namespace HIKARI::RENDER3D {
             combatAfterimageFrameSource = nullptr;
         const COMBAT_VFX::PerfectGuardShockwaveFrameSource*
             actionPostReactionFrameSource = nullptr;
-        RenderFrameObserverSink projectRenderObserver{};
+        RenderFrameProjectExtensionSink projectRenderExtensions{};
     };
 
 } // namespace HIKARI::RENDER3D

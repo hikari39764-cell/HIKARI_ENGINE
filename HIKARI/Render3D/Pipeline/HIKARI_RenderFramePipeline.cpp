@@ -97,6 +97,20 @@ namespace HIKARI::RENDER3D::PIPELINE {
         bool RebindPostRenderTarget(void*) { return POST::PostSystem::RebindCurrentRenderTarget(); }
         bool BeginPostDepthRead(void*) { return POST::PostSystem::BeginCurrentRenderTargetDepthRead(); }
         void EndPostDepthRead(void*) { POST::PostSystem::EndCurrentRenderTargetDepthRead(); }
+        bool ClearPostColor(
+            void*,
+            float red,
+            float green,
+            float blue,
+            float alpha) noexcept {
+            try {
+                return POST::PostSystem::ClearCurrentRenderTargetColor(
+                    red, green, blue, alpha);
+            }
+            catch (...) {
+                return false;
+            }
+        }
 
         RenderFrameContext BuildRenderFrameContext(
             const GFX::Context& graphics,
@@ -127,13 +141,14 @@ namespace HIKARI::RENDER3D::PIPELINE {
             }
             context.camera = &view.cameraFrame->camera;
             context.environment = &environment;
-            context.projectRenderObserver = view.projectRenderObserver;
+            context.projectRenderExtensions = view.projectRenderExtensions;
             context.scene.dsv = POST::PostSystem::GetCurrentRenderTargetDsv();
             context.scene.readOnlyDsv =
                 POST::PostSystem::GetCurrentRenderTargetReadOnlyDsv();
             context.targetAccess.rebind = RebindPostRenderTarget;
             context.targetAccess.beginDepthRead = BeginPostDepthRead;
             context.targetAccess.endDepthRead = EndPostDepthRead;
+            context.targetAccess.clearColor = ClearPostColor;
 
             int renderWidth = 0;
             int renderHeight = 0;
@@ -239,7 +254,17 @@ namespace HIKARI::RENDER3D::PIPELINE {
         RENDER3D::SetRenderDebugOutputView(debugView);
         const RENDER3D::RenderDebugOutputRoute& debugRoute =
             RENDER3D::GetRenderDebugOutputRoute();
-        if (!MESHRENDERER::HasSubmittedItems()) {
+        uint32_t projectPassCount = 0u;
+        const bool hasProjectPassSink =
+            view.projectRenderExtensions.CanExecutePasses();
+        if (hasProjectPassSink &&
+            !view.projectRenderExtensions.getPassCount(
+                view.projectRenderExtensions.context,
+                projectPassCount)) {
+            return false;
+        }
+        const bool projectPassWork = projectPassCount != 0u;
+        if (!MESHRENDERER::HasSubmittedItems() && !projectPassWork) {
             return true;
         }
 

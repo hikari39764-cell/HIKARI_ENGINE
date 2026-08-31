@@ -12,6 +12,8 @@ struct GameProjectMassPartitionOutput;
 struct GameProjectMassCommandWriter;
 struct GameProjectRenderObserverDesc;
 struct GameProjectRenderFrameView;
+struct GameProjectRenderPassDesc;
+struct GameProjectRenderPassContext;
 
 class ISystem {
 public:
@@ -59,6 +61,19 @@ public:
         GetRenderObserverDesc() const noexcept = 0;
     virtual bool ObserveRenderFrame(
         const GameProjectRenderFrameView& frame) const noexcept = 0;
+};
+
+// Project render passes are separate from the ordinary System render phase.
+// RenderGraph owns ordering and invokes this sibling through a validated,
+// callback-borrowed command encoder.
+class IRenderFramePassSystem {
+public:
+    virtual ~IRenderFramePassSystem() = default;
+
+    virtual const GameProjectRenderPassDesc&
+        GetRenderPassDesc() const noexcept = 0;
+    virtual bool ExecuteRenderPass(
+        const GameProjectRenderPassContext& context) const noexcept = 0;
 };
 
 } // namespace HIKARI

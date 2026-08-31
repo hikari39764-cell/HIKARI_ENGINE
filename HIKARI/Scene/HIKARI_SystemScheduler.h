@@ -30,10 +30,18 @@ public:
     size_t GetSystemCount() const;
     uint64_t GetParallelMassFailureCount() const noexcept;
     uint64_t GetRenderObserverFailureCount() const noexcept;
+    uint64_t GetRenderPassFailureCount() const noexcept;
     std::vector<std::string> GetExecutionOrder() const;
 
     bool ObserveRenderFrame(
         const GameProjectRenderFrameView& frame) noexcept;
+    bool GetRenderPassCount(uint32_t& outCount) const noexcept;
+    bool DescribeRenderPass(
+        uint32_t index,
+        GameProjectRenderPassDesc& outDescriptor) const noexcept;
+    bool ExecuteRenderPass(
+        const char* stableId,
+        const GameProjectRenderPassContext& context) noexcept;
 
     void AttachWorld(World& world);
     void DetachWorld(World& world);
@@ -91,6 +99,7 @@ private:
     uint64_t nextInsertionIndex_ = 0;
     uint64_t parallelMassFailureCount_ = 0u;
     uint64_t renderObserverFailureCount_ = 0u;
+    uint64_t renderPassFailureCount_ = 0u;
     std::unique_ptr<ParallelRuntime> parallelRuntime_{};
 };
 

@@ -22,11 +22,18 @@ namespace HIKARI::RENDER3D::PIPELINE {
         using RebindCallback = bool (*)(void* userData);
         using BeginDepthReadCallback = bool (*)(void* userData);
         using EndDepthReadCallback = void (*)(void* userData);
+        using ClearColorCallback = bool (*)(
+            void* userData,
+            float red,
+            float green,
+            float blue,
+            float alpha) noexcept;
 
         void* userData = nullptr;
         RebindCallback rebind = nullptr;
         BeginDepthReadCallback beginDepthRead = nullptr;
         EndDepthReadCallback endDepthRead = nullptr;
+        ClearColorCallback clearColor = nullptr;
 
         bool Rebind() const {
             return rebind != nullptr && rebind(userData);
@@ -40,6 +47,15 @@ namespace HIKARI::RENDER3D::PIPELINE {
             if (endDepthRead != nullptr) {
                 endDepthRead(userData);
             }
+        }
+
+        bool ClearColor(
+            float red,
+            float green,
+            float blue,
+            float alpha) const noexcept {
+            return clearColor != nullptr && clearColor(
+                userData, red, green, blue, alpha);
         }
     };
 
@@ -63,7 +79,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
         GFX::Context graphics{};
         const Camera3D* camera = nullptr;
         const SceneEnvironment* environment = nullptr;
-        RenderFrameObserverSink projectRenderObserver{};
+        RenderFrameProjectExtensionSink projectRenderExtensions{};
         uint32_t renderWidth = 1;
         uint32_t renderHeight = 1;
         uint32_t outputWidth = 1;

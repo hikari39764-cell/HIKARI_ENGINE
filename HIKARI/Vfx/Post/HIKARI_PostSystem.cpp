@@ -472,6 +472,14 @@ namespace HIKARI::POST {
     bool PostSystem::IsSceneCaptureActive() { return captureStage_.IsActive(); }
     bool PostSystem::HasCurrentRenderTarget() { return initialized_ && captureStage_.HasCurrentTarget(); }
     bool PostSystem::RebindCurrentRenderTarget() { return captureStage_.RebindCurrentTarget(); }
+    bool PostSystem::ClearCurrentRenderTargetColor(
+        float red,
+        float green,
+        float blue,
+        float alpha) {
+        return initialized_ && captureStage_.ClearCurrentColor(
+            red, green, blue, alpha);
+    }
     bool PostSystem::RebindPresentationBackBuffer() {
         if (!initialized_ || context_.cmdList == nullptr ||
             context_.rtv.ptr == 0u || context_.backBufferWidth <= 0 ||

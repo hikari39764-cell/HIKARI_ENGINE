@@ -15,6 +15,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
 
         struct SessionSlot {
             GRAPH::RenderGraph graph{};
+            INTERNAL::ProjectRenderCommandGate projectCommandGate{};
             INTERNAL::StageExecutionState stageState{};
             RenderFrameGraphSessionReceipt receipt{};
             bool active = false;
@@ -39,6 +40,17 @@ namespace HIKARI::RENDER3D::PIPELINE {
                 generation = state.nextGeneration++;
             }
             return generation;
+        }
+
+        void ResetProjectCommandGate(SessionSlot& slot) noexcept {
+            const std::lock_guard lock(slot.projectCommandGate.mutex);
+            slot.projectCommandGate.context = nullptr;
+            slot.projectCommandGate.pass = {};
+            slot.projectCommandGate.frame = {};
+            slot.projectCommandGate.ownerThread = {};
+            slot.projectCommandGate.generation = 0u;
+            slot.projectCommandGate.active = false;
+            slot.projectCommandGate.failed = false;
         }
 
         bool CheckOwnerThread(
@@ -85,6 +97,7 @@ namespace HIKARI::RENDER3D::PIPELINE {
                 status != GRAPH::RenderGraphExecutionStatus::Completed) {
                 return false;
             }
+            ResetProjectCommandGate(slot);
             slot.stageState = {};
             slot.receipt = {};
             slot.active = false;
@@ -144,7 +157,10 @@ namespace HIKARI::RENDER3D::PIPELINE {
             surfaces,
             AllocateGeneration(state)
         };
+        ResetProjectCommandGate(*selected);
         selected->stageState = {};
+        selected->stageState.projectCommandGate =
+            &selected->projectCommandGate;
         selected->receipt = receipt;
         selected->active = true;
         outReceipt = receipt;

@@ -331,8 +331,7 @@ bool RenderTarget2D::CreateResources()
             cmd->OMSetRenderTargets(1, &rtvHandle_, FALSE, nullptr);
         }
 
-        float clearColor[4] = { r, g, b, a };
-        cmd->ClearRenderTargetView(rtvHandle_, clearColor, 0, nullptr);
+        (void)ClearColor(r, g, b, a);
 
         if (hasDepth_) {
             cmd->ClearDepthStencilView(dsvHandle_, D3D12_CLEAR_FLAG_DEPTH, depthClear, 0, 0, nullptr);
@@ -340,6 +339,22 @@ bool RenderTarget2D::CreateResources()
 
         cmd->RSSetViewports(1, &viewport_);
         cmd->RSSetScissorRects(1, &scissorRect_);
+    }
+
+    bool RenderTarget2D::ClearColor(
+        float r,
+        float g,
+        float b,
+        float a) {
+        ID3D12GraphicsCommandList* cmd = context_.cmdList;
+        if (!initialized_ || cmd == nullptr || !colorTex_ ||
+            !rtvHeap_ || rtvHandle_.ptr == 0u) {
+            return false;
+        }
+        TransitionColor(D3D12_RESOURCE_STATE_RENDER_TARGET);
+        const float clearColor[4] = { r, g, b, a };
+        cmd->ClearRenderTargetView(rtvHandle_, clearColor, 0, nullptr);
+        return true;
     }
 
     void RenderTarget2D::Rebind()

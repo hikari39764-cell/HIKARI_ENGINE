@@ -105,6 +105,7 @@ void SystemScheduler::Clear() {
     nextInsertionIndex_ = 0u;
     parallelMassFailureCount_ = 0u;
     renderObserverFailureCount_ = 0u;
+    renderPassFailureCount_ = 0u;
 }
 
 bool SystemScheduler::ExecuteParallelMassSystem(

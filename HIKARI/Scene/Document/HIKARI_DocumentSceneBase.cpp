@@ -516,12 +516,28 @@ namespace HIKARI {
                 ? RENDER3D::RenderViewPurpose::Game
                 : RENDER3D::RenderViewPurpose::EditorScene;
             primaryView.cameraFrame = &state_->camera.resolvedFrame;
-            primaryView.projectRenderObserver = {
+            primaryView.projectRenderExtensions = {
                 &state_->runtime.systemScheduler,
                 [](void* context,
                     const GameProjectRenderFrameView& frame) noexcept {
                     return static_cast<SystemScheduler*>(context)->
                         ObserveRenderFrame(frame);
+                },
+                [](void* context, uint32_t& outCount) noexcept {
+                    return static_cast<SystemScheduler*>(context)->
+                        GetRenderPassCount(outCount);
+                },
+                [](void* context,
+                    uint32_t index,
+                    GameProjectRenderPassDesc& outDescriptor) noexcept {
+                    return static_cast<SystemScheduler*>(context)->
+                        DescribeRenderPass(index, outDescriptor);
+                },
+                [](void* context,
+                    const char* stableId,
+                    const GameProjectRenderPassContext& pass) noexcept {
+                    return static_cast<SystemScheduler*>(context)->
+                        ExecuteRenderPass(stableId, pass);
                 },
                 state_->runtime.world.GetRuntimeIdentity()
             };

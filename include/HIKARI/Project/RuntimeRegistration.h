@@ -10,6 +10,7 @@
 #include "HIKARI/Project/GameSystem.h"
 #include "HIKARI/Project/MassSystem.h"
 #include "HIKARI/Project/RenderFrame.h"
+#include "HIKARI/Project/RenderPass.h"
 #include "HIKARI/Project/WorldTypes.h"
 #include "HIKARI/Project/WorldMassTypes.h"
 #include "HIKARI/Runtime/ComponentTypeId.h"
@@ -192,6 +193,47 @@ namespace HIKARI {
                 observe);
         }
 
+        // Registers one graph-owned custom pass. The System must also be
+        // activated in the World schedule. Its callback runs synchronously on
+        // the render owner thread and may not retain context or encoder data.
+        template<class System>
+        bool RegisterRenderPassSystem(
+            GameSystemDescriptor descriptor,
+            const GameProjectRenderPassDesc& pass) {
+            ConfigureSystemDescriptor<System>(descriptor);
+            using CallbackResult = std::invoke_result_t<
+                decltype(&System::ExecuteRenderPass),
+                const System*,
+                const GameProjectRenderPassContext&>;
+            static_assert(std::is_void_v<CallbackResult> ||
+                std::is_same_v<CallbackResult, bool>);
+            const ExecuteGameProjectRenderPassFn execute =
+                [](const IGameSystem* system,
+                    const GameProjectRenderPassContext* context) noexcept {
+                    if (system == nullptr || context == nullptr) {
+                        return false;
+                    }
+                    try {
+                        const auto& typed =
+                            *static_cast<const System*>(system);
+                        if constexpr (std::is_void_v<CallbackResult>) {
+                            typed.ExecuteRenderPass(*context);
+                            return true;
+                        }
+                        else {
+                            return typed.ExecuteRenderPass(*context);
+                        }
+                    }
+                    catch (...) {
+                        return false;
+                    }
+                };
+            return RegisterRenderPassSystemRaw(
+                descriptor,
+                pass,
+                execute);
+        }
+
         template<class Data>
         bool RegisterMassData(
             ComponentTypeId typeId,
@@ -266,6 +308,10 @@ namespace HIKARI {
             GameSystemDescriptor descriptor,
             const GameProjectRenderObserverDesc& observer,
             ObserveGameProjectRenderFrameFn observe);
+        HIKARI_GAME_PROJECT_SDK_API bool RegisterRenderPassSystemRaw(
+            GameSystemDescriptor descriptor,
+            const GameProjectRenderPassDesc& pass,
+            ExecuteGameProjectRenderPassFn execute);
         HIKARI_GAME_PROJECT_SDK_API bool RegisterMassDataRaw(
             const GameProjectMassDataTypeDesc& descriptor);
 
