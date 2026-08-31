@@ -1,23 +1,7 @@
-cbuffer CommonParams : register(b0)
-{
-    float gTime;
-    float gDeltaTime;
-    float gCombo;
-    float gIntensity;
-    float gResolutionX;
-    float gResolutionY;
-    float2 gCommonPadding;
-    float4 gUser[16];
-};
+#include "Include/Post/HIKARI_PostEffectInterface.hlsli"
 
 Texture2D<float4> gSceneTex : register(t0);
 SamplerState gLinearClamp : register(s0);
-
-struct PSInput
-{
-    float4 position : SV_POSITION;
-    float2 uv : TEXCOORD0;
-};
 
 float HikariLuma(float3 value)
 {
@@ -101,7 +85,7 @@ float HikariRing(
         max(safeThickness * safeThickness * 1.65f, 1.0e-7f));
 }
 
-float4 main(PSInput input) : SV_TARGET
+float4 main(HikariPostEffectInput input) : SV_TARGET
 {
     const float4 base = gSceneTex.SampleLevel(
         gLinearClamp,

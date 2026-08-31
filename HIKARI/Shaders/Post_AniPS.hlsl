@@ -1,27 +1,9 @@
-cbuffer CommonParams : register(b0)
-{
-    float gTime;
-    float gDeltaTime;
-    float gCombo;
-    float gIntensity;
-
-    float gResolutionX;
-    float gResolutionY;
-    float2 gCommonPadding;
-
-    float4 gUser[16];
-};
+#include "Include/Post/HIKARI_PostEffectInterface.hlsli"
 
 Texture2D gSceneTex : register(t0);
 SamplerState gSamp : register(s0);
 
 #include "Include/Post/HIKARI_PostColorGrade.hlsli"
-
-struct PSInput
-{
-    float4 position : SV_POSITION;
-    float2 uv : TEXCOORD0;
-};
 
 float3 DisplayMap(float3 color)
 {
@@ -40,7 +22,7 @@ float3 TonePosterize(float3 color, float amount, float levels)
     return lerp(color, color * scale, amount);
 }
 
-float4 main(PSInput input) : SV_TARGET
+float4 main(HikariPostEffectInput input) : SV_TARGET
 {
     const float4 center = gSceneTex.Sample(gSamp, input.uv);
 

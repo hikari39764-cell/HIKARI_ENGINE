@@ -1,23 +1,7 @@
-cbuffer CommonParams : register(b0)
-{
-    float gTime;
-    float gDeltaTime;
-    float gCombo;
-    float gIntensity;
-    float gResolutionX;
-    float gResolutionY;
-    float2 gCommonPadding;
-    float4 gUser[16];
-};
+#include "Include/Post/HIKARI_PostEffectInterface.hlsli"
 
 Texture2D gSceneTex : register(t0);
 SamplerState gSamp : register(s0);
-
-struct PSInput
-{
-    float4 position : SV_POSITION;
-    float2 uv : TEXCOORD0;
-};
 
 static const float HIKARI_BLOOM_MAX_SAFE_RADIANCE = 4096.0f;
 
@@ -43,7 +27,7 @@ float3 HikariSampleBloomInput(float2 uv)
         gSceneTex.SampleLevel(gSamp, uv, 0.0f).rgb);
 }
 
-float4 main(PSInput input) : SV_TARGET
+float4 main(HikariPostEffectInput input) : SV_TARGET
 {
     // Bloom の見た目は従来どおり単一サンプルから抽出する。
     // 非有限値と極端な HDR 値だけを除外し、通常のハイライトは減衰させない。

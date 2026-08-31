@@ -1,11 +1,12 @@
 ﻿#pragma once
+#include <cstddef>
 #include <DirectXMath.h>
 #include <cstdint>
 
 namespace HIKARI {
     namespace POST {
 
-        // 未来长期不动的公共参数（b0）
+        // HIKARI_PostEffectInterface.hlsli の b0 と共有する固定レイアウト。
         struct alignas(16) CommonParams
         {
             float time = 0.0f;
@@ -18,9 +19,13 @@ namespace HIKARI {
             float pad0 = 0.0f;
             float pad1 = 0.0f;
 
-            // 每个效果自己的自由参数区（你会让每个 effect 各自维护这份）
+            // 各 PostEffect 固有の自由パラメータ領域。
             DirectX::XMFLOAT4 user[16]{};
         };
+
+        static_assert(sizeof(CommonParams) == 288u);
+        static_assert(alignof(CommonParams) == 16u);
+        static_assert(offsetof(CommonParams, user) == 32u);
 
         static inline uint32_t Align256(uint32_t bytes)
         {

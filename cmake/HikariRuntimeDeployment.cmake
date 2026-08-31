@@ -97,7 +97,7 @@ function(hikari_configure_runtime_deployment target_name)
                 "${HIKARI_SOURCE_ROOT}/HIKARI/Shaders"
             DESTINATION
                 "EngineContent")
-        install(CODE
+        string(CONCAT hikari_shader_install_validation_code
             "execute_process(\n"
             "  COMMAND \"${CMAKE_COMMAND}\"\n"
             "    \"-DHIKARI_SHADER_SOURCE_ROOT=${HIKARI_SOURCE_ROOT}/HIKARI/Shaders\"\n"
@@ -107,6 +107,11 @@ function(hikari_configure_runtime_deployment target_name)
             "if(NOT _hikari_shader_validation_result EQUAL 0)\n"
             "  message(FATAL_ERROR \"Built-in HSHADERC install validation failed.\")\n"
             "endif()")
+        install(CODE "${hikari_shader_install_validation_code}")
+        string(CONCAT hikari_shader_install_cleanup_code
+            "file(REMOVE_RECURSE\n"
+            "  \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/EngineContent/Shaders/Cooked\")")
+        install(CODE "${hikari_shader_install_cleanup_code}")
         install(
             DIRECTORY
                 "${CMAKE_BINARY_DIR}/bin/EngineContent/Shaders/Cooked/"

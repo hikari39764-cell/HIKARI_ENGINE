@@ -1,30 +1,14 @@
-cbuffer CommonParams : register(b0)
-{
-    float gTime;
-    float gDeltaTime;
-    float gCombo;
-    float gIntensity;
-    float gResolutionX;
-    float gResolutionY;
-    float2 gCommonPadding;
-    float4 gUser[16];
-};
+#include "Include/Post/HIKARI_PostEffectInterface.hlsli"
 
 Texture2D gSceneTex : register(t0);
 SamplerState gSamp : register(s0);
-
-struct PSInput
-{
-    float4 position : SV_POSITION;
-    float2 uv : TEXCOORD0;
-};
 
 float Luma(float3 color)
 {
     return dot(color, float3(0.299f, 0.587f, 0.114f));
 }
 
-float4 main(PSInput input) : SV_TARGET
+float4 main(HikariPostEffectInput input) : SV_TARGET
 {
     float4 center = gSceneTex.Sample(gSamp, input.uv);
 

@@ -1,0 +1,22 @@
+#ifndef HIKARI_POST_EFFECT_INTERFACE_HLSLI
+#define HIKARI_POST_EFFECT_INTERFACE_HLSLI
+
+cbuffer CommonParams : register(b0)
+{
+    float gTime;
+    float gDeltaTime;
+    float gCombo;
+    float gIntensity;
+    float gResolutionX;
+    float gResolutionY;
+    float2 gCommonPadding;
+    float4 gUser[16];
+};
+
+struct HikariPostEffectInput
+{
+    float4 position : SV_POSITION;
+    float2 uv : TEXCOORD0;
+};
+
+#endif

@@ -10,6 +10,7 @@
 
 #include "Assets/Formats/HIKARI_HshadercFormat.h"
 #include "Assets/Shader/HIKARI_BuiltinShaderCatalog.h"
+#include "Assets/Shader/HIKARI_PostEffectShaderContract.h"
 #include "Assets/Shader/HIKARI_ShaderCookedArtifactBuilder.h"
 #include "Core/Hashing/HIKARI_Sha256.h"
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
@@ -117,6 +118,13 @@ namespace {
                 manifestHash,
                 SHADER::ShaderIncludeRoot::EngineSdk,
                 compiled,
+                artifact,
+                outError)) {
+            return false;
+        }
+        if (program.contract.engineInterfaceId ==
+                SHADER::kPostEffectEngineInterfaceId &&
+            !SHADER::ValidatePostEffectShaderArtifact(
                 artifact,
                 outError)) {
             return false;

@@ -169,13 +169,6 @@ foreach(runtime_file IN LISTS HIKARI_RUNTIME_DEPENDENCIES)
             "$<TARGET_FILE_DIR:HIKARI_BuiltinShaderCookTool>"
         VERBATIM)
 endforeach()
-file(
-    GLOB_RECURSE
-    HIKARI_BUILTIN_SHADER_COOK_INPUTS
-    CONFIGURE_DEPENDS
-    "${HIKARI_SOURCE_ROOT}/HIKARI/Shaders/*.hlsl"
-    "${HIKARI_SOURCE_ROOT}/HIKARI/Shaders/*.hlsli"
-    "${HIKARI_SOURCE_ROOT}/HIKARI/Shaders/*.h")
 set(
     HIKARI_BUILTIN_SHADER_ARTIFACT_ROOT
     "${CMAKE_BINARY_DIR}/bin/EngineContent/Shaders/Cooked")
@@ -197,7 +190,6 @@ add_custom_target(
     DEPENDS
         HIKARI_BuiltinShaderCookTool
         "${HIKARI_BUILTIN_SHADER_CATALOG_PATH}"
-        ${HIKARI_BUILTIN_SHADER_COOK_INPUTS}
     WORKING_DIRECTORY "${HIKARI_SOURCE_ROOT}"
     COMMENT "Cooking admitted built-in HSHADERC programs"
     VERBATIM)

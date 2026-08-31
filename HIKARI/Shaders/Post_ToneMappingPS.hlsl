@@ -1,26 +1,10 @@
-cbuffer CommonParams : register(b0)
-{
-    float gTime;
-    float gDeltaTime;
-    float gCombo;
-    float gIntensity;
-    float gResolutionX;
-    float gResolutionY;
-    float2 gCommonPadding;
-    float4 gUser[16];
-};
+#include "Include/Post/HIKARI_PostEffectInterface.hlsli"
 
 Texture2D gSceneTex : register(t0);
 SamplerState gSamp : register(s0);
 
 // Scene lighting stays linear HDR through the render pipeline. This pass
 // applies the selected tone curve and the single display gamma transform.
-
-struct PSInput
-{
-    float4 position : SV_POSITION;
-    float2 uv : TEXCOORD0;
-};
 
 float3 ApplyReinhard(float3 color)
 {
@@ -47,7 +31,7 @@ float3 ApplyACESFitted(float3 color)
     return saturate(mul(outputMatrix, aces));
 }
 
-float4 main(PSInput input) : SV_TARGET
+float4 main(HikariPostEffectInput input) : SV_TARGET
 {
     float4 sceneColor = gSceneTex.Sample(gSamp, input.uv);
     const bool toneCurveEnabled = gUser[0].x >= 0.5f;
